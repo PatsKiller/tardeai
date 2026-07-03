@@ -5376,11 +5376,36 @@ def _wl_propose_symbol(sym: str, body: dict | None = None) -> tuple[int, dict]:
     entry = float(b.get("entry") or row.get("entry_limit") or 0)
     stop = float(b.get("stop") or row.get("entry_stop") or 0)
     target = float(b.get("target") or row.get("entry_target") or 0)
-    shares = int(b.get("shares") or 10)
+    shares = int(b.get("shares") or 0)
     account = str(b.get("account") or os.environ.get("ENTRY_DESK_DEFAULT_ACCOUNT") or "").strip()
+    risk_pct = float(b.get("risk_pct") or 1)
+    confirm_over = bool(b.get("confirm_over_risk"))
 
+    if not account:
+        return 400, {"ok": False, "error": "account required"}
+    if shares <= 0:
+        return 400, {"ok": False, "error": "shares required"}
     if not (entry > 0 and stop > 0 and target > 0 and entry > stop and target > entry):
         return 400, {"ok": False, "error": "valid entry > stop and target > entry required"}
+
+    # Advisory risk guard: block >2% equity risk unless operator explicitly confirms.
+    equity = None
+    try:
+        import schwab_transport as _st
+        bal = _st.get_account(account)
+        if isinstance(bal, dict) and bal.get("status") == "active":
+            equity = float(bal.get("equity") or bal.get("buying_power") or bal.get("cash") or 0)
+    except Exception:
+        pass
+    if equity and equity > 0:
+        dollar_risk = abs(entry - stop) * shares
+        pct_risk = dollar_risk / equity * 100
+        if pct_risk > 2.05 and not confirm_over:
+            return 400, {
+                "ok": False,
+                "error": f"Risk {pct_risk:.2f}% exceeds 2% cap — confirm override or reduce shares",
+                "pct_risk": round(pct_risk, 2),
+            }
 
     import entry_desk_ops as edo
     res = edo.promote_to_broker_queue({

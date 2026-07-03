@@ -1,16 +1,32 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useApi } from '../hooks/useApi'
 import type { Ladder } from '../lib/exitLadder'
+import {
+  computeRiskSizedShares,
+  sizingFromShares,
+  exceedsMaxRisk,
+  acctLabel,
+  type RiskPct,
+} from '../lib/watchlistProposeSizing'
+import PositionSizingRiskBar from './risk/PositionSizingRiskBar'
 
 const MUTED = '#94a3b8'
 const TEXT0 = '#f8fafc'
+const TEXT1 = '#dbeafe'
 const GREEN = '#22c55e'
 const AMBER = '#f59e0b'
+const RED = '#ef4444'
+const BLUE = '#60a5fa'
 const overlay = { position: 'fixed' as const, inset: 0, background: 'rgba(2,6,23,.78)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }
-const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, width: 'min(560px, 96vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,.45)' }
+const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, width: 'min(620px, 96vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,.45)' }
+const inp = { fontSize: 12, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,.28)', background: 'rgba(15,23,42,.6)', color: TEXT0, width: '100%', fontFamily: 'monospace' } as const
+const lbl = { fontSize: 10, color: MUTED, display: 'block', marginBottom: 5, textTransform: 'uppercase' as const, letterSpacing: '0.4px' }
 
-function money(v: number | null | undefined) {
+function money(v: number | null | undefined, compact = false) {
   if (v == null || !Number.isFinite(Number(v))) return '—'
-  return `$${Number(v).toFixed(2)}`
+  const n = Number(v)
+  if (compact && Math.abs(n) >= 1000) return `$${(n / 1000).toFixed(1)}k`
+  return `$${n.toFixed(2)}`
 }
 
 export type WatchlistProposeSeed = {
@@ -29,10 +45,60 @@ type Props = {
   onProposed?: (res: { proposal_id?: number; symbol: string; message?: string }) => void
 }
 
+function MetricBox({ label, value, sub, color = TEXT0 }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(15,23,42,.55)', border: '1px solid rgba(148,163,184,.15)' }}>
+      <div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color, fontFamily: 'monospace' }}>{value}</div>
+      {sub && <div style={{ fontSize: 9, color: MUTED, marginTop: 3 }}>{sub}</div>}
+    </div>
+  )
+}
+
 export default function WatchlistProposeModal({ seed, onClose, onProposed }: Props) {
   const { it, entry, stop, planTarget, rr, ladder, pa } = seed
+  const { data: schwabR, loading: acctLoading } = useApi<any>('/api/v2/schwab/accounts-live', 35_000)
+
+  const [riskPct, setRiskPct] = useState<RiskPct>(1)
+  const [account, setAccount] = useState('')
+  const [shares, setShares] = useState('')
+  const [sharesTouched, setSharesTouched] = useState(false)
+  const [confirmOverRisk, setConfirmOverRisk] = useState(false)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+
+  const accounts: any[] = ((schwabR as any)?.data ?? schwabR)?.accounts ?? []
+  const watchLists = String(it.watch_lists || '').split(' · ').map((s: string) => s.trim()).filter(Boolean)
+
+  useEffect(() => {
+    if (account || !accounts.length) return
+    const pref = accounts.find(a => a.account_key?.includes('taxable')) ?? accounts[0]
+    if (pref?.account_key) setAccount(pref.account_key)
+  }, [accounts, account])
+
+  const selAcct = accounts.find(a => a.account_key === account)
+  const equity = Number(selAcct?.account_value ?? selAcct?.buying_power ?? selAcct?.cash ?? 0)
+
+  const autoSized = useMemo(() => {
+    if (!entry || !stop || !planTarget || entry <= stop || planTarget <= entry || equity <= 0) return null
+    return computeRiskSizedShares({ equity, entry, stop, target: planTarget, riskPct })
+  }, [equity, entry, stop, planTarget, riskPct])
+
+  useEffect(() => {
+    if (sharesTouched || !autoSized?.shares) return
+    setShares(String(autoSized.shares))
+    setConfirmOverRisk(false)
+  }, [autoSized?.shares, sharesTouched, riskPct, account])
+
+  const sized = useMemo(() => {
+    if (!entry || !stop || !planTarget || equity <= 0) return null
+    const sh = Number(shares)
+    if (!Number.isFinite(sh) || sh <= 0) return autoSized
+    return sizingFromShares({ equity, entry, stop, target: planTarget, shares: sh })
+  }, [equity, entry, stop, planTarget, shares, autoSized])
+
+  const overMaxRisk = sized ? exceedsMaxRisk(sized.pctOfEquity) : false
+  const needsConfirm = overMaxRisk && !confirmOverRisk
 
   const cioLabel = it.latest_recommendation
     ? String(it.latest_recommendation).replace(/_/g, ' ')
@@ -44,6 +110,19 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
       setMsg('Plan incomplete — need limit, stop, and target')
       return
     }
+    if (!account) {
+      setMsg('Select a destination account')
+      return
+    }
+    const sh = Number(shares)
+    if (!Number.isFinite(sh) || sh <= 0) {
+      setMsg('Position size must be at least 1 share')
+      return
+    }
+    if (needsConfirm) {
+      setMsg('Confirm elevated risk (>2% of account) before queuing')
+      return
+    }
     setBusy(true)
     setMsg('')
     try {
@@ -51,7 +130,9 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          entry, stop, target: planTarget, shares: 10, source: 'watchlist_card',
+          entry, stop, target: planTarget, shares: sh, account,
+          risk_pct: riskPct, confirm_over_risk: confirmOverRisk,
+          source: 'watchlist_card',
         }),
       }).then(x => x.json())
       const payload = r.data ?? r
@@ -74,51 +155,172 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
     window.location.href = `/v3/trading?tab=Entry+Desk&symbol=${it.symbol}`
   }
 
+  const onRiskPctChange = (pct: RiskPct) => {
+    setRiskPct(pct)
+    setSharesTouched(false)
+    setConfirmOverRisk(false)
+  }
+
+  const onSharesChange = (v: string) => {
+    setSharesTouched(true)
+    setShares(v.replace(/[^0-9]/g, ''))
+    setConfirmOverRisk(false)
+  }
+
+  const applyAutoSize = () => {
+    if (autoSized?.shares) {
+      setSharesTouched(false)
+      setShares(String(autoSized.shares))
+      setConfirmOverRisk(false)
+    }
+  }
+
   return (
     <div style={overlay} onClick={onClose}>
       <div style={card} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 900, color: TEXT0 }}>
-              Review & propose · <span style={{ fontFamily: 'monospace' }}>{it.symbol}</span>
+              Propose entry · <span style={{ fontFamily: 'monospace' }}>{it.symbol}</span>
             </div>
             <div style={{ fontSize: 11, color: MUTED, marginTop: 5, lineHeight: 1.45 }}>
-              Confirm plan levels before sending to the broker proposal queue. Does not place live orders.
+              Size the trade at 1–2% account risk, then send to the proposal queue. Does not place live orders.
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 22, lineHeight: 1 }}>×</button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14 }}>
-          {[
-            { label: 'Limit', value: money(entry) },
-            { label: 'Stop', value: money(stop) },
-            { label: 'Target', value: money(planTarget) },
-            { label: 'R:R', value: rr != null ? rr.toFixed(2) : '—' },
-          ].map(m => (
-            <div key={m.label} style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(15,23,42,.55)', border: '1px solid rgba(148,163,184,.15)' }}>
-              <div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.35px', marginBottom: 4 }}>{m.label}</div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: TEXT0, fontFamily: 'monospace' }}>{m.value}</div>
-            </div>
-          ))}
+        {/* Trade preview */}
+        <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, background: 'rgba(15,23,42,.45)', border: '1px solid rgba(148,163,184,.15)' }}>
+          <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase', marginBottom: 8 }}>Trade plan</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            <MetricBox label="Limit" value={money(entry)} />
+            <MetricBox label="Stop" value={money(stop)} color={RED} />
+            <MetricBox label="Target" value={money(planTarget)} color={GREEN} />
+            <MetricBox label="R:R" value={rr != null ? `${rr.toFixed(2)} : 1` : '—'} color={rr != null && rr >= 1.5 ? GREEN : AMBER} />
+          </div>
+          <div style={{ fontSize: 10, color: MUTED, marginTop: 10, lineHeight: 1.5 }}>
+            <span><b>CIO</b> {cioLabel}</span>
+            {conf != null && <span> · <b>Conf</b> {Number(conf).toFixed(2)}</span>}
+            {it.entry_urgency && <span> · <b>Urgency</b> {String(it.entry_urgency).replace(/_/g, ' ')}</span>}
+          </div>
         </div>
 
-        <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 12, lineHeight: 1.5 }}>
-          <span><b style={{ color: MUTED }}>CIO</b> {cioLabel}</span>
-          {conf != null && <span> · <b style={{ color: MUTED }}>Conf</b> {Number(conf).toFixed(2)}</span>}
-          {it.entry_urgency && <span> · <b style={{ color: MUTED }}>Urgency</b> {String(it.entry_urgency).replace(/_/g, ' ')}</span>}
+        {/* Account + watchlist */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <label>
+            <span style={lbl}>Destination account</span>
+            <select
+              style={{ ...inp, fontFamily: 'inherit' }}
+              value={account}
+              onChange={e => { setAccount(e.target.value); setSharesTouched(false); setConfirmOverRisk(false) }}
+              disabled={acctLoading}
+            >
+              <option value="">{acctLoading ? 'Loading accounts…' : '— select account —'}</option>
+              {accounts.map(a => (
+                <option key={a.account_key} value={a.account_key}>
+                  {acctLabel(a.account_key)}
+                  {a.account_value != null ? ` · ${money(a.account_value, true)} equity` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span style={lbl}>Watchlist membership</span>
+            <div style={{
+              ...inp, fontFamily: 'inherit', minHeight: 36, display: 'flex', alignItems: 'center',
+              color: watchLists.length ? TEXT1 : MUTED,
+            }}>
+              {watchLists.length ? watchLists.join(' · ') : 'General watchlist'}
+            </div>
+          </label>
+        </div>
+
+        {selAcct && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: 'rgba(96,165,250,.06)', border: '1px solid rgba(96,165,250,.2)' }}>
+            <MetricBox label="Account equity" value={money(equity, true)} sub={selAcct.balances_status === 'ok' ? 'live Schwab' : 'balance unavailable'} color={BLUE} />
+            <MetricBox label="Cash" value={money(selAcct.cash, true)} />
+            <MetricBox label="Buying power" value={money(selAcct.buying_power, true)} />
+          </div>
+        )}
+
+        {/* Risk management */}
+        <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, background: 'rgba(34,197,94,.05)', border: '1px solid rgba(34,197,94,.18)' }}>
+          <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase', marginBottom: 10 }}>Risk management</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, color: MUTED, fontWeight: 700 }}>Risk per trade:</span>
+            {([1, 2] as RiskPct[]).map(pct => (
+              <button
+                key={pct}
+                type="button"
+                onClick={() => onRiskPctChange(pct)}
+                style={{
+                  fontSize: 11, fontWeight: 800, padding: '7px 14px', borderRadius: 8, cursor: 'pointer',
+                  border: riskPct === pct ? `1px solid ${GREEN}` : '1px solid rgba(148,163,184,.25)',
+                  background: riskPct === pct ? 'rgba(34,197,94,.15)' : 'transparent',
+                  color: riskPct === pct ? GREEN : MUTED,
+                }}
+              >{pct}% of equity</button>
+            ))}
+            <span style={{ fontSize: 9, color: MUTED }}>Default 1% · max 2% without override</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'end' }}>
+            <label>
+              <span style={lbl}>Shares {autoSized ? `(auto ${autoSized.shares.toLocaleString()} @ ${riskPct}%)` : ''}</span>
+              <input style={inp} value={shares} onChange={e => onSharesChange(e.target.value)} />
+            </label>
+            <button
+              type="button"
+              onClick={applyAutoSize}
+              disabled={!autoSized?.shares}
+              style={{ fontSize: 10, fontWeight: 700, padding: '9px 12px', borderRadius: 8, border: `1px solid ${GREEN}`, background: 'rgba(34,197,94,.1)', color: GREEN, cursor: 'pointer' }}
+            >Apply auto-size</button>
+          </div>
+
+          {sized && sized.shares > 0 && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
+                <MetricBox label="Max risk $" value={money(sized.dollarRisk, true)} sub={`${sized.pctOfEquity.toFixed(2)}% of equity`} color={overMaxRisk ? RED : GREEN} />
+                <MetricBox label="Investment" value={money(sized.investment, true)} sub={`${sized.shares.toLocaleString()} sh × ${money(entry)}`} color={BLUE} />
+                <MetricBox label="Profit @ target" value={money(sized.profitAtTarget, true)} sub={planTarget ? `+${(((planTarget - (entry || 0)) / (entry || 1)) * 100).toFixed(1)}%` : undefined} color={GREEN} />
+              </div>
+              {autoSized && (
+                <PositionSizingRiskBar
+                  queuedShares={sized.shares}
+                  capShares={autoSized.shares}
+                  accountLabel={acctLabel(account)}
+                  alwaysShow={sharesTouched}
+                />
+              )}
+            </>
+          )}
+
+          {overMaxRisk && (
+            <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)' }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: RED, marginBottom: 6 }}>
+                Risk exceeds 2% — {sized?.pctOfEquity.toFixed(2)}% of account equity
+              </div>
+              <label style={{ fontSize: 10, color: TEXT1, display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                <input type="checkbox" checked={confirmOverRisk} onChange={e => setConfirmOverRisk(e.target.checked)} />
+                I confirm sizing above the 2% risk cap for this high-conviction setup
+              </label>
+            </div>
+          )}
         </div>
 
         {ladder && ladder.steps.length > 0 && (
-          <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: 'rgba(15,23,42,.4)', border: '1px solid rgba(148,163,184,.12)' }}>
-            <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Exit ladder</div>
-            {ladder.steps.map((s, i) => (
-              <div key={i} style={{ fontSize: 10, color: '#cbd5e1', marginTop: i ? 3 : 0, fontFamily: 'monospace' }}>
-                {s.label} {s.px.toFixed(2)} — <span style={{ color: MUTED, fontFamily: 'inherit' }}>{s.action}</span>
-              </div>
-            ))}
-            <div style={{ fontSize: 9, color: MUTED, marginTop: 6 }}>R ${ladder.R.toFixed(2)}/sh</div>
-          </div>
+          <details style={{ marginBottom: 14 }}>
+            <summary style={{ fontSize: 10, fontWeight: 700, color: MUTED, cursor: 'pointer' }}>Exit ladder</summary>
+            <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 10, background: 'rgba(15,23,42,.4)', border: '1px solid rgba(148,163,184,.12)' }}>
+              {ladder.steps.map((s, i) => (
+                <div key={i} style={{ fontSize: 10, color: '#cbd5e1', marginTop: i ? 3 : 0, fontFamily: 'monospace' }}>
+                  {s.label} {s.px.toFixed(2)} — <span style={{ color: MUTED, fontFamily: 'inherit' }}>{s.action}</span>
+                </div>
+              ))}
+              <div style={{ fontSize: 9, color: MUTED, marginTop: 6 }}>R ${ladder.R.toFixed(2)}/sh</div>
+            </div>
+          </details>
         )}
 
         {msg && (
@@ -132,8 +334,12 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           <button onClick={onClose} style={{ fontSize: 11, fontWeight: 700, padding: '9px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>Cancel</button>
           <button onClick={openDesk} style={{ fontSize: 11, fontWeight: 700, padding: '9px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>Open Entry Desk</button>
-          <button onClick={queueProposal} disabled={busy} style={{ fontSize: 12, fontWeight: 800, padding: '9px 20px', borderRadius: 8, border: 'none', background: GREEN, color: '#fff', cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1 }}>
-            {busy ? 'Queuing…' : 'Send to proposal queue'}
+          <button
+            onClick={queueProposal}
+            disabled={busy || needsConfirm || !account || !sized?.shares}
+            style={{ fontSize: 12, fontWeight: 800, padding: '9px 20px', borderRadius: 8, border: 'none', background: needsConfirm ? MUTED : GREEN, color: '#fff', cursor: busy || needsConfirm ? 'not-allowed' : 'pointer', opacity: busy ? 0.7 : 1 }}
+          >
+            {busy ? 'Queuing…' : needsConfirm ? 'Confirm risk to proceed' : 'Send to proposal queue'}
           </button>
         </div>
       </div>
