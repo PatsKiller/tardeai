@@ -350,6 +350,13 @@ export default function WatchlistCard({
   const confBand = confNum == null ? null : confNum >= 0.7 ? 'High' : confNum >= 0.5 ? 'Moderate' : 'Low'
   const confColor = confNum == null ? WL.text.dim : confNum >= 0.7 ? WL.signal.teal : confNum >= 0.5 ? WL.signal.amber : WL.signal.red
   const cioNote = it.synthesis_narrative_snip ? truncate(String(it.synthesis_narrative_snip), 220) : null
+  // Freshness guard — a position can change after the note was written (holdings-change trigger
+  // re-queues synthesis, but until it lands the age is the honest signal). Amber past 24h.
+  const cioNoteAgeH = it.synthesis_updated_at
+    ? (Date.now() - new Date(it.synthesis_updated_at).getTime()) / 36e5
+    : null
+  const cioNoteAge = cioNoteAgeH != null && Number.isFinite(cioNoteAgeH) ? ago(it.synthesis_updated_at) : null
+  const cioNoteStale = cioNoteAgeH != null && cioNoteAgeH > 24
 
   const monitorRuleShort = MONITOR_RULES.split('·')[0].trim()
 
@@ -581,7 +588,14 @@ export default function WatchlistCard({
         </div>
         {cioNote && (
           <div style={{ marginTop: 8, fontSize: 11.5, color: WL.text.secondary, fontStyle: 'italic', lineHeight: 1.5 }} title={String(it.synthesis_narrative_snip)}>
-            <span style={{ color: WL.text.dim, fontWeight: 700, fontStyle: 'normal' }}>CIO note </span>{cioNote}
+            <span style={{ color: WL.text.dim, fontWeight: 700, fontStyle: 'normal' }}>CIO note </span>
+            {cioNoteAge && (
+              <span
+                title={cioNoteStale ? 'Synthesis older than 24h — position or market state may have moved since; a holdings change auto-queues a refresh.' : 'When the CIO synthesis last ran.'}
+                style={{ color: cioNoteStale ? WL.signal.amber : WL.text.dim, fontWeight: 600, fontStyle: 'normal', marginRight: 6 }}
+              >{cioNoteAge}{cioNoteStale ? ' ⚠' : ''} ·</span>
+            )}
+            {cioNote}
           </div>
         )}
         <div title={dqTip} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: WL.text.secondary, marginTop: 9 }}>

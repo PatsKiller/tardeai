@@ -21,7 +21,7 @@ banner is the only tinted element; the primary button the only solid one. Color 
 | ① Header | Star, symbol (mono), HELD chip, provenance line (company · Hermes # · origin · sector), colored Street rating `ProAnalystPill` (+ CIO ≠ Street note), price/change, quiet Refresh | visible |
 | ② Status banner | Verdict word + headline + one-line why (warning folded in) + primary CTA + one quiet secondary + ••• overflow menu | visible, dominant |
 | ③ Trade plan | Limit / Stop / Target / R:R as 17px mono numerals with zone, %, R-per-share sub-captions; **Entry line** (strategy_type · setup · urgency · ideal_entry · entry_confidence · entry_tag); **Sizing @1% risk per account** (proposal-accounts sizing_base ÷ stop distance, cash-capped — same math as Propose modal; held-aware: existing position renders as "holds N sh ($) · add ~M sh" from /api/v2/portfolio/holdings, plus "also held" for unsized accounts); exit-vs-Street note | visible |
-| ④ Conviction | CIO stance chip, confidence meter + band word (High ≥0.7 / Moderate ≥0.5 / Low), models/validated/model meta, **CIO note** (synthesis narrative snip, full text on hover), one data-health line (dot + worst flag, full list in tooltip) | visible |
+| ④ Conviction | CIO stance chip, confidence meter + band word (High ≥0.7 / Moderate ≥0.5 / Low), models/validated/model meta, **CIO note** (synthesis narrative snip with age — amber ⚠ past 24h; full text on hover), one data-health line (dot + worst flag, full list in tooltip) | visible |
 | ⑤ Exit ladder | T1 · T2 · T3 prices on one line + scale rule; per-step actions behind "Plan detail" (auto-opens on trade-focus verdicts); always shown when a ladder exists | summary |
 | ⑥ Context | Technicals, catalyst, news, company one-liner, external-intel lanes; full description + `FibConfluencePanel` behind "More" | visible |
 | ⑦ Due diligence | Weekly prospectus PDF/Word/↻ (`HoldingReportLinks`) with freshness · gen # · oversight verdict; obvious generate state when missing | visible |
@@ -70,6 +70,19 @@ enrichment age, agents pending, CIO synthesis pending, advisory caution, low CIO
 
 **Reasoning line** (`actionReasoning`): CIO vs Street divergence, Hermes rank, advisory note,
 plan/R:R state, synthesis snippet.
+
+## Holdings-change re-synthesis
+
+`scripts/holdings_change_trigger.py` — after every holdings.json write (hooked in
+`schwab_position_sync.protected_holdings_write`, the single gate both the Schwab sync and the
+SnapTrade merge write through), per-symbol share totals are diffed against
+`data/portfolios/state/holdings_symbol_state.json`. A held-state flip (opened/closed) or a
+≥10% share change on a watchlist-tracked symbol enqueues a `full_chain` job
+(`request_type=holdings_change`, priority 1, `submitted_from=holdings_change_trigger`) so the
+CIO narrative's PORTFOLIO POSITION block re-syncs with reality instead of waiting for the next
+scheduled pass. First run baselines silently; CLI: dry-run default, `--apply`, `--baseline`.
+Root cause this closes: SMCI bought 2026-07-03 12:33 still showed the prior night's
+"zero position" narrative (advisory-only; no order surface).
 
 ## Propose Entry modal
 

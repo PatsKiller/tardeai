@@ -5170,6 +5170,7 @@ def _wl_items(query: dict = None):
                fs.decision_safety, fs.actionable AS synthesis_actionable,
                fs.model_used AS cio_model_used,
                fs.dual_consensus_json, fs.synthesis_narrative, fs.conflicts, fs.unresolved,
+               fs.updated_at AS synthesis_updated_at,
                sp.sector AS profile_sector, sp.industry AS profile_industry,
                sp.instrument_type AS instrument_type,
                sp.expense_ratio AS expense_ratio,
