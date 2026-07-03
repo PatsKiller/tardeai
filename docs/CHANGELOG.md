@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-03 - Watchlist stop-quality research multipliers + UI watch rows
+
+`watchlist_research_multiplier` in research_scheduler (S0–S3): boost strong stop
+discipline, deprioritize weak; Closed Loop shows Hot/Cold trail Δ and degrading
+stop discipline watchlist symbols.
+
 ## 2026-07-03 - Docs sync: closed-loop traceability across Hermes index + lifecycle docs
 
 Synced `DOCUMENTATION_INDEX`, `HERMES_CLOSED_LOOP_TRACEABILITY`, watchlist/holdings

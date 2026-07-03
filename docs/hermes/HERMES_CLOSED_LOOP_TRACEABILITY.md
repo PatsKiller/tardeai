@@ -10,6 +10,7 @@
 | **2 — Holdings** | Health + lifecycle + research depth | **Done** | `holdings_lifecycle.py`, `research_scheduler.py` T0 multipliers, `712f21ed` |
 | **3 — Feedback loops** | Stop reactions, bus export, evaluation, traceability | **Done** | `reactions.py`, `lifecycle_slice.py`, `bus_traceability.py`, Phase D eval, `symbol_journey.py` |
 | **4 — UI polish** | Symbol journey timeline, proposal impact narratives | **Done** | `SymbolJourneyPanel.tsx` (`3ec93b08`), `proposal_impact.py` (`a0fb8bac`) |
+| **5 — Stop quality ↔ watchlist** | Health weight 25%, research mult, degrading UI | **Done** | `watchlist_research_multiplier`, Closed Loop stop watch rows |
 
 ### End-to-end linkage
 
