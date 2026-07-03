@@ -8,6 +8,7 @@ import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import WatchlistCard from '../components/WatchlistCard'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import { exitLadder } from '../lib/exitLadder'
+import { parseProposalAccounts } from '../lib/watchlistProposeSizing'
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
@@ -54,6 +55,8 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
   const { data: curateStatus, refetch: refetchCurate } = useApi<any>('/api/v2/hermes/curate-top20', 20_000)
   const paMap = useProAnalystMap()
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
+  const { data: acctRaw } = useApi<any>('/api/v2/proposal-accounts', 120_000)
+  const proposalAccounts = useMemo(() => parseProposalAccounts(acctRaw), [acctRaw])
 
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const fvMap: Record<string, any> = fvStrip?.map ?? {}
@@ -399,6 +402,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
                   fv={fvMap[it.symbol]}
                   reportEntry={reportMap[symKey]}
                   paMap={paMap}
+                  accounts={proposalAccounts}
                   ensOpen={!!ensOpen[it.id]}
                   refreshState={refreshBusy[symKey]}
                   isStarred={isStarred(it)}

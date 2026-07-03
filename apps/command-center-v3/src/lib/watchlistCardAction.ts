@@ -148,12 +148,12 @@ export function deriveRecommendedAction(args: {
   }
 
   if (rr != null && rr < 1.5) {
-    // FIX verdicts render a red banner — the corrective primary matches it.
+    // Advisory FIX (amber urgency) — amber banner + amber corrective primary.
     return action('ADJUST_PLAN', 'FIX', `Fix plan · R:R ${rr.toFixed(2)}`, {
       subtext: 'Thin edge',
       urgency: 'amber',
       primaryLabel: 'Adjust Plan',
-      buttonVariant: 'outline-red',
+      buttonVariant: 'outline-amber',
       warning: { text: `R:R ${rr.toFixed(2)} below 1.5 — thin edge`, severity: 'amber' },
     })
   }
