@@ -128,13 +128,16 @@ export default function WatchlistCard({
 
   const originLabel = ({ trade_ai_screener: 'Screener', agent_discovery: 'AI', operator: 'Operator', hermes: 'Hermes', portfolio: 'Portfolio', social: 'Social' } as Record<string, string>)[it.origin_system || ''] || (it.origin_system || 'screener')
 
-  const statusTags: { text: string; tip?: string }[] = []
-  if (it.hermes_rank != null) statusTags.push({ text: `#${it.hermes_rank}`, tip: `Hermes composite ${it.hermes_composite_score}` })
-  statusTags.push({ text: originLabel, tip: it.provenance_reason || it.source })
-  if (it.source_tier) statusTags.push({ text: it.source_tier, tip: 'source tier' })
-  if (it.directive_id) statusTags.push({ text: 'directive', tip: 'operator watch directive' })
-  if (it.in_portfolio || outcome?.held) statusTags.push({ text: 'held', tip: outcome?.held ? `unrealized ${outcome.unrealized_pnl_pct ?? '?'}%` : 'in portfolio' })
-  const visibleTags = statusTags.slice(0, 4)
+  const provenanceText = [it.hermes_rank != null ? `#${it.hermes_rank}` : null, originLabel].filter(Boolean).join(' · ')
+  const provenanceTip = [
+    it.hermes_rank != null ? `Hermes #${it.hermes_rank} · composite ${it.hermes_composite_score ?? '—'}` : null,
+    it.provenance_reason || it.source || originLabel,
+    it.source_tier ? `tier ${it.source_tier}` : null,
+    it.directive_id ? `directive #${it.directive_id}` : null,
+  ].filter(Boolean).join(' · ')
+  const isHeld = it.in_portfolio || outcome?.held
+  const heldTip = outcome?.held ? `unrealized ${outcome.unrealized_pnl_pct ?? '?'}%` : 'in portfolio'
+  const hasMetaContext = !!(it.source_tier || it.directive_id)
 
   const dataDoubt = (it.synthesis_data_i_doubt && it.synthesis_data_i_doubt !== 'none')
     ? String(it.synthesis_data_i_doubt).trim() : ''
@@ -148,7 +151,7 @@ export default function WatchlistCard({
     ? [sc?.sector || it.profile_sector, sc?.industry || it.profile_industry].filter(Boolean).join(' · ')
     : null
   const hasContext = !!(sectorLine || it.catalyst_headline || it.synthesis_evidence?.length
-    || it.synthesis_narrative_snip || fv || !enriched)
+    || it.synthesis_narrative_snip || fv || hasMetaContext || !enriched)
 
   const heroTextSize = prominence.heroScale === 'large' ? WL.hero.textLarge : WL.hero.textMedium
   const metricColor = prominence.metricsMuted ? WL.text.dim : WL.text.primary
@@ -212,6 +215,11 @@ export default function WatchlistCard({
           >{isStarred ? '★' : '☆'}</button>
           <span style={{ fontWeight: 950, color: WL.text.primary, fontFamily: 'monospace', fontSize: 18 }}>{it.symbol}</span>
           <ProAnalystPill symbol={it.symbol} map={paMap} compact neutral />
+          {isHeld && (
+            <span title={heldTip} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 4, color: '#ffa726', border: '1px solid rgba(255,167,38,.45)', background: 'rgba(255,167,38,.12)' }}>
+              HELD
+            </span>
+          )}
           {it.private_nontradeable && (
             <span title={it.private_note} style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: WL.urgency.red, border: `1px solid ${WL.urgency.red}55`, background: 'rgba(220,38,38,.1)' }}>
               PRIVATE
@@ -386,10 +394,10 @@ export default function WatchlistCard({
         </div>
       )}
 
-      {/* 6. Status tags */}
-      {visibleTags.length > 0 && (
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-          {visibleTags.map(t => <Tag key={t.text} text={t.text} tip={t.tip} />)}
+      {/* 6. Provenance (single chip — tier/directive live in Context) */}
+      {(provenanceText || outcome?.sold) && (
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+          {provenanceText && <Tag text={provenanceText} tip={provenanceTip} />}
           {outcome?.sold && (
             <Tag text={`sold ${(outcome.last_pnl_pct ?? 0) >= 0 ? '+' : ''}${outcome.last_pnl_pct ?? '?'}%`} tip="Prior closed trade" />
           )}
@@ -409,6 +417,13 @@ export default function WatchlistCard({
           {contextOpen && (
             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
               {!enriched && <div style={{ fontSize: 10, color: WL.text.muted, fontStyle: 'italic' }}>awaiting enrichment…</div>}
+              {hasMetaContext && (
+                <div style={{ fontSize: 10, color: WL.text.secondary, lineHeight: 1.45 }}>
+                  {it.source_tier && <span><span style={{ color: WL.text.muted, fontWeight: 700 }}>Tier </span>{it.source_tier}</span>}
+                  {it.source_tier && it.directive_id && <span style={{ color: WL.text.dim, margin: '0 6px' }}>·</span>}
+                  {it.directive_id && <span><span style={{ color: WL.text.muted, fontWeight: 700 }}>Directive </span>#{it.directive_id}</span>}
+                </div>
+              )}
               {sectorLine && <div style={{ fontSize: 10, color: WL.text.dim }}>{sectorLine}</div>}
               {it.catalyst_headline && (
                 <div style={{ fontSize: 10, color: WL.text.secondary, lineHeight: 1.4 }}>
