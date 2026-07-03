@@ -8,9 +8,11 @@ Pipeline per ticker:
   4. Returns ScoredTicker with grade, decision, per-pillar breakdown, and LLM narrative
 """
 from __future__ import annotations
-import json, os
+import json, logging, os
 from typing import Any, Dict, List, Optional
 import threading
+
+logger = logging.getLogger(__name__)
 
 # Ollama serialization lock — one call at a time, no timeout pile-up
 _ollama_lock = threading.Lock()

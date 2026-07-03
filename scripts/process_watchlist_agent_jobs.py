@@ -69,7 +69,27 @@ def _get_conn():
         for line in (PROJECT_ROOT / ".env").read_text().splitlines():
             if line.startswith("DB_PASSWORD="):
                 pw = line.split("=", 1)[1].strip()
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    # keepalives + sslmode=disable: long Ollama calls were idling the connection and
+    # causing "SSL connection has been closed unexpectedly" on the post-LLM INSERT.
+    return psycopg2.connect(
+        host="localhost", dbname="trade_ai", user="trade_ai", password=pw,
+        sslmode="disable", connect_timeout=10,
+        keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5,
+    )
+
+
+def _refresh_conn(conn):
+    """Ping or replace a connection after a long LLM/embed call."""
+    try:
+        with conn.cursor() as ping:
+            ping.execute("SELECT 1")
+        return conn
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return _get_conn()
 
 
 def _check_symbol_data_quality(symbol: str) -> dict:
@@ -1970,6 +1990,10 @@ def process_jobs(limit: int = 10):
             prompt = _build_prompt(agent, symbol, context["text"], note)
             prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
             raw = _llm(prompt)
+
+        # LLM/embed can run 90s+ — refresh DB before any writes.
+        conn = _refresh_conn(conn)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         if not raw or raw.startswith("LLM error"):
             cur.execute("UPDATE watchlist_agent_jobs SET status='failed', completed_at=now() WHERE id=%s", (job_id,))
