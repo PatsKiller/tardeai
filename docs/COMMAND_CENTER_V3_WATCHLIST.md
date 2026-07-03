@@ -20,8 +20,8 @@ banner is the only tinted element; the primary button the only solid one. Color 
 |------|---------|---------|
 | ① Header | Star, symbol (mono), HELD chip, provenance line (company · Hermes # · origin · sector), colored Street rating `ProAnalystPill` (+ CIO ≠ Street note), price/change, quiet Refresh | visible |
 | ② Status banner | Verdict word + headline + one-line why (warning folded in) + primary CTA + one quiet secondary + ••• overflow menu | visible, dominant |
-| ③ Trade plan | Limit / Stop / Target / R:R as 17px mono numerals with zone, %, R-per-share sub-captions; exit-vs-Street + sizing note | visible |
-| ④ Conviction | CIO stance chip, confidence meter, models/validated/model/setup/urgency meta, one data-health line (dot + worst flag, full list in tooltip) | visible |
+| ③ Trade plan | Limit / Stop / Target / R:R as 17px mono numerals with zone, %, R-per-share sub-captions; **Entry line** (strategy_type · setup · urgency · ideal_entry · entry_confidence · entry_tag); **Sizing @1% risk per account** (proposal-accounts sizing_base ÷ stop distance, cash-capped — same math as Propose modal); exit-vs-Street note | visible |
+| ④ Conviction | CIO stance chip, confidence meter + band word (High ≥0.7 / Moderate ≥0.5 / Low), models/validated/model meta, **CIO note** (synthesis narrative snip, full text on hover), one data-health line (dot + worst flag, full list in tooltip) | visible |
 | ⑤ Exit ladder | T1 · T2 · T3 prices on one line + scale rule; per-step actions behind "Plan detail" (auto-opens on trade-focus verdicts); always shown when a ladder exists | summary |
 | ⑥ Context | Technicals, catalyst, news, company one-liner, external-intel lanes; full description + `FibConfluencePanel` behind "More" | visible |
 | ⑦ Due diligence | Weekly prospectus PDF/Word/↻ (`HoldingReportLinks`) with freshness · gen # · oversight verdict; obvious generate state when missing | visible |
@@ -57,8 +57,10 @@ Verdicts: `READY` · `WAIT` · `SKIP` · `STALE` · `FIX` · `BUILD` · `WATCH`
 
 **Rules:** Refresh Data wins over cautious holds when data quality is poor. Propose Entry only
 when positive + validated plan + no caution/divergence/stale. Primary button treatment matches
-the banner state: solid teal only on READY; amber outline on STALE; red outline on FIX; quiet
-neutral on AVOID/monitor — a negative state never gets a visually rewarding CTA.
+the banner state: solid teal only on READY; amber outline on STALE; quiet neutral on
+AVOID/monitor — a negative state never gets a visually rewarding CTA. Red is reserved for hard
+plan defects (no stop, R:R &lt; 1) — advisory FIX states (thin edge, target-below-Street /
+Review Exit) render amber banner + amber outline.
 
 **Sizing hint** (`riskSizingHint`): when plan validated and R:R ≥ 1.5, shows "1–2% of available
 cash sizing" on READY cards.

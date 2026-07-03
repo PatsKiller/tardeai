@@ -22,6 +22,13 @@ import {
   type CardActionType,
 } from '../lib/watchlistCardAction'
 import { WL, heroStateStyle, sectionLabel, verdictWord, numStyle } from '../lib/watchlistCardTokens'
+import {
+  resolveSizingBase,
+  resolveEquity,
+  computeRiskSizedShares,
+  acctLabel,
+  type ProposalAccount,
+} from '../lib/watchlistProposeSizing'
 import { EvidenceBlock } from './EvidenceBlock'
 import FibConfluencePanel from './FibConfluencePanel'
 import HoldingReportLinks from './HoldingReportLinks'
@@ -119,6 +126,8 @@ export type WatchlistCardProps = {
   fv?: any
   reportEntry?: any
   paMap: Record<string, any>
+  /** Proposal accounts for per-account 1%-risk share sizing (from /api/v2/proposal-accounts). */
+  accounts?: ProposalAccount[]
   ensOpen: boolean
   refreshState?: string
   onDrill: (ctx: DrillContext) => void
@@ -133,7 +142,7 @@ export type WatchlistCardProps = {
 }
 
 export default function WatchlistCard({
-  it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap,
+  it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap, accounts,
   ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onToggleEns, isStarred,
   onPropose, onAdjust, onBuildPlan, onOpenDesk,
 }: WatchlistCardProps) {
@@ -205,6 +214,37 @@ export default function WatchlistCard({
   const urgencyLabel = it.entry_urgency
     ? String(it.entry_urgency).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
     : null
+  const strategyLabel = it.strategy_type ? String(it.strategy_type).replace(/_/g, ' ') : null
+  const entryTag = it.entry_tag ? String(it.entry_tag).replace(/_/g, ' ').toLowerCase() : null
+  const idealEntry = it.ideal_entry != null && Number(it.ideal_entry) > 0 ? Number(it.ideal_entry) : null
+  const entryConf = it.entry_confidence != null ? Number(it.entry_confidence) : null
+
+  // Entry thesis line — strategy · setup · urgency · plan-quality tag · ideal entry.
+  const entryLine = [
+    strategyLabel,
+    setupLabel && setupLabel !== strategyLabel ? `${setupLabel} setup` : null,
+    urgencyLabel,
+    idealEntry != null ? `ideal ${money(idealEntry)}` : null,
+    entryConf != null ? `plan conf ${entryConf.toFixed(2)}` : null,
+    entryTag && !['ok', 'ready'].includes(entryTag) ? entryTag : null,
+  ].filter(Boolean).join(' · ')
+
+  // Per-account 1%-risk sizing — same math as the Propose modal (risk budget ÷ stop distance, cash-capped).
+  const accountSizing = (hasPlan && entry != null && stop != null && entry > stop)
+    ? (accounts ?? [])
+        .map(a => ({ a, base: resolveSizingBase(a) }))
+        .filter(x => x.base >= 1000)
+        .map(x => ({
+          name: x.a.display_name || acctLabel(x.a.account_key),
+          pos: computeRiskSizedShares({
+            sizingBase: x.base, equity: resolveEquity(x.a), entry, stop,
+            target: planTarget ?? entry, riskPct: 1,
+          }),
+        }))
+        .filter(x => x.pos.shares > 0)
+        .sort((l, r) => r.pos.sizingBase - l.pos.sizingBase)
+        .slice(0, 3)
+    : []
 
   const reasoning = actionReasoning({ it, pa, adv, action, hasPlan, rr, stale, enriched })
   const dqFlags = dataQualityFlags({ it, stale, enriched, needsRefresh, dataDoubt, adv })
@@ -224,7 +264,8 @@ export default function WatchlistCard({
     ? { text: warns[0].text, color: warns[0].color }
     : null
 
-  const hasEvidence = !!(it.synthesis_evidence?.length || it.synthesis_narrative_snip || action.detail || adv?.note)
+  // Narrative snip renders as the CIO note in Conviction — the expander keeps only evidence + advisory.
+  const hasEvidence = !!(it.synthesis_evidence?.length || action.detail || adv?.note)
 
   const executeAction = (e: React.MouseEvent, type: CardActionType) => {
     e.stopPropagation()
@@ -296,9 +337,10 @@ export default function WatchlistCard({
     it.models_agree === true ? 'Grok + ChatGPT agree' : it.models_agree === false ? 'models split' : null,
     validatedVal ? `plan validated ${validatedVal}` : null,
     it.entry_model ? `model ${it.entry_model}` : null,
-    setupLabel,
-    urgencyLabel,
   ].filter(Boolean).join(' · ')
+  const confBand = confNum == null ? null : confNum >= 0.7 ? 'High' : confNum >= 0.5 ? 'Moderate' : 'Low'
+  const confColor = confNum == null ? WL.text.dim : confNum >= 0.7 ? WL.signal.teal : confNum >= 0.5 ? WL.signal.amber : WL.signal.red
+  const cioNote = it.synthesis_narrative_snip ? truncate(String(it.synthesis_narrative_snip), 220) : null
 
   const monitorRuleShort = MONITOR_RULES.split('·')[0].trim()
 
@@ -456,10 +498,25 @@ export default function WatchlistCard({
             {ladder && <div style={{ fontSize: 10.5, color: WL.text.dim, marginTop: 2 }}>R = ${ladder.R.toFixed(2)} / sh</div>}
           </div>
         </div>
-        {(exitVsStreet || sizingHint) && (
-          <div style={{ marginTop: 9, fontSize: 11, color: WL.text.dim, lineHeight: 1.45 }}>
-            {[exitVsStreet, sizingHint].filter(Boolean).join(' · ')}
+        {entryLine && (
+          <div style={{ marginTop: 9, fontSize: 11.5, color: WL.text.secondary, lineHeight: 1.5 }}>
+            <span style={{ color: WL.text.dim, fontWeight: 700 }}>Entry </span>
+            <span style={{ textTransform: 'capitalize' }}>{entryLine}</span>
           </div>
+        )}
+        {accountSizing.length > 0 ? (
+          <div
+            title={'1% of each account\'s sizing base (cash / buying power, never equity) ÷ stop distance, capped by available cash — same math as the Propose modal.'}
+            style={{ marginTop: 6, fontSize: 11.5, color: WL.text.secondary, lineHeight: 1.5 }}
+          >
+            <span style={{ color: WL.text.dim, fontWeight: 700 }}>Sizing @1% risk </span>
+            {accountSizing.map(x => `${x.name} ~${x.pos.shares.toLocaleString()} sh ($${(x.pos.investment / 1000).toFixed(1)}k)`).join(' · ')}
+          </div>
+        ) : sizingHint ? (
+          <div style={{ marginTop: 6, fontSize: 11, color: WL.text.dim, lineHeight: 1.45 }}>{sizingHint}</div>
+        ) : null}
+        {exitVsStreet && (
+          <div style={{ marginTop: 6, fontSize: 11, color: WL.text.dim, lineHeight: 1.45 }}>{exitVsStreet}</div>
         )}
         {planNote && (
           <div style={{ marginTop: 6, fontSize: 11, color: planNote.color === '#ef5350' ? WL.signal.red : WL.signal.amber, lineHeight: 1.45 }}>
@@ -485,15 +542,21 @@ export default function WatchlistCard({
                 <span style={{
                   position: 'absolute', top: 0, left: 0, bottom: 0, borderRadius: 2,
                   width: `${Math.round(Math.min(1, Math.max(0, confNum)) * 100)}%`,
-                  background: confNum >= 0.7 ? WL.signal.teal : confNum >= 0.5 ? WL.signal.amber : WL.signal.red,
+                  background: confColor,
                 }} />
               </span>
+              {confBand && <span style={{ fontWeight: 700, color: confColor }}>{confBand}</span>}
             </span>
           )}
           <span style={{ fontSize: 11.5, color: WL.text.dim }}>
             {convictionMeta}
           </span>
         </div>
+        {cioNote && (
+          <div style={{ marginTop: 8, fontSize: 11.5, color: WL.text.secondary, fontStyle: 'italic', lineHeight: 1.5 }} title={String(it.synthesis_narrative_snip)}>
+            <span style={{ color: WL.text.dim, fontWeight: 700, fontStyle: 'normal' }}>CIO note </span>{cioNote}
+          </div>
+        )}
         <div title={dqTip} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: WL.text.secondary, marginTop: 9 }}>
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: dqColor, flex: 'none' }} />
           {dqText}
@@ -621,11 +684,6 @@ export default function WatchlistCard({
           <Expander open={evidenceOpen} onToggle={() => setEvidenceOpen(v => !v)} label="CIO evidence & narrative" />
           {evidenceOpen && (
             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {it.synthesis_narrative_snip && (
-                <div style={{ fontSize: 12, color: WL.text.secondary, fontStyle: 'italic', lineHeight: 1.5 }}>
-                  “{String(it.synthesis_narrative_snip).slice(0, 320)}”
-                </div>
-              )}
               {it.synthesis_evidence?.length > 0 && (
                 <EvidenceBlock title="CIO evidence" evidence={it.synthesis_evidence} compact maxItems={3} />
               )}
