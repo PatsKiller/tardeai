@@ -256,6 +256,18 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
         return {"wrote": False, "status": "rejected_postwrite", "reason": str(e)[:120]}
 
     _record(account_key, "ok", f"wrote {n} positions / ${v:,.0f}; basis_flags={len(flagged)}", n, v, True)
+
+    # Held-state change → re-queue CIO synthesis for affected watchlist symbols (advisory, non-fatal).
+    # This is the single write gate for both the Schwab sync and the SnapTrade merge, so hooking here
+    # covers every position-changing path — see scripts/holdings_change_trigger.py.
+    try:
+        from holdings_change_trigger import check_and_enqueue
+        trig = check_and_enqueue(apply=True)
+        if trig.get("changed"):
+            print(f"  [holdings-change] {trig['summary']}")
+    except Exception as _e:
+        print(f"  [holdings-change] trigger failed (non-fatal): {str(_e)[:120]}")
+
     return {"wrote": True, "status": "ok", "total_value": v, "position_count": n, "basis_flags": flagged}
 
 
