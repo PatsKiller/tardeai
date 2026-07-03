@@ -1,6 +1,6 @@
 # Command Center v3 — Watchlist Hub
 
-_Last updated 2026-07-03 (Security Card v2). Route: `/v3/watch`._
+_Last updated 2026-07-03 (Security Card v3 — dashboard layout). Route: `/v3/watch`._
 
 Decision-first watchlist: one full-width card per symbol with CIO view, plan levels, data-quality
 flags, and a unified verdict → CTA matrix. Operators can propose entries directly from a card
@@ -18,19 +18,16 @@ banner is the only tinted element; the primary button the only solid one. Color 
 
 | Zone | Content | Default |
 |------|---------|---------|
-| ① Header | Star, symbol (mono), HELD chip, provenance line (company · Hermes # · origin · sector), colored Street rating `ProAnalystPill` (+ CIO ≠ Street note), price/change, quiet Refresh | visible |
-| ② Status banner | Verdict word + headline + one-line why (warning folded in) + primary CTA + one quiet secondary + ••• overflow menu | visible, dominant |
-| ③ Trade plan | Limit / Stop / Target / R:R as 17px mono numerals with zone, %, R-per-share sub-captions; **Entry line** (strategy_type · setup · urgency · ideal_entry · entry_confidence · entry_tag); **Sizing @1% risk per account** (proposal-accounts sizing_base ÷ stop distance, cash-capped — same math as Propose modal; held-aware: existing position renders as "holds N sh ($) · add ~M sh" from /api/v2/portfolio/holdings, plus "also held" for unsized accounts); exit-vs-Street note | visible |
-| ④ Conviction | CIO stance chip, confidence meter + band word (High ≥0.7 / Moderate ≥0.5 / Low), models/validated/model meta, **CIO note** (synthesis narrative snip with age — amber ⚠ past 24h; full text on hover), one data-health line (dot + worst flag, full list in tooltip) | visible |
-| ⑤ Exit ladder | T1 · T2 · T3 prices on one line + scale rule; per-step actions behind "Plan detail" (auto-opens on trade-focus verdicts); always shown when a ladder exists | summary |
-| ⑥ Context | Technicals, catalyst, news, company one-liner, external-intel lanes; full description + `FibConfluencePanel` behind "More" | visible |
-| ⑦ Due diligence | Weekly prospectus PDF/Word/↻ (`HoldingReportLinks`) with freshness · gen # · oversight verdict; obvious generate state when missing | visible |
-| ⑧ Evidence | CIO narrative + evidence + advisory detail behind "CIO evidence & narrative" | collapsed |
+| ① Header (1 line) | Star, symbol, HELD chip, colored Street rating pill, CIO ≠ Street note, provenance (company · Hermes # · origin · sector · on-watchlist tenure), price/change, quiet Refresh | visible |
+| ② Status banner (1 line) | Verdict word · headline · ellipsized why (full on hover) · R:R chip · primary CTA · one quiet secondary · ••• menu — the only tinted element | visible, dominant |
+| ③ Trade plan ⟷ Sizing (2-col grid ≥1100px) | LEFT: L/S/T/R:R numerals + zone/%/R sub-captions, Entry thesis line, one-line T1/T2/T3 ladder + core rule ("Plan detail" expander). RIGHT: `SizingTable` — per-account shares/invest/risk-$/%cash at 1%|2% toggle, cash-cap ⚠, insufficient-cash states, held-position footer, "size ▸" → Propose modal pre-filled (READY states only) | visible |
+| ④ Conviction ⟷ Intelligence (2-col grid) | LEFT: CIO stance chip, confidence meter + band, meta, CIO note (2-line clamp, age ⚠ >24h), data-health line. RIGHT: Catalyst-or-none, top news-or-none, Trend (YTD · vs sector), Technicals, company one-liner + intel lanes ("More" → up to 3 more headlines, full description, Fib panel) | visible |
+| ⑤ Footer strip (1 line) | Due-diligence status + PDF/Word/↻/Generate + "CIO evidence" expander | visible |
 
-Pullback entry levels (`entry_zone_low` / `entry_zone_hi`) render as the Limit sub-caption —
-still on the default view. The old footer link row is gone; Intel drawer / Rec-Intel / Ensemble /
-Monitor-on-desk live in the banner's ••• menu. Rule of one: each signal renders once, in its
-owning zone (e.g. thin R:R = colored numeral + one why-line clause, not four repetitions).
+Grid stacks to single column below 1100px (`.wlc-grid` in index.css). Card height ≈470px vs
+≈800px in v2 (−40%). Expander bodies render full-width below their grid row. The Sizing module
+reuses `computeRiskSizedShares` (cash-basis, retirement hard guard) and pre-fills
+`WatchlistProposeSeed.account_key`/`risk_pct` — the card itself never submits.
 
 ## Decision matrix (detailed card view)
 

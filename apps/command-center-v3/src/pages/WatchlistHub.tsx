@@ -149,7 +149,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
     window.location.href = `/v3/trading?tab=Entry+Desk&symbol=${sym}`
   }
 
-  const openProposeModal = (it: any) => {
+  const openProposeModal = (it: any, opts?: { account_key?: string; risk_pct?: 1 | 2 }) => {
     const entry = it.entry_limit != null ? Number(it.entry_limit) : null
     const stop = it.entry_stop != null ? Number(it.entry_stop) : null
     const planTarget = it.entry_target != null ? Number(it.entry_target) : null
@@ -161,6 +161,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
       it, entry, stop, planTarget, rr,
       ladder: entry != null || stop != null ? exitLadder(entry, stop, planTarget, street) : null,
       pa,
+      ...(opts ?? {}),
     })
   }
 
