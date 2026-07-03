@@ -104,6 +104,17 @@ const VERDICT_COLOR: Record<string, string> = {
   insufficient_data: 'var(--text3)',
 }
 
+const IMPACT_STATUS_COLOR: Record<string, string> = {
+  helped: '#22c55e',
+  hurt: '#ef4444',
+  neutral: '#f59e0b',
+  insufficient_data: 'var(--text3)',
+  pending_window: '#60a5fa',
+  awaiting_evaluation: '#94a3b8',
+  rejected: 'var(--text3)',
+  not_applicable: 'var(--text3)',
+}
+
 function confidenceColor(tier?: string | null) {
   return CONFIDENCE_COLOR[String(tier ?? '').toLowerCase()] ?? '#f59e0b'
 }
@@ -1159,16 +1170,25 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                       const ev = p.evaluation_outcome
                       const status = p.status ?? 'decided'
                       const isApprove = status === 'approved'
+                      const narrative = p.impact_narrative ?? ev?.impact_narrative
+                      const impactStatus = p.impact_status ?? ev?.verdict ?? (status === 'rejected' ? 'rejected' : undefined)
+                      const dirStyle = directionStyle(p.direction)
                       return (
                         <div key={p.id} style={{
                           padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 10,
                         }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                             <span style={{ fontWeight: 700, color: 'var(--text0)' }}>
                               {p.label ?? p.threshold_id}
                               <span style={{ marginLeft: 8, color: isApprove ? '#22c55e' : '#ef4444', textTransform: 'uppercase' }}>
                                 {status}
                               </span>
+                              {p.direction && (
+                                <span style={{
+                                  marginLeft: 6, fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                  color: dirStyle.color, background: dirStyle.bg, border: `1px solid ${dirStyle.border}`,
+                                }}>{dirStyle.label}</span>
+                              )}
                             </span>
                             <span style={{ fontFamily: 'monospace', color: 'var(--text3)' }}>
                               {Number(p.current_value).toFixed(3)} → {Number(p.applied_value ?? p.proposed_value).toFixed(3)}
@@ -1176,13 +1196,27 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                           </div>
                           <div style={{ color: 'var(--text3)', marginTop: 4 }}>
                             {p.decided_at?.slice(0, 19) ?? '—'}
-                            {p.direction && ` · ${p.direction}`}
                             {p.evidence?.confidence && ` · ${String(p.evidence.confidence).toUpperCase()} confidence`}
+                            {p.impact_window_days != null && isApprove && ` · ${p.impact_window_days}d window`}
                           </div>
+                          {narrative && (
+                            <div style={{
+                              marginTop: 6, padding: '6px 8px', borderRadius: 6,
+                              background: 'rgba(2,6,23,.35)', border: '1px solid rgba(148,163,184,.15)',
+                              color: IMPACT_STATUS_COLOR[String(impactStatus)] ?? 'var(--text2)',
+                              lineHeight: 1.45, fontSize: 10,
+                            }}>
+                              <span style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 8, letterSpacing: '.04em', marginRight: 6 }}>
+                                Impact
+                              </span>
+                              {narrative}
+                            </div>
+                          )}
                           {ev && (
-                            <div style={{ marginTop: 4, color: VERDICT_COLOR[String(ev.verdict)] ?? 'var(--text2)' }}>
+                            <div style={{ marginTop: 4, color: VERDICT_COLOR[String(ev.verdict)] ?? 'var(--text2)', fontSize: 9 }}>
                               Evaluation: <b>{ev.verdict}</b> → {ev.recommendation}
-                              {ev.impact_score != null && ` (impact ${Number(ev.impact_score).toFixed(2)})`}
+                              {ev.impact_score != null && ` (score ${Number(ev.impact_score).toFixed(2)})`}
+                              {ev.impact_headline && ` · ${ev.impact_headline}`}
                             </div>
                           )}
                         </div>

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-03 - Proposal history impact narratives
+
+`proposal_impact.py` builds plain-language post-approval summaries (e.g. efficiency
+score + promotion hit rate Δ over 14d). Exposed on `proposal_history` rows and in
+Closed Loop proposal history UI.
+
 ## 2026-07-03 - Symbol journey formatted timeline in DetailDrawer
 
 Closed Loop symbol drill now renders `SymbolJourneyPanel` (current state, health

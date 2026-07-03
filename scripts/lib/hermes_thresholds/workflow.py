@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from .proposal_impact import build_impact_narrative, enrich_evaluation_outcome
 from .store import (
     append_audit,
     get_active_value,
@@ -57,25 +58,43 @@ def _format_proposal_delta(p: dict[str, Any]) -> str:
     return f"{short} {sign}{delta:.2f}"
 
 
+def _evaluation_context(ev: dict[str, Any]) -> dict[str, Any]:
+    """Slim evaluation payload for API + narrative."""
+    return enrich_evaluation_outcome({
+        "threshold_id": ev.get("threshold_id"),
+        "verdict": ev.get("verdict"),
+        "recommendation": ev.get("recommendation"),
+        "impact_score": ev.get("impact_score"),
+        "confidence": ev.get("confidence"),
+        "evaluated_at": ev.get("evaluated_at"),
+        "reasoning": ev.get("reasoning"),
+        "metrics": ev.get("metrics"),
+        "windows": ev.get("windows"),
+        "approved_at": ev.get("approved_at"),
+    })
+
+
 def _enrich_decided_proposals(
     decided: list[dict[str, Any]],
     history: list[dict[str, Any]],
     evaluations: list[dict[str, Any]],
+    *,
+    min_eval_days: int = 14,
 ) -> list[dict[str, Any]]:
-    """Attach post-approval evaluation outcomes to decided proposal rows."""
+    """Attach post-approval evaluation outcomes and impact narratives to decided rows."""
     eval_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    eval_by_proposal: dict[str, dict[str, Any]] = {}
+    eval_by_tid: dict[str, dict[str, Any]] = {}
     for ev in evaluations:
         tid = ev.get("threshold_id")
-        approved_at = str(ev.get("approved_at") or ev.get("evaluated_at") or "")[:10]
-        if tid and approved_at:
-            eval_by_key[(tid, approved_at)] = {
-                "verdict": ev.get("verdict"),
-                "recommendation": ev.get("recommendation"),
-                "impact_score": ev.get("impact_score"),
-                "confidence": ev.get("confidence"),
-                "evaluated_at": ev.get("evaluated_at"),
-                "reasoning": ev.get("reasoning"),
-            }
+        approved_day = str(ev.get("approved_at") or ev.get("evaluated_at") or "")[:10]
+        if tid and approved_day:
+            eval_by_key[(tid, approved_day)] = _evaluation_context(ev)
+        pid = str(ev.get("proposal_id") or "")
+        if pid:
+            eval_by_proposal[pid] = _evaluation_context(ev)
+        if tid:
+            eval_by_tid[tid] = _evaluation_context(ev)
 
     hist_by_proposal: dict[str, dict[str, Any]] = {}
     for h in history:
@@ -88,23 +107,26 @@ def _enrich_decided_proposals(
         ep = dict(p)
         pid = str(ep.get("id") or "")
         tid = ep.get("threshold_id")
+        status = str(ep.get("status") or "decided")
         hist = hist_by_proposal.get(pid) or {}
         decided_day = str(ep.get("decided_at") or hist.get("at") or "")[:10]
-        eval_ctx = eval_by_key.get((tid, decided_day)) if tid and decided_day else None
-        if not eval_ctx and tid:
-            for ev in reversed(evaluations):
-                if ev.get("threshold_id") == tid:
-                    eval_ctx = {
-                        "verdict": ev.get("verdict"),
-                        "recommendation": ev.get("recommendation"),
-                        "impact_score": ev.get("impact_score"),
-                        "confidence": ev.get("confidence"),
-                        "evaluated_at": ev.get("evaluated_at"),
-                        "reasoning": ev.get("reasoning"),
-                    }
-                    break
+        eval_ctx = (
+            eval_by_proposal.get(pid)
+            or (eval_by_key.get((tid, decided_day)) if tid and decided_day else None)
+            or (eval_by_tid.get(tid) if tid else None)
+        )
         if eval_ctx:
             ep["evaluation_outcome"] = eval_ctx
+        impact = build_impact_narrative(
+            threshold_id=str(tid or ""),
+            status=status,
+            evaluation=eval_ctx,
+            decided_at=str(ep.get("decided_at") or hist.get("at") or ""),
+            min_eval_days=min_eval_days,
+        )
+        ep["impact_narrative"] = impact.get("narrative")
+        ep["impact_status"] = impact.get("status")
+        ep["impact_window_days"] = impact.get("window_days")
         ep["applied_value"] = hist.get("to") if hist else ep.get("proposed_value")
         enriched.append(ep)
     return enriched
@@ -205,7 +227,10 @@ def threshold_status() -> dict[str, Any]:
     last_learn = proposals.get("last_learn") or {}
     active_history = list(active.get("history") or [])
     decided_raw = list(proposals.get("decided") or [])[-10:]
-    decided_enriched = _enrich_decided_proposals(decided_raw, active_history, all_evaluations)
+    min_eval_days = int((cfg.get("evaluation") or {}).get("min_days_after_change", 14))
+    decided_enriched = _enrich_decided_proposals(
+        decided_raw, active_history, all_evaluations, min_eval_days=min_eval_days,
+    )
 
     return {
         "ok": True,
