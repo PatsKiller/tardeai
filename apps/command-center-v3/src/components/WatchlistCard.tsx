@@ -5,6 +5,7 @@ import { exitLadder, planWarnings, MONITOR_RULES, type Ladder } from '../lib/exi
 import {
   deriveRecommendedAction,
   actionProminence,
+  buttonStyle,
   rrTooltip,
   confidenceTooltip,
   planValidatedTooltip,
@@ -13,7 +14,7 @@ import {
   dataDoubtTooltip,
   ladderStepTooltip,
   watchlistNeedsRefresh,
-  type PrimaryActionKind,
+  type CardActionType,
 } from '../lib/watchlistCardAction'
 import { WL, urgencyColor } from '../lib/watchlistCardTokens'
 import { EvidenceBlock } from './EvidenceBlock'
@@ -74,11 +75,16 @@ export type WatchlistCardProps = {
   onRefresh: (e: React.MouseEvent) => void
   onToggleEns: () => void
   isStarred: boolean
+  onPropose?: (it: any) => void
+  onAdjust?: (it: any) => void
+  onBuildPlan?: (symbol: string) => void
+  onOpenDesk?: (symbol: string) => void
 }
 
 export default function WatchlistCard({
   it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap,
   ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onToggleEns, isStarred,
+  onPropose, onAdjust, onBuildPlan, onOpenDesk,
 }: WatchlistCardProps) {
   const [contextOpen, setContextOpen] = useState(false)
   const [ladderOpen, setLadderOpen] = useState<boolean | null>(null)
@@ -147,37 +153,39 @@ export default function WatchlistCard({
   const heroTextSize = prominence.heroScale === 'large' ? WL.hero.textLarge : WL.hero.textMedium
   const metricColor = prominence.metricsMuted ? WL.text.dim : WL.text.primary
 
-  const primaryBtnStyle = (kind: PrimaryActionKind): React.CSSProperties => {
-    const solid = kind === 'propose' || kind === 'build'
-    const outlineTrade = kind === 'adjust' || kind === 'review'
-    return {
-      fontSize: 12, fontWeight: 800, padding: '9px 18px', borderRadius: 8, cursor: 'pointer',
-      minWidth: 132,
-      border: solid ? `1px solid ${WL.urgency.green}` : outlineTrade ? `1px solid ${WL.urgency.amber}` : `1px solid ${WL.tag.border}`,
-      background: solid ? WL.urgency.green : outlineTrade ? 'rgba(217,119,6,.1)' : 'transparent',
-      color: solid ? '#fff' : outlineTrade ? '#fcd34d' : WL.text.muted,
-      textDecoration: 'none',
+  const executeAction = (e: React.MouseEvent, type: CardActionType) => {
+    e.stopPropagation()
+    switch (type) {
+      case 'REFRESH_DATA':
+        onRefresh(e)
+        break
+      case 'VIEW_INTEL':
+      case 'REVIEW_SETUP':
+        onDrill(drillCtx)
+        break
+      case 'PROPOSE_ENTRY':
+        onPropose?.(it)
+        break
+      case 'ADJUST_PLAN':
+      case 'REVIEW_EXIT':
+        onAdjust?.(it)
+        break
+      case 'BUILD_PLAN':
+        onBuildPlan?.(it.symbol)
+        break
+      case 'WATCH_ON_DESK':
+      case 'QUEUE_PROPOSAL':
+        onOpenDesk?.(it.symbol)
+        break
+      default:
+        break
     }
   }
 
   const handlePrimary = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (action.primaryKind === 'refresh') onRefresh(e)
-    else if (action.primaryKind === 'intel' || action.primaryKind === 'review') onDrill(drillCtx)
-    else if (['propose', 'adjust', 'build'].includes(action.primaryKind)) {
-      window.location.href = `/v3/trading?symbol=${it.symbol}`
-    }
+    if (!action.allowPrimary) return
+    executeAction(e, action.type)
   }
-
-  const PrimaryCta = () => (
-    ['propose', 'build', 'adjust'].includes(action.primaryKind) ? (
-      <a href={`/v3/trading?symbol=${it.symbol}`} onClick={e => e.stopPropagation()} style={primaryBtnStyle(action.primaryKind)}>
-        {action.primaryLabel}
-      </a>
-    ) : (
-      <button onClick={handlePrimary} style={primaryBtnStyle(action.primaryKind)}>{action.primaryLabel}</button>
-    )
-  )
 
   return (
     <div
@@ -248,13 +256,18 @@ export default function WatchlistCard({
         <div style={{
           fontSize: heroTextSize, fontWeight: 700, color: WL.text.primary,
           marginTop: 6, lineHeight: 1.35,
-        }}>{action.text}</div>
+        }}>{action.heroText}</div>
         {action.subtext && (
           <div style={{ fontSize: WL.hero.subtextSize, color: WL.text.muted, marginTop: 4, lineHeight: 1.35 }}>{action.subtext}</div>
         )}
-        <div style={{ marginTop: 12 }}>
-          <PrimaryCta />
-        </div>
+        {action.allowPrimary && (
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={handlePrimary}
+              style={buttonStyle(action.buttonVariant)}
+            >{action.primaryLabel}</button>
+          </div>
+        )}
       </div>
 
       {/* 3–4. Plan metrics + conviction (single surface) */}
@@ -439,7 +452,7 @@ export default function WatchlistCard({
         <button
           onClick={e => { e.stopPropagation(); onDrill(drillCtx) }}
           style={{ fontSize: 10, fontWeight: 600, padding: '4px 0', border: 'none', background: 'transparent', color: WL.text.muted, cursor: 'pointer' }}
-        >Open</button>
+        >View intel</button>
         <a href={`/v3/rec-intel?symbol=${it.symbol}`} onClick={e => e.stopPropagation()} style={{ fontSize: 10, fontWeight: 600, color: WL.text.muted, textDecoration: 'none' }}>Rec-Intel</a>
         <button
           onClick={e => { e.stopPropagation(); onToggleEns() }}

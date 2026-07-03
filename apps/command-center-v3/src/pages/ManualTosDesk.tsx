@@ -174,7 +174,9 @@ function rowState(r: SetupRow, local: LocalState, activity: any[]): SetupState {
   return local[r.id]?.generated ? 'GENERATED' : 'READY'
 }
 
-export default function ManualTosDesk() {
+type DeskProps = { focusSymbol?: string }
+
+export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
   const { data: draftsR, refetch } = useApi<any>('/api/v2/broker-orders/drafts?broker=schwab', 30_000)
   const { data: activityR } = useApi<any>('/api/v2/broker-orders/activity', 30_000)
   const { data: proposalsR } = useApi<any>('/api/v2/paper-proposals', 60_000)
@@ -208,6 +210,12 @@ export default function ManualTosDesk() {
   const savePrefs = (patch: Partial<UiPrefs>) => {
     const next = { ...prefs, ...patch }; setPrefs(next); localStorage.setItem(PREF_KEY, JSON.stringify(next))
   }
+
+  const focusKey = focusSymbol?.trim().toUpperCase() || ''
+  useEffect(() => {
+    if (!focusKey) return
+    savePrefs({ search: focusKey, source: 'WATCHLIST' })
+  }, [focusKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const drill = (patch: Partial<UiPrefs>) => savePrefs({ ...defaultPrefs, ...patch })
   const setField = (id: string, patch: Partial<LocalState[string]>) => saveLocal({ ...local, [id]: { ...(local[id] ?? {}), ...patch } })
 
@@ -430,6 +438,7 @@ export default function ManualTosDesk() {
             onCopyMsg={setMsg}
             onPromote={handlePromote}
             promoteBusy={promoteBusy === r.id}
+            focused={!!focusKey && r.symbol.toUpperCase() === focusKey}
           />
         )
       })}

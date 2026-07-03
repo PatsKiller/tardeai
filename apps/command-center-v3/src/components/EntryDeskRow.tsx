@@ -91,10 +91,11 @@ type Props = {
   onCopyMsg: (s: string) => void
   onPromote: (r: SetupRow, proposalId?: number) => void
   promoteBusy?: boolean
+  focused?: boolean
 }
 
 export default function EntryDeskRow({
-  r, state, hit, account, streetTarget, tech, accounts, accountMap, onSetField, onCopyMsg, onPromote, promoteBusy,
+  r, state, hit, account, streetTarget, tech, accounts, accountMap, onSetField, onCopyMsg, onPromote, promoteBusy, focused,
 }: Props) {
   const rating = deriveTradeAiRating(r)
   const sz = sizing(r, account)
@@ -157,8 +158,13 @@ export default function EntryDeskRow({
     <div
       data-testid="entry-desk-row"
       style={{
-        border: `1px solid ${state === 'BROKER_OBSERVED' ? C.green : state === 'EXCEPTION' ? C.red : 'var(--border)'}`,
-        borderRadius: 10, background: 'var(--bg1)', padding: 13, marginBottom: 10,
+        border: focused
+          ? `2px solid ${C.blue}`
+          : `1px solid ${state === 'BROKER_OBSERVED' ? C.green : state === 'EXCEPTION' ? C.red : 'var(--border)'}`,
+        borderRadius: 10,
+        background: focused ? 'rgba(96,165,250,.06)' : 'var(--bg1)',
+        padding: 13, marginBottom: 10,
+        boxShadow: focused ? '0 0 0 1px rgba(96,165,250,.25)' : undefined,
       }}
     >
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.35fr) minmax(0,1fr) auto', gap: 12, alignItems: 'start' }}>

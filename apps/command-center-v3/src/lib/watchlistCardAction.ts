@@ -10,24 +10,72 @@ export function watchlistNeedsRefresh(it: any, stale: boolean) {
 }
 
 export type ActionUrgency = 'none' | 'amber' | 'green' | 'red'
-export type PrimaryActionKind = 'propose' | 'adjust' | 'refresh' | 'intel' | 'review' | 'build'
 
-export type RecommendedAction = {
-  text: string
+export type CardActionType =
+  | 'PROPOSE_ENTRY'
+  | 'QUEUE_PROPOSAL'
+  | 'ADJUST_PLAN'
+  | 'BUILD_PLAN'
+  | 'REFRESH_DATA'
+  | 'VIEW_INTEL'
+  | 'REVIEW_SETUP'
+  | 'REVIEW_EXIT'
+  | 'WATCH_ON_DESK'
+  | 'NONE'
+
+export type ButtonVariant = 'solid-green' | 'outline-amber' | 'neutral'
+
+/** Unified hero + primary CTA — derived together, never independent labels. */
+export type CardAction = {
+  type: CardActionType
+  heroText: string
   subtext?: string
   urgency: ActionUrgency
   primaryLabel: string
-  primaryKind: PrimaryActionKind
+  buttonVariant: ButtonVariant
+  allowPrimary: boolean
 }
+
+/** @deprecated Use CardAction — kept for gradual migration */
+export type RecommendedAction = CardAction & { text: string; primaryKind: string }
 
 function cioAvoid(rec?: string | null): boolean {
   const s = String(rec ?? '').toUpperCase()
   return ['AVOID', 'IGNORE', 'SELL', 'TRIM'].some(k => s.includes(k))
 }
 
+function monitorOnlyHero(text: string): boolean {
+  const t = text.toLowerCase()
+  return t.includes('do not') || t.includes('monitor only')
+}
+
 function money(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(Number(v))) return '—'
   return `$${Number(v).toFixed(2)}`
+}
+
+function action(
+  type: CardActionType,
+  heroText: string,
+  opts: {
+    subtext?: string
+    urgency?: ActionUrgency
+    primaryLabel: string
+    buttonVariant: ButtonVariant
+    allowPrimary?: boolean
+  },
+): CardAction {
+  let variant = opts.buttonVariant
+  if (monitorOnlyHero(heroText) && variant === 'solid-green') variant = 'neutral'
+  return {
+    type,
+    heroText,
+    subtext: opts.subtext,
+    urgency: opts.urgency ?? 'none',
+    primaryLabel: opts.primaryLabel,
+    buttonVariant: variant,
+    allowPrimary: opts.allowPrimary ?? true,
+  }
 }
 
 export function deriveRecommendedAction(args: {
@@ -39,151 +87,151 @@ export function deriveRecommendedAction(args: {
   enriched: boolean
   entry: number | null
   adv?: { advisory_flag?: string; note?: string } | null
-}): RecommendedAction {
+}): CardAction {
   const { it, hasPlan, rr, warns, stale, enriched, entry, adv } = args
 
   if (it.private_nontradeable) {
-    return {
-      text: 'Do not trade — private ticker',
+    return action('VIEW_INTEL', 'Do not trade — private ticker', {
       subtext: it.private_note || it.private_company,
       urgency: 'red',
-      primaryLabel: 'Open Intel',
-      primaryKind: 'intel',
-    }
+      primaryLabel: 'View intel',
+      buttonVariant: 'neutral',
+    })
   }
 
   const noStop = warns.some(w => w.text.includes('NO STOP'))
   if (noStop) {
-    return {
-      text: 'Define stop before entering',
+    return action('ADJUST_PLAN', 'Define stop before entering', {
       subtext: 'Risk undefined without a planned stop',
       urgency: 'red',
-      primaryLabel: 'Adjust Plan',
-      primaryKind: 'adjust',
-    }
+      primaryLabel: 'Fix plan',
+      buttonVariant: 'outline-amber',
+    })
   }
 
   if (stale && hasPlan) {
-    return {
-      text: 'Refresh before acting — data stale',
+    return action('REFRESH_DATA', 'Refresh before acting — data stale', {
       subtext: 'Technical enrichment may not match current price',
       urgency: 'amber',
-      primaryLabel: 'Refresh',
-      primaryKind: 'refresh',
-    }
+      primaryLabel: 'Refresh data',
+      buttonVariant: 'neutral',
+    })
   }
 
   if (adv?.advisory_flag === 'caution' && !hasPlan) {
     const note = adv.note ? String(adv.note).slice(0, 80) : 'setup advisory caution'
-    return {
-      text: `Monitor only — ${note}`,
+    return action('REVIEW_SETUP', `Monitor only — ${note}`, {
       subtext: 'No validated entry plan',
       urgency: 'amber',
-      primaryLabel: 'Review Setup',
-      primaryKind: 'review',
-    }
+      primaryLabel: 'Review setup',
+      buttonVariant: 'neutral',
+    })
+  }
+
+  if (adv?.advisory_flag === 'caution' && hasPlan) {
+    const note = adv.note ? String(adv.note).slice(0, 80) : 'setup advisory caution'
+    return action('VIEW_INTEL', `Monitor only — ${note}`, {
+      subtext: 'Plan exists but advisory cautions — verify before proposing',
+      urgency: 'amber',
+      primaryLabel: 'View intel',
+      buttonVariant: 'neutral',
+    })
   }
 
   if (cioAvoid(it.latest_recommendation)) {
     const cv = String(it.latest_recommendation).replace(/_/g, ' ').toLowerCase()
-    return {
-      text: `Do not add — CIO view is ${cv}`,
+    return action('VIEW_INTEL', `Do not add — CIO view is ${cv}`, {
       subtext: hasPlan ? 'Plan is advisory; align with CIO before sizing' : undefined,
       urgency: 'amber',
-      primaryLabel: 'Open Intel',
-      primaryKind: 'intel',
-    }
+      primaryLabel: 'View intel',
+      buttonVariant: 'neutral',
+    })
   }
 
   if (rr != null && rr < 1) {
-    return {
-      text: `Rework plan — R:R ${rr.toFixed(2)} below 1.0`,
+    return action('ADJUST_PLAN', `Rework plan — R:R ${rr.toFixed(2)} below 1.0`, {
       subtext: 'Reward smaller than risk at this entry',
       urgency: 'red',
-      primaryLabel: 'Adjust Plan',
-      primaryKind: 'adjust',
-    }
+      primaryLabel: 'Fix plan',
+      buttonVariant: 'outline-amber',
+    })
   }
 
   if (rr != null && rr < 1.5) {
-    return {
-      text: `Rework plan — R:R ${rr.toFixed(2)} is thin`,
+    return action('ADJUST_PLAN', `Rework plan — R:R ${rr.toFixed(2)} is thin`, {
       subtext: 'Raise target or tighten stop before proposing',
       urgency: 'amber',
-      primaryLabel: 'Adjust Plan',
-      primaryKind: 'adjust',
-    }
+      primaryLabel: 'Fix plan',
+      buttonVariant: 'outline-amber',
+    })
   }
 
   const planCapWarn = warns.find(w => w.text.includes('plan target') && w.text.includes('Street'))
   if (planCapWarn && hasPlan) {
-    return {
-      text: 'Raise target or keep runner — plan caps below Street',
+    return action('REVIEW_EXIT', 'Raise target or keep runner — plan caps below Street', {
       subtext: 'Do not exit entire position at plan target alone',
       urgency: 'amber',
-      primaryLabel: 'Review Exit',
-      primaryKind: 'adjust',
-    }
+      primaryLabel: 'Review exit',
+      buttonVariant: 'outline-amber',
+    })
   }
 
   const conf = it.research_confidence ?? it.hermes_score_components?._confidence
   if (conf != null && Number(conf) < 0.5 && !hasPlan) {
-    return {
-      text: 'Monitor only — low conviction',
+    return action('VIEW_INTEL', 'Monitor only — low conviction', {
       subtext: `Confidence ${Number(conf).toFixed(2)} · gather more evidence`,
       urgency: 'none',
-      primaryLabel: 'Open Intel',
-      primaryKind: 'intel',
-    }
+      primaryLabel: 'View intel',
+      buttonVariant: 'neutral',
+    })
   }
 
   const urgency = it.entry_urgency
   if (urgency === 'ready' && hasPlan && entry != null) {
-    return {
-      text: `Propose limit ${money(entry)} · stop ${money(Number(it.entry_stop))}`,
+    return action('PROPOSE_ENTRY', `Propose limit ${money(entry)} · stop ${money(Number(it.entry_stop))}`, {
       subtext: rr != null ? `READY · R:R ${rr.toFixed(1)}` : 'READY · limit order',
       urgency: 'green',
-      primaryLabel: 'Propose Entry',
-      primaryKind: 'propose',
-    }
+      primaryLabel: 'Review & propose',
+      buttonVariant: 'solid-green',
+    })
   }
 
   if (urgency === 'near_entry' && hasPlan && entry != null) {
-    return {
-      text: `Add on weakness near ${money(entry)}`,
+    return action('PROPOSE_ENTRY', `Add on weakness near ${money(entry)}`, {
       subtext: rr != null ? `NEAR-ENTRY · R:R ${rr.toFixed(1)}` : 'NEAR-ENTRY',
       urgency: 'amber',
-      primaryLabel: 'Propose Entry',
-      primaryKind: 'propose',
-    }
+      primaryLabel: 'Review & propose',
+      buttonVariant: 'solid-green',
+    })
   }
 
   if (!hasPlan) {
-    return {
-      text: enriched ? 'Monitor only — no validated plan' : 'Awaiting enrichment',
-      subtext: enriched ? 'Build limit, stop, and target first' : undefined,
-      urgency: 'none',
-      primaryLabel: enriched ? 'Build Plan' : 'Refresh',
-      primaryKind: enriched ? 'build' : 'refresh',
-    }
+    return action(
+      enriched ? 'BUILD_PLAN' : 'REFRESH_DATA',
+      enriched ? 'Monitor only — no validated plan' : 'Awaiting enrichment',
+      {
+        subtext: enriched ? 'Build limit, stop, and target first' : undefined,
+        urgency: 'none',
+        primaryLabel: enriched ? 'Build plan' : 'Refresh data',
+        buttonVariant: enriched ? 'outline-amber' : 'neutral',
+      },
+    )
   }
 
   if (entry != null) {
-    return {
-      text: `Hold for trigger at ${money(entry)}`,
+    return action('WATCH_ON_DESK', `Hold for trigger at ${money(entry)}`, {
       subtext: rr != null ? `R:R ${rr.toFixed(1)}` : undefined,
       urgency: 'none',
-      primaryLabel: 'Propose Entry',
-      primaryKind: 'propose',
-    }
+      primaryLabel: 'Watch on desk',
+      buttonVariant: 'neutral',
+    })
   }
 
-  return {
-    text: 'Monitor — review intel before acting',
+  return action('VIEW_INTEL', 'Monitor — review intel before acting', {
     urgency: 'none',
-    primaryLabel: 'Open Intel',
-    primaryKind: 'intel',
-  }
+    primaryLabel: 'View intel',
+    buttonVariant: 'neutral',
+  })
 }
 
 export type ActionProminence = {
@@ -193,16 +241,39 @@ export type ActionProminence = {
   metricsMuted: boolean
 }
 
-export function actionProminence(action: RecommendedAction, hasPlan: boolean): ActionProminence {
-  const tradeFocus = ['propose', 'adjust', 'build'].includes(action.primaryKind)
-  const passive = ['intel', 'review', 'refresh'].includes(action.primaryKind)
+export function actionProminence(action: CardAction, hasPlan: boolean): ActionProminence {
+  const tradeFocus = ['PROPOSE_ENTRY', 'ADJUST_PLAN', 'BUILD_PLAN', 'REVIEW_EXIT'].includes(action.type)
+  const passive = ['VIEW_INTEL', 'REVIEW_SETUP', 'REFRESH_DATA', 'WATCH_ON_DESK', 'QUEUE_PROPOSAL', 'NONE'].includes(action.type)
     || (action.urgency === 'none' && !tradeFocus)
 
   return {
     heroScale: tradeFocus ? 'large' : 'medium',
-    ladderDefaultOpen: tradeFocus && hasPlan && action.primaryKind !== 'build',
-    showLadder: hasPlan && action.primaryKind !== 'refresh',
+    ladderDefaultOpen: tradeFocus && hasPlan && action.type !== 'BUILD_PLAN',
+    showLadder: hasPlan && action.type !== 'REFRESH_DATA',
     metricsMuted: passive && !hasPlan,
+  }
+}
+
+export function buttonStyle(variant: ButtonVariant): Record<string, string | number> {
+  const green = '#16a34a'
+  const amber = '#d97706'
+  const muted = '#94a3b8'
+  const tagBorder = 'rgba(71,85,105,.45)'
+  if (variant === 'solid-green') {
+    return {
+      fontSize: 12, fontWeight: 800, padding: '9px 18px', borderRadius: 8, cursor: 'pointer',
+      minWidth: 132, border: `1px solid ${green}`, background: green, color: '#fff',
+    }
+  }
+  if (variant === 'outline-amber') {
+    return {
+      fontSize: 12, fontWeight: 800, padding: '9px 18px', borderRadius: 8, cursor: 'pointer',
+      minWidth: 132, border: `1px solid ${amber}`, background: 'rgba(217,119,6,.1)', color: '#fcd34d',
+    }
+  }
+  return {
+    fontSize: 12, fontWeight: 800, padding: '9px 18px', borderRadius: 8, cursor: 'pointer',
+    minWidth: 132, border: `1px solid ${tagBorder}`, background: 'transparent', color: muted,
   }
 }
 
