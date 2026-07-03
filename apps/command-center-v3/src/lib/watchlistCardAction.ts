@@ -131,8 +131,8 @@ export function deriveRecommendedAction(args: {
     return action('VIEW_INTEL', 'SKIP', 'No add', {
       subtext: `CIO ${cioLabel(it.latest_recommendation)}`,
       urgency: 'amber',
-      primaryLabel: 'Intel',
-      buttonVariant: 'neutral',
+      primaryLabel: 'View intel',
+      buttonVariant: 'outline-amber',
     })
   }
 
@@ -176,22 +176,31 @@ export function deriveRecommendedAction(args: {
   }
 
   if (adv?.advisory_flag === 'caution' && hasPlan) {
-    return action('VIEW_INTEL', 'WAIT', 'Hold off', {
-      subtext: 'Advisory caution',
+    return action('REVIEW_SETUP', 'WAIT', 'Hold off', {
+      subtext: 'Advisory caution — plan on file',
       detail: advNote,
       urgency: 'amber',
-      primaryLabel: 'Intel',
-      buttonVariant: 'neutral',
+      primaryLabel: 'Review setup',
+      buttonVariant: 'outline-amber',
     })
   }
 
   const conf = it.research_confidence ?? it.hermes_score_components?._confidence
   if (conf != null && Number(conf) < 0.5 && !hasPlan) {
-    return action('VIEW_INTEL', 'WAIT', 'Hold off', {
+    return action('REVIEW_SETUP', 'WAIT', 'Hold off', {
       subtext: `Low conf ${Number(conf).toFixed(2)}`,
-      urgency: 'none',
-      primaryLabel: 'Intel',
-      buttonVariant: 'neutral',
+      urgency: 'amber',
+      primaryLabel: 'Review setup',
+      buttonVariant: 'outline-amber',
+    })
+  }
+
+  if (conf != null && Number(conf) < 0.5 && hasPlan) {
+    return action('REVIEW_SETUP', 'WAIT', 'Hold off', {
+      subtext: `Low conf ${Number(conf).toFixed(2)} — plan on file`,
+      urgency: 'amber',
+      primaryLabel: 'Review setup',
+      buttonVariant: 'outline-amber',
     })
   }
 
@@ -237,11 +246,42 @@ export function deriveRecommendedAction(args: {
     })
   }
 
-  return action('VIEW_INTEL', 'WAIT', 'Review', {
-    urgency: 'none',
-    primaryLabel: 'Intel',
-    buttonVariant: 'neutral',
+  return action('REVIEW_SETUP', 'WAIT', 'Review', {
+    subtext: hasPlan ? 'Plan on file — confirm setup' : undefined,
+    urgency: 'amber',
+    primaryLabel: 'Review setup',
+    buttonVariant: 'outline-amber',
   })
+}
+
+/** Secondary CTA for passive / wait states — keeps a clear second action without competing with primary. */
+export function deriveSecondaryAction(
+  action: CardAction,
+  hasPlan: boolean,
+  symbol: string,
+): { type: CardActionType; label: string } | null {
+  if (action.type === 'PROPOSE_ENTRY') return null
+  if (['WAIT', 'SKIP', 'WATCH'].includes(action.verdict) && hasPlan) {
+    return { type: 'WATCH_ON_DESK', label: 'Monitor' }
+  }
+  if (action.type === 'VIEW_INTEL' || action.type === 'REVIEW_SETUP') {
+    return { type: 'REFRESH_DATA', label: 'Refresh' }
+  }
+  if (action.verdict === 'STALE') return null
+  return symbol ? { type: 'VIEW_INTEL', label: 'Intel' } : null
+}
+
+/** Risk / sizing hint when a validated plan exists. */
+export function riskSizingHint(action: CardAction, hasPlan: boolean, rr: number | null): string | null {
+  if (!hasPlan || rr == null || rr < 1.5) return null
+  if (action.type === 'PROPOSE_ENTRY') {
+    return `1–2% of available cash sizing · R:R ${rr.toFixed(1)} · Propose opens calculator`
+  }
+  if (['WAIT', 'WATCH'].includes(action.verdict) && action.type !== 'REFRESH_DATA') {
+    return `Plan ready (R:R ${rr.toFixed(1)}) · 1–2% cash sizing after setup clears`
+  }
+  if (action.verdict === 'FIX') return `Fix plan before sizing · target R:R ≥ 1.5`
+  return null
 }
 
 export type ActionProminence = {
@@ -253,14 +293,13 @@ export type ActionProminence = {
 
 export function actionProminence(action: CardAction, hasPlan: boolean): ActionProminence {
   const tradeFocus = ['PROPOSE_ENTRY', 'ADJUST_PLAN', 'BUILD_PLAN', 'REVIEW_EXIT'].includes(action.type)
-  const passive = ['VIEW_INTEL', 'REVIEW_SETUP', 'REFRESH_DATA', 'WATCH_ON_DESK', 'QUEUE_PROPOSAL', 'NONE'].includes(action.type)
-    || (action.urgency === 'none' && !tradeFocus)
+  const waitWithPlan = action.verdict === 'WAIT' && hasPlan
 
   return {
-    heroScale: tradeFocus ? 'large' : 'medium',
+    heroScale: tradeFocus || waitWithPlan ? 'large' : 'medium',
     ladderDefaultOpen: tradeFocus && hasPlan && action.type !== 'BUILD_PLAN',
     showLadder: hasPlan && action.type !== 'REFRESH_DATA',
-    metricsMuted: passive && !hasPlan,
+    metricsMuted: !hasPlan && !tradeFocus,
   }
 }
 
@@ -372,14 +411,26 @@ export function dataQualityFlags(args: {
   enriched: boolean
   needsRefresh: boolean
   dataDoubt: string
+  adv?: { advisory_flag?: string; band?: string } | null
 }): { label: string; severity: 'red' | 'amber' | 'none' }[] {
-  const { it, stale, enriched, needsRefresh, dataDoubt } = args
+  const { it, stale, enriched, needsRefresh, dataDoubt, adv } = args
   const flags: { label: string; severity: 'red' | 'amber' | 'none' }[] = []
   if (dataDoubt) flags.push({ label: 'Data doubt', severity: 'amber' })
   if (!enriched) flags.push({ label: 'Awaiting enrichment', severity: 'amber' })
   else if (stale) flags.push({ label: 'Stale technicals', severity: 'amber' })
+  else if (it.last_enriched_at) {
+    const ageH = (Date.now() - new Date(it.last_enriched_at).getTime()) / 36e5
+    if (ageH >= 4) flags.push({ label: `Enriched ${Math.round(ageH)}h ago`, severity: 'amber' })
+  }
   if (needsRefresh && !stale) flags.push({ label: 'Agents pending', severity: 'amber' })
   if (it.final_synthesis_status === 'pending') flags.push({ label: 'CIO synthesis pending', severity: 'amber' })
+  if (adv?.advisory_flag === 'caution') {
+    flags.push({ label: adv.band ? `Advisory caution · ${adv.band}` : 'Advisory caution', severity: 'amber' })
+  }
+  const conf = it.research_confidence ?? it.hermes_score_components?._confidence
+  if (conf != null && Number(conf) < 0.5) {
+    flags.push({ label: `Low CIO conf ${Number(conf).toFixed(2)}`, severity: 'amber' })
+  }
   if (it.price == null) flags.push({ label: 'No live price', severity: 'red' })
   return flags
 }
