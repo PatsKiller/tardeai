@@ -1658,6 +1658,12 @@ CRITICAL INSTRUCTIONS:
     # max_tokens applies to the LOCAL gemma fallback only (cloud lanes send no cap); 1000 truncated the
     # ~11-field JSON contract mid-narrative on the fallback lane (measured: 1/1 local rows truncated).
     raw, dual_meta = _synthesis_dual(prompt, max_tokens=2000)   # Grok + ChatGPT dual-consensus, gemma fallback
+    # All lanes failed → do NOT upsert: the parser fallback would store the error string as the
+    # narrative, clobbering the last good synthesis (404 such rows accumulated Apr 29–May 8 2026,
+    # e.g. ANET rendered "LLM error: All providers failed" as its CIO note for 65 days).
+    if isinstance(raw, str) and raw.startswith("LLM error"):
+        print(f"  [synthesis] {symbol}: all LLM lanes failed ({raw[:80]}) — keeping prior synthesis, no upsert")
+        return None
     syn = parse_synthesis_result(raw)
     parsed = syn
     conflicts = list(syn.get("conflicts") or [])
