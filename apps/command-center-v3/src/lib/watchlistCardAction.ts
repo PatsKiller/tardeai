@@ -44,7 +44,7 @@ export function deriveRecommendedAction(args: {
 
   if (it.private_nontradeable) {
     return {
-      text: 'Do not trade — private / non-public ticker',
+      text: 'Do not trade — private ticker',
       subtext: it.private_note || it.private_company,
       urgency: 'red',
       primaryLabel: 'Open Intel',
@@ -55,8 +55,8 @@ export function deriveRecommendedAction(args: {
   const noStop = warns.some(w => w.text.includes('NO STOP'))
   if (noStop) {
     return {
-      text: 'Do not enter — define a stop before proposing',
-      subtext: 'Risk is undefined without a planned stop',
+      text: 'Define stop before entering',
+      subtext: 'Risk undefined without a planned stop',
       urgency: 'red',
       primaryLabel: 'Adjust Plan',
       primaryKind: 'adjust',
@@ -65,31 +65,30 @@ export function deriveRecommendedAction(args: {
 
   if (stale && hasPlan) {
     return {
-      text: 'Refresh before acting — technical enrichment is stale',
-      subtext: 'Finviz RSI and setup advisory may not reflect current price',
+      text: 'Refresh before acting — data stale',
+      subtext: 'Technical enrichment may not match current price',
       urgency: 'amber',
       primaryLabel: 'Refresh',
       primaryKind: 'refresh',
     }
   }
 
-  if (adv?.advisory_flag === 'caution') {
-    const note = adv.note ? String(adv.note).slice(0, 120) : 'setup advisory flagged caution'
-    if (!hasPlan) {
-      return {
-        text: `Caution — ${note}`,
-        subtext: 'Monitor only until a validated entry plan exists',
-        urgency: 'amber',
-        primaryLabel: 'Review Setup',
-        primaryKind: 'review',
-      }
+  if (adv?.advisory_flag === 'caution' && !hasPlan) {
+    const note = adv.note ? String(adv.note).slice(0, 80) : 'setup advisory caution'
+    return {
+      text: `Monitor only — ${note}`,
+      subtext: 'No validated entry plan',
+      urgency: 'amber',
+      primaryLabel: 'Review Setup',
+      primaryKind: 'review',
     }
   }
 
   if (cioAvoid(it.latest_recommendation)) {
+    const cv = String(it.latest_recommendation).replace(/_/g, ' ').toLowerCase()
     return {
-      text: `Monitor only — CIO view is ${String(it.latest_recommendation).replace(/_/g, ' ').toLowerCase()}`,
-      subtext: hasPlan ? 'Existing plan is advisory; align with CIO before sizing' : undefined,
+      text: `Do not add — CIO view is ${cv}`,
+      subtext: hasPlan ? 'Plan is advisory; align with CIO before sizing' : undefined,
       urgency: 'amber',
       primaryLabel: 'Open Intel',
       primaryKind: 'intel',
@@ -98,8 +97,8 @@ export function deriveRecommendedAction(args: {
 
   if (rr != null && rr < 1) {
     return {
-      text: 'Review exit ladder — reward smaller than risk at this entry',
-      subtext: rr != null ? `R:R ${rr.toFixed(2)} — rework target or skip` : undefined,
+      text: `Rework plan — R:R ${rr.toFixed(2)} below 1.0`,
+      subtext: 'Reward smaller than risk at this entry',
       urgency: 'red',
       primaryLabel: 'Adjust Plan',
       primaryKind: 'adjust',
@@ -108,8 +107,8 @@ export function deriveRecommendedAction(args: {
 
   if (rr != null && rr < 1.5) {
     return {
-      text: 'Thin edge — consider raising plan target or tightening stop',
-      subtext: `R:R ${rr.toFixed(2)} · below 1.5 is marginal for the risk taken`,
+      text: `Rework plan — R:R ${rr.toFixed(2)} is thin`,
+      subtext: 'Raise target or tighten stop before proposing',
       urgency: 'amber',
       primaryLabel: 'Adjust Plan',
       primaryKind: 'adjust',
@@ -119,8 +118,8 @@ export function deriveRecommendedAction(args: {
   const planCapWarn = warns.find(w => w.text.includes('plan target') && w.text.includes('Street'))
   if (planCapWarn && hasPlan) {
     return {
-      text: 'Review exit ladder — plan target may be too conservative',
-      subtext: 'Keep a runner toward Street mean; do not exit entire position at plan target',
+      text: 'Raise target or keep runner — plan caps below Street',
+      subtext: 'Do not exit entire position at plan target alone',
       urgency: 'amber',
       primaryLabel: 'Review Exit',
       primaryKind: 'adjust',
@@ -131,7 +130,7 @@ export function deriveRecommendedAction(args: {
   if (conf != null && Number(conf) < 0.5 && !hasPlan) {
     return {
       text: 'Monitor only — low conviction',
-      subtext: `Research confidence ${Number(conf).toFixed(2)} · gather more evidence before sizing`,
+      subtext: `Confidence ${Number(conf).toFixed(2)} · gather more evidence`,
       urgency: 'none',
       primaryLabel: 'Open Intel',
       primaryKind: 'intel',
@@ -141,8 +140,8 @@ export function deriveRecommendedAction(args: {
   const urgency = it.entry_urgency
   if (urgency === 'ready' && hasPlan && entry != null) {
     return {
-      text: `Ready to propose — limit ${money(entry)}${it.entry_stop != null ? `, stop ${money(Number(it.entry_stop))}` : ''}`,
-      subtext: rr != null ? `Disciplined limit order · R:R ${rr.toFixed(1)}` : 'Disciplined limit order',
+      text: `Propose limit ${money(entry)} · stop ${money(Number(it.entry_stop))}`,
+      subtext: rr != null ? `READY · R:R ${rr.toFixed(1)}` : 'READY · limit order',
       urgency: 'green',
       primaryLabel: 'Propose Entry',
       primaryKind: 'propose',
@@ -151,8 +150,8 @@ export function deriveRecommendedAction(args: {
 
   if (urgency === 'near_entry' && hasPlan && entry != null) {
     return {
-      text: `Consider adding on weakness near ${money(entry)} limit`,
-      subtext: rr != null ? `NEAR-ENTRY · R:R ${rr.toFixed(1)} · ${it.entry_setup || 'limit order'}` : `NEAR-ENTRY · ${it.entry_setup || 'limit order'}`,
+      text: `Add on weakness near ${money(entry)}`,
+      subtext: rr != null ? `NEAR-ENTRY · R:R ${rr.toFixed(1)}` : 'NEAR-ENTRY',
       urgency: 'amber',
       primaryLabel: 'Propose Entry',
       primaryKind: 'propose',
@@ -161,8 +160,8 @@ export function deriveRecommendedAction(args: {
 
   if (!hasPlan) {
     return {
-      text: enriched ? 'Monitor only — no validated entry plan yet' : 'Awaiting enrichment — refresh or wait for agent queue',
-      subtext: enriched ? 'Build limit, stop, and target before proposing' : undefined,
+      text: enriched ? 'Monitor only — no validated plan' : 'Awaiting enrichment',
+      subtext: enriched ? 'Build limit, stop, and target first' : undefined,
       urgency: 'none',
       primaryLabel: enriched ? 'Build Plan' : 'Refresh',
       primaryKind: enriched ? 'build' : 'refresh',
@@ -171,8 +170,8 @@ export function deriveRecommendedAction(args: {
 
   if (entry != null) {
     return {
-      text: `Hold for plan trigger at ${money(entry)} limit`,
-      subtext: rr != null ? `R:R ${rr.toFixed(1)} · ${it.entry_model || 'entry model pending'}` : it.entry_model,
+      text: `Hold for trigger at ${money(entry)}`,
+      subtext: rr != null ? `R:R ${rr.toFixed(1)}` : undefined,
       urgency: 'none',
       primaryLabel: 'Propose Entry',
       primaryKind: 'propose',
@@ -187,6 +186,26 @@ export function deriveRecommendedAction(args: {
   }
 }
 
+export type ActionProminence = {
+  heroScale: 'large' | 'medium'
+  ladderDefaultOpen: boolean
+  showLadder: boolean
+  metricsMuted: boolean
+}
+
+export function actionProminence(action: RecommendedAction, hasPlan: boolean): ActionProminence {
+  const tradeFocus = ['propose', 'adjust', 'build'].includes(action.primaryKind)
+  const passive = ['intel', 'review', 'refresh'].includes(action.primaryKind)
+    || (action.urgency === 'none' && !tradeFocus)
+
+  return {
+    heroScale: tradeFocus ? 'large' : 'medium',
+    ladderDefaultOpen: tradeFocus && hasPlan && action.primaryKind !== 'build',
+    showLadder: hasPlan && action.primaryKind !== 'refresh',
+    metricsMuted: passive && !hasPlan,
+  }
+}
+
 export function rrTooltip(entry: number | null, stop: number | null, planTarget: number | null, rr: number | null): string {
   if (!entry || !stop || !planTarget || rr == null) {
     return 'Reward-to-risk: (plan target − entry) ÷ (entry − stop). Requires limit, stop, and target.'
@@ -194,31 +213,35 @@ export function rrTooltip(entry: number | null, stop: number | null, planTarget:
   return [
     `Reward-to-risk: (plan target − entry) ÷ (entry − stop).`,
     `Your plan: ${money(planTarget)} target, ${money(entry)} entry, ${money(stop)} stop → ${rr.toFixed(2)}R.`,
-    'Below 1.5R is a thin edge; below 1.0R means risk exceeds reward.',
+    'Desk rule: below 1.5R = review; below 1.0R = block.',
   ].join(' ')
 }
 
 export function confidenceTooltip(it: any): string {
   const conf = it.research_confidence ?? it.hermes_score_components?._confidence
-  const models = it.models_agree === true ? '2+ models agree' : it.models_agree === false ? 'models split — cautious view used' : 'single or partial model coverage'
+  const modelNote = it.models_agree === true
+    ? '2 models (Grok + ChatGPT agree)'
+    : it.models_agree === false
+      ? '2 models split — cautious view used'
+      : 'Partial model coverage (Hermes + enrichment)'
   const updated = it.last_enriched_at ? new Date(it.last_enriched_at).toLocaleString() : 'not yet enriched'
   return [
-    conf != null ? `Composite research confidence ${Number(conf).toFixed(2)}.` : 'Confidence not yet computed.',
-    models,
+    conf != null ? `Composite confidence ${Number(conf).toFixed(2)}.` : 'Confidence not yet computed.',
+    modelNote,
     `Last enriched ${updated}.`,
-    '0.7+ = actionable context; 0.5–0.7 = use with caution; below 0.5 = low conviction.',
+    '0.7+ actionable · 0.5–0.7 caution · below 0.5 low conviction.',
   ].join(' ')
 }
 
 export function planValidatedTooltip(it: any): string {
   const at = it.entry_planned_at || it.last_validated_at
-  if (!at) return 'Entry plan not yet validated — limit, stop, and target checked by entry planner after validation.'
-  return `Entry plan last validated ${new Date(at).toLocaleString()}. Validated plans have limit, stop, and target checked against current price and R:R rules.`
+  if (!at) return 'Not validated — watchlist_entry_planner checks limit, stop, target, and R:R after validation.'
+  return `Validated by watchlist_entry_planner ${new Date(at).toLocaleString()}. Does not replace manual review.`
 }
 
 export function enrichedTooltip(it: any): string {
-  if (!it.last_enriched_at) return 'Finviz RSI, trend, and setup advisory not yet refreshed. Stale after 1h during market hours.'
-  return `Finviz RSI, trend, and setup advisory refreshed ${new Date(it.last_enriched_at).toLocaleString()}. Stale after 1h during market hours — refresh before acting on technicals.`
+  if (!it.last_enriched_at) return 'Finviz RSI/trend not refreshed. Stale after 1h in market hours. Does not replace CIO synthesis.'
+  return `Finviz RSI/trend refreshed ${new Date(it.last_enriched_at).toLocaleString()}. Stale after 1h — refresh before acting on technicals.`
 }
 
 export function cioViewTooltip(it: any): string {
@@ -227,7 +250,7 @@ export function cioViewTooltip(it: any): string {
 }
 
 export function dataDoubtTooltip(doubt: string): string {
-  return `CIO flagged uncertainty in the synthesis evidence: ${doubt}. Verify before sizing up — does not block monitoring.`
+  return `Action: verify before sizing. CIO data doubt: ${doubt}. Monitoring is still OK.`
 }
 
 export function ladderStepTooltip(label: string, px: number, action: string): string {
