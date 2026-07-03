@@ -459,6 +459,8 @@ Aligned with `docs/design/HERMES_MATURITY_5_DESIGN.md` §5.3 six dimensions:
 - [x] Stop slice in bus (`trail_activation_rate`, `r_left_on_table_avg`)
 - [x] S3 multi-factor reactivation in event feeder
 - [x] CC v3 Hermes Hub → **Closed Loop** tab (`HermesClosedLoopPanel.tsx`)
+- [x] Watchlist lifecycle Phase 1 (stages + conviction) + Phase 2 (health score, watch stage, promotion health gate)
+- [x] Holdings lifecycle Phase 1 (per-position health, advisory stages)
 - [ ] `resource_efficiency_score` scalar (deferred — needs request logger)
 
 ### Phase 3 — Visible loop

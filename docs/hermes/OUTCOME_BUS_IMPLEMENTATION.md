@@ -406,7 +406,16 @@ Governor reaction thresholds can be **learned** from outcome bus history with hu
 
 See `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` for full design, CLI workflow, and validation checklist.
 
-**Closed Loop UI (2026-07-03):** `/v3/hermes` → Adaptive thresholds shows tighten/loosen badges, runner-up, holdout pass/fail, key trigger days, evaluation context, collapsible last-learn candidate grid, and **proposal history** (`decided_proposals` + `recent_audit`). **Watchlist lifecycle** and **Holdings lifecycle** sections read `watchlist_lifecycle` / `holdings-lifecycle` APIs.
+**Closed Loop UI (2026-07-03):** `/v3/hermes` → Adaptive thresholds shows tighten/loosen badges, runner-up, holdout pass/fail, key trigger days, evaluation context, collapsible last-learn candidate grid, and **proposal history** (`decided_proposals` + `recent_audit`).
+
+### Watchlist + holdings lifecycle (Closed Loop)
+
+| Section | API | Phase 2 highlights |
+|---------|-----|-------------------|
+| **Watchlist lifecycle** | `GET /api/v2/hermes/scope-governor` → `watchlist_lifecycle` | Health score (0–100), 7d trend arrow, **watch** stage (health 45–59 or declining), `blocked_promotion_count` when health gate blocks outcome S1 claims |
+| **Holdings lifecycle** | `GET /api/v2/hermes/holdings-lifecycle` | Per-position health, trim/watch stages, monitoring hints |
+
+Governor computes watchlist health **before** tier candidate fetch; blocked promotions audit to `data/runtime/hermes_watchlist_lifecycle_audit.jsonl`. Full formula, gates, and validation checklist: `HERMES_WATCHLIST_LIFECYCLE.md` (§9–§10).
 
 ---
 
@@ -415,4 +424,6 @@ See `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` for full design, CLI wor
 - `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` — adaptive threshold learning
 - `docs/hermes/HERMES_MULTI_AGENT_COORDINATION_ARCHITECTURE.md` — full multi-agent design
 - `docs/hermes/HERMES_SCOPE_GOVERNOR.md` — tier logic
+- `docs/hermes/HERMES_WATCHLIST_LIFECYCLE.md` — watchlist stages + health scoring
+- `docs/hermes/HERMES_HOLDINGS_LIFECYCLE.md` — holdings health
 - `docs/design/HERMES_MATURITY_5_DESIGN.md` — maturity gates

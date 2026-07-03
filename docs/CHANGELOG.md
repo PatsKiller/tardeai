@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-03 - Watchlist lifecycle Phase 2: health scoring + docs sync
+
+Composite watchlist health score (7 components, confidence discount, 14d history) wired into Scope
+Governor before tier candidate fetch. Outcome-driven S1 promotions blocked when health &lt; 62
+(`block_weak_outcome_promotions`); audit `blocked_promotion` rows. Lifecycle adds **watch** stage,
+health fields on panel rows, Closed Loop Health column with 7d trend. Commit `cac9949e`.
+
+**Docs synced:** `HERMES_SCOPE_GOVERNOR.md` (health gate, modules, validation), `OUTCOME_BUS_IMPLEMENTATION.md`
+(Closed Loop lifecycle table), `HERMES_MULTI_AGENT_COORDINATION_ARCHITECTURE.md` (roadmap),
+`HERMES_HOLDINGS_LIFECYCLE.md` (cross-ref), `HERMES_WATCHLIST_LIFECYCLE.md` (§9–§10).
+
 ## 2026-07-02 - SnapTrade activity ingest fixed (retired endpoint + type-first classification)
 
 SnapTrade retired `transactions_and_reporting.get_activities` (410 Gone), which had been silently
