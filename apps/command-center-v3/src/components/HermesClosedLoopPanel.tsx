@@ -696,6 +696,37 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
       .slice(0, 8),
   [bus.by_tag])
 
+  const stopQualityWatchRows = useMemo(() => {
+    const wh = bus.watchlist_health?.symbols ?? {}
+    const fromBus = Object.entries(wh).map(([sym, m]: [string, any]) => ({
+      symbol: sym,
+      health: m.health_score,
+      stopComp: m.components?.stop_quality ?? m.health_components?.stop_quality,
+      trend: m.health_trend_7d ?? m.health_delta,
+      stage: m.lifecycle_stage,
+    }))
+    const fromPanel = lifecyclePanelRows.map((r: any) => ({
+      symbol: r.symbol,
+      health: r.health_score,
+      stopComp: r.health_components?.stop_quality,
+      trend: r.health_trend ?? r.health_delta,
+      stage: r.lifecycle_stage,
+    }))
+    const merged = fromBus.length > 0 ? fromBus : fromPanel
+    return merged
+      .filter((r) => (r.stopComp != null && Number(r.stopComp) < 50) || (r.trend != null && Number(r.trend) <= -5))
+      .sort((a, b) => (Number(a.stopComp) || 100) - (Number(b.stopComp) || 100))
+      .slice(0, 8)
+  }, [bus.watchlist_health, lifecyclePanelRows])
+
+  const stopTrends = stopQ.trends?.window_7d ?? {}
+  const hotColdDelta = useMemo(() => {
+    const hot = stopByTier.hot?.trail_activation_rate
+    const cold = stopByTier.cold?.trail_activation_rate
+    if (hot == null || cold == null) return null
+    return Number(hot) - Number(cold)
+  }, [stopByTier])
+
   const outcomeSeries: TrendPoint[] = histData?.outcome?.series ?? []
   const tierSeries: TrendPoint[] = histData?.tiers?.series ?? []
   const outcomeSummary = histData?.outcome?.summary ?? {}
@@ -1653,6 +1684,44 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                   )
                 })}
               </>
+            )}
+
+            {(hotColdDelta != null || stopTrends.trail_activation_rate != null) && (
+              <div style={{ marginTop: 10, padding: '8px 10px', background: 'var(--bg2)', borderRadius: 8, fontSize: 10, color: 'var(--text2)' }}>
+                <span style={{ fontWeight: 700, textTransform: 'uppercase', color: 'var(--text3)', marginRight: 8 }}>Hot vs Cold</span>
+                Trail Δ <b style={{ color: hotColdDelta != null && hotColdDelta < 0.08 ? '#f59e0b' : '#22c55e' }}>
+                  {hotColdDelta != null ? `${(hotColdDelta * 100).toFixed(1)}pp` : '—'}
+                </b>
+                {stopTrends.trail_activation_rate != null && (
+                  <span style={{ marginLeft: 12, color: 'var(--text3)' }}>
+                    7d trail trend {(Number(stopTrends.trail_activation_rate) * 100).toFixed(1)}pp
+                  </span>
+                )}
+              </div>
+            )}
+
+            {stopQualityWatchRows.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b', marginBottom: 6, textTransform: 'uppercase' }}>
+                  Watchlist — degrading stop discipline
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '0.7fr 0.5fr 0.5fr 0.5fr 0.6fr', fontSize: 8, color: 'var(--text3)', padding: '4px 6px', textTransform: 'uppercase' }}>
+                  <span>Symbol</span><span>Health</span><span>Stop comp</span><span>7d Δ</span><span>Stage</span>
+                </div>
+                {stopQualityWatchRows.map((r) => (
+                  <div
+                    key={r.symbol}
+                    onClick={() => onDrill({ title: r.symbol, subtitle: 'Stop quality watch', endpoint: `/api/v2/hermes/symbol-journey?symbol=${r.symbol}`, subjectKey: r.symbol, rows: [] })}
+                    style={{ display: 'grid', gridTemplateColumns: '0.7fr 0.5fr 0.5fr 0.5fr 0.6fr', padding: '6px', borderBottom: '1px solid var(--border)', fontSize: 11, cursor: 'pointer', alignItems: 'center' }}
+                  >
+                    <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{r.symbol}</span>
+                    <span>{r.health != null ? Math.round(Number(r.health)) : '—'}</span>
+                    <span style={{ color: '#ef4444', fontWeight: 700 }}>{r.stopComp != null ? Math.round(Number(r.stopComp)) : '—'}</span>
+                    <span style={{ color: (r.trend ?? 0) < 0 ? '#ef4444' : 'var(--text3)' }}>{r.trend ?? '—'}</span>
+                    <span style={{ fontSize: 9, color: 'var(--text3)' }}>{r.stage ?? '—'}</span>
+                  </div>
+                ))}
+              </div>
             )}
 
             {stopCorrelations.length > 0 && (

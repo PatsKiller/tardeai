@@ -13,10 +13,37 @@ from lib.hermes_outcome_bus.lifecycle_slice import (  # noqa: E402
     build_lifecycle_slice,
     enrich_bus_with_lifecycle,
     holdings_research_multiplier,
+    watchlist_research_multiplier,
 )
 
 
 class TestLifecycleBusSlice(unittest.TestCase):
+    def test_watchlist_research_multiplier_stop_discipline(self):
+        bus = {
+            "watchlist_health": {
+                "symbols": {
+                    "GOOD": {
+                        "health_score": 72,
+                        "lifecycle_stage": "promoted",
+                        "components": {"stop_quality": 78},
+                    },
+                    "BAD": {
+                        "health_score": 48,
+                        "lifecycle_stage": "monitoring",
+                        "components": {"stop_quality": 40},
+                    },
+                    "WATCH": {
+                        "health_score": 52,
+                        "lifecycle_stage": "watch",
+                        "components": {"stop_quality": 55},
+                    },
+                },
+            },
+        }
+        self.assertGreater(watchlist_research_multiplier("GOOD", bus), 1.05)
+        self.assertLess(watchlist_research_multiplier("BAD", bus), 1.0)
+        self.assertGreater(watchlist_research_multiplier("WATCH", bus), 1.1)
+
     def test_holdings_research_multiplier_by_stage(self):
         lc = {
             "holdings": {

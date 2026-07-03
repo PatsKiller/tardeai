@@ -175,6 +175,22 @@ def _load_bus_reactions() -> dict:
     return {}
 
 
+def _watchlist_health_multiplier(sym: str) -> float:
+    """Advisory research priority from watchlist health + stop quality component."""
+    try:
+        from lib.hermes_outcome_bus.lifecycle_slice import watchlist_research_multiplier
+        cache = _load_outcome_bus()
+        bus = cache.get("bus") or {}
+        mult = watchlist_research_multiplier(sym, bus)
+        runtime = _load_bus_reactions()
+        runtime_mult = (runtime.get("watchlist_research_multipliers") or {}).get(sym.upper())
+        if runtime_mult is not None:
+            mult = float(runtime_mult)
+        return mult
+    except Exception:
+        return 1.0
+
+
 def _holdings_lifecycle_multiplier(sym: str) -> float:
     """Advisory research priority boost from holdings lifecycle stage (B2)."""
     try:
@@ -286,10 +302,13 @@ def priority(sym, info, age_days, sla_days, catalyst) -> float:
             + 40 * min(overdue, 3.0)
             + 25 * (1.0 if catalyst else 0.0)
             + 15 * rank_score)
-    # Outcome bus: tag lift + holdings lifecycle research depth (outcome yield > throughput)
+    # Outcome bus: tag lift + watchlist/holdings lifecycle + stop-quality health (outcome yield > throughput)
     mult = _symbol_tag_multiplier(sym, scope_tier=info.get("tier"))
-    if info.get("tier") == "T0-HOLD":
+    tier = str(info.get("tier") or "")
+    if tier == "T0-HOLD":
         mult *= _holdings_lifecycle_multiplier(sym)
+    elif tier.startswith("S") or tier in ("S0", "S1", "S2", "S3"):
+        mult *= _watchlist_health_multiplier(sym)
     return base * mult
 
 

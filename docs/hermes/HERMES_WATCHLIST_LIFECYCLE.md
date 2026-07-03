@@ -82,6 +82,20 @@ Nightly `hermes_outcome_feedback_agent.py --apply` writes:
 
 Module: `scripts/lib/hermes_outcome_bus/bus_traceability.py` (see `OUTCOME_BUS_IMPLEMENTATION.md`).
 
+### Research prioritization (stop quality)
+
+`research_scheduler.py` applies `watchlist_research_multiplier()` for **S0–S3** symbols:
+
+| Signal | Multiplier |
+|--------|------------|
+| Strong stop discipline (stop component ≥72, health ≥62) | **1.12×** |
+| Promoted + health ≥65 | **1.08×** |
+| Watch stage (elevated scrutiny) | **1.15×** |
+| Weak stop (component &lt;45 or health &lt;42) | **0.85×** |
+| Archived / blacklisted | **0×** |
+
+Combines with tag `quality_multiplier` and holdings lifecycle for T0-HOLD.
+
 ## API
 
 **GET** `/api/v2/hermes/scope-governor`
