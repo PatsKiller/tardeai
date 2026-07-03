@@ -191,7 +191,7 @@ export function deriveRecommendedAction(args: {
     return action('PROPOSE_ENTRY', `Propose limit ${money(entry)} · stop ${money(Number(it.entry_stop))}`, {
       subtext: rr != null ? `READY · R:R ${rr.toFixed(1)}` : 'READY · limit order',
       urgency: 'green',
-      primaryLabel: 'Review & propose',
+      primaryLabel: 'Propose Entry',
       buttonVariant: 'solid-green',
     })
   }
@@ -200,7 +200,7 @@ export function deriveRecommendedAction(args: {
     return action('PROPOSE_ENTRY', `Add on weakness near ${money(entry)}`, {
       subtext: rr != null ? `NEAR-ENTRY · R:R ${rr.toFixed(1)}` : 'NEAR-ENTRY',
       urgency: 'amber',
-      primaryLabel: 'Review & propose',
+      primaryLabel: 'Propose Entry',
       buttonVariant: 'solid-green',
     })
   }
