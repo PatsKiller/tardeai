@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-07-03 - Phase D: closed-loop evaluation (watchlist promotion gate)
+
+`--evaluate` now includes watchlist promotion-gate validation: before/after `hit_rate_promotions`,
+blocked-symbol counterfactual from `hermes_outcome_ledger`, persisted to
+`hermes_closed_loop_evaluations.json`. API `GET/POST /api/v2/hermes/closed-loop/evaluations|evaluate`;
+Closed Loop panel **Promotion gate validation** card; CLI `--closed-loop-evaluate`.
+
 ## 2026-07-03 - Watchlist lifecycle Phase 2: health scoring + docs sync
 
 Composite watchlist health score (7 components, confidence discount, 14d history) wired into Scope

@@ -12,6 +12,7 @@ All changes require explicit human approval in v1 — review mode is default.
   python3 scripts/hermes_threshold_learner.py --rollback
   python3 scripts/hermes_threshold_learner.py --evaluate
   python3 scripts/hermes_threshold_learner.py --evaluate-status
+  python3 scripts/hermes_threshold_learner.py --closed-loop-evaluate
 
 See docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md
 """
@@ -40,6 +41,8 @@ def main() -> int:
     ap.add_argument("--rollback", action="store_true", help="Revert to static yaml defaults")
     ap.add_argument("--evaluate", action="store_true", help="Run before/after evaluation (read-only)")
     ap.add_argument("--evaluate-status", action="store_true", help="Show stored evaluation results")
+    ap.add_argument("--closed-loop-evaluate", action="store_true",
+                    help="Run watchlist promotion-gate evaluation only (read-only)")
     ap.add_argument("--lookback-days", type=int, default=None, help="Evaluation lookback window")
     ap.add_argument("--by", type=str, default="operator", help="Approver identity for audit")
     args = ap.parse_args()
@@ -49,6 +52,10 @@ def main() -> int:
         print(json.dumps(out, indent=2))
         return 1
 
+    from lib.hermes_thresholds.closed_loop_evaluation import (
+        closed_loop_evaluation_status,
+        run_closed_loop_evaluation_cycle,
+    )
     from lib.hermes_thresholds.evaluation_engine import evaluation_status, run_evaluation_cycle
     from lib.hermes_thresholds.threshold_learner import run_learning_cycle
     from lib.hermes_thresholds.workflow import (
@@ -64,6 +71,8 @@ def main() -> int:
         out = run_evaluation_cycle(lookback_days=args.lookback_days)
     elif args.evaluate_status:
         out = evaluation_status()
+    elif args.closed_loop_evaluate:
+        out = run_closed_loop_evaluation_cycle(lookback_days=args.lookback_days)
     elif args.learn:
         out = run_learning_cycle(apply_proposals=args.apply)
     elif args.approve:

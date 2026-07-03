@@ -20178,6 +20178,21 @@ def _hermes_threshold_evaluations(query=None):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _hermes_closed_loop_evaluations(query=None):
+    """GET /api/v2/hermes/closed-loop/evaluations — watchlist gate + system impact."""
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_thresholds.closed_loop_evaluation import closed_loop_evaluation_status
+        return _json_clean({
+            "ok": True,
+            "advisory_notice": "Closed-loop evaluations are read-only recommendations",
+            **closed_loop_evaluation_status(),
+        })
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _hermes_holdings_lifecycle(query=None):
     """GET /api/v2/hermes/holdings-lifecycle — per-holding health + lifecycle stages."""
     try:
@@ -26066,6 +26081,7 @@ ROUTES = {
     "/api/v2/hermes/outcome-bus/history": lambda q: _hermes_outcome_bus_history(q),
     "/api/v2/hermes/thresholds": lambda q: _hermes_thresholds(q),
     "/api/v2/hermes/thresholds/evaluations": lambda q: _hermes_threshold_evaluations(q),
+    "/api/v2/hermes/closed-loop/evaluations": lambda q: _hermes_closed_loop_evaluations(q),
     "/api/v2/hermes/promotion-review": lambda: _hermes_promotion_review(),
     "/api/v2/hermes/research-backlog": lambda: _hermes_research_backlog(),
     "/api/v2/hermes/agent-footprint": lambda: _hermes_agent_footprint(),
@@ -28996,6 +29012,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             b = body or {}
             lookback = b.get("lookback_days")
             result = run_evaluation_cycle(lookback_days=int(lookback) if lookback else None)
+            code = 200 if result.get("ok") else 400
+            return code, _json_clean(result)
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/hermes/closed-loop/evaluate":
+        try:
+            import sys as _sysc
+            _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+            from lib.hermes_thresholds.closed_loop_evaluation import run_closed_loop_evaluation_cycle
+            b = body or {}
+            lookback = b.get("lookback_days")
+            result = run_closed_loop_evaluation_cycle(lookback_days=int(lookback) if lookback else None)
             code = 200 if result.get("ok") else 400
             return code, _json_clean(result)
         except Exception as e:

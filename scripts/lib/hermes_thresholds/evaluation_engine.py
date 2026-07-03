@@ -260,6 +260,13 @@ def run_evaluation_cycle(lookback_days: int | None = None) -> dict[str, Any]:
     }
     save_evaluations(payload)
 
+    closed_loop: dict[str, Any] = {}
+    try:
+        from .closed_loop_evaluation import run_closed_loop_evaluation_cycle
+        closed_loop = run_closed_loop_evaluation_cycle(lookback_days=window)
+    except Exception as cl_err:
+        closed_loop = {"ok": False, "error": str(cl_err)[:120]}
+
     return {
         "ok": True,
         "lookback_days": window,
@@ -268,6 +275,7 @@ def run_evaluation_cycle(lookback_days: int | None = None) -> dict[str, Any]:
         "evaluations": new_evals,
         "summary": summary,
         "skipped": skipped,
+        "closed_loop": closed_loop,
         "note": "Read-only — recommendations do not auto-apply",
     }
 
@@ -289,9 +297,16 @@ def _build_summary(evaluations: list[dict[str, Any]]) -> dict[str, Any]:
 
 def evaluation_status() -> dict[str, Any]:
     store = load_evaluations()
+    closed_loop: dict[str, Any] = {}
+    try:
+        from .closed_loop_evaluation import closed_loop_evaluation_status
+        closed_loop = closed_loop_evaluation_status()
+    except Exception:
+        pass
     return {
         "ok": True,
         "summary": store.get("summary") or {},
         "evaluations": (store.get("evaluations") or [])[-20:],
         "updated_at": store.get("updated_at"),
+        "closed_loop": closed_loop,
     }

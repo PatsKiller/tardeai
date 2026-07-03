@@ -69,3 +69,16 @@ regime:
 
 monitoring:
   panel_limit: 30
+
+# Phase D — closed-loop evaluation (run via hermes_threshold_learner.py --evaluate)
+evaluation:
+  enabled: true
+  lookback_days: 60
+  min_days_after_activation: 7
+  before_window_days: 14
+  after_window_days: 14
+  min_window_days: 7
+  min_blocked_samples: 3
+  helped_hit_rate_delta: 0.02
+  hurt_hit_rate_delta: -0.05
+  weak_blocked_hit_rate_ceiling: 0.40
