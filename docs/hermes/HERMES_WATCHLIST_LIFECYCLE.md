@@ -104,6 +104,7 @@ Run after deploy or config change:
 6. **UI** — `/v3/hermes` → Closed Loop → Watchlist lifecycle shows Health column and trend arrows.
 7. **Override** — `POST /api/v2/hermes/watchlist-lifecycle/override` still works; does not change `scope_tier`.
 8. **Tests** — `.venv/bin/python -m pytest tests/test_watchlist_lifecycle.py -q` all pass.
+9. **Phase D evaluation** — `.venv/bin/python scripts/hermes_threshold_learner.py --evaluate` includes `closed_loop` verdict for promotion gate; or `--closed-loop-evaluate` alone.
 
 ## 10. Example scenarios
 
@@ -131,8 +132,28 @@ Run after deploy or config change:
 - Operator POST override `blacklisted` with reason; stage overrides `pause_eligible` auto-blacklist path when override set.
 - Tier unchanged until separate `--apply` demotion.
 
+## 11. Phase D — closed-loop evaluation
+
+After the promotion health gate has been active ≥7d (config: `evaluation.min_days_after_activation`):
+
+| Command | Purpose |
+|---------|---------|
+| `--evaluate` | Threshold before/after **plus** watchlist gate evaluation |
+| `--closed-loop-evaluate` | Gate-only evaluation (read-only) |
+
+**Metrics compared:** `hit_rate_promotions` and `maturity_composite_score` in before/after windows around gate activation; counterfactual `blocked_symbol_promo_hit_rate` from `hermes_outcome_ledger`.
+
+**Storage:** `data/runtime/hermes_closed_loop_evaluations.json` · audit `hermes_closed_loop_eval_audit.jsonl`
+
+**API:** `GET /api/v2/hermes/closed-loop/evaluations` · `POST /api/v2/hermes/closed-loop/evaluate`
+
+**UI:** Closed Loop → Watchlist lifecycle → **Promotion gate validation** card.
+
+**Verdicts:** `helped` → `keep_gate` · `neutral` → `monitor` · `hurt` → `review_gate` · thin data → `needs_more_data`
+
 ## Related
 
 - `HERMES_SCOPE_GOVERNOR.md` — tier owner
+- `HERMES_THRESHOLD_EVALUATION_ENGINE.md` — threshold before/after engine
 - `OUTCOME_BUS_IMPLEMENTATION.md` — `feedback_to_governor`
 - `HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` — bus reactions adjust promotion caps

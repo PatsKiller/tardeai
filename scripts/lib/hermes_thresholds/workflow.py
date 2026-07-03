@@ -180,6 +180,13 @@ def threshold_status() -> dict[str, Any]:
     except Exception:
         pass
 
+    closed_loop_eval: dict[str, Any] = {}
+    try:
+        from .closed_loop_evaluation import closed_loop_evaluation_status
+        closed_loop_eval = closed_loop_evaluation_status()
+    except Exception:
+        pass
+
     enriched_pending = []
     for p in pending:
         ep = dict(p)
@@ -224,6 +231,7 @@ def threshold_status() -> dict[str, Any]:
         "last_evaluated_at": (last_proposed or {}).get("at"),
         "last_changed_at": (last_change or {}).get("at"),
         "evaluation_summary": eval_summary,
+        "closed_loop_evaluation": closed_loop_eval,
         "recent_audit": load_audit_tail(8),
         "cli_commands": {
             "status": ".venv/bin/python scripts/hermes_threshold_learner.py --status",
@@ -235,6 +243,7 @@ def threshold_status() -> dict[str, Any]:
                 else ".venv/bin/python scripts/hermes_threshold_learner.py --approve <proposal_id>"
             ),
             "evaluate": ".venv/bin/python scripts/hermes_threshold_learner.py --evaluate",
+            "closed_loop_evaluate": ".venv/bin/python scripts/hermes_threshold_learner.py --closed-loop-evaluate",
         },
     }
 

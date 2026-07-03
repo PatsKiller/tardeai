@@ -203,10 +203,24 @@ POST /api/v2/hermes/thresholds/evaluate   # trigger on-demand cycle
 - [x] Panel section: evaluation summary in Closed Loop → Adaptive thresholds
 - [x] Tests: synthetic before/after series → expected verdict
 
-## 12. Future (post-approval evaluation)
+## 12. Phase D — closed-loop evaluation (watchlist gate)
+
+`--evaluate` now also runs `closed_loop_evaluation.py`:
+
+- **Subject:** `watchlist_promotion_health_gate`
+- **Windows:** before/after gate activation (first `blocked_promotion` audit row)
+- **Counterfactual:** promotion hit rate for blocked symbols vs system `hit_rate_promotions` delta
+- **CLI:** `--closed-loop-evaluate` (gate only) · included in `--evaluate`
+- **API:** `GET/POST /api/v2/hermes/closed-loop/evaluations|evaluate`
+- **Store:** `hermes_closed_loop_evaluations.json`
+
+See `HERMES_WATCHLIST_LIFECYCLE.md` §11.
+
+## 13. Future (post-approval evaluation)
 
 - Regime-stratified evaluations (high-vol vs normal windows)
 - Auto-suggest revert proposals when `hurt` + `high` confidence
+- Holdings health trend evaluation (Phase D+)
 
 **Note:** Proposal-time counterfactual (`evidence.counterfactual` — fires in last 14d) is implemented in the **Threshold Learner** (scoring Phase 3), not the evaluation engine. Evaluation engine remains read-only post-approval impact analysis.
 

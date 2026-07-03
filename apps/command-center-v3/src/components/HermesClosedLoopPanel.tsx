@@ -559,6 +559,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
   const { data: histData, loading: histLoading } = useApi<any>(`/api/v2/hermes/outcome-bus/history?days=${trendDays}`, 120_000)
   const { data: thresholdData, refetch: refetchThresholds } = useApi<any>('/api/v2/hermes/thresholds', 120_000)
   const { data: evalData } = useApi<any>('/api/v2/hermes/thresholds/evaluations', 120_000)
+  const { data: closedLoopEvalData } = useApi<any>('/api/v2/hermes/closed-loop/evaluations', 120_000)
   const { data: holdingsLifecycleData } = useApi<any>('/api/v2/hermes/holdings-lifecycle', 120_000)
 
   const bus = busData?.bus ?? busData ?? {}
@@ -573,6 +574,8 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
   const lifecycleSummary: Record<string, number> = watchlistLifecycle?.summary ?? {}
   const lifecyclePendingCount = watchlistLifecycle?.pending_count ?? lifecyclePending.length
   const lifecycleBlockedCount = watchlistLifecycle?.blocked_promotion_count ?? (watchlistLifecycle?.blocked_promotions?.length ?? 0)
+  const closedLoopEval = closedLoopEvalData?.latest ?? thresholdData?.closed_loop_evaluation?.latest ?? null
+  const closedLoopEvalSummary = closedLoopEvalData?.summary ?? thresholdData?.closed_loop_evaluation?.summary ?? {}
   const bySymbol: Record<string, any> = bus.by_symbol ?? {}
   const stopQ = bus.stop_quality ?? {}
   const resource = bus.resource_efficiency ?? {}
@@ -1812,6 +1815,47 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
               )
             })}
           </>
+        )}
+        {(closedLoopEval || lifecycleBlockedCount > 0) && (
+          <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>
+              Promotion gate validation
+            </div>
+            {closedLoopEval ? (
+              <>
+                <div style={{ fontSize: 10, color: 'var(--text2)' }}>
+                  <span style={{
+                    fontWeight: 700,
+                    color: closedLoopEval.verdict === 'helped' ? '#22c55e'
+                      : closedLoopEval.verdict === 'hurt' ? '#ef4444' : '#f59e0b',
+                  }}>{closedLoopEval.verdict}</span>
+                  {' · rec '}{closedLoopEval.recommendation}
+                  {closedLoopEval.impact_score != null && ` · impact ${Number(closedLoopEval.impact_score).toFixed(3)}`}
+                </div>
+                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>
+                  {String(closedLoopEval.reasoning ?? '').slice(0, 160)}
+                </div>
+                {closedLoopEval.metrics?.hit_rate_promotions?.delta != null && (
+                  <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>
+                    Promotion hit rate Δ{(Number(closedLoopEval.metrics.hit_rate_promotions.delta) * 100).toFixed(1)}pp
+                    {closedLoopEval.metrics?.blocked_promotion_events?.count != null
+                      && ` · ${closedLoopEval.metrics.blocked_promotion_events.count} blocks logged`}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ fontSize: 9, color: 'var(--text3)' }}>
+                {lifecycleBlockedCount} block{lifecycleBlockedCount !== 1 ? 's' : ''} this tick — run{' '}
+                <code style={{ fontSize: 9 }}>hermes_threshold_learner.py --evaluate</code> after 7d for verdict.
+              </div>
+            )}
+            {closedLoopEvalSummary.latest_verdict && (
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>
+                Last eval: {closedLoopEvalSummary.latest_verdict}
+                {closedLoopEvalData?.updated_at && ` · ${String(closedLoopEvalData.updated_at).slice(0, 10)}`}
+              </div>
+            )}
+          </div>
         )}
         <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>
           Config: config/hermes_watchlist_lifecycle.yaml · override: POST /api/v2/hermes/watchlist-lifecycle/override
