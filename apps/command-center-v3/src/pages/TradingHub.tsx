@@ -768,7 +768,7 @@ export default function TradingHub({ onDrill }: Props) {
         </div>
         )
       })()}
-      {tab === 'Entry Desk' && <ManualTosDesk />}
+      {tab === 'Entry Desk' && <ManualTosDesk focusSymbol={searchParams.get('symbol') || undefined} />}
       {tab === 'ATM Controls' && <ATMControlPanel />}
     </div>
   )

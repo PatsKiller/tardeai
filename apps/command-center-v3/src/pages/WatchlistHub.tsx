@@ -6,6 +6,8 @@ import DiscoveryPanel from '../components/DiscoveryPanel'
 import ToSWatchlists from '../components/ToSWatchlists'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import WatchlistCard from '../components/WatchlistCard'
+import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
+import { exitLadder } from '../lib/exitLadder'
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
@@ -101,6 +103,9 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
   const [showDirectives, setShowDirectives] = useState(false)   // Watch Directives chip wall — collapsed by default (it's a long list; the Directive filter dropdown still works)
   const [ensOpen, setEnsOpen] = useState<Record<string, boolean>>({})   // per-card on-demand ensemble (avoids 24 fetches on mount)
   const [refreshBusy, setRefreshBusy] = useState<Record<string, string>>({})   // per-symbol manual refresh status
+  const [proposeSeed, setProposeSeed] = useState<WatchlistProposeSeed | null>(null)
+  const [actionToast, setActionToast] = useState('')
+  const [buildBusy, setBuildBusy] = useState<Record<string, string>>({})
   const PER_PAGE = 24
   const isStarred = (it: any) => starOverride[String(it.symbol).toUpperCase()] ?? !!it.starred
   // operator star: always-in-window + sorted first (server) + faster entry-plan refresh (server). Optimistic.
@@ -123,6 +128,46 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
   const heldCount = useMemo(() => new Set(items
     .filter((it: any) => it.in_portfolio || outMap[String(it.symbol).toUpperCase()]?.held)
     .map((it: any) => String(it.symbol).toUpperCase())).size, [items, outMap])
+
+  const openDesk = (sym: string) => {
+    window.location.href = `/v3/trading?tab=Entry+Desk&symbol=${sym}`
+  }
+
+  const openProposeModal = (it: any) => {
+    const entry = it.entry_limit != null ? Number(it.entry_limit) : null
+    const stop = it.entry_stop != null ? Number(it.entry_stop) : null
+    const planTarget = it.entry_target != null ? Number(it.entry_target) : null
+    const pa = paMap[it.symbol]
+    const street = pa?.target != null && Number(pa.target) > 0 ? Number(pa.target) : null
+    const rr = it.entry_rr != null ? Number(it.entry_rr)
+      : (entry && stop && planTarget && entry > stop && planTarget > entry ? (planTarget - entry) / (entry - stop) : null)
+    setProposeSeed({
+      it, entry, stop, planTarget, rr,
+      ladder: entry != null || stop != null ? exitLadder(entry, stop, planTarget, street) : null,
+      pa,
+    })
+  }
+
+  const buildPlan = async (sym: string) => {
+    const key = String(sym).toUpperCase()
+    setBuildBusy(b => ({ ...b, [key]: '…' }))
+    try {
+      const r = await fetch(`/api/v2/watchlist/${key}/plan`, { method: 'POST' })
+      const j = await r.json()
+      const payload = j?.data ?? j
+      if (payload?.ok) {
+        setBuildBusy(b => ({ ...b, [key]: 'queued' }))
+        setActionToast(`${key} — entry planner queued (~1–2 min)`)
+        setTimeout(() => { refetchWl(); setBuildBusy(b => { const nxt = { ...b }; delete nxt[key]; return nxt }) }, 3000)
+      } else {
+        setBuildBusy(b => ({ ...b, [key]: 'error' }))
+        setActionToast(payload?.error || 'Build plan failed')
+      }
+    } catch {
+      setBuildBusy(b => ({ ...b, [key]: 'error' }))
+      setActionToast('Build plan failed')
+    }
+  }
 
   const refreshSymbol = async (sym: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -292,6 +337,14 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
       </div>
 
       <div style={{ fontSize: 11, color: AMBER, marginBottom: 12, padding: '9px 13px', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.28)', borderRadius: 7 }}>{adv?.disclaimer ?? 'Advisory only — current technical posture vs the post-trade prior. Never gates promotion/scoring.'}</div>
+      {actionToast && (
+        <div style={{ fontSize: 11, color: GREEN, marginBottom: 10, padding: '8px 12px', background: 'rgba(34,197,94,.1)', border: '1px solid rgba(34,197,94,.25)', borderRadius: 7 }}>
+          {actionToast}
+          {actionToast.includes('proposal') && (
+            <a href="/v3/trading?tab=Proposals" style={{ marginLeft: 10, color: BLUE, fontWeight: 700 }}>Open Proposals →</a>
+          )}
+        </div>
+      )}
 
       <div style={panel}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -346,6 +399,10 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
                   onToggleStar={e => { e.stopPropagation(); toggleStar(it) }}
                   onRefresh={e => refreshSymbol(it.symbol, e)}
                   onToggleEns={() => setEnsOpen(o => ({ ...o, [it.id]: !o[it.id] }))}
+                  onPropose={openProposeModal}
+                  onAdjust={it => openDesk(it.symbol)}
+                  onBuildPlan={buildPlan}
+                  onOpenDesk={openDesk}
                 />
               )
             })}
@@ -362,6 +419,16 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
       </div>
 
       {showAdd && <AddWatchModal onClose={() => setShowAdd(false)} onCreated={() => { refetchWd(); refetchWl() }} paMap={paMap} lists={listOpts} />}
+      {proposeSeed && (
+        <WatchlistProposeModal
+          seed={proposeSeed}
+          onClose={() => setProposeSeed(null)}
+          onProposed={res => {
+            setActionToast(res.message || `${res.symbol} queued as proposal #${res.proposal_id}`)
+            refetchWl()
+          }}
+        />
+      )}
     </div>
   )
 }

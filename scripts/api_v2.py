@@ -5359,6 +5359,73 @@ def _wl_refresh_symbol(sym: str) -> tuple[int, dict]:
     return 200, out
 
 
+def _wl_propose_symbol(sym: str, body: dict | None = None) -> tuple[int, dict]:
+    """POST /api/v2/watchlist/<SYMBOL>/propose — queue broker proposal from watchlist plan."""
+    sym = (sym or "").strip().upper()
+    if not sym:
+        return 400, {"ok": False, "error": "symbol required"}
+
+    b = body or {}
+    row = _db_query(
+        """SELECT entry_limit, entry_stop, entry_target, entry_rr
+           FROM watchlist_items WHERE symbol=%s AND status IN ('active','researched') LIMIT 1""",
+        (sym,), fetch="one")
+    if not row:
+        return 404, {"ok": False, "error": f"{sym} not on active watchlist"}
+
+    entry = float(b.get("entry") or row.get("entry_limit") or 0)
+    stop = float(b.get("stop") or row.get("entry_stop") or 0)
+    target = float(b.get("target") or row.get("entry_target") or 0)
+    shares = int(b.get("shares") or 10)
+    account = str(b.get("account") or os.environ.get("ENTRY_DESK_DEFAULT_ACCOUNT") or "").strip()
+
+    if not (entry > 0 and stop > 0 and target > 0 and entry > stop and target > entry):
+        return 400, {"ok": False, "error": "valid entry > stop and target > entry required"}
+
+    import entry_desk_ops as edo
+    res = edo.promote_to_broker_queue({
+        "symbol": sym,
+        "account": account,
+        "shares": shares,
+        "entry": entry,
+        "stop": stop,
+        "target": target,
+        "source": b.get("source") or "watchlist_card",
+    })
+    code = 200 if res.get("ok") else 400
+    return code, res
+
+
+def _wl_build_plan(sym: str) -> tuple[int, dict]:
+    """POST /api/v2/watchlist/<SYMBOL>/plan — run entry planner for one symbol (async)."""
+    sym = (sym or "").strip().upper()
+    if not sym:
+        return 400, {"ok": False, "error": "symbol required"}
+
+    exists = _db_query(
+        "SELECT 1 FROM watchlist_items WHERE symbol=%s AND status IN ('active','researched') LIMIT 1",
+        (sym,), fetch="one")
+    if not exists:
+        return 404, {"ok": False, "error": f"{sym} not on active watchlist"}
+
+    import threading
+
+    def _run():
+        try:
+            import watchlist_entry_planner as wep
+            wep.run(symbols=[sym], limit=1, alert=False)
+        except Exception as e:
+            log.warning(f"watchlist plan {sym} failed: {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return 200, {
+        "ok": True,
+        "symbol": sym,
+        "message": f"Entry planner queued for {sym} — refresh card in ~1–2 min",
+        "note": "Advisory-only — validates limit, stop, target, and R:R",
+    }
+
+
 def _wl_jobs():
     """GET /api/v2/watchlist/jobs — current agent jobs."""
     rows = _db_query("SELECT * FROM watchlist_agent_jobs ORDER BY created_at DESC LIMIT 50") or []
@@ -28208,6 +28275,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if sym:
                 try:
                     return _wl_refresh_symbol(sym)
+                except Exception as e:
+                    return 500, {"ok": False, "error": str(e)}
+        # POST /api/v2/watchlist/<SYMBOL>/propose — queue broker proposal from watchlist plan
+        if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/propose"):
+            sym = base_path[len("/api/v2/watchlist/"):-len("/propose")].strip("/").upper()
+            if sym:
+                try:
+                    return _wl_propose_symbol(sym, body or {})
+                except Exception as e:
+                    return 500, {"ok": False, "error": str(e)}
+        # POST /api/v2/watchlist/<SYMBOL>/plan — run entry planner for one symbol
+        if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/plan"):
+            sym = base_path[len("/api/v2/watchlist/"):-len("/plan")].strip("/").upper()
+            if sym:
+                try:
+                    return _wl_build_plan(sym)
                 except Exception as e:
                     return 500, {"ok": False, "error": str(e)}
         # POST /api/v2/watchlist/<SYMBOL>/requeue — re-queue analysis for LLM failures
