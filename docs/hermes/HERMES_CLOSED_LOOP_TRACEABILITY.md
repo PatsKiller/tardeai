@@ -64,7 +64,7 @@ Run after deploy or weekly during observation window:
 
 ### Prompt 3 — Feedback & traceability
 
-9. `hermes_outcome_feedback_agent.py --apply` — `outcome_bus.json` contains `lifecycle.watchlist` + `lifecycle.holdings`
+9. `hermes_outcome_feedback_agent.py --apply` — bus contains `lifecycle.*`, `watchlist_health`, `holdings_health`, `threshold_proposals`, `lineage.snapshot_id`
 10. Governor dry-run with bus — `stop_quality_*` reactions in `bus_reactions` when divergence/R-left triggers fire
 11. `hermes_threshold_learner.py --evaluate` — threshold evals + `closed_loop` promotion-gate verdict
 12. `GET /api/v2/hermes/symbol-journey?symbol=SCHD` — `timeline` with governor + outcome events

@@ -4,7 +4,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from lib.hermes_outcome_bus.bus import load_outcome_bus_trend
+from lib.hermes_outcome_bus.bus import load_outcome_bus_trend, read_outcome_bus
+from lib.hermes_outcome_bus.bus_traceability import make_snapshot_id
 
 from .scoring import (
     collect_key_trigger_days,
@@ -413,6 +414,33 @@ def _propose_stop_quality(
     )
 
 
+def _bus_lineage_for_proposal(store: dict[str, Any], threshold_id: str) -> dict[str, Any]:
+    """Capture outcome bus snapshot + prior proposal chain at proposal time."""
+    bus = read_outcome_bus() or {}
+    g = bus.get("global") or {}
+    sq = bus.get("stop_quality") or {}
+    re = bus.get("resource_efficiency") or {}
+    run_id = bus.get("run_id")
+    gen_at = bus.get("generated_at")
+    prior_ids: list[str] = []
+    for p in (store.get("decided") or []) + (store.get("pending") or []):
+        if p.get("threshold_id") == threshold_id and p.get("id"):
+            prior_ids.append(str(p["id"]))
+    return {
+        "outcome_bus_run_id": run_id,
+        "outcome_bus_snapshot_id": make_snapshot_id(str(run_id or ""), str(gen_at or "")),
+        "outcome_bus_generated_at": gen_at,
+        "metrics_at_generation": {
+            "hit_rate_promotions": g.get("hit_rate_promotions"),
+            "resource_efficiency_score": re.get("score") or re.get("resource_efficiency_score"),
+            "trail_activation_rate": sq.get("trail_activation_rate"),
+            "aligned_pct": sq.get("aligned_pct"),
+            "maturity_composite_score": (bus.get("maturity") or {}).get("composite_score"),
+        },
+        "prior_proposal_ids": prior_ids,
+    }
+
+
 def run_learning_cycle(apply_proposals: bool = False) -> dict[str, Any]:
     """Analyze bus history and create threshold proposals (never auto-applies)."""
     cfg = load_threshold_config()
@@ -477,6 +505,13 @@ def run_learning_cycle(apply_proposals: bool = False) -> dict[str, Any]:
         if p["threshold_id"] in pending_ids:
             skipped.append({"threshold_id": p["threshold_id"], "reason": "pending_proposal_exists"})
             continue
+        tid = p["threshold_id"]
+        lineage = _bus_lineage_for_proposal(store, tid)
+        p["lineage"] = lineage
+        evidence = dict(p.get("evidence") or {})
+        evidence["metrics_at_generation"] = lineage.get("metrics_at_generation")
+        evidence["outcome_bus_run_id"] = lineage.get("outcome_bus_run_id")
+        p["evidence"] = evidence
         new_pending.append(p)
         pending_ids.add(p["threshold_id"])
         added += 1

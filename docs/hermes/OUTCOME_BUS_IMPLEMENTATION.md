@@ -34,6 +34,8 @@ Tag engine runs **before** feedback so `by_tag` uses fresh lift/precision.
 | `scripts/hermes_outcome_feedback_agent.py` | Bus builder (rules-only, zero LLM) |
 | `config/hermes_outcome_feedback.yaml` | Thresholds, S3 policy metadata |
 | `scripts/lib/hermes_outcome_bus/bus.py` | Atomic read/write + history snapshots |
+| `scripts/lib/hermes_outcome_bus/bus_traceability.py` | Watchlist/holdings health, proposals, lineage, stop trends |
+| `scripts/lib/hermes_outcome_bus/lifecycle_slice.py` | Compact lifecycle slice (backward compatible) |
 | `scripts/lib/hermes_scope_governor/outcome_bus.py` | Governor consumes `feedback_to_governor` |
 | `scripts/research_scheduler.py` | Research priority × `quality_multiplier` |
 | `scripts/hermes_score_event_feeder.py` | Multi-factor S3 reactivation |
@@ -417,9 +419,85 @@ See `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` for full design, CLI wor
 
 Governor computes watchlist health **before** tier candidate fetch; blocked promotions audit to `data/runtime/hermes_watchlist_lifecycle_audit.jsonl`. **Phase D:** `--evaluate` validates gate impact (`GET /api/v2/hermes/closed-loop/evaluations`).
 
-**Lifecycle slice (nightly `--apply`):** `outcome_bus.json` includes `lifecycle.watchlist` + `lifecycle.holdings` (health, stage, monitoring hints) and enriches `by_symbol` with `watchlist_lifecycle` / `holdings_lifecycle`. Consumed by `research_scheduler.py` (holdings research-depth multipliers).
+**Lifecycle slice (nightly `--apply`):** `outcome_bus.json` includes `lifecycle.watchlist` + `lifecycle.holdings` (compact) and enriches `by_symbol` with `watchlist_lifecycle` / `holdings_lifecycle`. Consumed by `research_scheduler.py` (holdings research-depth multipliers).
 
-Full formula, gates, and validation: `HERMES_WATCHLIST_LIFECYCLE.md` (§9–§11).
+### Traceability sections (2026-07-03)
+
+Module: `scripts/lib/hermes_outcome_bus/bus_traceability.py` — called on nightly `--apply` after lifecycle slice.
+
+| Top-level key | Purpose |
+|---------------|---------|
+| `lineage` | `snapshot_id`, `run_id`, `prior_run_id`, `prior_snapshot_id`, upstream/downstream |
+| `watchlist_health` | Full per-symbol health scores, components, `health_history`, `data_quality`, lineage refs |
+| `holdings_health` | Per-holding health, stop quality snapshot, lifecycle stage, `health_history` |
+| `threshold_proposals` | Pending + recent decided proposals with `metrics_at_snapshot`, bus snapshot linkage, prior proposal chain |
+| `stop_quality.trends` | `window_7d` / `window_14d` deltas for trail, alignment, R-left, tier alignment |
+| `by_symbol.*.lineage` | Cross-refs to `watchlist_health` / `holdings_health` + snapshot ID |
+| `feedback_to_governor.*.source_refs` | Bus snapshot + watchlist health score at feedback emission |
+
+**Backward compatible:** existing consumers of `global`, `by_symbol`, `lifecycle`, `stop_quality` unchanged; new keys are additive.
+
+#### Example — `watchlist_health.symbols.XYZ`
+
+```json
+{
+  "health_score": 62,
+  "display_score": 59,
+  "confidence_tier": "partial",
+  "data_quality": "partial",
+  "lifecycle_stage": "watch",
+  "scope_tier": "S2",
+  "components": {
+    "outcome_performance": 55.0,
+    "promotion_success_rate": 48.0,
+    "tag_lift_consistency": 62.0,
+    "stop_quality": 71.0,
+    "regime_alignment": 60.0,
+    "research_actionability": 50.0
+  },
+  "health_history": [
+    {"at": "2026-07-02T03:25:00+00:00", "health_score": 58, "stage": "monitoring"}
+  ],
+  "lineage": {
+    "source": "data/runtime/hermes_watchlist_lifecycle.json",
+    "outcome_bus_run_id": "ofb_a1b2c3d4e5",
+    "outcome_bus_snapshot_id": "outcome_bus_20260703T032500_ofb_a1b2c3d4e5"
+  }
+}
+```
+
+#### Example — `holdings_health.symbols.SCHD`
+
+```json
+{
+  "health_score": 74,
+  "lifecycle_stage": "healthy",
+  "components": {
+    "stop_quality": 80.0,
+    "outcome_consistency": 68.0,
+    "realized_r": 72.0
+  },
+  "stop_quality": {
+    "trail_activation_rate": 0.42,
+    "aligned_pct": 0.61,
+    "r_left_on_table_avg": 11.2
+  },
+  "health_history": [
+    {"at": "2026-07-02T03:25:00+00:00", "health_score": 72, "stage": "healthy"}
+  ]
+}
+```
+
+#### Validation checklist (traceability)
+
+1. `hermes_outcome_feedback_agent.py --apply` — bus contains `lineage.snapshot_id`, `watchlist_health`, `holdings_health`, `threshold_proposals`
+2. `by_symbol.SYM.lineage.watchlist_health_ref` present when symbol in watchlist lifecycle
+3. `feedback_to_governor[0].source_refs.outcome_bus_snapshot_id` matches `lineage.snapshot_id`
+4. `stop_quality.trends.window_7d.trail_activation_rate` populated when ≥2 history days
+5. New threshold proposals from `--learn` include `lineage.outcome_bus_run_id` + `metrics_at_generation`
+6. `pytest tests/test_bus_traceability.py tests/test_lifecycle_bus_slice.py -q`
+
+Full formula, gates, and validation: `HERMES_WATCHLIST_LIFECYCLE.md` (§9–§11). End-to-end trace: `HERMES_CLOSED_LOOP_TRACEABILITY.md`.
 
 ---
 
