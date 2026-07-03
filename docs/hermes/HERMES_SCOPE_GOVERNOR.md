@@ -96,7 +96,8 @@ Inputs (portfolio, outcomes, social, regime, events)
 1. **Tier assignment** on every watchlist symbol (`scope_tier`)
 2. **Audit log** — `scope_governor_audit` (run_id, action, from/to, reason + edge evidence)
 3. **Governed universe feed** — `data/runtime/hermes_governed_universe.json`
-4. **API** — `GET /api/v2/hermes/scope-governor`
+4. **Watchlist lifecycle snapshot** — `data/runtime/hermes_watchlist_lifecycle.json` (stages + conviction; see `HERMES_WATCHLIST_LIFECYCLE.md`)
+5. **API** — `GET /api/v2/hermes/scope-governor` (+ `watchlist_lifecycle`, override POST)
 
 ## Closed-loop feedback
 

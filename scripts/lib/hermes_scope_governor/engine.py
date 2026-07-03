@@ -348,6 +348,26 @@ class ScopeGovernorEngine:
             run_id, regime, int(self.cfg["total_cap"]), post, edge_scores_map, decisions, self.cfg)
         feed_path = write_universe_feed(gov, apply=apply)
 
+        lifecycle_snap: dict[str, Any] = {}
+        try:
+            from .watchlist_lifecycle import build_and_persist_lifecycle
+            bus_feedback: dict[str, dict[str, Any]] = {}
+            try:
+                from lib.hermes_outcome_bus.bus import read_outcome_bus
+                bus = read_outcome_bus() or {}
+                for fb in bus.get("feedback_to_governor") or []:
+                    s = str(fb.get("symbol") or "").upper().strip()
+                    if s:
+                        bus_feedback[s] = fb
+            except Exception:
+                pass
+            lifecycle_snap = build_and_persist_lifecycle(
+                run_id, signals, edge_scores_map, edge_details, have, want,
+                decisions, post, bus_feedback, apply=apply,
+            )
+        except Exception as lc_err:
+            lifecycle_snap = {"ok": False, "error": str(lc_err)[:120]}
+
         by_action: dict[str, int] = {}
         for d in decisions:
             by_action[d.action] = by_action.get(d.action, 0) + 1
@@ -374,6 +394,11 @@ class ScopeGovernorEngine:
             "bus_reaction_regime_modifier": reaction_plan.regime_modifier,
             "bus_reaction_metrics": reaction_plan.bus_metrics,
             "bus_reaction_audit_logged": reaction_audit_logged,
+            "watchlist_lifecycle": {
+                "summary": lifecycle_snap.get("summary") or {},
+                "pending_count": lifecycle_snap.get("pending_count", 0),
+                "review_mode": lifecycle_snap.get("review_mode", True),
+            },
             "ts": datetime.now(timezone.utc).isoformat(),
         }
         try:

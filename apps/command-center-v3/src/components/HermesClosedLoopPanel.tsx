@@ -80,6 +80,15 @@ const THRESHOLD_SHORT_LABEL: Record<string, string> = {
   'stop_quality.divergence_delta_pp': 'Stop Quality Divergence',
 }
 
+const LIFECYCLE_STAGE_COLOR: Record<string, string> = {
+  new: '#60a5fa',
+  monitoring: 'var(--text3)',
+  promoted: '#22c55e',
+  demoted: '#f59e0b',
+  archived: 'var(--text3)',
+  blacklisted: '#ef4444',
+}
+
 function confidenceColor(tier?: string | null) {
   return CONFIDENCE_COLOR[String(tier ?? '').toLowerCase()] ?? '#f59e0b'
 }
@@ -542,6 +551,11 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
   const heat = gov.counts_by_heat ?? govData?.universe?.counts_by_heat ?? {}
   const feedback: any[] = bus.feedback_to_governor ?? []
   const audit: any[] = govData?.recent_audit ?? []
+  const watchlistLifecycle = govData?.watchlist_lifecycle ?? {}
+  const lifecyclePanelRows: any[] = watchlistLifecycle?.panel_rows ?? []
+  const lifecyclePending: any[] = watchlistLifecycle?.pending_transitions ?? []
+  const lifecycleSummary: Record<string, number> = watchlistLifecycle?.summary ?? {}
+  const lifecyclePendingCount = watchlistLifecycle?.pending_count ?? lifecyclePending.length
   const bySymbol: Record<string, any> = bus.by_symbol ?? {}
   const stopQ = bus.stop_quality ?? {}
   const resource = bus.resource_efficiency ?? {}
@@ -1546,6 +1560,83 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
             <span style={{ color: 'var(--text3)' }}>{meta.n}</span>
           </div>
         ))}
+      </div>
+
+      {/* Watchlist lifecycle */}
+      <div style={{
+        background: 'var(--bg1)',
+        border: `1px solid ${lifecyclePendingCount > 0 ? 'rgba(245,158,11,.4)' : 'var(--border)'}`,
+        borderRadius: 10,
+        padding: 16,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Watchlist lifecycle</div>
+            <div style={{ fontSize: 10, color: lifecyclePendingCount > 0 ? '#f59e0b' : 'var(--text3)', marginTop: 4 }}>
+              {lifecyclePendingCount > 0
+                ? `${lifecyclePendingCount} pending tier transition${lifecyclePendingCount !== 1 ? 's' : ''}`
+                : 'Outcome-driven stages parallel to scope tiers (S0–S3)'}
+            </div>
+          </div>
+          {watchlistLifecycle?.review_mode && (
+            <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(96,165,250,.12)', color: '#60a5fa', border: '1px solid rgba(96,165,250,.3)' }}>
+              ADVISORY
+            </span>
+          )}
+        </div>
+        {Object.keys(lifecycleSummary).length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            {Object.entries(lifecycleSummary).map(([st, n]) => (
+              <span key={st} style={{
+                fontSize: 9, padding: '3px 8px', borderRadius: 4,
+                color: LIFECYCLE_STAGE_COLOR[st] ?? 'var(--text3)',
+                background: 'var(--bg2)', border: '1px solid var(--border)',
+              }}>
+                {st} {n}
+              </span>
+            ))}
+          </div>
+        )}
+        {lifecyclePanelRows.length === 0 ? (
+          <div style={{ fontSize: 11, color: 'var(--text3)', padding: 8 }}>
+            No lifecycle snapshot yet — run <code style={{ fontSize: 10 }}>hermes_scope_governor.py --dry-run</code> or wait for the :07/:37 cron.
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '0.65fr 0.75fr 0.45fr 0.45fr 0.55fr 1fr', fontSize: 8, color: 'var(--text3)', padding: '4px 6px', textTransform: 'uppercase' }}>
+              <span>Symbol</span><span>Stage</span><span>Tier</span><span>Conviction</span><span>Gate</span><span>Reason / pending</span>
+            </div>
+            {lifecyclePanelRows.map((row: any) => {
+              const st = row.lifecycle_stage ?? 'monitoring'
+              const pending = row.pending_transition
+              return (
+                <div key={row.symbol} style={{
+                  display: 'grid', gridTemplateColumns: '0.65fr 0.75fr 0.45fr 0.45fr 0.55fr 1fr',
+                  padding: '6px', borderBottom: '1px solid var(--border)', fontSize: 11, alignItems: 'center',
+                  borderLeft: pending ? '3px solid #f59e0b' : '3px solid transparent',
+                }}>
+                  <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{row.symbol}</span>
+                  <span style={{ color: LIFECYCLE_STAGE_COLOR[st] ?? 'var(--text2)', fontWeight: 600, fontSize: 10 }}>
+                    {row.lifecycle_label ?? st}
+                  </span>
+                  <span style={{ color: 'var(--text3)', fontFamily: 'monospace' }}>{row.scope_tier ?? '—'}</span>
+                  <span style={{ fontWeight: 700, color: (row.conviction_score ?? 0) >= 65 ? '#22c55e' : (row.conviction_score ?? 0) < 40 ? '#ef4444' : '#f59e0b' }}>
+                    {row.conviction_score != null ? Math.round(Number(row.conviction_score)) : '—'}
+                  </span>
+                  <span style={{ fontSize: 9, color: 'var(--text3)' }}>{row.outcome_gate ?? '—'}</span>
+                  <span style={{ fontSize: 9, color: pending ? '#f59e0b' : 'var(--text3)' }}>
+                    {pending
+                      ? `${pending.from_tier}→${pending.to_tier} (${pending.action})`
+                      : String(row.stage_reason ?? '').slice(0, 60)}
+                  </span>
+                </div>
+              )
+            })}
+          </>
+        )}
+        <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>
+          Config: config/hermes_watchlist_lifecycle.yaml · override: POST /api/v2/hermes/watchlist-lifecycle/override
+        </div>
       </div>
 
       {/* Symbol table */}

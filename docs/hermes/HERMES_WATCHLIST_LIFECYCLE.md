@@ -1,0 +1,76 @@
+# Hermes Watchlist Lifecycle
+
+**Status:** Phase 1 (2026-07-03) · advisory · parallel to `scope_tier` (S0–S3)
+
+## Purpose
+
+The watchlist lifecycle adds an **operator-facing stage** and **conviction score** on top of the Scope Governor’s tier assignments. It does **not** replace `watchlist_items.scope_tier` — tier writes remain owned by `hermes_scope_governor.py --apply`.
+
+Outcome yield drives conviction adjustments; promotion/demotion **recommendations** surface in the Closed Loop panel before tier changes are applied.
+
+## Stages
+
+| Stage | Meaning | Typical tier |
+|-------|---------|--------------|
+| **new** | Discovery grace (< 7d on watchlist) | S2 / S3 |
+| **monitoring** | Warm/cold watch, neutral outcomes | S2 / S3 |
+| **promoted** | Hot attention — holdings, S0/S1, or pending promote | S0 / S1 |
+| **demoted** | Outcome demotion pressure or pending demote | S2 / S3 |
+| **archived** | Cold, low conviction, no fresh trigger | S3 |
+| **blacklisted** | Manual override or outcome pause eligible | S3 |
+
+## Conviction score (0–100)
+
+Base = Scope Governor `edge_score`. Adjustments from:
+
+- `outcome_gate`: promote_eligible (+8), demote_pressure (−18), pause_eligible (−28)
+- Nightly `feedback_to_governor` bus actions (promote / demote / pause deltas)
+
+Config: `config/hermes_watchlist_lifecycle.yaml`
+
+## Transition rules (conservative)
+
+1. **Promoted** — S0/S1 tier, pending promote/reactivate, or strong promote_eligible on warm tier
+2. **Demoted** — `demote_pressure` gate or pending demote decision
+3. **Blacklisted** — manual override only (except auto on `pause_eligible` when enabled)
+4. **Re-promote cooldown** — 7d after demotion (documented; enforced in Phase 2 tier writes)
+5. **min_graded_samples: 3** — inherited graft-gate philosophy from scope governor
+
+## Modules
+
+| Path | Role |
+|------|------|
+| `scripts/lib/hermes_scope_governor/watchlist_lifecycle.py` | Stage resolution, conviction, persistence |
+| `config/hermes_watchlist_lifecycle.yaml` | Stages, thresholds, panel limit |
+| `data/runtime/hermes_watchlist_lifecycle.json` | Latest snapshot per governor tick |
+| `data/runtime/hermes_watchlist_lifecycle_audit.jsonl` | Tick + manual override audit |
+
+Wired into `ScopeGovernorEngine.run()` after each dry-run or `--apply` tick.
+
+## API
+
+**GET** `/api/v2/hermes/scope-governor`
+
+- `watchlist_lifecycle` — full snapshot (`panel_rows`, `pending_transitions`, `summary`)
+- `watchlist_lifecycle_audit` — recent audit tail
+
+**POST** `/api/v2/hermes/watchlist-lifecycle/override`
+
+```json
+{ "symbol": "TSLA", "stage": "blacklisted", "reason": "operator: noise symbol", "by": "operator_ui" }
+```
+
+Requires `reason` ≥ 3 characters. Does not change `scope_tier` — override affects lifecycle display until cleared.
+
+## UI
+
+`/v3/hermes` → Closed Loop → **Watchlist lifecycle** table:
+
+- Symbol, stage, tier, conviction, outcome gate, pending transition or stage reason
+- Amber border when a pending tier transition exists
+
+## Related
+
+- `HERMES_SCOPE_GOVERNOR.md` — tier owner
+- `OUTCOME_BUS_IMPLEMENTATION.md` — `feedback_to_governor`
+- `HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` — bus reactions adjust promotion caps
