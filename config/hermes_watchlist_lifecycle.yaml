@@ -18,13 +18,13 @@ demotion_cooldown_days: 7
 
 # Composite health score (0–100) — Phase 2
 health_weights:
-  outcome_performance: 0.25
-  promotion_success_rate: 0.15
-  tag_lift_consistency: 0.15
-  stop_quality: 0.15
-  regime_alignment: 0.10
-  research_efficiency: 0.10
-  edge_blend: 0.10
+  outcome_performance: 0.22
+  promotion_success_rate: 0.13
+  tag_lift_consistency: 0.13
+  stop_quality: 0.25          # heavier weight on stop discipline (Prompt A)
+  regime_alignment: 0.09
+  research_efficiency: 0.09
+  edge_blend: 0.09
 
 health_thresholds:
   promote_floor: 62        # block outcome S1 promotion below this

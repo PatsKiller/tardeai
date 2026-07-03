@@ -43,6 +43,18 @@ stop_quality:
   strong_advantage_pp: 0.20
   strong_advantage_hot_min_relax: 5
   strong_advantage_hot_edge_boost: 5.0
+  # Prompt D — expanded stop-quality reactions
+  r_left_on_table_ceiling: 0.35       # avg R left on table (0–1 scale) triggers tighten
+  r_left_worsening_days: 5            # consecutive days R-left trend worsening
+  r_left_hot_min_bump: 4
+  alignment_divergence_pp: 0.12       # hot aligned% − cold aligned% below this → tighten
+  alignment_consecutive_days: 3
+  alignment_warm_cold_penalty: 4.0
+  post_promotion_lookback_days: 30
+  post_promotion_min_samples: 3
+  post_promotion_poor_trail_rate: 0.35
+  post_promotion_edge_penalty: 8.0
+  post_promotion_demotion_pressure_mult: 1.15
 
 scope_creep:
   enabled: true

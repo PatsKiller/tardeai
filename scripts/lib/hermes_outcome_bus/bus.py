@@ -133,6 +133,10 @@ def _snapshot_trend_point(snap: dict[str, Any], ts: datetime) -> dict[str, Any]:
     resource = snap.get("resource_efficiency") or {}
     stop_q = snap.get("stop_quality") or {}
     trail_delta = _stop_hot_cold_trail_delta(stop_q)
+    by_tier = stop_q.get("by_tier") or {}
+    hot_al = (by_tier.get("hot") or {}).get("aligned_pct")
+    cold_al = (by_tier.get("cold") or {}).get("aligned_pct")
+    tier_align = (float(hot_al) - float(cold_al)) if hot_al is not None and cold_al is not None else None
     return {
         "at": ts.isoformat(),
         "day": ts.strftime("%Y-%m-%d"),
@@ -153,6 +157,7 @@ def _snapshot_trend_point(snap: dict[str, Any], ts: datetime) -> dict[str, Any]:
         "r_left_on_table_avg": stop_q.get("r_left_on_table_avg"),
         "mae_exceeded_planned_stop_pct": stop_q.get("mae_exceeded_planned_stop_pct"),
         "aligned_pct": stop_q.get("aligned_pct"),
+        "tier_alignment_delta": tier_align,
         "negative_lift_tags": _negative_lift_tags(snap),
         "research_downrank_tags": [
             str(x.get("tag")) for x in (snap.get("feedback_to_research") or [])

@@ -175,6 +175,26 @@ def _load_bus_reactions() -> dict:
     return {}
 
 
+def _holdings_lifecycle_multiplier(sym: str) -> float:
+    """Advisory research priority boost from holdings lifecycle stage (B2)."""
+    try:
+        from lib.hermes_outcome_bus.lifecycle_slice import holdings_research_multiplier
+        cache = _load_outcome_bus()
+        bus = cache.get("bus") or {}
+        lc = bus.get("lifecycle") or {}
+        if not lc:
+            from lib.hermes_outcome_bus.lifecycle_slice import build_lifecycle_slice
+            lc = build_lifecycle_slice()
+        mult = holdings_research_multiplier(sym, lc)
+        runtime = _load_bus_reactions()
+        runtime_mult = (runtime.get("holdings_research_multipliers") or {}).get(sym.upper())
+        if runtime_mult is not None:
+            mult = max(mult, float(runtime_mult))
+        return mult
+    except Exception:
+        return 1.0
+
+
 def _symbol_tag_multiplier(sym: str, scope_tier: str | None = None) -> float:
     """Apply quality_multiplier for symbol's dominant tag from outcome bus."""
     cache = _load_outcome_bus()
@@ -266,8 +286,11 @@ def priority(sym, info, age_days, sla_days, catalyst) -> float:
             + 40 * min(overdue, 3.0)
             + 25 * (1.0 if catalyst else 0.0)
             + 15 * rank_score)
-    # Outcome bus: tag lift shrinks or expands research depth (outcome yield > throughput)
-    return base * _symbol_tag_multiplier(sym, scope_tier=info.get("tier"))
+    # Outcome bus: tag lift + holdings lifecycle research depth (outcome yield > throughput)
+    mult = _symbol_tag_multiplier(sym, scope_tier=info.get("tier"))
+    if info.get("tier") == "T0-HOLD":
+        mult *= _holdings_lifecycle_multiplier(sym)
+    return base * mult
 
 
 def build_due(uni, lane, force_all=False):

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-07-03 - Closed-loop gaps: bus lifecycle export, stop reactions, holdings scheduler
+
+- **Outcome bus:** `lifecycle` slice (watchlist + holdings health/stage) on nightly `--apply`; enriches `by_symbol`
+- **Stop reactions (D):** R-left-on-table worsening, tier alignment divergence, post-promotion stop degradation
+- **Holdings B2:** `research_scheduler.py` holdings lifecycle research-depth multipliers for T0-HOLD
+- **Watchlist A:** `stop_quality` health weight 15% → 25%
+
 ## 2026-07-03 - Phase D: closed-loop evaluation (watchlist promotion gate)
 
 `--evaluate` now includes watchlist promotion-gate validation: before/after `hit_rate_promotions`,

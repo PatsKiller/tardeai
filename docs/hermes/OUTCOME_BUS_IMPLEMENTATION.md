@@ -415,7 +415,11 @@ See `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` for full design, CLI wor
 | **Watchlist lifecycle** | `GET /api/v2/hermes/scope-governor` → `watchlist_lifecycle` | Health score (0–100), 7d trend arrow, **watch** stage (health 45–59 or declining), `blocked_promotion_count` when health gate blocks outcome S1 claims |
 | **Holdings lifecycle** | `GET /api/v2/hermes/holdings-lifecycle` | Per-position health, trim/watch stages, monitoring hints |
 
-Governor computes watchlist health **before** tier candidate fetch; blocked promotions audit to `data/runtime/hermes_watchlist_lifecycle_audit.jsonl`. **Phase D:** `--evaluate` validates gate impact (`GET /api/v2/hermes/closed-loop/evaluations`). Full formula, gates, and validation: `HERMES_WATCHLIST_LIFECYCLE.md` (§9–§11).
+Governor computes watchlist health **before** tier candidate fetch; blocked promotions audit to `data/runtime/hermes_watchlist_lifecycle_audit.jsonl`. **Phase D:** `--evaluate` validates gate impact (`GET /api/v2/hermes/closed-loop/evaluations`).
+
+**Lifecycle slice (nightly `--apply`):** `outcome_bus.json` includes `lifecycle.watchlist` + `lifecycle.holdings` (health, stage, monitoring hints) and enriches `by_symbol` with `watchlist_lifecycle` / `holdings_lifecycle`. Consumed by `research_scheduler.py` (holdings research-depth multipliers).
+
+Full formula, gates, and validation: `HERMES_WATCHLIST_LIFECYCLE.md` (§9–§11).
 
 ---
 

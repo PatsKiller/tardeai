@@ -119,6 +119,18 @@ Inputs (portfolio, outcomes, social, regime, events)
 
 Over time, symbols that consistently deliver low graded value drift to Cold (S3) and stop clock-driven scoring — compounding intelligence, not activity.
 
+### Stop-quality bus reactions (`config/hermes_reactions.yaml`)
+
+| Reaction id | Trigger | Effect |
+|-------------|---------|--------|
+| `stop_quality_divergence` | Hot vs cold trail delta below floor N days | Hot min bump, warm/cold edge penalty, research boost |
+| `stop_quality_strong_advantage` | Trail delta ≥ strong advantage | Relax hot min, hot edge boost |
+| `stop_quality_r_left_worsening` | R-left-on-table trend worsening / above ceiling | Hot min bump |
+| `stop_quality_alignment_divergence` | Hot−cold aligned% below floor | Warm/cold edge penalty |
+| `stop_quality_post_promotion_degradation` | Recent S0/S1 promotes with poor stop/outcome | Per-symbol edge penalty, demotion pressure |
+
+All reactions log metric snapshots to `scope_governor_audit` (`__BUS__` rows) and optional `hermes_bus_reactions.json` runtime overrides.
+
 ## Conservative starting parameters
 
 Already set in `config/hermes_scope_governor.yaml`:

@@ -47,6 +47,8 @@ Config: `config/hermes_holdings_lifecycle.yaml`
 
 Refreshed on each Scope Governor tick (`:07/:37`) and on `GET /api/v2/hermes/holdings-lifecycle`.
 
+**Research scheduler (B2):** `research_scheduler.py` applies `holdings_research_multiplier()` for `T0-HOLD` symbols — `standard` 1.0×, `elevated` 1.25×, `full` 1.45× (trim_candidate floor 1.45×). Exported nightly on `outcome_bus.json` → `lifecycle.holdings`.
+
 ## API
 
 **GET** `/api/v2/hermes/holdings-lifecycle` — `panel_rows`, `summary`, `holdings`, per-symbol `history`
