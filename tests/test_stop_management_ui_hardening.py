@@ -155,7 +155,7 @@ def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
 def test_15_build_marker_visible_for_deployment_verification():
     src = read(APP)
     assert "BUILD_MARKER" in src
-    assert "cc-v3 stop-lifecycle-close 2026-07-01" in src
+    assert "cc-v3 hermes-efficiency-stop-quality 2026-07-03" in src
 
 
 def test_17_click_preflight_validates_before_2fa_and_manual():

@@ -106,26 +106,18 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 */15 6-19 * * 1-5 cd $PROJ && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 10 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] skipped — previous instance still running" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap" >> $PROJ/logs/watchlist_agent_jobs.log
 # STOP-V2.2: replaced by unified_stop_supervisor
 #*/2 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/open_trade_monitor.lock $PY scripts/open_trade_monitor.py >> logs/open_trade_monitor.log 2>&1
-*/2 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/telegram_command_handler.py --poll >> logs/telegram_commands.log 2>&1
+* * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/telegram_command_handler.py --poll >> logs/telegram_commands.log 2>&1
 */2 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash scripts/run_telegram_poller_daemon.sh 2>/dev/null
 */30 9-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/tradeai_atp2_reval.lock bash scripts/market_day_gate.sh .venv/bin/python scripts/run_automated_trade_proposal_revalidation.py --apply --limit 50 >> logs/atp2_proposal_revalidation_cron.log 2>&1
-*/5 0-5 * * 2-6 cd $PROJ && { [ -f /tmp/tradeai_deep_llm_window.lock ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [deep-llm-lock] skipped — deep overnight LLM window active" >> $PROJ/logs/watchlist_agent_jobs.log && exit 0; true; } && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] skipped — previous instance still running" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap" >> $PROJ/logs/watchlist_agent_jobs.log
+*/5 0-5 * * 1-6 cd $PROJ && { [ -f /tmp/tradeai_deep_llm_window.lock ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [deep-llm-lock] skipped — deep overnight LLM window active" >> $PROJ/logs/watchlist_agent_jobs.log && exit 0; true; } && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] skipped — previous instance still running" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap" >> $PROJ/logs/watchlist_agent_jobs.log
 */5 20-23 * * 1-5 cd $PROJ && { [ -f /tmp/tradeai_deep_llm_window.lock ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [deep-llm-lock] skipped — deep overnight LLM window active" >> $PROJ/logs/watchlist_agent_jobs.log && exit 0; true; } && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] skipped — previous instance still running" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap" >> $PROJ/logs/watchlist_agent_jobs.log
 */5 9-15 * * 1-5 /usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_quote_refresh.sh --mode pending --limit 50 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proactive_quote_refresh_cron.log 2>&1
 # STOP-V2.2: replaced by unified_stop_supervisor
-# ── Options desk: proposals + position monitor (every 10m market hours) ──
-35,45,55 9 * * 1-5 cd $PROJ && bash linux_launchers/run_options_monitor.sh
-*/10 10-15 * * 1-5 cd $PROJ && bash linux_launchers/run_options_monitor.sh
-5 16 * * 1-5 cd $PROJ && bash linux_launchers/run_options_monitor.sh
-# Options IV history snapshot (daily after close, for true IV rank)
-20 16 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_options_iv.lock $PY scripts/options_iv_snapshot.py >> logs/options_iv_snapshot.log 2>&1
 */2 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_monitor.lock $PY scripts/paper_trade_monitor.py >> logs/paper_monitor.log 2>&1
-*/5 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/schwab_broker_monitor.lock $PY scripts/schwab_broker_trade_monitor.py >> logs/schwab_broker_monitor.log 2>&1
-*/15 7-17 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/watchlist_proposal_bridge.lock $PY scripts/watchlist_proposal_bridge.py --apply >> logs/watchlist_proposal_bridge.log 2>&1
 */5 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_sweep.lock bash scripts/market_day_gate.sh $PY scripts/paper_execution_sweep.py >> logs/paper_execution.log 2>&1
 0 10 * * 0 cd $PROJ && flock -n /tmp/weekly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier weekly >> logs/weekly_trade_review.log 2>&1
 0 10 * * 1-5 cd $PROJ && $PY scripts/cleanup_stale_proposals.py --apply >> logs/cleanup_stale_proposals.log 2>&1
-0 10 * * 1-5 cd $PROJ && $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
+0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
 0 10 1 * * cd $PROJ && $PY scripts/youtube_channel_discovery.py --discover --telegram >> logs/youtube_discovery.log 2>&1
 0 10-15 * * 1-5 $PROJ/scripts/agent_router_cron.sh light
 0 10-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/alpaca_recon.lock $PY scripts/alpaca_paper_adapter.py --sync-only >> logs/alpaca_paper_adapter.log 2>&1
@@ -134,14 +126,16 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 0 12 * * 1-5 /usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_quote_refresh.sh --mode incubator --limit 100 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proactive_quote_refresh_cron.log 2>&1
 0 12 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
 # ── 9:00 AM + 10:00 AM: Orchestrator scoring for 0900/1000 screener windows ──
-0 9 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 0900 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1
-0 10 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1000 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1
+# RETIRED 2026-06-11 (redundant: continuous_runner covers 04:00-11:00 at 10-15min cycles) — restore from backups/crontab_pre_cadence_fix_20260611.txt
+0 9 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 0900 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1  # RESTORED 2026-06-12: retirement failed — continuous_runner does not emit 0900 run artifacts
+# RETIRED 2026-06-11 (redundant: continuous_runner covers 04:00-11:00 at 10-15min cycles)
+0 10 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1000 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1  # RESTORED 2026-06-12
 0 12 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1200 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1
 0 13 * * 1-5 cd $PROJ && $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1
 0 14 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
 0 14 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1400 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1
 0 15 * * 1-5 cd $PROJ && $PY scripts/cleanup_stale_proposals.py --apply >> logs/cleanup_stale_proposals.log 2>&1
-0 16 * * 1-5 cd $PROJ && $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
+0 16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
 0 16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1600 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1
 0 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash scripts/market_day_gate.sh .venv/bin/python scripts/send_alert_digest.py evening >> logs/alert_digest.log 2>&1
 # PHASE102-RETIRED 0 16 * * 5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_deep_llm_window.lock bash scripts/run_deep_overnight_llm_window.sh --enable-hybrid-rag --force-window --max-jobs 200 --allow-over-hard-max >> logs/deep_llm_friday_extended.log 2>&1
@@ -155,12 +149,6 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 0 20 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_atp2_research_cycle.sh --cycle evening >> logs/atp2_research_cycle_cron.log 2>&1
 0 20 * * 6 cd /home/johnclaw/nyc-dof-auction && .venv/bin/python3 scripts/run_pipeline.py >> logs/pipeline.log 2>&1
 0 21 * * 0 cd $PROJ && flock -n /tmp/weekly_docx.lock $PY scripts/generate_weekly_docx.py >> logs/weekly_docx.log 2>&1
-# ── 7:30 AM: Analyst Daily Intelligence Digest (DOCX) — after health + morning intel ──
-30 7 * * 1-5 cd $PROJ && flock -n /tmp/analyst_daily_digest.lock $PY scripts/generate_analyst_daily_digest.py --format docx >> logs/analyst_daily_digest.log 2>&1
-# ── Weekdays 7:35: Autonomous prospectus — fingerprint delta only (builds on prior report) ──
-35 7 * * 1-5 cd $PROJ && flock -n /tmp/analyst_reports_daily.lock $PY scripts/generate_analyst_reports_autonomous.py --mode daily >> logs/analyst_reports_autonomous.log 2>&1
-# ── Sun 21:15: Weekly autonomous prospectus — stale≥6d OR fingerprint + Grok editorial ──
-15 21 * * 0 cd $PROJ && flock -n /tmp/analyst_reports_weekly.lock $PY scripts/generate_analyst_reports_autonomous.py --mode weekly >> logs/analyst_reports_autonomous.log 2>&1
 0 21 * * 1-5 cd $PROJ && $PY scripts/auto_research.py --check --telegram >> logs/auto_research.log 2>&1
 # PHASE102-RETIRED 0 23 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_deep_overnight_llm_window.sh --enable-hybrid-rag >> logs/deep_overnight_llm_window.log 2>&1
 0 3 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/strategy_config_loader.py --sync-db >> logs/strategy_config_sync.log 2>&1
@@ -237,16 +225,18 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 40 7 * * 1-5 cd $PROJ && $PY scripts/portfolio_level_qa.py >> logs/portfolio_qa.log 2>&1
 # PHASE41-MIGRATED 40 7 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_system_facts.lock ./scripts/run_scheduled_system_facts.sh >> logs/governance_system_facts.log 2>&1
 45 6 * * 1-5 cd $PROJ && $PY scripts/sync_watchlist_items_to_db.py >> logs/watchlist_sync.log 2>&1
-45 7 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_a1a_check.lock ./scripts/run_scheduled_a1a_check.sh >> logs/governance_a1a_check.log 2>&1
+# PHASE200_MIGRATED_TO_GOVERNANCE_PIPELINE 2026-06-04 scripts/pipelines/run_governance_pipeline.sh
+# 45 7 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_a1a_check.lock ./scripts/run_scheduled_a1a_check.sh >> logs/governance_a1a_check.log 2>&1
 # PAUSED_MASTER_REWRITE 5 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/sync-docs-to-drive.py >> /home/johnclaw/logs/drive-docs-sync.log 2>&1
 5 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_watchpool_alerts.sh --mode maturity --limit 50 >> logs/watchpool_alerts_cron.log 2>&1
 5 16 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1
 5 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_atp2_research_cycle.sh --cycle eod >> logs/atp2_research_cycle_cron.log 2>&1
 5 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/alpaca_paper_reconciler.py --fix >> logs/alpaca_reconciler.log 2>&1
-5 18 * * 0 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_a1a_check.lock ./scripts/run_scheduled_a1a_check.sh >> logs/governance_a1a_check.log 2>&1
+# PHASE200_MIGRATED_TO_GOVERNANCE_PIPELINE 2026-06-04 scripts/pipelines/run_governance_pipeline.sh
+# 5 18 * * 0 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_a1a_check.lock ./scripts/run_scheduled_a1a_check.sh >> logs/governance_a1a_check.log 2>&1
 5 7 * * 1-5 cd $PROJ && $PY scripts/sync_dividend_data.py >> logs/dividend_sync.log 2>&1
 5 8 * * 1-5 cd $PROJ && $PY scripts/aegis_morning_brief_delivery.py >> logs/aegis_brief.log 2>&1
-50 6 * * 1-5 cd $PROJ && $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1
+*/30 6-16 * * 1-5 cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1
 50 7 * * 1-5 cd $PROJ && $PY scripts/record_decision_outcome.py >> logs/decision_outcomes.log 2>&1
 # PHASE41-MIGRATED 50 7 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/report_governance_status.py --output-json docs/governance/governance_status_latest.json --output-md docs/governance/governance_status_latest.md >> logs/governance_status.log 2>&1
 55 6 * * 1-5 cd $PROJ && $PY scripts/materialize_income_engine.py >> logs/income_engine.log 2>&1
@@ -272,13 +262,19 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 
 # ── Pipeline Telemetry: previously unscheduled stages (added 2026-05-24) ──
 # Social media ingestion (every 6h)
-0 6,12,18 * * * cd $PROJ && $PY scripts/social_ingest.py >> logs/social_ingest.log 2>&1
+# social discovery ingest — trending+holdings+reddit (was bare/holdings-only; missed social-hot names like WEN)
+0 6 * * 1-5 cd $PROJ && $PY scripts/social_ingest.py --source all >> logs/social_ingest.log 2>&1
+30 8,10,13 * * 1-5 cd $PROJ && $PY scripts/social_ingest.py --source stocktwits --discover >> logs/social_ingest.log 2>&1
+0 12,18 * * * cd $PROJ && $PY scripts/social_ingest.py --source all >> logs/social_ingest.log 2>&1
+# social-scalp scanner — social_posts -> finviz -> 6-pillar score -> momentum candidates + telegram (was unscheduled since May)
+0,30 6-9 * * 1-5 cd $PROJ && flock -n /tmp/social_scalp.lock $PY scripts/social_scalp_scanner.py >> logs/social_scalp_scanner.log 2>&1
+0 10-16 * * 1-5 cd $PROJ && flock -n /tmp/social_scalp.lock $PY scripts/social_scalp_scanner.py >> logs/social_scalp_scanner.log 2>&1
 # FRED macro data (daily 6:15 AM)
 15 6 * * * cd $PROJ && $PY scripts/fred_data_ingest.py --ingest >> logs/fred_data_ingest.log 2>&1
 # Symbol enrichment (daily 7:30 AM, after price cache)
 30 7 * * 1-5 cd $PROJ && $PY scripts/symbol_enrichment.py --limit 50 >> logs/symbol_enrichment.log 2>&1
 # RAG indexer (every 4h)
-0 */4 * * * cd $PROJ && timeout 5m $PY scripts/rag_indexer.py >> logs/rag_indexer.log 2>&1
+0 */4 * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && timeout 5m $PY scripts/rag_indexer.py >> logs/rag_indexer.log 2>&1
 # Indicator engine (daily 8 AM)
 0 8 * * 1-5 cd $PROJ && $PY scripts/indicator_engine.py >> logs/indicator_engine.log 2>&1
 # Premarket watcher (7-9:30 AM weekdays)
@@ -319,7 +315,18 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 
 # ── Intelligence Pipeline Gaps Fixed (2026-05-24) ──
 # Topic ingestion (weekly Wednesday + Saturday for broad coverage)
-0 9 * * * cd $PROJ && timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries >> logs/topic_ingestion.log 2>&1
+0 9 * * * cd $PROJ && timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries --max-topics 14 >> logs/topic_ingestion.log 2>&1
+# Topic ingestion backfill (2026-06-20): 2nd capped run @13:00 to crawl/find-new-sites for the 120+
+# operator-added topics faster (NULLS-FIRST = never-searched first); finds new publisher sites.
+0 13 * * * cd $PROJ && timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries --max-topics 14 >> logs/topic_ingestion.log 2>&1
+# New-site curation/grading (2026-06-20): rate topic-sourced (new-site) articles approved/low_quality/
+# blocked so garbage is filtered before research grounds on it. Standalone (was only post-ingestion).
+30 9,13 * * * cd $PROJ && flock -n /tmp/topic_curator.lock $PY scripts/topic_curator.py >> logs/topic_curator.log 2>&1
+# EOD curator + free-lane ensemble rescue (2026-06-21): re-rates borderline low_quality rejects via grok+chatgpt+local, upgrades consensus-approved. No metered keys.
+30 18 * * * cd $PROJ && flock -n /tmp/topic_curator.lock $PY scripts/topic_curator.py --ensemble >> logs/topic_curator.log 2>&1
+# Re-ground synthesized research (2026-06-20): upgrade rows that grounded on 0 articles once the
+# crawler has since ingested+graded the topic, so research cites exact vetted sources.
+50 14 * * * cd $PROJ && flock -n /tmp/topic_reground.lock $PY scripts/topic_research_synthesizer.py --reground --max 20 --apply >> logs/topic_research_synth.log 2>&1
 # Aegis synthesis (daily 9 PM, after overnight data collection)
 0 21 * * * cd $PROJ && $PY scripts/aegis_synthesis.py >> logs/aegis_synthesis.log 2>&1
 # Aegis nightly ingestion (daily 7 PM)
@@ -337,7 +344,7 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # Agent recommendation normalizer (daily 8:30 AM)
 30 8 * * 1-5 cd $PROJ && $PY scripts/agent_recommendation_normalizer.py --apply >> logs/agent_rec_normalizer.log 2>&1
 # Auto proposal generator (every 30 min market hours)
-*/30 9-16 * * 1-5 cd $PROJ && timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal.log 2>&1
+*/30 9-16 * * 1-5 cd $PROJ && MOMENTUM_SCALP_VALIDATION_FAST_PATH=1 MOMENTUM_SCALP_VALIDATION_SUBMIT=1 timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal.log 2>&1
 # Alex government research (weekly Monday 6 AM)
 0 6 * * 1 cd $PROJ && timeout 10m $PY scripts/alex_gov_research.py --refresh >> logs/alex_gov_research.log 2>&1
 # Event detector — fires triggers into agent_event_queue
@@ -376,13 +383,6 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # Weekly system version check — Sundays 06:00
 0 6 * * 0 /bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/check_system_versions.sh >> /home/johnclaw/logs/version_check.log 2>&1
 30 9 2 6 * cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/atm_market_open_watch.py >> logs/atm_market_open_watch.log 2>&1  # atm-market-open-watch-0930 (Phase189A one-shot)
-# BEGIN strategy-monitoring-cron
-30 16 * * 1-5 cd $PROJ && $PY scripts/proposal_monitor.py --pending --apply >> logs/proposal_monitor.log 2>&1
-0 18 * * 1-5 cd $PROJ && $PY scripts/proposal_monitor.py --pending --apply >> logs/proposal_monitor.log 2>&1
-0 6 * * 1-5 cd $PROJ && $PY scripts/proposal_monitor.py --pending --apply >> logs/proposal_monitor.log 2>&1
-30 6 * * 1-5 cd $PROJ && $PY scripts/proposal_monitor.py --pending --apply >> logs/proposal_monitor.log 2>&1
-5 17 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_scheduled_strategy_audits.sh
-# END strategy-monitoring-cron
 */30 9-16 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh bash scripts/run_protection_pipeline.sh >> logs/protection_pipeline_cron.log 2>&1  # phase194 protection-learning pipeline
 30 20 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh bash scripts/run_protection_pipeline.sh >> logs/protection_pipeline_cron.log 2>&1  # phase194 protection after-close reconcile
 
@@ -400,17 +400,8 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 0 7 3 6 * cd $PROJ && bash $PROJ/scripts/morning_eval_check.sh >> logs/morning_eval_check_cron.log 2>&1
 # Chief Hermes Coordinator — CONTINUOUS live fleet orchestration (operator directive B, 2026-06-02).
 # Runs all Hermes agents live incl auto-promote + RAG. Kill switch off but checked each tick:
-# touch hermes_sidecar/.hermes/DISABLED to halt. flock prevents overlap.
-*/15 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_coordinator.lock $PY scripts/hermes_coordinator.py >> logs/hermes_coordinator.log 2>&1
-# Hermes audit remediation 2026-07-02 — scoped scoring + scalp weights + universe curation
-10,40 * * * * cd $PROJ && HERMES_WEIGHTS_PROFILE=scalp HERMES_SCORER_ALWAYS_CAP=1 flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scorer.log 2>&1
-15 3 * * * cd $PROJ && flock -n /tmp/hermes_scope_governor.lock $PY scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1
-30 3 * * 0 cd $PROJ && flock -n /tmp/hermes_score_retention.lock $PY scripts/hermes_score_history_retention.py --apply --days 90 >> logs/hermes_score_retention.log 2>&1
-0 6 * * 1-5 cd $PROJ && flock -n /tmp/hermes_tradeai_handshake.lock $PY scripts/hermes_tradeai_handshake.py --apply >> logs/hermes_tradeai_handshake.log 2>&1
-45 18 * * 1-5 cd $PROJ && flock -n /tmp/hermes_scalp_shadow.lock $PY scripts/hermes_scalp_shadow_feeder.py --apply >> logs/hermes_scalp_shadow_feeder.log 2>&1
-0 4 * * * cd $PROJ && flock -n /tmp/hermes_strategy_tags.lock $PY scripts/backfill_hermes_strategy_tags.py --apply --limit 8000 >> logs/hermes_strategy_tags_backfill.log 2>&1
-# Stop over Street consensus mean — alert when protective stop sits above analyst target (advisory)
-45 10,16 * * 1-5 cd $PROJ && flock -n /tmp/stop_over_consensus.lock $PY scripts/stop_over_consensus_monitor.py --send >> logs/stop_over_consensus.log 2>&1
+# touch data/runtime/HERMES_DISABLED to halt. flock prevents overlap.
+*/15 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_coordinator.lock $PY scripts/hermes_coordinator.py >> logs/hermes_coordinator.log 2>&1
 # Hermes source self-learning (Tracks A+B) — score web sources by yield, discover new sites, register connectors
 30 23 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_source_curation.lock $PY scripts/hermes_source_curation.py >> logs/hermes_source_curation.log 2>&1
 */2 * * * * bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/portfolio_server_watchdog.sh
@@ -431,7 +422,8 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # YouTube cookie health → Telegram refresh alert (after the 19:00 ingest)
 45 19 * * * cd $PROJ && $PY scripts/youtube_cookie_health_check.py >> logs/youtube_cookie_health.log 2>&1
 # Taxonomy tag-forward (heuristic, fast) — keeps content_embeddings + hermes research categorized
-20 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/taxonomy_tagger.lock $PY scripts/taxonomy_tagger.py --all --limit 500 >> logs/taxonomy_tagger.log 2>&1
+# Phase 4 (2026-07-02): taxonomy tagger RETIRED — 3-axis categories have zero readers repo-wide (write-only cost + hourly lock contention); superseded by hermes_tag_engine.py
+# 20 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && bash $PROJ/scripts/safe_flock.sh /tmp/taxonomy_tagger.lock $PY scripts/taxonomy_tagger.py --all --limit 500 >> logs/taxonomy_tagger.log 2>&1
 # SIEM retention purge — keep 14 days of alert/event noise
 10 3 * * * cd $PROJ && $PY scripts/siem_retention_purge.py >> logs/siem_retention_purge.log 2>&1
 # SIEM: scrape file-only errors into alert_events + notify on critical incidents
@@ -444,7 +436,11 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # Was dark since 2026-04-27 (catalyst_events) / 2026-05-11 (fused_signals); see
 # docs/HERMES_NEWS_TO_SCALP_CATALYST_INTEGRATION_2026_06_04.md §11.
 45 6,12,18 * * * cd $PROJ && flock -n /tmp/news_to_catalyst.lock $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2>&1
+# ── catalyst classifier calibration (outcome self-learning, advisory): daily realized-move recompute of per-type weight multipliers (data/runtime/catalyst_calibration.json). Read-only on prices. ──
+30 5 * * * cd $PROJ && flock -n /tmp/catalyst_calibration.lock $PY scripts/catalyst_calibration.py >> logs/catalyst_calibration.log 2>&1
 0 7,13 * * 1-5 cd $PROJ && flock -n /tmp/signal_fusion.lock timeout 20m $PY scripts/signal_fusion.py --full >> logs/signal_fusion.log 2>&1
+# ── signal_fusion intraday cadence (audit gate 2026-06-08): fuse active decision set (GO/WAIT scalp + open proposals + open paper + active watchlist, ~67 syms, <1s) every 30m premarket-close so scalp/watchlist names have fresh fusion before decisions. --full baseline stays at 7,13. ──
+*/30 4-16 * * 1-5 cd $PROJ && flock -n /tmp/signal_fusion_active.lock $PY scripts/signal_fusion.py --active >> logs/signal_fusion.log 2>&1
 # ── Hermes news bridge (2026-06-04, Prompt #2): hermes_research_intelligence -> news_articles (source=hermes) -> catalyst chain ──
 40 6,12,18 * * * cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge.log 2>&1
 # ── SCALP catalyst tier (2026-06-04, Prompt #3, operator-approved): quota-free (SearXNG+DB only), 04:00-12:00 ET weekdays, every 10 min ──
@@ -457,12 +453,124 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # ── Research lane (2026-06-04, operator-approved revive): keyword insight extractor (news + catalysts -> research_insights -> signal_fusion research lane). Was frozen 2026-04-27 (unscheduled). DB-only, idempotent, dedup-guarded. ──
 50 6,12,18 * * * cd $PROJ && flock -n /tmp/research_insight_extractor.lock $PY scripts/research_insight_extractor.py >> logs/research_insight_extractor.log 2>&1
 # ── Hermes topic bridge (2026-06-04): enqueue topic_monitor owner IN (hermes,shared) topics into hermes_research_intelligence (staged) so Hermes researches them. Symmetric to topic_ingestion (tradeai,shared). ──
-30 7 * * * cd $PROJ && flock -n /tmp/hermes_topic_monitor_bridge.lock $PY scripts/hermes_topic_monitor_bridge.py --apply --max-rows 5 >> logs/hermes_topic_monitor_bridge.log 2>&1
+30 7 * * * cd $PROJ && flock -n /tmp/hermes_topic_monitor_bridge.lock $PY scripts/hermes_topic_monitor_bridge.py --apply --max-rows 40 >> logs/hermes_topic_monitor_bridge.log 2>&1
 # ── Heartbeat receiver respawn (2026-06-04): keep the in-network layer-3 ping receiver alive ──
 
 # ── Encrypted offsite backup → Google Drive (.env daily, data/ weekly) [added 2026-06-04] ──
-30 5 * * *   cd $PROJ && flock -n /tmp/backup_env.lock  bash scripts/backup_secrets_state.sh env  >> logs/backup_secrets.log 2>&1
-45 5 * * 0   cd $PROJ && flock -n /tmp/backup_data.lock bash scripts/backup_secrets_state.sh data >> logs/backup_secrets.log 2>&1
+# [RETIRED 2026-06-06 — covered by tradeai-portfolio-backup-cadence @02:30] 30 5 * * *   cd $PROJ && flock -n /tmp/backup_env.lock  bash scripts/backup_secrets_state.sh env  >> logs/backup_secrets.log 2>&1
+# [RETIRED 2026-06-06 — folded into tradeai-portfolio-backup-cadence @02:30 with weekly staleness gate] 45 5 * * 0   cd $PROJ && flock -n /tmp/backup_data.lock bash scripts/backup_secrets_state.sh data >> logs/backup_secrets.log 2>&1
+# Agent performance scorer (rehomed from retired overnight_batch, Phase102) — weekday 8 PM
+0 20 * * 1-5 cd $PROJ && $PY scripts/update_agent_performance.py >> logs/update_agent_performance.log 2>&1
+# Profit-capture evidence refresh — weekly Sun 03:30 (evidence/shadow only, never grafts)
+30 3 * * 0 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash scripts/safe_flock.sh /tmp/tradeai_profit_capture_refresh.lock timeout 20m bash scripts/run_profit_capture_refresh.sh >> logs/profit_capture_refresh_cron.log 2>&1
+# ── Hermes source maturity pipeline (advisory): attribution -> maturity score/tiers -> vetting ladder. Daily 05:45. ──
+45 5 * * * cd $PROJ && flock -n /tmp/source_maturity.lock bash -c "$PY scripts/source_outcome_attribution.py && $PY scripts/source_maturity.py && $PY scripts/source_vetting_ladder.py" >> logs/source_maturity.log 2>&1
+# ── Source attribution monitor (read-only): daily snapshot of news<->trade overlap + attribution coverage trend. ──
+0 6 * * * cd $PROJ && flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py >> logs/source_attribution_monitor.log 2>&1
+# ── Catalyst calibration monitor (read-only): daily track of per-type multipliers as they sharpen. ──
+40 5 * * * cd $PROJ && flock -n /tmp/catalyst_calibration_monitor.lock $PY scripts/catalyst_calibration_monitor.py >> logs/catalyst_calibration_monitor.log 2>&1
+# ── Professional analyst layer (Gate A, advisory): fetch Yahoo consensus for actionable universe -> unified read model. Daily 06:10. ──
+10 6 * * * cd $PROJ && flock -n /tmp/pro_analyst.lock bash -c "$PY scripts/pro_analyst_fetch.py --max 60; $PY scripts/build_pro_analyst_read_model.py; $PY scripts/pro_analyst_monitor.py --send" >> logs/pro_analyst.log 2>&1
+*/15 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/mkt_quotes_intraday.lock $PY scripts/external_market_data_ingest.py --quotes >> logs/market_data.log 2>&1  # intraday live quotes (Alpaca primary)
+# ── LLM retry/transient-failure monitor (read-only): daily aggregate of retry incidents (DNS/5xx) + status. ──
+0 7 * * * cd $PROJ && flock -n /tmp/llm_retry_monitor.lock $PY scripts/llm_retry_monitor.py >> logs/llm_retry_monitor.log 2>&1
+# ── Watch directives service (advisory): service operator directives -> hits + promote to watched universe; drain Hermes staging. Every 30m market hours. ──
+*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/watch_directives_service.lock $PY scripts/watch_directives_service.py --apply >> logs/watch_directives_service.log 2>&1
+# ── Watch directives monitor (read-only): daily hits/promotions/staging-backlog/servicing-staleness. ──
+20 6 * * * cd $PROJ && flock -n /tmp/watch_directives_monitor.lock $PY scripts/watch_directives_monitor.py >> logs/watch_directives_monitor.log 2>&1
+# ── Post-close portfolio reprice (16:10 ET): capture official close so Command Center matches broker EOD. ──
+10 16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/portfolio_repricer.lock $PY scripts/portfolio_repricer.py && $PY scripts/holdings_reconcile.py --apply && flock -n /tmp/lookthrough_resolver.lock $PY scripts/phase3_lookthrough_resolver.py --project-root $PROJ >> logs/portfolio_repricer_postclose.log 2>&1  # +phase3 look-through allocation: DAILY auto-refresh from settled holdings (2026-06-18)
+*/30 9-15 * * 1-5 cd $PROJ && flock -n /tmp/watchlist_sweep.lock $PY scripts/watchlist_enrichment_sweep.py --once >> logs/watchlist_sweep.log 2>&1  # E-1 intraday watchlist enrichment
+15 16 * * 1-5 cd $PROJ && flock -n /tmp/watchlist_sweep.lock $PY scripts/watchlist_enrichment_sweep.py --once >> logs/watchlist_sweep.log 2>&1  # E-1 post-close watchlist enrichment
+*/30 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_directive_discovery.lock $PY scripts/hermes_directive_discovery.py --apply >> logs/hermes_directive_discovery.log 2>&1  # Hermes directive discovery producer (near 24/7)
+*/15 * * * * cd $PROJ && flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scorer.log 2>&1  # Hermes tier-aware scorer: S0 15m / S1 30m mkt-hrs, S2 premarket, events always; zero LLM calls so no llm_priority_guard (Phase 1 2026-07-02)
+15,45 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_alerts.lock $PY scripts/hermes_score_alerts.py --send >> logs/hermes_alerts.log 2>&1  # H-5 Hermes score alerts (near 24/7)
+# Hermes Phase 3: outcome learning — after feedback bus
+35 3 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_learning.lock $PY scripts/hermes_outcome_learning.py --apply >> logs/hermes_outcome_learning.log 2>&1
+# 30 16 * * 1-5 cd $PROJ && flock -n /tmp/hermes_calib.lock $PY scripts/hermes_score_calibration.py --apply >> logs/hermes_calib.log 2>&1  # H-4 Hermes weight calibration (post-close)
+5 */2 * * * cd $PROJ && flock -n /tmp/hermes_top20.lock $PY scripts/hermes_top20_external_intel.py --top 20 --lanes grok,chatgpt --apply >> logs/hermes_top20.log 2>&1  # top-20 external LLM curation (Grok+ChatGPT)
+*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/enh_scalp.lock $PY scripts/hermes_subject_enhance.py --type scalp --lanes grok,chatgpt --apply --limit 10 >> logs/hermes_enh.log 2>&1  # H-enh scalp (Grok+ChatGPT)
+*/20 9-16 * * 1-5 cd $PROJ && flock -n /tmp/enh_prop.lock $PY scripts/hermes_subject_enhance.py --type proposal --lanes grok,chatgpt --apply >> logs/hermes_enh.log 2>&1  # H-enh proposal (Grok+ChatGPT)
+20 */2 * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/enh_pos.lock $PY scripts/hermes_subject_enhance.py --type position --lanes grok,chatgpt --apply >> logs/hermes_enh.log 2>&1  # H-enh position (Grok+ChatGPT)
+25 11,14 * * 1-5 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/enh_sec.lock $PY scripts/hermes_subject_enhance.py --type sector --lanes grok,chatgpt --apply --limit 11 >> logs/hermes_enh.log 2>&1  # H-enh sector (Grok+ChatGPT)
+40 16 * * 1-5 cd $PROJ && flock -n /tmp/enh_ct.lock $PY scripts/hermes_subject_enhance.py --type closed_trade --lanes grok,chatgpt --apply --limit 12 >> logs/hermes_enh.log 2>&1  # H-enh closed_trade (Grok+ChatGPT)
+0 8,20 * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/enh_report.lock $PY scripts/hermes_subject_enhance.py --type report --lanes grok,chatgpt --apply --limit 1 >> logs/hermes_enh.log 2>&1  # H-enh report (Grok+ChatGPT) — daily second-read of the morning brief
+20 10 * * 1-5 cd $PROJ && flock -n /tmp/maxhold_exit.lock $PY scripts/generate_max_hold_exit_proposals.py --apply >> logs/maxhold_exit.log 2>&1  # max-hold time-exit proposals (advisory, approval-gated)
+15 18 * * 1-5 cd $PROJ && flock -n /tmp/schwab_ingest.lock bash -c "$PY scripts/schwab_transaction_ingest.py --apply && $PY scripts/schwab_journal_builder.py --apply && $PY scripts/schwab_journal_classifier.py" >> logs/schwab_ingest.log 2>&1  # Schwab ledger+journal refresh (read-only)
+*/15 9-16 * * 1-5 cd $PROJ && flock -n /tmp/schwab_intraday.lock bash -c "$PY scripts/schwab_transaction_ingest.py --apply && $PY scripts/schwab_journal_builder.py --apply" >> logs/schwab_ingest.log 2>&1  # intraday Schwab journal sync (15-min, trading hours)
+30 18 * * 1-5 cd $PROJ && flock -n /tmp/journal_review.lock $PY scripts/journal_review_builder.py >> logs/journal_review.log 2>&1  # paper-trade journal review (LLM grade+lesson, idempotent)
+45 18 * * * cd $PROJ && flock -n /tmp/tos_ingest.lock $PY scripts/ingest_tos_watchlists.py --apply >> logs/tos_ingest.log 2>&1  # ToS watchlist import (inbound imports/tos_watchlists/)
+# ── Schwab L2 stream capture (read-only, Rule-9 isolated; daemon self-terminates at close; kill: data/state/STREAM_DISABLED) ──
+31 9 * * 1-5 cd $PROJ && flock -n /tmp/schwab_stream.lock $PY scripts/schwab_stream_daemon.py >> logs/schwab_stream.log 2>&1
+0 11,13,15 * * 1-5 cd $PROJ && flock -n /tmp/schwab_stream.lock $PY scripts/schwab_stream_daemon.py >> logs/schwab_stream.log 2>&1
+# ── Pipeline freshness SLOs (silent-degradation detector): every 2h weekdays ──
+15 7-17/2 * * 1-5 cd $PROJ && $PY scripts/pipeline_freshness_slo.py --telegram >> logs/freshness_slo.log 2>&1
+# ── Source-weight arbitration layer: daily from attributed flow ──
+10 18 * * 1-5 cd $PROJ && $PY scripts/compute_source_weights.py --apply >> logs/source_weights.log 2>&1
+0 3 * * 0 cd $PROJ && bash scripts/docs_retention.sh >> logs/docs_retention.log 2>&1
+45 2 * * * cd $PROJ && $PY scripts/nightly_integrity_sweep.py --telegram >> logs/integrity_sweep.log 2>&1
+
+# ── Position basis cross-source audit + LLM protection advisory (operator-approved 2026-06-12) ──
+33 16 * * 1-5 cd $PROJ && flock -n /tmp/basis_sync.lock bash -c "set -a; . ./.env; set +a; $PY scripts/sync_basis_from_broker.py --apply" >> logs/basis_sync.log 2>&1  # daily basis self-heal (repricer reverts SSOT values — root fix pending)
+35 16 * * 1-5 cd $PROJ && flock -n /tmp/basis_audit.lock bash -c "set -a; . ./.env; set +a; $PY scripts/audit_position_basis.py --alert" >> logs/position_basis_audit.log 2>&1  # basis drift alarm (holdings vs broker)
+5 17 * * 1-5 cd $PROJ && flock -n /tmp/protection_advisor.lock $PY scripts/holding_protection_advisor.py >> logs/protection_advisor.log 2>&1  # daily stop/trail advisory (local lane, advisory-only)
+10 8 1 * * cd $PROJ && flock -n /tmp/protection_meta.lock $PY scripts/monthly_protection_meta_review.py >> logs/protection_meta_review.log 2>&1  # monthly Claude arbitration of LLM protection recs
+30 16 * * 1-5 cd $PROJ && flock -n /tmp/tech_gap.lock $PY scripts/technicals_gap_backfill.py --alert >> logs/technicals_gap.log 2>&1  # missing-technicals checker+backfill (operator 2026-06-12)
+20 17 * * 1 cd $PROJ && flock -n /tmp/protection_advisor_grok.lock $PY scripts/holding_protection_advisor.py --lane grok >> logs/protection_advisor.log 2>&1  # WEEKLY grok full sweep (operator-approved 2026-06-12)
+45 16 * * 1-5 cd $PROJ && flock -n /tmp/enrich_coverage.lock $PY scripts/audit_enrichment_coverage.py --alert >> logs/enrichment_coverage.log 2>&1  # agent: audits every enrichment surface vs canonical watch universe (operator 2026-06-12)
+35 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner.lock $PY scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap 400 >> logs/entry_planner.log 2>&1  # daily watchlist entry plans: ALL operator-entered + buy/strong-buy/add/wait, drains resumably (operator 2026-06-18)
+45 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner_prop.lock $PY scripts/watchlist_entry_planner.py --scope proposals >> logs/entry_planner.log 2>&1  # daily proposal entry validation (advisory)
+0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)
+# ── Local model fleet health — ping EVERY installed model daily (added 2026-06-14) ──
+35 6 * * * cd $PROJ && LLM_HEALTH_SKIP_MODELS="gemma3-overnight,gemma3:27b" flock -n /tmp/model_fleet_health.lock $PY scripts/check_local_model_fleet.py --alert >> logs/model_fleet_health.log 2>&1  # ping every local model, alert on dead/degenerate (catches 12b-style breakage)
+# ── SnapTrade holdings sync — 3x trading days (positions + EOD NAV) (added 2026-06-14) ──
+50 9 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/snaptrade_sync.lock $PY scripts/snaptrade_sync.py --apply >> logs/snaptrade_sync.log 2>&1
+0 13 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/snaptrade_sync.lock $PY scripts/snaptrade_sync.py --apply >> logs/snaptrade_sync.log 2>&1
+35 17 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/snaptrade_sync.lock $PY scripts/snaptrade_sync.py --apply >> logs/snaptrade_sync.log 2>&1  # after Fidelity fund NAV update
+# SnapTrade activity ingest — Fidelity ledger posts overnight; morning pull keeps trade_transactions current (added 2026-07-02)
+20 7 * * 1-6 cd $PROJ && flock -n /tmp/snaptrade_activity_ingest.lock $PY scripts/snaptrade_activity_ingest.py --apply >> logs/snaptrade_activity_ingest.log 2>&1
+# ── Portfolio look-through themes + multi-agent advisory (added 2026-06-14) ──
+40 7 * * 1-5 cd $PROJ && flock -n /tmp/lookthrough_themes.lock $PY scripts/portfolio_lookthrough_themes.py --grok >> logs/lookthrough_themes.log 2>&1  # theme look-through + CIO/Risk/Steph/Grok advisories
+# ── Ask-box alert monitor (added 2026-06-14) ──
+*/30 8-18 * * 1-5 cd $PROJ && flock -n /tmp/ask_alerts.lock $PY scripts/ask_alerts.py --check >> logs/ask_alerts.log 2>&1  # fire ask-box alerts (IPO news / price) to Telegram
+# ── IPO lockup-expiry alert (added 2026-06-14) ──
+15 8 * * * cd $PROJ && flock -n /tmp/lockup_alert.lock $PY scripts/ipo_lockup_alert.py >> logs/lockup_alert.log 2>&1  # fire IPO lockup-expiry alerts (14d lead) to Telegram
+# ── IPO lockup earnings-date auto-update (added 2026-06-14) ──
+18 8 * * * cd $PROJ && flock -n /tmp/lockup_earnings.lock $PY scripts/update_lockup_earnings_dates.py >> logs/lockup_earnings.log 2>&1  # snap earnings-tied lockup tranches to real report dates
+
+# ── Stage 2c Stop Health: lifecycle + proximity scan, SIEM/Telegram on orphaned/oversized/near-trigger ──
+*/10 9-16 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/stop_health_check.py --quiet >> logs/stop_health_cron.log 2>&1
+# ── Stage 2c Grok Stop Curation: external-LLM R:R review of every live stop (advisory; 10:05 & 15:05) ──
+5 10,15 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/grok_stop_review.py --apply >> logs/grok_stop_review_cron.log 2>&1
+# ── Stage 2c Alpaca AUTO Stop Manager: ratchet paper stops up to the R:R-optimal level (paper only) ──
+*/20 9-16 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/alpaca_stop_manager.py --apply >> logs/alpaca_stop_manager_cron.log 2>&1
+# ── Schwab live position sync: auto-surface trades (buys/sells) → holdings.json, every 15m market hours ──
+7,22,37,52 9-16 * * 1-5 cd $PROJ && flock -n /tmp/schwab_pos_sync.lock bash -c "sleep $((RANDOM \% 20)); set -a; . ./.env; set +a; $PY scripts/schwab_position_sync.py --apply" >> logs/schwab_position_sync.log 2>&1
+0 18 * * 0 cd $PROJ && flock -n /tmp/rotation_digest.lock $PY scripts/rotation_rebalance_digest.py >> logs/rotation_digest.log 2>&1  # weekly advisory rotation rebalance digest + research-gap seeding
+0 9 * * * cd $PROJ && flock -n /tmp/oauth_keepalive.lock $PY scripts/oauth_lane_keepalive.py >> logs/oauth_lane_keepalive.log 2>&1  # keep free-OAuth LLM lanes warm + alert on stale
+40 6 * * 1-5 cd $PROJ && flock -n /tmp/refresh_cards.lock $PY scripts/refresh_symbol_cards.py >> logs/refresh_symbol_cards.log 2>&1  # keep symbol_cards_latest.json fresh for rotation/card layer
+10 7 * * * cd $PROJ && flock -n /tmp/rec_intel.lock $PY scripts/recommendation_intelligence_engine.py >> logs/recommendation_intelligence.log 2>&1  # recommendation lineage: ingest all sources + executions
+30 6 * * 6 cd $PROJ && flock -n /tmp/classify_instr.lock $PY scripts/classify_instruments.py >> logs/classify_instruments.log 2>&1  # weekly: instrument_type + expense ratios
+0 7 * * 6 cd $PROJ && flock -n /tmp/etf_analyst.lock $PY scripts/etf_analyst_enrich.py >> logs/etf_analyst_enrich.log 2>&1  # weekly: ETF analyst look-through
+CIO_DUAL_CHATGPT_CAP=1100
+30 21 * * * cd $PROJ && flock -n /tmp/cio_dual_rerun.lock $PY scripts/rerun_cio_dual_consensus.py 1000 --skip-done >> logs/cio_dual_rerun.log 2>&1  # overnight: backfill Grok+ChatGPT dual-consensus on watchlist CIO verdicts (resumable, capped)
+45 6 * * 1-5 cd $PROJ && flock -n /tmp/symprofiles_wl.lock $PY scripts/build_symbol_profiles.py --watchlist-top 300 >> logs/symbol_profiles_watchlist.log 2>&1  # watchlist card sector/description coverage (operator 2026-06-18)
+*/8 * * * * cd $PROJ && flock -n /tmp/warm_caches.lock bash -c "set -a; . ./.env; set +a; $PY scripts/warm_caches.py" >> logs/warm_caches.log 2>&1  # pre-warm heavy rotation cache out of the request path (operator 2026-06-18)
+25 16 * * 1-5 cd $PROJ && flock -n /tmp/strategy_tilt.lock $PY scripts/strategy_tilt.py >> logs/strategy_tilt.log 2>&1  # per-strategy allocation tilt refresh (post-close)
+13 23 * * * cd $PROJ && bash scripts/commit_hermes_daily.sh >> logs/commit_hermes_daily.log 2>&1  # auto-commit daily hermes reports
+25,55 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/directive_kw_enhancer.lock $PY scripts/directive_keyword_enhancer.py --backfill --apply >> logs/directive_keyword_enhancer.log 2>&1  # LLM auto-enhance keyword-less trend/sector directives (local+oauth)
+15 7 * * 6 cd $PROJ && flock -n /tmp/etf_perf.lock $PY scripts/etf_performance_enrich.py >> logs/etf_performance_enrich.log 2>&1  # weekly: ETF YTD/yield/dividends
+20 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/topic_synth.lock $PY scripts/topic_research_synthesizer.py --max 15 --apply >> logs/topic_research_synth.log 2>&1  # fill staged topic_research with real LLM research
+# Finviz proactive research (2026-06-20): ticker-tagged Stock news across the watch universe (one v=3 pull, distributed). 4x market hours.
+30 9,11,13,15 * * 1-5 cd $PROJ && flock -n /tmp/finviz_proactive.lock $PY scripts/finviz_proactive_research.py --max 400 --lookback-hours 12 >> logs/finviz_proactive.log 2>&1
+# Finviz sector/industry performance (2026-06-20): daily macro/rotation snapshot → finviz_group_performance. Twice on market days.
+15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1
+# v3 dashboard UI health crawl (2026-06-21): daily error/dead-source audit (failed APIs, console errors, broken routes); Telegram alert on confirmed issues. Gentle/server-health-aware.
+50 6 * * * cd $PROJ && flock -n /tmp/crawl_v3.lock $PY scripts/crawl_v3_dashboard.py --telegram >> logs/crawl_v3_dashboard.log 2>&1
+# Layer-4 inference/synthesis cycle (2026-06-21): cross-source synthesis (regime/regional/NAV/sizing), advisory-only, flock-guarded. Weekday pre-open + midday + post-close.
+0 8 * * 1-5 cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_preopen >> logs/inference_cron.log 2>&1
+0 13 * * 1-5 cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_midday >> logs/inference_cron.log 2>&1
+30 16 * * 1-5 cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_postclose >> logs/inference_cron.log 2>&1
 
 # ============================================================
 # Inference Layers — modular higher-order reasoning (advisory, no execution).
@@ -484,3 +592,138 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # BEGIN ENSEMBLE-WORKER-1
 */3 9-16 * * 1-5 cd $PROJ && bash linux_launchers/run_ensemble_worker.sh
 # END ENSEMBLE-WORKER-1
+25 7 * * 1 cd $PROJ && flock -n /tmp/fee_efficiency.lock bash -c "set -a; . ./.env; set +a; $PY scripts/fee_efficiency_analyzer.py --emit" >> logs/fee_efficiency.log 2>&1  # weekly portfolio fee/cost-efficiency findings -> Reports
+40 7 1 * * cd $PROJ && flock -n /tmp/expense_ratio_validate.lock bash -c "set -a; . ./.env; set +a; $PY scripts/validate_expense_ratios.py --apply" >> logs/expense_ratio_validate.log 2>&1  # monthly: re-validate fund/ETF expense ratios (data quality)
+35 6 * * 1-5 cd $PROJ && flock -n /tmp/earnings_enrich.lock bash -c "set -a; . ./.env; set +a; $PY scripts/earnings_enrich.py" >> logs/earnings_enrich.log 2>&1  # daily: next earnings date + last beat/miss for held stocks (card layer)
+38 6 * * 1-5 cd $PROJ && flock -n /tmp/fund_technicals.lock bash -c "set -a; . ./.env; set +a; $PY scripts/fund_technicals_enrich.py" >> logs/fund_technicals.log 2>&1  # daily: RSI/W/M/YTD for mutual funds (Finviz does not cover funds)
+42 6 * * 1-5 cd $PROJ && flock -n /tmp/distributions_enrich.lock bash -c "set -a; . ./.env; set +a; $PY scripts/distributions_enrich.py" >> logs/distributions_enrich.log 2>&1  # daily: fund/ETF distribution schedule (next/last/cadence/ttm)
+# ── Centralized Health Agent — score+trends+escalation routing, every 30 min (7 days; systems break anytime) ──
+# ── Multi-coder auto-fix dispatcher — drain code-fix escalations (ADVISORY: diffs only, no PR). Flip CODER_DISPATCH_MODE=pr to auto-open PRs. ──
+0 9-18/3 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_coder_dispatch.lock $PY scripts/coder_dispatch.py --from-queue --apply >> logs/coder_dispatch_cron.log 2>&1
+# ── Options desk: proposals + position monitor (every 10m market hours) ──
+35,45,55 9 * * 1-5 cd $PROJ && bash linux_launchers/run_options_monitor.sh
+*/10 10-15 * * 1-5 cd $PROJ && bash linux_launchers/run_options_monitor.sh
+5 16 * * 1-5 cd $PROJ && bash linux_launchers/run_options_monitor.sh
+# Options IV history snapshot (daily after close, for true IV rank)
+20 16 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_options_iv.lock $PY scripts/options_iv_snapshot.py >> logs/options_iv_snapshot.log 2>&1
+# Rotation autopilot — autonomous IWM/SPY trend-switch screening (2026-06-22)
+*/15 4-16 * * 1-5 cd $PROJ && bash $PROJ/linux_launchers/run_rotation_autopilot.sh cron >> logs/rotation_autopilot.log 2>&1
+# BEGIN finviz-intraday-repricer
+*/15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/portfolio_repricer.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/portfolio_repricer.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/portfolio_repricer_intraday.log 2>&1
+5 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/portfolio_repricer.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/portfolio_repricer.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/portfolio_repricer_intraday.log 2>&1
+# END finviz-intraday-repricer
+# BEGIN health-agent-cron
+*/30 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /usr/bin/flock -n /tmp/health_agent.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/health_agent.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/health_agent_cron.log 2>&1
+# END health-agent-cron
+*/5 9-16 * * 1-5 /usr/bin/flock -n /tmp/tradeai_broker_autocal.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_broker_queue_autocal.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/broker_queue_autocal_cron.log 2>&1
+0,30 9-16 * * 1-5 /usr/bin/flock -n /tmp/tradeai_broker_curator.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_broker_proposal_curator.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/broker_proposal_curator_cron.log 2>&1
+30 7 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/analyst_daily_digest.lock .venv/bin/python scripts/generate_analyst_daily_digest.py --format docx >> logs/analyst_daily_digest.log 2>&1
+35 7 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/analyst_urgent.lock .venv/bin/python scripts/analyst_urgent_refresh.py >> logs/analyst_urgent_refresh.log 2>&1  # urgent rec-change detector -> regen + email operator (weekly Sun 21:15 is the baseline)
+15 21 * * 0 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/analyst_reports_weekly.lock .venv/bin/python scripts/generate_analyst_reports_autonomous.py --mode weekly >> logs/analyst_reports_autonomous.log 2>&1
+30 21 1 * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/analyst_reports_monthly_oversight.lock env REPORT_CLAUDE_OVERSIGHT=1 .venv/bin/python scripts/generate_analyst_reports_autonomous.py --mode full >> logs/analyst_reports_autonomous.log 2>&1  # monthly: full prospectus refresh WITH Claude cloud oversight
+*/15 6-17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/eligible_prewarm.lock .venv/bin/python -c "import sys;sys.path.insert(0,'scripts');import reporting_engine as r;r.eligible_report_payload(use_cache=False)" >> logs/eligible_prewarm.log 2>&1  # R0: pre-warm analyst /eligible cache out of request path
+*/8 6-17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && curl -s -m 30 -o /dev/null "http://127.0.0.1:7777/api/v2/finviz-strip-map?fresh=1" >> logs/finviz_strip_prewarm.log 2>&1  # pre-warm finviz-strip-map cache out of request path
+20 10,16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/think_tank.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_think_tank.py --apply --max-themes 10 >> logs/think_tank.log 2>&1  # Hermes deep synthesis pass (24/7 curation via research_curator)
+45 7,15 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/hermes_pipeline_health.lock .venv/bin/python scripts/hermes_pipeline_health.py --send >> logs/hermes_pipeline_health.log 2>&1  # Hermes pipeline health: catch silent lane/alerter/queue failures
+0 17 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/hermes_self_tune.lock .venv/bin/python scripts/hermes_autonomous_self_tune.py --apply >> logs/hermes_self_tune.log 2>&1  # Hermes self-learning auto-graft + self-purge (autonomous, no human touch)
+
+# research scheduler — tiered SLA research across ALL Hermes lanes (docs/RESEARCH_PRIORITIZATION.md)
+# single lock = no overlap so the free OAuth lanes never get hammered concurrently
+0 8 * * 1-5 cd $PROJ && flock -n /tmp/research_sched.lock $PY scripts/research_scheduler.py --mode holdings --apply --budget 70 >> logs/research_scheduler.log 2>&1
+30 12,16 * * 1-5 cd $PROJ && flock -n /tmp/research_sched.lock $PY scripts/research_scheduler.py --mode holdings --apply --budget 70 >> logs/research_scheduler.log 2>&1
+0 10-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/research_sched.lock $PY scripts/research_scheduler.py --mode priority --apply --budget 40 >> logs/research_scheduler.log 2>&1
+30 20 * * 1-5 cd $PROJ && flock -n /tmp/research_sched.lock $PY scripts/research_scheduler.py --mode watchlist --apply --budget 50 >> logs/research_scheduler.log 2>&1
+0 2 * * * cd $PROJ && flock -n /tmp/research_sched.lock $PY scripts/research_scheduler.py --mode cold-floor --apply --budget 20 >> logs/research_scheduler.log 2>&1
+0 19 * * 0 cd $PROJ && flock -n /tmp/research_sched.lock $PY scripts/research_scheduler.py --mode incubator --apply --budget 30 >> logs/research_scheduler.log 2>&1
+
+# Claude challenger cohort (weekly A/B vs screener) + analyst-aggregator source pin
+0 17 * * 0 cd $PROJ && flock -n /tmp/claude_challenger.lock $PY scripts/claude_challenger_curator.py --apply >> logs/claude_challenger.log 2>&1
+40 5 * * * cd $PROJ && $PY scripts/register_analyst_sources.py --apply >> logs/analyst_sources.log 2>&1
+
+# Hermes canonical status snapshot — keeps llm-lane/researcher-matrix UI accurate (was unscheduled → stale ChatGPT status)
+15 */2 * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_canon_status.lock $PY scripts/build_hermes_canonical_status.py >> logs/hermes_canonical_status.log 2>&1
+
+# pipeline freshness monitor — catches 'job runs but OUTPUT stale' (dashboard audit 2026-06-24)
+20 */4 * * * cd $PROJ && flock -n /tmp/pipeline_freshness.lock $PY scripts/pipeline_freshness_monitor.py --send >> logs/pipeline_freshness.log 2>&1
+
+# decision-outcome evaluation (feeds agent_performance) — evaluate_past_decisions only runs under --outcomes; no cron passed it
+40 5 * * * cd $PROJ && flock -n /tmp/overnight_outcomes.lock $PY scripts/overnight_batch.py --outcomes >> logs/overnight_outcomes.log 2>&1
+
+# heavy LLM-synthesis sections re-run post-rush (they time out under the 07:30 ollama contention; light sections run fine in the main job)
+15 8 * * 1-5 cd $PROJ && flock -n /tmp/llm_synth_heavy.lock bash -c 'for s in morning_synthesis recovery_analysis prospect_narratives; do $PY scripts/llm_intelligence_enrichment.py --section $s; done' >> logs/llm_synth_heavy.log 2>&1
+
+*/3 * * * * cd $PROJ && flock -n /tmp/process_reaper.lock $PY scripts/process_reaper.py >> logs/process_reaper.log 2>&1  # reap hung/piled-up batch jobs (advisory unless REAP_ENABLED=1)
+15 */6 * * * cd $PROJ && flock -n /tmp/paper_advisory.lock $PY scripts/paper_trade_advisory.py --apply --limit 6 >> logs/paper_trade_advisory.log 2>&1  # external Grok+ChatGPT post-mortem advisory on new closed paper trades (curated prompt, free OAuth lanes)
+30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons → trade_lesson_memory → strategy_lesson_rollup (learning loop)
+20 6 * * 1-5 cd $PROJ && flock -n /tmp/bt_aggregator.lock $PY scripts/backtest_results_aggregator.py >> logs/backtest_results_aggregator.log 2>&1  # aggregate backtest runs → strategy_backtest_results (after 06:00 strategy_backtester)
+5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards)
+15 */2 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /usr/bin/flock -n /tmp/enrich_proposal_tech.lock .venv/bin/python scripts/enrich_proposal_technicals.py >> logs/enrich_proposal_technicals.log 2>&1
+*/20 13-21 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /usr/bin/flock -n /tmp/intraday_vwap.lock .venv/bin/python scripts/compute_intraday_vwap.py >> logs/intraday_vwap.log 2>&1
+*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/reclassify_momentum.lock $PY scripts/reclassify_momentum_proposals.py --apply >> logs/reclassify_momentum.log 2>&1
+# Claude file-memory backup to Drive (delete-before-upload, daily)
+10 3 * * * flock -n /tmp/claude_memsync.lock /home/johnclaw/.claude/sync-memory-to-drive.sh >> /home/johnclaw/.claude/logs/sync-memory-to-drive.log 2>&1
+# S&P 500 pullback + approaching-MACD-cross screener (post-close)
+40 16 * * 1-5 cd $PROJ && bash linux_launchers/run_pullback_macd_screener.sh
+# Watchlist -> proposal bridge: ranked by R:R+setup, capped 5/run (avoids oversight load spike)
+*/30 10-15 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_wl_bridge.lock bash scripts/market_day_gate.sh $PY scripts/watchlist_proposal_bridge.py --apply --max-new 5 >> logs/watchlist_proposal_bridge.log 2>&1
+# Pullback/MACD intraday monitor — hourly on trading days (open→close), holiday-gated
+35 9-15 * * 1-5 cd $PROJ && bash linux_launchers/run_pullback_macd_monitor.sh >> logs/pullback_macd_monitor.log 2>&1
+# Protection adjustments via ATM: paper auto-applies guarded stop-ups, real stays operator
+*/15 9-16 * * 1-5 cd $PROJ && /usr/bin/flock -n /tmp/tradeai_protection_pass.lock $PY scripts/protection_atm_pass.py >> logs/protection_atm_pass.log 2>&1
+# BEGIN strategy-monitoring-cron
+30 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/proposal_monitor.py --pending --apply >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proposal_monitor.log 2>&1
+0 18 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/proposal_monitor.py --pending --apply >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proposal_monitor.log 2>&1
+0 6 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/proposal_monitor.py --pending --apply >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proposal_monitor.log 2>&1
+30 6 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/proposal_monitor.py --pending --apply >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proposal_monitor.log 2>&1
+5 17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_strategy_audits.sh
+# END strategy-monitoring-cron
+# BEGIN tradeinview-annotation-cron
+30 23 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/journal_annotation_reminder.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/journal_annotation_reminder.log 2>&1
+0 12 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/journal_tilt_morning_hook.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/journal_tilt_hook.log 2>&1
+# END tradeinview-annotation-cron
+
+# ── Momentum Scalp VALIDATION fast path: sandbox sample collection, every 2min 06:00-12:00 ET weekdays
+#    (sandbox/simulated only; idempotent via flock + submit_paper dup gates; internal window gate enforces 06:00-12:00;
+#     NEVER live; operator/2FA unchanged). Added 2026-06-28 per operator decision.
+*/2 6-11 * * 1-5 cd $PROJ && flock -n /tmp/momentum_scalp_validation_fp.lock $PY scripts/momentum_scalp_validation_fast_path.py --submit-sandbox >> logs/momentum_scalp_validation_fast_path.log 2>&1
+# BEGIN finviz-momentum-scalp-5min  (operator 2026-06-28: every 5 min, 06:00-12:00 ET, trading days)
+*/5 6-11 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 200 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply --skip-finviz-refresh --sync-signals --generate-proposals --run-validation-fast-path --submit-validation >> logs/finviz_momentum_scalp_scan.log 2>&1
+*/15 6-11 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 150 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply >> logs/finviz_momentum_scalp_scan.log 2>&1
+# END finviz-momentum-scalp-5min
+# BEGIN sec-form4-momentum-context  (SEC/Form4 supporting catalyst context — source/read-only)
+45 5 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_sec_form4_ctx.lock $PY scripts/run_sec_form4_momentum_context.py --apply >> logs/sec_form4_momentum_context.log 2>&1
+15 9 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_sec_form4_ctx.lock $PY scripts/run_sec_form4_momentum_context.py --apply >> logs/sec_form4_momentum_context.log 2>&1
+# END sec-form4-momentum-context
+*/10 6-20 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_hermes_gov_warm.lock .venv/bin/python scripts/hermes_governance_api.py --warm >> logs/hermes_governance_warm.log 2>&1  # pre-warm Hermes governance panel cache
+35 17 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/stop_drift_alert.lock $PY scripts/stop_drift_alert.py --send >> logs/stop_drift_alert.log 2>&1  # daily raise-stop + lock-in-profits drift alert (advisory, Telegram)
+
+# ── News ingestion: overnight priority + weekend tail rotation (operator 2026-07-02) ──
+30 0 * * * cd $PROJ && flock -n /tmp/news_priority_overnight.lock timeout 45m $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1
+0 10,14,18 * * 0,6 cd $PROJ && flock -n /tmp/news_tail_rotate.lock timeout 90m $PY scripts/news_ingestion.py --tail-rotate >> logs/news_ingestion.log 2>&1
+
+# ── Hermes Phase 0 (2026-07-02): score-history retention — keep 21d raw + 6h-bucket samples beyond; stops 3.5M-row/1.8GB bloat ──
+35 3 * * * cd $PROJ && flock -n /tmp/hermes_score_retention.lock $PY scripts/hermes_score_history_retention.py --apply --days 21 >> logs/hermes_score_retention.log 2>&1
+
+# ── Hermes Phase 1 (2026-07-02): scope governor — sole owner of watchlist_items.scope_tier (S0-S3, TTLs, caps, audit) ──
+7,37 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_scope_governor.lock $PY scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1
+# ── Hermes Phase 1: score-event feeder — catalyst/news/finviz/directive/proposal -> immediate rescore + S3 reactivation ──
+*/5 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_event_feeder.lock $PY scripts/hermes_score_event_feeder.py --apply >> logs/hermes_event_feeder.log 2>&1
+
+# ── Hermes Phase 2 (2026-07-02): outcome grader — the Outcome Spine. Seeds + grades every Hermes claim vs money nightly; zero LLM ──
+50 2 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_grader.lock $PY scripts/hermes_outcome_grader.py --apply --max-rows 10000 >> logs/hermes_outcome_grader.log 2>&1
+
+# ── Hermes Outcome & Feedback (2026-07-02): nightly outcome_bus.json — closed-loop bus for governor + research ──
+# Outcome & Feedback — after tag_engine (fresh tag_efficacy)
+25 3 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_feedback.lock $PY scripts/hermes_outcome_feedback_agent.py --apply >> logs/hermes_outcome_feedback.log 2>&1
+
+# ── Hermes Phase 3 (2026-07-02): outcome learning — weights/promotion/sources/lanes from the graded ledger, sample-gated ──
+35 3 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_learning.lock $PY scripts/hermes_outcome_learning.py --apply >> logs/hermes_outcome_learning.log 2>&1
+
+# ── Hermes Phase 4 (2026-07-02): tag engine — registry-vocabulary strategy tags (rules + capped local-LLM refine), continuous quality_score w/ outcome prior, tag-efficacy grading ──
+# Hermes Phase 4: tag engine — before outcome feedback bus
+5 3 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_tag_engine.lock $PY scripts/hermes_tag_engine.py --apply >> logs/hermes_tag_engine.log 2>&1
+
+# ── Hermes Phase 5 (2026-07-02): config governor — rails-pressure detectors file config_change_proposals (operator approves; auto-lane stays in the clamped loops) ──
+40 3 * * * cd $PROJ && flock -n /tmp/hermes_config_governor.lock $PY scripts/hermes_config_governor.py --apply >> logs/hermes_config_governor.log 2>&1
+# ── Hermes Phase 5: honest maturity snapshot — computed gates, 5s persistence-gated (30 consecutive passing days) ──
+20 7 * * * cd $PROJ && flock -n /tmp/hermes_maturity_gates.lock $PY scripts/hermes_maturity_gates.py --snapshot >> logs/hermes_maturity_gates.log 2>&1

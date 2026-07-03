@@ -594,6 +594,28 @@ def collect_intelligence_quality() -> list[dict]:
     return out
 
 
+def collect_hermes_scope_governor_health() -> list[dict]:
+    """Hermes Scope Governor + event feeder cron liveness (not silent flock -n skips)."""
+    out: list[dict] = []
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_scope_governor.health import check_scope_governor_health
+        conn = None
+        try:
+            from db_adapter import _get_conn, USE_DB
+            if USE_DB:
+                conn = _get_conn()
+        except Exception:
+            conn = None
+        for f in check_scope_governor_health(conn):
+            extra = {k: v for k, v in f.items() if k not in ("type", "severity", "message")}
+            out.append(_f("intelligence_quality", f["type"], f["severity"], f["message"], **extra))
+    except Exception as e:
+        out.append(_f("intelligence_quality", "hermes_scope_governor_monitor_error", "info",
+                      f"scope governor health check failed: {str(e)[:80]}"))
+    return out
+
+
 def collect_risk_protection() -> list[dict]:
     out = []
     try:
@@ -849,6 +871,7 @@ def collect_log_errors() -> list[dict]:
         "auto_proposal.log", "screener_pm.log", "news_ingestion.log", "paper_execution.log",
         "unified_stop_supervisor.log", "pipeline_watchdog.log", "atm.log", "cio_decisions.log",
         "data_gap_resolver.log", "rag_indexer.log", "health_agent_cron.log", "coder_dispatch_cron.log",
+        "hermes_scope_governor.log", "hermes_event_feeder.log",
     ]
     window_h = float(cfg.get("window_hours", 3))
     threshold = int(cfg.get("error_threshold", 5))
@@ -904,6 +927,14 @@ WHY = {
     "hermes_embed_backlog": "Hermes embedding queue is backing up — RAG won't catch up until drained.",
     "hermes_embed_failures": "Ollama embedding failures — check nomic-embed-text and retry worker.",
     "hermes_coordinator_stale": "Hermes coordinator hasn't ticked — auto-promote and fleet agents may be stalled.",
+    "hermes_scope_governor_stale": "Scope governor hasn't run — Hot/Warm/Cold tier ledger is stale; Hermes may score the wrong universe.",
+    "hermes_scope_governor_cron_missing": "Scope governor is not scheduled — scope_tier will never update.",
+    "hermes_scope_governor_cron_unobservable": "Scope governor uses flock -n — skipped runs are invisible until tiers go stale.",
+    "hermes_scope_governor_lock_skips": "Scope governor runs are being skipped because a prior run is still holding the lock (wedged or too slow).",
+    "hermes_scope_governor_underrunning": "Scope governor is firing far fewer than 48 runs/day — cron skips or crashes.",
+    "hermes_event_feeder_stale": "Score event feeder hasn't run — archived (S3) symbols won't reactivate on catalyst/news.",
+    "hermes_event_feeder_cron_missing": "Event feeder is not scheduled — the event lane is off.",
+    "hermes_governed_universe_stale": "Governed universe JSON feed is old — Hermes consumers read outdated Hot/Warm/Cold scope.",
     "options_zero_proposals": "Options desk produced zero proposals — income/CC opportunities may be invisible in Command Center.",
     "options_proposals_stale": "Options proposal cache is stale — UI may show outdated or empty ideas.",
     "options_snapshot_retention_stale": "options_chain_snapshots isn't being pruned — the vol-surface table grows unbounded (retention regression).",
@@ -1690,6 +1721,7 @@ COLLECTORS = [
     collect_execution_health,
     collect_execution_hardening_health,
     collect_intelligence_quality,
+    collect_hermes_scope_governor_health,
     collect_risk_protection,
     collect_retirement_planning,
     collect_strategy_output,

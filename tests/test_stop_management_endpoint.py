@@ -31,6 +31,15 @@ def test_02_ui_tab_present():
     assert "Stop Management" in hub and "StopManagement" in hub
 
 
+def test_04_reasons_subrow_not_table_column():
+    src = UI.read_text(encoding="utf-8")
+    assert "ReasonsSubRow" in src
+    assert "rowHasReasons" in src
+    # Reasons live in a full-width sub-row under each position, not a table header column.
+    assert "'Reasons'" not in src.split("thead")[1].split("</thead>")[0] if "thead" in src else True
+    assert "Reasons moved to sub-row" in src
+
+
 def test_03_alert_levels_from_synthetic_holdings(monkeypatch):
     import api_v2
     # a core hold 2% above its stop with no broker stop should be AMBER (within 3%); one 4% above -> YELLOW.
