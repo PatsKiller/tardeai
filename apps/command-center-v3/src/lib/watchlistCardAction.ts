@@ -119,46 +119,26 @@ export function deriveRecommendedAction(args: {
   }
 
   if (stale && hasPlan) {
-    return action('REFRESH_DATA', 'STALE', 'Refresh data first', {
-      subtext: 'Technicals may not match live price',
+    return action('REFRESH_DATA', 'STALE', 'Refresh first', {
+      subtext: 'Stale technicals',
       urgency: 'amber',
-      primaryLabel: 'Refresh data',
-      buttonVariant: 'neutral',
-    })
-  }
-
-  if (adv?.advisory_flag === 'caution' && !hasPlan) {
-    return action('REVIEW_SETUP', 'WAIT', 'Wait — advisory caution', {
-      subtext: 'No validated entry plan',
-      detail: advNote,
-      urgency: 'amber',
-      primaryLabel: 'Review setup',
-      buttonVariant: 'neutral',
-    })
-  }
-
-  if (adv?.advisory_flag === 'caution' && hasPlan) {
-    return action('VIEW_INTEL', 'WAIT', 'Wait — verify setup', {
-      subtext: 'Plan exists; advisory cautions sizing',
-      detail: advNote,
-      urgency: 'amber',
-      primaryLabel: 'View intel',
+      primaryLabel: 'Refresh',
       buttonVariant: 'neutral',
     })
   }
 
   if (cioAvoid(it.latest_recommendation)) {
-    return action('VIEW_INTEL', 'SKIP', `Skip — CIO ${cioLabel(it.latest_recommendation)}`, {
-      subtext: hasPlan ? 'Align with CIO before any add' : undefined,
+    return action('VIEW_INTEL', 'SKIP', 'No add', {
+      subtext: `CIO ${cioLabel(it.latest_recommendation)}`,
       urgency: 'amber',
-      primaryLabel: 'View intel',
+      primaryLabel: 'Intel',
       buttonVariant: 'neutral',
     })
   }
 
   if (rr != null && rr < 1) {
-    return action('ADJUST_PLAN', 'FIX', `Fix plan — R:R ${rr.toFixed(2)} < 1.0`, {
-      subtext: 'Reward smaller than risk at this entry',
+    return action('ADJUST_PLAN', 'FIX', `Fix plan · R:R ${rr.toFixed(2)}`, {
+      subtext: 'Reward < risk',
       urgency: 'red',
       primaryLabel: 'Fix plan',
       buttonVariant: 'outline-amber',
@@ -166,8 +146,8 @@ export function deriveRecommendedAction(args: {
   }
 
   if (rr != null && rr < 1.5) {
-    return action('ADJUST_PLAN', 'FIX', `Fix plan — R:R ${rr.toFixed(2)} thin`, {
-      subtext: 'Raise target or tighten stop',
+    return action('ADJUST_PLAN', 'FIX', `Fix plan · R:R ${rr.toFixed(2)}`, {
+      subtext: 'Thin edge',
       urgency: 'amber',
       primaryLabel: 'Fix plan',
       buttonVariant: 'outline-amber',
@@ -176,8 +156,8 @@ export function deriveRecommendedAction(args: {
 
   const planCapWarn = warns.find(w => w.text.includes('plan target') && w.text.includes('Street'))
   if (planCapWarn && hasPlan) {
-    return action('REVIEW_EXIT', 'FIX', 'Fix exit — plan below Street', {
-      subtext: 'Keep a runner; do not exit all at plan target',
+    return action('REVIEW_EXIT', 'FIX', 'Fix exit ladder', {
+      subtext: 'Plan target below Street',
       detail: planCapWarn.text,
       urgency: 'amber',
       primaryLabel: 'Review exit',
@@ -185,38 +165,51 @@ export function deriveRecommendedAction(args: {
     })
   }
 
+  if (adv?.advisory_flag === 'caution' && !hasPlan) {
+    return action('REVIEW_SETUP', 'WAIT', 'Hold off', {
+      subtext: 'Advisory caution · no plan',
+      detail: advNote,
+      urgency: 'amber',
+      primaryLabel: 'Review',
+      buttonVariant: 'neutral',
+    })
+  }
+
+  if (adv?.advisory_flag === 'caution' && hasPlan) {
+    return action('VIEW_INTEL', 'WAIT', 'Hold off', {
+      subtext: 'Advisory caution',
+      detail: advNote,
+      urgency: 'amber',
+      primaryLabel: 'Intel',
+      buttonVariant: 'neutral',
+    })
+  }
+
   const conf = it.research_confidence ?? it.hermes_score_components?._confidence
   if (conf != null && Number(conf) < 0.5 && !hasPlan) {
-    return action('VIEW_INTEL', 'WAIT', 'Wait — low conviction', {
-      subtext: `Conf ${Number(conf).toFixed(2)} · gather more evidence`,
+    return action('VIEW_INTEL', 'WAIT', 'Hold off', {
+      subtext: `Low conf ${Number(conf).toFixed(2)}`,
       urgency: 'none',
-      primaryLabel: 'View intel',
+      primaryLabel: 'Intel',
       buttonVariant: 'neutral',
     })
   }
 
   const urgency = it.entry_urgency
   if (urgency === 'ready' && hasPlan && entry != null) {
-    const planStop = it.entry_stop != null ? Number(it.entry_stop) : null
-    return action('PROPOSE_ENTRY', 'READY', `Propose @ ${money(entry)}`, {
-      subtext: [
-        planStop != null ? `Stop ${money(planStop)}` : null,
-        rr != null ? `R:R ${rr.toFixed(1)}` : null,
-      ].filter(Boolean).join(' · ') || 'Limit order ready',
+    return action('PROPOSE_ENTRY', 'READY', `Propose ${money(entry)}`, {
+      subtext: 'Limit ready',
       urgency: 'green',
-      primaryLabel: 'Propose Entry',
+      primaryLabel: 'Propose',
       buttonVariant: 'solid-green',
     })
   }
 
   if (urgency === 'near_entry' && hasPlan && entry != null) {
-    return action('PROPOSE_ENTRY', 'READY', `Add on dip @ ${money(entry)}`, {
-      subtext: [
-        'NEAR-ENTRY',
-        rr != null ? `R:R ${rr.toFixed(1)}` : null,
-      ].filter(Boolean).join(' · '),
+    return action('PROPOSE_ENTRY', 'READY', `Propose ${money(entry)}`, {
+      subtext: 'Near entry',
       urgency: 'amber',
-      primaryLabel: 'Propose Entry',
+      primaryLabel: 'Propose',
       buttonVariant: 'solid-green',
     })
   }
@@ -225,28 +218,28 @@ export function deriveRecommendedAction(args: {
     return action(
       enriched ? 'BUILD_PLAN' : 'REFRESH_DATA',
       enriched ? 'BUILD' : 'STALE',
-      enriched ? 'Build entry plan' : 'Awaiting enrichment',
+      enriched ? 'Build plan' : 'Enriching',
       {
-        subtext: enriched ? 'Need limit, stop, and target' : 'Refresh after enrichment completes',
+        subtext: enriched ? 'No limit/stop/target' : undefined,
         urgency: 'none',
-        primaryLabel: enriched ? 'Build plan' : 'Refresh data',
+        primaryLabel: enriched ? 'Build' : 'Refresh',
         buttonVariant: enriched ? 'outline-amber' : 'neutral',
       },
     )
   }
 
   if (entry != null) {
-    return action('WATCH_ON_DESK', 'WATCH', `Watch trigger @ ${money(entry)}`, {
-      subtext: rr != null ? `R:R ${rr.toFixed(1)} · hold for limit` : 'Hold for limit fill',
+    return action('WATCH_ON_DESK', 'WATCH', `Watch ${money(entry)}`, {
+      subtext: 'Await trigger',
       urgency: 'none',
-      primaryLabel: 'Watch on desk',
+      primaryLabel: 'Desk',
       buttonVariant: 'neutral',
     })
   }
 
-  return action('VIEW_INTEL', 'WAIT', 'Review intel first', {
+  return action('VIEW_INTEL', 'WAIT', 'Review', {
     urgency: 'none',
-    primaryLabel: 'View intel',
+    primaryLabel: 'Intel',
     buttonVariant: 'neutral',
   })
 }
@@ -284,26 +277,29 @@ export function verdictColor(v: CardVerdict): string {
   return map[v]
 }
 
-export function buttonStyle(variant: ButtonVariant): Record<string, string | number> {
+export function buttonStyle(variant: ButtonVariant, compact = false): Record<string, string | number> {
   const green = '#16a34a'
   const amber = '#d97706'
   const muted = '#94a3b8'
   const tagBorder = 'rgba(71,85,105,.45)'
+  const pad = compact ? '6px 12px' : '9px 18px'
+  const fs = compact ? 11 : 12
+  const minW = compact ? 72 : 132
   if (variant === 'solid-green') {
     return {
-      fontSize: 12, fontWeight: 800, padding: '9px 18px', borderRadius: 8, cursor: 'pointer',
-      minWidth: 132, border: `1px solid ${green}`, background: green, color: '#fff',
+      fontSize: fs, fontWeight: 800, padding: pad, borderRadius: 6, cursor: 'pointer',
+      minWidth: minW, border: `1px solid ${green}`, background: green, color: '#fff', whiteSpace: 'nowrap',
     }
   }
   if (variant === 'outline-amber') {
     return {
-      fontSize: 12, fontWeight: 800, padding: '9px 18px', borderRadius: 8, cursor: 'pointer',
-      minWidth: 132, border: `1px solid ${amber}`, background: 'rgba(217,119,6,.1)', color: '#fcd34d',
+      fontSize: fs, fontWeight: 800, padding: pad, borderRadius: 6, cursor: 'pointer',
+      minWidth: minW, border: `1px solid ${amber}`, background: 'rgba(217,119,6,.1)', color: '#fcd34d', whiteSpace: 'nowrap',
     }
   }
   return {
-    fontSize: 12, fontWeight: 800, padding: '9px 18px', borderRadius: 8, cursor: 'pointer',
-    minWidth: 132, border: `1px solid ${tagBorder}`, background: 'transparent', color: muted,
+    fontSize: fs, fontWeight: 800, padding: pad, borderRadius: 6, cursor: 'pointer',
+    minWidth: minW, border: `1px solid ${tagBorder}`, background: 'transparent', color: muted, whiteSpace: 'nowrap',
   }
 }
 
