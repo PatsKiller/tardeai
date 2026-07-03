@@ -48,6 +48,52 @@ function Tag({ text, tip }: { text: string; tip?: string }) {
   )
 }
 
+function IntelPill({ text, color, tip }: { text: string; color: string; tip?: string }) {
+  return (
+    <span title={tip} style={{
+      fontSize: 9.5, fontWeight: 700, padding: '2px 7px', borderRadius: 5,
+      whiteSpace: 'nowrap', cursor: tip ? 'help' : 'default',
+      background: `${color}22`, border: `1px solid ${color}55`, color,
+    }}>{text}</span>
+  )
+}
+
+const llmMeta = (lane?: string) => (({
+  grok: { label: 'Grok', color: '#1d9bf0' },
+  chatgpt: { label: 'ChatGPT', color: '#10a37f' },
+  claude: { label: 'Claude', color: '#d97757' },
+} as Record<string, { label: string; color: string }>)[lane || ''] || { label: lane || 'LLM', color: WL.text.muted })
+
+function FinvizStrip({ fv }: { fv: any }) {
+  const pc = (v: any) => v == null ? WL.text.muted : Number(v) > 0 ? WL.urgency.green : Number(v) < 0 ? WL.urgency.red : WL.text.muted
+  const rsiC = fv.rsi == null ? WL.text.muted : fv.rsi >= 70 ? WL.urgency.red : fv.rsi <= 30 ? WL.urgency.green : WL.text.primary
+  const cell = (label: string, val: any, color: string, suffix = '') => (
+    <span style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
+      <span style={{ fontSize: 8.5, color: WL.text.muted, fontWeight: 700 }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color }}>
+        {val == null ? '—' : `${Number(val) > 0 && suffix ? '+' : ''}${Number(val).toFixed(suffix ? 1 : 0)}${suffix}`}
+      </span>
+    </span>
+  )
+  return (
+    <div
+      title="Finviz daily metrics"
+      onClick={e => e.stopPropagation()}
+      style={{
+        display: 'flex', flexWrap: 'wrap', gap: 12, padding: '5px 10px',
+        background: 'rgba(96,165,250,.07)', border: '1px solid rgba(96,165,250,.18)', borderRadius: 8,
+      }}
+    >
+      {cell('RSI', fv.rsi, rsiC)}
+      {cell('W', fv.perf_week, pc(fv.perf_week), '%')}
+      {cell('M', fv.perf_month, pc(fv.perf_month), '%')}
+      {cell('YTD', fv.perf_ytd, pc(fv.perf_ytd), '%')}
+      {cell('vs50d', fv.sma50, pc(fv.sma50), '%')}
+      <span style={{ fontSize: 8, color: WL.text.dim, alignSelf: 'center' }}>finviz</span>
+    </div>
+  )
+}
+
 function ladderFocusIndex(ladder: Ladder | null): number {
   if (!ladder?.steps.length) return -1
   return ladder.steps.length > 1 ? 1 : 0
@@ -150,8 +196,12 @@ export default function WatchlistCard({
   const sectorLine = sc?.sector || it.profile_sector
     ? [sc?.sector || it.profile_sector, sc?.industry || it.profile_industry].filter(Boolean).join(' · ')
     : null
-  const hasContext = !!(sectorLine || it.catalyst_headline || it.synthesis_evidence?.length
-    || it.synthesis_narrative_snip || fv || hasMetaContext || !enriched)
+  const companyDesc = sc?.description || it.profile_description || null
+  const newsItems: any[] = (sc?.news ?? []).slice(0, 3)
+  const hasIntelStrip = !!(companyDesc || sectorLine || it.catalyst_headline || newsItems.length
+    || fv || llms.length || sc?.analyst || sc?.vs_sector_week != null)
+  const hasContext = !!(it.synthesis_evidence?.length || it.synthesis_narrative_snip
+    || hasMetaContext || !enriched)
 
   const heroTextSize = prominence.heroScale === 'large' ? WL.hero.textLarge : WL.hero.textMedium
   const metricColor = prominence.metricsMuted ? WL.text.dim : WL.text.primary
@@ -344,7 +394,106 @@ export default function WatchlistCard({
         </div>
       )}
 
-      {/* 5. Exit ladder — compact / collapsible */}
+      {/* 5. Company & market intel — always visible (restored from pre-refactor cards) */}
+      {hasIntelStrip && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            padding: '10px 12px', borderRadius: WL.body.radius,
+            background: WL.body.bg, border: `1px solid ${WL.body.border}`,
+            display: 'flex', flexDirection: 'column', gap: 8,
+          }}
+        >
+          {companyDesc && (
+            <div style={{ fontSize: 11, color: WL.text.secondary, lineHeight: 1.45 }}>
+              {companyDesc}
+            </div>
+          )}
+          {(sc?.sector || it.profile_sector || sc?.vs_sector_week != null || sc?.analyst) && (
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+              {(sc?.sector || it.profile_sector) && (
+                <IntelPill
+                  text={`${sc?.sector || it.profile_sector}${sc?.sector_etf ? ` (${sc.sector_etf})` : ''}`}
+                  color="#60a5fa"
+                  tip={sc?.industry || it.profile_industry || undefined}
+                />
+              )}
+              {sc?.vs_sector_week != null && (
+                <IntelPill
+                  text={`${sc.vs_sector_week >= 0 ? '+' : ''}${sc.vs_sector_week}% vs sector (1w)`}
+                  color={sc.vs_sector_week >= 0 ? WL.urgency.green : WL.urgency.red}
+                />
+              )}
+              {sc?.analyst?.rating && (
+                <IntelPill
+                  text={[
+                    String(sc.analyst.rating).replace(/_/g, ' '),
+                    sc.analyst.opinions ? `${sc.analyst.opinions} analysts` : null,
+                    sc.analyst.target != null ? `target $${sc.analyst.target}` : null,
+                    sc.analyst.upside_pct != null ? `(${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : null,
+                  ].filter(Boolean).join(' · ')}
+                  color={String(sc.analyst.rating).includes('buy') ? WL.urgency.green : sc.analyst.rating === 'hold' ? WL.urgency.amber : WL.text.muted}
+                />
+              )}
+            </div>
+          )}
+          {it.catalyst_headline && (
+            <div style={{ fontSize: 10.5, color: WL.text.secondary, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', lineHeight: 1.4 }}>
+              {it.catalyst_type && (
+                <IntelPill
+                  text={`⚡ ${String(it.catalyst_type).replace(/_/g, ' ')}`}
+                  color={it.catalyst_severity === 'critical' || it.catalyst_severity === 'high' ? WL.urgency.green : WL.urgency.amber}
+                  tip={`latest catalyst · impact ${it.catalyst_impact ?? '—'}`}
+                />
+              )}
+              {it.catalyst_url ? (
+                <a href={it.catalyst_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 650 }}>
+                  {it.catalyst_headline}
+                </a>
+              ) : <span>{it.catalyst_headline}</span>}
+              {it.catalyst_at && <span style={{ color: WL.text.muted, fontSize: 9.5 }}>{ago(it.catalyst_at)}</span>}
+            </div>
+          )}
+          {newsItems.map((n: any, i: number) => (
+            <div key={i} style={{ fontSize: 10.5, lineHeight: 1.4 }}>
+              <span style={{ color: WL.text.muted }}>
+                {n.source || 'news'}
+                {n.at ? ` · ${ago(n.at)}` : ''}
+                {' '}
+              </span>
+              {n.url ? (
+                <a href={n.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#bfdbfe', textDecoration: 'none', fontWeight: 650 }}>
+                  {n.title}
+                </a>
+              ) : <span style={{ color: WL.text.secondary }}>{n.title}</span>}
+            </div>
+          ))}
+          {!newsItems.length && it.news_7d != null && Number(it.news_7d) > 0 && (
+            <div style={{ fontSize: 10, color: WL.text.muted }}>
+              {it.news_7d} news article{Number(it.news_7d) === 1 ? '' : 's'} (7d)
+              {it.news_top_score != null ? ` · top score ${it.news_top_score}` : ''}
+            </div>
+          )}
+          {fv && <FinvizStrip fv={fv} />}
+          {llms.length > 0 && (
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+              {llms.map((e: any, i: number) => {
+                const m = llmMeta(e.lane)
+                return (
+                  <IntelPill
+                    key={`llm-${i}`}
+                    text={`✦ ${m.label}`}
+                    color={m.color}
+                    tip={`Curated by ${m.label}${e.recommendation ? ` — ${e.recommendation}` : ''}${e.at ? `\n${new Date(e.at).toLocaleString()}` : ''}`}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 6. Exit ladder — compact / collapsible */}
       {prominence.showLadder && ladder && (
         <div onClick={e => e.stopPropagation()}>
           <button
@@ -394,7 +543,7 @@ export default function WatchlistCard({
         </div>
       )}
 
-      {/* 6. Provenance (single chip — tier/directive live in Context) */}
+      {/* 7. Provenance (single chip — tier/directive live in Context) */}
       {(provenanceText || outcome?.sold) && (
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
           {provenanceText && <Tag text={provenanceText} tip={provenanceTip} />}
@@ -404,8 +553,8 @@ export default function WatchlistCard({
         </div>
       )}
 
-      {/* Context drawer — evidence, catalyst, technicals, fib */}
-      {hasContext && (
+      {/* Context drawer — CIO evidence, narrative, fib (deep dive) */}
+      {(hasContext || hasMetaContext) && (
         <div onClick={e => e.stopPropagation()}>
           <button
             onClick={() => setContextOpen(v => !v)}
@@ -424,30 +573,12 @@ export default function WatchlistCard({
                   {it.directive_id && <span><span style={{ color: WL.text.muted, fontWeight: 700 }}>Directive </span>#{it.directive_id}</span>}
                 </div>
               )}
-              {sectorLine && <div style={{ fontSize: 10, color: WL.text.dim }}>{sectorLine}</div>}
-              {it.catalyst_headline && (
-                <div style={{ fontSize: 10, color: WL.text.secondary, lineHeight: 1.4 }}>
-                  <span style={{ color: WL.text.muted, fontWeight: 700 }}>Catalyst </span>
-                  {it.catalyst_url ? (
-                    <a href={it.catalyst_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: WL.text.secondary, textDecoration: 'underline' }}>
-                      {it.catalyst_headline}
-                    </a>
-                  ) : it.catalyst_headline}
-                </div>
-              )}
-              {fv && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 10, color: WL.text.secondary }}>
-                  {['rsi', 'perf_week', 'perf_month', 'perf_ytd', 'sma50'].map(k => (
-                    fv[k] != null && <span key={k}><span style={{ color: WL.text.dim }}>{k} </span>{Number(fv[k]).toFixed(1)}{k.includes('perf') || k === 'sma50' ? '%' : ''}</span>
-                  ))}
-                </div>
-              )}
               {it.synthesis_evidence?.length > 0 && (
                 <EvidenceBlock title="CIO evidence" evidence={it.synthesis_evidence} compact maxItems={3} />
               )}
               {it.synthesis_narrative_snip && (
                 <div style={{ fontSize: 10, color: WL.text.secondary, lineHeight: 1.45, fontStyle: 'italic' }}>
-                  {String(it.synthesis_narrative_snip).slice(0, 200)}
+                  {String(it.synthesis_narrative_snip).slice(0, 280)}
                 </div>
               )}
               <FibConfluencePanel symbol={it.symbol} />
@@ -456,7 +587,7 @@ export default function WatchlistCard({
         </div>
       )}
 
-      {/* 7. Secondary actions */}
+      {/* 8. Secondary actions */}
       <div
         onClick={e => e.stopPropagation()}
         style={{
