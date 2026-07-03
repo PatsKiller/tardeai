@@ -26,35 +26,35 @@ without waiting for the cron bridge.
 Pullback entry levels (`entry_zone_low` / `entry_zone_hi`, setup type) are on the default view —
 not hidden under "More".
 
-## Decision matrix
+## Decision matrix (detailed card view)
 
-Logic lives in `apps/command-center-v3/src/lib/watchlistCardAction.ts` (`deriveRecommendedAction`).
+Logic: `apps/command-center-v3/src/lib/watchlistCardAction.ts` — `deriveRecommendedAction` +
+`deriveSecondaryActions`. Each row sets hero text, **primary button**, **warning banner**, and
+up to two secondary actions.
 
 Verdicts: `READY` · `WAIT` · `SKIP` · `STALE` · `FIX` · `BUILD` · `WATCH`
 
-| Condition (priority order) | Verdict | Primary CTA |
-|----------------------------|---------|-------------|
-| Private / non-tradeable | SKIP | View intel |
-| No stop on plan | FIX | Fix plan |
-| Stale technicals + plan exists | STALE | Refresh |
-| CIO AVOID / SELL / TRIM | SKIP | View intel |
-| R:R &lt; 1.0 | FIX | Fix plan |
-| R:R &lt; 1.5 | FIX | Fix plan |
-| Plan target below Street | FIX | Review exit |
-| Advisory caution (no plan) | WAIT | Review |
-| Advisory caution (plan on file) | WAIT | Review setup |
-| CIO conf &lt; 0.5 | WAIT | Review setup |
-| `entry_urgency` ready / near_entry + plan | READY | **Propose** |
-| Enriched, no plan | BUILD | Build |
-| Not enriched | STALE | Refresh |
-| Plan + entry, awaiting trigger | WATCH | Desk |
-| Default | WAIT | Review setup |
+| Card state (priority order) | Primary button | Warning banner | Secondary actions |
+|----------------------------|----------------|----------------|-------------------|
+| Private / non-tradeable | View Intel | Private ticker | Rec-Intel |
+| No stop on plan | Adjust Plan | Risk undefined | View Intel |
+| R:R &lt; 1.0 or &lt; 1.5 | Adjust Plan | R:R below threshold | View Intel |
+| Plan target below Street | Review Exit | Target below Street mean | View Intel |
+| Data stale / doubt / pending | Refresh Data | Data stale or doubt | View Intel |
+| CIO AVOID / SELL / TRIM | View Intel | CIO view: avoid | Rec-Intel, Ensemble |
+| CIO ≠ Street divergence | View Intel | Disagreement banner | Rec-Intel, Ensemble |
+| Advisory caution | View Intel | Advisory caution | Rec-Intel, Ensemble |
+| Low CIO conf (&lt; 0.5) | View Intel | Low confidence | Rec-Intel, Ensemble |
+| Ready / near entry + plan | **Propose Entry** | — | View Intel, Rec-Intel |
+| No validated plan | Build Plan | No validated plan | View Intel |
+| Monitor (plan, await trigger) | View Intel | — | Rec-Intel, Monitor |
 
-**Secondary CTA** (`deriveSecondaryAction`): WAIT/SKIP/WATCH with plan → Monitor; intel/review
-states → Refresh; otherwise Intel.
+**Rules:** Refresh Data wins over cautious holds when data quality is poor. Propose Entry only
+when positive + validated plan + no caution/divergence/stale. Primary button label always
+matches hero tone — no green Propose on Hold off cards.
 
 **Sizing hint** (`riskSizingHint`): when plan validated and R:R ≥ 1.5, shows "1–2% of available
-cash sizing" on READY and WAIT cards.
+cash sizing" on READY cards.
 
 **Data-quality flags** (`dataQualityFlags`): data doubt, awaiting enrichment, stale technicals,
 enrichment age, agents pending, CIO synthesis pending, advisory caution, low CIO conf, no live price.

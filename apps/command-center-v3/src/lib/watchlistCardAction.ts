@@ -23,7 +23,11 @@ export type CardActionType =
   | 'REVIEW_SETUP'
   | 'REVIEW_EXIT'
   | 'WATCH_ON_DESK'
+  | 'REC_INTEL'
+  | 'ENSEMBLE'
   | 'NONE'
+
+export type ActionWarning = { text: string; severity: 'red' | 'amber' | 'info' }
 
 export type ButtonVariant = 'solid-green' | 'outline-amber' | 'neutral'
 
@@ -39,6 +43,8 @@ export type CardAction = {
   primaryLabel: string
   buttonVariant: ButtonVariant
   allowPrimary: boolean
+  /** Prominent banner aligned with the decision matrix row for this state. */
+  warning?: ActionWarning
 }
 
 /** @deprecated Use CardAction — kept for gradual migration */
@@ -69,6 +75,7 @@ function action(
     primaryLabel: string
     buttonVariant: ButtonVariant
     allowPrimary?: boolean
+    warning?: ActionWarning
   },
 ): CardAction {
   let variant = opts.buttonVariant
@@ -83,9 +90,14 @@ function action(
     primaryLabel: opts.primaryLabel,
     buttonVariant: variant,
     allowPrimary: opts.allowPrimary ?? true,
+    warning: opts.warning,
   }
 }
 
+/**
+ * Detailed-card decision matrix — priority order matches operator spec.
+ * Primary button + warning banner always align with hero "Recommended Action" text.
+ */
 export function deriveRecommendedAction(args: {
   it: any
   hasPlan: boolean
@@ -95,16 +107,22 @@ export function deriveRecommendedAction(args: {
   enriched: boolean
   entry: number | null
   adv?: { advisory_flag?: string; note?: string } | null
+  pa?: { divergence?: string; rec?: string } | null
+  dataDoubt?: string
+  needsRefresh?: boolean
 }): CardAction {
-  const { it, hasPlan, rr, warns, stale, enriched, entry, adv } = args
+  const { it, hasPlan, rr, warns, stale, enriched, entry, adv, pa, dataDoubt, needsRefresh } = args
   const advNote = adv?.note ? String(adv.note).trim() : undefined
+  const conf = it.research_confidence ?? it.hermes_score_components?._confidence
+  const analystDivergent = pa?.divergence === 'divergent'
 
   if (it.private_nontradeable) {
     return action('VIEW_INTEL', 'SKIP', 'Do not trade — private ticker', {
       subtext: it.private_note || it.private_company,
       urgency: 'red',
-      primaryLabel: 'View intel',
+      primaryLabel: 'View Intel',
       buttonVariant: 'neutral',
+      warning: { text: 'Private / non-tradeable ticker', severity: 'red' },
     })
   }
 
@@ -113,26 +131,9 @@ export function deriveRecommendedAction(args: {
     return action('ADJUST_PLAN', 'FIX', 'Set stop before entry', {
       subtext: 'Risk undefined without a planned stop',
       urgency: 'red',
-      primaryLabel: 'Fix plan',
+      primaryLabel: 'Adjust Plan',
       buttonVariant: 'outline-amber',
-    })
-  }
-
-  if (stale && hasPlan) {
-    return action('REFRESH_DATA', 'STALE', 'Refresh first', {
-      subtext: 'Stale technicals',
-      urgency: 'amber',
-      primaryLabel: 'Refresh',
-      buttonVariant: 'neutral',
-    })
-  }
-
-  if (cioAvoid(it.latest_recommendation)) {
-    return action('VIEW_INTEL', 'SKIP', 'No add', {
-      subtext: `CIO ${cioLabel(it.latest_recommendation)}`,
-      urgency: 'amber',
-      primaryLabel: 'View intel',
-      buttonVariant: 'outline-amber',
+      warning: { text: 'No stop on plan — risk undefined', severity: 'red' },
     })
   }
 
@@ -140,8 +141,9 @@ export function deriveRecommendedAction(args: {
     return action('ADJUST_PLAN', 'FIX', `Fix plan · R:R ${rr.toFixed(2)}`, {
       subtext: 'Reward < risk',
       urgency: 'red',
-      primaryLabel: 'Fix plan',
+      primaryLabel: 'Adjust Plan',
       buttonVariant: 'outline-amber',
+      warning: { text: `R:R ${rr.toFixed(2)} below threshold — reward < risk`, severity: 'red' },
     })
   }
 
@@ -149,76 +151,101 @@ export function deriveRecommendedAction(args: {
     return action('ADJUST_PLAN', 'FIX', `Fix plan · R:R ${rr.toFixed(2)}`, {
       subtext: 'Thin edge',
       urgency: 'amber',
-      primaryLabel: 'Fix plan',
+      primaryLabel: 'Adjust Plan',
       buttonVariant: 'outline-amber',
+      warning: { text: `R:R ${rr.toFixed(2)} below 1.5 — thin edge`, severity: 'amber' },
     })
   }
 
   const planCapWarn = warns.find(w => w.text.includes('plan target') && w.text.includes('Street'))
   if (planCapWarn && hasPlan) {
-    return action('REVIEW_EXIT', 'FIX', 'Fix exit ladder', {
+    return action('REVIEW_EXIT', 'FIX', 'Review exit ladder', {
       subtext: 'Plan target below Street',
       detail: planCapWarn.text,
       urgency: 'amber',
-      primaryLabel: 'Review exit',
+      primaryLabel: 'Review Exit',
       buttonVariant: 'outline-amber',
+      warning: { text: 'Plan target below Street mean — keep runner', severity: 'amber' },
     })
   }
 
-  if (adv?.advisory_flag === 'caution' && !hasPlan) {
-    return action('REVIEW_SETUP', 'WAIT', 'Hold off', {
-      subtext: 'Advisory caution · no plan',
-      detail: advNote,
+  // Data quality beats cautious holds — refresh before View Intel on stale/doubt cards.
+  if (stale) {
+    return action('REFRESH_DATA', 'STALE', 'Refresh first', {
+      subtext: hasPlan ? 'Stale technicals' : 'Stale enrichment',
       urgency: 'amber',
-      primaryLabel: 'Review',
+      primaryLabel: 'Refresh Data',
       buttonVariant: 'neutral',
+      warning: { text: 'Data stale — refresh before acting', severity: 'amber' },
+    })
+  }
+  if (dataDoubt) {
+    return action('REFRESH_DATA', 'STALE', 'Refresh first', {
+      subtext: 'CIO flagged data doubt',
+      detail: dataDoubt,
+      urgency: 'amber',
+      primaryLabel: 'Refresh Data',
+      buttonVariant: 'neutral',
+      warning: { text: `Data doubt — ${dataDoubt}`, severity: 'amber' },
+    })
+  }
+  if (!enriched || needsRefresh) {
+    return action('REFRESH_DATA', 'STALE', 'Refresh first', {
+      subtext: !enriched ? 'Awaiting enrichment' : 'Agents pending',
+      urgency: 'amber',
+      primaryLabel: 'Refresh Data',
+      buttonVariant: 'neutral',
+      warning: { text: !enriched ? 'Awaiting enrichment' : 'Agent synthesis pending', severity: 'amber' },
     })
   }
 
-  if (adv?.advisory_flag === 'caution' && hasPlan) {
-    return action('REVIEW_SETUP', 'WAIT', 'Hold off', {
-      subtext: 'Advisory caution — plan on file',
+  if (cioAvoid(it.latest_recommendation)) {
+    return action('VIEW_INTEL', 'SKIP', 'Do not add', {
+      subtext: `CIO ${cioLabel(it.latest_recommendation)}`,
+      urgency: 'amber',
+      primaryLabel: 'View Intel',
+      buttonVariant: 'outline-amber',
+      warning: { text: `CIO view: ${cioLabel(it.latest_recommendation)}`, severity: 'red' },
+    })
+  }
+
+  if (analystDivergent) {
+    return action('VIEW_INTEL', 'WAIT', 'Hold off', {
+      subtext: 'CIO disagrees with Street consensus',
+      urgency: 'amber',
+      primaryLabel: 'View Intel',
+      buttonVariant: 'outline-amber',
+      warning: { text: 'CIO ≠ Street — review disagreement before sizing', severity: 'amber' },
+    })
+  }
+
+  if (adv?.advisory_flag === 'caution') {
+    return action('VIEW_INTEL', 'WAIT', 'Hold off', {
+      subtext: hasPlan ? 'Advisory caution — plan on file' : 'Advisory caution · no plan',
       detail: advNote,
       urgency: 'amber',
-      primaryLabel: 'Review setup',
+      primaryLabel: 'View Intel',
       buttonVariant: 'outline-amber',
+      warning: { text: advNote ? `Advisory caution — ${truncateWords(advNote, 10)}` : 'Advisory caution', severity: 'amber' },
     })
   }
 
-  const conf = it.research_confidence ?? it.hermes_score_components?._confidence
-  if (conf != null && Number(conf) < 0.5 && !hasPlan) {
-    return action('REVIEW_SETUP', 'WAIT', 'Hold off', {
-      subtext: `Low conf ${Number(conf).toFixed(2)}`,
+  if (conf != null && Number(conf) < 0.5) {
+    return action('VIEW_INTEL', 'WAIT', 'Hold off', {
+      subtext: hasPlan ? `Low conf ${Number(conf).toFixed(2)} — plan on file` : `Low conf ${Number(conf).toFixed(2)}`,
       urgency: 'amber',
-      primaryLabel: 'Review setup',
+      primaryLabel: 'View Intel',
       buttonVariant: 'outline-amber',
-    })
-  }
-
-  if (conf != null && Number(conf) < 0.5 && hasPlan) {
-    return action('REVIEW_SETUP', 'WAIT', 'Hold off', {
-      subtext: `Low conf ${Number(conf).toFixed(2)} — plan on file`,
-      urgency: 'amber',
-      primaryLabel: 'Review setup',
-      buttonVariant: 'outline-amber',
+      warning: { text: `Low CIO confidence ${Number(conf).toFixed(2)}`, severity: 'amber' },
     })
   }
 
   const urgency = it.entry_urgency
-  if (urgency === 'ready' && hasPlan && entry != null) {
-    return action('PROPOSE_ENTRY', 'READY', `Propose ${money(entry)}`, {
-      subtext: 'Limit ready',
-      urgency: 'green',
-      primaryLabel: 'Propose',
-      buttonVariant: 'solid-green',
-    })
-  }
-
-  if (urgency === 'near_entry' && hasPlan && entry != null) {
-    return action('PROPOSE_ENTRY', 'READY', `Propose ${money(entry)}`, {
-      subtext: 'Near entry',
-      urgency: 'amber',
-      primaryLabel: 'Propose',
+  if ((urgency === 'ready' || urgency === 'near_entry') && hasPlan && entry != null) {
+    return action('PROPOSE_ENTRY', 'READY', urgency === 'ready' ? `Ready · ${money(entry)}` : `Near entry · ${money(entry)}`, {
+      subtext: urgency === 'ready' ? 'Validated plan · limit ready' : 'Validated plan · near trigger',
+      urgency: urgency === 'ready' ? 'green' : 'amber',
+      primaryLabel: 'Propose Entry',
       buttonVariant: 'solid-green',
     })
   }
@@ -229,46 +256,72 @@ export function deriveRecommendedAction(args: {
       enriched ? 'BUILD' : 'STALE',
       enriched ? 'Build plan' : 'Enriching',
       {
-        subtext: enriched ? 'No limit/stop/target' : undefined,
+        subtext: enriched ? 'No validated entry plan' : undefined,
         urgency: 'none',
-        primaryLabel: enriched ? 'Build' : 'Refresh',
+        primaryLabel: enriched ? 'Build Plan' : 'Refresh Data',
         buttonVariant: enriched ? 'outline-amber' : 'neutral',
+        warning: enriched ? { text: 'No validated entry plan', severity: 'info' } : { text: 'Awaiting enrichment', severity: 'amber' },
       },
     )
   }
 
   if (entry != null) {
-    return action('WATCH_ON_DESK', 'WATCH', `Watch ${money(entry)}`, {
-      subtext: 'Await trigger',
+    return action('VIEW_INTEL', 'WATCH', `Monitor ${money(entry)}`, {
+      subtext: 'Plan on file — await trigger',
       urgency: 'none',
-      primaryLabel: 'Desk',
+      primaryLabel: 'View Intel',
       buttonVariant: 'neutral',
     })
   }
 
-  return action('REVIEW_SETUP', 'WAIT', 'Review', {
-    subtext: hasPlan ? 'Plan on file — confirm setup' : undefined,
+  return action('VIEW_INTEL', 'WAIT', 'Review setup', {
+    subtext: 'Plan on file — confirm before sizing',
     urgency: 'amber',
-    primaryLabel: 'Review setup',
+    primaryLabel: 'View Intel',
     buttonVariant: 'outline-amber',
   })
 }
 
-/** Secondary CTA for passive / wait states — keeps a clear second action without competing with primary. */
+export type SecondaryAction = { type: CardActionType; label: string }
+
+/** Matrix-aligned secondary CTAs — max two, never competing with primary tone. */
+export function deriveSecondaryActions(action: CardAction, hasPlan: boolean): SecondaryAction[] {
+  const out: SecondaryAction[] = []
+  const add = (type: CardActionType, label: string) => {
+    if (!out.some(a => a.type === type) && type !== action.type) out.push({ type, label })
+  }
+
+  switch (action.type) {
+    case 'PROPOSE_ENTRY':
+      add('VIEW_INTEL', 'View Intel')
+      add('REC_INTEL', 'Rec-Intel')
+      break
+    case 'REFRESH_DATA':
+      add('VIEW_INTEL', 'View Intel')
+      break
+    case 'VIEW_INTEL':
+      add('REC_INTEL', 'Rec-Intel')
+      if (['WAIT', 'SKIP'].includes(action.verdict)) add('ENSEMBLE', 'Ensemble')
+      if (action.verdict === 'WATCH' && hasPlan) add('WATCH_ON_DESK', 'Monitor')
+      break
+    case 'ADJUST_PLAN':
+    case 'REVIEW_EXIT':
+    case 'BUILD_PLAN':
+      add('VIEW_INTEL', 'View Intel')
+      break
+    default:
+      add('VIEW_INTEL', 'View Intel')
+  }
+  return out.slice(0, 2)
+}
+
+/** @deprecated Use deriveSecondaryActions */
 export function deriveSecondaryAction(
   action: CardAction,
   hasPlan: boolean,
-  symbol: string,
-): { type: CardActionType; label: string } | null {
-  if (action.type === 'PROPOSE_ENTRY') return null
-  if (['WAIT', 'SKIP', 'WATCH'].includes(action.verdict) && hasPlan) {
-    return { type: 'WATCH_ON_DESK', label: 'Monitor' }
-  }
-  if (action.type === 'VIEW_INTEL' || action.type === 'REVIEW_SETUP') {
-    return { type: 'REFRESH_DATA', label: 'Refresh' }
-  }
-  if (action.verdict === 'STALE') return null
-  return symbol ? { type: 'VIEW_INTEL', label: 'Intel' } : null
+  _symbol: string,
+): SecondaryAction | null {
+  return deriveSecondaryActions(action, hasPlan)[0] ?? null
 }
 
 /** Risk / sizing hint when a validated plan exists. */

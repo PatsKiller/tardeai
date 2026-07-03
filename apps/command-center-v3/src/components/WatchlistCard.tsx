@@ -18,7 +18,7 @@ import {
   targetVsStreetLabel,
   dataQualityFlags,
   actionReasoning,
-  deriveSecondaryAction,
+  deriveSecondaryActions,
   riskSizingHint,
   rrTooltip,
   type CardActionType,
@@ -196,7 +196,11 @@ export default function WatchlistCard({
   const warns = entry != null || stop != null
     ? planWarnings({ entry, stop, planTarget, rr, pctCash: null, streetTarget: street, analystUpside: pa?.upside != null ? Number(pa.upside) : null })
     : []
-  const action = deriveRecommendedAction({ it, hasPlan, rr, warns, stale, enriched, entry, adv })
+  const dataDoubt = (it.synthesis_data_i_doubt && it.synthesis_data_i_doubt !== 'none')
+    ? String(it.synthesis_data_i_doubt).trim() : ''
+  const action = deriveRecommendedAction({
+    it, hasPlan, rr, warns, stale, enriched, entry, adv, pa, dataDoubt, needsRefresh,
+  })
   const prominence = actionProminence(action, hasPlan)
   const accent = urgencyColor(action.urgency)
   const focusIdx = ladderFocusIndex(ladder)
@@ -228,12 +232,10 @@ export default function WatchlistCard({
   const provenanceText = [it.hermes_rank != null ? `#${it.hermes_rank}` : null, originLabel].filter(Boolean).join(' · ')
   const isHeld = it.in_portfolio || outcome?.held
   const heldTip = outcome?.held ? `unrealized ${outcome.unrealized_pnl_pct ?? '?'}%` : 'in portfolio'
-  const dataDoubt = (it.synthesis_data_i_doubt && it.synthesis_data_i_doubt !== 'none')
-    ? String(it.synthesis_data_i_doubt).trim() : ''
 
+  // Supplemental risk line only when matrix banner does not already cover it.
   const riskLines: { text: string; severity: 'red' | 'amber'; doubt?: boolean }[] = []
-  if (dataDoubt) riskLines.push({ text: dataDoubt, severity: 'amber', doubt: true })
-  else if (action.verdict !== 'FIX') {
+  if (!action.warning && action.verdict !== 'FIX') {
     for (const w of warns.slice(0, 1)) {
       riskLines.push({ text: w.text, severity: w.color === WL.urgency.red ? 'red' : 'amber' })
     }
@@ -269,7 +271,7 @@ export default function WatchlistCard({
   const dqFlags = dataQualityFlags({ it, stale, enriched, needsRefresh, dataDoubt, adv })
   const exitVsStreet = targetVsStreetLabel(planTarget, street)
   const analystDivergent = pa?.divergence === 'divergent'
-  const secondaryAction = deriveSecondaryAction(action, hasPlan, it.symbol)
+  const secondaryActions = deriveSecondaryActions(action, hasPlan)
   const sizingHint = riskSizingHint(action, hasPlan, rr)
 
   const executeAction = (e: React.MouseEvent, type: CardActionType) => {
@@ -295,6 +297,12 @@ export default function WatchlistCard({
       case 'WATCH_ON_DESK':
       case 'QUEUE_PROPOSAL':
         onOpenDesk?.(it.symbol)
+        break
+      case 'REC_INTEL':
+        window.location.href = `/v3/rec-intel?symbol=${encodeURIComponent(it.symbol)}`
+        break
+      case 'ENSEMBLE':
+        onToggleEns()
         break
       default:
         break
@@ -393,6 +401,26 @@ export default function WatchlistCard({
         </div>
       )}
 
+      {/* Matrix warning — matches primary CTA state */}
+      {action.warning && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            fontSize: 10.5, fontWeight: 700, lineHeight: 1.45, padding: '8px 10px', borderRadius: 8,
+            color: action.warning.severity === 'red' ? WL.urgency.red
+              : action.warning.severity === 'info' ? WL.text.secondary : WL.urgency.amber,
+            background: action.warning.severity === 'red' ? 'rgba(220,38,38,.1)'
+              : action.warning.severity === 'info' ? 'rgba(96,165,250,.08)' : 'rgba(245,158,11,.1)',
+            border: `1px solid ${
+              action.warning.severity === 'red' ? 'rgba(220,38,38,.28)'
+                : action.warning.severity === 'info' ? 'rgba(96,165,250,.22)' : 'rgba(245,158,11,.28)'
+            }`,
+          }}
+        >
+          {action.warning.severity === 'info' ? 'ℹ' : '⚠'} {action.warning.text}
+        </div>
+      )}
+
       {/* Action hero */}
       <div
         onClick={e => e.stopPropagation()}
@@ -426,12 +454,13 @@ export default function WatchlistCard({
         </div>
         <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {rr != null && hasPlan && <RrBadge rr={rr} tip={rrTooltip(entry, stop, planTarget, rr)} />}
-          {secondaryAction && (
+          {secondaryActions.map(sec => (
             <button
-              onClick={e => executeAction(e, secondaryAction.type)}
-              style={buttonStyle('neutral', action.verdict === 'WAIT')}
-            >{secondaryAction.label}</button>
-          )}
+              key={sec.label}
+              onClick={e => executeAction(e, sec.type)}
+              style={buttonStyle('neutral', true)}
+            >{sec.label}</button>
+          ))}
           {action.allowPrimary && (
             <button onClick={handlePrimary} style={buttonStyle(action.buttonVariant)}>{action.primaryLabel}</button>
           )}
@@ -502,21 +531,12 @@ export default function WatchlistCard({
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${WL.body.border}`, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span title={confidenceTooltip(it)} style={{ fontSize: 10, color: WL.text.secondary }}>
-            <b style={{ color: WL.text.muted }}>Conf</b> {confVal}
-          </span>
-          <span title={enrichedTooltip(it)} style={{ fontSize: 10, color: WL.text.secondary }}>
-            <b style={{ color: WL.text.muted }}>Enriched</b> {enrichVal}
-          </span>
-          <span title={planValidatedTooltip(it)} style={{ fontSize: 10, color: WL.text.secondary }}>
-            <b style={{ color: WL.text.muted }}>Validated</b> {validatedVal}
-          </span>
-          {it.entry_model && (
-            <IntelPill text={it.entry_model} color="#a855f7" tip="Entry planner model" />
-          )}
-          {it.models_agree === true && <IntelPill text="✓ 2 models agree" color={WL.urgency.green} tip="Grok + ChatGPT agree on CIO view" />}
-          {it.models_agree === false && <IntelPill text="models split" color={WL.urgency.amber} tip="Grok and ChatGPT disagree — cautious view used" />}
+        <div
+          title={[confidenceTooltip(it), enrichedTooltip(it), planValidatedTooltip(it)].join('\n')}
+          style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${WL.body.border}`, fontSize: 10, color: WL.text.dim, lineHeight: 1.4 }}
+        >
+          Conf {confVal} · Enriched {enrichVal} · Validated {validatedVal}
+          {it.entry_model ? ` · ${it.entry_model}` : ''}
         </div>
         {exitVsStreet && (
           <div style={{ marginTop: 8, fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.4 }} title={exitVsStreet}>
