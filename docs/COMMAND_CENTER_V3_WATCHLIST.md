@@ -1,6 +1,6 @@
 # Command Center v3 — Watchlist Hub
 
-_Last updated 2026-07-03. Route: `/v3/watch`. HEAD: `ee0e14d1`._
+_Last updated 2026-07-03 (Security Card v2). Route: `/v3/watch`._
 
 Decision-first watchlist: one full-width card per symbol with CIO view, plan levels, data-quality
 flags, and a unified verdict → CTA matrix. Operators can propose entries directly from a card
@@ -10,21 +10,27 @@ without waiting for the cron bridge.
 
 **Page:** `apps/command-center-v3/src/pages/WatchlistHub.tsx`
 
-**Card:** `apps/command-center-v3/src/components/WatchlistCard.tsx` — single-column rows (not a
-2-column grid). Each card shows:
+**Card:** `apps/command-center-v3/src/components/WatchlistCard.tsx` — **Security Card v2**: one
+elevated surface with hairline-divided full-bleed rows (no boxes-in-boxes panels). The status
+banner is the only tinted element; the primary button the only solid one. Color = signal only
+(teal actionable / amber caution / red defect / green price numerals). Tokens:
+`apps/command-center-v3/src/lib/watchlistCardTokens.ts`. Zones top→bottom:
 
-| Zone | Content |
-|------|---------|
-| Header | Star, symbol, `ProAnalystPill`, CIO pill + confidence, verdict chip, price |
-| DATA strip | Stale technicals, advisory caution, low CIO conf, enrichment age, agents pending, no live price |
-| Hero | Action text, one-line reasoning, plan line (limit/stop/target/zone), R:R badge |
-| CTAs | Primary + secondary (e.g. Propose + Monitor; Review setup + Refresh) |
-| Plan grid | Limit, stop, target, pullback zone, R:R, model, exit vs Street |
-| Fib | `FibConfluencePanel` lazy-loaded on card (pullback confluence visible by default) |
-| More | Finviz strip, sector, catalyst, news (expandable) |
+| Zone | Content | Default |
+|------|---------|---------|
+| ① Header | Star, symbol (mono), HELD chip, provenance line (company · Hermes # · origin · sector), price/change, quiet Refresh | visible |
+| ② Status banner | Verdict word + headline + one-line why (warning folded in) + primary CTA + one quiet secondary + ••• overflow menu | visible, dominant |
+| ③ Trade plan | Limit / Stop / Target / R:R as 17px mono numerals with zone, %, R-per-share sub-captions; exit-vs-Street + sizing note | visible |
+| ④ Conviction | CIO stance chip, confidence meter, models/validated/model meta, neutral `ProAnalystPill`, one data-health line (dot + worst flag, full list in tooltip) | visible |
+| ⑤ Exit ladder | T1 · T2 · T3 prices on one line + scale rule; per-step actions behind "Plan detail" (auto-opens on trade-focus verdicts) | summary |
+| ⑥ Context | Technicals + catalyst lines; company / news / `FibConfluencePanel` / LLM lanes behind "More" | 2 lines |
+| ⑦ Due diligence | Weekly prospectus PDF/Word/↻ (`HoldingReportLinks`) with freshness · gen # · oversight verdict; obvious generate state when missing | visible |
+| ⑧ Evidence | CIO narrative + evidence + advisory detail behind "CIO evidence & narrative" | collapsed |
 
-Pullback entry levels (`entry_zone_low` / `entry_zone_hi`, setup type) are on the default view —
-not hidden under "More".
+Pullback entry levels (`entry_zone_low` / `entry_zone_hi`) render as the Limit sub-caption —
+still on the default view. The old footer link row is gone; Intel drawer / Rec-Intel / Ensemble /
+Monitor-on-desk live in the banner's ••• menu. Rule of one: each signal renders once, in its
+owning zone (e.g. thin R:R = colored numeral + one why-line clause, not four repetitions).
 
 ## Decision matrix (detailed card view)
 
@@ -41,7 +47,7 @@ Verdicts: `READY` · `WAIT` · `SKIP` · `STALE` · `FIX` · `BUILD` · `WATCH`
 | R:R &lt; 1.0 or &lt; 1.5 | Adjust Plan | R:R below threshold | View Intel |
 | Plan target below Street | Review Exit | Target below Street mean | View Intel |
 | Data stale / doubt / pending | Refresh Data | Data stale or doubt | View Intel |
-| CIO AVOID / SELL / TRIM | View Intel | CIO view: avoid | Rec-Intel, Ensemble |
+| CIO AVOID / SELL / TRIM | Review Risks (quiet) | CIO view: avoid | Rec-Intel, Ensemble |
 | CIO ≠ Street divergence | View Intel | Disagreement banner | Rec-Intel, Ensemble |
 | Advisory caution | View Intel | Advisory caution | Rec-Intel, Ensemble |
 | Low CIO conf (&lt; 0.5) | View Intel | Low confidence | Rec-Intel, Ensemble |
@@ -50,8 +56,9 @@ Verdicts: `READY` · `WAIT` · `SKIP` · `STALE` · `FIX` · `BUILD` · `WATCH`
 | Monitor (plan, await trigger) | View Intel | — | Rec-Intel, Monitor |
 
 **Rules:** Refresh Data wins over cautious holds when data quality is poor. Propose Entry only
-when positive + validated plan + no caution/divergence/stale. Primary button label always
-matches hero tone — no green Propose on Hold off cards.
+when positive + validated plan + no caution/divergence/stale. Primary button treatment matches
+the banner state: solid teal only on READY; amber outline on STALE; red outline on FIX; quiet
+neutral on AVOID/monitor — a negative state never gets a visually rewarding CTA.
 
 **Sizing hint** (`riskSizingHint`): when plan validated and R:R ≥ 1.5, shows "1–2% of available
 cash sizing" on READY cards.
