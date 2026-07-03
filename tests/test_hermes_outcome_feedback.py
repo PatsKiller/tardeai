@@ -506,6 +506,39 @@ class TestBusReactions(unittest.TestCase):
             finally:
                 bus_mod.OUTCOME_BUS_PATH = old
 
+    def test_r_left_worsening_reaction(self):
+        with tempfile.TemporaryDirectory() as td:
+            from lib.hermes_outcome_bus import bus as bus_mod
+            old_bus = bus_mod.OUTCOME_BUS_PATH
+            old_hist = bus_mod.HISTORY_DIR
+            try:
+                hist = Path(td) / "history"
+                hist.mkdir()
+                bus_mod.HISTORY_DIR = hist
+                bus_mod.OUTCOME_BUS_PATH = Path(td) / "bus.json"
+                r_vals = [0.20, 0.22, 0.25, 0.28, 0.32, 0.36]
+                for i, day in enumerate(["2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04", "2026-07-05", "2026-07-06"], 0):
+                    snap = {
+                        "version": OUTCOME_BUS_VERSION,
+                        "generated_at": f"{day}T03:25:00+00:00",
+                        "resource_efficiency": {"score": 0.65},
+                        "stop_quality": {
+                            "r_left_on_table_avg": r_vals[i],
+                            "by_tier": {"hot": {"trail_activation_rate": 0.5}, "cold": {"trail_activation_rate": 0.4}},
+                            "correlations": [{"metric": "trail_activation_rate", "hot_vs_cold_trail_activation_delta": 0.10}],
+                        },
+                        "by_tag": {},
+                        "alerts": {"active": []},
+                    }
+                    (hist / f"outcome_bus_{day.replace('-', '')}.json").write_text(json.dumps(snap))
+                bus_mod.OUTCOME_BUS_PATH.write_text(json.dumps(snap))
+                plan = build_bus_reaction_plan({"bus_reactions": {"enabled": True}}, run_id="sg_test")
+                ids = [r.get("id") for r in plan.reactions]
+                self.assertIn("stop_quality_r_left_worsening", ids)
+            finally:
+                bus_mod.OUTCOME_BUS_PATH = old_bus
+                bus_mod.HISTORY_DIR = old_hist
+
     def test_scope_creep_reduces_promotion_cap(self):
         with tempfile.TemporaryDirectory() as td:
             from lib.hermes_outcome_bus import bus as bus_mod

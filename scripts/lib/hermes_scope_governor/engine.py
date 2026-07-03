@@ -235,7 +235,8 @@ class ScopeGovernorEngine:
 
         have = self._current_tiers(cur)
         reaction_plan = build_bus_reaction_plan(
-            self.cfg, run_id=run_id, regime_label=regime, review_mode=reaction_review)
+            self.cfg, run_id=run_id, regime_label=regime, review_mode=reaction_review, cur=cur,
+        )
         tier_map = {sym: str(st.get("tier") or "S3") for sym, st in have.items()}
         edge_scores_map, edge_details = apply_reaction_edge_adjustments(
             edge_scores_map, edge_details, reaction_plan, tier_map)

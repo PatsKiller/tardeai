@@ -38,7 +38,7 @@ Weighted composite from outcome bus + governor signals:
 | outcome_performance | 0.25 | hit rate, avg R |
 | promotion_success_rate | 0.15 | `hermes_outcome_ledger` promotion hits |
 | tag_lift_consistency | 0.15 | bus lift / precision |
-| stop_quality | 0.15 | global stop alignment |
+| stop_quality | 0.25 | global stop alignment (trail, aligned %) |
 | regime_alignment | 0.10 | regime label + ATR |
 | research_efficiency | 0.10 | research actioned rate |
 | edge_blend | 0.10 | scope governor edge score |

@@ -25,6 +25,7 @@ class BusReactionPlan:
     warm_cold_edge_penalty: float = 0.0
     hot_high_edge_boost: float = 0.0
     tag_multiplier_overrides: dict[str, float] = field(default_factory=dict)
+    symbol_edge_penalties: dict[str, float] = field(default_factory=dict)
     reactions: list[dict[str, Any]] = field(default_factory=list)
     suppressed: list[dict[str, Any]] = field(default_factory=list)
     enabled: bool = True
@@ -110,6 +111,9 @@ def _bus_metrics_snapshot(bus: dict[str, Any]) -> dict[str, Any]:
         "live_universe": resource.get("live_universe"),
         "hit_rate_promotions": (bus.get("global") or {}).get("hit_rate_promotions"),
         "stop_hot_cold_trail_delta": _hot_cold_trail_delta(bus),
+        "r_left_on_table_avg": (bus.get("stop_quality") or {}).get("r_left_on_table_avg"),
+        "aligned_pct": (bus.get("stop_quality") or {}).get("aligned_pct"),
+        "tier_alignment_delta": _tier_alignment_delta(bus),
         "maturity_composite_score": maturity.get("composite_score"),
         "maturity_tier": maturity.get("tier"),
         "active_alerts": sorted(_active_alert_ids(bus)),
@@ -234,6 +238,107 @@ def _consecutive_low_efficiency(series: list[dict[str, Any]], threshold: float, 
         else:
             break
     return streak >= min_days, streak
+
+
+def _tier_alignment_delta(bus: dict[str, Any]) -> float | None:
+    by_tier = (bus.get("stop_quality") or {}).get("by_tier") or {}
+    hot = (by_tier.get("hot") or {}).get("aligned_pct")
+    cold = (by_tier.get("cold") or {}).get("aligned_pct")
+    if hot is not None and cold is not None:
+        return float(hot) - float(cold)
+    return None
+
+
+def _consecutive_r_left_worsening(
+    series: list[dict[str, Any]],
+    min_days: int,
+) -> tuple[bool, int, float | None]:
+    vals = [
+        float(s["r_left_on_table_avg"])
+        for s in series
+        if s.get("r_left_on_table_avg") is not None
+    ]
+    if len(vals) < min_days + 1:
+        return False, 0, vals[-1] if vals else None
+    streak = 0
+    for i in range(len(vals) - 1, 0, -1):
+        if vals[i] > vals[i - 1]:
+            streak += 1
+        else:
+            break
+    return streak >= min_days, streak, vals[-1]
+
+
+def _consecutive_alignment_below(
+    series: list[dict[str, Any]],
+    threshold: float,
+    min_days: int,
+) -> tuple[bool, int, float | None]:
+    vals = [
+        float(s.get("tier_alignment_delta"))
+        for s in series
+        if s.get("tier_alignment_delta") is not None
+    ]
+    if len(vals) < min_days:
+        return False, 0, vals[-1] if vals else None
+    streak = 0
+    for v in reversed(vals):
+        if v < threshold:
+            streak += 1
+        else:
+            break
+    return streak >= min_days, streak, vals[-1]
+
+
+def _fetch_recent_promoted_poor_stop(
+    cur,
+    bus: dict[str, Any],
+    sq: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Recently promoted symbols with poor stop/outcome follow-through."""
+    lookback = int(sq.get("post_promotion_lookback_days", 30))
+    min_n = int(sq.get("post_promotion_min_samples", 3))
+    poor_trail = float(sq.get("post_promotion_poor_trail_rate", 0.35))
+    by_sym = bus.get("by_symbol") or {}
+    promoted: set[str] = set()
+    try:
+        cur.execute(
+            """SELECT DISTINCT UPPER(symbol) FROM scope_governor_audit
+               WHERE action IN ('promote', 'reactivate')
+                 AND to_tier IN ('S0', 'S1')
+                 AND symbol IS NOT NULL AND symbol <> '__BUS__'
+                 AND created_at > NOW() - make_interval(days => %s)""",
+            (lookback,),
+        )
+        promoted = {str(r[0]).upper() for r in cur.fetchall() if r and r[0]}
+    except Exception:
+        return []
+
+    out: list[dict[str, Any]] = []
+    stop_by_tier = (bus.get("stop_quality") or {}).get("by_tier") or {}
+    hot_trail = (stop_by_tier.get("hot") or {}).get("trail_activation_rate")
+
+    for sym in sorted(promoted):
+        meta = by_sym.get(sym) or {}
+        n = int(meta.get("n") or 0)
+        gate = str(meta.get("gate") or "neutral")
+        lift = meta.get("lift")
+        reasons: list[str] = []
+        if gate in ("demote_pressure", "pause_eligible"):
+            reasons.append(f"gate={gate}")
+        if n >= min_n and lift is not None and float(lift) < 0:
+            reasons.append(f"lift={float(lift):.2f}")
+        if hot_trail is not None and float(hot_trail) < poor_trail and n >= min_n:
+            reasons.append(f"hot_trail={float(hot_trail):.1%}")
+        if reasons:
+            out.append({
+                "symbol": sym,
+                "n": n,
+                "gate": gate,
+                "lift": lift,
+                "reasons": reasons,
+            })
+    return out
 
 
 def _hot_cold_trail_delta(bus: dict[str, Any]) -> float | None:
@@ -380,6 +485,80 @@ def _apply_stop_quality_reactions(
             "hot_high_edge_boost": edge_boost,
         })
 
+    # R left on table worsening trend
+    r_ceiling = float(sq.get("r_left_on_table_ceiling", 0.35))
+    r_days = int(sq.get("r_left_worsening_days", 5))
+    worsening, r_streak, r_current = _consecutive_r_left_worsening(series, r_days)
+    if worsening or (r_current is not None and r_current >= r_ceiling and r_streak >= r_days - 1):
+        bump = int(round(float(sq.get("r_left_hot_min_bump", 4)) * bump_mult))
+        plan.hot_min_score_delta += bump
+        _append_reaction(plan, rc, bus, cooldown_state, {
+            "id": "stop_quality_r_left_worsening",
+            "reason": (
+                f"bus_reaction:r_left_on_table={r_current:.1%} "
+                f"worsening_{max(r_streak, r_days)}d (ceiling={r_ceiling:.0%})"
+            ),
+            "r_left_on_table_avg": r_current,
+            "hot_min_score_delta": bump,
+            "metrics": {"r_left_streak_days": r_streak},
+        })
+
+    # Hot vs cold alignment divergence
+    align_floor = float(sq.get("alignment_divergence_pp", 0.12))
+    align_days = int(sq.get("alignment_consecutive_days", 3))
+    tier_align = _tier_alignment_delta(bus)
+    low_align, a_streak, a_current = _consecutive_alignment_below(series, align_floor, align_days)
+    if low_align or (tier_align is not None and tier_align < align_floor):
+        penalty = float(sq.get("alignment_warm_cold_penalty", 4.0))
+        plan.warm_cold_edge_penalty = max(plan.warm_cold_edge_penalty, penalty)
+        _append_reaction(plan, rc, bus, cooldown_state, {
+            "id": "stop_quality_alignment_divergence",
+            "reason": (
+                f"bus_reaction:tier_alignment_delta={a_current or tier_align:.1%} "
+                f"below_{align_floor:.0%}_for_{max(a_streak, align_days)}d"
+            ),
+            "tier_alignment_delta": a_current if a_current is not None else tier_align,
+            "warm_cold_edge_penalty": penalty,
+            "metrics": {"alignment_streak_days": a_streak},
+        })
+
+
+def _apply_post_promotion_stop_reactions(
+    plan: BusReactionPlan,
+    rc: dict[str, Any],
+    bus: dict[str, Any],
+    cooldown_state: dict[str, Any],
+    cur=None,
+) -> None:
+    sq = rc.get("stop_quality") or {}
+    if not sq.get("enabled", True) or cur is None:
+        return
+    poor = _fetch_recent_promoted_poor_stop(cur, bus, sq)
+    if not poor:
+        return
+    edge_pen = float(sq.get("post_promotion_edge_penalty", 8.0))
+    dem_mult = float(sq.get("post_promotion_demotion_pressure_mult", 1.15))
+    plan.demotion_pressure_multiplier = max(plan.demotion_pressure_multiplier, dem_mult)
+    syms = []
+    for row in poor[:15]:
+        sym = row["symbol"]
+        plan.symbol_edge_penalties[sym] = edge_pen
+        syms.append(sym)
+    _append_reaction(plan, rc, bus, cooldown_state, {
+        "id": "stop_quality_post_promotion_degradation",
+        "reason": (
+            f"bus_reaction:post_promotion_poor_stop n={len(poor)} "
+            f"symbols={','.join(syms[:5])}{'…' if len(syms) > 5 else ''}"
+        ),
+        "symbols": syms,
+        "symbol_edge_penalty": edge_pen,
+        "demotion_pressure_multiplier": plan.demotion_pressure_multiplier,
+        "metrics": {
+            "poor_promoted_count": len(poor),
+            "sample": poor[:3],
+        },
+    })
+
 
 def _apply_tag_reactions(
     plan: BusReactionPlan,
@@ -439,6 +618,7 @@ def build_bus_reaction_plan(
     run_id: str | None = None,
     regime_label: str | None = None,
     review_mode: bool | None = None,
+    cur=None,
 ) -> BusReactionPlan:
     """Read latest outcome bus + trend history; produce conservative one-run adjustments."""
     rc = load_reactions_config(cfg)
@@ -467,6 +647,15 @@ def build_bus_reaction_plan(
 
     _apply_efficiency_reaction(plan, rc, bus, series, regime_spec, cooldown_state)
     _apply_stop_quality_reactions(plan, rc, bus, series, regime_spec, cooldown_state)
+    if cur is None:
+        try:
+            from db_adapter import _get_conn, USE_DB
+            if USE_DB:
+                conn = _get_conn()
+                cur = conn.cursor()
+        except Exception:
+            pass
+    _apply_post_promotion_stop_reactions(plan, rc, bus, cooldown_state, cur=cur)
     _apply_tag_reactions(plan, rc, bus, series, cooldown_state)
     _apply_scope_creep_reaction(plan, rc, bus, alerts, regime_spec, cooldown_state)
 
@@ -524,6 +713,19 @@ def apply_reaction_edge_adjustments(
             reasons.append(f"bus_reaction:hot_high_edge_boost_{plan.hot_high_edge_boost:.0f}")
             d["reasons"] = reasons
 
+    for sym, pen in (plan.symbol_edge_penalties or {}).items():
+        su = sym.upper()
+        if su not in updated:
+            continue
+        tier = tier_map.get(su, "S3")
+        if tier == "S0":
+            continue
+        updated[su] = max(0.0, updated[su] - float(pen))
+        d = details.setdefault(su, {})
+        reasons = list(d.get("reasons") or [])
+        reasons.append(f"bus_reaction:post_promotion_stop_penalty_{float(pen):.0f}")
+        d["reasons"] = reasons
+
     return updated, details
 
 
@@ -542,6 +744,8 @@ def write_reactions_runtime(plan: BusReactionPlan, apply: bool = True) -> Path |
         "hot_high_edge_boost": plan.hot_high_edge_boost,
         "hot_min_score_delta": plan.hot_min_score_delta,
         "tag_multiplier_overrides": plan.tag_multiplier_overrides,
+        "symbol_edge_penalties": plan.symbol_edge_penalties,
+        "holdings_research_multipliers": _holdings_research_runtime(),
         "reactions": plan.reactions,
         "suppressed": plan.suppressed,
         "bus_metrics": plan.bus_metrics,
@@ -578,6 +782,20 @@ def log_reactions_audit(cur, run_id: str, plan: BusReactionPlan, apply: bool) ->
         )
         logged += 1
     return logged
+
+
+def _holdings_research_runtime() -> dict[str, float]:
+    try:
+        from lib.hermes_outcome_bus.lifecycle_slice import build_lifecycle_slice, holdings_research_multiplier
+        lc = build_lifecycle_slice()
+        out: dict[str, float] = {}
+        for sym in (lc.get("holdings") or {}).get("symbols") or {}:
+            mult = holdings_research_multiplier(str(sym), lc)
+            if mult != 1.0:
+                out[str(sym).upper()] = round(mult, 3)
+        return out
+    except Exception:
+        return {}
 
 
 def read_reactions_runtime() -> dict[str, Any]:
