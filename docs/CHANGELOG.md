@@ -10,8 +10,10 @@ maps the structured activity `type` (BUY/SELL/DIVIDEND/REI/CONTRIBUTION) before 
 description heuristics — fund names containing "DIVIDEND" (e.g. SCHD buys) previously
 misclassified as Dividend, and `REI` reinvestments fell through to generic Activity. Applied:
 33 rows for `fidelity_rollover_ira` (2026-06-18 → 06-30) under `import_source='snaptrade_activity'`.
-Known overlap: four `fidelity_manual` placeholder rows (06-18 XAR/HPE/GCTS/ARKX buys) now duplicate
-authoritative SnapTrade rows — pending operator decision on removal.
+Cleanup (operator-approved): four `fidelity_manual` placeholder rows (06-18 XAR/HPE/GCTS/ARKX buys)
+that duplicated authoritative SnapTrade rows were deleted, as was a phantom `manual_operator` row
+(GCTS Buy 1000 @ 3.06, 06-18) that matched neither the Fidelity ledger nor position math. The
+account's ledger is now solely `import_source='snaptrade_activity'` (33 rows).
 
 ## 2026-07-02 - Hermes Phase 6: consumption gap closed (critique / stops / validation read Hermes back)
 
