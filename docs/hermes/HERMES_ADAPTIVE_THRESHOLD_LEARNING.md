@@ -228,6 +228,13 @@ See `HERMES_THRESHOLD_SCORING_REVIEW.md` §8 for full implementation status.
 11. API: `GET /thresholds`, `GET /thresholds/evaluations`, `POST /thresholds/evaluate`
 12. Closed Loop panel shows confidence + evaluation summary + audit trail
 
+### Proposal ↔ outcome bus linkage (`a0fb8bac` / `59024b4a`)
+
+- **`--learn`** stamps each new proposal with `lineage.outcome_bus_run_id`, `lineage.outcome_bus_snapshot_id`, `metrics_at_generation`, and `prior_proposal_ids`
+- Nightly bus includes **`threshold_proposals`** — pending + recent decided with snapshot metrics and evaluation outcomes
+- **`impact_narrative`** on decided rows — plain-language 14d metric deltas (efficiency score, promotion hit rate, stop alignment); module: `proposal_impact.py`
+- Traceability validation: `pytest tests/test_proposal_impact.py tests/test_bus_traceability.py -q`
+
 ---
 
 **Related docs:**

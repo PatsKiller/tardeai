@@ -1,6 +1,6 @@
 # Hermes Closed-Loop Traceability — Master Roadmap & Validation
 
-**Status:** Live (2026-07-03) · Prompts 1–3 implemented on `main`
+**Status:** Live (2026-07-03) · Prompts 1–3 + bus traceability on `main` (`59024b4a`)
 
 ## Master roadmap (Prompts 1–3)
 
@@ -8,7 +8,8 @@
 |--------|-------|--------|---------------|
 | **1 — Watchlist** | Health + lifecycle + stop quality + governor gate | **Done** | `watchlist_health.py`, `watchlist_lifecycle.py`, `cac9949e`, stop weight 25% |
 | **2 — Holdings** | Health + lifecycle + research depth | **Done** | `holdings_lifecycle.py`, `research_scheduler.py` T0 multipliers, `712f21ed` |
-| **3 — Feedback loops** | Stop reactions, bus export, evaluation, traceability | **Done** | `reactions.py`, `lifecycle_slice.py`, Phase D eval, `symbol_journey.py` |
+| **3 — Feedback loops** | Stop reactions, bus export, evaluation, traceability | **Done** | `reactions.py`, `lifecycle_slice.py`, `bus_traceability.py`, Phase D eval, `symbol_journey.py` |
+| **4 — UI polish** | Symbol journey timeline, proposal impact narratives | **Done** | `SymbolJourneyPanel.tsx` (`3ec93b08`), `proposal_impact.py` (`a0fb8bac`) |
 
 ### End-to-end linkage
 
@@ -23,10 +24,30 @@ research_scheduler (tag + holdings multipliers)
         ↓
 trades / hermes_outcome_ledger
         ↓
-outcome_bus.json (nightly) + lifecycle slice
+outcome_bus.json (nightly)
+  ├── lifecycle.* (compact)
+  ├── watchlist_health / holdings_health (full scores + history)
+  ├── threshold_proposals (bus snapshot linkage)
+  └── lineage.snapshot_id + by_symbol.lineage
         ↓
 watchlist/holdings health refresh + threshold learner + --evaluate
 ```
+
+## Outcome bus traceability (nightly `--apply`)
+
+Module: `scripts/lib/hermes_outcome_bus/bus_traceability.py`
+
+| Section | Contents |
+|---------|----------|
+| `lineage` | `snapshot_id`, `prior_run_id`, upstream/downstream |
+| `watchlist_health` | Per-symbol health score, 6 components, `health_history`, `data_quality` |
+| `holdings_health` | Per-holding health, stop quality snapshot, lifecycle stage, history |
+| `threshold_proposals` | Pending + recent decided with `metrics_at_snapshot`, prior proposal chain |
+| `stop_quality.trends` | 7d/14d deltas (trail, alignment, R-left, tier alignment) |
+| `by_symbol.*.lineage` | Cross-refs to health sections + snapshot ID |
+| `feedback_to_governor.*.source_refs` | Bus snapshot + watchlist health at feedback time |
+
+Full schema + JSON examples: `OUTCOME_BUS_IMPLEMENTATION.md` (Traceability sections).
 
 ## Symbol journey API (traceability)
 
@@ -68,8 +89,9 @@ Run after deploy or weekly during observation window:
 10. Governor dry-run with bus — `stop_quality_*` reactions in `bus_reactions` when divergence/R-left triggers fire
 11. `hermes_threshold_learner.py --evaluate` — threshold evals + `closed_loop` promotion-gate verdict
 12. `GET /api/v2/hermes/symbol-journey?symbol=SCHD` — `timeline` with governor + outcome events
-13. Proposal history in Closed Loop shows `evaluation_outcome` when `--evaluate` has run
-14. `pytest tests/test_symbol_journey.py tests/test_lifecycle_bus_slice.py tests/test_closed_loop_evaluation.py -q`
+13. Proposal history shows `impact_narrative` + `evaluation_outcome` after `--evaluate`
+14. `stop_quality.trends.window_7d` populated when ≥2 bus history days
+15. `pytest tests/test_bus_traceability.py tests/test_symbol_journey.py tests/test_proposal_impact.py tests/test_lifecycle_bus_slice.py -q`
 
 ### Audit surfaces
 

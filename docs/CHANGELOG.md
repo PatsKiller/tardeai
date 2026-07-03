@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-03 - Docs sync: closed-loop traceability across Hermes index + lifecycle docs
+
+Synced `DOCUMENTATION_INDEX`, `HERMES_CLOSED_LOOP_TRACEABILITY`, watchlist/holdings
+lifecycle, adaptive thresholds, multi-agent architecture, and scope governor docs
+with `59024b4a` / `a0fb8bac` / `3ec93b08` implementations.
+
 ## 2026-07-03 - Outcome bus traceability sections (watchlist/holdings health, proposals, lineage)
 
 `bus_traceability.py` adds top-level `watchlist_health`, `holdings_health`,

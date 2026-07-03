@@ -259,11 +259,34 @@ Graft gates (`min_graded_samples: 3`) apply to both SQL signals and bus feedback
       "quality_multiplier": 0.6
     }
   },
+  "lineage": {
+    "snapshot_id": "outcome_bus_20260703T032500_ofb_abc",
+    "run_id": "ofb_abc",
+    "prior_run_id": "ofb_prev",
+    "prior_snapshot_id": "outcome_bus_..._ofb_prev"
+  },
+  "watchlist_health": {
+    "version": "watchlist-health-v1",
+    "symbol_count": 42,
+    "symbols": { "XYZ": { "health_score": 62, "components": {}, "health_history": [] } }
+  },
+  "holdings_health": {
+    "version": "holdings-health-v1",
+    "position_count": 8,
+    "symbols": { "SCHD": { "health_score": 74, "lifecycle_stage": "healthy", "stop_quality": {} } }
+  },
+  "threshold_proposals": {
+    "outcome_bus_run_id": "ofb_abc",
+    "metrics_at_snapshot": { "hit_rate_promotions": 0.38, "resource_efficiency_score": 0.52 },
+    "pending": [],
+    "recent_decided": []
+  },
   "stop_quality": {
     "sample_n": 45,
     "advisory_coverage_pct": 0.85,
     "aligned_pct": 0.72,
     "confirmed_pct": 0.65,
+    "trends": { "window_7d": { "trail_activation_rate": 0.02, "aligned_pct": -0.01 } },
     "notes": "protection_advisory_outcomes final_closed"
   },
   "resource_efficiency": {
@@ -461,7 +484,10 @@ Aligned with `docs/design/HERMES_MATURITY_5_DESIGN.md` §5.3 six dimensions:
 - [x] CC v3 Hermes Hub → **Closed Loop** tab (`HermesClosedLoopPanel.tsx`)
 - [x] Watchlist lifecycle Phase 1 (stages + conviction) + Phase 2 (health score, watch stage, promotion health gate)
 - [x] Holdings lifecycle Phase 1 (per-position health, advisory stages)
-- [ ] `resource_efficiency_score` scalar (deferred — needs request logger)
+- [x] Outcome bus traceability (`watchlist_health`, `holdings_health`, `threshold_proposals`, `lineage`) — `59024b4a`
+- [x] Symbol journey API + Closed Loop timeline UI — `0e69ec7b` / `3ec93b08`
+- [x] Proposal impact narratives on history rows — `a0fb8bac`
+- [x] `resource_efficiency_score` scalar in bus + trend
 
 ### Phase 3 — Visible loop
 
@@ -516,6 +542,7 @@ Aligned with `docs/design/HERMES_MATURITY_5_DESIGN.md` §5.3 six dimensions:
 .venv/bin/python scripts/hermes_outcome_feedback_agent.py --apply
 
 # 3. Verify file + API
+cat state/hermes/outcome_bus.json | jq '.lineage, .watchlist_health.symbol_count, .holdings_health.position_count, .threshold_proposals.pending_count'
 cat state/hermes/outcome_bus.json | jq '.global, .feedback_to_governor[:3]'
 curl -s 'http://127.0.0.1:7777/api/v2/hermes/outcome-bus' | jq '.governor_feedback_count'
 
@@ -537,5 +564,7 @@ curl -s 'http://127.0.0.1:7777/api/v2/hermes/outcome-bus' | jq '.governor_feedba
 - `scripts/hermes_outcome_feedback_agent.py`
 - `config/hermes_outcome_feedback.yaml`
 - `scripts/lib/hermes_outcome_bus/bus.py`
+- `scripts/lib/hermes_outcome_bus/bus_traceability.py`
+- `docs/hermes/HERMES_CLOSED_LOOP_TRACEABILITY.md`
 
 — Trade AI v12 · Advisory only · Paper mode
