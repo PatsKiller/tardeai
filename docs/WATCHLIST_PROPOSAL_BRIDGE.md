@@ -125,8 +125,27 @@ Watchlist-origin rows are **exempt** from the 24h age cap and entry-drift expiry
 
 Duplicate watchlist copies are rejected by hygiene + bridge dedupe.
 
+## Card-level propose (Command Center v3)
+
+Separate from the cron bridge: operators can propose a single symbol from the **Watchlist Hub**
+card when verdict is `READY` (`entry_urgency` ready/near_entry + validated plan).
+
+| Layer | Bridge (this doc) | Card propose |
+|-------|-------------------|--------------|
+| Trigger | Cron `*/15` + optional API sync | Operator clicks **Propose** on card |
+| Scope | All BUY+ symbols (batch, max 40/run) | One symbol, operator-chosen account/shares |
+| Sizing | `WATCHLIST_DEFAULT_RISK_USD` env | 1–2% of **available cash** via modal |
+| Accounts | Lane YAML (`schwab_taxable`, `tradeai_automated`) | `GET /api/v2/proposal-accounts` (Schwab + Fidelity) |
+| Submit | Upsert `paper_trade_proposals` | `POST /api/v2/watchlist/<SYMBOL>/propose` → `entry_desk_ops` |
+
+Cash-based sizing prevents IRA proposals sized on total equity (e.g. $584k equity vs ~$29k cash).
+Backend validates 2% cash risk cap and investment ≤ cash before queueing.
+
+Full UI/API spec: `docs/COMMAND_CENTER_V3_WATCHLIST.md`.
+
 ## Related docs
 
+- `docs/COMMAND_CENTER_V3_WATCHLIST.md` — decision cards + propose modal
 - `docs/BROKER_TRADE_PLAN_GATE.md` — authoritative plan enforcement (no gambling 2×R)
 - `docs/BROKER_PROPOSALS_UI.md` — live desk UI + Schwab OTOCO 2FA
 - `docs/PROPOSAL_EXECUTION_PATHS.md` — Path A paper vs Path B live
@@ -143,3 +162,7 @@ Duplicate watchlist copies are rejected by hygiene + bridge dedupe.
 | `scripts/broker_queue_hygiene.py` | Watchlist-exempt expiry + dedupe reject |
 | `apps/command-center-v3/src/components/ProposalSourceBadges.tsx` | Badge UI |
 | `apps/command-center-v3/src/lib/proposalSource.ts` | Client attribution helper |
+| `apps/command-center-v3/src/components/WatchlistCard.tsx` | Decision card + Propose CTA |
+| `apps/command-center-v3/src/components/WatchlistProposeModal.tsx` | Cash-sized propose modal |
+| `apps/command-center-v3/src/lib/watchlistProposeSizing.ts` | Client sizing math |
+| `scripts/account_policy.py` | `sizing_cash_base`, Fidelity cash from holdings |
