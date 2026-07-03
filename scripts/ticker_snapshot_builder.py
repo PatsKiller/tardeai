@@ -75,8 +75,9 @@ def build_ticker_snapshot(portfolio: dict, project_root: Path) -> str:
             symbols.add(sym)
     symbols.update(_get_watchlist_symbols(state_dir))
     if isinstance(finviz_cache, dict):
-        symbols.update(finviz_cache.keys())
-    symbols = sorted(symbols)
+        # cache carries bookkeeping keys like "_meta" — they are not tickers
+        symbols.update(k for k in finviz_cache.keys() if not str(k).startswith("_"))
+    symbols = sorted(s for s in symbols if not str(s).startswith("_"))
 
     records = {}
     now = datetime.now().isoformat()
@@ -146,8 +147,22 @@ def build_ticker_snapshot(portfolio: dict, project_root: Path) -> str:
     def enrich(sym):
         return sym, {"yfinance": _optional_yfinance(sym), "finvizfinance": _optional_finvizfinance(sym)}
 
+    # Delisted positions (Schwab returns a bare CUSIP as the symbol) have no quote anywhere —
+    # skip external enrichment for them instead of 404-spamming Yahoo on every snapshot build
+    # (543354104 / 628518102 / 12507E201 logged a pair of quoteSummary 404s per sync for weeks).
+    try:
+        from schwab_position_sync import _looks_like_cusip
+    except Exception:
+        def _looks_like_cusip(s):
+            return bool(s) and len(s) == 9 and s.isalnum() and not s.isalpha() and any(c.isdigit() for c in s)
+    delisted = {str(h.get("symbol") or "").upper() for h in holdings if h.get("delisted")}
+    enrichable = [s for s in symbols if s not in delisted and not _looks_like_cusip(s)]
+    skipped = sorted(set(symbols) - set(enrichable))
+    if skipped:
+        print(f"  [snapshot] external enrichment skipped for delisted/CUSIP: {', '.join(skipped)}")
+
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(enrich, sym): sym for sym in symbols}
+        futs = {ex.submit(enrich, sym): sym for sym in enrichable}
         for fut in as_completed(futs):
             sym, extra = fut.result()
             if extra["yfinance"]:
