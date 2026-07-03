@@ -11934,9 +11934,12 @@ def _paper_proposals_enriched():
                 WHERE status='ACTIVE' AND latest_score>=38 AND promoted_to_proposal_at IS NULL
             """, fetch="one")
             incubator_ready_count = int((_ic or {}).get('cnt', 0))
+            # pipeline_runs columns are finished_at + pipeline_key (the old completed_at /
+            # script_name pair never existed — this errored on every call, leaving
+            # last_promotion_run permanently null and 483 log lines of noise)
             _lp = _db_query("""
-                SELECT MAX(completed_at) as last_run FROM pipeline_runs
-                WHERE script_name='incubator_proposal_promoter'
+                SELECT MAX(finished_at) as last_run FROM pipeline_runs
+                WHERE pipeline_key='incubator_proposal_promoter'
             """, fetch="one")
             last_promotion_run = _json_clean((_lp or {}).get('last_run'))
         except Exception:
@@ -14828,8 +14831,12 @@ def _attach_lane_gates_and_grades(row: dict) -> dict:
     finviz_grade = finviz_score = finviz_tech = None
     try:
         from atm_technical_gate import letter_grade
+        # the snapshot's numeric score column is confluence_score (technical_score never
+        # existed) — the erroring query forced the expensive enrichment-bridge recompute
+        # fallback on every proposal render
         _ts = _db_query(
-            """SELECT technical_grade, technical_score FROM proposal_technical_snapshots
+            """SELECT technical_grade, confluence_score AS technical_score
+                 FROM proposal_technical_snapshots
                 WHERE proposal_id=%s ORDER BY computed_at DESC LIMIT 1""",
             [row.get("id")], fetch="one",
         )
