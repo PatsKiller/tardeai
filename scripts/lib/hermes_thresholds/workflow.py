@@ -57,6 +57,59 @@ def _format_proposal_delta(p: dict[str, Any]) -> str:
     return f"{short} {sign}{delta:.2f}"
 
 
+def _enrich_decided_proposals(
+    decided: list[dict[str, Any]],
+    history: list[dict[str, Any]],
+    evaluations: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Attach post-approval evaluation outcomes to decided proposal rows."""
+    eval_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for ev in evaluations:
+        tid = ev.get("threshold_id")
+        approved_at = str(ev.get("approved_at") or ev.get("evaluated_at") or "")[:10]
+        if tid and approved_at:
+            eval_by_key[(tid, approved_at)] = {
+                "verdict": ev.get("verdict"),
+                "recommendation": ev.get("recommendation"),
+                "impact_score": ev.get("impact_score"),
+                "confidence": ev.get("confidence"),
+                "evaluated_at": ev.get("evaluated_at"),
+                "reasoning": ev.get("reasoning"),
+            }
+
+    hist_by_proposal: dict[str, dict[str, Any]] = {}
+    for h in history:
+        pid = h.get("proposal_id")
+        if pid:
+            hist_by_proposal[str(pid)] = h
+
+    enriched: list[dict[str, Any]] = []
+    for p in decided:
+        ep = dict(p)
+        pid = str(ep.get("id") or "")
+        tid = ep.get("threshold_id")
+        hist = hist_by_proposal.get(pid) or {}
+        decided_day = str(ep.get("decided_at") or hist.get("at") or "")[:10]
+        eval_ctx = eval_by_key.get((tid, decided_day)) if tid and decided_day else None
+        if not eval_ctx and tid:
+            for ev in reversed(evaluations):
+                if ev.get("threshold_id") == tid:
+                    eval_ctx = {
+                        "verdict": ev.get("verdict"),
+                        "recommendation": ev.get("recommendation"),
+                        "impact_score": ev.get("impact_score"),
+                        "confidence": ev.get("confidence"),
+                        "evaluated_at": ev.get("evaluated_at"),
+                        "reasoning": ev.get("reasoning"),
+                    }
+                    break
+        if eval_ctx:
+            ep["evaluation_outcome"] = eval_ctx
+        ep["applied_value"] = hist.get("to") if hist else ep.get("proposed_value")
+        enriched.append(ep)
+    return enriched
+
+
 def _pending_summary_text(pending: list[dict[str, Any]]) -> str:
     if not pending:
         return "No pending adjustments"
@@ -107,11 +160,13 @@ def threshold_status() -> dict[str, Any]:
 
     eval_summary = {}
     evaluations_by_threshold: dict[str, dict[str, Any]] = {}
+    all_evaluations: list[dict[str, Any]] = []
     try:
         from .evaluation_engine import evaluation_status
         ev_status = evaluation_status()
         eval_summary = ev_status.get("summary") or {}
-        for ev in reversed(ev_status.get("evaluations") or []):
+        all_evaluations = list(ev_status.get("evaluations") or [])
+        for ev in reversed(all_evaluations):
             tid = ev.get("threshold_id")
             if tid and tid not in evaluations_by_threshold:
                 evaluations_by_threshold[tid] = {
@@ -141,6 +196,9 @@ def threshold_status() -> dict[str, Any]:
     pending_summary = _pending_summary_text(pending)
     first_pending_id = pending[0]["id"] if pending else None
     last_learn = proposals.get("last_learn") or {}
+    active_history = list(active.get("history") or [])
+    decided_raw = list(proposals.get("decided") or [])[-10:]
+    decided_enriched = _enrich_decided_proposals(decided_raw, active_history, all_evaluations)
 
     return {
         "ok": True,
@@ -157,8 +215,9 @@ def threshold_status() -> dict[str, Any]:
         "last_learn": last_learn,
         "evaluations_by_threshold": evaluations_by_threshold,
         "pending_summary": pending_summary,
-        "decided_proposals": (proposals.get("decided") or [])[-5:],
-        "history": (active.get("history") or [])[-10:],
+        "decided_proposals": decided_enriched,
+        "proposal_history": decided_enriched,
+        "history": active_history[-10:],
         "active_source": active.get("source", "static"),
         "updated_at": active.get("updated_at"),
         "proposals_updated_at": proposals.get("updated_at"),

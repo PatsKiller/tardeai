@@ -89,6 +89,20 @@ const LIFECYCLE_STAGE_COLOR: Record<string, string> = {
   blacklisted: '#ef4444',
 }
 
+const HOLDING_STAGE_COLOR: Record<string, string> = {
+  healthy: '#22c55e',
+  watch: '#f59e0b',
+  trim_candidate: '#ef4444',
+  exited: 'var(--text3)',
+}
+
+const VERDICT_COLOR: Record<string, string> = {
+  helped: '#22c55e',
+  hurt: '#ef4444',
+  neutral: '#f59e0b',
+  insufficient_data: 'var(--text3)',
+}
+
 function confidenceColor(tier?: string | null) {
   return CONFIDENCE_COLOR[String(tier ?? '').toLowerCase()] ?? '#f59e0b'
 }
@@ -544,6 +558,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
   const { data: histData, loading: histLoading } = useApi<any>(`/api/v2/hermes/outcome-bus/history?days=${trendDays}`, 120_000)
   const { data: thresholdData, refetch: refetchThresholds } = useApi<any>('/api/v2/hermes/thresholds', 120_000)
   const { data: evalData } = useApi<any>('/api/v2/hermes/thresholds/evaluations', 120_000)
+  const { data: holdingsLifecycleData } = useApi<any>('/api/v2/hermes/holdings-lifecycle', 120_000)
 
   const bus = busData?.bus ?? busData ?? {}
   const global = bus.global ?? {}
@@ -600,6 +615,10 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
       ? `${pendingThresholds.length} proposal${pendingThresholds.length !== 1 ? 's' : ''} pending review (${pendingThresholds.map(proposalDeltaText).join(', ')})`
       : 'No pending adjustments')
   const thresholdAudit: any[] = thresholdData?.recent_audit ?? []
+  const decidedProposals: any[] = thresholdData?.proposal_history ?? thresholdData?.decided_proposals ?? []
+  const holdingsLifecycle = holdingsLifecycleData ?? {}
+  const holdingsPanelRows: any[] = holdingsLifecycle?.panel_rows ?? []
+  const holdingsSummary: Record<string, number> = holdingsLifecycle?.summary ?? {}
   const cliCommands: Record<string, string> = thresholdData?.cli_commands ?? {
     status: '.venv/bin/python scripts/hermes_threshold_learner.py --status',
     learn: '.venv/bin/python scripts/hermes_threshold_learner.py --learn',
@@ -614,6 +633,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
   const [thresholdModalOpen, setThresholdModalOpen] = useState(false)
   const [thresholdExpanded, setThresholdExpanded] = useState(false)
   const [candidateTableOpen, setCandidateTableOpen] = useState(false)
+  const [proposalHistoryOpen, setProposalHistoryOpen] = useState(false)
   const lastLearn = thresholdData?.last_learn ?? {}
   const learnSnapshots: any[] = lastLearn.snapshots ?? []
   const [thresholdConfirm, setThresholdConfirm] = useState<{ proposal: any; action: 'approve' | 'reject' } | null>(null)
@@ -1111,6 +1131,71 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
               </div>
             )}
 
+            {(decidedProposals.length > 0 || thresholdAudit.length > 0) && (
+              <div style={{ marginTop: 12 }}>
+                <button
+                  onClick={() => setProposalHistoryOpen(v => !v)}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    fontSize: 10, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase',
+                  }}
+                >
+                  {proposalHistoryOpen ? '▼' : '▶'} Proposal history
+                  <span style={{ marginLeft: 8, fontWeight: 400, color: 'var(--text3)', textTransform: 'none' }}>
+                    {decidedProposals.length} decided · {thresholdAudit.length} audit events
+                  </span>
+                </button>
+                {proposalHistoryOpen && (
+                  <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8 }}>
+                    {decidedProposals.length === 0 && (
+                      <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 8 }}>No decided proposals yet.</div>
+                    )}
+                    {decidedProposals.slice().reverse().map((p: any) => {
+                      const ev = p.evaluation_outcome
+                      const status = p.status ?? 'decided'
+                      const isApprove = status === 'approved'
+                      return (
+                        <div key={p.id} style={{
+                          padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 10,
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                            <span style={{ fontWeight: 700, color: 'var(--text0)' }}>
+                              {p.label ?? p.threshold_id}
+                              <span style={{ marginLeft: 8, color: isApprove ? '#22c55e' : '#ef4444', textTransform: 'uppercase' }}>
+                                {status}
+                              </span>
+                            </span>
+                            <span style={{ fontFamily: 'monospace', color: 'var(--text3)' }}>
+                              {Number(p.current_value).toFixed(3)} → {Number(p.applied_value ?? p.proposed_value).toFixed(3)}
+                            </span>
+                          </div>
+                          <div style={{ color: 'var(--text3)', marginTop: 4 }}>
+                            {p.decided_at?.slice(0, 19) ?? '—'}
+                            {p.direction && ` · ${p.direction}`}
+                            {p.evidence?.confidence && ` · ${String(p.evidence.confidence).toUpperCase()} confidence`}
+                          </div>
+                          {ev && (
+                            <div style={{ marginTop: 4, color: VERDICT_COLOR[String(ev.verdict)] ?? 'var(--text2)' }}>
+                              Evaluation: <b>{ev.verdict}</b> → {ev.recommendation}
+                              {ev.impact_score != null && ` (impact ${Number(ev.impact_score).toFixed(2)})`}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {thresholdAudit.slice(0, 6).map((a: any, i: number) => (
+                      <div key={`audit-${i}`} style={{ fontSize: 9, color: 'var(--text3)', padding: '4px 0', borderTop: i === 0 && decidedProposals.length ? '1px solid var(--border)' : undefined }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text2)' }}>{a.action}</span>
+                        {' '}{a.threshold_id ?? a.proposal_id}
+                        {a.from != null && a.to != null && ` · ${a.from}→${a.to}`}
+                        {' · '}{String(a.at ?? '').slice(0, 19)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {(evalSummary.count > 0 || recentEvaluations.length > 0) && (
               <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>Threshold evaluations</div>
@@ -1560,6 +1645,74 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
             <span style={{ color: 'var(--text3)' }}>{meta.n}</span>
           </div>
         ))}
+      </div>
+
+      {/* Holdings lifecycle */}
+      <div style={{
+        background: 'var(--bg1)',
+        border: `1px solid ${(holdingsSummary.trim_candidate ?? 0) > 0 || (holdingsSummary.watch ?? 0) > 2 ? 'rgba(245,158,11,.4)' : 'var(--border)'}`,
+        borderRadius: 10,
+        padding: 16,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Holdings lifecycle</div>
+        <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>
+          Per-position health (0–100) — stop quality, outcomes, research signals. Advisory only; no auto-sell.
+        </div>
+        {Object.keys(holdingsSummary).length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            {Object.entries(holdingsSummary).filter(([st]) => st !== 'exited').map(([st, n]) => (
+              <span key={st} style={{
+                fontSize: 9, padding: '3px 8px', borderRadius: 4,
+                color: HOLDING_STAGE_COLOR[st] ?? 'var(--text3)',
+                background: 'var(--bg2)', border: '1px solid var(--border)',
+              }}>
+                {st.replace('_', ' ')} {n}
+              </span>
+            ))}
+          </div>
+        )}
+        {holdingsPanelRows.length === 0 ? (
+          <div style={{ fontSize: 11, color: 'var(--text3)', padding: 8 }}>
+            No holdings snapshot — governor tick or <code style={{ fontSize: 10 }}>GET /api/v2/hermes/holdings-lifecycle</code> builds it.
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '0.6fr 0.7fr 0.5fr 0.5fr 0.6fr 1fr', fontSize: 8, color: 'var(--text3)', padding: '4px 6px', textTransform: 'uppercase' }}>
+              <span>Symbol</span><span>Stage</span><span>Health</span><span>Gain</span><span>Gate</span><span>Monitoring</span>
+            </div>
+            {holdingsPanelRows.map((row: any) => (
+              <div key={row.symbol} style={{
+                display: 'grid', gridTemplateColumns: '0.6fr 0.7fr 0.5fr 0.5fr 0.6fr 1fr',
+                padding: '6px', borderBottom: '1px solid var(--border)', fontSize: 11, alignItems: 'center',
+                borderLeft: row.lifecycle_stage === 'trim_candidate' ? '3px solid #ef4444'
+                  : row.lifecycle_stage === 'watch' ? '3px solid #f59e0b' : '3px solid transparent',
+              }}>
+                <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{row.symbol}</span>
+                <span style={{ color: HOLDING_STAGE_COLOR[row.lifecycle_stage] ?? 'var(--text2)', fontWeight: 600, fontSize: 10 }}>
+                  {row.lifecycle_label ?? row.lifecycle_stage}
+                </span>
+                <span style={{
+                  fontWeight: 700,
+                  color: (row.health_score ?? 0) >= 70 ? '#22c55e' : (row.health_score ?? 0) < 50 ? '#ef4444' : '#f59e0b',
+                }}>
+                  {row.health_score != null ? Math.round(Number(row.health_score)) : '—'}
+                  {row.health_delta != null && (
+                    <span style={{ fontSize: 8, color: row.health_delta >= 0 ? '#22c55e' : '#ef4444', marginLeft: 4 }}>
+                      {row.health_delta > 0 ? '+' : ''}{row.health_delta}
+                    </span>
+                  )}
+                </span>
+                <span style={{ fontSize: 10, color: (row.gain_pct ?? 0) < 0 ? '#ef4444' : 'var(--text2)' }}>
+                  {row.gain_pct != null ? `${Number(row.gain_pct).toFixed(1)}%` : '—'}
+                </span>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{row.outcome_gate ?? '—'}</span>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>
+                  {row.monitoring?.research_depth ?? '—'} · stops {row.monitoring?.stop_monitoring ?? '—'}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {/* Watchlist lifecycle */}

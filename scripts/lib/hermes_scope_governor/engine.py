@@ -368,6 +368,13 @@ class ScopeGovernorEngine:
         except Exception as lc_err:
             lifecycle_snap = {"ok": False, "error": str(lc_err)[:120]}
 
+        holdings_snap: dict[str, Any] = {}
+        try:
+            from lib.hermes_holdings_lifecycle.holdings_lifecycle import build_and_persist_holdings_lifecycle
+            holdings_snap = build_and_persist_holdings_lifecycle(run_id=run_id)
+        except Exception as hl_err:
+            holdings_snap = {"ok": False, "error": str(hl_err)[:120]}
+
         by_action: dict[str, int] = {}
         for d in decisions:
             by_action[d.action] = by_action.get(d.action, 0) + 1
@@ -398,6 +405,11 @@ class ScopeGovernorEngine:
                 "summary": lifecycle_snap.get("summary") or {},
                 "pending_count": lifecycle_snap.get("pending_count", 0),
                 "review_mode": lifecycle_snap.get("review_mode", True),
+            },
+            "holdings_lifecycle": {
+                "summary": holdings_snap.get("summary") or {},
+                "position_count": holdings_snap.get("position_count", 0),
+                "review_mode": holdings_snap.get("review_mode", True),
             },
             "ts": datetime.now(timezone.utc).isoformat(),
         }

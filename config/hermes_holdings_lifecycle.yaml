@@ -1,0 +1,47 @@
+# Holdings lifecycle — per-position health + advisory stages (no auto-sell).
+
+enabled: true
+review_mode: true
+
+stages:
+  - healthy
+  - watch
+  - trim_candidate
+  - exited
+
+health_weights:
+  stop_quality: 0.25
+  outcome_consistency: 0.25
+  realized_r: 0.15
+  research_actionability: 0.15
+  position_risk: 0.20
+
+thresholds:
+  healthy_min: 70
+  watch_min: 50
+  trim_max: 49
+
+monitoring_hints:
+  healthy:
+    research_depth: standard
+    stop_monitoring: normal
+  watch:
+    research_depth: elevated
+    stop_monitoring: tight
+  trim_candidate:
+    research_depth: full
+    stop_monitoring: tight
+  exited:
+    research_depth: none
+    stop_monitoring: none
+
+# LLM health chip mapping (portfolio watchlist_items)
+llm_health_scores:
+  STRONG: 90
+  STABLE: 75
+  WATCH: 55
+  WEAK: 35
+  CRITICAL: 20
+
+panel_limit: 25
+history_days: 14
