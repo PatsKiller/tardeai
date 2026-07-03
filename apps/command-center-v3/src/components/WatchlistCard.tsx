@@ -14,6 +14,11 @@ import {
   dataDoubtTooltip,
   ladderStepTooltip,
   watchlistNeedsRefresh,
+  cioRecColor,
+  targetVsStreetLabel,
+  dataQualityFlags,
+  actionReasoning,
+  rrTooltip,
   type CardActionType,
   type CardVerdict,
 } from '../lib/watchlistCardAction'
@@ -119,6 +124,29 @@ function VerdictChip({ verdict }: { verdict: CardVerdict }) {
   )
 }
 
+function CioSignalPill({ label, confidence, tip }: { label: string; confidence: string; tip: string }) {
+  const c = cioRecColor(label)
+  return (
+    <span title={tip} style={{
+      fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 5,
+      color: c, border: `1px solid ${c}66`, background: `${c}18`, whiteSpace: 'nowrap', cursor: 'help',
+    }}>
+      CIO {label.replace(/_/g, ' ')}
+      {confidence !== '—' && <span style={{ fontWeight: 600, color: WL.text.muted, marginLeft: 5 }}>· {confidence}</span>}
+    </span>
+  )
+}
+
+function RrBadge({ rr, tip }: { rr: number; tip: string }) {
+  const c = rr >= 2 ? WL.urgency.green : rr >= 1.5 ? WL.urgency.amber : WL.urgency.red
+  return (
+    <span title={tip} style={{
+      fontSize: 10, fontWeight: 900, padding: '4px 8px', borderRadius: 5,
+      fontFamily: 'monospace', color: c, border: `1px solid ${c}55`, background: `${c}14`, whiteSpace: 'nowrap',
+    }}>{rr.toFixed(1)}R</span>
+  )
+}
+
 export type WatchlistCardProps = {
   it: any
   adv?: any
@@ -147,8 +175,9 @@ export default function WatchlistCard({
   ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onToggleEns, isStarred,
   onPropose, onAdjust, onBuildPlan, onOpenDesk,
 }: WatchlistCardProps) {
-  const [ladderOpen, setLadderOpen] = useState<boolean | null>(null)
+  const [ladderOpen, setLadderOpen] = useState<boolean | null>(false)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [contextOpen, setContextOpen] = useState(false)
   const [rulesOpen, setRulesOpen] = useState(false)
 
   const enriched = !!it.last_enriched_at
@@ -173,8 +202,11 @@ export default function WatchlistCard({
   const heroTextSize = prominence.heroScale === 'large' ? WL.hero.textLarge : WL.hero.textMedium
   const metricColor = prominence.metricsMuted ? WL.text.dim : WL.text.primary
 
-  const cioLabel = it.latest_recommendation
+  const cioRec = it.latest_recommendation
     ? String(it.latest_recommendation).replace(/_/g, ' ')
+    : 'none'
+  const cioLabel = it.latest_recommendation
+    ? cioRec
     : (pa?.rec ? String(pa.rec).replace(/_/g, ' ') : 'watch')
   const confVal = it.research_confidence != null
     ? Number(it.research_confidence).toFixed(2)
@@ -231,6 +263,10 @@ export default function WatchlistCard({
   ].filter(Boolean).join(' · ')
   const hasMore = !!(it.synthesis_evidence?.length || it.synthesis_narrative_snip
     || action.detail || llms.length)
+  const reasoning = actionReasoning({ it, pa, adv, action, hasPlan, rr, stale, enriched })
+  const dqFlags = dataQualityFlags({ it, stale, enriched, needsRefresh, dataDoubt })
+  const exitVsStreet = targetVsStreetLabel(planTarget, street)
+  const analystDivergent = pa?.divergence === 'divergent'
 
   const executeAction = (e: React.MouseEvent, type: CardActionType) => {
     e.stopPropagation()
@@ -294,8 +330,12 @@ export default function WatchlistCard({
             style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: 0, color: isStarred ? WL.text.secondary : WL.text.dim }}
           >{isStarred ? '★' : '☆'}</button>
           <span style={{ fontWeight: 950, color: WL.text.primary, fontFamily: 'monospace', fontSize: 20 }}>{it.symbol}</span>
+          <CioSignalPill label={cioRec} confidence={String(confVal)} tip={cioViewTooltip(it)} />
           <VerdictChip verdict={action.verdict} />
-          <ProAnalystPill symbol={it.symbol} map={paMap} compact neutral />
+          <ProAnalystPill symbol={it.symbol} map={paMap} compact neutral={!analystDivergent} />
+          {analystDivergent && (
+            <IntelPill text="CIO ≠ Street" color={WL.urgency.red} tip="Internal CIO view diverges from Yahoo analyst consensus — weight CIO higher" />
+          )}
           {isHeld && (
             <span title={heldTip} style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 4, color: '#ffa726', border: '1px solid rgba(255,167,38,.45)', background: 'rgba(255,167,38,.12)' }}>HELD</span>
           )}
@@ -326,6 +366,20 @@ export default function WatchlistCard({
         </div>
       </div>
 
+      {/* Data quality — compact, always visible when relevant */}
+      {dqFlags.length > 0 && (
+        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {dqFlags.map((f, i) => (
+            <IntelPill
+              key={i}
+              text={f.label}
+              color={f.severity === 'red' ? WL.urgency.red : WL.urgency.amber}
+              tip={f.label === 'Data doubt' ? dataDoubtTooltip(dataDoubt) : enrichedTooltip(it)}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Action hero */}
       <div
         onClick={e => e.stopPropagation()}
@@ -343,20 +397,26 @@ export default function WatchlistCard({
           flexWrap: 'wrap',
         }}
       >
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: heroTextSize, fontWeight: 800, color: WL.text.primary, lineHeight: 1.3 }}>{action.heroText}</div>
-          {action.subtext && (
+          {action.subtext && action.subtext !== reasoning && (
             <div style={{ fontSize: WL.hero.subtextSize, color: WL.text.muted, marginTop: 4 }}>{action.subtext}</div>
           )}
+          <div style={{ fontSize: 11, color: WL.text.secondary, marginTop: 6, lineHeight: 1.45 }} title={reasoning}>
+            {reasoning}
+          </div>
           {planLine && (
-            <div style={{ fontSize: 10.5, color: WL.text.secondary, marginTop: 6, lineHeight: 1.4 }} title={planLine}>
+            <div style={{ fontSize: 10, color: WL.text.dim, marginTop: 5, lineHeight: 1.4, fontFamily: 'monospace' }} title={planLine}>
               {planLine}
             </div>
           )}
         </div>
-        {action.allowPrimary && (
-          <button onClick={handlePrimary} style={buttonStyle(action.buttonVariant)}>{action.primaryLabel}</button>
-        )}
+        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {rr != null && hasPlan && <RrBadge rr={rr} tip={rrTooltip(entry, stop, planTarget, rr)} />}
+          {action.allowPrimary && (
+            <button onClick={handlePrimary} style={buttonStyle(action.buttonVariant)}>{action.primaryLabel}</button>
+          )}
+        </div>
       </div>
 
       {/* Plan metrics */}
@@ -411,23 +471,27 @@ export default function WatchlistCard({
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${WL.body.border}`, fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.5 }}>
-          <span title={cioViewTooltip(it)}><b style={{ color: WL.text.muted }}>CIO</b> {cioLabel}</span>
-          <span style={{ color: WL.text.dim, margin: '0 5px' }}>·</span>
-          <span title={confidenceTooltip(it)}><b style={{ color: WL.text.muted }}>Conf</b> {confVal}</span>
-          <span style={{ color: WL.text.dim, margin: '0 5px' }}>·</span>
-          <span title={enrichedTooltip(it)}><b style={{ color: WL.text.muted }}>Enriched</b> {enrichVal}</span>
-          <span style={{ color: WL.text.dim, margin: '0 5px' }}>·</span>
-          <span title={planValidatedTooltip(it)}><b style={{ color: WL.text.muted }}>Validated</b> {validatedVal}</span>
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${WL.body.border}`, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span title={confidenceTooltip(it)} style={{ fontSize: 10, color: WL.text.secondary }}>
+            <b style={{ color: WL.text.muted }}>Conf</b> {confVal}
+          </span>
+          <span title={enrichedTooltip(it)} style={{ fontSize: 10, color: WL.text.secondary }}>
+            <b style={{ color: WL.text.muted }}>Enriched</b> {enrichVal}
+          </span>
+          <span title={planValidatedTooltip(it)} style={{ fontSize: 10, color: WL.text.secondary }}>
+            <b style={{ color: WL.text.muted }}>Validated</b> {validatedVal}
+          </span>
           {it.entry_model && (
-            <>
-              <span style={{ color: WL.text.dim, margin: '0 5px' }}>·</span>
-              <span><b style={{ color: WL.text.muted }}>Model</b> {it.entry_model}</span>
-            </>
+            <IntelPill text={it.entry_model} color="#a855f7" tip="Entry planner model" />
           )}
-          {it.models_agree === true && <span style={{ marginLeft: 6, fontSize: 9, color: WL.text.dim }}>✓ 2 models</span>}
-          {it.models_agree === false && <span style={{ marginLeft: 6, fontSize: 9, color: WL.text.muted }}>models split</span>}
+          {it.models_agree === true && <IntelPill text="✓ 2 models agree" color={WL.urgency.green} tip="Grok + ChatGPT agree on CIO view" />}
+          {it.models_agree === false && <IntelPill text="models split" color={WL.urgency.amber} tip="Grok and ChatGPT disagree — cautious view used" />}
         </div>
+        {exitVsStreet && (
+          <div style={{ marginTop: 8, fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.4 }} title={exitVsStreet}>
+            <b style={{ color: WL.text.muted }}>Exit </b>{exitVsStreet}
+          </div>
+        )}
       </div>
 
       {/* Fib / pullback confluence — always on card (lazy-load on expand) */}
@@ -486,9 +550,6 @@ export default function WatchlistCard({
             })}
           </div>
         )}
-        {companyOneLiner && (
-          <div style={{ fontSize: 11, color: WL.text.secondary, lineHeight: 1.45 }}>{companyOneLiner}</div>
-        )}
         {it.catalyst_headline && (
           <div style={{ fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             {it.catalyst_type && (
@@ -500,7 +561,19 @@ export default function WatchlistCard({
             {it.catalyst_at && <span style={{ color: WL.text.muted, fontSize: 9.5 }}>{ago(it.catalyst_at)}</span>}
           </div>
         )}
-        {topNews && (
+        {(companyOneLiner || topNews) && (
+          <button
+            onClick={e => { e.stopPropagation(); setContextOpen(v => !v) }}
+            style={{
+              alignSelf: 'flex-start', fontSize: 9.5, fontWeight: 700, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
+              border: `1px solid ${WL.tag.border}`, background: 'transparent', color: WL.text.muted,
+            }}
+          >{contextOpen ? '▾' : '▸'} Company &amp; news</button>
+        )}
+        {contextOpen && companyOneLiner && (
+          <div style={{ fontSize: 11, color: WL.text.secondary, lineHeight: 1.45 }}>{companyOneLiner}</div>
+        )}
+        {contextOpen && topNews && (
           <div style={{ fontSize: 10.5, lineHeight: 1.4, overflowWrap: 'anywhere' }}>
             <span style={{ color: WL.text.muted }}>{cleanNewsSource(topNews.source)}{topNews.at ? ` · ${ago(topNews.at)}` : ''} </span>
             {topNews.url ? (
@@ -508,13 +581,13 @@ export default function WatchlistCard({
             ) : <span style={{ color: WL.text.secondary }}>{topNews.title}</span>}
           </div>
         )}
-        {allNews.length > 1 && (
-          <div style={{ fontSize: 9.5, color: WL.text.dim }}>+{allNews.length - 1} more headline{allNews.length > 2 ? 's' : ''} in ▸ More</div>
+        {contextOpen && allNews.length > 1 && (
+          <div style={{ fontSize: 9.5, color: WL.text.dim }}>+{allNews.length - 1} more in ▸ More</div>
         )}
       </div>
 
-      {/* Exit ladder — compact toggle */}
-      {prominence.showLadder && ladder && (
+      {/* Exit ladder — show summary by default when plan exists */}
+      {ladder && (
         <div onClick={e => e.stopPropagation()}>
           <button
             onClick={() => setLadderOpen(v => !(v ?? prominence.ladderDefaultOpen))}

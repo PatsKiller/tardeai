@@ -424,7 +424,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
             <button onClick={() => { setPage(p => Math.min(pageCount - 1, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }} disabled={curPage >= pageCount - 1} style={{ ...SEL, cursor: curPage >= pageCount - 1 ? 'default' : 'pointer', opacity: curPage >= pageCount - 1 ? 0.4 : 1 }}>Next ›</button>
           </div>
         )}
-        <div style={{ fontSize: 9.5, color: MUTED, marginTop: 10 }}>One card per symbol — verdict, pullback zone, L/S/R:R, Fib confluence, Finviz, sector, catalyst, and news visible by default. Click card for intel drawer; ▸ More expands advisory detail and CIO evidence. Advisory-only — never places trades.</div>
+        <div style={{ fontSize: 9.5, color: MUTED, marginTop: 10 }}>Decision-first cards — CIO view, confidence, R:R, L/S/target, model, data-quality flags, and reasoning visible by default. Street analyst shown with divergence when CIO disagrees. Advisory-only — never places trades.</div>
       </div>
 
       {showAdd && <AddWatchModal onClose={() => setShowAdd(false)} onCreated={() => { refetchWd(); refetchWl() }} paMap={paMap} lists={listOpts} />}
