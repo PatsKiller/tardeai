@@ -228,4 +228,24 @@ Display confidence in the Closed Loop review modal.
 
 ---
 
+## 8. Implementation Status (scoring-v2 + Phase 3 refinements)
+
+| Recommendation | Status | Location |
+|----------------|--------|----------|
+| Multi-metric composite (#1) | ✅ | `scoring.py`, `config/hermes_thresholds.yaml` |
+| Richer evidence + confidence (#2) | ✅ | `threshold_learner.py` → `proposal.evidence` |
+| Asymmetric tighten/loosen (#3) | ✅ | `passes_asymmetric_bar()` |
+| Early-detection term (#4) | ✅ | `_early_detection_bonus()` |
+| Regime-aware confidence (#5) | ✅ | `regime_breakdown()`, `resolve_confidence()` |
+| Sparse-data max_step halving (#6) | ✅ | `_build_proposal()` |
+| Holdout validation | ✅ Phase 3 | `split_holdout()`, `validate_holdout_candidate()` |
+| Loosen non-negative components | ✅ Phase 3 | `passes_loosen_component_guard()` |
+| Key trigger days in evidence | ✅ Phase 3 | `collect_key_trigger_days()` |
+| Counterfactual trigger count | ✅ Phase 3 | `counterfactual_trigger_count()` |
+| Audit tail in API / panel | ✅ Phase 3 | `load_audit_tail()`, Closed Loop panel |
+
+**Phase 3 config** (`scoring.holdout`, `scoring.loosen`, `counterfactual_window_days`, `key_evidence_days`).
+
+---
+
 **Related:** `HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` · `HERMES_THRESHOLD_EVALUATION_ENGINE.md`

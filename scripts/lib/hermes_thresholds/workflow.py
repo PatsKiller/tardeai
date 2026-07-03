@@ -9,6 +9,7 @@ from .store import (
     get_active_value,
     last_audit_event,
     load_active_thresholds,
+    load_audit_tail,
     load_proposals,
     load_threshold_config,
     save_active_thresholds,
@@ -133,6 +134,7 @@ def threshold_status() -> dict[str, Any]:
         "last_evaluated_at": (last_proposed or {}).get("at"),
         "last_changed_at": (last_change or {}).get("at"),
         "evaluation_summary": eval_summary,
+        "recent_audit": load_audit_tail(8),
         "cli_commands": {
             "status": ".venv/bin/python scripts/hermes_threshold_learner.py --status",
             "learn": ".venv/bin/python scripts/hermes_threshold_learner.py --learn",

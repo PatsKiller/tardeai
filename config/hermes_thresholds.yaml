@@ -36,6 +36,14 @@ scoring:
     high_sample_days: 22
     high_score_delta: 0.005
     runner_up_gap: 0.005
+  holdout:
+    enabled: true
+    holdout_days: 7              # validate best candidate on trailing holdout window
+    min_score_ratio: 0.85        # holdout composite ≥ ratio × train score
+  loosen:
+    require_non_negative_components: true
+  counterfactual_window_days: 14
+  key_evidence_days: 5           # max trigger days attached to proposal evidence
 
 regime:
   high_vol_pct_cap: 0.30         # >30% high-vol days → downgrade confidence

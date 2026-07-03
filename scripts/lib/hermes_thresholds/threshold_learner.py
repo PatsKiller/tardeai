@@ -7,12 +7,17 @@ from typing import Any, Callable
 from lib.hermes_outcome_bus.bus import load_outcome_bus_trend
 
 from .scoring import (
+    collect_key_trigger_days,
+    counterfactual_trigger_count,
     passes_asymmetric_bar,
+    passes_loosen_component_guard,
     regime_breakdown,
     resolve_confidence,
     scan_candidates,
     score_efficiency_candidate,
     score_stop_quality_candidate,
+    split_holdout,
+    validate_holdout_candidate,
 )
 from .store import (
     append_audit,
@@ -97,6 +102,7 @@ def _build_proposal(
     regime: dict[str, Any],
     cfg: dict[str, Any],
     reasoning_fn: Callable[..., str],
+    extra_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     best = candidates[0] if candidates else None
     if not best or abs(proposed - current) < float(spec.get("min_step", 0.01)):
@@ -112,6 +118,15 @@ def _build_proposal(
         runner_up_gap,
         cfg,
     )
+
+    if not passes_loosen_component_guard(direction, best.get("metric_contributions"), cfg):
+        append_audit({
+            "action": "no_proposal",
+            "threshold_id": threshold_id,
+            "reason": "loosen_component_guard_failed",
+            "metric_contributions": best.get("metric_contributions"),
+        })
+        return None
 
     if not passes_asymmetric_bar(direction, score_delta, confidence, cfg):
         append_audit({
@@ -158,8 +173,59 @@ def _build_proposal(
             "metric_contributions": best.get("metric_contributions"),
             "candidate_metrics": {k: v for k, v in best.items() if k not in ("value",)},
             "safe_band": spec.get("safe_band"),
+            **(extra_evidence or {}),
         },
     }
+
+
+def _holdout_days(cfg: dict[str, Any]) -> int:
+    hold_cfg = (cfg.get("scoring") or {}).get("holdout") or {}
+    if not hold_cfg.get("enabled", True):
+        return 0
+    return int(hold_cfg.get("holdout_days", 7))
+
+
+def _key_days_limit(cfg: dict[str, Any]) -> int:
+    return int((cfg.get("scoring") or {}).get("key_evidence_days", 5))
+
+
+def _counterfactual_window(cfg: dict[str, Any]) -> int:
+    return int((cfg.get("scoring") or {}).get("counterfactual_window_days", 14))
+
+
+def _select_best_with_holdout(
+    usable: list[dict[str, Any]],
+    scorer,
+    current: float,
+    band: dict[str, float],
+    cfg: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Scan on train window; require holdout validation for the top candidate."""
+    holdout_n = _holdout_days(cfg)
+    train, holdout = split_holdout(usable, holdout_n)
+    if len(train) < 5:
+        train = usable
+        holdout = []
+
+    candidates = scan_candidates(train, scorer, current, band)
+    if not candidates:
+        return [], None
+
+    best = candidates[0]
+    if not holdout:
+        return candidates, {"skipped": True, "reason": "insufficient_holdout_window"}
+
+    holdout_meta = scorer(holdout, best["value"])
+    ok, holdout_info = validate_holdout_candidate(best["score"], holdout_meta, cfg)
+    if not ok:
+        append_audit({
+            "action": "no_proposal",
+            "reason": "holdout_validation_failed",
+            "candidate_value": best["value"],
+            "holdout": holdout_info,
+        })
+        return [], None
+    return candidates, holdout_info
 
 
 def _propose_efficiency(
@@ -175,7 +241,8 @@ def _propose_efficiency(
 
     regime = regime_breakdown(usable, cfg)
     scorer = lambda s, t: score_efficiency_candidate(s, t, cfg)
-    candidates = scan_candidates(usable, scorer, current, spec.get("safe_band") or {})
+    band = spec.get("safe_band") or {}
+    candidates, holdout_info = _select_best_with_holdout(usable, scorer, current, band, cfg)
     if not candidates:
         return None
 
@@ -183,24 +250,43 @@ def _propose_efficiency(
     current_score = current_meta["score"]
     best = candidates[0]
     if best["value"] == current and best["score"] <= current_score + 0.001:
+        append_audit({
+            "action": "no_proposal",
+            "threshold_id": "efficiency.tighten_threshold",
+            "reason": "no_improvement",
+            "current_score": current_score,
+            "best_score": best["score"],
+        })
         return None
 
-    proposed = _clamp_step(current, best["value"], float(spec.get("max_step", 0.03)), spec.get("safe_band") or {})
+    proposed = _clamp_step(current, best["value"], float(spec.get("max_step", 0.03)), band)
     direction = "tighten" if proposed < current else "loosen"
+    trigger_fn = lambda s: (_num(s.get("resource_efficiency_score")) or 1) < proposed
+    extra = {
+        "holdout_validation": holdout_info,
+        "key_trigger_days": collect_key_trigger_days(usable, trigger_fn, _key_days_limit(cfg)),
+        "counterfactual": counterfactual_trigger_count(usable, trigger_fn, _counterfactual_window(cfg)),
+        "current_trigger_count": counterfactual_trigger_count(
+            usable, lambda s: (_num(s.get("resource_efficiency_score")) or 1) < current,
+            _counterfactual_window(cfg),
+        ),
+    }
 
     def reasoning(best_m, prop, dir_, delta, conf):
         sep = best_m.get("raw_separations") or {}
+        cf = extra.get("counterfactual") or {}
         return (
             f"Composite v2 score {best_m['score']:.4f} (+{delta:.4f} vs current {current_score:.4f}). "
             f"Hit-rate separation {sep.get('hit_rate', 0):.1%}, maturity Δ{sep.get('maturity', 0)}pts. "
             f"Trigger rate {best_m.get('trigger_rate', 0):.0%}, early-detection bonus {best_m.get('early_detection_bonus', 0):.3f}. "
+            f"Would fire {cf.get('trigger_count', '—')}× in last {cf.get('window_days', 14)}d. "
             f"Proposing {dir_} {current:.2f}→{prop:.2f} (confidence: {conf})."
         )
 
     return _build_proposal(
         "efficiency.tighten_threshold",
         spec.get("label", "Efficiency reaction trigger"),
-        current, proposed, direction, spec, candidates, current_score, regime, cfg, reasoning,
+        current, proposed, direction, spec, candidates, current_score, regime, cfg, reasoning, extra,
     )
 
 
@@ -217,7 +303,8 @@ def _propose_stop_quality(
 
     regime = regime_breakdown(usable, cfg)
     scorer = lambda s, t: score_stop_quality_candidate(s, t, cfg)
-    candidates = scan_candidates(usable, scorer, current, spec.get("safe_band") or {})
+    band = spec.get("safe_band") or {}
+    candidates, holdout_info = _select_best_with_holdout(usable, scorer, current, band, cfg)
     if not candidates:
         return None
 
@@ -225,24 +312,43 @@ def _propose_stop_quality(
     current_score = current_meta["score"]
     best = candidates[0]
     if best["value"] == current and best["score"] <= current_score + 0.001:
+        append_audit({
+            "action": "no_proposal",
+            "threshold_id": "stop_quality.divergence_delta_pp",
+            "reason": "no_improvement",
+            "current_score": current_score,
+            "best_score": best["score"],
+        })
         return None
 
-    proposed = _clamp_step(current, best["value"], float(spec.get("max_step", 0.02)), spec.get("safe_band") or {})
+    proposed = _clamp_step(current, best["value"], float(spec.get("max_step", 0.02)), band)
     direction = "tighten" if proposed > current else "loosen"
+    trigger_fn = lambda s: (_num(s.get("stop_hot_cold_trail_delta")) or 1) < proposed
+    extra = {
+        "holdout_validation": holdout_info,
+        "key_trigger_days": collect_key_trigger_days(usable, trigger_fn, _key_days_limit(cfg)),
+        "counterfactual": counterfactual_trigger_count(usable, trigger_fn, _counterfactual_window(cfg)),
+        "current_trigger_count": counterfactual_trigger_count(
+            usable, lambda s: (_num(s.get("stop_hot_cold_trail_delta")) or 1) < current,
+            _counterfactual_window(cfg),
+        ),
+    }
 
     def reasoning(best_m, prop, dir_, delta, conf):
         sep = best_m.get("raw_separations") or {}
+        cf = extra.get("counterfactual") or {}
         return (
             f"Stop-quality composite {best_m['score']:.4f} (+{delta:.4f}). "
             f"Alignment separation {sep.get('alignment', 0):.1%}, trail Δ{sep.get('trail_delta', 0):.1%}. "
             f"Trigger rate {best_m.get('trigger_rate', 0):.0%}. "
+            f"Would fire {cf.get('trigger_count', '—')}× in last {cf.get('window_days', 14)}d. "
             f"Proposing {dir_} divergence floor {current:.0%}→{prop:.0%} (confidence: {conf})."
         )
 
     return _build_proposal(
         "stop_quality.divergence_delta_pp",
         spec.get("label", "Stop quality divergence"),
-        current, proposed, direction, spec, candidates, current_score, regime, cfg, reasoning,
+        current, proposed, direction, spec, candidates, current_score, regime, cfg, reasoning, extra,
     )
 
 
