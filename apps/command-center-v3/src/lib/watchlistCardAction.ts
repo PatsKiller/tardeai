@@ -369,14 +369,14 @@ export function verdictColor(v: CardVerdict): string {
   return map[v]
 }
 
-export function buttonStyle(variant: ButtonVariant, compact = false): Record<string, string | number> {
-  const green = '#16a34a'
-  const amber = '#d97706'
+export function buttonStyle(variant: ButtonVariant, compact = false, prominent = false): Record<string, string | number> {
+  const green = '#14b8a6'
+  const amber = '#f59e0b'
   const muted = '#94a3b8'
   const tagBorder = 'rgba(71,85,105,.45)'
-  const pad = compact ? '6px 12px' : '9px 18px'
-  const fs = compact ? 11 : 12
-  const minW = compact ? 72 : 132
+  const pad = prominent ? '11px 20px' : compact ? '6px 12px' : '9px 16px'
+  const fs = prominent ? 13 : compact ? 11 : 12
+  const minW = prominent ? 148 : compact ? 72 : 120
   if (variant === 'solid-green') {
     return {
       fontSize: fs, fontWeight: 800, padding: pad, borderRadius: 6, cursor: 'pointer',
