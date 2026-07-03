@@ -211,6 +211,24 @@ export default function WatchlistCard({
   const allNews: any[] = sc?.news ?? []
   const topNews = allNews[0] ?? null
   const companyOneLiner = companyDesc ? truncate(companyDesc, 140) : null
+  const zoneLo = it.entry_zone_low != null ? Number(it.entry_zone_low) : null
+  const zoneHi = it.entry_zone_high != null ? Number(it.entry_zone_high) : null
+  const hasZone = zoneLo != null && zoneHi != null && Number.isFinite(zoneLo) && Number.isFinite(zoneHi)
+  const setupLabel = it.entry_setup ? String(it.entry_setup).replace(/_/g, ' ') : null
+  const urgencyLabel = it.entry_urgency
+    ? String(it.entry_urgency).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    : null
+  const planLine = [
+    hasPlan ? `L ${money(entry)}` : null,
+    hasPlan ? `S ${money(stop)}` : null,
+    rr != null ? `R:R ${rr.toFixed(1)}` : null,
+    hasZone ? `zone ${money(zoneLo)}–${money(zoneHi)}` : null,
+    setupLabel ? setupLabel : null,
+    `CIO ${cioLabel}`,
+    fv?.rsi != null ? `RSI ${Math.round(Number(fv.rsi))}` : null,
+    sc?.sector || it.profile_sector || null,
+    provenanceText || null,
+  ].filter(Boolean).join(' · ')
   const hasMore = !!(it.synthesis_evidence?.length || it.synthesis_narrative_snip
     || action.detail || llms.length)
 
@@ -330,6 +348,11 @@ export default function WatchlistCard({
           {action.subtext && (
             <div style={{ fontSize: WL.hero.subtextSize, color: WL.text.muted, marginTop: 4 }}>{action.subtext}</div>
           )}
+          {planLine && (
+            <div style={{ fontSize: 10.5, color: WL.text.secondary, marginTop: 6, lineHeight: 1.4 }} title={planLine}>
+              {planLine}
+            </div>
+          )}
         </div>
         {action.allowPrimary && (
           <button onClick={handlePrimary} style={buttonStyle(action.buttonVariant)}>{action.primaryLabel}</button>
@@ -347,13 +370,37 @@ export default function WatchlistCard({
           opacity: prominence.metricsMuted ? 0.8 : 1,
         }}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 10 }}>
+        {(setupLabel || hasZone || urgencyLabel) && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+            {setupLabel && (
+              <IntelPill
+                text={setupLabel}
+                color={setupLabel.includes('pullback') ? '#60a5fa' : '#a855f7'}
+                tip="Entry planner setup type"
+              />
+            )}
+            {urgencyLabel && (
+              <IntelPill
+                text={urgencyLabel}
+                color={it.entry_urgency === 'ready' ? WL.urgency.green : it.entry_urgency === 'near_entry' ? WL.urgency.amber : WL.text.muted}
+                tip="Distance to planned entry zone"
+              />
+            )}
+            {hasZone && (
+              <span style={{ fontSize: 11, fontWeight: 800, fontFamily: 'monospace', color: WL.text.primary }}>
+                Zone {money(zoneLo)}–{money(zoneHi)}
+              </span>
+            )}
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 10 }}>
           {[
             { label: 'Limit', value: money(it.entry_limit) },
             { label: 'Stop', value: money(it.entry_stop), warn: hasPlan && stop == null },
             { label: 'Target', value: money(it.entry_target) },
+            { label: 'Zone lo', value: hasZone ? money(zoneLo) : '—' },
+            { label: 'Zone hi', value: hasZone ? money(zoneHi) : '—' },
             { label: 'R:R', value: rr != null ? rr.toFixed(2) : '—', warn: rr != null && rr < 1.5 },
-            { label: 'Model', value: it.entry_model || '—' },
           ].map(m => (
             <div key={m.label}>
               <div style={{ fontSize: 8, color: WL.text.muted, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 800 }}>{m.label}</div>
@@ -372,10 +419,19 @@ export default function WatchlistCard({
           <span title={enrichedTooltip(it)}><b style={{ color: WL.text.muted }}>Enriched</b> {enrichVal}</span>
           <span style={{ color: WL.text.dim, margin: '0 5px' }}>·</span>
           <span title={planValidatedTooltip(it)}><b style={{ color: WL.text.muted }}>Validated</b> {validatedVal}</span>
+          {it.entry_model && (
+            <>
+              <span style={{ color: WL.text.dim, margin: '0 5px' }}>·</span>
+              <span><b style={{ color: WL.text.muted }}>Model</b> {it.entry_model}</span>
+            </>
+          )}
           {it.models_agree === true && <span style={{ marginLeft: 6, fontSize: 9, color: WL.text.dim }}>✓ 2 models</span>}
           {it.models_agree === false && <span style={{ marginLeft: 6, fontSize: 9, color: WL.text.muted }}>models split</span>}
         </div>
       </div>
+
+      {/* Fib / pullback confluence — always on card (lazy-load on expand) */}
+      <FibConfluencePanel symbol={it.symbol} />
 
       {/* Risk */}
       {riskLines.length > 0 && (
@@ -508,7 +564,7 @@ export default function WatchlistCard({
               fontSize: 9.5, fontWeight: 700, padding: '4px 8px', borderRadius: 5, cursor: 'pointer',
               border: `1px solid ${WL.tag.border}`, background: 'transparent', color: WL.text.muted,
             }}
-          >{moreOpen ? '▾' : '▸'} More — advisory, evidence, fib</button>
+          >{moreOpen ? '▾' : '▸'} More — advisory detail &amp; evidence</button>
           {moreOpen && (
             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
               {action.detail && (
@@ -535,7 +591,6 @@ export default function WatchlistCard({
                   {String(it.synthesis_narrative_snip).slice(0, 280)}
                 </div>
               )}
-              <FibConfluencePanel symbol={it.symbol} />
             </div>
           )}
         </div>
