@@ -142,6 +142,97 @@ class TestScoringV2(unittest.TestCase):
 
 
 class TestThresholdLearner(unittest.TestCase):
+    def _write_bus_history(self, td: Path, n: int = 22) -> None:
+        hist_dir = Path(td) / "history"
+        hist_dir.mkdir(parents=True, exist_ok=True)
+        start_day = 12  # 2026-06-12 … 2026-07-03 (within 30d of 2026-07-03)
+        for i in range(n):
+            day_num = start_day + i
+            if day_num <= 30:
+                day = f"2026-06-{day_num:02d}"
+            else:
+                day = f"2026-07-{day_num - 30:02d}"
+            eff = 0.55 if i % 4 else 0.44
+            hr = 0.30 if eff < 0.50 else 0.42
+            hot_trail = 0.55 if i % 5 == 0 else 0.40
+            cold_trail = 0.35
+            align = 0.45 if hot_trail - cold_trail < 0.13 else 0.62
+            snap = {
+                "generated_at": f"{day}T12:00:00+00:00",
+                "global": {
+                    "hit_rate_promotions": hr,
+                    "avg_realized_r_trades_90d": 0.05 if hr < 0.35 else 0.18,
+                },
+                "resource_efficiency": {"score": eff},
+                "stop_quality": {
+                    "aligned_pct": align,
+                    "by_tier": {
+                        "hot": {"trail_activation_rate": hot_trail},
+                        "cold": {"trail_activation_rate": cold_trail},
+                    },
+                },
+                "maturity": {"composite_score": 58 if hr < 0.35 else 72},
+                "by_symbol": {f"S{j}": {} for j in range(40)},
+            }
+            (hist_dir / f"outcome_bus_{day}.json").write_text(
+                json.dumps(snap), encoding="utf-8",
+            )
+
+    def test_full_proposal_evidence_rich(self):
+        with tempfile.TemporaryDirectory() as td:
+            from lib.hermes_outcome_bus import bus as bus_mod
+            from lib.hermes_thresholds import store as mod
+            old_hist = bus_mod.HISTORY_DIR
+            old_bus = bus_mod.OUTCOME_BUS_PATH
+            old_prop = mod.PROPOSALS_PATH
+            try:
+                bus_mod.HISTORY_DIR = Path(td) / "history"
+                bus_mod.OUTCOME_BUS_PATH = Path(td) / "bus.json"
+                mod.PROPOSALS_PATH = Path(td) / "proposals.json"
+                self._write_bus_history(Path(td), 22)
+                result = run_learning_cycle(apply_proposals=True)
+                self.assertTrue(result["ok"], result)
+                self.assertIn("last_learn", result)
+                self.assertTrue(result["last_learn"].get("snapshots"))
+                proposals = result.get("proposals") or []
+                if proposals:
+                    ev = proposals[0].get("evidence") or {}
+                    self.assertIn("confidence", ev)
+                    self.assertIn("holdout_validation", ev)
+                    self.assertIn("candidate_table", ev)
+                    self.assertTrue(len(ev["candidate_table"]) > 0)
+                    if ev.get("runner_up"):
+                        self.assertIn("value", ev["runner_up"])
+                        self.assertIn("score", ev["runner_up"])
+            finally:
+                bus_mod.HISTORY_DIR = old_hist
+                bus_mod.OUTCOME_BUS_PATH = old_bus
+                mod.PROPOSALS_PATH = old_prop
+
+    def test_loosen_guard_blocks_build_proposal(self):
+        from lib.hermes_thresholds.threshold_learner import _build_proposal
+        from lib.hermes_thresholds.store import load_threshold_config
+        cfg = load_threshold_config()
+        spec = static_defaults(cfg)["efficiency.tighten_threshold"]
+        candidates = [
+            {"value": 0.53, "score": 0.05, "metric_contributions": {"a": 0.1, "b": -0.02}},
+            {"value": 0.52, "score": 0.04, "metric_contributions": {"a": 0.08, "b": 0.01}},
+        ]
+        proposal = _build_proposal(
+            "efficiency.tighten_threshold",
+            spec.get("label", "Efficiency"),
+            0.50,
+            0.53,
+            "loosen",
+            spec,
+            candidates,
+            0.03,
+            {"total_days": 22, "regime_stable": True},
+            cfg,
+            lambda *a, **k: "test",
+        )
+        self.assertIsNone(proposal)
+
     def test_efficiency_proposal_within_step(self):
         from lib.hermes_thresholds.store import load_threshold_config
         spec = static_defaults()["efficiency.tighten_threshold"]
@@ -180,6 +271,62 @@ class TestThresholdLearner(unittest.TestCase):
 
 
 class TestThresholdStatusFields(unittest.TestCase):
+    def test_threshold_status_exposes_last_learn_and_eval_context(self):
+        with tempfile.TemporaryDirectory() as td:
+            from lib.hermes_thresholds import store as mod
+            from lib.hermes_thresholds import evaluation_store as es
+            old_prop = mod.PROPOSALS_PATH
+            old_eval = es.EVALUATIONS_PATH
+            try:
+                mod.PROPOSALS_PATH = Path(td) / "proposals.json"
+                es.EVALUATIONS_PATH = Path(td) / "evals.json"
+                save_proposals({
+                    "version": "proposals-v1",
+                    "pending": [{
+                        "id": "tp_ctx01",
+                        "threshold_id": "efficiency.tighten_threshold",
+                        "proposed_value": 0.47,
+                        "current_value": 0.50,
+                        "direction": "tighten",
+                        "reasoning": "test",
+                        "evidence": {"confidence": "medium"},
+                    }],
+                    "decided": [],
+                    "last_learn": {
+                        "at": "2026-07-03T12:00:00+00:00",
+                        "history_days": 22,
+                        "snapshots": [{
+                            "threshold_id": "efficiency.tighten_threshold",
+                            "candidate_table": [{"value": 0.47, "score": 0.04, "is_current": False}],
+                        }],
+                    },
+                })
+                es.save_evaluations({
+                    "version": "evaluations-v1",
+                    "evaluations": [{
+                        "id": "ev1",
+                        "threshold_id": "efficiency.tighten_threshold",
+                        "verdict": "helped",
+                        "recommendation": "keep",
+                        "impact_score": 0.2,
+                        "evaluated_at": "2026-07-02T00:00:00+00:00",
+                    }],
+                    "summary": {"count": 1},
+                })
+                status = threshold_status()
+                self.assertIn("last_learn", status)
+                self.assertEqual(status["last_learn"]["history_days"], 22)
+                self.assertIn("evaluations_by_threshold", status)
+                self.assertEqual(
+                    status["evaluations_by_threshold"]["efficiency.tighten_threshold"]["recommendation"],
+                    "keep",
+                )
+                pending = status["pending_proposals"][0]
+                self.assertIn("evaluation_context", pending)
+            finally:
+                mod.PROPOSALS_PATH = old_prop
+                es.EVALUATIONS_PATH = old_eval
+
     def test_pending_summary_with_proposals(self):
         from lib.hermes_thresholds.workflow import _pending_summary_text
 

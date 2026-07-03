@@ -106,15 +106,41 @@ def threshold_status() -> dict[str, Any]:
         })
 
     eval_summary = {}
+    evaluations_by_threshold: dict[str, dict[str, Any]] = {}
     try:
         from .evaluation_engine import evaluation_status
-        eval_summary = evaluation_status().get("summary") or {}
+        ev_status = evaluation_status()
+        eval_summary = ev_status.get("summary") or {}
+        for ev in reversed(ev_status.get("evaluations") or []):
+            tid = ev.get("threshold_id")
+            if tid and tid not in evaluations_by_threshold:
+                evaluations_by_threshold[tid] = {
+                    "recommendation": ev.get("recommendation"),
+                    "verdict": ev.get("verdict"),
+                    "impact_score": ev.get("impact_score"),
+                    "confidence": ev.get("confidence"),
+                    "evaluated_at": ev.get("evaluated_at"),
+                    "reasoning": ev.get("reasoning"),
+                }
     except Exception:
         pass
+
+    enriched_pending = []
+    for p in pending:
+        ep = dict(p)
+        tid = ep.get("threshold_id")
+        eval_ctx = evaluations_by_threshold.get(tid) if tid else None
+        if eval_ctx:
+            ep["evaluation_context"] = eval_ctx
+            evidence = dict(ep.get("evidence") or {})
+            evidence["evaluation_context"] = eval_ctx
+            ep["evidence"] = evidence
+        enriched_pending.append(ep)
 
     readiness = _learning_readiness(cfg)
     pending_summary = _pending_summary_text(pending)
     first_pending_id = pending[0]["id"] if pending else None
+    last_learn = proposals.get("last_learn") or {}
 
     return {
         "ok": True,
@@ -122,9 +148,14 @@ def threshold_status() -> dict[str, Any]:
         "learning_enabled": learning.get("enabled", True),
         "review_mode": learning.get("review_mode", True),
         **readiness,
-        "thresholds": rows,
-        "pending_proposals": pending,
+        "thresholds": [
+            {**r, "evaluation_context": evaluations_by_threshold.get(r["threshold_id"])}
+            for r in rows
+        ],
+        "pending_proposals": enriched_pending,
         "pending_count": len(pending),
+        "last_learn": last_learn,
+        "evaluations_by_threshold": evaluations_by_threshold,
         "pending_summary": pending_summary,
         "decided_proposals": (proposals.get("decided") or [])[-5:],
         "history": (active.get("history") or [])[-10:],
