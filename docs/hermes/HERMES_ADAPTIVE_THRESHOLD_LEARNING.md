@@ -174,12 +174,27 @@ curl -s http://127.0.0.1:7777/api/v2/hermes/thresholds | jq .
 - Modal: change summary, direction badge, evidence (confidence, metrics, expected impact), loosening warning, optional/required notes
 - Success/error toasts; `Esc` / `Ctrl+Enter` keyboard shortcuts
 - **Full review details** modal for deep evidence + optional value override
+- **Recent threshold audit** — last 8 actions from `hermes_threshold_audit.jsonl` via `recent_audit`
+- Proposal evidence (Phase 3): `counterfactual`, `key_trigger_days`, `holdout_validation`
+
+### Scoring Phase 3 (holdout + counterfactual)
+
+Configured in `config/hermes_thresholds.yaml` under `scoring.holdout`, `scoring.loosen`, `counterfactual_window_days`, `key_evidence_days`:
+
+| Guard | Behavior |
+|-------|----------|
+| Holdout validation | Best candidate scored on trailing 7d must retain ≥85% of train-window score |
+| Loosen component guard | All `metric_contributions` must be non-negative before loosening |
+| Counterfactual | `evidence.counterfactual.trigger_count` — fires in last 14d if proposed value were active |
+| Key days | Top stress trigger days attached for operator review |
+
+See `HERMES_THRESHOLD_SCORING_REVIEW.md` §8 for full implementation status.
 
 ### API
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/v2/hermes/thresholds` | Status + pending proposals |
+| GET | `/api/v2/hermes/thresholds` | Status, proposals, `recent_audit`, `learning_ready` |
 | POST | `/api/v2/hermes/thresholds/proposals/{id}/approve` | `{ notes?, reason?, force_apply?: true, override_value? }` |
 | POST | `/api/v2/hermes/thresholds/proposals/{id}/reject` | `{ reason?, notes? }` |
 | POST | `/api/v2/hermes/thresholds/approve` | Legacy — `{ proposal_id, override_value?, force_apply? }` |
@@ -200,11 +215,17 @@ curl -s http://127.0.0.1:7777/api/v2/hermes/thresholds | jq .
 7. Skips changes younger than `min_days_after_change` (14d)
 8. Each evaluation has `verdict`, `recommendation`, `impact_score`, before/after metrics
 
+### Scoring Phase 3
+13. Proposals include `counterfactual`, `key_trigger_days`, `holdout_validation` when enough history
+14. Loosen blocked when any metric contribution is negative
+15. Holdout failure writes `no_proposal` audit row (no silent skip)
+16. `GET /thresholds` returns `recent_audit` tail for panel
+
 ### Governance (unchanged)
 9. `--approve` / `--reject` / `--rollback` still work
 10. Review mode default; governor merges learned thresholds
 11. API: `GET /thresholds`, `GET /thresholds/evaluations`, `POST /thresholds/evaluate`
-12. Closed Loop panel shows confidence + evaluation summary
+12. Closed Loop panel shows confidence + evaluation summary + audit trail
 
 ---
 

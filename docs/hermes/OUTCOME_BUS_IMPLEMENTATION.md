@@ -325,6 +325,8 @@ Runtime overrides: `data/runtime/hermes_bus_reactions.json` (skipped in review m
   - REST: `POST /api/v2/hermes/thresholds/proposals/{id}/approve|reject` (legacy `POST .../thresholds/approve|reject` still supported)
   - UI sends `force_apply: true` on approve so operator intent applies despite global `review_mode` (learner auto-apply remains blocked)
   - **Review in CLI** — copyable commands from `cli_commands` in API response
+  - **Recent threshold audit** — last 8 approve/reject/propose events from `recent_audit`
+  - **Holdout + counterfactual** — proposal cards show “would fire N×/14d”; modal shows key trigger days
 
 ---
 
@@ -333,7 +335,7 @@ Runtime overrides: `data/runtime/hermes_bus_reactions.json` (skipped in review m
 `GET /api/v2/hermes/outcome-bus` — includes `active_alerts`, `maturity`  
 `GET /api/v2/hermes/outcome-bus?symbol=SCHD`  
 `GET /api/v2/hermes/outcome-bus/history?days=7|30` — includes trend series, alert history, maturity  
-`GET /api/v2/hermes/thresholds` — adaptive threshold status, `pending_summary`, `history_days`, `learning_ready`, `cli_commands`  
+`GET /api/v2/hermes/thresholds` — status, `pending_summary`, `history_days`, `learning_ready`, `recent_audit`, `cli_commands`  
 `GET /api/v2/hermes/thresholds/evaluations` — post-approval impact evaluations  
 `POST /api/v2/hermes/thresholds/proposals/{proposal_id}/approve` — body: `{ notes?, reason?, force_apply?: true }`  
 `POST /api/v2/hermes/thresholds/proposals/{proposal_id}/reject` — body: `{ reason?, notes? }`  

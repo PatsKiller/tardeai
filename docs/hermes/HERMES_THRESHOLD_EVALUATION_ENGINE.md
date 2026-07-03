@@ -196,18 +196,19 @@ POST /api/v2/hermes/thresholds/evaluate   # trigger on-demand cycle
 
 ## 11. Phase 2 Deliverables Checklist
 
-- [ ] `evaluation_engine.py` + store
-- [ ] `evaluation` section in `hermes_thresholds.yaml`
-- [ ] `--evaluate` CLI + audit log
-- [ ] API endpoints
-- [ ] Panel section: last evaluation verdict per active learned threshold
-- [ ] Tests: synthetic before/after series → expected verdict
+- [x] `evaluation_engine.py` + store
+- [x] `evaluation` section in `hermes_thresholds.yaml`
+- [x] `--evaluate` CLI + audit log
+- [x] API endpoints (`GET /thresholds/evaluations`, `POST /thresholds/evaluate`)
+- [x] Panel section: evaluation summary in Closed Loop → Adaptive thresholds
+- [x] Tests: synthetic before/after series → expected verdict
 
-## 12. Future (Phase 3+)
+## 12. Future (post-approval evaluation)
 
 - Regime-stratified evaluations (high-vol vs normal windows)
-- Counterfactual proxy: "what if we had kept the old threshold"
 - Auto-suggest revert proposals when `hurt` + `high` confidence
+
+**Note:** Proposal-time counterfactual (`evidence.counterfactual` — fires in last 14d) is implemented in the **Threshold Learner** (scoring Phase 3), not the evaluation engine. Evaluation engine remains read-only post-approval impact analysis.
 
 ---
 
