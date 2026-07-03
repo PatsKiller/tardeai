@@ -147,6 +147,61 @@ def _tier_order(t: str) -> int:
 
 
 _LANE_ROT_CACHE: dict = {}
+_OUTCOME_BUS_CACHE: dict | None = None
+
+
+def _load_outcome_bus() -> dict:
+    """Cached read of nightly outcome_bus.json (tag multipliers for research depth)."""
+    global _OUTCOME_BUS_CACHE
+    if _OUTCOME_BUS_CACHE is not None:
+        return _OUTCOME_BUS_CACHE
+    try:
+        sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+        from lib.hermes_outcome_bus.bus import load_outcome_bus, research_tag_multipliers
+        bus = load_outcome_bus()
+        _OUTCOME_BUS_CACHE = {"bus": bus, "tag_mult": research_tag_multipliers(bus)}
+    except Exception:
+        _OUTCOME_BUS_CACHE = {"bus": {}, "tag_mult": {}}
+    return _OUTCOME_BUS_CACHE
+
+
+def _load_bus_reactions() -> dict:
+    try:
+        path = ROOT / "data" / "runtime" / "hermes_bus_reactions.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _symbol_tag_multiplier(sym: str, scope_tier: str | None = None) -> float:
+    """Apply quality_multiplier for symbol's dominant tag from outcome bus."""
+    cache = _load_outcome_bus()
+    bus = cache.get("bus") or {}
+    tag_mult = cache.get("tag_mult") or {}
+    reactions = _load_bus_reactions()
+    sym_meta = (bus.get("by_symbol") or {}).get(sym.upper()) or {}
+    dom = sym_meta.get("dominant_tag")
+    mult = 1.0
+    if dom:
+        by_tag = (bus.get("by_tag") or {}).get(dom) or {}
+        if by_tag.get("quality_multiplier") is not None:
+            mult = float(by_tag["quality_multiplier"])
+        elif dom in tag_mult:
+            mult = float(tag_mult[dom])
+    elif tag_mult:
+        mult = min(tag_mult.values()) if any(v < 1.0 for v in tag_mult.values()) else 1.0
+
+    overrides = reactions.get("tag_multiplier_overrides") or {}
+    if dom and dom in overrides:
+        mult = min(mult, float(overrides[dom]))
+
+    hot_boost = float(reactions.get("hot_tier_research_boost") or 1.0)
+    hot_tiers = ("S0", "S1", "T0-HOLD", "T0-PROP", "T1-WATCH")
+    if hot_boost > 1.0 and scope_tier in hot_tiers:
+        mult = min(1.5, mult * hot_boost)
+    return mult
 
 
 def _lane_rotation(ext_lanes: list) -> list:
@@ -207,10 +262,12 @@ def priority(sym, info, age_days, sla_days, catalyst) -> float:
     overdue = (age_days / sla_days) if sla_days else 0.0
     rank = info.get("rank")
     rank_score = (1.0 - min(rank, 2000) / 2000.0) if rank else 0.0
-    return (100 * TIER_WEIGHT[info["tier"]]
+    base = (100 * TIER_WEIGHT[info["tier"]]
             + 40 * min(overdue, 3.0)
             + 25 * (1.0 if catalyst else 0.0)
             + 15 * rank_score)
+    # Outcome bus: tag lift shrinks or expands research depth (outcome yield > throughput)
+    return base * _symbol_tag_multiplier(sym, scope_tier=info.get("tier"))
 
 
 def build_due(uni, lane, force_all=False):

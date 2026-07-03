@@ -169,16 +169,21 @@ curl -s http://127.0.0.1:7777/api/v2/hermes/thresholds | jq .
 
 - Active vs static vs proposed values per threshold
 - Status badge: `static` / `learned` / `pending review`
-- Last evaluated / last changed timestamps
-- **Review proposed changes** button → modal with reasoning, evidence, Approve / Modify / Reject
+- `pending_summary`, `history_days`, collecting-data state when &lt;14 bus days
+- Inline **Approve** / **Reject** per proposal → `ThresholdProposalModal` confirmation
+- Modal: change summary, direction badge, evidence (confidence, metrics, expected impact), loosening warning, optional/required notes
+- Success/error toasts; `Esc` / `Ctrl+Enter` keyboard shortcuts
+- **Full review details** modal for deep evidence + optional value override
 
 ### API
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/v2/hermes/thresholds` | Status + pending proposals |
-| POST | `/api/v2/hermes/thresholds/approve` | `{ proposal_id, override_value? }` |
-| POST | `/api/v2/hermes/thresholds/reject` | `{ proposal_id, reason? }` |
+| POST | `/api/v2/hermes/thresholds/proposals/{id}/approve` | `{ notes?, reason?, force_apply?: true, override_value? }` |
+| POST | `/api/v2/hermes/thresholds/proposals/{id}/reject` | `{ reason?, notes? }` |
+| POST | `/api/v2/hermes/thresholds/approve` | Legacy — `{ proposal_id, override_value?, force_apply? }` |
+| POST | `/api/v2/hermes/thresholds/reject` | Legacy — `{ proposal_id, reason? }` |
 | POST | `/api/v2/hermes/thresholds/learn` | Run learning cycle `{ apply: true }` |
 
 ## 11. Validation Checklist (Phase 2)

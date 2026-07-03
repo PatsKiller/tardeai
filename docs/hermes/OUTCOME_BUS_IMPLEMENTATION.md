@@ -316,6 +316,15 @@ Runtime overrides: `data/runtime/hermes_bus_reactions.json` (skipped in review m
 - **Maturity v2 card** — composite 0–100, tier badge, 5-component breakdown with weights/trends
 - **Maturity trend chart** — 7d/30d composite from `maturity_trend.series`
 - **Governor reactions** — active reactions with reasons + bus metrics; REVIEW MODE badge when applicable
+- **Adaptive thresholds** — collapsible section (after Maturity, before Reactions):
+  - Active vs static values with status badges (static / learned / pending review)
+  - `pending_summary` line (e.g. `2 proposals pending review (Efficiency +0.03, Stop Quality Divergence -2pp)`)
+  - Collecting-data state when `history_days < min_history_days` (non-alarming; learning activates at 14 bus days)
+  - Inline proposal cards: confidence tier, reasoning, expected impact, top metric contributions
+  - **Approve / Reject** — inline buttons open `ThresholdProposalModal` (see below); success/error toasts; list refresh on success
+  - REST: `POST /api/v2/hermes/thresholds/proposals/{id}/approve|reject` (legacy `POST .../thresholds/approve|reject` still supported)
+  - UI sends `force_apply: true` on approve so operator intent applies despite global `review_mode` (learner auto-apply remains blocked)
+  - **Review in CLI** — copyable commands from `cli_commands` in API response
 
 ---
 
@@ -323,7 +332,25 @@ Runtime overrides: `data/runtime/hermes_bus_reactions.json` (skipped in review m
 
 `GET /api/v2/hermes/outcome-bus` — includes `active_alerts`, `maturity`  
 `GET /api/v2/hermes/outcome-bus?symbol=SCHD`  
-`GET /api/v2/hermes/outcome-bus/history?days=7|30` — includes trend series, alert history, maturity
+`GET /api/v2/hermes/outcome-bus/history?days=7|30` — includes trend series, alert history, maturity  
+`GET /api/v2/hermes/thresholds` — adaptive threshold status, `pending_summary`, `history_days`, `learning_ready`, `cli_commands`  
+`GET /api/v2/hermes/thresholds/evaluations` — post-approval impact evaluations  
+`POST /api/v2/hermes/thresholds/proposals/{proposal_id}/approve` — body: `{ notes?, reason?, force_apply?: true }`  
+`POST /api/v2/hermes/thresholds/proposals/{proposal_id}/reject` — body: `{ reason?, notes? }`  
+`POST /api/v2/hermes/thresholds/approve` · `reject` (legacy) · `learn` · `evaluate`
+
+Approve/reject audit rows append to `data/runtime/hermes_threshold_audit.jsonl` with proposal snapshot, operator, and `applied` flag.
+
+### Threshold proposal confirmation modal
+
+Component: `apps/command-center-v3/src/components/ThresholdProposalModal.tsx`
+
+| Action | Modal title | Required input | Special UX |
+|--------|-------------|----------------|------------|
+| Approve | Approve Threshold Change | Notes optional (pre-filled from learner `reasoning`) | Loosening shows amber risk banner; evidence block shows confidence, top metrics, expected impact |
+| Reject | Reject Threshold Proposal | Reason required (≥3 chars) | Reject disabled until reason entered |
+
+Behavior: `Esc` closes · `Ctrl+Enter` confirms when valid · loading spinner text during API call · inline error (modal stays open) · green/red toast on success/failure · `GET /api/v2/hermes/thresholds` refetch after success.
 
 ---
 

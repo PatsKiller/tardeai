@@ -1,0 +1,27 @@
+# Hermes closed-loop alert notifications — conservative, non-spammy.
+# Evaluated nightly by hermes_outcome_feedback_agent.py after alert detection.
+
+notifications:
+  enabled: true
+  min_severity: warning          # warning | critical — only notify at/above this level
+  cooldown_hours: 8              # per alert id; suppress repeat Telegram within window
+  panel_path: /v3/hermes         # link target in Telegram body
+
+  channels:
+    telegram:
+      enabled: true
+      bypass_router: true        # closed-loop operator alerts bypass generic Hermes suppression
+    email:
+      enabled: false             # future — logs only when disabled
+
+  # Which alert types may trigger outbound notifications (sustained threshold breaches only)
+  alert_types:
+    hit_rate_declining: true
+    efficiency_declining: true
+    scope_creep: true
+    stop_quality_divergence: false   # dashboard-only by default — enable when operator wants tier alerts
+
+  # Optional severity upgrade (streak_days from alert metrics)
+  severity_rules:
+    efficiency_declining:
+      critical_streak_days: 5
