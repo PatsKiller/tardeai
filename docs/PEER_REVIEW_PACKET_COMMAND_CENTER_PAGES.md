@@ -8,7 +8,7 @@ is the **v3 stack only**: inline styles + CSS vars, `useApi` hook, NO Tailwind/s
 All LLM work is **free lanes only** (grok :8645, chatgpt :8646, local gemma) — no metered keys.
 
 Repo: `PatsKiller/tardeai` (main). Frontend root: `apps/command-center-v3/src`.
-Backend router: `scripts/api_v2.py` (delegates to the modules listed below). HEAD: `4260e655`.
+Backend router: `scripts/api_v2.py` (delegates to the modules listed below). HEAD: `ee0e14d1`.
 
 ---
 
@@ -156,13 +156,21 @@ Rotation engine + free-lane LLM oversight (grok review, rebalance review, ETF pr
 
 ## 5. Watchlist — `pages/WatchlistHub.tsx`
 
-Watchlist with Hermes intelligence ranking, Finviz strips, discovery candidates, exit ladders,
-fib confluence, and operator watch directives.
+Decision-first watchlist at `/v3/watch`: one full-width card per symbol with CIO view, plan
+levels, data-quality strip, reasoning line, R:R badge, Fib confluence, and a unified verdict →
+CTA matrix. Operators propose entries from the card (cash-sized modal) without waiting for the
+cron bridge.
+
+**Maturity doc:** `docs/COMMAND_CENTER_V3_WATCHLIST.md`
 
 **Component tree**
-- `WatchlistHub.tsx`
+- `WatchlistHub.tsx` — hub shell, filters, propose-modal state
+  - `WatchlistCard.tsx` — decision panel (header, DATA strip, hero, plan grid, Fib, More)
+  - `WatchlistProposeModal.tsx` — cash-based 1–2% risk sizing + account picker
   - `ProAnalystPill.tsx` (+ `useProAnalystMap`), `DiscoveryPanel.tsx`, `ToSWatchlists.tsx`,
     `FibConfluencePanel.tsx`.
+  - `lib/watchlistCardAction.ts` — verdict matrix, CTAs, data-quality flags, reasoning
+  - `lib/watchlistProposeSizing.ts` — `computeRiskSizedShares`, `resolveSizingBase`
   - `lib/exitLadder` (`exitLadder`, `planWarnings`, `MONITOR_RULES`).
 
 **Endpoints**
@@ -170,6 +178,8 @@ fib confluence, and operator watch directives.
 |----------|---------|
 | `GET /api/v2/watchlist/items?sort=hermes` (60s) | Hermes-ranked items |
 | `GET /api/v2/watchlist/summary` (120s) | header |
+| `GET /api/v2/proposal-accounts` (30s cache) | Schwab + Fidelity accounts for propose modal (`sizing_base` = cash) |
+| `POST /api/v2/watchlist/<SYMBOL>/propose` | Queue broker proposal from card (cash risk guards) |
 | `GET /api/v2/hermes/curate-top20` (20s), `POST` | Hermes top-20 curation |
 | `GET /api/v2/hermes/external-intel-map` (60s) | external LLM intel |
 | `GET /api/v2/hermes/intel/...` | per-ticker intel |
@@ -179,8 +189,25 @@ fib confluence, and operator watch directives.
 | `GET /api/v2/rec-intel/outcomes` (300s) | rec-intel outcomes |
 | `GET /api/v2/watch-directives` (60s), `GET /watch/directives`, `GET /watch/sectors` (600s) | operator directives |
 
-**Backend** — `scripts/api_v2.py` watchlist/hermes/finviz/symbol-card/watch-directive handlers;
-Hermes intelligence engine (composite scoring/ranking); `refresh_symbol_cards.py` (06:40 cron).
+**Backend** — `scripts/api_v2.py` (`_proposal_accounts`, `_wl_propose_symbol`, watchlist/hermes
+handlers); `scripts/account_policy.py` (`sizing_cash_base`, `cash_for_account`); Hermes
+intelligence engine; `refresh_symbol_cards.py` (06:40 cron).
+
+**Recent commits**
+- `ee0e14d1` Watchlist: stronger CTAs, DATA strip, sizing hints on WAIT cards
+- `caad93ad` Propose: explicit cash-based sizing math + IRA cash-only guard
+- `25e9c27e` Propose: cash sizing + Schwab/Fidelity account load
+- `ee225be5` Watchlist: decision-first cards — CIO, reasoning, R:R, data quality
+- `9aa8119c` Watchlist: restore pullback zone, plan line, Fib on cards
+- `bd642190` Propose modal: size on available cash, include Fidelity accounts
+
+**Review notes**
+- Propose modal must use `sizing_base` (cash), not `account_value` (equity). IRA accounts are
+  cash-only — no buying-power assumption.
+- Restart `portfolio-server.service` after `account_policy.py` changes or
+  `/api/v2/proposal-accounts` may 500 with stale module attributes.
+- Card verdict matrix: READY → Propose; WAIT → Review setup + Monitor; STALE → Refresh; FIX →
+  Fix plan / Review exit. See `deriveRecommendedAction` in `watchlistCardAction.ts`.
 
 ---
 
