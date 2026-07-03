@@ -41,6 +41,8 @@ Returns merged timeline from:
 - `outcome_bus.by_symbol` + `lifecycle.*` snapshots
 
 **UI:** `/v3/hermes` → Closed Loop — click any watchlist, holdings, or bus symbol row.
+DetailDrawer renders `SymbolJourneyPanel`: current state metrics, health component bars,
+governor feedback, and a vertical timeline (not raw JSON).
 
 ## Combined validation checklist
 
