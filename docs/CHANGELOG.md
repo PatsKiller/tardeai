@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-03 - Outcome bus traceability sections (watchlist/holdings health, proposals, lineage)
+
+`bus_traceability.py` adds top-level `watchlist_health`, `holdings_health`,
+`threshold_proposals`, `lineage`, `stop_quality.trends`, and per-symbol `source_refs`
+on nightly `--apply`. Threshold learner stamps proposals with bus snapshot linkage.
+
 ## 2026-07-03 - Proposal history impact narratives
 
 `proposal_impact.py` builds plain-language post-approval summaries (e.g. efficiency

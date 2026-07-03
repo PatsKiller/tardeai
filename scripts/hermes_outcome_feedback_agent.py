@@ -33,8 +33,8 @@ from lib.hermes_outcome_bus.alert_enrichment import enrich_alerts
 from lib.hermes_outcome_bus.alert_notifications import dispatch_alert_notifications
 from lib.hermes_outcome_bus.alerts import evaluate_alerts
 from lib.hermes_outcome_bus.maturity import build_maturity_status, write_maturity_snapshot
-from lib.hermes_outcome_bus.bus import OUTCOME_BUS_VERSION, load_outcome_bus_trend, write_outcome_bus
-from lib.hermes_outcome_bus.lifecycle_slice import enrich_bus_with_lifecycle
+from lib.hermes_outcome_bus.bus import OUTCOME_BUS_VERSION, load_outcome_bus_trend, read_outcome_bus, write_outcome_bus
+from lib.hermes_outcome_bus.bus_traceability import enrich_bus_traceability
 from lib.hermes_outcome_bus.metrics import build_stop_correlations, compute_resource_efficiency_score
 from lib.hermes_logging.request_logger import aggregate_request_stats
 from lib.hermes_scope_governor.scoring import outcome_gate
@@ -663,7 +663,8 @@ def build_bus(cur, cfg: dict[str, Any], run_id: str) -> dict[str, Any]:
         "feedback_to_governor": bus_shell["feedback_to_governor"],
         "feedback_to_research": bus_shell["feedback_to_research"],
     }
-    return enrich_bus_with_lifecycle(bus)
+    prior = read_outcome_bus()
+    return enrich_bus_traceability(bus, trend=trend, prior_bus=prior)
 
 
 def run(apply: bool = False) -> dict[str, Any]:
