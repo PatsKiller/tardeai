@@ -85,7 +85,27 @@ def _activity_id(activity: dict) -> str:
     return str(_pick(activity, "id", "activity_id", "transaction_id", "trade_id") or "")[:120]
 
 
+# SnapTrade structured activity types → trade_transactions actions. Checked before the description
+# heuristics: fund names like "SCHWAB US DIVIDEND EQUITY ETF" otherwise misclassify a BUY as Dividend.
+_TYPE_ACTIONS = {
+    "BUY": "Buy",
+    "SELL": "Sell",
+    "DIVIDEND": "Dividend",
+    "INTEREST": "Interest",
+    "REI": "Reinvested Dividend",
+    "DIVIDEND_REINVESTMENT": "Reinvested Dividend",
+}
+
+
 def _classify(activity: dict) -> str:
+    typ = str(_pick(activity, "type", "transaction_type", "activity_type") or "").strip().upper()
+    mapped = _TYPE_ACTIONS.get(typ) or _TYPE_ACTIONS.get(typ.replace(" ", "_"))
+    if mapped:
+        return mapped
+    if typ in ("CONTRIBUTION", "EXTERNAL_TRANSFER_IN", "TRANSFER_IN"):
+        return "Cash Receipt"
+    if typ in ("WITHDRAWAL", "EXTERNAL_TRANSFER_OUT", "TRANSFER_OUT"):
+        return "Cash Transfer"
     raw = " ".join(str(_pick(activity, k) or "") for k in (
         "type", "transaction_type", "activity_type", "description", "name",
     )).upper()
