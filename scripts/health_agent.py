@@ -858,11 +858,23 @@ def collect_proposal_maturity() -> list[dict]:
     return out
 
 
+_LOG_ERRORS_OFFSETS = STATE_DIR / "health_log_errors_offsets.json"
+_LOG_ERRORS_CACHE: list[dict] | None = None
+
+
 def collect_log_errors() -> list[dict]:
     """Scan key component logs for ERROR/Traceback/CRITICAL spikes (content, not just staleness).
-    Only recently-modified logs are considered, so old errors don't re-alarm."""
+    Offset-tailed like log_error_scraper: only bytes APPENDED since the previous run are scanned,
+    so an old traceback lingering in the file tail can't re-alarm after the bug is fixed (an
+    active log keeps its mtime fresh forever, so mtime alone never retires old error lines).
+    On first sight of a file we adopt EOF and alert nothing, so a pre-existing backlog never fires."""
     import re as _re
     import time as _t
+    global _LOG_ERRORS_CACHE
+    if _LOG_ERRORS_CACHE is not None:
+        # compute() can run twice per process (re-score after remediation) — replaying the scan
+        # would see zero new bytes and silently clear a live finding, so reuse the first result.
+        return list(_LOG_ERRORS_CACHE)
     out = []
     cfg = (_POLICY.get("log_errors") or {})
     if not cfg.get("enabled", True):
@@ -882,25 +894,51 @@ def collect_log_errors() -> list[dict]:
                       r"|\bException\b|[A-Za-z]*error:|[A-Za-z]*exception:")
     now = _t.time()
     try:
+        offsets = json.loads(_LOG_ERRORS_OFFSETS.read_text())
+    except Exception:
+        offsets = {}
+    try:
         for name in watch:
             p = LOG_DIR / name
             if not p.exists():
                 continue
-            if now - p.stat().st_mtime > window_h * 3600:
+            st = p.stat()
+            size = st.st_size
+            prev = offsets.get(name)
+            if prev is None:
+                offsets[name] = size  # first sight → adopt EOF, alert nothing
+                continue
+            if prev > size:
+                prev = 0  # truncated/rotated → rescan from start
+            if size == prev:
+                continue  # nothing appended since last run
+            if now - st.st_mtime > window_h * 3600:
+                offsets[name] = size
                 continue  # not recently active → not a current spike
+            offsets[name] = size
             try:
-                lines = p.read_text(errors="ignore").splitlines()[-tail:]
+                start = max(int(prev), size - 2_000_000)  # cap one run's scan
+                with p.open("rb") as fh:
+                    fh.seek(start)
+                    chunk = fh.read(size - start)
+                lines = chunk.decode(errors="ignore").splitlines()[-tail:]
             except Exception:
                 continue
             errs = [ln for ln in lines if pat.search(ln)]
             if len(errs) >= threshold:
                 out.append(_f("execution_health", "log_errors",
                               "critical" if len(errs) >= threshold * 3 else "warning",
-                              f"{name}: {len(errs)} error lines in last {tail} (recent)",
+                              f"{name}: {len(errs)} error lines in new output since last check",
                               log=name, count=len(errs), sample=(errs[-1][:160] if errs else ""),
                               kind="code"))
+        try:
+            _LOG_ERRORS_OFFSETS.parent.mkdir(parents=True, exist_ok=True)
+            _LOG_ERRORS_OFFSETS.write_text(json.dumps(offsets, indent=2))
+        except Exception:
+            pass
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info", f"log_errors check error: {e}"))
+    _LOG_ERRORS_CACHE = list(out)
     return out
 
 
