@@ -23554,8 +23554,9 @@ def _proposal_accounts(query=None):
     h = _load_json(STATE_DIR / "holdings.json") or {}
     summaries = h.get("account_summaries") or {}
     seen = {r.get("account_key") for r in rows}
+    _HOLDINGS_ALIAS_SKIP = {"schwab_roth"}  # broker_accounts uses schwab_roth_ira; avoid duplicate row
     for ak, summ in summaries.items():
-        if ak in seen or ak == "fidelity_401k":
+        if ak in seen or ak == "fidelity_401k" or ak in _HOLDINGS_ALIAS_SKIP:
             continue
         broker = summ.get("broker") or ("fidelity" if ak.startswith("fidelity") else "schwab")
         if not (str(broker).lower().startswith("fidelity") or str(broker).lower().startswith("schwab")):
@@ -23624,8 +23625,15 @@ def _proposal_accounts(query=None):
             "sizing_base": round(sizing_base, 2) if sizing_base else None,
             "sizing_base_label": "cash" if is_ret or (cash_only and cash_only > 0) else "buying_power",
             "cash_source": sizing_src,
-            "balances_status": live.get("balances_status") or ("ok" if sizing_base else "snapshot"),
+            "balances_status": live.get("balances_status") or ("ok" if sizing_base else "unavailable"),
+            "sizing_ready": bool(sizing_base and sizing_base > 0),
         })
+
+    accounts.sort(key=lambda a: (
+        0 if a.get("sizing_ready") else 1,
+        0 if str(a.get("broker") or "").lower().startswith("fidelity") else 1,
+        -(a.get("sizing_base") or 0),
+    ))
 
     out = _json_clean({
         "accounts": accounts,

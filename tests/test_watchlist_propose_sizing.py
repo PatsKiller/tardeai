@@ -16,6 +16,20 @@ class TestWatchlistProposeSizing(unittest.TestCase):
         self.assertIsNotNone(cash)
         self.assertGreater(cash, 0)
 
+    def test_schwab_roth_ira_alias_resolves_holdings_cash(self):
+        """broker_accounts key schwab_roth_ira; holdings snapshot uses schwab_roth."""
+        cash, src = ap.cash_for_account("schwab_roth_ira")
+        self.assertIsNotNone(cash)
+        self.assertGreater(cash, 0)
+        self.assertEqual(src, "holdings_snapshot")
+
+    def test_schwab_rollover_cash_from_holdings_when_live_unavailable(self):
+        with patch("schwab_transport.get_account", side_effect=Exception("offline")):
+            cash, src = ap.cash_for_account("schwab_rollover_ira")
+        self.assertIsNotNone(cash)
+        self.assertGreater(cash, 0)
+        self.assertEqual(src, "holdings_snapshot")
+
     def test_retirement_uses_cash_not_equity_base(self):
         with patch.object(ap, "equity_for_account", return_value=(584500.0, "test")):
             with patch.object(ap, "cash_for_account", return_value=(29300.0, "schwab_live")):

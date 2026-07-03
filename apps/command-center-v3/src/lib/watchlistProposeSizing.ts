@@ -15,6 +15,24 @@ export type ProposalAccount = {
   sizing_base?: number | null
   sizing_base_label?: string
   balances_status?: string
+  sizing_ready?: boolean
+}
+
+/** Normalize GET /api/v2/proposal-accounts (useApi already unwraps {ok,data}). */
+export function parseProposalAccounts(raw: unknown): ProposalAccount[] {
+  if (!raw || typeof raw !== 'object') return []
+  const o = raw as Record<string, unknown>
+  const nested = o.data
+  const payload = (nested && typeof nested === 'object' ? nested : o) as Record<string, unknown>
+  const list = payload.accounts
+  return Array.isArray(list) ? (list as ProposalAccount[]) : []
+}
+
+export function pickDefaultProposalAccount(accounts: ProposalAccount[]): ProposalAccount | null {
+  if (!accounts.length) return null
+  return accounts.find(a => resolveSizingBase(a) > 0 && !a.is_retirement)
+    ?? accounts.find(a => resolveSizingBase(a) > 0)
+    ?? accounts[0]
 }
 
 export type SizedPosition = {
