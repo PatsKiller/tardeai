@@ -48,10 +48,46 @@ export type SizedPosition = {
   sizingBase: number
 }
 
+/** Cash / buying power for risk budget — never total equity. */
 export function resolveSizingBase(acct?: ProposalAccount | null): number {
   if (!acct) return 0
+  // Retirement: cash only — no margin / buying-power assumption.
+  if (acct.is_retirement) {
+    const cash = acct.cash ?? acct.sizing_base ?? 0
+    return Number.isFinite(Number(cash)) && Number(cash) > 0 ? Number(cash) : 0
+  }
   const base = acct.sizing_base ?? acct.cash ?? acct.buying_power ?? 0
   return Number.isFinite(Number(base)) && Number(base) > 0 ? Number(base) : 0
+}
+
+export function riskBudgetDollars(sizingBase: number, riskPct: RiskPct): number {
+  return sizingBase > 0 ? sizingBase * (riskPct / 100) : 0
+}
+
+export function formatSizingBreakdown(args: {
+  sizingBase: number
+  equity: number
+  riskPct: RiskPct
+  entry: number
+  stop: number
+  shares: number
+  sizingLabel?: string
+}): string {
+  const { sizingBase, equity, riskPct, entry, stop, shares, sizingLabel = 'cash' } = args
+  const budget = riskBudgetDollars(sizingBase, riskPct)
+  const rps = entry - stop
+  const pctCash = sizingBase > 0 ? (shares * rps / sizingBase) * 100 : 0
+  const pctEq = equity > 0 ? (shares * rps / equity) * 100 : 0
+  return [
+    `${riskPct}% × ${money(sizingBase)} ${sizingLabel} = ${money(budget)} risk budget`,
+    `${money(budget)} ÷ ${money(rps)}/sh stop = ${shares.toLocaleString()} shares`,
+    `Actual risk: ${pctCash.toFixed(2)}% of ${sizingLabel} · ${pctEq.toFixed(2)}% of equity (reference)`,
+  ].join(' · ')
+}
+
+function money(v: number): string {
+  if (!Number.isFinite(v)) return '—'
+  return v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(2)}`
 }
 
 export function resolveEquity(acct?: ProposalAccount | null): number {

@@ -10,6 +10,8 @@ import {
   resolveEquity,
   parseProposalAccounts,
   pickDefaultProposalAccount,
+  riskBudgetDollars,
+  formatSizingBreakdown,
   type RiskPct,
   type ProposalAccount,
 } from '../lib/watchlistProposeSizing'
@@ -289,24 +291,37 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
         </div>
 
         {selAcct && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: 'rgba(96,165,250,.06)', border: '1px solid rgba(96,165,250,.2)' }}>
-            <MetricBox
-              label="Total equity"
-              value={money(equity, true)}
-              sub={selAcct.equity_source || 'portfolio'}
-              color={BLUE}
-            />
-            <MetricBox
-              label="Available cash"
-              value={money(selAcct.cash ?? sizingBase, true)}
-              sub={selAcct.is_retirement ? 'IRA — cash only' : 'settled cash'}
-            />
-            <MetricBox
-              label="Sizing base"
-              value={money(sizingBase, true)}
-              sub={`${sizingLabel} · ${selAcct.balances_status || '—'}`}
-              color={sizingBase > 0 ? GREEN : AMBER}
-            />
+          <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: 'rgba(96,165,250,.06)', border: '1px solid rgba(96,165,250,.2)' }}>
+            <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase', marginBottom: 8 }}>
+              Account balances · sizing uses <b style={{ color: GREEN }}>{sizingLabel}</b> only
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              <MetricBox
+                label="Total equity"
+                value={money(equity, true)}
+                sub={`reference only · ${selAcct.equity_source || 'portfolio'}`}
+                color={BLUE}
+              />
+              <MetricBox
+                label="Available cash"
+                value={money(selAcct.cash, true)}
+                sub={selAcct.is_retirement ? 'IRA — no margin' : 'settled cash'}
+                color={GREEN}
+              />
+              {!selAcct.is_retirement && selAcct.buying_power != null && (
+                <MetricBox
+                  label="Buying power"
+                  value={money(selAcct.buying_power, true)}
+                  sub={selAcct.sizing_base_label === 'buying_power' ? 'used for sizing' : 'margin taxable'}
+                />
+              )}
+              <MetricBox
+                label="Risk budget"
+                value={money(riskBudgetDollars(sizingBase, riskPct), true)}
+                sub={`${riskPct}% of ${money(sizingBase, true)} ${sizingLabel}`}
+                color={sizingBase > 0 ? GREEN : AMBER}
+              />
+            </div>
           </div>
         )}
 
@@ -345,13 +360,23 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
             >Apply auto-size</button>
           </div>
 
+          {sized && sized.shares > 0 && entry && stop && (
+            <div style={{ marginTop: 10, fontSize: 10, color: TEXT1, lineHeight: 1.5, padding: '8px 10px', borderRadius: 8, background: 'rgba(15,23,42,.45)', border: '1px solid rgba(148,163,184,.12)' }}>
+              <span style={{ color: MUTED, fontWeight: 800 }}>Sizing math · </span>
+              {formatSizingBreakdown({
+                sizingBase, equity, riskPct, entry, stop,
+                shares: sized.shares, sizingLabel,
+              })}
+            </div>
+          )}
+
           {sized && sized.shares > 0 && (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
                 <MetricBox
-                  label="Max risk $"
+                  label="Dollar risk"
                   value={money(sized.dollarRisk, true)}
-                  sub={`${sized.pctOfCash.toFixed(2)}% of cash · ${sized.pctOfEquity.toFixed(2)}% of equity`}
+                  sub={`${sized.pctOfCash.toFixed(2)}% of ${sizingLabel} · ${sized.pctOfEquity.toFixed(2)}% of equity (ref)`}
                   color={overMaxRisk ? RED : GREEN}
                 />
                 <MetricBox
