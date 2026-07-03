@@ -21,7 +21,7 @@ import RotationIntelligence from './pages/RotationIntelligence'
 import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import HealthHub from './pages/HealthHub'
 
-const BUILD_MARKER = 'cc-v3 regime-stoplight 2026-07-02'
+const BUILD_MARKER = 'cc-v3 hermes-efficiency-stop-quality 2026-07-03'
 
 function ReconnectingBar() {
   const { degraded, failing } = useConnectionHealth()

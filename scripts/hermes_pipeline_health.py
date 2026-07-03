@@ -153,6 +153,16 @@ def check() -> list[str]:
     except Exception:
         pass
 
+    # 11. Scope governor heartbeat — tier ledger owner (:07/:37 cron)
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_scope_governor.health import check_scope_governor_health
+        for f in check_scope_governor_health(conn):
+            if f.get("severity") in ("critical", "warning"):
+                issues.append(f["message"])
+    except Exception as e:
+        issues.append(f"scope governor health probe failed: {str(e)[:80]}")
+
     conn.close()
     return issues
 
