@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-03 - Market calendar computed for any year; gate skips logged, fail-open
+
+market_session.py now computes NYSE holidays/early-closes algorithmically (Rule 7.2
+observance) — the hardcoded 2026 set was missing Juneteenth (all gated crons ran on
+2026-06-19) and would have treated every 2027 holiday as a trading day.
+market_day_gate.sh logs each skip ("skipped: holiday") instead of exiting silently —
+on 2026-07-03 (July-4 observed) three correct skips read as cron failures — and fails
+OPEN with a logged warning if the session check itself errors, so a broken checker
+can never silently halt every gated sync. Tests: tests/test_market_session_calendar.py
+(2025–2027 vs published NYSE schedules).
+
 ## 2026-07-03 - Retire stale holdings DB mirrors; all readers on canonical holdings.json
 
 The `holdings` table (writer dead since 2026-04-19) and `holdings_json_mirror`
