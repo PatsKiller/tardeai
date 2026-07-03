@@ -221,11 +221,13 @@ export default function WatchlistCard({
   const idealEntry = it.ideal_entry != null && Number(it.ideal_entry) > 0 ? Number(it.ideal_entry) : null
   const entryConf = it.entry_confidence != null ? Number(it.entry_confidence) : null
 
-  // Entry thesis line — strategy · setup · urgency · plan-quality tag · ideal entry.
+  // Entry thesis line — parts carry their own labels so "strategy" reads as strategy at a glance,
+  // and a missing pullback zone is stated (no plan yet) instead of silently absent.
   const entryLine = [
-    strategyLabel,
+    strategyLabel ? `${strategyLabel} strategy` : null,
     setupLabel && setupLabel !== strategyLabel ? `${setupLabel} setup` : null,
     urgencyLabel,
+    !hasZone && !hasPlan ? 'zone pending entry planner' : null,
     idealEntry != null ? `ideal ${money(idealEntry)}` : null,
     entryConf != null ? `plan conf ${entryConf.toFixed(2)}` : null,
     entryTag && !['ok', 'ready'].includes(entryTag) ? entryTag : null,
@@ -685,6 +687,11 @@ export default function WatchlistCard({
           {llms.length > 0 && (
             <div style={{ fontSize: 11, color: WL.text.dim }}>
               External intel current: {llms.map((e: any) => llmName(e.lane)).join(' · ')}
+            </div>
+          )}
+          {(!it.catalyst_headline || !topNews) && (
+            <div style={{ fontSize: 11, color: WL.text.dim }} title="Absence is a data state, not a UI gap — catalyst covers a 45-day event window; news comes from the symbol-cards layer.">
+              {[!it.catalyst_headline ? 'no catalyst detected (45d)' : null, !topNews ? 'no indexed news' : null].filter(Boolean).join(' · ')}
             </div>
           )}
         </div>
