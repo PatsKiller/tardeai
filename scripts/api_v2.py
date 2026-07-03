@@ -20178,6 +20178,19 @@ def _hermes_threshold_evaluations(query=None):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _hermes_symbol_journey(query=None):
+    """GET /api/v2/hermes/symbol-journey — closed-loop trace for one symbol."""
+    q = query or {}
+    symbol = (q.get("symbol") or [None])[0] if isinstance(q.get("symbol"), list) else q.get("symbol")
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_traceability.symbol_journey import build_symbol_journey
+        return _json_clean(build_symbol_journey(str(symbol or "")))
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _hermes_closed_loop_evaluations(query=None):
     """GET /api/v2/hermes/closed-loop/evaluations — watchlist gate + system impact."""
     try:
@@ -26082,6 +26095,7 @@ ROUTES = {
     "/api/v2/hermes/thresholds": lambda q: _hermes_thresholds(q),
     "/api/v2/hermes/thresholds/evaluations": lambda q: _hermes_threshold_evaluations(q),
     "/api/v2/hermes/closed-loop/evaluations": lambda q: _hermes_closed_loop_evaluations(q),
+    "/api/v2/hermes/symbol-journey": lambda q: _hermes_symbol_journey(q),
     "/api/v2/hermes/promotion-review": lambda: _hermes_promotion_review(),
     "/api/v2/hermes/research-backlog": lambda: _hermes_research_backlog(),
     "/api/v2/hermes/agent-footprint": lambda: _hermes_agent_footprint(),

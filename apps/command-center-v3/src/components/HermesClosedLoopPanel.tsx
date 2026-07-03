@@ -1686,9 +1686,17 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
               <span>Symbol</span><span>Stage</span><span>Health</span><span>Gain</span><span>Gate</span><span>Monitoring</span>
             </div>
             {holdingsPanelRows.map((row: any) => (
-              <div key={row.symbol} style={{
+              <div key={row.symbol}
+                onClick={() => onDrill({
+                  title: row.symbol,
+                  subtitle: 'Closed-loop journey',
+                  endpoint: `/api/v2/hermes/symbol-journey?symbol=${row.symbol}`,
+                  rows: [],
+                })}
+                style={{
                 display: 'grid', gridTemplateColumns: '0.6fr 0.7fr 0.5fr 0.5fr 0.6fr 1fr',
                 padding: '6px', borderBottom: '1px solid var(--border)', fontSize: 11, alignItems: 'center',
+                cursor: 'pointer',
                 borderLeft: row.lifecycle_stage === 'trim_candidate' ? '3px solid #ef4444'
                   : row.lifecycle_stage === 'watch' ? '3px solid #f59e0b' : '3px solid transparent',
               }}>
@@ -1775,9 +1783,17 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                 ? `out ${hc.outcome_performance} · promo ${hc.promotion_success_rate ?? '—'}`
                 : ''
               return (
-                <div key={row.symbol} style={{
+                <div key={row.symbol}
+                  onClick={() => onDrill({
+                    title: row.symbol,
+                    subtitle: 'Closed-loop journey',
+                    endpoint: `/api/v2/hermes/symbol-journey?symbol=${row.symbol}`,
+                    rows: [],
+                  })}
+                  style={{
                   display: 'grid', gridTemplateColumns: '0.6fr 0.7fr 0.4fr 0.5fr 0.45fr 0.5fr 1fr',
                   padding: '6px', borderBottom: '1px solid var(--border)', fontSize: 11, alignItems: 'center',
+                  cursor: 'pointer',
                   borderLeft: pending ? '3px solid #f59e0b' : st === 'watch' ? '3px solid #f59e0b' : '3px solid transparent',
                 }}>
                   <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{row.symbol}</span>
@@ -1864,14 +1880,15 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
 
       {/* Symbol table */}
       <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Symbols in outcome bus</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Symbols in outcome bus</div>
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>Click any symbol for full closed-loop journey (tier → outcome → feedback)</div>
         <div style={{ display: 'grid', gridTemplateColumns: '0.7fr 0.5fr 0.5fr 0.6fr 0.5fr 1fr', fontSize: 8, color: 'var(--text3)', padding: '4px 6px', textTransform: 'uppercase' }}>
           <span>Symbol</span><span>Gate</span><span>Tier</span><span>Lift</span><span>n</span><span>Governor action</span>
         </div>
         {symbolRows.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 8 }}>No price-graded symbols yet.</div> :
           symbolRows.slice(0, 40).map(({ sym, meta, fb, tier }) => (
             <div key={sym}
-              onClick={() => onDrill({ title: sym, subtitle: meta.gate, endpoint: '/api/v2/hermes/outcome-bus?symbol=' + sym, rows: [meta, fb].filter(Boolean) })}
+              onClick={() => onDrill({ title: sym, subtitle: 'Closed-loop journey', endpoint: `/api/v2/hermes/symbol-journey?symbol=${sym}`, rows: [] })}
               style={{ display: 'grid', gridTemplateColumns: '0.7fr 0.5fr 0.5fr 0.6fr 0.5fr 1fr', padding: '6px', borderBottom: '1px solid var(--border)', fontSize: 11, cursor: 'pointer', alignItems: 'center' }}>
               <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{sym}</span>
               <span style={{ color: GATE_COLOR[meta.gate] ?? 'var(--text2)', fontSize: 10 }}>{meta.gate ?? '—'}</span>

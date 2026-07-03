@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-03 - Symbol journey traceability + master roadmap doc
+
+`GET /api/v2/hermes/symbol-journey` merges governor audit, lifecycle audit, outcome ledger,
+and trades into a timeline. Closed Loop symbol rows drill into journey. Doc:
+`HERMES_CLOSED_LOOP_TRACEABILITY.md` (Prompts 1–3 roadmap + combined validation checklist).
+
 ## 2026-07-03 - Closed-loop gaps: bus lifecycle export, stop reactions, holdings scheduler
 
 - **Outcome bus:** `lifecycle` slice (watchlist + holdings health/stage) on nightly `--apply`; enriches `by_symbol`

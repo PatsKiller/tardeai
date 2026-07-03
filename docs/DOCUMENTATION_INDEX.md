@@ -70,6 +70,7 @@
 | `docs/design/HERMES_MATURITY_5_DESIGN.md` | **Hermes Maturity-5 program** — audit (2/5) → phases 0-5: governed S0-S3 scope + event lane; outcome ledger + nightly grader; gated learning (drift ratchet frozen, learned promotion gates, outcome-yield source curation, lane routing); falsifiable tagging; config-proposal channel; honest computed maturity board (5s = 30-day streaks). Per-phase implementation status inline | **Implemented — all phases live (2026-07-02)**; 5s accrue on samples/streaks |
 | `docs/hermes/HERMES_WATCHLIST_LIFECYCLE.md` | Watchlist advisory lifecycle — stages, conviction, Phase 2 health score + promotion gate, Closed Loop panel | **Live (2026-07-03)** — `cac9949e` |
 | `docs/hermes/HERMES_HOLDINGS_LIFECYCLE.md` | Holdings (S0) per-position health + advisory stages | **Live (2026-07-03)** — `712f21ed` |
+| `docs/hermes/HERMES_CLOSED_LOOP_TRACEABILITY.md` | Master roadmap (Prompts 1–3), symbol journey API, combined validation | **Live (2026-07-03)** |
 
 ### Rotation Intelligence *(paths corrected — docs/project/)*
 | Document | Purpose | Status |
