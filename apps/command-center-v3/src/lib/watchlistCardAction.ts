@@ -29,7 +29,7 @@ export type CardActionType =
 
 export type ActionWarning = { text: string; severity: 'red' | 'amber' | 'info' }
 
-export type ButtonVariant = 'solid-green' | 'outline-amber' | 'neutral'
+export type ButtonVariant = 'solid-green' | 'outline-amber' | 'outline-red' | 'neutral'
 
 /** Unified verdict + hero + primary CTA — derived together. */
 export type CardAction = {
@@ -132,7 +132,7 @@ export function deriveRecommendedAction(args: {
       subtext: 'Risk undefined without a planned stop',
       urgency: 'red',
       primaryLabel: 'Adjust Plan',
-      buttonVariant: 'outline-amber',
+      buttonVariant: 'outline-red',
       warning: { text: 'No stop on plan — risk undefined', severity: 'red' },
     })
   }
@@ -142,17 +142,18 @@ export function deriveRecommendedAction(args: {
       subtext: 'Reward < risk',
       urgency: 'red',
       primaryLabel: 'Adjust Plan',
-      buttonVariant: 'outline-amber',
+      buttonVariant: 'outline-red',
       warning: { text: `R:R ${rr.toFixed(2)} below threshold — reward < risk`, severity: 'red' },
     })
   }
 
   if (rr != null && rr < 1.5) {
+    // FIX verdicts render a red banner — the corrective primary matches it.
     return action('ADJUST_PLAN', 'FIX', `Fix plan · R:R ${rr.toFixed(2)}`, {
       subtext: 'Thin edge',
       urgency: 'amber',
       primaryLabel: 'Adjust Plan',
-      buttonVariant: 'outline-amber',
+      buttonVariant: 'outline-red',
       warning: { text: `R:R ${rr.toFixed(2)} below 1.5 — thin edge`, severity: 'amber' },
     })
   }
@@ -175,7 +176,7 @@ export function deriveRecommendedAction(args: {
       subtext: hasPlan ? 'Stale technicals' : 'Stale enrichment',
       urgency: 'amber',
       primaryLabel: 'Refresh Data',
-      buttonVariant: 'neutral',
+      buttonVariant: 'outline-amber',
       warning: { text: 'Data stale — refresh before acting', severity: 'amber' },
     })
   }
@@ -185,7 +186,7 @@ export function deriveRecommendedAction(args: {
       detail: dataDoubt,
       urgency: 'amber',
       primaryLabel: 'Refresh Data',
-      buttonVariant: 'neutral',
+      buttonVariant: 'outline-amber',
       warning: { text: `Data doubt — ${dataDoubt}`, severity: 'amber' },
     })
   }
@@ -194,17 +195,18 @@ export function deriveRecommendedAction(args: {
       subtext: !enriched ? 'Awaiting enrichment' : 'Agents pending',
       urgency: 'amber',
       primaryLabel: 'Refresh Data',
-      buttonVariant: 'neutral',
+      buttonVariant: 'outline-amber',
       warning: { text: !enriched ? 'Awaiting enrichment' : 'Agent synthesis pending', severity: 'amber' },
     })
   }
 
   if (cioAvoid(it.latest_recommendation)) {
+    // Negative state gets an honest button — never a CTA dressed as opportunity.
     return action('VIEW_INTEL', 'SKIP', 'Do not add', {
       subtext: `CIO ${cioLabel(it.latest_recommendation)}`,
       urgency: 'amber',
-      primaryLabel: 'View Intel',
-      buttonVariant: 'outline-amber',
+      primaryLabel: 'Review Risks',
+      buttonVariant: 'neutral',
       warning: { text: `CIO view: ${cioLabel(it.latest_recommendation)}`, severity: 'red' },
     })
   }
@@ -358,41 +360,40 @@ export function actionProminence(action: CardAction, hasPlan: boolean): ActionPr
 
 export function verdictColor(v: CardVerdict): string {
   const map: Record<CardVerdict, string> = {
-    READY: '#16a34a',
-    WAIT: '#d97706',
-    SKIP: '#94a3b8',
-    STALE: '#d97706',
-    FIX: '#dc2626',
-    BUILD: '#d97706',
-    WATCH: '#60a5fa',
+    READY: '#2dd4bf',
+    WAIT: '#f5a623',
+    SKIP: '#8b98ac',
+    STALE: '#f5a623',
+    FIX: '#ef5350',
+    BUILD: '#f5a623',
+    WATCH: '#8b98ac',
   }
   return map[v]
 }
 
+/** Three treatments only: solid teal (READY primary), outline signal (corrective primaries),
+ *  quiet neutral (all secondaries). One solid button per card, ever. */
 export function buttonStyle(variant: ButtonVariant, compact = false, prominent = false): Record<string, string | number> {
-  const green = '#14b8a6'
-  const amber = '#f59e0b'
-  const muted = '#94a3b8'
-  const tagBorder = 'rgba(71,85,105,.45)'
-  const pad = prominent ? '11px 20px' : compact ? '6px 12px' : '9px 16px'
-  const fs = prominent ? 13 : compact ? 11 : 12
-  const minW = prominent ? 148 : compact ? 72 : 120
+  const teal = '#2dd4bf'
+  const amber = '#f5a623'
+  const red = '#ef5350'
+  const pad = prominent ? '10px 20px' : compact ? '7px 12px' : '9px 16px'
+  const fs = prominent ? 13 : compact ? 11.5 : 12
+  const minW = prominent ? 148 : compact ? 0 : 120
+  const base = {
+    fontSize: fs, fontWeight: prominent ? 800 : 700, padding: pad, borderRadius: prominent ? 7 : 6,
+    cursor: 'pointer', minWidth: minW, whiteSpace: 'nowrap',
+  }
   if (variant === 'solid-green') {
-    return {
-      fontSize: fs, fontWeight: 800, padding: pad, borderRadius: 6, cursor: 'pointer',
-      minWidth: minW, border: `1px solid ${green}`, background: green, color: '#fff', whiteSpace: 'nowrap',
-    }
+    return { ...base, border: `1px solid ${teal}`, background: teal, color: '#06231f' }
   }
   if (variant === 'outline-amber') {
-    return {
-      fontSize: fs, fontWeight: 800, padding: pad, borderRadius: 6, cursor: 'pointer',
-      minWidth: minW, border: `1px solid ${amber}`, background: 'rgba(217,119,6,.1)', color: '#fcd34d', whiteSpace: 'nowrap',
-    }
+    return { ...base, border: `1px solid ${amber}`, background: 'transparent', color: amber }
   }
-  return {
-    fontSize: fs, fontWeight: 800, padding: pad, borderRadius: 6, cursor: 'pointer',
-    minWidth: minW, border: `1px solid ${tagBorder}`, background: 'transparent', color: muted, whiteSpace: 'nowrap',
+  if (variant === 'outline-red') {
+    return { ...base, border: `1px solid ${red}`, background: 'transparent', color: red }
   }
+  return { ...base, border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: '#aeb9ca' }
 }
 
 export function rrTooltip(entry: number | null, stop: number | null, planTarget: number | null, rr: number | null): string {
@@ -444,10 +445,10 @@ export function dataDoubtTooltip(doubt: string): string {
 
 export function cioRecColor(rec?: string | null): string {
   const u = String(rec ?? '').toUpperCase()
-  if (['BUY', 'STRONG_BUY', 'ADD', 'ADD_ON_PULLBACK', 'ACCUMULATE'].some(k => u.includes(k))) return '#16a34a'
-  if (['AVOID', 'IGNORE', 'SELL', 'TRIM'].some(k => u.includes(k))) return '#dc2626'
-  if (['HOLD', 'RESEARCH_MORE', 'WAIT'].some(k => u.includes(k))) return '#d97706'
-  return '#94a3b8'
+  if (['BUY', 'STRONG_BUY', 'ADD', 'ADD_ON_PULLBACK', 'ACCUMULATE'].some(k => u.includes(k))) return '#2dd4bf'
+  if (['AVOID', 'IGNORE', 'SELL', 'TRIM'].some(k => u.includes(k))) return '#ef5350'
+  if (['HOLD', 'RESEARCH_MORE', 'WAIT'].some(k => u.includes(k))) return '#f5a623'
+  return '#8b98ac'
 }
 
 export function targetVsStreetLabel(planTarget: number | null, streetTarget: number | null): string | null {

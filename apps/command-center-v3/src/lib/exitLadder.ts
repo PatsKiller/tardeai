@@ -8,8 +8,8 @@ export type LadderStep = { px: number; label: string; action: string }
 export type Ladder = { R: number; steps: LadderStep[] }
 export type PlanWarning = { text: string; color: string }
 
-const RED = '#ef4444'
-const AMBER = '#f59e0b'
+const RED = '#ef5350'
+const AMBER = '#f5a623'
 
 // Order-type names match lib/schwabTickets.ts + the Open Trades protection buttons: tranche scale-outs
 // are SELL LIMIT GTC; the protective exit is a fixed SELL STOP that ratchets up; the runner rides a

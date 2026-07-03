@@ -52,8 +52,8 @@ export default function FibConfluencePanel({ symbol }: { symbol: string }) {
 
   return (
     <div onClick={e => e.stopPropagation()} style={{ marginTop: 8 }}>
-      <button onClick={load} style={{ fontSize: 10.5, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: open ? 'rgba(96,165,250,.12)' : 'transparent', color: '#60a5fa' }}>
-        📐 Multi-TF Fib &amp; Confluence {open ? '▲' : '▾'}
+      <button onClick={load} style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: open ? 'rgba(148,163,184,.10)' : 'transparent', color: 'var(--text2)' }}>
+        Multi-TF Fib &amp; confluence {open ? '▴' : '▾'}
       </button>
       {open && (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -100,7 +100,7 @@ export default function FibConfluencePanel({ symbol }: { symbol: string }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: .3 }}>Confluence zones · ranked by strength · current ${data.current_price}</div>
                 <span style={{ flex: 1 }} />
-                {data?.chart_bars?.length > 0 && <button onClick={() => openChart()} style={{ fontSize: 9.5, fontWeight: 700, padding: '2px 8px', borderRadius: 5, cursor: 'pointer', border: '1px solid var(--border)', background: 'transparent', color: '#60a5fa' }}>📈 Chart all levels</button>}
+                {data?.chart_bars?.length > 0 && <button onClick={() => openChart()} style={{ fontSize: 9.5, fontWeight: 700, padding: '2px 8px', borderRadius: 5, cursor: 'pointer', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text2)' }}>Chart all levels</button>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {zones.slice(0, 6).map((z: any, i: number) => (
