@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-07-03 - Holdings lifecycle Phase 2: stop weight 30%, confidence, UI stop column
+
+Holdings health uses hot-tier stop metrics + R-left penalty, confidence discount,
+stage_transition audit, recommended_action; Closed Loop shows stop component column.
+
 ## 2026-07-03 - Watchlist stop-quality research multipliers + UI watch rows
 
 `watchlist_research_multiplier` in research_scheduler (S0–S3): boost strong stop

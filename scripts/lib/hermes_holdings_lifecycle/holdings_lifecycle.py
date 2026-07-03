@@ -22,6 +22,13 @@ STAGE_LABELS: dict[str, str] = {
     "exited": "Exited / Archived",
 }
 
+RECOMMENDED_ACTIONS: dict[str, str] = {
+    "healthy": "monitor",
+    "watch": "review_stops_and_research",
+    "trim_candidate": "operator_trim_review",
+    "exited": "none",
+}
+
 
 def load_config() -> dict[str, Any]:
     try:
@@ -160,14 +167,26 @@ def _component_scores(
     bus_sym = bus_sym or {}
     gov_fb = gov_fb or {}
 
-    # Stop quality proxy — bus global + alert from governor feedback
-    aligned = stop_global.get("aligned_pct")
-    trail = stop_global.get("trail_activation_rate")
+    # Stop quality — hot-tier slice for S0 holdings + global fallbacks
+    by_tier = stop_global.get("by_tier") or {}
+    hot_tier = by_tier.get("hot") or {}
+    aligned = hot_tier.get("aligned_pct") or stop_global.get("aligned_pct")
+    trail = hot_tier.get("trail_activation_rate") or stop_global.get("trail_activation_rate")
+    r_left = hot_tier.get("r_left_on_table_avg") or stop_global.get("r_left_on_table_avg")
     stop_pts = 65.0
     if aligned is not None:
         stop_pts = _norm_0_100(float(aligned), 0.4, 0.85, 55.0)
-    if trail is not None and float(trail) < 0.35:
-        stop_pts = _clamp(stop_pts - 12)
+    if trail is not None:
+        stop_pts = _clamp(0.55 * stop_pts + 0.45 * _norm_0_100(float(trail), 0.25, 0.65, 50.0))
+    if r_left is not None:
+        try:
+            rl = float(r_left)
+            if rl > 20:
+                stop_pts = _clamp(stop_pts - 15)
+            elif rl > 12:
+                stop_pts = _clamp(stop_pts - 8)
+        except (TypeError, ValueError):
+            pass
     if str(gov_fb.get("action") or "").lower() in ("pause", "demote_pressure"):
         stop_pts = _clamp(stop_pts - 20)
 
@@ -229,11 +248,29 @@ def _component_scores(
     }
 
 
-def compute_health_score(components: dict[str, float], cfg: dict[str, Any]) -> float:
+def compute_health_score_raw(components: dict[str, float], cfg: dict[str, Any]) -> float:
     weights = cfg.get("health_weights") or {}
     total_w = sum(float(v) for v in weights.values()) or 1.0
-    score = sum(float(weights.get(k, 0)) * components.get(k, 50.0) for k in components) / total_w
-    return round(_clamp(score), 1)
+    return sum(float(weights.get(k, 0)) * components.get(k, 50.0) for k in components) / total_w
+
+
+def apply_confidence_discount(score: float, graded_n: int, cfg: dict[str, Any]) -> tuple[float, str]:
+    conf = cfg.get("confidence") or {}
+    min_full = int(conf.get("min_graded_for_full", 4))
+    min_samples = int(conf.get("min_graded_samples", 2))
+    mult_low = float(conf.get("low_graded_multiplier", 0.80))
+    mult_sparse = float(conf.get("sparse_multiplier", 0.88))
+    if graded_n < min_samples:
+        return round(_clamp(score * mult_sparse), 1), "sparse_data"
+    if graded_n < min_full:
+        return round(_clamp(score * mult_low), 1), "low_confidence"
+    return round(_clamp(score), 1), "full"
+
+
+def compute_health_score(components: dict[str, float], cfg: dict[str, Any], graded_n: int = 0) -> float:
+    raw = compute_health_score_raw(components, cfg)
+    final, _ = apply_confidence_discount(raw, graded_n, cfg)
+    return final
 
 
 def resolve_stage(
@@ -305,7 +342,9 @@ def build_holdings_lifecycle_snapshot(
         components = _component_scores(
             sym, pos, bus_sym, gov_by_sym.get(sym), llm_health.get(sym), stop_global, cfg,
         )
-        health = compute_health_score(components, cfg)
+        graded_n = int((bus_sym or {}).get("n") or 0)
+        raw_health = round(_clamp(compute_health_score_raw(components, cfg)), 1)
+        health, confidence_tier = apply_confidence_discount(raw_health, graded_n, cfg)
         gate = (bus_sym or {}).get("gate")
         gov_action = (gov_by_sym.get(sym) or {}).get("action")
         override = (overrides.get(sym) or {}).get("stage")
@@ -318,7 +357,12 @@ def build_holdings_lifecycle_snapshot(
             "lifecycle_stage": stage,
             "lifecycle_label": STAGE_LABELS.get(stage, stage),
             "health_score": health,
+            "health_score_raw": raw_health,
+            "confidence_tier": confidence_tier,
+            "graded_n": graded_n,
             "components": components,
+            "health_components": components,
+            "recommended_action": RECOMMENDED_ACTIONS.get(stage, "monitor"),
             "stage_reason": reason,
             "gain_pct": pos.get("gain_pct"),
             "market_value": round(pos.get("market_value") or 0, 2),
@@ -337,6 +381,16 @@ def build_holdings_lifecycle_snapshot(
         if prev_h.get("lifecycle_stage") != stage:
             entry["last_transition_at"] = datetime.now(timezone.utc).isoformat()
             entry["last_transition_reason"] = reason
+            append_audit({
+                "action": "stage_transition",
+                "symbol": sym,
+                "from_stage": prev_h.get("lifecycle_stage"),
+                "to_stage": stage,
+                "health_score": health,
+                "components": components,
+                "reason": reason,
+                "run_id": run_id,
+            })
         else:
             entry["last_transition_at"] = prev_h.get("last_transition_at")
             entry["last_transition_reason"] = prev_h.get("last_transition_reason") or reason

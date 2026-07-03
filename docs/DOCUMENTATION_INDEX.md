@@ -71,7 +71,7 @@
 | `docs/hermes/OUTCOME_BUS_IMPLEMENTATION.md` | `outcome_bus.json` schema — global, stop quality, maturity, **traceability sections** (`watchlist_health`, `holdings_health`, `threshold_proposals`, `lineage`) | **Live (2026-07-03)** — `59024b4a` |
 | `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` | Threshold learner, approve/reject, proposal history + **impact narratives**, bus snapshot linkage on proposals | **Live (2026-07-03)** — `a0fb8bac` |
 | `docs/hermes/HERMES_WATCHLIST_LIFECYCLE.md` | Watchlist advisory lifecycle — stages, conviction, Phase 2 health score + promotion gate, Closed Loop panel; exported to `outcome_bus.watchlist_health` | **Live (2026-07-03)** — `cac9949e` |
-| `docs/hermes/HERMES_HOLDINGS_LIFECYCLE.md` | Holdings (S0) per-position health + advisory stages; exported to `outcome_bus.holdings_health` | **Live (2026-07-03)** — `712f21ed` |
+| `docs/hermes/HERMES_HOLDINGS_LIFECYCLE.md` | Holdings health (stop 30%), lifecycle stages, confidence, research mult, validation | **Live (2026-07-03)** — Phase 2 |
 | `docs/hermes/HERMES_CLOSED_LOOP_TRACEABILITY.md` | Master roadmap (Prompts 1–3), symbol journey API, bus traceability validation | **Live (2026-07-03)** — `59024b4a` |
 
 ### Rotation Intelligence *(paths corrected — docs/project/)*
