@@ -83,6 +83,7 @@ const THRESHOLD_SHORT_LABEL: Record<string, string> = {
 const LIFECYCLE_STAGE_COLOR: Record<string, string> = {
   new: '#60a5fa',
   monitoring: 'var(--text3)',
+  watch: '#f59e0b',
   promoted: '#22c55e',
   demoted: '#f59e0b',
   archived: 'var(--text3)',
@@ -571,6 +572,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
   const lifecyclePending: any[] = watchlistLifecycle?.pending_transitions ?? []
   const lifecycleSummary: Record<string, number> = watchlistLifecycle?.summary ?? {}
   const lifecyclePendingCount = watchlistLifecycle?.pending_count ?? lifecyclePending.length
+  const lifecycleBlockedCount = watchlistLifecycle?.blocked_promotion_count ?? (watchlistLifecycle?.blocked_promotions?.length ?? 0)
   const bySymbol: Record<string, any> = bus.by_symbol ?? {}
   const stopQ = bus.stop_quality ?? {}
   const resource = bus.resource_efficiency ?? {}
@@ -1725,10 +1727,12 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Watchlist lifecycle</div>
-            <div style={{ fontSize: 10, color: lifecyclePendingCount > 0 ? '#f59e0b' : 'var(--text3)', marginTop: 4 }}>
+            <div style={{ fontSize: 10, color: lifecyclePendingCount > 0 || lifecycleBlockedCount > 0 ? '#f59e0b' : 'var(--text3)', marginTop: 4 }}>
               {lifecyclePendingCount > 0
                 ? `${lifecyclePendingCount} pending tier transition${lifecyclePendingCount !== 1 ? 's' : ''}`
-                : 'Outcome-driven stages parallel to scope tiers (S0–S3)'}
+                : lifecycleBlockedCount > 0
+                  ? `${lifecycleBlockedCount} outcome promotion${lifecycleBlockedCount !== 1 ? 's' : ''} blocked by health gate`
+                  : 'Outcome-driven stages + health scoring parallel to scope tiers (S0–S3)'}
             </div>
           </div>
           {watchlistLifecycle?.review_mode && (
@@ -1756,31 +1760,53 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
           </div>
         ) : (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '0.65fr 0.75fr 0.45fr 0.45fr 0.55fr 1fr', fontSize: 8, color: 'var(--text3)', padding: '4px 6px', textTransform: 'uppercase' }}>
-              <span>Symbol</span><span>Stage</span><span>Tier</span><span>Conviction</span><span>Gate</span><span>Reason / pending</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '0.6fr 0.7fr 0.4fr 0.5fr 0.45fr 0.5fr 1fr', fontSize: 8, color: 'var(--text3)', padding: '4px 6px', textTransform: 'uppercase' }}>
+              <span>Symbol</span><span>Stage</span><span>Tier</span><span>Health</span><span>Conv</span><span>Gate</span><span>Reason / pending</span>
             </div>
             {lifecyclePanelRows.map((row: any) => {
               const st = row.lifecycle_stage ?? 'monitoring'
               const pending = row.pending_transition
+              const trend = row.health_trend ?? row.health_delta
+              const hc = row.health_components ?? {}
+              const compHint = hc.outcome_performance != null
+                ? `out ${hc.outcome_performance} · promo ${hc.promotion_success_rate ?? '—'}`
+                : ''
               return (
                 <div key={row.symbol} style={{
-                  display: 'grid', gridTemplateColumns: '0.65fr 0.75fr 0.45fr 0.45fr 0.55fr 1fr',
+                  display: 'grid', gridTemplateColumns: '0.6fr 0.7fr 0.4fr 0.5fr 0.45fr 0.5fr 1fr',
                   padding: '6px', borderBottom: '1px solid var(--border)', fontSize: 11, alignItems: 'center',
-                  borderLeft: pending ? '3px solid #f59e0b' : '3px solid transparent',
+                  borderLeft: pending ? '3px solid #f59e0b' : st === 'watch' ? '3px solid #f59e0b' : '3px solid transparent',
                 }}>
                   <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{row.symbol}</span>
                   <span style={{ color: LIFECYCLE_STAGE_COLOR[st] ?? 'var(--text2)', fontWeight: 600, fontSize: 10 }}>
                     {row.lifecycle_label ?? st}
                   </span>
                   <span style={{ color: 'var(--text3)', fontFamily: 'monospace' }}>{row.scope_tier ?? '—'}</span>
-                  <span style={{ fontWeight: 700, color: (row.conviction_score ?? 0) >= 65 ? '#22c55e' : (row.conviction_score ?? 0) < 40 ? '#ef4444' : '#f59e0b' }}>
+                  <span style={{
+                    fontWeight: 700,
+                    color: (row.health_score ?? 0) >= 62 ? '#22c55e' : (row.health_score ?? 0) < 45 ? '#ef4444' : '#f59e0b',
+                  }}>
+                    {row.health_score != null ? Math.round(Number(row.health_score)) : '—'}
+                    {trend != null && (
+                      <span style={{ fontSize: 8, color: trend >= 0 ? '#22c55e' : '#ef4444', marginLeft: 3 }}>
+                        {trend > 0 ? '↑' : trend < 0 ? '↓' : '→'}{Math.abs(Number(trend))}
+                      </span>
+                    )}
+                    {row.confidence_tier && row.confidence_tier !== 'full' && (
+                      <span style={{ fontSize: 7, color: 'var(--text3)', marginLeft: 2 }} title={row.confidence_tier}>?</span>
+                    )}
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: 10, color: (row.conviction_score ?? 0) >= 65 ? '#22c55e' : (row.conviction_score ?? 0) < 40 ? '#ef4444' : '#f59e0b' }}>
                     {row.conviction_score != null ? Math.round(Number(row.conviction_score)) : '—'}
                   </span>
                   <span style={{ fontSize: 9, color: 'var(--text3)' }}>{row.outcome_gate ?? '—'}</span>
-                  <span style={{ fontSize: 9, color: pending ? '#f59e0b' : 'var(--text3)' }}>
+                  <span style={{ fontSize: 9, color: pending ? '#f59e0b' : 'var(--text3)' }} title={compHint}>
                     {pending
                       ? `${pending.from_tier}→${pending.to_tier} (${pending.action})`
                       : String(row.stage_reason ?? '').slice(0, 60)}
+                    {compHint && !pending && (
+                      <span style={{ display: 'block', fontSize: 8, color: 'var(--text3)', marginTop: 1 }}>{compHint}</span>
+                    )}
                   </span>
                 </div>
               )

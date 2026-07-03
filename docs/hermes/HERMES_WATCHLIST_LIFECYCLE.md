@@ -1,6 +1,6 @@
 # Hermes Watchlist Lifecycle
 
-**Status:** Phase 1 (2026-07-03) · advisory · parallel to `scope_tier` (S0–S3)
+**Status:** Phase 2 (2026-07-03) · advisory · parallel to `scope_tier` (S0–S3)
 
 ## Purpose
 
@@ -14,6 +14,7 @@ Outcome yield drives conviction adjustments; promotion/demotion **recommendation
 |-------|---------|--------------|
 | **new** | Discovery grace (< 7d on watchlist) | S2 / S3 |
 | **monitoring** | Warm/cold watch, neutral outcomes | S2 / S3 |
+| **watch** | Health 45–59 or 7d decline ≥ 10 pts — elevated scrutiny | S2 / S3 |
 | **promoted** | Hot attention — holdings, S0/S1, or pending promote | S0 / S1 |
 | **demoted** | Outcome demotion pressure or pending demote | S2 / S3 |
 | **archived** | Cold, low conviction, no fresh trigger | S3 |
@@ -28,6 +29,26 @@ Base = Scope Governor `edge_score`. Adjustments from:
 
 Config: `config/hermes_watchlist_lifecycle.yaml`
 
+## Health score (0–100) — Phase 2
+
+Weighted composite from outcome bus + governor signals:
+
+| Component | Weight | Source |
+|-----------|--------|--------|
+| outcome_performance | 0.25 | hit rate, avg R |
+| promotion_success_rate | 0.15 | `hermes_outcome_ledger` promotion hits |
+| tag_lift_consistency | 0.15 | bus lift / precision |
+| stop_quality | 0.15 | global stop alignment |
+| regime_alignment | 0.10 | regime label + ATR |
+| research_efficiency | 0.10 | research actioned rate |
+| edge_blend | 0.10 | scope governor edge score |
+
+**Confidence discount:** sparse (`graded_n < 3` ×0.85), low (`< 5` ×0.75), full otherwise.
+
+**Display score** (panel sort): `0.70 × health + 0.30 × edge_score`.
+
+**Promotion health gate** (`block_weak_outcome_promotions: true`): outcome-driven S1 claims require `health ≥ 62`, `graded_n ≥ 3`, and not `sparse_data`. Blocked symbols are logged to `hermes_watchlist_lifecycle_audit.jsonl`.
+
 ## Transition rules (conservative)
 
 1. **Promoted** — S0/S1 tier, pending promote/reactivate, or strong promote_eligible on warm tier
@@ -41,6 +62,7 @@ Config: `config/hermes_watchlist_lifecycle.yaml`
 | Path | Role |
 |------|------|
 | `scripts/lib/hermes_scope_governor/watchlist_lifecycle.py` | Stage resolution, conviction, persistence |
+| `scripts/lib/hermes_scope_governor/watchlist_health.py` | Health components, promotion gate |
 | `config/hermes_watchlist_lifecycle.yaml` | Stages, thresholds, panel limit |
 | `data/runtime/hermes_watchlist_lifecycle.json` | Latest snapshot per governor tick |
 | `data/runtime/hermes_watchlist_lifecycle_audit.jsonl` | Tick + manual override audit |
@@ -66,8 +88,48 @@ Requires `reason` ≥ 3 characters. Does not change `scope_tier` — override af
 
 `/v3/hermes` → Closed Loop → **Watchlist lifecycle** table:
 
-- Symbol, stage, tier, conviction, outcome gate, pending transition or stage reason
-- Amber border when a pending tier transition exists
+- Symbol, stage, tier, **health** (7d trend arrow), conviction, outcome gate, pending transition or stage reason
+- Amber border when a pending tier transition exists or stage is **watch**
+- Subtitle when outcome promotions were blocked by health gate
+
+## 9. Validation checklist
+
+Run after deploy or config change:
+
+1. **Dry-run governor** — `.venv/bin/python scripts/hermes_scope_governor.py --dry-run` completes with `watchlist_lifecycle.summary` in stdout JSON.
+2. **Lifecycle file** — `data/runtime/hermes_watchlist_lifecycle.json` has `health_score`, `health_components`, `health_history` per symbol.
+3. **Promotion gate** — symbols with `edge ≥ hot_min` but `health < 62` appear in `blocked_promotions` and audit `blocked_promotion` rows; they do **not** get `outcome_edge>=` in `want` claims.
+4. **Watch stage** — symbol with health 45–59 (and not S0/S1) shows `lifecycle_stage: watch`; 7d drop ≥ 10 pts also triggers watch.
+5. **API** — `GET /api/v2/hermes/scope-governor` returns `watchlist_lifecycle.panel_rows` with health fields.
+6. **UI** — `/v3/hermes` → Closed Loop → Watchlist lifecycle shows Health column and trend arrows.
+7. **Override** — `POST /api/v2/hermes/watchlist-lifecycle/override` still works; does not change `scope_tier`.
+8. **Tests** — `.venv/bin/python -m pytest tests/test_watchlist_lifecycle.py -q` all pass.
+
+## 10. Example scenarios
+
+### A — Strong edge, weak health (gate blocks promotion)
+
+- Symbol `XYZ` on S2, `edge_score = 68`, `outcome_gate = promote_eligible`.
+- Health: `outcome_performance = 38`, `graded_n = 4` → composite **54** (after discount).
+- Governor **does not** add `outcome_edge>=65` S1 claim; audit logs `blocked_promotion` with `health=54<62`.
+- Lifecycle stage: **watch** (health band 45–59).
+
+### B — Proven promoter (passes gate)
+
+- Symbol `ABC` on S2, `edge_score = 71`, `graded_n = 8`, health **67**, confidence **full**.
+- Passes promotion gate → pending `S2→S1 promote`; lifecycle **promoted**.
+- Panel sorts by `display_score` (~69).
+
+### C — Declining health trend
+
+- `health_history` shows 72 → 65 → 58 over 7d (`health_trend = -14`).
+- Stage flips to **watch** even if current health is 58 (band) or 62 (trend rule fires first at ≤ −10).
+- UI shows red ↓14 next to health.
+
+### D — Manual blacklist during pause
+
+- Operator POST override `blacklisted` with reason; stage overrides `pause_eligible` auto-blacklist path when override set.
+- Tier unchanged until separate `--apply` demotion.
 
 ## Related
 
