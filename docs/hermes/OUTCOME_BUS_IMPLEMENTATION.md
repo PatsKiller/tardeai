@@ -352,6 +352,8 @@ Component: `apps/command-center-v3/src/components/ThresholdProposalModal.tsx`
 
 Behavior: `Esc` closes · `Ctrl+Enter` confirms when valid · loading spinner text during API call · inline error (modal stays open) · green/red toast on success/failure · `GET /api/v2/hermes/thresholds` refetch after success.
 
+Proposal evidence (scoring-v2 + Phase 3): `counterfactual` (fires in last 14d), `key_trigger_days`, `holdout_validation`, `metric_contributions`. Panel shows **Recent threshold audit** from `recent_audit` (last 8 rows of `hermes_threshold_audit.jsonl`).
+
 ---
 
 ## Commands

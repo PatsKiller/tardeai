@@ -14,6 +14,10 @@ export type ThresholdProposal = {
     metric_contributions?: Record<string, number>
     score_delta?: number
     sample_days?: number
+    counterfactual?: { window_days?: number; trigger_count?: number; trigger_rate?: number }
+    current_trigger_count?: { trigger_count?: number; window_days?: number }
+    holdout_validation?: { passed?: boolean; holdout_score?: number; score_ratio?: number; skipped?: boolean }
+    key_trigger_days?: Array<{ day?: string; hit_rate_promotions?: number; resource_efficiency_score?: number }>
   }
   _override_value?: number
 }
@@ -95,6 +99,10 @@ export default function ThresholdProposalModal({
   const evidence = proposal.evidence ?? {}
   const confidence = evidence.confidence
   const metricRows = useMemo(() => topMetricContributions(evidence.metric_contributions), [evidence.metric_contributions])
+  const cf = evidence.counterfactual
+  const curCf = evidence.current_trigger_count
+  const holdout = evidence.holdout_validation
+  const keyDays = evidence.key_trigger_days ?? []
 
   const canSubmit = isApprove || notes.trim().length >= 3
 
@@ -270,9 +278,38 @@ export default function ThresholdProposalModal({
             </div>
           )}
           {proposal.expected_impact && (
-            <div>
+            <div style={{ marginBottom: 6 }}>
               <span style={{ color: 'var(--text2)', fontWeight: 600 }}>Expected impact: </span>
               {proposal.expected_impact}
+            </div>
+          )}
+          {cf && (
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ color: 'var(--text2)', fontWeight: 600 }}>Counterfactual ({cf.window_days ?? 14}d): </span>
+              would fire <b>{cf.trigger_count ?? 0}×</b>
+              {curCf != null && ` (current: ${curCf.trigger_count ?? 0}×)`}
+              {cf.trigger_rate != null && ` · rate ${(Number(cf.trigger_rate) * 100).toFixed(0)}%`}
+            </div>
+          )}
+          {holdout && !holdout.skipped && holdout.passed != null && (
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ color: 'var(--text2)', fontWeight: 600 }}>Holdout validation: </span>
+              <span style={{ color: holdout.passed ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
+                {holdout.passed ? 'passed' : 'failed'}
+              </span>
+              {holdout.score_ratio != null && ` · ratio ${Number(holdout.score_ratio).toFixed(2)}`}
+            </div>
+          )}
+          {keyDays.length > 0 && (
+            <div>
+              <span style={{ color: 'var(--text2)', fontWeight: 600 }}>Key trigger days: </span>
+              {keyDays.map((d, i) => (
+                <span key={d.day ?? i} style={{ marginRight: 8, fontFamily: 'monospace', fontSize: 9 }}>
+                  {d.day}
+                  {d.hit_rate_promotions != null && ` hr${(Number(d.hit_rate_promotions) * 100).toFixed(0)}%`}
+                  {d.resource_efficiency_score != null && ` eff${(Number(d.resource_efficiency_score) * 100).toFixed(0)}%`}
+                </span>
+              ))}
             </div>
           )}
         </div>

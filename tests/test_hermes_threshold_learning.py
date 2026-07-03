@@ -81,6 +81,50 @@ class TestThresholdStore(unittest.TestCase):
                 mod.ACTIVE_PATH = old
 
 
+class TestScoringV3Refinements(unittest.TestCase):
+    def test_holdout_split(self):
+        from lib.hermes_thresholds.scoring import split_holdout
+        series = [{"day": f"d{i}"} for i in range(10)]
+        train, hold = split_holdout(series, 3)
+        self.assertEqual(len(train), 7)
+        self.assertEqual(len(hold), 3)
+
+    def test_loosen_component_guard(self):
+        from lib.hermes_thresholds.scoring import passes_loosen_component_guard
+        from lib.hermes_thresholds.store import load_threshold_config
+        cfg = load_threshold_config()
+        self.assertTrue(passes_loosen_component_guard("tighten", {"a": -0.1}, cfg))
+        self.assertFalse(passes_loosen_component_guard("loosen", {"a": 0.1, "b": -0.01}, cfg))
+        self.assertTrue(passes_loosen_component_guard("loosen", {"a": 0.1, "b": 0.0}, cfg))
+
+    def test_counterfactual_and_key_days(self):
+        from lib.hermes_thresholds.scoring import collect_key_trigger_days, counterfactual_trigger_count
+        series = []
+        for i in range(14):
+            eff = 0.44 if i % 3 == 0 else 0.55
+            series.append({
+                "day": f"2026-06-{i + 1:02d}",
+                "resource_efficiency_score": eff,
+                "hit_rate_promotions": 0.35 if eff < 0.5 else 0.42,
+            })
+        trig = lambda s: float(s["resource_efficiency_score"]) < 0.48
+        cf = counterfactual_trigger_count(series, trig, 14)
+        self.assertGreater(cf["trigger_count"], 0)
+        keys = collect_key_trigger_days(series, trig, 3)
+        self.assertLessEqual(len(keys), 3)
+        self.assertTrue(all(k.get("day") for k in keys))
+
+    def test_holdout_validation_ratio(self):
+        from lib.hermes_thresholds.scoring import validate_holdout_candidate
+        from lib.hermes_thresholds.store import load_threshold_config
+        cfg = load_threshold_config()
+        ok, info = validate_holdout_candidate(0.04, {"score": 0.035}, cfg)
+        self.assertTrue(ok)
+        self.assertTrue(info.get("passed"))
+        bad, bad_info = validate_holdout_candidate(0.04, {"score": 0.01}, cfg)
+        self.assertFalse(bad)
+
+
 class TestScoringV2(unittest.TestCase):
     def test_efficiency_composite_has_contributions(self):
         from lib.hermes_thresholds.scoring import score_efficiency_candidate

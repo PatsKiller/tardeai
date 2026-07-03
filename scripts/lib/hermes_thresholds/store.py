@@ -95,6 +95,28 @@ def append_audit(event: dict[str, Any]) -> None:
         f.write(json.dumps(row, default=str) + "\n")
 
 
+def load_audit_tail(limit: int = 10, actions: list[str] | None = None) -> list[dict[str, Any]]:
+    """Recent audit rows (newest first)."""
+    if not AUDIT_PATH.exists():
+        return []
+    try:
+        lines = AUDIT_PATH.read_text(encoding="utf-8").strip().splitlines()
+    except Exception:
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in reversed(lines):
+        try:
+            row = json.loads(line)
+        except Exception:
+            continue
+        if actions and row.get("action") not in actions:
+            continue
+        rows.append(row)
+        if len(rows) >= limit:
+            break
+    return rows
+
+
 def last_audit_event(action: str | None = None) -> dict[str, Any] | None:
     """Most recent audit row, optionally filtered by action."""
     if not AUDIT_PATH.exists():

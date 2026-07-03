@@ -513,6 +513,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
     ?? (pendingThresholds.length > 0
       ? `${pendingThresholds.length} proposal${pendingThresholds.length !== 1 ? 's' : ''} pending review (${pendingThresholds.map(proposalDeltaText).join(', ')})`
       : 'No pending adjustments')
+  const thresholdAudit: any[] = thresholdData?.recent_audit ?? []
   const cliCommands: Record<string, string> = thresholdData?.cli_commands ?? {
     status: '.venv/bin/python scripts/hermes_threshold_learner.py --status',
     learn: '.venv/bin/python scripts/hermes_threshold_learner.py --learn',
@@ -923,8 +924,17 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                         </div>
                       )}
                       {metrics.length > 0 && (
-                        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>
+                        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>
                           <b style={{ color: 'var(--text2)' }}>Top metrics:</b> {metrics.join(' · ')}
+                        </div>
+                      )}
+                      {evidence.counterfactual && (
+                        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>
+                          <b style={{ color: 'var(--text2)' }}>Would fire:</b>{' '}
+                          {evidence.counterfactual.trigger_count ?? 0}× / {evidence.counterfactual.window_days ?? 14}d
+                          {evidence.current_trigger_count != null && (
+                            <span> (now {evidence.current_trigger_count.trigger_count ?? 0}×)</span>
+                          )}
                         </div>
                       )}
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
@@ -962,6 +972,33 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                     {' · '}{e.threshold_id} · rec <b>{e.recommendation}</b> · impact {e.impact_score != null ? Number(e.impact_score).toFixed(3) : '—'}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {thresholdAudit.length > 0 && (
+              <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text2)', marginBottom: 8, textTransform: 'uppercase' }}>
+                  Recent threshold audit
+                </div>
+                {thresholdAudit.slice(0, 5).map((a: any, i: number) => {
+                  const action = a.action ?? '—'
+                  const actionColor = action.includes('approved') ? '#22c55e'
+                    : action === 'rejected' ? '#ef4444'
+                    : action === 'proposed' ? '#f59e0b' : 'var(--text3)'
+                  return (
+                    <div key={i} style={{ fontSize: 10, color: 'var(--text2)', padding: '5px 0', borderTop: i ? '1px solid var(--border)' : undefined }}>
+                      <span style={{ fontWeight: 700, color: actionColor }}>{action}</span>
+                      {' · '}{a.threshold_id ?? a.proposal?.threshold_id ?? '—'}
+                      {a.from != null && a.to != null && (
+                        <span style={{ fontFamily: 'monospace', marginLeft: 6 }}>{a.from}→{a.to}</span>
+                      )}
+                      <span style={{ color: 'var(--text3)', marginLeft: 6 }}>{String(a.at ?? '').slice(0, 19)}</span>
+                    </div>
+                  )
+                })}
+                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>
+                  Full log: data/runtime/hermes_threshold_audit.jsonl
+                </div>
               </div>
             )}
 

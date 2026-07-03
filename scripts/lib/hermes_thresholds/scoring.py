@@ -333,6 +333,105 @@ def scan_candidates(
     return results
 
 
+def split_holdout(
+    series: list[dict[str, Any]],
+    holdout_days: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Train on earlier days, validate on trailing holdout (chronological)."""
+    if holdout_days <= 0 or len(series) <= holdout_days + 3:
+        return series, []
+    return series[:-holdout_days], series[-holdout_days:]
+
+
+def passes_loosen_component_guard(
+    direction: str,
+    metric_contributions: dict[str, float] | None,
+    cfg: dict[str, Any],
+) -> bool:
+    """Loosening requires every weighted component contribution to be non-negative."""
+    if direction != "loosen":
+        return True
+    loosen_cfg = (cfg.get("scoring") or {}).get("loosen") or {}
+    if not loosen_cfg.get("require_non_negative_components", True):
+        return True
+    if not metric_contributions:
+        return False
+    return all(float(v) >= -1e-9 for v in metric_contributions.values())
+
+
+def validate_holdout_candidate(
+    train_score: float,
+    holdout_meta: dict[str, Any],
+    cfg: dict[str, Any],
+) -> tuple[bool, dict[str, Any]]:
+    """Holdout score must retain a minimum fraction of train-window improvement."""
+    hold_cfg = (cfg.get("scoring") or {}).get("holdout") or {}
+    if not hold_cfg.get("enabled", True):
+        return True, {"skipped": True}
+    holdout_score = float(holdout_meta.get("score") or 0)
+    min_ratio = float(hold_cfg.get("min_score_ratio", 0.85))
+    ratio = holdout_score / train_score if train_score > 1e-9 else 0.0
+    ok = holdout_score > 0 and ratio >= min_ratio
+    return ok, {
+        "holdout_score": round(holdout_score, 4),
+        "train_score": round(train_score, 4),
+        "score_ratio": round(ratio, 3),
+        "min_ratio": min_ratio,
+        "passed": ok,
+    }
+
+
+def collect_key_trigger_days(
+    series: list[dict[str, Any]],
+    trigger_fn,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    """Days where threshold would fire — sorted by strongest yield stress signal."""
+    rows: list[dict[str, Any]] = []
+    for s in series:
+        if not trigger_fn(s):
+            continue
+        day = str(s.get("day") or "")
+        hr = _num(s.get("hit_rate_promotions"))
+        eff = _num(s.get("resource_efficiency_score"))
+        delta = _num(s.get("stop_hot_cold_trail_delta"))
+        mat = _num(s.get("maturity_composite_score"))
+        stress = (1.0 - hr) if hr is not None else (1.0 - eff if eff is not None else 0.5)
+        rows.append({
+            "day": day,
+            "hit_rate_promotions": hr,
+            "resource_efficiency_score": eff,
+            "stop_hot_cold_trail_delta": delta,
+            "maturity_composite_score": mat,
+            "regime_label": s.get("regime_label"),
+            "_stress": stress,
+        })
+    rows.sort(key=lambda r: r.get("_stress", 0), reverse=True)
+    out = []
+    for r in rows[:limit]:
+        row = {k: v for k, v in r.items() if k != "_stress"}
+        out.append(row)
+    return out
+
+
+def counterfactual_trigger_count(
+    series: list[dict[str, Any]],
+    trigger_fn,
+    window_days: int = 14,
+) -> dict[str, Any]:
+    """How often the candidate threshold would have fired in the trailing window."""
+    tail = series[-window_days:] if window_days > 0 else series
+    fired = [s for s in tail if trigger_fn(s)]
+    n = len(fired)
+    total = len(tail)
+    return {
+        "window_days": window_days,
+        "trigger_count": n,
+        "window_days_total": total,
+        "trigger_rate": round(n / max(total, 1), 3),
+    }
+
+
 def passes_asymmetric_bar(
     direction: str,
     score_delta: float,
