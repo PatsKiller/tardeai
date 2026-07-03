@@ -175,6 +175,7 @@ curl -s http://127.0.0.1:7777/api/v2/hermes/thresholds | jq .
 - Success/error toasts; `Esc` / `Ctrl+Enter` keyboard shortcuts
 - **Full review details** modal for deep evidence + optional value override
 - **Recent threshold audit** — last 8 actions from `hermes_threshold_audit.jsonl` via `recent_audit`
+- **Proposal history** (collapsible) — last 10 `decided_proposals` with `evaluation_outcome` (verdict → recommendation) when `--evaluate` has run, plus recent audit tail
 - Proposal evidence (Phase 3): `counterfactual`, `key_trigger_days`, `holdout_validation`
 
 ### Scoring Phase 3 (holdout + counterfactual)

@@ -20178,6 +20178,27 @@ def _hermes_threshold_evaluations(query=None):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _hermes_holdings_lifecycle(query=None):
+    """GET /api/v2/hermes/holdings-lifecycle — per-holding health + lifecycle stages."""
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_holdings_lifecycle.holdings_lifecycle import (
+            build_and_persist_holdings_lifecycle,
+            load_holdings_lifecycle_state,
+        )
+        state = load_holdings_lifecycle_state()
+        if not (state.get("holdings") or {}):
+            state = build_and_persist_holdings_lifecycle()
+        return _json_clean({
+            "ok": True,
+            "advisory_notice": "Holdings lifecycle — advisory only; no auto-sell",
+            **state,
+        })
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _hermes_scope_governor(query=None):
     """GET /api/v2/hermes/scope-governor — governed universe feed + recent tier decisions.
 
@@ -26039,6 +26060,7 @@ ROUTES = {
     "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
     "/api/v2/hermes/research-critique": lambda q: _hermes_research_critique(q),
     "/api/v2/hermes/maturity-dashboard": lambda: _hermes_maturity_dashboard(),
+    "/api/v2/hermes/holdings-lifecycle": lambda q: _hermes_holdings_lifecycle(q),
     "/api/v2/hermes/scope-governor": lambda q: _hermes_scope_governor(q),
     "/api/v2/hermes/outcome-bus": lambda q: _hermes_outcome_bus(q),
     "/api/v2/hermes/outcome-bus/history": lambda q: _hermes_outcome_bus_history(q),
@@ -28987,6 +29009,25 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             b = body or {}
             apply_p = bool(b.get("apply", True))
             result = run_learning_cycle(apply_proposals=apply_p)
+            code = 200 if result.get("ok") else 400
+            return code, _json_clean(result)
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/hermes/holdings-lifecycle/override":
+        try:
+            import sys as _sysc
+            _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+            from lib.hermes_holdings_lifecycle.holdings_lifecycle import apply_manual_override
+            b = body or {}
+            symbol = b.get("symbol")
+            stage = b.get("stage")
+            reason = b.get("reason") or b.get("notes")
+            if not symbol or not stage:
+                return 400, {"ok": False, "error": "symbol and stage required"}
+            result = apply_manual_override(
+                str(symbol), str(stage), str(reason or ""), by=str(b.get("by") or "operator_ui"),
+            )
             code = 200 if result.get("ok") else 400
             return code, _json_clean(result)
         except Exception as e:

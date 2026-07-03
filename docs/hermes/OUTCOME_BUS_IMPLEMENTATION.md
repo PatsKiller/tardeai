@@ -406,7 +406,7 @@ Governor reaction thresholds can be **learned** from outcome bus history with hu
 
 See `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` for full design, CLI workflow, and validation checklist.
 
-**Closed Loop UI (2026-07-03):** `/v3/hermes` → Adaptive thresholds shows tighten/loosen badges, runner-up, holdout pass/fail, key trigger days, evaluation context, and a collapsible last-learn candidate grid (`GET /api/v2/hermes/thresholds` → `last_learn.snapshots`).
+**Closed Loop UI (2026-07-03):** `/v3/hermes` → Adaptive thresholds shows tighten/loosen badges, runner-up, holdout pass/fail, key trigger days, evaluation context, collapsible last-learn candidate grid, and **proposal history** (`decided_proposals` + `recent_audit`). **Watchlist lifecycle** and **Holdings lifecycle** sections read `watchlist_lifecycle` / `holdings-lifecycle` APIs.
 
 ---
 
