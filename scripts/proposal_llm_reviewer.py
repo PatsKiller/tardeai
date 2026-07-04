@@ -265,7 +265,10 @@ def review_proposal(conn, proposal_id):
         try: stock_history = json.loads(stock_history)
         except Exception: stock_history = {}
 
-    # Try LLM
+    # Try LLM — first release the proposal-SELECT txn: the chunked review below runs 4-5
+    # generations (minutes) and an open txn dies at PG's 120s idle-in-transaction kill,
+    # taking the conn (and every status write after it) along.
+    conn.commit()
     generate_fn = _get_llm()
     review = None
     model = "deterministic_fallback"

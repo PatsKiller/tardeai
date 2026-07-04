@@ -59,7 +59,12 @@ def fetch_queue(conn, limit=2, proposal_id=None):
             ORDER BY priority ASC, queued_at ASC
             LIMIT %s
         """, [limit])
-    return [dict(r) for r in cur.fetchall()]
+    rows = [dict(r) for r in cur.fetchall()]
+    # Release the read txn — the caller waits minutes on the LLM gate + Ollama warmup before
+    # touching the DB again, and PG kills idle-in-transaction at 120s (took the whole run down:
+    # the first status UPDATE died with "SSL connection has been closed unexpectedly").
+    conn.commit()
+    return rows
 
 
 def process_one(conn, queue_row, dry_run=False):
