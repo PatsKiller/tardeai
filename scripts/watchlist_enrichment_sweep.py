@@ -127,9 +127,10 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
                 cur.execute("""UPDATE watchlist_items SET
                                  rsi=%s, trend=%s, score=COALESCE(%s, score), setup_advisory=%s,
                                  price=%s, change_pct=%s, float_m=%s, rvol=%s,
+                                 first_seen_price=COALESCE(first_seen_price, %s),
                                  watch_score_kind=%s, last_enriched_at=NOW(), updated_at=NOW()
                                WHERE symbol=%s AND status IN ('active','researched')""",
-                            (rsi, trend, score, advisory, price, chg, floatm, rvol, score_kind, sym))
+                            (rsi, trend, score, advisory, price, chg, floatm, rvol, price, score_kind, sym))
                 if cur.rowcount:
                     enriched += 1
             except Exception as e:

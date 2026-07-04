@@ -54,6 +54,32 @@ def _held_stock_symbols():
     return sorted({r[0] for r in cur.fetchall()})
 
 
+def _watchlist_top_symbols(n: int):
+    """Hermes-top-N watchlist stocks — the set the watch page actually renders (card layer
+    shows 'Next earnings <date>' from symbol_profiles.next_earnings_date)."""
+    cur = _conn().cursor()
+    cur.execute("""SELECT DISTINCT upper(symbol) FROM watchlist_items
+                   WHERE status IN ('active','researched')
+                     AND hermes_rank IS NOT NULL AND hermes_rank <= %s
+                     AND symbol ~ '^[A-Z]{1,5}$'""", (n,))
+    return sorted({r[0] for r in cur.fetchall()})
+
+
+def _needs_refresh(symbols, stale_days: int):
+    """Earnings dates move rarely — only refetch rows that are missing, stale, or past-dated."""
+    if not symbols:
+        return []
+    cur = _conn().cursor()
+    cur.execute("""SELECT upper(symbol) FROM symbol_profiles
+                   WHERE upper(symbol) = ANY(%s)
+                     AND earnings_updated_at IS NOT NULL
+                     AND earnings_updated_at > NOW() - (%s || ' days')::interval
+                     AND (next_earnings_date IS NULL OR next_earnings_date >= CURRENT_DATE)""",
+                (symbols, str(stale_days)))
+    fresh = {r[0] for r in cur.fetchall()}
+    return [s for s in symbols if s not in fresh]
+
+
 def _fnum(v):
     try:
         f = float(v)
@@ -87,9 +113,20 @@ def _extract(ed):
     return next_d, last, est, act, sur
 
 
-def run(symbols=None, apply=True):
+def run(symbols=None, apply=True, watchlist_top=200, stale_days=3):
+    """Default scope = held stocks + Hermes-top-N watchlist (card layer needs next_earnings_date
+    on the symbols operators actually view — was held-only, leaving 181/200 cards without a date).
+    Staleness filter keeps the daily yfinance call count near the churn, not the universe."""
     ensure_columns()
-    syms = symbols or _held_stock_symbols()
+    if symbols:
+        syms = symbols
+    else:
+        syms = sorted(set(_held_stock_symbols()) | set(_watchlist_top_symbols(watchlist_top)))
+        skipped = len(syms)
+        syms = _needs_refresh(syms, stale_days)
+        skipped -= len(syms)
+        if skipped:
+            print(f"  [earnings] {skipped} symbols fresh (<{stale_days}d) — skipped")
     import yfinance as yf, time as _t
     conn = _conn(); cur = conn.cursor()
     done, out = 0, []
@@ -123,9 +160,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--symbols")
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--watchlist-top", type=int, default=200, help="include Hermes top-N watchlist symbols (0 = held only)")
+    ap.add_argument("--stale-days", type=int, default=3, help="skip symbols refreshed within N days")
     a = ap.parse_args()
     syms = [x.strip().upper() for x in a.symbols.split(",")] if a.symbols else None
-    print(json.dumps(run(symbols=syms, apply=not a.dry), indent=2, default=str))
+    print(json.dumps(run(symbols=syms, apply=not a.dry, watchlist_top=a.watchlist_top, stale_days=a.stale_days), indent=2, default=str))
 
 
 if __name__ == "__main__":
