@@ -20,6 +20,17 @@ done
 # --- safe env load (no eval of arbitrary lines) ---
 load_env() {
   if [ -f "$PROJ/.env" ]; then
+    # Pre-flight in a throwaway subshell: a corrupted .env (e.g. an unquoted cookie paste with
+    # semicolons, 2026-07-03) is FATAL under the caller's `set -euo pipefail`, and the old
+    # 2>/dev/null made that death silent — the backup and daily cadences both failed with only
+    # a START line logged. Fail LOUDLY with a distinct exit code instead.
+    # NB: must be a separate bash PROCESS — `set -e` is suppressed inside an if-condition
+    # subshell, so an in-shell probe would always pass.
+    if ! bash -c 'set -euo pipefail; set -a; . "$1"; set +a' _ "$PROJ/.env" >/dev/null 2>"$PROJ/logs/env_source_error.txt"; then
+      echo "[FATAL] $PROJ/.env failed to source — file is corrupted (see logs/env_source_error.txt). Refusing to run." >&2
+      return 78   # EX_CONFIG
+    fi
+    rm -f "$PROJ/logs/env_source_error.txt"
     set -a
     # shellcheck disable=SC1090
     . "$PROJ/.env" 2>/dev/null || true
