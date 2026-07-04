@@ -1726,7 +1726,7 @@ CRITICAL INSTRUCTIONS:
                                 ON CONFLICT (id) DO NOTHING""",
                              (f"synretry-{symbol}-{_dtt.now(_tzz.utc).strftime('%Y%m%d%H%M%S')}", symbol))
                 # Keep the synthesis gate open for the retry — run_synthesis skips 'completed' maturity.
-                cur2.execute("""UPDATE watchlist_analysis_maturity SET final_synthesis_status='pending', updated_at=now()
+                cur2.execute("""UPDATE watchlist_analysis_maturity SET final_synthesis_status='pending', analysis_stage='specialist_review_complete', updated_at=now()
                                 WHERE symbol=%s AND final_synthesis_status='completed'""", (symbol,))
                 conn.commit()
                 print(f"  [synthesis] {symbol}: retry job enqueued")
