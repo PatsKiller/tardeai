@@ -32,7 +32,7 @@ PY="$PROJ/.venv/bin/python"
 gov_step() {
   local name="$1"; shift
   local start end ms rc status
-  start=$(date +%s%3N)
+  start=${EPOCHREALTIME/./}   # microseconds — uutils date ignores %3N width (emitted 19-digit nanos, overflowed int64)
   echo "  ---- step START: $name ($(_ts)) ----"
   if [ "$DRY_RUN" = "1" ]; then
     echo "    [DRY_RUN] would run: $*"
@@ -40,7 +40,7 @@ gov_step() {
   else
     if "$@"; then status="ok"; else rc=$?; status="FAILED(rc=$rc)"; overall=1; fi
   fi
-  end=$(date +%s%3N); ms=$((end-start))
+  end=${EPOCHREALTIME/./}; ms=$(( (end - start) / 1000 ))
   echo "  ---- step END: $name status=$status ${ms}ms ----"
   STEP_NAMES+=("$name"); STEP_STATUS+=("$status"); STEP_MS+=("$ms")
   return 0   # never cascade
