@@ -105,7 +105,14 @@ def _is_blocked(conn, content_type: str, content_id: str) -> bool:
         "SELECT 1 FROM blocked_content WHERE content_type=%s AND content_id=%s LIMIT 1",
         (content_type, content_id)
     )
-    return cur.fetchone() is not None
+    blocked = cur.fetchone() is not None
+    # End the read txn — callers do slow fetch/LLM work next, and an open transaction
+    # is killed at idle_in_transaction_session_timeout=120s (top offender, 2026-07-04 audit).
+    try:
+        conn.commit()
+    except Exception:
+        pass
+    return blocked
 
 
 def _block_content(conn, content_type: str, content_id: str, title: str,

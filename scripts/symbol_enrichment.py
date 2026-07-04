@@ -210,6 +210,15 @@ def fetch_finviz_deep(symbol: str) -> Optional[dict]:
 # TIER 2 — FREE ON-DEMAND SOURCES
 # ─────────────────────────────────────────────
 
+def _report_source(key: str, ok: bool, rows=None, error=None) -> None:
+    """Passive liveness ping into data_source_health (see lib/data_source_report)."""
+    try:
+        from lib.data_source_report import report_source
+        report_source(key, ok, rows=rows, error=error)
+    except Exception:
+        pass
+
+
 def _insert_news_article(cur, title: str, url: str, symbol: str, source: str, quality: int) -> bool:
     """Insert into news_articles using the canonical schema (source_url/relevance_score).
 
@@ -237,7 +246,9 @@ def pull_sec_edgar(symbol: str, conn) -> int:
             'forms': '8-K,S-1,S-3,424B1,424B3,424B5',
         }, headers={'User-Agent': 'TradeAI/1.0 (john@jwwhiting.com)'}, timeout=10)
         if resp.status_code != 200:
+            _report_source('sec_edgar', False, error=f'HTTP {resp.status_code}')
             return 0
+        _report_source('sec_edgar', True)
         hits = resp.json().get('hits', {}).get('hits', [])
         if not hits:
             return 0
@@ -353,7 +364,9 @@ def pull_finnhub_news(symbol: str, conn) -> int:
                f"?symbol={symbol}&from={from_date}&to={to_date}&token={api_key}")
         resp = requests.get(url, timeout=8)
         if resp.status_code != 200:
+            _report_source('finnhub', False, error=f'HTTP {resp.status_code}')
             return 0
+        _report_source('finnhub', True)
         articles = resp.json()
         if not isinstance(articles, list):
             return 0
@@ -391,7 +404,9 @@ def search_youtube(symbol: str, conn) -> dict:
             'relevanceLanguage': 'en',
         }, timeout=10)
         if resp.status_code != 200:
+            _report_source('youtube_api', False, error=f'HTTP {resp.status_code}')
             return result
+        _report_source('youtube_api', True)
         videos = resp.json().get('items', [])
         result['videos_found'] = len(videos)
         cur = conn.cursor()
@@ -466,9 +481,12 @@ def pull_brave_aplus(symbol: str, score: int, conn) -> bool:
             headers={'Accept': 'application/json', 'X-Subscription-Token': brave_key},
             params={'q': f'{symbol} stock news', 'count': 5, 'freshness': 'pd'}, timeout=10)
         if resp.status_code in (402, 429):
+            _report_source('brave_search', False, error=f'HTTP {resp.status_code} (budget/rate-limit)')
             return False
         if resp.status_code != 200:
+            _report_source('brave_search', False, error=f'HTTP {resp.status_code}')
             return False
+        _report_source('brave_search', True)
         results = resp.json().get('results', [])
         added = 0
         for r in results:

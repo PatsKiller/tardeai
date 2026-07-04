@@ -410,6 +410,13 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
             source_counts[a["source"]] = source_counts.get(a["source"], 0) + 1
             total_new += 1
         total_scanned += 1
+        # Commit per symbol: the next iteration starts with 3-4 network fetches, and an
+        # open transaction idling through them is killed at 120s — losing this symbol's
+        # inserts and spamming "current transaction is aborted" (2026-07-04 audit, #2 offender).
+        try:
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
     return {
         "scanned": total_scanned,

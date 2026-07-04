@@ -111,6 +111,12 @@ def ingest_yfinance_quotes(symbols: list = None) -> dict:
     conn.commit()
     conn.close()
     print(f"[yfinance] Fetched {fetched}/{len(symbols)} quotes")
+    try:
+        from lib.data_source_report import report_source
+        report_source("yahoo_finance", fetched > 0, rows=fetched,
+                      error=None if fetched else f"0/{len(symbols)} quotes fetched")
+    except Exception:
+        pass
     return {"source": "yfinance", "fetched": fetched, "total": len(symbols)}
 
 
