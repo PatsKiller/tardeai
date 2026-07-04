@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { AgeChip } from './primitives/cardPrimitives'
 import HoldingProtectionActions from './HoldingProtectionActions'
 import { mergeLiveStop } from '../lib/stopReviewTooltip'
 import { EvidenceBlock } from './EvidenceBlock'
@@ -110,9 +111,9 @@ function ReasonsSubRow({ r }: { r: Row }) {
       )}
       {(advAge != null || healthAge != null || (r.next_earnings_date && !earnSoon)) && (
         <div style={{ marginTop: 3, fontSize: 10 }}>
-          {advAge != null && <span style={advAge > 48 ? { color: AMBER, fontWeight: 700 } : undefined}>stop advisory {ageLabel(advAge)} old{advAge > 48 ? ' ⚠' : ''}</span>}
+          {advAge != null && <AgeChip ts={r.rec_at} prefix="stop advisory" warnAfterHours={48} />}
           {advAge != null && healthAge != null && ' · '}
-          {healthAge != null && <span style={healthAge > 72 ? { color: AMBER, fontWeight: 700 } : undefined}>health check {ageLabel(healthAge)} old{healthAge > 72 ? ' ⚠' : ''}</span>}
+          {healthAge != null && <AgeChip ts={r.holdings_llm_at} prefix="health check" warnAfterHours={72} />}
           {(advAge != null || healthAge != null) && r.next_earnings_date && !earnSoon && ' · '}
           {r.next_earnings_date && !earnSoon && earnDays != null && earnDays > 0 && <span>earnings in {earnDays}d</span>}
         </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { TrustLine } from './primitives/cardPrimitives'
 import BrokerIntelPanel from './BrokerIntelPanel'
 import BrokerAccountPicker, { type BrokerAccount } from './BrokerAccountPicker'
 import ThesisValidityBar from './ThesisValidityBar'
@@ -333,15 +334,7 @@ export default function BrokerProposalCard({
           )}
         </div>
 
-        {trustBits.length > 0 && (
-          <div style={{ fontSize: 11, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
-            {trustBits.map((b, i) => (
-              <span key={i} style={b.amber ? { color: AMBER, fontWeight: 700 } : undefined}>
-                {i > 0 ? ' · ' : ''}{b.text}
-              </span>
-            ))}
-          </div>
-        )}
+        <TrustLine bits={trustBits} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
           <ProposalStrategyBadge proposal={{ ...p, strategy_display_name: tickerCtx.strategyDisplay, strategy_description: tickerCtx.strategyPurpose }} size="md" />
           <GradeSplitPills gradeSplit={p.grade_split} size="md" />
