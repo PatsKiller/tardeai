@@ -161,6 +161,9 @@ def review_proposal(conn, p, generate_fn, dry_run=False):
     if generate_fn and det_state not in ("BLOCKED_BY_RISK_GATE",):
         try:
             prompt = _build_review_prompt(p, det_state, det_score)
+            # Close any open read txn before the LLM call — held txns die at PG's 120s
+            # idle-in-transaction kill and take the conn (and the INSERT below) with them.
+            conn.commit()
             raw = generate_fn(prompt, timeout=90, fallback=False, fast=True)
             if raw:
                 try:
