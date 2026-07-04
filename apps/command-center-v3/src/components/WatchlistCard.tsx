@@ -20,6 +20,7 @@ import {
   type CardActionType,
 } from '../lib/watchlistCardAction'
 import { WL, heroStateStyle, verdictWord, numStyle } from '../lib/watchlistCardTokens'
+import { LadderLine, VerdictBanner } from './primitives/cardPrimitives'
 import { type ProposalAccount, type RiskPct } from '../lib/watchlistProposeSizing'
 import { EvidenceBlock } from './EvidenceBlock'
 import FibConfluencePanel from './FibConfluencePanel'
@@ -390,71 +391,19 @@ export default function WatchlistCard({
         </div>
       </div>
 
-      {/* ② Status banner — one line, the only tinted element */}
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          margin: '0 16px 10px',
-          borderRadius: 7,
-          padding: '8px 14px',
-          background: heroState.bg,
-          border: `1px solid ${heroState.border}`,
-          display: 'flex',
-          gap: 12,
-          alignItems: 'center',
-          minWidth: 0,
-          flexWrap: 'wrap',
-        }}
-      >
-        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.11em', color: heroState.accent, whiteSpace: 'nowrap' }}>
-          {verdictWord(action.verdict)}
-        </span>
-        <span style={{ fontSize: 14.5, fontWeight: 800, whiteSpace: 'nowrap' }}>{action.heroText}</span>
-        {whyLine ? (
-          <span
-            title={[whyLine, action.detail].filter(Boolean).join('\n')}
-            style={{ fontSize: 11, color: WL.text.secondary, flex: 1, minWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          >{whyLine}</span>
-        ) : <span style={{ flex: 1 }} />}
-        {rr != null && hasPlan && (
-          <span title={rrTooltip(entry, stop, planTarget, rr)} style={{ ...numStyle, fontSize: 12, fontWeight: 800, color: rrColor(rr), whiteSpace: 'nowrap' }}>{rr.toFixed(1)}R</span>
-        )}
-        {action.allowPrimary && (
-          <button onClick={handlePrimary} style={{ ...buttonStyle(action.buttonVariant, true), fontWeight: 800 }}>{action.primaryLabel}</button>
-        )}
-        {inlineSecondary && (
-          <button onClick={e => executeAction(e, inlineSecondary.type)} style={buttonStyle('neutral', true)}>
-            {inlineSecondary.label}
-          </button>
-        )}
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }}
-            title="More actions"
-            style={{ ...buttonStyle('neutral', true), minWidth: 0, fontWeight: 800 }}
-          >•••</button>
-          {menuOpen && (
-            <div style={{
-              position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 30,
-              background: '#16202f', border: `1px solid ${WL.surface.edge}`, borderRadius: 8,
-              boxShadow: '0 10px 28px rgba(0,0,0,.4)', minWidth: 160, padding: 4,
-              display: 'flex', flexDirection: 'column',
-            }}>
-              {menuItems.map(m => (
-                <button
-                  key={m.label}
-                  onClick={e => executeAction(e, m.type)}
-                  style={{
-                    fontSize: 11.5, fontWeight: 600, color: WL.text.secondary, textAlign: 'left',
-                    background: 'transparent', border: 'none', cursor: 'pointer',
-                    padding: '7px 10px', borderRadius: 5, whiteSpace: 'nowrap',
-                  }}
-                >{m.label}</button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* ② Status banner — one line, the only tinted element (shared VerdictBanner primitive) */}
+      <VerdictBanner
+        verdict={action.verdict}
+        urgency={action.urgency}
+        heroText={action.heroText}
+        whyLine={whyLine || null}
+        whyTitle={[whyLine, action.detail].filter(Boolean).join('\n')}
+        chip={rr != null && hasPlan ? { text: `${rr.toFixed(1)}R`, color: rrColor(rr), tooltip: rrTooltip(entry, stop, planTarget, rr) } : null}
+        primary={action.allowPrimary ? { label: action.primaryLabel, onClick: handlePrimary, style: buttonStyle(action.buttonVariant, true) } : null}
+        secondary={inlineSecondary ? { label: inlineSecondary.label, onClick: (e) => executeAction(e, inlineSecondary.type), style: buttonStyle('neutral', true) } : null}
+        menuItems={menuItems.map(m => ({ label: m.label, onClick: (e) => executeAction(e, m.type) }))}
+        menuButtonStyle={buttonStyle('neutral', true)}
+      />
 
       {/* ③ Trade plan ⟷ Sizing & account risk */}
       <div className="wlc-grid" onClick={e => e.stopPropagation()}>
@@ -498,19 +447,7 @@ export default function WatchlistCard({
             </div>
           )}
           {ladder && (
-            <div style={{ ...numStyle, fontSize: 11.5, color: WL.text.secondary, marginTop: 7 }}>
-              {ladder.steps.map((s, i) => {
-                const short = s.label.split(' ')[0]
-                const active = i === focusIdx
-                return (
-                  <span key={i} title={ladderStepTooltip(s.label, s.px, s.action)} style={{ marginRight: 12 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: active ? WL.signal.amber : WL.text.dim, marginRight: 4 }}>{short}</span>
-                    {s.px.toFixed(2)}
-                  </span>
-                )
-              })}
-              <span style={{ fontFamily: 'inherit', fontSize: 10, color: WL.text.dim, fontVariantNumeric: 'normal' }}>⅓/⅓/runner · +1R → stop to breakeven</span>
-            </div>
+            <LadderLine steps={ladder.steps} focusIdx={focusIdx} stepTooltip={ladderStepTooltip} />
           )}
           {planNote && (
             <div style={{ marginTop: 6, fontSize: 10.5, color: planNote.color === '#ef5350' ? WL.signal.red : WL.signal.amber, lineHeight: 1.45 }}>
