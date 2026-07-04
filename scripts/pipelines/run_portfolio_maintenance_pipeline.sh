@@ -49,14 +49,14 @@ overall=0
 pm_step() {
   local name="$1" label="$2"; shift 2
   local start end ms status
-  start=$(date +%s%3N)
+  start=${EPOCHREALTIME/./}   # microseconds — uutils date ignores %3N width (emitted 19-digit nanos, overflowed int64)
   echo "  ---- step START: $name [$label] ($(_ts)) ----"
   if [ "$DRY_RUN" = "1" ]; then
     echo "    [DRY_RUN] would run: $*"; status="dry_run"
   else
     if "$@"; then status="ok"; else local rc=$?; status="FAILED(rc=$rc)"; overall=1; fi
   fi
-  end=$(date +%s%3N); ms=$((end-start))
+  end=${EPOCHREALTIME/./}; ms=$(( (end - start) / 1000 ))
   echo "  ---- step END: $name status=$status ${ms}ms ----"
   STEP_NAMES+=("$name"); STEP_STATUS+=("$status"); STEP_MS+=("$ms"); STEP_LABEL+=("$label")
   return 0
