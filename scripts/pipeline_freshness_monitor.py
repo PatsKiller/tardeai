@@ -68,15 +68,34 @@ def _age_days_file(relpath):
     return (time.time() - p.stat().st_mtime) / 86400.0
 
 
+def _market_closure_grace_days():
+    """Consecutive non-trading days (weekend/holiday) ending today. Daily pipelines only advance on
+    trading days, so thresholds get this many extra days — house convention (see health_agent
+    collect_data_quality): weekend-stale is excused and escalates naturally once trading resumes
+    and the gap drops back to 0. E.g. Sat 2026-07-04 after the Fri Jul-3 holiday → grace 2."""
+    try:
+        from datetime import datetime, timedelta
+        from market_session import is_trading_day
+        d, grace = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0), 0
+        while grace < 14 and not is_trading_day(d):
+            grace += 1
+            d -= timedelta(days=1)
+        return grace
+    except Exception:
+        return 0
+
+
 def check():
     stale, missing, ok = [], [], []
+    grace = _market_closure_grace_days()
     for name, kind, spec, default_thr, surfaced in REGISTRY:
-        thr = float(os.getenv(f"PIPELINE_FRESHNESS_{name.upper()}_DAYS", str(default_thr)))
+        thr = float(os.getenv(f"PIPELINE_FRESHNESS_{name.upper()}_DAYS", str(default_thr))) + grace
         age = _age_days_table(*spec) if kind == "table" else _age_days_file(spec)
         if age is None:
             missing.append({"name": name, "surfaced": surfaced, "reason": "no output / table/file absent"})
         elif age > thr:
-            stale.append({"name": name, "age_days": round(age, 1), "threshold_days": thr, "surfaced": surfaced})
+            stale.append({"name": name, "age_days": round(age, 1), "threshold_days": thr, "surfaced": surfaced,
+                          **({"grace_days": grace} if grace else {})})
         else:
             ok.append({"name": name, "age_days": round(age, 1)})
     return stale, missing, ok
