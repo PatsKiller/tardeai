@@ -23680,10 +23680,11 @@ def _proposal_accounts(query=None):
             "cash_source": sizing_src,
             "balances_status": live.get("balances_status") or ("ok" if sizing_base else "unavailable"),
             "sizing_ready": bool(sizing_base and sizing_base > 0),
-            # Per-account deployment cap — the SAME number the backend generator/risk-gate enforce
-            # (account_automation_policies.max_position_allocation_pct); env/20 stays the fallback
-            # in sizing_policy so the card, modal, and auto-proposals can never disagree.
-            "max_deploy_pct_of_cash": (ap.load_policy(ak) or {}).get("max_position_allocation_pct") or None,
+            # Per-account position cap — the SAME number the backend generator/risk-gate enforce.
+            # UNITS MATTER (bug caught live 2026-07-03): max_position_allocation_pct is a percent
+            # of EQUITY in compute_sizing, not of cash — applying 3% to cash capped every card at
+            # ~$6.6k instead of the intended ~3% of account equity. Named accordingly.
+            "max_position_pct_of_equity": (ap.load_policy(ak) or {}).get("max_position_allocation_pct") or None,
         })
 
     accounts.sort(key=lambda a: (

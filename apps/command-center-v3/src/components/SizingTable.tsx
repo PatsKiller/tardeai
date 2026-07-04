@@ -106,10 +106,10 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
   const sized = rows.map(x => {
     // Per-account cap: the account's own backend policy number (max_position_allocation_pct)
     // wins; the desk-wide fallback only fills in when no policy row exists.
-    const cap = deployCapFor(x.a, maxDeployPctOfCash ?? 20)
+    const cap = deployCapFor(x.a, maxDeployPctOfCash ?? 20)   // {dollars, label} — policy %-of-equity wins
     const pos = computeRiskSizedShares({
       sizingBase: x.base, equity: resolveEquity(x.a), entry: entry!, stop: stop!,
-      target: target ?? entry!, riskPct, maxDeployPctOfCash: cap,
+      target: target ?? entry!, riskPct, maxDeployDollars: cap?.dollars,
     })
     const rawBudgetShares = Math.floor((x.base * riskPct / 100) / rps)
     const deployPct = x.base > 0 ? (pos.investment / x.base) * 100 : 0
@@ -160,7 +160,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
                 ) : (
                   <>
                     <td style={cell} title={
-                      r.pos.concentrationCapped ? `capped by the ${r.cap}% deployment (concentration) limit`
+                      r.pos.concentrationCapped ? `capped by the position limit: ${r.cap?.label} ($${((r.cap?.dollars ?? 0) / 1000).toFixed(1)}k)`
                         : r.cashCapped ? `cash-capped from the ${riskPct}% risk budget` : undefined
                     }>
                       {r.pos.shares.toLocaleString()}{r.pos.concentrationCapped || r.cashCapped ? ' ⚠' : ''}
@@ -194,7 +194,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
         {riskPct}% = max loss if stopped (${rps.toFixed(2)}/sh) — not capital deployed
         {eqPct != null && Number.isFinite(eqPct) ? ` · ≈${eqPct.toFixed(2)}% of total equity` : ''}
         {riskPct === 2 ? <span style={{ color: WL.signal.amber, fontWeight: 700 }}> · 2% = desk max</span> : ''}
-        {anyConcCapped ? ` · deploy cap ${sized.find(r => r.pos.concentrationCapped)?.cap}% of cash` : ''}
+        {anyConcCapped ? ` · position cap ${sized.find(r => r.pos.concentrationCapped)?.cap?.label}` : ''}
         {volNote && (
           <span style={{ color: WL.signal.amber, fontWeight: 700 }} title="Stop distance is wider than the normal band — same $ risk buys fewer shares; consider reducing effective risk %">
             {' '}· wide stop ({volNote.stopPct.toFixed(1)}%) — consider {volNote.suggestPct}% risk

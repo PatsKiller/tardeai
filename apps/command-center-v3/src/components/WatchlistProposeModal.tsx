@@ -6,7 +6,7 @@ import {
   deployCapFor,
   sizingFromShares,
   exceedsMaxRisk,
-  exceedsDeployCap,
+  exceedsDeployDollars,
   acctOptionLabel,
   resolveSizingBase,
   resolveEquity,
@@ -104,9 +104,9 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
     if (!entry || !stop || !planTarget || entry <= stop || planTarget <= entry || sizingBase <= 0) return null
     return computeRiskSizedShares({
       sizingBase, equity, entry, stop, target: planTarget, riskPct,
-      maxDeployPctOfCash: deployCap,
+      maxDeployDollars: deployCap?.dollars,
     })
-  }, [sizingBase, equity, entry, stop, planTarget, riskPct, deployCap])
+  }, [sizingBase, equity, entry, stop, planTarget, riskPct, deployCap?.dollars])
 
   useEffect(() => {
     if (sharesTouched || !autoSized?.shares) return
@@ -125,7 +125,7 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
   const overMaxRisk = sized ? exceedsMaxRisk(sized.pctOfCash) : false
   const overCash = sized?.exceedsCash ?? false
   // Desk concentration limit — HARD cap, no confirm-around (unlike risk/cash which are overridable).
-  const overDeploy = sized ? exceedsDeployCap(sized.investment, sizingBase, deployCap) : false
+  const overDeploy = sized ? exceedsDeployDollars(sized.investment, deployCap) : false
   const needsRiskConfirm = overMaxRisk && !confirmOverRisk
   const needsCashConfirm = overCash && !confirmOverCash
   const needsConfirm = needsRiskConfirm || needsCashConfirm
@@ -154,7 +154,7 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
       return
     }
     if (overDeploy) {
-      setMsg(`⛔ Deployment exceeds the desk concentration cap (${deployCap}% of available cash per position) — reduce size. Hard limit, no override.`)
+      setMsg(`⛔ Deployment exceeds the desk concentration cap (${deployCap?.label} per position) — reduce size. Hard limit, no override.`)
       return
     }
     if (needsRiskConfirm) {
