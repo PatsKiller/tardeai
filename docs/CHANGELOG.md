@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-03 - Plan drift re-validation: incoherent/drifted entry plans rebuild themselves
+
+Audit found SSTK carrying a "validated" plan (limit 13.50 / target 13.20) with the stock at
+9.80 — stored R:R meaningless. Card decision matrix gains two FIX states ranked ABOVE the R:R
+branches: target <= limit → red "Rebuild plan · target <= limit"; |price − limit| > 15% →
+amber "Rebuild plan · price ±N% from limit" (both route to Build Plan).
+scripts/plan_drift_revalidator.py sweeps Hermes-top-250 nightly (17:25, before the 17:35
+planner run) and re-plans defective symbols through watchlist_entry_planner (env
+PLAN_DRIFT_REPLAN_PCT=15, PLAN_DRIFT_MIN_AGE_H=20, cap 25/run). First dry-run: 25 defective
+plans including 3 incoherent (NOC, SSTK, BTU).
+
 ## 2026-07-03 - Market calendar computed for any year; gate skips logged, fail-open
 
 market_session.py now computes NYSE holidays/early-closes algorithmically (Rule 7.2

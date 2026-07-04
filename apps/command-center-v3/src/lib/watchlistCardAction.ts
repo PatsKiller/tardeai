@@ -9,6 +9,10 @@ export function watchlistNeedsRefresh(it: any, stale: boolean) {
   })
 }
 
+/** Price this far (%) from the plan limit = the plan's levels are stale — rebuild before acting.
+ *  Mirrors PLAN_DRIFT_REPLAN_PCT in scripts/plan_drift_revalidator.py (nightly auto re-plan). */
+export const PLAN_DRIFT_PCT = 15
+
 export type ActionUrgency = 'none' | 'amber' | 'green' | 'red'
 
 export type CardVerdict = 'READY' | 'WAIT' | 'SKIP' | 'STALE' | 'FIX' | 'BUILD' | 'WATCH'
@@ -134,6 +138,31 @@ export function deriveRecommendedAction(args: {
       primaryLabel: 'Adjust Plan',
       buttonVariant: 'outline-red',
       warning: { text: 'No stop on plan — risk undefined', severity: 'red' },
+    })
+  }
+
+  // Stale-plan defects — MUST rank above the R:R branches: the stored entry_rr was computed at
+  // plan time and is meaningless once the plan is incoherent or the price has left the zone
+  // (SSTK audit 2026-07-03: limit $13.50 / target $13.20 / price $9.80 still showed "1.3R").
+  const planTargetNum = it.entry_target != null ? Number(it.entry_target) : null
+  if (hasPlan && entry != null && planTargetNum != null && planTargetNum <= entry) {
+    return action('BUILD_PLAN', 'FIX', 'Rebuild plan · target ≤ limit', {
+      subtext: 'Plan incoherent — stale levels',
+      urgency: 'red',
+      primaryLabel: 'Rebuild Plan',
+      buttonVariant: 'outline-red',
+      warning: { text: `Plan incoherent — target ${planTargetNum.toFixed(2)} at/below limit ${entry.toFixed(2)}; auto re-plan queues nightly`, severity: 'red' },
+    })
+  }
+  const priceNum = it.price != null ? Number(it.price) : null
+  const driftPct = hasPlan && entry && priceNum ? Math.abs(priceNum / entry - 1) * 100 : null
+  if (driftPct != null && driftPct > PLAN_DRIFT_PCT) {
+    return action('BUILD_PLAN', 'FIX', `Rebuild plan · price ${priceNum! < entry! ? '−' : '+'}${driftPct.toFixed(0)}% from limit`, {
+      subtext: 'Price left the planned zone',
+      urgency: 'amber',
+      primaryLabel: 'Rebuild Plan',
+      buttonVariant: 'outline-amber',
+      warning: { text: `Price ${money(priceNum)} is ${driftPct.toFixed(0)}% from the plan limit ${money(entry)} — levels are stale; auto re-plan queues nightly`, severity: 'amber' },
     })
   }
 
