@@ -273,7 +273,7 @@ def reconcile(apply_fixes=False, apply_oco_retrofit=False):
             issues.append({"type": "OCO_AUTOBRACKET_ERROR", "severity": "LOW", "symbol": "-",
                            "detail": f"auto-bracket pass failed: {str(e)[:120]}"})
 
-    return {
+    result = {
         "timestamp": datetime.now().isoformat(),
         "alpaca_count": len(alpaca_pos),
         "db_open_count": len(db_trades),
@@ -283,6 +283,50 @@ def reconcile(apply_fixes=False, apply_oco_retrofit=False):
                             "skipped": len(oco.get("skipped", [])), "errors": oco.get("errors", 0)},
         "by_severity": {s: sum(1 for i in issues if i["severity"] == s) for s in ("HIGH","MEDIUM","LOW")},
     }
+    _persist_reconciliation(conn, result)
+    return result
+
+
+def _persist_reconciliation(conn, result):
+    """Persist run findings to broker_reconciliation_runs/_items so the TradingHub
+    Broker Recon tab shows LIVE data (2026-07-04 hub audit: the table had been dead
+    since May 12 — the reconciler only logged to file). A clean run writes a single
+    ALL_MATCHED row so freshness is visible even with zero issues. 30-day retention."""
+    try:
+        # The reconcile pass closes its connection before returning — use a fresh one.
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO broker_reconciliation_runs
+                       (broker, run_status, positions_seen, trades_matched,
+                        unmatched_broker_orders, unmatched_local_trades)
+                       VALUES ('alpaca_paper', 'completed', %s, %s, %s, %s) RETURNING id""",
+                    (result.get("alpaca_count", 0), result.get("db_open_count", 0),
+                     sum(1 for i in result.get("issues", []) if i.get("type") == "ORPHAN_BROKER"),
+                     sum(1 for i in result.get("issues", []) if i.get("type") == "PHANTOM_DB")))
+        run_id = cur.fetchone()[0]
+        issues = result.get("issues") or []
+        for i in issues:
+            cur.execute("""INSERT INTO broker_reconciliation_items
+                           (run_id, broker, symbol, paper_trade_id, reconciliation_state,
+                            issue_code, severity, payload)
+                           VALUES (%s, 'alpaca_paper', %s, %s, %s, %s, %s, %s)""",
+                        (run_id, i.get("symbol"), i.get("trade_id"), i.get("type"),
+                         i.get("type"), i.get("severity"),
+                         json.dumps({"detail": i.get("detail")})))
+        if not issues:
+            cur.execute("""INSERT INTO broker_reconciliation_items
+                           (run_id, broker, symbol, reconciliation_state, severity, payload)
+                           VALUES (%s, 'alpaca_paper', '*', 'ALL_MATCHED', 'INFO', %s)""",
+                        (run_id, json.dumps({"detail": f"clean run — {result.get('alpaca_count', 0)} "
+                                             f"positions matched"})))
+        cur.execute("DELETE FROM broker_reconciliation_items WHERE created_at < now() - interval '30 days' AND run_id <> %s", (run_id,))
+        conn.commit()
+    except Exception as e:
+        log(f"WARN: reconciliation persist failed: {str(e)[:120]}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
 
 
 def main():
