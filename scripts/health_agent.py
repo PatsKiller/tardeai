@@ -2035,9 +2035,45 @@ def persist(snapshot: dict, policy: dict | None = None):
         pass
 
 
+ALERT_STATE = STATE_DIR / "health_agent_alert_state.json"
+
+
+def _alert_suppressed(policy: dict, snapshot: dict) -> bool:
+    """Throttle repeat alerts: an unchanged DEGRADED re-alerted every 30-min run is noise
+    (2026-07-04: 6 identical Telegrams in an hour, doubled by a duplicate systemd timer).
+    Alert only on status change, a meaningful score drop, or a periodic heartbeat."""
+    acfg = policy.get("alert", {})
+    realert_m = float(acfg.get("min_realert_minutes", 360))
+    drop_pts = float(acfg.get("realert_on_score_drop", 5))
+    try:
+        st = json.loads(ALERT_STATE.read_text()) if ALERT_STATE.exists() else {}
+    except Exception:
+        st = {}
+    now = datetime.now(timezone.utc)
+    last_at = None
+    try:
+        last_at = datetime.fromisoformat(str(st.get("at", "")).replace("Z", "+00:00"))
+    except Exception:
+        pass
+    changed = st.get("status") != snapshot["status"]
+    worsened = snapshot["overall_score"] <= float(st.get("score", 100)) - drop_pts
+    heartbeat_due = last_at is None or (now - last_at).total_seconds() >= realert_m * 60
+    if not (changed or worsened or heartbeat_due):
+        return True
+    try:
+        ALERT_STATE.parent.mkdir(parents=True, exist_ok=True)
+        ALERT_STATE.write_text(json.dumps({"at": now.isoformat(), "status": snapshot["status"],
+                                           "score": snapshot["overall_score"]}))
+    except Exception:
+        pass
+    return False
+
+
 def alert(policy: dict, snapshot: dict):
     if snapshot["status"] not in policy.get("alert", {}).get("telegram_on_status", ["unhealthy", "degraded"]) \
             and not (snapshot["trends"] and policy.get("alert", {}).get("telegram_on_trend_drop", True)):
+        return
+    if _alert_suppressed(policy, snapshot):
         return
     icon = {"unhealthy": "🚨", "degraded": "⚠️", "healthy": "✅"}.get(snapshot["status"], "ℹ️")
     lines = [f"{icon} <b>Health Agent: {snapshot['status'].upper()} — {snapshot['overall_score']}/100</b>"]

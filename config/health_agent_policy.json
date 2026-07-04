@@ -27,11 +27,14 @@
     "code_fixes": true
   },
   "alert": {
+    "_comment": "Repeat-alert throttle (2026-07-04): identical DEGRADED alerts every 30-min run were noise. Re-alert only on status change, score drop >= realert_on_score_drop, or every min_realert_minutes heartbeat.",
     "telegram_on_status": [
       "unhealthy",
       "degraded"
     ],
-    "telegram_on_trend_drop": true
+    "telegram_on_trend_drop": true,
+    "min_realert_minutes": 360,
+    "realert_on_score_drop": 5
   },
   "history": {
     "retention_days": 90,
