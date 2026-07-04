@@ -42,17 +42,25 @@ def _get_conn():
 
 
 def embed_text(text):
-    try:
-        # 2026-06-29: 30s was too short under GPU contention (a big model loading evicts/cold-starts the
-        # embed model), causing the proposal-review worker to spin on failed embeds and hit its 12m cap.
-        # 90s rides out a transient load spike. Override with EMBED_TIMEOUT_S.
-        _t = float(os.getenv("EMBED_TIMEOUT_S", "90"))
-        r = requests.post(OLLAMA_URL, json={"model": EMBED_MODEL, "prompt": text[:2000]}, timeout=_t)
-        r.raise_for_status()
-        return r.json().get("embedding")
-    except Exception as e:
-        logger.warning(f"Embed failed: {e}")
-        return None
+    # 2026-06-29: 30s was too short under GPU contention; 2026-07-03: 90s still produced 1,874
+    # timeouts in one evening because embeds queue BEHIND gemma generations on the same GPU
+    # (each failure also killed the caller's DB connection). 180s default + one retry rides out
+    # a full generation ahead in the queue; keep_alive pins nomic-embed-text resident so the
+    # embed itself is milliseconds once scheduled. Override with EMBED_TIMEOUT_S.
+    import time as _time
+    _t = float(os.getenv("EMBED_TIMEOUT_S", "180"))
+    _ka = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+    for attempt in (1, 2):
+        try:
+            r = requests.post(OLLAMA_URL, json={"model": EMBED_MODEL, "prompt": text[:2000], "keep_alive": _ka},
+                              timeout=_t)
+            r.raise_for_status()
+            return r.json().get("embedding")
+        except Exception as e:
+            logger.warning(f"Embed failed (attempt {attempt}/2): {e}")
+            if attempt == 2:
+                return None
+            _time.sleep(2)
 
 
 def cosine_sim(a, b):
