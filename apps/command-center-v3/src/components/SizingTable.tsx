@@ -3,6 +3,7 @@ import { WL, numStyle } from '../lib/watchlistCardTokens'
 import {
   acctLabel,
   computeRiskSizedShares,
+  deployCapFor,
   resolveEquity,
   resolveSizingBase,
   volatilityRiskSuggestion,
@@ -103,9 +104,12 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
   const heldFor = (key: string) => (heldPositions ?? []).find(h => h.account === key) ?? null
   const totalEquity = rows.reduce((s, x) => s + resolveEquity(x.a), 0)
   const sized = rows.map(x => {
+    // Per-account cap: the account's own backend policy number (max_position_allocation_pct)
+    // wins; the desk-wide fallback only fills in when no policy row exists.
+    const cap = deployCapFor(x.a, maxDeployPctOfCash ?? 20)
     const pos = computeRiskSizedShares({
       sizingBase: x.base, equity: resolveEquity(x.a), entry: entry!, stop: stop!,
-      target: target ?? entry!, riskPct, maxDeployPctOfCash,
+      target: target ?? entry!, riskPct, maxDeployPctOfCash: cap,
     })
     const rawBudgetShares = Math.floor((x.base * riskPct / 100) / rps)
     const deployPct = x.base > 0 ? (pos.investment / x.base) * 100 : 0
@@ -113,6 +117,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
       key: x.a.account_key,
       name: x.a.display_name || acctLabel(x.a.account_key),
       base: x.base,
+      cap,
       pos,
       deployPct,
       tight: !pos.exceedsCash && pos.shares > 0 && deployPct > 50,
@@ -155,7 +160,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
                 ) : (
                   <>
                     <td style={cell} title={
-                      r.pos.concentrationCapped ? `capped by the ${maxDeployPctOfCash}% deployment (concentration) limit`
+                      r.pos.concentrationCapped ? `capped by the ${r.cap}% deployment (concentration) limit`
                         : r.cashCapped ? `cash-capped from the ${riskPct}% risk budget` : undefined
                     }>
                       {r.pos.shares.toLocaleString()}{r.pos.concentrationCapped || r.cashCapped ? ' ⚠' : ''}
@@ -189,7 +194,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
         {riskPct}% = max loss if stopped (${rps.toFixed(2)}/sh) — not capital deployed
         {eqPct != null && Number.isFinite(eqPct) ? ` · ≈${eqPct.toFixed(2)}% of total equity` : ''}
         {riskPct === 2 ? <span style={{ color: WL.signal.amber, fontWeight: 700 }}> · 2% = desk max</span> : ''}
-        {anyConcCapped ? ` · deploy cap ${maxDeployPctOfCash}% of cash` : ''}
+        {anyConcCapped ? ` · deploy cap ${sized.find(r => r.pos.concentrationCapped)?.cap}% of cash` : ''}
         {volNote && (
           <span style={{ color: WL.signal.amber, fontWeight: 700 }} title="Stop distance is wider than the normal band — same $ risk buys fewer shares; consider reducing effective risk %">
             {' '}· wide stop ({volNote.stopPct.toFixed(1)}%) — consider {volNote.suggestPct}% risk

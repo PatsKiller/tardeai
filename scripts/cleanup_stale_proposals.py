@@ -31,6 +31,59 @@ def get_conn():
 def log(msg):
     print(f"{datetime.now().strftime('%H:%M:%S')} [cleanup] {msg}", flush=True)
 
+
+def drift_pass(cur, conn, apply: bool) -> int:
+    """PRICE DRIFT (2026-07-03, mirrors the watchlist plan-drift rule): a PENDING proposal whose
+    live price is >PROPOSAL_DRIFT_PCT from proposed_entry has stale levels — filling it would be
+    far from the analyzed setup. Age floor 4h so normal intraday movement doesn't churn fresh
+    proposals. Quote source: finviz_quote_cache.json (the cache the repricer maintains)."""
+    import json as _json
+    import os as _os
+    drift_pct = float(_os.environ.get("PROPOSAL_DRIFT_PCT", "15"))
+    try:
+        qc = _json.loads((PROJ / "data" / "portfolios" / "state" / "finviz_quote_cache.json").read_text())
+        quotes = {k.upper(): v.get("price") for k, v in qc.items()
+                  if isinstance(v, dict) and not str(k).startswith("_")}
+    except Exception:
+        return 0
+    if not quotes:
+        return 0
+    cur.execute("""
+        SELECT id, symbol, proposed_entry, created_at
+        FROM paper_trade_proposals
+        WHERE status = 'PENDING' AND paper_trade_id IS NULL
+          AND created_at < NOW() - INTERVAL '4 hours'
+          AND proposed_entry IS NOT NULL AND proposed_entry > 0
+    """)
+    drifted = []
+    for pid, sym, entry, created in cur.fetchall():
+        try:
+            px = float(quotes.get(str(sym).upper()) or 0)
+            entry_f = float(entry)
+        except (TypeError, ValueError):
+            continue
+        if px <= 0 or entry_f <= 0:
+            continue
+        pct = abs(px - entry_f) / entry_f * 100
+        if pct > drift_pct:
+            drifted.append((pid, sym, entry_f, px, pct))
+    if not drifted:
+        return 0
+    log(f"Price-drift pass ({drift_pct:.0f}% threshold): {len(drifted)} PENDING proposal(s)")
+    for pid, sym, entry_f, px, pct in drifted:
+        log(f"  #{pid} {sym} entry {entry_f:.2f} vs live {px:.2f} ({pct:.0f}%) → price_drift")
+    if not apply:
+        return len(drifted)
+    cur.execute("""
+        UPDATE paper_trade_proposals
+        SET status = 'REJECTED', action_state = 'REJECTED',
+            action_label = 'Auto-rejected: price drifted from proposed entry',
+            updated_at = NOW()
+        WHERE id = ANY(%s) AND status = 'PENDING' AND paper_trade_id IS NULL
+    """, ([d[0] for d in drifted],))
+    conn.commit()
+    return len(drifted)
+
 def main():
     p = argparse.ArgumentParser(description="Reject stale/blocked paper proposals")
     g = p.add_mutually_exclusive_group(required=True)
@@ -56,6 +109,10 @@ def main():
         ORDER BY created_at
     """)
     stale = cur.fetchall()
+
+    drift_n = drift_pass(cur, conn, apply=args.apply)
+    if drift_n and args.dry_run:
+        log(f"DRY RUN — {drift_n} drift rejection(s) not applied.")
 
     if not stale:
         log("No stale paper proposals to clean up.")
