@@ -480,6 +480,8 @@ def _stops_management_api(query=None):
     # Earnings proximity for held symbols — a stop can gap through an earnings print, so the
     # stop surface must warn (operator-approved 2026-07-03, mirrors the watchlist/proposal flags).
     earnings_by_sym = {}
+    news_by_sym = {}
+    _held_syms = []
     try:
         _held_syms = sorted({str(x.get("symbol") or "").upper() for x in holds if not x.get("is_cash")})
         if _held_syms:
@@ -488,6 +490,25 @@ def _stops_management_api(query=None):
                     (_held_syms,)) or []):
                 if _er.get("next_earnings_date"):
                     earnings_by_sym[_er["s"]] = str(_er["next_earnings_date"])
+    except Exception:
+        pass
+    # Latest headline per held symbol (7d) — same source as the watchlist card's News line
+    # (news_articles), so the stop surface carries identical context. Failure-tolerant batch
+    # (DISTINCT ON — one cheap indexed pass), mirroring earnings_by_sym above.
+    try:
+        if _held_syms:
+            for _nr in (_db_query(
+                    """SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS s, title, source,
+                              COALESCE(published_at, created_at) AS at
+                       FROM news_articles
+                       WHERE upper(symbol) = ANY(%s)
+                         AND created_at > NOW() - INTERVAL '7 days'
+                         AND NOT COALESCE(is_duplicate, FALSE)
+                       ORDER BY upper(symbol), COALESCE(published_at, created_at) DESC""",
+                    (_held_syms,)) or []):
+                if _nr.get("title"):
+                    news_by_sym[_nr["s"]] = {"title": str(_nr["title"]), "source": _nr.get("source"),
+                                             "at": _json_clean(_nr.get("at"))}
     except Exception:
         pass
 
@@ -651,6 +672,9 @@ def _stops_management_api(query=None):
             "rec_evidence": adv.get("evidence") or [],
             "rec_data_i_doubt": adv.get("data_i_doubt"),
             "next_earnings_date": earnings_by_sym.get(sym),
+            "news_title": (news_by_sym.get(sym) or {}).get("title"),
+            "news_source": (news_by_sym.get(sym) or {}).get("source"),
+            "news_at": (news_by_sym.get(sym) or {}).get("at"),
             "stop_curation": stop_curation.get(sym),
             "holdings_llm_health": h.get("llm_health"),
             "holdings_llm_at": _json_clean(h.get("llm_at")),
