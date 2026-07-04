@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi'
 import type { Ladder } from '../lib/exitLadder'
 import {
   computeRiskSizedShares,
+  deployCapFor,
   sizingFromShares,
   exceedsMaxRisk,
   exceedsDeployCap,
@@ -96,14 +97,16 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
   const equity = resolveEquity(selAcct)
 
   const sizingPolicy = useMemo(() => parseSizingPolicy(acctR), [acctR])
+  // Per-account cap (backend policy max_position_allocation_pct) wins over the desk fallback.
+  const deployCap = deployCapFor(selAcct, sizingPolicy.maxDeployPctOfCash)
 
   const autoSized = useMemo(() => {
     if (!entry || !stop || !planTarget || entry <= stop || planTarget <= entry || sizingBase <= 0) return null
     return computeRiskSizedShares({
       sizingBase, equity, entry, stop, target: planTarget, riskPct,
-      maxDeployPctOfCash: sizingPolicy.maxDeployPctOfCash,
+      maxDeployPctOfCash: deployCap,
     })
-  }, [sizingBase, equity, entry, stop, planTarget, riskPct, sizingPolicy.maxDeployPctOfCash])
+  }, [sizingBase, equity, entry, stop, planTarget, riskPct, deployCap])
 
   useEffect(() => {
     if (sharesTouched || !autoSized?.shares) return
@@ -122,7 +125,7 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
   const overMaxRisk = sized ? exceedsMaxRisk(sized.pctOfCash) : false
   const overCash = sized?.exceedsCash ?? false
   // Desk concentration limit — HARD cap, no confirm-around (unlike risk/cash which are overridable).
-  const overDeploy = sized ? exceedsDeployCap(sized.investment, sizingBase, sizingPolicy.maxDeployPctOfCash) : false
+  const overDeploy = sized ? exceedsDeployCap(sized.investment, sizingBase, deployCap) : false
   const needsRiskConfirm = overMaxRisk && !confirmOverRisk
   const needsCashConfirm = overCash && !confirmOverCash
   const needsConfirm = needsRiskConfirm || needsCashConfirm
@@ -151,7 +154,7 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
       return
     }
     if (overDeploy) {
-      setMsg(`⛔ Deployment exceeds the desk concentration cap (${sizingPolicy.maxDeployPctOfCash}% of available cash per position) — reduce size. Hard limit, no override.`)
+      setMsg(`⛔ Deployment exceeds the desk concentration cap (${deployCap}% of available cash per position) — reduce size. Hard limit, no override.`)
       return
     }
     if (needsRiskConfirm) {

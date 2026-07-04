@@ -96,10 +96,26 @@ def main() -> int:
         print("dry run — re-run with --apply to rebuild these plans via watchlist_entry_planner")
         return 0
 
-    import watchlist_entry_planner as wep
+    # Run the planner in SUBPROCESS batches of 5 — one long in-process run dies when the DB
+    # connection idles out during LLM calls ("SSL connection has been closed unexpectedly",
+    # first --apply 2026-07-03). Fresh process per batch = fresh connection + crash isolation.
+    import subprocess
     syms = [b["symbol"] for b in bad]
-    res = wep.run(symbols=syms, limit=len(syms), alert=False)
-    print(json.dumps({"replanned": syms, "planner": {k: res.get(k) for k in ("ok", "planned", "skipped") if isinstance(res, dict) and k in res}}, indent=2, default=str))
+    py = str(Path(sys.executable))
+    planner = str(Path(__file__).resolve().parent / "watchlist_entry_planner.py")
+    results = []
+    for i in range(0, len(syms), 5):
+        batch = syms[i:i + 5]
+        try:
+            r = subprocess.run([py, planner, "--symbols", ",".join(batch), "--limit", str(len(batch))],
+                               capture_output=True, text=True, timeout=900)
+            ok = r.returncode == 0
+            results.append({"batch": batch, "ok": ok, "tail": (r.stdout or r.stderr)[-160:].strip()})
+            print(f"  batch {batch}: {'ok' if ok else f'rc={r.returncode}'}")
+        except subprocess.TimeoutExpired:
+            results.append({"batch": batch, "ok": False, "tail": "timeout 900s"})
+            print(f"  batch {batch}: TIMEOUT")
+    print(json.dumps({"replanned_batches": results}, indent=2, default=str))
     return 0
 
 

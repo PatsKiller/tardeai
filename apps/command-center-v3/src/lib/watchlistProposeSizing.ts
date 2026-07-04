@@ -16,6 +16,14 @@ export type ProposalAccount = {
   sizing_base_label?: string
   balances_status?: string
   sizing_ready?: boolean
+  /** Per-account deployment cap from account_automation_policies (backend-enforced number). */
+  max_deploy_pct_of_cash?: number | null
+}
+
+/** Effective deployment cap for an account: its own policy number, else the desk fallback. */
+export function deployCapFor(acct: ProposalAccount | undefined | null, fallback: number): number {
+  const v = Number(acct?.max_deploy_pct_of_cash)
+  return Number.isFinite(v) && v > 0 ? v : fallback
 }
 
 /** Normalize GET /api/v2/proposal-accounts (useApi already unwraps {ok,data}). */

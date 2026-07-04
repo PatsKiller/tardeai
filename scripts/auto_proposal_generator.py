@@ -832,7 +832,16 @@ def normalize_size(signal: dict, strategy_cfg: dict, shared_rules: dict,
             _tilt = _stilt.get_tilt(signal.get("strategy_id"))
     except Exception:
         pass
-    s = _ap.compute_sizing(policy, equity, entry, stop, desired_shares=None, tilt=_tilt)
+    # Volatility-aware risk down-shift (operator-approved 2026-07-03, mirrors the card's wide-stop
+    # note): a wide stop means the same $ risk buys outsized exposure to noise — scale the RISK
+    # budget down via tilt (position cap untouched). >7% stop → ×0.75, >10% → ×0.5.
+    _vol_factor = 1.0
+    _stop_pct = abs(entry - stop) / entry * 100 if entry > 0 else 0
+    if _stop_pct > 10:
+        _vol_factor = 0.5
+    elif _stop_pct > 7:
+        _vol_factor = 0.75
+    s = _ap.compute_sizing(policy, equity, entry, stop, desired_shares=None, tilt=_tilt * _vol_factor)
     if not s.get("valid"):
         return {"valid": False, "reason": s.get("reason", "SIZE_TOO_SMALL"),
                 "original_shares": original_shares,
@@ -865,6 +874,7 @@ def normalize_size(signal: dict, strategy_cfg: dict, shared_rules: dict,
             "risk_pct": s["risk_pct"], "pos_pct": s["pos_pct"],
             "max_dollar_risk": s["max_dollar_risk"], "max_dollar_size": s["max_dollar_size"],
             "binding": s["binding"], "tilt": s.get("tilt", 1.0), "account_key": account_key,
+            "vol_factor": _vol_factor, "vol_stop_pct": round(_stop_pct, 1),
         },
     }
 

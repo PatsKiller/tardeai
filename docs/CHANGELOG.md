@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-07-03 - Cross-surface trust pack: watchlist patterns ported to proposals/pipeline
+
+- Proposal rows carry held_shares_in_account/_total + next_earnings_date
+  (_broker_enrich_trust_rows); BrokerProposalCard renders a trust line: "holds N sh in
+  this account — this ADDS" (amber), earnings proximity (amber <=7d), wide-stop note.
+- Deploy-cap unification: proposal-accounts rows expose per-account
+  max_position_allocation_pct (the number the backend generator/risk-gate already enforce);
+  card SizingTable + Propose modal use the per-account cap, env fallback only.
+- cleanup_stale_proposals: PRICE-DRIFT pass — PENDING >4h with live price >15% from
+  proposed_entry auto-rejects (PROPOSAL_DRIFT_PCT).
+- auto_proposal_generator: volatility-aware risk down-shift (stop >7% -> x0.75, >10% -> x0.5
+  via tilt; recorded in sizing_basis.vol_factor).
+- holdings_change_trigger: position change also spawns per-symbol holdings-health refresh
+  (cap 3, detached) + stop-band-recheck alert_event. Stop machinery untouched.
+- run_synthesis all-lanes-failed guard now enqueues a deduped retry job (ANET post-purge sat
+  with no synthesis because the failed attempt "completed").
+- plan_drift_revalidator: planner invoked in subprocess batches of 5 (long in-process runs
+  died on idle DB connections mid-LLM).
+
+Follow-ups deferred: stop-advisory/holdings-health age display; exit-ladder line on holdings
+protection; proposals/holdings page layout redesign needs its own spec (formats stay as-is).
+
 ## 2026-07-03 - Plan drift re-validation: incoherent/drifted entry plans rebuild themselves
 
 Audit found SSTK carrying a "validated" plan (limit 13.50 / target 13.20) with the stock at
