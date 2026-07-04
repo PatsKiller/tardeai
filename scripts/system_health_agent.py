@@ -414,7 +414,8 @@ def _log_event(conn, component, event_type, severity, message, action=None, succ
                        ORDER BY created_at DESC LIMIT 1""", [component])
         last = cur.fetchone()
         if last and last[0] == event_type and last[1] == severity:
-            return  # unchanged state already recorded — suppress the repeat
+            conn.commit()  # release the dedup-SELECT txn — leaving it open through a later
+            return         # subprocess wait gets the conn idle-in-txn killed at 120s
         cur.execute("""INSERT INTO system_health_events
             (component, event_type, severity, message, action_taken, success)
             VALUES (%s, %s, %s, %s, %s, %s)""",
@@ -619,12 +620,19 @@ def _attempt_retry(comp, conn):
             WHERE component=%s AND event_type='RETRY' AND created_at > NOW() - INTERVAL '24 hours'""",
             [component])
         retries_today = cur.fetchone()[0] or 0
+        # Release the read txn NOW — the retry subprocess below blocks for up to max_runtime_sec
+        # (300s+) while db_adapter kills idle-in-transaction at 120s, taking this shared conn with it
+        # (the agent was logging idle-txn kills it caused itself, 1-2 per */15 run).
+        conn.commit()
         if retries_today >= MAX_RETRIES:
             _log_event(conn, component, "RETRY_EXHAUSTED", "CRITICAL",
                        f"Max retries ({MAX_RETRIES}) exhausted today", success=False)
             return False
     except Exception:
-        pass
+        try:
+            conn.rollback()  # an aborted txn held through the subprocess dies the same way
+        except Exception:
+            pass
 
     # Clear stale lock ONLY when the PID is genuinely dead. (Do NOT pre-clear before running — that
     # defeated the lock and let every cycle spawn another heavy orchestrator: the 2026-06-25 pile-up
