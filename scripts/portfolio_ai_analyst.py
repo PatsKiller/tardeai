@@ -649,7 +649,7 @@ FRA (SS transition): age {fra}
 Disability insurance ends: age {disability_end}
 Golden Window: {gw_open} to {gw_close} (ages {disability_end}-{rmd})
 RMDs begin: age {rmd}
-401k rollover: COMPLETE 2026-06-18 (Omnicom 401k → Fidelity Rollover IRA #270135199, ~$568K, now ~100% cash)
+401k rollover: COMPLETE 2026-06-18 (Omnicom 401k → Fidelity Rollover IRA #***199, ~$568K, now ~100% cash)
 
 === ROTH CONVERSION STATUS ===
 2026 YTD converted: ${roth_ytd:,.0f}

@@ -75,11 +75,11 @@ subject_seeds = {
         'description': 'Outstanding 401k loan from Omnicom. Must be resolved before separation deadline.',
     },
     'Omnicom_Rollover': {
-        'john_impact': 'COMPLETE 2026-06-18: rolled into a NEW Fidelity Rollover IRA #270135199 (~$568K, 100% cash) — earlier than the planned 2027 and held at Fidelity, NOT consolidated into Schwab. Traditional-IRA pool now split across two custodians.',
+        'john_impact': 'COMPLETE 2026-06-18: rolled into a NEW Fidelity Rollover IRA #***199 (~$568K, 100% cash) — earlier than the planned 2027 and held at Fidelity, NOT consolidated into Schwab. Traditional-IRA pool now split across two custodians.',
         'john_risk_level': 'medium',
         'john_action_needed': 'Decide: keep at Fidelity or transfer to Schwab to consolidate for Roth conversions. Deploy the ~$568K cash. Confirm 401k loan tax treatment.',
         'tags': ['401k', 'rollover', 'fidelity', 'omnicom', 'complete'],
-        'description': 'Omnicom 401k rolled over to Fidelity Rollover IRA #270135199, complete 2026-06-18.',
+        'description': 'Omnicom 401k rolled over to Fidelity Rollover IRA #***199, complete 2026-06-18.',
     },
     'Medicaid_Lookback': {
         'john_impact': 'Any IRA distribution >$50K needs lookback analysis. Trust transfers subject to 5-year lookback.',
