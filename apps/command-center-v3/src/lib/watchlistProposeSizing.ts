@@ -16,14 +16,26 @@ export type ProposalAccount = {
   sizing_base_label?: string
   balances_status?: string
   sizing_ready?: boolean
-  /** Per-account deployment cap from account_automation_policies (backend-enforced number). */
-  max_deploy_pct_of_cash?: number | null
+  /** Per-account position cap from account_automation_policies — percent of EQUITY, matching
+   *  compute_sizing's semantics (mis-applying it to cash capped every card at ~$6.6k, 2026-07-03). */
+  max_position_pct_of_equity?: number | null
 }
 
-/** Effective deployment cap for an account: its own policy number, else the desk fallback. */
-export function deployCapFor(acct: ProposalAccount | undefined | null, fallback: number): number {
-  const v = Number(acct?.max_deploy_pct_of_cash)
-  return Number.isFinite(v) && v > 0 ? v : fallback
+export type DeployCap = { dollars: number; label: string }
+
+/** Effective deployment cap in DOLLARS. The account's backend policy (percent of equity) wins;
+ *  the desk fallback (percent of available cash) fills in when no policy row / equity exists. */
+export function deployCapFor(acct: ProposalAccount | undefined | null, fallbackPctOfCash: number): DeployCap | null {
+  const eqPct = Number(acct?.max_position_pct_of_equity)
+  const eq = Number(acct?.account_value)
+  if (Number.isFinite(eqPct) && eqPct > 0 && Number.isFinite(eq) && eq > 0) {
+    return { dollars: eq * eqPct / 100, label: `${eqPct}% of equity` }
+  }
+  const base = resolveSizingBase(acct)
+  if (base > 0 && fallbackPctOfCash > 0) {
+    return { dollars: base * fallbackPctOfCash / 100, label: `${fallbackPctOfCash}% of cash` }
+  }
+  return null
 }
 
 /** Normalize GET /api/v2/proposal-accounts (useApi already unwraps {ok,data}). */
@@ -139,8 +151,10 @@ export function computeRiskSizedShares(args: {
   riskPct: RiskPct
   /** Hard concentration cap: max % of available cash deployed in one position (desk policy). */
   maxDeployPctOfCash?: number
+  /** Hard concentration cap in DOLLARS (from deployCapFor — policy %-of-equity or fallback). Wins over the pct form. */
+  maxDeployDollars?: number
 }): SizedPosition {
-  const { sizingBase, equity, entry, stop, target, riskPct, maxDeployPctOfCash } = args
+  const { sizingBase, equity, entry, stop, target, riskPct, maxDeployPctOfCash, maxDeployDollars } = args
   const riskPerShare = entry - stop
   const empty: SizedPosition = {
     shares: 0, dollarRisk: 0, investment: 0, profitAtTarget: 0, riskPerShare: 0,
@@ -154,9 +168,14 @@ export function computeRiskSizedShares(args: {
   const cashCapShares = entry > 0 ? Math.max(0, Math.floor(sizingBase / entry)) : 0
   if (cashCapShares > 0) shares = Math.min(shares, cashCapShares)
   // Concentration cap — deployment (shares × entry), not risk, bounded to desk policy.
+  // Dollar form wins (policy %-of-equity via deployCapFor); pct-of-cash kept for callers
+  // that still pass the env fallback directly.
   let concentrationCapped = false
-  if (maxDeployPctOfCash && maxDeployPctOfCash > 0 && entry > 0) {
-    const deployCapShares = Math.max(0, Math.floor((sizingBase * maxDeployPctOfCash / 100) / entry))
+  const capDollars = (maxDeployDollars && maxDeployDollars > 0)
+    ? maxDeployDollars
+    : (maxDeployPctOfCash && maxDeployPctOfCash > 0 ? sizingBase * maxDeployPctOfCash / 100 : 0)
+  if (capDollars > 0 && entry > 0) {
+    const deployCapShares = Math.max(0, Math.floor(capDollars / entry))
     if (shares > deployCapShares) {
       shares = deployCapShares
       concentrationCapped = true
@@ -215,6 +234,12 @@ export function sizingFromShares(args: {
 /** Primary gate: risk as % of available cash (not equity). */
 export function exceedsMaxRisk(pctOfCash: number, maxPct = 2): boolean {
   return pctOfCash > maxPct + 0.05
+}
+
+/** Hard deployment gate against the dollar cap from deployCapFor. */
+export function exceedsDeployDollars(investment: number, cap: DeployCap | null): boolean {
+  if (!cap || cap.dollars <= 0) return false
+  return investment > cap.dollars + 0.01
 }
 
 /** Hard deployment gate: investment as % of available cash vs desk concentration policy. */
