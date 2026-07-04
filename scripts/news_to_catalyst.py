@@ -162,6 +162,10 @@ def run(as_json: bool = False):
             json.dumps(payload)
         ))
         _row = cur.fetchone()
+        # Commit per article: the next iteration's LLM classification can run 60s+, and an
+        # open transaction idling through it is killed at the 120s idle-in-transaction
+        # timeout — losing every insert in the batch (2026-07-04 audit, residual offender).
+        conn.commit()
         if _row is None:
             continue  # (symbol, headline) already present (race with news_ingestion inline) — skip
         new_id = _row[0]
