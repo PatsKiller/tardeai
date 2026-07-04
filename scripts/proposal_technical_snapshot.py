@@ -601,8 +601,10 @@ def generate_snapshot(conn, proposal_id=None, symbol=None):
                 orb_context.get('intraday_data_source'),
                 ema_data.get('ema_data_status', 'UNAVAILABLE') if ema_data.get('bars_available', 0) > 0
                     else 'UNAVAILABLE',
-                # Grade
-                ind.get('confluence_score') or 0,
+                # Grade — persist the tech score that PRODUCED technical_grade. Writing the
+                # indicator-cache confluence_score here (almost always absent → 0) made the API's
+                # letter_grade(0) render "Finviz F · 0" on every card while the grade said MIXED.
+                snapshot.get('technical_score') or ind.get('confluence_score') or 0,
                 snapshot.get('technical_grade', 'TECH_INCOMPLETE'),
                 json.dumps(snapshot.get('technical_concerns')) if snapshot.get('technical_concerns') else None,
             ])

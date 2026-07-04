@@ -204,6 +204,9 @@ export default function EntryDeskRow({
             <span style={{ color: C.blue }}>score {r.score != null ? String(r.score) : 'n/a'}</span>
             {r.sector && <span style={{ color: C.dim }}>{r.sector}</span>}
           </div>
+          {r.description && (
+            <div style={{ marginTop: 4, fontSize: 9, color: C.dim, lineHeight: 1.4 }}>{String(r.description).slice(0, 160)}</div>
+          )}
           {r.reason && <div style={{ marginTop: 4, fontSize: 9, color: C.dim, lineHeight: 1.4 }}>{String(r.reason).slice(0, 200)}</div>}
           <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, ...mono }}>{setupLine(r)}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 7, fontSize: 9 }}>

@@ -57,13 +57,15 @@ def get_target_symbols(conn, symbol=None):
                CASE WHEN has_proposal THEN 'paper_proposal' ELSE 'go_signal' END as source
         FROM (
             SELECT symbol,
-                   EXISTS(SELECT 1 FROM paper_trade_proposals ptp WHERE ptp.symbol=u.symbol AND ptp.status='PENDING') as has_proposal
+                   EXISTS(SELECT 1 FROM paper_trade_proposals ptp WHERE ptp.symbol=u.symbol AND ptp.status IN ('PENDING','APPROVED_FOR_PAPER_TEST')) as has_proposal
             FROM (
                 SELECT DISTINCT symbol FROM trade_ai_scans
                 WHERE DATE(scanned_at) = CURRENT_DATE AND decision = 'GO'
                 UNION
                 SELECT DISTINCT symbol FROM paper_trade_proposals
-                WHERE status = 'PENDING'
+                -- APPROVED_FOR_PAPER_TEST rows still need reviews (their promote gate demands
+                -- them) but the PENDING-only filter meant the ATM lane never got any queued
+                WHERE status IN ('PENDING','APPROVED_FOR_PAPER_TEST')
             ) u
         ) v
         ORDER BY symbol
@@ -76,7 +78,7 @@ def get_pending_proposals_for_symbol(conn, symbol):
     cur = conn.cursor()
     cur.execute("""
         SELECT id, strategy_id FROM paper_trade_proposals
-        WHERE symbol = %s AND status = 'PENDING'
+        WHERE symbol = %s AND status IN ('PENDING','APPROVED_FOR_PAPER_TEST')
         ORDER BY created_at DESC
     """, [symbol])
     return [{"id": r[0], "strategy_id": r[1]} for r in cur.fetchall()]
@@ -92,16 +94,27 @@ def check_existing_review(conn, proposal_id, agent_name):
     return cur.fetchone() is not None
 
 
-def check_existing_job(conn, symbol, agent_name):
-    """Check if a queued/running job exists for this symbol+agent today."""
+def check_existing_job(conn, symbol, agent_name, proposal_id=None):
+    """Check if a queued/running job exists for this symbol+agent (scoped to the proposal when known).
+    The old symbol-level same-day dedup let an UNRELATED job (another proposal, go-signal research)
+    suppress a proposal's review with no retry — #1348 permanently lost maria that way."""
     cur = conn.cursor()
-    cur.execute("""
-        SELECT id FROM watchlist_agent_jobs
-        WHERE symbol = %s AND requested_agent = %s
-        AND status IN ('queued', 'running')
-        AND created_at::date = CURRENT_DATE
-        LIMIT 1
-    """, [symbol, agent_name])
+    if proposal_id is not None:
+        cur.execute("""
+            SELECT id FROM watchlist_agent_jobs
+            WHERE symbol = %s AND requested_agent = %s
+            AND status IN ('queued', 'running')
+            AND payload->>'proposal_id' = %s
+            LIMIT 1
+        """, [symbol, agent_name, str(proposal_id)])
+    else:
+        cur.execute("""
+            SELECT id FROM watchlist_agent_jobs
+            WHERE symbol = %s AND requested_agent = %s
+            AND status IN ('queued', 'running')
+            AND created_at::date = CURRENT_DATE
+            LIMIT 1
+        """, [symbol, agent_name])
     return cur.fetchone() is not None
 
 
@@ -213,8 +226,8 @@ def run(symbol=None, dry_run=True):
                         log.info(f"  {sym}: {agent} review for #{pid} already exists, skipping")
                         continue
 
-                    # Skip if job already queued today
-                    if check_existing_job(conn, sym, agent):
+                    # Skip if a job for THIS proposal+agent is already queued/running
+                    if check_existing_job(conn, sym, agent, proposal_id=pid):
                         stats["skipped_existing"] += 1
                         continue
 
