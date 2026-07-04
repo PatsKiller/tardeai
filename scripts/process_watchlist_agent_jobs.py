@@ -1713,8 +1713,10 @@ CRITICAL INSTRUCTIONS:
         # deduped retry so the next worker pass re-runs once lanes recover.
         try:
             cur2 = conn.cursor()
+            # Dedupe on QUEUED only — the job we are running inside is itself 'processing', and
+            # matching it meant the guard never actually enqueued a retry (SMCI 2026-07-03).
             cur2.execute("""SELECT 1 FROM watchlist_agent_jobs WHERE symbol=%s AND requested_agent='full_chain'
-                            AND status IN ('queued','running','processing') LIMIT 1""", (symbol,))
+                            AND status = 'queued' LIMIT 1""", (symbol,))
             if not cur2.fetchone():
                 from datetime import datetime as _dtt, timezone as _tzz
                 cur2.execute("""INSERT INTO watchlist_agent_jobs
@@ -1723,6 +1725,9 @@ CRITICAL INSTRUCTIONS:
                                         'all LLM lanes failed — automatic retry',2,'queued','run_synthesis_guard','{}',NOW())
                                 ON CONFLICT (id) DO NOTHING""",
                              (f"synretry-{symbol}-{_dtt.now(_tzz.utc).strftime('%Y%m%d%H%M%S')}", symbol))
+                # Keep the synthesis gate open for the retry — run_synthesis skips 'completed' maturity.
+                cur2.execute("""UPDATE watchlist_analysis_maturity SET final_synthesis_status='pending', updated_at=now()
+                                WHERE symbol=%s AND final_synthesis_status='completed'""", (symbol,))
                 conn.commit()
                 print(f"  [synthesis] {symbol}: retry job enqueued")
         except Exception as _re:
