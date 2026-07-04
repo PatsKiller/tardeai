@@ -9,12 +9,17 @@ const KEY = 'cc.cards.v4'
 const LEGACY_KEY = 'wl.card.v4'
 
 export function readCardsV4(): boolean {
+  // v4 LOCKED as the approved format for all card surfaces (operator decision
+  // 2026-07-04 evening) — default ON; the toggle remains only as a reference
+  // escape hatch back to v3 during the transition.
   try {
     const v = localStorage.getItem(KEY)
     if (v != null) return v === '1'
-    return localStorage.getItem(LEGACY_KEY) === '1'
+    const legacy = localStorage.getItem(LEGACY_KEY)
+    if (legacy != null) return legacy === '1'
+    return true
   } catch {
-    return false
+    return true
   }
 }
 
