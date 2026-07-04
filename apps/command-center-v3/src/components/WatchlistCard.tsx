@@ -124,6 +124,8 @@ export type WatchlistCardProps = {
   accounts?: ProposalAccount[]
   /** Current per-account positions in this symbol (from /api/v2/portfolio/holdings). */
   heldPositions?: { account: string; shares: number; market_value: number }[]
+  /** Desk concentration policy from proposal-accounts (max % of cash deployed per position). */
+  maxDeployPctOfCash?: number
   ensOpen: boolean
   refreshState?: string
   onDrill: (ctx: DrillContext) => void
@@ -138,7 +140,7 @@ export type WatchlistCardProps = {
 }
 
 export default function WatchlistCard({
-  it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap, accounts, heldPositions,
+  it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap, accounts, heldPositions, maxDeployPctOfCash,
   ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onToggleEns, isStarred,
   onPropose, onAdjust, onBuildPlan, onOpenDesk,
 }: WatchlistCardProps) {
@@ -519,6 +521,7 @@ export default function WatchlistCard({
             stop={stop}
             target={planTarget}
             canPropose={canPropose}
+            maxDeployPctOfCash={maxDeployPctOfCash}
             onSize={(accountKey, riskPct) => onPropose?.(it, { account_key: accountKey, risk_pct: riskPct })}
           />
         </div>

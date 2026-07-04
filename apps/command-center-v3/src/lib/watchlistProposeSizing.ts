@@ -46,6 +46,8 @@ export type SizedPosition = {
   exceedsCash: boolean
   cashCapShares: number
   sizingBase: number
+  /** true when the desk deployment cap (max % of cash per position) bounded the size. */
+  concentrationCapped: boolean
 }
 
 /** Cash / buying power for risk budget — never total equity. */
@@ -96,6 +98,30 @@ export function resolveEquity(acct?: ProposalAccount | null): number {
   return Number.isFinite(Number(eq)) && Number(eq) > 0 ? Number(eq) : 0
 }
 
+/** Desk sizing policy from GET /api/v2/proposal-accounts — operator-tunable, never hardcoded here. */
+export type SizingPolicy = { maxDeployPctOfCash: number; maxRiskPct: number }
+
+export function parseSizingPolicy(raw: unknown): SizingPolicy {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>
+  const p = (o.data && typeof o.data === 'object' ? o.data : o).sizing_policy || {}
+  const dep = Number(p.max_deploy_pct_of_cash)
+  const risk = Number(p.max_risk_pct)
+  return {
+    maxDeployPctOfCash: Number.isFinite(dep) && dep > 0 ? dep : 20,
+    maxRiskPct: Number.isFinite(risk) && risk > 0 ? risk : 2,
+  }
+}
+
+/** Stop wider than typical → suggest a reduced effective risk %. Stop-distance is the direct
+ *  volatility proxy already on the card; returns null when the stop is in the normal band. */
+export function volatilityRiskSuggestion(entry: number | null, stop: number | null): { stopPct: number; suggestPct: number } | null {
+  if (!entry || !stop || entry <= stop) return null
+  const stopPct = ((entry - stop) / entry) * 100
+  if (stopPct > 10) return { stopPct, suggestPct: 0.5 }
+  if (stopPct > 7) return { stopPct, suggestPct: 0.75 }
+  return null
+}
+
 export function computeRiskSizedShares(args: {
   sizingBase: number
   equity: number
@@ -103,12 +129,15 @@ export function computeRiskSizedShares(args: {
   stop: number
   target: number
   riskPct: RiskPct
+  /** Hard concentration cap: max % of available cash deployed in one position (desk policy). */
+  maxDeployPctOfCash?: number
 }): SizedPosition {
-  const { sizingBase, equity, entry, stop, target, riskPct } = args
+  const { sizingBase, equity, entry, stop, target, riskPct, maxDeployPctOfCash } = args
   const riskPerShare = entry - stop
   const empty: SizedPosition = {
     shares: 0, dollarRisk: 0, investment: 0, profitAtTarget: 0, riskPerShare: 0,
     pctOfEquity: 0, pctOfCash: 0, exceedsCash: false, cashCapShares: 0, sizingBase: 0,
+    concentrationCapped: false,
   }
   if (!Number.isFinite(sizingBase) || sizingBase <= 0 || riskPerShare <= 0) return empty
 
@@ -116,6 +145,15 @@ export function computeRiskSizedShares(args: {
   let shares = Math.max(0, Math.floor(budget / riskPerShare))
   const cashCapShares = entry > 0 ? Math.max(0, Math.floor(sizingBase / entry)) : 0
   if (cashCapShares > 0) shares = Math.min(shares, cashCapShares)
+  // Concentration cap — deployment (shares × entry), not risk, bounded to desk policy.
+  let concentrationCapped = false
+  if (maxDeployPctOfCash && maxDeployPctOfCash > 0 && entry > 0) {
+    const deployCapShares = Math.max(0, Math.floor((sizingBase * maxDeployPctOfCash / 100) / entry))
+    if (shares > deployCapShares) {
+      shares = deployCapShares
+      concentrationCapped = true
+    }
+  }
 
   const dollarRisk = shares * riskPerShare
   const investment = shares * entry
@@ -132,6 +170,7 @@ export function computeRiskSizedShares(args: {
     exceedsCash: investment > sizingBase + 0.01,
     cashCapShares,
     sizingBase,
+    concentrationCapped,
   }
 }
 
@@ -161,12 +200,19 @@ export function sizingFromShares(args: {
     exceedsCash: sizingBase > 0 && investment > sizingBase + 0.01,
     cashCapShares,
     sizingBase,
+    concentrationCapped: false,   // manual size — the modal blocks over-cap instead of silently capping
   }
 }
 
 /** Primary gate: risk as % of available cash (not equity). */
 export function exceedsMaxRisk(pctOfCash: number, maxPct = 2): boolean {
   return pctOfCash > maxPct + 0.05
+}
+
+/** Hard deployment gate: investment as % of available cash vs desk concentration policy. */
+export function exceedsDeployCap(investment: number, sizingBase: number, maxDeployPctOfCash: number): boolean {
+  if (!sizingBase || !maxDeployPctOfCash) return false
+  return investment > sizingBase * (maxDeployPctOfCash / 100) + 0.01
 }
 
 export function acctLabel(key: string): string {
