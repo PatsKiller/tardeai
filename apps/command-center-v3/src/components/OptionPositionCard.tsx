@@ -64,6 +64,10 @@ export type OptionPosition = {
   avg_entry?: number
   qty?: number
   account_key?: string
+  company_description?: string
+  sector?: string
+  industry?: string
+  instrument_type?: string
   iv_rank?: number
   delta?: number
   theta?: number
@@ -242,6 +246,15 @@ export default function OptionPositionCard({
         <div style={{ fontSize: 11, color: TEXT2, marginTop: 10, lineHeight: 1.45, borderTop: '1px solid var(--border-subtle)', paddingTop: 9 }}>
           {novice && <span style={{ fontSize: 9, fontWeight: 800, color: MUTED, display: 'block', marginBottom: 4 }}>WHY THIS ACTION</span>}
           {p.rationale}
+        </div>
+      )}
+
+      {(p.company_description || p.sector) && (
+        <div style={{ fontSize: 10, color: MUTED, marginTop: 8, lineHeight: 1.4 }}>
+          {p.company_description && <span style={{ color: TEXT2 }}>{String(p.company_description).slice(0, 160)} </span>}
+          {(p.sector || p.industry) && (
+            <span>{[p.sector, p.industry, p.instrument_type].filter(Boolean).join(' · ')}</span>
+          )}
         </div>
       )}
 

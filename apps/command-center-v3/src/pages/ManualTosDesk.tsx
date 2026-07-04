@@ -30,7 +30,7 @@ export type SetupRow = {
   account: string; qty: number; side: string; entryType: string; entryPrice: number | null
   stop: number | null; trail: any | null; targets: any[]; tif: string; session: string
   score?: number | string | null; decision?: string | null; reason?: string | null
-  sector?: string | null; sourceLabel?: string | null; origin?: string | null
+  sector?: string | null; description?: string | null; sourceLabel?: string | null; origin?: string | null
   tier?: string | null; directiveId?: any; diligence?: WatchlistDiligence | null
 }
 
@@ -116,6 +116,7 @@ function fromWatchlistItem(it: any, local: LocalState, paMap: Record<string, any
     decision: first(it.decision, card.decision),
     reason: first(it.catalyst_headline, it.reason, it.research_summary, 'Curated watchlist candidate'),
     sector: first(it.profile_sector, it.sector, card.sector),
+    description: first(it.profile_description, card.description),
     sourceLabel: first(it.source, 'curated-watchlist'), origin: it.source ?? null,
     tier: it.source_tier ?? null, directiveId: it.directive_id ?? null, trail: null,
     diligence: diligenceFromWatchlistItem(it),
@@ -225,7 +226,8 @@ export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
     const d = (((draftsR as any)?.drafts ?? []) as any[]).map(x => fromDraft(x, local, paMap)).filter(Boolean) as SetupRow[]
     const seen: Record<string, SetupRow> = {}
     ;[...p, ...wl, ...d].forEach(r => { const k = `${r.source}:${r.id}`; if (!seen[k]) seen[k] = r })
-    return Object.values(seen)
+    // company one-liner for every source — proposals/drafts don't carry it, symbol-cards does
+    return Object.values(seen).map(r => (r.description ? r : { ...r, description: cardMap[r.symbol]?.description ?? null }))
   }, [proposalsR, watchlistR, draftsR, local, paMap, cardMap])
 
   const activity = ((activityR as any)?.activity ?? []) as any[]

@@ -113,6 +113,10 @@ export type OptionProposal = {
   action_buttons?: { action: string; label: string }[]
   severity?: string
   underlying_price?: number
+  company_description?: string
+  sector?: string
+  industry?: string
+  instrument_type?: string
   contracts?: number
   account?: string
   broker?: string
@@ -278,6 +282,15 @@ export default function OptionProposalCard({
       {p.execution_note && (
         <div title="Live execution path status" style={{ fontSize: 9.5, color: MUTED, marginTop: 8, fontStyle: 'italic', lineHeight: 1.4 }}>
           {p.execution_note}
+        </div>
+      )}
+
+      {(p.company_description || p.sector) && (
+        <div style={{ fontSize: 10, color: MUTED, marginTop: 8, lineHeight: 1.4 }}>
+          {p.company_description && <span style={{ color: TEXT2 }}>{String(p.company_description).slice(0, 160)} </span>}
+          {(p.sector || p.industry) && (
+            <span>{[p.sector, p.industry, p.instrument_type].filter(Boolean).join(' · ')}</span>
+          )}
         </div>
       )}
 
