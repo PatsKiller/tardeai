@@ -174,7 +174,7 @@ def get_cross_agent_context(symbol: str, exclude_agent: str = None,
         conn = _get_conn()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT agent_name, recommendation, confidence_score,
+            SELECT agent, recommendation, confidence,
                    summary, created_at
             FROM watchlist_agent_results
             WHERE symbol = %s
@@ -191,7 +191,7 @@ def get_cross_agent_context(symbol: str, exclude_agent: str = None,
         seen = set()
         lines = [f"OTHER AGENT VIEWS ON {symbol} (read these before forming your own view):"]
         for r in rows:
-            agent = r.get("agent_name", "?")
+            agent = r.get("agent", "?")
             if exclude_agent and agent.lower() == exclude_agent.lower():
                 continue
             if agent in seen:
@@ -199,7 +199,7 @@ def get_cross_agent_context(symbol: str, exclude_agent: str = None,
             seen.add(agent)
 
             rec = r.get("recommendation", "?")
-            conf = int(float(r.get("confidence_score") or 0) * 100)
+            conf = int(float(r.get("confidence") or 0) * 100)
             # Include summary/reasoning — this is the key improvement over just the label
             reasoning = (r.get("summary") or "").strip()
             if reasoning and len(reasoning) > 200:

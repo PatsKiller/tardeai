@@ -156,6 +156,38 @@ cheap DB-aggregate checks:
 Thresholds live under the `options_desk` policy block. Findings carry `WHY` hints and route as
 `refresh` (retention) / `review` (queue).
 
+## Infra failure-class monitoring (2026-07-04)
+
+**Problem (July 4 incident set):** four failure classes ran blind — (1) the scope governor died
+every run for 6.5h (16MB `outcome_bus.json` re-parsed per symbol inside an open transaction →
+PG `idle_in_transaction_session_timeout=120s` killed the connection); (2) decision-feeding
+`watchlist_agent_jobs` (`full_analysis` etc.) were starved for 2+ days because the worker ordered
+by symbol tier only, so a continuous `scheduled_research` stream on high-ranked symbols always won;
+(3) the Finviz cookie expiry only surfaced as a suppressed Telegram digest line (`data_source_health`
+had no consumer); (4) `tradeai-continuous.service` failed at boot (persistent-timer catch-up before
+/home was ready) and nothing watched failed units.
+
+**Fix:**
+
+1. **SLA-aware job ordering** — `sql_request_type_sla_case()` in `lib/watchlist_priority.py`
+   (canonical `TIME_SENSITIVE_REQUEST_TYPES`, shared with the `agent_jobs_stuck` check) prepends a
+   decision-feeding-first class to the worker's ORDER BY. Background research still drains by
+   symbol tier below it.
+2. **Governor hardening** — mtime-cached bus feedback index (`hermes_scope_governor/outcome_bus.py`)
+   + `conn.commit()` before the pure-Python decision loop (engine). Run time: ~6 min → ~1.3s.
+   Remediation: `hermes_scope_governor_stale` / `_heartbeat_missing` / `_last_run_failed` →
+   immediate `safe_flock` re-run (auto_remediate + remediation_map + both allowlists).
+3. **`collect_data_source_health()`** (category `data_quality`) — consumes `data_source_health`
+   staleness vs `max_stale_minutes`; weekend = info + `[weekend]` per house convention. When
+   finviz is stale it live-validates the cookie (`credential_monitor.check_finviz`) →
+   `finviz_cookie_expired` (critical, operator refreshes `FINVIZ_COOKIE`).
+4. **`collect_failed_systemd_units()`** (category `execution_health`) — `systemctl --failed`
+   filtered to trade-stack prefixes (`systemd_units.unit_prefixes`). Detection-only (restart
+   needs sudo); finding carries the operator command.
+5. **`collect_db_connection_health()`** (category `execution_health`) — counts PG
+   `idle-in-transaction timeout` kills in the log tail (`db_connections` policy block); warns at
+   10/3h so the next governor-style bug surfaces while it's one victim, not a fleet.
+
 ## Extending
 
 - **New health check** → add a collector in `health_agent.py` (`collect_*`), return findings; the scorer

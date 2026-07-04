@@ -32,7 +32,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -279,7 +279,8 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 and "run_finviz_momentum_scalp_scan.py" not in cmd \
                 and "run_sec_form4_momentum_context.py" not in cmd \
                 and "reset_stuck_agent_jobs.py" not in cmd \
-                and "remediate_proposal_trade_plans.py" not in cmd:
+                and "remediate_proposal_trade_plans.py" not in cmd \
+                and "hermes_scope_governor.py" not in cmd:
             continue
         try:
             proc = subprocess.run(cmd, shell=True, cwd=str(PROJECT_ROOT),
@@ -444,7 +445,7 @@ def collect_execution_health() -> list[dict]:
         # background research/discovery queue (no SLA; drained by priority, intentionally backloggy).
         # Penalizing execution_health for a research backlog was a false signal — only time-sensitive
         # jobs starved >2h are an execution defect; the rolling backlog is reported as info.
-        _TIME_SENSITIVE = ("proposal_review", "full_analysis", "research_gap", "event")
+        from lib.watchlist_priority import TIME_SENSITIVE_REQUEST_TYPES as _TIME_SENSITIVE
         qt = _db("""SELECT COUNT(*) AS c FROM watchlist_agent_jobs
                     WHERE status='queued' AND created_at < now() - interval '2 hours'
                       AND request_type = ANY(%s)""", (list(_TIME_SENSITIVE),), fetch="one")
@@ -1715,6 +1716,124 @@ def collect_proposal_trade_plan_health() -> list[dict]:
     return out
 
 
+def collect_data_source_health() -> list[dict]:
+    """Consume data_source_health (per-source ingestion liveness): stale sources + Finviz cookie.
+
+    The table is written by ingestion lanes but previously had NO consumer — a dead source
+    (e.g. the expired Finviz cookie, 2026-07-02) only surfaced as a suppressed Telegram digest
+    line. When finviz is stale we live-validate the cookie (credential_monitor.check_finviz)
+    to tell "cookie expired — needs operator" apart from a transient ingestion failure.
+    """
+    cfg = (_POLICY.get("data_sources") or {})
+    if not cfg.get("enabled", True):
+        return []
+    out: list[dict] = []
+    weekend_factor = float(cfg.get("weekend_stale_factor", 3.0))
+    rows = _db("""SELECT source_key, status, last_success_at, max_stale_minutes, last_error
+                  FROM data_source_health WHERE last_success_at IS NOT NULL""", fetch="all") or []
+    for r in rows:
+        try:
+            last = r.get("last_success_at")
+            max_stale_m = float(r.get("max_stale_minutes") or 1440)
+            age_m = (datetime.now(timezone.utc) - last).total_seconds() / 60.0
+        except Exception:
+            continue
+        allowed_m = max_stale_m * (weekend_factor if _IS_WEEKEND else 1.0)
+        if age_m <= allowed_m:
+            continue
+        src = r.get("source_key")
+        # Weekday-only ingestion lanes legitimately go stale over the weekend — house
+        # convention (see collect_data_quality): visible as info + [weekend], escalates Monday.
+        sev = "info" if _IS_WEEKEND else ("critical" if age_m > allowed_m * 3 else "warning")
+        msg = (f"data source '{src}' stale: last success {age_m / 60:.1f}h ago "
+               f"(max {max_stale_m / 60:.1f}h)" + (" [weekend]" if _IS_WEEKEND else ""))
+        if src == "finviz" and cfg.get("finviz_cookie_check", True):
+            # Distinguish cookie expiry (operator action) from transient failure.
+            try:
+                from credential_monitor import check_finviz
+                ck = check_finviz()
+                if str(ck.get("status")) != "ok":
+                    out.append(_f("data_quality", "finviz_cookie_expired", "critical",
+                                  f"Finviz cookie invalid ({ck.get('error') or ck.get('status')}) — "
+                                  f"screener ingestion dead since {age_m / 60:.0f}h; operator must refresh "
+                                  f"FINVIZ_COOKIE in .env", source=src))
+                    continue
+            except Exception:
+                pass
+        out.append(_f("data_quality", "data_source_stale", sev, msg,
+                      source=src, last_error=(r.get("last_error") or "")[:120]))
+    return out
+
+
+def collect_failed_systemd_units() -> list[dict]:
+    """Failed trade-stack systemd units (e.g. tradeai-continuous boot-catch-up crash).
+
+    Detection only — restarting system units needs privileges the agent doesn't have;
+    the finding carries the operator command instead.
+    """
+    cfg = (_POLICY.get("systemd_units") or {})
+    if not cfg.get("enabled", True):
+        return []
+    prefixes = tuple(cfg.get("unit_prefixes") or
+                     ["tradeai-", "portfolio-", "grok-oauth", "chatgpt-oauth"])
+    out: list[dict] = []
+    try:
+        proc = subprocess.run(["systemctl", "--failed", "--plain", "--no-legend", "--no-pager"],
+                              capture_output=True, text=True, timeout=10)
+        for line in (proc.stdout or "").splitlines():
+            unit = (line.split() or [""])[0]
+            if unit.startswith(prefixes):
+                out.append(_f("execution_health", "systemd_unit_failed", "warning",
+                              f"systemd unit {unit} is in failed state — scheduled runs may be "
+                              f"missed; operator: sudo systemctl reset-failed {unit} "
+                              f"(then check why it died: journalctl -u {unit})", unit=unit))
+    except Exception:
+        pass
+    return out
+
+
+def collect_db_connection_health() -> list[dict]:
+    """Postgres idle-in-transaction kills — a script holding a transaction through slow
+    non-DB work (LLM call, big file parse) dies at the 120s session timeout with
+    'SSL connection has been closed unexpectedly'. Catches the next scope-governor-style
+    bug while it's one victim, not a fleet."""
+    cfg = (_POLICY.get("db_connections") or {})
+    if not cfg.get("enabled", True):
+        return []
+    import glob as _glob
+    window_h = float(cfg.get("window_hours", 3))
+    warn_at = int(cfg.get("idle_txn_kills_warn", 10))
+    log_glob = cfg.get("pg_log_glob", "/var/log/postgresql/postgresql-*-main.log")
+    tail_bytes = int(cfg.get("tail_bytes", 2_000_000))
+    out: list[dict] = []
+    try:
+        paths = sorted(_glob.glob(log_glob))
+        if not paths:
+            return []
+        cutoff = datetime.now() - timedelta(hours=window_h)
+        n = 0
+        with open(paths[-1], "rb") as fh:
+            fh.seek(0, 2)
+            fh.seek(max(0, fh.tell() - tail_bytes))
+            for raw in fh:
+                if b"idle-in-transaction timeout" not in raw:
+                    continue
+                try:
+                    ts = datetime.strptime(raw[:19].decode("ascii", "ignore"), "%Y-%m-%d %H:%M:%S")
+                    if ts >= cutoff:
+                        n += 1
+                except Exception:
+                    n += 1
+        if n >= warn_at:
+            out.append(_f("execution_health", "db_idle_txn_kills", "warning",
+                          f"{n} Postgres idle-in-transaction kills in {window_h:.0f}h — some script "
+                          f"holds a DB transaction through slow non-DB work (LLM call/file parse); "
+                          f"check the killed PIDs in the PG log", count=n))
+    except Exception:
+        pass
+    return out
+
+
 COLLECTORS = [
     collect_data_quality,
     collect_trade_in_view_health,
@@ -1736,6 +1855,9 @@ COLLECTORS = [
     collect_options_desk_health,
     collect_pullback_macd_screener,
     collect_proposal_oversight_load,
+    collect_data_source_health,
+    collect_failed_systemd_units,
+    collect_db_connection_health,
 ]
 
 
