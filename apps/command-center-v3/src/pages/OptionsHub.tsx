@@ -3,6 +3,9 @@ import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import OptionProposalCard, { type OptionProposal } from '../components/OptionProposalCard'
 import OptionPositionCard, { type OptionPosition } from '../components/OptionPositionCard'
+import OptionProposalCardV4 from '../components/OptionProposalCardV4'
+import OptionPositionCardV4 from '../components/OptionPositionCardV4'
+import { useCardsV4 } from '../lib/cardsV4'
 import OptionReviewBar from '../components/OptionReviewBar'
 import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualExecutionModal'
 import ManualExecutionLog from '../components/ManualExecutionLog'
@@ -55,6 +58,9 @@ export default function OptionsHub({ onDrill }: Props) {
   const [guideCollapsed, setGuideCollapsed] = useState(false)
   const [preflightProposal, setPreflightProposal] = useState<Proposal | null>(null)
   const [manualSeed, setManualSeed] = useState<ManualExecSeed | null>(null)
+  const [cardsV4] = useCardsV4() // global card-family toggle — no local UI, set from Watch hub
+  const ProposalCard = cardsV4 ? OptionProposalCardV4 : OptionProposalCard
+  const PositionCard = cardsV4 ? OptionPositionCardV4 : OptionPositionCard
 
   useEffect(() => { setNoviceMode(novice) }, [novice])
 
@@ -407,7 +413,7 @@ export default function OptionsHub({ onDrill }: Props) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
             {propList.map(p => (
-              <OptionProposalCard
+              <ProposalCard
                 key={p.id}
                 proposal={p}
                 armed={!!execStatus?.armed_for_execution}
@@ -486,7 +492,7 @@ export default function OptionsHub({ onDrill }: Props) {
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
             {posList.map(p => (
-              <OptionPositionCard
+              <PositionCard
                 key={p.id}
                 position={p}
                 novice={novice}
