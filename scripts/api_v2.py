@@ -15589,6 +15589,19 @@ def _fetch_protection_union_rows(symbol_f: str = "", account_f: str = "") -> lis
             "entry_source": prot_row.get("entry_source"),
         }
         out.append(prot_row)
+    # Company context parity with entry proposals (2026-07-04 audit: protection cards showed
+    # no company one-liner — this builder bypasses _broker_proposal_row_base's profile attach).
+    try:
+        pmap = _broker_symbol_profiles_batch([r.get("symbol") for r in out])
+        for r in out:
+            prof = pmap.get(str(r.get("symbol") or "").upper()) or {}
+            r.setdefault("sector", prof.get("sector"))
+            r.setdefault("industry", prof.get("industry"))
+            r.setdefault("instrument_type", prof.get("instrument_type"))
+            if prof.get("description_1s"):
+                r.setdefault("company_description", str(prof["description_1s"])[:400])
+    except Exception:
+        pass
     return out
 
 
