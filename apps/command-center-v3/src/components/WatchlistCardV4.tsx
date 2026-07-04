@@ -114,8 +114,12 @@ const llmName = (lane?: string) => LLM_NAMES[lane || ''] || lane || 'LLM'
  *  "CONVICTION: <level>" prefix — real stance instead of a bare lane name. */
 function llmStance(e: any): string {
   const name = llmName(e?.lane)
-  const m = /conviction[:\s]+([a-z-]+)/i.exec(String(e?.recommendation ?? ''))
-  return m ? `${name} (${m[1].toLowerCase()})` : name
+  // Strict: only the structured "CONVICTION: <level>" prefix, whitelisted levels —
+  // a loose regex grabbed prose ("conviction in SWBI" → "ChatGPT (swbi)").
+  const m = /\bconviction:\s*([a-z-]+)/i.exec(String(e?.recommendation ?? ''))
+  const lv = m ? m[1].toLowerCase() : ''
+  const OK = new Set(['low','medium','high','med','medium-low','medium-high','low-medium','high-medium'])
+  return OK.has(lv) ? `${name} (${lv})` : name
 }
 
 export default function WatchlistCardV4({
