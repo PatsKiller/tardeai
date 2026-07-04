@@ -480,6 +480,12 @@ def _get_context(conn, symbol: str) -> dict:
         pass
 
     cur.close()
+    # End the read txn — the caller fires a long LLM call next, and an open transaction
+    # idling through it is killed at 120s (2026-07-04 idle-txn audit, #3 offender).
+    try:
+        conn.commit()
+    except Exception:
+        pass
     return {"text": ctx, "snapshot": snapshot}
 
 

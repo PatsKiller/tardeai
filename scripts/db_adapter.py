@@ -83,6 +83,10 @@ def _get_conn():
     try:
         import psycopg2
         import psycopg2.extras
+        import sys as _sys
+        # application_name = calling script, so pg_stat_activity / PG-log victims are
+        # attributable (the 2026-07-04 idle-in-transaction audit had to guess offenders).
+        _app = os.path.basename(_sys.argv[0] or "python")[:60] or "python"
         conn = psycopg2.connect(
             host=os.getenv("DB_HOST", "localhost"),
             port=int(os.getenv("DB_PORT", "5432")),
@@ -90,6 +94,7 @@ def _get_conn():
             user=os.getenv("DB_USER", "trade_ai"),
             password=os.getenv("DB_PASSWORD", ""),
             connect_timeout=10,
+            application_name=_app,
         )
         conn.autocommit = False
         # Per-connection safety nets (2026-06-29 idle; lock/stmt added 2026-06-30 after a server hang).

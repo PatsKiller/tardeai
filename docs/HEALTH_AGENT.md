@@ -188,6 +188,16 @@ had no consumer); (4) `tradeai-continuous.service` failed at boot (persistent-ti
    `idle-in-transaction timeout` kills in the log tail (`db_connections` policy block); warns at
    10/3h so the next governor-style bug surfaces while it's one victim, not a fleet.
 
+**Follow-ups (same day):** (a) passive source reporting via `lib/data_source_report.report_source()`
+(dedicated autocommit connection — never the caller's txn) wired into yahoo_finance / sec_edgar /
+finnhub / brave_search / youtube_api / newsapi lanes, so `collect_data_source_health` sees 7 of 13
+sources instead of finviz-only; (b) a 4-min `pg_stat_activity` audit identified the top three
+idle-in-transaction offenders (topic_ingestion `_is_blocked`, news_ingestion `_scan_symbols`
+one-txn-per-scan, agent-jobs context builder holding reads through LLM calls) — all now commit
+before slow non-DB work, and `db_adapter` sets `application_name` per script so future victims are
+attributable; (c) `scripts/rotate_runtime_logs.sh` (cron 01:15, copytruncate, size-based) after
+`telegram_callback_poller.log` reached 1.4GB unrotated.
+
 ## Extending
 
 - **New health check** → add a collector in `health_agent.py` (`collect_*`), return findings; the scorer

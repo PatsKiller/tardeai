@@ -145,6 +145,12 @@ def _fetch_newsapi(ticker: str, lookback_hours: int) -> list[dict]:
             "apiKey": NEWSAPI_KEY,
         },
     )
+    try:
+        from lib.data_source_report import report_source
+        report_source("newsapi", isinstance(data, dict),
+                      error=None if isinstance(data, dict) else "no/invalid response")
+    except Exception:
+        pass
     if not isinstance(data, dict):
         return []
     articles = []
