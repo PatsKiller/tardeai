@@ -122,6 +122,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
       deployPct,
       tight: !pos.exceedsCash && pos.shares > 0 && deployPct > 50,
       cashCapped: !pos.concentrationCapped && pos.shares > 0 && pos.shares < rawBudgetShares,
+      eq: resolveEquity(x.a),
       held: heldFor(x.a.account_key),
     }
   })
@@ -156,7 +157,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
                   {r.name}
                 </td>
                 {insufficient ? (
-                  <td colSpan={4} style={{ ...cell, color: WL.signal.amber, fontFamily: 'inherit' }}>insufficient cash ({k(r.base)})</td>
+                  <td colSpan={4} style={{ ...cell, color: WL.signal.amber, fontFamily: 'inherit' }}>exceeds available cash ({k(r.base)}) — reduce size</td>
                 ) : (
                   <>
                     <td style={cell} title={
@@ -167,9 +168,11 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
                     </td>
                     <td style={cell}>{k(r.pos.investment)}</td>
                     <td style={cell}>{k(r.pos.dollarRisk)}</td>
-                    <td style={cell}>
+                    <td style={cell} title={r.eq > 0 ? `risk ≈${((r.pos.dollarRisk / r.eq) * 100).toFixed(2)}% of this account's equity` : undefined}>
                       {r.base > 0 ? `${r.deployPct.toFixed(1)}%` : '—'}
-                      {r.tight && <span style={{ color: WL.signal.amber, fontWeight: 700, fontFamily: 'inherit' }} title="deployment above 50% of this account's available cash — liquidity is tight"> tight</span>}
+                      {r.tight
+                        ? <span style={{ color: WL.signal.amber, fontWeight: 700, fontFamily: 'inherit' }} title="deployment above 50% of this account's available cash — liquidity is tight"> tight</span>
+                        : <span style={{ color: WL.text.dim, fontFamily: 'inherit' }} title="deployment at or below 50% of this account's available cash"> ok</span>}
                     </td>
                   </>
                 )}
@@ -191,7 +194,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
       </table>
       <div style={{ fontSize: 10, color: WL.text.dim, marginTop: 5, lineHeight: 1.5 }}
            title="Risk budget = riskPct × available cash (never equity) ÷ stop distance, capped by available cash and the desk deployment limit — identical math to the Propose modal.">
-        {riskPct}% = max loss if stopped (${rps.toFixed(2)}/sh) — not capital deployed
+        {riskPct}% = max loss if stopped (${rps.toFixed(2)}/sh) — not capital deployed · sized from available cash × risk% ÷ stop distance
         {eqPct != null && Number.isFinite(eqPct) ? ` · ≈${eqPct.toFixed(2)}% of total equity` : ''}
         {riskPct === 2 ? <span style={{ color: WL.signal.amber, fontWeight: 700 }}> · 2% = desk max</span> : ''}
         {anyConcCapped ? ` · position cap ${sized.find(r => r.pos.concentrationCapped)?.cap?.label}` : ''}
