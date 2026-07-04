@@ -6,6 +6,7 @@ import DiscoveryPanel from '../components/DiscoveryPanel'
 import ToSWatchlists from '../components/ToSWatchlists'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import WatchlistCard from '../components/WatchlistCard'
+import WatchlistCardV4 from '../components/WatchlistCardV4'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import { exitLadder } from '../lib/exitLadder'
 import { parseProposalAccounts, parseSizingPolicy } from '../lib/watchlistProposeSizing'
@@ -101,6 +102,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
   const dormantDirs = directives.filter(d => d.status !== 'archived' && !isActionableDir(d))
 
   const [fOrigin, setFOrigin] = useState('all')
+  const [cardV4, setCardV4] = useState<boolean>(() => { try { return localStorage.getItem('wl.card.v4') === '1' } catch { return false } })
   const [fBand, setFBand] = useState('all')
   const [fKind, setFKind] = useState('all')
   const [fDir, setFDir] = useState('all')
@@ -366,7 +368,24 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
 
       <div style={panel}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 900, color: TEXT0 }}>Watchlist ({visible.length})</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontSize: 15, fontWeight: 900, color: TEXT0 }}>Watchlist ({visible.length})</div>
+            {/* v4 evaluation toggle (2026-07-04): v3 stays default until the operator locks one. */}
+            <span style={{ display: 'inline-flex', border: '1px solid rgba(148,163,184,.25)', borderRadius: 6, overflow: 'hidden' }}
+                  title="Security Card version — evaluation toggle, per-browser">
+              {(['v3', 'v4'] as const).map(v => (
+                <button
+                  key={v}
+                  onClick={() => { setCardV4(v === 'v4'); try { localStorage.setItem('wl.card.v4', v === 'v4' ? '1' : '0') } catch { /* private mode */ } }}
+                  style={{
+                    fontSize: 10, fontWeight: 800, padding: '3px 10px', border: 'none', cursor: 'pointer',
+                    background: (cardV4 ? 'v4' : 'v3') === v ? 'rgba(45,212,191,.15)' : 'transparent',
+                    color: (cardV4 ? 'v4' : 'v3') === v ? '#2dd4bf' : TEXT2,
+                  }}
+                >Card {v}</button>
+              ))}
+            </span>
+          </div>
           {pageCount > 1 && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={curPage === 0} style={{ ...SEL, cursor: curPage === 0 ? 'default' : 'pointer', opacity: curPage === 0 ? 0.4 : 1 }}>‹ Prev</button>
@@ -405,9 +424,10 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
             {pageItems.map((it: any) => {
               const symKey = String(it.symbol).toUpperCase()
               const outcome = outMap[symKey]
+              const Card = cardV4 ? WatchlistCardV4 : WatchlistCard
               return (
                 <div key={it.id} style={{ minWidth: 0, width: '100%' }}>
-                <WatchlistCard
+                <Card
                   it={it}
                   adv={advMap[it.symbol]}
                   sc={cardMap[it.symbol]}
