@@ -7,6 +7,7 @@ import ToSWatchlists from '../components/ToSWatchlists'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import WatchlistCard from '../components/WatchlistCard'
 import WatchlistCardV4 from '../components/WatchlistCardV4'
+import { useCardsV4 } from '../lib/cardsV4'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import { exitLadder } from '../lib/exitLadder'
 import { parseProposalAccounts, parseSizingPolicy } from '../lib/watchlistProposeSizing'
@@ -102,7 +103,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
   const dormantDirs = directives.filter(d => d.status !== 'archived' && !isActionableDir(d))
 
   const [fOrigin, setFOrigin] = useState('all')
-  const [cardV4, setCardV4] = useState<boolean>(() => { try { return localStorage.getItem('wl.card.v4') === '1' } catch { return false } })
+  const [cardV4, setCardV4] = useCardsV4()
   const [fBand, setFBand] = useState('all')
   const [fKind, setFKind] = useState('all')
   const [fDir, setFDir] = useState('all')
@@ -376,7 +377,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
               {(['v3', 'v4'] as const).map(v => (
                 <button
                   key={v}
-                  onClick={() => { setCardV4(v === 'v4'); try { localStorage.setItem('wl.card.v4', v === 'v4' ? '1' : '0') } catch { /* private mode */ } }}
+                  onClick={() => setCardV4(v === 'v4')}
                   style={{
                     fontSize: 10, fontWeight: 800, padding: '3px 10px', border: 'none', cursor: 'pointer',
                     background: (cardV4 ? 'v4' : 'v3') === v ? 'rgba(45,212,191,.15)' : 'transparent',

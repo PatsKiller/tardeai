@@ -442,6 +442,7 @@ export default function WatchlistCardV4({
           {it.models_agree === true && <span style={{ color: WL.text.dim }}>Grok + ChatGPT agree</span>}
           {it.models_agree === false && <span style={{ color: WL.signal.amber, fontWeight: 700 }}>models split</span>}
           {validatedVal && <span style={{ color: WL.text.dim }}>validated {validatedVal}</span>}
+          {it.entry_model && <span style={{ color: WL.text.dim }}>{String(it.entry_model)}</span>}
           <span title={dqTip} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.secondary, marginLeft: 'auto' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: dqColor, flex: 'none' }} />
             {dqText}
