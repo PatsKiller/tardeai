@@ -773,6 +773,12 @@ export default function BrokerProposalCard({
               {n.at && <span style={{ color: W.dim, fontSize: 9 }}> · {String(n.at).slice(0, 10)}</span>}
             </div>
           ))}
+          {tickerCtx.companyLine && intelSummary !== tickerCtx.companyLine && (
+            <div style={{ fontSize: 10.5, color: W.sub, marginTop: 5, lineHeight: 1.45 }}>
+              <span style={{ color: W.dim, fontWeight: 700 }}>Company </span>
+              {truncate(String(tickerCtx.companyLine), 160)}
+            </div>
+          )}
           {(tickerCtx.sector || tickerCtx.industry) && (
             <div style={{ fontSize: 10, color: W.dim, marginTop: 6 }}>
               {[tickerCtx.sector, tickerCtx.industry, tickerCtx.instrumentType].filter(Boolean).join(' · ')}

@@ -24219,6 +24219,7 @@ def _options_proposals(query=None):
         min_pop=float(g("min_pop", 0) or 0),
         min_edge=float(g("min_edge", 0) or 0),
     )
+    _attach_options_underlying_context(filtered)
     return _json_clean({
         **data,
         "proposals": filtered,
@@ -24242,6 +24243,23 @@ def _options_proposals(query=None):
     })
 
 
+def _attach_options_underlying_context(rows: list) -> None:
+    """Underlying company context (one-liner/sector/instrument) for options desk cards —
+    they previously rendered greeks-only with zero equity intelligence."""
+    try:
+        pmap = _broker_symbol_profiles_batch(
+            [r.get("underlying") or r.get("symbol") for r in rows])
+        for r in rows:
+            prof = pmap.get(str(r.get("underlying") or r.get("symbol") or "").upper()) or {}
+            if prof.get("description_1s") and not r.get("company_description"):
+                r["company_description"] = str(prof["description_1s"])[:400]
+            for k in ("sector", "industry", "instrument_type"):
+                if prof.get(k) and not r.get(k):
+                    r[k] = prof.get(k)
+    except Exception:
+        pass
+
+
 def _options_positions(query=None):
     """GET /api/v2/options/positions — open options legs from Schwab + monitoring snapshot."""
     q = query or {}
@@ -24262,6 +24280,7 @@ def _options_positions(query=None):
         leg_style=(g("leg_style") or ""),
         working_only=working_only,
     )
+    _attach_options_underlying_context(filtered)
     return _json_clean({
         **data,
         "positions": filtered,

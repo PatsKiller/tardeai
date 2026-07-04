@@ -88,6 +88,10 @@ def main():
     if enrich:
         cur.execute("SELECT upper(symbol) FROM symbol_profiles WHERE quote_type IS NULL ORDER BY upper(symbol)")
         to_fetch = [r[0] for r in cur.fetchall() if r[0] in cls]
+        # Release the read txn — the yfinance loop below runs for minutes and PG kills
+        # idle-in-transaction at 120s, which also killed the batch UPDATE after it: the
+        # whole weekly run's classifications were silently discarded (180 nulls piled up).
+        conn.commit()
         try:
             import yfinance as yf, time as _t
             for s in to_fetch[:300]:                       # bounded per run; cached ones are skipped so this converges

@@ -271,11 +271,14 @@ def queue_agent_reviews(conn, proposal):
     pid = proposal['id']
     cur = conn.cursor()
     cur.execute("""
-        SELECT COUNT(*) FROM proposal_agent_reviews
+        SELECT COUNT(DISTINCT agent_name) FROM proposal_agent_reviews
         WHERE proposal_id = %s AND status != 'pending'
     """, [pid])
     count = cur.fetchone()[0]
-    if count >= 1:
+    # Only stand down when ALL THREE agents have reviewed. The old >=1 short-circuit stranded
+    # partial sets forever (#1348: steph+risk done, maria's job lost, never re-queued).
+    # queue_run dedups per proposal+agent, so re-calling for the missing agent is safe.
+    if count >= 3:
         return False
 
     try:
