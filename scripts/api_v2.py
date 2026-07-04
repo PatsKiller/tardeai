@@ -15347,11 +15347,47 @@ def _broker_batch_live_quotes(symbols: list[str]) -> dict:
     return batch_live_quotes(symbols)
 
 
-def _broker_reprice_proposal_rows(rows: list[dict]) -> list[dict]:
-    if not rows or not BROKER_LIST_LIVE_QUOTES:
+def _broker_enrich_trust_rows(rows: list[dict]) -> list[dict]:
+    """Cross-surface trust context (2026-07-03): held position in the target account + next
+    earnings date on every proposal row — approving an add-to-position or a pre-earnings entry
+    should never look identical to a fresh clean entry. Cheap: one holdings.json read + one
+    earnings query per serve; failures never block the list."""
+    if not rows:
         return rows
-    from broker_proposal_autocal import apply_live_quotes_to_rows
-    return apply_live_quotes_to_rows(rows)
+    try:
+        held: dict = {}
+        h = _load_json(STATE_DIR / "holdings.json") or {}
+        for r in h.get("holdings", []):
+            if r.get("is_cash"):
+                continue
+            key = (str(r.get("symbol") or "").upper(), str(r.get("account") or ""))
+            held[key] = held.get(key, 0.0) + float(r.get("shares") or 0)
+        syms = sorted({str(r.get("symbol") or "").upper() for r in rows if r.get("symbol")})
+        earn = {}
+        if syms:
+            for e in (_db_query(
+                    "SELECT upper(symbol) AS s, next_earnings_date FROM symbol_profiles WHERE upper(symbol) = ANY(%s)",
+                    (syms,)) or []):
+                if e.get("next_earnings_date"):
+                    earn[e["s"]] = str(e["next_earnings_date"])
+        for r in rows:
+            sym = str(r.get("symbol") or "").upper()
+            acct = str(r.get("account_key") or r.get("intended_account") or r.get("account") or "")
+            r["held_shares_in_account"] = round(held.get((sym, acct), 0.0), 4) if acct else 0.0
+            r["held_shares_total"] = round(sum(v for (s, _a), v in held.items() if s == sym), 4)
+            r["next_earnings_date"] = earn.get(sym)
+    except Exception:
+        pass
+    return rows
+
+
+def _broker_reprice_proposal_rows(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return rows
+    if BROKER_LIST_LIVE_QUOTES:
+        from broker_proposal_autocal import apply_live_quotes_to_rows
+        rows = apply_live_quotes_to_rows(rows)
+    return _broker_enrich_trust_rows(rows)
 
 
 def _broker_parse_rr_filters(query: dict | None) -> dict:
@@ -23638,6 +23674,10 @@ def _proposal_accounts(query=None):
             "cash_source": sizing_src,
             "balances_status": live.get("balances_status") or ("ok" if sizing_base else "unavailable"),
             "sizing_ready": bool(sizing_base and sizing_base > 0),
+            # Per-account deployment cap — the SAME number the backend generator/risk-gate enforce
+            # (account_automation_policies.max_position_allocation_pct); env/20 stays the fallback
+            # in sizing_policy so the card, modal, and auto-proposals can never disagree.
+            "max_deploy_pct_of_cash": (ap.load_policy(ak) or {}).get("max_position_allocation_pct") or None,
         })
 
     accounts.sort(key=lambda a: (

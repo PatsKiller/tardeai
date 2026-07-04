@@ -1663,6 +1663,25 @@ CRITICAL INSTRUCTIONS:
     # e.g. ANET rendered "LLM error: All providers failed" as its CIO note for 65 days).
     if isinstance(raw, str) and raw.startswith("LLM error"):
         print(f"  [synthesis] {symbol}: all LLM lanes failed ({raw[:80]}) — keeping prior synthesis, no upsert")
+        # Self-heal (2026-07-03, ANET post-purge): the caller marks the job completed, so without a
+        # retry this symbol silently has NO synthesis until some other lane re-queues it. Enqueue a
+        # deduped retry so the next worker pass re-runs once lanes recover.
+        try:
+            cur2 = conn.cursor()
+            cur2.execute("""SELECT 1 FROM watchlist_agent_jobs WHERE symbol=%s AND requested_agent='full_chain'
+                            AND status IN ('queued','running','processing') LIMIT 1""", (symbol,))
+            if not cur2.fetchone():
+                from datetime import datetime as _dtt, timezone as _tzz
+                cur2.execute("""INSERT INTO watchlist_agent_jobs
+                                (id, symbol, requested_agent, request_type, note, priority, status, submitted_from, payload, created_at)
+                                VALUES (%s,%s,'full_chain','synthesis_retry',
+                                        'all LLM lanes failed — automatic retry',2,'queued','run_synthesis_guard','{}',NOW())
+                                ON CONFLICT (id) DO NOTHING""",
+                             (f"synretry-{symbol}-{_dtt.now(_tzz.utc).strftime('%Y%m%d%H%M%S')}", symbol))
+                conn.commit()
+                print(f"  [synthesis] {symbol}: retry job enqueued")
+        except Exception as _re:
+            print(f"  [synthesis] {symbol}: retry enqueue failed (non-fatal): {str(_re)[:80]}")
         return None
     syn = parse_synthesis_result(raw)
     parsed = syn

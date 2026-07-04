@@ -165,6 +165,27 @@ export default function BrokerProposalCard({
     : (ovStatus === 'BLOCK' || gate === 'BLOCK') ? 'Oversight / gate BLOCK — resolve reviews before auto-route'
     : savedShares < 1 ? 'No routable size on this proposal'
     : 'Auto-route blocked — resolve hard gates first'
+  // Cross-surface trust context (2026-07-03): held position + earnings proximity + wide-stop
+  // note — approving an add-to-position or pre-earnings entry must not look like a clean entry.
+  const _heldHere = Number(p.held_shares_in_account || 0)
+  const _heldTotal = Number(p.held_shares_total || 0)
+  const _earnM = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(p.next_earnings_date ?? ''))
+  const _earnDate = _earnM ? new Date(Number(_earnM[1]), Number(_earnM[2]) - 1, Number(_earnM[3]), 12) : null
+  const _earnDays = _earnDate ? Math.round((_earnDate.getTime() - Date.now()) / 864e5) : null
+  const _entryN = Number(p.proposed_entry || 0)
+  const _stopN = Number(p.proposed_stop || 0)
+  const _stopPct = _entryN > 0 && _stopN > 0 && _entryN > _stopN ? ((_entryN - _stopN) / _entryN) * 100 : null
+  const trustBits: { text: string; amber?: boolean }[] = []
+  if (_heldHere > 0) trustBits.push({ text: `holds ${Math.round(_heldHere).toLocaleString()} sh in this account — this ADDS`, amber: true })
+  else if (_heldTotal > 0) trustBits.push({ text: `holds ${Math.round(_heldTotal).toLocaleString()} sh in other accounts` })
+  if (_earnDays != null && _earnDays >= 0 && _earnDays <= 45) {
+    trustBits.push({
+      text: `earnings ${_earnDate!.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (${_earnDays}d)`,
+      amber: _earnDays <= 7,
+    })
+  }
+  if (_stopPct != null && _stopPct > 7) trustBits.push({ text: `wide stop (${_stopPct.toFixed(1)}%) — consider reduced risk`, amber: true })
+
   // Time until this proposal expires (how long it stays in this state).
   const _expMs = p.expires_at ? (new Date(p.expires_at).getTime() - Date.now()) : null
   const _expHrs = _expMs != null && !Number.isNaN(_expMs) ? _expMs / 3_600_000 : null
@@ -312,6 +333,15 @@ export default function BrokerProposalCard({
           )}
         </div>
 
+        {trustBits.length > 0 && (
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
+            {trustBits.map((b, i) => (
+              <span key={i} style={b.amber ? { color: AMBER, fontWeight: 700 } : undefined}>
+                {i > 0 ? ' · ' : ''}{b.text}
+              </span>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
           <ProposalStrategyBadge proposal={{ ...p, strategy_display_name: tickerCtx.strategyDisplay, strategy_description: tickerCtx.strategyPurpose }} size="md" />
           <GradeSplitPills gradeSplit={p.grade_split} size="md" />

@@ -156,6 +156,33 @@ def check_and_enqueue(apply: bool = False, baseline: bool = False) -> dict:
             skipped.append(f"{sym} (error: {str(e)[:60]})")
     if apply:
         _save_state(cur)
+        # Cross-surface refresh (2026-07-03 tier-2): a position change also stales the per-holding
+        # LLM health assessment and the protective-stop advisory. Health: spawn a detached refresh
+        # (cap 3 — LLM work, never block the sync). Stops: alert-only — stop machinery is
+        # order-adjacent and stays untouched; the operator/stop-advisory cron acts on the alert.
+        try:
+            import subprocess
+            py = str(PROJECT_ROOT / ".venv" / "bin" / "python")
+            for c in changes[:3]:
+                if c["new_shares"] > 0:
+                    subprocess.Popen([py, str(Path(__file__).resolve().parent / "holdings_llm_refresh.py"),
+                                      "--run", "--symbol", c["symbol"]],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                     start_new_session=True)
+        except Exception:
+            pass
+        try:
+            from alert_event_writer import save_alert_event
+            for c in changes:
+                save_alert_event(alert_type="system_health", severity="info",
+                                 source_script="holdings_change_trigger.py",
+                                 raw_text=(f"[holdings-change] {c['symbol']} {c['kind']} "
+                                           f"{c['old_shares']:.0f}→{c['new_shares']:.0f} sh — "
+                                           f"protective-stop band recheck recommended"),
+                                 parsed_payload={"kind": "stop_band_recheck", "symbol": c["symbol"],
+                                                 "change": c["kind"]})
+        except Exception:
+            pass
 
     summary = (f"{len(changes)} change(s): "
                + "; ".join(f"{c['symbol']} {c['kind']} {c['old_shares']:.0f}→{c['new_shares']:.0f}" for c in changes)
