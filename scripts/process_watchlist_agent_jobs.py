@@ -21,7 +21,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from watchlist_priority import (
     WATCHLIST_TOP_N, holdings_list, is_off_hours_et, job_priority_params,
-    off_hours_scope_params, sql_job_priority_case, sql_off_hours_scope,
+    off_hours_scope_params, request_type_sla_params, sql_job_priority_case,
+    sql_off_hours_scope, sql_request_type_sla_case,
 )
 from cio_agent_contract import (
     AGENT_JSON_CONTRACT_VERSION,
@@ -1990,9 +1991,11 @@ def process_jobs(limit: int = 10):
         scope_params = list(off_hours_scope_params(holdings, PROJECT_ROOT))
     prio_case = sql_job_priority_case("j.symbol")
     prio_p = job_priority_params(holdings, PROJECT_ROOT)
+    sla_case = sql_request_type_sla_case("j.request_type")
+    sla_p = request_type_sla_params()
     cur.execute(f"""SELECT * FROM watchlist_agent_jobs j WHERE j.status = 'queued'{scope_sql}
-        ORDER BY {prio_case}, priority, created_at LIMIT %s""",
-                (*scope_params, *prio_p, limit))
+        ORDER BY {sla_case}, {prio_case}, priority, created_at LIMIT %s""",
+                (*scope_params, *sla_p, *prio_p, limit))
     jobs = cur.fetchall()
 
     if not jobs:

@@ -1,0 +1,23 @@
+[Unit]
+Description=TradeAI Continuous Scanner
+# Boot hardening (2026-07-04): the Persistent=true timer catch-up fired at boot
+# (Jul 3 12:31) and the launcher died in 19ms with no output — /home not fully
+# ready. Gate on the mount and retry on failure instead of silently missing a day.
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/home/johnclaw/trade-ai-v12-rebuild
+StartLimitIntervalSec=1800
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=johnclaw
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_continuous.sh
+# Normal end-of-day shutdown exits 0 (never restarted); early crashes retry.
+Restart=on-failure
+RestartSec=120
+
+[Install]
+WantedBy=multi-user.target

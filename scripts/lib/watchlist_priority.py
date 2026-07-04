@@ -25,6 +25,21 @@ PROPOSAL_ACTIVE_STATUSES = (
     "PENDING", "APPROVED", "APPROVED_FOR_PAPER_TEST", "MODIFIED", "BROKER_SUBMITTED",
 )
 
+# Decision-feeding job types with a 2h SLA (health_agent counts these as execution
+# defects when starved). They must outrank the rolling research backlog regardless of
+# symbol tier — a stream of scheduled_research on holdings otherwise starves them forever.
+TIME_SENSITIVE_REQUEST_TYPES = ("proposal_review", "full_analysis", "research_gap", "event")
+
+
+def sql_request_type_sla_case(request_type_sql: str = "j.request_type") -> str:
+    """ORDER BY class: 0 = decision-feeding (SLA), 1 = background research/discovery."""
+    return f"(CASE WHEN {request_type_sql} = ANY(%s) THEN 0 ELSE 1 END)"
+
+
+def request_type_sla_params() -> tuple:
+    return (list(TIME_SENSITIVE_REQUEST_TYPES),)
+
+
 # Buy-side CIO / card ratings that bypass the rank tail (incl. START = ready-to-enter).
 DAILY_PRIORITY_BUY_RECS = frozenset({
     "buy", "strong_buy", "strongbuy", "add", "add_on_pullback", "accumulate",

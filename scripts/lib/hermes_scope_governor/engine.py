@@ -258,6 +258,10 @@ class ScopeGovernorEngine:
             cur, edge_scores_map, reaction_plan=tier_reaction_plan,
             health_map=health_map, lifecycle_cfg=lifecycle_cfg,
         )
+        # The decision loop below is pure Python and can take minutes on a large
+        # watchlist; end the read transaction so the connection doesn't sit
+        # idle-in-transaction (PG kills it at 120s — see db_adapter session settings).
+        conn.commit()
 
         s1_ttl = self.cfg["tiers"]["s1"]["ttl_days"]
         s2_ttl = self.cfg["tiers"]["s2"]["ttl_days"]

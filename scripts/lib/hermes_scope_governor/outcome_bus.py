@@ -51,13 +51,30 @@ def apply_bus_to_edge_scores(
     return updated_scores, updated_details
 
 
+# bus_tier_override is called once per watchlist symbol (4k+); the bus file is 16MB+,
+# so re-parsing it per call stalls the governor for minutes mid-transaction (PG kills the
+# connection at idle_in_transaction_session_timeout=120s). Cache the parsed index by mtime.
+_FEEDBACK_CACHE: dict[str, Any] = {"mtime": None, "index": None}
+
+
+def _cached_feedback_index() -> dict[str, dict[str, Any]]:
+    from lib.hermes_outcome_bus.bus import OUTCOME_BUS_PATH
+    try:
+        mtime = OUTCOME_BUS_PATH.stat().st_mtime
+    except OSError:
+        mtime = None
+    if _FEEDBACK_CACHE["index"] is None or _FEEDBACK_CACHE["mtime"] != mtime:
+        _FEEDBACK_CACHE["index"] = governor_feedback_index(load_outcome_bus())
+        _FEEDBACK_CACHE["mtime"] = mtime
+    return _FEEDBACK_CACHE["index"]
+
+
 def bus_tier_override(sym: str, desired: str, cur_tier: str | None, cfg: dict[str, Any]) -> tuple[str, str] | None:
     """Force tier changes from bus pause/demote when graft gates pass. Returns (tier, reason) or None."""
     if cur_tier == "S0":
         return None  # capital exposed — never bus-demoted
 
-    bus = load_outcome_bus()
-    item = governor_feedback_index(bus).get(sym.upper())
+    item = _cached_feedback_index().get(sym.upper())
     if not item:
         return None
 
