@@ -134,12 +134,36 @@
       "sec_form4_context_stale",
       "agent_jobs_processing_stuck",
       "synthesis_processing_stuck",
-      "proposal_trade_plan_blocked"
+      "proposal_trade_plan_blocked",
+      "hermes_scope_governor_stale",
+      "hermes_scope_governor_heartbeat_missing",
+      "hermes_scope_governor_last_run_failed"
     ]
+  },
+  "data_sources": {
+    "_comment": "Consume data_source_health rows (per-source ingestion liveness). finviz_cookie_check live-validates the cookie when finviz is stale so cookie expiry surfaces as a distinct critical finding (operator must refresh FINVIZ_COOKIE).",
+    "enabled": true,
+    "weekend_stale_factor": 3.0,
+    "finviz_cookie_check": true
+  },
+  "systemd_units": {
+    "_comment": "Detect failed trade-stack systemd units (missed scheduled runs). Detection-only: restart needs sudo.",
+    "enabled": true,
+    "unit_prefixes": ["tradeai-", "portfolio-", "grok-oauth", "chatgpt-oauth"]
+  },
+  "db_connections": {
+    "_comment": "Count Postgres idle-in-transaction kills (script holding a txn through slow non-DB work; killed at the 120s session timeout). Caught the 2026-07-04 scope-governor outage class.",
+    "enabled": true,
+    "window_hours": 3,
+    "idle_txn_kills_warn": 10,
+    "pg_log_glob": "/var/log/postgresql/postgresql-*-main.log"
   },
   "remediation_map": {
     "_comment": "finding type -> allowlisted retry_cmd enqueued for claude_escalation_handler tier-1. Only verified, side-effect-safe scripts. LLM-heavy processor retries are flock-guarded on the SAME lock as the cron so they SINGLE-FLIGHT \u2014 multiple queued retries (or a retry racing the cron) can no longer stack concurrent processors and saturate the local LLM (the 2026-06-25 Ollama thundering-herd: 6+ --limit 15 processes \u2192 503/timeout cascade).",
     "news_stale": ".venv/bin/python scripts/news_ingestion.py --priority",
+    "hermes_scope_governor_stale": "bash scripts/safe_flock.sh /tmp/hermes_scope_governor.lock .venv/bin/python scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1",
+    "hermes_scope_governor_heartbeat_missing": "bash scripts/safe_flock.sh /tmp/hermes_scope_governor.lock .venv/bin/python scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1",
+    "hermes_scope_governor_last_run_failed": "bash scripts/safe_flock.sh /tmp/hermes_scope_governor.lock .venv/bin/python scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1",
     "data_gaps_open": ".venv/bin/python scripts/data_gap_resolver.py",
     "agent_jobs_stuck": "flock -n /tmp/tradeai_watchlist_agent_jobs.lock .venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 15",
     "pipeline_failures": "flock -n /tmp/tradeai_watchlist_agent_jobs.lock .venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 10",

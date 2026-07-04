@@ -37,6 +37,23 @@ def get_watch_symbols(conn, limit=50):
     return [r[0] for r in cur.fetchall()]
 
 
+def _insert_news_article(cur, title, url, symbol, source, quality):
+    """Insert into news_articles using the canonical schema (source_url/relevance_score).
+
+    Dedup matches news_ingestion.py: skip when source_url already exists.
+    Returns True when a row was written.
+    """
+    if not url or not title:
+        return False
+    cur.execute("SELECT 1 FROM news_articles WHERE source_url=%s LIMIT 1", (url[:500],))
+    if cur.fetchone():
+        return False
+    cur.execute("""INSERT INTO news_articles (symbol, title, source, source_url, relevance_score, published_at)
+                   VALUES (%s, %s, %s, %s, %s, NOW())""",
+                (symbol, title[:300], source, url[:500], quality))
+    return True
+
+
 def check_edgar_overnight(symbol, conn, dry_run=False):
     findings = []
     try:
@@ -61,11 +78,9 @@ def check_edgar_overnight(symbol, conn, dry_run=False):
             if not dry_run and cur:
                 url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={symbol}&type={form_type}"
                 try:
-                    cur.execute("""INSERT INTO news_articles (title, url, symbol, source, quality_score, created_at)
-                        VALUES (%s, %s, %s, 'sec_edgar_premarket', 88, NOW()) ON CONFLICT (url) DO NOTHING""",
-                        [title[:300], url, symbol])
+                    _insert_news_article(cur, title, url, symbol, 'sec_edgar_premarket', 88)
                 except Exception:
-                    pass
+                    conn.rollback()
         if not dry_run and findings:
             conn.commit()
         return findings
@@ -256,11 +271,9 @@ def check_news_rss(symbol, conn, dry_run=False):
                     findings.append({'symbol': symbol, 'title': title, 'source': 'yahoo_rss'})
                     if not dry_run and cur:
                         try:
-                            cur.execute("""INSERT INTO news_articles (title, url, symbol, source, quality_score, created_at)
-                                VALUES (%s,%s,%s,'yahoo_premarket',65,NOW()) ON CONFLICT (url) DO NOTHING""",
-                                [title[:300], link[:500], symbol])
+                            _insert_news_article(cur, title, link, symbol, 'yahoo_premarket', 65)
                         except Exception:
-                            pass
+                            conn.rollback()
             if not dry_run and findings:
                 conn.commit()
     except Exception:

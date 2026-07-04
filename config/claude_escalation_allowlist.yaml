@@ -17,6 +17,7 @@ allowed_script_patterns:
   - "scripts/screener_run_health.py"
   # Pipeline requeue (no order submission)
   - "scripts/process_watchlist_agent_jobs.py"
+  - "scripts/hermes_scope_governor.py"
   - "scripts/build_deep_overnight_llm_queue.py"
   - "scripts/rag_indexer.py"
   - "scripts/hermes_coordinator.py"

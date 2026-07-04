@@ -210,6 +210,23 @@ def fetch_finviz_deep(symbol: str) -> Optional[dict]:
 # TIER 2 — FREE ON-DEMAND SOURCES
 # ─────────────────────────────────────────────
 
+def _insert_news_article(cur, title: str, url: str, symbol: str, source: str, quality: int) -> bool:
+    """Insert into news_articles using the canonical schema (source_url/relevance_score).
+
+    Dedup matches news_ingestion.py: skip when source_url already exists.
+    Returns True when a row was written.
+    """
+    if not url or not title:
+        return False
+    cur.execute("SELECT 1 FROM news_articles WHERE source_url=%s LIMIT 1", (url[:500],))
+    if cur.fetchone():
+        return False
+    cur.execute("""INSERT INTO news_articles (symbol, title, source, source_url, relevance_score, published_at)
+                   VALUES (%s, %s, %s, %s, %s, NOW())""",
+                (symbol, title[:300], source, url[:500], quality))
+    return True
+
+
 def pull_sec_edgar(symbol: str, conn) -> int:
     """SEC EDGAR full-text search. Free, no API key. 8-K = catalyst source for micro-caps."""
     try:
@@ -239,13 +256,10 @@ def pull_sec_edgar(symbol: str, conn) -> int:
             url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={symbol}&type={form_type}"
             quality = {'8-K': 85, 'S-1': 70, 'S-3': 70}.get(form_type, 75)
             try:
-                cur.execute("""
-                    INSERT INTO news_articles (title, url, symbol, source, quality_score, created_at)
-                    VALUES (%s, %s, %s, 'sec_edgar_filing', %s, NOW()) ON CONFLICT (url) DO NOTHING
-                """, [title[:300], url[:500], symbol, quality])
-                added += 1
+                if _insert_news_article(cur, title, url, symbol, 'sec_edgar_filing', quality):
+                    added += 1
             except Exception:
-                pass
+                conn.rollback()
         if added:
             conn.commit()
             log.info(f"[enrichment] SEC EDGAR: {added} filings for {symbol}")
@@ -271,14 +285,10 @@ def pull_yahoo_rss(symbol: str, conn) -> int:
             if not title or not link:
                 continue
             try:
-                cur.execute("""
-                    INSERT INTO news_articles (title, url, symbol, source, quality_score, created_at)
-                    VALUES (%s, %s, %s, 'yahoo_rss', 65, NOW())
-                    ON CONFLICT (url) DO NOTHING
-                """, [title[:300], link[:500], symbol])
-                added += 1
+                if _insert_news_article(cur, title, link, symbol, 'yahoo_rss', 65):
+                    added += 1
             except Exception:
-                pass
+                conn.rollback()
         conn.commit()
         return added
     except Exception:
@@ -302,14 +312,10 @@ def pull_google_news_rss(symbol: str, conn) -> int:
             if not title or not link:
                 continue
             try:
-                cur.execute("""
-                    INSERT INTO news_articles (title, url, symbol, source, quality_score, created_at)
-                    VALUES (%s, %s, %s, 'google_news_rss', 70, NOW())
-                    ON CONFLICT (url) DO NOTHING
-                """, [title[:300], link[:500], symbol])
-                added += 1
+                if _insert_news_article(cur, title, link, symbol, 'google_news_rss', 70):
+                    added += 1
             except Exception:
-                pass
+                conn.rollback()
         conn.commit()
         return added
     except Exception:
@@ -355,14 +361,11 @@ def pull_finnhub_news(symbol: str, conn) -> int:
         added = 0
         for art in articles[:10]:
             try:
-                cur.execute("""
-                    INSERT INTO news_articles (title, url, symbol, source, quality_score, created_at)
-                    VALUES (%s, %s, %s, 'finnhub_live', 72, NOW())
-                    ON CONFLICT (url) DO NOTHING
-                """, [(art.get('headline') or '')[:300], (art.get('url') or '')[:500], symbol])
-                added += 1
+                if _insert_news_article(cur, art.get('headline') or '', art.get('url') or '',
+                                        symbol, 'finnhub_live', 72):
+                    added += 1
             except Exception:
-                pass
+                conn.rollback()
         conn.commit()
         return added
     except Exception:
@@ -470,13 +473,11 @@ def pull_brave_aplus(symbol: str, score: int, conn) -> bool:
         added = 0
         for r in results:
             try:
-                cur.execute("""
-                    INSERT INTO news_articles (title, url, symbol, source, quality_score, created_at)
-                    VALUES (%s, %s, %s, 'brave_search', 75, NOW()) ON CONFLICT (url) DO NOTHING
-                """, [(r.get('title') or '')[:300], (r.get('url') or '')[:500], symbol])
-                added += 1
+                if _insert_news_article(cur, r.get('title') or '', r.get('url') or '',
+                                        symbol, 'brave_search', 75):
+                    added += 1
             except Exception:
-                pass
+                conn.rollback()
         conn.commit()
         log.info(f"[enrichment] Brave A+: {added} articles for {symbol}")
         return True
