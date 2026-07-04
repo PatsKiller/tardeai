@@ -112,6 +112,10 @@ def _enqueue(sym: str, note: str) -> str:
                 (id, symbol, requested_agent, request_type, note, priority, status, submitted_from, payload, created_at)
                 VALUES (%s,%s,'full_chain','holdings_change',%s,1,'queued','holdings_change_trigger','{}',NOW())
                 ON CONFLICT (id) DO NOTHING""", (job_id, sym, note), fetch=None)
+    # Re-open the synthesis gate: run_synthesis skips symbols whose maturity says 'completed',
+    # so re-run agents never re-synthesized (SMCI 2026-07-03 — agents finished, final row stale).
+    _execute("""UPDATE watchlist_analysis_maturity SET final_synthesis_status='pending', updated_at=now()
+                WHERE symbol=%s AND final_synthesis_status='completed'""", (sym,), fetch=None)
     return "enqueued"
 
 

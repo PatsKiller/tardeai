@@ -91,6 +91,9 @@ def main() -> int:
                             'prior synthesis was a failed-LLM artifact — regenerate',3,'queued',
                             'purge_error_synthesis','{}',NOW())
                     ON CONFLICT (id) DO NOTHING""", (job_id, sym), fetch=None)
+        # Re-open the synthesis gate — run_synthesis skips maturity 'completed' symbols.
+        _execute("""UPDATE watchlist_analysis_maturity SET final_synthesis_status='pending', updated_at=now()
+                    WHERE symbol=%s AND final_synthesis_status='completed'""", (sym,), fetch=None)
         enqueued.append(sym)
     print(f"re-synthesis enqueued: {', '.join(enqueued) or '—'}"
           + (f" | already queued: {', '.join(skipped)}" if skipped else ""))
