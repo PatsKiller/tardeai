@@ -92,6 +92,7 @@ SECRETS_DATA_STAMP="$PROJ/data/runtime/last_secrets_data_backup.stamp"
 run_backup() {
   pm_step "portfolio_backup"   "BACKUP_DAILY" bash "$PROJ/linux_launchers/run_pg_backup.sh"
   pm_step "secrets_backup_env" "BACKUP_DAILY" bash "$PROJ/scripts/backup_secrets_state.sh" env
+  pm_step "memory_backup"      "BACKUP_DAILY" bash "$PROJ/scripts/backup_secrets_state.sh" memory
   # weekly-gated secrets-data
   local age=999
   [ -f "$SECRETS_DATA_STAMP" ] && age=$(( ( $(date +%s) - $(stat -c %Y "$SECRETS_DATA_STAMP") ) / 86400 ))
