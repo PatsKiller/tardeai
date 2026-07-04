@@ -9,6 +9,7 @@
 # Usage:
 #   scripts/backup_secrets_state.sh env     # .env + .env.* variants (small, daily)
 #   scripts/backup_secrets_state.sh data    # data/ state (large, weekly)
+#   scripts/backup_secrets_state.sh memory  # Claude persistent memory dir (small, daily)
 #
 # Restore:
 #   gpg --batch --passphrase-file <pass> -d <file>.tar.gz.gpg > out.tar.gz && tar xzf out.tar.gz
@@ -23,10 +24,16 @@ GOG="$HOME/.local/bin/gog"
 GOG_KEYRING_PW_FILE="$HOME/.openclaw/credentials/gog_keyring_password"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 
+TAR_BASE="$PROJ"
 case "$TARGET" in
   env)  PREFIX="env_backup";  KEEP=7;  SOURCES=(".env"); GLOB=".env.*" ;;
   data) PREFIX="data_backup"; KEEP=4;  SOURCES=("data");  GLOB="" ;;
-  *) echo "usage: $0 {env|data}" >&2; exit 2 ;;
+  # Claude persistent memory (financial profile, project state) lives OUTSIDE the project
+  # tree — tar from $HOME. Small (<1MB), daily, same encryption; also mirrored to the
+  # private GitHub repo trade-ai-memory (this is the second, key-independent copy).
+  memory) PREFIX="memory_backup"; KEEP=7; TAR_BASE="$HOME"
+          SOURCES=(".claude/projects/-home-johnclaw/memory"); GLOB="" ;;
+  *) echo "usage: $0 {env|data|memory}" >&2; exit 2 ;;
 esac
 
 [ -f "$PASS_FILE" ] || { echo "FATAL: passphrase file missing: $PASS_FILE" >&2; exit 1; }
@@ -42,7 +49,7 @@ ENC="$TAR.gpg"
 
 # Build the file list (exclude the safe template; include rotated .env.* variants for env mode).
 LIST=()
-for s in "${SOURCES[@]}"; do [ -e "$PROJ/$s" ] && LIST+=("$s"); done
+for s in "${SOURCES[@]}"; do [ -e "$TAR_BASE/$s" ] && LIST+=("$s"); done
 if [ -n "$GLOB" ]; then
   while IFS= read -r f; do
     bn="$(basename "$f")"
@@ -53,7 +60,7 @@ fi
 [ ${#LIST[@]} -gt 0 ] || { echo "FATAL: nothing to back up for target '$TARGET'" >&2; exit 1; }
 
 echo "[backup:$TARGET] bundling ${#LIST[@]} path(s): ${LIST[*]}"
-tar czf "$TAR" -C "$PROJ" "${LIST[@]}"
+tar czf "$TAR" -C "$TAR_BASE" "${LIST[@]}"
 
 # Encrypt (AES-256, symmetric). Plaintext tar is deleted with $TMP on exit.
 gpg --batch --yes --pinentry-mode loopback --passphrase-file "$PASS_FILE" \
