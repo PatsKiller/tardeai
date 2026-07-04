@@ -160,3 +160,14 @@ data/runtime/catalyst_calibration.json
 state/trade_in_view_profit_capture.json
 state/hermes/
 docs/project/Trade_AI_v12_Reference_Architecture.pdf
+
+# ── Secrets-hygiene hardening (2026-07-04 due-diligence audit) ──
+# cookie backups slipped past *.bak (file was youtube_cookies.txt.bak.20260509)
+config/youtube_cookies.txt*
+*.bak.*
+*cookies.txt
+*cookies.txt.*
+# runtime trading state — never commit (momentum_scalp state was tracked)
+state/
+# drive-inventory logs leak personal Drive filenames
+logs/drive_cleanup_*/

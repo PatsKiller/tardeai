@@ -15,12 +15,12 @@ accounts:
     display_name: "Fidelity Rollover IRA"
     broker: fidelity
     type: rollover_ira
-    account_id: "270135199"
+    account_id: "***199"
     taxable: false
     read_only: true                         # no trading API; advisory only
     loan_balance: 21735.38                   # NEEDS CONFIRMATION: outstanding 401k loan at rollover —
     loan_payoff_deadline: "2027-12-31"       #   repaid, or treated as a taxable loan-offset distribution?
-    notes: "Rollover of Omnicom Group Retirement Savings Plan (#74608, terminated 02/28/2026). Rollover COMPLETE 2026-06-18 into a NEW Fidelity Rollover IRA #270135199 (note: stayed at Fidelity — original plan assumed consolidating into the Schwab Rollover IRA). ~$568,436 / 100% cash awaiting deployment as of 2026-06-18. Read-only via SnapTrade (auth pending). OPEN: 401k loan tax treatment + whether to keep at Fidelity or transfer to Schwab."
+    notes: "Rollover of Omnicom Group Retirement Savings Plan (#74608, terminated 02/28/2026). Rollover COMPLETE 2026-06-18 into a NEW Fidelity Rollover IRA #***199 (note: stayed at Fidelity — original plan assumed consolidating into the Schwab Rollover IRA). ~$568,436 / 100% cash awaiting deployment as of 2026-06-18. Read-only via SnapTrade (auth pending). OPEN: 401k loan tax treatment + whether to keep at Fidelity or transfer to Schwab."
     drip_enabled: false
     target_allocation:
       us_large_blend: 40
@@ -215,7 +215,7 @@ roth_conversion_strategy:
       tax_rate_all_in: 0.314
       annual_tax_cost: 12560
       strategy: "Stay under $101K MAGI ceiling. Disability still covers taxes. ~$40K/yr optimal."
-      omnicom_rollover_note: "COMPLETE 2026-06-18: Omnicom 401k rolled into a NEW Fidelity Rollover IRA #270135199 (~$568K, 100% cash) — earlier than the planned 2027 and held at Fidelity, NOT consolidated into the Schwab Rollover IRA. No change to conversion math, but the traditional-IRA pool is now split across two custodians. OPEN: 401k loan ($21,735) tax treatment (repaid vs. taxable loan-offset)."
+      omnicom_rollover_note: "COMPLETE 2026-06-18: Omnicom 401k rolled into a NEW Fidelity Rollover IRA #***199 (~$568K, 100% cash) — earlier than the planned 2027 and held at Fidelity, NOT consolidated into the Schwab Rollover IRA. No change to conversion math, but the traditional-IRA pool is now split across two custodians. OPEN: 401k loan ($21,735) tax treatment (repaid vs. taxable loan-offset)."
 
     # ── Phase 3: Golden Window (disability ends → RMDs start) ─────────────────
     # Lowest income of your life. 12% bracket on most conversions.
@@ -237,7 +237,7 @@ roth_conversion_strategy:
     currently_on_wifes_plan_until: "2026-11-30"
     disability_ends_approx: "2036-02-28"    # age 68.5
     ss_fra: "2034-08-21"                     # age 67
-    omnicom_rollover_target: "2026-06-18"   # COMPLETE (was planned 2027-12-31) → Fidelity Rollover IRA #270135199
+    omnicom_rollover_target: "2026-06-18"   # COMPLETE (was planned 2027-12-31) → Fidelity Rollover IRA #***199
     omnicom_rollover_status: "complete"
     loan_payoff_deadline: "2027-12-31"      # OPEN: confirm loan repaid vs. taxable loan-offset at rollover
     loan_balance: 21735.38
