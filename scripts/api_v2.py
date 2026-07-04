@@ -15878,6 +15878,12 @@ def _broker_proposals(query=None):
             },
         }
         _broker_list_cache_put(cache_key, result)
+        # Trust enrichment on the cache-MISS path too — only the cache-HIT branch ran the
+        # reprice/enrich hook, so a fresh build served held_shares/next_earnings as None
+        # (caught in the PR #68 post-deploy verification). Enrich AFTER caching: held/earnings
+        # are re-derived per serve so the cached copy stays enrichment-free like quotes.
+        result = dict(result)
+        result["proposals"] = _broker_enrich_trust_rows(list(result.get("proposals") or []))
         return result
     except Exception as e:
         stale = _broker_list_cache_get(cache_key)
