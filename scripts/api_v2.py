@@ -23646,8 +23646,16 @@ def _proposal_accounts(query=None):
         -(a.get("sizing_base") or 0),
     ))
 
+    # Desk sizing policy (operator-tunable via env, no hardcoded values in the UI):
+    # max_deploy_pct_of_cash caps capital DEPLOYED per position as % of available cash —
+    # complements the 2% max-RISK cap (risk = loss-if-stopped; deployment = risk ÷ stop%).
+    try:
+        _max_deploy = float(os.environ.get("MAX_DEPLOY_PCT_OF_CASH", "20"))
+    except (TypeError, ValueError):
+        _max_deploy = 20.0
     out = _json_clean({
         "accounts": accounts,
+        "sizing_policy": {"max_deploy_pct_of_cash": _max_deploy, "max_risk_pct": 2},
         "note": "Risk sizing uses sizing_base (cash/buying power), not total equity. Retirement accounts are cash-only.",
         "cached_seconds": 30,
     })

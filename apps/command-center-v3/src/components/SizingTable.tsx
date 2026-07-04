@@ -5,6 +5,7 @@ import {
   computeRiskSizedShares,
   resolveEquity,
   resolveSizingBase,
+  volatilityRiskSuggestion,
   type ProposalAccount,
   type RiskPct,
 } from '../lib/watchlistProposeSizing'
@@ -24,6 +25,8 @@ type Props = {
   target: number | null
   /** Only READY / near-entry states offer the size ▸ route into the Propose modal. */
   canPropose: boolean
+  /** Desk concentration policy: max % of available cash deployed per position (from proposal-accounts). */
+  maxDeployPctOfCash?: number
   onSize?: (accountKey: string, riskPct: RiskPct) => void
 }
 
@@ -44,7 +47,7 @@ function k(v: number): string {
   return v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(0)}`
 }
 
-export default function SizingTable({ accounts, heldPositions, entry, stop, target, canPropose, onSize }: Props) {
+export default function SizingTable({ accounts, heldPositions, entry, stop, target, canPropose, maxDeployPctOfCash, onSize }: Props) {
   const [riskPct, setRiskPct] = useState<RiskPct>(1)
 
   const header = (
@@ -102,21 +105,26 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
   const sized = rows.map(x => {
     const pos = computeRiskSizedShares({
       sizingBase: x.base, equity: resolveEquity(x.a), entry: entry!, stop: stop!,
-      target: target ?? entry!, riskPct,
+      target: target ?? entry!, riskPct, maxDeployPctOfCash,
     })
     const rawBudgetShares = Math.floor((x.base * riskPct / 100) / rps)
+    const deployPct = x.base > 0 ? (pos.investment / x.base) * 100 : 0
     return {
       key: x.a.account_key,
       name: x.a.display_name || acctLabel(x.a.account_key),
       base: x.base,
       pos,
-      cashCapped: pos.shares > 0 && pos.shares < rawBudgetShares,
+      deployPct,
+      tight: !pos.exceedsCash && pos.shares > 0 && deployPct > 50,
+      cashCapped: !pos.concentrationCapped && pos.shares > 0 && pos.shares < rawBudgetShares,
       held: heldFor(x.a.account_key),
     }
   })
   const topRisk = sized[0]?.pos.dollarRisk ?? 0
   const eqPct = totalEquity > 0 ? (topRisk / totalEquity) * 100 : null
   const holds = sized.filter(r => r.held)
+  const anyConcCapped = sized.some(r => r.pos.concentrationCapped)
+  const volNote = volatilityRiskSuggestion(entry, stop)
 
   return (
     <div onClick={e => e.stopPropagation()}>
@@ -126,9 +134,9 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
           <tr>
             <th style={{ ...th, textAlign: 'left' }}>Account</th>
             <th style={th}>Shares</th>
-            <th style={th}>Invest</th>
-            <th style={th}>Risk $</th>
-            <th style={th}>%Cash</th>
+            <th style={th} title="Capital deployed (shares × limit) — NOT the risk; risk is what you lose at the stop">Deploy</th>
+            <th style={th} title="Max loss if stopped out — this is what the 1%/2% applies to">Risk $</th>
+            <th style={th} title="Deployment as % of available cash">%Cash</th>
             <th style={th}></th>
           </tr>
         </thead>
@@ -146,12 +154,18 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
                   <td colSpan={4} style={{ ...cell, color: WL.signal.amber, fontFamily: 'inherit' }}>insufficient cash ({k(r.base)})</td>
                 ) : (
                   <>
-                    <td style={cell} title={r.cashCapped ? `cash-capped from the ${riskPct}% risk budget` : undefined}>
-                      {r.pos.shares.toLocaleString()}{r.cashCapped ? ' ⚠' : ''}
+                    <td style={cell} title={
+                      r.pos.concentrationCapped ? `capped by the ${maxDeployPctOfCash}% deployment (concentration) limit`
+                        : r.cashCapped ? `cash-capped from the ${riskPct}% risk budget` : undefined
+                    }>
+                      {r.pos.shares.toLocaleString()}{r.pos.concentrationCapped || r.cashCapped ? ' ⚠' : ''}
                     </td>
                     <td style={cell}>{k(r.pos.investment)}</td>
                     <td style={cell}>{k(r.pos.dollarRisk)}</td>
-                    <td style={cell}>{r.base > 0 ? `${((r.pos.investment / r.base) * 100).toFixed(1)}%` : '—'}</td>
+                    <td style={cell}>
+                      {r.base > 0 ? `${r.deployPct.toFixed(1)}%` : '—'}
+                      {r.tight && <span style={{ color: WL.signal.amber, fontWeight: 700, fontFamily: 'inherit' }} title="deployment above 50% of this account's available cash — liquidity is tight"> tight</span>}
+                    </td>
                   </>
                 )}
                 <td style={{ ...cell, whiteSpace: 'nowrap' }}>
@@ -171,10 +185,16 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
         </tbody>
       </table>
       <div style={{ fontSize: 10, color: WL.text.dim, marginTop: 5, lineHeight: 1.5 }}
-           title="Risk budget = riskPct × available cash (never equity) ÷ stop distance, capped by available cash — identical math to the Propose modal.">
-        risk = {riskPct}% of available cash ÷ ${rps.toFixed(2)}/sh stop
+           title="Risk budget = riskPct × available cash (never equity) ÷ stop distance, capped by available cash and the desk deployment limit — identical math to the Propose modal.">
+        {riskPct}% = max loss if stopped (${rps.toFixed(2)}/sh) — not capital deployed
         {eqPct != null && Number.isFinite(eqPct) ? ` · ≈${eqPct.toFixed(2)}% of total equity` : ''}
         {riskPct === 2 ? <span style={{ color: WL.signal.amber, fontWeight: 700 }}> · 2% = desk max</span> : ''}
+        {anyConcCapped ? ` · deploy cap ${maxDeployPctOfCash}% of cash` : ''}
+        {volNote && (
+          <span style={{ color: WL.signal.amber, fontWeight: 700 }} title="Stop distance is wider than the normal band — same $ risk buys fewer shares; consider reducing effective risk %">
+            {' '}· wide stop ({volNote.stopPct.toFixed(1)}%) — consider {volNote.suggestPct}% risk
+          </span>
+        )}
         {holds.length > 0 && (
           <span style={{ color: WL.signal.amber, fontWeight: 700 }}>
             {' '}· holds: {holds.map(h => `${h.name} ${Math.round(h.held!.shares).toLocaleString()} sh (${k(h.held!.market_value)})`).join(', ')}
