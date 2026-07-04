@@ -15388,12 +15388,32 @@ def _broker_enrich_trust_rows(rows: list[dict]) -> list[dict]:
                     (syms,)) or []):
                 if e.get("next_earnings_date"):
                     earn[e["s"]] = str(e["next_earnings_date"])
+        # Latest catalyst headline per symbol — same source as the watchlist items query's
+        # catalyst_events LATERAL (non-'other', 45-day window), batched here. Failure-tolerant:
+        # a catalyst outage must never block the proposal list.
+        cata: dict = {}
+        if syms:
+            try:
+                for c in (_db_query(
+                        """SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS s, headline,
+                                  COALESCE(published_at, created_at) AS ts
+                             FROM catalyst_events
+                            WHERE upper(symbol) = ANY(%s) AND catalyst_type <> 'other'
+                              AND COALESCE(published_at, created_at) > now() - interval '45 days'
+                            ORDER BY upper(symbol), COALESCE(published_at, created_at) DESC""",
+                        (syms,)) or []):
+                    if c.get("headline"):
+                        cata[c["s"]] = {"title": str(c["headline"]), "at": str(c["ts"]) if c.get("ts") else None}
+            except Exception:
+                cata = {}
         for r in rows:
             sym = str(r.get("symbol") or "").upper()
             acct = str(r.get("account_key") or r.get("intended_account") or r.get("account") or "")
             r["held_shares_in_account"] = round(held.get((sym, acct), 0.0), 4) if acct else 0.0
             r["held_shares_total"] = round(sum(v for (s, _a), v in held.items() if s == sym), 4)
             r["next_earnings_date"] = earn.get(sym)
+            r["catalyst_title"] = (cata.get(sym) or {}).get("title")
+            r["catalyst_at"] = (cata.get(sym) or {}).get("at")
     except Exception:
         pass
     return rows
