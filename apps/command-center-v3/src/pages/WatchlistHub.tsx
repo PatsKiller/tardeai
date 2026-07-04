@@ -8,7 +8,7 @@ import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import WatchlistCard from '../components/WatchlistCard'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import { exitLadder } from '../lib/exitLadder'
-import { parseProposalAccounts } from '../lib/watchlistProposeSizing'
+import { parseProposalAccounts, parseSizingPolicy } from '../lib/watchlistProposeSizing'
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
@@ -57,6 +57,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
   const { data: acctRaw } = useApi<any>('/api/v2/proposal-accounts', 120_000)
   const proposalAccounts = useMemo(() => parseProposalAccounts(acctRaw), [acctRaw])
+  const sizingPolicy = useMemo(() => parseSizingPolicy(acctRaw), [acctRaw])
   const { data: holdRaw } = useApi<any>('/api/v2/portfolio/holdings', 300_000)
   // symbol → per-account held rows, for held-aware sizing on cards
   const heldMap = useMemo(() => {
@@ -418,6 +419,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
                   paMap={paMap}
                   accounts={proposalAccounts}
                   heldPositions={heldMap[symKey]}
+                  maxDeployPctOfCash={sizingPolicy.maxDeployPctOfCash}
                   ensOpen={!!ensOpen[it.id]}
                   refreshState={refreshBusy[symKey]}
                   isStarred={isStarred(it)}
