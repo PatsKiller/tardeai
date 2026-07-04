@@ -4,6 +4,8 @@ import { fmt$ } from '../lib/format'
 import type { DrillContext } from './DetailDrawer'
 import { useProAnalystMap } from './ProAnalystPill'
 import PositionDecisionCard from './PositionDecisionCard'
+import PositionDecisionCardV4 from './PositionDecisionCardV4'
+import { useCardsV4 } from '../lib/cardsV4'
 import { formatReviewStamp } from '../lib/stopReviewTooltip'
 
 const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 } as const
@@ -15,6 +17,8 @@ export default function OpenTradesIntelligence({ onDrill, focusSymbol }: { onDri
   // Deep-link from a Reports stop action: ?symbol=XXX focuses JUST that position's decision card (with the
   // Stage 2c protective-stop ARM + Ignore-1-week controls), with a banner to clear back to all.
   const [focus, setFocus] = useState((focusSymbol || '').toUpperCase())
+  const [cardsV4] = useCardsV4()   // global card-family toggle (cc.cards.v4) — no local UI here
+  const CardComponent = cardsV4 ? PositionDecisionCardV4 : PositionDecisionCard
   const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 300_000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
   const paMap = useProAnalystMap()
@@ -112,7 +116,7 @@ export default function OpenTradesIntelligence({ onDrill, focusSymbol }: { onDri
       </div>
     )}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(620px,1fr))', gap: 16 }}>
-      {shown.map(p => { const key = `${p.account}:${p.symbol}:${p.trade_id}`; return <PositionDecisionCard key={key} p={p} paMap={paMap} expanded={expanded[key] !== false} llmCov={coverage[(p.symbol || '').toUpperCase()]} protectionRec={protection[(p.symbol || '').toUpperCase()]} symCard={cardMap[(p.symbol || '').toUpperCase()]} onToggle={() => setExpanded({ ...expanded, [key]: expanded[key] === false })} onDrill={onDrill} onAction={(a: string, pos: any) => onDrill({ title: `${pos.symbol} — ${a}`, subtitle: `${pos.operator_decision} · read-only review`, endpoint: '/api/v2/open-trades/intelligence', rows: [pos], subjectType: 'position', subjectKey: pos.symbol } as any)} /> })}
+      {shown.map(p => { const key = `${p.account}:${p.symbol}:${p.trade_id}`; return <CardComponent key={key} p={p} paMap={paMap} expanded={expanded[key] !== false} llmCov={coverage[(p.symbol || '').toUpperCase()]} protectionRec={protection[(p.symbol || '').toUpperCase()]} symCard={cardMap[(p.symbol || '').toUpperCase()]} onToggle={() => setExpanded({ ...expanded, [key]: expanded[key] === false })} onDrill={onDrill} onAction={(a: string, pos: any) => onDrill({ title: `${pos.symbol} — ${a}`, subtitle: `${pos.operator_decision} · read-only review`, endpoint: '/api/v2/open-trades/intelligence', rows: [pos], subjectType: 'position', subjectKey: pos.symbol } as any)} /> })}
     </div>
     {shown.length === 0 && <div style={{ ...panel, color: MUTED, textAlign: 'center' }}>No positions match the current filters.</div>}
     <div style={{ fontSize: 9, color: MUTED }}>Source: /api/v2/open-trades/intelligence (read-only, 60s) · price {summary.last_price_update ?? '—'} · broker stops {formatReviewStamp(summary.broker_stops_fetched_at) ?? '—'} · Hermes {summary.last_hermes_update ? String(summary.last_hermes_update).slice(0, 10) : '—'} · technicals {summary.last_technical_update ?? '—'}</div>

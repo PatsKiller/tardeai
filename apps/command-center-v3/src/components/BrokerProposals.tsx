@@ -6,6 +6,8 @@ import BrokerRouteConfirmModal from './BrokerRouteConfirmModal'
 import ManualExecutionLog from './ManualExecutionLog'
 import ExecutionPathsStrip from './ExecutionPathsStrip'
 import BrokerProposalCard from './BrokerProposalCard'
+import BrokerProposalCardV4 from './BrokerProposalCardV4'
+import { useCardsV4 } from '../lib/cardsV4'
 import ProtectionProposalCard from './ProtectionProposalCard'
 import QueueHealthPanel from './QueueHealthPanel'
 import ProposalQueueSummaryBar from './ProposalQueueSummaryBar'
@@ -117,6 +119,9 @@ const RR_PRESET_SORT: Record<string, string> = {
 }
 
 export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string } = {}) {
+  // Global card-family v4 evaluation toggle (switch UI lives on the Watch hub).
+  const [cardsV4] = useCardsV4()
+  const ProposalCard = cardsV4 ? BrokerProposalCardV4 : BrokerProposalCard
   const [listFilters, setListFilters] = useState<ListFilters>(DEFAULT_FILTERS)
   const [bypassCache, setBypassCache] = useState(false)
   const [view, setView] = useState<'active' | 'expired'>('active')
@@ -1356,7 +1361,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             const p = mergeProposal(rawP)
             const dest = destAccount[p.id] ?? p.account ?? ''
             return (
-              <BrokerProposalCard
+              <ProposalCard
                 key={p.id}
                 proposal={p}
                 accounts={accounts}
