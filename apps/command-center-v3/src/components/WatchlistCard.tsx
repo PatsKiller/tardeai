@@ -318,7 +318,12 @@ export default function WatchlistCard({
     : null
   // Next scheduled earnings from symbol_profiles.next_earnings_date (earnings_enrich cron,
   // held + Hermes-top-200 scope). Amber inside 14 days — that's an event window, not a defect.
-  const nextEarningsDate = it.next_earnings_date ? new Date(it.next_earnings_date) : null
+  // Parse the date-ONLY string as local, not new Date(iso): UTC-midnight parsing rendered
+  // 2026-09-03 as "Sep 2" in ET (audit finding 2026-07-03).
+  const nextEarningsDate = (() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(it.next_earnings_date ?? ''))
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12) : null
+  })()
   const nextEarningsDays = nextEarningsDate && Number.isFinite(nextEarningsDate.getTime())
     ? Math.round((nextEarningsDate.getTime() - Date.now()) / 864e5)
     : null
