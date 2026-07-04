@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-03 - Local LLM throughput: num_ctx cap, embed decoupling, worker cap 20m
+
+gemma3:4b was allocating its full 131k context (7.2 GB KV cache) per load -> 16-25 tok/s and
+14-66s agent calls; embeds queued behind generations produced 1,874 timeouts in one evening,
+each killing the caller's DB connection; full_chain jobs collided with the worker 12m cap all
+night (SMCI). Fixes: llm_router pins num_ctx=8192 (OLLAMA_NUM_CTX) + keep_alive 30m
+(OLLAMA_KEEP_ALIVE); rag_retrieval embed timeout 90->180s default + one retry + keep_alive on
+nomic-embed-text; watchlist worker cron cap 12m -> 20m (crontab, backup taken).
+
 ## 2026-07-03 - Cross-surface trust pack: watchlist patterns ported to proposals/pipeline
 
 - Proposal rows carry held_shares_in_account/_total + next_earnings_date
