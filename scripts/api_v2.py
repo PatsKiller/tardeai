@@ -361,7 +361,7 @@ def _stops_management_api(query=None):
     advised = {}
     try:
         for _row in (_db_query(
-                "SELECT DISTINCT ON (symbol) symbol, evidence_json, model_used FROM hermes_research_intelligence "
+                "SELECT DISTINCT ON (symbol) symbol, evidence_json, model_used, created_at FROM hermes_research_intelligence "
                 "WHERE research_type='protection_advisory' AND created_at > now()-interval '5 days' "
                 "ORDER BY symbol, created_at DESC") or []):
             sym = _row.get("symbol"); ev = _row.get("evidence_json")
@@ -374,6 +374,7 @@ def _stops_management_api(query=None):
                 "trail_offset": _f(rec.get("trail_offset")), "atr": _f(inp.get("atr")),
                 "family": ev.get("family"), "basis": _f(inp.get("basis_ps")),
                 "rec_model": _row.get("model_used"), "rec_lane": ev.get("lane"),
+                "rec_at": str(_row.get("created_at") or "") or None,
                 "rationale": rec.get("rationale"),
                 "evidence": _aep.get("evidence") or [],
                 "data_i_doubt": _aep.get("data_i_doubt"),
@@ -475,6 +476,20 @@ def _stops_management_api(query=None):
     def _merge_alert_level(a, b):
         _rank = {"red": 3, "amber": 2, "yellow": 1, None: 0}
         return a if _rank.get(a, 0) >= _rank.get(b, 0) else b
+
+    # Earnings proximity for held symbols — a stop can gap through an earnings print, so the
+    # stop surface must warn (operator-approved 2026-07-03, mirrors the watchlist/proposal flags).
+    earnings_by_sym = {}
+    try:
+        _held_syms = sorted({str(x.get("symbol") or "").upper() for x in holds if not x.get("is_cash")})
+        if _held_syms:
+            for _er in (_db_query(
+                    "SELECT upper(symbol) AS s, next_earnings_date FROM symbol_profiles WHERE upper(symbol) = ANY(%s)",
+                    (_held_syms,)) or []):
+                if _er.get("next_earnings_date"):
+                    earnings_by_sym[_er["s"]] = str(_er["next_earnings_date"])
+    except Exception:
+        pass
 
     for h in holds:
         sym = str(h.get("symbol", "")).upper()
@@ -632,10 +647,13 @@ def _stops_management_api(query=None):
             "trail_pct": _trail_pct, "trailing_trigger": _trail_trigger,
             "trail_recommended": bool(adv.get("trail")), "rec_source": _rec_source,
             "rec_model": adv.get("rec_model"), "rec_rationale": adv.get("rationale"),
+            "rec_at": adv.get("rec_at"),
             "rec_evidence": adv.get("evidence") or [],
             "rec_data_i_doubt": adv.get("data_i_doubt"),
+            "next_earnings_date": earnings_by_sym.get(sym),
             "stop_curation": stop_curation.get(sym),
             "holdings_llm_health": h.get("llm_health"),
+            "holdings_llm_at": _json_clean(h.get("llm_at")),
             "holdings_llm_evidence": h.get("llm_evidence") or [],
             "holdings_llm_data_i_doubt": h.get("llm_data_i_doubt"),
             "heat_contribution_pct": heat_contrib, "regime_now": regime_now,

@@ -29,6 +29,7 @@ type Row = {
   alert_level: 'red' | 'amber' | 'yellow' | null; alert_reasons: string[]
   direction?: 'long' | 'short'; narrative?: string | null; next_action?: string | null; projection?: string | null
   rec_evidence?: unknown[]; rec_data_i_doubt?: string | null
+  rec_at?: string | null; holdings_llm_at?: string | null; next_earnings_date?: string | null
   stop_curation?: { grade?: string; recommendation?: string; rr_assessment?: string; evidence?: unknown[]; data_i_doubt?: string | null; summary?: string } | null
   holdings_llm_health?: string | null; holdings_llm_evidence?: unknown[]; holdings_llm_data_i_doubt?: string | null
   consensus_target_mean?: number | null; consensus_target_high?: number | null; consensus_target_low?: number | null
@@ -48,9 +49,28 @@ const REGIME_COLOR: Record<string, string> = {
 
 const COLS = 11  // data columns + actions (Reasons moved to sub-row)
 
+// Days until a date-only string (parsed LOCAL — UTC parsing shifts to the prior evening ET).
+function daysUntil(d: string | null | undefined): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d ?? ''))
+  if (!m) return null
+  return Math.round((new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12).getTime() - Date.now()) / 864e5)
+}
+
+function ageHours(ts: string | null | undefined): number | null {
+  if (!ts) return null
+  const t = new Date(ts).getTime()
+  return Number.isFinite(t) ? (Date.now() - t) / 3_600_000 : null
+}
+
+function ageLabel(h: number): string {
+  return h < 48 ? `${Math.round(h)}h` : `${Math.floor(h / 24)}d`
+}
+
 function rowHasReasons(r: Row): boolean {
+  const earnDays = daysUntil(r.next_earnings_date)
   return Boolean(
     r.narrative
+    || (earnDays != null && earnDays >= 0 && earnDays <= 7)
     || (r.alert_reasons?.length ?? 0) > 0
     || (r.policy_suggestions?.length ?? 0) > 0
     || r.next_action
@@ -63,10 +83,40 @@ function rowHasReasons(r: Row): boolean {
 }
 
 function ReasonsSubRow({ r }: { r: Row }) {
+  const earnDays = daysUntil(r.next_earnings_date)
+  const earnSoon = earnDays != null && earnDays >= 0 && earnDays <= 7
+  const advAge = ageHours(r.rec_at)
+  const healthAge = ageHours(r.holdings_llm_at)
+  // Exit ladder for a held long: T1 = +1R off the effective stop, T2 = Street mean, T3 = Street high.
+  const _stopRef = r.broker_stop ?? r.planned_stop
+  const _rps = _stopRef && r.current_price > _stopRef ? r.current_price - _stopRef : null
+  const ladder = (r.direction !== 'short' && _rps && r.consensus_target_mean && r.consensus_target_mean > r.current_price)
+    ? { t1: r.current_price + _rps, t2: r.consensus_target_mean, t3: r.consensus_target_high }
+    : null
   return (
     <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.45, maxWidth: '100%' }}>
       <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 4 }}>Reasons</div>
+      {earnSoon && (
+        <div style={{ color: AMBER, fontWeight: 800, fontSize: 11, marginBottom: 3 }}>
+          ⚠ earnings in {earnDays}d — price can gap through the stop overnight; review size/stop before the print
+        </div>
+      )}
       {r.narrative ? <div style={{ color: TEXT0, fontSize: 11, marginBottom: 3 }}>{r.narrative}</div> : (r.alert_reasons?.length ? <div>{r.alert_reasons.join(' · ')}</div> : null)}
+      {ladder && (
+        <div style={{ marginTop: 3, fontFamily: 'monospace', fontSize: 10.5 }}>
+          Exit ladder: T1 ${ladder.t1.toFixed(2)} (+1R · ⅓) · T2 ${ladder.t2!.toFixed(2)} (Street mean · ⅓)
+          {ladder.t3 ? ` · T3 $${ladder.t3.toFixed(2)} (Street high · runner)` : ' · runner'} · at +1R move stop to breakeven
+        </div>
+      )}
+      {(advAge != null || healthAge != null || (r.next_earnings_date && !earnSoon)) && (
+        <div style={{ marginTop: 3, fontSize: 10 }}>
+          {advAge != null && <span style={advAge > 48 ? { color: AMBER, fontWeight: 700 } : undefined}>stop advisory {ageLabel(advAge)} old{advAge > 48 ? ' ⚠' : ''}</span>}
+          {advAge != null && healthAge != null && ' · '}
+          {healthAge != null && <span style={healthAge > 72 ? { color: AMBER, fontWeight: 700 } : undefined}>health check {ageLabel(healthAge)} old{healthAge > 72 ? ' ⚠' : ''}</span>}
+          {(advAge != null || healthAge != null) && r.next_earnings_date && !earnSoon && ' · '}
+          {r.next_earnings_date && !earnSoon && earnDays != null && earnDays > 0 && <span>earnings in {earnDays}d</span>}
+        </div>
+      )}
       {(r.policy_suggestions?.length ?? 0) > 0 && (
         <div style={{ marginTop: 4, fontWeight: 800, color: PURPLE }}>Policy: {r.policy_suggestions!.join(' · ')}</div>
       )}
