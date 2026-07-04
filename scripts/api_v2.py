@@ -5179,6 +5179,7 @@ def _wl_items(query: dict = None):
                sp.dividend_yield_pct AS dividend_yield_pct,
                sp.ttm_dividend AS ttm_dividend,
                sp.description_1s AS profile_description,
+               sp.next_earnings_date AS next_earnings_date,
                cat.catalyst_type, cat.headline AS catalyst_headline,
                cat.impact_score AS catalyst_impact, cat.severity AS catalyst_severity,
                cat.ts AS catalyst_at, cat.source_url AS catalyst_url,
