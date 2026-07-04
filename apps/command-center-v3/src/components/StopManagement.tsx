@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
-import { AgeChip } from './primitives/cardPrimitives'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { AgeChip, LadderLine } from './primitives/cardPrimitives'
+import { WL } from '../lib/watchlistCardTokens'
 import HoldingProtectionActions from './HoldingProtectionActions'
 import { mergeLiveStop } from '../lib/stopReviewTooltip'
 import { EvidenceBlock } from './EvidenceBlock'
@@ -23,6 +24,8 @@ type Row = {
   symbol: string; account: string; broker: string; route: string; stop_type: string; stop_source: string
   current_price: number; qty: number; broker_stop: number | null; planned_stop: number | null; stop: number
   divergence: string | null; distance_pct: number | null; distance_atr: number | null; distance_r: number | null
+  distance_dollars?: number | null; unrealized_r?: number | null
+  news_title?: string | null; news_source?: string | null; news_at?: string | null
   dollars_at_risk: number; unrealized_dollars: number | null; has_active_stop: boolean
   is_trailing: boolean; trailing_should_be_active: boolean; heat_contribution_pct: number | null
   trail_pct: number | null; trailing_trigger: number | null
@@ -37,7 +40,7 @@ type Row = {
   consensus_analysts?: number | null; consensus_stale?: boolean
   price_vs_consensus_pct?: number | null; price_vs_consensus_dollars?: number | null; price_above_consensus?: boolean
   stop_above_consensus?: boolean; consensus_gap_pct?: number | null; stop_vs_consensus_pct?: number | null
-  regime?: string | null; regime_label?: string | null; regime_short?: string | null; regime_confidence?: number | null
+  regime?: string | null; regime_now?: string | null; regime_label?: string | null; regime_short?: string | null; regime_confidence?: number | null
   regime_at_entry?: string | null; regime_shift_detected?: boolean; regime_shift_direction?: string | null
   regime_explanation?: string | null; trail_tighten_atr_mult?: number | null
   policy_suggestions?: string[]; stoplight_thresholds_used?: { regime?: string; yellow_r?: number; amber_r?: number; red_r?: number } | null
@@ -57,10 +60,25 @@ function daysUntil(d: string | null | undefined): number | null {
   return Math.round((new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12).getTime() - Date.now()) / 864e5)
 }
 
+// TZ-naive server timestamps parse as LOCAL and render negative ages east of UTC — normalize to
+// an explicit-UTC ISO string first (same approach as BrokerProposalCard.isoTs).
+function parseTs(iso: string | null | undefined): Date | null {
+  if (!iso) return null
+  const s = String(iso).trim()
+  if (!s) return null
+  const norm = s.includes('T') ? s : s.replace(' ', 'T')
+  const d = new Date(/[zZ]$|[+-]\d\d:?\d\d$/.test(norm) ? norm : `${norm}Z`)
+  return isNaN(d.getTime()) ? null : d
+}
+
+function isoTs(iso: string | null | undefined): string | undefined {
+  const d = parseTs(iso)
+  return d ? d.toISOString() : undefined
+}
+
 function ageHours(ts: string | null | undefined): number | null {
-  if (!ts) return null
-  const t = new Date(ts).getTime()
-  return Number.isFinite(t) ? (Date.now() - t) / 3_600_000 : null
+  const d = parseTs(ts)
+  return d ? (Date.now() - d.getTime()) / 3_600_000 : null
 }
 
 function ageLabel(h: number): string {
@@ -83,62 +101,210 @@ function rowHasReasons(r: Row): boolean {
   )
 }
 
+// ---- Expanded-row panel (Phase C): thin banner + 2×2 module grid. Restructures the old loose
+// "Reasons" stack — ALL prior content (narrative/alert reasons, exit ladder, age chips, earnings
+// warning, policy, next_action, advisory evidence, Grok curation, holdings health evidence) is
+// preserved inside the four modules below. rowHasReasons() gating is unchanged.
+
+const MOD_LABEL = {
+  fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.09em',
+  color: WL.text.dim, marginBottom: 6,
+} as const
+
+function KV({ k, title, children }: { k: string; title?: string; children: ReactNode }) {
+  return (
+    <div style={{ fontSize: 11, lineHeight: 1.55, color: WL.text.secondary }} title={title}>
+      <span style={{ color: WL.text.dim }}>{k} </span>{children}
+    </div>
+  )
+}
+
+type BannerTone = 'red' | 'amber' | 'quiet'
+const BANNER_TONE: Record<BannerTone, { bg: string; border: string; accent: string }> = {
+  red: { bg: 'rgba(239,83,80,.07)', border: 'rgba(239,83,80,.25)', accent: WL.signal.red },
+  amber: { bg: 'rgba(245,166,35,.07)', border: 'rgba(245,166,35,.25)', accent: WL.signal.amber },
+  quiet: { bg: 'transparent', border: 'rgba(148,163,184,.14)', accent: WL.text.secondary },
+}
+
+/** Banner priority: no stop → REVIEW-looser → earnings ≤7d → stale advisory → quiet protected. */
+function bannerFor(r: Row): { word: string; tone: BannerTone; text: string } {
+  const earnDays = daysUntil(r.next_earnings_date)
+  const advAge = ageHours(r.rec_at)
+  if (!r.has_active_stop) {
+    return {
+      word: 'NO STOP', tone: 'red',
+      text: r.planned_stop != null
+        ? `advised ${fmtStop(r.planned_stop)} is not placed at the broker — ${fmt$(r.dollars_at_risk)} rides unprotected`
+        : 'no broker stop and no advised stop on this position',
+    }
+  }
+  if (r.divergence && /looser/i.test(r.divergence)) {
+    return { word: 'REVIEW', tone: 'amber',
+      text: `broker stop ${fmtStop(r.broker_stop)} is looser than advised ${fmtStop(r.planned_stop)} — tighten to plan` }
+  }
+  if (earnDays != null && earnDays >= 0 && earnDays <= 7) {
+    return { word: `EARNINGS ${earnDays}d`, tone: 'amber',
+      text: 'price can gap through the stop overnight — review size/stop before the print' }
+  }
+  if (advAge != null && advAge > 48) {
+    return { word: 'REVIEW', tone: 'amber',
+      text: `stop advisory ${ageLabel(advAge)} old — levels may not reflect current price/ATR` }
+  }
+  return {
+    word: r.stop_source === 'monitored' ? 'MONITORED' : 'PROTECTED', tone: 'quiet',
+    text: `${r.is_trailing ? 'trailing' : (r.stop_type || 'stop').toLowerCase()} stop ${fmtStop(r.broker_stop)}${r.distance_pct != null ? ` · ${r.distance_pct}% below price` : ''}`,
+  }
+}
+
+/** Collapsed-row scan chip: one amber ⚠ when the row carries a caution the scan layer must not
+ *  miss (earnings ≤7d, advisory >48h stale, or no active stop). First match owns the tooltip. */
+function scanWarnTitle(r: Row): string | null {
+  const earnDays = daysUntil(r.next_earnings_date)
+  if (earnDays != null && earnDays >= 0 && earnDays <= 7) return `earnings in ${earnDays}d — price can gap through the stop`
+  const advAge = ageHours(r.rec_at)
+  if (advAge != null && advAge > 48) return `stop advisory ${ageLabel(advAge)} old — stale`
+  if (!r.has_active_stop) return 'no active stop at the broker'
+  return null
+}
+
 function ReasonsSubRow({ r }: { r: Row }) {
   const earnDays = daysUntil(r.next_earnings_date)
   const earnSoon = earnDays != null && earnDays >= 0 && earnDays <= 7
   const advAge = ageHours(r.rec_at)
   const healthAge = ageHours(r.holdings_llm_at)
+  const newsAge = ageHours(r.news_at)
   // Exit ladder for a held long: T1 = +1R off the effective stop, T2 = Street mean, T3 = Street high.
   const _stopRef = r.broker_stop ?? r.planned_stop
   const _rps = _stopRef && r.current_price > _stopRef ? r.current_price - _stopRef : null
   const ladder = (r.direction !== 'short' && _rps && r.consensus_target_mean && r.consensus_target_mean > r.current_price)
-    ? { t1: r.current_price + _rps, t2: r.consensus_target_mean, t3: r.consensus_target_high }
+    ? [
+        { label: 'T1', px: r.current_price + _rps, action: 'sell ⅓ at +1R' },
+        { label: 'T2', px: r.consensus_target_mean, action: 'sell ⅓ at Street mean' },
+        ...(r.consensus_target_high ? [{ label: 'T3', px: r.consensus_target_high, action: 'runner to Street high' }] : []),
+      ]
     : null
+  const banner = bannerFor(r)
+  const tone = BANNER_TONE[banner.tone]
+  const looser = Boolean(r.divergence && /looser/i.test(r.divergence))
   return (
-    <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.45, maxWidth: '100%' }}>
-      <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 4 }}>Reasons</div>
-      {earnSoon && (
-        <div style={{ color: AMBER, fontWeight: 800, fontSize: 11, marginBottom: 3 }}>
-          ⚠ earnings in {earnDays}d — price can gap through the stop overnight; review size/stop before the print
+    <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.45, maxWidth: '100%', padding: '4px 0 2px' }}>
+      {/* Banner — verdict word + the one sentence that matters. Tinted only when amber/red. */}
+      <div style={{
+        display: 'flex', gap: 10, alignItems: 'baseline', minWidth: 0, borderRadius: 6,
+        padding: '5px 10px', marginBottom: 8, background: tone.bg, border: `1px solid ${tone.border}`,
+      }}>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.11em', color: tone.accent, whiteSpace: 'nowrap' }}>{banner.word}</span>
+        <span title={banner.text} style={{ fontSize: 11, color: WL.text.secondary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{banner.text}</span>
+      </div>
+
+      {/* 2×2 module grid — collapses to a single column when the table gets narrow. */}
+      <div style={{ display: 'grid', gap: '10px 26px', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={MOD_LABEL}>Protection</div>
+          <KV k="Advised" title={r.rec_rationale || undefined}>
+            <span style={{ color: WL.text.primary, fontWeight: 700 }}>{fmtStop(r.planned_stop)}</span>
+            {r.rec_rationale ? <span style={{ color: WL.text.dim }}> · {r.rec_rationale.length > 96 ? `${r.rec_rationale.slice(0, 95)}…` : r.rec_rationale}</span> : null}
+          </KV>
+          <KV k="Broker">
+            <span style={{ color: WL.text.primary, fontWeight: 700 }}>{fmtStop(r.broker_stop)}</span>
+            {' vs advised '}{fmtStop(r.planned_stop)}
+            {looser ? <span style={{ color: WL.signal.amber, fontWeight: 700 }}> · looser ⚠</span> : null}
+            {!looser && r.divergence ? <span style={{ color: WL.text.dim }}> · {r.divergence}</span> : null}
+          </KV>
+          <KV k="Type">
+            {r.stop_type}{r.is_trailing && r.trail_pct != null ? ` · trailing ${r.trail_pct}%` : ''}
+            {r.trailing_trigger != null ? ` (≈${fmtStop(r.trailing_trigger)})` : ''}
+          </KV>
+          <KV k="Distance">
+            {r.distance_pct != null ? `${r.distance_pct}%` : '—'}
+            {r.distance_dollars != null ? ` · ${fmt$(r.distance_dollars)}` : ''}
+            {r.distance_atr != null ? ` · ${r.distance_atr} ATR` : ''}
+            {r.distance_r != null ? ` · ${r.distance_r}R` : ''}
+          </KV>
+          <KV k="At risk"><span style={{ color: WL.text.primary, fontWeight: 700 }}>{fmt$(r.dollars_at_risk)}</span></KV>
+          {(advAge != null || r.rec_model) && (
+            <KV k="Advisory">
+              {advAge != null ? <AgeChip ts={isoTs(r.rec_at)} prefix="" warnAfterHours={48} /> : '—'}
+              {r.rec_model ? <span style={{ color: WL.text.dim }}> · {r.rec_model}</span> : null}
+            </KV>
+          )}
         </div>
-      )}
-      {r.narrative ? <div style={{ color: TEXT0, fontSize: 11, marginBottom: 3 }}>{r.narrative}</div> : (r.alert_reasons?.length ? <div>{r.alert_reasons.join(' · ')}</div> : null)}
-      {ladder && (
-        <div style={{ marginTop: 3, fontFamily: 'monospace', fontSize: 10.5 }}>
-          Exit ladder: T1 ${ladder.t1.toFixed(2)} (+1R · ⅓) · T2 ${ladder.t2!.toFixed(2)} (Street mean · ⅓)
-          {ladder.t3 ? ` · T3 $${ladder.t3.toFixed(2)} (Street high · runner)` : ' · runner'} · at +1R move stop to breakeven
+
+        <div style={{ minWidth: 0 }}>
+          <div style={MOD_LABEL}>Exit Plan</div>
+          {ladder ? (
+            <LadderLine steps={ladder} stepTooltip={(l, px, a) => `${l} $${px.toFixed(2)} — ${a}`} style={{ marginTop: 0 }} />
+          ) : (
+            <div style={{ fontSize: 11, color: WL.text.dim }}>no ladder — needs an effective stop below price and a Street mean above it</div>
+          )}
+          <div style={{ fontSize: 11, color: WL.text.secondary, marginTop: 5 }}>
+            {r.consensus_target_mean != null ? (
+              <>Street μ <span style={{ color: WL.text.primary, fontWeight: 700 }}>{fmtStop(r.consensus_target_mean)}</span>
+                {(r.consensus_target_low != null || r.consensus_target_high != null) ? <span> · {fmtStop(r.consensus_target_low)}–{fmtStop(r.consensus_target_high)}</span> : null}
+                {r.consensus_analysts ? <span style={{ color: WL.text.dim }}> · {r.consensus_analysts} analysts</span> : null}
+                {r.consensus_stale ? <span style={{ color: WL.signal.amber }}> · stale</span> : null}</>
+            ) : <span style={{ color: WL.text.dim }}>no Street coverage</span>}
+          </div>
         </div>
-      )}
-      {(advAge != null || healthAge != null || (r.next_earnings_date && !earnSoon)) && (
-        <div style={{ marginTop: 3, fontSize: 10 }}>
-          {advAge != null && <AgeChip ts={r.rec_at} prefix="stop advisory" warnAfterHours={48} />}
-          {advAge != null && healthAge != null && ' · '}
-          {healthAge != null && <AgeChip ts={r.holdings_llm_at} prefix="health check" warnAfterHours={72} />}
-          {(advAge != null || healthAge != null) && r.next_earnings_date && !earnSoon && ' · '}
-          {r.next_earnings_date && !earnSoon && earnDays != null && earnDays > 0 && <span>earnings in {earnDays}d</span>}
+
+        <div style={{ minWidth: 0 }}>
+          <div style={MOD_LABEL}>Health</div>
+          <KV k="Verdict">
+            <span style={{ color: WL.text.primary, fontWeight: 700 }}>{r.holdings_llm_health || '—'}</span>
+            {healthAge != null ? <span style={{ color: WL.text.dim }}> · <AgeChip ts={isoTs(r.holdings_llm_at)} prefix="checked" warnAfterHours={72} /></span> : null}
+          </KV>
+          <KV k="Unrealized">
+            <span style={{ color: (r.unrealized_dollars ?? 0) >= 0 ? WL.price.up : WL.price.down, fontWeight: 700 }}>
+              {r.unrealized_dollars != null ? fmt$(r.unrealized_dollars) : '—'}
+            </span>
+            {r.unrealized_r != null ? ` · ${r.unrealized_r}R` : ''}
+          </KV>
+          <KV k="Heat">
+            {r.heat_contribution_pct != null ? `${r.heat_contribution_pct}% of portfolio heat` : '—'}
+            {r.regime_now ? <span style={{ color: WL.text.dim }}> · regime {r.regime_now}</span> : null}
+          </KV>
+          {((r.holdings_llm_evidence?.length ?? 0) > 0 || (r.holdings_llm_data_i_doubt && r.holdings_llm_data_i_doubt !== 'none')) && (
+            <EvidenceBlock title={r.holdings_llm_health ? `Holdings health · ${r.holdings_llm_health}` : 'Holdings LLM evidence'} evidence={r.holdings_llm_evidence} dataIDoubt={r.holdings_llm_data_i_doubt} compact maxItems={2} />
+          )}
         </div>
-      )}
-      {(r.policy_suggestions?.length ?? 0) > 0 && (
-        <div style={{ marginTop: 4, fontWeight: 800, color: PURPLE }}>Policy: {r.policy_suggestions!.join(' · ')}</div>
-      )}
-      {r.next_action ? (
-        <div style={{ marginTop: 4, fontWeight: 700,
-          color: /^(Monitor|None)/.test(r.next_action) ? MUTED : (r.alert_level === 'red' ? RED : r.alert_level === 'amber' ? AMBER : BLUE) }}>
-          → {r.next_action}
+
+        <div style={{ minWidth: 0 }}>
+          <div style={MOD_LABEL}>Context</div>
+          {earnSoon ? (
+            <div style={{ color: WL.signal.amber, fontWeight: 700, fontSize: 11, marginBottom: 3 }}>
+              ⚠ earnings in {earnDays}d — price can gap through the stop overnight; review size/stop before the print
+            </div>
+          ) : (earnDays != null && earnDays > 0 ? <KV k="Earnings">in {earnDays}d</KV> : null)}
+          <KV k="News" title={r.news_title || undefined}>
+            {r.news_title ? (
+              <>
+                <span style={{ color: WL.text.dim }}>{r.news_source || 'news'}{newsAge != null && newsAge >= 0 ? ` · ${ageLabel(newsAge)} ago` : ''} </span>
+                {r.news_title.length > 110 ? `${r.news_title.slice(0, 109)}…` : r.news_title}
+              </>
+            ) : <span style={{ color: WL.text.dim }}>no indexed news (7d)</span>}
+          </KV>
+          {r.narrative ? <div style={{ color: TEXT0, fontSize: 11, marginTop: 3 }}>{r.narrative}</div>
+            : (r.alert_reasons?.length ? <div style={{ marginTop: 3 }}>{r.alert_reasons.join(' · ')}</div> : null)}
+          {(r.policy_suggestions?.length ?? 0) > 0 && (
+            <div style={{ marginTop: 4, fontWeight: 800, color: PURPLE }}>Policy: {r.policy_suggestions!.join(' · ')}</div>
+          )}
+          {r.next_action ? (
+            <div style={{ marginTop: 4, fontWeight: 700,
+              color: /^(Monitor|None)/.test(r.next_action) ? MUTED : (r.alert_level === 'red' ? RED : r.alert_level === 'amber' ? AMBER : BLUE) }}>
+              → {r.next_action}
+            </div>
+          ) : null}
+          {((r.rec_evidence?.length ?? 0) > 0 || (r.rec_data_i_doubt && r.rec_data_i_doubt !== 'none')) && (
+            <EvidenceBlock title="Stop advisory evidence" evidence={r.rec_evidence} dataIDoubt={r.rec_data_i_doubt} compact maxItems={3} />
+          )}
+          {r.stop_curation && ((r.stop_curation.evidence?.length ?? 0) > 0 || (r.stop_curation.data_i_doubt && r.stop_curation.data_i_doubt !== 'none') || r.stop_curation.grade) && (
+            <div style={{ marginTop: 4 }}>
+              {r.stop_curation.grade && <div style={{ fontSize: 10, color: PURPLE, fontWeight: 800, marginBottom: 2 }}>Grok curation · {r.stop_curation.grade}</div>}
+              <EvidenceBlock title="Grok stop evidence" evidence={r.stop_curation.evidence} dataIDoubt={r.stop_curation.data_i_doubt} compact maxItems={3} />
+            </div>
+          )}
         </div>
-      ) : null}
-      {((r.rec_evidence?.length ?? 0) > 0 || (r.rec_data_i_doubt && r.rec_data_i_doubt !== 'none')) && (
-        <EvidenceBlock title="Stop advisory evidence" evidence={r.rec_evidence} dataIDoubt={r.rec_data_i_doubt} compact maxItems={3} />
-      )}
-      {r.stop_curation && ((r.stop_curation.evidence?.length ?? 0) > 0 || (r.stop_curation.data_i_doubt && r.stop_curation.data_i_doubt !== 'none') || r.stop_curation.grade) && (
-        <div style={{ marginTop: 4 }}>
-          {r.stop_curation.grade && <div style={{ fontSize: 10, color: PURPLE, fontWeight: 800, marginBottom: 2 }}>Grok curation · {r.stop_curation.grade}</div>}
-          <EvidenceBlock title="Grok stop evidence" evidence={r.stop_curation.evidence} dataIDoubt={r.stop_curation.data_i_doubt} compact maxItems={3} />
-        </div>
-      )}
-      {((r.holdings_llm_evidence?.length ?? 0) > 0 || (r.holdings_llm_data_i_doubt && r.holdings_llm_data_i_doubt !== 'none')) && (
-        <EvidenceBlock title={r.holdings_llm_health ? `Holdings health · ${r.holdings_llm_health}` : 'Holdings LLM evidence'} evidence={r.holdings_llm_evidence} dataIDoubt={r.holdings_llm_data_i_doubt} compact maxItems={2} />
-      )}
+      </div>
     </div>
   )
 }
@@ -386,7 +552,12 @@ export default function StopManagement({ onFocusHolding }: Props) {
                 {filtered.map((r, i) => (
                   <Fragment key={`${r.symbol}-${r.account}-${i}`}>
                   <tr style={{ borderTop: '1px solid rgba(148,163,184,.12)', color: TEXT0 }}>
-                    <td style={{ padding: '7px 9px' }}><Pill level={r.alert_level} thresholds={r.stoplight_thresholds_used} /></td>
+                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}>
+                      <Pill level={r.alert_level} thresholds={r.stoplight_thresholds_used} />
+                      {(() => { const w = scanWarnTitle(r); return w
+                        ? <span title={w} style={{ color: WL.signal.amber, fontWeight: 800, marginLeft: 5, cursor: 'help' }}>⚠</span>
+                        : null })()}
+                    </td>
                     <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}><b>{r.symbol}</b><br /><span style={{ fontSize: 10.5, color: MUTED }}>{r.account}</span></td>
                     <td style={{ padding: '7px 9px', color: MUTED, fontSize: 11 }}>{r.route}</td>
                     <td style={{ padding: '7px 9px' }}><RegimeBadge r={r} /></td>
