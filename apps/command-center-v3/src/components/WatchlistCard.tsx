@@ -308,6 +308,22 @@ export default function WatchlistCard({
   const cioNoteStale = cioNoteAgeH != null && cioNoteAgeH > 24
 
   const canPropose = action.type === 'PROPOSE_ENTRY'
+
+  // "+X% since added" — first_seen_price is stamped at first enrichment (backfilled for the
+  // Hermes top-250); omitted rather than faked when no baseline exists.
+  const sinceAdded = (it.first_seen_price != null && Number(it.first_seen_price) > 0 && it.price != null)
+    ? ((Number(it.price) - Number(it.first_seen_price)) / Number(it.first_seen_price)) * 100
+    : null
+  // Next scheduled earnings from symbol_profiles.next_earnings_date (earnings_enrich cron,
+  // held + Hermes-top-200 scope). Amber inside 14 days — that's an event window, not a defect.
+  const nextEarningsDate = it.next_earnings_date ? new Date(it.next_earnings_date) : null
+  const nextEarningsDays = nextEarningsDate && Number.isFinite(nextEarningsDate.getTime())
+    ? Math.round((nextEarningsDate.getTime() - Date.now()) / 864e5)
+    : null
+  const nextEarningsLabel = nextEarningsDate && nextEarningsDays != null && nextEarningsDays >= 0
+    ? nextEarningsDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    : null
+  const nextEarningsValid = nextEarningsDays != null && nextEarningsDays >= 0 && nextEarningsDays <= 120
   const planSubLabel: CSSProperties = { fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: WL.text.dim, textTransform: 'uppercase' }
 
   return (
@@ -585,13 +601,20 @@ export default function WatchlistCard({
               {it.catalyst_headline ? (
                 <>
                   {it.catalyst_url ? (
-                    <a href={it.catalyst_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={linkStyle}>{truncate(String(it.catalyst_headline), 90)}</a>
-                  ) : truncate(String(it.catalyst_headline), 90)}
+                    <a href={it.catalyst_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={linkStyle}>{truncate(String(it.catalyst_headline), 80)}</a>
+                  ) : truncate(String(it.catalyst_headline), 80)}
                   {it.catalyst_at && <span style={{ color: WL.text.dim }}> · {ago(it.catalyst_at)}</span>}
                 </>
               ) : (
                 <span style={{ color: WL.text.dim }}>none detected (45d window)</span>
               )}
+              {nextEarningsValid && nextEarningsLabel ? (
+                <span style={{ color: nextEarningsDays! <= 14 ? WL.signal.amber : WL.text.dim }} title="Next scheduled earnings report (yfinance)">
+                  {' · '}next earnings {nextEarningsLabel} ({nextEarningsDays}d)
+                </span>
+              ) : !it.catalyst_headline ? (
+                <span style={{ color: WL.text.dim }}> · none scheduled next 14d</span>
+              ) : null}
             </div>
             <div style={{ ...ctxLine, overflowWrap: 'anywhere' }}>
               <span style={ctxKey}>News </span>
@@ -609,6 +632,11 @@ export default function WatchlistCard({
             <div style={ctxLine}>
               <span style={ctxKey}>Trend </span>
               {fv?.perf_ytd != null ? `${fmtPc(fv.perf_ytd)} YTD` : '—'}
+              {sinceAdded != null && (
+                <span style={{ color: sinceAdded >= 0 ? WL.signal.teal : WL.signal.red }} title={`vs first-seen price ${money(it.first_seen_price)} on ${String(it.first_seen_at).slice(0, 10)}`}>
+                  {' · '}{sinceAdded >= 0 ? '+' : ''}{sinceAdded.toFixed(1)}% since added
+                </span>
+              )}
               {sc?.vs_sector_week != null && (
                 <span style={{ color: sc.vs_sector_week >= 0 ? WL.signal.teal : WL.signal.red }}>
                   {' · '}{fmtPc(sc.vs_sector_week)} vs sector (1w)

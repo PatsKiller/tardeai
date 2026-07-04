@@ -21,13 +21,23 @@ banner is the only tinted element; the primary button the only solid one. Color 
 | ① Header (1 line) | Star, symbol, HELD chip, colored Street rating pill, CIO ≠ Street note, provenance (company · Hermes # · origin · sector · on-watchlist tenure), price/change, quiet Refresh | visible |
 | ② Status banner (1 line) | Verdict word · headline · ellipsized why (full on hover) · R:R chip · primary CTA · one quiet secondary · ••• menu — the only tinted element | visible, dominant |
 | ③ Trade plan ⟷ Sizing (2-col grid ≥1100px) | LEFT: L/S/T/R:R numerals + zone/%/R sub-captions, Entry thesis line, one-line T1/T2/T3 ladder + core rule ("Plan detail" expander). RIGHT: `SizingTable` — per-account shares/invest/risk-$/%cash at 1%|2% toggle, cash-cap ⚠, insufficient-cash states, held-position footer, "size ▸" → Propose modal pre-filled (READY states only) | visible |
-| ④ Conviction ⟷ Intelligence (2-col grid) | LEFT: CIO stance chip, confidence meter + band, meta, CIO note (2-line clamp, age ⚠ >24h), data-health line. RIGHT: Catalyst-or-none, top news-or-none, Trend (YTD · vs sector), Technicals, company one-liner + intel lanes ("More" → up to 3 more headlines, full description, Fib panel) | visible |
+| ④ Conviction ⟷ Intelligence (2-col grid) | LEFT: CIO stance chip, confidence meter + band, meta, CIO note (2-line clamp, age ⚠ >24h), data-health line. RIGHT: Catalyst-or-none + next-earnings date (amber ≤14d; "none scheduled next 14d" fallback), top news-or-none, Trend (YTD · +X% since added · vs sector), Technicals, company one-liner + intel lanes ("More" → up to 3 more headlines, full description, Fib panel) | visible |
 | ⑤ Footer strip (1 line) | Due-diligence status + PDF/Word/↻/Generate + "CIO evidence" expander | visible |
 
 Grid stacks to single column below 1100px (`.wlc-grid` in index.css). Card height ≈470px vs
 ≈800px in v2 (−40%). Expander bodies render full-width below their grid row. The Sizing module
 reuses `computeRiskSizedShares` (cash-basis, retirement hard guard) and pre-fills
 `WatchlistProposeSeed.account_key`/`risk_pct` — the card itself never submits.
+
+### Card data feeds (v3 addenda)
+
+- `watchlist_items.first_seen_price` — stamped by the intraday enrichment sweep on a row's
+  first enrichment (`COALESCE`, never overwritten); historical rows backfilled for the Hermes
+  top-250 via `scripts/backfill_first_seen_price.py` (yfinance close at `first_seen_at`; rows
+  without history stay NULL and the card omits the segment). Powers "+X% since added".
+- `symbol_profiles.next_earnings_date` — `scripts/earnings_enrich.py` scope widened from
+  held-only to held + Hermes-top-200 (`--watchlist-top`, staleness filter `--stale-days 3`
+  keeps daily yfinance calls near the churn). Passed through on items as `next_earnings_date`.
 
 ## Decision matrix (detailed card view)
 
