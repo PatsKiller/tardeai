@@ -125,10 +125,17 @@ def _call_local(prompt: str, max_tokens: int = 800, timeout: int = None) -> dict
     t0 = time.time()
     _timeout = timeout or LOCAL_TIMEOUT
     try:
+        # num_ctx: without an explicit value Ollama allocated the model's FULL 131k context
+        # (7.2 GB KV cache for gemma3:4b) — observed 16-25 tok/s on 2026-07-03. Agent prompts
+        # run 0.5-3k tokens; 8k leaves ample headroom at a fraction of the VRAM and prefill
+        # cost. keep_alive pins the model resident between the worker's back-to-back calls
+        # instead of load/unload churn. Both env-tunable.
         payload = json.dumps({
             "model": LOCAL_MODEL, "stream": False, "think": False,
             "messages": [{"role": "user", "content": prompt}],
-            "options": {"temperature": 0.3, "num_predict": max(500, max_tokens)}
+            "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m"),
+            "options": {"temperature": 0.3, "num_predict": max(500, max_tokens),
+                        "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "8192"))}
         }).encode()
         req = urllib.request.Request(LOCAL_URL, data=payload,
                                      headers={"Content-Type": "application/json"}, method="POST")
