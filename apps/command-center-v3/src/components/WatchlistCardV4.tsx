@@ -114,8 +114,10 @@ const llmName = (lane?: string) => LLM_NAMES[lane || ''] || lane || 'LLM'
  *  "CONVICTION: <level>" prefix — real stance instead of a bare lane name. */
 function llmStance(e: any): string {
   const name = llmName(e?.lane)
-  const m = /conviction[:\s]+([a-z-]+)/i.exec(String(e?.recommendation ?? ''))
-  return m ? `${name} (${m[1].toLowerCase()})` : name
+  const m = /\bconviction:\s*([a-z-]+)/i.exec(String(e?.recommendation ?? ''))
+  const lv = m ? m[1].toLowerCase() : ''
+  const OK = new Set(['low','medium','high','med','medium-low','medium-high','low-medium','high-medium'])
+  return OK.has(lv) ? `${name} (${lv})` : name
 }
 
 export default function WatchlistCardV4({
@@ -641,11 +643,15 @@ export default function WatchlistCardV4({
                 RSI {fv.rsi == null ? '—' : Math.round(Number(fv.rsi))} · 1W {fmtPc(fv.perf_week)} · 1M {fmtPc(fv.perf_month)} · vs 50d {fmtPc(fv.sma50)}
               </div>
             )}
-            {(companyDesc || llms.length > 0) && (
+            {companyDesc && (
+              <div style={ctxLine}>
+                <span style={ctxKey}>Company </span>{truncate(companyDesc, 170)}
+              </div>
+            )}
+            {(sc?.instrument_type || llms.length > 0) && (
               <div style={{ ...ctxLine, color: WL.text.dim }}>
-                {companyDesc ? truncate(companyDesc, 90) : ''}
-                {sc?.instrument_type ? `${companyDesc ? ' · ' : ''}${sc.instrument_type}` : ''}
-                {llms.length > 0 ? `${companyDesc || sc?.instrument_type ? ' · ' : ''}intel: ${llms.map((e: any) => llmStance(e)).join(' · ')}` : ''}
+                {sc?.instrument_type ?? ''}
+                {llms.length > 0 ? `${sc?.instrument_type ? ' · ' : ''}intel: ${llms.map((e: any) => llmStance(e)).join(' · ')}` : ''}
               </div>
             )}
           </div>
