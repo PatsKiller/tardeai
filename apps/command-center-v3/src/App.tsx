@@ -21,7 +21,10 @@ import RotationIntelligence from './pages/RotationIntelligence'
 import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import HealthHub from './pages/HealthHub'
 
-const BUILD_MARKER = 'cc-v3 hermes-efficiency-stop-quality 2026-07-03'
+declare const __ANALYST_UI_VERSION__: string
+declare const __BUILD_DATE__: string
+// Real build stamp (vite define) — the old hardcoded label misled deploy verification.
+const BUILD_MARKER = `cc-v3 ${__ANALYST_UI_VERSION__} · built ${__BUILD_DATE__}`
 
 function ReconnectingBar() {
   const { degraded, failing } = useConnectionHealth()
