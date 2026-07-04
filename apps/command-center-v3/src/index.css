@@ -156,3 +156,7 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
   .wlc-grid { grid-template-columns: 1.05fr 0.95fr; }
   .wlc-grid > .wlc-cell + .wlc-cell { border-top: none; border-left: 1px solid rgba(148,163,184,.10); }
 }
+
+/* Security Card v4 — links underline on hover only (audit item G) */
+.wlc4-link { color: #aeb9ca; text-decoration: none; border-bottom: 1px dotted rgba(148,163,184,.35); }
+.wlc4-link:hover { text-decoration: none; border-bottom-color: rgba(174,185,202,.9); color: #ecf1f8; }
