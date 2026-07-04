@@ -167,13 +167,55 @@ def _attempt_symbol_enrichment(symbol: str, missing: list) -> bool:
     return enriched
 
 
+# Priority-based free-OAuth routing (operator-approved 2026-07-03). High-priority jobs
+# (holdings-change re-syntheses, retries, operator refreshes — priority <= 2) route their agent
+# narratives through the FREE OAuth lanes (grok :8645 → chatgpt :8646) instead of local gemma:
+# these are the jobs someone is waiting on. The bulk research tail stays local. A saturation
+# valve widens routing to priority-3 when local turns slow mid-run. Caps: per-run cloud budget
+# (CLOUD_NARRATIVE_CAP) keeps us far inside the 800/day/lane soft cap; llm_lane falls back to
+# the local router path on lane failure. Free lanes only — never a paid key.
+_CURRENT_JOB_PRIORITY: int | None = None
+_LOCAL_SLOW = False          # set when a local call exceeds LOCAL_SLOW_S this run
+_CLOUD_NARRATIVE_CALLS = 0
+_CLOUD_NARRATIVE_CAP = int(os.environ.get("CLOUD_NARRATIVE_CAP", "40"))
+_LOCAL_SLOW_S = float(os.environ.get("LOCAL_SLOW_S", "45"))
+
+
+def _prefer_cloud_narrative() -> bool:
+    if _CLOUD_NARRATIVE_CALLS >= _CLOUD_NARRATIVE_CAP:
+        return False
+    p = _CURRENT_JOB_PRIORITY
+    if p is not None and p <= 2:
+        return True
+    return _LOCAL_SLOW and p is not None and p <= 3
+
+
 def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
          high_impact: bool = False) -> str:
     """Call LLM via router with fallback hierarchy.
 
-    Routes through: local Ollama → Grok → Claude → OpenAI based on task type.
+    Routes through: free OAuth lanes for high-priority jobs (see _prefer_cloud_narrative),
+    else local Ollama → Grok → Claude → OpenAI based on task type.
     """
+    global _CLOUD_NARRATIVE_CALLS, _LOCAL_SLOW
+    if task_type in ("agent_narrative", "agent_debate") and _prefer_cloud_narrative():
+        try:
+            import llm_lane
+            for lane in ("grok", "chatgpt"):
+                if not llm_lane.available(lane):
+                    continue
+                out = llm_lane.generate(prompt, lane=lane, timeout=120)
+                if out and len(str(out).strip()) > 20:
+                    _CLOUD_NARRATIVE_CALLS += 1
+                    _llm._last_model = f"{lane}-oauth"
+                    _llm._last_provider = lane
+                    _llm._last_cost = 0
+                    return str(out)
+        except Exception:
+            pass  # fall through to the normal router path
     try:
+        import time as _tt
+        _t0 = _tt.time()
         from llm_router import get_llm_response
         result = get_llm_response(
             task_type=task_type,
@@ -182,6 +224,9 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
             high_impact=high_impact,
         )
         if result.get("success"):
+            # Saturation valve: one slow local call widens cloud routing to priority-3 jobs.
+            if result.get("provider") == "local" and (_tt.time() - _t0) > _LOCAL_SLOW_S:
+                _LOCAL_SLOW = True
             # Track which model was used
             _llm._last_model = result.get("model_used", OLLAMA_MODEL)
             _llm._last_provider = result.get("provider", "local")
@@ -1961,6 +2006,12 @@ def process_jobs(limit: int = 10):
         agent = job["requested_agent"]
         request_type = job["request_type"]
         note = job.get("note", "")
+        # Expose the job's priority to the LLM wrapper for free-OAuth routing decisions.
+        global _CURRENT_JOB_PRIORITY
+        try:
+            _CURRENT_JOB_PRIORITY = int(job.get("priority")) if job.get("priority") is not None else None
+        except (TypeError, ValueError):
+            _CURRENT_JOB_PRIORITY = None
 
         # Apply escalation policy if not already set
         _apply_escalation_policy(conn, symbol)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-03 - Priority-based free-OAuth routing for agent narratives
+
+High-priority watchlist jobs (priority <= 2: holdings-change re-syntheses, synthesis retries,
+operator refreshes) route agent narratives through the FREE OAuth lanes (grok :8645 ->
+chatgpt :8646, llm_lane) instead of local gemma — these are the jobs someone is waiting on.
+Bulk research tail stays local; embeds stay local. Saturation valve: one local call >45s
+(LOCAL_SLOW_S) widens cloud routing to priority-3 for the rest of that worker run. Per-run
+cloud budget CLOUD_NARRATIVE_CAP=40 vs the 800/day/lane soft cap (headroom verified ~0 used).
+Free lanes only — never a paid key; lane failure falls through to the normal router path.
+
 ## 2026-07-03 - Local LLM throughput: num_ctx cap, embed decoupling, worker cap 20m
 
 gemma3:4b was allocating its full 131k context (7.2 GB KV cache) per load -> 16-25 tok/s and
