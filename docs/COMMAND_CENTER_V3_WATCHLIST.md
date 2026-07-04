@@ -47,10 +47,17 @@ up to two secondary actions.
 
 Verdicts: `READY` · `WAIT` · `SKIP` · `STALE` · `FIX` · `BUILD` · `WATCH`
 
+Stale-plan defects rank ABOVE the R:R branches — stored `entry_rr` is meaningless once levels are
+incoherent or price has left the zone. Nightly auto-heal: `scripts/plan_drift_revalidator.py`
+(17:25, before the planner run) re-plans defective Hermes-top-250 symbols via
+`watchlist_entry_planner` (env `PLAN_DRIFT_REPLAN_PCT=15`, `PLAN_DRIFT_MIN_AGE_H=20`, cap 25).
+
 | Card state (priority order) | Primary button | Warning banner | Secondary actions |
 |----------------------------|----------------|----------------|-------------------|
 | Private / non-tradeable | View Intel | Private ticker | Rec-Intel |
 | No stop on plan | Adjust Plan | Risk undefined | View Intel |
+| Target ≤ limit (incoherent plan) | Rebuild Plan (red) | Plan incoherent — stale levels | View Intel |
+| Price >15% from limit (drifted plan) | Rebuild Plan (amber) | Price left the planned zone | View Intel |
 | R:R &lt; 1.0 or &lt; 1.5 | Adjust Plan | R:R below threshold | View Intel |
 | Plan target below Street | Review Exit | Target below Street mean | View Intel |
 | Data stale / doubt / pending | Refresh Data | Data stale or doubt | View Intel |
