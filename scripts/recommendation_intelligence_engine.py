@@ -694,9 +694,13 @@ def lifecycle_performance(cur, limit=300):
             "sell_price": float(sp) if sp is not None else None,
             "pnl": float(pnl) if pnl is not None else None,
             "pnl_pct": float(pnlpct) if pnlpct is not None else None,
-            "r_multiple": float(rmult) if rmult is not None else None,
+            # trade_closed.r_multiple/setup are never populated (2026-07-04 hub audit) —
+            # fall back to the matched journal review's realized_r / setup_family.
+            "r_multiple": (float(rmult) if rmult is not None
+                           else (float(jr["realized_r"]) if jr and jr.get("realized_r") is not None else None)),
             "hold_days": int(hold) if hold is not None else None,
-            "setup": setup, "strategy_id": strat, "journaled": jr is not None,
+            "setup": setup or (jr.get("setup_family") if jr else None),
+            "strategy_id": strat, "journaled": jr is not None,
             "journal": ({"realized_r": float(jr["realized_r"]) if jr.get("realized_r") is not None else None,
                          "lesson": jr.get("lesson"), "setup_family": jr.get("setup_family")} if jr else None),
         })

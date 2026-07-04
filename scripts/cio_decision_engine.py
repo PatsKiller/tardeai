@@ -175,17 +175,32 @@ def build_cio_decisions() -> list:
         if existing:
             continue  # skip duplicate — same recommendation already generated today
 
+        # Per-agent vote snapshot at decision time (2026-07-04 hub audit: agent_votes had
+        # been '{}' on every row ever written — decisions weren't auditable against votes).
+        agent_votes = {}
+        try:
+            cur.execute("""SELECT DISTINCT ON (agent) agent, recommendation, confidence
+                           FROM watchlist_agent_results
+                           WHERE upper(symbol) = %s AND status = 'completed'
+                             AND created_at > NOW() - INTERVAL '7 days'
+                           ORDER BY agent, created_at DESC""", (sym,))
+            agent_votes = {a: {"rec": r, "confidence": float(cf) if cf is not None else None}
+                           for a, r, cf in cur.fetchall()}
+        except Exception:
+            agent_votes = {}
+
         # Persist
         cur.execute("""
             INSERT INTO cio_decisions
                 (decision_id, symbol, strategy_type, action, action_class, priority,
                  confidence_raw, decision_safety, human_review_required, rationale,
-                 expected_income_impact, expected_allocation_impact, status)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                 expected_income_impact, expected_allocation_impact, status, agent_votes)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (did, sym, st, action, action_class, priority,
               decision["confidence_raw"], decision["decision_safety"],
               human_review, rationale[:500],
-              decision["expected_income_impact"], weight, "proposed"))
+              decision["expected_income_impact"], weight, "proposed",
+              json.dumps(agent_votes)))
 
         decisions.append(decision)
 

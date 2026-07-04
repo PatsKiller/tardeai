@@ -33336,7 +33336,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        score_at_entry, rvol_at_entry, float_m_at_entry,
                        risk_gate_result, risk_gate_reason_codes,
                        max_favorable_excursion, max_adverse_excursion,
-                       planned_entry, entry_slippage, planned_stop, stop_slippage,
+                       planned_entry,
+                       COALESCE(entry_slippage, eq.slippage_pct) AS entry_slippage,
+                       eq.fill_quality AS entry_fill_quality,
+                       planned_stop,
+                       COALESCE(stop_slippage,
+                                CASE WHEN exit_reason ILIKE '%%stop%%' AND exit_price IS NOT NULL
+                                          AND COALESCE(stop_loss, 0) <> 0
+                                     THEN ROUND((exit_price - stop_loss)::numeric, 4) END) AS stop_slippage,
                        opened_via, closed_via, logged_by, notes,
                        broker_order_id, broker_status, order_type, broker, client_order_id,
                        bracket_order, take_profit_price, stop_loss_price,
@@ -33345,6 +33352,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        post_trade_analyzed, iris_curated, aegis_summarized,
                        entry_time, closed_at, created_at, updated_at
                 FROM paper_trades
+                LEFT JOIN LATERAL (
+                    SELECT slippage_pct, fill_quality FROM paper_execution_quality
+                    WHERE paper_trade_id = paper_trades.id
+                    ORDER BY created_at DESC LIMIT 1
+                ) eq ON TRUE
                 WHERE {_where}
                   AND NOT (status = 'open' AND filled_at IS NULL
                            AND broker_status NOT IN ('filled')
