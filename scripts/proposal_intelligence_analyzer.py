@@ -243,6 +243,9 @@ def analyze_proposal(conn, p, generate_fn=None, dry_run=False):
     if generate_fn:
         try:
             prompt = build_prompt(p)
+            # Close any open read txn (fetch/RAG lookups) before the LLM call — its 120s timeout
+            # matches PG's idle-in-transaction kill exactly, so a slow generation loses the race.
+            conn.commit()
             raw = generate_fn(prompt, timeout=120, fallback=True, fast=False)
             if raw:
                 parsed = parse_proposal_intelligence_result(raw)

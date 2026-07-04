@@ -405,6 +405,9 @@ def main():
         return
 
     proposals = _fetch_proposals(conn, force_all=args.force_all)
+    # Release the fetch txn — this conn sits idle through the whole thread-pool enrichment run
+    # (minutes) and PG kills idle-in-transaction at 120s, which also killed the heartbeat below.
+    conn.commit()
     if not proposals:
         log.info("No proposals need enrichment")
         # Update heartbeat
