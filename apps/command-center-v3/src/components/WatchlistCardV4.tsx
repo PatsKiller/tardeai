@@ -110,6 +110,13 @@ const ctxLine: CSSProperties = { fontSize: 11, color: WL.text.secondary, lineHei
 const ctxKey: CSSProperties = { color: WL.text.dim, fontWeight: 700 }
 const LLM_NAMES: Record<string, string> = { grok: 'Grok', chatgpt: 'ChatGPT', claude: 'Claude' }
 const llmName = (lane?: string) => LLM_NAMES[lane || ''] || lane || 'LLM'
+/** Surface the model's own stated conviction when the recommendation text carries the
+ *  "CONVICTION: <level>" prefix — real stance instead of a bare lane name. */
+function llmStance(e: any): string {
+  const name = llmName(e?.lane)
+  const m = /conviction[:\s]+([a-z-]+)/i.exec(String(e?.recommendation ?? ''))
+  return m ? `${name} (${m[1].toLowerCase()})` : name
+}
 
 export default function WatchlistCardV4({
   it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap, accounts, heldPositions, maxDeployPctOfCash,
@@ -209,8 +216,14 @@ export default function WatchlistCardV4({
   const analystDivergent = pa?.divergence === 'divergent'
   const secondaryActions = deriveSecondaryActions(action, hasPlan)
 
-  // (A) one clean sentence for the hero — no restatements.
-  const whyLine = composeWhy([action.heroText, action.warning?.text, reasoning])
+  // (A) one clean sentence for the hero — no restatements, and never the CIO synthesis
+  // itself (that lives in CIO context below; absorbing it made the hero a paragraph and
+  // duplicated the module — operator feedback 2026-07-04 evening).
+  const cioSnip = it.synthesis_narrative_snip ? String(it.synthesis_narrative_snip) : ''
+  const reasonForHero = reasoning && cioSnip && reasoning.trim().slice(0, 60) === cioSnip.trim().slice(0, 60)
+    ? null
+    : reasoning
+  const whyLine = composeWhy([action.heroText, action.warning?.text, reasonForHero].map(s => s ? truncate(String(s), 110) : s))
 
   const planNote = (!action.warning && action.verdict !== 'FIX' && warns.length)
     ? { text: warns[0].text, color: warns[0].color }
@@ -332,7 +345,13 @@ export default function WatchlistCardV4({
           >{isStarred ? '★' : '☆'}</button>
           <span style={{ ...numStyle, fontWeight: 800, fontSize: 21 }}>{it.symbol}</span>
           {isHeld && (
-            <span title={heldTip} style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.08em', color: WL.signal.amber, border: '1px solid rgba(245,166,35,.35)', borderRadius: 4, padding: '1px 5px', flexShrink: 0 }}>HELD</span>
+            <span title={heldTip} style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.08em', color: WL.signal.amber, border: '1px solid rgba(245,166,35,.35)', borderRadius: 4, padding: '1px 5px', flexShrink: 0 }}>
+              HELD{outcome?.held && outcome.unrealized_pnl_pct != null ? (
+                <span style={{ marginLeft: 4, color: Number(outcome.unrealized_pnl_pct) >= 0 ? WL.price.up : WL.price.down }}>
+                  {Number(outcome.unrealized_pnl_pct) >= 0 ? '+' : ''}{Number(outcome.unrealized_pnl_pct).toFixed(1)}%
+                </span>
+              ) : null}
+            </span>
           )}
           <span onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}><ProAnalystPill symbol={it.symbol} map={paMap} compact neutral={false} /></span>
           {analystDivergent && <span style={{ fontSize: 10, color: WL.signal.amber, fontWeight: 700, flexShrink: 0 }} title="CIO stance diverges from Street consensus — treat targets with care">CIO ≠ Street</span>}
@@ -437,6 +456,7 @@ export default function WatchlistCardV4({
                 }} />
               </span>
               {confBand && <b style={{ color: confColor }}>{confBand} conviction</b>}
+              <span style={{ ...numStyle, color: WL.text.dim, fontSize: 10.5 }}>{confNum.toFixed(2)}</span>
             </span>
           )}
           {it.models_agree === true && <span style={{ color: WL.text.dim }}>Grok + ChatGPT agree</span>}
@@ -624,7 +644,8 @@ export default function WatchlistCardV4({
             {(companyDesc || llms.length > 0) && (
               <div style={{ ...ctxLine, color: WL.text.dim }}>
                 {companyDesc ? truncate(companyDesc, 90) : ''}
-                {llms.length > 0 ? `${companyDesc ? ' · ' : ''}intel: ${llms.map((e: any) => llmName(e.lane)).join(' · ')}` : ''}
+                {sc?.instrument_type ? `${companyDesc ? ' · ' : ''}${sc.instrument_type}` : ''}
+                {llms.length > 0 ? `${companyDesc || sc?.instrument_type ? ' · ' : ''}intel: ${llms.map((e: any) => llmStance(e)).join(' · ')}` : ''}
               </div>
             )}
           </div>
