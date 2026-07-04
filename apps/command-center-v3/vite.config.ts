@@ -25,6 +25,7 @@ export default defineConfig({
   ],
   define: {
     __ANALYST_UI_VERSION__: JSON.stringify(UI_VERSION),
+    __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
   },
   base: '/v3/',
   build: {
