@@ -232,11 +232,20 @@ def threshold_status() -> dict[str, Any]:
         decided_raw, active_history, all_evaluations, min_eval_days=min_eval_days,
     )
 
+    governance: dict[str, Any] = {}
+    try:
+        from .governance import hermes_governance_status
+        governance = hermes_governance_status()
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "scoring_version": "scoring-v2",
         "learning_enabled": learning.get("enabled", True),
         "review_mode": learning.get("review_mode", True),
+        "advisory_only": True,
+        "governance": governance,
         **readiness,
         "thresholds": [
             {**r, "evaluation_context": evaluations_by_threshold.get(r["threshold_id"])}

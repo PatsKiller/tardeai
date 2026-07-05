@@ -49,6 +49,18 @@ regime:
   high_vol_pct_cap: 0.30         # >30% high-vol days → downgrade confidence
   scoring_high_vol_match: [high_vol, volatility, risk_off, elevated]
 
+# Evidence gates — no threshold called "learned" without passing sample/confidence
+evidence_gates:
+  minimum_required_sample: 14
+  minimum_regime_count: 2
+  minimum_confidence_for_learned: medium
+  auto_apply_min_confidence: high
+  counterfactual_examples_required: true
+  block_insufficient_sample: true
+  per_threshold:
+    efficiency.tighten_threshold: 14
+    stop_quality.divergence_delta_pp: 14
+
 evaluation:
   enabled: true
   lookback_days: 60

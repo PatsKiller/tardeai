@@ -249,6 +249,20 @@ def run_evaluation_cycle(lookback_days: int | None = None) -> dict[str, Any]:
             continue
         new_evals.append(ev)
         append_eval_audit({"action": "evaluated", "evaluation_id": ev["id"], "verdict": ev["verdict"]})
+        try:
+            from .do_no_harm import build_do_no_harm_report, persist_do_no_harm_report
+            change_day = str(change.get("at") or "")[:10]
+            before, after = _slice_windows(
+                series,
+                change_day,
+                int(ev_cfg.get("before_window_days", 14)),
+                int(ev_cfg.get("after_window_days", 14)),
+            )
+            dnh = build_do_no_harm_report(before, after, evaluation=ev, threshold_id=change.get("threshold_id"))
+            ev["do_no_harm"] = dnh
+            persist_do_no_harm_report(dnh)
+        except Exception:
+            pass
 
     all_evals = list(store.get("evaluations") or []) + new_evals
     summary = _build_summary(all_evals)
@@ -267,6 +281,13 @@ def run_evaluation_cycle(lookback_days: int | None = None) -> dict[str, Any]:
     except Exception as cl_err:
         closed_loop = {"ok": False, "error": str(cl_err)[:120]}
 
+    do_no_harm_latest = None
+    try:
+        from .do_no_harm import load_do_no_harm_report
+        do_no_harm_latest = load_do_no_harm_report().get("latest")
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "lookback_days": window,
@@ -276,6 +297,8 @@ def run_evaluation_cycle(lookback_days: int | None = None) -> dict[str, Any]:
         "summary": summary,
         "skipped": skipped,
         "closed_loop": closed_loop,
+        "do_no_harm_report": do_no_harm_latest,
+        "advisory_only": True,
         "note": "Read-only — recommendations do not auto-apply",
     }
 

@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-04
+**Updated:** 2026-07-05
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -71,6 +71,15 @@
 | `docs/project/ROTATION_PRODUCTION_READINESS_2026-06-19.md` | Rotation advisory readiness — trust_verdict, dual-LLM, no-override rule | Active (2026-06-19) |
 | `docs/project/V3_TRUST_HARDENING_AND_ROTATION_INTELLIGENCE.md` | v3 trust hardening + rotation intelligence baseline | Active (2026-06-16) |
 | `docs/project/ROTATION_LLM_ADVISOR.md` | `rotation_llm_advisor.py` runbook — advisory only, safety contract | Active (2026-06-18) |
+
+### Hermes Closed Loop & Self-Learning
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/hermes/HERMES_CLOSED_LOOP_TRACEABILITY.md` | Master roadmap — watchlist/holdings lifecycle, outcome bus traceability, symbol journey, learning scorecard | Active (2026-07-05) |
+| `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` | Threshold learner design — proposals, evaluation, evidence gates, do-no-harm | Active (2026-07-05) |
+| `docs/hermes/HERMES_SCOPE_GOVERNOR.md` | Scope tiers, bus reactions, governor audit — advisory-only | Active |
+| `scripts/hermes_learning_scorecard.py` | Daily learning scorecard CLI → `data/runtime/hermes_learning_scorecard.json` | Active (2026-07-05) |
+| `GET /api/v2/hermes/learning-scorecard` | Scorecard API for Command Center Closed Loop panel | Active (2026-07-05) |
 
 ### Strategy & Agent Configuration
 | Document | Purpose | Status |
@@ -155,6 +164,7 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 
 | Date | Change |
 |------|--------|
+| 2026-07-05 | Hermes maturity hardening: learning scorecard, evidence gates, counterfactuals, do-no-harm report, symbol journey extensions, advisory-only governance; `HERMES_CLOSED_LOOP_TRACEABILITY.md` + CHANGELOG updated. |
 | 2026-07-04 | PR #33 canary hardening: reconciled after-hours policy (override-required), per-account arming, `protective_stop_canary.py` lifecycle/read-back; runbook + CHANGELOG updated; build marker `cc-v3 stop-evidence PR33 2026-07-04`. |
 | 2026-06-30 | Expanded `MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` to full policy text; cross-linked from `STOP_METHODOLOGY.md`. |
 | 2026-06-22 | A1A consolidation: LIVE_SYSTEM_FACTS.md, canonical docs → live pointers, drift detector hardened, DOCS_CONSOLIDATION closeout; runtime YAML/JSON/scripts committed. |

@@ -572,6 +572,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
   const { data: evalData } = useApi<any>('/api/v2/hermes/thresholds/evaluations', 120_000)
   const { data: closedLoopEvalData } = useApi<any>('/api/v2/hermes/closed-loop/evaluations', 120_000)
   const { data: holdingsLifecycleData } = useApi<any>('/api/v2/hermes/holdings-lifecycle', 120_000)
+  const { data: scorecardData } = useApi<any>('/api/v2/hermes/learning-scorecard', 120_000)
 
   const bus = busData?.bus ?? busData ?? {}
   const global = bus.global ?? {}
@@ -654,6 +655,7 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
   const learnSnapshots: any[] = lastLearn.snapshots ?? []
   const [thresholdConfirm, setThresholdConfirm] = useState<{ proposal: any; action: 'approve' | 'reject' } | null>(null)
   const [thresholdToast, setThresholdToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [showCounterfactualFor, setShowCounterfactualFor] = useState<string | null>(null)
 
   const showThresholdToast = (msg: string, type: 'success' | 'error' = 'success') => {
     setThresholdToast({ message: msg, type })
@@ -778,6 +780,48 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
           boxShadow: '0 4px 20px rgba(0,0,0,.35)',
         }}>
           {thresholdToast.message}
+        </div>
+      )}
+
+      {/* Learning Scorecard — daily measurable proof */}
+      {scorecardData?.ok !== false && (
+        <div style={{
+          background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12,
+          padding: '14px 16px', marginBottom: 4,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Learning Scorecard</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
+                {scorecardData?.day ?? '—'} · advisory-only · {scorecardData?.generated_at?.slice(0, 19) ?? '—'}
+              </div>
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#a855f7' }}>
+              Maturity {(scorecardData?.maturity_score_after ?? scorecardData?.maturity_score_by_subsystem?.maturity_score ?? '—')}/10
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
+            {[
+              { label: 'Signals reviewed', value: scorecardData?.signals_reviewed },
+              { label: 'Promoted / demoted', value: `${scorecardData?.symbols_promoted ?? 0} / ${scorecardData?.symbols_demoted ?? 0}` },
+              { label: 'Research rows', value: scorecardData?.research_rows_generated },
+              { label: 'Useful research %', value: scorecardData?.useful_research_hit_rate != null ? `${(Number(scorecardData.useful_research_hit_rate) * 100).toFixed(0)}%` : '—' },
+              { label: 'Outcome hit rate', value: scorecardData?.outcome_hit_rate != null ? `${(Number(scorecardData.outcome_hit_rate) * 100).toFixed(0)}%` : '—' },
+              { label: 'FP / FN proxy', value: `${scorecardData?.false_positive_rate ?? '—'} / ${scorecardData?.false_negative_rate ?? '—'}` },
+              { label: 'Operator ✓ / ✗', value: `${scorecardData?.operator_accepted ?? 0} / ${scorecardData?.operator_rejected ?? 0}` },
+              { label: 'Proposals pend/appr', value: `${scorecardData?.threshold_proposals_pending ?? 0} / ${scorecardData?.threshold_proposals_approved ?? 0}` },
+              { label: 'Learned vs static', value: `${scorecardData?.thresholds_learned_vs_static?.learned_count ?? 0} / ${scorecardData?.thresholds_learned_vs_static?.static_count ?? 0}` },
+              { label: 'Resource efficiency', value: scorecardData?.resource_efficiency_score ?? '—' },
+            ].map(item => (
+              <div key={item.label} style={{
+                padding: '8px 10px', borderRadius: 8, background: 'rgba(0,0,0,.15)',
+                border: '1px solid var(--border)',
+              }}>
+                <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{item.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginTop: 3 }}>{item.value ?? '—'}</div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1106,6 +1150,15 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                           <b style={{ color: 'var(--text2)' }}>Top metrics:</b> {metrics.join(' · ')}
                         </div>
                       )}
+                      {(evidence.sample_size != null || evidence.allowed_action) && (
+                        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>
+                          <b style={{ color: 'var(--text2)' }}>Evidence gates:</b>{' '}
+                          n={evidence.sample_size ?? evidence.sample_days ?? '—'}
+                          {evidence.minimum_required_sample != null && ` / min ${evidence.minimum_required_sample}`}
+                          {evidence.allowed_action && ` · ${String(evidence.allowed_action).replace(/_/g, ' ')}`}
+                          {evidence.blocked_reason && <span style={{ color: '#ef4444' }}> · blocked: {evidence.blocked_reason}</span>}
+                        </div>
+                      )}
                       {evidence.counterfactual && (
                         <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>
                           <b style={{ color: 'var(--text2)' }}>Would fire:</b>{' '}
@@ -1113,6 +1166,16 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                           {evidence.current_trigger_count != null && (
                             <span> (now {evidence.current_trigger_count.trigger_count ?? 0}×)</span>
                           )}
+                        </div>
+                      )}
+                      {showCounterfactualFor === p.id && (evidence.counterfactual_evidence || evidence.top_examples_helped) && (
+                        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 6, padding: '6px 8px', background: 'rgba(2,6,23,.35)', borderRadius: 6 }}>
+                          <div><b style={{ color: '#22c55e' }}>Would help:</b>{' '}
+                            {(evidence.top_examples_helped ?? evidence.counterfactual_evidence?.top_examples_helped ?? []).slice(0, 3).map((x: any) => x.day).join(', ') || '—'}
+                          </div>
+                          <div style={{ marginTop: 4 }}><b style={{ color: '#ef4444' }}>Would hurt:</b>{' '}
+                            {(evidence.top_examples_hurt ?? evidence.counterfactual_evidence?.top_examples_hurt ?? []).slice(0, 3).map((x: any) => x.day).join(', ') || '—'}
+                          </div>
                         </div>
                       )}
                       {keyDays.length > 0 && (
@@ -1125,11 +1188,19 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                         <button onClick={() => openThresholdConfirm(p, 'approve')} style={{
                           fontSize: 10, fontWeight: 700, padding: '5px 12px', borderRadius: 5, border: 'none',
                           background: '#22c55e', color: '#000', cursor: 'pointer',
-                        }}>Approve</button>
+                        }}>Approve proposed threshold</button>
                         <button onClick={() => openThresholdConfirm(p, 'reject')} style={{
                           fontSize: 10, fontWeight: 600, padding: '5px 12px', borderRadius: 5,
                           border: '1px solid #ef4444', background: 'rgba(239,68,68,.1)', color: '#ef4444', cursor: 'pointer',
-                        }}>Reject</button>
+                        }}>Reject proposed threshold</button>
+                        <button onClick={() => setShowCounterfactualFor(showCounterfactualFor === p.id ? null : p.id)} style={{
+                          fontSize: 10, fontWeight: 600, padding: '5px 12px', borderRadius: 5,
+                          border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer',
+                        }}>{showCounterfactualFor === p.id ? 'Hide counterfactuals' : 'Show counterfactuals'}</button>
+                        <button onClick={() => showThresholdToast('Needs more data — collect additional bus history before approving', 'error')} style={{
+                          fontSize: 10, fontWeight: 600, padding: '5px 12px', borderRadius: 5,
+                          border: '1px solid #f59e0b', background: 'rgba(245,158,11,.1)', color: '#f59e0b', cursor: 'pointer',
+                        }}>Needs more data</button>
                       </div>
                     </div>
                   )
@@ -1274,9 +1345,28 @@ export default function HermesClosedLoopPanel({ onDrill }: Props) {
                   {evalSummary.by_recommendation && ` · keep ${evalSummary.by_recommendation.keep ?? 0} · monitor ${evalSummary.by_recommendation.monitor ?? 0} · revert ${evalSummary.by_recommendation.revert ?? 0}`}
                 </div>
                 {recentEvaluations.slice(-2).reverse().map((e: any) => (
-                  <div key={e.id} style={{ fontSize: 10, color: 'var(--text2)', padding: '4px 0', borderTop: '1px solid var(--border)' }}>
+                  <div key={e.id} style={{ fontSize: 10, color: 'var(--text2)', padding: '6px 0', borderTop: '1px solid var(--border)' }}>
                     <span style={{ fontWeight: 600, color: e.verdict === 'helped' ? '#22c55e' : e.verdict === 'hurt' ? '#ef4444' : '#f59e0b' }}>{e.verdict}</span>
                     {' · '}{e.threshold_id} · rec <b>{e.recommendation}</b> · impact {e.impact_score != null ? Number(e.impact_score).toFixed(3) : '—'}
+                    {e.do_no_harm?.recommendation && (
+                      <span style={{ marginLeft: 6, color: e.do_no_harm.recommendation === 'revert' ? '#ef4444' : '#22c55e' }}>
+                        · do-no-harm: {e.do_no_harm.recommendation}
+                      </span>
+                    )}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                      <button onClick={() => showThresholdToast(`Keep ${e.threshold_id} — operator confirms evaluation recommendation`, 'success')} style={{
+                        fontSize: 9, fontWeight: 600, padding: '4px 10px', borderRadius: 4, border: '1px solid #22c55e',
+                        background: 'rgba(34,197,94,.1)', color: '#22c55e', cursor: 'pointer',
+                      }}>Keep this threshold</button>
+                      <button onClick={() => showThresholdToast('Revert via: hermes_threshold_learner.py --rollback (operator only)', 'error')} style={{
+                        fontSize: 9, fontWeight: 600, padding: '4px 10px', borderRadius: 4, border: '1px solid #ef4444',
+                        background: 'rgba(239,68,68,.1)', color: '#ef4444', cursor: 'pointer',
+                      }}>Revert this threshold</button>
+                      <button onClick={() => showThresholdToast(e.reasoning ?? 'No evaluation detail', 'success')} style={{
+                        fontSize: 9, fontWeight: 600, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)',
+                        background: 'var(--bg1)', color: 'var(--text2)', cursor: 'pointer',
+                      }}>Show examples</button>
+                    </div>
                   </div>
                 ))}
               </div>

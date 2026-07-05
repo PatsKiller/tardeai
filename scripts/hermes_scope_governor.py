@@ -85,6 +85,7 @@ def main():
     ap.add_argument("--symbol", type=str, default=None, help="Filter inspect to one symbol")
     ap.add_argument("--reaction-review", action="store_true",
                     help="Log bus reactions without applying edge/cap/runtime overrides")
+    ap.add_argument("--json", action="store_true", help="JSON output (default; scripting parity)")
     args = ap.parse_args()
 
     if args.inspect:

@@ -102,6 +102,25 @@ def _query_outcome_ledger(sym: str, limit: int = 15) -> list[dict[str, Any]]:
         return []
 
 
+def _query_research_rows(sym: str, days: int = 30, limit: int = 10) -> list[dict[str, Any]]:
+    try:
+        from db_adapter import _db_query, USE_DB
+        if not USE_DB:
+            return []
+        rows = _db_query(
+            """SELECT id, symbol, recommendation, source, created_at, confidence
+               FROM hermes_external_research
+               WHERE UPPER(symbol) = %s
+                 AND created_at > NOW() - make_interval(days => %s)
+                 AND recommendation IS NOT NULL AND recommendation NOT LIKE '[%%'
+               ORDER BY created_at DESC LIMIT %s""",
+            (sym, days, limit),
+        ) or []
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
 def _query_research_count(sym: str, days: int = 30) -> int:
     try:
         from db_adapter import _db_query, USE_DB
@@ -204,6 +223,7 @@ def build_symbol_journey(symbol: str) -> dict[str, Any]:
     ledger = _query_outcome_ledger(sym)
     trades = _query_trades(sym)
     research_n = _query_research_count(sym)
+    research_rows = _query_research_rows(sym)
     timeline = _build_timeline(sym, gov_audit, wl_audit, ledger, trades)
 
     feedback = None
@@ -216,14 +236,61 @@ def build_symbol_journey(symbol: str) -> dict[str, Any]:
     except Exception:
         pass
 
+    threshold_effects: list[dict[str, Any]] = []
+    latest_recommendation: dict[str, Any] | None = None
+    try:
+        from lib.hermes_thresholds.store import load_active_thresholds, load_proposals
+        active = load_active_thresholds()
+        proposals = load_proposals()
+        for tid, learned in (active.get("thresholds") or {}).items():
+            threshold_effects.append({
+                "threshold_id": tid,
+                "active_value": learned.get("value"),
+                "approved_at": learned.get("approved_at"),
+                "approved_by": learned.get("approved_by"),
+                "effect": "active_learned_threshold",
+            })
+        for p in proposals.get("pending") or []:
+            latest_recommendation = {
+                "kind": "threshold_proposal",
+                "proposal_id": p.get("id"),
+                "threshold_id": p.get("threshold_id"),
+                "direction": p.get("direction"),
+                "reasoning": p.get("reasoning"),
+                "allowed_action": p.get("allowed_action"),
+                "advisory_only": True,
+            }
+            break
+    except Exception:
+        pass
+
+    if feedback and not latest_recommendation:
+        latest_recommendation = {
+            "kind": "governor_feedback",
+            "action": feedback.get("action"),
+            "reason": feedback.get("reason"),
+            "advisory_only": True,
+        }
+
+    conviction = (
+        wl.get("conviction_score")
+        or wl.get("health_score")
+        or bus_sym.get("lift")
+        or bus_sym.get("score")
+    )
+
     return {
         "ok": True,
         "symbol": sym,
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "advisory_only": True,
+        "conviction_score": conviction,
         "summary": {
             "scope_tier": wl.get("scope_tier") or bus_sym.get("scope_tier"),
+            "lifecycle_stage": wl.get("lifecycle_stage") or (bus_sym.get("watchlist_lifecycle") or {}).get("lifecycle_stage"),
             "watchlist_stage": wl.get("lifecycle_stage") or (bus_sym.get("watchlist_lifecycle") or {}).get("lifecycle_stage"),
             "holdings_stage": hl.get("lifecycle_stage") or (bus_sym.get("holdings_lifecycle") or {}).get("lifecycle_stage"),
+            "conviction_score": conviction,
             "watchlist_health": wl.get("health_score") or (bus_sym.get("watchlist_lifecycle") or {}).get("health_score"),
             "holdings_health": hl.get("health_score") or (bus_sym.get("holdings_lifecycle") or {}).get("health_score"),
             "outcome_gate": bus_sym.get("gate") or wl.get("outcome_gate"),
@@ -231,6 +298,7 @@ def build_symbol_journey(symbol: str) -> dict[str, Any]:
             "bus_lift": bus_sym.get("lift"),
             "research_rows_30d": research_n,
             "timeline_events": len(timeline),
+            "why_in_scope": wl.get("scope_reason") or feedback.get("reason") if feedback else None,
         },
         "watchlist_lifecycle": wl or bus_sym.get("watchlist_lifecycle"),
         "holdings_lifecycle": hl or bus_sym.get("holdings_lifecycle"),
@@ -240,6 +308,10 @@ def build_symbol_journey(symbol: str) -> dict[str, Any]:
         "watchlist_audit": wl_audit,
         "outcome_ledger": ledger,
         "paper_trades": trades,
+        "research_generated": research_rows,
+        "threshold_effects": threshold_effects,
+        "latest_hermes_recommendation": latest_recommendation,
+        "what_hermes_learned": bus_sym.get("verdict") or bus_sym.get("lift"),
         "timeline": timeline,
         "trace_links": {
             "outcome_bus": f"/api/v2/hermes/outcome-bus?symbol={sym}",

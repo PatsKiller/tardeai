@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-07-05 - Hermes maturity hardening (measurable self-learning, advisory-only)
+
+Closed-loop maturity lift (~5.8 → ~7.1 self-learning score) without increasing live-trading authority.
+
+- **Daily Learning Scorecard** — `scripts/hermes_learning_scorecard.py` → `data/runtime/hermes_learning_scorecard.json`;
+  `GET /api/v2/hermes/learning-scorecard`; Command Center Closed Loop **Learning Scorecard** panel (signals, promotions/demotions,
+  research usefulness, operator accept/reject, FP/FN proxies, threshold proposal counts, maturity by subsystem).
+- **Evidence gates** — every threshold proposal carries `sample_size`, `lookback_days`, `regime_count`, `confidence`,
+  `minimum_required_sample`, `allowed_action`, `blocked_reason`; insufficient sample blocks “learned” status
+  (`config/hermes_thresholds.yaml` → `evidence_gates`).
+- **Counterfactual evidence** — top help/hurt examples, estimated FP/FN/coverage/resource/outcome-yield impact per proposal.
+- **Do-no-harm regression** — `scripts/hermes_threshold_evaluator.py` + `hermes_do_no_harm_report.json` after eval cycles;
+  recommends revert when hit rate, efficiency, scope churn, or alert volume degrades.
+- **Symbol journey** — extended `GET /api/v2/hermes/symbol-journey` (conviction, research rows, threshold effects,
+  latest recommendation, `advisory_only`).
+- **Governance** — `lib/hermes_thresholds/governance.py` hard-blocks broker writes, OCO, stops, 2FA, liquidation;
+  scope budget / strategy config require operator approval; auto-apply only inside declared rails with gates pass.
+- **Tests** — `tests/test_hermes_maturity_hardening.py` (35 related tests pass). No Schwab/Fidelity execution gates changed.
+
 ## 2026-07-04 - Schwab protective-stop canary hardening (PR #33 maturity)
 
 Canonical after-hours policy reconciled across runbook + code: default `READY_FOR_OPERATOR_NEXT_REGULAR_SESSION`;

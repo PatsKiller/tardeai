@@ -235,6 +235,20 @@ See `HERMES_THRESHOLD_SCORING_REVIEW.md` §8 for full implementation status.
 - **`impact_narrative`** on decided rows — plain-language 14d metric deltas (efficiency score, promotion hit rate, stop alignment); module: `proposal_impact.py`
 - Traceability validation: `pytest tests/test_proposal_impact.py tests/test_bus_traceability.py -q`
 
+### Evidence gates & do-no-harm (2026-07-05)
+
+Every proposal must pass **sample/confidence gates** before it can be called learned (`evidence_gates` in
+`config/hermes_thresholds.yaml`). Required fields on each proposal:
+
+- `sample_size`, `lookback_days`, `regime_count`, `confidence`, `minimum_required_sample`
+- `allowed_action`: `observe_only` | `propose_only` | `operator_approval_required` | `auto_apply_inside_rails`
+- `counterfactual_evidence`: top help/hurt days + estimated FP/FN/coverage/resource impact
+
+After `--evaluate`, **`do_no_harm_report`** compares before/after windows and recommends **revert** when hit rate,
+efficiency, scope churn, or alert volume degrades. CLI: `scripts/hermes_threshold_evaluator.py --json`.
+
+Hermes remains **advisory-only** — governance module blocks broker writes, OCO, stops, 2FA, and liquidation paths.
+
 ---
 
 **Related docs:**

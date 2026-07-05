@@ -45,7 +45,12 @@ def main() -> int:
                     help="Run watchlist promotion-gate evaluation only (read-only)")
     ap.add_argument("--lookback-days", type=int, default=None, help="Evaluation lookback window")
     ap.add_argument("--by", type=str, default="operator", help="Approver identity for audit")
+    ap.add_argument("--review", action="store_true", help="Alias for --learn (proposals only, no apply)")
+    ap.add_argument("--json", action="store_true", help="JSON output (default; kept for scripting parity)")
     args = ap.parse_args()
+
+    if args.review and not args.learn:
+        args.learn = True
 
     if KILL_SWITCH.exists():
         out = {"ok": False, "reason": "HERMES_DISABLED kill switch present"}

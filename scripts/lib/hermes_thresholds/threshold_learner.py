@@ -20,6 +20,8 @@ from .scoring import (
     split_holdout,
     validate_holdout_candidate,
 )
+from .counterfactual_evidence import attach_counterfactual_to_proposal
+from .evidence_gates import enrich_proposal_evidence_gates
 from .store import (
     append_audit,
     get_active_value,
@@ -165,7 +167,7 @@ def _build_proposal(
         max_step *= 0.5
         proposed = _clamp_step(current, proposed, max_step, spec.get("safe_band") or {})
 
-    return {
+    raw = {
         "threshold_id": threshold_id,
         "label": label,
         "current_value": current,
@@ -182,6 +184,9 @@ def _build_proposal(
             "confidence": confidence,
             "confidence_factors": factors,
             "sample_days": regime.get("total_days"),
+            "sample_size": regime.get("total_days"),
+            "lookback_days": int((cfg.get("learning") or {}).get("analysis_window_days", 30)),
+            "regime_count": max(1, 2 if regime.get("high_vol_days") else 1),
             "sparse_data": sparse,
             "regime_breakdown": regime,
             "current_threshold_score": round(current_score, 4),
@@ -198,6 +203,7 @@ def _build_proposal(
             **(extra_evidence or {}),
         },
     }
+    return enrich_proposal_evidence_gates(raw, cfg)
 
 
 def _candidate_snapshot(
@@ -345,10 +351,19 @@ def _propose_efficiency(
             f"Proposing {dir_} {current:.2f}→{prop:.2f} (confidence: {conf})."
         )
 
-    return _build_proposal(
+    proposal = _build_proposal(
         "efficiency.tighten_threshold",
         spec.get("label", "Efficiency reaction trigger"),
         current, proposed, direction, spec, candidates, current_score, regime, cfg, reasoning, extra,
+    )
+    if not proposal:
+        return None
+    return attach_counterfactual_to_proposal(
+        proposal,
+        usable,
+        proposed_trigger_fn=trigger_fn,
+        current_trigger_fn=lambda s: (_num(s.get("resource_efficiency_score")) or 1) < current,
+        window_days=_counterfactual_window(cfg),
     )
 
 
@@ -407,10 +422,19 @@ def _propose_stop_quality(
             f"Proposing {dir_} divergence floor {current:.0%}→{prop:.0%} (confidence: {conf})."
         )
 
-    return _build_proposal(
+    proposal = _build_proposal(
         "stop_quality.divergence_delta_pp",
         spec.get("label", "Stop quality divergence"),
         current, proposed, direction, spec, candidates, current_score, regime, cfg, reasoning, extra,
+    )
+    if not proposal:
+        return None
+    return attach_counterfactual_to_proposal(
+        proposal,
+        usable,
+        proposed_trigger_fn=trigger_fn,
+        current_trigger_fn=lambda s: (_num(s.get("stop_hot_cold_trail_delta")) or 1) < current,
+        window_days=_counterfactual_window(cfg),
     )
 
 
@@ -480,9 +504,24 @@ def run_learning_cycle(apply_proposals: bool = False) -> dict[str, Any]:
         if not raw:
             skipped.append({"threshold_id": tid, "reason": "no_improvement_or_insufficient_signal"})
             continue
+        gates_cfg = (cfg.get("evidence_gates") or {})
+        cf = (raw.get("counterfactual_evidence") or {})
+        if gates_cfg.get("counterfactual_examples_required", True) and not cf.get("has_sufficient_examples"):
+            skipped.append({
+                "threshold_id": tid,
+                "reason": "counterfactual_evidence_insufficient",
+            })
+            continue
+        if not raw.get("can_be_called_learned") and gates_cfg.get("block_insufficient_sample", True):
+            skipped.append({
+                "threshold_id": tid,
+                "reason": raw.get("evidence", {}).get("blocked_reason") or "insufficient_evidence",
+            })
+            continue
         raw["id"] = new_proposal_id()
         raw["status"] = "pending"
         raw["review_mode"] = review_mode
+        raw["advisory_only"] = True
         raw["created_at"] = datetime.now(timezone.utc).isoformat()
         raw["scoring_version"] = "scoring-v2"
         proposals_out.append(raw)

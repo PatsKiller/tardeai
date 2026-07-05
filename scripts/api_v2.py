@@ -20420,6 +20420,27 @@ def _hermes_threshold_evaluations(query=None):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _hermes_learning_scorecard(query=None):
+    """GET /api/v2/hermes/learning-scorecard — daily measurable learning proof."""
+    try:
+        import sys as _sysc
+        _sysc.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from lib.hermes_outcome_bus.scorecard import build_learning_scorecard, load_learning_scorecard
+        q = query or {}
+        refresh = (q.get("refresh") or ["0"])[0] if isinstance(q.get("refresh"), list) else q.get("refresh")
+        if str(refresh).lower() in ("1", "true", "yes"):
+            data = build_learning_scorecard(persist=True)
+        else:
+            data = load_learning_scorecard()
+        return _json_clean({
+            "ok": True,
+            "advisory_notice": "Learning scorecard is read-only — Hermes cannot execute trades",
+            **data,
+        })
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _hermes_symbol_journey(query=None):
     """GET /api/v2/hermes/symbol-journey — closed-loop trace for one symbol."""
     q = query or {}
@@ -26506,6 +26527,7 @@ ROUTES = {
     "/api/v2/hermes/thresholds": lambda q: _hermes_thresholds(q),
     "/api/v2/hermes/thresholds/evaluations": lambda q: _hermes_threshold_evaluations(q),
     "/api/v2/hermes/closed-loop/evaluations": lambda q: _hermes_closed_loop_evaluations(q),
+    "/api/v2/hermes/learning-scorecard": lambda q: _hermes_learning_scorecard(q),
     "/api/v2/hermes/symbol-journey": lambda q: _hermes_symbol_journey(q),
     "/api/v2/hermes/promotion-review": lambda: _hermes_promotion_review(),
     "/api/v2/hermes/research-backlog": lambda: _hermes_research_backlog(),
