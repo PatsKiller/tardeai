@@ -7,6 +7,15 @@ false-ticker rate / candidate volume → steady|tighten|pause recommendation),
 writes data/runtime/hermes_discovery_scorecard.json, and publishes a compact
 discovery_health summary to data/runtime/hermes_discovery_outcome_feed.json.
 
+Metric definitions (operator-approved 2026-07-05):
+  * duplicate_rate counts GENUINE duplication only — an explicit
+    MERGED_DUPLICATE verdict, or single-sighting membership in a duplicate
+    cluster shared with at least one other candidate. Idempotent re-sight
+    bumps (seen_count > 1, e.g. a scheduled detector re-observing a seeded
+    subject) are RECURRENCE signal, not duplication noise, and never count.
+  * resight_rate surfaces those re-sight bumps for visibility only — it is
+    never a do-no-harm degradation input.
+
 NOTE on the outcome bus: state/hermes/outcome_bus.json is rewritten WHOLESALE
 by lib/hermes_outcome_bus.bus.write_outcome_bus (nightly job) — there is no
 additive per-section append API, so appending discovery_health there would be
@@ -29,7 +38,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 SCORECARD_PATH = PROJECT_ROOT / "data" / "runtime" / "hermes_discovery_scorecard.json"
 OUTCOME_FEED_PATH = PROJECT_ROOT / "data" / "runtime" / "hermes_discovery_outcome_feed.json"
-SCORECARD_VERSION = "discovery-scorecard-v2"
+SCORECARD_VERSION = "discovery-scorecard-v3"
 OUTCOME_FEED_VERSION = "discovery-outcome-feed-v1"
 FEED_HISTORY_KEEP = 30
 
@@ -54,6 +63,10 @@ def compute_do_no_harm(last_7d: dict, prior_7d: dict) -> dict:
     """Pure do-no-harm comparison (spec Part J). Inputs are the two window
     metric dicts (candidate_volume, duplicate_rate, false_ticker_rate).
     Degraded metrics → recommendation 'tighten' (one) or 'pause' (two or more).
+
+    resight_rate, when present in the windows, is deliberately NOT a
+    degradation input: re-sights are recurrence signal (tracked separately
+    for visibility), not duplication noise.
     """
     degraded: list[str] = []
     reasons: list[str] = []
@@ -88,20 +101,46 @@ def compute_do_no_harm(last_7d: dict, prior_7d: dict) -> dict:
 
 
 def _window_metrics() -> tuple[dict, dict]:
-    """Last-7d vs prior-7d intake quality windows, one statement."""
+    """Last-7d vs prior-7d intake quality windows, one statement.
+
+    duplicate_rate counts GENUINE duplication only (operator-approved
+    2026-07-05): an explicit MERGED_DUPLICATE verdict, or a single-sighting
+    row whose duplicate_cluster_id is shared with at least one other
+    candidate. Rows with seen_count > 1 are idempotent re-sight bumps (e.g.
+    the entity-spike detector re-observing a seeded subject) — that is
+    RECURRENCE signal, not duplication noise, so they never count toward
+    duplicate_rate; they are tracked separately as resight_rate (visibility
+    only — compute_do_no_harm never degrades on it).
+    """
     from db_adapter import _execute
     row = dict(_execute(
-        """SELECT
+        """WITH shared_clusters AS (
+             SELECT duplicate_cluster_id AS cid
+             FROM hermes_discovery_candidates
+             WHERE duplicate_cluster_id IS NOT NULL
+             GROUP BY duplicate_cluster_id
+             HAVING count(*) >= 2
+           )
+           SELECT
              count(*) FILTER (WHERE created_at > now() - interval '7 days') AS vol_last,
              count(*) FILTER (WHERE created_at <= now() - interval '7 days'
                                 AND created_at > now() - interval '14 days') AS vol_prior,
              count(*) FILTER (WHERE created_at > now() - interval '7 days'
-                                AND (duplicate_cluster_id IS NOT NULL
-                                     OR status = 'MERGED_DUPLICATE')) AS dup_last,
+                                AND (status = 'MERGED_DUPLICATE'
+                                     OR (seen_count = 1
+                                         AND duplicate_cluster_id IN
+                                             (SELECT cid FROM shared_clusters)))) AS dup_last,
              count(*) FILTER (WHERE created_at <= now() - interval '7 days'
                                 AND created_at > now() - interval '14 days'
-                                AND (duplicate_cluster_id IS NOT NULL
-                                     OR status = 'MERGED_DUPLICATE')) AS dup_prior,
+                                AND (status = 'MERGED_DUPLICATE'
+                                     OR (seen_count = 1
+                                         AND duplicate_cluster_id IN
+                                             (SELECT cid FROM shared_clusters)))) AS dup_prior,
+             count(*) FILTER (WHERE created_at > now() - interval '7 days'
+                                AND seen_count > 1) AS resight_last,
+             count(*) FILTER (WHERE created_at <= now() - interval '7 days'
+                                AND created_at > now() - interval '14 days'
+                                AND seen_count > 1) AS resight_prior,
              count(*) FILTER (WHERE candidate_type = 'TICKER_CANDIDATE'
                                 AND created_at > now() - interval '7 days') AS tick_last,
              count(*) FILTER (WHERE candidate_type = 'TICKER_CANDIDATE'
@@ -118,16 +157,20 @@ def _window_metrics() -> tuple[dict, dict]:
                                      OR risk_flags ? 'ticker_unvalidated')) AS bad_tick_prior
            FROM hermes_discovery_candidates""", fetch="one") or {})
 
-    def _window(vol, dup, tick, bad):
+    def _window(vol, dup, tick, bad, resight):
         return {
             "candidate_volume": int(row.get(vol) or 0),
             "duplicate_rate": _rate(row.get(dup) or 0, row.get(vol) or 0),
+            # visibility only — never a do-no-harm degradation input
+            "resight_rate": _rate(row.get(resight) or 0, row.get(vol) or 0),
             "ticker_volume": int(row.get(tick) or 0),
             "false_ticker_rate": _rate(row.get(bad) or 0, row.get(tick) or 0),
         }
 
-    return (_window("vol_last", "dup_last", "tick_last", "bad_tick_last"),
-            _window("vol_prior", "dup_prior", "tick_prior", "bad_tick_prior"))
+    return (_window("vol_last", "dup_last", "tick_last", "bad_tick_last",
+                    "resight_last"),
+            _window("vol_prior", "dup_prior", "tick_prior", "bad_tick_prior",
+                    "resight_prior"))
 
 
 def _promotion_metrics() -> dict:
@@ -228,6 +271,8 @@ def build_discovery_health(card: dict) -> dict:
         "candidates_total": (card.get("totals") or {}).get("candidates", 0),
         "new_7d": (card.get("intake") or {}).get("new_candidates_7d", 0),
         "duplicate_rate_7d": last.get("duplicate_rate", 0.0),
+        # recurrence visibility (re-sight bumps) — never degrades do-no-harm
+        "resight_rate_7d": last.get("resight_rate", 0.0),
         "false_ticker_rate_7d": last.get("false_ticker_rate", 0.0),
         "approval_rate": (card.get("decisions") or {}).get("approval_rate", 0.0),
         "promotions_7d": (card.get("promotions") or {}).get("promotions_7d", 0),
