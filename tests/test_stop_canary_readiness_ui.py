@@ -150,7 +150,7 @@ def test_12_readiness_endpoint_runtime_is_read_only(tmp_path):
         pytest.skip("api_v2 import unavailable in this environment")
     r = api_v2._stop_live_readiness({"symbol": "V", "account": "schwab_rollover_ira"})
     assert r["broker_request_sent"] is False
-    assert r["build_marker"] == "cc-v3 stop-evidence PR33 2026-06-30"
+    assert r["build_marker"] == "cc-v3 stop-evidence PR33 2026-07-04"
     assert r["canary_state"] in ("READY_FOR_OPERATOR", "BLOCKED")
     assert "execution" in r and "schwab_validator" in r and "active_approval" in r
     # OCO must be reported off (we never enable it)
