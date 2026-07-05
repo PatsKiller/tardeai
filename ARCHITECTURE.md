@@ -148,6 +148,12 @@ Design law, stated across the module headers: **"outcome yield outranks throughp
   alerts (`hit_rate_declining`, `efficiency_declining`, `scope_creep`, `stop_quality_divergence`), and the
   maturity breakdown (`outcome_yield / scope_discipline / stop_quality / feedback_loop /
   research_actionability`).
+- **Discovery → strategy pipeline** — white-space research discovery (`hermes_discovery_*`) can promote
+  an operator-approved candidate into a real strategy config. First promotion: candidate #339
+  (`APPROVED_RESEARCH_ONLY`) → `config/strategies/deep_itm_call.yaml`, a **paper-only** options strategy
+  (model → paper → validate → operator decision); every proposal carries `meta.discovery_ref` back to the
+  candidate so paper outcomes close the discovery loop. See
+  [docs/OPTIONS_STRATEGY_PIPELINE.md](docs/OPTIONS_STRATEGY_PIPELINE.md).
 
 ## 5. Portfolio & journal layer
 
@@ -191,6 +197,19 @@ Design law, stated across the module headers: **"outcome yield outranks throughp
    completed local agent reviews (default `maria,risk_agent,steph`, env-overridable) plus optional
    Grok/ChatGPT cloud second opinions before an intent reaches the live broker queue.
 7. **Execution** — paper lane via ATM (autonomous), live lane via per-order 2FA (§7).
+
+**Options paper-strategy lane (Stage A/B, 2026-07-05):** parallel to the equity pipeline, the options
+desk has a discovery-fed **paper-only** strategy lane — `scripts/options_strategy_scanner.py` runs
+`scripts/lib/options_pipeline/` generators (first: `deep_itm_call`, 0.80–0.95Δ stock replacement) over
+held + buy-rated underlyings and queues winners into the **existing** `options_approval_queue`
+manual-review lane with `live_eligible=false` and hard paper flags (triple fail-closed: generator,
+desk approve/preflight refusals, no broker/2FA imports — test-enforced). Closed paper trades land in
+`options_paper_outcomes`; `scripts/lib/options_pipeline/validation.py` +
+`scripts/options_validation_status.py` report progress against the config's validation gate
+(30 trades / WR ≥55% / PF ≥1.3 / 3 months) — **advisory only**: a met gate reads "operator decision
+required", nothing auto-enables. Options-tab cards render these as "DEEP ITM · PAPER MODEL" with
+disclosed flags (earnings-before-expiry is a flag, not a reject — operator decision 2026-07-05).
+Details: [docs/OPTIONS_STRATEGY_PIPELINE.md](docs/OPTIONS_STRATEGY_PIPELINE.md).
 
 ## 7. Trading execution & position sizing
 

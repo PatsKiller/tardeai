@@ -19,6 +19,7 @@ const STRAT_LABEL: Record<string, string> = {
   long_call: 'Long Call',
   credit_spread: 'Credit Spread',
   protective_put: 'Protective Put',
+  deep_itm_call: 'Deep ITM Call',
 }
 
 const SEV = (s?: string) => {
@@ -133,6 +134,37 @@ export type OptionProposal = {
   long_strike?: number
   desk_tier?: string
   enterprise?: { live_eligible?: boolean; blocks?: string[]; tier?: string }
+  // ── Stage B (2026-07-05): paper-model lane (deep_itm_call) data wiring ──
+  educational_paper_model?: boolean
+  queue_status?: string
+  validation_progress?: {
+    label?: string
+    n_closed?: number
+    required?: number
+    gate_met?: boolean
+    message?: string
+  }
+  meta?: {
+    discovery_ref?: { source?: string; candidate_id?: number; label?: string; candidate_status?: string }
+    gate_flags?: string[]
+    selection_mode?: string
+    dte_bucket?: { target_dte?: number; exp?: string; dte?: number }
+    analysis?: {
+      banner?: string
+      underlying_price?: number
+      next_earnings_date?: string | null
+      feasibility?: { feasible?: boolean; score?: number; reason?: string }
+      candidate?: {
+        strike?: number
+        delta?: number | null
+        breakeven?: number
+        breakeven_move_pct?: number
+        extrinsic_value?: number
+        intrinsic_value?: number
+        capital_vs_100_shares?: { contract_debit?: number; capital_ratio_pct?: number } | null
+      }
+    }
+  }
 }
 
 const EXEC_ACTIONS = new Set(['sell_covered_call', 'sell_put', 'buy_put', 'buy_call', 'sell_credit_spread'])
@@ -199,6 +231,7 @@ export default function OptionProposalCard({
             <span style={{ fontSize: 12, fontWeight: 900, color: BLUE, fontFamily: 'monospace' }}>{p.symbol}</span>
             {ds && <span title={ds.label === 'BS estimate' ? 'Premium estimated via Black-Scholes — confirm on chain before sizing.' : 'Live bid/ask mid from Schwab option chain.'} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: ds.c, background: `${ds.c}18`, border: `1px solid ${ds.c}44` }}>{ds.label}</span>}
             {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: PURPLE, background: 'rgba(168,85,247,.15)', border: '1px solid rgba(168,85,247,.35)' }}>income sleeve</span>}
+            {p.educational_paper_model && <span title="Educational paper model — manual review only, never live-eligible. Outcomes feed the strategy validation gate." style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: AMBER, background: 'transparent', border: `1px solid ${AMBER}`, cursor: 'help' }}>DEEP ITM · PAPER MODEL</span>}
             {edge != null && <span title={TIPS.edge} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: edge >= 72 ? GREEN : edge >= 50 ? AMBER : RED, background: 'var(--bg2)' }}>edge {edge}</span>}
             {p.enterprise?.live_eligible && (
               <span title={PROPOSAL.liveOk} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: GREEN, background: 'rgba(34,197,94,.15)', border: '1px solid rgba(34,197,94,.35)', cursor: 'help' }}>live eligible</span>
@@ -318,7 +351,7 @@ export default function OptionProposalCard({
             </button>
           )
         })}
-        {onManualLog && (
+        {onManualLog && !p.educational_paper_model && (
           <button type="button" title={ACTIONS.manualLog} onClick={onManualLog} style={{ fontSize: 10, fontWeight: 800, padding: '6px 12px', borderRadius: 6, border: `1px solid ${BLUE}55`, background: 'rgba(96,165,250,.12)', color: BLUE, cursor: 'help' }}>
             Executed manually
           </button>

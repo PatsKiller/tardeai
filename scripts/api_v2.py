@@ -24254,6 +24254,83 @@ def _get_options_engine():
     return oe
 
 
+def _fetch_paper_model_queue_proposals() -> list:
+    """Pending paper-model rows (deep_itm_call, Stage B) from options_approval_queue.
+
+    The scanner (options_strategy_scanner.py) writes deep-ITM stock-replacement
+    proposals ONLY into the desk's manual-review queue — they never enter
+    options_engine's own generation pass. Merge the un-reviewed, un-expired rows
+    into the proposals feed so the Options tab renders them alongside desk
+    proposals, with a per-row validation-progress chip. Read-only; queue status
+    is attached so the UI can show the manual-review lane honestly.
+    """
+    try:
+        from db_adapter import _execute, USE_DB
+        if not USE_DB:
+            return []
+        rows = _execute(
+            """SELECT proposal_id, status AS queue_status, proposal_json,
+                      created_at, expires_at
+               FROM options_approval_queue
+               WHERE strategy = 'deep_itm_call'
+                 AND status IN ('pending', 'blocked')
+                 AND (expires_at IS NULL OR expires_at > NOW())
+               ORDER BY edge_score DESC NULLS LAST, created_at DESC
+               LIMIT 25""",
+            fetch="all",
+        ) or []
+    except Exception:
+        return []
+    out = []
+    try:
+        from lib.options_pipeline.validation import validation_status
+        vstat = validation_status("deep_itm_call")
+        progress = {
+            "label": vstat.get("progress_label"),
+            "n_closed": (vstat.get("metrics") or {}).get("n_closed"),
+            "required": (vstat.get("gate") or {}).get("min_closed_paper_trades"),
+            "gate_met": vstat.get("gate_met"),
+            "message": vstat.get("message"),
+        } if vstat.get("ok") else None
+    except Exception:
+        progress = None
+    for r in rows:
+        p = r.get("proposal_json")
+        if isinstance(p, str):
+            try:
+                p = json.loads(p)
+            except Exception:
+                continue
+        if not isinstance(p, dict):
+            continue
+        # Fail-closed rendering guard: a paper-model row that lost its flags is
+        # dropped from the feed rather than rendered as a normal desk proposal.
+        if not p.get("educational_paper_model") or (p.get("enterprise") or {}).get("live_eligible"):
+            continue
+        p["queue_status"] = r.get("queue_status")
+        p["queued_at"] = str(r.get("created_at") or "")
+        if progress:
+            p["validation_progress"] = progress
+        out.append(p)
+    return out
+
+
+def _options_validation(query=None):
+    """GET /api/v2/options/validation — advisory paper-validation gate report (Stage B).
+
+    Powers the Options tab "Strategy Validation" strip. Advisory only — a met
+    gate is reported as operator-decision-required, never acted on.
+    """
+    try:
+        from lib.options_pipeline.validation import SUPPORTED_STRATEGIES, validation_status
+        return _json_clean({
+            "ok": True,
+            "strategies": [validation_status(s) for s in SUPPORTED_STRATEGIES],
+        })
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _options_proposals(query=None):
     """GET /api/v2/options/proposals — high-quality options proposals (covered calls + defined risk)."""
     q = query or {}
@@ -24262,6 +24339,12 @@ def _options_proposals(query=None):
     oe = _get_options_engine()
     data = oe.generate_proposals(force=force)
     proposals = data.get("proposals") or []
+    # Stage B: append paper-model queue rows (deep_itm_call) BEFORE filtering so
+    # facets/filters treat them uniformly with desk proposals.
+    paper_rows = _fetch_paper_model_queue_proposals()
+    if paper_rows:
+        seen = {p.get("id") for p in proposals}
+        proposals = proposals + [p for p in paper_rows if p.get("id") not in seen]
     live_raw = g("live_eligible", "")
     live_eligible = None
     if str(live_raw).lower() in ("1", "true", "yes"):
@@ -24289,6 +24372,7 @@ def _options_proposals(query=None):
         **data,
         "proposals": filtered,
         "filtered_count": len(filtered),
+        "paper_model_count": len(paper_rows),
         "filter_facets": oe.proposal_filter_facets(proposals),
         "filters_applied": {
             k: v for k, v in {
@@ -26931,6 +27015,7 @@ ROUTES = {
     "/api/v2/schwab/market-hours": _schwab_market_hours,
     "/api/v2/schwab/option-chain": _schwab_option_chain,
     "/api/v2/options/proposals": _options_proposals,
+    "/api/v2/options/validation": _options_validation,
     "/api/v2/options/positions": _options_positions,
     "/api/v2/options/monitor": _options_monitor,
     "/api/v2/options/overview": _options_overview,

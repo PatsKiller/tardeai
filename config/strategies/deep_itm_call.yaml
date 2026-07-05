@@ -1,0 +1,188 @@
+consolidation_note: >
+  Created 2026-07-05 from Hermes discovery candidate #339 "Deep ITM Call (stock replacement)"
+  (status APPROVED_RESEARCH_ONLY). Paper-only options strategy: model -> paper -> validate.
+  NO live path exists or is planned in this stage; any live consideration requires the
+  validation_gate below PLUS explicit operator approval (2FA path untouched by this strategy).
+strategy_id: deep_itm_call
+display_name: Deep ITM Call (Stock Replacement)
+version: 1.0.0
+status: UNVALIDATED
+family: stock_replacement
+purpose: >
+  Replace long-stock exposure with deep in-the-money calls (delta 0.80-0.95) on
+  high-conviction underlyings, capturing most of the upside with a fraction of the
+  capital and a hard-defined max loss (the debit). Educational paper model only —
+  proposals land in the options desk manual-review queue flagged paper/educational
+  and are never live-eligible.
+eligible_accounts:
+  - paper
+timeframe: position_medium
+timeframe_class: POSITION
+paper_only: true
+execution_mode: manual_review_only
+discovery_ref:
+  source: hermes_discovery_candidates
+  candidate_id: 339
+  candidate_status: APPROVED_RESEARCH_ONLY
+universe:
+  price:
+    min: 15.0
+    max:
+  float_m:
+    max:
+  rvol:
+    min:
+selection_policy:
+  # Mirrors scripts/lib/strategy_research/options_chain.deep_itm_call_analysis inputs.
+  delta_range: [0.80, 0.95]
+  dte_buckets: [60, 90, 180]
+  max_spread_pct: 10.0          # bid/ask spread as % of mid — wider is untradeable data
+  min_open_interest: 100
+  min_volume: 1
+  allow_earnings_before_expiry: true    # stock-replacement holds through earnings like shares; surfaced as disclosed card flag per operator 2026-07-05
+  earnings_flag_override: false         # set true only with explicit operator flag
+  allow_delta_proxy: true               # ITM%-depth proxy when chain has no usable greeks (flagged)
+  max_capital_pct_vs_shares: 0.35       # contract debit must be <= 35% of 100-share capital
+  max_underlyings_per_run: 15
+  max_proposals_per_run: 5
+underlying_quality_gate:
+  # Only strong-buy/buy watchlist names + current equity holdings are eligible.
+  watchlist_verdicts: [strong_buy, buy]
+  include_current_holdings: true
+  conviction_floor: 0.55
+entry_criteria:
+  - id: DELTA_BAND
+    description: Call delta within 0.80-0.95 (or ITM-depth proxy band when greeks absent, flagged)
+    metric: delta
+    operator: gte
+    value: 0.80
+  - id: DTE_BUCKET
+    description: Expiration near a configured DTE bucket (60/90/180)
+    metric: dte
+    operator: gte
+    value: 45
+  - id: SPREAD_TIGHT
+    description: Bid/ask spread <= 10% of mid
+    metric: spread_pct
+    operator: lte
+    value: 10.0
+  - id: OPEN_INTEREST
+    description: Open interest >= 100 contracts
+    metric: oi
+    operator: gte
+    value: 100
+  - id: CAPITAL_EFFICIENCY
+    description: Contract debit <= 35% of the capital required for 100 shares
+    metric: capital_ratio_pct
+    operator: lte
+    value: 35.0
+  - id: UNDERLYING_CONVICTION
+    description: Underlying is a current holding or watchlist buy/strong_buy name
+    metric: underlying_conviction
+    operator: gte
+    value: 0.55
+auto_disqualifiers:
+  - id: EARNINGS_BEFORE_EXPIRY
+    description: Earnings date falls before option expiration (unless explicitly flagged by operator)
+  - id: NO_QUOTABLE_MID
+    description: Contract has no usable bid/ask or last — data cannot support a model entry
+  - id: CHAIN_UNAVAILABLE
+    description: Chain data unavailable (weekend/holiday/no link) — degrade honestly, never fabricate
+  - id: WEAK_UNDERLYING
+    description: Underlying not held and not rated buy/strong_buy on the watchlist
+exit_rules:
+  stop_method: thesis_based
+  target_method: level_based
+  notes: >
+    Paper model exits: close when underlying thesis breaks (watchlist verdict drops below buy),
+    when delta decays below 0.70, or at 21 DTE (roll-or-close decision point). Tracked in
+    Stage B validation instrumentation.
+risk:
+  risk_per_trade_pct: 0.01
+  max_position_size: 15000
+  max_daily_trades: 5
+  target_rr: 2.0
+scoring:
+  min_score_go: 40
+  min_score_wait: 25
+lifecycle:
+  proposal_expiry_hours: 24
+  overnight_allowed: true
+  max_hold_days: 180
+execution:
+  paper_allowed: true
+  live_allowed: false
+agent_responsibilities:
+  maria: Verify the underlying conviction thesis (watchlist verdict / holdings intel) is current and intact.
+  risk: Validate delta band, DTE bucket, spread/OI liquidity, and capital-vs-shares efficiency on each candidate.
+  steph: Confirm the paper/educational flags are present and no live-execution surface is attached.
+co_enables:
+  promotes_to: []
+  strengthens:
+    - core_growth_compounder
+    - swing_breakout
+validation_gate:
+  # Mirror of registry maturity fields — must ALL pass before any live consideration.
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 3
+  human_approval_required: true
+prompt_context:
+  summary: >
+    Deep ITM call stock replacement (paper model): buy 0.80-0.95 delta calls at 60/90/180 DTE
+    buckets on held or buy-rated underlyings, spending <=35% of the equivalent share capital.
+    Max loss is the debit; breakeven is strike + premium. Educational paper lane only —
+    manual review required, no live path.
+  key_questions:
+    - Is the extrinsic value (time premium paid over intrinsic) small enough to justify replacement?
+    - Does the underlying conviction (watchlist verdict / holdings intel) support a 60-180 day horizon?
+    - Is the contract liquid enough (OI, volume, spread) that the paper fill model is honest?
+screen_filters:
+  min_price: 15.0
+  max_price: 1000.0
+  min_market_cap_b: 1.0
+  min_score: 0
+vix_rules:
+  max_vix_for_entry: 30
+  elevated_vix_band:
+    - 22
+    - 30
+  elevated_vix_changes:
+    position_size_multiplier: 0.75
+  extreme_vix_threshold: 30
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix:
+  notes: "High IV inflates the extrinsic paid for deep ITM calls — prefer calm-vol entries."
+technical_indicators_required:
+  gates: []
+  preferred:
+    - delta_0_80_to_0_95
+    - dte_60_90_180
+  irrelevant:
+    - vwap
+    - opening_range
+  note: "Chain math (delta, extrinsic, breakeven, capital ratio) drives the decision, not chart technicals."
+performance_context:
+  last_updated:
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 3
+    min_profit_factor: 1.3
+    min_win_rate: 0.55
+  notes: Populated nightly by scripts/paper_performance_governance.py once paper outcomes exist (Stage B).
+freshness:
+  bucket: LONG_CYCLE
+  ttl_days: 30
+  eval_cadence: weekly
+  watchpool: true
