@@ -24254,15 +24254,41 @@ def _get_options_engine():
     return oe
 
 
-def _fetch_paper_model_queue_proposals() -> list:
-    """Pending paper-model rows (deep_itm_call, Stage B) from options_approval_queue.
+# Paper-model strategies surfaced from options_approval_queue (MULTI-STRATEGY
+# Stage 2: the ATM long-premium pair joins deep_itm_call; all manual-review,
+# never live-eligible — the fail-closed rendering guard below drops any row
+# that lost its paper flags).
+PAPER_MODEL_QUEUE_STRATEGIES = ("deep_itm_call", "atm_call", "atm_put")
 
-    The scanner (options_strategy_scanner.py) writes deep-ITM stock-replacement
-    proposals ONLY into the desk's manual-review queue — they never enter
-    options_engine's own generation pass. Merge the un-reviewed, un-expired rows
-    into the proposals feed so the Options tab renders them alongside desk
-    proposals, with a per-row validation-progress chip. Read-only; queue status
-    is attached so the UI can show the manual-review lane honestly.
+# Alpaca paper-lane queue statuses (Stage 3 state machine).
+ALPACA_LANE_STATUSES = (
+    "READY_FOR_ALPACA_PAPER", "ALPACA_PAPER_SUBMITTED", "ALPACA_PAPER_FILLED",
+    "ALPACA_PAPER_REJECTED", "ALPACA_PAPER_CLOSED", "OUTCOME_RECORDED",
+    "READY_FOR_LIVE_REVIEW")
+
+
+def _registry_alpaca_paper_enabled() -> dict:
+    """{strategy_id: alpaca_paper_enabled} from the options strategy registry —
+    read-only fallback for queue rows written before scan-time meta capture.
+    Fail-closed: an unloadable registry yields {} (button never shows)."""
+    try:
+        from lib.options_pipeline.universe import load_strategy_registry
+        return {sid: bool((row or {}).get("alpaca_paper_enabled"))
+                for sid, row in (load_strategy_registry().get("strategies") or {}).items()}
+    except Exception:
+        return {}
+
+
+def _fetch_paper_model_queue_proposals() -> list:
+    """Pending paper-model rows (deep_itm_call + atm_call/atm_put, Stage B/2)
+    from options_approval_queue.
+
+    The scanner (options_strategy_scanner.py) writes paper-model proposals ONLY
+    into the desk's manual-review queue — they never enter options_engine's own
+    generation pass. Merge the un-reviewed, un-expired rows into the proposals
+    feed so the Options tab renders them alongside desk proposals, with a
+    per-row validation-progress chip. Read-only; queue status is attached so
+    the UI can show the manual-review lane honestly.
     """
     try:
         from db_adapter import _execute, USE_DB
@@ -24275,7 +24301,7 @@ def _fetch_paper_model_queue_proposals() -> list:
             """SELECT proposal_id, status AS queue_status, proposal_json, meta,
                       created_at, expires_at
                FROM options_approval_queue
-               WHERE strategy = 'deep_itm_call'
+               WHERE strategy = ANY(%s)
                  AND (
                    (status IN ('pending', 'blocked')
                     AND (expires_at IS NULL OR expires_at > NOW()))
@@ -24285,24 +24311,39 @@ def _fetch_paper_model_queue_proposals() -> list:
                                  'READY_FOR_LIVE_REVIEW')
                  )
                ORDER BY edge_score DESC NULLS LAST, created_at DESC
-               LIMIT 25""",
+               LIMIT 60""",
+            (list(PAPER_MODEL_QUEUE_STRATEGIES),),
             fetch="all",
         ) or []
     except Exception:
         return []
-    out = []
-    try:
-        from lib.options_pipeline.validation import validation_status
-        vstat = validation_status("deep_itm_call")
-        progress = {
-            "label": vstat.get("progress_label"),
-            "n_closed": (vstat.get("metrics") or {}).get("n_closed"),
-            "required": (vstat.get("gate") or {}).get("min_closed_paper_trades"),
-            "gate_met": vstat.get("gate_met"),
-            "message": vstat.get("message"),
-        } if vstat.get("ok") else None
-    except Exception:
+
+    progress_by_strategy: dict = {}
+
+    def _progress_for(strategy: str):
+        """Per-strategy advisory validation-gate progress (honest None when the
+        validation ledger does not support the strategy yet)."""
+        if strategy in progress_by_strategy:
+            return progress_by_strategy[strategy]
         progress = None
+        try:
+            from lib.options_pipeline.validation import validation_status
+            vstat = validation_status(strategy)
+            if vstat.get("ok"):
+                progress = {
+                    "label": vstat.get("progress_label"),
+                    "n_closed": (vstat.get("metrics") or {}).get("n_closed"),
+                    "required": (vstat.get("gate") or {}).get("min_closed_paper_trades"),
+                    "gate_met": vstat.get("gate_met"),
+                    "message": vstat.get("message"),
+                }
+        except Exception:
+            progress = None
+        progress_by_strategy[strategy] = progress
+        return progress
+
+    alpaca_enabled_by_strategy = _registry_alpaca_paper_enabled()
+    out = []
     for r in rows:
         p = r.get("proposal_json")
         if isinstance(p, str):
@@ -24318,6 +24359,7 @@ def _fetch_paper_model_queue_proposals() -> list:
             continue
         p["queue_status"] = r.get("queue_status")
         p["queued_at"] = str(r.get("created_at") or "")
+        progress = _progress_for(str(p.get("strategy") or ""))
         if progress:
             p["validation_progress"] = progress
         # Stage 3: surface the row's Alpaca order audit + prime rubric to the
@@ -24333,6 +24375,22 @@ def _fetch_paper_model_queue_proposals() -> list:
             p["alpaca_json"] = qmeta["alpaca_json"]
         if qmeta.get("prime_json"):
             p["prime_json"] = qmeta["prime_json"]
+        # Stage 2 (Part F): named Alpaca lane fields flattened from
+        # meta.alpaca_json — nulls are fine; the lane chips read these first.
+        aj = qmeta.get("alpaca_json") if isinstance(qmeta.get("alpaca_json"), dict) else {}
+        p["alpaca_paper_status"] = (r.get("queue_status")
+                                    if r.get("queue_status") in ALPACA_LANE_STATUSES
+                                    else None)
+        p["alpaca_order_id"] = (aj.get("response") or {}).get("id")
+        p["alpaca_fill_price"] = (aj.get("fill") or {}).get("price")
+        p["alpaca_submitted_at"] = aj.get("submitted_at")
+        p["alpaca_filled_at"] = (aj.get("fill") or {}).get("filled_at")
+        # Stage 2 (Part E): Send-to-Alpaca-Paper gating field. Scan-time meta
+        # value wins; registry fallback covers rows queued before Stage 2.
+        meta_flag = (p.get("meta") or {}).get("alpaca_paper_enabled")
+        p["alpaca_paper_enabled"] = bool(
+            meta_flag if meta_flag is not None
+            else alpaca_enabled_by_strategy.get(str(p.get("strategy") or "")))
         out.append(p)
     return out
 
@@ -24882,12 +24940,25 @@ def _options_alpaca_refused(e) -> tuple:
 
 def _options_alpaca_mark_ready(body=None):
     """POST /api/v2/options/alpaca-paper/mark-ready {proposal_id} —
-    operator mark: pending/approved → READY_FOR_ALPACA_PAPER."""
+    operator mark: pending/approved → READY_FOR_ALPACA_PAPER.
+
+    MULTI-STRATEGY Stage 2: the registry's per-strategy alpaca_paper_enabled
+    gates lane ENTRY here (server-side twin of the card's button gating —
+    atm_call/atm_put ship with alpaca_paper_enabled=false until the operator
+    flips the registry after paper observation)."""
     from lib.options_pipeline import alpaca_paper as ap
     b = body if isinstance(body, dict) else {}
     pid = str(b.get("proposal_id") or "").strip()
     if not pid:
         return 400, {"ok": False, "reason": "proposal_id required"}
+    row = ap.get_queue_row(pid)
+    if row is not None:
+        sid = str(row.get("strategy") or "")
+        if not _registry_alpaca_paper_enabled().get(sid):
+            return 409, {"ok": False, "reason":
+                         f"strategy {sid or 'unknown'} has alpaca_paper_enabled=false in "
+                         "options_strategy_registry — Alpaca paper lane refused "
+                         "(operator flips the registry after paper observation)"}
     try:
         return 200, _json_clean(ap.mark_ready(pid, operator_actor=_ALPACA_UI_ACTOR))
     except (ap.IllegalTransitionError, ap.OperatorActionRequiredError) as e:

@@ -296,8 +296,9 @@ def test_gap_validator_default_fails_closed(monkeypatch):
 
 def test_registry_contents_match_spec(reg):
     s = reg["strategies"]
+    # MULTI-STRATEGY Stage 1 extended the registry with the ATM long-premium pair.
     assert set(s) == {"deep_itm_call", "covered_call", "cash_secured_put",
-                      "protective_put", "credit_spread"}
+                      "protective_put", "credit_spread", "atm_call", "atm_put"}
     assert s["deep_itm_call"]["status"] == "TESTING_PAPER"
     assert s["deep_itm_call"]["paper_enabled"] is True
     assert s["deep_itm_call"]["alpaca_paper_enabled"] is True
@@ -307,6 +308,10 @@ def test_registry_contents_match_spec(reg):
         assert s[sid]["alpaca_paper_enabled"] is False
     assert s["credit_spread"]["status"] == "RESEARCH_ONLY"
     assert s["credit_spread"]["paper_enabled"] is False
+    for sid in ("atm_call", "atm_put"):
+        assert s[sid]["status"] == "TESTING_PAPER"
+        assert s[sid]["paper_enabled"] is True
+        assert s[sid]["alpaca_paper_enabled"] is False   # initially off (Stage 1)
     for sid, row in s.items():
         assert row["live_enabled"] is False, sid
         assert row["live_exception_allowed"] is False, sid

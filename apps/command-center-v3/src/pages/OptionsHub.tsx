@@ -273,7 +273,8 @@ export default function OptionsHub({ onDrill }: Props) {
         chainMode: true,
         highlightStrike: prop?.strike,
         highlightExpiration: prop?.expiration,
-        chainSide: prop?.strategy === 'cash_secured_put' ? 'put' : 'call',
+        // option_type wins when present (atm_put/protective_put render the put side)
+        chainSide: prop?.option_type === 'put' || prop?.strategy === 'cash_secured_put' ? 'put' : 'call',
       })
       return
     }
@@ -450,6 +451,8 @@ export default function OptionsHub({ onDrill }: Props) {
                   <option value="long_call">Long Call</option>
                   <option value="credit_spread">Credit Spread</option>
                   <option value="deep_itm_call">Deep ITM Call (paper)</option>
+                  <option value="atm_call">ATM Call (paper)</option>
+                  <option value="atm_put">ATM Put (paper)</option>
                 </select>
               </TipLabel>
               <TipLabel tip={FILTERS.pop}>

@@ -73,15 +73,36 @@ const STRAT_LABEL: Record<string, string> = {
   credit_spread: 'Credit Spread',
   protective_put: 'Protective Put',
   deep_itm_call: 'Deep ITM Call',
+  atm_call: 'ATM Call',
+  atm_put: 'ATM Put',
 }
 
-// Stage B (2026-07-05): disclosed-flag labels for paper-model (deep_itm_call) rows.
+// MULTI-STRATEGY Stage 2: strategy-family badge text for paper-model rows
+// (rendered next to PAPER MODEL, amber outline — same treatment for all).
+const PAPER_FAMILY_BADGE: Record<string, string> = {
+  deep_itm_call: 'DEEP ITM',
+  atm_call: 'ATM CALL',
+  atm_put: 'ATM PUT',
+}
+
+// Stage B (2026-07-05): disclosed-flag labels for paper-model rows.
 // Operator ratified: earnings before expiry is a disclosed flag, never a hidden pass.
 const PAPER_FLAG_LABELS: Record<string, string> = {
   earnings_before_expiry_operator_flagged: '⚠ earnings before expiry',
+  earnings_before_expiry_flagged: '⚠ earnings before expiry', // ATM lane flag name
   earnings_unknown: 'earnings date unknown',
   delta_proxy_itm_depth: 'Δ from ITM-depth proxy (chain carried no greeks)',
+  delta_proxy_nearest_the_money: 'Δ proxy — nearest-the-money (chain carried no greeks)',
   iv_rich_pay_up_warning: '⚠ IV rich — pay-up warning',
+}
+
+// MULTI-STRATEGY Stage 2: other-strategies mini-list glyphs (matcher verdicts).
+const MATCH_STATUS_GLYPH: Record<string, { glyph: string; color: string }> = {
+  pass: { glyph: '✓', color: WL.signal.teal },
+  watch: { glyph: '⚠', color: WL.signal.amber },
+  fail: { glyph: '✗', color: WL.signal.red },
+  not_applicable: { glyph: '—', color: WL.text.dim },
+  skipped: { glyph: '—', color: WL.text.dim },
 }
 
 // ── ALPACA-OPTIONS Stage 3: paper-lane state + prime rubric (data wiring) ──
@@ -245,11 +266,15 @@ export default function OptionProposalCardV4({
 
   const manualOnly = p.execution_mode === 'manual' || p.broker === 'fidelity' || !p.auto_eligible
 
-  // ── Stage B: paper-model (deep_itm_call) disclosures — amber, never green ──
+  // ── Stage B: paper-model disclosures — amber, never green ──
   const paper = !!p.educational_paper_model
+  const paperFamily = PAPER_FAMILY_BADGE[p.strategy] || (p.strategy || '').replace(/_/g, ' ').toUpperCase()
   const cand = p.meta?.analysis?.candidate
   const bucketDte = p.meta?.dte_bucket?.target_dte ?? p.dte
   const capPct = cand?.capital_vs_100_shares?.capital_ratio_pct
+  // ATM analysis shape (MULTI-STRATEGY Stage 2) has no capital_vs_100_shares —
+  // its summary line renders max-loss/spread/OI/vol/IV instead (deep-ITM line unchanged).
+  const atmShape = paper && !!cand && cand.capital_vs_100_shares == null
   const paperSummary = paper && cand ? [
     bucketDte != null ? `${bucketDte}d bucket` : null,
     cand.strike != null ? `$${fmtNum(cand.strike, cand.strike < 50 ? 2 : 0)} strike` : null,
@@ -258,21 +283,61 @@ export default function OptionProposalCardV4({
       ? `BE $${fmtNum(cand.breakeven, 2)}${cand.breakeven_move_pct != null ? ` (${cand.breakeven_move_pct > 0 ? '+' : ''}${Number(cand.breakeven_move_pct).toFixed(1)}%)` : ''}`
       : null,
     capPct != null ? `${Math.round(capPct)}% of share capital` : null,
+    ...(atmShape ? [
+      cand.max_loss != null ? `max loss ${fmt$(cand.max_loss)} (= debit)` : null,
+      cand.spread_pct != null ? `spread ${Number(cand.spread_pct).toFixed(1)}%` : null,
+      cand.oi != null ? `OI ${fmtNum(cand.oi, 0)}` : null,
+      cand.volume != null ? `vol ${fmtNum(cand.volume, 0)}` : null,
+      cand.iv != null ? `IV ${Number(cand.iv).toFixed(0)}%` : null,
+    ] : []),
   ].filter(Boolean).join(' · ') : ''
   const paperFlags = paper ? (p.meta?.gate_flags || []).map(f => PAPER_FLAG_LABELS[f] || f.replace(/_/g, ' ')) : []
   const discoveryRef = p.meta?.discovery_ref
 
+  // ── MULTI-STRATEGY Stage 2: why-matched + thesis + other-strategies context ──
+  const matchJson = p.meta?.match_json
+  const intel = p.meta?.underlying_intel
+  const thesisLine = paper && intel ? [
+    intel.conviction_source ? `thesis: ${String(intel.conviction_source).replace(/_/g, ' ')}` : null,
+    intel.watchlist_verdict ? `verdict ${String(intel.watchlist_verdict).replace(/_/g, ' ')}` : null,
+    intel.conviction != null ? `conviction ${Math.round(Number(intel.conviction) * 100)}%` : null,
+    intel.held_shares ? `${fmtNum(intel.held_shares, 0)} sh held` : null,
+    intel.hedge_of_held ? 'hedge of held' : null,
+  ].filter(Boolean).join(' · ') : ''
+  const otherStrategies = paper && matchJson?.other_strategies
+    ? Object.entries(matchJson.other_strategies) : []
+  const [othersOpen, setOthersOpen] = useState(false)
+
   // ── Stage 3: Alpaca paper lane — state chip, prime score, operator actions ──
   const lane = p as OptionProposal & PaperLaneFields
   const queueStatus = lane.queue_status
-  const alpacaJson = lane.alpaca_json
+  // Part F: named flattened fields (alpaca_paper_status/order_id/fill_price/
+  // submitted_at/filled_at) win over the raw meta.alpaca_json passthrough.
+  const alpacaJson: PaperLaneFields['alpaca_json'] = {
+    ...lane.alpaca_json,
+    response: { ...lane.alpaca_json?.response, id: p.alpaca_order_id ?? lane.alpaca_json?.response?.id },
+    fill: (p.alpaca_fill_price != null || lane.alpaca_json?.fill)
+      ? {
+          ...lane.alpaca_json?.fill,
+          price: p.alpaca_fill_price ?? lane.alpaca_json?.fill?.price,
+          filled_at: p.alpaca_filled_at ?? lane.alpaca_json?.fill?.filled_at,
+        }
+      : undefined,
+  }
   const prime = lane.prime_json
-  const laneState = paper ? laneChip(queueStatus, alpacaJson) : null
+  const laneState = paper ? laneChip(p.alpaca_paper_status || queueStatus, alpacaJson) : null
   const [laneConfirm, setLaneConfirm] = useState<AlpacaLaneAction | null>(null)
   const [exitPremium, setExitPremium] = useState('')
   const [laneBusy, setLaneBusy] = useState(false)
   const [laneMsg, setLaneMsg] = useState<string | null>(null)
-  const canSend = paper && !!onAlpacaAction
+  // MULTI-STRATEGY Stage 2: Send-to-Alpaca-Paper only when the REGISTRY says
+  // alpaca_paper_enabled for this strategy (scan-time meta / API-flattened
+  // field; deep_itm_call fallback covers rows queued before Stage 2). ATM
+  // strategies ship false → the button must NOT render for them.
+  const alpacaEnabled = p.alpaca_paper_enabled
+    ?? p.meta?.alpaca_paper_enabled
+    ?? (p.strategy === 'deep_itm_call')
+  const canSend = paper && !!onAlpacaAction && alpacaEnabled
     && (queueStatus === 'pending' || queueStatus === 'approved' || queueStatus === 'READY_FOR_ALPACA_PAPER')
   const canMarkOutcome = paper && !!onAlpacaAction
     && (queueStatus === 'ALPACA_PAPER_FILLED' || queueStatus === 'ALPACA_PAPER_CLOSED')
@@ -364,7 +429,7 @@ export default function OptionProposalCardV4({
                 title="Educational paper model — manual review only, never live-eligible. Outcomes feed the strategy validation gate (30 paper outcomes, PF>1.3, WR>55%) before any live consideration."
                 style={{ ...chip(WL.signal.amber), background: 'transparent', cursor: 'help' }}
               >
-                DEEP ITM · PAPER MODEL
+                {paperFamily} · PAPER MODEL
               </span>
             )}
             {paper && p.validation_progress?.label && (
@@ -480,6 +545,50 @@ export default function OptionProposalCardV4({
             {paperSummary && (
               <div style={{ ...numStyle, fontSize: 11, fontWeight: 700, color: WL.text.primary }}>{paperSummary}</div>
             )}
+            {/* MULTI-STRATEGY Stage 2: why this strategy matched (matcher pass
+                reason + thesis source) — dim disclosure line, never a signal color */}
+            {matchJson?.why_matched && (
+              <div
+                title={`Strategy matcher verdict for ${matchJson.strategy || p.strategy}: ${matchJson.status || '—'}. The matcher owns thesis gating (bullish for calls, bearish for puts); generators own contract math.`}
+                style={{ fontSize: 10, color: WL.text.dim, marginTop: paperSummary ? 5 : 0, cursor: 'help' }}
+              >
+                matched: {matchJson.why_matched}
+              </div>
+            )}
+            {thesisLine && !matchJson?.why_matched && (
+              <div style={{ fontSize: 10, color: WL.text.dim, marginTop: paperSummary ? 5 : 0 }}>
+                {thesisLine}
+              </div>
+            )}
+            {/* MULTI-STRATEGY Stage 2: collapsible cross-strategy mini-list —
+                what every other scanned strategy said for this underlying */}
+            {otherStrategies.length > 0 && (
+              <div onClick={e => e.stopPropagation()} style={{ marginTop: 5 }}>
+                <button
+                  type="button"
+                  onClick={() => setOthersOpen(o => !o)}
+                  title="Other strategies the scanner evaluated for this underlying in the same run, with the matcher's honest verdict for each."
+                  style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.05em', color: WL.text.dim, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textTransform: 'uppercase' }}
+                >
+                  other strategies ({otherStrategies.length}) {othersOpen ? '▾' : '▸'}
+                </button>
+                {othersOpen && (
+                  <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {otherStrategies.map(([sid, d]) => {
+                      const g = MATCH_STATUS_GLYPH[d?.status || ''] || MATCH_STATUS_GLYPH.not_applicable
+                      return (
+                        <div key={sid} style={{ fontSize: 9.5, color: WL.text.dim, lineHeight: 1.45 }}>
+                          <span style={{ color: g.color, fontWeight: 800 }}>{g.glyph}</span>
+                          {' '}
+                          <span style={{ color: WL.text.secondary, fontWeight: 700 }}>{STRAT_LABEL[sid] || sid.replace(/_/g, ' ')}</span>
+                          {d?.reason ? <span> — {d.reason}</span> : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             {ivLine && (
               <div
                 title={ivc?.available
@@ -582,7 +691,9 @@ export default function OptionProposalCardV4({
             <div style={{ fontSize: 9.5, color: WL.text.dim, marginTop: 6 }}>
               {discoveryRef?.candidate_id != null
                 ? `from discovery #${discoveryRef.candidate_id} · approved research`
-                : 'discovery lineage unavailable'}
+                : matchJson
+                  ? `from ${(STRAT_LABEL[matchJson.strategy || p.strategy] || p.strategy)} strategy scanner`
+                  : 'discovery lineage unavailable'}
               {p.queue_status ? ` · queue: ${p.queue_status} (manual review)` : ''}
             </div>
           </div>
