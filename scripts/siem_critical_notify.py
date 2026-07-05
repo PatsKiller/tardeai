@@ -2,9 +2,14 @@
 """SIEM critical notifier — one deduped Telegram per new P0/P1 incident.
 
 Reads the SIEM dashboard (/api/v2/system/siem), takes the critical (P0/P1) correlated
-incidents, and Telegrams the operator — but only ONCE per incident per cooldown window
-(so 43 repeats of the same failure = 1 ping, not 43). State is a small file keyed by
-incident signature.
+incidents, and Telegrams the operator — but only on the FIRST occurrence of an incident
+group. A still-open group is then suppressed for COOLDOWN_H unless it gets materially
+worse: its event count grows by >GROWTH_PCT since the last page, or its severity
+escalates (severity is part of the state key, so P1→P0 pages as a new group). The old
+flat 6h cooldown re-paged every long-lived open incident ~4x/day forever.
+
+State is a small json file keyed by incident signature (component|event_type|severity),
+holding the last-notified time and the event count at that time.
 
 Cron: every 15 min.
 """
@@ -17,8 +22,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE = Path.home() / ".local" / "state" / "siem_notified.json"
-COOLDOWN_H = 6  # re-ping a still-active incident at most this often
-RECENT_H = 2    # only alert on incidents whose last event was within this window (not stale 14d history)
+COOLDOWN_H = 24   # a still-open incident group re-pages at most once per day...
+GROWTH_PCT = 0.5  # ...unless its event count grew by more than this since the last page
+RECENT_H = 2      # only alert on incidents whose last event was within this window (not stale 14d history)
 
 
 def _within(iso, hours):
@@ -70,19 +76,38 @@ def main():
     incidents = [c for c in data.get("correlated", [])
                  if c.get("severity") in ("P0", "P1") and _within(c.get("last"), RECENT_H)]
     state = _load_state()
+    # migrate legacy entries (bare float timestamp → dict; event baseline unknown)
+    state = {k: (v if isinstance(v, dict) else {"t": v, "events": None})
+             for k, v in state.items()}
     now = time.time()
     sent = 0
     for inc in incidents:
+        # severity is part of the key: an escalation (P1→P0) is a NEW group and pages.
         key = f"{inc.get('component')}|{inc.get('event_type')}|{inc.get('severity')}"
-        last = state.get(key, 0)
-        if now - last < COOLDOWN_H * 3600:
-            continue
+        events = inc.get("events") or 0
+        prev = state.get(key)
+        why = ""
+        if prev is not None:
+            within_cooldown = now - (prev.get("t") or 0) < COOLDOWN_H * 3600
+            prev_events = prev.get("events")
+            if prev_events is None:
+                # legacy/unknown baseline — record it, don't treat it as growth
+                prev["events"] = events
+                if within_cooldown:
+                    continue
+                why = f"\n(still open after {COOLDOWN_H}h)"
+            elif events > prev_events * (1 + GROWTH_PCT):
+                why = f"\n(escalating: {prev_events} → {events} events since last page)"
+            elif within_cooldown:
+                continue  # open but not getting worse — suppressed
+            else:
+                why = f"\n(still open after {COOLDOWN_H}h)"
         _send(f"🚨 SIEM {inc['severity']}: {inc.get('component')} — {inc.get('event_type')}\n"
-              f"{inc.get('events')} events / {inc.get('groups')} group(s) in 14d. Check System → SIEM.")
-        state[key] = now
+              f"{events} events / {inc.get('groups')} group(s) in 14d. Check System → SIEM.{why}")
+        state[key] = {"t": now, "events": events}
         sent += 1
     # prune state entries older than 7 days
-    state = {k: v for k, v in state.items() if now - v < 7 * 86400}
+    state = {k: v for k, v in state.items() if now - (v.get("t") or 0) < 7 * 86400}
     _save_state(state)
     print(f"[siem-notify] {len(incidents)} critical incident(s), {sent} new Telegram alert(s)")
     return 0
