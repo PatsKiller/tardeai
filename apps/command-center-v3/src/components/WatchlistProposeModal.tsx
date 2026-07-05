@@ -348,11 +348,14 @@ export default function WatchlistProposeModal({ seed, onClose, onProposed }: Pro
           <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: 'uppercase', marginBottom: 10 }}>Risk management</div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, color: MUTED, fontWeight: 700 }}>Risk per trade:</span>
-            {([1, 2] as RiskPct[]).map(pct => (
+            {/* Fractional (0.5/0.75) arrives via the card's wide-stop suggestion seed — render it
+                as a selected custom option so the toggle reflects the seeded value honestly. */}
+            {((riskPct === 0.5 || riskPct === 0.75 ? [riskPct, 1, 2] : [1, 2]) as RiskPct[]).map(pct => (
               <button
                 key={pct}
                 type="button"
                 onClick={() => onRiskPctChange(pct)}
+                title={pct === 0.5 || pct === 0.75 ? 'volatility-reduced risk (wide stop)' : undefined}
                 style={{
                   fontSize: 11, fontWeight: 800, padding: '7px 14px', borderRadius: 8, cursor: 'pointer',
                   border: riskPct === pct ? `1px solid ${GREEN}` : '1px solid rgba(148,163,184,.25)',

@@ -10,7 +10,7 @@ import WatchlistCardV4 from '../components/WatchlistCardV4'
 import { useCardsV4 } from '../lib/cardsV4'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import { exitLadder } from '../lib/exitLadder'
-import { parseProposalAccounts, parseSizingPolicy } from '../lib/watchlistProposeSizing'
+import { parseProposalAccounts, parseSizingPolicy, type RiskPct } from '../lib/watchlistProposeSizing'
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
@@ -153,7 +153,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
     window.location.href = `/v3/trading?tab=Entry+Desk&symbol=${sym}`
   }
 
-  const openProposeModal = (it: any, opts?: { account_key?: string; risk_pct?: 1 | 2 }) => {
+  const openProposeModal = (it: any, opts?: { account_key?: string; risk_pct?: RiskPct }) => {
     const entry = it.entry_limit != null ? Number(it.entry_limit) : null
     const stop = it.entry_stop != null ? Number(it.entry_stop) : null
     const planTarget = it.entry_target != null ? Number(it.entry_target) : null
