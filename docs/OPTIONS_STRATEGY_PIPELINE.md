@@ -61,6 +61,35 @@ every affected card. `earnings_unknown` (no earnings date resolvable) is likewis
 The strict-reject machinery remains in the generator and is covered by tests — flipping the config
 back to `false` restores rejection with no code change.
 
+## IV-rank context layer (2026-07-06 — advisory only, never a gate)
+
+Daily ATM-IV snapshots (`lib/strategy_research/iv_history.py`) accrue in `options_iv_history`
+(one row per symbol per day, upsert on `(symbol, snapshot_date)`; migration
+`migrations/2026_07_06_options_iv_history.sql`, additive on the pre-existing 2026-06-22 table).
+Capture CLI: `scripts/options_iv_snapshot.py --run --symbols-from-universe` — same eligibility
+universe as the scanner (holdings equities + buy/strong_buy watchlist); ATM IV = near-the-money
+(±5% of spot) contracts in the ~30-60 DTE window, averaged, defensive on missing/NaN greeks.
+
+Suggested capture cron (NOT installed by the script — operator installs; 15:45 ET is near-close
+with live quotes; an older 16:20 no-arg cron predates this layer and remains legacy-compatible):
+
+```
+45 15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/options_iv_snapshot.py --run --symbols-from-universe >> logs/options_iv_snapshot.log 2>&1
+```
+
+`iv_history.iv_rank(symbol)` → `{atm_iv, iv_rank, percentile, verdict}`:
+
+- **Honesty rule:** fewer than **20** stored days → `{"available": false, "reason":
+  "insufficient history", "days": N}` — a rank is NEVER fabricated from thin data.
+- **Verdict bands:** rank < 30 `extrinsic_cheap` ("extrinsic cheap") · 30-70 `normal` ·
+  > 70 `extrinsic_rich` ("extrinsic rich — pay-up warning").
+- **Wiring:** `deep_itm_call_analysis` output carries `iv_context`; the generator applies a
+  **bounded edge-score modifier** (×1.1 cheap / ×0.9 rich / ×1.0 otherwise-or-unavailable,
+  clamped 0-100) and, when rich, the disclosed card flag `iv_rich_pay_up_warning`. The
+  modifier only re-ranks — no candidate is ever rejected on IV. Scanner `winner_summary`
+  includes `iv_context` per winner; the paper-model card block renders one line
+  ("IV rank 23% — extrinsic cheap": teal cheap / amber rich / dim "IV history building — N/20 days").
+
 ## Scanner cron (suggested — NOT installed)
 
 The scanner never installs its own schedule; the operator does, explicitly:
@@ -123,7 +152,9 @@ each queued paper card carries a `paper validation n/30` chip.
 | Scanner CLI | `scripts/options_strategy_scanner.py` |
 | Validation ledger/report | `scripts/lib/options_pipeline/validation.py` |
 | Validation CLI | `scripts/options_validation_status.py` |
-| Migration | `migrations/2026_07_05_options_paper_outcomes.sql` |
+| IV-rank history/rank | `scripts/lib/strategy_research/iv_history.py` |
+| IV snapshot CLI | `scripts/options_iv_snapshot.py` |
+| Migrations | `migrations/2026_07_05_options_paper_outcomes.sql` · `migrations/2026_07_06_options_iv_history.sql` |
 | API | `/api/v2/options/proposals` (merged paper rows) · `/api/v2/options/validation` |
-| UI | `OptionsHub.tsx` (validation strip) · `OptionProposalCardV4.tsx` (paper card block) |
-| Tests | `tests/test_options_pipeline_deep_itm.py` · `tests/test_options_pipeline_validation.py` |
+| UI | `OptionsHub.tsx` (validation strip) · `OptionProposalCardV4.tsx` (paper card block + IV line) |
+| Tests | `tests/test_options_pipeline_deep_itm.py` · `tests/test_options_pipeline_validation.py` · `tests/test_options_iv_rank.py` |

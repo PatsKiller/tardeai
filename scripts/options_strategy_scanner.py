@@ -248,6 +248,7 @@ def run_scan(
             {"symbol": p.get("symbol"), "strike": p.get("strike"), "exp": p.get("expiration"),
              "dte": p.get("dte"), "delta": p.get("delta"), "debit": p.get("premium_total"),
              "breakeven": p.get("breakeven"), "edge_score": p.get("edge_score"),
+             "iv_context": p.get("iv_context"),
              "discovery_ref": (p.get("meta") or {}).get("discovery_ref", {}).get("candidate_id")}
             for p in winners
         ],
@@ -297,9 +298,13 @@ def main(argv: Optional[List[str]] = None) -> int:
               f"winners queued: {0 if result['dry_run'] else len(result['winners'])}"
               f"{' (dry-run: printed only)' if result['dry_run'] else ''}")
         for w in result["winner_summary"]:
+            ivc = w.get("iv_context") or {}
+            iv_bit = (f" IVrank={ivc.get('iv_rank')}%({ivc.get('verdict')})"
+                      if ivc.get("available")
+                      else f" IV:{(ivc.get('reason') or 'n/a')[:28]}")
             print(f"    {w['symbol']:6} ${w['strike']} {w['exp']} ({w['dte']}d) "
                   f"Δ{w['delta']} debit=${w['debit']} BE=${w['breakeven']} "
-                  f"score={w['edge_score']} → discovery #339")
+                  f"score={w['edge_score']}{iv_bit} → discovery #339")
         print(f"  queue: {json.dumps(result['queue_result'], default=str)}")
         print(f"  suggested cron (NOT installed): {SUGGESTED_CRON}")
     return 0 if result.get("ok") else 1

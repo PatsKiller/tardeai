@@ -183,6 +183,29 @@ def evaluate_candidate_gates(
 
 # ── scoring ──────────────────────────────────────────────────────────────────
 
+# IV-rank edge modifiers (2026-07-06) — ADVISORY ONLY, bounded, NEVER a gate:
+# a rich-IV proposal still queues (with a disclosed pay-up warning); the
+# modifier only nudges ranking. Unavailable/insufficient IV history → 1.0.
+IV_EDGE_MODIFIER_CHEAP = 1.10   # verdict extrinsic_cheap  (rank < 30)
+IV_EDGE_MODIFIER_RICH = 0.90    # verdict extrinsic_rich   (rank > 70)
+IV_RICH_FLAG = "iv_rich_pay_up_warning"
+
+
+def apply_iv_edge_modifier(edge: float, iv_context: Optional[dict]) -> tuple[float, float]:
+    """(adjusted_edge, modifier): ×1.1 cheap · ×0.9 rich · ×1.0 otherwise.
+
+    Bounded to [0, 100]; {"available": False} (including honest
+    insufficient-history) always yields modifier 1.0. This adjusts ranking
+    only — it never rejects a candidate.
+    """
+    ctx = iv_context or {}
+    verdict = ctx.get("verdict") if ctx.get("available") else None
+    mod = (IV_EDGE_MODIFIER_CHEAP if verdict == "extrinsic_cheap"
+           else IV_EDGE_MODIFIER_RICH if verdict == "extrinsic_rich" else 1.0)
+    adjusted = round(min(100.0, max(0.0, _f(edge) * mod)), 1)
+    return adjusted, mod
+
+
 def score_candidate(analysis: dict, candidate: dict, conviction: float) -> float:
     """Winner score = chain feasibility × underlying conviction (0-100 scale).
 
@@ -215,8 +238,16 @@ def _build_proposal_row(
     mid = _f(candidate.get("mid"))
     spot = _f(analysis.get("underlying_price"))
     conviction = _f(underlying.get("conviction"), 0.0)
-    edge = score_candidate(analysis, candidate, conviction)
+    edge_base = score_candidate(analysis, candidate, conviction)
+    iv_ctx = analysis.get("iv_context") or {"available": False,
+                                            "reason": "iv context not computed"}
+    edge, iv_mod = apply_iv_edge_modifier(edge_base, iv_ctx)
     delta = candidate.get("delta")
+
+    # IV rich → disclosed flag on the card (advisory; NEVER a reject)
+    disclosed_flags = list(gate_result.get("flags") or [])
+    if iv_ctx.get("available") and iv_ctx.get("verdict") == "extrinsic_rich":
+        disclosed_flags.append(IV_RICH_FLAG)
 
     try:
         import options_desk_enterprise as ent
@@ -233,8 +264,12 @@ def _build_proposal_row(
         f"({_f(candidate.get('breakeven_move_pct')):+.1f}%)",
         f"underlying conviction {conviction:.0%} ({underlying.get('conviction_source') or 'unknown'})",
     ]
-    if gate_result.get("flags"):
-        reasoning_bits.append("flags: " + ", ".join(gate_result["flags"]))
+    if iv_ctx.get("available"):
+        reasoning_bits.append(
+            f"IV rank {_f(iv_ctx.get('iv_rank')):.0f}% — "
+            f"{iv_ctx.get('verdict_label') or iv_ctx.get('verdict')}")
+    if disclosed_flags:
+        reasoning_bits.append("flags: " + ", ".join(disclosed_flags))
     reasoning_bits.append("PAPER MODEL — manual review only, never auto-executed")
 
     row = {
@@ -266,7 +301,10 @@ def _build_proposal_row(
         "risk_reward": None,
         "expected_value": None,
         "edge_score": edge,
-        "iv_rank": None,
+        "iv_rank": (round(_f(iv_ctx.get("iv_rank")), 1)
+                    if iv_ctx.get("available") and iv_ctx.get("iv_rank") is not None
+                    else None),
+        "iv_context": iv_ctx,
         "delta": delta,
         "oi": candidate.get("oi"),
         "volume": candidate.get("volume"),
@@ -313,7 +351,10 @@ def _build_proposal_row(
         "meta": {
             "discovery_ref": dict(DISCOVERY_REF),
             "selection_mode": gate_result.get("selection_mode"),
-            "gate_flags": gate_result.get("flags") or [],
+            "gate_flags": disclosed_flags,
+            "iv_edge": {"base_edge": edge_base, "modifier": iv_mod,
+                        "adjusted_edge": edge,
+                        "verdict": iv_ctx.get("verdict") if iv_ctx.get("available") else None},
             "selection_policy": dict(config.get("selection_policy") or {}),
             "underlying_intel": {
                 "conviction": conviction,
@@ -334,6 +375,7 @@ def _build_proposal_row(
                 "next_earnings_date": analysis.get("next_earnings_date"),
                 "chain_liquidity_score": analysis.get("chain_liquidity_score"),
                 "feasibility": analysis.get("feasibility"),
+                "iv_context": iv_ctx,
                 "candidate": candidate,
             },
         },
