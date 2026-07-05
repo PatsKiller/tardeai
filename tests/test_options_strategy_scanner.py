@@ -9,8 +9,16 @@ resolved/scanned/winners/rejects stats, strategy_allowlist enforcement
 config fail-closed refusal, limit/top defaults sourced from the universe
 config, and dry-run writing nothing on every universe path.
 
+MULTI-STRATEGY Stage 2 (operator spec Part D): --strategy atm_call|atm_put|all
+routes through the per-symbol strategy matcher — per-strategy counts, matcher
+fail reasons in the report + match_json cross-strategy context on queued rows,
+paper-only ATM queue rows (live_eligible False, no auto-execute surface),
+idempotent proposal ids across re-runs, the meta.alpaca_paper_enabled button
+gating field, and deep_itm_call default full backward compatibility.
+
 Safety tests for the underlying pipeline live in
-tests/test_options_pipeline_deep_itm.py (unchanged).
+tests/test_options_pipeline_deep_itm.py (unchanged — its AST forbidden-import
+sweep already covers this scanner file).
 
     .venv/bin/python -m pytest tests/test_options_strategy_scanner.py -q
 """
@@ -331,3 +339,295 @@ def test_run_still_queues_winners_with_universe(monkeypatch):
     assert len(written["rows"]) == 1
     assert written["rows"][0]["educational_paper_model"] is True
     assert res["tier_stats"]["liquid_options_core"]["winners"] == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MULTI-STRATEGY Stage 2 (operator spec Part D) — matcher-driven scan
+# ═══════════════════════════════════════════════════════════════════════════
+
+from lib.options_pipeline.atm_long_premium_generator import generate_atm_proposals  # noqa: E402
+
+NO_IV = {"available": False, "reason": "iv context not computed (test)"}
+NO_EARNINGS = "2099-01-01"
+
+
+def _atm_contract(side="call", strike=100.0, mid=4.0, *, delta=0.52, oi=800,
+                  volume=50, spread_pct=3.0, dte=33, liquidity_score=75):
+    return {"side": side, "strike": strike, "bid": mid - 0.1, "ask": mid + 0.1,
+            "mid": mid, "spread_pct": spread_pct, "volume": volume, "oi": oi,
+            "delta": delta, "iv": 30.0, "dte": dte,
+            "liquidity_score": liquidity_score}
+
+
+def _atm_snapshot(spot=100.0):
+    return {"available": True, "symbol": "TEST", "underlying_price": spot,
+            "expirations": [
+                {"exp": "2026-08-07", "dte": 33,
+                 "contracts": [_atm_contract(), _atm_contract(side="put", delta=-0.52)]},
+                {"exp": "2026-09-04", "dte": 61,
+                 "contracts": [_atm_contract(strike=101.0, dte=61),
+                               _atm_contract(side="put", strike=101.0, delta=-0.55, dte=61)]},
+            ],
+            "liquidity_score": 70}
+
+
+def _atm_proposals(sym, side="call"):
+    gen = generate_atm_proposals(
+        sym, side, None,
+        {"conviction": 0.85, "conviction_source": "watchlist_strong_buy",
+         "verdict": "strong_buy"},
+        snapshot=_atm_snapshot(), earnings_date=NO_EARNINGS, iv_context=NO_IV)
+    assert gen["available"] and gen["proposals"], "ATM fixture must generate"
+    return gen["proposals"]
+
+
+def _fake_matcher(record=None):
+    """Deterministic per-symbol matcher: atm_call passes with real generator
+    rows, atm_put fails on thesis, deep_itm_call degrades (weekend chain)."""
+    record = record if record is not None else {}
+
+    def fake(symbol, context, strategies, **kw):
+        record.setdefault("calls", []).append(
+            {"symbol": symbol, "strategies": list(strategies),
+             "context": dict(context or {}), "kw": sorted(kw)})
+        results = {}
+        for sid in strategies:
+            if sid == "atm_call":
+                results[sid] = {"status": "pass",
+                                "reason": "2 proposal(s) passed gates",
+                                "proposals": _atm_proposals(symbol, "call")}
+            elif sid == "atm_put":
+                results[sid] = {"status": "fail",
+                                "reason": "bearish thesis missing (needs watchlist "
+                                          "sell/avoid/deteriorating, an explicit "
+                                          "bearish thesis, or a hedge-of-held flag)",
+                                "proposals": []}
+            else:
+                results[sid] = {"status": "fail",
+                                "reason": "chain unavailable: weekend — no chain",
+                                "proposals": []}
+        return {"symbol": symbol,
+                "context": {"bullish_source": "watchlist_strong_buy",
+                            "bearish_source": None},
+                "strategy_results": results,
+                "cross_strategy_summary": {}}
+
+    fake.record = record
+    return fake
+
+
+def _multi_entry(sym, tier="holdings", conviction=0.90, held=120.0):
+    # holdings tier: registry allowed_underlying_tiers admits all three strategies
+    return _entry(sym, tier, conviction=conviction, held_shares=held,
+                  allow=("deep_itm_call", "covered_call"))
+
+
+# ── (7) strategy=all runs multiple matchers with per-strategy counts ─────────
+
+def test_strategy_all_runs_matchers_and_reports_per_strategy_counts():
+    fake = _fake_matcher()
+    res = scanner.run_scan(dry_run=True, strategy="all",
+                           underlyings=[_multi_entry("NVDA"), _multi_entry("RTX")],
+                           matcher_fn=fake)
+    assert res["ok"] is True and res["strategy"] == "all"
+    assert set(res["strategies"]) == {"deep_itm_call", "atm_call", "atm_put"}
+    # one matcher call per symbol, covering multiple strategies each
+    assert [c["symbol"] for c in fake.record["calls"]] == ["NVDA", "RTX"]
+    assert all(set(c["strategies"]) == {"deep_itm_call", "atm_call", "atm_put"}
+               for c in fake.record["calls"])
+    ps = res["per_strategy"]
+    assert set(ps) == {"deep_itm_call", "atm_call", "atm_put"}
+    for sid in ps:
+        assert set(ps[sid]) >= {"scanned", "pass", "watch", "fail",
+                                "not_applicable", "degraded", "queued",
+                                "top_symbols"}
+    assert ps["atm_call"] ["pass"] == 2 and ps["atm_call"]["queued"] >= 1
+    assert ps["atm_put"]["fail"] == 2 and ps["atm_put"]["queued"] == 0
+    assert ps["deep_itm_call"]["degraded"] == 2 and ps["deep_itm_call"]["fail"] == 0
+    assert ps["atm_call"]["top_symbols"]        # winners named
+    json.dumps(res, default=str)                # --json payload stays serializable
+
+
+def test_single_atm_strategy_runs_only_that_matcher():
+    fake = _fake_matcher()
+    res = scanner.run_scan(dry_run=True, strategy="atm_call",
+                           underlyings=[_multi_entry("NVDA")], matcher_fn=fake)
+    assert res["ok"] is True
+    assert res["strategies"] == ["atm_call"]
+    assert fake.record["calls"][0]["strategies"] == ["atm_call"]
+    assert set(res["per_strategy"]) == {"atm_call"}
+
+
+# ── (8) matcher fail reasons in the report + match_json context ──────────────
+
+def test_fail_reasons_per_symbol_in_report_and_match_json():
+    res = scanner.run_scan(dry_run=True, strategy="all",
+                           underlyings=[_multi_entry("NVDA")],
+                           matcher_fn=_fake_matcher())
+    detail = {row["symbol"]: row for row in res["per_symbol"]}
+    strat = detail["NVDA"]["strategies"]
+    assert "bearish thesis missing" in strat["atm_put"]["reason"]
+    assert "chain unavailable" in strat["deep_itm_call"]["reason"]
+    # queued rows carry the cross-strategy context for the card
+    for w in res["winners"]:
+        mj = w["meta"]["match_json"]
+        assert mj["strategy"] == "atm_call" and mj["status"] == "pass"
+        assert "thesis: watchlist_strong_buy" in mj["why_matched"]
+        others = mj["other_strategies"]
+        assert set(others) == {"deep_itm_call", "atm_put"}
+        assert "bearish thesis missing" in others["atm_put"]["reason"]
+        assert others["deep_itm_call"]["status"] == "fail"
+
+
+# ── (9) ATM rows queue paper-only — auto-execution structurally impossible ───
+
+def test_atm_rows_queue_paper_only_and_never_live_eligible():
+    written = {}
+
+    def writer(rows):
+        written["rows"] = rows
+        return {"ok": True, "upserted": len(rows)}
+
+    res = scanner.run_scan(dry_run=False, strategy="all",
+                           underlyings=[_multi_entry("NVDA")],
+                           matcher_fn=_fake_matcher(), queue_writer=writer)
+    assert res["ok"] is True and written["rows"]
+    for row in written["rows"]:
+        assert row["educational_paper_model"] is True
+        assert row["requires_manual_review"] is True
+        assert row["paper_only"] is True
+        assert row["execution_mode"] == "manual_review_only"
+        assert row["auto_eligible"] is False
+        assert row["enterprise"]["live_eligible"] is False
+        assert "auto_execute" not in row          # no such field exists, ever
+        assert not any("auto" in str(b.get("action")) for b in row["action_buttons"])
+
+
+def test_atm_rows_pass_the_fail_closed_desk_writer_guard(monkeypatch):
+    """The real submit_to_desk_queue accepts well-formed ATM paper rows and the
+    guard (not the DB) is what refuses a stripped row."""
+    from lib.options_pipeline import deep_itm_generator as gen
+    monkeypatch.setattr(
+        "options_desk_enterprise.sync_approval_queue",
+        lambda rows: {"ok": True, "upserted": len(rows)}, raising=False)
+    rows = _atm_proposals("NVDA")
+    ok = gen.submit_to_desk_queue(rows)
+    assert ok.get("ok") is True
+    bad = [dict(rows[0])]
+    bad[0]["enterprise"] = dict(bad[0]["enterprise"], live_eligible=True)
+    refused = gen.submit_to_desk_queue(bad)
+    assert refused["ok"] is False and "fail-closed" in refused["error"]
+
+
+# ── (10) idempotent re-run — deterministic ids, no dupes ─────────────────────
+
+def test_rerun_produces_identical_ids_no_dupes():
+    captured = []
+
+    def writer(rows):
+        captured.append([r["id"] for r in rows])
+        return {"ok": True, "upserted": len(rows)}
+
+    for _ in range(2):
+        res = scanner.run_scan(dry_run=False, strategy="all",
+                               underlyings=[_multi_entry("NVDA")],
+                               matcher_fn=_fake_matcher(), queue_writer=writer)
+        assert res["ok"] is True
+    first, second = captured
+    assert first == second                       # same ids → queue upsert dedupes
+    assert len(set(first)) == len(first)         # no dupes within one run
+    assert all(i.startswith("opt_atm_call_NVDA_paper_model_") for i in first)
+
+
+# ── (11) alpaca_paper_enabled button-gating field (registry, scan time) ──────
+
+def test_queued_rows_carry_alpaca_paper_enabled_from_registry():
+    res = scanner.run_scan(dry_run=True, strategy="all",
+                           underlyings=[_multi_entry("NVDA")],
+                           matcher_fn=_fake_matcher())
+    reg = scanner.load_strategy_registry()["strategies"]
+    assert reg["atm_call"]["alpaca_paper_enabled"] is False    # spec Part A
+    for w in res["winners"]:
+        assert w["meta"]["alpaca_paper_enabled"] is False      # button must NOT show
+
+
+def test_deep_itm_default_winners_carry_alpaca_paper_enabled_true():
+    res = scanner.run_scan(dry_run=True,
+                           underlyings=[_multi_entry("NVDA")],
+                           analysis_fn=ANALYSIS_FN)
+    assert res["ok"] is True and res["winners"]
+    for w in res["winners"]:
+        assert w["meta"]["alpaca_paper_enabled"] is True       # deep_itm registry row
+
+
+# ── (12) registry gating for the multi path ──────────────────────────────────
+
+def test_atm_paper_disabled_refuses_single_and_excludes_in_all(monkeypatch):
+    reg = copy.deepcopy(scanner.load_strategy_registry())
+    reg["strategies"]["atm_call"]["paper_enabled"] = False
+    monkeypatch.setattr(scanner, "load_strategy_registry", lambda: reg)
+    res = scanner.run_scan(dry_run=True, strategy="atm_call",
+                           underlyings=[_multi_entry("NVDA")],
+                           matcher_fn=_fake_matcher())
+    assert res["ok"] is False and "paper_enabled=false" in res["error"]
+    res_all = scanner.run_scan(dry_run=True, strategy="all",
+                               underlyings=[_multi_entry("NVDA")],
+                               matcher_fn=_fake_matcher())
+    assert res_all["ok"] is True
+    assert "atm_call" not in res_all["strategies"]
+    assert "paper_enabled=false" in res_all["strategy_notes"]["atm_call"]
+
+
+def test_registry_tier_gate_skips_atm_put_on_watchlist_tier():
+    """atm_put's registry allowed_underlying_tiers excludes the watchlist tier —
+    watchlist symbols skip atm_put (disclosed) while atm_call still scans."""
+    fake = _fake_matcher()
+    res = scanner.run_scan(dry_run=True, strategy="all",
+                           underlyings=[_rich("PLTR")],       # watchlist tier
+                           matcher_fn=fake)
+    assert res["ok"] is True
+    assert "atm_put" not in fake.record["calls"][0]["strategies"]
+    assert "atm_call" in fake.record["calls"][0]["strategies"]
+    assert res["per_strategy"]["atm_put"]["skipped"] == 1
+    detail = {row["symbol"]: row for row in res["per_symbol"]}
+    assert detail["PLTR"]["strategies"]["atm_put"]["status"] == "skipped"
+
+
+# ── (13) dry-run never writes on the multi path; deep-ITM default unchanged ──
+
+def test_multi_dry_run_never_writes():
+    res = scanner.run_scan(
+        dry_run=True, strategy="all",
+        underlyings=[_multi_entry("NVDA")], matcher_fn=_fake_matcher(),
+        queue_writer=lambda rows: pytest.fail("dry-run must never write"))
+    assert res["ok"] is True and res["queue_result"]["skipped"] is True
+
+
+def test_deep_itm_default_report_shape_is_backward_compatible():
+    """Old flags → identical Stage-1 report shape: per_underlying (not
+    per_symbol/per_strategy), discovery-linked winner summary, same keys."""
+    res = scanner.run_scan(dry_run=True,
+                           underlyings=[_multi_entry("NVDA")],
+                           analysis_fn=ANALYSIS_FN)
+    assert res["ok"] is True and res["strategy"] == "deep_itm_call"
+    assert "per_underlying" in res and "per_strategy" not in res
+    assert "per_symbol" not in res
+    assert res["winner_summary"][0]["discovery_ref"] == 339
+
+
+def test_cli_strategy_all_passes_through(monkeypatch):
+    seen = {}
+
+    def fake_run_scan(**kw):
+        seen.update(kw)
+        return {"ok": True, "dry_run": True, "universe": kw["universe"],
+                "strategy": kw["strategy"], "strategies": ["atm_call"],
+                "market_session": {"session": "test"}, "strategy_notes": {},
+                "underlyings_considered": 0, "tier_stats": {}, "per_strategy": {},
+                "per_symbol": [], "candidates_passed_gates": 0, "winners": [],
+                "winner_summary": [], "queue_result": {"ok": True, "skipped": True},
+                "queue_target": "x"}
+
+    monkeypatch.setattr(scanner, "run_scan", fake_run_scan)
+    assert scanner.main(["--dry-run", "--strategy", "all"]) == 0
+    assert seen["strategy"] == "all" and seen["dry_run"] is True

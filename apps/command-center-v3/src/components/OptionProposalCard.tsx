@@ -160,11 +160,36 @@ export type OptionProposal = {
     gate_met?: boolean
     message?: string
   }
+  // ── MULTI-STRATEGY Stage 2: strategy family + Send-to-Alpaca gating +
+  //    named Alpaca lane fields flattened from queue meta.alpaca_json ──
+  strategy_family?: string
+  alpaca_paper_enabled?: boolean
+  alpaca_paper_status?: string | null
+  alpaca_order_id?: string | null
+  alpaca_fill_price?: number | null
+  alpaca_submitted_at?: string | null
+  alpaca_filled_at?: string | null
   meta?: {
     discovery_ref?: { source?: string; candidate_id?: number; label?: string; candidate_status?: string }
     gate_flags?: string[]
     selection_mode?: string
     dte_bucket?: { target_dte?: number; exp?: string; dte?: number }
+    alpaca_paper_enabled?: boolean
+    // MULTI-STRATEGY Stage 2: cross-strategy matcher context (scan time)
+    match_json?: {
+      strategy?: string
+      status?: string
+      why_matched?: string
+      other_strategies?: Record<string, { status?: string; reason?: string }>
+    }
+    underlying_intel?: {
+      conviction?: number
+      conviction_source?: string
+      watchlist_verdict?: string | null
+      held_shares?: number | null
+      hedge_of_held?: boolean
+      thesis_direction?: string
+    }
     analysis?: {
       banner?: string
       underlying_price?: number
@@ -178,6 +203,12 @@ export type OptionProposal = {
         breakeven_move_pct?: number
         extrinsic_value?: number
         intrinsic_value?: number
+        max_loss?: number | null
+        spread_pct?: number | null
+        oi?: number | null
+        volume?: number | null
+        iv?: number | null
+        premium_pct_of_underlying?: number | null
         capital_vs_100_shares?: { contract_debit?: number; capital_ratio_pct?: number } | null
       }
     }

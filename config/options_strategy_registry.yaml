@@ -40,7 +40,59 @@ strategies:
       min_volume: 1
     max_contracts_paper: 1
     max_premium_paper: 5000
-    notes: "Stage A pipeline live (scripts/lib/options_pipeline/deep_itm_generator.py); gates mirror config/strategies/deep_itm_call.yaml selection_policy."
+    notes: "Stage A pipeline live (scripts/lib/options_pipeline/deep_itm_generator.py); gates mirror config/strategies/deep_itm_call.yaml selection_policy. Operator naming 'active_paper' == TESTING_PAPER here (the loader's status enum is fixed; renaming would fail-closed the whole registry)."
+
+  # ── MULTI-STRATEGY Stage 1 (operator spec Part A): ATM long-premium pair ────
+  # Operator spec status "research_paper" maps to TESTING_PAPER — the only
+  # loader-schema-compatible lifecycle status for a strategy generating paper
+  # proposals (universe.py REGISTRY_STATUSES is a fixed enum, fail-closed).
+  atm_call:
+    display_name: ATM Call (Directional Long Premium)
+    family: directional_long_premium
+    status: TESTING_PAPER
+    paper_enabled: true
+    alpaca_paper_enabled: false      # initially off — operator flips after paper observation
+    live_enabled: false
+    live_exception_allowed: false
+    live_exception_requires_2fa: true
+    required_permission_level: operator
+    allowed_underlying_tiers: [holdings, watchlist_buy_strong_buy, liquid_options_core, sector_etfs, operator_added]
+    liquidity_gates:
+      max_spread_pct: 8.0
+      min_oi: 300
+      min_volume: 10
+    selection:
+      delta_range: [0.45, 0.60]
+      dte_buckets: [30, 45, 60]
+      max_premium_pct_of_underlying: 8.0
+      earnings_policy: flag          # flag (default: disclosed card flag) | block (reject)
+    max_contracts_paper: 1
+    max_premium_paper: 5000
+    notes: "Bullish directional long premium (scripts/lib/options_pipeline/atm_long_premium_generator.py). Requires a bullish thesis (watchlist buy/strong_buy or held with positive thesis) — enforced by strategy_matcher. Gates mirror config/strategies/atm_call.yaml selection_policy."
+
+  atm_put:
+    display_name: ATM Put (Directional Long Premium / Hedge)
+    family: directional_long_premium
+    status: TESTING_PAPER
+    paper_enabled: true
+    alpaca_paper_enabled: false      # initially off — operator flips after paper observation
+    live_enabled: false
+    live_exception_allowed: false
+    live_exception_requires_2fa: true
+    required_permission_level: operator
+    allowed_underlying_tiers: [holdings, liquid_options_core, sector_etfs, operator_added]
+    liquidity_gates:
+      max_spread_pct: 8.0
+      min_oi: 300
+      min_volume: 10
+    selection:
+      delta_range: [-0.60, -0.45]
+      dte_buckets: [30, 45, 60]
+      max_premium_pct_of_underlying: 8.0
+      earnings_policy: flag          # flag (default: disclosed card flag) | block (reject)
+    max_contracts_paper: 1
+    max_premium_paper: 5000
+    notes: "Bearish directional long premium / hedge-of-held (scripts/lib/options_pipeline/atm_long_premium_generator.py). Requires a bearish thesis (watchlist sell/avoid/deteriorating, explicit bearish thesis, or hedge-of-held) — enforced by strategy_matcher. Gates mirror config/strategies/atm_put.yaml selection_policy."
 
   covered_call:
     display_name: Covered Call (Income Overlay)

@@ -1,0 +1,202 @@
+consolidation_note: >
+  Created 2026-07-05 (MULTI-STRATEGY OPTIONS Stage 1, operator spec Part A/B).
+  Bullish directional long premium: at-the-money calls (delta 0.45-0.60) on names
+  with a live bullish thesis. Paper-only options strategy: model -> paper -> validate.
+  NO live path exists or is planned in this stage; any live consideration requires the
+  validation_gate below PLUS explicit operator approval (2FA path untouched by this strategy).
+strategy_id: atm_call
+display_name: ATM Call (Directional Long Premium)
+version: 1.0.0
+status: UNVALIDATED
+family: directional_long_premium
+purpose: >
+  Express a bullish thesis with an at-the-money call (delta 0.45-0.60) at 30/45/60
+  DTE, risking only the debit paid. Higher gamma/theta than deep-ITM stock
+  replacement — this is a directional premium bet, not a share substitute, so the
+  liquidity gates are tighter (spread <=8%, OI >=300, volume >=10) and the premium
+  must stay <=8% of the underlying price. Educational paper model only — proposals
+  land in the options desk manual-review queue flagged paper/educational and are
+  never live-eligible.
+eligible_accounts:
+  - paper
+timeframe: swing_short
+timeframe_class: SHORT_SWING
+paper_only: true
+execution_mode: manual_review_only
+thesis_gate:
+  # Enforced by scripts/lib/options_pipeline/strategy_matcher.py — an ATM call is
+  # only proposed when a bullish thesis exists; otherwise the matcher fails with
+  # "bullish thesis missing".
+  direction: bullish
+  accepted_evidence:
+    - watchlist verdict buy or strong_buy
+    - current holding with a positive/intact thesis
+universe:
+  price:
+    min: 15.0
+    max:
+  float_m:
+    max:
+  rvol:
+    min:
+selection_policy:
+  # Mirrors config/options_strategy_registry.yaml (atm_call liquidity_gates +
+  # selection) and scripts/lib/options_pipeline/atm_long_premium_generator.py.
+  delta_range: [0.45, 0.60]
+  dte_buckets: [30, 45, 60]
+  max_spread_pct: 8.0             # bid/ask spread as % of mid — wider is untradeable data
+  min_open_interest: 300
+  min_volume: 10
+  max_premium_pct_of_underlying: 8.0   # debit <= 8% of the underlying price
+  earnings_policy: flag           # flag (default: disclosed card flag) | block (reject)
+  allow_delta_proxy: true         # nearest-the-money proxy when the chain has no usable greeks (flagged)
+  atm_proxy_band_pct: 0.05        # proxy band: strikes within +/-5% of spot
+  max_underlyings_per_run: 15
+  max_proposals_per_run: 5
+underlying_quality_gate:
+  watchlist_verdicts: [strong_buy, buy]
+  include_current_holdings: true
+  conviction_floor: 0.55
+entry_criteria:
+  - id: BULLISH_THESIS
+    description: Watchlist buy/strong_buy verdict, or held with a positive thesis (matcher-enforced)
+    metric: thesis_direction
+    operator: eq
+    value: bullish
+  - id: DELTA_BAND
+    description: Call delta within 0.45-0.60 (or nearest-the-money proxy when greeks absent, flagged)
+    metric: delta
+    operator: gte
+    value: 0.45
+  - id: DTE_BUCKET
+    description: Expiration near a configured DTE bucket (30/45/60)
+    metric: dte
+    operator: gte
+    value: 21
+  - id: SPREAD_TIGHT
+    description: Bid/ask spread <= 8% of mid
+    metric: spread_pct
+    operator: lte
+    value: 8.0
+  - id: OPEN_INTEREST
+    description: Open interest >= 300 contracts
+    metric: oi
+    operator: gte
+    value: 300
+  - id: VOLUME
+    description: Day volume >= 10 contracts
+    metric: volume
+    operator: gte
+    value: 10
+  - id: PREMIUM_EFFICIENCY
+    description: Debit <= 8% of the underlying price (premium_pct_of_underlying)
+    metric: premium_pct_of_underlying
+    operator: lte
+    value: 8.0
+auto_disqualifiers:
+  - id: THESIS_MISSING
+    description: No bullish thesis (not buy/strong_buy rated and not held with positive thesis)
+  - id: EARNINGS_BEFORE_EXPIRY_BLOCKED
+    description: Earnings before expiration while earnings_policy is 'block' (default 'flag' discloses instead)
+  - id: NO_QUOTABLE_MID
+    description: Contract has no usable bid/ask or last — data cannot support a model entry
+  - id: CHAIN_UNAVAILABLE
+    description: Chain data unavailable (weekend/holiday/no link) — degrade honestly, never fabricate
+  - id: PREMIUM_OVER_PAPER_CAP
+    description: Debit above the registry max_premium_paper cap ($5000, 1 contract)
+exit_rules:
+  stop_method: thesis_based
+  target_method: level_based
+  notes: >
+    Paper model exits: close when the bullish thesis breaks (watchlist verdict drops
+    below buy), at 50% premium loss, at 100% premium gain, or at 14 DTE
+    (theta-burn decision point). Tracked in Stage B validation instrumentation.
+risk:
+  risk_per_trade_pct: 0.005
+  max_position_size: 5000
+  max_daily_trades: 5
+  target_rr: 2.0
+scoring:
+  min_score_go: 40
+  min_score_wait: 25
+lifecycle:
+  proposal_expiry_hours: 24
+  overnight_allowed: true
+  max_hold_days: 60
+execution:
+  paper_allowed: true
+  live_allowed: false
+agent_responsibilities:
+  maria: Verify the bullish thesis (watchlist verdict / holdings intel) is current and intact.
+  risk: Validate delta band, DTE bucket, spread/OI/volume liquidity, and premium-vs-underlying efficiency.
+  steph: Confirm the paper/educational flags are present and no live-execution surface is attached.
+co_enables:
+  promotes_to: []
+  strengthens:
+    - swing_breakout
+    - earnings_post_momentum
+validation_gate:
+  # Mirror of registry maturity fields — must ALL pass before any live consideration.
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 3
+  human_approval_required: true
+prompt_context:
+  summary: >
+    ATM call directional long premium (paper model): buy 0.45-0.60 delta calls at
+    30/45/60 DTE buckets on names with a live bullish thesis, debit <=8% of the
+    underlying price. Max loss is the debit; breakeven is strike + premium.
+    Educational paper lane only — manual review required, no live path.
+  key_questions:
+    - Is the bullish thesis strong enough to overcome the theta paid at the money?
+    - Is the required breakeven move achievable inside the 30-60 day window?
+    - Is the contract liquid enough (OI >=300, volume >=10, spread <=8%) that the paper fill model is honest?
+screen_filters:
+  min_price: 15.0
+  max_price: 1000.0
+  min_market_cap_b: 1.0
+  min_score: 0
+vix_rules:
+  max_vix_for_entry: 28
+  elevated_vix_band:
+    - 20
+    - 28
+  elevated_vix_changes:
+    position_size_multiplier: 0.75
+  extreme_vix_threshold: 28
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix:
+  notes: "High IV inflates ATM premium (pure extrinsic) — prefer calm-vol entries; IV-rank context is a disclosed edge modifier."
+technical_indicators_required:
+  gates: []
+  preferred:
+    - delta_0_45_to_0_60
+    - dte_30_45_60
+  irrelevant:
+    - vwap
+    - opening_range
+  note: "Chain math (delta, premium % of spot, breakeven move) plus thesis direction drive the decision."
+performance_context:
+  last_updated:
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 3
+    min_profit_factor: 1.3
+    min_win_rate: 0.55
+  notes: Populated nightly by scripts/paper_performance_governance.py once paper outcomes exist (Stage B).
+freshness:
+  bucket: LONG_CYCLE
+  ttl_days: 30
+  eval_cadence: weekly
+  watchpool: true
