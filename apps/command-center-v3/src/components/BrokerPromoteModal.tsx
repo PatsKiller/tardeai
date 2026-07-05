@@ -9,7 +9,7 @@ const card = { background: 'var(--bg1)', border: '1px solid var(--border)', bord
 const inp = { fontSize: 12, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,.28)', background: 'rgba(15,23,42,.6)', color: TEXT0, width: '100%', fontFamily: 'monospace' } as const
 const lbl = { fontSize: 10, color: MUTED, display: 'block', marginBottom: 5, textTransform: 'uppercase' as const, letterSpacing: '0.4px' }
 
-export type BrokerPromoteSeed = { proposal_id: number; symbol: string; account?: string }
+export type BrokerPromoteSeed = { proposal_id: number; symbol: string; account?: string; shares?: number }
 
 type Props = {
   seed: BrokerPromoteSeed
@@ -142,10 +142,12 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
           const rec = d.recommended || {}
           const acct = seed.account || rec.account || d.current_broker || ''
           prevAccount.current = acct
-          sharesTouched.current = false
+          // seed.shares = operator-chosen pre-fill (e.g. "resize to policy" hint); treat it as a
+          // touched value so the debounced evaluate doesn't overwrite it with recommended_shares.
+          sharesTouched.current = seed.shares != null
           setF({
             account: acct,
-            shares: rec.shares ?? '',
+            shares: seed.shares != null ? String(seed.shares) : (rec.shares ?? ''),
             entry: rec.entry ?? '',
             stop: rec.stop ?? '',
             target: rec.target ?? '',
