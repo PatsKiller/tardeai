@@ -26155,7 +26155,135 @@ def _small_cap_rotation_bridge_status():
         return {"ok": False, "error": str(e)[:200]}
 
 
+# ── Hermes Discovery Inbox (Stage 2) — advisory-only review + promotion surface ──
+# Candidates never reach a watchlist/watchpool from here except through the four
+# promotion pathways in lib/hermes_discovery/promotion.py (governed, audited).
+
+def _hdi_qv(query, key, default=None):
+    v = (query or {}).get(key)
+    if isinstance(v, list):
+        v = v[0] if v else None
+    return v if v not in (None, "") else default
+
+
+def _hdi_clean_row(row):
+    return {k: _json_clean(v) for k, v in (row or {}).items()}
+
+
+def _hermes_discovery_inbox_list(query=None):
+    """GET /api/v2/hermes/discovery-inbox?type=&status=&domain=&limit= — list inbox
+    candidates + aggregate stats. Read-only/advisory."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.hermes_discovery import inbox as _dinbox
+    limit = min(int(_hdi_qv(query, "limit", 100) or 100), 500)
+    rows = _dinbox.list_candidates(candidate_type=_hdi_qv(query, "type"),
+                                   status=_hdi_qv(query, "status"),
+                                   source_domain=_hdi_qv(query, "domain"),
+                                   limit=limit)
+    return {"advisory_only": True, "count": len(rows),
+            "stats": _dinbox.inbox_stats(),
+            "candidates": [_hdi_clean_row(r) for r in rows],
+            "note": "Discovery Inbox is observation + operator review only — "
+                    "promotion runs through governed pathways, never direct writes."}
+
+
+def _hermes_discovery_inbox_detail(candidate_id):
+    """GET /api/v2/hermes/discovery-inbox/{id} — one candidate with audit trail."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.hermes_discovery import inbox as _dinbox
+    row = _dinbox.get_candidate(int(candidate_id), with_audit=True)
+    if not row:
+        return None
+    audit = [_hdi_clean_row(a) for a in row.pop("audit", [])]
+    out = _hdi_clean_row(row)
+    out["audit"] = audit
+    out["advisory_only"] = True
+    return out
+
+
+_HDI_DECISION_ACTIONS = {
+    "stage-ticker": "STAGED_TICKER_REVIEW",
+    "reject": "REJECTED",
+    "merge": "MERGED_DUPLICATE",
+    "needs-more-data": "NEEDS_MORE_DATA",
+    "block": "BLOCKED",
+}
+
+
+def _hermes_discovery_inbox_action(candidate_id, action, body):
+    """POST /api/v2/hermes/discovery-inbox/{id}/{action} — operator decision or
+    governed promotion. Approve-* actions route through promotion.py (the ONLY
+    promotion pathways); the rest are audited state-machine decisions."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.hermes_discovery import inbox as _dinbox
+    from lib.hermes_discovery import promotion as _dpromo
+    b = body or {}
+    actor = str(b.get("actor") or "operator")[:60]
+    notes = b.get("notes")
+    try:
+        if action == "approve-source":
+            res = _dpromo.promote_source(candidate_id, actor=actor, notes=notes)
+        elif action == "approve-research-topic":
+            res = _dpromo.promote_research_topic(candidate_id, actor=actor, notes=notes)
+        elif action == "approve-watch-directive":
+            res = _dpromo.promote_watch_directive(candidate_id, actor=actor, notes=notes)
+        elif action == "merge":
+            # MERGED_DUPLICATE is a transition (not an operator DECISION verb),
+            # so it goes through the audited state machine directly.
+            if b.get("merge_into_id"):
+                merge_note = f"merged into candidate {b['merge_into_id']}"
+                notes = f"{merge_note} — {notes}" if notes else merge_note
+            row = _dinbox.transition_candidate(int(candidate_id), "MERGED_DUPLICATE",
+                                               actor=actor, notes=notes)
+            res = {"candidate_id": int(candidate_id), "status": row["status"]}
+        elif action in _HDI_DECISION_ACTIONS:
+            row = _dinbox.decide_candidate(int(candidate_id),
+                                           _HDI_DECISION_ACTIONS[action],
+                                           actor=actor, notes=notes)
+            res = {"candidate_id": int(candidate_id), "status": row["status"],
+                   "decided_by": row.get("decided_by")}
+        else:
+            return 400, {"ok": False,
+                         "error": f"unknown action '{action}' (valid: approve-source, "
+                                  "approve-research-topic, approve-watch-directive, "
+                                  "stage-ticker, reject, merge, needs-more-data, block)"}
+        return 200, {"ok": True, "advisory_only": True, "action": action,
+                     "result": {k: _json_clean(v) for k, v in res.items()}}
+    except _dinbox.CandidateNotFoundError as e:
+        return 404, {"ok": False, "error": str(e)}
+    except _dinbox.IllegalTransitionError as e:
+        return 409, {"ok": False, "error": str(e)}
+    except _dinbox.DiscoveryInboxError as e:
+        return 400, {"ok": False, "error": str(e)[:300]}
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)[:300]}
+
+
+def _hermes_discovery_scorecard_api():
+    """GET /api/v2/hermes/discovery-scorecard — serve the cron-written scorecard
+    file when fresh (<1h), else rebuild in-process (small count queries only)."""
+    import sys as _s, time as _t
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    path = PROJECT_ROOT / "data" / "runtime" / "hermes_discovery_scorecard.json"
+    try:
+        if path.exists() and (_t.time() - path.stat().st_mtime) < 3600:
+            card = json.loads(path.read_text(encoding="utf-8"))
+            card["served_from"] = "cache"
+            return card
+    except Exception:
+        pass
+    import hermes_discovery_scorecard as _hds
+    card = _hds.build_scorecard()
+    card["served_from"] = "live"
+    return json.loads(json.dumps(card, default=str))
+
+
 ROUTES = {
+    "/api/v2/hermes/discovery-inbox": lambda q=None: _hermes_discovery_inbox_list(q),
+    "/api/v2/hermes/discovery-scorecard": lambda: _hermes_discovery_scorecard_api(),
     "/api/v2/health": lambda: _health_agent_dashboard(),
     "/api/v2/health/history": lambda: _health_agent_history(),
     "/api/v2/health/coders": lambda: _health_coder_status(),
@@ -29208,6 +29336,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return _watch_directive_promote(body or {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+    # Hermes Discovery Inbox — operator decisions + governed promotions (advisory-only).
+    if method == "POST" and base_path.startswith("/api/v2/hermes/discovery-inbox/"):
+        rest = base_path[len("/api/v2/hermes/discovery-inbox/"):].strip("/").split("/")
+        if len(rest) == 2 and rest[0].isdigit():
+            return _hermes_discovery_inbox_action(int(rest[0]), rest[1], body or {})
+        return 400, {"ok": False, "error": "expected /api/v2/hermes/discovery-inbox/{id}/{action}"}
 
     # Phase 192I — guarded operator approval (POST). Paper-only; calls the guarded engine.
     if method == "POST" and base_path.startswith("/api/v2/atm/protection-adjustment-proposals/") \
@@ -30129,6 +30263,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if symbol:
             try:
                 return 200, {"ok": True, "data": _watch_provenance(symbol)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # Hermes Discovery Inbox candidate detail (GET /{id}); list route lives in ROUTES.
+    if method == "GET" and base_path.startswith("/api/v2/hermes/discovery-inbox/"):
+        cid = base_path[len("/api/v2/hermes/discovery-inbox/"):].strip("/")
+        if cid.isdigit():
+            try:
+                d = _hermes_discovery_inbox_detail(int(cid))
+                if d is None:
+                    return 404, {"ok": False, "error": f"candidate {cid} not found"}
+                return 200, {"ok": True, "data": d}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
