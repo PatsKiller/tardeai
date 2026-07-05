@@ -156,8 +156,9 @@ each queued paper card carries a `paper validation n/30` chip.
 | IV snapshot CLI | `scripts/options_iv_snapshot.py` |
 | Migrations | `migrations/2026_07_05_options_paper_outcomes.sql` · `migrations/2026_07_06_options_iv_history.sql` |
 | API | `/api/v2/options/proposals` (merged paper rows) · `/api/v2/options/validation` |
-| UI | `OptionsHub.tsx` (validation strip) · `OptionProposalCardV4.tsx` (paper card block + IV line) |
-| Tests | `tests/test_options_pipeline_deep_itm.py` · `tests/test_options_pipeline_validation.py` · `tests/test_options_iv_rank.py` |
+| UI | `OptionsHub.tsx` (validation strip) · `OptionProposalCardV4.tsx` (live — paper block, IV line, semantics) |
+| Card semantics | `scripts/lib/options_pipeline/card_semantics.py` · `apps/.../lib/optionsCardSemantics.ts` |
+| Tests | `tests/test_options_pipeline_deep_itm.py` · `tests/test_options_pipeline_validation.py` · `tests/test_options_iv_rank.py` · `tests/test_options_card_semantics.py` · `tests/test_options_action_gating.py` |
 
 ---
 
@@ -173,6 +174,8 @@ each queued paper card carries a `paper validation n/30` chip.
 
 **Queue states** (additive migration + anti-clobber trigger): pending → READY_FOR_ALPACA_PAPER → ALPACA_PAPER_SUBMITTED → FILLED/REJECTED → CLOSED → OUTCOME_RECORDED → (operator-only) READY_FOR_LIVE_REVIEW.
 
-**Prime rubric (scripts/options_prime_rubric.py)**: 10 weighted scores (spread, OI/volume, delta fit, extrinsic, breakeven, IV rank, earnings risk, sizing, thesis freshness, paper-fill quality) → prime_score → labels NOT_PRIME / PAPER_ONLY / PRIME_FOR_PAPER / READY_FOR_LIVE_REVIEW_OPERATOR_ONLY. Labels only — the rubric is AST-proven orderless and cannot transition status.
+**Prime rubric (scripts/options_prime_rubric.py)**: 10 weighted scores → prime_score → display labels NOT PRIME (&lt;50) / PAPER WATCH (50–64) / PRIME FOR PAPER (65–79) / LIVE REVIEW ELIGIBLE · OPERATOR ONLY (≥80). Verdict constants use `PAPER_WATCH` (legacy `PAPER_ONLY` alias). Labels only — AST-proven orderless; cannot transition status.
+
+**Card semantics (presentation-only)**: `apply_card_semantics()` on `/api/v2/options/proposals` enriches each row with `cashflow_label`, `execution_route_badge`, `execution_note`, `prime_display`, `liquidity_warnings`, and sanitized `action_buttons` before the desk renders `OptionProposalCardV4`.
 
 **Live-review promotion**: visible only on OUTCOME_RECORDED rows carrying the top rubric label; operator confirm dialog states verbatim — "This does not place an order." / "Requires operator 2FA." / "Requires broker preview/read-back." / "Model is unvalidated until 30 paper outcomes / 3 months." No code path in this lane can reach a live broker; Schwab/2FA machinery untouched.

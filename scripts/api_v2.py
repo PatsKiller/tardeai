@@ -24448,6 +24448,17 @@ def _options_proposals(query=None):
         min_edge=float(g("min_edge", 0) or 0),
     )
     _attach_options_underlying_context(filtered)
+    schwab_armed = None
+    try:
+        import options_pilot_arm as opa
+        schwab_armed = bool((opa.status() or {}).get("armed_for_execution"))
+    except Exception:
+        pass
+    try:
+        from lib.options_pipeline.card_semantics import apply_card_semantics_batch
+        filtered = apply_card_semantics_batch(filtered, schwab_armed=schwab_armed)
+    except Exception:
+        pass
     return _json_clean({
         **data,
         "proposals": filtered,

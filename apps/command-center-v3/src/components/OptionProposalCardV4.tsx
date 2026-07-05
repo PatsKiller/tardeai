@@ -5,6 +5,21 @@ import { ACTIONS, PROPOSAL } from '../lib/optionsTooltips'
 import { RiskFlagChips, StrikeDistanceBar, WhatIfBox } from './OptionsNovicePanel'
 import { composeWhy } from '../lib/watchlistCardV4'
 import { WL, numStyle } from '../lib/watchlistCardTokens'
+import {
+  alpacaPaperButtonLabel,
+  allowsManualLog,
+  cashflowColor,
+  cashflowIsCredit,
+  executionRouteBadge,
+  isCardBlocked,
+  liquidityWarnings,
+  optionCashflowLabel,
+  plainEnglishHint,
+  primeChipStyle,
+  primeDisplayLabel,
+  sanitizeActionButtons,
+  type PrimeDisplay,
+} from '../lib/optionsCardSemantics'
 import type { OptionProposal } from './OptionProposalCard'
 
 // Option Proposal Card v4 — options-desk member of the card-v4 family (2026-07-04).
@@ -124,11 +139,9 @@ type PaperLaneFields = {
 
 const PRIME_VERDICT_LIVE = 'READY_FOR_LIVE_REVIEW_OPERATOR_ONLY'
 
-function primeChipColor(verdict?: string): string {
-  if (verdict === 'PRIME_FOR_PAPER') return WL.signal.teal
-  if (verdict === PRIME_VERDICT_LIVE) return WL.signal.amber
-  if (verdict === 'PAPER_ONLY') return WL.text.secondary
-  return WL.text.dim // NOT_PRIME / unknown → dim
+function primeChipColor(display?: PrimeDisplay | null): string {
+  if (!display) return WL.text.dim
+  return primeChipStyle(display.color)
 }
 
 function laneChip(status?: string, aj?: PaperLaneFields['alpaca_json']): { label: string; color: string; tip: string } | null {
@@ -167,7 +180,7 @@ const TIPS = {
   strike: 'Option strike price for this contract.',
   dte: 'Days to expiration — theta decay accelerates in the final 2 weeks.',
   premium: 'Estimated mid price per contract (×100 shares). See data-source badge.',
-  totalCredit: 'Total credit if filled: premium × 100 × contracts.',
+  totalCashflow: 'Total debit/credit if filled: premium × 100 × contracts.',
   maxProfit: 'Best-case profit if the trade works as modeled.',
   maxLoss: 'Stock downside if price falls to $0 (you still own the shares). Premium reduces this slightly.',
   upsideCap: 'If assigned, you sell shares at this strike — gains above strike are forgone.',
@@ -239,9 +252,18 @@ export default function OptionProposalCardV4({
   onManualLog?: () => void
   reviewBar?: React.ReactNode
 }) {
-  const tone = heroTone(p.severity || (p.edge_score && p.edge_score >= 75 ? 'positive' : 'info'))
+  const ext = p as OptionProposal & Record<string, unknown>
+  const blocked = isCardBlocked(ext)
+  const cashflowLabel = String(ext.cashflow_label || optionCashflowLabel(p.strategy, p.side))
+  const isCredit = ext.cashflow_is_credit === true || (ext.cashflow_is_credit == null && cashflowIsCredit(p.strategy, p.side))
+  const cfColor = cashflowColor(isCredit)
+  const actionButtons = sanitizeActionButtons(p)
+  const route = executionRouteBadge(ext)
+  const liqWarnings = liquidityWarnings(p)
+  const displayEdgeRaw = ext.display_edge_score ?? p.edge_score
+  const tone = heroTone(p.severity || (displayEdgeRaw && Number(displayEdgeRaw) >= 75 ? 'positive' : 'info'))
   const strat = STRAT_LABEL[p.strategy] || p.strategy.replace(/_/g, ' ')
-  const edge = p.edge_score != null ? Math.round(p.edge_score) : null
+  const edge = displayEdgeRaw != null ? Math.round(Number(displayEdgeRaw)) : null
   const edgeColor = edge == null ? WL.text.dim : edge >= 72 ? WL.signal.teal : edge >= 50 ? WL.signal.amber : WL.signal.red
   const ds = p.data_source === 'schwab_chain'
     ? { label: 'Schwab chain', c: WL.signal.teal, tip: 'Live bid/ask mid from Schwab option chain.' }
@@ -265,6 +287,7 @@ export default function OptionProposalCardV4({
   const whyLine = composeWhy([strippedReasoning])
 
   const manualOnly = p.execution_mode === 'manual' || p.broker === 'fidelity' || !p.auto_eligible
+  const showManualLog = !!onManualLog && allowsManualLog(ext)
 
   // ── Stage B: paper-model disclosures — amber, never green ──
   const paper = !!p.educational_paper_model
@@ -325,6 +348,9 @@ export default function OptionProposalCardV4({
       : undefined,
   }
   const prime = lane.prime_json
+  const primeDisplay: PrimeDisplay | null = prime?.prime_score != null
+    ? ((ext.prime_display as PrimeDisplay | undefined) || primeDisplayLabel(prime.prime_score, prime.verdict))
+    : null
   const laneState = paper ? laneChip(p.alpaca_paper_status || queueStatus, alpacaJson) : null
   const [laneConfirm, setLaneConfirm] = useState<AlpacaLaneAction | null>(null)
   const [exitPremium, setExitPremium] = useState('')
@@ -342,7 +368,7 @@ export default function OptionProposalCardV4({
   const canMarkOutcome = paper && !!onAlpacaAction
     && (queueStatus === 'ALPACA_PAPER_FILLED' || queueStatus === 'ALPACA_PAPER_CLOSED')
   const canPromote = paper && !!onAlpacaAction
-    && queueStatus === 'OUTCOME_RECORDED' && prime?.verdict === PRIME_VERDICT_LIVE
+    && queueStatus === 'OUTCOME_RECORDED' && primeDisplay?.verdict === PRIME_VERDICT_LIVE
 
   const runLane = async (action: AlpacaLaneAction, payload?: { exitPremium?: number }) => {
     if (!onAlpacaAction || laneBusy) return
@@ -381,7 +407,9 @@ export default function OptionProposalCardV4({
   const btnStyle = (action: string): React.CSSProperties => {
     const base: React.CSSProperties = { fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, whiteSpace: 'nowrap', cursor: 'pointer' }
     if (action === 'hold') return { ...base, border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: WL.text.dim }
-    if (action === 'review_chain') return { ...base, border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: WL.text.secondary }
+    if (action === 'review_chain' || action === 'review_block_reason' || action === 'rerun_review') {
+      return { ...base, border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: WL.text.secondary }
+    }
     if (EXEC_ACTIONS.has(action)) {
       const locked = !armed && !manualOnly
       return {
@@ -437,12 +465,12 @@ export default function OptionProposalCardV4({
                 {p.validation_progress.label}
               </span>
             )}
-            {paper && prime?.prime_score != null && (
+            {paper && primeDisplay && (
               <span
-                title={`Prime rubric ${prime.prime_score.toFixed(1)}/100 → ${(prime.verdict || '').replace(/_/g, ' ')}. Advisory label only — 10 weighted components (spread, OI/volume, delta fit, extrinsic, breakeven, IV rank, earnings, sizing, thesis freshness, fill quality). It never transitions state or places orders.`}
-                style={{ ...chip(primeChipColor(prime.verdict), prime.verdict === 'NOT_PRIME'), cursor: 'help' }}
+                title={`Prime rubric ${prime?.prime_score?.toFixed(1) ?? '—'}/100 → ${primeDisplay.label}. Advisory label only — never places orders.`}
+                style={{ ...chip(primeChipColor(primeDisplay), primeDisplay.verdict === 'NOT_PRIME'), cursor: 'help' }}
               >
-                PRIME {Math.round(prime.prime_score)}
+                {primeDisplay.shortLabel}
               </span>
             )}
             {laneState && (
@@ -451,15 +479,22 @@ export default function OptionProposalCardV4({
               </span>
             )}
             {ds && <span title={ds.tip} style={chip(ds.c)}>{ds.label}</span>}
+            <span title="Execution route — distinct from data source (Schwab chain)" style={chip(
+              route.kind === 'schwab_live' ? WL.signal.amber
+                : route.kind === 'fidelity_manual' ? WL.text.secondary
+                  : route.kind === 'alpaca_paper' || route.kind === 'paper_model' ? WL.signal.amber
+                    : WL.text.dim,
+              route.kind === 'review_only',
+            )}>
+              {route.label}
+            </span>
             {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={chip(WL.text.secondary, true)}>income sleeve</span>}
-            {p.enterprise?.live_eligible && <span title={PROPOSAL.liveOk} style={{ ...chip(WL.signal.teal), cursor: 'help' }}>live eligible</span>}
-            {(p.enterprise?.blocks?.length ?? 0) > 0 && (
-              <span title={`${PROPOSAL.liveBlocked} ${p.enterprise!.blocks!.join('; ')}`} style={{ ...chip(WL.signal.red), cursor: 'help' }}>blocked</span>
+            {p.enterprise?.live_eligible && !paper && <span title={PROPOSAL.liveOk} style={{ ...chip(WL.signal.teal), cursor: 'help' }}>live eligible</span>}
+            {paper && !p.enterprise?.live_eligible && (
+              <span title="Paper-model rows are never live-eligible until validation gate met" style={{ ...chip(WL.signal.red), cursor: 'help' }}>live eligible false</span>
             )}
-            {p.execution_label && (
-              <span title="Execution path for this proposal" style={chip(p.execution_mode === 'manual' ? WL.text.secondary : WL.signal.amber, p.execution_mode === 'manual')}>
-                {p.execution_label}
-              </span>
+            {(blocked || (p.enterprise?.blocks?.length ?? 0) > 0) && (
+              <span title={`${PROPOSAL.liveBlocked} ${(p.enterprise?.blocks || []).join('; ') || 'Trade actions hidden — review block reason.'}`} style={{ ...chip(WL.signal.red), fontWeight: 900, cursor: 'help' }}>BLOCKED</span>
             )}
           </div>
         </div>
@@ -485,11 +520,11 @@ export default function OptionProposalCardV4({
           >
             {whyLine || '—'}
           </span>
-          <span title={TIPS.totalCredit} style={{ ...numStyle, fontSize: 13.5, fontWeight: 800, color: WL.price.up, flexShrink: 0, cursor: 'help' }}>
+          <span title={TIPS.totalCashflow} style={{ ...numStyle, fontSize: 13.5, fontWeight: 800, color: cfColor, flexShrink: 0, cursor: 'help' }}>
             {p.premium_total != null ? fmt$(p.premium_total) : '—'}
           </span>
           <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
-            {(p.action_buttons || []).map((b, i) => {
+            {actionButtons.map((b, i) => {
               const execLocked = EXEC_ACTIONS.has(b.action) && !armed && !manualOnly
               return (
                 <button
@@ -536,6 +571,28 @@ export default function OptionProposalCardV4({
           </span>
         </div>
       </div>
+
+      {liqWarnings.length > 0 && (
+        <div style={{ padding: '6px 15px 0' }}>
+          {liqWarnings.map(w => (
+            <div
+              key={w.code}
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: w.severity === 'danger' ? WL.signal.red : WL.signal.amber,
+                padding: '5px 8px',
+                borderRadius: 6,
+                border: `1px solid ${w.severity === 'danger' ? 'rgba(239,83,80,.35)' : 'rgba(245,166,35,.35)'}`,
+                background: w.severity === 'danger' ? 'rgba(239,83,80,.08)' : 'rgba(245,166,35,.06)',
+                marginBottom: 4,
+              }}
+            >
+              {w.message}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ padding: '0 15px 12px' }}>
         {/* Stage B: paper-model disclosure block — analysis one-liner, disclosed
@@ -615,9 +672,9 @@ export default function OptionProposalCardV4({
                   <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: '.06em', color: WL.text.dim, textTransform: 'uppercase' }}>Alpaca paper lane</span>
                   {canSend && laneConfirm !== 'send' && (
                     <button type="button" disabled={laneBusy} onClick={() => setLaneConfirm('send')}
-                      title="Two-step: confirm, then operator mark-ready + submit a single paper LIMIT order. Paper endpoint only — there is no live order path here."
+                      title="Two-step: mark-ready, then confirm submit of a single simulated paper LIMIT order. No live broker order."
                       style={{ ...laneBtn, border: `1px solid ${WL.signal.teal}55`, color: WL.signal.teal }}>
-                      Send to Alpaca Paper ▸
+                      {alpacaPaperButtonLabel(queueStatus, false)} ▸
                     </button>
                   )}
                   {canMarkOutcome && laneConfirm !== 'mark_outcome' && (
@@ -636,13 +693,16 @@ export default function OptionProposalCardV4({
                   )}
                   {laneBusy && <span style={{ fontSize: 9, color: WL.text.dim }}>working…</span>}
                 </div>
+                <div style={{ fontSize: 9.5, color: WL.text.dim, marginTop: 6, lineHeight: 1.45 }}>
+                  Alpaca paper only — simulated 1-contract limit order. No live broker order. Validation credit starts only after fill, close, and outcome reconciliation.
+                </div>
                 {laneConfirm === 'send' && (
                   <div style={{ marginTop: 6, padding: '7px 9px', borderRadius: 6, border: `1px solid ${WL.signal.teal}44`, background: 'rgba(45,212,191,.05)', fontSize: 10, color: WL.text.secondary }}>
-                    <b style={{ color: WL.text.primary }}>Send to Alpaca Paper?</b> paper endpoint only · limit · 1 contract
+                    <b style={{ color: WL.text.primary }}>Confirm simulated paper order?</b> Alpaca paper only · limit · 1 contract · no live broker path
                     <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                       <button type="button" disabled={laneBusy} onClick={() => runLane('send')}
                         style={{ ...laneBtn, background: WL.signal.teal, border: `1px solid ${WL.signal.teal}`, color: '#06231f' }}>
-                        Confirm — submit paper order
+                        {alpacaPaperButtonLabel(queueStatus, true)}
                       </button>
                       <button type="button" onClick={() => setLaneConfirm(null)} style={laneBtn}>Cancel</button>
                     </div>
@@ -701,7 +761,8 @@ export default function OptionProposalCardV4({
 
         {novice && (
           <div style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(148,163,184,.07)', border: '1px solid rgba(148,163,184,.18)', fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.5 }}>
-            <b style={{ color: WL.text.primary }}>In plain English:</b> {plainEnglishProposal(p)}
+            <b style={{ color: WL.text.primary }}>In plain English:</b>{' '}
+            {(ext.plain_english_hint as string | undefined) || plainEnglishHint(p.strategy) || plainEnglishProposal(p)}
           </div>
         )}
 
@@ -718,8 +779,8 @@ export default function OptionProposalCardV4({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(72px, 1fr))', gap: 7, marginTop: 11 }}>
           <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} tip={TIPS.spot} />
           <Metric label="Strike" value={`$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`} tip={TIPS.strike} />
-          <Metric label="Premium" value={p.premium != null ? fmt$(p.premium, 2) : '—'} color={WL.price.up} tip={TIPS.premium} />
-          <Metric label="Total credit" value={fmt$(p.premium_total)} color={WL.price.up} tip={TIPS.totalCredit} />
+          <Metric label="Premium" value={p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? WL.price.up : WL.text.primary} tip={TIPS.premium} />
+          <Metric label={cashflowLabel} value={fmt$(p.premium_total)} color={cfColor} tip={TIPS.totalCashflow} />
           <Metric label="Breakeven" value={p.breakeven != null ? `$${fmtNum(p.breakeven, 2)}` : '—'} tip={TIPS.breakeven} />
           <Metric label="Max profit" value={fmtMoneyish(p.max_profit)} color={WL.price.up} tip={TIPS.maxProfit} />
           {p.strategy === 'covered_call' ? (
@@ -752,12 +813,12 @@ export default function OptionProposalCardV4({
 
         {/* ⑤ Footer — execution path + manual log (manual log hidden for paper
             models: there is nothing to execute; desk review/ack is the only action) */}
-        {(p.execution_note || (onManualLog && !paper)) && (
+        {(p.execution_note || showManualLog) && (
           <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 9, paddingTop: 8, borderTop: `1px solid ${WL.surface.divider}` }}>
-            <span title="Live execution path status" style={{ fontSize: 9.5, color: WL.text.dim, fontStyle: 'italic', lineHeight: 1.4, minWidth: 0 }}>
-              {p.execution_note || ''}
+            <span title="Execution route — not data source" style={{ fontSize: 9.5, color: WL.text.dim, fontStyle: 'italic', lineHeight: 1.4, minWidth: 0 }}>
+              {p.execution_note || route.label}
             </span>
-            {onManualLog && !paper && (
+            {showManualLog && (
               <button type="button" title={ACTIONS.manualLog} onClick={onManualLog} style={{ fontSize: 10, fontWeight: 800, padding: '5px 11px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: WL.text.secondary, cursor: 'help', flexShrink: 0 }}>
                 Executed manually
               </button>

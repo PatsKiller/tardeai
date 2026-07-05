@@ -4,9 +4,9 @@ Scores an options_approval_queue row (deep-ITM paper-model proposals first)
 across 10 weighted components (each 0-100), producing a prime_json blob with an
 overall prime_score 0-100 and a verdict LABEL:
 
-    < 40    NOT_PRIME
-    40-60   PAPER_ONLY
-    60-80   PRIME_FOR_PAPER
+    < 50    NOT_PRIME
+    50-65   PAPER_WATCH
+    65-80   PRIME_FOR_PAPER
     >= 80   READY_FOR_LIVE_REVIEW_OPERATOR_ONLY
 
 ADVISORY ONLY — HARD INVARIANTS (test-enforced by grep + AST in
@@ -52,14 +52,15 @@ RUBRIC_ENGINE = "options_prime_rubric_v1"
 
 # Verdict LABELS (deliberately distinct from queue statuses — see module doc).
 VERDICT_NOT_PRIME = "NOT_PRIME"
-VERDICT_PAPER_ONLY = "PAPER_ONLY"
+VERDICT_PAPER_WATCH = "PAPER_WATCH"
+VERDICT_PAPER_ONLY = VERDICT_PAPER_WATCH  # legacy alias
 VERDICT_PRIME_FOR_PAPER = "PRIME_FOR_PAPER"
 VERDICT_LIVE_REVIEW_LABEL = "READY_FOR_LIVE_REVIEW_OPERATOR_ONLY"
 
 VERDICT_BANDS = (
-    (40.0, VERDICT_NOT_PRIME),          # score < 40
-    (60.0, VERDICT_PAPER_ONLY),         # 40 <= score < 60
-    (80.0, VERDICT_PRIME_FOR_PAPER),    # 60 <= score < 80
+    (50.0, VERDICT_NOT_PRIME),          # score < 50
+    (65.0, VERDICT_PAPER_WATCH),        # 50 <= score < 65
+    (80.0, VERDICT_PRIME_FOR_PAPER),    # 65 <= score < 80
     (None, VERDICT_LIVE_REVIEW_LABEL),  # score >= 80
 )
 

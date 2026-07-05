@@ -45,6 +45,38 @@ const STRAT = {
     lose: 'Price moves against you past the long leg → max loss is capped but real.',
     watch: 'Know your max loss before entering — it is fixed but not zero.',
   },
+  protective_put: {
+    name: 'Protective Put',
+    emoji: '🛡️',
+    oneLiner: 'You pay a debit for downside hedge protection on shares you hold.',
+    win: 'Stock falls — put gains offset some equity loss; premium was the hedge cost.',
+    lose: 'Stock rises — you lose the premium paid (max loss on the option).',
+    watch: 'Confirm you hold the underlying shares this put is meant to hedge.',
+  },
+  deep_itm_call: {
+    name: 'Deep ITM Call',
+    emoji: '📊',
+    oneLiner: 'Paper model: deep-ITM call as stock replacement — you pay a debit, no live order.',
+    win: 'Underlying rises — call tracks stock with less capital than 100 shares.',
+    lose: 'Max loss is premium paid if the trade fails.',
+    watch: 'Paper model only until validation gate met — use Alpaca Paper after review.',
+  },
+  atm_call: {
+    name: 'ATM Call',
+    emoji: '🎯',
+    oneLiner: 'You pay a debit for directional call exposure near the money.',
+    win: 'Stock rises above breakeven by expiration.',
+    lose: 'Max loss is premium paid.',
+    watch: 'Theta decay accelerates in the final weeks.',
+  },
+  atm_put: {
+    name: 'ATM Put',
+    emoji: '🎯',
+    oneLiner: 'You pay a debit for directional put exposure near the money.',
+    win: 'Stock falls below breakeven by expiration.',
+    lose: 'Max loss is premium paid.',
+    watch: 'Theta decay accelerates in the final weeks.',
+  },
 } as const
 
 export function strategyGuide(strategy: string) {
@@ -91,6 +123,18 @@ export function plainEnglishProposal(p: OptionProposal): string {
   }
   if (p.strategy === 'credit_spread') {
     return `Collect ~${credit} net credit on a ${sym} spread expiring ${exp}. Profit if price stays in range; max loss is capped — see Max loss on the card.`
+  }
+  if (p.strategy === 'protective_put') {
+    const cost = fmt$(p.premium_total)
+    return `Protective put on ${sym}: pay ~${cost} debit for hedge protection at $${strike} (${exp}). Max loss on the option is premium paid; the hedge may offset losses in the underlying.`
+  }
+  if (p.strategy === 'deep_itm_call') {
+    const cost = fmt$(p.premium_total)
+    return `Paper model deep-ITM call on ${sym}: pay ~${cost} debit at $${strike} (${exp}). Simulates stock replacement — max loss is premium paid; no live order until Alpaca Paper after review.`
+  }
+  if (p.strategy === 'atm_call' || p.strategy === 'atm_put') {
+    const cost = fmt$(p.premium_total)
+    return `Pay ~${cost} debit for ${p.strategy === 'atm_put' ? 'put' : 'call'} exposure on ${sym} at $${strike} (${exp}). Max loss is premium paid.`
   }
   return `${strategyGuide(p.strategy).oneLiner} ${sym} $${strike}, ${exp}.`
 }

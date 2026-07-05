@@ -1,33 +1,20 @@
 import { useEffect, useState } from 'react'
 
-// Card family v4 — single GLOBAL evaluation toggle (operator decision 2026-07-04).
-// One preference drives every surface that has a v4 variant (watchlist, broker
-// proposals, open-trades positions, options desk). v3/current stays the default
-// until the operator locks a winner. Reads legacy 'wl.card.v4' once as a migration.
+// Card family v4 — LIVE for all surfaces (operator decision 2026-07-05).
+// Watchlist, broker proposals, open-trades positions, and options desk all
+// render v4 unconditionally. v3 components remain in-tree for reference only.
 
 const KEY = 'cc.cards.v4'
-const LEGACY_KEY = 'wl.card.v4'
 
 export function readCardsV4(): boolean {
-  // v4 LOCKED as the approved format for all card surfaces (operator decision
-  // 2026-07-04 evening) — default ON; the toggle remains only as a reference
-  // escape hatch back to v3 during the transition.
-  try {
-    const v = localStorage.getItem(KEY)
-    if (v != null) return v === '1'
-    const legacy = localStorage.getItem(LEGACY_KEY)
-    if (legacy != null) return legacy === '1'
-    return true
-  } catch {
-    return true
-  }
+  return true
 }
 
 export function writeCardsV4(on: boolean) {
+  if (!on) return
   try {
-    localStorage.setItem(KEY, on ? '1' : '0')
-    localStorage.removeItem(LEGACY_KEY)
-    window.dispatchEvent(new CustomEvent('cc-cards-v4', { detail: on }))
+    localStorage.setItem(KEY, '1')
+    window.dispatchEvent(new CustomEvent('cc-cards-v4', { detail: true }))
   } catch { /* private mode */ }
 }
 
@@ -48,5 +35,5 @@ export function useCardsV4(): [boolean, (on: boolean) => void] {
   return [on, writeCardsV4]
 }
 
-/** Shared toggle UI — identical chrome on every hub that has a v4 variant. */
-export const cardsV4ToggleTitle = 'Card design version — global evaluation toggle (v3/current stays default until locked)'
+/** Badge copy — v4 is live; v3 escape hatch removed. */
+export const cardsV4ToggleTitle = 'Card v4 — live on all desk surfaces'

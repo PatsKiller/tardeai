@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-05 - Options desk card semantics + v4 cards live
+
+Options Desk UI safety pass (presentation-only — no broker execution path changes):
+
+- **Debit/credit labeling** — `card_semantics.py` / `optionsCardSemantics.ts`: deep ITM, protective puts,
+  ATM long premium show Total debit (neutral styling); income strategies keep Total credit (green).
+- **Blocked action gating** — blocked / Aegis BLOCK / enterprise blocks hide Sell/Buy verbs; show
+  View Chain, Review Block Reason, Rerun Review, Pass. Manual log hidden on blocked and paper rows.
+- **Route vs data source** — Schwab chain badge separate from execution route (Fidelity manual,
+  Schwab 2FA, Alpaca paper, Paper model). Fidelity rows never show Schwab live-path copy.
+- **PRIME bands** — &lt;50 NOT PRIME, 50–64 PAPER WATCH, 65–79 PRIME FOR PAPER, ≥80 LIVE REVIEW
+  ELIGIBLE · OPERATOR ONLY (score 63 no longer renders bare "PRIME").
+- **Liquidity warnings** — OI=0 illiquid banner + display edge cap; collapsed and expanded card views.
+- **Alpaca paper copy** — two-step Mark Ready → Submit 1-Contract Paper Limit Order; simulated-order disclosure.
+- **Card v4 live** — `readCardsV4()` locked true; Options hub always renders `OptionProposalCardV4` /
+  `OptionPositionCardV4`; Watch hub shows "Card v4 · live" badge (v3 toggle removed).
+- **Tests** — `test_options_card_semantics.py`, `test_options_action_gating.py` (35 new tests green).
+
 ## 2026-07-05 - Hermes maturity hardening (measurable self-learning, advisory-only)
 
 Closed-loop maturity lift (~5.8 → ~7.1 self-learning score) without increasing live-trading authority.
