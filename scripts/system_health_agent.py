@@ -491,21 +491,69 @@ def _cron_fires_at(schedule, dt):
     return dom_ok and dow_ok
 
 
+def _weekday_only_schedule(schedule):
+    """True if the cron string can never fire on a weekend (dow excludes Sat+Sun).
+
+    These are market-day jobs: their crons are wrapped in market_day_gate.sh (or
+    equivalent), so on NYSE holidays they are scheduled-but-skipped by design and
+    must not be treated as having a scheduled fire that day.
+    """
+    parts = schedule.split()
+    if len(parts) != 5:
+        return False
+    dow_f = parts[4]
+    return not (_cron_field_matches(dow_f, 0, 0, 6)      # Sunday (0)
+                or _cron_field_matches(dow_f, 7, 0, 7)    # Sunday (7)
+                or _cron_field_matches(dow_f, 6, 0, 6))   # Saturday
+
+
+def _is_trading_day_cached(dt, _cache={}):
+    """market_session.is_trading_day (weekend/NYSE-holiday aware), cached per date.
+
+    Fails OPEN (True = day counts as scheduled) so a broken calendar degrades to the
+    old pure-cron behavior instead of silencing staleness detection.
+    """
+    d = dt.date()
+    if d not in _cache:
+        try:
+            from market_session import is_trading_day
+            _cache[d] = bool(is_trading_day(dt))
+        except Exception:
+            _cache[d] = True
+    return _cache[d]
+
+
 def _prev_scheduled_fire(schedule, now_dt, lookback_days=14):
     """Most recent datetime <= now_dt at which `schedule` would have fired.
 
     `schedule` may be a single cron string or a list of cron strings (the latest
     fire across all is returned). Returns None if unparseable / no fire in window.
+
+    Trading-calendar aware: weekday-only schedules (dow 1-5) are market-day jobs
+    whose crons run under market_day_gate.sh — on NYSE holidays the gate skips them,
+    so a holiday is NOT a scheduled fire for those schedules. Without this, the
+    2026-07-03 (July-4th observed) skip read as "last fire Friday 16:57" all weekend
+    and every gated weekday job paged STALE Sat+Sun despite last output being the
+    last real trading day (Thursday). Schedules that can fire on weekends (dow */0/6)
+    keep pure cron semantics. Weekday (trading-day) behavior is unchanged.
     """
     schedules = schedule if isinstance(schedule, (list, tuple)) else [schedule]
     schedules = [s for s in schedules if s and len(s.split()) == 5]
     if not schedules:
         return None
+    weekday_only = {s: _weekday_only_schedule(s) for s in schedules}
+    all_weekday_only = all(weekday_only.values())
     dt = now_dt.replace(second=0, microsecond=0)
     horizon = dt - timedelta(days=lookback_days)
     while dt >= horizon:
-        if any(_cron_fires_at(s, dt) for s in schedules):
-            return dt
+        # Fast path: if every schedule is market-day-only and this is not a trading
+        # day (weekend/holiday), no fire is possible — skip to the previous day.
+        if all_weekday_only and not _is_trading_day_cached(dt):
+            dt = dt.replace(hour=23, minute=59) - timedelta(days=1)
+            continue
+        for s in schedules:
+            if _cron_fires_at(s, dt) and (not weekday_only[s] or _is_trading_day_cached(dt)):
+                return dt
         dt -= timedelta(minutes=1)
     return None
 
