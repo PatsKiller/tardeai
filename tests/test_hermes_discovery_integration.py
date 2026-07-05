@@ -98,8 +98,9 @@ def test_promotion_module_level_guard_ran():
 
 # ── do-no-harm governor (pure, always runs) ──────────────────────────────────
 
-def _win(vol=5, dup=0.0, tick=0, false=0.0):
+def _win(vol=5, dup=0.0, tick=0, false=0.0, resight=0.0):
     return {"candidate_volume": vol, "duplicate_rate": dup,
+            "resight_rate": resight,
             "ticker_volume": tick, "false_ticker_rate": false}
 
 
@@ -126,6 +127,17 @@ def test_do_no_harm_pause_on_multiple_degradations():
     assert set(out["degraded"]) == {"duplicate_rate", "false_ticker_rate",
                                     "candidate_volume"}
     assert out["recommendation"] == "pause"
+
+
+def test_do_no_harm_resight_rate_never_degrades():
+    from hermes_discovery_scorecard import compute_do_no_harm
+    # a burst of idempotent re-sights (recurrence signal) with a healthy
+    # genuine-duplicate rate must stay steady — resight_rate is visibility
+    # only and is deliberately not a degradation input
+    out = compute_do_no_harm(_win(vol=36, dup=0.05, tick=1, false=0.0, resight=0.85),
+                             _win(vol=30, dup=0.05, tick=1, false=0.0, resight=0.0))
+    assert out["degraded"] == []
+    assert out["recommendation"] == "steady"
 
 
 def test_do_no_harm_small_samples_never_flap():
@@ -369,17 +381,20 @@ def test_scorecard_emits_all_metric_keys(tmp_path):
     assert card["version"] == hds.SCORECARD_VERSION
     for w in ("last_7d", "prior_7d"):
         win = card["windows"][w]
-        for k in ("candidate_volume", "duplicate_rate", "ticker_volume",
-                  "false_ticker_rate"):
+        for k in ("candidate_volume", "duplicate_rate", "resight_rate",
+                  "ticker_volume", "false_ticker_rate"):
             assert k in win
     dnh = card["do_no_harm"]
     assert dnh["recommendation"] in ("steady", "tighten", "pause")
+    # resight_rate is visibility only — it must never appear as degraded
+    assert "resight_rate" not in dnh["degraded"]
     assert "by_ref_type" in card["promotions"]
     assert "promotions_7d" in card["promotions"]
     # discovery_health summary + feed writer (isolated path)
     health = hds.build_discovery_health(card)
     for k in ("generated_at", "candidates_total", "duplicate_rate_7d",
-              "false_ticker_rate_7d", "promotions_7d", "recommendation"):
+              "resight_rate_7d", "false_ticker_rate_7d", "promotions_7d",
+              "recommendation"):
         assert k in health
     monkey_feed = tmp_path / "feed.json"
     orig = hds.OUTCOME_FEED_PATH
@@ -392,6 +407,34 @@ def test_scorecard_emits_all_metric_keys(tmp_path):
         assert "outcome_bus" in feed["note"]
     finally:
         hds.OUTCOME_FEED_PATH = orig
+
+
+@needs_db
+def test_duplicate_rate_counts_genuine_dups_not_resights():
+    """Operator-approved definition (2026-07-05): duplicate_rate counts ONLY
+    genuine duplication (MERGED_DUPLICATE verdicts / single-sighting members
+    of a shared duplicate cluster). Idempotent re-sight bumps (seen_count > 1)
+    are recurrence signal — counted by resight_rate, never by duplicate_rate."""
+    import hermes_discovery_scorecard as hds
+
+    def _last_counts():
+        last, _prior = hds._window_metrics()
+        vol = last["candidate_volume"]
+        # windows expose 4-dp rates; recover the integer numerators
+        return (vol, round(last["duplicate_rate"] * vol),
+                round(last["resight_rate"] * vol))
+
+    vol0, dup0, res0 = _last_counts()
+    # same unique subject upserted twice → one row, seen_count == 2 (re-sight)
+    label = f"{TAG} unique recurring subject xyzzy"
+    row = _track(inbox.upsert_candidate("TOPIC_CANDIDATE", label, actor="pytest"))
+    bumped = inbox.upsert_candidate("TOPIC_CANDIDATE", label, actor="pytest")
+    assert bumped["id"] == row["id"] and int(bumped["seen_count"]) == 2
+
+    vol1, dup1, res1 = _last_counts()
+    assert vol1 == vol0 + 1   # one new candidate row
+    assert dup1 == dup0       # a re-sight bump is NOT duplication
+    assert res1 == res0 + 1   # ...but it IS visible as recurrence
 
 
 if __name__ == "__main__":
