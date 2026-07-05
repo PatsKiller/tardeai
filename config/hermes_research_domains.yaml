@@ -1,0 +1,338 @@
+# hermes_research_domains.yaml — Universal Research Discovery Layer domain registry (Stage 1).
+#
+# Loaded + validated by scripts/lib/hermes_discovery/domains.py (fail-closed:
+# unknown risk_level / promotion_path / candidate_type aborts the load with a
+# clear error). Operator extensions live in hermes_custom_research_domains.yaml
+# (same schema; custom entries override/extend this registry and always get
+# auto_promote hard-forced to false).
+#
+# Schema per domain:
+#   description                        what this research domain covers
+#   risk_level                         financial | tax | planning | legal | operational | general | variable
+#                                      (custom file may also use: medical)
+#   allowed_candidate_types            subset of the inbox candidate types
+#   promotion_paths                    subset of: research_topic | watch_directive |
+#                                      staged_ticker_review | source_registry | escalation_candidate
+#   requires_operator_for_promotion    default true (never auto-promoted without an operator)
+#   classification_keywords            keyword/phrase heuristics used by classify_domain()
+#   Professional-review domains (taxes / retirement / legal, and medical in the
+#   custom file) additionally carry:
+#     requires_citation: true
+#     requires_professional_review_label: true
+#     no_personal_advice: true
+#     professional_review_label: advisory label text stamped on every candidate
+#
+# ALL domains are advisory-only. Nothing in this registry can place, size, or
+# modify a trade — promotion paths end at operator-gated research registries.
+
+version: 1
+
+defaults:
+  requires_operator_for_promotion: true
+  advisory_label: "Advisory research only — informational, never a directive or trade instruction."
+
+domains:
+  portfolio_holdings:
+    description: >-
+      Research on securities and funds currently held across the tracked
+      accounts (positions, cost basis, concentration, rebalancing context).
+    risk_level: financial
+    allowed_candidate_types: [TICKER_CANDIDATE, TOPIC_CANDIDATE, TREND_CANDIDATE]
+    promotion_paths: [research_topic, watch_directive]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - portfolio
+      - holding
+      - position
+      - cost basis
+      - rebalance
+      - concentration
+      - allocation
+
+  watchlist:
+    description: >-
+      Research on non-held symbols under observation — candidate tickers,
+      entry setups, and watch-universe context.
+    risk_level: financial
+    allowed_candidate_types: [TICKER_CANDIDATE, TOPIC_CANDIDATE, TREND_CANDIDATE]
+    promotion_paths: [research_topic, watch_directive, staged_ticker_review]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - watchlist
+      - ticker
+      - entry point
+      - setup
+      - candidate symbol
+      - breakout
+
+  sectors:
+    description: >-
+      Sector- and industry-group-level research (rotation, relative strength,
+      sector-wide catalysts).
+    risk_level: financial
+    allowed_candidate_types: [TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, watch_directive, source_registry]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - sector
+      - industry group
+      - sector rotation
+      - relative strength
+      - industrials
+      - utilities
+      - financials
+      - materials
+      - healthcare sector
+      - energy sector
+      - consumer staples
+      - consumer discretionary
+
+  etfs_funds:
+    description: >-
+      ETF, index-fund, and mutual-fund research (expense ratios, holdings
+      look-through, fund flows, sleeve construction).
+    risk_level: financial
+    allowed_candidate_types: [TICKER_CANDIDATE, TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, watch_directive, source_registry]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - etf
+      - index fund
+      - mutual fund
+      - expense ratio
+      - fund flows
+      - nav
+      - look-through
+      - sleeve
+
+  dividends_income:
+    description: >-
+      Dividend and income research (yield, payout safety, distribution
+      schedules, income-sleeve construction).
+    risk_level: financial
+    allowed_candidate_types: [TICKER_CANDIDATE, TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, watch_directive, source_registry]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - dividend
+      - yield
+      - payout ratio
+      - distribution
+      - income sleeve
+      - drip
+      - dividend growth
+      - covered call income
+
+  taxes:
+    description: >-
+      Tax research context (capital gains, wash sales, lot selection,
+      conversions, filing rules). Research summaries only — never personal
+      tax advice.
+    risk_level: tax
+    allowed_candidate_types: [TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, source_registry, escalation_candidate]
+    requires_operator_for_promotion: true
+    requires_citation: true
+    requires_professional_review_label: true
+    no_personal_advice: true
+    professional_review_label: "Research summary only — consult a qualified professional."
+    classification_keywords:
+      - tax
+      - irs
+      - capital gains
+      - wash sale
+      - tax-loss
+      - roth conversion
+      - "1099"
+      - deduction
+      - tax bracket
+      - estimated tax
+      - cost-basis method
+
+  retirement:
+    description: >-
+      Retirement-planning research context (IRA/401k rules, RMDs, Social
+      Security, Medicare interplay). Research summaries only — never personal
+      planning advice.
+    risk_level: planning
+    allowed_candidate_types: [TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, source_registry, escalation_candidate]
+    requires_operator_for_promotion: true
+    requires_citation: true
+    requires_professional_review_label: true
+    no_personal_advice: true
+    professional_review_label: "Research summary only — consult a qualified professional."
+    classification_keywords:
+      - retirement
+      - ira
+      - 401k
+      - rmd
+      - required minimum distribution
+      - social security
+      - ssdi
+      - medicare
+      - pension
+      - annuity
+      - contribution limit
+
+  legal:
+    description: >-
+      Legal and regulatory research context (litigation, enforcement actions,
+      rulemaking that affects holdings or operations). Research summaries only
+      — never legal advice.
+    risk_level: legal
+    allowed_candidate_types: [TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, source_registry, escalation_candidate]
+    requires_operator_for_promotion: true
+    requires_citation: true
+    requires_professional_review_label: true
+    no_personal_advice: true
+    professional_review_label: "Research summary only — consult a qualified professional."
+    classification_keywords:
+      - lawsuit
+      - litigation
+      - sec enforcement
+      - court ruling
+      - settlement
+      - antitrust
+      - statute
+      - regulation
+      - rulemaking
+      - compliance action
+      - subpoena
+
+  macro:
+    description: >-
+      Macroeconomic research (rates, inflation, growth, central-bank policy,
+      credit conditions).
+    risk_level: general
+    allowed_candidate_types: [TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, watch_directive, source_registry]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - inflation
+      - fed
+      - fomc
+      - interest rate
+      - gdp
+      - cpi
+      - unemployment
+      - recession
+      - treasury yield
+      - yield curve
+      - monetary policy
+      - fiscal policy
+
+  geopolitical:
+    description: >-
+      Geopolitical research (conflict, sanctions, trade policy, elections,
+      supply-security events with market impact).
+    risk_level: general
+    allowed_candidate_types: [TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, watch_directive, source_registry]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - geopolitical
+      - sanctions
+      - tariff
+      - trade war
+      - conflict
+      - nato
+      - election
+      - export controls
+      - embargo
+      - defense spending
+
+  industry_themes:
+    description: >-
+      Cross-sector thematic research (adoption waves, capex cycles,
+      supply-chain shifts, secular demand themes).
+    risk_level: general
+    allowed_candidate_types: [TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, watch_directive, source_registry]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - theme
+      - buildout
+      - adoption
+      - capex cycle
+      - supply chain
+      - secular trend
+      - demand wave
+      - onshoring
+      - electrification
+
+  technology:
+    description: >-
+      Technology-domain research (AI, semiconductors, software, cloud,
+      cybersecurity, robotics) as investable/industry context.
+    risk_level: general
+    allowed_candidate_types: [TOPIC_CANDIDATE, TREND_CANDIDATE, TICKER_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, watch_directive, source_registry]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - artificial intelligence
+      - semiconductor
+      - chip
+      - datacenter
+      - cloud
+      - software
+      - cybersecurity
+      - quantum
+      - robotics
+      - gpu
+      - llm
+
+  broker_ops:
+    description: >-
+      Brokerage-operations research (account features, routing, fees, transfer
+      mechanics, API/platform capabilities). Informational only — never an
+      execution surface.
+    risk_level: operational
+    allowed_candidate_types: [TOPIC_CANDIDATE, CONNECTOR_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, source_registry, escalation_candidate]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - broker
+      - brokerage
+      - schwab
+      - fidelity
+      - alpaca
+      - snaptrade
+      - order routing
+      - commission
+      - margin requirements
+      - account transfer
+      - settlement
+
+  system_ops:
+    description: >-
+      Trade AI platform/system operations research (pipelines, connectors,
+      data sources, schedulers, infra health).
+    risk_level: operational
+    allowed_candidate_types: [TOPIC_CANDIDATE, CONNECTOR_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, source_registry, escalation_candidate]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - cron
+      - pipeline
+      - scheduler
+      - connector
+      - api key
+      - latency
+      - database
+      - ingestion
+      - uptime
+      - health check
+      - rate limit
+
+  custom:
+    description: >-
+      Fallback for candidates that no registered domain claims. Everything
+      here requires explicit classification before any promotion path opens.
+    risk_level: variable
+    allowed_candidate_types: [SOURCE_CANDIDATE, TREND_CANDIDATE, TICKER_CANDIDATE, TOPIC_CANDIDATE, CONNECTOR_CANDIDATE]
+    promotion_paths: []
+    requires_operator_for_promotion: true
+    requires_classification: true
+    classification_keywords: []

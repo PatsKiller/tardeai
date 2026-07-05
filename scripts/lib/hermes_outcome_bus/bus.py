@@ -11,6 +11,13 @@ OUTCOME_BUS_VERSION = "outcome-bus-v1"
 OUTCOME_BUS_PATH = PROJECT_ROOT / "state" / "hermes" / "outcome_bus.json"
 HISTORY_DIR = PROJECT_ROOT / "state" / "hermes" / "outcome_bus_history"
 
+# discovery_health section sources (spec Part G) — read defensively, never
+# allowed to crash the bus build.
+DISCOVERY_FEED_PATH = PROJECT_ROOT / "data" / "runtime" / "hermes_discovery_outcome_feed.json"
+DISCOVERY_SCORECARD_PATH = PROJECT_ROOT / "data" / "runtime" / "hermes_discovery_scorecard.json"
+DISCOVERY_SCHEDULE_CONFIG_PATH = PROJECT_ROOT / "config" / "hermes_discovery_schedule.json"
+DISCOVERY_STALE_HOURS = 48
+
 
 def read_outcome_bus(path: Path | None = None) -> dict[str, Any] | None:
     """Load the current bus; returns None if missing or corrupt."""
@@ -61,6 +68,124 @@ def write_outcome_bus(payload: dict[str, Any], apply: bool = True) -> Path | Non
     hist = HISTORY_DIR / f"outcome_bus_{stamp}_{run_id}.json"
     hist.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     return OUTCOME_BUS_PATH
+
+
+# ── discovery_health section (spec Part G) ──────────────────────────────────
+
+def _read_json_file(path: Path | str | None) -> dict[str, Any] | None:
+    """Defensive JSON read: missing/corrupt/non-dict → None, never raises."""
+    if not path:
+        return None
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _discovery_pause_state(recommendation: str | None) -> tuple[bool, str | None]:
+    """Effective discovery-intake pause state from the schedule config plus the
+    scorecard do-no-harm recommendation (mirrors ingestors.effective_caps)."""
+    cfg = _read_json_file(DISCOVERY_SCHEDULE_CONFIG_PATH) or {}
+    paused = bool(cfg.get("paused")) or not bool(cfg.get("enabled", True))
+    reason = cfg.get("pause_reason") or (
+        "config paused" if cfg.get("paused")
+        else "config disabled" if not cfg.get("enabled", True) else None)
+    if not paused and str(recommendation or "").lower() == "pause" and \
+            cfg.get("do_no_harm_pause_respected", True):
+        paused, reason = True, "do_no_harm=pause (scorecard)"
+    return paused, reason
+
+
+def build_discovery_health_section(feed_path: Path | str | None = None,
+                                   scorecard_path: Path | str | None = None,
+                                   now: datetime | None = None) -> dict[str, Any]:
+    """First-class discovery_health section for outcome_bus.json.
+
+    Sourced from data/runtime/hermes_discovery_outcome_feed.json (latest entry)
+    + hermes_discovery_scorecard.json, both read defensively:
+      * both missing/corrupt          → {"status": "missing", ...}
+      * generated_at older than
+        DISCOVERY_STALE_HOURS (48h)   → status "stale" (data still included)
+      * fresh                          → status "ok"
+    NEVER raises — a broken discovery layer must not crash the bus build.
+    Advisory only: the bus records discovery health, it never acts on it.
+    """
+    try:
+        now = now or datetime.now(timezone.utc)
+        feed = _read_json_file(feed_path or DISCOVERY_FEED_PATH) or {}
+        card = _read_json_file(scorecard_path or DISCOVERY_SCORECARD_PATH) or {}
+        latest = feed.get("latest") if isinstance(feed.get("latest"), dict) else {}
+        dnh = card.get("do_no_harm") if isinstance(card.get("do_no_harm"), dict) else {}
+        recommendation = (dnh.get("recommendation") or latest.get("recommendation")
+                          or "steady")
+        paused, pause_reason = _discovery_pause_state(recommendation)
+
+        if not latest and not card:
+            return {
+                "status": "missing",
+                "paused": paused,
+                "pause_reason": pause_reason,
+                "note": ("discovery feed + scorecard missing/unreadable — run "
+                         "scripts/hermes_discovery_scorecard.py to populate"),
+            }
+
+        gen = _parse_generated_at(latest.get("generated_at")
+                                  or card.get("generated_at"))
+        age_hours = round((now - gen).total_seconds() / 3600.0, 1) if gen else None
+        status = ("ok" if age_hours is not None
+                  and age_hours <= DISCOVERY_STALE_HOURS else "stale")
+
+        windows_last = ((card.get("windows") or {}).get("last_7d")
+                        if isinstance(card.get("windows"), dict) else {}) or {}
+
+        def _pick(feed_key: str, card_val: Any, default: Any) -> Any:
+            val = latest.get(feed_key)
+            if val is not None:
+                return val
+            return card_val if card_val is not None else default
+
+        return {
+            "status": status,
+            "generated_at": gen.isoformat() if gen else None,
+            "age_hours": age_hours,
+            "stale_after_hours": DISCOVERY_STALE_HOURS,
+            "candidates_total": _pick("candidates_total",
+                                      (card.get("totals") or {}).get("candidates"), 0),
+            "new_7d": _pick("new_7d",
+                            (card.get("intake") or {}).get("new_candidates_7d"), 0),
+            "by_type": card.get("by_type") or {},
+            "by_status": card.get("by_status") or {},
+            "duplicate_rate_7d": _pick("duplicate_rate_7d",
+                                       windows_last.get("duplicate_rate"), 0.0),
+            "false_ticker_rate_7d": _pick("false_ticker_rate_7d",
+                                          windows_last.get("false_ticker_rate"), 0.0),
+            "approval_rate": _pick("approval_rate",
+                                   (card.get("decisions") or {}).get("approval_rate"), 0.0),
+            "promotions_7d": _pick("promotions_7d",
+                                   (card.get("promotions") or {}).get("promotions_7d"), 0),
+            "feedback_counts": card.get("feedback") or {},
+            "do_no_harm": {
+                "recommendation": recommendation,
+                "degraded": dnh.get("degraded") or latest.get("degraded") or [],
+                "reasons": dnh.get("reasons") or [],
+            },
+            # filled from DB extras when available (see
+            # hermes_outcome_feedback_agent.fetch_discovery_health_extras);
+            # scorecard keys win if a future scorecard version emits them.
+            "top_sources": card.get("top_sources") or [],
+            "top_trends": card.get("top_trends") or [],
+            "noisy_sources": card.get("noisy_sources") or [],
+            "recurring_duplicate_clusters": card.get("recurring_duplicate_clusters") or [],
+            "paused": paused,
+            "pause_reason": pause_reason,
+            "advisory_note": ("advisory only — the bus records discovery health, "
+                              "it never acts on it"),
+        }
+    except Exception:
+        # absolute backstop: the bus build must survive anything above
+        return {"status": "missing",
+                "note": "discovery_health build failed (defensive backstop)"}
 
 
 def governor_feedback_index(bus: dict[str, Any] | None) -> dict[str, dict[str, Any]]:

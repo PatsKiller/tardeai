@@ -1,0 +1,93 @@
+# hermes_custom_research_domains.yaml — operator-extensible research domains.
+#
+# Same schema as hermes_research_domains.yaml, plus custom-only controls:
+#   allowed_source_types    source types the domain may ingest from (e.g. web, rss, api)
+#   blocked_source_types    source types never allowed for this domain (e.g. social)
+#   denylist_terms          candidate labels/summaries containing these terms are flagged
+#   entity_types            expected entity kinds for subjects in this domain
+#   llm_review_required     candidate must pass an LLM review lane before READY_FOR_REVIEW
+#   auto_promote            ALWAYS hard-forced to false at load time — a custom
+#                           domain can never self-promote regardless of what is
+#                           written here.
+#
+# Entries here EXTEND the base registry; a custom entry with the same name as a
+# base domain OVERRIDES it. Additional risk_level allowed here: medical.
+# All custom domains are advisory-only research lanes.
+
+version: 1
+
+domains:
+  legal_general:
+    description: >-
+      General legal research beyond portfolio impact (contracts, consumer law,
+      civil procedure basics). Research summaries only — never legal advice.
+    risk_level: legal
+    allowed_candidate_types: [TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, source_registry]
+    requires_operator_for_promotion: true
+    requires_citation: true
+    requires_professional_review_label: true
+    no_personal_advice: true
+    professional_review_label: "Research summary only — consult a qualified professional."
+    allowed_source_types: [web, rss, government]
+    blocked_source_types: [social]
+    denylist_terms: ["guaranteed outcome", "no lawyer needed"]
+    entity_types: [statute, regulation, court_case, agency]
+    llm_review_required: true
+    auto_promote: false
+    classification_keywords:
+      - contract law
+      - consumer protection
+      - civil procedure
+      - liability
+      - power of attorney
+      - estate law
+
+  health_general:
+    description: >-
+      General health and medical research topics. Research summaries only —
+      never medical advice, diagnosis, or treatment guidance.
+    risk_level: medical
+    allowed_candidate_types: [TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, source_registry]
+    requires_operator_for_promotion: true
+    requires_citation: true
+    requires_professional_review_label: true
+    no_personal_advice: true
+    professional_review_label: "Research summary only — consult a qualified clinician."
+    allowed_source_types: [web, rss, journal, government]
+    blocked_source_types: [social, forum]
+    denylist_terms: ["miracle cure", "doctors hate", "guaranteed to heal"]
+    entity_types: [condition, treatment, study, agency]
+    llm_review_required: true
+    auto_promote: false
+    classification_keywords:
+      - clinical trial
+      - fda approval
+      - treatment
+      - diagnosis
+      - medical study
+      - health condition
+      - therapy
+
+  technology_general:
+    description: >-
+      General technology research outside the investable-technology lane
+      (tooling, standards, open-source ecosystems, consumer tech).
+    risk_level: general
+    allowed_candidate_types: [TOPIC_CANDIDATE, TREND_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, source_registry]
+    requires_operator_for_promotion: true
+    allowed_source_types: [web, rss, api]
+    blocked_source_types: []
+    denylist_terms: []
+    entity_types: [technology, standard, project, vendor]
+    llm_review_required: false
+    auto_promote: false
+    classification_keywords:
+      - open source
+      - protocol standard
+      - developer tooling
+      - consumer tech
+      - operating system
+      - programming language

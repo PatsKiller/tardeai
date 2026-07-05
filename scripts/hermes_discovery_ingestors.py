@@ -24,23 +24,53 @@ normalized_key → seen_count bump + evidence merge). All DB reads go through
 db_adapter._execute — one statement, immediate commit, no held transactions.
 Advisory-only: never imports broker modules, never writes producer tables.
 
+Scheduled mode (--scheduled) reads config/hermes_discovery_schedule.json plus
+the latest scorecard's do_no_harm recommendation and runs the enabled
+ingestors under caps:
+  steady  → config caps as-is
+  tighten → caps halved + min_recurrence_count raised by 1
+  pause   → all non-operator intake skipped (logged once; NO Telegram unless a
+            critical intake exception occurs — then ONE throttled send via
+            telegram_alert)
+Per-domain / per-day caps are enforced from today's candidate counts.
+Operator-created (is_operator) candidates are NEVER blocked by caps or pause.
+The scheduled run prints a JSON run report {mode, do_no_harm, caps_applied,
+by_type_counts, skipped_reasons} and the suggested (NOT installed) cron line.
+
 Usage:
   python3 scripts/hermes_discovery_ingestors.py --run [--source|--trend|--ticker|--topic]
                                                 [--limit N] [--dry-run] [--json]
+  python3 scripts/hermes_discovery_ingestors.py --scheduled [--dry-run] [--json]
 """
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+import time
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from lib.hermes_discovery import inbox  # noqa: E402
+from lib.hermes_discovery import domains, inbox  # noqa: E402
+
+SCHEDULE_CONFIG_PATH = PROJECT_ROOT / "config" / "hermes_discovery_schedule.json"
+SCORECARD_PATH = PROJECT_ROOT / "data" / "runtime" / "hermes_discovery_scorecard.json"
+ALERT_THROTTLE_PATH = PROJECT_ROOT / "data" / "runtime" / "hermes_discovery_sched_alert.json"
+ALERT_THROTTLE_SECONDS = 6 * 3600  # at most one critical Telegram per 6h
+
+SUGGESTED_CRON = (
+    f"0 */2 * * * cd {PROJECT_ROOT} && flock -n /tmp/hermes_discovery_ingest.lock "
+    f".venv/bin/python scripts/hermes_discovery_ingestors.py --scheduled --json "
+    f">> logs/hermes_discovery_ingest.log 2>&1"
+)
+
+# risk levels counted against max_legal_tax_candidates_per_day
+_SENSITIVE_RISK_LEVELS = frozenset({"tax", "legal", "planning", "medical"})
 
 
 def _rows(sql: str, params=None) -> list[dict[str, Any]]:
@@ -56,13 +86,27 @@ def _clamp01(v) -> float:
 
 
 def _upsert_all(payloads: list[dict[str, Any]], *, actor: str,
-                dry_run: bool) -> dict[str, Any]:
-    """Shared upsert loop: dry-run lists the would-be candidates, live writes."""
-    out = {"scanned": len(payloads), "upserted": 0, "dry_run": bool(dry_run),
-           "candidates": []}
+                dry_run: bool,
+                gate: Callable[[dict[str, Any]], tuple[bool, str | None]] | None = None,
+                ) -> dict[str, Any]:
+    """Shared upsert loop: dry-run lists the would-be candidates, live writes.
+
+    `gate` (scheduled mode) is called per payload BEFORE any write; a
+    (False, reason) verdict skips the payload and tallies skipped_reasons.
+    The gate itself never blocks operator candidates (enforced in the gate).
+    """
+    out = {"scanned": len(payloads), "upserted": 0, "skipped": 0,
+           "dry_run": bool(dry_run), "candidates": [],
+           "skipped_reasons": defaultdict(int)}
     for p in payloads:
         summary = {"candidate_type": p["candidate_type"], "label": p["label"],
                    "source_domain": p.get("source_domain")}
+        if gate is not None:
+            allowed, reason = gate(p)
+            if not allowed:
+                out["skipped"] += 1
+                out["skipped_reasons"][reason or "gated"] += 1
+                continue
         if dry_run:
             out["candidates"].append(summary)
             continue
@@ -72,12 +116,14 @@ def _upsert_all(payloads: list[dict[str, Any]], *, actor: str,
                         "score": float(row["discovery_score"]) if row.get("discovery_score") is not None else None})
         out["candidates"].append(summary)
         out["upserted"] += 1
+    out["skipped_reasons"] = dict(out["skipped_reasons"])
     return out
 
 
 # ── (a) source curation registry → SOURCE / CONNECTOR candidates ─────────────
 
-def ingest_sources(limit: int = 50, dry_run: bool = False) -> dict[str, Any]:
+def ingest_sources(limit: int = 50, dry_run: bool = False,
+                   gate: Callable | None = None) -> dict[str, Any]:
     """research_sources rows (the hermes_source_curation.py output registry).
 
     Web domains still in candidate state (not active, not retired/rejected)
@@ -138,13 +184,13 @@ def ingest_sources(limit: int = 50, dry_run: bool = False) -> dict[str, Any]:
                 meta=meta,
             ))
     return {"type": "source", **_upsert_all(payloads, actor="ingestor:source_curation",
-                                            dry_run=dry_run)}
+                                            dry_run=dry_run, gate=gate)}
 
 
 # ── (b) directive/think-tank staging → TREND candidates ──────────────────────
 
 def ingest_trends(limit: int = 25, dry_run: bool = False,
-                  days: int = 14) -> dict[str, Any]:
+                  days: int = 14, gate: Callable | None = None) -> dict[str, Any]:
     """hermes_directive_hits_staging (output of hermes_directive_discovery.py +
     think_tank_prospect_discovery.py) grouped per directive → TREND_CANDIDATE.
 
@@ -192,13 +238,13 @@ def ingest_trends(limit: int = 25, dry_run: bool = False,
             signals={"trend_momentum": _clamp01(r.get("momentum"))},
         ))
     return {"type": "trend", **_upsert_all(payloads, actor="ingestor:directive_staging",
-                                           dry_run=dry_run)}
+                                           dry_run=dry_run, gate=gate)}
 
 
 # ── (c) shape-accepted ticker extraction → TICKER candidates ─────────────────
 
 def ingest_tickers(limit: int = 25, dry_run: bool = False, days: int = 2,
-                   min_mentions: int = 2) -> dict[str, Any]:
+                   min_mentions: int = 2, gate: Callable | None = None) -> dict[str, Any]:
     """Re-applies the audit-flagged shape-accepted extractor
     (intel_auto_discovery.extract_tickers_from_text: regex + blacklist, NO
     existence check) over recent news + Hermes research text. Candidates flow
@@ -258,13 +304,13 @@ def ingest_tickers(limit: int = 25, dry_run: bool = False, days: int = 2,
                   "extraction": "intel_auto_discovery.extract_tickers_from_text (shape-accepted)"},
         ))
     return {"type": "ticker", **_upsert_all(payloads, actor="ingestor:ticker_extraction",
-                                            dry_run=dry_run)}
+                                            dry_run=dry_run, gate=gate)}
 
 
 # ── (d) recurring research topics → TOPIC candidates ─────────────────────────
 
 def ingest_topics(limit: int = 25, dry_run: bool = False,
-                  days: int = 14) -> dict[str, Any]:
+                  days: int = 14, gate: Callable | None = None) -> dict[str, Any]:
     """Recurring hermes_research_intelligence topics (>= 2 rows in the window)
     that are not yet in topic_monitor → TOPIC_CANDIDATE."""
     registered = {(r.get("display_name") or "").strip().lower()
@@ -296,7 +342,236 @@ def ingest_topics(limit: int = 25, dry_run: bool = False,
                   "keywords": [topic]},
         ))
     return {"type": "topic", **_upsert_all(payloads, actor="ingestor:research_topics",
-                                           dry_run=dry_run)}
+                                           dry_run=dry_run, gate=gate)}
+
+
+# ── scheduled mode (spec Parts C + L) ────────────────────────────────────────
+
+def load_schedule_config(path: Path | str | None = None) -> dict[str, Any]:
+    """Load config/hermes_discovery_schedule.json. Missing/broken → raises
+    (scheduled intake fails closed rather than running uncapped)."""
+    p = Path(path) if path else SCHEDULE_CONFIG_PATH
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def load_scorecard_do_no_harm(path: Path | str | None = None) -> str:
+    """Latest scorecard's do_no_harm recommendation; missing scorecard →
+    'steady' (the scorecard is advisory; absence must not halt intake)."""
+    p = Path(path) if path else SCORECARD_PATH
+    try:
+        card = json.loads(p.read_text(encoding="utf-8"))
+        rec = str(((card.get("do_no_harm") or {}).get("recommendation")) or "steady").lower()
+        return rec if rec in ("steady", "tighten", "pause") else "steady"
+    except Exception:
+        return "steady"
+
+
+def effective_caps(cfg: dict[str, Any], do_no_harm: str) -> dict[str, Any]:
+    """Pure cap arithmetic per do-no-harm state.
+
+    steady  → config caps unchanged
+    tighten → per-run / per-domain / ticker / legal-tax caps halved (floor 1),
+              min_recurrence_count raised by 1
+    pause   → paused=True (all non-operator intake skipped)
+    """
+    def _i(key, default):
+        try:
+            return max(0, int(cfg.get(key, default)))
+        except (TypeError, ValueError):
+            return default
+
+    caps = {
+        "do_no_harm": do_no_harm,
+        "max_candidates_per_run": _i("max_candidates_per_run", 25),
+        "max_candidates_per_domain_per_day": _i("max_candidates_per_domain_per_day", 10),
+        "max_ticker_candidates_per_day": _i("max_ticker_candidates_per_day", 10),
+        "max_legal_tax_candidates_per_day": _i("max_legal_tax_candidates_per_day", 5),
+        "min_recurrence_count": _i("min_recurrence_count", 2),
+        "paused": bool(cfg.get("paused")) or not bool(cfg.get("enabled", True)),
+        "pause_reason": cfg.get("pause_reason"),
+    }
+    if caps["paused"] and not caps["pause_reason"]:
+        caps["pause_reason"] = ("config paused" if cfg.get("paused")
+                                else "config disabled" if not cfg.get("enabled", True)
+                                else None)
+    if do_no_harm == "tighten":
+        for key in ("max_candidates_per_run", "max_candidates_per_domain_per_day",
+                    "max_ticker_candidates_per_day", "max_legal_tax_candidates_per_day"):
+            caps[key] = max(1, caps[key] // 2)
+        caps["min_recurrence_count"] += 1
+    elif do_no_harm == "pause" and cfg.get("do_no_harm_pause_respected", True):
+        caps["paused"] = True
+        caps["pause_reason"] = caps["pause_reason"] or "do_no_harm=pause (scorecard)"
+    return caps
+
+
+def _domain_counts_today() -> dict[str, Any]:
+    """Today's intake counts (new rows only) grouped by research domain +
+    candidate type — one statement, no held transaction."""
+    counts = {"by_domain": defaultdict(int), "ticker": 0, "legal_tax": 0}
+    try:
+        rows = _rows(
+            """SELECT COALESCE(meta_json->>'research_domain', 'custom') AS domain,
+                      COALESCE(meta_json->>'domain_risk_level', '') AS risk_level,
+                      candidate_type, count(*) AS n
+               FROM hermes_discovery_candidates
+               WHERE created_at >= date_trunc('day', now())
+               GROUP BY 1, 2, 3""")
+    except Exception:
+        rows = []
+    for r in rows:
+        n = int(r.get("n") or 0)
+        counts["by_domain"][r.get("domain") or "custom"] += n
+        if r.get("candidate_type") == "TICKER_CANDIDATE":
+            counts["ticker"] += n
+        if (r.get("risk_level") or "") in _SENSITIVE_RISK_LEVELS:
+            counts["legal_tax"] += n
+    counts["by_domain"] = dict(counts["by_domain"])
+    return counts
+
+
+def make_intake_gate(caps: dict[str, Any], counts_today: dict[str, Any],
+                     skipped_reasons: dict[str, int]) -> Callable[[dict], tuple[bool, str | None]]:
+    """Build the per-payload gate for scheduled runs.
+
+    Enforces (in order): pause, per-run cap, per-domain/day cap, ticker/day
+    cap, legal-tax/day cap. Operator-created payloads are NEVER blocked.
+    Counters include both today's DB counts and this run's admissions.
+    """
+    run_total = {"n": 0}
+    by_domain = defaultdict(int, counts_today.get("by_domain") or {})
+    counters = {"ticker": int(counts_today.get("ticker") or 0),
+                "legal_tax": int(counts_today.get("legal_tax") or 0)}
+
+    def _deny(reason: str) -> tuple[bool, str]:
+        skipped_reasons[reason] = skipped_reasons.get(reason, 0) + 1
+        return False, reason
+
+    def gate(payload: dict[str, Any]) -> tuple[bool, str | None]:
+        if payload.get("is_operator"):
+            return True, None  # operator intake is never blocked
+        if caps.get("paused"):
+            return _deny("paused")
+        if run_total["n"] >= caps["max_candidates_per_run"]:
+            return _deny("run_cap")
+        try:
+            domain = domains.classify_domain(payload)
+            risk = domains.domain_policy(domain)["risk_level"]
+        except Exception:
+            return _deny("domain_classification_failed")
+        if by_domain[domain] >= caps["max_candidates_per_domain_per_day"]:
+            return _deny(f"domain_cap:{domain}")
+        is_ticker = (payload.get("candidate_type") or "").upper() == "TICKER_CANDIDATE"
+        if is_ticker and counters["ticker"] >= caps["max_ticker_candidates_per_day"]:
+            return _deny("ticker_cap")
+        sensitive = risk in _SENSITIVE_RISK_LEVELS
+        if sensitive and counters["legal_tax"] >= caps["max_legal_tax_candidates_per_day"]:
+            return _deny("legal_tax_cap")
+        run_total["n"] += 1
+        by_domain[domain] += 1
+        if is_ticker:
+            counters["ticker"] += 1
+        if sensitive:
+            counters["legal_tax"] += 1
+        return True, None
+
+    return gate
+
+
+def _critical_alert(message: str, *, dry_run: bool) -> bool:
+    """ONE throttled Telegram for a critical scheduled-intake exception.
+    Never used for pause/caps (those are silent by design); throttled to one
+    send per ALERT_THROTTLE_SECONDS via a state file."""
+    if dry_run:
+        return False
+    now = time.time()
+    try:
+        state = json.loads(ALERT_THROTTLE_PATH.read_text(encoding="utf-8"))
+        if now - float(state.get("last_sent", 0)) < ALERT_THROTTLE_SECONDS:
+            return False
+    except Exception:
+        pass
+    try:
+        from telegram_alert import send_telegram
+        ok = send_telegram(f"[hermes-discovery] CRITICAL scheduled intake exception: "
+                           f"{message[:300]}")
+        ALERT_THROTTLE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        ALERT_THROTTLE_PATH.write_text(json.dumps({"last_sent": now,
+                                                   "message": message[:300]}),
+                                       encoding="utf-8")
+        return bool(ok)
+    except Exception:
+        return False
+
+
+def run_scheduled(*, dry_run: bool = False,
+                  config_path: Path | str | None = None,
+                  scorecard_path: Path | str | None = None) -> dict[str, Any]:
+    """--scheduled entry point: config + do-no-harm-capped run of the enabled
+    ingestors. Returns the JSON run report (spec Part L)."""
+    report: dict[str, Any] = {
+        "mode": "scheduled",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "dry_run": bool(dry_run),
+        "do_no_harm": None,
+        "caps_applied": {},
+        "by_type_counts": {},
+        "skipped_reasons": {},
+        "suggested_cron": SUGGESTED_CRON,
+    }
+    try:
+        cfg = load_schedule_config(config_path)
+        dnh = (load_scorecard_do_no_harm(scorecard_path)
+               if cfg.get("do_no_harm_pause_respected", True) else "steady")
+        caps = effective_caps(cfg, dnh)
+    except Exception as e:  # broken config = critical: fail closed + one throttled alert
+        report["error"] = f"schedule config load failed: {e}"[:300]
+        report["telegram_sent"] = _critical_alert(report["error"], dry_run=dry_run)
+        return report
+
+    report["do_no_harm"] = dnh
+    report["caps_applied"] = caps
+
+    if caps["paused"]:
+        # log once, skip ALL non-operator intake (our ingestors are all
+        # non-operator), NO Telegram — pause is a normal, quiet state.
+        print(f"[hermes-discovery] scheduled intake paused "
+              f"({caps.get('pause_reason') or dnh}); skipping non-operator intake",
+              file=sys.stderr)
+        report["skipped_reasons"] = {"paused": 1}
+        return report
+
+    skipped: dict[str, int] = {}
+    gate = make_intake_gate(caps, _domain_counts_today(), skipped)
+
+    enabled = {name: bool(cfg.get(f"{name}_enabled", True)) for name in INGESTORS}
+    kwargs_by_type: dict[str, dict[str, Any]] = {
+        "ticker": {"min_mentions": caps["min_recurrence_count"]},
+    }
+    critical_errors: list[str] = []
+    for name, fn in INGESTORS.items():
+        if not enabled[name]:
+            report["by_type_counts"][name] = {"enabled": False}
+            continue
+        try:
+            res = fn(limit=caps["max_candidates_per_run"], dry_run=dry_run,
+                     gate=gate, **kwargs_by_type.get(name, {}))
+            report["by_type_counts"][name] = {
+                "scanned": res.get("scanned", 0),
+                "upserted": res.get("upserted", 0),
+                "skipped": res.get("skipped", 0),
+            }
+        except Exception as e:  # one broken producer never blocks the others
+            report["by_type_counts"][name] = {"error": str(e)[:200]}
+            critical_errors.append(f"{name}: {e}")
+
+    report["skipped_reasons"] = skipped
+    if critical_errors and len(critical_errors) == sum(enabled.values()):
+        # EVERY enabled ingestor failed → critical intake exception:
+        # one throttled Telegram, nothing else.
+        report["telegram_sent"] = _critical_alert(
+            "; ".join(critical_errors)[:300], dry_run=dry_run)
+    return report
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
@@ -309,7 +584,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run", action="store_true", help="run the selected ingestors")
-    for name in INGESTORS:
+    ap.add_argument("--scheduled", action="store_true",
+                    help="scheduled mode: config caps + scorecard do-no-harm")
+    for name in ("source", "trend", "ticker", "topic"):
         ap.add_argument(f"--{name}", action="store_true",
                         help=f"run the {name} ingestor (default: all)")
     ap.add_argument("--limit", type=int, default=25, help="max candidates per ingestor")
@@ -317,6 +594,14 @@ def main() -> int:
                     help="list would-be candidates without writing the inbox")
     ap.add_argument("--json", action="store_true", help="JSON output")
     args = ap.parse_args()
+
+    if args.scheduled:
+        report = run_scheduled(dry_run=args.dry_run)
+        print(json.dumps(report, indent=2, default=str))
+        # suggested only — deliberately NOT installed by this script
+        print(f"[hermes-discovery] suggested cron (not installed): {SUGGESTED_CRON}",
+              file=sys.stderr)
+        return 1 if report.get("error") else 0
 
     if not args.run:
         ap.print_help()

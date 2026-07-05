@@ -9,13 +9,35 @@ Design rules (Stage 1):
     committed immediately, so no transaction is ever held open across slow
     work (the 120s idle-in-transaction guard can't bite us).
   * Operator-created candidates are NEVER auto-merged (see dedupe.py).
+
+Universal Research Discovery Layer enrichment (Stage 1, no migration —
+everything lives in meta_json). upsert_candidate stamps these keys on EVERY
+candidate (new rows and re-sighting bumps alike):
+
+  meta_json.research_domain        domain name from config/hermes_research_domains.yaml
+                                   (+ hermes_custom_research_domains.yaml), via
+                                   domains.classify_domain; sticky once set
+  meta_json.domain_risk_level      the domain's risk_level (financial|tax|planning|
+                                   legal|operational|general|variable|medical)
+  meta_json.subject_json           subject envelope built by subjects.build_subject
+                                   (subject_id, canonical_label, tickers, holdings
+                                   join for TICKER candidates, source refs, …)
+  meta_json.advisory_label         always present — advisory-only framing text
+  meta_json.required_review_label  ONLY for professional-review domains (taxes /
+                                   retirement / legal / medical): the
+                                   "consult a qualified professional/clinician"
+                                   label. These candidates are also forced to
+                                   safe_action_level=OPERATOR_REVIEW_REQUIRED.
+
+Domain registry failures (missing/invalid yaml, unknown domain) fail CLOSED:
+intake raises rather than writing unclassified candidates.
 """
 from __future__ import annotations
 
 import json
 from typing import Any
 
-from . import dedupe, scoring
+from . import dedupe, domains, scoring, subjects
 from .symbol_validation import (VERDICT_VALID, validate_ticker)
 
 CANDIDATE_TYPES = frozenset({
@@ -141,6 +163,32 @@ def _persist_score(candidate: dict[str, Any], signals: dict | None = None) -> di
     return dict(row)
 
 
+def _enrich_domain_meta(meta: dict, candidate_view: dict[str, Any],
+                        safe_action_level: str) -> tuple[dict, str, str]:
+    """Universal Research Discovery Layer enrichment (see module docstring).
+
+    Classifies the candidate into a research domain, stamps
+    research_domain / domain_risk_level / advisory_label / subject_json into
+    meta, and — for professional-review domains (taxes/retirement/legal/
+    medical) — adds required_review_label and FORCES
+    safe_action_level=OPERATOR_REVIEW_REQUIRED. Fails closed on a broken or
+    unknown domain registry (domains.DomainConfigError propagates).
+    """
+    domain = domains.classify_domain(candidate_view)
+    policy = domains.domain_policy(domain)
+    meta["research_domain"] = domain
+    meta["domain_risk_level"] = policy["risk_level"]
+    meta["advisory_label"] = policy["advisory_label"]
+    if policy.get("requires_professional_review_label"):
+        meta["required_review_label"] = policy["professional_review_label"]
+        safe_action_level = "OPERATOR_REVIEW_REQUIRED"
+    view = dict(candidate_view)
+    view["meta"] = meta
+    view["safe_action_level"] = safe_action_level
+    meta["subject_json"] = subjects.build_subject(view, domain)
+    return meta, safe_action_level, domain
+
+
 # ── clustering (TREND_CANDIDATE near-duplicates) ─────────────────────────────
 
 def _assign_trend_cluster(row: dict[str, Any], actor: str) -> dict[str, Any]:
@@ -222,6 +270,12 @@ def upsert_candidate(candidate_type: str, label: str, *,
     against symbol_profiles (valid → READY_FOR_REVIEW, else NEEDS_VALIDATION +
     risk flag). New TREND_CANDIDATEs get near-duplicate clustering (operator
     rows exempt). Score parts are always persisted to score_json.
+
+    Every candidate (new or bump) is enriched with research_domain,
+    domain_risk_level, subject_json, advisory_label (and, for taxes/
+    retirement/legal/medical domains, required_review_label plus a forced
+    safe_action_level=OPERATOR_REVIEW_REQUIRED) — see the module docstring
+    for the meta_json key contract.
     """
     candidate_type = (candidate_type or "").strip().upper()
     if candidate_type not in CANDIDATE_TYPES:
@@ -247,16 +301,37 @@ def upsert_candidate(candidate_type: str, label: str, *,
     if existing:
         before = dict(existing)
         merged_evidence = _merge_evidence(existing.get("evidence_json"), evidence)
+        # Re-enrich domain/subject on every re-sighting: existing meta wins
+        # (research_domain is sticky via classify_domain's pin), new meta keys
+        # fill gaps, subject_json refreshes recurrence/last_seen/evidence.
+        bump_meta = dict(existing.get("meta_json") or {})
+        for k, v in meta.items():
+            bump_meta.setdefault(k, v)
+        view = dict(before)
+        view.update({
+            "summary": summary or before.get("summary"),
+            "source_url": source_url or before.get("source_url"),
+            "evidence_json": merged_evidence,
+            "seen_count": int(before.get("seen_count") or 1) + 1,
+            "meta": bump_meta,
+        })
+        bump_meta, bump_level, _domain = _enrich_domain_meta(
+            bump_meta, view, str(before.get("safe_action_level")
+                                 or "OPERATOR_REVIEW_REQUIRED"))
+        force_level = bump_level if bump_level != before.get("safe_action_level") else None
         row = _exec(
             """UPDATE hermes_discovery_candidates
                SET seen_count = seen_count + 1,
                    last_seen_at = NOW(),
                    updated_at = NOW(),
                    evidence_json = %s::jsonb,
+                   meta_json = %s::jsonb,
+                   safe_action_level = COALESCE(%s, safe_action_level),
                    summary = COALESCE(%s, summary),
                    source_url = COALESCE(%s, source_url)
                WHERE id = %s RETURNING *""",
-            (json.dumps(merged_evidence, default=str), summary, source_url,
+            (json.dumps(merged_evidence, default=str),
+             json.dumps(bump_meta, default=str), force_level, summary, source_url,
              existing["id"]), fetch="one")
         if row is None:
             raise DBUnavailableError("upsert bump failed")
@@ -276,6 +351,23 @@ def upsert_candidate(candidate_type: str, label: str, *,
             status = "NEEDS_VALIDATION"
             if "ticker_unvalidated" not in risk_flags:
                 risk_flags.append("ticker_unvalidated")
+
+    # Universal Research Discovery Layer: domain + subject enrichment
+    # (meta_json keys documented in the module docstring; fail-closed).
+    meta, safe_action_level, _domain = _enrich_domain_meta(meta, {
+        "candidate_type": candidate_type,
+        "label": label,
+        "summary": summary,
+        "normalized_key": key,
+        "source_domain": source_domain,
+        "source_url": source_url,
+        "evidence": evidence,
+        "seed_symbols": seed_symbols or [],
+        "extracted_symbols": extracted_symbols or [],
+        "meta": meta,
+        "is_operator": bool(is_operator),
+        "seen_count": 1,
+    }, safe_action_level)
 
     row = _exec(
         """INSERT INTO hermes_discovery_candidates

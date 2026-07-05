@@ -262,5 +262,148 @@ def test_feedback_row_and_bounded_weight_delta(tmp_path):
     assert data["source_deltas"]["noisy.example.com"] == pytest.approx(-feedback.MAX_ABS_DELTA)
 
 
+# ── Universal Research Discovery Layer: domains / subjects / enrichment ──────
+
+def test_domain_registry_loads_with_custom_extensions():
+    from lib.hermes_discovery import domains
+    doms = domains.load_domains()
+    # base registry: the spec's minimum domain set is present
+    for name in ("portfolio_holdings", "watchlist", "sectors", "etfs_funds",
+                 "dividends_income", "taxes", "retirement", "legal", "macro",
+                 "geopolitical", "industry_themes", "technology", "broker_ops",
+                 "system_ops", "custom"):
+        assert name in doms, f"missing base domain {name}"
+    # custom yaml examples load and are auto_promote-hard-forced false
+    for name in ("legal_general", "health_general", "technology_general"):
+        assert name in doms, f"missing custom domain {name}"
+        assert doms[name]["auto_promote"] is False
+        assert doms[name]["source"] == "custom"
+    # medical custom domain carries the clinician label
+    assert doms["health_general"]["risk_level"] == "medical"
+    assert "clinician" in doms["health_general"]["professional_review_label"]
+    # professional-review trio carries the required policy bits
+    for name in ("taxes", "retirement", "legal"):
+        p = doms[name]
+        assert p["requires_citation"] and p["no_personal_advice"]
+        assert p["requires_professional_review_label"]
+        assert p["professional_review_label"] == \
+            "Research summary only — consult a qualified professional."
+
+
+def test_unknown_domain_fails_closed():
+    from lib.hermes_discovery import domains
+    with pytest.raises(domains.DomainConfigError):
+        domains.get_domain("definitely_not_registered")
+
+
+def test_invalid_domain_yaml_fails_closed(tmp_path):
+    from lib.hermes_discovery import domains
+    bad_risk = tmp_path / "bad_risk.yaml"
+    bad_risk.write_text(
+        "domains:\n  custom:\n    description: x\n    risk_level: nuclear\n"
+        "    allowed_candidate_types: [TOPIC_CANDIDATE]\n    promotion_paths: []\n")
+    with pytest.raises(domains.DomainConfigError, match="risk_level"):
+        domains.load_domains(registry_path=bad_risk)
+
+    bad_path = tmp_path / "bad_path.yaml"
+    bad_path.write_text(
+        "domains:\n  custom:\n    description: x\n    risk_level: general\n"
+        "    allowed_candidate_types: [TOPIC_CANDIDATE]\n"
+        "    promotion_paths: [auto_trade]\n")
+    with pytest.raises(domains.DomainConfigError, match="promotion_path"):
+        domains.load_domains(registry_path=bad_path)
+
+    with pytest.raises(domains.DomainConfigError, match="missing"):
+        domains.load_domains(registry_path=tmp_path / "absent.yaml")
+
+
+def test_classify_domain_heuristics():
+    from lib.hermes_discovery import domains
+    cases = {
+        "Roth conversion tax bracket management": "taxes",
+        "RMD rules and social security claiming": "retirement",
+        "SEC enforcement lawsuit over exchange listing": "legal",
+        "fed interest rate path and inflation": "macro",
+        "semiconductor datacenter capex": "technology",
+        "zorblat frobnication nonsense": "custom",  # fallback requires classification
+    }
+    for label, expected in cases.items():
+        got = domains.classify_domain(
+            {"candidate_type": "TOPIC_CANDIDATE", "label": label})
+        assert got == expected, f"{label!r} -> {got}, expected {expected}"
+    # connector shape routing
+    assert domains.classify_domain(
+        {"candidate_type": "CONNECTOR_CANDIDATE", "label": "schwab data feed",
+         "summary": "broker feed"}) == "broker_ops"
+    assert domains.classify_domain(
+        {"candidate_type": "CONNECTOR_CANDIDATE", "label": "quiver api",
+         "summary": "api key gated"}) == "system_ops"
+
+
+def test_subject_id_stable_and_subject_schema():
+    from lib.hermes_discovery import subjects
+    cand = {"candidate_type": "TOPIC_CANDIDATE",
+            "label": "Roth conversion tax bracket management", "seen_count": 2,
+            "evidence": [{"source_domain": "irs.gov", "note": "pub 590"}]}
+    s1 = subjects.build_subject(cand, "taxes")
+    s2 = subjects.build_subject(dict(cand, label="ROTH conversion tax bracket management!",
+                                     seen_count=7), "taxes")
+    assert s1["subject_id"] == s2["subject_id"]  # stable hash id
+    assert s1["subject_type"] == "tax_rule"
+    assert s1["risk_classification"] == "tax"
+    assert s1["safe_action_level"] == "OPERATOR_REVIEW_REQUIRED"
+    assert s1["cross_source_count"] == 1
+    assert s1["source_refs"][0]["source_domain"] == "irs.gov"
+    for key in ("canonical_label", "aliases", "domain", "entities", "tickers",
+                "sectors", "accounts_if_relevant", "holdings_if_relevant",
+                "first_seen", "last_seen", "recurrence_count",
+                "source_quality_summary", "recommended_action"):
+        assert key in s1, f"subject_json missing {key}"
+
+
+@needs_db
+def test_every_upsert_carries_domain_and_subject():
+    from lib.hermes_discovery import inbox
+    row = _track(inbox.upsert_candidate(
+        "TOPIC_CANDIDATE", f"fed rate cut inflation outlook {TAG}",
+        evidence=[{"source_domain": "example.com", "note": "macro chatter"}]))
+    meta = row["meta_json"]
+    assert meta["research_domain"] == "macro"
+    assert meta["domain_risk_level"] == "general"
+    assert meta["advisory_label"]
+    subject = meta["subject_json"]
+    assert subject["subject_id"].startswith("subj_")
+    assert subject["domain"] == "macro"
+    assert subject["subject_type"] == "macro_event"
+    assert subject["recurrence_count"] == 1
+    # re-sighting refreshes the subject (recurrence follows seen_count)
+    bumped = inbox.upsert_candidate(
+        "TOPIC_CANDIDATE", f"fed rate cut inflation outlook {TAG}")
+    assert bumped["id"] == row["id"]
+    b_meta = bumped["meta_json"]
+    assert b_meta["research_domain"] == "macro"  # sticky
+    assert b_meta["subject_json"]["recurrence_count"] == bumped["seen_count"]
+
+
+@needs_db
+def test_professional_review_domains_forced_operator_review():
+    from lib.hermes_discovery import inbox
+    labels = {
+        f"roth conversion tax bracket rules {TAG}": "taxes",
+        f"rmd rules social security timing {TAG}": "retirement",
+        f"sec enforcement lawsuit settlement {TAG}": "legal",
+    }
+    for label, domain in labels.items():
+        row = _track(inbox.upsert_candidate(
+            "TOPIC_CANDIDATE", label,
+            safe_action_level="RESEARCH_ONLY"))  # must be overridden
+        meta = row["meta_json"]
+        assert meta["research_domain"] == domain
+        assert meta["required_review_label"] == \
+            "Research summary only — consult a qualified professional."
+        assert row["safe_action_level"] == "OPERATOR_REVIEW_REQUIRED"
+        assert meta["subject_json"]["safe_action_level"] == "OPERATOR_REVIEW_REQUIRED"
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
