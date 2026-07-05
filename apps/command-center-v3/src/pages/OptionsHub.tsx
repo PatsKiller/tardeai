@@ -97,6 +97,11 @@ export default function OptionsHub({ onDrill }: Props) {
     useApi<any>(`/api/v2/options/positions${posQ}`, 300_000)
   const { data: overview, refetch: refetchOverview } = useApi<any>('/api/v2/options/overview', 300_000)
   const { data: execStatus } = useApi<any>('/api/v2/options/execution/status', 120_000)
+  // Stage B: advisory paper-validation gate progress (deep_itm_call) — header strip
+  const { data: validation } = useApi<any>('/api/v2/options/validation', 300_000)
+  const validationRows: any[] = Array.isArray(validation?.strategies)
+    ? validation.strategies.filter((s: any) => s?.ok)
+    : []
 
   const propList: Proposal[] = Array.isArray(proposals?.proposals) ? proposals.proposals : []
   const proposalSymbols = useMemo(
@@ -291,6 +296,32 @@ export default function OptionsHub({ onDrill }: Props) {
         </div>
       </div>
 
+      {/* Stage B: Strategy Validation strip — advisory paper-gate progress for
+          paper-model strategies (deep_itm_call). Amber only, never green; a met
+          gate still reads "operator decision required" — nothing auto-enables. */}
+      {validationRows.length > 0 && (
+        <div style={{ ...panel, marginBottom: 12, padding: '8px 14px', borderLeft: '4px solid #f59e0b', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: '#f59e0b', textTransform: 'uppercase' }}>Strategy Validation</span>
+          {validationRows.map((s: any) => {
+            const m = s.metrics || {}
+            const wr = m.win_rate != null ? `${(m.win_rate * 100).toFixed(0)}%` : '—'
+            const pf = m.profit_factor != null ? Number(m.profit_factor).toFixed(2) : '—'
+            return (
+              <span key={s.strategy_id} title={s.message} style={{ fontSize: 10.5, color: 'var(--text2)', cursor: 'help' }}>
+                <b style={{ color: 'var(--text0)' }}>{s.display_name || s.strategy_id}</b>
+                {' · '}
+                <span style={{ fontSize: 8.5, fontWeight: 800, padding: '1px 6px', borderRadius: 4, color: '#f59e0b', border: '1px solid rgba(245,158,11,.45)' }}>PAPER MODEL</span>
+                {' '}{s.progress_label ?? '—'} · WR {wr} · PF {pf} · {m.calendar_months ?? 0} mo
+                {' · '}
+                <span style={{ color: s.gate_met ? '#f59e0b' : 'var(--text3)', fontWeight: 700 }}>
+                  {s.gate_met ? 'gate met — operator decision required' : 'gate not met'}
+                </span>
+              </span>
+            )
+          })}
+        </div>
+      )}
+
       {novice && tab === 'Proposals' && (
         <Options101Banner collapsed={guideCollapsed} onToggle={() => setGuideCollapsed(c => !c)} />
       )}
@@ -337,6 +368,7 @@ export default function OptionsHub({ onDrill }: Props) {
                   <option value="protective_put">Protective Put</option>
                   <option value="long_call">Long Call</option>
                   <option value="credit_spread">Credit Spread</option>
+                  <option value="deep_itm_call">Deep ITM Call (paper)</option>
                 </select>
               </TipLabel>
               <TipLabel tip={FILTERS.pop}>

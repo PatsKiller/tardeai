@@ -63,6 +63,15 @@ const STRAT_LABEL: Record<string, string> = {
   long_call: 'Long Call',
   credit_spread: 'Credit Spread',
   protective_put: 'Protective Put',
+  deep_itm_call: 'Deep ITM Call',
+}
+
+// Stage B (2026-07-05): disclosed-flag labels for paper-model (deep_itm_call) rows.
+// Operator ratified: earnings before expiry is a disclosed flag, never a hidden pass.
+const PAPER_FLAG_LABELS: Record<string, string> = {
+  earnings_before_expiry_operator_flagged: '⚠ earnings before expiry',
+  earnings_unknown: 'earnings date unknown',
+  delta_proxy_itm_depth: 'Δ from ITM-depth proxy (chain carried no greeks)',
 }
 
 type HeroTone = { c: string; bg: string; border: string; label: string }
@@ -176,6 +185,23 @@ export default function OptionProposalCardV4({
 
   const manualOnly = p.execution_mode === 'manual' || p.broker === 'fidelity' || !p.auto_eligible
 
+  // ── Stage B: paper-model (deep_itm_call) disclosures — amber, never green ──
+  const paper = !!p.educational_paper_model
+  const cand = p.meta?.analysis?.candidate
+  const bucketDte = p.meta?.dte_bucket?.target_dte ?? p.dte
+  const capPct = cand?.capital_vs_100_shares?.capital_ratio_pct
+  const paperSummary = paper && cand ? [
+    bucketDte != null ? `${bucketDte}d bucket` : null,
+    cand.strike != null ? `$${fmtNum(cand.strike, cand.strike < 50 ? 2 : 0)} strike` : null,
+    cand.delta != null ? `Δ${Number(cand.delta).toFixed(2)}` : 'Δ proxy',
+    cand.breakeven != null
+      ? `BE $${fmtNum(cand.breakeven, 2)}${cand.breakeven_move_pct != null ? ` (${cand.breakeven_move_pct > 0 ? '+' : ''}${Number(cand.breakeven_move_pct).toFixed(1)}%)` : ''}`
+      : null,
+    capPct != null ? `${Math.round(capPct)}% of share capital` : null,
+  ].filter(Boolean).join(' · ') : ''
+  const paperFlags = paper ? (p.meta?.gate_flags || []).map(f => PAPER_FLAG_LABELS[f] || f.replace(/_/g, ' ')) : []
+  const discoveryRef = p.meta?.discovery_ref
+
   const btnStyle = (action: string): React.CSSProperties => {
     const base: React.CSSProperties = { fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, whiteSpace: 'nowrap', cursor: 'pointer' }
     if (action === 'hold') return { ...base, border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: WL.text.dim }
@@ -222,6 +248,19 @@ export default function OptionProposalCardV4({
             <span style={{ fontSize: 10.5, color: WL.text.dim }}>{fmtExpiry(p.expiration)}</span>
           </div>
           <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', marginTop: 5 }}>
+            {paper && (
+              <span
+                title="Educational paper model — manual review only, never live-eligible. Outcomes feed the strategy validation gate (30 paper outcomes, PF>1.3, WR>55%) before any live consideration."
+                style={{ ...chip(WL.signal.amber), background: 'transparent', cursor: 'help' }}
+              >
+                DEEP ITM · PAPER MODEL
+              </span>
+            )}
+            {paper && p.validation_progress?.label && (
+              <span title={p.validation_progress.message || 'Closed paper outcomes recorded vs the validation gate.'} style={{ ...chip(WL.signal.amber, true), cursor: 'help' }}>
+                {p.validation_progress.label}
+              </span>
+            )}
             {ds && <span title={ds.tip} style={chip(ds.c)}>{ds.label}</span>}
             {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={chip(WL.text.secondary, true)}>income sleeve</span>}
             {p.enterprise?.live_eligible && <span title={PROPOSAL.liveOk} style={{ ...chip(WL.signal.teal), cursor: 'help' }}>live eligible</span>}
@@ -310,6 +349,29 @@ export default function OptionProposalCardV4({
       </div>
 
       <div style={{ padding: '0 15px 12px' }}>
+        {/* Stage B: paper-model disclosure block — analysis one-liner, disclosed
+            flags, discovery lineage. Amber-only; no live affordance exists here. */}
+        {paper && (
+          <div style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(245,166,35,.06)', border: '1px solid rgba(245,166,35,.28)', fontSize: 10.5, lineHeight: 1.55, color: WL.text.secondary }}>
+            {paperSummary && (
+              <div style={{ ...numStyle, fontSize: 11, fontWeight: 700, color: WL.text.primary }}>{paperSummary}</div>
+            )}
+            {paperFlags.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                {paperFlags.map(f => (
+                  <span key={f} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: WL.signal.amber, border: '1px solid rgba(245,166,35,.4)', background: 'transparent' }}>{f}</span>
+                ))}
+              </div>
+            )}
+            <div style={{ fontSize: 9.5, color: WL.text.dim, marginTop: 6 }}>
+              {discoveryRef?.candidate_id != null
+                ? `from discovery #${discoveryRef.candidate_id} · approved research`
+                : 'discovery lineage unavailable'}
+              {p.queue_status ? ` · queue: ${p.queue_status} (manual review)` : ''}
+            </div>
+          </div>
+        )}
+
         {novice && (
           <div style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(148,163,184,.07)', border: '1px solid rgba(148,163,184,.18)', fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.5 }}>
             <b style={{ color: WL.text.primary }}>In plain English:</b> {plainEnglishProposal(p)}
@@ -361,13 +423,14 @@ export default function OptionProposalCardV4({
           </div>
         )}
 
-        {/* ⑤ Footer — execution path + manual log */}
-        {(p.execution_note || onManualLog) && (
+        {/* ⑤ Footer — execution path + manual log (manual log hidden for paper
+            models: there is nothing to execute; desk review/ack is the only action) */}
+        {(p.execution_note || (onManualLog && !paper)) && (
           <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 9, paddingTop: 8, borderTop: `1px solid ${WL.surface.divider}` }}>
             <span title="Live execution path status" style={{ fontSize: 9.5, color: WL.text.dim, fontStyle: 'italic', lineHeight: 1.4, minWidth: 0 }}>
               {p.execution_note || ''}
             </span>
-            {onManualLog && (
+            {onManualLog && !paper && (
               <button type="button" title={ACTIONS.manualLog} onClick={onManualLog} style={{ fontSize: 10, fontWeight: 800, padding: '5px 11px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: WL.text.secondary, cursor: 'help', flexShrink: 0 }}>
                 Executed manually
               </button>
