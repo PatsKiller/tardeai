@@ -696,6 +696,23 @@ export default function BrokerProposalCardV4({
               cloud {String(cloudConsensus || ov.cloud_review?.status).replace(/_/g, ' ').toLowerCase()}
             </span>
           )}
+          {/* Cloud dual-consensus verdict (advisory only — signal color, no gating) */}
+          {(p.cloud_consensus?.consensus === 'CLOUD_APPROVE' || p.cloud_consensus?.consensus === 'ESCALATED') && (
+            <span
+              style={{
+                fontWeight: p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? 800 : 700,
+                color: p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? W.teal : W.amber,
+                whiteSpace: 'nowrap',
+              }}
+              title={[
+                `Cloud dual-consensus (advisory only)${p.cloud_consensus.as_of ? ` · ${p.cloud_consensus.as_of}` : ''}`,
+                `grok ${p.cloud_consensus.grok_verdict || '—'}: ${p.cloud_consensus.grok_note || 'no note'}`,
+                `chatgpt ${p.cloud_consensus.chatgpt_verdict || '—'}: ${p.cloud_consensus.chatgpt_note || 'no note'}`,
+              ].join('\n')}
+            >
+              {p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? '☁ CLOUD APPROVE' : '☁ escalated — split'}
+            </span>
+          )}
           <span style={{ color: voteColor, whiteSpace: 'nowrap' }} title={_stances.length ? `Agent stances: ${_stances.join(' · ')}` : 'Agent reviews — detail in Gates & Reviews below'}>
             agents {voteSummary}
           </span>

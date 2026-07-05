@@ -1,0 +1,7 @@
+{
+  "_comment": "Cloud dual-consensus verdict policy (ADVISORY ONLY — approves nothing, changes no proposal status). daily_cap = max verdict rows scored per day. paused is set by the do-no-harm kill switch in scripts/cloud_consensus_verdict.py; manual resume = operator sets paused back to false and clears pause_reason.",
+  "daily_cap": 5,
+  "enabled": true,
+  "paused": false,
+  "pause_reason": null
+}
