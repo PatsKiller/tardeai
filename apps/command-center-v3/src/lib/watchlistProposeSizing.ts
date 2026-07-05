@@ -1,6 +1,8 @@
 /** Advisory position sizing for watchlist propose modal — 1–2% of available cash/buying power. */
 
-export type RiskPct = 1 | 2
+/** 1% default · 2% desk max · 0.5/0.75% are the volatility-reduced options the wide-stop
+ *  suggestion (volatilityRiskSuggestion) can apply — same math, smaller budget. */
+export type RiskPct = 0.5 | 0.75 | 1 | 2
 
 export type ProposalAccount = {
   account_key: string
@@ -134,7 +136,7 @@ export function parseSizingPolicy(raw: unknown): SizingPolicy {
 
 /** Stop wider than typical → suggest a reduced effective risk %. Stop-distance is the direct
  *  volatility proxy already on the card; returns null when the stop is in the normal band. */
-export function volatilityRiskSuggestion(entry: number | null, stop: number | null): { stopPct: number; suggestPct: number } | null {
+export function volatilityRiskSuggestion(entry: number | null, stop: number | null): { stopPct: number; suggestPct: RiskPct } | null {
   if (!entry || !stop || entry <= stop) return null
   const stopPct = ((entry - stop) / entry) * 100
   if (stopPct > 10) return { stopPct, suggestPct: 0.5 }

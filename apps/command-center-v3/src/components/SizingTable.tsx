@@ -24,7 +24,8 @@ type Props = {
   entry: number | null
   stop: number | null
   target: number | null
-  /** Only READY / near-entry states offer the size ▸ route into the Propose modal. */
+  /** READY / near-entry renders size ▸ teal; other states keep it actionable but amber
+   *  (stale-data caution) — the Propose modal + oversight gates remain the safety net. */
   canPropose: boolean
   /** Desk concentration policy: max % of available cash deployed per position (from proposal-accounts). */
   maxDeployPctOfCash?: number
@@ -51,15 +52,20 @@ function k(v: number): string {
 export default function SizingTable({ accounts, heldPositions, entry, stop, target, canPropose, maxDeployPctOfCash, onSize }: Props) {
   const [riskPct, setRiskPct] = useState<RiskPct>(1)
 
+  // Fractional risk (0.5/0.75) only enters via the wide-stop suggestion button below; while
+  // active it renders as an extra selected segment so the toggle never lies about state.
+  const riskOpts: RiskPct[] = riskPct === 0.5 || riskPct === 0.75 ? [riskPct, 1, 2] : [1, 2]
   const header = (
     <div style={label}>
       <span>Sizing &amp; account risk</span>
       <span style={{ display: 'inline-flex', border: '1px solid rgba(148,163,184,.25)', borderRadius: 5, overflow: 'hidden' }}>
-        {([1, 2] as RiskPct[]).map(p => (
+        {riskOpts.map(p => (
           <button
             key={p}
             onClick={e => { e.stopPropagation(); setRiskPct(p) }}
-            title={p === 2 ? '2% of available cash = desk max risk per position' : '1% of available cash (default)'}
+            title={p === 2 ? '2% of available cash = desk max risk per position'
+              : p === 1 ? '1% of available cash (default)'
+              : `${p}% of available cash — volatility-reduced for a wide stop`}
             style={{
               fontSize: 9.5, fontWeight: 800, padding: '2px 8px', border: 'none', cursor: 'pointer',
               background: riskPct === p ? 'rgba(45,212,191,.15)' : 'transparent',
@@ -167,8 +173,15 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
                       {r.pos.shares.toLocaleString()}{r.pos.concentrationCapped || r.cashCapped ? ' ⚠' : ''}
                     </td>
                     <td style={cell}>{k(r.pos.investment)}</td>
-                    <td style={cell}>{k(r.pos.dollarRisk)}</td>
-                    <td style={cell} title={r.eq > 0 ? `risk ≈${((r.pos.dollarRisk / r.eq) * 100).toFixed(2)}% of this account's equity` : undefined}>
+                    <td style={cell}>
+                      {k(r.pos.dollarRisk)}
+                      {r.eq > 0 && (
+                        <div style={{ fontSize: 9, color: WL.text.dim, lineHeight: 1.2 }} title="risk as % of this account's total equity (reference — the budget is % of cash)">
+                          {((r.pos.dollarRisk / r.eq) * 100).toFixed(2)}% eq
+                        </div>
+                      )}
+                    </td>
+                    <td style={cell}>
                       {r.base > 0 ? `${r.deployPct.toFixed(1)}%` : '—'}
                       {r.tight
                         ? <span style={{ color: WL.signal.amber, fontWeight: 700, fontFamily: 'inherit' }} title="deployment above 50% of this account's available cash — liquidity is tight"> tight</span>
@@ -177,14 +190,18 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
                   </>
                 )}
                 <td style={{ ...cell, whiteSpace: 'nowrap' }}>
-                  {canPropose && !insufficient ? (
+                  {!insufficient ? (
+                    /* size ▸ stays actionable on every state with a plan — the Propose modal +
+                       oversight gates are the real safety net; amber flags a non-READY card. */
                     <button
                       onClick={e => { e.stopPropagation(); onSize?.(r.key, riskPct) }}
-                      title={`Open Propose Entry pre-filled: ${r.name} @ ${riskPct}% risk`}
-                      style={{ fontSize: 10.5, fontWeight: 700, color: WL.signal.teal, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+                      title={canPropose
+                        ? `Open Propose Entry pre-filled: ${r.name} @ ${riskPct}% risk`
+                        : 'data stale/caution — refresh before routing; proposal will still queue for review'}
+                      style={{ fontSize: 10.5, fontWeight: 700, color: canPropose ? WL.signal.teal : WL.signal.amber, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
                     >size ▸</button>
                   ) : (
-                    <span title={canPropose ? undefined : 'sizing is informational until the card is READY (refresh / validate first)'} style={{ color: WL.text.dim, fontSize: 10 }}>·</span>
+                    <span style={{ color: WL.text.dim, fontSize: 10 }}>·</span>
                   )}
                 </td>
               </tr>
@@ -200,7 +217,17 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
         {anyConcCapped ? ` · position cap ${sized.find(r => r.pos.concentrationCapped)?.cap?.label}` : ''}
         {volNote && (
           <span style={{ color: WL.signal.amber, fontWeight: 700 }} title="Stop distance is wider than the normal band — same $ risk buys fewer shares; consider reducing effective risk %">
-            {' '}· wide stop ({volNote.stopPct.toFixed(1)}%) — consider {volNote.suggestPct}% risk
+            {' '}· wide stop ({volNote.stopPct.toFixed(1)}%) — consider{' '}
+            <button
+              onClick={e => { e.stopPropagation(); setRiskPct(volNote.suggestPct) }}
+              title={`Apply ${volNote.suggestPct}% risk to the table (volatility-reduced budget)`}
+              style={{
+                fontSize: 10, fontWeight: 800, padding: '0 4px', borderRadius: 4, cursor: 'pointer',
+                border: '1px solid rgba(245,166,35,.45)', background: riskPct === volNote.suggestPct ? 'rgba(245,166,35,.18)' : 'transparent',
+                color: WL.signal.amber, fontFamily: 'inherit',
+              }}
+            >{volNote.suggestPct}%</button>
+            {' '}risk
           </span>
         )}
         {holds.length > 0 && (
