@@ -35,7 +35,7 @@
     "telegram_on_trend_drop": true,
     "min_realert_minutes": 360,
     "realert_on_score_drop": 5,
-    "flap_suppress_minutes": 120
+    "flap_suppress_minutes": 360
   },
   "history": {
     "retention_days": 90,
@@ -153,7 +153,12 @@
   "systemd_units": {
     "_comment": "Detect failed trade-stack systemd units (missed scheduled runs). Detection-only: restart needs sudo.",
     "enabled": true,
-    "unit_prefixes": ["tradeai-", "portfolio-", "grok-oauth", "chatgpt-oauth"]
+    "unit_prefixes": [
+      "tradeai-",
+      "portfolio-",
+      "grok-oauth",
+      "chatgpt-oauth"
+    ]
   },
   "db_connections": {
     "_comment": "Count Postgres idle-in-transaction kills (script holding a txn through slow non-DB work; killed at the 120s session timeout). Caught the 2026-07-04 scope-governor outage class.",
