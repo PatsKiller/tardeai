@@ -163,15 +163,18 @@ def sync_to_db():
         """, [sid, version, config_hash, file_path, status,
               json.dumps(config, default=str)])
 
-        # Upsert strategy_registry (INSERT if missing, UPDATE if exists)
+        # Upsert strategy_registry (INSERT if missing, UPDATE if exists).
+        # strategy_id must always be set (convention: strategy_id == strategy_type) — omitting it
+        # here created NULL-strategy_id rows the weekly review rendered as "None (UNVALIDATED)".
         display = config.get("name", sid.replace("_", " ").title())
         cur.execute("""
-            INSERT INTO strategy_registry (strategy_type, display_name, config_hash, yaml_version, active, last_yaml_sync_at)
-            VALUES (%s, %s, %s, %s, TRUE, NOW())
+            INSERT INTO strategy_registry (strategy_type, strategy_id, display_name, config_hash, yaml_version, active, last_yaml_sync_at)
+            VALUES (%s, %s, %s, %s, %s, TRUE, NOW())
             ON CONFLICT (strategy_type) DO UPDATE
             SET config_hash=EXCLUDED.config_hash, yaml_version=EXCLUDED.yaml_version,
+                strategy_id=COALESCE(strategy_registry.strategy_id, EXCLUDED.strategy_id),
                 last_yaml_sync_at=NOW()
-        """, [sid, display, config_hash, version])
+        """, [sid, sid, display, config_hash, version])
 
         # Cache prompt context
         prompt_ctx = get_strategy_prompt_context(sid)

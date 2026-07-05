@@ -279,6 +279,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 and "run_finviz_momentum_scalp_scan.py" not in cmd \
                 and "run_sec_form4_momentum_context.py" not in cmd \
                 and "reset_stuck_agent_jobs.py" not in cmd \
+                and "fix_strategy_registry_null_ids.py" not in cmd \
                 and "remediate_proposal_trade_plans.py" not in cmd \
                 and "hermes_scope_governor.py" not in cmd:
             continue
@@ -1021,6 +1022,53 @@ def _annotate(f: dict, rmap: dict):
         f["recommended_action"] = "Operator review."
         f["actionable"] = True
     _attach_cta(f)
+
+
+def collect_strategy_registry_integrity() -> list[dict]:
+    """Strategy Weekly Review data integrity (2026-07-05 incident):
+    (a) strategy_registry rows with NULL/empty strategy_id — created by an old config-loader
+        upsert that omitted the column; the weekly review rendered them as 'None (UNVALIDATED)'.
+        Auto-remediable: fix_strategy_registry_null_ids.py backfills strategy_id = strategy_type
+        (they are real YAML strategies, not orphans — backfill, never delete) with a JSONL audit.
+    (b) the weekly review's real-trade join returning 0 rows while the schwab journal
+        (trade_closed) has ≥1 closed trade — the join is broken. Needs-operator alert only;
+        never auto-rewrite joins."""
+    out = []
+    try:
+        rows = _db("""SELECT strategy_type FROM strategy_registry
+                      WHERE strategy_id IS NULL OR BTRIM(strategy_id) = ''""", fetch="all") or []
+        if rows:
+            names = sorted(str(r.get("strategy_type")) for r in rows)
+            shown = ", ".join(names[:6]) + ("…" if len(names) > 6 else "")
+            out.append(_f("data_quality", "strategy_registry_null_ids", "warning",
+                          f"{len(rows)} strategy_registry rows have NULL/empty strategy_id ({shown}) — "
+                          f"weekly review renders them as 'None (UNVALIDATED)'; backfilling "
+                          f"strategy_id = strategy_type",
+                          count=len(rows), strategy_types=names))
+    except Exception as e:
+        out.append(_f("data_quality", "collector_error", "info",
+                      f"strategy_registry null-id check error: {e}"))
+    try:
+        st_file = STATE_DIR / "strategy_weekly_review_latest.json"
+        if st_file.exists():
+            age_h = _file_age_h(st_file)
+            if age_h is not None and age_h <= 8 * 24:  # only judge a recent review run
+                st = json.loads(st_file.read_text())
+                r = _db("SELECT COUNT(*) AS n FROM trade_closed", fetch="one") or {}
+                journal_n = int(r.get("n") or 0)
+                seen = int(st.get("real_rows_attributed") or 0) + int(st.get("real_rows_unattributed") or 0)
+                if journal_n >= 1 and seen == 0:
+                    out.append(_f("data_quality", "weekly_review_real_join_zero", "critical",
+                                  f"strategy weekly review saw 0 real trades but the schwab journal "
+                                  f"(trade_closed) has {journal_n} closed trades — real-trade join "
+                                  f"broken; needs operator review (joins are never auto-rewritten)",
+                                  journal_closed=journal_n,
+                                  review_generated_at=st.get("generated_at"),
+                                  action_type="review"))
+    except Exception as e:
+        out.append(_f("data_quality", "collector_error", "info",
+                      f"weekly_review real-join check error: {e}"))
+    return out
 
 
 CATEGORIES = ["data_quality", "execution_health", "intelligence_quality",
@@ -1844,6 +1892,7 @@ COLLECTORS = [
     collect_risk_protection,
     collect_retirement_planning,
     collect_strategy_output,
+    collect_strategy_registry_integrity,
     collect_proposal_maturity,
     collect_proposal_trade_plan_health,
     collect_log_errors,
