@@ -26214,9 +26214,46 @@ def _hdi_clean_row(row):
     return {k: _json_clean(v) for k, v in (row or {}).items()}
 
 
+# URDL meta_json contract keys hoisted onto each returned row (documented in
+# lib/hermes_discovery/inbox.py module docstring).
+_HDI_META_FIELDS = ("research_domain", "domain_risk_level", "subject_json",
+                    "advisory_label", "required_review_label", "llm_review_json")
+
+
+def _hdi_meta_dict(row):
+    """meta_json as a dict (tolerant: jsonb usually arrives as dict, but
+    parse strings defensively; anything else -> {})."""
+    meta = (row or {}).get("meta_json")
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except Exception:
+            meta = {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def _hdi_promotion_paths(domain):
+    """Allowed promotion paths for a research domain (fail-soft: unknown
+    domain / broken registry -> [] — this is a display hint only)."""
+    if not domain:
+        return []
+    try:
+        from lib.hermes_discovery import domains as _ddomains
+        return list(_ddomains.domain_policy(str(domain)).get("promotion_paths") or [])
+    except Exception:
+        return []
+
+
 def _hermes_discovery_inbox_list(query=None):
-    """GET /api/v2/hermes/discovery-inbox?type=&status=&domain=&limit= — list inbox
-    candidates + aggregate stats. Read-only/advisory."""
+    """GET /api/v2/hermes/discovery-inbox?type=&status=&domain=&limit=
+    &research_domain=&risk_level=&llm_reviewed=&safe_action_level= — list inbox
+    candidates + aggregate stats. Read-only/advisory.
+
+    research_domain / risk_level / llm_reviewed filter on the URDL meta_json
+    contract keys (research_domain, domain_risk_level, llm_review_json);
+    safe_action_level filters the column. Those meta fields (plus
+    domain_promotion_paths, a display hint from the domain registry) are
+    hoisted onto every returned row."""
     import sys as _s
     _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from lib.hermes_discovery import inbox as _dinbox
@@ -26225,9 +26262,31 @@ def _hermes_discovery_inbox_list(query=None):
                                    status=_hdi_qv(query, "status"),
                                    source_domain=_hdi_qv(query, "domain"),
                                    limit=limit)
-    return {"advisory_only": True, "count": len(rows),
+    f_rdomain = _hdi_qv(query, "research_domain")
+    f_risk = _hdi_qv(query, "risk_level")
+    f_reviewed = _hdi_qv(query, "llm_reviewed")
+    f_level = _hdi_qv(query, "safe_action_level")
+    out = []
+    for r in rows:
+        meta = _hdi_meta_dict(r)
+        if f_rdomain and str(meta.get("research_domain") or "").lower() != str(f_rdomain).lower():
+            continue
+        if f_risk and str(meta.get("domain_risk_level") or "").lower() != str(f_risk).lower():
+            continue
+        if f_reviewed is not None:
+            want = str(f_reviewed).strip().lower() in ("1", "true", "yes")
+            if bool(meta.get("llm_review_json")) != want:
+                continue
+        if f_level and str(r.get("safe_action_level") or "").upper() != str(f_level).upper():
+            continue
+        clean = _hdi_clean_row(r)
+        for k in _HDI_META_FIELDS:
+            clean[k] = _json_clean(meta.get(k))
+        clean["domain_promotion_paths"] = _hdi_promotion_paths(meta.get("research_domain"))
+        out.append(clean)
+    return {"advisory_only": True, "count": len(out),
             "stats": _dinbox.inbox_stats(),
-            "candidates": [_hdi_clean_row(r) for r in rows],
+            "candidates": out,
             "note": "Discovery Inbox is observation + operator review only — "
                     "promotion runs through governed pathways, never direct writes."}
 
@@ -26268,6 +26327,29 @@ def _hermes_discovery_inbox_action(candidate_id, action, body):
     actor = str(b.get("actor") or "operator")[:60]
     notes = b.get("notes")
     try:
+        if action == "request-llm-review":
+            # Advisory-only LLM triage lane (spec Part D/J). Lazy import; the
+            # daily cap is checked BEFORE dispatch so an exhausted cap surfaces
+            # as 429 instead of burning a review attempt. Never promotes or
+            # transitions — review_candidate asserts status unchanged.
+            from lib.hermes_discovery import llm_review as _dllm
+            caps = _dllm._schedule_caps()
+            used = _dllm._count_llm_reviews_today()
+            cap = caps.get("llm_review_daily_cap", 0)
+            if used >= cap:
+                return 429, {"ok": False, "advisory_only": True,
+                             "reason": f"llm_review_daily_cap exhausted ({used}/{cap})"}
+            res = _dllm.review_candidate(int(candidate_id), actor=actor or "operator")
+            if res.get("ok"):
+                return 200, {"ok": True, "advisory_only": True,
+                             "candidate_id": int(candidate_id),
+                             "llm_review_json": _json_clean(res.get("llm_review_json")),
+                             "lanes_used": res.get("lanes_used"),
+                             "escalation": _json_clean(res.get("escalation"))}
+            return 200, {"ok": False, "advisory_only": True,
+                         "candidate_id": int(candidate_id),
+                         "error": res.get("error") or "review_failed",
+                         "detail": res.get("detail")}
         if action == "approve-source":
             res = _dpromo.promote_source(candidate_id, actor=actor, notes=notes)
         elif action == "approve-research-topic":
@@ -26293,7 +26375,8 @@ def _hermes_discovery_inbox_action(candidate_id, action, body):
             return 400, {"ok": False,
                          "error": f"unknown action '{action}' (valid: approve-source, "
                                   "approve-research-topic, approve-watch-directive, "
-                                  "stage-ticker, reject, merge, needs-more-data, block)"}
+                                  "stage-ticker, reject, merge, needs-more-data, block, "
+                                  "request-llm-review)"}
         return 200, {"ok": True, "advisory_only": True, "action": action,
                      "result": {k: _json_clean(v) for k, v in res.items()}}
     except _dinbox.CandidateNotFoundError as e:

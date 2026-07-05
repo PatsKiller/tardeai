@@ -39,6 +39,16 @@ interface Candidate {
   first_seen_at: string | null
   last_seen_at: string | null
   operator_decision: string | null
+  // URDL meta_json contract fields — hoisted by the list endpoint; fall back
+  // to meta_json itself when talking to an older backend (metaField below).
+  meta_json?: unknown
+  research_domain?: string | null
+  domain_risk_level?: string | null
+  subject_json?: unknown
+  advisory_label?: string | null
+  required_review_label?: string | null
+  llm_review_json?: unknown
+  domain_promotion_paths?: unknown
 }
 interface InboxData { candidates?: Candidate[]; stats?: Record<string, unknown> }
 
@@ -102,6 +112,46 @@ function riskFlags(c: Candidate): string[] {
   if (typeof p === 'string') return p ? [p] : []
   if (typeof p === 'object') return Object.entries(p as Record<string, unknown>).filter(([, v]) => !!v).map(([k]) => k)
   return []
+}
+
+// ── URDL meta_json contract helpers (research_domain / domain_risk_level /
+//    subject_json / advisory_label / required_review_label / llm_review_json) ──
+
+function metaField(c: Candidate, key: string): unknown {
+  const direct = (c as unknown as Record<string, unknown>)[key]
+  if (direct != null) return parseMaybeJson(direct)
+  const m = parseMaybeJson(c.meta_json)
+  if (m && typeof m === 'object' && !Array.isArray(m)) return parseMaybeJson((m as Record<string, unknown>)[key])
+  return null
+}
+
+function metaStr(c: Candidate, key: string): string {
+  const v = metaField(c, key)
+  return typeof v === 'string' ? v : v != null && typeof v !== 'object' ? String(v) : ''
+}
+
+function metaObj(c: Candidate, key: string): Record<string, unknown> | null {
+  const v = metaField(c, key)
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+}
+
+// risk levels whose domain chip renders amber (professional-review adjacent)
+const AMBER_RISK_LEVELS = new Set(['tax', 'legal', 'planning', 'medical'])
+
+const LLM_SCORE_KEYS: [string, string][] = [
+  ['relevance_score', 'relevance'], ['source_quality_score', 'source quality'],
+  ['novelty_score', 'novelty'], ['risk_score', 'risk'],
+  ['hallucination_risk', 'hallucination risk'], ['duplicate_risk', 'duplicate risk'],
+  ['confidence', 'confidence'],
+]
+
+function llmScoresTip(r: Record<string, unknown>): string {
+  const lines = LLM_SCORE_KEYS
+    .filter(([k]) => r[k] != null && Number.isFinite(Number(r[k])))
+    .map(([k, label]) => `${label}: ${Number(r[k]).toFixed(2)}`)
+  if (r.legal_tax_sensitive) lines.push('legal/tax sensitive')
+  if (r.needs_professional_review) lines.push('needs professional review')
+  return lines.join('\n') || 'llm review scores unavailable'
 }
 
 function scoreOf(c: Candidate): { total: number | null; parts: [string, string][] } {
@@ -220,12 +270,20 @@ function scorecardTiles(sc: Record<string, unknown> | null): { label: string; va
 
 // ── candidate card ───────────────────────────────────────────────────────────
 
+interface AuditRow { id?: number | string; action?: string; actor?: string; notes?: string | null; created_at?: string | null }
+
 function DiscoveryCard({ c, onDone }: { c: Candidate; onDone: () => void }) {
   const [evOpen, setEvOpen] = useState(false)
   const [confirming, setConfirming] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [actErr, setActErr] = useState<string | null>(null)
   const [decidedAs, setDecidedAs] = useState<string | null>(null)
+  const [llmBusy, setLlmBusy] = useState(false)
+  const [llmErr, setLlmErr] = useState<string | null>(null)
+  const [localReview, setLocalReview] = useState<Record<string, unknown> | null>(null)
+  const [auditOpen, setAuditOpen] = useState(false)
+  const [auditRows, setAuditRows] = useState<AuditRow[] | null>(null)
+  const [auditErr, setAuditErr] = useState<string | null>(null)
 
   const st = stateOf(decidedAs ? `${decidedAs}` : c.status)
   const { total, parts } = scoreOf(c)
@@ -238,6 +296,53 @@ function DiscoveryCard({ c, onDone }: { c: Candidate; onDone: () => void }) {
   const terminal = decidedAs != null || TERMINAL_RE.test(String(c.status ?? '').toLowerCase()) || !!c.operator_decision
   const scoreTip = parts.length ? parts.map(([k, v]) => `${k}: ${v}`).join('\n') : 'composite discovery score'
   const recSlug = String(c.recommended_action ?? '').toLowerCase().replace(/_/g, '-')
+
+  // URDL enrichment (meta_json contract)
+  const rDomain = metaStr(c, 'research_domain')
+  const riskLevel = metaStr(c, 'domain_risk_level').toLowerCase()
+  const requiredReview = metaStr(c, 'required_review_label')
+  const subject = metaObj(c, 'subject_json')
+  const subjectType = subject && typeof subject.subject_type === 'string' ? subject.subject_type : ''
+  const recurrence = subject != null ? Number(subject.recurrence_count) : NaN
+  const crossSource = subject != null ? Number(subject.cross_source_count) : NaN
+  const review = localReview ?? metaObj(c, 'llm_review_json')
+  const promoPaths = asStringList(c.domain_promotion_paths)
+  const domainAmber = AMBER_RISK_LEVELS.has(riskLevel)
+
+  const requestReview = async () => {
+    if (llmBusy || busy != null) return
+    setLlmBusy(true)
+    setLlmErr(null)
+    try {
+      const r = await fetch(`/api/v2/hermes/discovery-inbox/${encodeURIComponent(String(c.id))}/request-llm-review`, { method: 'POST' })
+      let j: any = null
+      try { j = await r.json() } catch { /* non-JSON error body */ }
+      if (r.status === 429) throw new Error(j?.reason || 'daily LLM review cap exhausted — try tomorrow')
+      if (!r.ok || (j && j.ok === false)) throw new Error(j?.reason || j?.error || j?.detail || `HTTP ${r.status}`)
+      if (j?.llm_review_json && typeof j.llm_review_json === 'object') setLocalReview(j.llm_review_json)
+      setAuditRows(null) // review appends an audit row — refetch on next expand
+      onDone()
+    } catch (e: any) {
+      setLlmErr(e?.message || 'LLM review failed')
+    } finally {
+      setLlmBusy(false)
+    }
+  }
+
+  const toggleAudit = async () => {
+    if (auditOpen) { setAuditOpen(false); return }
+    setAuditOpen(true)
+    if (auditRows != null) return
+    setAuditErr(null)
+    try {
+      const r = await fetch(`/api/v2/hermes/discovery-inbox/${encodeURIComponent(String(c.id))}`)
+      const j: any = await r.json().catch(() => null)
+      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`)
+      setAuditRows(Array.isArray(j?.audit) ? j.audit : [])
+    } catch (e: any) {
+      setAuditErr(e?.message || 'audit trail unavailable')
+    }
+  }
 
   const doAction = async (a: ActionDef) => {
     if (busy || terminal) return
@@ -288,8 +393,59 @@ function DiscoveryCard({ c, onDone }: { c: Candidate; onDone: () => void }) {
         <div style={{ padding: '0 18px 8px', fontSize: 11.5, color: WL.text.secondary, lineHeight: 1.5 }}>{c.summary}</div>
       )}
 
+      {/* professional-review label — rendered prominently on sensitive domains */}
+      {requiredReview && (
+        <div style={{
+          margin: '0 18px 8px', padding: '6px 10px', fontSize: 11, fontWeight: 700,
+          color: WL.signal.amber, border: `1px solid ${WL.signal.amber}55`,
+          borderRadius: 6, lineHeight: 1.4,
+        }}>
+          ⚠ {requiredReview}
+        </div>
+      )}
+
+      {/* LLM review summary — advisory triage verdict (tooltip = full scores) */}
+      {review && (
+        <div
+          title={llmScoresTip(review)}
+          style={{
+            margin: '0 18px 8px', padding: '7px 10px', background: WL.surface.inset,
+            border: `1px solid ${WL.surface.edge}`, borderRadius: 6,
+          }}
+        >
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 10 }}>
+            <span style={moduleLabel}>llm review</span>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: WL.text.primary }}>
+              {String(review.recommended_action ?? '—').replace(/_/g, ' ')}
+            </span>
+            {Number.isFinite(Number(review.confidence)) && (
+              <span style={{ fontSize: 10.5, color: WL.text.muted }}>
+                conf <span style={numStyle}>{Number(review.confidence).toFixed(2)}</span>
+              </span>
+            )}
+            <span style={{ fontSize: 10.5, color: WL.text.dim }}>
+              lanes: {asStringList(review.lanes_used).join(' + ') || '—'}
+            </span>
+          </div>
+          {typeof review.reasoning_summary === 'string' && review.reasoning_summary && (
+            <div style={{
+              marginTop: 3, fontSize: 11, color: WL.text.secondary, lineHeight: 1.45,
+              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            }}>{review.reasoning_summary}</div>
+          )}
+        </div>
+      )}
+
       {/* evidence + risk flags */}
       <div style={{ padding: '0 18px 8px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, fontSize: 11 }}>
+        {rDomain && (
+          <span
+            style={chipStyle(domainAmber ? WL.signal.amber : WL.text.muted)}
+            title={`research domain (risk level: ${riskLevel || 'unknown'})`}
+          >
+            {rDomain.replace(/_/g, ' ')}{riskLevel ? ` · ${riskLevel}` : ''}
+          </span>
+        )}
         {shownLinks.length > 0 && (
           <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', minWidth: 0 }}>
             <span style={moduleLabel}>evidence</span>
@@ -318,6 +474,56 @@ function DiscoveryCard({ c, onDone }: { c: Candidate; onDone: () => void }) {
           <span style={{ color: WL.signal.amber }}>dup cluster #{String(c.duplicate_cluster_id)}</span>
         )}
         {c.safe_action_level && <span>safe level: {c.safe_action_level}</span>}
+        {subjectType && <span>subject: {subjectType.replace(/_/g, ' ')}</span>}
+        {Number.isFinite(recurrence) && (
+          <span>recurrence <span style={{ ...numStyle, color: WL.text.muted }}>{recurrence}×</span></span>
+        )}
+        {Number.isFinite(crossSource) && (
+          <span>cross-source <span style={{ ...numStyle, color: WL.text.muted }}>{crossSource}</span></span>
+        )}
+      </div>
+
+      {/* promotion-path preview (from the domain registry) + audit expander */}
+      <div style={{ padding: '0 18px 10px', fontSize: 10.5, color: WL.text.dim }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+          {promoPaths.length > 0 && (
+            <span title="promotion paths this domain allows — every one is operator-gated">
+              promotes via: {promoPaths.map(p => p.replace(/_/g, ' ')).join(' · ')}
+            </span>
+          )}
+          <button onClick={toggleAudit} style={textButton(WL.text.dim, false)}>
+            {auditOpen ? 'audit trail ▴' : 'audit trail ▾'}
+          </button>
+        </div>
+        {auditOpen && (
+          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {auditErr ? (
+              <span style={{ color: WL.signal.amber }}>{auditErr}</span>
+            ) : auditRows == null ? (
+              <span>loading audit trail…</span>
+            ) : auditRows.length === 0 ? (
+              <span>no audit rows</span>
+            ) : (
+              auditRows.slice(0, 15).map((a, i) => (
+                <div key={String(a.id ?? i)} style={{ display: 'flex', gap: 8, alignItems: 'baseline', minWidth: 0 }}>
+                  <span style={{ ...numStyle, color: WL.text.dim, flexShrink: 0, width: 58 }}>{ago(a.created_at)}</span>
+                  <span style={{ fontWeight: 700, color: WL.text.muted, flexShrink: 0 }}>
+                    {String(a.action ?? '?').replace(/_/g, ' ').toLowerCase()}
+                  </span>
+                  <span style={{ flexShrink: 0 }}>{a.actor || 'system'}</span>
+                  {a.notes && (
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }} title={a.notes}>
+                      {a.notes}
+                    </span>
+                  )}
+                </div>
+              ))
+            )}
+            {auditRows != null && auditRows.length > 15 && (
+              <span>+{auditRows.length - 15} older rows (see API detail)</span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* actions */}
@@ -329,27 +535,39 @@ function DiscoveryCard({ c, onDone }: { c: Candidate; onDone: () => void }) {
               : <>decided{c.operator_decision ? <> — <b style={{ color: WL.text.secondary }}>{String(c.operator_decision).replace(/[_-]/g, ' ')}</b></> : null} · no further actions</>}
           </span>
         ) : (
-          actionsFor(c).map(a => {
-            const isRec = recSlug === a.slug
-            const color = a.danger ? WL.signal.red : WL.signal.teal
-            const label = busy === a.slug ? `${a.label}…`
-              : confirming === a.slug ? `Confirm ${a.label.toLowerCase()}?` : `${a.label} ▸`
-            return (
+          <>
+            {actionsFor(c).map(a => {
+              const isRec = recSlug === a.slug
+              const color = a.danger ? WL.signal.red : WL.signal.teal
+              const label = busy === a.slug ? `${a.label}…`
+                : confirming === a.slug ? `Confirm ${a.label.toLowerCase()}?` : `${a.label} ▸`
+              return (
+                <button
+                  key={a.slug}
+                  onClick={() => doAction(a)}
+                  disabled={busy != null || llmBusy}
+                  title={isRec ? 'recommended by discovery scoring' : undefined}
+                  style={{
+                    ...textButton(a.danger ? (confirming === a.slug ? WL.signal.red : WL.text.dim) : color, busy != null || llmBusy),
+                    ...(isRec ? { textDecoration: 'underline', textUnderlineOffset: 3 } : {}),
+                    ...(confirming === a.slug ? { color: WL.signal.red } : {}),
+                  }}
+                >{label}</button>
+              )
+            })}
+            {!review && (
               <button
-                key={a.slug}
-                onClick={() => doAction(a)}
-                disabled={busy != null}
-                title={isRec ? 'recommended by discovery scoring' : undefined}
-                style={{
-                  ...textButton(a.danger ? (confirming === a.slug ? WL.signal.red : WL.text.dim) : color, busy != null),
-                  ...(isRec ? { textDecoration: 'underline', textUnderlineOffset: 3 } : {}),
-                  ...(confirming === a.slug ? { color: WL.signal.red } : {}),
-                }}
-              >{label}</button>
-            )
-          })
+                onClick={requestReview}
+                disabled={busy != null || llmBusy}
+                title="advisory-only LLM triage — never changes candidate status"
+                style={textButton(WL.signal.teal, busy != null || llmBusy)}
+              >{llmBusy ? 'Requesting LLM review…' : 'Request LLM review ▸'}</button>
+            )}
+          </>
         )}
-        {actErr && <span style={{ fontSize: 10.5, color: WL.signal.red, marginLeft: 'auto' }}>{actErr}</span>}
+        {(actErr || llmErr) && (
+          <span style={{ fontSize: 10.5, color: WL.signal.red, marginLeft: 'auto' }}>{actErr || llmErr}</span>
+        )}
       </div>
 
       {/* advisory footer — REQUIRED verbatim on every card */}
@@ -364,6 +582,8 @@ function DiscoveryCard({ c, onDone }: { c: Candidate; onDone: () => void }) {
 
 const TYPE_OPTIONS = ['source', 'research_topic', 'watch_directive', 'ticker']
 const STATUS_OPTIONS = ['new', 'pending_validation', 'needs_more_data', 'approved', 'staged', 'rejected', 'blocked', 'merged']
+const RISK_LEVEL_OPTIONS = ['financial', 'tax', 'planning', 'legal', 'operational', 'general', 'variable', 'medical']
+const SAFE_LEVEL_OPTIONS = ['OBSERVE_ONLY', 'RESEARCH_ONLY', 'OPERATOR_REVIEW_REQUIRED', 'AUTO_STAGE_INSIDE_RAILS', 'BLOCKED']
 
 export default function HermesDiscoveryInbox() {
   const [typeF, setTypeF] = useState('')
@@ -371,28 +591,51 @@ export default function HermesDiscoveryInbox() {
   const [domainInput, setDomainInput] = useState('')
   const [domainF, setDomainF] = useState('')
   const [minScore, setMinScore] = useState('')
+  const [rDomainF, setRDomainF] = useState('')      // research_domain (server-side)
+  const [riskF, setRiskF] = useState('')            // domain_risk_level (server-side)
+  const [reviewedF, setReviewedF] = useState('')    // llm_reviewed '', 'true', 'false' (server-side)
+  const [safeLevelF, setSafeLevelF] = useState('')  // safe_action_level (server-side)
+  const [profOnly, setProfOnly] = useState(false)   // required_review_label present (client-side)
 
   const qs = useMemo(() => {
     const p = new URLSearchParams()
     if (typeF) p.set('type', typeF)
     if (statusF) p.set('status', statusF)
     if (domainF) p.set('domain', domainF)
+    if (rDomainF) p.set('research_domain', rDomainF)
+    if (riskF) p.set('risk_level', riskF)
+    if (reviewedF) p.set('llm_reviewed', reviewedF)
+    if (safeLevelF) p.set('safe_action_level', safeLevelF)
     p.set('limit', '100')
     return p.toString()
-  }, [typeF, statusF, domainF])
+  }, [typeF, statusF, domainF, rDomainF, riskF, reviewedF, safeLevelF])
 
   const inbox = useApi<InboxData>(`/api/v2/hermes/discovery-inbox?${qs}`, 60_000)
   const scorecard = useApi<Record<string, unknown>>('/api/v2/hermes/discovery-scorecard', 120_000)
 
   const all = inbox.data?.candidates ?? []
   const min = Number(minScore)
-  const candidates = Number.isFinite(min) && minScore !== ''
-    ? all.filter(c => { const t = scoreOf(c).total; return t != null && t >= min })
-    : all
+  const candidates = all.filter(c => {
+    if (Number.isFinite(min) && minScore !== '') {
+      const t = scoreOf(c).total
+      if (t == null || t < min) return false
+    }
+    if (profOnly && !metaStr(c, 'required_review_label')) return false
+    return true
+  })
 
   // union fixed options with whatever the live data actually uses
   const typeOptions = useMemo(() => [...new Set([...TYPE_OPTIONS, ...all.map(c => String(c.candidate_type ?? '')).filter(Boolean)])], [all])
   const statusOptions = useMemo(() => [...new Set([...STATUS_OPTIONS, ...all.map(c => String(c.status ?? '')).filter(Boolean)])], [all])
+  const rDomainOptions = useMemo(
+    () => [...new Set([...(rDomainF ? [rDomainF] : []), ...all.map(c => metaStr(c, 'research_domain')).filter(Boolean)])].sort(),
+    [all, rDomainF])
+  const riskOptions = useMemo(
+    () => [...new Set([...RISK_LEVEL_OPTIONS, ...all.map(c => metaStr(c, 'domain_risk_level').toLowerCase()).filter(Boolean)])],
+    [all])
+  const safeLevelOptions = useMemo(
+    () => [...new Set([...SAFE_LEVEL_OPTIONS, ...all.map(c => String(c.safe_action_level ?? '').toUpperCase()).filter(Boolean)])],
+    [all])
 
   const tiles = scorecardTiles(scorecard.data)
   const maturityLine = typeof scorecard.data?.maturity_line === 'string' ? String(scorecard.data.maturity_line) : MATURITY_LINE
@@ -428,6 +671,32 @@ export default function HermesDiscoveryInbox() {
           style={{ ...filterCtl, width: 74, ...numStyle }}
           title="minimum composite score (client-side)"
         />
+        <select value={rDomainF} onChange={e => setRDomainF(e.target.value)} style={filterCtl} title="research domain">
+          <option value="">all domains</option>
+          {rDomainOptions.map(d => <option key={d} value={d}>{d.replace(/_/g, ' ')}</option>)}
+        </select>
+        <select value={riskF} onChange={e => setRiskF(e.target.value)} style={filterCtl} title="domain risk level">
+          <option value="">all risk levels</option>
+          {riskOptions.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={reviewedF} onChange={e => setReviewedF(e.target.value)} style={filterCtl} title="LLM review status">
+          <option value="">llm: any</option>
+          <option value="true">llm reviewed</option>
+          <option value="false">not reviewed</option>
+        </select>
+        <select value={safeLevelF} onChange={e => setSafeLevelF(e.target.value)} style={filterCtl} title="safe action level">
+          <option value="">all safe levels</option>
+          {safeLevelOptions.map(l => <option key={l} value={l}>{l.replace(/_/g, ' ').toLowerCase()}</option>)}
+        </select>
+        <button
+          onClick={() => setProfOnly(v => !v)}
+          title="only candidates requiring professional review (tax / planning / legal / medical)"
+          style={{
+            ...filterCtl, cursor: 'pointer', fontWeight: 700,
+            color: profOnly ? WL.signal.amber : WL.text.secondary,
+            borderColor: profOnly ? `${WL.signal.amber}88` : WL.surface.edge,
+          }}
+        >{profOnly ? '⚠ prof review ✓' : '⚠ prof review'}</button>
         <span style={{ marginLeft: 'auto', fontSize: 10.5, color: WL.text.dim }}>
           <span style={numStyle}>{candidates.length}</span> of <span style={numStyle}>{all.length}</span> candidates
           {inbox.stale && <span style={{ color: WL.signal.amber, marginLeft: 8 }}>reconnecting…</span>}

@@ -33,7 +33,8 @@ from lib.hermes_outcome_bus.alert_enrichment import enrich_alerts
 from lib.hermes_outcome_bus.alert_notifications import dispatch_alert_notifications
 from lib.hermes_outcome_bus.alerts import evaluate_alerts
 from lib.hermes_outcome_bus.maturity import build_maturity_status, write_maturity_snapshot
-from lib.hermes_outcome_bus.bus import OUTCOME_BUS_VERSION, load_outcome_bus_trend, read_outcome_bus, write_outcome_bus
+from lib.hermes_outcome_bus.bus import (OUTCOME_BUS_VERSION, build_discovery_health_section,
+                                        load_outcome_bus_trend, read_outcome_bus, write_outcome_bus)
 from lib.hermes_outcome_bus.bus_traceability import enrich_bus_traceability
 from lib.hermes_outcome_bus.metrics import build_stop_correlations, compute_resource_efficiency_score
 from lib.hermes_logging.request_logger import aggregate_request_stats
@@ -521,6 +522,86 @@ def fetch_resource_efficiency(cur, cfg: dict[str, Any], global_m: dict[str, Any]
     )
 
 
+def fetch_discovery_health_extras(cur) -> dict[str, Any]:
+    """DB-derived discovery_health extras: top/noisy sources, top trends,
+    recurring duplicate clusters. Every query is defensive — a missing table or
+    dead cursor returns {} and never crashes the bus build. Read-only."""
+    extras: dict[str, Any] = {}
+
+    def _q(key: str, sql: str, mapper) -> None:
+        try:
+            cur.execute(sql)
+            rows = cur.fetchall() or []
+            val = [mapper(r) for r in rows]
+            if val:
+                extras[key] = val
+        except Exception:
+            try:
+                cur.connection.rollback()
+            except Exception:
+                pass
+
+    _q("top_sources",
+       """SELECT source_domain, count(*) AS n, round(avg(discovery_score)::numeric, 3)
+          FROM hermes_discovery_candidates
+          WHERE source_domain IS NOT NULL
+            AND created_at > NOW() - interval '30 days'
+            AND status NOT IN ('REJECTED','BLOCKED','MERGED_DUPLICATE','ARCHIVED_COLD')
+          GROUP BY source_domain
+          ORDER BY count(*) DESC, avg(discovery_score) DESC NULLS LAST LIMIT 5""",
+       lambda r: {"source_domain": r[0], "candidates_30d": int(r[1] or 0),
+                  "avg_score": float(r[2]) if r[2] is not None else None})
+
+    _q("top_trends",
+       """SELECT label, seen_count, discovery_score
+          FROM hermes_discovery_candidates
+          WHERE candidate_type = 'TREND_CANDIDATE'
+            AND status NOT IN ('REJECTED','BLOCKED','MERGED_DUPLICATE','ARCHIVED_COLD')
+          ORDER BY seen_count DESC, discovery_score DESC NULLS LAST LIMIT 5""",
+       lambda r: {"label": r[0], "seen_count": int(r[1] or 0),
+                  "score": float(r[2]) if r[2] is not None else None})
+
+    _q("noisy_sources",
+       """SELECT source_domain, count(*) AS total,
+                 count(*) FILTER (WHERE status IN ('REJECTED','BLOCKED','MERGED_DUPLICATE')
+                                    OR duplicate_cluster_id IS NOT NULL) AS noisy
+          FROM hermes_discovery_candidates
+          WHERE source_domain IS NOT NULL
+            AND created_at > NOW() - interval '30 days'
+          GROUP BY source_domain
+          HAVING count(*) >= 3
+             AND (count(*) FILTER (WHERE status IN ('REJECTED','BLOCKED','MERGED_DUPLICATE')
+                                     OR duplicate_cluster_id IS NOT NULL))::float
+                 / count(*) >= 0.5
+          ORDER BY 3 DESC LIMIT 5""",
+       lambda r: {"source_domain": r[0], "candidates_30d": int(r[1] or 0),
+                  "noisy_count": int(r[2] or 0),
+                  "noise_rate": round(int(r[2] or 0) / max(1, int(r[1] or 0)), 3)})
+
+    _q("recurring_duplicate_clusters",
+       """SELECT cluster_key, label, member_count
+          FROM hermes_discovery_clusters
+          WHERE member_count >= 2
+          ORDER BY member_count DESC, updated_at DESC LIMIT 5""",
+       lambda r: {"cluster_key": r[0], "label": r[1], "member_count": int(r[2] or 0)})
+
+    return extras
+
+
+def build_discovery_health(cur) -> dict[str, Any]:
+    """discovery_health bus section (spec Part G): file-sourced core
+    (build_discovery_health_section, stale/missing-safe) + best-effort DB
+    extras. Never raises. Advisory-only — the bus takes no discovery actions."""
+    section = build_discovery_health_section()
+    try:
+        for key, val in fetch_discovery_health_extras(cur).items():
+            if not section.get(key):
+                section[key] = val
+    except Exception:
+        pass
+    return section
+
+
 def build_feedback_to_governor(by_symbol: dict[str, Any], cfg: dict[str, Any]) -> list[dict[str, Any]]:
     """Governor actions: price-graded gates + combined tag/symbol demotion only."""
     gates = cfg.get("outcome_gates") or {}
@@ -626,6 +707,7 @@ def build_bus(cur, cfg: dict[str, Any], run_id: str) -> dict[str, Any]:
     stop_quality = fetch_stop_quality(cur, cfg)
     resource_efficiency = fetch_resource_efficiency(cur, cfg, global_m)
     global_m["hermes_api_calls_7d"] = resource_efficiency.get("hermes_api_calls_7d")
+    discovery_health = build_discovery_health(cur)
 
     alert_window = int((cfg.get("alerts") or {}).get("history_window_days", 14))
     trend = load_outcome_bus_trend(days=alert_window)
@@ -657,6 +739,7 @@ def build_bus(cur, cfg: dict[str, Any], run_id: str) -> dict[str, Any]:
         "by_tag": by_tag,
         "stop_quality": stop_quality,
         "resource_efficiency": resource_efficiency,
+        "discovery_health": discovery_health,
         "alerts": alerts,
         "maturity": maturity,
         "s3_reactivation_policy": cfg.get("s3_reactivation") or {},
@@ -694,6 +777,7 @@ def run(apply: bool = False) -> dict[str, Any]:
         "hit_rate_promotions": g.get("hit_rate_promotions"),
         "hit_rate_trades": g.get("hit_rate_trades"),
         "active_alerts": len((bus.get("alerts") or {}).get("active") or []),
+        "discovery_health_status": (bus.get("discovery_health") or {}).get("status"),
         "maturity_status": (bus.get("maturity") or {}).get("overall_status"),
         "maturity_tier": (bus.get("maturity") or {}).get("tier"),
         "maturity_composite_score": (bus.get("maturity") or {}).get("composite_score"),
