@@ -153,7 +153,7 @@ def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
 def test_15_build_marker_visible_for_deployment_verification():
     src = read(APP)
     assert "BUILD_MARKER" in src
-    assert "cc-v3 live-stops-review-ts 2026-06-30" in src
+    assert "cc-v3 stop-evidence PR33" in src
 
 
 def test_16_live_stops_endpoint_and_review_tooltips():
