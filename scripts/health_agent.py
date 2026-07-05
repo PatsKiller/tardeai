@@ -2038,32 +2038,63 @@ def persist(snapshot: dict, policy: dict | None = None):
 ALERT_STATE = STATE_DIR / "health_agent_alert_state.json"
 
 
+def _parse_iso(ts) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
 def _alert_suppressed(policy: dict, snapshot: dict) -> bool:
     """Throttle repeat alerts: an unchanged DEGRADED re-alerted every 30-min run is noise
     (2026-07-04: 6 identical Telegrams in an hour, doubled by a duplicate systemd timer).
-    Alert only on status change, a meaningful score drop, or a periodic heartbeat."""
+    Alert only on status change, a meaningful score drop, or a periodic heartbeat.
+
+    Flap guard (2026-07-04 evening): a check oscillating each run (e.g. intelligence 100↔60)
+    flips status DEGRADED↔UNHEALTHY every 30 min; each flip re-armed `changed`/`worsened`
+    and paged 6 more times in 6 hours. We remember the last alert per status ("recent") —
+    flipping back to a recently-alerted status at a similar score is suppressed; a genuinely
+    new status or a real deterioration still alerts immediately."""
     acfg = policy.get("alert", {})
     realert_m = float(acfg.get("min_realert_minutes", 360))
     drop_pts = float(acfg.get("realert_on_score_drop", 5))
+    flap_m = float(acfg.get("flap_suppress_minutes", 120))
     try:
         st = json.loads(ALERT_STATE.read_text()) if ALERT_STATE.exists() else {}
     except Exception:
         st = {}
     now = datetime.now(timezone.utc)
-    last_at = None
-    try:
-        last_at = datetime.fromisoformat(str(st.get("at", "")).replace("Z", "+00:00"))
-    except Exception:
-        pass
-    changed = st.get("status") != snapshot["status"]
-    worsened = snapshot["overall_score"] <= float(st.get("score", 100)) - drop_pts
+    last_at = _parse_iso(st.get("at", ""))
+    status = snapshot["status"]
+    score = snapshot["overall_score"]
+    recent = st.get("recent") if isinstance(st.get("recent"), dict) else {}
+
+    changed = st.get("status") != status
+    if changed:
+        prev = recent.get(status) or {}
+        prev_at = _parse_iso(prev.get("at", ""))
+        # Flapping back to a status we alerted on within flap_suppress_minutes, at a score
+        # no worse than last time → not news. A real drop still passes via `worsened`.
+        if prev_at and (now - prev_at).total_seconds() < flap_m * 60 \
+                and score > float(prev.get("score", -1)) - drop_pts:
+            changed = False
+    # Worsening is judged against the last alerted score FOR THIS STATUS when we have one,
+    # so an oscillation between two stable (status, score) pairs cannot re-arm it each flip.
+    baseline = (recent.get(status) or {}).get("score", st.get("score", 100))
+    worsened = score <= float(baseline) - drop_pts
     heartbeat_due = last_at is None or (now - last_at).total_seconds() >= realert_m * 60
     if not (changed or worsened or heartbeat_due):
         return True
     try:
+        recent = dict(recent)
+        recent[status] = {"at": now.isoformat(), "score": score}
+        # prune per-status entries too old to matter for flap/worsening decisions
+        horizon = max(realert_m, flap_m) * 60
+        recent = {s: v for s, v in recent.items()
+                  if (_parse_iso((v or {}).get("at", "")) or now) >= now - timedelta(seconds=horizon)}
         ALERT_STATE.parent.mkdir(parents=True, exist_ok=True)
-        ALERT_STATE.write_text(json.dumps({"at": now.isoformat(), "status": snapshot["status"],
-                                           "score": snapshot["overall_score"]}))
+        ALERT_STATE.write_text(json.dumps({"at": now.isoformat(), "status": status,
+                                           "score": score, "recent": recent}))
     except Exception:
         pass
     return False
