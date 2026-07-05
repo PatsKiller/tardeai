@@ -26315,6 +26315,124 @@ _HDI_DECISION_ACTIONS = {
 }
 
 
+def _hdi_feasibility_symbol(row, meta, override=None):
+    """Resolve the underlying for a feasibility run: explicit ?symbol=/body
+    symbol first, then candidate seed/extracted symbols, then the subject
+    ticker, then private-proxy underlyings. Returns (symbol, source) or
+    (None, None) — never guesses."""
+    import re as _re
+    def _valid(s):
+        s = str(s or "").strip().upper()
+        return s if _re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,9}", s) else None
+    if override is not None:
+        return _valid(override), "operator_param"
+    def _first(vals):
+        for v in (vals or []):
+            if isinstance(v, dict):
+                v = v.get("ticker") or v.get("symbol")
+            ok = _valid(v)
+            if ok:
+                return ok
+        return None
+    for key, src in (("seed_symbols", "seed_symbols"),
+                     ("extracted_symbols", "extracted_symbols")):
+        vals = (row or {}).get(key)
+        if isinstance(vals, str):
+            try:
+                vals = json.loads(vals)
+            except Exception:
+                vals = [vals]
+        sym = _first(vals if isinstance(vals, list) else [])
+        if sym:
+            return sym, src
+    subject = meta.get("subject_json")
+    if isinstance(subject, dict):
+        cand = subject.get("symbol") or subject.get("ticker")
+        if not cand and str(subject.get("subject_type") or "") == "ticker":
+            cand = subject.get("subject")
+        sym = _valid(cand)
+        if sym:
+            return sym, "subject_json"
+    ppj = meta.get("private_proxy_json")
+    if isinstance(ppj, dict):
+        sym = _first(ppj.get("proxy_underlyings")) \
+            or _first(ppj.get("options_possible_on"))
+        if sym:
+            return sym, "private_proxy_json"
+    return None, None
+
+
+def _hdi_run_feasibility(candidate_id, body, query=None):
+    """POST /api/v2/hermes/discovery-inbox/{id}/run-feasibility — read-only
+    options-chain feasibility research for a candidate (spec feasibility
+    action). EDUCATIONAL_ONLY, advisory-only: lazy-imports
+    lib.strategy_research.options_chain (the options desk's read-only Schwab
+    chain path — no order/submit surface exists in that package) and runs
+    deep_itm_call_analysis, or chain_snapshot when the candidate's
+    meta.strategy_json names a non-deep-ITM options family. The ONLY write is
+    one hermes_discovery_audit row (action FEASIBILITY_RUN); the candidate
+    row, its status, and its meta are never touched."""
+    from lib.hermes_discovery import inbox as _dinbox
+    b = body or {}
+    actor = str(b.get("actor") or "operator")[:60]
+    row = _dinbox.get_candidate(int(candidate_id))
+    if not row:
+        return 404, {"ok": False, "error": f"candidate {candidate_id} not found"}
+    meta = _hdi_meta_dict(row)
+    override = _hdi_qv(query, "symbol", b.get("symbol"))
+    symbol, symbol_source = _hdi_feasibility_symbol(row, meta, override)
+
+    # strategy family → analysis mode (deep ITM is the default lens; other
+    # options families get the snapshot + per-strategy feasibility map)
+    sj = meta.get("strategy_json") if isinstance(meta.get("strategy_json"), dict) else {}
+    family = str(sj.get("family") or "")
+    strategy_name = str(sj.get("strategy_name") or "")
+    is_options_family = family.startswith("options")
+    deep_itm_named = "deep" in strategy_name.lower() and "itm" in strategy_name.lower()
+    mode = ("chain_snapshot"
+            if (is_options_family and not deep_itm_named) else "deep_itm_call")
+
+    base = {"ok": True, "advisory_only": True, "educational_only": True,
+            "candidate_id": int(candidate_id),
+            "candidate_type": row.get("candidate_type"),
+            "mode": mode, "symbol": symbol, "symbol_source": symbol_source}
+    if not symbol:
+        analysis = {"available": False,
+                    "reason": "no resolvable ticker on this candidate "
+                              "(no seed/extracted/subject/proxy symbols) — "
+                              "pass ?symbol= to analyze a specific underlying"}
+    else:
+        try:
+            from lib.strategy_research import options_chain as _oc
+        except Exception as e:
+            analysis = {"available": False,
+                        "reason": f"options_chain research module unavailable: "
+                                  f"{str(e)[:160]}"}
+        else:
+            try:
+                if mode == "chain_snapshot":
+                    analysis = _oc.fetch_chain_snapshot(symbol)
+                else:
+                    analysis = _oc.deep_itm_call_analysis(symbol)
+            except Exception as e:
+                analysis = {"available": False,
+                            "reason": f"feasibility run failed: {str(e)[:200]}"}
+    # single audit row — the only write this endpoint performs
+    audit_recorded = True
+    try:
+        _dinbox._audit(int(candidate_id), "FEASIBILITY_RUN", actor, None,
+                       {"symbol": symbol, "symbol_source": symbol_source,
+                        "mode": mode,
+                        "available": bool(analysis.get("available")),
+                        "reason": analysis.get("reason")},
+                       notes="read-only options-chain feasibility research "
+                             "(EDUCATIONAL_ONLY — no candidate mutation)")
+    except Exception:
+        audit_recorded = False
+    return 200, {**base, "audit_recorded": audit_recorded,
+                 "analysis": json.loads(json.dumps(analysis, default=str))}
+
+
 def _hermes_discovery_inbox_action(candidate_id, action, body):
     """POST /api/v2/hermes/discovery-inbox/{id}/{action} — operator decision or
     governed promotion. Approve-* actions route through promotion.py (the ONLY
@@ -26327,6 +26445,10 @@ def _hermes_discovery_inbox_action(candidate_id, action, body):
     actor = str(b.get("actor") or "operator")[:60]
     notes = b.get("notes")
     try:
+        if action == "run-feasibility":
+            # Read-only options-chain feasibility research (EDUCATIONAL_ONLY).
+            # ?symbol= (or body.symbol) overrides candidate symbol resolution.
+            return _hdi_run_feasibility(int(candidate_id), b, _current_query)
         if action == "request-llm-review":
             # Advisory-only LLM triage lane (spec Part D/J). Lazy import; the
             # daily cap is checked BEFORE dispatch so an exhausted cap surfaces
@@ -26376,7 +26498,7 @@ def _hermes_discovery_inbox_action(candidate_id, action, body):
                          "error": f"unknown action '{action}' (valid: approve-source, "
                                   "approve-research-topic, approve-watch-directive, "
                                   "stage-ticker, reject, merge, needs-more-data, block, "
-                                  "request-llm-review)"}
+                                  "request-llm-review, run-feasibility)"}
         return 200, {"ok": True, "advisory_only": True, "action": action,
                      "result": {k: _json_clean(v) for k, v in res.items()}}
     except _dinbox.CandidateNotFoundError as e:
@@ -26408,8 +26530,100 @@ def _hermes_discovery_scorecard_api():
     return json.loads(json.dumps(card, default=str))
 
 
+def _hermes_discovery_gaps(query=None):
+    """GET /api/v2/hermes/discovery-gaps?gap_type=&status=&limit=&include_closed=
+    — White-Space gap dashboard aggregation (spec Part H-data).
+
+    Aggregates GAP_CANDIDATE rows PLUS any candidate carrying a
+    meta_json.gap_type stamp, grouped by gap_type. Read-only/advisory:
+    thesis = why_missing + why_it_matters from the white-space meta contract
+    (lib/hermes_discovery/white_space.py); recommended_next_action comes from
+    meta.proposed_coverage. Closed rows (REJECTED / MERGED_DUPLICATE /
+    ARCHIVED_COLD) are excluded unless include_closed=1."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from db_adapter import _execute as _dbx
+    limit = min(int(_hdi_qv(query, "limit", 200) or 200), 500)
+    f_gap_type = _hdi_qv(query, "gap_type")
+    f_status = _hdi_qv(query, "status")
+    include_closed = str(_hdi_qv(query, "include_closed", "")
+                         or "").strip().lower() in ("1", "true", "yes")
+    closed = ("REJECTED", "MERGED_DUPLICATE", "ARCHIVED_COLD")
+    rows = _dbx(
+        """SELECT id, candidate_type, label, summary, status, safe_action_level,
+                  seen_count, discovery_score, created_at, last_seen_at,
+                  evidence_json, meta_json
+           FROM hermes_discovery_candidates
+           WHERE (candidate_type = 'GAP_CANDIDATE'
+                  OR meta_json->>'gap_type' IS NOT NULL)
+           ORDER BY last_seen_at DESC, id DESC LIMIT %s""",
+        (limit,), fetch="all") or []
+    by_gap_type = {}
+    total = 0
+    for r in rows:
+        r = dict(r)
+        status = str(r.get("status") or "")
+        if not include_closed and status in closed:
+            continue
+        if f_status and status.upper() != str(f_status).upper():
+            continue
+        meta = _hdi_meta_dict(r)
+        gap_type = str(meta.get("gap_type") or "UNCLASSIFIED_GAP").upper()
+        if f_gap_type and gap_type != str(f_gap_type).upper():
+            continue
+        why_missing = str(meta.get("why_missing") or "").strip()
+        why_matters = str(meta.get("why_it_matters") or "").strip()
+        thesis = " ".join(x for x in (why_missing, why_matters) if x) \
+            or str(r.get("summary") or "")
+        evidence = r.get("evidence_json")
+        if isinstance(evidence, str):
+            try:
+                evidence = json.loads(evidence)
+            except Exception:
+                evidence = []
+        subject_json = meta.get("subject_json")
+        if not isinstance(subject_json, dict):
+            subject_json = {}
+        gap = {
+            "id": r.get("id"),
+            "candidate_type": r.get("candidate_type"),
+            "label": r.get("label"),
+            "gap_type": gap_type,
+            "thesis": thesis,
+            "evidence_count": len(evidence or []),
+            "domain": meta.get("research_domain"),
+            "workspace": meta.get("workspace_id"),
+            "safe_action": r.get("safe_action_level"),
+            "recommended_next_action": (
+                meta.get("proposed_coverage")
+                or subject_json.get("recommended_action")
+                or "Operator review required (advisory-only gap finding)."),
+            "status": status,
+            "source_count": meta.get("source_count"),
+            "recurrence_count": (meta.get("recurrence_count")
+                                 or r.get("seen_count")),
+            "current_system_coverage": meta.get("current_system_coverage"),
+            "score": (float(r["discovery_score"])
+                      if r.get("discovery_score") is not None else None),
+            "first_seen": r.get("created_at"),
+            "last_seen": r.get("last_seen_at"),
+        }
+        bucket = by_gap_type.setdefault(gap_type, {"count": 0, "gaps": []})
+        bucket["count"] += 1
+        bucket["gaps"].append(_hdi_clean_row(gap))
+        total += 1
+    return {"advisory_only": True,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "total": total,
+            "gap_types": {k: by_gap_type[k] for k in sorted(by_gap_type)},
+            "note": "White-space gaps are observation + operator review only — "
+                    "OPERATOR_REVIEW_REQUIRED, promotion runs through governed "
+                    "pathways, never direct writes."}
+
+
 ROUTES = {
     "/api/v2/hermes/discovery-inbox": lambda q=None: _hermes_discovery_inbox_list(q),
+    "/api/v2/hermes/discovery-gaps": lambda q=None: _hermes_discovery_gaps(q),
     "/api/v2/hermes/discovery-scorecard": lambda: _hermes_discovery_scorecard_api(),
     "/api/v2/health": lambda: _health_agent_dashboard(),
     "/api/v2/health/history": lambda: _health_agent_history(),

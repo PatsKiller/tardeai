@@ -1,0 +1,95 @@
+# hermes_research_workspaces.yaml — White-Space Discovery workspaces (spec Part F).
+#
+# Loaded + validated by scripts/lib/hermes_discovery/workspaces.py (fail-closed:
+# a broken/ambiguous file raises WorkspaceConfigError and NO candidate intake
+# proceeds unclassified).
+#
+# A workspace is an ISOLATION BOUNDARY for research output:
+#   * Every discovery candidate is stamped with meta_json.workspace_id +
+#     meta_json.workspace_domain by inbox.upsert_candidate's enrichment
+#     (derived from the candidate's research domain via workspace_for_domain).
+#   * assert_can_write(workspace_id, surface) is the write gate: a workspace
+#     may only write to its own output_surfaces, and a workspace with
+#     trading_related: false can NEVER write a trading surface
+#     (watchlist / watch_directives / proposals / staged_ticker_review /
+#     trade_queue) — that raises WorkspaceIsolationError regardless of config.
+#   * A candidate from a non-trading workspace can never be consumed as a
+#     trading signal (workspaces.assert_tradeable_signal raises).
+#
+# Schema:
+#   default_workspace            workspace that owns every domain no other
+#                                workspace explicitly claims
+#   workspaces.<id>:
+#     description                what the workspace covers
+#     trading_related            true → may write trading surfaces it lists;
+#                                false → trading surfaces hard-blocked
+#     domains                    research domains this workspace claims; a
+#                                domain may be claimed by AT MOST ONE workspace
+#                                (duplicates fail the load)
+#     output_surfaces            the only surfaces this workspace may write
+#     auto_promote               must be false (validation rejects true)
+#     requires_professional_review_label / no_legal_advice_label
+#                                extra labeling obligations carried onto every
+#                                candidate routed to this workspace
+#
+# All workspaces are advisory-only. Nothing here can place, size, or modify a
+# trade — surfaces end at operator-gated registries and queues.
+
+version: 1
+
+default_workspace: trade_ai
+
+workspaces:
+  trade_ai:
+    description: >-
+      Default Trade AI research workspace — portfolio, watchlist, sector,
+      macro, tax/retirement/legal-as-portfolio-context, and platform-ops
+      research feeding the Command Center and operator-gated watch surfaces.
+    trading_related: true
+    auto_promote: false
+    # Generic `legal` (securities/regulatory research with portfolio impact)
+    # stays here; housing-law domains belong to nyc_loft_law below.
+    domains:
+      - portfolio_holdings
+      - watchlist
+      - sectors
+      - etfs_funds
+      - dividends_income
+      - macro
+      - geopolitical
+      - industry_themes
+      - technology
+      - taxes
+      - retirement
+      - legal
+      - broker_ops
+      - system_ops
+    output_surfaces:
+      - command_center
+      - topic_monitor
+      - watch_directives
+      - research_sources
+
+  nyc_loft_law:
+    description: >-
+      NYC Loft Law legal research workspace — housing law, NYC regulation,
+      case law, tenant rights, landlord compliance, and zoning. Research
+      summaries and article briefs only; NEVER legal advice, and NEVER a
+      trading input of any kind.
+    trading_related: false
+    auto_promote: false
+    requires_professional_review_label: true
+    no_legal_advice_label: true
+    domains:
+      - legal_housing
+      - housing
+      - nyc_regulation
+      - case_law
+      - tenant_rights
+      - landlord_compliance
+      - zoning
+    output_surfaces:
+      - legal_research_topic_registry
+      - article_brief_queue
+      - source_registry
+      - website_content_candidate_queue

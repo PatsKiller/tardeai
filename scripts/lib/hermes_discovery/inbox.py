@@ -23,6 +23,15 @@ candidate (new rows and re-sighting bumps alike):
                                    (subject_id, canonical_label, tickers, holdings
                                    join for TICKER candidates, source refs, …)
   meta_json.advisory_label         always present — advisory-only framing text
+  meta_json.workspace_id           White-Space workspace isolation stamp
+                                   (workspaces.workspace_for_domain; a valid
+                                   explicit pin is kept). Non-trading
+                                   workspaces (nyc_loft_law) can never write
+                                   trade surfaces or feed trading signals —
+                                   see workspaces.assert_can_write /
+                                   assert_tradeable_signal.
+  meta_json.workspace_domain       the research domain that routed the
+                                   candidate into its workspace
   meta_json.required_review_label  ONLY for professional-review domains (taxes /
                                    retirement / legal / medical): the
                                    "consult a qualified professional/clinician"
@@ -43,6 +52,12 @@ from .symbol_validation import (VERDICT_VALID, validate_ticker)
 CANDIDATE_TYPES = frozenset({
     "SOURCE_CANDIDATE", "TREND_CANDIDATE", "TICKER_CANDIDATE",
     "TOPIC_CANDIDATE", "CONNECTOR_CANDIDATE",
+    # White-Space Discovery (migrations/2026_07_05_white_space_types.sql).
+    # The MISSING_* family is NOT separate types: gaps are GAP_CANDIDATE rows
+    # carrying meta_json.gap_type (missing_stop, missing_research, ...).
+    "STRATEGY_CANDIDATE", "PRIVATE_COMPANY_PROXY_CANDIDATE",
+    "LEGAL_TOPIC_CANDIDATE", "CASE_LAW_CANDIDATE", "STATUTE_UPDATE_CANDIDATE",
+    "WEBSITE_CONTENT_CANDIDATE", "GAP_CANDIDATE",
 })
 
 STATUSES = frozenset({
@@ -179,6 +194,15 @@ def _enrich_domain_meta(meta: dict, candidate_view: dict[str, Any],
     meta["research_domain"] = domain
     meta["domain_risk_level"] = policy["risk_level"]
     meta["advisory_label"] = policy["advisory_label"]
+    # White-Space workspaces: stamp the isolation boundary onto every
+    # candidate (fail-closed like the domain registry). A pinned workspace_id
+    # is kept only when it is a real workspace; otherwise the domain routes it.
+    from . import workspaces
+    pinned_ws = str(meta.get("workspace_id") or "").strip().lower()
+    if not pinned_ws or pinned_ws not in workspaces.load_workspaces():
+        pinned_ws = workspaces.workspace_for_domain(domain)
+    meta["workspace_id"] = pinned_ws
+    meta["workspace_domain"] = domain
     if policy.get("requires_professional_review_label"):
         meta["required_review_label"] = policy["professional_review_label"]
         safe_action_level = "OPERATOR_REVIEW_REQUIRED"
@@ -479,8 +503,13 @@ def get_candidate(candidate_id: int, *, with_audit: bool = False) -> dict[str, A
 def list_candidates(*, candidate_type: str | None = None,
                     status: str | None = None,
                     source_domain: str | None = None,
+                    workspace: str | None = None,
                     limit: int = 200, offset: int = 0) -> list[dict[str, Any]]:
-    """List inbox candidates, newest-seen first. Used by the CLI and api_v2."""
+    """List inbox candidates, newest-seen first. Used by the CLI and api_v2.
+
+    `workspace` filters on the meta_json.workspace_id isolation stamp so a
+    caller working in one workspace (e.g. trade_ai) never lists another
+    workspace's candidates (e.g. nyc_loft_law) by default."""
     clauses, params = [], []
     if candidate_type:
         clauses.append("candidate_type = %s")
@@ -491,6 +520,9 @@ def list_candidates(*, candidate_type: str | None = None,
     if source_domain:
         clauses.append("source_domain = %s")
         params.append(source_domain.lower())
+    if workspace:
+        clauses.append("meta_json->>'workspace_id' = %s")
+        params.append(workspace.lower())
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     params.extend([int(limit), int(offset)])
     rows = _exec(

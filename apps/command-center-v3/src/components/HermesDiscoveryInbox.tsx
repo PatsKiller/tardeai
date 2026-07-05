@@ -138,6 +138,83 @@ function metaObj(c: Candidate, key: string): Record<string, unknown> | null {
 // risk levels whose domain chip renders amber (professional-review adjacent)
 const AMBER_RISK_LEVELS = new Set(['tax', 'legal', 'planning', 'medical'])
 
+// ── hunt-thesis derivation (candidate_type + meta contracts) ─────────────────
+// Every card states WHY the discovery layer hunted this down — a dim thesis
+// line above the label row. Loft-law candidates surface their forced labels.
+
+const GAP_THESIS: Record<string, string> = {
+  MISSING_THEME: 'Missing exposure: theme not covered anywhere',
+  MISSING_SECTOR: 'Missing exposure: sector not covered anywhere',
+  MISSING_STRATEGY: 'Missing strategy: family not in the strategy registry',
+  MISSING_SOURCE: 'Missing source: cited but not registered for intake',
+  MISSING_COMPANY: 'Missing exposure: company has no coverage surface',
+  MISSING_LEGAL_TOPIC: 'Legal research gap: recurring topic outside coverage',
+  MISSING_TAX_TOPIC: 'Tax research gap: recurring topic outside coverage',
+  MISSING_RETIREMENT_TOPIC: 'Retirement research gap: recurring topic outside coverage',
+  MISSING_PRODUCT_VERTICAL: 'Missing exposure: product vertical unwatched',
+}
+
+const LEGAL_TYPES = new Set(['LEGAL_TOPIC_CANDIDATE', 'CASE_LAW_CANDIDATE', 'STATUTE_UPDATE_CANDIDATE'])
+
+interface HuntThesis { text: string; extra?: string; legalLabels: string[] }
+
+function huntThesis(c: Candidate): HuntThesis {
+  const t = String(c.candidate_type ?? '').toUpperCase()
+  const legalLabels = asStringList(metaField(c, 'required_labels'))
+  const gapType = metaStr(c, 'gap_type').toUpperCase()
+  if (t === 'GAP_CANDIDATE' || gapType) {
+    return { text: GAP_THESIS[gapType] ?? 'Coverage gap: subject matches nothing the system covers', legalLabels }
+  }
+  if (t === 'STRATEGY_CANDIDATE') {
+    const sj = metaObj(c, 'strategy_json')
+    const name = (sj && typeof sj.strategy_name === 'string' && sj.strategy_name)
+      || c.label.replace(/^Strategy white-space:\s*/i, '') || 'this strategy'
+    return { text: `Missing strategy: ${name} is not modeled`, legalLabels }
+  }
+  if (t === 'PRIVATE_COMPANY_PROXY_CANDIDATE') {
+    const ppj = metaObj(c, 'private_proxy_json')
+    const name = (ppj && typeof ppj.private_company === 'string' && ppj.private_company)
+      || c.label.replace(/^Private-company proxy:\s*/i, '') || 'private company'
+    const sentence = ppj && typeof ppj.no_direct_trade_reason === 'string' ? ppj.no_direct_trade_reason : undefined
+    return { text: `Private-company proxy: ${name} draws recurring attention but is not directly listed`, extra: sentence, legalLabels }
+  }
+  if (t === 'WEBSITE_CONTENT_CANDIDATE') return { text: 'Website/product vertical: publishable explainer candidate (candidate stage only)', legalLabels }
+  if (LEGAL_TYPES.has(t)) return { text: 'Legal research: advisory summary lane — never legal advice', legalLabels }
+  return { text: 'Known exposure: recurring signal on already-covered ground', legalLabels }
+}
+
+// candidates the read-only options-chain feasibility action applies to
+function proxyTickers(c: Candidate): string[] {
+  const out: string[] = []
+  const ppj = metaObj(c, 'private_proxy_json')
+  if (ppj) {
+    const arr = parseMaybeJson(ppj.proxy_underlyings)
+    if (Array.isArray(arr)) {
+      for (const p of arr) {
+        const tk = typeof p === 'string' ? p : (p as any)?.ticker
+        if (tk) out.push(String(tk).toUpperCase())
+      }
+    }
+    if (out.length === 0) for (const tk of asStringList(ppj.options_possible_on)) out.push(tk.toUpperCase())
+  }
+  if (out.length === 0) for (const tk of asStringList(c.seed_symbols)) out.push(tk.toUpperCase())
+  return [...new Set(out)]
+}
+
+function feasibilityEligibility(c: Candidate): { eligible: boolean; needsSymbol: boolean; tickers: string[] } {
+  const t = String(c.candidate_type ?? '').toUpperCase()
+  if (t === 'STRATEGY_CANDIDATE') {
+    const sj = metaObj(c, 'strategy_json')
+    const family = sj && typeof sj.family === 'string' ? sj.family : ''
+    return { eligible: family.startsWith('options'), needsSymbol: true, tickers: [] }
+  }
+  if (t === 'PRIVATE_COMPANY_PROXY_CANDIDATE') {
+    const tickers = proxyTickers(c)
+    return { eligible: tickers.length > 0, needsSymbol: false, tickers }
+  }
+  return { eligible: false, needsSymbol: false, tickers: [] }
+}
+
 const LLM_SCORE_KEYS: [string, string][] = [
   ['relevance_score', 'relevance'], ['source_quality_score', 'source quality'],
   ['novelty_score', 'novelty'], ['risk_score', 'risk'],
@@ -268,6 +345,174 @@ function scorecardTiles(sc: Record<string, unknown> | null): { label: string; va
   return tiles.slice(0, 10)
 }
 
+// ── feasibility result (read-only options-chain research; EDUCATIONAL ONLY) ──
+
+const FEAS_FOOTER = 'EDUCATIONAL ONLY — not a recommendation, no order path'
+
+const feasTh: CSSProperties = {
+  ...{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase' },
+  color: WL.text.dim, textAlign: 'right', padding: '3px 8px', whiteSpace: 'nowrap',
+}
+const feasTd: CSSProperties = {
+  ...numStyle, fontSize: 10.5, color: WL.text.secondary, textAlign: 'right',
+  padding: '3px 8px', borderTop: `1px solid ${WL.surface.divider}`, whiteSpace: 'nowrap',
+}
+
+function fnum(v: unknown, digits = 2): string {
+  const n = Number(v)
+  return Number.isFinite(n) ? n.toFixed(digits) : '—'
+}
+
+function bucketFlags(sel: Record<string, unknown>): string[] {
+  const f = (sel.flags ?? {}) as Record<string, unknown>
+  const out: string[] = []
+  if (f.wide_spread) out.push('wide spread')
+  if (f.low_oi) out.push('low OI')
+  if (f.no_volume) out.push('no volume')
+  if (f.no_quote) out.push('no quote')
+  if (f.earnings_before_expiry === true) out.push('earnings < expiry')
+  return out
+}
+
+function FeasibilityResult({ res }: { res: Record<string, any> }) {
+  const a = (res.analysis ?? {}) as Record<string, any>
+  const wrap: CSSProperties = {
+    margin: '0 18px 10px', border: `1px solid ${WL.surface.edge}`, borderRadius: 6,
+    background: WL.surface.inset, overflow: 'hidden',
+  }
+  const head = (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 10, padding: '7px 10px 5px' }}>
+      <span style={moduleLabel}>feasibility · {String(res.mode ?? '').replace(/_/g, ' ') || 'analysis'}</span>
+      {res.symbol && <span style={{ ...numStyle, fontSize: 12, fontWeight: 800, color: WL.text.primary }}>{String(res.symbol)}</span>}
+      {a.underlying_price != null && (
+        <span style={{ fontSize: 10.5, color: WL.text.muted }}>spot <span style={numStyle}>{fnum(a.underlying_price)}</span></span>
+      )}
+      {a.next_earnings_date != null && (
+        <span style={{ fontSize: 10.5, color: WL.text.dim }}>earnings <span style={numStyle}>{String(a.next_earnings_date)}</span></span>
+      )}
+      {res.symbol_source && <span style={{ fontSize: 10, color: WL.text.dim }}>symbol via {String(res.symbol_source).replace(/_/g, ' ')}</span>}
+      {res.audit_recorded === false && <span style={{ fontSize: 10, color: WL.signal.amber }}>audit row not recorded</span>}
+    </div>
+  )
+  const footer = (
+    <div style={{ padding: '5px 10px 7px', fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: WL.text.dim, borderTop: `1px solid ${WL.surface.divider}` }}>
+      {FEAS_FOOTER}
+    </div>
+  )
+  if (!a.available) {
+    return (
+      <div style={wrap}>
+        {head}
+        <div style={{ padding: '2px 10px 8px', fontSize: 11, color: WL.text.secondary, lineHeight: 1.45 }}>
+          feasibility unavailable — {String(a.reason ?? 'no analysis returned')}
+        </div>
+        {footer}
+      </div>
+    )
+  }
+  if (res.mode === 'chain_snapshot') {
+    const feas = (a.strategy_feasibility ?? {}) as Record<string, any>
+    const rows = Object.entries(feas)
+    return (
+      <div style={wrap}>
+        {head}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead><tr>
+              <th style={{ ...feasTh, textAlign: 'left' }}>strategy</th>
+              <th style={feasTh}>feasible</th>
+              <th style={feasTh}>score</th>
+              <th style={{ ...feasTh, textAlign: 'left' }}>chain depth</th>
+            </tr></thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan={4} style={{ ...feasTd, textAlign: 'left', fontFamily: 'inherit' }}>no per-strategy feasibility data in this chain snapshot</td></tr>
+              ) : rows.map(([name, v]) => (
+                <tr key={name}>
+                  <td style={{ ...feasTd, textAlign: 'left', fontFamily: 'inherit', color: WL.text.primary, fontWeight: 700 }}>{name.replace(/_/g, ' ')}</td>
+                  <td style={{ ...feasTd, color: v?.feasible ? WL.signal.teal : WL.text.dim, fontFamily: 'inherit', fontWeight: 700 }}>{v?.feasible ? 'yes' : 'no'}</td>
+                  <td style={feasTd}>{v?.score ?? '—'}</td>
+                  <td style={{ ...feasTd, textAlign: 'left', fontFamily: 'inherit', whiteSpace: 'normal' }}>{String(v?.reason ?? '')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding: '4px 10px 2px', fontSize: 10, color: WL.text.dim }}>
+          chain liquidity <span style={numStyle}>{a.liquidity_score ?? '—'}</span> · source: {String(a.source ?? 'options desk read path')}
+        </div>
+        {footer}
+      </div>
+    )
+  }
+  // deep_itm_call — one row per DTE bucket (the selected candidate strike)
+  const buckets = Array.isArray(a.dte_buckets) ? a.dte_buckets as Record<string, any>[] : []
+  return (
+    <div style={wrap}>
+      {head}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead><tr>
+            <th style={feasTh}>bucket</th>
+            <th style={feasTh}>exp / dte</th>
+            <th style={feasTh}>strike</th>
+            <th style={feasTh}>delta</th>
+            <th style={feasTh}>mid</th>
+            <th style={feasTh}>breakeven</th>
+            <th style={feasTh}>max loss</th>
+            <th style={feasTh}>capital %</th>
+            <th style={{ ...feasTh, textAlign: 'left' }}>flags</th>
+          </tr></thead>
+          <tbody>
+            {buckets.length === 0 ? (
+              <tr><td colSpan={9} style={{ ...feasTd, textAlign: 'left', fontFamily: 'inherit' }}>no DTE buckets returned</td></tr>
+            ) : buckets.map((b, i) => {
+              if (!b.available) {
+                return (
+                  <tr key={i}>
+                    <td style={feasTd}>{b.target_dte}d</td>
+                    <td colSpan={8} style={{ ...feasTd, textAlign: 'left', fontFamily: 'inherit', whiteSpace: 'normal', color: WL.text.dim }}>
+                      {String(b.reason ?? 'unavailable')}
+                    </td>
+                  </tr>
+                )
+              }
+              const sel = (b.selected ?? {}) as Record<string, any>
+              const cap = (sel.capital_vs_100_shares ?? {}) as Record<string, any>
+              const flags = bucketFlags(sel)
+              return (
+                <tr key={i}>
+                  <td style={feasTd}>{b.target_dte}d</td>
+                  <td style={feasTd}>{String(b.exp ?? '—')} / {b.dte ?? '—'}</td>
+                  <td style={{ ...feasTd, color: WL.text.primary, fontWeight: 700 }}>{fnum(sel.strike)}</td>
+                  <td style={feasTd}>{sel.delta != null ? fnum(sel.delta) : `— (${String(b.selection_mode ?? 'proxy')})`}</td>
+                  <td style={feasTd}>{fnum(sel.mid)}</td>
+                  <td style={feasTd}>
+                    {fnum(sel.breakeven)}{sel.breakeven_move_pct != null ? ` (${fnum(sel.breakeven_move_pct)}%)` : ''}
+                  </td>
+                  <td style={feasTd}>{sel.max_loss != null ? `$${fnum(sel.max_loss)}` : '—'}</td>
+                  <td style={feasTd}>{cap.capital_ratio_pct != null ? `${fnum(cap.capital_ratio_pct, 1)}%` : '—'}</td>
+                  <td style={{ ...feasTd, textAlign: 'left', fontFamily: 'inherit' }}>
+                    {flags.length === 0
+                      ? <span style={{ color: WL.text.dim }}>—</span>
+                      : flags.map(f => <span key={f} style={{ ...chipStyle(WL.signal.amber), marginRight: 5 }}>{f}</span>)}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ padding: '4px 10px 2px', fontSize: 10, color: WL.text.dim }}>
+        delta band <span style={numStyle}>{Array.isArray(a.delta_range) ? a.delta_range.join('–') : '0.80–0.95'}</span>
+        {' · '}selection {Array.isArray(a.selection_modes_used) ? a.selection_modes_used.join(', ') : '—'}
+        {' · '}chain liquidity <span style={numStyle}>{a.chain_liquidity_score ?? '—'}</span>
+      </div>
+      {footer}
+    </div>
+  )
+}
+
 // ── candidate card ───────────────────────────────────────────────────────────
 
 interface AuditRow { id?: number | string; action?: string; actor?: string; notes?: string | null; created_at?: string | null }
@@ -284,6 +529,10 @@ function DiscoveryCard({ c, onDone }: { c: Candidate; onDone: () => void }) {
   const [auditOpen, setAuditOpen] = useState(false)
   const [auditRows, setAuditRows] = useState<AuditRow[] | null>(null)
   const [auditErr, setAuditErr] = useState<string | null>(null)
+  const [feasBusy, setFeasBusy] = useState(false)
+  const [feasErr, setFeasErr] = useState<string | null>(null)
+  const [feasRes, setFeasRes] = useState<Record<string, any> | null>(null)
+  const [feasSym, setFeasSym] = useState('')
 
   const st = stateOf(decidedAs ? `${decidedAs}` : c.status)
   const { total, parts } = scoreOf(c)
@@ -308,6 +557,29 @@ function DiscoveryCard({ c, onDone }: { c: Candidate; onDone: () => void }) {
   const review = localReview ?? metaObj(c, 'llm_review_json')
   const promoPaths = asStringList(c.domain_promotion_paths)
   const domainAmber = AMBER_RISK_LEVELS.has(riskLevel)
+  const thesis = huntThesis(c)
+  const feas = feasibilityEligibility(c)
+
+  const runFeasibility = async () => {
+    if (feasBusy) return
+    setFeasBusy(true)
+    setFeasErr(null)
+    try {
+      const sym = feasSym.trim().toUpperCase()
+      const url = `/api/v2/hermes/discovery-inbox/${encodeURIComponent(String(c.id))}/run-feasibility`
+        + (sym ? `?symbol=${encodeURIComponent(sym)}` : '')
+      const r = await fetch(url, { method: 'POST' })
+      let j: any = null
+      try { j = await r.json() } catch { /* non-JSON error body */ }
+      if (!r.ok || (j && j.ok === false)) throw new Error(j?.error || j?.detail || `HTTP ${r.status}`)
+      setFeasRes(j)
+      setAuditRows(null) // FEASIBILITY_RUN appends an audit row — refetch on next expand
+    } catch (e: any) {
+      setFeasErr(e?.message || 'feasibility run failed')
+    } finally {
+      setFeasBusy(false)
+    }
+  }
 
   const requestReview = async () => {
     if (llmBusy || busy != null) return
@@ -375,8 +647,19 @@ function DiscoveryCard({ c, onDone }: { c: Candidate; onDone: () => void }) {
       overflow: 'hidden',
       minWidth: 0,
     }}>
+      {/* hunt thesis — why the discovery layer surfaced this (dim, above label row) */}
+      <div style={{ padding: '9px 18px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontSize: 10.5, color: WL.text.dim, lineHeight: 1.5 }}>
+        <span>{thesis.text}</span>
+        {thesis.legalLabels.map(l => (
+          <span key={l} style={chipStyle(WL.signal.amber)} title="required label (forced by the domain pack)">{l.replace(/_/g, ' ')}</span>
+        ))}
+      </div>
+      {thesis.extra && (
+        <div style={{ padding: '2px 18px 0', fontSize: 10.5, color: WL.text.dim, lineHeight: 1.5 }}>{thesis.extra}</div>
+      )}
+
       {/* header — identity + state word + score */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px 8px', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 18px 8px', minWidth: 0 }}>
         <span style={chipStyle(WL.text.muted)}>{typeLabel}</span>
         <span style={{ fontSize: 14, fontWeight: 800, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.label}>
           {c.label || '(unlabeled candidate)'}
@@ -565,15 +848,219 @@ function DiscoveryCard({ c, onDone }: { c: Candidate; onDone: () => void }) {
             )}
           </>
         )}
-        {(actErr || llmErr) && (
-          <span style={{ fontSize: 10.5, color: WL.signal.red, marginLeft: 'auto' }}>{actErr || llmErr}</span>
+        {feas.eligible && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {feas.needsSymbol && (
+              <input
+                value={feasSym}
+                onChange={e => setFeasSym(e.target.value)}
+                placeholder="symbol"
+                style={{ ...filterCtl, ...numStyle, width: 72, padding: '3px 7px' }}
+                title="underlying to analyze (strategy candidates carry no ticker of their own)"
+              />
+            )}
+            <button
+              onClick={runFeasibility}
+              disabled={feasBusy}
+              title={`read-only options-chain research (EDUCATIONAL ONLY — no order path)${feas.tickers.length ? ` · proxy tickers: ${feas.tickers.join(', ')}` : ''}`}
+              style={textButton(WL.signal.teal, feasBusy)}
+            >{feasBusy ? 'Running feasibility…' : 'Run feasibility ▸'}</button>
+          </span>
+        )}
+        {(actErr || llmErr || feasErr) && (
+          <span style={{ fontSize: 10.5, color: WL.signal.red, marginLeft: 'auto' }}>{actErr || llmErr || feasErr}</span>
         )}
       </div>
+
+      {/* feasibility result — read-only research output (EDUCATIONAL ONLY) */}
+      {feasRes && (
+        <div style={{ paddingTop: 10 }}>
+          <FeasibilityResult res={feasRes} />
+        </div>
+      )}
 
       {/* advisory footer — REQUIRED verbatim on every card */}
       <div style={{ padding: '6px 18px 9px', fontSize: 10, color: WL.text.dim, borderTop: `1px solid ${WL.surface.divider}` }}>
         {ADVISORY_FOOTER}
       </div>
+    </div>
+  )
+}
+
+// ── white-space gap dashboard (Stage-6, spec Part H) ─────────────────────────
+// Read-only aggregation of GAP_CANDIDATE rows (+ anything carrying a
+// meta.gap_type stamp) from /api/v2/hermes/discovery-gaps: gap_type stat
+// tiles + expandable gap rows. Advisory-only; effort text is a dim heuristic.
+
+interface GapRow {
+  id: number | string
+  candidate_type?: string
+  label?: string
+  gap_type?: string
+  thesis?: string
+  evidence_count?: number
+  domain?: string | null
+  workspace?: string | null
+  safe_action?: string | null
+  recommended_next_action?: string | null
+  status?: string
+  source_count?: number | null
+  recurrence_count?: number | null
+  current_system_coverage?: string | null
+  score?: number | null
+  first_seen?: string | null
+  last_seen?: string | null
+}
+interface GapsData {
+  total?: number
+  generated_at?: string
+  gap_types?: Record<string, { count?: number; gaps?: GapRow[] }>
+}
+
+// dim heuristic effort estimates per gap_type (display hint only)
+const GAP_EFFORT: Record<string, string> = {
+  MISSING_SOURCE: 'low effort — register one source via source curation',
+  MISSING_THEME: 'low effort — one topic-monitor entry',
+  MISSING_COMPANY: 'medium effort — staged ticker review',
+  MISSING_SECTOR: 'medium effort — sector topic + targeted screener',
+  MISSING_PRODUCT_VERTICAL: 'medium effort — theme/vertical coverage',
+  MISSING_STRATEGY: 'high effort — incubator evaluation + backtest',
+  MISSING_LEGAL_TOPIC: 'medium effort — legal research topic (professional review)',
+  MISSING_TAX_TOPIC: 'medium effort — tax research topic (professional review)',
+  MISSING_RETIREMENT_TOPIC: 'medium effort — retirement research topic (professional review)',
+}
+
+// gap types whose risk label renders amber (professional-review adjacent)
+const SENSITIVE_GAP_TYPES = new Set(['MISSING_LEGAL_TOPIC', 'MISSING_TAX_TOPIC', 'MISSING_RETIREMENT_TOPIC'])
+const SENSITIVE_GAP_DOMAINS = new Set(['legal', 'legal_general', 'legal_housing', 'taxes', 'retirement'])
+
+function gapIsSensitive(g: GapRow): boolean {
+  return SENSITIVE_GAP_TYPES.has(String(g.gap_type ?? '').toUpperCase())
+    || SENSITIVE_GAP_DOMAINS.has(String(g.domain ?? '').toLowerCase())
+}
+
+function GapRowLine({ g }: { g: GapRow }) {
+  const [open, setOpen] = useState(false)
+  const sensitive = gapIsSensitive(g)
+  const effort = GAP_EFFORT[String(g.gap_type ?? '').toUpperCase()] ?? 'effort unknown — operator triage'
+  return (
+    <div style={{ borderTop: `1px solid ${WL.surface.divider}`, padding: '7px 12px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <button onClick={() => setOpen(v => !v)} style={{ ...textButton(WL.text.secondary, false), fontWeight: 700, fontSize: 11.5, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '46%', textAlign: 'left' }} title={g.label}>
+          {open ? '▾ ' : '▸ '}{g.label || '(unlabeled gap)'}
+        </button>
+        {sensitive && <span style={chipStyle(WL.signal.amber)} title="sensitive domain — professional review adjacent">professional review</span>}
+        {(g.domain || g.workspace) && (
+          <span style={chipStyle(WL.text.muted)} title="research domain / workspace">
+            {[g.domain, g.workspace].filter(Boolean).map(s => String(s).replace(/_/g, ' ')).join(' · ')}
+          </span>
+        )}
+        <span style={{ fontSize: 10.5, color: WL.text.dim }}>
+          evidence <span style={{ ...numStyle, color: WL.text.muted }}>{g.evidence_count ?? 0}</span>
+        </span>
+        {g.recurrence_count != null && (
+          <span style={{ fontSize: 10.5, color: WL.text.dim }}>
+            seen <span style={{ ...numStyle, color: WL.text.muted }}>{g.recurrence_count}×</span>
+          </span>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: WL.text.dim }}>
+          {g.safe_action ? String(g.safe_action).replace(/_/g, ' ').toLowerCase() : ''}
+        </span>
+      </div>
+      {g.thesis && (
+        <div style={{ marginTop: 2, fontSize: 10.5, color: WL.text.dim, lineHeight: 1.45, ...(open ? {} : { display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }) }}>
+          {g.thesis}
+        </div>
+      )}
+      {open && (
+        <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.5 }}>
+          <span><span style={moduleLabel}>next action</span> {g.recommended_next_action || 'Operator review required (advisory-only gap finding).'}</span>
+          {g.current_system_coverage && <span><span style={moduleLabel}>current coverage</span> {g.current_system_coverage}</span>}
+          <span style={{ color: WL.text.dim }}><span style={moduleLabel}>effort</span> {effort}</span>
+          <span style={{ color: WL.text.dim }}>
+            {g.score != null && <>score <span style={numStyle}>{g.score}</span> · </>}
+            {g.source_count != null && <>sources <span style={numStyle}>{g.source_count}</span> · </>}
+            status {String(g.status ?? '—').replace(/_/g, ' ').toLowerCase()} · last seen <span style={numStyle}>{ago(g.last_seen)}</span>
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GapDashboard() {
+  const [open, setOpen] = useState(true)
+  const [typeSel, setTypeSel] = useState('')
+  const gaps = useApi<GapsData>('/api/v2/hermes/discovery-gaps', 120_000)
+  const groups = gaps.data?.gap_types ?? {}
+  const groupKeys = Object.keys(groups).sort()
+  const total = gaps.data?.total ?? 0
+  const notDeployed = !!gaps.error && /404/.test(gaps.error) && !gaps.data
+  const shownKeys = typeSel ? groupKeys.filter(k => k === typeSel) : groupKeys
+
+  return (
+    <div style={{ background: WL.surface.card, border: `1px solid ${WL.surface.edge}`, borderRadius: WL.card.radius, boxShadow: WL.card.shadow, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', flexWrap: 'wrap' }}>
+        <button onClick={() => setOpen(v => !v)} style={{ ...textButton(WL.text.secondary, false), fontSize: 11 }}>
+          {open ? '▾' : '▸'} <span style={{ ...moduleLabel, fontSize: 11, color: WL.text.secondary }}>White-Space Gaps</span>
+        </button>
+        <span style={{ fontSize: 10.5, color: WL.text.dim }}>
+          <span style={numStyle}>{total}</span> open gap{total === 1 ? '' : 's'}
+          {gaps.data?.generated_at && <> · {ago(gaps.data.generated_at)}</>}
+        </span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: WL.text.dim }}>
+          advisory only — gaps promote through governed pathways, never from here
+        </span>
+      </div>
+      {open && (
+        notDeployed ? (
+          <div style={{ padding: '4px 14px 12px', fontSize: 11, color: WL.text.secondary }}>
+            Gap dashboard endpoint not deployed yet — this section populates once <code style={{ margin: '0 3px' }}>/api/v2/hermes/discovery-gaps</code> is live.
+          </div>
+        ) : gaps.loading && !gaps.data ? (
+          <div style={{ padding: '4px 14px 12px', fontSize: 11, color: WL.text.dim }}>Loading white-space gaps…</div>
+        ) : gaps.error && !gaps.data ? (
+          <div style={{ padding: '4px 14px 12px', fontSize: 11, color: WL.text.secondary }}>
+            Gap dashboard unavailable — {gaps.error}.
+            <button onClick={() => gaps.refetch()} style={{ ...textButton(WL.signal.teal, false), marginLeft: 8 }}>Retry ▸</button>
+          </div>
+        ) : groupKeys.length === 0 ? (
+          <div style={{ padding: '4px 14px 12px', fontSize: 11, color: WL.text.dim }}>
+            No white-space gaps on file — the white-space lane has not filed any gap candidates yet (or every gap has been decided).
+          </div>
+        ) : (
+          <>
+            {/* gap_type stat tiles (click = filter) */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '2px 14px 10px' }}>
+              {groupKeys.map(k => {
+                const active = typeSel === k
+                return (
+                  <button
+                    key={k}
+                    onClick={() => setTypeSel(active ? '' : k)}
+                    style={{
+                      background: WL.surface.inset, borderRadius: 8, padding: '6px 11px', minWidth: 76,
+                      border: `1px solid ${active ? `${WL.signal.teal}66` : WL.surface.edge}`,
+                      cursor: 'pointer', textAlign: 'left',
+                    }}
+                    title={active ? 'clear filter' : `show only ${k.replace(/_/g, ' ').toLowerCase()}`}
+                  >
+                    <div style={{ ...numStyle, fontSize: 14, fontWeight: 800, color: WL.text.primary }}>{groups[k]?.count ?? groups[k]?.gaps?.length ?? 0}</div>
+                    <div style={{ ...moduleLabel, marginTop: 1, color: active ? WL.signal.teal : WL.text.dim }}>{k.replace(/^MISSING_/, '').replace(/_/g, ' ').toLowerCase()}</div>
+                  </button>
+                )
+              })}
+            </div>
+            {/* gap rows, grouped */}
+            {shownKeys.map(k => (
+              <div key={k}>
+                <div style={{ padding: '5px 12px 3px', ...moduleLabel }}>{k.replace(/_/g, ' ')} · {groups[k]?.count ?? 0}</div>
+                {(groups[k]?.gaps ?? []).map(g => <GapRowLine key={String(g.id)} g={g} />)}
+              </div>
+            ))}
+          </>
+        )
+      )}
     </div>
   )
 }
@@ -644,6 +1131,9 @@ export default function HermesDiscoveryInbox() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* white-space gap dashboard (collapsible, read-only) */}
+      <GapDashboard />
+
       {/* header row — title + filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ ...moduleLabel, fontSize: 11 }}>Discovery Inbox</span>
