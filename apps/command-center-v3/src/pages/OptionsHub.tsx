@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import OptionProposalCard, { type OptionProposal } from '../components/OptionProposalCard'
 import OptionPositionCard, { type OptionPosition } from '../components/OptionPositionCard'
-import OptionProposalCardV4 from '../components/OptionProposalCardV4'
+import OptionProposalCardV4, { type AlpacaLaneAction, type AlpacaActionResult } from '../components/OptionProposalCardV4'
 import OptionPositionCardV4 from '../components/OptionPositionCardV4'
 import { useCardsV4 } from '../lib/cardsV4'
 import OptionReviewBar from '../components/OptionReviewBar'
@@ -26,6 +26,18 @@ const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', bor
 const SEL: React.CSSProperties = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text0)' }
 const PURPLE = '#a855f7'
 
+// Stage 3: Alpaca paper lane status filters (client-side over queue_status —
+// these rows come from options_approval_queue, not the desk generator facets).
+const ALPACA_LANE_FILTERS: { key: string; label: string; statuses: string[] }[] = [
+  { key: 'queued', label: 'Queued', statuses: ['pending', 'approved'] },
+  { key: 'ready', label: 'Ready', statuses: ['READY_FOR_ALPACA_PAPER'] },
+  { key: 'submitted', label: 'Submitted', statuses: ['ALPACA_PAPER_SUBMITTED'] },
+  { key: 'filled', label: 'Filled', statuses: ['ALPACA_PAPER_FILLED'] },
+  { key: 'closed', label: 'Closed', statuses: ['ALPACA_PAPER_CLOSED', 'ALPACA_PAPER_REJECTED'] },
+  { key: 'outcome', label: 'Outcome ✓', statuses: ['OUTCOME_RECORDED'] },
+  { key: 'live_review', label: 'Live review', statuses: ['READY_FOR_LIVE_REVIEW'] },
+]
+
 type Proposal = OptionProposal
 type Position = OptionPosition
 
@@ -43,6 +55,7 @@ export default function OptionsHub({ onDrill }: Props) {
   const [sleeveFilter, setSleeveFilter] = useState('')
   const [legStyleFilter, setLegStyleFilter] = useState('')
   const [tierFilter, setTierFilter] = useState('')
+  const [alpacaLaneFilter, setAlpacaLaneFilter] = useState('')
   const [liveOnly, setLiveOnly] = useState(false)
   const [minPop, setMinPop] = useState(0)
   const [minEdge, setMinEdge] = useState(0)
@@ -59,7 +72,8 @@ export default function OptionsHub({ onDrill }: Props) {
   const [preflightProposal, setPreflightProposal] = useState<Proposal | null>(null)
   const [manualSeed, setManualSeed] = useState<ManualExecSeed | null>(null)
   const [cardsV4] = useCardsV4() // global card-family toggle — no local UI, set from Watch hub
-  const ProposalCard = cardsV4 ? OptionProposalCardV4 : OptionProposalCard
+  // cast: v4 accepts the optional onAlpacaAction prop; the v3 card ignores it
+  const ProposalCard = (cardsV4 ? OptionProposalCardV4 : OptionProposalCard) as typeof OptionProposalCardV4
   const PositionCard = cardsV4 ? OptionPositionCardV4 : OptionPositionCard
 
   useEffect(() => { setNoviceMode(novice) }, [novice])
@@ -108,6 +122,21 @@ export default function OptionsHub({ onDrill }: Props) {
     () => [...new Set(propList.map(p => (p.symbol || '').toUpperCase()).filter(Boolean))].sort(),
     [propList],
   )
+  // Stage 3: Alpaca-lane status filter (client-side — lane rows carry queue_status)
+  const laneCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const f of ALPACA_LANE_FILTERS) {
+      const n = propList.filter(p => p.educational_paper_model && f.statuses.includes(p.queue_status || '')).length
+      if (n > 0) counts[f.key] = n
+    }
+    return counts
+  }, [propList])
+  const shownProps = useMemo(() => {
+    if (!alpacaLaneFilter) return propList
+    const f = ALPACA_LANE_FILTERS.find(x => x.key === alpacaLaneFilter)
+    if (!f) return propList
+    return propList.filter(p => p.educational_paper_model && f.statuses.includes(p.queue_status || ''))
+  }, [propList, alpacaLaneFilter])
   const propCount = proposals?.filtered_count ?? proposals?.count ?? propList.length
   const propFacets = proposals?.filter_facets ?? {}
   const posList: Position[] = Array.isArray(monitor?.positions) ? monitor.positions : []
@@ -118,7 +147,7 @@ export default function OptionsHub({ onDrill }: Props) {
     setSymbolFilter(''); setStrategyFilter(''); setGroupFilter('')
     setOptionTypeFilter(''); setSideFilter(''); setSleeveFilter('')
     setLegStyleFilter(''); setTierFilter(''); setLiveOnly(false)
-    setMinPop(0); setMinEdge(0)
+    setMinPop(0); setMinEdge(0); setAlpacaLaneFilter('')
   }
 
   const facetChip = (tip: string, label: string, count: number | undefined, active: boolean, onClick: () => void, color = '#60a5fa') => (
@@ -175,6 +204,58 @@ export default function OptionsHub({ onDrill }: Props) {
       setExecMsg(`2FA requested for ${p.symbol} — approve via Telegram/email or confirm in Broker Orders (intent ${data.intent_id?.slice(0, 8)}…)`)
     } catch (e: any) {
       setExecMsg(String(e?.message || e))
+    }
+  }
+
+  // ── Stage 3: Alpaca paper lane operator actions ────────────────────────────
+  // 'send' is two-step server-side too: operator mark-ready (state machine,
+  // actor operator:ui) then a confirm:true submit — the paper-endpoint hard
+  // lock, LIMIT-only and 1-contract guards all live in the lane module. A
+  // missing ALPACA_PAPER_BASE_URL comes back as an honest 4xx reason.
+  const alpacaPost = async (path: string, body: any) => {
+    const r = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const j = await r.json().catch(() => ({}))
+    return (j?.data ?? j) as any
+  }
+
+  const handleAlpacaAction = async (
+    action: AlpacaLaneAction, proposalId: string, payload?: { exitPremium?: number },
+  ): Promise<AlpacaActionResult> => {
+    try {
+      if (action === 'send') {
+        const row = propList.find(p => p.id === proposalId) as any
+        const qs = row?.queue_status
+        if (qs === 'pending' || qs === 'approved') {
+          const d1 = await alpacaPost('/api/v2/options/alpaca-paper/mark-ready', { proposal_id: proposalId })
+          if (!d1.ok) return { ok: false, message: d1.reason || d1.error || 'mark-ready refused' }
+        }
+        const d2 = await alpacaPost('/api/v2/options/alpaca-paper/submit', { proposal_id: proposalId, confirm: true })
+        refetchProps()
+        return d2.ok
+          ? { ok: true, message: `Paper LIMIT order submitted${d2.order_id ? ` — order ${d2.order_id}` : ''}` }
+          : { ok: false, message: d2.reason || d2.error || 'submit refused' }
+      }
+      if (action === 'mark_outcome') {
+        const d = await alpacaPost('/api/v2/options/alpaca-paper/record-outcome',
+          { proposal_id: proposalId, exit_premium: payload?.exitPremium })
+        refetchProps()
+        return d.ok
+          ? { ok: true, message: `Outcome recorded — ${d.outcome} (P/L ${fmt$(d.pnl)})` }
+          : { ok: false, message: d.reason || d.error || 'record-outcome refused' }
+      }
+      // promote_live — review mark only; never places an order
+      const d = await alpacaPost('/api/v2/options/alpaca-paper/promote-live-review',
+        { proposal_id: proposalId, confirm: true })
+      refetchProps()
+      return d.ok
+        ? { ok: true, message: 'Marked READY_FOR_LIVE_REVIEW — no order placed; 2FA + broker preview still required.' }
+        : { ok: false, message: d.reason || d.error || 'promotion refused' }
+    } catch (e: any) {
+      return { ok: false, message: String(e?.message || e) }
     }
   }
 
@@ -427,6 +508,29 @@ export default function OptionsHub({ onDrill }: Props) {
                 Showing {propCount}{propFacets.total != null && propCount !== propFacets.total ? ` of ${propFacets.total}` : ''} ⓘ
               </Tip>
             </div>
+            {/* Stage 3: Alpaca paper lane — filter queue-backed paper-model rows by lane state */}
+            {Object.keys(laneCounts).length > 0 && (
+              <>
+                <div style={{ marginTop: 8 }}>
+                  <TipSection tip="Alpaca PAPER lane states for paper-model proposals: operator mark-ready → confirmed 1-contract LIMIT submit → fill/close → recorded outcome → operator-only live-review mark. Educational lane — never a live order path.">
+                    ALPACA PAPER LANE
+                  </TipSection>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {ALPACA_LANE_FILTERS.filter(f => laneCounts[f.key] != null).map(f =>
+                    facetChip(
+                      `Show only paper-model rows in the ${f.label} lane state.`,
+                      f.label, laneCounts[f.key], alpacaLaneFilter === f.key,
+                      () => setAlpacaLaneFilter(k => k === f.key ? '' : f.key), '#f59e0b',
+                    ))}
+                  {alpacaLaneFilter && (
+                    <span style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center' }}>
+                      showing {shownProps.length} lane row{shownProps.length === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {propError && (
@@ -444,13 +548,14 @@ export default function OptionsHub({ onDrill }: Props) {
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
-            {propList.map(p => (
+            {shownProps.map(p => (
               <ProposalCard
                 key={p.id}
                 proposal={p}
                 armed={!!execStatus?.armed_for_execution}
                 novice={novice}
                 onAction={(a, id) => handleAction(a, id, p)}
+                onAlpacaAction={cardsV4 && p.educational_paper_model ? handleAlpacaAction : undefined}
                 onManualLog={() => setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })}
                 onDrill={() => onDrill({
                   title: `${p.symbol} ${p.strategy.replace(/_/g, ' ')}`,

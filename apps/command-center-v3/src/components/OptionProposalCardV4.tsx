@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishProposal, proposalRiskFlags, strikeDistance, strategyGuide } from '../lib/optionsNovice'
 import { ACTIONS, PROPOSAL } from '../lib/optionsTooltips'
@@ -58,6 +59,12 @@ import type { OptionProposal } from './OptionProposalCard'
 //   [ADD ] aegis_verdict (+ aegis_note tooltip)   → hero row 2 (typed in v3 but never rendered)
 //   [ADD ] iv_context line (2026-07-06)           → paper-model disclosure block: 'IV rank N% — verdict'
 //                                                   (teal cheap / amber rich / dim building-unavailable)
+//   [ADD ] prime rubric chip (Stage 3)            → header chip: PRIME <score> (dim NOT_PRIME · teal
+//                                                   PRIME_FOR_PAPER · amber live-review label) — advisory only
+//   [ADD ] Alpaca lane chip + buttons (Stage 3)   → paper block: per-state chip (READY/SUBMITTED/FILLED@px/
+//                                                   REJECTED/CLOSED/OUTCOME ✓/LIVE REVIEW) + operator actions
+//                                                   Send-to-Alpaca (two-step confirm) · Mark outcome ·
+//                                                   Promote to Live Review (mandatory no-order confirm text)
 
 const STRAT_LABEL: Record<string, string> = {
   covered_call: 'Covered Call',
@@ -75,6 +82,53 @@ const PAPER_FLAG_LABELS: Record<string, string> = {
   earnings_unknown: 'earnings date unknown',
   delta_proxy_itm_depth: 'Δ from ITM-depth proxy (chain carried no greeks)',
   iv_rich_pay_up_warning: '⚠ IV rich — pay-up warning',
+}
+
+// ── ALPACA-OPTIONS Stage 3: paper-lane state + prime rubric (data wiring) ──
+// queue meta passthrough on paper-model rows: meta.alpaca_json (order audit)
+// + meta.prime_json (advisory rubric). Verdicts are LABELS — the card never
+// transitions state itself; every action goes through the operator API routes.
+export type AlpacaLaneAction = 'send' | 'mark_outcome' | 'promote_live'
+export type AlpacaActionResult = { ok: boolean; message?: string }
+type PaperLaneFields = {
+  queue_status?: string
+  alpaca_json?: {
+    response?: { id?: string }
+    fill?: { price?: number; filled_at?: string }
+    close?: { exit_price?: number; pnl?: number }
+    reject?: { reason?: string }
+  }
+  prime_json?: { prime_score?: number; verdict?: string }
+}
+
+const PRIME_VERDICT_LIVE = 'READY_FOR_LIVE_REVIEW_OPERATOR_ONLY'
+
+function primeChipColor(verdict?: string): string {
+  if (verdict === 'PRIME_FOR_PAPER') return WL.signal.teal
+  if (verdict === PRIME_VERDICT_LIVE) return WL.signal.amber
+  if (verdict === 'PAPER_ONLY') return WL.text.secondary
+  return WL.text.dim // NOT_PRIME / unknown → dim
+}
+
+function laneChip(status?: string, aj?: PaperLaneFields['alpaca_json']): { label: string; color: string; tip: string } | null {
+  switch (status) {
+    case 'READY_FOR_ALPACA_PAPER':
+      return { label: 'READY', color: WL.signal.amber, tip: 'Operator-marked ready for the Alpaca PAPER lane — no order exists yet.' }
+    case 'ALPACA_PAPER_SUBMITTED':
+      return { label: 'SUBMITTED', color: WL.text.secondary, tip: `Paper LIMIT order working on Alpaca${aj?.response?.id ? ` (order ${aj.response.id})` : ''} — reconcile polls for the fill.` }
+    case 'ALPACA_PAPER_FILLED':
+      return { label: aj?.fill?.price != null ? `FILLED@${fmt$(aj.fill.price, 2)}` : 'FILLED', color: WL.signal.teal, tip: 'Paper order filled — position open on Alpaca paper.' }
+    case 'ALPACA_PAPER_REJECTED':
+      return { label: 'REJECTED', color: WL.signal.red, tip: `Alpaca rejected/canceled the paper order${aj?.reject?.reason ? `: ${aj.reject.reason}` : ''}.` }
+    case 'ALPACA_PAPER_CLOSED':
+      return { label: 'CLOSED', color: WL.text.secondary, tip: 'Position closed on Alpaca paper — outcome not yet recorded in the validation ledger.' }
+    case 'OUTCOME_RECORDED':
+      return { label: 'OUTCOME ✓', color: WL.signal.teal, tip: `Closed paper outcome recorded${aj?.close?.pnl != null ? ` (P/L ${fmt$(aj.close.pnl)})` : ''} — feeds the 30-trade validation gate.` }
+    case 'READY_FOR_LIVE_REVIEW':
+      return { label: 'LIVE REVIEW', color: WL.signal.amber, tip: 'Operator-promoted for live review. No order placed — 2FA + broker preview/read-back still required.' }
+    default:
+      return null
+  }
 }
 
 type HeroTone = { c: string; bg: string; border: string; label: string }
@@ -149,6 +203,7 @@ export default function OptionProposalCardV4({
   armed,
   novice,
   onAction,
+  onAlpacaAction,
   onDrill,
   onManualLog,
   reviewBar,
@@ -157,6 +212,8 @@ export default function OptionProposalCardV4({
   armed?: boolean
   novice?: boolean
   onAction: (action: string, id: string) => void
+  /** Stage 3: operator actions for the Alpaca paper lane (fetches live in the hub). */
+  onAlpacaAction?: (action: AlpacaLaneAction, proposalId: string, payload?: { exitPremium?: number }) => Promise<AlpacaActionResult>
   onDrill?: () => void
   onManualLog?: () => void
   reviewBar?: React.ReactNode
@@ -204,6 +261,44 @@ export default function OptionProposalCardV4({
   ].filter(Boolean).join(' · ') : ''
   const paperFlags = paper ? (p.meta?.gate_flags || []).map(f => PAPER_FLAG_LABELS[f] || f.replace(/_/g, ' ')) : []
   const discoveryRef = p.meta?.discovery_ref
+
+  // ── Stage 3: Alpaca paper lane — state chip, prime score, operator actions ──
+  const lane = p as OptionProposal & PaperLaneFields
+  const queueStatus = lane.queue_status
+  const alpacaJson = lane.alpaca_json
+  const prime = lane.prime_json
+  const laneState = paper ? laneChip(queueStatus, alpacaJson) : null
+  const [laneConfirm, setLaneConfirm] = useState<AlpacaLaneAction | null>(null)
+  const [exitPremium, setExitPremium] = useState('')
+  const [laneBusy, setLaneBusy] = useState(false)
+  const [laneMsg, setLaneMsg] = useState<string | null>(null)
+  const canSend = paper && !!onAlpacaAction
+    && (queueStatus === 'pending' || queueStatus === 'approved' || queueStatus === 'READY_FOR_ALPACA_PAPER')
+  const canMarkOutcome = paper && !!onAlpacaAction
+    && (queueStatus === 'ALPACA_PAPER_FILLED' || queueStatus === 'ALPACA_PAPER_CLOSED')
+  const canPromote = paper && !!onAlpacaAction
+    && queueStatus === 'OUTCOME_RECORDED' && prime?.verdict === PRIME_VERDICT_LIVE
+
+  const runLane = async (action: AlpacaLaneAction, payload?: { exitPremium?: number }) => {
+    if (!onAlpacaAction || laneBusy) return
+    setLaneBusy(true)
+    setLaneMsg(null)
+    try {
+      const res = await onAlpacaAction(action, p.id, payload)
+      setLaneMsg(res.message || (res.ok ? 'Done.' : 'Refused.'))
+    } catch (e: any) {
+      setLaneMsg(String(e?.message || e))
+    } finally {
+      setLaneBusy(false)
+      setLaneConfirm(null)
+      setExitPremium('')
+    }
+  }
+
+  const laneBtn: React.CSSProperties = {
+    fontSize: 9.5, fontWeight: 800, padding: '4px 9px', borderRadius: 5, cursor: 'pointer',
+    border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: WL.text.secondary, whiteSpace: 'nowrap',
+  }
 
   // IV-rank context line (2026-07-06) — advisory disclosure, one line:
   // teal = extrinsic cheap · amber = extrinsic rich (pay-up) · dim = building/unavailable.
@@ -275,6 +370,19 @@ export default function OptionProposalCardV4({
             {paper && p.validation_progress?.label && (
               <span title={p.validation_progress.message || 'Closed paper outcomes recorded vs the validation gate.'} style={{ ...chip(WL.signal.amber, true), cursor: 'help' }}>
                 {p.validation_progress.label}
+              </span>
+            )}
+            {paper && prime?.prime_score != null && (
+              <span
+                title={`Prime rubric ${prime.prime_score.toFixed(1)}/100 → ${(prime.verdict || '').replace(/_/g, ' ')}. Advisory label only — 10 weighted components (spread, OI/volume, delta fit, extrinsic, breakeven, IV rank, earnings, sizing, thesis freshness, fill quality). It never transitions state or places orders.`}
+                style={{ ...chip(primeChipColor(prime.verdict), prime.verdict === 'NOT_PRIME'), cursor: 'help' }}
+              >
+                PRIME {Math.round(prime.prime_score)}
+              </span>
+            )}
+            {laneState && (
+              <span title={laneState.tip} style={{ ...chip(laneState.color), cursor: 'help' }}>
+                ALPACA {laneState.label}
               </span>
             )}
             {ds && <span title={ds.tip} style={chip(ds.c)}>{ds.label}</span>}
@@ -387,6 +495,88 @@ export default function OptionProposalCardV4({
                 {paperFlags.map(f => (
                   <span key={f} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: WL.signal.amber, border: '1px solid rgba(245,166,35,.4)', background: 'transparent' }}>{f}</span>
                 ))}
+              </div>
+            )}
+            {/* Stage 3: Alpaca paper lane — operator buttons + two-step confirms.
+                Every click routes through the paper-locked state machine API
+                (mark-ready → confirm-required submit); nothing here is automatic. */}
+            {onAlpacaAction && (canSend || canMarkOutcome || canPromote || laneState || laneMsg) && (
+              <div onClick={e => e.stopPropagation()} style={{ marginTop: 8, paddingTop: 7, borderTop: '1px solid rgba(245,166,35,.22)' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: '.06em', color: WL.text.dim, textTransform: 'uppercase' }}>Alpaca paper lane</span>
+                  {canSend && laneConfirm !== 'send' && (
+                    <button type="button" disabled={laneBusy} onClick={() => setLaneConfirm('send')}
+                      title="Two-step: confirm, then operator mark-ready + submit a single paper LIMIT order. Paper endpoint only — there is no live order path here."
+                      style={{ ...laneBtn, border: `1px solid ${WL.signal.teal}55`, color: WL.signal.teal }}>
+                      Send to Alpaca Paper ▸
+                    </button>
+                  )}
+                  {canMarkOutcome && laneConfirm !== 'mark_outcome' && (
+                    <button type="button" disabled={laneBusy} onClick={() => setLaneConfirm('mark_outcome')}
+                      title="Record the closed paper outcome: enter the exit premium — P/L feeds the 30-trade validation gate."
+                      style={laneBtn}>
+                      Mark outcome ▸
+                    </button>
+                  )}
+                  {canPromote && laneConfirm !== 'promote_live' && (
+                    <button type="button" disabled={laneBusy} onClick={() => setLaneConfirm('promote_live')}
+                      title="Operator-only review mark. Does NOT place an order — 2FA + broker preview/read-back still required."
+                      style={{ ...laneBtn, border: `1px solid ${WL.signal.amber}66`, color: WL.signal.amber }}>
+                      Promote to Live Review ▸
+                    </button>
+                  )}
+                  {laneBusy && <span style={{ fontSize: 9, color: WL.text.dim }}>working…</span>}
+                </div>
+                {laneConfirm === 'send' && (
+                  <div style={{ marginTop: 6, padding: '7px 9px', borderRadius: 6, border: `1px solid ${WL.signal.teal}44`, background: 'rgba(45,212,191,.05)', fontSize: 10, color: WL.text.secondary }}>
+                    <b style={{ color: WL.text.primary }}>Send to Alpaca Paper?</b> paper endpoint only · limit · 1 contract
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                      <button type="button" disabled={laneBusy} onClick={() => runLane('send')}
+                        style={{ ...laneBtn, background: WL.signal.teal, border: `1px solid ${WL.signal.teal}`, color: '#06231f' }}>
+                        Confirm — submit paper order
+                      </button>
+                      <button type="button" onClick={() => setLaneConfirm(null)} style={laneBtn}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+                {laneConfirm === 'mark_outcome' && (
+                  <div style={{ marginTop: 6, padding: '7px 9px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'rgba(148,163,184,.06)', fontSize: 10, color: WL.text.secondary }}>
+                    <b style={{ color: WL.text.primary }}>Record outcome</b> — exit premium per contract
+                    {alpacaJson?.fill?.price != null && <span> (entry fill {fmt$(alpacaJson.fill.price, 2)})</span>}
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+                      <input
+                        value={exitPremium}
+                        onChange={e => setExitPremium(e.target.value)}
+                        placeholder="e.g. 43.85"
+                        inputMode="decimal"
+                        style={{ width: 80, fontSize: 10, padding: '4px 6px', borderRadius: 5, border: `1px solid ${WL.surface.edge}`, background: WL.surface.inset, color: WL.text.primary }}
+                      />
+                      <button type="button" disabled={laneBusy || !(Number(exitPremium) >= 0) || exitPremium.trim() === ''}
+                        onClick={() => runLane('mark_outcome', { exitPremium: Number(exitPremium) })}
+                        style={{ ...laneBtn, opacity: exitPremium.trim() === '' ? 0.6 : 1 }}>
+                        Record
+                      </button>
+                      <button type="button" onClick={() => setLaneConfirm(null)} style={laneBtn}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+                {laneConfirm === 'promote_live' && (
+                  <div style={{ marginTop: 6, padding: '7px 9px', borderRadius: 6, border: `1px solid ${WL.signal.amber}55`, background: 'rgba(245,166,35,.06)', fontSize: 10, color: WL.text.secondary, lineHeight: 1.55 }}>
+                    <b style={{ color: WL.signal.amber }}>Promote to Live Review?</b>
+                    <div>This does not place an order.</div>
+                    <div>Requires operator 2FA.</div>
+                    <div>Requires broker preview/read-back.</div>
+                    <div>Model is unvalidated until 30 paper outcomes / 3 months.</div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                      <button type="button" disabled={laneBusy} onClick={() => runLane('promote_live')}
+                        style={{ ...laneBtn, border: `1px solid ${WL.signal.amber}`, color: WL.signal.amber }}>
+                        Confirm — mark for live review
+                      </button>
+                      <button type="button" onClick={() => setLaneConfirm(null)} style={laneBtn}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+                {laneMsg && <div style={{ fontSize: 9.5, color: WL.text.secondary, marginTop: 5 }}>{laneMsg}</div>}
               </div>
             )}
             <div style={{ fontSize: 9.5, color: WL.text.dim, marginTop: 6 }}>

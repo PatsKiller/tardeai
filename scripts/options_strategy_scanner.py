@@ -15,8 +15,17 @@ fabricated.
 HARD SAFETY: no broker submit / order / 2FA imports (test-enforced). Dry-run
 prints proposals without writing anything.
 
+Stage 1 universe expansion: --universe selects which tiers of
+config/options_universe.yaml are scanned (default holdings_watchlist — the
+original holdings + watchlist buy/strong_buy behavior). Per-tier
+resolved/scanned/winners/rejects stats land in the report, and each tier's
+strategy_allowlist is respected (a symbol whose tier does not allow the
+strategy is skipped, disclosed). config/options_strategy_registry.yaml gates
+which strategies may scan at all (paper_enabled, fail-closed live policy).
+
 Usage:
     .venv/bin/python scripts/options_strategy_scanner.py --dry-run [--json]
+    .venv/bin/python scripts/options_strategy_scanner.py --dry-run --universe all
     .venv/bin/python scripts/options_strategy_scanner.py --run [--json]
     .venv/bin/python scripts/options_strategy_scanner.py --run --strategy deep_itm_call
 
@@ -47,6 +56,17 @@ from lib.options_pipeline.deep_itm_generator import (  # noqa: E402
     load_pipeline_config,
     submit_to_desk_queue,
 )
+from lib.options_pipeline.universe import (  # noqa: E402
+    UNIVERSE_SELECTORS,
+    UniverseConfigError,
+    RegistryConfigError,
+    load_strategy_registry,
+    load_universe_config,
+    resolve_universe,
+    strategy_allowed_for_entry,
+)
+
+DEFAULT_UNIVERSE = "holdings_watchlist"   # preserves the original scanner scope
 
 SUPPORTED_STRATEGIES = (STRATEGY_ID,)
 SUGGESTED_CRON = (
@@ -170,6 +190,53 @@ def resolve_eligible_underlyings(
     return eligible[: max(1, int(limit))]
 
 
+def _tier_of(u: dict) -> str:
+    """Tier attribution for an underlying (explicit source_tier wins)."""
+    if u.get("source_tier"):
+        return str(u["source_tier"])
+    src = str(u.get("conviction_source") or "")
+    if u.get("held_shares") or src == "current_holding":
+        return "holdings"
+    if src.startswith("watchlist"):
+        return "watchlist_buy_strong_buy"
+    return "injected"
+
+
+def _resolve_universe_underlyings(universe: str, u_cfg: dict, floor: float) -> List[dict]:
+    """Resolve the selected universe tiers to underlying dicts (pre-cap, deduped).
+
+    holdings + watchlist keep the original conviction-ranked resolver (behavior
+    preserved); other tiers come from lib.options_pipeline.universe. Precedence:
+    holdings > watchlist > static/discovery tiers (first occurrence wins).
+    """
+    tiers_cfg = u_cfg.get("tiers") or {}
+    wanted = UNIVERSE_SELECTORS[universe] or list(u_cfg.get("tier_precedence") or [])
+    merged: Dict[str, dict] = {}
+
+    if "holdings" in wanted or "watchlist_buy_strong_buy" in wanted:
+        rich = resolve_eligible_underlyings(limit=10_000, conviction_floor=floor)
+        for u in rich:
+            tier = "holdings" if u.get("held_shares") else "watchlist_buy_strong_buy"
+            t_cfg = tiers_cfg.get(tier) or {}
+            if tier not in wanted or not t_cfg.get("enabled", True):
+                continue
+            merged[u["symbol"]] = dict(
+                u, source_tier=tier,
+                strategy_allowlist=list(t_cfg.get("strategy_allowlist") or []),
+                reason_included=t_cfg.get("reason_included"))
+
+    others = [t for t in wanted if t not in ("holdings", "watchlist_buy_strong_buy")]
+    if others:
+        for e in resolve_universe(others, config=u_cfg):
+            merged.setdefault(e["symbol"], e)
+    return list(merged.values())
+
+
+def _blank_tier_stats() -> dict:
+    return {"resolved": 0, "scanned": 0, "winners": 0, "rejects": 0,
+            "allowlist_skipped": 0}
+
+
 def _market_session_note() -> dict:
     try:
         from market_session import current_market_session
@@ -187,13 +254,14 @@ def run_scan(
     *,
     strategy: str = STRATEGY_ID,
     dry_run: bool = True,
+    universe: str = DEFAULT_UNIVERSE,
     limit_underlyings: Optional[int] = None,
     top_n: Optional[int] = None,
     underlyings: Optional[List[dict]] = None,
     analysis_fn: Optional[Callable[..., dict]] = None,
     queue_writer: Optional[Callable[[List[dict]], dict]] = None,
 ) -> dict:
-    """Full scan: eligibility → feasibility → gates → rank → (queue top N | dry-run print).
+    """Full scan: universe → eligibility → feasibility → gates → rank → (queue top N | dry-run).
 
     Injectable underlyings/analysis_fn/queue_writer keep this deterministic in tests.
     """
@@ -212,18 +280,78 @@ def run_scan(
         return {"ok": False, "error": "config integrity check failed — deep_itm_call must be "
                                       "paper_only + manual_review_only with live_allowed=false"}
 
+    # Strategy registry gate (fail-closed): an invalid registry — including any
+    # live_enabled=true row without the explicit policy env — refuses the scan.
+    try:
+        registry = load_strategy_registry()
+    except RegistryConfigError as e:
+        return {"ok": False, "error": f"strategy registry invalid — scanner refuses (fail-closed): {e}"}
+    reg_row = (registry.get("strategies") or {}).get(strategy)
+    if reg_row is not None and not reg_row.get("paper_enabled"):
+        return {"ok": False, "error": f"strategy {strategy} has paper_enabled=false "
+                                      "in options_strategy_registry — scanner refuses to run"}
+
+    # Universe config (fail-closed) — also supplies default limit/top caps.
+    if universe not in UNIVERSE_SELECTORS:
+        return {"ok": False, "error": f"unknown universe selector '{universe}' "
+                                      f"(known: {sorted(UNIVERSE_SELECTORS)})"}
+    try:
+        u_cfg = load_universe_config()
+    except UniverseConfigError as e:
+        return {"ok": False, "error": f"options universe config invalid — scanner refuses (fail-closed): {e}"}
+    u_defaults = u_cfg.get("defaults") or {}
+
     policy = cfg.get("selection_policy") or {}
-    cap = int(limit_underlyings or policy.get("max_underlyings_per_run") or 15)
-    winners_cap = int(top_n or policy.get("max_proposals_per_run") or 5)
+    cap = int(limit_underlyings or u_defaults.get("max_underlyings_per_run")
+              or policy.get("max_underlyings_per_run") or 15)
+    winners_cap = int(top_n or u_defaults.get("max_proposals_per_run")
+                      or policy.get("max_proposals_per_run") or 5)
     floor = _f((cfg.get("underlying_quality_gate") or {}).get("conviction_floor"), 0.55)
 
     session = _market_session_note()
     if underlyings is None:
-        underlyings = resolve_eligible_underlyings(limit=cap, conviction_floor=floor)
+        underlyings = _resolve_universe_underlyings(universe, u_cfg, floor)
 
-    gen = generate_deep_itm_proposals(underlyings, cfg, analysis_fn=analysis_fn)
+    # Per-tier accounting + strategy allowlist enforcement (skip ≠ reject silently).
+    tier_stats: Dict[str, dict] = {}
+
+    def _bump(tier: str, key: str, n: int = 1) -> None:
+        tier_stats.setdefault(tier, _blank_tier_stats())[key] += n
+
+    scan_list: List[dict] = []
+    allowlist_skips: List[dict] = []
+    for u in underlyings:
+        _bump(_tier_of(u), "resolved")
+        if strategy_allowed_for_entry(u, strategy):
+            scan_list.append(u)
+        else:
+            allowlist_skips.append(u)
+            _bump(_tier_of(u), "allowlist_skipped")
+    scan_list = scan_list[:cap]
+    for u in scan_list:
+        _bump(_tier_of(u), "scanned")
+
+    # Generator honors its own policy cap — align it with the scanner's cap.
+    gen_cfg = dict(cfg)
+    gen_cfg["selection_policy"] = dict(policy, max_underlyings_per_run=cap)
+    gen = generate_deep_itm_proposals(scan_list, gen_cfg, analysis_fn=analysis_fn)
     ranked = gen.get("proposals") or []
     winners = ranked[:winners_cap]
+
+    tier_by_symbol = {u["symbol"]: _tier_of(u) for u in scan_list}
+    ok_symbols = {pu.get("symbol") for pu in (gen.get("per_underlying") or [])
+                  if pu.get("status") == "ok"}
+    for u in scan_list:
+        if u["symbol"] not in ok_symbols:
+            _bump(tier_by_symbol[u["symbol"]], "rejects")
+    for w in winners:
+        _bump(tier_by_symbol.get(w.get("symbol"), "injected"), "winners")
+
+    per_underlying = [
+        {"symbol": u["symbol"], "status": "skipped",
+         "reason": f"strategy {strategy} not in {_tier_of(u)} tier strategy_allowlist"}
+        for u in allowlist_skips
+    ] + list(gen.get("per_underlying") or [])
 
     queue_result: dict = {"ok": True, "skipped": True, "reason": "dry_run — nothing written"}
     if not dry_run and winners:
@@ -236,12 +364,15 @@ def run_scan(
         "ok": True,
         "strategy": strategy,
         "dry_run": dry_run,
+        "universe": universe,
         "generated_at": gen.get("generated_at"),
         "market_session": session,
-        "underlyings_considered": len(underlyings),
+        "underlyings_considered": len(scan_list),
         "underlyings": [{"symbol": u["symbol"], "conviction": u["conviction"],
-                         "source": u.get("conviction_source")} for u in underlyings],
-        "per_underlying": gen.get("per_underlying"),
+                         "source": u.get("conviction_source"),
+                         "tier": _tier_of(u)} for u in scan_list],
+        "tier_stats": tier_stats,
+        "per_underlying": per_underlying,
         "candidates_passed_gates": len(ranked),
         "winners": winners,
         "winner_summary": [
@@ -264,6 +395,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="scan and print — write NOTHING")
     ap.add_argument("--json", action="store_true", help="emit full JSON result")
     ap.add_argument("--strategy", default=STRATEGY_ID)
+    ap.add_argument("--universe", default=DEFAULT_UNIVERSE,
+                    choices=sorted(UNIVERSE_SELECTORS),
+                    help="universe tiers to scan (config/options_universe.yaml); "
+                         f"default {DEFAULT_UNIVERSE} = original scanner scope")
     ap.add_argument("--limit", type=int, default=None, help="max underlyings (default from config)")
     ap.add_argument("--top", type=int, default=None, help="max winners queued (default from config)")
     args = ap.parse_args(argv)
@@ -273,7 +408,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     dry = not args.run  # default safe: dry-run unless --run given explicitly
 
-    result = run_scan(strategy=args.strategy, dry_run=dry,
+    result = run_scan(strategy=args.strategy, dry_run=dry, universe=args.universe,
                       limit_underlyings=args.limit, top_n=args.top)
     if args.json:
         print(json.dumps(result, indent=2, default=str))
@@ -283,10 +418,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 1
         ms = result["market_session"]
         print(f"[{result['strategy']}] {'DRY-RUN' if result['dry_run'] else 'RUN'} "
-              f"— session={ms['session']}")
+              f"— universe={result.get('universe')} session={ms['session']}")
         if ms.get("note"):
             print(f"  note: {ms['note']}")
         print(f"  underlyings considered: {result['underlyings_considered']}")
+        for tier, st in (result.get("tier_stats") or {}).items():
+            print(f"  tier {tier:26} resolved={st['resolved']:<3} scanned={st['scanned']:<3} "
+                  f"winners={st['winners']:<2} rejects={st['rejects']:<3} "
+                  f"allowlist_skipped={st['allowlist_skipped']}")
         for pu in result.get("per_underlying") or []:
             line = f"  {pu['symbol']:6} {pu['status']}"
             if pu.get("reason"):
