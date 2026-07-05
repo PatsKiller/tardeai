@@ -56,6 +56,8 @@ import type { OptionProposal } from './OptionProposalCard'
 //   [PASS] action_buttons w/ exec-lock + tooltips → hero row 1 (lock/manual logic unchanged)
 //   [PASS] "Executed manually" button             → footer
 //   [ADD ] aegis_verdict (+ aegis_note tooltip)   → hero row 2 (typed in v3 but never rendered)
+//   [ADD ] iv_context line (2026-07-06)           → paper-model disclosure block: 'IV rank N% — verdict'
+//                                                   (teal cheap / amber rich / dim building-unavailable)
 
 const STRAT_LABEL: Record<string, string> = {
   covered_call: 'Covered Call',
@@ -72,6 +74,7 @@ const PAPER_FLAG_LABELS: Record<string, string> = {
   earnings_before_expiry_operator_flagged: '⚠ earnings before expiry',
   earnings_unknown: 'earnings date unknown',
   delta_proxy_itm_depth: 'Δ from ITM-depth proxy (chain carried no greeks)',
+  iv_rich_pay_up_warning: '⚠ IV rich — pay-up warning',
 }
 
 type HeroTone = { c: string; bg: string; border: string; label: string }
@@ -201,6 +204,19 @@ export default function OptionProposalCardV4({
   ].filter(Boolean).join(' · ') : ''
   const paperFlags = paper ? (p.meta?.gate_flags || []).map(f => PAPER_FLAG_LABELS[f] || f.replace(/_/g, ' ')) : []
   const discoveryRef = p.meta?.discovery_ref
+
+  // IV-rank context line (2026-07-06) — advisory disclosure, one line:
+  // teal = extrinsic cheap · amber = extrinsic rich (pay-up) · dim = building/unavailable.
+  const ivc = p.iv_context || p.meta?.analysis?.iv_context
+  const ivLine = !ivc ? '' : ivc.available
+    ? `IV rank ${Math.round(ivc.iv_rank ?? 0)}% — ${ivc.verdict_label || ivc.verdict || 'normal'}`
+    : ivc.days != null
+      ? `IV history building — ${ivc.days}/${ivc.required_days ?? 20} days`
+      : `IV context unavailable — ${ivc.reason || 'no data'}`
+  const ivColor = !ivc?.available ? WL.text.dim
+    : ivc.verdict === 'extrinsic_cheap' ? WL.signal.teal
+      : ivc.verdict === 'extrinsic_rich' ? WL.signal.amber
+        : WL.text.secondary
 
   const btnStyle = (action: string): React.CSSProperties => {
     const base: React.CSSProperties = { fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, whiteSpace: 'nowrap', cursor: 'pointer' }
@@ -355,6 +371,16 @@ export default function OptionProposalCardV4({
           <div style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(245,166,35,.06)', border: '1px solid rgba(245,166,35,.28)', fontSize: 10.5, lineHeight: 1.55, color: WL.text.secondary }}>
             {paperSummary && (
               <div style={{ ...numStyle, fontSize: 11, fontWeight: 700, color: WL.text.primary }}>{paperSummary}</div>
+            )}
+            {ivLine && (
+              <div
+                title={ivc?.available
+                  ? `ATM IV ${ivc.atm_iv != null ? `${Number(ivc.atm_iv).toFixed(1)}%` : '—'} vs 52-week stored range · percentile ${ivc.percentile != null ? `${ivc.percentile}%` : '—'} · advisory only — informs edge ranking (×1.1 cheap / ×0.9 rich), never rejects`
+                  : 'IV rank needs ≥20 daily ATM-IV snapshots — reported honestly as unavailable until then, never fabricated from thin data'}
+                style={{ fontSize: 10, fontWeight: 700, color: ivColor, marginTop: paperSummary ? 5 : 0, cursor: 'help' }}
+              >
+                {ivLine}
+              </div>
             )}
             {paperFlags.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>

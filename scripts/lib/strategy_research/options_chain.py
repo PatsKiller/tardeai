@@ -362,12 +362,31 @@ def _candidate_row(c: dict[str, Any], spot: float, exp: str,
     return row
 
 
+def _iv_context_for(symbol: str, snapshot: dict[str, Any]) -> dict[str, Any]:
+    """IV-rank context (ADVISORY ONLY — informs, never rejects) for a symbol.
+
+    Current ATM IV comes from the snapshot already in hand (no second chain
+    read); the rank comes from the options_iv_history daily series. Every
+    failure mode degrades honestly to {"available": False, "reason": ...} —
+    including <20 stored days ("insufficient history"), which is never
+    fabricated into a rank.
+    """
+    try:
+        from . import iv_history
+        atm = iv_history.extract_atm_iv(snapshot)
+        return iv_history.iv_rank(symbol, current_iv=(atm or {}).get("atm_iv"))
+    except Exception as e:
+        return {"available": False,
+                "reason": f"iv context error: {str(e)[:120]}"}
+
+
 def deep_itm_call_analysis(symbol: str,
                            delta_range: tuple[float, float] = (0.80, 0.95),
                            dte_buckets: list[int] | tuple[int, ...] = (30, 60, 90, 180, 365),
                            *, snapshot: dict[str, Any] | None = None,
                            strike_count: int = 40,
                            earnings_date: str | None = None,
+                           iv_context: dict[str, Any] | None = None,
                            max_candidates_per_bucket: int = 3) -> dict[str, Any]:
     """Deep-ITM (stock-replacement) call research per DTE bucket. EDUCATIONAL_ONLY.
 
@@ -377,6 +396,11 @@ def deep_itm_call_analysis(symbol: str,
     reported via selection_mode). Per candidate: spread / OI / volume /
     earnings-before-expiry flags, extrinsic value, breakeven, max loss, and
     capital vs 100 shares. Unavailable chain data degrades honestly.
+
+    ``iv_context`` (injectable for tests; computed from iv_history when None)
+    is ADVISORY context — {atm_iv, iv_rank, percentile, verdict} or an honest
+    {"available": False, ...}. It informs downstream scoring/disclosure and
+    never gates anything here.
     """
     sym = (symbol or "").strip().upper()
     snap = snapshot if snapshot is not None else fetch_chain_snapshot(
@@ -437,6 +461,8 @@ def deep_itm_call_analysis(symbol: str,
             "delta_range": [lo, hi],
             "selection_modes_used": sorted(modes_used),
             "next_earnings_date": earnings,
+            "iv_context": iv_context if iv_context is not None
+                          else _iv_context_for(sym, snap),
             "dte_buckets": buckets,
             "chain_liquidity_score": snap.get("liquidity_score"),
             "feasibility": (snap.get("strategy_feasibility") or {}).get("deep_itm_call")}

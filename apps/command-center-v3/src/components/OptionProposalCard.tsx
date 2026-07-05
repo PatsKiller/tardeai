@@ -85,6 +85,21 @@ function Metric({ label, value, color = TEXT0, tip }: { label: string; value: Re
   )
 }
 
+// IV-rank context (2026-07-06, advisory-only): {available:true, rank/percentile/
+// verdict} from ≥20 days of options_iv_history, or an honest unavailable shape
+// ({days, required_days} while history builds). Informs, never gates.
+export type IvContext = {
+  available?: boolean
+  atm_iv?: number
+  iv_rank?: number
+  percentile?: number
+  verdict?: string
+  verdict_label?: string
+  days?: number
+  required_days?: number
+  reason?: string
+}
+
 export type OptionProposal = {
   id: string
   strategy: string
@@ -97,6 +112,7 @@ export type OptionProposal = {
   pop_pct?: number
   edge_score?: number
   iv_rank?: number
+  iv_context?: IvContext
   max_profit?: number | string
   max_loss?: number | string
   stock_downside_risk?: number
@@ -154,6 +170,7 @@ export type OptionProposal = {
       underlying_price?: number
       next_earnings_date?: string | null
       feasibility?: { feasible?: boolean; score?: number; reason?: string }
+      iv_context?: IvContext
       candidate?: {
         strike?: number
         delta?: number | null
