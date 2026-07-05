@@ -2040,8 +2040,16 @@ ALERT_STATE = STATE_DIR / "health_agent_alert_state.json"
 
 def _alert_suppressed(policy: dict, snapshot: dict) -> bool:
     """Throttle repeat alerts: an unchanged DEGRADED re-alerted every 30-min run is noise
-    (2026-07-04: 6 identical Telegrams in an hour, doubled by a duplicate systemd timer).
-    Alert only on status change, a meaningful score drop, or a periodic heartbeat."""
+    (2026-07-04: 6 identical Telegrams in an hour, doubled by a duplicate systemd timer —
+    tradeai-health-agent.timer at :03/:33 next to the */30 cron; the only other dedup layer,
+    telegram_alert_router's health gate, is per-process in-memory so it never spans runs).
+    Alert only on status change, a meaningful score drop, or a periodic heartbeat.
+
+    Pure decision keyed on status+score — never message text, so cosmetic differences
+    (e.g. an "Auto-fixed" line in one run and not the next) cannot defeat the throttle.
+    State is recorded separately by _record_alert_sent() AFTER a confirmed send, and the
+    caller holds an exclusive file lock across decide→send→record so a concurrently
+    scheduled duplicate run blocks, re-reads the fresh state, and suppresses."""
     acfg = policy.get("alert", {})
     realert_m = float(acfg.get("min_realert_minutes", 360))
     drop_pts = float(acfg.get("realert_on_score_drop", 5))
@@ -2058,21 +2066,39 @@ def _alert_suppressed(policy: dict, snapshot: dict) -> bool:
     changed = st.get("status") != snapshot["status"]
     worsened = snapshot["overall_score"] <= float(st.get("score", 100)) - drop_pts
     heartbeat_due = last_at is None or (now - last_at).total_seconds() >= realert_m * 60
-    if not (changed or worsened or heartbeat_due):
-        return True
+    return not (changed or worsened or heartbeat_due)
+
+
+def _record_alert_sent(snapshot: dict):
+    """Persist throttle state only after a CONFIRMED send, so a failed or router-suppressed
+    send does not silently swallow the alert for the next min_realert_minutes."""
     try:
         ALERT_STATE.parent.mkdir(parents=True, exist_ok=True)
-        ALERT_STATE.write_text(json.dumps({"at": now.isoformat(), "status": snapshot["status"],
+        ALERT_STATE.write_text(json.dumps({"at": datetime.now(timezone.utc).isoformat(),
+                                           "status": snapshot["status"],
                                            "score": snapshot["overall_score"]}))
-    except Exception:
-        pass
-    return False
+    except Exception as ex:
+        print(f"[health-agent] WARN could not persist alert state: {ex}", file=sys.stderr)
 
 
 def alert(policy: dict, snapshot: dict):
+    """Single Telegram send path for the whole run: main() calls this exactly once, AFTER
+    auto-remediation (+ post-fix re-score), so the autofix outcome is folded into the one
+    message. Every send is gated by _alert_suppressed under an exclusive flock — if a
+    duplicate scheduler (cron + stray systemd timer) runs the agent minutes or milliseconds
+    apart, only the first sender records state and the other is suppressed."""
     if snapshot["status"] not in policy.get("alert", {}).get("telegram_on_status", ["unhealthy", "degraded"]) \
             and not (snapshot["trends"] and policy.get("alert", {}).get("telegram_on_trend_drop", True)):
         return
+    import fcntl
+    ALERT_STATE.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = ALERT_STATE.with_suffix(".lock")
+    with open(lock_path, "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        _alert_locked(policy, snapshot)
+
+
+def _alert_locked(policy: dict, snapshot: dict):
     if _alert_suppressed(policy, snapshot):
         return
     icon = {"unhealthy": "🚨", "degraded": "⚠️", "healthy": "✅"}.get(snapshot["status"], "ℹ️")
@@ -2094,9 +2120,12 @@ def alert(policy: dict, snapshot: dict):
         lines.append(f"🔁 Remediation ineffective (needs operator): {', '.join(r.get('type', '?') for r in ineffective)}")
     try:
         from telegram_alert import send_telegram
-        send_telegram("\n".join(lines))
-    except Exception:
-        pass
+        sent = send_telegram("\n".join(lines))
+    except Exception as ex:
+        print(f"[health-agent] WARN telegram send failed: {ex}", file=sys.stderr)
+        sent = False
+    if sent:
+        _record_alert_sent(snapshot)
 
 
 def main():
