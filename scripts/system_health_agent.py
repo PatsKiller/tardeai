@@ -9,7 +9,7 @@ Schedule: */5 * * * 1-5 (every 5 min weekdays), */15 * * * 0,6 (every 15 min wee
 
 NO bypass_router. NO direct Telegram. ALL alerts through central router.
 """
-import argparse, json, logging, os, subprocess, sys, time
+import argparse, json, logging, os, subprocess, sys, time, uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -1016,19 +1016,24 @@ def run_health_check(dry_run=True, verbose=False):
                         cur.execute("""SELECT COUNT(*) FROM watchlist_agent_jobs
                             WHERE requested_agent=%s AND status IN ('queued','pending','processing')""", [agent])
                         if (cur.fetchone()[0] or 0) == 0:
-                            # Find a symbol to analyze (most recent holding)
-                            cur.execute("""SELECT DISTINCT symbol FROM watchlist_agent_results
-                                WHERE agent=%s ORDER BY created_at DESC LIMIT 3""", [agent])
+                            # Find a symbol to analyze (most recently analyzed per symbol)
+                            cur.execute("""SELECT symbol, MAX(created_at) AS latest
+                                FROM watchlist_agent_results
+                                WHERE agent=%s GROUP BY symbol ORDER BY latest DESC LIMIT 2""", [agent])
                             _syms = [r[0] for r in cur.fetchall()]
-                            for _sym in _syms[:2]:
+                            for _sym in _syms:
                                 cur.execute("""INSERT INTO watchlist_agent_jobs
-                                    (symbol, requested_agent, request_type, status, priority, submitted_from)
-                                    VALUES (%s, %s, 'full_analysis', 'queued', 1, 'health_agent_remediation')""",
-                                    [_sym, agent])
+                                    (id, symbol, requested_agent, request_type, status, priority, submitted_from)
+                                    VALUES (%s, %s, %s, 'full_analysis', 'queued', 1, 'health_agent_remediation')""",
+                                    [str(uuid.uuid4()), _sym, agent])
                             conn.commit()
                             if _syms:
-                                log.info(f"  🔧 Auto-queued {len(_syms[:2])} jobs for stale {agent}")
+                                log.info(f"  🔧 Auto-queued {len(_syms)} jobs for stale {agent}")
                     except Exception as _qe:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
                         log.warning(f"  Auto-queue for {agent} failed: {_qe}")
         report["stale_agents"] = stale_agents
     except Exception as e:
