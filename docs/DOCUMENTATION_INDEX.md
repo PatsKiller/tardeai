@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-02
+**Updated:** 2026-07-04
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -21,7 +21,6 @@
 | `docs/atm_audit_2026_05_26/SYSTEM_ARCHITECTURE_COMPLETE.md` | Complete architecture detail — tables, endpoints, cron map *(path corrected)* | Active |
 | `docs/CHEAT_SHEET.md` | Operator quick reference — commands, models, cron, diagnostics | Active (counts → LIVE_SYSTEM_FACTS) |
 | `docs/RESTORE_GUIDE.md` | Disaster recovery — holdings guard, deploy-zip rule, DB restore, rollback | Active |
-| `docs/infra/POST_REBOOT_RECOVERY_2026_07_02.md` | **Post OS-upgrade recovery** — Python 3.14 venv, portfolio-server adopt, OAuth proxies, site probe, no SQL migrations | Active (2026-07-02) |
 
 ---
 
@@ -32,12 +31,10 @@
 |----------|---------|--------|
 | `docs/project/TRADE_SUPERVISION_METHODOLOGY.md` | Trade monitoring, stop/target rules, after-hours research, overnight pipeline | Active |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc + Ollama setup, model list, GPU memory map | Active |
-| `docs/STOP_METHODOLOGY.md` | **Protective stop / trailing-stop methodology** — family % bands, swing-low anchor, floor/cap clamp, fixed-vs-trailing, session-aware quote freshness, click-time preflight UX (1A–5A), free-lane fallback, monthly Claude meta-review | Active (2026-07-01) |
-| `docs/STOP_SYSTEM_GAP_REPORT.md` | **Stop system alignment / gap report** — two-domain split (holdings vs scalp), L3 config-OFF verdict, shipped vs pending gaps, validation checklist | Active (2026-07-01) |
+| `docs/STOP_METHODOLOGY.md` | **Protective stop / trailing-stop methodology** — family % bands, swing-low anchor, floor/cap clamp, fixed-vs-trailing, free-lane fallback, monthly Claude meta-review | Active (2026-06-29) |
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | **Momentum-scalp layered stop/trail policy** — 4-layer methodology (structure+ATR initial stop, breakeven @ +1.0–1.5R, Chandelier trailing **config-OFF** per backtest gate, portfolio heat); §6 validation gate (150 trades); Risk tab monitor + Stop Intelligence replay | Active (2026-06-30, paper validation phase) |
 | `docs/COST_MODEL.md` | Cloud LLM operating cost model, budget gates | Active |
 | `docs/LLM_DATA_DICTIONARY.md` | Data flow to every model call, 6 context types, anti-hallucination spec | Active |
-| `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | **CIO prompt & input audit** — committee→synthesis→dual-consensus pipeline; what's mature vs F1–F5 tightening (F1 = dual ownership sources contradict, e.g. AZN conf 0.19); priority = input tightness over prompt rewrites | Active (2026-07-01) |
 
 ### LLM Fleet v4.1 (canonical set)
 | Document | Purpose | Status |
@@ -45,7 +42,7 @@
 | `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` | Fleet architecture — process types, GPU lifecycle, phased rollout, overnight routing | Canonical |
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator runbook — phase gates, rollback triggers | Active |
 | `docs/runbooks/DB_HANG_PREVENTION.md` | **DB-induced dashboard hang** — root cause (ALTER queued behind idle-in-txn lock holder), per-connection + role-level `lock_timeout`/`statement_timeout`/idle guards, recovery steps | Active (2026-06-30) |
-| `docs/runbooks/protective-stop-integration-2026-06-30.md` | **Protective stop integration** — Schwab evidence-bound STOP / STOP_LIMIT / TRAILING_STOP flow, Stop Management tab, click-time preflight UX (1A–5A), duplicate-stop guard (P1–P3), session-aware quote freshness, Fidelity manual-ticket policy, SnapTrade activity lifecycle, OCO readiness blockers | Active (2026-07-01) |
+| `docs/runbooks/protective-stop-integration-2026-06-30.md` | **Protective stop integration** — Schwab evidence-bound STOP / STOP_LIMIT / TRAILING_STOP, per-account arming (rollover default), one-V-canary-only, after-hours override-required policy, lifecycle + read-back proof, Fidelity manual-ticket, OCO off until canary proven | Active (2026-07-04) |
 | `docs/v4_1_deployment_log.md` | **Living deployment log** — fleet state, phase completions, 2026-08-11 gemma4 eval gate | Active — created 2026-06-19 (d09a653c) |
 | `docs/_archive/prompts/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md` | CC execution prompt for fleet deploy | **Archived** *(was listed active; lives in _archive)* |
 
@@ -67,12 +64,6 @@
 | `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` | **Risk visualization layer** — Recharts components, hub integration map, library roadmap | Active (2026-06-24) |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options desk execution labels — same auto vs manual split as equity proposals | Active (2026-06-24) |
 | `docs/design/OCO_ATM_UNIFICATION_DESIGN.md` | **OCO brackets + ATM↔proposals unification** — Alpaca native OCO / Schwab API OCO (2FA) / Fidelity manual; auto-bracket at fill; §11 DD hardening (OCO_REPLACING + read-back + repair supervisor, reconciler `--fix` DB-only vs `--apply-oco-retrofit`, qty fail-closed) | **Partially implemented** — paper P1+P2 live + DD-hardened (2026-06-30); Schwab P3 staged inert (`OCO_BRACKETS_SCHWAB` off); P4/P5 pending |
-| `docs/design/HERMES_MATURITY_5_DESIGN.md` | **Hermes Maturity-5 program** — audit (2/5) → phases 0-5: governed S0-S3 scope + event lane; outcome ledger + nightly grader; gated learning (drift ratchet frozen, learned promotion gates, outcome-yield source curation, lane routing); falsifiable tagging; config-proposal channel; honest computed maturity board (5s = 30-day streaks). Per-phase implementation status inline | **Implemented — all phases live (2026-07-02)**; 5s accrue on samples/streaks |
-| `docs/hermes/OUTCOME_BUS_IMPLEMENTATION.md` | `outcome_bus.json` schema — global, stop quality, maturity, **traceability sections** (`watchlist_health`, `holdings_health`, `threshold_proposals`, `lineage`) | **Live (2026-07-03)** — `59024b4a` |
-| `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` | Threshold learner, approve/reject, proposal history + **impact narratives**, bus snapshot linkage on proposals | **Live (2026-07-03)** — `a0fb8bac` |
-| `docs/hermes/HERMES_WATCHLIST_LIFECYCLE.md` | Watchlist advisory lifecycle — stages, conviction, Phase 2 health score + promotion gate, Closed Loop panel; exported to `outcome_bus.watchlist_health` | **Live (2026-07-03)** — `cac9949e` |
-| `docs/hermes/HERMES_HOLDINGS_LIFECYCLE.md` | Holdings health (stop 30%), lifecycle stages, confidence, research mult, validation | **Live (2026-07-03)** — Phase 2 |
-| `docs/hermes/HERMES_CLOSED_LOOP_TRACEABILITY.md` | Master roadmap (Prompts 1–3), symbol journey API, bus traceability validation | **Live (2026-07-03)** — `59024b4a` |
 
 ### Rotation Intelligence *(paths corrected — docs/project/)*
 | Document | Purpose | Status |
@@ -164,6 +155,7 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 
 | Date | Change |
 |------|--------|
+| 2026-07-04 | PR #33 canary hardening: reconciled after-hours policy (override-required), per-account arming, `protective_stop_canary.py` lifecycle/read-back; runbook + CHANGELOG updated; build marker `cc-v3 stop-evidence PR33 2026-07-04`. |
 | 2026-06-30 | Expanded `MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` to full policy text; cross-linked from `STOP_METHODOLOGY.md`. |
 | 2026-06-22 | A1A consolidation: LIVE_SYSTEM_FACTS.md, canonical docs → live pointers, drift detector hardened, DOCS_CONSOLIDATION closeout; runtime YAML/JSON/scripts committed. |
 | 2026-06-22 | Added stabilization + maturity audit docs; open-items updated (overnight LLM cron, KTOS/KBR stops); SYSTEM_FACTS + STATE_OF_REPO regenerated. |

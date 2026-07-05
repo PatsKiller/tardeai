@@ -1,345 +1,132 @@
 # Changelog
 
-## 2026-07-03 - Priority-based free-OAuth routing for agent narratives
-
-High-priority watchlist jobs (priority <= 2: holdings-change re-syntheses, synthesis retries,
-operator refreshes) route agent narratives through the FREE OAuth lanes (grok :8645 ->
-chatgpt :8646, llm_lane) instead of local gemma — these are the jobs someone is waiting on.
-Bulk research tail stays local; embeds stay local. Saturation valve: one local call >45s
-(LOCAL_SLOW_S) widens cloud routing to priority-3 for the rest of that worker run. Per-run
-cloud budget CLOUD_NARRATIVE_CAP=40 vs the 800/day/lane soft cap (headroom verified ~0 used).
-Free lanes only — never a paid key; lane failure falls through to the normal router path.
-
-## 2026-07-03 - Local LLM throughput: num_ctx cap, embed decoupling, worker cap 20m
-
-gemma3:4b was allocating its full 131k context (7.2 GB KV cache) per load -> 16-25 tok/s and
-14-66s agent calls; embeds queued behind generations produced 1,874 timeouts in one evening,
-each killing the caller's DB connection; full_chain jobs collided with the worker 12m cap all
-night (SMCI). Fixes: llm_router pins num_ctx=8192 (OLLAMA_NUM_CTX) + keep_alive 30m
-(OLLAMA_KEEP_ALIVE); rag_retrieval embed timeout 90->180s default + one retry + keep_alive on
-nomic-embed-text; watchlist worker cron cap 12m -> 20m (crontab, backup taken).
-
-## 2026-07-03 - Cross-surface trust pack: watchlist patterns ported to proposals/pipeline
-
-- Proposal rows carry held_shares_in_account/_total + next_earnings_date
-  (_broker_enrich_trust_rows); BrokerProposalCard renders a trust line: "holds N sh in
-  this account — this ADDS" (amber), earnings proximity (amber <=7d), wide-stop note.
-- Deploy-cap unification: proposal-accounts rows expose per-account
-  max_position_allocation_pct (the number the backend generator/risk-gate already enforce);
-  card SizingTable + Propose modal use the per-account cap, env fallback only.
-- cleanup_stale_proposals: PRICE-DRIFT pass — PENDING >4h with live price >15% from
-  proposed_entry auto-rejects (PROPOSAL_DRIFT_PCT).
-- auto_proposal_generator: volatility-aware risk down-shift (stop >7% -> x0.75, >10% -> x0.5
-  via tilt; recorded in sizing_basis.vol_factor).
-- holdings_change_trigger: position change also spawns per-symbol holdings-health refresh
-  (cap 3, detached) + stop-band-recheck alert_event. Stop machinery untouched.
-- run_synthesis all-lanes-failed guard now enqueues a deduped retry job (ANET post-purge sat
-  with no synthesis because the failed attempt "completed").
-- plan_drift_revalidator: planner invoked in subprocess batches of 5 (long in-process runs
-  died on idle DB connections mid-LLM).
-
-Follow-ups deferred: stop-advisory/holdings-health age display; exit-ladder line on holdings
-protection; proposals/holdings page layout redesign needs its own spec (formats stay as-is).
-
-## 2026-07-03 - Plan drift re-validation: incoherent/drifted entry plans rebuild themselves
-
-Audit found SSTK carrying a "validated" plan (limit 13.50 / target 13.20) with the stock at
-9.80 — stored R:R meaningless. Card decision matrix gains two FIX states ranked ABOVE the R:R
-branches: target <= limit → red "Rebuild plan · target <= limit"; |price − limit| > 15% →
-amber "Rebuild plan · price ±N% from limit" (both route to Build Plan).
-scripts/plan_drift_revalidator.py sweeps Hermes-top-250 nightly (17:25, before the 17:35
-planner run) and re-plans defective symbols through watchlist_entry_planner (env
-PLAN_DRIFT_REPLAN_PCT=15, PLAN_DRIFT_MIN_AGE_H=20, cap 25/run). First dry-run: 25 defective
-plans including 3 incoherent (NOC, SSTK, BTU).
-
-## 2026-07-03 - Market calendar computed for any year; gate skips logged, fail-open
-
-market_session.py now computes NYSE holidays/early-closes algorithmically (Rule 7.2
-observance) — the hardcoded 2026 set was missing Juneteenth (all gated crons ran on
-2026-06-19) and would have treated every 2027 holiday as a trading day.
-market_day_gate.sh logs each skip ("skipped: holiday") instead of exiting silently —
-on 2026-07-03 (July-4 observed) three correct skips read as cron failures — and fails
-OPEN with a logged warning if the session check itself errors, so a broken checker
-can never silently halt every gated sync. Tests: tests/test_market_session_calendar.py
-(2025–2027 vs published NYSE schedules).
-
-## 2026-07-03 - Retire stale holdings DB mirrors; all readers on canonical holdings.json
-
-The `holdings` table (writer dead since 2026-04-19) and `holdings_json_mirror`
-(dead since 2026-05-09) were serving months-stale portfolios to live consumers:
-holdings_llm_refresh daily cron, hermes_top20_external_intel budget tiering,
-hermes_research_scope_audit, db_adapter.load_holdings (USE_DB path), and
-intel_query's heat fallback (which queried columns the table never had).
-All repointed to data/portfolios/state/holdings.json; mirror writer removed;
-tables renamed *_retired_20260703 and latest_holdings view dropped (both
-reversible — view def: SELECT data FROM holdings ORDER BY as_of DESC LIMIT 1).
-
-## 2026-07-03 - Holdings lifecycle Phase 2: stop weight 30%, confidence, UI stop column
-
-Holdings health uses hot-tier stop metrics + R-left penalty, confidence discount,
-stage_transition audit, recommended_action; Closed Loop shows stop component column.
-
-## 2026-07-03 - Watchlist stop-quality research multipliers + UI watch rows
-
-`watchlist_research_multiplier` in research_scheduler (S0–S3): boost strong stop
-discipline, deprioritize weak; Closed Loop shows Hot/Cold trail Δ and degrading
-stop discipline watchlist symbols.
-
-## 2026-07-03 - Docs sync: closed-loop traceability across Hermes index + lifecycle docs
-
-Synced `DOCUMENTATION_INDEX`, `HERMES_CLOSED_LOOP_TRACEABILITY`, watchlist/holdings
-lifecycle, adaptive thresholds, multi-agent architecture, and scope governor docs
-with `59024b4a` / `a0fb8bac` / `3ec93b08` implementations.
-
-## 2026-07-03 - Outcome bus traceability sections (watchlist/holdings health, proposals, lineage)
-
-`bus_traceability.py` adds top-level `watchlist_health`, `holdings_health`,
-`threshold_proposals`, `lineage`, `stop_quality.trends`, and per-symbol `source_refs`
-on nightly `--apply`. Threshold learner stamps proposals with bus snapshot linkage.
-
-## 2026-07-03 - Proposal history impact narratives
-
-`proposal_impact.py` builds plain-language post-approval summaries (e.g. efficiency
-score + promotion hit rate Δ over 14d). Exposed on `proposal_history` rows and in
-Closed Loop proposal history UI.
-
-## 2026-07-03 - Symbol journey formatted timeline in DetailDrawer
-
-Closed Loop symbol drill now renders `SymbolJourneyPanel` (current state, health
-components, governor feedback, vertical timeline) instead of raw JSON.
-
-## 2026-07-03 - Symbol journey traceability + master roadmap doc
-
-`GET /api/v2/hermes/symbol-journey` merges governor audit, lifecycle audit, outcome ledger,
-and trades into a timeline. Closed Loop symbol rows drill into journey. Doc:
-`HERMES_CLOSED_LOOP_TRACEABILITY.md` (Prompts 1–3 roadmap + combined validation checklist).
-
-## 2026-07-03 - Closed-loop gaps: bus lifecycle export, stop reactions, holdings scheduler
-
-- **Outcome bus:** `lifecycle` slice (watchlist + holdings health/stage) on nightly `--apply`; enriches `by_symbol`
-- **Stop reactions (D):** R-left-on-table worsening, tier alignment divergence, post-promotion stop degradation
-- **Holdings B2:** `research_scheduler.py` holdings lifecycle research-depth multipliers for T0-HOLD
-- **Watchlist A:** `stop_quality` health weight 15% → 25%
-
-## 2026-07-03 - Phase D: closed-loop evaluation (watchlist promotion gate)
-
-`--evaluate` now includes watchlist promotion-gate validation: before/after `hit_rate_promotions`,
-blocked-symbol counterfactual from `hermes_outcome_ledger`, persisted to
-`hermes_closed_loop_evaluations.json`. API `GET/POST /api/v2/hermes/closed-loop/evaluations|evaluate`;
-Closed Loop panel **Promotion gate validation** card; CLI `--closed-loop-evaluate`.
-
-## 2026-07-03 - Watchlist lifecycle Phase 2: health scoring + docs sync
-
-Composite watchlist health score (7 components, confidence discount, 14d history) wired into Scope
-Governor before tier candidate fetch. Outcome-driven S1 promotions blocked when health &lt; 62
-(`block_weak_outcome_promotions`); audit `blocked_promotion` rows. Lifecycle adds **watch** stage,
-health fields on panel rows, Closed Loop Health column with 7d trend. Commit `cac9949e`.
-
-**Docs synced:** `HERMES_SCOPE_GOVERNOR.md` (health gate, modules, validation), `OUTCOME_BUS_IMPLEMENTATION.md`
-(Closed Loop lifecycle table), `HERMES_MULTI_AGENT_COORDINATION_ARCHITECTURE.md` (roadmap),
-`HERMES_HOLDINGS_LIFECYCLE.md` (cross-ref), `HERMES_WATCHLIST_LIFECYCLE.md` (§9–§10).
-
-## 2026-07-02 - SnapTrade activity ingest fixed (retired endpoint + type-first classification)
-
-SnapTrade retired `transactions_and_reporting.get_activities` (410 Gone), which had been silently
-breaking `scripts/snaptrade_activity_ingest.py`. `snaptrade_read.activities()` now uses the
-per-account `account_information.get_account_activities` endpoint (paginated, raw-JSON parse —
-the SDK schema wrapper is unreliable for its `{"data": [...]}` body). Ingest classification now
-maps the structured activity `type` (BUY/SELL/DIVIDEND/REI/CONTRIBUTION) before falling back to
-description heuristics — fund names containing "DIVIDEND" (e.g. SCHD buys) previously
-misclassified as Dividend, and `REI` reinvestments fell through to generic Activity. Applied:
-33 rows for `fidelity_rollover_ira` (2026-06-18 → 06-30) under `import_source='snaptrade_activity'`.
-Cleanup (operator-approved): four `fidelity_manual` placeholder rows (06-18 XAR/HPE/GCTS/ARKX buys)
-that duplicated authoritative SnapTrade rows were deleted, as was a phantom `manual_operator` row
-(GCTS Buy 1000 @ 3.06, 06-18) that matched neither the Fidelity ledger nor position math. The
-account's ledger is now solely `import_source='snaptrade_activity'` (33 rows).
-
-## 2026-07-02 - Hermes Phase 6: consumption gap closed (critique / stops / validation read Hermes back)
-
-The audit + external review both flagged AI Trade Critique, Stop Management, and the Validation
-Tracker as write-only surfaces (they produced research; nothing read Hermes back). All three now
-consume via the canonical `hermes_data_access.hermes_prompt_block` path, fail-open:
-
-- `journal_ai_critique.py` (`ai_critique_v3_hermes`): Hermes block appended to the coach prompt;
-  deterministic facts remain ground truth.
-- `holding_protection_advisor.py` (`protection_advisor_v2_hermes`): ≤700-char Hermes block for
-  rationale color, explicitly subordinate to the HARD RULES / family bands.
-- `momentum_scalp_validation_tracker.py`: new `hermes_context` report section — confirmed trades
-  with prior Hermes research (first reading 0/2 — a real coverage finding) + scalp-tag efficacy
-  incl. `avg_realized_r`.
-
-Also in this drop (review-gap fixes, commit f970ea8f): per-tag `trade_n`/`avg_realized_r` in
-`hermes_tag_efficacy`, `trend_vs_7d` on the maturity board, closed-loop map + resource
-before/after + tagging metrics sections in HERMES_INTELLIGENCE_ENGINE, implemented-gates table in
-the design doc.
-
-## 2026-07-02 - Hermes Maturity-5 program: phases 0-5 (commit dfa09163)
-
-Full implementation of `docs/design/HERMES_MATURITY_5_DESIGN.md` — from the same-day audit
-(maturity 2/5: 4.1k-symbol clock scoring with ~99% duplicate writes, drift-fed weight ratchet,
-write-only tagging, zero outcome linkage) to a governed, outcome-graded, self-measuring system.
-
-- **P0 stabilize:** buy-tier case bug (0→1,070 matches), holdings-first capped scoring (4→27/27),
-  no-change history skip + 20h heartbeat, 21d retention cron, 401/403 lane circuit breaker,
-  scorer-liveness check, taxonomy churn-loop fix.
-- **P1 scope:** `scope_tier` S0-S3 ledger owned by `hermes_scope_governor.py` (≤800 live, TTLs,
-  deterministic, audited) + `hermes_score_event_feeder.py` event lane (immediate rescore + S3→S1
-  reactivation; first-ever directive-pair filter); scorer `*/15` tier plans; research scheduler
-  S3→T3-COLD binding. ~197K score computations/day → ~8K.
-- **P2 outcome spine:** `hermes_outcome_ledger` (22,715 claims backfilled) + `daily_close_cache`
-  + `hermes_outcome_grader.py` nightly — promotions/recs graded ±2% 20-session excess vs SPY,
-  research graded on action, trades on realized R; `downstream_outcome` filled (was 100% NULL).
-- **P3 gated learning:** drift calibrator retired; `hermes_outcome_learning.py` — clamped
-  shadow-gated weight suggestions, learned per-type promotion confidence gates (momentum_catalyst
-  0.32 precision → 0.75 gate, wired into coordinator), source retire/reinstate on outcome yield
-  (8 domains retired; outcome verdict outranks throughput yield), lane-usefulness rotation.
-- **P4 falsifiable tagging:** `hermes_tag_engine.py` — strategy-registry vocabulary, continuous
-  quality_score (stddev 0.109 vs binary 0.30/0.62), `hermes_tag_efficacy` lift table
-  (general_research −0.29 flagged); hourly taxonomy cron retired (zero readers).
-- **P5 autonomy + honest maturity:** `hermes_config_governor.py` files rails-pressure
-  `config_change_proposals`; pipeline-health correctness watchdogs #5-#10 → daily-deduped
-  `escalation_queue` items (first live catch same day); `hermes_maturity_gates.py` — 6 dimensions
-  / ~21 computed gates into the maturity dashboard, 5 = all-pass × 30 consecutive daily snapshots.
-  First honest board: 2.3 → 2.7 same day.
-- **Ops:** all crons applied live; portfolio server restarted under systemd (an orphan process
-  held port 7777; the unit had 8,144 failed restarts) — dashboard now serves `maturity_gates`.
-
-Docs updated: HERMES_INTELLIGENCE_ENGINE (H-1 tier-mode, H-4 outcome-gated, cron map),
-HERMES_RESEARCH_LIFECYCLE (Track A½ outcome yield), MASTER_SYSTEM_DOCUMENTATION (Hermes row),
-TAXONOMY_ALIGNMENT_SCOPE (cron retired), DOCUMENTATION_INDEX (design doc entry).
-
-## 2026-07-02 - CIO structured evidence UI surfacing (watchlist · proposals · Hermes · portfolio)
-
-Surfaces tagged `[fact|technical|risk]` evidence + `data_i_doubt` in Command Center v3 — API enrichment was already wired; this commit completes the UI layer.
-
-- **Shared component:** `EvidenceBlock.tsx` — tagged bullets + data-doubt banner (fleet parity).
-- **API:** `extract_evidence_packet()` in `cio_agent_contract.py`; `_evidence_packet()` helper in `api_v2.py` + `broker_promote_oversight.py` for proposals, watchlist synthesis, Hermes backlog/intel, holdings LLM health.
-- **Watchlist:** CIO card shows `synthesis_evidence` under metrics (`WatchlistHub.tsx`).
-- **Proposals:** `BrokerIntelPanel` (agent reviews, local LLM, cloud lanes) + `ProposalsRich` agent/LLM evidence blocks.
-- **Hermes:** Research backlog cards + `DetailDrawer` external intel + CIO synthesis (auto-fetches `/api/v2/hermes/intel/{symbol}` for stock drills).
-- **Portfolio:** Holdings cards — LLM health chip + holdings/stop-advisory/Grok-curation evidence strips; drawer shows all three evidence layers.
-- **Stops:** Stop Management tab — protection advisory + Grok stop curation + holdings LLM evidence per row and in adjust modal (`/api/v2/stops/management`, `/api/v2/portfolio/llm-coverage`).
-- Tests: `test_extract_evidence_packet_shapes` in `test_cio_agent_contract_fleet.py` (14 checks).
-
-## 2026-07-02 - CIO fleet parity phase 2 (Hermes + synthesis + remaining lanes)
-
-Extended `scripts/lib/cio_agent_contract.py` to Hermes external lanes, CIO synthesis, holdings health, cloud review, rebalance, and stop curation.
-
-- **Contract module:** new schemas/parsers — `build_synthesis_json_schema`, `parse_synthesis_result`, `build_hermes_research_json_footer`, `build_external_research_json_schema`, `parse_external_research_result`, `normalize_hermes_evidence`, holdings/cloud/topic/rebalance/stop builders.
-- **CIO synthesis:** `process_watchlist_agent_jobs.py` synthesis bumped to **`cio_synth_v7_synthesis_evidence_2026-07-02`** (`SYNTHESIS_VERSION_NUM=7`); structured evidence in `dual_consensus_json`; Maria pass-2 normalized via contract.
-- **Hermes:** `hermes_research_prompt.py`, `hermes_external_researcher.py`, `hermes_top20_external_intel.py`, `hermes_discovery.py`, `hermes_deep_research_local.py`, `topic_research_synthesizer.py`, `inference_hermes_query.py`.
-- **Portfolio/proposal gaps:** `holdings_llm_refresh.py`, `proposal_quality_reviewer.py`, `proposal_llm_reviewer.py` (chunks 3–4), `cloud_review.py`, `rebalance_deep_analyzer.py`, `grok_stop_review.py`.
-- Tests: `test_cio_agent_contract_fleet.py` (13 checks); stage2b synthesis version test updated to v7.
-
-## 2026-07-02 - CIO fleet parity phase 1 (shared cio_agent_v2 contract)
-
-Extracted the Stage 2b structured-evidence contract into `scripts/lib/cio_agent_contract.py` and wired it into proposal review + portfolio analysis (phase 1 of fleet-wide LLM methodology parity).
-
-- **Shared module:** `AGENT_JSON_CONTRACT_VERSION`, G1–G10 global rules, `normalize_evidence` / `normalize_data_i_doubt`, `parse_agent_result`, proposal/portfolio schema builders, `merge_structured_into_result`.
-- **CIO watchlist:** `process_watchlist_agent_jobs.py` refactored to import shared contract (no behavior change; Stage 2b tests still pass).
-- **Proposal stack:** `proposal_agent_review.py`, `proposal_intelligence_analyzer.py`, `proposal_llm_reviewer.py` — prompts require tagged `evidence` + `data_i_doubt`; parsers persist structured fields in `payload` / JSONB summary columns.
-- **Portfolio:** `portfolio_ai_analyst.py` executive summary uses structured JSON contract; `executive_summary_structured` stored alongside prose display.
-- Tests: `tests/test_cio_agent_contract_fleet.py` (7 checks) + existing `test_cio_stage2b_agent_evidence.py`.
-
-## 2026-07-02 - CIO Stage 2b (F2 structured agent evidence)
-
-Implements Stage 2b of `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` in `scripts/process_watchlist_agent_jobs.py`.
-
-- **F2** committee JSON contract: `evidence` (tagged fact/technical/risk bullets) + `data_i_doubt`; stored in `full_result` and surfaced in CIO synthesis narratives.
-- Synthesis bumped to **`cio_synth_v6_structured_agent_evidence_2026-07-02`** (`SYNTHESIS_VERSION_NUM=6`); new critical instruction #9 reconciles structured claims.
-- Maria two-pass pass-2 schema aligned; tests: `tests/test_cio_stage2b_agent_evidence.py`.
-
-## 2026-07-02 - Post-reboot recovery, site validation, OAuth proxy systemd, docs sync
-
-After the Python 3.14 OS upgrade on `ms01-openclaw`, restored full Command Center health without SQL migrations.
-
-- **Venv / deps:** `psycopg2-binary` bumped to **2.9.12** (cp314 wheel); full `pip install -r requirements.txt`; RAG `import os` fix in `rag_retrieval.py`.
-- **Stop Management:** Schwab live stops visible again (**12/30** broker stops active); `broker_stops_degraded` banner; regime from `market_regime_snapshots` (not `regime_state`).
-- **API SQL:** `catalyst_quality_results` uses `quality_score`/`grade`; `trade_ai_scans` scan history uses `score` (not `signal_score`).
-- **portfolio-server stability:** removed `fuser` port-guard on startup; `allow_reuse_port=False`; `Restart=on-failure`; watchdog leaves healthy orphans alone. Fixes adopt churn (orphan PPID=1 while `systemctl inactive`).
-- **Site probe:** `scripts/cc_v3_site_health_probe.py` — 94 sequential GET smoke tests; finviz requires `?symbol=`; POST-only `/watch/directives` excluded.
-- **OAuth proxies (systemd user):** `grok-oauth-proxy.service` (:8645) and `chatgpt-oauth-proxy.service` (:8646) enabled; legacy `hermes-xai-proxy` disabled. Nous Portal logged in (`hermes auth add nous`); helper `scripts/nous_portal_login_detach.sh`.
-- **Docs:** `docs/infra/POST_REBOOT_RECOVERY_2026_07_02.md`; synced `HERMES_LLM_AUTH_STATUS`, `HERMES_EXTERNAL_LANES_STATUS`, `RESTORE_GUIDE`, `CHEAT_SHEET`, `DOCUMENTATION_INDEX`, `SCHEDULED_JOBS_REFERENCE`.
-
-## 2026-07-01 - Synthesis-zombie reaper extension (maturity-table coverage)
-
-Discovered while checking batch progress: **19 symbols stuck in `watchlist_analysis_maturity.final_synthesis_status='processing'`** (worst: CEPO 34 days) — `_check_synthesis_ready` skips `processing`, so they were silently excluded from CIO-view refreshes. Same worker-death zombie pattern as the 2026-06-29 job-queue incident, but the reaper only covered `watchlist_agent_jobs`.
-
-- **`reset_stuck_agent_jobs.py`**: `find_stuck_synthesis()` + `reset_synthesis()` — `processing`>30m (via `updated_at`, which this table has) → `pending`, picked up by `_check_pending_synthesis` on the next worker run. One `--apply` reaps both tables, so the existing allowlisted remediation command covers it.
-- **`health_agent.py`**: new `synthesis_processing_stuck` finding (warning <10, critical ≥10, reports worst age) in `collect_infra_optimization_health`.
-- **`config/health_agent_policy.json`**: `synthesis_processing_stuck` added to `auto_remediate.finding_types` + `remediation_map` (same safe reaper command).
-- Tests: 6 new checks in `test_job_schedule_prioritization.py`. Docs: reaper row + monitoring section in `JOB_SCHEDULE_TIERED_PRIORITIZATION.md`.
-- One-time data fix applied live before this change (operator-approved): 19 rows reset to `pending`.
-
-## 2026-07-01 - CIO input tightness Stage 2a (audit F4 + max_tokens, synthesis v5)
-
-Implements Stage 2a of `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md`; prompt version **`cio_synth_v5_dq_specifics_2026-07-01`** (`synthesis_version=5`). F2 (structured agent evidence) intentionally held for the observation window.
-
-- **F4 specific DQ note:** `_build_dq_note()` enumerates WHICH inputs are stale + age, measured from the actual prompt sources (enrichment `cached_at` >2d, `ticker_prices` latest >4d weekend-safe, news >14d, + alert count) — the old alert-count-only note near-never fired for real tickers (0 in 7 days; `stale` alerts are ~all `topic:*` research-gap rows). Verified live: V fresh/empty; SCHD "news 15 days old"; SNOW/AZN "NO price history in DB".
-- **G1 reconciliation:** layered staleness policy — agents keep G1 skip-on-wholesale-stale; synthesis down-weights specific stale fields, caps confidence at 0.5 / RESEARCH_MORE when a decision-critical input is stale.
-- **max_tokens 1000→2000** on `_synthesis_llm`/`_synthesis_dual` (local-fallback-only cap; measured 14d of `raw_response`: cloud 1 parse-fail/650 + 0 truncations, the single local-fallback row WAS truncated mid-JSON).
-- Advisory-only (CIO View), no trading path.
-
-## 2026-07-01 - CIO input tightness Stage 1 (audit F1+F3+F5, synthesis v4)
-
-Implements Stage 1 of `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` in `scripts/process_watchlist_agent_jobs.py`; prompt version bumped `cio_synth_v3` → **`cio_synth_v4_input_tightness_2026-07-01`** (`synthesis_version=4`).
-
-- **F1 explicit non-ownership:** agent context (`_get_context`) now emits `Position: NOT CURRENTLY HELD (0 shares in any account)` instead of silence when unheld; synthesis `PORTFOLIO POSITION` block gets the same explicit line at 0 shares (silence-is-not-ground-truth — the AZN "22% position vs 0 shares" case).
-- **F5 contradiction rule:** CIO critical instruction 8 — on material-fact conflict prefer the live-holdings PORTFOLIO POSITION block over analyst narratives, record it in `conflicts`, lower confidence proportionally, but don't let a stale-narrative conflict alone collapse confidence below 0.4.
-- **F3 control-token hygiene:** `_strip_local_tokens` removes gemma/qwen `/no_think` from prompts before every cloud call (`_synthesis_llm` Grok, `_synthesis_dual` Grok+ChatGPT); local fallback keeps the original prompt.
-- Advisory-only pipeline (CIO View), no trading-path change. Observe confidence distributions for a few days before Stage 2 (F2 structured agent evidence, F4 specific DQ fields).
-
-## 2026-07-01 - Stop lifecycle closure (#5 Open Trades preflight + #7 re-entry watch API/UI)
-
-- **#5 Open Trades preflight parity:** extracted `protectiveStopPreflight.ts` + `PreflightChangedPanel`; `PositionDecisionCard` now runs the same click-time preflight chain (refresh-quote → llm-coverage → live-stops → stop-readiness → `buildStopLogic`) before request and 2FA confirm, with structured amber diff + Proceed anyway / Cancel.
-- **#7 Re-entry watch:** `GET /api/v2/stops/reentry-watch?account=&days=` wraps `stop_out_reentry_watch.py`; Stop Management → Audit sub-tab shows stop-out reviews + re-entry watch table (`advisory_only=true`).
-- **Build marker:** `cc-v3 stop-lifecycle-close 2026-07-01`. Tests: stop suite + reentry API registration.
-
-## 2026-07-01 - Stop audit hygiene (markers, tests, docs sync — no behavior change)
-
-- **Unified build marker:** `cc-v3 stop-audit-sync 2026-07-01` across `App.tsx`, `api_v2.py` stop-readiness, `HoldingProtectionActions` fallback, tests, and docs (replaces `stop-mgmt-v3`, `preflight-ux-2a3a5a`, `stop-evidence PR33`).
-- **Tests aligned to current logic:** `trail_start_mismatch` only when trail >3% looser than advisory floor; family-floor reconciliation widens sub-floor advisories (no `floor_mismatch` block); HPE delta uses reconciled advisory. **40 passed** on stop suite.
-- **Docs:** `STOP_SYSTEM_GAP_REPORT.md` indexed in `DOCUMENTATION_INDEX.md`; gap report §4/§5/§6 refreshed; runbook validation snapshot updated.
-- **Not changed (requires operator approval):** Open Trades preflight parity (`PositionDecisionCard`); `stop_out_reentry_watch` API/UI wiring.
-
-## 2026-07-01 - Stop Management tab + execution hardening (main sprint)
-
-- **Stop Management tab** on Portfolio (`StopManagement.tsx`): aggregation table, Audit sub-tab, Adjust modal with shared `HoldingProtectionActions`, plain-English narrative + top-3 next-actions banner (`2fa8da07`).
-- **2FA evidence-hash fix** (`5506d216`): deterministic readiness hash — approve→submit revalidation no longer drifts on wall-clock `generated_at`. Verified live on V trailing + SCHG fixed.
-- **Duplicate-stop prevention** (`9cf1d680`, `79057255`): P1 hard guard in `schwab_transport`; P2 in-app Replace (cancel-then-place, one 2FA); P3 manual ToS path. P4 atomic replace still deferred.
-- **One-click apply** (`1bc99a78`): 🔒 row buttons auto-stage advised stop to 2FA.
-- **Family-floor drift reconciliation** (`63c95216`): widen sub-floor advised stop to family floor at current price (live, not hard-block).
-- **Phantom-stop fix** (`a64b5610`): don't resurrect stale confirmations when broker read is healthy.
-- **Scalp L4** (`a34951fe`): regime-shift tighten alert, heat-tier tighten, `POST /api/v2/scalp/tighten-all` + Risk tab button (paper).
-- **Candlestick structure_type** (`93a9a0f7`): policy §3 L1 tagging at monitor time.
-- **Gap report:** `docs/STOP_SYSTEM_GAP_REPORT.md` (2026-07-01).
-
-## 2026-06-30 - Preflight UX 2A/3A/5A (structured diff, advisory refresh, holding patch)
-
-Operator UX choices locked in and implemented on `runtime/pr33-stop-evidence-deploy` (`df269ed2`):
-
-- **1A / 4A — Auto-proceed when unchanged; always full preflight:** every Schwab 2FA button, Fidelity manual ticket, and 2FA approve click runs full preflight (~1–3s): `POST /api/v2/holdings/protective-stop/refresh-quote` → `GET /api/v2/portfolio/llm-coverage` → `GET /api/v2/holdings/live-stops` → `GET /api/v2/holdings/stop-readiness` (Schwab) → recalc `buildStopLogic`. Unchanged + valid → auto-continues to 2FA intent / manual ticket.
-- **2A — Structured change display:** if logic changes, amber `preflight-changed` panel shows before→after lines for price, decision, status, advisor stop, broker stop, recommendation, and blockers added/removed; operator chooses **Proceed anyway** or **Cancel**.
-- **3A — Advisory refresh:** preflight re-fetches `/api/v2/portfolio/llm-coverage` and merges fresh `protection[sym]` into stop logic before comparing before/after (Schwab + Fidelity).
-- **5A — Holding row update:** `PortfolioHub` patches local holding state via `onPreflightUpdate` — `current_price`, `source_timestamp`, `price_as_of`, `market_value`, and protection chip — so the card above the stop panel reflects the validated quote without a full page reload.
-- Build marker: `cc-v3 preflight-ux-2a3a5a 2026-06-30`. Tests: **40 passed** (`test_stop_fixed_trailing_validation`, `test_stop_management_ui_hardening` incl. test_18, `test_stop_management_decision_logic`). Frontend `npm run build` OK.
-
-## 2026-06-30 - Click-time stop preflight (2FA + Fidelity manual)
-
-- `HoldingProtectionActions`: clicking Schwab 2FA or Fidelity manual ticket now runs live preflight first — refresh-quote (Schwab/Finviz), live-stops re-read, stop-readiness, recalc `buildStopLogic`; shows diff + "Proceed anyway" if decision changed; 2FA approve also re-validates before broker submit.
-
-## 2026-06-30 - Fix false stale-quote blocks on after-hours Portfolio stops
-
-- `stopManagement.ts`: session-aware freshness (15m regular / **60m after-hours & pre-market**) matching `brokers/quote_time.py`; naive `YYYY-MM-DD HH:MM:SS` timestamps parsed as **America/New_York** (Finviz after-hours).
-- `HoldingProtectionActions` / `PortfolioHub`: prefer `source_timestamp` (quote fetch time) over `price_as_of` for the stop gate.
-- Added missing `scripts/brokers/quote_time.py` to main repo (backend already imported it).
-
-## 2026-06-30 - Stop management wired + docs sync (runtime branch)
-
-- Ported live-stop integration from `fix/stop-execution-journal-reentry-integration` onto `runtime/pr33-stop-evidence-deploy`: `stopManagement.ts` (fixed + trailing `resolveLiveStop`), `stopReviewTooltip.ts`, `HoldingProtectionActions`, `PortfolioHub` (`/api/v2/holdings/live-stops` 60s refresh), `PositionDecisionCard`, `OpenTradesIntelligence`, `api_v2.py` live-stops overlay.
-- Momentum scalp policy: expanded `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`; cross-linked from `STOP_METHODOLOGY.md`, `DOCUMENTATION_INDEX.md`, `MOMENTUM_SCALP_LIFECYCLE.md`.
-- Command Center pages verified: Portfolio (live broker stops + review tooltips), Risk (`ScalpStopMonitorCard`), Trade Detail (`StopIntelligencePanel`). Build marker `cc-v3 live-stops-review-ts 2026-06-30`.
-- Tests: **37 passed** (`test_stop_fixed_trailing_validation`, `test_stop_management_ui_hardening`, `test_stop_management_decision_logic`). Frontend `npm run build` OK.
+## 2026-07-04 - Schwab protective-stop canary hardening (PR #33 maturity)
+
+Canonical after-hours policy reconciled across runbook + code: default `READY_FOR_OPERATOR_NEXT_REGULAR_SESSION`;
+`READY_FOR_OPERATOR_AFTER_HOURS_GTC` only with `SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1` + operator ack + all standard
+gates. Per-account arming: `schwab_pilot_arm.py --arm` now arms **only** `schwab_rollover_ira` by default;
+`schwab_roth_ira` stays `api_write_enabled=FALSE` unless deliberately armed via `--accounts`. One-V-canary
+discipline + lifecycle states (`protective_stop_canary.py`) + broker read-back result recording.
+`broad_stop_placement_blocked` until `SUCCESS_READBACK_CONFIRMED`. UI shows CANARY TARGET, account armed status,
+lifecycle, and explicit disabled reasons. OCO off; Fidelity manual-only; no broker request sent during tests.
+
+## 2026-06-30 - Live broker stops (60s) + fixed/trailing validation + last-reviewed tooltips
+
+Portfolio and Open Trades now show **current** Schwab protective-stop state with explicit review timestamps.
+
+- **`GET /api/v2/holdings/live-stops`** (`_holdings_live_stops`): read-only live Schwab/Alpaca SELL stops,
+  keyed `SYMBOL:account`, 60s cache. Portfolio polls every 60s and merges into `confirmedStop` (broker truth
+  overrides stale llm-coverage overlay).
+- **`open_trades_intelligence._broker_protective_stops`**: each broker stop carries `fetched_at` (ISO UTC);
+  summary includes `broker_stops_fetched_at`.
+- **`llm-coverage`**: exposes `family_floor_pct` / `family_bounds` for floor-mismatch UI; broker overlay
+  includes `fetched_at`.
+- **`stopManagement.ts`**: `resolveLiveStop()` / `isTrailingBrokerStop()` — trailing orders with
+  `stop_price=null` + `trail_offset` resolve to `LIVE BROKER STOP` (estimated floor = price × (1 − trail%)).
+- **`stopReviewTooltip.ts`**: multi-line tooltips — broker last read, advisory last reviewed, quote as-of,
+  operator confirmed. Wired into Portfolio `HoldingProtectionActions`, Open Trades `PositionDecisionCard`,
+  and the 🛡 stop badge.
+- **Tests**: `tests/test_stop_fixed_trailing_validation.py` (fixed vs trailing math/UI/backend parity);
+  `test_stop_management_ui_hardening.py` test_16 for live-stops + review tooltips.
+- Build marker: `cc-v3 live-stops-review-ts 2026-06-30`. Safety unchanged: per-order 2FA, evidence binding,
+  no autonomous submit, OCO OFF, Fidelity manual-only.
+
+## 2026-06-30 - Schwab live-stop: latest-quote refresh + after-hours GTC override + explicit canary target
+
+Reconciles the after-hours policy and adds the operator's refresh-quote path. After-hours GTC is supported
+**only** when the latest quote is refreshed + fresh, the override is enabled, and the operator acknowledges.
+
+- **Refresh-quote endpoint** `POST /api/v2/holdings/protective-stop/refresh-quote` (`_protective_stop_refresh_quote`):
+  fetches the LATEST available quote read-only, comparing all sources (Schwab extended-hours / Alpaca /
+  market_quotes / Finviz) and picking the **freshest** (trust breaks ties) — after-hours Finviz/Schwab beat
+  Alpaca's 16:00 close. Persists the refreshed quote; returns price/bid/ask, raw+normalized timestamp, source,
+  session, freshness, `after_hours_ack_required`, `can_submit_gtc_after_hours`, blockers, `operator_readiness`.
+  `broker_request_sent=false` — never submits.
+- **Session-aware freshness** (`quote_time.is_fresh`): regular 15m, extended hours 60m (a GTC stop rests).
+- **After-hours policy (reconciled):** default after-hours → `READY_FOR_OPERATOR_NEXT_REGULAR_SESSION`.
+  `AFTER_HOURS_GTC` only with the explicit override (`SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1` /
+  `--allow-after-hours-gtc`) AND the operator after-hours acknowledgement. Never READY while stale/unparseable.
+- **Explicit canary target + rollover-vs-roth:** readiness/preflight bind symbol+account+qty+residual+order_kind
+  +trail+TIF+session+quote into the evidence `order_spec_hash` (`canary_target`). The UI shows a large CANARY
+  TARGET block + Refresh button + after-hours ack. `schwab_roth.api_write_enabled=FALSE` (ticket mode) →
+  readiness BLOCKED with a clear "not armed for live API writes" reason; the armed live-write account is
+  `schwab_rollover_ira`. One-V-canary-only conflict check blocks simultaneous rollover+roth canaries.
+- **Preflight** `--time-in-force --refresh-quote --allow-after-hours-gtc`; reports `canary_target`,
+  `operator_readiness`, `after_hours_ack_required`.
+- Unchanged: evidence-bound approval, per-order 2FA, whole-share, read-back; no broad stops; OCO OFF; Fidelity
+  manual-only; no autonomous submit. Build clean; **63 tests pass**; validator 27/27; no broker request sent.
+
+## 2026-06-30 - Schwab live-stop: after-hours works 24/7 via GTC + operator acknowledgement
+
+**SUPERSEDED (2026-07-04):** canonical policy is override-required; see the 2026-07-04 entry above and
+`docs/runbooks/protective-stop-integration-2026-06-30.md`. This section is retained for history only.
+
+Supersedes the regular-session-only after-hours policy below. A protective stop is submitted **GTC**
+(`GOOD_TILL_CANCEL`) and rests until triggered, so it is valid to place 24/7 — an after-hours quote should
+not hard-block the canary. The discipline becomes an **operator acknowledgement**, not a session block.
+
+- **`api_v2`**: the after-hours gate no longer requires a regular session / env override. After-hours /
+  pre-market submission is allowed with the operator `after_hours_ack` (gate `after_hours_ack_required` until
+  acknowledged). Optional kill-switch `SCHWAB_AFTER_HOURS_STOPS_DISABLED=1` forbids it entirely. The readiness
+  endpoint returns `canary_state=READY_FOR_OPERATOR_AFTER_HOURS_GTC` + `requires_after_hours_ack` for a fresh
+  after-hours quote (was `…_NEXT_REGULAR_SESSION`).
+- **`protective_stop_2fa_preflight`**: `--after-hours-ack`; reports `operator_readiness=READY_FOR_OPERATOR_
+  AFTER_HOURS_GTC` and `quote_freshness_class=after_hours_gtc_ack_required|after_hours_gtc_acknowledged`.
+- **UI**: an after-hours acknowledgement checkbox ("I understand this is after-hours; Schwab may accept the
+  GTC order but trigger behavior depends on regular-market conditions") appears when the quote is after-hours;
+  checking it (plus whole-share confirmation) enables the trailing-stop button. Three-state badge now shows
+  `READY — AFTER-HOURS GTC` / `ACKNOWLEDGE AFTER-HOURS`.
+- **Unchanged discipline:** fresh+parseable quote, evidence-bound approval, whole-share qty, per-order 2FA,
+  read-back; no broad stops from an after-hours canary. Stale/unparseable still BLOCK. `OCO_BRACKETS_SCHWAB`
+  OFF; Fidelity manual-only. 60 tests pass; validator 27/27; V dry-run preflight PASS (`broker_submitted=false`).
+
+## 2026-06-30 - Schwab live-stop: ET-aware quote timestamp normalization + after-hours canary policy
+
+The V trailing-stop canary was blocked by `Quote validation failed: Invalid isoformat string: '2026-06-30
+16:15:02 ET'` — the protective-stop quote gate (`api_v2`) parsed the quote timestamp with
+`datetime.fromisoformat()`, which can't handle the ` ET` / space-separated shapes the holdings feed emits.
+
+- **Shared normalizer** `scripts/brokers/quote_time.py`: `parse_quote_ts` accepts ISO+offset, ISO `Z`,
+  space-separated local, and a trailing ` ET`/`EDT`/`EST` (America/New_York via `zoneinfo`, EDT/EST resolved
+  by date — never a fixed offset, never a silent naive datetime). `classify_session` →
+  `regular | pre_market | after_hours | closed | unknown`. Unparseable → `None` so callers BLOCK with a human
+  message, never a raw isoformat error.
+- **Backend gate** (`api_v2` protective-stop handler + `_stop_live_readiness` + `protective_stop_2fa_preflight`)
+  now route quote timestamps through the normalizer. Unparseable → "Quote timestamp could not be parsed;
+  refresh quote." Stale → block. Session surfaced.
+- **After-hours policy**: a Schwab live-stop canary requires a **regular-session** quote. After-hours (fresh)
+  → `READY_FOR_OPERATOR_NEXT_REGULAR_SESSION` (never auto-armed). Override is opt-in only — requires BOTH
+  `SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1` AND an operator `after_hours_ack`; default OFF. No other gate relaxed.
+- **UI** (`HoldingProtectionActions`): readiness panel now shows Quote (parsed/fresh), Session, and
+  raw→normalized timestamp, a three-state canary badge (`READY_FOR_OPERATOR` / `… NEXT REGULAR SESSION` /
+  `BLOCKED`), and a human readiness message — never the raw parse error. After-hours/unparseable also disable
+  the live-stop button with their reason.
+- Verified: `2026-06-30 16:15:02 ET` → `2026-06-30T16:15:02-04:00`, session `after_hours`; V dry-run preflight
+  PASS (`broker_submitted=false`, hashes match, whole 201 / residual 0.4412, no active lock,
+  `operator_readiness=READY_FOR_OPERATOR_NEXT_REGULAR_SESSION`). Build clean; **59 tests pass** (12 new);
+  validator 27/27. No broker request sent; `OCO_BRACKETS_SCHWAB` OFF; Fidelity manual-only.
+
+## 2026-06-30 - Schwab live-stop: expose disabled reason + live-stop readiness panel (PR #33 canary prep)
+
+A disabled Schwab `STOP` / `STOP_LIMIT` / `TRAILING_STOP` button no longer grays out silently. The V Schwab
+rollover IRA trailing button was disabled solely by the `fractional_qty` blocker (201.4412 sh, residual
+0.4412, whole-share confirmation unchecked) — but the tooltip only described the action, never the reason.
+
+- `stopManagement.ts`: `buildStopLogic()` now exposes `disabledReason` / `disabledReasonHuman` (priority-
+  ordered blockers; whole-share confirmation last).
+- `HoldingProtectionActions.tsx`: disabled buttons show the reason (tooltip `Disabled — …` + inline
+  `⛔ Disabled: …`); the whole-share checkbox is prominent and immediately above the action row, relabeled
+  `"I confirm this Schwab stop will sell N whole shares of <SYM>; residual … remain monitored."`; checking it
+  enables the button when all gates are clean. Backend hard-blocks (execution_state / DB-evidence / OCO on)
+  also disable with a clear reason.
+- New **read-only** `GET /api/v2/holdings/stop-readiness` (`broker_request_sent=false`; no broker calls /
+  evidence writes / order placement) + a "LIVE STOP READINESS" panel (build marker, quote, db/evidence,
+  validator, execution, active approval, whole-share, preflight, OCO off, broker submit) with ✅/⚠️/⛔ icons
+  and a `READY_FOR_OPERATOR` / `BLOCKED` badge.
+- Validation: build clean; **60 tests pass** (48 existing + 12 new `tests/test_stop_canary_readiness_ui.py`);
+  `validate_schwab_write_policy` 27/27; V dry-run preflight PASS (`broker_submitted=false`).
+- Safety unchanged: no live order submitted; `OCO_BRACKETS_SCHWAB` OFF; Fidelity manual-ticket only; Schwab
+  stays operator-approved + per-order 2FA + evidence-bound + whole-share + read-back.
 
 ## 2026-06-30 - Protective stop integration + Fidelity activity lifecycle
 
@@ -1684,7 +1471,7 @@ names had no card. Fixed:
 - **Monitor + control in the Command Center:** `GET /api/v2/llm/oauth-lanes` (now with last-ok freshness) +
   `POST /api/v2/llm/oauth-lanes/keepalive`. The rotation Independent Oversight panel has a **Free OAuth LLM
   Lanes** control card — per-lane status + last-ok + re-login hint, with **Run keepalive** and **Re-check**
-  buttons. Covers Grok, ChatGPT, Hermes/Nous, and local gemma. Live (2026-07-02): **4/4 ready**.
+  buttons. Covers Grok, ChatGPT, Hermes/Nous, and local gemma. Live: 3/4 ready (Hermes/Nous not logged in).
 
 ## 2026-06-17 - ChatGPT OAuth proxy (free openai-codex) — inline ChatGPT lane
 
