@@ -60,3 +60,21 @@ ChatGPT lane wired to the FREE ChatGPT-subscription OAuth (provider openai-codex
 ---
 ## Grok repointed to free xai-oauth proxy (2026-06-07)
 Grok no longer uses the metered xAI API key — it routes through the free xai-oauth proxy (hermes proxy start --provider xai, :8645). auth_pending until operator OAuth + proxy start.
+
+---
+
+## 2026-07-05 Update — Cloud Consensus Verdicts (supersedes stale sections above where they conflict)
+
+**Cloud dual-consensus (Grok + ChatGPT OAuth lanes) is now WIRED for broker-proposal oversight** (PR #114, `scripts/cloud_consensus_verdict.py`):
+- **Dormant by default** — runs only when invoked manually or via a future cron; no scheduler is installed as of this writing (first real verdicts to be observed manually before scheduling).
+- **Advisory-only and status-neutral** — its only write is its own `cloud_consensus_verdicts` table; it never changes proposal status, never touches broker/approval/execution/2FA paths (enforced by tests).
+- **Consensus rule** — both lanes must independently AGREE → `CLOUD_APPROVE` (card chip); any split/caution/lane failure fails closed to `ESCALATED` with one throttled Telegram notice per proposal per 24h.
+- **Capped and qualified** — max 5 scorings/day; only unexpired proposals with a verified catalyst, sized within policy caps, not scored in the last 24h.
+- **Kill-switched** — `config/cloud_consensus_policy.json` (`enabled`/`paused`); do-no-harm auto-pauses on win-rate degradation (Δ < −10 pts, n≥10) or lane disagreement >60% over 7d; resume is manual-only.
+
+## Scheduling separation (policy)
+
+| Pipeline | Allowed schedule | Rationale |
+|---|---|---|
+| Discovery Inbox / source / trend / topic discovery | May run **24/7** in observe-only / staging mode | Research discovery; advisory intake with operator-gated promotion; no trading-adjacent writes |
+| Cloud consensus verdicts | **Manual, or Mon–Fri market hours only** (suggested `*/30 9-16 * * 1-5`, not yet installed) | Broker-proposal oversight tied to live quotes and the trading queue — not research; scoring stale weekend quotes wastes lanes and produces low-quality verdicts |
