@@ -138,7 +138,7 @@ def test_14_refresh_quote_is_read_only_no_broker_write():
     assert '"broker_request_sent": False' in fn
 
 
-def test_15_schwab_roth_alias_resolves_and_all_accounts_can_arm():
+def test_15_schwab_roth_alias_resolves_and_per_account_arming():
     """holdings schwab_roth maps to broker_accounts schwab_roth_ira for api_write checks."""
     sys.path.insert(0, str(ROOT / "scripts"))
     import api_v2
@@ -147,6 +147,8 @@ def test_15_schwab_roth_alias_resolves_and_all_accounts_can_arm():
     api = API.read_text(encoding="utf-8")
     assert "account_api_write_enabled" in api
     assert "_resolve_protective_account_key" in api
+    arm = (ROOT / "scripts/schwab_pilot_arm.py").read_text(encoding="utf-8")
+    assert "DEFAULT_ARM_ACCOUNTS" in arm and "schwab_rollover_ira" in arm
 
 
 def test_16_one_symbol_canary_only_and_target_binds_fields():

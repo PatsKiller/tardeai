@@ -251,7 +251,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   // Preflight-not-run and active-approval are advisory (shown in the readiness panel), since the per-order 2FA
   // + backend evidence revalidation enforce them at submit; we never silently rely on the frontend for safety.
   const backendHardBlock: string | null = isSchwab && readiness ? (
-    readiness.account_api_write_enabled === false ? `${acct} is not armed for live API writes (ticket mode). Set broker_accounts.api_write_enabled=TRUE for ${resolveSchwabAcct(acct)}.`
+    readiness.account_api_write_enabled === false ? (readiness.account_armed_message || `Blocked: ${acct} is not armed for live API writes.`)
       : readiness.other_account_canary ? `Another ${sym} canary is already active on ${readiness.other_account_canary}. Only one ${sym} canary may be armed at a time.`
         : readiness.quote_parse_ok === false ? 'Quote timestamp could not be parsed; refresh quote before requesting a live stop.'
           : !readiness.quote_fresh ? 'Blocked: quote is stale or after-hours freshness is not valid. Refresh latest quote first.'
@@ -415,7 +415,12 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         const quoteValue = !quoteParseOk ? 'could not be parsed — refresh quote'
           : !quoteFresh ? `stale — refresh price${rd.quote_age_sec != null ? ` (${Math.round(rd.quote_age_sec / 60)}m old)` : ''}` : 'fresh'
         const sessionStatus: 'ok' | 'warn' | 'block' = session === 'regular' ? 'ok' : (session === 'after_hours' || session === 'pre_market') ? 'warn' : 'block'
+        const armed = rd.account_api_write_enabled === true
         const rows: { label: string; status: 'ok' | 'warn' | 'block'; value: string }[] = [
+          { label: 'Operator status', status: 'warn', value: rd.operator_status || 'READY_FOR_ONE_CANARY_ONLY' },
+          { label: 'Account armed', status: armed ? 'ok' : 'block', value: rd.account_armed_message || (armed ? 'armed for live API writes' : `Blocked: ${acct} is not armed for live API writes.`) },
+          { label: 'Canary lifecycle', status: rd.canary_lifecycle_state?.startsWith('SUCCESS') ? 'ok' : (rd.canary_lifecycle_state?.startsWith('READY') ? 'warn' : 'block'), value: String(rd.canary_lifecycle_state || rd.canary_state || 'NOT_ARMED') },
+          { label: 'Broad stops', status: rd.broad_stop_placement_blocked === false ? 'ok' : 'block', value: rd.broad_stop_placement_blocked === false ? 'allowed after canary proof' : 'blocked until SUCCESS_READBACK_CONFIRMED' },
           { label: 'Build', status: 'ok', value: rd.build_marker || 'cc-v3 stop-evidence PR33 2026-06-30' },
           { label: 'Quote', status: quoteStatus, value: quoteValue },
           { label: 'Session', status: sessionStatus, value: session.replace(/_/g, '-') },
@@ -433,11 +438,12 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           <div data-testid="live-stop-readiness" style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(2,6,23,.45)', border: '1px solid rgba(148,163,184,.2)' }}>
             {/* Explicit protective-stop preview — never inferred from the current filter; binds symbol/account/qty/residual. */}
             <div data-testid="canary-target" style={{ marginBottom: 8, padding: '8px 10px', borderRadius: 7, background: 'rgba(59,130,246,.1)', border: `1px solid ${BLUE}55` }}>
-              <div style={{ fontSize: 12, color: BLUE, fontWeight: 900, letterSpacing: 0.4, marginBottom: 3 }}>PROTECTIVE STOP PREVIEW — NOT SUBMITTED</div>
+              <div style={{ fontSize: 12, color: BLUE, fontWeight: 900, letterSpacing: 0.4, marginBottom: 3 }}>CANARY TARGET — NOT SUBMITTED</div>
               <div style={{ fontSize: 13, color: TEXT0, fontWeight: 800, lineHeight: 1.5 }}>
-                Symbol: <b>{sym}</b> · Account: <b>{acct}</b><br />
-                Order: <b>SELL {logic.wholeQty} {sym} {selectedKind === 'TRAILING' ? `TRAILING_STOP ${trailLabel}%` : selectedKind} GTC</b><br />
-                Residual: <b>{logic.residualQty.toFixed(4)} monitored</b>
+                Symbol: <b>{rd.canary_target?.symbol || sym}</b><br />
+                Account: <b>{rd.canary_target?.account || acct}</b><br />
+                Order: <b>SELL {rd.canary_target?.qty ?? logic.wholeQty} {sym} {selectedKind === 'TRAILING' ? `TRAILING_STOP ${rd.canary_target?.trail_pct ?? trailLabel}%` : selectedKind} {rd.canary_target?.time_in_force || 'GTC'}</b><br />
+                Residual: <b>{Number(rd.canary_target?.residual_qty ?? logic.residualQty).toFixed(4)} monitored</b>
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
@@ -478,8 +484,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
               color: (rd.canary_state === 'READY_FOR_OPERATOR' || rd.canary_state === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC') ? GREEN : RED }}>
               {!quoteParseOk ? 'Quote timestamp could not be parsed; refresh quote.'
                 : rd.canary_state === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC'
-                  ? (afterHoursAck ? 'After-hours GTC stop — acknowledged. Valid 24/7; rests until triggered.'
-                    : (rd.canary_note || 'After-hours GTC stop: valid 24/7. Check the after-hours acknowledgement to proceed.'))
+                  ? (afterHoursAck ? 'After-hours GTC stop — acknowledged. Override enabled; rests until triggered.'
+                    : (rd.canary_note || 'After-hours GTC stop requires override + acknowledgement before submit.'))
                   : rd.canary_state === 'READY_FOR_OPERATOR' ? 'Quote fresh.'
                     : (rd.canary_blocker || 'Resolve the gates above before requesting a live stop.')}
             </div>

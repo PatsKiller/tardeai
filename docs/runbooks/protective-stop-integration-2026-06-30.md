@@ -176,25 +176,28 @@ previously surfaced `Quote validation failed: Invalid isoformat string` to the o
 - Used by the `api_v2` protective-stop quote gate, the `/api/v2/holdings/stop-readiness` panel, and
   `protective_stop_2fa_preflight` (which now reports `quote_session`, `quote_freshness_class`, and
   `operator_readiness`, and FAILS on an unparseable quote).
-- **After-hours policy (24/7 GTC):** a protective stop is submitted **GTC** (`GOOD_TILL_CANCEL`) and rests
-  until triggered, so it is valid to place **24/7**. An after-hours / pre-market quote does **not** block the
-  canary — it requires the operator **after-hours acknowledgement** (`after_hours_ack`): *"I understand this
-  is after-hours; Schwab may accept the GTC order but trigger behavior depends on regular-market conditions."*
-  Readiness reports `READY_FOR_OPERATOR_AFTER_HOURS_GTC` + `requires_after_hours_ack` for a fresh after-hours
-  quote. An optional kill-switch `SCHWAB_AFTER_HOURS_STOPS_DISABLED=1` forbids after-hours submission entirely
-  (default: allowed with ack). The ack relaxes **only** the session gate — fresh+parseable quote,
-  evidence-bound approval, whole-share qty, per-order 2FA, and read-back still apply, and broad stops are
-  never enabled from an after-hours canary. (Regular session needs no ack.)
+- **After-hours policy (override-required):** default after-hours/pre-market readiness is
+  `READY_FOR_OPERATOR_NEXT_REGULAR_SESSION`. `READY_FOR_OPERATOR_AFTER_HOURS_GTC` is allowed **only** when
+  **all** are true: `SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1` (or `--allow-after-hours-gtc`), latest quote
+  refreshed successfully, quote fresh under the session-aware window (regular 15m / extended 60m), operator
+  after-hours acknowledgement (`after_hours_ack`), account explicitly armed (`api_write_enabled=TRUE`),
+  whole-share confirmation, no active approval lock, evidence store available, validator clean,
+  `execution_state.py` allows operator-approved 2FA live path, OCO off, per-order 2FA completed, broker
+  read-back confirms. The acknowledgement relaxes **only** the session gate — never evidence, quote freshness,
+  whole-share, account arming, 2FA, or read-back. Stale or unparseable quotes are always `BLOCKED`. Broad
+  stop placement is never enabled from an after-hours canary. Regular session needs no ack.
 - **UI:** the readiness panel shows Quote (parsed/fresh), Session, raw→normalized timestamp, a three-state
   canary badge (`READY_FOR_OPERATOR` / `READY — AFTER-HOURS GTC` / `BLOCKED`), and a human readiness message.
   An after-hours acknowledgement checkbox appears when the quote is after-hours; checking it (plus whole-share
   confirmation) enables the trailing-stop button. The raw `Invalid isoformat string` is never shown.
 
-**Operator instruction:** the V trailing-stop canary can be placed **any time a fresh quote is available
-(24/7)**. When the readiness panel shows `Quote: fresh` and the badge is green: (1) check whole-share
-confirmation; (2) if `Session` is after-hours/pre-market, also check the after-hours acknowledgement; (3)
-click *Request Schwab trailing stop via 2FA* **once** and complete per-order 2FA. The GTC order rests until
-triggered. (During the dead overnight window the quote will be stale → `BLOCKED`; wait for a fresh tick.)
+**Operator instruction — one canary only:** preferred target is **V · schwab_rollover_ira · SELL 201 ·
+TRAILING_STOP 8.7% · GTC** (residual 0.4412 monitored). Alternate **V · schwab_roth · SELL 130 ·
+TRAILING_STOP 10% · GTC** only if `schwab_roth_ira.api_write_enabled` is deliberately armed. During regular
+session with a fresh quote and green readiness: (1) confirm whole shares; (2) click *Request Schwab trailing
+stop via 2FA* **once** and complete per-order 2FA. After-hours default is `READY_FOR_OPERATOR_NEXT_REGULAR_SESSION`;
+override + acknowledgement required for after-hours GTC. Broad stop placement remains blocked until one canary
+records `SUCCESS_READBACK_CONFIRMED` from broker read-back.
 
 ## Validation Snapshot
 

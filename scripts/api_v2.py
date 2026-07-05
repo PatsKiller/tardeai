@@ -756,8 +756,10 @@ def _stop_live_readiness(query=None):
                                  "canary may be armed at a time — complete or reject it first.")
     elif acct.startswith("schwab") and not out.get("account_api_write_enabled"):
         out["canary_state"] = "BLOCKED"
-        out["canary_blocker"] = (f"{acct} is not armed for live API writes (ticket mode). "
-                                 "Set broker_accounts.api_write_enabled=TRUE for this Schwab account.")
+        resolved = out.get("account_key_resolved") or acct
+        label = "schwab_roth" if resolved == "schwab_roth_ira" else resolved
+        out["canary_blocker"] = f"Blocked: {label} is not armed for live API writes."
+        out["account_armed_message"] = out["canary_blocker"]
     elif not system_ready:
         out["canary_state"] = "BLOCKED"
         out["canary_blocker"] = "A backend readiness gate is not satisfied."
@@ -774,6 +776,52 @@ def _stop_live_readiness(query=None):
                                  "After-hours override available only with explicit acknowledgement; not "
                                  "recommended for first canary.")
     out["broker_submit_requires"] = "operator click + per-order 2FA + evidence revalidation"
+    try:
+        from brokers.protective_stop_canary import (
+            broad_stop_placement_blocked, latest_canary_result, preferred_canary_targets,
+            build_canary_target,
+        )
+        targets = preferred_canary_targets()
+        out["operator_status"] = "READY_FOR_ONE_CANARY_ONLY"
+        out["preferred_canary_target"] = targets["preferred"]
+        out["alternate_canary_target"] = targets["alternate"]
+        out["broad_stop_placement_blocked"] = broad_stop_placement_blocked(sym or "V")
+        latest = latest_canary_result(sym or None, acct or None)
+        out["canary_result_latest"] = latest
+        if latest and latest.get("lifecycle_state"):
+            out["canary_lifecycle_state"] = latest["lifecycle_state"]
+        elif out.get("canary_state") in ("READY_FOR_OPERATOR", "READY_FOR_OPERATOR_AFTER_HOURS_GTC",
+                                         "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION"):
+            out["canary_lifecycle_state"] = out["canary_state"]
+        elif conflict_acct or not out.get("account_api_write_enabled"):
+            out["canary_lifecycle_state"] = "NOT_ARMED"
+        else:
+            out["canary_lifecycle_state"] = out.get("canary_state") or "NOT_ARMED"
+        if out.get("account_api_write_enabled") and acct == "schwab_rollover_ira":
+            out["account_armed_message"] = "Account armed for Schwab protective stop pilot."
+        whole_qty = None
+        residual = None
+        try:
+            held, _px = _protective_holding_truth(acct, sym)
+            if held is not None:
+                import math
+                whole_qty = int(math.floor(float(held)))
+                residual = round(float(held) - whole_qty, 4)
+        except Exception:
+            pass
+        if sym and acct and whole_qty is not None:
+            out["canary_target"] = build_canary_target(
+                symbol=sym, account=acct, qty=whole_qty, residual_qty=residual or 0.0,
+                order_kind="TRAILING_STOP",
+                trail_pct=8.7 if acct == "schwab_rollover_ira" else (10.0 if acct == "schwab_roth_ira" else None),
+                time_in_force="GTC",
+                quote_price=None,
+                quote_timestamp_normalized=out.get("quote_normalized"),
+                quote_source=None,
+                quote_session=out.get("quote_session"),
+            )
+    except Exception as e:
+        out["canary_policy_error"] = str(e)[:120]
     return out
 
 

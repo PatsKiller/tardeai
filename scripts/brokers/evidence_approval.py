@@ -59,24 +59,40 @@ def _hash_one(snapshot: Any) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def protective_order_binding(intent=None, order_spec: dict | None = None) -> dict | None:
-    """Canonical binding fields for a protective-stop canary: symbol/account/qty/residual/order_kind/trail/TIF.
+def protective_order_binding(intent=None, order_spec: dict | None = None, **extra) -> dict | None:
+    """Canonical binding fields for a protective-stop canary.
 
-    Included in order_spec_hash so roth (130/10%) and rollover (201/8.7%) can never be conflated."""
+    Included in order_spec_hash so roth (130/10%) and rollover (201/8.7%) can never be conflated.
+    Any field change after approval invalidates submit and requires fresh approval."""
     if intent is None:
         return None
     ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
     inst = getattr(intent, "instrument", None)
     spec = order_spec or {}
-    return {
+    binding = {
         "account_key": getattr(intent, "account_key", None),
+        "broker_account_id": ev.get("broker_account_id"),
         "symbol": (getattr(inst, "symbol", "") or "").upper(),
         "qty": getattr(getattr(intent, "quantity", None), "qty", None),
         "residual_qty": ev.get("residual_qty"),
         "order_kind": ev.get("order_type") or spec.get("orderType"),
         "trail_pct": ev.get("trail_pct") if ev.get("trail_pct") is not None else spec.get("stopPriceOffset"),
-        "time_in_force": spec.get("duration"),
+        "stop_price": ev.get("stop_price") or spec.get("stopPrice"),
+        "limit_price": ev.get("limit_price") or spec.get("price"),
+        "time_in_force": spec.get("duration") or ev.get("time_in_force"),
+        "quote_price": ev.get("quote_price") or ev.get("current_price"),
+        "quote_timestamp_normalized": ev.get("quote_timestamp_normalized") or ev.get("quote_at"),
+        "quote_source": ev.get("quote_source"),
+        "quote_session": ev.get("quote_session"),
+        "after_hours_ack": bool(ev.get("after_hours_ack")),
+        "account_api_write_enabled": ev.get("account_api_write_enabled"),
+        "oco_brackets_off": ev.get("oco_brackets_off", True),
+        "operator_identity": ev.get("operator_identity"),
+        "approval_channel": ev.get("approval_channel"),
+        "approval_expires_at": ev.get("approval_expires_at"),
     }
+    binding.update({k: v for k, v in (extra or {}).items() if v is not None})
+    return binding
 
 
 def order_spec_hash(order_spec: dict | None, *, binding: dict | None = None) -> str:

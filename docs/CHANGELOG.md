@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-04 - Schwab protective-stop canary hardening (PR #33 maturity)
+
+Canonical after-hours policy reconciled across runbook + code: default `READY_FOR_OPERATOR_NEXT_REGULAR_SESSION`;
+`READY_FOR_OPERATOR_AFTER_HOURS_GTC` only with `SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1` + operator ack + all standard
+gates. Per-account arming: `schwab_pilot_arm.py --arm` now arms **only** `schwab_rollover_ira` by default;
+`schwab_roth_ira` stays `api_write_enabled=FALSE` unless deliberately armed via `--accounts`. One-V-canary
+discipline + lifecycle states (`protective_stop_canary.py`) + broker read-back result recording.
+`broad_stop_placement_blocked` until `SUCCESS_READBACK_CONFIRMED`. UI shows CANARY TARGET, account armed status,
+lifecycle, and explicit disabled reasons. OCO off; Fidelity manual-only; no broker request sent during tests.
+
 ## 2026-06-30 - Live broker stops (60s) + fixed/trailing validation + last-reviewed tooltips
 
 Portfolio and Open Trades now show **current** Schwab protective-stop state with explicit review timestamps.
@@ -47,6 +57,9 @@ Reconciles the after-hours policy and adds the operator's refresh-quote path. Af
   manual-only; no autonomous submit. Build clean; **63 tests pass**; validator 27/27; no broker request sent.
 
 ## 2026-06-30 - Schwab live-stop: after-hours works 24/7 via GTC + operator acknowledgement
+
+**SUPERSEDED (2026-07-04):** canonical policy is override-required; see the 2026-07-04 entry above and
+`docs/runbooks/protective-stop-integration-2026-06-30.md`. This section is retained for history only.
 
 Supersedes the regular-session-only after-hours policy below. A protective stop is submitted **GTC**
 (`GOOD_TILL_CANCEL`) and rests until triggered, so it is valid to place 24/7 — an after-hours quote should

@@ -233,14 +233,57 @@ def place_order(account_key, order_spec, intent, kind="canary"):
         except Exception:
             pass
     readback = None
+    readback_ok = False
     try:
         _rate_acquire()
         rb = client.get_order(order_id, h)
         readback = rb.json() if rb.status_code == 200 else {"http_status": rb.status_code}
+        readback_ok = rb.status_code == 200 and isinstance(readback, dict)
     except Exception as e:
         readback = {"error": str(e)[:120]}
+    if kind == "protective_stop":
+        try:
+            import datetime as _dt
+            from brokers.protective_stop_canary import record_canary_result
+            ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
+            binding = None
+            try:
+                from brokers.evidence_approval import protective_order_binding
+                binding = protective_order_binding(intent, order_spec)
+            except Exception:
+                binding = None
+            lifecycle = "SUCCESS_READBACK_CONFIRMED" if readback_ok else "FAILED_READBACK"
+            record_canary_result(
+                symbol=(getattr(getattr(intent, "instrument", None), "symbol", "") or "").upper(),
+                account_key=getattr(intent, "account_key", ""),
+                lifecycle_state=lifecycle,
+                result=lifecycle if lifecycle.startswith("SUCCESS") or lifecycle.startswith("FAILED") else None,
+                qty=getattr(getattr(intent, "quantity", None), "qty", None),
+                residual_qty=ev.get("residual_qty"),
+                order_kind=ev.get("order_type") or (order_spec or {}).get("orderType"),
+                trail_pct=ev.get("trail_pct"),
+                stop_price=ev.get("stop_price") or (order_spec or {}).get("stopPrice"),
+                limit_price=ev.get("limit_price") or (order_spec or {}).get("price"),
+                time_in_force=(order_spec or {}).get("duration"),
+                broker_order_id=order_id,
+                broker_status=(readback or {}).get("status") if isinstance(readback, dict) else None,
+                submitted_at=_dt.datetime.now(_dt.timezone.utc).isoformat(),
+                readback_at=_dt.datetime.now(_dt.timezone.utc).isoformat() if readback_ok else None,
+                evidence_id=ev.get("evidence_id"),
+                order_spec_hash=ev.get("order_spec_hash"),
+                readiness_snapshot_hash=ev.get("readiness_snapshot_hash"),
+                quote_source=ev.get("quote_source"),
+                quote_time_normalized=ev.get("quote_timestamp_normalized") or ev.get("quote_at"),
+                quote_session=ev.get("quote_session"),
+                operator_channel=ev.get("approval_channel"),
+                after_hours_ack=bool(ev.get("after_hours_ack")),
+                failure_reason=None if readback_ok else str((readback or {}).get("error") or readback)[:300],
+                readback=readback if isinstance(readback, dict) else {"raw": readback},
+            )
+        except Exception:
+            pass
     return {"status": "submitted", "broker_order_id": order_id, "pilot_row_id": row_id,
-            "readback": readback}
+            "readback": readback, "readback_confirmed": readback_ok}
 
 
 def cancel_order(account_key, broker_order_id):

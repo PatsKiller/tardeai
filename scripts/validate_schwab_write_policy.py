@@ -89,14 +89,13 @@ try:
     standing = int(cur.fetchone()[0] or 0)
     pilot_armed = bool(r and str(r[0]).lower() == "true") and standing > 0
     enabled = {k for k, v in flags.items() if v}
-    expected = set(PILOT_ACCOUNT_ALLOWLIST)
     if pilot_armed:
-        policy_ok = expected.issubset(enabled)
-        policy_detail = f"armed pilot enabled={sorted(enabled)} expected={sorted(expected)}"
+        policy_ok = enabled.issubset(set(PILOT_ACCOUNT_ALLOWLIST)) and bool(enabled)
+        policy_detail = f"armed pilot enabled={sorted(enabled)} allowlist={sorted(PILOT_ACCOUNT_ALLOWLIST)}"
     else:
         policy_ok = not enabled
         policy_detail = f"disarmed flags={flags}"
-    ok("api_write_enabled policy: pilot allowlist only-when-armed, all false when disarmed",
+    ok("api_write_enabled policy: only explicitly armed pilot accounts true; all false when disarmed",
        policy_ok, policy_detail)
     # interlock posture unchanged (paper master flag refuses Schwab live accounts)
     try:

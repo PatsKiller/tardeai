@@ -4,7 +4,7 @@
 Arms the three STANDING locks the execution guard requires (env flag is the operator's manual step):
   1. system_controls['broker_live_enabled'] = 'true'
   2. broker_live_approvals — a standing signed approval row (revocable)
-  3. broker_accounts.api_write_enabled = true for every account in PILOT_ACCOUNT_ALLOWLIST (all 3 Schwab)
+  3. broker_accounts.api_write_enabled = true only for explicitly armed accounts (default: schwab_rollover_ira)
 
 It can NEVER widen the per-order locks: the canary envelope (brokers/canary_gate.py) and pilot caps
 (brokers/pilot_caps.py) are commit-only literals, and per-trade 2FA always applies. Disarm reverses
@@ -13,6 +13,7 @@ arming requires touching two different surfaces.
 
   python3 scripts/schwab_pilot_arm.py --status
   python3 scripts/schwab_pilot_arm.py --arm    --confirm "ARM SCHWAB PILOT <YYYY-MM-DD>"
+  python3 scripts/schwab_pilot_arm.py --arm    --confirm "ARM SCHWAB PILOT <YYYY-MM-DD>" --accounts schwab_rollover_ira,schwab_roth_ira
   python3 scripts/schwab_pilot_arm.py --disarm --confirm "DISARM SCHWAB PILOT"
 """
 from __future__ import annotations
@@ -28,6 +29,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST, MAX_PILOT_ORDERS_TOTAL, orders_used
+from brokers.protective_stop_canary import DEFAULT_CANARY_ACCOUNT
+
+DEFAULT_ARM_ACCOUNTS = (DEFAULT_CANARY_ACCOUNT,)
 
 
 def _conn():
@@ -70,7 +74,7 @@ def status() -> dict:
     sr2 = cur.fetchone()
     standing_unlock = bool(sr2 and str(sr2[0]).lower() == "true")
     key_present = env_flag or session_active or standing_unlock
-    all_writes = all(accounts.get(k) is True for k in PILOT_ACCOUNT_ALLOWLIST)
+    armed_accounts = sorted(k for k, v in accounts.items() if v)
     return {
         "env_BROKER_LIVE_ENABLED": env_flag,
         "pilot_armed_until": session_until,
@@ -89,13 +93,26 @@ def status() -> dict:
         "canary_envelope": {"max_price": cg.MAX_PRICE_USD, "max_qty": cg.MAX_QTY_SHARES,
                             "max_notional": cg.MAX_NOTIONAL_USD},
         "schwab_pilot_standing_unlock": standing_unlock,
-        "armed": key_present and control and approvals > 0 and all_writes,
+        "default_arm_accounts": list(DEFAULT_ARM_ACCOUNTS),
+        "armed_accounts": armed_accounts,
+        "armed": key_present and control and approvals > 0 and bool(armed_accounts),
         "note": "armed=true still places NOTHING by itself: per-order 2FA gates every submit. "
-                "Standing unlock (no expiry) OR env BROKER_LIVE_ENABLED OR session key required.",
+                "Only explicitly armed accounts may receive api_write_enabled=TRUE. "
+                "Default arm target is schwab_rollover_ira; schwab_roth_ira remains FALSE unless deliberately armed.",
     }
 
 
-def arm(confirm: str) -> dict:
+def _parse_accounts(raw: str | None) -> tuple[str, ...]:
+    if not raw:
+        return DEFAULT_ARM_ACCOUNTS
+    out = tuple(a.strip() for a in raw.split(",") if a.strip())
+    bad = [a for a in out if a not in PILOT_ACCOUNT_ALLOWLIST]
+    if bad:
+        raise ValueError(f"invalid account(s): {bad}; allowlist={list(PILOT_ACCOUNT_ALLOWLIST)}")
+    return out
+
+
+def arm(confirm: str, accounts: str | None = None) -> dict:
     today = dt.date.today().isoformat()
     want = f"ARM SCHWAB PILOT {today}"
     if confirm != want:
@@ -107,7 +124,9 @@ def arm(confirm: str) -> dict:
     cur.execute("""INSERT INTO broker_live_approvals (broker, approved_by, scope)
                    VALUES ('schwab', 'operator', %s)""",
                 (f"stage2b_pilot {today} (typed-phrase confirmed)",))
-    for acct in PILOT_ACCOUNT_ALLOWLIST:
+    arm_targets = _parse_accounts(accounts)
+    cur.execute("UPDATE broker_accounts SET api_write_enabled=false WHERE broker ILIKE '%schwab%'")
+    for acct in arm_targets:
         cur.execute("UPDATE broker_accounts SET api_write_enabled=true WHERE account_key=%s", (acct,))
     # Standing unlock (operator 2026-06-22): no session expiry — survives restarts until disarm.
     standing_until = dt.datetime(2099, 12, 31, 23, 59, 59, tzinfo=dt.timezone.utc)
@@ -118,8 +137,8 @@ def arm(confirm: str) -> dict:
                 (standing_until.isoformat(),))
     conn.commit()
     return {"ok": True, "armed_db": True, "standing_unlock": True, "armed_until": standing_until.isoformat(),
-            "pilot_accounts": list(PILOT_ACCOUNT_ALLOWLIST),
-            "note": "ARMED — all 3 Schwab accounts, standing unlock (no expiry). Per-order 2FA still required.",
+            "armed_accounts": list(arm_targets),
+            "note": f"ARMED — api_write_enabled for {list(arm_targets)} only. Per-order 2FA still required.",
             "status": status()}
 
 
@@ -149,6 +168,12 @@ if __name__ == "__main__":
     g.add_argument("--arm", action="store_true")
     g.add_argument("--disarm", action="store_true")
     ap.add_argument("--confirm", default="")
+    ap.add_argument("--accounts", default="",
+                    help="Comma-separated Schwab accounts to arm for live API writes "
+                         f"(default: {DEFAULT_CANARY_ACCOUNT})")
     a = ap.parse_args()
-    out = status() if a.status else arm(a.confirm) if a.arm else disarm(a.confirm)
+    try:
+        out = status() if a.status else arm(a.confirm, a.accounts or None) if a.arm else disarm(a.confirm)
+    except ValueError as e:
+        out = {"ok": False, "error": str(e)}
     print(json.dumps(out, indent=2, default=str))
