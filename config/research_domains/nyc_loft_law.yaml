@@ -1,0 +1,144 @@
+# research_domains/nyc_loft_law.yaml — NYC Loft Law domain pack (spec Part G).
+#
+# Loaded + validated FAIL-CLOSED by scripts/lib/hermes_discovery/loft_law.py
+# (LoftLawPackError on any missing/invalid section — the scanner never runs
+# against a broken pack). The `domain:` stanza is merged into the research
+# domain registry at runtime by loft_law.ensure_domain_registered() using the
+# exact same validator as config/hermes_custom_research_domains.yaml entries
+# (domains._validate_domain), so every registry hard rule applies:
+# auto_promote is force-false, risk_level `legal` forces the
+# professional-review label + OPERATOR_REVIEW_REQUIRED on every candidate.
+#
+# Workspace: the domain name `legal_housing` is claimed by the nyc_loft_law
+# workspace in config/hermes_research_workspaces.yaml, so every candidate this
+# pack produces is stamped meta_json.workspace_id=nyc_loft_law by inbox
+# enrichment — a NON-trading workspace that can never write a trading surface
+# or feed a trading signal (workspaces.assert_can_write / assert_tradeable_signal).
+#
+# NEVER AUTO-PUBLISH: publishing.auto_publish must be false; the pack loader
+# rejects the file otherwise. Content output ends at candidate stage
+# (meta_json.content_stage = "candidate") awaiting the LLM-review / citation
+# check lanes and an operator decision. This pack builds NO publishing path.
+
+version: 1
+pack: nyc_loft_law
+workspace: nyc_loft_law
+
+domain:
+  # Registered into the domain registry (custom-domain schema). The name is
+  # deliberately `legal_housing` — the domain the nyc_loft_law workspace
+  # already claims — so workspace stamping and lane fences come for free.
+  name: legal_housing
+  description: >-
+    NYC Loft Law / Interim Multiple Dwelling research — MDL Article 7-C
+    coverage, Loft Board proceedings, legalization, protected occupancy,
+    rent regulation of IMD units, owner compliance, and related NYC housing
+    regulation. Research summaries and article briefs only — never legal
+    advice.
+  risk_level: legal
+  allowed_candidate_types:
+    - LEGAL_TOPIC_CANDIDATE
+    - SOURCE_CANDIDATE
+    - CASE_LAW_CANDIDATE
+    - STATUTE_UPDATE_CANDIDATE
+    - WEBSITE_CONTENT_CANDIDATE
+  promotion_paths: [research_topic, source_registry]
+  requires_operator_for_promotion: true
+  requires_citation: true
+  requires_professional_review_label: true
+  no_personal_advice: true
+  professional_review_label: >-
+    Research summary only. Not legal advice. Consult a qualified NY attorney.
+  llm_review_required: true
+  auto_promote: false            # force-false at load regardless — hard rule
+  entity_types: [statute, regulation, court_case, agency, building]
+
+# Domain term list (spec Part G) — word-boundary matched, case-insensitive,
+# against news_articles + hermes_research_intelligence text. These also become
+# the registry classification_keywords.
+terms:
+  - loft law
+  - IMD
+  - interim multiple dwelling
+  - NYC loft board
+  - loft board
+  - MDL article 7-C
+  - article 7-C
+  - multiple dwelling law
+  - legalization
+  - protected occupant
+  - protected occupancy
+  - coverage application
+  - abandonment
+  - fixture
+  - fixture fee
+  - rent regulation
+  - certificate of occupancy
+  - DOB violation
+  - DOB violations
+  - fire safety
+  - residential conversion
+  - zoning
+  - rent stabilization
+  - rent stabilized
+  - owner compliance
+
+# Source policy — matched by hostname suffix (host == entry or *.entry).
+# blocked ALWAYS wins, then primary, then secondary; anything unlisted ranks
+# below secondary but is not blocked (it still needs operator review anyway).
+source_policy:
+  # High-trust primary: official city/state — nyc.gov (Loft Board / DOB /
+  # HPD), NY courts, statute text (Admin Code / MDL via legislature portals).
+  primary:
+    - nyc.gov
+    - ny.gov
+    - hcr.ny.gov
+    - nycourts.gov
+    - courts.state.ny.us
+    - nysenate.gov
+    - nyassembly.gov
+    - codelibrary.amlegal.com     # official NYC Administrative Code publisher
+    - law.justia.com              # statute/case full text mirrors
+  # Secondary: legal aid orgs + reputable firm/press explainers.
+  secondary:
+    - legalaidnyc.org
+    - mobilizationforjustice.org
+    - metcouncilonhousing.org
+    - justia.com
+    - casetext.com
+    - findlaw.com
+    - nolo.com
+    - citylimits.org
+    - brickunderground.com
+  # Blocked: social / forum / anonymous-blog sources — skipped entirely.
+  blocked:
+    - reddit.com
+    - twitter.com
+    - x.com
+    - facebook.com
+    - instagram.com
+    - tiktok.com
+    - quora.com
+    - medium.com
+    - blogspot.com
+    - wordpress.com
+
+# Forced onto EVERY candidate (meta_json.required_labels) — the loader rejects
+# a pack missing any of these four exact labels.
+required_labels:
+  - "Research summary only."
+  - "Not legal advice."
+  - "Consult a qualified NY attorney."
+  - "Cite primary sources where possible."
+
+candidate_types:
+  - LEGAL_TOPIC_CANDIDATE
+  - SOURCE_CANDIDATE
+  - CASE_LAW_CANDIDATE
+  - STATUTE_UPDATE_CANDIDATE
+  - WEBSITE_CONTENT_CANDIDATE
+
+publishing:
+  auto_publish: false            # HARD RULE — loader fails closed on true
+  content_stage: candidate       # pipeline stub; LLM review / citation check
+                                 # are existing/later lanes, never built here

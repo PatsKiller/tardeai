@@ -1,0 +1,131 @@
+# hermes_research_worker_lanes.yaml — White-Space Discovery worker lanes (spec Part E).
+#
+# Loaded + validated by scripts/lib/hermes_discovery/worker_pool.py (fail-closed:
+# a lane with promotion_allowed: true, promotion_requires_operator: false, or
+# do_no_harm_policy != respect aborts the load with LaneConfigError — a config
+# edit can never open a promotion path or bypass the do-no-harm governor).
+#
+# Each lane is a bounded, lockable research worker. Lanes only ever WRITE
+# DISCOVERY CANDIDATES (via inbox.upsert_candidate) — never watchlists,
+# directives, proposals, or any producer table. Stage 1 wires runners for the
+# holdings + watchlist lanes (existing coverage adapters); Stages 2-4 register
+# runners for the rest via worker_pool.register_lane_runner(lane_id, fn).
+#
+# Per-lane schema (defaults below apply when a key is omitted):
+#   enabled                        lane may run at all
+#   cadence_minutes                minimum minutes between live runs (state-file
+#                                  enforced; dry runs are always allowed)
+#   max_candidates_per_run         hard cap on payloads a run may upsert
+#   max_llm_reviews_per_run        LLM-review budget for the run (Stage 2+)
+#   timeout_seconds                runner wall-clock budget; overruns abandon the run
+#   allowed_domains                research domains the lane may emit into
+#                                  ([] = any domain not blocked)
+#   blocked_domains                research domains the lane may never emit into
+#   sensitive_domain               lane handles professional-review material
+#   requires_citations             every payload must carry at least one
+#                                  evidence ref with a url/source_domain
+#   requires_operator_review       candidates stay operator-gated (always true)
+#   cloud_allowed                  cloud LLM lanes permitted for this lane
+#   local_llm_allowed              local (GPU) LLM lanes permitted
+#   promotion_allowed              MUST be false (hard rule, validated)
+#   promotion_requires_operator    MUST be true  (hard rule, validated)
+#   do_no_harm_policy              MUST be respect (scorecard pause/tighten honored)
+
+version: 1
+
+defaults:
+  enabled: true
+  cadence_minutes: 240
+  max_candidates_per_run: 10
+  max_llm_reviews_per_run: 3
+  timeout_seconds: 120
+  allowed_domains: []
+  blocked_domains: []
+  sensitive_domain: false
+  requires_citations: false
+  requires_operator_review: true
+  cloud_allowed: false
+  local_llm_allowed: true
+  promotion_allowed: false
+  promotion_requires_operator: true
+  do_no_harm_policy: respect
+
+lanes:
+  holdings:
+    description: Coverage gaps and research needs across currently held positions.
+    cadence_minutes: 240
+    max_candidates_per_run: 10
+    allowed_domains: [portfolio_holdings]
+
+  watchlist:
+    description: Stale-intelligence / missing-research findings over the governed watchlist.
+    cadence_minutes: 240
+    max_candidates_per_run: 10
+    allowed_domains: [watchlist]
+
+  white_space:
+    description: >-
+      Cross-domain white-space scan — themes, sectors, and subjects the
+      system is NOT covering yet (GAP_CANDIDATE emissions with meta.gap_type).
+    cadence_minutes: 720
+    max_candidates_per_run: 8
+    max_llm_reviews_per_run: 4
+    blocked_domains: [broker_ops]
+
+  strategy:
+    description: Trading-strategy white-space research (STRATEGY_CANDIDATE emissions).
+    cadence_minutes: 1440
+    max_candidates_per_run: 5
+    max_llm_reviews_per_run: 3
+    allowed_domains: [watchlist, sectors, industry_themes, technology, macro]
+
+  private_proxy:
+    description: >-
+      Public proxies for notable private companies
+      (PRIVATE_COMPANY_PROXY_CANDIDATE emissions).
+    cadence_minutes: 1440
+    max_candidates_per_run: 5
+    allowed_domains: [watchlist, sectors, industry_themes, technology]
+
+  legal_domain:
+    description: >-
+      Legal research lane — legal topics, case law, statute updates, and the
+      NYC loft-law workspace domains. Advisory summaries only, never legal
+      advice; every candidate requires citations and operator review.
+    cadence_minutes: 1440
+    max_candidates_per_run: 5
+    max_llm_reviews_per_run: 3
+    allowed_domains: [legal, legal_general, legal_housing, housing,
+                      nyc_regulation, case_law, tenant_rights,
+                      landlord_compliance, zoning]
+    sensitive_domain: true
+    requires_citations: true
+    cloud_allowed: false
+
+  tax_retirement:
+    description: >-
+      Tax and retirement research context lane. Research summaries only —
+      never personal tax or planning advice; citations + operator review required.
+    cadence_minutes: 1440
+    max_candidates_per_run: 5
+    max_llm_reviews_per_run: 3
+    allowed_domains: [taxes, retirement]
+    sensitive_domain: true
+    requires_citations: true
+    cloud_allowed: false
+
+  system_ops:
+    description: Platform/system-operations research findings (health, pipelines, connectors).
+    cadence_minutes: 360
+    max_candidates_per_run: 8
+    allowed_domains: [system_ops, broker_ops]
+
+  custom_domain:
+    description: >-
+      Operator-defined custom research domains (hermes_custom_research_domains.yaml)
+      that no dedicated lane covers yet.
+    cadence_minutes: 1440
+    max_candidates_per_run: 5
+    allowed_domains: [custom, legal_general, health_general, technology_general]
+    sensitive_domain: true
+    requires_citations: true
