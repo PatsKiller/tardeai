@@ -1,0 +1,136 @@
+# ALPACA-OPTIONS Stage 1 — options underlying universe (operator spec Part A).
+#
+# Tiered universe for the paper-only options strategy scanner
+# (scripts/options_strategy_scanner.py). Dynamic tiers carry NO symbol list —
+# they are resolved at runtime (holdings.json / watchlist DB / Hermes discovery
+# GAP_CANDIDATE rows) by scripts/lib/options_pipeline/universe.py. Static tiers
+# are explicit seed lists reviewed by the operator.
+#
+# Dedupe precedence (first tier wins): holdings > watchlist_buy_strong_buy >
+# liquid_options_core > sector_etfs > discovery_missing_exposure >
+# strategy_specific > operator_added.
+#
+# SAFETY: this file only widens what the PAPER scanner may look at. It grants
+# no execution surface — live gating lives in config/options_strategy_registry.yaml
+# (all live_enabled: false, fail-closed at load).
+version: 1
+updated: "2026-07-05"
+
+defaults:
+  max_underlyings_per_run: 15      # scanner cap when --limit not given
+  max_proposals_per_run: 5         # scanner winners cap when --top not given
+  default_conviction: 0.60         # baseline conviction for tier entries with no
+                                   # richer signal (must clear the 0.55 strategy floor)
+
+tier_precedence:
+  - holdings
+  - watchlist_buy_strong_buy
+  - liquid_options_core
+  - sector_etfs
+  - discovery_missing_exposure
+  - strategy_specific
+  - operator_added
+
+tiers:
+  holdings:
+    dynamic: true                  # resolved at runtime — never listed here
+    resolver: holdings_json        # data/portfolios/state/holdings.json (equity, non-cash)
+    enabled: true
+    max_scan_frequency: daily
+    reason_included: "current equity holding — overlay/replacement candidates (covered calls, protective puts, stock replacement)"
+    liquidity_expectation: variable
+    strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread]
+
+  watchlist_buy_strong_buy:
+    dynamic: true
+    resolver: watchlist_verdicts   # watchlist_items + research card / CIO synthesis buy|strong_buy
+    enabled: true
+    max_scan_frequency: daily
+    reason_included: "watchlist buy/strong_buy conviction name — entry-structure candidates"
+    liquidity_expectation: variable
+    strategy_allowlist: [deep_itm_call, cash_secured_put, credit_spread]
+
+  liquid_options_core:
+    dynamic: false                 # STATIC operator-reviewed seed of the most liquid optionable US names/ETFs
+    enabled: true
+    max_scan_frequency: daily
+    symbols:
+      - {symbol: SPY,   reason_included: "S&P 500 ETF — deepest options market in the world",        liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: QQQ,   reason_included: "Nasdaq-100 ETF — top-3 options liquidity, tight spreads",  liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: IWM,   reason_included: "Russell 2000 ETF — highly liquid small-cap index options", liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: DIA,   reason_included: "Dow 30 ETF — liquid large-cap index options",              liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: AAPL,  reason_included: "megacap — perennially top-5 single-name options volume",   liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: MSFT,  reason_included: "megacap — deep chains across all expirations",             liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: NVDA,  reason_included: "megacap AI leader — highest single-name options volume",   liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: AMZN,  reason_included: "megacap — deep liquid chains, penny increments",           liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: GOOGL, reason_included: "megacap — liquid chains, tight spreads",                   liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: META,  reason_included: "megacap — very active options market",                     liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: TSLA,  reason_included: "highest-volume high-beta single name — deep chains",       liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: AMD,   reason_included: "liquid semiconductor name — heavy options flow",           liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: NFLX,  reason_included: "liquid megacap media — active weekly chains",              liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: JPM,   reason_included: "largest US bank — most liquid financial-sector options",   liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: BAC,   reason_included: "money-center bank — high-volume low-priced liquid chains", liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: XOM,   reason_included: "largest US energy major — liquid energy options",          liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: CVX,   reason_included: "energy major — liquid chains, dividend anchor",            liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: RTX,   reason_included: "defense prime — liquid chains; AI/WWIII defense thesis",   liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: LMT,   reason_included: "defense prime — liquid chains; AI/WWIII defense thesis",   liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: BA,    reason_included: "aerospace duopoly name — deep, active chains",             liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: DIS,   reason_included: "megacap media — liquid retail-favorite chains",            liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: KO,    reason_included: "defensive staple — liquid low-volatility chains",          liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: PEP,   reason_included: "defensive staple — liquid chains, dividend anchor",        liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: JNJ,   reason_included: "healthcare megacap — liquid defensive chains",             liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: UNH,   reason_included: "managed-care leader — liquid high-priced chains",          liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: V,     reason_included: "payments duopoly — liquid quality-compounder chains",      liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: MA,    reason_included: "payments duopoly — liquid quality-compounder chains",      liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: COST,  reason_included: "premier retailer — liquid chains on a compounder",         liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: WMT,   reason_included: "largest retailer — liquid defensive chains",               liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: SCHD,  reason_included: "dividend ETF — held income sleeve; covered-call overlay study", liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+
+  sector_etfs:
+    dynamic: false                 # STATIC sector/industry ETF seed — exposure-targeted structures
+    enabled: true
+    max_scan_frequency: daily
+    symbols:
+      - {symbol: XLF,  reason_included: "financials sector SPDR — liquid sector options",            liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: XLE,  reason_included: "energy sector SPDR — liquid sector options",                liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: XLK,  reason_included: "technology sector SPDR — liquid sector options",            liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: XLV,  reason_included: "healthcare sector SPDR — liquid sector options",            liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: XLI,  reason_included: "industrials sector SPDR — liquid sector options",           liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: XLP,  reason_included: "consumer staples SPDR — liquid defensive sector options",   liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: XLU,  reason_included: "utilities SPDR — liquid defensive sector options",          liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: XLY,  reason_included: "consumer discretionary SPDR — liquid sector options",       liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: XLB,  reason_included: "materials SPDR — liquid sector options",                    liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: XLRE, reason_included: "real estate SPDR — liquid rate-sensitive sector options",   liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: XBI,  reason_included: "biotech equal-weight ETF — liquid high-beta industry options", liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: SMH,  reason_included: "semiconductor ETF — liquid AI-supply-chain industry options", liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+      - {symbol: ITA,  reason_included: "aerospace & defense ETF — AI/WWIII defense thesis sleeve",  liquidity_expectation: high, strategy_allowlist: [deep_itm_call, covered_call, cash_secured_put, protective_put, credit_spread], enabled: true, max_scan_frequency: daily}
+
+  discovery_missing_exposure:
+    dynamic: true
+    resolver: hermes_gap_candidates  # open GAP_CANDIDATE rows, meta_json.gap_type in
+                                     # (MISSING_SECTOR, MISSING_COMPANY) carrying a VALIDATED ticker
+    enabled: true
+    max_scan_frequency: daily
+    reason_included: "Hermes white-space discovery — validated ticker on an open MISSING_SECTOR/MISSING_COMPANY gap"
+    liquidity_expectation: unknown   # discovery names carry no liquidity guarantee — gates decide
+    strategy_allowlist: [deep_itm_call, cash_secured_put]
+
+  strategy_specific:
+    dynamic: false
+    enabled: true
+    max_scan_frequency: daily
+    symbols: []                    # empty scaffold — per-strategy additions land here after operator review
+    # example entry (documentation only — `example` is ignored by the loader):
+    example:
+      symbol: TLT
+      reason_included: "example — rate-sensitive underlying added specifically for credit_spread research"
+      liquidity_expectation: high
+      strategy_allowlist: [credit_spread]
+      enabled: true
+      max_scan_frequency: daily
+
+  operator_added:
+    dynamic: false
+    enabled: true
+    max_scan_frequency: daily
+    symbols: []                    # operator ad-hoc additions — same per-symbol fields as liquid_options_core

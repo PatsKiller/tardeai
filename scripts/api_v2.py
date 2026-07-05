@@ -24268,13 +24268,22 @@ def _fetch_paper_model_queue_proposals() -> list:
         from db_adapter import _execute, USE_DB
         if not USE_DB:
             return []
+        # Stage 3: in-flight Alpaca-lane rows (READY…OUTCOME/LIVE_REVIEW) stay
+        # visible regardless of expires_at — an expired quote must never hide a
+        # row that has a live paper order or a recorded outcome behind it.
         rows = _execute(
-            """SELECT proposal_id, status AS queue_status, proposal_json,
+            """SELECT proposal_id, status AS queue_status, proposal_json, meta,
                       created_at, expires_at
                FROM options_approval_queue
                WHERE strategy = 'deep_itm_call'
-                 AND status IN ('pending', 'blocked')
-                 AND (expires_at IS NULL OR expires_at > NOW())
+                 AND (
+                   (status IN ('pending', 'blocked')
+                    AND (expires_at IS NULL OR expires_at > NOW()))
+                   OR status IN ('READY_FOR_ALPACA_PAPER', 'ALPACA_PAPER_SUBMITTED',
+                                 'ALPACA_PAPER_FILLED', 'ALPACA_PAPER_REJECTED',
+                                 'ALPACA_PAPER_CLOSED', 'OUTCOME_RECORDED',
+                                 'READY_FOR_LIVE_REVIEW')
+                 )
                ORDER BY edge_score DESC NULLS LAST, created_at DESC
                LIMIT 25""",
             fetch="all",
@@ -24311,6 +24320,19 @@ def _fetch_paper_model_queue_proposals() -> list:
         p["queued_at"] = str(r.get("created_at") or "")
         if progress:
             p["validation_progress"] = progress
+        # Stage 3: surface the row's Alpaca order audit + prime rubric to the
+        # card (read-only meta passthrough — desk UI renders lane chip/score).
+        qmeta = r.get("meta")
+        if isinstance(qmeta, str):
+            try:
+                qmeta = json.loads(qmeta)
+            except Exception:
+                qmeta = {}
+        qmeta = qmeta if isinstance(qmeta, dict) else {}
+        if qmeta.get("alpaca_json"):
+            p["alpaca_json"] = qmeta["alpaca_json"]
+        if qmeta.get("prime_json"):
+            p["prime_json"] = qmeta["prime_json"]
         out.append(p)
     return out
 
@@ -24841,6 +24863,189 @@ def _options_approval_resolve(body=None):
     return _json_clean(ent.resolve_approval(
         pid, action, reviewer=str(b.get("reviewer") or "operator"), note=str(b.get("note") or ""),
     ))
+
+
+# ── ALPACA-OPTIONS Stage 3 (Part F): Alpaca PAPER lane operator routes ────────
+# Thin wrappers over the paper-locked state machine in
+# lib/options_pipeline/alpaca_paper.py — every guard (paper-endpoint hard lock,
+# LIMIT-only, 1-contract cap, operator-only transitions, confirm-required
+# submit) lives THERE and is not re-implemented or bypassed here. Refusals come
+# back as honest 4xx {reason}. Actor for UI-triggered marks: 'operator:ui'.
+
+_ALPACA_UI_ACTOR = "operator:ui"
+
+
+def _options_alpaca_refused(e) -> tuple:
+    """Map state-machine/policy refusals to an honest 4xx {reason}."""
+    return 409, {"ok": False, "reason": str(e)[:400]}
+
+
+def _options_alpaca_mark_ready(body=None):
+    """POST /api/v2/options/alpaca-paper/mark-ready {proposal_id} —
+    operator mark: pending/approved → READY_FOR_ALPACA_PAPER."""
+    from lib.options_pipeline import alpaca_paper as ap
+    b = body if isinstance(body, dict) else {}
+    pid = str(b.get("proposal_id") or "").strip()
+    if not pid:
+        return 400, {"ok": False, "reason": "proposal_id required"}
+    try:
+        return 200, _json_clean(ap.mark_ready(pid, operator_actor=_ALPACA_UI_ACTOR))
+    except (ap.IllegalTransitionError, ap.OperatorActionRequiredError) as e:
+        return _options_alpaca_refused(e)
+
+
+def _options_alpaca_submit(body=None):
+    """POST /api/v2/options/alpaca-paper/submit {proposal_id, confirm: true} —
+    submit ONE READY row as a 1-contract paper LIMIT order. confirm:true is
+    MANDATORY (mirrors the executor CLI's --confirm); missing/false → 400.
+    Missing/invalid ALPACA_PAPER_BASE_URL → honest 4xx {reason} from the
+    paper-endpoint hard lock — never a silent fallback."""
+    from lib.options_pipeline import alpaca_paper as ap
+    b = body if isinstance(body, dict) else {}
+    pid = str(b.get("proposal_id") or "").strip()
+    if not pid:
+        return 400, {"ok": False, "reason": "proposal_id required"}
+    if b.get("confirm") is not True:
+        return 400, {"ok": False, "reason": "confirm:true required — there is no "
+                                            "automatic submit path (operator action)"}
+    try:
+        res = ap.submit_ready_proposal(pid, confirm=True)
+    except (ap.PaperEndpointError, ap.OrderPolicyError,
+            ap.IllegalTransitionError, ap.OperatorActionRequiredError) as e:
+        return _options_alpaca_refused(e)
+    if not res.get("ok"):
+        return 502, _json_clean({**res, "reason": res.get("error")})
+    return 200, _json_clean(res)
+
+
+def _options_alpaca_reconcile(body=None):
+    """POST /api/v2/options/alpaca-paper/reconcile — poll fills/rejects/closes
+    → outcomes (read-only vs Alpaca; state transitions via the legality-checked
+    machine)."""
+    from lib.options_pipeline import alpaca_paper as ap
+    try:
+        return 200, _json_clean(ap.reconcile_fills())
+    except (ap.PaperEndpointError, ap.IllegalTransitionError) as e:
+        return _options_alpaca_refused(e)
+
+
+def _options_alpaca_record_outcome(body=None):
+    """POST /api/v2/options/alpaca-paper/record-outcome {proposal_id, exit_premium}
+    — minimal honest operator close: FILLED/CLOSED row + operator-entered exit
+    premium → close blob + validation ledger (record_outcome) → OUTCOME_RECORDED.
+    P/L math matches reconcile_fills: (exit − entry fill) × 100 × 1 contract."""
+    from lib.options_pipeline import alpaca_paper as ap
+    from lib.options_pipeline.validation import record_outcome
+    b = body if isinstance(body, dict) else {}
+    pid = str(b.get("proposal_id") or "").strip()
+    if not pid:
+        return 400, {"ok": False, "reason": "proposal_id required"}
+    exit_px = b.get("exit_premium")
+    try:
+        exit_px = float(exit_px)
+    except (TypeError, ValueError):
+        return 400, {"ok": False, "reason": "exit_premium (per-contract price) required"}
+    if not (0 <= exit_px < 10000):
+        return 400, {"ok": False, "reason": f"exit_premium {exit_px} out of sane range"}
+    row = ap.get_queue_row(pid)
+    if not row:
+        return 404, {"ok": False, "reason": f"proposal {pid!r} not in queue"}
+    if row["status"] not in (ap.STATE_FILLED, ap.STATE_CLOSED):
+        return 409, {"ok": False, "reason": f"row is '{row['status']}' — outcome can only "
+                                            f"be recorded on {ap.STATE_FILLED}/{ap.STATE_CLOSED}"}
+    aj = ap._alpaca_meta(row)
+    entry_px = float((aj.get("fill") or {}).get("price") or 0.0)
+    if entry_px <= 0:
+        return 409, {"ok": False, "reason": "no recorded Alpaca fill price in meta — "
+                                            "cannot compute P/L honestly (run reconcile first)"}
+    try:
+        if row["status"] == ap.STATE_FILLED:
+            entry_debit = round(entry_px * 100.0, 2)
+            exit_value = round(exit_px * 100.0, 2)
+            pnl = round(exit_value - entry_debit, 2)
+            aj = {**aj, "close": {
+                "exit_price": exit_px, "closed_at": _dtnow_iso(),
+                "pnl": pnl, "entry_debit": entry_debit, "exit_value": exit_value,
+                "close_order": None, "source": "operator_manual_ui"}}
+            ap.transition(pid, ap.STATE_CLOSED, meta_patch={"alpaca_json": aj})
+        close = aj.get("close") or {}
+        pnl = float(close.get("pnl") or 0.0)
+        rec = record_outcome(
+            pid, outcome=ap._outcome_from_pnl(pnl),
+            strategy_id=row.get("strategy") or "deep_itm_call",
+            symbol=row.get("symbol") or "", pnl=pnl,
+            entry_debit=close.get("entry_debit"), exit_value=close.get("exit_value"),
+            opened_at=(aj.get("fill") or {}).get("filled_at"),
+            closed_at=close.get("closed_at"), exit_reason="manual",
+            notes="operator-entered exit premium via desk UI",
+            meta={"alpaca_order_id": (aj.get("response") or {}).get("id"),
+                  "lane": "alpaca_paper", "source": "operator_manual_ui"})
+        if not rec.get("ok"):
+            return 502, {"ok": False, "reason": f"record_outcome failed: {rec.get('error')} "
+                                                f"— row left in {ap.STATE_CLOSED} for retry"}
+        ap.transition(pid, ap.STATE_OUTCOME, meta_patch={"outcome_recorded_at": _dtnow_iso()})
+    except (ap.IllegalTransitionError, ap.OperatorActionRequiredError) as e:
+        return _options_alpaca_refused(e)
+    return 200, _json_clean({"ok": True, "proposal_id": pid, "status": ap.STATE_OUTCOME,
+                             "pnl": pnl, "outcome": ap._outcome_from_pnl(pnl)})
+
+
+def _options_alpaca_promote_live_review(body=None):
+    """POST /api/v2/options/alpaca-paper/promote-live-review {proposal_id, confirm:true}
+    — operator-only OUTCOME_RECORDED → READY_FOR_LIVE_REVIEW. Server-side guard:
+    the row's prime verdict must be READY_FOR_LIVE_REVIEW_OPERATOR_ONLY.
+    This does NOT place an order; live consideration still requires operator
+    2FA + broker preview/read-back, and the model stays unvalidated until
+    30 paper outcomes / 3 months."""
+    from lib.options_pipeline import alpaca_paper as ap
+    from lib.options_pipeline.prime_rubric import VERDICT_LIVE_REVIEW_LABEL
+    b = body if isinstance(body, dict) else {}
+    pid = str(b.get("proposal_id") or "").strip()
+    if not pid:
+        return 400, {"ok": False, "reason": "proposal_id required"}
+    if b.get("confirm") is not True:
+        return 400, {"ok": False, "reason": "confirm:true required (operator action)"}
+    row = ap.get_queue_row(pid)
+    if not row:
+        return 404, {"ok": False, "reason": f"proposal {pid!r} not in queue"}
+    meta = row.get("meta")
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except Exception:
+            meta = {}
+    verdict = ((meta or {}).get("prime_json") or {}).get("verdict")
+    if verdict != VERDICT_LIVE_REVIEW_LABEL:
+        return 409, {"ok": False, "reason": f"prime verdict is {verdict!r} — promotion "
+                                            f"requires {VERDICT_LIVE_REVIEW_LABEL} "
+                                            "(run the prime rubric)"}
+    try:
+        res = ap.mark_live_review(pid, operator_actor=_ALPACA_UI_ACTOR)
+    except (ap.IllegalTransitionError, ap.OperatorActionRequiredError) as e:
+        return _options_alpaca_refused(e)
+    return 200, _json_clean({**res, "note": "READY_FOR_LIVE_REVIEW is a review mark only — "
+                                            "no order was placed; 2FA + broker preview still required"})
+
+
+def _options_prime_rubric(body=None):
+    """POST /api/v2/options/prime-rubric {proposal_id} — score the row through
+    the 10-component prime rubric, persist meta.prime_json (one UPDATE) and
+    return it. Advisory label only — never transitions status."""
+    from lib.options_pipeline import prime_rubric as pr
+    b = body if isinstance(body, dict) else {}
+    pid = str(b.get("proposal_id") or "").strip()
+    if not pid:
+        return 400, {"ok": False, "reason": "proposal_id required"}
+    res = pr.score_and_persist(pid, dry_run=bool(b.get("dry_run")))
+    if not res.get("ok"):
+        code = 404 if "not in options_approval_queue" in str(res.get("error")) else 502
+        return code, _json_clean({**res, "reason": res.get("error")})
+    return 200, _json_clean(res)
+
+
+def _dtnow_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _schwab_fundamentals(query=None):
@@ -31286,6 +31491,28 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/options/approval-queue/resolve":
         try:
             return 200, _options_approval_resolve(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    # ── ALPACA-OPTIONS Stage 3: paper-lane operator routes (handlers return
+    #    (status, dict); all lane guards live in lib/options_pipeline/alpaca_paper) ──
+    if method == "POST" and base_path in (
+            "/api/v2/options/alpaca-paper/mark-ready",
+            "/api/v2/options/alpaca-paper/submit",
+            "/api/v2/options/alpaca-paper/reconcile",
+            "/api/v2/options/alpaca-paper/record-outcome",
+            "/api/v2/options/alpaca-paper/promote-live-review",
+            "/api/v2/options/prime-rubric"):
+        _alpaca_routes = {
+            "/api/v2/options/alpaca-paper/mark-ready": _options_alpaca_mark_ready,
+            "/api/v2/options/alpaca-paper/submit": _options_alpaca_submit,
+            "/api/v2/options/alpaca-paper/reconcile": _options_alpaca_reconcile,
+            "/api/v2/options/alpaca-paper/record-outcome": _options_alpaca_record_outcome,
+            "/api/v2/options/alpaca-paper/promote-live-review": _options_alpaca_promote_live_review,
+            "/api/v2/options/prime-rubric": _options_prime_rubric,
+        }
+        try:
+            return _alpaca_routes[base_path](body if isinstance(body, dict) else {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 

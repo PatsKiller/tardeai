@@ -158,3 +158,21 @@ each queued paper card carries a `paper validation n/30` chip.
 | API | `/api/v2/options/proposals` (merged paper rows) · `/api/v2/options/validation` |
 | UI | `OptionsHub.tsx` (validation strip) · `OptionProposalCardV4.tsx` (paper card block + IV line) |
 | Tests | `tests/test_options_pipeline_deep_itm.py` · `tests/test_options_pipeline_validation.py` · `tests/test_options_iv_rank.py` |
+
+---
+
+## Alpaca Paper Execution Lane (2026-07-06)
+
+**Purpose**: real paper fills for the validation ledger — operator-approved paper candidates execute on Alpaca's paper endpoint instead of remaining hypothetical.
+
+**Universe (config/options_universe.yaml)**: 7 tiers, precedence-deduped — holdings > watchlist_buy_strong_buy > liquid_options_core (30 static liquid names) > sector_etfs (13) > discovery_missing_exposure (open GAP_CANDIDATE tickers, validated) > strategy_specific > operator_added. Scanner: `--universe holdings_watchlist|liquid_core|discovery|all`, per-tier stats, tier strategy-allowlists enforced.
+
+**Strategy registry (config/options_strategy_registry.yaml)**: deep_itm_call TESTING_PAPER (alpaca_paper_enabled), covered_call/cash_secured_put/protective_put MODELED (paper only), credit_spread RESEARCH_ONLY. ALL strategies: `live_enabled: false` enforced at config load (`LivePolicyViolation` unless the never-set `TRADE_AI_OPTIONS_LIVE_POLICY=explicit`); caps: 1 contract, $5,000 premium.
+
+**Executor (scripts/alpaca_paper_options_executor.py)**: HARD-LOCKED to `paper-api.alpaca.markets` (exact-host check; live URLs, spoof hosts, LIVE-named env vars all refuse). Limit orders only, qty clamped to 1, buy-to-open only. Submit requires explicit operator action (CLI `--proposal-id --confirm`, or the desk UI two-step confirm). Full request + response + read-back persisted to `options_approval_queue.meta.alpaca_json`. `--reconcile` polls fills → outcomes → `options_paper_outcomes` (the 0/30 validation ledger). Requires `ALPACA_PAPER_BASE_URL` env — absent by default; submits refuse until the operator arms it.
+
+**Queue states** (additive migration + anti-clobber trigger): pending → READY_FOR_ALPACA_PAPER → ALPACA_PAPER_SUBMITTED → FILLED/REJECTED → CLOSED → OUTCOME_RECORDED → (operator-only) READY_FOR_LIVE_REVIEW.
+
+**Prime rubric (scripts/options_prime_rubric.py)**: 10 weighted scores (spread, OI/volume, delta fit, extrinsic, breakeven, IV rank, earnings risk, sizing, thesis freshness, paper-fill quality) → prime_score → labels NOT_PRIME / PAPER_ONLY / PRIME_FOR_PAPER / READY_FOR_LIVE_REVIEW_OPERATOR_ONLY. Labels only — the rubric is AST-proven orderless and cannot transition status.
+
+**Live-review promotion**: visible only on OUTCOME_RECORDED rows carrying the top rubric label; operator confirm dialog states verbatim — "This does not place an order." / "Requires operator 2FA." / "Requires broker preview/read-back." / "Model is unvalidated until 30 paper outcomes / 3 months." No code path in this lane can reach a live broker; Schwab/2FA machinery untouched.
