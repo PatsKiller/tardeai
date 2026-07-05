@@ -141,7 +141,8 @@
       "proposal_trade_plan_blocked",
       "hermes_scope_governor_stale",
       "hermes_scope_governor_heartbeat_missing",
-      "hermes_scope_governor_last_run_failed"
+      "hermes_scope_governor_last_run_failed",
+      "strategy_registry_null_ids"
     ]
   },
   "data_sources": {
@@ -199,7 +200,8 @@
     "agent_jobs_processing_stuck": ".venv/bin/python scripts/reset_stuck_agent_jobs.py --apply >> logs/reset_stuck_agent_jobs.log 2>&1",
     "synthesis_processing_stuck": ".venv/bin/python scripts/reset_stuck_agent_jobs.py --apply >> logs/reset_stuck_agent_jobs.log 2>&1",
     "proposal_trade_plan_blocked": ".venv/bin/python scripts/remediate_proposal_trade_plans.py",
-    "proposal_technicals_stale": ".venv/bin/python scripts/enrich_proposal_technicals.py"
+    "proposal_technicals_stale": ".venv/bin/python scripts/enrich_proposal_technicals.py",
+    "strategy_registry_null_ids": ".venv/bin/python scripts/fix_strategy_registry_null_ids.py"
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",
