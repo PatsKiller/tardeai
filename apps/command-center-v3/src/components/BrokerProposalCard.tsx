@@ -130,7 +130,9 @@ type Props = {
   onConfirmRoute?: (channel: 'web' | 'telegram') => void
   acctPreviewBusy?: boolean
   onRefresh: () => void
-  onEdit: () => void
+  /** Opens the Modify (adjust) editor. Optional `shares` pre-fills the editor with that quantity
+   *  (used by the v4 card's "resize to N sh" policy hint on destination-account switch). */
+  onEdit: (opts?: { shares?: number }) => void
   onManual: () => void
   onRoute: () => void
   onQueueOversight: () => void

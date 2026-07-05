@@ -1386,7 +1386,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 onConfirmRoute={ch => confirmRoute(p.id, ch)}
                 acctPreviewBusy={!!acctPreviewBusy[p.id]}
                 onRefresh={() => { refreshPrices(p); if (p.detail_pending) fetchProposalDetail(p.id, { force: true }) }}
-                onEdit={() => setAdjustSeed({ proposal_id: p.id, symbol: p.symbol, account: dest })}
+                onEdit={opts => setAdjustSeed({ proposal_id: p.id, symbol: p.symbol, account: dest, shares: opts?.shares })}
                 onManual={() => openManual(p)}
                 onRoute={() => openRouteReview(p)}
                 onQueueOversight={() => queueOversight(p.id)}

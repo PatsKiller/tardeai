@@ -480,6 +480,20 @@ export default function BrokerProposalCardV4({
 
   const proposedAgo = agoLabel(p.created_at)
 
+  // One-tap "resize to policy" hint — after the operator switches the Destination picker to
+  // another account (previewForDest ⇒ dest ≠ routed account) whose policy reference size
+  // ("policy ref N sh", evalData.policy_max_shares) differs from the queued shares. Reuses the
+  // EXISTING Modify (adjust) editor pathway: onEdit({ shares: N }) opens BrokerPromoteModal
+  // pre-filled with the policy-ref quantity — no new API call. Hidden on expired/rejected or
+  // no-size proposals, and while the account preview is still loading.
+  const destPolicyRef = evalData?.policy_max_shares != null ? Number(evalData.policy_max_shares) : null
+  const showPolicyResizeHint = previewForDest
+    && !acctPreviewBusy
+    && !expired && !brokerRejected
+    && savedShares > 0
+    && destPolicyRef != null && destPolicyRef >= 1
+    && destPolicyRef !== savedShares
+
   // ── v4 hero derivations ──────────────────────────────────────────────────
   const heroState = heroStateStyle(action.bannerVerdict, action.urgency)
   const stateWord = stateWordOf(action.verdict, expired, brokerRejected)
@@ -891,6 +905,15 @@ export default function BrokerProposalCardV4({
             {evalData?.policy_max_shares != null ? `policy ref ${Number(evalData.policy_max_shares).toLocaleString()} sh · ` : ''}
             <b>Auto route (2FA)</b> opens review — edit shares/prices/risk before requesting approval.
           </div>
+          {showPolicyResizeHint && destPolicyRef != null && (
+            <button
+              onClick={e => { e.stopPropagation(); onEdit({ shares: destPolicyRef }) }}
+              title={`${String(accountLabel).replace(/_/g, ' ')} policy reference is ${destPolicyRef.toLocaleString()} sh (queued ${savedShares.toLocaleString()} sh) — opens Modify pre-filled with ${destPolicyRef.toLocaleString()} shares`}
+              style={{ marginTop: 4, fontSize: 10.5, fontWeight: 700, color: W.teal, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+            >
+              resize to {destPolicyRef.toLocaleString()} sh (fits this account&#39;s policy)
+            </button>
+          )}
           {!!(evalData?.warnings || []).length && operatorRoute && (
             <div style={{ marginTop: 6, fontSize: 10.5, color: W.amber }}>
               {(evalData.warnings || []).map((w: string, i: number) => <div key={i}>⚠ {w}</div>)}
