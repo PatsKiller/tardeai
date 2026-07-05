@@ -15007,6 +15007,26 @@ def _broker_proposal_row_base(
             }
     except Exception:
         pass
+    # Cloud dual-consensus advisory verdict (cloud_consensus_verdict.py) — latest per proposal.
+    # ADVISORY ONLY: signal for the card's hero row 2 chip; never gates or mutates anything.
+    try:
+        _ccrows = _db_query("""SELECT consensus, grok_verdict, grok_note, chatgpt_verdict, chatgpt_note,
+                                      created_at
+                               FROM cloud_consensus_verdicts WHERE proposal_id=%s
+                               ORDER BY created_at DESC LIMIT 1""", [row.get("id")]) if row.get("id") else None
+        _cc = _ccrows[0] if _ccrows else None
+        if _cc:
+            row["cloud_consensus"] = {
+                "consensus": _cc.get("consensus"),
+                "grok_verdict": _cc.get("grok_verdict"),
+                "grok_note": _cc.get("grok_note"),
+                "chatgpt_verdict": _cc.get("chatgpt_verdict"),
+                "chatgpt_note": _cc.get("chatgpt_note"),
+                "as_of": str(_cc.get("created_at"))[:19] if _cc.get("created_at") else None,
+                "advisory_only": True,
+            }
+    except Exception:
+        pass
     # Trade outcome — did this proposal become a trade, and how did it do (Expired-view "results").
     try:
         _trows = _db_query("""SELECT id, status, broker_status, entry_price, shares,
@@ -15298,6 +15318,30 @@ def _enrich_broker_proposal_row(row: dict) -> dict:
         row["broker_sizing"] = row.get("broker_sizing") or {}
     row["detail_loaded"] = True
     return row
+
+
+def _proposal_cloud_consensus(qs):
+    """GET /api/v2/proposals/cloud-consensus?proposal_id= — latest cloud dual-consensus
+    advisory verdict for one proposal (cloud_consensus_verdicts). ADVISORY ONLY — this
+    surface never gates, approves, or mutates the proposal."""
+    try:
+        pid = int(str((qs or {}).get("proposal_id") or "0"))
+    except Exception:
+        pid = 0
+    if pid <= 0:
+        return {"ok": False, "error": "proposal_id required", "advisory_only": True}
+    row = _db_query(
+        """SELECT id, proposal_id, grok_verdict, grok_note, chatgpt_verdict, chatgpt_note,
+                  consensus, qualified_reason, created_at
+             FROM cloud_consensus_verdicts WHERE proposal_id=%s
+            ORDER BY created_at DESC LIMIT 1""",
+        [pid], fetch="one",
+    )
+    if not row:
+        return {"ok": True, "proposal_id": pid, "verdict": None, "advisory_only": True}
+    return {"ok": True, "proposal_id": pid,
+            "verdict": {k: _json_clean(v) for k, v in row.items()},
+            "advisory_only": True}
 
 
 def _broker_proposals_audit():
@@ -26393,6 +26437,7 @@ ROUTES = {
     "/api/v2/system/portfolio-cadence-status": lambda: _portfolio_cadence_status(),
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(_current_query),
+    "/api/v2/proposals/cloud-consensus": lambda: _proposal_cloud_consensus(_current_query),
     "/api/v2/broker-proposals/summary": lambda: _broker_queue_summary(),
     "/api/v2/broker-proposals/audit": lambda: _broker_proposals_audit(),
     "/api/v2/executions/tracking-metrics": lambda: _manual_execution_metrics(_current_query),
