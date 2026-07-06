@@ -12,7 +12,7 @@ Usage:
     python3 scripts/alert_dispatcher_unified.py --dry-run      # check without sending
     python3 scripts/alert_dispatcher_unified.py --brave-only   # check Brave budget only
 """
-import json, os, sys, subprocess
+import json, os, shutil, sys, subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -71,9 +71,12 @@ def _send_email(subject: str, body: str):
         return
     env = os.environ.copy()
     env["GOG_KEYRING_PASSWORD"] = kr_path.read_text().strip()
+    # cron PATH has no ~/.local/bin, so a bare "gog" fails with ENOENT and the email lane dies
+    # silently (every email errored since the cron env change; found in 2026-07-06 log audit)
+    gog = shutil.which("gog") or str(Path.home() / ".local" / "bin" / "gog")
     try:
         subprocess.run([
-            "gog", "gmail", "send",
+            gog, "gmail", "send",
             "-a", GOG_ACCOUNT,
             "--to", EMAIL_TO,
             "--subject", subject,
