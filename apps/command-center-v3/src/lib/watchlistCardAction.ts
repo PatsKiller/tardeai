@@ -187,8 +187,12 @@ export function deriveRecommendedAction(args: {
     })
   }
 
+  // Exit-ladder review is a HELD-position action — "keep runner" is meaningless with zero shares,
+  // and on a watch-only name it preempted the honest CIO-avoid branch below (MRLN audit 2026-07-06:
+  // FIX "Review exit ladder" on a 0-share name the CIO said AVOID). A conservative target on an
+  // unopened plan is not a defect; unheld names fall through to avoid/divergence/ready branches.
   const planCapWarn = warns.find(w => w.text.includes('plan target') && w.text.includes('Street'))
-  if (planCapWarn && hasPlan) {
+  if (planCapWarn && hasPlan && Boolean(it.in_portfolio)) {
     return action('REVIEW_EXIT', 'FIX', 'Review exit ladder', {
       subtext: 'Plan target below Street',
       detail: planCapWarn.text,
