@@ -66,3 +66,4 @@ def test_install_script_exists_and_executable():
     text = path.read_text(encoding="utf-8")
     assert "options-paper-lifecycle-cron" in text
     assert "run_options_paper_position_monitor.sh" in text
+    assert "DB_HOST" in text or "DB_PASSWORD" in text

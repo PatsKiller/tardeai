@@ -58,11 +58,21 @@ MIG="$PROJ/migrations/2026_07_07_options_monitored_positions.sql"
 if command -v psql >/dev/null 2>&1 && [[ -f "$PROJ/.env" ]]; then
   echo "Applying migration (idempotent) if DB reachable: $MIG"
   set -a; source "$PROJ/.env"; set +a
-  if [[ -n "${DATABASE_URL:-}" ]]; then
-    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$MIG" && echo "Migration applied." \
-      || echo "WARN: migration apply failed — run manually when DB is up."
+  _mig_ok=0
+  if [[ -n "${DB_HOST:-}" && -n "${DB_NAME:-}" && -n "${DB_USER:-}" && -n "${DB_PASSWORD:-}" ]]; then
+    PGPASSWORD="$DB_PASSWORD" command psql \
+      -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" \
+      -U "$DB_USER" -d "$DB_NAME" \
+      -v ON_ERROR_STOP=1 -f "$MIG" && _mig_ok=1
+  elif [[ -n "${DATABASE_URL:-}" ]]; then
+    command psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$MIG" && _mig_ok=1
+  fi
+  if [[ "$_mig_ok" -eq 1 ]]; then
+    echo "Migration applied."
+  elif [[ -z "${DB_HOST:-}${DATABASE_URL:-}" ]]; then
+    echo "SKIP: DB_* / DATABASE_URL not set — apply $MIG manually."
   else
-    echo "SKIP: DATABASE_URL not set — apply $MIG manually."
+    echo "WARN: migration apply failed — run manually when DB is up."
   fi
 else
   echo "NOTE: apply $MIG manually if tables are missing."

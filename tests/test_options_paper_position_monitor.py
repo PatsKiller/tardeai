@@ -377,6 +377,18 @@ def _client(http=None):
     return ap.AlpacaPaperOptionsClient(env=dict(PAPER_ENV), http=http or FakeHTTP())
 
 
+def test_ensure_monitored_backfills_filled_row_without_registry():
+    row = _submitted_row(ap.STATE_FILLED)
+    row["meta"]["alpaca_json"]["fill"] = {"price": 40.10, "filled_at": "2026-07-06T14:31:00Z"}
+    db = MonitoredFakeDB(queue_rows=[row])
+    res = pp.ensure_monitored_for_filled_queue_row(row, executor=db)
+    assert res["ok"] is True
+    assert RTX_PROPOSAL["id"] in db.positions
+    assert db.positions[RTX_PROPOSAL["id"]]["status"] == pp.STATUS_OPEN
+    again = pp.ensure_monitored_for_filled_queue_row(row, executor=db)
+    assert again.get("skipped") is True
+
+
 def test_reconcile_fill_upserts_monitored_position():
     db = MonitoredFakeDB(queue_rows=[_submitted_row()])
     base = PAPER_ENV["ALPACA_PAPER_BASE_URL"]

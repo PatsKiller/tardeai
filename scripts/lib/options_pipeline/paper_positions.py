@@ -183,6 +183,45 @@ def upsert_from_queue_fill(
     return {"ok": True, "position_id": pos["id"] if pos else None, "proposal_id": pid}
 
 
+def ensure_monitored_for_filled_queue_row(
+    queue_row: dict,
+    *,
+    executor: Optional[Executor] = None,
+) -> dict:
+    """Idempotent backfill: ALPACA_PAPER_FILLED queue row → OPEN monitored position."""
+    ex = executor or _default_executor()
+    pid = queue_row.get("proposal_id") or ""
+    if not pid:
+        return {"ok": False, "error": "proposal_id required", "skipped": True}
+    existing = get_position_by_proposal(pid, executor=ex)
+    if existing and existing.get("status") in (STATUS_OPEN, STATUS_CLOSED):
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "already_registered",
+            "position_id": existing.get("id"),
+            "proposal_id": pid,
+        }
+    aj = _alpaca_meta(queue_row)
+    fill = dict(aj.get("fill") or {})
+    price = fill.get("price")
+    if price is None and fill.get("net_debit") is not None:
+        price = fill.get("net_debit")
+    if price is None:
+        resp = aj.get("response") or {}
+        price = resp.get("filled_avg_price")
+    if price is None and not fill:
+        return {
+            "ok": False,
+            "error": "no fill blob in meta.alpaca_json",
+            "skipped": True,
+            "proposal_id": pid,
+        }
+    if "price" not in fill and price is not None:
+        fill["price"] = float(price)
+    return upsert_from_queue_fill(queue_row, fill=fill, executor=ex)
+
+
 def mark_closed(
     proposal_id: str,
     *,

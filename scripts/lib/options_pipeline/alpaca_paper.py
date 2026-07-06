@@ -266,6 +266,14 @@ class AlpacaPaperOptionsClient:
         resp.raise_for_status()
         return resp.json()
 
+    def list_positions(self) -> List[dict]:
+        """All open Alpaca paper positions (options + equities)."""
+        resp = self._http.get(f"{self.base_url}/v2/positions",
+                              headers=self._headers, timeout=self._timeout)
+        resp.raise_for_status()
+        out = resp.json()
+        return out if isinstance(out, list) else []
+
     def list_closed_orders(self, occ_symbol: str, limit: int = 50) -> List[dict]:
         resp = self._http.get(
             f"{self.base_url}/v2/orders",
@@ -858,11 +866,16 @@ def reconcile_fills(*, executor: Optional[Executor] = None,
             {"proposal_id": r["proposal_id"], "status": r["status"]}
             for r in submitted + filled + closed_pending]
         return report
-    if not submitted and not filled and not closed_pending:
-        return report
     cl = None
-    if submitted or filled:
-        cl = client or AlpacaPaperOptionsClient(env)   # paper guard runs here
+    if not dry_run:
+        try:
+            cl = client or AlpacaPaperOptionsClient(env)
+        except Exception as e:
+            report["warnings"].append(f"alpaca client unavailable: {e}")
+    if not submitted and not filled and not closed_pending:
+        if cl is not None:
+            _scan_alpaca_orphan_positions(cl, ex, report)
+        return report
 
     if record_outcome_fn is None:
         from lib.options_pipeline.validation import record_outcome as record_outcome_fn
@@ -917,6 +930,7 @@ def reconcile_fills(*, executor: Optional[Executor] = None,
 
     for row in filled:
         pid = row["proposal_id"]
+        _ensure_monitored_registry(row, ex, report)
         aj = _alpaca_meta(row)
         if _is_spread_meta(aj):
             _reconcile_spread_position(row, aj, cl, ex, record_outcome_fn, report)
@@ -965,7 +979,78 @@ def reconcile_fills(*, executor: Optional[Executor] = None,
     # CLOSED rows whose record_outcome previously failed → retry, no HTTP needed.
     for row in closed_pending:
         _record_and_finalize(row, _alpaca_meta(row), ex, record_outcome_fn, report)
+    if cl is not None:
+        _scan_alpaca_orphan_positions(cl, ex, report)
     return report
+
+
+def _ensure_monitored_registry(row: dict, ex: Executor,
+                               report: Dict[str, Any]) -> None:
+    """Backfill monitored registry for FILLED rows (idempotent)."""
+    pid = row.get("proposal_id") or ""
+    try:
+        from lib.options_pipeline import paper_positions as pp
+        res = pp.ensure_monitored_for_filled_queue_row(row, executor=ex)
+        if res.get("ok") and not res.get("skipped"):
+            report.setdefault("monitored_positions", []).append(res)
+        elif res.get("error") and not res.get("skipped"):
+            report["warnings"].append(
+                f"{pid}: registry backfill: {res.get('error')}")
+    except Exception as e:
+        report["warnings"].append(f"{pid}: registry backfill error: {e}")
+
+
+def _scan_alpaca_orphan_positions(
+    cl: AlpacaPaperOptionsClient,
+    ex: Executor,
+    report: Dict[str, Any],
+) -> None:
+    """Alpaca option leg with no queue/monitored lineage → ERROR row."""
+    try:
+        from lib.options_pipeline import paper_positions as pp
+        known_occs: set[str] = set()
+        rows = ex(
+            """SELECT option_symbol FROM options_monitored_positions
+               WHERE status IN ('OPEN', 'ERROR') AND option_symbol IS NOT NULL""",
+            fetch="all") or []
+        for r in rows:
+            occ = str(r.get("option_symbol") or "").strip()
+            if occ:
+                known_occs.add(occ.upper())
+        queue_rows = ex(
+            """SELECT proposal_id, meta FROM options_approval_queue
+               WHERE status IN ('ALPACA_PAPER_FILLED', 'ALPACA_PAPER_SUBMITTED',
+                                'ALPACA_PAPER_CLOSED')""",
+            fetch="all") or []
+        for qr in queue_rows:
+            meta = qr.get("meta") or {}
+            if isinstance(meta, str):
+                try:
+                    meta = json.loads(meta)
+                except (ValueError, TypeError):
+                    meta = {}
+            aj = (meta or {}).get("alpaca_json") or {}
+            req = aj.get("request") or {}
+            occ = str(req.get("symbol") or "").strip()
+            if occ:
+                known_occs.add(occ.upper())
+        for pos in cl.list_positions():
+            sym = str(pos.get("symbol") or "").strip().upper()
+            if not sym or len(sym) < 10:
+                continue
+            asset = str(pos.get("asset_class") or "").lower()
+            if asset and asset not in ("us_option", "option", ""):
+                continue
+            if sym in known_occs:
+                continue
+            res = pp.upsert_orphan_error(
+                option_symbol=sym, broker="alpaca",
+                message="Alpaca paper option leg has no desk queue lineage",
+                executor=ex)
+            report.setdefault("orphans", []).append(res)
+            known_occs.add(sym)
+    except Exception as e:
+        report["warnings"].append(f"orphan scan skipped: {e}")
 
 
 def _sync_monitored_on_fill(row: dict, fill: dict, ex: Executor,
