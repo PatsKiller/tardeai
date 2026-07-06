@@ -265,11 +265,15 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
       else if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
       if (fRating !== 'all') { const rec = paMap[it.symbol]?.rec || 'no_coverage'; if (fRating === 'buy_plus' ? !['strong_buy', 'buy'].includes(rec) : rec !== fRating) return false }
       if (fCio !== 'all') {
-        const cv = String(it.latest_recommendation || '').toUpperCase()
-        if (fCio === 'buy_side') { if (!['BUY', 'STRONG_BUY', 'ADD', 'ADD_ON_PULLBACK'].includes(cv)) return false }
-        else if (fCio === 'avoid_side') { if (!['AVOID', 'IGNORE', 'SELL', 'TRIM'].includes(cv)) return false }
-        else if (fCio === 'none') { if (cv) return false }
-        else if (cv !== fCio) return false
+        // match the research-card rec OR the CIO synthesis verdict — most ADD_ON_PULLBACK views
+        // live only in the synthesis (top-200 audit 2026-07-06: 0 research vs 3 synthesis), so
+        // checking latest_recommendation alone made the filter return an empty page
+        const cvs = [it.latest_recommendation, it.synthesis_recommendation]
+          .map(v => String(v || '').toUpperCase()).filter(Boolean)
+        if (fCio === 'buy_side') { if (!cvs.some(c => ['BUY', 'STRONG_BUY', 'ADD', 'ADD_ON_PULLBACK'].includes(c))) return false }
+        else if (fCio === 'avoid_side') { if (!cvs.some(c => ['AVOID', 'IGNORE', 'SELL', 'TRIM'].includes(c))) return false }
+        else if (fCio === 'none') { if (cvs.length) return false }
+        else if (!cvs.includes(fCio)) return false
       }
       if (fList !== 'all') {
         const lists = String(it.watch_lists || '').split(' · ').map((s: string) => s.trim())
