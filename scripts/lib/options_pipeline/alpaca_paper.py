@@ -1061,7 +1061,7 @@ def _collect_known_occ_symbols(ex: Executor) -> set[str]:
     # Desk lineage counts only once the row is in the Alpaca lifecycle — pending rows
     # with fill blobs are linked by _try_link_alpaca_occ_to_queue, not pre-marked known.
     queue_rows = ex(
-        """SELECT proposal_id, symbol, meta, proposal_json, strike, expiration, option_type
+        """SELECT proposal_id, symbol, meta, proposal_json
            FROM options_approval_queue
            WHERE status LIKE 'ALPACA_PAPER%%'""",
         fetch="all") or []
@@ -1081,7 +1081,7 @@ def _try_link_alpaca_occ_to_queue(
     if not target:
         return False
     rows = ex(
-        """SELECT proposal_id, symbol, status, meta, proposal_json, strike, expiration, option_type
+        """SELECT proposal_id, symbol, status, meta, proposal_json
            FROM options_approval_queue
            WHERE meta::text ILIKE %s
               OR status LIKE 'ALPACA_PAPER%%'""",
