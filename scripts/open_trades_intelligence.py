@@ -473,6 +473,19 @@ def _broker_protective_stops(accounts):
                     "qty": leg.get("quantity"), "account": acct, "source": "broker"}
         except Exception:
             continue
+    # Fidelity via SnapTrade: open GTC stop orders are NOT returned by getUserAccountOrders (state=open
+    # is always empty — only executed market fills sync). Operator-recorded manual_broker_stops are the
+    # canonical source for fidelity_* accounts (sync via scripts/fidelity_stop_sync.py --apply).
+    _want_fidelity = not accounts or any(str(a or "").lower().startswith("fidelity") for a in accounts)
+    if _want_fidelity:
+        try:
+            from lib.fidelity_stop_sync import load_manual_protective_stops
+            for (acct, sym), bs in (load_manual_protective_stops() or {}).items():
+                if accounts and acct not in accounts and _norm_acct(acct) not in {_norm_acct(a) for a in accounts}:
+                    continue
+                out[(_norm_acct(acct), sym)] = {**bs, "account": acct}
+        except Exception:
+            pass
     _fetched = _dt.datetime.now(_dt.timezone.utc).isoformat()
     for _v in out.values():
         _v["fetched_at"] = _fetched
@@ -696,6 +709,7 @@ def build_intelligence():
         # so a placed protective stop (ours or a manual ToS one) shows as PROTECTED on the same footing.
         _bstop_accts = sorted({p["account"] for p in base
                                if str(p.get("account", "")).startswith("schwab")
+                               or str(p.get("account", "")).startswith("fidelity")
                                or "alpaca" in str(p.get("account", "")).lower()})
         bmap = _broker_protective_stops(_bstop_accts) if _bstop_accts else {}
         positions = []

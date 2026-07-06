@@ -5206,7 +5206,7 @@ def _wl_items(query: dict = None):
                ep.target_price AS entry_target, ep.risk_reward AS entry_rr,
                ep.urgency AS entry_urgency, ep.proposal_tag AS entry_tag,
                ep.confidence AS entry_confidence, ep.created_at AS entry_planned_at,
-               ep.model_used AS entry_model,
+               ep.model_used AS entry_model, ep.price_at_plan AS entry_price_at_plan,
                fs.recommendation AS synthesis_recommendation,
                fs.grok_recommendation, fs.chatgpt_recommendation, fs.models_agree,
                fs.decision_safety, fs.actionable AS synthesis_actionable,
@@ -5247,9 +5247,10 @@ def _wl_items(query: dict = None):
             ORDER BY COALESCE(ce.published_at, ce.created_at) DESC LIMIT 1) cat ON true
         LEFT JOIN LATERAL (
             SELECT setup_type, entry_zone_low, entry_zone_high, limit_price, stop_price,
-                   target_price, risk_reward, urgency, proposal_tag, confidence, created_at, model_used
+                   target_price, risk_reward, urgency, proposal_tag, confidence, created_at, model_used,
+                   price_at_plan
             FROM watchlist_entry_plans wep WHERE wep.symbol = p.symbol
-            ORDER BY created_at DESC LIMIT 1) ep ON true
+            ORDER BY created_at DESC, id DESC LIMIT 1) ep ON true
         ORDER BY (NOT p.starred),           -- operator-starred first
                  (COALESCE(p.in_directive_watch, false) = false),
                  (p.status <> 'active'),
@@ -5489,6 +5490,11 @@ def _wl_propose_symbol(sym: str, body: dict | None = None) -> tuple[int, dict]:
     return code, res
 
 
+_WL_PLAN_INFLIGHT: dict = {}   # symbol -> monotonic start ts; impatient re-clicks spawned 4 racing
+                               # planner threads in 9s for FATN (2026-07-06), inserting 4 conflicting
+                               # plans with a created_at tie — one click = one plan
+
+
 def _wl_build_plan(sym: str) -> tuple[int, dict]:
     """POST /api/v2/watchlist/<SYMBOL>/plan — run entry planner for one symbol (async)."""
     sym = (sym or "").strip().upper()
@@ -5502,6 +5508,19 @@ def _wl_build_plan(sym: str) -> tuple[int, dict]:
         return 404, {"ok": False, "error": f"{sym} not on active watchlist"}
 
     import threading
+    import time as _time
+
+    started = _WL_PLAN_INFLIGHT.get(sym)
+    if started and _time.monotonic() - started < 180:
+        return 200, {"ok": True, "symbol": sym, "already_running": True,
+                     "message": f"Entry planner already running for {sym} — refresh card in ~1–2 min"}
+    fresh = _db_query(
+        "SELECT 1 FROM watchlist_entry_plans WHERE symbol=%s AND created_at > now() - interval '3 minutes' LIMIT 1",
+        (sym,), fetch="one")
+    if fresh:
+        return 200, {"ok": True, "symbol": sym, "already_planned": True,
+                     "message": f"{sym} was re-planned under 3 min ago — refresh the card to see it"}
+    _WL_PLAN_INFLIGHT[sym] = _time.monotonic()
 
     def _run():
         try:
@@ -5509,6 +5528,8 @@ def _wl_build_plan(sym: str) -> tuple[int, dict]:
             wep.run(symbols=[sym], limit=1, alert=False)
         except Exception as e:
             log.warning(f"watchlist plan {sym} failed: {e}")
+        finally:
+            _WL_PLAN_INFLIGHT.pop(sym, None)
 
     threading.Thread(target=_run, daemon=True).start()
     return 200, {
@@ -21710,6 +21731,7 @@ def _pro_analyst_pills(query=None):
                            "target": p.get("target_mean_price"), "upside": p.get("upside_to_mean_target_pct"),
                            "street": p.get("street_direction"), "internal": p.get("internal_direction"),
                            "divergence": p.get("divergence"), "stale": p.get("stale"),
+                           "src": p.get("analyst_rating_source"),
                            "has": p.get("has_professional_coverage"), "event": p.get("latest_event_type")}
              for p in d.get("pills", [])}
         return {"updated_at": d.get("updated_at"), "count": len(m), "map": m}
@@ -25422,7 +25444,7 @@ def _holdings_live_stops(query=None):
             _canon = _resolve_protective_account_key(_raw)
             _acct_labels[_oti._norm_acct(_canon)] = _raw
             _acct_labels[_oti._norm_acct(_raw)] = _raw
-            if _raw.startswith("schwab") or "alpaca" in _raw.lower():
+            if _raw.startswith("schwab") or _raw.startswith("fidelity") or "alpaca" in _raw.lower():
                 _broker_accts.append(_canon)
         bmap = _oti._broker_protective_stops(sorted(set(_broker_accts))) or {}
         fetched_at = _oti.broker_stops_fetched_at()
@@ -25458,7 +25480,7 @@ def _holdings_live_stops(query=None):
             })
         return _json_clean({
             "by_key": by_key, "fetched_at": fetched_at, "cache_ttl_sec": 60,
-            "note": "Live broker protective stops — Schwab API read (60s cache). Advisory stops remain on llm-coverage.",
+            "note": "Live broker protective stops — Schwab API + Fidelity manual_broker_stops (SnapTrade does not sync open GTC stops).",
         })
     except Exception as e:
         return {"by_key": {}, "fetched_at": None, "error": str(e)[:160]}
@@ -25851,6 +25873,27 @@ def _fidelity_stops_status():
         return {"ok": True, "data": _arm.status()}
     except Exception as e:
         return {"ok": False, "error": str(e)[:160]}
+
+
+def _fidelity_stops_sync(body=None):
+    """POST /api/v2/fidelity-stops/sync — record Fidelity GTC stops (manual_broker_stops).
+
+    SnapTrade does not return open/pending Fidelity stop orders. Body: {stops: [{symbol, stop_price, qty, account?}], apply?: bool}
+    """
+    try:
+        from lib.fidelity_stop_sync import default_fidelity_rollover_stops, sync_stops
+        b = body or {}
+        rows = b.get("stops") or b.get("rows")
+        if not rows:
+            rows = default_fidelity_rollover_stops()
+        apply = b.get("apply", True)
+        if isinstance(apply, str):
+            apply = apply.lower() not in ("0", "false", "no")
+        report = sync_stops(rows, retire_absent=not b.get("no_retire"), apply=bool(apply))
+        return {"ok": not report.get("errors"), "data": report,
+                "note": "Fidelity GTC stops recorded in manual_broker_stops — read by Stop Management."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
 
 
 def _snaptrade_trade_preflight(body=None):
@@ -31793,6 +31836,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, {"ok": True, "stage": "submit", "result": res}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/fidelity-stops/sync":
+        try:
+            res = _fidelity_stops_sync(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
 
     if method == "POST" and base_path == "/api/v2/snaptrade/trade/preflight":
         try:
