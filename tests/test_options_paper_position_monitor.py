@@ -334,7 +334,7 @@ def test_run_monitor_writes_snapshot_and_alert(monkeypatch):
         "underlying_price": 180.0, "source": "schwab_chain"})
     report = mon.run_monitor(dry_run=False, cfg={"enabled": True, "max_positions_per_run": 10,
                                                   "brokers": {"alpaca": {"reconcile_on_run": False}}},
-                             executor=db)
+                             executor=db, skip_hours_check=True)
     assert report["count"] == 1
     assert len(db.snapshots) == 1
     assert report["monitored"][0]["advice_label"] == mon.ADVICE_CLOSE

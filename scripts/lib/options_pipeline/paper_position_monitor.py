@@ -305,12 +305,18 @@ def run_monitor(
     dry_run: bool = False,
     cfg: dict | None = None,
     executor: Optional[Executor] = None,
+    skip_hours_check: bool = False,
 ) -> dict:
     """Monitor all open positions (or one by id). Optionally reconcile Alpaca first."""
     ex = executor or _default_executor()
     config = cfg or load_config()
     if not config.get("enabled", True):
         return {"ok": True, "skipped": True, "reason": "monitor disabled in config"}
+    if not skip_hours_check and position_id is None:
+        from lib.options_pipeline.paper_monitor_ops import should_run_lifecycle
+        ok, reason = should_run_lifecycle(config)
+        if not ok:
+            return {"ok": True, "skipped": True, "reason": reason}
     report: Dict[str, Any] = {"ok": True, "dry_run": dry_run, "monitored": [], "warnings": []}
     if config.get("brokers", {}).get("alpaca", {}).get("reconcile_on_run") and not dry_run:
         try:
