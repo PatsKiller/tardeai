@@ -200,7 +200,14 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
       const payload = j?.data ?? j
       if (payload?.ok) {
         const n = payload.requeued ?? 0
-        setRefreshBusy(b => ({ ...b, [key]: n ? `queued ${n}` : 'refreshed' }))
+        // enrichment can fail while the endpoint still returns ok (agents queued anyway) — say so
+        // instead of "refreshed", or the STALE badge survives and refresh looks broken
+        if (payload.enriched === false) {
+          setRefreshBusy(b => ({ ...b, [key]: 'enrich failed' }))
+          setActionToast(`${key} — technicals refresh failed${payload.enrich_warning ? ` (${String(payload.enrich_warning).slice(0, 80)})` : ''}; agents queued (~15 min)`)
+        } else {
+          setRefreshBusy(b => ({ ...b, [key]: n ? `queued ${n}` : 'refreshed' }))
+        }
         setTimeout(() => { refetchWl(); setRefreshBusy(b => { const nxt = { ...b }; delete nxt[key]; return nxt }) }, 2500)
       } else {
         setRefreshBusy(b => ({ ...b, [key]: 'error' }))

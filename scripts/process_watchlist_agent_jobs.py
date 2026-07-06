@@ -1747,6 +1747,15 @@ CRITICAL INSTRUCTIONS:
     action = syn.get("action") or syn.get("next_action", "")
     next_review = syn.get("next_review_date")
     synthesis_narrative = syn.get("synthesis_narrative") or syn.get("full_narrative", "")
+    # LLM refusals ("**I cannot fulfill this request.**...") are failure artifacts, not synthesis —
+    # normalize them to the "LLM error:" convention so the display guard + purge/requeue machinery
+    # treat them like provider failures (FATN surfaced a raw refusal as its CIO note, 2026-07-06).
+    # Prefix-only: partial refusals that continue with real evidence keep their content.
+    _nlead = synthesis_narrative.lstrip("*#_ ").lower()[:60]
+    if _nlead.startswith(("i cannot fulfill", "i can't fulfill", "i cannot help", "i can't help",
+                          "i'm unable to", "i am unable to", "i cannot act as", "i can't act as",
+                          "i cannot provide", "i can't provide")):
+        synthesis_narrative = "LLM error: model refused the synthesis prompt (refusal suppressed)"
     dual_meta["agent_contract"] = AGENT_JSON_CONTRACT_VERSION
     dual_meta["structured_evidence"] = syn.get("evidence", [])
     dual_meta["data_i_doubt"] = syn.get("data_i_doubt", "none")

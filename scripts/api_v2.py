@@ -5206,7 +5206,7 @@ def _wl_items(query: dict = None):
                ep.target_price AS entry_target, ep.risk_reward AS entry_rr,
                ep.urgency AS entry_urgency, ep.proposal_tag AS entry_tag,
                ep.confidence AS entry_confidence, ep.created_at AS entry_planned_at,
-               ep.model_used AS entry_model,
+               ep.model_used AS entry_model, ep.price_at_plan AS entry_price_at_plan,
                fs.recommendation AS synthesis_recommendation,
                fs.grok_recommendation, fs.chatgpt_recommendation, fs.models_agree,
                fs.decision_safety, fs.actionable AS synthesis_actionable,
@@ -5247,9 +5247,10 @@ def _wl_items(query: dict = None):
             ORDER BY COALESCE(ce.published_at, ce.created_at) DESC LIMIT 1) cat ON true
         LEFT JOIN LATERAL (
             SELECT setup_type, entry_zone_low, entry_zone_high, limit_price, stop_price,
-                   target_price, risk_reward, urgency, proposal_tag, confidence, created_at, model_used
+                   target_price, risk_reward, urgency, proposal_tag, confidence, created_at, model_used,
+                   price_at_plan
             FROM watchlist_entry_plans wep WHERE wep.symbol = p.symbol
-            ORDER BY created_at DESC LIMIT 1) ep ON true
+            ORDER BY created_at DESC, id DESC LIMIT 1) ep ON true
         ORDER BY (NOT p.starred),           -- operator-starred first
                  (COALESCE(p.in_directive_watch, false) = false),
                  (p.status <> 'active'),
@@ -5489,6 +5490,11 @@ def _wl_propose_symbol(sym: str, body: dict | None = None) -> tuple[int, dict]:
     return code, res
 
 
+_WL_PLAN_INFLIGHT: dict = {}   # symbol -> monotonic start ts; impatient re-clicks spawned 4 racing
+                               # planner threads in 9s for FATN (2026-07-06), inserting 4 conflicting
+                               # plans with a created_at tie — one click = one plan
+
+
 def _wl_build_plan(sym: str) -> tuple[int, dict]:
     """POST /api/v2/watchlist/<SYMBOL>/plan — run entry planner for one symbol (async)."""
     sym = (sym or "").strip().upper()
@@ -5502,6 +5508,19 @@ def _wl_build_plan(sym: str) -> tuple[int, dict]:
         return 404, {"ok": False, "error": f"{sym} not on active watchlist"}
 
     import threading
+    import time as _time
+
+    started = _WL_PLAN_INFLIGHT.get(sym)
+    if started and _time.monotonic() - started < 180:
+        return 200, {"ok": True, "symbol": sym, "already_running": True,
+                     "message": f"Entry planner already running for {sym} — refresh card in ~1–2 min"}
+    fresh = _db_query(
+        "SELECT 1 FROM watchlist_entry_plans WHERE symbol=%s AND created_at > now() - interval '3 minutes' LIMIT 1",
+        (sym,), fetch="one")
+    if fresh:
+        return 200, {"ok": True, "symbol": sym, "already_planned": True,
+                     "message": f"{sym} was re-planned under 3 min ago — refresh the card to see it"}
+    _WL_PLAN_INFLIGHT[sym] = _time.monotonic()
 
     def _run():
         try:
@@ -5509,6 +5528,8 @@ def _wl_build_plan(sym: str) -> tuple[int, dict]:
             wep.run(symbols=[sym], limit=1, alert=False)
         except Exception as e:
             log.warning(f"watchlist plan {sym} failed: {e}")
+        finally:
+            _WL_PLAN_INFLIGHT.pop(sym, None)
 
     threading.Thread(target=_run, daemon=True).start()
     return 200, {
