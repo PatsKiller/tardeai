@@ -13,7 +13,7 @@
 # Lifecycle statuses: RESEARCH_ONLY -> MODELED -> TESTING_PAPER -> VALIDATED
 # (plus PAUSED / KILLED). Only TESTING_PAPER+ strategies scan on Alpaca paper.
 version: 1
-updated: "2026-07-05"
+updated: "2026-07-06"
 
 policy:
   live_policy_env: TRADE_AI_OPTIONS_LIVE_POLICY   # must equal "explicit" for live flags to even parse
@@ -93,6 +93,94 @@ strategies:
     max_contracts_paper: 1
     max_premium_paper: 5000
     notes: "Bearish directional long premium / hedge-of-held (scripts/lib/options_pipeline/atm_long_premium_generator.py). Requires a bearish thesis (watchlist sell/avoid/deteriorating, explicit bearish thesis, or hedge-of-held) — enforced by strategy_matcher. Gates mirror config/strategies/atm_put.yaml selection_policy."
+
+  # ── EARNINGS-SPREADS Stage 1 (operator spec Part A): earnings vertical pair ─
+  # Operator spec status "research_paper" maps to TESTING_PAPER (same convention
+  # as the ATM phase). Spec status "research_paper_blocked_initially" maps to
+  # BLOCKED_INITIAL — a loader-valid but UNSCANNABLE status: universe.py
+  # REQUIRES paper_enabled=false + alpaca_paper_enabled=false on BLOCKED_INITIAL
+  # rows (fail-closed). Enabling the credit lane therefore requires an explicit
+  # status change in this file, not just a flag flip.
+  earnings_put_debit_spread:
+    display_name: Earnings Put Debit Spread (Event Bearish, Defined Risk)
+    family: earnings_vertical_debit
+    direction: bearish
+    status: TESTING_PAPER
+    paper_enabled: true
+    alpaca_paper_enabled: false      # initially off — operator flips after paper observation
+    live_enabled: false
+    live_exception_allowed: false
+    live_exception_requires_2fa: true
+    required_permission_level: operator
+    allowed_underlying_tiers: [holdings, liquid_options_core, sector_etfs, operator_added]
+    legs:
+      - {side: put, action: buy, moneyness: atm_or_slightly_otm,
+         note: "long put at/just below spot — the directional event leg"}
+      - {side: put, action: sell, moneyness: lower_strike_otm,
+         note: "short put at a lower strike — caps the debit and defines the width/max profit"}
+    liquidity_gates:                 # per-leg floor (loader-required shape)
+      max_spread_pct: 8.0
+      min_oi: 250
+      min_volume: 10
+    selection:
+      dte_buckets: [7, 14, 21, 30, 45]
+      earnings_window_days_before: 10   # only propose within 10d before the event
+      earnings_window_days_after: 2     # ...through 2d after (post-event drift lane)
+      min_event_confidence: 0.65        # earnings_event_model.event_confidence floor
+      required_thesis: bearish_or_hedge # watchlist sell/avoid/deteriorating, explicit bearish, or hedge-of-held
+      max_spread_package_slippage_pct: 8   # combined two-leg package slippage bound
+      min_open_interest_each_leg: 250
+      min_volume_each_leg: 10
+      max_debit_pct_of_underlying: 6
+      max_loss_usd_paper: 1000          # debit spread: max loss = net debit ≤ $1000
+    max_contracts_paper: 1
+    max_premium_paper: 5000
+    notes: "Defined-risk bearish earnings-event vertical (long put + short lower put,
+      same expiry, expiry AFTER the event). Event context (implied move, historical
+      moves, IV rank/crush estimate, event confidence) comes from
+      scripts/lib/options_pipeline/earnings_event_model.py. Generator/matcher wiring
+      arrives in EARNINGS-SPREADS Stage 2 — this row only registers permissions/gates."
+
+  earnings_put_credit_spread:
+    display_name: Earnings Put Credit Spread (Post-Event IV Crush, Defined Risk)
+    family: earnings_vertical_credit
+    direction: bullish_or_neutral
+    status: BLOCKED_INITIAL          # spec 'research_paper_blocked_initially' — valid but unscannable
+    paper_enabled: false             # REQUIRED false while BLOCKED_INITIAL (loader-enforced)
+    alpaca_paper_enabled: false      # REQUIRED false while BLOCKED_INITIAL (loader-enforced)
+    live_enabled: false
+    live_exception_allowed: false
+    live_exception_requires_2fa: true
+    required_permission_level: operator
+    allowed_underlying_tiers: [holdings, watchlist_buy_strong_buy, liquid_options_core, sector_etfs, operator_added]
+    legs:
+      - {side: put, action: sell, moneyness: otm_below_expected_move,
+         note: "short put below the implied-move band — harvests the event IV premium"}
+      - {side: put, action: buy, moneyness: further_otm_lower_strike,
+         note: "long put at a lower strike — defines the width/max loss"}
+    liquidity_gates:                 # per-leg floor (loader-required shape)
+      max_spread_pct: 8.0
+      min_oi: 250
+      min_volume: 10
+    selection:
+      dte_buckets: [7, 14, 21, 30, 45]
+      earnings_window_days_before: 10
+      earnings_window_days_after: 2
+      min_event_confidence: 0.65
+      required_thesis: bullish_or_neutral
+      min_credit_pct_of_width: 20       # credit received must be ≥ 20% of strike width
+      assignment_risk_required: true    # proposal JSON must disclose assignment risk explicitly
+      max_spread_package_slippage_pct: 8
+      min_open_interest_each_leg: 250
+      min_volume_each_leg: 10
+      max_loss_usd_paper: 1000          # width − credit ≤ $1000
+    max_contracts_paper: 1
+    max_premium_paper: 5000
+    notes: "Short-premium earnings vertical (short put + long lower put). BLOCKED
+      INITIALLY by operator spec: short-premium event risk (gap-through-strike,
+      assignment) stays unscannable until the debit lane has observed paper history;
+      enabling requires an explicit status change here (loader refuses
+      paper_enabled=true while status is BLOCKED_INITIAL — fail-closed)."
 
   covered_call:
     display_name: Covered Call (Income Overlay)

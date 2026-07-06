@@ -80,6 +80,17 @@ import type { OptionProposal } from './OptionProposalCard'
 //                                                   REJECTED/CLOSED/OUTCOME ✓/LIVE REVIEW) + operator actions
 //                                                   Send-to-Alpaca (two-step confirm) · Mark outcome ·
 //                                                   Promote to Live Review (mandatory no-order confirm text)
+//   [ADD ] earnings vertical spread block         → paper block (EARNINGS-SPREADS Stage 3, family
+//          (legs table · package economics ·        earnings_vertical_*): meta.strategy_json.legs table,
+//           event line · risk pills)                net debit/max loss/max gain/BE(+move%)/R:R/slippage,
+//                                                   event line (earnings date · DTE · implied vs historical
+//                                                   move), event-risk amber pills (incl. credit-lane
+//                                                   assignment/gap disclosures). Send-to-Alpaca additionally
+//                                                   requires registry multi_leg_proven (both flags false
+//                                                   today ⇒ button never renders); Promote-to-Live-Review is
+//                                                   HARD-BLOCKED for earnings families regardless of prime
+//                                                   verdict (operator spec: no live review until a separate
+//                                                   explicit policy enables it).
 
 const STRAT_LABEL: Record<string, string> = {
   covered_call: 'Covered Call',
@@ -90,6 +101,8 @@ const STRAT_LABEL: Record<string, string> = {
   deep_itm_call: 'Deep ITM Call',
   atm_call: 'ATM Call',
   atm_put: 'ATM Put',
+  earnings_put_debit_spread: 'Earnings Put Debit Spread',
+  earnings_put_credit_spread: 'Earnings Put Credit Spread',
 }
 
 // MULTI-STRATEGY Stage 2: strategy-family badge text for paper-model rows
@@ -98,10 +111,15 @@ const PAPER_FAMILY_BADGE: Record<string, string> = {
   deep_itm_call: 'DEEP ITM',
   atm_call: 'ATM CALL',
   atm_put: 'ATM PUT',
+  earnings_put_debit_spread: 'EARNINGS PUT DEBIT SPREAD',
+  earnings_put_credit_spread: 'EARNINGS PUT CREDIT SPREAD',
 }
 
 // Stage B (2026-07-05): disclosed-flag labels for paper-model rows.
 // Operator ratified: earnings before expiry is a disclosed flag, never a hidden pass.
+// EARNINGS-SPREADS Stage 3 adds the event-risk vocabulary: generator gate_flags
+// (iv_rich, historical_move_below_breakeven) + event_json.risk_flags
+// (thin_history, wide_quotes, event_stale) + credit-lane disclosure keys.
 const PAPER_FLAG_LABELS: Record<string, string> = {
   earnings_before_expiry_operator_flagged: '⚠ earnings before expiry',
   earnings_before_expiry_flagged: '⚠ earnings before expiry', // ATM lane flag name
@@ -109,6 +127,14 @@ const PAPER_FLAG_LABELS: Record<string, string> = {
   delta_proxy_itm_depth: 'Δ from ITM-depth proxy (chain carried no greeks)',
   delta_proxy_nearest_the_money: 'Δ proxy — nearest-the-money (chain carried no greeks)',
   iv_rich_pay_up_warning: '⚠ IV rich — pay-up warning',
+  iv_rich: '⚠ IV rich into event',
+  historical_move_below_breakeven: '⚠ historical move < breakeven requirement',
+  thin_history: 'thin earnings-move history',
+  wide_quotes: '⚠ wide quotes',
+  event_stale: '⚠ event date stale',
+  assignment_risk: '⚠ assignment risk (short put)',
+  gap_risk: '⚠ gap risk through short strike',
+  short_leg_lifecycle: '⚠ short-leg lifecycle management required',
 }
 
 // MULTI-STRATEGY Stage 2: other-strategies mini-list glyphs (matcher verdicts).
@@ -314,7 +340,45 @@ export default function OptionProposalCardV4({
       cand.iv != null ? `IV ${Number(cand.iv).toFixed(0)}%` : null,
     ] : []),
   ].filter(Boolean).join(' · ') : ''
-  const paperFlags = paper ? (p.meta?.gate_flags || []).map(f => PAPER_FLAG_LABELS[f] || f.replace(/_/g, ' ')) : []
+  // ── EARNINGS-SPREADS Stage 3: vertical-spread rows (family earnings_vertical_*) ──
+  const isEarnSpread = paper
+    && (p.strategy_family || p.meta?.strategy_json?.family || '').startsWith('earnings_vertical')
+  const eventJson = p.meta?.event_json
+  const spreadAnalysis = p.meta?.analysis
+  const spreadLegs = isEarnSpread ? (p.meta?.strategy_json?.legs || []) : []
+  const disclosures = p.meta?.disclosures || {}
+  const spreadSummary = isEarnSpread ? [
+    p.net_debit != null ? `net debit $${fmtNum(p.net_debit, 2)}`
+      : p.net_credit != null ? `net credit $${fmtNum(p.net_credit, 2)}` : null,
+    p.max_loss != null ? `max loss ${fmtMoneyish(p.max_loss)}` : null,
+    p.max_profit != null ? `max gain ${fmtMoneyish(p.max_profit)}` : null,
+    p.breakeven != null
+      ? `BE $${fmtNum(p.breakeven, 2)}${p.breakeven_move_pct != null ? ` (${p.breakeven_move_pct > 0 ? '+' : ''}${Number(p.breakeven_move_pct).toFixed(1)}%)` : ''}`
+      : null,
+    (p.reward_to_risk ?? p.risk_reward) != null ? `R:R ${Number(p.reward_to_risk ?? p.risk_reward).toFixed(2)}` : null,
+    spreadAnalysis?.package_slippage_pct != null ? `pkg slippage ${Number(spreadAnalysis.package_slippage_pct).toFixed(1)}%` : null,
+  ].filter(Boolean).join(' · ') : ''
+  // Event line: earnings date · DTE · implied move vs historical (honest when unavailable)
+  const im = eventJson?.implied_move_pct
+  const hist = eventJson?.historical_earnings_moves
+  const eventLine = isEarnSpread ? [
+    eventJson?.earnings_date?.date ? `earnings ${eventJson.earnings_date.date}` : 'earnings date unavailable',
+    p.dte != null ? `${p.dte}d to expiry` : null,
+    im?.available && im.pct != null ? `implied move ${Number(im.pct).toFixed(1)}%` : 'implied move unavailable',
+    hist?.available && hist.avg_abs_move_pct != null
+      ? `vs historical avg |move| ${Number(hist.avg_abs_move_pct).toFixed(1)}% (${hist.samples ?? 0} sample${hist.samples === 1 ? '' : 's'})`
+      : 'no historical move data',
+    eventJson?.event_confidence != null ? `event confidence ${Math.round(Number(eventJson.event_confidence) * 100)}%` : null,
+  ].filter(Boolean).join(' · ') : ''
+  // Amber event-risk pills: generator gate_flags + (earnings rows) event_json
+  // risk_flags + credit-lane disclosure keys — deduped; disclosure text in tooltip.
+  const paperFlags = paper
+    ? [...new Set([
+        ...(p.meta?.gate_flags || []),
+        ...(isEarnSpread ? (eventJson?.risk_flags || []) : []),
+        ...(isEarnSpread ? Object.keys(disclosures) : []),
+      ])].map(k => ({ key: k, label: PAPER_FLAG_LABELS[k] || k.replace(/_/g, ' '), tip: disclosures[k] }))
+    : []
   const discoveryRef = p.meta?.discovery_ref
 
   // ── MULTI-STRATEGY Stage 2: why-matched + thesis + other-strategies context ──
@@ -363,11 +427,23 @@ export default function OptionProposalCardV4({
   const alpacaEnabled = p.alpaca_paper_enabled
     ?? p.meta?.alpaca_paper_enabled
     ?? (p.strategy === 'deep_itm_call')
+  // EARNINGS-SPREADS Stage 3: spread rows ADDITIONALLY require the Part-G
+  // multi_leg_proven registry key (API-flattened; absent == false). Both flags
+  // are false for earnings strategies today, so Send never renders until the
+  // operator flips them in config/options_strategy_registry.yaml — mirroring
+  // the executor's assert_spread_allowed triple gate.
+  const multiLegProven = (p.multi_leg_proven ?? p.meta?.multi_leg_proven) === true
   const canSend = paper && !!onAlpacaAction && alpacaEnabled
+    && (!isEarnSpread || multiLegProven)
     && (queueStatus === 'pending' || queueStatus === 'approved' || queueStatus === 'READY_FOR_ALPACA_PAPER')
   const canMarkOutcome = paper && !!onAlpacaAction
     && (queueStatus === 'ALPACA_PAPER_FILLED' || queueStatus === 'ALPACA_PAPER_CLOSED')
-  const canPromote = paper && !!onAlpacaAction
+  // EARNINGS-SPREADS Stage 3: Promote-to-Live-Review must NOT appear for
+  // earnings spread families regardless of prime verdict (operator spec —
+  // live review stays off until explicitly enabled by separate policy).
+  // Card-semantics pass: verdict read from primeDisplay (server-enriched
+  // prime_display wins; falls back to local band mapping).
+  const canPromote = paper && !!onAlpacaAction && !isEarnSpread
     && queueStatus === 'OUTCOME_RECORDED' && primeDisplay?.verdict === PRIME_VERDICT_LIVE
 
   const runLane = async (action: AlpacaLaneAction, payload?: { exitPremium?: number }) => {
@@ -542,7 +618,9 @@ export default function OptionProposalCardV4({
                   onClick={() => onAction(b.action, p.id)}
                   style={btnStyle(b.action)}
                 >
-                  {b.label}{b.action !== 'hold' ? ' →' : ''}
+                  {/* EARNINGS-SPREADS Stage 3: the review-chain drilldown opens the
+                      put chain for the spread — label it honestly as a spread review */}
+                  {b.action === 'review_chain' && isEarnSpread ? 'Review spread' : b.label}{b.action !== 'hold' ? ' →' : ''}
                 </button>
               )
             })}
@@ -599,6 +677,47 @@ export default function OptionProposalCardV4({
             flags, discovery lineage. Amber-only; no live affordance exists here. */}
         {paper && (
           <div style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(245,166,35,.06)', border: '1px solid rgba(245,166,35,.28)', fontSize: 10.5, lineHeight: 1.55, color: WL.text.secondary }}>
+            {/* EARNINGS-SPREADS Stage 3: vertical-spread block — legs table from
+                meta.strategy_json.legs, package economics, event context line.
+                Amber-block members only; no live affordance exists here. */}
+            {isEarnSpread && spreadLegs.length > 0 && (
+              <div style={{ overflowX: 'auto', marginBottom: 6 }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 10 }}>
+                  <thead>
+                    <tr>
+                      {['leg', 'exp', 'mid', 'OI', 'vol', 'spread%'].map(h => (
+                        <th key={h} style={{ textAlign: h === 'leg' ? 'left' : 'right', padding: '1px 6px 3px 0', fontSize: 8, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: WL.text.dim, borderBottom: '1px solid rgba(245,166,35,.22)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {spreadLegs.map((l, i) => (
+                      <tr key={`${l.side}-${l.strike}-${i}`}>
+                        <td style={{ ...numStyle, padding: '3px 6px 1px 0', fontWeight: 800, color: WL.text.primary, whiteSpace: 'nowrap' }}>
+                          {(l.side || '').toUpperCase()} ${fmtNum(l.strike, (l.strike ?? 0) < 50 ? 2 : 0)}{(l.type || 'put')[0].toUpperCase()}
+                        </td>
+                        <td style={{ ...numStyle, padding: '3px 6px 1px 0', textAlign: 'right', whiteSpace: 'nowrap' }}>{l.exp || '—'}</td>
+                        <td style={{ ...numStyle, padding: '3px 6px 1px 0', textAlign: 'right' }}>{l.mid != null ? fmt$(l.mid, 2) : '—'}</td>
+                        <td style={{ ...numStyle, padding: '3px 6px 1px 0', textAlign: 'right' }}>{l.oi != null ? fmtNum(l.oi, 0) : '—'}</td>
+                        <td style={{ ...numStyle, padding: '3px 6px 1px 0', textAlign: 'right' }}>{l.volume != null ? fmtNum(l.volume, 0) : '—'}</td>
+                        <td style={{ ...numStyle, padding: '3px 0 1px 0', textAlign: 'right' }}>{l.spread_pct != null ? `${Number(l.spread_pct).toFixed(1)}%` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {isEarnSpread && spreadSummary && (
+              <div style={{ ...numStyle, fontSize: 11, fontWeight: 700, color: WL.text.primary }}>{spreadSummary}</div>
+            )}
+            {isEarnSpread && eventLine && (
+              <div
+                title="Earnings-event context from the event model (implied move = ATM straddle mid at the event expiration; historical = past post-earnings |moves| on stored dates). Unavailable pieces are reported honestly, never fabricated."
+                style={{ fontSize: 10, fontWeight: 700, color: WL.signal.amber, marginTop: spreadSummary ? 5 : 0, cursor: 'help' }}
+              >
+                {eventLine}
+              </div>
+            )}
             {paperSummary && (
               <div style={{ ...numStyle, fontSize: 11, fontWeight: 700, color: WL.text.primary }}>{paperSummary}</div>
             )}
@@ -607,13 +726,13 @@ export default function OptionProposalCardV4({
             {matchJson?.why_matched && (
               <div
                 title={`Strategy matcher verdict for ${matchJson.strategy || p.strategy}: ${matchJson.status || '—'}. The matcher owns thesis gating (bullish for calls, bearish for puts); generators own contract math.`}
-                style={{ fontSize: 10, color: WL.text.dim, marginTop: paperSummary ? 5 : 0, cursor: 'help' }}
+                style={{ fontSize: 10, color: WL.text.dim, marginTop: (paperSummary || spreadSummary) ? 5 : 0, cursor: 'help' }}
               >
                 matched: {matchJson.why_matched}
               </div>
             )}
             {thesisLine && !matchJson?.why_matched && (
-              <div style={{ fontSize: 10, color: WL.text.dim, marginTop: paperSummary ? 5 : 0 }}>
+              <div style={{ fontSize: 10, color: WL.text.dim, marginTop: (paperSummary || spreadSummary) ? 5 : 0 }}>
                 {thesisLine}
               </div>
             )}
@@ -651,7 +770,7 @@ export default function OptionProposalCardV4({
                 title={ivc?.available
                   ? `ATM IV ${ivc.atm_iv != null ? `${Number(ivc.atm_iv).toFixed(1)}%` : '—'} vs 52-week stored range · percentile ${ivc.percentile != null ? `${ivc.percentile}%` : '—'} · advisory only — informs edge ranking (×1.1 cheap / ×0.9 rich), never rejects`
                   : 'IV rank needs ≥20 daily ATM-IV snapshots — reported honestly as unavailable until then, never fabricated from thin data'}
-                style={{ fontSize: 10, fontWeight: 700, color: ivColor, marginTop: paperSummary ? 5 : 0, cursor: 'help' }}
+                style={{ fontSize: 10, fontWeight: 700, color: ivColor, marginTop: (paperSummary || spreadSummary) ? 5 : 0, cursor: 'help' }}
               >
                 {ivLine}
               </div>
@@ -659,7 +778,7 @@ export default function OptionProposalCardV4({
             {paperFlags.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
                 {paperFlags.map(f => (
-                  <span key={f} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: WL.signal.amber, border: '1px solid rgba(245,166,35,.4)', background: 'transparent' }}>{f}</span>
+                  <span key={f.key} title={f.tip} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: WL.signal.amber, border: '1px solid rgba(245,166,35,.4)', background: 'transparent', cursor: f.tip ? 'help' : undefined }}>{f.label}</span>
                 ))}
               </div>
             )}
@@ -698,7 +817,7 @@ export default function OptionProposalCardV4({
                 </div>
                 {laneConfirm === 'send' && (
                   <div style={{ marginTop: 6, padding: '7px 9px', borderRadius: 6, border: `1px solid ${WL.signal.teal}44`, background: 'rgba(45,212,191,.05)', fontSize: 10, color: WL.text.secondary }}>
-                    <b style={{ color: WL.text.primary }}>Confirm simulated paper order?</b> Alpaca paper only · limit · 1 contract · no live broker path
+                    <b style={{ color: WL.text.primary }}>Confirm simulated paper order?</b> Alpaca paper only · {isEarnSpread ? 'net-debit LIMIT · 1 spread (2 legs)' : 'limit · 1 contract'} · no live broker path
                     <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                       <button type="button" disabled={laneBusy} onClick={() => runLane('send')}
                         style={{ ...laneBtn, background: WL.signal.teal, border: `1px solid ${WL.signal.teal}`, color: '#06231f' }}>

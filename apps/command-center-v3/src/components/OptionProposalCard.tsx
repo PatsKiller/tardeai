@@ -179,12 +179,64 @@ export type OptionProposal = {
   alpaca_fill_price?: number | null
   alpaca_submitted_at?: string | null
   alpaca_filled_at?: string | null
+  // ── EARNINGS-SPREADS Stage 3: vertical-spread rows (family
+  //    earnings_vertical_*) — package economics + order-shape legs +
+  //    the Part-G multi-leg proof flag (registry-flattened, absent == false) ──
+  structure?: string
+  net_debit?: number
+  net_credit?: number
+  width?: number
+  spreads?: number
+  breakeven_move_pct?: number
+  reward_to_risk?: number
+  multi_leg_proven?: boolean
+  legs?: {
+    underlying?: string
+    expiration?: string
+    strike?: number
+    option_type?: string
+    side?: string
+    ratio_qty?: number
+  }[]
   meta?: {
     discovery_ref?: { source?: string; candidate_id?: number; label?: string; candidate_status?: string }
     gate_flags?: string[]
     selection_mode?: string
     dte_bucket?: { target_dte?: number; exp?: string; dte?: number }
     alpaca_paper_enabled?: boolean
+    multi_leg_proven?: boolean
+    short_strike_method?: string
+    // EARNINGS-SPREADS Stage 3: per-leg disclosure table (spec Part C shape)
+    strategy_json?: {
+      strategy_id?: string
+      family?: string
+      direction?: string
+      display_name?: string
+      legs?: {
+        side?: string
+        type?: string
+        strike?: number
+        exp?: string
+        mid?: number | null
+        oi?: number | null
+        volume?: number | null
+        spread_pct?: number | null
+      }[]
+    }
+    // EARNINGS-SPREADS Stage 3: earnings_event_model context (honest degrades)
+    event_json?: {
+      earnings_date?: { date?: string | null; source?: string; reason?: string }
+      days_to_earnings?: number | null
+      event_confidence?: number | null
+      event_window?: { in_window?: boolean; days_before?: number; days_after?: number }
+      nearest_expiration_after_earnings?: { available?: boolean; exp?: string; dte?: number }
+      implied_move_pct?: { available?: boolean; pct?: number; method?: string }
+      historical_earnings_moves?: { available?: boolean; avg_abs_move_pct?: number; max_abs_move_pct?: number; samples?: number }
+      risk_flags?: string[]
+      iv_context?: IvContext
+    }
+    // EARNINGS-SPREADS Stage 3: mandatory credit-lane disclosures (assignment/gap/lifecycle)
+    disclosures?: Record<string, string>
     // MULTI-STRATEGY Stage 2: cross-strategy matcher context (scan time)
     match_json?: {
       strategy?: string
@@ -206,6 +258,23 @@ export type OptionProposal = {
       next_earnings_date?: string | null
       feasibility?: { feasible?: boolean; score?: number; reason?: string }
       iv_context?: IvContext
+      // EARNINGS-SPREADS Stage 3: vertical-spread package analysis
+      debit?: number
+      credit?: number
+      max_loss?: number
+      max_gain?: number
+      breakeven?: number
+      breakeven_move_pct?: number
+      required_move_to_breakeven_pct?: number | null
+      reward_to_risk?: number | null
+      width?: number
+      package_slippage_pct?: number | null
+      debit_pct_of_underlying?: number | null
+      credit_pct_of_width?: number | null
+      implied_move_pct?: number | null
+      historical_avg_abs_move_pct?: number | null
+      implied_vs_historical?: string
+      event_confidence?: number | null
       candidate?: {
         strike?: number
         delta?: number | null

@@ -16,6 +16,15 @@ Thesis rules (the matcher owns direction; generators own contract math):
     "bearish thesis missing".
   • deep_itm_call delegates to the existing deep_itm_generator (its conviction
     floor + chain gates decide pass/watch/fail).
+  • earnings_put_debit_spread (EARNINGS-SPREADS Stage 2, spec Part E):
+    not_applicable when there is no earnings date / the event window is closed
+    ("no earnings in window"); fail when the bearish/hedge thesis is missing or
+    event_confidence sits below the registry gate; otherwise the earnings
+    vertical generator runs → pass/watch (watch when every proposal carries
+    disclosed flags only — iv_rich / historical_move_below_breakeven).
+  • earnings_put_credit_spread stays not_applicable — BLOCKED_INITIAL in the
+    registry (paper_enabled false, loader-enforced) until the debit lane has
+    observed paper history.
   • covered_call / cash_secured_put / protective_put / credit_spread return
     not_applicable with honest reasons (requires held shares / requires existing
     exposure / scanner_mode arrives in a later stage) — NO generation.
@@ -39,6 +48,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from .atm_long_premium_generator import generate_atm_proposals
 from .deep_itm_generator import generate_deep_itm_proposals
+from .earnings_vertical_generator import generate_put_debit_spreads
 from .universe import load_strategy_registry
 
 STATUS_PASS = "pass"
@@ -58,6 +68,8 @@ WATCH_FLAGS = frozenset({
     "earnings_before_expiry_flagged",           # atm lane, earnings_policy=flag
     "earnings_before_expiry_operator_flagged",  # deep-ITM lane equivalent
     "iv_rich_pay_up_warning",                   # IV-rank rich disclosure
+    "iv_rich",                                  # earnings lane: event premium rich
+    "historical_move_below_breakeven",          # earnings lane: hist < required BE move
 })
 
 # Matchers with no generation path yet — honest not_applicable reasons.
@@ -79,6 +91,10 @@ _NOT_APPLICABLE_REASONS: Dict[str, Callable[[dict], str]] = {
     "credit_spread": lambda ctx: (
         "multi-leg credit spreads are RESEARCH_ONLY in the registry — no paper "
         "generation is modeled"),
+    "earnings_put_credit_spread": lambda ctx: (
+        "blocked initially (BLOCKED_INITIAL) — paper_enabled false in registry "
+        "until the debit lane observes paper history (short-premium event "
+        "risk: gap-through-strike, assignment)"),
 }
 
 
@@ -323,6 +339,102 @@ def _match_deep_itm(symbol: str, ctx: dict, thesis: dict,
                    + (f" ({notes})" if notes else ""), per_underlying=per)
 
 
+def _event_summary(ev: dict) -> dict:
+    """Compact event context for matcher results (full JSON rides proposals)."""
+    ev = ev or {}
+    im = ev.get("implied_move_pct") or {}
+    return {"earnings_date": (ev.get("earnings_date") or {}).get("date"),
+            "days_to_earnings": ev.get("days_to_earnings"),
+            "in_window": (ev.get("event_window") or {}).get("in_window"),
+            "implied_move_pct": im.get("pct") if im.get("available") else None,
+            "event_confidence": ev.get("event_confidence"),
+            "event_thesis": ev.get("event_thesis"),
+            "risk_flags": list(ev.get("risk_flags") or [])}
+
+
+def _match_earnings_debit(symbol: str, ctx: dict, thesis: dict, reg_row: dict,
+                          *, snapshot: Optional[dict],
+                          chain_fn: Optional[Callable[..., dict]],
+                          earnings_date: Optional[str],
+                          event_json: Optional[dict],
+                          gen_fn: Callable[..., dict]) -> dict:
+    """earnings_put_debit_spread lane (EARNINGS-SPREADS Stage 2, spec Part E).
+
+    Order of verdicts: window (not_applicable) → thesis (fail) → confidence
+    (fail) → generate (pass / watch / fail). The event context comes from
+    earnings_event_model.build_event_json unless injected.
+    """
+    sel = dict((reg_row or {}).get("selection") or {})
+    snap = snapshot
+    if snap is None and chain_fn is not None:
+        try:
+            snap = chain_fn(symbol)
+        except Exception as e:
+            snap = {"available": False, "reason": str(e)[:120]}
+    ev = event_json
+    if ev is None:
+        from .earnings_event_model import build_event_json
+        try:
+            ev = build_event_json(symbol, chain_snapshot=snap, config=sel,
+                                  context=ctx, earnings_date=earnings_date)
+        except Exception as e:
+            return _result(STATUS_FAIL,
+                           f"event context error: {str(e)[:140]}")
+
+    window = ev.get("event_window") or {}
+    if not (ev.get("earnings_date") or {}).get("date") \
+            or not window.get("in_window"):
+        days = ev.get("days_to_earnings")
+        detail = (f"days_to_earnings={days}" if days is not None
+                  else (ev.get("earnings_date") or {}).get("reason")
+                  or "no earnings date")
+        return _result(STATUS_NOT_APPLICABLE,
+                       f"no earnings in window ({detail}; window "
+                       f"−{window.get('days_after')}.."
+                       f"{window.get('days_before')}d)",
+                       event=_event_summary(ev))
+    if not thesis["bearish"]:
+        return _result(STATUS_FAIL,
+                       "bearish/hedge thesis missing (needs watchlist "
+                       "sell/avoid/deteriorating, an explicit bearish thesis, "
+                       "or a hedge-of-held flag)",
+                       event=_event_summary(ev))
+    min_conf = _f(sel.get("min_event_confidence"), 0.65)
+    conf = _f(ev.get("event_confidence"))
+    if conf < min_conf:
+        return _result(STATUS_FAIL,
+                       f"event_confidence {conf:.2f} below gate "
+                       f"{min_conf:.2f} (min_event_confidence)",
+                       event=_event_summary(ev))
+
+    conviction, source = _bearish_conviction(ctx, thesis)
+    thesis_ctx = {
+        "conviction": conviction,
+        "conviction_source": source,
+        "verdict": thesis.get("verdict"),
+        "held_shares": ctx.get("held_shares"),
+        "hedge_of_held": bool(ctx.get("hedge_of_held")),
+        "thesis_direction": ctx.get("thesis_direction"),
+    }
+    gen = gen_fn(symbol, ev, None, thesis_ctx, snapshot=snap,
+                 chain_fn=chain_fn)
+    if not gen.get("available"):
+        reason = gen.get("reason") or "unknown"
+        if gen.get("degraded"):
+            reason = f"chain unavailable: {reason}"
+        return _result(STATUS_FAIL, reason, generator_gate=gen.get("gate"),
+                       event=_event_summary(ev))
+    proposals = gen.get("proposals") or []
+    if not proposals:
+        notes = "; ".join(gen.get("reject_notes") or [])
+        return _result(STATUS_FAIL,
+                       "no candidates passed gates"
+                       + (f" ({notes})" if notes else ""),
+                       event=_event_summary(ev))
+    status, reason = _pass_or_watch(proposals)
+    return _result(status, reason, proposals, event=_event_summary(ev))
+
+
 # ── main API (operator spec Part C) ──────────────────────────────────────────
 
 def run_matchers(
@@ -338,6 +450,8 @@ def run_matchers(
     chain_fn: Optional[Callable[..., dict]] = None,
     earnings_date: Optional[str] = None,
     iv_context: Optional[dict] = None,
+    event_json: Optional[dict] = None,
+    earnings_fn: Optional[Callable[..., dict]] = None,
 ) -> dict:
     """Evaluate every requested strategy for one symbol.
 
@@ -347,8 +461,9 @@ def run_matchers(
     LivePolicyViolation when any row claims live permission).
 
     Injectables (tests / weekend sanity): snapshot/chain_fn/earnings_date/
-    iv_context flow into the ATM generator; deep_itm_analysis_fn into the
-    deep-ITM generator; registry/deep_itm_fn/atm_fn override wholesale.
+    iv_context flow into the ATM generator; snapshot/chain_fn/earnings_date/
+    event_json/earnings_fn into the earnings-vertical lane; deep_itm_analysis_fn
+    into the deep-ITM generator; registry/deep_itm_fn/atm_fn override wholesale.
 
     PURE: writes nothing — Stage 2's scanner owns queue writes.
     """
@@ -395,6 +510,19 @@ def run_matchers(
             results[sid] = _match_atm(sym, "call", ctx, thesis, atm, **atm_kwargs)
         elif sid == "atm_put":
             results[sid] = _match_atm(sym, "put", ctx, thesis, atm, **atm_kwargs)
+        elif sid == "earnings_put_debit_spread":
+            results[sid] = _match_earnings_debit(
+                sym, ctx, thesis, row,
+                snapshot=snapshot, chain_fn=chain_fn,
+                earnings_date=earnings_date, event_json=event_json,
+                gen_fn=earnings_fn or generate_put_debit_spreads)
+        elif sid == "earnings_put_credit_spread":
+            # Even if the registry were flipped scannable, the credit matcher
+            # lane arrives only after the debit lane observes paper history.
+            results[sid] = _result(
+                STATUS_NOT_APPLICABLE,
+                "blocked initially (BLOCKED_INITIAL) — the credit matcher "
+                "lane arrives after the debit lane observes paper history")
         elif sid in _NOT_APPLICABLE_REASONS:
             results[sid] = _result(STATUS_NOT_APPLICABLE,
                                    _NOT_APPLICABLE_REASONS[sid](ctx))

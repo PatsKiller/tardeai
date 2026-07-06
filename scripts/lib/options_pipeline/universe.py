@@ -47,7 +47,13 @@ REQUIRED_TIERS = (
 KNOWN_RESOLVERS = frozenset({"holdings_json", "watchlist_verdicts",
                              "hermes_gap_candidates"})
 REGISTRY_STATUSES = frozenset({"RESEARCH_ONLY", "MODELED", "TESTING_PAPER",
-                               "VALIDATED", "PAUSED", "KILLED"})
+                               "VALIDATED", "PAUSED", "KILLED",
+                               "BLOCKED_INITIAL"})
+# BLOCKED_INITIAL (EARNINGS-SPREADS Stage 1): a registry row the loader accepts
+# as VALID but that must stay UNSCANNABLE — load_strategy_registry enforces
+# paper_enabled=false + alpaca_paper_enabled=false on such rows (fail-closed).
+# Enabling requires an explicit status change in the registry yaml.
+_UNSCANNABLE_STATUSES = frozenset({"BLOCKED_INITIAL"})
 
 # scanner --universe selector → tiers scanned (None = all, in precedence order)
 UNIVERSE_SELECTORS: Dict[str, Optional[List[str]]] = {
@@ -466,6 +472,13 @@ def load_strategy_registry(path: Optional[Path] = None, *, env: Optional[dict] =
         if row.get("status") not in REGISTRY_STATUSES:
             raise RegistryConfigError(
                 f"registry {sid}: unknown status {row.get('status')!r}")
+        if row.get("status") in _UNSCANNABLE_STATUSES and (
+                row["paper_enabled"] or row["alpaca_paper_enabled"]):
+            raise RegistryConfigError(
+                f"registry {sid}: status {row['status']} requires "
+                "paper_enabled=false and alpaca_paper_enabled=false "
+                "(valid-but-unscannable; enabling requires an explicit "
+                "status change — fail-closed)")
         if row.get("required_permission_level") != "operator":
             raise RegistryConfigError(
                 f"registry {sid}: required_permission_level must be 'operator'")

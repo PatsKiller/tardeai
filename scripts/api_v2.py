@@ -24255,10 +24255,15 @@ def _get_options_engine():
 
 
 # Paper-model strategies surfaced from options_approval_queue (MULTI-STRATEGY
-# Stage 2: the ATM long-premium pair joins deep_itm_call; all manual-review,
-# never live-eligible — the fail-closed rendering guard below drops any row
-# that lost its paper flags).
-PAPER_MODEL_QUEUE_STRATEGIES = ("deep_itm_call", "atm_call", "atm_put")
+# Stage 2: the ATM long-premium pair joins deep_itm_call; EARNINGS-SPREADS
+# Stage 3: the earnings vertical pair joins — the credit id is listed so a
+# force-generated/operator-inspected row still renders honestly, but the
+# BLOCKED_INITIAL registry row means the scanner never queues it. All
+# manual-review, never live-eligible — the fail-closed rendering guard below
+# drops any row that lost its paper flags).
+PAPER_MODEL_QUEUE_STRATEGIES = ("deep_itm_call", "atm_call", "atm_put",
+                                "earnings_put_debit_spread",
+                                "earnings_put_credit_spread")
 
 # Alpaca paper-lane queue statuses (Stage 3 state machine).
 ALPACA_LANE_STATUSES = (
@@ -24268,12 +24273,15 @@ ALPACA_LANE_STATUSES = (
 
 
 def _registry_alpaca_paper_enabled() -> dict:
-    """{strategy_id: alpaca_paper_enabled} from the options strategy registry —
-    read-only fallback for queue rows written before scan-time meta capture.
-    Fail-closed: an unloadable registry yields {} (button never shows)."""
+    """{strategy_id: {alpaca_paper_enabled, multi_leg_proven}} from the options
+    strategy registry — read-only fallback for queue rows written before
+    scan-time meta capture. multi_leg_proven is the Part-G spread-lane key
+    (absent everywhere today; absent == False). Fail-closed: an unloadable
+    registry yields {} (buttons never show)."""
     try:
         from lib.options_pipeline.universe import load_strategy_registry
-        return {sid: bool((row or {}).get("alpaca_paper_enabled"))
+        return {sid: {"alpaca_paper_enabled": bool((row or {}).get("alpaca_paper_enabled")),
+                      "multi_leg_proven": (row or {}).get("multi_leg_proven") is True}
                 for sid, row in (load_strategy_registry().get("strategies") or {}).items()}
     except Exception:
         return {}
@@ -24387,10 +24395,20 @@ def _fetch_paper_model_queue_proposals() -> list:
         p["alpaca_filled_at"] = (aj.get("fill") or {}).get("filled_at")
         # Stage 2 (Part E): Send-to-Alpaca-Paper gating field. Scan-time meta
         # value wins; registry fallback covers rows queued before Stage 2.
+        reg_flags = alpaca_enabled_by_strategy.get(str(p.get("strategy") or "")) or {}
         meta_flag = (p.get("meta") or {}).get("alpaca_paper_enabled")
         p["alpaca_paper_enabled"] = bool(
             meta_flag if meta_flag is not None
-            else alpaca_enabled_by_strategy.get(str(p.get("strategy") or "")))
+            else reg_flags.get("alpaca_paper_enabled"))
+        # EARNINGS-SPREADS Stage 3: the Part-G multi-leg proof flag — spread
+        # rows (family earnings_vertical_*) additionally require this before
+        # the card may offer Send-to-Alpaca-Paper. Registry is the flag's
+        # single home; both flags are false for earnings rows today, so the
+        # button never renders until the operator flips them there.
+        meta_mlp = (p.get("meta") or {}).get("multi_leg_proven")
+        p["multi_leg_proven"] = bool(
+            meta_mlp if meta_mlp is not None
+            else reg_flags.get("multi_leg_proven"))
         out.append(p)
     return out
 

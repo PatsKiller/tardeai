@@ -9,6 +9,14 @@ the not_applicable set with honest reasons (covered_call / cash_secured_put /
 protective_put / credit_spread), cross_strategy_summary shape, in-strategy
 ranking, and the pure-library guarantee (no queue writes, no broker imports).
 
+EARNINGS-SPREADS Stage 2 (spec Part E): the earnings_put_debit_spread lane —
+not_applicable outside the event window ("no earnings in window"), fail on a
+missing bearish/hedge thesis or event_confidence below the registry gate,
+pass/watch via the earnings vertical generator (watch on disclosed-flag-only
+proposals: iv_rich / historical_move_below_breakeven), chain-unavailable
+degrade, injectable event_json/earnings_fn, and the credit id staying honest
+not_applicable "blocked initially (BLOCKED_INITIAL)".
+
     .venv/bin/python -m pytest tests/test_options_strategy_matcher.py -q
 """
 from __future__ import annotations
@@ -125,10 +133,14 @@ def test_result_shape_and_status_vocabulary():
     assert set(res) >= {"symbol", "generated_at", "context",
                         "strategy_results", "cross_strategy_summary"}
     results = res["strategy_results"]
-    # every registry strategy is reported (7 rows after the Stage 1 extension)
+    # every registry strategy is reported (9 rows after EARNINGS-SPREADS
+    # Stage 1 — the earnings pair surfaces as honest not_applicable until
+    # Stage 2 wires its matcher)
     assert set(results) == {"deep_itm_call", "covered_call", "cash_secured_put",
                             "protective_put", "credit_spread",
-                            "atm_call", "atm_put"}
+                            "atm_call", "atm_put",
+                            "earnings_put_debit_spread",
+                            "earnings_put_credit_spread"}
     for sid, r in results.items():
         assert r["status"] in sm.ALL_STATUSES, sid
         assert r["reason"], sid
@@ -301,12 +313,15 @@ def test_cross_strategy_summary_shape_and_counts():
                        "not_applicable", "total_proposals", "best_proposal",
                        "thesis"}
     assert cs["symbol"] == "NVDA"
-    assert cs["considered"] == 7
+    assert cs["considered"] == 9        # 9 registry rows after EARNINGS-SPREADS Stage 1
     assert sorted(cs["pass"]) == ["atm_call", "deep_itm_call"]
     assert cs["fail"] == ["atm_put"]
     assert sorted(cs["not_applicable"]) == ["cash_secured_put", "covered_call",
-                                            "credit_spread", "protective_put"]
-    assert cs["counts"] == {"pass": 2, "watch": 0, "fail": 1, "not_applicable": 4}
+                                            "credit_spread",
+                                            "earnings_put_credit_spread",
+                                            "earnings_put_debit_spread",
+                                            "protective_put"]
+    assert cs["counts"] == {"pass": 2, "watch": 0, "fail": 1, "not_applicable": 6}
     assert cs["total_proposals"] >= 3
     best = cs["best_proposal"]
     assert best is not None
@@ -370,7 +385,169 @@ def test_statuses_are_exactly_the_documented_vocabulary():
     assert sm.ALL_STATUSES == ("pass", "watch", "fail", "not_applicable")
 
 
-# ── (9) context resolution stays honest offline ──────────────────────────────
+# ── (9) EARNINGS-SPREADS Stage 2 — earnings_put_debit_spread lane (Part E) ───
+
+EARN_EXP = "2026-08-07"
+
+
+def _earn_contract(side, strike, mid, *, delta=None, oi=600, volume=60):
+    # tight quotes (±0.02) keep the two-leg package slippage under the 8% gate
+    return {"side": side, "strike": float(strike), "bid": round(mid - 0.02, 4),
+            "ask": round(mid + 0.02, 4), "mid": mid,
+            "spread_pct": round(0.04 / mid * 100.0, 2), "volume": volume,
+            "oi": oi, "delta": delta, "iv": 40.0, "dte": 33,
+            "liquidity_score": 70}
+
+
+def _earn_snapshot():
+    """Put ladder rich enough for the vertical generator at the event expiry."""
+    return {"available": True, "symbol": "NVDA", "underlying_price": SPOT,
+            "expirations": [
+                {"exp": EARN_EXP, "dte": 33, "liquidity_score": 70,
+                 "contracts": [
+                     _earn_contract("call", 100.0, 1.0, delta=0.50),
+                     _earn_contract("put", 100.0, 4.0, delta=-0.52),
+                     _earn_contract("put", 97.5, 3.0, delta=-0.40),
+                     _earn_contract("put", 95.0, 2.0, delta=-0.30),
+                     _earn_contract("put", 90.0, 1.0, delta=-0.15),
+                 ]},
+            ],
+            "liquidity_score": 70}
+
+
+def _earn_event(*, in_window=True, days=5, confidence=0.80, flags=()):
+    """Hand-built event_json (the shape earnings_event_model emits) —
+    fully deterministic for the matcher-lane tests."""
+    return {"symbol": "NVDA", "days_to_earnings": days,
+            "earnings_date": {"date": "2026-08-05", "source": "test"},
+            "event_window": {"days_before": 10, "days_after": 2,
+                             "in_window": in_window},
+            "nearest_expiration_after_earnings": {"available": True,
+                                                  "exp": EARN_EXP, "dte": 33},
+            "implied_move_pct": {"available": True, "pct": 5.0,
+                                 "method": "atm_straddle_mid"},
+            "historical_earnings_moves": {"available": False,
+                                          "reason": "test fixture"},
+            "iv_context": {"available": False, "reason": "test fixture"},
+            "post_earnings_iv_crush_estimate": {"available": False,
+                                                "reason": "test fixture"},
+            "event_thesis": "bearish", "event_thesis_source": "watchlist_sell",
+            "event_confidence": confidence, "risk_flags": list(flags),
+            "educational_only": True}
+
+
+def _run_earn(context, **kw):
+    kw.setdefault("snapshot", _earn_snapshot())
+    kw.setdefault("event_json", _earn_event())
+    return sm.run_matchers("NVDA", context,
+                           ["earnings_put_debit_spread"], **kw)
+
+
+def test_earnings_not_applicable_outside_window():
+    res = _run_earn(BEARISH, event_json=_earn_event(in_window=False, days=30))
+    r = res["strategy_results"]["earnings_put_debit_spread"]
+    assert r["status"] == "not_applicable"
+    assert "no earnings in window" in r["reason"]
+    assert r["proposals"] == []
+
+
+def test_earnings_not_applicable_without_event_date_via_injected_date():
+    # no injected event_json: the lane builds one from the injected snapshot
+    # and the far-future caller earnings_date → honest not_applicable
+    res = sm.run_matchers("NVDA", BEARISH, ["earnings_put_debit_spread"],
+                          snapshot=_earn_snapshot(), earnings_date=NO_EARNINGS)
+    r = res["strategy_results"]["earnings_put_debit_spread"]
+    assert r["status"] == "not_applicable"
+    assert "no earnings in window" in r["reason"]
+
+
+def test_earnings_fail_on_missing_bearish_thesis():
+    res = _run_earn(BULLISH)
+    r = res["strategy_results"]["earnings_put_debit_spread"]
+    assert r["status"] == "fail"
+    assert "bearish/hedge thesis missing" in r["reason"]
+    assert r["proposals"] == []
+
+
+def test_earnings_fail_below_confidence_gate():
+    res = _run_earn(BEARISH, event_json=_earn_event(confidence=0.40))
+    r = res["strategy_results"]["earnings_put_debit_spread"]
+    assert r["status"] == "fail"
+    assert "event_confidence 0.40 below gate 0.65" in r["reason"]
+
+
+def test_earnings_pass_generates_debit_spreads():
+    res = _run_earn(BEARISH)
+    r = res["strategy_results"]["earnings_put_debit_spread"]
+    assert r["status"] == "pass", r["reason"]
+    assert r["proposals"]
+    p = r["proposals"][0]
+    assert p["strategy"] == "earnings_put_debit_spread"
+    assert p["strategy_family"] == "earnings_vertical_debit"
+    assert p["long_strike"] == 100.0 and p["expiration"] == EARN_EXP
+    assert p["enterprise"]["live_eligible"] is False
+    assert p["paper_only"] is True
+    # implied move 5% → boundary 95 → expected-move short strike selected
+    shorts = {q["short_strike"] for q in r["proposals"]}
+    assert 95.0 in shorts
+    assert r["event"]["implied_move_pct"] == 5.0
+    assert r["event"]["in_window"] is True
+
+
+def test_earnings_hedge_of_held_passes():
+    ctx = {"verdict": None, "held_shares": 100.0, "hedge_of_held": True}
+    res = _run_earn(ctx)
+    r = res["strategy_results"]["earnings_put_debit_spread"]
+    assert r["status"] == "pass", r["reason"]
+    intel = r["proposals"][0]["meta"]["underlying_intel"]
+    assert intel["conviction_source"] == "hedge_of_held"
+
+
+def test_earnings_watch_on_disclosed_iv_rich_flag():
+    res = _run_earn(BEARISH, event_json=_earn_event(flags=("iv_rich",)))
+    r = res["strategy_results"]["earnings_put_debit_spread"]
+    assert r["status"] == "watch"
+    assert "disclosed flags" in r["reason"] and "iv_rich" in r["reason"]
+    assert all("iv_rich" in p["meta"]["gate_flags"] for p in r["proposals"])
+
+
+def test_earnings_fail_when_chain_unavailable():
+    res = _run_earn(BEARISH,
+                    snapshot={"available": False, "reason": "weekend — no chain"})
+    r = res["strategy_results"]["earnings_put_debit_spread"]
+    assert r["status"] == "fail"
+    assert "chain unavailable" in r["reason"] and "weekend" in r["reason"]
+
+
+def test_earnings_credit_stays_blocked_not_applicable():
+    res = sm.run_matchers("NVDA", BEARISH, ["earnings_put_credit_spread"],
+                          snapshot=_earn_snapshot())
+    r = res["strategy_results"]["earnings_put_credit_spread"]
+    assert r["status"] == "not_applicable"
+    assert "blocked initially" in r["reason"].lower() \
+        or "BLOCKED_INITIAL" in r["reason"]
+    assert "BLOCKED_INITIAL" in r["reason"]
+    assert r["proposals"] == []
+
+
+def test_earnings_injectable_generator_fn():
+    seen = {}
+
+    def fake_gen(sym, ev, cfg, thesis_ctx, **kw):
+        seen["sym"] = sym
+        seen["conviction_source"] = thesis_ctx.get("conviction_source")
+        return {"available": True, "proposals": [], "reject_notes": ["all rejected"]}
+
+    res = _run_earn(BEARISH, earnings_fn=fake_gen)
+    r = res["strategy_results"]["earnings_put_debit_spread"]
+    assert seen["sym"] == "NVDA"
+    assert seen["conviction_source"] == "watchlist_sell"
+    assert r["status"] == "fail"
+    assert "no candidates passed gates" in r["reason"]
+    assert "all rejected" in r["reason"]
+
+
+# ── (10) context resolution stays honest offline ─────────────────────────────
 
 def test_verdict_normalization():
     assert sm._normalize_verdict("Strong Buy") == "strong_buy"
