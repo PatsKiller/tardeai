@@ -154,6 +154,31 @@ export default function OptionPositionCardV4({
         <span style={{ fontSize: 10, color: WL.text.dim }}>{strat}</span>
         <span style={{ ...numStyle, fontSize: 13, fontWeight: 700, color: WL.text.secondary }}>${fmtNum(p.strike, 2)}</span>
         <span style={{ fontSize: 10.5, color: WL.text.dim }}>{fmtExpiry(p.expiration)}</span>
+        {p.execution_route_badge && (
+          <span
+            title={p.execution_note || p.execution_route_badge}
+            style={{ fontSize: 8.5, fontWeight: 800, padding: '2px 7px', borderRadius: 4, letterSpacing: '.04em',
+              color: p.execution_route_kind === 'schwab_live' ? WL.signal.teal : '#f59e0b',
+              border: `1px solid ${p.execution_route_kind === 'schwab_live' ? 'rgba(45,212,191,.35)' : 'rgba(245,158,11,.4)'}`,
+              cursor: 'help' }}
+          >
+            {p.execution_route_badge}
+          </span>
+        )}
+        {p.safety_status_badge?.label && (
+          <span
+            title={p.safety_status_badge.tip}
+            style={{ fontSize: 8.5, fontWeight: 800, padding: '2px 7px', borderRadius: 4, letterSpacing: '.04em',
+              color: p.safety_status_badge.severity === 'danger' ? WL.signal.red : WL.signal.amber,
+              border: `1px solid ${p.safety_status_badge.severity === 'danger' ? 'rgba(239,83,80,.4)' : 'rgba(245,166,35,.45)'}`,
+              cursor: 'help' }}
+          >
+            {p.safety_status_badge.label}
+          </span>
+        )}
+        {p.position_source === 'monitored' && (
+          <span style={{ fontSize: 8, fontWeight: 700, color: WL.text.dim, letterSpacing: '.05em' }}>LIFECYCLE</span>
+        )}
       </div>
 
       {/* ② Hero — two rows, the only tinted surface, owns the card */}

@@ -78,6 +78,15 @@ export type OptionPosition = {
   profit_captured_pct?: number
   lifecycle_phase?: string
   maturity_note?: string
+  position_source?: 'broker' | 'monitored'
+  execution_route_badge?: string
+  execution_route_kind?: string
+  execution_note?: string
+  safety_status_badge?: { label: string; kind: string; severity: string; tip: string }
+  advice_label?: string
+  paper_only?: boolean
+  mfe?: number
+  mae?: number
 }
 
 const LIFECYCLE_STYLE: Record<string, { c: string; label: string }> = {

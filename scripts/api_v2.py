@@ -24534,6 +24534,101 @@ def _options_monitor(query=None):
     return _options_positions(query)
 
 
+def _options_paper_positions(query=None):
+    """GET /api/v2/options/paper-positions — monitored lifecycle positions + snapshots."""
+    from lib.options_pipeline import paper_positions_api as ppa
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    pid = g("position_id", "")
+    if pid:
+        one = ppa.get_monitored_position(int(pid))
+        return _json_clean({"ok": True, "position": one, "count": 1 if one else 0})
+    status = (g("status") or "OPEN").upper()
+    positions = ppa.list_monitored_positions(
+        status=status,
+        broker=(g("broker") or None),
+        symbol=(g("symbol") or "").upper() or None,
+        limit=int(g("limit") or 100),
+    )
+    filtered = ppa.filter_positions(
+        positions,
+        symbol=(g("symbol") or "").upper(),
+        option_type=(g("option_type") or g("type") or ""),
+        side=(g("side") or ""),
+        route=(g("route") or ""),
+        paper_only=True if str(g("paper_only", "")).lower() in ("1", "true", "yes") else None,
+    )
+    return _json_clean({
+        "ok": True,
+        "positions": filtered,
+        "count": len(filtered),
+        "filter_facets": ppa.position_filter_facets(positions),
+    })
+
+
+def _options_paper_position_alerts(query=None):
+    """GET /api/v2/options/paper-positions/alerts — unacked monitored position alerts."""
+    from lib.options_pipeline import paper_positions_api as ppa
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    unacked = str(g("unacked", "1")).lower() not in ("0", "false", "no")
+    alerts = ppa.list_position_alerts(
+        unacked_only=unacked,
+        limit=int(g("limit") or 50),
+    )
+    return _json_clean({"ok": True, "alerts": alerts, "count": len(alerts)})
+
+
+def _options_open_positions(query=None):
+    """GET /api/v2/options/open-positions — unified broker legs + monitored paper positions."""
+    from lib.options_pipeline import paper_positions_api as ppa
+    broker_data = _options_positions(query) or {}
+    broker_positions = broker_data.get("positions") or []
+    for p in broker_positions:
+        p.setdefault("position_source", "broker")
+        p.setdefault("unified_id", f"broker:{p.get('id')}")
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    monitored = ppa.list_monitored_positions(
+        status="OPEN",
+        symbol=(g("symbol") or "").upper() or None,
+    )
+    unified = ppa.build_unified_open_positions(broker_positions, monitored)
+    filtered = ppa.filter_positions(
+        unified,
+        symbol=(g("symbol") or "").upper(),
+        option_type=(g("option_type") or g("type") or ""),
+        side=(g("side") or ""),
+        route=(g("route") or ""),
+        source=(g("source") or ""),
+        paper_only=True if str(g("paper_only", "")).lower() in ("1", "true", "yes") else None,
+    )
+    mon_alerts = ppa.list_position_alerts(unacked_only=True, limit=30)
+    broker_alerts = broker_data.get("alerts") or []
+    return _json_clean({
+        **broker_data,
+        "ok": True,
+        "monitored_positions": monitored,
+        "monitored_count": len(monitored),
+        "positions": filtered,
+        "unified_count": len(unified),
+        "filtered_count": len(filtered),
+        "filter_facets": ppa.position_filter_facets(unified),
+        "alerts": broker_alerts + mon_alerts,
+        "monitored_alerts": mon_alerts,
+    })
+
+
+def _options_paper_position_alerts_ack(body=None):
+    """POST /api/v2/options/paper-positions/alerts/ack {alert_id}"""
+    from lib.options_pipeline import paper_positions_api as ppa
+    b = body or {}
+    aid = b.get("alert_id")
+    if not aid:
+        return {"ok": False, "error": "alert_id required"}
+    return ppa.acknowledge_alert(int(aid))
+
+
 def _options_overview(query=None):
     """GET /api/v2/options/overview — strategy edge summary + open position stats."""
     return _json_clean(_get_options_engine().get_overview())
@@ -27305,6 +27400,9 @@ ROUTES = {
     "/api/v2/options/validation": _options_validation,
     "/api/v2/options/positions": _options_positions,
     "/api/v2/options/monitor": _options_monitor,
+    "/api/v2/options/paper-positions": _options_paper_positions,
+    "/api/v2/options/paper-positions/alerts": _options_paper_position_alerts,
+    "/api/v2/options/open-positions": _options_open_positions,
     "/api/v2/options/overview": _options_overview,
     "/api/v2/options/execution/status": _options_execution_status,
     "/api/v2/execution/current-state": _execution_current_state,
@@ -31578,6 +31676,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # ── ALPACA-OPTIONS Stage 3: paper-lane operator routes (handlers return
     #    (status, dict); all lane guards live in lib/options_pipeline/alpaca_paper) ──
+    if method == "POST" and base_path == "/api/v2/options/paper-positions/alerts/ack":
+        try:
+            return 200, _options_paper_position_alerts_ack(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
     if method == "POST" and base_path in (
             "/api/v2/options/alpaca-paper/mark-ready",
             "/api/v2/options/alpaca-paper/submit",

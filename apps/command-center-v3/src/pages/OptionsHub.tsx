@@ -20,7 +20,10 @@ import { HEADER, TABS as TAB_TIPS, FILTERS, OVERVIEW, POSITION } from '../lib/op
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Proposals', 'Open Positions', 'Strategy Overview', 'Options Trends'] as const
+const TABS = ['Proposals', 'Open Options', 'Strategy Overview', 'Options Trends'] as const
+const LEGACY_TAB_ALIASES: Record<string, typeof TABS[number]> = {
+  'Open Positions': 'Open Options',
+}
 const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
 const SEL: React.CSSProperties = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text0)' }
 const PURPLE = '#a855f7'
@@ -43,8 +46,12 @@ type Position = OptionPosition
 export default function OptionsHub({ onDrill }: Props) {
   const [searchParams, setSearchParams] = useSearchParams()
   const urlTab = searchParams.get('tab')
-  const [tab, setTab] = useState<typeof TABS[number]>(
-    (TABS as readonly string[]).includes(urlTab ?? '') ? urlTab as typeof TABS[number] : 'Proposals')
+  const resolveTab = (t: string | null): typeof TABS[number] => {
+    if (!t) return 'Proposals'
+    const mapped = LEGACY_TAB_ALIASES[t] || t
+    return (TABS as readonly string[]).includes(mapped) ? mapped as typeof TABS[number] : 'Proposals'
+  }
+  const [tab, setTab] = useState<typeof TABS[number]>(resolveTab(urlTab))
 
   const [symbolFilter, setSymbolFilter] = useState('')
   const [strategyFilter, setStrategyFilter] = useState('')
@@ -62,6 +69,9 @@ export default function OptionsHub({ onDrill }: Props) {
   const [posTypeFilter, setPosTypeFilter] = useState('')
   const [posSideFilter, setPosSideFilter] = useState('')
   const [posWorkingOnly, setPosWorkingOnly] = useState(false)
+  const [posRouteFilter, setPosRouteFilter] = useState('')
+  const [posSourceFilter, setPosSourceFilter] = useState('')
+  const [posPaperOnly, setPosPaperOnly] = useState(false)
   const [ensembleBusy, setEnsembleBusy] = useState(false)
   const [ensembleMsg, setEnsembleMsg] = useState<string | null>(null)
   const [pendingIntent, setPendingIntent] = useState<string | null>(null)
@@ -98,14 +108,17 @@ export default function OptionsHub({ onDrill }: Props) {
     if (posTypeFilter) p.set('option_type', posTypeFilter)
     if (posSideFilter) p.set('side', posSideFilter)
     if (posWorkingOnly) p.set('working_only', '1')
+    if (posRouteFilter) p.set('route', posRouteFilter)
+    if (posSourceFilter) p.set('source', posSourceFilter)
+    if (posPaperOnly) p.set('paper_only', '1')
     const s = p.toString()
     return s ? `?${s}` : ''
-  }, [posSymbolFilter, posTypeFilter, posSideFilter, posWorkingOnly])
+  }, [posSymbolFilter, posTypeFilter, posSideFilter, posWorkingOnly, posRouteFilter, posSourceFilter, posPaperOnly])
 
   const { data: proposals, loading: propLoading, error: propError, stale: propStale, refetch: refetchProps } =
     useApi<any>(`/api/v2/options/proposals${q}`, 300_000)
   const { data: monitor, loading: monLoading, error: monError, refetch: refetchMon } =
-    useApi<any>(`/api/v2/options/positions${posQ}`, 300_000)
+    useApi<any>(`/api/v2/options/open-positions${posQ}`, 300_000)
   const { data: overview, refetch: refetchOverview } = useApi<any>('/api/v2/options/overview', 300_000)
   const { data: execStatus } = useApi<any>('/api/v2/options/execution/status', 120_000)
   // Stage B: advisory paper-validation gate progress (deep_itm_call) — header strip
@@ -138,6 +151,7 @@ export default function OptionsHub({ onDrill }: Props) {
   const propFacets = proposals?.filter_facets ?? {}
   const posList: Position[] = Array.isArray(monitor?.positions) ? monitor.positions : []
   const posFacets = monitor?.filter_facets ?? {}
+  const monitoredCount = monitor?.monitored_count ?? 0
   const alerts = monitor?.alerts ?? []
 
   const clearPropFilters = () => {
@@ -394,7 +408,7 @@ export default function OptionsHub({ onDrill }: Props) {
               key={t}
               title={
                 t === 'Proposals' ? TAB_TIPS.proposals
-                  : t === 'Open Positions' ? TAB_TIPS.positions
+                  : t === 'Open Options' ? TAB_TIPS.positions
                     : t === 'Strategy Overview' ? TAB_TIPS.overview
                       : TAB_TIPS.trends
               }
@@ -607,23 +621,33 @@ export default function OptionsHub({ onDrill }: Props) {
         </>
       )}
 
-      {tab === 'Open Positions' && (
+      {tab === 'Open Options' && (
         <>
           <div style={{ ...panel, marginBottom: 14 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
               <input placeholder="Underlying" title={FILTERS.posTicker} value={posSymbolFilter} onChange={e => setPosSymbolFilter(e.target.value)} style={{ ...SEL, width: 80, cursor: 'help' }} />
-              <button title={FILTERS.clear} onClick={() => { setPosSymbolFilter(''); setPosTypeFilter(''); setPosSideFilter(''); setPosWorkingOnly(false) }} style={{ ...SEL, cursor: 'help', color: 'var(--text3)' }}>Clear</button>
+              <button title={FILTERS.clear} onClick={() => {
+                setPosSymbolFilter(''); setPosTypeFilter(''); setPosSideFilter('')
+                setPosWorkingOnly(false); setPosRouteFilter(''); setPosSourceFilter(''); setPosPaperOnly(false)
+              }} style={{ ...SEL, cursor: 'help', color: 'var(--text3)' }}>Clear</button>
               {monLoading && <span style={{ fontSize: 10, color: 'var(--text3)' }}>Loading…</span>}
               <span style={{ fontSize: 10, color: 'var(--text3)' }}>
-                {posList.length}{posFacets.total != null && posList.length !== posFacets.total ? ` of ${posFacets.total}` : ''} legs
+                {posList.length}{monitor?.unified_count != null && posList.length !== monitor.unified_count ? ` of ${monitor.unified_count}` : ''} legs
+                {monitoredCount > 0 ? ` · ${monitoredCount} monitored` : ''}
               </span>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <TipSection tip="Filter by leg type, route (Alpaca paper vs Schwab live), and lifecycle monitor source.">OPEN OPTIONS</TipSection>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
               {facetChip(FILTERS.posCalls, 'Calls', posFacets.by_option_type?.call, posTypeFilter === 'call', () => setPosTypeFilter(t => t === 'call' ? '' : 'call'))}
               {facetChip(FILTERS.posPuts, 'Puts', posFacets.by_option_type?.put, posTypeFilter === 'put', () => setPosTypeFilter(t => t === 'put' ? '' : 'put'))}
               {facetChip(FILTERS.posShort, 'Short / Sell', posFacets.by_side?.sell, posSideFilter === 'sell', () => setPosSideFilter(s => s === 'sell' ? '' : 'sell'), '#f59e0b')}
               {facetChip(FILTERS.posLong, 'Long / Buy', posFacets.by_side?.buy, posSideFilter === 'buy', () => setPosSideFilter(s => s === 'buy' ? '' : 'buy'), '#22c55e')}
               {facetChip(FILTERS.posWorking, 'Working', posFacets.working, posWorkingOnly, () => setPosWorkingOnly(w => !w), '#22c55e')}
+              {facetChip('Alpaca paper lifecycle positions from options_monitored_positions.', 'Paper monitored', posFacets.paper_only, posPaperOnly, () => setPosPaperOnly(v => !v), '#f59e0b')}
+              {facetChip('Schwab holdings legs from broker sync.', 'Broker', posFacets.by_source?.broker, posSourceFilter === 'broker', () => setPosSourceFilter(s => s === 'broker' ? '' : 'broker'), '#60a5fa')}
+              {facetChip('Lifecycle monitor registry (hybrid ingest).', 'Monitored', posFacets.by_source?.monitored, posSourceFilter === 'monitored', () => setPosSourceFilter(s => s === 'monitored' ? '' : 'monitored'), '#a855f7')}
+              {facetChip('Alpaca paper route only.', 'Alpaca paper', posFacets.by_route?.alpaca_paper, posRouteFilter === 'alpaca_paper', () => setPosRouteFilter(r => r === 'alpaca_paper' ? '' : 'alpaca_paper'), '#f59e0b')}
+              {facetChip('Schwab live path (2FA when armed).', 'Schwab live', posFacets.by_route?.schwab_live, posRouteFilter === 'schwab_live', () => setPosRouteFilter(r => r === 'schwab_live' ? '' : 'schwab_live'), '#22c55e')}
             </div>
           </div>
           {alerts.length > 0 && (
@@ -658,7 +682,7 @@ export default function OptionsHub({ onDrill }: Props) {
           {posList.length === 0 && !monLoading && (
             <div style={panel}>
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-                No open option legs detected on linked Schwab accounts. Short calls / puts appear here automatically when held.
+                No open options yet. Schwab legs sync from linked accounts; Alpaca paper fills appear here after reconcile via the lifecycle monitor.
               </div>
             </div>
           )}
@@ -672,7 +696,7 @@ export default function OptionsHub({ onDrill }: Props) {
                 onDrill={() => onDrill({
                   title: `${p.underlying} option leg`,
                   subtitle: p.occ_symbol || p.strategy || '',
-                  endpoint: '/api/v2/options/positions',
+                  endpoint: '/api/v2/options/open-positions',
                   rows: [p],
                   subjectType: 'options_position',
                   subjectKey: p.id,

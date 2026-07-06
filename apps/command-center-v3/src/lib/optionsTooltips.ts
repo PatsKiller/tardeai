@@ -12,7 +12,7 @@ export const HEADER = {
 
 export const TABS = {
   proposals: 'Ranked trade ideas that passed quality gates — not yet executed.',
-  positions: 'Live Schwab option legs with dynamic R:R, POP, and mature-vs-harvest guidance.',
+  positions: 'Unified open options: Schwab live legs plus Alpaca paper / monitored lifecycle positions with route badges.',
   overview: 'Desk KPIs: edge averages, income vs puts mix, open P/L, ITM/OTM counts.',
   trends: 'IV term structure, put/call skew, strike×DTE surface, and snapshot history from live Schwab chains.',
 } as const
