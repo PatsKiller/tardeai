@@ -76,20 +76,33 @@ class MonitoredFakeDB:
                 r["meta"] = {**(r.get("meta") or {}), **json.loads(patch_json)}
             return True
 
-        # monitored positions — orphan ERROR row (short INSERT)
-        if "INSERT INTO options_monitored_positions" in s and len(params) <= 7:
-            pid, broker, option_symbol, status, paper_only, live_eligible, meta_json = params
-            self.positions[pid] = {
-                "id": self._next_id,
-                "proposal_id": pid,
-                "broker": broker,
-                "option_symbol": option_symbol,
-                "status": status,
-                "paper_only": paper_only,
-                "live_eligible": live_eligible,
-                "meta_json": json.loads(meta_json) if isinstance(meta_json, str) else meta_json,
-            }
-            self._next_id += 1
+        # monitored positions — orphan ERROR row
+        if "INSERT INTO options_monitored_positions" in s and "underlying_symbol" in s and len(params) <= 11:
+            pid, broker, symbol, underlying, option_symbol, status, paper_only, live_eligible, meta_json = params[:9]
+            existing = self.positions.get(pid)
+            if existing:
+                existing.update({
+                    "option_symbol": option_symbol,
+                    "symbol": symbol or existing.get("symbol"),
+                    "underlying_symbol": underlying or existing.get("underlying_symbol"),
+                    "status": status,
+                    "meta_json": {**(existing.get("meta_json") or {}),
+                                   **(json.loads(meta_json) if isinstance(meta_json, str) else meta_json)},
+                })
+            else:
+                self.positions[pid] = {
+                    "id": self._next_id,
+                    "proposal_id": pid,
+                    "broker": broker,
+                    "symbol": symbol,
+                    "underlying_symbol": underlying,
+                    "option_symbol": option_symbol,
+                    "status": status,
+                    "paper_only": paper_only,
+                    "live_eligible": live_eligible,
+                    "meta_json": json.loads(meta_json) if isinstance(meta_json, str) else meta_json,
+                }
+                self._next_id += 1
             return True
         if "INSERT INTO options_monitored_positions" in s:
             pid = params[0]
@@ -134,6 +147,25 @@ class MonitoredFakeDB:
                 if r.get("id") == params[0]:
                     return copy.deepcopy(r)
             return None
+        if "SELECT option_symbol FROM options_monitored_positions" in s and "option_symbol IS NOT NULL" in s:
+            return [{"option_symbol": r.get("option_symbol")}
+                    for r in self.positions.values() if r.get("option_symbol")]
+        if "JOIN options_monitored_positions" in s and "options_monitored_alerts" in s:
+            return None
+        if "FROM options_approval_queue" in s and "ILIKE" in s:
+            needle = str((params or [""])[0]).strip("%").upper()
+            out = []
+            for r in self.queue.values():
+                blob = json.dumps(r).upper()
+                if needle in blob:
+                    out.append(copy.deepcopy(r))
+            return out
+        if "FROM options_approval_queue" in s and "status LIKE 'ALPACA_PAPER" in s:
+            return [copy.deepcopy(r) for r in self.queue.values()
+                    if str(r.get("status") or "").startswith("ALPACA_PAPER")]
+        if "FROM options_approval_queue" in s and "alpaca_json" in s:
+            return [copy.deepcopy(r) for r in self.queue.values()
+                    if "alpaca_json" in json.dumps(r.get("meta") or {})]
         if s.startswith("UPDATE options_monitored_positions"):
             pid = params[2] if "closed_reason" in str(params[1]) else params[-1]
             if "closed_reason" in str(params[1]):
@@ -141,7 +173,7 @@ class MonitoredFakeDB:
                 r = self.positions.get(pid)
                 if r and r.get("status") == pp.STATUS_OPEN:
                     r["status"] = pp.STATUS_CLOSED
-                    return True
+                    return {"id": r["id"]} if "RETURNING" in s else True
                 return None
             return True
         if "INSERT INTO options_monitored_position_snapshots" in s:
@@ -200,12 +232,38 @@ def test_mark_closed_updates_open_position():
     assert db.positions[RTX_PROPOSAL["id"]]["status"] == pp.STATUS_CLOSED
 
 
+def test_underlying_from_occ_parses_root():
+    assert pp.underlying_from_occ(OCC) == "RTX"
+    assert pp.underlying_from_occ("") == ""
+
+
 def test_upsert_orphan_error_creates_error_row():
     db = MonitoredFakeDB()
     res = pp.upsert_orphan_error(option_symbol=OCC, broker="alpaca",
                                  message="no queue lineage", executor=db)
-    assert res["ok"] and res["status"] == pp.STATUS_ERROR
-    assert f"orphan_alpaca_{OCC}" in db.positions
+    assert res["ok"] and res["status"] == pp.STATUS_ERROR and res.get("created")
+    row = db.positions[f"orphan_alpaca_{OCC}"]
+    assert row["underlying_symbol"] == "RTX"
+
+
+def test_orphan_scan_links_pending_queue_row_not_error(monkeypatch):
+    fill_meta = {
+        "alpaca_json": {
+            "request": {"symbol": OCC},
+            "fill": {"price": 40.10, "filled_at": "2026-07-06T14:31:00Z"},
+        }}
+    row = _queue_row("pending", fill_meta)
+    db = MonitoredFakeDB(queue_rows=[row])
+
+    class FakeClient:
+        def list_positions(self):
+            return [{"symbol": OCC, "asset_class": "us_option"}]
+
+    report: dict = {"warnings": []}
+    ap._scan_alpaca_orphan_positions(FakeClient(), db, report)
+    assert RTX_PROPOSAL["id"] in db.positions
+    assert db.positions[RTX_PROPOSAL["id"]]["status"] == pp.STATUS_OPEN
+    assert not report.get("orphans")
 
 
 # ── P/L + advisory ────────────────────────────────────────────────────────────
@@ -281,7 +339,7 @@ def test_dispatch_alert_writes_ui_and_telegram(monkeypatch):
 def test_dispatch_alert_dedupes_telegram(monkeypatch):
     db = MonitoredFakeDB()
 
-    def fake_dedupe(position_id, alert_type, *, cfg, executor):
+    def fake_dedupe(position_id, alert_type, *, cfg, executor, option_symbol=None, proposal_id=None):
         return True
 
     monkeypatch.setattr(ppa, "should_dedupe_telegram", fake_dedupe)

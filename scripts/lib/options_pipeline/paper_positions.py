@@ -6,6 +6,7 @@ Multi-broker fields (Alpaca first). Advisory only — never submits orders.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
@@ -43,6 +44,15 @@ def _proposal_json(row: dict) -> dict:
         except (ValueError, TypeError):
             pj = {}
     return pj or {}
+
+
+def underlying_from_occ(option_symbol: str | None) -> str:
+    """Parse OCC root symbol, e.g. RTX260918C00160000 → RTX."""
+    occ = str(option_symbol or "").strip().upper()
+    if not occ:
+        return ""
+    m = re.match(r"^([A-Z]{1,6})", occ)
+    return m.group(1) if m else ""
 
 
 def _alpaca_meta(row: dict) -> dict:
@@ -229,14 +239,16 @@ def mark_closed(
     executor: Optional[Executor] = None,
 ) -> dict:
     ex = executor or _default_executor()
-    res = ex(
+    row = ex(
         """UPDATE options_monitored_positions
            SET status = %s, updated_at = NOW(),
                meta_json = meta_json || %s::jsonb
-           WHERE proposal_id = %s AND status = %s""",
+           WHERE proposal_id = %s AND status = %s
+           RETURNING id""",
         (STATUS_CLOSED, json.dumps({"closed_reason": reason, "closed_at": _now_iso()}),
-         proposal_id, STATUS_OPEN))
-    return {"ok": bool(res), "proposal_id": proposal_id}
+         proposal_id, STATUS_OPEN), fetch="one")
+    return {"ok": bool(row), "changed": bool(row), "proposal_id": proposal_id,
+            "position_id": row["id"] if row else None}
 
 
 def upsert_orphan_error(
@@ -245,23 +257,30 @@ def upsert_orphan_error(
     broker: str,
     message: str,
     executor: Optional[Executor] = None,
+    send_alert: bool = True,
 ) -> dict:
     """Broker position with no queue lineage → ERROR row for operator review."""
     ex = executor or _default_executor()
-    pid = f"orphan_{broker}_{option_symbol}"
+    occ = str(option_symbol or "").strip().upper()
+    pid = f"orphan_{broker}_{occ}"
+    existed = get_position_by_proposal(pid, executor=ex) is not None
+    root = underlying_from_occ(occ)
     ex(
         """INSERT INTO options_monitored_positions (
-            proposal_id, broker, option_symbol, status, paper_only, live_eligible,
-            meta_json, opened_at
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,NOW())
+            proposal_id, broker, symbol, underlying_symbol, option_symbol,
+            status, paper_only, live_eligible, meta_json, opened_at
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,NOW())
         ON CONFLICT (proposal_id) DO UPDATE SET
+            option_symbol = EXCLUDED.option_symbol,
+            symbol = COALESCE(NULLIF(options_monitored_positions.symbol, ''), EXCLUDED.symbol),
+            underlying_symbol = COALESCE(NULLIF(options_monitored_positions.underlying_symbol, ''), EXCLUDED.underlying_symbol),
             status = EXCLUDED.status,
             meta_json = options_monitored_positions.meta_json || EXCLUDED.meta_json,
             updated_at = NOW()""",
-        (pid, broker, option_symbol, STATUS_ERROR, True, False,
+        (pid, broker, root or None, root or None, occ, STATUS_ERROR, True, False,
          json.dumps({"orphan": True, "message": message}, default=str)))
     pos = get_position_by_proposal(pid, executor=ex)
-    if pos:
+    if pos and send_alert and not existed:
         try:
             from lib.options_pipeline import paper_position_alerts as ppa
             from lib.options_pipeline.paper_position_monitor import load_config
@@ -270,4 +289,5 @@ def upsert_orphan_error(
                 cfg=load_config(), executor=ex)
         except Exception:
             pass
-    return {"ok": True, "proposal_id": pid, "status": STATUS_ERROR}
+    return {"ok": True, "proposal_id": pid, "status": STATUS_ERROR,
+            "created": not existed}

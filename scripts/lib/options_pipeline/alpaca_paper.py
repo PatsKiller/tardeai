@@ -1000,40 +1000,111 @@ def _ensure_monitored_registry(row: dict, ex: Executor,
         report["warnings"].append(f"{pid}: registry backfill error: {e}")
 
 
+def _parse_row_meta(meta: Any) -> dict:
+    if isinstance(meta, dict):
+        return meta
+    if isinstance(meta, str):
+        try:
+            return json.loads(meta) or {}
+        except (ValueError, TypeError):
+            return {}
+    return {}
+
+
+def _parse_row_proposal_json(row: dict) -> dict:
+    pj = row.get("proposal_json") or row.get("proposal") or {}
+    if isinstance(pj, str):
+        try:
+            pj = json.loads(pj)
+        except (ValueError, TypeError):
+            pj = {}
+    return pj or {}
+
+
+def _occ_symbols_from_queue_row(row: dict) -> set[str]:
+    """All OCC symbols attributable to a queue row (any status, incl. pending + fill meta)."""
+    occs: set[str] = set()
+    meta = _parse_row_meta(row.get("meta"))
+    aj = (meta or {}).get("alpaca_json") or {}
+    for blob in (aj.get("request"), aj.get("response"), aj.get("fill")):
+        if isinstance(blob, dict):
+            sym = str(blob.get("symbol") or "").strip().upper()
+            if sym:
+                occs.add(sym)
+    pj = _parse_row_proposal_json(row)
+    try:
+        built = build_occ_symbol(
+            pj.get("symbol") or row.get("symbol") or "",
+            pj.get("expiration") or row.get("expiration") or "",
+            pj.get("strike") or row.get("strike") or 0,
+            pj.get("option_type") or row.get("option_type") or "call",
+        )
+        if built:
+            occs.add(built.upper())
+    except (OrderPolicyError, ValueError, TypeError):
+        pass
+    return occs
+
+
+def _collect_known_occ_symbols(ex: Executor) -> set[str]:
+    """Union of OCC symbols already linked in registry or desk queue."""
+    from lib.options_pipeline import paper_positions as pp
+    known: set[str] = set()
+    rows = ex(
+        """SELECT option_symbol FROM options_monitored_positions
+           WHERE option_symbol IS NOT NULL AND option_symbol <> ''""",
+        fetch="all") or []
+    for r in rows:
+        occ = str(r.get("option_symbol") or "").strip().upper()
+        if occ:
+            known.add(occ)
+    # Desk lineage counts only once the row is in the Alpaca lifecycle — pending rows
+    # with fill blobs are linked by _try_link_alpaca_occ_to_queue, not pre-marked known.
+    queue_rows = ex(
+        """SELECT proposal_id, symbol, meta, proposal_json, strike, expiration, option_type
+           FROM options_approval_queue
+           WHERE status LIKE 'ALPACA_PAPER%%'""",
+        fetch="all") or []
+    for qr in queue_rows:
+        known.update(_occ_symbols_from_queue_row(qr))
+    return known
+
+
+def _try_link_alpaca_occ_to_queue(
+    occ: str,
+    ex: Executor,
+    report: Dict[str, Any],
+) -> bool:
+    """Match Alpaca OCC to a desk row and backfill monitored registry when possible."""
+    from lib.options_pipeline import paper_positions as pp
+    target = occ.strip().upper()
+    if not target:
+        return False
+    rows = ex(
+        """SELECT proposal_id, symbol, status, meta, proposal_json, strike, expiration, option_type
+           FROM options_approval_queue
+           WHERE meta::text ILIKE %s
+              OR status LIKE 'ALPACA_PAPER%%'""",
+        (f"%{target}%",), fetch="all") or []
+    for row in rows:
+        if target not in _occ_symbols_from_queue_row(row):
+            continue
+        res = pp.ensure_monitored_for_filled_queue_row(row, executor=ex)
+        if res.get("ok"):
+            report.setdefault("linked_positions", []).append(res)
+            return True
+    return False
+
+
 def _scan_alpaca_orphan_positions(
     cl: AlpacaPaperOptionsClient,
     ex: Executor,
     report: Dict[str, Any],
 ) -> None:
-    """Alpaca option leg with no queue/monitored lineage → ERROR row."""
+    """Alpaca option leg with no queue/monitored lineage → ERROR row (alert once)."""
     try:
         from lib.options_pipeline import paper_positions as pp
-        known_occs: set[str] = set()
-        rows = ex(
-            """SELECT option_symbol FROM options_monitored_positions
-               WHERE status IN ('OPEN', 'ERROR') AND option_symbol IS NOT NULL""",
-            fetch="all") or []
-        for r in rows:
-            occ = str(r.get("option_symbol") or "").strip()
-            if occ:
-                known_occs.add(occ.upper())
-        queue_rows = ex(
-            """SELECT proposal_id, meta FROM options_approval_queue
-               WHERE status IN ('ALPACA_PAPER_FILLED', 'ALPACA_PAPER_SUBMITTED',
-                                'ALPACA_PAPER_CLOSED')""",
-            fetch="all") or []
-        for qr in queue_rows:
-            meta = qr.get("meta") or {}
-            if isinstance(meta, str):
-                try:
-                    meta = json.loads(meta)
-                except (ValueError, TypeError):
-                    meta = {}
-            aj = (meta or {}).get("alpaca_json") or {}
-            req = aj.get("request") or {}
-            occ = str(req.get("symbol") or "").strip()
-            if occ:
-                known_occs.add(occ.upper())
+        known_occs = _collect_known_occ_symbols(ex)
         for pos in cl.list_positions():
             sym = str(pos.get("symbol") or "").strip().upper()
             if not sym or len(sym) < 10:
@@ -1043,14 +1114,17 @@ def _scan_alpaca_orphan_positions(
                 continue
             if sym in known_occs:
                 continue
+            if _try_link_alpaca_occ_to_queue(sym, ex, report):
+                known_occs.add(sym)
+                continue
             res = pp.upsert_orphan_error(
                 option_symbol=sym, broker="alpaca",
                 message="Alpaca paper option leg has no desk queue lineage",
-                executor=ex)
+                executor=ex, send_alert=True)
             report.setdefault("orphans", []).append(res)
             known_occs.add(sym)
     except Exception as e:
-        report["warnings"].append(f"orphan scan skipped: {e}")
+        report.setdefault("warnings", []).append(f"orphan scan skipped: {e}")
 
 
 def _sync_monitored_on_fill(row: dict, fill: dict, ex: Executor,
@@ -1091,20 +1165,21 @@ def _sync_monitored_on_close(proposal_id: str, ex: Executor,
     try:
         from lib.options_pipeline import paper_positions as pp
         res = pp.mark_closed(proposal_id, reason="broker_reconcile", executor=ex)
-        if not res.get("ok"):
-            report["warnings"].append(
-                f"{proposal_id}: monitored position close mark failed")
-        else:
-            report.setdefault("monitored_positions", []).append(res)
-            pos = pp.get_position_by_proposal(proposal_id, executor=ex)
-            if pos:
-                from lib.options_pipeline import paper_position_alerts as ppa
-                from lib.options_pipeline.paper_position_monitor import load_config
-                alert = ppa.dispatch_lifecycle_alert(
-                    pos, alert_type=ppa.LIFECYCLE_CLOSED,
-                    message="Broker reconcile detected close — outcome ready",
-                    cfg=load_config(), executor=ex, extra={"pnl": pnl})
-                report.setdefault("alerts", []).append(alert)
+        if not res.get("changed"):
+            if not res.get("ok"):
+                report["warnings"].append(
+                    f"{proposal_id}: monitored position close mark failed (no OPEN row)")
+            return
+        report.setdefault("monitored_positions", []).append(res)
+        pos = pp.get_position_by_proposal(proposal_id, executor=ex)
+        if pos:
+            from lib.options_pipeline import paper_position_alerts as ppa
+            from lib.options_pipeline.paper_position_monitor import load_config
+            alert = ppa.dispatch_lifecycle_alert(
+                pos, alert_type=ppa.LIFECYCLE_CLOSED,
+                message="Broker reconcile detected close — outcome ready",
+                cfg=load_config(), executor=ex, extra={"pnl": pnl})
+            report.setdefault("alerts", []).append(alert)
     except Exception as e:
         report["warnings"].append(
             f"{proposal_id}: monitored position close error: {e}")

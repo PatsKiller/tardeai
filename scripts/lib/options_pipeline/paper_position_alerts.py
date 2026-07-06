@@ -35,6 +35,16 @@ def _f(v: Any, default: float = 0.0) -> float:
     return default if x != x else x
 
 
+def _display_symbol(position: dict) -> str:
+    """Underlying for Telegram — fall back to OCC root when registry row is sparse."""
+    sym = str(position.get("underlying_symbol") or position.get("symbol") or "").strip().upper()
+    if sym and sym != "?":
+        return sym
+    from lib.options_pipeline.paper_positions import underlying_from_occ
+    occ = str(position.get("option_symbol") or "")
+    return underlying_from_occ(occ) or sym or "?"
+
+
 def panel_url() -> str:
     try:
         from notification_url_builder import build_dashboard_url
@@ -55,7 +65,7 @@ def format_telegram_message(
     extra: dict | None = None,
 ) -> str:
     """Build operator-facing Telegram body (routed via telegram_alert)."""
-    sym = str(position.get("underlying_symbol") or position.get("symbol") or "?").upper()
+    sym = _display_symbol(position)
     strat = str(position.get("strategy") or "options").replace("_", " ")
     route = str(position.get("execution_route") or "review").replace("_", " ")
     label = advice_label or alert_type.replace("_", " ").upper()
@@ -116,6 +126,8 @@ def should_dedupe_telegram(
     *,
     cfg: dict,
     executor: Executor,
+    option_symbol: str | None = None,
+    proposal_id: str | None = None,
 ) -> bool:
     """True when an equivalent alert was sent recently (skip duplicate Telegram)."""
     minutes = int(cfg.get("telegram_dedupe_minutes") or 60)
@@ -125,7 +137,25 @@ def should_dedupe_telegram(
              AND created_at > NOW() - (%s || ' minutes')::interval
            ORDER BY created_at DESC LIMIT 1""",
         (position_id, alert_type, str(minutes)), fetch="one")
-    return bool(row)
+    if row:
+        return True
+    occ = str(option_symbol or "").strip().upper()
+    pid = str(proposal_id or "").strip()
+    if occ:
+        row = executor(
+            """SELECT a.id FROM options_monitored_alerts a
+               JOIN options_monitored_positions p ON p.id = a.position_id
+               WHERE a.alert_type = %s
+                 AND a.created_at > NOW() - (%s || ' minutes')::interval
+                 AND (
+                   UPPER(COALESCE(p.option_symbol, '')) = %s
+                   OR a.meta_json->>'proposal_id' = %s
+                 )
+               ORDER BY a.created_at DESC LIMIT 1""",
+            (alert_type, str(minutes), occ, pid or None), fetch="one")
+        if row:
+            return True
+    return False
 
 
 def write_db_alert(
@@ -139,6 +169,7 @@ def write_db_alert(
 ) -> None:
     payload = {
         "proposal_id": position.get("proposal_id"),
+        "option_symbol": position.get("option_symbol"),
         **(meta or {}),
     }
     executor(
@@ -191,7 +222,11 @@ def dispatch_alert(
         return out
 
     pos_id = int(position.get("id") or 0)
-    if pos_id and should_dedupe_telegram(pos_id, alert_type, cfg=cfg, executor=executor):
+    if pos_id and should_dedupe_telegram(
+        pos_id, alert_type, cfg=cfg, executor=executor,
+        option_symbol=str(position.get("option_symbol") or ""),
+        proposal_id=str(position.get("proposal_id") or ""),
+    ):
         out["deduped"] = True
         return out
 
@@ -239,5 +274,5 @@ def dispatch_lifecycle_alert(
     res = dispatch_alert(
         position, alert_type, message,
         severity=severity, cfg=config, executor=ex,
-        extra=extra, force_telegram=alert_type in (LIFECYCLE_FILLED, LIFECYCLE_ORPHAN))
+        extra=extra, force_telegram=alert_type == LIFECYCLE_FILLED)
     return {"ok": True, **res}
