@@ -1070,6 +1070,35 @@ def _collect_known_occ_symbols(ex: Executor) -> set[str]:
     return known
 
 
+def _desk_rows_for_occ(occ: str, ex: Executor) -> list[dict]:
+    """Queue rows that may own this OCC (meta audit, Alpaca lifecycle, or desk proposal)."""
+    from lib.options_pipeline.paper_positions import underlying_from_occ
+    target = occ.strip().upper()
+    if not target:
+        return []
+    rows = ex(
+        """SELECT proposal_id, symbol, status, meta, proposal_json
+           FROM options_approval_queue
+           WHERE meta::text ILIKE %s
+              OR status LIKE 'ALPACA_PAPER%%'""",
+        (f"%{target}%",), fetch="all") or []
+    seen = {r.get("proposal_id") for r in rows}
+    root = underlying_from_occ(target)
+    if root:
+        desk_rows = ex(
+            """SELECT proposal_id, symbol, status, meta, proposal_json
+               FROM options_approval_queue
+               WHERE UPPER(COALESCE(symbol, '')) = %s
+                 AND status IN ('pending', 'approved', 'blocked')""",
+            (root,), fetch="all") or []
+        for row in desk_rows:
+            pid = row.get("proposal_id")
+            if pid not in seen:
+                rows.append(row)
+                seen.add(pid)
+    return rows
+
+
 def _try_link_alpaca_occ_to_queue(
     occ: str,
     ex: Executor,
@@ -1080,15 +1109,20 @@ def _try_link_alpaca_occ_to_queue(
     target = occ.strip().upper()
     if not target:
         return False
-    rows = ex(
-        """SELECT proposal_id, symbol, status, meta, proposal_json
-           FROM options_approval_queue
-           WHERE meta::text ILIKE %s
-              OR status LIKE 'ALPACA_PAPER%%'""",
-        (f"%{target}%",), fetch="all") or []
-    for row in rows:
+    for row in _desk_rows_for_occ(target, ex):
         if target not in _occ_symbols_from_queue_row(row):
             continue
+        aj = _alpaca_meta(row)
+        fill = dict(aj.get("fill") or {})
+        if fill.get("price") is None and fill.get("net_debit") is None:
+            # Desk lineage exists — suppress orphan even before fill meta is written.
+            report.setdefault("linked_positions", []).append({
+                "proposal_id": row.get("proposal_id"),
+                "linked": True,
+                "registry": False,
+                "reason": "desk_lineage_no_fill_meta",
+            })
+            return True
         res = pp.ensure_monitored_for_filled_queue_row(row, executor=ex)
         if res.get("ok"):
             report.setdefault("linked_positions", []).append(res)

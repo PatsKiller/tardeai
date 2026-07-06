@@ -163,6 +163,11 @@ class MonitoredFakeDB:
         if "FROM options_approval_queue" in s and "status LIKE 'ALPACA_PAPER" in s:
             return [copy.deepcopy(r) for r in self.queue.values()
                     if str(r.get("status") or "").startswith("ALPACA_PAPER")]
+        if "FROM options_approval_queue" in s and "status IN ('pending'" in s:
+            root = str((params or [""])[0]).upper()
+            return [copy.deepcopy(r) for r in self.queue.values()
+                    if str(r.get("status") or "") in ("pending", "approved", "blocked")
+                    and str(r.get("symbol") or "").upper() == root]
         if "FROM options_approval_queue" in s and "alpaca_json" in s:
             return [copy.deepcopy(r) for r in self.queue.values()
                     if "alpaca_json" in json.dumps(r.get("meta") or {})]
@@ -244,6 +249,22 @@ def test_upsert_orphan_error_creates_error_row():
     assert res["ok"] and res["status"] == pp.STATUS_ERROR and res.get("created")
     row = db.positions[f"orphan_alpaca_{OCC}"]
     assert row["underlying_symbol"] == "RTX"
+
+
+def test_orphan_scan_links_pending_proposal_json_without_meta_occ(monkeypatch):
+    """Desk row with OCC only in proposal_json (no alpaca_json) must not ORPHAN."""
+    row = _queue_row("pending", {"prime_json": {"symbol": "RTX"}})
+    db = MonitoredFakeDB(queue_rows=[row])
+
+    class FakeClient:
+        def list_positions(self):
+            return [{"symbol": OCC, "asset_class": "us_option"}]
+
+    report: dict = {"warnings": []}
+    ap._scan_alpaca_orphan_positions(FakeClient(), db, report)
+    assert not report.get("orphans")
+    assert report.get("linked_positions")
+    assert f"orphan_alpaca_{OCC}" not in db.positions
 
 
 def test_orphan_scan_links_pending_queue_row_not_error(monkeypatch):
@@ -334,6 +355,20 @@ def test_dispatch_alert_writes_ui_and_telegram(monkeypatch):
     assert out["ui"] and out["telegram"]
     assert len(db.alerts) == 1
     assert ppa.ALERT_PREFIX in sent[0]
+
+
+def test_lifecycle_alert_dedupe_skips_ui_and_telegram(monkeypatch):
+    db = MonitoredFakeDB()
+    monkeypatch.setattr(ppa, "should_dedupe_telegram", lambda *a, **k: True)
+    monkeypatch.setattr(ppa, "send_telegram", lambda m: True)
+    pos = {"id": 5, "proposal_id": RTX_PROPOSAL["id"], "symbol": "RTX",
+           "option_symbol": OCC, "underlying_symbol": "RTX",
+           "strategy": "deep_itm_call", "execution_route": "alpaca_paper", "broker": "alpaca"}
+    cfg = {"alert_ui_enabled": True, "alert_telegram_enabled": True}
+    out = ppa.dispatch_alert(pos, ppa.LIFECYCLE_FILLED, "filled", cfg=cfg, executor=db,
+                             extra={"fill_price": 40.10}, force_telegram=True)
+    assert out["deduped"] and not out["ui"] and not out["telegram"]
+    assert not db.alerts
 
 
 def test_dispatch_alert_dedupes_telegram(monkeypatch):

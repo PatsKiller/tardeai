@@ -17,6 +17,10 @@ LIFECYCLE_FILLED = "alpaca_paper_filled"
 LIFECYCLE_CLOSED = "alpaca_paper_closed"
 LIFECYCLE_ORPHAN = "orphan_error"
 
+_LIFECYCLE_ALERT_TYPES = frozenset({
+    LIFECYCLE_FILLED, LIFECYCLE_CLOSED, LIFECYCLE_ORPHAN,
+})
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -212,6 +216,16 @@ def dispatch_alert(
         out["dry_run"] = True
         return out
 
+    pos_id = int(position.get("id") or 0)
+    deduped = bool(pos_id and should_dedupe_telegram(
+        pos_id, alert_type, cfg=cfg, executor=executor,
+        option_symbol=str(position.get("option_symbol") or ""),
+        proposal_id=str(position.get("proposal_id") or ""),
+    ))
+    if deduped and alert_type in _LIFECYCLE_ALERT_TYPES:
+        out["deduped"] = True
+        return out
+
     meta = {"advice_label": advice_label, **(extra or {})}
     if is_ui_enabled(cfg):
         write_db_alert(position, alert_type, message, severity=severity,
@@ -221,12 +235,7 @@ def dispatch_alert(
     if not is_telegram_enabled(cfg) and not force_telegram:
         return out
 
-    pos_id = int(position.get("id") or 0)
-    if pos_id and should_dedupe_telegram(
-        pos_id, alert_type, cfg=cfg, executor=executor,
-        option_symbol=str(position.get("option_symbol") or ""),
-        proposal_id=str(position.get("proposal_id") or ""),
-    ):
+    if deduped:
         out["deduped"] = True
         return out
 
