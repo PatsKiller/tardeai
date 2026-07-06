@@ -153,7 +153,10 @@ export default function WatchlistCardV4({
   const confNum = it.research_confidence != null
     ? Number(it.research_confidence)
     : (it.hermes_score_components?._confidence != null ? Number(it.hermes_score_components._confidence) : null)
-  const validatedVal = ago(it.entry_planned_at) || ago(it.last_validated_at) || null
+  // CIO-row chip: this is the SYNTHESIS age (the CIO verdict's own validation), not the entry
+  // plan's — entry_planned_at here made a 5d-old plan masquerade as a stale CIO check while the
+  // synthesis was actually 2d fresh (MRLN audit 2026-07-06). Plan age lives in the plan section.
+  const validatedVal = ago(it.synthesis_updated_at) || ago(it.entry_planned_at) || ago(it.last_validated_at) || null
 
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const [ladderOpen, setLadderOpen] = useState(false)
@@ -464,7 +467,7 @@ export default function WatchlistCardV4({
           {it.models_agree === true && <span style={{ color: WL.text.dim }}>Grok + ChatGPT agree</span>}
           {it.models_agree === false && <span style={{ color: WL.signal.amber, fontWeight: 700 }}>models split</span>}
           {validatedVal && <span style={{ color: WL.text.dim }}>validated {validatedVal}</span>}
-          {it.entry_model && <span style={{ color: WL.text.dim }}>{String(it.entry_model)}</span>}
+          {(it.cio_model_used || it.entry_model) && <span style={{ color: WL.text.dim }}>{String(it.cio_model_used || it.entry_model)}</span>}
           <span title={dqTip} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.secondary, marginLeft: 'auto' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: dqColor, flex: 'none' }} />
             {dqText}

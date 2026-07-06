@@ -174,7 +174,8 @@ export default function WatchlistCard({
   const confNum = it.research_confidence != null
     ? Number(it.research_confidence)
     : (it.hermes_score_components?._confidence != null ? Number(it.hermes_score_components._confidence) : null)
-  const validatedVal = ago(it.entry_planned_at) || ago(it.last_validated_at) || null
+  // synthesis age first — the CIO row's "validated" is the CIO check, not the entry plan (v4 parity)
+  const validatedVal = ago(it.synthesis_updated_at) || ago(it.entry_planned_at) || ago(it.last_validated_at) || null
 
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const [ladderOpen, setLadderOpen] = useState(false)
@@ -299,7 +300,7 @@ export default function WatchlistCard({
   const convictionMeta = [
     it.models_agree === true ? 'Grok + ChatGPT agree' : it.models_agree === false ? 'models split' : null,
     validatedVal ? `validated ${validatedVal}` : null,
-    it.entry_model ? `${it.entry_model}` : null,
+    (it.cio_model_used || it.entry_model) ? `${it.cio_model_used || it.entry_model}` : null,
   ].filter(Boolean).join(' · ')
   const confBand = confNum == null ? null : confNum >= 0.7 ? 'High' : confNum >= 0.5 ? 'Moderate' : 'Low'
   const confColor = confNum == null ? WL.text.dim : confNum >= 0.7 ? WL.signal.teal : confNum >= 0.5 ? WL.signal.amber : WL.signal.red

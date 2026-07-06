@@ -229,7 +229,8 @@
       "schwab_ingest.log",
       "journal_review.log",
       "journal_annotation_reminder.log",
-      "journal_tilt_hook.log"
+      "journal_tilt_hook.log",
+      "entry_planner.log"
     ]
   }
 }
