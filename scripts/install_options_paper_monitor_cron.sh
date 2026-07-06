@@ -6,30 +6,49 @@ PROJ="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
 MARKER="# BEGIN options-paper-lifecycle-cron"
 END="# END options-paper-lifecycle-cron"
 
-LINES=(
-  "# Options desk pipeline (proposals + Schwab legs + lifecycle hook via run_options_monitor.py)"
+# Job lines only — no free-form comment lines inside the block (some cron builds
+# mis-parse "# word ..." as a schedule when stdin/newline glitches occur).
+JOB_LINES=(
   "35,45,55 9 * * 1-5 cd $PROJ && bash $PROJ/linux_launchers/run_options_monitor.sh"
   "*/10 10-15 * * 1-5 cd $PROJ && bash $PROJ/linux_launchers/run_options_monitor.sh"
   "5 16 * * 1-5 cd $PROJ && bash $PROJ/linux_launchers/run_options_monitor.sh"
-  "# Alpaca paper options reconcile (hourly market hours — fills/closes → monitored registry)"
   "0 10-15 * * 1-5 cd $PROJ && bash $PROJ/linux_launchers/reconcile_alpaca_paper_options.sh"
-  "# After-hours lifecycle snapshot (advisory marks when after_hours_snapshot enabled)"
   "10 17 * * 1-5 cd $PROJ && bash $PROJ/linux_launchers/run_options_paper_position_monitor.sh"
 )
 
 TMP=$(mktemp)
+OUT=$(mktemp)
+trap 'rm -f "$TMP" "$OUT"' EXIT
+
+# Strip prior installs of this block and standalone launcher lines.
 crontab -l 2>/dev/null | grep -v "$MARKER" | grep -v "$END" \
   | grep -v 'linux_launchers/run_options_monitor.sh' \
   | grep -v 'linux_launchers/run_options_paper_position_monitor.sh' \
   | grep -v 'linux_launchers/reconcile_alpaca_paper_options.sh' \
   > "$TMP" || true
+
+# Guarantee trailing newline so the next block cannot glue to the last job line.
+printf '%s\n' "$(cat "$TMP")" > "$OUT"
+mv "$OUT" "$TMP"
+
 {
   cat "$TMP"
-  echo "$MARKER"
-  for ln in "${LINES[@]}"; do echo "$ln"; done
-  echo "$END"
-} | crontab -
-rm -f "$TMP"
+  printf '%s\n' "$MARKER"
+  for ln in "${JOB_LINES[@]}"; do printf '%s\n' "$ln"; done
+  printf '%s\n' "$END"
+} > "$OUT"
+
+# Validate before install (cronie/GNU cron); fall back to direct install.
+if crontab -T "$OUT" >/dev/null 2>&1; then
+  crontab "$OUT"
+elif crontab "$OUT" 2>/dev/null; then
+  :
+else
+  echo "REFUSED: generated crontab failed validation. Inspect: $OUT" >&2
+  echo "First lines around the new block:" >&2
+  grep -n -A6 -B2 "$MARKER" "$OUT" >&2 || tail -20 "$OUT" >&2
+  exit 1
+fi
 
 chmod +x "$PROJ/linux_launchers/run_options_paper_position_monitor.sh" \
          "$PROJ/linux_launchers/reconcile_alpaca_paper_options.sh" \
@@ -50,4 +69,4 @@ else
 fi
 
 echo "Installed options paper lifecycle cron:"
-crontab -l | grep -A12 "$MARKER"
+crontab -l | grep -A8 "$MARKER"
