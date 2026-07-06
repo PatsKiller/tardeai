@@ -186,6 +186,9 @@ def write_db_alert(
 
 
 def send_telegram(message: str) -> bool:
+    import os
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
     try:
         from telegram_alert import send_telegram as _send
         return bool(_send(message))
