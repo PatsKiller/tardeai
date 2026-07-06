@@ -7,10 +7,11 @@ import HermesSoulEditor, { PROFILE_LABELS } from '../components/HermesSoulEditor
 import { EvidenceBlock } from '../components/EvidenceBlock'
 import HermesClosedLoopPanel from '../components/HermesClosedLoopPanel'
 import HermesDiscoveryInbox from '../components/HermesDiscoveryInbox'
+import PrivateProxyCard from '../components/PrivateProxyCard'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const FLEETS = ['Research Fleet', 'Momentum Scalp Swarm'] as const
-const TABS = ['Overview', 'Discovery', 'Closed Loop', 'Workflow', 'Maturity', 'Provenance', 'Sources', 'Research', 'Dual Opinion', 'Pipeline'] as const
+const TABS = ['Overview', 'Discovery', 'Proxy Cards', 'Closed Loop', 'Workflow', 'Maturity', 'Provenance', 'Sources', 'Research', 'Dual Opinion', 'Pipeline'] as const
 const SCALP_TABS = ['Overview', 'Workflow', 'Getting Started'] as const
 
 const MATURITY_COLOR: Record<string, string> = {
@@ -670,6 +671,10 @@ export default function HermesHub({ onDrill }: Props) {
 
       {!isScalp && tab === 'Discovery' && (
         <HermesDiscoveryInbox />
+      )}
+
+      {!isScalp && tab === 'Proxy Cards' && (
+        <PrivateProxyCard />
       )}
 
       {!isScalp && tab === 'Closed Loop' && (
