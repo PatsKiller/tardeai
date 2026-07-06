@@ -426,8 +426,12 @@ def _broker_protective_stops(accounts):
     import datetime as _dt
     out = {}
     # Alpaca paper account uses its own trading API (not Schwab) — pull its live SELL stops too so paper
-    # positions count as broker-protected on the same canonical footing. Only when a paper acct is requested.
-    if any("alpaca" in (a or "").lower() for a in (accounts or [])):
+    # positions count as broker-protected on the same canonical footing. Only when a paper acct is
+    # requested. The paper ledger's account key is TRADEAI_AUTOMATED (renamed from ALPACA_PAPER) —
+    # matching on "alpaca" alone left this entire branch dead (AGNC audit 2026-07-06).
+    _wants_paper = any(("alpaca" in (a or "").lower() or "tradeai" in (a or "").lower())
+                       for a in (accounts or []))
+    if _wants_paper:
         try:
             out.update(_alpaca_protective_stops())
         except Exception:
@@ -438,11 +442,25 @@ def _broker_protective_stops(accounts):
         _fetched = _dt.datetime.now(_dt.timezone.utc).isoformat()
         _BSTOP_CACHE.update(ts=time.time(), map=out, key=_ckey, fetched_at=_fetched)
         return out
+    read_ok = set()
+    # _ASTOP_CACHE.fetched_at is stamped ONLY on a successful Alpaca fetch — a verified-EMPTY read
+    # (no stops working) still counts as verified, which is exactly the AGNC case
+    if (_wants_paper
+            and _ASTOP_CACHE.get("fetched_at") and time.time() - _ASTOP_CACHE.get("ts", 0) < 120):
+        read_ok.add(_norm_acct("alpaca_paper"))   # bounded: a stale success must not vouch during an outage
     for acct in accounts:
         try:
             raw = st.get_orders_raw(acct)   # RAW so we capture trailing fields (offset/link), not just a fixed price
             if not isinstance(raw, list):
-                continue  # dict ⇒ NOT_PROVEN/degraded/error — skip this account, keep others
+                # holdings and the Schwab transport disagree on the _ira suffix (holdings say
+                # schwab_roth, transport only resolves schwab_roth_ira) — retry the alias, or roth
+                # stops are invisible HERE while the stops audit flags the same order ORPHANED
+                # under the other key (V #1006999472019 audit, 2026-07-06)
+                _alias = acct[:-4] if str(acct).endswith("_ira") else f"{acct}_ira"
+                raw = st.get_orders_raw(_alias)
+                if not isinstance(raw, list):
+                    continue  # dict ⇒ NOT_PROVEN/degraded/error — skip this account, keep others
+            read_ok.add(_norm_acct(acct))
             for o in (raw or []):
                 leg = (o.get("orderLegCollection") or [{}])[0]
                 if str(leg.get("instruction", "")).upper() not in ("SELL", "SELL_SHORT"):
@@ -473,11 +491,32 @@ def _broker_protective_stops(accounts):
                     "qty": leg.get("quantity"), "account": acct, "source": "broker"}
         except Exception:
             continue
+    # Fidelity via SnapTrade: open GTC stop orders are NOT returned by getUserAccountOrders (state=open
+    # is always empty — only executed market fills sync). Operator-recorded manual_broker_stops are the
+    # canonical source for fidelity_* accounts (sync via scripts/fidelity_stop_sync.py --apply).
+    _want_fidelity = not accounts or any(str(a or "").lower().startswith("fidelity") for a in accounts)
+    if _want_fidelity:
+        try:
+            from lib.fidelity_stop_sync import load_manual_protective_stops
+            for (acct, sym), bs in (load_manual_protective_stops() or {}).items():
+                if accounts and acct not in accounts and _norm_acct(acct) not in {_norm_acct(a) for a in accounts}:
+                    continue
+                out[(_norm_acct(acct), sym)] = {**bs, "account": acct}
+        except Exception:
+            pass
     _fetched = _dt.datetime.now(_dt.timezone.utc).isoformat()
     for _v in out.values():
         _v["fetched_at"] = _fetched
-    _BSTOP_CACHE.update(ts=time.time(), map=out, key=_ckey, fetched_at=_fetched)
+    _BSTOP_CACHE.update(ts=time.time(), map=out, key=_ckey, fetched_at=_fetched, read_ok=read_ok)
     return out
+
+
+def broker_stop_read_ok() -> set:
+    """Accounts (normalized) whose live-stop read succeeded on the last _broker_protective_stops fill.
+    A record-level stop only counts as protection when the account is NOT in this set — if we READ
+    the broker and found no stop, the position is unprotected no matter what the trade record says
+    (AGNC paper trade #31 showed 'protected' from a record stop the supervisor flagged as missing)."""
+    return _BSTOP_CACHE.get("read_ok") or set()
 
 
 def broker_stops_fetched_at() -> str | None:
@@ -696,7 +735,9 @@ def build_intelligence():
         # so a placed protective stop (ours or a manual ToS one) shows as PROTECTED on the same footing.
         _bstop_accts = sorted({p["account"] for p in base
                                if str(p.get("account", "")).startswith("schwab")
-                               or "alpaca" in str(p.get("account", "")).lower()})
+                               or str(p.get("account", "")).startswith("fidelity")
+                               or "alpaca" in str(p.get("account", "")).lower()
+                               or p.get("environment") == "paper"})   # paper key is TRADEAI_AUTOMATED
         bmap = _broker_protective_stops(_bstop_accts) if _bstop_accts else {}
         positions = []
         for p in base:
@@ -715,6 +756,10 @@ def build_intelligence():
             # FULL STOP MONITORING overlay: a LIVE broker stop is the source of truth — it sets the real stop
             # price and marks the position PROTECTED regardless of below-entry (a placed stop IS protection).
             _bstop = bmap.get((_norm_acct(p["account"]), sym))
+            if _bstop is None and p.get("environment") == "paper":
+                # paper rows carry the ledger account key (TRADEAI_AUTOMATED) but Alpaca stops are
+                # keyed alpaca_paper — without this fallback a live paper stop could never match
+                _bstop = bmap.get((_norm_acct("alpaca_paper"), sym))
             broker_protected = bool(_bstop)   # ANY live SELL stop/trailing order = protected (trailing has no fixed price)
             broker_stop_payload = None
             if broker_protected:
@@ -803,7 +848,15 @@ def build_intelligence():
             tp_missing = tgt is None or tgt == 0
             # a live broker stop (incl. a trailing one) IS protection → not "large gain UNPROTECTED"
             big_gain_unprot = bool(upnl_pct is not None and upnl_pct > 10 and tp_missing and not broker_protected)
-            pr = {"protected": broker_protected or bool(stop and not below), "tp_missing": tp_missing, "stop_near": stop_near,
+            # ALIGNMENT with the stop supervisor (operator 2026-07-06: "data here doesn't align with
+            # stop page audit"): when the account's LIVE stop read succeeded, the broker is the only
+            # truth — a record-level stop with no broker order is NOT protection (AGNC #31 showed
+            # 'protected' here while the supervisor alerted OPEN_POSITION_NO_BROKER_STOP for 6 days).
+            # Unverifiable accounts (e.g. Fidelity without a manual record) keep the record heuristic.
+            _acct_verified = _norm_acct(p["account"]) in broker_stop_read_ok() or (
+                p.get("environment") == "paper" and _norm_acct("alpaca_paper") in broker_stop_read_ok())
+            pr = {"protected": broker_protected or (bool(stop and not below) and not _acct_verified),
+                  "tp_missing": tp_missing, "stop_near": stop_near,
                   "below_entry": below, "trailing_candidate": bool(upnl_pct is not None and upnl_pct > 8 and not stop_near),
                   "top_recommendation": (prot.get(sym) or {}).get("act"), "option_count": (prot.get(sym) or {}).get("n", 0)}
             warns = []
