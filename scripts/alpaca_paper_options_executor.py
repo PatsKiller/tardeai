@@ -22,7 +22,19 @@ Usage:
     .venv/bin/python scripts/alpaca_paper_options_executor.py \
         --submit --proposal-id <PROPOSAL_ID> --confirm
 
-    # poll fills/rejects/closes → outcomes (add --dry-run to list only)
+    # EARNINGS-SPREADS (Part G): preview the exact mleg payload — zero HTTP
+    .venv/bin/python scripts/alpaca_paper_options_executor.py \
+        --submit-spread --proposal-id <PROPOSAL_ID> --dry-run
+
+    # real paper spread submit — BOTH flags mandatory; additionally gated on
+    # meta.strategy_json.family starting 'earnings_vertical' (credit families
+    # refused unconditionally) AND the strategy's registry entry carrying
+    # alpaca_paper_enabled: true AND multi_leg_proven: true (defaults false,
+    # so this refuses for every strategy today)
+    .venv/bin/python scripts/alpaca_paper_options_executor.py \
+        --submit-spread --proposal-id <PROPOSAL_ID> --confirm
+
+    # poll fills/rejects/closes → outcomes (spreads included; add --dry-run to list only)
     .venv/bin/python scripts/alpaca_paper_options_executor.py --reconcile
 
     # operator-only: OUTCOME_RECORDED → READY_FOR_LIVE_REVIEW (never automatic)
@@ -122,6 +134,24 @@ def cmd_submit(ap, proposal_id: str, confirm: bool, dry_run: bool) -> int:
     return 0 if res.get("ok") else 1
 
 
+def cmd_submit_spread(ap, proposal_id: str, confirm: bool, dry_run: bool) -> int:
+    if not proposal_id:
+        print("REFUSED: --submit-spread requires an explicit --proposal-id "
+              "(operator action — there is no batch/auto submit).")
+        return 2
+    if dry_run:
+        res = ap.submit_spread_paper_order(proposal_id, confirm=False, dry_run=True)
+        _print(res)
+        return 0 if res.get("ok") else 1
+    if not confirm:
+        print("REFUSED: --submit-spread requires --confirm (operator action). "
+              "Use --dry-run to preview the mleg payload without HTTP.")
+        return 2
+    res = ap.submit_spread_paper_order(proposal_id, confirm=True, dry_run=False)
+    _print(res)
+    return 0 if res.get("ok") else 1
+
+
 def cmd_reconcile(ap, dry_run: bool) -> int:
     res = ap.reconcile_fills(dry_run=dry_run)
     _print(res)
@@ -139,8 +169,13 @@ def main(argv=None) -> int:
                         help="operator mark: OUTCOME_RECORDED -> READY_FOR_LIVE_REVIEW")
     parser.add_argument("--submit", action="store_true",
                         help="submit ONE ready proposal (needs --proposal-id and --confirm)")
+    parser.add_argument("--submit-spread", action="store_true",
+                        help="submit ONE earnings-vertical DEBIT spread as an mleg "
+                             "limit order (needs --proposal-id and --confirm; "
+                             "refused unless the strategy's registry entry has "
+                             "alpaca_paper_enabled + multi_leg_proven true)")
     parser.add_argument("--proposal-id", default="",
-                        help="explicit proposal id for --submit")
+                        help="explicit proposal id for --submit / --submit-spread")
     parser.add_argument("--confirm", action="store_true",
                         help="operator confirmation for a real paper submit")
     parser.add_argument("--reconcile", action="store_true",
@@ -150,11 +185,13 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     actions = [bool(args.status), bool(args.mark_ready),
-               bool(args.mark_live_review), bool(args.submit), bool(args.reconcile)]
+               bool(args.mark_live_review), bool(args.submit),
+               bool(args.submit_spread), bool(args.reconcile)]
     if sum(actions) != 1:
         parser.print_help()
         print("\nREFUSED: pick exactly one action "
-              "(--status | --mark-ready | --mark-live-review | --submit | --reconcile)")
+              "(--status | --mark-ready | --mark-live-review | --submit | "
+              "--submit-spread | --reconcile)")
         return 2
 
     _load_env()
@@ -169,10 +206,13 @@ def main(argv=None) -> int:
             return cmd_mark_live_review(ap, args.mark_live_review, args.dry_run)
         if args.submit:
             return cmd_submit(ap, args.proposal_id, args.confirm, args.dry_run)
+        if args.submit_spread:
+            return cmd_submit_spread(ap, args.proposal_id, args.confirm, args.dry_run)
         if args.reconcile:
             return cmd_reconcile(ap, args.dry_run)
     except (ap.PaperEndpointError, ap.OrderPolicyError,
-            ap.IllegalTransitionError, ap.OperatorActionRequiredError) as e:
+            ap.IllegalTransitionError, ap.OperatorActionRequiredError,
+            ap.SpreadNotEnabledError) as e:
         print(f"REFUSED: {e}")
         return 1
     return 2

@@ -36,10 +36,20 @@ meta.alpaca_paper_enabled (registry, at scan time) for the desk card. Queue
 writes reuse deep_itm_generator.submit_to_desk_queue (idempotent proposal_id
 upsert, fail-closed paper-flag checks — live_eligible true is never written).
 
+EARNINGS-SPREADS Stage 2 (operator spec Part E): --strategy also accepts
+earnings_put_debit_spread (matcher-lane earnings vertical; registry
+paper_enabled respected) and earnings_put_credit_spread (HONEST refusal while
+BLOCKED_INITIAL). --event-window earnings / --earnings-only filters
+underlyings to those with an earnings date inside the registry event window
+BEFORE any chain read. strategy=all match_json now carries all five strategy
+verdicts (the blocked credit id rides along verdict-only, never scanned).
+
 Usage:
     .venv/bin/python scripts/options_strategy_scanner.py --dry-run [--json]
     .venv/bin/python scripts/options_strategy_scanner.py --dry-run --universe all
     .venv/bin/python scripts/options_strategy_scanner.py --dry-run --strategy all
+    .venv/bin/python scripts/options_strategy_scanner.py --dry-run \
+        --strategy earnings_put_debit_spread --earnings-only
     .venv/bin/python scripts/options_strategy_scanner.py --run [--json]
     .venv/bin/python scripts/options_strategy_scanner.py --run --strategy deep_itm_call
 
@@ -85,8 +95,19 @@ DEFAULT_UNIVERSE = "holdings_watchlist"   # preserves the original scanner scope
 
 # Matcher-backed strategies this scanner can run (registry paper_enabled is
 # checked on top at run time). "all" = every paper_enabled one of these.
-SCANNER_STRATEGIES = (STRATEGY_ID, "atm_call", "atm_put")
+# earnings_put_credit_spread is listed so --strategy gets an HONEST registry
+# refusal while it stays BLOCKED_INITIAL (paper_enabled=false, loader-enforced)
+# and so "all" runs disclose the exclusion in strategy_notes.
+EARNINGS_DEBIT_ID = "earnings_put_debit_spread"
+EARNINGS_CREDIT_ID = "earnings_put_credit_spread"
+SCANNER_STRATEGIES = (STRATEGY_ID, "atm_call", "atm_put",
+                      EARNINGS_DEBIT_ID, EARNINGS_CREDIT_ID)
 SUPPORTED_STRATEGIES = SCANNER_STRATEGIES + ("all",)
+# Strategies added AFTER the Stage-1 universe allowlists were written — a tier
+# the REGISTRY explicitly admits scans them even when the older per-symbol
+# allowlist predates the strategy (disclosed semantics, not an execution gate).
+POST_STAGE1_STRATEGIES = frozenset({"atm_call", "atm_put", EARNINGS_DEBIT_ID})
+EVENT_WINDOW_MODES = ("all", "earnings")
 SUGGESTED_CRON = (
     "15 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && "
     ".venv/bin/python scripts/options_strategy_scanner.py --run --strategy deep_itm_call "
@@ -279,12 +300,16 @@ def run_scan(
     analysis_fn: Optional[Callable[..., dict]] = None,
     queue_writer: Optional[Callable[[List[dict]], dict]] = None,
     matcher_fn: Optional[Callable[..., dict]] = None,
+    event_window: str = "all",
 ) -> dict:
     """Full scan: universe → eligibility → feasibility → gates → rank → (queue top N | dry-run).
 
     strategy=deep_itm_call (default) keeps the exact Stage-1 single-strategy
-    flow. atm_call / atm_put / all route through the per-symbol strategy
-    matcher (multi-strategy report shape with per_strategy counts).
+    flow. atm_call / atm_put / earnings_put_debit_spread / all route through
+    the per-symbol strategy matcher (multi-strategy report shape with
+    per_strategy counts). event_window="earnings" (--earnings-only) filters
+    underlyings to those with an earnings date inside the registry event
+    window BEFORE matching — saving chain reads (matcher paths only).
 
     Injectable underlyings/analysis_fn/queue_writer/matcher_fn keep this
     deterministic in tests.
@@ -292,12 +317,22 @@ def run_scan(
     if strategy not in SUPPORTED_STRATEGIES:
         return {"ok": False, "error": f"unsupported strategy '{strategy}' "
                                       f"(supported: {list(SUPPORTED_STRATEGIES)})"}
+    if event_window not in EVENT_WINDOW_MODES:
+        return {"ok": False, "error": f"unknown event window '{event_window}' "
+                                      f"(known: {list(EVENT_WINDOW_MODES)})"}
     if strategy != STRATEGY_ID:
         return _run_multi_strategy_scan(
             strategy=strategy, dry_run=dry_run, universe=universe,
             limit_underlyings=limit_underlyings, top_n=top_n,
             underlyings=underlyings, analysis_fn=analysis_fn,
-            queue_writer=queue_writer, matcher_fn=matcher_fn)
+            queue_writer=queue_writer, matcher_fn=matcher_fn,
+            event_window=event_window)
+    if event_window != "all":
+        return {"ok": False,
+                "error": "--event-window earnings requires a matcher-driven "
+                         "strategy (atm_call | atm_put | "
+                         f"{EARNINGS_DEBIT_ID} | all) — the Stage-1 "
+                         "deep_itm_call flow does not filter on earnings"}
     return _run_deep_itm_scan(
         strategy=strategy, dry_run=dry_run, universe=universe,
         limit_underlyings=limit_underlyings, top_n=top_n,
@@ -463,10 +498,11 @@ def _strategy_allowed_for_underlying(u: dict, sid: str,
     (config/options_universe.yaml, Stage 1) and the registry row's
     allowed_underlying_tiers (config/options_strategy_registry.yaml — the gate
     source of record for WHERE a strategy may run). Both are honored. The
-    Stage-1 universe allowlists predate the ATM pair, so for atm_call/atm_put
-    a tier the REGISTRY explicitly admits scans even when the older tier
-    allowlist does not mention the strategy (disclosed semantics, not a
-    live/execution gate — the desk's paper walls are untouched).
+    Stage-1 universe allowlists predate the ATM pair and the earnings vertical
+    lane (POST_STAGE1_STRATEGIES), so for those a tier the REGISTRY explicitly
+    admits scans even when the older tier allowlist does not mention the
+    strategy (disclosed semantics, not a live/execution gate — the desk's
+    paper walls are untouched).
     """
     tier = _tier_of(u)
     reg_tiers = (reg_row or {}).get("allowed_underlying_tiers") or []
@@ -474,17 +510,22 @@ def _strategy_allowed_for_underlying(u: dict, sid: str,
         return False, f"tier {tier} not in registry allowed_underlying_tiers"
     allow = u.get("strategy_allowlist") or []
     if allow and sid not in allow:
-        if sid in ("atm_call", "atm_put") and tier in reg_tiers:
-            return True, ""   # registry admits the tier; Stage-1 allowlist predates ATM
+        if sid in POST_STAGE1_STRATEGIES and tier in reg_tiers:
+            return True, ""   # registry admits the tier; Stage-1 allowlist predates it
         return False, f"strategy {sid} not in {tier} tier strategy_allowlist"
     return True, ""
 
 
 def _load_paper_strategy_config(sid: str) -> dict:
     """Per-strategy pipeline config (deep-ITM loader for deep_itm_call, ATM
-    loader for atm_call/atm_put). LivePolicyViolation propagates (fail-closed)."""
+    loader for atm_call/atm_put, earnings-vertical loader for the earnings
+    pair). LivePolicyViolation propagates (fail-closed)."""
     if sid == STRATEGY_ID:
         return load_pipeline_config()
+    if sid in (EARNINGS_DEBIT_ID, EARNINGS_CREDIT_ID):
+        from lib.options_pipeline.earnings_vertical_generator import (
+            load_pipeline_config as load_earnings_pipeline_config)
+        return load_earnings_pipeline_config(sid)
     from lib.options_pipeline.atm_long_premium_generator import (
         load_pipeline_config as load_atm_pipeline_config)
     return load_atm_pipeline_config(sid)
@@ -526,6 +567,42 @@ def _why_matched(sid: str, status: str, reason: str, proposal: dict,
     return why
 
 
+def _earnings_window_of(registry: dict) -> tuple:
+    """(days_before, days_after) from the earnings debit registry row."""
+    sel = ((registry.get("strategies") or {}).get(EARNINGS_DEBIT_ID)
+           or {}).get("selection") or {}
+    return (int(_f(sel.get("earnings_window_days_before"), 10)),
+            int(_f(sel.get("earnings_window_days_after"), 2)))
+
+
+def _earnings_filter_check(u: dict, before: int, after: int) -> tuple:
+    """(in_window, reason, enriched_entry) for one underlying.
+
+    Uses the injectable u['earnings_date'] when present (tests), else the
+    cheap read-only date resolution (symbol_profiles / earnings_dates.json) —
+    NO chain read. Unknown dates are honestly filtered out (never guessed).
+    """
+    from datetime import date, datetime, timezone
+    d = u.get("earnings_date")
+    if not d:
+        try:
+            from lib.options_pipeline.earnings_event_model import resolve_earnings_date
+            d = resolve_earnings_date(u.get("symbol") or "").get("date")
+        except Exception:
+            d = None
+    if not d:
+        return False, "no earnings date (symbol_profiles / earnings_dates.json)", u
+    d = str(d)[:10]
+    try:
+        days = (date.fromisoformat(d) - datetime.now(timezone.utc).date()).days
+    except ValueError:
+        return False, f"unparsable earnings date {d!r}", u
+    if -after <= days <= before:
+        return True, "", dict(u, earnings_date=d, days_to_earnings=days)
+    return False, (f"earnings {d} outside window (days_to_earnings={days}, "
+                   f"window −{after}..{before}d)"), u
+
+
 def _run_multi_strategy_scan(
     *,
     strategy: str,
@@ -537,8 +614,9 @@ def _run_multi_strategy_scan(
     analysis_fn: Optional[Callable[..., dict]],
     queue_writer: Optional[Callable[[List[dict]], dict]],
     matcher_fn: Optional[Callable[..., dict]],
+    event_window: str = "all",
 ) -> dict:
-    """Matcher-driven scan for atm_call / atm_put / all.
+    """Matcher-driven scan for atm_call / atm_put / earnings_put_debit_spread / all.
 
     Per symbol: run_matchers evaluates every requested strategy honestly
     (pass/watch/fail/not_applicable + reason). pass/watch proposals rank per
@@ -572,8 +650,10 @@ def _run_multi_strategy_scan(
     else:
         row = known.get(strategy)
         if row is not None and not row.get("paper_enabled"):
-            return {"ok": False, "error": f"strategy {strategy} has paper_enabled=false "
-                                          "in options_strategy_registry — scanner refuses to run"}
+            return {"ok": False,
+                    "error": f"strategy {strategy} has paper_enabled=false "
+                             f"in options_strategy_registry (status "
+                             f"{row.get('status')}) — scanner refuses to run"}
         wanted = [strategy]
 
     active: List[str] = []
@@ -615,10 +695,28 @@ def _run_multi_strategy_scan(
     def _bump(tier: str, key: str, n: int = 1) -> None:
         tier_stats.setdefault(tier, _blank_tier_stats())[key] += n
 
+    # --event-window earnings: keep only underlyings with an earnings date
+    # inside the registry event window — BEFORE any chain read (spec Part E).
+    w_before, w_after = _earnings_window_of(registry)
+    earnings_filter: dict = {"applied": event_window == "earnings",
+                             "window_days_before": w_before,
+                             "window_days_after": w_after,
+                             "in_window": 0, "filtered_out": 0}
+
     per_symbol: List[dict] = []
     scan_rows: List[tuple] = []   # (underlying, allowed_strategy_ids, {sid: skip_reason})
     for u in underlyings:
         _bump(_tier_of(u), "resolved")
+        if earnings_filter["applied"]:
+            in_window, why, u = _earnings_filter_check(u, w_before, w_after)
+            if not in_window:
+                earnings_filter["filtered_out"] += 1
+                per_symbol.append({
+                    "symbol": u["symbol"], "tier": _tier_of(u),
+                    "status": "skipped",
+                    "reason": f"--event-window earnings: {why}"[:160]})
+                continue
+            earnings_filter["in_window"] += 1
         allowed, skipped = [], {}
         for sid in active:
             ok, reason = _strategy_allowed_for_underlying(u, sid, known.get(sid))
@@ -648,8 +746,16 @@ def _run_multi_strategy_scan(
         kwargs: Dict[str, object] = {"registry": registry}
         if analysis_fn is not None:
             kwargs["deep_itm_analysis_fn"] = analysis_fn
+        if u.get("earnings_date"):        # earnings filter enrichment (no re-read)
+            kwargs["earnings_date"] = u["earnings_date"]
+        # strategy=all: the blocked credit id rides along VERDICT-ONLY so
+        # match_json carries all five strategy verdicts on queued rows — it is
+        # never in `active`, so it can never accrue stats or proposals.
+        call_ids = list(allowed)
+        if strategy == "all" and EARNINGS_CREDIT_ID not in call_ids:
+            call_ids.append(EARNINGS_CREDIT_ID)
         try:
-            res = matcher(sym, context, allowed, **kwargs)
+            res = matcher(sym, context, call_ids, **kwargs)
         except Exception as e:   # one bad symbol never kills the run — disclosed
             per_symbol.append({"symbol": sym, "tier": tier_by_symbol[sym],
                                "status": "error", "reason": str(e)[:160]})
@@ -723,6 +829,8 @@ def _run_multi_strategy_scan(
         "strategy_notes": strategy_notes,
         "dry_run": dry_run,
         "universe": universe,
+        "event_window": event_window,
+        "earnings_filter": earnings_filter,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "market_session": session,
         "underlyings_considered": len(scan_rows),
@@ -759,8 +867,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     # with an honest report-shaped error (Stage-1 behavior, test-enforced).
     ap.add_argument("--strategy", default=STRATEGY_ID,
                     help="deep_itm_call (default, Stage-1 flow) | atm_call | "
-                         "atm_put | all (every registry paper_enabled "
+                         "atm_put | earnings_put_debit_spread | "
+                         "earnings_put_credit_spread (honest refusal while "
+                         "BLOCKED_INITIAL) | all (every registry paper_enabled "
                          "scanner-supported strategy, per-symbol matcher)")
+    ap.add_argument("--event-window", default="all", choices=EVENT_WINDOW_MODES,
+                    help="earnings = only scan underlyings with an earnings "
+                         "date inside the registry event window (filtered "
+                         "BEFORE matching — saves chain reads); default all")
+    ap.add_argument("--earnings-only", action="store_true",
+                    help="shorthand for --event-window earnings")
     ap.add_argument("--universe", default=DEFAULT_UNIVERSE,
                     choices=sorted(UNIVERSE_SELECTORS),
                     help="universe tiers to scan (config/options_universe.yaml); "
@@ -773,9 +889,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("ERROR: choose one of --run or --dry-run", file=sys.stderr)
         return 2
     dry = not args.run  # default safe: dry-run unless --run given explicitly
+    event_window = "earnings" if args.earnings_only else args.event_window
 
     result = run_scan(strategy=args.strategy, dry_run=dry, universe=args.universe,
-                      limit_underlyings=args.limit, top_n=args.top)
+                      limit_underlyings=args.limit, top_n=args.top,
+                      event_window=event_window)
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
@@ -790,6 +908,11 @@ def main(argv: Optional[List[str]] = None) -> int:
               f"{strategies_bit}")
         if ms.get("note"):
             print(f"  note: {ms['note']}")
+        ef = result.get("earnings_filter") or {}
+        if ef.get("applied"):
+            print(f"  earnings filter: window −{ef['window_days_after']}.."
+                  f"{ef['window_days_before']}d — in_window={ef['in_window']} "
+                  f"filtered_out={ef['filtered_out']}")
         for sid, note in (result.get("strategy_notes") or {}).items():
             print(f"  excluded {sid}: {note}")
         print(f"  underlyings considered: {result['underlyings_considered']}")

@@ -296,9 +296,11 @@ def test_gap_validator_default_fails_closed(monkeypatch):
 
 def test_registry_contents_match_spec(reg):
     s = reg["strategies"]
-    # MULTI-STRATEGY Stage 1 extended the registry with the ATM long-premium pair.
+    # MULTI-STRATEGY Stage 1 extended the registry with the ATM long-premium
+    # pair; EARNINGS-SPREADS Stage 1 added the earnings vertical pair.
     assert set(s) == {"deep_itm_call", "covered_call", "cash_secured_put",
-                      "protective_put", "credit_spread", "atm_call", "atm_put"}
+                      "protective_put", "credit_spread", "atm_call", "atm_put",
+                      "earnings_put_debit_spread", "earnings_put_credit_spread"}
     assert s["deep_itm_call"]["status"] == "TESTING_PAPER"
     assert s["deep_itm_call"]["paper_enabled"] is True
     assert s["deep_itm_call"]["alpaca_paper_enabled"] is True
@@ -312,6 +314,13 @@ def test_registry_contents_match_spec(reg):
         assert s[sid]["status"] == "TESTING_PAPER"
         assert s[sid]["paper_enabled"] is True
         assert s[sid]["alpaca_paper_enabled"] is False   # initially off (Stage 1)
+    assert s["earnings_put_debit_spread"]["status"] == "TESTING_PAPER"
+    assert s["earnings_put_debit_spread"]["paper_enabled"] is True
+    assert s["earnings_put_debit_spread"]["alpaca_paper_enabled"] is False
+    # BLOCKED_INITIAL = valid-but-unscannable (loader enforces both flags false)
+    assert s["earnings_put_credit_spread"]["status"] == "BLOCKED_INITIAL"
+    assert s["earnings_put_credit_spread"]["paper_enabled"] is False
+    assert s["earnings_put_credit_spread"]["alpaca_paper_enabled"] is False
     for sid, row in s.items():
         assert row["live_enabled"] is False, sid
         assert row["live_exception_allowed"] is False, sid

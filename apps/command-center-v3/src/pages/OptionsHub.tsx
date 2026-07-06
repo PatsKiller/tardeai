@@ -453,6 +453,7 @@ export default function OptionsHub({ onDrill }: Props) {
                   <option value="deep_itm_call">Deep ITM Call (paper)</option>
                   <option value="atm_call">ATM Call (paper)</option>
                   <option value="atm_put">ATM Put (paper)</option>
+                  <option value="earnings_put_debit_spread">Earnings Put Debit Spread (paper)</option>
                 </select>
               </TipLabel>
               <TipLabel tip={FILTERS.pop}>
