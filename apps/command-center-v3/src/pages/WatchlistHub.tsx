@@ -46,7 +46,10 @@ const Pill = ({ text, color, tip, strong = false }: any) => (
 const ORIGIN_OPTS = [['all', 'All'], ['trade_ai_screener', 'Screener'], ['agent_discovery', 'AI-discovered'], ['operator', 'Operator-directive'], ['hermes', 'Hermes'], ['portfolio', 'Portfolio']]
 
 export default function WatchlistHub({ onDrill, embedded }: Props) {
-  const { data: wl, loading: wlLoading, refetch: refetchWl } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
+  // CIO-view filter is pushed server-side (cio=) so it searches the FULL universe before the
+  // 200-row window — client-side alone missed verdicts on names ranked below the load size
+  const [fCio, setFCio] = useState('all')
+  const { data: wl, loading: wlLoading, refetch: refetchWl } = useApi<any>(`/api/v2/watchlist/items?sort=hermes${fCio !== 'all' ? `&cio=${encodeURIComponent(fCio)}` : ''}`, 60_000)
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
   const { data: adv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=watchlist', 120_000)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
@@ -109,7 +112,6 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
   const [fDir, setFDir] = useState('all')
   const [fStatus, setFStatus] = useState('all')
   const [fRating, setFRating] = useState('all')
-  const [fCio, setFCio] = useState('all')
   const [fList, setFList] = useState('all')
   const [fHeld, setFHeld] = useState(false)   // held-only (currently-owned positions)
   const [fStarred, setFStarred] = useState(false)   // operator-starred only

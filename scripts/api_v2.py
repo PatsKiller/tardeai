@@ -5138,6 +5138,26 @@ def _wl_items(query: dict = None):
         conditions = [c for c in conditions if "status" not in c]
         conditions.append("wi.status = %s")
         params.append(q["status"][0] if isinstance(q["status"], list) else q["status"])
+    if q.get("cio"):
+        # server-side CIO-view filter (operator 2026-07-06): the page's client-side filter only sees
+        # the loaded window, so verdicts on names ranked below the load size (219 of 222
+        # ADD_ON_PULLBACK) were unfindable. Matches research-card rec OR CIO synthesis verdict —
+        # same fields as the client filter. Applied inside `picked` so it narrows BEFORE the LIMIT.
+        _cio = str(q["cio"][0] if isinstance(q["cio"], list) else q["cio"]).strip()
+        _groups = {"buy_side": ["BUY", "STRONG_BUY", "ADD", "ADD_ON_PULLBACK"],
+                   "avoid_side": ["AVOID", "IGNORE", "SELL", "TRIM"]}
+        if _cio == "none":
+            conditions.append("""(NOT EXISTS (SELECT 1 FROM watchlist_research_cards rc
+                                    WHERE rc.symbol = wi.symbol AND COALESCE(rc.latest_recommendation,'') <> '')
+                                  AND NOT EXISTS (SELECT 1 FROM watchlist_final_synthesis fs
+                                    WHERE upper(fs.symbol) = upper(wi.symbol) AND COALESCE(fs.recommendation,'') <> ''))""")
+        else:
+            _vals = _groups.get(_cio, [_cio.upper()])
+            conditions.append("""(EXISTS (SELECT 1 FROM watchlist_research_cards rc
+                                    WHERE rc.symbol = wi.symbol AND upper(rc.latest_recommendation) = ANY(%s))
+                                  OR EXISTS (SELECT 1 FROM watchlist_final_synthesis fs
+                                    WHERE upper(fs.symbol) = upper(wi.symbol) AND upper(fs.recommendation) = ANY(%s)))""")
+            params.extend([_vals, _vals])
     where = " AND ".join(conditions)
     sort = "updated_at DESC"
     sort_p = "p.updated_at DESC"
