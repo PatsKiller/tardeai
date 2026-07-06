@@ -905,6 +905,7 @@ def reconcile_fills(*, executor: Optional[Executor] = None,
                        meta_patch={"alpaca_json": {**aj, "fill": fill}})
             report["transitions"].append({"proposal_id": pid, "to": STATE_FILLED,
                                           "fill_price": fill["price"]})
+            _sync_monitored_on_fill(row, fill, ex, report)
         elif ostatus in ("rejected", "canceled", "cancelled", "expired"):
             reason = str(order.get("reject_reason") or ostatus)
             transition(pid, STATE_REJECTED, executor=ex,
@@ -958,12 +959,50 @@ def reconcile_fills(*, executor: Optional[Executor] = None,
         aj = {**aj, "close": close_blob}
         transition(pid, STATE_CLOSED, executor=ex, meta_patch={"alpaca_json": aj})
         report["transitions"].append({"proposal_id": pid, "to": STATE_CLOSED, "pnl": pnl})
+        _sync_monitored_on_close(pid, ex, report)
         _record_and_finalize(row, aj, ex, record_outcome_fn, report)
 
     # CLOSED rows whose record_outcome previously failed → retry, no HTTP needed.
     for row in closed_pending:
         _record_and_finalize(row, _alpaca_meta(row), ex, record_outcome_fn, report)
     return report
+
+
+def _sync_monitored_on_fill(row: dict, fill: dict, ex: Executor,
+                            report: Dict[str, Any]) -> None:
+    """Hybrid ingest: queue fill → options_monitored_positions (advisory registry)."""
+    pid = row.get("proposal_id") or ""
+    try:
+        from lib.options_pipeline import paper_positions as pp
+        updated = dict(row)
+        updated["status"] = STATE_FILLED
+        meta = dict(row.get("meta") or {})
+        meta["alpaca_json"] = {**_alpaca_meta(row), "fill": fill}
+        updated["meta"] = meta
+        res = pp.upsert_from_queue_fill(updated, fill=fill, executor=ex)
+        if not res.get("ok"):
+            report["warnings"].append(
+                f"{pid}: monitored position upsert failed: {res.get('error')}")
+        else:
+            report.setdefault("monitored_positions", []).append(res)
+    except Exception as e:
+        report["warnings"].append(f"{pid}: monitored position upsert error: {e}")
+
+
+def _sync_monitored_on_close(proposal_id: str, ex: Executor,
+                             report: Dict[str, Any]) -> None:
+    """Broker reconcile close → mark monitored position CLOSED (ledger outcome is separate)."""
+    try:
+        from lib.options_pipeline import paper_positions as pp
+        res = pp.mark_closed(proposal_id, reason="broker_reconcile", executor=ex)
+        if not res.get("ok"):
+            report["warnings"].append(
+                f"{proposal_id}: monitored position close mark failed")
+        else:
+            report.setdefault("monitored_positions", []).append(res)
+    except Exception as e:
+        report["warnings"].append(
+            f"{proposal_id}: monitored position close error: {e}")
 
 
 def _record_and_finalize(row: dict, aj: dict, ex: Executor,

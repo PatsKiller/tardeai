@@ -96,6 +96,12 @@ class FakeDB:
             if r:
                 r["meta"] = {**(r.get("meta") or {}), **json.loads(patch_json)}
             return True
+        if "INSERT INTO options_monitored_positions" in s:
+            return True
+        if "SELECT * FROM options_monitored_positions WHERE proposal_id" in s:
+            return None
+        if s.startswith("UPDATE options_monitored_positions"):
+            return True
         raise AssertionError(f"FakeDB got unexpected SQL: {s[:120]}")
 
 

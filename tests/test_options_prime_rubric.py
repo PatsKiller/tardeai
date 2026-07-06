@@ -234,9 +234,9 @@ def test_weights_sum_to_one():
 
 
 @pytest.mark.parametrize("score,verdict", [
-    (0.0, "NOT_PRIME"), (39.9, "NOT_PRIME"),
-    (40.0, "PAPER_ONLY"), (59.9, "PAPER_ONLY"),
-    (60.0, "PRIME_FOR_PAPER"), (79.9, "PRIME_FOR_PAPER"),
+    (0.0, "NOT_PRIME"), (49.9, "NOT_PRIME"),
+    (50.0, "PAPER_WATCH"), (64.9, "PAPER_WATCH"),
+    (65.0, "PRIME_FOR_PAPER"), (79.9, "PRIME_FOR_PAPER"),
     (80.0, "READY_FOR_LIVE_REVIEW_OPERATOR_ONLY"),
     (100.0, "READY_FOR_LIVE_REVIEW_OPERATOR_ONLY"),
 ])
@@ -482,7 +482,7 @@ def test_api_prime_rubric_route(api, monkeypatch):
                     {"proposal_id": RTX_PROPOSAL["id"]})
     assert st == 200 and res["ok"] and res["persisted"]
     assert res["prime_json"]["verdict"] in (
-        "NOT_PRIME", "PAPER_ONLY", "PRIME_FOR_PAPER",
+        "NOT_PRIME", "PAPER_WATCH", "PAPER_ONLY", "PRIME_FOR_PAPER",
         "READY_FOR_LIVE_REVIEW_OPERATOR_ONLY")
     assert db.rows[RTX_PROPOSAL["id"]]["meta"]["prime_json"]["prime_score"] >= 0
     # unknown row → 404

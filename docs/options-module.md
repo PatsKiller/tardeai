@@ -38,7 +38,7 @@ Operator ──► approval queue approve/reject ──► preflight ──► 2
 | Layer 4 inferences | `inference_results` via DB | High-conviction universe |
 | Fused signals | `fused_signals` table | Primary conviction source (confidence, severity, direction) |
 | Portfolio intent | `assets/portfolio_intent.yaml` | CC candidates, DTE/OTM/IV gates, **options_desk_settings** |
-| UI cards | `OptionProposalCard`, `OptionReviewBar`, `GreeksOverview` | Proposal + position + ensemble review |
+| UI cards | `OptionProposalCardV4` (live), `OptionPositionCardV4`, `OptionReviewBar`, `GreeksOverview` | Proposal + position + ensemble review; v3 cards retained for reference |
 | Execution pilot | `options_pilot_arm`, `options_order_pilot`, `options_execution_policy` | Live Schwab submit path |
 
 **Gaps filled:** unified `options_engine.py`, enterprise layer (`options_desk_enterprise.py`), balanced desk slots, Hermes/TradeAI bridge, approval queue, book greeks, vol analytics.
@@ -168,7 +168,7 @@ TradeAI: `GET /api/v2/trade-ai` includes `options_desk` block (top-level + per-t
 
 Tabs: **Proposals**, **Open Positions**, **Strategy Overview**
 
-Components: `OptionProposalCard`, `OptionPositionCard`, `OptionChainPanel`, `OptionReviewBar` (ensemble), `GreeksOverview`, `OptionsPnLProfile`, `OptionsNovicePanel`.
+Components: `OptionProposalCardV4`, `OptionPositionCardV4`, `OptionChainPanel`, `OptionReviewBar` (ensemble), `GreeksOverview`, `OptionsPnLProfile`, `OptionsNovicePanel`, `optionsCardSemantics.ts`.
 
 **Filter chips (Proposals):** income / hedge / directional / spreads, calls / puts, sell / buy, single-leg / spread pairs, portfolio / conviction sleeve, desk tiers A–C, live-eligible. Counts from `filter_facets`.
 

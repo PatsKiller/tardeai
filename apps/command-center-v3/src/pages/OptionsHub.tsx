@@ -1,11 +1,10 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
-import OptionProposalCard, { type OptionProposal } from '../components/OptionProposalCard'
-import OptionPositionCard, { type OptionPosition } from '../components/OptionPositionCard'
+import { type OptionProposal } from '../components/OptionProposalCard'
+import { type OptionPosition } from '../components/OptionPositionCard'
 import OptionProposalCardV4, { type AlpacaLaneAction, type AlpacaActionResult } from '../components/OptionProposalCardV4'
 import OptionPositionCardV4 from '../components/OptionPositionCardV4'
-import { useCardsV4 } from '../lib/cardsV4'
 import OptionReviewBar from '../components/OptionReviewBar'
 import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualExecutionModal'
 import ManualExecutionLog from '../components/ManualExecutionLog'
@@ -71,10 +70,8 @@ export default function OptionsHub({ onDrill }: Props) {
   const [guideCollapsed, setGuideCollapsed] = useState(false)
   const [preflightProposal, setPreflightProposal] = useState<Proposal | null>(null)
   const [manualSeed, setManualSeed] = useState<ManualExecSeed | null>(null)
-  const [cardsV4] = useCardsV4() // global card-family toggle — no local UI, set from Watch hub
-  // cast: v4 accepts the optional onAlpacaAction prop; the v3 card ignores it
-  const ProposalCard = (cardsV4 ? OptionProposalCardV4 : OptionProposalCard) as typeof OptionProposalCardV4
-  const PositionCard = cardsV4 ? OptionPositionCardV4 : OptionPositionCard
+  const ProposalCard = OptionProposalCardV4
+  const PositionCard = OptionPositionCardV4
 
   useEffect(() => { setNoviceMode(novice) }, [novice])
 
@@ -280,6 +277,41 @@ export default function OptionsHub({ onDrill }: Props) {
     }
     if (action === 'hold') {
       setExecMsg(`Passed on ${'symbol' in item ? item.symbol : (item as Position).underlying} — no action taken.`)
+      return
+    }
+    if (action === 'review_block_reason' && 'symbol' in item) {
+      const p = item as Proposal
+      const blocks = p.enterprise?.blocks || []
+      const reasons = [
+        ...blocks,
+        p.aegis_verdict ? `Aegis: ${p.aegis_verdict}` : '',
+        (p as any).aegis_status ? `Aegis status: ${(p as any).aegis_status}` : '',
+        (p as any).ensemble_verdict ? `Ensemble: ${(p as any).ensemble_verdict}` : '',
+      ].filter(Boolean)
+      setExecMsg(reasons.length
+        ? `${p.symbol} blocked — ${reasons.join(' · ')}`
+        : `${p.symbol} blocked — no detailed reason on card; check enterprise desk log.`)
+      return
+    }
+    if (action === 'rerun_review' && 'symbol' in item) {
+      const p = item as Proposal
+      setEnsembleBusy(true)
+      setEnsembleMsg(null)
+      try {
+        const r = await fetch('/api/v2/options/ensemble/enqueue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force: 1, fresh_hours: 0, proposal_id: p.id, symbol: p.symbol }),
+        })
+        const j = await r.json()
+        const d = j.data ?? j
+        setEnsembleMsg(`Re-queued review for ${p.symbol} · ${d.enqueued ?? 0} job(s)`)
+        refetchProps()
+      } catch (e: any) {
+        setEnsembleMsg(String(e?.message || e))
+      } finally {
+        setEnsembleBusy(false)
+      }
       return
     }
     if (execActions.has(action) && 'symbol' in item) {
@@ -559,7 +591,7 @@ export default function OptionsHub({ onDrill }: Props) {
                 armed={!!execStatus?.armed_for_execution}
                 novice={novice}
                 onAction={(a, id) => handleAction(a, id, p)}
-                onAlpacaAction={cardsV4 && p.educational_paper_model ? handleAlpacaAction : undefined}
+                onAlpacaAction={p.educational_paper_model ? handleAlpacaAction : undefined}
                 onManualLog={() => setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })}
                 onDrill={() => onDrill({
                   title: `${p.symbol} ${p.strategy.replace(/_/g, ' ')}`,

@@ -371,20 +371,9 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: 15, fontWeight: 900, color: TEXT0 }}>Watchlist ({visible.length})</div>
-            {/* v4 evaluation toggle (2026-07-04): v3 stays default until the operator locks one. */}
-            <span style={{ display: 'inline-flex', border: '1px solid rgba(148,163,184,.25)', borderRadius: 6, overflow: 'hidden' }}
-                  title="Security Card version — evaluation toggle, per-browser">
-              {(['v3', 'v4'] as const).map(v => (
-                <button
-                  key={v}
-                  onClick={() => setCardV4(v === 'v4')}
-                  style={{
-                    fontSize: 10, fontWeight: 800, padding: '3px 10px', border: 'none', cursor: 'pointer',
-                    background: (cardV4 ? 'v4' : 'v3') === v ? 'rgba(45,212,191,.15)' : 'transparent',
-                    color: (cardV4 ? 'v4' : 'v3') === v ? '#2dd4bf' : TEXT2,
-                  }}
-                >Card {v}</button>
-              ))}
+            <span title="Security Card v4 — live on all desk surfaces (watchlist, proposals, positions, options)"
+                  style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 6, color: '#2dd4bf', background: 'rgba(45,212,191,.12)', border: '1px solid rgba(45,212,191,.35)' }}>
+              Card v4 · live
             </span>
           </div>
           {pageCount > 1 && (

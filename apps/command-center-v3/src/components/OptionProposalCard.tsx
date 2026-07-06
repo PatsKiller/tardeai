@@ -1,5 +1,15 @@
 import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishProposal, proposalRiskFlags, strikeDistance, strategyGuide } from '../lib/optionsNovice'
+import {
+  allowsManualLog,
+  cashflowColor,
+  cashflowIsCredit,
+  executionRouteBadge,
+  isCardBlocked,
+  liquidityWarnings,
+  optionCashflowLabel,
+  sanitizeActionButtons,
+} from '../lib/optionsCardSemantics'
 import { ACTIONS, PROPOSAL } from '../lib/optionsTooltips'
 import { RiskFlagChips, StrikeDistanceBar, WhatIfBox } from './OptionsNovicePanel'
 
@@ -36,7 +46,7 @@ const TIPS = {
   expiry: 'Expiration date — after this the option expires or is assigned.',
   dte: 'Days to expiration — theta decay accelerates in the final 2 weeks.',
   premium: 'Estimated mid price per contract (×100 shares). See data-source badge.',
-  totalCredit: 'Total credit if filled: premium × 100 × contracts.',
+  totalCashflow: 'Total debit/credit if filled: premium × 100 × contracts.',
   maxProfit: 'Best-case profit if the trade works as modeled.',
   maxLoss: 'Stock downside if price falls to $0 (you still own the shares). Premium reduces this slightly.',
   upsideCap: 'If assigned, you sell shares at this strike — gains above strike are forgone.',
@@ -303,11 +313,20 @@ export default function OptionProposalCard({
   onManualLog?: () => void
   reviewBar?: React.ReactNode
 }) {
-  const sv = SEV(p.severity || (p.edge_score && p.edge_score >= 75 ? 'positive' : 'info'))
+  const ext = p as OptionProposal & Record<string, unknown>
+  const blocked = isCardBlocked(ext)
+  const cashflowLabel = String(ext.cashflow_label || optionCashflowLabel(p.strategy, p.side))
+  const isCredit = ext.cashflow_is_credit === true || (ext.cashflow_is_credit == null && cashflowIsCredit(p.strategy, p.side))
+  const cfColor = cashflowColor(isCredit)
+  const actionButtons = sanitizeActionButtons(p)
+  const route = executionRouteBadge(ext)
+  const liqWarnings = liquidityWarnings(p)
+  const displayEdgeRaw = ext.display_edge_score ?? p.edge_score
+  const sv = SEV(p.severity || (displayEdgeRaw && Number(displayEdgeRaw) >= 75 ? 'positive' : 'info'))
   const strat = STRAT_LABEL[p.strategy] || p.strategy.replace(/_/g, ' ')
-  const edge = p.edge_score != null ? Math.round(p.edge_score) : null
+  const edge = displayEdgeRaw != null ? Math.round(Number(displayEdgeRaw)) : null
   const ds = p.data_source === 'schwab_chain' ? { label: 'Schwab chain', c: GREEN } : p.data_source === 'bs_estimate' ? { label: 'BS estimate', c: AMBER } : null
-  const isCredit = (p.side || '').toUpperCase() === 'SELL' || p.strategy === 'covered_call' || p.strategy === 'cash_secured_put' || p.strategy === 'credit_spread'
+  const showManualLog = !!onManualLog && allowsManualLog(ext)
   const guide = strategyGuide(p.strategy)
   const dist = strikeDistance(p)
   const risks = novice ? proposalRiskFlags(p) : []
@@ -350,16 +369,12 @@ export default function OptionProposalCard({
             {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: PURPLE, background: 'rgba(168,85,247,.15)', border: '1px solid rgba(168,85,247,.35)' }}>income sleeve</span>}
             {p.educational_paper_model && <span title="Educational paper model — manual review only, never live-eligible. Outcomes feed the strategy validation gate." style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: AMBER, background: 'transparent', border: `1px solid ${AMBER}`, cursor: 'help' }}>DEEP ITM · PAPER MODEL</span>}
             {edge != null && <span title={TIPS.edge} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: edge >= 72 ? GREEN : edge >= 50 ? AMBER : RED, background: 'var(--bg2)' }}>edge {edge}</span>}
-            {p.enterprise?.live_eligible && (
+            <span title="Execution route" style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: route.kind === 'schwab_live' ? AMBER : MUTED, background: 'var(--bg2)', border: '1px solid var(--border)' }}>{route.label}</span>
+            {p.enterprise?.live_eligible && !p.educational_paper_model && (
               <span title={PROPOSAL.liveOk} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: GREEN, background: 'rgba(34,197,94,.15)', border: '1px solid rgba(34,197,94,.35)', cursor: 'help' }}>live eligible</span>
             )}
-            {(p.enterprise?.blocks?.length ?? 0) > 0 && (
-              <span title={`${PROPOSAL.liveBlocked} ${p.enterprise!.blocks!.join('; ')}`} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: RED, background: 'rgba(239,68,68,.13)', border: '1px solid rgba(239,68,68,.35)', cursor: 'help' }}>blocked</span>
-            )}
-            {p.execution_label && (
-              <span title="Execution path for this proposal" style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: p.execution_mode === 'manual' ? PURPLE : AMBER, background: p.execution_mode === 'manual' ? 'rgba(168,85,247,.15)' : 'rgba(245,158,11,.15)', border: `1px solid ${p.execution_mode === 'manual' ? 'rgba(168,85,247,.35)' : 'rgba(245,158,11,.35)'}` }}>
-                {p.execution_label}
-              </span>
+            {(blocked || (p.enterprise?.blocks?.length ?? 0) > 0) && (
+              <span title={`${PROPOSAL.liveBlocked} ${(p.enterprise?.blocks || []).join('; ')}`} style={{ fontSize: 8, fontWeight: 900, padding: '2px 6px', borderRadius: 4, color: RED, background: 'rgba(239,68,68,.13)', border: '1px solid rgba(239,68,68,.35)', cursor: 'help' }}>BLOCKED</span>
             )}
           </div>
           <div style={{ fontSize: 14, fontWeight: 850, color: TEXT0, marginTop: 6, lineHeight: 1.3 }}>
@@ -394,11 +409,17 @@ export default function OptionProposalCard({
 
       {novice && <RiskFlagChips flags={risks} />}
 
+      {liqWarnings.map(w => (
+        <div key={w.code} style={{ marginTop: 8, fontSize: 10, fontWeight: 700, color: w.severity === 'danger' ? RED : AMBER }}>
+          {w.message}
+        </div>
+      ))}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(72px, 1fr))', gap: 7, marginTop: 11 }}>
         <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} tip={TIPS.spot} />
         <Metric label="Strike" value={`$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`} tip={TIPS.strike} />
-        <Metric label="Premium" value={p.premium != null ? fmt$(p.premium, 2) : '—'} color={GREEN} tip={TIPS.premium} />
-        <Metric label="Total credit" value={fmt$(p.premium_total)} color={GREEN} tip={TIPS.totalCredit} />
+        <Metric label="Premium" value={p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? GREEN : TEXT1} tip={TIPS.premium} />
+        <Metric label={cashflowLabel} value={fmt$(p.premium_total)} color={cfColor} tip={TIPS.totalCashflow} />
         <Metric label="POP" value={p.pop_pct != null ? `${p.pop_pct.toFixed(1)}%` : '—'} color={p.pop_pct != null && p.pop_pct >= 60 ? GREEN : AMBER} tip={TIPS.pop} />
         <Metric label="R:R" value={p.risk_reward != null ? `${p.risk_reward.toFixed(2)}` : '—'} color={p.risk_reward != null && p.risk_reward >= 0.3 ? GREEN : TEXT1} tip={TIPS.rr} />
         <Metric label="Breakeven" value={p.breakeven != null ? `$${fmtNum(p.breakeven, 2)}` : '—'} tip={TIPS.breakeven} />
@@ -429,9 +450,9 @@ export default function OptionProposalCard({
         </div>
       )}
 
-      {p.execution_note && (
-        <div title="Live execution path status" style={{ fontSize: 9.5, color: MUTED, marginTop: 8, fontStyle: 'italic', lineHeight: 1.4 }}>
-          {p.execution_note}
+      {(p.execution_note || route.label) && (
+        <div title="Execution route — not data source" style={{ fontSize: 9.5, color: MUTED, marginTop: 8, fontStyle: 'italic', lineHeight: 1.4 }}>
+          {p.execution_note || route.label}
         </div>
       )}
 
@@ -445,7 +466,7 @@ export default function OptionProposalCard({
       )}
 
       <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--border-subtle)' }}>
-        {(p.action_buttons || []).map((b, i) => {
+        {actionButtons.map((b, i) => {
           const manualOnly = p.execution_mode === 'manual' || p.broker === 'fidelity' || !p.auto_eligible
           const execLocked = EXEC_ACTIONS.has(b.action) && !armed && !manualOnly
           return (
@@ -468,7 +489,7 @@ export default function OptionProposalCard({
             </button>
           )
         })}
-        {onManualLog && !p.educational_paper_model && (
+        {showManualLog && (
           <button type="button" title={ACTIONS.manualLog} onClick={onManualLog} style={{ fontSize: 10, fontWeight: 800, padding: '6px 12px', borderRadius: 6, border: `1px solid ${BLUE}55`, background: 'rgba(96,165,250,.12)', color: BLUE, cursor: 'help' }}>
             Executed manually
           </button>

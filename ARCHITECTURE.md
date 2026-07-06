@@ -110,10 +110,11 @@
   It is the canonical UI; `command-center-v2` is a frozen fallback, `broker-admin` a separate app.
 - Hub routes (`src/App.tsx`): home, portfolio, risk, trading, strategy, agents, intelligence, hermes,
   retirement, journal, watch, reports, rotation, rec-intel, health, system.
-- **Card v4 family is LOCKED as the default** for all card surfaces — watchlist, broker proposals,
-  open-trades positions, options desk (operator decision 2026-07-04). The single global toggle is
-  `cc.cards.v4` in `src/lib/cardsV4.ts`; `readCardsV4()` defaults to `true`, and the toggle remains only
-  as an escape hatch back to v3 during the transition.
+- **Card v4 family is LIVE** on all card surfaces — watchlist, broker proposals, open-trades positions,
+  options desk (operator decision 2026-07-05). `readCardsV4()` in `src/lib/cardsV4.ts` always returns
+  `true`; v3 components remain in-tree for reference only. Options desk semantics (debit/credit labels,
+  blocked-action gating, route vs data-source copy, PRIME bands, liquidity warnings) ship in
+  `OptionProposalCardV4` + `lib/optionsCardSemantics.ts`, enriched API-side by `card_semantics.py`.
 - **Market-aware staleness:** `src/lib/watchlistCardV4.ts` `marketAwareStale()` — data ≤1h old is never
   STALE; older data is STALE only if the market has actually moved since enrichment. A Friday-evening
   enrichment stays fresh all weekend and re-arms at Monday 09:30. This mirrors the server-side grace in

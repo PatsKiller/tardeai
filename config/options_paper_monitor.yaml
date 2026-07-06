@@ -1,0 +1,46 @@
+# Options position monitor — advisory only. No order submit paths.
+enabled: true
+market_hours_cadence_minutes: 15
+after_hours_snapshot: true
+max_positions_per_run: 50
+quote_stale_seconds: 900
+max_spread_pct: 12.0
+profit_target_pct: 25.0
+max_loss_pct: 35.0
+dte_roll_watch: 14
+theta_decay_watch: true
+iv_crush_watch_pct: 15.0
+alert_telegram_enabled: false
+alert_ui_enabled: true
+advice_only: true
+quote_source_preference: schwab_chain
+brokers:
+  alpaca:
+    paper_only: true
+    reconcile_on_run: true
+  fidelity:
+    paper_only: false
+    manual_marks: true
+  schwab:
+    paper_only: false
+    reconcile_on_run: false
+strategy_rules:
+  deep_itm_call:
+    min_delta: 0.70
+    profit_target_pct: 25.0
+    max_loss_pct: 35.0
+  atm_call:
+    profit_target_pct: 30.0
+    max_loss_pct: 50.0
+  atm_put:
+    profit_target_pct: 30.0
+    max_loss_pct: 50.0
+  covered_call:
+    profit_target_pct: 80.0
+  cash_secured_put:
+    profit_target_pct: 80.0
+  protective_put:
+    max_loss_pct: 40.0
+  default:
+    profit_target_pct: 25.0
+    max_loss_pct: 35.0
