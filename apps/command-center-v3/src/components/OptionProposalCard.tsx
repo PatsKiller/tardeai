@@ -13,7 +13,7 @@ import {
   type SafetyStatusBadge,
 } from '../lib/optionsCardSemantics'
 import { ACTIONS, PROPOSAL } from '../lib/optionsTooltips'
-import { RiskFlagChips, StrikeDistanceBar, WhatIfBox } from './OptionsNovicePanel'
+import { BeginnerSummaryRow, ExplainTradePanel, RiskFlagChips, StrikeDistanceBar, WhatIfBox } from './OptionsNovicePanel'
 
 const BLUE = '#60a5fa'
 const GREEN = '#22c55e'
@@ -407,11 +407,13 @@ export default function OptionProposalCard({
         )}
       </div>
 
+      {novice && <BeginnerSummaryRow card={p} />}
       {novice && (
-        <div style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.22)', fontSize: 10.5, color: TEXT2, lineHeight: 1.5 }}>
+        <div style={{ marginTop: 8, padding: '9px 10px', borderRadius: 8, background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.22)', fontSize: 10.5, color: TEXT2, lineHeight: 1.5 }}>
           <b style={{ color: BLUE }}>In plain English:</b> {plainEnglishProposal(p)}
         </div>
       )}
+      {novice && <ExplainTradePanel card={p} />}
 
       {novice && dist && p.underlying_price && (
         <div title={dist.label}>
@@ -452,7 +454,7 @@ export default function OptionProposalCard({
         {p.oi != null && <Metric label="OI" value={fmtNum(p.oi, 0)} tip={TIPS.oi} />}
       </div>
 
-      {novice && <WhatIfBox strategy={p.strategy} symbol={p.symbol} />}
+      {novice && <WhatIfBox strategy={p.strategy} symbol={p.symbol} card={p} />}
 
       {reviewBar}
 

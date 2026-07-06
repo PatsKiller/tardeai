@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishProposal, proposalRiskFlags, strikeDistance, strategyGuide } from '../lib/optionsNovice'
 import { ACTIONS, PROPOSAL } from '../lib/optionsTooltips'
-import { RiskFlagChips, StrikeDistanceBar, WhatIfBox } from './OptionsNovicePanel'
+import { BeginnerSummaryRow, ExplainTradePanel, RiskFlagChips, StrikeDistanceBar, WhatIfBox } from './OptionsNovicePanel'
 import { composeWhy } from '../lib/watchlistCardV4'
 import { WL, numStyle } from '../lib/watchlistCardTokens'
 import {
@@ -891,12 +891,14 @@ export default function OptionProposalCardV4({
           </div>
         )}
 
+        {novice && <BeginnerSummaryRow card={p} />}
         {novice && (
-          <div style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(148,163,184,.07)', border: '1px solid rgba(148,163,184,.18)', fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.5 }}>
+          <div style={{ marginTop: 8, padding: '9px 10px', borderRadius: 8, background: 'rgba(148,163,184,.07)', border: '1px solid rgba(148,163,184,.18)', fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.5 }}>
             <b style={{ color: WL.text.primary }}>In plain English:</b>{' '}
             {(ext.plain_english_hint as string | undefined) || plainEnglishHint(p.strategy) || plainEnglishProposal(p)}
           </div>
         )}
+        {novice && <ExplainTradePanel card={p} />}
 
         {novice && dist && p.underlying_price && (
           <div title={dist.label}>
@@ -929,7 +931,7 @@ export default function OptionProposalCardV4({
           {p.oi != null && <Metric label="OI" value={fmtNum(p.oi, 0)} tip={TIPS.oi} />}
         </div>
 
-        {novice && <WhatIfBox strategy={p.strategy} symbol={p.symbol} />}
+        {novice && <WhatIfBox strategy={p.strategy} symbol={p.symbol} card={p} />}
 
         {reviewBar}
 

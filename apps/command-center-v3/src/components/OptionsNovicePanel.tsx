@@ -1,5 +1,13 @@
 import { useState } from 'react'
-import { GLOSSARY, strategyGuide } from '../lib/optionsNovice'
+import { strategyGuide } from '../lib/optionsNovice'
+import {
+  buildOptionEducation,
+  buildStockMoveScenarios,
+  explainAdviceLabel,
+  NOVICE_GLOSSARY,
+  OPEN_OPTIONS_INTRO,
+  type EducationCard,
+} from '../lib/optionsEducation'
 import { NOVICE } from '../lib/optionsTooltips'
 
 const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 } as const
@@ -41,9 +49,9 @@ export function Options101Banner({ collapsed, onToggle }: { collapsed: boolean; 
             })}
           </div>
           <details>
-            <summary style={{ fontSize: 10, fontWeight: 800, color: MUTED, cursor: 'pointer' }}>Glossary ({GLOSSARY.length} terms)</summary>
+            <summary style={{ fontSize: 10, fontWeight: 800, color: MUTED, cursor: 'pointer' }}>Glossary ({NOVICE_GLOSSARY.length} terms)</summary>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8, marginTop: 10 }}>
-              {GLOSSARY.map(g => (
+              {NOVICE_GLOSSARY.map(g => (
                 <div key={g.term} style={{ fontSize: 10, color: TEXT2, lineHeight: 1.4 }}>
                   <b style={{ color: 'var(--text1)' }}>{g.term}</b> — {g.def}
                 </div>
@@ -140,9 +148,143 @@ export function RiskFlagChips({ flags }: { flags: { label: string; tip: string; 
   )
 }
 
-export function WhatIfBox({ strategy, symbol }: { strategy: string; symbol: string }) {
+export function BeginnerSummaryRow({ card }: { card: EducationCard }) {
+  const edu = buildOptionEducation(card)
+  return (
+    <div
+      title="Plain-English one-line summary for new operators"
+      style={{
+        marginTop: 8,
+        padding: '7px 9px',
+        borderRadius: 8,
+        background: 'rgba(96,165,250,.08)',
+        border: '1px solid rgba(96,165,250,.22)',
+        fontSize: 10,
+        color: TEXT2,
+        lineHeight: 1.5,
+        cursor: 'help',
+      }}
+    >
+      <b style={{ color: '#93c5fd' }}>Beginner view:</b> {edu.beginnerSummary.replace(/^Beginner view:\s*/i, '')}
+    </div>
+  )
+}
+
+function EduSection({ title, body }: { title: string; body: React.ReactNode }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 800, color: '#93c5fd', marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 10, color: TEXT2, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{body}</div>
+    </div>
+  )
+}
+
+export function ExplainTradePanel({ card }: { card: EducationCard }) {
+  const [open, setOpen] = useState(false)
+  const edu = buildOptionEducation(card)
+  if (!open) {
+    return (
+      <button
+        type="button"
+        title="Plain-English education — advisory review only, not trade instructions"
+        onClick={e => { e.stopPropagation(); setOpen(true) }}
+        style={{ fontSize: 9, color: '#60a5fa', background: 'none', border: 'none', cursor: 'help', padding: 0, marginTop: 8, fontWeight: 700 }}
+      >
+        ▸ Explain this trade ⓘ
+      </button>
+    )
+  }
+  return (
+    <div
+      onClick={e => e.stopPropagation()}
+      style={{
+        marginTop: 8,
+        padding: 11,
+        borderRadius: 8,
+        background: 'rgba(96,165,250,.06)',
+        border: '1px solid rgba(96,165,250,.2)',
+        fontSize: 10,
+        color: TEXT2,
+        lineHeight: 1.55,
+      }}
+    >
+      <div style={{ fontWeight: 900, color: '#bfdbfe', fontSize: 11, marginBottom: 6 }}>{edu.title}</div>
+      <EduSection title="1. What type of trade is this?" body={edu.sections.tradeType} />
+      <EduSection title="2. What am I buying or selling?" body={edu.sections.buyingSelling} />
+      <EduSection title="3. Why would someone use this?" body={edu.sections.whyUse} />
+      <EduSection title="4. How can it make money?" body={edu.sections.howMakeMoney} />
+      <EduSection title="5. How can it lose money?" body={edu.sections.howLoseMoney} />
+      <EduSection title="6. What should I monitor?" body={edu.sections.whatToMonitor} />
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 10, fontWeight: 800, color: '#93c5fd', marginBottom: 4 }}>7. What do these numbers mean?</div>
+        <div style={{ fontSize: 10, color: TEXT2, lineHeight: 1.55 }}>{edu.sections.numbersMean}</div>
+        <ul style={{ margin: '6px 0 0', paddingLeft: 16, fontSize: 9.5, color: MUTED }}>
+          {edu.warningSigns.map(w => <li key={w}>{w}</li>)}
+        </ul>
+      </div>
+      <EduSection title="8. Paper / live status" body={edu.sections.paperLive} />
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ fontSize: 9.5, fontWeight: 800, color: MUTED, cursor: 'pointer' }}>What to monitor after entry (checklist)</summary>
+        <ul style={{ margin: '6px 0 0', paddingLeft: 16, fontSize: 9.5, color: TEXT2 }}>
+          {edu.monitorChecklist.map(item => <li key={item}>{item}</li>)}
+        </ul>
+      </details>
+      <details style={{ marginTop: 8 }}>
+        <summary style={{ fontSize: 9.5, fontWeight: 800, color: MUTED, cursor: 'pointer' }}>Glossary on this card</summary>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 6, marginTop: 8 }}>
+          {edu.noviceGlossary.slice(0, 10).map(g => (
+            <div key={g.term} style={{ fontSize: 9.5, color: TEXT2 }}>
+              <b style={{ color: 'var(--text1)' }}>{g.term}</b> — {g.def}
+            </div>
+          ))}
+        </div>
+      </details>
+      <button type="button" onClick={() => setOpen(false)} style={{ fontSize: 9, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', marginTop: 8, padding: 0 }}>▾ Hide explanation</button>
+    </div>
+  )
+}
+
+export function OpenOptionsIntroBanner() {
+  const [open, setOpen] = useState(true)
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} style={{ fontSize: 10, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', marginBottom: 10, padding: 0 }}>
+        ▸ Show open-options monitoring guide
+      </button>
+    )
+  }
+  return (
+    <div style={{ ...panel, marginBottom: 12, borderLeft: '4px solid #a855f7', cursor: 'help' }} title={OPEN_OPTIONS_INTRO}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: '#d8b4fe', marginBottom: 6 }}>Open options — what am I looking at? ⓘ</div>
+      <div style={{ fontSize: 10.5, color: TEXT2, lineHeight: 1.55 }}>{OPEN_OPTIONS_INTRO}</div>
+      <button type="button" onClick={() => setOpen(false)} style={{ fontSize: 9, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', marginTop: 6, padding: 0 }}>Hide</button>
+    </div>
+  )
+}
+
+export function OpenPositionEducation({ position }: { position: EducationCard & { advice_label?: string } }) {
+  const edu = buildOptionEducation(position)
+  const sym = position.symbol || position.underlying || '—'
+  return (
+    <div style={{ marginTop: 8, padding: 9, borderRadius: 8, background: 'rgba(168,85,247,.06)', border: '1px solid rgba(168,85,247,.2)', fontSize: 10, color: TEXT2, lineHeight: 1.5 }}>
+      <div style={{ fontWeight: 800, color: '#d8b4fe', marginBottom: 4 }}>Paper position review — {sym}</div>
+      <div><b>Entry:</b> {position.entry_fill_price != null ? `$${position.entry_fill_price.toFixed(2)}` : '—'} · <b>Mark:</b> {position.mark != null ? `$${position.mark.toFixed(2)}` : '—'} · <b>P/L:</b> {position.unrealized_pnl != null ? `$${position.unrealized_pnl.toFixed(0)}` : '—'}</div>
+      {position.advice_label && (
+        <div style={{ marginTop: 4 }}>
+          <b>Monitor advice:</b> {position.advice_label} — {explainAdviceLabel(position.advice_label)}
+        </div>
+      )}
+      <ul style={{ margin: '6px 0 0', paddingLeft: 16, fontSize: 9.5 }}>
+        {edu.monitorChecklist.slice(0, 6).map(item => <li key={item}>{item}</li>)}
+      </ul>
+    </div>
+  )
+}
+
+export function WhatIfBox({ strategy, symbol, card }: { strategy: string; symbol: string; card?: EducationCard }) {
   const [open, setOpen] = useState(false)
   const g = strategyGuide(strategy)
+  const scenarios = buildStockMoveScenarios(strategy, symbol)
   if (!open) {
     return (
       <button type="button" title={NOVICE.whatIf} onClick={e => { e.stopPropagation(); setOpen(true) }} style={{ fontSize: 9, color: '#a855f7', background: 'none', border: 'none', cursor: 'help', padding: 0, marginTop: 6 }}>
@@ -152,10 +294,18 @@ export function WhatIfBox({ strategy, symbol }: { strategy: string; symbol: stri
   }
   return (
     <div onClick={e => e.stopPropagation()} style={{ marginTop: 8, padding: 9, borderRadius: 8, background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.25)', fontSize: 10, color: TEXT2, lineHeight: 1.5 }}>
-      <div style={{ fontWeight: 800, color: '#d8b4fe', marginBottom: 4 }}>{symbol} — if / then</div>
-      <div><b style={{ color: GREEN }}>Works:</b> {g.win}</div>
-      <div style={{ marginTop: 4 }}><b style={{ color: '#f59e0b' }}>Hurts:</b> {g.lose}</div>
-      <div style={{ marginTop: 4 }}><b style={{ color: MUTED }}>Watch:</b> {g.watch}</div>
+      <div style={{ fontWeight: 800, color: '#d8b4fe', marginBottom: 4 }}>{symbol} — if the stock moves</div>
+      {scenarios.map(block => (
+        <div key={block.heading} style={{ marginTop: 6 }}>
+          <b style={{ color: block.heading.includes('rises') ? GREEN : block.heading.includes('falls') ? '#f59e0b' : MUTED }}>{block.heading}</b>
+          <ul style={{ margin: '3px 0 0', paddingLeft: 16 }}>
+            {block.bullets.map(b => <li key={b}>{b}</li>)}
+          </ul>
+        </div>
+      ))}
+      <div style={{ marginTop: 8, fontSize: 9.5, color: MUTED }}>
+        <b>Quick summary:</b> ✓ {g.win} · ⚠ {g.lose}
+      </div>
       <button type="button" onClick={() => setOpen(false)} style={{ fontSize: 9, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', marginTop: 6, padding: 0 }}>▾ Hide</button>
     </div>
   )

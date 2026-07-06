@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishPosition } from '../lib/optionsNovice'
 import { ACTIONS, POSITION } from '../lib/optionsTooltips'
-import { WhatIfBox } from './OptionsNovicePanel'
+import { OpenPositionEducation, WhatIfBox } from './OptionsNovicePanel'
 import OptionMoneynessBar from './risk/OptionMoneynessBar'
 import OptionsPnLProfile from './risk/OptionsPnLProfile'
 import { composeWhy } from '../lib/watchlistCardV4'
@@ -236,6 +236,20 @@ export default function OptionPositionCardV4({
           <div style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(148,163,184,.07)', border: '1px solid rgba(148,163,184,.18)', fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.5 }}>
             <b style={{ color: WL.text.primary }}>Your position:</b> {plainEnglishPosition(p)}
           </div>
+        )}
+        {novice && (p.position_source === 'monitored' || p.paper_only) && (
+          <OpenPositionEducation position={{
+            strategy: p.strategy || 'deep_itm_call',
+            symbol: p.underlying,
+            underlying: p.underlying,
+            strike: p.strike,
+            entry_fill_price: p.avg_entry,
+            mark: p.mark,
+            unrealized_pnl: p.unrealized_pnl,
+            advice_label: p.advice_label,
+            paper_only: p.paper_only,
+            execution_route: p.execution_route_kind,
+          }} />
         )}
 
         {novice && p.still_working === false && (

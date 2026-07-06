@@ -8,7 +8,7 @@ import OptionPositionCardV4 from '../components/OptionPositionCardV4'
 import OptionReviewBar from '../components/OptionReviewBar'
 import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualExecutionModal'
 import ManualExecutionLog from '../components/ManualExecutionLog'
-import { Options101Banner, NoviceToggle, PreflightConfirmModal } from '../components/OptionsNovicePanel'
+import { OpenOptionsIntroBanner, Options101Banner, NoviceToggle, PreflightConfirmModal } from '../components/OptionsNovicePanel'
 import { isNoviceMode, setNoviceMode, strategyGuide, GLOSSARY } from '../lib/optionsNovice'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -624,6 +624,7 @@ export default function OptionsHub({ onDrill }: Props) {
 
       {tab === 'Open Options' && (
         <>
+          {novice && <OpenOptionsIntroBanner />}
           <div style={{ ...panel, marginBottom: 14 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
               <input placeholder="Underlying" title={FILTERS.posTicker} value={posSymbolFilter} onChange={e => setPosSymbolFilter(e.target.value)} style={{ ...SEL, width: 80, cursor: 'help' }} />

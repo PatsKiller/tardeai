@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.options_pipeline import card_semantics as cs  # noqa: E402
+from lib.options_pipeline import options_education as oe  # noqa: E402
 
 
 @pytest.mark.parametrize("strategy,expected", [
@@ -122,6 +123,73 @@ def test_true_blocked_covered_call_still_blocked_badge():
     assert badge is not None
     assert badge["label"] == "BLOCKED"
     assert cs.is_desk_trade_blocked(p)
+
+
+def test_deep_itm_beginner_summary_buy_call_debit_stock_replacement():
+    card = {
+        "strategy": "deep_itm_call",
+        "symbol": "RTX",
+        "contracts": 1,
+        "premium_total": 2225.0,
+        "educational_paper_model": True,
+        "alpaca_paper_enabled": True,
+    }
+    summary = oe.build_beginner_summary(card).lower()
+    assert "buy" in summary and "call" in summary
+    assert "pay" in summary and "stock-like" in summary
+    assert "paper only" in summary
+
+
+def test_protective_put_beginner_summary_hedge():
+    summary = oe.build_beginner_summary({
+        "strategy": "protective_put", "symbol": "AAPL", "premium_total": 450.0,
+    }).lower()
+    assert "buy" in summary and "put" in summary
+    assert "insurance" in summary or "offset" in summary
+    assert "cost" in summary or "pay" in summary
+
+
+def test_covered_call_beginner_summary_sell_credit():
+    summary = oe.build_beginner_summary({
+        "strategy": "covered_call", "symbol": "SCHD", "premium_total": 120.0,
+    }).lower()
+    assert "sell" in summary and "call" in summary
+    assert "collect" in summary and "upside" in summary
+
+
+def test_cash_secured_put_beginner_summary_assignment_risk():
+    summary = oe.build_beginner_summary({
+        "strategy": "cash_secured_put", "symbol": "DGRO", "premium_total": 95.0,
+    }).lower()
+    assert "sell" in summary and "put" in summary and "collect" in summary
+    assert "buy shares" in summary or "buy" in summary
+
+
+def test_credit_spread_beginner_summary_net_credit():
+    summary = oe.build_beginner_summary({
+        "strategy": "credit_spread", "symbol": "XOM", "premium_total": 80.0,
+    }).lower()
+    assert "collect" in summary
+    assert "short strike" in summary or "capped risk" in summary
+
+
+def test_novice_glossary_includes_core_terms():
+    terms = {t.lower() for t in oe.NOVICE_GLOSSARY_TERMS}
+    for need in ("call", "put", "delta", "theta", "iv", "dte", "oi"):
+        assert need in terms
+
+
+def test_monitor_checklist_includes_greeks_iv_spread_pl_dte():
+    items = " ".join(oe.monitor_checklist("deep_itm_call")).lower()
+    for frag in ("delta", "theta", "iv", "spread", "p/l", "dte"):
+        assert frag in items
+
+
+def test_alpaca_paper_education_no_live_broker():
+    snippet = oe.alpaca_paper_education_snippet().lower()
+    assert "paper" in snippet
+    assert "simulated" in snippet or "does not place" in snippet
+    assert "live broker" in snippet
 
 
 def test_paper_model_review_button_renamed():
