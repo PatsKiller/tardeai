@@ -24855,6 +24855,36 @@ def _options_execution_status(query=None):
     return _json_clean(opa.status())
 
 
+def _options_paper_order_status(query=None):
+    """GET /api/v2/options/paper-order-status?order_id=… — live Alpaca PAPER order state for a
+    desk-submitted option order, so the card chip shows fills immediately instead of waiting for
+    the hourly reconcile (operator 2026-07-06). Read-only; the id must belong to an
+    options_approval_queue row (no open order-lookup proxy)."""
+    q = query or {}
+    oid = str((q.get("order_id")[0] if isinstance(q.get("order_id"), list) else q.get("order_id")) or "").strip()
+    if not oid:
+        return {"ok": False, "error": "order_id required"}
+    known = _db_query(
+        "SELECT 1 FROM options_approval_queue WHERE meta->'alpaca_json'->'response'->>'id' = %s LIMIT 1",
+        (oid,), fetch="one")
+    if not known:
+        return {"ok": False, "error": "unknown order id"}
+    import urllib.request as _ur
+    base = (os.getenv("ALPACA_PAPER_BASE_URL") or "https://paper-api.alpaca.markets").rstrip("/")
+    try:
+        req = _ur.Request(f"{base}/v2/orders/{oid}",
+                          headers={"APCA-API-KEY-ID": os.getenv("ALPACA_API_KEY", ""),
+                                   "APCA-API-SECRET-KEY": os.getenv("ALPACA_SECRET_KEY", "")})
+        with _ur.urlopen(req, timeout=10) as r:
+            o = json.loads(r.read())
+        return {"ok": True, "order_id": oid, "advisory_only": True,
+                "status": o.get("status"), "qty": o.get("qty"), "filled_qty": o.get("filled_qty"),
+                "filled_avg_price": o.get("filled_avg_price"), "limit_price": o.get("limit_price"),
+                "symbol": o.get("symbol"), "submitted_at": o.get("submitted_at")}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:120]}
+
+
 def _execution_current_state(query=None):
     """GET /api/v2/execution/current-state — fail-closed execution state aggregate."""
     import execution_state as es
@@ -27565,6 +27595,7 @@ ROUTES = {
     "/api/v2/options/open-positions": _options_open_positions,
     "/api/v2/options/overview": _options_overview,
     "/api/v2/options/execution/status": _options_execution_status,
+    "/api/v2/options/paper-order-status": _options_paper_order_status,
     "/api/v2/execution/current-state": _execution_current_state,
     "/api/v2/entry-desk/automation": _entry_desk_automation,
     "/api/v2/execution/readiness": _execution_readiness,
