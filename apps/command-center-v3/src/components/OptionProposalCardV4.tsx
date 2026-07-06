@@ -3,6 +3,14 @@ import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishProposal, proposalRiskFlags, strikeDistance, strategyGuide } from '../lib/optionsNovice'
 import { ACTIONS, PROPOSAL } from '../lib/optionsTooltips'
 import { BeginnerSummaryRow, ExplainTradePanel, RiskFlagChips, StrikeDistanceBar, WhatIfBox } from './OptionsNovicePanel'
+import { CompactMetricRow, HeroMetricChip, MetricChipTooltip } from './MetricChipTooltip'
+import {
+  getOptionsMetricTooltip,
+  paperFlagMetricKey,
+  type MetricChipItem,
+  type OptionsMetricContext,
+  type OptionsMetricKey,
+} from '../lib/optionsMetricTooltips'
 import { composeWhy } from '../lib/watchlistCardV4'
 import { WL, numStyle } from '../lib/watchlistCardTokens'
 import {
@@ -249,13 +257,85 @@ const chip = (c: string, quiet = false): React.CSSProperties => ({
 
 const statKey: React.CSSProperties = { color: WL.text.dim, fontWeight: 700 }
 
-function Metric({ label, value, color = WL.text.primary, tip }: { label: string; value: React.ReactNode; color?: string; tip?: string }) {
+const METRIC_LABEL_KEY: Record<string, OptionsMetricKey> = {
+  Spot: 'spot',
+  Strike: 'strike',
+  Premium: 'premium',
+  Breakeven: 'breakeven',
+  'Max profit': 'max_profit',
+  'Max loss': 'max_loss',
+  'Stock risk': 'max_loss',
+  'IV rank': 'iv_rank',
+  Contracts: 'contracts',
+  Delta: 'delta',
+  OI: 'oi',
+  POP: 'pop',
+  'R:R': 'rr',
+  EV: 'ev',
+}
+
+function Metric({
+  label,
+  value,
+  color = WL.text.primary,
+  metricKey,
+  context,
+}: {
+  label: string
+  value: React.ReactNode
+  color?: string
+  metricKey?: OptionsMetricKey
+  context?: OptionsMetricContext
+}) {
+  const key = metricKey ?? METRIC_LABEL_KEY[label]
   return (
-    <div title={tip} style={{ background: WL.surface.inset, border: `1px solid ${WL.surface.edge}`, borderRadius: 8, padding: '7px 8px' }}>
-      <div style={{ fontSize: 8, color: WL.text.dim, textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.04em' }}>{label}</div>
-      <div style={{ ...numStyle, fontSize: 12.5, color, fontWeight: 800, marginTop: 2, cursor: tip ? 'help' : undefined }}>{value}</div>
+    <div style={{ background: WL.surface.inset, border: `1px solid ${WL.surface.edge}`, borderRadius: 8, padding: '7px 8px' }}>
+      {key ? (
+        <MetricChipTooltip
+          metricKey={key}
+          label={label}
+          context={context}
+          style={{ fontSize: 8, color: WL.text.dim, textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.04em' }}
+        />
+      ) : (
+        <div style={{ fontSize: 8, color: WL.text.dim, textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.04em' }}>{label}</div>
+      )}
+      <div style={{ ...numStyle, fontSize: 12.5, color, fontWeight: 800, marginTop: 2 }}>{value}</div>
     </div>
   )
+}
+
+function buildMetricContext(
+  p: OptionProposal,
+  cand?: Record<string, unknown> | null,
+): OptionsMetricContext {
+  const c = cand as {
+    strike?: number
+    delta?: number
+    breakeven?: number
+    breakeven_move_pct?: number
+    capital_vs_100_shares?: { capital_ratio_pct?: number }
+  } | undefined
+  const ivc = p.iv_context || p.meta?.analysis?.iv_context
+  return {
+    symbol: p.symbol,
+    strategy: p.strategy,
+    strike: c?.strike ?? p.strike,
+    spot: p.underlying_price,
+    delta: c?.delta ?? p.delta,
+    breakeven: c?.breakeven ?? p.breakeven,
+    breakeven_move_pct: c?.breakeven_move_pct ?? p.breakeven_move_pct,
+    capital_ratio_pct: c?.capital_vs_100_shares?.capital_ratio_pct,
+    dte_bucket: p.meta?.dte_bucket?.target_dte ?? p.dte,
+    dte: p.dte,
+    is_delta_proxy: c != null && c.delta == null,
+    iv_rank: ivc?.iv_rank ?? p.iv_rank,
+    iv_days: ivc?.days,
+    iv_required_days: ivc?.required_days,
+    validation_label: p.validation_progress?.label,
+    validation_message: p.validation_progress?.message,
+    blocks: p.enterprise?.blocks,
+  }
 }
 
 const EXEC_ACTIONS = new Set(['sell_covered_call', 'sell_put', 'buy_put', 'buy_call', 'sell_credit_spread'])
@@ -327,22 +407,28 @@ export default function OptionProposalCardV4({
   // ATM analysis shape (MULTI-STRATEGY Stage 2) has no capital_vs_100_shares —
   // its summary line renders max-loss/spread/OI/vol/IV instead (deep-ITM line unchanged).
   const atmShape = paper && !!cand && cand.capital_vs_100_shares == null
-  const paperSummary = paper && cand ? [
-    bucketDte != null ? `${bucketDte}d bucket` : null,
-    cand.strike != null ? `$${fmtNum(cand.strike, cand.strike < 50 ? 2 : 0)} strike` : null,
-    cand.delta != null ? `Δ${Number(cand.delta).toFixed(2)}` : 'Δ proxy',
+  const metricCtx = buildMetricContext(p, cand)
+  const beMoveSuffix = cand?.breakeven_move_pct != null
+    ? ` (${cand.breakeven_move_pct > 0 ? '+' : ''}${Number(cand.breakeven_move_pct).toFixed(1)}%)`
+    : ''
+  const paperSummaryChips: MetricChipItem[] = paper && cand ? [
+    bucketDte != null ? { key: 'dte_bucket', label: `${bucketDte}d bucket` } : null,
+    cand.strike != null ? { key: 'strike', label: `$${fmtNum(cand.strike, cand.strike < 50 ? 2 : 0)} strike` } : null,
+    cand.delta != null
+      ? { key: 'delta', label: `Δ${Number(cand.delta).toFixed(2)}` }
+      : { key: 'delta_proxy', label: 'Δ proxy' },
     cand.breakeven != null
-      ? `BE $${fmtNum(cand.breakeven, 2)}${cand.breakeven_move_pct != null ? ` (${cand.breakeven_move_pct > 0 ? '+' : ''}${Number(cand.breakeven_move_pct).toFixed(1)}%)` : ''}`
+      ? { key: 'breakeven', label: `BE $${fmtNum(cand.breakeven, 2)}${beMoveSuffix}` }
       : null,
-    capPct != null ? `${Math.round(capPct)}% of share capital` : null,
+    capPct != null ? { key: 'share_capital_pct', label: `${Math.round(capPct)}% of share capital` } : null,
     ...(atmShape ? [
-      cand.max_loss != null ? `max loss ${fmt$(cand.max_loss)} (= debit)` : null,
-      cand.spread_pct != null ? `spread ${Number(cand.spread_pct).toFixed(1)}%` : null,
-      cand.oi != null ? `OI ${fmtNum(cand.oi, 0)}` : null,
-      cand.volume != null ? `vol ${fmtNum(cand.volume, 0)}` : null,
-      cand.iv != null ? `IV ${Number(cand.iv).toFixed(0)}%` : null,
+      cand.max_loss != null ? { key: 'max_loss', label: `max loss ${fmt$(cand.max_loss)} (= debit)` } : null,
+      cand.spread_pct != null ? { key: 'spread_pct', label: `spread ${Number(cand.spread_pct).toFixed(1)}%` } : null,
+      cand.oi != null ? { key: 'oi', label: `OI ${fmtNum(cand.oi, 0)}` } : null,
+      cand.volume != null ? { key: 'volume', label: `vol ${fmtNum(cand.volume, 0)}` } : null,
+      cand.iv != null ? { key: 'iv', label: `IV ${Number(cand.iv).toFixed(0)}%` } : null,
     ] : []),
-  ].filter(Boolean).join(' · ') : ''
+  ].filter((x): x is MetricChipItem => x != null) : []
   // ── EARNINGS-SPREADS Stage 3: vertical-spread rows (family earnings_vertical_*) ──
   const isEarnSpread = paper
     && (p.strategy_family || p.meta?.strategy_json?.family || '').startsWith('earnings_vertical')
@@ -350,29 +436,40 @@ export default function OptionProposalCardV4({
   const spreadAnalysis = p.meta?.analysis
   const spreadLegs = isEarnSpread ? (p.meta?.strategy_json?.legs || []) : []
   const disclosures = p.meta?.disclosures || {}
-  const spreadSummary = isEarnSpread ? [
-    p.net_debit != null ? `net debit $${fmtNum(p.net_debit, 2)}`
-      : p.net_credit != null ? `net credit $${fmtNum(p.net_credit, 2)}` : null,
-    p.max_loss != null ? `max loss ${fmtMoneyish(p.max_loss)}` : null,
-    p.max_profit != null ? `max gain ${fmtMoneyish(p.max_profit)}` : null,
-    p.breakeven != null
-      ? `BE $${fmtNum(p.breakeven, 2)}${p.breakeven_move_pct != null ? ` (${p.breakeven_move_pct > 0 ? '+' : ''}${Number(p.breakeven_move_pct).toFixed(1)}%)` : ''}`
+  const spreadBeSuffix = p.breakeven_move_pct != null
+    ? ` (${p.breakeven_move_pct > 0 ? '+' : ''}${Number(p.breakeven_move_pct).toFixed(1)}%)`
+    : ''
+  const spreadSummaryChips: MetricChipItem[] = isEarnSpread ? [
+    p.net_debit != null ? { key: 'net_debit', label: `net debit $${fmtNum(p.net_debit, 2)}` }
+      : p.net_credit != null ? { key: 'net_credit', label: `net credit $${fmtNum(p.net_credit, 2)}` } : null,
+    p.max_loss != null ? { key: 'max_loss', label: `max loss ${fmtMoneyish(p.max_loss)}` } : null,
+    p.max_profit != null ? { key: 'max_gain', label: `max gain ${fmtMoneyish(p.max_profit)}` } : null,
+    p.breakeven != null ? { key: 'breakeven', label: `BE $${fmtNum(p.breakeven, 2)}${spreadBeSuffix}` } : null,
+    (p.reward_to_risk ?? p.risk_reward) != null
+      ? { key: 'rr', label: `R:R ${Number(p.reward_to_risk ?? p.risk_reward).toFixed(2)}` }
       : null,
-    (p.reward_to_risk ?? p.risk_reward) != null ? `R:R ${Number(p.reward_to_risk ?? p.risk_reward).toFixed(2)}` : null,
-    spreadAnalysis?.package_slippage_pct != null ? `pkg slippage ${Number(spreadAnalysis.package_slippage_pct).toFixed(1)}%` : null,
-  ].filter(Boolean).join(' · ') : ''
+    spreadAnalysis?.package_slippage_pct != null
+      ? { key: 'pkg_slippage', label: `pkg slippage ${Number(spreadAnalysis.package_slippage_pct).toFixed(1)}%` }
+      : null,
+  ].filter((x): x is MetricChipItem => x != null) : []
   // Event line: earnings date · DTE · implied move vs historical (honest when unavailable)
   const im = eventJson?.implied_move_pct
   const hist = eventJson?.historical_earnings_moves
-  const eventLine = isEarnSpread ? [
-    eventJson?.earnings_date?.date ? `earnings ${eventJson.earnings_date.date}` : 'earnings date unavailable',
-    p.dte != null ? `${p.dte}d to expiry` : null,
-    im?.available && im.pct != null ? `implied move ${Number(im.pct).toFixed(1)}%` : 'implied move unavailable',
+  const eventLineChips: MetricChipItem[] = isEarnSpread ? [
+    eventJson?.earnings_date?.date
+      ? { key: 'earnings_date', label: `earnings ${eventJson.earnings_date.date}` }
+      : { key: 'earnings_date', label: 'earnings date unavailable' },
+    p.dte != null ? { key: 'dte_to_expiry', label: `${p.dte}d to expiry` } : null,
+    im?.available && im.pct != null
+      ? { key: 'implied_move', label: `implied move ${Number(im.pct).toFixed(1)}%` }
+      : { key: 'implied_move', label: 'implied move unavailable' },
     hist?.available && hist.avg_abs_move_pct != null
-      ? `vs historical avg |move| ${Number(hist.avg_abs_move_pct).toFixed(1)}% (${hist.samples ?? 0} sample${hist.samples === 1 ? '' : 's'})`
-      : 'no historical move data',
-    eventJson?.event_confidence != null ? `event confidence ${Math.round(Number(eventJson.event_confidence) * 100)}%` : null,
-  ].filter(Boolean).join(' · ') : ''
+      ? { key: 'historical_move', label: `vs historical avg |move| ${Number(hist.avg_abs_move_pct).toFixed(1)}% (${hist.samples ?? 0} sample${hist.samples === 1 ? '' : 's'})` }
+      : { key: 'historical_move', label: 'no historical move data' },
+    eventJson?.event_confidence != null
+      ? { key: 'event_confidence', label: `event confidence ${Math.round(Number(eventJson.event_confidence) * 100)}%` }
+      : null,
+  ].filter((x): x is MetricChipItem => x != null) : []
   // Amber event-risk pills: generator gate_flags + (earnings rows) event_json
   // risk_flags + credit-lane disclosure keys — deduped; disclosure text in tooltip.
   const paperFlags = paper
@@ -387,13 +484,19 @@ export default function OptionProposalCardV4({
   // ── MULTI-STRATEGY Stage 2: why-matched + thesis + other-strategies context ──
   const matchJson = p.meta?.match_json
   const intel = p.meta?.underlying_intel
-  const thesisLine = paper && intel ? [
-    intel.conviction_source ? `thesis: ${String(intel.conviction_source).replace(/_/g, ' ')}` : null,
-    intel.watchlist_verdict ? `verdict ${String(intel.watchlist_verdict).replace(/_/g, ' ')}` : null,
-    intel.conviction != null ? `conviction ${Math.round(Number(intel.conviction) * 100)}%` : null,
-    intel.held_shares ? `${fmtNum(intel.held_shares, 0)} sh held` : null,
-    intel.hedge_of_held ? 'hedge of held' : null,
-  ].filter(Boolean).join(' · ') : ''
+  const thesisChips: MetricChipItem[] = paper && intel ? [
+    intel.conviction_source
+      ? { key: 'thesis', label: `thesis: ${String(intel.conviction_source).replace(/_/g, ' ')}` }
+      : null,
+    intel.watchlist_verdict
+      ? { key: 'thesis', label: `verdict ${String(intel.watchlist_verdict).replace(/_/g, ' ')}` }
+      : null,
+    intel.conviction != null
+      ? { key: 'conviction', label: `conviction ${Math.round(Number(intel.conviction) * 100)}%` }
+      : null,
+    intel.held_shares ? { key: 'thesis', label: `${fmtNum(intel.held_shares, 0)} sh held` } : null,
+    intel.hedge_of_held ? { key: 'thesis', label: 'hedge of held' } : null,
+  ].filter((x): x is MetricChipItem => x != null) : []
   const otherStrategies = paper && matchJson?.other_strategies
     ? Object.entries(matchJson.other_strategies) : []
   const [othersOpen, setOthersOpen] = useState(false)
@@ -540,9 +643,12 @@ export default function OptionProposalCardV4({
               </span>
             )}
             {paper && p.validation_progress?.label && (
-              <span title={p.validation_progress.message || 'Closed paper outcomes recorded vs the validation gate.'} style={{ ...chip(WL.signal.amber, true), cursor: 'help' }}>
-                {p.validation_progress.label}
-              </span>
+              <MetricChipTooltip
+                metricKey="paper_validation"
+                label={p.validation_progress.label}
+                context={metricCtx}
+                style={{ ...chip(WL.signal.amber, true), cursor: 'help' }}
+              />
             )}
             {paper && primeDisplay && (
               <span
@@ -558,32 +664,47 @@ export default function OptionProposalCardV4({
               </span>
             )}
             {ds && <span title={ds.tip} style={chip(ds.c)}>{ds.label}</span>}
-            <span title="Execution route — distinct from data source (Schwab chain)" style={chip(
-              route.kind === 'schwab_live' ? WL.signal.amber
-                : route.kind === 'fidelity_manual' ? WL.text.secondary
-                  : route.kind === 'alpaca_paper' || route.kind === 'paper_model' ? WL.signal.amber
-                    : WL.text.dim,
-              route.kind === 'review_only',
-            )}>
-              {route.label}
-            </span>
+            {(route.kind === 'alpaca_paper' ? (
+              <MetricChipTooltip
+                metricKey="alpaca_paper_only"
+                label={route.label}
+                context={metricCtx}
+                style={chip(WL.signal.amber)}
+              />
+            ) : (
+              <span title="Execution route — distinct from data source (Schwab chain)" style={chip(
+                route.kind === 'schwab_live' ? WL.signal.amber
+                  : route.kind === 'fidelity_manual' ? WL.text.secondary
+                    : route.kind === 'paper_model' ? WL.signal.amber
+                      : WL.text.dim,
+                route.kind === 'review_only',
+              )}>
+                {route.label}
+              </span>
+            ))}
             {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={chip(WL.text.secondary, true)}>income sleeve</span>}
             {p.enterprise?.live_eligible && !paper && <span title={PROPOSAL.liveOk} style={{ ...chip(WL.signal.teal), cursor: 'help' }}>live eligible</span>}
             {paper && !p.enterprise?.live_eligible && (
-              <span title="Paper-model rows are never live-eligible until validation gate met" style={{ ...chip(WL.signal.red), cursor: 'help' }}>live eligible false</span>
+              <MetricChipTooltip
+                metricKey="live_eligible_false"
+                label="live eligible false"
+                context={metricCtx}
+                style={{ ...chip(WL.signal.red), cursor: 'help' }}
+              />
             )}
             {safetyBadge && (
-              <span
-                title={safetyBadge.tip}
+              <MetricChipTooltip
+                metricKey={safetyBadge.kind === 'no_live_path' ? 'no_live_path' : 'live_eligible_false'}
+                label={safetyBadge.label}
+                context={metricCtx}
+                tooltip={safetyBadge.kind === 'no_live_path' ? undefined : getOptionsMetricTooltip('live_eligible_false', { ...metricCtx, blocks: p.enterprise?.blocks })}
                 style={{
                   ...chip(safetyBadge.severity === 'danger' ? WL.signal.red : WL.signal.amber),
                   fontWeight: 900,
                   cursor: 'help',
                   background: safetyBadge.kind === 'no_live_path' ? 'rgba(245,166,35,.1)' : undefined,
                 }}
-              >
-                {safetyBadge.label}
-              </span>
+              />
             )}
           </div>
         </div>
@@ -609,9 +730,13 @@ export default function OptionProposalCardV4({
           >
             {whyLine || '—'}
           </span>
-          <span title={TIPS.totalCashflow} style={{ ...numStyle, fontSize: 13.5, fontWeight: 800, color: cfColor, flexShrink: 0, cursor: 'help' }}>
-            {p.premium_total != null ? fmt$(p.premium_total) : '—'}
-          </span>
+          <MetricChipTooltip
+            metricKey={isCredit ? 'total_credit' : 'total_debit'}
+            label={p.premium_total != null ? fmt$(p.premium_total) : '—'}
+            context={metricCtx}
+            style={{ flexShrink: 0 }}
+            valueStyle={{ ...numStyle, fontSize: 13.5, fontWeight: 800, color: cfColor }}
+          />
           <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
             {actionButtons.map((b, i) => {
               const execLocked = EXEC_ACTIONS.has(b.action) && !armed && !manualOnly
@@ -640,21 +765,23 @@ export default function OptionProposalCardV4({
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 11, color: WL.text.secondary }}>
-          <span title={TIPS.edge} style={{ ...numStyle, fontWeight: 800, color: edgeColor }}>edge {edge ?? '—'}</span>
-          <span title={TIPS.ev}><span style={statKey}>EV </span><span style={numStyle}>{fmt$(p.expected_value)}</span></span>
-          <span title={TIPS.pop}>
-            <span style={statKey}>POP </span>
-            <span style={{ ...numStyle, fontWeight: 700, color: p.pop_pct != null && p.pop_pct >= 60 ? WL.signal.teal : WL.signal.amber }}>
-              {p.pop_pct != null ? `${p.pop_pct.toFixed(1)}%` : '—'}
-            </span>
-          </span>
-          <span title={TIPS.rr}>
-            <span style={statKey}>R:R </span>
-            <span style={{ ...numStyle, fontWeight: 700, color: p.risk_reward != null && p.risk_reward >= 0.3 ? WL.signal.teal : WL.text.primary }}>
-              {p.risk_reward != null ? p.risk_reward.toFixed(2) : '—'}
-            </span>
-          </span>
-          <span title={TIPS.dte}><span style={statKey}>DTE </span><span style={numStyle}>{p.dte ?? '—'}</span></span>
+          <HeroMetricChip metricKey="edge" label="edge" value={edge ?? '—'} context={metricCtx} color={edgeColor} />
+          <HeroMetricChip metricKey="ev" label="EV" value={fmt$(p.expected_value)} context={metricCtx} />
+          <HeroMetricChip
+            metricKey="pop"
+            label="POP"
+            value={p.pop_pct != null ? `${p.pop_pct.toFixed(1)}%` : '—'}
+            context={metricCtx}
+            color={p.pop_pct != null && p.pop_pct >= 60 ? WL.signal.teal : WL.signal.amber}
+          />
+          <HeroMetricChip
+            metricKey="rr"
+            label="R:R"
+            value={p.risk_reward != null ? p.risk_reward.toFixed(2) : '—'}
+            context={metricCtx}
+            color={p.risk_reward != null && p.risk_reward >= 0.3 ? WL.signal.teal : WL.text.primary}
+          />
+          <HeroMetricChip metricKey="dte" label="DTE" value={p.dte ?? '—'} context={metricCtx} />
           <span title={[tone.label, p.aegis_note].filter(Boolean).join(' — ') || PROPOSAL.recommended} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', cursor: 'help' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: tone.c, flex: 'none' }} />
             <b style={{ color: tone.c, fontSize: 10, letterSpacing: '.06em' }}>{tone.label}</b>
@@ -720,33 +847,38 @@ export default function OptionProposalCardV4({
                 </table>
               </div>
             )}
-            {isEarnSpread && spreadSummary && (
-              <div style={{ ...numStyle, fontSize: 11, fontWeight: 700, color: WL.text.primary }}>{spreadSummary}</div>
+            {isEarnSpread && spreadSummaryChips.length > 0 && (
+              <CompactMetricRow
+                items={spreadSummaryChips}
+                context={metricCtx}
+                style={{ ...numStyle, fontSize: 11, fontWeight: 700, color: WL.text.primary }}
+              />
             )}
-            {isEarnSpread && eventLine && (
-              <div
-                title="Earnings-event context from the event model (implied move = ATM straddle mid at the event expiration; historical = past post-earnings |moves| on stored dates). Unavailable pieces are reported honestly, never fabricated."
-                style={{ fontSize: 10, fontWeight: 700, color: WL.signal.amber, marginTop: spreadSummary ? 5 : 0, cursor: 'help' }}
-              >
-                {eventLine}
+            {isEarnSpread && eventLineChips.length > 0 && (
+              <div style={{ fontSize: 10, fontWeight: 700, color: WL.signal.amber, marginTop: spreadSummaryChips.length ? 5 : 0 }}>
+                <CompactMetricRow items={eventLineChips} context={metricCtx} />
               </div>
             )}
-            {paperSummary && (
-              <div style={{ ...numStyle, fontSize: 11, fontWeight: 700, color: WL.text.primary }}>{paperSummary}</div>
+            {paperSummaryChips.length > 0 && (
+              <CompactMetricRow
+                items={paperSummaryChips}
+                context={metricCtx}
+                style={{ ...numStyle, fontSize: 11, fontWeight: 700, color: WL.text.primary }}
+              />
             )}
             {/* MULTI-STRATEGY Stage 2: why this strategy matched (matcher pass
                 reason + thesis source) — dim disclosure line, never a signal color */}
             {matchJson?.why_matched && (
               <div
                 title={`Strategy matcher verdict for ${matchJson.strategy || p.strategy}: ${matchJson.status || '—'}. The matcher owns thesis gating (bullish for calls, bearish for puts); generators own contract math.`}
-                style={{ fontSize: 10, color: WL.text.dim, marginTop: (paperSummary || spreadSummary) ? 5 : 0, cursor: 'help' }}
+                style={{ fontSize: 10, color: WL.text.dim, marginTop: (paperSummaryChips.length || spreadSummaryChips.length) ? 5 : 0, cursor: 'help' }}
               >
                 matched: {matchJson.why_matched}
               </div>
             )}
-            {thesisLine && !matchJson?.why_matched && (
-              <div style={{ fontSize: 10, color: WL.text.dim, marginTop: (paperSummary || spreadSummary) ? 5 : 0 }}>
-                {thesisLine}
+            {thesisChips.length > 0 && !matchJson?.why_matched && (
+              <div style={{ fontSize: 10, color: WL.text.dim, marginTop: (paperSummaryChips.length || spreadSummaryChips.length) ? 5 : 0 }}>
+                <CompactMetricRow items={thesisChips} context={metricCtx} />
               </div>
             )}
             {/* MULTI-STRATEGY Stage 2: collapsible cross-strategy mini-list —
@@ -779,20 +911,32 @@ export default function OptionProposalCardV4({
               </div>
             )}
             {ivLine && (
-              <div
-                title={ivc?.available
-                  ? `ATM IV ${ivc.atm_iv != null ? `${Number(ivc.atm_iv).toFixed(1)}%` : '—'} vs 52-week stored range · percentile ${ivc.percentile != null ? `${ivc.percentile}%` : '—'} · advisory only — informs edge ranking (×1.1 cheap / ×0.9 rich), never rejects`
-                  : 'IV rank needs ≥20 daily ATM-IV snapshots — reported honestly as unavailable until then, never fabricated from thin data'}
-                style={{ fontSize: 10, fontWeight: 700, color: ivColor, marginTop: (paperSummary || spreadSummary) ? 5 : 0, cursor: 'help' }}
-              >
-                {ivLine}
+              <div style={{ fontSize: 10, fontWeight: 700, color: ivColor, marginTop: (paperSummaryChips.length || spreadSummaryChips.length) ? 5 : 0 }}>
+                <MetricChipTooltip
+                  metricKey={ivc?.available ? 'iv_rank' : 'iv_history_building'}
+                  label={ivLine}
+                  context={metricCtx}
+                  valueStyle={{ fontWeight: 700, color: ivColor }}
+                />
               </div>
             )}
             {paperFlags.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
-                {paperFlags.map(f => (
-                  <span key={f.key} title={f.tip} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: WL.signal.amber, border: '1px solid rgba(245,166,35,.4)', background: 'transparent', cursor: f.tip ? 'help' : undefined }}>{f.label}</span>
-                ))}
+                {paperFlags.map(f => {
+                  const flagKey = paperFlagMetricKey(f.key)
+                  return flagKey ? (
+                    <MetricChipTooltip
+                      key={f.key}
+                      metricKey={flagKey}
+                      label={f.label}
+                      context={metricCtx}
+                      tooltip={f.tip ? { short: f.label, more: f.tip } : undefined}
+                      style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: WL.signal.amber, border: '1px solid rgba(245,166,35,.4)', background: 'transparent' }}
+                    />
+                  ) : (
+                    <span key={f.key} title={f.tip} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: WL.signal.amber, border: '1px solid rgba(245,166,35,.4)', background: 'transparent', cursor: f.tip ? 'help' : undefined }}>{f.label}</span>
+                  )
+                })}
               </div>
             )}
             {/* Stage 3: Alpaca paper lane — operator buttons + two-step confirms.
@@ -826,7 +970,11 @@ export default function OptionProposalCardV4({
                   {laneBusy && <span style={{ fontSize: 9, color: WL.text.dim }}>working…</span>}
                 </div>
                 <div style={{ fontSize: 9.5, color: WL.text.dim, marginTop: 6, lineHeight: 1.45 }}>
-                  Alpaca paper only — simulated 1-contract limit order. No live broker order. Validation credit starts only after fill, close, and outcome reconciliation.
+                  <MetricChipTooltip
+                    metricKey="alpaca_paper_only"
+                    label="Alpaca paper only — simulated 1-contract limit order. No live broker order. Validation credit starts only after fill, close, and outcome reconciliation."
+                    context={metricCtx}
+                  />
                 </div>
                 {laneConfirm === 'send' && (
                   <div style={{ marginTop: 6, padding: '7px 9px', borderRadius: 6, border: `1px solid ${WL.signal.teal}44`, background: 'rgba(45,212,191,.05)', fontSize: 10, color: WL.text.secondary }}>
@@ -911,24 +1059,30 @@ export default function OptionProposalCardV4({
 
         {/* ③ Economics grid — headline stats live in the hero; contract detail lives here */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(72px, 1fr))', gap: 7, marginTop: 11 }}>
-          <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} tip={TIPS.spot} />
-          <Metric label="Strike" value={`$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`} tip={TIPS.strike} />
-          <Metric label="Premium" value={p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? WL.price.up : WL.text.primary} tip={TIPS.premium} />
-          <Metric label={cashflowLabel} value={fmt$(p.premium_total)} color={cfColor} tip={TIPS.totalCashflow} />
-          <Metric label="Breakeven" value={p.breakeven != null ? `$${fmtNum(p.breakeven, 2)}` : '—'} tip={TIPS.breakeven} />
-          <Metric label="Max profit" value={fmtMoneyish(p.max_profit)} color={WL.price.up} tip={TIPS.maxProfit} />
+          <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} context={metricCtx} />
+          <Metric label="Strike" value={`$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`} context={metricCtx} />
+          <Metric label="Premium" value={p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? WL.price.up : WL.text.primary} metricKey="premium" context={metricCtx} />
+          <Metric
+            label={cashflowLabel}
+            value={fmt$(p.premium_total)}
+            color={cfColor}
+            metricKey={isCredit ? 'total_credit' : 'total_debit'}
+            context={metricCtx}
+          />
+          <Metric label="Breakeven" value={p.breakeven != null ? `$${fmtNum(p.breakeven, 2)}` : '—'} context={metricCtx} />
+          <Metric label="Max profit" value={fmtMoneyish(p.max_profit)} color={WL.price.up} context={metricCtx} />
           {p.strategy === 'covered_call' ? (
             <>
-              <Metric label="Stock risk" value={fmt$(stockRisk)} color={WL.signal.red} tip={p.max_loss_note || TIPS.maxLoss} />
-              <Metric label="Upside cap" value={p.upside_cap ?? `$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)} if assigned`} color={WL.signal.amber} tip={p.upside_cap_note || TIPS.upsideCap} />
+              <Metric label="Stock risk" value={fmt$(stockRisk)} color={WL.signal.red} context={metricCtx} />
+              <Metric label="Upside cap" value={p.upside_cap ?? `$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)} if assigned`} color={WL.signal.amber} />
             </>
           ) : (
-            <Metric label="Max loss" value={fmtMoneyish(p.max_loss)} color={WL.signal.red} tip={TIPS.maxLoss} />
+            <Metric label="Max loss" value={fmtMoneyish(p.max_loss)} color={WL.signal.red} context={metricCtx} />
           )}
-          <Metric label="IV rank" value={p.iv_rank != null ? `${p.iv_rank}%` : '—'} tip={TIPS.ivRank} />
-          <Metric label="Contracts" value={p.contracts ?? '—'} tip={TIPS.contracts} />
-          {p.delta != null && <Metric label="Delta" value={p.delta.toFixed(2)} tip={TIPS.delta} />}
-          {p.oi != null && <Metric label="OI" value={fmtNum(p.oi, 0)} tip={TIPS.oi} />}
+          <Metric label="IV rank" value={p.iv_rank != null ? `${p.iv_rank}%` : '—'} context={metricCtx} />
+          <Metric label="Contracts" value={p.contracts ?? '—'} context={metricCtx} />
+          {p.delta != null && <Metric label="Delta" value={p.delta.toFixed(2)} context={metricCtx} />}
+          {p.oi != null && <Metric label="OI" value={fmtNum(p.oi, 0)} context={metricCtx} />}
         </div>
 
         {novice && <WhatIfBox strategy={p.strategy} symbol={p.symbol} card={p} />}

@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.options_pipeline import card_semantics as cs  # noqa: E402
 from lib.options_pipeline import options_education as oe  # noqa: E402
+from lib.options_pipeline import options_metric_tooltips as omt  # noqa: E402
 
 
 @pytest.mark.parametrize("strategy,expected", [
@@ -190,6 +191,77 @@ def test_alpaca_paper_education_no_live_broker():
     assert "paper" in snippet
     assert "simulated" in snippet or "does not place" in snippet
     assert "live broker" in snippet
+
+
+def test_rtx_deep_itm_metric_tooltips():
+    """RTX $170 deep ITM call summary line — novice chip copy."""
+    ctx = {
+        "symbol": "RTX",
+        "strategy": "deep_itm_call",
+        "option_type": "call",
+        "strike": 170,
+        "spot": 199.0,
+        "delta": 0.81,
+        "breakeven": 205.0,
+        "breakeven_move_pct": 2.9,
+        "capital_ratio_pct": 18,
+        "dte_bucket": 180,
+    }
+    bucket = omt.get_options_metric_tooltip("dte_bucket", ctx)
+    assert "180" in bucket["short"]
+    assert "60d" in bucket["more"] and "180d" in bucket["more"]
+    assert "theta" in bucket["watch"].lower()
+
+    strike = omt.get_options_metric_tooltip("strike", ctx)
+    assert "anchored" in strike["short"].lower()
+    assert "call" in strike["more"].lower()
+    assert "170" in strike["more"]
+
+    delta = omt.get_options_metric_tooltip("delta", ctx)
+    assert "stock-like" in delta["short"].lower()
+    assert "0.81" in delta["more"]
+
+    be = omt.get_options_metric_tooltip("breakeven", ctx)
+    assert "expiration" in be["short"].lower()
+    assert "205" in be["more"]
+    assert "2.9" in be["more"]
+
+    cap = omt.get_options_metric_tooltip("share_capital_pct", ctx)
+    assert "100 shares" in cap["short"].lower()
+    assert "18%" in cap["more"]
+    assert "100%" in cap["watch"]
+
+
+def test_strike_tooltip_put_vs_call():
+    call = omt.get_options_metric_tooltip("strike", {"strategy": "atm_call", "option_type": "call"})
+    put = omt.get_options_metric_tooltip("strike", {"strategy": "atm_put", "option_type": "put"})
+    assert "buy" in call["more"].lower()
+    assert "sell" in put["more"].lower()
+
+
+def test_metric_chip_info_affordance_keys():
+    """Every compact summary metric key resolves tooltip copy."""
+    for key in (
+        "dte_bucket", "strike", "delta", "breakeven", "share_capital_pct",
+        "max_loss", "spread_pct", "oi", "volume", "pop", "ev", "edge", "rr", "dte",
+        "no_live_path", "alpaca_paper_only", "live_eligible_false", "paper_validation",
+    ):
+        tip = omt.get_options_metric_tooltip(key, {})
+        assert tip["short"]
+        assert tip["more"]
+
+
+def test_mobile_tap_phase_cycle():
+    assert omt.metric_chip_tap("closed") == "short"
+    assert omt.metric_chip_tap("short") == "more"
+    assert omt.metric_chip_tap("more") == "closed"
+
+
+def test_desktop_hover_phases():
+    assert omt.metric_chip_hover_enter("closed") == "short"
+    assert omt.metric_chip_hover_leave("short") == "closed"
+    assert omt.metric_chip_hover_enter("more") == "more"
+    assert omt.metric_chip_hover_leave("more") == "more"
 
 
 def test_paper_model_review_button_renamed():
