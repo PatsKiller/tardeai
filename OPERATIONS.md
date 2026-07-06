@@ -151,6 +151,11 @@ Then restart the server if needed (§6).
    (plus proposal/rollback snapshots). The live schedule is `crontab -l` on the box — treat the repo files
    as snapshots, and keep flock + priority-guard wrappers when adding lines
    (`scripts/apply_llm_priority_guard_to_crontab.py` helps).
+   - **Options paper lifecycle** — install or refresh the marked block with
+     `bash scripts/install_options_paper_monitor_cron.sh` (safe to re-run). Verify:
+     `crontab -l | grep -A8 options-paper-lifecycle-cron`. Applies
+     `migrations/2026_07_07_options_monitored_positions.sql` when `DATABASE_URL` is in `.env`.
+     See [docs/OPTIONS_STRATEGY_PIPELINE.md](docs/OPTIONS_STRATEGY_PIPELINE.md) § lifecycle monitor.
 5. **Runtime state stays out of git.** `data/`, `state/`, `/reports/`, and
    `data/runtime/*_latest.json` / `*_history.json` are gitignored — never re-commit them after a backfill.
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-07 - Options paper position lifecycle monitor + Open Options tab
+
+Stacked PRs (core → alerts → API/UI → cron) for Alpaca paper options after fill:
+
+- **Registry** — `options_monitored_positions` + snapshots (`migrations/2026_07_07_options_monitored_positions.sql`);
+  hybrid ingest from Alpaca reconcile; orphan legs → ERROR row.
+- **Monitor** — `scripts/options_paper_position_monitor.py` + `config/options_paper_monitor.yaml`: Schwab-chain
+  marks, advisory P/L labels, strategy rules for all desk strategies, `DATA_STALE` on quote failure.
+- **Alerts** — UI + Telegram on by default (`paper_position_alerts.py`); P0 router for fill/close/orphan.
+- **API** — `GET /api/v2/options/paper-positions`, `/paper-positions/alerts`, `POST .../alerts/ack`,
+  `GET /api/v2/options/open-positions` (unified broker + monitored legs).
+- **UI** — Options hub tab **Open Options**; `OptionPositionCardV4` route + **NO LIVE PATH** safety badge.
+- **Cron** — `bash scripts/install_options_paper_monitor_cron.sh` (market-hours monitor hook, hourly reconcile,
+  17:10 after-hours snapshot); `run_options_monitor.py` lifecycle hook; job coverage entries.
+- **Card semantics polish** — paper blocked rows: **NO LIVE PATH** (not generic BLOCKED), **Review Paper Guards**
+  action; true desk blocks keep **BLOCKED**; `safety_status_badge` on proposals + open positions.
+- **Cron install fix** — job-lines-only block, `crontab -T` validation, file-based install (fixes `bad hour` parse).
+
 ## 2026-07-05 - Options desk card semantics + v4 cards live
 
 Options Desk UI safety pass (presentation-only — no broker execution path changes):

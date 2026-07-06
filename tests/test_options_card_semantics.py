@@ -96,3 +96,41 @@ def test_plain_english_debit_strategies():
     assert "pay a debit" in cs.plain_english_strategy_hint("protective_put").lower()
     assert "collect a credit" in cs.plain_english_strategy_hint("covered_call").lower()
     assert "collect a credit" in cs.plain_english_strategy_hint("cash_secured_put").lower()
+
+
+def test_paper_model_row_shows_no_live_path_not_blocked():
+    p = {
+        "strategy": "deep_itm_call",
+        "symbol": "RTX",
+        "educational_paper_model": True,
+        "alpaca_paper_enabled": True,
+        "enterprise": {"blocks": ["validation gate not met"], "live_eligible": False},
+    }
+    out = cs.apply_card_semantics(p)
+    badge = out["safety_status_badge"]
+    assert badge is not None
+    assert badge["label"] == "NO LIVE PATH"
+    assert badge["label"] != "BLOCKED"
+    assert out["is_paper_model_row"] is True
+    assert out["desk_trade_blocked"] is False
+    assert out["enterprise"]["live_eligible"] is False
+
+
+def test_true_blocked_covered_call_still_blocked_badge():
+    p = {"strategy": "covered_call", "status": "blocked", "enterprise": {"blocks": ["OI zero"]}}
+    badge = cs.safety_status_badge(p)
+    assert badge is not None
+    assert badge["label"] == "BLOCKED"
+    assert cs.is_desk_trade_blocked(p)
+
+
+def test_paper_model_review_button_renamed():
+    p = {
+        "strategy": "deep_itm_call",
+        "educational_paper_model": True,
+        "enterprise": {"blocks": ["paper only"]},
+        "alpaca_paper_enabled": True,
+    }
+    labels = [b["label"] for b in cs.sanitize_action_buttons(p)]
+    assert "Review Paper Guards" in labels
+    assert "Review Block Reason" not in labels

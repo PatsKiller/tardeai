@@ -23,6 +23,13 @@ export type PrimeDisplay = {
 
 export type LiquidityWarning = { code: string; severity: string; message: string }
 
+export type SafetyStatusBadge = {
+  label: string
+  kind: 'no_live_path' | 'blocked'
+  severity: 'amber' | 'danger'
+  tip: string
+}
+
 export function optionCashflowLabel(
   strategy: string,
   side?: string | null,
@@ -40,6 +47,44 @@ export function optionCashflowLabel(
 
 export function cashflowIsCredit(strategy: string, side?: string | null): boolean {
   return optionCashflowLabel(strategy, side).toLowerCase().includes('credit')
+}
+
+export function isPaperModelRow(p: OptionProposal & Record<string, unknown>): boolean {
+  if ((p as any).is_paper_model_row === true) return true
+  if (p.educational_paper_model || (p as any).paper_only) return true
+  if (p.broker === 'paper_model' || p.broker === 'alpaca') return true
+  const kind = (p as any).execution_route_kind as string | undefined
+  return kind === 'alpaca_paper' || kind === 'paper_model'
+}
+
+export function isDeskTradeBlocked(p: OptionProposal & Record<string, unknown>): boolean {
+  return isCardBlocked(p) && !isPaperModelRow(p)
+}
+
+export function safetyStatusBadge(p: OptionProposal & Record<string, unknown>): SafetyStatusBadge | null {
+  const fromApi = (p as any).safety_status_badge as SafetyStatusBadge | null | undefined
+  if (fromApi?.label) return fromApi
+  if (isPaperModelRow(p)) {
+    const blocks = p.enterprise?.blocks || []
+    return {
+      label: 'NO LIVE PATH',
+      kind: 'no_live_path',
+      severity: 'amber',
+      tip: `Blocked from live broker execution — paper testing path remains available.${
+        blocks.length ? ` ${blocks.join('; ')}` : ' No live order path until validation gate met.'
+      }`,
+    }
+  }
+  if (isDeskTradeBlocked(p)) {
+    const blocks = p.enterprise?.blocks || []
+    return {
+      label: 'BLOCKED',
+      kind: 'blocked',
+      severity: 'danger',
+      tip: blocks.join('; ') || 'Trade actions hidden — review block reason.',
+    }
+  }
+  return null
 }
 
 export function isCardBlocked(p: OptionProposal & Record<string, unknown>): boolean {
@@ -107,9 +152,10 @@ export function primeDisplayLabel(score?: number | null, verdict?: string | null
 
 export function sanitizeActionButtons(p: OptionProposal): { action: string; label: string }[] {
   if (isCardBlocked(p as any)) {
+    const reviewLabel = isPaperModelRow(p as any) ? 'Review Paper Guards' : 'Review Block Reason'
     return [
       { action: 'review_chain', label: 'View Chain' },
-      { action: 'review_block_reason', label: 'Review Block Reason' },
+      { action: 'review_block_reason', label: reviewLabel },
       { action: 'rerun_review', label: 'Rerun Review' },
       { action: 'hold', label: 'Pass' },
     ]

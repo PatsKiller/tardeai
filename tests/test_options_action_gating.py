@@ -94,3 +94,28 @@ def test_apply_card_semantics_blocked_strips_executed_manually_label():
     out = cs.apply_card_semantics(p)
     assert out["card_blocked"] is True
     assert TRADE_ACTIONS.isdisjoint(_actions(out))
+
+
+def test_rtx_paper_row_alpaca_path_fields():
+    """Paper-model RTX row: NO LIVE PATH badge, live_eligible false, Alpaca policy flag preserved."""
+    p = {
+        "id": "opt_deep_itm_call_RTX_paper",
+        "strategy": "deep_itm_call",
+        "symbol": "RTX",
+        "educational_paper_model": True,
+        "alpaca_paper_enabled": True,
+        "enterprise": {"blocks": ["educational_paper_model"], "live_eligible": False},
+        "action_buttons": [{"action": "buy_call", "label": "Buy Call"}],
+    }
+    out = cs.apply_card_semantics(p)
+    assert out["safety_status_badge"]["label"] == "NO LIVE PATH"
+    assert out["enterprise"]["live_eligible"] is False
+    assert out.get("alpaca_paper_enabled") is True
+    assert "buy_call" not in _actions(out)
+
+
+def test_blocked_covered_call_badge_not_no_live_path():
+    p = _blocked_proposal(strategy="covered_call")
+    out = cs.apply_card_semantics(p)
+    assert out["safety_status_badge"]["label"] == "BLOCKED"
+    assert out["safety_status_badge"]["label"] != "NO LIVE PATH"

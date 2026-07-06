@@ -17,8 +17,10 @@ import {
   plainEnglishHint,
   primeChipStyle,
   primeDisplayLabel,
+  safetyStatusBadge,
   sanitizeActionButtons,
   type PrimeDisplay,
+  type SafetyStatusBadge,
 } from '../lib/optionsCardSemantics'
 import type { OptionProposal } from './OptionProposalCard'
 
@@ -280,6 +282,7 @@ export default function OptionProposalCardV4({
 }) {
   const ext = p as OptionProposal & Record<string, unknown>
   const blocked = isCardBlocked(ext)
+  const safetyBadge: SafetyStatusBadge | null = safetyStatusBadge(ext)
   const cashflowLabel = String(ext.cashflow_label || optionCashflowLabel(p.strategy, p.side))
   const isCredit = ext.cashflow_is_credit === true || (ext.cashflow_is_credit == null && cashflowIsCredit(p.strategy, p.side))
   const cfColor = cashflowColor(isCredit)
@@ -569,8 +572,18 @@ export default function OptionProposalCardV4({
             {paper && !p.enterprise?.live_eligible && (
               <span title="Paper-model rows are never live-eligible until validation gate met" style={{ ...chip(WL.signal.red), cursor: 'help' }}>live eligible false</span>
             )}
-            {(blocked || (p.enterprise?.blocks?.length ?? 0) > 0) && (
-              <span title={`${PROPOSAL.liveBlocked} ${(p.enterprise?.blocks || []).join('; ') || 'Trade actions hidden — review block reason.'}`} style={{ ...chip(WL.signal.red), fontWeight: 900, cursor: 'help' }}>BLOCKED</span>
+            {safetyBadge && (
+              <span
+                title={safetyBadge.tip}
+                style={{
+                  ...chip(safetyBadge.severity === 'danger' ? WL.signal.red : WL.signal.amber),
+                  fontWeight: 900,
+                  cursor: 'help',
+                  background: safetyBadge.kind === 'no_live_path' ? 'rgba(245,166,35,.1)' : undefined,
+                }}
+              >
+                {safetyBadge.label}
+              </span>
             )}
           </div>
         </div>

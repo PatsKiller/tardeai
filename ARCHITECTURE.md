@@ -199,18 +199,21 @@ Design law, stated across the module headers: **"outcome yield outranks throughp
    Grok/ChatGPT cloud second opinions before an intent reaches the live broker queue.
 7. **Execution** — paper lane via ATM (autonomous), live lane via per-order 2FA (§7).
 
-**Options paper-strategy lane (Stage A/B, 2026-07-05):** parallel to the equity pipeline, the options
-desk has a discovery-fed **paper-only** strategy lane — `scripts/options_strategy_scanner.py` runs
-`scripts/lib/options_pipeline/` generators (first: `deep_itm_call`, 0.80–0.95Δ stock replacement) over
-held + buy-rated underlyings and queues winners into the **existing** `options_approval_queue`
-manual-review lane with `live_eligible=false` and hard paper flags (triple fail-closed: generator,
-desk approve/preflight refusals, no broker/2FA imports — test-enforced). Closed paper trades land in
-`options_paper_outcomes`; `scripts/lib/options_pipeline/validation.py` +
+**Options paper-strategy lane (Stage A/B, 2026-07-05; lifecycle monitor 2026-07-07):** parallel to the
+equity pipeline, the options desk has a discovery-fed **paper-only** strategy lane —
+`scripts/options_strategy_scanner.py` runs `scripts/lib/options_pipeline/` generators (first:
+`deep_itm_call`, 0.80–0.95Δ stock replacement) over held + buy-rated underlyings and queues winners
+into the **existing** `options_approval_queue` manual-review lane with `live_eligible=false` and hard
+paper flags (triple fail-closed: generator, desk approve/preflight refusals, no broker/2FA imports —
+test-enforced). Alpaca paper execution (`alpaca_paper_options_executor.py`) fills real paper orders;
+reconcile + `options_monitored_positions` registry track open legs with Schwab-chain marks, advisory
+alerts (UI + Telegram), and the **Open Options** hub tab (`GET /api/v2/options/open-positions`).
+Closed paper trades land in `options_paper_outcomes`; `scripts/lib/options_pipeline/validation.py` +
 `scripts/options_validation_status.py` report progress against the config's validation gate
 (30 trades / WR ≥55% / PF ≥1.3 / 3 months) — **advisory only**: a met gate reads "operator decision
-required", nothing auto-enables. Options-tab cards render these as "DEEP ITM · PAPER MODEL" with
-disclosed flags (earnings-before-expiry is a flag, not a reject — operator decision 2026-07-05).
-Details: [docs/OPTIONS_STRATEGY_PIPELINE.md](docs/OPTIONS_STRATEGY_PIPELINE.md).
+required", nothing auto-enables. Card semantics distinguish paper rows (**NO LIVE PATH**) from true
+desk blocks (**BLOCKED**). Cron: `bash scripts/install_options_paper_monitor_cron.sh`. Details:
+[docs/OPTIONS_STRATEGY_PIPELINE.md](docs/OPTIONS_STRATEGY_PIPELINE.md).
 
 ## 7. Trading execution & position sizing
 

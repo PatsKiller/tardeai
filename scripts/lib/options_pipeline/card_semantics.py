@@ -57,6 +57,47 @@ def cashflow_is_credit(strategy: str, side: str | None = None) -> bool:
     return "credit" in label.lower()
 
 
+def is_paper_model_row(proposal: dict[str, Any]) -> bool:
+    """Paper-model / Alpaca-paper lane — live path blocked, paper testing may continue."""
+    if proposal.get("educational_paper_model") or proposal.get("paper_only"):
+        return True
+    broker = str(proposal.get("broker") or "").lower()
+    if broker in ("paper_model", "alpaca"):
+        return True
+    kind = execution_route_badge(proposal).get("kind")
+    return kind in ("alpaca_paper", "paper_model")
+
+
+def is_desk_trade_blocked(proposal: dict[str, Any]) -> bool:
+    """True blocked income/hedge desk row — not paper-model live-path semantics."""
+    return is_card_blocked(proposal) and not is_paper_model_row(proposal)
+
+
+def safety_status_badge(proposal: dict[str, Any]) -> Optional[dict[str, str]]:
+    """Header safety chip — paper rows never show generic BLOCKED."""
+    if is_paper_model_row(proposal):
+        blocks = (proposal.get("enterprise") or {}).get("blocks") or []
+        tip = (
+            "Blocked from live broker execution — paper testing path remains available."
+            + (f" {'; '.join(blocks)}" if blocks else " No live order path until validation gate met.")
+        )
+        return {
+            "label": "NO LIVE PATH",
+            "kind": "no_live_path",
+            "severity": "amber",
+            "tip": tip,
+        }
+    if is_desk_trade_blocked(proposal):
+        blocks = (proposal.get("enterprise") or {}).get("blocks") or []
+        return {
+            "label": "BLOCKED",
+            "kind": "blocked",
+            "severity": "danger",
+            "tip": "; ".join(blocks) or "Trade actions hidden — review block reason.",
+        }
+    return None
+
+
 def is_card_blocked(proposal: dict[str, Any]) -> bool:
     """True when trade actions must be hidden."""
     status = str(proposal.get("status") or proposal.get("queue_status") or "").lower()
@@ -86,6 +127,8 @@ def execution_route_badge(proposal: dict[str, Any]) -> dict[str, str]:
             return {"label": "Alpaca paper only", "kind": "alpaca_paper"}
         return {"label": "Paper model only", "kind": "paper_model"}
     broker = str(proposal.get("broker") or "").lower()
+    if broker == "paper_model":
+        return {"label": "Paper model only", "kind": "paper_model"}
     if broker == "fidelity" or proposal.get("execution_mode") == "manual":
         return {"label": "Fidelity manual ticket only", "kind": "fidelity_manual"}
     if broker == "alpaca":
@@ -184,9 +227,12 @@ def liquidity_warnings(
 def sanitize_action_buttons(proposal: dict[str, Any]) -> list[dict[str, str]]:
     """Return safe action buttons for card rendering."""
     if is_card_blocked(proposal):
+        review_label = (
+            "Review Paper Guards" if is_paper_model_row(proposal) else "Review Block Reason"
+        )
         buttons = [
             {"action": "review_chain", "label": "View Chain"},
-            {"action": "review_block_reason", "label": "Review Block Reason"},
+            {"action": "review_block_reason", "label": review_label},
             {"action": "rerun_review", "label": "Rerun Review"},
             {"action": "hold", "label": "Pass"},
         ]
@@ -244,7 +290,10 @@ def apply_card_semantics(proposal: dict[str, Any], *, schwab_armed: Optional[boo
         else "BS estimate" if out.get("data_source") == "bs_estimate"
         else None
     )
+    out["is_paper_model_row"] = is_paper_model_row(out)
     out["card_blocked"] = is_card_blocked(out)
+    out["desk_trade_blocked"] = is_desk_trade_blocked(out)
+    out["safety_status_badge"] = safety_status_badge(out)
     out["action_buttons"] = sanitize_action_buttons(out)
     out["plain_english_hint"] = plain_english_strategy_hint(strat)
     liq = liquidity_warnings(out)

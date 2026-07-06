@@ -1,4 +1,12 @@
 
+## 2026-07-07 — Options paper lifecycle monitor + docs sync
+
+Deployed Alpaca paper position lifecycle monitor (registry, Schwab marks, UI/Telegram alerts, **Open Options**
+tab). Cron installed via `scripts/install_options_paper_monitor_cron.sh` (fixed `bad hour` parse — job-lines-only
+block + `crontab -T` validation). Migration `2026_07_07_options_monitored_positions.sql` pending until
+`DATABASE_URL` set. Card semantics: paper rows **NO LIVE PATH** + **Review Paper Guards**; true blocks unchanged.
+Docs: `OPTIONS_STRATEGY_PIPELINE.md`, `ARCHITECTURE.md`, `OPERATIONS.md`, `CHANGELOG.md`. Drive sync post-commit.
+
 ## 2026-06-27 — AI Trade Critique persistence + batch (UI 3.9)
 
 Made AI Trade Critique a persistent, queryable journal asset: `journal_ai_critiques` index,

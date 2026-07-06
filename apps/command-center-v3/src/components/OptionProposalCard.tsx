@@ -8,7 +8,9 @@ import {
   isCardBlocked,
   liquidityWarnings,
   optionCashflowLabel,
+  safetyStatusBadge,
   sanitizeActionButtons,
+  type SafetyStatusBadge,
 } from '../lib/optionsCardSemantics'
 import { ACTIONS, PROPOSAL } from '../lib/optionsTooltips'
 import { RiskFlagChips, StrikeDistanceBar, WhatIfBox } from './OptionsNovicePanel'
@@ -315,6 +317,7 @@ export default function OptionProposalCard({
 }) {
   const ext = p as OptionProposal & Record<string, unknown>
   const blocked = isCardBlocked(ext)
+  const safetyBadge: SafetyStatusBadge | null = safetyStatusBadge(ext)
   const cashflowLabel = String(ext.cashflow_label || optionCashflowLabel(p.strategy, p.side))
   const isCredit = ext.cashflow_is_credit === true || (ext.cashflow_is_credit == null && cashflowIsCredit(p.strategy, p.side))
   const cfColor = cashflowColor(isCredit)
@@ -373,8 +376,18 @@ export default function OptionProposalCard({
             {p.enterprise?.live_eligible && !p.educational_paper_model && (
               <span title={PROPOSAL.liveOk} style={{ fontSize: 8, fontWeight: 800, padding: '2px 6px', borderRadius: 4, color: GREEN, background: 'rgba(34,197,94,.15)', border: '1px solid rgba(34,197,94,.35)', cursor: 'help' }}>live eligible</span>
             )}
-            {(blocked || (p.enterprise?.blocks?.length ?? 0) > 0) && (
-              <span title={`${PROPOSAL.liveBlocked} ${(p.enterprise?.blocks || []).join('; ')}`} style={{ fontSize: 8, fontWeight: 900, padding: '2px 6px', borderRadius: 4, color: RED, background: 'rgba(239,68,68,.13)', border: '1px solid rgba(239,68,68,.35)', cursor: 'help' }}>BLOCKED</span>
+            {safetyBadge && (
+              <span
+                title={safetyBadge.tip}
+                style={{
+                  fontSize: 8, fontWeight: 900, padding: '2px 6px', borderRadius: 4, cursor: 'help',
+                  color: safetyBadge.severity === 'danger' ? RED : AMBER,
+                  background: safetyBadge.severity === 'danger' ? 'rgba(239,68,68,.13)' : 'rgba(245,158,11,.12)',
+                  border: `1px solid ${safetyBadge.severity === 'danger' ? 'rgba(239,68,68,.35)' : 'rgba(245,158,11,.35)'}`,
+                }}
+              >
+                {safetyBadge.label}
+              </span>
             )}
           </div>
           <div style={{ fontSize: 14, fontWeight: 850, color: TEXT0, marginTop: 6, lineHeight: 1.3 }}>

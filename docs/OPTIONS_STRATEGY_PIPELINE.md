@@ -176,6 +176,57 @@ each queued paper card carries a `paper validation n/30` chip.
 
 **Prime rubric (scripts/options_prime_rubric.py)**: 10 weighted scores → prime_score → display labels NOT PRIME (&lt;50) / PAPER WATCH (50–64) / PRIME FOR PAPER (65–79) / LIVE REVIEW ELIGIBLE · OPERATOR ONLY (≥80). Verdict constants use `PAPER_WATCH` (legacy `PAPER_ONLY` alias). Labels only — AST-proven orderless; cannot transition status.
 
-**Card semantics (presentation-only)**: `apply_card_semantics()` on `/api/v2/options/proposals` enriches each row with `cashflow_label`, `execution_route_badge`, `execution_note`, `prime_display`, `liquidity_warnings`, and sanitized `action_buttons` before the desk renders `OptionProposalCardV4`.
+**Card semantics (presentation-only)**: `apply_card_semantics()` on `/api/v2/options/proposals` enriches each row with `cashflow_label`, `execution_route_badge`, `execution_note`, `prime_display`, `liquidity_warnings`, `safety_status_badge`, and sanitized `action_buttons` before the desk renders `OptionProposalCardV4`. Paper-model / Alpaca-paper rows show **NO LIVE PATH** (amber) — not the generic **BLOCKED** chip — and blocked paper rows offer **Review Paper Guards** instead of **Review Block Reason**. True desk blocks (income/hedge rows with enterprise blocks) keep **BLOCKED** (danger).
 
 **Live-review promotion**: visible only on OUTCOME_RECORDED rows carrying the top rubric label; operator confirm dialog states verbatim — "This does not place an order." / "Requires operator 2FA." / "Requires broker preview/read-back." / "Model is unvalidated until 30 paper outcomes / 3 months." No code path in this lane can reach a live broker; Schwab/2FA machinery untouched.
+
+---
+
+## Alpaca Paper Position Lifecycle Monitor (2026-07-07)
+
+**Purpose**: after Alpaca paper fills, track open options positions with Schwab-chain marks, advisory P/L labels, UI + Telegram alerts, and hourly reconcile — **advisory only** (`advice_only: true` in config; no order submit paths).
+
+**Registry** (`options_monitored_positions` + `options_monitored_position_snapshots`; migration `migrations/2026_07_07_options_monitored_positions.sql`, idempotent). Hybrid ingest:
+
+- Alpaca reconcile (`scripts/alpaca_paper_options_executor.py --reconcile` via `linux_launchers/reconcile_alpaca_paper_options.sh`) upserts fills and marks closes.
+- Orphan broker legs without queue lineage → `ERROR` monitored row (operator-visible).
+- Schwab/Fidelity legs can appear in the unified **Open Options** view when broker sync provides them.
+
+**Monitor** (`scripts/options_paper_position_monitor.py`, config `config/options_paper_monitor.yaml`):
+
+- Market-hours cadence every 15 min (gated by `paper_monitor_ops.should_run_lifecycle`).
+- Schwab chain preferred for quotes; `DATA_STALE` when quotes fail or exceed `quote_stale_seconds`.
+- Strategy rules for all desk strategies (`deep_itm_call`, ATM, income, protective, default).
+- Advisory labels: profit target, max loss, DTE roll watch, theta/IV crush warnings.
+- Alerts: UI + Telegram on by default (`paper_position_alerts.py`; dedupe via `config/operator_alert_policy.yaml`).
+
+**Pipeline hook**: `scripts/run_options_monitor.py` calls `paper_monitor_ops.run_pipeline_hook()` on each options-desk cron tick so lifecycle marks run inside the existing monitor schedule (not a separate competing loop).
+
+**Cron install** (safe to re-run; replaces only the marked block):
+
+```bash
+bash scripts/install_options_paper_monitor_cron.sh
+```
+
+Jobs installed between `# BEGIN options-paper-lifecycle-cron` / `# END options-paper-lifecycle-cron`:
+
+| Schedule (ET, Mon–Fri) | Launcher |
+| --- | --- |
+| 9:35, 9:45, 9:55 | `linux_launchers/run_options_monitor.sh` (proposals + lifecycle hook) |
+| */10 min 10:00–15:59 | `linux_launchers/run_options_monitor.sh` |
+| 16:05 | `linux_launchers/run_options_monitor.sh` |
+| Hourly 10:00–15:00 | `linux_launchers/reconcile_alpaca_paper_options.sh` |
+| 17:10 | `linux_launchers/run_options_paper_position_monitor.sh` (after-hours snapshot when enabled) |
+
+**Install hygiene**: the installer writes job lines only (no free-form `# comment` lines inside the block — some cron builds mis-parse them as schedule fields), validates with `crontab -T`, and installs from a temp file instead of piping to `crontab -`. Applies the migration when `DATABASE_URL` is set in `.env`.
+
+**API + UI**:
+
+- `GET /api/v2/options/paper-positions` — monitored registry + latest snapshot
+- `GET /api/v2/options/paper-positions/alerts` · `POST .../alerts/ack`
+- `GET /api/v2/options/open-positions` — unified broker legs + monitored paper positions
+- Options hub tab **Open Options** (renamed from Open Positions) — route/safety badges on `OptionPositionCardV4`
+
+**Logs / locks**: `logs/options_paper_monitor.log` (`/tmp/tradeai_options_paper_monitor.lock`), `logs/options_monitor.log`, `logs/alpaca_paper_options_reconcile.log`. Job coverage: `options_paper_lifecycle`, `alpaca_paper_options_reconcile` in `scripts/job_coverage_monitor.py`.
+
+**Tests**: `tests/test_options_paper_position_monitor.py` · `tests/test_options_paper_positions_api.py` · `tests/test_options_paper_monitor_ops.py`.
