@@ -69,6 +69,7 @@ rules:
   max_health_telegram_per_day: 2
   health_telegram_min_delta: 5
   health_telegram_max_score: 80
+  options_position_dedupe_minutes: 60
   portfolio_intelligence_dedupe_minutes: 360
   bundle_morning_window_minutes: 15
   hermes_telegram_min_score_delta: 15
@@ -86,3 +87,4 @@ destinations:
   watchpool: "/v3/watch"
   hermes: "/v3/watch"
   reports: "/v3/reports"
+  options_positions: "/v3/trading?tab=Options"

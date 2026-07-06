@@ -594,7 +594,7 @@ def reconcile_fills(*, executor: Optional[Executor] = None,
         aj = {**aj, "close": close_blob}
         transition(pid, STATE_CLOSED, executor=ex, meta_patch={"alpaca_json": aj})
         report["transitions"].append({"proposal_id": pid, "to": STATE_CLOSED, "pnl": pnl})
-        _sync_monitored_on_close(pid, ex, report)
+        _sync_monitored_on_close(pid, ex, report, pnl=pnl)
         _record_and_finalize(row, aj, ex, record_outcome_fn, report)
 
     # CLOSED rows whose record_outcome previously failed → retry, no HTTP needed.
@@ -620,12 +620,23 @@ def _sync_monitored_on_fill(row: dict, fill: dict, ex: Executor,
                 f"{pid}: monitored position upsert failed: {res.get('error')}")
         else:
             report.setdefault("monitored_positions", []).append(res)
+            pos = pp.get_position_by_proposal(pid, executor=ex)
+            if pos:
+                from lib.options_pipeline import paper_position_alerts as ppa
+                from lib.options_pipeline.paper_position_monitor import load_config
+                alert = ppa.dispatch_lifecycle_alert(
+                    pos, alert_type=ppa.LIFECYCLE_FILLED,
+                    message=f"Alpaca paper fill @ ${float(fill.get('price') or 0):.2f}",
+                    cfg=load_config(), executor=ex,
+                    extra={"fill_price": fill.get("price")})
+                report.setdefault("alerts", []).append(alert)
     except Exception as e:
         report["warnings"].append(f"{pid}: monitored position upsert error: {e}")
 
 
 def _sync_monitored_on_close(proposal_id: str, ex: Executor,
-                             report: Dict[str, Any]) -> None:
+                             report: Dict[str, Any],
+                             *, pnl: float | None = None) -> None:
     """Broker reconcile close → mark monitored position CLOSED (ledger outcome is separate)."""
     try:
         from lib.options_pipeline import paper_positions as pp
@@ -635,6 +646,15 @@ def _sync_monitored_on_close(proposal_id: str, ex: Executor,
                 f"{proposal_id}: monitored position close mark failed")
         else:
             report.setdefault("monitored_positions", []).append(res)
+            pos = pp.get_position_by_proposal(proposal_id, executor=ex)
+            if pos:
+                from lib.options_pipeline import paper_position_alerts as ppa
+                from lib.options_pipeline.paper_position_monitor import load_config
+                alert = ppa.dispatch_lifecycle_alert(
+                    pos, alert_type=ppa.LIFECYCLE_CLOSED,
+                    message="Broker reconcile detected close — outcome ready",
+                    cfg=load_config(), executor=ex, extra={"pnl": pnl})
+                report.setdefault("alerts", []).append(alert)
     except Exception as e:
         report["warnings"].append(
             f"{proposal_id}: monitored position close error: {e}")

@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 import yaml
 
 from lib.options_pipeline import paper_positions as pp
+from lib.options_pipeline import paper_position_alerts as ppa
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 CONFIG_PATH = PROJECT_ROOT / "config" / "options_paper_monitor.yaml"
@@ -49,7 +50,9 @@ def load_config(path: Path | None = None) -> dict:
     if not p.exists():
         return {"enabled": True, "max_positions_per_run": 50, "quote_stale_seconds": 900,
                 "max_spread_pct": 12.0, "profit_target_pct": 25.0, "max_loss_pct": 35.0,
-                "dte_roll_watch": 14, "advice_only": True}
+                "dte_roll_watch": 14, "advice_only": True,
+                "alert_telegram_enabled": True, "alert_ui_enabled": True,
+                "telegram_dedupe_minutes": 60}
     with p.open(encoding="utf-8") as fh:
         return yaml.safe_load(fh) or {}
 
@@ -248,24 +251,6 @@ def write_snapshot(
             "unrealized_pnl_pct": pnl_pct, "advice_label": advice_label}
 
 
-def write_alert(
-    position: dict,
-    alert_type: str,
-    message: str,
-    *,
-    severity: str = "warn",
-    executor: Executor,
-) -> None:
-    ex = executor
-    ex(
-        """INSERT INTO options_monitored_alerts (
-            position_id, alert_type, severity, message, broker, execution_route, meta_json
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb)""",
-        (position["id"], alert_type, severity, message,
-         position.get("broker"), position.get("execution_route"),
-         json.dumps({"proposal_id": position.get("proposal_id")}, default=str)))
-
-
 def monitor_position(
     position: dict,
     *,
@@ -304,8 +289,13 @@ def monitor_position(
                           risk_flags=flags, executor=executor)
     out.update(snap)
     if advice in (ADVICE_STALE, ADVICE_UNTRADABLE, ADVICE_WATCH, ADVICE_CLOSE, ADVICE_ROLL):
-        write_alert(position, advice.lower(), reason, severity="warn" if advice == ADVICE_WATCH else "info",
-                    executor=executor)
+        alert_res = ppa.dispatch_alert(
+            position, advice.lower(), reason,
+            severity="warn" if advice == ADVICE_WATCH else "info",
+            cfg=cfg, executor=executor, dry_run=False,
+            advice_label=advice,
+            unrealized_pnl=pnl, unrealized_pnl_pct=pnl_pct, mark=mark or None)
+        out["alert"] = alert_res
     return out
 
 

@@ -221,4 +221,14 @@ def upsert_orphan_error(
             updated_at = NOW()""",
         (pid, broker, option_symbol, STATUS_ERROR, True, False,
          json.dumps({"orphan": True, "message": message}, default=str)))
+    pos = get_position_by_proposal(pid, executor=ex)
+    if pos:
+        try:
+            from lib.options_pipeline import paper_position_alerts as ppa
+            from lib.options_pipeline.paper_position_monitor import load_config
+            ppa.dispatch_lifecycle_alert(
+                pos, alert_type=ppa.LIFECYCLE_ORPHAN, message=message,
+                cfg=load_config(), executor=ex)
+        except Exception:
+            pass
     return {"ok": True, "proposal_id": pid, "status": STATUS_ERROR}

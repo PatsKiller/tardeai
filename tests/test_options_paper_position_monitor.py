@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from lib.options_pipeline import alpaca_paper as ap  # noqa: E402
 from lib.options_pipeline import paper_positions as pp  # noqa: E402
 from lib.options_pipeline import paper_position_monitor as mon  # noqa: E402
+from lib.options_pipeline import paper_position_alerts as ppa  # noqa: E402
 
 RTX_PROPOSAL = {
     "id": "opt_deep_itm_call_RTX_paper_model_160p0000_20260918",
@@ -149,6 +150,10 @@ class MonitoredFakeDB:
         if "INSERT INTO options_monitored_alerts" in s:
             self.alerts.append({"params": params})
             return True
+        if "SELECT id FROM options_monitored_alerts" in s:
+            return None
+        if s.startswith("UPDATE options_monitored_alerts"):
+            return True
         if "SELECT unrealized_pnl FROM options_monitored_position_snapshots" in s:
             return []
         raise AssertionError(f"MonitoredFakeDB unexpected SQL: {s[:140]}")
@@ -239,6 +244,64 @@ def test_generate_advisory_wide_spread():
     assert any(f["code"] == "wide_spread" for f in flags)
 
 
+# ── PR2 alerts / telegram ─────────────────────────────────────────────────────
+
+def test_format_telegram_lifecycle_fill():
+    pos = {"symbol": "RTX", "underlying_symbol": "RTX", "strategy": "deep_itm_call",
+           "execution_route": "alpaca_paper", "contracts": 1, "entry_fill_price": 40.10}
+    msg = ppa.format_telegram_message(
+        pos, ppa.LIFECYCLE_FILLED, "filled", extra={"fill_price": 40.10})
+    assert ppa.ALERT_PREFIX in msg
+    assert "ALPACA PAPER FILLED" in msg
+    assert "*RTX*" in msg
+
+
+def test_dispatch_alert_writes_ui_and_telegram(monkeypatch):
+    db = MonitoredFakeDB()
+    sent = []
+
+    def fake_tg(body):
+        sent.append(body)
+        return True
+
+    monkeypatch.setattr(ppa, "send_telegram", fake_tg)
+    pos = {"id": 5, "proposal_id": RTX_PROPOSAL["id"], "symbol": "RTX",
+           "underlying_symbol": "RTX", "strategy": "deep_itm_call",
+           "execution_route": "alpaca_paper", "broker": "alpaca"}
+    cfg = {"alert_ui_enabled": True, "alert_telegram_enabled": True,
+           "telegram_dedupe_minutes": 60}
+    out = ppa.dispatch_alert(pos, "consider_close_paper", "Profit target advisory (30%)",
+                             cfg=cfg, executor=db, advice_label="CONSIDER_CLOSE_PAPER",
+                             unrealized_pnl=210.0, unrealized_pnl_pct=30.0, mark=50.25)
+    assert out["ui"] and out["telegram"]
+    assert len(db.alerts) == 1
+    assert ppa.ALERT_PREFIX in sent[0]
+
+
+def test_dispatch_alert_dedupes_telegram(monkeypatch):
+    db = MonitoredFakeDB()
+
+    def fake_dedupe(position_id, alert_type, *, cfg, executor):
+        return True
+
+    monkeypatch.setattr(ppa, "should_dedupe_telegram", fake_dedupe)
+    monkeypatch.setattr(ppa, "send_telegram", lambda m: True)
+    pos = {"id": 5, "proposal_id": RTX_PROPOSAL["id"], "symbol": "RTX",
+           "underlying_symbol": "RTX", "strategy": "deep_itm_call",
+           "execution_route": "alpaca_paper", "broker": "alpaca"}
+    cfg = {"alert_ui_enabled": True, "alert_telegram_enabled": True}
+    out = ppa.dispatch_alert(pos, "data_stale", "chain down", cfg=cfg, executor=db)
+    assert out["ui"] and out["deduped"] and not out["telegram"]
+
+
+def test_telegram_router_classifies_options_close_as_p0():
+    from telegram_alert_router import classify_alert
+    msg = ppa.format_telegram_message(
+        {"symbol": "RTX", "strategy": "deep_itm_call", "execution_route": "alpaca_paper"},
+        ppa.LIFECYCLE_CLOSED, "closed", extra={"pnl": 375.0})
+    assert classify_alert(msg) == "P0_INTERRUPT"
+
+
 # ── monitor run ───────────────────────────────────────────────────────────────
 
 def test_monitor_position_dry_run_no_writes(monkeypatch):
@@ -257,6 +320,7 @@ def test_monitor_position_dry_run_no_writes(monkeypatch):
 
 
 def test_run_monitor_writes_snapshot_and_alert(monkeypatch):
+    monkeypatch.setattr(ppa, "send_telegram", lambda m: True)
     db = MonitoredFakeDB(positions=[{
         "id": 3, "proposal_id": RTX_PROPOSAL["id"], "status": pp.STATUS_OPEN,
         "symbol": "RTX", "underlying_symbol": "RTX", "strike": 160.0,

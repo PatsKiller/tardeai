@@ -44,6 +44,8 @@ def main(argv=None) -> int:
                         help="monitor a single position by id")
     parser.add_argument("--json", action="store_true",
                         help="emit JSON report (default when --run)")
+    parser.add_argument("--no-telegram", action="store_true",
+                        help="disable Telegram dispatch for this run")
     args = parser.parse_args(argv)
 
     if not args.run:
@@ -52,9 +54,12 @@ def main(argv=None) -> int:
         return 2
 
     _load_env()
-    from lib.options_pipeline.paper_position_monitor import run_monitor
+    from lib.options_pipeline.paper_position_monitor import load_config, run_monitor
 
-    report = run_monitor(position_id=args.position_id, dry_run=args.dry_run)
+    cfg = load_config()
+    if args.no_telegram:
+        cfg = {**cfg, "alert_telegram_enabled": False}
+    report = run_monitor(position_id=args.position_id, dry_run=args.dry_run, cfg=cfg)
     if args.json or args.run:
         _print(report)
     return 0 if report.get("ok") else 1

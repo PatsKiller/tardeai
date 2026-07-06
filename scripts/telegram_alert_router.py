@@ -104,6 +104,8 @@ _P3_PATTERNS = [
 ]
 
 _P0_PATTERNS = [
+    (r"OPTIONS POSITION MONITOR.*(?:OUTCOME READY|ORPHAN|CONSIDER_CLOSE)", "options_position_action"),
+    (r"OPTIONS POSITION MONITOR.*ALPACA PAPER FILLED", "options_position_filled"),
     (r"Paper Proposal:", "paper_proposal"),
     (r"APPROVAL.READY|approve/reject|/ptapprove|/ptreject", "proposal_actionable"),
     (r"STOP_TRIGGERED\s*—|STOP TRIGGERED\s*—", "stop_symbol"),
@@ -245,6 +247,12 @@ def build_dedupe_key(message: str) -> str:
     if re.search(r"Aegis|Morning Brief|MORNING COMMAND", message, re.IGNORECASE):
         return "morning_command"
 
+    if "OPTIONS POSITION MONITOR" in message:
+        label_m = re.search(
+            r"OPTIONS POSITION MONITOR.*—\s*([A-Z_ ]+)", message, re.IGNORECASE)
+        label = (label_m.group(1).strip().replace(" ", "_") if label_m else "advisory")
+        return f"options_pos_{symbol or 'x'}_{label[:32].lower()}"
+
     normalized = re.sub(r"\d{4}-\d{2}-\d{2}|\d{2}:\d{2}|\d+\.\d+%", "", message)
     return hashlib.md5(normalized[:200].encode()).hexdigest()[:12]
 
@@ -263,6 +271,8 @@ def is_deduplicated(message: str, window_minutes: int = None) -> bool:
             window_minutes = rules.get("stop_trigger_dedupe_minutes", 390)
         elif key.startswith("go_"):
             window_minutes = rules.get("go_signal_dedupe_minutes", 120)
+        elif key.startswith("options_pos_"):
+            window_minutes = rules.get("options_position_dedupe_minutes", 60)
         else:
             window_minutes = 60
 

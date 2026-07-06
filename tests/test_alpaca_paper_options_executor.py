@@ -102,6 +102,10 @@ class FakeDB:
             return None
         if s.startswith("UPDATE options_monitored_positions"):
             return True
+        if "SELECT id FROM options_monitored_alerts" in s:
+            return None
+        if s.startswith("UPDATE options_monitored_alerts"):
+            return True
         raise AssertionError(f"FakeDB got unexpected SQL: {s[:120]}")
 
 

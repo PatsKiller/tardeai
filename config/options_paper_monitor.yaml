@@ -10,8 +10,9 @@ max_loss_pct: 35.0
 dte_roll_watch: 14
 theta_decay_watch: true
 iv_crush_watch_pct: 15.0
-alert_telegram_enabled: false
+alert_telegram_enabled: true
 alert_ui_enabled: true
+telegram_dedupe_minutes: 60
 advice_only: true
 quote_source_preference: schwab_chain
 brokers:
