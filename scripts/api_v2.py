@@ -21710,6 +21710,7 @@ def _pro_analyst_pills(query=None):
                            "target": p.get("target_mean_price"), "upside": p.get("upside_to_mean_target_pct"),
                            "street": p.get("street_direction"), "internal": p.get("internal_direction"),
                            "divergence": p.get("divergence"), "stale": p.get("stale"),
+                           "src": p.get("analyst_rating_source"),
                            "has": p.get("has_professional_coverage"), "event": p.get("latest_event_type")}
              for p in d.get("pills", [])}
         return {"updated_at": d.get("updated_at"), "count": len(m), "map": m}
