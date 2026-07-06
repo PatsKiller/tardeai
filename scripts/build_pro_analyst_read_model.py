@@ -60,6 +60,16 @@ def main():
                        WHERE symbol=%s AND target_price IS NOT NULL AND target_price > 0 ORDER BY created_at DESC LIMIT 1""", (sym,))
         return cur.fetchone()
 
+    def hermes_consensus(sym):
+        # web-grounded coverage researched by hermes_analyst_coverage.py (operator 2026-07-06) —
+        # fallback ONLY when Yahoo has no consensus; 30d freshness matches the Yahoo staleness bar
+        cur.execute("""SELECT analyst_rating, recom_score, target_price, data, created_at
+                       FROM analyst_consensus_history
+                       WHERE symbol=%s AND source='hermes' AND analyst_rating IS NOT NULL
+                         AND created_at > now() - interval '30 days'
+                       ORDER BY created_at DESC LIMIT 1""", (sym,))
+        return cur.fetchone()
+
     def latest_event(sym):
         cur.execute("""SELECT catalyst_type, headline, source, created_at FROM catalyst_events
                        WHERE symbol=%s AND catalyst_type IN ('analyst_upgrade','analyst_downgrade','analyst')
@@ -89,6 +99,18 @@ def main():
         ev = latest_event(sym)
         idir = internal_dir(sym)
         has_consensus = bool(y and (y["recommendation_key"] not in (None, "none") or y["number_of_analyst_opinions"]))
+        hm = None if has_consensus else hermes_consensus(sym)
+        if hm:
+            # graft the Hermes-researched consensus into the same shape Yahoo fills — downstream
+            # keys stay identical, provenance carried by analyst_rating_source='hermes'
+            hd = hm["data"] if isinstance(hm.get("data"), dict) else {}
+            y = {"recommendation_key": hm["analyst_rating"],
+                 "recommendation_mean": hm["recom_score"],
+                 "number_of_analyst_opinions": hd.get("analyst_count"),
+                 "target_mean_price": hm["target_price"], "target_high_price": None,
+                 "target_low_price": None, "target_median_price": None,
+                 "current_price": (y or {}).get("current_price"), "created_at": hm["created_at"]}
+            has_consensus = True
         upside = None
         if y and y["target_mean_price"] and y["current_price"] and float(y["current_price"]) > 0:
             upside = round((float(y["target_mean_price"]) - float(y["current_price"])) / float(y["current_price"]) * 100, 1)
@@ -107,7 +129,7 @@ def main():
             divergence = "divergent"
         pill = {
             "symbol": sym, "tiers": [k for k in ("held", "open_paper", "open_proposal", "scalp", "watchlist") if mem.get(k)],
-            "analyst_rating_source": "yahoo" if has_consensus else ("finviz_target" if fv else "none"),
+            "analyst_rating_source": ("hermes" if hm else "yahoo") if has_consensus else ("finviz_target" if fv else "none"),
             "recommendation_key": (y or {}).get("recommendation_key") if has_consensus else None,
             "recommendation_mean": float(y["recommendation_mean"]) if (y and y["recommendation_mean"] is not None) else None,
             "number_of_analyst_opinions": (y or {}).get("number_of_analyst_opinions"),

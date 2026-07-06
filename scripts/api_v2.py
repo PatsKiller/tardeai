@@ -229,7 +229,19 @@ def _stop_row_narrative(*, sym, is_fidelity, has_active_stop, broker_stop, plann
             projection = (f"SELL {sell_qty} {sym} STOP ${planned_stop:.2f}: caps downside at {(px-planned_stop)/px*100:.1f}% "
                           f"({money(risk)} max loss from here); protects ≈{money(planned_stop*q)} of value.")
 
-    # 3) Active stop, price CLOSE to the trigger — protection is ON; just watch.
+    # 3) LOCK-IN — live fixed stop, but trailing at the advised width locks a higher floor now.
+    elif (has_active_stop and not is_trailing and trailing_should_be_active and trail_pct and broker_stop
+          and px and trail_trigger and trail_trigger > broker_stop + 0.01):
+        venue = "a Fidelity manual ticket" if is_fidelity else "🔒 Trail 2FA"
+        gap = trail_trigger - broker_stop
+        narrative = (f"Fixed stop ${broker_stop:.2f} is live, but a {trail_pct:.0f}% trail at the current "
+                     f"price locks ${trail_trigger:.2f} — ${gap:.2f}/sh higher ({money(gap * q)} more protected "
+                     f"on {money(unrealized_dollars)} unrealized gain).")
+        next_action = f"Switch fixed→{trail_pct:.0f}% trailing via {venue}."
+        projection = (f"SELL {sell_qty} {sym} TRAILING {trail_pct:.0f}%: initial trigger ≈${trail_trigger:.2f} "
+                      f"(vs fixed ${broker_stop:.2f}); ratchets up with price.")
+
+    # 4) Active stop, price CLOSE to the trigger — protection is ON; just watch.
     elif has_active_stop and broker_stop and alert_level in ("amber", "yellow") and (dp is not None and dp <= 6.0):
         kind = "trailing" if is_trailing else "fixed"
         near = "≤1 ATR" if (distance_atr is not None and distance_atr <= 1.0) else (f"{dp:.1f}%" if dp is not None else "close")
@@ -238,7 +250,7 @@ def _stop_row_narrative(*, sym, is_fidelity, has_active_stop, broker_stop, plann
         next_action = ("Monitor — the trailing stop ratchets up automatically; no action."
                        if is_trailing else "Monitor — stop is in place; widen only if you want more room.")
 
-    # 4) Active stop, aligned/healthy.
+    # 5) Active stop, aligned/healthy.
     elif has_active_stop and broker_stop:
         kind = "trailing" if is_trailing else "fixed"
         narrative = f"Active {kind} stop ${broker_stop:.2f} matches the methodology — protection aligned."
@@ -252,6 +264,17 @@ def _stops_management_api(query=None):
     stops (stop_lifecycle) + holdings + advisor planned stops + portfolio heat into per-position rows with
     distance (R/ATR/$), alert level (yellow/amber/red), trailing-not-active, and broker/planned divergence.
     Read-only: no broker calls, no order placement. See docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md."""
+    import time as _t
+    q = query or {}
+    _force = str(q.get("refresh") or "").lower() in ("1", "true", "yes")
+    if (not _force and _t.time() - _STOPS_MGMT_CACHE["ts"] < 90 and _STOPS_MGMT_CACHE["data"]):
+        return {**_STOPS_MGMT_CACHE["data"], "cached": True}
+    out = _stops_management_api_build(q)
+    _STOPS_MGMT_CACHE.update(ts=_t.time(), data=out)
+    return out
+
+
+def _stops_management_api_build(query=None):
     q = query or {}
     HEAT_CAP = 5.0
 
@@ -297,10 +320,29 @@ def _stops_management_api(query=None):
             }
     except Exception:
         pass
-    # persisted last broker read (stop_lifecycle snapshot) — recovers Schwab stops after-hours when the live
-    # API read returns empty. Fills gaps only; never overwrites the fresher live overlay.
+    # Fidelity manual_broker_stops — belt-and-suspenders if live-stops overlay missed a row.
     try:
-        for s in ((_stops_lifecycle_api() or {}).get("stops") or []):
+        from lib.fidelity_stop_sync import load_manual_protective_stops
+        for (acct, sym), bs in (load_manual_protective_stops() or {}).items():
+            if (sym, acct) in live_stops:
+                continue
+            ot = str(bs.get("order_type") or "STOP").upper()
+            live_stops[(sym, acct)] = {
+                "stop_price": bs.get("stop_price"),
+                "order_type": ot,
+                "is_trailing": "TRAIL" in ot,
+                "trail_offset": bs.get("trail_offset"),
+                "broker": "fidelity",
+                "status": bs.get("status"),
+                "order_id": bs.get("order_id"),
+                "coverage": None,
+                "stop_source": "fidelity_manual",
+            }
+    except Exception:
+        pass
+    # Persisted stop_lifecycle snapshot (DB only — never trigger a 60s+ broker rescan on this hot path).
+    try:
+        for s in (_stops_lifecycle_db_snapshot().get("stops") or []):
             sym = str(s.get("symbol", "")).upper()
             acct = str(s.get("account", ""))
             sp = _f(s.get("stop_price"))
@@ -371,8 +413,11 @@ def _stops_management_api(query=None):
             _aep = _evidence_packet(rec if isinstance(rec, dict) else ev)
             advised[str(sym).upper()] = {
                 "stop": _f(rec.get("stop_price")), "trail": rec.get("trail_recommended"),
-                "trail_offset": _f(rec.get("trail_offset")), "atr": _f(inp.get("atr")),
+                "trail_offset": _f(rec.get("trail_offset")),
+                "stop_pct_below": _f(rec.get("stop_pct_below")),
+                "atr": _f(inp.get("atr")),
                 "family": ev.get("family"), "basis": _f(inp.get("basis_ps")),
+                "sma50": _f(inp.get("sma50")),
                 "rec_model": _row.get("model_used"), "rec_lane": ev.get("lane"),
                 "rec_at": str(_row.get("created_at") or "") or None,
                 "rationale": rec.get("rationale"),
@@ -534,7 +579,8 @@ def _stops_management_api(query=None):
         if stop is None or px is None or qty <= 0:
             continue
         atr = adv.get("atr")
-        basis = adv.get("basis")
+        _cb = _f(h.get("cost_basis"))
+        basis = (_cb / qty) if (_cb and qty) else adv.get("basis")
         # distance in $, %, ATR, R
         dist_dollars = round((px - stop) * qty, 2)
         dist_pct = round((px - stop) / px * 100, 2) if px else None
@@ -543,7 +589,19 @@ def _stops_management_api(query=None):
         dist_r = round((px - stop) / r_unit, 2) if r_unit else None
         unreal_dollars = round((px - basis) * qty, 2) if basis else None
         unreal_r = round((px - basis) / r_unit, 2) if (basis and r_unit) else None
+        # Live P&L override (operator 2026-07-06): stale advisories miss intraday runners — re-check the
+        # +9% / above-SMA rule against the current quote, not only trail_recommended from the last cron.
         should_trail = bool(adv.get("trail")) and not is_trailing
+        if not should_trail and not is_trailing and px and basis and basis > 0:
+            try:
+                import holding_family as _hf
+                _fam = str(adv.get("family") or _hf.DEFAULT_FAMILY)
+                _pnl = (px - basis) / basis * 100
+                _sma = adv.get("sma50")
+                if _hf.trail_recommended_for_state(family=_fam, pnl_pct=_pnl, price=px, sma50=_sma):
+                    should_trail = True
+            except Exception:
+                pass
         if should_trail:
             trailing_not_active += 1
         is_fidelity = acct.startswith("fidelity")
@@ -568,6 +626,8 @@ def _stops_management_api(query=None):
 
         _monitored = stop_source == "monitored"
         _to = broker_trail_off if (is_trailing and broker_trail_off) else adv.get("trail_offset")
+        if _to in (None, 0) and should_trail:
+            _to = adv.get("stop_pct_below")
         _trail_pct = float(_to) if (_to not in (None, 0)) else None
         _trail_trigger = round(px * (1 - _trail_pct / 100.0), 2) if (_trail_pct and px) else None
 
@@ -727,10 +787,13 @@ def _stops_management_api(query=None):
     _schwab_holdings = sum(1 for h in holds if str(h.get("account", "")).startswith("schwab") and not h.get("is_cash"))
     _broker_degraded = (_schwab_holdings > 0 and not _live_read_ok
                         and _live_stops_meta.get("broker_count", 0) == 0)
+    import datetime as _dt
     return {
-        "generated_at": None, "regime_now": regime_now,
+        "generated_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "regime_now": regime_now,
         "broker_stops_meta": _live_stops_meta,
         "broker_stops_degraded": _broker_degraded,
+        "cached": False,
         "summary": {"total_open_risk": round(total_open_risk, 2), "portfolio_heat_pct": heat_pct,
                     "heat_cap": HEAT_CAP, "yellow": counts["yellow"], "amber": counts["amber"], "red": counts["red"],
                     "trailing_not_active": trailing_not_active, "positions": len(rows),
@@ -1182,6 +1245,22 @@ def _protective_holding_truth(account_key: str, symbol: str):
 
 
 _STOP_LIFECYCLE_CACHE = {"ts": 0.0, "data": None}
+_STOPS_MGMT_CACHE = {"ts": 0.0, "data": None}
+
+
+def _stops_lifecycle_db_snapshot():
+    """Persisted stop_lifecycle rows only — no broker scan (hot path for Stop Management tab)."""
+    rows = _db_query(
+        "SELECT account,symbol,broker,order_id,order_type,status,stop_price,qty,held_qty,"
+        "current_price,proximity_pct,coverage,lifecycle,health,flags,snapshot_at "
+        "FROM stop_lifecycle ORDER BY health DESC, symbol") or []
+    stops = []
+    for r in rows:
+        row = {k: _json_clean(v) for k, v in r.items()}
+        ot = str(row.get("order_type") or "").upper()
+        row["is_trailing"] = "TRAIL" in ot
+        stops.append(row)
+    return {"stops": stops, "source": "db_snapshot"}
 
 
 def _stops_lifecycle_api():
@@ -5138,6 +5217,26 @@ def _wl_items(query: dict = None):
         conditions = [c for c in conditions if "status" not in c]
         conditions.append("wi.status = %s")
         params.append(q["status"][0] if isinstance(q["status"], list) else q["status"])
+    if q.get("cio"):
+        # server-side CIO-view filter (operator 2026-07-06): the page's client-side filter only sees
+        # the loaded window, so verdicts on names ranked below the load size (219 of 222
+        # ADD_ON_PULLBACK) were unfindable. Matches research-card rec OR CIO synthesis verdict —
+        # same fields as the client filter. Applied inside `picked` so it narrows BEFORE the LIMIT.
+        _cio = str(q["cio"][0] if isinstance(q["cio"], list) else q["cio"]).strip()
+        _groups = {"buy_side": ["BUY", "STRONG_BUY", "ADD", "ADD_ON_PULLBACK"],
+                   "avoid_side": ["AVOID", "IGNORE", "SELL", "TRIM"]}
+        if _cio == "none":
+            conditions.append("""(NOT EXISTS (SELECT 1 FROM watchlist_research_cards rc
+                                    WHERE rc.symbol = wi.symbol AND COALESCE(rc.latest_recommendation,'') <> '')
+                                  AND NOT EXISTS (SELECT 1 FROM watchlist_final_synthesis fs
+                                    WHERE upper(fs.symbol) = upper(wi.symbol) AND COALESCE(fs.recommendation,'') <> ''))""")
+        else:
+            _vals = _groups.get(_cio, [_cio.upper()])
+            conditions.append("""(EXISTS (SELECT 1 FROM watchlist_research_cards rc
+                                    WHERE rc.symbol = wi.symbol AND upper(rc.latest_recommendation) = ANY(%s))
+                                  OR EXISTS (SELECT 1 FROM watchlist_final_synthesis fs
+                                    WHERE upper(fs.symbol) = upper(wi.symbol) AND upper(fs.recommendation) = ANY(%s)))""")
+            params.extend([_vals, _vals])
     where = " AND ".join(conditions)
     sort = "updated_at DESC"
     sort_p = "p.updated_at DESC"
@@ -28407,6 +28506,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 404, {"ok": False, "error": "no protective-stop intent for that id (expired?)"}
                 cr = approval_service.confirm(intent_id, channel, str(code) if code is not None else None)
                 if not cr.get("ok"):
+                    sub = approval_service.submission_lookup(intent_id)
+                    if sub:
+                        return 200, {"ok": True, "stage": "submit", "already_submitted": True,
+                                     "broker_order_id": sub.get("broker_order_id"),
+                                     "status": sub.get("status"), "account": sub.get("account_key"),
+                                     "result": sub,
+                                     "note": f"order already live on Schwab (#{sub.get('broker_order_id')}) "
+                                             "— approved via the other 2FA channel"}
                     return 200, {"ok": False, "stage": "confirm", "error": cr.get("reason")}
                 if not cr.get("fully_approved"):
                     return 200, {"ok": True, "stage": "confirm", "fully_approved": False,

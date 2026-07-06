@@ -574,10 +574,46 @@ def consume(intent_id: str) -> bool:
         return False
 
 
+_SUBMITTED_PILOT_STATUSES = frozenset({"submitted", "filled", "working", "accepted", "partially_filled"})
+
+
+def submission_lookup(intent_id: str) -> dict | None:
+    """Broker row for an intent that already reached Schwab (idempotent replay after 2FA burn)."""
+    iid = str(intent_id or "").strip()
+    if not iid:
+        return None
+    try:
+        cur = _conn().cursor()
+        cur.execute("""SELECT broker_order_id, status, symbol, account_key, qty, kind, updated_at
+                       FROM schwab_pilot_orders
+                       WHERE intent_id=%s AND broker_order_id IS NOT NULL
+                       ORDER BY id DESC LIMIT 1""", (iid,))
+        r = cur.fetchone()
+        if not r:
+            return None
+        oid, st, sym, acct, qty, kind, upd = r
+        if str(st or "").lower() not in _SUBMITTED_PILOT_STATUSES:
+            return None
+        return {"broker_order_id": str(oid), "status": str(st), "symbol": sym,
+                "account_key": acct, "qty": float(qty) if qty is not None else None,
+                "kind": kind, "updated_at": str(upd) if upd else None}
+    except Exception:
+        try:
+            _conn().rollback()
+        except Exception:
+            pass
+        return None
+
+
 def status(intent_id: str) -> dict:
     cur = _conn().cursor()
     cur.execute("""SELECT channel, status, confirmed_at, expires_at FROM trade_approvals
                    WHERE intent_id=%s ORDER BY id DESC""", (intent_id,))
     rows = [{"channel": c, "status": st, "confirmed_at": str(ca) if ca else None,
              "expires_at": str(ex) if ex else None} for c, st, ca, ex in cur.fetchall()]
-    return {"intent_id": intent_id, "channels": rows, "fully_approved": is_fully_approved(intent_id)}
+    sub = submission_lookup(intent_id)
+    out = {"intent_id": intent_id, "channels": rows, "fully_approved": is_fully_approved(intent_id)}
+    if sub:
+        out["submitted"] = True
+        out["submission"] = sub
+    return out

@@ -49,6 +49,19 @@ CHECKS = [
      "SELECT count(*) FROM paper_trade_proposals WHERE created_at > NOW()-INTERVAL '48 hours'",
      "SELECT COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY c),0)*2 FROM (SELECT count(*) c FROM paper_trade_proposals WHERE created_at > NOW()-INTERVAL '14 days' GROUP BY date_trunc('day', created_at)) z",
      1.0),
+    # entry planner drain (weekday 17:35/17:45 crons). 72h window keeps the weekend green off the
+    # Friday run; a crashed drain (2026-07-02 planned 2, 2026-07-03 planned 13 vs ~300 median)
+    # trips this within a day instead of surfacing as a stale card 5 days later.
+    ("entry_plans_72h",
+     "SELECT count(*) FROM watchlist_entry_plans WHERE created_at > NOW()-INTERVAL '72 hours'",
+     "SELECT COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY c),0) FROM (SELECT count(*) c FROM watchlist_entry_plans WHERE created_at > NOW()-INTERVAL '14 days' GROUP BY date_trunc('day', created_at)) z",
+     0.25),
+    # daily 15:45 IV snapshot — silently wrote 0 rows for a week before the 2026-07-05 fix; this
+    # catches a recurrence (72h window spans weekends off the Friday capture)
+    ("options_iv_history_72h",
+     "SELECT count(*) FROM options_iv_history WHERE captured_at > NOW()-INTERVAL '72 hours'",
+     "SELECT COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY c),0) FROM (SELECT count(*) c FROM options_iv_history WHERE captured_at > NOW()-INTERVAL '14 days' GROUP BY date_trunc('day', captured_at)) z",
+     0.25),
     ("hermes_score_snapshots_2h",
      "SELECT count(*) FROM hermes_score_history WHERE scored_at > NOW()-INTERVAL '2 hours'",
      "SELECT COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY c),0)/12 FROM (SELECT count(*) c FROM hermes_score_history WHERE scored_at > NOW()-INTERVAL '7 days' GROUP BY date_trunc('day', scored_at)) z",
@@ -59,6 +72,12 @@ MARKET_HOURS_CHECKS = [
     ("schwab_stream_book_2h",
      "SELECT count(*) FROM schwab_stream_book WHERE captured_at > NOW()-INTERVAL '2 hours'",
      "SELECT 1", 1.0),   # baseline 1: any capture during market hours satisfies; 0 alerts
+    # options desk monitor runs every 10 min 10:00-15:59 — any chain capture in the last 2h is
+    # healthy; silence during market hours means the desk is down (2026-07-06 coverage audit:
+    # the options pipeline had zero freshness monitoring)
+    ("options_chain_snapshots_2h",
+     "SELECT count(*) FROM options_chain_snapshots WHERE captured_at > NOW()-INTERVAL '2 hours'",
+     "SELECT 1", 1.0),
 ]
 
 

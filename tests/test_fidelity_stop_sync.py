@@ -23,11 +23,17 @@ def _load():
     return mod
 
 
-def test_normalize_anet_stop_row():
+def test_normalize_anet_trailing_stop_row():
     mod = _load()
-    row = mod.normalize_stop_row({"symbol": "ANET", "stop_price": 155.50, "qty": 200})
+    row = mod.normalize_stop_row({
+        "symbol": "ANET", "order_type": "TRAILING_STOP",
+        "stop_price": 158.39, "trail_pct": 9, "trail_link": "LAST", "qty": 200,
+    })
     assert row["symbol"] == "ANET"
-    assert row["stop_price"] == 155.50
+    assert row["order_type"] == "TRAILING_STOP"
+    assert row["stop_price"] == 158.39
+    assert row["trail_pct"] == 9
+    assert row["trail_link"] == "LAST"
     assert row["qty"] == 200
     assert row["account"] == "fidelity_rollover_ira"
 
@@ -43,14 +49,23 @@ def test_snaptrade_open_orders_empty_is_documented_gap():
     mod = _load()
     # load_manual_protective_stops is DB-backed; dry normalize proves the contract.
     row = mod.normalize_stop_row({
-        "symbol": "ANET", "stop_price": 155.50, "qty": 200,
+        "symbol": "ANET", "stop_price": 158.39, "trail_pct": 9, "qty": 200,
         "note": "Fidelity GTC — SnapTrade state=open returns 0 orders",
     })
     assert "Fidelity" in row["note"] or "GTC" in row["note"]
 
 
+def test_anet_default_is_trailing_nine_pct():
+    mod = _load()
+    defaults = {r["symbol"]: r for r in mod.default_fidelity_rollover_stops()}
+    anet = defaults["ANET"]
+    assert anet["order_type"] == "TRAILING_STOP"
+    assert anet["stop_price"] == 158.39
+    assert anet["trail_pct"] == 9
+    assert anet["qty"] == 200
+
+
 @pytest.mark.parametrize("sym,price,qty", [
-    ("ANET", 155.50, 200),
     ("DXCM", 67.23, 225),
     ("DIVI", 40.58, 1000),
     ("SMCI", 24.90, 500),

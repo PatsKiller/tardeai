@@ -585,12 +585,21 @@ def collect_intelligence_quality() -> list[dict]:
                        WHERE hermes_agent_name='chief_hermes_coordinator' AND event_type='agent_state_change'
                        ORDER BY created_at DESC LIMIT 1""", fetch="one")
         age_min = float((coord or {}).get("age_min") or 999)
+        # llm_priority_guard DEFERS coordinator ticks 06:00-12:00 ET weekdays (market-critical GPU
+        # window) — in-window silence is by design and fired a false critical every morning
+        # (2026-07-06 audit: last tick 05:45 flagged at 09:22). Judge only the pre-window portion
+        # of the age: a coordinator that was already stale before 06:00 still alerts.
+        _now = datetime.now()
+        _in_guard = _now.weekday() < 5 and 6 <= _now.hour < 12
+        if _in_guard:
+            age_min -= (_now - _now.replace(hour=6, minute=0, second=0, microsecond=0)).total_seconds() / 60
+        _note = " (guard-window adjusted)" if _in_guard else ""
         if age_min > 60:
             out.append(_f("intelligence_quality", "hermes_coordinator_stale", "critical",
-                          f"Hermes coordinator last tick {int(age_min)}m ago", age_min=int(age_min)))
+                          f"Hermes coordinator last tick {int(age_min)}m ago{_note}", age_min=int(age_min)))
         elif age_min > 30:
             out.append(_f("intelligence_quality", "hermes_coordinator_stale", "warning",
-                          f"Hermes coordinator last tick {int(age_min)}m ago", age_min=int(age_min)))
+                          f"Hermes coordinator last tick {int(age_min)}m ago{_note}", age_min=int(age_min)))
     except Exception as e:
         out.append(_f("intelligence_quality", "collector_error", "info", f"intelligence check error: {e}"))
     return out
@@ -881,7 +890,11 @@ def collect_log_errors() -> list[dict]:
     # Case-SENSITIVE: match real log-level tokens / error markers, NOT domain words like the
     # severity label "high/critical" in a normal summary line (that caused false positives).
     pat = _re.compile(r"\bERROR\b|\bCRITICAL\b|\bFATAL\b|Traceback \(most recent call last\)"
-                      r"|\bException\b|[A-Za-z]*error:|[A-Za-z]*exception:")
+                      r"|\bException\b|[A-Za-z]*error:|[A-Za-z]*exception:"
+                      # "Error:" with the colon — e.g. "[email] Error: [Errno 2] ... 'gog'" (the dead
+                      # email lane was invisible to this scraper, 2026-07-06 audit); the colon keeps
+                      # prose like "HTTP Error 404" from matching
+                      r"|\bError:")
     now = _t.time()
     try:
         for name in watch:
@@ -1530,16 +1543,26 @@ def collect_pullback_macd_screener() -> list[dict]:
             trading = is_trading_day()
         except Exception:
             trading = datetime.now().weekday() < 5
-        stale_h = float(cfg.get("scan_stale_hours", 30))
         if run is None:
             if trading and datetime.now().hour >= int(cfg.get("check_after_hour", 18)):
                 out.append(_f("execution_health", "pullback_macd_no_runs", "info",
                               "Pullback/MACD screener has no recorded runs yet", kind="code"))
         else:
             age_h = _db_age_h("SELECT created_at FROM pullback_macd_runs ORDER BY created_at DESC LIMIT 1")
-            if age_h is not None and age_h > stale_h:
+            # slot-aware threshold: the screener runs weekdays 16:40, so judge age against the most
+            # recent EXPECTED slot, not a flat 30h — Friday's run is legitimately ~65h old on Monday
+            # morning and the flat threshold alarmed every weekend/Monday (2026-07-06 audit)
+            _now = datetime.now()
+            slot_age_h = None
+            for _back in range(8):
+                _slot = (_now - timedelta(days=_back)).replace(hour=16, minute=40, second=0, microsecond=0)
+                if _slot.weekday() < 5 and _slot <= _now:
+                    slot_age_h = (_now - _slot).total_seconds() / 3600
+                    break
+            allowed_h = (slot_age_h or 0) + float(cfg.get("scan_grace_hours", 3))
+            if age_h is not None and age_h > allowed_h:
                 out.append(_f("execution_health", "pullback_macd_scan_stale", "warning",
-                              f"Pullback/MACD scan {age_h:.0f}h old (>{stale_h:.0f}h) — daily cron may be down",
+                              f"Pullback/MACD scan {age_h:.0f}h old (last expected slot {allowed_h:.0f}h ago) — daily cron may be down",
                               age_h=age_h, last_scan=str(run.get("scan_date"))))
         uni = _db("SELECT count(*) AS n FROM sp500_constituents WHERE active", fetch="one")
         if uni and int(uni.get("n") or 0) < int(cfg.get("min_universe", 400)):

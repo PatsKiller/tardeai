@@ -154,15 +154,21 @@ export function deriveRecommendedAction(args: {
       warning: { text: `Plan incoherent — target ${planTargetNum.toFixed(2)} at/below limit ${entry.toFixed(2)}; auto re-plan queues nightly`, severity: 'red' },
     })
   }
+  // Drift = movement since the plan was WRITTEN (price_at_plan), not distance from the limit.
+  // A pullback plan's limit sits deliberately 15-20% below price, so limit-distance flagged every
+  // deep-pullback plan as stale and "Rebuild Plan" just minted another one — an endless FIX loop
+  // (FATN audit 2026-07-06). Legacy plans without price_at_plan fall back to the old metric.
   const priceNum = it.price != null ? Number(it.price) : null
-  const driftPct = hasPlan && entry && priceNum ? Math.abs(priceNum / entry - 1) * 100 : null
+  const planBase = it.entry_price_at_plan != null && Number(it.entry_price_at_plan) > 0
+    ? Number(it.entry_price_at_plan) : entry
+  const driftPct = hasPlan && planBase && priceNum ? Math.abs(priceNum / planBase - 1) * 100 : null
   if (driftPct != null && driftPct > PLAN_DRIFT_PCT) {
-    return action('BUILD_PLAN', 'FIX', `Rebuild plan · price ${priceNum! < entry! ? '−' : '+'}${driftPct.toFixed(0)}% from limit`, {
-      subtext: 'Price left the planned zone',
+    return action('BUILD_PLAN', 'FIX', `Rebuild plan · price ${priceNum! < planBase! ? '−' : '+'}${driftPct.toFixed(0)}% since plan`, {
+      subtext: 'Price left the planned structure',
       urgency: 'amber',
       primaryLabel: 'Rebuild Plan',
       buttonVariant: 'outline-amber',
-      warning: { text: `Price ${money(priceNum)} is ${driftPct.toFixed(0)}% from the plan limit ${money(entry)} — levels are stale; auto re-plan queues nightly`, severity: 'amber' },
+      warning: { text: `Price ${money(priceNum)} has moved ${driftPct.toFixed(0)}% since the plan was built (at ${money(planBase)}) — levels are stale; rebuild or wait for tonight's auto re-plan`, severity: 'amber' },
     })
   }
 
@@ -187,8 +193,12 @@ export function deriveRecommendedAction(args: {
     })
   }
 
+  // Exit-ladder review is a HELD-position action — "keep runner" is meaningless with zero shares,
+  // and on a watch-only name it preempted the honest CIO-avoid branch below (MRLN audit 2026-07-06:
+  // FIX "Review exit ladder" on a 0-share name the CIO said AVOID). A conservative target on an
+  // unopened plan is not a defect; unheld names fall through to avoid/divergence/ready branches.
   const planCapWarn = warns.find(w => w.text.includes('plan target') && w.text.includes('Street'))
-  if (planCapWarn && hasPlan) {
+  if (planCapWarn && hasPlan && Boolean(it.in_portfolio)) {
     return action('REVIEW_EXIT', 'FIX', 'Review exit ladder', {
       subtext: 'Plan target below Street',
       detail: planCapWarn.text,

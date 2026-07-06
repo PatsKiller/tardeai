@@ -35,6 +35,37 @@ FAMILY_PROTECTION = {
 }
 DEFAULT_FAMILY = "position"   # conservative default: widest stop, no premature tightening
 
+# Trailing activation gates (STOP_METHODOLOGY §3; operator 2026-07-06: normal lowered 10→9%).
+TRAIL_PNL_PCT_NORMAL = 9.0
+TRAIL_PNL_PCT_INCOME = 20.0
+TRAIL_PNL_PCT_RUNNER = 20.0   # extended runner override in protection_advisor post-processing
+
+
+def trail_pnl_threshold(family: str) -> float:
+    """Min unrealized % gain before trailing is recommended (income families use the higher bar)."""
+    return TRAIL_PNL_PCT_INCOME if not protection_bounds(family).get("trail_norm") else TRAIL_PNL_PCT_NORMAL
+
+
+def trail_recommended_for_state(*, family: str, pnl_pct: float, price: float, sma50: float | None) -> bool:
+    """Deterministic trail gate: profit threshold + price above 50d SMA."""
+    if pnl_pct < trail_pnl_threshold(family):
+        return False
+    if sma50 is not None and sma50 > 0 and price <= sma50:
+        return False
+    return True
+
+
+def trailing_floor(price: float, trail_pct: float) -> float:
+    return round(price * (1 - trail_pct / 100.0), 2)
+
+
+def lockin_eligible(*, live_price: float, trail_pct: float, fixed_stop: float) -> bool:
+    """True when a trailing stop at trail_pct would lock a floor above the live fixed stop."""
+    if live_price <= 0 or trail_pct <= 0 or fixed_stop <= 0:
+        return False
+    floor = trailing_floor(live_price, trail_pct)
+    return floor > fixed_stop + max(0.01 * live_price, 0.01)
+
 # bucket tag → family. First match wins, checked in this priority order.
 _BUCKET_TO_FAMILY = [
     ("bond_income", "income"), ("dividend_income", "income"), ("dividend_etf", "income"),

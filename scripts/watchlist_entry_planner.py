@@ -233,6 +233,9 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                        WHERE status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST')
                          AND symbol ~ '^[A-Z]{1,5}$'
                        ORDER BY symbol, created_at DESC""")
+        # this branch fell off the function end (returned None) since 2026-06-12 — every
+        # --scope proposals cron run crashed at run()'s for-loop before validating anything
+        return [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
     else:
         # ON-DEMAND (operator 2026-06-18): an explicit --symbols request plans those exact watchlist
         # names REGARDLESS of status (researched/active/directive) — "I want to buy FATN/HPE, give me
@@ -255,7 +258,9 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
         # same top ~`limit` every run (which starved low-ranked directive names like MRLN #76).
         cur.execute(f"""SELECT DISTINCT ON (symbol) symbol, hermes_composite_score, hermes_rank, trend,
                          NULL::int AS proposal_id, NULL::numeric AS proposed_entry,
-                         NULL::numeric AS proposed_stop, NULL::numeric AS proposed_target1, NULL::text AS strategy_id
+                         NULL::numeric AS proposed_stop, NULL::numeric AS proposed_target1, NULL::text AS strategy_id,
+                         EXISTS (SELECT 1 FROM operator_starred_symbols s
+                                 WHERE upper(s.symbol) = upper(watchlist_items.symbol)) AS _starred
                        FROM watchlist_items
                        WHERE symbol ~ '^[A-Z]{{1,5}}$' AND status <> 'removed'
                          AND (in_directive_watch=true OR status='active'
@@ -267,7 +272,9 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
         if symbols:
             want = {s.upper() for s in symbols}
             rows = [r for r in rows if r["symbol"] in want]
-        rows.sort(key=lambda r: (r["hermes_rank"] is None, r["hermes_rank"] or 1e9))
+        # starred names first: their 1-day cadence is meaningless if the rank sort leaves them
+        # below the per-run `limit` cut (MRLN #71 sat at eligible-index ~114 and never re-planned)
+        rows.sort(key=lambda r: (not r.get("_starred"), r["hermes_rank"] is None, r["hermes_rank"] or 1e9))
         rows = rows[:limit]
         # PRIORITY 2 — CONVICTION COMPLETENESS (operator 2026-07-01: "no info should be missing on strong
         # buy, buy, or wait"): plan every buy-side-rated name — recommendation BUY/STRONG_BUY/ADD/
@@ -316,6 +323,25 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
         return rows
 
 
+def _live(conn, cur):
+    """Ping the DB connection and reconnect if the server dropped it. Each candidate stalls
+    30-120s in yfinance/Ollama/OAuth calls, and the idle connection gets killed mid-drain
+    ("SSL connection has been closed unexpectedly" — 2026-07-02/03 runs died after planning
+    2/13 of ~300, starving every card downstream). psycopg2 can't see a server-side kill in
+    conn.closed, so probe with SELECT 1 and rebuild through db_adapter on failure."""
+    try:
+        cur.execute("SELECT 1"); cur.fetchone()
+        return conn, cur
+    except Exception:
+        from db_adapter import _get_conn, close_thread_conn
+        try:
+            close_thread_conn()
+        except Exception:
+            pass
+        conn = _get_conn()
+        return conn, conn.cursor()
+
+
 def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy_rated_cap=20):
     import llm_lane
     from db_adapter import _get_conn
@@ -351,6 +377,7 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
         if not bars:
             failed += 1; continue
         t = _tech(bars)
+        conn, cur = _live(conn, cur)   # _bars can stall long enough for the server to drop us
         an = _analyst(cur, sym)
         prompt = PROMPT_V1.format(symbol=sym, hermes=c.get("hermes_composite_score"),
                                   rank=c.get("hermes_rank"), trend=c.get("trend"),
@@ -396,6 +423,7 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
         # + Street mean — stored in the plan JSON so proposals, cards and alerts all carry it
         p["exit_ladder"] = _exit_ladder(p.get("limit_price"), p.get("stop_price"),
                                         p.get("target_price"), an.get("tgt_mean_num"))
+        conn, cur = _live(conn, cur)   # LLM call above runs 30-120s — reconnect if dropped
         cur.execute("""INSERT INTO watchlist_entry_plans
                          (symbol, plan, setup_type, entry_zone_low, entry_zone_high, limit_price,
                           stop_price, target_price, risk_reward, urgency, confidence, proposal_tag,

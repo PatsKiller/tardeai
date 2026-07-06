@@ -47,6 +47,14 @@ def test_confirm_requires_ticker_or_6_digit_code_before_submit():
     assert "if not cr.get(\"ok\")" in confirm_block
     assert "if not cr.get(\"fully_approved\")" in confirm_block
     assert "_isr.submit_fully_approved(intent_id)" in confirm_block
+    assert "submission_lookup(intent_id)" in confirm_block
+    assert "already_submitted" in confirm_block
+
+
+def test_approval_service_exposes_submission_lookup_for_idempotent_replay():
+    src = (ROOT / "scripts" / "brokers" / "approval_service.py").read_text()
+    assert "def submission_lookup(intent_id: str)" in src
+    assert '"submitted"' in src
 
 
 def test_evidence_and_2fa_are_single_use():

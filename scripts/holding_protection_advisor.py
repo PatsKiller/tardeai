@@ -271,10 +271,11 @@ def run(lane="grok", symbols=None, limit=12):
         atr_pct = t["atr"] / t["price"] * 100 if t["price"] else None
         family, fam_source = hf.classify_family(sym, atr_pct)
         fb = hf.protection_bounds(family)
+        _trail_min = hf.TRAIL_PNL_PCT_INCOME if not fb["trail_norm"] else hf.TRAIL_PNL_PCT_NORMAL
         trail_rule = (f"• {fb['label']} is held through noise — trail_recommended = TRUE only on a LARGE "
-                      f"gain (unrealized ≥ +20%) AND price > 50d SMA; otherwise FALSE (fixed stop)."
+                      f"gain (unrealized ≥ +{_trail_min:.0f}%) AND price > 50d SMA; otherwise FALSE (fixed stop)."
                       if not fb["trail_norm"] else
-                      f"• trail_recommended = TRUE only if unrealized P&L ≥ +10% AND price > 50d SMA "
+                      f"• trail_recommended = TRUE only if unrealized P&L ≥ +{_trail_min:.0f}% AND price > 50d SMA "
                       f"(real profit + uptrend); otherwise FALSE (fixed stop).")
         prompt = PROMPT_V1.format(
             symbol=sym, account=c.get("account"), qty=qty, basis_ps=basis_ps, price=t["price"],
@@ -336,11 +337,27 @@ def run(lane="grok", symbols=None, limit=12):
                           f"{_dist:.1f}% below — too tight to hold through noise)").strip()
         except Exception:
             pass
+        # Deterministic trail gate — don't rely on the LLM for the family profit threshold.
+        try:
+            if hf.trail_recommended_for_state(
+                family=family, pnl_pct=pnl_pct, price=float(t["price"]), sma50=float(t["sma50"]),
+            ):
+                spb = float(rec.get("stop_pct_below") or 0)
+                if not rec.get("trail_recommended"):
+                    rec["trail_recommended"] = True
+                    rec["trail_type"] = "PERCENT"
+                    rec["trail_offset"] = round(
+                        min(max(spb, float(fb.get("trail_min_pct", 6))), float(fb.get("trail_max_pct", 12))), 1)
+                    rec["rationale"] = (str(rec.get("rationale") or "")[:120]
+                                        + f" · trail at +{pnl_pct:.1f}% gain (≥{hf.trail_pnl_threshold(family):.0f}% "
+                                          f"rule + above 50d SMA)").strip()
+        except Exception:
+            pass
         # Extended core at the family stop cap: offer a matching % trail (same width as fixed stop).
         try:
             spb = float(rec.get("stop_pct_below") or 0)
             if not rec.get("trail_recommended") and spb >= float(fb.get("trail_min_pct", 6)):
-                if spb >= float(fb.get("stop_max_pct", 12)) - 1.0 or pnl_pct >= 20:
+                if spb >= float(fb.get("stop_max_pct", 12)) - 1.0 or pnl_pct >= hf.TRAIL_PNL_PCT_RUNNER:
                     rec["trail_recommended"] = True
                     rec["trail_type"] = "PERCENT"
                     rec["trail_offset"] = round(min(spb, float(fb.get("trail_max_pct", 12))), 1)

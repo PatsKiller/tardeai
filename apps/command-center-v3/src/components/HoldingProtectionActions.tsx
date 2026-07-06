@@ -344,9 +344,13 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       const oid = r?.broker_order_id ?? r?.order_id ?? r?.result?.broker_order_id
       const ostatus = r?.status ?? r?.order_status ?? r?.result?.status
       const submitted = ostatus === 'submitted' || ostatus === 'filled' || r?.submitted === true
-      if ((r?.stage === 'submit' || submitted || oid) && submitted && r?.ok !== false) {
+      if (r?.already_submitted || ((r?.stage === 'submit' || submitted || oid) && submitted && r?.ok !== false)) {
         setSellAllDone(true)
-        setMsg(`✅ LIVE sell placed on Schwab · order #${oid ?? '—'} (${ostatus ?? 'submitted'})`)
+        const oid2 = oid ?? r?.broker_order_id ?? r?.result?.broker_order_id
+        const st2 = ostatus ?? r?.status ?? r?.result?.status ?? 'submitted'
+        setMsg(r?.already_submitted
+          ? `✅ Stop already LIVE on Schwab · order #${oid2 ?? '—'} (${st2}) — other 2FA channel already approved`
+          : `✅ LIVE sell placed on Schwab · order #${oid2 ?? '—'} (${st2})`)
         onRefresh?.()
       } else if (r?.stage === 'confirm' && r?.ok && r?.fully_approved === false) {
         setMsg('channel confirmed — waiting on the other factor')

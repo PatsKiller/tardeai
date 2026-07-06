@@ -46,7 +46,10 @@ const Pill = ({ text, color, tip, strong = false }: any) => (
 const ORIGIN_OPTS = [['all', 'All'], ['trade_ai_screener', 'Screener'], ['agent_discovery', 'AI-discovered'], ['operator', 'Operator-directive'], ['hermes', 'Hermes'], ['portfolio', 'Portfolio']]
 
 export default function WatchlistHub({ onDrill, embedded }: Props) {
-  const { data: wl, loading: wlLoading, refetch: refetchWl } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
+  // CIO-view filter is pushed server-side (cio=) so it searches the FULL universe before the
+  // 200-row window — client-side alone missed verdicts on names ranked below the load size
+  const [fCio, setFCio] = useState('all')
+  const { data: wl, loading: wlLoading, refetch: refetchWl } = useApi<any>(`/api/v2/watchlist/items?sort=hermes${fCio !== 'all' ? `&cio=${encodeURIComponent(fCio)}` : ''}`, 60_000)
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
   const { data: adv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=watchlist', 120_000)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
@@ -109,7 +112,6 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
   const [fDir, setFDir] = useState('all')
   const [fStatus, setFStatus] = useState('all')
   const [fRating, setFRating] = useState('all')
-  const [fCio, setFCio] = useState('all')
   const [fList, setFList] = useState('all')
   const [fHeld, setFHeld] = useState(false)   // held-only (currently-owned positions)
   const [fStarred, setFStarred] = useState(false)   // operator-starred only
@@ -200,7 +202,14 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
       const payload = j?.data ?? j
       if (payload?.ok) {
         const n = payload.requeued ?? 0
-        setRefreshBusy(b => ({ ...b, [key]: n ? `queued ${n}` : 'refreshed' }))
+        // enrichment can fail while the endpoint still returns ok (agents queued anyway) — say so
+        // instead of "refreshed", or the STALE badge survives and refresh looks broken
+        if (payload.enriched === false) {
+          setRefreshBusy(b => ({ ...b, [key]: 'enrich failed' }))
+          setActionToast(`${key} — technicals refresh failed${payload.enrich_warning ? ` (${String(payload.enrich_warning).slice(0, 80)})` : ''}; agents queued (~15 min)`)
+        } else {
+          setRefreshBusy(b => ({ ...b, [key]: n ? `queued ${n}` : 'refreshed' }))
+        }
         setTimeout(() => { refetchWl(); setRefreshBusy(b => { const nxt = { ...b }; delete nxt[key]; return nxt }) }, 2500)
       } else {
         setRefreshBusy(b => ({ ...b, [key]: 'error' }))
@@ -258,11 +267,15 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
       else if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
       if (fRating !== 'all') { const rec = paMap[it.symbol]?.rec || 'no_coverage'; if (fRating === 'buy_plus' ? !['strong_buy', 'buy'].includes(rec) : rec !== fRating) return false }
       if (fCio !== 'all') {
-        const cv = String(it.latest_recommendation || '').toUpperCase()
-        if (fCio === 'buy_side') { if (!['BUY', 'STRONG_BUY', 'ADD', 'ADD_ON_PULLBACK'].includes(cv)) return false }
-        else if (fCio === 'avoid_side') { if (!['AVOID', 'IGNORE', 'SELL', 'TRIM'].includes(cv)) return false }
-        else if (fCio === 'none') { if (cv) return false }
-        else if (cv !== fCio) return false
+        // match the research-card rec OR the CIO synthesis verdict — most ADD_ON_PULLBACK views
+        // live only in the synthesis (top-200 audit 2026-07-06: 0 research vs 3 synthesis), so
+        // checking latest_recommendation alone made the filter return an empty page
+        const cvs = [it.latest_recommendation, it.synthesis_recommendation]
+          .map(v => String(v || '').toUpperCase()).filter(Boolean)
+        if (fCio === 'buy_side') { if (!cvs.some(c => ['BUY', 'STRONG_BUY', 'ADD', 'ADD_ON_PULLBACK'].includes(c))) return false }
+        else if (fCio === 'avoid_side') { if (!cvs.some(c => ['AVOID', 'IGNORE', 'SELL', 'TRIM'].includes(c))) return false }
+        else if (fCio === 'none') { if (cvs.length) return false }
+        else if (!cvs.includes(fCio)) return false
       }
       if (fList !== 'all') {
         const lists = String(it.watch_lists || '').split(' · ').map((s: string) => s.trim())

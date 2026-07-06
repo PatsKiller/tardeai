@@ -72,6 +72,18 @@ MONITORED_COMPONENTS = [
      "max_age_min": 10, "max_runtime_sec": 120, "critical": True,
      "retry_cmd": ".venv/bin/python scripts/unified_stop_supervisor.py --apply",
      "downstream": "trailing stops, target exits, stop monitoring"},
+    {"component": "holding_protection_advisor", "display": "Stop/Trail Protection Advisor",
+     "schedule": "5 17 * * 1-5", "log_file": "protection_advisor.log",
+     "max_age_min": 1500, "max_runtime_sec": 900, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/holding_protection_advisor.py",
+     "downstream": "stop/trail advisories, Stop Management tab",
+     "lock_file": "/tmp/protection_advisor.lock"},
+    {"component": "stop_drift_alert", "display": "Stop Drift + Lock-in Alerts",
+     "schedule": "35 17 * * 1-5", "log_file": "stop_drift_alert.log",
+     "max_age_min": 1500, "max_runtime_sec": 120, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/stop_drift_alert.py --send",
+     "downstream": "raise-stop + lock-in Telegram nudges",
+     "lock_file": "/tmp/stop_drift_alert.lock"},
     # paper_trade_monitor replaced by unified_stop_supervisor (STOP-V2.2)
     {"component": "alpaca_reconciler", "display": "Alpaca Reconciler",
      "schedule": "5 16 * * 1-5", "log_file": "alpaca_reconciler.log",
@@ -1383,6 +1395,24 @@ def run_health_check(dry_run=True, verbose=False):
                 log.info(f"    {_pa}")
     except Exception as e:
         log.warning(f"Portfolio risk check failed: {e}")
+
+    # ── Stop monitoring health (lifecycle orphans, naked, stale advisories) ──
+    stop_monitoring_alerts = []
+    try:
+        from lib.stop_monitoring_health import run_stop_monitoring_health
+        _sm = run_stop_monitoring_health(conn, apply=not dry_run)
+        report["stop_monitoring"] = _sm
+        stop_monitoring_alerts = _sm.get("alerts") or []
+        _sm_issues = (_sm.get("diagnosis") or {}).get("issues") or []
+        if _sm_issues:
+            log.info(f"  Stop monitoring: {len(_sm_issues)} issue(s)")
+            for _sa in stop_monitoring_alerts[:8]:
+                log.info(f"    {_sa}")
+        if stop_monitoring_alerts:
+            portfolio_alerts.extend(stop_monitoring_alerts)
+            report["portfolio_alerts"] = portfolio_alerts
+    except Exception as e:
+        log.warning(f"Stop monitoring health failed: {e}")
 
     # ── Claude Code escalation queue ──
     # Write unresolved problems to escalation file for Claude Code to pick up

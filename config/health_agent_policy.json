@@ -229,7 +229,16 @@
       "schwab_ingest.log",
       "journal_review.log",
       "journal_annotation_reminder.log",
-      "journal_tilt_hook.log"
+      "journal_tilt_hook.log",
+      "entry_planner.log",
+      "options_monitor.log",
+      "options_iv_snapshot.log",
+      "options_strategy_scanner.log",
+      "alert_dispatcher.log",
+      "telegram_callback_poller.log",
+      "auto_enrichment.log",
+      "watchlist_sweep.log",
+      "hermes_analyst_coverage.log"
     ]
   }
 }

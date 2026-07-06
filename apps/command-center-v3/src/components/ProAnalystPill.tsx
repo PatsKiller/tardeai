@@ -30,7 +30,7 @@ export default function ProAnalystPill({ symbol, map, compact, neutral }: { symb
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9 }}
       title={`Street: ${hasRating ? p.rec : 'targets only (no aggregated rating)'} · ${p.n} analysts · mean target $${p.target} · upside ${p.upside}% · internal ${p.internal || 'n/a'} · divergence ${p.divergence}${p.stale ? ' · STALE >7d' : ''}`}>
       {hasRating
-        ? <span title={`Professional analyst consensus rating (Yahoo): ${p.rec}${p.stale ? ' — STALE, last updated >7 days ago' : ''}`}
+        ? <span title={`Professional analyst consensus rating (${p.src === 'hermes' ? 'Hermes web research — Yahoo has no coverage' : 'Yahoo'}): ${p.rec}${p.stale ? ' — STALE, last updated >7 days ago' : ''}`}
             style={{ fontWeight: 700, color: rc, border, borderRadius: 4, padding: '0 4px', background: neutral ? 'rgba(30,41,59,.6)' : undefined }}>
             {String(p.rec).replace('_', ' ')}{p.stale ? ' ⚠' : ''}
           </span>
@@ -40,6 +40,7 @@ export default function ProAnalystPill({ symbol, map, compact, neutral }: { symb
           </span>}
       {p.n != null && <span title={`${p.n} professional analysts covering · mean target $${p.target}`} style={{ color: 'var(--text3)' }}>{p.n} analysts</span>}
       {p.upside != null && <span title={`Upside to mean analyst target ($${p.target} vs current)`} style={{ color: upColor }}>{p.upside > 0 ? '+' : ''}{p.upside}%</span>}
+      {p.src === 'hermes' && <span title="Consensus researched by Hermes from public ratings coverage (TipRanks/MarketBeat/broker notes) — Yahoo carries no consensus for this name" style={{ color: 'var(--text3)' }}>via Hermes</span>}
       {p.divergence === 'divergent' && !neutral && <span style={{ color: '#ef4444', fontWeight: 700 }} title={`Divergence: internal signal is ${p.internal || 'n/a'} but Street consensus is ${p.street || 'n/a'} — review`}>⚡</span>}
       {p.divergence === 'divergent' && neutral && <span style={{ color: 'var(--text3)', fontWeight: 700 }} title={`Divergence: internal ${p.internal || 'n/a'} vs Street ${p.street || 'n/a'}`}>⚡</span>}
     </span>

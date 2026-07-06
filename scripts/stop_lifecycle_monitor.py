@@ -257,11 +257,13 @@ def _manual_stops() -> list[dict]:
                          active BOOLEAN DEFAULT TRUE, created_at TIMESTAMPTZ DEFAULT NOW(),
                          updated_at TIMESTAMPTZ DEFAULT NOW())""")
         conn.commit()
-        cur.execute("""SELECT account, symbol, broker, order_id, order_type, stop_price, qty, status
+        cur.execute("""SELECT account, symbol, broker, order_id, order_type, stop_price, qty, status,
+                              trail_pct, trail_link
                        FROM manual_broker_stops
                        WHERE active = TRUE
                          AND lower(COALESCE(status,'open')) NOT IN ('cancelled','canceled','filled','closed')""")
         for r in cur.fetchall():
+            trail = float(r["trail_pct"]) if r.get("trail_pct") is not None else None
             rows.append({
                 "broker": r["broker"] or "manual",
                 "account": r["account"],
@@ -269,6 +271,8 @@ def _manual_stops() -> list[dict]:
                 "order_id": str(r["order_id"] or f"manual-{r['symbol']}"),
                 "order_type": str(r["order_type"] or "STOP").upper(),
                 "stop_price": float(r["stop_price"]) if r["stop_price"] is not None else None,
+                "trail_offset": trail,
+                "trail_link": str(r.get("trail_link") or ("PERCENT" if trail else "")).upper() or None,
                 "qty": float(r["qty"]) if r["qty"] is not None else None,
                 "status": str(r["status"] or "open").lower(),
                 "manual": True,

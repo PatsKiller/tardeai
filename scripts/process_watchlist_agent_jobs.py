@@ -191,6 +191,24 @@ def _prefer_cloud_narrative() -> bool:
     return _LOCAL_SLOW and p is not None and p <= 3
 
 
+_REFUSAL_PREFIXES = ("i cannot fulfill", "i can't fulfill", "i cannot help", "i can't help",
+                     "i'm unable to", "i am unable to", "i cannot act as", "i can't act as",
+                     "i cannot provide", "i can't provide")
+
+
+def _is_refusal(text) -> bool:
+    """Cloud-lane persona/jailbreak refusals ("I cannot fulfill...", "**Refusal** This request
+    requires the active profile to switch to a trading-advisory identity...") come back as
+    successful generations, so they were stored and DISPLAYED as CIO synthesis (FATN/SMCI/WNW,
+    2026-07-06). Detect them at the call site and fall back to the local lane instead."""
+    if not text:
+        return False
+    head = str(text).lstrip("*#_ ").lower()[:400]
+    if head.startswith(_REFUSAL_PREFIXES):
+        return True
+    return "**refusal**" in head or "requires the active profile to switch" in head
+
+
 def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
          high_impact: bool = False) -> str:
     """Call LLM via router with fallback hierarchy.
@@ -206,6 +224,8 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                 if not llm_lane.available(lane):
                     continue
                 out = llm_lane.generate(prompt, lane=lane, timeout=120)
+                if _is_refusal(out):
+                    continue  # persona refusal — try the next lane, else the local router below
                 if out and len(str(out).strip()) > 20:
                     _CLOUD_NARRATIVE_CALLS += 1
                     _llm._last_model = f"{lane}-oauth"
@@ -281,7 +301,7 @@ def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
         import llm_lane
         if llm_lane.available("grok"):
             out = llm_lane.generate(_strip_local_tokens(prompt), lane="grok", timeout=120)
-            if out and not str(out).startswith("LLM error"):
+            if out and not str(out).startswith("LLM error") and not _is_refusal(out):
                 _llm._last_model = "grok-3-mini"; _llm._last_provider = "grok-oauth"; _llm._last_cost = 0
                 return out
     except Exception:
@@ -327,7 +347,9 @@ def _synthesis_dual(prompt: str, max_tokens: int = 2000):
     try:
         if llm_lane.available("grok"):
             grok_raw = llm_lane.generate(cloud_prompt, lane="grok", timeout=120)
-            if grok_raw and not str(grok_raw).startswith("LLM error"):
+            if _is_refusal(grok_raw):
+                grok_raw = None   # persona refusal — lane contributes nothing to consensus
+            elif grok_raw and not str(grok_raw).startswith("LLM error"):
                 grok_rec, grok_conf = _rec_from(grok_raw)
     except Exception:
         pass
@@ -335,7 +357,9 @@ def _synthesis_dual(prompt: str, max_tokens: int = 2000):
         if _dual_chatgpt_count < _DUAL_CHATGPT_CAP and llm_lane.available("chatgpt"):
             _dual_chatgpt_count += 1
             chatgpt_raw = llm_lane.generate(cloud_prompt, lane="chatgpt", timeout=180)
-            if chatgpt_raw and not str(chatgpt_raw).startswith("LLM error"):
+            if _is_refusal(chatgpt_raw):
+                chatgpt_raw = None   # persona refusal — lane contributes nothing to consensus
+            elif chatgpt_raw and not str(chatgpt_raw).startswith("LLM error"):
                 chatgpt_rec, chatgpt_conf = _rec_from(chatgpt_raw)
     except Exception:
         pass
@@ -1747,6 +1771,15 @@ CRITICAL INSTRUCTIONS:
     action = syn.get("action") or syn.get("next_action", "")
     next_review = syn.get("next_review_date")
     synthesis_narrative = syn.get("synthesis_narrative") or syn.get("full_narrative", "")
+    # LLM refusals ("**I cannot fulfill this request.**...") are failure artifacts, not synthesis —
+    # normalize them to the "LLM error:" convention so the display guard + purge/requeue machinery
+    # treat them like provider failures (FATN surfaced a raw refusal as its CIO note, 2026-07-06).
+    # Prefix-only: partial refusals that continue with real evidence keep their content.
+    _nlead = synthesis_narrative.lstrip("*#_ ").lower()[:60]
+    if _nlead.startswith(("i cannot fulfill", "i can't fulfill", "i cannot help", "i can't help",
+                          "i'm unable to", "i am unable to", "i cannot act as", "i can't act as",
+                          "i cannot provide", "i can't provide")):
+        synthesis_narrative = "LLM error: model refused the synthesis prompt (refusal suppressed)"
     dual_meta["agent_contract"] = AGENT_JSON_CONTRACT_VERSION
     dual_meta["structured_evidence"] = syn.get("evidence", [])
     dual_meta["data_i_doubt"] = syn.get("data_i_doubt", "none")

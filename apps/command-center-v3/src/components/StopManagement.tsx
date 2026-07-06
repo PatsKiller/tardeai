@@ -426,10 +426,18 @@ function Card({ label, value, color = TEXT0, sub }: { label: string; value: stri
 
 const QUICK = ['All', 'Needs Attention', 'Regime Shift', 'Has Street', 'Price > Street', 'Over Consensus', 'No Stop Placed', 'Has Active Stop', 'Trailing Not Active', 'High Heat'] as const
 
+const STOPS_CACHE_KEY = 'cc-v3-stops-management-v1'
+
 export default function StopManagement({ onFocusHolding }: Props) {
   const [sub, setSub] = useState<'Monitor' | 'Audit'>('Monitor')
-  const [data, setData] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<any>(() => {
+    try {
+      const raw = sessionStorage.getItem(STOPS_CACHE_KEY)
+      return raw ? JSON.parse(raw) : null
+    } catch { return null }
+  })
+  const [loading, setLoading] = useState(!data)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [quick, setQuick] = useState<typeof QUICK[number]>('All')
   const [acct, setAcct] = useState('All')
   const [level, setLevel] = useState('All')
@@ -439,11 +447,27 @@ export default function StopManagement({ onFocusHolding }: Props) {
   // "Adjust stop" opens in manual mode (no auto-stage).
   const openAdjust = (r: Row, auto: boolean) => { setAutoStage(auto); setAdjust(r) }
 
-  const load = () => {
+  const load = (force = false) => {
     setLoading(true)
-    fetch('/api/v2/stops/management').then(x => x.json()).then(j => setData(unwrap(j))).catch(() => setData(null)).finally(() => setLoading(false))
+    setFetchError(null)
+    const ctrl = new AbortController()
+    const timer = window.setTimeout(() => ctrl.abort(), 90_000)
+    const url = force ? '/api/v2/stops/management?refresh=1' : '/api/v2/stops/management'
+    fetch(url, { signal: ctrl.signal })
+      .then(x => { if (!x.ok) throw new Error(`HTTP ${x.status}`); return x.json() })
+      .then(j => {
+        const next = unwrap(j)
+        setData(next)
+        try { sessionStorage.setItem(STOPS_CACHE_KEY, JSON.stringify(next)) } catch { /* quota */ }
+      })
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e)
+        setFetchError(msg.includes('abort') ? 'Request timed out (90s) — showing last-known data if available.' : msg)
+        if (!data) setData(null)
+      })
+      .finally(() => { window.clearTimeout(timer); setLoading(false) })
   }
-  useEffect(load, [])
+  useEffect(() => { load(false) }, [])
 
   const rows: Row[] = data?.rows ?? []
   const summary = data?.summary ?? {}
@@ -476,6 +500,18 @@ export default function StopManagement({ onFocusHolding }: Props) {
 
       {sub === 'Audit' ? <AuditView /> : (
         <>
+          {fetchError && (
+            <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 9, background: `${AMBER}14`, border: `1px solid ${AMBER}55` }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: AMBER }}>⚠ Stop Management load issue</div>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, lineHeight: 1.45 }}>{fetchError}</div>
+            </div>
+          )}
+          {!loading && !fetchError && rows.length === 0 && (
+            <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 9, background: `${AMBER}10`, border: `1px solid ${AMBER}44` }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: AMBER }}>No stop rows returned</div>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>Backend may be reconnecting — click ↻ Refresh or wait for the API server.</div>
+            </div>
+          )}
           {data?.broker_stops_degraded && (
             <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 9, background: `${RED}14`, border: `1px solid ${RED}55` }}>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: RED }}>⚠ Schwab live stop read failed — broker stops may be hidden</div>
@@ -535,8 +571,8 @@ export default function StopManagement({ onFocusHolding }: Props) {
             <select value={level} onChange={e => setLevel(e.target.value)} style={{ fontSize: 12, padding: '4px 6px', borderRadius: 6, background: 'var(--bg2)', color: TEXT0, border: '1px solid rgba(148,163,184,.3)' }}>
               {['All', 'red', 'amber', 'yellow'].map(l => <option key={l} value={l}>{l === 'All' ? 'All levels' : l}</option>)}
             </select>
-            <button onClick={load} style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE }}>↻ Refresh</button>
-            <span style={{ fontSize: 11, color: MUTED }}>{loading ? 'loading…' : `${filtered.length} of ${rows.length} · regime ${data?.regime_now ?? '—'}`}</span>
+            <button onClick={() => load(true)} style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE }}>↻ Refresh</button>
+            <span style={{ fontSize: 11, color: MUTED }}>{loading ? 'loading…' : `${filtered.length} of ${rows.length} · regime ${data?.regime_now ?? '—'}${data?.cached ? ' · cached' : ''}`}</span>
           </div>
 
           {/* Table */}
