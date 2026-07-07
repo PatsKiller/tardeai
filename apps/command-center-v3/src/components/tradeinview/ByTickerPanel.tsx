@@ -4,6 +4,7 @@
 // Backed by GET /api/v2/journal/by-ticker (realized closed trades). Each ticker expands to its
 // per-strategy & per-account split and the individual trades. Read-only.
 import { useState, useMemo, Fragment } from 'react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useApi } from '../../hooks/useApi'
 import { fmt$ } from '../../lib/format'
 
@@ -77,6 +78,50 @@ function TickerDetail({ symbol, from, to, account }: { symbol: string; from?: st
   )
 }
 
+function HoldTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null
+  const d = payload[0].payload
+  return (
+    <div style={{ background: 'var(--bg1, #0b1220)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', fontSize: 11 }}>
+      <div style={{ fontWeight: 800, marginBottom: 4 }}>{d.bucket} <span style={{ color: DIM, fontWeight: 600 }}>· avg {num(d.avg_hold_days, 1)}d hold</span></div>
+      <div style={{ color: MUTED }}>{d.trades} trades · <span style={{ color: Number(d.win_rate_pct) >= 50 ? GREEN : RED }}>{pct(d.win_rate_pct)} win</span></div>
+      <div>Total P&L <span style={{ color: pnlColor(d.total_pnl), fontWeight: 700 }}>{fmt$(Number(d.total_pnl), 0)}</span> · avg <span style={{ color: pnlColor(d.avg_pnl) }}>{fmt$(Number(d.avg_pnl), 0)}</span></div>
+    </div>
+  )
+}
+
+function HoldChart({ dist }: { dist: any[] }) {
+  const [mode, setMode] = useState<'trades' | 'pnl'>('trades')
+  if (!dist || dist.length === 0) return null
+  const key = mode === 'pnl' ? 'total_pnl' : 'trades'
+  const btn = (m: 'trades' | 'pnl', label: string) => (
+    <button onClick={() => setMode(m)} style={{
+      fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 6, cursor: 'pointer',
+      border: `1px solid ${mode === m ? '#60a5fa' : 'var(--border)'}`,
+      background: mode === m ? 'rgba(96,165,250,.14)' : 'transparent', color: mode === m ? '#60a5fa' : MUTED,
+    }}>{label}</button>
+  )
+  return (
+    <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, fontWeight: 800 }}>Performance by holding period</span>
+        <span style={{ fontSize: 10, color: MUTED }}>intraday → long · bars green when the band is net-profitable</span>
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>{btn('trades', '# Trades')}{btn('pnl', 'Total P&L')}</span>
+      </div>
+      <ResponsiveContainer width="100%" height={170}>
+        <BarChart data={dist} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+          <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: MUTED }} />
+          <YAxis tick={{ fontSize: 9, fill: MUTED }} tickFormatter={(v: number) => mode === 'pnl' ? (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`) : String(v)} width={44} />
+          <Tooltip content={<HoldTooltip />} cursor={{ fill: 'rgba(148,163,184,.08)' }} />
+          <Bar dataKey={key} radius={[3, 3, 0, 0]}>
+            {dist.map((d, i) => <Cell key={i} fill={Number(d.total_pnl) > 0 ? GREEN : Number(d.total_pnl) < 0 ? RED : MUTED} />)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 export default function ByTickerPanel({ account, from, to }: { account?: string; from?: string; to?: string }) {
   const [open, setOpen] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -85,6 +130,7 @@ export default function ByTickerPanel({ account, from, to }: { account?: string;
   const { data, loading, error } = useApi<any>(`/api/v2/journal/by-ticker?${qs.toString()}`, 120_000)
   const tickers: any[] = data?.tickers || []
   const totals = data?.totals || {}
+  const holdDist: any[] = data?.hold_distribution || []
   const shown = useMemo(() => {
     const s = search.trim().toUpperCase()
     return s ? tickers.filter(t => String(t.symbol).toUpperCase().includes(s)) : tickers
@@ -113,6 +159,9 @@ export default function ByTickerPanel({ account, from, to }: { account?: string;
           </div>
         ))}
       </div>
+
+      {/* hold-length distribution chart */}
+      <HoldChart dist={holdDist} />
 
       {loading && tickers.length === 0 && <div style={{ color: MUTED, fontSize: 12 }}>Loading per-ticker performance…</div>}
       {error && <div style={{ color: RED, fontSize: 12 }}>Failed to load: {error}</div>}

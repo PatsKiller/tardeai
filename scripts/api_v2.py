@@ -4649,9 +4649,32 @@ def _journal_by_ticker(query=None):
     totals = _db_query(
         f"SELECT {aggs} FROM trade_closed WHERE {where_sql}", tuple(params) if params else None, fetch="one") or {}
 
+    # hold-length distribution: bucket closed trades by holding period → count / win-rate / P&L per band,
+    # so the UI can chart "which holding period actually works." Ordered intraday → long. Same filters.
+    hold_bucket_case = """
+        CASE WHEN hold_days = 0 THEN 'Intraday'
+             WHEN hold_days <= 4 THEN '1-4d'
+             WHEN hold_days <= 20 THEN '5-20d'
+             WHEN hold_days <= 60 THEN '21-60d'
+             ELSE '60d+' END"""
+    hold_rows = _db_query(
+        f"""SELECT {hold_bucket_case} AS bucket,
+                   MIN(CASE WHEN hold_days = 0 THEN 0 WHEN hold_days <= 4 THEN 1 WHEN hold_days <= 20 THEN 2
+                            WHEN hold_days <= 60 THEN 3 ELSE 4 END) AS ord,
+                   count(*) AS trades,
+                   SUM((pnl > 0)::int) AS wins,
+                   ROUND(100.0 * SUM((pnl > 0)::int) / NULLIF(count(*), 0), 1) AS win_rate_pct,
+                   ROUND(SUM(pnl)::numeric, 2) AS total_pnl,
+                   ROUND(AVG(pnl)::numeric, 2) AS avg_pnl,
+                   ROUND(AVG(pnl_pct)::numeric, 2) AS avg_pnl_pct,
+                   ROUND(AVG(hold_days)::numeric, 1) AS avg_hold_days
+            FROM trade_closed WHERE {where_sql} AND hold_days IS NOT NULL
+            GROUP BY bucket ORDER BY ord""", tuple(params) if params else None) or []
+
     out = {"ok": True, "advisory_only": True, "symbol": symbol,
            "filters": {"from": d_from, "to": d_to, "account": account},
            "tickers": [_json_clean(t) for t in tickers], "totals": _json_clean(totals),
+           "hold_distribution": [_json_clean(h) for h in hold_rows],
            "source": "trade_closed (realized closed trades)"}
 
     if symbol:
