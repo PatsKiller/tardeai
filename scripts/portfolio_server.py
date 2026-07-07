@@ -1272,9 +1272,12 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 ".then(function(r){return r.json();})"
                 ".then(function(m){var v=m.ui_version||'%s',k='cc_v3_build';"
                 "try{if(sessionStorage.getItem(k)!==v){sessionStorage.setItem(k,v);"
-                "if(location.search.indexOf('_cc_reload')===-1){"
-                "var q=location.search?'&':'?';"
-                "location.replace(location.pathname+location.search+q+'_cc_reload='+Date.now());}}"
+                # strip any STALE _cc_reload before adding a fresh one, so a new version always forces a
+                # fresh-URL reload (the old code skipped the reload whenever _cc_reload was already present,
+                # pinning the browser to a cached bundle). sessionStorage above prevents an infinite loop.
+                "var s=location.search.replace(/[?&]_cc_reload=\\d+/,'');if(s.charAt(0)==='&')s='?'+s.slice(1);"
+                "var q=s?'&':'?';"
+                "location.replace(location.pathname+s+q+'_cc_reload='+Date.now());}"
                 "}catch(e){}}).catch(function(){});})();" % _build_ver
             ).encode()
             self.send_response(200)
@@ -1320,9 +1323,11 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                     _inject = (
                         "<script>(function(){var v='%s',k='cc_v3_build';"
                         "try{if(sessionStorage.getItem(k)!==v){sessionStorage.setItem(k,v);"
-                        "if(location.search.indexOf('_cc_reload')===-1){"
-                        "var q=location.search?'&':'?';"
-                        "location.replace(location.pathname+location.search+q+'_cc_reload='+Date.now());}}"
+                        # strip any stale _cc_reload, then reload with a fresh one — a new version always
+                        # busts the cached bundle (see cc-boot.js above for the full rationale).
+                        "var s=location.search.replace(/[?&]_cc_reload=\\d+/,'');if(s.charAt(0)==='&')s='?'+s.slice(1);"
+                        "var q=s?'&':'?';"
+                        "location.replace(location.pathname+s+q+'_cc_reload='+Date.now());}"
                         "}catch(e){}})();</script>" % _build_ver
                     ).encode()
                     _boot = b'<script src="/v3/cc-boot.js"></script>'
