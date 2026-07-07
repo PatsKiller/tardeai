@@ -252,11 +252,11 @@ export default function PortfolioHub({ onDrill }: Props) {
           {/* Manual broker sync buttons — read-only holdings/position pull (no trading) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
             <button onClick={() => runSync('snaptrade')} disabled={!!syncState.busy} style={syncBtn(syncState.busy === 'snaptrade')}
-              title="Manually pull the latest Fidelity holdings from SnapTrade into holdings.json (read-only; no trading)">
+              title="Full Fidelity refresh: holdings + trade ledger + journal round-trips (read-only; no trading). Note: Fidelity posts trades overnight, so intraday fills appear next morning. Stops not pulled.">
               {syncState.busy === 'snaptrade' ? '⟳ Syncing SnapTrade…' : '⟳ Sync SnapTrade'}
             </button>
             <button onClick={() => runSync('schwab')} disabled={!!syncState.busy} style={syncBtn(syncState.busy === 'schwab')}
-              title="Manually pull the latest Schwab positions into the holdings pipeline (read-only; no trading)">
+              title="Full Schwab refresh: positions + trade ledger + journal round-trips (read-only; no trading; stops not pulled).">
               {syncState.busy === 'schwab' ? '⟳ Syncing Schwab…' : '⟳ Sync Schwab'}
             </button>
             {syncState.msg && (

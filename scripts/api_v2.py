@@ -26257,27 +26257,41 @@ def _fidelity_stops_status():
 
 
 def _portfolio_sync_run(which):
-    """POST /api/v2/portfolio/sync/{snaptrade|schwab} — operator-triggered MANUAL holdings/position sync.
-    Runs the broker's READ-ONLY sync in the background (--apply merges into holdings.json via the
-    protected no-wipe write path — no trading, no orders). flock prevents overlapping runs; returns
-    immediately and the UI re-fetches holdings after ~15-30s."""
+    """POST /api/v2/portfolio/sync/{snaptrade|schwab} — operator-triggered MANUAL full broker refresh.
+    Runs the broker's READ-ONLY pipeline in the background (all --apply, via the protected no-wipe write
+    path — no trading, no orders): positions/holdings + transaction ledger + journal round-trip rebuild,
+    so both current positions AND new closed trades land on demand without waiting for the cron cadence.
+    flock prevents overlap; returns immediately.
+
+    NOTE: broker STOP orders are NOT pulled here — Schwab's stop reconcile is read-only and SnapTrade does
+    not return Fidelity stop orders (stops are recorded via the Stop Management desk). Fidelity TRADES only
+    appear after the broker posts its ledger overnight, so intraday Fidelity fills won't show same-day."""
     import subprocess
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     py = os.path.join(root, ".venv", "bin", "python")
     targets = {
-        "snaptrade": ("scripts/snaptrade_sync.py --apply", "/tmp/tradeai_snaptrade_sync.lock",
-                      "logs/snaptrade_sync.log", "SnapTrade (Fidelity) holdings"),
-        "schwab": ("scripts/schwab_position_sync.py --apply", "/tmp/tradeai_schwab_position_sync.lock",
-                   "logs/schwab_position_sync.log", "Schwab positions"),
+        # Fidelity: holdings + activity ledger (trades) + journal round-trip rebuild
+        "snaptrade": (["scripts/snaptrade_sync.py --apply",
+                       "scripts/snaptrade_activity_ingest.py --apply",
+                       "scripts/schwab_journal_builder.py --apply"],
+                      "/tmp/tradeai_snaptrade_sync.lock", "logs/snaptrade_sync.log",
+                      "Fidelity (holdings + trades + journal)"),
+        # Schwab: positions + transaction ledger (trades) + journal round-trip rebuild
+        "schwab": (["scripts/schwab_position_sync.py --apply",
+                    "scripts/schwab_transaction_ingest.py --apply",
+                    "scripts/schwab_journal_builder.py --apply"],
+                   "/tmp/tradeai_schwab_sync.lock", "logs/schwab_ingest.log",
+                   "Schwab (positions + trades + journal)"),
     }
     if which not in targets:
         return {"ok": False, "error": f"unknown sync target '{which}'"}
-    cmd, lock, log, label = targets[which]
+    steps, lock, log, label = targets[which]
+    inner = " ; ".join(f"{py} {s}" for s in steps)
     try:
-        subprocess.Popen(["bash", "-c", f"flock -n {lock} {py} {cmd} >> {log} 2>&1"], cwd=root,
+        subprocess.Popen(["bash", "-c", f'flock -n {lock} bash -c "{inner}" >> {log} 2>&1'], cwd=root,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         return {"ok": True, "started": True, "target": which,
-                "note": f"{label} sync started — refresh holdings in ~15-30s (read-only; no trading)."}
+                "note": f"{label} sync started — positions + new trades refresh in ~30-60s (read-only; no trading; stops not pulled)."}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
