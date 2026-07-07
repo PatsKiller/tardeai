@@ -4,7 +4,6 @@
 // Backed by GET /api/v2/journal/by-ticker (realized closed trades). Each ticker expands to its
 // per-strategy & per-account split and the individual trades. Read-only.
 import { useState, useMemo, Fragment } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useApi } from '../../hooks/useApi'
 import { fmt$ } from '../../lib/format'
 
@@ -78,27 +77,21 @@ function TickerDetail({ symbol, from, to, account }: { symbol: string; from?: st
   )
 }
 
-function HoldTooltip({ active, payload }: any) {
-  if (!active || !payload?.length) return null
-  const d = payload[0].payload
-  return (
-    <div style={{ background: 'var(--bg1, #0b1220)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', fontSize: 11 }}>
-      <div style={{ fontWeight: 800, marginBottom: 4 }}>{d.bucket} <span style={{ color: DIM, fontWeight: 600 }}>· avg {num(d.avg_hold_days, 1)}d hold</span></div>
-      <div style={{ color: MUTED }}>{d.trades} trades · <span style={{ color: Number(d.win_rate_pct) >= 50 ? GREEN : RED }}>{pct(d.win_rate_pct)} win</span></div>
-      <div>Total P&L <span style={{ color: pnlColor(d.total_pnl), fontWeight: 700 }}>{fmt$(Number(d.total_pnl), 0)}</span> · avg <span style={{ color: pnlColor(d.avg_pnl) }}>{fmt$(Number(d.avg_pnl), 0)}</span></div>
-    </div>
-  )
-}
-
 function HoldChart({ dist }: { dist: any[] }) {
   const [mode, setMode] = useState<'trades' | 'pnl'>('trades')
   if (!dist || dist.length === 0) return null
-  // API Decimals serialize as strings → coerce to numbers so recharts can plot them (bars won't draw otherwise)
+  // API Decimals serialize as strings → coerce to numbers.
   const data = dist.map(d => ({
-    ...d, trades: Number(d.trades) || 0, total_pnl: Number(d.total_pnl) || 0,
-    win_rate_pct: Number(d.win_rate_pct), avg_pnl: Number(d.avg_pnl), avg_hold_days: Number(d.avg_hold_days),
+    bucket: String(d.bucket),
+    trades: Number(d.trades) || 0,
+    total_pnl: Number(d.total_pnl) || 0,
+    win_rate_pct: Number(d.win_rate_pct) || 0,
+    avg_pnl: Number(d.avg_pnl) || 0,
+    avg_hold_days: Number(d.avg_hold_days) || 0,
   }))
-  const key = mode === 'pnl' ? 'total_pnl' : 'trades'
+  const key: 'trades' | 'total_pnl' = mode === 'pnl' ? 'total_pnl' : 'trades'
+  const maxAbs = Math.max(1, ...data.map(d => Math.abs(d[key])))
+  const CHART_H = 130
   const btn = (m: 'trades' | 'pnl', label: string) => (
     <button onClick={() => setMode(m)} style={{
       fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 6, cursor: 'pointer',
@@ -106,23 +99,34 @@ function HoldChart({ dist }: { dist: any[] }) {
       background: mode === m ? 'rgba(96,165,250,.14)' : 'transparent', color: mode === m ? '#60a5fa' : MUTED,
     }}>{label}</button>
   )
+  // Pure HTML/CSS bars — NO SVG / recharts — so they render identically in every browser (no SVG/GPU quirks).
   return (
     <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 11, fontWeight: 800 }}>Performance by holding period</span>
-        <span style={{ fontSize: 10, color: MUTED }}>intraday → long · bars green when the band is net-profitable</span>
+        <span style={{ fontSize: 10, color: MUTED }}>intraday → long · green when the band is net-profitable</span>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>{btn('trades', '# Trades')}{btn('pnl', 'Total P&L')}</span>
       </div>
-      <ResponsiveContainer width="100%" height={170}>
-        <BarChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
-          <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: MUTED }} />
-          <YAxis tick={{ fontSize: 9, fill: MUTED }} tickFormatter={(v: number) => mode === 'pnl' ? (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`) : String(v)} width={44} />
-          <Tooltip content={<HoldTooltip />} cursor={{ fill: 'rgba(148,163,184,.08)' }} />
-          <Bar dataKey={key}>
-            {data.map((d, i) => <Cell key={i} fill={Number(d.total_pnl) > 0 ? GREEN : Number(d.total_pnl) < 0 ? RED : MUTED} />)}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: CHART_H }}>
+        {data.map((d, i) => {
+          const val = d[key]
+          const barH = Math.max(3, Math.round(Math.abs(val) / maxAbs * (CHART_H - 22)))
+          const color = d.total_pnl > 0 ? GREEN : d.total_pnl < 0 ? RED : MUTED
+          const label = mode === 'pnl' ? (Math.abs(val) >= 1000 ? `$${(val / 1000).toFixed(0)}k` : fmt$(val, 0)) : String(val)
+          const title = `${d.bucket} · avg ${num(d.avg_hold_days, 1)}d hold\n${d.trades} trades · ${pct(d.win_rate_pct)} win\nTotal P&L ${fmt$(d.total_pnl, 0)} · avg ${fmt$(d.avg_pnl, 0)}`
+          return (
+            <div key={i} title={title} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: MUTED, marginBottom: 3, fontVariantNumeric: 'tabular-nums' }}>{label}</div>
+              <div style={{ width: '68%', maxWidth: 90, height: barH, background: color, borderRadius: '3px 3px 0 0' }} />
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 5, borderTop: '1px solid var(--border)', paddingTop: 4 }}>
+        {data.map((d, i) => (
+          <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 10, color: MUTED }}>{d.bucket}</div>
+        ))}
+      </div>
     </div>
   )
 }
