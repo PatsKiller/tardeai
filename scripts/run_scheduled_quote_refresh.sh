@@ -6,7 +6,12 @@ PROJ="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
 set -a; source "$PROJ/.env"; set +a
 PY="$PROJ/.venv/bin/python"
 LOG="$PROJ/logs/proactive_quote_refresh.log"
-LOCK="/tmp/tradeai_quote_refresh.lock"
+# This inner lock MUST differ from the cron's OUTER flock (/tmp/tradeai_quote_refresh.lock). The cron
+# runs `flock -n /tmp/tradeai_quote_refresh.lock bash run_scheduled_quote_refresh.sh …`, so if this
+# re-locked the SAME file the inner `flock -n` below would ALWAYS fail (exit 1) — the Python would never
+# run and every cron tick got recorded as a FAILED pipeline (errors:[], 0 rows). A separate file lets
+# this guard the non-cron callers (market pipeline, health retry) without deadlocking under the cron.
+LOCK="/tmp/tradeai_quote_refresh_run.lock"
 TS=$(date '+%Y-%m-%d %H:%M:%S')
 MODE_VAL="pending"
 LIMIT_VAL="50"
