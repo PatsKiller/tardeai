@@ -1,6 +1,6 @@
 // ByTickerPanel — per-ticker AGGREGATE performance over time (the gap: the Journal grouped by day /
 // strategy / account but never by symbol). Answers "aggregate total performance of a ticker over time"
-// — e.g. all BJDX trades → #trades, win rate, total/avg P&L, avg hold, best/worst, profit factor.
+// — e.g. all BJDX trades → #trades, journal win rate, total/avg P&L, avg hold, best/worst, profit factor.
 // Backed by GET /api/v2/journal/by-ticker (realized closed trades). Each ticker expands to its
 // per-strategy & per-account split and the individual trades. Read-only.
 import { useState, useMemo, Fragment } from 'react'
