@@ -4598,6 +4598,79 @@ def _attach_backtest_grades(trades):
         pass
 
 
+def _journal_by_ticker(query=None):
+    """GET /api/v2/journal/by-ticker [?symbol=&from=&to=&account=] — PER-TICKER realized-performance
+    rollup over trade_closed (the same closed-trade source as /api/v2/journal). Answers "aggregate total
+    performance of a ticker over time" — e.g. all BJDX trades → #trades, win rate, total/avg P&L, avg
+    hold, best/worst, profit factor, over an optional date range.
+
+    - No symbol → ranked ticker table (one row per symbol) + portfolio totals.
+    - symbol given → that ticker's rollup + per-strategy & per-account splits + the individual trades.
+    Read-only.
+    """
+    q = query or {}
+    g = lambda k: (q.get(k)[0] if isinstance(q.get(k), list) else q.get(k)) or None
+    symbol = (g("symbol") or "").upper().strip() or None
+    d_from, d_to, account = g("from"), g("to"), g("account")
+
+    where = ["pnl IS NOT NULL"]
+    params = []
+    if symbol:
+        where.append("UPPER(symbol) = %s"); params.append(symbol)
+    if account:
+        where.append("account = %s"); params.append(account)
+    if d_from:
+        where.append("close_date >= %s"); params.append(d_from)
+    if d_to:
+        where.append("close_date <= %s"); params.append(d_to)
+    where_sql = " AND ".join(where)
+
+    # aggregate expressions reused for the ticker table, per-strategy, per-account, and totals
+    aggs = """
+        count(*) AS trades,
+        SUM((pnl > 0)::int) AS wins,
+        SUM((pnl < 0)::int) AS losses,
+        ROUND(100.0 * SUM((pnl > 0)::int) / NULLIF(count(*), 0), 1) AS win_rate_pct,
+        ROUND(SUM(pnl)::numeric, 2) AS total_pnl,
+        ROUND(AVG(pnl)::numeric, 2) AS avg_pnl,
+        ROUND(AVG(pnl_pct)::numeric, 2) AS avg_pnl_pct,
+        ROUND(MAX(pnl)::numeric, 2) AS best_pnl,
+        ROUND(MIN(pnl)::numeric, 2) AS worst_pnl,
+        ROUND(AVG(hold_days)::numeric, 1) AS avg_hold_days,
+        ROUND(AVG(r_multiple)::numeric, 2) AS avg_r,
+        ROUND((SUM(pnl) FILTER (WHERE pnl > 0)
+               / NULLIF(ABS(SUM(pnl) FILTER (WHERE pnl < 0)), 0))::numeric, 2) AS profit_factor,
+        MIN(close_date)::text AS first_close,
+        MAX(close_date)::text AS last_close
+    """
+    tickers = _db_query(
+        f"SELECT symbol, {aggs} FROM trade_closed WHERE {where_sql} GROUP BY symbol "
+        f"ORDER BY total_pnl DESC NULLS LAST", tuple(params) if params else None) or []
+    totals = _db_query(
+        f"SELECT {aggs} FROM trade_closed WHERE {where_sql}", tuple(params) if params else None, fetch="one") or {}
+
+    out = {"ok": True, "advisory_only": True, "symbol": symbol,
+           "filters": {"from": d_from, "to": d_to, "account": account},
+           "tickers": [_json_clean(t) for t in tickers], "totals": _json_clean(totals),
+           "source": "trade_closed (realized closed trades)"}
+
+    if symbol:
+        out["by_strategy"] = [_json_clean(r) for r in (_db_query(
+            f"SELECT COALESCE(strategy_id, setup, 'unclassified') AS strategy, {aggs} "
+            f"FROM trade_closed WHERE {where_sql} GROUP BY 1 ORDER BY total_pnl DESC NULLS LAST",
+            tuple(params) if params else None) or [])]
+        out["by_account"] = [_json_clean(r) for r in (_db_query(
+            f"SELECT account, {aggs} FROM trade_closed WHERE {where_sql} GROUP BY account "
+            f"ORDER BY total_pnl DESC NULLS LAST", tuple(params) if params else None) or [])]
+        out["trades"] = [_json_clean(r) for r in (_db_query(
+            f"""SELECT symbol, account, open_date::text, close_date::text, trade_type, shares,
+                       buy_price, sell_price, pnl, pnl_pct, hold_days, r_multiple,
+                       COALESCE(strategy_id, setup) AS strategy, setup, rating
+                FROM trade_closed WHERE {where_sql} ORDER BY close_date DESC, id DESC LIMIT 500""",
+            tuple(params) if params else None) or [])]
+    return out
+
+
 def journal():
     """GET /api/v2/journal — closed trades from DB (trade_closed table)."""
     import psycopg2.extras
@@ -27438,6 +27511,7 @@ ROUTES = {
     "/api/v2/agents/performance-history": lambda: {"history": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM agent_performance_history ORDER BY created_at DESC LIMIT 20") or [])]},
     "/api/v2/attribution": attribution,
     "/api/v2/journal": journal,
+    "/api/v2/journal/by-ticker": _journal_by_ticker,
     "/api/v2/journal/unannotated": _journal_unannotated,
     "/api/v2/journal/previously-traded": _journal_previously_traded,
     "/api/v2/journal/backtest-summary": _journal_backtest_summary,
