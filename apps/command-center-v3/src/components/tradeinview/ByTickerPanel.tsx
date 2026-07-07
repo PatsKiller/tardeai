@@ -4,7 +4,7 @@
 // Backed by GET /api/v2/journal/by-ticker (realized closed trades). Each ticker expands to its
 // per-strategy & per-account split and the individual trades. Read-only.
 import { useState, useMemo, Fragment } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { useApi } from '../../hooks/useApi'
 import { fmt$ } from '../../lib/format'
 
@@ -93,6 +93,11 @@ function HoldTooltip({ active, payload }: any) {
 function HoldChart({ dist }: { dist: any[] }) {
   const [mode, setMode] = useState<'trades' | 'pnl'>('trades')
   if (!dist || dist.length === 0) return null
+  // API Decimals serialize as strings → coerce to numbers so recharts can plot them (bars won't draw otherwise)
+  const data = dist.map(d => ({
+    ...d, trades: Number(d.trades) || 0, total_pnl: Number(d.total_pnl) || 0,
+    win_rate_pct: Number(d.win_rate_pct), avg_pnl: Number(d.avg_pnl), avg_hold_days: Number(d.avg_hold_days),
+  }))
   const key = mode === 'pnl' ? 'total_pnl' : 'trades'
   const btn = (m: 'trades' | 'pnl', label: string) => (
     <button onClick={() => setMode(m)} style={{
@@ -109,13 +114,15 @@ function HoldChart({ dist }: { dist: any[] }) {
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>{btn('trades', '# Trades')}{btn('pnl', 'Total P&L')}</span>
       </div>
       <ResponsiveContainer width="100%" height={170}>
-        <BarChart data={dist} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
           <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: MUTED }} />
           <YAxis tick={{ fontSize: 9, fill: MUTED }} tickFormatter={(v: number) => mode === 'pnl' ? (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`) : String(v)} width={44} />
           <Tooltip content={<HoldTooltip />} cursor={{ fill: 'rgba(148,163,184,.08)' }} />
-          <Bar dataKey={key} radius={[3, 3, 0, 0]}>
-            {dist.map((d, i) => <Cell key={i} fill={Number(d.total_pnl) > 0 ? GREEN : Number(d.total_pnl) < 0 ? RED : MUTED} />)}
-          </Bar>
+          <Bar dataKey={key} radius={[3, 3, 0, 0]} isAnimationActive={false} shape={(props: any) => {
+            const { x, y, width, height, payload } = props
+            const c = Number(payload.total_pnl) > 0 ? GREEN : Number(payload.total_pnl) < 0 ? RED : MUTED
+            return <rect x={x} y={y} width={width} height={Math.abs(height)} rx={3} fill={c} />
+          }} />
         </BarChart>
       </ResponsiveContainer>
     </div>
