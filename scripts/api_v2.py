@@ -25266,21 +25266,35 @@ def _pullback_macd_candidates(query=None):
         where += " AND tier=%s"
         params.append(tier)
     params.append(limit)
+    # LEFT JOIN the linked proposal so the UI knows whether proposal_id still points to a LIVE,
+    # filterable proposal. A trigger whose proposal has EXPIRED/REJECTED must NOT be advertised as
+    # "in queue" — otherwise the widget count drifts above the filtered list, which is exactly the
+    # "3 triggers shown but 0 proposals when filtered" bug.
     rows = _execute(
-        f"""SELECT symbol, tier, prev_tier, price, pullback_pct, trend_pct, macd_prox_pct,
-                   hist_rising_bars, bars_to_cross_est, atr, entry, stop, target1, rr, score,
-                   why_not, vwap, above_vwap, vwap_dist_pct, proposal_id, scan_date,
-                   first_seen_at, last_scan_at
-            FROM pullback_macd_candidates
-            WHERE {where}
-            ORDER BY (tier='trigger') DESC, score DESC LIMIT %s""",
+        f"""SELECT c.symbol, c.tier, c.prev_tier, c.price, c.pullback_pct, c.trend_pct, c.macd_prox_pct,
+                   c.hist_rising_bars, c.bars_to_cross_est, c.atr, c.entry, c.stop, c.target1, c.rr, c.score,
+                   c.why_not, c.vwap, c.above_vwap, c.vwap_dist_pct, c.proposal_id, c.scan_date,
+                   c.first_seen_at, c.last_scan_at,
+                   p.status AS proposal_status,
+                   -- "live" mirrors the proposals-list visibility gate EXACTLY (status only, no expiry
+                   -- clause) so the widget's queued count == what the source=pullback_macd list shows.
+                   (p.status IN ('PENDING','APPROVED_FOR_PAPER_TEST')) AS proposal_live
+            FROM pullback_macd_candidates c
+            LEFT JOIN paper_trade_proposals p ON p.id = c.proposal_id
+            WHERE {('c.' + where.replace(' AND ', ' AND c.')) if where else where}
+            ORDER BY (c.tier='trigger') DESC, c.score DESC LIMIT %s""",
         params, fetch="all") or []
     run = _execute("SELECT * FROM pullback_macd_runs ORDER BY created_at DESC LIMIT 1", fetch="one")
     triggers = [r for r in rows if r.get("tier") == "trigger"]
+    # a trigger is "queued" only if its linked proposal is still LIVE (PENDING/APPROVED); ones pointing
+    # to expired/rejected proposals are counted separately so the widget matches the list.
+    trigger_live = [r for r in triggers if r.get("proposal_live")]
     return _json_clean({
         "ok": True,
         "candidates": rows,
         "trigger_count": len(triggers),
+        "trigger_live_count": len(trigger_live),
+        "trigger_stale_count": len(triggers) - len(trigger_live),
         "watch_count": sum(1 for r in rows if r.get("tier") == "watch"),
         "last_run": run,
         "generated_at": (run or {}).get("created_at"),

@@ -167,7 +167,11 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const strategies: string[] = data?.strategies ?? []
   const proposals: any[] = data?.proposals ?? []
   const pullbackTriggers = (pullbackData?.candidates ?? []).filter((c: any) => c.tier === 'trigger')
-  const pullbackPending = pullbackTriggers.filter((c: any) => c.proposal_id)
+  // "in queue" = triggers whose linked proposal is actually LIVE (PENDING/APPROVED) — i.e. what the
+  // source=pullback_macd list shows. Triggers pointing to expired/rejected proposals are NOT queued;
+  // counting them (old bug: `.filter(c => c.proposal_id)`) made the widget claim more than the list.
+  const pullbackPending = pullbackTriggers.filter((c: any) => c.proposal_live)
+  const pullbackStale = pullbackTriggers.filter((c: any) => c.proposal_id && !c.proposal_live)
 
   const [f, setF] = useState<any>({ account: '', symbol: '', shares: '', entry: '', stop: '', target: '', strategy_id: '' })
   const [msg, setMsg] = useState('')
@@ -965,6 +969,9 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             <span style={{ fontSize: 12, fontWeight: 800, color: AMBER }}>Pullback / MACD triggers</span>
             <span style={{ fontSize: 10, color: MUTED }}>
               {pullbackPending.length} in queue · {pullbackTriggers.length} active trigger{pullbackTriggers.length === 1 ? '' : 's'}
+              {pullbackStale.length > 0 && (
+                <span style={{ color: AMBER }}> · {pullbackStale.length} expired/rejected (no live proposal)</span>
+              )}
             </span>
             <button
               onClick={() => patchFilters({ source: 'pullback_macd', page: 1, sort: 'priority' })}
@@ -975,22 +982,31 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             </button>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {pullbackTriggers.map((c: any) => (
-              <button
-                key={c.symbol}
-                onClick={() => patchFilters({ symbol: c.symbol, source: '', page: 1 })}
-                title={c.proposal_id ? `Proposal #${c.proposal_id} · ${c.pullback_pct}% off high` : 'No proposal yet — run monitor'}
-                style={{
-                  fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
-                  border: c.proposal_id ? `1px solid ${GREEN}55` : `1px solid ${AMBER}55`,
-                  background: c.proposal_id ? `${GREEN}14` : `${AMBER}10`,
-                  color: c.proposal_id ? GREEN : AMBER,
-                }}
-              >
-                {c.symbol} · {Number(c.pullback_pct).toFixed(1)}%
-                {c.proposal_id ? ` · #${c.proposal_id}` : ' · no proposal'}
-              </button>
-            ))}
+            {pullbackTriggers.map((c: any) => {
+              // three states so the widget never overstates the queue: live proposal (green, in the
+              // filtered list), dead-linked proposal (red — expired/rejected, NOT in the list), or none.
+              const live = !!c.proposal_live
+              const dead = !!c.proposal_id && !live
+              const col = live ? GREEN : dead ? RED : AMBER
+              const tail = live ? ` · #${c.proposal_id}`
+                : dead ? ` · ${String(c.proposal_status || 'gone').toLowerCase()}`
+                : ' · no proposal'
+              return (
+                <button
+                  key={c.symbol}
+                  onClick={() => patchFilters({ symbol: c.symbol, source: '', page: 1 })}
+                  title={live ? `Proposal #${c.proposal_id} live in queue · ${c.pullback_pct}% off high`
+                    : dead ? `Proposal #${c.proposal_id} is ${String(c.proposal_status || 'gone').toLowerCase()} — not in the queue; re-scan to refresh`
+                    : 'No proposal yet — run the pullback scan'}
+                  style={{
+                    fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                    border: `1px solid ${col}55`, background: `${col}14`, color: col,
+                  }}
+                >
+                  {c.symbol} · {Number(c.pullback_pct).toFixed(1)}%{tail}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
