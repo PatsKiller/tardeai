@@ -26256,6 +26256,32 @@ def _fidelity_stops_status():
         return {"ok": False, "error": str(e)[:160]}
 
 
+def _portfolio_sync_run(which):
+    """POST /api/v2/portfolio/sync/{snaptrade|schwab} — operator-triggered MANUAL holdings/position sync.
+    Runs the broker's READ-ONLY sync in the background (--apply merges into holdings.json via the
+    protected no-wipe write path — no trading, no orders). flock prevents overlapping runs; returns
+    immediately and the UI re-fetches holdings after ~15-30s."""
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    py = os.path.join(root, ".venv", "bin", "python")
+    targets = {
+        "snaptrade": ("scripts/snaptrade_sync.py --apply", "/tmp/tradeai_snaptrade_sync.lock",
+                      "logs/snaptrade_sync.log", "SnapTrade (Fidelity) holdings"),
+        "schwab": ("scripts/schwab_position_sync.py --apply", "/tmp/tradeai_schwab_position_sync.lock",
+                   "logs/schwab_position_sync.log", "Schwab positions"),
+    }
+    if which not in targets:
+        return {"ok": False, "error": f"unknown sync target '{which}'"}
+    cmd, lock, log, label = targets[which]
+    try:
+        subprocess.Popen(["bash", "-c", f"flock -n {lock} {py} {cmd} >> {log} 2>&1"], cwd=root,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return {"ok": True, "started": True, "target": which,
+                "note": f"{label} sync started — refresh holdings in ~15-30s (read-only; no trading)."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _fidelity_stops_sync(body=None):
     """POST /api/v2/fidelity-stops/sync — record Fidelity GTC stops (manual_broker_stops).
 
@@ -32243,6 +32269,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/fidelity-stops/sync":
         try:
             res = _fidelity_stops_sync(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path in ("/api/v2/portfolio/sync/snaptrade", "/api/v2/portfolio/sync/schwab"):
+        try:
+            res = _portfolio_sync_run(base_path.rsplit("/", 1)[-1])
             return (200 if res.get("ok") else 400), res
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
