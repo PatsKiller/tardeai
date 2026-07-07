@@ -4,7 +4,7 @@
 // Backed by GET /api/v2/journal/by-ticker (realized closed trades). Each ticker expands to its
 // per-strategy & per-account split and the individual trades. Read-only.
 import { useState, useMemo, Fragment } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useApi } from '../../hooks/useApi'
 import { fmt$ } from '../../lib/format'
 
@@ -118,11 +118,9 @@ function HoldChart({ dist }: { dist: any[] }) {
           <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: MUTED }} />
           <YAxis tick={{ fontSize: 9, fill: MUTED }} tickFormatter={(v: number) => mode === 'pnl' ? (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`) : String(v)} width={44} />
           <Tooltip content={<HoldTooltip />} cursor={{ fill: 'rgba(148,163,184,.08)' }} />
-          <Bar dataKey={key} radius={[3, 3, 0, 0]} isAnimationActive={false} shape={(props: any) => {
-            const { x, y, width, height, payload } = props
-            const c = Number(payload.total_pnl) > 0 ? GREEN : Number(payload.total_pnl) < 0 ? RED : MUTED
-            return <rect x={x} y={y} width={width} height={Math.abs(height)} rx={3} fill={c} />
-          }} />
+          <Bar dataKey={key}>
+            {data.map((d, i) => <Cell key={i} fill={Number(d.total_pnl) > 0 ? GREEN : Number(d.total_pnl) < 0 ? RED : MUTED} />)}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>
