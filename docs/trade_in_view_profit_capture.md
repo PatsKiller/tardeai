@@ -49,3 +49,13 @@ Generated: 2026-06-27T01:51:43.701934+00:00
 | APPS | alpaca_paper | swing_breakout | 159.98 | 334.0 | 141.68 | 42.4 | False | NO_ADVISORY_GENERATED |
 | EVC | alpaca_paper | screener | 202.8 | 292.5 | 89.7 | 30.7 | False | NO_ADVISORY_GENERATED |
 | INFU | alpaca_paper | swing_breakout | 67.83 | 114.24 | 46.41 | 40.6 | False | NO_ADVISORY_GENERATED |
+
+## By-Ticker aggregate view (2026-07-07, PR #130)
+
+The Journal aggregated by day / strategy / account / session / setup but **never by symbol**. New
+**By Ticker** tab + `GET /api/v2/journal/by-ticker[?symbol=&from=&to=&account=]` — per-symbol realized
+rollup over `trade_closed`: #trades, win rate, total/avg P&L, avg P&L %, **avg hold**, best/worst,
+**profit factor**, first/last close. Account + date-range filterable (honors the Journal's existing
+selectors; no account = all-accounts aggregate). `?symbol=` adds per-strategy & per-account splits + the
+individual trades. Component `apps/command-center-v3/src/components/tradeinview/ByTickerPanel.tsx`.
+Aggregates realized closed trades; a symbol with no closed trades shows an empty-state with an ingest hint.

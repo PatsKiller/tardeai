@@ -93,6 +93,11 @@
     "check_after_hour": 18,
     "min_universe": 400
   },
+  "broker_token_health": {
+    "_comment": "Schwab OAuth token liveness (collect_broker_token_health). Detects server-side REVOCATION that the TTL-based token health misses: broker_oauth_tokens.degraded/last_error + invalid_grant/no-login-token in schwab_ingest.log. Emits critical schwab_token_revoked. Deliberately NOT in remediation_map — a revoked token needs a manual reauth (GATE A), not an auto-retry; the finding carries the reauth command for the operator.",
+    "enabled": true,
+    "tail_lines": 200
+  },
   "trade_in_view": {
     "_comment": "TradeInView journal: Schwab ingest heartbeat, annotation coverage, MFE backfill.",
     "enabled": true,

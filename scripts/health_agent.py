@@ -1905,8 +1905,57 @@ def collect_db_connection_health() -> list[dict]:
     return out
 
 
+def collect_broker_token_health() -> list[dict]:
+    """Schwab OAuth token liveness — symmetric with the Finviz cookie check. The TTL-based
+    `schwab_token_manager.health()` reports `refresh_valid=true` even after Schwab REVOKES the token
+    (rotating-token reuse-detection race), so we detect the REAL signal: the `broker_oauth_tokens`
+    degraded flag + last_error, plus an `invalid_grant` / no-login-token in the recent `schwab_ingest.log`.
+    A revoked token has NO programmatic recovery (GATE A) — it needs a manual reauth — so this is a
+    critical OPERATOR-ACTION finding, deliberately NOT in `remediation_map` (retrying the ingest is futile).
+    Closes the gap where a revoked token silently stalled the trade journal for a full day (2026-07-07)."""
+    out = []
+    cfg = (_POLICY.get("broker_token_health") or {})
+    if not cfg.get("enabled", True):
+        return out
+    reauth = ("Manual Schwab reauth required (token cannot be auto-renewed): run "
+              "`.venv/bin/python scripts/schwab_token_manager.py reauth-url schwab_taxable`, open the URL, "
+              "log in, then `exchange-code schwab_taxable \"<redirect URL>\"`; then re-run "
+              "`scripts/schwab_transaction_ingest.py --apply`.")
+    try:
+        # AUTHORITATIVE, recency-correct signal: the `degraded` flag is SET when a refresh is rejected
+        # (schwab_transport persists it on Schwab auth-rejection; token manager sets it on refresh failure)
+        # and CLEARED on a successful reauth/refresh (`_clear_degraded`). We do NOT trigger on a raw
+        # log-scan alone — the ingest log keeps stale invalid_grant lines after recovery, which would
+        # false-positive. The log is used only to enrich the message once `degraded` confirms the failure.
+        rows = _db("SELECT account_key, degraded, last_error FROM broker_oauth_tokens WHERE degraded IS TRUE",
+                   fetch="all") or []
+        if rows:
+            acct = rows[0].get("account_key")
+            err = str(rows[0].get("last_error") or "degraded flag set")
+            log_sig = None
+            try:
+                p = LOG_DIR / "schwab_ingest.log"
+                if p.exists():
+                    tail = "\n".join(p.read_text(errors="ignore").splitlines()[-int(cfg.get("tail_lines", 200)):])
+                    for sig in ("invalid_grant", "no Schwab login token", "Refresh token is invalid", "OAuthError"):
+                        if sig in tail:
+                            log_sig = sig
+                            break
+            except Exception:
+                pass
+            out.append(_f("execution_health", "schwab_token_revoked", "critical",
+                          f"Schwab OAuth token DEGRADED/revoked ({acct}: {err[:80]}"
+                          f"{'; log: ' + log_sig if log_sig else ''}). The TTL health may still read valid; "
+                          f"ingest is silently failing → trade journal stalls. {reauth}",
+                          operator_action=True, reauth_cmd=reauth))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info", f"broker token health check error: {e}"))
+    return out
+
+
 COLLECTORS = [
     collect_data_quality,
+    collect_broker_token_health,
     collect_trade_in_view_health,
     collect_execution_health,
     collect_execution_hardening_health,
