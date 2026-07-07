@@ -24902,40 +24902,91 @@ def _proxy_registry_card_copy():
         return {}
 
 
+_PROXY_DIRECT_TYPES = {"direct_equity_stake", "convertible_note", "preferred_stock", "corporate_venture_investor"}
+
+
+def _proxy_bucket_picks(proxies):
+    """Derive the operator's decision cards from the ranked proxy rows: best direct / best materiality /
+    best options / best lower-risk equity / too-diluted-but-watch / rejected. Picks reference tickers;
+    the row detail lives in `proxies`. Pure read-derivation — no fabrication."""
+    acc = [p for p in proxies if p.get("accepted")]
+
+    def _best(cands, key):
+        cands = [c for c in cands if key(c) is not None]
+        return (sorted(cands, key=lambda c: -key(c))[0]["proxy_ticker"] if cands else None)
+
+    direct = [p for p in acc if p.get("proxy_type") in _PROXY_DIRECT_TYPES]
+    optionable = [p for p in acc if p.get("has_options") and (p.get("option_liquidity_score") is not None)]
+    diluted = [p for p in acc if p.get("bucket") == "too_diluted_watch"]
+    return {
+        "best_direct": (sorted(direct, key=lambda x: (x.get("rank_overall") or 1e9))[0]["proxy_ticker"] if direct else None),
+        "best_materiality": _best(acc, lambda c: c.get("materiality_score")),
+        "best_options": _best(optionable, lambda c: c.get("option_liquidity_score")),
+        "best_lower_risk_equity": _best(direct, lambda c: c.get("market_cap")),  # biggest, stands on its own business
+        "too_diluted_but_watch": (sorted(diluted, key=lambda x: (x.get("rank_overall") or 1e9))[0]["proxy_ticker"] if diluted else None),
+        "rejected": [{"ticker": p["proxy_ticker"], "reason": p.get("rejected_reason")}
+                     for p in proxies if not p.get("accepted")],
+    }
+
+
 def _proxy_targets(query=None):
-    """GET /api/v2/proxy/targets [?target=slug] — aggregate card payload: research row (10 answers,
-    scores, citations), registry strategy scaffolding, ranked option candidates, and human-facing
-    card_copy (beginner summary / education / what-to-monitor). Read-only."""
+    """GET /api/v2/proxy/targets [?target=slug] — the FULL public-proxy graph per private target:
+    the target-level research (10 answers, IPO status/valuation), every discovered/seeded proxy scored
+    and RANKED (direct exposure > materiality > disclosure > catalyst > liquidity > options > dilution),
+    the decision-card bucket picks, each proxy's scanned option candidates + per-ticker plan, and the
+    human-facing card_copy. Read-only / advisory — no candidate is live-eligible."""
     q = query or {}
     slug = (q.get("target")[0] if isinstance(q.get("target"), list) else q.get("target"))
     _card_copy = _proxy_registry_card_copy()
     where = "WHERE slug=%s" if slug else ""
     params = (slug,) if slug else None
-    tgts = _db_query(f"""SELECT slug, private_target_name, proxy_ticker, primary_proxy, proxy_type,
-                           ipo_status, expected_ipo_window, latest_valuation, materiality_score,
-                           catalyst_score, valuation_disclosure_quality, source_confidence, why,
-                           research_notes, research_answers, citations, strategy_candidates, model_used,
+    rows = _db_query(f"""SELECT slug, private_target_name, proxy_ticker, proxy_company, primary_proxy,
+                           proxy_type, bucket, rank_overall, rank_score, accepted, rejected_reason,
+                           confirmed, discovered, ipo_status, expected_ipo_window, latest_valuation,
+                           materiality_score, catalyst_score, catalyst_type, valuation_disclosure_quality,
+                           source_confidence, dilution_score, market_cap, estimated_stake_value,
+                           stake_known, stake_to_mktcap_pct, has_options, option_liquidity_score,
+                           leaps_available, optionability, evidence_summary, why, research_notes,
+                           research_answers, citations, strategy_candidates, ticker_plan, model_used,
                            researched_at, updated_at
-                         FROM private_company_proxies {where} ORDER BY primary_proxy DESC, slug""",
-                     params) or []
-    out = []
-    for t in tgts:
-        t = {k: _json_clean(v) for k, v in t.items()}
+                         FROM private_company_proxies {where}
+                         ORDER BY slug, accepted DESC, rank_overall NULLS LAST""", params) or []
+    # group proxy rows by private target
+    targets = {}
+    for r in rows:
+        r = {k: _json_clean(v) for k, v in r.items()}
+        s = r["slug"]
+        t = targets.get(s)
+        if t is None:
+            t = targets[s] = {
+                "slug": s, "private_target_name": r["private_target_name"],
+                "ipo_status": r["ipo_status"], "expected_ipo_window": r["expected_ipo_window"],
+                "latest_valuation": r["latest_valuation"], "model_used": r["model_used"],
+                "research_answers": r.get("research_answers"), "card_copy": _card_copy.get(s),
+                "proxies": [],
+            }
+        # scanned option candidates for this specific proxy ticker
         cands = _db_query("""SELECT strategy, speculative, caps_upside, underlying_price, legs, metrics,
                                rank_score, flags, live_eligible, status, data_source, scanned_at
                              FROM proxy_option_candidates WHERE slug=%s AND proxy_ticker=%s
-                             ORDER BY strategy, rank_score DESC""",
-                          (t["slug"], t["proxy_ticker"])) or []
-        t["option_candidates"] = [{k: _json_clean(v) for k, v in c.items()} for c in cands]
-        # group by strategy for the card, preserving rank order
+                             ORDER BY strategy, rank_score DESC""", (s, r["proxy_ticker"])) or []
+        cands = [{k: _json_clean(v) for k, v in c.items()} for c in cands]
         grouped = {}
-        for c in t["option_candidates"]:
+        for c in cands:
             grouped.setdefault(c["strategy"], []).append(c)
-        t["option_candidates_by_strategy"] = grouped
-        t["card_copy"] = _card_copy.get(t["slug"])
+        r["option_candidates"] = cands
+        r["option_candidates_by_strategy"] = grouped
+        t["proxies"].append(r)
+
+    out = []
+    for t in targets.values():
+        t["bucket_picks"] = _proxy_bucket_picks(t["proxies"])
+        t["proxy_count"] = len([p for p in t["proxies"] if p.get("accepted")])
+        t["rejected_count"] = len([p for p in t["proxies"] if not p.get("accepted")])
         out.append(t)
     return {"ok": True, "advisory_only": True, "count": len(out), "targets": out,
-            "note": "Research/paper only. Proxy theses are event-driven and UNVALIDATED until paper "
+            "note": "Full public-proxy graph — research/advisory only. The operator-supplied ticker is "
+                    "not the whole answer. Proxy theses are event-driven and UNVALIDATED until paper "
                     "outcomes exist. No live order path; no candidate is live-eligible."}
 
 

@@ -22,6 +22,10 @@ targets:
     expected_ipo_window: unknown            # research lane fills, e.g. "2026-H2" / "2027"
     latest_valuation: null                  # USD, research lane fills
     enabled: true
+    # known_proxy_tickers — candidate PUBLIC tickers the discovery lane must INVESTIGATE and confirm
+    # (or reject) with current-source citations. The lane does NOT stop here: it also discovers others.
+    # Seeding the candidate list ≠ asserting the relationship — confirmation + citation decides.
+    known_proxy_tickers: [AMZN, GOOGL, MSFT, NVDA, CRM, ZM, SNOW, PLTR]
     proxies:
       - ticker: ZM
         primary: true

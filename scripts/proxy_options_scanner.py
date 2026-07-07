@@ -300,31 +300,35 @@ def _earnings_before(cur, proxy, max_dte):
     return None
 
 
-def scan(target_slug, apply=False, dte_min=60, strikes=40):
-    reg = _load_registry()
-    tgt = next((t for t in (reg.get("targets") or []) if t.get("slug") == target_slug), None)
-    if not tgt:
-        return {"ok": False, "error": f"no target '{target_slug}'"}
-    primary = next((p for p in (tgt.get("proxies") or []) if p.get("primary")),
-                   (tgt.get("proxies") or [None])[0])
-    if not primary:
-        return {"ok": False, "error": "no proxy ticker"}
-    proxy = primary["ticker"].upper()
+def _proxies_to_scan(cur, target_slug, tgt, top_n):
+    """The optionable proxies to scan for a target: the top-ranked ACCEPTED discovered proxies whose
+    options aren't known-absent (has_options true or unknown). Falls back to the registry primary/first
+    ticker when discovery hasn't run yet (back-compat)."""
+    try:
+        cur.execute("""SELECT proxy_ticker FROM private_company_proxies
+                       WHERE slug=%s AND accepted IS NOT false
+                             AND (has_options IS NULL OR has_options = true)
+                       ORDER BY rank_overall NULLS LAST LIMIT %s""", (target_slug, top_n))
+        rows = [r[0] for r in cur.fetchall() if r and r[0]]
+        if rows:
+            return rows
+    except Exception:
+        pass
+    prox = tgt.get("proxies") or []
+    primary = next((p for p in prox if p.get("primary")), (prox[0] if prox else None))
+    return [primary["ticker"].upper()] if primary else []
 
+
+def _scan_one(cur, target_slug, tgt, proxy, dte_min, strikes, apply):
+    """Scan + rank one proxy ticker. Returns a per-proxy result dict; degraded when no live chain."""
     chain, status, spot = _chain(proxy, strikes, dte_min)
     if chain is None or not spot:
-        return {"ok": False, "proxy": proxy, "error": f"chain unavailable ({status})",
-                "degraded": True}
-
+        return {"proxy": proxy, "ok": False, "degraded": True, "error": f"chain unavailable ({status})"}
     cands = (_rank_deep_itm(chain["calls"], spot, dte_min)
              + _rank_debit_spreads(chain["calls"], spot, dte_min)
              + _rank_csps(chain["puts"], spot, dte_min))
-
-    conn = _conn(); cur = conn.cursor()
-    _ensure_table(cur)
     max_dte = max((c["metrics"].get("dte") or 0) for c in cands) if cands else 0
     earnings = _earnings_before(cur, proxy, max_dte)
-    # IPO-headline risk is intrinsic to a proxy thesis — always flagged, sourced from the research row
     cur.execute("""SELECT ipo_status, expected_ipo_window, catalyst_score FROM private_company_proxies
                    WHERE slug=%s AND proxy_ticker=%s""", (target_slug, proxy))
     rr = cur.fetchone()
@@ -334,7 +338,6 @@ def scan(target_slug, apply=False, dte_min=60, strikes=40):
                 "note": f"Event-driven: {tgt['private_target_name']} IPO headline can move {proxy} sharply "
                         f"in EITHER direction; timing/value are uncertain. UNVALIDATED until paper outcomes exist."}
     flags = {"earnings_before_expiry": earnings, "ipo_headline_risk": ipo_flag}
-
     if apply:
         cur.execute("DELETE FROM proxy_option_candidates WHERE slug=%s AND proxy_ticker=%s",
                     (target_slug, proxy))
@@ -346,15 +349,34 @@ def scan(target_slug, apply=False, dte_min=60, strikes=40):
                 (target_slug, proxy, c["strategy"], c["speculative"], c["caps_upside"], spot,
                  json.dumps(c["legs"]), json.dumps(c["metrics"]), c["rank_score"], json.dumps(flags),
                  f"{status}_chain"))
-        conn.commit()
-
     from collections import Counter
-    return {"ok": True, "proxy": proxy, "underlying_price": spot,
+    return {"proxy": proxy, "ok": True, "underlying_price": spot,
             "counts": dict(Counter(c["strategy"] for c in cands)),
-            "flags": flags, "applied": apply,
             "top": [{"strategy": c["strategy"], "rank_score": c["rank_score"],
-                     "strikes": [l["strike"] for l in c["legs"]],
-                     "caps_upside": c["caps_upside"]} for c in cands[:8]]}
+                     "strikes": [l["strike"] for l in c["legs"]], "caps_upside": c["caps_upside"]}
+                    for c in cands[:6]]}
+
+
+def scan(target_slug, apply=False, dte_min=60, strikes=40, top_n=4):
+    """Scan the top-N optionable public proxies for a private target (not just the operator's ticker).
+    A degraded chain for one proxy is skipped, not fatal. REVIEW/PAPER only — live_eligible=false."""
+    reg = _load_registry()
+    tgt = next((t for t in (reg.get("targets") or []) if t.get("slug") == target_slug), None)
+    if not tgt:
+        return {"ok": False, "error": f"no target '{target_slug}'"}
+    conn = _conn(); cur = conn.cursor()
+    _ensure_table(cur)
+    proxies = _proxies_to_scan(cur, target_slug, tgt, top_n)
+    if not proxies:
+        return {"ok": False, "error": "no proxy tickers to scan (run discovery first)"}
+    results = [_scan_one(cur, target_slug, tgt, p, dte_min, strikes, apply) for p in proxies]
+    if apply:
+        conn.commit()
+    scanned = [r for r in results if r.get("ok")]
+    return {"ok": True, "target": target_slug, "applied": apply, "advisory_only": True,
+            "proxies_scanned": [r["proxy"] for r in scanned],
+            "proxies_degraded": [r["proxy"] for r in results if not r.get("ok")],
+            "results": results}
 
 
 def main():
