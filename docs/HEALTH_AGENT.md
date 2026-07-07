@@ -210,3 +210,53 @@ attributable; (c) `scripts/rotate_runtime_logs.sh` (cron 01:15, copytruncate, si
   `remediation_map` and allowlist the script in `claude_escalation_allowlist.yaml`.
 - **Tune scoring** → edit weights/penalties/thresholds in `health_agent_policy.json` (or the DB
   `config_documents` key `health_agent_policy` for hot reload).
+
+## Known blind spots — corrected after the Schwab-token ingest miss (2026-07-07)
+
+**Incident:** the Schwab OAuth refresh token was revoked overnight (rotating-token reuse-detection race);
+`schwab_transaction_ingest` then ran every scheduled cycle but failed with `invalid_grant`, so the trade
+journal silently stalled at the prior day's data (a full day of trades, incl. the operator's BJDX scalps,
+never ingested). **No health alert fired.** Root causes — three real gaps this doc previously implied were
+covered but are NOT:
+
+1. **Log freshness ≠ run success.** `system_health_agent._check_log_freshness` judges a component only by
+   its log file's **mtime** (did it run on schedule). The Schwab ingest *did* run — it wrote `invalid_grant`
+   errors to a **fresh** log, so the liveness check marked it OK. The captured `last_line` is shown but
+   **never evaluated for error patterns**. A cron that runs-and-fails is invisible to the freshness check.
+   → *Fix direction:* content-aware success check for failure-prone components (grep the log tail / exit
+   status for known error signatures like `invalid_grant`, `OAuthError`, `Traceback`), or record ingest
+   status to `pipeline_runs` the way `proactive_quote_refresh` does (that path *did* alert, via the pipeline
+   monitor — because it records `status=failed`, not because the health agent caught it).
+
+2. **No Schwab OAuth token-liveness check.** There is a `credential_monitor.check_finviz` that
+   **live-validates** the Finviz cookie (see *Infra failure-class monitoring*, `finviz_cookie_expired`),
+   but there is **no equivalent for the Schwab token**. The only token signal, `schwab_token_manager.health()`,
+   is **TTL-based**: it reports `refresh_valid: true` off the 7-day expiry date even when Schwab has already
+   **revoked** the token server-side. So any token check built on it would be a false-positive.
+   → *Fix direction:* add `collect_broker_token_health()` (category `execution_health`) that reads
+   `broker_oauth_tokens.degraded` / `last_error` AND treats an `invalid_grant` in `schwab_ingest.log` as a
+   critical `schwab_token_revoked` finding — symmetric with the Finviz cookie check.
+
+3. **Revoked tokens have no auto-fix — they need an operator escalation, which didn't exist.** The
+   `schwab_journal_ingest` retry_cmd just re-runs the ingest, which fails again on a revoked token. Per
+   **GATE A**, a revoked/expired Schwab refresh token **cannot be renewed programmatically** — it requires
+   one manual browser login (`schwab_token_manager.py reauth-url` → `exchange-code`). The remediation map
+   must classify `schwab_token_revoked` as **operator-action-required** (Telegram/UI alert with the reauth
+   command), not as an auto-remediable retry.
+
+**Correction to coverage claims above:** the *Execution integrity* row previously monitored cron
+**liveness**, not **success**, and broker-credential liveness was monitored for **Finviz only**, not Schwab.
+
+**Status — all three fixes IMPLEMENTED (2026-07-07):**
+1. `_check_output_validity(component, log_file, error_signatures, success_signatures)` now scans the log
+   tail for component-declared failure signatures (`schwab_journal_ingest`: `invalid_grant`,
+   `no Schwab login token`, `Refresh token is invalid`, `OAuthError`), **recency-gated** by success
+   markers (`"mode": "APPLIED"`, `"inserted":`) so a since-recovered run isn't flagged for a stale error.
+   A run-and-fail now records `OUTPUT_INVALID`, not a false `OK`.
+2. `health_agent.collect_broker_token_health()` (registered collector) reads the **authoritative**
+   `broker_oauth_tokens.degraded` flag (set on Schwab auth-rejection, cleared on successful reauth — so it
+   is recency-correct, unlike a raw log scan) and emits a **critical `schwab_token_revoked`** finding,
+   enriched with the ingest-log signal. Policy block `broker_token_health`.
+3. `schwab_token_revoked` is **deliberately absent from `remediation_map`** → operator-action, not an
+   auto-retry (retrying a revoked token is futile per GATE A). The finding carries the exact
+   `reauth-url` → `exchange-code` command so the alert is actionable.

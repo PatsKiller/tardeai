@@ -250,6 +250,13 @@ MONITORED_COMPONENTS = [
     {"component": "schwab_journal_ingest", "display": "Schwab Journal Ingest",
      "schedule": ["15 18 * * 1-5", "*/15 9-16 * * 1-5"], "log_file": "schwab_ingest.log",
      "max_age_min": 30, "max_runtime_sec": 300, "critical": False,
+     # Semantic-failure signatures: the ingest can exit 0 with structurally-valid JSON while actually
+     # failing (revoked/absent Schwab token → "no Schwab login token", rows_total:0), which the generic
+     # Traceback/ERROR heuristics miss. Flag those so a run-and-fail is not recorded as OK on mtime alone.
+     # Operator-action alerting for the token itself is handled by health_agent.collect_broker_token_health.
+     "error_signatures": ["invalid_grant", "no Schwab login token", "Refresh token is invalid", "OAuthError"],
+     # success markers so a stale error earlier in the log window doesn't flag a since-recovered run
+     "success_signatures": ["\"mode\": \"APPLIED\"", "\"inserted\":"],
      "retry_cmd": "flock -n /tmp/schwab_ingest.lock bash -c '.venv/bin/python scripts/schwab_transaction_ingest.py --apply && .venv/bin/python scripts/schwab_journal_builder.py --apply'",
      "downstream": "trade_closed, TradeInView trade log, Schwab round-trips",
      "lock_file": "/tmp/schwab_ingest.lock"},
@@ -643,8 +650,16 @@ def _check_lock_contention(lock_file):
         return {"status": "UNKNOWN", "pid": None, "alive": None}
 
 
-def _check_output_validity(component, log_file):
-    """Check if the last run produced meaningful output (not just errors)."""
+def _check_output_validity(component, log_file, error_signatures=None, success_signatures=None):
+    """Check if the last run produced meaningful output (not just errors).
+
+    error_signatures: component-declared substrings that mean the run FAILED even if it exited 0 with
+    structurally-valid output (e.g. Schwab `invalid_grant` / `no Schwab login token` — a clean JSON
+    failure the generic Traceback/ERROR heuristics miss). This closes the "log is fresh so it's OK"
+    blind spot for API-dependent crons that can run-and-fail silently.
+    success_signatures: markers of a good run; a failure signature is only honored when it is MORE RECENT
+    than the last success marker, so a stale error earlier in the log window doesn't flag a run that has
+    since recovered."""
     log_path = PROJECT_ROOT / "logs" / log_file
     if not log_path.exists():
         return {"valid": False, "reason": "log_missing"}
@@ -652,8 +667,15 @@ def _check_output_validity(component, log_file):
         with open(log_path, 'rb') as f:
             f.seek(0, 2)
             size = f.tell()
-            f.seek(max(0, size - 2000))
+            f.seek(max(0, size - 4000))
             tail = f.read().decode('utf-8', errors='replace')
+        # Component-declared failure signatures FIRST — catches semantic failures that exit 0 with
+        # valid-looking output (no Traceback, low ERROR count). Recency-gated by success markers.
+        _last_ok = max((tail.rfind(s) for s in (success_signatures or [])), default=-1)
+        for sig in (error_signatures or []):
+            pos = tail.rfind(sig)
+            if pos >= 0 and pos > _last_ok:
+                return {"valid": False, "reason": f"error_signature:{sig[:40]}"}
         # Check for common failure patterns
         if "Usage:" in tail and "error:" in tail.lower():
             return {"valid": False, "reason": "usage_error_likely_misconfigured"}
@@ -918,7 +940,8 @@ def run_health_check(dry_run=True, verbose=False):
         lock_info = _check_lock_contention(comp.get("lock_file"))
 
         # 3. Check output validity
-        output_check = _check_output_validity(component, log_file)
+        output_check = _check_output_validity(component, log_file, comp.get("error_signatures"),
+                                              comp.get("success_signatures"))
 
         # Build check result
         check = {

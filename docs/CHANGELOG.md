@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-07-07 - Proxy graph, Journal by-ticker, pullback widget + quote-refresh deadlock fixes
+
+Four independent PRs off `main` (proxy on the existing proxy branch), all advisory/review-only, no
+trading-path changes:
+
+- **Private-company proxy GRAPH (PR #127)** — discovery no longer stops at the operator-seeded ticker.
+  `hermes_private_proxy_research.py` now maps the FULL public-proxy graph for a private target
+  (direct/strategic/CVC investors, convertible/preferred, cloud/chip suppliers, customers, comparables,
+  ETFs), each scored (confidence/materiality/dilution/disclosure + live market cap + optionability),
+  RANKED (direct exposure > materiality-vs-mktcap > disclosure > catalyst > liquidity > options >
+  dilution) and bucketed (best direct / materiality / options / lower-risk equity / too-diluted-watch /
+  rejected). Multi-proxy scanner, `GET /api/v2/proxy/targets` returns the ranked graph + bucket picks,
+  `PrivateProxyCard` graph view. Citations required per proxy; unknown stakes labeled, never fabricated.
+  See `docs/PRIVATE_COMPANY_PROXY.md`. LLM lanes (Grok/ChatGPT) were 502-flapping at build; `_llm()`
+  retries across lanes; live Anthropic population lands on lane recovery / the research cron.
+- **Journal per-ticker view (PR #130)** — new **By Ticker** tab (the Journal aggregated by day /
+  strategy / account but never by symbol). `GET /api/v2/journal/by-ticker[?symbol=&from=&to=&account=]`
+  → per-symbol realized rollup over `trade_closed` (#trades, win rate, total/avg P&L, avg hold,
+  best/worst, profit factor), account + date-range filterable; `?symbol=` adds per-strategy/per-account
+  splits + individual trades. Component `tradeinview/ByTickerPanel.tsx`.
+- **Pullback/MACD widget over-count fix (PR #128)** — the "Pullback / MACD triggers" widget counted any
+  trigger with a `proposal_id`, incl. EXPIRED/REJECTED, so it drifted above the filtered list ("3 in
+  queue but 0 shown"). `_pullback_macd_candidates` now LEFT JOINs the proposal and returns
+  `proposal_live` matching the list's status gate; widget counts only live, badges stale as
+  expired/rejected. See `docs/PULLBACK_MACD_SCREENER.md`.
+- **proactive_quote_refresh nested-flock deadlock (PR #129)** — every cron tick recorded the pipeline
+  FAILED (`errors:[]`, 0 rows) and the quote refresh never ran: the cron wraps the script in
+  `flock -n /tmp/tradeai_quote_refresh.lock` and the script re-locked the SAME file, so the inner
+  `flock -n` always exited 1 and the Python never executed. Fix: distinct inner lock
+  `/tmp/tradeai_quote_refresh_run.lock`. Gotcha: never `flock` a lock inside a script the cron already
+  `flock`s on the same file (latent in other `run_scheduled_*.sh`, but their cron lines are commented).
+
+### Known issue surfaced (not yet fixed)
+- **Schwab token: health lies about revocation.** `schwab_token_manager.health()` reports
+  `refresh_valid: true` off the 7-day TTL even when Schwab has REVOKED the refresh token (rotating-token
+  reuse-detection race). Ground truth is the authlib `invalid_grant` on refresh. A revoked token has no
+  programmatic recovery (GATE A) — needs one manual `reauth-url` → `exchange-code`. Health should mark
+  degraded on the actual `invalid_grant`, not just the TTL date, so ingest gaps alert instead of silently
+  dropping a day. (Broke overnight 2026-07-06 15:40 → revoked; ingest stalled at 2026-07-06 data.)
+
 ## 2026-07-07 - Options paper position lifecycle monitor + Open Options tab
 
 Stacked PRs (core → alerts → API/UI → cron) for Alpaca paper options after fill:

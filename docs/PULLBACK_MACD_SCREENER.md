@@ -81,3 +81,18 @@ Source badge in UI: **◆ Pullback MACD** (`ProposalSourceBadges.tsx`).
   universe. Indicators are pandas-native so there's no `pandas_ta` runtime dependency.
 - `proposal_tiers` includes both `trigger` and `watch` — capped by `max_proposals_per_scan` (default 5).
 - Pullback proposals show **◆ Pullback MACD** + strategy badge on Broker Proposals / Proposals tabs.
+
+## Widget liveness fix (2026-07-07, PR #128)
+
+The **Pullback / MACD triggers** widget (Trading → Proposals) counted a trigger as "in queue" whenever
+its candidate row had ANY `proposal_id` — including proposals that had **EXPIRED or been REJECTED**. The
+proposals list, filtered by `source = Pullback / MACD`, only shows `status IN ('PENDING',
+'APPROVED_FOR_PAPER_TEST')`. Result: the widget advertised e.g. "3 in queue" while the filtered list
+showed fewer or 0 — a widget/list drift from a stale `proposal_id` pointer (NOT a filter-value mismatch;
+`pullback_macd` matches `discovery_source` exactly).
+
+Fix: `_pullback_macd_candidates` LEFT JOINs `paper_trade_proposals` and returns `proposal_status` +
+`proposal_live` (mirrors the list's status gate exactly), plus `trigger_live_count` / `trigger_stale_count`.
+The widget now counts only live-linked triggers, shows "N expired/rejected (no live proposal)" separately,
+and colours each trigger chip green=live / red=expired-rejected / amber=no-proposal. Widget and filtered
+list now agree.
