@@ -25,9 +25,10 @@ import AdvancedReportsPanel from '../components/tradeinview/AdvancedReportsPanel
 import MonteCarloPanel from '../components/tradeinview/MonteCarloPanel'
 import TradeCompareReplay from '../components/tradeinview/TradeCompareReplay'
 import TaggingQueuePanel from '../components/tradeinview/TaggingQueuePanel'
+import ByTickerPanel from '../components/tradeinview/ByTickerPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trades', 'Tagging Queue', 'Analytics', 'Exit Intel', 'Behavioral', 'Session', 'Advanced', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Import'] as const
+const TABS = ['Trades', 'By Ticker', 'Tagging Queue', 'Analytics', 'Exit Intel', 'Behavioral', 'Session', 'Advanced', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Import'] as const
 const TIME_RANGES = ['6M', '3M', '1M', 'YTD', '1Y', 'ALL'] as const
 
 const ACCT_COLOR: Record<string, string> = {
@@ -999,6 +1000,8 @@ export default function JournalHub({ onDrill }: Props) {
       {tab === 'Tagging Queue' && (
         <TaggingQueuePanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} acctLabel={ACCT_LABEL} />
       )}
+
+      {tab === 'By Ticker' && <ByTickerPanel account={acctFilter || undefined} from={cutoff || undefined} />}
 
       {tab === 'Exit Intel' && <ExitIntelligencePanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />}
 
