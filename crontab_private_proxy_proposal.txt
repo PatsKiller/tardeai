@@ -1,0 +1,24 @@
+# Private-company proxy research + option scan — cron schedule (proposed 2026-07-06)
+# Uses the existing crontab header vars: PROJ, PY. ADVISORY / REVIEW-ONLY — these jobs only refresh
+# advisory tables (private_company_proxies, proxy_option_candidates) and write logs. No trading, no
+# live order path, no broker writes. Both are self-safe: research uses the free OAuth web lanes and
+# the scanner reads the option chain read-only.
+#
+# NOT YET INSTALLED — install is a user action (persisting recurring jobs on the live box needs your
+# explicit go-ahead). To install backup-first, paste this in a `! ` session line or a shell:
+#
+#   cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && \
+#   crontab -l > crontab_backup_pre_proxy_$(date +%Y%m%d_%H%M%S).txt && \
+#   { crontab -l; grep -vE '^#( |$)' crontab_private_proxy_proposal.txt | grep -E '^[0-9*]'; } | crontab -
+#
+# Roll back: crontab crontab_backup_pre_proxy_<ts>.txt
+#
+# ── Private-company proxy research + option scan (advisory/review-only) ──
+# Daily web-grounded research refresh (before the open; no market dependency)
+30 7 * * 1-5 cd $PROJ && flock -n /tmp/proxy_research.lock $PY scripts/hermes_private_proxy_research.py --apply >> logs/proxy_research.log 2>&1
+# Option-chain rescan + re-rank during market hours (needs a live chain)
+5 10 * * 1-5 cd $PROJ && flock -n /tmp/proxy_scan.lock $PY scripts/proxy_options_scanner.py --target anthropic --apply >> logs/proxy_scan.log 2>&1
+0 14 * * 1-5 cd $PROJ && flock -n /tmp/proxy_scan.lock $PY scripts/proxy_options_scanner.py --target anthropic --apply >> logs/proxy_scan.log 2>&1
+#
+# Additional targets: add one scan line per enabled slug (the research job auto-loops all enabled
+# targets; the scanner takes a single --target).

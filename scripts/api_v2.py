@@ -24855,6 +24855,178 @@ def _options_execution_status(query=None):
     return _json_clean(opa.status())
 
 
+def _options_paper_order_status(query=None):
+    """GET /api/v2/options/paper-order-status?order_id=… — live Alpaca PAPER order state for a
+    desk-submitted option order, so the card chip shows fills immediately instead of waiting for
+    the hourly reconcile (operator 2026-07-06). Read-only; the id must belong to an
+    options_approval_queue row (no open order-lookup proxy)."""
+    q = query or {}
+    oid = str((q.get("order_id")[0] if isinstance(q.get("order_id"), list) else q.get("order_id")) or "").strip()
+    if not oid:
+        return {"ok": False, "error": "order_id required"}
+    known = _db_query(
+        "SELECT 1 FROM options_approval_queue WHERE meta->'alpaca_json'->'response'->>'id' = %s LIMIT 1",
+        (oid,), fetch="one")
+    if not known:
+        return {"ok": False, "error": "unknown order id"}
+    import urllib.request as _ur
+    base = (os.getenv("ALPACA_PAPER_BASE_URL") or "https://paper-api.alpaca.markets").rstrip("/")
+    try:
+        req = _ur.Request(f"{base}/v2/orders/{oid}",
+                          headers={"APCA-API-KEY-ID": os.getenv("ALPACA_API_KEY", ""),
+                                   "APCA-API-SECRET-KEY": os.getenv("ALPACA_SECRET_KEY", "")})
+        with _ur.urlopen(req, timeout=10) as r:
+            o = json.loads(r.read())
+        return {"ok": True, "order_id": oid, "advisory_only": True,
+                "status": o.get("status"), "qty": o.get("qty"), "filled_qty": o.get("filled_qty"),
+                "filled_avg_price": o.get("filled_avg_price"), "limit_price": o.get("limit_price"),
+                "symbol": o.get("symbol"), "submitted_at": o.get("submitted_at")}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:120]}
+
+
+# ── Private-company proxy research + options strategy cards (operator 2026-07-06) ────────────────────
+# Research PRIVATE companies (e.g. Anthropic) that can't be bought directly, map to PUBLIC proxies
+# (e.g. ZM via Zoom Ventures' Anthropic stake), and surface paper/review-only strategy candidates.
+# ADVISORY / RESEARCH ONLY — no live path, no auto-promotion; candidates are never live_eligible.
+
+def _proxy_registry_card_copy():
+    """Load per-target card_copy (beginner_summary, education, what_to_monitor) from the operator
+    registry YAML, keyed by slug. Human-facing copy lives in config (not the DB) so it can be edited
+    without a re-run. Advisory/educational only. Returns {} on any read/parse failure."""
+    try:
+        import yaml
+        reg = yaml.safe_load((PROJECT_ROOT / "config" / "private_company_proxies.yaml").read_text()) or {}
+        return {t.get("slug"): t.get("card_copy") for t in (reg.get("targets") or []) if t.get("card_copy")}
+    except Exception:
+        return {}
+
+
+_PROXY_DIRECT_TYPES = {"direct_equity_stake", "convertible_note", "preferred_stock", "corporate_venture_investor"}
+
+
+def _proxy_bucket_picks(proxies):
+    """Derive the operator's decision cards from the ranked proxy rows: best direct / best materiality /
+    best options / best lower-risk equity / too-diluted-but-watch / rejected. Picks reference tickers;
+    the row detail lives in `proxies`. Pure read-derivation — no fabrication."""
+    acc = [p for p in proxies if p.get("accepted")]
+
+    def _best(cands, key):
+        cands = [c for c in cands if key(c) is not None]
+        return (sorted(cands, key=lambda c: -key(c))[0]["proxy_ticker"] if cands else None)
+
+    direct = [p for p in acc if p.get("proxy_type") in _PROXY_DIRECT_TYPES]
+    optionable = [p for p in acc if p.get("has_options") and (p.get("option_liquidity_score") is not None)]
+    diluted = [p for p in acc if p.get("bucket") == "too_diluted_watch"]
+    return {
+        "best_direct": (sorted(direct, key=lambda x: (x.get("rank_overall") or 1e9))[0]["proxy_ticker"] if direct else None),
+        "best_materiality": _best(acc, lambda c: c.get("materiality_score")),
+        "best_options": _best(optionable, lambda c: c.get("option_liquidity_score")),
+        "best_lower_risk_equity": _best(direct, lambda c: c.get("market_cap")),  # biggest, stands on its own business
+        "too_diluted_but_watch": (sorted(diluted, key=lambda x: (x.get("rank_overall") or 1e9))[0]["proxy_ticker"] if diluted else None),
+        "rejected": [{"ticker": p["proxy_ticker"], "reason": p.get("rejected_reason")}
+                     for p in proxies if not p.get("accepted")],
+    }
+
+
+def _proxy_targets(query=None):
+    """GET /api/v2/proxy/targets [?target=slug] — the FULL public-proxy graph per private target:
+    the target-level research (10 answers, IPO status/valuation), every discovered/seeded proxy scored
+    and RANKED (direct exposure > materiality > disclosure > catalyst > liquidity > options > dilution),
+    the decision-card bucket picks, each proxy's scanned option candidates + per-ticker plan, and the
+    human-facing card_copy. Read-only / advisory — no candidate is live-eligible."""
+    q = query or {}
+    slug = (q.get("target")[0] if isinstance(q.get("target"), list) else q.get("target"))
+    _card_copy = _proxy_registry_card_copy()
+    where = "WHERE slug=%s" if slug else ""
+    params = (slug,) if slug else None
+    rows = _db_query(f"""SELECT slug, private_target_name, proxy_ticker, proxy_company, primary_proxy,
+                           proxy_type, bucket, rank_overall, rank_score, accepted, rejected_reason,
+                           confirmed, discovered, ipo_status, expected_ipo_window, latest_valuation,
+                           materiality_score, catalyst_score, catalyst_type, valuation_disclosure_quality,
+                           source_confidence, dilution_score, market_cap, estimated_stake_value,
+                           stake_known, stake_to_mktcap_pct, has_options, option_liquidity_score,
+                           leaps_available, optionability, evidence_summary, why, research_notes,
+                           research_answers, citations, strategy_candidates, ticker_plan, model_used,
+                           researched_at, updated_at
+                         FROM private_company_proxies {where}
+                         ORDER BY slug, accepted DESC, rank_overall NULLS LAST""", params) or []
+    # group proxy rows by private target
+    targets = {}
+    for r in rows:
+        r = {k: _json_clean(v) for k, v in r.items()}
+        s = r["slug"]
+        t = targets.get(s)
+        if t is None:
+            t = targets[s] = {
+                "slug": s, "private_target_name": r["private_target_name"],
+                "ipo_status": r["ipo_status"], "expected_ipo_window": r["expected_ipo_window"],
+                "latest_valuation": r["latest_valuation"], "model_used": r["model_used"],
+                "research_answers": r.get("research_answers"), "card_copy": _card_copy.get(s),
+                "proxies": [],
+            }
+        # scanned option candidates for this specific proxy ticker
+        cands = _db_query("""SELECT strategy, speculative, caps_upside, underlying_price, legs, metrics,
+                               rank_score, flags, live_eligible, status, data_source, scanned_at
+                             FROM proxy_option_candidates WHERE slug=%s AND proxy_ticker=%s
+                             ORDER BY strategy, rank_score DESC""", (s, r["proxy_ticker"])) or []
+        cands = [{k: _json_clean(v) for k, v in c.items()} for c in cands]
+        grouped = {}
+        for c in cands:
+            grouped.setdefault(c["strategy"], []).append(c)
+        r["option_candidates"] = cands
+        r["option_candidates_by_strategy"] = grouped
+        t["proxies"].append(r)
+
+    out = []
+    for t in targets.values():
+        t["bucket_picks"] = _proxy_bucket_picks(t["proxies"])
+        t["proxy_count"] = len([p for p in t["proxies"] if p.get("accepted")])
+        t["rejected_count"] = len([p for p in t["proxies"] if not p.get("accepted")])
+        out.append(t)
+    return {"ok": True, "advisory_only": True, "count": len(out), "targets": out,
+            "note": "Full public-proxy graph — research/advisory only. The operator-supplied ticker is "
+                    "not the whole answer. Proxy theses are event-driven and UNVALIDATED until paper "
+                    "outcomes exist. No live order path; no candidate is live-eligible."}
+
+
+def _proxy_research_run(query=None):
+    """POST /api/v2/proxy/research?target=slug — refresh web-grounded research for one target (async)."""
+    q = query or {}
+    slug = (q.get("target")[0] if isinstance(q.get("target"), list) else q.get("target")) or None
+    import threading
+
+    def _run():
+        try:
+            import hermes_private_proxy_research as r
+            r.run(target_slug=slug, apply=True)
+        except Exception as e:
+            log.warning(f"proxy research {slug} failed: {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"ok": True, "target": slug or "all", "advisory_only": True,
+            "message": f"Proxy research queued for {slug or 'all targets'} — refresh in ~1–2 min"}
+
+
+def _proxy_scan_run(query=None):
+    """POST /api/v2/proxy/scan?target=slug — rescan the proxy option chain + re-rank candidates (async)."""
+    q = query or {}
+    slug = (q.get("target")[0] if isinstance(q.get("target"), list) else q.get("target")) or "anthropic"
+    dte_min = int((q.get("dte_min", [45])[0] if isinstance(q.get("dte_min"), list) else q.get("dte_min", 45)) or 45)
+    import threading
+
+    def _run():
+        try:
+            import proxy_options_scanner as s
+            s.scan(slug, apply=True, dte_min=dte_min)
+        except Exception as e:
+            log.warning(f"proxy scan {slug} failed: {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"ok": True, "target": slug, "advisory_only": True,
+            "message": f"Proxy option scan queued for {slug} — refresh in ~30–60s (review/paper only)"}
+
+
 def _execution_current_state(query=None):
     """GET /api/v2/execution/current-state — fail-closed execution state aggregate."""
     import execution_state as es
@@ -27565,6 +27737,8 @@ ROUTES = {
     "/api/v2/options/open-positions": _options_open_positions,
     "/api/v2/options/overview": _options_overview,
     "/api/v2/options/execution/status": _options_execution_status,
+    "/api/v2/options/paper-order-status": _options_paper_order_status,
+    "/api/v2/proxy/targets": _proxy_targets,
     "/api/v2/execution/current-state": _execution_current_state,
     "/api/v2/entry-desk/automation": _entry_desk_automation,
     "/api/v2/execution/readiness": _execution_readiness,
@@ -29767,6 +29941,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return _wl_build_plan(sym)
                 except Exception as e:
                     return 500, {"ok": False, "error": str(e)}
+        # POST /api/v2/proxy/research and /api/v2/proxy/scan — private-company proxy research + option scan
+        # merge JSON body over the URL query so `target` works from either channel
+        if base_path in ("/api/v2/proxy/research", "/api/v2/proxy/scan"):
+            _pq = dict(query or {})
+            for _k, _v in (body or {}).items():
+                _pq[_k] = _v
+            try:
+                fn = _proxy_research_run if base_path.endswith("/research") else _proxy_scan_run
+                return 200, fn(_pq)
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
         # POST /api/v2/watchlist/<SYMBOL>/requeue — re-queue analysis for LLM failures
         if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/requeue"):
             sym = base_path[len("/api/v2/watchlist/"):-len("/requeue")].strip("/").upper()

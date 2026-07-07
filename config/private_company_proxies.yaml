@@ -1,0 +1,140 @@
+# private_company_proxies.yaml — operator registry of PRIVATE companies that cannot be bought
+# directly, mapped to PUBLIC-market proxies (companies that own/invest/partner/supply/serve the
+# target, or trade as a thematic peer). Hermes/Honey researches each target (see
+# scripts/hermes_private_proxy_research.py) and the proxy-options scanner generates paper/review-only
+# strategy candidates (see scripts/proxy_options_scanner.py).
+#
+# ADVISORY / RESEARCH ONLY. Nothing here is live-eligible. No auto-promotion, no live submit.
+# proxy_type ∈ {direct_investor, strategic_partner, supplier, customer, infrastructure_provider,
+#               thematic_peer}
+#
+# Each target seeds the research row; the research lane fills/updates the scored fields + citations.
+
+version: 1
+updated: 2026-07-06
+
+targets:
+  - private_target_name: Anthropic
+    slug: anthropic
+    sector: AI / Foundation Models
+    # seed values — the research lane refreshes ipo_status/window/valuation + scores from live web
+    ipo_status: private_no_public_s1        # {private_no_public_s1, confidential_s1_reported, s1_public, priced, ipo_complete}
+    expected_ipo_window: unknown            # research lane fills, e.g. "2026-H2" / "2027"
+    latest_valuation: null                  # USD, research lane fills
+    enabled: true
+    # known_proxy_tickers — candidate PUBLIC tickers the discovery lane must INVESTIGATE and confirm
+    # (or reject) with current-source citations. The lane does NOT stop here: it also discovers others.
+    # Seeding the candidate list ≠ asserting the relationship — confirmation + citation decides.
+    known_proxy_tickers: [AMZN, GOOGL, MSFT, NVDA, CRM, ZM, SNOW, PLTR]
+    proxies:
+      - ticker: ZM
+        primary: true
+        proxy_type: direct_investor
+        why: >-
+          Zoom Ventures invested in Anthropic. Reported investments include roughly $51M in 2023 and
+          another ~$46M in early 2026. Reports estimate the stake has grown to over $1B and could
+          become more visible around Anthropic's IPO (mark-to-fair-value / S-1 disclosure).
+        # scores are 0-100, research-lane maintained; seed = operator prior
+        materiality_score: 45               # stake value ÷ ZM market cap — modest but non-trivial
+        catalyst_score: 70                  # IPO is a discrete, headline re-rate event
+        valuation_disclosure_quality: 40    # Zoom discloses strategic-investment carrying value irregularly
+        source_confidence: 55
+        research_notes: >-
+          ZM trades primarily on its own core-comms + AI-revenue fundamentals; the Anthropic stake is
+          an option-like kicker, not the main driver. Treat as event-driven and UNVALIDATED until paper
+          outcomes exist.
+    # strategy scaffolding surfaced on the card (research/paper only)
+    regular_strategy_candidates:
+      - id: starter_equity
+        label: ZM starter equity position
+        note: Small initial proxy exposure; size for a multi-quarter hold.
+      - id: staged_add
+        label: ZM staged add-on after S-1 / updated fair-value disclosure
+        note: Add only once the stake is confirmed/marked in a filing — reduces headline-timing risk.
+      - id: watch_only
+        label: ZM watchlist-only if chart or valuation fails
+        note: If ZM's own chart/valuation is unfavorable, hold as watch — do not force the proxy.
+    options_strategy_candidates:
+      - id: deep_itm_call
+        label: ZM deep ITM call / LEAPS stock replacement
+        speculative: false
+        caps_upside: false
+        note: High-delta LEAPS as a capital-efficient stand-in for shares through the IPO window.
+      - id: call_debit_spread
+        label: ZM call debit spread around IPO catalyst window
+        speculative: false
+        caps_upside: true
+        note: Defined-risk directional bet sized to a specific IPO-headline window; caps gain at the short strike.
+      - id: cash_secured_put
+        label: ZM cash-secured put if willing to own lower
+        speculative: false
+        caps_upside: false
+        note: Get paid to set a lower entry; only if genuinely willing to own ZM at the strike.
+      - id: short_otm_calls
+        label: Short-dated OTM calls
+        speculative: true            # explicitly flagged speculative per operator spec
+        caps_upside: false
+        note: AVOID unless explicitly labeled speculative — short-dated OTM decays fast while waiting on an uncertain IPO date.
+      - id: covered_call
+        label: Covered call
+        speculative: false
+        caps_upside: true            # explicitly flagged upside-capping per operator spec
+        note: >-
+          Only AFTER a catalyst spike, not before — a covered call caps your upside, which defeats the
+          IPO-upside thesis unless the operator explicitly accepts the cap.
+    # card_copy — human-facing card text. beginner_summary + what_to_monitor are target-specific and
+    # surfaced by /api/v2/proxy/targets; the generic "how proxy investing works" education is rendered
+    # statically by the card. ADVISORY / EDUCATIONAL ONLY.
+    card_copy:
+      beginner_summary: >-
+        Zoom is not Anthropic, but Zoom owns a reported Anthropic stake. This trade is a public-market
+        proxy for Anthropic IPO upside. The risk is that Zoom still trades mostly on its own business,
+        and the IPO timing/value may disappoint.
+      education:
+        - title: What proxy investing means
+          body: >-
+            You can't buy a private company like Anthropic directly. A "proxy" is a PUBLIC stock whose
+            value is partly tied to that private company — here, Zoom (ZM) because Zoom Ventures invested
+            in Anthropic. You buy the proxy to get indirect, imperfect exposure to the private company's
+            upside.
+        - title: Why ZM is the proxy
+          body: >-
+            Zoom Ventures holds a reported Anthropic stake (roughly $51M in 2023, ~$46M more in early
+            2026, estimated to have grown to over $1B). If Anthropic's value is marked up or crystallized
+            at IPO, that stake becomes more visible on Zoom's balance sheet.
+        - title: What could make ZM rise on this thesis
+          body: >-
+            Anthropic files an S-1, prints a higher valuation, or IPOs; Zoom discloses a larger
+            fair-value mark on the stake; analysts start crediting the stake in their ZM target. Any of
+            these can re-rate ZM independent of its core-comms business.
+        - title: What could make the thesis fail
+          body: >-
+            ZM trades mostly on its OWN fundamentals (core communications + AI revenue), so a weak Zoom
+            quarter can swamp any Anthropic kicker. The IPO could slip years, price below hopes, or the
+            stake could stay buried in irregular disclosure. The proxy link is real but loose.
+        - title: How long options can decay while you wait
+          body: >-
+            Options lose time value (theta) every day. An IPO is an uncertain, possibly-distant catalyst —
+            if you buy short-dated options and the catalyst is months away, the option can expire
+            worthless even if you're eventually right on direction. Give the thesis TIME (LEAPS / long
+            expiries).
+        - title: Why short-dated calls are risky here
+          body: >-
+            Short-dated out-of-the-money calls need a move SOON. IPO timing is not something you control
+            or can predict to the week. These are flagged SPECULATIVE and should only be a small,
+            explicitly-labeled bet — never the core of the proxy position.
+        - title: What to monitor
+          body: >-
+            Track both sides: the Anthropic catalyst (S-1 / valuation / IPO timeline) AND Zoom's own
+            tape (price, volume, earnings, AI revenue, option IV rank). See the monitor list on this card.
+      what_to_monitor:
+        - Anthropic S-1 / IPO timeline
+        - Anthropic valuation
+        - Zoom SEC disclosures on strategic investments
+        - Analyst estimates of Zoom's Anthropic stake
+        - ZM stock price / volume
+        - ZM earnings and AI revenue growth
+        - ZM option IV rank
+        - Call spread pricing
+        - Open interest and bid/ask spread
+        - Paper lifecycle P/L and Greeks after any Alpaca paper test
