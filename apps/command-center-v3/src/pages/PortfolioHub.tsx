@@ -131,6 +131,24 @@ export default function PortfolioHub({ onDrill }: Props) {
     const patch = protectionPatches[sym.toUpperCase()]
     return patch ? { ...(base ?? {}), ...patch } : base
   }
+  // Manual broker sync (SnapTrade / Schwab) — operator-triggered, read-only holdings/position pull.
+  const [syncState, setSyncState] = useState<{ busy: 'snaptrade' | 'schwab' | null; msg: string }>({ busy: null, msg: '' })
+  const syncBtn = (active: boolean): React.CSSProperties => ({
+    fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: active ? 'default' : 'pointer',
+    border: '1px solid var(--border)', background: active ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
+    color: active ? '#60a5fa' : 'var(--text2)', whiteSpace: 'nowrap',
+  })
+  async function runSync(which: 'snaptrade' | 'schwab') {
+    if (syncState.busy) return
+    setSyncState({ busy: which, msg: '' })
+    try {
+      const r = await fetch(`/api/v2/portfolio/sync/${which}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const j = await r.json()
+      setSyncState({ busy: null, msg: j?.ok ? (j.note || 'sync started ✓') : `error: ${j?.error || 'failed'}` })
+    } catch {
+      setSyncState({ busy: null, msg: 'request failed' })
+    }
+  }
   async function designFill() {
     setGapBusy(true); setGapDesign(null)
     try {
@@ -231,6 +249,20 @@ export default function PortfolioHub({ onDrill }: Props) {
               style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, cursor: 'pointer' }}
             >{priceStamp}</div>
           )}
+          {/* Manual broker sync buttons — read-only holdings/position pull (no trading) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            <button onClick={() => runSync('snaptrade')} disabled={!!syncState.busy} style={syncBtn(syncState.busy === 'snaptrade')}
+              title="Manually pull the latest Fidelity holdings from SnapTrade into holdings.json (read-only; no trading)">
+              {syncState.busy === 'snaptrade' ? '⟳ Syncing SnapTrade…' : '⟳ Sync SnapTrade'}
+            </button>
+            <button onClick={() => runSync('schwab')} disabled={!!syncState.busy} style={syncBtn(syncState.busy === 'schwab')}
+              title="Manually pull the latest Schwab positions into the holdings pipeline (read-only; no trading)">
+              {syncState.busy === 'schwab' ? '⟳ Syncing Schwab…' : '⟳ Sync Schwab'}
+            </button>
+            {syncState.msg && (
+              <span style={{ fontSize: 10, color: /error|failed/.test(syncState.msg) ? '#ef4444' : '#22c55e' }}>{syncState.msg}</span>
+            )}
+          </div>
         </div>
         <div className="hub-tabs">
           {TABS.map(t => (
