@@ -280,32 +280,47 @@ class AlpacaPaperAdapter:
                 _exit_price = None
                 _exit_time = None
                 _exit_pnl = None
-                try:
-                    _orders = self._api_get(f'/v2/orders?status=filled&symbols={symbol}&limit=5&direction=desc')
-                    sell_orders = [o for o in (_orders if isinstance(_orders, list) else []) if o.get('side') == 'sell' and o.get('status') == 'filled']
-                    if sell_orders:
-                        _exit_price = float(sell_orders[0].get('filled_avg_price', 0))
-                        _exit_time = sell_orders[0].get('filled_at')
-                except Exception as _oe:
-                    log.warning(f"[alpaca] Could not fetch close orders for {symbol}: {_oe}")
-
-                # Get entry for PnL calc
-                cur.execute("SELECT entry_price, shares, stop_loss, dollar_risk FROM paper_trades WHERE id=%s", [trade_id])
+                _exit_reason = 'position_closed_in_alpaca'   # generic default; OCO reconcile overrides
+                # Get entry + order ids (for reconciliation and PnL calc)
+                cur.execute("""SELECT entry_price, shares, stop_loss, dollar_risk,
+                                      broker_order_id, stop_order_id, take_profit_order_id
+                               FROM paper_trades WHERE id=%s""", [trade_id])
                 _tr = cur.fetchone()
                 _entry = float(_tr[0]) if _tr and _tr[0] else 0
                 _shares = int(_tr[1]) if _tr and _tr[1] else 0
                 _stop = float(_tr[2]) if _tr and len(_tr) > 2 and _tr[2] else None
                 _dr = float(_tr[3]) if _tr and len(_tr) > 3 and _tr[3] else None
-                if _exit_price and _entry:
-                    _exit_pnl = round((_exit_price - _entry) * _shares, 2)
-                _pnl_pct = round((_exit_price - _entry) / _entry * 100, 2) if _exit_price and _entry and _entry > 0 else None
-                _r_mult = None
-                if _exit_pnl is not None and _dr and _dr > 0:
-                    _r_mult = round(_exit_pnl / _dr, 3)
-                elif _exit_price and _entry and _stop and abs(_entry - _stop) > 0:
-                    _r_mult = round((_exit_price - _entry) / abs(_entry - _stop), 3)
-                from trade_outcome_helpers import classify_verdict
-                _verdict = classify_verdict(_exit_pnl)
+                from trade_outcome_helpers import classify_verdict, reconcile_broker_exit
+                # Prefer OCO-leg reconciliation (distinguishes stop_hit vs target_hit; shared with
+                # paper_trade_monitor). Fall back to the generic latest-sell lookup otherwise.
+                try:
+                    _rec = reconcile_broker_exit(self._api_get, _tr[4] if _tr else None,
+                                                 _tr[5] if _tr else None, _tr[6] if _tr else None,
+                                                 _entry or None, _shares, _dr)
+                except Exception:
+                    _rec = {"kind": "filled_no_exit"}
+                if _rec.get("kind") == "reconciled":
+                    _exit_price = _rec["exit_price"]; _exit_pnl = _rec["pnl"]
+                    _pnl_pct = _rec["pnl_pct"]; _r_mult = _rec["r_multiple"]
+                    _verdict = _rec["verdict"]; _exit_reason = _rec["exit_reason"]
+                else:
+                    try:
+                        _orders = self._api_get(f'/v2/orders?status=filled&symbols={symbol}&limit=5&direction=desc')
+                        sell_orders = [o for o in (_orders if isinstance(_orders, list) else []) if o.get('side') == 'sell' and o.get('status') == 'filled']
+                        if sell_orders:
+                            _exit_price = float(sell_orders[0].get('filled_avg_price', 0))
+                            _exit_time = sell_orders[0].get('filled_at')
+                    except Exception as _oe:
+                        log.warning(f"[alpaca] Could not fetch close orders for {symbol}: {_oe}")
+                    if _exit_price and _entry:
+                        _exit_pnl = round((_exit_price - _entry) * _shares, 2)
+                    _pnl_pct = round((_exit_price - _entry) / _entry * 100, 2) if _exit_price and _entry and _entry > 0 else None
+                    _r_mult = None
+                    if _exit_pnl is not None and _dr and _dr > 0:
+                        _r_mult = round(_exit_pnl / _dr, 3)
+                    elif _exit_price and _entry and _stop and abs(_entry - _stop) > 0:
+                        _r_mult = round((_exit_price - _entry) / abs(_entry - _stop), 3)
+                    _verdict = classify_verdict(_exit_pnl)
 
                 cur.execute("""
                     UPDATE paper_trades
@@ -315,11 +330,11 @@ class AlpacaPaperAdapter:
                         r_multiple = COALESCE(%s, r_multiple),
                         outcome_verdict = %s,
                         closed_at = COALESCE(%s, NOW()), closed_via = 'alpaca_sync',
-                        exit_reason = 'position_closed_in_alpaca', updated_at = NOW(),
+                        exit_reason = %s, updated_at = NOW(),
                         hold_time_min = COALESCE(hold_time_min,
                             EXTRACT(EPOCH FROM (COALESCE(%s, NOW()) - COALESCE(entry_time, created_at))) / 60)
                     WHERE id = %s
-                """, [_exit_price, _exit_pnl, _pnl_pct, _r_mult, _verdict, _exit_time, _exit_time, trade_id])
+                """, [_exit_price, _exit_pnl, _pnl_pct, _r_mult, _verdict, _exit_time, _exit_reason, _exit_time, trade_id])
                 # Agent curation hooks (non-blocking)
                 try:
                     from agent_curation_hooks import on_paper_trade_closed

@@ -124,6 +124,13 @@ Fix: `_reconcile_broker_exit()` classifies from broker truth before any void —
 Wired into **both** phantom paths (`_fix_integrity_issues` Fix 2 and the `monitor()` loop). The 5 historical
 false-phantoms were backfill-corrected and their journal thesis-reviews regenerated to real WIN/LOSS.
 
+The classifier is a **single source of truth** — `trade_outcome_helpers.reconcile_broker_exit(api_get, …)` —
+shared by both exit recorders so they tag identically: `paper_trade_monitor` (frequent phantom sweep, bound
+to its Alpaca GET) and `alpaca_paper_adapter.detect_closed_positions` (hourly close-sync, `self._api_get`).
+The adapter tries OCO-leg reconciliation first (canonical `stop_hit`/`target_hit`) and only falls back to its
+generic latest-sell lookup (`position_closed_in_alpaca`) when no OCO leg is identifiable — so whichever
+recorder catches a close first, the stop-vs-target label is consistent.
+
 ## 5. Two-source verification (TradeAI + Hermes)
 
 ```python

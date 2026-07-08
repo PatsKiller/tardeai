@@ -92,42 +92,11 @@ def _api_delete(path):
 
 
 def _reconcile_broker_exit(broker_oid, stop_oid, tp_oid, entry_price, shares, dollar_risk=None):
-    """A DB-open trade whose symbol isn't in current Alpaca positions is EITHER a genuine phantom
-    (entry order never filled) OR a real position that already closed on the broker but whose exit the
-    DB never recorded. Classify from broker truth and return {"kind": ...}:
-
-    - {"kind": "phantom"}       — entry order NOT filled (or unresolvable-and-no-fill) → caller voids to $0.
-    - {"kind": "reconciled", …} — entry filled + an OCO exit leg filled → caller books the REAL exit P&L.
-    - {"kind": "filled_no_exit"}— entry filled but no exit fill identifiable yet → caller LEAVES IT OPEN
-      (never voids a filled position); the hourly alpaca_paper_adapter close-sync will reconcile it.
-    """
-    if not broker_oid or entry_price is None or not shares:
-        return {"kind": "phantom"}  # nothing to verify against → treat as phantom (legacy behavior)
-    entry = _api_get(f'/v2/orders/{broker_oid}')
-    if not isinstance(entry, dict) or not entry.get('status'):
-        return {"kind": "filled_no_exit"}  # couldn't reach broker → don't void; recheck next cycle
-    if entry.get('status') != 'filled':
-        return {"kind": "phantom"}  # order genuinely never filled → real phantom
-    ep = float(entry.get('filled_avg_price') or entry_price)
-    sign = 1 if (entry.get('side') or 'buy') == 'buy' else -1  # short → invert
-    # Which OCO leg actually closed the position? Prefer target, then stop.
-    for oid, kind in ((tp_oid, 'target'), (stop_oid, 'stop')):
-        if not oid:
-            continue
-        o = _api_get(f'/v2/orders/{oid}')
-        if isinstance(o, dict) and o.get('status') == 'filled' and o.get('filled_avg_price'):
-            xp = float(o['filled_avg_price'])
-            pnl = sign * (xp - ep) * shares
-            pnl_pct = sign * (xp - ep) / ep * 100 if ep else 0
-            r_mult = (pnl / dollar_risk) if dollar_risk else 0
-            # Tag with the canonical "stop_hit"/"target_hit" substring so the journal/postmortem
-            # classifiers (which substring-match those tokens) auto-classify the exit correctly.
-            _lbl = "target_hit" if kind == "target" else "stop_hit"
-            return {"kind": "reconciled", "exit_price": round(xp, 4), "pnl": round(pnl, 2),
-                    "pnl_pct": round(pnl_pct, 4), "r_multiple": round(r_mult, 3),
-                    "verdict": "WIN" if pnl > 0 else "LOSS" if pnl < 0 else "BREAKEVEN",
-                    "exit_reason": f"broker_{_lbl}_reconciled"}
-    return {"kind": "filled_no_exit"}  # real filled position, exit not yet resolvable → leave open
+    """Thin wrapper over the shared trade_outcome_helpers.reconcile_broker_exit (single source of truth,
+    also used by alpaca_paper_adapter close-sync), bound to this module's Alpaca GET. See that helper for
+    the {"kind": phantom|reconciled|filled_no_exit} contract."""
+    from trade_outcome_helpers import reconcile_broker_exit
+    return reconcile_broker_exit(_api_get, broker_oid, stop_oid, tp_oid, entry_price, shares, dollar_risk)
 
 
 def replace_stop(symbol, qty, new_stop, old_order_id=None):
