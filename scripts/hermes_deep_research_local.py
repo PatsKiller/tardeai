@@ -78,14 +78,16 @@ Recent closed trades (strategy, account, pnl, status, close_date):
 Prior research notes:
 {research}
 
-{build_deep_research_json_schema(sym)}
+{schema}
 Be specific and grounded in the data above. Do not recommend executing any trade."""
 
 
 def run_one(conn, sym, model, apply):
     from hermes_staging_ingest import validate_payload, build_insert
     ctx = gather_context(conn, sym)
-    prompt = PROMPT.format(sym=sym, trades=json.dumps(ctx["recent_trades"]), research=json.dumps(ctx["prior_research"]))
+    schema = build_deep_research_json_schema(sym)
+    prompt = PROMPT.format(sym=sym, trades=json.dumps(ctx["recent_trades"]),
+                           research=json.dumps(ctx["prior_research"]), schema=schema)
     payload = json.dumps({"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False,
                           "options": {"num_ctx": 16384, "num_predict": 3000, "temperature": 0.3}, "format": "json"}).encode()
     try:
