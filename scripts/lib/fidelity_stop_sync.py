@@ -128,22 +128,46 @@ def mirror_stop_confirmation(cur, row: dict[str, Any]) -> None:
         )
 
 
+def _held_symbols_for_account(account: str) -> set[str]:
+    """Symbols with positive shares in holdings — used to avoid retiring live manual stops on sync gaps."""
+    try:
+        import stop_lifecycle_monitor as slm
+        hmap = slm._holdings_map() or {}
+        out: set[str] = set()
+        for (acct, sym), row in hmap.items():
+            if acct != account:
+                continue
+            try:
+                sh = float(row.get("shares") or row.get("quantity") or 0)
+            except (TypeError, ValueError):
+                sh = 0
+            if sh > 0 and sym:
+                out.add(str(sym).upper())
+        return out
+    except Exception:
+        return set()
+
+
 def deactivate_stale_stops(cur, account: str, active_symbols: set[str]) -> list[str]:
-    """Mark manual stops inactive when the symbol is no longer in the active set (position closed)."""
+    """Mark manual stops inactive when absent from the sync batch AND no longer held."""
     ensure_manual_broker_stops_table(cur)
+    held = _held_symbols_for_account(account)
     cur.execute(
         "SELECT UPPER(symbol) FROM manual_broker_stops WHERE account=%s AND active=TRUE",
         (account,),
     )
     retired = []
     for (sym,) in cur.fetchall():
-        if sym not in active_symbols:
-            cur.execute(
-                "UPDATE manual_broker_stops SET active=FALSE, status='closed_position', updated_at=NOW() "
-                "WHERE UPPER(symbol)=%s AND account=%s AND active=TRUE",
-                (sym, account),
-            )
-            retired.append(sym)
+        if sym in active_symbols:
+            continue
+        if sym in held:
+            continue  # still held — keep manual stop even if omitted from this sync pass
+        cur.execute(
+            "UPDATE manual_broker_stops SET active=FALSE, status='closed_position', updated_at=NOW() "
+            "WHERE UPPER(symbol)=%s AND account=%s AND active=TRUE",
+            (sym, account),
+        )
+        retired.append(sym)
     return retired
 
 
@@ -216,16 +240,26 @@ def sync_stops(rows: list[dict[str, Any]], *, retire_absent: bool = True, apply:
 
 
 def default_fidelity_rollover_stops() -> list[dict[str, Any]]:
-    """Known GTC stops from Fidelity Rollover IRA #270135199 (operator-verified 2026-07-06)."""
+    """Known GTC stops from Fidelity Rollover IRA #270135199 (SnapTrade ••5199).
+
+    SnapTrade syncs positions only — open GTC stops must be operator-recorded here.
+    Operator-verified from Fidelity Active Trader 2026-07-08."""
     acct = "fidelity_rollover_ira"
     return [
         {
+            "symbol": "SCHG", "account": acct, "order_type": "TRAILING_STOP",
+            "stop_price": 31.43, "trail_pct": 8, "trail_link": "LAST",
+            "qty": 5000, "placed_date": "2026-07-08",
+            "note": "Fidelity GTC trailing 8% — replaced fixed $31.20 stop (canceled 2026-07-07)",
+        },
+        {"symbol": "ARKX", "account": acct, "stop_price": 31.06, "qty": 1000, "placed_date": "2026-07-07"},
+        {"symbol": "XAR", "account": acct, "stop_price": 263.03, "qty": 100, "placed_date": "2026-07-07"},
+        {
             "symbol": "ANET", "account": acct, "order_type": "TRAILING_STOP",
-            "stop_price": 158.39, "trail_pct": 9, "trail_link": "LAST",
+            "stop_price": 161.26, "trail_pct": 9, "trail_link": "LAST",
             "qty": 200, "placed_date": "2026-07-06",
-            "note": "Fidelity GTC trailing 9% based on Last — replaced fixed $155.50 stop (canceled 2026-07-06)",
+            "note": "Fidelity GTC trailing 9% based on Last (ratcheted from $158.39)",
         },
         {"symbol": "DXCM", "account": acct, "stop_price": 67.23, "qty": 225, "placed_date": "2026-07-06"},
         {"symbol": "DIVI", "account": acct, "stop_price": 40.58, "qty": 1000, "placed_date": "2026-07-02"},
-        {"symbol": "SMCI", "account": acct, "stop_price": 24.90, "qty": 500, "placed_date": "2026-07-02"},
     ]

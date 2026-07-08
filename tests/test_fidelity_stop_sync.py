@@ -38,10 +38,10 @@ def test_normalize_anet_trailing_stop_row():
     assert row["account"] == "fidelity_rollover_ira"
 
 
-def test_default_stops_include_anet_dxcm():
+def test_default_stops_include_rollover_open_gtc():
     mod = _load()
     syms = {r["symbol"] for r in mod.default_fidelity_rollover_stops()}
-    assert {"ANET", "DXCM", "DIVI", "SMCI"} <= syms
+    assert {"SCHG", "ARKX", "XAR", "ANET", "DXCM", "DIVI"} <= syms
 
 
 def test_snaptrade_open_orders_empty_is_documented_gap():
@@ -60,15 +60,25 @@ def test_anet_default_is_trailing_nine_pct():
     defaults = {r["symbol"]: r for r in mod.default_fidelity_rollover_stops()}
     anet = defaults["ANET"]
     assert anet["order_type"] == "TRAILING_STOP"
-    assert anet["stop_price"] == 158.39
+    assert anet["stop_price"] == 161.26
     assert anet["trail_pct"] == 9
     assert anet["qty"] == 200
 
 
+def test_schg_default_is_trailing_eight_pct():
+    mod = _load()
+    schg = {r["symbol"]: r for r in mod.default_fidelity_rollover_stops()}["SCHG"]
+    assert schg["order_type"] == "TRAILING_STOP"
+    assert schg["stop_price"] == 31.43
+    assert schg["trail_pct"] == 8
+    assert schg["qty"] == 5000
+
+
 @pytest.mark.parametrize("sym,price,qty", [
+    ("ARKX", 31.06, 1000),
+    ("XAR", 263.03, 100),
     ("DXCM", 67.23, 225),
     ("DIVI", 40.58, 1000),
-    ("SMCI", 24.90, 500),
 ])
 def test_fidelity_pending_stop_prices(sym, price, qty):
     mod = _load()
