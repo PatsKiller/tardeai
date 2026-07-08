@@ -124,6 +124,14 @@ Fix: `_reconcile_broker_exit()` classifies from broker truth before any void —
 Wired into **both** phantom paths (`_fix_integrity_issues` Fix 2 and the `monitor()` loop). The 5 historical
 false-phantoms were backfill-corrected and their journal thesis-reviews regenerated to real WIN/LOSS.
 
+**Live validation (2026-07-08):** `scripts/canary_reconcile_test.py` proves the fix end-to-end on real paper
+orders — buy 1 → sell 1 → insert a DB-open row while flat on the broker (the exact trigger) → run the monitor
+phantom sweep. Result: **PASS** — booked the real exit (`broker_target_hit_reconciled`, P&L matched to the
+penny) instead of a `$0` phantom void; self-cleaning, leaves the broker flat. Two canary-specific gotchas
+baked into the test: (a) the trigger row's `entry_time` must be aged past `PHANTOM_GRACE_MIN` (15m) or the
+sweep grace-skips it and never reconciles; (b) a market order at the 09:30 opening auction can sit `new` > 60s,
+so the fill wait is 120s and aborts cancel the lingering order.
+
 The classifier is a **single, broker-AGNOSTIC source of truth** —
 `trade_outcome_helpers.reconcile_broker_exit(get_order_status, …, direction=…)`. It depends ONLY on the
 vendor-neutral `FillConfirmation` returned by `get_order_status(order_id)` (see `broker_adapter.py`); it
