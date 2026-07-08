@@ -36,7 +36,8 @@ def db(): return psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_
                                   password=os.getenv("DB_PASSWORD"))
 
 
-def wait_order_filled(oid, secs=60):
+def wait_order_filled(oid, secs=120):
+    # 120s: a market order submitted right at the 09:30 opening auction can sit 'new' > 60s.
     for _ in range(secs):
         o = api("GET", f"/v2/orders/{oid}").json()
         if o.get("status") == "filled":
@@ -67,7 +68,8 @@ def main():
     entry_id = r.json()["id"]; log(f"entry order {entry_id[:8]} submitted")
     eo = wait_order_filled(entry_id)
     if eo.get("status") != "filled":
-        log(f"entry not filled ({eo.get('status')}) — ABORT"); return
+        api("DELETE", f"/v2/orders/{entry_id}")  # cancel the lingering day order so it can't fill later
+        log(f"entry not filled ({eo.get('status')}) — canceled + ABORT"); return
     entry_px = float(eo["filled_avg_price"]); log(f"entry FILLED @ {entry_px}")
 
     # 3) exit: market sell 1 share (closes the position; tagged as the 'exit' order)
@@ -83,16 +85,19 @@ def main():
     log(f"{SYM} flat on Alpaca: {flat}")
     expected_pnl = round((exit_px - entry_px) * 1, 2) if exit_px else None
 
-    # 4) insert canary paper_trades row as 'open' (exact reconcile trigger: broker flat, DB open)
+    # 4) insert canary paper_trades row as 'open' (exact reconcile trigger: broker flat, DB open).
+    # entry_time is aged past PHANTOM_GRACE_MIN (15m) — the monitor deliberately skips freshly-opened
+    # trades (an in-flight fill may not show as an Alpaca position yet), so a NOW() timestamp would be
+    # grace-skipped and the reconcile would never fire.
     conn = db(); cur = conn.cursor()
     cur.execute("""INSERT INTO paper_trades (symbol, account, strategy_id, shares, entry_price, stop_loss,
                      side, status, lifecycle_state, broker, execution_account, dollar_risk,
                      broker_order_id, take_profit_order_id, entry_time, created_at, broker_status)
                    VALUES (%s,'ALPACA_PAPER',%s,1,%s,%s,'long','open','open','alpaca_paper','alpaca_paper',
-                     %s,%s,%s,NOW(),NOW(),'filled') RETURNING id""",
+                     %s,%s,%s,NOW()-interval '30 minutes',NOW()-interval '30 minutes','filled') RETURNING id""",
                 [SYM, STRAT, entry_px, round(entry_px * 0.95, 2), round(entry_px * 0.05, 2), entry_id, exit_id])
     tid = cur.fetchone()[0]; conn.commit()
-    log(f"canary paper_trades row #{tid} inserted (status=open, broker flat) — reconcile trigger armed")
+    log(f"canary paper_trades row #{tid} inserted (status=open, aged past 15m grace) — reconcile trigger armed")
 
     # 5) run the reconciler via the MONITOR phantom sweep — the exact path that had the false-void bug
     import paper_trade_monitor as ptm
