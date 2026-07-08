@@ -398,8 +398,8 @@ def _build_cloud_review_subject(local: dict, context: dict) -> str:
     return "\n".join(lines)
 
 
-def run_cloud_oversight(proposal_id: int, *, timeout: int = 120) -> dict:
-    """Run Grok+ChatGPT second opinion on the local thesis. Persists cache row."""
+def run_cloud_oversight(proposal_id: int, *, timeout: int = 120, lanes=None) -> dict:
+    """Run free-OAuth second opinion on the local thesis. lanes=('grok',) or ('chatgpt',) or both."""
     local = _fetch_local_llm(proposal_id)
     context = _cloud_review_context(proposal_id, local)
     thesis = _build_cloud_review_subject(local, context).strip()
@@ -408,10 +408,13 @@ def run_cloud_oversight(proposal_id: int, *, timeout: int = 120) -> dict:
 
     try:
         import cloud_review
+        use_lanes = tuple(lanes) if lanes else ("chatgpt", "grok")
+        use_lanes = tuple(ln for ln in use_lanes if ln in ("grok", "chatgpt")) or ("grok",)
         result = cloud_review.review(
             "broker_live_trade_review",
             local_output=thesis,
             context=context,
+            lanes=use_lanes,
             timeout=timeout,
             persist=True,
             symbol=str(local.get("symbol") or "").upper(),

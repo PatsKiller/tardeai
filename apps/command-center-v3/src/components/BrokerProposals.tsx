@@ -1407,6 +1407,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 onRoute={() => openRouteReview(p)}
                 onQueueOversight={() => queueOversight(p.id)}
                 onRunCloudOversight={() => runCloudOversight(p.id)}
+                onCloudLaneDone={() => { detailLoadedRef.current.delete(p.id); void fetchProposalDetail(p.id, { force: true }) }}
                 litmus={litmusMap[p.id]}
                 validateBusy={!!validateBusy[p.id]}
                 onValidate={() => validateTrade(p)}

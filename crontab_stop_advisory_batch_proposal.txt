@@ -1,0 +1,9 @@
+# Proposal: periodic stop advisories (Manual mode — uses --batch / manual_trigger)
+# Does NOT set holding_protection_advisor to Automated.
+# Install: append to crontab -e (adjust PROJECT path and CRON_TZ).
+
+CRON_TZ=America/New_York
+# Weekdays 10:30 ET — Grok OAuth top-6 priority holdings
+30 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && python3 scripts/holding_protection_advisor.py --batch --limit 6 --lane grok >> logs/stop_advisory_batch.log 2>&1
+# Optional second pass mid-afternoon (uncomment if desired)
+# 30 14 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && python3 scripts/holding_protection_advisor.py --batch --limit 6 --lane grok >> logs/stop_advisory_batch.log 2>&1

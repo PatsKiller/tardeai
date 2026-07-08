@@ -137,6 +137,7 @@ type Props = {
   onRoute: () => void
   onQueueOversight: () => void
   onRunCloudOversight: () => void
+  onCloudLaneDone?: () => void
   litmus?: any
   validateBusy?: boolean
   onValidate?: () => void
@@ -177,6 +178,7 @@ export default function BrokerProposalCard({
   onRoute,
   onQueueOversight,
   onRunCloudOversight,
+  onCloudLaneDone,
   litmus,
   validateBusy,
   onValidate,
@@ -1214,6 +1216,8 @@ export default function BrokerProposalCard({
           <BrokerIntelPanel
             intel={intel || { ok: true, oversight: ov, agent_reviews: ov.agents?.reviews || [] }}
             compact
+            proposalId={p.id}
+            onCloudLaneDone={onCloudLaneDone ?? onRefresh}
             onQueueOversight={onQueueOversight}
             onRunCloudOversight={onRunCloudOversight}
             oversightBusy={oversightBusy}

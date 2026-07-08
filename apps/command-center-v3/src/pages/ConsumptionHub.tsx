@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import CloudLlmRunButtons from '../components/CloudLlmRunButtons'
+import { lanePolicyHint } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 
 const GREEN = '#22c55e', RED = '#ef4444', AMBER = '#f59e0b', BLUE = '#60a5fa', MUTED = '#94a3b8', TEXT = '#f8fafc'
@@ -13,6 +15,8 @@ type ProcessRow = {
   relative_units_30d?: number
   last_used?: string | null
   description?: string
+  lane_policy?: string
+  lane_policy_label?: string
 }
 
 type LogRow = {
@@ -81,8 +85,14 @@ export default function ConsumptionHub() {
       <h1 style={{ fontSize: 22, fontWeight: 800, color: TEXT, marginBottom: 4 }}>LLM Consumption</h1>
       <p style={{ fontSize: 12, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>
         Track and control <b style={{ color: TEXT }}>free OAuth</b> usage — Grok (xAI :8645) and ChatGPT (codex :8646).
-        No metered API keys. <b>Manual</b> mode blocks automatic calls; use <b>Automated</b> when you want hands-off.
+        No metered API keys. <b>Manual</b> mode blocks automatic calls; use per-lane <b>▶ Grok / ▶ ChatGPT</b> on feature cards or below.
+        <b> Automated</b> when you want hands-off cron.
       </p>
+      <div style={{ fontSize: 10, color: MUTED, marginBottom: 14, lineHeight: 1.5, padding: '8px 10px', borderRadius: 8, background: 'var(--bg1)', border: '1px solid var(--border)' }}>
+        <b style={{ color: TEXT }}>Lane policies:</b>{' '}
+        <span>Grok only</span> · <span>Grok or ChatGPT (pick one)</span> · <span>Both preferred</span> · <span>Ensemble (run both)</span>.
+        Stop advisories stay <b>Manual</b> — use Grok batch (top 6) on Portfolio → Stop Management or the batch row here.
+      </div>
 
       {/* OAuth lane status */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10, marginBottom: 16 }}>
@@ -148,6 +158,7 @@ export default function ConsumptionHub() {
               <tr style={{ color: MUTED, textAlign: 'left' }}>
                 <th style={{ padding: '6px 8px' }}>Process</th>
                 <th>Category</th>
+                <th>Lanes</th>
                 <th>Mode</th>
                 <th>30d calls</th>
                 <th>Rel. units</th>
@@ -163,6 +174,20 @@ export default function ConsumptionHub() {
                     <div style={{ fontSize: 9, color: MUTED, fontWeight: 400 }}>{p.process_id}</div>
                   </td>
                   <td style={{ color: MUTED }}>{p.category || '—'}</td>
+                  <td style={{ fontSize: 10, color: MUTED, whiteSpace: 'nowrap' }}>
+                    {p.lane_policy_label || lanePolicyHint(p.lane_policy)}
+                    {p.process_id === 'holding_protection_advisor_batch' && (
+                      <div style={{ marginTop: 4 }}>
+                        <CloudLlmRunButtons
+                          processId={p.process_id}
+                          lanePolicy="grok_only"
+                          batchLimit={6}
+                          compact
+                          onDone={() => void load()}
+                        />
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <span style={{
                       fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999,

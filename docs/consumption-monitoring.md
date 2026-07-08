@@ -11,6 +11,22 @@ Tracks and controls **free OAuth** usage for Grok (xAI proxy `:8645`) and ChatGP
 - Per-process **Automated** vs **Manual** toggles
 - Recent activity feed
 
+## Lane policies (Grok vs ChatGPT)
+
+Each process has a `lane_policy` in `config/llm_process_registry.json`:
+
+| Policy | Meaning | Examples |
+|--------|---------|----------|
+| **grok_only** | Grok only | `holding_protection_advisor`, `rotation_grok_review`, `grok_execution_review` |
+| **chatgpt_only** | ChatGPT only | (reserved) |
+| **either** | Operator picks **one** lane — either is enough | `portfolio_ask`, `journal_ask`, `hermes_external_research`, `strategy_planner` |
+| **both_preferred** | Best with both; **either alone still useful** | `broker_cloud_oversight`, `cloud_review`, `paper_trade_advisory` |
+| **ensemble** | Designed to **run both** and reconcile | `rotation_oversight`, `watchlist_cio_synthesis`, `options_ensemble`, `cloud_consensus_verdict` |
+
+UI: broker proposal cards and Rotation oversight show **▶ Grok** / **▶ ChatGPT** per policy. Broker cards use `POST /api/v2/broker-proposals/run-cloud-oversight` with `lanes: ["grok"]` or `["chatgpt"]`.
+
+`cloud_consensus_verdict` needs **both** lanes for `CLOUD_APPROVE`. Most escalation paths try Grok → ChatGPT → local.
+
 ## Per-process modes
 
 | Mode | Behavior |
@@ -52,6 +68,31 @@ text = llm_lane.generate(prompt, lane="grok", process_id="my_feature",
 ```
 
 3. On first API hit, `llm_process_config` is seeded (default **manual**).
+
+## Stop advisory batch (Manual, periodic Grok)
+
+Without flipping `holding_protection_advisor` to Automated, run top-N priority holdings:
+
+```bash
+curl -X POST http://127.0.0.1:7777/api/v2/consumption/stop-advisory-batch \
+  -H 'Content-Type: application/json' \
+  -d '{"limit":6,"lane":"grok"}'
+```
+
+CLI (same `manual_trigger` / `holding_protection_advisor_batch` process_id):
+
+```bash
+python3 scripts/holding_protection_advisor.py --batch --limit 6 --lane grok
+```
+
+UI: **Portfolio → Stop Management** or **Ops → Consumption** (batch row) — **▶ Grok (top 6)**.
+
+Optional cron (weekdays, stays Manual in DB):
+
+```cron
+# 10:30 ET — top-6 stop advisories via Grok OAuth (manual_trigger batch)
+30 10 * * 1-5 cd /path/to/trade-ai && python3 scripts/holding_protection_advisor.py --batch --limit 6 --lane grok >> logs/stop_advisory_batch.log 2>&1
+```
 
 ## Manual on-demand run (API)
 

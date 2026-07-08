@@ -242,7 +242,7 @@ def _candidates(limit):
     return dedup[:limit]
 
 
-def run(lane="grok", symbols=None, limit=12):
+def run(lane="grok", symbols=None, limit=12, manual_trigger=False):
     # operator 2026-06-13: prefer the FREE Grok OAuth lane (tighter adherence to the bounded prompt
     # than gemma3:4b); auto-fall back to local gemma when the proxy isn't authenticated. Both free.
     import llm_lane
@@ -304,9 +304,11 @@ def run(lane="grok", symbols=None, limit=12):
                        "trail as a review trigger, not an order." + proxy_note)
         used_lane = lane
         try:
+            pid = "holding_protection_advisor_batch" if manual_trigger else "holding_protection_advisor"
             out = llm_lane.generate(prompt, lane=lane, timeout=120,
-                                    process_id="holding_protection_advisor",
-                                    task_summary=f"stop advisory {sym} {c.get('account')}")
+                                    process_id=pid,
+                                    task_summary=f"stop advisory {sym} {c.get('account')}",
+                                    manual_trigger=manual_trigger)
         except Exception as e:
             if "manual approval required" in str(e).lower():
                 print(f"  {sym}: Grok blocked (Manual mode) — enable Automated in Consumption or run manual")
@@ -408,8 +410,11 @@ def main():
     ap.add_argument("--lane", default="grok", choices=["local", "grok"])   # free Grok OAuth by default
     ap.add_argument("--symbols", help="comma-separated override")
     ap.add_argument("--limit", type=int, default=50)   # full-portfolio default (operator 2026-06-12)
+    ap.add_argument("--batch", action="store_true",
+                    help="Manual-batch mode: uses holding_protection_advisor_batch process_id + manual_trigger (for cron/UI top-N)")
     a = ap.parse_args()
-    run(lane=a.lane, symbols=a.symbols.split(",") if a.symbols else None, limit=a.limit)
+    run(lane=a.lane, symbols=a.symbols.split(",") if a.symbols else None, limit=a.limit,
+        manual_trigger=bool(a.batch))
 
 
 if __name__ == "__main__":

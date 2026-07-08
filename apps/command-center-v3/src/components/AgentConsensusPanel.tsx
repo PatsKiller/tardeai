@@ -7,6 +7,7 @@ import {
 } from '../lib/agentReviews'
 import { formatCloudRanAt, localLlmLabel } from '../lib/brokerThesis'
 import { desk, sectionLabel } from '../lib/proposalDeskTheme'
+import CloudLlmRunButtons from './CloudLlmRunButtons'
 
 function cloudColor(status: string | null | undefined) {
   const s = String(status || '').toLowerCase()
@@ -75,6 +76,8 @@ type Props = {
   oversightBusy?: boolean
   cloudBusy?: boolean
   ovStatus?: string | null
+  proposalId?: number
+  onCloudLaneDone?: () => void
 }
 
 export default function AgentConsensusPanel({
@@ -88,6 +91,8 @@ export default function AgentConsensusPanel({
   oversightBusy,
   cloudBusy,
   ovStatus,
+  proposalId,
+  onCloudLaneDone,
 }: Props) {
   const deduped = dedupeAgentReviews(reviews)
   const pending = computeAgentPending(reviews, oversight?.agents?.pending)
@@ -130,14 +135,24 @@ export default function AgentConsensusPanel({
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {onQueueOversight && btn('Queue agents', onQueueOversight, oversightBusy, desk.blue)}
-          {onRunCloudOversight && btn(
-            cr.status === 'running' || cloudBusy ? 'Cloud running…' : 'Re-run cloud',
-            onRunCloudOversight,
-            cloudBusy || cr.status === 'running',
-            desk.purple,
-          )}
+          {proposalId ? (
+            <CloudLlmRunButtons
+              processId="broker_cloud_oversight"
+              lanePolicy="both_preferred"
+              proposalId={proposalId}
+              compact
+              onDone={() => onCloudLaneDone?.()}
+            />
+          ) : onRunCloudOversight ? (
+            btn(
+              cr.status === 'running' || cloudBusy ? 'Cloud running…' : 'Re-run cloud (both)',
+              onRunCloudOversight,
+              cloudBusy || cr.status === 'running',
+              desk.purple,
+            )
+          ) : null}
         </div>
       </div>
 

@@ -16697,7 +16697,11 @@ def _broker_run_cloud_oversight(body: dict):
     if not pid:
         return {"ok": False, "error": "proposal_id required"}
     timeout = min(180, max(30, int(b.get("timeout") or 120)))
-    cloud = bpo.run_cloud_oversight(pid, timeout=timeout)
+    raw_lanes = b.get("lanes")
+    lanes = None
+    if isinstance(raw_lanes, list) and raw_lanes:
+        lanes = tuple(str(x).strip().lower() for x in raw_lanes if str(x).strip().lower() in ("grok", "chatgpt"))
+    cloud = bpo.run_cloud_oversight(pid, timeout=timeout, lanes=lanes)
     if not cloud.get("ok") and cloud.get("error"):
         return {"ok": False, "error": cloud["error"], "data": cloud}
     oversight = bpo.evaluate_oversight(pid, cloud=cloud)
@@ -29983,6 +29987,28 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not pid or mode not in ("automated", "manual"):
                     return 400, {"ok": False, "error": "process_id and mode (automated|manual) required"}
                 return 200, _lc.set_process_mode(pid, mode)
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/consumption/stop-advisory-batch":
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                import holding_protection_advisor as _hpa
+                b = body or {}
+                limit = min(12, max(1, int(b.get("limit") or 6)))
+                lane = str(b.get("lane") or "grok").strip().lower()
+                if lane not in ("grok", "local"):
+                    lane = "grok"
+                syms = b.get("symbols")
+                sym_list = [s.strip().upper() for s in str(syms).split(",") if s.strip()] if syms else None
+                import io, contextlib
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    _hpa.run(lane=lane, symbols=sym_list, limit=limit, manual_trigger=True)
+                return 200, {"ok": True, "limit": limit, "lane": lane, "symbols": sym_list,
+                             "log": buf.getvalue()[-3000:],
+                             "note": "Manual-batch stop advisories (holding_protection_advisor_batch) — Grok OAuth, advisory only"}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 

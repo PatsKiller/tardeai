@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import AdvisorChangesPanel from '../components/AdvisorChangesPanel'
+import { runRotationOversight } from '../lib/cloudLlmRun'
 
 const PAGE_TABS = ['Review', 'Advisor Guide'] as const
 
@@ -392,18 +393,22 @@ export default function RotationIntelligence() {
   }
 
   // Independent oversight layers — free/OAuth Grok + ChatGPT (codex). Advisory only.
-  async function runOversight() {
-    setBusy('Run Oversight'); setOversight(null)
+  async function runOversight(lanes: ('grok' | 'chatgpt')[] = ['grok', 'chatgpt']) {
+    const label = lanes.length === 1 ? `Run ${lanes[0]}` : 'Run Oversight'
+    setBusy(label)
+    if (lanes.length > 1) setOversight(null)
     try {
-      const res = await fetch('/api/v2/rotation/oversight', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lanes: ['grok', 'chatgpt'] }),
-      })
-      const text = await res.text()
-      let json: any
-      try { json = text ? JSON.parse(text) : { error: 'Empty response — try again.' } }
-      catch { json = { error: 'Non-JSON response — try again.' } }
-      setOversight(json)
+      const json = await runRotationOversight(lanes)
+      if (lanes.length === 1) {
+        setOversight(prev => ({
+          ...(prev || {}),
+          ...json,
+          lanes: { ...(prev?.lanes || {}), ...(json?.lanes || {}) },
+          prompt: json?.prompt || prev?.prompt,
+        }))
+      } else {
+        setOversight(json)
+      }
     } catch (err) {
       setOversight({ error: err instanceof Error ? err.message : String(err) })
     } finally {
@@ -807,7 +812,18 @@ export default function RotationIntelligence() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#a855f7' }}>Independent Oversight <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)' }}>· Grok + ChatGPT · free / OAuth · no API key</span></div>
           <span style={{ flex: 1 }} />
-          <button disabled={!!busy} onClick={runOversight} style={btn(!!busy)}>{busy === 'Run Oversight' ? 'Reviewing… (ChatGPT can take ~1–4 min)' : 'Run Grok + ChatGPT Oversight'}</button>
+          <button type="button" disabled={!!busy} onClick={() => void runOversight(['grok'])}
+            style={{ ...btn(!!busy), borderColor: '#1d9bf066', background: 'rgba(29,155,240,.12)', color: '#1d9bf0' }}>
+            {busy === 'Run grok' ? '…' : '▶ Grok'}
+          </button>
+          <button type="button" disabled={!!busy} onClick={() => void runOversight(['chatgpt'])}
+            style={{ ...btn(!!busy), borderColor: '#10a37f66', background: 'rgba(16,163,127,.12)', color: '#10a37f' }}>
+            {busy === 'Run chatgpt' ? '… (~1–4 min)' : '▶ ChatGPT'}
+          </button>
+          <button type="button" disabled={!!busy} onClick={() => void runOversight(['grok', 'chatgpt'])}
+            style={btn(!!busy)}>
+            {busy === 'Run Oversight' ? 'Reviewing both…' : 'Run both'}
+          </button>
         </div>
         <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 10 }}>
           Two independent models review the system's rotate-OUT flags, rebalance ideas, and sector overweights — a second + third opinion on the engine. Both run on free OAuth sessions (Grok via the local xAI-OAuth proxy, ChatGPT via the openai-codex OAuth proxy — <b>not the paid API</b>). Advisory only; oversight never places, buys, or sells.

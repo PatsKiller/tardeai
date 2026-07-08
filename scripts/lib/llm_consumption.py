@@ -335,6 +335,7 @@ def overview(*, days: int = 30) -> dict:
 def list_processes() -> list[dict]:
     ensure_schema()
     reg = {p["id"]: p for p in (_load_registry().get("processes") or []) if p.get("id")}
+    policies = (_load_registry().get("lane_policies") or {})
     cur = _conn().cursor()
     cur.execute("SELECT process_id, process_name, category, mode, allowed_lanes, updated_at FROM llm_process_config ORDER BY category, process_name")
     rows = []
@@ -343,16 +344,23 @@ def list_processes() -> list[dict]:
         pid = r[0]
         seen.add(pid)
         stats = _process_stats(pid)
+        meta = reg.get(pid) or {}
+        lp = meta.get("lane_policy") or "either"
         rows.append({
             "process_id": pid, "process_name": r[1], "category": r[2], "mode": r[3],
             "allowed_lanes": list(r[4] or []), "updated_at": str(r[5]) if r[5] else None,
-            "description": (reg.get(pid) or {}).get("description"),
+            "description": meta.get("description"),
+            "lane_policy": lp,
+            "lane_policy_label": policies.get(lp) or lp,
             **stats,
         })
     for pid, p in reg.items():
         if pid not in seen:
             cfg = get_process_config(pid)
-            rows.append({**cfg, "description": p.get("description"), **_process_stats(pid)})
+            lp = p.get("lane_policy") or "either"
+            rows.append({**cfg, "description": p.get("description"),
+                         "lane_policy": lp, "lane_policy_label": policies.get(lp) or lp,
+                         **_process_stats(pid)})
     rows.sort(key=lambda x: (x.get("category") or "", x.get("process_name") or ""))
     return rows
 

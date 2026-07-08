@@ -228,11 +228,15 @@ type Props = {
   suppressCompanyPurpose?: boolean
   /** Proposal origin (watchlist | scanner | …) — drives the honest "why no momentum technicals" note. */
   sourceKind?: string
+  /** When set, AgentConsensus shows per-lane ▶ Grok / ▶ ChatGPT (à la carte). */
+  proposalId?: number
+  onCloudLaneDone?: () => void
 }
 
 export default function BrokerIntelPanel({
   intel, compact = false, onQueueOversight, onRunCloudOversight, oversightBusy, cloudBusy,
   suppressViolationList = false, suppressStrategyPurpose = false, suppressCompanyPurpose = false, sourceKind = '',
+  proposalId, onCloudLaneDone,
 }: Props) {
   if (!intel?.ok) {
     return (
@@ -263,7 +267,8 @@ export default function BrokerIntelPanel({
   const ovViolations: string[] = oversight.violations || []
   const ovWarnings: string[] = oversight.warnings || []
   const ovStatus = oversight.status || (ovViolations.length ? 'BLOCK' : ovWarnings.length ? 'WARN' : reviews.length ? 'PENDING' : null)
-  const showOversight = Boolean(ovStatus || reviews.length > 0 || onQueueOversight || onRunCloudOversight || ovViolations.length || ovWarnings.length)
+  const showOversight = Boolean(ovStatus || reviews.length > 0 || onQueueOversight || onRunCloudOversight
+    || proposalId || ovViolations.length || ovWarnings.length)
   const dist = an?.distribution as Record<string, number> | null | undefined
   const hasDist = dist && VOTE_BUCKETS.some(b => Number(dist[b.key]) > 0)
 
@@ -281,6 +286,8 @@ export default function BrokerIntelPanel({
           oversightBusy={oversightBusy}
           cloudBusy={cloudBusy}
           ovStatus={ovStatus}
+          proposalId={proposalId}
+          onCloudLaneDone={onCloudLaneDone}
         />
       )}
       {showOversight && ensembleResult && (

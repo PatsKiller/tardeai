@@ -4,6 +4,7 @@ import { WL } from '../lib/watchlistCardTokens'
 import HoldingProtectionActions from './HoldingProtectionActions'
 import { mergeLiveStop } from '../lib/stopReviewTooltip'
 import { EvidenceBlock } from './EvidenceBlock'
+import CloudLlmRunButtons from './CloudLlmRunButtons'
 
 // Portfolio → Stop Management. Aggregates broker-actual + advisor-planned stops with Yellow/Amber/Red alerts,
 // plus an Audit sub-tab (2FA stop requests + operator confirmations). Read-only view; live adjustments route
@@ -572,7 +573,16 @@ export default function StopManagement({ onFocusHolding }: Props) {
               {['All', 'red', 'amber', 'yellow'].map(l => <option key={l} value={l}>{l === 'All' ? 'All levels' : l}</option>)}
             </select>
             <button onClick={() => load(true)} style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE }}>↻ Refresh</button>
+            <CloudLlmRunButtons
+              processId="holding_protection_advisor_batch"
+              lanePolicy="grok_only"
+              batchLimit={6}
+              onDone={() => load(true)}
+            />
             <span style={{ fontSize: 11, color: MUTED }}>{loading ? 'loading…' : `${filtered.length} of ${rows.length} · regime ${data?.regime_now ?? '—'}${data?.cached ? ' · cached' : ''}`}</span>
+          </div>
+          <div style={{ fontSize: 10, color: MUTED, marginBottom: 8, lineHeight: 1.45 }}>
+            Periodic stop advisories: <b style={{ color: PURPLE }}>▶ Grok (top 6)</b> runs priority holdings via free OAuth — stays Manual (no full Automated on holding_protection_advisor).
           </div>
 
           {/* Table */}

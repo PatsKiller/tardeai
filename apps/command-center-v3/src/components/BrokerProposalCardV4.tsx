@@ -247,6 +247,7 @@ export default function BrokerProposalCardV4({
   onRoute,
   onQueueOversight,
   onRunCloudOversight,
+  onCloudLaneDone,
   litmus,
   validateBusy,
   onValidate,
@@ -1399,6 +1400,8 @@ export default function BrokerProposalCardV4({
           <BrokerIntelPanel
             intel={intel || { ok: true, oversight: ov, agent_reviews: ov.agents?.reviews || [] }}
             compact
+            proposalId={p.id}
+            onCloudLaneDone={onCloudLaneDone ?? onRefresh}
             onQueueOversight={onQueueOversight}
             onRunCloudOversight={onRunCloudOversight}
             oversightBusy={oversightBusy}
