@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "test:e2e:open-trades-grok": "node tests/e2e/open-trades-grok.mjs"
+    "test:e2e:open-trades-grok": "node tests/e2e/open-trades-grok.mjs",
+    "test:e2e:stop-mgmt-fidelity-sync": "node tests/e2e/stop-management-fidelity-sync.mjs"
   },
   "dependencies": {
     "canvas": "^3.2.3",
