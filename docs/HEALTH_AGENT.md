@@ -183,7 +183,8 @@ had no consumer); (4) `tradeai-continuous.service` failed at boot (persistent-ti
    `finviz_cookie_expired` (critical, operator refreshes `FINVIZ_COOKIE`).
 4. **`collect_failed_systemd_units()`** (category `execution_health`) — `systemctl --failed`
    filtered to trade-stack prefixes (`systemd_units.unit_prefixes`). Detection-only (restart
-   needs sudo); finding carries the operator command.
+   needs sudo); finding carries the operator command. **Scope caveat:** system-manager units only —
+   `--user` units and non-prefixed names are blind spots (see *Known blind spots — user-scope services*).
 5. **`collect_db_connection_health()`** (category `execution_health`) — counts PG
    `idle-in-transaction timeout` kills in the log tail (`db_connections` policy block); warns at
    10/3h so the next governor-style bug surfaces while it's one victim, not a fleet.
@@ -260,3 +261,31 @@ covered but are NOT:
 3. `schwab_token_revoked` is **deliberately absent from `remediation_map`** → operator-action, not an
    auto-retry (retrying a revoked token is futile per GATE A). The finding carries the exact
    `reauth-url` → `exchange-code` command so the alert is actionable.
+
+## Known blind spots — user-scope services + topic-source board disconnect (2026-07-07)
+
+**Incident:** two systemd units read *failed* on the System hub for hours/days with **no health alert** —
+`mcporter-token-refresh` (gcloud token empty → exit 1) and `hermes-deep-research-local` (`KeyError` every
+run, dead 19h). Separately, board lanes `topic_brave_news` (Brave 402) and `topic_youtube_api` (YouTube
+429-quota, dead 16d) read dead with no health alert. Three coverage holes the agent's checks slipped past:
+
+1. **`collect_failed_systemd_units()` scans the system manager only.** It runs `systemctl --failed` (no
+   `--user`), but both failed units are **user units** (`~/.config/systemd/user/`) — invisible to a
+   system-scope query. → *Fix direction:* also run `systemctl --user --failed` and merge.
+2. **The prefix filter excludes them anyway.** `unit_prefixes` = `tradeai-/portfolio-/grok-oauth/chatgpt-oauth`;
+   neither `mcporter-token-refresh` nor `hermes-deep-research-local` matches, so even in the right scope they'd
+   be skipped. → add `hermes-`/`mcporter-` (or match any trade-stack user unit).
+3. **Two disconnected data-source monitors.** The **board** (`_data_source_health` API) computes freshness
+   live from `news_articles.source` and covers the `topic_*` lanes; the **health agent**
+   (`collect_data_source_health`) reads the separate `data_source_health` **table**, which the
+   `topic_ingestion` lanes never `report_source()` into (the same-day follow-up above wired the *enrichment*
+   `brave_search`/`youtube_api` keys, not the `topic_*` board lanes). So a `topic_*` lane can read dead on the
+   board while the agent sees nothing. → *Fix direction:* point the collector at the same `news_articles`
+   recency signal the board uses, or have `topic_ingestion` report each lane into the table.
+
+Like the Schwab case, systemd-unit findings are **detection-only** today — but **user** units *can* be
+`systemctl --user restart`ed without sudo, so a cautious auto-restart for idempotent ones is feasible.
+
+**Status — DIAGNOSED, not yet implemented.** The two *failing services themselves* were fixed 2026-07-07
+(hermes `{schema}` `str.format` bug, commit b1717d65; operator gcloud re-auth for mcporter); the three
+**agent-coverage** fixes above are proposed follow-ups.
