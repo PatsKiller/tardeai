@@ -4,9 +4,13 @@
  *
  * Requires portfolio-server on :7777 and Grok OAuth ready.
  *
- *   node tests/e2e/open-trades-grok.mjs
- *   CC_SYMBOL=ANET node tests/e2e/open-trades-grok.mjs
- *   CC_BASE=http://127.0.0.1:7777 CC_SYMBOL=NEE npm run test:e2e:open-trades-grok
+ * From repo root:
+ *   npm run test:e2e:open-trades-grok
+ *   CC_SYMBOL=ANET npm run test:e2e:open-trades-grok
+ *
+ * From anywhere (no cd):
+ *   ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/e2e-open-trades-grok.sh
+ *   e2e-open-trades-grok   # if ~/.local/bin symlink installed
  */
 import { chromium } from 'playwright';
 import fs from 'fs';
