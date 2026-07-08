@@ -104,6 +104,7 @@ still shows `inactive`. `Failed: 0` on that page remains the real fault signal.
 | 6:35 | M-F | `market_regime_classifier.py --apply` | Classify current market regime (Risk On/Off/Neutral) | market_regime_classifications | — |
 | 6:35 | M-F | `overnight_batch.py --tax-sweep` | Tax-loss harvesting sweep | tax_loss_candidates | — |
 | 6:40 | M-F | `intel_auto_discovery.py` | Intelligence auto-discovery — find new research targets | Telegram | — |
+| :25 hourly 6–15 | M-F | `hermes_momentum_catalyst_researcher.py --source scalp --apply` | Hermes SearXNG catalyst research on the day's social-scalp candidates → merges into `data/hermes/momentum_catalysts/<date>_catalysts.jsonl`; `social_scalp_scanner` reads it so a Hermes-confirmed catalyst lets a setup clear the social-only cap and reach GO. Advisory-only. | momentum_catalysts JSONL | `/tmp/hermes_scalp_catalyst.lock` |
 | 6:45 | M-F | `sync_watchlist_items_to_db.py` | Sync watchlist items from YAML to DB | watchlist_items | — |
 | 6:50 | M-F | `materialize_watchlist_strategy_cards.py` | Materialize strategy cards for watchlist UI | watchlist_strategy_cards | — |
 | 6:55 | M-F | `materialize_income_engine.py` | Materialize income/dividend projections | income_projections | — |

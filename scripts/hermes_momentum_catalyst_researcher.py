@@ -124,13 +124,15 @@ def research_ticker(symbol):
     }
 
 
-def run(candidates, dry_run=True, output_path=None):
-    """Research all candidates."""
+def run(candidates, dry_run=True, output_path=None, merge=True, max_total_sources=None):
+    """Research all candidates. merge=True updates the day's JSONL by symbol instead of clobbering it,
+    so the momentum and scalp lanes can share one file without overwriting each other."""
+    cap = MAX_TOTAL_SOURCES if max_total_sources is None else max_total_sources
     results = []
     total_sources = 0
 
     for c in candidates:
-        if total_sources >= MAX_TOTAL_SOURCES:
+        if total_sources >= cap:
             break
         sym = c["symbol"] if isinstance(c, dict) else c
         print(f"  Researching {sym}...", end=" ", flush=True)
@@ -140,35 +142,75 @@ def run(candidates, dry_run=True, output_path=None):
         status = f"{result['catalyst_type']} ({result['source_count']} sources, conf {result['confidence']:.1f})"
         print(status)
 
-    # Write output
+    # Write output (merge by symbol so a second lane doesn't clobber the first)
     if not dry_run and output_path:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        by_symbol = {}
+        if merge and Path(output_path).exists():
+            for line in Path(output_path).read_text().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                    by_symbol[str(rec.get("symbol", "")).upper()] = rec
+                except Exception:
+                    continue
+        for r in results:
+            by_symbol[str(r["symbol"]).upper()] = r
         with open(output_path, "w") as f:
-            for r in results:
-                f.write(json.dumps(r, default=str) + "\n")
+            for rec in by_symbol.values():
+                f.write(json.dumps(rec, default=str) + "\n")
 
     return results
 
 
+def get_scalp_candidates(max_tickers=15):
+    """Today's distinct social-scalp candidates (WAIT/GO) whose GO tier depends on catalyst
+    verification — highest score first. Read-only."""
+    import psycopg2
+    syms = []
+    try:
+        conn = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"),
+                                dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
+                                password=os.getenv("DB_PASSWORD"))
+        cur = conn.cursor()
+        cur.execute("""SELECT symbol FROM scalp_scan_results
+                       WHERE scanned_at::date = current_date AND decision IN ('GO','WAIT')
+                       GROUP BY symbol ORDER BY max(score) DESC NULLS LAST LIMIT %s""", (max_tickers,))
+        syms = [r[0] for r in cur.fetchall()]
+        conn.close()
+    except Exception as e:
+        print(f"scalp candidate read failed: {e}")
+    return syms
+
+
 if __name__ == "__main__":
-    from hermes_momentum_candidate_reader import get_momentum_candidates
     import argparse
     ap = argparse.ArgumentParser()
+    ap.add_argument("--source", choices=["momentum", "scalp"], default="momentum",
+                    help="Which candidate pool to research: TradeAI momentum lane or today's social-scalp candidates.")
     ap.add_argument("--max-tickers", type=int, default=5)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--dry-run", action="store_true", default=True)
     args = ap.parse_args()
 
-    candidates = get_momentum_candidates(max_tickers=args.max_tickers)
+    if args.source == "scalp":
+        candidates = get_scalp_candidates(max_tickers=max(args.max_tickers, 15))
+        _cap = 40  # cover ~15 scalp candidates × up to 3 sources
+    else:
+        from hermes_momentum_candidate_reader import get_momentum_candidates
+        candidates = get_momentum_candidates(max_tickers=args.max_tickers)
+        _cap = None
     if not candidates:
-        print("No momentum candidates found.")
+        print(f"No {args.source} candidates found.")
         sys.exit(0)
 
-    print(f"Researching {len(candidates)} momentum candidates...")
+    print(f"Researching {len(candidates)} {args.source} candidates...")
     today = datetime.now().strftime("%Y-%m-%d")
     out = str(PROJECT_ROOT / f"data/hermes/momentum_catalysts/{today}_catalysts.jsonl")
 
-    results = run(candidates, dry_run=not args.apply, output_path=out)
+    results = run(candidates, dry_run=not args.apply, output_path=out, merge=True, max_total_sources=_cap)
 
     print(f"\nResults: {len(results)} tickers")
     with_catalyst = sum(1 for r in results if r["catalyst_type"] != "no_clear_catalyst")
