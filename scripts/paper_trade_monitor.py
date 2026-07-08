@@ -91,6 +91,42 @@ def _api_delete(path):
     return requests.delete(f'{ALPACA_BASE}{path}', headers=_alpaca_headers(), timeout=10)
 
 
+def _reconcile_broker_exit(broker_oid, stop_oid, tp_oid, entry_price, shares, dollar_risk=None):
+    """A DB-open trade whose symbol isn't in current Alpaca positions is EITHER a genuine phantom
+    (entry order never filled) OR a real position that already closed on the broker but whose exit the
+    DB never recorded. Classify from broker truth and return {"kind": ...}:
+
+    - {"kind": "phantom"}       — entry order NOT filled (or unresolvable-and-no-fill) → caller voids to $0.
+    - {"kind": "reconciled", …} — entry filled + an OCO exit leg filled → caller books the REAL exit P&L.
+    - {"kind": "filled_no_exit"}— entry filled but no exit fill identifiable yet → caller LEAVES IT OPEN
+      (never voids a filled position); the hourly alpaca_paper_adapter close-sync will reconcile it.
+    """
+    if not broker_oid or entry_price is None or not shares:
+        return {"kind": "phantom"}  # nothing to verify against → treat as phantom (legacy behavior)
+    entry = _api_get(f'/v2/orders/{broker_oid}')
+    if not isinstance(entry, dict) or not entry.get('status'):
+        return {"kind": "filled_no_exit"}  # couldn't reach broker → don't void; recheck next cycle
+    if entry.get('status') != 'filled':
+        return {"kind": "phantom"}  # order genuinely never filled → real phantom
+    ep = float(entry.get('filled_avg_price') or entry_price)
+    sign = 1 if (entry.get('side') or 'buy') == 'buy' else -1  # short → invert
+    # Which OCO leg actually closed the position? Prefer target, then stop.
+    for oid, kind in ((tp_oid, 'target'), (stop_oid, 'stop')):
+        if not oid:
+            continue
+        o = _api_get(f'/v2/orders/{oid}')
+        if isinstance(o, dict) and o.get('status') == 'filled' and o.get('filled_avg_price'):
+            xp = float(o['filled_avg_price'])
+            pnl = sign * (xp - ep) * shares
+            pnl_pct = sign * (xp - ep) / ep * 100 if ep else 0
+            r_mult = (pnl / dollar_risk) if dollar_risk else 0
+            return {"kind": "reconciled", "exit_price": round(xp, 4), "pnl": round(pnl, 2),
+                    "pnl_pct": round(pnl_pct, 4), "r_multiple": round(r_mult, 3),
+                    "verdict": "WIN" if pnl > 0 else "LOSS" if pnl < 0 else "BREAKEVEN",
+                    "exit_reason": f"broker_{kind}_exit_reconciled"}
+    return {"kind": "filled_no_exit"}  # real filled position, exit not yet resolvable → leave open
+
+
 def replace_stop(symbol, qty, new_stop, old_order_id=None):
     """Cancel old stop, verify cancellation, place new one higher."""
     import time
@@ -179,8 +215,11 @@ def _fix_integrity_issues(conn, alpaca_symbols):
         log.info(f"[integrity] Auto-cancelled never-filled: {r[1]} id={r[0]}")
         fixed += 1
 
-    # Fix 2: DB says open (broker-submitted) but Alpaca doesn't have it → close as phantom
-    cur.execute("""SELECT id, symbol, entry_time, entry_price, shares, stop_loss, current_price, dollar_risk
+    # Fix 2: DB says open (broker-submitted) but Alpaca doesn't have it. Before voiding as a phantom,
+    # check broker truth: a FILLED entry whose OCO exit leg also filled is a REAL closed position whose
+    # exit the DB simply never recorded — reconcile its true P&L instead of falsely voiding it to $0.
+    cur.execute("""SELECT id, symbol, entry_time, entry_price, shares, stop_loss, current_price, dollar_risk,
+                          broker_order_id, stop_order_id, take_profit_order_id
                    FROM paper_trades
                    WHERE lifecycle_state='open' AND status='open'
                      AND (COALESCE(broker_order_id,'') <> '' OR filled_at IS NOT NULL)""")
@@ -192,6 +231,7 @@ def _fix_integrity_issues(conn, alpaca_symbols):
         _stop = float(row[5]) if row[5] else None
         _current = float(row[6]) if row[6] else None
         _dollar_risk = float(row[7]) if row[7] else None
+        _broker_oid, _stop_oid, _tp_oid = row[8], row[9], row[10]
         if sym not in alpaca_symbols:
             _hold_min = None
             if _entry_t:
@@ -206,7 +246,33 @@ def _fix_integrity_issues(conn, alpaca_symbols):
             if _hold_min is not None and _hold_min < PHANTOM_GRACE_MIN:
                 log.info(f"[integrity] {sym} id={tid} not on Alpaca but only {_hold_min}min old — grace, recheck next cycle")
                 continue
-            # PHANTOM: not on Alpaca and never a real broker round-trip. It must carry NO P&L —
+            # BROKER TRUTH: reconcile a real closed position, or skip a filled-but-unresolved one.
+            _recon = _reconcile_broker_exit(_broker_oid, _stop_oid, _tp_oid, _entry_price, _shares, _dollar_risk)
+            if _recon["kind"] == "reconciled":
+                cur.execute("""
+                    UPDATE paper_trades SET lifecycle_state='closed', status='closed',
+                        close_reason=%s, closed_at=NOW(),
+                        exit_time=COALESCE(exit_time, NOW()),
+                        entry_time=COALESCE(entry_time, filled_at, created_at),
+                        closed_via='integrity_reconcile', exit_reason=%s, exit_price=%s,
+                        pnl=%s, pnl_pct=%s, r_multiple=%s, unrealized_pnl=0,
+                        hold_time_min=COALESCE(hold_time_min, %s),
+                        outcome_verdict=%s
+                    WHERE id=%s
+                """, [_recon["exit_reason"], _recon["exit_reason"], _recon["exit_price"],
+                      _recon["pnl"], _recon["pnl_pct"], _recon["r_multiple"], _hold_min,
+                      _recon["verdict"], tid])
+                log.warning(f"[integrity] Reconciled broker exit (NOT phantom): {sym} id={tid} "
+                            f"exit={_recon['exit_price']} pnl={_recon['pnl']} {_recon['verdict']}")
+                fixed += 1
+                continue
+            if _recon["kind"] == "filled_no_exit":
+                # Real filled position whose exit isn't resolvable yet — NEVER void it; the hourly
+                # alpaca_paper_adapter close-sync fetches the exit and books real P&L.
+                log.warning(f"[integrity] {sym} id={tid} filled but exit not yet resolvable — leaving open "
+                            f"for alpaca close-sync (NOT voiding as phantom)")
+                continue
+            # PHANTOM: entry order never filled → no real position. It must carry NO P&L —
             # computing (current-entry)*shares records a FAKE win/loss that pollutes the journal
             # (e.g. MRVL +$126, SNOW +$131 booked as bogus 'wins'). Void it: zero P&L, verdict PHANTOM,
             # excluded from real performance. (Real recovered positions like ANY stay open / on Alpaca
@@ -463,7 +529,7 @@ def monitor(dry_run=False):
 
     # ── PHANTOM DETECTION: DB says open but Alpaca has no position ──
     alpaca_symbols = {pos['symbol'] for pos in positions}
-    cur.execute("SELECT id, symbol, entry_price, shares, strategy_id, stop_loss, current_price, dollar_risk, entry_time, created_at FROM paper_trades WHERE status = 'open'")
+    cur.execute("SELECT id, symbol, entry_price, shares, strategy_id, stop_loss, current_price, dollar_risk, entry_time, created_at, broker_order_id, stop_order_id, take_profit_order_id FROM paper_trades WHERE status = 'open'")
     db_open = cur.fetchall()
     for dbt in db_open:
         if dbt['symbol'] not in alpaca_symbols:
@@ -493,6 +559,32 @@ def monitor(dry_run=False):
             # GRACE: an in-flight fill may not show as an Alpaca position yet — recheck next cycle.
             if _hold_min is not None and _hold_min < PHANTOM_GRACE_MIN:
                 log.info(f"[{dbt['symbol']}] not on Alpaca but only {_hold_min}min old — grace, recheck next cycle")
+                continue
+            # BROKER TRUTH: reconcile a real closed position, or skip a filled-but-unresolved one, instead
+            # of voiding with fabricated current-price P&L.
+            _recon = _reconcile_broker_exit(dbt.get('broker_order_id'), dbt.get('stop_order_id'),
+                                            dbt.get('take_profit_order_id'), _ep or None, _sh, _dr)
+            if _recon["kind"] == "reconciled":
+                cur.execute("""
+                    UPDATE paper_trades SET status='closed', lifecycle_state='closed',
+                        exit_reason=%s, close_reason=%s, exit_price=%s, pnl=%s, pnl_pct=%s,
+                        r_multiple=%s, unrealized_pnl=0, hold_time_min=COALESCE(hold_time_min, %s),
+                        outcome_verdict=%s, closed_via='integrity_reconcile',
+                        closed_at=NOW(), exit_time=COALESCE(exit_time, NOW()),
+                        entry_time=COALESCE(entry_time, filled_at, created_at), updated_at=NOW()
+                    WHERE id=%s
+                """, [_recon["exit_reason"], _recon["exit_reason"], _recon["exit_price"], _recon["pnl"],
+                      _recon["pnl_pct"], _recon["r_multiple"], _hold_min, _recon["verdict"], dbt['id']])
+                conn.commit()
+                log.warning(f"[{dbt['symbol']}] Reconciled broker exit (NOT phantom): id={dbt['id']} "
+                            f"exit={_recon['exit_price']} pnl={_recon['pnl']} {_recon['verdict']}")
+                results.append({"symbol": dbt['symbol'], "action": "exit_reconciled",
+                                "reason": "DB open but position closed on Alpaca — booked real exit",
+                                "pnl": _recon["pnl"], "pnl_pct": _recon["pnl_pct"], "r_multiple": _recon["r_multiple"]})
+                continue
+            if _recon["kind"] == "filled_no_exit":
+                log.warning(f"[{dbt['symbol']}] id={dbt['id']} filled but exit not yet resolvable — leaving "
+                            f"open for alpaca close-sync (NOT voiding as phantom)")
                 continue
             cur.execute("""
                 UPDATE paper_trades

@@ -105,6 +105,24 @@ position must reconcile to a confirmed order or be explicitly quarantined as
 `UNLINKED_BROKER_POSITION` — **never** silently counted. (This preserves the legitimate recovery
 case like ANY #48, but as an explicitly-flagged unlinked state, not a clean `open`.)
 
+**Hole C — exit-side FALSE phantom (IMPLEMENTED 2026-07-08).** The mirror of A/B: `paper_trade_monitor.py`
+voided any DB-open trade whose symbol wasn't in the *current* Alpaca positions snapshot as
+`phantom_no_alpaca_position` (P&L=0) **without checking whether the entry order filled**. A position that
+filled and then legitimately closed on the broker (its OCO stop/target leg filled) is no longer in the
+positions list → it was wrongly booked as a never-existed phantom, voiding real P&L. This surged to 57% of
+closes the week of 2026-07-06 (5 trades incl. an AGNC **+$298.86 target win** buried as $0; +$265.45 net
+recovered). Root of the surge: the monitor's frequent phantom sweep races ahead of the hourly
+`alpaca_paper_adapter.detect_closed_positions` (the proper exit recorder, `WHERE status='open'`), closing the
+trade first so the recorder never sees it.
+Fix: `_reconcile_broker_exit()` classifies from broker truth before any void —
+- entry order **not filled** → `phantom` (void to $0, legacy behavior, correct);
+- entry filled + an OCO exit leg filled → `reconciled` — book the REAL exit price / P&L / verdict
+  (`broker_stop_exit_reconciled` / `broker_target_exit_reconciled`);
+- entry filled but exit **not yet resolvable** → `filled_no_exit` — **leave open** (never void a filled
+  position); the hourly adapter close-sync reconciles it.
+Wired into **both** phantom paths (`_fix_integrity_issues` Fix 2 and the `monitor()` loop). The 5 historical
+false-phantoms were backfill-corrected and their journal thesis-reviews regenerated to real WIN/LOSS.
+
 ## 5. Two-source verification (TradeAI + Hermes)
 
 ```python
