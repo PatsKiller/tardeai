@@ -18,6 +18,15 @@ Tracks and controls **free OAuth** usage for Grok (xAI proxy `:8645`) and ChatGP
 | **Manual** (default) | Automatic cron/agents skip Grok/ChatGPT; UI shows run controls |
 | **Automated** | Process calls OAuth lanes normally; every call is logged |
 
+Bootstrap defaults (explicit in `config/llm_process_registry.json`):
+
+| Process | Mode |
+|---------|------|
+| `cloud_review` | Automated — broker oversight second opinions |
+| `oauth_lane_keepalive` | Automated — daily OAuth token roll |
+| `holding_protection_advisor` | Manual — many holdings per run |
+| `watchlist_cio_synthesis` | Manual — per-symbol CIO runs |
+
 Configure in Consumption UI or:
 
 ```bash

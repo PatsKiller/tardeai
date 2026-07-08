@@ -48,7 +48,9 @@ def _ping_lane(lane):
         if lane in ("grok", "chatgpt"):
             if not llm_lane.available(lane):
                 return False, "proxy not authenticated / session expired"
-            txt = llm_lane.generate(PING, lane=lane, timeout=200 if lane == "chatgpt" else 40)
+            txt = llm_lane.generate(PING, lane=lane, timeout=200 if lane == "chatgpt" else 40,
+                                    process_id="oauth_lane_keepalive",
+                                    task_summary=f"token keepalive ping ({lane})")
             return (bool(txt and str(txt).strip()), "rolled token (ping ok)" if txt else "empty response")
         if lane == "local":
             import requests

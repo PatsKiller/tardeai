@@ -18,9 +18,14 @@ def _load(name, path):
 def test_registry_has_processes():
     import json
     reg = json.loads((ROOT / "config" / "llm_process_registry.json").read_text())
-    ids = [p["id"] for p in reg["processes"]]
-    assert "holding_protection_advisor" in ids
+    by_id = {p["id"]: p for p in reg["processes"]}
+    assert "holding_protection_advisor" in by_id
+    assert "oauth_lane_keepalive" in by_id
     assert reg.get("default_mode") == "manual"
+    assert by_id["cloud_review"].get("default_mode") == "automated"
+    assert by_id["oauth_lane_keepalive"].get("default_mode") == "automated"
+    assert by_id["holding_protection_advisor"].get("default_mode") == "manual"
+    assert by_id["watchlist_cio_synthesis"].get("default_mode") == "manual"
 
 
 def test_oauth_lane_status_module_exports():

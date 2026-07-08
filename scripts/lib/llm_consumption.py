@@ -102,11 +102,25 @@ def _seed_registry() -> None:
         if not pid:
             continue
         mode = p.get("default_mode") or default
-        cur.execute("""
-            INSERT INTO llm_process_config (process_id, process_name, category, mode, notes)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (process_id) DO NOTHING
-        """, (pid, p.get("name") or pid, p.get("category"), mode, p.get("description")))
+        # Processes with an explicit default_mode in the registry are bootstrap-synced so
+        # operator-approved defaults (e.g. cloud_review=automated) apply on deploy.
+        if "default_mode" in p:
+            cur.execute("""
+                INSERT INTO llm_process_config (process_id, process_name, category, mode, notes, updated_at)
+                VALUES (%s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (process_id) DO UPDATE SET
+                  process_name = EXCLUDED.process_name,
+                  category = EXCLUDED.category,
+                  mode = EXCLUDED.mode,
+                  notes = EXCLUDED.notes,
+                  updated_at = NOW()
+            """, (pid, p.get("name") or pid, p.get("category"), mode, p.get("description")))
+        else:
+            cur.execute("""
+                INSERT INTO llm_process_config (process_id, process_name, category, mode, notes)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (process_id) DO NOTHING
+            """, (pid, p.get("name") or pid, p.get("category"), mode, p.get("description")))
     _conn().commit()
 
 
