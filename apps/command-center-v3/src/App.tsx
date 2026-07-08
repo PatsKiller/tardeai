@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useConnectionHealth } from './hooks/useApi'
 import MetricStrip from './components/MetricStrip'
@@ -25,7 +25,22 @@ import ConsumptionHub from './pages/ConsumptionHub'
 declare const __ANALYST_UI_VERSION__: string
 declare const __BUILD_DATE__: string
 // Real build stamp (vite define) — the old hardcoded label misled deploy verification.
-const BUILD_MARKER = `cc-v3 ${__ANALYST_UI_VERSION__} · built ${__BUILD_DATE__}`
+const BUILD_MARKER_FALLBACK = `cc-v3 ${__ANALYST_UI_VERSION__} · built ${__BUILD_DATE__}`
+
+function BuildMarker() {
+  const [label, setLabel] = useState(BUILD_MARKER_FALLBACK)
+  useEffect(() => {
+    fetch('/v3/build-meta.json', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(m => {
+        const v = m?.ui_version || __ANALYST_UI_VERSION__
+        const d = (m?.built_at || '').slice(0, 10) || __BUILD_DATE__
+        setLabel(`cc-v3 ${v} · built ${d}`)
+      })
+      .catch(() => { /* keep fallback */ })
+  }, [])
+  return <span>Build: {label}</span>
+}
 
 function ReconnectingBar() {
   const { degraded, failing } = useConnectionHealth()
@@ -74,7 +89,7 @@ function Shell() {
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
           </Routes>
           <div style={{ marginTop: 18, paddingTop: 8, borderTop: '1px solid rgba(148,163,184,.16)', fontSize: 11, color: 'var(--text3)' }}>
-            Build: {BUILD_MARKER}
+            <BuildMarker />
           </div>
         </main>
       </div>

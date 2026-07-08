@@ -41,11 +41,12 @@ export default function ConsumptionHub() {
 
   const load = useCallback(async () => {
     try {
+      const nocache = { cache: 'no-store' as RequestCache }
       const [ov, pr, reg, lg] = await Promise.all([
-        fetch('/api/v2/consumption/overview').then(r => r.json()),
-        fetch('/api/v2/consumption/processes').then(r => r.json()),
-        fetch('/api/v2/consumption/lane-registry').then(r => r.json()).catch(() => null),
-        fetch(`/api/v2/consumption/logs?limit=40${filterPid ? `&process_id=${encodeURIComponent(filterPid)}` : ''}`).then(r => r.json()),
+        fetch('/api/v2/consumption/overview', nocache).then(r => r.json()),
+        fetch('/api/v2/consumption/processes', nocache).then(r => r.json()),
+        fetch('/api/v2/consumption/lane-registry', nocache).then(r => r.json()).catch(() => null),
+        fetch(`/api/v2/consumption/logs?limit=40${filterPid ? `&process_id=${encodeURIComponent(filterPid)}` : ''}`, nocache).then(r => r.json()),
       ])
       setOverview((ov?.data ?? ov)?.overview ?? null)
       const regData = reg?.data ?? reg
@@ -86,7 +87,8 @@ export default function ConsumptionHub() {
     setBusy('keepalive')
     await fetch('/api/v2/llm/oauth-lanes/keepalive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
     await oauth.refresh()
-    setMsg('✓ OAuth keepalive ran')
+    await load()
+    setMsg('✓ OAuth keepalive ran — lanes + process table refreshed')
     setBusy('')
   }
 
@@ -138,7 +140,7 @@ export default function ConsumptionHub() {
             style={{ fontSize: 12, fontWeight: 800, padding: '8px 12px', borderRadius: 6, border: `1px solid ${BLUE}`, background: `${BLUE}22`, color: BLUE, cursor: busy ? 'wait' : 'pointer' }}>
             ↻ Roll OAuth tokens
           </button>
-          <button onClick={() => void oauth.refresh()} style={{ fontSize: 11, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+          <button onClick={() => { void oauth.refresh(); void load() }} style={{ fontSize: 11, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
             Refresh lane probe
           </button>
         </div>

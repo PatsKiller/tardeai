@@ -27,7 +27,7 @@ export function useOAuthLanes(pollMs = 120_000) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch('/api/v2/llm/oauth-lanes')
+      const res = await fetch('/api/v2/llm/oauth-lanes', { cache: 'no-store' })
       const json = await res.json()
       const payload = json?.data ?? json
       setData(payload)

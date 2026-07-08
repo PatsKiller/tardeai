@@ -106,9 +106,9 @@ def lanes_available() -> dict[str, bool]:
     return {ln: lane_available(ln) for ln in ("grok", "chatgpt")}
 
 
-def all_lanes(*, include_local: bool = True) -> list[dict]:
+def all_lanes(*, include_local: bool = True, use_cache: bool = True) -> list[dict]:
     """Shape compatible with GET /api/v2/llm/oauth-lanes."""
-    out = [lane_status("grok"), lane_status("chatgpt")]
+    out = [lane_status("grok", use_cache=use_cache), lane_status("chatgpt", use_cache=use_cache)]
     if include_local:
         import requests
         try:

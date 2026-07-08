@@ -8545,7 +8545,7 @@ def _llm_oauth_lanes():
         _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         from lib.oauth_lane_status import all_lanes
         lanes = []
-        for ln in all_lanes(include_local=True):
+        for ln in all_lanes(include_local=True, use_cache=False):
             row = dict(ln)
             row["status"] = "ready" if row.get("ready") else row.get("status", "offline")
             lanes.append(row)
