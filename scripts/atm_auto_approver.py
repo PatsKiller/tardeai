@@ -8,9 +8,11 @@ calls the canonical approve_proposal() + submit_paper() chain.
 Cron: */15 9-15 * * 1-5
 No hardcoded broker or account names.
 """
-import json, logging, os, sys
+import fcntl, json, logging, os, sys
 from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
+
+ATM_CYCLE_LOCK = "/tmp/tradeai_atm.lock"
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -271,8 +273,56 @@ def resolve_atm_expiry(strategy_id, created_at, expires_at=None, now=None) -> di
             "age_minutes": age_min, "effective_expiry": eff_expiry}
 
 
+def _acquire_atm_cycle_lock():
+    """Non-blocking flock guard shared by cron (safe_flock) and enrichment immediate triggers."""
+    try:
+        fd = open(ATM_CYCLE_LOCK, "w")
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
+    except (IOError, OSError):
+        try:
+            fd.close()
+        except Exception:
+            pass
+        return None
+
+
+def _release_atm_cycle_lock(lock_fd):
+    if lock_fd is None:
+        return
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
+    except Exception:
+        pass
+
+
+def _expire_proposal_atomic(cur, pid, expiry_code, expiry_lifecycle, expiry_message) -> bool:
+    """Transition PENDING → EXPIRED exactly once. Returns True if this call won the race."""
+    cur.execute("""
+        UPDATE paper_trade_proposals
+        SET atm_expired_at = NOW(), atm_expiry_reason = %s,
+            status = 'EXPIRED', lifecycle_status = %s,
+            lifecycle_message = %s
+        WHERE id = %s AND status = 'PENDING' AND atm_expired_at IS NULL
+    """, (expiry_code, expiry_lifecycle, expiry_message, pid))
+    return cur.rowcount > 0
+
+
 def run_cycle():
     """Main ATM evaluation cycle."""
+    lock_fd = _acquire_atm_cycle_lock()
+    if lock_fd is None:
+        log.info("ATM cycle skipped — another instance holds tradeai_atm.lock")
+        return
+    try:
+        _run_cycle_locked()
+    finally:
+        _release_atm_cycle_lock(lock_fd)
+
+
+def _run_cycle_locked():
+    """Main ATM evaluation cycle (caller holds tradeai_atm.lock)."""
     conn = get_connection()
     if not conn:
         log.error("No DB connection")
@@ -500,13 +550,9 @@ def run_cycle():
         if expiry_code:
             if expiry_message is None:
                 expiry_message = f"ATM expired: {expiry_code}"
-            cur.execute("""
-                UPDATE paper_trade_proposals
-                SET atm_expired_at = NOW(), atm_expiry_reason = %s,
-                    status = 'EXPIRED', lifecycle_status = %s,
-                    lifecycle_message = %s
-                WHERE id = %s AND status NOT IN ('APPROVED_FOR_PAPER_TEST', 'BROKER_SUBMITTED')
-            """, (expiry_code, expiry_lifecycle, expiry_message, pid))
+            if not _expire_proposal_atomic(cur, pid, expiry_code, expiry_lifecycle, expiry_message):
+                log.info(f"  {sym}: expiry skipped — already expired by another cycle")
+                continue
             conn.commit()
             _log_decision(conn, pid, sym, sid, target,
                           acct.get("broker", "unknown"), acct.get("mode", "unknown"),
