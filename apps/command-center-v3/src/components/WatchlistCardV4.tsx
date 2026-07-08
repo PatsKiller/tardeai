@@ -27,6 +27,7 @@ import FibConfluencePanel from './FibConfluencePanel'
 import HoldingReportLinks from './HoldingReportLinks'
 import SizingTable from './SizingTable'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
+import CloudLlmRunButtons from './CloudLlmRunButtons'
 import type { WatchlistCardProps } from './WatchlistCard'
 import { marketAwareStale, composeWhy, sameHeadline, catalystAgeDays } from '../lib/watchlistCardV4'
 
@@ -123,7 +124,7 @@ function llmStance(e: any): string {
 export default function WatchlistCardV4({
   it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap, accounts, heldPositions, maxDeployPctOfCash,
   ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onToggleEns, isStarred,
-  onPropose, onAdjust, onBuildPlan, onOpenDesk,
+  onPropose, onAdjust, onBuildPlan, onOpenDesk, onCioDone,
 }: WatchlistCardProps) {
   const enriched = !!it.last_enriched_at
   // (C) weekend-calm staleness — 1h clock only counts market movement.
@@ -559,7 +560,16 @@ export default function WatchlistCardV4({
         <div className="wlc-cell">
           <div style={moduleLabel}>
             <span>CIO context</span>
-            {hasEvidence && <Expander open={evidenceOpen} onToggle={() => setEvidenceOpen(v => !v)} label="Evidence" />}
+            <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <CloudLlmRunButtons
+                processId="watchlist_cio_synthesis"
+                lanePolicy="ensemble"
+                symbol={it.symbol}
+                compact
+                onDone={() => onCioDone?.()}
+              />
+              {hasEvidence && <Expander open={evidenceOpen} onToggle={() => setEvidenceOpen(v => !v)} label="Evidence" />}
+            </span>
           </div>
           {cioNote ? (
             <div

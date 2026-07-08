@@ -55,6 +55,7 @@ def test_api_has_consumption_routes():
     assert "/api/v2/consumption/process-mode" in api
     assert "/api/v2/consumption/run-manual" in api
     assert "/api/v2/consumption/stop-advisory-batch" in api
+    assert "/cio-synthesis" in api
     assert 'b.get("lanes")' in api or "raw_lanes" in api
 
 

@@ -77,7 +77,7 @@ type Props = {
   cloudBusy?: boolean
   ovStatus?: string | null
   proposalId?: number
-  onCloudLaneDone?: () => void
+  onCloudLaneDone?: (result?: any) => void
 }
 
 export default function AgentConsensusPanel({
@@ -143,7 +143,7 @@ export default function AgentConsensusPanel({
               lanePolicy="both_preferred"
               proposalId={proposalId}
               compact
-              onDone={() => onCloudLaneDone?.()}
+              onDone={(result) => onCloudLaneDone?.(result)}
             />
           ) : onRunCloudOversight ? (
             btn(

@@ -87,6 +87,16 @@ python3 scripts/holding_protection_advisor.py --batch --limit 6 --lane grok
 
 UI: **Portfolio → Stop Management** or **Ops → Consumption** (batch row) — **▶ Grok (top 6)**.
 
+Watchlist CIO synthesis (per card, Manual):
+
+```bash
+curl -X POST http://127.0.0.1:7777/api/v2/watchlist/AAPL/cio-synthesis \
+  -H 'Content-Type: application/json' \
+  -d '{"lanes":["grok"]}'
+```
+
+UI: **Watch** cards — **▶ Grok / ▶ ChatGPT** on Conviction (v3) or CIO context (v4). Requires completed agent reviews on the symbol.
+
 Optional cron (weekdays, stays Manual in DB):
 
 ```cron

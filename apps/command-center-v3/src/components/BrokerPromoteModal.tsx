@@ -276,6 +276,28 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
     }
   }
 
+  const mergeOversightPayload = (payload: any) => {
+    const ov = payload?.oversight
+    if (!ov) return false
+    setData((prev: any) => prev ? ({
+      ...prev,
+      oversight: ov,
+      intel: { ...(prev.intel || {}), oversight: ov },
+    }) : prev)
+    setEvaluation((prev: any) => {
+      if (!prev) return prev
+      const merged = { ...prev, oversight: ov }
+      if (ov.status === 'BLOCK') { merged.status = 'BLOCK'; merged.allowed = false }
+      else if (ov.status === 'WARN' && prev.status === 'PASS') merged.status = 'WARN'
+      merged.violations = [...(prev.violations || []), ...(ov.violations || [])]
+      merged.warnings = [...(prev.warnings || []), ...(ov.warnings || [])]
+      return merged
+    })
+    const verdict = payload.cloud?.consensus?.verdict || payload.cloud?.status
+    setMsg(`✅ Cloud: ${verdict || 'done'}`)
+    return true
+  }
+
   const runCloudOversight = async () => {
     setCloudBusy(true); setMsg('')
     try {
@@ -285,32 +307,18 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
         body: JSON.stringify({ proposal_id: seed.proposal_id, timeout: 120 }),
       }).then(x => x.json())
       const payload = r.data ?? r
-      if (r.ok && payload.oversight) {
-        const ov = payload.oversight
-        setData((prev: any) => prev ? ({
-          ...prev,
-          oversight: ov,
-          intel: { ...(prev.intel || {}), oversight: ov },
-        }) : prev)
-        setEvaluation((prev: any) => {
-          if (!prev) return prev
-          const merged = { ...prev, oversight: ov }
-          if (ov.status === 'BLOCK') { merged.status = 'BLOCK'; merged.allowed = false }
-          else if (ov.status === 'WARN' && prev.status === 'PASS') merged.status = 'WARN'
-          merged.violations = [...(prev.violations || []), ...(ov.violations || [])]
-          merged.warnings = [...(prev.warnings || []), ...(ov.warnings || [])]
-          return merged
-        })
-        const verdict = payload.cloud?.consensus?.verdict || payload.cloud?.status
-        setMsg(`✅ Cloud review: ${verdict || 'done'}`)
-      } else {
-        setMsg('⛔ ' + (r.error || payload.error || 'cloud review failed'))
-      }
+      if (r.ok && mergeOversightPayload(payload)) { /* merged */ }
+      else setMsg('⛔ ' + (r.error || payload.error || 'cloud review failed'))
     } catch (e: any) {
       setMsg('⛔ ' + String(e).slice(0, 80))
     } finally {
       setCloudBusy(false)
     }
+  }
+
+  const onCloudLaneDone = (result?: any) => {
+    const payload = result?.data ?? result
+    if (!mergeOversightPayload(payload)) void refreshOversight()
   }
   const paperOrig = data?.paper_original
   const accounts: any[] = data?.accounts || []
@@ -415,6 +423,8 @@ export default function BrokerPromoteModal({ seed, mode = 'promote', onClose, on
               <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Decision context</div>
               <BrokerIntelPanel
                 intel={data?.intel}
+                proposalId={seed.proposal_id}
+                onCloudLaneDone={onCloudLaneDone}
                 onQueueOversight={queueOversight}
                 onRunCloudOversight={runCloudOversight}
                 oversightBusy={oversightBusy}

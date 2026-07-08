@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useApi } from '../hooks/useApi'
 import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishProposal, proposalRiskFlags, strikeDistance, strategyGuide } from '../lib/optionsNovice'
 import { ACTIONS, PROPOSAL } from '../lib/optionsTooltips'
@@ -179,6 +180,31 @@ function primeChipColor(display?: PrimeDisplay | null): string {
   if (!display) return WL.text.dim
   return primeChipStyle(display.color)
 }
+
+function LivePaperOrderChip({ orderId }: { orderId: string }) {
+  // Live Alpaca paper-order state (operator 2026-07-06): the fill reconcile cron is hourly, so a
+  // working order's fill was invisible on the card for up to an hour. Polls the read-only
+  // paper-order-status endpoint every 60s while the card is mounted.
+  const { data } = useApi<any>(`/api/v2/options/paper-order-status?order_id=${encodeURIComponent(orderId)}`, 60_000)
+  const o = (data as any)?.data ?? data
+  if (!o?.ok) return null
+  const filled = Number(o.filled_qty || 0)
+  const qty = Number(o.qty || 0)
+  const s = String(o.status || '')
+  const color = s === 'filled' ? WL.signal.teal
+    : ['canceled', 'expired', 'rejected'].includes(s) ? WL.signal.red : WL.text.dim
+  const label = s === 'filled' ? `filled @ ${fmt$(Number(o.filled_avg_price), 2)}`
+    : s === 'partially_filled' ? `partial ${filled}/${qty}` : `${s} · ${filled}/${qty}`
+  return (
+    <span title={`Live Alpaca paper order ${orderId}: ${s} · filled ${filled}/${qty}`
+      + `${o.filled_avg_price ? ` @ $${o.filled_avg_price}` : ''} · limit $${o.limit_price}`
+      + ' — direct broker read, refreshes every 60s (read-only; the hourly reconcile still owns the queue state)'}
+      style={{ ...chip(color), cursor: 'help' }}>
+      ⟳ {label}
+    </span>
+  )
+}
+
 
 function laneChip(status?: string, aj?: PaperLaneFields['alpaca_json']): { label: string; color: string; tip: string } | null {
   switch (status) {
@@ -662,6 +688,9 @@ export default function OptionProposalCardV4({
               <span title={laneState.tip} style={{ ...chip(laneState.color), cursor: 'help' }}>
                 ALPACA {laneState.label}
               </span>
+            )}
+            {(p.alpaca_paper_status || queueStatus) === 'ALPACA_PAPER_SUBMITTED' && alpacaJson?.response?.id && (
+              <LivePaperOrderChip orderId={String(alpacaJson.response.id)} />
             )}
             {ds && <span title={ds.tip} style={chip(ds.c)}>{ds.label}</span>}
             {(route.kind === 'alpaca_paper' ? (

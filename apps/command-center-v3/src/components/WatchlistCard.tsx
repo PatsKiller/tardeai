@@ -27,6 +27,7 @@ import FibConfluencePanel from './FibConfluencePanel'
 import HoldingReportLinks from './HoldingReportLinks'
 import SizingTable from './SizingTable'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
+import CloudLlmRunButtons from './CloudLlmRunButtons'
 
 // Security Card v3 — dashboard condensation. Two tight top lines (header, single-line banner)
 // over a 2×2 module grid (Trade Plan ⟷ Sizing & Account Risk, Conviction ⟷ Intelligence) and one
@@ -138,12 +139,13 @@ export type WatchlistCardProps = {
   onAdjust?: (it: any) => void
   onBuildPlan?: (symbol: string) => void
   onOpenDesk?: (symbol: string) => void
+  onCioDone?: () => void
 }
 
 export default function WatchlistCard({
   it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap, accounts, heldPositions, maxDeployPctOfCash,
   ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onToggleEns, isStarred,
-  onPropose, onAdjust, onBuildPlan, onOpenDesk,
+  onPropose, onAdjust, onBuildPlan, onOpenDesk, onCioDone,
 }: WatchlistCardProps) {
   const enriched = !!it.last_enriched_at
   const stale = enriched && (Date.now() - new Date(it.last_enriched_at).getTime()) > 3600 * 1000
@@ -489,7 +491,16 @@ export default function WatchlistCard({
       {/* ④ Conviction ⟷ Intelligence */}
       <div className="wlc-grid" onClick={e => e.stopPropagation()}>
         <div className="wlc-cell">
-          <div style={moduleLabel}><span>Conviction</span></div>
+          <div style={moduleLabel}>
+            <span>Conviction</span>
+            <CloudLlmRunButtons
+              processId="watchlist_cio_synthesis"
+              lanePolicy="ensemble"
+              symbol={it.symbol}
+              compact
+              onDone={() => onCioDone?.()}
+            />
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span
               title={cioViewTooltip(it)}

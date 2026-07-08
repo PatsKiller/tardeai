@@ -454,6 +454,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
                   onAdjust={it => openDesk(it.symbol)}
                   onBuildPlan={buildPlan}
                   onOpenDesk={openDesk}
+                  onCioDone={() => void refetchWl()}
                 />
                 </div>
               )

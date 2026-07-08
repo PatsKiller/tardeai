@@ -5560,6 +5560,38 @@ def _wl_requeue_symbol(sym: str) -> tuple[int, dict]:
     return 200, {"ok": True, "symbol": sym, "requeued": n}
 
 
+def _wl_cio_synthesis(sym: str, body: dict | None) -> tuple[int, dict]:
+    """POST /api/v2/watchlist/<SYMBOL>/cio-synthesis — manual CIO synthesis on Grok and/or ChatGPT."""
+    sym = (sym or "").strip().upper()
+    if not sym or not sym.isalpha() or len(sym) > 5:
+        return 400, {"ok": False, "error": "invalid symbol"}
+    raw_lanes = (body or {}).get("lanes")
+    lanes = None
+    if isinstance(raw_lanes, list) and raw_lanes:
+        lanes = tuple(str(x).strip().lower() for x in raw_lanes
+                        if str(x).strip().lower() in ("grok", "chatgpt"))
+        if not lanes:
+            return 400, {"ok": False, "error": "lanes must include grok and/or chatgpt"}
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import process_watchlist_agent_jobs as _pwaj
+        from lib.llm_consumption import ManualRequired as _ManualRequired
+        conn = _pwaj._get_conn()
+        try:
+            result = _pwaj.run_synthesis(conn, sym, lanes=lanes, manual_trigger=True)
+        finally:
+            conn.close()
+        if not result:
+            return 500, {"ok": False, "error": "synthesis_failed", "symbol": sym}
+        return 200, {**result, "advisory_only": True, "process_id": "watchlist_cio_synthesis"}
+    except _ManualRequired as mr:
+        return 200, {"ok": False, "manual_required": True, "process_id": mr.process_id,
+                     "lane": mr.lane, "task_summary": mr.task_summary, "symbol": sym}
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)[:200], "symbol": sym}
+
+
 def _wl_refresh_symbol(sym: str) -> tuple[int, dict]:
     """Manual refresh: Finviz/RSI enrichment now + agent requeue for CIO resynthesis."""
     sym = (sym or "").strip().upper()
@@ -30154,6 +30186,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return _wl_submit(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        # POST /api/v2/watchlist/<SYMBOL>/cio-synthesis — manual per-lane CIO synthesis (Grok / ChatGPT)
+        if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/cio-synthesis"):
+            sym = base_path[len("/api/v2/watchlist/"):-len("/cio-synthesis")].strip("/").upper()
+            if sym:
+                try:
+                    return _wl_cio_synthesis(sym, body or {})
+                except Exception as e:
+                    return 500, {"ok": False, "error": str(e)}
         # POST /api/v2/watchlist/<SYMBOL>/refresh — manual card refresh (technicals + agent requeue)
         if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/refresh"):
             sym = base_path[len("/api/v2/watchlist/"):-len("/refresh")].strip("/").upper()

@@ -137,7 +137,7 @@ type Props = {
   onRoute: () => void
   onQueueOversight: () => void
   onRunCloudOversight: () => void
-  onCloudLaneDone?: () => void
+  onCloudLaneDone?: (result?: any) => void
   litmus?: any
   validateBusy?: boolean
   onValidate?: () => void

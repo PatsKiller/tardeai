@@ -45,6 +45,16 @@ export async function runStopAdvisoryBatch(opts?: { limit?: number; lane?: 'grok
   return res.json().then(j => j?.data ?? j)
 }
 
+export async function runWatchlistCioSynthesis(symbol: string, lane: 'grok' | 'chatgpt') {
+  const sym = symbol.trim().toUpperCase()
+  const res = await fetch(`/api/v2/watchlist/${encodeURIComponent(sym)}/cio-synthesis`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lanes: [lane] }),
+  })
+  return res.json().then(j => j?.data ?? j)
+}
+
 export async function runRotationOversight(lanes: ('grok' | 'chatgpt')[]) {
   const res = await fetch('/api/v2/rotation/oversight', {
     method: 'POST',

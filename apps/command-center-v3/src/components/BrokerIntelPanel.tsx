@@ -230,7 +230,7 @@ type Props = {
   sourceKind?: string
   /** When set, AgentConsensus shows per-lane ▶ Grok / ▶ ChatGPT (à la carte). */
   proposalId?: number
-  onCloudLaneDone?: () => void
+  onCloudLaneDone?: (result?: any) => void
 }
 
 export default function BrokerIntelPanel({

@@ -334,35 +334,53 @@ def _rec_from(raw):
         return "", 0.0
 
 
-def _synthesis_dual(prompt: str, max_tokens: int = 2000):
-    """Run the CIO final synthesis on BOTH free-OAuth lanes (Grok + ChatGPT) and reconcile. Returns
-    (raw_text_for_narrative, dual_meta). dual_meta = {grok, chatgpt, agree, consensus, consensus_confidence}.
-    Falls back to Grok-only, then local gemma, when a lane is unavailable. ChatGPT is capped per run."""
+def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_trigger: bool = False):
+    """Run CIO final synthesis on selected free-OAuth lanes and reconcile.
+    lanes: None → grok+chatgpt (cron default), ('grok',), ('chatgpt',), or both.
+    manual_trigger: route via watchlist_cio_synthesis consumption gate (Manual mode safe)."""
     global _dual_chatgpt_count
     import llm_lane
     cloud_prompt = _strip_local_tokens(prompt)
+    want = tuple(l for l in (lanes or ("grok", "chatgpt")) if l in ("grok", "chatgpt"))
+    if not want:
+        want = ("grok", "chatgpt")
     grok_raw = chatgpt_raw = None
     grok_rec = chatgpt_rec = None
     grok_conf = chatgpt_conf = 0.0
-    try:
-        if llm_lane.available("grok"):
-            grok_raw = llm_lane.generate(cloud_prompt, lane="grok", timeout=120)
-            if _is_refusal(grok_raw):
-                grok_raw = None   # persona refusal — lane contributes nothing to consensus
-            elif grok_raw and not str(grok_raw).startswith("LLM error"):
-                grok_rec, grok_conf = _rec_from(grok_raw)
-    except Exception:
-        pass
-    try:
-        if _dual_chatgpt_count < _DUAL_CHATGPT_CAP and llm_lane.available("chatgpt"):
-            _dual_chatgpt_count += 1
-            chatgpt_raw = llm_lane.generate(cloud_prompt, lane="chatgpt", timeout=180)
-            if _is_refusal(chatgpt_raw):
-                chatgpt_raw = None   # persona refusal — lane contributes nothing to consensus
-            elif chatgpt_raw and not str(chatgpt_raw).startswith("LLM error"):
-                chatgpt_rec, chatgpt_conf = _rec_from(chatgpt_raw)
-    except Exception:
-        pass
+    pid = "watchlist_cio_synthesis" if manual_trigger else None
+    task = "CIO synthesis"
+
+    def _gen(lane: str, timeout: int):
+        kw = dict(lane=lane, timeout=timeout)
+        if pid:
+            return llm_lane.generate(
+                cloud_prompt, process_id=pid, task_summary=f"{task} {lane}",
+                manual_trigger=True, **kw)
+        return llm_lane.generate(cloud_prompt, **kw)
+
+    if "grok" in want:
+        try:
+            if llm_lane.available("grok"):
+                grok_raw = _gen("grok", 120)
+                if _is_refusal(grok_raw):
+                    grok_raw = None
+                elif grok_raw and not str(grok_raw).startswith("LLM error"):
+                    grok_rec, grok_conf = _rec_from(grok_raw)
+        except Exception:
+            pass
+    if "chatgpt" in want:
+        try:
+            cap_ok = manual_trigger or _dual_chatgpt_count < _DUAL_CHATGPT_CAP
+            if cap_ok and llm_lane.available("chatgpt"):
+                if not manual_trigger:
+                    _dual_chatgpt_count += 1
+                chatgpt_raw = _gen("chatgpt", 180)
+                if _is_refusal(chatgpt_raw):
+                    chatgpt_raw = None
+                elif chatgpt_raw and not str(chatgpt_raw).startswith("LLM error"):
+                    chatgpt_rec, chatgpt_conf = _rec_from(chatgpt_raw)
+        except Exception:
+            pass
     meta = {"grok": ({"recommendation": grok_rec, "confidence": grok_conf} if grok_rec else None),
             "chatgpt": ({"recommendation": chatgpt_rec, "confidence": chatgpt_conf} if chatgpt_rec else None)}
     if grok_rec and chatgpt_rec:
@@ -382,10 +400,18 @@ def _synthesis_dual(prompt: str, max_tokens: int = 2000):
         _llm._last_model = "gpt-5.4"
         meta.update(agree=None, consensus=chatgpt_rec, consensus_confidence=round(chatgpt_conf, 2))
         return chatgpt_raw, meta
+    if manual_trigger:
+        meta.update(agree=None, consensus=None, consensus_confidence=None, error="oauth_lane_unavailable")
+        return "LLM error: requested OAuth lane(s) unavailable or blocked", meta
     out = _llm(prompt, max_tokens=max_tokens, task_type="cio_synthesis", high_impact=False)
     _llm._last_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
     meta.update(agree=None, consensus=None, consensus_confidence=None)
     return out, meta
+
+
+def _synthesis_dual(prompt: str, max_tokens: int = 2000):
+    """Cron/automated path — both lanes when available, local gemma fallback."""
+    return _synthesis_lanes(prompt, lanes=None, max_tokens=max_tokens, manual_trigger=False)
 
 
 def _get_context(conn, symbol: str) -> dict:
@@ -1570,7 +1596,7 @@ def _build_layer_status(conn) -> str:
     return "\n".join(lines)
 
 
-def run_synthesis(conn, symbol: str):
+def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False):
     """Run strategy-aware final synthesis combining all analyst narratives."""
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -1587,7 +1613,8 @@ def run_synthesis(conn, symbol: str):
 
     if not results:
         cur.close()
-        return
+        return {"ok": False, "error": "no_completed_agent_results", "symbol": symbol,
+                "hint": "Queue agent reviews first (Refresh on card), then run CIO synthesis."}
 
     # Mark synthesis as processing
     cur.execute("UPDATE watchlist_analysis_maturity SET final_synthesis_status='processing', updated_at=now() WHERE symbol=%s", (symbol,))
@@ -1733,7 +1760,10 @@ CRITICAL INSTRUCTIONS:
     prompt = f"[prompt_version: {SYNTHESIS_PROMPT_VERSION}]\n" + prompt   # version-stamp (tracked in synthesis_version)
     # max_tokens applies to the LOCAL gemma fallback only (cloud lanes send no cap); 1000 truncated the
     # ~11-field JSON contract mid-narrative on the fallback lane (measured: 1/1 local rows truncated).
-    raw, dual_meta = _synthesis_dual(prompt, max_tokens=2000)   # Grok + ChatGPT dual-consensus, gemma fallback
+    if manual_trigger or lanes:
+        raw, dual_meta = _synthesis_lanes(prompt, lanes=lanes, max_tokens=2000, manual_trigger=manual_trigger)
+    else:
+        raw, dual_meta = _synthesis_dual(prompt, max_tokens=2000)   # Grok + ChatGPT dual-consensus, gemma fallback
     # All lanes failed → do NOT upsert: the parser fallback would store the error string as the
     # narrative, clobbering the last good synthesis (404 such rows accumulated Apr 29–May 8 2026,
     # e.g. ANET rendered "LLM error: All providers failed" as its CIO note for 65 days).
@@ -1763,7 +1793,7 @@ CRITICAL INSTRUCTIONS:
                 print(f"  [synthesis] {symbol}: retry job enqueued")
         except Exception as _re:
             print(f"  [synthesis] {symbol}: retry enqueue failed (non-fatal): {str(_re)[:80]}")
-        return None
+        return {"ok": False, "error": "llm_lanes_failed", "symbol": symbol, "detail": str(raw)[:200]}
     syn = parse_synthesis_result(raw)
     parsed = syn
     conflicts = list(syn.get("conflicts") or [])
@@ -1962,6 +1992,16 @@ CRITICAL INSTRUCTIONS:
 
     cur.close()
     print(f"  \u2605 {symbol}: SYNTHESIS {parsed['recommendation']} conf={parsed['confidence']:.0%}")
+    return {
+        "ok": True, "symbol": symbol,
+        "recommendation": parsed["recommendation"],
+        "confidence": parsed["confidence"],
+        "action": action,
+        "dual_consensus": dual_meta,
+        "narrative_snip": (synthesis_narrative or "")[:400],
+        "lanes_run": list(lanes or ("grok", "chatgpt")),
+        "manual_trigger": manual_trigger,
+    }
 
 
 def _effective_job_limit(explicit_limit: int) -> int:
