@@ -117,7 +117,7 @@ def _run_post_close(trade_id, symbol):
     except Exception as e:
         post_close_results["tca"] = f"error: {str(e)[:100]}"
 
-    # Thesis review
+    # Thesis review (outcome comparison → trade_thesis_outcomes)
     try:
         r = subprocess.run(
             [str(PROJECT_ROOT / ".venv/bin/python"),
@@ -127,6 +127,20 @@ def _run_post_close(trade_id, symbol):
         post_close_results["thesis_review"] = "ok" if r.returncode == 0 else f"exit:{r.returncode}"
     except Exception as e:
         post_close_results["thesis_review"] = f"error: {str(e)[:100]}"
+
+    # Scored thesis review → trade_thesis_reviews (feeds journal-learning view). Separate from
+    # the outcome reviewer above; this is the scored/lesson lane that had no scheduled runner.
+    # Idempotent: get_reviewable skips trades that already have a review (NOT EXISTS), so this
+    # only writes the just-closed trade (+ any un-reviewed backlog, bounded LIMIT 100).
+    try:
+        r = subprocess.run(
+            [str(PROJECT_ROOT / ".venv/bin/python"),
+             str(PROJECT_ROOT / "scripts/trade_thesis_review_engine.py"), "--apply", "--json"],
+            capture_output=True, text=True, timeout=180, cwd=str(PROJECT_ROOT),
+        )
+        post_close_results["thesis_review_scored"] = "ok" if r.returncode == 0 else f"exit:{r.returncode}"
+    except Exception as e:
+        post_close_results["thesis_review_scored"] = f"error: {str(e)[:100]}"
 
     return post_close_results
 

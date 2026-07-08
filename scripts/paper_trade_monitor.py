@@ -549,6 +549,15 @@ def monitor(dry_run=False):
                 stdout=open(str(PROJECT_ROOT / "logs/post_trade_thesis_auto.log"), "a"),
                 stderr=subprocess.STDOUT,
             )
+            # Scored thesis review → trade_thesis_reviews (journal-learning lane). Idempotent
+            # (skips already-reviewed trades); previously had no scheduled runner.
+            subprocess.Popen(
+                [str(PROJECT_ROOT / ".venv/bin/python"),
+                 str(PROJECT_ROOT / "scripts/trade_thesis_review_engine.py"), "--apply", "--json"],
+                cwd=str(PROJECT_ROOT),
+                stdout=open(str(PROJECT_ROOT / "logs/trade_thesis_review_engine_auto.log"), "a"),
+                stderr=subprocess.STDOUT,
+            )
             # Outcome analytics: builds R-multiple, MFE/MAE, plan adherence stats
             subprocess.Popen(
                 [str(PROJECT_ROOT / ".venv/bin/python"),
