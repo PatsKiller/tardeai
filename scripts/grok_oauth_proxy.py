@@ -35,18 +35,26 @@ _RELOGIN = "hermes auth add xai-oauth --type oauth"
 
 
 def _xai_token_state():
-    """Returns (present, expired) from ~/.hermes/auth.json — exp claim only, no secret use."""
+    """Returns (present, expired) from ~/.hermes/auth.json — exp claim only, no secret use.
+
+    Rolling OAuth: the on-disk JWT exp often lags until hermes refreshes on the next real call.
+    If a refresh_token is present, treat as refreshable (not expired) so keepalive/UI can roll it."""
     try:
         d = json.load(open(AUTH_JSON))
         xai = (d.get("providers") or {}).get("xai-oauth") or {}
-        at = (xai.get("tokens") or {}).get("access_token")
+        tokens = xai.get("tokens") or {}
+        at = tokens.get("access_token")
         if not at:
             return False, None
+        has_refresh = bool(tokens.get("refresh_token"))
         try:
             p = at.split(".")[1]
             p += "=" * (-len(p) % 4)
             exp = json.loads(base64.urlsafe_b64decode(p)).get("exp")
-            return True, (bool(exp) and exp < time.time())
+            jwt_expired = bool(exp) and exp < time.time()
+            if jwt_expired and has_refresh:
+                return True, False
+            return True, jwt_expired
         except Exception:
             return True, None
     except Exception:

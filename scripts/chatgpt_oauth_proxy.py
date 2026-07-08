@@ -42,14 +42,19 @@ def _codex_token_state():
     try:
         d = json.load(open(AUTH_JSON))
         cdx = (d.get("providers") or {}).get("openai-codex") or {}
-        at = (cdx.get("tokens") or {}).get("access_token")
+        tokens = cdx.get("tokens") or {}
+        at = tokens.get("access_token")
         if not at:
             return False, None
+        has_refresh = bool(tokens.get("refresh_token"))
         try:
             p = at.split(".")[1]
             p += "=" * (-len(p) % 4)
             exp = json.loads(base64.urlsafe_b64decode(p)).get("exp")
-            return True, (bool(exp) and exp < time.time())
+            jwt_expired = bool(exp) and exp < time.time()
+            if jwt_expired and has_refresh:
+                return True, False
+            return True, jwt_expired
         except Exception:
             return True, None
     except Exception:

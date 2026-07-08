@@ -51,7 +51,8 @@ export default function ConsumptionHub() {
       const regData = reg?.data ?? reg
       const policyMap: Record<string, string> = regData?.processes ?? {}
       const policyLabels: Record<string, string> = regData?.policy_labels ?? {}
-      const raw: ProcessRow[] = (pr?.data ?? pr)?.processes ?? []
+      const prPayload = pr?.data ?? pr
+      const raw: ProcessRow[] = prPayload?.processes ?? prPayload?.data?.processes ?? []
       setProcesses(raw.map(p => {
         const lp = p.lane_policy || policyMap[p.process_id] || 'either'
         return {
@@ -121,7 +122,14 @@ export default function ConsumptionHub() {
                 Free OAuth · :{ln?.port ?? (id === 'grok' ? 8645 : 8646)}
                 {ln?.consec_fail ? ` · ${ln.consec_fail} recent fail(s)` : ''}
               </div>
-              {!ok && ln?.hint && <div style={{ fontSize: 10, color: AMBER, marginTop: 6 }}>{ln.hint}</div>}
+              {!ok && ln?.hint && (
+                <div style={{ fontSize: 10, color: AMBER, marginTop: 6 }}>
+                  {ln.hint}
+                  {id === 'grok' && ln?.authenticated && (
+                    <span> — or click <b>↻ Roll OAuth tokens</b> below (refreshes without re-login)</span>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
