@@ -120,6 +120,10 @@ _P0_PATTERNS = [
 
 _STOP_PATTERN = re.compile(r"STOP.*(TRIGGERED|HIT|alert)", re.IGNORECASE)
 _GO_PATTERN = re.compile(r"GO.Tier|🎯.*GO|Trade AI v12|Trade AI LIVE", re.IGNORECASE)
+# Momentum-scalp setup alerts (from social_scalp_scanner: "GO … Social Scalp Setup" / "WAIT … Social
+# Mention"). Operator wants these live; without a carve-out the WAIT ones die on suppress_wait.
+_SCALP_SETUP_PATTERN = re.compile(r"Social Scalp Setup|Social Mention|Scalp Setup", re.IGNORECASE)
+_SCALP_SCORE_PATTERN = re.compile(r"Score:\s*(\d+)\s*/\s*55", re.IGNORECASE)
 _HEALTH_PATTERN = re.compile(r"Health Agent:\s*(\w+)\s*—\s*(\d+)/100", re.IGNORECASE)
 _PORTFOLIO_INTEL = re.compile(r"PORTFOLIO INTELLIGENCE", re.IGNORECASE)
 
@@ -161,6 +165,19 @@ def classify_alert(message: str) -> str:
                 return "P1_DIGEST"
             return "P2_DASHBOARD_ONLY"
         return "P2_DASHBOARD_ONLY"
+
+    # ── Momentum-scalp setup carve-out (operator wants GO/WAIT scalp setups in REAL TIME) ──
+    # The scanner's social-only + route gates downgrade most setups to WAIT, which suppress_wait
+    # would then swallow — so the operator saw nothing after ~2026-07-01. Surface scalp setups live
+    # above a score floor (GO clears it inherently; meaningful WAIT does too), before the WAIT sink.
+    # Tunables (config/operator_alert_policy.yaml → rules): scalp_realtime_enabled, scalp_realtime_min_score.
+    rules = _policy()
+    if rules.get("scalp_realtime_enabled", True) and _SCALP_SETUP_PATTERN.search(message):
+        _sm = _SCALP_SCORE_PATTERN.search(message)
+        _score = int(_sm.group(1)) if _sm else 0
+        if _score >= int(rules.get("scalp_realtime_min_score", 25)):
+            return "P0_INTERRUPT"
+        return "P2_DASHBOARD_ONLY"   # below floor → dashboard, not a phone buzz
 
     # Check P2 system noise (health agent, retries, staleness, LLM complete)
     for pattern, _ in _P2_SYSTEM_PATTERNS:

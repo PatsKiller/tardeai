@@ -50,6 +50,11 @@ rules:
   suppress_wait: true
   suppress_avoid: true
   suppress_rvol_only: true
+  # Momentum-scalp setups bypass suppress_wait and fire in REAL TIME above a score floor (2026-07-08).
+  # Restores live GO/WAIT scalp alerts (silent since ~07-01 when all setups downgraded to suppressed WAIT).
+  # Set scalp_realtime_enabled=false to revert; raise scalp_realtime_min_score to reduce volume (score is /55).
+  scalp_realtime_enabled: true
+  scalp_realtime_min_score: 25
   suppress_raw_catalyst_dump: true
   suppress_generic_critique_summary: true
   suppress_iris_content_gap_telegram: true

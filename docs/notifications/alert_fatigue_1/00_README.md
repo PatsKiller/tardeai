@@ -34,3 +34,20 @@
 - "Paper mode" status messages
 
 ## Simulation: 14/14 passed
+
+---
+
+## Momentum-scalp real-time carve-out (2026-07-08)
+
+**Problem:** Operator stopped receiving live momentum-scalp GO/WAIT alerts (`social_scalp_scanner`)
+around 2026-07-01. Root cause: the scanner's social-only + route-actionability gates (added 2026-06-27)
+downgrade nearly all setups to WAIT, and the long-standing `suppress_wait: true` then dropped every WAIT
+to `P2_DASHBOARD_ONLY` — so the operator saw nothing (GO went 1–6/day through 06-30 → 0 from 07-01).
+
+**Fix:** `telegram_alert_router.classify_alert` now has a scalp carve-out *before* the WAIT sink: a
+"Social Scalp Setup"/"Social Mention" message with `Score ≥ scalp_realtime_min_score` (default 25, /55)
+returns `P0_INTERRUPT` (real-time); below the floor → dashboard-only. Config
+(`operator_alert_policy.yaml → rules`): `scalp_realtime_enabled` (default true), `scalp_realtime_min_score`
+(default 25). Scalp messages don't match `_GO_PATTERN`, so the 3/hour GO rate-limit does not apply. Volume
+at the default floor is ~1–4 distinct symbols/day (measured), not a flood. Revert with
+`scalp_realtime_enabled: false`; raise the floor to reduce volume.
