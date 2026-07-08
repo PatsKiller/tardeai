@@ -242,7 +242,63 @@ def _candidates(limit):
     return dedup[:limit]
 
 
-def run(lane="grok", symbols=None, limit=12, manual_trigger=False):
+def protection_rec_for_symbol(symbol: str) -> dict | None:
+    """UI-shaped protection advisory for one symbol (matches open-trades/intelligence)."""
+    from db_adapter import _get_conn
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return None
+    cur = _get_conn().cursor()
+    cur.execute("""SELECT symbol, thesis, summary, model_used, confidence_score,
+                          evidence_json, created_at
+                   FROM hermes_research_intelligence
+                   WHERE research_type='protection_advisory' AND UPPER(symbol)=%s
+                   ORDER BY created_at DESC LIMIT 1""", (sym,))
+    row = cur.fetchone()
+    if not row:
+        return None
+    cols = ["symbol", "thesis", "summary", "model_used", "confidence_score", "evidence_json", "created_at"]
+    p = dict(zip(cols, row))
+    ev = p.get("evidence_json") or {}
+    if isinstance(ev, str):
+        try:
+            ev = json.loads(ev)
+        except Exception:
+            ev = {}
+    rec = ev.get("recommendation") or {}
+    px = (ev.get("inputs") or {}).get("price")
+    stop = rec.get("stop_price")
+    dist = (round((float(px) - float(stop)) / float(px) * 100, 2)
+            if px and stop and float(px) > 0 else None)
+    trail_rec = bool(rec.get("trail_recommended"))
+    trail_off = rec.get("trail_offset")
+    suggested_trail = None
+    trail_matches_stop = False
+    if trail_rec and trail_off is not None:
+        suggested_trail = float(trail_off) if rec.get("trail_type") == "PERCENT" else None
+    elif dist is not None and float(dist) >= 3:
+        suggested_trail = round(float(dist), 1)
+        trail_matches_stop = not trail_rec
+    fb = ev.get("family_bounds") if isinstance(ev.get("family_bounds"), dict) else {}
+    floor_pct = fb.get("stop_min_pct")
+    fam = ev.get("family") or ""
+    return {
+        "rec": p.get("thesis"), "rationale": p.get("summary"), "model": p.get("model_used"),
+        "confidence": p.get("confidence_score"), "at": str(p.get("created_at") or ""),
+        "stop_price": stop, "trail_recommended": trail_rec,
+        "trail_type": rec.get("trail_type"), "trail_offset": trail_off,
+        "suggested_trail_pct": suggested_trail, "trail_matches_stop": trail_matches_stop,
+        "price": px, "stop_distance_pct": dist,
+        "sanity": ev.get("sanity"),
+        "family": fam, "family_source": ev.get("family_source"),
+        "family_bounds": fb,
+        "family_floor_pct": floor_pct,
+        "family_floor": (f"{fam} floor {floor_pct}%" if floor_pct is not None else fam) or None,
+        "lane": ev.get("lane"),
+    }
+
+
+def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
     # operator 2026-06-13: prefer the FREE Grok OAuth lane (tighter adherence to the bounded prompt
     # than gemma3:4b); auto-fall back to local gemma when the proxy isn't authenticated. Both free.
     import llm_lane
@@ -256,6 +312,7 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False):
         cands = [c for c in cands if (c.get("symbol") or "").upper() in want] or \
                 [{"symbol": s, "account": "schwab", "shares": 0, "cost_basis": 0, "market_value": 0} for s in want]
     done = failed = fellback = 0
+    outcomes: list[dict] = []
     for c in cands:
         sym = (c.get("symbol") or "").upper()
         bars = _bars(sym)
@@ -304,11 +361,11 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False):
                        "trail as a review trigger, not an order." + proxy_note)
         used_lane = lane
         try:
-            pid = "holding_protection_advisor_batch" if manual_trigger else "holding_protection_advisor"
+            pid = "holding_protection_advisor_batch" if batch else "holding_protection_advisor"
             out = llm_lane.generate(prompt, lane=lane, timeout=120,
                                     process_id=pid,
                                     task_summary=f"stop advisory {sym} {c.get('account')}",
-                                    manual_trigger=manual_trigger)
+                                    manual_trigger=bool(manual_trigger or batch))
         except Exception as e:
             if "manual approval required" in str(e).lower():
                 print(f"  {sym}: Grok blocked (Manual mode) — enable Automated in Consumption or run manual")
@@ -401,8 +458,13 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False):
               f"trail={'%s%%' % rec.get('trail_offset') if rec.get('trail_recommended') else 'no'} "
               f"· conf {rec.get('confidence')} · {model}{sflag}")
         done += 1
-    print(json.dumps({"lane": lane, "advised": done, "failed": failed, "fellback_to_local": fellback,
-                      "note": "advisory only — surfaced on Portfolio cards + monthly Claude meta-review"}))
+        outcomes.append({"symbol": sym, "ok": True, "lane": used_lane, "model": model,
+                         "stop_price": rec.get("stop_price"), "trail_recommended": rec.get("trail_recommended")})
+    summary = {"lane": lane, "advised": done, "failed": failed, "fellback_to_local": fellback,
+               "outcomes": outcomes,
+               "note": "advisory only — surfaced on Portfolio cards + monthly Claude meta-review"}
+    print(json.dumps(summary))
+    return summary
 
 
 def main():
@@ -414,7 +476,7 @@ def main():
                     help="Manual-batch mode: uses holding_protection_advisor_batch process_id + manual_trigger (for cron/UI top-N)")
     a = ap.parse_args()
     run(lane=a.lane, symbols=a.symbols.split(",") if a.symbols else None, limit=a.limit,
-        manual_trigger=bool(a.batch))
+        manual_trigger=bool(a.batch), batch=bool(a.batch))
 
 
 if __name__ == "__main__":

@@ -65,6 +65,17 @@ export async function runBrokerCloudLane(proposalId: number, lane: 'grok' | 'cha
   return res.json().then(j => j?.data ?? j)
 }
 
+export async function runStopAdvisory(symbol: string, lane: 'grok' | 'local' = 'grok') {
+  const sym = symbol.trim().toUpperCase()
+  const res = await fetch('/api/v2/consumption/stop-advisory', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol: sym, lane }),
+  })
+  const j = await res.json()
+  return j?.data ?? j
+}
+
 export async function runStopAdvisoryBatch(opts?: { limit?: number; lane?: 'grok' | 'chatgpt'; symbols?: string }) {
   const res = await fetch('/api/v2/consumption/stop-advisory-batch', {
     method: 'POST',

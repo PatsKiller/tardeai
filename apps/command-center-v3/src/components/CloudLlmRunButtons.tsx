@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { lanesForPolicy, runBrokerCloudLane, runManualCloud, runStopAdvisoryBatch, runWatchlistCioSynthesis, type LanePolicy } from '../lib/cloudLlmRun'
+import { lanesForPolicy, runBrokerCloudLane, runManualCloud, runStopAdvisory, runStopAdvisoryBatch, runWatchlistCioSynthesis, type LanePolicy } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 
 const GROK = '#1d9bf0', GPT = '#10a37f', MUTED = '#94a3b8'
@@ -29,7 +29,8 @@ export default function CloudLlmRunButtons({
   const lanes = lanesForPolicy(lanePolicy)
   const isBatch = batchLimit != null || processId === 'holding_protection_advisor_batch'
   const isWatchlistCio = processId === 'watchlist_cio_synthesis' && !!symbol
-  const needsPrompt = !proposalId && !prompt && !isBatch && !isWatchlistCio
+  const isStopAdvisory = processId === 'holding_protection_advisor' && !!symbol
+  const needsPrompt = !proposalId && !prompt && !isBatch && !isWatchlistCio && !isStopAdvisory
 
   const run = async (lane: 'grok' | 'chatgpt') => {
     if (!laneReady(lane === 'grok' ? oauth.grok : oauth.chatgpt)) {
@@ -48,6 +49,12 @@ export default function CloudLlmRunButtons({
         result = await runWatchlistCioSynthesis(symbol!, lane)
         if (result?.ok) setMsg(`✓ ${lane} CIO · ${result.recommendation || 'done'}`)
         else setMsg(`⛔ ${result?.error || result?.hint || 'blocked (need agent reviews?)'}`)
+      } else if (isStopAdvisory && lane === 'grok') {
+        result = await runStopAdvisory(symbol!, 'grok')
+        if (result?.ok && result?.protection) {
+          const sp = result.protection.stop_price
+          setMsg(`✓ Grok stop${sp != null ? ` $${Number(sp).toFixed(2)}` : ''}`)
+        } else setMsg(`⛔ ${result?.error || 'stop advisory failed'}`)
       } else if (proposalId) {
         result = await runBrokerCloudLane(proposalId, lane)
         if (result?.cloud?.ok || result?.ok) {

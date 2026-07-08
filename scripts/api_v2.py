@@ -30030,6 +30030,31 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
+        if base_path == "/api/v2/consumption/stop-advisory":
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                import holding_protection_advisor as _hpa
+                b = body or {}
+                sym = str(b.get("symbol") or "").strip().upper()
+                if not sym:
+                    return 400, {"ok": False, "error": "symbol required"}
+                lane = str(b.get("lane") or "grok").strip().lower()
+                if lane not in ("grok", "local"):
+                    lane = "grok"
+                import io, contextlib
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    summary = _hpa.run(lane=lane, symbols=[sym], limit=1, manual_trigger=True, batch=False)
+                prot = _hpa.protection_rec_for_symbol(sym)
+                ok = bool(summary and int(summary.get("advised") or 0) > 0 and prot)
+                return 200, {"ok": ok, "symbol": sym, "lane": lane, "protection": prot,
+                             "summary": summary, "log": buf.getvalue()[-2000:],
+                             "error": None if ok else "advisory failed — check Grok OAuth or bars data",
+                             "note": "Per-holding stop advisory (holding_protection_advisor) — Grok OAuth, advisory only"}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
         if base_path == "/api/v2/consumption/stop-advisory-batch":
             try:
                 import sys as _sys
@@ -30045,7 +30070,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import io, contextlib
                 buf = io.StringIO()
                 with contextlib.redirect_stdout(buf):
-                    _hpa.run(lane=lane, symbols=sym_list, limit=limit, manual_trigger=True)
+                    _hpa.run(lane=lane, symbols=sym_list, limit=limit, manual_trigger=True, batch=True)
                 return 200, {"ok": True, "limit": limit, "lane": lane, "symbols": sym_list,
                              "log": buf.getvalue()[-3000:],
                              "note": "Manual-batch stop advisories (holding_protection_advisor_batch) — Grok OAuth, advisory only"}

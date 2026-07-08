@@ -6,6 +6,7 @@ import { resolvedTrailPct } from '../lib/protectionTrail'
 import { runProtectiveStopPreflight, unwrapApi, type PreflightDiff } from '../lib/protectiveStopPreflight'
 import { buildStopLogic, type StopOrderKind } from '../lib/stopManagement'
 import { formatReviewStamp, stopReviewTooltip } from '../lib/stopReviewTooltip'
+import CloudLlmRunButtons from './CloudLlmRunButtons'
 
 const TEXT0 = '#f8fafc'
 const TEXT1 = '#dbeafe'
@@ -465,6 +466,13 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
         return <>
           <div title={`${_stopReviewTip}\n\n${effectiveProtectionRec.rationale ?? ''} · confidence ${effectiveProtectionRec.confidence ?? '—'}`} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'baseline' }}>
             <span style={{ fontSize: 12, fontWeight: 950, color: '#d8b4fe' }}>Protection advisory</span>
+            <CloudLlmRunButtons
+              processId="holding_protection_advisor"
+              symbol={_sym}
+              lanePolicy="grok_only"
+              compact
+              onDone={(r) => { if (r?.protection) setAdvisoryOverride(r.protection) }}
+            />
             {effectiveProtectionRec.family && <span style={chip('rgba(96,165,250,.14)', BLUE)}>{effectiveProtectionRec.family}</span>}
             {stop != null && <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>{mf ? 'ref level' : 'stop'} <b style={{ color: '#d8b4fe' }}>${stop.toFixed(2)}</b></span>}
             {off != null ? <span style={{ fontSize: 11, fontWeight: 850, color: TEXT1 }}>trail <b style={{ color: BLUE }}>{trailDollar != null ? `$${trailDollar.toFixed(2)}` : '—'}</b>{trailPct != null && <span style={{ color: MUTED, fontWeight: 500 }}> ({trailPct.toFixed(1)}%)</span>}</span> : <span style={{ fontSize: 10, color: MUTED }}>no trail yet</span>}

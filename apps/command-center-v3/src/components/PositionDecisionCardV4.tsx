@@ -9,6 +9,7 @@ import { formatReviewStamp, stopReviewTooltip } from '../lib/stopReviewTooltip'
 import { WL, heroStateStyle, numStyle } from '../lib/watchlistCardTokens'
 import { composeWhy } from '../lib/watchlistCardV4'
 import { buttonStyle, type ActionUrgency, type CardVerdict } from '../lib/watchlistCardAction'
+import CloudLlmRunButtons from './CloudLlmRunButtons'
 
 // Position Decision Card v4 — open-trades surface joins the v4 card family (2026-07-04).
 // Same props + behavior as PositionDecisionCard (v3 untouched; global cc.cards.v4 toggle
@@ -702,6 +703,13 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
         return <>
           <div title={`${_stopReviewTip}\n\n${effectiveProtectionRec.rationale ?? ''} · confidence ${effectiveProtectionRec.confidence ?? '—'}`} style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'baseline' }}>
             <span style={{ fontSize: 11.5, fontWeight: 800, color: WL.text.primary }}>Protection advisory</span>
+            <CloudLlmRunButtons
+              processId="holding_protection_advisor"
+              symbol={_sym}
+              lanePolicy="grok_only"
+              compact
+              onDone={(r) => { if (r?.protection) setAdvisoryOverride(r.protection) }}
+            />
             {effectiveProtectionRec.family && <span style={{ fontSize: 9.5, fontWeight: 700, color: WL.text.dim, border: `1px solid ${WL.surface.edge}`, borderRadius: 4, padding: '1px 6px' }}>{effectiveProtectionRec.family}</span>}
             {stop != null && <span style={{ fontSize: 11, fontWeight: 700, color: WL.text.secondary }}>{mf ? 'ref level' : 'stop'} <b style={{ ...numStyle, color: WL.text.primary }}>${stop.toFixed(2)}</b></span>}
             {off != null ? <span style={{ fontSize: 11, fontWeight: 700, color: WL.text.secondary }}>trail <b style={{ ...numStyle, color: WL.text.primary }}>{trailDollar != null ? `$${trailDollar.toFixed(2)}` : '—'}</b>{trailPct != null && <span style={{ color: WL.text.dim, fontWeight: 500 }}> ({trailPct.toFixed(1)}%)</span>}</span> : <span style={{ fontSize: 10, color: WL.text.dim }}>no trail yet</span>}
