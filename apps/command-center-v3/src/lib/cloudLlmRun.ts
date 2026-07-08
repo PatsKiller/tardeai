@@ -2,6 +2,35 @@
 
 export type LanePolicy = 'grok_only' | 'chatgpt_only' | 'either' | 'both_preferred' | 'ensemble'
 
+/** Bundled from config/llm_process_registry.json — UI fallback when API omits lane_policy. */
+export const PROCESS_LANE_POLICIES: Record<string, LanePolicy> = {
+  holding_protection_advisor: 'grok_only',
+  holding_protection_advisor_batch: 'grok_only',
+  broker_cloud_oversight: 'both_preferred',
+  cloud_review: 'both_preferred',
+  oauth_lane_keepalive: 'either',
+  rotation_grok_review: 'grok_only',
+  rotation_oversight: 'ensemble',
+  watchlist_cio_synthesis: 'ensemble',
+  paper_trade_advisory: 'both_preferred',
+  hermes_external_research: 'either',
+  multi_tier_trade_reviewer: 'both_preferred',
+  reporting_grok_editorial: 'grok_only',
+  directive_keyword_enhancer: 'ensemble',
+  think_tank_signal_miner: 'either',
+  hermes_scalp_review: 'either',
+  portfolio_ask: 'either',
+  journal_ask: 'either',
+  strategy_planner: 'either',
+  options_ensemble: 'ensemble',
+  cloud_consensus_verdict: 'ensemble',
+  stop_drift_alert: 'either',
+  hermes_analyst_coverage: 'either',
+  watchlist_entry_planner: 'either',
+  grok_execution_review: 'grok_only',
+  unregistered: 'either',
+}
+
 export function lanesForPolicy(policy: LanePolicy | string | undefined): ('grok' | 'chatgpt')[] {
   const p = (policy || 'either') as LanePolicy
   if (p === 'grok_only') return ['grok']

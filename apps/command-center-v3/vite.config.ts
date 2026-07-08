@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
 
-const UI_VERSION = '3.11'
+const UI_VERSION = '3.12'
 
 export default defineConfig({
   plugins: [

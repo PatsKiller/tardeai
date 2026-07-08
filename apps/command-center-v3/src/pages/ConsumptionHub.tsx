@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import CloudLlmRunButtons from '../components/CloudLlmRunButtons'
-import { lanePolicyColor, lanePolicyHint } from '../lib/cloudLlmRun'
+import { lanePolicyColor, lanePolicyHint, PROCESS_LANE_POLICIES, runManualCloud } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 
 const GREEN = '#22c55e', RED = '#ef4444', AMBER = '#f59e0b', BLUE = '#60a5fa', MUTED = '#94a3b8', TEXT = '#f8fafc'
@@ -55,7 +55,7 @@ export default function ConsumptionHub() {
       const prPayload = pr?.data ?? pr
       const raw: ProcessRow[] = prPayload?.processes ?? prPayload?.data?.processes ?? []
       setProcesses(raw.map(p => {
-        const lp = p.lane_policy || policyMap[p.process_id] || 'either'
+        const lp = p.lane_policy || policyMap[p.process_id] || PROCESS_LANE_POLICIES[p.process_id] || 'either'
         return {
           ...p,
           lane_policy: lp,
@@ -78,6 +78,27 @@ export default function ConsumptionHub() {
       const j = await res.json()
       setMsg(j?.ok ? `✓ ${pid} → ${mode}` : `⛔ ${j?.error || 'failed'}`)
       await load()
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const testLane = async (lane: 'grok' | 'chatgpt') => {
+    setBusy(`test-${lane}`)
+    setMsg('')
+    try {
+      const res = await runManualCloud({
+        process_id: 'oauth_lane_keepalive',
+        lane,
+        prompt: 'Reply with exactly: OK',
+        task_summary: `${lane} OAuth test from Consumption`,
+      })
+      if (res?.ok) setMsg(`✓ ${lane} OAuth test OK — "${(res.text || '').trim().slice(0, 40)}"`)
+      else setMsg(`⛔ ${lane} test failed: ${res?.error || 'unknown'}`)
+      await oauth.refresh()
+      await load()
+    } catch (e: any) {
+      setMsg(`⛔ ${lane} test error: ${String(e?.message || e).slice(0, 80)}`)
     } finally {
       setBusy('')
     }
@@ -136,6 +157,16 @@ export default function ConsumptionHub() {
           )
         })}
         <div style={{ padding: 14, borderRadius: 10, background: 'var(--bg1)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <button type="button" onClick={() => void testLane('grok')} disabled={!!busy}
+              style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid #1d9bf066', background: '#1d9bf014', color: '#1d9bf0', cursor: busy ? 'wait' : 'pointer' }}>
+              {busy === 'test-grok' ? '…' : '▶ Test Grok'}
+            </button>
+            <button type="button" onClick={() => void testLane('chatgpt')} disabled={!!busy}
+              style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid #10a37f66', background: '#10a37f14', color: '#10a37f', cursor: busy ? 'wait' : 'pointer' }}>
+              {busy === 'test-chatgpt' ? '…' : '▶ Test ChatGPT'}
+            </button>
+          </div>
           <button onClick={() => void runKeepalive()} disabled={!!busy}
             style={{ fontSize: 12, fontWeight: 800, padding: '8px 12px', borderRadius: 6, border: `1px solid ${BLUE}`, background: `${BLUE}22`, color: BLUE, cursor: busy ? 'wait' : 'pointer' }}>
             ↻ Roll OAuth tokens
