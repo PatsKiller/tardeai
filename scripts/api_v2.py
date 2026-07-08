@@ -20465,10 +20465,29 @@ def _system_scheduled_jobs():
     import glob as _gl
     timer_dir = Path.home() / ".config" / "systemd" / "user"
     if timer_dir.exists():
-        for tf in sorted(timer_dir.glob("*.timer")):
-            name = tf.stem
-            status = _run(f"systemctl --user is-active {tf.name}").strip() or "unknown"
-            timers.append({"name": name, "status": status, "type": "systemd_user"})
+        timer_files = sorted(timer_dir.glob("*.timer"))
+        unit_names = [tf.name for tf in timer_files]
+
+        def _batch_states(verb):
+            """One systemctl call for all units (is-active/is-enabled print one state per line,
+            in order). Falls back to per-unit only if the line count doesn't align."""
+            if not unit_names:
+                return {}
+            lines = _run(f"systemctl --user {verb} " + " ".join(unit_names)).splitlines()
+            if len(lines) == len(unit_names):
+                return {n: lines[i].strip() for i, n in enumerate(unit_names)}
+            return {n: _run(f"systemctl --user {verb} {n}").strip() for n in unit_names}
+
+        active_map = _batch_states("is-active")
+        enabled_map = _batch_states("is-enabled")
+        for tf in timer_files:
+            status = active_map.get(tf.name) or "unknown"
+            enabled = enabled_map.get(tf.name) or "unknown"
+            # A disabled timer sitting inactive is retired/superseded (intentional), not a fault —
+            # surface it explicitly so the UI stops reading it as an alarming bare "inactive".
+            retired = (enabled == "disabled" and status == "inactive")
+            timers.append({"name": tf.stem, "status": status, "enabled": enabled,
+                           "retired": retired, "type": "systemd_user"})
 
     hermes_timers = [t for t in timers if "hermes" in t["name"]]
     tradeai_timers = [t for t in timers if "tradeai" in t["name"]]
@@ -20497,8 +20516,10 @@ def _system_scheduled_jobs():
         "ok": True,
         "timers": {
             "total": len(timers),
-            "hermes": [{"name": t["name"], "status": t["status"]} for t in hermes_timers],
-            "tradeai": [{"name": t["name"], "status": t["status"]} for t in tradeai_timers],
+            "hermes": [{"name": t["name"], "status": t["status"], "enabled": t["enabled"],
+                        "retired": t["retired"]} for t in hermes_timers],
+            "tradeai": [{"name": t["name"], "status": t["status"], "enabled": t["enabled"],
+                         "retired": t["retired"]} for t in tradeai_timers],
             "other_count": len(timers) - len(hermes_timers) - len(tradeai_timers),
         },
         "cron": {

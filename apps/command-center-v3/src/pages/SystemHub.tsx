@@ -361,19 +361,27 @@ export default function SystemHub({ onDrill }: Props) {
                 <div key={name} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>{name} timers ({list.length})</div>
                   {list.map((t: any, i: number) => (
-                    <div key={i} onClick={() => onDrill({ title: t.name, subtitle: t.status, endpoint: '/api/v2/system/scheduled-jobs', rows: [t] })}
+                    <div key={i} onClick={() => onDrill({ title: t.name, subtitle: t.retired ? 'retired · disabled (superseded)' : t.status, endpoint: '/api/v2/system/scheduled-jobs', rows: [t] })}
                       style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10 }}>
-                      <span style={{ color: 'var(--text2)', fontFamily: 'var(--mono)' }}>{(t.name || '').replace(/^(hermes-|tradeai-)/, '')}</span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: sc(t.status), fontSize: 9, fontWeight: 600 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: sc(t.status) }} />{t.status}
-                        {t.next && <span style={{ color: 'var(--text3)', fontWeight: 400 }}>· {t.next}</span>}
-                      </span>
+                      <span style={{ color: t.retired ? 'var(--text3)' : 'var(--text2)', fontFamily: 'var(--mono)' }}>{(t.name || '').replace(/^(hermes-|tradeai-)/, '')}</span>
+                      {t.retired ? (
+                        <span title="Disabled timer — retired/superseded (e.g. consolidated into a pipeline controller). Not scheduled to run; not a fault."
+                          style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--text3)', fontSize: 9, fontWeight: 600 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: 2, border: '1px solid var(--text3)', background: 'transparent' }} />
+                          <span style={{ fontStyle: 'italic' }}>retired</span>
+                        </span>
+                      ) : (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: sc(t.status), fontSize: 9, fontWeight: 600 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: sc(t.status) }} />{t.status}
+                          {t.next && <span style={{ color: 'var(--text3)', fontWeight: 400 }}>· {t.next}</span>}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/scheduled-jobs (systemd timers + cron). "unknown" = systemctl status not resolvable for that unit.</div>
+            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/scheduled-jobs (systemd timers + cron). "unknown" = systemctl status not resolvable for that unit. <span style={{ fontStyle: 'italic' }}>retired</span> = disabled + inactive (superseded/consolidated, not a fault).</div>
           </div>
         )
       })()}
