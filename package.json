@@ -1,7 +1,11 @@
 {
+  "scripts": {
+    "test:e2e:open-trades-grok": "node tests/e2e/open-trades-grok.mjs"
+  },
   "dependencies": {
     "canvas": "^3.2.3",
     "docx": "^9.6.1",
+    "playwright": "^1.61.1",
     "puppeteer": "^24.41.0",
     "puppeteer-core": "^24.41.0"
   }
