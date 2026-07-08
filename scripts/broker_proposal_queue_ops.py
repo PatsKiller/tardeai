@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 
 ACTIVE = ("PENDING", "APPROVED_FOR_PAPER_TEST")
+_QUEUE_SUMMARY_CACHE: tuple[float, dict] | None = None
+_QUEUE_SUMMARY_TTL = float(os.getenv("BROKER_QUEUE_SUMMARY_TTL_SEC", "60"))
 
 
 def _conn():
@@ -18,8 +22,13 @@ def _active_where() -> str:
     return "status IN ('PENDING','APPROVED_FOR_PAPER_TEST')"
 
 
-def compute_queue_summary() -> dict:
+def compute_queue_summary(*, force: bool = False) -> dict:
     """Aggregate route-ready / blocked counts for the unified proposals queue."""
+    global _QUEUE_SUMMARY_CACHE
+    now = time.monotonic()
+    if not force and _QUEUE_SUMMARY_CACHE and (now - _QUEUE_SUMMARY_CACHE[0]) < _QUEUE_SUMMARY_TTL:
+        return dict(_QUEUE_SUMMARY_CACHE[1])
+
     conn = _conn()
     cur = conn.cursor()
     cur.execute(f"""
@@ -32,6 +41,16 @@ def compute_queue_summary() -> dict:
     """)
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    pending_by_pid: dict[int, list[str]] = {}
+    if rows:
+        pids = [int(r["id"]) for r in rows]
+        cur.execute("""
+            SELECT proposal_id, agent_name FROM proposal_agent_reviews
+            WHERE proposal_id = ANY(%s) AND status = 'pending'
+        """, (pids,))
+        for pid, agent in cur.fetchall():
+            pending_by_pid.setdefault(int(pid), []).append(agent)
 
     route_ready = blocked = agent_pending = oversized = invalid_thesis = 0
     blocker_counts: dict[str, int] = {}
@@ -56,19 +75,14 @@ def compute_queue_summary() -> dict:
             oversized += 1
         if ev.get("invalid_thesis"):
             invalid_thesis += 1
-        acur = _conn().cursor()
-        acur.execute("""
-            SELECT agent_name, status FROM proposal_agent_reviews
-            WHERE proposal_id=%s AND status='pending'
-        """, (pid,))
-        pending_agents = [a[0] for a in acur.fetchall()]
+        pending_agents = pending_by_pid.get(pid) or []
         if pending_agents:
             agent_pending += 1
             for a in pending_agents:
                 agent_backlog[a] = agent_backlog.get(a, 0) + 1
 
     total = len(rows)
-    return {
+    result = {
         "ok": True,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "total": total,
@@ -82,6 +96,8 @@ def compute_queue_summary() -> dict:
         "symbols": sorted(set(s for s in symbols if s)),
         "route_ready_pct": round(100.0 * route_ready / total, 1) if total else 0.0,
     }
+    _QUEUE_SUMMARY_CACHE = (now, result)
+    return result
 
 
 def _blocker_category(msg: str) -> str:

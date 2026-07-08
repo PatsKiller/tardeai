@@ -89,7 +89,25 @@ def load_policy(account_key: str) -> dict:
 
 
 _EQUITY_CACHE: dict = {}   # account_key -> (monotonic_ts, equity, source); avoids hammering the broker API
+_SCHWAB_ACCT_CACHE: dict = {}  # account_key -> (monotonic_ts, schwab account dict)
 _EQUITY_TTL = 60.0         # seconds — the single-threaded server may call this per risk-gate check
+
+
+def _schwab_account_cached(account_key: str) -> dict:
+    """One Schwab get_account per account per TTL window (shared by equity/cash/buying_power)."""
+    key = (account_key or "").strip()
+    import time as _t
+    hit = _SCHWAB_ACCT_CACHE.get(key)
+    if hit and (_t.monotonic() - hit[0]) < _EQUITY_TTL:
+        return hit[1]
+    acct: dict = {}
+    try:
+        import schwab_transport as st
+        acct = st.get_account(key) or {}
+    except Exception:
+        acct = {}
+    _SCHWAB_ACCT_CACHE[key] = (_t.monotonic(), acct)
+    return acct
 
 
 def equity_for_account(account_key: str) -> tuple[float, str]:
@@ -123,8 +141,7 @@ def _resolve_equity(low: str, key: str) -> tuple[float, str]:
 
     if low.startswith("schwab"):
         try:
-            import schwab_transport as st
-            acct = st.get_account(key) or {}
+            acct = _schwab_account_cached(key)
             eq = _f(acct.get("equity"))
             if eq and eq > 0:
                 return eq, "schwab_live"
@@ -206,8 +223,7 @@ def buying_power_for_account(account_key: str) -> tuple[float | None, str]:
     low = key.lower()
     if low.startswith("schwab"):
         try:
-            import schwab_transport as st
-            acct = st.get_account(key) or {}
+            acct = _schwab_account_cached(key)
             if acct.get("status") == "active":
                 bp = _f(acct.get("buying_power"))
                 if bp and bp > 0:
@@ -227,8 +243,7 @@ def cash_for_account(account_key: str) -> tuple[float | None, str]:
 
     if low.startswith("schwab"):
         try:
-            import schwab_transport as st
-            acct = st.get_account(key) or {}
+            acct = _schwab_account_cached(key)
             if acct.get("status") == "active":
                 cash = _f(acct.get("cash"))
                 if cash and cash > 0:
