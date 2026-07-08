@@ -1,18 +1,25 @@
 {
-  "generated_at": "2026-07-06T11:40:04.721844+00:00",
-  "git_head": "97968dd6",
-  "files_checked": 6,
-  "findings_count": 2,
+  "generated_at": "2026-07-07T11:40:00.204049+00:00",
+  "git_head": "4ccc8c50",
+  "files_checked": 28,
+  "findings_count": 3,
   "by_severity": {
+    "P0": 1,
     "P1": 1,
     "P2": 1
   },
-  "status": "warning",
+  "status": "attention_required",
   "findings": [
+    {
+      "severity": "P0",
+      "check": "unsafe_file",
+      "file": "scripts/build_pro_analyst_read_model.py",
+      "message": "Unsafe file pattern 'model' in commit"
+    },
     {
       "severity": "P1",
       "check": "code_without_docs",
-      "message": "6 code files changed, 0 docs updated"
+      "message": "27 code files changed, 0 docs updated"
     },
     {
       "severity": "P2",

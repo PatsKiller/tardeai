@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-07-06T11:40:05.457774+00:00",
+  "generated_at": "2026-07-07T11:40:00.903241+00:00",
   "overall_maturity": 6.8,
   "a5_complete": true,
   "a5_end_date": "2026-05-22",
-  "governance_status": "warning",
+  "governance_status": "attention_required",
   "allowed_actions": [
     "A-5 observation check",
     "Final A-5 review",
