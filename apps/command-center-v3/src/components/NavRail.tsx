@@ -31,6 +31,7 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
     hubs: [
       { to: '/retirement', label: 'Retirement' },
       { to: '/health', label: 'Health' },
+      { to: '/consumption', label: 'Consumption' },
       { to: '/system', label: 'System' },
     ],
   },

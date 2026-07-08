@@ -104,14 +104,21 @@ def _clear_cloud_inflight(proposal_id: int) -> None:
 
 
 def _lane_availability() -> dict:
-    out = {"grok": False, "chatgpt": False}
     try:
-        import cloud_review
-        for lane in ("grok", "chatgpt"):
-            out[lane] = bool(cloud_review.available(lane))
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+        from oauth_lane_status import lanes_available
+        return lanes_available()
     except Exception:
-        pass
-    return out
+        out = {"grok": False, "chatgpt": False}
+        try:
+            import cloud_review
+            for lane in ("grok", "chatgpt"):
+                out[lane] = bool(cloud_review.available(lane))
+        except Exception:
+            pass
+        return out
 
 
 def _fetch_agent_reviews(proposal_id: int) -> list[dict]:

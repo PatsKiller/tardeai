@@ -800,7 +800,9 @@ export default function SystemHub({ onDrill }: Props) {
               </div>
             </>
           })() : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading review health...</div>}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/llm-health</div>
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>
+            Source: /api/v2/llm-health · OAuth probe: <a href="/v3/consumption" style={{ color: '#60a5fa' }}>Consumption</a> (free Grok/ChatGPT, not XAI_API_KEY)
+          </div>
         </div>
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Local LLM Status</div>

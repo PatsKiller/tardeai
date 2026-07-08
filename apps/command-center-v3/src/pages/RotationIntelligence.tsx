@@ -824,7 +824,7 @@ export default function RotationIntelligence() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 6 }}>
               {laneHealth.lanes.map((l: any) => {
-                const ready = l.status === 'ready'
+                const ready = Boolean(l.ready ?? (l.status === 'ready' && l.authenticated && !l.token_expired))
                 const offline = l.status === 'offline'
                 const col = ready ? '#22c55e' : offline ? '#ef4444' : '#f59e0b'
                 return (

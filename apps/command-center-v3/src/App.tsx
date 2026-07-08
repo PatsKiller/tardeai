@@ -20,6 +20,7 @@ import SystemHub from './pages/SystemHub'
 import RotationIntelligence from './pages/RotationIntelligence'
 import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import HealthHub from './pages/HealthHub'
+import ConsumptionHub from './pages/ConsumptionHub'
 
 declare const __ANALYST_UI_VERSION__: string
 declare const __BUILD_DATE__: string
@@ -69,6 +70,7 @@ function Shell() {
             <Route path="advisor-changes" element={<Navigate to="/rotation?tab=advisor-guide" replace />} />
             <Route path="rec-intel" element={<RecommendationIntelligence />} />
             <Route path="health" element={<HealthHub onDrill={setDrill} />} />
+            <Route path="consumption" element={<ConsumptionHub />} />
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
           </Routes>
           <div style={{ marginTop: 18, paddingTop: 8, borderTop: '1px solid rgba(148,163,184,.16)', fontSize: 11, color: 'var(--text3)' }}>

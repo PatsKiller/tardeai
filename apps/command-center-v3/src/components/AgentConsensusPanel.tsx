@@ -162,11 +162,12 @@ export default function AgentConsensusPanel({
           )}
           {cr.cached && <span style={{ color: desk.textDim }}> · cached</span>}
         </span>
-        {(lanes?.grok || lanes?.chatgpt) && (
-          <span style={{ color: desk.textDim }}>
-            OAuth lanes: {[lanes?.grok && 'Grok', lanes?.chatgpt && 'ChatGPT'].filter(Boolean).join(', ')}
-          </span>
-        )}
+        <span style={{ color: desk.textDim }}>
+          OAuth: {[
+            lanes?.grok ? 'Grok ✓' : 'Grok ✗',
+            lanes?.chatgpt ? 'ChatGPT ✓' : 'ChatGPT ✗',
+          ].join(' · ')}
+        </span>
       </div>
 
       {/* Local agents grid */}
@@ -222,7 +223,7 @@ export default function AgentConsensusPanel({
 
       <div style={{ fontSize: 9, color: desk.textDim, marginTop: 10, lineHeight: 1.45, borderTop: `1px solid ${desk.borderSubtle}`, paddingTop: 8 }}>
         Agents are advisory — risk gate and oversight BLOCK override any APPROVE vote.
-        Cloud LLMs require OAuth keys (Grok/ChatGPT); local stage 2b uses on-prem qwen3.
+        Cloud LLMs use free OAuth proxies (Grok :8645, ChatGPT :8646) — no API keys. Manage usage in Ops → Consumption.
         Fallback reviews are rule-based when the local model is unavailable.
       </div>
     </div>

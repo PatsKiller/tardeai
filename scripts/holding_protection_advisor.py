@@ -304,8 +304,13 @@ def run(lane="grok", symbols=None, limit=12):
                        "trail as a review trigger, not an order." + proxy_note)
         used_lane = lane
         try:
-            out = llm_lane.generate(prompt, lane=lane, timeout=120)
+            out = llm_lane.generate(prompt, lane=lane, timeout=120,
+                                    process_id="holding_protection_advisor",
+                                    task_summary=f"stop advisory {sym} {c.get('account')}")
         except Exception as e:
+            if "manual approval required" in str(e).lower():
+                print(f"  {sym}: Grok blocked (Manual mode) — enable Automated in Consumption or run manual")
+                continue
             # Free-lane resilience: on a Grok/ChatGPT OAuth failure (e.g. 403 token-rotation blip) retry on
             # the LOCAL gemma lane — free, never a paid fallback (honours the no-paid-fallback policy).
             if lane != "local":

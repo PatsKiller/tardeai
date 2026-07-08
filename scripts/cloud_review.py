@@ -30,12 +30,19 @@ DEFAULT_LANES = ("chatgpt", "grok")
 
 def available(lane=None):
     try:
-        import llm_lane
+        from lib.oauth_lane_status import lane_available, lanes_available
         if lane:
-            return bool(llm_lane.available(lane))
-        return any(llm_lane.available(ln) for ln in DEFAULT_LANES)
+            return lane_available(str(lane).lower())
+        la = lanes_available()
+        return any(la.get(ln) for ln in DEFAULT_LANES)
     except Exception:
-        return False
+        try:
+            import llm_lane
+            if lane:
+                return bool(llm_lane.available(lane))
+            return any(llm_lane.available(ln) for ln in DEFAULT_LANES)
+        except Exception:
+            return False
 
 
 def _build_prompt(task, local_output, context):
@@ -110,7 +117,9 @@ def _review_one(lane, task, local_output, context, timeout):
             out["error"] = f"{lane} lane unavailable"
             return out
         raw = llm_lane.generate(_build_prompt(task, local_output, context), lane=lane,
-                                timeout=timeout, model=LANE_MODEL.get(lane))
+                                timeout=timeout, model=LANE_MODEL.get(lane),
+                                process_id="cloud_review",
+                                task_summary=f"cloud_review:{task[:80]}")
         out.update(ok=True, available=True, raw=str(raw)[:6000], **_parse(raw))
     except Exception as e:
         out["error"] = str(e)[:200]

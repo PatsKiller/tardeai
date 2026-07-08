@@ -8509,81 +8509,57 @@ def _llm_oauth_lanes():
     /health + ollama tags); no API key, no paid call. Shared by rotation oversight + all Hermes tasks."""
     import time as _t, os as _os, json as _j
     try:
-        import requests as _rq
-    except Exception:
-        return {"ok": False, "error": "requests unavailable", "lanes": []}
-
-    def _get(url, timeout=3):
+        import sys as _sys
+        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.oauth_lane_status import all_lanes
+        lanes = []
+        for ln in all_lanes(include_local=True):
+            row = dict(ln)
+            row["status"] = "ready" if row.get("ready") else row.get("status", "offline")
+            lanes.append(row)
+        # Hermes — Nous Portal OAuth (auth.json presence)
+        _nous = False
         try:
-            r = _rq.get(url, timeout=timeout)
-            return r if r.ok else None
+            _aj = _j.loads(open(_os.path.expanduser("~/.hermes/auth.json")).read())
+            _nous = any("nous" in k.lower() for k in (_aj.get("providers") or {}))
         except Exception:
-            return None
+            pass
+        lanes.append({"lane": "hermes", "label": "Hermes (Nous Portal OAuth)", "kind": "oauth_proxy", "port": 8645,
+                      "reachable": True, "authenticated": _nous, "ready": _nous, "token_expired": None,
+                      "status": "ready" if _nous else "not logged in", "billing": "free_oauth",
+                      "hint": None if _nous else "hermes portal login"})
+        _ready = sum(1 for ln in lanes if ln.get("status") == "ready" or ln.get("ready"))
+        return {"ok": True, "advisory_only": True, "lanes": lanes, "ready_count": _ready, "total": len(lanes),
+                "generated_at": _t.strftime("%Y-%m-%dT%H:%M:%S"),
+                "note": "Free OAuth only — Grok via xai-oauth :8645, ChatGPT via codex :8646. No metered API keys."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "lanes": []}
 
-    lanes = []
-    # Grok — xAI OAuth proxy :8645
-    _gu = _os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions").replace("/v1/chat/completions", "/health")
-    g = _get(_gu)
-    gj = {}
-    try:
-        gj = g.json() if g is not None else {}
-    except Exception:
-        gj = {}
-    lanes.append({"lane": "grok", "label": "Grok (xAI OAuth)", "kind": "oauth_proxy", "port": 8645,
-                  "reachable": g is not None, "authenticated": bool(gj.get("authenticated")),
-                  "token_expired": gj.get("token_expired"),
-                  "status": "ready" if gj.get("authenticated") else ("offline" if g is None else "not authenticated"),
-                  "hint": None if gj.get("authenticated") else "hermes proxy start --provider xai"})
-    # ChatGPT — openai-codex OAuth proxy :8646
-    _cu = _os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstrip("/") + "/health"
-    c = _get(_cu)
-    cj = {}
-    try:
-        cj = c.json() if c is not None else {}
-    except Exception:
-        cj = {}
-    _cok = bool(cj.get("authenticated")) and not cj.get("token_expired")
-    lanes.append({"lane": "chatgpt", "label": "ChatGPT (openai-codex OAuth)", "kind": "oauth_proxy", "port": 8646,
-                  "reachable": c is not None, "authenticated": bool(cj.get("authenticated")),
-                  "token_expired": cj.get("token_expired"),
-                  "status": ("ready" if _cok else ("session expired — re-login" if cj.get("token_expired")
-                             else ("offline" if c is None else "not authenticated"))),
-                  "hint": None if _cok else "hermes auth add openai-codex --type oauth"})
-    # Hermes — Nous Portal OAuth (proxy upstream); presence from auth.json
-    _nous = False
-    try:
-        _aj = _j.loads(open(_os.path.expanduser("~/.hermes/auth.json")).read())
-        _nous = any("nous" in k.lower() for k in (_aj.get("providers") or {}))
-    except Exception:
-        pass
-    lanes.append({"lane": "hermes", "label": "Hermes (Nous Portal OAuth)", "kind": "oauth_proxy", "port": 8645,
-                  "reachable": True, "authenticated": _nous, "token_expired": None,
-                  "status": "ready" if _nous else "not logged in",
-                  "hint": None if _nous else "hermes portal login"})
-    # Local gemma (ollama)
-    o = _get("http://127.0.0.1:11434/api/tags", timeout=3)
-    _models = []
-    try:
-        _models = [m.get("name") for m in (o.json().get("models") or [])][:8] if o is not None else []
-    except Exception:
-        _models = []
-    lanes.append({"lane": "local", "label": "Local gemma (ollama)", "kind": "local", "port": 11434,
-                  "reachable": o is not None, "authenticated": o is not None, "token_expired": None,
-                  "status": "ready" if o is not None else "offline", "models": _models,
-                  "hint": None if o is not None else "start ollama"})
-    # Merge keepalive history (last successful ping / last check) so the control panel shows freshness.
-    try:
-        _ks = _j.loads((PROJECT_ROOT / "data" / "runtime" / "oauth_lane_status.json").read_text())
-        for ln in lanes:
-            k = _ks.get(ln["lane"]) or {}
-            ln["last_ok"] = k.get("last_ok")
-            ln["last_check"] = k.get("last_check")
-            ln["consec_fail"] = k.get("consec_fail")
-    except Exception:
-        pass
-    _ready = sum(1 for ln in lanes if ln["status"] == "ready")
-    return {"ok": True, "advisory_only": True, "lanes": lanes, "ready_count": _ready, "total": len(lanes),
-            "generated_at": _t.strftime("%Y-%m-%dT%H:%M:%S")}
+
+def _consumption_overview():
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib import llm_consumption as _lc
+    from lib.oauth_lane_status import lanes_available
+    return _json_clean({"ok": True, "overview": _lc.overview(), "lanes": lanes_available(),
+                        "insights": _lc.insights()})
+
+
+def _consumption_processes():
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib import llm_consumption as _lc
+    return _json_clean({"ok": True, "processes": _lc.list_processes()})
+
+
+def _consumption_logs(query=None):
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib import llm_consumption as _lc
+    q = query or {}
+    pid = (q.get("process_id") or [None])[0] if isinstance(q.get("process_id"), list) else q.get("process_id")
+    lim = int((q.get("limit") or [50])[0] if isinstance(q.get("limit"), list) else (q.get("limit") or 50))
+    return _json_clean({"ok": True, "logs": _lc.recent_logs(limit=min(lim, 200), process_id=pid)})
 
 
 def _cio_decisions_enriched():
@@ -27656,6 +27632,9 @@ ROUTES = {
     "/api/v2/agent-performance": lambda: {"history": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM agent_performance_history ORDER BY created_at DESC LIMIT 50") or [])]},
     "/api/v2/llm/health": lambda: _llm_health(),
     "/api/v2/llm/oauth-lanes": lambda: _llm_oauth_lanes(),
+    "/api/v2/consumption/overview": lambda: _consumption_overview(),
+    "/api/v2/consumption/processes": lambda: _consumption_processes(),
+    "/api/v2/consumption/logs": _consumption_logs,
     "/api/v2/system-health": lambda: _system_health_dashboard(),
     "/api/v2/data-product-health": lambda: _data_product_health(),
     "/api/v2/cost-dashboard": lambda: _cost_dashboard(),
@@ -29624,11 +29603,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import sys as _s
                 _s.path.insert(0, str(root / "scripts"))
                 import llm_lane
-                if not llm_lane.available("grok"):
+                from lib.oauth_lane_status import lane_available as _lane_ok
+                if not _lane_ok("grok"):
                     return 200, {"ok": True, "advisory_only": True, "grok_available": False,
                                  "prompt_text": text, "prompt_path": path,
-                                 "note": "Grok OAuth proxy not authenticated — paste the prompt into Grok manually (free/OAuth, no API key)."}
-                grok_answer = llm_lane.generate(prompt, lane="grok", timeout=120)
+                                 "note": "Grok OAuth proxy not ready — restart grok-oauth-proxy or run keepalive. Paste prompt manually (free/OAuth, no API key)."}
+                try:
+                    grok_answer = llm_lane.generate(prompt, lane="grok", timeout=120,
+                                                    process_id="rotation_grok_review",
+                                                    task_summary=f"rotation review: {question[:80]}")
+                except Exception as _me:
+                    if "manual approval required" in str(_me).lower():
+                        return 200, {"ok": True, "advisory_only": True, "grok_available": True,
+                                     "manual_required": True, "process_id": "rotation_grok_review",
+                                     "prompt_text": text, "prompt_path": path,
+                                     "note": "Rotation Grok Review is Manual — approve in Consumption or switch to Automated."}
+                    raise
                 return 200, {"ok": True, "advisory_only": True, "grok_available": True,
                              "grok_answer": str(grok_answer).strip(), "prompt_path": path, "prompt_text": text,
                              "note": "Free/OAuth Grok second opinion via the local OAuth proxy — no API key, no paid API. Grounding remains authoritative."}
@@ -29979,6 +29969,51 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 oid = cur.fetchone()[0]; conn.commit()
                 return 200, {"ok": True, "advisory_only": True, "observation_id": oid, "action": action,
                              "message": f"Recorded '{action}' to the learning loop."}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/consumption/process-mode":
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                from lib import llm_consumption as _lc
+                b = body or {}
+                pid = str(b.get("process_id") or "").strip()
+                mode = str(b.get("mode") or "").strip().lower()
+                if not pid or mode not in ("automated", "manual"):
+                    return 400, {"ok": False, "error": "process_id and mode (automated|manual) required"}
+                return 200, _lc.set_process_mode(pid, mode)
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v2/consumption/run-manual":
+            # Operator-approved single LLM call for a Manual-mode process.
+            try:
+                import sys as _sys
+                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                from lib import llm_consumption as _lc
+                from lib.oauth_lane_status import lane_available
+                b = body or {}
+                pid = str(b.get("process_id") or "").strip()
+                lane = str(b.get("lane") or "grok").strip().lower()
+                prompt = str(b.get("prompt") or "").strip()
+                task = str(b.get("task_summary") or b.get("task") or "").strip()
+                if not pid or not prompt:
+                    return 400, {"ok": False, "error": "process_id and prompt required"}
+                if lane not in ("grok", "chatgpt"):
+                    return 400, {"ok": False, "error": "lane must be grok or chatgpt"}
+                if not lane_available(lane):
+                    return 200, {"ok": False, "lane": lane, "error": f"{lane} OAuth lane not ready — check proxy service"}
+                text = _lc.gate_and_generate(prompt, lane=lane, process_id=pid,
+                                             task_summary=task or _lc.summarize_prompt(prompt),
+                                             manual_trigger=True, timeout=int(b.get("timeout") or 120),
+                                             model=b.get("model"))
+                return 200, {"ok": True, "lane": lane, "process_id": pid, "text": str(text).strip(),
+                             "advisory_only": True, "billing": "free_oauth"}
+            except _lc.ManualRequired as mr:
+                return 200, {"ok": False, "manual_required": True, "process_id": mr.process_id,
+                             "lane": mr.lane, "task_summary": mr.task_summary,
+                             "prompt_preview": mr.prompt_preview}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 
