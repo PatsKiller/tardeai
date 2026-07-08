@@ -16,6 +16,7 @@ Routes:
 """
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -90,12 +91,24 @@ def handle_inference(path: str, method: str = "GET", body: dict = None, query: d
             if existing:
                 return 200, {"ok": True, "job_id": existing["id"], "status": "queued",
                              "deduped": True}
+            raw_lanes = b.get("lanes")
+            lanes_json = None
+            if raw_lanes is not None:
+                if isinstance(raw_lanes, str):
+                    try:
+                        raw_lanes = json.loads(raw_lanes)
+                    except Exception:
+                        raw_lanes = [x.strip() for x in raw_lanes.split(",") if x.strip()]
+                if isinstance(raw_lanes, (list, tuple)):
+                    picked = [str(ln).strip().lower() for ln in raw_lanes
+                              if str(ln).strip().lower() in ("grok", "chatgpt", "local")]
+                    lanes_json = json.dumps(picked) if picked else None
             row = _db_write(
                 """INSERT INTO inference_ensemble_jobs
-                   (target_type, target_id, subject, content, task, requested_by, status)
-                   VALUES (%s,%s,%s,%s,%s,%s,'queued') RETURNING id""",
+                   (target_type, target_id, subject, content, task, requested_by, lanes, status)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,'queued') RETURNING id""",
                 (target_type, target_id, (b.get("subject") or "")[:300], content[:8000],
-                 b.get("task", "inference_quality"), b.get("requested_by", "operator")),
+                 b.get("task", "inference_quality"), b.get("requested_by", "operator"), lanes_json),
                 fetch="one")
             if not row:
                 return 500, {"ok": False, "error": "could not enqueue"}

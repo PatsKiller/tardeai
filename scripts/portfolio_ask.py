@@ -126,11 +126,13 @@ def gather_context(question: str) -> dict:
             "themes": {k: v.get("pct") for k, v in (lt.get("themes") or {}).items()}}
 
 
-def ask(question: str, lane: str | None = None) -> dict:
+def ask(question: str, lane: str | None = None, manual_trigger: bool = False) -> dict:
     ctx = gather_context(question)
     try:
         import llm_lane
-        use = lane or ("grok" if llm_lane.available("grok") else "local")
+        use = (lane or "").strip().lower() or None
+        if use not in ("grok", "chatgpt", "local"):
+            use = "grok" if llm_lane.available("grok") else "local"
         private_facts = "\n".join(f"- {p['name']}: {p['note']}" for p in ctx["positions"] if p.get("private"))
         prompt = (
             "You are the portfolio CIO/risk advisor. Answer the operator's question about THEIR portfolio "
@@ -148,12 +150,20 @@ def ask(question: str, lane: str | None = None) -> dict:
             + (f"PRIVATE-NAME FACTS (use verbatim, do not contradict):\n{private_facts}\n" if private_facts else "")
             + "Be concrete, 5-8 sentences.\n\n"
             f"QUESTION: {question}\n\nPORTFOLIO CONTEXT:\n{json.dumps(ctx, indent=2)}")
-        out = llm_lane.generate(prompt, lane=use, timeout=90)
+        gen_kw = dict(lane=use, timeout=90)
+        if use in ("grok", "chatgpt"):
+            gen_kw.update(process_id="portfolio_ask", task_summary=question[:120],
+                          manual_trigger=bool(manual_trigger or lane))
+        out = llm_lane.generate(prompt, **gen_kw)
         answer = out if (out and not str(out).startswith("LLM error")) else "(LLM unavailable — try again)"
-        model = "grok-3-mini" if use == "grok" else "local"
+        model = {"grok": "grok-oauth", "chatgpt": "chatgpt-oauth"}.get(use, "local")
     except Exception as e:
-        answer, model = f"(error: {str(e)[:80]})", "none"
-    return {"question": question, "answer": str(answer).strip(), "model": model, "context": ctx}
+        err = str(e)
+        if "ManualRequired" in type(e).__name__ or "manual_mode" in err:
+            return {"question": question, "ok": False, "manual_required": True,
+                    "error": "portfolio_ask is Manual — pick ▶ Grok or ▶ ChatGPT", "context": ctx}
+        answer, model = f"(error: {err[:80]})", "none"
+    return {"question": question, "answer": str(answer).strip(), "model": model, "lane": use, "context": ctx}
 
 
 if __name__ == "__main__":

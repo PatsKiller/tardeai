@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { requestEnsemble, type EnsembleLane } from '../lib/cloudLlmRun'
+import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 
 // Multi-LLM ensemble validation UI (Grok + ChatGPT OAuth + local gemma).
 // Mirrors the real backend shape from scripts/inference_ensemble.ensemble_validate:
@@ -152,6 +154,48 @@ const linkBtn: React.CSSProperties = {
   fontSize: 10, color: '#60a5fa', background: 'none', border: 'none', cursor: 'pointer', padding: 0,
 }
 
+const GROK = '#1d9bf0', GPT = '#10a37f', ALL = '#a855f7'
+
+function ensembleBtnStyle(color: string, active: boolean, compact?: boolean): React.CSSProperties {
+  return {
+    fontSize: compact ? 9 : 10, fontWeight: 800, marginTop: compact ? 0 : 6,
+    padding: compact ? '3px 8px' : '3px 9px', borderRadius: 5,
+    cursor: active ? 'wait' : 'pointer', whiteSpace: 'nowrap',
+    border: `1px solid ${color}66`, background: `${color}14`, color,
+    opacity: active ? 0.7 : 1,
+  }
+}
+
+function EnsembleRunButtons({ compact, busy, onRun }: {
+  compact?: boolean
+  busy: 'grok' | 'chatgpt' | 'all' | null
+  onRun: (lanes?: EnsembleLane[]) => void
+}) {
+  const oauth = useOAuthLanes(0)
+  const wrap = { display: 'flex' as const, flexWrap: 'wrap' as const, gap: compact ? 4 : 6, alignItems: 'center' as const,
+    marginTop: compact ? 0 : 6 }
+  const runCloud = (lane: 'grok' | 'chatgpt') => {
+    if (!laneReady(lane === 'grok' ? oauth.grok : oauth.chatgpt)) return
+    onRun([lane])
+  }
+  return (
+    <div style={wrap}>
+      <button type="button" disabled={!!busy} onClick={() => runCloud('grok')}
+        style={ensembleBtnStyle(GROK, busy === 'grok', compact)}>
+        {busy === 'grok' ? '…' : '▶ Grok'}
+      </button>
+      <button type="button" disabled={!!busy} onClick={() => runCloud('chatgpt')}
+        style={ensembleBtnStyle(GPT, busy === 'chatgpt', compact)}>
+        {busy === 'chatgpt' ? '…' : '▶ ChatGPT'}
+      </button>
+      <button type="button" disabled={!!busy} onClick={() => onRun(undefined)}
+        style={ensembleBtnStyle(ALL, busy === 'all', compact)}>
+        {busy === 'all' ? '⏳ validating…' : '⚖ All (Grok+ChatGPT+Gemma)'}
+      </button>
+    </div>
+  )
+}
+
 // ── Self-contained: button → enqueue → poll → render. Reusable on any surface. ──
 export function EnsembleValidationInline({ targetType, targetId, subject, content, task, autoRequest, compact }: {
   targetType: string
@@ -165,6 +209,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
 }) {
   const [state, setState] = useState<'loading' | 'idle' | 'queued' | 'done' | 'error'>('loading')
   const [result, setResult] = useState<EnsembleResult | null>(null)
+  const [runBusy, setRunBusy] = useState<'grok' | 'chatgpt' | 'all' | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval>>()
   const autoFired = useRef(false)
 
@@ -207,16 +252,24 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
   // eslint-disable-next-line react-hooks/exhaustive-deps -- request stable enough; autoFired prevents double enqueue
   }, [fetchOnce, poll, autoRequest])
 
-  const request = useCallback(async () => {
+  const request = useCallback(async (lanes?: EnsembleLane[]) => {
+    const busyKey = lanes?.length === 1
+      ? (lanes[0] === 'grok' ? 'grok' : lanes[0] === 'chatgpt' ? 'chatgpt' : 'all')
+      : 'all'
+    setRunBusy(busyKey as 'grok' | 'chatgpt' | 'all')
     setState('queued'); setResult(null)
     try {
-      await fetch('/api/v2/inference/ensemble/request', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_type: targetType, target_id: targetId, subject, content, task: task || 'inference_quality' }),
+      const j = await requestEnsemble({
+        targetType, targetId, subject, content, task: task || 'inference_quality', lanes,
       })
+      if (j?.ok === false) { setState('error'); setRunBusy(null); return }
       poll()
-    } catch { setState('error') }
+    } catch { setState('error'); setRunBusy(null) }
   }, [targetType, targetId, subject, content, task, poll])
+
+  useEffect(() => {
+    if (state === 'done' || state === 'idle' || state === 'error') setRunBusy(null)
+  }, [state])
 
   if (state === 'loading') return <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: compact ? 0 : 6 }}>checking Grok/ChatGPT/Gemma…</div>
   if (state === 'done' && result) {
@@ -237,23 +290,26 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
             <span style={{ fontSize: 11, fontWeight: 900, color: result.final_decision === 'approve' ? '#22c55e' : '#ef4444' }}>
               → {(result.final_decision || '').toUpperCase()} {result.final_score?.toFixed(1)}/10
             </span>
-            <button onClick={request} style={{ ...linkBtn, marginLeft: 4 }}>re-run</button>
+            <EnsembleRunButtons compact busy={runBusy} onRun={request} />
           </div>
           {result.reasoning_summary && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{result.reasoning_summary}</div>}
         </div>
       )
     }
-    return <EnsembleValidationCard result={result} onRevalidate={request} />
+    return <EnsembleValidationCard result={result} onRevalidate={() => request()} />
   }
-  return (
-    <button onClick={request} disabled={state === 'queued'} style={{
-      fontSize: 10, marginTop: compact ? 0 : 6, padding: '3px 9px', borderRadius: 5, cursor: state === 'queued' ? 'default' : 'pointer',
-      border: '1px solid var(--border)', background: 'var(--bg2)',
-      color: state === 'error' ? '#f87171' : state === 'queued' ? 'var(--text3)' : '#a855f7',
-    }}>
-      {state === 'queued' ? '⏳ Grok + ChatGPT + Gemma validating…' : state === 'error' ? '⚠ validation failed — retry' : '⚖ Run Grok + ChatGPT + Gemma review'}
-    </button>
-  )
+  if (state === 'queued') {
+    return <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: compact ? 0 : 6 }}>⏳ ensemble validating…</div>
+  }
+  if (state === 'error') {
+    return (
+      <div>
+        <div style={{ fontSize: 10, color: '#f87171', marginTop: compact ? 0 : 6 }}>⚠ validation failed — retry</div>
+        <EnsembleRunButtons compact={compact} busy={runBusy} onRun={request} />
+      </div>
+    )
+  }
+  return <EnsembleRunButtons compact={compact} busy={runBusy} onRun={request} />
 }
 
 export default EnsembleValidationCard

@@ -167,6 +167,7 @@ DDL = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_ens_jobs_status ON inference_ensemble_jobs(status, requested_at)",
     "CREATE INDEX IF NOT EXISTS idx_ens_jobs_target ON inference_ensemble_jobs(target_type, target_id, requested_at DESC)",
+    "ALTER TABLE inference_ensemble_jobs ADD COLUMN IF NOT EXISTS lanes JSONB",
     """
     CREATE TABLE IF NOT EXISTS inference_ensemble_results (
         id                BIGSERIAL PRIMARY KEY,

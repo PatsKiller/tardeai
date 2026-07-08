@@ -62,7 +62,7 @@ def claim_jobs(limit: int) -> list:
              SELECT id FROM inference_ensemble_jobs
              WHERE status='queued' ORDER BY requested_at LIMIT %s
              FOR UPDATE SKIP LOCKED)
-           RETURNING id, target_type, target_id, subject, content, task""",
+           RETURNING id, target_type, target_id, subject, content, task, lanes""",
         (limit,), fetch="all")
     return rows or []
 
@@ -102,10 +102,23 @@ def process(limit: int = 5) -> dict:
     done = errors = 0
     for job in jobs:
         try:
+            lanes_raw = job.get("lanes")
+            lanes = None
+            if lanes_raw:
+                if isinstance(lanes_raw, str):
+                    try:
+                        lanes = json.loads(lanes_raw)
+                    except Exception:
+                        lanes = None
+                elif isinstance(lanes_raw, (list, tuple)):
+                    lanes = list(lanes_raw)
+            task = job.get("task") or "inference_quality"
             verdict = ensemble_validate(
                 content=job.get("content") or "",
                 context=job.get("subject") or "",
-                task=job.get("task") or "inference_quality")
+                task=task,
+                lanes=lanes,
+                manual_trigger=True)
             rid = _persist_result(job, verdict)
             _execute(
                 "UPDATE inference_ensemble_jobs SET status='done', result_id=%s, finished_at=now() WHERE id=%s",

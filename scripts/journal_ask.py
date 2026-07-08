@@ -38,11 +38,13 @@ def gather_context(account=None, days=180) -> dict:
     }
 
 
-def ask(question: str, account=None, days=180, lane: str | None = None) -> dict:
+def ask(question: str, account=None, days=180, lane: str | None = None, manual_trigger: bool = False) -> dict:
     ctx = gather_context(account, days)
     try:
         import llm_lane
-        use = lane or ("grok" if llm_lane.available("grok") else "local")
+        use = (lane or "").strip().lower() or None
+        if use not in ("grok", "chatgpt", "local"):
+            use = "grok" if llm_lane.available("grok") else "local"
         prompt = (
             "You are a sharp, honest trading-journal coach. Answer the trader's question using ONLY the "
             "journal analytics below — cite the actual numbers (win rate, net P&L, R, trade counts) and "
@@ -51,12 +53,20 @@ def ask(question: str, account=None, days=180, lane: str | None = None) -> dict:
             "sentences). Flag any edge or leak you see (e.g. a losing day-of-week or session).\n\n"
             f"QUESTION: {question}\n\nJOURNAL ANALYTICS (account={ctx['filters']['account']}, "
             f"last {ctx['filters']['days']}d):\n{json.dumps(ctx, indent=2, default=str)}")
-        out = llm_lane.generate(prompt, lane=use, timeout=90)
+        gen_kw = dict(lane=use, timeout=90)
+        if use in ("grok", "chatgpt"):
+            gen_kw.update(process_id="journal_ask", task_summary=question[:120],
+                          manual_trigger=bool(manual_trigger or lane))
+        out = llm_lane.generate(prompt, **gen_kw)
         answer = out if (out and not str(out).startswith("LLM error")) else "(LLM unavailable — try again)"
-        model = "grok-3-mini" if use == "grok" else "local"
+        model = {"grok": "grok-oauth", "chatgpt": "chatgpt-oauth"}.get(use, "local")
     except Exception as e:
-        answer, model = f"(error: {str(e)[:80]})", "none"
-    return {"question": question, "answer": str(answer).strip(), "model": model, "context": ctx}
+        err = str(e)
+        if "ManualRequired" in type(e).__name__ or "manual_mode" in err:
+            return {"question": question, "ok": False, "manual_required": True,
+                    "error": "journal_ask is Manual — pick ▶ Grok or ▶ ChatGPT", "context": ctx}
+        answer, model = f"(error: {err[:80]})", "none"
+    return {"question": question, "answer": str(answer).strip(), "model": model, "lane": use, "context": ctx}
 
 
 if __name__ == "__main__":

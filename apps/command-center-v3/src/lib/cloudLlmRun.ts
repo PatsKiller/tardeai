@@ -69,6 +69,57 @@ export async function runRotationOversight(lanes: ('grok' | 'chatgpt')[]) {
   }
 }
 
+export async function runPortfolioAsk(question: string, lane: 'grok' | 'chatgpt') {
+  const res = await fetch('/api/v2/portfolio/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, lane }),
+  })
+  const j = await res.json()
+  return j?.data ?? j
+}
+
+export async function runJournalAsk(params: {
+  question: string
+  lane: 'grok' | 'chatgpt'
+  account?: string
+  days?: number
+}) {
+  const res = await fetch('/api/v2/journal/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  const j = await res.json()
+  return j?.data ?? j
+}
+
+export type EnsembleLane = 'grok' | 'chatgpt' | 'local'
+
+export async function requestEnsemble(params: {
+  targetType: string
+  targetId: string | number
+  content: string
+  subject?: string
+  task?: string
+  /** Omit for default grok+chatgpt+local; pass subset for per-lane manual runs. */
+  lanes?: EnsembleLane[]
+}) {
+  const res = await fetch('/api/v2/inference/ensemble/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      target_type: params.targetType,
+      target_id: params.targetId,
+      subject: params.subject,
+      content: params.content,
+      task: params.task || 'inference_quality',
+      lanes: params.lanes,
+    }),
+  })
+  return res.json().then(j => j?.data ?? j)
+}
+
 /** Human-readable lane policy for UI badges. */
 export function lanePolicyHint(policy: LanePolicy | string | undefined): string {
   const p = (policy || 'either') as LanePolicy

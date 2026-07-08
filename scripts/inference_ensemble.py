@@ -173,8 +173,15 @@ def _parse_vote(raw: str) -> Optional[Dict[str, Any]]:
     return out
 
 
+def _ensemble_process_id(task: str) -> str:
+    t = (task or "").lower()
+    return "options_ensemble" if "options" in t else "cloud_review"
+
+
 def ensemble_validate(content: str, context: str = "", task: str = "content_quality_rating",
-                      lanes: Optional[List[str]] = None, cfg: Optional[dict] = None) -> Dict[str, Any]:
+                      lanes: Optional[List[str]] = None, cfg: Optional[dict] = None,
+                      *, manual_trigger: bool = False,
+                      process_id: Optional[str] = None) -> Dict[str, Any]:
     """Aggregate approve/block + score across the free lanes. Returns final verdict + per-lane votes."""
     cfg = cfg or _load_cfg()
     lanes = lanes or cfg["lanes"]
@@ -185,12 +192,17 @@ def ensemble_validate(content: str, context: str = "", task: str = "content_qual
                 "consensus_reached": False, "lanes_used": [], "votes": [],
                 "reasoning_summary": f"llm_lane unavailable ({e}) — safe block"}
     prompt = _prompt(content, context, task)
+    pid = process_id or _ensemble_process_id(task)
     votes: List[Dict[str, Any]] = []
     for lane in lanes:
         try:
             if not llm_lane.available(lane):
                 continue
-            raw = llm_lane.generate(prompt, lane=lane, timeout=int(cfg["timeout"]))
+            gen_kw = dict(lane=lane, timeout=int(cfg["timeout"]))
+            if lane in ("grok", "chatgpt"):
+                gen_kw.update(process_id=pid, task_summary=(task or "ensemble")[:120],
+                              manual_trigger=bool(manual_trigger))
+            raw = llm_lane.generate(prompt, **gen_kw)
             v = _parse_vote(raw)
             if v:
                 v["lane"] = lane

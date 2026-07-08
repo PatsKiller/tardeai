@@ -97,6 +97,42 @@ curl -X POST http://127.0.0.1:7777/api/v2/watchlist/AAPL/cio-synthesis \
 
 UI: **Watch** cards — **▶ Grok / ▶ ChatGPT** on Conviction (v3) or CIO context (v4). Requires completed agent reviews on the symbol.
 
+Portfolio Ask (`portfolio_ask`, either):
+
+```bash
+curl -X POST http://127.0.0.1:7777/api/v2/portfolio/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Am I over-concentrated in AI?","lane":"grok"}'
+```
+
+UI: **Portfolio Hub** / **Risk Hub** — **Ask the Agents** box — **▶ Grok / ▶ ChatGPT**.
+
+Journal Ask (`journal_ask`, either):
+
+```bash
+curl -X POST http://127.0.0.1:7777/api/v2/journal/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Why do I lose on Thursdays?","lane":"chatgpt","days":180}'
+```
+
+UI: **Journal → Analytics** — **Ask your journal** — **▶ Grok / ▶ ChatGPT**.
+
+Ensemble validation (`cloud_review` / `options_ensemble`, Manual cloud lanes):
+
+```bash
+# Single cloud lane (faster; local Gemma omitted)
+curl -X POST http://127.0.0.1:7777/api/v2/inference/ensemble/request \
+  -H 'Content-Type: application/json' \
+  -d '{"target_type":"inference","target_id":"42","content":"...","lanes":["grok"]}'
+
+# Full ensemble (default: grok + chatgpt + local Gemma)
+curl -X POST http://127.0.0.1:7777/api/v2/inference/ensemble/request \
+  -H 'Content-Type: application/json' \
+  -d '{"target_type":"proposal","target_id":"99","content":"...","task":"options_proposal"}'
+```
+
+UI: **EnsembleValidationInline** on broker/watchlist/options/inference cards — **▶ Grok**, **▶ ChatGPT**, or **⚖ All (Grok+ChatGPT+Gemma)**.
+
 Optional cron (weekdays, stays Manual in DB):
 
 ```cron

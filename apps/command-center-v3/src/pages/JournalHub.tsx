@@ -26,6 +26,8 @@ import MonteCarloPanel from '../components/tradeinview/MonteCarloPanel'
 import TradeCompareReplay from '../components/tradeinview/TradeCompareReplay'
 import TaggingQueuePanel from '../components/tradeinview/TaggingQueuePanel'
 import ByTickerPanel from '../components/tradeinview/ByTickerPanel'
+import { runJournalAsk } from '../lib/cloudLlmRun'
+import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Trades', 'By Ticker', 'Tagging Queue', 'Analytics', 'Exit Intel', 'Behavioral', 'Session', 'Advanced', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Import'] as const
@@ -217,7 +219,25 @@ export default function JournalHub({ onDrill }: Props) {
   const tagQueueNeed = ((tagQueueResp as any)?.data ?? tagQueueResp)?.need_tagging ?? 0
   const [jq, setJq] = useState('')          // journal Ask box
   const [jAns, setJAns] = useState<any>(null)
-  const [jBusy, setJBusy] = useState(false)
+  const [jBusy, setJBusy] = useState<'grok' | 'chatgpt' | null>(null)
+  const oauth = useOAuthLanes(0)
+
+  const jAsk = async (lane: 'grok' | 'chatgpt') => {
+    const question = jq.trim()
+    if (!question) return
+    if (!laneReady(lane === 'grok' ? oauth.grok : oauth.chatgpt)) {
+      setJAns({ ok: false, error: `${lane} OAuth not ready — Ops → Consumption` })
+      return
+    }
+    setJBusy(lane); setJAns(null)
+    try {
+      setJAns(await runJournalAsk({
+        question, lane, account: acctFilter || undefined, days: _edgeDays[timeRange] ?? 365,
+      }))
+    } catch (e: any) { setJAns({ ok: false, error: String(e?.message || e) }) }
+    finally { setJBusy(null) }
+  }
+
   const [reviewOpen, setReviewOpen] = useState<string | null>(null)  // trade_key whose emotion form is open
   const [logView, setLogView] = useState<'cards' | 'table'>('cards')
   const [sortCol, setSortCol] = useState('exitDate')
@@ -970,27 +990,31 @@ export default function JournalHub({ onDrill }: Props) {
           {/* ═══ Ask the journal (AI Q&A) ═══ */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>💬 Ask your journal</div>
-            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>Natural-language Q&A over your real trade analytics — e.g. "Why do I lose on Thursdays?", "Best session for my scalps?", "Which strategy should I cut?"</div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>Natural-language Q&A over your real trade analytics — pick Grok or ChatGPT</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input value={jq} onChange={e => setJq(e.target.value)} placeholder="ask about your trading…"
-                onKeyDown={e => { if (e.key === 'Enter' && jq.trim() && !jBusy) { (document.getElementById('jask-btn') as any)?.click() } }}
-                style={{ flex: 1, fontSize: 12, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />
-              <button id="jask-btn" disabled={jBusy || !jq.trim()}
-                onClick={async () => {
-                  setJBusy(true); setJAns(null)
-                  try {
-                    const r = await fetch('/api/v2/journal/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ question: jq, account: acctFilter || undefined, days: _edgeDays[timeRange] ?? 365 }) }).then(x => x.json())
-                    setJAns(r)
-                  } catch (e: any) { setJAns({ answer: 'error: ' + e.message }) } finally { setJBusy(false) }
-                }}
-                style={{ padding: '8px 16px', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: 12, cursor: jBusy ? 'wait' : 'pointer', background: jBusy || !jq.trim() ? 'var(--bg2)' : '#60a5fa', color: jBusy || !jq.trim() ? 'var(--text3)' : '#fff' }}>
-                {jBusy ? '…' : 'Ask'}</button>
+                onKeyDown={e => { if (e.key === 'Enter' && jq.trim() && !jBusy) { void jAsk('grok') } }}
+                style={{ flex: 1, minWidth: 180, fontSize: 12, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />
+              {(['grok', 'chatgpt'] as const).map(lane => {
+                const color = lane === 'grok' ? '#1d9bf0' : '#10a37f'
+                return (
+                  <button key={lane} type="button" disabled={!!jBusy || !jq.trim()}
+                    onClick={() => void jAsk(lane)}
+                    style={{ padding: '8px 14px', borderRadius: 6, fontWeight: 800, fontSize: 12, cursor: jBusy ? 'wait' : 'pointer',
+                      border: `1px solid ${color}66`, background: `${color}14`, color, opacity: jBusy && jBusy !== lane ? 0.5 : 1 }}>
+                    {jBusy === lane ? '…' : lane === 'grok' ? '▶ Grok' : '▶ ChatGPT'}
+                  </button>
+                )
+              })}
             </div>
             {jAns && (
               <div style={{ marginTop: 10, padding: 10, background: 'var(--bg2)', borderRadius: 6, fontSize: 11.5, color: 'var(--text1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                {jAns.answer}
-                {jAns.model && <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>via {jAns.model} · over your {acctFilter ? (ACCT_LABEL[acctFilter] ?? acctFilter) : 'all-account'} journal ({timeRange})</div>}
+                {jAns.ok === false || jAns.manual_required
+                  ? <span style={{ color: '#ef4444' }}>⚠ {jAns.error || 'blocked — pick ▶ Grok or ▶ ChatGPT'}</span>
+                  : jAns.answer}
+                {jAns.model && jAns.ok !== false && !jAns.manual_required && (
+                  <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>via {jAns.model}{jAns.lane ? ` · ${jAns.lane}` : ''} · over your {acctFilter ? (ACCT_LABEL[acctFilter] ?? acctFilter) : 'all-account'} journal ({timeRange})</div>
+                )}
               </div>
             )}
           </div>

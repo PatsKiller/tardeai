@@ -30135,7 +30135,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 q = (body or {}).get("question", "").strip()
                 if not q:
                     return 400, {"ok": False, "error": "no question"}
-                return 200, {"ok": True, **_pa.ask(q)}
+                lane = str((body or {}).get("lane") or "").strip().lower()
+                if lane not in ("grok", "chatgpt"):
+                    lane = None
+                return 200, {"ok": True, **_pa.ask(q, lane=lane, manual_trigger=bool(lane))}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
@@ -30150,7 +30153,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 q = (b.get("question") or "").strip()
                 if not q:
                     return 400, {"ok": False, "error": "no question"}
-                return 200, {"ok": True, **_ja.ask(q, account=b.get("account"), days=int(b.get("days") or 180))}
+                lane = str(b.get("lane") or "").strip().lower()
+                if lane not in ("grok", "chatgpt"):
+                    lane = None
+                return 200, {"ok": True, **_ja.ask(q, account=b.get("account"),
+                                                    days=int(b.get("days") or 180),
+                                                    lane=lane, manual_trigger=bool(lane))}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
