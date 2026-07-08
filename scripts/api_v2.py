@@ -22188,7 +22188,11 @@ def _data_source_health(query=None):
         ("Seeking Alpha", "news", NEWS, "=", "seeking_alpha", 72),
         ("YouTube (topic API)", "news", NEWS, "=", "topic_youtube_api", 72),
         ("DuckDuckGo (topic)", "websearch", NEWS, "=", "topic_duckduckgo", 168),
-        ("Brave (topic)", "websearch", NEWS, "=", "topic_brave_news", 336),
+        ("Yahoo search (topic)", "websearch", NEWS, "=", "topic_yahoo_search", 168),
+        # Brave (topic) retired 2026-07-07: account 402-paywalled (credits exhausted);
+        # replaced by the free Yahoo Finance + DuckDuckGo topic lanes. Re-add a
+        # ("Brave (topic)", ..., "topic_brave_news", 336) SPEC and set
+        # TOPIC_BRAVE_ENABLED=1 in topic_ingestion once Brave billing is restored.
         ("Hermes research", "research", NEWS, "=", "hermes", 48),
     ]
     out, now_iso = [], datetime.now().astimezone()

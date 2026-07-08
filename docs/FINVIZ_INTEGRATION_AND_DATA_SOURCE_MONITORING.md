@@ -41,9 +41,9 @@ catches silent feed failures. Advisory only.
 
 `/api/v2/data-source-health` → **System hub → Data Sources** tab. Per-source: last update, recent volume,
 and status vs expected cadence — **live** (within cadence) / **slow** (1–2× late) / **stale** (2–4×) /
-**dead** (>4× or no data). Covers 19 feeds: news APIs (Yahoo/Google/Finnhub/Benzinga/Seeking Alpha),
+**dead** (>4× or no data). Covers news APIs (Yahoo RSS/Google/Finnhub/Benzinga/Seeking Alpha),
 Finviz (News/screeners/enrichment/membership/sector/industry), FRED, YouTube, web-search lanes
-(DuckDuckGo/Brave), Hermes research, catalysts, SEC Form-4.
+(DuckDuckGo/Yahoo search — Brave retired 2026-07-07, see §4), Hermes research, catalysts, SEC Form-4.
 
 ### Why this exists — the DuckDuckGo lesson
 DDG silently returned `[]` (no exception) for weeks after a markup/bot-gate change. **Job-level monitors saw
@@ -61,8 +61,8 @@ sources (DuckDuckGo, etc.) don't populate `published_at`. A feed producing fresh
 ### Recovery verified (2026-06-21)
 Firing the now-fixed jobs flipped the monitor `3 DEAD / 2 SLOW / 14 LIVE` → `1 DEAD / 18 LIVE`:
 DuckDuckGo (ran topic_ingestion → 10 results saved) and Screener membership (ran a screener → membership
-maintained) both went **dead → live**. **Brave stays dead — correctly**: its free monthly tier is exhausted
-(returns 0 items), so the monitor is honest, not buggy (DuckDuckGo is its fallback and is now healthy).
+maintained) both went **dead → live**. Brave read dead — correctly: its free tier was exhausted (returned 0
+items), so the monitor was honest, not buggy. Brave was later **retired** (§4) once the paid tier also 402'd.
 
 ---
 
@@ -90,7 +90,34 @@ vs-50d-SMA (sign-colored).
   (reset → present `seen++`/`miss=0` → age fall-offs `dropped`/`stale@3`/`expired@7`). Was a month stale.
 - **Finviz news**: CSV parse + `v=3` ticker-tagged + multi-ticker split. 0 → 180/ticker.
 
+## 4. Topic-search lane changes 2026-07-07 (Brave retired · YouTube throttled · Yahoo added)
+
+Two `topic_ingestion` web/video lanes were reading **dead** on the board — both were external quota/billing
+exhaustion, **not code bugs** (confirmed against the live `/api/v2/data-source-health` endpoint; a stale
+`health_agent_status.json` had earlier misattributed this to "Yahoo", which was never dead — **Yahoo RSS was
+live throughout**).
+
+- **Brave (topic) → HTTP 402 Payment Required** (account credits exhausted; last row 2026-07-02).
+  **Retired**: `search_brave_news` no-ops behind `TOPIC_BRAVE_ENABLED` (default off) and its board SPEC
+  (`topic_brave_news`) was removed. Re-enable = set `TOPIC_BRAVE_ENABLED=1` **and** re-add the SPEC line.
+- **YouTube (topic API) → HTTP 429** "Search Queries per day" quota exhausted (GCP project 204441234483;
+  `search.list` = 100 units/call, default 10k/day ≈ 100 searches; dead 2026-06-21→07-07 because one run burned
+  the whole budget then 429'd all day). **Throttled**: persistent daily budget
+  `data/portfolios/state/youtube_search_budget.json`, cap `YOUTUBE_SEARCH_DAILY_CAP` (default 80), per-query
+  cache, and a 429 circuit-break for the rest of the day. Recovers on its own after the midnight-Pacific reset.
+- **Yahoo Finance search added** as the free/keyless replacement for Brave → DB source `topic_yahoo_search`,
+  board row "Yahoo search (topic)". Uses `query1/query2.finance.yahoo.com/v1/finance/search` with host
+  rotation. Finance/ticker-oriented (strong for symbol topics; Google News RSS + DDG cover the general side).
+  **Gotcha**: Yahoo's `providerPublishTime` is epoch seconds — converted to ISO before `_save_article`, else
+  the `timestamptz` insert on `published_at` silently rejects every row.
+
+Pipeline order is now `[1/5] YouTube → [2/5] Google News → [3/5] Yahoo search → [4/5] Brave (retired no-op) →
+[5/5] DuckDuckGo`. Board after fix: Yahoo search **live**, Brave off-board, DDG live, YouTube dead until the
+next quota reset.
+
 ## Files
+- `scripts/topic_ingestion.py` → `search_yahoo_news`, `search_brave_news` (gated), `_youtube_search` +
+  `_yt_budget_*` quota guard, `process_topic` SOURCE 3/4/5 blocks
 - `scripts/finviz_screener_runner.py`, `finviz_enrichment.py`, `finviz_news.py`,
   `finviz_proactive_research.py`, `finviz_sector_research.py`
 - `scripts/api_v2.py` → `_data_source_health`, `_sector_performance`, `_insider_activity`, `_finviz_enrichment`

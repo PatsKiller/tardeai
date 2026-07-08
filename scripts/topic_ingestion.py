@@ -354,11 +354,68 @@ def _llm_rate_quality(title: str, content_preview: str,
 # ════════════════════════════════════════════════════════════════════════
 # SOURCE 1: YouTube Data API v3  (video search + transcript)
 # ════════════════════════════════════════════════════════════════════════
+# ── YouTube Data API v3 daily quota guard ─────────────────────────────────
+# search.list costs 100 quota units/call; the default project quota is 10,000/day
+# (~100 searches). The topic pipeline previously burned the whole budget in a
+# single run and then 429'd for the rest of the day — the topic_youtube_api lane
+# read "dead" on the health board from 2026-06-21 to 2026-07-07. Cap our own
+# usage well under the ceiling so the lane stays alive at reduced volume, and
+# circuit-break for the rest of the day on the first 429. Tunable via
+# YOUTUBE_SEARCH_DAILY_CAP (default 80 → ~8,000 units, leaving headroom for the
+# channel-based transcript pipeline that shares the same project quota).
+_YT_BUDGET_FILE = PROJECT_ROOT / "data" / "portfolios" / "state" / "youtube_search_budget.json"
+_YT_DAILY_CAP = int(os.getenv("YOUTUBE_SEARCH_DAILY_CAP", "80"))
+_yt_query_cache: dict[str, list[dict]] = {}   # per-process de-dup of identical queries
+
+
+def _yt_budget_load() -> dict:
+    today = datetime.now().strftime("%Y-%m-%d")
+    try:
+        d = json.loads(_YT_BUDGET_FILE.read_text())
+    except Exception:
+        d = {}
+    if d.get("date") != today:
+        d = {"date": today, "count": 0, "quota_blocked": False}
+    return d
+
+
+def _yt_budget_save(d: dict) -> None:
+    try:
+        _YT_BUDGET_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _YT_BUDGET_FILE.write_text(json.dumps(d, indent=2))
+    except Exception:
+        pass
+
+
+def _yt_budget_allow() -> tuple[bool, str]:
+    d = _yt_budget_load()
+    if d.get("quota_blocked"):
+        return False, "quota 429'd earlier today — circuit-broken until tomorrow"
+    if d.get("count", 0) >= _YT_DAILY_CAP:
+        return False, f"daily cap {_YT_DAILY_CAP} reached ({d.get('count', 0)} search.list calls)"
+    return True, ""
+
+
+def _yt_budget_record(blocked: bool = False) -> None:
+    d = _yt_budget_load()
+    d["count"] = d.get("count", 0) + 1
+    if blocked:
+        d["quota_blocked"] = True
+    _yt_budget_save(d)
+
+
 def _youtube_search(query: str, max_results: int = 5) -> list[dict]:
-    """Search YouTube via Data API v3. Returns video metadata."""
+    """Search YouTube via Data API v3. Returns video metadata.
+    Guarded by a persistent per-day quota budget (search.list = 100 units/call)."""
     api_key = _env("YOUTUBE_API_KEY")
     if not api_key:
         print("  [youtube] No YOUTUBE_API_KEY — skipping")
+        return []
+    if query in _yt_query_cache:
+        return _yt_query_cache[query]
+    ok, why = _yt_budget_allow()
+    if not ok:
+        print(f"  [youtube] quota guard: {why} — skipping '{query[:50]}'")
         return []
     params = urllib.parse.urlencode({
         "part": "snippet", "q": query, "type": "video",
@@ -370,6 +427,7 @@ def _youtube_search(query: str, max_results: int = 5) -> list[dict]:
         req = urllib.request.Request(url, method="GET")
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
+        _yt_budget_record()   # a search.list call was consumed (100 units)
         results = []
         for item in data.get("items", []):
             vid = item.get("id", {}).get("videoId")
@@ -383,8 +441,17 @@ def _youtube_search(query: str, max_results: int = 5) -> list[dict]:
                     "description": snip.get("description", "")[:500],
                     "url": f"https://www.youtube.com/watch?v={vid}",
                 })
+        _yt_query_cache[query] = results
         print(f"  [youtube] Found {len(results)} videos for: {query}")
         return results
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            _yt_budget_record(blocked=True)
+            print("  [youtube] HTTP 429 quota exceeded — circuit-breaking YouTube "
+                  "search for the rest of today")
+        else:
+            print(f"  [youtube] Search error: HTTP {e.code}")
+        return []
     except Exception as e:
         print(f"  [youtube] Search error: {e}")
         return []
@@ -649,7 +716,16 @@ def search_google_news(queries: list[str], max_per_query: int = 5) -> list[dict]
 # SOURCE 3: Brave Search News API
 # ════════════════════════════════════════════════════════════════════════
 def search_brave_news(queries: list[str], max_per_query: int = 5) -> list[dict]:
-    """Search Brave News API. Requires BRAVE_SEARCH_API_KEY."""
+    """Search Brave News API. Requires BRAVE_SEARCH_API_KEY.
+
+    RETIRED 2026-07-07: the Brave account returns HTTP 402 Payment Required
+    (plan/credits exhausted) and the free DuckDuckGo topic lane already covers
+    the same job. Disabled by default so it stops reading "dead" on the health
+    board and stops hammering a paywalled endpoint. Set TOPIC_BRAVE_ENABLED=1
+    to re-enable once billing is restored."""
+    if os.getenv("TOPIC_BRAVE_ENABLED", "0").lower() not in ("1", "true", "yes"):
+        print("  [brave] retired (402 paywalled) — set TOPIC_BRAVE_ENABLED=1 to re-enable")
+        return []
     try:
         from brave_search import search_news as brave_news
     except ImportError:
@@ -674,6 +750,63 @@ def search_brave_news(queries: list[str], max_per_query: int = 5) -> list[dict]:
                 "source": "brave_news",
             })
         print(f"  [brave] Found {len(hits)} items for: {q}")
+        time.sleep(0.3)
+    return results
+
+
+# ════════════════════════════════════════════════════════════════════════
+# SOURCE 3b: Yahoo Finance search  (free, keyless — backfills retired Brave)
+# ════════════════════════════════════════════════════════════════════════
+_YAHOO_SEARCH_HOSTS = ("https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com")
+
+
+def search_yahoo_news(queries: list[str], max_per_query: int = 5) -> list[dict]:
+    """Search Yahoo Finance news via /v1/finance/search. Free, no API key.
+
+    Added 2026-07-07 to backfill the retired Brave lane. Finance/ticker-oriented,
+    so it's strongest for symbol/company topics. Rotates query1/query2 hosts to
+    ride out Yahoo's soft per-host rate limits (mirrors yahoo_news.py)."""
+    results = []
+    seen_urls = set()
+    ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+          "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    for i, q in enumerate(queries):
+        params = urllib.parse.urlencode({"q": q, "newsCount": max_per_query,
+                                         "quotesCount": 0, "enableFuzzyQuery": "false"})
+        hits = 0
+        for host in _YAHOO_SEARCH_HOSTS[i % 2:] + _YAHOO_SEARCH_HOSTS[:i % 2]:
+            try:
+                req = urllib.request.Request(f"{host}/v1/finance/search?{params}",
+                                             headers={"User-Agent": ua})
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    data = json.loads(resp.read())
+                for n in data.get("news", []):
+                    url = n.get("link", "")
+                    if not url or url in seen_urls:
+                        continue
+                    seen_urls.add(url)
+                    hits += 1
+                    # providerPublishTime is epoch seconds — convert to ISO or the
+                    # timestamptz insert in _save_article rejects it and drops the row.
+                    pub = ""
+                    ts = n.get("providerPublishTime")
+                    if isinstance(ts, (int, float)) and ts > 0:
+                        try:
+                            pub = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+                        except Exception:
+                            pub = ""
+                    results.append({
+                        "title": n.get("title", "")[:500],
+                        "url": url,
+                        "description": (n.get("publisher", "") or "")[:500],
+                        "published": pub,
+                        "source": "yahoo_search",
+                    })
+                break  # host succeeded — don't try the fallback host
+            except Exception as e:
+                print(f"  [yahoo-search] {host} error: {e}")
+                continue
+        print(f"  [yahoo-search] Found {hits} items for: {q}")
         time.sleep(0.3)
     return results
 
@@ -1119,8 +1252,44 @@ def process_topic(conn, topic: dict, dry_run: bool = False,
                   "; ".join(search_queries[:2]), len(news),
                   src_articles, 0, use_llm, elapsed)
 
-    # ── SOURCE 3: Brave Search News ──
-    print("\n  [3/4] Brave Search News API...")
+    # ── SOURCE 3: Yahoo Finance search (free — replaced retired Brave lane) ──
+    print("\n  [3/5] Yahoo Finance search...")
+    t0 = time.time()
+    yahoo = search_yahoo_news(search_queries, max_per_query=10)
+    elapsed = int((time.time() - t0) * 1000)
+    total_found += len(yahoo)
+    src_articles = 0
+
+    for item in yahoo:
+        url_hash = item["url"][:500]
+        if conn and _is_blocked(conn, "article", url_hash):
+            continue
+        if use_llm:
+            rating = _llm_rate_quality(item["title"], item["description"],
+                                       display, personal_ctx)
+            if rating.get("rag_status") == "blocked":
+                if not dry_run:
+                    _block_content(conn, "article", url_hash, item["title"],
+                                   rating.get("rag_reason", ""), topic_id)
+                total_blocked += 1
+                continue
+        else:
+            rating = {"rag_status": "pending", "rag_reason": "",
+                      "summary": item["description"][:500]}
+
+        if not dry_run:
+            if _save_article(conn, topic, item, rating):
+                src_articles += 1
+                total_articles += 1
+                print(f"    SAVED [{rating.get('rag_status','?')}]: {item['title'][:60]}")
+
+    sources_used.append("yahoo_search")
+    _log_gap_fill(conn, topic_id, "yahoo_search",
+                  "; ".join(search_queries[:2]), len(yahoo),
+                  src_articles, 0, use_llm, elapsed)
+
+    # ── SOURCE 4: Brave Search News (retired — no-op unless TOPIC_BRAVE_ENABLED) ──
+    print("\n  [4/5] Brave Search News API...")
     t0 = time.time()
     brave = search_brave_news(search_queries, max_per_query=10)
     elapsed = int((time.time() - t0) * 1000)
@@ -1155,8 +1324,8 @@ def process_topic(conn, topic: dict, dry_run: bool = False,
                   "; ".join(search_queries[:2]), len(brave),
                   src_articles, 0, use_llm, elapsed)
 
-    # ── SOURCE 4: DuckDuckGo (last resort) ──
-    print("\n  [4/4] DuckDuckGo HTML...")
+    # ── SOURCE 5: DuckDuckGo (last resort) ──
+    print("\n  [5/5] DuckDuckGo HTML...")
     t0 = time.time()
     ddg = search_duckduckgo(search_queries[:2], max_per_query=10)
     elapsed = int((time.time() - t0) * 1000)
