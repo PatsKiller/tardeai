@@ -37,17 +37,24 @@ def get_reviewable(conn, trade_id=None, symbol=None):
         conds.append("pt.symbol = %s"); params.append(symbol)
     conds.append("NOT EXISTS (SELECT 1 FROM trade_thesis_reviews r WHERE r.paper_trade_id = pt.id)")
 
+    # DISTINCT ON (pt.id): the proposal LEFT JOIN matches every same-symbol proposal in a ±7d
+    # window, which fans one trade out to N rows → N duplicate reviews. Collapse to one row per
+    # trade, keeping the nearest proposal (smallest |proposal - trade| creation gap).
     cur.execute(f"""
-        SELECT pt.id, pt.symbol, pt.strategy_id, pt.status, pt.pnl, pt.r_multiple,
-               pt.entry_price, pt.exit_price, pt.stop_loss, pt.target_1,
-               pt.created_at, pt.closed_at,
-               pp.id as proposal_id, pp.proposed_entry, pp.proposed_stop,
-               pp.proposed_target1, pp.catalyst, pp.signal_score
-        FROM paper_trades pt
-        LEFT JOIN paper_trade_proposals pp ON pt.symbol = pp.symbol
-            AND pp.created_at BETWEEN pt.created_at - interval '7 days' AND pt.created_at + interval '7 days'
-        WHERE {' AND '.join(conds)}
-        ORDER BY pt.created_at DESC LIMIT 100
+        SELECT * FROM (
+            SELECT DISTINCT ON (pt.id)
+                   pt.id, pt.symbol, pt.strategy_id, pt.status, pt.pnl, pt.r_multiple,
+                   pt.entry_price, pt.exit_price, pt.stop_loss, pt.target_1,
+                   pt.created_at, pt.closed_at,
+                   pp.id as proposal_id, pp.proposed_entry, pp.proposed_stop,
+                   pp.proposed_target1, pp.catalyst, pp.signal_score
+            FROM paper_trades pt
+            LEFT JOIN paper_trade_proposals pp ON pt.symbol = pp.symbol
+                AND pp.created_at BETWEEN pt.created_at - interval '7 days' AND pt.created_at + interval '7 days'
+            WHERE {' AND '.join(conds)}
+            ORDER BY pt.id, abs(extract(epoch FROM pp.created_at - pt.created_at)) NULLS LAST
+        ) q
+        ORDER BY q.created_at DESC LIMIT 100
     """, params)
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, row)) for row in cur.fetchall()]
@@ -170,7 +177,9 @@ def main():
     try:
         trades = get_reviewable(conn, trade_id=args.trade_id, symbol=args.symbol)
         reviews = [review(conn, t) for t in trades]
-        if not dry_run: save(conn, reviews)
+        # save() defaults to dry_run=True — must pass the real flag or --apply silently no-ops
+        # (if dry_run: return), which is why trade_thesis_reviews stayed empty despite --apply.
+        if not dry_run: save(conn, reviews, dry_run=False)
 
         out = {"mode": "dry_run" if dry_run else "applied", "trades_reviewed": len(reviews),
                "by_validity": {}, "low_sample_size": True}
