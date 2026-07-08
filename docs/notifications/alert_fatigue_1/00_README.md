@@ -70,3 +70,12 @@ verified/has_news were ALWAYS false and EVERY GO/A+ was capped to WAIT even when
   `window_days` (default 3). Auto-remediated by re-running the scanner (`remediation_map`, allowlisted,
   single-flighted on `/tmp/social_scalp.lock`); circuit-breaker escalates to operator if the retry is futile
   (i.e. a code/data bug, not a stuck cron). This closes the "silently dark for a week" gap.
+
+### Second catalyst gate fixed — route policy (2026-07-08, found via live scan)
+
+A live end-to-end scan revealed the same wrong-key bug in a SECOND place: `social_route_policy.catalyst_is_verified`
+(also imported by `social_scout_pillars`) read `catalyst`/`catalyst_source` (never set), so the route
+independently downgraded every setup to `SOCIAL_ONLY_UNVERIFIED` → `actionability=SCOUT`, never GO — regardless
+of the cap fix. Fixed to read `catalysts` (news) / `rag_catalyst_confirmed` / `hermes_catalyst_confirmed`.
+Verified: a catalyzed micro-float candidate now routes `momentum_scalp / GO`; pure-social stays `watch_only /
+SCOUT`. Lesson: unit-testing one gate wasn't enough — the live scan surfaced the parallel gate.

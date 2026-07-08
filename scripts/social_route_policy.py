@@ -49,10 +49,19 @@ def _num(x):
 
 
 def catalyst_is_verified(catalyst_enrichment: dict) -> bool:
-    """A catalyst is 'verified' if RAG-confirmed, flagged verified, or sourced from a credible
-    provider (SEC / news / analyst / press). Social mentions alone are NOT verification."""
+    """A catalyst is 'verified' if RAG- or Hermes-confirmed, flagged verified, or backed by credible news
+    articles (SEC / news / analyst / press). Social mentions alone are NOT verification.
+
+    NOTE (2026-07-08 fix): this previously read `catalyst`/`catalyst_source`, which build_catalyst_enrichment
+    never sets — so news-backed setups were never 'verified' and the route always downgraded to
+    SOCIAL_ONLY_UNVERIFIED (→ SCOUT, never GO), independent of the social-only cap. Read the keys the
+    enrichment actually produces: `catalysts` (news_articles rows) and `hermes_catalyst_confirmed`."""
     ce = catalyst_enrichment or {}
-    if ce.get("catalyst_verified") or ce.get("rag_catalyst_confirmed"):
+    if ce.get("catalyst_verified") or ce.get("rag_catalyst_confirmed") or ce.get("hermes_catalyst_confirmed"):
+        return True
+    # Credible catalyst articles were actually found for this symbol (news_articles / Hermes) — not just
+    # social keyword hits.
+    if ce.get("catalysts") or ce.get("catalyst_tier") in ("high_impact", "medium_impact"):
         return True
     if ce.get("catalyst") and any(
         kw in str(ce.get("catalyst_source", "")).lower()
