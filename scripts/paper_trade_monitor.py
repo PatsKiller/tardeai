@@ -120,10 +120,13 @@ def _reconcile_broker_exit(broker_oid, stop_oid, tp_oid, entry_price, shares, do
             pnl = sign * (xp - ep) * shares
             pnl_pct = sign * (xp - ep) / ep * 100 if ep else 0
             r_mult = (pnl / dollar_risk) if dollar_risk else 0
+            # Tag with the canonical "stop_hit"/"target_hit" substring so the journal/postmortem
+            # classifiers (which substring-match those tokens) auto-classify the exit correctly.
+            _lbl = "target_hit" if kind == "target" else "stop_hit"
             return {"kind": "reconciled", "exit_price": round(xp, 4), "pnl": round(pnl, 2),
                     "pnl_pct": round(pnl_pct, 4), "r_multiple": round(r_mult, 3),
                     "verdict": "WIN" if pnl > 0 else "LOSS" if pnl < 0 else "BREAKEVEN",
-                    "exit_reason": f"broker_{kind}_exit_reconciled"}
+                    "exit_reason": f"broker_{_lbl}_reconciled"}
     return {"kind": "filled_no_exit"}  # real filled position, exit not yet resolvable → leave open
 
 

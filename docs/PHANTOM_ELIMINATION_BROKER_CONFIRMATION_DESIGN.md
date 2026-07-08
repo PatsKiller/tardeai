@@ -117,7 +117,8 @@ trade first so the recorder never sees it.
 Fix: `_reconcile_broker_exit()` classifies from broker truth before any void —
 - entry order **not filled** → `phantom` (void to $0, legacy behavior, correct);
 - entry filled + an OCO exit leg filled → `reconciled` — book the REAL exit price / P&L / verdict
-  (`broker_stop_exit_reconciled` / `broker_target_exit_reconciled`);
+  (`broker_stop_hit_reconciled` / `broker_target_hit_reconciled` — canonical `stop_hit`/`target_hit`
+  substrings so the journal/postmortem classifiers auto-tag the exit correctly);
 - entry filled but exit **not yet resolvable** → `filled_no_exit` — **leave open** (never void a filled
   position); the hourly adapter close-sync reconciles it.
 Wired into **both** phantom paths (`_fix_integrity_issues` Fix 2 and the `monitor()` loop). The 5 historical
