@@ -277,6 +277,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
         if "portfolio_repricer.py" not in cmd and "external_market_data_ingest.py" not in cmd \
                 and "snaptrade_sync.py" not in cmd \
                 and "run_finviz_momentum_scalp_scan.py" not in cmd \
+                and "social_scalp_scanner.py" not in cmd \
                 and "run_sec_form4_momentum_context.py" not in cmd \
                 and "reset_stuck_agent_jobs.py" not in cmd \
                 and "fix_strategy_registry_null_ids.py" not in cmd \
@@ -1258,6 +1259,51 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
     return out
 
 
+def collect_scalp_catalyst_health() -> list[dict]:
+    """URGENT: the real-time momentum-scalp GO/WAIT Telegram lane. Scalp GO tier depends on catalyst
+    verification (news / RAG / Hermes); when that silently produces nothing, every setup is capped to
+    WAIT and suppressed, so live scalp alerts go dark — exactly the 2026-07-01→07-08 outage (GO went
+    1-6/day to 0 for a week, unnoticed). This collector catches that regression fast: the scanner is
+    actively producing setups but ZERO reach GO across the window.
+
+    Only assessed while the scanner is currently active (rows in the last 18h) → no weekend/holiday
+    false-fires. Auto-remediable (re-run the scanner, source/advisory only — no broker writes), so it is
+    NOT kind='code'; if the retry is futile (real code/data bug), the circuit breaker escalates to the
+    operator after max_ineffective_attempts."""
+    cfg = (_POLICY.get("scalp_catalyst_health") or {})
+    if not cfg.get("enabled", True):
+        return []
+    out: list[dict] = []
+    window_days = int(cfg.get("window_days", 3))
+    min_rows = int(cfg.get("min_rows", 40))
+    try:
+        recent = _db("SELECT count(*) n FROM scalp_scan_results WHERE scanned_at > now() - interval '18 hours'",
+                     fetch="one") or {}
+        if int((recent or {}).get("n") or 0) == 0:
+            return []  # scanner not currently active — the freshness collector owns 'not running'
+        r = _db("""SELECT count(*) rows,
+                          count(*) FILTER (WHERE catalyst_verified) verified,
+                          count(*) FILTER (WHERE decision='GO') go,
+                          count(*) FILTER (WHERE decision='WAIT') wait
+                   FROM scalp_scan_results
+                   WHERE scanned_at > now() - make_interval(days => %s)""", (window_days,), fetch="one") or {}
+        rows = int((r or {}).get("rows") or 0)
+        go = int((r or {}).get("go") or 0)
+        verified = int((r or {}).get("verified") or 0)
+        wait = int((r or {}).get("wait") or 0)
+        if rows >= min_rows and go == 0:
+            out.append(_f("intelligence_quality", "scalp_catalyst_verification_dead", "critical",
+                f"Momentum-scalp GO tier DARK: {rows} setups scored in {window_days}d ({wait} WAIT, "
+                f"{verified} catalyst-verified) but ZERO reached GO — everything capped to WAIT and "
+                f"suppressed, so real-time scalp GO/WAIT Telegram alerts are silently down (the 2026-07-01 "
+                f"class). Check social_scalp_scanner catalyst enrichment / Hermes catalyst wiring / news feed.",
+                surfaced="Trading hub · momentum scalp real-time alerts"))
+    except Exception as e:
+        out.append(_f("intelligence_quality", "scalp_catalyst_monitor_error", "info",
+                      f"scalp catalyst health monitor failed: {str(e)[:80]}"))
+    return out
+
+
 def collect_infra_optimization_health() -> list[dict]:
     """Health for the 2026-06-29 GPU/scheduling optimization work: zombie agent jobs (auto-remediable
     via the reaper), cloud-OAuth lane usage/health, and market-window LLM-contention regression. Never
@@ -1971,6 +2017,7 @@ COLLECTORS = [
     collect_pipeline_freshness,
     collect_momentum_scalp_source_health,
     collect_momentum_scalp_multi_source_health,
+    collect_scalp_catalyst_health,
     collect_infra_optimization_health,
     collect_proposal_integrity,
     collect_options_desk_health,

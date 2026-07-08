@@ -269,6 +269,53 @@ def build_catalyst_enrichment(conn, symbol: str, sample_content: str) -> dict:
     }
 
 
+_HERMES_CATALYST_CACHE = {"path": None, "mtime": 0.0, "data": {}}
+
+
+def load_hermes_catalysts() -> dict:
+    """Load the latest Hermes momentum-catalyst research (data/hermes/momentum_catalysts/*_catalysts.jsonl),
+    indexed by UPPER(symbol). Hermes researches catalysts via SearXNG (advisory-only); wiring it here lets a
+    Hermes-confirmed catalyst satisfy the social-only cap so genuine setups can reach GO. mtime-cached."""
+    import glob as _glob
+    try:
+        files = sorted(_glob.glob(str(ROOT / "data" / "hermes" / "momentum_catalysts" / "*_catalysts.jsonl")))
+        if not files:
+            return {}
+        latest = files[-1]
+        mt = os.path.getmtime(latest)
+        if latest == _HERMES_CATALYST_CACHE["path"] and mt == _HERMES_CATALYST_CACHE["mtime"]:
+            return _HERMES_CATALYST_CACHE["data"]
+        data = {}
+        with open(latest) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = json.loads(line)
+                    sym = str(r.get("symbol", "")).upper()
+                    if sym:
+                        data[sym] = r
+                except Exception:
+                    continue
+        _HERMES_CATALYST_CACHE.update({"path": latest, "mtime": mt, "data": data})
+        return data
+    except Exception:
+        return {}
+
+
+def hermes_catalyst_for(symbol: str) -> dict | None:
+    """Return a Hermes-confirmed catalyst record for `symbol` if it clears the credibility bar
+    (strength high/medium with ≥2 corroborating sources), else None."""
+    rec = load_hermes_catalysts().get(str(symbol or "").upper())
+    if not rec:
+        return None
+    strength = str(rec.get("catalyst_strength", "")).lower()
+    if strength in ("high", "medium") and int(rec.get("source_count") or 0) >= 2:
+        return rec
+    return None
+
+
 def route_to_portfolio_agents(conn, symbol: str, mention_count: int, strategy_tags: list):
     """Retirement/income/ETF tickers → agent queue instead of scalp pipeline."""
     cur = conn.cursor()
@@ -331,13 +378,20 @@ def ensure_results_table(conn):
 
 def apply_social_only_cap(decision: str, grade: str, catalyst_enrichment: dict):
     """P0-2: cap an unverified social-only setup. A social surge with no credible catalyst
-    (SEC / news / analyst / RAG-confirmed) can never be GO or A+/A — it is downgraded to
-    WAIT / B. Pure and DB-free. Returns (decision, grade, capped: bool)."""
+    (news / SEC / analyst / RAG- or Hermes-confirmed) can never be GO or A+/A — it is downgraded
+    to WAIT / B. Pure and DB-free. Returns (decision, grade, capped: bool).
+
+    NOTE (2026-07-08 fix): this previously read `catalyst_verified`/`catalyst`/`catalyst_source`,
+    which build_catalyst_enrichment never sets — so verified/has_news were ALWAYS False and EVERY
+    GO/A+ was silently capped to WAIT (scalp GO went to 0 on 07-01). Read the keys the enrichment
+    actually produces: `catalysts` (news_articles rows found for the symbol) → has_news;
+    `rag_catalyst_confirmed` / `hermes_catalyst_confirmed` → verified."""
     ce = catalyst_enrichment or {}
-    verified = bool(ce.get("catalyst_verified"))
-    has_news = bool(ce.get("catalyst")) and any(
-        kw in str(ce.get("catalyst_source", "")).lower()
-        for kw in ("sec", "news", "yahoo", "finnhub", "analyst", "press"))
+    verified = bool(ce.get("catalyst_verified") or ce.get("rag_catalyst_confirmed")
+                    or ce.get("hermes_catalyst_confirmed"))
+    # Credible catalyst articles were actually found for this symbol (news_articles / Hermes),
+    # not merely social keyword hits.
+    has_news = bool(ce.get("catalysts")) or ce.get("catalyst_tier") in ("high_impact", "medium_impact")
     if not verified and not has_news and (decision == "GO" or grade in ("A+", "A")):
         return "WAIT", ("B" if grade in ("A+", "A") else grade), True
     return decision, grade, False
@@ -463,9 +517,11 @@ def stamp_route_fields(conn, table: str, symbol: str, route: dict, catalyst_enri
         if table == "scalp_scan_results":
             if _has_col(conn, table, "catalyst_verified"):
                 sets.append("catalyst_verified=%s"); vals.append(bool(ce.get("catalyst_verified")
-                            or ce.get("rag_catalyst_confirmed")))
+                            or ce.get("rag_catalyst_confirmed") or ce.get("hermes_catalyst_confirmed")))
             if _has_col(conn, table, "catalyst_source"):
-                sets.append("catalyst_source=%s"); vals.append(ce.get("catalyst_source"))
+                sets.append("catalyst_source=%s")
+                vals.append(ce.get("catalyst_source") or ("hermes" if ce.get("hermes_catalyst_confirmed")
+                            else ("rag" if ce.get("rag_catalyst_confirmed") else ("news" if ce.get("catalysts") else None))))
             cur.execute(f"""UPDATE scalp_scan_results SET {', '.join(sets)}
                             WHERE id=(SELECT id FROM scalp_scan_results WHERE symbol=%s
                                       ORDER BY scanned_at DESC LIMIT 1)""", vals + [symbol])
@@ -783,6 +839,22 @@ def run_scan():
                 catalyst_enrichment["rag_evidence"] = catalyst_evidence[0].get("title", "")[:200]
         except Exception as e:
             logger.debug(f"RAG check failed for {symbol}: {e}")
+
+        # Hermes catalyst research (SearXNG, advisory) — a credible Hermes-confirmed catalyst satisfies
+        # the social-only cap so the setup can reach GO instead of being downgraded to WAIT.
+        try:
+            _hc = hermes_catalyst_for(symbol)
+            if _hc:
+                catalyst_enrichment["hermes_catalyst_confirmed"] = True
+                catalyst_enrichment["catalyst_source"] = "hermes"
+                catalyst_enrichment["hermes_catalyst"] = {
+                    "type": _hc.get("catalyst_type"), "strength": _hc.get("catalyst_strength"),
+                    "summary": str(_hc.get("catalyst_summary", ""))[:200],
+                    "sources": _hc.get("source_count"), "confidence": _hc.get("confidence")}
+                logger.info(f"[SCALP] {symbol} — Hermes catalyst confirmed: "
+                            f"{_hc.get('catalyst_type')} ({_hc.get('source_count')} sources)")
+        except Exception as e:
+            logger.debug(f"Hermes catalyst check failed for {symbol}: {e}")
 
         # Scar factor — penalize symbols with poor past scalp outcomes
         try:

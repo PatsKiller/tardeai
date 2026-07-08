@@ -51,3 +51,22 @@ returns `P0_INTERRUPT` (real-time); below the floor → dashboard-only. Config
 (default 25). Scalp messages don't match `_GO_PATTERN`, so the 3/hour GO rate-limit does not apply. Volume
 at the default floor is ~1–4 distinct symbols/day (measured), not a flood. Revert with
 `scalp_realtime_enabled: false`; raise the floor to reduce volume.
+
+### Catalyst-verification fix + Hermes wiring + health monitor (2026-07-08)
+
+The real reason scalp GO went to 0 (not just suppression): `apply_social_only_cap` read
+`catalyst_verified`/`catalyst`/`catalyst_source` — keys `build_catalyst_enrichment` never sets — so
+verified/has_news were ALWAYS false and EVERY GO/A+ was capped to WAIT even when real news existed
+(FCEL had 5 news rows, still capped). Fixes:
+- **Cap wiring** (`social_scalp_scanner.apply_social_only_cap`): read the keys the enrichment actually
+  produces — `catalysts` (news_articles rows) → has_news; `rag_catalyst_confirmed` /
+  `hermes_catalyst_confirmed` → verified. Pure-social pumps still cap; news/RAG/Hermes-backed reach GO.
+- **Hermes wiring** (`load_hermes_catalysts`/`hermes_catalyst_for`): the scanner now reads Hermes
+  momentum-catalyst research (`data/hermes/momentum_catalysts/*.jsonl`); a Hermes-confirmed catalyst
+  (strength high/medium, ≥2 sources) sets `hermes_catalyst_confirmed` and satisfies the cap. Also stamps
+  `catalyst_source` (news/rag/hermes) on `scalp_scan_results` for observability.
+- **Health monitor** (`health_agent.collect_scalp_catalyst_health`, policy `scalp_catalyst_health`): fires
+  **critical `scalp_catalyst_verification_dead`** when the scanner is active but 0 setups reach GO across
+  `window_days` (default 3). Auto-remediated by re-running the scanner (`remediation_map`, allowlisted,
+  single-flighted on `/tmp/social_scalp.lock`); circuit-breaker escalates to operator if the retry is futile
+  (i.e. a code/data bug, not a stuck cron). This closes the "silently dark for a week" gap.

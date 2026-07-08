@@ -147,8 +147,15 @@
       "hermes_scope_governor_stale",
       "hermes_scope_governor_heartbeat_missing",
       "hermes_scope_governor_last_run_failed",
-      "strategy_registry_null_ids"
+      "strategy_registry_null_ids",
+      "scalp_catalyst_verification_dead"
     ]
+  },
+  "scalp_catalyst_health": {
+    "_comment": "URGENT monitor for the real-time momentum-scalp GO/WAIT Telegram lane (collect_scalp_catalyst_health). Fires critical scalp_catalyst_verification_dead when the scanner is active but 0 setups reach GO across window_days (catalyst verification silently producing nothing → all capped to WAIT → suppressed). Auto-remediated by re-running the scanner; circuit-breaker escalates if futile. Caught the 2026-07-01 week-long silent outage.",
+    "enabled": true,
+    "window_days": 3,
+    "min_rows": 40
   },
   "data_sources": {
     "_comment": "Consume data_source_health rows (per-source ingestion liveness). finviz_cookie_check live-validates the cookie when finviz is stale so cookie expiry surfaces as a distinct critical finding (operator must refresh FINVIZ_COOKIE).",
@@ -176,6 +183,7 @@
   "remediation_map": {
     "_comment": "finding type -> allowlisted retry_cmd enqueued for claude_escalation_handler tier-1. Only verified, side-effect-safe scripts. LLM-heavy processor retries are flock-guarded on the SAME lock as the cron so they SINGLE-FLIGHT \u2014 multiple queued retries (or a retry racing the cron) can no longer stack concurrent processors and saturate the local LLM (the 2026-06-25 Ollama thundering-herd: 6+ --limit 15 processes \u2192 503/timeout cascade).",
     "news_stale": ".venv/bin/python scripts/news_ingestion.py --priority",
+    "scalp_catalyst_verification_dead": "flock -n /tmp/social_scalp.lock .venv/bin/python scripts/social_scalp_scanner.py >> logs/social_scalp_scanner.log 2>&1",
     "hermes_scope_governor_stale": "bash scripts/safe_flock.sh /tmp/hermes_scope_governor.lock .venv/bin/python scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1",
     "hermes_scope_governor_heartbeat_missing": "bash scripts/safe_flock.sh /tmp/hermes_scope_governor.lock .venv/bin/python scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1",
     "hermes_scope_governor_last_run_failed": "bash scripts/safe_flock.sh /tmp/hermes_scope_governor.lock .venv/bin/python scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1",
