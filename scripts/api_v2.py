@@ -26292,10 +26292,15 @@ def _hermes_terminal_commands(query=None):
 
 
 def _fidelity_stops_status():
-    """GET /api/v2/fidelity-stops/status — Fidelity monitored-stop approval + capability (mirrors snaptrade_pilot_arm)."""
+    """GET /api/v2/fidelity-stops/status — Fidelity monitored-stop approval + manual GTC sync metadata."""
     try:
         import snaptrade_pilot_arm as _arm
-        return {"ok": True, "data": _arm.status()}
+        from lib.fidelity_stop_sync import fidelity_stops_sync_status
+        st = _arm.status()
+        sync_meta = fidelity_stops_sync_status()
+        return {"ok": True, "data": {**st, "manual_stop_sync": sync_meta,
+                "note": "SnapTrade syncs Fidelity positions only — GTC stops are recorded via fidelity_stop_sync "
+                         "(cron 2× trading days + Stop Management button)."}}
     except Exception as e:
         return {"ok": False, "error": str(e)[:160]}
 

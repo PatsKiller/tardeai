@@ -489,6 +489,29 @@ export default function StopManagement({ onFocusHolding }: Props) {
     return true
   })
 
+  const [fidSync, setFidSync] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: '' })
+
+  const syncFidelityStops = async () => {
+    if (fidSync.busy) return
+    setFidSync({ busy: true, msg: '' })
+    try {
+      const r = await fetch('/api/v2/fidelity-stops/sync', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      })
+      const j = await r.json()
+      const d = unwrap(j?.data ?? j)
+      const n = Array.isArray(d?.upserted) ? d.upserted.length : 0
+      if (j?.ok !== false && !d?.errors?.length) {
+        setFidSync({ busy: false, msg: `✓ Fidelity GTC · ${n} stops` })
+        load(true)
+      } else {
+        setFidSync({ busy: false, msg: `⛔ ${j?.error || d?.errors?.[0]?.error || 'sync failed'}` })
+      }
+    } catch {
+      setFidSync({ busy: false, msg: '⛔ sync request failed' })
+    }
+  }
+
   return (
     <div style={{ padding: '4px 2px' }}>
       {/* sub-tabs */}
@@ -573,6 +596,11 @@ export default function StopManagement({ onFocusHolding }: Props) {
               {['All', 'red', 'amber', 'yellow'].map(l => <option key={l} value={l}>{l === 'All' ? 'All levels' : l}</option>)}
             </select>
             <button onClick={() => load(true)} style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE }}>↻ Refresh</button>
+            <button onClick={() => void syncFidelityStops()} disabled={fidSync.busy} title="Re-apply Fidelity Rollover IRA GTC stops from config/fidelity_rollover_stops.json into manual_broker_stops. SnapTrade does not pull open stop orders — run after you change stops at Fidelity. Cron: 10:05 + 16:05 ET trading days."
+              style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: fidSync.busy ? 'wait' : 'pointer', border: `1px solid ${PURPLE}`, background: `${PURPLE}18`, color: PURPLE, whiteSpace: 'nowrap' }}>
+              {fidSync.busy ? '⟳ Fidelity stops…' : '⟳ Sync Fidelity GTC stops'}
+            </button>
+            {fidSync.msg && <span style={{ fontSize: 11, color: fidSync.msg.startsWith('✓') ? GREEN : RED }}>{fidSync.msg}</span>}
             <CloudLlmRunButtons
               processId="holding_protection_advisor_batch"
               lanePolicy="grok_only"
@@ -582,7 +610,8 @@ export default function StopManagement({ onFocusHolding }: Props) {
             <span style={{ fontSize: 11, color: MUTED }}>{loading ? 'loading…' : `${filtered.length} of ${rows.length} · regime ${data?.regime_now ?? '—'}${data?.cached ? ' · cached' : ''}`}</span>
           </div>
           <div style={{ fontSize: 10, color: MUTED, marginBottom: 8, lineHeight: 1.45 }}>
-            Periodic stop advisories: <b style={{ color: PURPLE }}>▶ Grok (top 6)</b> runs priority holdings via free OAuth — stays Manual (no full Automated on holding_protection_advisor).
+            <b style={{ color: PURPLE }}>Fidelity GTC stops</b> are operator-recorded (SnapTrade syncs positions only) — auto re-applied <b>10:05 + 16:05 ET</b> on trading days; edit <code style={{ fontSize: 9.5 }}>config/fidelity_rollover_stops.json</code> when you place/cancel stops at Fidelity.
+            {' '}Periodic advisories: <b style={{ color: PURPLE }}>▶ Grok (top 6)</b> runs priority holdings via free OAuth — stays Manual.
           </div>
 
           {/* Table */}

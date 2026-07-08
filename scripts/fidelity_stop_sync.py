@@ -7,6 +7,7 @@ placed in Fidelity Active Trader must be recorded here. Dry-run by default.
   python3 scripts/fidelity_stop_sync.py                    # dry-run known rollover stops
   python3 scripts/fidelity_stop_sync.py --apply          # persist to manual_broker_stops
   python3 scripts/fidelity_stop_sync.py --apply --json stops.json
+  python3 scripts/fidelity_stop_sync.py --apply --trading-days-only   # cron (skip weekends/holidays)
 """
 from __future__ import annotations
 
@@ -29,7 +30,15 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true", help="Write to DB (default: dry-run)")
     ap.add_argument("--json", help="JSON file: list of {symbol, stop_price, qty, account?, placed_date?}")
     ap.add_argument("--no-retire", action="store_true", help="Do not deactivate stops absent from input")
+    ap.add_argument("--trading-days-only", action="store_true",
+                    help="Exit 0 without syncing on weekends/US market holidays (for cron)")
     args = ap.parse_args()
+
+    if args.trading_days_only:
+        from market_session import is_trading_day
+        if not is_trading_day():
+            print(json.dumps({"ok": True, "skipped": "not_trading_day", "applied": False}))
+            return 0
 
     if args.json:
         rows = json.loads(Path(args.json).read_text())

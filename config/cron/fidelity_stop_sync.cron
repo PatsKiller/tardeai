@@ -1,0 +1,5 @@
+# Fidelity GTC stop registry — SnapTrade does NOT return open/pending stop orders.
+# Re-applies config/fidelity_rollover_stops.json → manual_broker_stops (read-only).
+# Install: append these lines to operator crontab (uses $PROJ / $PY / market_day_gate.sh).
+5 10 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/fidelity_stop_sync.lock $PY scripts/fidelity_stop_sync.py --apply --trading-days-only >> logs/fidelity_stop_sync.log 2>&1
+5 16 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/fidelity_stop_sync.lock $PY scripts/fidelity_stop_sync.py --apply --trading-days-only >> logs/fidelity_stop_sync.log 2>&1

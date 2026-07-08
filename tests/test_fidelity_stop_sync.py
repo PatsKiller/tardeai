@@ -38,6 +38,13 @@ def test_normalize_anet_trailing_stop_row():
     assert row["account"] == "fidelity_rollover_ira"
 
 
+def test_load_fidelity_stops_config_json():
+    mod = _load()
+    rows = mod.load_fidelity_stops_config()
+    assert len(rows) >= 6
+    assert {r["symbol"] for r in rows} >= {"SCHG", "ARKX", "XAR", "ANET", "DXCM", "DIVI"}
+
+
 def test_default_stops_include_rollover_open_gtc():
     mod = _load()
     syms = {r["symbol"] for r in mod.default_fidelity_rollover_stops()}

@@ -7,8 +7,12 @@ mirrors confirmed prices into stop_confirmations. Read-only on the broker — no
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Any
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+FIDELITY_STOPS_CONFIG = PROJECT_ROOT / "config" / "fidelity_rollover_stops.json"
 
 
 _TERMINAL = frozenset({"cancelled", "canceled", "filled", "closed", "executed", "rejected", "expired"})
@@ -236,15 +240,84 @@ def sync_stops(rows: list[dict[str, Any]], *, retire_absent: bool = True, apply:
             report["retired"].extend(deactivate_stale_stops(cur, acct, syms))
     if apply:
         conn.commit()
+        record_sync_run(report)
     return report
 
 
-def default_fidelity_rollover_stops() -> list[dict[str, Any]]:
-    """Known GTC stops from Fidelity Rollover IRA #270135199 (SnapTrade ••5199).
+def load_fidelity_stops_config() -> list[dict[str, Any]]:
+    """Read config/fidelity_rollover_stops.json when present (operator-editable registry)."""
+    if not FIDELITY_STOPS_CONFIG.is_file():
+        return []
+    try:
+        raw = json.loads(FIDELITY_STOPS_CONFIG.read_text())
+        acct = str(raw.get("account") or "fidelity_rollover_ira")  # hardcode-ok: default account key in config JSON
+        rows = raw.get("stops") or raw.get("rows") or []
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            out.append({**row, "account": row.get("account") or acct})
+        return out
+    except Exception:
+        return []
 
-    SnapTrade syncs positions only — open GTC stops must be operator-recorded here.
-    Operator-verified from Fidelity Active Trader 2026-07-08."""
-    acct = "fidelity_rollover_ira"
+
+def record_sync_run(report: dict[str, Any]) -> None:
+    """Persist last successful fidelity stop sync for Command Center status."""
+    try:
+        from db_adapter import _get_conn
+        payload = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "upserted": len(report.get("upserted") or []),
+            "retired": len(report.get("retired") or []),
+            "errors": len(report.get("errors") or []),
+            "symbols": sorted({(u.get("symbol") or "") for u in (report.get("upserted") or []) if u.get("symbol")}),
+        }
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO system_controls (key, value) VALUES ('fidelity_stops_last_sync', %s)
+               ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""",
+            (json.dumps(payload),),
+        )
+        conn.commit()
+    except Exception:
+        pass
+
+
+def fidelity_stops_sync_status() -> dict[str, Any]:
+    """Last sync metadata + active manual stop count for UI."""
+    out: dict[str, Any] = {
+        "config_path": str(FIDELITY_STOPS_CONFIG),
+        "config_present": FIDELITY_STOPS_CONFIG.is_file(),
+        "configured_symbols": [r.get("symbol") for r in load_fidelity_stops_config()],
+        "active_manual_stops": 0,
+        "last_sync": None,
+    }
+    try:
+        from db_adapter import _get_conn
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM system_controls WHERE key='fidelity_stops_last_sync'")
+        row = cur.fetchone()
+        if row and row[0]:
+            out["last_sync"] = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+        ensure_manual_broker_stops_table(cur)
+        cur.execute(
+            "SELECT COUNT(*) FROM manual_broker_stops WHERE active=TRUE AND account LIKE 'fidelity%'"
+        )
+        out["active_manual_stops"] = int(cur.fetchone()[0] or 0)
+    except Exception as e:
+        out["status_error"] = str(e)[:120]
+    return out
+
+
+def default_fidelity_rollover_stops() -> list[dict[str, Any]]:
+    """Known GTC stops — prefers config/fidelity_rollover_stops.json, else baked-in fallback."""
+    cfg = load_fidelity_stops_config()
+    if cfg:
+        return cfg
+    acct = "fidelity_rollover_ira"  # hardcode-ok: fallback when config JSON missing
     return [
         {
             "symbol": "SCHG", "account": acct, "order_type": "TRAILING_STOP",

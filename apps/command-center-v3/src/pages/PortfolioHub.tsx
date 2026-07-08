@@ -132,7 +132,7 @@ export default function PortfolioHub({ onDrill }: Props) {
     return patch ? { ...(base ?? {}), ...patch } : base
   }
   // Manual broker sync (SnapTrade / Schwab) — operator-triggered, read-only holdings/position pull.
-  const [syncState, setSyncState] = useState<{ busy: 'snaptrade' | 'schwab' | null; msg: string }>({ busy: null, msg: '' })
+  const [syncState, setSyncState] = useState<{ busy: 'snaptrade' | 'schwab' | 'fidelity_stops' | null; msg: string }>({ busy: null, msg: '' })
   const syncBtn = (active: boolean): React.CSSProperties => ({
     fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: active ? 'default' : 'pointer',
     border: '1px solid var(--border)', background: active ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
@@ -147,6 +147,23 @@ export default function PortfolioHub({ onDrill }: Props) {
       setSyncState({ busy: null, msg: j?.ok ? (j.note || 'sync started ✓') : `error: ${j?.error || 'failed'}` })
     } catch {
       setSyncState({ busy: null, msg: 'request failed' })
+    }
+  }
+  async function runFidelityStopSync() {
+    if (syncState.busy) return
+    setSyncState({ busy: 'fidelity_stops', msg: '' })
+    try {
+      const r = await fetch('/api/v2/fidelity-stops/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const j = await r.json()
+      const d = j?.data ?? j
+      const n = Array.isArray(d?.upserted) ? d.upserted.length : 0
+      setSyncState({
+        busy: null,
+        msg: j?.ok !== false && !(d?.errors?.length) ? `Fidelity GTC stops synced (${n}) ✓` : `error: ${j?.error || d?.errors?.[0]?.error || 'failed'}`,
+      })
+      refetchMonitored()
+    } catch {
+      setSyncState({ busy: null, msg: 'fidelity stop sync failed' })
     }
   }
   async function designFill() {
@@ -258,6 +275,10 @@ export default function PortfolioHub({ onDrill }: Props) {
             <button onClick={() => runSync('schwab')} disabled={!!syncState.busy} style={syncBtn(syncState.busy === 'schwab')}
               title="Full Schwab refresh: positions + trade ledger + journal round-trips (read-only; no trading; stops not pulled).">
               {syncState.busy === 'schwab' ? '⟳ Syncing Schwab…' : '⟳ Sync Schwab'}
+            </button>
+            <button onClick={() => void runFidelityStopSync()} disabled={!!syncState.busy} style={syncBtn(syncState.busy === 'fidelity_stops')}
+              title="Record Fidelity Rollover IRA GTC stops from config/fidelity_rollover_stops.json (SnapTrade does not return open stop orders). Auto: 10:05 + 16:05 ET trading days.">
+              {syncState.busy === 'fidelity_stops' ? '⟳ Fidelity stops…' : '⟳ Sync Fidelity GTC stops'}
             </button>
             {syncState.msg && (
               <span style={{ fontSize: 10, color: /error|failed/.test(syncState.msg) ? '#ef4444' : '#22c55e' }}>{syncState.msg}</span>
