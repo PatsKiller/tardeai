@@ -132,3 +132,15 @@ export function lanePolicyHint(policy: LanePolicy | string | undefined): string 
   }
   return map[p] || p
 }
+
+export function lanePolicyColor(policy: LanePolicy | string | undefined): string {
+  const p = (policy || 'either') as LanePolicy
+  const map: Record<LanePolicy, string> = {
+    grok_only: '#1d9bf0',
+    chatgpt_only: '#10a37f',
+    either: '#94a3b8',
+    both_preferred: '#60a5fa',
+    ensemble: '#a855f7',
+  }
+  return map[p] || '#94a3b8'
+}

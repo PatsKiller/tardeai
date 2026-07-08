@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import CloudLlmRunButtons from '../components/CloudLlmRunButtons'
-import { lanePolicyHint } from '../lib/cloudLlmRun'
+import { lanePolicyColor, lanePolicyHint } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 
 const GREEN = '#22c55e', RED = '#ef4444', AMBER = '#f59e0b', BLUE = '#60a5fa', MUTED = '#94a3b8', TEXT = '#f8fafc'
@@ -41,13 +41,25 @@ export default function ConsumptionHub() {
 
   const load = useCallback(async () => {
     try {
-      const [ov, pr, lg] = await Promise.all([
+      const [ov, pr, reg, lg] = await Promise.all([
         fetch('/api/v2/consumption/overview').then(r => r.json()),
         fetch('/api/v2/consumption/processes').then(r => r.json()),
+        fetch('/api/v2/consumption/lane-registry').then(r => r.json()).catch(() => null),
         fetch(`/api/v2/consumption/logs?limit=40${filterPid ? `&process_id=${encodeURIComponent(filterPid)}` : ''}`).then(r => r.json()),
       ])
       setOverview((ov?.data ?? ov)?.overview ?? null)
-      setProcesses((pr?.data ?? pr)?.processes ?? [])
+      const regData = reg?.data ?? reg
+      const policyMap: Record<string, string> = regData?.processes ?? {}
+      const policyLabels: Record<string, string> = regData?.policy_labels ?? {}
+      const raw: ProcessRow[] = (pr?.data ?? pr)?.processes ?? []
+      setProcesses(raw.map(p => {
+        const lp = p.lane_policy || policyMap[p.process_id] || 'either'
+        return {
+          ...p,
+          lane_policy: lp,
+          lane_policy_label: p.lane_policy_label || policyLabels[lp] || lanePolicyHint(lp),
+        }
+      }))
       setLogs((lg?.data ?? lg)?.logs ?? [])
     } catch { /* surfaced via empty state */ }
   }, [filterPid])
@@ -174,8 +186,11 @@ export default function ConsumptionHub() {
                     <div style={{ fontSize: 9, color: MUTED, fontWeight: 400 }}>{p.process_id}</div>
                   </td>
                   <td style={{ color: MUTED }}>{p.category || '—'}</td>
-                  <td style={{ fontSize: 10, color: MUTED, whiteSpace: 'nowrap' }}>
-                    {p.lane_policy_label || lanePolicyHint(p.lane_policy)}
+                  <td style={{ fontSize: 10, whiteSpace: 'nowrap' }}>
+                    <span title={p.lane_policy_label || p.description}
+                      style={{ fontWeight: 700, color: lanePolicyColor(p.lane_policy) }}>
+                      {lanePolicyHint(p.lane_policy)}
+                    </span>
                     {p.process_id === 'holding_protection_advisor_batch' && (
                       <div style={{ marginTop: 4 }}>
                         <CloudLlmRunButtons

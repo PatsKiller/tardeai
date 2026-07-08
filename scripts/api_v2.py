@@ -8584,6 +8584,13 @@ def _consumption_processes():
     return _json_clean({"ok": True, "processes": _lc.list_processes()})
 
 
+def _consumption_lane_registry():
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib import llm_consumption as _lc
+    return _json_clean({"ok": True, **_lc.registry_lane_map()})
+
+
 def _consumption_logs(query=None):
     import sys as _sys
     _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -27670,6 +27677,7 @@ ROUTES = {
     "/api/v2/llm/oauth-lanes": lambda: _llm_oauth_lanes(),
     "/api/v2/consumption/overview": lambda: _consumption_overview(),
     "/api/v2/consumption/processes": lambda: _consumption_processes(),
+    "/api/v2/consumption/lane-registry": lambda: _consumption_lane_registry(),
     "/api/v2/consumption/logs": _consumption_logs,
     "/api/v2/system-health": lambda: _system_health_dashboard(),
     "/api/v2/data-product-health": lambda: _data_product_health(),

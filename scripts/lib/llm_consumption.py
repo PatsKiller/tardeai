@@ -404,6 +404,18 @@ def recent_logs(*, limit: int = 50, process_id: str | None = None) -> list[dict]
             for row in cur.fetchall()]
 
 
+def registry_lane_map() -> dict:
+    """Process_id → lane_policy plus human labels (for UI fallback when API cache is stale)."""
+    reg = _load_registry()
+    return {
+        "processes": {
+            str(p.get("id")): p.get("lane_policy") or "either"
+            for p in (reg.get("processes") or []) if p.get("id")
+        },
+        "policy_labels": dict(reg.get("lane_policies") or {}),
+    }
+
+
 def insights() -> list[dict]:
     """Advisory suggestions for high consumers on automated mode."""
     out = []
