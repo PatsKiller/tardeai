@@ -91,12 +91,27 @@ def _api_delete(path):
     return requests.delete(f'{ALPACA_BASE}{path}', headers=_alpaca_headers(), timeout=10)
 
 
-def _reconcile_broker_exit(broker_oid, stop_oid, tp_oid, entry_price, shares, dollar_risk=None):
-    """Thin wrapper over the shared trade_outcome_helpers.reconcile_broker_exit (single source of truth,
-    also used by alpaca_paper_adapter close-sync), bound to this module's Alpaca GET. See that helper for
-    the {"kind": phantom|reconciled|filled_no_exit} contract."""
-    from trade_outcome_helpers import reconcile_broker_exit
-    return reconcile_broker_exit(_api_get, broker_oid, stop_oid, tp_oid, entry_price, shares, dollar_risk)
+def _reconcile_broker_exit(broker_oid, stop_oid, tp_oid, entry_price, shares, dollar_risk=None,
+                           account=None, direction='long'):
+    """Resolve a vendor-neutral get_order_status for the trade's account and delegate to the shared,
+    broker-AGNOSTIC trade_outcome_helpers.reconcile_broker_exit (single source of truth; also used by the
+    adapter close-sync and reusable by real-broker paths). Falls back to a local Alpaca-shaped
+    FillConfirmation shim only when the account has no registered broker adapter (this IS the Alpaca paper
+    monitor). See the shared helper for the {"kind": phantom|reconciled|filled_no_exit} contract."""
+    from trade_outcome_helpers import reconcile_broker_exit, get_order_status_for
+    from broker_adapter import FillConfirmation
+    gos = get_order_status_for(account) if account else None
+    if gos is None:
+        def gos(oid):
+            o = _api_get(f'/v2/orders/{oid}')
+            if not isinstance(o, dict):
+                return FillConfirmation(confirmed=False, status='unknown')
+            fap = o.get('filled_avg_price')
+            return FillConfirmation(confirmed=(o.get('status') == 'filled'),
+                                    filled_price=(float(fap) if fap not in (None, '') else None),
+                                    status=(o.get('status') or 'unknown'), raw=o)
+    return reconcile_broker_exit(gos, broker_oid, stop_oid, tp_oid, entry_price, shares,
+                                 dollar_risk, direction)
 
 
 def replace_stop(symbol, qty, new_stop, old_order_id=None):
@@ -191,7 +206,8 @@ def _fix_integrity_issues(conn, alpaca_symbols):
     # check broker truth: a FILLED entry whose OCO exit leg also filled is a REAL closed position whose
     # exit the DB simply never recorded — reconcile its true P&L instead of falsely voiding it to $0.
     cur.execute("""SELECT id, symbol, entry_time, entry_price, shares, stop_loss, current_price, dollar_risk,
-                          broker_order_id, stop_order_id, take_profit_order_id
+                          broker_order_id, stop_order_id, take_profit_order_id,
+                          COALESCE(execution_account, account), side
                    FROM paper_trades
                    WHERE lifecycle_state='open' AND status='open'
                      AND (COALESCE(broker_order_id,'') <> '' OR filled_at IS NOT NULL)""")
@@ -204,6 +220,8 @@ def _fix_integrity_issues(conn, alpaca_symbols):
         _current = float(row[6]) if row[6] else None
         _dollar_risk = float(row[7]) if row[7] else None
         _broker_oid, _stop_oid, _tp_oid = row[8], row[9], row[10]
+        _account = row[11]
+        _direction = 'short' if str(row[12] or 'buy').lower() in ('sell', 'short') else 'long'
         if sym not in alpaca_symbols:
             _hold_min = None
             if _entry_t:
@@ -219,7 +237,8 @@ def _fix_integrity_issues(conn, alpaca_symbols):
                 log.info(f"[integrity] {sym} id={tid} not on Alpaca but only {_hold_min}min old — grace, recheck next cycle")
                 continue
             # BROKER TRUTH: reconcile a real closed position, or skip a filled-but-unresolved one.
-            _recon = _reconcile_broker_exit(_broker_oid, _stop_oid, _tp_oid, _entry_price, _shares, _dollar_risk)
+            _recon = _reconcile_broker_exit(_broker_oid, _stop_oid, _tp_oid, _entry_price, _shares,
+                                            _dollar_risk, account=_account, direction=_direction)
             if _recon["kind"] == "reconciled":
                 cur.execute("""
                     UPDATE paper_trades SET lifecycle_state='closed', status='closed',
@@ -501,7 +520,7 @@ def monitor(dry_run=False):
 
     # ── PHANTOM DETECTION: DB says open but Alpaca has no position ──
     alpaca_symbols = {pos['symbol'] for pos in positions}
-    cur.execute("SELECT id, symbol, entry_price, shares, strategy_id, stop_loss, current_price, dollar_risk, entry_time, created_at, broker_order_id, stop_order_id, take_profit_order_id FROM paper_trades WHERE status = 'open'")
+    cur.execute("SELECT id, symbol, entry_price, shares, strategy_id, stop_loss, current_price, dollar_risk, entry_time, created_at, broker_order_id, stop_order_id, take_profit_order_id, COALESCE(execution_account, account) AS acct, side FROM paper_trades WHERE status = 'open'")
     db_open = cur.fetchall()
     for dbt in db_open:
         if dbt['symbol'] not in alpaca_symbols:
@@ -535,7 +554,9 @@ def monitor(dry_run=False):
             # BROKER TRUTH: reconcile a real closed position, or skip a filled-but-unresolved one, instead
             # of voiding with fabricated current-price P&L.
             _recon = _reconcile_broker_exit(dbt.get('broker_order_id'), dbt.get('stop_order_id'),
-                                            dbt.get('take_profit_order_id'), _ep or None, _sh, _dr)
+                                            dbt.get('take_profit_order_id'), _ep or None, _sh, _dr,
+                                            account=dbt.get('acct'),
+                                            direction=('short' if str(dbt.get('side') or 'buy').lower() in ('sell', 'short') else 'long'))
             if _recon["kind"] == "reconciled":
                 cur.execute("""
                     UPDATE paper_trades SET status='closed', lifecycle_state='closed',

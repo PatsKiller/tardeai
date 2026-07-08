@@ -283,20 +283,36 @@ class AlpacaPaperAdapter:
                 _exit_reason = 'position_closed_in_alpaca'   # generic default; OCO reconcile overrides
                 # Get entry + order ids (for reconciliation and PnL calc)
                 cur.execute("""SELECT entry_price, shares, stop_loss, dollar_risk,
-                                      broker_order_id, stop_order_id, take_profit_order_id
+                                      broker_order_id, stop_order_id, take_profit_order_id,
+                                      side, COALESCE(execution_account, account)
                                FROM paper_trades WHERE id=%s""", [trade_id])
                 _tr = cur.fetchone()
                 _entry = float(_tr[0]) if _tr and _tr[0] else 0
                 _shares = int(_tr[1]) if _tr and _tr[1] else 0
                 _stop = float(_tr[2]) if _tr and len(_tr) > 2 and _tr[2] else None
                 _dr = float(_tr[3]) if _tr and len(_tr) > 3 and _tr[3] else None
-                from trade_outcome_helpers import classify_verdict, reconcile_broker_exit
-                # Prefer OCO-leg reconciliation (distinguishes stop_hit vs target_hit; shared with
-                # paper_trade_monitor). Fall back to the generic latest-sell lookup otherwise.
+                _side = _tr[7] if _tr and len(_tr) > 7 else None
+                _acct = _tr[8] if _tr and len(_tr) > 8 else None
+                _dir = 'short' if str(_side or 'buy').lower() in ('sell', 'short') else 'long'
+                from trade_outcome_helpers import classify_verdict, reconcile_broker_exit, get_order_status_for
+                from broker_adapter import FillConfirmation
+                # Prefer OCO-leg reconciliation (distinguishes stop_hit vs target_hit; shared,
+                # broker-agnostic — resolves the account's adapter). Fall back to a local Alpaca
+                # get_order_status shim, then to the generic latest-sell lookup below.
+                _gos = get_order_status_for(_acct) if _acct else None
+                if _gos is None:
+                    def _gos(oid):
+                        o = self._api_get(f'/v2/orders/{oid}')
+                        if not isinstance(o, dict):
+                            return FillConfirmation(confirmed=False, status='unknown')
+                        fap = o.get('filled_avg_price')
+                        return FillConfirmation(confirmed=(o.get('status') == 'filled'),
+                                                filled_price=(float(fap) if fap not in (None, '') else None),
+                                                status=(o.get('status') or 'unknown'), raw=o)
                 try:
-                    _rec = reconcile_broker_exit(self._api_get, _tr[4] if _tr else None,
+                    _rec = reconcile_broker_exit(_gos, _tr[4] if _tr else None,
                                                  _tr[5] if _tr else None, _tr[6] if _tr else None,
-                                                 _entry or None, _shares, _dr)
+                                                 _entry or None, _shares, _dr, direction=_dir)
                 except Exception:
                     _rec = {"kind": "filled_no_exit"}
                 if _rec.get("kind") == "reconciled":

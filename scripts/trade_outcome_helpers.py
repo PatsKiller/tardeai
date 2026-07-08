@@ -68,34 +68,63 @@ def validate_and_recalc_stop(entry_price, stop_loss, direction='long', fallback_
     return (sl, False, 'valid')
 
 
-def reconcile_broker_exit(api_get, broker_oid, stop_oid, tp_oid, entry_price, shares, dollar_risk=None):
-    """Single source of truth for classifying a DB-open trade whose symbol is no longer in the broker's
-    current positions. Shared by paper_trade_monitor (phantom sweep) and alpaca_paper_adapter
-    (close-sync) so both classify identically. `api_get(path)->obj` is the caller's broker GET.
+def get_order_status_for(account):
+    """Resolve a vendor-neutral get_order_status(order_id) -> FillConfirmation for an account via the
+    broker_adapter registry (the broker is read from config, never named here). Returns None if the
+    account has no resolvable/implemented broker adapter — callers must treat None as "cannot verify".
+    """
+    try:
+        from broker_adapter import adapter_for
+        return adapter_for(account).get_order_status
+    except Exception:
+        return None
+
+
+def reconcile_broker_exit(get_order_status, broker_oid, stop_oid, tp_oid, entry_price, shares,
+                          dollar_risk=None, direction='long'):
+    """Broker-AGNOSTIC classification of a DB-open trade whose position is gone from the broker. Depends
+    ONLY on the vendor-neutral FillConfirmation returned by `get_order_status(order_id)` (broker_adapter.py),
+    so it works for ANY broker whose adapter implements it — Alpaca today, Schwab/IBKR as drop-in
+    broker_confirm_<name>.py. No vendor endpoints, no vendor field names, no vendor string literals.
+
+    Single source of truth: used by paper_trade_monitor (phantom sweep) and alpaca_paper_adapter
+    (close-sync), and reusable by any real-broker close path. `direction` ('long'/'buy' vs 'short'/'sell')
+    sets the P&L sign and comes from the trade record, not the broker.
 
     Returns {"kind": ...}:
-      - "phantom"        : entry order NOT filled (or nothing to verify) → caller may void to $0.
+      - "phantom"        : entry order terminally NOT filled (canceled/rejected/expired) or nothing to
+                           verify → caller may void to $0 (a position that never existed).
       - "reconciled", …  : entry filled + an OCO exit leg (target|stop) filled → REAL exit booked with
-                           canonical exit_reason (broker_target_hit_reconciled / broker_stop_hit_reconciled),
-                           price, pnl, pnl_pct, r_multiple, verdict.
-      - "filled_no_exit" : entry filled but exit not resolvable via the OCO legs → caller must NOT void
-                           (leave open / fall back to a generic close-order lookup).
+                           canonical exit_reason (broker_target_hit_reconciled / broker_stop_hit_reconciled).
+      - "filled_no_exit" : filled/indeterminate but exit not resolvable → caller must NOT void (leave open;
+                           fall back to a generic close lookup / next cycle).
     """
     if not broker_oid or entry_price is None or not shares:
-        return {"kind": "phantom"}
-    entry = api_get(f'/v2/orders/{broker_oid}')
-    if not isinstance(entry, dict) or not entry.get('status'):
-        return {"kind": "filled_no_exit"}        # broker unreachable → don't void
-    if entry.get('status') != 'filled':
-        return {"kind": "phantom"}               # order genuinely never filled
-    ep = float(entry.get('filled_avg_price') or entry_price)
-    sign = 1 if (entry.get('side') or 'buy') == 'buy' else -1
-    for oid, kind in ((tp_oid, 'target'), (stop_oid, 'stop')):
+        return {"kind": "phantom"}            # never submitted / nothing to verify → legacy phantom
+    if get_order_status is None:
+        return {"kind": "filled_no_exit"}     # no broker adapter to verify against → never void
+
+    def _status(oid):
+        try:
+            return get_order_status(oid)
+        except Exception:
+            return None
+
+    entry = _status(broker_oid)
+    st = (getattr(entry, "status", "") or "").lower()
+    if st != "filled":
+        # Only a TERMINAL not-filled state is a real phantom; unknown/pending/partial must not void.
+        if st in ("canceled", "cancelled", "rejected", "expired"):
+            return {"kind": "phantom"}
+        return {"kind": "filled_no_exit"}
+    ep = float(getattr(entry, "filled_price", None) or entry_price)
+    sign = -1 if str(direction or "long").lower() in ("short", "sell") else 1
+    for oid, kind in ((tp_oid, "target"), (stop_oid, "stop")):
         if not oid:
             continue
-        o = api_get(f'/v2/orders/{oid}')
-        if isinstance(o, dict) and o.get('status') == 'filled' and o.get('filled_avg_price'):
-            xp = float(o['filled_avg_price'])
+        o = _status(oid)
+        if (getattr(o, "status", "") or "").lower() == "filled" and getattr(o, "filled_price", None):
+            xp = float(o.filled_price)
             pnl = round(sign * (xp - ep) * shares, 2)
             pnl_pct = round(sign * (xp - ep) / ep * 100, 4) if ep else 0
             r_mult = round(pnl / dollar_risk, 3) if dollar_risk else 0

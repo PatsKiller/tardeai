@@ -124,12 +124,26 @@ Fix: `_reconcile_broker_exit()` classifies from broker truth before any void —
 Wired into **both** phantom paths (`_fix_integrity_issues` Fix 2 and the `monitor()` loop). The 5 historical
 false-phantoms were backfill-corrected and their journal thesis-reviews regenerated to real WIN/LOSS.
 
-The classifier is a **single source of truth** — `trade_outcome_helpers.reconcile_broker_exit(api_get, …)` —
-shared by both exit recorders so they tag identically: `paper_trade_monitor` (frequent phantom sweep, bound
-to its Alpaca GET) and `alpaca_paper_adapter.detect_closed_positions` (hourly close-sync, `self._api_get`).
-The adapter tries OCO-leg reconciliation first (canonical `stop_hit`/`target_hit`) and only falls back to its
-generic latest-sell lookup (`position_closed_in_alpaca`) when no OCO leg is identifiable — so whichever
-recorder catches a close first, the stop-vs-target label is consistent.
+The classifier is a **single, broker-AGNOSTIC source of truth** —
+`trade_outcome_helpers.reconcile_broker_exit(get_order_status, …, direction=…)`. It depends ONLY on the
+vendor-neutral `FillConfirmation` returned by `get_order_status(order_id)` (see `broker_adapter.py`); it
+contains **no vendor endpoints, field names, or string literals**. Callers resolve the order-status function
+from the trade's account via `get_order_status_for(account)` → `adapter_for(account)` (broker read from
+config), so it works for **any** broker with a `broker_confirm_<name>.py` — Alpaca today; Schwab/IBKR are
+drop-in adapters, no change to this logic. `direction` (long/short) comes from the trade record, not the
+broker. Unresolvable account → `filled_no_exit` (never voids). Shared by both exit recorders so they tag
+identically: `paper_trade_monitor` (frequent phantom sweep) and `alpaca_paper_adapter.detect_closed_positions`
+(hourly close-sync); each resolves the account adapter and falls back to a local Alpaca shim only when the
+account has no registered adapter (these are the Alpaca-paper modules). The adapter tries OCO-leg
+reconciliation first (canonical `stop_hit`/`target_hit`) and only falls back to its generic latest-sell lookup
+(`position_closed_in_alpaca`) when no OCO leg is identifiable.
+
+**Non-paper scope (validated 2026-07-08):** the false-phantom bug was specific to the *paper* trade lifecycle
+(`paper_trade_monitor`/`alpaca_paper_adapter`, which manage open→close with phantom detection). Real trades
+have **no equivalent phantom-void path** — `schwab_position_sync.py` is read-only holdings sync (fails closed,
+never zeroes P&L) — so they were never affected. Because the reconciler is now agnostic, any future real-broker
+close/reconcile path reuses it directly by adding `broker_confirm_schwab.py` (implementing `get_order_status`)
+and passing the Schwab account; the shared logic does not change.
 
 ## 5. Two-source verification (TradeAI + Hermes)
 
