@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import ReactFlow, { Background, Controls, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -11,7 +12,9 @@ import PrivateProxyCard from '../components/PrivateProxyCard'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const FLEETS = ['Research Fleet', 'Momentum Scalp Swarm'] as const
-const TABS = ['Overview', 'Discovery', 'Proxy Cards', 'Closed Loop', 'Workflow', 'Maturity', 'Provenance', 'Sources', 'Research', 'Dual Opinion', 'Pipeline'] as const
+// Operator-first order: triage tabs before registry/debug tabs.
+const TABS = ['Overview', 'Research', 'Closed Loop', 'Maturity', 'Discovery', 'Workflow', 'Sources', 'Provenance', 'Pipeline', 'Dual Opinion', 'Proxy Cards'] as const
+const REGISTRY_TABS = new Set(['Sources', 'Provenance', 'Pipeline', 'Proxy Cards', 'Dual Opinion'])
 const SCALP_TABS = ['Overview', 'Workflow', 'Getting Started'] as const
 
 const MATURITY_COLOR: Record<string, string> = {
@@ -144,6 +147,9 @@ export default function HermesHub({ onDrill }: Props) {
   const { data: sourcesData } = useApi<any>('/api/v2/hermes/sources', 120_000)
   const { data: profStatus } = useApi<any>('/api/v2/hermes/profiles-status', 120_000)
   const [editProfile, setEditProfile] = useState<string | null>(null)
+  const [profilesOpen, setProfilesOpen] = useState(false)
+  const [sourcesView, setSourcesView] = useState<'ops' | 'full'>('ops')
+  const linkStyle: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }
   const credByDomain: Record<string, number> = {}
   for (const s of (sourcesData?.sources ?? [])) if (s.type === 'web') credByDomain[s.name] = Number(s.credibility ?? 0)
   const infraSvc: any[] = infra?.services ?? []
@@ -404,21 +410,28 @@ export default function HermesHub({ onDrill }: Props) {
               <>Paper phase 4.4→4.5 · policy-enforcing stop lifecycle · {scalpSwarm?.pending_approvals ?? 0} pending approvals
                 · heat {scalpSwarm?.portfolio_heat?.aggregate_open_risk_pct ?? '—'}%</>
             ) : (
-              <>Trade AI research-agent workflow layer · {staging.hermes_research_intelligence ?? 0} intelligence rows
+              <>Staging → promote → RAG pipeline · {health?.rag_pipeline?.coverage_pct ?? 0}% RAG coverage
+                · {staging.hermes_research_intelligence ?? 0} intelligence rows
                 {killSwitch && <span style={{ color: '#ef4444', marginLeft: 8 }}>KILL SWITCH ACTIVE</span>}</>
             )}
           </div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, maxWidth: 720 }}>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, maxWidth: 760 }}>
             {isScalp ? (
               <>7-agent hierarchical swarm enforcing <code>MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md</code> (4-layer stops).
                 Phase 1: Orchestrator + Live Monitor + Stop Adjustment. All material actions → Telegram approval.
                 Docs: <code>docs/hermes/momentum_scalp_swarm/</code></>
             ) : (
-              <>This is the research-agent workflow layer (separate from the global Hermes profile/chat layer).
-                Global profiles — <b>default · tradeai · tradeai12b · dev · serverops</b> — are managed under <b>System → Hermes</b>.
-                Runs on project <code>.venv</code> + <code>scripts/hermes_*.py</code> (systemd timers); independent of the retired sidecar install.</>
+              <>Daily ROI: <b>Research</b> backlog + <b>Closed Loop</b> + <b>Maturity</b> gaps. <b>Sources</b> is registry audit (595 labels) — use ops view, not raw scroll.
+                Chat profiles live under <Link to="/system?tab=hermes" style={linkStyle}>System → Hermes</Link>.</>
             )}
           </div>
+          {!isScalp && (
+            <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+              <Link to="/intelligence?tab=command" style={linkStyle}>Intelligence triage →</Link>
+              <Link to="/trading?tab=Open+Trades" style={linkStyle}>Open Trades →</Link>
+              <Link to="/system?tab=hermes" style={linkStyle}>System → Hermes profiles →</Link>
+            </div>
+          )}
         </div>
         <div className="hub-tabs">
           {activeTabs.map(t => (
@@ -426,25 +439,37 @@ export default function HermesHub({ onDrill }: Props) {
               padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
               background: activeTab === t ? (isScalp ? 'rgba(168,85,247,.15)' : 'rgba(96,165,250,.15)') : 'var(--bg2)',
               color: activeTab === t ? (isScalp ? '#a855f7' : '#60a5fa') : 'var(--text3)', fontWeight: activeTab === t ? 700 : 400,
-            }}>{t}</button>
+              opacity: !isScalp && REGISTRY_TABS.has(t) && activeTab !== t ? 0.72 : 1,
+            }}>{t}{!isScalp && REGISTRY_TABS.has(t) ? ' ◦' : ''}</button>
           ))}
         </div>
       </div>
 
       {/* Global Hermes Profiles — identity/SOUL editor (shared with System → Hermes) */}
       {(profStatus?.profiles?.length ?? 0) > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>Global Hermes profiles · edit identity</span>
-          {profStatus.profiles.map((p: any) => (
-            <button key={p.profile} onClick={() => setEditProfile(p.profile)}
-              title={`${PROFILE_LABELS[p.profile] || p.profile} · ${p.model} · tools: ${p.tools}${p.soul_hash ? ' · SOUL ' + p.soul_hash : ''}`}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
-                background: 'var(--bg1)', border: '1px solid var(--border)', color: 'var(--text1)', fontSize: 11 }}>
-              <span style={{ fontWeight: 600 }}>{p.profile}</span>
-              <span style={{ fontSize: 9, color: /enabled:/.test(p.tools) ? '#f59e0b' : p.tools === 'disabled' ? '#22c55e' : 'var(--text3)' }}>{p.tools}</span>
-              <span style={{ fontSize: 9, color: '#60a5fa' }}>✎ Identity</span>
-            </button>
-          ))}
+        <div style={{ marginBottom: 14 }}>
+          <button onClick={() => setProfilesOpen(v => !v)} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6, cursor: 'pointer',
+            background: 'var(--bg1)', border: '1px solid var(--border)', color: 'var(--text2)', fontSize: 10,
+          }}>
+            <span style={{ fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>Global Hermes profiles</span>
+            <span>{profStatus.profiles.length} configured · edit identity in-page or System → Hermes</span>
+            <span style={{ color: 'var(--text3)' }}>{profilesOpen ? '▲' : '▼'}</span>
+          </button>
+          {profilesOpen && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {profStatus.profiles.map((p: any) => (
+                <button key={p.profile} onClick={() => setEditProfile(p.profile)}
+                  title={`${PROFILE_LABELS[p.profile] || p.profile} · ${p.model} · tools: ${p.tools}${p.soul_hash ? ' · SOUL ' + p.soul_hash : ''}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                    background: 'var(--bg1)', border: '1px solid var(--border)', color: 'var(--text1)', fontSize: 11 }}>
+                  <span style={{ fontWeight: 600 }}>{p.profile}</span>
+                  <span style={{ fontSize: 9, color: /enabled:/.test(p.tools) ? '#f59e0b' : p.tools === 'disabled' ? '#22c55e' : 'var(--text3)' }}>{p.tools}</span>
+                  <span style={{ fontSize: 9, color: '#60a5fa' }}>✎ Identity</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -816,20 +841,42 @@ export default function HermesHub({ onDrill }: Props) {
         const autoApproval = sourcesData?.auto_approval ?? {}
         const credColor = (c: number) => c >= 50 ? '#22c55e' : c >= 25 ? '#f59e0b' : '#ef4444'
         const tierColor = (t: string) => t === 'core' ? '#a855f7' : t === 'trusted' ? '#22c55e' : t === 'probationary' ? '#f59e0b' : t === 'demoted' ? '#ef4444' : 'var(--text3)'
-        const newsByTier = ['core', 'trusted', 'probationary', 'candidate', 'demoted'].map(tier => ({
+        const liveConnectors = connectors.filter(c => c.active)
+        const offConnectors = connectors.filter(c => !c.active)
+        const candidateNews = newsMaturity.filter(n => (n.maturity_tier || 'candidate') === 'candidate')
+        const opsNewsTiers = ['core', 'trusted', 'probationary', 'demoted']
+        const newsByTier = (sourcesView === 'ops' ? opsNewsTiers : ['core', 'trusted', 'probationary', 'candidate', 'demoted']).map(tier => ({
           tier,
           items: newsMaturity.filter(n => (n.maturity_tier || 'candidate') === tier),
         })).filter(g => g.items.length > 0)
+        const webSorted = [...web].sort((a, b) => Number(b.credibility) - Number(a.credibility))
+        const webDisplay = sourcesView === 'ops'
+          ? webSorted.filter(w => w.active).slice(0, 48)
+          : webSorted
+        const yieldBar = (c: number) => `${Math.min(100, Math.max(2, Number(c)))}%`
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.45 }}>
-              Registry has three layers: <b>ingestion connectors</b> (live pipes), <b>news maturity labels</b> (attribution scores — dormant ≠ offline), and <b>web yield domains</b> (SearXNG self-learning). Gate 4 closes autonomously via <code>hermes_source_auto_approval.py</code> (Coordinator + daily maturity cron) — no operator approval step.
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.45, maxWidth: 720 }}>
+                Registry audit — not a trading triage board. <b>Ops view</b> shows live pipes + activated tiers + preferred web paths only.
+                Full registry = 595 news labels + {offConnectors.length} OFF challenger connectors.
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {(['ops', 'full'] as const).map(v => (
+                  <button key={v} onClick={() => setSourcesView(v)} style={{
+                    padding: '5px 12px', fontSize: 10, borderRadius: 6, cursor: 'pointer', fontWeight: v === sourcesView ? 800 : 600,
+                    background: v === sourcesView ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
+                    color: v === sourcesView ? '#60a5fa' : 'var(--text3)',
+                    border: `1px solid ${v === sourcesView ? 'rgba(96,165,250,.35)' : 'var(--border)'}`,
+                  }}>{v === 'ops' ? 'Ops view' : 'Full registry'}</button>
+                ))}
+              </div>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 10 }}>
               {[
-                [`Connectors`, `${stats.connectors_active ?? 0}/${stats.connectors_total ?? 0} live`],
-                [`News maturity`, `${stats.news_active ?? 0}/${stats.news_total ?? 0} activated`],
-                [`Web preferred`, `${stats.web_preferred ?? 0}/${stats.web_total ?? 0}`],
+                [`Live connectors`, `${stats.connectors_active ?? 0}/${stats.connectors_total ?? 0}`],
+                [`Activated news`, `${stats.news_active ?? 0}/${stats.news_total ?? 0}`],
+                [`Preferred web`, `${stats.web_preferred ?? 0}/${stats.web_total ?? 0}`],
                 [`Linked news→web`, String(stats.news_linked_to_preferred_web ?? 0)],
                 [`Auto-pending`, String(stats.vetting_pending ?? vettingActions.length)],
                 [`Auto-activated`, String(stats.auto_activated_total ?? 0)],
@@ -866,10 +913,10 @@ export default function HermesHub({ onDrill }: Props) {
             </div>
             {/* Ingestion connectors */}
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Ingestion connectors ({connectors.filter(c => c.active).length} live / {connectors.length})</div>
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>Real pipes: RSS, SEC, social, YouTube, AI APIs. ACTIVE = ingest path running today.</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Ingestion connectors ({liveConnectors.length} live / {connectors.length})</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>Real pipes: RSS, SEC, social, YouTube, AI APIs. ACTIVE = ingest path running today.{sourcesView === 'ops' && offConnectors.length > 0 ? ` Hiding ${offConnectors.length} OFF challenger candidates — switch to Full registry to browse.` : ''}</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 10 }}>
-                {connectors.map(s => (
+                {(sourcesView === 'ops' ? liveConnectors : connectors).map(s => (
                   <div key={`${s.type}-${s.name}`} onClick={() => onDrill({ title: s.name, subtitle: s.type, endpoint: '/api/v2/hermes/sources', rows: [s] })}
                     style={{ padding: '10px 12px', borderRadius: 8, cursor: 'pointer', background: 'var(--bg2)', border: `1px solid ${s.active ? 'rgba(34,197,94,.3)' : 'rgba(100,116,139,.3)'}` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -885,13 +932,16 @@ export default function HermesHub({ onDrill }: Props) {
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>News maturity — attribution labels ({newsMaturity.filter(n => n.active).length} activated / {newsMaturity.length})</div>
               <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>
-                Scored by <code>source_maturity.py</code> from signal precision + outcomes. DORMANT = not yet auto-activated — many publishers still flow via RSS or a linked preferred web domain below.
+                Scored by <code>source_maturity.py</code> from signal precision + outcomes.
+                {sourcesView === 'ops' && candidateNews.length > 0 && (
+                  <> Ops view hides <b>{candidateNews.length}</b> low-priority candidate labels — they still ingest via RSS/linked web.</>
+                )}
               </div>
-              <div style={{ maxHeight: 340, overflow: 'auto' }}>
+              <div style={{ maxHeight: sourcesView === 'ops' ? 280 : 340, overflow: 'auto' }}>
                 {newsByTier.map(({ tier, items }) => (
                   <div key={tier} style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 10, fontWeight: 800, color: tierColor(tier), marginBottom: 4, textTransform: 'uppercase' }}>{tier} ({items.length})</div>
-                    {items.slice(0, tier === 'candidate' ? 25 : 12).map(n => (
+                    {items.slice(0, tier === 'candidate' ? 25 : sourcesView === 'ops' ? 8 : 12).map(n => (
                       <div key={n.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 2px', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, flexWrap: 'wrap' }}>
                         <span style={{ width: 200, fontFamily: 'monospace', color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={n.name}>
                           {n.name.replace(/^google_news:/, 'GN:')}
@@ -915,23 +965,38 @@ export default function HermesHub({ onDrill }: Props) {
                     {tier === 'candidate' && items.length > 25 && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>+{items.length - 25} candidate rows (low priority noise)</div>}
                   </div>
                 ))}
+                {sourcesView === 'ops' && candidateNews.length > 0 && (
+                  <button onClick={() => setSourcesView('full')} style={{ marginTop: 6, fontSize: 10, padding: '6px 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text2)' }}>
+                    Show {candidateNews.length} candidate news labels in full registry →
+                  </button>
+                )}
               </div>
             </div>
             {/* Web domains scored by yield (Track A) */}
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Web domains — SearXNG yield ({web.filter(w => w.active).length} preferred / {web.length})</div>
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>Yield = (promoted+embedded) ÷ research produced. Preferred ≥30% — these are the live research paths Hermes actually uses from web search.</div>
-              {web.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No web sources scored yet.</div> :
-                web.map(s => (
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>
+                Yield = (promoted+embedded) ÷ research produced. Bar caps at 100% when yield &gt;100% (small-sample spikes).
+                {sourcesView === 'ops' ? ` Showing top ${webDisplay.length} preferred domains.` : ''}
+              </div>
+              {webDisplay.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No web sources scored yet.</div> :
+                <div style={{ maxHeight: sourcesView === 'ops' ? 420 : undefined, overflowY: sourcesView === 'ops' ? 'auto' : undefined }}>
+                {webDisplay.map(s => (
                   <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 4px', borderBottom: '1px solid var(--border-subtle)' }}>
                     <span style={{ width: 170, fontSize: 11, color: 'var(--text1)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
                     <div style={{ flex: 1, height: 10, background: 'var(--bg2)', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${Math.max(2, Number(s.credibility))}%`, background: credColor(Number(s.credibility)) }} />
+                      <div style={{ height: '100%', width: yieldBar(Number(s.credibility)), background: credColor(Math.min(100, Number(s.credibility))) }} />
                     </div>
-                    <span style={{ width: 42, fontSize: 10, color: credColor(Number(s.credibility)), textAlign: 'right', fontWeight: 600 }}>{Number(s.credibility)}%</span>
+                    <span style={{ width: 42, fontSize: 10, color: credColor(Math.min(100, Number(s.credibility))), textAlign: 'right', fontWeight: 600 }}>{Number(s.credibility)}%</span>
                     <span style={{ width: 70, fontSize: 8, color: s.active ? '#22c55e' : 'var(--text3)', textAlign: 'right' }}>{s.active ? 'preferred' : 'candidate'}</span>
                   </div>
                 ))}
+                </div>}
+              {sourcesView === 'ops' && web.length > webDisplay.length && (
+                <button onClick={() => setSourcesView('full')} style={{ marginTop: 8, fontSize: 10, padding: '6px 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text2)' }}>
+                  Show all {web.length} web domains ({web.length - web.filter(w => w.active).length} candidate) →
+                </button>
+              )}
             </div>
           </div>
         )
