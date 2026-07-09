@@ -26,7 +26,7 @@ originSessionId: 9fa89957-9286-4128-b08d-7f960d9b6594
 
 | Agent | Primary | Fallback chain |
 |-------|---------|----------------|
-| **Maria** (Telegram) | `xai/grok-4` (OAuth proxy `:8645`) | `chatgpt/gpt-5.4` → `claude-cli/claude-sonnet-4-6` → `ollama/qwen3:8b` |
+| **Maria** (Telegram) | `claude-cli/claude-sonnet-4-6` (exec/tools) | `xai/grok-4` → `chatgpt/gpt-5.4` → `ollama/qwen3:8b` |
 | **main** (default) | `claude-cli/claude-sonnet-4-6` | `chatgpt/gpt-5.4` → `ollama/qwen3:8b` |
 | Specialists (Alex, Aegis, Iris, Steph) | `claude-cli/claude-sonnet-4-6` | `ollama/qwen3:8b` |
 
@@ -52,7 +52,9 @@ All Telegram DMs route to **Maria** (not `main`). Portfolio questions: run
 - SOUL synced with `tradeai-readonly` + `tradeai-watchlist` skills
 - Portfolio: `portfolio-today` for today's P&L + winners/losers
 - Stop-outs: `stops-today` for triggered stops (alerts `stop_triggered` + risk `TRIGGERED` rows)
-- **Full CC mirror:** `tradeai_readonly.py help` — hub commands `home`, `trading`, `risk-hub`, `hermes-hub`, `options-hub`, `health-hub`, etc. map 1:1 to Command Center v3 pages
+- **Full CC mirror:** `tradeai_readonly.py help` — hub commands map 1:1 to Command Center v3 pages
+- **NL router:** `tradeai_query.py "<message>"` — deterministic routing (stops, portfolio, etc.); Maria must exec this, never stall on "one moment"
+- **OAuth chat:** `tradeai-watchlist.py ask "..."` for free Grok/ChatGPT opinion — not for live CC/exec data
 
 ### 2. Main (default OpenClaw agent)
 - Workspace: `~/.openclaw/workspace/`
