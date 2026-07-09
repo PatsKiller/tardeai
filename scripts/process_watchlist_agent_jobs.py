@@ -188,27 +188,71 @@ def _attempt_symbol_enrichment(symbol: str, missing: list) -> bool:
     return enriched
 
 
-# Priority-based free-OAuth routing (operator-approved 2026-07-03). High-priority jobs
-# (holdings-change re-syntheses, retries, operator refreshes — priority <= 2) route their agent
-# narratives through the FREE OAuth lanes (grok :8645 → chatgpt :8646) instead of local gemma:
-# these are the jobs someone is waiting on. The bulk research tail stays local. A saturation
-# valve widens routing to priority-3 when local turns slow mid-run. Caps: per-run cloud budget
-# (CLOUD_NARRATIVE_CAP) keeps us far inside the 800/day/lane soft cap; llm_lane falls back to
-# the local router path on lane failure. Free lanes only — never a paid key.
+# Maria-only OAuth priority tier (operator 2026-07-09). Free OAuth lanes (grok :8645 → chatgpt :8646)
+# for Maria agent_narrative on: portfolio holdings, top-N WAIT setups, manual refresh jobs.
+# Steph/Risk/tail research stay on local gemma. Daily cap via llm_consumption_log (~80/day);
+# per-run cap prevents a single cron burst from draining the budget.
+from maria_oauth_priority import (
+    MARIA_OAUTH_DAILY_CAP,
+    MARIA_OAUTH_PROCESS_ID,
+    MARIA_OAUTH_RUN_CAP,
+    WAIT_SETUP_HOURS,
+    WAIT_SETUP_LIMIT,
+    maria_priority_tier,
+)
+
 _CURRENT_JOB_PRIORITY: int | None = None
-_LOCAL_SLOW = False          # set when a local call exceeds LOCAL_SLOW_S this run
-_CLOUD_NARRATIVE_CALLS = 0
-_CLOUD_NARRATIVE_CAP = int(os.environ.get("CLOUD_NARRATIVE_CAP", "40"))
+_CURRENT_JOB_SYMBOL: str | None = None
+_CURRENT_AGENT: str | None = None
+_CURRENT_JOB_SUBMITTED_FROM: str | None = None
+_CURRENT_JOB_REQUEST_TYPE: str | None = None
+_PORTFOLIO_SYMS_RUN: frozenset[str] = frozenset()
+_WAIT_SETUP_SYMS_RUN: frozenset[str] = frozenset()
+_LOCAL_SLOW = False          # telemetry only — no longer widens OAuth routing
+_MARIA_OAUTH_RUN_CALLS = 0
 _LOCAL_SLOW_S = float(os.environ.get("LOCAL_SLOW_S", "45"))
 
 
-def _prefer_cloud_narrative() -> bool:
-    if _CLOUD_NARRATIVE_CALLS >= _CLOUD_NARRATIVE_CAP:
+def _wait_setup_symbol_set(conn) -> frozenset[str]:
+    """Top-N symbols with a recent WAIT scan (actionable setup window)."""
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT symbol FROM (
+                    SELECT DISTINCT ON (symbol) symbol, score
+                    FROM trade_ai_scans
+                    WHERE decision = 'WAIT'
+                      AND scanned_at > NOW() - INTERVAL '{int(WAIT_SETUP_HOURS)} hours'
+                    ORDER BY symbol, scanned_at DESC
+                ) latest
+                ORDER BY score DESC NULLS LAST
+                LIMIT %s""",
+            (int(WAIT_SETUP_LIMIT),),
+        )
+        return frozenset(str(r[0]).upper().strip() for r in cur.fetchall() if r and r[0])
+    except Exception:
+        return frozenset()
+
+
+def _prefer_maria_oauth() -> bool:
+    if (_CURRENT_AGENT or "").lower() != "maria":
         return False
-    p = _CURRENT_JOB_PRIORITY
-    if p is not None and p <= 2:
-        return True
-    return _LOCAL_SLOW and p is not None and p <= 3
+    if _MARIA_OAUTH_RUN_CALLS >= MARIA_OAUTH_RUN_CAP:
+        return False
+    try:
+        from llm_consumption import over_daily_cap
+        if over_daily_cap(MARIA_OAUTH_PROCESS_ID):
+            return False
+    except Exception:
+        pass
+    return maria_priority_tier(
+        _CURRENT_JOB_SYMBOL,
+        portfolio_symbols=_PORTFOLIO_SYMS_RUN,
+        wait_symbols=_WAIT_SETUP_SYMS_RUN,
+        submitted_from=_CURRENT_JOB_SUBMITTED_FROM,
+        priority=_CURRENT_JOB_PRIORITY,
+        request_type=_CURRENT_JOB_REQUEST_TYPE,
+    )
 
 
 _REFUSAL_PREFIXES = ("i cannot fulfill", "i can't fulfill", "i cannot help", "i can't help",
@@ -233,21 +277,41 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
          high_impact: bool = False) -> str:
     """Call LLM via router with fallback hierarchy.
 
-    Routes through: free OAuth lanes for high-priority jobs (see _prefer_cloud_narrative),
-    else local Ollama → Grok → Claude → OpenAI based on task type.
+    Maria priority tier only: free OAuth lanes (see _prefer_maria_oauth), else local Ollama →
+    Grok → Claude → OpenAI based on task type.
     """
-    global _CLOUD_NARRATIVE_CALLS, _LOCAL_SLOW
-    if task_type in ("agent_narrative", "agent_debate") and _prefer_cloud_narrative():
+    global _MARIA_OAUTH_RUN_CALLS, _LOCAL_SLOW
+    if task_type in ("agent_narrative", "agent_debate") and _prefer_maria_oauth():
         try:
-            import llm_lane
+            from llm_consumption import gate_and_generate
+            from maria_oauth_priority import is_manual_refresh
+            cloud_prompt = _strip_local_tokens(prompt)
+            manual = is_manual_refresh(
+                _CURRENT_JOB_SUBMITTED_FROM,
+                priority=_CURRENT_JOB_PRIORITY,
+                request_type=_CURRENT_JOB_REQUEST_TYPE,
+            )
             for lane in ("grok", "chatgpt"):
-                if not llm_lane.available(lane):
+                try:
+                    out = gate_and_generate(
+                        cloud_prompt,
+                        lane=lane,
+                        process_id=MARIA_OAUTH_PROCESS_ID,
+                        task_summary=f"maria {task_type} {_CURRENT_JOB_SYMBOL or ''}".strip(),
+                        manual_trigger=manual,
+                        timeout=120,
+                        metadata={
+                            "symbol": _CURRENT_JOB_SYMBOL,
+                            "agent": "maria",
+                            "submitted_from": _CURRENT_JOB_SUBMITTED_FROM,
+                        },
+                    )
+                except Exception:
                     continue
-                out = llm_lane.generate(prompt, lane=lane, timeout=120)
                 if _is_refusal(out):
-                    continue  # persona refusal — try the next lane, else the local router below
+                    continue
                 if out and len(str(out).strip()) > 20:
-                    _CLOUD_NARRATIVE_CALLS += 1
+                    _MARIA_OAUTH_RUN_CALLS += 1
                     _llm._last_model = f"{lane}-oauth"
                     _llm._last_provider = lane
                     _llm._last_cost = 0
@@ -1161,7 +1225,6 @@ Respond in JSON only:
   "evidence": [{{"tag": "fact", "text": "key fact"}}, {{"tag": "risk", "text": "key risk"}}],
   "data_i_doubt": "none or what you distrust"}}"""
 
-    # Route: always local first — never burn cloud budget for Maria Pass 2
     pass2_raw = _llm(pass2_prompt, max_tokens=400, task_type="agent_narrative", high_impact=False)
     pass2_model = getattr(_llm, '_last_model', 'unknown')
 
@@ -2167,6 +2230,12 @@ def process_jobs(limit: int = 10):
     print(f"[watchlist-agent] Processing {len(jobs)} jobs...")
     completed = 0
     portfolio_syms = _portfolio_symbol_set()
+    wait_syms = _wait_setup_symbol_set(conn)
+    global _PORTFOLIO_SYMS_RUN, _WAIT_SETUP_SYMS_RUN
+    _PORTFOLIO_SYMS_RUN = portfolio_syms
+    _WAIT_SETUP_SYMS_RUN = wait_syms
+    if wait_syms:
+        print(f"[watchlist-agent] Maria OAuth WAIT tier: {', '.join(sorted(wait_syms))}")
 
     for job in jobs:
         job_id = job["id"]
@@ -2174,8 +2243,23 @@ def process_jobs(limit: int = 10):
         agent = job["requested_agent"]
         request_type = job["request_type"]
         note = job.get("note", "")
-        # Expose the job's priority to the LLM wrapper for free-OAuth routing decisions.
-        global _CURRENT_JOB_PRIORITY
+        submitted_from = job.get("submitted_from")
+        if not submitted_from:
+            payload = job.get("payload")
+            if isinstance(payload, str):
+                try:
+                    submitted_from = json.loads(payload).get("submitted_from")
+                except Exception:
+                    pass
+            elif isinstance(payload, dict):
+                submitted_from = payload.get("submitted_from")
+        # Expose job context to the LLM wrapper for Maria OAuth tier routing.
+        global _CURRENT_JOB_PRIORITY, _CURRENT_JOB_SYMBOL, _CURRENT_AGENT
+        global _CURRENT_JOB_SUBMITTED_FROM, _CURRENT_JOB_REQUEST_TYPE
+        _CURRENT_JOB_SYMBOL = str(symbol or "").upper()
+        _CURRENT_AGENT = str(agent or "").lower()
+        _CURRENT_JOB_SUBMITTED_FROM = str(submitted_from or "").strip() or None
+        _CURRENT_JOB_REQUEST_TYPE = str(request_type or "").strip() or None
         try:
             _CURRENT_JOB_PRIORITY = int(job.get("priority")) if job.get("priority") is not None else None
         except (TypeError, ValueError):

@@ -104,23 +104,25 @@ def _seed_registry() -> None:
         mode = p.get("default_mode") or default
         # Processes with an explicit default_mode in the registry are bootstrap-synced so
         # operator-approved defaults (e.g. cloud_review=automated) apply on deploy.
+        daily_cap = p.get("daily_soft_cap")
         if "default_mode" in p:
             cur.execute("""
-                INSERT INTO llm_process_config (process_id, process_name, category, mode, notes, updated_at)
-                VALUES (%s, %s, %s, %s, %s, NOW())
+                INSERT INTO llm_process_config (process_id, process_name, category, mode, daily_soft_cap, notes, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW())
                 ON CONFLICT (process_id) DO UPDATE SET
                   process_name = EXCLUDED.process_name,
                   category = EXCLUDED.category,
                   mode = EXCLUDED.mode,
+                  daily_soft_cap = COALESCE(EXCLUDED.daily_soft_cap, llm_process_config.daily_soft_cap),
                   notes = EXCLUDED.notes,
                   updated_at = NOW()
-            """, (pid, p.get("name") or pid, p.get("category"), mode, p.get("description")))
+            """, (pid, p.get("name") or pid, p.get("category"), mode, daily_cap, p.get("description")))
         else:
             cur.execute("""
-                INSERT INTO llm_process_config (process_id, process_name, category, mode, notes)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO llm_process_config (process_id, process_name, category, mode, daily_soft_cap, notes)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (process_id) DO NOTHING
-            """, (pid, p.get("name") or pid, p.get("category"), mode, p.get("description")))
+            """, (pid, p.get("name") or pid, p.get("category"), mode, daily_cap, p.get("description")))
     _conn().commit()
 
 
@@ -157,7 +159,8 @@ def get_process_config(process_id: str) -> dict:
             return {
                 "process_id": pid, "process_name": p.get("name") or pid,
                 "category": p.get("category"), "mode": p.get("default_mode") or reg.get("default_mode") or "manual",
-                "allowed_lanes": ["grok", "chatgpt"], "daily_soft_cap": None, "notes": p.get("description"),
+                "allowed_lanes": ["grok", "chatgpt"], "daily_soft_cap": p.get("daily_soft_cap"),
+                "notes": p.get("description"),
             }
     return {
         "process_id": pid, "process_name": pid, "category": "Unknown",
@@ -179,6 +182,40 @@ def set_process_mode(process_id: str, mode: str) -> dict:
     """, (process_id, cfg.get("process_name") or process_id, cfg.get("category"), mode, cfg.get("notes")))
     _conn().commit()
     return {"ok": True, "process_id": process_id, "mode": mode}
+
+
+def calls_today(process_id: str) -> int:
+    """Successful + failed OAuth lane calls logged today for a process."""
+    try:
+        ensure_schema()
+        cur = _conn().cursor()
+        cur.execute(
+            "SELECT COUNT(*) FROM llm_consumption_log "
+            "WHERE process_id=%s AND created_at >= CURRENT_DATE",
+            (str(process_id or "").strip() or "unregistered",),
+        )
+        return int(cur.fetchone()[0] or 0)
+    except Exception:
+        try:
+            _conn().rollback()
+        except Exception:
+            pass
+        return 0
+
+
+def over_daily_cap(process_id: str, *, extra: int = 0) -> bool:
+    """True when today's logged calls (+ optional extra) meet or exceed daily_soft_cap."""
+    cfg = get_process_config(process_id)
+    cap = cfg.get("daily_soft_cap")
+    if cap is None:
+        return False
+    try:
+        cap_n = int(cap)
+    except (TypeError, ValueError):
+        return False
+    if cap_n <= 0:
+        return False
+    return calls_today(process_id) + max(0, int(extra or 0)) >= cap_n
 
 
 def should_call(process_id: str, lane: str, *, manual_trigger: bool = False) -> dict:

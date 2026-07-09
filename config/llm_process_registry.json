@@ -17,6 +17,7 @@
     {"id": "rotation_grok_review", "name": "Rotation Grok Review", "category": "Rotation", "lane_policy": "grok_only", "description": "Inline Grok second opinion on rotation questions"},
     {"id": "rotation_oversight", "name": "Rotation Independent Oversight", "category": "Rotation", "lane_policy": "ensemble", "description": "Grok + ChatGPT oversight on rotation engine — run both for full picture"},
     {"id": "watchlist_cio_synthesis", "name": "Watchlist CIO Synthesis", "category": "Watch", "lane_policy": "ensemble", "default_mode": "manual", "description": "CIO view — Grok primary + ChatGPT reconcile when both run"},
+    {"id": "watchlist_maria_priority", "name": "Maria Priority OAuth", "category": "Watch", "lane_policy": "either", "default_mode": "automated", "daily_soft_cap": 80, "description": "OAuth Maria narratives for portfolio holdings, top WAIT setups, and manual refresh — ~30-80 calls/day"},
     {"id": "paper_trade_advisory", "name": "Paper Trade Post-Mortem", "category": "Trading", "lane_policy": "both_preferred", "description": "Post-mortem on closed paper trades"},
     {"id": "hermes_external_research", "name": "Hermes External Research", "category": "Hermes", "lane_policy": "either", "description": "Escalation — first available OAuth lane"},
     {"id": "multi_tier_trade_reviewer", "name": "Multi-Tier Trade Reviewer", "category": "Journal", "lane_policy": "both_preferred", "description": "Cloud review of local trade reviews"},

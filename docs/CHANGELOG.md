@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-07-09 (eve) - Maria OAuth priority tier (~30–80 calls/day)
+
+### Watchlist agent worker
+
+- **Maria-only OAuth routing** — Replaced fleet-wide `_prefer_cloud_narrative()` (priority ≤2) with
+  `_prefer_maria_oauth()` scoped to portfolio holdings, top-3 `WAIT` setups (48h), and manual refresh
+  jobs. Steph/Risk/tail research remain on local gemma.
+- **Daily cap** — `watchlist_maria_priority` process in `llm_process_registry.json` (automated, 80/day
+  soft cap) with consumption logged via `gate_and_generate` / `llm_consumption_log`.
+- **Helpers** — `scripts/lib/maria_oauth_priority.py`; `llm_consumption.calls_today()` /
+  `over_daily_cap()`; registry seeds `daily_soft_cap`.
+
+### Tests / docs
+
+- `tests/test_maria_oauth_priority.py`
+- `docs/AGENT_AND_HERMES_WORKFLOWS.md` — Maria OAuth tier note.
+
 ## 2026-07-09 (pm) - Agent input hygiene, confidence normalization, defense_thesis remediation
 
 ### LLM input curation & agent fleet

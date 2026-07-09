@@ -60,6 +60,8 @@ Agents never execute trades. Their outputs are advisory inputs to the proposal l
 
 **Confidence hygiene:** Parser + API normalize 0–1 / 0–100; values >100 (poisoned income dollars, account ids) are dropped to default 0.5 at ingest and excluded from roster averages.
 
+**Maria OAuth priority tier (2026-07-09):** Only **Maria** may use free OAuth lanes (Grok → ChatGPT) and only for symbols/jobs in the priority tier — not the full ~1k/day research tail. Tier = portfolio holdings (`holdings.json`), top **3** recent `trade_ai_scans` `WAIT` setups (48h window), or manual refresh (`watchlist_requeue`, `holdings_change_trigger`, `api`, priority-0 / command-center holdings). Steph/Risk stay local gemma. Consumption is logged as `watchlist_maria_priority` with **80/day** soft cap (`llm_consumption_log`); target budget ~30–80 OAuth calls/day (Maria two-pass ≈ 2 calls per job).
+
 ### v3 surfaces
 
 - **AgentsHub.tsx** — Roster, Calibration, Workflow graph (live handoff edges from `/api/v2/agent-pipeline`), Performance.
