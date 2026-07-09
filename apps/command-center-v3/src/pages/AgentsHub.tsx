@@ -122,11 +122,15 @@ export default function AgentsHub({ onDrill }: Props) {
   const symbolsByAgent: Record<string, number> = {}
   for (const a of agentList) symbolsByAgent[a.agent_name] = a.symbols ?? a.total ?? 0
 
-  const allowed = windows.filter(w => w.sample_size_status === 'proposal_allowed').length
+  // Latest calibration window per agent (API returns created_at DESC — keep first only).
+  const winByAgent: Record<string, any> = {}
+  for (const w of windows) {
+    if (!winByAgent[w.agent_name]) winByAgent[w.agent_name] = w
+  }
+  const calibratedAgents = Object.keys(winByAgent).length
+  const allowed = Object.values(winByAgent).filter(w => w.sample_size_status === 'proposal_allowed').length
 
   // ── Workflow graph: nodes = agents, LIVE edges from /agent-pipeline (real from→to + escalated) ──
-  const winByAgent: Record<string, any> = {}
-  for (const w of windows) winByAgent[w.agent_name] = w
   const pipeHandoffs: any[] = pipeline?.handoffs ?? []
   // recent handoffs per agent (normalized) for the node drawer
   const handoffsByAgent: Record<string, any[]> = {}
@@ -193,7 +197,7 @@ export default function AgentsHub({ onDrill }: Props) {
       <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Agents</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{agents.length} agents · {handoffs.length} recent handoffs · {allowed}/{windows.length} proposal-allowed</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{agents.length} agents · {handoffs.length} recent handoffs · {allowed}/{calibratedAgents} proposal-allowed (latest window)</div>
         </div>
         <div className="hub-tabs">
           {TABS.map(t => (
@@ -215,7 +219,7 @@ export default function AgentsHub({ onDrill }: Props) {
                 {['Agent / role', 'Model', 'Actions', 'Buy / Sell / Hold', 'Avg conf', 'Last run'].map(h => <th key={h} style={{ textAlign: ['Agent / role', 'Model'].includes(h) ? 'left' : 'right', padding: '7px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
               </tr></thead>
               <tbody>{agents.map((a: any, i: number) => {
-                const win = windows.find(w => w.agent_name === a.agent)
+                const win = winByAgent[a.agent]
                 return (
                   <tr key={i} onClick={() => onDrill({ title: a.agent, subtitle: `${ROLES[a.agent] ?? ''} · ${RUNTIME_MODEL}`, endpoint: '/api/v2/agents/summary', rows: [{ ...a, role: ROLES[a.agent] ?? '—', runtime_model: RUNTIME_MODEL }] })}
                     style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
@@ -257,7 +261,7 @@ export default function AgentsHub({ onDrill }: Props) {
                 { k: 'Recommendations', v: calStatus.recommendations_total },
                 { k: 'Calibration events', v: calStatus.calibration_events_total },
                 { k: 'Outcome links', v: calStatus.outcome_links_total },
-                { k: 'Proposal-allowed', v: `${allowed}/${windows.length}`, c: G },
+                { k: 'Proposal-allowed', v: `${allowed}/${calibratedAgents}`, c: G },
               ].map(s => (
                 <div key={s.k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
                   <div style={{ fontSize: 20, fontWeight: 700, color: s.c || 'var(--text0)' }}>{s.v ?? 0}</div>
