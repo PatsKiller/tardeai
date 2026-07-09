@@ -5467,6 +5467,10 @@ def _wl_items(query: dict = None):
     """, params) or []
     _items = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
     for _it in _items:
+        # HQ country for the card flag (frontend lib/country.ts). symbol_profiles has no
+        # country column, so resolve from the Finviz enrichment cache (with ADR handling
+        # done client-side by symbol).
+        _it["country_name"] = _resolve_country_name(_it.get("symbol"), _it.get("country_name"))
         _dcj = _it.get("dual_consensus_json")
         if isinstance(_dcj, str):
             try:

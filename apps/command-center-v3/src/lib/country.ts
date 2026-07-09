@@ -28,12 +28,21 @@ export interface Country {
 // (see flagFromCode), so adding a country is a single line here. Covers the
 // countries the backend flag map emits plus common ADR home countries.
 const NAMES: Record<string, string> = {
+  // Americas
   US: 'United States', CA: 'Canada', MX: 'Mexico', BR: 'Brazil', AR: 'Argentina',
+  CL: 'Chile', PE: 'Peru', CO: 'Colombia', UY: 'Uruguay', PA: 'Panama',
+  // Europe
   GB: 'United Kingdom', IE: 'Ireland', FR: 'France', DE: 'Germany', NL: 'Netherlands',
-  CH: 'Switzerland', LU: 'Luxembourg', ES: 'Spain', IT: 'Italy',
-  SE: 'Sweden', NO: 'Norway', DK: 'Denmark', FI: 'Finland',
-  IL: 'Israel', CN: 'China', HK: 'Hong Kong', TW: 'Taiwan', JP: 'Japan',
-  KR: 'South Korea', IN: 'India', SG: 'Singapore', AU: 'Australia', MY: 'Malaysia',
+  CH: 'Switzerland', LU: 'Luxembourg', ES: 'Spain', IT: 'Italy', BE: 'Belgium',
+  SE: 'Sweden', NO: 'Norway', DK: 'Denmark', FI: 'Finland', GR: 'Greece',
+  MC: 'Monaco', CY: 'Cyprus', TR: 'Turkey', KZ: 'Kazakhstan',
+  // Middle East / Africa
+  IL: 'Israel', AE: 'United Arab Emirates', JO: 'Jordan', ZA: 'South Africa',
+  // Asia-Pacific
+  CN: 'China', HK: 'Hong Kong', TW: 'Taiwan', JP: 'Japan', KR: 'South Korea',
+  IN: 'India', SG: 'Singapore', AU: 'Australia', MY: 'Malaysia',
+  ID: 'Indonesia', TH: 'Thailand', VN: 'Vietnam',
+  // Offshore financial domiciles (common for ADRs / holdcos)
   BM: 'Bermuda', KY: 'Cayman Islands',
 }
 
