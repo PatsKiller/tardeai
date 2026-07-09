@@ -56,6 +56,12 @@ const fmtPct = (v: any) => {
   return (n <= 1 ? n * 100 : n).toFixed(0) + '%'
 }
 const acc01 = (v: any) => num(v) <= 1 ? num(v) * 100 : num(v) // accuracy may be 0-1 or 0-100
+const fmtNum = (v: any) => {
+  const n = num(v)
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`
+  return String(n)
+}
 function timeAgo(iso?: string) {
   if (!iso) return '—'
   const d = Date.parse(iso); if (isNaN(d)) return '—'
@@ -106,8 +112,51 @@ function SignalDot({ value, thresholds }: { value: any; thresholds: [number, num
   return <span style={{ fontWeight: 700, color: col }}>{value == null ? '—' : v.toFixed(2)}</span>
 }
 
+function CalWindowCard({ w, symbolsByAgent, onDrill }: { w: any; symbolsByAgent: Record<string, number>; onDrill: Props['onDrill'] }) {
+  const neutral = Math.max(0, num(w.resolved) - num(w.correct) - num(w.incorrect))
+  const unresolved = Math.max(0, num(w.recommendations) - num(w.resolved))
+  const status = w.sample_size_status
+  const sc = status === 'proposal_allowed' ? G : status === 'shadow_only' ? B : A
+  const winRange = w.window_start && w.window_end
+    ? `${String(w.window_start).slice(0, 10)} → ${String(w.window_end).slice(0, 10)}`
+    : null
+  return (
+    <div onClick={() => onDrill({ title: w.agent_name, subtitle: `${(status || '').replace('_', ' ')} · ${winRange ?? timeAgo(w.created_at)}`, endpoint: '/api/v2/agent-calibration/windows', rows: [w] })}
+      style={{ background: 'var(--bg1)', border: `1px solid ${sc}33`, borderRadius: 10, padding: 14, cursor: 'pointer' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)' }}>{w.agent_name}</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
+            {num(w.recommendations)} recs · {symbolsByAgent[w.agent_name] ?? 0} symbols · {num(w.resolved)} resolved
+          </div>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
+            Scored {timeAgo(w.created_at)}{winRange ? ` · ${winRange}` : ''} · {w.domain}
+          </div>
+          <div style={{ fontSize: 9, marginTop: 4, padding: '2px 6px', borderRadius: 3, display: 'inline-block', fontWeight: 700, background: `${sc}22`, color: sc }}>
+            {(status || 'unscored').replace('_', ' ').toUpperCase()}
+          </div>
+        </div>
+        <AccuracyRing accuracy={w.accuracy} />
+      </div>
+      <CalBar correct={w.correct} incorrect={w.incorrect} neutral={neutral} unresolved={unresolved} />
+      <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, display: 'flex', gap: 12 }}>
+        <span><span style={{ color: G }}>■</span> {num(w.correct)} correct</span>
+        <span><span style={{ color: R }}>■</span> {num(w.incorrect)} wrong</span>
+        <span><span style={{ color: '#555' }}>■</span> {neutral} neutral</span>
+      </div>
+      <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 10, flexWrap: 'wrap' }}>
+        <div><span style={{ color: 'var(--text3)' }}>Confidence </span><span style={{ fontWeight: 700, color: 'var(--text1)' }}>{fmtPct(w.avg_confidence)}</span></div>
+        <div title="Mean abs error (lower better)"><span style={{ color: 'var(--text3)' }}>Cal err </span><SignalDot value={w.calibration_error} thresholds={[0.2, 0.4]} /></div>
+        <div title="Confident but wrong (lower better)"><span style={{ color: 'var(--text3)' }}>Overconf </span><SignalDot value={w.overconfidence_score} thresholds={[0.15, 0.3]} /></div>
+        <div title="Right but unsure (lower better)"><span style={{ color: 'var(--text3)' }}>Underconf </span><SignalDot value={w.underconfidence_score} thresholds={[0.15, 0.3]} /></div>
+      </div>
+    </div>
+  )
+}
+
 export default function AgentsHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Roster')
+  const [showCalHistory, setShowCalHistory] = useState(false)
   const { data: summary } = useApi<any>('/api/v2/agents/summary', 120_000)
   const { data: calStatus } = useApi<any>('/api/v2/agent-calibration/status', 120_000)
   const { data: calAgents } = useApi<any>('/api/v2/agent-calibration/agents', 120_000)
@@ -129,6 +178,15 @@ export default function AgentsHub({ onDrill }: Props) {
   }
   const calibratedAgents = Object.keys(winByAgent).length
   const allowed = Object.values(winByAgent).filter(w => w.sample_size_status === 'proposal_allowed').length
+  const latestWindows = useMemo(
+    () => Object.values(winByAgent).sort((a: any, b: any) => String(a.agent_name).localeCompare(String(b.agent_name))),
+    [winByAgent],
+  )
+  const historyWindows = useMemo(
+    () => windows.filter(w => winByAgent[w.agent_name]?.window_id !== w.window_id),
+    [windows, winByAgent],
+  )
+  const lastCalRun = calStatus?.last_calibration_run as string | undefined
 
   // ── Workflow graph: nodes = agents, LIVE edges from /agent-pipeline (real from→to + escalated) ──
   const pipeHandoffs: any[] = pipeline?.handoffs ?? []
@@ -258,15 +316,17 @@ export default function AgentsHub({ onDrill }: Props) {
       {tab === 'Calibration' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ fontSize: 10, color: 'var(--text3)', lineHeight: 1.45 }}>
-            Agent accuracy and performance — scored windows from paper-trade and proposal outcomes (replaces retired Performance tab).
+            Trust gate from paper-trade / proposal outcomes. <strong style={{ color: 'var(--text2)' }}>Current window</strong> = one card per agent (latest score).
+            Accuracy = correct ÷ resolved; most HOLD-style recs land as <em>neutral</em>, not wrong.
+            {lastCalRun ? ` Last engine run: ${timeAgo(lastCalRun)}.` : ''}
           </div>
           {calStatus && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
               {[
-                { k: 'Recommendations', v: calStatus.recommendations_total },
-                { k: 'Calibration events', v: calStatus.calibration_events_total },
-                { k: 'Outcome links', v: calStatus.outcome_links_total },
-                { k: 'Proposal-allowed', v: `${allowed}/${calibratedAgents}`, c: G },
+                { k: 'Rec registry (all-time)', v: fmtNum(calStatus.recommendations_total) },
+                { k: 'Calibration events', v: fmtNum(calStatus.calibration_events_total) },
+                { k: 'Outcome links', v: fmtNum(calStatus.outcome_links_total) },
+                { k: 'Proposal-allowed now', v: `${allowed}/${calibratedAgents}`, c: allowed > 0 ? G : A },
               ].map(s => (
                 <div key={s.k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
                   <div style={{ fontSize: 20, fontWeight: 700, color: s.c || 'var(--text0)' }}>{s.v ?? 0}</div>
@@ -275,49 +335,36 @@ export default function AgentsHub({ onDrill }: Props) {
               ))}
             </div>
           )}
-          {windows.length === 0 ? (
+          {latestWindows.length === 0 ? (
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 28, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
               No calibration windows yet. Run the calibration engine after paper trades close to score agent accuracy.
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
-              {windows.map((w: any) => {
-                const neutral = Math.max(0, num(w.resolved) - num(w.correct) - num(w.incorrect))
-                const unresolved = Math.max(0, num(w.recommendations) - num(w.resolved))
-                const status = w.sample_size_status
-                const sc = status === 'proposal_allowed' ? G : status === 'shadow_only' ? B : A
-                return (
-                  <div key={w.window_id} onClick={() => onDrill({ title: w.agent_name, subtitle: `${(status || '').replace('_', ' ')} · ${w.recommendation ?? ''}`, endpoint: '/api/v2/agent-calibration/windows', rows: [w] })}
-                    style={{ background: 'var(--bg1)', border: `1px solid ${sc}33`, borderRadius: 10, padding: 14, cursor: 'pointer' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                      <div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)' }}>{w.agent_name}</div>
-                        <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
-                          {num(w.recommendations)} recs · {symbolsByAgent[w.agent_name] ?? 0} symbols · {num(w.resolved)} resolved
-                        </div>
-                        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>Scored {timeAgo(w.created_at)} · {w.domain}</div>
-                        <div style={{ fontSize: 9, marginTop: 4, padding: '2px 6px', borderRadius: 3, display: 'inline-block', fontWeight: 700, background: `${sc}22`, color: sc }}>
-                          {(status || 'unscored').replace('_', ' ').toUpperCase()}
-                        </div>
-                      </div>
-                      <AccuracyRing accuracy={w.accuracy} />
+            <>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Current window ({latestWindows.length} agents)</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
+                {latestWindows.map((w: any) => (
+                  <CalWindowCard key={w.window_id} w={w} symbolsByAgent={symbolsByAgent} onDrill={onDrill} />
+                ))}
+              </div>
+              {historyWindows.length > 0 && (
+                <div>
+                  <button type="button" onClick={() => setShowCalHistory(v => !v)} style={{
+                    background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 12px',
+                    fontSize: 11, color: B, cursor: 'pointer', fontWeight: 600,
+                  }}>
+                    {showCalHistory ? 'Hide' : 'Show'} prior windows ({historyWindows.length})
+                  </button>
+                  {showCalHistory && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12, marginTop: 12, opacity: 0.85 }}>
+                      {historyWindows.map((w: any) => (
+                        <CalWindowCard key={w.window_id} w={w} symbolsByAgent={symbolsByAgent} onDrill={onDrill} />
+                      ))}
                     </div>
-                    <CalBar correct={w.correct} incorrect={w.incorrect} neutral={neutral} unresolved={unresolved} />
-                    <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, display: 'flex', gap: 12 }}>
-                      <span><span style={{ color: G }}>■</span> {num(w.correct)} correct</span>
-                      <span><span style={{ color: R }}>■</span> {num(w.incorrect)} wrong</span>
-                      <span><span style={{ color: '#555' }}>■</span> {neutral} neutral</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 10, flexWrap: 'wrap' }}>
-                      <div><span style={{ color: 'var(--text3)' }}>Confidence </span><span style={{ fontWeight: 700, color: 'var(--text1)' }}>{fmtPct(w.avg_confidence)}</span></div>
-                      <div title="Mean abs error (lower better)"><span style={{ color: 'var(--text3)' }}>Cal err </span><SignalDot value={w.calibration_error} thresholds={[0.2, 0.4]} /></div>
-                      <div title="Confident but wrong (lower better)"><span style={{ color: 'var(--text3)' }}>Overconf </span><SignalDot value={w.overconfidence_score} thresholds={[0.15, 0.3]} /></div>
-                      <div title="Right but unsure (lower better)"><span style={{ color: 'var(--text3)' }}>Underconf </span><SignalDot value={w.underconfidence_score} thresholds={[0.15, 0.3]} /></div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
           <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/agent-calibration/{'{status,windows,agents}'} · accuracy=correct/resolved · PROPOSAL ALLOWED = trusted to propose, SHADOW ONLY = logged not acted</div>
         </div>
