@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-07-09 - Telegram noise reduction, momentum GO delivery, Maria portfolio fix
+
+### Trade AI — alert routing + data quality (committed here)
+
+- **Momentum scalp GO delivery** — `continuous_runner` `Trade AI LIVE` + `NEW GO` messages were classified
+  `P2_DASHBOARD_ONLY` (archived to Reports, never Telegram). `telegram_alert_router.py` now carves out
+  `NEW GO` before the generic LIVE sink when score ≥ `scalp_realtime_min_score` and Critic is not
+  BLOCK/DOWNGRADE. Policy: `scalp_realtime_min_score` 18 (was 25), `max_trade_ai_live_alerts_per_hour` 10
+  (was 3).
+- **ATM expiry dedup** — parallel ATM cycles each sent their own expiry Telegram batch for the same symbols
+  (DOC, BLZE, AGNC). `atm_auto_approver._telegram_expiry_batch()` suppresses per-symbol repeats for 24h;
+  uses `send_telegram` instead of raw `_telegram_both`.
+- **Finviz DATA QUALITY noise** — pre-market Finviz exports `Rel Volume = 0` while `Volume` + `Avg Volume`
+  are populated, tripping the all-zero gate 3× in 7 minutes. `finviz_ingestion.py` backfills
+  `relative_volume = volume / avg_volume` when missing; 1-hour Telegram cooldown per distinct issue key.
+  `TRADE AI DATA QUALITY ALERT` → `P2_DASHBOARD_ONLY` in the router.
+- **Tests** — `test_finviz_rvol_backfill.py`, `test_atm_expiry_telegram_dedup.py`; router expectations
+  updated in `test_telegram_alert_router_jun25.py`.
+
+### OpenClaw — Maria Telegram portfolio (local `~/.openclaw/`, not in this repo)
+
+Documented in `docs/project/project_openclaw.md`:
+
+- Telegram DMs now **bind to Maria** (not `main`); `main` had leaked garbled `gpt-5.4` tool syntax on
+  portfolio questions.
+- Maria model chain: **`xai/grok-4` → `chatgpt/gpt-5.4` → `claude-cli/claude-sonnet-4-6`** (free OAuth
+  first, Claude fallback).
+- `tradeai-readonly` skill: new `portfolio-today` / `today` / `movers` composite; holdings API unwrap fix
+  (`data.holdings` dict); `SKILL.md` + Maria `SOUL.md` synced.
+
+### Command Center v3 (same release)
+
+- Watchlist + Trading Hub: HQ country flag column via `lib/country.ts` (`resolveCountry`, ADR-aware).
+
 ## 2026-07-07 - Proxy graph, Journal by-ticker, pullback widget + quote-refresh deadlock fixes
 
 Four independent PRs off `main` (proxy on the existing proxy branch), all advisory/review-only, no

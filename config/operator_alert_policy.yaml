@@ -35,7 +35,7 @@ levels:
       - lifecycle/catalog status
       - Hermes rank-only shifts
       - Health Agent unchanged score
-      - Trade AI LIVE per-ticker GO (use hourly recap)
+      - Trade AI LIVE per-ticker GO below scalp score floor or Critic BLOCK/DOWNGRADE
       - escalation investigation start
       - Incubator promoter stats
   P3_LOG_ONLY:
@@ -54,7 +54,7 @@ rules:
   # Restores live GO/WAIT scalp alerts (silent since ~07-01 when all setups downgraded to suppressed WAIT).
   # Set scalp_realtime_enabled=false to revert; raise scalp_realtime_min_score to reduce volume (score is /55).
   scalp_realtime_enabled: true
-  scalp_realtime_min_score: 25
+  scalp_realtime_min_score: 18
   suppress_raw_catalyst_dump: true
   suppress_generic_critique_summary: true
   suppress_iris_content_gap_telegram: true
@@ -66,7 +66,7 @@ rules:
   suppress_topic_curator: true
   stop_trigger_dedupe_minutes: 390
   go_signal_dedupe_minutes: 120
-  max_trade_ai_live_alerts_per_hour: 3
+  max_trade_ai_live_alerts_per_hour: 10
   max_stop_alerts_per_symbol_per_day: 2
   require_trade_plan_for_go_telegram: true
   require_action_for_telegram: true

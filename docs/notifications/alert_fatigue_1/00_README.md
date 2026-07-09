@@ -79,3 +79,29 @@ independently downgraded every setup to `SOCIAL_ONLY_UNVERIFIED` → `actionabil
 of the cap fix. Fixed to read `catalysts` (news) / `rag_catalyst_confirmed` / `hermes_catalyst_confirmed`.
 Verified: a catalyzed micro-float candidate now routes `momentum_scalp / GO`; pure-social stays `watch_only /
 SCOUT`. Lesson: unit-testing one gate wasn't enough — the live scan surfaced the parallel gate.
+
+---
+
+## continuous_runner NEW GO carve-out + policy tune (2026-07-09)
+
+**Problem:** Morning momentum scalps from `continuous_runner` (`Trade AI LIVE` + `NEW GO`) were classified
+`P2_DASHBOARD_ONLY` — same silent path as suppressed WAIT. The existing Social Scalp Setup carve-out did
+not match the continuous_runner message format.
+
+**Fix:** `telegram_alert_router.classify_alert` — `NEW GO` carve-out before the generic LIVE sink when
+score ≥ `scalp_realtime_min_score` and Critic is not BLOCK/DOWNGRADE. Policy:
+`scalp_realtime_min_score: 18` (was 25), `max_trade_ai_live_alerts_per_hour: 10` (was 3).
+
+---
+
+## ATM expiry + Finviz DATA QUALITY noise (2026-07-09)
+
+**ATM duplicates:** Multiple ATM cycles each sent their own expiry Telegram batch for the same symbols.
+
+**Fix:** `atm_auto_approver._telegram_expiry_batch()` — per-symbol 24h dedup; `send_telegram` instead of
+raw `_telegram_both`.
+
+**DATA QUALITY:** Finviz pre-market exports `Rel Volume = 0` while Volume + Avg Volume are populated.
+
+**Fix:** `finviz_ingestion.py` backfills `relative_volume = volume / avg_volume`; 1-hour Telegram cooldown
+per issue key. Router: `TRADE AI DATA QUALITY ALERT` → `P2_DASHBOARD_ONLY`.

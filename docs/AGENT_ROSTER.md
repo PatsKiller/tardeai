@@ -96,9 +96,9 @@ OpenClaw provides the Telegram/WhatsApp interface layer for agent interaction.
 | Alex | ~/.openclaw/agents/alex/ | Telegram + WhatsApp |
 | Aegis | ~/.openclaw/agents/aegis/ | Telegram (brief delivery) |
 | Iris | ~/.openclaw/agents/iris/ | Telegram (proposals) |
-| Maria | ~/.openclaw/agents/maria/ | Telegram (research) |
+| Maria | ~/.openclaw/agents/maria/ | **Telegram DMs (bound)** — portfolio, watchlist, concierge |
 | Steph | ~/.openclaw/agents/steph/ | Telegram (allocation) |
-| Main | ~/.openclaw/agents/main/ | Telegram (general commands) |
+| Main | ~/.openclaw/agents/main/ | Fallback agent (not Telegram DM handler) |
 
 ## LLM Configuration
 - **Primary model:** qwen3:14b on Intel Arc B50 GPU (Vulkan, 41/41 layers offloaded)

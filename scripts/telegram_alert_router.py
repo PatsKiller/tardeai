@@ -85,6 +85,7 @@ _P2_SYSTEM_PATTERNS = [
     (r"ESCALATION_DEDUPED|escalation.*dedup", "escalation_deduped"),
     (r"maria.?research.*stale", "maria_research_stale"),
     (r"OUTPUT_INVALID.*atm_auto_approver", "atm_output_invalid"),
+    (r"TRADE AI DATA QUALITY ALERT", "finviz_data_quality"),
     (r"LLM.*analysis.*complete|LLM.*reviewed|analysis complete", "llm_analysis_complete"),
     (r"(?:fixed|resolved|recovered).*(?:already|again|still)", "false_fixed_claim"),
     (r"LOCKTIMEOUT|lock.?timeout", "lock_timeout"),
@@ -124,6 +125,10 @@ _GO_PATTERN = re.compile(r"GO.Tier|🎯.*GO|Trade AI v12|Trade AI LIVE", re.IGNO
 # Mention"). Operator wants these live; without a carve-out the WAIT ones die on suppress_wait.
 _SCALP_SETUP_PATTERN = re.compile(r"Social Scalp Setup|Social Mention|Scalp Setup", re.IGNORECASE)
 _SCALP_SCORE_PATTERN = re.compile(r"Score:\s*(\d+)\s*/\s*55", re.IGNORECASE)
+# continuous_runner Trade AI LIVE lane: "🎯 NEW GO — SYM score=37 RVOL …" (distinct from hourly v12 digest).
+_NEW_GO_SCALP_PATTERN = re.compile(r"NEW GO\b", re.IGNORECASE)
+_NEW_GO_SCORE_PATTERN = re.compile(r"score=(\d+)", re.IGNORECASE)
+_CRITIC_BLOCK_PATTERN = re.compile(r"Critic:\s*\*?(BLOCK|DOWNGRADE)", re.IGNORECASE)
 _HEALTH_PATTERN = re.compile(r"Health Agent:\s*(\w+)\s*—\s*(\d+)/100", re.IGNORECASE)
 _PORTFOLIO_INTEL = re.compile(r"PORTFOLIO INTELLIGENCE", re.IGNORECASE)
 
@@ -179,6 +184,19 @@ def classify_alert(message: str) -> str:
             return "P0_INTERRUPT"
         return "P2_DASHBOARD_ONLY"   # below floor → dashboard, not a phone buzz
 
+    # continuous_runner NEW GO carve-out — restores morning momentum-scalp Telegram (2026-07-09).
+    # Trade AI LIVE per-ticker GO was intentionally P2 (hourly recap), but that silenced the lane for
+    # a week: GO setups were detected and archived to Reports, never delivered. Critic BLOCK/DOWNGRADE
+    # stays dashboard-only; CONFIRM/absent still fires above the score floor.
+    if rules.get("scalp_realtime_enabled", True) and _NEW_GO_SCALP_PATTERN.search(message):
+        if _CRITIC_BLOCK_PATTERN.search(message):
+            return "P2_DASHBOARD_ONLY"
+        _sm = _NEW_GO_SCORE_PATTERN.search(message)
+        _score = int(_sm.group(1)) if _sm else 0
+        if _score >= int(rules.get("scalp_realtime_min_score", 25)):
+            return "P0_INTERRUPT"
+        return "P2_DASHBOARD_ONLY"
+
     # Check P2 system noise (health agent, retries, staleness, LLM complete)
     for pattern, _ in _P2_SYSTEM_PATTERNS:
         if re.search(pattern, message, re.IGNORECASE):
@@ -211,6 +229,8 @@ def classify_alert(message: str) -> str:
             if category == "raw_catalyst_dump":
                 if rules.get("suppress_raw_catalyst_dump", True):
                     return "P2_DASHBOARD_ONLY"
+            if category == "finviz_data_quality":
+                return "P2_DASHBOARD_ONLY"
             return "P2_DASHBOARD_ONLY"
 
     # Portfolio intelligence digest

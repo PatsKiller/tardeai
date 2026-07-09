@@ -6,9 +6,11 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 from atm_auto_approver import (  # noqa: E402
     ATM_CYCLE_LOCK,
+    _EXPIRY_TG_RECENT,
     _acquire_atm_cycle_lock,
     _expire_proposal_atomic,
     _release_atm_cycle_lock,
+    _telegram_expiry_batch,
 )
 
 
@@ -52,7 +54,25 @@ def test_cycle_lock_serializes_concurrent_entry():
     assert ATM_CYCLE_LOCK == "/tmp/tradeai_atm.lock"
 
 
+def test_expiry_telegram_symbol_dedup(monkeypatch):
+    _EXPIRY_TG_RECENT.clear()
+    sent = []
+
+    def _fake_send(msg):
+        sent.append(msg)
+        return True
+
+    monkeypatch.setattr("telegram_alert.send_telegram", _fake_send)
+    _telegram_expiry_batch(["DOC (persistent_approval_failure (6 attempts))"])
+    assert len(sent) == 1
+    _telegram_expiry_batch(["DOC (persistent_approval_failure (6 attempts))"])
+    assert len(sent) == 1  # same symbol within 24h — suppressed
+    _telegram_expiry_batch(["BLZE (persistent_approval_failure (5 attempts))"])
+    assert len(sent) == 2
+
+
 if __name__ == "__main__":
     test_expire_proposal_atomic_wins_race_once()
     test_cycle_lock_serializes_concurrent_entry()
+    test_expiry_telegram_symbol_dedup()
     print("OK: atm expiry telegram dedup tests passed")

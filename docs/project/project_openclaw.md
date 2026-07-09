@@ -22,38 +22,55 @@ originSessionId: 9fa89957-9286-4128-b08d-7f960d9b6594
 - **Memory:** ~536M typical, ~764M peak
 - **Auth:** token-based (aa8123e6...)
 
-## Models
+## Models (2026-07-09)
 
-| Role | Model |
-|------|-------|
-| Primary | `ollama/qwen3:14b` |
-| Fallback 1 | `openai/gpt-5.4-mini` |
-| Fallback 2 | `anthropic/claude-sonnet-4-6` |
-| Ollama URL | `http://127.0.0.1:11434` |
+| Agent | Primary | Fallback chain |
+|-------|---------|----------------|
+| **Maria** (Telegram) | `xai/grok-4` (OAuth proxy `:8645`) | `chatgpt/gpt-5.4` → `claude-cli/claude-sonnet-4-6` → `ollama/qwen3:8b` |
+| **main** (default) | `claude-cli/claude-sonnet-4-6` | `chatgpt/gpt-5.4` → `ollama/qwen3:8b` |
+| Specialists (Alex, Aegis, Iris, Steph) | `claude-cli/claude-sonnet-4-6` | `ollama/qwen3:8b` |
+
+OAuth proxies: Grok `http://127.0.0.1:8645/v1`, ChatGPT `http://127.0.0.1:8646/v1` (free lanes).
 
 Tool profile: `coding`
 
-## Agents (4)
+## Telegram routing (2026-07-09)
 
-### 1. Main (Maria - Personal Assistant)
+```json
+"bindings": [{ "type": "route", "agentId": "maria", "match": { "channel": "telegram" } }]
+```
+
+All Telegram DMs route to **Maria** (not `main`). Portfolio questions: run
+`python3 ~/.openclaw/skills/tradeai-readonly/scripts/tradeai_readonly.py portfolio-today` — never read
+`SKILL.md` as data. `main` + `gpt-5.4` previously leaked garbled tool syntax to Telegram.
+
+## Agents (6)
+
+### 1. Maria (Personal Assistant) — **Telegram front door**
+- Workspace: `~/.openclaw/workspace-maria/`
+- Agent dir: `~/.openclaw/agents/maria/agent/`
+- SOUL synced with `tradeai-readonly` + `tradeai-watchlist` skills
+- Portfolio: `portfolio-today` for today's P&L + winners/losers
+
+### 2. Main (default OpenClaw agent)
 - Workspace: `~/.openclaw/workspace/`
 - Files: SOUL.md, IDENTITY.md, USER.md, TOOLS.md, AGENTS.md, BOOTSTRAP.md, HEARTBEAT.md, MEMORY.md
-- Auth profiles: anthropic, openai, ollama, xai
+- Not the Telegram DM handler (Maria is)
 
-### 2. Steph (Wealth Advisor)
+### 3. Steph (Wealth Advisor)
 - Workspace: `~/.openclaw/workspace-steph/`
 - Agent dir: `~/.openclaw/agents/steph/agent/`
 - Role: Financial intelligence, portfolio analysis, tax optimization
 - Personality: Sharp, direct, numbers-first
 - SOUL.md includes portfolio summary (May 2026), financial constraints, holdings
 
-### 3. Aegis (Portfolio Intelligence)
+### 4. Aegis (Portfolio Intelligence)
 - Workspace: `~/.openclaw/workspace-aegis/`
 - Role: Portfolio surveillance, intelligence synthesis, evening surveillance
 - Features: Covered-call candidates, stop monitoring, social sentiment
 - Architecture: Core overnight engine + chat layer
 
-### 4. Alex (Retirement & Disability Advisor)
+### 5. Alex (Retirement & Disability Advisor)
 - Workspace: `~/.openclaw/workspace-alex/`
 - Model: Claude Sonnet only (no fallback)
 - Role: Retirement planning, disability optimization, Golden Window (ages 68.5-73), Roth conversions

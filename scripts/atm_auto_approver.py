@@ -13,6 +13,9 @@ from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 
 ATM_CYCLE_LOCK = "/tmp/tradeai_atm.lock"
+# Per-symbol cooldown so repeat expiry Telegram batches don't fire for the same ticker all afternoon.
+_EXPIRY_TG_RECENT: dict[str, float] = {}
+_EXPIRY_TG_COOLDOWN_SEC = 24 * 3600
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -45,6 +48,33 @@ def _telegram_both(msg: str):
                 pass
     except Exception:
         pass
+
+
+def _telegram_expiry_batch(expired_lines: list[str]):
+    """Notify operator of newly expired proposals — once per symbol per 24h (dedupes parallel cycles)."""
+    if not expired_lines:
+        return
+    import time as _time
+    now = _time.time()
+    fresh: list[str] = []
+    for line in expired_lines:
+        sym = (line.split("(")[0].strip() if "(" in line else line.strip()).upper()
+        if not sym:
+            continue
+        if now - _EXPIRY_TG_RECENT.get(sym, 0) < _EXPIRY_TG_COOLDOWN_SEC:
+            log.info("  %s: expiry telegram suppressed (already notified within 24h)", sym)
+            continue
+        fresh.append(line)
+        _EXPIRY_TG_RECENT[sym] = now
+    if not fresh:
+        return
+    msg = (f"ATM expired {len(fresh)} proposal(s) this cycle:\n"
+           + "\n".join(f"  - {e}" for e in fresh))
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(msg)
+    except Exception:
+        _telegram_both(msg)
 
 
 def _get_atm_state(conn) -> dict:
@@ -871,12 +901,9 @@ def _run_cycle_locked():
                          b1_flag, config_hash, mode)
             rejected_count += 1
 
-    # Batched Telegram for expired proposals
+    # Batched Telegram for expired proposals (per-symbol 24h dedup)
     if expired_this_cycle:
-        _telegram_both(
-            f"ATM expired {len(expired_this_cycle)} proposal(s) this cycle:\n"
-            + "\n".join(f"  - {e}" for e in expired_this_cycle)
-        )
+        _telegram_expiry_batch(expired_this_cycle)
 
     expired_count = len(expired_this_cycle)
     deferred_count = len(proposals) - approved_count - rejected_count - expired_count

@@ -10,8 +10,9 @@ os.chdir(str(PROJECT_ROOT))
 
 # (message_snippet, expected_send, expected_level_prefix)
 JUN25_CASES = [
-    ("⚡ Trade AI LIVE [09:50]\n🎯 NEW GO — EHGO score=41", False, "P2"),
+    ("⚡ Trade AI LIVE [09:50]\n🎯 NEW GO — EHGO score=41", True, "P0"),
     ("🎯 NEW GO — ANY score=40\n🚫 Critic: BLOCK", False, "P2"),
+    ("🎯 NEW GO — LOW score=12 RVOL 5x", False, "P2"),
     ("❓ Paper Proposal: GDHG\nStrategy: Sector Rotation", True, "P0"),
     ("🚨 STOP_TRIGGERED — CACI\nTrigger: stop_price", True, "P0"),
     ("🔭 Hermes watchlist alerts:\n⤴ AMD jumped", False, "P2"),

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
@@ -71,6 +72,8 @@ def parse_num(value: Any) -> float:
 
 
 _RATE_LIMITED_SCREENERS: list = []
+_DQ_TELEGRAM_LAST: dict = {"ts": 0.0, "key": ""}
+_DQ_TELEGRAM_COOLDOWN_SEC = 3600  # one DATA QUALITY Telegram per distinct issue / hour
 
 
 def normalize_finviz_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -100,6 +103,18 @@ def normalize_finviz_columns(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = df[col].map(parse_num)
     if "symbol" in df.columns:
         df["symbol"] = df["symbol"].astype(str).str.upper().str.strip()
+    # Finviz often exports Rel Volume as 0 pre-market while Volume + Avg Volume are populated.
+    # Backfill TOS-style RVOL (volume / avg_volume) before the quality gate so scoring isn't degraded
+    # and we don't spam false "all-zero relative_volume" Telegram alerts.
+    if "volume" in df.columns and "avg_volume" in df.columns:
+        if "relative_volume" not in df.columns:
+            df["relative_volume"] = 0.0
+        _vol = df["volume"].fillna(0)
+        _avg = df["avg_volume"].fillna(0)
+        _rv = df["relative_volume"].fillna(0)
+        _mask = (_rv == 0) & (_avg > 0) & (_vol > 0)
+        if _mask.any():
+            df.loc[_mask, "relative_volume"] = (_vol[_mask] / _avg[_mask]).round(2)
     # Data quality gate: warn if critical scoring columns are missing or all-zero
     # Skip check if DataFrame is empty (no matching stocks at this time — normal pre-market)
     _required = ["relative_volume", "gap_percent", "float_shares"]
@@ -125,8 +140,13 @@ def normalize_finviz_columns(df: pd.DataFrame) -> pd.DataFrame:
             print(f"  [finviz]    → " + ("partial run due to Finviz 429s; next run should recover"
                   if _RATE_LIMITED_SCREENERS else "Scoring will be degraded. Check screeners.yaml uses v=152 (not v=111)"))
             try:
-                from telegram_alert import send_telegram
-                send_telegram(_msg)
+                _dq_key = f"m:{_missing}|z:{_zero}|rl:{bool(_RATE_LIMITED_SCREENERS)}"
+                _now = time.time()
+                if (_now - _DQ_TELEGRAM_LAST["ts"] >= _DQ_TELEGRAM_COOLDOWN_SEC
+                        or _DQ_TELEGRAM_LAST["key"] != _dq_key):
+                    from telegram_alert import send_telegram
+                    if send_telegram(_msg):
+                        _DQ_TELEGRAM_LAST.update({"ts": _now, "key": _dq_key})
             except Exception:
                 pass
     else:
