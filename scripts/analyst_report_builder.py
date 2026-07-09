@@ -389,70 +389,193 @@ def _agent_notes(symbol: str, *, live_mv: float | None = None, live_shares: floa
 INCOME_TARGET = float(os.getenv("REPORT_INCOME_TARGET", "55000"))
 
 
-def _options_income_section(symbol: str, enrich: dict, holding: dict | None, personal: dict) -> dict | None:
-    """Options & Income — covered-call guidance + concentration-hedge note. Honest about missing chain data."""
+_STRATEGY_LABELS = {
+    "deep_itm_call": "Deep ITM Call",
+    "atm_call": "ATM Call",
+    "atm_put": "ATM Put",
+    "cash_secured_put": "Cash-Secured Put",
+    "covered_call": "Covered Call",
+    "protective_put": "Protective Put",
+    "credit_spread": "Credit Spread",
+    "earnings_put_debit_spread": "Earnings Put Debit",
+    "earnings_put_credit_spread": "Earnings Put Credit",
+}
+
+
+def _options_matcher_context(sym: str, enrich: dict, holding: dict | None, personal: dict,
+                             synthesis: dict | None, proposal: dict | None,
+                             levels: dict | None) -> dict:
+    ctx: dict = {}
+    if synthesis:
+        cio = str(synthesis.get("recommendation") or "").strip()
+        if cio:
+            ctx["cio_verdict"] = cio
+            ctx["verdict"] = cio
+    shares = _f(personal.get("shares")) or (_f(holding.get("shares")) if holding else 0)
+    if shares:
+        ctx["held_shares"] = shares
+    pct = _f(personal.get("portfolio_pct"))
+    if pct >= 8:
+        ctx["hedge_of_held"] = True
+    # Watchlist entry plan is ground truth for CSP strike — not thesis-validity bands.
+    try:
+        from lib.options_pipeline.strategy_matcher import _fetch_entry_plan
+        plan = _fetch_entry_plan(sym)
+        if plan.get("limit_price") is not None:
+            ctx["plan_entry"] = _f(plan.get("limit_price"))
+        if plan.get("entry_zone_low") is not None:
+            ctx["plan_zone_low"] = _f(plan.get("entry_zone_low"))
+        if plan.get("stop_price") is not None:
+            ctx["plan_stop"] = _f(plan.get("stop_price"))
+    except Exception:
+        pass
+    if not ctx.get("plan_entry") and proposal:
+        if proposal.get("proposed_entry"):
+            ctx["plan_entry"] = _f(proposal.get("proposed_entry"))
+        if proposal.get("proposed_stop"):
+            ctx["plan_stop"] = _f(proposal.get("proposed_stop"))
+    if not ctx.get("plan_zone_low") and levels:
+        ctx.setdefault("plan_zone_low", _f(levels.get("valid_low")) or None)
+        ctx.setdefault("plan_entry", _f(levels.get("entry")) or None)
+        ctx.setdefault("plan_stop", _f(levels.get("stop")) or None)
+    return ctx
+
+
+def _format_strategy_fit_row(sid: str, res: dict) -> str:
+    label = _STRATEGY_LABELS.get(sid, sid.replace("_", " ").title())
+    status = str(res.get("status") or "—")
+    reason = str(res.get("reason") or "")[:140]
+    props = res.get("proposals") or []
+    if props:
+        p = props[0]
+        strike = p.get("strike")
+        exp = p.get("expiration") or ""
+        dte = p.get("dte")
+        edge = p.get("edge_score")
+        extra = ""
+        if strike is not None:
+            extra = f" · ${strike} DTE {dte or '—'}"
+            if edge is not None:
+                extra += f" · edge {edge}"
+        return f"{label}: {status.upper()}{extra} — {reason}"
+    return f"{label}: {status.upper()} — {reason}"
+
+
+def _options_income_section(
+    symbol: str,
+    enrich: dict,
+    holding: dict | None,
+    personal: dict,
+    *,
+    synthesis: dict | None = None,
+    proposal: dict | None = None,
+    levels: dict | None = None,
+) -> dict | None:
+    """§15 Options Strategy Fit — multi-strategy matcher (desk pipeline) + income overlay."""
     sym = symbol.upper()
     is_etf = str(enrich.get("instrument_type") or "").lower() in ("etf", "fund", "etn")
     if is_etf:
         return {
-            "id": "options_income", "title": "Options & Income",
+            "id": "options_income", "title": "Options Strategy Fit",
             "content": ("Single-name option overlays do not apply to this fund vehicle. "
-                        "Income is captured through the fund's own distribution (see Fundamentals), not written calls."),
+                        "Income is captured through the fund's own distribution (see Fundamentals)."),
             "metrics": {}, "bullets": [],
         }
-    cc = _db_query(
-        """SELECT verdict, reasoning, strike_guidance, time_horizon, risk_note, shares_available,
-                  current_price, confidence, income_goal_fit, thesis_quality, upside_cap_risk, observed_at
-           FROM aegis_covered_call_candidates WHERE symbol = %s
-           ORDER BY observed_at DESC LIMIT 1""",
+
+    shares = _f(personal.get("shares")) or (_f(holding.get("shares")) if holding else 0)
+    matcher_ctx = _options_matcher_context(sym, enrich, holding, personal, synthesis, proposal, levels)
+    iv_ctx: dict = {"available": False}
+    try:
+        from lib.strategy_research.iv_history import iv_rank
+        iv_ctx = iv_rank(sym) or {"available": False}
+    except Exception:
+        pass
+    iv_row = _db_query(
+        "SELECT iv_pct, atm_strike, captured_at FROM options_iv_history "
+        "WHERE symbol=%s ORDER BY captured_at DESC LIMIT 1",
         (sym,), fetch="one",
     )
-    iv = _db_query("SELECT iv_pct, atm_strike, captured_at FROM options_iv_history WHERE symbol=%s ORDER BY captured_at DESC LIMIT 1",
-                   (sym,), fetch="one")
-    shares = _f(personal.get("shares")) or (_f(holding.get("shares")) if holding else 0)
-    contracts = int(shares // 100)
-    if not cc and contracts < 1:
+
+    match_out: dict = {}
+    try:
+        from lib.options_pipeline.strategy_matcher import run_matchers
+        match_out = run_matchers(sym, matcher_ctx, strategies="enabled", iv_context=iv_ctx)
+    except Exception as e:
         return {
-            "id": "options_income", "title": "Options & Income",
-            "content": (f"No covered-call candidate on file for {sym} and the position holds "
-                        f"{shares:.0f} shares (<100), so a single-name call overlay is not actionable. "
-                        "Live option Greeks/premium are not available (no fresh chain ingested)."),
-            "metrics": {"writable_contracts": contracts}, "bullets": [],
+            "id": "options_income", "title": "Options Strategy Fit",
+            "content": f"Strategy matcher unavailable for {sym}: {str(e)[:120]}",
+            "metrics": {"held_shares": shares or None}, "bullets": [],
         }
-    cc = dict(cc) if cc else {}
-    iv_txt = (f"{_f(dict(iv).get('iv_pct')):.0f}% IV" if iv and dict(iv).get("iv_pct") else
-              "IV/Greeks not available (no fresh option chain ingested)")
-    verdict = str(cc.get("verdict") or "—")
-    fit = str(cc.get("income_goal_fit") or "")
-    content = (
-        f"With {shares:.0f} shares, up to {contracts} covered call(s) are writable. "
-        f"The income scanner's latest read is **{verdict}** "
-        + (f"— {str(cc.get('reasoning'))[:200]} " if cc.get("reasoning") else "")
-        + f"Premium/Greeks: {iv_txt}. Income mandate target ${INCOME_TARGET:,.0f}/yr."
+
+    ctx = match_out.get("context") or {}
+    results = match_out.get("strategy_results") or {}
+    summary = match_out.get("cross_strategy_summary") or {}
+    cio = ctx.get("cio_verdict") or ctx.get("verdict") or "—"
+    plan_entry = ctx.get("plan_entry")
+    plan_low = ctx.get("plan_zone_low")
+    earnings = ctx.get("earnings_date")
+
+    iv_txt = (f"{_f(dict(iv_row).get('iv_pct')):.0f}% ATM IV"
+              if iv_row and dict(iv_row).get("iv_pct")
+              else ("IV rank {:.0f}% ({})".format(_f(iv_ctx.get("iv_rank")),
+                    iv_ctx.get("verdict") or "—")
+                    if iv_ctx.get("available") else "IV/Greeks not available (no fresh chain)"))
+
+    lead = (
+        f"CIO {cio} · {shares:.0f} shares held · {iv_txt}. "
+        f"Paper-model strategies evaluated across the options registry "
+        f"({summary.get('considered', 0)} lanes). "
     )
-    bullets = []
-    if cc.get("strike_guidance"):
-        bullets.append(f"Strike guidance: {str(cc['strike_guidance'])[:160]}")
-    if cc.get("time_horizon"):
-        bullets.append(f"Horizon: {cc['time_horizon']}")
-    if cc.get("risk_note"):
-        bullets.append(f"Risk: {str(cc['risk_note'])[:160]}")
-    if fit:
-        bullets.append(f"Income-goal fit: {fit}")
+    if plan_entry or plan_low:
+        lo = plan_low or plan_entry
+        lead += f"Entry plan: limit ${plan_entry or '—'} / zone low ${lo or '—'}. "
+    if earnings:
+        lead += f"Next earnings {earnings}. "
+    lead += f"Income mandate target ${INCOME_TARGET:,.0f}/yr (advisory)."
+
+    order = (
+        "cash_secured_put", "covered_call", "deep_itm_call", "atm_call", "atm_put",
+        "earnings_put_debit_spread", "earnings_put_credit_spread", "protective_put", "credit_spread",
+    )
+    bullets = [_format_strategy_fit_row(sid, results[sid])
+               for sid in order if sid in results]
+    for sid, res in sorted(results.items()):
+        if sid not in order:
+            bullets.append(_format_strategy_fit_row(sid, res))
+
+    best = summary.get("best_proposal")
+    if best:
+        bullets.insert(0, (f"Best paper-model candidate: {best.get('strategy')} "
+                           f"${best.get('strike')} (edge {best.get('edge_score')})"))
+
     pct = _f(personal.get("portfolio_pct"))
     if pct >= 8:
-        bullets.append(f"Concentration {pct:.1f}% — a protective put / collar is a reasonable downside hedge "
-                       "(cost depends on the live chain, not available here).")
+        bullets.append(f"Concentration {pct:.1f}% — protective put / collar hedge worth modeling on held size.")
+
+    counts = summary.get("counts") or {}
     return {
-        "id": "options_income", "title": "Options & Income",
-        "content": content,
+        "id": "options_income", "title": "Options Strategy Fit",
+        "content": lead,
         "metrics": {k: v for k, v in {
-            "writable_contracts": contracts or None,
-            "scanner_verdict": verdict if verdict != "—" else None,
-            "confidence": cc.get("confidence"),
-            "iv_pct": (dict(iv).get("iv_pct") if iv else None),
+            "cio_verdict": cio if cio != "—" else None,
+            "held_shares": shares or None,
+            "writable_contracts": int(shares // 100) if shares >= 100 else 0,
+            "plan_entry": plan_entry,
+            "plan_zone_low": plan_low,
+            "strategies_pass": counts.get("pass"),
+            "strategies_watch": counts.get("watch"),
+            "strategies_fail": counts.get("fail"),
+            "iv_pct": (dict(iv_row).get("iv_pct") if iv_row else None),
+            "iv_rank": (iv_ctx.get("iv_rank") if iv_ctx.get("available") else None),
         }.items() if v is not None},
-        "bullets": bullets[:5],
+        "bullets": bullets[:12],
+        "strategy_table": [
+            {"strategy": sid, "label": _STRATEGY_LABELS.get(sid, sid),
+             "status": (results.get(sid) or {}).get("status"),
+             "reason": str((results.get(sid) or {}).get("reason") or "")[:160],
+             "proposals": len((results.get(sid) or {}).get("proposals") or [])}
+            for sid in order if sid in results
+        ],
     }
 
 
@@ -1538,7 +1661,10 @@ def build_symbol_report(
     price_now0 = _resolve_price(sym, enrich, holding)
     extra_sections = []
     _builders = [
-        ("opt", lambda: _options_income_section(sym, enrich, holding, personal)),
+        ("opt", lambda: _options_income_section(
+            sym, enrich, holding, personal,
+            synthesis=synthesis, proposal=proposal, levels=levels,
+        )),
         ("ac", lambda: _analyst_commentary_section(sym, pro, enrich, news=news, hermes=hermes)),
         ("e1", lambda: _earnings_estimates_section(sym, enrich)),
         ("e2", lambda: _fundamentals_deep_section(sym, enrich)),

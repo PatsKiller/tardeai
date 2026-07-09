@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -118,7 +119,9 @@ def _run(context, **kw):
     kw.setdefault("iv_context", NO_IV)
     if "deep_itm_analysis_fn" not in kw and "deep_itm_fn" not in kw:
         kw["deep_itm_fn"] = _deep_degraded
-    return sm.run_matchers("NVDA", context, **kw)
+    entry_plan = kw.pop("entry_plan", {})
+    with patch.object(sm, "_fetch_entry_plan", return_value=entry_plan):
+        return sm.run_matchers("NVDA", context, **kw)
 
 
 BULLISH = {"verdict": "strong_buy", "held_shares": None}
@@ -286,20 +289,21 @@ def test_atm_fail_when_chain_unavailable():
 
 def test_not_applicable_strategies_and_reasons():
     res = _run(dict(BULLISH, held_shares=None))["strategy_results"]
-    for sid in ("covered_call", "cash_secured_put", "protective_put",
-                "credit_spread"):
+    for sid in ("protective_put", "credit_spread"):
         assert res[sid]["status"] == "not_applicable", sid
         assert res[sid]["proposals"] == [], sid
+    assert res["covered_call"]["status"] == "not_applicable"
     assert "requires 100 held shares" in res["covered_call"]["reason"]
-    assert "scanner_mode" in res["cash_secured_put"]["reason"]
+    assert res["cash_secured_put"]["status"] == "fail"
+    assert "no entry-plan strike" in res["cash_secured_put"]["reason"]
     assert "requires existing long exposure" in res["protective_put"]["reason"]
     assert "RESEARCH_ONLY" in res["credit_spread"]["reason"]
 
 
 def test_not_applicable_reasons_acknowledge_held_shares():
     res = _run({"verdict": "buy", "held_shares": 200.0})["strategy_results"]
-    assert res["covered_call"]["status"] == "not_applicable"
-    assert "held shares present" in res["covered_call"]["reason"]
+    assert res["covered_call"]["status"] in ("watch", "pass")
+    assert "writable" in res["covered_call"]["reason"].lower()
     assert res["protective_put"]["status"] == "not_applicable"
     assert "hedge generation arrives" in res["protective_put"]["reason"]
 
@@ -315,13 +319,12 @@ def test_cross_strategy_summary_shape_and_counts():
     assert cs["symbol"] == "NVDA"
     assert cs["considered"] == 9        # 9 registry rows after EARNINGS-SPREADS Stage 1
     assert sorted(cs["pass"]) == ["atm_call", "deep_itm_call"]
-    assert cs["fail"] == ["atm_put"]
-    assert sorted(cs["not_applicable"]) == ["cash_secured_put", "covered_call",
-                                            "credit_spread",
+    assert cs["fail"] == ["atm_put", "cash_secured_put"]
+    assert sorted(cs["not_applicable"]) == ["covered_call", "credit_spread",
                                             "earnings_put_credit_spread",
                                             "earnings_put_debit_spread",
                                             "protective_put"]
-    assert cs["counts"] == {"pass": 2, "watch": 0, "fail": 1, "not_applicable": 6}
+    assert cs["counts"] == {"pass": 2, "watch": 0, "fail": 2, "not_applicable": 5}
     assert cs["total_proposals"] >= 3
     best = cs["best_proposal"]
     assert best is not None

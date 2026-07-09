@@ -1,6 +1,12 @@
 /** Registry map: symbol → verified prospectus DOCX/PDF (disk-checked server-side). */
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useApi } from './useApi'
+
+export const ANALYST_LINKS_REFETCH = 'cc:analyst-links-refetch'
+
+export function requestAnalystReportMapRefetch() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(ANALYST_LINKS_REFETCH))
+}
 
 export type AnalystReportEntry = {
   docx?: string
@@ -14,7 +20,12 @@ export type AnalystReportEntry = {
 }
 
 export function useAnalystReportMap(): Record<string, AnalystReportEntry> {
-  const { data } = useApi<any>('/api/v2/reports/analyst/links?limit=500', 120_000)
+  const { data, refetch } = useApi<any>('/api/v2/reports/analyst/links?limit=500', 120_000)
+  useEffect(() => {
+    const onRefetch = () => refetch()
+    window.addEventListener(ANALYST_LINKS_REFETCH, onRefetch)
+    return () => window.removeEventListener(ANALYST_LINKS_REFETCH, onRefetch)
+  }, [refetch])
   return useMemo(() => {
     const payload = data?.data ?? data
     const links = payload?.links ?? {}

@@ -1,5 +1,5 @@
 /** AnalystReportsPanel — on-demand analyst-grade reports + DOCX/PDF export. */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useApi } from '../../hooks/useApi'
 import AnalystReportViewer from './AnalystReportViewer'
 import ProspectusBatchPanel from './ProspectusBatchPanel'
@@ -47,19 +47,22 @@ const AUTO_LOAD_TYPES = new Set([
   'symbol_holding', 'symbol_watchlist', 'symbol_custom', 'sector_theme',
 ])
 
+function readAnalystUrlParams() {
+  try {
+    const q = new URLSearchParams(window.location.search)
+    const sym = (q.get('symbol') || '').trim().toUpperCase()
+    const typ = (q.get('type') || '').trim()
+    const validTyp = typ && REPORT_TYPES.some(t => t.key === typ) ? typ : ''
+    return { sym, typ: validTyp, autoGenerate: q.get('generate') === '1' }
+  } catch {
+    return { sym: '', typ: '', autoGenerate: false }
+  }
+}
+
 export default function AnalystReportsPanel() {
+  const urlInit = useMemo(() => readAnalystUrlParams(), [])
   const [staleBundle, setStaleBundle] = useState(false)
   const [serverVersion, setServerVersion] = useState('')
-
-  useEffect(() => {
-    try {
-      const q = new URLSearchParams(window.location.search)
-      const sym = (q.get('symbol') || '').trim().toUpperCase()
-      const typ = (q.get('type') || '').trim()
-      if (typ && REPORT_TYPES.some(t => t.key === typ)) setReportType(typ)
-      if (sym) setSymbol(sym)
-    } catch { /* ignore */ }
-  }, [])
 
   useEffect(() => {
     fetch('/v3/build-meta.json', { cache: 'no-store' })
@@ -67,7 +70,11 @@ export default function AnalystReportsPanel() {
       .then(meta => {
         const sv = String(meta?.ui_version || '')
         setServerVersion(sv)
-        if (sv && sv !== UI_VERSION) setStaleBundle(true)
+        const serverBase = String(meta?.base_version || sv.split('+')[0] || '')
+        const clientBase = UI_VERSION.split('+')[0]
+        // Stale only when the base major version changed — not when client label omits the +stamp.
+        if (serverBase && clientBase && serverBase !== clientBase) setStaleBundle(true)
+        else if (sv && UI_VERSION.includes('+') && sv !== UI_VERSION) setStaleBundle(true)
       })
       .catch(() => {})
   }, [])
@@ -75,8 +82,8 @@ export default function AnalystReportsPanel() {
   const { data: symData } = useApi<any>('/api/v2/reports/analyst/symbols', 120_000)
   const symbols: string[] = symData?.symbols || []
 
-  const [reportType, setReportType] = useState('symbol_holding')
-  const [symbol, setSymbol] = useState('')
+  const [reportType, setReportType] = useState(urlInit.typ || 'symbol_holding')
+  const [symbol, setSymbol] = useState(urlInit.sym || '')
   const [sections, setSections] = useState<string[]>(SECTION_OPTS.map(s => s.id))
   const [preview, setPreview] = useState<any>(null)
   const [loading, setLoading] = useState(false)
@@ -175,6 +182,44 @@ export default function AnalystReportsPanel() {
     needsSector ? 'Sector (blank = all sectors)' :
     needsSymbol ? 'Symbol (blank = entire universe)' : 'Filter'
 
+  const generateProspectus = useCallback(async (opts?: { grok?: boolean }) => {
+    if (!symbol.trim() || !needsSymbol) return
+    const useGrok = opts?.grok ?? grokEdit
+    setExporting(useGrok ? 'grok' : 'prospectus')
+    setError('')
+    setExportUrl(null)
+    try {
+      const r = await fetch('/api/v2/reports/analyst/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: reportType,
+          symbol: symbol.toUpperCase(),
+          grok_edit: useGrok,
+          oversight: true,
+        }),
+      })
+      const j = await r.json()
+      const res = j?.data ?? j
+      if (!r.ok || res?.ok === false) throw new Error(res?.error || res?.block_reason || `HTTP ${r.status}`)
+      const exp = res?.exports || {}
+      const url = exp.docx || exp.pdf || res?.registry_entry?.docx || res?.registry_entry?.pdf
+      if (url && typeof url === 'string') setExportUrl(url)
+      if (res?.report) setPreview(res.report)
+    } catch (e: any) {
+      setError(e?.message || 'Prospectus generation failed')
+    } finally {
+      setExporting('')
+    }
+  }, [symbol, needsSymbol, reportType, grokEdit])
+
+  const autoGenDone = useRef(false)
+  useEffect(() => {
+    if (!urlInit.autoGenerate || autoGenDone.current || !symbol.trim() || !needsSymbol) return
+    autoGenDone.current = true
+    generateProspectus({ grok: false })
+  }, [urlInit.autoGenerate, symbol, needsSymbol, generateProspectus])
+
   if (staleBundle) {
     return (
       <div style={{
@@ -186,41 +231,20 @@ export default function AnalystReportsPanel() {
           Click Reload to get Action Queue, modals, and the latest report layouts.
         </div>
         <button
-          onClick={() => { try { sessionStorage.removeItem('cc_v3_build') } catch { /* */ } window.location.href = `/v3/reports?_cc_reload=${Date.now()}` }}
+          onClick={() => {
+            try {
+              sessionStorage.removeItem('cc_v3_build')
+              sessionStorage.clear()
+            } catch { /* */ }
+            const base = window.location.pathname.replace(/\/v3.*/, '/v3/') || '/v3/'
+            window.location.replace(`${base}?_cc_reload=${Date.now()}`)
+          }}
           style={{ fontSize: 13, fontWeight: 800, padding: '10px 24px', borderRadius: 8, border: 'none', background: '#1d4ed8', color: '#fff', cursor: 'pointer' }}
         >
-          Reload Reports UI v{serverVersion || 'latest'}
+          Reload Command Center v{serverVersion || 'latest'}
         </button>
       </div>
     )
-  }
-
-  const generateProspectus = async () => {
-    if (!symbol.trim() || !needsSymbol) return
-    setExporting('grok')
-    setError('')
-    setExportUrl(null)
-    try {
-      const r = await fetch('/api/v2/reports/analyst/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: reportType,
-          symbol: symbol.toUpperCase(),
-          grok_edit: grokEdit,
-        }),
-      })
-      const j = await r.json()
-      const res = j?.data ?? j
-      if (!r.ok || res?.ok === false) throw new Error(res?.error || `HTTP ${r.status}`)
-      const url = res?.exports?.docx || res?.exports?.pdf
-      if (url && typeof url === 'string') setExportUrl(url)
-      if (res?.report) setPreview(res.report)
-    } catch (e: any) {
-      setError(e?.message || 'Prospectus generation failed')
-    } finally {
-      setExporting('')
-    }
   }
 
   return (
@@ -324,6 +348,12 @@ export default function AnalystReportsPanel() {
         )}
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {needsSymbol && symbol.trim() && (
+            <button onClick={() => generateProspectus({ grok: false })} disabled={!!exporting} style={{
+              fontSize: 11, fontWeight: 800, padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
+              border: 'none', background: '#22c55e', color: '#fff', opacity: exporting ? 0.6 : 1,
+            }}>{exporting === 'prospectus' ? 'Generating prospectus…' : `Generate prospectus · ${symbol.toUpperCase()}`}</button>
+          )}
           <button onClick={loadPreview} disabled={loading} style={{
             fontSize: 11, fontWeight: 700, padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
             border: 'none', background: '#60a5fa', color: '#fff', opacity: loading ? 0.6 : 1,
@@ -337,7 +367,7 @@ export default function AnalystReportsPanel() {
             border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)',
           }}>{exporting === 'pdf' ? 'Exporting…' : 'Export PDF'}</button>
           {needsSymbol && symbol.trim() && grokEdit && (
-            <button onClick={generateProspectus} disabled={!!exporting} style={{
+            <button onClick={() => generateProspectus({ grok: true })} disabled={!!exporting} style={{
               fontSize: 11, fontWeight: 700, padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
               border: '1px solid #60a5fa', background: 'rgba(96,165,250,.12)', color: '#60a5fa',
             }}>{exporting === 'grok' ? 'Generating…' : 'Generate + Grok'}</button>

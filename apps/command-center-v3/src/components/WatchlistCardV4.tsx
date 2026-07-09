@@ -20,6 +20,7 @@ import {
   type CardActionType,
 } from '../lib/watchlistCardAction'
 import { WL, heroStateStyle, verdictWord, numStyle } from '../lib/watchlistCardTokens'
+import { resolveCountry } from '../lib/country'
 import { LadderLine } from './primitives/cardPrimitives'
 import { type RiskPct } from '../lib/watchlistProposeSizing'
 import { EvidenceBlock } from './EvidenceBlock'
@@ -176,6 +177,9 @@ export default function WatchlistCardV4({
     ? [sc?.sector || it.profile_sector, sc?.industry || it.profile_industry].filter(Boolean).join(' / ')
     : null
   const companyName = sc?.name || sc?.company_name || it.profile_name || null
+  // HQ country flag (reuses lib/country.ts; ADR-aware by symbol). country_name comes
+  // from the watchlist items endpoint (Finviz enrichment fallback).
+  const ctry = resolveCountry({ symbol: it.symbol, country: it.country, countryName: it.country_name })
   const tenureDays = it.first_seen_at
     ? Math.max(0, Math.floor((Date.now() - new Date(it.first_seen_at).getTime()) / 864e5))
     : null
@@ -350,6 +354,7 @@ export default function WatchlistCardV4({
             style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, padding: 0, color: isStarred ? WL.signal.amber : WL.text.dim }}
           >{isStarred ? '★' : '☆'}</button>
           <span style={{ ...numStyle, fontWeight: 800, fontSize: 21 }}>{it.symbol}</span>
+          <span title={ctry ? `${ctry.name} (${ctry.code})` : 'Country unknown'} style={{ fontSize: 15, lineHeight: 1, flexShrink: 0, cursor: 'help' }}>{ctry ? ctry.flag : '🌍'}</span>
           {isHeld && (
             <span title={heldTip} style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.08em', color: WL.signal.amber, border: '1px solid rgba(245,166,35,.35)', borderRadius: 4, padding: '1px 5px', flexShrink: 0 }}>
               HELD{outcome?.held && outcome.unrealized_pnl_pct != null ? (

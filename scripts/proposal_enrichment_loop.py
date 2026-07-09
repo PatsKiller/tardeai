@@ -643,15 +643,25 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
             actions.append('AUTO_EXPIRED')
             return {'id': pid, 'symbol': symbol, 'actions': actions, 'expired': True}
 
-        # Immediate ATM trigger when proposal reaches ENTRY_ZONE_VALID
+        # Immediate ATM trigger when proposal reaches ENTRY_ZONE_VALID (safe_flock + in-process flock)
         if new_lifecycle == 'ENTRY_ZONE_VALID' and not dry_run:
             try:
                 import subprocess as _sp
+                _proj = Path(__file__).resolve().parent.parent
+                _atm_log = _proj / "logs" / "atm_immediate.log"
+                _atm_log.parent.mkdir(parents=True, exist_ok=True)
+                _log_fh = open(_atm_log, "a")
                 _sp.Popen(
-                    [sys.executable, str(Path(__file__).resolve().parent / "atm_auto_approver.py")],
-                    stdout=open(str(Path(__file__).resolve().parent.parent / "logs" / "atm_immediate.log"), "a"),
-                    stderr=open(str(Path(__file__).resolve().parent.parent / "logs" / "atm_immediate.log"), "a"),
-                    cwd=str(Path(__file__).resolve().parent.parent),
+                    [
+                        "bash",
+                        str(_proj / "scripts" / "safe_flock.sh"),
+                        "/tmp/tradeai_atm.lock",
+                        sys.executable,
+                        str(_proj / "scripts" / "atm_auto_approver.py"),
+                    ],
+                    stdout=_log_fh,
+                    stderr=_log_fh,
+                    cwd=str(_proj),
                 )
                 log.info(f"  ⚡ Triggered immediate ATM evaluation for {symbol} (ENTRY_ZONE_VALID)")
                 actions.append('ATM_TRIGGERED')

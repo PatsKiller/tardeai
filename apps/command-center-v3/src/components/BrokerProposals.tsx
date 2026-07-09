@@ -72,7 +72,7 @@ const DEFAULT_FILTERS: ListFilters = {
   page: 1,
   pageSize: 15,
   sort: 'priority',
-  kind: 'all',
+  kind: 'broker',
   source: '',
   zone: '',
   account: '',
@@ -86,26 +86,42 @@ const isProtectionProposal = (p: { queue_kind?: string; proposal_kind?: string; 
 const entryProposalIds = (rows: { id?: number; queue_kind?: string; proposal_kind?: string }[]) =>
   rows.filter(p => !isProtectionProposal(p)).map(p => p.id).filter((id): id is number => typeof id === 'number' && id > 0)
 
-const proposalLaneKey = (p: any) => {
-  const lane = p.routing_lane || p.source_attribution?.routing_lane
+const routingLaneOf = (p: any): string => {
+  let basis = p.sizing_basis
+  if (typeof basis === 'string') {
+    try { basis = JSON.parse(basis) } catch { basis = null }
+  }
+  return basis?.routing_lane || p.routing_lane || p.source_attribution?.routing_lane
     || (/schwab|fidelity/i.test(String(p.intended_broker || p.account || '')) ? 'live_2fa' : 'paper_atm')
-  return `${String(p.symbol || '').toUpperCase()}:${lane}`
 }
 
-/** One card per symbol × lane — prefer filled trade, else oldest proposal id. */
+const proposalDedupeKey = (p: any) =>
+  `${String(p.symbol || '').toUpperCase()}:${p.strategy_id || p.resolved_strategy_id || 'unknown'}`
+
+const preferEntryProposal = (a: any, b: any) => {
+  const rank = (p: any) => {
+    const lane = routingLaneOf(p)
+    const filled = p.traded?.status === 'open' || p.lane_gates?.paper_atm?.status === 'filled'
+    const laneRank = lane === 'live_2fa' ? 0 : lane === 'paper_atm' ? 1 : 2
+    return [laneRank, filled ? 0 : 1, p.id || 999999] as const
+  }
+  const ra = rank(a)
+  const rb = rank(b)
+  for (let i = 0; i < 3; i++) {
+    if (ra[i] !== rb[i]) return ra[i] < rb[i] ? a : b
+  }
+  return a
+}
+
+/** One card per symbol×strategy — dual-lane scans create paper_atm + live_2fa pairs; Path B keeps live. */
 const dedupeEntryProposals = (rows: any[]) => {
   const protection = rows.filter(isProtectionProposal)
   const entries = rows.filter(p => !isProtectionProposal(p))
   const best = new Map<string, any>()
   for (const p of entries) {
-    const key = proposalLaneKey(p)
+    const key = proposalDedupeKey(p)
     const prev = best.get(key)
-    if (!prev) { best.set(key, p); continue }
-    const pFilled = p.traded?.status === 'open' || p.lane_gates?.paper_atm?.status === 'filled'
-    const prevFilled = prev.traded?.status === 'open' || prev.lane_gates?.paper_atm?.status === 'filled'
-    if (pFilled && !prevFilled) { best.set(key, p); continue }
-    if (!pFilled && prevFilled) continue
-    if ((p.id || 0) < (prev.id || 0)) best.set(key, p)
+    best.set(key, prev ? preferEntryProposal(prev, p) : p)
   }
   const kept = new Set([...best.values()].map((p: any) => p.id))
   return [...protection, ...entries.filter(p => kept.has(p.id))]
@@ -1166,9 +1182,14 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
           </label>
           <label style={{ fontSize: 10, color: MUTED, display: 'flex', alignItems: 'center', gap: 5 }}>
             Type
-            <select style={sel} value={listFilters.kind} onChange={e => patchFilters({ kind: e.target.value })}>
-              <option value="all">All</option>
+            <select
+              style={sel}
+              value={listFilters.kind}
+              title="Broker-routed hides tradeai_automated paper-ATM siblings (dual-lane pullback pairs)"
+              onChange={e => patchFilters({ kind: e.target.value })}
+            >
               <option value="broker">Broker-routed</option>
+              <option value="all">All lanes</option>
               <option value="proposal">Proposals</option>
               <option value="protection">Protection</option>
             </select>
@@ -1226,7 +1247,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
               onChange={e => patchFilters({ symbol: e.target.value.toUpperCase() })}
             />
           </label>
-          {(listFilters.kind !== 'all' || listFilters.source || listFilters.zone || listFilters.account || listFilters.symbol || listFilters.rrPreset || listFilters.sort !== 'priority') && (
+          {(listFilters.kind !== 'broker' || listFilters.source || listFilters.zone || listFilters.account || listFilters.symbol || listFilters.rrPreset || listFilters.sort !== 'priority') && (
             <button
               onClick={() => patchFilters({ ...DEFAULT_FILTERS })}
               style={{ fontSize: 10, fontWeight: 700, padding: '5px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}
