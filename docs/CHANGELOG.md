@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-09 (late) - Scalp agents show GO/WAIT/AVOID on roster
+
+- **`/api/v2/agents/summary`** — `social_scalp` and `scalp_critic` now map
+  `scalp_scan_results` decisions (GO/WAIT/AVOID) instead of hardcoded 0/0/0 buy/sell/hold.
+- **CC v3 Roster** — scalp rows display **51 / 362 / 1959** (GO/AVOID/WAIT) with tooltip.
+
 ## 2026-07-09 (late) - Agent Performance tab removed; calibration is canonical
 
 - **CC v3 Agents → Performance tab removed** — duplicate of Calibration after wiring

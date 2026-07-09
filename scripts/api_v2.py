@@ -6160,20 +6160,46 @@ def _agents_summary():
          "total": 0, "buy_count": 0, "sell_count": 0, "hold_count": 0, "avg_confidence": None,
          "latest": None, "description": "Portfolio surveillance, covered calls, rotation alternatives"},
     ]
-    # Enrich scalp_critic with actual DB data
-    critic_row = _db_query("SELECT COUNT(*) as cnt, MAX(scanned_at) as latest FROM scalp_scan_results WHERE disqualified IS NOT NULL", fetch="one")
-    if critic_row:
-        for ea in extra_agents:
-            if ea["agent"] == "scalp_critic":
-                ea["total"] = int(critic_row.get("cnt", 0))
-                ea["latest"] = _json_clean(critic_row.get("latest"))
-    # Enrich social_scalp
-    scalp_row = _db_query("SELECT COUNT(*) as cnt, MAX(scanned_at) as latest FROM scalp_scan_results", fetch="one")
-    if scalp_row:
+    # Scalp pipeline uses GO/WAIT/AVOID (not watchlist BUY/SELL/HOLD). Map for roster display:
+    # GO → buy_count, AVOID → sell_count, WAIT → hold_count.
+    scalp_stats = _db_query("""
+        SELECT COUNT(*) as cnt, MAX(scanned_at) as latest,
+               COUNT(*) FILTER (WHERE UPPER(decision) = 'GO') as go_count,
+               COUNT(*) FILTER (WHERE UPPER(decision) = 'WAIT') as wait_count,
+               COUNT(*) FILTER (WHERE UPPER(decision) = 'AVOID') as avoid_count,
+               COUNT(*) FILTER (WHERE disqualified IS TRUE) as blocked_count
+        FROM scalp_scan_results
+    """, fetch="one") or {}
+    critic_stats = _db_query("""
+        SELECT COUNT(*) as cnt, MAX(scanned_at) as latest,
+               COUNT(*) FILTER (WHERE UPPER(decision) = 'GO' AND disqualified IS NOT TRUE) as go_count,
+               COUNT(*) FILTER (WHERE UPPER(decision) = 'WAIT' AND disqualified IS NOT TRUE) as wait_count,
+               COUNT(*) FILTER (WHERE UPPER(decision) IN ('AVOID','BLOCK') OR disqualified IS TRUE) as avoid_count
+        FROM scalp_scan_results
+        WHERE disqualified IS NOT NULL
+    """, fetch="one") or {}
+    if scalp_stats:
         for ea in extra_agents:
             if ea["agent"] == "social_scalp":
-                ea["total"] = int(scalp_row.get("cnt", 0))
-                ea["latest"] = _json_clean(scalp_row.get("latest"))
+                ea["total"] = int(scalp_stats.get("cnt", 0))
+                ea["latest"] = _json_clean(scalp_stats.get("latest"))
+                ea["buy_count"] = int(scalp_stats.get("go_count", 0))
+                ea["sell_count"] = int(scalp_stats.get("avoid_count", 0))
+                ea["hold_count"] = int(scalp_stats.get("wait_count", 0))
+                ea["go_count"] = ea["buy_count"]
+                ea["wait_count"] = ea["hold_count"]
+                ea["avoid_count"] = ea["sell_count"]
+    if critic_stats:
+        for ea in extra_agents:
+            if ea["agent"] == "scalp_critic":
+                ea["total"] = int(critic_stats.get("cnt", 0))
+                ea["latest"] = _json_clean(critic_stats.get("latest"))
+                ea["buy_count"] = int(critic_stats.get("go_count", 0))
+                ea["sell_count"] = int(critic_stats.get("avoid_count", 0))
+                ea["hold_count"] = int(critic_stats.get("wait_count", 0))
+                ea["go_count"] = ea["buy_count"]
+                ea["wait_count"] = ea["hold_count"]
+                ea["avoid_count"] = ea["sell_count"]
     # Enrich iris (iris_run_log timestamp column is ran_at, not created_at)
     iris_row = _db_query("SELECT COUNT(*) as cnt, MAX(ran_at) as latest FROM iris_run_log", fetch="one")
     if iris_row:
