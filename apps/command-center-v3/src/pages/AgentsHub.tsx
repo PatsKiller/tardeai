@@ -8,7 +8,7 @@ import OperatorInboxPanel from '../components/OperatorInboxPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 // Inbox hidden until v3 resolve is wired (was read-only pointer to v2).
-const TABS = ['Roster', 'Calibration', 'Workflow', 'Performance', 'Weekly Learning'] as const
+const TABS = ['Roster', 'Calibration', 'Workflow', 'Weekly Learning'] as const
 
 const G = '#22c55e', R = '#ef4444', A = '#f59e0b', B = '#60a5fa'
 // Ground truth: AGENT_ROSTER.md (validated 2026-06-02). Roles are static identity, not in the API.
@@ -109,7 +109,6 @@ function SignalDot({ value, thresholds }: { value: any; thresholds: [number, num
 export default function AgentsHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Roster')
   const { data: summary } = useApi<any>('/api/v2/agents/summary', 120_000)
-  const { data: perfData } = useApi<any>('/api/v2/agent-performance', 120_000)
   const { data: calStatus } = useApi<any>('/api/v2/agent-calibration/status', 120_000)
   const { data: calAgents } = useApi<any>('/api/v2/agent-calibration/agents', 120_000)
   const { data: calWindows } = useApi<any>('/api/v2/agent-calibration/windows', 120_000)
@@ -118,7 +117,6 @@ export default function AgentsHub({ onDrill }: Props) {
 
   const agents: any[] = summary?.agents ?? []
   const handoffs: any[] = summary?.handoffs ?? []
-  const perf: any[] = perfData?.history ?? []
   const windows: any[] = (Array.isArray(calWindows) ? calWindows : calWindows?.windows) ?? []
   const agentList: any[] = (Array.isArray(calAgents) ? calAgents : calAgents?.agents) ?? []
   const symbolsByAgent: Record<string, number> = {}
@@ -250,6 +248,9 @@ export default function AgentsHub({ onDrill }: Props) {
       {/* ===== CALIBRATION ===== */}
       {tab === 'Calibration' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ fontSize: 10, color: 'var(--text3)', lineHeight: 1.45 }}>
+            Agent accuracy and performance — scored windows from paper-trade and proposal outcomes (replaces retired Performance tab).
+          </div>
           {calStatus && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
               {[
@@ -395,52 +396,6 @@ export default function AgentsHub({ onDrill }: Props) {
             <div style={{ fontSize: 9, color: A }}>No live handoff edges from /agent-pipeline — showing nodes + configured chain (dashed) only; no live edges fabricated.</div>
           )}
           <div style={{ fontSize: 8, color: 'var(--text3)' }}>Live edges: /api/v2/agent-pipeline (from_agent→to_agent, escalated). Node health: /agent-calibration/windows. Dashed = configured chain (agent_raci.yaml), not live. None fabricated.</div>
-        </div>
-      )}
-
-      {/* ===== PERFORMANCE ===== */}
-      {tab === 'Performance' && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Agent Performance ({perf.length})</div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10, lineHeight: 1.45 }}>
-            Live calibration windows — accuracy = correct / resolved against paper-trade and proposal outcomes.
-            Same feed as <button type="button" onClick={() => setTab('Calibration')} style={{ background: 'none', border: 'none', padding: 0, color: B, cursor: 'pointer', fontSize: 10 }}>Calibration</button>.
-          </div>
-          {perf.length === 0 ? (
-            <div style={{ color: 'var(--text3)', fontSize: 11, padding: 16, lineHeight: 1.55 }}>
-              No calibration windows yet. Scores appear after the calibration engine links agent recommendations to closed outcomes — see{' '}
-              <button type="button" onClick={() => setTab('Calibration')} style={{ background: 'none', border: 'none', padding: 0, color: B, cursor: 'pointer', fontSize: 11 }}>Calibration</button>{' '}
-              or <Link to="/health" style={{ color: '#60a5fa' }}>Health</Link> if runs look stuck.
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Agent', 'Window', 'Recs', 'Resolved', 'Accuracy', 'Avg conf', 'Status'].map(h => <th key={h} style={{ textAlign: ['Agent', 'Window', 'Status'].includes(h) ? 'left' : 'right', padding: '7px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
-                </tr></thead>
-                <tbody>{perf.slice(0, 40).map((h: any, i: number) => {
-                  const st = String(h.sample_size_status || '')
-                  const stCol = st === 'proposal_allowed' ? G : st === 'shadow_only' ? B : A
-                  const winLabel = h.period_start && h.period_end
-                    ? `${String(h.period_start).slice(0, 10)} → ${String(h.period_end).slice(0, 10)}`
-                    : timeAgo(h.scored_at)
-                  return (
-                  <tr key={h.id ?? i} onClick={() => onDrill({ title: h.agent, subtitle: `${st.replace(/_/g, ' ')} · ${winLabel}`, endpoint: '/api/v2/agent-calibration/windows', rows: [h] })}
-                    style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
-                    <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text0)', fontFamily: 'var(--mono)' }}>{h.agent}</td>
-                    <td style={{ padding: '8px 10px', fontSize: 10, color: 'var(--text3)' }}>{winLabel}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text2)' }}>{h.total_recommendations ?? '—'}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text2)' }}>{h.resolved ?? '—'}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: acc01(h.accuracy_pct) >= 55 ? G : acc01(h.accuracy_pct) >= 35 ? A : R }}>{h.accuracy_pct != null ? fmtPct(h.accuracy_pct) : '—'}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text2)' }}>{fmtPct(h.avg_confidence)}</td>
-                    <td style={{ padding: '8px 10px', fontSize: 9, fontWeight: 700, color: stCol }}>{st ? st.replace(/_/g, ' ').toUpperCase() : '—'}</td>
-                  </tr>
-                  )
-                })}</tbody>
-              </table>
-            </div>
-          )}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/agent-performance → agent_calibration_windows (scored {perf[0]?.scored_at ? timeAgo(perf[0].scored_at) : '—'})</div>
         </div>
       )}
 
