@@ -534,12 +534,16 @@ def _match_csp(symbol: str, ctx: dict, thesis: dict, *,
         symbol, thesis_ctx, target_strike=strike,
         snapshot=snapshot, chain_fn=chain_fn, iv_context=iv_context)
     if not gen.get("available"):
+        strike_note = f" (would model CSP at plan strike ${strike:.2f})" if strike else ""
         return _result(STATUS_FAIL,
-                       f"chain unavailable: {gen.get('reason') or 'unknown'}",
-                       generator=gen)
+                       f"chain unavailable: {gen.get('reason') or 'unknown'}{strike_note}",
+                       generator=gen, plan_strike=strike)
     proposals = gen.get("proposals") or []
     if not proposals:
-        return _result(STATUS_FAIL, gen.get("reason") or "no candidates passed gates", generator=gen)
+        note = gen.get("reason") or "no candidates passed gates"
+        if strike:
+            note += f" (target plan strike ${strike:.2f})"
+        return _result(STATUS_FAIL, note, generator=gen, plan_strike=strike)
     status, reason = _pass_or_watch(proposals)
     if thesis_ctx.get("cio_avoid_with_plan") and status == STATUS_PASS:
         status, reason = STATUS_WATCH, "entry plan present but CIO is avoid — disclosed conflict"

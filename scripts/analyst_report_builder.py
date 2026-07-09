@@ -417,15 +417,27 @@ def _options_matcher_context(sym: str, enrich: dict, holding: dict | None, perso
     pct = _f(personal.get("portfolio_pct"))
     if pct >= 8:
         ctx["hedge_of_held"] = True
-    if proposal:
+    # Watchlist entry plan is ground truth for CSP strike — not thesis-validity bands.
+    try:
+        from lib.options_pipeline.strategy_matcher import _fetch_entry_plan
+        plan = _fetch_entry_plan(sym)
+        if plan.get("limit_price") is not None:
+            ctx["plan_entry"] = _f(plan.get("limit_price"))
+        if plan.get("entry_zone_low") is not None:
+            ctx["plan_zone_low"] = _f(plan.get("entry_zone_low"))
+        if plan.get("stop_price") is not None:
+            ctx["plan_stop"] = _f(plan.get("stop_price"))
+    except Exception:
+        pass
+    if not ctx.get("plan_entry") and proposal:
         if proposal.get("proposed_entry"):
             ctx["plan_entry"] = _f(proposal.get("proposed_entry"))
         if proposal.get("proposed_stop"):
             ctx["plan_stop"] = _f(proposal.get("proposed_stop"))
-    if levels:
+    if not ctx.get("plan_zone_low") and levels:
+        ctx.setdefault("plan_zone_low", _f(levels.get("valid_low")) or None)
         ctx.setdefault("plan_entry", _f(levels.get("entry")) or None)
         ctx.setdefault("plan_stop", _f(levels.get("stop")) or None)
-        ctx.setdefault("plan_zone_low", _f(levels.get("valid_low")) or None)
     return ctx
 
 
