@@ -4,6 +4,9 @@ import fs from 'fs'
 import path from 'path'
 
 const UI_VERSION = '3.12'
+// Single stamp per build — must match build-meta.json or AnalystReportsPanel false-positives "stale".
+const BUILD_STAMP = Date.now().toString(36)
+const FULL_UI_VERSION = `${UI_VERSION}+${BUILD_STAMP}`
 
 export default defineConfig({
   plugins: [
@@ -14,8 +17,11 @@ export default defineConfig({
         // ui_version drives the server's forced client-reload (portfolio_server injects a check
         // vs sessionStorage). It MUST change every build or browsers never auto-pick-up a new
         // bundle — append a per-build stamp so every deploy triggers a one-time reload.
-        const stamp = Date.now().toString(36)
-        const meta = { ui_version: `${UI_VERSION}+${stamp}`, base_version: UI_VERSION, built_at: new Date().toISOString() }
+        const meta = {
+          ui_version: FULL_UI_VERSION,
+          base_version: UI_VERSION,
+          built_at: new Date().toISOString(),
+        }
         fs.writeFileSync(
           path.resolve(__dirname, 'dist/build-meta.json'),
           JSON.stringify(meta, null, 2),
@@ -24,7 +30,7 @@ export default defineConfig({
     },
   ],
   define: {
-    __ANALYST_UI_VERSION__: JSON.stringify(UI_VERSION),
+    __ANALYST_UI_VERSION__: JSON.stringify(FULL_UI_VERSION),
     __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
   },
   base: '/v3/',

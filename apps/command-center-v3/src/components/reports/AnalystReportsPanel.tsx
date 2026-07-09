@@ -70,7 +70,11 @@ export default function AnalystReportsPanel() {
       .then(meta => {
         const sv = String(meta?.ui_version || '')
         setServerVersion(sv)
-        if (sv && sv !== UI_VERSION) setStaleBundle(true)
+        const serverBase = String(meta?.base_version || sv.split('+')[0] || '')
+        const clientBase = UI_VERSION.split('+')[0]
+        // Stale only when the base major version changed — not when client label omits the +stamp.
+        if (serverBase && clientBase && serverBase !== clientBase) setStaleBundle(true)
+        else if (sv && UI_VERSION.includes('+') && sv !== UI_VERSION) setStaleBundle(true)
       })
       .catch(() => {})
   }, [])
@@ -227,10 +231,17 @@ export default function AnalystReportsPanel() {
           Click Reload to get Action Queue, modals, and the latest report layouts.
         </div>
         <button
-          onClick={() => { try { sessionStorage.removeItem('cc_v3_build') } catch { /* */ } window.location.href = `/v3/reports?_cc_reload=${Date.now()}` }}
+          onClick={() => {
+            try {
+              sessionStorage.removeItem('cc_v3_build')
+              sessionStorage.clear()
+            } catch { /* */ }
+            const base = window.location.pathname.replace(/\/v3.*/, '/v3/') || '/v3/'
+            window.location.replace(`${base}?_cc_reload=${Date.now()}`)
+          }}
           style={{ fontSize: 13, fontWeight: 800, padding: '10px 24px', borderRadius: 8, border: 'none', background: '#1d4ed8', color: '#fff', cursor: 'pointer' }}
         >
-          Reload Reports UI v{serverVersion || 'latest'}
+          Reload Command Center v{serverVersion || 'latest'}
         </button>
       </div>
     )
