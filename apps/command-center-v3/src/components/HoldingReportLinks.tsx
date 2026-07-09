@@ -1,6 +1,7 @@
 /** Inline prospectus report icon-links for portfolio holding + watchlist cards and drawer.
  *  Icon links (PDF / Word / open / regenerate) with a rich hover tooltip showing date created etc. */
-import type { AnalystReportEntry } from '../hooks/useAnalystReportMap'
+import { useState } from 'react'
+import { requestAnalystReportMapRefetch, type AnalystReportEntry } from '../hooks/useAnalystReportMap'
 
 type Props = {
   symbol: string
@@ -55,21 +56,52 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
   const sym = symbol.toUpperCase()
   const stop = (ev: React.MouseEvent) => ev.stopPropagation()
   const rtype = reportType || entry?.report_type || 'symbol_holding'
-  const buildHref = `/v3/reports?symbol=${encodeURIComponent(sym)}&type=${rtype}`
+  const buildHref = `/v3/reports?mode=analyst&generate=1&symbol=${encodeURIComponent(sym)}&type=${rtype}`
   const tip = tooltip(sym, entry)
+  const [genBusy, setGenBusy] = useState(false)
+  const [genErr, setGenErr] = useState('')
 
-  // No report yet → single "generate" icon-link that opens Reports (on-the-fly execution).
+  const runInlineGenerate = async (ev: React.MouseEvent) => {
+    stop(ev)
+    if (genBusy) return
+    setGenBusy(true)
+    setGenErr('')
+    try {
+      const r = await fetch('/api/v2/reports/analyst/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: rtype, symbol: sym, grok_edit: false, oversight: true }),
+      })
+      const j = await r.json()
+      const res = j?.data ?? j
+      if (!r.ok || res?.ok === false) throw new Error(res?.error || res?.block_reason || `HTTP ${r.status}`)
+      requestAnalystReportMapRefetch()
+      const url = res?.exports?.pdf || res?.exports?.docx
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+      else window.location.href = buildHref
+    } catch (e: any) {
+      setGenErr(String(e?.message || e).slice(0, 80))
+      window.location.href = buildHref
+    } finally {
+      setGenBusy(false)
+    }
+  }
+
+  // No report yet → generate inline (falls back to Analyst Reports tab on failure).
   if (!entry?.docx && !entry?.pdf) {
     return (
-      <a
-        href={buildHref}
-        onClick={stop}
-        title={tip}
-        aria-label={`Generate analyst prospectus for ${sym}`}
-        style={{ ...iconBtn, padding: '0 10px', color: '#94a3b8', background: 'rgba(148,163,184,.1)', border: '1px solid rgba(148,163,184,.25)', fontWeight: 700, fontSize: 12 }}
-      >
-        📄{compact ? '' : <span style={{ fontSize: 11 }}>&nbsp;Generate</span>}
-      </a>
+      <span onClick={stop} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <button
+          type="button"
+          onClick={runInlineGenerate}
+          disabled={genBusy}
+          title={genErr ? `${tip}\n${genErr}` : tip}
+          aria-label={`Generate analyst prospectus for ${sym}`}
+          style={{ ...iconBtn, padding: '0 10px', color: '#94a3b8', background: 'rgba(148,163,184,.1)', border: '1px solid rgba(148,163,184,.25)', fontWeight: 700, fontSize: 12, opacity: genBusy ? 0.6 : 1 }}
+        >
+          📄{compact ? '' : <span style={{ fontSize: 11 }}>&nbsp;{genBusy ? 'Generating…' : 'Generate'}</span>}
+        </button>
+      </span>
     )
   }
 
@@ -112,7 +144,7 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
         </a>
       )}
       <a
-        href={buildHref}
+        href={`/v3/reports?mode=analyst&generate=1&symbol=${encodeURIComponent(sym)}&type=${rtype}`}
         onClick={stop}
         aria-label={`Regenerate ${sym} prospectus`}
         title={`Regenerate / preview ${sym} in Reports`}

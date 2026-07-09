@@ -152,7 +152,17 @@ export default function ReportsHub({ onDrill }: Props) {
   void onDrill
   const { data: cats } = useApi<any>('/api/v2/reports/categories', 60_000)
   const categories = cats?.categories || []
-  const [mode, setMode] = useState<HubMode>('brief')
+  const [mode, setMode] = useState<HubMode>(() => {
+    try {
+      const q = new URLSearchParams(window.location.search)
+      const m = (q.get('mode') || '').trim().toLowerCase()
+      if (m === 'analyst' || m === 'archive' || m === 'brief') return m as HubMode
+      const sym = (q.get('symbol') || '').trim()
+      const typ = (q.get('type') || '').trim()
+      if (q.get('generate') === '1' || (sym && typ.startsWith('symbol_'))) return 'analyst'
+    } catch { /* ignore */ }
+    return 'brief'
+  })
   const [superTab, setSuperTab] = useState('briefs')
   const [active, setActive] = useState<string>('morning_briefs')
   const [qInput, setQInput] = useState('')
