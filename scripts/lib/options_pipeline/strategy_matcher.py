@@ -25,9 +25,9 @@ Thesis rules (the matcher owns direction; generators own contract math):
   • earnings_put_credit_spread stays not_applicable — BLOCKED_INITIAL in the
     registry (paper_enabled false, loader-enforced) until the debit lane has
     observed paper history.
-  • covered_call / cash_secured_put / protective_put / credit_spread return
-    not_applicable with honest reasons (requires held shares / requires existing
-    exposure / scanner_mode arrives in a later stage) — NO generation.
+  • covered_call — aegis income scanner + held-shares gate (≥100).
+  • cash_secured_put — CSP at watchlist entry-plan limit (willingness-to-own).
+  • protective_put / credit_spread return not_applicable with honest reasons.
 
 Status semantics:
   pass    — gates passed; at least one proposal carries no watch-class flag
@@ -47,6 +47,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from .atm_long_premium_generator import generate_atm_proposals
+from .csp_generator import generate_csp_proposals
 from .deep_itm_generator import generate_deep_itm_proposals
 from .earnings_vertical_generator import generate_put_debit_spreads
 from .universe import load_strategy_registry
@@ -74,15 +75,7 @@ WATCH_FLAGS = frozenset({
 
 # Matchers with no generation path yet — honest not_applicable reasons.
 _NOT_APPLICABLE_REASONS: Dict[str, Callable[[dict], str]] = {
-    "covered_call": lambda ctx: (
-        "held shares present — covered-call generation arrives in a later "
-        "scanner_mode stage (income overlay not wired)"
-        if _f(ctx.get("held_shares")) >= 100 else
-        "requires 100 held shares of the underlying (income overlay); "
-        "generation arrives in a later scanner_mode stage"),
-    "cash_secured_put": lambda ctx: (
-        "cash-secured put generation not wired — scanner_mode arrives in a "
-        "later stage (cash collateral must be modeled per contract)"),
+
     "protective_put": lambda ctx: (
         "hedge generation arrives in a later scanner_mode stage"
         if _f(ctx.get("held_shares")) > 0 else
@@ -122,26 +115,71 @@ def _normalize_verdict(raw: Any) -> Optional[str]:
     return aliases.get(r, r) or None
 
 
-def _fetch_watchlist_verdict(symbol: str) -> Optional[str]:
-    """Watchlist verdict for one symbol — research card first, CIO synthesis
-    fallback (the same sources the scanner's conviction resolution reads).
-    Read-only; any failure returns None (honest unknown)."""
+def _fetch_watchlist_verdicts(symbol: str) -> dict:
+    """CIO synthesis is authoritative; research card is secondary context."""
+    out = {"cio_verdict": None, "card_verdict": None, "grok_verdict": None, "chatgpt_verdict": None}
     try:
         from db_adapter import _execute, USE_DB
         if not USE_DB:
-            return None
+            return out
         row = _execute(
             """SELECT rc.latest_recommendation AS card_rec,
-                      fs.recommendation AS synth_rec
+                      fs.recommendation AS synth_rec,
+                      fs.grok_recommendation AS grok_rec,
+                      fs.chatgpt_recommendation AS chatgpt_rec
                FROM watchlist_items wi
                LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
                LEFT JOIN watchlist_final_synthesis fs ON UPPER(fs.symbol) = UPPER(wi.symbol)
                WHERE wi.symbol = %s AND wi.status <> 'removed'""",
             ((symbol or "").upper(),), fetch="one")
         if not row:
-            return None
+            return out
         d = dict(row)
-        return _normalize_verdict(d.get("card_rec")) or _normalize_verdict(d.get("synth_rec"))
+        out["cio_verdict"] = _normalize_verdict(d.get("synth_rec"))
+        out["card_verdict"] = _normalize_verdict(d.get("card_rec"))
+        out["grok_verdict"] = _normalize_verdict(d.get("grok_rec"))
+        out["chatgpt_verdict"] = _normalize_verdict(d.get("chatgpt_rec"))
+    except Exception:
+        pass
+    return out
+
+
+def _fetch_watchlist_verdict(symbol: str) -> Optional[str]:
+    """Primary verdict: CIO synthesis → Grok lane → research card."""
+    v = _fetch_watchlist_verdicts(symbol)
+    return (v.get("cio_verdict") or v.get("grok_verdict") or v.get("card_verdict"))
+
+
+def _fetch_entry_plan(symbol: str) -> dict:
+    """Latest watchlist entry plan (limit / zone / stop) for CSP strike selection."""
+    try:
+        from db_adapter import _execute, USE_DB
+        if not USE_DB:
+            return {}
+        row = _execute(
+            """SELECT limit_price, entry_zone_low, entry_zone_high, stop_price,
+                      target_price, confidence, urgency
+               FROM watchlist_entry_plans
+               WHERE symbol = %s
+               ORDER BY created_at DESC LIMIT 1""",
+            ((symbol or "").upper(),), fetch="one")
+        return dict(row) if row else {}
+    except Exception:
+        return {}
+
+
+def _fetch_earnings_date(symbol: str) -> Optional[str]:
+    try:
+        from db_adapter import _execute, USE_DB
+        if not USE_DB:
+            return None
+        row = _execute(
+            "SELECT next_earnings_date FROM symbol_profiles WHERE symbol = %s LIMIT 1",
+            ((symbol or "").upper(),), fetch="one")
+        if not row:
+            return None
+        d = row.get("next_earnings_date") if hasattr(row, "get") else dict(row).get("next_earnings_date")
+        return str(d)[:10] if d else None
     except Exception:
         return None
 
@@ -162,12 +200,27 @@ def resolve_context(symbol: str, context: Optional[dict] = None) -> dict:
     ctx = dict(context or {})
     sym = (symbol or "").strip().upper()
     ctx.setdefault("symbol", sym)
+    verdicts = _fetch_watchlist_verdicts(sym)
+    if "cio_verdict" not in ctx:
+        ctx["cio_verdict"] = verdicts.get("cio_verdict")
+    if "card_verdict" not in ctx:
+        ctx["card_verdict"] = verdicts.get("card_verdict")
     if "verdict" not in ctx:
-        ctx["verdict"] = _fetch_watchlist_verdict(sym)
+        ctx["verdict"] = (_normalize_verdict(ctx.get("cio_verdict"))
+                          or verdicts.get("grok_verdict")
+                          or verdicts.get("card_verdict"))
     else:
         ctx["verdict"] = _normalize_verdict(ctx.get("verdict"))
     if "held_shares" not in ctx:
         ctx["held_shares"] = _held_shares(sym)
+    plan = _fetch_entry_plan(sym) if not ctx.get("plan_entry") else {}
+    if not ctx.get("plan_entry"):
+        for key, src in (("plan_entry", "limit_price"), ("plan_zone_low", "entry_zone_low"),
+                         ("plan_zone_high", "entry_zone_high"), ("plan_stop", "stop_price")):
+            if ctx.get(key) is None and plan.get(src) is not None:
+                ctx[key] = _f(plan.get(src)) or None
+    if not ctx.get("earnings_date"):
+        ctx["earnings_date"] = _fetch_earnings_date(sym)
     ctx.setdefault("thesis_direction", None)   # explicit 'bullish' | 'bearish'
     ctx.setdefault("hedge_of_held", False)
     return ctx
@@ -435,6 +488,105 @@ def _match_earnings_debit(symbol: str, ctx: dict, thesis: dict, reg_row: dict,
     return _result(status, reason, proposals, event=_event_summary(ev))
 
 
+def _csp_target_strike(ctx: dict) -> Optional[float]:
+    zone = _f(ctx.get("plan_zone_low"))
+    limit = _f(ctx.get("plan_entry"))
+    if zone > 0:
+        return round(zone, 2)
+    if limit > 0:
+        return round(limit, 2)
+    return None
+
+
+def _csp_willing_to_own(ctx: dict, thesis: dict) -> tuple[bool, str, float]:
+    """CSP requires willingness to own at the plan strike."""
+    verdict = thesis.get("verdict")
+    strike = _csp_target_strike(ctx)
+    if strike and strike > 0:
+        if verdict in BEARISH_VERDICTS:
+            return True, "entry_plan", 0.55
+        if verdict in BULLISH_VERDICTS:
+            return True, "entry_plan_bullish", 0.70
+        return True, "entry_plan_neutral", 0.60
+    if thesis.get("bullish"):
+        conv, src = _bullish_conviction(ctx, thesis)
+        return conv >= 0.55, src, conv
+    return False, "no entry plan and no bullish thesis", 0.0
+
+
+def _match_csp(symbol: str, ctx: dict, thesis: dict, *,
+               snapshot: Optional[dict], chain_fn: Optional[Callable[..., dict]],
+               earnings_date: Optional[str], iv_context: Optional[dict],
+               csp_fn: Optional[Callable[..., dict]] = None) -> dict:
+    willing, source, conviction = _csp_willing_to_own(ctx, thesis)
+    strike = _csp_target_strike(ctx)
+    if not willing:
+        return _result(STATUS_FAIL,
+                       "no willingness-to-own entry — needs watchlist entry plan "
+                       "(limit/zone) or buy/strong_buy thesis")
+    thesis_ctx = {
+        "conviction": conviction,
+        "conviction_source": source,
+        "verdict": thesis.get("verdict"),
+        "cio_avoid_with_plan": thesis.get("verdict") in BEARISH_VERDICTS and strike and strike > 0,
+    }
+    gen = (csp_fn or generate_csp_proposals)(
+        symbol, thesis_ctx, target_strike=strike,
+        snapshot=snapshot, chain_fn=chain_fn, iv_context=iv_context)
+    if not gen.get("available"):
+        return _result(STATUS_FAIL,
+                       f"chain unavailable: {gen.get('reason') or 'unknown'}",
+                       generator=gen)
+    proposals = gen.get("proposals") or []
+    if not proposals:
+        return _result(STATUS_FAIL, gen.get("reason") or "no candidates passed gates", generator=gen)
+    status, reason = _pass_or_watch(proposals)
+    if thesis_ctx.get("cio_avoid_with_plan") and status == STATUS_PASS:
+        status, reason = STATUS_WATCH, "entry plan present but CIO is avoid — disclosed conflict"
+    return _result(status, reason, proposals, plan_strike=strike, generator=gen)
+
+
+def _match_covered_call(symbol: str, ctx: dict, thesis: dict) -> dict:
+    shares = _f(ctx.get("held_shares"))
+    if shares < 100:
+        return _result(STATUS_NOT_APPLICABLE,
+                       f"requires 100 held shares (have {shares:.0f}) for covered-call overlay")
+    contracts = int(shares // 100)
+    try:
+        from db_adapter import _execute, USE_DB
+        if not USE_DB:
+            return _result(STATUS_WATCH,
+                           f"{contracts} contract(s) writable — income scanner DB unavailable")
+        row = _execute(
+            """SELECT verdict, reasoning, strike_guidance, confidence, income_goal_fit,
+                      observed_at
+               FROM aegis_covered_call_candidates WHERE symbol = %s
+               ORDER BY observed_at DESC LIMIT 1""",
+            ((symbol or "").upper(),), fetch="one")
+    except Exception:
+        row = None
+    if not row:
+        return _result(STATUS_WATCH,
+                       f"{contracts} contract(s) writable — no aegis covered-call scan on file yet",
+                       metrics={"writable_contracts": contracts})
+    cc = dict(row)
+    verdict = str(cc.get("verdict") or "—")
+    pseudo = [{
+        "id": f"cc_scan_{symbol}",
+        "strategy": "covered_call",
+        "symbol": symbol,
+        "strike": None,
+        "edge_score": _f(cc.get("confidence")) * 100,
+        "reasoning": (str(cc.get("reasoning") or "")[:240]
+                      or f"income scanner verdict {verdict}"),
+        "meta": {"gate_flags": [] if verdict.lower() in ("candidate", "write", "ok")
+                 else ["scanner_wait"]},
+    }]
+    status = STATUS_PASS if verdict.lower() in ("candidate", "write", "ok") else STATUS_WATCH
+    return _result(status, f"aegis scanner: {verdict} — {contracts} contract(s) writable",
+                   pseudo, scanner=cc, metrics={"writable_contracts": contracts})
+
+
 # ── main API (operator spec Part C) ──────────────────────────────────────────
 
 def run_matchers(
@@ -452,6 +604,7 @@ def run_matchers(
     iv_context: Optional[dict] = None,
     event_json: Optional[dict] = None,
     earnings_fn: Optional[Callable[..., dict]] = None,
+    csp_fn: Optional[Callable[..., dict]] = None,
 ) -> dict:
     """Evaluate every requested strategy for one symbol.
 
@@ -486,6 +639,9 @@ def run_matchers(
         atm_kwargs["chain_fn"] = chain_fn
     if earnings_date is not None:
         atm_kwargs["earnings_date"] = earnings_date
+    elif ctx.get("earnings_date"):
+        atm_kwargs["earnings_date"] = ctx["earnings_date"]
+        earnings_date = ctx["earnings_date"]
     if iv_context is not None:
         atm_kwargs["iv_context"] = iv_context
 
@@ -523,6 +679,12 @@ def run_matchers(
                 STATUS_NOT_APPLICABLE,
                 "blocked initially (BLOCKED_INITIAL) — the credit matcher "
                 "lane arrives after the debit lane observes paper history")
+        elif sid == "cash_secured_put":
+            results[sid] = _match_csp(
+                sym, ctx, thesis, snapshot=snapshot, chain_fn=chain_fn,
+                earnings_date=earnings_date, iv_context=iv_context, csp_fn=csp_fn)
+        elif sid == "covered_call":
+            results[sid] = _match_covered_call(sym, ctx, thesis)
         elif sid in _NOT_APPLICABLE_REASONS:
             results[sid] = _result(STATUS_NOT_APPLICABLE,
                                    _NOT_APPLICABLE_REASONS[sid](ctx))
@@ -535,7 +697,13 @@ def run_matchers(
         "generated_at": _now_iso(),
         "context": {
             "verdict": thesis.get("verdict"),
+            "cio_verdict": ctx.get("cio_verdict"),
+            "card_verdict": ctx.get("card_verdict"),
             "held_shares": ctx.get("held_shares"),
+            "plan_entry": ctx.get("plan_entry"),
+            "plan_zone_low": ctx.get("plan_zone_low"),
+            "plan_stop": ctx.get("plan_stop"),
+            "earnings_date": ctx.get("earnings_date"),
             "thesis_direction": ctx.get("thesis_direction"),
             "hedge_of_held": bool(ctx.get("hedge_of_held")),
             "bullish": thesis["bullish"],

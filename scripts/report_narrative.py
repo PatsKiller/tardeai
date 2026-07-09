@@ -32,7 +32,7 @@ def strip_md(text: str) -> str:
 
 def _rec_bucket(rec: str) -> str:
     u = str(rec or "").upper()
-    for k in ("STRONG BUY", "STRONG_BUY", "ADD", "BUY", "HOLD", "TRIM", "SELL", "MONITOR"):
+    for k in ("STRONG BUY", "STRONG_BUY", "ADD", "BUY", "HOLD", "TRIM", "SELL", "AVOID", "MONITOR"):
         if k.replace("_", " ") in u or k in u:
             return k.replace("_", " ")
     return u.split()[0] if u else "—"
@@ -80,16 +80,32 @@ def action_recommendation_line(
     pro: dict | None,
     thesis: str,
     levels: dict | None = None,
+    held_shares: float | None = None,
 ) -> str:
     rec_u = _rec_bucket(rec)
     levels = levels or {}
+    held = _f(held_shares)
     stop = _f((proposal or {}).get("proposed_stop")) or _f(levels.get("stop")) or None
     target = _f((proposal or {}).get("proposed_target1")) or _f((pro or {}).get("target_mean_price")) or _f(levels.get("target"))
     # Single source of truth for the accumulation band (matches the action-plan bullets).
     add_low = _f(levels.get("valid_low")) or stop or (price * 0.97 if price else 0)
     add_high = _f(levels.get("entry")) or price
     target_is_analyst = bool(levels.get("target_is_analyst")) or bool((proposal or {}).get("proposed_target1"))
+    if "AVOID" in rec_u:
+        if held < 1:
+            if stop:
+                return (f"Do not initiate; remain off-book until thesis and data quality clear. "
+                        f"Reassess only on a defined plan breach below ${stop:,.2f}.")
+            return "Do not initiate; remain off-book until thesis and data quality clear."
+        if stop:
+            return f"Reduce or exit exposure; maintain stops and review on breach of ${stop:,.2f}."
+        return f"Reduce or exit exposure at current levels (${price:,.2f}); thesis is {thesis.lower()}."
     if "ADD" in rec_u or "BUY" in rec_u:
+        if held < 1:
+            if add_low and add_high:
+                lo, hi = min(add_low, add_high), max(add_low, add_high)
+                tgt = f" toward the ${target:,.2f} consensus target" if (target and target > price and target_is_analyst) else ""
+                return f"Initiate between ${lo:,.2f} and ${hi:,.2f}{tgt}; do not chase above ${price * 1.03:,.2f}."
         if add_low and add_high:
             lo, hi = min(add_low, add_high), max(add_low, add_high)
             # only cite a "target" when it is analyst/plan-derived — never present a synthetic +12% as one
@@ -99,7 +115,13 @@ def action_recommendation_line(
     if "TRIM" in rec_u or "SELL" in rec_u:
         return f"Reduce exposure at current levels (${price:,.2f}); tighten risk if thesis is {thesis.lower()}."
     if "MONITOR" in rec_u:
+        if held < 1:
+            return "No position — monitor catalysts; do not initiate until plan confirms."
         return "No new capital — monitor catalysts and reassess after next material event."
+    if "HOLD" in rec_u and held < 1:
+        if stop:
+            return f"No position held — wait for plan confirmation; invalidation below ${stop:,.2f}."
+        return "No position held — maintain watch-only stance until entry plan confirms."
     return f"Hold current size; maintain stops and review on breach of ${stop:,.2f}." if stop else "Hold current size; no change required."
 
 

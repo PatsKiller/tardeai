@@ -66,8 +66,8 @@ def test_action_recommendation_line_add_with_stop():
         pro=None,
         thesis="Still valid",
     )
-    # accumulation band is anchored on the stop/support as the lower bound
-    assert "accumulate" in line.lower()
+    # accumulation band is anchored on the stop/support as the lower bound (0 shares → initiate)
+    assert "initiate" in line.lower() or "accumulate" in line.lower()
     assert "$95" in line
     assert "chase" in line.lower()
 

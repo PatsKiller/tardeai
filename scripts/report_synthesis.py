@@ -358,8 +358,10 @@ def compose_symbol_sections(
     want_intel = any(s in sections for s in (
         "intelligence_view", "agent_synthesis", "agent_performance_note", "ensemble_validation",
     ))
+    held_shares = _f(personal.get("shares")) or (_f(holding.get("shares")) if holding else 0)
     action_line = action_recommendation_line(
         rec, price=price, proposal=proposal, pro=pro, thesis=thesis, levels=levels,
+        held_shares=held_shares,
     )
     thesis_why = thesis_rationale(
         thesis, synthesis=synthesis, proposal=proposal, enrich=enrich,

@@ -88,7 +88,7 @@ def test_build_symbol_report_structure():
 
 def test_build_symbol_report_v3_defaults():
     report = build_symbol_report("RKLB", report_type="symbol_holding")
-    assert report["meta"]["version"] == "3.0"
+    assert report["meta"]["version"] == "4.0"
     ids = [s["id"] for s in report["sections"]]
     assert ids[0] == "header_context"
     assert "personal_performance" in ids
