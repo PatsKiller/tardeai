@@ -52,6 +52,7 @@ All Telegram DMs route to **Maria** (not `main`). Portfolio questions: run
 - SOUL synced with `tradeai-readonly` + `tradeai-watchlist` skills
 - Portfolio: `portfolio-today` for today's P&L + winners/losers
 - Stop-outs: `stops-today` for triggered stops (alerts `stop_triggered` + risk `TRIGGERED` rows)
+- **Full CC mirror:** `tradeai_readonly.py help` — hub commands `home`, `trading`, `risk-hub`, `hermes-hub`, `options-hub`, `health-hub`, etc. map 1:1 to Command Center v3 pages
 
 ### 2. Main (default OpenClaw agent)
 - Workspace: `~/.openclaw/workspace/`
