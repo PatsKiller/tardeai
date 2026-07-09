@@ -1609,6 +1609,20 @@ _COUNTRY_FLAGS = {
 }
 def _country_flag(c): return _COUNTRY_FLAGS.get((c or "").strip().lower(), "🇺🇸") if c else ""
 
+def _resolve_country_name(symbol, raw):
+    """Headquarters-country name for a scan row. Prefer the scan's own value; when
+    it is empty (common for AI/social-sourced symbols that never went through the
+    Finviz screener) fall back to the Finviz enrichment cache
+    (data/state/ticker_enrichment_cache.json, keyed by symbol). Returns the raw
+    country name ('' if still unknown)."""
+    v = (raw or "").strip()
+    if v:
+        return v
+    try:
+        return ((_enrich_cache().get((symbol or "").upper()) or {}).get("country") or "").strip()
+    except Exception:
+        return ""
+
 _hermes_gov_mod = [None, 0.0]  # [module, mtime]
 
 
@@ -9277,6 +9291,7 @@ def _compute_trade_ai():
         """)
         if _db_tickers:
             for r in _db_tickers:
+                _cn = _resolve_country_name(r["symbol"], r.get("country"))
                 tickers.append({
                     "symbol": r["symbol"],
                     "score": int(r.get("score") or 0),
@@ -9300,7 +9315,8 @@ def _compute_trade_ai():
                     "disqualification_reason": r.get("disqualification_reason"),
                     "critic_flags": [],
                     "sector": r.get("sector"),
-                    "country": _country_flag(r.get("country")),
+                    "country": _country_flag(_cn),
+                    "country_name": _cn,  # raw HQ name for flag+tooltip (frontend lib/country.ts); Finviz-cache fallback
                     "sector_etf": r.get("sector_etf"),
                     "ticker_perf_1m": r.get("ticker_perf_1m"),
                     "sector_perf_1m": r.get("sector_perf_1m"),
@@ -9343,6 +9359,7 @@ def _compute_trade_ai():
                 try:
                     rows = list(csv.DictReader(io.StringIO(Path(csvs[-1]).read_text())))
                     for r in rows:
+                        _cn = _resolve_country_name(r.get("Symbol", ""), r.get("Country"))
                         tickers.append({
                             "symbol": r.get("Symbol", ""), "score": int(r.get("Score", 0) or 0),
                             "grade": r.get("Grade", ""), "decision": r.get("Decision", ""),
@@ -9356,7 +9373,7 @@ def _compute_trade_ai():
                             "critic_reasoning": r.get("CriticReasoning", "") or None,
                             "disqualified": r.get("Disqualified", "").lower() == "true" if r.get("Disqualified") else False,
                             "critic_flags": [], "sector": r.get("Sector", "") or None,
-                            "country": r.get("Country", "") or None, "sector_etf": r.get("SectorETF", "") or None,
+                            "country": _country_flag(_cn) or None, "country_name": _cn, "sector_etf": r.get("SectorETF", "") or None,
                             "ticker_perf_1m": float(r["TickerPerf1M"]) if r.get("TickerPerf1M") else None,
                             "sector_perf_1m": float(r["SectorPerf1M"]) if r.get("SectorPerf1M") else None,
                             "vs_sector_pct": float(r["VsSectorPct"]) if r.get("VsSectorPct") else None,

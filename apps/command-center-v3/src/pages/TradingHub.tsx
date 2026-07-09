@@ -15,6 +15,7 @@ import TimeExitProposals from '../components/TimeExitProposals'
 import ATMControlPanel from '../components/ATMControlPanel'
 import OpenTradesIntelligence from '../components/OpenTradesIntelligence'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
+import { resolveCountry } from '../lib/country'
 import ManualTosDesk from './ManualTosDesk'
 import BrokerProposals from '../components/BrokerProposals'
 import OptionsHub from './OptionsHub'
@@ -218,7 +219,8 @@ export default function TradingHub({ onDrill }: Props) {
           cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1,
         })
         // Richer ticker table layout
-        const gridCols = '26px 52px 72px 1fr 60px 30px 48px 64px 58px 58px 50px 1.3fr 1fr 1.6fr'
+        // checkbox · Decision · Source · Country(flag) · Symbol · Score · Grd · RVOL · Price · Chg% · Gap% · Float · Sector · Social · Catalyst
+        const gridCols = '26px 52px 72px 30px 1fr 60px 30px 48px 64px 58px 58px 50px 1.3fr 1fr 1.6fr'
         const runHistory: any[] = tradeAi?.run_history ?? []
         const sectors: Record<string, number> = tradeAi?.sectors ?? {}
         const sectorEntries = Object.entries(sectors).sort((a, b) => (b[1] as number) - (a[1] as number))
@@ -299,7 +301,7 @@ export default function TradingHub({ onDrill }: Props) {
             </div>
 
             <div style={{ overflowX: 'auto' }}>
-            <div style={{ minWidth: 1080 }}>
+            <div style={{ minWidth: 1112 }}>
             <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', alignItems: 'center' }}>
               <span title="Select/clear all rows on this page">
                 <input type="checkbox" aria-label="Select visible page"
@@ -307,13 +309,12 @@ export default function TradingHub({ onDrill }: Props) {
                   onChange={e => persistSel(e.target.checked ? selectSymbols(selectedSyms, pageSymbols) : deselectSymbols(selectedSyms, pageSymbols))}
                   style={{ cursor: 'pointer' }} />
               </span>
-              <span>Decision</span><span>Source</span><span>Symbol</span><span>Score</span><span>Grd</span><span>RVOL</span><span>Price</span><span>Chg%</span><span>Gap%</span><span>Float</span><span>Sector</span><span>Social</span><span>Catalyst</span>
+              <span>Decision</span><span>Source</span><span title="Headquarters country of the underlying company (ADRs show the home country, not the US listing)" style={{ cursor: 'help' }}>Ctry</span><span>Symbol</span><span>Score</span><span>Grd</span><span>RVOL</span><span>Price</span><span>Chg%</span><span>Gap%</span><span>Float</span><span>Sector</span><span>Social</span><span>Catalyst</span>
             </div>
             {filtered.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 12 }}>No {tradeFilter === 'ALL' ? '' : tradeFilter === 'SCOUT' ? 'Social Scout ' : tradeFilter + ' '}rows in the latest run.</div> :
             pageRows.map((t: any, i: number) => {
               const sb = srcBadge(t)
-              const country = t.country || ''
-              const flag = (!country || country === '🇺🇸' || country === 'United States') ? '' : country
+              const ctry = resolveCountry({ symbol: t.symbol, country: t.country, countryName: t.country_name })
               const social = t.social_sentiment || ''
               const socialColor = social.includes('Very Bullish') ? '#4ade80' : social.includes('Bullish') ? '#86efac' : social.includes('Bearish') ? '#f87171' : 'var(--text3)'
               const score = t.score ?? 0
@@ -329,6 +330,7 @@ export default function TradingHub({ onDrill }: Props) {
                 </span>
                 <span style={{ fontWeight: 700, fontSize: 9, color: scout.isScout ? 'var(--social-scout)' : decisionColor(t.decision) }}>{scout.isScout ? 'SCOUT' : (t.decision || 'NO-GO')}</span>
                 <span title={sb.label} style={{ fontSize: 8, fontWeight: 600, padding: '1px 4px', borderRadius: 3, border: `1px solid ${sb.color}40`, color: sb.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sb.icon} {sb.label}</span>
+                <span title={ctry ? `${ctry.name} (${ctry.code})` : 'Country unknown'} style={{ fontSize: 13, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}>{ctry ? ctry.flag : '🌍'}</span>
                 <div style={{ overflow: 'hidden' }}>
                   <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
                   {t.decision_changed && <span title={`critic changed from ${t.original_decision}`} style={{ fontSize: 8, color: '#f59e0b', marginLeft: 4 }}>⟳</span>}
@@ -351,7 +353,7 @@ export default function TradingHub({ onDrill }: Props) {
                 <span style={{ color: pctColor(t.gap_pct) }}>{pctText(t.gap_pct)}</span>
                 <span style={{ color: 'var(--text2)' }}>{t.float_m != null && t.float_m !== '' ? `${t.float_m}M` : '—'}</span>
                 <span style={{ fontSize: 9, display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden' }}>
-                  <span style={{ fontWeight: 600, color: 'var(--text1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{flag}{flag ? ' ' : ''}{t.sector || '—'}</span>
+                  <span style={{ fontWeight: 600, color: 'var(--text1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.sector || '—'}</span>
                   {t.vs_sector_pct != null && <span style={{ fontSize: 8, color: t.vs_sector_pct >= 0 ? '#4ade80' : '#f87171' }}>vs {t.sector_etf || 'sector'}: {t.vs_sector_pct >= 0 ? '+' : ''}{t.vs_sector_pct}%</span>}
                 </span>
                 {social ? (
