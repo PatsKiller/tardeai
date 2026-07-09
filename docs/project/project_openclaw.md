@@ -51,6 +51,7 @@ All Telegram DMs route to **Maria** (not `main`). Portfolio questions: run
 - Agent dir: `~/.openclaw/agents/maria/agent/`
 - SOUL synced with `tradeai-readonly` + `tradeai-watchlist` skills
 - Portfolio: `portfolio-today` for today's P&L + winners/losers
+- Stop-outs: `stops-today` for triggered stops (alerts `stop_triggered` + risk `TRIGGERED` rows)
 
 ### 2. Main (default OpenClaw agent)
 - Workspace: `~/.openclaw/workspace/`
