@@ -61,7 +61,8 @@ export default function IntelligenceHub({ onDrill }: Props) {
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Intelligence</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-            {totalArticles.toLocaleString()} articles · Hermes {coordOk ? 'coordinator live' : 'coordinator check'}
+            Command Center = triage queue · News/Research tabs hold the {totalArticles.toLocaleString()} article corpus
+            {coordOk ? ' · Hermes live' : ' · Hermes check'}
             {ragPct != null && ` · RAG ${ragPct}%`}
           </div>
         </div>

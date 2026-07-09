@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from './DetailDrawer'
@@ -20,6 +21,7 @@ const input: React.CSSProperties = { background: 'var(--bg2)', border: '1px soli
 
 type Mode = 'command' | 'quality'
 type Special = 'all' | 'actionable' | 'highError' | 'stale'
+type ViewPreset = 'priority' | 'all'
 interface Props { mode: Mode; onDrill: (ctx: DrillContext) => void }
 type IntelItem = { id: string; source: string; type: string; symbol?: string; title: string; summary?: string; severity: 'critical' | 'warning' | 'info' | 'positive'; confidence: number; freshnessH: number | null; model?: string; lane?: string; action?: string; raw: any }
 
@@ -58,6 +60,30 @@ function qualityReasons(it: IntelItem) {
   if (/research-gap/.test(it.type)) out.push('research gap not resolved')
   return out.length ? out : ['source looks usable; still verify before action']
 }
+function isLowValueSetup(it: IntelItem) {
+  if (it.type !== 'setup') return false
+  const decision = String((it.raw as any)?.decision ?? '').toUpperCase()
+  const score = Number((it.raw as any)?.score ?? 0)
+  return (decision === 'WAIT' && score < 10) || qscore(it) < 0.15
+}
+function isActNow(it: IntelItem) {
+  if (it.type === 'risk' || it.type === 'telegram/action' || it.type === 'open-trade') return true
+  if (it.type === 'external-lm-report' && it.severity === 'critical') return true
+  return qscore(it) >= 0.55 && estError(it) <= 0.35 && !!it.action && it.severity !== 'info'
+}
+function priorityRank(it: IntelItem) {
+  if (it.type === 'risk' || it.type === 'telegram/action') return 0
+  if (it.type === 'open-trade' && it.severity === 'critical') return 1
+  if (it.type === 'external-lm-report') return 2
+  if (isActNow(it)) return 3
+  if (it.severity === 'critical') return 4
+  if (it.severity === 'warning') return 5
+  return 6
+}
+function sortByPriority(a: IntelItem, b: IntelItem) {
+  return priorityRank(a) - priorityRank(b) || estError(a) - estError(b) || qscore(b) - qscore(a)
+}
+
 function nextStep(it: IntelItem) {
   if (it.type === 'risk') return 'Open Risk/Open Trades and verify current price, stop status, and account protection.'
   if (it.type === 'telegram/action') return 'Compare Telegram/action alert to Schwab read-only activity and current position.'
@@ -138,6 +164,8 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
   const [useGrok, setUseGrok] = useState(false)
   const [lmReview, setLmReview] = useState<{ local?: string; localErr?: string; grok?: string; grokErr?: string } | null>(null)
   const [lmBusy, setLmBusy] = useState(false)
+  const [viewPreset, setViewPreset] = useState<ViewPreset>('priority')
+  const [lmOpen, setLmOpen] = useState(false)
   const cmd = command?.data ?? command ?? {}
 
   const items = useMemo<IntelItem[]>(() => {
@@ -149,8 +177,9 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
     const priceBy: Record<string, number> = {}
     ;(risk?.positions ?? []).forEach((p: any) => { const c = Number(p.current_price); if (p.symbol && Number.isFinite(c)) priceBy[String(p.symbol).toUpperCase()] = c })
     const seenStop = new Set<string>()
+    const riskSymbols = new Set<string>()
     ;(risk?.positions ?? []).forEach((p: any) => { if (p.symbol && (p.triggered || p.triggered_stop)) seenStop.add(String(p.symbol).toUpperCase()) })
-    ;(risk?.positions ?? []).filter((p: any) => p.triggered || p.near_stop || p.unprotected || p.triggered_stop).slice(0, 25).forEach((p: any) => { const cp = Number(p.current_price), sp = Number(p.stop_price ?? p.stop); const ok = Number.isFinite(cp) && Number.isFinite(sp) && sp > 0; const breach = ok ? Math.abs(cp - sp) / sp : 0; const conf = ok ? Math.min(.96, .60 + Math.min(breach * 3, .36)) : .45; add({ source: '/api/v2/risk', type: 'risk', symbol: p.symbol, title: `${p.symbol} risk/stop review`, summary: `${p.account ?? ''} stop ${p.stop_price ?? p.stop ?? '—'} · current ${p.current_price ?? '—'}${ok ? ` · ${(breach * 100).toFixed(1)}% past stop` : ' · price missing'}`, severity: 'critical', confidence: conf, raw: p, action: 'verify stop / protection' }) })
+    ;(risk?.positions ?? []).filter((p: any) => p.triggered || p.near_stop || p.unprotected || p.triggered_stop).slice(0, 25).forEach((p: any) => { const sym = String(p.symbol ?? '').toUpperCase(); if (sym) riskSymbols.add(sym); const cp = Number(p.current_price), sp = Number(p.stop_price ?? p.stop); const ok = Number.isFinite(cp) && Number.isFinite(sp) && sp > 0; const breach = ok ? Math.abs(cp - sp) / sp : 0; const conf = ok ? Math.min(.96, .60 + Math.min(breach * 3, .36)) : .45; add({ source: '/api/v2/risk', type: 'risk', symbol: p.symbol, title: `${p.symbol} risk/stop review`, summary: `${p.account ?? ''} stop ${p.stop_price ?? p.stop ?? '—'} · current ${p.current_price ?? '—'}${ok ? ` · ${(breach * 100).toFixed(1)}% past stop` : ' · price missing'}`, severity: 'critical', confidence: conf, raw: p, action: 'verify stop / protection' }) })
     ;(cmd.triggered_detail ?? []).slice(0, 20).forEach((s: any) => { const sym = String(s.symbol ?? '').toUpperCase(); if (sym && seenStop.has(sym)) return; /* dedup: same stop already shown as a risk item */ const cp = Number(s.current_price) || priceBy[sym]; const sp = Number(s.stop_price ?? s.stop); const ok = Number.isFinite(cp) && Number.isFinite(sp) && sp > 0; const breach = ok ? Math.abs(cp - sp) / sp : 0; const conf = ok ? Math.min(.95, .64 + Math.min(breach * 3, .31)) : ((s.stop_price ?? s.stop) && s.symbol ? .6 : .48); add({ source: '/api/v2/command', type: 'telegram/action', symbol: s.symbol, title: `${s.symbol} triggered stop from command feed`, summary: `Stop ${s.stop_price ?? s.stop ?? '—'} · ${s.account ?? ''}${ok ? ` · current ${cp.toFixed(2)} · ${(breach * 100).toFixed(1)}% past` : ''}`, severity: 'critical', confidence: conf, raw: s, action: 'confirm broker state' }) })
     ;(brief?.action_items ?? []).forEach((a: any, i: number) => add({ source: '/api/v2/morning-brief', type: 'brief-action', title: typeof a === 'string' ? a : (a.message ?? a.title ?? a.action ?? `Action item ${i + 1}`), summary: typeof a === 'object' ? a.code ?? a.reason ?? '' : '', raw: a, action: 'review' }))
     // External-LM reports come as a daily SERIES (e.g. REPORT:aegis_morning_brief_<date>) repeating the
@@ -166,7 +195,7 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
     Object.values(lmGroups).forEach(({ e, key }) => add({ source: '/api/v2/hermes/subject-intel-map?type=report', type: 'external-lm-report', title: e.recommendation ?? key, summary: [e.dissent, ...(Array.isArray(e.risk_flags) ? e.risk_flags : [])].filter(Boolean).join(' · '), model: e.model, lane: e.lane, confidence: confidenceFrom(e, .7), raw: { ...e, key }, action: e.dissent ? 'resolve counter-view' : 'review report' }))
     ;(cmd.top_news ?? []).slice(0, 30).forEach((n: any) => add({ source: '/api/v2/command', type: 'portfolio-news', symbol: n.symbol, title: n.title ?? n.headline, summary: n.why_it_matters ?? n.source, raw: n }))
     ;(market?.top_mentioned_symbols ?? []).slice(0, 20).forEach((s: any) => add({ source: '/api/v2/market-intelligence', type: 'market-signal', symbol: typeof s === 'string' ? s : s.symbol, title: `${typeof s === 'string' ? s : s.symbol} mentioned in market intelligence`, summary: typeof s === 'object' ? `${s.mentions ?? '—'} mentions` : '', raw: s, confidence: .58 }))
-    ;(tradeAi?.tickers ?? []).filter((t: any) => ['GO','WAIT'].includes(String(t.decision ?? '').toUpperCase()) || Number(t.score ?? 0) >= 30).slice(0, 40).forEach((t: any) => add({ source: '/api/v2/trade-ai', type: 'setup', symbol: t.symbol, title: `${t.symbol} ${t.decision ?? 'setup'} score ${t.score ?? '—'}`, summary: t.catalyst ?? t.reason ?? t.sector, raw: t, action: t.decision === 'GO' ? 'consider watchlist/manual setup' : 'monitor' }))
+    ;(tradeAi?.tickers ?? []).filter((t: any) => { const d = String(t.decision ?? '').toUpperCase(); const sc = Number(t.score ?? 0); return d === 'GO' || (d === 'WAIT' && sc >= 10) || sc >= 30 }).slice(0, 40).forEach((t: any) => add({ source: '/api/v2/trade-ai', type: 'setup', symbol: t.symbol, title: `${t.symbol} ${t.decision ?? 'setup'} score ${t.score ?? '—'}`, summary: t.catalyst ?? t.reason ?? t.sector, raw: t, action: t.decision === 'GO' ? 'consider watchlist/manual setup' : 'monitor' }))
     ;(watchlist?.items ?? []).slice(0, 35).forEach((w: any) => add({ source: '/api/v2/watchlist/items', type: 'watchlist', symbol: w.symbol, title: `${w.symbol} watchlist ${w.latest_recommendation ?? w.entry_urgency ?? ''}`, summary: first(w.catalyst, w.reason, w.description, w.entry_setup, 'curated watchlist item'), raw: w, confidence: confidenceFrom(w, .68), action: w.entry_urgency === 'ready' ? 'entry review' : 'monitor' }))
     ;(openTrades?.positions ?? []).filter((p: any) => ['critical','high'].includes(String(p.operator_priority ?? '').toLowerCase()) || (p.risk_flags ?? []).length > 0).slice(0, 30).forEach((p: any) => { const rf = (p.risk_flags ?? []).length; const pr = String(p.operator_priority ?? '').toLowerCase(); const conf = Math.min(.95, .58 + 0.08 * Math.min(rf, 3) + (pr === 'critical' ? .14 : pr === 'high' ? .07 : 0) + ((p.decision_reason || p.strategy_rationale) ? .06 : 0)); add({ source: '/api/v2/open-trades/intelligence', type: 'open-trade', symbol: p.symbol, title: `${p.symbol} ${p.operator_decision ?? 'position review'}`, summary: p.decision_reason ?? p.strategy_rationale, severity: severityFrom(p), confidence: conf, raw: p, action: p.primary_next_review ?? 'review position' }) })
     ;(research?.research_gaps ?? []).slice(0, 20).forEach((g: any) => add({ source: '/api/v2/research-topics', type: 'research-gap', symbol: g.symbol, title: g.display_name ?? g.topic_id ?? g.topic ?? 'Research gap', summary: [g.reason, g.detail].filter(Boolean).join(' — '), severity: 'warning', raw: g, action: 'assign research' }))
@@ -177,6 +206,8 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
       if (infSeen.has(key)) return
       infSeen.add(key)
       const t = String(r.inference_type || '')
+      const infSym = String(r.subject ?? '').toUpperCase()
+      if (t === 'aegis_thesis' && infSym && (riskSymbols.has(infSym) || seenStop.has(infSym))) return
       const sev: IntelItem['severity'] = r.severity === 'critical' ? 'critical' : r.severity === 'high' ? 'warning' : t === 'opportunity' || t === 'sector_rotation' ? 'positive' : 'info'
       add({
         source: '/api/v2/inference/latest', type: t || 'inference', symbol: /^[A-Z]{1,5}$/.test(r.subject || '') ? r.subject : undefined,
@@ -205,11 +236,27 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
       summary: [p.rationale, p.thesis, p.why].filter(Boolean).join(' · '),
       severity: 'info', confidence: 0.62, raw: p, action: 'rotation review',
     }))
-    return out.sort((a, b) => (b.severity === 'critical' ? 1 : 0) - (a.severity === 'critical' ? 1 : 0) || estError(b) - estError(a))
+    return out.sort(sortByPriority)
   }, [risk, cmd, brief, reportIntel, market, tradeAi, watchlist, openTrades, research, inference, overview, rotation])
 
-  const applyKpi = (next: { source?: string; sev?: string; special?: Special; search?: string }) => { setSource(next.source ?? 'all'); setSev(next.sev ?? 'all'); setSpecial(next.special ?? 'all'); setSearch(next.search ?? '') }
+  const applyKpi = (next: { source?: string; sev?: string; special?: Special; search?: string; view?: ViewPreset }) => { setSource(next.source ?? 'all'); setSev(next.sev ?? 'all'); setSpecial(next.special ?? 'all'); setSearch(next.search ?? ''); if (next.view) setViewPreset(next.view) }
   const filtered = items.filter(it => (source === 'all' || it.type === source || it.source.includes(source)) && (sev === 'all' || it.severity === sev) && (special === 'all' || (special === 'actionable' && !!it.action) || (special === 'highError' && estError(it) > .35) || (special === 'stale' && (it.freshnessH ?? 999) > 24)) && (!search || `${it.symbol ?? ''} ${it.title} ${it.summary ?? ''} ${it.action ?? ''}`.toLowerCase().includes(search.toLowerCase())))
+  const displayFiltered = useMemo(() => {
+    const list = viewPreset === 'priority' ? filtered.filter(it => !isLowValueSetup(it)) : filtered
+    return [...list].sort(sortByPriority)
+  }, [filtered, viewPreset])
+  const actNowItems = useMemo(() => displayFiltered.filter(isActNow), [displayFiltered])
+  const monitorItems = useMemo(() => displayFiltered.filter(it => !isActNow(it)), [displayFiltered])
+  const actNowCount = useMemo(() => items.filter(isActNow).length, [items])
+  const stopCount = useMemo(() => items.filter(it => it.type === 'risk').length, [items])
+  const hiddenNoise = useMemo(() => items.filter(isLowValueSetup).length, [items])
+  const linkStyle: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: BLUE, textDecoration: 'none' }
+  const sectionHead = (label: string, n: number, color = TEXT0) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '2px 0 8px' }}>
+      <div style={{ color, fontWeight: 900, fontSize: 12 }}>{label}</div>
+      <div style={{ color: MUTED, fontSize: 10 }}>{n} item{n === 1 ? '' : 's'}</div>
+    </div>
+  )
   const quality = filtered.map(it => ({ ...it, q: qscore(it), e: estError(it) }))
   const avgQ = quality.length ? quality.reduce((a, b) => a + b.q, 0) / quality.length : 0
   const highErr = items.filter(x => estError(x) > .35).length
@@ -243,16 +290,75 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
   </div>
 
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-    <div style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><div><div style={{ fontSize: 21, fontWeight: 950, color: TEXT0 }}>Consolidated Intelligence Command</div><div style={{ fontSize: 11, color: MUTED }}>Click the top cards to filter. Low-quality items include an explicit verification path.</div></div><div style={{ fontSize: 10, color: MUTED }}>Daily source: /morning-brief · live poll: risk/trade/watchlist</div></div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}><KPI label="Total intelligence" value={items.length} active={special === 'all' && sev === 'all'} onClick={() => applyKpi({})} /><KPI label="Critical" value={items.filter(i => i.severity === 'critical').length} color={RED} active={sev === 'critical'} onClick={() => applyKpi({ sev: 'critical' })} /><KPI label="Warnings" value={items.filter(i => i.severity === 'warning').length} color={AMBER} active={sev === 'warning'} onClick={() => applyKpi({ sev: 'warning' })} /><KPI label="Actionable" value={items.filter(i => i.action).length} color={BLUE} active={special === 'actionable'} onClick={() => applyKpi({ special: 'actionable' })} /><KPI label="Portfolio" value={money(overview?.portfolio_value)} color={TEXT0} sub="click portfolio-risk" active={source === 'open-trade'} onClick={() => applyKpi({ source: 'open-trade' })} /></div>
-    <FilterRow source={source} setSource={setSource} sev={sev} setSev={setSev} special={special} setSpecial={setSpecial} search={search} setSearch={setSearch} types={[...new Set(items.map(i => i.type))]} />
-    <div style={{ ...panel }}><div style={{ color: TEXT0, fontWeight: 900, marginBottom: 9 }}>Agent / Local LM Review & Feedback</div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8 }}><textarea value={question} onChange={e => setQuestion(e.target.value)} placeholder="Ask the local model: What changed? Which signals conflict? What should agents verify?" style={{ ...input, minHeight: 58 }} /><textarea value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Feedback to agents / LM critique: missing source, false positive, stale data, better decision wording..." style={{ ...input, minHeight: 58 }} /><div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 130 }}><label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: TEXT0, cursor: 'pointer' }}><input type="checkbox" checked={useGrok} onChange={e => setUseGrok(e.target.checked)} /> also ask Grok</label><button onClick={askLm} disabled={lmBusy} style={{ ...btn(true, PURPLE), flex: 1, opacity: lmBusy ? .6 : 1 }}>{lmBusy ? 'Reviewing…' : 'Run LM Review'}</button></div></div>{lmStatus && <div style={{ fontSize: 10, color: lmStatus.includes('Reviewed') || lmStatus.includes('recorded') ? GREEN : AMBER, marginTop: 7 }}>{lmStatus}</div>}
-      {lmReview && <div style={{ display: 'grid', gridTemplateColumns: lmReview.grok || lmReview.grokErr ? '1fr 1fr' : '1fr', gap: 10, marginTop: 10 }}>
-        <div style={{ background: 'rgba(96,165,250,.05)', border: '1px solid #334155', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: BLUE, marginBottom: 5 }}>🖥 Local LLM (gemma)</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.local || <span style={{ color: AMBER }}>{lmReview.localErr || 'no response'}</span>}</div></div>
-        {(lmReview.grok || lmReview.grokErr) && <div style={{ background: 'rgba(168,85,247,.05)', border: '1px solid #334155', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: PURPLE, marginBottom: 5 }}>⚡ Grok</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.grok || <span style={{ color: AMBER }}>{lmReview.grokErr || 'no response'}</span>}</div></div>}
-      </div>}</div>
-    <div style={{ display: 'grid', gridTemplateColumns: '1.1fr .9fr', gap: 14 }}><div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>{filtered.slice(0, 18).map(it => <ItemCard key={it.id} item={it} onDrill={onDrill} onAsk={askAbout} />)}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><div style={panel}><div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Decision implications</div>{filtered.slice(0, 8).map(it => <div key={it.id} style={{ borderBottom: '1px solid rgba(148,163,184,.13)', padding: '7px 0' }}><div style={{ color: sevColor(it.severity), fontSize: 10, fontWeight: 900 }}>{it.action ?? 'review'}</div><div style={{ color: TEXT2, fontSize: 11 }}>{it.symbol ? `${it.symbol}: ` : ''}{it.title}</div><div style={{ color: MUTED, fontSize: 9, marginTop: 2 }}>{nextStep(it)}</div></div>)}</div><div style={panel}><div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Source health</div>{bySource.map(s => <button key={s.name} onClick={() => applyKpi({ source: String(s.name) })} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', padding: '6px 0', border: 0, borderBottom: '1px solid rgba(148,163,184,.12)', fontSize: 11, background: 'transparent', cursor: 'pointer' }}><span style={{ color: source === s.name ? BLUE : MUTED }}>{s.name}</span><span style={{ color: TEXT0, fontWeight: 850 }}>{String(s.value)}</span></button>)}</div></div></div>
+    <div style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+      <div>
+        <div style={{ fontSize: 21, fontWeight: 950, color: TEXT0 }}>Consolidated Intelligence Command</div>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>Priority view surfaces stops, open-trade reviews, and high-confidence actions first. Low-score WAIT setups stay collapsed unless you expand.</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Link to="/risk" style={linkStyle}>Risk →</Link>
+          <Link to="/portfolio" style={linkStyle}>Portfolio →</Link>
+          <Link to="/trading?tab=Open+Trades" style={linkStyle}>Open Trades →</Link>
+        </div>
+        <div style={{ fontSize: 10, color: MUTED }}>{items.length} signals · {hiddenNoise} low-score setups {viewPreset === 'priority' ? 'hidden' : 'visible'}</div>
+      </div>
+    </div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
+      <KPI label="Needs action" value={actNowCount} color={actNowCount ? RED : GREEN} sub="stops · open trades · verified" active={viewPreset === 'priority' && special === 'all' && sev === 'all'} onClick={() => applyKpi({ view: 'priority' })} />
+      <KPI label="Stop breaches" value={stopCount} color={stopCount ? RED : GREEN} sub="risk feed" active={source === 'risk'} onClick={() => applyKpi({ source: 'risk', view: 'priority' })} />
+      <KPI label="Critical" value={items.filter(i => i.severity === 'critical').length} color={RED} active={sev === 'critical'} onClick={() => applyKpi({ sev: 'critical', view: 'priority' })} />
+      <KPI label="Low-score WAIT" value={hiddenNoise} color={hiddenNoise ? DIM : GREEN} sub={viewPreset === 'priority' ? 'click to show all' : 'showing all'} active={viewPreset === 'all'} onClick={() => setViewPreset(viewPreset === 'priority' ? 'all' : 'priority')} />
+      <KPI label="Portfolio" value={money(overview?.portfolio_value)} color={TEXT0} sub="open-trade focus" active={source === 'open-trade'} onClick={() => applyKpi({ source: 'open-trade', view: 'priority' })} />
+    </div>
+    <FilterRow source={source} setSource={setSource} sev={sev} setSev={setSev} special={special} setSpecial={setSpecial} search={search} setSearch={setSearch} types={[...new Set(items.map(i => i.type))]} viewPreset={viewPreset} setViewPreset={setViewPreset} />
+    <div style={{ ...panel }}>
+      <button onClick={() => setLmOpen(v => !v)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: 0, background: 'transparent', cursor: 'pointer', padding: 0 }}>
+        <div style={{ color: TEXT0, fontWeight: 900 }}>Agent / Local LM Review & Feedback</div>
+        <span style={{ color: MUTED, fontSize: 10 }}>{lmOpen ? 'collapse ▲' : 'expand ▼'}</span>
+      </button>
+      {lmOpen && <>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginTop: 9 }}><textarea value={question} onChange={e => setQuestion(e.target.value)} placeholder="Ask the local model: What changed? Which signals conflict? What should agents verify?" style={{ ...input, minHeight: 58 }} /><textarea value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Feedback to agents / LM critique: missing source, false positive, stale data, better decision wording..." style={{ ...input, minHeight: 58 }} /><div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 130 }}><label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: TEXT0, cursor: 'pointer' }}><input type="checkbox" checked={useGrok} onChange={e => setUseGrok(e.target.checked)} /> also ask Grok</label><button onClick={askLm} disabled={lmBusy} style={{ ...btn(true, PURPLE), flex: 1, opacity: lmBusy ? .6 : 1 }}>{lmBusy ? 'Reviewing…' : 'Run LM Review'}</button></div></div>
+        {lmStatus && <div style={{ fontSize: 10, color: lmStatus.includes('Reviewed') || lmStatus.includes('recorded') ? GREEN : AMBER, marginTop: 7 }}>{lmStatus}</div>}
+        {lmReview && <div style={{ display: 'grid', gridTemplateColumns: lmReview.grok || lmReview.grokErr ? '1fr 1fr' : '1fr', gap: 10, marginTop: 10 }}>
+          <div style={{ background: 'rgba(96,165,250,.05)', border: '1px solid #334155', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: BLUE, marginBottom: 5 }}>🖥 Local LLM (gemma)</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.local || <span style={{ color: AMBER }}>{lmReview.localErr || 'no response'}</span>}</div></div>
+          {(lmReview.grok || lmReview.grokErr) && <div style={{ background: 'rgba(168,85,247,.05)', border: '1px solid #334155', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: PURPLE, marginBottom: 5 }}>⚡ Grok</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.grok || <span style={{ color: AMBER }}>{lmReview.grokErr || 'no response'}</span>}</div></div>}
+        </div>}
+      </>}
+    </div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1.1fr .9fr', gap: 14 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {actNowItems.length > 0 && <div>
+          {sectionHead('Act now', actNowItems.length, RED)}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>{actNowItems.map(it => <ItemCard key={it.id} item={it} onDrill={onDrill} onAsk={askAbout} />)}</div>
+        </div>}
+        {monitorItems.length > 0 && <div>
+          {sectionHead(viewPreset === 'priority' ? 'Monitor (top)' : 'Monitor', viewPreset === 'priority' ? Math.min(6, monitorItems.length) : monitorItems.length, AMBER)}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>{(viewPreset === 'priority' ? monitorItems.slice(0, 6) : monitorItems).map(it => <ItemCard key={it.id} item={it} onDrill={onDrill} onAsk={askAbout} />)}</div>
+          {viewPreset === 'priority' && monitorItems.length > 6 && <button onClick={() => setViewPreset('all')} style={{ ...btn(), marginTop: 4, alignSelf: 'flex-start' }}>Show {monitorItems.length - 6} more monitor items</button>}
+        </div>}
+        {displayFiltered.length === 0 && <div style={{ ...panel, color: MUTED, fontSize: 12 }}>No items match the current filters. Try clearing filters or showing all signals.</div>}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={panel}>
+          <div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Decision implications</div>
+          {displayFiltered.slice(0, 8).map(it => <div key={it.id} style={{ borderBottom: '1px solid rgba(148,163,184,.13)', padding: '7px 0' }}><div style={{ color: sevColor(it.severity), fontSize: 10, fontWeight: 900 }}>{it.action ?? 'review'}</div><div style={{ color: TEXT2, fontSize: 11 }}>{it.symbol ? `${it.symbol}: ` : ''}{it.title}</div><div style={{ color: MUTED, fontSize: 9, marginTop: 2 }}>{nextStep(it)}</div></div>)}
+        </div>
+        <div style={panel}>
+          <div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Source health</div>
+          {bySource.map(s => <button key={s.name} onClick={() => applyKpi({ source: String(s.name) })} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', padding: '6px 0', border: 0, borderBottom: '1px solid rgba(148,163,184,.12)', fontSize: 11, background: 'transparent', cursor: 'pointer' }}><span style={{ color: source === s.name ? BLUE : MUTED }}>{s.name}</span><span style={{ color: TEXT0, fontWeight: 850 }}>{String(s.value)}</span></button>)}
+        </div>
+      </div>
+    </div>
   </div>
 }
 
-function FilterRow({ source, setSource, sev, setSev, special, setSpecial, search, setSearch, types }: any) { return <div style={{ ...panel, display: 'grid', gridTemplateColumns: '180px 160px 170px 1fr', gap: 9, alignItems: 'center' }}><select value={source} onChange={e => setSource(e.target.value)} style={input}><option value="all">All sources/types</option>{types.map((t: string) => <option key={t} value={t}>{t}</option>)}</select><select value={sev} onChange={e => setSev(e.target.value)} style={input}><option value="all">All severities</option><option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option><option value="positive">Positive</option></select><select value={special} onChange={e => setSpecial(e.target.value)} style={input}><option value="all">All quality</option><option value="actionable">Actionable only</option><option value="highError">High error-rate</option><option value="stale">Stale / unknown</option></select><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filter by symbol, topic, source, decision, trend, implication…" style={input} /></div> }
+function FilterRow({ source, setSource, sev, setSev, special, setSpecial, search, setSearch, types, viewPreset, setViewPreset }: any) {
+  return <div style={{ ...panel, display: 'grid', gridTemplateColumns: '130px 180px 160px 170px 1fr', gap: 9, alignItems: 'center' }}>
+    <select value={viewPreset ?? 'priority'} onChange={e => setViewPreset?.(e.target.value)} style={input}><option value="priority">Priority view</option><option value="all">Show all signals</option></select>
+    <select value={source} onChange={e => setSource(e.target.value)} style={input}><option value="all">All sources/types</option>{types.map((t: string) => <option key={t} value={t}>{t}</option>)}</select>
+    <select value={sev} onChange={e => setSev(e.target.value)} style={input}><option value="all">All severities</option><option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option><option value="positive">Positive</option></select>
+    <select value={special} onChange={e => setSpecial(e.target.value)} style={input}><option value="all">All quality</option><option value="actionable">Actionable only</option><option value="highError">High error-rate</option><option value="stale">Stale / unknown</option></select>
+    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filter by symbol, topic, source, decision, trend, implication…" style={input} />
+  </div>
+}
