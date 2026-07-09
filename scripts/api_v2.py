@@ -5579,10 +5579,14 @@ def _wl_requeue_symbol(sym: str) -> tuple[int, dict]:
 
 
 def _wl_cio_synthesis(sym: str, body: dict | None) -> tuple[int, dict]:
-    """POST /api/v2/watchlist/<SYMBOL>/cio-synthesis — manual CIO synthesis on Grok and/or ChatGPT."""
+    """POST /api/v2/watchlist/<SYMBOL>/cio-synthesis — manual CIO synthesis on Grok and/or ChatGPT.
+
+    Body: {"lanes": ["grok","chatgpt"], "dry_run": true} — dry_run returns full prompt + OAuth
+    response without writing watchlist_final_synthesis."""
     sym = (sym or "").strip().upper()
     if not sym or not sym.isalpha() or len(sym) > 5:
         return 400, {"ok": False, "error": "invalid symbol"}
+    dry_run = bool((body or {}).get("dry_run"))
     raw_lanes = (body or {}).get("lanes")
     lanes = None
     if isinstance(raw_lanes, list) and raw_lanes:
@@ -5597,12 +5601,16 @@ def _wl_cio_synthesis(sym: str, body: dict | None) -> tuple[int, dict]:
         from lib.llm_consumption import ManualRequired as _ManualRequired
         conn = _pwaj._get_conn()
         try:
-            result = _pwaj.run_synthesis(conn, sym, lanes=lanes, manual_trigger=True)
+            result = _pwaj.run_synthesis(
+                conn, sym, lanes=lanes, manual_trigger=True, dry_run=dry_run)
         finally:
             conn.close()
         if not result:
             return 500, {"ok": False, "error": "synthesis_failed", "symbol": sym}
-        return 200, {**result, "advisory_only": True, "process_id": "watchlist_cio_synthesis"}
+        out = {**result, "advisory_only": True, "process_id": "watchlist_cio_synthesis"}
+        if dry_run:
+            out["persisted"] = False
+        return 200, out
     except _ManualRequired as mr:
         return 200, {"ok": False, "manual_required": True, "process_id": mr.process_id,
                      "lane": mr.lane, "task_summary": mr.task_summary, "symbol": sym}

@@ -1622,8 +1622,10 @@ def _build_layer_status(conn) -> str:
     return "\n".join(lines)
 
 
-def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False):
-    """Run strategy-aware final synthesis combining all analyst narratives."""
+def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False, dry_run: bool = False):
+    """Run strategy-aware final synthesis combining all analyst narratives.
+
+    dry_run: build prompt + run OAuth/local lanes but do not persist synthesis or maturity."""
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -1642,9 +1644,10 @@ def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False):
         return {"ok": False, "error": "no_completed_agent_results", "symbol": symbol,
                 "hint": "Queue agent reviews first (Refresh on card), then run CIO synthesis."}
 
-    # Mark synthesis as processing
-    cur.execute("UPDATE watchlist_analysis_maturity SET final_synthesis_status='processing', updated_at=now() WHERE symbol=%s", (symbol,))
-    conn.commit()
+    # Mark synthesis as processing (skipped on dry_run — no maturity side effects)
+    if not dry_run:
+        cur.execute("UPDATE watchlist_analysis_maturity SET final_synthesis_status='processing', updated_at=now() WHERE symbol=%s", (symbol,))
+        conn.commit()
 
     # Get portfolio context and strategy weights
     port_ctx = _get_portfolio_context(conn, symbol)
@@ -1795,6 +1798,16 @@ CRITICAL INSTRUCTIONS:
     # e.g. ANET rendered "LLM error: All providers failed" as its CIO note for 65 days).
     if isinstance(raw, str) and raw.startswith("LLM error"):
         print(f"  [synthesis] {symbol}: all LLM lanes failed ({raw[:80]}) — keeping prior synthesis, no upsert")
+        if dry_run:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return {
+                "ok": False, "dry_run": True, "error": "llm_lanes_failed", "symbol": symbol,
+                "detail": str(raw)[:200], "prompt": prompt, "prompt_chars": len(prompt),
+                "input_agents": [r["agent"] for r in results], "persisted": False,
+            }
         # Self-heal (2026-07-03, ANET post-purge): the caller marks the job completed, so without a
         # retry this symbol silently has NO synthesis until some other lane re-queues it. Enqueue a
         # deduped retry so the next worker pass re-runs once lanes recover.
@@ -1895,6 +1908,47 @@ CRITICAL INSTRUCTIONS:
 
     # Store synthesis — record the ACTUAL model that ran + the prompt version (not the hardcoded local)
     actual_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
+
+    if dry_run:
+        specialist_inputs = [
+            {
+                "agent": r["agent"],
+                "recommendation": r.get("recommendation"),
+                "confidence": float(r.get("confidence") or 0),
+                "summary": (r.get("summary") or "")[:200],
+                "created_at": r["created_at"].isoformat() if r.get("created_at") else None,
+            }
+            for r in results
+        ]
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        cur.close()
+        print(f"  [synthesis-dry-run] {symbol}: {parsed['recommendation']} conf={parsed['confidence']:.0%} (not persisted)")
+        return {
+            "ok": True,
+            "dry_run": True,
+            "symbol": symbol,
+            "persisted": False,
+            "prompt_version": SYNTHESIS_PROMPT_VERSION,
+            "prompt": prompt,
+            "prompt_chars": len(prompt),
+            "strategy_type": strategy_type,
+            "input_agents": [r["agent"] for r in results],
+            "specialist_inputs": specialist_inputs,
+            "recommendation": parsed["recommendation"],
+            "confidence": parsed["confidence"],
+            "action": action,
+            "conflicts": conflicts,
+            "unresolved": unresolved,
+            "synthesis_narrative": synthesis_narrative,
+            "dual_consensus": dual_meta,
+            "model_used": actual_model,
+            "raw_response": raw,
+            "lanes_run": list(lanes or ("grok", "chatgpt")),
+            "manual_trigger": manual_trigger,
+        }
     _grok_rec = (dual_meta.get("grok") or {}).get("recommendation")
     _cgpt_rec = (dual_meta.get("chatgpt") or {}).get("recommendation")
     cur.execute("""
