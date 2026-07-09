@@ -1,101 +1,28 @@
 {
-  "date": "2026-07-07",
-  "timestamp": "2026-07-07T08:15:27.396835+00:00",
-  "embedding_recommendations": [],
-  "promotion_recommendations": [],
-  "rejected": [
+  "date": "2026-07-08",
+  "timestamp": "2026-07-08T08:15:55.470663+00:00",
+  "embedding_recommendations": [
     {
-      "id": 6980,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 6976,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 6978,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 6982,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 6972,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 6973,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 6970,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 6955,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 6981,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 6969,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 6957,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 6977,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 6985,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 6979,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 6984,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 6965,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 6954,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 6983,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
+      "id": 8349,
+      "symbol": "DXCM",
+      "type": "options_desk",
+      "confidence": 0.95,
+      "has_url": false,
+      "reason": "staged, has evidence, not embedded"
     }
   ],
-  "total_staged_non_backlog": 68,
+  "promotion_recommendations": [
+    {
+      "id": 8349,
+      "symbol": "DXCM",
+      "type": "options_desk",
+      "confidence": 0.95,
+      "has_url": false,
+      "reason": "staged, high conf, has evidence"
+    }
+  ],
+  "rejected": [],
+  "total_staged_non_backlog": 123,
   "embeddings_created": 0,
   "promotions_created": 0
 }

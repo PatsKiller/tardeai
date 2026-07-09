@@ -1,4 +1,4 @@
-# Governance Status — attention_required
+# Governance Status — warning
 
-**A1A:** attention_required
+**A1A:** warning
 **Safety:** paper / true
