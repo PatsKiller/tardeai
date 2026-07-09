@@ -25,6 +25,13 @@ def test_is_watchlist_sleeve():
     assert not bsr.is_watchlist_sleeve("momentum_scalp")
 
 
+def test_defense_thesis_sleeve_maps_to_executable_strategy():
+    r = bsr.resolve_executable_strategy("LDOS", "defense_thesis")
+    assert r["strategy_id"] == "swing_breakout"
+    assert r["watchlist_sleeve"] == "defense_thesis"
+    assert r["resolve_source"] == "sleeve_map"
+
+
 def test_policy_floor_raises_target_when_resistance_too_close():
     en, st, tg, rat = bsr.apply_strategy_exit_plan(
         220.3, None, None, "core_growth_compounder",

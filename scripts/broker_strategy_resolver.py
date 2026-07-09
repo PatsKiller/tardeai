@@ -53,6 +53,18 @@ def is_watchlist_sleeve(strategy_id: str | None) -> bool:
     return str(strategy_id or "").strip().lower() in WATCHLIST_SLEEVES
 
 
+def _resolve_sleeve(sleeve_id: str, *, classified: str | None) -> dict | None:
+    mapped = SLEEVE_TO_STRATEGY.get(sleeve_id)
+    if mapped and _load_cfg(mapped):
+        return {
+            "strategy_id": mapped,
+            "watchlist_sleeve": sleeve_id,
+            "resolve_source": "sleeve_map",
+            "classified_strategy": classified,
+        }
+    return None
+
+
 def resolve_executable_strategy(symbol: str, strategy_id_or_sleeve: str | None = None) -> dict:
     """Map symbol + proposal strategy field to a YAML strategy_id with metadata."""
     sym = str(symbol or "").upper().strip()
@@ -74,21 +86,21 @@ def resolve_executable_strategy(symbol: str, strategy_id_or_sleeve: str | None =
             "classified_strategy": classified,
         }
 
-    if classified and _load_cfg(classified):
-        return {
-            "strategy_id": classified,
-            "watchlist_sleeve": sleeve or (raw if is_watchlist_sleeve(raw) else None),
-            "resolve_source": "ticker_classification",
-            "classified_strategy": classified,
-        }
-
     if sleeve:
-        mapped = SLEEVE_TO_STRATEGY.get(sleeve)
-        if mapped and _load_cfg(mapped):
+        mapped = _resolve_sleeve(sleeve, classified=classified)
+        if mapped:
+            return mapped
+
+    if classified:
+        if is_watchlist_sleeve(classified):
+            mapped = _resolve_sleeve(classified, classified=classified)
+            if mapped:
+                return mapped
+        elif _load_cfg(classified):
             return {
-                "strategy_id": mapped,
-                "watchlist_sleeve": sleeve,
-                "resolve_source": "sleeve_map",
+                "strategy_id": classified,
+                "watchlist_sleeve": sleeve or (raw if is_watchlist_sleeve(raw) else None),
+                "resolve_source": "ticker_classification",
                 "classified_strategy": classified,
             }
 

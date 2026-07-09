@@ -41,6 +41,21 @@ def build_evidence_fields_doc() -> str:
     return _EVIDENCE_FIELDS_DOC
 
 
+def normalize_agent_confidence(val: Any, *, default: float = 0.5) -> float:
+    """Map agent confidence to 0.0–1.0; reject poisoned values (income $, account ids, etc.)."""
+    if val is None:
+        return default
+    try:
+        c = float(val)
+    except (TypeError, ValueError):
+        return default
+    if c > 100:
+        return default
+    if c > 1.0:
+        c /= 100.0
+    return min(1.0, max(0.0, c))
+
+
 def build_base_json_instruction(
     *,
     context: str = "",
@@ -212,7 +227,7 @@ def parse_agent_result(raw: str) -> dict:
             "summary": str(parsed.get("summary", ""))[:500],
             "full_narrative": str(parsed.get("full_narrative", parsed.get("summary", "")))[:3000],
             "recommendation": str(parsed.get("recommendation", "RESEARCH_MORE")).upper(),
-            "confidence": min(1.0, max(0.0, float(parsed.get("confidence", 0.5)))),
+            "confidence": normalize_agent_confidence(parsed.get("confidence")),
             "evidence": normalize_evidence(parsed.get("evidence")),
             "data_i_doubt": normalize_data_i_doubt(parsed.get("data_i_doubt")),
             "reason_codes": parsed.get("reason_codes", []) if isinstance(parsed.get("reason_codes"), list) else [],
@@ -236,8 +251,7 @@ def parse_agent_result(raw: str) -> dict:
         if "confidence" in l:
             m = re.search(r"(\d+\.?\d*)", l)
             if m:
-                v = float(m.group(1))
-                confidence = v if v <= 1 else v / 100
+                confidence = normalize_agent_confidence(m.group(1))
 
     return {
         "summary": summary,

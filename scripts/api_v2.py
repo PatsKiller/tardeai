@@ -6115,7 +6115,14 @@ def _agents_summary():
                count(CASE WHEN recommendation IN ('BUY','ADD','STRONG_BUY') THEN 1 END) as buy_count,
                count(CASE WHEN recommendation IN ('SELL','TRIM','REDUCE') THEN 1 END) as sell_count,
                count(CASE WHEN recommendation IN ('HOLD','NEUTRAL') THEN 1 END) as hold_count,
-               avg(confidence) as avg_confidence,
+               avg(
+                 CASE
+                   WHEN confidence IS NULL THEN NULL
+                   WHEN confidence > 100 THEN NULL
+                   WHEN confidence > 1 THEN LEAST(1.0, confidence / 100.0)
+                   ELSE LEAST(1.0, GREATEST(0.0, confidence))
+                 END
+               ) as avg_confidence,
                max(created_at) as latest
         FROM watchlist_agent_results
         GROUP BY agent ORDER BY total DESC

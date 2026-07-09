@@ -288,21 +288,49 @@ def remediate_symbol(conn, symbol: str, *, dry_run: bool = False, proposal_ids: 
     if not targets:
         return {"ok": True, "symbol": sym, "skipped": True, "reason": "no_blocked_proposals"}
 
+    import broker_strategy_resolver as bsr
+
     plan_id = None
-    strategy_id = str(auth.get("strategy_id") or "swing_breakout")
     primary_pid = int(targets[0]) if targets else None
+    exec_strategy_id = str(auth.get("strategy_id") or "swing_breakout")
+    if primary_pid:
+        cur = conn.cursor()
+        cur.execute("SELECT strategy_id FROM paper_trade_proposals WHERE id=%s", (primary_pid,))
+        row = cur.fetchone()
+        if row and row[0]:
+            exec_strategy_id = bsr.resolve_executable_strategy(sym, str(row[0]))["strategy_id"]
+    auth = dict(auth)
+    auth["strategy_id"] = exec_strategy_id
     if not dry_run:
-        plan_id = _upsert_trade_plan(conn, sym, strategy_id, auth, proposal_id=primary_pid)
+        plan_id = _upsert_trade_plan(conn, sym, exec_strategy_id, auth, proposal_id=primary_pid)
 
     applied = []
     for pid in targets:
         cur = conn.cursor()
         cur.execute("SELECT strategy_id FROM paper_trade_proposals WHERE id=%s", (pid,))
         row = cur.fetchone()
-        if row and row[0]:
-            auth = dict(auth)
-            auth["strategy_id"] = str(row[0])
-        patch = _apply_levels_to_proposal(conn, int(pid), auth, dry_run=dry_run)
+        raw_sid = str(row[0]) if row and row[0] else exec_strategy_id
+        resolved = bsr.resolve_executable_strategy(sym, raw_sid)
+        pid_auth = dict(auth)
+        pid_auth["strategy_id"] = resolved["strategy_id"]
+        exit_rationale = dict(pid_auth.get("exit_rationale") or {})
+        exit_rationale["resolve"] = resolved
+        exit_rationale["strategy_id"] = resolved["strategy_id"]
+        pid_auth["exit_rationale"] = exit_rationale
+        patch = _apply_levels_to_proposal(conn, int(pid), pid_auth, dry_run=dry_run)
+        if not dry_run and resolved["strategy_id"] != raw_sid:
+            cur.execute(
+                """UPDATE paper_trade_proposals
+                   SET strategy_id=%s,
+                       sizing_basis=COALESCE(sizing_basis, '{}'::jsonb) || %s::jsonb,
+                       updated_at=NOW()
+                   WHERE id=%s""",
+                (
+                    resolved["strategy_id"],
+                    json.dumps({"strategy_resolve": resolved}),
+                    int(pid),
+                ),
+            )
         gate = btpg.assess_proposal_trade_plan(int(pid), conn=conn)
         applied.append({
             "proposal_id": pid,

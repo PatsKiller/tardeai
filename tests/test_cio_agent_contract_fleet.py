@@ -12,6 +12,7 @@ from cio_agent_contract import (
     build_proposal_vote_json_schema,
     extract_evidence_packet,
     merge_structured_into_result,
+    normalize_agent_confidence,
     normalize_evidence,
     normalize_hermes_evidence,
     parse_agent_result,
@@ -106,6 +107,14 @@ def test_parse_agent_result_shared():
     p = parse_agent_result(raw)
     assert p["recommendation"] == "HOLD"
     assert normalize_evidence([{"tag": "bogus", "text": "x"}])[0]["tag"] == "fact"
+
+
+def test_normalize_agent_confidence_scale_and_poison():
+    assert normalize_agent_confidence(0.72) == 0.72
+    assert normalize_agent_confidence(72) == 0.72
+    assert normalize_agent_confidence(5433541.04) == 0.5
+    raw = json.dumps({"summary": "x", "recommendation": "HOLD", "confidence": 68})
+    assert parse_agent_result(raw)["confidence"] == 0.68
 
 
 def test_synthesis_parser():
