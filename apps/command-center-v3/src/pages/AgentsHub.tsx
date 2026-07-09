@@ -459,17 +459,39 @@ export default function AgentsHub({ onDrill }: Props) {
       {tab === 'Weekly Learning' && (() => {
         const w = weekly?.data ?? weekly ?? {}
         const reviews = w.reviews ?? []
+        const summaries = w.summaries ?? []
+        const phantomN = reviews.filter((r: any) => r.is_phantom).length
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', gap: 14, fontSize: 11, color: 'var(--text2)' }}>
-              <span>{w.review_count ?? 0} reviews</span>
+            <div style={{ fontSize: 10, color: 'var(--text3)', lineHeight: 1.45 }}>
+              Post-close trade reviews from <code style={{ fontSize: 9 }}>multi_tier_trade_reviewer</code> (realtime / overnight / weekly tiers).
+              Many older rows flag <strong style={{ color: A }}>phantom</strong> exits — paper sync recorded a signal without a live Alpaca fill.
+            </div>
+            <div style={{ display: 'flex', gap: 14, fontSize: 11, color: 'var(--text2)', flexWrap: 'wrap' }}>
+              <span>{w.review_count ?? 0} reviews total</span>
               {(w.by_tier ?? []).map((t: any) => <span key={t.tier} style={{ color: 'var(--text3)' }}>{t.tier}: {t.count}</span>)}
             </div>
+            {summaries.length > 0 && (
+              <div style={{ background: 'var(--bg1)', border: `1px solid ${B}44`, borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Week rollups</div>
+                {summaries.map((r: any, i: number) => (
+                  <div key={i} onClick={() => onDrill({ title: `${r.tier} rollup`, subtitle: r.model_used ?? '', endpoint: '/api/v2/weekly-learning', rows: [r] })}
+                    style={{ padding: '7px 0', borderBottom: i < summaries.length - 1 ? '1px solid var(--border-subtle)' : undefined, cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: B }}>{r.tier} · week summary</span>
+                      <span style={{ fontSize: 8, color: 'var(--text3)' }}>{r.model_used} · {timeAgo(r.created_at)}</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.45 }}>{r.review}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 480, overflowY: 'auto' }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Weekly trade reviews</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Per-trade reviews (latest 20)</div>
+              {phantomN > 0 && <div style={{ fontSize: 9, color: A, marginBottom: 8 }}>{phantomN} of {reviews.length} shown mention phantom / no-fill exits</div>}
               {reviews.length === 0 && (
                 <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.55, padding: '8px 0' }}>
-                  No weekly reviews yet — generated after closed paper trades. See{' '}
+                  No trade reviews yet — generated after closed paper trades. See{' '}
                   <Link to="/journal" style={{ color: '#60a5fa' }}>Journal</Link> or{' '}
                   <Link to="/system?tab=jobs" style={{ color: '#60a5fa' }}>System → Jobs</Link> for the review cron.
                 </div>
@@ -477,15 +499,17 @@ export default function AgentsHub({ onDrill }: Props) {
               {reviews.map((r: any, i: number) => (
                 <div key={i} onClick={() => onDrill({ title: `Trade #${r.paper_trade_id} · ${r.tier}`, subtitle: r.model_used ?? '', endpoint: '/api/v2/weekly-learning', rows: [r] })}
                   style={{ padding: '7px 8px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa' }}>{r.tier} · trade #{r.paper_trade_id}</span>
-                    <span style={{ fontSize: 8, color: 'var(--text3)' }}>{r.model_used} · {timeAgo(r.created_at)}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, gap: 8 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: r.is_phantom ? A : '#60a5fa' }}>
+                      {r.tier} · trade #{r.paper_trade_id}{r.is_phantom ? ' · phantom' : ''}
+                    </span>
+                    <span style={{ fontSize: 8, color: 'var(--text3)', flexShrink: 0 }}>{r.model_used} · {timeAgo(r.created_at)}</span>
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.4, maxHeight: 48, overflow: 'hidden' }}>{(r.review ?? '').slice(0, 240)}</div>
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/weekly-learning — multi-tier trade reviews + agent performance trend.</div>
+            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/weekly-learning · tiers: realtime + overnight + weekly · agent trend from latest calibration windows.</div>
           </div>
         )
       })()}

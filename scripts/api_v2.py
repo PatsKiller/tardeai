@@ -24,6 +24,7 @@ import sys as _sys_ev
 _sys_ev.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from cio_agent_contract import extract_evidence_packet
 from agent_performance_api import calibration_windows_as_performance
+from weekly_learning_api import review_snippet
 
 
 def _evidence_packet(row_or_json) -> dict:
@@ -20107,19 +20108,52 @@ def _inbox():
 
 
 def _weekly_learning():
-    """GET /api/v2/weekly-learning — weekly trade-review learning + agent performance trend."""
-    reviews = _db_query("""SELECT paper_trade_id, tier, model_used, LEFT(review_text, 600) as review, created_at
-                           FROM paper_trade_multi_reviews ORDER BY created_at DESC LIMIT 20""") or []
-    by_tier = {r["tier"]: 0 for r in reviews}
-    for r in reviews:
-        by_tier[r["tier"]] = by_tier.get(r["tier"], 0) + 1
-    perf = _db_query("""SELECT agent, accuracy_pct, total_recommendations, avg_confidence, period_start, period_end
-                        FROM agent_performance ORDER BY period_end DESC LIMIT 12""") or []
+    """GET /api/v2/weekly-learning — multi-tier trade reviews + week rollups + calibration trend."""
+    by_tier_rows = _db_query(
+        "SELECT tier, COUNT(*) as count FROM paper_trade_multi_reviews GROUP BY tier ORDER BY tier"
+    ) or []
+    total_reviews = sum(int(r.get("count") or 0) for r in by_tier_rows)
+
+    raw_rows = _db_query("""
+        SELECT paper_trade_id, tier, model_used, review_text, created_at
+        FROM paper_trade_multi_reviews
+        ORDER BY created_at DESC LIMIT 40
+    """) or []
+
+    summaries = []
+    trade_reviews = []
+    for r in raw_rows:
+        row = {k: _json_clean(v) for k, v in r.items()}
+        text = str(r.get("review_text") or "")
+        row["review"] = review_snippet(text, max_len=600)
+        row["is_phantom"] = "phantom" in text.lower()
+        if int(r.get("paper_trade_id") or 0) == 0:
+            row["kind"] = "weekly_summary"
+            summaries.append(row)
+        else:
+            row["kind"] = "trade_review"
+            trade_reviews.append(row)
+
+    cal_rows = _db_query("""
+        SELECT DISTINCT ON (agent_name) agent_name, accuracy, resolved, correct, sample_size_status, created_at
+        FROM agent_calibration_windows
+        ORDER BY agent_name, created_at DESC
+    """) or []
+    agent_trend = [{
+        "agent": r.get("agent_name"),
+        "accuracy_pct": round(float(r["accuracy"]) * 100, 1) if r.get("accuracy") is not None and float(r["accuracy"]) <= 1 else r.get("accuracy"),
+        "resolved": r.get("resolved"),
+        "correct": r.get("correct"),
+        "sample_size_status": r.get("sample_size_status"),
+        "scored_at": _json_clean(r.get("created_at")),
+    } for r in cal_rows]
+
     return {
-        "review_count": len(reviews),
-        "by_tier": [{"tier": k, "count": v} for k, v in by_tier.items()],
-        "reviews": [{k: _json_clean(v) for k, v in r.items()} for r in reviews],
-        "agent_performance": [{k: _json_clean(v) for k, v in p.items()} for p in perf],
+        "review_count": total_reviews,
+        "by_tier": [{"tier": r["tier"], "count": int(r["count"])} for r in by_tier_rows],
+        "summaries": summaries[:5],
+        "reviews": trade_reviews[:20],
+        "agent_performance": agent_trend,
     }
 
 

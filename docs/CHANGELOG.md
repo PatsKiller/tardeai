@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-07-09 (late) - Weekly Learning tab clarity
+
+- **`/api/v2/weekly-learning`** — full tier counts (realtime/overnight/weekly); week rollups
+  (`paper_trade_id=0`) separated from per-trade reviews; JSON `weekly_summary` unwrapped;
+  phantom-exit flag; agent trend from calibration windows (not stale `agent_performance`).
+- **CC v3 Weekly Learning** — week rollup section, phantom badges, tier legend.
+
 ## 2026-07-09 (late) - Scalp agents show GO/WAIT/AVOID on roster
 
 - **`/api/v2/agents/summary`** — `social_scalp` and `scalp_critic` now map
