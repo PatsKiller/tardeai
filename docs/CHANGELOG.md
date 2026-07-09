@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-09 (late) - Agent Performance tab wired to calibration windows
+
+- **`/api/v2/agent-performance`** — now returns `agent_calibration_windows` mapped to the legacy
+  Performance table shape (live accuracy, resolved counts, sample_size_status). Retired
+  `agent_performance_history` / `decision_outcomes` price-capture feed no longer shown.
+- **`scripts/lib/agent_performance_api.py`** — mapping helper + tests.
+- **CC v3 `AgentsHub` Performance tab** — columns: Window, Resolved, Status; links to Calibration.
+
 ## 2026-07-09 (eve) - Maria OAuth priority tier (~30–80 calls/day)
 
 ### Watchlist agent worker

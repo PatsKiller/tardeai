@@ -23,6 +23,7 @@ from local_llm_config import get_local_llm_model, get_local_llm_base_url, get_lo
 import sys as _sys_ev
 _sys_ev.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from cio_agent_contract import extract_evidence_packet
+from agent_performance_api import calibration_windows_as_performance
 
 
 def _evidence_packet(row_or_json) -> dict:
@@ -14215,6 +14216,25 @@ def _agent_calibration():
     }
 
 
+def _agent_performance(*, limit: int = 50):
+    """GET /api/v2/agent-performance — calibration windows as performance history."""
+    rows = _db_query("""
+        SELECT window_id, id, agent_name, window_start, window_end, domain,
+               recommendations, resolved, correct, incorrect,
+               accuracy, avg_confidence, calibration_error,
+               sample_size_status, created_at
+        FROM agent_calibration_windows
+        ORDER BY created_at DESC LIMIT %s
+    """, (int(limit),)) or []
+    history = calibration_windows_as_performance(rows)
+    return {
+        "history": [{k: _json_clean(v) for k, v in h.items()} for h in history],
+        "source": "agent_calibration_windows",
+        "legacy_note": "Mirrors agent_calibration_windows (paper-trade outcomes). "
+                       "Retired decision_outcomes price-capture pipeline no longer feeds this view.",
+    }
+
+
 # ── Recovery endpoint (was missing — frontend had no API) ──────────────────
 
 def _recovery_dashboard():
@@ -27713,7 +27733,7 @@ ROUTES = {
     "/api/v2/watchlist/debug": _wl_debug,
     "/api/v2/alerts/debug": _alerts_debug,
     "/api/v2/signals/fused": lambda: {"signals": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM fused_signals ORDER BY created_at DESC LIMIT 50") or [])]},
-    "/api/v2/agent-performance": lambda: {"history": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM agent_performance_history ORDER BY created_at DESC LIMIT 50") or [])]},
+    "/api/v2/agent-performance": lambda: _agent_performance(limit=50),
     "/api/v2/llm/health": lambda: _llm_health(),
     "/api/v2/llm/oauth-lanes": lambda: _llm_oauth_lanes(),
     "/api/v2/consumption/overview": lambda: _consumption_overview(),
@@ -27846,7 +27866,7 @@ ROUTES = {
     "/api/v2/alex/roth-history": lambda: {"analyses": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, payload, created_at FROM portfolio_intelligence_events WHERE event_type='roth_conversion_analysis' ORDER BY created_at DESC LIMIT 5") or [])]},
     "/api/v2/agents/summary": lambda: _agents_summary(),
     "/api/v2/system/metrics-history": lambda: {"metrics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM daily_system_metrics ORDER BY metric_date DESC LIMIT 30") or [])]},
-    "/api/v2/agents/performance-history": lambda: {"history": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM agent_performance_history ORDER BY created_at DESC LIMIT 20") or [])]},
+    "/api/v2/agents/performance-history": lambda: _agent_performance(limit=20),
     "/api/v2/attribution": attribution,
     "/api/v2/journal": journal,
     "/api/v2/journal/by-ticker": _journal_by_ticker,

@@ -401,35 +401,46 @@ export default function AgentsHub({ onDrill }: Props) {
       {/* ===== PERFORMANCE ===== */}
       {tab === 'Performance' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Agent Performance History ({perf.length})</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Agent Performance ({perf.length})</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10, lineHeight: 1.45 }}>
+            Live calibration windows — accuracy = correct / resolved against paper-trade and proposal outcomes.
+            Same feed as <button type="button" onClick={() => setTab('Calibration')} style={{ background: 'none', border: 'none', padding: 0, color: B, cursor: 'pointer', fontSize: 10 }}>Calibration</button>.
+          </div>
           {perf.length === 0 ? (
             <div style={{ color: 'var(--text3)', fontSize: 11, padding: 16, lineHeight: 1.55 }}>
-              No performance history recorded yet. Agent performance rolls up weekly via cron — check{' '}
-              <Link to="/system?tab=jobs" style={{ color: '#60a5fa' }}>System → Jobs</Link> or{' '}
-              <Link to="/health" style={{ color: '#60a5fa' }}>Health</Link> if runs look stuck.
+              No calibration windows yet. Scores appear after the calibration engine links agent recommendations to closed outcomes — see{' '}
+              <button type="button" onClick={() => setTab('Calibration')} style={{ background: 'none', border: 'none', padding: 0, color: B, cursor: 'pointer', fontSize: 11 }}>Calibration</button>{' '}
+              or <Link to="/health" style={{ color: '#60a5fa' }}>Health</Link> if runs look stuck.
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Agent', 'Period', 'Recs', 'Accuracy', 'Avg conf', 'Rule viol.', 'Overrides'].map(h => <th key={h} style={{ textAlign: ['Agent', 'Period'].includes(h) ? 'left' : 'right', padding: '7px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
+                  {['Agent', 'Window', 'Recs', 'Resolved', 'Accuracy', 'Avg conf', 'Status'].map(h => <th key={h} style={{ textAlign: ['Agent', 'Window', 'Status'].includes(h) ? 'left' : 'right', padding: '7px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
                 </tr></thead>
-                <tbody>{perf.slice(0, 40).map((h: any, i: number) => (
-                  <tr key={h.id ?? i} onClick={() => onDrill({ title: h.agent, subtitle: `${String(h.period_start).slice(0, 10)} → ${String(h.period_end).slice(0, 10)}`, endpoint: '/api/v2/agent-performance', rows: [h] })}
+                <tbody>{perf.slice(0, 40).map((h: any, i: number) => {
+                  const st = String(h.sample_size_status || '')
+                  const stCol = st === 'proposal_allowed' ? G : st === 'shadow_only' ? B : A
+                  const winLabel = h.period_start && h.period_end
+                    ? `${String(h.period_start).slice(0, 10)} → ${String(h.period_end).slice(0, 10)}`
+                    : timeAgo(h.scored_at)
+                  return (
+                  <tr key={h.id ?? i} onClick={() => onDrill({ title: h.agent, subtitle: `${st.replace(/_/g, ' ')} · ${winLabel}`, endpoint: '/api/v2/agent-calibration/windows', rows: [h] })}
                     style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
                     <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text0)', fontFamily: 'var(--mono)' }}>{h.agent}</td>
-                    <td style={{ padding: '8px 10px', fontSize: 10, color: 'var(--text3)' }}>{String(h.period_start).slice(0, 10)} → {String(h.period_end).slice(0, 10)}</td>
+                    <td style={{ padding: '8px 10px', fontSize: 10, color: 'var(--text3)' }}>{winLabel}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text2)' }}>{h.total_recommendations ?? '—'}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text2)' }}>{h.resolved ?? '—'}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: acc01(h.accuracy_pct) >= 55 ? G : acc01(h.accuracy_pct) >= 35 ? A : R }}>{h.accuracy_pct != null ? fmtPct(h.accuracy_pct) : '—'}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text2)' }}>{fmtPct(h.avg_confidence)}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: num(h.rule_violations) > 0 ? R : 'var(--text3)' }}>{h.rule_violations ?? 0}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: num(h.human_overrides) > 0 ? A : 'var(--text3)' }}>{h.human_overrides ?? 0}</td>
+                    <td style={{ padding: '8px 10px', fontSize: 9, fontWeight: 700, color: stCol }}>{st ? st.replace(/_/g, ' ').toUpperCase() : '—'}</td>
                   </tr>
-                ))}</tbody>
+                  )
+                })}</tbody>
               </table>
             </div>
           )}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/agent-performance (fields: agent, accuracy_pct, avg_confidence, rule_violations, human_overrides)</div>
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/agent-performance → agent_calibration_windows (scored {perf[0]?.scored_at ? timeAgo(perf[0].scored_at) : '—'})</div>
         </div>
       )}
 
