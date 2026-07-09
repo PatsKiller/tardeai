@@ -51,7 +51,8 @@ All Telegram DMs route to **Maria** (not `main`). Portfolio questions: run
 - Agent dir: `~/.openclaw/agents/maria/agent/`
 - SOUL synced with `tradeai-readonly` + `tradeai-watchlist` skills
 - Portfolio: `portfolio-today` for today's P&L + winners/losers
-- Stop-outs: `stops-today` for triggered stops (alerts `stop_triggered` + risk `TRIGGERED` rows)
+- Stop-outs: `stops-today` for triggered stops — labels **full close / partial close / monitor only**;
+  includes account, realized journal P&L, day P&L
 - **Full CC mirror:** `tradeai_readonly.py help` — hub commands map 1:1 to Command Center v3 pages
 - **NL router:** `tradeai_query.py "<message>"` — deterministic routing (stops, portfolio, etc.); Maria must exec this, never stall on "one moment"
 - **OAuth chat:** `tradeai-watchlist.py ask "..."` for free Grok/ChatGPT opinion — not for live CC/exec data

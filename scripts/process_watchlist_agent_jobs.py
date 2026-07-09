@@ -31,11 +31,13 @@ from cio_agent_contract import (
     build_synthesis_json_schema,
     format_evidence_for_synthesis,
     merge_structured_into_result,
+    normalize_agent_confidence,
     normalize_data_i_doubt,
     normalize_evidence,
     parse_agent_result,
     parse_synthesis_result,
 )
+from hermes_discovery.symbol_validation import gate_watchlist_symbol
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
@@ -61,6 +63,24 @@ AGENT_TO_MATURITY = {
     "tax_agent": "tax", "tax": "tax",
     "full_chain": "full_chain",
 }
+
+
+def _portfolio_symbol_set() -> frozenset[str]:
+    path = STATE_DIR / "holdings.json"
+    try:
+        data = json.loads(path.read_text())
+        syms = {
+            str(h.get("symbol", "")).upper().strip()
+            for h in (data.get("holdings") or [])
+            if h.get("symbol")
+        }
+        return frozenset(s for s in syms if s)
+    except Exception:
+        return frozenset()
+
+
+def _fmt_confidence(val) -> str:
+    return f"{normalize_agent_confidence(val) * 100:.0f}%"
 
 
 def _get_conn():
@@ -325,7 +345,10 @@ def _rec_from(raw):
     """Pull (recommendation, confidence) from an LLM synthesis response (JSON preferred, keyword fallback)."""
     try:
         j = json.loads(raw[raw.find('{'):raw.rfind('}') + 1])
-        return str(j.get("recommendation", "")).upper().strip(), float(j.get("confidence") or 0)
+        return (
+            str(j.get("recommendation", "")).upper().strip(),
+            normalize_agent_confidence(j.get("confidence")),
+        )
     except Exception:
         up = (raw or "").upper()
         for r in ("AVOID", "SELL", "TRIM", "ADD_ON_PULLBACK", "BUY", "ADD", "HOLD", "RESEARCH_MORE", "NEUTRAL", "IGNORE"):
@@ -559,7 +582,7 @@ def _get_other_agent_views(symbol: str, current_agent: str) -> str:
             return ""
         lines = ["OTHER AGENT VIEWS (consider but form your own opinion):"]
         for r in rows:
-            lines.append(f"  {r['agent']}: {r['recommendation']} (conf:{float(r['confidence'] or 0):.1f}) — {(r['summary'] or '')[:80]}")
+            lines.append(f"  {r['agent']}: {r['recommendation']} (conf:{_fmt_confidence(r['confidence'])}) — {(r['summary'] or '')[:80]}")
         return "\n".join(lines) + "\n"
     except Exception:
         return ""
@@ -605,7 +628,7 @@ def _get_peer_agent_notes(symbol: str, current_agent: str) -> str:
         _last_peer_agents = [p["agent"] for p in cached]
         lines = ["=== Peer Agent Notes ==="]
         for p in cached:
-            lines.append(f"  {p['agent'].upper()} [this batch]: {p['recommendation']} (conf:{float(p['confidence'] or 0):.0%})")
+            lines.append(f"  {p['agent'].upper()} [this batch]: {p['recommendation']} (conf:{_fmt_confidence(p['confidence'])})")
             if p.get("summary"):
                 lines.append(f"    {p['summary'][:150]}")
         lines.append("=== End Peer Notes ===")
@@ -631,7 +654,7 @@ def _get_peer_agent_notes(symbol: str, current_agent: str) -> str:
         lines = ["=== Peer Agent Notes ==="]
         for r in rows:
             dt = r["created_at"].strftime("%Y-%m-%d") if r.get("created_at") else "?"
-            lines.append(f"  {r['agent'].upper()} [{dt}]: {r['recommendation']} (conf:{float(r['confidence'] or 0):.0%})")
+            lines.append(f"  {r['agent'].upper()} [{dt}]: {r['recommendation']} (conf:{_fmt_confidence(r['confidence'])})")
             if r.get("summary"):
                 lines.append(f"    {r['summary'][:150]}")
         lines.append("=== End Peer Notes ===")
@@ -718,7 +741,10 @@ def _get_sentiment_social_context(symbol: str) -> str:
         """, [symbol])
         fused = cur.fetchone()
         if fused:
-            parts.append(f"=== Fused Signal ===\n  Signal: {fused['direction']} | Confidence: {float(fused['confidence'] or 0):.0%} | Score: {float(fused['fused_score'] or 0):.2f}\n=== End Fused Signal ===")
+            parts.append(
+                f"=== Fused Signal ===\n  Signal: {fused['direction']} | Confidence: {_fmt_confidence(fused['confidence'])}"
+                f" | Score: {float(fused['fused_score'] or 0):.2f}\n=== End Fused Signal ==="
+            )
 
         conn.close()
     except Exception as e:
@@ -2086,6 +2112,7 @@ def process_jobs(limit: int = 10):
 
     print(f"[watchlist-agent] Processing {len(jobs)} jobs...")
     completed = 0
+    portfolio_syms = _portfolio_symbol_set()
 
     for job in jobs:
         job_id = job["id"]
@@ -2099,6 +2126,23 @@ def process_jobs(limit: int = 10):
             _CURRENT_JOB_PRIORITY = int(job.get("priority")) if job.get("priority") is not None else None
         except (TypeError, ValueError):
             _CURRENT_JOB_PRIORITY = None
+
+        # Symbol gate — reject garbage tokens before any LLM spend (e.g. 543354104)
+        sym_ok, sym_reason = gate_watchlist_symbol(symbol, portfolio_symbols=portfolio_syms)
+        if not sym_ok:
+            print(f"  [symbol-gate] {symbol}: REJECTED — {sym_reason}")
+            cur.execute(
+                "UPDATE watchlist_agent_jobs SET status='failed', completed_at=now(), "
+                "note=COALESCE(note,'') || %s WHERE id=%s",
+                (f" [invalid_symbol: {sym_reason}]", job_id),
+            )
+            cur.execute(
+                "INSERT INTO watchlist_events (event_type, symbol, agent, status, message) "
+                "VALUES ('invalid_symbol', %s, %s, 'failed', %s)",
+                (symbol, agent, f"Skipped: {sym_reason}"),
+            )
+            conn.commit()
+            continue
 
         # Apply escalation policy if not already set
         _apply_escalation_policy(conn, symbol)
@@ -2124,7 +2168,7 @@ def process_jobs(limit: int = 10):
 
             if (risk_recent
                     and (risk_recent.get("recommendation") or "").upper() == "RESEARCH_MORE"
-                    and float(risk_recent.get("confidence") or 0) < 0.40):
+                    and normalize_agent_confidence(risk_recent.get("confidence")) < 0.40):
                 # Risk had a data gap — check and try to enrich
                 quality = _check_symbol_data_quality(symbol)
                 if quality["quality_score"] < 60:

@@ -161,6 +161,7 @@ When Schwab pilot is **armed**, **Auto route (2FA)** opens `BrokerRouteConfirmMo
 | 0 | **Route confirm** modal | Edit account, shares, entry, stop, target; live gate preview |
 | 0b | `POST /api/v2/broker-proposals/route-preview` | Operator-route evaluation (warnings vs blocks) + economics |
 | 0c | Trade plan gate (`broker_trade_plan_gate`) | **Hard block** if no authoritative plan (trade_plans / strategy card / confluence) — generic 2×R geometry is gambling; not waived on operator route |
+| 0d | Strategy resolver (`broker_strategy_resolver`) | Watchlist **sleeves** (`defense_thesis`, `income`, …) must map to executable YAML (`defense_thesis` → `swing_breakout`) — allocation-policy labels alone block live route. Auto-fix: `scripts/remediate_proposal_trade_plans.py` |
 | 1 | `POST /api/v2/broker-proposals/route` | Persist operator trade, build OTOCO intent, request per-order 2FA |
 | 2 | Card 2FA panel + Telegram | Same trade packet (shares, entry/stop/target, risk, investment, R:R) |
 | 3 | Operator approves | Web ticker, Telegram, or email code |

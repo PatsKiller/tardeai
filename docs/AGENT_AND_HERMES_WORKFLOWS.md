@@ -43,6 +43,23 @@ Maria (catalyst/news)  →  Steph (allocation/income fit)  →  Risk (stops/heat
 
 Agents never execute trades. Their outputs are advisory inputs to the proposal lifecycle (§10), which remains human-in-the-loop.
 
+### LLM input curation (watchlist batch)
+
+`process_watchlist_agent_jobs.py` assembles prompts from layered, fail-closed context — not raw symbol dumps:
+
+| Layer | Source | Notes |
+|-------|--------|-------|
+| Position truth | `holdings.json` + DB | Explicit **NOT CURRENTLY HELD** when 0 shares (prevents stale RAG inventing positions) |
+| Fundamentals | `ticker_enrichment_cache.json`, strategy cards, `ticker_prices` | RSI, SMA, ATR, sector |
+| Intelligence | RAG (`rag_retrieval`), Hermes block, news/social sentiment | Agent-scoped; Iris content-gap warnings when thin |
+| Collaboration | Peer agent notes (same batch + 30d DB), fused signals | Confidence normalized 0–1 before injection |
+| Governance | Strategy YAML playbook, calibration context, G1–G10 global rules | Performance WR/PF adjusts confidence guidance |
+| Contract | `cio_agent_v2` JSON | `evidence[]`, `data_i_doubt`, reason codes |
+
+**Symbol gate (2026-07-09):** `gate_watchlist_symbol()` runs before every job. Invalid shapes (numeric garbage), denylist tokens (CEO, AI, …), and unknown symbols are failed without LLM spend. Portfolio-held tickers pass shape check via `holdings.json` allowlist.
+
+**Confidence hygiene:** Parser + API normalize 0–1 / 0–100; values >100 (poisoned income dollars, account ids) are dropped to default 0.5 at ingest and excluded from roster averages.
+
 ### v3 surfaces
 
 - **AgentsHub.tsx** — Roster, Calibration, Workflow graph (live handoff edges from `/api/v2/agent-pipeline`), Performance.

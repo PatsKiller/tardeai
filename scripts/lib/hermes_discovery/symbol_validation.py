@@ -120,3 +120,26 @@ def validate_ticker(sym: str) -> dict[str, Any]:
         return _result(False, VERDICT_NEEDS_VALIDATION, reason, symbol, profile)
 
     return _result(True, VERDICT_VALID, "matched symbol_profiles", symbol, profile)
+
+
+def gate_watchlist_symbol(
+    sym: str,
+    *,
+    portfolio_symbols: frozenset[str] | None = None,
+) -> tuple[bool, str]:
+    """Fail-closed gate before watchlist agent LLM jobs.
+
+    Accept VALID symbol_profiles rows, or portfolio-held tickers that pass shape
+    check (covers profile-sync lag). Rejects numeric garbage (e.g. 543354104).
+    """
+    symbol = (sym or "").strip().upper()
+    if not symbol:
+        return False, "empty symbol"
+    if not _SHAPE_RE.match(symbol):
+        return False, "not a plausible ticker shape"
+    if portfolio_symbols and symbol in portfolio_symbols:
+        return True, "portfolio-held symbol"
+    result = validate_ticker(symbol)
+    if result["verdict"] == VERDICT_VALID:
+        return True, result["reason"]
+    return False, result["reason"]

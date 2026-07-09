@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-07-09 (pm) - Agent input hygiene, confidence normalization, defense_thesis remediation
+
+### LLM input curation & agent fleet
+
+- **Symbol gate** — `process_watchlist_agent_jobs.py` now calls `gate_watchlist_symbol()` (reuses
+  `hermes_discovery/symbol_validation.py`) before any LLM call. Rejects non-ticker shapes (e.g.
+  `543354104`), denylist tokens, and unknown symbols not in `symbol_profiles`. Portfolio-held tickers
+  in `holdings.json` pass shape check even if profile sync lags.
+- **Confidence normalization** — `normalize_agent_confidence()` in `cio_agent_contract.py` maps 0–1 /
+  0–100 scales and drops poisoned values (>100). Applied at parse, `/api/v2/agents/summary` SQL,
+  peer-note prompt lines, OAuth synthesis `_rec_from()`, and CC v3 `AgentsHub` `fmtPct`.
+- **Root cause (Steph 2053%)** — one `watchlist_agent_results` row stored income-scale garbage as
+  confidence; API avg now excludes outliers.
+
+### Broker proposals — defense_thesis sleeve
+
+- **`broker_strategy_resolver.py`** — watchlist sleeves (`defense_thesis`, `income`, …) map to
+  executable YAML strategies (`defense_thesis` → `swing_breakout`) before live route; classification
+  no longer returns allocation-policy sleeves as trade strategies.
+- **`remediate_proposal_trade_plans.py`** — applies sleeve→YAML reconcile + authoritative levels;
+  cleared active **LHX** / **RTX** queue items (LDOS #1832 already REJECTED).
+
+### Tests
+
+- `test_watchlist_symbol_gate.py`, `test_normalize_agent_confidence_scale_and_poison`,
+  `test_defense_thesis_sleeve_maps_to_executable_strategy`.
+
+### Docs synced
+
+- `docs/AGENT_AND_HERMES_WORKFLOWS.md` — LLM prompt layers + symbol gate.
+- `docs/BROKER_PROPOSALS_UI.md` — sleeve reconciliation note.
+- `docs/project/project_openclaw.md` — Maria Telegram exec model + CC mirror commands.
+
 ## 2026-07-09 - Telegram noise reduction, momentum GO delivery, Maria portfolio fix
 
 ### Trade AI — alert routing + data quality (committed here)
@@ -25,8 +58,8 @@ Documented in `docs/project/project_openclaw.md`:
 
 - Telegram DMs now **bind to Maria** (not `main`); `main` had leaked garbled `gpt-5.4` tool syntax on
   portfolio questions.
-- Maria model chain: **`xai/grok-4` → `chatgpt/gpt-5.4` → `claude-cli/claude-sonnet-4-6`** (free OAuth
-  first, Claude fallback).
+- Maria model chain: **`claude-cli/claude-sonnet-4-6` primary** (exec/tools); Grok/ChatGPT OAuth for
+  `tradeai-watchlist ask` chat only — OAuth lanes do not run shell tools reliably.
 - `tradeai-readonly` skill: new `portfolio-today` / `today` / `movers` composite; holdings API unwrap fix
   (`data.holdings` dict); `SKILL.md` + Maria `SOUL.md` synced.
 

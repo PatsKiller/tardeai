@@ -49,7 +49,12 @@ const PIPELINE_NODES: Record<string, { label: string; desc: string; action: stri
 }
 const normAgent = (s: string) => (s || '').toLowerCase()
 const num = (n: any) => Number(n ?? 0)
-const fmtPct = (v: any) => v == null ? '—' : (num(v) <= 1 ? (num(v) * 100).toFixed(0) : num(v).toFixed(0)) + '%'
+const fmtPct = (v: any) => {
+  if (v == null) return '—'
+  const n = num(v)
+  if (n > 100) return '—'
+  return (n <= 1 ? n * 100 : n).toFixed(0) + '%'
+}
 const acc01 = (v: any) => num(v) <= 1 ? num(v) * 100 : num(v) // accuracy may be 0-1 or 0-100
 function timeAgo(iso?: string) {
   if (!iso) return '—'
