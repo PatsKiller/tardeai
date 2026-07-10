@@ -49,7 +49,15 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
   // CIO-view filter is pushed server-side (cio=) so it searches the FULL universe before the
   // 200-row window — client-side alone missed verdicts on names ranked below the load size
   const [fCio, setFCio] = useState('all')
-  const { data: wl, loading: wlLoading, refetch: refetchWl } = useApi<any>(`/api/v2/watchlist/items?sort=hermes${fCio !== 'all' ? `&cio=${encodeURIComponent(fCio)}` : ''}`, 60_000)
+  const [search, setSearch] = useState('')
+  const symLookup = useMemo(() => {
+    const q = search.trim().toUpperCase()
+    return /^[A-Z]{1,5}$/.test(q) ? q : ''
+  }, [search])
+  const wlPath = symLookup
+    ? `/api/v2/watchlist/items?symbol=${encodeURIComponent(symLookup)}`
+    : `/api/v2/watchlist/items?sort=hermes${fCio !== 'all' ? `&cio=${encodeURIComponent(fCio)}` : ''}`
+  const { data: wl, loading: wlLoading, refetch: refetchWl } = useApi<any>(wlPath, 60_000)
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
   const { data: adv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=watchlist', 120_000)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
@@ -118,7 +126,6 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
   const [starOverride, setStarOverride] = useState<Record<string, boolean>>({})   // optimistic star state until items refetch
   const [fSector, setFSector] = useState('all')
   const [fAnalyst, setFAnalyst] = useState('all')   // analyst catalyst: upgrade / downgrade
-  const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [page, setPage] = useState(0)
   const [showDormantDirs, setShowDormantDirs] = useState(false)   // collapse the 0-hit research-topic directives
@@ -366,7 +373,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Analyst action<select style={SEL} value={fAnalyst} onChange={e => setFAnalyst(e.target.value)}><option value="all">All</option><option value="upgrade">⬆ Upgrades</option><option value="downgrade">⬇ Downgrades</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Instrument<select style={SEL} value={fKind} onChange={e => setFKind(e.target.value)}><option value="all">All</option><option value="stock">Stocks</option><option value="etf">ETFs / inverse</option><option value="fund">Funds</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Directive<select style={SEL} value={fDir} onChange={e => setFDir(e.target.value)}><option value="all">All</option>{directives.map(d => <option key={d.id} value={String(d.id)}>{dirName(d)}{dirList(d) ? ` · ${dirList(d)}` : ''} ({d.kind})</option>)}</select></label>
-        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Search<input style={SEL} value={search} onChange={e => setSearch(e.target.value)} placeholder="symbol" /></label>
+        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Search<input style={SEL} value={search} onChange={e => setSearch(e.target.value)} placeholder="symbol (e.g. DUG — searches full DB)" /></label>
         <div style={{ marginLeft: 'auto', fontSize: 11, color: TEXT2 }}>{visible.length} / {items.length} shown</div>
       </div>
 
@@ -411,7 +418,9 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
           const resetAll = () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setFHeld(false); setFSector('all'); setFAnalyst('all'); setSearch('') }
           const link = (c: string, t: string, fn: () => void) => <span onClick={fn} style={{ color: c, cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}>{t}</span>
           return <div style={{ color: MUTED, fontSize: 12, padding: 16 }}>
-            {sd
+            {symLookup
+              ? <><b style={{ color: TEXT0 }}>{symLookup}</b> is not on the watchlist (or was removed). Check <span onClick={() => window.location.href = '/v3/intelligence?tab=research'} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Intelligence → Research</span> for auto-research briefs. {link(BLUE, 'Clear search', () => setSearch(''))}</>
+              : sd
               ? <>Directive <b style={{ color: TEXT0 }}>{sd.label}</b> has surfaced <b style={{ color: TEXT0 }}>{nh}</b> watchlist item{nh === 1 ? '' : 's'}{nh === 0 ? ` (no hits${sd.status !== 'active' ? `; directive is ${sd.status}` : ''})` : ''}. {link(PURPLE, 'Clear directive filter', () => setFDir('all'))}</>
               : <>No items match the filters. {link(BLUE, 'Reset all filters', resetAll)}</>}
           </div>

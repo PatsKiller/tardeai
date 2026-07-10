@@ -5316,6 +5316,12 @@ def _wl_items(query: dict = None):
     # else Postgres raises "column reference ... is ambiguous" and the whole list silently returns 0.
     conditions = ["wi.status <> 'removed'"]
     params = []
+    _sym_lookup = None
+    if q.get("symbol"):
+        _sym_lookup = str(q["symbol"][0] if isinstance(q["symbol"], list) else q["symbol"]).strip().upper()
+        if _sym_lookup:
+            conditions.append("upper(wi.symbol) = %s")
+            params.append(_sym_lookup)
     if q.get("source"):
         conditions.append("wi.source = %s")
         params.append(q["source"][0] if isinstance(q["source"], list) else q["source"])
@@ -5397,7 +5403,7 @@ def _wl_items(query: dict = None):
             ORDER BY (NOT starred),          -- operator-starred always make the top-200 window + sort first
                      (COALESCE(in_directive_watch, false) = false),
                      (status <> 'active'),   -- active names always make the top-200 window (e.g. CURR)
-                     {sort} LIMIT 200
+                     {sort} LIMIT {1 if _sym_lookup else 200}
         )
         SELECT p.*,
                sc.strategy_type, sc.latest_price, sc.support, sc.resistance,
