@@ -56,10 +56,12 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
     return /^[A-Z]{1,5}$/.test(q) ? q : ''
   }, [search])
   const screenerLane = lane === 'screener_finds' || fOrigin === 'screener_finds'
-  const wlPath = screenerLane
-    ? '/api/v2/watchlist/items?lane=screener_finds'
-    : symLookup
+  // Ticker search always hits direct DB lookup (even on Screener Finds) so graduated names like
+  // DUG (CIO drifted off buy-side) still show a card instead of "0 / 16 shown".
+  const wlPath = symLookup
     ? `/api/v2/watchlist/items?symbol=${encodeURIComponent(symLookup)}`
+    : screenerLane
+    ? '/api/v2/watchlist/items?lane=screener_finds'
     : `/api/v2/watchlist/items?sort=hermes${fCio !== 'all' ? `&cio=${encodeURIComponent(fCio)}` : ''}`
   const { data: wl, loading: wlLoading, refetch: refetchWl } = useApi<any>(wlPath, 60_000)
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
@@ -383,6 +385,13 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
       </div>
 
       <div style={{ fontSize: 11, color: AMBER, marginBottom: 12, padding: '9px 13px', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.28)', borderRadius: 7 }}>{adv?.disclaimer ?? 'Advisory only — current technical posture vs the post-trade prior. Never gates promotion/scoring.'}</div>
+      {screenerLane && symLookup && visible[0] && !visible[0].screener_pinned && (
+        <div style={{ fontSize: 11, color: AMBER, marginBottom: 10, padding: '8px 12px', background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 7 }}>
+          <b style={{ color: TEXT0 }}>{symLookup}</b> graduated out of active Screener Finds — CIO is now{' '}
+          <b>{String(visible[0].synthesis_recommendation || visible[0].latest_recommendation || 'non-buy-side').replace(/_/g, ' ')}</b>
+          {' '}(lane requires BUY / STRONG_BUY / ADD / ADD_ON_PULLBACK). Showing direct lookup card.
+        </div>
+      )}
       {actionToast && (
         <div style={{ fontSize: 11, color: GREEN, marginBottom: 10, padding: '8px 12px', background: 'rgba(34,197,94,.1)', border: '1px solid rgba(34,197,94,.25)', borderRadius: 7 }}>
           {actionToast}
@@ -424,7 +433,9 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
           const link = (c: string, t: string, fn: () => void) => <span onClick={fn} style={{ color: c, cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}>{t}</span>
           return <div style={{ color: MUTED, fontSize: 12, padding: 16 }}>
             {symLookup
-              ? <><b style={{ color: TEXT0 }}>{symLookup}</b> is not on the watchlist (or was removed). Check <span onClick={() => window.location.href = '/v3/intelligence?tab=research'} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Intelligence → Research</span> for auto-research briefs. {link(BLUE, 'Clear search', () => setSearch(''))}</>
+              ? screenerLane
+                ? <><b style={{ color: TEXT0 }}>{symLookup}</b> is not in the watchlist DB (or was removed). If it was auto-researched, check <span onClick={() => window.location.href = '/v3/intelligence?tab=research'} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Intelligence → Research</span>. Active Screener Finds require buy-side CIO. {link(BLUE, 'Clear search', () => setSearch(''))}</>
+                : <><b style={{ color: TEXT0 }}>{symLookup}</b> is not on the watchlist (or was removed). Check <span onClick={() => window.location.href = '/v3/intelligence?tab=research'} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Intelligence → Research</span> for auto-research briefs. {link(BLUE, 'Clear search', () => setSearch(''))}</>
               : sd
               ? <>Directive <b style={{ color: TEXT0 }}>{sd.label}</b> has surfaced <b style={{ color: TEXT0 }}>{nh}</b> watchlist item{nh === 1 ? '' : 's'}{nh === 0 ? ` (no hits${sd.status !== 'active' ? `; directive is ${sd.status}` : ''})` : ''}. {link(PURPLE, 'Clear directive filter', () => setFDir('all'))}</>
               : <>No items match the filters. {link(BLUE, 'Reset all filters', resetAll)}</>}
