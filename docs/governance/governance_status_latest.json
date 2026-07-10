@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-08T11:40:00.683443+00:00",
+  "generated_at": "2026-07-09T11:40:04.129137+00:00",
   "status": "warning",
   "safety": {
     "ALPACA_MODE": "paper",
@@ -13,8 +13,9 @@
   },
   "a1a_summary": {
     "status": "warning",
-    "findings": 1,
+    "findings": 2,
     "by_severity": {
+      "P1": 1,
       "P2": 1
     }
   }
