@@ -267,7 +267,22 @@ def _get_portfolio_symbols() -> list:
         return []
 
 
-def ingest_video(video_url: str, added_by: str = "user") -> dict:
+def _parse_publish_date(raw: str | None) -> date | None:
+    """Normalize YouTube ISO8601 or YYYY-MM-DD into a date."""
+    if not raw:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        if "T" in s:
+            return datetime.fromisoformat(s.replace("Z", "+00:00")).date()
+        return date.fromisoformat(s[:10])
+    except Exception:
+        return None
+
+
+def ingest_video(video_url: str, added_by: str = "user", *, publish_date: str | None = None) -> dict:
     """Ingest a single YouTube video transcript."""
     video_id = extract_video_id(video_url)
     if not video_id:
@@ -291,6 +306,7 @@ def ingest_video(video_url: str, added_by: str = "user") -> dict:
 
     # Get metadata
     meta = get_video_metadata(video_id)
+    pub = _parse_publish_date(publish_date)
 
     # Score and tag content
     from content_scoring import score_content, tag_content
@@ -309,21 +325,28 @@ def ingest_video(video_url: str, added_by: str = "user") -> dict:
     # Store timed segments for timestamped highlights
     timed_json = json.dumps(result.get("timed_segments", [])[:500])  # Cap at 500 segments
 
-    cur.execute("""
-        INSERT INTO youtube_transcripts
-            (video_id, title, channel_name, url, transcript_text, duration_seconds,
-             quality_score, relevance_score, validation_status, matched_keywords, added_by,
-             strategy_tags, agent_tags, timed_segments)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
-    """, (video_id, meta["title"], meta["channel_name"], url,
-          result["text"][:50000],
-          result["duration_seconds"],
-          scores["quality_score"], scores["relevance_score"],
-          scores["validation_status"], json.dumps(scores["matched_keywords"]),
-          added_by, json.dumps(tags["strategy_tags"]), json.dumps(tags["agent_tags"]),
-          timed_json))
-    row = cur.fetchone()
+    try:
+        cur.execute("""
+            INSERT INTO youtube_transcripts
+                (video_id, title, channel_name, url, publish_date, transcript_text, duration_seconds,
+                 quality_score, relevance_score, validation_status, matched_keywords, added_by,
+                 strategy_tags, agent_tags, timed_segments)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (video_id, meta["title"], meta["channel_name"], url, pub,
+              result["text"][:50000],
+              result["duration_seconds"],
+              scores["quality_score"], scores["relevance_score"],
+              scores["validation_status"], json.dumps(scores["matched_keywords"]),
+              added_by, json.dumps(tags["strategy_tags"]), json.dumps(tags["agent_tags"]),
+              timed_json))
+        row = cur.fetchone()
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        if "youtube_transcripts_video_id_key" in str(e) or "UniqueViolation" in type(e).__name__:
+            return {"status": "already_exists", "video_id": video_id}
+        raise
     new_id = row['id'] if isinstance(row, dict) else row[0]
     conn.commit()
     conn.close()
@@ -524,7 +547,7 @@ def import_channel(channel_url: str, max_videos: int = 20, strategy_focus: str =
     skipped = 0
     errors = 0
     for i, v in enumerate(videos):
-        result = ingest_video(v["url"], added_by="user")
+        result = ingest_video(v["url"], added_by="user", publish_date=v.get("published"))
         if result.get("status") == "ingested":
             ingested += 1
             print(f"  [{i+1}/{len(videos)}] INGESTED: {v['title'][:50]} (Q:{result.get('quality_score',0)} R:{result.get('relevance_score',0):.2f})")

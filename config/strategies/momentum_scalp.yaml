@@ -67,6 +67,19 @@ auto_disqualifiers:
     condition: current_time < 06:00 ET OR current_time > 12:00 ET   # 6am-noon window (operator 2026-06-26)
   - id: REVERSE_SPLIT_RECENT
     condition: reverse_split_within_90d
+    action: manual_review  # SQUEEZE lane — Entry Desk only, never auto GO (Ross alignment 2026-07)
+  - id: HIGH_RVOL_WAIT
+    condition: decision == WAIT AND rvol >= 8.0
+    action: manual_review  # RUNNER lane — high-RVOL momentum, Entry Desk only (Ross alignment 2026-07)
+  - id: MICRO_FLOAT_RVOL
+    condition: float_m < 1.0 AND rvol > 5.0 AND NOT (float_m < 0.5 AND rvol > 50)
+    action: manual_review  # MICRO lane — low-float momentum, Entry Desk only (Ross alignment 2026-07)
+  - id: LOW_PRICE_SPIKE
+    condition: price < 2.0 AND change_pct > 30 AND NOT (float_m < 0.5 AND rvol > 50)
+    action: manual_review  # LOW lane — sub-$2 squeeze, Entry Desk only (Ross alignment 2026-07)
+  - id: CATALYST_EXCEPTION_RUNNER
+    condition: setup_class IN (squeeze, high_rvol_runner, micro_float_runner, momentum_runner, low_price_runner)
+    action: manual_review  # Catalyst optional — grade cap B, never auto-GO (Ross alignment 2026-07)
   - id: TRADING_HALTED
     condition: trading_halt_active
   - id: WIDE_SPREAD

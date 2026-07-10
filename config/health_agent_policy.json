@@ -115,6 +115,25 @@
     "burst_warn": 15,
     "burst_critical": 30
   },
+  "watchlist_news_guard": {
+    "_comment": "Yahoo RSS mis-tags headlines to wrong tickers — affects all CIO tiers (BUY/HOLD/AVOID/pullback).",
+    "enabled": true,
+    "sample_limit": 120,
+    "mismatch_warn": 1,
+    "mismatch_critical": 5
+  },
+  "proposal_pipeline": {
+    "_comment": "Dual-lane (paper_atm + live_2fa) enrichment/readiness + paper-lane lifecycle stuck states.",
+    "enabled": true,
+    "enrichment_failure_window_hours": 3,
+    "enrichment_failure_warn": 3,
+    "enrichment_pending_fail_warn": 5,
+    "approved_paper_stuck_hours": 2,
+    "approved_paper_stuck_warn": 1,
+    "approved_paper_stuck_critical": 3,
+    "in_progress_stale_minutes": 30,
+    "in_progress_stale_warn": 3
+  },
   "portfolio_price_freshness": {
     "_comment": "During market hours ET: Finviz repricer + cache are authoritative for portfolio P/L. SnapTrade sync must NOT mask staleness via holdings.json mtime.",
     "enabled": true,
@@ -148,7 +167,12 @@
       "hermes_scope_governor_heartbeat_missing",
       "hermes_scope_governor_last_run_failed",
       "strategy_registry_null_ids",
-      "scalp_catalyst_verification_dead"
+      "scalp_catalyst_verification_dead",
+      "enrichment_pipeline_failure",
+      "enrichment_failures_high",
+      "approved_paper_test_stuck",
+      "enrichment_status_in_progress_stale",
+      "news_symbol_mismatch"
     ]
   },
   "scalp_catalyst_health": {
@@ -214,7 +238,12 @@
     "synthesis_processing_stuck": ".venv/bin/python scripts/reset_stuck_agent_jobs.py --apply >> logs/reset_stuck_agent_jobs.log 2>&1",
     "proposal_trade_plan_blocked": ".venv/bin/python scripts/remediate_proposal_trade_plans.py",
     "proposal_technicals_stale": ".venv/bin/python scripts/enrich_proposal_technicals.py",
-    "strategy_registry_null_ids": ".venv/bin/python scripts/fix_strategy_registry_null_ids.py"
+    "strategy_registry_null_ids": ".venv/bin/python scripts/fix_strategy_registry_null_ids.py",
+    "enrichment_pipeline_failure": "flock -n /tmp/auto_enrichment.lock .venv/bin/python scripts/auto_enrichment_runner.py --force-all --limit 10 >> logs/auto_enrichment.log 2>&1",
+    "enrichment_failures_high": "flock -n /tmp/auto_enrichment.lock .venv/bin/python scripts/auto_enrichment_runner.py --force-all --limit 15 >> logs/auto_enrichment.log 2>&1",
+    "approved_paper_test_stuck": ".venv/bin/python scripts/cleanup_stale_proposals.py --pipeline-sweep --apply",
+    "enrichment_status_in_progress_stale": ".venv/bin/python scripts/cleanup_stale_proposals.py --pipeline-sweep --apply",
+    "news_symbol_mismatch": "flock -n /tmp/watchlist_news_guard.lock .venv/bin/python scripts/remediate_watchlist_news_guard.py --apply >> logs/remediate_watchlist_news_guard.log 2>&1"
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",

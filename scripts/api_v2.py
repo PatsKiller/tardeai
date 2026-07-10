@@ -5599,6 +5599,41 @@ def _wl_items(query: dict = None):
             _it["synthesis_narrative_snip"] = str(_it["synthesis_narrative"])[:280]
         if _it.get("conflicts") and isinstance(_it["conflicts"], list) and _it["conflicts"]:
             _it["synthesis_conflicts_snip"] = "; ".join(str(c) for c in _it["conflicts"][:2])[:200]
+        # Drop mis-tagged catalysts (e.g. Pasqal article on MRLN via Yahoo RSS).
+        try:
+            from news_symbol_guard import headline_matches_symbol
+            _ch = _it.get("catalyst_headline")
+            if _ch:
+                _ok, _ = headline_matches_symbol(
+                    _it.get("symbol") or "",
+                    str(_ch),
+                    company_description=_it.get("profile_description"),
+                )
+                if not _ok:
+                    for _k in (
+                        "catalyst_headline", "catalyst_at", "catalyst_url",
+                        "catalyst_type", "catalyst_impact", "catalyst_severity",
+                    ):
+                        _it.pop(_k, None)
+            if not _it.get("catalyst_headline"):
+                _ln = _db_query(
+                    """SELECT title, published_at, source_url FROM news_articles
+                       WHERE symbol=%s ORDER BY published_at DESC NULLS LAST LIMIT 1""",
+                    (_it.get("symbol"),), fetch="one",
+                )
+                if _ln:
+                    _okn, _ = headline_matches_symbol(
+                        _it.get("symbol") or "",
+                        str(_ln.get("title") or ""),
+                        company_description=_it.get("profile_description"),
+                    )
+                    if _okn:
+                        _it["catalyst_headline"] = _ln.get("title")
+                        _it["catalyst_at"] = _ln.get("published_at")
+                        _it["catalyst_url"] = _ln.get("source_url")
+                        _it["catalyst_type"] = "news_headline"
+        except Exception:
+            pass
     # Flag PRIVATE / non-tradeable names (genuinely private only — kept current vs IPOs). reload so registry
     # edits go live without a full restart.
     try:
@@ -5610,6 +5645,26 @@ def _wl_items(query: dict = None):
                 _it["private_nontradeable"] = True
                 _it["private_company"] = _info["company"]
                 _it["private_note"] = _info["note"]
+    except Exception:
+        pass
+    try:
+        import sys as _sys_wv
+        _sys_wv.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from watchlist_volatility import attach_atr20_batch, plan_volatility_fields as _pvol
+        _plan_n = sum(1 for _it in _items if _it.get("entry_stop"))
+        _atr_cap = min(60, max(_plan_n, 15), len(_items))
+        attach_atr20_batch(_items, max_fetch=_atr_cap)
+        for _it in _items:
+            _ec = (_enrich_cache() or {}).get(str(_it.get("symbol") or "").upper()) or {}
+            _px = _it.get("price") or _it.get("latest_price")
+            _it.update(_pvol(
+                entry_limit=_it.get("entry_limit"),
+                entry_stop=_it.get("entry_stop"),
+                price=_px,
+                atr_14=_ec.get("atr"),
+                atr_20=_it.get("atr_20"),
+                atr_20_pct=_it.get("atr_20_pct"),
+            ))
     except Exception:
         pass
     return {"count": len(_items), "items": _items}
@@ -5668,7 +5723,7 @@ def _wl_requeue_symbol(sym: str) -> tuple[int, dict]:
         return 400, {"ok": False, "error": "invalid symbol"}
 
     reset = _db_query(
-        "UPDATE watchlist_agent_jobs SET status='pending', started_at=NULL, completed_at=NULL "
+        "UPDATE watchlist_agent_jobs SET status='queued', priority=-5, started_at=NULL, completed_at=NULL "
         "WHERE symbol=%s RETURNING id", (sym,), fetch="all")
     n = len(reset or [])
     if n == 0:
@@ -5678,7 +5733,7 @@ def _wl_requeue_symbol(sym: str) -> tuple[int, dict]:
             _db_query(
                 """INSERT INTO watchlist_agent_jobs
                    (id, symbol, requested_agent, request_type, note, status, priority, submitted_from)
-                   VALUES (%s, %s, %s, 'full_analysis', %s, 'pending', 0, 'watchlist_requeue')
+                   VALUES (%s, %s, %s, 'full_analysis', %s, 'queued', -5, 'watchlist_requeue')
                    ON CONFLICT (id) DO NOTHING""",
                 (job_id, sym, agent, f"Manual requeue {sym}"), fetch="none")
             n += 1
@@ -5732,8 +5787,153 @@ def _wl_cio_synthesis(sym: str, body: dict | None) -> tuple[int, dict]:
         return 500, {"ok": False, "error": str(e)[:200], "symbol": sym}
 
 
+def _wl_run_refresh_script(script: str, args: list[str], *, timeout: int = 120) -> dict:
+    import subprocess
+    venv_py = str(PROJECT_ROOT / ".venv/bin/python")
+    try:
+        proc = subprocess.run(
+            [venv_py, str(PROJECT_ROOT / "scripts" / script), *args],
+            capture_output=True, text=True, timeout=timeout, cwd=str(PROJECT_ROOT),
+        )
+        return {
+            "ok": proc.returncode == 0,
+            "exit_code": proc.returncode,
+            "stdout_tail": (proc.stdout or "")[-300:],
+            "stderr_tail": (proc.stderr or "")[-300:],
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+_WL_CIO_REFRESH_GROUPS = {
+    "buy_side": ["BUY", "STRONG_BUY", "ADD", "ADD_ON_PULLBACK"],
+    "avoid_side": ["AVOID", "IGNORE", "SELL", "TRIM"],
+}
+
+
+def _wl_resolve_refresh_symbols(cio: str = "all_rated", limit: int = 10) -> list[str]:
+    """Symbols to refresh for a CIO tier (buy, hold, avoid, pullback, all_rated, …)."""
+    cio = (cio or "all_rated").strip()
+    lim = max(1, min(int(limit or 10), 25))
+    if cio in ("all", "all_rated"):
+        import sys as _sys
+        _sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from watchlist_priority import DAILY_PRIORITY_RATED_RECS  # noqa: E402
+        rated = sorted(r.upper() for r in DAILY_PRIORITY_RATED_RECS)
+        rows = _db_query(
+            """SELECT DISTINCT UPPER(wi.symbol) AS symbol, wi.hermes_rank
+               FROM watchlist_items wi
+               WHERE wi.status IN ('active','researched')
+                 AND (
+                   EXISTS (SELECT 1 FROM watchlist_research_cards rc
+                           WHERE rc.symbol = wi.symbol
+                             AND UPPER(REPLACE(REPLACE(rc.latest_recommendation,' ','_'),'-','_')) = ANY(%s))
+                   OR EXISTS (SELECT 1 FROM watchlist_final_synthesis fs
+                               WHERE upper(fs.symbol)=upper(wi.symbol)
+                                 AND UPPER(REPLACE(REPLACE(fs.recommendation,' ','_'),'-','_')) = ANY(%s))
+                 )
+               ORDER BY wi.hermes_rank ASC NULLS LAST, symbol
+               LIMIT %s""",
+            (rated, rated, lim),
+        ) or []
+        return [str(r["symbol"]).upper() for r in rows if r.get("symbol")]
+    _vals = _WL_CIO_REFRESH_GROUPS.get(cio, [cio.upper().replace(" ", "_")])
+    rows = _db_query(
+        """SELECT DISTINCT UPPER(wi.symbol) AS symbol, wi.hermes_rank
+           FROM watchlist_items wi
+           WHERE wi.status IN ('active','researched')
+             AND (
+               EXISTS (SELECT 1 FROM watchlist_research_cards rc
+                       WHERE rc.symbol = wi.symbol AND upper(rc.latest_recommendation) = ANY(%s))
+               OR EXISTS (SELECT 1 FROM watchlist_final_synthesis fs
+                           WHERE upper(fs.symbol)=upper(wi.symbol) AND upper(fs.recommendation) = ANY(%s))
+             )
+           ORDER BY wi.hermes_rank ASC NULLS LAST, symbol
+           LIMIT %s""",
+        (_vals, _vals, lim),
+    ) or []
+    return [str(r["symbol"]).upper() for r in rows if r.get("symbol")]
+
+
+def _wl_refresh_batch(body: dict | None = None) -> tuple[int, dict]:
+    """POST /api/v2/watchlist/refresh-batch — refresh news/catalyst/technicals for a CIO tier."""
+    b = body or {}
+    cio = str(b.get("cio") or "all_rated").strip()
+    limit = max(1, min(int(b.get("limit") or 10), 25))
+    raw_syms = b.get("symbols")
+    if isinstance(raw_syms, list) and raw_syms:
+        syms = [str(s).strip().upper() for s in raw_syms[:limit] if s]
+    else:
+        syms = _wl_resolve_refresh_symbols(cio, limit)
+
+    if not syms:
+        return 200, {"ok": True, "refreshed": 0, "cio": cio, "symbols": [], "note": "no symbols matched filter"}
+
+    try:
+        from db_adapter import get_connection
+        from news_symbol_guard import purge_mismatched_watchlist
+        conn = get_connection()
+        purge_mismatched_watchlist(conn, symbols=syms, apply=True)
+        conn.close()
+    except Exception:
+        pass
+
+    results = []
+    ok_n = 0
+    for sym in syms:
+        code, out = _wl_refresh_symbol(sym)
+        entry = {"symbol": sym, "ok": code == 200 and out.get("ok", True), "status": code}
+        if code != 200:
+            entry["error"] = out.get("error") or out.get("message")
+        results.append(entry)
+        if entry["ok"]:
+            ok_n += 1
+
+    return 200, {
+        "ok": ok_n > 0,
+        "cio": cio,
+        "requested": len(syms),
+        "refreshed": ok_n,
+        "results": results,
+        "note": "Batch refresh: news + catalyst + technicals for all CIO verdict tiers (advisory-only).",
+    }
+
+
+_WL_REFRESH_LOCK = __import__("threading").Lock()
+_WL_REFRESH_INFLIGHT: set[str] = set()
+
+
+def _wl_refresh_symbol_async(sym: str) -> tuple[int, dict]:
+    """Queue a heavy watchlist refresh off the request thread (news/catalyst/agents can run 10+ min)."""
+    sym = (sym or "").strip().upper()
+    if not sym:
+        return 400, {"ok": False, "error": "symbol required"}
+    with _WL_REFRESH_LOCK:
+        if sym in _WL_REFRESH_INFLIGHT:
+            return 200, {
+                "ok": True, "symbol": sym, "queued": False, "already_running": True,
+                "note": "Refresh already running for this symbol",
+            }
+        _WL_REFRESH_INFLIGHT.add(sym)
+
+    def _run():
+        try:
+            _wl_refresh_symbol(sym)
+        except Exception:
+            pass
+        finally:
+            with _WL_REFRESH_LOCK:
+                _WL_REFRESH_INFLIGHT.discard(sym)
+
+    __import__("threading").Thread(target=_run, daemon=True).start()
+    return 202, {
+        "ok": True, "symbol": sym, "queued": True,
+        "note": "Refresh queued in background — card updates in ~1–2 min; polls stay responsive",
+    }
+
+
 def _wl_refresh_symbol(sym: str) -> tuple[int, dict]:
-    """Manual refresh: Finviz/RSI enrichment now + agent requeue for CIO resynthesis."""
+    """Manual refresh: news/catalyst + technicals + analyst coverage + agent requeue."""
     sym = (sym or "").strip().upper()
     if not sym:
         return 400, {"ok": False, "error": "symbol required"}
@@ -5744,6 +5944,28 @@ def _wl_refresh_symbol(sym: str) -> tuple[int, dict]:
     if not exists:
         return 404, {"ok": False, "error": f"{sym} not on active watchlist"}
 
+    steps: dict = {}
+
+    try:
+        from db_adapter import get_connection
+        from news_symbol_guard import purge_mismatched_for_symbol
+        conn = get_connection()
+        steps["purge_mismatch"] = purge_mismatched_for_symbol(conn, sym, apply=True)
+        conn.close()
+    except Exception as e:
+        steps["purge_mismatch"] = {"error": str(e)[:120]}
+
+    steps["news"] = _wl_run_refresh_script("news_ingestion.py", ["--symbol", sym, "--json"], timeout=90)
+    steps["catalyst"] = _wl_run_refresh_script(
+        "news_to_catalyst.py", ["--symbol", sym, "--json"], timeout=120,
+    )
+    steps["analyst"] = _wl_run_refresh_script(
+        "hermes_analyst_coverage.py", ["--symbols", sym, "--apply"], timeout=180,
+    )
+    steps["strategy_card"] = _wl_run_refresh_script(
+        "materialize_watchlist_strategy_cards.py", ["--symbols", sym], timeout=90,
+    )
+
     enriched_n = 0
     enrich_err = None
     try:
@@ -5752,8 +5974,37 @@ def _wl_refresh_symbol(sym: str) -> tuple[int, dict]:
         from watchlist_enrichment_sweep import enrich_symbols
         er = enrich_symbols([sym])
         enriched_n = int(er.get("enriched") or 0)
+        steps["technicals"] = er
     except Exception as e:
         enrich_err = str(e)[:200]
+        steps["technicals"] = {"error": enrich_err}
+
+    try:
+        import sys as _sys_atr
+        _sys_atr.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from watchlist_volatility import refresh_atr20_symbol
+        _px_row = _db_query(
+            "SELECT price, latest_price FROM watchlist_items WHERE symbol=%s LIMIT 1",
+            (sym,), fetch="one",
+        ) or {}
+        _px = _px_row.get("price") or _px_row.get("latest_price")
+        steps["atr20"] = refresh_atr20_symbol(sym, float(_px) if _px else None)
+    except Exception as e:
+        steps["atr20"] = {"error": str(e)[:120]}
+
+    # Bump this symbol ahead of the agent backlog and kick the processor once.
+    try:
+        _db_write(
+            """UPDATE watchlist_agent_jobs
+               SET status='queued', priority=-5, started_at=NULL
+               WHERE symbol=%s AND status IN ('pending','queued','processing')""",
+            (sym,),
+        )
+        steps["agents_kick"] = _wl_run_refresh_script(
+            "process_watchlist_agent_jobs.py", ["--limit", "3"], timeout=600,
+        )
+    except Exception as e:
+        steps["agents_kick"] = {"error": str(e)[:120]}
 
     code, rq = _wl_requeue_symbol(sym)
     if code != 200:
@@ -5763,9 +6014,10 @@ def _wl_refresh_symbol(sym: str) -> tuple[int, dict]:
         **rq,
         "enriched": enriched_n > 0,
         "enriched_rows": enriched_n,
+        "refresh_steps": steps,
         "note": (
-            "Technicals refreshed + agent jobs queued (Maria → Steph → Risk → synthesis; "
-            "~15 min cron). Advisory-only."
+            "News + catalyst + technicals refreshed; analyst coverage + strategy card updated; "
+            "agents prioritized (Maria → Steph → Risk → synthesis). Advisory-only."
         ),
     }
     if enrich_err:
@@ -9429,7 +9681,7 @@ def _compute_trade_ai():
         _db_tickers = _db_query("""
             SELECT DISTINCT ON (symbol)
                 symbol, score, grade, decision, original_decision,
-                rvol, price, change_pct, gap_pct, float_m,
+                rvol, price, change_pct, gap_pct, float_m, volume,
                 catalyst, catalyst_verified, catalyst_confidence, catalyst_source,
                 critic_verdict, critic_confidence, critic_reasoning, decision_changed,
                 disqualified, disqualification_reason,
@@ -9443,6 +9695,7 @@ def _compute_trade_ai():
                 scout_status, scout_pillar_count, scout_pillars_met, scout_pillars_missing,
                 operator_pill, operator_subtitle, operator_color_token,
                 not_validation_ready, not_tradeable,
+                awareness_status, setup_class, manual_review_required, symbol_candidate,
                 scanned_at
             FROM trade_ai_scans
             WHERE run_date >= CURRENT_DATE - INTERVAL '1 day'
@@ -9457,6 +9710,7 @@ def _compute_trade_ai():
                     "grade": r.get("grade") or "",
                     "decision": r.get("decision") or "",
                     "rvol": float(r.get("rvol") or 0),
+                    "volume": int(r.get("volume") or 0) or None,
                     "price": float(r.get("price") or 0),
                     "change_pct": str(round(float(r["change_pct"]), 2)) if r.get("change_pct") is not None else "",
                     "gap_pct": str(round(float(r["gap_pct"]), 2)) if r.get("gap_pct") is not None else "",
@@ -9505,6 +9759,10 @@ def _compute_trade_ai():
                     "operator_color_token": r.get("operator_color_token"),
                     "not_validation_ready": r.get("not_validation_ready"),
                     "not_tradeable": r.get("not_tradeable"),
+                    "awareness_status": r.get("awareness_status"),
+                    "setup_class": r.get("setup_class"),
+                    "manual_review_required": r.get("manual_review_required"),
+                    "symbol_candidate": r.get("symbol_candidate"),
                 })
     except Exception:
         pass
@@ -9539,6 +9797,20 @@ def _compute_trade_ai():
                         })
                 except Exception:
                     pass
+
+    # Volume from latest Finviz snapshot when DB row lacks it (same refresh cadence as RVOL)
+    try:
+        import sys as _sys_vol
+        _sys_vol.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from finviz_snapshot import load_latest_field_map
+        _vol_map = load_latest_field_map(PROJECT_ROOT, "volume")
+        for t in tickers:
+            if not t.get("volume"):
+                v = _vol_map.get((t.get("symbol") or "").upper())
+                if v:
+                    t["volume"] = int(v)
+    except Exception:
+        pass
 
     # Enrich tickers with historical appearance data from DB
     try:
@@ -9669,6 +9941,28 @@ def _compute_trade_ai():
     except Exception:
         options_desk_summary = {}
 
+    # Finviz prime-setup top gainers — awareness pill for names blocked from momentum-scalp GO
+    # (e.g. recent reverse split) so operators still see leading movers like GMM.
+    _top_gainer_rows: list = []
+    try:
+        import sys as _sys_tg
+        _sys_tg.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from squeeze_manual_review import attach_squeeze_manual_tags
+        from micro_float_manual_review import attach_micro_float_manual_tags
+        from high_rvol_manual_review import attach_high_rvol_manual_tags
+        from low_price_manual_review import attach_low_price_manual_tags
+        from catalyst_exception import attach_catalyst_exception_tags
+        from top_gainer_awareness import attach_top_gainer_awareness, load_finviz_top_gainers
+        attach_squeeze_manual_tags(tickers)
+        attach_micro_float_manual_tags(tickers)
+        attach_high_rvol_manual_tags(tickers)
+        attach_low_price_manual_tags(tickers)
+        attach_catalyst_exception_tags(tickers)
+        attach_top_gainer_awareness(tickers, PROJECT_ROOT, limit=30)
+        _top_gainer_rows = load_finviz_top_gainers(PROJECT_ROOT, limit=30)
+    except Exception:
+        _top_gainer_rows = []
+
     # Sector breakdown from tickers (basic)
     sectors: dict = {}
     _ec_cache = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
@@ -9760,6 +10054,17 @@ def _compute_trade_ai():
         "delta_events": latest.get("delta_events", 0),
         "today_strategy_signal_count": _today_signal_count,
         "tickers": tickers,
+        "top_gainers": [
+            {
+                "symbol": g.get("symbol"),
+                "change_pct": g.get("change_pct"),
+                "operator_pill": f"TOP GAINER · {g.get('change_pct_display', '')}",
+                "rvol": g.get("rvol"),
+                "price": g.get("price"),
+                "float_m": g.get("float_m"),
+            }
+            for g in _top_gainer_rows
+        ],
         "sectors": dict(sorted(sectors.items(), key=lambda x: -x[1])),
         "run_history": run_history,
         "options_desk": {
@@ -9772,6 +10077,20 @@ def _compute_trade_ai():
 
 
 _TRADE_AI_CACHE = {"ts": 0.0, "data": None}
+
+
+def warrior_audit_latest():
+    """GET /api/v2/warrior-audit/latest — Ross vs TradeAI weekly panel (Command Center)."""
+    import json as _j
+    path = PROJECT_ROOT / "data" / "audit" / "warrior_weekly_latest.json"
+    if not path.exists():
+        return {"ok": False, "error": "no_audit_yet", "hint": "Run scripts/warrior_weekly_audit_cron.py"}
+    try:
+        data = _j.loads(path.read_text())
+        data["ok"] = True
+        return data
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:120]}
 
 
 def trade_ai(force=False):
@@ -22696,13 +23015,16 @@ def _finviz_strip_map_compute(query=None):
         pm = d.get("perf_month_pct"); pm = pm if pm is not None else _json_clean(pf.get("perf_month_pct"))
         pytd = d.get("perf_ytd_pct"); pytd = pytd if pytd is not None else _json_clean(pf.get("ytd_return_pct"))
         sma = d.get("sma50_pct"); sma = sma if sma is not None else _json_clean(pf.get("sma50_pct"))
-        if rsi is None and pw is None and pm is None and pytd is None and sma is None:
+        atr = d.get("atr")
+        if rsi is None and pw is None and pm is None and pytd is None and sma is None and atr is None:
             continue   # nothing for this symbol from either source
-        out[s] = {"rsi": _json_clean(rsi),
-                  "rsi_status": d.get("rsi_status") if d.get("rsi") is not None else _rsi_status(rsi),
-                  "perf_week": _json_clean(pw), "perf_month": _json_clean(pm),
-                  "perf_ytd": _json_clean(pytd), "sma50": _json_clean(sma),
-                  "source": ("finviz" if d.get("rsi") is not None else "yfinance_nav")}
+        row = {"rsi": _json_clean(rsi),
+               "rsi_status": d.get("rsi_status") if d.get("rsi") is not None else _rsi_status(rsi),
+               "perf_week": _json_clean(pw), "perf_month": _json_clean(pm),
+               "perf_ytd": _json_clean(pytd), "sma50": _json_clean(sma),
+               "atr": _json_clean(atr),
+               "source": ("finviz" if d.get("rsi") is not None else "yfinance_nav")}
+        out[s] = row
     return {"ok": True, "count": len(out), "map": out,
             "note": "Finviz inline-strip metrics (daily); mutual funds fall back to yfinance-NAV technicals."}
 
@@ -28066,6 +28388,7 @@ ROUTES = {
     "/api/v2/stop-confirmations": lambda: _stop_confirmations_list(),
     "/api/v2/ops/summary": ops_summary,
     "/api/v2/trade-ai": trade_ai,
+    "/api/v2/warrior-audit/latest": warrior_audit_latest,
     "/api/v2/trade-ai/critique": _tradeai_critique_status,
     "/api/v2/trade-ai/history": _tradeai_history,
     "/api/v2/forecast": lambda: _forecast(),
@@ -30514,12 +30837,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return _wl_cio_synthesis(sym, body or {})
                 except Exception as e:
                     return 500, {"ok": False, "error": str(e)}
+        # POST /api/v2/watchlist/refresh-batch — refresh news/catalyst for a CIO tier (all verdicts)
+        if base_path == "/api/v2/watchlist/refresh-batch":
+            try:
+                return _wl_refresh_batch(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
         # POST /api/v2/watchlist/<SYMBOL>/refresh — manual card refresh (technicals + agent requeue)
         if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/refresh"):
             sym = base_path[len("/api/v2/watchlist/"):-len("/refresh")].strip("/").upper()
             if sym:
                 try:
-                    return _wl_refresh_symbol(sym)
+                    return _wl_refresh_symbol_async(sym)
                 except Exception as e:
                     return 500, {"ok": False, "error": str(e)}
         # POST /api/v2/watchlist/<SYMBOL>/propose — queue broker proposal from watchlist plan

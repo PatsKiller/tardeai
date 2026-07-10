@@ -191,12 +191,16 @@ Reply with ONLY JSON:
                 pass
 
     # Fallback: auto-block only on hard danger flags, downgrade on warnings
-    _hard_block_prefixes = ("MICRO_FLOAT_EXTREME_RVOL:", "LOW_PRICE_SPIKE:", "REVERSE_SPLIT:", "MICRO_FLOAT:")
+    _hard_block_prefixes = ("MICRO_FLOAT_EXTREME_RVOL:", "LOW_PRICE_SPIKE:", "MICRO_FLOAT:")
+    _rs_flags = [f for f in flags if f.startswith("REVERSE_SPLIT:")]
     _hard_flags = [f for f in flags if any(f.startswith(p) for p in _hard_block_prefixes)]
-    _warn_flags = [f for f in flags if f not in _hard_flags]
+    _warn_flags = [f for f in flags if f not in _hard_flags and f not in _rs_flags]
     if _hard_flags:
         return {"verdict": "BLOCK", "final_decision": "NO_GO", "confidence": 0.9,
                 "reasoning": f"Auto-blocked: {_hard_flags[0]}"}
+    if _rs_flags:
+        return {"verdict": "DOWNGRADE", "final_decision": "MANUAL_REVIEW", "confidence": 0.85,
+                "reasoning": f"Squeeze manual review: {_rs_flags[0]}"}
     if _warn_flags:
         return {"verdict": "DOWNGRADE", "final_decision": "WAIT", "confidence": 0.6,
                 "reasoning": f"Caution: {_warn_flags[0]}"}

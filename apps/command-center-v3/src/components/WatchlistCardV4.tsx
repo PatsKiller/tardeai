@@ -5,10 +5,6 @@ import { exitLadder, planWarnings, MONITOR_RULES, type Ladder } from '../lib/exi
 import {
   deriveRecommendedAction,
   buttonStyle,
-  confidenceTooltip,
-  planValidatedTooltip,
-  enrichedTooltip,
-  cioViewTooltip,
   ladderStepTooltip,
   watchlistNeedsRefresh,
   cioRecColor,
@@ -20,7 +16,7 @@ import {
   type CardActionType,
 } from '../lib/watchlistCardAction'
 import { WL, heroStateStyle, verdictWord, numStyle } from '../lib/watchlistCardTokens'
-import { resolveCountry } from '../lib/country'
+import CountryFlag from './CountryFlag'
 import { LadderLine } from './primitives/cardPrimitives'
 import { type RiskPct } from '../lib/watchlistProposeSizing'
 import { EvidenceBlock } from './EvidenceBlock'
@@ -30,7 +26,14 @@ import SizingTable from './SizingTable'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
 import CloudLlmRunButtons from './CloudLlmRunButtons'
 import type { WatchlistCardProps } from './WatchlistCard'
-import { marketAwareStale, composeWhy, sameHeadline, catalystAgeDays } from '../lib/watchlistCardV4'
+import { marketAwareStale, composeWhy, sameHeadline, catalystAgeDays, warningLineStyle } from '../lib/watchlistCardV4'
+import {
+  resolvePlanVolContext,
+  stopVolatilityLine,
+  volatilityBadgeStyle,
+  volatilityBadgeText,
+  volatilityBadgeTooltip,
+} from '../lib/watchlistVolatility'
 
 // Security Card v4 — institutional evaluation build (v3 untouched; Watch-hub toggle selects).
 // Changes vs v3, per the 2026-07-04 operator-approved audit:
@@ -138,10 +141,18 @@ export default function WatchlistCardV4({
   const rr = it.entry_rr != null ? Number(it.entry_rr)
     : (entry && stop && planTarget && entry > stop && planTarget > entry ? (planTarget - entry) / (entry - stop) : null)
   const hasPlan = entry != null && stop != null
+  const volCtx = resolvePlanVolContext(it, fv, entry, stop)
+  const volBadge = volatilityBadgeStyle(volCtx.band)
   const ladder = entry != null || stop != null ? exitLadder(entry, stop, planTarget, street) : null
   const warns = entry != null || stop != null
-    ? planWarnings({ entry, stop, planTarget, rr, pctCash: null, streetTarget: street, analystUpside: pa?.upside != null ? Number(pa.upside) : null })
+    ? planWarnings({
+      entry, stop, planTarget, rr, pctCash: null, streetTarget: street,
+      analystUpside: pa?.upside != null ? Number(pa.upside) : null,
+      stopAtrMult14: volCtx.stopAtrMult14, stopAtrMult20: volCtx.stopAtrMult20,
+      atrPct14: volCtx.atrPct14, atrPct20: volCtx.atrPct20,
+    })
     : []
+  const stopVolLine = stopVolatilityLine(volCtx)
   const dataDoubt = (it.synthesis_data_i_doubt && it.synthesis_data_i_doubt !== 'none')
     ? String(it.synthesis_data_i_doubt).trim() : ''
   const action = deriveRecommendedAction({
@@ -177,9 +188,6 @@ export default function WatchlistCardV4({
     ? [sc?.sector || it.profile_sector, sc?.industry || it.profile_industry].filter(Boolean).join(' / ')
     : null
   const companyName = sc?.name || sc?.company_name || it.profile_name || null
-  // HQ country flag (reuses lib/country.ts; ADR-aware by symbol). country_name comes
-  // from the watchlist items endpoint (Finviz enrichment fallback).
-  const ctry = resolveCountry({ symbol: it.symbol, country: it.country, countryName: it.country_name })
   const tenureDays = it.first_seen_at
     ? Math.max(0, Math.floor((Date.now() - new Date(it.first_seen_at).getTime()) / 864e5))
     : null
@@ -233,11 +241,7 @@ export default function WatchlistCardV4({
   const reasonForHero = reasoning && cioSnip && reasoning.trim().slice(0, 60) === cioSnip.trim().slice(0, 60)
     ? null
     : reasoning
-  const whyLine = composeWhy([action.heroText, action.warning?.text, reasonForHero].map(s => s ? truncate(String(s), 110) : s))
-
-  const planNote = (!action.warning && action.verdict !== 'FIX' && warns.length)
-    ? { text: warns[0].text, color: warns[0].color }
-    : null
+  const whyLine = composeWhy([action.heroText, reasonForHero].map(s => s ? truncate(String(s), 160) : s))
 
   // (D) catalyst age joins the data-quality picture.
   const catAgeD = catalystAgeDays(it.catalyst_at)
@@ -286,14 +290,10 @@ export default function WatchlistCardV4({
   addMenuItem('ENSEMBLE', ensOpen ? 'Hide ensemble' : 'Ensemble check')
   if (hasPlan) addMenuItem('WATCH_ON_DESK', 'Monitor on desk')
 
-  const worstDq = dqFlags.find(f => f.severity === 'red') ?? dqFlags[0] ?? null
-  const dqColor = worstDq ? (worstDq.severity === 'red' ? WL.signal.red : WL.signal.amber) : WL.signal.teal
-  const dqText = worstDq
-    ? `${worstDq.label}${dqFlags.length > 1 ? ` · ${dqFlags.length - 1} more issue${dqFlags.length > 2 ? 's' : ''}` : ''}`
-    : `Data healthy — enriched ${ago(it.last_enriched_at) || 'recently'}`
-  const dqTip = dqFlags.length
-    ? dqFlags.map(f => f.label).join('\n')
-    : [enrichedTooltip(it), planValidatedTooltip(it)].join('\n')
+  const dqHealthy = dqFlags.length === 0 && !dataDoubt
+  const visibleDqFlags = action.warning?.text?.startsWith('Data doubt')
+    ? dqFlags.filter(f => !f.label.startsWith('Data doubt'))
+    : dqFlags
 
   const confBand = confNum == null ? null : confNum >= 0.7 ? 'High' : confNum >= 0.5 ? 'Moderate' : 'Low'
   const confColor = confNum == null ? WL.text.dim : confNum >= 0.7 ? WL.signal.teal : confNum >= 0.5 ? WL.signal.amber : WL.signal.red
@@ -346,7 +346,7 @@ export default function WatchlistCardV4({
       }}
     >
       {/* ① Header — identity + price only; quiet */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, padding: '11px 18px 9px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14, padding: '11px 18px 9px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
           <button
             onClick={e => { e.stopPropagation(); onToggleStar(e) }}
@@ -354,7 +354,7 @@ export default function WatchlistCardV4({
             style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, padding: 0, color: isStarred ? WL.signal.amber : WL.text.dim }}
           >{isStarred ? '★' : '☆'}</button>
           <span style={{ ...numStyle, fontWeight: 800, fontSize: 21 }}>{it.symbol}</span>
-          <span title={ctry ? `${ctry.name} (${ctry.code})` : 'Country unknown'} style={{ fontSize: 15, lineHeight: 1, flexShrink: 0, cursor: 'help' }}>{ctry ? ctry.flag : '🌍'}</span>
+          <CountryFlag symbol={it.symbol} country={it.country} countryName={it.country_name} size={22} />
           {isHeld && (
             <span title={heldTip} style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.08em', color: WL.signal.amber, border: '1px solid rgba(245,166,35,.35)', borderRadius: 4, padding: '1px 5px', flexShrink: 0 }}>
               HELD{outcome?.held && outcome.unrealized_pnl_pct != null ? (
@@ -370,12 +370,33 @@ export default function WatchlistCardV4({
             <span style={{ fontSize: 11, color: WL.text.dim, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={provenanceText}>{provenanceText}</span>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-          <div style={{ textAlign: 'right' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+          <div style={{ textAlign: 'right', minWidth: 0 }}>
             <div style={{ ...numStyle, fontSize: 18, fontWeight: 800 }}>{it.price != null ? money(it.price) : '—'}</div>
             {it.change_pct != null && (
               <div style={{ ...numStyle, fontSize: 11.5, fontWeight: 700, color: Number(it.change_pct) >= 0 ? WL.price.up : WL.price.down }}>
                 {Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%
+              </div>
+            )}
+            {volatilityBadgeText(volCtx) && (
+              <div
+                title={volatilityBadgeTooltip(volCtx)}
+                style={{
+                  marginTop: 5,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: '.03em',
+                  lineHeight: 1.4,
+                  color: volBadge.color,
+                  border: `1px solid ${volBadge.border}`,
+                  background: volBadge.bg,
+                  borderRadius: 4,
+                  padding: '3px 6px',
+                  whiteSpace: 'normal',
+                  cursor: 'help',
+                }}
+              >
+                {volatilityBadgeText(volCtx)}
               </div>
             )}
           </div>
@@ -407,16 +428,25 @@ export default function WatchlistCardV4({
           gap: 7,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.1em', color: heroState.accent, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.1em', color: heroState.accent, flexShrink: 0, marginTop: 2 }}>
             {verdictWord(action.verdict)}
           </span>
-          <span
-            title={[whyLine, action.detail].filter(Boolean).join('\n')}
-            style={{ fontSize: 13.5, fontWeight: 700, color: WL.text.primary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
-          >
-            {whyLine || action.heroText}
-          </span>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: WL.text.primary, lineHeight: 1.4, whiteSpace: 'normal' }}>
+              {whyLine || action.heroText}
+            </div>
+            {action.warning && (
+              <div style={warningLineStyle(action.warning.severity === 'red' ? 'red' : 'amber')}>
+                ⚠ {action.warning.text}
+              </div>
+            )}
+            {action.detail && action.detail !== action.warning?.text && (
+              <div style={{ fontSize: 10.5, color: WL.text.secondary, lineHeight: 1.45, whiteSpace: 'normal' }}>
+                {action.detail}
+              </div>
+            )}
+          </div>
           {rr != null && hasPlan && (
             <span title={rrTooltip(entry, stop, planTarget, rr)} style={{ ...numStyle, fontSize: 13, fontWeight: 800, color: rrColor(rr), flexShrink: 0 }}>
               {rr.toFixed(1)}R
@@ -451,33 +481,41 @@ export default function WatchlistCardV4({
             )}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 11 }}>
-          <span
-            title={cioViewTooltip(it)}
-            style={{ fontWeight: 800, color: cioAccent, textTransform: 'capitalize', whiteSpace: 'nowrap' }}
-          >CIO · {cioLabel}</span>
-          {confNum != null && (
-            /* (F) bar + band word — the decimal lives in the tooltip */
-            <span title={`${confNum.toFixed(2)} — ${confidenceTooltip(it)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.secondary }}>
-              <span style={{ width: 64, height: 4, borderRadius: 2, background: 'rgba(148,163,184,.18)', position: 'relative', display: 'inline-block' }}>
-                <span style={{
-                  position: 'absolute', top: 0, left: 0, bottom: 0, borderRadius: 2,
-                  width: `${Math.round(Math.min(1, Math.max(0, confNum)) * 100)}%`,
-                  background: confColor,
-                }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 11 }}>
+            <span style={{ fontWeight: 800, color: cioAccent, textTransform: 'capitalize', whiteSpace: 'nowrap' }}>CIO · {cioLabel}</span>
+            {confNum != null && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.secondary }}>
+                <span style={{ width: 64, height: 4, borderRadius: 2, background: 'rgba(148,163,184,.18)', position: 'relative', display: 'inline-block' }}>
+                  <span style={{
+                    position: 'absolute', top: 0, left: 0, bottom: 0, borderRadius: 2,
+                    width: `${Math.round(Math.min(1, Math.max(0, confNum)) * 100)}%`,
+                    background: confColor,
+                  }} />
+                </span>
+                {confBand && <b style={{ color: confColor }}>{confBand} conviction</b>}
+                <span style={{ ...numStyle, color: WL.text.dim, fontSize: 10.5 }}>{confNum.toFixed(2)}</span>
               </span>
-              {confBand && <b style={{ color: confColor }}>{confBand} conviction</b>}
-              <span style={{ ...numStyle, color: WL.text.dim, fontSize: 10.5 }}>{confNum.toFixed(2)}</span>
-            </span>
+            )}
+            {it.models_agree === true && <span style={{ color: WL.text.dim }}>Grok + ChatGPT agree</span>}
+            {it.models_agree === false && <span style={{ color: WL.signal.amber, fontWeight: 700 }}>models split</span>}
+            {validatedVal && <span style={{ color: WL.text.dim }}>validated {validatedVal}</span>}
+            {(it.cio_model_used || it.entry_model) && <span style={{ color: WL.text.dim }}>{String(it.cio_model_used || it.entry_model)}</span>}
+            {dqHealthy && (
+              <span style={{ color: WL.signal.teal, marginLeft: 'auto', fontSize: 10.5 }}>
+                Data healthy — enriched {ago(it.last_enriched_at) || 'recently'}
+              </span>
+            )}
+          </div>
+          {visibleDqFlags.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {visibleDqFlags.map(f => (
+                <div key={f.label} style={warningLineStyle(f.severity === 'red' ? 'red' : 'amber')}>
+                  ⚠ {f.label}
+                </div>
+              ))}
+            </div>
           )}
-          {it.models_agree === true && <span style={{ color: WL.text.dim }}>Grok + ChatGPT agree</span>}
-          {it.models_agree === false && <span style={{ color: WL.signal.amber, fontWeight: 700 }}>models split</span>}
-          {validatedVal && <span style={{ color: WL.text.dim }}>validated {validatedVal}</span>}
-          {(it.cio_model_used || it.entry_model) && <span style={{ color: WL.text.dim }}>{String(it.cio_model_used || it.entry_model)}</span>}
-          <span title={dqTip} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.secondary, marginLeft: 'auto' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: dqColor, flex: 'none' }} />
-            {dqText}
-          </span>
         </div>
       </div>
 
@@ -497,23 +535,46 @@ export default function WatchlistCardV4({
             <div>
               <div style={planSubLabel}>Stop</div>
               <div style={{ ...numStyle, fontSize: 15.5, fontWeight: 700, marginTop: 1, color: hasPlan && stop == null ? WL.signal.red : WL.text.primary }}>{money(it.entry_stop)}</div>
-              {entry != null && stop != null && <div style={{ fontSize: 9.5, color: WL.text.dim }}>{pct(entry, stop)}</div>}
+              {stopVolLine && (
+                <div style={{ marginTop: 2 }}>
+                  <div style={{
+                    fontSize: 9.5,
+                    color: volCtx.tightVsAtr ? WL.signal.amber : WL.text.dim,
+                    fontWeight: volCtx.tightVsAtr ? 700 : 400,
+                  }}>
+                    {stopVolLine}{volCtx.tightVsAtr ? ' ⚠' : ''}
+                  </div>
+                  {volCtx.tightVsAtr && (
+                    <div style={{ ...warningLineStyle('amber'), fontSize: 9.5, marginTop: 2 }}>
+                      ⚠ Stop &lt; 1× ATR₂₀ — normal daily noise may stop you out; widen stop or size down
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <div style={planSubLabel}>Target</div>
               <div style={{ ...numStyle, fontSize: 15.5, fontWeight: 700, marginTop: 1 }}>{money(it.entry_target)}</div>
               {entry != null && planTarget != null && (
-                <div style={{ fontSize: 9.5, color: WL.text.dim }} title={exitVsStreet ?? undefined}>
+                <div style={{ fontSize: 9.5, color: WL.text.dim }}>
                   {pct(entry, planTarget)}{street != null && planTarget != null && Math.abs((planTarget - street) / street) < 0.03 ? ' ≈ Street' : ''}
                 </div>
               )}
+              {exitVsStreet && (
+                <div style={{ ...warningLineStyle('amber'), fontSize: 9.5, marginTop: 2 }}>⚠ {exitVsStreet}</div>
+              )}
             </div>
-            <div title={rrTooltip(entry, stop, planTarget, rr)}>
+            <div>
               <div style={planSubLabel}>R : R</div>
               <div style={{ ...numStyle, fontSize: 15.5, fontWeight: 700, marginTop: 1, color: rr != null ? rrColor(rr) : WL.text.primary }}>
                 {rr != null ? rr.toFixed(1) : '—'}
               </div>
               {ladder && <div style={{ fontSize: 9.5, color: WL.text.dim }}>R ${ladder.R.toFixed(2)}/sh</div>}
+              {rr != null && rr < 1.5 && (
+                <div style={{ ...warningLineStyle(rr < 1 ? 'red' : 'amber'), fontSize: 9.5, marginTop: 2 }}>
+                  ⚠ {rr < 1 ? `R:R ${rr.toFixed(2)} < 1 — reward smaller than risk` : `R:R ${rr.toFixed(2)} < 1.5 — thin edge`}
+                </div>
+              )}
             </div>
           </div>
           {entryLine && (
@@ -525,9 +586,13 @@ export default function WatchlistCardV4({
           {ladder && (
             <LadderLine steps={ladder.steps} focusIdx={focusIdx} stepTooltip={ladderStepTooltip} />
           )}
-          {planNote && (
-            <div style={{ marginTop: 6, fontSize: 10.5, color: planNote.color === '#ef5350' ? WL.signal.red : WL.signal.amber, lineHeight: 1.45 }}>
-              {planNote.text}
+          {warns.length > 0 && (
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {warns.map((w, i) => (
+                <div key={i} style={{ ...warningLineStyle(w.color === '#ef5350' ? 'red' : 'amber') }}>
+                  ⚠ {w.text}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -577,18 +642,16 @@ export default function WatchlistCardV4({
             </span>
           </div>
           {cioNote ? (
-            <div
-              title={String(it.synthesis_narrative_snip)}
-              style={{
-                fontSize: 11, color: WL.text.secondary, fontStyle: 'italic', lineHeight: 1.55,
-                display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-              }}
-            >
+            <div style={{ fontSize: 11, color: WL.text.secondary, fontStyle: 'italic', lineHeight: 1.55, whiteSpace: 'normal' }}>
               {cioNoteAge && (
-                <span
-                  title={cioNoteStale ? 'Synthesis older than 24h — a holdings change auto-queues a refresh.' : 'When the CIO synthesis last ran.'}
-                  style={{ color: cioNoteStale ? WL.signal.amber : WL.text.dim, fontWeight: 600, fontStyle: 'normal', marginRight: 5 }}
-                >{cioNoteAge}{cioNoteStale ? ' ⚠' : ''} ·</span>
+                <span style={{ color: cioNoteStale ? WL.signal.amber : WL.text.dim, fontWeight: 600, fontStyle: 'normal', marginRight: 5 }}>
+                  {cioNoteAge}{cioNoteStale ? ' · synthesis stale >24h ⚠' : ''} ·
+                </span>
+              )}
+              {cioNoteStale && (
+                <div style={{ ...warningLineStyle('amber'), fontStyle: 'normal', marginBottom: 4 }}>
+                  ⚠ Synthesis older than 24h — refresh or wait for holdings-triggered requeue
+                </div>
               )}
               {cioNote}
             </div>
@@ -611,10 +674,9 @@ export default function WatchlistCardV4({
                     : truncate(String(it.catalyst_headline), 80)}
                   {it.catalyst_at && (
                     /* (D) age is a signal — amber past 7d */
-                    <span
-                      style={{ color: catalystStale ? WL.signal.amber : WL.text.dim, fontWeight: catalystStale ? 700 : 400 }}
-                      title={catalystStale ? 'Catalyst older than 7 days — confirm it still holds before acting' : undefined}
-                    > · {ago(it.catalyst_at)}{catalystStale ? ' — stale' : ''}</span>
+                    <span style={{ color: catalystStale ? WL.signal.amber : WL.text.dim, fontWeight: catalystStale ? 700 : 400 }}>
+                      {' · '}{ago(it.catalyst_at)}{catalystStale ? ' — stale ⚠ confirm still holds' : ''}
+                    </span>
                   )}
                 </>
               ) : (
@@ -645,8 +707,13 @@ export default function WatchlistCardV4({
               <span style={ctxKey}>Trend </span>
               {fv?.perf_ytd != null ? `${fmtPc(fv.perf_ytd)} YTD` : '—'}
               {sinceAdded != null && (
-                <span style={{ color: sinceAdded >= 0 ? WL.signal.teal : WL.signal.red }} title={`vs first-seen price ${money(it.first_seen_price)} on ${String(it.first_seen_at).slice(0, 10)}`}>
+                <span style={{ color: sinceAdded >= 0 ? WL.signal.teal : WL.signal.red }}>
                   {' · '}{sinceAdded >= 0 ? '+' : ''}{sinceAdded.toFixed(1)}% since added
+                  {it.first_seen_price != null && (
+                    <span style={{ color: WL.text.dim, fontWeight: 400 }}>
+                      {' '}(from {money(it.first_seen_price)}{it.first_seen_at ? ` · ${String(it.first_seen_at).slice(0, 10)}` : ''})
+                    </span>
+                  )}
                 </span>
               )}
               {sc?.vs_sector_week != null && (

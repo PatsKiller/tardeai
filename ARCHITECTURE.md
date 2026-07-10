@@ -121,6 +121,11 @@
   `scripts/pipeline_freshness_monitor.py`, which extends freshness thresholds by the number of consecutive
   non-trading days (capped at 14).
 - Frontend sizing preview: `src/lib/watchlistProposeSizing.ts` (see §7).
+- **Trade AI scanner** (`TradingHub.tsx`, `/api/v2/trade-ai`): default **Actionable** filter
+  (GO + WAIT + MANUAL_REVIEW); Manual tab collapses squeeze/runner/micro/low lanes; sort dropdown
+  (awareness/score/RVOL/change/symbol) applies to table + copy lists. Country column uses
+  `CountryFlag.tsx` (PNG flags, name tooltip). Ross Alignment Audit strip reads
+  `/api/v2/warrior-audit/latest`. See [docs/WARRIOR_ROSS_TRADEAI_ALIGNMENT.md](docs/WARRIOR_ROSS_TRADEAI_ALIGNMENT.md).
 
 ## 4. Hermes closed-loop intelligence (advisory-only)
 

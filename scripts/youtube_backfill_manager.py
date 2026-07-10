@@ -152,7 +152,7 @@ def process_channel(channel_id: str, channel_name: str) -> dict:
         consecutive_errors = 0
         for i, v in enumerate(videos):
             try:
-                r = ingest_video(v["url"], added_by="backfill")
+                r = ingest_video(v["url"], added_by="backfill", publish_date=v.get("published"))
                 if r.get("status") == "ingested":
                     result["ingested"] += 1
                     consecutive_errors = 0

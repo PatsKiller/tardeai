@@ -508,7 +508,7 @@ export function dataQualityFlags(args: {
 }): { label: string; severity: 'red' | 'amber' | 'none' }[] {
   const { it, stale, enriched, needsRefresh, dataDoubt, adv } = args
   const flags: { label: string; severity: 'red' | 'amber' | 'none' }[] = []
-  if (dataDoubt) flags.push({ label: 'Data doubt', severity: 'amber' })
+  if (dataDoubt) flags.push({ label: `Data doubt — ${dataDoubt}`, severity: 'amber' })
   if (!enriched) flags.push({ label: 'Awaiting enrichment', severity: 'amber' })
   else if (stale) flags.push({ label: 'Stale technicals', severity: 'amber' })
   else if (it.last_enriched_at) {
@@ -525,6 +525,12 @@ export function dataQualityFlags(args: {
     flags.push({ label: `Low CIO conf ${Number(conf).toFixed(2)}`, severity: 'amber' })
   }
   if (it.price == null) flags.push({ label: 'No live price', severity: 'red' })
+  if (it.plan_stop_tight || it.plan_stop_tight_vs_atr20 || it.plan_stop_tight_vs_atr) {
+    const m20 = it.plan_stop_atr20_mult != null ? Number(it.plan_stop_atr20_mult).toFixed(2) : null
+    const m14 = it.plan_stop_atr_mult != null ? Number(it.plan_stop_atr_mult).toFixed(2) : null
+    const lbl = m20 != null ? `Tight stop (${m20}× ATR₂₀)` : (m14 != null ? `Tight stop (${m14}× ATR₁₄)` : 'Tight stop (<1× ATR)')
+    flags.push({ label: lbl, severity: 'amber' })
+  }
   return flags
 }
 

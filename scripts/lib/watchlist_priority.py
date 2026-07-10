@@ -40,10 +40,17 @@ def request_type_sla_params() -> tuple:
     return (list(TIME_SENSITIVE_REQUEST_TYPES),)
 
 
-# Buy-side CIO / card ratings that bypass the rank tail (incl. START = ready-to-enter).
+# Buy-side CIO / card ratings (proposal bridge, screener pins, job tier-3 head).
 DAILY_PRIORITY_BUY_RECS = frozenset({
     "buy", "strong_buy", "strongbuy", "add", "add_on_pullback", "accumulate",
     "start", "wait_for_pullback", "wait_pullback",
+})
+
+# All CIO verdict tiers — daily news/enrichment priority (buy, hold, avoid, pullback, etc.).
+DAILY_PRIORITY_RATED_RECS = frozenset({
+    *DAILY_PRIORITY_BUY_RECS,
+    "hold", "neutral", "research_more", "wait", "monitor", "watch",
+    "avoid", "ignore", "sell", "trim", "reduce", "rebalance_trim", "strong_sell",
 })
 
 # SQL IN-list for legacy callers (spaces preserved for direct UPPER() match).
@@ -52,14 +59,39 @@ DAILY_PRIORITY_BUY_RECS_SQL = (
     "ACCUMULATE", "START", "WAIT_FOR_PULLBACK", "WAIT FOR PULLBACK",
 )
 
+DAILY_PRIORITY_RATED_RECS_SQL = (
+    *DAILY_PRIORITY_BUY_RECS_SQL,
+    "HOLD", "NEUTRAL", "RESEARCH_MORE", "RESEARCH MORE", "WAIT", "MONITOR", "WATCH",
+    "AVOID", "IGNORE", "SELL", "TRIM", "REDUCE", "REBALANCE_TRIM", "REBALANCE TRIM",
+    "STRONG_SELL", "STRONG SELL",
+)
+
+
+def _norm_key(raw: str) -> str:
+    r = str(raw).strip().lower().replace(" ", "_").replace("-", "_")
+    if r == "strongbuy":
+        return "strong_buy"
+    if r == "researchmore":
+        return "research_more"
+    if r == "rebalancetrim":
+        return "rebalance_trim"
+    if r == "strongsell":
+        return "strong_sell"
+    return r
+
 
 def _norm_rec(raw: str | None) -> str | None:
     if not raw:
         return None
-    r = str(raw).strip().lower().replace(" ", "_").replace("-", "_")
-    if r == "strongbuy":
-        return "strong_buy"
+    r = _norm_key(raw)
     return r if r in DAILY_PRIORITY_BUY_RECS else None
+
+
+def _norm_rated_rec(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    r = _norm_key(raw)
+    return r if r in DAILY_PRIORITY_RATED_RECS else None
 
 
 def is_off_hours_et(now: datetime | None = None) -> bool:
@@ -113,7 +145,7 @@ def holdings_list(project_root: Path | None = None) -> list[str]:
 def sql_daily_priority_exists(symbol_sql: str = "j.symbol") -> str:
     """Parameterized SQL fragment: True when symbol has daily priority.
 
-    Binds (in order): holdings[], proposal_statuses[], buy_recs[], buy_recs[] again for synthesis.
+    Binds (in order): holdings[], proposal_statuses[], rated_recs[], rated_recs[] again for synthesis.
     """
     sym = symbol_sql
     return f"""(
@@ -153,13 +185,21 @@ def sql_scoring_priority_exists(symbol_sql: str = "j.symbol") -> str:
     )"""
 
 
+def scoring_priority_sql_params(holdings: list[str] | None = None,
+                                project_root: Path | None = None) -> tuple:
+    """Bind tuple for sql_scoring_priority_exists() — all CIO-rated verdicts."""
+    h = holdings if holdings is not None else holdings_list(project_root)
+    rated = sorted(r.upper() for r in DAILY_PRIORITY_RATED_RECS)
+    return (h, list(PROPOSAL_ACTIVE_STATUSES), rated, rated)
+
+
 def daily_priority_sql_params(holdings: list[str] | None = None,
                               project_root: Path | None = None) -> tuple:
     """Standard bind tuple for sql_daily_priority_exists()."""
     h = holdings if holdings is not None else holdings_list(project_root)
-    # The SQL side compares UPPER(REPLACE(...)) — bind uppercase or the buy tier matches nothing.
-    buy = sorted(r.upper() for r in DAILY_PRIORITY_BUY_RECS)
-    return (h, list(PROPOSAL_ACTIVE_STATUSES), buy, buy)
+    # The SQL side compares UPPER(REPLACE(...)) — bind uppercase or rated tiers match nothing.
+    rated = sorted(r.upper() for r in DAILY_PRIORITY_RATED_RECS)
+    return (h, list(PROPOSAL_ACTIVE_STATUSES), rated, rated)
 
 
 def sql_off_hours_scope(symbol_sql: str = "j.symbol") -> str:
@@ -180,9 +220,9 @@ def off_hours_scope_params(holdings: list[str] | None = None,
 
 
 def sql_job_priority_case(symbol_sql: str = "j.symbol") -> str:
-    """ORDER BY tier: directive · holdings · proposals · buy-rated · top-N · active · tail."""
+    """ORDER BY tier: directive · holdings · proposals · CIO-rated · top-N · active · tail."""
     sym = symbol_sql
-    buy = ", ".join(f"'{r}'" for r in DAILY_PRIORITY_BUY_RECS_SQL)
+    rated = ", ".join(f"'{r}'" for r in DAILY_PRIORITY_RATED_RECS_SQL)
     return f"""(CASE
         WHEN EXISTS (SELECT 1 FROM watchlist_items wi_dp
                      WHERE UPPER(wi_dp.symbol) = UPPER({sym}) AND wi_dp.in_directive_watch) THEN 0
@@ -193,10 +233,10 @@ def sql_job_priority_case(symbol_sql: str = "j.symbol") -> str:
                      WHERE UPPER(sfp.symbol) = UPPER({sym}) AND sfp.active = true) THEN 2
         WHEN EXISTS (SELECT 1 FROM watchlist_research_cards rc
                      WHERE UPPER(rc.symbol) = UPPER({sym})
-                       AND UPPER(rc.latest_recommendation) IN ({buy})) THEN 3
+                       AND UPPER(rc.latest_recommendation) IN ({rated})) THEN 3
         WHEN EXISTS (SELECT 1 FROM watchlist_final_synthesis fs
                      WHERE UPPER(fs.symbol) = UPPER({sym})
-                       AND UPPER(fs.recommendation) IN ({buy})) THEN 3
+                       AND UPPER(fs.recommendation) IN ({rated})) THEN 3
         WHEN EXISTS (SELECT 1 FROM watchlist_items wi_dp
                      WHERE UPPER(wi_dp.symbol) = UPPER({sym})
                        AND wi_dp.hermes_rank IS NOT NULL AND wi_dp.hermes_rank <= %s) THEN 4
@@ -215,7 +255,6 @@ def job_priority_params(holdings: list[str] | None = None,
 def load_daily_priority_symbols(cur, project_root: Path | None = None) -> set[str]:
     """All symbols that qualify for daily priority (for alert scoping without rank)."""
     holdings = holdings_list(project_root)
-    buy = list(DAILY_PRIORITY_BUY_RECS)
     cur.execute(f"""SELECT DISTINCT UPPER(wi.symbol) AS symbol
                     FROM watchlist_items wi
                     WHERE wi.status IN ('active','researched')
@@ -251,3 +290,8 @@ def rank_alert_worthy(cur_rank: int | None, prev_rank: int | None, top_n: int | 
 
 def is_buy_side_rating(raw: str | None) -> bool:
     return _norm_rec(raw) is not None
+
+
+def is_rated_verdict(raw: str | None) -> bool:
+    """True for any CIO verdict tier (buy, hold, avoid, pullback, etc.)."""
+    return _norm_rated_rec(raw) is not None

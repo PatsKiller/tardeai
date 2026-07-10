@@ -11,7 +11,7 @@ All sources dedup by symbol + title. Scored + tagged via content_scoring.
 Feeds into: news_articles, catalyst_events, sentiment_observations.
 
 Modes:
-  --priority    Weekday cadence: holdings/proposals/buy/active/directives (NEWS_INGEST_MAX, default 60)
+  --priority    Weekday cadence: holdings/proposals/CIO-rated (all tiers)/active/directives (NEWS_INGEST_MAX, default 60)
   --tail-rotate Weekend stagger: rotating batch through classified tail (NEWS_TAIL_BATCH, default 500)
 
 Every successful run prints a logfile heartbeat line for system_freshness_monitor.py:
@@ -355,12 +355,26 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
             pass
 
 
+def _company_description(cur, sym: str) -> str | None:
+    try:
+        cur.execute(
+            "SELECT description_1s FROM symbol_profiles WHERE upper(symbol)=%s LIMIT 1",
+            (sym.upper(),),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
 def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, benzinga_key: str) -> dict:
     total_new = 0
     total_scanned = 0
     source_counts: dict[str, int] = {}
+    skipped_mismatch = 0
 
     for sym, strategy_type in symbols:
+        company_desc = _company_description(cur, sym)
         articles = _fetch_yahoo_rss(sym)
         if finnhub_key:
             articles.extend(_fetch_finnhub(sym, finnhub_key))
@@ -370,6 +384,17 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
 
         for a in articles:
             src = a.get("source", "")
+            try:
+                from news_symbol_guard import headline_matches_symbol
+                ok_match, _why = headline_matches_symbol(
+                    sym, a.get("title", ""), a.get("summary", ""),
+                    company_description=company_desc,
+                )
+                if not ok_match:
+                    skipped_mismatch += 1
+                    continue
+            except Exception:
+                pass
             try:
                 from hermes_source_policy import should_ingest
                 ok, _why = should_ingest(src)
@@ -421,6 +446,7 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
     return {
         "scanned": total_scanned,
         "new_articles": total_new,
+        "skipped_symbol_mismatch": skipped_mismatch,
         "by_source": {s: c for s, c in source_counts.items() if c > 0},
     }
 
@@ -435,12 +461,34 @@ def _emit_heartbeat(mode: str, scanned: int, new: int, meta: dict) -> None:
     print(" ".join(parts), flush=True)
 
 
-def ingest(mode: str = "priority") -> dict:
+def ingest(mode: str = "priority", *, single_symbol: str | None = None) -> dict:
     conn = _get_conn()
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    symbol_pairs, meta = _resolve_symbols(conn, mode)
+    if mode == "priority" and not single_symbol:
+        try:
+            from news_symbol_guard import purge_mismatched_watchlist
+            purge_mismatched_watchlist(conn, apply=True)
+        except Exception:
+            pass
+
+    if single_symbol:
+        sym = single_symbol.upper().strip()
+        cur.execute(
+            "SELECT symbol FROM watchlist_items WHERE upper(symbol)=%s AND status <> 'removed' LIMIT 1",
+            (sym,),
+        )
+        row = cur.fetchone()
+        symbol_pairs = [(sym, "watchlist")]
+        meta = {"mode": "single_symbol", "symbol": sym}
+        try:
+            from news_symbol_guard import purge_mismatched_for_symbol
+            purge_mismatched_for_symbol(conn, sym, apply=True)
+        except Exception:
+            pass
+    else:
+        symbol_pairs, meta = _resolve_symbols(conn, mode)
     if mode == "priority":
         cap = int(os.environ.get("NEWS_INGEST_MAX", "60"))
         symbol_pairs = symbol_pairs[:cap]
@@ -488,13 +536,22 @@ if __name__ == "__main__":
         pass
 
     try:
-        if "--tail-rotate" in sys.argv:
+        single = None
+        for i, arg in enumerate(sys.argv):
+            if arg == "--symbol" and i + 1 < len(sys.argv):
+                single = sys.argv[i + 1].strip().upper()
+                break
+        if single:
+            result = ingest(mode="priority", single_symbol=single)
+        elif "--tail-rotate" in sys.argv:
             run_mode = "tail_rotate"
+            result = ingest(mode=run_mode)
         elif "--full" in sys.argv:
             run_mode = "full"
+            result = ingest(mode=run_mode)
         else:
             run_mode = "priority"
-        result = ingest(mode=run_mode)
+            result = ingest(mode=run_mode)
         if "--json" in sys.argv:
             print(json.dumps(result, indent=2, default=str))
         if _run_id:

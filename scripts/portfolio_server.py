@@ -2030,7 +2030,7 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     allow_reuse_port = False
     request_queue_size = 128
     daemon_threads = True
-    _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "16")))
+    _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "24")))
 
     def process_request_thread(self, request, client_address):
         with self._sem:

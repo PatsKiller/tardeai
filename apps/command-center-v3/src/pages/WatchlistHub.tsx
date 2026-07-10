@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useApi } from '../hooks/useApi'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { marketAwareStale } from '../lib/watchlistCardV4'
+import { isExtremeVolItem } from '../lib/watchlistVolatility'
+import { useApi, useConnectionHealth } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useProAnalystMap } from '../components/ProAnalystPill'
 import DiscoveryPanel from '../components/DiscoveryPanel'
@@ -104,6 +106,10 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   const advisories: any[] = (adv?.advisories ?? []).filter((a: any) => itemSyms.has(a.symbol))
   const cautionN = advisories.filter(a => a.advisory_flag === 'caution').length
   const favorableN = advisories.filter(a => a.advisory_flag === 'favorable').length
+  const extremeVolN = useMemo(() => items.filter(isExtremeVolItem).length, [items])
+  const tightStopN = useMemo(() => items.filter((it: any) =>
+    it.plan_stop_tight === true || it.plan_stop_tight_vs_atr20 === true || it.plan_stop_tight_vs_atr === true,
+  ).length, [items])
   const byStatus = summary?.by_status ?? {}
   const outMap: Record<string, any> = outcomesData?.outcomes ?? {}   // symbol → purchased→sold outcome
   const directives: any[] = wd?.directives ?? []
@@ -131,12 +137,16 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   const [starOverride, setStarOverride] = useState<Record<string, boolean>>({})   // optimistic star state until items refetch
   const [fSector, setFSector] = useState('all')
   const [fAnalyst, setFAnalyst] = useState('all')   // analyst catalyst: upgrade / downgrade
+  const [fVol, setFVol] = useState<'all' | 'extreme' | 'tight_stop'>('all')
   const [showAdd, setShowAdd] = useState(false)
   const [page, setPage] = useState(0)
   const [showDormantDirs, setShowDormantDirs] = useState(false)   // collapse the 0-hit research-topic directives
   const [showDirectives, setShowDirectives] = useState(false)   // Watch Directives chip wall — collapsed by default (it's a long list; the Directive filter dropdown still works)
   const [ensOpen, setEnsOpen] = useState<Record<string, boolean>>({})   // per-card on-demand ensemble (avoids 24 fetches on mount)
   const [refreshBusy, setRefreshBusy] = useState<Record<string, string>>({})   // per-symbol manual refresh status
+  const autoRefreshDone = useRef<Set<string>>(new Set())   // one auto-refresh per symbol per session
+  const autoRefreshBusy = useRef(false)
+  const { degraded: connDegraded } = useConnectionHealth()
   const [proposeSeed, setProposeSeed] = useState<WatchlistProposeSeed | null>(null)
   const [actionToast, setActionToast] = useState('')
   const [buildBusy, setBuildBusy] = useState<Record<string, string>>({})
@@ -150,7 +160,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
       .then(() => setTimeout(refetchWl, 800)).catch(() => setStarOverride(o => ({ ...o, [sym]: !next })))   // revert on failure
   }
   const starredCount = useMemo(() => items.filter(isStarred).length, [items, starOverride])   // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, fList, fHeld, fStarred, fSector, fAnalyst, search])   // reset to page 1 on any filter change
+  useEffect(() => setPage(0), [fOrigin, fBand, fKind, fDir, fStatus, fRating, fCio, fList, fHeld, fStarred, fSector, fAnalyst, fVol, search])   // reset to page 1 on any filter change
   // named watch lists (directive labels) present across the items, for the List filter
   const listOpts = useMemo(() => Array.from(new Set(
     items.flatMap((i: any) => String(i.watch_lists || '').split(' · ').map(s => s.trim()).filter(Boolean))
@@ -204,31 +214,70 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
     }
   }
 
-  const refreshSymbol = async (sym: string, e: React.MouseEvent) => {
-    e.stopPropagation()
+  const waitEnrichmentFresh = useCallback(async (key: string, maxMs = 90_000): Promise<boolean> => {
+    const deadline = Date.now() + maxMs
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 5000))
+      try {
+        const r = await fetch(`/api/v2/watchlist/items?symbol=${encodeURIComponent(key)}`)
+        const j = await r.json()
+        const it = ((j?.data ?? j)?.items ?? [])[0]
+        if (it?.last_enriched_at && !marketAwareStale(it.last_enriched_at)) return true
+      } catch { /* retry */ }
+    }
+    return false
+  }, [])
+
+  const runRefresh = useCallback(async (sym: string, mode: 'manual' | 'auto' = 'manual'): Promise<boolean> => {
     const key = String(sym).toUpperCase()
-    setRefreshBusy(b => ({ ...b, [key]: '…' }))
+    setRefreshBusy(b => ({ ...b, [key]: mode === 'auto' ? 'auto…' : '…' }))
     try {
       const r = await fetch(`/api/v2/watchlist/${key}/refresh`, { method: 'POST' })
-      const j = await r.json()
+      const j = await r.json().catch(() => ({}))
       const payload = j?.data ?? j
-      if (payload?.ok) {
+      const accepted = r.ok && (payload?.ok || payload?.queued)
+      if (accepted) {
         const n = payload.requeued ?? 0
-        // enrichment can fail while the endpoint still returns ok (agents queued anyway) — say so
-        // instead of "refreshed", or the STALE badge survives and refresh looks broken
+        const bg = payload?.queued === true || r.status === 202
+        if (mode === 'auto' && bg) {
+          autoRefreshDone.current.add(key)
+          setRefreshBusy(b => ({ ...b, [key]: 'auto queued' }))
+          setActionToast(`${key} — refresh queued (background)`)
+          window.setTimeout(() => { refetchWl(); setRefreshBusy(b => { const nxt = { ...b }; delete nxt[key]; return nxt }) }, 20_000)
+          return true
+        }
         if (payload.enriched === false) {
           setRefreshBusy(b => ({ ...b, [key]: 'enrich failed' }))
-          setActionToast(`${key} — technicals refresh failed${payload.enrich_warning ? ` (${String(payload.enrich_warning).slice(0, 80)})` : ''}; agents queued (~15 min)`)
+          if (mode === 'manual') {
+            setActionToast(`${key} — technicals failed${payload.enrich_warning ? ` (${String(payload.enrich_warning).slice(0, 80)})` : ''}; news/agents still queued`)
+          }
         } else {
-          setRefreshBusy(b => ({ ...b, [key]: n ? `queued ${n}` : 'refreshed' }))
+          setRefreshBusy(b => ({ ...b, [key]: mode === 'auto' ? (n ? `auto queued ${n}` : 'auto ok') : (n ? `queued ${n}` : 'refreshed') }))
+          if (mode === 'manual') {
+            setActionToast(bg ? `${key} — refresh queued; CIO agents will update in ~1–2 min` : `${key} — news + catalyst + technicals refreshed; CIO agents prioritized`)
+          }
         }
-        setTimeout(() => { refetchWl(); setRefreshBusy(b => { const nxt = { ...b }; delete nxt[key]; return nxt }) }, 2500)
-      } else {
-        setRefreshBusy(b => ({ ...b, [key]: 'error' }))
+        if (mode === 'auto') {
+          autoRefreshDone.current.add(key)
+          const fresh = await waitEnrichmentFresh(key, 45_000)
+          await refetchWl()
+          setRefreshBusy(b => { const nxt = { ...b }; delete nxt[key]; return nxt })
+          return fresh
+        }
+        setTimeout(() => { refetchWl(); setRefreshBusy(b => { const nxt = { ...b }; delete nxt[key]; return nxt }) }, bg ? 20_000 : 2500)
+        return true
       }
+      setRefreshBusy(b => ({ ...b, [key]: 'error' }))
+      return false
     } catch {
       setRefreshBusy(b => ({ ...b, [key]: 'error' }))
+      return false
     }
+  }, [refetchWl, waitEnrichmentFresh])
+
+  const refreshSymbol = async (sym: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    await runRefresh(sym, 'manual')
   }
 
   const runChatgptTop20 = async () => {
@@ -297,16 +346,41 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
       }
       if (fSector !== 'all' && String(it.profile_sector || '').trim() !== fSector) return false
       if (fAnalyst !== 'all' && it.catalyst_type !== (fAnalyst === 'upgrade' ? 'analyst_upgrade' : 'analyst_downgrade')) return false
+      if (fVol === 'extreme' && !isExtremeVolItem(it)) return false
+      if (fVol === 'tight_stop' && !(it.plan_stop_tight || it.plan_stop_tight_vs_atr20 || it.plan_stop_tight_vs_atr)) return false
       return true
     })
       // starred first (stable — preserves the server's hermes order within each group; also reflects an
       // optimistic toggle immediately, before the server-ordered refetch lands)
       .sort((a, b) => (isStarred(b) ? 1 : 0) - (isStarred(a) ? 1 : 0))
-  }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, fHeld, fStarred, starOverride, fSector, fAnalyst, search, paMap, advMap, directives, outMap, screenerLane])
+  }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, fHeld, fStarred, starOverride, fSector, fAnalyst, fVol, search, paMap, advMap, directives, outMap, screenerLane])
 
   const pageCount = Math.max(1, Math.ceil(visible.length / PER_PAGE))
   const curPage = Math.min(page, pageCount - 1)
   const pageItems = visible.slice(curPage * PER_PAGE, (curPage + 1) * PER_PAGE)
+
+  // Auto-refresh STALE cards on the current page (market-aware; once per symbol per session).
+  // One at a time — each refresh is heavy; parallel refreshes used to wedge the API thread pool.
+  useEffect(() => {
+    if (connDegraded || autoRefreshBusy.current) return
+    const staleOnPage = pageItems.filter(it => {
+      const key = String(it.symbol).toUpperCase()
+      if (autoRefreshDone.current.has(key)) return false
+      return !!it.last_enriched_at && marketAwareStale(it.last_enriched_at)
+    })
+    if (!staleOnPage.length) return
+    const it = staleOnPage[0]
+    const key = String(it.symbol).toUpperCase()
+    autoRefreshBusy.current = true
+    setActionToast(`Auto-refreshing stale card: ${key}`)
+    void (async () => {
+      try {
+        await runRefresh(it.symbol, 'auto')
+      } finally {
+        autoRefreshBusy.current = false
+      }
+    })()
+  }, [pageItems, curPage, runRefresh, connDegraded])
 
   return (
     <div>
@@ -323,14 +397,16 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 14 }}>
         {[
-          { label: 'Loaded · top by rank', value: items.length, color: TEXT0, tip: `top ${items.length} by Hermes rank (not the full ${(byStatus.active ?? 0) + (byStatus.researched ?? 0)}-name universe) — click to clear all filters`, onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setFHeld(false); setFSector('all'); setFAnalyst('all'); setSearch('') } },
+          { label: 'Loaded · top by rank', value: items.length, color: TEXT0, tip: `top ${items.length} by Hermes rank (not the full ${(byStatus.active ?? 0) + (byStatus.researched ?? 0)}-name universe) — click to clear all filters`, onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setFHeld(false); setFSector('all'); setFAnalyst('all'); setFVol('all'); setSearch('') } },
+          { label: 'Extreme vol · ATR₂₀', value: extremeVolN, color: RED, tip: 'filter to extreme volatility (ATR₂₀ ≥10%) — Maria/Telegram period', onClick: () => setFVol(v => v === 'extreme' ? 'all' : 'extreme') },
+          { label: 'Tight stop · <1× ATR₂₀', value: tightStopN, color: AMBER, tip: 'filter to entry plans with stop inside 1× ATR₂₀', onClick: () => setFVol(v => v === 'tight_stop' ? 'all' : 'tight_stop') },
           { label: 'With setup advisory', value: advisories.length, color: BLUE, tip: 'filter to names that have a setup advisory', onClick: () => setFBand('any') },
           { label: 'Caution band', value: cautionN, color: RED, tip: 'filter to caution-band names', onClick: () => setFBand('caution') },
           { label: 'Favorable band', value: favorableN, color: GREEN, tip: 'filter to favorable-band names', onClick: () => setFBand('favorable') },
         ].map(k => (
-          <div key={k.label} title={k.tip} onClick={k.onClick} style={{ ...panel, textAlign: 'center', cursor: 'pointer', outline: (k.label === 'With setup advisory' && fBand === 'any') || (k.label === 'Caution band' && fBand === 'caution') || (k.label === 'Favorable band' && fBand === 'favorable') ? `1px solid ${k.color}` : 'none' }}>
+          <div key={k.label} title={k.tip} onClick={k.onClick} style={{ ...panel, textAlign: 'center', cursor: 'pointer', outline: (k.label.startsWith('Extreme vol') && fVol === 'extreme') || (k.label.startsWith('Tight stop') && fVol === 'tight_stop') || (k.label === 'With setup advisory' && fBand === 'any') || (k.label === 'Caution band' && fBand === 'caution') || (k.label === 'Favorable band' && fBand === 'favorable') ? `1px solid ${k.color}` : 'none' }}>
             <div style={{ fontSize: 26, fontWeight: 900, color: k.color }}>{k.value}</div>
             <div style={{ fontSize: 10, color: MUTED, marginTop: 4, textTransform: 'uppercase' }}>{k.label} <span style={{ color: DIM }}>▸</span></div>
           </div>

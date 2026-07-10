@@ -32,6 +32,134 @@ def log(msg):
     print(f"{datetime.now().strftime('%H:%M:%S')} [cleanup] {msg}", flush=True)
 
 
+def sweep_approved_paper_test_lifecycle(cur, conn, apply: bool) -> dict:
+    """Normalize terminal APPROVED_FOR_PAPER_TEST rows and re-queue drift revalidation cases."""
+    stats = {"executed_to_approved": 0, "requeued_revalidation": 0, "expired_terminal": 0,
+             "enrichment_cleared": 0}
+    cur.execute("""
+        SELECT id, symbol, paper_submit_state, execution_eligibility_status,
+               execution_eligibility_reason, expires_at
+        FROM paper_trade_proposals
+        WHERE status = 'APPROVED_FOR_PAPER_TEST'
+    """)
+    rows = cur.fetchall()
+    for pid, sym, submit_state, elig, elig_reason, expires_at in rows:
+        cur.execute("""
+            SELECT status, lifecycle_state, broker_order_id
+            FROM paper_trades WHERE proposal_id = %s ORDER BY id DESC LIMIT 1
+        """, (pid,))
+        trade = cur.fetchone()
+
+        if elig == 'NEEDS_REVALIDATION' or submit_state in ('VALIDATING', 'NOT_SUBMITTED'):
+            if apply:
+                cur.execute("""
+                    UPDATE paper_trade_proposals
+                    SET status = 'PENDING',
+                        material_change_pending_approval = true,
+                        approved_pending_recheck = true,
+                        execution_recheck_required = true,
+                        paper_submit_state = NULL,
+                        paper_trade_id = NULL,
+                        approved_at = NULL,
+                        action_label = COALESCE(action_label, 'Requeued: execution revalidation'),
+                        updated_at = NOW()
+                    WHERE id = %s AND status = 'APPROVED_FOR_PAPER_TEST'
+                """, (pid,))
+                if cur.rowcount:
+                    stats["requeued_revalidation"] += 1
+                    log(f"  #{pid} {sym} requeued (revalidation: {elig_reason or submit_state})")
+            else:
+                stats["requeued_revalidation"] += 1
+                log(f"  [dry-run] #{pid} {sym} would requeue (revalidation)")
+            continue
+
+        if submit_state == 'EXECUTED' and trade:
+            t_status, t_lifecycle, broker_oid = trade
+            if t_status in ('closed', 'superseded_by_fill') or t_lifecycle == 'closed' or broker_oid:
+                if apply:
+                    cur.execute("""
+                        UPDATE paper_trade_proposals
+                        SET status = 'APPROVED', updated_at = NOW()
+                        WHERE id = %s AND status = 'APPROVED_FOR_PAPER_TEST'
+                    """, (pid,))
+                    if cur.rowcount:
+                        stats["executed_to_approved"] += 1
+                        log(f"  #{pid} {sym} → APPROVED (paper trade completed)")
+                else:
+                    stats["executed_to_approved"] += 1
+                continue
+
+        if expires_at and submit_state in ('BLOCKED', None) and str(elig or '') != 'NEEDS_REVALIDATION':
+            if apply:
+                cur.execute("""
+                    UPDATE paper_trade_proposals
+                    SET status = 'EXPIRED', updated_at = NOW()
+                    WHERE id = %s AND status = 'APPROVED_FOR_PAPER_TEST'
+                      AND expires_at < NOW()
+                """, (pid,))
+                if cur.rowcount:
+                    stats["expired_terminal"] += 1
+                    log(f"  #{pid} {sym} → EXPIRED (past expires_at)")
+            elif expires_at:
+                stats["expired_terminal"] += 1
+
+    return stats
+
+
+def sweep_stale_enrichment_in_progress(cur, conn, apply: bool, *, stale_minutes: int = 30) -> dict:
+    """Clear IN_PROGRESS on terminal rows; reset stuck active rows so enrichment cron can retry."""
+    stats = {"terminal_cleared": 0, "active_reset": 0}
+    stale_m = max(5, int(stale_minutes))
+    cur.execute(
+        f"""SELECT COUNT(*) FROM paper_trade_proposals
+            WHERE enrichment_status = 'IN_PROGRESS'
+              AND status IN ('EXPIRED', 'REJECTED', 'APPROVED', 'RISK_BLOCKED')"""
+    )
+    terminal_n = int(cur.fetchone()[0] or 0)
+    cur.execute(
+        f"""SELECT COUNT(*) FROM paper_trade_proposals
+            WHERE enrichment_status = 'IN_PROGRESS'
+              AND status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST', 'APPROVED')
+              AND COALESCE(enrichment_last_attempt_at, updated_at)
+                  < NOW() - INTERVAL '{stale_m} minutes'"""
+    )
+    active_n = int(cur.fetchone()[0] or 0)
+    if not apply:
+        stats["terminal_cleared"] = terminal_n
+        stats["active_reset"] = active_n
+        return stats
+    if terminal_n:
+        cur.execute("""
+            UPDATE paper_trade_proposals
+            SET enrichment_status = 'COMPLETE', updated_at = NOW()
+            WHERE enrichment_status = 'IN_PROGRESS'
+              AND status IN ('EXPIRED', 'REJECTED', 'APPROVED', 'RISK_BLOCKED')
+        """)
+        stats["terminal_cleared"] = cur.rowcount
+    if active_n:
+        cur.execute(
+            f"""UPDATE paper_trade_proposals
+                SET enrichment_status = NULL, updated_at = NOW()
+                WHERE enrichment_status = 'IN_PROGRESS'
+                  AND status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST', 'APPROVED')
+                  AND COALESCE(enrichment_last_attempt_at, updated_at)
+                      < NOW() - INTERVAL '{stale_m} minutes'"""
+        )
+        stats["active_reset"] = cur.rowcount
+    if stats["terminal_cleared"] or stats["active_reset"]:
+        conn.commit()
+    return stats
+
+
+def run_pipeline_sweep(cur, conn, apply: bool, *, stale_minutes: int = 30) -> dict:
+    """Lifecycle normalize + enrichment IN_PROGRESS sweep — no drift or 24h stale reject."""
+    lifecycle = sweep_approved_paper_test_lifecycle(cur, conn, apply=apply)
+    enrich = sweep_stale_enrichment_in_progress(cur, conn, apply=apply, stale_minutes=stale_minutes)
+    lifecycle["enrichment_terminal_cleared"] = enrich.get("terminal_cleared", 0)
+    lifecycle["enrichment_active_reset"] = enrich.get("active_reset", 0)
+    return lifecycle
+
+
 def drift_pass(cur, conn, apply: bool) -> int:
     """PRICE DRIFT (2026-07-03, mirrors the watchlist plan-drift rule): a PENDING proposal whose
     live price is >PROPOSAL_DRIFT_PCT from proposed_entry has stale levels — filling it would be
@@ -89,10 +217,30 @@ def main():
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--dry-run", action="store_true")
     g.add_argument("--apply", action="store_true")
+    p.add_argument(
+        "--pipeline-sweep",
+        action="store_true",
+        help="Only normalize APPROVED_FOR_PAPER_TEST + clear stale enrichment IN_PROGRESS",
+    )
+    p.add_argument(
+        "--in-progress-stale-minutes",
+        type=int,
+        default=30,
+        help="Minutes before an active IN_PROGRESS row is reset (pipeline-sweep)",
+    )
     args = p.parse_args()
 
     conn = get_conn()
     cur = conn.cursor()
+
+    if args.pipeline_sweep:
+        sweep = run_pipeline_sweep(
+            cur, conn, apply=args.apply, stale_minutes=args.in_progress_stale_minutes,
+        )
+        mode = "APPLY" if args.apply else "DRY RUN"
+        log(f"{mode} pipeline sweep: {sweep}")
+        conn.close()
+        return
 
     # Find stale proposals. Never sweep an APPROVED row that already produced a paper trade
     # (it would flip an executed proposal to REJECTED while its paper_trades row stays open).
@@ -113,6 +261,15 @@ def main():
     drift_n = drift_pass(cur, conn, apply=args.apply)
     if drift_n and args.dry_run:
         log(f"DRY RUN — {drift_n} drift rejection(s) not applied.")
+
+    lifecycle = sweep_approved_paper_test_lifecycle(cur, conn, apply=args.apply)
+    enrich = sweep_stale_enrichment_in_progress(
+        cur, conn, apply=args.apply, stale_minutes=args.in_progress_stale_minutes,
+    )
+    lifecycle["enrichment_terminal_cleared"] = enrich.get("terminal_cleared", 0)
+    lifecycle["enrichment_active_reset"] = enrich.get("active_reset", 0)
+    if any(lifecycle.values()):
+        log(f"APPROVED_FOR_PAPER_TEST lifecycle: {lifecycle}")
 
     if not stale:
         log("No stale paper proposals to clean up.")

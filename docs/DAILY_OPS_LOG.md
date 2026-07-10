@@ -1,4 +1,12 @@
 
+## 2026-07-10 — Ross/Warrior TradeAI alignment + CC v3 scanner polish
+
+Deployed Ross-catalog awareness lanes (squeeze, runner, micro-float, low-price, top gainer, catalyst
+exception) with DB persist + Jul 6–10 backfill (6641 rows). Weekly warrior audit cron installed
+(Mon 8:30 AM ET); pilot recall **52%** (25 sym-days). CC v3 Trade AI: default **Actionable** filter,
+Manual tab consolidation, sort dropdown, LOW pill, Vol column, `CountryFlag` PNGs. Doc:
+`docs/WARRIOR_ROSS_TRADEAI_ALIGNMENT.md`. Drive sync post-commit.
+
 ## 2026-07-07 — Options paper lifecycle monitor + docs sync
 
 Deployed Alpaca paper position lifecycle monitor (registry, Schwab marks, UI/Telegram alerts, **Open Options**

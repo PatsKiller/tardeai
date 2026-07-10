@@ -166,11 +166,18 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
                   <td colSpan={4} style={{ ...cell, color: WL.signal.amber, fontFamily: 'inherit' }}>exceeds available cash ({k(r.base)}) — reduce size</td>
                 ) : (
                   <>
-                    <td style={cell} title={
-                      r.pos.concentrationCapped ? `capped by the position limit: ${r.cap?.label} ($${((r.cap?.dollars ?? 0) / 1000).toFixed(1)}k)`
-                        : r.cashCapped ? `cash-capped from the ${riskPct}% risk budget` : undefined
-                    }>
-                      {r.pos.shares.toLocaleString()}{r.pos.concentrationCapped || r.cashCapped ? ' ⚠' : ''}
+                    <td style={cell}>
+                      <div>{r.pos.shares.toLocaleString()}{r.pos.concentrationCapped || r.cashCapped ? ' ⚠' : ''}</div>
+                      {r.pos.concentrationCapped && (
+                        <div style={{ fontSize: 9, color: WL.signal.amber, fontWeight: 700, lineHeight: 1.3 }}>
+                          ⚠ {r.cap?.label} cap (${((r.cap?.dollars ?? 0) / 1000).toFixed(1)}k)
+                        </div>
+                      )}
+                      {r.cashCapped && !r.pos.concentrationCapped && (
+                        <div style={{ fontSize: 9, color: WL.signal.amber, fontWeight: 700, lineHeight: 1.3 }}>
+                          ⚠ cash-capped at {riskPct}% risk
+                        </div>
+                      )}
                     </td>
                     <td style={cell}>{k(r.pos.investment)}</td>
                     <td style={cell}>
@@ -184,8 +191,8 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
                     <td style={cell}>
                       {r.base > 0 ? `${r.deployPct.toFixed(1)}%` : '—'}
                       {r.tight
-                        ? <span style={{ color: WL.signal.amber, fontWeight: 700, fontFamily: 'inherit' }} title="deployment above 50% of this account's available cash — liquidity is tight"> tight</span>
-                        : <span style={{ color: WL.text.dim, fontFamily: 'inherit' }} title="deployment at or below 50% of this account's available cash"> ok</span>}
+                        ? <span style={{ color: WL.signal.amber, fontWeight: 700, fontFamily: 'inherit' }}> tight ⚠ &gt;50% cash</span>
+                        : <span style={{ color: WL.text.dim, fontFamily: 'inherit' }}> ok</span>}
                     </td>
                   </>
                 )}

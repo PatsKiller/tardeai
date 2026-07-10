@@ -755,30 +755,42 @@ def _run_cycle_locked():
             log.warning(f"  {sym}: trade plan gate check failed (non-fatal): {_tp_e}")
 
         # ── 2e-ter: Finviz technical gate (align ATM with Proposals technical grade) ──
-        try:
-            from atm_technical_gate import atm_technical_allowed
-            _lp = None
+        # Curated paper-lane proposals (pullback_macd, watchlist) already passed screener/bridge
+        # quality — skip Finviz on paper accounts so ATM burn-in isn't blocked by lagging scores.
+        _skip_finviz = False
+        if acct_mode == "paper":
             try:
-                _lp = float(p.get("proposed_entry") or 0) or None
+                from atm_proposal_source_policy import is_curated_proposal
+                _skip_finviz = is_curated_proposal(p)
             except Exception:
-                pass
-            _ok, _tg_reason, _tg_meta = atm_technical_allowed(
-                pid, sym, conn=conn, live_price=_lp,
-            )
-            if not _ok:
-                _detail = (
-                    f"{_tg_meta.get('technical_grade')} score={_tg_meta.get('technical_score')} "
-                    f"({_tg_reason})"
+                _skip_finviz = False
+        if _skip_finviz:
+            log.info(f"  {sym}: skipping Finviz technical gate (curated paper-lane source)")
+        else:
+            try:
+                from atm_technical_gate import atm_technical_allowed
+                _lp = None
+                try:
+                    _lp = float(p.get("proposed_entry") or 0) or None
+                except Exception:
+                    pass
+                _ok, _tg_reason, _tg_meta = atm_technical_allowed(
+                    pid, sym, conn=conn, live_price=_lp,
                 )
-                reasons.append({"gate": "finviz_technical", "detail": _detail[:160]})
-                _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
-                             "deferred", reasons, health, pos_open, pos_total,
-                             new_today, new_total, pnl_acct, total_pnl_pct,
-                             b1_flag, config_hash, mode)
-                log.info(f"  {sym}: deferred (Finviz technical — {_detail[:80]})")
-                continue
-        except Exception as _ft_e:
-            log.warning(f"  {sym}: Finviz technical gate check failed (non-fatal): {_ft_e}")
+                if not _ok:
+                    _detail = (
+                        f"{_tg_meta.get('technical_grade')} score={_tg_meta.get('technical_score')} "
+                        f"({_tg_reason})"
+                    )
+                    reasons.append({"gate": "finviz_technical", "detail": _detail[:160]})
+                    _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+                                 "deferred", reasons, health, pos_open, pos_total,
+                                 new_today, new_total, pnl_acct, total_pnl_pct,
+                                 b1_flag, config_hash, mode)
+                    log.info(f"  {sym}: deferred (Finviz technical — {_detail[:80]})")
+                    continue
+            except Exception as _ft_e:
+                log.warning(f"  {sym}: Finviz technical gate check failed (non-fatal): {_ft_e}")
 
         # ── 2f: Decision ──
         if mode == "dry_run":

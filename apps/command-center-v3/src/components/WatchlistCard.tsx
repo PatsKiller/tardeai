@@ -20,7 +20,7 @@ import {
   type CardActionType,
 } from '../lib/watchlistCardAction'
 import { WL, heroStateStyle, verdictWord, numStyle } from '../lib/watchlistCardTokens'
-import { resolveCountry } from '../lib/country'
+import CountryFlag from './CountryFlag'
 import { LadderLine, VerdictBanner } from './primitives/cardPrimitives'
 import { type ProposalAccount, type RiskPct } from '../lib/watchlistProposeSizing'
 import { EvidenceBlock } from './EvidenceBlock'
@@ -29,6 +29,14 @@ import HoldingReportLinks from './HoldingReportLinks'
 import SizingTable from './SizingTable'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
 import CloudLlmRunButtons from './CloudLlmRunButtons'
+import {
+  resolvePlanVolContext,
+  stopVolatilityLine,
+  stopVolatilityTooltip,
+  volatilityBadgeStyle,
+  volatilityBadgeText,
+  volatilityBadgeTooltip,
+} from '../lib/watchlistVolatility'
 
 // Security Card v3 — dashboard condensation. Two tight top lines (header, single-line banner)
 // over a 2×2 module grid (Trade Plan ⟷ Sizing & Account Risk, Conviction ⟷ Intelligence) and one
@@ -158,10 +166,18 @@ export default function WatchlistCard({
   const rr = it.entry_rr != null ? Number(it.entry_rr)
     : (entry && stop && planTarget && entry > stop && planTarget > entry ? (planTarget - entry) / (entry - stop) : null)
   const hasPlan = entry != null && stop != null
+  const volCtx = resolvePlanVolContext(it, fv, entry, stop)
+  const volBadge = volatilityBadgeStyle(volCtx.band)
   const ladder = entry != null || stop != null ? exitLadder(entry, stop, planTarget, street) : null
   const warns = entry != null || stop != null
-    ? planWarnings({ entry, stop, planTarget, rr, pctCash: null, streetTarget: street, analystUpside: pa?.upside != null ? Number(pa.upside) : null })
+    ? planWarnings({
+      entry, stop, planTarget, rr, pctCash: null, streetTarget: street,
+      analystUpside: pa?.upside != null ? Number(pa.upside) : null,
+      stopAtrMult14: volCtx.stopAtrMult14, stopAtrMult20: volCtx.stopAtrMult20,
+      atrPct14: volCtx.atrPct14, atrPct20: volCtx.atrPct20,
+    })
     : []
+  const stopVolLine = stopVolatilityLine(volCtx)
   const dataDoubt = (it.synthesis_data_i_doubt && it.synthesis_data_i_doubt !== 'none')
     ? String(it.synthesis_data_i_doubt).trim() : ''
   const action = deriveRecommendedAction({
@@ -197,7 +213,6 @@ export default function WatchlistCard({
     ? [sc?.sector || it.profile_sector, sc?.industry || it.profile_industry].filter(Boolean).join(' / ')
     : null
   const companyName = sc?.name || sc?.company_name || it.profile_name || null
-  const ctry = resolveCountry({ symbol: it.symbol, country: it.country, countryName: it.country_name })
   const tenureDays = it.first_seen_at
     ? Math.max(0, Math.floor((Date.now() - new Date(it.first_seen_at).getTime()) / 864e5))
     : null
@@ -249,9 +264,12 @@ export default function WatchlistCard({
   if (reasoning && reasoning !== action.warning?.text) whyParts.push(reasoning)
   const whyLine = whyParts.join(' · ')
 
-  const planNote = (!action.warning && action.verdict !== 'FIX' && warns.length)
-    ? { text: warns[0].text, color: warns[0].color }
-    : null
+  const tightStopWarn = warns.find(w => w.text.includes('ATR₂₀') || w.text.includes('ATR₁₄')) ?? null
+  const planNote = tightStopWarn
+    ? { text: tightStopWarn.text, color: tightStopWarn.color }
+    : (!action.warning && action.verdict !== 'FIX' && warns.length)
+      ? { text: warns[0].text, color: warns[0].color }
+      : null
 
   const hasEvidence = !!(it.synthesis_evidence?.length || action.detail || adv?.note)
 
@@ -292,7 +310,9 @@ export default function WatchlistCard({
   addMenuItem('ENSEMBLE', ensOpen ? 'Hide ensemble' : 'Ensemble check')
   if (hasPlan) addMenuItem('WATCH_ON_DESK', 'Monitor on desk')
 
-  const worstDq = dqFlags.find(f => f.severity === 'red') ?? dqFlags[0] ?? null
+  const worstDq = dqFlags.find(f => f.severity === 'red')
+    ?? dqFlags.find(f => f.label.startsWith('Tight stop'))
+    ?? dqFlags[0] ?? null
   const dqColor = worstDq ? (worstDq.severity === 'red' ? WL.signal.red : WL.signal.amber) : WL.signal.teal
   const dqText = worstDq
     ? `${worstDq.label}${dqFlags.length > 1 ? ` · ${dqFlags.length - 1} more issue${dqFlags.length > 2 ? 's' : ''}` : ''}`
@@ -357,7 +377,7 @@ export default function WatchlistCard({
       }}
     >
       {/* ① Header — one line */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, padding: '11px 16px 9px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14, padding: '11px 16px 9px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
           <button
             onClick={e => { e.stopPropagation(); onToggleStar(e) }}
@@ -365,7 +385,7 @@ export default function WatchlistCard({
             style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, padding: 0, color: isStarred ? WL.signal.amber : WL.text.dim }}
           >{isStarred ? '★' : '☆'}</button>
           <span style={{ ...numStyle, fontWeight: 800, fontSize: 21 }}>{it.symbol}</span>
-          <span title={ctry ? `${ctry.name} (${ctry.code})` : 'Country unknown'} style={{ fontSize: 15, lineHeight: 1, flexShrink: 0, cursor: 'help' }}>{ctry ? ctry.flag : '🌍'}</span>
+          <CountryFlag symbol={it.symbol} country={it.country} countryName={it.country_name} size={22} />
           {isHeld && (
             <span title={heldTip} style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.08em', color: WL.signal.amber, border: '1px solid rgba(245,166,35,.35)', borderRadius: 4, padding: '1px 5px', flexShrink: 0 }}>HELD</span>
           )}
@@ -375,12 +395,33 @@ export default function WatchlistCard({
             <span style={{ fontSize: 11, color: WL.text.dim, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={provenanceText}>{provenanceText}</span>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-          <div style={{ textAlign: 'right' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+          <div style={{ textAlign: 'right', minWidth: 0 }}>
             <div style={{ ...numStyle, fontSize: 18, fontWeight: 800 }}>{it.price != null ? money(it.price) : '—'}</div>
             {it.change_pct != null && (
               <div style={{ ...numStyle, fontSize: 11.5, fontWeight: 700, color: Number(it.change_pct) >= 0 ? WL.price.up : WL.price.down }}>
                 {Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%
+              </div>
+            )}
+            {volatilityBadgeText(volCtx) && (
+              <div
+                title={volatilityBadgeTooltip(volCtx)}
+                style={{
+                  marginTop: 5,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: '.03em',
+                  lineHeight: 1.4,
+                  color: volBadge.color,
+                  border: `1px solid ${volBadge.border}`,
+                  background: volBadge.bg,
+                  borderRadius: 4,
+                  padding: '3px 6px',
+                  whiteSpace: 'normal',
+                  cursor: 'help',
+                }}
+              >
+                {volatilityBadgeText(volCtx)}
               </div>
             )}
           </div>
@@ -427,7 +468,19 @@ export default function WatchlistCard({
             <div>
               <div style={planSubLabel}>Stop</div>
               <div style={{ ...numStyle, fontSize: 15.5, fontWeight: 700, marginTop: 1, color: hasPlan && stop == null ? WL.signal.red : WL.text.primary }}>{money(it.entry_stop)}</div>
-              {entry != null && stop != null && <div style={{ fontSize: 9.5, color: WL.text.dim }}>{pct(entry, stop)}</div>}
+              {stopVolLine && (
+                <div
+                  title={stopVolatilityTooltip(volCtx, entry, stop)}
+                  style={{
+                    fontSize: 9.5,
+                    color: volCtx.tightVsAtr ? WL.signal.amber : WL.text.dim,
+                    fontWeight: volCtx.tightVsAtr ? 700 : 400,
+                    cursor: 'help',
+                  }}
+                >
+                  {stopVolLine}{volCtx.tightVsAtr ? ' ⚠' : ''}
+                </div>
+              )}
             </div>
             <div>
               <div style={planSubLabel}>Target</div>

@@ -151,51 +151,14 @@ def _ollama_preplan(symbol: str, score: int, decision: str,
 import re as _re
 
 def is_disqualified_ticker(symbol: str, ticker_row: Dict[str, Any]) -> tuple[bool, str]:
-    """Pre-scoring disqualification for dangerous tickers.
-    Returns (True, reason) if ticker should be auto-excluded.
-    Checks: reverse splits, micro-float + spike, sub-$2 + high move.
-    """
-    reasons = []
-
-    # Check 1: Reverse split in last 60 days via yfinance
-    try:
-        import yfinance as yf
-        from datetime import datetime, timedelta
-        import pandas as pd
-        actions = yf.Ticker(symbol).actions
-        if actions is not None and not actions.empty and 'Stock Splits' in actions.columns:
-            cutoff = pd.Timestamp.now(tz=actions.index.tz) - timedelta(days=60) if actions.index.tz else pd.Timestamp.now() - timedelta(days=60)
-            recent = actions[
-                (actions.index >= cutoff) &
-                (actions['Stock Splits'] > 0) &
-                (actions['Stock Splits'] < 1.0)
-            ]
-            if not recent.empty:
-                ratio = recent['Stock Splits'].iloc[-1]
-                dt = recent.index[-1].strftime('%Y-%m-%d')
-                reasons.append(f"REVERSE_SPLIT: {ratio:.2f}:1 on {dt} — delisting avoidance")
-    except Exception:
-        pass
-
-    # Check 2: Sub-$2 price + >30% spike = post-split distortion or pump
-    try:
-        price = float(ticker_row.get("price", 0) or 0)
-        change = abs(float(str(ticker_row.get("change_percent", ticker_row.get("change_pct", 0)) or 0).replace('%', '')))
-        if price < 2.0 and change > 30:
-            reasons.append(f"LOW_PRICE_SPIKE: ${price:.2f} up {change:.0f}% — pump or split distortion")
-    except Exception:
-        pass
-
-    # Check 3: Micro-float (<1M) + high RVOL (>5x) = manipulation
-    try:
-        float_m = float(ticker_row.get("float_m", 0) or 0)
-        rvol = float(ticker_row.get("relative_volume", 0) or 0)
-        if 0 < float_m < 1.0 and rvol > 5.0:
-            reasons.append(f"MICRO_FLOAT_RVOL: {float_m:.1f}M float with {rvol:.1f}x RVOL — manipulation risk")
-    except Exception:
-        pass
-
-    return (len(reasons) > 0, ' | '.join(reasons))
+    """Hard pre-score disqualification. Reverse-split squeezes → MANUAL_REVIEW (not DQ)."""
+    import sys
+    from pathlib import Path
+    _lib = Path(__file__).resolve().parent / "lib"
+    if str(_lib) not in sys.path:
+        sys.path.insert(0, str(_lib))
+    from squeeze_manual_review import is_disqualified_hard
+    return is_disqualified_hard(symbol, ticker_row)
 
 
 _COMPANY_NAME_CACHE: dict = {}
@@ -758,9 +721,21 @@ def score_all(
             "has_fresh_catalyst": False, "top_catalyst": None, "catalysts": [],
         })
 
-        # ── FIX 1: Auto-disqualification (reverse split, micro-float spike) ──
-        is_disq, disq_reason = is_disqualified_ticker(sym, row)
-        if is_disq:
+        # ── FIX 1: Risk classification (squeeze manual vs hard DQ) ──
+        import sys as _sys_sq
+        from pathlib import Path as _Path_sq
+        _sq_lib = _Path_sq(__file__).resolve().parent / "lib"
+        if str(_sq_lib) not in _sys_sq.path:
+            _sys_sq.path.insert(0, str(_sq_lib))
+        from squeeze_manual_review import classify_ticker_risk, apply_squeeze_manual_fields
+        from high_rvol_manual_review import qualifies_high_rvol_manual, apply_high_rvol_manual_fields
+        from micro_float_manual_review import apply_micro_float_manual_fields
+        from low_price_manual_review import apply_low_price_manual_fields
+        from catalyst_exception import attach_catalyst_exception_tags
+
+        risk = classify_ticker_risk(sym, row)
+        if risk["action"] in ("hard_dq", "standard_dq"):
+            disq_reason = risk["reasons"]
             disqualified_count += 1
             print(f"  [scoring] DISQUALIFIED {sym}: {disq_reason}")
             results.append({
@@ -778,6 +753,10 @@ def score_all(
                 "top_catalyst": enrichment.get("top_catalyst"),
             })
             continue
+
+        squeeze_manual = risk["action"] == "squeeze_manual"
+        micro_float_manual = risk["action"] == "micro_float_manual"
+        low_price_manual = risk["action"] == "low_price_manual"
 
         # ── FIX 2: Catalyst relevance validation ──
         top_cat = enrichment.get("top_catalyst") or {}
@@ -828,7 +807,21 @@ def score_all(
         scored["ticker_perf_1m"] = sector_ctx.get("ticker_perf_1m")
         scored["sector_perf_1m"] = sector_ctx.get("sector_perf_1m")
         scored["vs_sector_pct"] = sector_ctx.get("vs_sector_pct")
+        if squeeze_manual:
+            apply_squeeze_manual_fields(scored, rs_reason=risk["reverse_split"] or risk["reasons"])
+            print(f"  [scoring] SQUEEZE_MANUAL_REVIEW {sym}: {risk['reasons'][:80]}")
+        elif micro_float_manual:
+            apply_micro_float_manual_fields(scored, mf_reason=risk["reasons"])
+            print(f"  [scoring] MICRO_FLOAT_MANUAL_REVIEW {sym}: {risk['reasons'][:80]}")
+        elif low_price_manual:
+            apply_low_price_manual_fields(scored, lp_reason=risk["reasons"])
+            print(f"  [scoring] LOW_PRICE_MANUAL_REVIEW {sym}: {risk['reasons'][:80]}")
+        elif qualifies_high_rvol_manual(scored):
+            apply_high_rvol_manual_fields(scored)
+            print(f"  [scoring] HIGH_RVOL_MANUAL_REVIEW {sym}: RVOL={scored.get('rvol')}")
         results.append(scored)
+
+    attach_catalyst_exception_tags(results)
 
     if disqualified_count:
         print(f"  [scoring] Data quality: {disqualified_count} disqualified, {unverified_count} catalyst unverified")
@@ -855,6 +848,12 @@ def filter_candidates(
     candidates = []
     for row in tickers:
         ps = pre_score(row, weights)
+        boost = row.get("_pre_score")
+        if boost is not None:
+            try:
+                ps = max(ps, int(boost))
+            except (TypeError, ValueError):
+                pass
         row["_pre_score"] = ps
         if ps >= min_pre_score:
             candidates.append(str(row.get("symbol", "")).upper())

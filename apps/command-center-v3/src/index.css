@@ -18,6 +18,17 @@
      amber/WAIT, or red/AVOID. A Social Scout is "interesting, not there yet" — never tradeable. */
   --social-scout: #a855f7;
   --social-scout-dim: rgba(168, 85, 247, 0.15);
+  --top-gainer: #f97316;
+  --top-gainer-dim: rgba(249, 115, 22, 0.15);
+  /* Squeeze / reverse-split manual review — cyan, not GO green */
+  --squeeze: #06b6d4;
+  --squeeze-dim: rgba(6, 182, 212, 0.15);
+  --runner: #f97316;
+  --runner-dim: rgba(249, 115, 22, 0.15);
+  --micro-float: #a855f7;
+  --micro-float-dim: rgba(168, 85, 247, 0.15);
+  --low-price: #eab308;
+  --low-price-dim: rgba(234, 179, 8, 0.15);
   --mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
   --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   /* aliases for ported v2 primitives (ActionButton / StatusBadge / StateCard / ScreenerConfigModal) */

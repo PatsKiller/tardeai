@@ -1,0 +1,3 @@
+# Ross vs TradeAI weekly alignment audit — Mon 8:30 AM ET
+# Install: crontab -e and append (adjust ROOT path):
+# 30 13 * * 1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_port/launchers/run_warrior_weekly_audit.sh

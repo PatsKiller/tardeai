@@ -337,6 +337,21 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         live = load_live_candidates(root, run_label, date_str, out)
         tickers = live["dataframe"].to_dict(orient="records")
         if not tickers: return
+        try:
+            import sys as _sys_uc
+            _uc_lib = root / "scripts" / "lib"
+            if str(_uc_lib) not in _sys_uc.path:
+                _sys_uc.path.insert(0, str(_uc_lib))
+            from universe_coverage import inject_prime_setup_universe
+            from ross_catalog_universe import inject_ross_catalog_universe
+            _inj = inject_prime_setup_universe(tickers, root, limit=30, min_change_pct=5.0)
+            if _inj:
+                print(f"  [live] +{_inj} top-gainer universe injects")
+            _rc = inject_ross_catalog_universe(tickers, root, date_str)
+            if _rc:
+                print(f"  [live] +{_rc} Ross catalog alias injects")
+        except Exception as _e:
+            print(f"  [live] universe inject warning: {_e}")
         print(f"  [live] {len(tickers)} tickers")
     except Exception as e:
         print(f"  [live] ingestion error: {e}"); return
@@ -508,19 +523,34 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
     try:
         from db_adapter import _execute
         _run_id = f"{date_str}_{run_label}_live_{time_str.replace(':','')}"
-        _go_wait = [t for t in scored if t.get("decision") in ("GO", "WAIT")]
+        _go_wait = [t for t in scored if t.get("decision") in ("GO", "WAIT", "MANUAL_REVIEW")]
+        import sys as _sys_live_persist
+        _lib = root / "scripts" / "lib"
+        if str(_lib) not in _sys_live_persist.path:
+            _sys_live_persist.path.insert(0, str(_lib))
+        from scan_persist_extra import awareness_persist_values, awareness_persist_update_clause
+
+        _awareness_update = awareness_persist_update_clause()
         for t in _go_wait:
-            _execute("""
+            _aware = awareness_persist_values(t)
+            _execute(f"""
                 INSERT INTO trade_ai_scans (
                     run_id, run_date, run_label, run_type, symbol, score, grade, decision,
                     rvol, price, change_pct, gap_pct, float_m,
                     catalyst, catalyst_verified, catalyst_confidence,
-                    disqualified, sector, industry, country, source, pillar_breakdown
+                    disqualified, sector, industry, country, source, pillar_breakdown, volume,
+                    awareness_status, setup_class, symbol_candidate, symbol_alias_confidence,
+                    manual_review_required, operator_pill, operator_subtitle, operator_color_token,
+                    not_validation_ready, not_tradeable
                 ) VALUES (
                     %s, %s, %s, 'live', %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s,
+                    %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s
                 )
                 ON CONFLICT (symbol, run_date) DO UPDATE SET
                     run_id = EXCLUDED.run_id, run_label = EXCLUDED.run_label, run_type = EXCLUDED.run_type,
@@ -530,6 +560,8 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                     catalyst_verified = EXCLUDED.catalyst_verified, catalyst_confidence = EXCLUDED.catalyst_confidence,
                     disqualified = EXCLUDED.disqualified, sector = EXCLUDED.sector, industry = EXCLUDED.industry,
                     country = EXCLUDED.country, source = EXCLUDED.source, pillar_breakdown = EXCLUDED.pillar_breakdown,
+                    volume = EXCLUDED.volume,
+                    {_awareness_update},
                     scanned_at = now()
             """, (
                 _run_id, date_str, run_label, t.get("symbol",""),
@@ -542,6 +574,8 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                 t.get("sector",""), t.get("industry",""), t.get("country",""),
                 t.get("_source", "screener"),
                 json.dumps(t.get("pillar_breakdown") or {}),
+                int(t.get("volume") or 0) or None,
+                *_aware,
             ))
         if _go_wait:
             print(f"  [live] {len(_go_wait)} tickers → trade_ai_scans")

@@ -29,8 +29,12 @@
 3. **Trading hub → ATM Controls tab** — automated-approval mode, per-account settings, kill switches.
 4. **Trading hub → Broker Orders tab** — live-broker order intents and their per-order approvals.
    Telegram approval messages deep-link here (`/v3/trading?tab=Broker+Orders&intent=<id>`).
+5. **Trading hub → Trade AI tab** — Market Opportunities Scanner. Default **Actionable** view (GO + WAIT +
+   Manual lanes only). Manual-tab names (squeeze/runner/micro/low) are **Entry Desk only** — never
+   auto-GO. Sort dropdown + copy lists share the same key. Ross Alignment Audit strip shows weekly recall.
 
 **End of day / weekly.** EOD (3 min) and Sunday Weekly Review (15 min) checklists are in the ATM runbook.
+Monday AM: warrior audit cron refreshes Ross alignment panel (see §5 cron hygiene).
 
 **Approvals rule of thumb:** per-order approval for anything live-bound is satisfiable via **either**
 channel (web typed-ticker **or** Telegram code, `REQUIRED_CHANNELS=1`), single-use, TTL-bound to one
@@ -156,6 +160,12 @@ Then restart the server if needed (§6).
      `crontab -l | grep -A8 options-paper-lifecycle-cron`. Applies
      `migrations/2026_07_07_options_monitored_positions.sql` when `DATABASE_URL` is in `.env`.
      See [docs/OPTIONS_STRATEGY_PIPELINE.md](docs/OPTIONS_STRATEGY_PIPELINE.md) § lifecycle monitor.
+   - **Warrior weekly audit** — Mon 8:30 AM ET:
+     `linux_port/launchers/run_warrior_weekly_audit.sh` (proposal in
+     `crontab_warrior_audit_proposal.txt`). Manual run:
+     `python3 scripts/warrior_weekly_audit_cron.py --days 7`. Panel:
+     Trading → Trade AI → Ross Alignment Audit; API: `/api/v2/warrior-audit/latest`.
+     See [docs/WARRIOR_ROSS_TRADEAI_ALIGNMENT.md](docs/WARRIOR_ROSS_TRADEAI_ALIGNMENT.md).
 5. **Runtime state stays out of git.** `data/`, `state/`, `/reports/`, and
    `data/runtime/*_latest.json` / `*_history.json` are gitignored — never re-commit them after a backfill.
 

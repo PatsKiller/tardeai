@@ -31,12 +31,31 @@ from market_session import (current_market_session, is_market_open, is_recommend
 log = logging.getLogger("paper_execution_revalidator")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
-# Material change thresholds
+# Material change thresholds (global defaults; strategy/curated sources may use wider bands)
 PRICE_DRIFT_WARN_PCT = 1.5
 PRICE_DRIFT_BLOCK_PCT = 3.0
 ENTRY_CHANGE_BLOCK_BPS = 200  # 2%
 SPREAD_MAX_BPS = 100
 RISK_INCREASE_BLOCK_PCT = 20  # stop loosening >20% of original risk
+
+_CURATED_DISCOVERY = frozenset({"pullback_macd", "watchlist", "screener", "incubator"})
+
+
+def _price_drift_block_pct(strategy_id: str | None, discovery_source: str | None = None) -> float:
+    """Strategy-aware drift block — aligns submit-time revalidation with proposal_lifecycle monitor."""
+    try:
+        from proposal_lifecycle import get_price_drift_threshold
+        strategy_pct = float(get_price_drift_threshold(strategy_id or ""))
+    except Exception:
+        strategy_pct = PRICE_DRIFT_BLOCK_PCT
+    ds = str(discovery_source or "").lower()
+    if ds in _CURATED_DISCOVERY:
+        return max(PRICE_DRIFT_BLOCK_PCT, strategy_pct)
+    return PRICE_DRIFT_BLOCK_PCT
+
+
+def _price_drift_warn_pct(block_pct: float) -> float:
+    return min(PRICE_DRIFT_WARN_PCT, max(1.0, block_pct * 0.5))
 
 
 def _f(v):
@@ -83,7 +102,7 @@ def get_pending_proposals(conn, proposal_id=None, symbol=None):
     if symbol:
         conditions.append("symbol = %s")
         params.append(symbol)
-    sql = f"""SELECT id, symbol, strategy_id, proposed_entry, proposed_stop, proposed_target1,
+    sql = f"""SELECT id, symbol, strategy_id, discovery_source, proposed_entry, proposed_stop, proposed_target1,
                      proposed_shares, proposed_dollar_risk, status, signal_grade, signal_score,
                      created_at, approved_at, paper_submitted_at,
                      COALESCE(execution_recheck_required, true) as execution_recheck_required,
@@ -167,6 +186,9 @@ def revalidate(conn, proposal, simulate_delay_min=None, simulate_session=None, s
     now = datetime.now(timezone.utc)
     sym = proposal["symbol"]
     strategy = proposal.get("strategy_id") or "default"
+    discovery_source = proposal.get("discovery_source")
+    drift_block_pct = _price_drift_block_pct(strategy, discovery_source)
+    drift_warn_pct = _price_drift_warn_pct(drift_block_pct)
     recheck_id = f"RCK_{now.strftime('%Y%m%d_%H%M%S')}_{proposal['id']}_{uuid.uuid4().hex[:6]}"
 
     # Timestamps — use approved_at for staleness (when user acted), not created_at
@@ -265,14 +287,15 @@ def revalidate(conn, proposal, simulate_delay_min=None, simulate_session=None, s
     drift_pct = None
     if current_price and entry and entry > 0:
         drift_pct = abs(current_price - entry) / entry * 100
-        if drift_pct >= PRICE_DRIFT_BLOCK_PCT:
+        if drift_pct >= drift_block_pct:
             events.append(_event(sym, proposal["id"], "price_drift_detected", "critical",
-                                 {"drift_pct": round(drift_pct, 2), "entry": entry, "current": current_price}))
+                                 {"drift_pct": round(drift_pct, 2), "entry": entry, "current": current_price,
+                                  "block_threshold_pct": drift_block_pct}))
             material_changes.append(f"price_drift={drift_pct:.1f}%")
             score -= 30
-        elif drift_pct >= PRICE_DRIFT_WARN_PCT:
+        elif drift_pct >= drift_warn_pct:
             events.append(_event(sym, proposal["id"], "price_drift_detected", "warning",
-                                 {"drift_pct": round(drift_pct, 2)}))
+                                 {"drift_pct": round(drift_pct, 2), "warn_threshold_pct": drift_warn_pct}))
             score -= 10
 
     # ── Check 6: Risk/reward change ──

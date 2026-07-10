@@ -31,9 +31,32 @@ export function exitLadder(entry: number | null, stop: number | null, planTarget
   return { R, steps }
 }
 
-export function planWarnings(o: { entry: number | null; stop: number | null; planTarget: number | null; rr: number | null; pctCash: number | null; streetTarget: number | null; analystUpside: number | null }): PlanWarning[] {
+export function planWarnings(o: {
+  entry: number | null; stop: number | null; planTarget: number | null; rr: number | null
+  pctCash: number | null; streetTarget: number | null; analystUpside: number | null
+  stopAtrMult14?: number | null; stopAtrMult20?: number | null
+  atrPct14?: number | null; atrPct20?: number | null
+  /** @deprecated */ stopAtrMult?: number | null; /** @deprecated */ atrPct?: number | null
+}): PlanWarning[] {
   const w: PlanWarning[] = []
+  const m20 = o.stopAtrMult20 ?? null
+  const m14 = o.stopAtrMult14 ?? o.stopAtrMult ?? null
+  const p20 = o.atrPct20 ?? null
+  const p14 = o.atrPct14 ?? o.atrPct ?? null
   if (o.entry && !o.stop) w.push({ text: 'NO STOP — risk undefined; set a stop before entering', color: RED })
+  if (m20 != null && m20 < 1) {
+    const vol = p20 != null ? ` · ATR₂₀ ${p20.toFixed(1)}%` : ''
+    w.push({
+      text: `Stop is ${m20.toFixed(2)}× ATR₂₀ (< 1×)${vol} — normal daily noise may stop you out; widen stop or size down`,
+      color: AMBER,
+    })
+  } else if (m14 != null && m14 < 1) {
+    const vol = p14 != null ? ` · ATR₁₄ ${p14.toFixed(1)}%` : ''
+    w.push({
+      text: `Stop is ${m14.toFixed(2)}× ATR₁₄ (< 1×)${vol} — consider ATR₂₀ parity; widen stop or size down`,
+      color: AMBER,
+    })
+  }
   if (o.rr != null && o.rr < 1) w.push({ text: `R:R ${o.rr.toFixed(2)} < 1 — reward smaller than risk; rework target or skip`, color: RED })
   else if (o.rr != null && o.rr < 1.5) w.push({ text: `R:R ${o.rr.toFixed(2)} < 1.5 — thin edge for the risk taken`, color: AMBER })
   if (o.streetTarget && o.planTarget && o.streetTarget > o.planTarget * 1.1) w.push({ text: `plan target ${o.planTarget.toFixed(2)} caps below Street mean $${o.streetTarget} — keep a runner, don't exit all at the plan target`, color: AMBER })

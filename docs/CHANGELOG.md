@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-07-10 — Ross/Warrior TradeAI alignment + CC v3 scanner polish
+
+### Trade AI awareness lanes (P0–P6)
+
+- **MANUAL_REVIEW lanes** — squeeze, high-RVOL runner, micro-float, low-price spike, top-gainer awareness,
+  catalyst exception; persist via `scan_persist_extra.py` + `migrate_awareness_fields.py`.
+- **Universe injects** — Finviz top-30 gainers (`universe_coverage.py`), ticker aliases (`ticker_alias.py`),
+  Ross catalog symbols (`ross_catalog_universe.py`).
+- **Finviz snapshot reliability** — `finviz_snapshot.py` for audit + volume backfill on scanner rows.
+- **Warrior audit** — `warrior_tradeai_audit.py`, `warrior_weekly_audit_cron.py`,
+  `GET /api/v2/warrior-audit/latest`, Ross Alignment Audit strip on Trade AI tab.
+- **Cron** — Mon 8:30 AM ET via `linux_port/launchers/run_warrior_weekly_audit.sh`
+  (`crontab_warrior_audit_proposal.txt`).
+- **Backfill** — `scripts/backfill_scan_awareness.py` for historical scan rows.
+
+### Command Center v3 — Trade AI scanner UX
+
+- **Default filter: Actionable** (GO + WAIT + Manual) — replaces noisy 1522-row Universe default.
+- **Consolidated Manual tab** — Squeeze / Runner / Micro / Low under one filter.
+- **Sort dropdown** — Awareness (default), Score, RVOL, Change %, Symbol A–Z; copy lists use same sort.
+- **LOW pill** — yellow low-price MANUAL_REVIEW lane.
+- **Vol column** — today's share volume from Finviz scan.
+- **`CountryFlag`** — PNG flag images + country-name tooltip (fixes Linux emoji→two-letter rendering).
+
+### Docs synced
+
+- `docs/WARRIOR_ROSS_TRADEAI_ALIGNMENT.md` (new)
+- `ARCHITECTURE.md`, `OPERATIONS.md`, `docs/DAILY_OPS_LOG.md`
+
 ## 2026-07-09 (late) - Weekly Learning tab clarity
 
 - **`/api/v2/weekly-learning`** — full tier counts (realtime/overnight/weekly); week rollups

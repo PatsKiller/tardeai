@@ -100,6 +100,42 @@ def _notify_trade_cancelled(
         log.warning(f"[submitter] cancel notify failed for {symbol}: {e}")
 
 
+def _requeue_proposal_for_reapproval(conn, proposal_id: int, reason: str, symbol: str | None = None) -> None:
+    """Return an approved proposal to the operator pending queue after revalidation drift."""
+    detail = _format_block_detail(reason)
+    try:
+        cur = conn.cursor()
+        if not symbol:
+            cur.execute("SELECT symbol FROM paper_trade_proposals WHERE id=%s", (proposal_id,))
+            row = cur.fetchone()
+            symbol = row[0] if row else "?"
+        cur.execute(
+            """UPDATE paper_trade_proposals
+               SET status = 'PENDING',
+                   material_change_pending_approval = true,
+                   approved_pending_recheck = true,
+                   execution_recheck_required = true,
+                   execution_recheck_reason = %s,
+                   execution_eligibility_status = 'NEEDS_REVALIDATION',
+                   execution_eligibility_reason = %s,
+                   paper_submit_state = NULL,
+                   paper_trade_id = NULL,
+                   approved_at = NULL,
+                   updated_at = NOW()
+               WHERE id = %s
+                 AND status IN ('APPROVED_FOR_PAPER_TEST', 'APPROVED')""",
+            [detail[:500], detail[:500], proposal_id],
+        )
+        conn.commit()
+        _log_event(conn, proposal_id, symbol, "REQUEUED_FOR_REAPPROVAL", {"reason": detail[:500]})
+    except Exception as e:
+        log.warning(f"[submitter] requeue for reapproval failed proposal {proposal_id}: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
 def _cancel_never_submitted_pending(
     conn,
     proposal_id: int,
@@ -304,7 +340,7 @@ def check_gates(conn, proposal_id: int) -> dict:
 
     # Load proposal
     cur.execute("""
-        SELECT id, symbol, strategy_id, status, proposed_entry, proposed_stop,
+        SELECT id, symbol, strategy_id, discovery_source, status, proposed_entry, proposed_stop,
                proposed_target1, proposed_shares, proposed_dollar_risk, proposed_rr,
                risk_gate_result, approval_allowed, intel_readiness,
                created_at, approved_at, recommendation_created_at, signal_grade, signal_score,
@@ -576,6 +612,7 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
         recheck = revalidate(conn, {
             "id": proposal_id, "symbol": p["symbol"],
             "strategy_id": p.get("strategy_id"),
+            "discovery_source": p.get("discovery_source"),
             "proposed_entry": plan.get("limit_price"),
             "proposed_stop": plan.get("stop_price"),
             "proposed_target1": plan.get("take_profit_price"),
@@ -644,6 +681,7 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
                 symbol=p["symbol"],
                 strategy_id=p.get("strategy_id"),
             )
+            _requeue_proposal_for_reapproval(conn, proposal_id, _reap_detail, symbol=p["symbol"])
             # ── Gap 6: Telegram alert for NEEDS_REVALIDATION ──
             try:
                 from telegram_alert import send_telegram

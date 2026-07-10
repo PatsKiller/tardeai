@@ -64,6 +64,24 @@ def test_is_buy_side_rating():
     assert wp.is_buy_side_rating("HOLD") is False
 
 
+def test_is_rated_verdict_all_cio_tiers():
+    assert wp.is_rated_verdict("STRONG_BUY") is True
+    assert wp.is_rated_verdict("ADD_ON_PULLBACK") is True
+    assert wp.is_rated_verdict("HOLD") is True
+    assert wp.is_rated_verdict("AVOID") is True
+    assert wp.is_rated_verdict("TRIM") is True
+    assert wp.is_rated_verdict("RESEARCH_MORE") is True
+    assert wp.is_rated_verdict("") is False
+
+
+def test_daily_priority_params_include_hold_and_avoid():
+    params = wp.daily_priority_sql_params(holdings=["AAPL"])
+    rated = params[2]
+    assert "HOLD" in rated
+    assert "AVOID" in rated
+    assert "ADD_ON_PULLBACK" in rated
+
+
 def test_rank_in_scope_daily_priority_symbol():
     daily = {"AAPL", "MSFT"}
     assert wp.rank_in_scope(5000, symbol="AAPL", daily_symbols=daily) is True

@@ -71,6 +71,18 @@ export function sameHeadline(a?: string | null, b?: string | null): boolean {
   return short.length >= 24 && long.startsWith(short.slice(0, Math.min(short.length, 48)))
 }
 
+export type VisibleWarningSeverity = 'red' | 'amber'
+
+/** Inline warning line — always on-page (never tooltip-only). */
+export function warningLineStyle(severity: VisibleWarningSeverity): { color: string; fontWeight: number; fontSize: number; lineHeight: number } {
+  return {
+    fontSize: 10.5,
+    fontWeight: 600,
+    lineHeight: 1.45,
+    color: severity === 'red' ? '#ef5350' : '#f5a623',
+  }
+}
+
 /** Catalyst freshness for the intelligence line: amber past 7 days. */
 export function catalystAgeDays(catalystAt: string | null | undefined): number | null {
   if (!catalystAt) return null

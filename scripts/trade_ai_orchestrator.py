@@ -176,12 +176,40 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                     tickers = []
                 else:
                     tickers = json.loads(_cache.read_text())
+                    try:
+                        import sys as _sys_uc
+                        _uc_lib = root / "scripts" / "lib"
+                        if str(_uc_lib) not in _sys_uc.path:
+                            _sys_uc.path.insert(0, str(_uc_lib))
+                        from universe_coverage import inject_prime_setup_universe
+                        from ross_catalog_universe import inject_ross_catalog_universe
+                        inject_prime_setup_universe(tickers, root, limit=30, min_change_pct=5.0)
+                        _rc = inject_ross_catalog_universe(tickers, root, date_str)
+                        if _rc:
+                            _ok("ross_catalog_universe", f"+{_rc} Ross catalog alias injects")
+                    except Exception:
+                        pass
                     _ok("finviz_ingestion", f"Using {len(tickers)} cached tickers from last run ({_age_h:.1f}h old)")
             else:
                 _err("finviz_ingestion", "No cache available — skipping scoring")
                 tickers = []
         else:
             tickers = df.to_dict(orient="records")
+            try:
+                import sys as _sys_uc
+                _uc_lib = root / "scripts" / "lib"
+                if str(_uc_lib) not in _sys_uc.path:
+                    _sys_uc.path.insert(0, str(_uc_lib))
+                from universe_coverage import inject_prime_setup_universe
+                from ross_catalog_universe import inject_ross_catalog_universe
+                _inj = inject_prime_setup_universe(tickers, root, limit=30, min_change_pct=5.0)
+                if _inj:
+                    _ok("universe_coverage", f"+{_inj} Finviz top-gainer injects")
+                _rc = inject_ross_catalog_universe(tickers, root, date_str)
+                if _rc:
+                    _ok("ross_catalog_universe", f"+{_rc} Ross catalog alias injects")
+            except Exception as _uc_exc:
+                _err("universe_coverage", str(_uc_exc))
             _ok("finviz_ingestion", f"{len(tickers)} tickers  |  {len(live.get('downloads',[]))} screeners")
             # Save cache for next time
             try:
@@ -641,10 +669,18 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                         t["sector"] = _sector_map[t.get("symbol")]
         except Exception:
             pass
+        import sys as _sys_persist
+        _lib = root / "scripts" / "lib"
+        if str(_lib) not in _sys_persist.path:
+            _sys_persist.path.insert(0, str(_lib))
+        from scan_persist_extra import awareness_persist_values, awareness_persist_update_clause
+
+        _awareness_update = awareness_persist_update_clause()
         for t in scored:
             sym = t.get("symbol", "")
             soc = social_data.get(sym, {}) if social_data else {}
-            _execute("""
+            _aware = awareness_persist_values(t)
+            _execute(f"""
                 INSERT INTO trade_ai_scans (
                     run_id, run_date, run_label, run_type, symbol, score, grade, decision,
                     original_decision, rvol, price, change_pct, gap_pct, float_m,
@@ -654,7 +690,11 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                     sector, industry, country, sector_etf,
                     ticker_perf_1m, sector_perf_1m, vs_sector_pct,
                     social_sentiment, social_score, social_reddit, social_stocktwits,
-                    social_bullish_pct, social_wsb, source, screener_label, source_detail, pillar_breakdown
+                    social_bullish_pct, social_wsb, source, screener_label, source_detail, pillar_breakdown,
+                    volume,
+                    awareness_status, setup_class, symbol_candidate, symbol_alias_confidence,
+                    manual_review_required, operator_pill, operator_subtitle, operator_color_token,
+                    not_validation_ready, not_tradeable
                 ) VALUES (
                     %s, %s, %s, 'full', %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
@@ -664,7 +704,11 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                     %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s,
+                    %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s
                 )
                 ON CONFLICT (symbol, run_date) DO UPDATE SET
                     run_id = EXCLUDED.run_id, run_label = EXCLUDED.run_label, run_type = EXCLUDED.run_type,
@@ -684,6 +728,8 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                     social_bullish_pct = EXCLUDED.social_bullish_pct, social_wsb = EXCLUDED.social_wsb,
                     source = EXCLUDED.source, screener_label = EXCLUDED.screener_label,
                     source_detail = EXCLUDED.source_detail, pillar_breakdown = EXCLUDED.pillar_breakdown,
+                    volume = EXCLUDED.volume,
+                    {_awareness_update},
                     scanned_at = now()
             """, (
                 _run_id, date_str, run_label, sym,
@@ -704,11 +750,11 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                 soc.get("reddit_mentions", 0), soc.get("stocktwits_messages", 0),
                 _num(soc.get("stocktwits_bullish_pct")), soc.get("wsb_mentions", 0),
                 "screener",
-                # attribution restored 2026-06-11: which Finviz list produced this row (was tagged at
-                # ingestion and dropped here — made per-list efficacy unmeasurable)
                 t.get("screener_name") or t.get("primary_source_list"),
                 t.get("source_lists"),
                 json.dumps(t.get("pillar_breakdown") or {}),
+                int(_num(t.get("volume")) or 0) or None,
+                *_aware,
             ))
             _inserted += 1
         _ok("db_persist", f"{_inserted} rows → trade_ai_scans")

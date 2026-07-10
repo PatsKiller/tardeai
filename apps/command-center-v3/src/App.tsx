@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useConnectionHealth } from './hooks/useApi'
+import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hooks/useApi'
 import MetricStrip from './components/MetricStrip'
 import NavRail from './components/NavRail'
 import DetailDrawer, { type DrillContext } from './components/DetailDrawer'
@@ -44,10 +44,47 @@ function BuildMarker() {
 
 function ReconnectingBar() {
   const { degraded, failing } = useConnectionHealth()
+
+  useEffect(() => {
+    if (!degraded) return
+    let cancelled = false
+    let okStreak = 0
+    const probe = async () => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 5000)
+      try {
+        const r = await fetch('/api/health', { cache: 'no-store', signal: controller.signal })
+        clearTimeout(timer)
+        if (cancelled) return
+        if (r.ok) {
+          okStreak += 1
+          if (okStreak >= 2) signalApiRecover()
+        } else {
+          okStreak = 0
+        }
+      } catch {
+        clearTimeout(timer)
+        if (!cancelled) okStreak = 0
+      }
+    }
+    probe()
+    const id = window.setInterval(probe, 3000)
+    return () => { cancelled = true; window.clearInterval(id) }
+  }, [degraded])
+
   if (!degraded) return null
   return (
     <div style={{ background: '#f59e0b', color: '#1a1207', fontSize: 11, fontWeight: 800, textAlign: 'center', padding: '3px 8px', letterSpacing: .3 }}>
       ⟳ Reconnecting to backend… showing last-known data{failing > 1 ? ` · ${failing} feeds` : ''}
+      {' · '}
+      <button
+        type="button"
+        onClick={() => { void retryApiConnection() }}
+        style={{ background: 'transparent', border: 'none', color: '#1a1207', fontWeight: 800, fontSize: 11, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+      >
+        retry now
+      </button>
+      <span style={{ fontWeight: 500, opacity: .85 }}> (serve at {typeof window !== 'undefined' ? window.location.origin : 'localhost:7777'})</span>
     </div>
   )
 }

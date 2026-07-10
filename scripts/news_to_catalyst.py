@@ -27,7 +27,8 @@ CATALYST_KEYWORDS = {
     "guidance_lower":     ["lowers guidance", "cuts outlook", "reduces forecast", "warns on",
                            "lowers full-year", "disappointing outlook"],
     "contract_win":       ["wins contract", "awarded contract", "new partnership", "strategic alliance",
-                           "major deal", "billion-dollar contract", "new agreement"],
+                           "major deal", "billion-dollar contract", "new agreement",
+                           "design review", "program milestone", "concludes design"],
     "fda_approval":       ["fda approval", "fda clears", "fda grants", "regulatory approval",
                            "drug approved", "clearance granted"],
     "merger_acquisition": ["acquisition", "merger", "takeover", "buyout", "acquires",
@@ -100,7 +101,7 @@ def _severity_from_weight(weight: float) -> str:
     return "low"
 
 
-def run(as_json: bool = False):
+def run(as_json: bool = False, *, single_symbol: str | None = None):
     conn = _get_conn()
     cur = conn.cursor()
 
@@ -108,17 +109,23 @@ def run(as_json: bool = False):
     cur.execute("SELECT catalyst_type, base_weight FROM catalyst_type_weights")
     weights = {row[0]: float(row[1]) for row in cur.fetchall()}
 
+    sym_filter = ""
+    params: list = []
+    if single_symbol:
+        sym_filter = " AND upper(n.symbol) = %s"
+        params.append(single_symbol.upper().strip())
+
     # Find news articles with no linked catalyst event (by matching symbol + title)
-    cur.execute("""
+    cur.execute(f"""
         SELECT n.id, n.symbol, n.strategy_type, n.title, n.summary,
                n.source, n.source_url, n.published_at
         FROM news_articles n
         LEFT JOIN catalyst_events ce
             ON ce.symbol = n.symbol AND ce.headline = n.title
-        WHERE ce.id IS NULL
+        WHERE ce.id IS NULL{sym_filter}
         ORDER BY n.published_at DESC NULLS LAST
-        LIMIT 500
-    """)
+        LIMIT {50 if single_symbol else 500}
+    """, params)
     rows = cur.fetchall()
 
     # World-class hybrid classifier (deterministic + local-LLM residual, outcome-calibrated). LLM is budgeted
@@ -189,4 +196,9 @@ def run(as_json: bool = False):
 
 
 if __name__ == "__main__":
-    run(as_json="--json" in sys.argv)
+    _sym = None
+    for i, arg in enumerate(sys.argv):
+        if arg == "--symbol" and i + 1 < len(sys.argv):
+            _sym = sys.argv[i + 1]
+            break
+    run(as_json="--json" in sys.argv, single_symbol=_sym)

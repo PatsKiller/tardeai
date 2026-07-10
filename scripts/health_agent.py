@@ -282,6 +282,9 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 and "reset_stuck_agent_jobs.py" not in cmd \
                 and "fix_strategy_registry_null_ids.py" not in cmd \
                 and "remediate_proposal_trade_plans.py" not in cmd \
+                and "auto_enrichment_runner.py" not in cmd \
+                and "cleanup_stale_proposals.py" not in cmd \
+                and "remediate_watchlist_news_guard.py" not in cmd \
                 and "hermes_scope_governor.py" not in cmd:
             continue
         try:
@@ -963,6 +966,11 @@ WHY = {
     "pullback_macd_universe_thin": "The S&P 500 constituent table is under-populated — the weekly universe refresh may be failing, shrinking screener coverage.",
     "options_approval_expired_pending": "Pending options approvals have passed their 24h expiry without review — the queue isn't being cleaned.",
     "trade_proposals_backlog": "Many trade proposals are pending — approval queue may be clogged.",
+    "enrichment_pipeline_failure": "Proposal enrichment/readiness is failing (often import or readiness API) — both paper ATM and live 2FA lanes stall without fresh readiness data.",
+    "enrichment_failures_high": "Many PENDING proposals have repeated enrichment failures — ATM auto-approve and manual review queues see stale cards.",
+    "approved_paper_test_stuck": "Paper-lane proposals are stuck in APPROVED_FOR_PAPER_TEST after revalidation drift or submit — no new paper trades until lifecycle is normalized.",
+    "enrichment_status_in_progress_stale": "enrichment_status=IN_PROGRESS is wedged on terminal or long-idle rows — enrichment cron skips them until cleared.",
+    "news_symbol_mismatch": "Yahoo RSS mis-tagged catalyst headlines on CIO-rated watchlist symbols (e.g. wrong company on thin tickers) — cards show stale/wrong news for HOLD/AVOID as well as BUY.",
     "watchlist_stale": "Watchlist items haven't been refreshed — rotation/options synergy may be weak.",
     "rotation_empty": "No rotation recommendations staged — capital redeployment signals may be missing.",
     "small_cap_signal_gap": "IWM/Russell 2000 is outperforming SPY in the market, but news curation, proposals, or watchlist lack small-cap coverage.",
@@ -988,6 +996,11 @@ _CTA_BY_TYPE = {
     "finviz_quote_cache_stale": {"label": "System → Admin", "route": "/v3/system?tab=admin"},
     "agent_jobs_processing_stuck": {"label": "System → Jobs", "route": "/v3/system?tab=jobs"},
     "trade_proposals_backlog": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
+    "enrichment_pipeline_failure": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
+    "enrichment_failures_high": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
+    "approved_paper_test_stuck": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
+    "enrichment_status_in_progress_stale": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
+    "news_symbol_mismatch": {"label": "Watch → Watchlist", "route": "/v3/watch?tab=watchlist"},
     "watchlist_stale": {"label": "Watch → Watchlist", "route": "/v3/watch?tab=watchlist"},
     "rotation_empty": {"label": "Rotation desk", "route": "/v3/rotation"},
 }
@@ -1776,6 +1789,160 @@ def collect_execution_hardening_health() -> list[dict]:
     return out
 
 
+def collect_proposal_pipeline_health() -> list[dict]:
+    """Dual-lane proposal pipeline: enrichment failures, stuck paper approvals, stale IN_PROGRESS."""
+    import re as _re
+    out = []
+    cfg = (_POLICY.get("proposal_pipeline") or {})
+    if cfg.get("enabled", True) is False:
+        return out
+    try:
+        win_h = int(cfg.get("enrichment_failure_window_hours", 3))
+        fail_warn = int(cfg.get("enrichment_failure_warn", 3))
+        import_pat = _re.compile(r"cannot import|ModuleNotFoundError|ImportError", _re.I)
+
+        elog = _db(
+            f"""SELECT COUNT(*) AS c FROM enrichment_log
+                WHERE success = false
+                  AND completed_at > NOW() - INTERVAL '{win_h} hours'
+                  AND (step = 'execution_readiness'
+                       OR COALESCE(error_message, '') ~* 'cannot import|ModuleNotFoundError|ImportError')""",
+            fetch="one",
+        )
+        elog_n = int((elog or {}).get("c") or 0)
+
+        perror = _db(
+            f"""SELECT COUNT(*) AS c FROM paper_trade_proposals
+                WHERE status = 'PENDING'
+                  AND enrichment_last_error IS NOT NULL
+                  AND enrichment_last_error ~* 'cannot import|ModuleNotFoundError|ImportError'
+                  AND enrichment_last_attempt_at > NOW() - INTERVAL '{win_h} hours'""",
+            fetch="one",
+        )
+        perror_n = int((perror or {}).get("c") or 0)
+
+        log_hits = 0
+        log_file = LOG_DIR / "auto_enrichment.log"
+        if log_file.exists():
+            try:
+                lines = log_file.read_text(errors="ignore").splitlines()[-400:]
+                log_hits = sum(1 for ln in lines if import_pat.search(ln))
+            except Exception:
+                pass
+
+        fail_total = max(elog_n, perror_n, log_hits)
+        if fail_total >= fail_warn or (elog_n + perror_n) >= 1:
+            sev = "critical" if fail_total >= fail_warn * 2 else "warning"
+            out.append(_f(
+                "execution_health", "enrichment_pipeline_failure", sev,
+                f"Enrichment pipeline failing ({fail_total} signals in {win_h}h) — "
+                f"readiness/import errors block ATM + broker lanes",
+                enrichment_log_failures=elog_n, proposal_errors=perror_n,
+                log_import_lines=log_hits, count=fail_total,
+            ))
+
+        pending_fail = _db(
+            """SELECT COUNT(*) AS c FROM paper_trade_proposals
+               WHERE status = 'PENDING'
+                 AND COALESCE(enrichment_failures, 0) >= 2
+                 AND COALESCE(enrichment_status, '') != 'COMPLETE'""",
+            fetch="one",
+        )
+        pf = int((pending_fail or {}).get("c") or 0)
+        if pf >= int(cfg.get("enrichment_pending_fail_warn", 5)):
+            out.append(_f(
+                "execution_health", "enrichment_failures_high", "warning",
+                f"{pf} PENDING proposals with ≥2 enrichment failures — queue stalled",
+                count=pf,
+            ))
+
+        stuck_h = int(cfg.get("approved_paper_stuck_hours", 2))
+        stuck = _db(
+            f"""SELECT COUNT(*) AS c FROM paper_trade_proposals
+                WHERE status = 'APPROVED_FOR_PAPER_TEST'
+                  AND (
+                    updated_at < NOW() - INTERVAL '{stuck_h} hours'
+                    OR paper_submit_state IN ('VALIDATING', 'NOT_SUBMITTED')
+                    OR execution_eligibility_status = 'NEEDS_REVALIDATION'
+                  )""",
+            fetch="one",
+        )
+        stuck_n = int((stuck or {}).get("c") or 0)
+        if stuck_n >= int(cfg.get("approved_paper_stuck_warn", 1)):
+            sev = "critical" if stuck_n >= int(cfg.get("approved_paper_stuck_critical", 3)) else "warning"
+            out.append(_f(
+                "execution_health", "approved_paper_test_stuck", sev,
+                f"{stuck_n} APPROVED_FOR_PAPER_TEST proposal(s) stuck in paper lane "
+                f"(revalidation/submit drift)",
+                count=stuck_n,
+            ))
+
+        stale_m = int(cfg.get("in_progress_stale_minutes", 30))
+        inprog = _db(
+            f"""SELECT
+                  COUNT(*) FILTER (
+                    WHERE status IN ('EXPIRED', 'REJECTED', 'APPROVED', 'RISK_BLOCKED')
+                  ) AS terminal,
+                  COUNT(*) FILTER (
+                    WHERE status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST', 'APPROVED')
+                      AND COALESCE(enrichment_last_attempt_at, updated_at)
+                          < NOW() - INTERVAL '{stale_m} minutes'
+                  ) AS active
+                FROM paper_trade_proposals
+                WHERE enrichment_status = 'IN_PROGRESS'""",
+            fetch="one",
+        )
+        terminal_n = int((inprog or {}).get("terminal") or 0)
+        active_n = int((inprog or {}).get("active") or 0)
+        total_ip = terminal_n + active_n
+        ip_warn = int(cfg.get("in_progress_stale_warn", 3))
+        if total_ip >= ip_warn:
+            sev = "critical" if total_ip >= ip_warn * 3 else "warning"
+            out.append(_f(
+                "execution_health", "enrichment_status_in_progress_stale", sev,
+                f"{total_ip} proposal(s) with stale enrichment_status=IN_PROGRESS "
+                f"({terminal_n} terminal, {active_n} active >{stale_m}m)",
+                count=total_ip, terminal=terminal_n, active_stuck=active_n,
+            ))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info",
+                      f"proposal_pipeline check error: {e}"))
+    return out
+
+
+def collect_watchlist_news_guard_health() -> list[dict]:
+    """Detect mis-tagged catalyst headlines on CIO-rated symbols (all verdict tiers)."""
+    out = []
+    cfg = (_POLICY.get("watchlist_news_guard") or {})
+    if cfg.get("enabled", True) is False:
+        return out
+    try:
+        from db_adapter import get_connection
+        from news_symbol_guard import count_mismatched_watchlist
+        conn = get_connection()
+        try:
+            audit = count_mismatched_watchlist(conn, limit=int(cfg.get("sample_limit", 120)))
+        finally:
+            conn.close()
+        n = int(audit.get("mismatch_count") or 0)
+        warn_n = int(cfg.get("mismatch_warn", 1))
+        if n >= warn_n:
+            samples = audit.get("mismatches") or []
+            preview = ", ".join(
+                f"{m.get('symbol')}" for m in samples[:5]
+            ) or "see watchlist"
+            sev = "critical" if n >= int(cfg.get("mismatch_critical", 5)) else "warning"
+            out.append(_f(
+                "data_quality", "news_symbol_mismatch", sev,
+                f"{n} CIO-rated watchlist symbol(s) have mis-tagged catalyst headlines ({preview})",
+                count=n, scanned=audit.get("scanned"), samples=samples[:8],
+            ))
+    except Exception as e:
+        out.append(_f("data_quality", "collector_error", "info",
+                      f"watchlist_news_guard check error: {e}"))
+    return out
+
+
 def collect_proposal_oversight_load() -> list[dict]:
     """Detect a BURST of newly-created PENDING proposals. Each PENDING broker-route proposal is
     picked up by broker_promote_oversight for per-proposal local + cloud LLM review; a bulk insert
@@ -2022,6 +2189,8 @@ COLLECTORS = [
     collect_proposal_integrity,
     collect_options_desk_health,
     collect_pullback_macd_screener,
+    collect_proposal_pipeline_health,
+    collect_watchlist_news_guard_health,
     collect_proposal_oversight_load,
     collect_data_source_health,
     collect_failed_systemd_units,

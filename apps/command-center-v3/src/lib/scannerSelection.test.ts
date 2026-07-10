@@ -4,7 +4,8 @@
 // cover the pagination / selection / TOS-format / scout-pill logic.
 import {
   pageSlice, paginateTopN, toggleSelectedSymbol, selectSymbols, deselectSymbols,
-  dedupeSymbols, formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, missingPillarHints,
+  dedupeSymbols, formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, getTopGainerPill,
+  getSqueezePill, getRunnerPill, isSqueezeRow, isRunnerRow, scannerSortKey, buildPillTooltip, missingPillarHints,
 } from './scannerSelection.ts'
 
 declare const process: { exit(code?: number): never }
@@ -81,6 +82,57 @@ check('GO row is not a scout (no pill)', go.isScout === false)
 const none = getSocialScoutPill({ symbol: 'N' })
 check('row without scout_status is not a scout', none.isScout === false)
 check('missing-pillar hints map', missingPillarHints(['catalyst_evidence', 'market_confirmation']).length === 2)
+
+// ---- Top Gainer pill (awareness only, never GO) ----
+const gmm = getTopGainerPill({
+  symbol: 'GMM', awareness_status: 'TOP_GAINER', change_pct: '119.2',
+  operator_pill: 'TOP GAINER · +119.2%', operator_subtitle: 'Leading gainer — manual review',
+  disqualified: true, disqualification_reason: 'REVERSE_SPLIT: 0.02:1 on 2026-06-11 — delisting avoidance',
+})
+check('GMM top gainer pill', gmm.isTopGainer && gmm.text === 'TOP GAINER · +119.2%')
+check('GMM DQ hint passthrough', gmm.hints!.some(h => h.includes('REVERSE_SPLIT')))
+const nogo = getTopGainerPill({ symbol: 'X', decision: 'NO-GO', score: 0 })
+check('non-top-gainer row has no pill', nogo.isTopGainer === false)
+check('top gainer sorts above zero-score NO-GO', scannerSortKey({ symbol: 'GMM', awareness_status: 'TOP_GAINER', change_pct: 119 }) > scannerSortKey({ symbol: 'X', score: 0 }))
+check('score row uses score as sort key', scannerSortKey({ symbol: 'Y', score: 42 }) === 42)
+
+const sq = getSqueezePill({
+  symbol: 'GMM', awareness_status: 'SQUEEZE', decision: 'MANUAL_REVIEW', manual_review_required: true,
+  rvol: 225, operator_pill: 'SQUEEZE · R/S · 225.0x',
+  soft_flag_reason: 'REVERSE_SPLIT: 0.02:1 on 2026-06-11',
+})
+check('GMM squeeze pill', !!(sq.isSqueeze && sq.text?.includes('SQUEEZE')))
+check('isSqueezeRow', isSqueezeRow({ symbol: 'GMM', awareness_status: 'SQUEEZE' }))
+check('squeeze sorts above top gainer', scannerSortKey({ symbol: 'GMM', awareness_status: 'SQUEEZE', rvol: 100, gap_pct: 50 })
+  > scannerSortKey({ symbol: 'X', awareness_status: 'TOP_GAINER', change_pct: 99 }))
+
+const gmmTip = buildPillTooltip({
+  symbol: 'GMM', price: 4.06, change_pct: '119.5', gap_pct: '207.5', rvol: 225.2, float_m: 1.68,
+  score: 35, grade: 'SQUEEZE', decision: 'MANUAL_REVIEW', sector: 'Technology',
+  soft_flag_reason: 'REVERSE_SPLIT: 0.02:1 on 2026-06-11',
+  catalyst: 'Top Premarket Gainers', catalyst_verified: false, squeeze_sort_score: 2250,
+}, 'squeeze', { subtitle: 'R/S squeeze', hints: ['Manual review only'], footer: 'test footer' })
+check('GMM tooltip has symbol', gmmTip.includes('GMM'))
+check('GMM tooltip has price', gmmTip.includes('Price $4.06'))
+check('GMM tooltip has rvol', gmmTip.includes('RVOL 225.2x'))
+check('GMM tooltip has flag', gmmTip.includes('REVERSE_SPLIT'))
+const sqTip = getSqueezePill({
+  symbol: 'GMM', awareness_status: 'SQUEEZE', decision: 'MANUAL_REVIEW', manual_review_required: true,
+  rvol: 225, gap_pct: 61, change_pct: 99, price: 4.06, score: 35, grade: 'SQUEEZE',
+  soft_flag_reason: 'REVERSE_SPLIT: 0.02:1',
+})
+check('squeeze pill tooltip populated', !!(sqTip.tooltip && sqTip.tooltip.includes('GMM') && sqTip.tooltip.includes('RVOL')))
+
+const runner = getRunnerPill({
+  symbol: 'IOTR', awareness_status: 'HIGH_RVOL', decision: 'MANUAL_REVIEW', manual_review_required: true,
+  rvol: 12.5, operator_pill: 'RUNNER · 12.5x',
+})
+check('IOTR runner pill', !!(runner.isRunner && runner.text?.includes('RUNNER')))
+check('isRunnerRow', isRunnerRow({ symbol: 'IOTR', awareness_status: 'HIGH_RVOL' }))
+check('runner sorts above top gainer', scannerSortKey({ symbol: 'IOTR', awareness_status: 'HIGH_RVOL', rvol: 12, gap_pct: 40 })
+  > scannerSortKey({ symbol: 'X', awareness_status: 'TOP_GAINER', change_pct: 99 }))
+check('squeeze still above runner', scannerSortKey({ symbol: 'GMM', awareness_status: 'SQUEEZE', rvol: 100, gap_pct: 50 })
+  > scannerSortKey({ symbol: 'IOTR', awareness_status: 'HIGH_RVOL', rvol: 12, gap_pct: 40 }))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
