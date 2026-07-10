@@ -17330,6 +17330,24 @@ def _research_topics_unified():
                 except Exception:
                     pass
 
+    auto_briefs = _db_query("""
+        SELECT topic, source, status, priority, strategy_type, original_message,
+               latest_findings, latest_finding_at, last_researched_at, research_count, updated_at
+        FROM user_research_topics
+        WHERE source = 'auto_research.py' AND status = 'active'
+        ORDER BY COALESCE(latest_finding_at, updated_at) DESC
+        LIMIT 24
+    """) or []
+    auto_briefs_out = []
+    for r in auto_briefs:
+        row = {k: _json_clean(v) for k, v in r.items()}
+        topic = str(row.get("topic") or "")
+        sym = topic.replace("Auto-research:", "").strip().split("(")[0].strip()
+        row["symbol"] = sym if sym else None
+        row["trigger"] = row.get("original_message")
+        row["findings"] = row.get("latest_findings")
+        auto_briefs_out.append(row)
+
     return {
         "user_topics": [{k: _json_clean(v) for k, v in r.items()} for r in user_topics],
         "user_topic_count": len(user_topics),
@@ -17338,7 +17356,9 @@ def _research_topics_unified():
         "research_gaps": gaps,
         "gap_count": len(gaps),
         "gaps_escalated": len(gaps) > 0,
-        "note": "User Research Topics are operator-initiated advisories. Topic Monitor Library tracks automated intelligence gathering. Gaps escalated to Iris agent for investigation.",
+        "auto_research_briefs": auto_briefs_out,
+        "auto_research_count": len(auto_briefs_out),
+        "note": "User Research Topics are operator-initiated advisories. Auto-research briefs come from auto_research.py (Trade AI LLM router, not Hermes). Topic Monitor Library tracks automated intelligence gathering. Gaps escalated to Iris agent for investigation.",
     }
 
 
@@ -20096,12 +20116,37 @@ def _inbox():
             "source": f"CIO · {c.get('priority') or ''}", "at": _json_clean(c.get("created_at")),
             "cta": {"label": "Intelligence", "route": "/v3/intelligence", "reports": "/v3/reports?super=intel"},
         })
+    auto_ar = _db_query("""
+        SELECT symbol, payload, created_at FROM portfolio_intelligence_events
+        WHERE event_type = 'auto_research' AND created_at > NOW() - INTERVAL '7 days'
+        ORDER BY created_at DESC LIMIT 12
+    """) or []
+    for ar in auto_ar:
+        pl = ar.get("payload") or {}
+        if isinstance(pl, str):
+            try:
+                pl = json.loads(pl)
+            except Exception:
+                pl = {}
+        preview = pl.get("research_preview") or pl.get("reason") or "Auto-research brief"
+        prov = pl.get("provider") or "llm"
+        items.append({
+            "type": "auto_research", "symbol": ar.get("symbol"), "priority": "P2",
+            "detail": f"{preview[:100]}",
+            "source": f"auto_research · {prov}", "at": _json_clean(ar.get("created_at")),
+            "cta": {
+                "label": "Intelligence → Research",
+                "route": "/v3/intelligence?tab=research",
+                "reports": "/v3/reports?super=intel&category=research",
+            },
+        })
     items.sort(key=lambda x: x.get("at") or "", reverse=True)
     items.sort(key=lambda x: 0 if x.get("priority") == "P0" else 1)
     p0 = sum(1 for i in items if i.get("priority") == "P0")
     return {
         "count": len(items), "p0_count": p0,
         "escalations": len(esc), "cio_review": len(cio),
+        "auto_research": len(auto_ar),
         "proposals": sum(1 for p in props if (p.get("status") or "").upper() == "PENDING"),
         "stops": len(stops), "siem": len(siem), "items": items[:80],
     }

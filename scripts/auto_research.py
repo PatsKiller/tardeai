@@ -7,15 +7,16 @@ back into the intelligence pipeline.
 
 Triggers:
 1. Agent conflict on a symbol → research both sides
-2. High-impact recommendation (BUY/SELL on >5% position) → verify thesis
+2. High-impact pending decision → verify thesis
 3. New screener discovery → initial research brief
 4. Escalation event → gather more context
 
 Usage:
     python3 scripts/auto_research.py --check [--telegram]
     python3 scripts/auto_research.py --research SYMBOL [--telegram]
+    python3 scripts/auto_research.py --backfill-outbox
 """
-import json, sys
+import json, re, sys, uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -81,7 +82,7 @@ def find_research_triggers() -> list:
         triggers.append({
             "symbol": r["symbol"],
             "reason": "high_impact_decision",
-            "detail": f"Proposed {r['action']} on {r['symbol']} (>5% weight, priority: {r['priority']})",
+            "detail": f"Proposed {r['action']} on {r['symbol']} (priority: {r['priority']})",
             "priority": 2,
         })
 
@@ -107,23 +108,85 @@ def find_research_triggers() -> list:
     return triggers
 
 
-def research_symbol(symbol: str, reason: str = "manual") -> dict:
+def _persist_research_topic(symbol: str, reason: str, research: str, strategy_type: str = None) -> None:
+    """Write brief to user_research_topics for Intelligence → Research tab."""
+    topic = f"Auto-research: {symbol}"
+    snippet = (research or "")[:8000]
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT id, research_count FROM user_research_topics WHERE topic = %s LIMIT 1", (topic,))
+    row = cur.fetchone()
+    if row:
+        cur.execute("""
+            UPDATE user_research_topics SET
+                source = 'auto_research.py', status = 'active', priority = 'normal',
+                original_message = %s, strategy_type = COALESCE(%s, strategy_type),
+                latest_findings = %s, latest_finding_at = NOW(), last_researched_at = NOW(),
+                research_count = COALESCE(research_count, 0) + 1, updated_at = NOW()
+            WHERE topic = %s
+        """, (reason[:500], strategy_type, snippet, topic))
+    else:
+        cur.execute("""
+            INSERT INTO user_research_topics (
+                topic, source, status, priority, strategy_type, original_message,
+                latest_findings, latest_finding_at, last_researched_at, research_count,
+                created_at, updated_at
+            ) VALUES (%s, 'auto_research.py', 'active', 'normal', %s, %s, %s, NOW(), NOW(), 1, NOW(), NOW())
+        """, (topic, strategy_type, reason[:500], snippet))
+    conn.commit()
+    conn.close()
+
+
+def _queue_agent_reviews(symbol: str, note: str) -> int:
+    """Queue maria/steph/risk when auto-research fires but agents never wrote results."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*) FROM watchlist_agent_results WHERE symbol=%s AND created_at > NOW() - INTERVAL '7 days'",
+        (symbol,),
+    )
+    if (cur.fetchone() or [0])[0] > 0:
+        conn.close()
+        return 0
+    cur.execute("""
+        SELECT COUNT(*) FROM watchlist_agent_jobs
+        WHERE symbol=%s AND status IN ('queued', 'processing', 'pending')
+          AND created_at > NOW() - INTERVAL '6 hours'
+    """, (symbol,))
+    if (cur.fetchone() or [0])[0] > 0:
+        conn.close()
+        return 0
+    queued = 0
+    for agent in ("maria", "steph", "risk_agent"):
+        job_id = f"ar_{symbol.lower()}_{agent}_{uuid.uuid4().hex[:6]}"
+        cur.execute("""
+            INSERT INTO watchlist_agent_jobs
+                (id, symbol, requested_agent, request_type, priority, note, status, submitted_from)
+            VALUES (%s, %s, %s, 'full_analysis', 2, %s, 'queued', 'auto_research.py')
+            ON CONFLICT DO NOTHING
+        """, (job_id, symbol, agent, note[:240]))
+        queued += cur.rowcount or 0
+    conn.commit()
+    conn.close()
+    if queued:
+        print(f"[auto-research] Queued {queued} agent review job(s) for {symbol}")
+    return queued
+
+
+def research_symbol(symbol: str, reason: str = "manual", trigger_kind: str = "manual") -> dict:
     """Run deep research on a symbol using LLM + web search + available intel."""
     from llm_router import get_llm_response
     from intel_query import get_intel_summary
     from agent_collab import get_agent_context
     from web_research import research_symbol_web
 
-    # Gather all available context
     intel = get_intel_summary(symbol=symbol, min_quality=30, max_chars=500, days=14)
     agent_ctx = get_agent_context(symbol, requesting_agent="auto_research")
 
-    # Live web research via Brave Search API
     web_ctx = research_symbol_web(symbol, focus="analysis dividend risk")
     if web_ctx:
         intel = f"{intel}\n\n{web_ctx}" if intel else web_ctx
 
-    # Build research prompt
     prompt = f"""/no_think You are a senior research analyst. Conduct a focused research brief on {symbol}.
 
 CONTEXT:
@@ -140,50 +203,64 @@ Provide a concise research brief covering:
 4. RECOMMENDATION: Based on available information, what's the highest-conviction next action
 5. CONFIDENCE: How certain are you (0-100%) and why
 
-Keep under 300 words. Be specific with numbers and dates."""
+Keep under 300 words. Be specific with numbers and dates. Flag anything not present in CONTEXT as [unverified]."""
 
-    result = get_llm_response("cio_synthesis", prompt, max_tokens=600, high_impact=True)
+    # Screener discoveries: prefer local gemma; conflicts/decisions may use cloud.
+    high_impact = trigger_kind in ("agent_conflict", "high_impact_decision")
+    result = get_llm_response("cio_synthesis", prompt, max_tokens=600, high_impact=high_impact)
 
     if not result.get("success"):
         return {"error": "LLM failed", "symbol": symbol}
 
     research = result["response"]
+    provider = result.get("provider")
+    model_used = result.get("model_used")
 
-    # Store as intelligence event
+    strategy_type = None
+    m = re.search(r"\(([^)]+)\)\s*$", reason)
+    if m:
+        strategy_type = m.group(1)
+
+    payload = {
+        "reason": reason,
+        "trigger_kind": trigger_kind,
+        "provider": provider,
+        "model_used": model_used,
+        "cost": result.get("cost_estimate", 0),
+        "research_preview": research[:500],
+        "research": research[:8000],
+        "pipeline": "trade_ai_auto_research",
+        "hermes": False,
+        "web_search_ok": bool(web_ctx),
+    }
+
     conn = _get_conn()
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO portfolio_intelligence_events
             (symbol, event_type, severity, source, payload)
         VALUES (%s, 'auto_research', 'info', 'auto_research.py', %s)
-    """, (symbol, json.dumps({
-        "reason": reason,
-        "provider": result.get("provider"),
-        "cost": result.get("cost_estimate", 0),
-    }, default=str)))
+    """, (symbol, json.dumps(payload, default=str)))
     conn.commit()
     conn.close()
 
-    # Also save as a research topic finding
     try:
-        conn = _get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO user_research_topics (topic, findings, status, priority, updated_at)
-            VALUES (%s, %s, 'active', 2, NOW())
-            ON CONFLICT (topic) DO UPDATE SET findings = EXCLUDED.findings, updated_at = NOW()
-        """, (f"Auto-research: {symbol} ({reason})", research[:2000]))
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
+        _persist_research_topic(symbol, reason, research, strategy_type)
+    except Exception as e:
+        print(f"[auto-research] topic persist failed for {symbol}: {e}")
+
+    if trigger_kind in ("new_discovery", "agent_conflict"):
+        _queue_agent_reviews(symbol, f"Auto-research {trigger_kind}: {reason[:180]}")
 
     return {
         "symbol": symbol,
         "reason": reason,
+        "trigger_kind": trigger_kind,
         "research": research,
-        "provider": result.get("provider"),
+        "provider": provider,
+        "model_used": model_used,
         "cost": result.get("cost_estimate", 0),
+        "queued_agents": True,
     }
 
 
@@ -195,39 +272,75 @@ def run_check(send_telegram: bool = False):
     if not triggers:
         return {"triggers": 0, "researched": 0}
 
-    # Research top 3 by priority
     researched = 0
     results = []
     for t in sorted(triggers, key=lambda x: x["priority"])[:3]:
         print(f"  Researching: {t['symbol']} ({t['reason']})")
-        result = research_symbol(t["symbol"], t["detail"])
+        result = research_symbol(t["symbol"], t["detail"], t["reason"])
         if not result.get("error"):
             researched += 1
             results.append(result)
 
     if send_telegram and results:
-        lines = [f"\U0001F50D *Auto-Research Complete*", ""]
+        lines = ["\U0001F50D *Auto-Research Complete*", ""]
         for r in results:
             lines.append(f"*{r['symbol']}* ({r['reason'][:30]})")
-            # First 150 chars of research
             lines.append(f"_{r['research'][:150]}..._")
             lines.append("")
-        lines.append(f"_via {results[0].get('provider', '?')} \u2022 /v2/research_")
+        prov = results[0].get("provider", "?")
+        model = results[0].get("model_used") or ""
+        lines.append(
+            f"_via {prov}{(' · ' + model) if model else ''} · Trade AI auto_research (not Hermes) · "
+            f"/v3/intelligence?tab=research · /v3/reports?super=intel&category=research_"
+        )
         _send_tg("\n".join(lines))
 
     print(f"[auto-research] Researched {researched}/{len(triggers)} triggers")
     return {"triggers": len(triggers), "researched": researched, "results": results}
 
 
+def backfill_from_outbox(limit: int = 5) -> int:
+    """Re-hydrate user_research_topics from captured Telegram outbox bodies."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, body, sent_at FROM telegram_outbox
+        WHERE report_type = 'auto_research' AND ok = TRUE
+        ORDER BY sent_at DESC LIMIT %s
+    """, (limit,))
+    rows = cur.fetchall()
+    n = 0
+    for _id, body, sent_at in rows:
+        if not body:
+            continue
+        for m in re.finditer(r"\*([A-Z]{1,5})\*\s*\(([^)]+)\)\s*\n(_(.+?)_\s*)?", body, re.DOTALL):
+            sym, reason = m.group(1), m.group(2)
+            chunk = (m.group(4) or "").strip().strip("_")
+            if not chunk:
+                continue
+            full = chunk.replace("...", "")
+            detail = f"New screener find: {sym}" if "screener" in reason.lower() else reason
+            try:
+                _persist_research_topic(sym, detail, full)
+                n += 1
+            except Exception as e:
+                print(f"[backfill] {sym}: {e}")
+    conn.close()
+    print(f"[auto-research] Backfilled {n} topic(s) from telegram_outbox")
+    return n
+
+
 if __name__ == "__main__":
     tg = "--telegram" in sys.argv
-    if "--check" in sys.argv:
+    if "--backfill-outbox" in sys.argv:
+        backfill_from_outbox()
+    elif "--check" in sys.argv:
         run_check(send_telegram=tg)
     elif "--research" in sys.argv:
         idx = sys.argv.index("--research")
         if idx + 1 < len(sys.argv):
             symbol = sys.argv[idx + 1].upper()
-            result = research_symbol(symbol, "manual")
+            result = research_symbol(symbol, "manual", "manual")
             if result.get("research"):
                 print(result["research"])
             else:
@@ -238,3 +351,4 @@ if __name__ == "__main__":
         print("Usage:")
         print("  --check [--telegram]    Find triggers and auto-research top 3")
         print("  --research SYMBOL       Deep research a specific symbol")
+        print("  --backfill-outbox       Hydrate Intelligence tab from telegram_outbox")

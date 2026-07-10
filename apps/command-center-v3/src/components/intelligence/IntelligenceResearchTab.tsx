@@ -30,7 +30,8 @@ export default function IntelligenceResearchTab({ onDrill, onManageTopics }: Pro
     return <div style={{ ...card, padding: 16, color: '#ef4444', fontSize: 12 }}>Failed to load research topics: {error}</div>
   }
 
-  const userTopics = data?.user_topics ?? []
+  const userTopics = (data?.user_topics ?? []).filter((t: any) => t.source !== 'auto_research.py')
+  const autoBriefs = data?.auto_research_briefs ?? []
   const monitorTopics = data?.monitor_topics ?? []
   const gaps = data?.research_gaps ?? []
 
@@ -40,11 +41,12 @@ export default function IntelligenceResearchTab({ onDrill, onManageTopics }: Pro
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)' }}>Research Topics</div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
-            Operator topics + automated topic monitor · gaps escalated to Iris
+            Auto-research (Trade AI LLM) · operator topics · topic monitor · gaps → Iris
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 12, fontSize: 11 }}>
-          <span style={{ color: '#60a5fa' }}>User: {data?.user_topic_count ?? 0}</span>
+        <div style={{ display: 'flex', gap: 12, fontSize: 11, flexWrap: 'wrap' }}>
+          <span style={{ color: '#22c55e' }}>Auto-research: {data?.auto_research_count ?? 0}</span>
+          <span style={{ color: '#60a5fa' }}>User: {userTopics.length}</span>
           <span style={{ color: 'var(--text2)' }}>Monitor: {data?.monitor_topic_count ?? 0}</span>
           <span style={{ color: (data?.gap_count ?? 0) > 0 ? '#f59e0b' : 'var(--text3)' }}>Gaps: {data?.gap_count ?? 0}</span>
           <button onClick={onManageTopics} style={{
@@ -53,6 +55,39 @@ export default function IntelligenceResearchTab({ onDrill, onManageTopics }: Pro
           }}>Manage</button>
         </div>
       </div>
+
+      {autoBriefs.length > 0 && (
+        <div style={{ ...card, padding: 14, border: '1px solid rgba(34,197,94,.25)' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#22c55e', marginBottom: 4 }}>Auto-Research Briefs ({autoBriefs.length})</div>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>
+            From <code>auto_research.py</code> (9 PM cron) · LLM router (local gemma or cloud fallback) · not Hermes · agent reviews queued when missing
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {autoBriefs.slice(0, 12).map((b: any, i: number) => (
+              <div key={b.topic ?? i}
+                onClick={() => onDrill({
+                  title: b.symbol ? `${b.symbol} auto-research` : b.topic,
+                  subtitle: b.trigger ?? b.original_message ?? '',
+                  endpoint: '/api/v2/research-topics',
+                  rows: [b],
+                })}
+                style={{
+                  padding: '10px 12px', borderRadius: 8, background: 'var(--bg2)', cursor: 'pointer',
+                  border: '1px solid rgba(34,197,94,.15)',
+                }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', fontFamily: 'var(--mono)' }}>{b.symbol ?? b.topic}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>{fmtWhen(b.latest_finding_at ?? b.updated_at)}</div>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>{b.trigger ?? b.original_message ?? ''}</div>
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                  {(b.findings ?? b.latest_findings ?? '').slice(0, 320)}{(b.findings ?? b.latest_findings ?? '').length > 320 ? '…' : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {gaps.length > 0 && (
         <div style={{ ...card, padding: 14 }}>
