@@ -12,7 +12,7 @@ import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/
 import { exitLadder } from '../lib/exitLadder'
 import { parseProposalAccounts, parseSizingPolicy, type RiskPct } from '../lib/watchlistProposeSizing'
 
-interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
+interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean; lane?: 'screener_finds' }
 
 const TEXT0 = '#f8fafc'
 const TEXT1 = '#dbeafe'
@@ -43,9 +43,9 @@ const Pill = ({ text, color, tip, strong = false }: any) => (
   <span title={tip} style={{ fontSize: strong ? 10.5 : 9.5, fontWeight: strong ? 800 : 700, padding: strong ? '3px 8px' : '2px 7px', borderRadius: 5, background: color + '22', color, border: `1px solid ${color}66`, whiteSpace: 'nowrap', cursor: tip ? 'help' : 'default' }}>{text}</span>
 )
 
-const ORIGIN_OPTS = [['all', 'All'], ['trade_ai_screener', 'Screener'], ['agent_discovery', 'AI-discovered'], ['operator', 'Operator-directive'], ['hermes', 'Hermes'], ['portfolio', 'Portfolio']]
+const ORIGIN_OPTS = [['all', 'All'], ['screener_finds', 'Screener Finds (buy-side)'], ['trade_ai_screener', 'Screener'], ['agent_discovery', 'AI-discovered'], ['operator', 'Operator-directive'], ['hermes', 'Hermes'], ['portfolio', 'Portfolio']]
 
-export default function WatchlistHub({ onDrill, embedded }: Props) {
+export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   // CIO-view filter is pushed server-side (cio=) so it searches the FULL universe before the
   // 200-row window — client-side alone missed verdicts on names ranked below the load size
   const [fCio, setFCio] = useState('all')
@@ -54,7 +54,10 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
     const q = search.trim().toUpperCase()
     return /^[A-Z]{1,5}$/.test(q) ? q : ''
   }, [search])
-  const wlPath = symLookup
+  const screenerLane = lane === 'screener_finds' || fOrigin === 'screener_finds'
+  const wlPath = screenerLane
+    ? '/api/v2/watchlist/items?lane=screener_finds'
+    : symLookup
     ? `/api/v2/watchlist/items?symbol=${encodeURIComponent(symLookup)}`
     : `/api/v2/watchlist/items?sort=hermes${fCio !== 'all' ? `&cio=${encodeURIComponent(fCio)}` : ''}`
   const { data: wl, loading: wlLoading, refetch: refetchWl } = useApi<any>(wlPath, 60_000)
@@ -261,8 +264,10 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
       // Search is a DIRECT symbol lookup — it bypasses the other filters so a specific ticker is always
       // findable (operator 2026-06-18: "can't filter HPE" — HPE is CIO=IGNORE and the Buy-side filter hid it).
       if (q) return symU.includes(q)
+      if (screenerLane) return true   // lane API already narrowed to buy-side screener pins
       if (fStatus !== 'all' && it.status !== fStatus) return false
       if (fOrigin !== 'all') {
+        if (fOrigin === 'screener_finds') return true
         if (fOrigin === 'operator') { if (!it.directive_id && it.origin_system !== 'operator') return false }
         else if (it.origin_system !== fOrigin) return false
       }
@@ -295,7 +300,7 @@ export default function WatchlistHub({ onDrill, embedded }: Props) {
       // starred first (stable — preserves the server's hermes order within each group; also reflects an
       // optimistic toggle immediately, before the server-ordered refetch lands)
       .sort((a, b) => (isStarred(b) ? 1 : 0) - (isStarred(a) ? 1 : 0))
-  }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, fHeld, fStarred, starOverride, fSector, fAnalyst, search, paMap, advMap, directives, outMap])
+  }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, fHeld, fStarred, starOverride, fSector, fAnalyst, search, paMap, advMap, directives, outMap, screenerLane])
 
   const pageCount = Math.max(1, Math.ceil(visible.length / PER_PAGE))
   const curPage = Math.min(page, pageCount - 1)

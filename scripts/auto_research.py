@@ -108,6 +108,18 @@ def find_research_triggers() -> list:
     return triggers
 
 
+def _sync_screener_find_pin(symbol: str, reason: str = "", strategy_type: str = None,
+                            brief_snippet: str = "", auto_research_at=None) -> bool:
+    """Keep buy-side screener finds pinned in the Watchlist Screener Finds lane."""
+    try:
+        from api_v2 import _sync_screener_find_pin as _api_sync
+        return _api_sync(symbol, reason=reason, strategy_type=strategy_type,
+                         brief_snippet=brief_snippet, auto_research_at=auto_research_at)
+    except Exception as e:
+        print(f"[auto-research] screener pin sync failed for {symbol}: {e}")
+        return False
+
+
 def _persist_research_topic(symbol: str, reason: str, research: str, strategy_type: str = None) -> None:
     """Write brief to user_research_topics for Intelligence → Research tab."""
     topic = f"Auto-research: {symbol}"
@@ -252,6 +264,10 @@ Keep under 300 words. Be specific with numbers and dates. Flag anything not pres
     if trigger_kind in ("new_discovery", "agent_conflict"):
         _queue_agent_reviews(symbol, f"Auto-research {trigger_kind}: {reason[:180]}")
 
+    if trigger_kind in ("new_discovery", "manual") or "screener" in (reason or "").lower():
+        _sync_screener_find_pin(symbol, reason=reason, strategy_type=strategy_type,
+                                brief_snippet=research[:800])
+
     return {
         "symbol": symbol,
         "reason": reason,
@@ -299,6 +315,44 @@ def run_check(send_telegram: bool = False):
     return {"triggers": len(triggers), "researched": researched, "results": results}
 
 
+def backfill_screener_finds(days: int = 14) -> int:
+    """Pin recent auto-research screener finds that still have buy-side CIO verdicts."""
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(f"""
+        SELECT DISTINCT ON (symbol) symbol, payload, created_at
+        FROM portfolio_intelligence_events
+        WHERE event_type = 'auto_research'
+          AND created_at > NOW() - INTERVAL '{int(days)} days'
+        ORDER BY symbol, created_at DESC
+    """)
+    n = 0
+    for r in cur.fetchall():
+        sym = str(r["symbol"] or "").upper()
+        payload = r.get("payload") or {}
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                payload = {}
+        reason = str(payload.get("reason") or "auto_research")
+        st = None
+        m = re.search(r"\(([^)]+)\)\s*$", reason)
+        if m:
+            st = m.group(1)
+        brief = str(payload.get("research") or payload.get("research_preview") or "")
+        if _sync_screener_find_pin(sym, reason=reason, strategy_type=st,
+                                   brief_snippet=brief, auto_research_at=r.get("created_at")):
+            n += 1
+            print(f"[backfill] pinned {sym} (buy-side CIO)")
+        else:
+            print(f"[backfill] skipped {sym} (CIO not buy-side)")
+    conn.close()
+    print(f"[auto-research] Screener-find pins active: {n}")
+    return n
+
+
 def backfill_from_outbox(limit: int = 5) -> int:
     """Re-hydrate user_research_topics from captured Telegram outbox bodies."""
     conn = _get_conn()
@@ -332,7 +386,9 @@ def backfill_from_outbox(limit: int = 5) -> int:
 
 if __name__ == "__main__":
     tg = "--telegram" in sys.argv
-    if "--backfill-outbox" in sys.argv:
+    if "--backfill-screener-finds" in sys.argv:
+        backfill_screener_finds()
+    elif "--backfill-outbox" in sys.argv:
         backfill_from_outbox()
     elif "--check" in sys.argv:
         run_check(send_telegram=tg)
@@ -352,3 +408,4 @@ if __name__ == "__main__":
         print("  --check [--telegram]    Find triggers and auto-research top 3")
         print("  --research SYMBOL       Deep research a specific symbol")
         print("  --backfill-outbox       Hydrate Intelligence tab from telegram_outbox")
+        print("  --backfill-screener-finds  Pin buy-side screener finds into Watchlist lane")

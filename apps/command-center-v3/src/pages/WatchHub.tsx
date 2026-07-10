@@ -5,12 +5,14 @@ import WatchlistHub from './WatchlistHub'
 import WatchpoolHub from './WatchpoolHub'
 import SectorsHub from './SectorsHub'
 import PullbackMacdHub from './PullbackMacdHub'
+import ScreenerFindsHub from './ScreenerFindsHub'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Watchlist', 'Watchpool', 'Sectors', 'Pullback/MACD'] as const
+const TABS = ['Watchlist', 'Screener Finds', 'Watchpool', 'Sectors', 'Pullback/MACD'] as const
 const TAB_SLUG: Record<typeof TABS[number], string> = {
   Watchlist: 'watchlist',
+  'Screener Finds': 'screener-finds',
   Watchpool: 'watchpool',
   Sectors: 'sectors',
   'Pullback/MACD': 'pullback-macd',
@@ -35,7 +37,7 @@ export default function WatchHub({ onDrill }: Props) {
       <div className="hub-title-row">
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Watch</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Curated list · directive pool · sectors · pullback/MACD lane</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Curated list · screener finds · directive pool · sectors · pullback/MACD</div>
         </div>
         <div className="hub-tabs">
           {TABS.map(t => (
@@ -48,6 +50,7 @@ export default function WatchHub({ onDrill }: Props) {
         </div>
       </div>
       {tab === 'Watchlist' && <WatchlistHub onDrill={onDrill} embedded />}
+      {tab === 'Screener Finds' && <ScreenerFindsHub onDrill={onDrill} embedded />}
       {tab === 'Watchpool' && <WatchpoolHub onDrill={onDrill} embedded />}
       {tab === 'Sectors' && <SectorsHub onDrill={onDrill} embedded />}
       {tab === 'Pullback/MACD' && <PullbackMacdHub onDrill={onDrill} embedded />}

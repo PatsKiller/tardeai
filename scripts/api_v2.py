@@ -5308,16 +5308,118 @@ def ai_ask(body: dict):
 
 # ── Watchlist DB-Backed Endpoints ──────────────────────────────────────────────
 
+_SCREENER_FIND_BUY_SIDE = frozenset({"BUY", "STRONG_BUY", "ADD", "ADD_ON_PULLBACK"})
+
+
+def _ensure_screener_find_pins_table():
+    _db_query("""CREATE TABLE IF NOT EXISTS screener_find_pins (
+                   symbol text PRIMARY KEY,
+                   pinned_at timestamptz NOT NULL DEFAULT now(),
+                   auto_research_at timestamptz,
+                   discovery_reason text,
+                   strategy_type text,
+                   brief_snippet text,
+                   cio_recommendation text,
+                   active boolean NOT NULL DEFAULT true)""", fetch="none")
+
+
+def _screener_find_cio_rec(symbol):
+    row = _db_query("""
+        SELECT COALESCE(fs.recommendation, rc.latest_recommendation) AS rec
+        FROM watchlist_items wi
+        LEFT JOIN watchlist_final_synthesis fs ON upper(fs.symbol) = upper(wi.symbol)
+        LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
+        WHERE upper(wi.symbol) = upper(%s) AND wi.status <> 'removed'
+        LIMIT 1
+    """, (symbol,), fetch="one")
+    return str((row or {}).get("rec") or "").upper().strip()
+
+
+def _sync_screener_find_pin(symbol, reason="", strategy_type=None, brief_snippet="", auto_research_at=None):
+    """Pin a screener find while CIO verdict is buy-side; deactivate otherwise."""
+    _ensure_screener_find_pins_table()
+    sym = str(symbol or "").upper().strip()
+    if not sym:
+        return False
+    cio = _screener_find_cio_rec(sym)
+    active = cio in _SCREENER_FIND_BUY_SIDE
+    _db_query("""
+        INSERT INTO screener_find_pins
+            (symbol, auto_research_at, discovery_reason, strategy_type, brief_snippet,
+             cio_recommendation, active, pinned_at)
+        VALUES (%s, COALESCE(%s, now()), %s, %s, %s, %s, %s, now())
+        ON CONFLICT (symbol) DO UPDATE SET
+            auto_research_at = COALESCE(EXCLUDED.auto_research_at, screener_find_pins.auto_research_at),
+            discovery_reason = COALESCE(NULLIF(EXCLUDED.discovery_reason, ''), screener_find_pins.discovery_reason),
+            strategy_type = COALESCE(EXCLUDED.strategy_type, screener_find_pins.strategy_type),
+            brief_snippet = COALESCE(NULLIF(EXCLUDED.brief_snippet, ''), screener_find_pins.brief_snippet),
+            cio_recommendation = EXCLUDED.cio_recommendation,
+            active = EXCLUDED.active
+    """, (sym, auto_research_at, (reason or "")[:500], strategy_type,
+          (brief_snippet or "")[:800], cio or None, active), fetch="none")
+    return active
+
+
+def _sync_all_screener_find_pins():
+    _ensure_screener_find_pins_table()
+    for r in (_db_query("SELECT symbol FROM screener_find_pins") or []):
+        _sync_screener_find_pin(r["symbol"])
+
+
+def _screener_finds_candidates(query=None):
+    """GET /api/v2/screener-finds/candidates — auto-research screener finds with buy-side CIO cards."""
+    _sync_all_screener_find_pins()
+    pins = _db_query("""
+        SELECT symbol, pinned_at, auto_research_at, discovery_reason, strategy_type,
+               brief_snippet, cio_recommendation, active
+        FROM screener_find_pins
+        WHERE active = true
+        ORDER BY auto_research_at DESC NULLS LAST, pinned_at DESC
+    """) or []
+    syms = [p["symbol"] for p in pins]
+    items_out = []
+    if syms:
+        wl = _wl_items({"symbols": ",".join(syms)})
+        items_out = wl.get("items") or []
+        sym_order = {s: i for i, s in enumerate(syms)}
+        items_out.sort(key=lambda x: sym_order.get(x.get("symbol"), 999))
+    return _json_clean({
+        "ok": True,
+        "count": len(pins),
+        "candidates": pins,
+        "items": items_out,
+        "buy_side_only": True,
+        "retention": "Active while CIO is BUY, STRONG_BUY, ADD, or ADD_ON_PULLBACK",
+    })
+
+
 def _wl_items(query: dict = None):
     """GET /api/v2/watchlist/items — DB-backed watchlist items with filters."""
     q = query or {}
+    _ensure_screener_find_pins_table()
     # NOTE: this SELECT joins several tables that also have source/status/asset_type columns
     # (watchlist_symbol_master, strategy cards, …) — filter columns MUST be qualified with wi.,
     # else Postgres raises "column reference ... is ambiguous" and the whole list silently returns 0.
     conditions = ["wi.status <> 'removed'"]
     params = []
     _sym_lookup = None
-    if q.get("symbol"):
+    _sym_list = None
+    _lane = str((q.get("lane") or [""])[0] if isinstance(q.get("lane"), list) else (q.get("lane") or "")).strip()
+    if _lane == "screener_finds":
+        _ensure_screener_find_pins_table()
+        _sync_all_screener_find_pins()
+        _sym_list = [r["symbol"] for r in (_db_query(
+            "SELECT symbol FROM screener_find_pins WHERE active = true ORDER BY auto_research_at DESC NULLS LAST"
+        ) or [])]
+    elif q.get("symbols"):
+        raw = q["symbols"][0] if isinstance(q["symbols"], list) else q["symbols"]
+        _sym_list = [s.strip().upper() for s in str(raw or "").split(",") if s.strip()]
+    if _sym_list is not None:
+        if not _sym_list:
+            return {"count": 0, "items": []}
+        conditions.append("upper(wi.symbol) = ANY(%s)")
+        params.append(_sym_list)
+    elif q.get("symbol"):
         _sym_lookup = str(q["symbol"][0] if isinstance(q["symbol"], list) else q["symbol"]).strip().upper()
         if _sym_lookup:
             conditions.append("upper(wi.symbol) = %s")
@@ -5392,7 +5494,9 @@ def _wl_items(query: dict = None):
             SELECT * FROM (
                 SELECT DISTINCT ON (wi.symbol) wi.*,
                        EXISTS (SELECT 1 FROM operator_starred_symbols s
-                               WHERE upper(s.symbol) = upper(wi.symbol)) AS starred
+                               WHERE upper(s.symbol) = upper(wi.symbol)) AS starred,
+                       EXISTS (SELECT 1 FROM screener_find_pins sfp
+                               WHERE upper(sfp.symbol) = upper(wi.symbol) AND sfp.active = true) AS screener_pinned
                 FROM watchlist_items wi
                 WHERE {where}
                 ORDER BY wi.symbol,
@@ -5401,9 +5505,10 @@ def _wl_items(query: dict = None):
                          wi.first_seen_at ASC
             ) dedup
             ORDER BY (NOT starred),          -- operator-starred always make the top-200 window + sort first
+                     (NOT screener_pinned),   -- buy-side screener finds stay in the top-200 window
                      (COALESCE(in_directive_watch, false) = false),
                      (status <> 'active'),   -- active names always make the top-200 window (e.g. CURR)
-                     {sort} LIMIT {1 if _sym_lookup else 200}
+                     {sort} LIMIT {len(_sym_list) if _sym_list else (1 if _sym_lookup else 200)}
         )
         SELECT p.*,
                sc.strategy_type, sc.latest_price, sc.support, sc.resistance,
@@ -5469,6 +5574,7 @@ def _wl_items(query: dict = None):
             FROM watchlist_entry_plans wep WHERE wep.symbol = p.symbol
             ORDER BY created_at DESC, id DESC LIMIT 1) ep ON true
         ORDER BY (NOT p.starred),           -- operator-starred first
+                 (NOT COALESCE(p.screener_pinned, false)),
                  (COALESCE(p.in_directive_watch, false) = false),
                  (p.status <> 'active'),
                  {sort_p}
@@ -28121,6 +28227,7 @@ ROUTES = {
     "/api/v2/options/approval-queue": _options_approval_queue,
     "/api/v2/pullback-macd/candidates": _pullback_macd_candidates,
     "/api/v2/pullback-macd/adjustments": _pullback_macd_adjustments,
+    "/api/v2/screener-finds/candidates": _screener_finds_candidates,
     "/api/v2/protection-proposals": _protection_proposals,
     "/api/v2/schwab/fundamentals": _schwab_fundamentals,
     "/api/v2/schwab/movers": _schwab_movers,
