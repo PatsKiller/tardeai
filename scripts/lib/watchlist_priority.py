@@ -130,6 +130,8 @@ def sql_daily_priority_exists(symbol_sql: str = "j.symbol") -> str:
         OR EXISTS (SELECT 1 FROM watchlist_final_synthesis fs
                    WHERE UPPER(fs.symbol) = UPPER({sym})
                      AND UPPER(REPLACE(REPLACE(fs.recommendation, ' ', '_'), '-', '_')) = ANY(%s))
+        OR EXISTS (SELECT 1 FROM screener_find_pins sfp
+                   WHERE UPPER(sfp.symbol) = UPPER({sym}) AND sfp.active = true)
     )"""
 
 
