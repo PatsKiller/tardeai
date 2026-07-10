@@ -49,6 +49,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   // CIO-view filter is pushed server-side (cio=) so it searches the FULL universe before the
   // 200-row window — client-side alone missed verdicts on names ranked below the load size
   const [fCio, setFCio] = useState('all')
+  const [fOrigin, setFOrigin] = useState('all')
   const [search, setSearch] = useState('')
   const symLookup = useMemo(() => {
     const q = search.trim().toUpperCase()
@@ -116,7 +117,6 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   // (e.g. knowledge themes moved to the research pipeline) — hidden entirely, not even in the dormant list.
   const dormantDirs = directives.filter(d => d.status !== 'archived' && !isActionableDir(d))
 
-  const [fOrigin, setFOrigin] = useState('all')
   const [cardV4, setCardV4] = useCardsV4()
   const [fBand, setFBand] = useState('all')
   const [fKind, setFKind] = useState('all')

@@ -149,8 +149,34 @@ def _persist_research_topic(symbol: str, reason: str, research: str, strategy_ty
     conn.close()
 
 
+def _ensure_symbol_profiles(symbols: list) -> int:
+    """Seed symbol_profiles rows so agent jobs pass the fail-closed ticker gate."""
+    import subprocess
+    syms = sorted({str(s or "").upper().strip() for s in symbols if str(s or "").strip()})
+    if not syms:
+        return 0
+    conn = _get_conn()
+    cur = conn.cursor()
+    missing = []
+    for sym in syms:
+        cur.execute("SELECT 1 FROM symbol_profiles WHERE upper(symbol)=upper(%s) LIMIT 1", (sym,))
+        if not cur.fetchone():
+            missing.append(sym)
+    conn.close()
+    if not missing:
+        return 0
+    print(f"[auto-research] Building symbol_profiles for {len(missing)} symbol(s): {', '.join(missing)}")
+    subprocess.run(
+        [sys.executable, str(PROJECT_ROOT / "scripts" / "build_symbol_profiles.py"),
+         "--symbols", ",".join(missing), "--force"],
+        cwd=str(PROJECT_ROOT), check=False, capture_output=True, text=True,
+    )
+    return len(missing)
+
+
 def _queue_agent_reviews(symbol: str, note: str) -> int:
     """Queue maria/steph/risk when auto-research fires but agents never wrote results."""
+    _ensure_symbol_profiles([symbol])
     conn = _get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -174,7 +200,7 @@ def _queue_agent_reviews(symbol: str, note: str) -> int:
         cur.execute("""
             INSERT INTO watchlist_agent_jobs
                 (id, symbol, requested_agent, request_type, priority, note, status, submitted_from)
-            VALUES (%s, %s, %s, 'full_analysis', 2, %s, 'queued', 'auto_research.py')
+            VALUES (%s, %s, %s, 'full_analysis', 0, %s, 'queued', 'auto_research.py')
             ON CONFLICT DO NOTHING
         """, (job_id, symbol, agent, note[:240]))
         queued += cur.rowcount or 0
@@ -451,7 +477,37 @@ def backfill_screener_finds(days: int = 14, all_time: bool = True) -> int:
     print(f"[auto-research] Active pins: {len(pinned)} | skipped (non-buy-side): {len(skipped)}")
     if pinned:
         print(f"[auto-research] Pinned: {', '.join(sorted(set(pinned)))}")
+    repair_screener_find_agents(pinned)
     return len(pinned)
+
+
+def repair_screener_find_agents(symbols: list = None) -> int:
+    """Ensure symbol_profiles + queue agent reviews for screener-find pins missing LLM results."""
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    if symbols:
+        syms = sorted({str(s).upper() for s in symbols})
+    else:
+        cur.execute("SELECT symbol FROM screener_find_pins WHERE active = true")
+        syms = sorted(r["symbol"] for r in cur.fetchall())
+    _ensure_symbol_profiles(syms)
+    queued_total = 0
+    for sym in syms:
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM watchlist_agent_results "
+            "WHERE symbol=%s AND created_at > NOW() - INTERVAL '30 days'",
+            (sym,),
+        )
+        if (cur.fetchone() or {}).get("c", 0) > 0:
+            continue
+        n = _queue_agent_reviews(sym, f"Screener-find repair: {sym} — profile + agent backfill")
+        queued_total += n
+        if n:
+            print(f"[repair] queued {n} agent job(s) for {sym}")
+    conn.close()
+    print(f"[auto-research] Agent repair queued {queued_total} job(s) across screener-find pins")
+    return queued_total
 
 
 def backfill_from_outbox(limit: int = 5) -> int:
@@ -487,7 +543,9 @@ def backfill_from_outbox(limit: int = 5) -> int:
 
 if __name__ == "__main__":
     tg = "--telegram" in sys.argv
-    if "--backfill-screener-finds" in sys.argv:
+    if "--repair-screener-agents" in sys.argv:
+        repair_screener_find_agents()
+    elif "--backfill-screener-finds" in sys.argv:
         _days = 14
         if "--days" in sys.argv:
             try:
@@ -516,5 +574,6 @@ if __name__ == "__main__":
         print("  --check [--telegram]    Find triggers and auto-research top 3")
         print("  --research SYMBOL       Deep research a specific symbol")
         print("  --backfill-outbox       Hydrate Intelligence tab from telegram_outbox")
+        print("  --repair-screener-agents  Build profiles + queue agent jobs for active pins")
         print("  --backfill-screener-finds  Pin all historical buy-side screener finds")
         print("  --backfill-screener-finds --days N  Limit event scan to last N days")

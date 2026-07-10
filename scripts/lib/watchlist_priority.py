@@ -187,6 +187,8 @@ def sql_job_priority_case(symbol_sql: str = "j.symbol") -> str:
         WHEN {sym} = ANY(%s) THEN 1
         WHEN EXISTS (SELECT 1 FROM paper_trade_proposals p
                      WHERE UPPER(p.symbol) = UPPER({sym}) AND p.status = ANY(%s)) THEN 2
+        WHEN EXISTS (SELECT 1 FROM screener_find_pins sfp
+                     WHERE UPPER(sfp.symbol) = UPPER({sym}) AND sfp.active = true) THEN 2
         WHEN EXISTS (SELECT 1 FROM watchlist_research_cards rc
                      WHERE UPPER(rc.symbol) = UPPER({sym})
                        AND UPPER(rc.latest_recommendation) IN ({buy})) THEN 3
