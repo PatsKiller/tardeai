@@ -315,42 +315,143 @@ def run_check(send_telegram: bool = False):
     return {"triggers": len(triggers), "researched": researched, "results": results}
 
 
-def backfill_screener_finds(days: int = 14) -> int:
-    """Pin recent auto-research screener finds that still have buy-side CIO verdicts."""
+def _screener_find_candidates(all_time: bool = True, days: int = 14) -> list:
+    """Collect historical screener-find symbols from every source (deduped, richest row wins)."""
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    found: dict[str, dict] = {}
+
+    def _add(sym, reason="", strategy_type=None, brief="", at=None, source=""):
+        sym = str(sym or "").upper().strip()
+        if not sym or len(sym) > 5:
+            return
+        row = {
+            "symbol": sym,
+            "reason": (reason or "")[:500],
+            "strategy_type": strategy_type,
+            "brief_snippet": (brief or "")[:800],
+            "auto_research_at": at,
+            "source": source,
+        }
+        prev = found.get(sym)
+        if not prev or (at and (not prev.get("auto_research_at") or at > prev["auto_research_at"])):
+            found[sym] = row
+
+    # 1. auto_research intelligence events (screener finds + new discoveries)
+    time_clause = "" if all_time else f"AND created_at > NOW() - INTERVAL '{int(days)} days'"
     cur.execute(f"""
         SELECT DISTINCT ON (symbol) symbol, payload, created_at
         FROM portfolio_intelligence_events
-        WHERE event_type = 'auto_research'
-          AND created_at > NOW() - INTERVAL '{int(days)} days'
+        WHERE event_type = 'auto_research' {time_clause}
         ORDER BY symbol, created_at DESC
     """)
-    n = 0
     for r in cur.fetchall():
-        sym = str(r["symbol"] or "").upper()
         payload = r.get("payload") or {}
         if isinstance(payload, str):
             try:
                 payload = json.loads(payload)
             except Exception:
                 payload = {}
-        reason = str(payload.get("reason") or "auto_research")
+        reason = str(payload.get("reason") or "")
+        trigger = str(payload.get("trigger_kind") or "")
+        if "screener" not in reason.lower() and trigger != "new_discovery":
+            continue
         st = None
-        m = re.search(r"\(([^)]+)\)\s*$", reason)
+        m = re.search(r"\(([^)]+)\)", reason)
         if m:
             st = m.group(1)
         brief = str(payload.get("research") or payload.get("research_preview") or "")
-        if _sync_screener_find_pin(sym, reason=reason, strategy_type=st,
-                                   brief_snippet=brief, auto_research_at=r.get("created_at")):
-            n += 1
-            print(f"[backfill] pinned {sym} (buy-side CIO)")
-        else:
-            print(f"[backfill] skipped {sym} (CIO not buy-side)")
+        _add(r["symbol"], reason or "auto_research", st, brief, r.get("created_at"), "event")
+
+    # 2. user_research_topics from auto_research.py (telegram briefs)
+    cur.execute("""
+        SELECT topic, original_message, latest_findings, updated_at
+        FROM user_research_topics
+        WHERE source = 'auto_research.py'
+    """)
+    for r in cur.fetchall():
+        m = re.search(r"Auto-research:\s*([A-Z]{1,5})", r.get("topic") or "")
+        if not m:
+            continue
+        msg = str(r.get("original_message") or "")
+        if "screener" not in msg.lower():
+            continue
+        st = None
+        sm = re.search(r"\(([^)]+)\)", msg)
+        if sm:
+            st = sm.group(1)
+        _add(m.group(1), msg, st, r.get("latest_findings") or "", r.get("updated_at"), "topic")
+
+    # 3. telegram_outbox auto_research bodies (all historical nightly runs)
+    cur.execute("""
+        SELECT body, sent_at FROM telegram_outbox
+        WHERE report_type = 'auto_research' AND ok = TRUE
+        ORDER BY sent_at DESC
+    """)
+    for r in cur.fetchall():
+        body = str(r.get("body") or "")
+        for m in re.finditer(r"\*([A-Z]{1,5})\*\s*\(([^)]+)\)", body):
+            sym, reason = m.group(1), m.group(2)
+            if "screener" not in reason.lower() and "find" not in reason.lower():
+                continue
+            st = None
+            sm = re.search(r"\(([^)]+)\)", reason)
+            if sm:
+                st = sm.group(1)
+            _add(sym, f"New screener find: {sym} ({reason})", st, "", r.get("sent_at"), "outbox")
+
+    # 4. incubator-active screener promotions (Finviz → watchlist bus)
+    cur.execute("""
+        SELECT wi.symbol, wi.trigger_source, wi.last_trigger_at,
+               tsc.strategy_type
+        FROM watchlist_items wi
+        LEFT JOIN ticker_strategy_classifications tsc
+               ON wi.symbol = tsc.symbol AND tsc.active = TRUE
+        WHERE wi.source = 'ai_discovered'
+          AND wi.status <> 'removed'
+          AND wi.trigger_source ILIKE '%incubator_active%'
+          AND wi.last_trigger_at > NOW() - INTERVAL '90 days'
+    """)
+    for r in cur.fetchall():
+        reason = f"Incubator screener promotion: {r['symbol']}"
+        if r.get("strategy_type"):
+            reason += f" ({r['strategy_type']})"
+        _add(r["symbol"], reason, r.get("strategy_type"), "",
+             r.get("last_trigger_at"), "incubator")
+
     conn.close()
-    print(f"[auto-research] Screener-find pins active: {n}")
-    return n
+    return sorted(found.values(), key=lambda x: x.get("auto_research_at") or "", reverse=True)
+
+
+def backfill_screener_finds(days: int = 14, all_time: bool = True) -> int:
+    """Pin screener finds that still have buy-side CIO verdicts.
+
+    Sources (all_time=True): auto_research events, research topics, telegram outbox,
+    and incubator-active screener promotions (90d). Pins deactivate automatically when
+    CIO drifts off buy-side.
+    """
+    candidates = _screener_find_candidates(all_time=all_time, days=days)
+    print(f"[backfill] Evaluating {len(candidates)} historical screener-find candidate(s)")
+    pinned, skipped = [], []
+    for c in candidates:
+        sym = c["symbol"]
+        if _sync_screener_find_pin(
+            sym,
+            reason=c.get("reason") or "screener_find",
+            strategy_type=c.get("strategy_type"),
+            brief_snippet=c.get("brief_snippet") or "",
+            auto_research_at=c.get("auto_research_at"),
+        ):
+            pinned.append(sym)
+            print(f"[backfill] pinned {sym} ({c.get('source')})")
+        else:
+            skipped.append(sym)
+            print(f"[backfill] skipped {sym} — CIO not buy-side ({c.get('source')})")
+    print(f"[auto-research] Active pins: {len(pinned)} | skipped (non-buy-side): {len(skipped)}")
+    if pinned:
+        print(f"[auto-research] Pinned: {', '.join(sorted(set(pinned)))}")
+    return len(pinned)
 
 
 def backfill_from_outbox(limit: int = 5) -> int:
@@ -387,7 +488,14 @@ def backfill_from_outbox(limit: int = 5) -> int:
 if __name__ == "__main__":
     tg = "--telegram" in sys.argv
     if "--backfill-screener-finds" in sys.argv:
-        backfill_screener_finds()
+        _days = 14
+        if "--days" in sys.argv:
+            try:
+                _days = int(sys.argv[sys.argv.index("--days") + 1])
+            except (ValueError, IndexError):
+                pass
+        _all = "--days" not in sys.argv
+        backfill_screener_finds(days=_days, all_time=_all)
     elif "--backfill-outbox" in sys.argv:
         backfill_from_outbox()
     elif "--check" in sys.argv:
@@ -408,4 +516,5 @@ if __name__ == "__main__":
         print("  --check [--telegram]    Find triggers and auto-research top 3")
         print("  --research SYMBOL       Deep research a specific symbol")
         print("  --backfill-outbox       Hydrate Intelligence tab from telegram_outbox")
-        print("  --backfill-screener-finds  Pin buy-side screener finds into Watchlist lane")
+        print("  --backfill-screener-finds  Pin all historical buy-side screener finds")
+        print("  --backfill-screener-finds --days N  Limit event scan to last N days")
