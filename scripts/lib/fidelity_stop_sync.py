@@ -319,20 +319,23 @@ def default_fidelity_rollover_stops() -> list[dict[str, Any]]:
         return cfg
     acct = "fidelity_rollover_ira"  # hardcode-ok: fallback when config JSON missing
     return [
+        {"symbol": "CSCO", "account": acct, "stop_price": 115.0, "qty": 100, "placed_date": "2026-07-10"},
+        {
+            "symbol": "ANET", "account": acct, "order_type": "TRAILING_STOP",
+            "stop_price": 176.37, "trail_pct": 6, "trail_link": "LAST",
+            "qty": 200, "placed_date": "2026-07-10",
+        },
         {
             "symbol": "SCHG", "account": acct, "order_type": "TRAILING_STOP",
-            "stop_price": 31.43, "trail_pct": 8, "trail_link": "LAST",
-            "qty": 5000, "placed_date": "2026-07-08",
-            "note": "Fidelity GTC trailing 8% — replaced fixed $31.20 stop (canceled 2026-07-07)",
+            "stop_price": 32.6, "trail_pct": 6, "trail_link": "LAST",
+            "qty": 5000, "placed_date": "2026-07-09",
+        },
+        {
+            "symbol": "DXCM", "account": acct, "order_type": "TRAILING_STOP",
+            "stop_price": 71.04, "trail_pct": 6, "trail_link": "LAST",
+            "qty": 225, "placed_date": "2026-07-08",
         },
         {"symbol": "ARKX", "account": acct, "stop_price": 31.06, "qty": 1000, "placed_date": "2026-07-07"},
         {"symbol": "XAR", "account": acct, "stop_price": 263.03, "qty": 100, "placed_date": "2026-07-07"},
-        {
-            "symbol": "ANET", "account": acct, "order_type": "TRAILING_STOP",
-            "stop_price": 161.26, "trail_pct": 9, "trail_link": "LAST",
-            "qty": 200, "placed_date": "2026-07-06",
-            "note": "Fidelity GTC trailing 9% based on Last (ratcheted from $158.39)",
-        },
-        {"symbol": "DXCM", "account": acct, "stop_price": 67.23, "qty": 225, "placed_date": "2026-07-06"},
         {"symbol": "DIVI", "account": acct, "stop_price": 40.58, "qty": 1000, "placed_date": "2026-07-02"},
     ]

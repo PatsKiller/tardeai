@@ -84,20 +84,30 @@ function stopCopyFromLogic(
       }
     case 'MODIFY_EXISTING_STOP':
       return {
-        instruction: `Tighten stop → ${fmt$(adv!)}`,
+        instruction: opts.isFidelity ? `Modify ticket → ${fmt$(adv!)}` : `Tighten stop → ${fmt$(adv!)}`,
         context: live != null ? `${fmt$(live)} now → ${fmt$(adv!)}` : `Target ${fmt$(adv!)}`,
         tooltip,
       }
     case 'KEEP_EXISTING_STOP':
+      if (logic.liveStopIsTrailing && live != null) {
+        const trail = logic.liveTrailPct
+        return {
+          instruction: trail != null ? `Keep trail ${trail}% → ${fmt$(live)}` : `Keep stop → ${fmt$(live)}`,
+          context: adv != null && logic.existing_stop_is_tighter_than_advisory
+            ? `Tighter than ${fmt$(adv)} advisory`
+            : adv != null ? `Advisory ${fmt$(adv)}` : 'Fidelity GTC in place',
+          tooltip,
+        }
+      }
       if (logic.existing_stop_is_tighter_than_advisory && live != null) {
         return {
-          instruction: `Keep stop at ${fmt$(live)}`,
-          context: adv != null ? `Already tighter than ${fmt$(adv)} advisory` : '',
+          instruction: `Keep stop → ${fmt$(live)}`,
+          context: adv != null ? `Tighter than ${fmt$(adv)} advisory` : '',
           tooltip,
         }
       }
       return {
-        instruction: live != null ? `Stop OK at ${fmt$(live)}` : adv != null ? `Stop OK at ${fmt$(adv)}` : 'Stop in place',
+        instruction: live != null ? `Stop OK → ${fmt$(live)}` : adv != null ? `Stop OK → ${fmt$(adv)}` : 'Stop in place',
         context: adv != null && live != null ? `Matches ${fmt$(adv)} advisory` : '',
         tooltip,
       }

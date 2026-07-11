@@ -161,7 +161,7 @@ export function isTrailingBrokerStop(stop?: any, monitored?: any): boolean {
 
 export function hasLiveBrokerStopOrder(stop?: any, monitored?: any): boolean {
   if (!stop && !monitored) return false
-  if (stop?.source === 'broker' || stop?.verified === true || stop?.broker_verified === true) return true
+  if (stop?.source === 'broker' || stop?.source === 'fidelity_manual' || stop?.verified === true || stop?.broker_verified === true) return true
   if (isTrailingBrokerStop(stop, monitored)) return true
   if (finiteNum(stop?.stop_price) != null) return true
   if (String(stop?.order_id ?? '').trim()) return true

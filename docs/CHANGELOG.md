@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-11 — Fidelity GTC stop registry audit (••5199)
+
+- **config/fidelity_rollover_stops.json** — reconciled to Fidelity Activity & Orders 2026-07-11 11:00 ET:
+  CSCO $115, ANET trail 6% @$176.37, SCHG trail 6% @$32.60, DXCM trail 6% @$71.04,
+  ARKX $31.06, XAR $263.03, DIVI $40.58 (was stale: SCHG 8%/$31.43, ANET 9%, DXCM fixed).
+- Applied via `fidelity_stop_sync --apply` → `manual_broker_stops` + `stop_confirmations`.
+- Holdings terminal: Fidelity trailing stops show `Keep trail 6% → $32.60` when GTC is in sync.
+
 ## 2026-07-11 (late2) — Holdings stop imperative copy (→ target)
 
 - Stop column shows **what to adjust to**, e.g. `Tighten stop → $32.43` with `Live $35.00 now → $32.43` context.
