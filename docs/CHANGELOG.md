@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-07-11 (eve) — Holdings Terminal + Cards UX polish
+
+- **Globe icon fix** — portfolio feed omits HQ country; default US flag for domestic tickers (ADR overrides unchanged).
+- **Taller terminal rows** (46px) with tooltips on every column, row, and action button.
+- **Actionable items** — amber left border, `▸` prefix, solid amber buttons, footer count of rows needing action.
+- **Cards (legacy)** — new `HoldingsCard` component: Bloomberg palette, country flag, stop pill, primary action button, opens side drawer.
+
 ## 2026-07-11 (pm) — Holdings Terminal Bloomberg color alignment
 
 - **Palette** — `#0f172a` rows, `#ffb000`/`#ffa028` amber, `#22c55e` up, `#ef4444` down, `#94a3b8` labels.

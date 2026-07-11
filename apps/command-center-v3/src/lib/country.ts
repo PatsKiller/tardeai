@@ -136,6 +136,11 @@ export function resolveCountry(input: CountryInput): Country | null {
     const byName = NAME_TO_CODE[v.toLowerCase()]
     if (byName) { const c = build(byName); if (c) return c }
   }
+  // Holdings / portfolio feeds often omit HQ country; ADR_OVERRIDES already ran above.
+  if (sym) {
+    const assumed = build('US')
+    if (assumed) return assumed
+  }
   return null
 }
 

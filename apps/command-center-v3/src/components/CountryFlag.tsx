@@ -25,8 +25,8 @@ export default function CountryFlag({ size = 20, ...input }: CountryFlagProps) {
 
   if (!ctry) {
     return (
-      <span title="Country unknown" style={{ ...wrapStyle, fontSize: size * 0.75 }}>
-        🌍
+      <span title="HQ country unknown" style={{ ...wrapStyle, width: size, color: 'var(--text3)', fontSize: size * 0.5, fontWeight: 700 }}>
+        —
       </span>
     )
   }
@@ -36,8 +36,8 @@ export default function CountryFlag({ size = 20, ...input }: CountryFlagProps) {
 
   if (imgFailed) {
     return (
-      <span title={ctry.name} style={{ ...wrapStyle, fontSize: size * 0.7, fontWeight: 700, color: 'var(--text3)' }}>
-        🌍
+      <span title={ctry.name} style={{ ...wrapStyle, fontSize: size * 0.45, fontWeight: 800, color: 'var(--text3)', letterSpacing: -0.5 }}>
+        {ctry.code}
       </span>
     )
   }

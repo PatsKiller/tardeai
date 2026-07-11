@@ -28,6 +28,8 @@ export interface HoldingsRowModel {
   stopLabel: string
   stopAdvisory: string
   primaryAction: { label: string; tone: 'amber' | 'green' | 'red' | 'muted' }
+  primaryActionTooltip: string
+  needsAction: boolean
   llmHealth: string | null
   llmAction: string | null
 }
@@ -101,22 +103,40 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   }
 
   let primaryAction: { label: string; tone: 'amber' | 'green' | 'red' | 'muted' } = { label: 'Details', tone: 'muted' }
+  let primaryActionTooltip = 'Open drawer for charts, evidence, stop controls, and reports'
   if (isFidelity && stopPrice && !hasLive) {
     primaryAction = { label: 'Create Ticket', tone: 'amber' }
+    primaryActionTooltip = `Action needed: Fidelity has no API stop — create manual ticket at $${stopPrice.toFixed(2)}`
   } else if (isSchwab && stopPrice && !hasLive) {
     primaryAction = { label: 'Request 2FA Stop', tone: 'amber' }
+    primaryActionTooltip = `Action needed: place Schwab stop at $${stopPrice.toFixed(2)} (2FA confirmation in drawer)`
   } else if (isSchwab && stopPrice && pr?.advisory_stop_is_tighter_than_existing) {
     primaryAction = { label: 'Tighten Stop', tone: 'amber' }
+    primaryActionTooltip = `Action needed: advisory stop $${stopPrice.toFixed(2)} is tighter than live stop — review in drawer`
   } else if (hasLive && isSchwab && stopPrice) {
     primaryAction = { label: 'Replace Stop', tone: 'amber' }
+    primaryActionTooltip = `Action needed: replace or adjust live Schwab stop (advisory $${stopPrice.toFixed(2)})`
+  } else if (needsSellAll && stopPrice) {
+    primaryAction = { label: 'Review', tone: 'amber' }
+    primaryActionTooltip = `Action needed: ${sh} shares < 40 — Schwab requires whole-share stop; may need sell-all`
   } else if (health === 'CONCERN' || health === 'TRIM') {
     primaryAction = { label: 'Review', tone: 'amber' }
-  } else if (signal === 'TRIM' || signal === 'SELL') {
+    primaryActionTooltip = `LLM health ${health}: review allocation and stop in drawer`
+  } else if (signal === 'TRIM' || signal === 'SELL' || signal === 'EXIT') {
     primaryAction = { label: 'Review', tone: 'red' }
+    primaryActionTooltip = `Signal ${signal}: review trim/exit rationale in drawer`
+  } else if (stopStatus === 'action') {
+    primaryAction = { label: 'Review', tone: 'amber' }
+    primaryActionTooltip = stopAdvisory || 'Stop status requires attention — open drawer'
   } else if (stopStatus === 'stable' && hasLive) {
     primaryAction = { label: 'Stable', tone: 'green' }
+    primaryActionTooltip = 'Stop in place — no action required'
+  } else if (stopStatus === 'concern') {
+    primaryAction = { label: 'Review', tone: 'amber' }
+    primaryActionTooltip = stopAdvisory || 'Stop within 5% of price — consider tightening'
   }
 
+  const needsAction = primaryAction.tone === 'amber' || primaryAction.tone === 'red'
   const stopLabel = stopStatus === 'stable' ? 'Stable' : stopStatus === 'concern' ? 'Concern' : 'Action'
 
   return {
@@ -139,6 +159,8 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     stopLabel,
     stopAdvisory,
     primaryAction,
+    primaryActionTooltip,
+    needsAction,
     llmHealth: h.llm_health ?? null,
     llmAction: h.llm_action ?? null,
   }

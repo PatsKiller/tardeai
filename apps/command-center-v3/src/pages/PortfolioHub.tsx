@@ -18,6 +18,7 @@ import DrawdownChart from '../components/risk/DrawdownChart'
 import StopManagement from '../components/StopManagement'
 import { EvidenceBlock } from '../components/EvidenceBlock'
 import HoldingsTableView, { type HoldingsTableRowContext } from '../components/HoldingsTableView'
+import HoldingsCard from '../components/HoldingsCard'
 import HoldingsSideDrawer from '../components/HoldingsSideDrawer'
 import type { HoldingsDetailContext } from '../components/HoldingsDetailPanel'
 import { HOLDINGS_CVD_KEY, type HoldingsCvdMode } from '../lib/holdingsTerminalTokens'
@@ -511,234 +512,47 @@ export default function PortfolioHub({ onDrill }: Props) {
                 onPrimaryAction={openHoldingsDrawer}
               />
             ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
               {pageRows.map((rawH: any) => {
                 const h = mergeHolding(rawH)
-                const { dollars: pl$, pct: pl } = plMetrics(h)
-                const zc = rsiZoneColor(h.rsi_status)
-                const sc = signalColor(h.signal)
+                const symU = (h.symbol || '').toUpperCase()
                 const ac = acctColor(h.account ?? 'unknown')
-                const dayPct = h.day_change_pct
-                const _isFocus = focusKey === `${h.symbol}-${h.account}`
+                const stopKey = `${symU}:${h.account}`
+                const pr = mergeProtection(symU, protection[symU])
+                const rowCtx: HoldingsTableRowContext = {
+                  h, pr,
+                  monitored: monitoredByKey[stopKey],
+                  confirmedStop: mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey]),
+                  reportEntry: reportMap[symU],
+                  coverage: coverage[symU],
+                }
                 return (
-                  <div key={`${h.symbol}-${h.account}`} id={`hold-${h.symbol}-${h.account}`}
-                    onClick={() => {
-                      const symU = (h.symbol || '').toUpperCase()
-                      onDrill({
-                        title: h.symbol,
-                        subtitle: `${h.account} · ${h.name}`,
-                        endpoint: '/api/v2/portfolio/holdings',
-                        rows: [{
-                          ...h,
-                          protection_advisory: mergeProtection(symU, protection[symU]),
-                          stop_curation: stopCuration[symU],
-                        }],
-                      })
+                  <HoldingsCard
+                    key={`${h.symbol}-${h.account}`}
+                    h={h}
+                    acctColor={ac}
+                    isFocus={focusKey === `${h.symbol}-${h.account}`}
+                    cvdMode={holdingsCvd}
+                    paMap={paMap}
+                    aMap={aMap}
+                    fv={fvMap[symU]}
+                    scard={cardMap[symU]}
+                    pr={pr}
+                    stopCuration={stopCuration[symU]}
+                    monitored={rowCtx.monitored}
+                    confirmedStop={rowCtx.confirmedStop}
+                    brokerStopsFetchedAt={brokerStopsFetchedAt}
+                    reportEntry={rowCtx.reportEntry}
+                    coverage={rowCtx.coverage}
+                    onClick={() => openHoldingsDrawer(rowCtx)}
+                    onAction={() => openHoldingsDrawer(rowCtx)}
+                    onRefreshMonitored={() => refetchMonitored?.()}
+                    onPreflightUpdate={(symbol, account, patch) => {
+                      const hk = `${symbol}:${account}`
+                      if (patch.holding) setHoldingPatches(p => ({ ...p, [hk]: { ...(p[hk] ?? {}), ...patch.holding } }))
+                      if (patch.protection) setProtectionPatches(p => ({ ...p, [symbol]: { ...(p[symbol] ?? {}), ...patch.protection } }))
                     }}
-                    style={{ background: 'var(--bg1)', border: _isFocus ? '1px solid #60a5fa' : '1px solid var(--border)', borderLeft: `4px solid ${sc === 'var(--text3)' ? ac : sc}`,
-                      boxShadow: _isFocus ? '0 0 0 2px rgba(96,165,250,.5)' : 'none',
-                      borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}>
-                    {/* header: symbol + signal */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text0)', fontFamily: 'monospace' }}>{h.symbol}</span>
-                      <ProAnalystPill symbol={h.symbol} map={paMap} compact />
-                      <span style={{ flex: 1 }} />
-                      {/* Card click opens the detail drawer (charts + record + a rotation-review link inside).
-                          The inline ⤢ review link was removed — it hijacked card clicks (clicking JEPI/SCHD
-                          went straight to the rotation page instead of the drawer). Rotation review now lives
-                          IN the drawer, for rotatable holdings only. */}
-                      {h.signal
-                        ? <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 9px', borderRadius: 4, background: `${sc}1f`, color: sc }}>{h.signal}</span>
-                        : <span style={{ fontSize: 9, color: 'var(--text3)' }}>—</span>}
-                    </div>
-                    <div style={{ fontSize: 8.5, color: 'var(--text3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.name}</div>
-                    {/* account badge */}
-                    <div style={{ marginTop: 5 }}>
-                      <span style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 7px', borderRadius: 3, background: `${ac}1f`, color: ac }}>
-                        ● {(h.account ?? 'unknown').replace(/_/g, ' ')}</span>
-                    </div>
-                    {/* Finviz inline strip */}
-                    {fvMap[(h.symbol || '').toUpperCase()] && (() => {
-                      const fv = fvMap[(h.symbol || '').toUpperCase()]
-                      const pc = (v: any) => v == null ? 'var(--text3)' : Number(v) > 0 ? '#22c55e' : Number(v) < 0 ? '#ef4444' : 'var(--text3)'
-                      const rsiC = fv.rsi == null ? 'var(--text3)' : fv.rsi >= 70 ? '#ef4444' : fv.rsi <= 30 ? '#22c55e' : 'var(--text1)'
-                      const c = (l: string, v: any, col: string, sfx = '') => <span style={{ fontSize: 8.5, color: 'var(--text3)' }}>{l}<b style={{ color: col, fontFamily: 'monospace' }}>{v == null ? '—' : `${Number(v) > 0 && sfx ? '+' : ''}${Number(v).toFixed(sfx ? 1 : 0)}${sfx}`}</b></span>
-                      return <div title="Finviz daily metrics" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 5, padding: '3px 7px', borderRadius: 6, background: 'rgba(96,165,250,.07)', border: '1px solid rgba(96,165,250,.16)' }}>
-                        {c('RSI ', fv.rsi, rsiC)}{c('W ', fv.perf_week, pc(fv.perf_week), '%')}{c('M ', fv.perf_month, pc(fv.perf_month), '%')}{c('YTD ', fv.perf_ytd, pc(fv.perf_ytd), '%')}</div>
-                    })()}
-                    {/* value + P/L row */}
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 19, fontWeight: 800, color: 'var(--text0)' }}>{fmt$(h.market_value, 0)}</span>
-                      {pl$ != null ? (
-                        <span style={{ fontSize: 13, fontWeight: 800, color: pl$ >= 0 ? '#22c55e' : '#ef4444' }}
-                          title={pl != null ? `Unrealized ${pl >= 0 ? '+' : ''}${pl.toFixed(2)}% on cost basis ${fmt$(h.cost_basis, 0)}` : undefined}>
-                          {pl$ >= 0 ? '+' : ''}{fmt$(pl$, 0)}
-                          {pl != null && <span style={{ fontSize: 11, fontWeight: 700, opacity: 0.9 }}> ({pl >= 0 ? '+' : ''}{pl.toFixed(1)}%)</span>}
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text3)' }}>— P/L</span>
-                      )}
-                      {dayPct != null && <span style={{ fontSize: 9.5, color: dayPct >= 0 ? '#22c55e' : '#ef4444' }}>today {dayPct >= 0 ? '+' : ''}{Number(dayPct).toFixed(1)}%</span>}
-                    </div>
-                    {/* per-share current price + purchase (cost-basis) price — operator: show larger */}
-                    {(() => {
-                      const sh = Number(h.shares) || 0
-                      const cur = h.current_price != null ? Number(h.current_price)
-                        : sh > 0 && h.market_value != null ? Number(h.market_value) / sh : null
-                      const buy = sh > 0 && h.cost_basis != null && Number(h.cost_basis) > 0 ? Number(h.cost_basis) / sh : null
-                      if (cur == null) return null
-                      return (
-                        <div style={{ display: 'flex', gap: 14, marginTop: 5, fontSize: 12.5, fontWeight: 700, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                          <span style={{ color: 'var(--text2)' }}>Price <b style={{ fontFamily: 'monospace', fontSize: 14, color: 'var(--text0)' }}>${cur.toFixed(2)}</b></span>
-                          <span style={{ color: 'var(--text3)' }} title={buy != null ? 'Average purchase price per share (cost basis ÷ shares)' : '401(k) funds carry no per-lot cost basis'}>
-                            Cost <b style={{ fontFamily: 'monospace', color: 'var(--text1)' }}>{buy != null ? `$${buy.toFixed(2)}` : '—'}</b></span>
-                        </div>
-                      )
-                    })()}
-                    {/* % of portfolio bar */}
-                    <div style={{ marginTop: 7, height: 5, background: 'var(--bg2)', borderRadius: 3 }}>
-                      <div style={{ width: `${Math.min(100, (h.portfolio_pct ?? 0) * 4)}%`, height: '100%', background: ac, borderRadius: 3, minWidth: 2 }} />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>
-                      <span>{h.portfolio_pct != null ? `${h.portfolio_pct.toFixed(1)}% of portfolio` : ''}</span>
-                      <span>{h.shares != null ? `${h.shares} sh` : ''}</span>
-                    </div>
-                    {/* chips: RSI + LLM stop/trail advisory + LLM provenance */}
-                    <div style={{ display: 'flex', gap: 4, marginTop: 7, alignItems: 'center', flexWrap: 'wrap' }}>
-                      {h.rsi != null && (
-                        <span title={h.proxy ? `proxy: ${h.proxy.ticker} (${h.proxy.label})` : h.rsi_status}
-                          style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: `${zc}1a`, color: zc }}>
-                          RSI {Math.round(h.rsi)}{h.proxy ? '*' : ''} {h.rsi_status === 'oversold' ? 'buy zone' : h.rsi_status === 'overbought' ? 'caution' : 'neutral'}</span>
-                      )}
-                      {(() => {
-                        const pr = mergeProtection((h.symbol || '').toUpperCase(), protection[(h.symbol || '').toUpperCase()])
-                        if (!pr) return null
-                        const stopKey = `${(h.symbol || '').toUpperCase()}:${h.account}`
-                        const liveConf = mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey])
-                        const stopTip = stopReviewTooltip({
-                          advisoryAt: pr.at, advisoryModel: pr.model,
-                          priceAt: h?.source_timestamp ?? h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp,
-                          brokerFetchedAt: liveConf?.fetched_at ?? brokerStopsFetchedAt,
-                          brokerOrderId: liveConf?.order_id,
-                          confirmedAt: liveConf?.confirmed_at,
-                        })
-                        return (
-                          <span title={`${stopTip}\n\n${pr.rec}\n${pr.rationale ?? ''} · ADVISORY ONLY`}
-                            style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 9px', borderRadius: 5,
-                              background: 'rgba(168,85,247,.16)', border: '1px solid rgba(168,85,247,.35)', color: '#a855f7', cursor: 'help' }}>
-                            🛡 {pr.stop_price != null
-                              ? `stop $${Number(pr.stop_price).toFixed(2)}${pr.stop_distance_pct != null ? ` (${Number(pr.stop_distance_pct).toFixed(1)}% below)` : ''}`
-                              : String(pr.rec).split('·')[0].trim()}</span>
-                        )
-                      })()}
-                      <LlmHealthChip health={h.llm_health} action={h.llm_action} />
-                      <span style={{ flex: 1 }} />
-                      <LlmBadges cov={coverage[(h.symbol || '').toUpperCase()]} />
-                    </div>
-                    {(h.llm_evidence?.length > 0 || (h.llm_data_i_doubt && h.llm_data_i_doubt !== 'none')) && (
-                      <EvidenceBlock
-                        title={h.llm_health ? `Holdings health · ${h.llm_health}${h.llm_action ? ` · ${h.llm_action}` : ''}` : 'Holdings LLM evidence'}
-                        evidence={h.llm_evidence}
-                        dataIDoubt={h.llm_data_i_doubt}
-                        compact
-                        maxItems={3}
-                      />
-                    )}
-                    {(() => {
-                      const symU = (h.symbol || '').toUpperCase()
-                      const pr = mergeProtection(symU, protection[symU])
-                      const sc = stopCuration[symU]
-                      const showProt = pr?.evidence?.length > 0 || (pr?.data_i_doubt && pr.data_i_doubt !== 'none')
-                      const showCur = sc?.evidence?.length > 0 || (sc?.data_i_doubt && sc.data_i_doubt !== 'none') || sc?.grade
-                      if (!showProt && !showCur) return null
-                      return (
-                        <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {showProt && (
-                            <EvidenceBlock title={`Stop advisory${pr.model ? ` · ${pr.model}` : ''}`} evidence={pr.evidence} dataIDoubt={pr.data_i_doubt} compact maxItems={3} />
-                          )}
-                          {showCur && (
-                            <EvidenceBlock title={`Grok stop curation${sc.grade ? ` · ${sc.grade}` : ''}`} evidence={sc.evidence} dataIDoubt={sc.data_i_doubt} compact maxItems={2} />
-                          )}
-                        </div>
-                      )
-                    })()}
-                    {holdingReportEligible(h) && (
-                      <div style={{ marginTop: 6 }} onClick={e => e.stopPropagation()}>
-                        <HoldingReportLinks
-                          symbol={h.symbol}
-                          entry={reportMap[(h.symbol || '').toUpperCase()]}
-                          reportType={reportMap[(h.symbol || '').toUpperCase()]?.report_type}
-                        />
-                      </div>
-                    )}
-                    {(() => {
-                      const symU = (h.symbol || '').toUpperCase()
-                      const pr = mergeProtection(symU, protection[symU]) ?? {}
-                      const sh = Number(h.shares) || 0
-                      const acct = String(h.account ?? '')
-                      const schwabSmall = acct.startsWith('schwab') && sh > 0 && sh < 40
-                      if (!pr?.stop_price && !schwabSmall) return null
-                      const key = `${symU}:${h.account}`
-                      const mon = monitoredByKey[key]
-                      const conf = mergeLiveStop(confirmedByKey[key], liveStopsByKey[key])
-                      return (
-                        <HoldingProtectionActions
-                          h={h}
-                          pr={pr}
-                          monitored={mon}
-                          confirmedStop={conf}
-                          brokerStopsFetchedAt={brokerStopsFetchedAt}
-                          onRefresh={() => refetchMonitored?.()}
-                          onPreflightUpdate={(symbol, account, patch) => {
-                            const hk = `${symbol}:${account}`
-                            if (patch.holding) setHoldingPatches(p => ({ ...p, [hk]: { ...(p[hk] ?? {}), ...patch.holding } }))
-                            if (patch.protection) setProtectionPatches(p => ({ ...p, [symbol]: { ...(p[symbol] ?? {}), ...patch.protection } }))
-                          }}
-                        />
-                      )
-                    })()}
-                    {/* unified info block (operator 2026-06-12): what it does · sector vs sector · analyst · news */}
-                    {(() => {
-                      const sc = cardMap[(h.symbol || '').toUpperCase()]
-                      if (!sc) return null
-                      return (
-                        <div style={{ borderTop: '1px solid var(--border)', marginTop: 7, paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                          {sc.description && <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5 }}>{sc.description}</div>}
-                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 8.5 }}>
-                            {sc.sector && <span style={{ color: '#60a5fa' }}>{sc.sector}{sc.sector_etf ? ` (${sc.sector_etf})` : ''}</span>}
-                            {sc.vs_sector_week != null && <span title={`symbol ${sc.perf_week}% vs ${sc.sector_etf} ${sc.sector_perf_week}% (week)`}
-                              style={{ color: sc.vs_sector_week >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
-                              {sc.vs_sector_week >= 0 ? '+' : ''}{sc.vs_sector_week}% vs sector</span>}
-                            {sc.analyst?.rating && <span title={`Yahoo consensus ${sc.analyst.mean} · target range $${sc.analyst.target_low}–$${sc.analyst.target_high}${sc.analyst.distribution ? ` · votes: ${sc.analyst.distribution.strong_buy ?? 0} strong buy / ${sc.analyst.distribution.buy ?? 0} buy / ${sc.analyst.distribution.hold ?? 0} hold / ${sc.analyst.distribution.sell ?? 0} sell` : ''}`}
-                              style={{ color: String(sc.analyst.rating).includes('buy') ? '#22c55e' : 'var(--text2)' }}>
-                              {String(sc.analyst.rating).replace('_', ' ')} · {sc.analyst.opinions} analysts · target ${sc.analyst.target}{sc.analyst.upside_pct != null ? ` (${sc.analyst.upside_pct >= 0 ? '+' : ''}${sc.analyst.upside_pct}%)` : ''}</span>}
-                            {sc.earnings && (sc.earnings.next_date || sc.earnings.surprise_pct != null) && (
-                              <span title={`${sc.earnings.next_date ? `Next earnings ${sc.earnings.next_date}` : ''}${sc.earnings.last_date ? ` · last ${sc.earnings.last_date}: est ${sc.earnings.eps_estimate} → actual ${sc.earnings.eps_actual}` : ''}`}>
-                                {sc.earnings.next_date && <span style={{ color: 'var(--text2)' }}>📅 {new Date(sc.earnings.next_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                                {sc.earnings.surprise_pct != null && <span style={{ color: sc.earnings.beat ? '#22c55e' : '#ef4444', fontWeight: 700, marginLeft: sc.earnings.next_date ? 4 : 0 }}>{sc.earnings.next_date ? '· ' : ''}{sc.earnings.beat ? 'BEAT' : 'MISS'} {sc.earnings.surprise_pct >= 0 ? '+' : ''}{sc.earnings.surprise_pct}%</span>}
-                              </span>
-                            )}
-                            {/* Distribution — the fund/ETF analog of earnings (funds have no EPS) */}
-                            {sc.distribution && (sc.distribution.next_est || sc.distribution.last_date) && (
-                              <span style={{ color: 'var(--text2)' }} title={`${sc.distribution.cadence ? sc.distribution.cadence + ' distribution' : 'distribution'}${sc.distribution.last_date ? ` · last ${sc.distribution.last_date} $${sc.distribution.last_amount}` : ''}${sc.distribution.ttm_amount != null ? ` · TTM $${sc.distribution.ttm_amount}/sh` : ''}${sc.distribution.next_est ? ' · next date estimated from cadence' : ''}`}>
-                                💵 {sc.distribution.next_est
-                                  ? `next ~${new Date(sc.distribution.next_est + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                                  : sc.distribution.cadence || 'distribution'}
-                                {sc.distribution.cadence && sc.distribution.next_est ? ` (${sc.distribution.cadence})` : ''}</span>
-                            )}
-                          </div>
-                          <AnalystReviews symbol={h.symbol} map={aMap} />
-                          {(sc.news ?? []).slice(0, 3).map((n: any, i: number) => (
-                            <div key={i} style={{ fontSize: 8.5, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              <span style={{ color: 'var(--text3)' }}>{n.source} · </span>
-                              {n.url ? <a href={n.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#93c5fd', textDecoration: 'none' }} title={n.title}>{n.title}</a>
-                                : <span style={{ color: 'var(--text2)' }} title={n.title}>{n.title}</span>}
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    })()}
-                  </div>
+                  />
                 )
               })}
             </div>
