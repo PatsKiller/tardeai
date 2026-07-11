@@ -333,7 +333,7 @@ export default function TaggingQueuePanel({ account, days, acctLabel = {} }: Pro
       {showAudit && <div style={{ marginBottom: 14 }}><ReportingAuditPanel days={days} /></div>}
 
       <div style={{ background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.35)', borderRadius: 10, padding: '12px 14px', marginBottom: 12, fontSize: 13, lineHeight: 1.5, color: 'var(--text1)' }}>
-        <strong style={{ color: '#93c5fd' }}>Auto-enrich:</strong> fills <strong>Industry</strong> (symbol lookup), <strong>Market regime at entry + exit dates</strong> (regime snapshots / trade-ai history), <strong>Psychology</strong> (Calm), and <strong>Setup</strong> (AI heuristic). Complete trades auto-confirm and leave the queue — edit any card to override. Use <strong>Same stock</strong> to bulk-tag AXTI/TRX legs.
+        <strong style={{ color: '#93c5fd' }}>Auto-enrich:</strong> fills <strong>Industry</strong>, <strong>regime at entry + exit</strong>, <strong>Psychology</strong>, and <strong>Setup</strong> as suggestions — <strong>Save review</strong> on each card is your sign-off (AI critique is optional, not blocking). Use <strong>Same stock</strong> to bulk-tag multi-lot legs.
         {autoPending > 0 && (
           <span style={{ display: 'block', marginTop: 6, color: '#fcd34d', fontWeight: 700 }}>
             {autoPending} auto-tagged trade{autoPending !== 1 ? 's' : ''} awaiting your review
