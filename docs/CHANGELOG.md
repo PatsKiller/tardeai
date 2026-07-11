@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-11 — Portfolio Holdings Terminal view (v2, approved)
+
+- **Holdings Terminal** — Bloomberg-inspired single-row table (default): symbol, account, value/P&L,
+  % port, price/cost, stop status, primary action, report icons, agent badges.
+- **HoldingsSideDrawer** — progressive disclosure: full stop controls (2FA, Fidelity ticket),
+  evidence, analyst, news; row click or amber action button opens drawer.
+- **Cards (legacy)** — prior tall card grid retained via Layout toggle; preference in localStorage.
+
 ## 2026-07-10 (eve) — Hermes Research Backlog UX fix
 
 - **Win rate display** — backlog topics stored decimal WR as `0.167%`; UI now shows **16.7%**;

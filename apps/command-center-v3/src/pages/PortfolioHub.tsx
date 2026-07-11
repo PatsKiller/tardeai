@@ -17,6 +17,9 @@ import RiskContributionBars from '../components/risk/RiskContributionBars'
 import DrawdownChart from '../components/risk/DrawdownChart'
 import StopManagement from '../components/StopManagement'
 import { EvidenceBlock } from '../components/EvidenceBlock'
+import HoldingsTableView, { type HoldingsTableRowContext } from '../components/HoldingsTableView'
+import HoldingsSideDrawer from '../components/HoldingsSideDrawer'
+import type { HoldingsDetailContext } from '../components/HoldingsDetailPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Holdings', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Stop Management'] as const
@@ -55,6 +58,8 @@ const SIGNAL_TABS: [string, string[]][] = [
   ['Trim/Sell', ['TRIM', 'SELL', 'REDUCE', 'EXIT']],
 ]
 const PAGE_SIZE = 12
+const HOLDINGS_VIEW_KEY = 'cc-v3-holdings-view'
+type HoldingsViewMode = 'terminal' | 'cards'
 
 // LLM provenance badge styling — which model lane reviewed this symbol (advisory research only)
 const LLM_LANE: Record<string, { label: string; c: string }> = {
@@ -100,6 +105,19 @@ function LlmBadges({ cov }: { cov?: any[] }) {
 
 export default function PortfolioHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Holdings')
+  const [holdingsView, setHoldingsView] = useState<HoldingsViewMode>(() => {
+    try {
+      const v = localStorage.getItem(HOLDINGS_VIEW_KEY)
+      return v === 'cards' ? 'cards' : 'terminal'
+    } catch { return 'terminal' }
+  })
+  const [holdingsDrawer, setHoldingsDrawer] = useState<HoldingsDetailContext | null>(null)
+  const [drawerTitle, setDrawerTitle] = useState('')
+  const [drawerSubtitle, setDrawerSubtitle] = useState('')
+  const setViewMode = (m: HoldingsViewMode) => {
+    setHoldingsView(m)
+    try { localStorage.setItem(HOLDINGS_VIEW_KEY, m) } catch { /* private mode */ }
+  }
   const [acctFilter, setAcctFilter] = useState<string | null>(null)
   const [sigTab, setSigTab] = useState('All')
   const [page, setPage] = useState(0)
@@ -244,6 +262,45 @@ export default function PortfolioHub({ onDrill }: Props) {
     s + (h.day_change ?? (h.market_value ?? 0) * (h.day_change_pct ?? 0) / 100), 0)
   const viewDayPct = (viewTotal - viewDay) ? viewDay / (viewTotal - viewDay) * 100 : 0
   const priceStamp = pricingStampLine(holdings?.pricing ?? holdings, { includeTechnicals: true })
+
+  const buildRowContext = (rawH: any): HoldingsTableRowContext => {
+    const h = mergeHolding(rawH)
+    const symU = (h.symbol || '').toUpperCase()
+    const stopKey = `${symU}:${h.account}`
+    return {
+      h,
+      pr: mergeProtection(symU, protection[symU]),
+      monitored: monitoredByKey[stopKey],
+      confirmedStop: mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey]),
+      reportEntry: reportMap[symU],
+      coverage: coverage[symU],
+    }
+  }
+  const openHoldingsDrawer = (rowCtx: HoldingsTableRowContext) => {
+    const h = rowCtx.h
+    const symU = (h.symbol || '').toUpperCase()
+    setDrawerTitle(h.symbol)
+    setDrawerSubtitle(`${h.account} · ${h.name ?? ''}`)
+    setHoldingsDrawer({
+      h,
+      protection: rowCtx.pr,
+      stopCuration: stopCuration[symU],
+      monitored: rowCtx.monitored,
+      confirmedStop: rowCtx.confirmedStop,
+      brokerStopsFetchedAt,
+      cardMap,
+      fvMap,
+      reportEntry: rowCtx.reportEntry,
+      coverage: rowCtx.coverage,
+      onRefreshMonitored: () => refetchMonitored?.(),
+      onPreflightUpdate: (symbol, account, patch) => {
+        const hk = `${symbol}:${account}`
+        if (patch.holding) setHoldingPatches(p => ({ ...p, [hk]: { ...(p[hk] ?? {}), ...patch.holding } }))
+        if (patch.protection) setProtectionPatches(p => ({ ...p, [symbol]: { ...(p[symbol] ?? {}), ...patch.protection } }))
+      },
+    })
+  }
+  const terminalRows = holdingsList.map(buildRowContext)
 
   return (
     <div>
@@ -391,6 +448,18 @@ export default function PortfolioHub({ onDrill }: Props) {
           {/* Holdings — large graphical cards (operator request 2026-06-12) */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 8, color: 'var(--text3)', marginRight: 4 }}>Layout</span>
+                {(['terminal', 'cards'] as const).map(v => (
+                  <button key={v} onClick={() => setViewMode(v)} title={v === 'terminal' ? 'Bloomberg-style dense table (default)' : 'Legacy tall cards'}
+                    style={{
+                      padding: '3px 10px', fontSize: 9, borderRadius: 5, cursor: 'pointer', fontWeight: holdingsView === v ? 800 : 500,
+                      border: `1px solid ${holdingsView === v ? (v === 'terminal' ? '#ffb000' : '#60a5fa') : 'var(--border)'}`,
+                      background: holdingsView === v ? (v === 'terminal' ? 'rgba(255,176,0,.12)' : 'rgba(96,165,250,.12)') : 'var(--bg2)',
+                      color: holdingsView === v ? (v === 'terminal' ? '#ffb000' : '#60a5fa') : 'var(--text3)',
+                    }}>{v === 'terminal' ? 'Terminal' : 'Cards (legacy)'}</button>
+                ))}
+              </div>
               {/* signal sub-tab filters */}
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                 {SIGNAL_TABS.map(([k, sigs]) => {
@@ -409,6 +478,15 @@ export default function PortfolioHub({ onDrill }: Props) {
               {priceStamp && <div style={{ fontSize: 8, color: 'var(--text3)' }} title={holdings?.pricing?.note}>{priceStamp}</div>}
             </div>
 
+            {holdingsView === 'terminal' ? (
+              <HoldingsTableView
+                rows={terminalRows}
+                acctColor={acctColor}
+                focusKey={focusKey}
+                onOpenDetail={openHoldingsDrawer}
+                onPrimaryAction={openHoldingsDrawer}
+              />
+            ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 10 }}>
               {pageRows.map((rawH: any) => {
                 const h = mergeHolding(rawH)
@@ -640,12 +718,13 @@ export default function PortfolioHub({ onDrill }: Props) {
                 )
               })}
             </div>
+            )}
             {holdingsPending && <div style={{ padding: 20, color: 'var(--text3)', fontSize: 12, textAlign: 'center', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>Loading holdings from /api/v2/portfolio/holdings…</div>}
             {holdingsUnavailable && <div style={{ padding: 20, color: '#f59e0b', fontSize: 12, textAlign: 'center', background: 'var(--bg1)', border: '1px solid rgba(245,158,11,.35)', borderRadius: 10 }}>Holdings request is still retrying: {holdingsError}</div>}
             {!holdingsPending && !holdingsUnavailable && holdingsList.length === 0 && <div style={{ padding: 20, color: 'var(--text3)', fontSize: 11, textAlign: 'center', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>No holdings match this filter.</div>}
 
-            {/* pagination */}
-            {pages > 1 && (
+            {/* pagination — cards view only; terminal shows full filtered list */}
+            {holdingsView === 'cards' && pages > 1 && (
               <div style={{ display: 'flex', gap: 5, justifyContent: 'center', alignItems: 'center', marginTop: 12 }}>
                 <button disabled={pageClamped === 0} onClick={() => setPage(p => Math.max(0, p - 1))}
                   style={{ fontSize: 11, padding: '3px 12px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: pageClamped === 0 ? 'var(--text3)' : '#60a5fa', cursor: 'pointer' }}>‹ prev</button>
@@ -662,12 +741,22 @@ export default function PortfolioHub({ onDrill }: Props) {
               </div>
             )}
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>
-              P/L ($ and %) shown where cost basis exists (csv tax lot &gt; broker API); 401(k) funds carry no per-lot basis → "—". RSI * = public-ETF proxy.
-              🤖 badges = which LLM lane reviewed the symbol in the last 30d (advisory research, never an execution signal) · source: /api/v2/portfolio/llm-coverage. Card click = full drawer.
+              {holdingsView === 'terminal'
+                ? 'Terminal view (approved v2): dense single-row scan · stop + action focal · drawer = full controls (2FA, tickets, reports). Cards (legacy) retains tall card layout.'
+                : <>P/L ($ and %) shown where cost basis exists (csv tax lot &gt; broker API); 401(k) funds carry no per-lot basis → "—". RSI * = public-ETF proxy.
+              🤖 badges = which LLM lane reviewed the symbol in the last 30d (advisory research, never an execution signal) · source: /api/v2/portfolio/llm-coverage. Card click = full drawer.</>}
             </div>
           </div>
         </div>
       )}
+
+      <HoldingsSideDrawer
+        open={!!holdingsDrawer}
+        title={drawerTitle}
+        subtitle={drawerSubtitle}
+        ctx={holdingsDrawer}
+        onClose={() => setHoldingsDrawer(null)}
+      />
 
       {tab === 'Look-through' && (() => {
         const lt = (lookthrough as any)?.data ?? lookthrough ?? {}
