@@ -758,13 +758,12 @@ def score_trade_tags(review: dict | None, policy: dict | None = None) -> dict:
             ai_stale, _ = jac._stale_from_tags(review, crit_meta, critique)
         except Exception:
             ai_stale = bool(crit_meta.get("stale"))
-    if policy.get("queue_requires_ai_critique", False):
-        if not has_critique:
-            if "ai_critique" not in missing:
-                missing.append("ai_critique")
-        elif ai_stale:
-            if "ai_critique_stale" not in missing:
-                missing.append("ai_critique_stale")
+    # AI critique is optional for the tagging queue — use "Generate AI critiques" separately.
+    critique_gaps: list[str] = []
+    if not has_critique:
+        critique_gaps.append("ai_critique")
+    elif ai_stale:
+        critique_gaps.append("ai_critique_stale")
 
     if missing:
         incomplete = True
@@ -797,6 +796,7 @@ def score_trade_tags(review: dict | None, policy: dict | None = None) -> dict:
             "takeaway": takeaway,
             "generated_at": critique.get("generated_at") if critique else crit_meta.get("generated_at"),
         },
+        "critique_gaps": critique_gaps,
     }
 
 
@@ -902,6 +902,7 @@ def tagging_queue(account=None, days=365, missing_category=None, min_pnl=None,
             "market_regime_entry": payload.get("market_regime_entry"),
             "market_regime_exit": payload.get("market_regime_exit"),
             "market_regime_display": payload.get("market_regime_display"),
+            "critique_gaps": score.get("critique_gaps") or [],
             "_complete": score.get("complete", False),
         }
 

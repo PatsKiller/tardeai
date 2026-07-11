@@ -26,6 +26,11 @@ const MISSING_LABEL: Record<string, string> = {
   review: 'Review',
 }
 
+const CRITIQUE_GAP_LABEL: Record<string, string> = {
+  ai_critique: 'AI critique (optional)',
+  ai_critique_stale: 'AI critique stale (optional)',
+}
+
 const FILTER_BTN = (active: boolean): CSSProperties => ({
   fontSize: 13,
   fontWeight: active ? 700 : 500,
@@ -582,18 +587,38 @@ export default function TaggingQueuePanel({ account, days, acctLabel = {} }: Pro
 
               {/* Row 3 — missing + actions */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', paddingLeft: 28 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)' }}>Missing:</span>
-                {(row.missing || []).map((m: string) => (
+                {(row.missing || []).length > 0 ? (
+                  <>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)' }}>Missing:</span>
+                    {(row.missing || []).map((m: string) => (
+                      <span
+                        key={m}
+                        style={{
+                          fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 8,
+                          background: (MISSING_COLOR[m] || '#ef4444') + '22',
+                          color: MISSING_COLOR[m] || '#ef4444',
+                          border: `1px solid ${MISSING_COLOR[m] || '#ef4444'}55`,
+                        }}
+                      >
+                        {MISSING_LABEL[m] || m}
+                      </span>
+                    ))}
+                  </>
+                ) : (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#86efac' }}>Tags complete</span>
+                )}
+                {(row.critique_gaps || []).map((m: string) => (
                   <span
                     key={m}
+                    title="Use Generate AI critiques — does not block queue clearance"
                     style={{
-                      fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 8,
-                      background: (MISSING_COLOR[m] || '#ef4444') + '22',
-                      color: MISSING_COLOR[m] || '#ef4444',
-                      border: `1px solid ${MISSING_COLOR[m] || '#ef4444'}55`,
+                      fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 8,
+                      background: 'rgba(168,85,247,.12)',
+                      color: '#d8b4fe',
+                      border: '1px solid rgba(168,85,247,.35)',
                     }}
                   >
-                    {MISSING_LABEL[m] || m}
+                    {CRITIQUE_GAP_LABEL[m] || m}
                   </span>
                 ))}
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>

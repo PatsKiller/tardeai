@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-11 (late night) — Tagging queue: save clears trade (AI critique optional)
+
+- **`score_trade_tags`** — `ai_critique` / `ai_critique_stale` no longer block queue completeness; surfaced as optional `critique_gaps` only.
+- **Review save** — re-score after marking critique stale; operator save always sets `tagging_complete` when signed off.
+- **Tagging Queue UI** — shows purple optional critique chips; "Tags complete" when only critique is outstanding.
+
 ## 2026-07-11 (night) — Journal auto-enrich + CC v3 terminal (always on)
 
 ### TradeInView — auto-tag, backfill, confirm

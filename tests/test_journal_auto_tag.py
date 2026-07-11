@@ -38,8 +38,31 @@ def test_score_trade_tags_skips_ai_critique_by_default():
     assert "operator_review" not in score["missing"]
 
 
+def test_stale_ai_critique_does_not_block_queue():
+    policy = dict(tiv._load_tagging_policy())
+    policy["queue_requires_ai_critique"] = True
+    rev = {
+        "setup_family": "Scalp",
+        "setup_types": ["day_scalp"],
+        "market_regime": "Risk-On",
+        "emotion_before": "Calm",
+        "payload": {
+            "operator_confirmed": True,
+            "operator_reviewed": True,
+            "tagging_complete": True,
+            "ai_critique": {"narrative": {"summary": "ok"}},
+            "ai_critique_meta": {"status": "ok", "stale": True, "tag_fingerprint": "abc"},
+        },
+    }
+    score = tiv.score_trade_tags(rev, policy)
+    assert score["complete"] is True
+    assert "ai_critique_stale" not in score["missing"]
+    assert "ai_critique_stale" in score["critique_gaps"]
+
+
 if __name__ == "__main__":
     test_map_regime_label()
     test_regime_fields_for_trade_same_day()
     test_score_trade_tags_skips_ai_critique_by_default()
+    test_stale_ai_critique_does_not_block_queue()
     print("ok")

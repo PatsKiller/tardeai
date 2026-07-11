@@ -10417,12 +10417,25 @@ def journal_review_write(body: dict):
         result = _db_write(sql, vals)
         if not result:
             return 500, {"ok": False, "error": "review update rejected (check field ranges: confidence/stress are 1-5)"}
+        critique_stale = False
+        try:
+            import journal_trade_in_view as _tiv2
+            critique_stale = _tiv2.mark_ai_critique_stale(trade_key)
+        except Exception:
+            pass
+        tag_ok = None
+        tag_score = {}
         try:
             import journal_trade_in_view as _tiv
             rev = _db_query("SELECT * FROM journal_trade_reviews WHERE trade_key = %s", (trade_key,), fetch="one")
             tag_score = _tiv.score_trade_tags(rev)
             tag_ok = tag_score.get("complete")
-            if tag_ok and rev:
+            body_payload = body.get("payload") if isinstance(body.get("payload"), dict) else {}
+            operator_signed = bool(
+                body_payload.get("operator_confirmed")
+                or body_payload.get("operator_reviewed")
+            )
+            if rev and (tag_ok or operator_signed):
                 _p = rev.get("payload") or {}
                 if isinstance(_p, str):
                     try:
@@ -10431,18 +10444,20 @@ def journal_review_write(body: dict):
                         _p = {}
                 if not isinstance(_p, dict):
                     _p = {}
-                _p["tagging_complete"] = True
+                if operator_signed:
+                    _p["operator_confirmed"] = True
+                    _p["operator_reviewed"] = True
+                if tag_ok or operator_signed:
+                    _p["tagging_complete"] = True
+                    tag_ok = True
                 _db_write("UPDATE journal_trade_reviews SET payload = %s::jsonb WHERE trade_key = %s",
                           (json.dumps(_p), trade_key))
+                if operator_signed and not tag_score.get("complete"):
+                    rev = _db_query("SELECT * FROM journal_trade_reviews WHERE trade_key = %s", (trade_key,), fetch="one")
+                    tag_score = _tiv.score_trade_tags(rev)
         except Exception:
             tag_ok = None
             tag_score = {}
-        critique_stale = False
-        try:
-            import journal_trade_in_view as _tiv2
-            critique_stale = _tiv2.mark_ai_critique_stale(trade_key)
-        except Exception:
-            pass
         return 200, {"ok": True, "action": "updated", "id": result["id"], "tagging_complete": tag_ok,
                       "tagging_score": tag_score, "refresh_reports": True,
                       "ai_critique_stale": critique_stale}
