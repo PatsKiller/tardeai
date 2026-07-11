@@ -27,6 +27,51 @@ PROMPT_VERSION = "ai_critique_v3_hermes"  # v3: Hermes intelligence block append
 _HISTORY_MAX = 10
 
 
+def _as_float(v, default: float = 0.0) -> float:
+    if v is None or v == "":
+        return default
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _time_delta_minutes(start, end) -> int | None:
+    """Safe hold minutes from execution-quality timestamps (datetime or ISO str)."""
+    if not start or not end:
+        return None
+    if hasattr(start, "total_seconds") and hasattr(end, "total_seconds"):
+        try:
+            return int((end - start).total_seconds() / 60)
+        except Exception:
+            pass
+    try:
+        from datetime import datetime as _dt
+        if isinstance(start, str):
+            start = _dt.fromisoformat(start.replace("Z", "+00:00"))
+        if isinstance(end, str):
+            end = _dt.fromisoformat(end.replace("Z", "+00:00"))
+        return int((end - start).total_seconds() / 60)
+    except Exception:
+        return None
+
+
+def _series_time(v) -> float:
+    """Normalize chart/indicator times for distance comparisons."""
+    if v is None or v == "":
+        return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        try:
+            from datetime import datetime as _dt
+            return _dt.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+        except Exception:
+            return 0.0
+
+
 def _classify_trade(review: dict, trade: dict, hold_min: int | None) -> dict:
     fam = (review.get("setup_family") or trade.get("strategy_id") or "").lower()
     tags = review.get("setup_types") or []
@@ -79,7 +124,8 @@ def _indicator_at(chart: dict, marker_time, field: str):
     rows = chart.get(field) or []
     if not rows or marker_time is None:
         return None
-    near = min(rows, key=lambda x: abs((x.get("time") or 0) - marker_time))
+    mt = _series_time(marker_time)
+    near = min(rows, key=lambda x: abs(_series_time(x.get("time")) - mt))
     return near
 
 
@@ -89,11 +135,22 @@ def build_context(trade_key: str) -> dict | None:
         return None
     sym, acct, cd = parts[0], parts[1], parts[-1]
     trade = tiv._q("""
-        SELECT symbol, account, open_date::text, close_date::text, shares, buy_price, sell_price,
-               pnl, pnl_pct, hold_days, strategy_id, trade_type
+        SELECT symbol, account,
+               MIN(open_date)::text AS open_date,
+               close_date::text AS close_date,
+               SUM(shares) AS shares,
+               CASE WHEN SUM(shares) > 0
+                    THEN SUM(buy_price * shares) / SUM(shares) ELSE MAX(buy_price) END AS buy_price,
+               CASE WHEN SUM(shares) > 0
+                    THEN SUM(sell_price * shares) / SUM(shares) ELSE MAX(sell_price) END AS sell_price,
+               SUM(pnl) AS pnl,
+               MAX(pnl_pct) AS pnl_pct,
+               MAX(hold_days) AS hold_days,
+               MAX(strategy_id) AS strategy_id,
+               MAX(trade_type) AS trade_type
         FROM trade_closed
         WHERE symbol=%s AND account=%s AND close_date=%s::date
-        ORDER BY id DESC LIMIT 1
+        GROUP BY symbol, account, close_date
     """, [sym, acct, cd], fetch="one")
     if not trade:
         return None
@@ -112,9 +169,12 @@ def build_context(trade_key: str) -> dict | None:
                                     trade.get("buy_price"), trade.get("sell_price"),
                                     ent_iso, ext_iso, trade_key)
 
-    hold_min = None
-    if eq.get("entry_time") and eq.get("exit_time"):
-        hold_min = int((eq["exit_time"] - eq["entry_time"]).total_seconds() / 60)
+    hold_min = _time_delta_minutes(eq.get("entry_time"), eq.get("exit_time"))
+    if hold_min is None and trade.get("hold_days") is not None:
+        try:
+            hold_min = int(float(trade["hold_days"]) * 1440)
+        except (TypeError, ValueError):
+            hold_min = None
 
     entry_marker = next((m for m in (chart.get("markers") or []) if m["type"] == "entry"), None)
     exit_marker = next((m for m in (chart.get("markers") or []) if m["type"] == "exit"), None)
@@ -182,11 +242,12 @@ def _deterministic_sections(ctx: dict) -> dict:
     tip = ctx["time_in_trade"]
 
     alt_exit = None
-    if eq.get("post_exit_high"):
+    peh = _as_float(eq.get("post_exit_high"), default=0.0)
+    if peh > 0:
         alt_exit = {
-            "price": eq.get("post_exit_high"),
-            "additional_per_share": round(float(eq["post_exit_high"]) - xp, 4) if xp else None,
-            "additional_pnl": round((float(eq["post_exit_high"]) - xp) * shares, 2) if xp and shares else None,
+            "price": peh,
+            "additional_per_share": round(peh - xp, 4) if xp else None,
+            "additional_pnl": round((peh - xp) * shares, 2) if xp and shares else None,
             "runner_type": eq.get("runner_type"),
         }
 
@@ -232,8 +293,8 @@ def _deterministic_sections(ctx: dict) -> dict:
             "alternative_exit": alt_exit,
             "what_if_wait_volume": eq.get("entry_volume_confirmed") is False,
             "what_if_hold_to_mfe": {
-                "price": round(ep + float(eq.get("mfe_after_entry") or 0), 4) if ep else None,
-                "extra_per_share": eq.get("mfe_after_entry"),
+                "price": round(ep + _as_float(eq.get("mfe_after_entry")), 4) if ep else None,
+                "extra_per_share": _as_float(eq.get("mfe_after_entry")) or None,
             },
         },
     }
@@ -303,8 +364,9 @@ def _deterministic_narrative(ctx: dict, sections: dict) -> dict:
     str_list = []
     if pnl > 0:
         str_list.append(f"Closed green (${pnl:+.2f}) with {cap_pct} of available move captured.")
-    if tip.get("pct_in_profit", 0) >= 50:
-        str_list.append(f"Trade spent {tip['pct_in_profit']}% of hold time in profit.")
+    pct_ip = tip.get("pct_in_profit")
+    if pct_ip is not None and _as_float(pct_ip) >= 50:
+        str_list.append(f"Trade spent {pct_ip}% of hold time in profit.")
     if eq.get("entry_above_vwap"):
         str_list.append("Entry was above VWAP — aligned with intraday strength.")
     if strengths:
@@ -334,8 +396,13 @@ def _deterministic_narrative(ctx: dict, sections: dict) -> dict:
     if eq.get("grok_what_to_do_next_time"):
         takeaways.append(str(eq["grok_what_to_do_next_time"])[:200])
     takeaways.append(f"Repeat: {setup} only when regime is {regime} and RVOL confirms.")
-    if risk.get("realized_r") is not None and risk.get("planned_r") is not None:
-        takeaways.append(f"Risk: planned {risk['planned_r']}R → realized {risk['realized_r']}R.")
+    pr, rr = risk.get("planned_r"), risk.get("realized_r")
+    if pr is not None and rr is not None:
+        takeaways.append(f"Risk: planned {pr}R → realized {rr}R.")
+    exit_type = (review.get("exit_type") or "").replace("_", " ")
+    exit_signals = review.get("exit_signals") or []
+    if exit_type:
+        takeaways.append(f"Exit tagged: {exit_type}" + (f" ({', '.join(exit_signals[:2])})" if exit_signals else "") + ".")
     takeaways.append("Screenshot the entry bar and tag psychology within 24h while memory is fresh.")
 
     what_ifs = []
@@ -907,7 +974,13 @@ def _persist_error(trade_key: str, error: str, review: dict | None = None) -> No
 def ai_critique_for_trade(trade_key: str, force: bool = False, apply: bool = True) -> dict:
     """Unified entry: load persisted critique or generate + save."""
     ensure_critique_schema()
-    return generate_critique(trade_key, force=force)
+    try:
+        return generate_critique(trade_key, force=force)
+    except Exception as e:
+        err = str(e)[:300]
+        rev = tiv._q("SELECT * FROM journal_trade_reviews WHERE trade_key=%s", [trade_key], fetch="one")
+        _persist_error(trade_key, err, rev)
+        return {"ok": False, "error": err, "persisted": True, "meta": {"status": "error", "error_message": err}}
 
 
 def search_critiques(q: str = "", setup_family: str = "", days: int = 365, limit: int = 50) -> dict:
