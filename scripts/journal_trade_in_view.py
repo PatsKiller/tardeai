@@ -1077,10 +1077,10 @@ def stop_context_for_trade(trade_key: str) -> dict:
     ) or []
 
     lifecycle = _q(
-        """SELECT symbol, account, stop_price, stop_type, health, updated_at::text
+        """SELECT symbol, account, stop_price, order_type, health, snapshot_at::text
            FROM stop_lifecycle
            WHERE UPPER(symbol)=UPPER(%s) AND (account=%s OR account IS NULL)
-           ORDER BY updated_at DESC LIMIT 3""",
+           ORDER BY snapshot_at DESC NULLS LAST LIMIT 3""",
         [sym, acct],
     ) or []
 
