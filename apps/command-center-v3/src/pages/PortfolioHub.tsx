@@ -288,11 +288,12 @@ export default function PortfolioHub({ onDrill }: Props) {
       coverage: coverage[symU],
     }
   }
-  const openHoldingsDrawer = (rowCtx: HoldingsTableRowContext) => {
+  const openHoldingsDrawer = (rowCtx: HoldingsTableRowContext, opts?: { focus?: 'stops' }) => {
     const h = rowCtx.h
     const symU = (h.symbol || '').toUpperCase()
+    const focusStops = opts?.focus === 'stops'
     setDrawerTitle(h.symbol)
-    setDrawerSubtitle(`${h.account} · ${h.name ?? ''}`)
+    setDrawerSubtitle(`${(h.account ?? '').replace(/_/g, ' ')} · ${h.name ?? ''}${focusStops ? ' · Stop management' : ''}`)
     setHoldingsDrawer({
       h,
       protection: rowCtx.pr,
@@ -306,6 +307,7 @@ export default function PortfolioHub({ onDrill }: Props) {
       coverage: rowCtx.coverage,
       onRefreshMonitored: () => refetchMonitored?.(),
       cvdMode: holdingsCvd,
+      drawerFocus: focusStops ? 'stops' : null,
       onPreflightUpdate: (symbol, account, patch) => {
         const hk = `${symbol}:${account}`
         if (patch.holding) setHoldingPatches(p => ({ ...p, [hk]: { ...(p[hk] ?? {}), ...patch.holding } }))
@@ -313,6 +315,7 @@ export default function PortfolioHub({ onDrill }: Props) {
       },
     })
   }
+  const openHoldingsStops = (rowCtx: HoldingsTableRowContext) => openHoldingsDrawer(rowCtx, { focus: 'stops' })
   const terminalRows = holdingsList.map(buildRowContext)
 
   return (
@@ -509,7 +512,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                 focusKey={focusKey}
                 cvdMode={holdingsCvd}
                 onOpenDetail={openHoldingsDrawer}
-                onPrimaryAction={openHoldingsDrawer}
+                onPrimaryAction={openHoldingsStops}
               />
             ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
@@ -545,7 +548,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                     reportEntry={rowCtx.reportEntry}
                     coverage={rowCtx.coverage}
                     onClick={() => openHoldingsDrawer(rowCtx)}
-                    onAction={() => openHoldingsDrawer(rowCtx)}
+                    onAction={() => openHoldingsStops(rowCtx)}
                     onRefreshMonitored={() => refetchMonitored?.()}
                     onPreflightUpdate={(symbol, account, patch) => {
                       const hk = `${symbol}:${account}`

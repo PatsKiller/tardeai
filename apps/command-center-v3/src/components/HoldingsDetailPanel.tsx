@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import AnalystReviews, { useAnalystMap } from './AnalystReviews'
 import HoldingProtectionActions from './HoldingProtectionActions'
 import HoldingReportLinks from './HoldingReportLinks'
@@ -23,6 +24,8 @@ export interface HoldingsDetailContext {
   onRefreshMonitored?: () => void
   onPreflightUpdate?: (symbol: string, account: string, patch: { holding?: Record<string, unknown>; protection?: Record<string, unknown> }) => void
   cvdMode?: HoldingsCvdMode
+  /** When 'stops', scroll to and highlight this holding's stop management block. */
+  drawerFocus?: 'stops' | null
 }
 
 const rsiZoneColor = (s: string | undefined, cvd: HoldingsCvdMode) =>
@@ -58,6 +61,56 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
   const sh = Number(h.shares) || 0
   const acct = String(h.account ?? '')
   const schwabSmall = acct.startsWith('schwab') && sh > 0 && sh < 40
+  const stopMgmtRef = useRef<HTMLDivElement>(null)
+  const focusStops = ctx.drawerFocus === 'stops'
+
+  useEffect(() => {
+    if (!focusStops) return
+    const t = window.setTimeout(() => {
+      stopMgmtRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+    return () => window.clearTimeout(t)
+  }, [focusStops, symU, acct])
+
+  const stopMgmtBlock = (pr?.stop_price || schwabSmall || pr?.rec || focusStops) ? (
+    <div
+      ref={stopMgmtRef}
+      id="holding-stop-management"
+      style={{
+        padding: '12px 14px', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10,
+        background: focusStops ? BB.amberDim : BB.bgRow,
+        border: `1px solid ${focusStops ? BB.amber : BB.border}`,
+        boxShadow: focusStops ? `0 0 0 1px ${BB.amber}33` : undefined,
+      }}
+    >
+      <div style={{ fontSize: 10, fontWeight: 800, color: focusStops ? BB.amber : BB.text2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        Stop management · {symU} · {acct.replace(/_/g, ' ')}
+      </div>
+      {pr && (
+        <div title={stopTip} style={{ padding: '8px 12px', background: BB.amberDim, border: `1px solid ${BB.amber}44`, borderRadius: 8, fontSize: 11 }}>
+          <span style={{ fontWeight: 800, color: BB.amber }}>Advisory</span>
+          <span style={{ color: BB.text2, marginLeft: 8 }}>
+            {pr.stop_price != null
+              ? `$${Number(pr.stop_price).toFixed(2)}${pr.stop_distance_pct != null ? ` · ${Number(pr.stop_distance_pct).toFixed(1)}% below current price` : ''}`
+              : pr.rec ?? '—'}
+          </span>
+        </div>
+      )}
+      {(pr?.stop_price || schwabSmall) ? (
+        <HoldingProtectionActions
+          h={h}
+          pr={pr}
+          monitored={ctx.monitored}
+          confirmedStop={ctx.confirmedStop}
+          brokerStopsFetchedAt={ctx.brokerStopsFetchedAt}
+          onRefresh={ctx.onRefreshMonitored}
+          onPreflightUpdate={ctx.onPreflightUpdate}
+        />
+      ) : (
+        <div style={{ fontSize: 10, color: BB.text3 }}>No broker stop controls for this holding yet — check evidence below or Stop Management tab.</div>
+      )}
+    </div>
+  ) : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: BB.fontMd, color: BB.text1 }}>
@@ -75,9 +128,9 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
           { l: 'Market value', v: fmt$(h.market_value, 0) },
           { l: 'Unrealized P/L', v: pl$ != null ? `${pl$ >= 0 ? '+' : ''}${fmt$(pl$, 0)}${pl != null ? ` (${pl >= 0 ? '+' : ''}${pl.toFixed(1)}%)` : ''}` : '—', c: pl$ != null ? semanticSigned(pl$, cvdMode) : BB.text3 },
           { l: 'Today', v: h.day_change_pct != null ? `${Number(h.day_change_pct) >= 0 ? '+' : ''}${Number(h.day_change_pct).toFixed(2)}%` : '—', c: semanticSigned(Number(h.day_change_pct ?? 0), cvdMode) },
-          { l: '% Portfolio', v: h.portfolio_pct != null ? `${Number(h.portfolio_pct).toFixed(1)}%` : '—' },
+          { l: '% Portfolio', v: h.portfolio_pct != null ? `${Number(h.portfolio_pct).toFixed(1)}%` : '—', tip: 'Weight of this holding across your entire portfolio (all accounts combined)' },
         ].map(m => (
-          <div key={m.l} style={{ background: BB.bgRow, border: `1px solid ${BB.border}`, borderRadius: 8, padding: '8px 10px' }}>
+          <div key={m.l} title={(m as any).tip} style={{ background: BB.bgRow, border: `1px solid ${BB.border}`, borderRadius: 8, padding: '8px 10px', cursor: (m as any).tip ? 'help' : undefined }}>
             <div style={{ fontSize: 8, color: BB.text3, textTransform: 'uppercase' }}>{m.l}</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: m.c ?? BB.text0, marginTop: 2 }}>{m.v}</div>
           </div>
@@ -92,6 +145,8 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
           <span>YTD <b>{fv.perf_ytd ?? '—'}%</b></span>
         </div>
       )}
+
+      {stopMgmtBlock}
 
       {(h.llm_evidence?.length > 0 || h.llm_data_i_doubt) && (
         <EvidenceBlock title={h.llm_health ? `Holdings health · ${h.llm_health}` : 'Holdings LLM evidence'} evidence={h.llm_evidence} dataIDoubt={h.llm_data_i_doubt} maxItems={6} />
@@ -108,31 +163,8 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
         </div>
       )}
 
-      {pr && (
-        <div title={stopTip} style={{ padding: '8px 12px', background: BB.amberDim, border: `1px solid ${BB.amber}44`, borderRadius: 8, fontSize: 11 }}>
-          <span style={{ fontWeight: 800, color: BB.amber }}>Stop advisory</span>
-          <span style={{ color: BB.text2, marginLeft: 8 }}>
-            {pr.stop_price != null
-              ? `$${Number(pr.stop_price).toFixed(2)}${pr.stop_distance_pct != null ? ` (${Number(pr.stop_distance_pct).toFixed(1)}% below)` : ''}`
-              : pr.rec ?? '—'}
-          </span>
-        </div>
-      )}
-
       {holdingReportEligible(h) && (
         <HoldingReportLinks symbol={h.symbol} entry={ctx.reportEntry} reportType={ctx.reportEntry?.report_type} />
-      )}
-
-      {(pr?.stop_price || schwabSmall) && (
-        <HoldingProtectionActions
-          h={h}
-          pr={pr}
-          monitored={ctx.monitored}
-          confirmedStop={ctx.confirmedStop}
-          brokerStopsFetchedAt={ctx.brokerStopsFetchedAt}
-          onRefresh={ctx.onRefreshMonitored}
-          onPreflightUpdate={ctx.onPreflightUpdate}
-        />
       )}
 
       {scard && (

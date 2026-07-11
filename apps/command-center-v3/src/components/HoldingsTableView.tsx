@@ -19,12 +19,12 @@ const LLM_LANE: Record<string, { label: string; c: string }> = {
 
 const COL_TIPS: Record<string, string> = {
   symbol: 'Ticker and HQ country flag',
-  acct: 'Broker account',
+  acct: 'Broker account for this row (same symbol may appear in multiple accounts)',
   value: 'Market value and today\'s % change',
-  port: 'Weight in total portfolio',
+  port: 'Portfolio weight — % of your TOTAL portfolio value across all accounts (not stop distance)',
   price: 'Last price and average cost per share',
-  stop: 'Stop protection status — green stable, amber concern, red action needed',
-  action: 'Primary next step — amber buttons need your attention',
+  stop: 'Stop protection — status + advisory stop price. "X% below price" = how far stop is under current price, NOT % of portfolio',
+  action: 'Opens this row\'s stop management drawer (2FA, tickets, replace stop)',
   reports: 'Analyst PDF / Word reports',
   agents: 'LLM lanes that reviewed this symbol (last 30d)',
 }
@@ -104,7 +104,7 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode =
         <HeaderCell label="Symbol" tip={COL_TIPS.symbol} />
         <HeaderCell label="Acct" tip={COL_TIPS.acct} />
         <HeaderCell label="Value · Today" tip={COL_TIPS.value} />
-        <HeaderCell label="% Port" tip={COL_TIPS.port} />
+        <HeaderCell label="Wt %" tip={COL_TIPS.port} />
         <HeaderCell label="Price / Cost" tip={COL_TIPS.price} />
         <HeaderCell label="Stop status" tip={COL_TIPS.stop} />
         <HeaderCell label="Action" tip={COL_TIPS.action} />
@@ -189,8 +189,10 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode =
               </div>
 
               <span
-                title={m.portfolioPct != null ? `${m.portfolioPct.toFixed(2)}% of total portfolio value` : 'Portfolio weight unknown'}
-                style={{ fontSize: 11, fontFamily: BB.mono, color: BB.text2 }}
+                title={m.portfolioPct != null
+                  ? `${m.portfolioPct.toFixed(1)}% of your total portfolio ($${Math.round(m.marketValue / (m.portfolioPct / 100)).toLocaleString()} est. total) — portfolio weight, NOT stop distance`
+                  : 'Portfolio weight unknown'}
+                style={{ fontSize: 11, fontFamily: BB.mono, color: BB.text2, fontWeight: 700 }}
               >
                 {m.portfolioPct != null ? `${m.portfolioPct.toFixed(1)}%` : '—'}
               </span>
@@ -207,7 +209,12 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode =
               </div>
 
               <div
-                title={`${m.stopLabel}: ${m.stopAdvisory}${m.stopPrice != null ? ` · Advisory stop $${m.stopPrice.toFixed(2)}` : ''}`}
+                title={[
+                  `Stop status: ${m.stopLabel}`,
+                  m.stopAdvisory,
+                  m.stopDistPct != null ? `${m.stopDistPct.toFixed(1)}% below current price — NOT portfolio weight` : '',
+                  m.portfolioPct != null ? `(Portfolio weight is ${m.portfolioPct.toFixed(1)}% in Wt % column)` : '',
+                ].filter(Boolean).join('\n')}
                 style={{
                   minWidth: 0, padding: '6px 8px', margin: '-6px -8px', borderRadius: 5,
                   background: stopStatusBg(m.stopStatus), borderLeft: `3px solid ${stopColor}`,
@@ -216,11 +223,8 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode =
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ width: 8, height: 8, borderRadius: 4, background: stopColor, flexShrink: 0 }} />
                   <span style={{ fontSize: 11, fontWeight: 800, color: stopColor, letterSpacing: 0.2 }}>{m.stopLabel}</span>
-                  {m.stopDistPct != null && (
-                    <span style={{ fontSize: 9, color: BB.text3, fontFamily: BB.mono }}>{m.stopDistPct.toFixed(1)}%</span>
-                  )}
                 </div>
-                <div style={{ fontSize: 9, color: BB.text2, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 9, color: BB.text2, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: BB.mono }}>
                   {m.stopAdvisory}
                 </div>
               </div>

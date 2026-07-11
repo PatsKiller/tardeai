@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-07-11 (late) — Holdings stop clarity + action → stop drawer
+
+- **Stop column** — removed ambiguous bare `6.4%`; now reads `Stop $32.43 · 6.4% below price` (not portfolio %).
+- **Wt % column** — renamed from `% Port`; tooltips clarify total-portfolio weight vs stop distance.
+- **Action buttons** — open drawer scrolled to **Stop management · SYMBOL · account** with 2FA/ticket controls.
+- **Drawer** — stop block moved above evidence; amber highlight when opened via action.
+
 ## 2026-07-11 (eve) — Holdings Terminal + Cards UX polish
 
 - **Globe icon fix** — portfolio feed omits HQ country; default US flag for domestic tickers (ADR overrides unchanged).

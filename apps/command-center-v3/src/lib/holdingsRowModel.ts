@@ -91,9 +91,10 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   }
 
   let stopAdvisory = ''
-  if (stopPrice != null) {
-    stopAdvisory = `Tighten to $${stopPrice.toFixed(2)}`
-    if (stopDist != null) stopAdvisory = `${stopDist.toFixed(1)}% below · $${stopPrice.toFixed(2)}`
+  if (stopPrice != null && stopDist != null) {
+    stopAdvisory = `Stop $${stopPrice.toFixed(2)} · ${stopDist.toFixed(1)}% below price`
+  } else if (stopPrice != null) {
+    stopAdvisory = `Advisory stop $${stopPrice.toFixed(2)}`
   } else if (pr?.rec) {
     stopAdvisory = String(pr.rec).split('·')[0].trim().slice(0, 42)
   } else if (health === 'CONCERN') {
@@ -103,37 +104,37 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   }
 
   let primaryAction: { label: string; tone: 'amber' | 'green' | 'red' | 'muted' } = { label: 'Details', tone: 'muted' }
-  let primaryActionTooltip = 'Open drawer for charts, evidence, stop controls, and reports'
+  let primaryActionTooltip = `Open ${sym} stop management in ${acctShort(acct)}`
   if (isFidelity && stopPrice && !hasLive) {
     primaryAction = { label: 'Create Ticket', tone: 'amber' }
-    primaryActionTooltip = `Action needed: Fidelity has no API stop — create manual ticket at $${stopPrice.toFixed(2)}`
+    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → create Fidelity stop ticket at $${stopPrice.toFixed(2)}`
   } else if (isSchwab && stopPrice && !hasLive) {
     primaryAction = { label: 'Request 2FA Stop', tone: 'amber' }
-    primaryActionTooltip = `Action needed: place Schwab stop at $${stopPrice.toFixed(2)} (2FA confirmation in drawer)`
+    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → request 2FA stop at $${stopPrice.toFixed(2)}`
   } else if (isSchwab && stopPrice && pr?.advisory_stop_is_tighter_than_existing) {
     primaryAction = { label: 'Tighten Stop', tone: 'amber' }
-    primaryActionTooltip = `Action needed: advisory stop $${stopPrice.toFixed(2)} is tighter than live stop — review in drawer`
+    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → tighten stop to $${stopPrice.toFixed(2)}`
   } else if (hasLive && isSchwab && stopPrice) {
     primaryAction = { label: 'Replace Stop', tone: 'amber' }
-    primaryActionTooltip = `Action needed: replace or adjust live Schwab stop (advisory $${stopPrice.toFixed(2)})`
+    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → replace live stop (advisory $${stopPrice.toFixed(2)})`
   } else if (needsSellAll && stopPrice) {
     primaryAction = { label: 'Review', tone: 'amber' }
-    primaryActionTooltip = `Action needed: ${sh} shares < 40 — Schwab requires whole-share stop; may need sell-all`
+    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → whole-share stop issue (${sh} sh) — review sell-all`
   } else if (health === 'CONCERN' || health === 'TRIM') {
     primaryAction = { label: 'Review', tone: 'amber' }
-    primaryActionTooltip = `LLM health ${health}: review allocation and stop in drawer`
+    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → review stop (LLM health: ${health})`
   } else if (signal === 'TRIM' || signal === 'SELL' || signal === 'EXIT') {
     primaryAction = { label: 'Review', tone: 'red' }
-    primaryActionTooltip = `Signal ${signal}: review trim/exit rationale in drawer`
+    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → review stop (${signal} signal)`
   } else if (stopStatus === 'action') {
     primaryAction = { label: 'Review', tone: 'amber' }
-    primaryActionTooltip = stopAdvisory || 'Stop status requires attention — open drawer'
+    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) stop management — ${stopAdvisory || 'attention needed'}`
   } else if (stopStatus === 'stable' && hasLive) {
     primaryAction = { label: 'Stable', tone: 'green' }
     primaryActionTooltip = 'Stop in place — no action required'
   } else if (stopStatus === 'concern') {
     primaryAction = { label: 'Review', tone: 'amber' }
-    primaryActionTooltip = stopAdvisory || 'Stop within 5% of price — consider tightening'
+    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → ${stopAdvisory || 'stop within 5% of price'}`
   }
 
   const needsAction = primaryAction.tone === 'amber' || primaryAction.tone === 'red'
