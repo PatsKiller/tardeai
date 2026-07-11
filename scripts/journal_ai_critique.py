@@ -650,9 +650,12 @@ def load_stored_critique(trade_key: str) -> dict | None:
 def _critique_meta(review: dict, critique: dict | None, *, status: str = "ok", error: str = "",
                    stale: bool = False, llm_raw: str = "", context_hash: str = "",
                    response_hash: str | None = None, deterministic_fallback: bool = False,
-                   replay_status: dict | None = None) -> dict:
+                   replay_status: dict | None = None, eq_updated_at=None) -> dict:
     fp = tag_fingerprint(review)
     nar = (critique or {}).get("narrative") or {}
+    eq_at = eq_updated_at
+    if eq_at is not None and hasattr(eq_at, "isoformat"):
+        eq_at = eq_at.isoformat()
     return {
         "status": status,
         "prompt_version": PROMPT_VERSION,
@@ -665,6 +668,7 @@ def _critique_meta(review: dict, critique: dict | None, *, status: str = "ok", e
         "deterministic_fallback": bool(deterministic_fallback),
         "context_hash": context_hash or None,
         "response_hash": response_hash,
+        "eq_updated_at": str(eq_at) if eq_at is not None else None,
         "replay_integrity": replay_status or (critique or {}).get("replay_integrity"),
         "error_message": error[:300] if error else None,
         "llm_raw_preview": (llm_raw or "")[:500] if llm_raw else None,
@@ -695,6 +699,51 @@ def _stale_from_tags(review: dict, meta: dict, critique: dict | None = None) -> 
     if not stored_fp:
         return False, cur_fp
     return stored_fp != cur_fp, cur_fp
+
+
+def _resolve_eq_row(trade_key: str) -> dict:
+    """Lightweight EQ lookup via trade_closed.dedupe_key → srt:{id}."""
+    parts = trade_key.split(":")
+    if len(parts) < 3:
+        return {}
+    sym, acct, cd = parts[0], parts[1], parts[-1]
+    dk_row = tiv._q("""
+        SELECT dedupe_key FROM trade_closed
+        WHERE symbol=%s AND account=%s AND close_date=%s::date
+        ORDER BY id DESC LIMIT 1
+    """, [sym, acct, cd], fetch="one")
+    if dk_row and str(dk_row.get("dedupe_key") or "").startswith("srt:"):
+        return tiv._q(
+            "SELECT capture_ratio, mfe_after_entry, path_status, updated_at FROM trade_execution_quality "
+            "WHERE trade_key=%s ORDER BY updated_at DESC LIMIT 1",
+            [dk_row["dedupe_key"]], fetch="one") or {}
+    return {}
+
+
+def _needs_execution_refresh(trade_key: str, stored: dict, meta: dict) -> bool:
+    """True when EQ was backfilled after this critique was generated (or critique lacks metrics EQ now has)."""
+    ex = stored.get("execution_quality") or {}
+    incomplete = ex.get("capture_ratio") is None and ex.get("mfe") is None
+    eq = _resolve_eq_row(trade_key)
+    if not eq:
+        return False
+    live_has = eq.get("capture_ratio") is not None or eq.get("mfe_after_entry") is not None
+    if incomplete and live_has:
+        return True
+    eq_upd = eq.get("updated_at")
+    meta_eq = meta.get("eq_updated_at")
+    if eq_upd and meta_eq and str(eq_upd) > str(meta_eq):
+        return True
+    gen_at = meta.get("generated_at") or stored.get("generated_at")
+    if incomplete and gen_at and eq_upd and live_has:
+        try:
+            g = datetime.fromisoformat(str(gen_at).replace("Z", "+00:00"))
+            u = eq_upd if getattr(eq_upd, "tzinfo", None) else eq_upd.replace(tzinfo=timezone.utc)
+            if u > g:
+                return True
+        except Exception:
+            return True
+    return False
 
 
 def _persist_meta(trade_key: str, payload: dict, meta: dict, *, stale: bool) -> None:
@@ -794,6 +843,9 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
     if not force:
         stored = load_stored_critique(trade_key)
         if stored:
+            if _needs_execution_refresh(trade_key, stored, meta):
+                force = True
+        if stored and not force:
             nar = stored.get("narrative") or {}
             sm = meta.get("status", "ok")
             if sm == "ok" and (nar.get("summary") or stored.get("trade_classification")):
@@ -914,7 +966,8 @@ def generate_critique(trade_key: str, *, force: bool = False, lane: str = "grok"
     meta = _critique_meta(
         review_row, critique, status=crit_status, llm_raw=llm_raw,
         context_hash=_context_hash(ctx), response_hash=_response_hash(llm_raw),
-        deterministic_fallback=deterministic_fallback, replay_status=replay)
+        deterministic_fallback=deterministic_fallback, replay_status=replay,
+        eq_updated_at=(eq.get("updated_at") if eq else None))
     save_critique(trade_key, critique, meta=meta, review=review_row)
     clean = dict(critique)
     return {

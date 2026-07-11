@@ -72,9 +72,10 @@ export default function AiTradeCritique({ tradeKey, symbol }: { tradeKey: string
     setBusy(true)
     setErr('')
     try {
-      const qs = `trade_key=${encodeURIComponent(tradeKey)}${force ? '&force=1' : ''}`
+      const qs = `trade_key=${encodeURIComponent(tradeKey)}&_=${Date.now()}${force ? '&force=1' : ''}`
       const r = await fetch(force ? '/api/v2/journal/ai-critique' : `/api/v2/journal/ai-critique?${qs}`, {
         method: force ? 'POST' : 'GET',
+        cache: 'no-store',
         ...(force ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trade_key: tradeKey, force: true }) } : {}),
       })
       const j = await r.json()
