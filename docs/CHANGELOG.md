@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-07-10 (eve) — Hermes Research Backlog UX fix
+
+- **Win rate display** — backlog topics stored decimal WR as `0.167%`; UI now shows **16.7%**;
+  librarian loop writes `WR={pct:.1f}%` and includes strategy id in topic.
+- **Default filter: Active** — hides 2500+ archived dupes; tabs Active / Staged / Archived / All.
+- **API** — `GET /api/v2/hermes/research-backlog?status=active|staged|archived|all` (default active).
+
 ## 2026-07-10 — Ross/Warrior TradeAI alignment + CC v3 scanner polish
 
 ### Trade AI awareness lanes (P0–P6)

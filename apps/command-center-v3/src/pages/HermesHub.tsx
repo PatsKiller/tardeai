@@ -95,23 +95,41 @@ const SCALP_HERMES_AGENTS: HAgent[] = [
     writes: 'validation_tracker.json, critique feedback loop', forbidden: 'Mutate open trades',
     caps: 'Every closed scalp gets critique', targets: ['scalp_orchestrator'], pos: { x: 400, y: 320 }, readsTradeAI: true },
 ]
+/** win_rate in backlog topics may be 0–1 decimal mislabeled with % (legacy) or true 0–100 percent. */
+function formatWinRatePct(raw: number | null | undefined): string {
+  if (raw == null || Number.isNaN(raw)) return '?'
+  const pct = raw > 0 && raw <= 1 ? raw * 100 : raw
+  return pct < 10 ? `${pct.toFixed(1)}%` : `${Math.round(pct)}%`
+}
+
+function parseBacktestMetrics(topic: string): { wr: number | null; pf: number | null; n: number | null; strategy: string | null } {
+  const strat = topic.match(/backtest_weak_strategy:([A-Za-z0-9_.-]+):/i)?.[1]?.trim() || null
+  const m = topic.match(/WR=([\d.]+)%.*?PF=([\d.]+).*?n=(\d+)/i)
+  if (!m) return { wr: null, pf: null, n: null, strategy: strat }
+  const wrRaw = +m[1]
+  const wr = wrRaw > 0 && wrRaw <= 1 ? wrRaw * 100 : wrRaw
+  return { wr, pf: +m[2], n: +m[3], strategy: strat }
+}
+
 // Map raw finding types/topics → human-readable title + plain-English meaning + where to resolve.
-function describeFinding(item: any): { title: string; meaning: string; resolve: string; severity: 'critical' | 'warning' | 'info'; where?: string } {
+function describeFinding(item: any): { title: string; meaning: string; resolve: string; severity: 'critical' | 'warning' | 'info'; where?: string; dedupeKey: string } {
   const topic: string = item.topic || item.symbol || ''
   const t = topic.toLowerCase()
-  const m = topic.match(/WR=([\d.]+)%.*?PF=([\d.]+).*?n=(\d+)/i)
-  if (t.startsWith('backtest_weak_strategy') || (m && t.includes('backtest'))) {
-    const wr = m ? +m[1] : null, pf = m ? +m[2] : null, n = m ? +m[3] : null
+  const bt = parseBacktestMetrics(topic)
+  if (t.startsWith('backtest_weak_strategy') || (bt.wr != null && t.includes('backtest'))) {
+    const { wr, pf, n, strategy } = bt
     const sev = (pf != null && pf < 1) ? 'critical' : 'warning'
-    return { title: 'Weak strategy in backtest', meaning: `Win rate ${wr ?? '?'}% · profit factor ${pf ?? '?'} over ${n ?? '?'} trades — ${pf != null && pf < 1 ? 'loses money (PF<1)' : 'thin edge'}.`, resolve: 'Review this strategy in Strategy → Backtest; tighten entry rules or retire it.', severity: sev as any, where: 'Strategy → Backtest' }
+    const title = strategy ? `Weak backtest — ${strategy}` : 'Weak strategy in backtest'
+    const dedupeKey = `backtest_weak|${strategy || ''}|${wr ?? ''}|${pf ?? ''}|${n ?? ''}`
+    return { title, meaning: `Win rate ${formatWinRatePct(wr)} · profit factor ${pf ?? '?'} over ${n ?? '?'} trades — ${pf != null && pf < 1 ? 'loses money (PF<1)' : 'thin edge'}.`, resolve: 'Review this strategy in Strategy → Backtest; tighten entry rules or retire it.', severity: sev as any, where: 'Strategy → Backtest', dedupeKey }
   }
-  if (t.startsWith('screener_underfilled')) return { title: 'Screener underfilled', meaning: topic.replace(/^screener_underfilled:\s*/i, ''), resolve: 'Loosen screener thresholds or check the data feed for the affected runs.', severity: 'warning', where: 'Strategy → Incubator' }
-  if (t.startsWith('catalyst_quality_gap') || t.includes('catalyst')) return { title: 'Low-quality catalysts', meaning: topic.replace(/^catalyst_quality_gap:\s*/i, ''), resolve: 'Improve catalyst classification / raise the confidence floor before they reach proposals.', severity: 'warning', where: 'Intelligence' }
-  if (t.includes('insufficient backtest') || t.includes('n≤2') || t.includes('insufficient')) return { title: 'Insufficient backtest sample', meaning: topic, resolve: 'Accumulate more closed trades before trusting these strategies; treat as unproven.', severity: 'info', where: 'Strategy → Backtest' }
-  if (t.includes('journal learning') || t.includes('thesis review')) return { title: 'Journal learning empty', meaning: topic, resolve: 'Thesis reviews are not being generated — check the LLM review cron.', severity: 'warning', where: 'Journal' }
-  if (t.includes('aggregate') && t.includes('win rate')) return { title: 'Aggregate win-rate weak', meaning: topic, resolve: 'Portfolio-wide hit rate is low — review strategy mix in Strategy → Analytics.', severity: 'warning', where: 'Strategy' }
+  if (t.startsWith('screener_underfilled')) return { title: 'Screener underfilled', meaning: topic.replace(/^screener_underfilled:\s*/i, ''), resolve: 'Loosen screener thresholds or check the data feed for the affected runs.', severity: 'warning', where: 'Strategy → Incubator', dedupeKey: `screener|${topic}` }
+  if (t.startsWith('catalyst_quality_gap') || t.includes('catalyst')) return { title: 'Low-quality catalysts', meaning: topic.replace(/^catalyst_quality_gap:\s*/i, ''), resolve: 'Improve catalyst classification / raise the confidence floor before they reach proposals.', severity: 'warning', where: 'Intelligence', dedupeKey: `catalyst|${topic.slice(0, 80)}` }
+  if (t.includes('insufficient backtest') || t.includes('n≤2') || t.includes('insufficient')) return { title: 'Insufficient backtest sample', meaning: topic, resolve: 'Accumulate more closed trades before trusting these strategies; treat as unproven.', severity: 'info', where: 'Strategy → Backtest', dedupeKey: `insufficient|${topic.slice(0, 80)}` }
+  if (t.includes('journal learning') || t.includes('thesis review')) return { title: 'Journal learning empty', meaning: topic, resolve: 'Thesis reviews are not being generated — check the LLM review cron.', severity: 'warning', where: 'Journal', dedupeKey: 'journal_learning' }
+  if (t.includes('aggregate') && t.includes('win rate')) return { title: 'Aggregate win-rate weak', meaning: topic, resolve: 'Portfolio-wide hit rate is low — review strategy mix in Strategy → Analytics.', severity: 'warning', where: 'Strategy', dedupeKey: `aggregate_wr|${topic.slice(0, 80)}` }
   // fallback — still humanize
-  return { title: (item.research_type || 'Research finding').replace(/_/g, ' '), meaning: topic || '(no detail)', resolve: 'Advisory finding — review and decide.', severity: 'info' }
+  return { title: (item.research_type || 'Research finding').replace(/_/g, ' '), meaning: topic || '(no detail)', resolve: 'Advisory finding — review and decide.', severity: 'info', dedupeKey: topic.slice(0, 120) || 'finding' }
 }
 const SEV_COLOR = { critical: '#ef4444', warning: '#f59e0b', info: '#60a5fa' } as const
 // extract source domains from a research row's source_urls_json (idea B)
@@ -135,7 +153,8 @@ export default function HermesHub({ onDrill }: Props) {
   const { data: scalpSwarm } = useApi<any>('/api/v2/hermes/scalp-swarm/status', 60_000)
   const { data: selfLearn } = useApi<any>('/api/v2/hermes/self-learning-overview', 120_000)
   const { data: choices } = useApi<any>('/api/v2/hermes/advisory-choices', 120_000)
-  const { data: backlog } = useApi<any>('/api/v2/hermes/research-backlog', 120_000)
+  const [backlogFilter, setBacklogFilter] = useState<'active' | 'staged' | 'archived' | 'all'>('active')
+  const { data: backlog } = useApi<any>(`/api/v2/hermes/research-backlog?status=${backlogFilter}`, 120_000)
   const { data: dualOp } = useApi<any>('/api/v2/hermes/dual-opinion', 120_000)
   const { data: pipeQual } = useApi<any>('/api/v2/hermes/pipeline-quality', 120_000)
   const { data: maturity } = useApi<any>('/api/v2/hermes/maturity-dashboard', 120_000)
@@ -1004,15 +1023,21 @@ export default function HermesHub({ onDrill }: Props) {
 
       {!isScalp && tab === 'Research' && backlog && (() => {
         const raw = backlog.items ?? []
-        // de-dupe identical findings (the raw feed repeats them) + sort by severity
+        // de-dupe by semantic finding key (raw feed had 2500+ archived dupes)
         const seen = new Set<string>(); const items: any[] = []
-        for (const it of raw) { const key = (it.topic || it.symbol || '') + '|' + (it.status || ''); if (seen.has(key)) continue; seen.add(key); items.push(it) }
+        for (const it of raw) {
+          const d = describeFinding(it)
+          const key = d.dedupeKey + '|' + (it.status || '')
+          if (seen.has(key)) continue
+          seen.add(key); items.push(it)
+        }
         const sevRank = { critical: 0, warning: 1, info: 2 } as any
         const described = items.map(it => ({ it, d: describeFinding(it) })).sort((a, b) => sevRank[a.d.severity] - sevRank[b.d.severity])
         const counts = described.reduce((m: any, x) => { m[x.d.severity] = (m[x.d.severity] || 0) + 1; return m }, {})
+        const filterLabel = { active: 'Active', staged: 'Staged', archived: 'Archived', all: 'All' }[backlogFilter]
         return (
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6, flexWrap: 'wrap', gap: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Research Backlog — what Hermes wants fixed ({described.length})</div>
               <div style={{ fontSize: 10, display: 'flex', gap: 10 }}>
                 {counts.critical ? <span style={{ color: SEV_COLOR.critical }}>● {counts.critical} critical</span> : null}
@@ -1020,10 +1045,19 @@ export default function HermesHub({ onDrill }: Props) {
                 {counts.info ? <span style={{ color: SEV_COLOR.info }}>● {counts.info} info</span> : null}
               </div>
             </div>
-            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12, padding: '6px 10px', background: 'var(--bg2)', borderRadius: 6 }}>
-              Advisory only — Hermes flags issues, it does not run or fix them autonomously (no auto-research, by design). Each card says what's wrong and where you'd resolve it. Status <b>staged</b> = recorded for review; not yet acted on.
+            <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+              {(['active', 'staged', 'archived', 'all'] as const).map(f => (
+                <button key={f} onClick={() => setBacklogFilter(f)} style={{
+                  padding: '3px 10px', fontSize: 9, borderRadius: 5, cursor: 'pointer', fontWeight: backlogFilter === f ? 700 : 500,
+                  border: `1px solid ${backlogFilter === f ? '#60a5fa' : 'var(--border)'}`,
+                  background: backlogFilter === f ? 'rgba(96,165,250,.15)' : 'var(--bg2)', color: backlogFilter === f ? '#60a5fa' : 'var(--text3)',
+                }}>{f === 'active' ? 'Active' : f === 'staged' ? 'Staged' : f === 'archived' ? 'Archived' : 'All'}</button>
+              ))}
             </div>
-            {described.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No backlog items</div> :
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12, padding: '6px 10px', background: 'var(--bg2)', borderRadius: 6 }}>
+              Advisory only — Hermes flags issues, it does not run or fix them autonomously (no auto-research, by design). Default <b>Active</b> hides resolved <b>archived</b> rows. Status <b>staged</b> = recorded for review; not yet acted on.
+            </div>
+            {described.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No {filterLabel.toLowerCase()} backlog items{backlogFilter === 'active' ? ' — switch to Archived to review past findings' : ''}.</div> :
               described.map(({ it, d }, i: number) => (
                 <div key={i} onClick={() => onDrill({ title: d.title, subtitle: d.where ? `Resolve in ${d.where}` : 'advisory finding', endpoint: '/api/v2/hermes/research-backlog', rows: [{ finding: d.title, severity: d.severity, detail: d.meaning, suggested_resolution: d.resolve, where_to_resolve: d.where ?? '—', status: it.status, raw_topic: it.topic }] })}
                   style={{ display: 'flex', gap: 10, padding: '10px 8px', borderBottom: '1px solid var(--border)', cursor: 'pointer', alignItems: 'flex-start' }}>
@@ -1039,7 +1073,7 @@ export default function HermesHub({ onDrill }: Props) {
                   </div>
                 </div>
               ))}
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/hermes/research-backlog · {raw.length - described.length} duplicate(s) collapsed · sorted by severity</div>
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/hermes/research-backlog?status={backlogFilter} · {raw.length - described.length} duplicate(s) collapsed · sorted by severity</div>
           </div>
         )
       })()}

@@ -19759,14 +19759,28 @@ def _hermes_scalp_swarm_status():
 
 
 def _hermes_research_backlog():
-    """GET /api/v2/hermes/research-backlog — read-only research backlog items."""
-    rows = _db_query("""
+    """GET /api/v2/hermes/research-backlog — read-only research backlog items.
+
+    Query: status=active (default, excludes archived) | staged | archived | all
+    """
+    qs = _current_query or {}
+    status_f = (qs.get("status") or "active").strip().lower()
+    where = ["research_type = 'research_backlog'"]
+    params: list = []
+    if status_f == "active":
+        where.append("status <> 'archived'")
+    elif status_f in ("staged", "archived", "promoted", "embedded"):
+        where.append("status = %s")
+        params.append(status_f)
+    # status=all → no extra filter
+    rows = _db_query(f"""
         SELECT id, symbol, topic, LEFT(summary, 400) AS summary, confidence_score,
                status, evidence_json, source_urls_json, created_at
         FROM hermes_research_intelligence
-        WHERE research_type = 'research_backlog'
+        WHERE {' AND '.join(where)}
         ORDER BY created_at DESC
-    """) or []
+        LIMIT 500
+    """, params=tuple(params) if params else None) or []
     items = []
     for r in rows:
         ej = r.get("evidence_json") or []

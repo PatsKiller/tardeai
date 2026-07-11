@@ -67,8 +67,13 @@ def main():
         # Check not already in backlog
         cur.execute("SELECT COUNT(*) FROM hermes_research_intelligence WHERE research_type='research_backlog' AND topic LIKE %s", (f"%{(sid or '')[:20]}%",))
         if cur.fetchone()[0] == 0:
-            findings.append({"type": "backtest_weak_strategy", "strategy": sid[:50] if sid else "unknown",
-                "detail": f"WR={wr}% PF={pf} n={ss}", "priority": "high" if wr < 30 else "medium"})
+            wr_f = float(wr) if wr is not None else 0.0
+            wr_pct = wr_f * 100 if wr_f <= 1 else wr_f
+            pf_f = float(pf) if pf is not None else 0.0
+            strat = (sid[:50] if sid else "unknown")
+            findings.append({"type": "backtest_weak_strategy", "strategy": strat,
+                "detail": f"WR={wr_pct:.1f}% PF={pf_f:.2f} n={ss}",
+                "priority": "high" if wr_pct < 30 else "medium"})
 
     # 2. Check catalyst quality gaps
     cur.execute("""
@@ -163,7 +168,7 @@ def main():
                 ARRAY['research_backlog','autonomous_librarian','phase_49']
             ) RETURNING id
         """, (
-            f"{f['type']}: {f['detail']}"[:200],
+            (f"{f['type']}:{f['strategy']}: {f['detail']}" if f.get("strategy") else f"{f['type']}: {f['detail']}")[:200],
             f"Autonomous Librarian detected: {f['detail']}. Requires operator review.",
             json.dumps([{"type":"autonomous_librarian_finding","finding_type":f["type"],"priority":f["priority"],
                         "advisory_only":True,"not_execution":True,"operator_review_required":True,
