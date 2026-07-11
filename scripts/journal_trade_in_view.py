@@ -8,6 +8,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import sys
 from collections import defaultdict
 from datetime import datetime
 from typing import Any
@@ -1042,6 +1043,430 @@ def _parse_trade_key(trade_key: str) -> tuple[str, str, str] | None:
     if len(parts) < 3:
         return None
     return parts[0], ":".join(parts[1:-1]), parts[-1]
+
+
+def _eq_row_for_trade(trade_key: str, tc: dict | None = None) -> dict:
+    """Resolve trade_execution_quality via trade_closed.dedupe_key → srt:{id}."""
+    dk = (tc or {}).get("dedupe_key")
+    if not dk:
+        parsed = _parse_trade_key(trade_key)
+        if parsed:
+            sym, acct, cd = parsed
+            row = _q(
+                "SELECT dedupe_key FROM trade_closed WHERE symbol=%s AND account=%s AND close_date=%s::date LIMIT 1",
+                [sym, acct, cd], fetch="one",
+            )
+            dk = row.get("dedupe_key") if row else None
+    if dk and str(dk).startswith("srt:"):
+        return _q(
+            "SELECT * FROM trade_execution_quality WHERE trade_key=%s ORDER BY updated_at DESC LIMIT 1",
+            [dk], fetch="one",
+        ) or {}
+    return {}
+
+
+def _paper_trade_for_review(sym: str, cd: str, acct: str) -> dict | None:
+    """Best-effort paper_trades row for alpaca_paper journal keys."""
+    if "alpaca" not in (acct or "").lower() and not str(sym).startswith("paper-"):
+        return None
+    return _q(
+        """SELECT id, symbol, entry_price, exit_price, planned_stop, stop_loss, take_profit_price,
+                  target_1, pnl, dollar_risk, r_multiple, shares, hold_time_min
+           FROM paper_trades
+           WHERE UPPER(symbol)=UPPER(%s) AND status='closed'
+             AND COALESCE(exit_time, closed_at)::date = %s::date
+           ORDER BY ABS(pnl) DESC NULLS LAST LIMIT 1""",
+        [sym, cd], fetch="one",
+    )
+
+
+def _default_planned_r(hold_days: float | int | None) -> float:
+    try:
+        hd = float(hold_days or 0)
+    except (TypeError, ValueError):
+        hd = 0
+    return 3.0 if hd > 5 else 2.0
+
+
+def compute_trade_rr(
+    trade_key: str,
+    tc: dict | None = None,
+    eq: dict | None = None,
+    *,
+    sym: str | None = None,
+    acct: str | None = None,
+    cd: str | None = None,
+) -> dict:
+    """Compute planned_r / realized_r from stop registry, else EQ MAE/MFE (1R = max adverse excursion)."""
+    parsed = _parse_trade_key(trade_key)
+    if not parsed and not (sym and acct and cd):
+        return {"ok": False, "error": "invalid trade_key"}
+    sym = sym or (parsed[0] if parsed else "")
+    acct = acct or (parsed[1] if parsed else "")
+    cd = cd or (parsed[2] if parsed else "")
+    if not tc:
+        tc = _q(
+            "SELECT *, (symbol || ':' || account || ':' || close_date::text) AS trade_key "
+            "FROM trade_closed WHERE symbol=%s AND account=%s AND close_date=%s::date LIMIT 1",
+            [sym, acct, cd], fetch="one",
+        )
+        if not tc:
+            tc = _q(
+                "SELECT *, (symbol || ':' || account || ':' || close_date::text) AS trade_key "
+                "FROM trade_closed WHERE symbol=%s AND close_date=%s::date "
+                "AND (account=%s OR account LIKE %s || '%%') "
+                "ORDER BY CASE WHEN account=%s THEN 0 ELSE 1 END LIMIT 1",
+                [sym, cd, acct, acct, acct], fetch="one",
+            )
+    paper = None if tc else _paper_trade_for_review(sym, cd, acct)
+    if not tc and not paper:
+        return {"ok": False, "error": "trade not found"}
+
+    eq = None if paper else (eq if eq is not None else _eq_row_for_trade(trade_key, tc))
+    if paper and eq is None:
+        eq = _q(
+            "SELECT * FROM trade_execution_quality WHERE trade_key=%s ORDER BY updated_at DESC LIMIT 1",
+            [f"pt:{paper['id']}"], fetch="one",
+        ) or {}
+
+    if paper:
+        try:
+            entry = float(paper.get("entry_price") or 0)
+            exit_ = float(paper.get("exit_price") or 0)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "bad paper prices"}
+        try:
+            hold_days = float(paper.get("hold_time_min") or 0) / 1440.0
+        except (TypeError, ValueError):
+            hold_days = 0
+        is_short = False
+        if paper.get("r_multiple") is not None:
+            try:
+                dr = float(paper.get("dollar_risk") or 0)
+                pn = float(paper.get("pnl") or 0)
+                realized_r = float(paper["r_multiple"]) if paper["r_multiple"] is not None else (
+                    round(pn / dr, 3) if dr > 0 else None
+                )
+            except (TypeError, ValueError):
+                realized_r = None
+        else:
+            realized_r = None
+    else:
+        try:
+            entry = float(tc.get("buy_price") or 0)
+            exit_ = float(tc.get("sell_price") or 0)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "bad prices"}
+        hold_days = tc.get("hold_days") or 0
+        is_short = str(tc.get("trade_type") or "").upper() == "SHORT"
+        realized_r = None
+
+    if entry <= 0:
+        return {"ok": False, "error": "no entry price"}
+    stop = None
+    stop_src = None
+    target = None
+    if paper:
+        for fld in ("planned_stop", "stop_loss"):
+            try:
+                sp = float(paper.get(fld) or 0)
+            except (TypeError, ValueError):
+                continue
+            if sp > 0 and sp < entry:
+                stop, stop_src = sp, f"paper_trades.{fld}"
+                break
+        for tf in ("take_profit_price", "target_1"):
+            try:
+                tv = float(paper.get(tf) or 0)
+            except (TypeError, ValueError):
+                continue
+            if tv > 0:
+                target = tv
+                break
+    elif tc.get("stop_used"):
+        try:
+            stop = float(tc["stop_used"])
+            stop_src = "trade_closed.stop_used"
+        except (TypeError, ValueError):
+            stop = None
+    if stop is None:
+        ctx = stop_context_for_trade(trade_key)
+        for bs in (ctx.get("broker_stops") or []):
+            try:
+                sp = float(bs.get("stop_price") or 0)
+            except (TypeError, ValueError):
+                continue
+            if sp <= 0:
+                continue
+            if is_short and sp > entry:
+                stop, stop_src = sp, "manual_broker_stops"
+                break
+            if not is_short and sp < entry:
+                stop, stop_src = sp, "manual_broker_stops"
+                break
+
+    mae = mfe = None
+    if eq:
+        try:
+            mae = float(eq.get("mae_after_entry")) if eq.get("mae_after_entry") is not None else None
+        except (TypeError, ValueError):
+            mae = None
+        try:
+            mfe = float(eq.get("mfe_after_entry")) if eq.get("mfe_after_entry") is not None else None
+        except (TypeError, ValueError):
+            mfe = None
+
+    risk = None
+    risk_src = None
+    if stop is not None:
+        if is_short and stop > entry:
+            risk = stop - entry
+            risk_src = stop_src
+        elif not is_short and entry > stop:
+            risk = entry - stop
+            risk_src = stop_src
+    if (risk is None or risk <= 0) and mae and mae > 0:
+        risk = mae
+        risk_src = "eq_mae"
+    if risk is None or risk <= 0:
+        risk = entry * 0.01
+        risk_src = "entry_pct_floor"
+
+    if realized_r is None:
+        if is_short:
+            realized = (entry - exit_) / risk if risk > 0 else None
+        else:
+            realized = (exit_ - entry) / risk if risk > 0 else None
+        realized_r = round(realized, 3) if realized is not None else None
+
+    planned = None
+    planned_src = None
+    if target and stop and entry > stop and target > entry:
+        planned = (target - entry) / (entry - stop)
+        planned_src = "paper_target_stop"
+    elif mfe and risk > 0:
+        planned = mfe / risk
+        planned_src = "eq_mfe"
+    elif mfe and mae and mae > 0:
+        planned = mfe / mae
+        planned_src = "eq_mfe_mae_ratio"
+    else:
+        planned = _default_planned_r(hold_days)
+        planned_src = "default_plan"
+
+    planned_r = round(planned, 3) if planned is not None else None
+    return {
+        "ok": True,
+        "trade_key": trade_key,
+        "realized_r": realized_r,
+        "planned_r": planned_r,
+        "risk_unit": round(risk, 4) if risk else None,
+        "risk_source": risk_src,
+        "planned_source": planned_src,
+        "stop_price": stop,
+    }
+
+
+def backfill_journal_rr(
+    days: int = 3650,
+    account: str | None = None,
+    trade_keys: list | None = None,
+    *,
+    overwrite: bool = False,
+    sync_trade_closed: bool = True,
+) -> dict:
+    """Backfill journal_trade_reviews.planned_r/realized_r (+ trade_closed.r_multiple) for closed trades."""
+    params: list[Any] = [int(days)]
+    acct_sql = ""
+    if account:
+        acct_sql = " AND r.account = %s"
+        params.append(account)
+    rows = _q(f"""
+        SELECT r.trade_key, r.symbol, r.account, r.closed_date::text AS close_date,
+               r.id AS review_id, r.planned_r, r.realized_r,
+               tc.buy_price, tc.sell_price, tc.pnl, tc.shares, tc.hold_days, tc.trade_type,
+               tc.stop_used, tc.dedupe_key, tc.open_date
+        FROM journal_trade_reviews r
+        LEFT JOIN trade_closed tc
+          ON r.trade_key = (tc.symbol || ':' || tc.account || ':' || tc.close_date::text)
+        WHERE (r.closed_date IS NULL OR r.closed_date > now() - (%s || ' days')::interval) {acct_sql}
+        ORDER BY r.closed_date DESC NULLS LAST
+    """, params)
+    if trade_keys:
+        keyset = set(trade_keys)
+        rows = [r for r in rows if r.get("trade_key") in keyset]
+
+    applied = 0
+    skipped = 0
+    ensured = 0
+    errors: list[dict] = []
+    for row in rows:
+        tk = row["trade_key"]
+        if not row.get("close_date"):
+            parsed = _parse_trade_key(tk)
+            if parsed:
+                row["close_date"] = parsed[2]
+                if not row.get("symbol"):
+                    row["symbol"] = parsed[0]
+                if not row.get("account"):
+                    row["account"] = parsed[1]
+        if not row.get("review_id"):
+            _ensure_review_row(tk, row)
+            ensured += 1
+            rev = _q("SELECT planned_r, realized_r FROM journal_trade_reviews WHERE trade_key=%s", [tk], fetch="one")
+        else:
+            rev = {"planned_r": row.get("planned_r"), "realized_r": row.get("realized_r")}
+
+        if not overwrite and rev.get("planned_r") is not None and rev.get("realized_r") is not None:
+            skipped += 1
+            continue
+
+        rr = compute_trade_rr(
+            tk, row if row.get("buy_price") else None,
+            sym=row.get("symbol"), acct=row.get("account"), cd=row.get("close_date"),
+        )
+        if not rr.get("ok"):
+            if overwrite or rev.get("planned_r") is None or rev.get("realized_r") is None:
+                rr = {
+                    "ok": True,
+                    "trade_key": tk,
+                    "planned_r": _default_planned_r(0),
+                    "realized_r": 0.0,
+                    "risk_source": "orphan_default",
+                    "planned_source": "orphan_default",
+                }
+            else:
+                errors.append({"trade_key": tk, "error": rr.get("error")})
+                skipped += 1
+                continue
+
+        updates: dict[str, Any] = {}
+        if overwrite or rev.get("realized_r") is None:
+            if rr.get("realized_r") is not None:
+                updates["realized_r"] = rr["realized_r"]
+        if overwrite or rev.get("planned_r") is None:
+            if rr.get("planned_r") is not None:
+                updates["planned_r"] = rr["planned_r"]
+        if not updates:
+            skipped += 1
+            continue
+
+        payload_patch = {
+            "rr_backfill_at": datetime.utcnow().isoformat() + "Z",
+            "rr_risk_source": rr.get("risk_source"),
+            "rr_planned_source": rr.get("planned_source"),
+            "rr_risk_unit": rr.get("risk_unit"),
+        }
+        date_patch = {}
+        if not row.get("closed_date") and row.get("close_date"):
+            date_patch["closed_date"] = row["close_date"]
+        _patch_review(tk, {**updates, **date_patch}, payload_patch)
+        if sync_trade_closed and rr.get("realized_r") is not None and row.get("buy_price"):
+            _q(
+                "UPDATE trade_closed SET r_multiple=%s WHERE symbol=%s AND account=%s AND close_date=%s::date",
+                [rr["realized_r"], row["symbol"], row["account"], row["close_date"]],
+                fetch="none",
+            )
+        applied += 1
+
+    return {
+        "ok": True,
+        "scanned": len(rows),
+        "applied": applied,
+        "skipped": skipped,
+        "reviews_ensured": ensured,
+        "errors": errors[:20],
+    }
+
+
+def backfill_journal_complete(
+    days: int = 3650,
+    account: str | None = None,
+    *,
+    enrich: bool = True,
+    eq_limit: int = 500,
+    critiques: bool = True,
+    critique_limit: int = 500,
+    force_critique: bool = False,
+) -> dict:
+    """Full journal backfill: reviews → tags → EQ → R:R → replay charts → critiques."""
+    report: dict[str, Any] = {"ok": True, "steps": {}}
+
+    params: list[Any] = [int(days)]
+    acct_sql = ""
+    if account:
+        acct_sql = " AND tc.account = %s"
+        params.append(account)
+    missing = _q(f"""
+        SELECT COUNT(*) n FROM trade_closed tc
+        WHERE (tc.buy_price > 0 OR tc.pnl != 0)
+          AND tc.close_date > now() - (%s || ' days')::interval {acct_sql}
+          AND NOT EXISTS (
+            SELECT 1 FROM journal_trade_reviews r
+            WHERE r.trade_key = tc.symbol||':'||tc.account||':'||tc.close_date::text
+          )
+    """, params, fetch="one")
+    ensured = 0
+    if missing and int(missing.get("n") or 0) > 0:
+        trades = _q(f"""
+            SELECT tc.symbol, tc.account, tc.close_date::text AS close_date,
+                   (tc.symbol || ':' || tc.account || ':' || tc.close_date::text) AS trade_key
+            FROM trade_closed tc
+            WHERE (tc.buy_price > 0 OR tc.pnl != 0)
+              AND tc.close_date > now() - (%s || ' days')::interval {acct_sql}
+              AND NOT EXISTS (
+                SELECT 1 FROM journal_trade_reviews r
+                WHERE r.trade_key = tc.symbol||':'||tc.account||':'||tc.close_date::text
+              )
+        """, params)
+        for t in trades:
+            if _ensure_review_row(t["trade_key"], t):
+                ensured += 1
+    report["steps"]["ensure_reviews"] = {"created": ensured}
+
+    if enrich:
+        report["steps"]["auto_enrich"] = tagging_queue_auto_enrich(
+            days=days, account=account, defaults={"auto_confirm": False, "include_complete": True},
+        )
+
+    try:
+        import subprocess
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        py = sys.executable
+        for src in ("schwab", "paper"):
+            p = subprocess.run(
+                [py, "scripts/build_trade_execution_quality.py", "--source", src,
+                 "--limit", str(eq_limit), "--apply"],
+                cwd=str(root), capture_output=True, text=True,
+            )
+            report["steps"][f"execution_quality_{src}"] = {"ok": p.returncode == 0, "code": p.returncode}
+    except Exception as e:
+        report["steps"]["execution_quality"] = {"ok": False, "error": str(e)[:120]}
+
+    report["steps"]["journal_rr"] = backfill_journal_rr(days=days, account=account, overwrite=True)
+
+    try:
+        import subprocess
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        py = sys.executable
+        p = subprocess.run([py, "scripts/replay_chart_audit.py"], cwd=str(root), capture_output=True, text=True)
+        report["steps"]["replay_audit"] = {"ok": p.returncode == 0, "code": p.returncode}
+    except Exception as e:
+        report["steps"]["replay_audit"] = {"ok": False, "error": str(e)[:120]}
+
+    if critiques:
+        report["steps"]["ai_critiques"] = ai_critique_batch(
+            account=account, days=days, limit=critique_limit,
+            force=force_critique, use_llm=False, skip_existing=not force_critique,
+        )
+
+    report["ok"] = all(
+        s.get("ok", True) if isinstance(s, dict) else True
+        for s in report["steps"].values()
+    )
+    return report
 
 
 def stop_context_for_trade(trade_key: str) -> dict:

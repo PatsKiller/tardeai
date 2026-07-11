@@ -3,12 +3,14 @@
 
 Run after Schwab journal ingest/build or on a schedule. Steps:
   1. build_trade_execution_quality (Schwab round-trips → fill times + metrics)
-  2. replay_chart_audit (backfill journal_trade_reviews.payload.replay_chart)
+  2. backfill_journal_rr (planned_r / realized_r on every review)
+  3. replay_chart_audit (backfill journal_trade_reviews.payload.replay_chart)
 
 Usage:
     python scripts/replay_backfill.py --apply              # full pipeline
     python scripts/replay_backfill.py --apply --eq-only    # execution quality only
     python scripts/replay_backfill.py --apply --audit-only # replay snapshots only
+    python scripts/backfill_journal_complete.py --apply    # full journal + critiques
 """
 from __future__ import annotations
 
@@ -54,6 +56,13 @@ def main():
         ))
 
     if not args.eq_only:
+        report["steps"].append(_run(
+            [PY, "-c",
+             "import sys; sys.path.insert(0,'scripts'); "
+             "import journal_trade_in_view as t; "
+             "import json; print(json.dumps(t.backfill_journal_rr(days=3650, overwrite=True), default=str))"],
+            "journal_rr (planned_r + realized_r)",
+        ))
         report["steps"].append(_run(
             [PY, "scripts/replay_chart_audit.py"],
             "replay_chart_audit (all deduped trades)",
