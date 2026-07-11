@@ -11,6 +11,8 @@ import ReportSearch from '../components/reports/ReportSearch'
 import DocxDownloads from '../components/reports/DocxDownloads'
 import AnalystReportsPanel from '../components/reports/AnalystReportsPanel'
 import { parseBriefSections, executiveSummaryText, rankedActionLines, SUPER_TABS } from '../components/reports/briefUtils'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 // v3 Reports — a COMMAND PORTAL for everything sent to the operator (Telegram / email / SIEM): briefs,
 // digests, alerts, advisories, recovery, dividends, regime, paper, system. Visual KPI summary + extracted
@@ -150,6 +152,7 @@ const sectionIdOf = (text: string): string | undefined => SECTIONS.find(s => s.r
 
 export default function ReportsHub({ onDrill }: Props) {
   void onDrill
+  const [terminalUi] = useTerminalUi()
   const { data: cats } = useApi<any>('/api/v2/reports/categories', 60_000)
   const categories = cats?.categories || []
   const [mode, setMode] = useState<HubMode>(() => {
@@ -281,12 +284,7 @@ export default function ReportsHub({ onDrill }: Props) {
   const modeBtn = (m: HubMode, label: string) => {
     const on = mode === m
     return (
-      <button key={m} onClick={() => setMode(m)} style={{
-        fontSize: 11, fontWeight: on ? 800 : 600, padding: '6px 14px', borderRadius: 7, cursor: 'pointer',
-        border: `1px solid ${on ? '#60a5fa' : 'var(--border)'}`,
-        background: on ? 'rgba(96,165,250,.12)' : 'var(--bg1)',
-        color: on ? '#60a5fa' : 'var(--text2)',
-      }}>{label}</button>
+      <button key={m} onClick={() => setMode(m)} style={hubTab(on, terminalUi)}>{label}</button>
     )
   }
 
@@ -294,10 +292,10 @@ export default function ReportsHub({ onDrill }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1480, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-        <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text0)', margin: 0 }}>
+        <h1 style={{ ...hubTitle(), margin: 0 }}>
           {mode === 'brief' ? 'Morning Brief' : mode === 'analyst' ? 'Analyst Reports' : 'Report Archive'}
         </h1>
-        <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+        <span style={hubSubtitle(terminalUi)}>
           {mode === 'brief'
             ? (todayBrief ? fmtDate(todayBrief.created_at) : 'loading today\'s brief…')
             : mode === 'analyst'

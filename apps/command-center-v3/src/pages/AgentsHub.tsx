@@ -5,6 +5,8 @@ import ReactFlow, { Background, Controls, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
 import type { DrillContext } from '../components/DetailDrawer'
 import OperatorInboxPanel from '../components/OperatorInboxPanel'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 // Inbox hidden until v3 resolve is wired (was read-only pointer to v2).
@@ -155,6 +157,7 @@ function CalWindowCard({ w, symbolsByAgent, onDrill }: { w: any; symbolsByAgent:
 }
 
 export default function AgentsHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [tab, setTab] = useState<typeof TABS[number]>('Roster')
   const [showCalHistory, setShowCalHistory] = useState(false)
   const { data: summary } = useApi<any>('/api/v2/agents/summary', 120_000)
@@ -254,16 +257,12 @@ export default function AgentsHub({ onDrill }: Props) {
     <div>
       <div className="hub-title-row">
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Agents</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{agents.length} agents · {handoffs.length} recent handoffs · {allowed}/{calibratedAgents} proposal-allowed (latest window)</div>
+          <div style={hubTitle()}>Agents</div>
+          <div style={hubSubtitle(terminalUi)}>{agents.length} agents · {handoffs.length} recent handoffs · {allowed}/{calibratedAgents} proposal-allowed (latest window)</div>
         </div>
-        <div className="hub-tabs">
+        <div className="hub-tabs" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? B : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-            }}>{t}</button>
+            <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
           ))}
         </div>
       </div>

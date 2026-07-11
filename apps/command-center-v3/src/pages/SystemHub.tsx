@@ -19,6 +19,8 @@ import OpenClawPanel from '../components/OpenClawPanel'
 import TradeAIPanel from '../components/TradeAIPanel'
 import DataSourceHealth from '../components/DataSourceHealth'
 import ExecutionStatePanel from '../components/ExecutionStatePanel'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Pipeline', 'Control Plane', 'Data Sources', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM', 'Hermes', 'OpenClaw', 'TradeAI'] as const
@@ -38,6 +40,7 @@ function fmtAge(iso: string | null | undefined): string {
 }
 
 export default function SystemHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [tab, setTab] = useState<typeof TABS[number]>(() => _dlTab(TABS, 'Pipeline'))
   const [dlQuery] = useState(_dlQuery)
   const { data: qct } = useApi<any>('/api/v2/system/queue-control-tower', 30_000)
@@ -78,18 +81,14 @@ export default function SystemHub({ onDrill }: Props) {
   return (
     <div>
       <AdminConfirmModal action={pending} onClose={() => setPending(null)} onDone={() => setOpTick(t => t + 1)} />
-      <div className="hub-title-row">
+      <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>System</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{timers} timers · {cronCount} crons · {services} services · {llmJobs} LLM jobs</div>
+          <div style={hubTitle()}>System</div>
+          <div style={hubSubtitle(terminalUi)}>{timers} timers · {cronCount} crons · {services} services · {llmJobs} LLM jobs</div>
         </div>
-        <div className="hub-tabs">
+        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-            }}>{t}</button>
+            <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
           ))}
         </div>
       </div>

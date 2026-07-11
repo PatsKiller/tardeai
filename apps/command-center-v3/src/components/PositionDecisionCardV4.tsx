@@ -9,6 +9,9 @@ import { formatReviewStamp, stopReviewTooltip } from '../lib/stopReviewTooltip'
 import { WL, heroStateStyle, numStyle } from '../lib/watchlistCardTokens'
 import { composeWhy } from '../lib/watchlistCardV4'
 import { buttonStyle, type ActionUrgency, type CardVerdict } from '../lib/watchlistCardAction'
+import { useTerminalUi } from '../lib/terminalUi'
+import { cardShell, modRow, modLabel, ctxLine, ctxKey, statusStrip } from '../lib/terminalCardTheme'
+import { BB, terminalRail, terminalVerdictColor, terminalVerdictBg, terminalButton } from '../lib/watchlistTerminalTokens'
 import CloudLlmRunButtons from './CloudLlmRunButtons'
 
 // Position Decision Card v4 — open-trades surface joins the v4 card family (2026-07-04).
@@ -131,13 +134,6 @@ function Expander({ open, onToggle, label }: { open: boolean; onToggle: () => vo
   )
 }
 
-const modLabel: CSSProperties = {
-  fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase',
-  color: WL.text.dim, marginBottom: 7, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
-}
-const modRow: CSSProperties = { padding: '11px 18px', borderTop: `1px solid ${WL.surface.divider}` }
-const ctxLine: CSSProperties = { fontSize: 11, color: WL.text.secondary, lineHeight: 1.55 }
-const ctxKey: CSSProperties = { color: WL.text.dim, fontWeight: 700 }
 const tag: CSSProperties = { fontSize: 9, fontWeight: 800, letterSpacing: '.06em', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }
 
 function M({ label, value, color = WL.text.primary, title }: any) {
@@ -148,6 +144,7 @@ function M({ label, value, color = WL.text.primary, title }: any) {
 }
 
 export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, onDrill, onAction, llmCov, protectionRec, symCard }: any) {
+  const [terminalUi] = useTerminalUi()
   const t = p.technical || {}, sr = p.sector_relative || {}
   const news: any[] = p.news ?? []
   const lanes: Record<string, any> = {}
@@ -415,6 +412,10 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
   // ── v4 presentation derivations ──
   const state = deriveState(p)
   const heroState = heroStateStyle(state.verdict, state.urgency)
+  const rail = terminalUi ? terminalRail(state.verdict, state.urgency) : heroState.rail
+  const heroBg = terminalUi ? terminalVerdictBg(state.verdict, state.urgency) : heroState.bg
+  const heroAccent = terminalUi ? terminalVerdictColor(state.verdict, state.urgency) : heroState.accent
+  const heroBorder = terminalUi ? BB.border : heroState.border
   // Rule-of-one hero sentence — operator decision + reason, restatements deduped.
   const whyLine = composeWhy([p.operator_decision ?? 'No action — monitored', p.decision_reason])
   const heroTip = [p.operator_decision, p.decision_reason, p.primary_next_review ? `Next: ${p.primary_next_review}` : null].filter(Boolean).join('\n')
@@ -453,16 +454,7 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
 
   return <div
     onClick={() => onDrill(drillCtx)}
-    style={{
-      background: WL.surface.card,
-      border: `1px solid ${WL.surface.edge}`,
-      borderLeft: `3px solid ${heroState.rail}`,
-      borderRadius: WL.card.radius,
-      cursor: 'pointer',
-      boxShadow: WL.card.shadow,
-      minWidth: 0, width: '100%', boxSizing: 'border-box', overflow: 'hidden',
-      color: WL.text.primary,
-    }}
+    style={cardShell(rail, terminalUi)}
   >
     {/* ── Protective-stop confirmation modal — v3 flow verbatim: EXACT proposed order + per-order 2FA
         (type ticker OR one-time code — either channel). Schwab submits via API; Fidelity = ToS ticket. ── */}
@@ -571,74 +563,132 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
       </div>
     </div>
 
-    {/* ② Decision hero — two rows, the only tinted surface */}
+    {/* ② Decision hero — terminal: single horizontal strip; legacy: two-row tinted block */}
     <div
       onClick={e => e.stopPropagation()}
-      style={{
-        background: heroState.bg,
-        borderTop: `1px solid ${heroState.border}`,
-        borderBottom: `1px solid ${heroState.border}`,
-        padding: '11px 18px 10px',
-        display: 'flex', flexDirection: 'column', gap: 7, cursor: 'default',
-      }}
+      style={terminalUi
+        ? { ...statusStrip(heroBg, true), cursor: 'default' }
+        : {
+            background: heroBg,
+            borderTop: `1px solid ${heroBorder}`,
+            borderBottom: `1px solid ${heroBorder}`,
+            padding: '11px 18px 10px',
+            display: 'flex', flexDirection: 'column', gap: 7, cursor: 'default',
+          }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.1em', color: heroState.accent, flexShrink: 0 }}>{state.word}</span>
-        <span title={heroTip} style={{ fontSize: 13.5, fontWeight: 700, color: WL.text.primary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-          {whyLine}
-        </span>
-        {p.unrealized_pnl != null && (
-          <span style={{ ...numStyle, fontSize: 13.5, fontWeight: 800, color: pnlColor, flexShrink: 0 }} title={`Unrealized P&L (${pct(p.unrealized_pnl_pct)})`}>
-            {fmt$(p.unrealized_pnl)}{p.unrealized_pnl_pct != null ? ` · ${pct(p.unrealized_pnl_pct)}` : ''}
+      {terminalUi ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', width: '100%' }}>
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.1em', color: heroAccent, flexShrink: 0 }}>{state.word}</span>
+          <span title={heroTip} style={{ fontSize: 11, fontWeight: 700, color: WL.text.primary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+            {whyLine}
           </span>
-        )}
-        <span style={{ display: 'inline-flex', gap: 7, flexShrink: 0, position: 'relative' }}>
-          {inlineRec && (
-            <button onClick={e => { e.stopPropagation(); onAction?.(inlineRec, p) }} title="Operator review action only" style={buttonStyle('neutral', true)}>{inlineRec}</button>
+          {p.unrealized_pnl != null && (
+            <span style={{ ...numStyle, fontSize: 11, fontWeight: 800, color: pnlColor, flexShrink: 0 }} title={`Unrealized P&L (${pct(p.unrealized_pnl_pct)})`}>
+              {fmt$(p.unrealized_pnl)}{p.unrealized_pnl_pct != null ? ` · ${pct(p.unrealized_pnl_pct)}` : ''}
+            </span>
           )}
-          <button onClick={e => { e.stopPropagation(); onDrill(drillCtx) }} style={buttonStyle('neutral', true)}>Drill</button>
-          {menuRecs.length > 0 && (
-            <button onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }} style={buttonStyle('neutral', true)} aria-label="More actions">⋯</button>
-          )}
-          {menuOpen && menuRecs.length > 0 && (
-            <div style={{
-              position: 'absolute', top: '110%', right: 0, zIndex: 30, minWidth: 168,
-              background: '#0d1420', border: `1px solid ${WL.surface.edge}`, borderRadius: 8,
-              boxShadow: '0 10px 30px rgba(0,0,0,.5)', padding: 4, display: 'flex', flexDirection: 'column',
-            }}>
-              {menuRecs.map(a => (
-                <button
-                  key={a}
-                  onClick={e => { e.stopPropagation(); setMenuOpen(false); onAction?.(a, p) }}
-                  style={{ textAlign: 'left', fontSize: 11.5, fontWeight: 600, color: WL.text.secondary, background: 'none', border: 'none', cursor: 'pointer', padding: '7px 10px', borderRadius: 5 }}
-                  onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(148,163,184,.08)' }}
-                  onMouseLeave={e => { (e.target as HTMLElement).style.background = 'none' }}
-                >{a}</button>
-              ))}
-            </div>
-          )}
-        </span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 11 }}>
-        <span title={_stopReviewTip || undefined} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.secondary, fontWeight: 700 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: protColor, flex: 'none' }} />
-          {protText}
-        </span>
-        <span title={`Position data freshness: ${dataFresh}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.dim }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: FRESH_C[dataFresh] ?? WL.text.dim, flex: 'none' }} />
-          data {dataFresh}
-        </span>
-        <span title={`News freshness: ${newsFresh}${newsAge ? ` · latest ${newsAge.trim()} old` : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.dim }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: FRESH_C[newsFresh] ?? WL.text.dim, flex: 'none' }} />
-          news {newsFresh}{newsAge}
-        </span>
-        <span style={{ color: WL.text.secondary, fontWeight: 700, textTransform: 'capitalize' }}>{String(p.strategy ?? 'unclassified').replace(/_/g, ' ')}</span>
-        {p.primary_next_review && <span style={{ color: WL.text.dim, marginLeft: 'auto' }}>next: {p.primary_next_review}</span>}
-      </div>
+          <span title={_stopReviewTip || undefined} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: WL.text.secondary, fontWeight: 700, fontSize: 10 }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: protColor, flex: 'none' }} />
+            {protText}
+          </span>
+          <span title={`Position data freshness: ${dataFresh}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: WL.text.dim, fontSize: 10 }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: FRESH_C[dataFresh] ?? WL.text.dim, flex: 'none' }} />
+            data {dataFresh}
+          </span>
+          <span title={`News freshness: ${newsFresh}${newsAge ? ` · latest ${newsAge.trim()} old` : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: WL.text.dim, fontSize: 10 }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: FRESH_C[newsFresh] ?? WL.text.dim, flex: 'none' }} />
+            news {newsFresh}{newsAge}
+          </span>
+          <span style={{ color: WL.text.secondary, fontWeight: 700, textTransform: 'capitalize', fontSize: 10 }}>{String(p.strategy ?? 'unclassified').replace(/_/g, ' ')}</span>
+          {p.primary_next_review && <span style={{ color: WL.text.dim, fontSize: 10 }}>next: {p.primary_next_review}</span>}
+          <span style={{ display: 'inline-flex', gap: 5, flexShrink: 0, position: 'relative', marginLeft: 'auto' }}>
+            {inlineRec && (
+              <button onClick={e => { e.stopPropagation(); onAction?.(inlineRec, p) }} title="Operator review action only" style={terminalButton('primary')}>{inlineRec}</button>
+            )}
+            <button onClick={e => { e.stopPropagation(); onDrill(drillCtx) }} style={terminalButton('secondary')}>Drill</button>
+            {menuRecs.length > 0 && (
+              <button onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }} style={terminalButton('ghost')} aria-label="More actions">⋯</button>
+            )}
+            {menuOpen && menuRecs.length > 0 && (
+              <div style={{
+                position: 'absolute', top: '110%', right: 0, zIndex: 30, minWidth: 168,
+                background: '#0d1420', border: `1px solid ${WL.surface.edge}`, borderRadius: 8,
+                boxShadow: '0 10px 30px rgba(0,0,0,.5)', padding: 4, display: 'flex', flexDirection: 'column',
+              }}>
+                {menuRecs.map(a => (
+                  <button
+                    key={a}
+                    onClick={e => { e.stopPropagation(); setMenuOpen(false); onAction?.(a, p) }}
+                    style={{ textAlign: 'left', fontSize: 11.5, fontWeight: 600, color: WL.text.secondary, background: 'none', border: 'none', cursor: 'pointer', padding: '7px 10px', borderRadius: 5 }}
+                    onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(148,163,184,.08)' }}
+                    onMouseLeave={e => { (e.target as HTMLElement).style.background = 'none' }}
+                  >{a}</button>
+                ))}
+              </div>
+            )}
+          </span>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.1em', color: heroAccent, flexShrink: 0 }}>{state.word}</span>
+            <span title={heroTip} style={{ fontSize: 13.5, fontWeight: 700, color: WL.text.primary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+              {whyLine}
+            </span>
+            {p.unrealized_pnl != null && (
+              <span style={{ ...numStyle, fontSize: 13.5, fontWeight: 800, color: pnlColor, flexShrink: 0 }} title={`Unrealized P&L (${pct(p.unrealized_pnl_pct)})`}>
+                {fmt$(p.unrealized_pnl)}{p.unrealized_pnl_pct != null ? ` · ${pct(p.unrealized_pnl_pct)}` : ''}
+              </span>
+            )}
+            <span style={{ display: 'inline-flex', gap: 7, flexShrink: 0, position: 'relative' }}>
+              {inlineRec && (
+                <button onClick={e => { e.stopPropagation(); onAction?.(inlineRec, p) }} title="Operator review action only" style={buttonStyle('neutral', true)}>{inlineRec}</button>
+              )}
+              <button onClick={e => { e.stopPropagation(); onDrill(drillCtx) }} style={buttonStyle('neutral', true)}>Drill</button>
+              {menuRecs.length > 0 && (
+                <button onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }} style={buttonStyle('neutral', true)} aria-label="More actions">⋯</button>
+              )}
+              {menuOpen && menuRecs.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '110%', right: 0, zIndex: 30, minWidth: 168,
+                  background: '#0d1420', border: `1px solid ${WL.surface.edge}`, borderRadius: 8,
+                  boxShadow: '0 10px 30px rgba(0,0,0,.5)', padding: 4, display: 'flex', flexDirection: 'column',
+                }}>
+                  {menuRecs.map(a => (
+                    <button
+                      key={a}
+                      onClick={e => { e.stopPropagation(); setMenuOpen(false); onAction?.(a, p) }}
+                      style={{ textAlign: 'left', fontSize: 11.5, fontWeight: 600, color: WL.text.secondary, background: 'none', border: 'none', cursor: 'pointer', padding: '7px 10px', borderRadius: 5 }}
+                      onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(148,163,184,.08)' }}
+                      onMouseLeave={e => { (e.target as HTMLElement).style.background = 'none' }}
+                    >{a}</button>
+                  ))}
+                </div>
+              )}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 11 }}>
+            <span title={_stopReviewTip || undefined} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.secondary, fontWeight: 700 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: protColor, flex: 'none' }} />
+              {protText}
+            </span>
+            <span title={`Position data freshness: ${dataFresh}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.dim }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: FRESH_C[dataFresh] ?? WL.text.dim, flex: 'none' }} />
+              data {dataFresh}
+            </span>
+            <span title={`News freshness: ${newsFresh}${newsAge ? ` · latest ${newsAge.trim()} old` : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.dim }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: FRESH_C[newsFresh] ?? WL.text.dim, flex: 'none' }} />
+              news {newsFresh}{newsAge}
+            </span>
+            <span style={{ color: WL.text.secondary, fontWeight: 700, textTransform: 'capitalize' }}>{String(p.strategy ?? 'unclassified').replace(/_/g, ' ')}</span>
+            {p.primary_next_review && <span style={{ color: WL.text.dim, marginLeft: 'auto' }}>next: {p.primary_next_review}</span>}
+          </div>
+        </>
+      )}
     </div>
 
     {/* ③ Position metrics */}
-    <div onClick={e => e.stopPropagation()} style={{ ...modRow, borderTop: 'none', cursor: 'default' }}>
+    <div onClick={e => e.stopPropagation()} style={{ ...modRow(terminalUi), borderTop: 'none', cursor: 'default' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 10 }}>
         <M label="P&L" value={p.unrealized_pnl != null ? fmt$(p.unrealized_pnl) : fmt$(p.market_value ?? 0)} color={p.unrealized_pnl != null ? pnlColor : WL.text.primary} />
         <M label="P&L %" value={pct(p.unrealized_pnl_pct)} color={(p.unrealized_pnl_pct ?? 0) >= 0 ? WL.price.up : WL.price.down} />
@@ -668,8 +718,8 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
     </div>
 
     {/* ④ Protection & stops — full Stage 2c surface (v3 content, calm container) */}
-    {(effectiveBrokerStop || effectiveProtectionRec || Object.keys(lanes).length > 0) && <div onClick={e => e.stopPropagation()} style={{ ...modRow, cursor: 'default' }}>
-      <div style={modLabel}><span>Protection & stops</span></div>
+    {(effectiveBrokerStop || effectiveProtectionRec || Object.keys(lanes).length > 0) && <div onClick={e => e.stopPropagation()} style={{ ...modRow(terminalUi), cursor: 'default' }}>
+      <div style={modLabel(terminalUi)}><span>Protection & stops</span></div>
       {/* FULL STOP MONITORING — a LIVE protective stop is working at the broker (source of truth). */}
       {effectiveBrokerStop && <div title={_stopReviewTip} style={{ marginBottom: effectiveProtectionRec ? 10 : 0, padding: '8px 10px', borderRadius: 8, background: 'rgba(45,212,191,.07)', border: '1px solid rgba(45,212,191,.30)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', cursor: 'help' }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: TEAL }}>✓ PROTECTED — {effectiveBrokerStop.source === 'fidelity_manual' ? 'operator-recorded manual stop (Fidelity — not API-verified)' : 'live stop at broker'}{effectiveBrokerStop.fetched_at ? ` · read ${formatReviewStamp(effectiveBrokerStop.fetched_at)}` : ''}</span>
@@ -773,15 +823,15 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
     </div>}
 
     {/* ⑤ Scale position (v3 flow, calm container) */}
-    <ScaleControl p={p} />
+    <ScaleControl p={p} terminalUi={terminalUi} />
 
     {/* ⑥ Context — company, technicals, analysts, earnings, flags, strategy rationale */}
-    <div onClick={e => e.stopPropagation()} style={{ ...modRow, cursor: 'default' }}>
-      <div style={modLabel}><span>Context</span></div>
+    <div onClick={e => e.stopPropagation()} style={{ ...modRow(terminalUi), cursor: 'default' }}>
+      <div style={modLabel(terminalUi)}><span>Context</span></div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         {symCard?.description && (
-          <div style={ctxLine} title={symCard.description}>
-            <span style={ctxKey}>Company </span>
+          <div style={ctxLine(terminalUi)} title={symCard.description}>
+            <span style={ctxKey(terminalUi)}>Company </span>
             {symCard.description}
             {symCard.vs_sector_week != null && (
               <span style={{ marginLeft: 6, fontWeight: 800, color: symCard.vs_sector_week >= 0 ? TEAL : WL.signal.red }}>
@@ -790,8 +840,8 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
             )}
           </div>
         )}
-        <div style={ctxLine}>
-          <span style={ctxKey}>Technicals </span>
+        <div style={ctxLine(terminalUi)}>
+          <span style={ctxKey(terminalUi)}>Technicals </span>
           RSI {t.rsi != null ? num(t.rsi, 0) : '—'}{t.rsi_bucket ? ` ${t.rsi_bucket}` : ''}
           {t.trend_label && <span style={{ color: t.trend_label === 'bullish' ? TEAL : t.trend_label === 'bearish' ? WL.signal.red : WL.text.secondary }}> · {t.trend_label}</span>}
           {sr.sector && (
@@ -799,8 +849,8 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
           )}
         </div>
         {p.analyst && (p.analyst.rating || p.analyst.target_mean != null) && (
-          <div style={ctxLine}>
-            <span style={ctxKey}>Analysts </span>
+          <div style={ctxLine(terminalUi)}>
+            <span style={ctxKey(terminalUi)}>Analysts </span>
             {p.analyst.rating ? `${String(p.analyst.rating).toUpperCase()}${p.analyst.rating_mean != null ? ` (${Number(p.analyst.rating_mean).toFixed(1)})` : ''}` : 'no consensus'}
             {p.analyst.opinions != null && ` · ${p.analyst.opinions} opinions`}
             {p.analyst.target_mean != null && ` · target $${num(p.analyst.target_mean, 2)}`}
@@ -808,26 +858,26 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
           </div>
         )}
         {p.earnings_date && (
-          <div style={{ ...ctxLine, color: earnSoon ? WL.signal.amber : WL.text.secondary, fontWeight: earnSoon ? 700 : 400 }}>
-            <span style={ctxKey}>Earnings </span>
+          <div style={{ ...ctxLine(terminalUi), color: earnSoon ? WL.signal.amber : WL.text.secondary, fontWeight: earnSoon ? 700 : 400 }}>
+            <span style={ctxKey(terminalUi)}>Earnings </span>
             {String(p.earnings_date).slice(0, 10)}{earnDays != null && Number.isFinite(earnDays) && earnDays >= 0 ? ` (${earnDays}d)` : ''}
           </div>
         )}
         {riskFlags.length > 0 && (
-          <div style={{ ...ctxLine, color: WL.signal.red }}>
-            <span style={ctxKey}>Risk </span>
+          <div style={{ ...ctxLine(terminalUi), color: WL.signal.red }}>
+            <span style={ctxKey(terminalUi)}>Risk </span>
             {riskFlags.map(r => r.replace(/_/g, ' ')).join(' · ')}
           </div>
         )}
         {oppFlags.length > 0 && (
-          <div style={{ ...ctxLine, color: TEAL }}>
-            <span style={ctxKey}>Opportunity </span>
+          <div style={{ ...ctxLine(terminalUi), color: TEAL }}>
+            <span style={ctxKey(terminalUi)}>Opportunity </span>
             {oppFlags.map(o => o.replace(/_/g, ' ')).join(' · ')}
           </div>
         )}
         {p.strategy_rationale && (
-          <div style={{ ...ctxLine, color: WL.text.muted, fontStyle: 'italic' }}>
-            <span style={{ ...ctxKey, fontStyle: 'normal' }}>Why {p.strategy ?? 'strategy'} </span>
+          <div style={{ ...ctxLine(terminalUi), color: WL.text.muted, fontStyle: 'italic' }}>
+            <span style={{ ...ctxKey(terminalUi), fontStyle: 'normal' }}>Why {p.strategy ?? 'strategy'} </span>
             {p.strategy_rationale}
           </div>
         )}
@@ -835,8 +885,8 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
     </div>
 
     {/* ⑦ News & catalysts — expander, as today */}
-    <div onClick={e => e.stopPropagation()} style={{ ...modRow, cursor: 'default' }}>
-      <div style={{ ...modLabel, marginBottom: expanded ? 7 : 0 }}>
+    <div onClick={e => e.stopPropagation()} style={{ ...modRow(terminalUi), cursor: 'default' }}>
+      <div style={{ ...modLabel(terminalUi), marginBottom: expanded ? (terminalUi ? 4 : 7) : 0 }}>
         <span>News & catalysts</span>
         <Expander open={!!expanded} onToggle={onToggle} label={expanded ? 'less' : 'more'} />
       </div>
@@ -867,7 +917,7 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
 // restyled to the v4 module rhythm. Both directions require a preview→confirm step. Broker-routed
 // by the API: alpaca_paper = live paper, schwab_* = gated 2FA, fidelity_* = record-only. Scale-in
 // is capped server-side at the percent-of-equity position headroom.
-function ScaleControl({ p }: any) {
+function ScaleControl({ p, terminalUi }: { p: any; terminalUi: boolean }) {
   const [qty, setQty] = useState('')
   const [preview, setPreview] = useState<any>(null)
   const [busy, setBusy] = useState(false)
@@ -903,9 +953,9 @@ function ScaleControl({ p }: any) {
 
   const inp = { width: 64, fontSize: 11, padding: '4px 7px', borderRadius: 6, border: `1px solid ${WL.surface.edge}`, background: WL.surface.inset, color: WL.text.primary }
   const btn = (c: string) => ({ fontSize: 10.5, fontWeight: 800, padding: '4px 10px', borderRadius: 6, border: `1px solid ${c}`, background: 'transparent', color: c, cursor: busy ? 'not-allowed' as const : 'pointer' as const, whiteSpace: 'nowrap' as const })
-  return <div onClick={e => e.stopPropagation()} style={{ ...modRow, cursor: 'default' }}>
+  return <div onClick={e => e.stopPropagation()} style={{ ...modRow(terminalUi), cursor: 'default' }}>
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase', color: WL.text.dim }}>Scale position</span>
+      <span style={{ fontSize: terminalUi ? 8 : 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase', color: terminalUi ? BB.text3 : WL.text.dim }}>Scale position</span>
       <span style={{ fontSize: 9.5, color: WL.text.dim }}>held {held} sh · {brokerNote}</span>
       <span style={{ flex: 1 }} />
       <input style={inp} value={qty} onChange={e => setQty(e.target.value.replace(/[^0-9]/g, ''))} placeholder="shares" disabled={busy} />

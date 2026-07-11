@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubPanel } from '../lib/terminalHubChrome'
 
 // v3 Watchpool & Directives — operator watch directives (ticker/sector/trend) + the unified
 // strategy_watchpool, with the shared provenance pill row. Advisory; Hermes-firewall preserved.
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
-
-const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }
 
 // Origin pill palette (per spec): screener=blue, social=orange, agent=green, watchlist=yellow, directive=violet
 const originColor = (o?: string) => {
@@ -34,6 +34,8 @@ function Field({ label, value, onChange, ph, wide }: any) {
 }
 
 export default function WatchpoolHub({ onDrill, embedded }: Props) {
+  const [terminalUi] = useTerminalUi()
+  const card = hubPanel(terminalUi)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
   const { data: wp, refetch: refetchWp } = useApi<any>('/api/v2/watchpool', 60_000)
   const [kind, setKind] = useState<'ticker' | 'sector' | 'trend'>('ticker')

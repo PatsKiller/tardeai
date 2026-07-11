@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties } from 'react'
 import { useApi } from '../hooks/useApi'
 import { WL, numStyle } from '../lib/watchlistCardTokens'
+import { useTerminalUi } from '../lib/terminalUi'
 
 // Hermes Discovery Inbox — operator triage surface for discovery candidates
 // (sources / research topics / watch directives / tickers) staged by the
@@ -375,6 +376,7 @@ function bucketFlags(sel: Record<string, unknown>): string[] {
 }
 
 function FeasibilityResult({ res }: { res: Record<string, any> }) {
+  const [terminalUi] = useTerminalUi()
   const a = (res.analysis ?? {}) as Record<string, any>
   const wrap: CSSProperties = {
     margin: '0 18px 10px', border: `1px solid ${WL.surface.edge}`, borderRadius: 6,
@@ -417,7 +419,7 @@ function FeasibilityResult({ res }: { res: Record<string, any> }) {
       <div style={wrap}>
         {head}
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <table className={terminalUi ? 'cc-table-dense' : undefined} style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead><tr>
               <th style={{ ...feasTh, textAlign: 'left' }}>strategy</th>
               <th style={feasTh}>feasible</th>
@@ -451,7 +453,7 @@ function FeasibilityResult({ res }: { res: Record<string, any> }) {
     <div style={wrap}>
       {head}
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <table className={terminalUi ? 'cc-table-dense' : undefined} style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead><tr>
             <th style={feasTh}>bucket</th>
             <th style={feasTh}>exp / dte</th>
@@ -1073,6 +1075,7 @@ const RISK_LEVEL_OPTIONS = ['financial', 'tax', 'planning', 'legal', 'operationa
 const SAFE_LEVEL_OPTIONS = ['OBSERVE_ONLY', 'RESEARCH_ONLY', 'OPERATOR_REVIEW_REQUIRED', 'AUTO_STAGE_INSIDE_RAILS', 'BLOCKED']
 
 export default function HermesDiscoveryInbox() {
+  const [terminalUi] = useTerminalUi()
   const [typeF, setTypeF] = useState('')
   const [statusF, setStatusF] = useState('')
   const [domainInput, setDomainInput] = useState('')
@@ -1130,7 +1133,7 @@ export default function HermesDiscoveryInbox() {
   const refetchAll = () => { inbox.refetch(); scorecard.refetch() }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: terminalUi ? 8 : 12 }}>
       {/* white-space gap dashboard (collapsible, read-only) */}
       <GapDashboard />
 

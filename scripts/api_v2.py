@@ -23957,6 +23957,17 @@ def _journal_tagging_auto_tag(body):
     )
 
 
+def _journal_tagging_auto_enrich(body):
+    import journal_trade_in_view as tiv
+    b = body or {}
+    return tiv.tagging_queue_auto_enrich(
+        int(b.get("days") or 365),
+        b.get("account"),
+        b.get("trade_keys"),
+        b.get("defaults"),
+    )
+
+
 def _journal_tagging_backfill_industry(body):
     import journal_trade_in_view as tiv
     b = body or {}
@@ -24002,7 +24013,17 @@ def _journal_csv_import(body):
         subprocess.run(
             [str(PROJECT_ROOT / ".venv/bin/python3"), str(PROJECT_ROOT / "scripts/schwab_journal_builder.py"), "--apply"],
             cwd=str(PROJECT_ROOT), timeout=120, check=False)
-        return {"ok": True, "import_status": status, **(result if isinstance(result, dict) else {"result": result})}
+        enrich = {}
+        try:
+            import journal_trade_in_view as tiv
+            enrich = tiv.tagging_queue_auto_enrich(days=int(b.get("days") or 365))
+        except Exception as enrich_err:
+            enrich = {"ok": False, "error": str(enrich_err)}
+        return {
+            "ok": True, "import_status": status,
+            "auto_enrich": enrich,
+            **(result if isinstance(result, dict) else {"result": result}),
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -29853,6 +29874,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/journal/tagging-queue/auto-tag":
             try:
                 return 200, _journal_tagging_auto_tag(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/tagging-queue/auto-enrich":
+            try:
+                return 200, _journal_tagging_auto_enrich(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/journal/tagging-queue/backfill-industry":

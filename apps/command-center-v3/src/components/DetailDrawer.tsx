@@ -8,6 +8,7 @@ import HoldingReportLinks from './HoldingReportLinks'
 import SymbolJourneyPanel from './SymbolJourneyPanel'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import { EvidenceBlock } from './EvidenceBlock'
+import { useTerminalUi } from '../lib/terminalUi'
 
 // finviz-derived recom fields are NOT analyst ratings (known correction): finviz 'recom' is a momentum
 // number, and the holdings enrichment mislabels it as 'Strong Sell' (e.g. SCHD recom 1.34 → labeled
@@ -82,6 +83,7 @@ function ObjBlock({ obj }: { obj: any }) {
 function Field({ k, v }: { k: string; v: any }) { const sec = k.match(SECTION_RE); if (sec) return <div style={{ gridColumn: '1 / -1', fontSize: 10, fontWeight: 900, letterSpacing: '.06em', textTransform: 'uppercase', color: TEXT2, margin: '10px 0 4px', paddingBottom: 4, borderBottom: '1px solid rgba(148,163,184,.18)' }}>{sec[1]}</div>; const obj = parseMaybeJson(v); if (obj && typeof obj === 'object') return <div style={{ gridColumn: '1 / -1', padding: '8px 0', borderBottom: '1px solid rgba(148,163,184,.12)' }}><div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase', marginBottom: 5, fontWeight: 850 }}>{humanizeKey(k)}</div><ObjBlock obj={obj} /></div>; const f = fmtScalar(v); return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '5px 0', borderBottom: '1px solid rgba(148,163,184,.12)' }}><span style={{ color: MUTED, fontSize: 10 }}>{humanizeKey(k)}</span><span style={{ color: f.color || TEXT0, fontSize: 11.5, fontWeight: f.color ? 850 : 600, textAlign: 'right', wordBreak: 'break-word' }}>{f.text}</span></div> }
 
 export default function DetailDrawer({ ctx, onClose }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [intel, setIntel] = useState<any>(null)
   useEffect(() => {
     setIntel(null)
@@ -132,7 +134,7 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
 
   if (!ctx) return null
   return <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'flex-end', background: 'rgba(2,6,23,.22)' }} onClick={onClose}>
-    <div onClick={e => e.stopPropagation()} style={{ width: 'min(1320px, 96vw)', height: '100vh', background: 'linear-gradient(180deg, #111827, #0f172a)', borderLeft: '1px solid rgba(148,163,184,.22)', display: 'flex', flexDirection: 'column', boxShadow: '-10px 0 40px rgba(0,0,0,.55)' }}>
+    <div className={terminalUi ? 'cc-drawer' : undefined} onClick={e => e.stopPropagation()} style={{ width: 'min(1320px, 96vw)', height: '100vh', background: terminalUi ? '#0a0e1a' : 'linear-gradient(180deg, #111827, #0f172a)', borderLeft: `1px solid ${terminalUi ? '#1e293b' : 'rgba(148,163,184,.22)'}`, display: 'flex', flexDirection: 'column', boxShadow: '-10px 0 40px rgba(0,0,0,.55)' }}>
       <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(148,163,184,.18)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
         <div><div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><div style={{ fontSize: 20, fontWeight: 950, color: TEXT0 }}>{ctx.title}</div>
           {/* rotation review lives here (not on the card) — rotatable holdings only: not cash, not a mutual fund */}

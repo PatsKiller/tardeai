@@ -41,6 +41,18 @@ Baseline audit vs TradeZella/TradesViz-style spec. See `TRADE_IN_VIEW_IMPLEMENTA
 | Bulk tag / skip | `/journal/tagging-queue/bulk-tag`, `/skip` |
 | Config | `config/trade_in_view_tagging_policy.json` |
 
+## Shipped (Auto-enrich, 2026-07-11)
+
+| Area | Delivery |
+|------|----------|
+| Entry/exit regime | `_lookup_regime_for_date` — `market_regime_snapshots` by `open_date` / `close_date`; payload `market_regime_entry`, `market_regime_exit`, `market_regime_display` |
+| Industry backfill | `symbol_profiles` → `payload.industry` + `catalyst_type` |
+| Auto-confirm | Complete auto-filled trades leave queue without manual confirm (`auto_confirm_enriched_tags`) |
+| One-shot API | `POST /journal/tagging-queue/auto-enrich` (tag + industry + confirm) |
+| Import hook | `POST /journal/import-csv` runs auto-enrich after round-trip rebuild |
+| UI | Tagging Queue auto-enrich on tab open; **⚡ Auto-enrich all** button |
+| CLI | `journal_trade_in_view.py --auto-enrich --days N` |
+
 ## Still open (future)
 
 - Tick-by-tick replay (bar replay only today)

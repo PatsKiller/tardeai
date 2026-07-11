@@ -9,6 +9,8 @@ import { EvidenceBlock } from '../components/EvidenceBlock'
 import HermesClosedLoopPanel from '../components/HermesClosedLoopPanel'
 import HermesDiscoveryInbox from '../components/HermesDiscoveryInbox'
 import PrivateProxyCard from '../components/PrivateProxyCard'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const FLEETS = ['Research Fleet', 'Momentum Scalp Swarm'] as const
@@ -146,6 +148,7 @@ const HSTATE_COLOR: Record<HState, string> = { operational: '#22c55e', live_data
 const HSTATE_LABEL: Record<HState, string> = { operational: 'operational (live)', live_data: 'live data', running_unapproved: 'running — NOT approved', designed: 'designed — no footprint', disabled: 'disabled — not approved', idle: 'idle — ran recently', dormant: 'DORMANT — no recent output' }
 
 export default function HermesHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [fleet, setFleet] = useState<typeof FLEETS[number]>('Research Fleet')
   const [tab, setTab] = useState<typeof TABS[number]>('Overview')
   const [scalpTab, setScalpTab] = useState<typeof SCALP_TABS[number]>('Overview')
@@ -419,12 +422,12 @@ export default function HermesHub({ onDrill }: Props) {
           }}>{f}</button>
         ))}
       </div>
-      <div className="hub-title-row">
+      <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>
+          <div style={hubTitle()}>
             {isScalp ? 'Hermes Momentum Scalp Swarm' : 'Hermes Research Agent Graph'}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+          <div style={hubSubtitle(terminalUi)}>
             {isScalp ? (
               <>Paper phase 4.4→4.5 · policy-enforcing stop lifecycle · {scalpSwarm?.pending_approvals ?? 0} pending approvals
                 · heat {scalpSwarm?.portfolio_heat?.aggregate_open_risk_pct ?? '—'}%</>
@@ -452,12 +455,10 @@ export default function HermesHub({ onDrill }: Props) {
             </div>
           )}
         </div>
-        <div className="hub-tabs">
+        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {activeTabs.map(t => (
             <button key={t} onClick={() => setActiveTab(t as any)} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: activeTab === t ? (isScalp ? 'rgba(168,85,247,.15)' : 'rgba(96,165,250,.15)') : 'var(--bg2)',
-              color: activeTab === t ? (isScalp ? '#a855f7' : '#60a5fa') : 'var(--text3)', fontWeight: activeTab === t ? 700 : 400,
+              ...hubTab(activeTab === t, terminalUi),
               opacity: !isScalp && REGISTRY_TABS.has(t) && activeTab !== t ? 0.72 : 1,
             }}>{t}{!isScalp && REGISTRY_TABS.has(t) ? ' ◦' : ''}</button>
           ))}

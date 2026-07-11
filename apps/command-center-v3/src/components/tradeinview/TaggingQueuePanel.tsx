@@ -142,23 +142,27 @@ export default function TaggingQueuePanel({ account, days, acctLabel = {} }: Pro
     }
   }
 
-  const autoTagAndBackfill = async () => {
+  const autoEnrich = async (silent = false) => {
     setBusy('both')
     try {
-      const tagRes = await fetch('/api/v2/journal/tagging-queue/auto-tag', {
+      const r = await fetch('/api/v2/journal/tagging-queue/auto-enrich', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ days, account: account || undefined }),
-      }).then(x => x.json()).then(r => r?.data ?? r)
-      const indRes = await fetch('/api/v2/journal/tagging-queue/backfill-industry', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days, account: account || undefined, overwrite: false }),
-      }).then(x => x.json()).then(r => r?.data ?? r)
-      showToast(`Auto-tag ${tagRes?.applied ?? 0} · industry backfill ${indRes?.applied ?? 0} (${indRes?.missing_profile ?? 0} no profile)`)
+      }).then(x => x.json())
+      const res = r?.data ?? r
+      if (!silent) {
+        showToast(
+          `Enriched ${res.applied ?? 0} trades · ${res.auto_confirmed ?? 0} confirmed · industry ${res.industry_applied ?? 0}`,
+        )
+      }
       refresh()
+      return res
     } finally {
       setBusy('')
     }
   }
+
+  const autoTagAndBackfill = () => autoEnrich(false)
 
   const applyIndustryModal = async () => {
     if (!industryValue.trim()) return
@@ -250,6 +254,13 @@ export default function TaggingQueuePanel({ account, days, acctLabel = {} }: Pro
   useEffect(() => { setActiveIdx(0); setPage(1) }, [account, days, missingFilter, minPnl, symbolFilter])
 
   useEffect(() => {
+    const key = `tiv-auto-enrich:${days}:${account || 'all'}`
+    if (sessionStorage.getItem(key)) return
+    sessionStorage.setItem(key, '1')
+    void autoEnrich(true)
+  }, [days, account])
+
+  useEffect(() => {
     if (!symbolFilter || !symbolTradeKeys.length) return
     setSelected(new Set(symbolTradeKeys))
   }, [symbolFilter, symbolTradeKeys.join('|')])
@@ -317,7 +328,7 @@ export default function TaggingQueuePanel({ account, days, acctLabel = {} }: Pro
       {showAudit && <div style={{ marginBottom: 14 }}><ReportingAuditPanel days={days} /></div>}
 
       <div style={{ background: 'rgba(96,165,250,.08)', border: '1px solid rgba(96,165,250,.35)', borderRadius: 10, padding: '12px 14px', marginBottom: 12, fontSize: 13, lineHeight: 1.5, color: 'var(--text1)' }}>
-        <strong style={{ color: '#93c5fd' }}>What Auto-tag does:</strong> fills <strong>Market regime</strong> (default Ranging), <strong>Psychology</strong> (default Calm), <strong>Industry</strong> (symbol lookup), and <strong>Setup</strong> (AI). Trades <em>stay in the queue</em> until you confirm or edit — use <strong>Same stock</strong> dropdown to bulk-tag all AXTI/TRX legs at once.
+        <strong style={{ color: '#93c5fd' }}>Auto-enrich:</strong> fills <strong>Industry</strong> (symbol lookup), <strong>Market regime at entry + exit dates</strong> (regime snapshots / trade-ai history), <strong>Psychology</strong> (Calm), and <strong>Setup</strong> (AI heuristic). Complete trades auto-confirm and leave the queue — edit any card to override. Use <strong>Same stock</strong> to bulk-tag AXTI/TRX legs.
         {autoPending > 0 && (
           <span style={{ display: 'block', marginTop: 6, color: '#fcd34d', fontWeight: 700 }}>
             {autoPending} auto-tagged trade{autoPending !== 1 ? 's' : ''} awaiting your review
@@ -332,7 +343,7 @@ export default function TaggingQueuePanel({ account, days, acctLabel = {} }: Pro
           onClick={() => autoTagAndBackfill()}
           style={{ fontSize: 13, fontWeight: 700, padding: '10px 16px', borderRadius: 8, border: 'none', background: '#f59e0b', color: '#1c1917', cursor: busy ? 'wait' : 'pointer' }}
         >
-          {busy === 'both' || busy === 'auto' ? 'Auto-tagging…' : '⚡ Auto-tag + backfill all'}
+          {busy === 'both' || busy === 'auto' ? 'Enriching…' : '⚡ Auto-enrich all (tag + backfill)'}
         </button>
         <button
           disabled={!!busy}
@@ -539,9 +550,12 @@ export default function TaggingQueuePanel({ account, days, acctLabel = {} }: Pro
                   {row.tagging_score ?? 0}% ready
                 </span>
                 <span style={{ fontSize: 13, color: 'var(--text1)' }}>{row.tag_summary || '—'}</span>
-                {row.market_regime && (
-                  <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: 'rgba(245,158,11,.12)', color: '#fcd34d' }}>
-                    Regime: {row.market_regime}
+                {(row.market_regime_display || row.market_regime) && (
+                  <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: 'rgba(245,158,11,.12)', color: '#fcd34d' }}
+                    title={row.market_regime_entry && row.market_regime_exit
+                      ? `Entry ${row.open_date || '—'}: ${row.market_regime_entry} · Exit ${row.close_date || '—'}: ${row.market_regime_exit}`
+                      : undefined}>
+                    Regime: {row.market_regime_display || row.market_regime}
                   </span>
                 )}
                 {row.emotion_before && (

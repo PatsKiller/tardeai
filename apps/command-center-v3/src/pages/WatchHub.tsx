@@ -6,6 +6,8 @@ import WatchpoolHub from './WatchpoolHub'
 import SectorsHub from './SectorsHub'
 import PullbackMacdHub from './PullbackMacdHub'
 import ScreenerFindsHub from './ScreenerFindsHub'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -20,6 +22,7 @@ const TAB_SLUG: Record<typeof TABS[number], string> = {
 const SLUG_TAB = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k])) as Record<string, typeof TABS[number]>
 
 export default function WatchHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [searchParams, setSearchParams] = useSearchParams()
   const raw = searchParams.get('tab') ?? ''
   const initial = SLUG_TAB[raw] ?? 'Watchlist'
@@ -34,18 +37,14 @@ export default function WatchHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div className="hub-title-row">
+      <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Watch</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Curated list · screener finds · directive pool · sectors · pullback/MACD</div>
+          <div style={hubTitle()}>Watch</div>
+          <div style={hubSubtitle(terminalUi)}>Curated list · screener finds · directive pool · sectors · pullback/MACD</div>
         </div>
-        <div className="hub-tabs">
+        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => selectTab(t)} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-            }}>{t}</button>
+            <button key={t} onClick={() => selectTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
           ))}
         </div>
       </div>

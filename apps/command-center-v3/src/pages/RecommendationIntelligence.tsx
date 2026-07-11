@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubPanel } from '../lib/terminalHubChrome'
 
 type SrcPerf = { source?: string; closed_trades?: number; wins?: number; win_rate_pct?: number; avg_return_pct?: number; total_pnl?: number; avg_hold_days?: number }
 type StratPerf = { strategy?: string; resolved?: number; wins?: number; win_rate_pct?: number; avg_return_pct?: number }
@@ -31,7 +33,7 @@ type Lineage = {
 }
 
 const ACCENT = '#60a5fa'
-const card: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
+const legacyCard: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
 const SRC_COLOR: Record<string, string> = {
   watchlist: '#60a5fa', scan: '#22c55e', screener: '#22c55e', proposal: '#f59e0b', execution: '#a855f7',
   holding: '#a855f7', directive: '#ec4899', hermes_research: '#14b8a6', research: '#14b8a6',
@@ -41,11 +43,11 @@ const pct = (v?: number) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v}%`)
 const usd = (v?: number) => (v == null ? '—' : v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }))
 const rcol = (v?: number) => (v == null ? 'var(--text2)' : v >= 0 ? '#22c55e' : '#ef4444')
 
-function SummaryCard({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) {
+function SummaryCard({ label, value, color, terminalUi }: { label: string; value: React.ReactNode; color?: string; terminalUi: boolean }) {
   return (
-    <div style={{ ...card, textAlign: 'center', padding: '14px 10px' }}>
-      <div style={{ fontSize: 24, fontWeight: 800, color: color ?? 'var(--text0)' }}>{value}</div>
-      <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2 }}>{label}</div>
+    <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...(terminalUi ? hubPanel(terminalUi) : legacyCard), textAlign: 'center', padding: terminalUi ? '8px 6px' : '14px 10px' }}>
+      <div style={{ fontSize: terminalUi ? 18 : 24, fontWeight: 800, color: color ?? 'var(--text0)' }}>{value}</div>
+      <div style={{ fontSize: terminalUi ? 7 : 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2 }}>{label}</div>
     </div>
   )
 }
@@ -55,6 +57,8 @@ function SrcTag({ s }: { s?: string }) {
 }
 
 export default function RecommendationIntelligence() {
+  const [terminalUi] = useTerminalUi()
+  const card = terminalUi ? hubPanel(terminalUi) : legacyCard
   const [d, setD] = useState<Summary | null>(null)
   const [warn, setWarn] = useState('')
   const [sym, setSym] = useState('')
@@ -128,18 +132,18 @@ export default function RecommendationIntelligence() {
   return (
     <div style={{ padding: 4 }}>
       <header style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Recommendation Intelligence</div>
-        <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>Every ticker traced from origin source → execution → outcome, attributable by source/strategy/account</div>
-        <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 5, fontWeight: 600 }}>Read-only lineage + analytics · no broker action</div>
+        <div style={{ fontSize: terminalUi ? 16 : 20, fontWeight: 700, color: 'var(--text0)' }}>Recommendation Intelligence</div>
+        <div style={{ fontSize: terminalUi ? 9 : 12, color: 'var(--text2)', marginTop: 3 }}>Every ticker traced from origin source → execution → outcome, attributable by source/strategy/account</div>
+        <div style={{ fontSize: terminalUi ? 8 : 10, color: '#f59e0b', marginTop: 5, fontWeight: 600 }}>Read-only lineage + analytics · no broker action</div>
       </header>
 
       {warn && <div style={{ marginBottom: 14, padding: '8px 12px', borderRadius: 8, fontSize: 11, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', color: '#f59e0b' }}>{warn}</div>}
 
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20 }}>
-        <SummaryCard label="Tickers Tracked" value={d?.total_tickers ?? '—'} color={ACCENT} />
-        <SummaryCard label="Multi-Source" value={d?.multi_source_count ?? '—'} color="#a855f7" />
-        <SummaryCard label="Executed Attributions" value={d?.executed_attributions ?? '—'} color="#22c55e" />
-        <SummaryCard label="Rotation Links" value={d?.rotation_link_count ?? '—'} color="#ef4444" />
+        <SummaryCard terminalUi={terminalUi} label="Tickers Tracked" value={d?.total_tickers ?? '—'} color={ACCENT} />
+        <SummaryCard terminalUi={terminalUi} label="Multi-Source" value={d?.multi_source_count ?? '—'} color="#a855f7" />
+        <SummaryCard terminalUi={terminalUi} label="Executed Attributions" value={d?.executed_attributions ?? '—'} color="#22c55e" />
+        <SummaryCard terminalUi={terminalUi} label="Rotation Links" value={d?.rotation_link_count ?? '—'} color="#ef4444" />
       </section>
 
       {/* Ticker lineage lookup */}

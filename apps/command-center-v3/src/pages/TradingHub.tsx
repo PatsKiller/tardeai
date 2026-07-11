@@ -22,6 +22,8 @@ import CountryFlag from '../components/CountryFlag'
 import ManualTosDesk from './ManualTosDesk'
 import BrokerProposals from '../components/BrokerProposals'
 import OptionsHub from './OptionsHub'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab, hubFilterSelect, hubKpiChip, hubPanel } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Entry Desk', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
@@ -34,6 +36,7 @@ const TAB_ALIASES: Record<string, typeof TABS[number]> = {
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : d === 'MANUAL_REVIEW' ? 'var(--squeeze)' : '#ef4444'
 
 export default function TradingHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
   // Deep-link support (Stage 2a): /trading?tab=Broker+Orders&intent=<id> — the Telegram approval
   // message links the operator straight to the exact order item.
   const [searchParams] = useSearchParams()
@@ -101,10 +104,10 @@ export default function TradingHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div className="hub-title-row">
+      <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Trading</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+          <div style={hubTitle()}>Trading</div>
+          <div style={hubSubtitle(terminalUi)}>
             {/* hub-wide strip: "paper (Alpaca)" = the automated-trading PAPER pipeline's brokerage —
                 unrelated to Schwab. On the Schwab tabs, show the Schwab program state instead. */}
             {(tab === 'Broker Orders' || tab === 'Schwab Accounts')
@@ -113,20 +116,16 @@ export default function TradingHub({ onDrill }: Props) {
             {readiness && <span> · Validation level: {readiness.level?.replace(/_/g, ' ')}</span>}
           </div>
         </div>
-        <div className="hub-tabs">
+        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-            }}>{t}</button>
+            <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
           ))}
         </div>
       </div>
 
       {/* Readiness bar */}
       {readiness && tab === 'Proposals' && (
-        <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 10 }}>
+        <div className={terminalUi ? 'cc-panel' : undefined} style={{ marginBottom: 14, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), fontSize: terminalUi ? 9 : 10 }}>
           <span style={{ color: 'var(--text3)' }}>Validation Readiness:</span>
           <span style={{ fontWeight: 700, color: '#f59e0b', marginLeft: 8 }}>{readiness.level?.replace(/_/g, ' ')}</span>
           <span style={{ color: 'var(--text3)', marginLeft: 12 }}>
@@ -137,7 +136,7 @@ export default function TradingHub({ onDrill }: Props) {
         </div>
       )}
       {readiness && tab !== 'Proposals' && tab !== 'Broker Orders' && (
-        <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 20, alignItems: 'center', fontSize: 10 }}>
+        <div className={terminalUi ? 'cc-panel' : undefined} style={{ marginBottom: 14, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), display: 'flex', gap: 20, alignItems: 'center', fontSize: terminalUi ? 9 : 10 }}>
           <span style={{ color: 'var(--text3)' }}>Validation Readiness:</span>
           <span style={{ fontWeight: 700, color: '#f59e0b' }}>{readiness.level?.replace(/_/g, ' ')}</span>
           <span style={{ color: 'var(--text3)' }}>{readiness.closed_usable}/{readiness.target_2000} trades</span>
@@ -153,12 +152,12 @@ export default function TradingHub({ onDrill }: Props) {
         </div>
       )}
       {tab === 'Proposals' && (
-        <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 10, color: 'var(--text2)', lineHeight: 1.45 }}>
+        <div className={terminalUi ? 'cc-panel' : undefined} style={{ marginBottom: 14, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), fontSize: terminalUi ? 9 : 10, color: 'var(--text2)', lineHeight: 1.45 }}>
           Path B operator route — P0 validation caps are advisory. <span style={{ color: 'var(--text0)', fontWeight: 700 }}>Auto route (2FA)</span> opens trade review (edit size/risk) before Schwab approval.
         </div>
       )}
       {tab === 'Entry Desk' && (
-        <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 10, color: 'var(--text2)', lineHeight: 1.45 }}>
+        <div className={terminalUi ? 'cc-panel' : undefined} style={{ marginBottom: 14, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), fontSize: terminalUi ? 9 : 10, color: 'var(--text2)', lineHeight: 1.45 }}>
           Path A — manual Thinkorswim. Rating, R:R, and exit ladder are <b>deterministic</b> on this tab; watchlist agent maturity shows when DB has it. <b>Stage 2b + Auto route (2FA)</b> are on{' '}
           <button type="button" onClick={() => setTab('Proposals')} style={{ background: 'none', border: 'none', padding: 0, color: '#60a5fa', fontWeight: 700, cursor: 'pointer', fontSize: 10 }}>Proposals</button>.
         </div>
@@ -171,8 +170,8 @@ export default function TradingHub({ onDrill }: Props) {
         if (!tradeAi) {
           const errored = !!tradeAiError
           return (
-            <div style={{ background: 'var(--bg1)', border: `1px solid ${errored ? '#ef4444' : 'var(--border)'}`, borderRadius: 10, padding: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Market Opportunities Scanner</div>
+            <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...(terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: `1px solid ${errored ? '#ef4444' : 'var(--border)'}`, borderRadius: 10, padding: 16 }) }}>
+              <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Market Opportunities Scanner</div>
               <div style={{ fontSize: 12, color: errored ? '#ef4444' : 'var(--text3)' }}>
                 {tradeAiLoading && !errored ? 'Loading latest scanner run…'
                   : errored ? '⚠ Scanner data temporarily unavailable — /api/v2/trade-ai did not respond (auto-retrying every 60s). This is an API/data-availability issue, not necessarily an empty scan. Check backend load (e.g. a long-running backup) if it persists.'
@@ -258,9 +257,9 @@ export default function TradingHub({ onDrill }: Props) {
           { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: '#a855f7' },
         ]
         return (
-          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Market Opportunities Scanner</div>
+              <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)' }}>Market Opportunities Scanner</div>
               <div style={{ fontSize: 9, color: 'var(--text3)' }}>
                 {tradeAi?.latest_run_label || tradeAi?.run_label || 'no run'}
                 {tradeAi?.latest_run_timestamp && ` · ${new Date(tradeAi.latest_run_timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
@@ -268,11 +267,11 @@ export default function TradingHub({ onDrill }: Props) {
                 {tradeAi?.run_health_status && <span style={{ marginLeft: 6, color: /healthy/i.test(tradeAi.run_health_status) ? '#22c55e' : '#ef4444' }}>· {tradeAi.run_health_status}</span>}
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8, margin: '10px 0 14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 14px' }}>
               {kpis.map(k => (
-                <div key={k.label} style={{ background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: k.color }}>{k.value}</div>
-                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
+                <div key={k.label} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: 'default' }}>
+                  <div style={{ fontSize: terminalUi ? 14 : 17, fontWeight: 700, color: k.color }}>{k.value}</div>
+                  <div style={{ fontSize: terminalUi ? 7 : 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
                 </div>
               ))}
             </div>
@@ -307,19 +306,15 @@ export default function TradingHub({ onDrill }: Props) {
                 const count = f === 'ACTIONABLE' ? actionableCount : f === 'SCOUT' ? scoutCount : f === 'MANUAL' ? manualCount : tickers.filter((t: any) => t.decision === f).length
                 const label = f === 'ACTIONABLE' ? 'Actionable' : f === 'SCOUT' ? 'Social Scouts' : f === 'MANUAL' ? 'Manual' : f
                 return (
-                  <button key={f} onClick={() => { setTradeFilter(f); setScannerPage(1) }} title={f === 'ACTIONABLE' ? 'GO + WAIT + MANUAL_REVIEW — what matters today; hides 1500+ NO-GO universe noise' : f === 'SCOUT' ? 'Partial social setups (≥2/5 pillars) — awareness only, never GO/validation/tradeable' : f === 'MANUAL' ? 'Squeeze · Runner · Micro-float · Low-price — Entry Desk only; never auto GO' : undefined} style={{
-                    padding: '4px 12px', fontSize: 10, borderRadius: 5, cursor: 'pointer', fontWeight: active ? 700 : 500,
-                    border: `1px solid ${active ? fc : 'var(--border)'}`,
-                    background: active ? `${fc}22` : 'var(--bg2)', color: active ? fc : 'var(--text3)', fontFamily: 'monospace',
-                  }}>{label} ({count})</button>
+                  <button key={f} onClick={() => { setTradeFilter(f); setScannerPage(1) }} title={f === 'ACTIONABLE' ? 'GO + WAIT + MANUAL_REVIEW — what matters today; hides 1500+ NO-GO universe noise' : f === 'SCOUT' ? 'Partial social setups (≥2/5 pillars) — awareness only, never GO/validation/tradeable' : f === 'MANUAL' ? 'Squeeze · Runner · Micro-float · Low-price — Entry Desk only; never auto GO' : undefined}
+                    style={{ ...hubKpiChip(active, terminalUi), fontFamily: 'monospace', color: active ? fc : (terminalUi ? undefined : 'var(--text3)') }}>{label} ({count})</button>
                 )
               })}
               <div style={{ flex: 1, minWidth: 8 }} />
               <label style={{ fontSize: 9, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 Sort
                 <select value={tradeSort} onChange={e => { setTradeSort(e.target.value as ScannerSortMode); setScannerPage(1) }} style={{
-                  fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)',
-                  background: 'var(--bg2)', color: 'var(--text1)', fontFamily: 'monospace', cursor: 'pointer',
+                  ...hubFilterSelect(terminalUi), fontFamily: 'monospace', cursor: 'pointer',
                 }}>
                   {(Object.keys(sortLabels) as ScannerSortMode[]).map(k => (
                     <option key={k} value={k}>{sortLabels[k]}</option>
@@ -556,7 +551,7 @@ export default function TradingHub({ onDrill }: Props) {
       )}
 
       {tab === 'Execution' && execQualLoading && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 24, textAlign: 'center' }}>
+        <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...(terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 24 }), textAlign: 'center' }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Execution Quality</div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>Loading transaction cost analysis from /api/v2/execution-quality…</div>
         </div>
@@ -607,8 +602,8 @@ export default function TradingHub({ onDrill }: Props) {
           </div>
         )
         return (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Execution Quality — Transaction Cost Analysis</div>
+        <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Execution Quality — Transaction Cost Analysis</div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>How well orders filled vs. intended. Clean execution (low slippage, tight fills) is part of the live-readiness case.</div>
 
           {n === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No execution quality data yet.</div> : (<>
@@ -703,8 +698,8 @@ export default function TradingHub({ onDrill }: Props) {
                 </div>
               ))}
             </div>
-            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Reconciliation items ({items.length})</div>
+            <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: terminalUi ? 10 : 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Reconciliation items ({items.length})</div>
               {items.length === 0 ? <div style={{ color: '#22c55e', fontSize: 11 }}>No unmatched items — broker and local in sync.</div> :
               items.slice(0, 20).map((it: any, i: number) => (
                 <div key={i} onClick={() => onDrill({ title: it.symbol ?? it.broker_order_id, subtitle: it.reconciliation_state, endpoint: '/api/v2/broker-reconciliation', rows: [it] })}
@@ -766,8 +761,8 @@ export default function TradingHub({ onDrill }: Props) {
           </div>
         )
         return (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Scalp Live — Signal Screen</div>
+        <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Scalp Live — Signal Screen</div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>Live scalp candidates, graded. Prime setups = GO · grade A · catalyst-verified (with high RVOL). These are advisory — execution is gated.</div>
 
           {n === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No live scalp signals.</div> : (<>

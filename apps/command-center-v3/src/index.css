@@ -171,3 +171,50 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
 /* Security Card v4 — links underline on hover only (audit item G) */
 .wlc4-link { color: #aeb9ca; text-decoration: none; border-bottom: 1px dotted rgba(148,163,184,.35); }
 .wlc4-link:hover { text-decoration: none; border-bottom-color: rgba(174,185,202,.9); color: #ecf1f8; }
+
+/* Security Card v4 — Bloomberg Terminal dense panel */
+.wlc-term-grid { display: grid; grid-template-columns: 1fr; border-top: 1px solid #1e293b; }
+.wlc-term-grid > .wlc-term-cell { padding: 6px 10px; min-width: 0; }
+.wlc-term-grid > .wlc-term-cell + .wlc-term-cell { border-top: 1px solid #1e293b; }
+@media (min-width: 900px) {
+  .wlc-term-grid { grid-template-columns: 1.08fr 0.92fr; }
+  .wlc-term-grid > .wlc-term-cell + .wlc-term-cell { border-top: none; border-left: 1px solid #1e293b; }
+}
+.wlc-term-tag {
+  font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 1px; line-height: 1.35; white-space: nowrap;
+}
+.wlc-term-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 22px; font-size: 12px; font-weight: 800;
+  border: 1px solid #1e293b; border-radius: 2px; background: #111827;
+  color: #94a3b8; cursor: pointer; text-decoration: none;
+}
+.wlc-term-icon:hover { color: #ffb000; border-color: rgba(255, 176, 0, 0.45); }
+
+/* ── Global Bloomberg Terminal UI mode (.cc-terminal-ui on app-shell) ── */
+.cc-terminal-ui {
+  --bg0: #0a0e1a;
+  --bg1: #0f172a;
+  --bg2: #111827;
+  --border: #1e293b;
+  --text0: #f8fafc;
+  --text1: #e2e8f0;
+  --text2: #cbd5e1;
+  --text3: #94a3b8;
+  --accent: #ffb000;
+  --accent-dim: rgba(255, 176, 0, 0.14);
+  --amber: #ffb000;
+  --radius: 2px;
+}
+.cc-terminal-ui .app-main { padding: 10px 14px !important; }
+.cc-terminal-ui .wlc-grid > .wlc-cell { padding: 6px 10px; }
+.cc-terminal-ui .hub-title-row { margin-bottom: 8px; }
+.cc-terminal-ui .hub-tabs { gap: 4px !important; }
+.cc-terminal-ui .metric-strip-tile { padding: 2px 14px !important; }
+.cc-terminal-ui .metric-strip-tile > div:first-child { font-size: 7px !important; letter-spacing: .08em; }
+.cc-terminal-ui .metric-strip-tile > div:last-child { font-size: 14px !important; }
+.cc-terminal-ui .cc-panel { border-radius: 2px !important; padding: 8px 10px !important; }
+.cc-terminal-ui .cc-table-dense th,
+.cc-terminal-ui .cc-table-dense td { padding: 2px 6px !important; font-size: 10px !important; }
+.cc-terminal-ui .cc-drawer { background: #0a0e1a !important; border-color: #1e293b !important; }

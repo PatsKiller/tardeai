@@ -5,6 +5,8 @@ import HoldingProtectionActions from './HoldingProtectionActions'
 import { mergeLiveStop } from '../lib/stopReviewTooltip'
 import { EvidenceBlock } from './EvidenceBlock'
 import CloudLlmRunButtons from './CloudLlmRunButtons'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubPanel } from '../lib/terminalHubChrome'
 
 // Portfolio → Stop Management. Aggregates broker-actual + advisor-planned stops with Yellow/Amber/Red alerts,
 // plus an Audit sub-tab (2FA stop requests + operator confirmations). Read-only view; live adjustments route
@@ -415,12 +417,12 @@ function Pill({ level, thresholds }: { level: string | null; thresholds?: Row['s
   )
 }
 
-function Card({ label, value, color = TEXT0, sub }: { label: string; value: string; color?: string; sub?: string }) {
+function Card({ label, value, color = TEXT0, sub, terminalUi }: { label: string; value: string; color?: string; sub?: string; terminalUi?: boolean }) {
   return (
-    <div style={{ flex: '1 1 150px', padding: '11px 13px', borderRadius: 9, background: 'var(--bg2, rgba(15,23,42,.6))', border: '1px solid rgba(148,163,184,.2)' }}>
-      <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 21, fontWeight: 900, color }}>{value}</div>
-      {sub && <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2 }}>{sub}</div>}
+    <div style={{ flex: '1 1 150px', ...hubPanel(!!terminalUi), background: terminalUi ? undefined : 'var(--bg2, rgba(15,23,42,.6))' }}>
+      <div style={{ fontSize: terminalUi ? 9 : 11, color: MUTED, fontWeight: 700, marginBottom: terminalUi ? 2 : 4 }}>{label}</div>
+      <div style={{ fontSize: terminalUi ? 16 : 21, fontWeight: 900, color }}>{value}</div>
+      {sub && <div style={{ fontSize: terminalUi ? 9 : 10.5, color: MUTED, marginTop: 2 }}>{sub}</div>}
     </div>
   )
 }
@@ -430,6 +432,7 @@ const QUICK = ['All', 'Needs Attention', 'Regime Shift', 'Has Street', 'Price > 
 const STOPS_CACHE_KEY = 'cc-v3-stops-management-v1'
 
 export default function StopManagement({ onFocusHolding }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [sub, setSub] = useState<'Monitor' | 'Audit'>('Monitor')
   const [data, setData] = useState<any>(() => {
     try {
@@ -513,31 +516,31 @@ export default function StopManagement({ onFocusHolding }: Props) {
   }
 
   return (
-    <div style={{ padding: '4px 2px' }}>
+    <div style={{ padding: terminalUi ? '2px 0' : '4px 2px' }}>
       {/* sub-tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: terminalUi ? 3 : 4, marginBottom: terminalUi ? 8 : 12 }}>
         {(['Monitor', 'Audit'] as const).map(t => (
           <button key={t} onClick={() => setSub(t)} style={{ fontSize: 13, fontWeight: 800, padding: '5px 14px', borderRadius: 7, cursor: 'pointer',
             border: `1px solid ${sub === t ? BLUE : 'rgba(148,163,184,.3)'}`, background: sub === t ? `${BLUE}18` : 'transparent', color: sub === t ? BLUE : MUTED }}>{t}</button>
         ))}
       </div>
 
-      {sub === 'Audit' ? <AuditView /> : (
+      {sub === 'Audit' ? <AuditView terminalUi={terminalUi} /> : (
         <>
           {fetchError && (
-            <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 9, background: `${AMBER}14`, border: `1px solid ${AMBER}55` }}>
+            <div style={{ marginBottom: terminalUi ? 6 : 10, ...hubPanel(terminalUi), background: `${AMBER}14`, border: `1px solid ${AMBER}55` }}>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: AMBER }}>⚠ Stop Management load issue</div>
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, lineHeight: 1.45 }}>{fetchError}</div>
             </div>
           )}
           {!loading && !fetchError && rows.length === 0 && (
-            <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 9, background: `${AMBER}10`, border: `1px solid ${AMBER}44` }}>
+            <div style={{ marginBottom: terminalUi ? 6 : 10, ...hubPanel(terminalUi), background: `${AMBER}10`, border: `1px solid ${AMBER}44` }}>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: AMBER }}>No stop rows returned</div>
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>Backend may be reconnecting — click ↻ Refresh or wait for the API server.</div>
             </div>
           )}
           {data?.broker_stops_degraded && (
-            <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 9, background: `${RED}14`, border: `1px solid ${RED}55` }}>
+            <div style={{ marginBottom: terminalUi ? 6 : 10, ...hubPanel(terminalUi), background: `${RED}14`, border: `1px solid ${RED}55` }}>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: RED }}>⚠ Schwab live stop read failed — broker stops may be hidden</div>
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, lineHeight: 1.45 }}>
                 Only Fidelity monitored / planned stops are showing. Fidelity JEPQ-style rows can still appear while Schwab orders look &quot;planned only&quot;.
@@ -548,29 +551,29 @@ export default function StopManagement({ onFocusHolding }: Props) {
           )}
 
           {/* Summary cards */}
-          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 12 }}>
-            <Card label="Total Open Risk" value={fmt$(summary.total_open_risk)} />
-            <Card label="Active Stops" value={`${summary.broker_stops_active ?? 0} / ${summary.positions ?? 0}`}
+          <div style={{ display: 'flex', gap: terminalUi ? 6 : 9, flexWrap: 'wrap', marginBottom: terminalUi ? 8 : 12 }}>
+            <Card terminalUi={terminalUi} label="Total Open Risk" value={fmt$(summary.total_open_risk)} />
+            <Card terminalUi={terminalUi} label="Active Stops" value={`${summary.broker_stops_active ?? 0} / ${summary.positions ?? 0}`}
               color={(summary.no_stop ?? 0) > 0 ? AMBER : GREEN} sub={`${summary.no_stop ?? 0} with no active stop`} />
-            <Card label="Red / Amber / Yellow" value={`${summary.red ?? 0} / ${summary.amber ?? 0} / ${summary.yellow ?? 0}`}
+            <Card terminalUi={terminalUi} label="Red / Amber / Yellow" value={`${summary.red ?? 0} / ${summary.amber ?? 0} / ${summary.yellow ?? 0}`}
               color={(summary.red ?? 0) > 0 ? RED : (summary.amber ?? 0) > 0 ? AMBER : GREEN} />
-            <Card label="Portfolio Heat" value={`${(summary.portfolio_heat_pct ?? 0).toFixed(1)}% / ${summary.heat_cap ?? 5}%`}
+            <Card terminalUi={terminalUi} label="Portfolio Heat" value={`${(summary.portfolio_heat_pct ?? 0).toFixed(1)}% / ${summary.heat_cap ?? 5}%`}
               color={(summary.portfolio_heat_pct ?? 0) > (summary.heat_cap ?? 5) ? RED : TEXT0} />
-            <Card label="Trailing Not Active" value={String(summary.trailing_not_active ?? 0)} color={(summary.trailing_not_active ?? 0) > 0 ? AMBER : TEXT0} />
-            <Card label="Street Coverage" value={`${summary.with_street_consensus ?? 0} / ${summary.positions ?? 0}`}
+            <Card terminalUi={terminalUi} label="Trailing Not Active" value={String(summary.trailing_not_active ?? 0)} color={(summary.trailing_not_active ?? 0) > 0 ? AMBER : TEXT0} />
+            <Card terminalUi={terminalUi} label="Street Coverage" value={`${summary.with_street_consensus ?? 0} / ${summary.positions ?? 0}`}
               color={(summary.with_street_consensus ?? 0) > 0 ? BLUE : MUTED}
               sub={`${summary.price_above_street ?? 0} price above · ${summary.stop_over_consensus ?? 0} stop above mean`} />
-            <Card label="Regime Shifts" value={String((summary as any).regime_shifts ?? 0)}
+            <Card terminalUi={terminalUi} label="Regime Shifts" value={String((summary as any).regime_shifts ?? 0)}
               color={((summary as any).regime_shifts ?? 0) > 0 ? PURPLE : MUTED}
               sub="Layer 4 tighten 0.5× ATR when Trending→Ranging" />
-            <Card label="Stop > Street Mean" value={String(summary.stop_over_consensus ?? 0)}
+            <Card terminalUi={terminalUi} label="Stop > Street Mean" value={String(summary.stop_over_consensus ?? 0)}
               color={(summary.stop_over_consensus ?? 0) > 0 ? RED : GREEN}
               sub="red/green badges in Street column (price + stop vs μ)" />
           </div>
 
           {/* Next actions — plain-English, prioritized by real risk reduction (STOP_METHODOLOGY.md-aligned) */}
           {Array.isArray((summary as any).next_actions) && (summary as any).next_actions.length > 0 && (
-            <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 9, background: `${BLUE}10`, border: `1px solid ${BLUE}44` }}>
+            <div style={{ marginBottom: terminalUi ? 6 : 10, ...hubPanel(terminalUi), background: `${BLUE}10`, border: `1px solid ${BLUE}44` }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: BLUE, textTransform: 'uppercase', letterSpacing: .3, marginBottom: 5 }}>Next actions — what to do now</div>
               {((summary as any).next_actions as NextAction[]).map((na, i) => (
                 <div key={i} style={{ fontSize: 12.5, color: TEXT0, lineHeight: 1.5, display: 'flex', gap: 7, alignItems: 'baseline', marginBottom: 3 }}>
@@ -615,8 +618,8 @@ export default function StopManagement({ onFocusHolding }: Props) {
           </div>
 
           {/* Table */}
-          <div style={{ overflowX: 'auto', border: '1px solid rgba(148,163,184,.18)', borderRadius: 9 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <div style={{ overflowX: 'auto', ...(terminalUi ? hubPanel(terminalUi) : { border: '1px solid rgba(148,163,184,.18)', borderRadius: 9 }) }}>
+            <table className={terminalUi ? 'cc-table-dense' : undefined} style={{ width: '100%', borderCollapse: 'collapse', fontSize: terminalUi ? 10 : 12.5 }}>
               <thead>
                 <tr style={{ color: MUTED, textAlign: 'left', background: 'rgba(15,23,42,.5)' }}>
                   {['Alert', 'Symbol · Account', 'Route', 'Regime', 'Active stop', 'Stop (broker / planned)', 'Street (μ)', 'Distance', 'Unreal.', '$ at risk', ''].map(h =>
@@ -857,7 +860,7 @@ function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; au
 }
 
 // Audit sub-tab — read-only trail of protective-stop actions (2FA requests + operator confirmations).
-function AuditView() {
+function AuditView({ terminalUi }: { terminalUi: boolean }) {
   const [d, setD] = useState<any>(null)
   const [rw, setRw] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -885,15 +888,15 @@ function AuditView() {
   const STATUS_COLOR: Record<string, string> = { confirmed: GREEN, approved: GREEN, consumed: GREEN, pending: AMBER, superseded: MUTED, expired: MUTED, rejected: RED }
   return (
     <>
-      <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 12 }}>
-        <Card label="Audit events" value={String(d?.total ?? 0)} />
-        <Card label="2FA stop requests" value={String(counts['2fa_stop_request'] ?? 0)} color={BLUE} />
-        <Card label="Confirmations / pending" value={String(counts['confirmation'] ?? 0)} color={GREEN} />
-        <Card label="Stop-out reviews" value={String(rw?.total_reviews ?? 0)} color={AMBER} sub="advisory · journal lifecycle" />
-        <Card label="Re-entry watch" value={String(rw?.total_watch ?? 0)} color={PURPLE} sub="WAIT status" />
+      <div style={{ display: 'flex', gap: terminalUi ? 6 : 9, flexWrap: 'wrap', marginBottom: terminalUi ? 8 : 12 }}>
+        <Card terminalUi={terminalUi} label="Audit events" value={String(d?.total ?? 0)} />
+        <Card terminalUi={terminalUi} label="2FA stop requests" value={String(counts['2fa_stop_request'] ?? 0)} color={BLUE} />
+        <Card terminalUi={terminalUi} label="Confirmations / pending" value={String(counts['confirmation'] ?? 0)} color={GREEN} />
+        <Card terminalUi={terminalUi} label="Stop-out reviews" value={String(rw?.total_reviews ?? 0)} color={AMBER} sub="advisory · journal lifecycle" />
+        <Card terminalUi={terminalUi} label="Re-entry watch" value={String(rw?.total_watch ?? 0)} color={PURPLE} sub="WAIT status" />
       </div>
-      <div style={{ overflowX: 'auto', border: '1px solid rgba(148,163,184,.18)', borderRadius: 9 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+      <div style={{ overflowX: 'auto', ...(terminalUi ? hubPanel(terminalUi) : { border: '1px solid rgba(148,163,184,.18)', borderRadius: 9 }) }}>
+        <table className={terminalUi ? 'cc-table-dense' : undefined} style={{ width: '100%', borderCollapse: 'collapse', fontSize: terminalUi ? 10 : 12.5 }}>
           <thead>
             <tr style={{ color: MUTED, textAlign: 'left', background: 'rgba(15,23,42,.5)' }}>
               {['When', 'Action', 'Symbol · Account', 'Order', 'Status', 'Channel', 'Detail'].map(h =>
@@ -922,14 +925,14 @@ function AuditView() {
         </table>
       </div>
 
-      <div style={{ marginTop: 18, padding: '12px 14px', borderRadius: 9, background: `${PURPLE}10`, border: `1px solid ${PURPLE}44` }}>
+      <div style={{ marginTop: terminalUi ? 10 : 18, ...hubPanel(terminalUi), background: `${PURPLE}10`, border: `1px solid ${PURPLE}44` }}>
         <div style={{ fontSize: 12, fontWeight: 900, color: PURPLE, marginBottom: 6 }}>Stop-out re-entry watch — advisory only</div>
         <div style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.45 }}>
           Loss round-trips from journal lifecycle. Does not route orders — use triggers as a checklist before re-entering.
           {rw?.advisory_only ? ' · advisory_only=true' : ''}{rw?.error ? ` · ${rw.error}` : ''}
         </div>
-        <div style={{ overflowX: 'auto', border: '1px solid rgba(148,163,184,.18)', borderRadius: 9 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <div style={{ overflowX: 'auto', ...(terminalUi ? hubPanel(terminalUi) : { border: '1px solid rgba(148,163,184,.18)', borderRadius: 9 }) }}>
+          <table className={terminalUi ? 'cc-table-dense' : undefined} style={{ width: '100%', borderCollapse: 'collapse', fontSize: terminalUi ? 10 : 12 }}>
             <thead>
               <tr style={{ color: MUTED, textAlign: 'left', background: 'rgba(15,23,42,.5)' }}>
                 {['Symbol', 'Exit', 'P&L', 'Why stopped', 'Triggers', 'Status'].map(h =>

@@ -5,12 +5,15 @@ import { BarChart, Bar, XAxis, YAxis, ReferenceLine, ResponsiveContainer, LineCh
 import type { DrillContext } from '../components/DetailDrawer'
 
 import StrategyPlanner from '../components/StrategyPlanner'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
 const TABS = ['Leaderboard', 'Analytics', 'Planner', 'Desk', 'Incubator', 'Plan vs Perf'] as const
 
 export default function StrategyHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [tab, setTab] = useState<typeof TABS[number]>('Leaderboard')
   const { data: leaderboard } = useApi<any>('/api/v2/strategy-leaderboard', 60_000)
   const { data: intel } = useApi<any>('/api/v2/strategy-intelligence', 120_000)
@@ -103,16 +106,12 @@ export default function StrategyHub({ onDrill }: Props) {
     <div>
       <div className="hub-title-row">
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Strategy Hub</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{strategies.length} strategies · {topStrats.reduce((a: number, s: any) => a + (s.closed ?? 0), 0)} closed paper trades</div>
+          <div style={hubTitle()}>Strategy Hub</div>
+          <div style={hubSubtitle(terminalUi)}>{strategies.length} strategies · {topStrats.reduce((a: number, s: any) => a + (s.closed ?? 0), 0)} closed paper trades</div>
         </div>
-        <div className="hub-tabs">
+        <div className="hub-tabs" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-            }}>{t}</button>
+            <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
           ))}
         </div>
       </div>

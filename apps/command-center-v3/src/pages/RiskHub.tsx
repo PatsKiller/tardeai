@@ -9,6 +9,8 @@ import RiskContributionBars from '../components/risk/RiskContributionBars'
 import RiskHeatmapGrid from '../components/risk/RiskHeatmapGrid'
 import ScalpStopMonitorCard from '../components/ScalpStopMonitorCard'
 import { riskContributionRows } from '../lib/riskMath'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -16,6 +18,7 @@ const TABS = ['Exposure', 'Correlation', 'Regime', 'Recovery'] as const
 const HEAT_THRESHOLD = 5.0
 
 export default function RiskHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [tab, setTab] = useState<typeof TABS[number]>('Exposure')
   const { data: risk } = useApi<any>('/api/v2/risk', 60_000)
   const { data: corr } = useApi<any>('/api/v2/correlation', 120_000)
@@ -118,20 +121,16 @@ export default function RiskHub({ onDrill }: Props) {
     <div>
       <AskAgents examples={["Am I over-concentrated? What's my biggest single-name risk?", "What's the R:R if I trim my largest position 5%?"]} />
       <div style={{ marginBottom: 14 }}><ScalpStopMonitorCard /></div>
-      <div className="hub-title-row">
+      <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Risk Hub</div>
-          <div style={{ fontSize: 11, color: overThreshold ? '#ef4444' : 'var(--text3)' }}>
+          <div style={hubTitle(overThreshold ? '#ef4444' : undefined)}>Risk Hub</div>
+          <div style={{ ...hubSubtitle(terminalUi), color: overThreshold ? '#ef4444' : undefined }}>
             heat {heat}%{overThreshold ? ' — over threshold' : ''} · {positions.length} positions
           </div>
         </div>
-        <div className="hub-tabs">
+        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-            }}>{t}</button>
+            <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
           ))}
         </div>
       </div>
@@ -140,8 +139,8 @@ export default function RiskHub({ onDrill }: Props) {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16, marginBottom: 16 }}>
             {/* Heat gauge */}
-            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Portfolio Heat</div>
+            <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...(terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }), textAlign: 'center' }}>
+              <div style={{ fontSize: terminalUi ? 10 : 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Portfolio Heat</div>
               <ResponsiveContainer width="100%" height={140}>
                 <PieChart>
                   <Pie data={[{ value: heat }, { value: Math.max(0, 15 - heat) }]}
@@ -158,9 +157,9 @@ export default function RiskHub({ onDrill }: Props) {
             </div>
 
             {/* Protection coverage */}
-            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+            <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Protection Coverage</span>
+                <span style={{ fontSize: terminalUi ? 10 : 13, fontWeight: 700, color: 'var(--text0)' }}>Protection Coverage</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {paperCount > 0 && (
                     <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>

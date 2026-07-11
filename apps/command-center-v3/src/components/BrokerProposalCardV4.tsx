@@ -22,6 +22,9 @@ import TechnicalAssessmentCard from './TechnicalAssessmentCard'
 import { desk, sectionLabel, statusPill } from '../lib/proposalDeskTheme'
 import { WL, heroStateStyle } from '../lib/watchlistCardTokens'
 import { composeWhy } from '../lib/watchlistCardV4'
+import { useTerminalUi } from '../lib/terminalUi'
+import { cardShell, modLabel, gridClass, gridCellClass, statusStrip } from '../lib/terminalCardTheme'
+import { BB, terminalRail, terminalVerdictColor, terminalVerdictBg, terminalButton } from '../lib/watchlistTerminalTokens'
 
 // Broker Proposal Card v4 — v4 card-family build (2026-07-04). v3 (BrokerProposalCard)
 // stays untouched; the GLOBAL cards-v4 toggle (lib/cardsV4, switch lives on the Watch hub)
@@ -160,11 +163,6 @@ const W = {
 
 const numStyle: CSSProperties = { fontFamily: desk.mono, fontVariantNumeric: 'tabular-nums' }
 
-const moduleLabel: CSSProperties = {
-  fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase',
-  color: W.dim, marginBottom: 6,
-}
-
 const subLabel: CSSProperties = {
   fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: W.dim, textTransform: 'uppercase',
 }
@@ -261,6 +259,7 @@ export default function BrokerProposalCardV4({
   resizeBusy,
   actionBusy,
 }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [showAllBlockers, setShowAllBlockers] = useState(false)
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -497,7 +496,14 @@ export default function BrokerProposalCardV4({
 
   // ── v4 hero derivations ──────────────────────────────────────────────────
   const heroState = heroStateStyle(action.bannerVerdict, action.urgency)
+  const rail = terminalUi ? terminalRail(action.bannerVerdict, action.urgency) : heroState.rail
+  const heroBg = terminalUi ? terminalVerdictBg(action.bannerVerdict, action.urgency) : heroState.bg
+  const heroAccent = terminalUi ? terminalVerdictColor(action.bannerVerdict, action.urgency) : heroState.accent
+  const heroBorder = terminalUi ? BB.border : heroState.border
   const stateWord = stateWordOf(action.verdict, expired, brokerRejected)
+  const primaryBtnStyle = terminalUi
+    ? terminalButton(action.buttonVariant === 'outline-red' ? 'danger' : 'primary')
+    : buttonStyle(action.buttonVariant, true)
   // Rule-of-one: heroText + whyLine + block reason composed into ONE deduped sentence.
   const whyLine = composeWhy([action.heroText, action.whyLine, routeBlockReason])
   const whyTitle = [action.heroText, action.whyLine, routeBlockReason].filter(Boolean).join('\n')
@@ -541,18 +547,7 @@ export default function BrokerProposalCardV4({
   )
 
   return (
-    <article style={{
-      background: WL.surface.card,
-      border: `1px solid ${WL.surface.edge}`,
-      borderLeft: `3px solid ${heroState.rail}`,
-      borderRadius: WL.card.radius,
-      boxShadow: WL.card.shadow,
-      minWidth: 0,
-      width: '100%',
-      boxSizing: 'border-box',
-      overflow: 'hidden',
-      color: WL.text.primary,
-    }}>
+    <article style={cardShell(rail, terminalUi)}>
       {/* ① Header — identity + lifecycle meta + live price; quiet, no tint */}
       <header style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '11px 16px 9px' }}>
         {selectMode && (
@@ -623,105 +618,195 @@ export default function BrokerProposalCardV4({
         )}
       </header>
 
-      {/* ② Decision hero — two rows, the ONLY tinted surface on the card */}
+      {/* ② Decision hero — terminal: single horizontal strip; legacy: two-row tinted block */}
       <div
         onClick={e => e.stopPropagation()}
-        style={{
-          background: heroState.bg,
-          borderTop: `1px solid ${heroState.border}`,
-          borderBottom: `1px solid ${heroState.border}`,
-          padding: '11px 16px 10px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 7,
-        }}
+        style={terminalUi
+          ? { ...statusStrip(heroBg, true) }
+          : {
+              background: heroBg,
+              borderTop: `1px solid ${heroBorder}`,
+              borderBottom: `1px solid ${heroBorder}`,
+              padding: '11px 16px 10px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 7,
+            }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.1em', color: heroState.accent, flexShrink: 0 }}>
-            {stateWord}
-          </span>
-          <span
-            title={whyTitle || undefined}
-            style={{ fontSize: 13.5, fontWeight: 700, color: WL.text.primary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
-          >
-            {whyLine || action.heroText}
-          </span>
-          {rrChip && (
-            <span title={`Reward-to-risk on the ${p.live_rr != null ? 'live' : 'proposed'} plan`} style={{ ...numStyle, fontSize: 13, fontWeight: 800, color: rrChip.color, flexShrink: 0 }}>
-              {rrChip.text}
+        {terminalUi ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', width: '100%' }}>
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.1em', color: heroAccent, flexShrink: 0 }}>
+              {stateWord}
             </span>
-          )}
-          <span style={{ display: 'inline-flex', gap: 7, flexShrink: 0, position: 'relative' }}>
-            {action.primaryKind === 'approve' && (
-              <button onClick={e => { e.stopPropagation(); onEdit() }} style={buttonStyle('neutral', true)}>Modify</button>
-            )}
-            {primaryHandler && (
-              <button
-                onClick={e => { e.stopPropagation(); if (!primaryBusy) primaryHandler() }}
-                style={{ ...buttonStyle(action.buttonVariant, true), fontWeight: 800 }}
-              >{primaryBusy ? '…' : primaryLabel}</button>
-            )}
-            <button onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }} style={buttonStyle('neutral', true)} aria-label="More actions">⋯</button>
-            {menuOpen && (
-              <div
-                style={{
-                  position: 'absolute', top: '110%', right: 0, zIndex: 30, minWidth: 176,
-                  background: '#0d1420', border: `1px solid ${WL.surface.edge}`, borderRadius: 8,
-                  boxShadow: '0 10px 30px rgba(0,0,0,.5)', padding: 4, display: 'flex', flexDirection: 'column',
-                }}
-              >
-                {menuItems.map(m => (
-                  <button
-                    key={m.label}
-                    onClick={e => { e.stopPropagation(); setMenuOpen(false); m.onClick() }}
-                    style={{ textAlign: 'left', fontSize: 11.5, fontWeight: 600, color: WL.text.secondary, background: 'none', border: 'none', cursor: 'pointer', padding: '7px 10px', borderRadius: 5, whiteSpace: 'nowrap' }}
-                    onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(148,163,184,.08)' }}
-                    onMouseLeave={e => { (e.target as HTMLElement).style.background = 'none' }}
-                  >{m.label}</button>
-                ))}
-              </div>
-            )}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 11 }}>
-          <span style={{ fontWeight: 800, color: gatesColor, whiteSpace: 'nowrap' }} title="Diligence gates — detail in Gates & Reviews below">
-            {gateStance}
-          </span>
-          {ovStatus && (
-            <span style={{ fontWeight: 700, color: ovStatus === 'BLOCK' ? W.red : ovStatus === 'WARN' ? W.amber : W.teal, whiteSpace: 'nowrap' }}>
-              oversight {ovStatus}
-            </span>
-          )}
-          {(cloudConsensus || ov.cloud_review?.status) && (
-            <span style={{ color: W.sub, whiteSpace: 'nowrap' }} title={ov.cloud_review?.ran_at ? `Cloud oversight ran ${ov.cloud_review.ran_at}` : undefined}>
-              cloud {String(cloudConsensus || ov.cloud_review?.status).replace(/_/g, ' ').toLowerCase()}
-            </span>
-          )}
-          {/* Cloud dual-consensus verdict (advisory only — signal color, no gating) */}
-          {(p.cloud_consensus?.consensus === 'CLOUD_APPROVE' || p.cloud_consensus?.consensus === 'ESCALATED') && (
             <span
-              style={{
-                fontWeight: p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? 800 : 700,
-                color: p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? W.teal : W.amber,
-                whiteSpace: 'nowrap',
-              }}
-              title={[
-                `Cloud dual-consensus (advisory only)${p.cloud_consensus.as_of ? ` · ${p.cloud_consensus.as_of}` : ''}`,
-                `grok ${p.cloud_consensus.grok_verdict || '—'}: ${p.cloud_consensus.grok_note || 'no note'}`,
-                `chatgpt ${p.cloud_consensus.chatgpt_verdict || '—'}: ${p.cloud_consensus.chatgpt_note || 'no note'}`,
-              ].join('\n')}
+              title={whyTitle || undefined}
+              style={{ fontSize: 11, fontWeight: 700, color: WL.text.primary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
             >
-              {p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? '☁ CLOUD APPROVE' : '☁ escalated — split'}
+              {whyLine || action.heroText}
             </span>
-          )}
-          <span style={{ color: voteColor, whiteSpace: 'nowrap' }} title={_stances.length ? `Agent stances: ${_stances.join(' · ')}` : 'Agent reviews — detail in Gates & Reviews below'}>
-            agents {voteSummary}
-          </span>
-          <span title={freshTip} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.secondary, marginLeft: 'auto' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: freshColor, flex: 'none' }} />
-            {freshText}
-          </span>
-        </div>
+            {rrChip && (
+              <span title={`Reward-to-risk on the ${p.live_rr != null ? 'live' : 'proposed'} plan`} style={{ ...numStyle, fontSize: 11, fontWeight: 800, color: rrChip.color, flexShrink: 0 }}>
+                {rrChip.text}
+              </span>
+            )}
+            <span style={{ fontWeight: 800, color: gatesColor, whiteSpace: 'nowrap', fontSize: 10 }} title="Diligence gates — detail in Gates & Reviews below">
+              {gateStance}
+            </span>
+            {ovStatus && (
+              <span style={{ fontWeight: 700, color: ovStatus === 'BLOCK' ? W.red : ovStatus === 'WARN' ? W.amber : W.teal, whiteSpace: 'nowrap', fontSize: 10 }}>
+                oversight {ovStatus}
+              </span>
+            )}
+            {(cloudConsensus || ov.cloud_review?.status) && (
+              <span style={{ color: W.sub, whiteSpace: 'nowrap', fontSize: 10 }} title={ov.cloud_review?.ran_at ? `Cloud oversight ran ${ov.cloud_review.ran_at}` : undefined}>
+                cloud {String(cloudConsensus || ov.cloud_review?.status).replace(/_/g, ' ').toLowerCase()}
+              </span>
+            )}
+            {(p.cloud_consensus?.consensus === 'CLOUD_APPROVE' || p.cloud_consensus?.consensus === 'ESCALATED') && (
+              <span
+                style={{
+                  fontWeight: p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? 800 : 700,
+                  color: p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? W.teal : W.amber,
+                  whiteSpace: 'nowrap',
+                  fontSize: 10,
+                }}
+                title={[
+                  `Cloud dual-consensus (advisory only)${p.cloud_consensus.as_of ? ` · ${p.cloud_consensus.as_of}` : ''}`,
+                  `grok ${p.cloud_consensus.grok_verdict || '—'}: ${p.cloud_consensus.grok_note || 'no note'}`,
+                  `chatgpt ${p.cloud_consensus.chatgpt_verdict || '—'}: ${p.cloud_consensus.chatgpt_note || 'no note'}`,
+                ].join('\n')}
+              >
+                {p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? '☁ CLOUD APPROVE' : '☁ escalated — split'}
+              </span>
+            )}
+            <span style={{ color: voteColor, whiteSpace: 'nowrap', fontSize: 10 }} title={_stances.length ? `Agent stances: ${_stances.join(' · ')}` : 'Agent reviews — detail in Gates & Reviews below'}>
+              agents {voteSummary}
+            </span>
+            <span title={freshTip} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: WL.text.secondary, fontSize: 10 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: freshColor, flex: 'none' }} />
+              {freshText}
+            </span>
+            <span style={{ display: 'inline-flex', gap: 5, flexShrink: 0, position: 'relative', marginLeft: 'auto' }}>
+              {action.primaryKind === 'approve' && (
+                <button onClick={e => { e.stopPropagation(); onEdit() }} style={terminalButton('secondary')}>Modify</button>
+              )}
+              {primaryHandler && (
+                <button
+                  onClick={e => { e.stopPropagation(); if (!primaryBusy) primaryHandler() }}
+                  style={{ ...primaryBtnStyle, fontWeight: 800 }}
+                >{primaryBusy ? '…' : primaryLabel}</button>
+              )}
+              <button onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }} style={terminalButton('ghost')} aria-label="More actions">⋯</button>
+              {menuOpen && (
+                <div
+                  style={{
+                    position: 'absolute', top: '110%', right: 0, zIndex: 30, minWidth: 176,
+                    background: '#0d1420', border: `1px solid ${WL.surface.edge}`, borderRadius: 8,
+                    boxShadow: '0 10px 30px rgba(0,0,0,.5)', padding: 4, display: 'flex', flexDirection: 'column',
+                  }}
+                >
+                  {menuItems.map(m => (
+                    <button
+                      key={m.label}
+                      onClick={e => { e.stopPropagation(); setMenuOpen(false); m.onClick() }}
+                      style={{ textAlign: 'left', fontSize: 11.5, fontWeight: 600, color: WL.text.secondary, background: 'none', border: 'none', cursor: 'pointer', padding: '7px 10px', borderRadius: 5, whiteSpace: 'nowrap' }}
+                      onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(148,163,184,.08)' }}
+                      onMouseLeave={e => { (e.target as HTMLElement).style.background = 'none' }}
+                    >{m.label}</button>
+                  ))}
+                </div>
+              )}
+            </span>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.1em', color: heroAccent, flexShrink: 0 }}>
+                {stateWord}
+              </span>
+              <span
+                title={whyTitle || undefined}
+                style={{ fontSize: 13.5, fontWeight: 700, color: WL.text.primary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
+              >
+                {whyLine || action.heroText}
+              </span>
+              {rrChip && (
+                <span title={`Reward-to-risk on the ${p.live_rr != null ? 'live' : 'proposed'} plan`} style={{ ...numStyle, fontSize: 13, fontWeight: 800, color: rrChip.color, flexShrink: 0 }}>
+                  {rrChip.text}
+                </span>
+              )}
+              <span style={{ display: 'inline-flex', gap: 7, flexShrink: 0, position: 'relative' }}>
+                {action.primaryKind === 'approve' && (
+                  <button onClick={e => { e.stopPropagation(); onEdit() }} style={buttonStyle('neutral', true)}>Modify</button>
+                )}
+                {primaryHandler && (
+                  <button
+                    onClick={e => { e.stopPropagation(); if (!primaryBusy) primaryHandler() }}
+                    style={{ ...primaryBtnStyle, fontWeight: 800 }}
+                  >{primaryBusy ? '…' : primaryLabel}</button>
+                )}
+                <button onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }} style={buttonStyle('neutral', true)} aria-label="More actions">⋯</button>
+                {menuOpen && (
+                  <div
+                    style={{
+                      position: 'absolute', top: '110%', right: 0, zIndex: 30, minWidth: 176,
+                      background: '#0d1420', border: `1px solid ${WL.surface.edge}`, borderRadius: 8,
+                      boxShadow: '0 10px 30px rgba(0,0,0,.5)', padding: 4, display: 'flex', flexDirection: 'column',
+                    }}
+                  >
+                    {menuItems.map(m => (
+                      <button
+                        key={m.label}
+                        onClick={e => { e.stopPropagation(); setMenuOpen(false); m.onClick() }}
+                        style={{ textAlign: 'left', fontSize: 11.5, fontWeight: 600, color: WL.text.secondary, background: 'none', border: 'none', cursor: 'pointer', padding: '7px 10px', borderRadius: 5, whiteSpace: 'nowrap' }}
+                        onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(148,163,184,.08)' }}
+                        onMouseLeave={e => { (e.target as HTMLElement).style.background = 'none' }}
+                      >{m.label}</button>
+                    ))}
+                  </div>
+                )}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 11 }}>
+              <span style={{ fontWeight: 800, color: gatesColor, whiteSpace: 'nowrap' }} title="Diligence gates — detail in Gates & Reviews below">
+                {gateStance}
+              </span>
+              {ovStatus && (
+                <span style={{ fontWeight: 700, color: ovStatus === 'BLOCK' ? W.red : ovStatus === 'WARN' ? W.amber : W.teal, whiteSpace: 'nowrap' }}>
+                  oversight {ovStatus}
+                </span>
+              )}
+              {(cloudConsensus || ov.cloud_review?.status) && (
+                <span style={{ color: W.sub, whiteSpace: 'nowrap' }} title={ov.cloud_review?.ran_at ? `Cloud oversight ran ${ov.cloud_review.ran_at}` : undefined}>
+                  cloud {String(cloudConsensus || ov.cloud_review?.status).replace(/_/g, ' ').toLowerCase()}
+                </span>
+              )}
+              {(p.cloud_consensus?.consensus === 'CLOUD_APPROVE' || p.cloud_consensus?.consensus === 'ESCALATED') && (
+                <span
+                  style={{
+                    fontWeight: p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? 800 : 700,
+                    color: p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? W.teal : W.amber,
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={[
+                    `Cloud dual-consensus (advisory only)${p.cloud_consensus.as_of ? ` · ${p.cloud_consensus.as_of}` : ''}`,
+                    `grok ${p.cloud_consensus.grok_verdict || '—'}: ${p.cloud_consensus.grok_note || 'no note'}`,
+                    `chatgpt ${p.cloud_consensus.chatgpt_verdict || '—'}: ${p.cloud_consensus.chatgpt_note || 'no note'}`,
+                  ].join('\n')}
+                >
+                  {p.cloud_consensus.consensus === 'CLOUD_APPROVE' ? '☁ CLOUD APPROVE' : '☁ escalated — split'}
+                </span>
+              )}
+              <span style={{ color: voteColor, whiteSpace: 'nowrap' }} title={_stances.length ? `Agent stances: ${_stances.join(' · ')}` : 'Agent reviews — detail in Gates & Reviews below'}>
+                agents {voteSummary}
+              </span>
+              <span title={freshTip} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: WL.text.secondary, marginLeft: 'auto' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: freshColor, flex: 'none' }} />
+                {freshText}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* High-risk / meme-speculation — red-signal text row (hero keeps the only tint) */}
@@ -785,9 +870,9 @@ export default function BrokerProposalCardV4({
       })()}
 
       {/* ③ Module grid row 1 — Order & Levels ⟷ Sizing & Fit */}
-      <div className="wlc-grid" style={{ borderTop: 'none' }}>
-        <div className="wlc-cell">
-          <div style={moduleLabel}>Order &amp; Levels</div>
+      <div className={gridClass(terminalUi)} style={{ borderTop: 'none' }}>
+        <div className={gridCellClass(terminalUi)}>
+          <div style={modLabel(terminalUi)}><span>Order &amp; Levels</span></div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
             <div>
               <div style={subLabel}>Limit</div>
@@ -855,8 +940,8 @@ export default function BrokerProposalCardV4({
           )}
         </div>
 
-        <div className="wlc-cell">
-          <div style={moduleLabel}>Sizing &amp; Fit</div>
+        <div className={gridCellClass(terminalUi)}>
+          <div style={modLabel(terminalUi)}><span>Sizing &amp; Fit</span></div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
             <div>
               <div style={subLabel}>Shares</div>
@@ -941,9 +1026,9 @@ export default function BrokerProposalCardV4({
       </div>
 
       {/* ④ Module grid row 2 — Intelligence ⟷ Gates & Reviews */}
-      <div className="wlc-grid">
-        <div className="wlc-cell">
-          <div style={moduleLabel}>Intelligence</div>
+      <div className={gridClass(terminalUi)}>
+        <div className={gridCellClass(terminalUi)}>
+          <div style={modLabel(terminalUi)}><span>Intelligence</span></div>
           {intelSummary ? (
             <div style={{ fontSize: 11, color: W.sub, lineHeight: 1.5 }}>
               {truncate(String(intelSummary), 220)}
@@ -993,8 +1078,8 @@ export default function BrokerProposalCardV4({
           )}
         </div>
 
-        <div className="wlc-cell" ref={gatesCellRef}>
-          <div style={moduleLabel}>Gates &amp; Reviews</div>
+        <div className={gridCellClass(terminalUi)} ref={gatesCellRef}>
+          <div style={modLabel(terminalUi)}><span>Gates &amp; Reviews</span></div>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: gatesColor }}>
             {gateStance}
             {ovStatus && (

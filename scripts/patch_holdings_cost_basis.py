@@ -78,6 +78,8 @@ def main():
     d = json.load(open(HJ))
     ov_doc = json.load(open(os.path.join(INP, "cost_basis_overrides.json")))
     overrides = {(_norm(o["account"]), o["symbol"]): o["per_share_basis"] for o in ov_doc.get("overrides", [])}
+    override_sources = {(_norm(o["account"]), o["symbol"]): o.get("source", "operator_provided")
+                        for o in ov_doc.get("overrides", [])}
     candidates = {(_norm(c["account"]), c["symbol"]) for c in ov_doc.get("candidate_mappings_needing_confirmation", [])}
     fid_ps = {k: v for k, v in json.load(open(os.path.join(INP, "fidelity_cost_basis.json"))).items() if not k.startswith("_")}
 
@@ -113,7 +115,10 @@ def main():
                 h["gain_loss"] = round(mv - cb, 2)
                 h["gain_loss_pct"] = round((mv - cb) / cb * 100, 4) if cb > 0 else None
                 h["basis_partial"] = False
-                h["cost_basis_source"] = "operator_provided" if (_norm(acct), sym) in overrides else "reconstructed_from_amounts"
+                if (_norm(acct), sym) in overrides:
+                    h["cost_basis_source"] = override_sources.get((_norm(acct), sym), "operator_provided")
+                else:
+                    h["cost_basis_source"] = "reconstructed_from_amounts"
                 applied += 1
             else:
                 h["cost_basis"] = None

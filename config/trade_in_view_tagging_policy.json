@@ -5,6 +5,8 @@
   "high_priority_categories": ["market_regime", "psychology"],
   "require_market_regime": false,
   "require_psychology": false,
+  "queue_requires_ai_critique": false,
+  "auto_confirm_enriched_tags": true,
   "flag_auto_classified_stubs": true,
   "queue_default_days": 365,
   "queue_page_size": 50

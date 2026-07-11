@@ -57,6 +57,13 @@ Paper ATM ─────────► paper_trades ──► automated-trade-
 | `/api/v2/journal/session-recap` | GET/POST | Daily session recap |
 | `/api/v2/journal/attachments` | GET/POST | Screenshot attachments |
 | `/api/v2/journal/export?tax=1` | GET | Tax lots CSV (wash-sale flags) |
+| `/api/v2/journal/tagging-queue` | GET | Incomplete trades for operator tagging |
+| `/api/v2/journal/tagging-queue/auto-tag` | POST | Fill setup, regime, psychology, industry |
+| `/api/v2/journal/tagging-queue/auto-enrich` | POST | Auto-tag + industry backfill + auto-confirm |
+| `/api/v2/journal/tagging-queue/backfill-industry` | POST | Industry from `symbol_profiles` |
+| `/api/v2/journal/tagging-queue/bulk-tag` | POST | Apply shared tags to trade keys |
+| `/api/v2/journal/tagging-queue/confirm-auto-tagged` | POST | Manual confirm auto-tagged rows |
+| `/api/v2/journal/reporting-audit` | GET | TradeZella/TradesViz coverage self-audit |
 
 ## DB migration
 
@@ -74,6 +81,9 @@ psql -f migrations/2026_06_27_trade_in_view.sql
 
 # Smoke analytics
 .venv/bin/python scripts/journal_trade_in_view.py --exit --zella --behavioral
+
+# Auto-enrich journal tags (industry + entry/exit regime + confirm)
+.venv/bin/python scripts/journal_trade_in_view.py --auto-enrich --days 365
 ```
 
 ## Ops (P5–P6)
@@ -88,7 +98,7 @@ bash scripts/install_journal_annotation_cron.sh
 
 ## Priority backlog (next sprints)
 
-1. **Annotation campaign** — 80% review coverage (cron nudge + bulk-suggest in UI)
+1. **Annotation campaign** — 80% review coverage (auto-enrich on queue open + cron nudge; AI critique optional)
 2. **Tick replay** — sub-bar execution replay
 3. **Voice memos** — audio attachment kind
 4. **Per-leg greeks attribution** — options P&L decomposition

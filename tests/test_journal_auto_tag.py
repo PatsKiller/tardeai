@@ -1,0 +1,45 @@
+"""Journal auto-tag — regime mapping and enrich helpers."""
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import journal_trade_in_view as tiv
+
+
+def test_map_regime_label():
+    assert tiv._map_regime_label("risk_on_trend") == "Risk-On"
+    assert tiv._map_regime_label("choppy_range") == "Choppy"
+    assert tiv._map_regime_label("unknown") == "Ranging"
+    assert tiv._map_regime_label("Bullish") == "Bullish"
+
+
+def test_regime_fields_for_trade_same_day():
+    fields = tiv._regime_fields_for_trade({"open_date": "2026-01-22", "close_date": "2026-01-22"})
+    assert "market_regime" in fields
+    assert "market_regime_entry" in fields
+    assert "market_regime_exit" in fields
+    assert fields["market_regime_display"] == fields["market_regime_entry"]
+
+
+def test_score_trade_tags_skips_ai_critique_by_default():
+    policy = tiv._load_tagging_policy()
+    assert policy.get("queue_requires_ai_critique") is False
+    rev = {
+        "setup_family": "Scalp",
+        "setup_types": ["day_scalp"],
+        "market_regime": "Choppy",
+        "emotion_before": "Calm",
+        "payload": {"operator_confirmed": True, "tagging_complete": True, "industry": "Software"},
+    }
+    score = tiv.score_trade_tags(rev, policy)
+    assert "ai_critique" not in score["missing"]
+    assert "operator_review" not in score["missing"]
+
+
+if __name__ == "__main__":
+    test_map_regime_label()
+    test_regime_fields_for_trade_same_day()
+    test_score_trade_tags_skips_ai_critique_by_default()
+    print("ok")

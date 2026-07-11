@@ -5,6 +5,8 @@ import type { DrillContext } from '../components/DetailDrawer'
 import SynthesizedReportCard from '../components/SynthesizedReportCard'
 import type { ReportCardItem } from '../components/SynthesizedReportCard'
 import { EnsembleValidationInline } from '../components/EnsembleValidationCard'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 
 // Retirement Intelligence — synthesized trade-desk view of the Golden-Window Roth strategy, income
 // durability, key dates, accounts/timeline, and Hermes knowledge research (Roth/MAPT/Medicare/SSDI/estate).
@@ -14,14 +16,13 @@ import { EnsembleValidationInline } from '../components/EnsembleValidationCard'
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Overview', 'Accounts', 'Timeline', 'Planning Research'] as const
 
-const panel: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
 const slug = (s: string) => 'ret_' + (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 50)
 
 // ── synthesized rail-card (matches SynthesizedReportCard's visual language for the metric-style Overview) ──
-function RailCard({ rail, title, sub, children, onDrill, chips }:
-  { rail: string; title: string; sub?: string; children?: React.ReactNode; onDrill?: () => void; chips?: { t: string; c: string }[] }) {
+function RailCard({ rail, title, sub, children, onDrill, chips, panelStyle, terminalUi }:
+  { rail: string; title: string; sub?: string; children?: React.ReactNode; onDrill?: () => void; chips?: { t: string; c: string }[]; panelStyle: React.CSSProperties; terminalUi: boolean }) {
   return (
-    <div onClick={onDrill} style={{ ...panel, borderLeft: `4px solid ${rail}`, cursor: onDrill ? 'pointer' : 'default' }}>
+    <div className={terminalUi ? 'cc-panel' : undefined} onClick={onDrill} style={{ ...panelStyle, borderLeft: `4px solid ${rail}`, cursor: onDrill ? 'pointer' : 'default' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)' }}>{title}</div>
         {sub && <div style={{ fontSize: 10, color: 'var(--text3)' }}>{sub}</div>}
@@ -46,6 +47,8 @@ const CATS: { key: string; label: string; rx: RegExp | null }[] = [
 const catMatch = (key: string, blob: string) => { const c = CATS.find(x => x.key === key); return !c?.rx || c.rx.test(blob) }
 
 export default function RetirementHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
+  const panel = terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
   const [tab, setTab] = useState<typeof TABS[number]>('Overview')
   const [search, setSearch] = useState('')
   const [cat, setCat] = useState('all')
@@ -97,18 +100,14 @@ export default function RetirementHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div className="hub-title-row">
+      <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text0)' }}>Retirement Intelligence</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Age {ret.current_age ?? '—'} · {accounts.length} accounts · Golden-Window Roth · as of {ret.as_of ?? '—'}</div>
+          <div style={hubTitle()}>Retirement Intelligence</div>
+          <div style={hubSubtitle(terminalUi)}>Age {ret.current_age ?? '—'} · {accounts.length} accounts · Golden-Window Roth · as of {ret.as_of ?? '—'}</div>
         </div>
-        <div className="hub-tabs">
+        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-            }}>{t}{t === 'Planning Research' && planItems.length ? ` (${planItems.length})` : ''}</button>
+            <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}{t === 'Planning Research' && planItems.length ? ` (${planItems.length})` : ''}</button>
           ))}
         </div>
       </div>
@@ -116,7 +115,7 @@ export default function RetirementHub({ onDrill }: Props) {
       {tab === 'Overview' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <RailCard rail="#f59e0b" title="Golden Window — Roth Conversion Strategy" sub="advisory · confirm with tax pro"
-            chips={[{ t: 'retirement', c: '#f59e0b' }]}
+            chips={[{ t: 'retirement', c: '#f59e0b' }]} panelStyle={panel} terminalUi={terminalUi}
             onDrill={() => onDrill({ title: 'Golden Window', subtitle: 'Roth conversion strategy', endpoint: '/api/v2/retirement', rows: [golden] })}>
             {golden.start_year ? (
               <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
@@ -131,7 +130,7 @@ export default function RetirementHub({ onDrill }: Props) {
           </RailCard>
 
           <RailCard rail="#22c55e" title="Dividend Income — Durability" sub="unearned income (does not count toward SSDI SGA)"
-            chips={[{ t: 'income', c: '#22c55e' }]}>
+            chips={[{ t: 'income', c: '#22c55e' }]} panelStyle={panel} terminalUi={terminalUi}>
             <div style={{ display: 'flex', gap: 24, alignItems: 'baseline', flexWrap: 'wrap' }}>
               <div><div style={{ fontSize: 26, fontWeight: 900, color: '#22c55e' }}>{fmt$(divIncome.annual_total ?? 0, 0)}</div><div style={{ fontSize: 9, color: 'var(--text3)' }}>per year</div></div>
               <Metric label="Monthly avg" value={`${fmt$(divIncome.monthly_avg ?? 0, 0)}/mo`} />
@@ -143,7 +142,7 @@ export default function RetirementHub({ onDrill }: Props) {
           </RailCard>
 
           {ret.key_dates && (
-            <div style={{ ...panel, gridColumn: '1 / -1' }}>
+            <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...panel, gridColumn: '1 / -1' }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', marginBottom: 10 }}>Key Dates</div>
               {Object.entries(ret.key_dates).map(([k, v]: [string, any]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 6px', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
@@ -157,7 +156,7 @@ export default function RetirementHub({ onDrill }: Props) {
       )}
 
       {tab === 'Accounts' && (
-        <div style={panel}>
+        <div className={terminalUi ? 'cc-panel' : undefined} style={panel}>
           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', marginBottom: 10 }}>Accounts ({accounts.length})</div>
           {accounts.map((a: any, i: number) => (
             <div key={i} onClick={() => onDrill({ title: a.name ?? a.account, subtitle: a.type ?? '', endpoint: '/api/v2/retirement', rows: [a] })}
@@ -173,7 +172,7 @@ export default function RetirementHub({ onDrill }: Props) {
       )}
 
       {tab === 'Timeline' && (
-        <div style={panel}>
+        <div className={terminalUi ? 'cc-panel' : undefined} style={panel}>
           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', marginBottom: 10 }}>Retirement Timeline</div>
           {timeline.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No timeline data.</div> :
             timeline.map((t: any, i: number) => (

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { type OptionProposal } from '../components/OptionProposalCard'
@@ -8,8 +8,7 @@ import OptionPositionCardV4 from '../components/OptionPositionCardV4'
 import OptionReviewBar from '../components/OptionReviewBar'
 import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualExecutionModal'
 import ManualExecutionLog from '../components/ManualExecutionLog'
-import { OpenOptionsIntroBanner, Options101Banner, NoviceToggle, PreflightConfirmModal } from '../components/OptionsNovicePanel'
-import { isNoviceMode, setNoviceMode, strategyGuide, GLOSSARY } from '../lib/optionsNovice'
+
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import GreeksOverview from '../components/risk/GreeksOverview'
@@ -17,6 +16,8 @@ import OptionsPnLProfile from '../components/risk/OptionsPnLProfile'
 import OptionsTrendsPanel from '../components/OptionsTrendsPanel'
 import { Tip, TipChip, TipKpi, TipLabel, TipSection } from '../components/OptionsTip'
 import { HEADER, TABS as TAB_TIPS, FILTERS, OVERVIEW, POSITION } from '../lib/optionsTooltips'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -44,6 +45,7 @@ type Proposal = OptionProposal
 type Position = OptionPosition
 
 export default function OptionsHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [searchParams, setSearchParams] = useSearchParams()
   const urlTab = searchParams.get('tab')
   const resolveTab = (t: string | null): typeof TABS[number] => {
@@ -76,14 +78,9 @@ export default function OptionsHub({ onDrill }: Props) {
   const [ensembleMsg, setEnsembleMsg] = useState<string | null>(null)
   const [pendingIntent, setPendingIntent] = useState<string | null>(null)
   const [execMsg, setExecMsg] = useState<string | null>(null)
-  const [novice, setNovice] = useState(isNoviceMode)
-  const [guideCollapsed, setGuideCollapsed] = useState(false)
-  const [preflightProposal, setPreflightProposal] = useState<Proposal | null>(null)
   const [manualSeed, setManualSeed] = useState<ManualExecSeed | null>(null)
   const ProposalCard = OptionProposalCardV4
   const PositionCard = OptionPositionCardV4
-
-  useEffect(() => { setNoviceMode(novice) }, [novice])
 
   const q = useMemo(() => {
     const p = new URLSearchParams()
@@ -335,10 +332,6 @@ export default function OptionsHub({ onDrill }: Props) {
         setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })
         return
       }
-      if (novice) {
-        setPreflightProposal(p)
-        return
-      }
       await runPreflight(p)
       return
     }
@@ -376,10 +369,10 @@ export default function OptionsHub({ onDrill }: Props) {
     <div>
       <div className="hub-title-row" style={{ marginBottom: 14 }}>
         <div>
-          <Tip tip={HEADER.desk} style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)', display: 'inline-block' }}>
+          <Tip tip={HEADER.desk} style={{ ...hubTitle(), display: 'inline-block' }}>
             Options Desk ⓘ
           </Tip>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+          <div style={hubSubtitle(terminalUi)}>
             High-quality proposals only · {propCount} ideas · {posList.length} open legs
             {proposals?.quality_gate && (
               <Tip tip={HEADER.qualityGate}> · gate {proposals.quality_gate.min_edge_score}+ / sleeve {proposals.quality_gate.relaxed_edge_floor}+ ⓘ</Tip>
@@ -401,7 +394,6 @@ export default function OptionsHub({ onDrill }: Props) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <Tip tip={HEADER.novice}><NoviceToggle on={novice} onChange={setNovice} /></Tip>
           <div className="hub-tabs">
           {TABS.map(t => (
             <button
@@ -413,11 +405,7 @@ export default function OptionsHub({ onDrill }: Props) {
                       : TAB_TIPS.trends
               }
               onClick={() => selectTab(t)}
-              style={{
-                padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'help',
-                background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-                color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-              }}
+              style={hubTab(tab === t, terminalUi)}
             >{t}</button>
           ))}
           </div>
@@ -448,18 +436,6 @@ export default function OptionsHub({ onDrill }: Props) {
             )
           })}
         </div>
-      )}
-
-      {novice && tab === 'Proposals' && (
-        <Options101Banner collapsed={guideCollapsed} onToggle={() => setGuideCollapsed(c => !c)} />
-      )}
-
-      {preflightProposal && (
-        <PreflightConfirmModal
-          proposal={preflightProposal}
-          onCancel={() => setPreflightProposal(null)}
-          onConfirm={() => { const p = preflightProposal; setPreflightProposal(null); if (p) runPreflight(p) }}
-        />
       )}
 
       {manualSeed && (
@@ -603,7 +579,7 @@ export default function OptionsHub({ onDrill }: Props) {
                 key={p.id}
                 proposal={p}
                 armed={!!execStatus?.armed_for_execution}
-                novice={novice}
+
                 onAction={(a, id) => handleAction(a, id, p)}
                 onAlpacaAction={p.educational_paper_model ? handleAlpacaAction : undefined}
                 onManualLog={() => setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })}
@@ -624,7 +600,7 @@ export default function OptionsHub({ onDrill }: Props) {
 
       {tab === 'Open Options' && (
         <>
-          {novice && <OpenOptionsIntroBanner />}
+
           <div style={{ ...panel, marginBottom: 14 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
               <input placeholder="Underlying" title={FILTERS.posTicker} value={posSymbolFilter} onChange={e => setPosSymbolFilter(e.target.value)} style={{ ...SEL, width: 80, cursor: 'help' }} />
@@ -693,7 +669,7 @@ export default function OptionsHub({ onDrill }: Props) {
               <PositionCard
                 key={p.id}
                 position={p}
-                novice={novice}
+
                 onAction={(a, id) => handleAction(a, id, p)}
                 onDrill={() => onDrill({
                   title: `${p.underlying} option leg`,
@@ -731,22 +707,7 @@ export default function OptionsHub({ onDrill }: Props) {
           ].map(k => (
             <TipKpi key={k.label} tip={k.tip} label={k.label} value={k.value} color={k.color} />
           ))}
-          {novice && (
-            <div style={{ ...panel, gridColumn: '1 / -1' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Strategy cheat sheet</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
-                {(['covered_call', 'cash_secured_put', 'long_call', 'credit_spread'] as const).map(s => {
-                  const g = strategyGuide(s)
-                  return (
-                    <div key={s} style={{ background: 'var(--bg2)', borderRadius: 8, padding: 10, fontSize: 10, color: 'var(--text2)', lineHeight: 1.45 }}>
-                      <div style={{ fontWeight: 800, color: '#60a5fa' }}>{g.emoji} {g.name}</div>
-                      <div style={{ marginTop: 4 }}>{g.oneLiner}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+
           <div title={OVERVIEW.philosophy} style={{ ...panel, gridColumn: '1 / -1', cursor: 'help' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Quality Philosophy ⓘ</div>
             <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5 }}>
@@ -757,14 +718,7 @@ export default function OptionsHub({ onDrill }: Props) {
                 ? ' Execution ARMED — preflight + per-order 2FA required.'
                 : ' Execution advisory until options_pilot_arm --approve.'}
             </div>
-            {novice && (
-              <details style={{ marginTop: 10 }}>
-                <summary style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', cursor: 'pointer' }}>Key terms ({GLOSSARY.length})</summary>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 6, marginTop: 8, fontSize: 10, color: 'var(--text2)' }}>
-                  {GLOSSARY.map(g => <div key={g.term}><b>{g.term}</b> — {g.def}</div>)}
-                </div>
-              </details>
-            )}
+
           </div>
         </div>
       )}

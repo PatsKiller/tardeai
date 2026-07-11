@@ -22,6 +22,7 @@ import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import HealthHub from './pages/HealthHub'
 import ConsumptionHub from './pages/ConsumptionHub'
 
+
 declare const __ANALYST_UI_VERSION__: string
 declare const __BUILD_DATE__: string
 // Real build stamp (vite define) — the old hardcoded label misled deploy verification.
@@ -91,9 +92,8 @@ function ReconnectingBar() {
 
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
-
   return (
-    <div className="app-shell" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
+    <div className="app-shell cc-terminal-ui" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
       <ReconnectingBar />
       <MetricStrip onDrill={setDrill} />
       <div className="app-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>

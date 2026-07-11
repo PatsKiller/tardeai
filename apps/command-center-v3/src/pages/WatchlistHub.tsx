@@ -7,9 +7,7 @@ import { useProAnalystMap } from '../components/ProAnalystPill'
 import DiscoveryPanel from '../components/DiscoveryPanel'
 import ToSWatchlists from '../components/ToSWatchlists'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
-import WatchlistCard from '../components/WatchlistCard'
 import WatchlistCardV4 from '../components/WatchlistCardV4'
-import { useCardsV4 } from '../lib/cardsV4'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import { exitLadder } from '../lib/exitLadder'
 import { parseProposalAccounts, parseSizingPolicy, type RiskPct } from '../lib/watchlistProposeSizing'
@@ -125,7 +123,6 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   // (e.g. knowledge themes moved to the research pipeline) — hidden entirely, not even in the dormant list.
   const dormantDirs = directives.filter(d => d.status !== 'archived' && !isActionableDir(d))
 
-  const [cardV4, setCardV4] = useCardsV4()
   const [fBand, setFBand] = useState('all')
   const [fKind, setFKind] = useState('all')
   const [fDir, setFDir] = useState('all')
@@ -528,10 +525,9 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
             {pageItems.map((it: any) => {
               const symKey = String(it.symbol).toUpperCase()
               const outcome = outMap[symKey]
-              const Card = cardV4 ? WatchlistCardV4 : WatchlistCard
               return (
                 <div key={it.id} style={{ minWidth: 0, width: '100%' }}>
-                <Card
+                <WatchlistCardV4
                   it={it}
                   adv={advMap[it.symbol]}
                   sc={cardMap[it.symbol]}

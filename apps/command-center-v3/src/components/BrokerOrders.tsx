@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { useTerminalUi } from '../lib/terminalUi'
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 // Broker Orders — thinkorswim-DESKTOP-style Active Trader surface (Stage 2a, DORMANT).
@@ -189,6 +190,7 @@ const CANARY_BATTERY: any[] = [
 // preflight (envelope/gate/quote) → 2FA (existing ApprovalPanel: web typed-ticker + Telegram) →
 // execute (transport re-enforces the whole stack server-side) → cancel. Everything fail-closed.
 function PilotConsole() {
+  const [terminalUi] = useTerminalUi()
   const { data: stR, refetch } = useApi<any>('/api/v2/broker-orders/pilot/status', 15_000)
   const s = (stR as any)?.data ?? stR
   const [symbol, setSymbol] = useState('')
@@ -392,28 +394,40 @@ function PilotConsole() {
       {(s.pilot_orders ?? []).length > 0 && (
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: T.text, marginBottom: 4 }}>Pilot orders</div>
-          {(s.pilot_orders ?? []).map((o: any) => (
-            <div key={o.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 9.5, padding: '4px 0', borderTop: `1px solid ${T.border}` }}>
-              <span style={{ ...mono, fontWeight: 800, color: T.text }}>#{o.id} {o.side} {o.qty} {o.symbol} @{o.limit_price}</span>
-              <span style={{ color: o.status?.startsWith('cancel') ? T.amber : o.status === 'filled' ? '#66bb6a' : ['submitted', 'working', 'accepted', 'queued'].includes(String(o.status || '').toLowerCase()) ? '#60a5fa' : T.dim }}
-                title={o.live_status ? 'broker-confirmed live status' : 'submit-time status (not yet reconciled)'}>{o.status}{o.live_status ? ' ✓' : ''}</span>
-              {o.broker_order_id && <span style={{ color: T.dim, ...mono }}>id {o.broker_order_id}</span>}
-              <span style={{ color: T.dim }}>{String(o.created_at ?? '').slice(0, 16)}</span>
-              <span style={{ flex: 1 }} />
-              {/* Cancel from the Command Center: show for any CANCELLABLE (non-terminal) status, and
-                  CONFIRM first (operator 2026-06-15). Hits Schwab's live cancel via pilot/cancel. */}
-              {o.broker_order_id && !['canceled', 'cancelled', 'filled', 'rejected', 'expired', 'replaced'].includes(String(o.status || '').toLowerCase()) && (
-                <button disabled={busy} onClick={async () => {
-                  if (!confirm(`Cancel this LIVE Schwab order?\n\n${o.side} ${o.qty} ${o.symbol} @ ${o.limit_price}\nbroker id ${o.broker_order_id}\n\nThis sends a cancel to Schwab.`)) return
-                  setExecMsg('cancelling…')
-                  const r = await post('/api/v2/broker-orders/pilot/cancel', { broker_order_id: o.broker_order_id })
-                  setExecMsg(r?.ok ? `✅ cancel sent — ${JSON.stringify(r).slice(0, 160)}` : `⛔ ${r?.reason ?? r?.error ?? JSON.stringify(r).slice(0, 160)}`)
-                  refetch()
-                }}
-                  style={btn('#b71c1c')}>cancel order</button>
-              )}
-            </div>
-          ))}
+          <table className={terminalUi ? 'cc-table-dense' : undefined} style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ fontSize: 8, color: T.dim, textTransform: 'uppercase' }}>
+                <th style={{ textAlign: 'left', padding: '2px 6px' }}>Order</th>
+                <th style={{ textAlign: 'left', padding: '2px 6px' }}>Status</th>
+                <th style={{ textAlign: 'left', padding: '2px 6px' }}>Broker id</th>
+                <th style={{ textAlign: 'left', padding: '2px 6px' }}>Created</th>
+                <th style={{ textAlign: 'right', padding: '2px 6px' }} />
+              </tr>
+            </thead>
+            <tbody>
+              {(s.pilot_orders ?? []).map((o: any) => (
+                <tr key={o.id} style={{ borderTop: `1px solid ${T.border}` }}>
+                  <td style={{ ...mono, fontWeight: 800, color: T.text, padding: '2px 6px', fontSize: 9.5 }}>#{o.id} {o.side} {o.qty} {o.symbol} @{o.limit_price}</td>
+                  <td style={{ padding: '2px 6px', fontSize: 9.5, color: o.status?.startsWith('cancel') ? T.amber : o.status === 'filled' ? '#66bb6a' : ['submitted', 'working', 'accepted', 'queued'].includes(String(o.status || '').toLowerCase()) ? '#60a5fa' : T.dim }}
+                    title={o.live_status ? 'broker-confirmed live status' : 'submit-time status (not yet reconciled)'}>{o.status}{o.live_status ? ' ✓' : ''}</td>
+                  <td style={{ color: T.dim, ...mono, padding: '2px 6px', fontSize: 9.5 }}>{o.broker_order_id ?? '—'}</td>
+                  <td style={{ color: T.dim, padding: '2px 6px', fontSize: 9.5 }}>{String(o.created_at ?? '').slice(0, 16)}</td>
+                  <td style={{ textAlign: 'right', padding: '2px 6px' }}>
+                    {o.broker_order_id && !['canceled', 'cancelled', 'filled', 'rejected', 'expired', 'replaced'].includes(String(o.status || '').toLowerCase()) && (
+                      <button disabled={busy} onClick={async () => {
+                        if (!confirm(`Cancel this LIVE Schwab order?\n\n${o.side} ${o.qty} ${o.symbol} @ ${o.limit_price}\nbroker id ${o.broker_order_id}\n\nThis sends a cancel to Schwab.`)) return
+                        setExecMsg('cancelling…')
+                        const r = await post('/api/v2/broker-orders/pilot/cancel', { broker_order_id: o.broker_order_id })
+                        setExecMsg(r?.ok ? `✅ cancel sent — ${JSON.stringify(r).slice(0, 160)}` : `⛔ ${r?.reason ?? r?.error ?? JSON.stringify(r).slice(0, 160)}`)
+                        refetch()
+                      }}
+                        style={btn('#b71c1c')}>cancel order</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -906,6 +920,7 @@ function EditModal({ draft, onClose, onSaved }: { draft: any; onClose: () => voi
 
 // ── main surface ─────────────────────────────────────────────────────────────────────────────────
 export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) {
+  const [terminalUi] = useTerminalUi()
   const { data: capsR } = useApi<any>('/api/v2/broker-orders/capabilities?broker=schwab', 120_000)
   const { data: draftsR, refetch } = useApi<any>('/api/v2/broker-orders/drafts?broker=schwab', 30_000)
   const { data: eventsR, refetch: refetchEvents } = useApi<any>('/api/v2/broker-orders/events', 30_000)
@@ -1079,12 +1094,24 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
             {g.at} · {g.text}{g.n > 1 ? `  (×${g.n})` : ''}
           </div>
         ))}
-        {activity.length > 0 && <div style={{ ...lbl, margin: '6px 0 2px' }}>activity capture (read-only poll)</div>}
-        {activity.slice(0, 20).map((a: any, i: number) => (
-          <div key={`a${i}`} style={{ fontSize: 9.5, color: '#90caf9', marginBottom: 2, ...mono }}>
-            {String(a.captured_at).slice(5, 16)} · {a.account_key?.replace('schwab_', '')} · {a.kind} · {a.symbol} · {a.status}
-          </div>
-        ))}
+        {activity.length > 0 && (
+          <>
+            <div style={{ ...lbl, margin: '6px 0 2px' }}>activity capture (read-only poll)</div>
+            <table className={terminalUi ? 'cc-table-dense' : undefined} style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                {activity.slice(0, 20).map((a: any, i: number) => (
+                  <tr key={`a${i}`}>
+                    <td style={{ fontSize: 9.5, color: '#90caf9', padding: '2px 6px', ...mono }}>{String(a.captured_at).slice(5, 16)}</td>
+                    <td style={{ fontSize: 9.5, color: '#90caf9', padding: '2px 6px', ...mono }}>{a.account_key?.replace('schwab_', '')}</td>
+                    <td style={{ fontSize: 9.5, color: '#90caf9', padding: '2px 6px', ...mono }}>{a.kind}</td>
+                    <td style={{ fontSize: 9.5, color: '#90caf9', padding: '2px 6px', ...mono }}>{a.symbol}</td>
+                    <td style={{ fontSize: 9.5, color: '#90caf9', padding: '2px 6px', ...mono }}>{a.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
       {editing && <EditModal draft={editing} onClose={() => setEditing(null)} onSaved={() => refetch()} />}
       <div style={{ fontSize: 8.5, color: T.dim, marginTop: 8 }}>

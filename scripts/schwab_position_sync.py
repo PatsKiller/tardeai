@@ -144,7 +144,7 @@ def _alert(msg, source=""):
 
 
 def protected_holdings_write(new_holdings, source="schwab_sync", account_key="schwab", protect_basis=False,
-                            target_path=None):
+                            target_path=None, skip_transfer_detect=False):
     """GATE B / mandatory holdings wipe-guard. Routes EVERY holdings/current-state write so a bad payload
     fails closed instead of zeroing holdings.json. NEVER overwrites a good snapshot with empty/zeroed/
     catastrophically-low data; backs up + writes atomically + post-asserts + restores on failure.
@@ -228,8 +228,13 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
             pass
 
     backup = None
+    prior_doc = None
     if HP.exists():
         backup = HP.read_bytes()
+        try:
+            prior_doc = json.loads(backup.decode())
+        except Exception:
+            prior_doc = None
 
     # atomic write
     try:
@@ -267,6 +272,23 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
             print(f"  [holdings-change] {trig['summary']}")
     except Exception as _e:
         print(f"  [holdings-change] trigger failed (non-fatal): {str(_e)[:120]}")
+
+    # Cross-account transfer detection — when a ticker leaves one IRA/broker and lands in another,
+    # carry forward cost basis history into overrides + destination row tags (never silent fabrication).
+    if not skip_transfer_detect and prior_doc is not None:
+        try:
+            from lib.cost_basis_transfer import process_holdings_change
+            xfer = process_holdings_change(prior_doc, new_holdings, sync_source=source, apply=True)
+            if xfer.get("events"):
+                print(f"  [cost-basis-transfer] {xfer.get('summary')}")
+                tagged = xfer.get("holdings_doc")
+                if tagged and xfer.get("applied_overrides"):
+                    fd2, tmp2 = tempfile.mkstemp(dir=str(HP.parent), suffix=".tmp")
+                    with os.fdopen(fd2, "w") as f:
+                        json.dump(tagged, f, indent=2, default=str)
+                    os.replace(tmp2, HP)
+        except Exception as _e:
+            print(f"  [cost-basis-transfer] detect failed (non-fatal): {str(_e)[:120]}")
 
     return {"wrote": True, "status": "ok", "total_value": v, "position_count": n, "basis_flags": flagged}
 

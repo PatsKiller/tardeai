@@ -6,6 +6,8 @@ import { StatusBadge } from '../components/StatusBadge'
 import CoderDispatchLedger from '../components/health/CoderDispatchLedger'
 import RiskHealthStrip from '../components/risk/RiskHealthStrip'
 import type { DrillContext } from '../components/DetailDrawer'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 
 interface Props { onDrill?: (ctx: DrillContext) => void }
 
@@ -54,6 +56,7 @@ function deltaStr(d: number | null | undefined) {
 }
 
 export default function HealthHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [searchParams] = useSearchParams()
   const urlTab = searchParams.get('tab')
   const [tab, setTab] = useState<'overview' | 'coders' | 'history'>(
@@ -111,23 +114,19 @@ export default function HealthHub({ onDrill }: Props) {
   return (
     <div>
       {/* Header */}
-      <div className="hub-title-row" style={{ alignItems: 'flex-start' }}>
+      <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Health Agent</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+          <div style={hubTitle()}>Health Agent</div>
+          <div style={hubSubtitle(terminalUi)}>
             Centralized health score · proactive trends · multi-coder auto-fix
             {health?.mode && <> · <span style={{ color: 'var(--accent)' }}>{health.mode}</span> mode</>}
             {health?.scheduler && <> · via <span style={{ color: 'var(--text2)' }}>{health.scheduler}</span></>}
             {health?.captured_at && <> · last run {fmtWhen(health.captured_at)}</>}
           </div>
         </div>
-        <div className="hub-tabs">
+        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {(['overview', 'coders', 'history'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} title={TAB_HELP[t]} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-            }}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
+            <button key={t} onClick={() => setTab(t)} title={TAB_HELP[t]} style={hubTab(tab === t, terminalUi)}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
           ))}
         </div>
       </div>
@@ -142,9 +141,9 @@ export default function HealthHub({ onDrill }: Props) {
             optionsAlerts={propHealth?.options?.needs_action ?? 0}
           />
           {/* Score hero */}
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16,
-            padding: '16px 20px', background: 'var(--bg1)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)', borderLeft: `4px solid ${scoreColor(overall)}` }}>
+          <div className={terminalUi ? 'cc-panel' : undefined} style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16,
+            ...(terminalUi ? hubPanel(terminalUi) : { padding: '16px 20px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }),
+            borderLeft: `4px solid ${scoreColor(overall)}` }}>
             <div style={{ fontSize: 48, fontWeight: 800, color: scoreColor(overall), lineHeight: 1 }}>
               {overall ?? '—'}<span style={{ fontSize: 18, color: 'var(--text3)' }}>/100</span>
             </div>

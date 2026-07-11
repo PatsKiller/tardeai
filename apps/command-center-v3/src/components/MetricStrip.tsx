@@ -4,12 +4,14 @@ import { fmt$ } from '../lib/format'
 import { pricingStampLine } from '../lib/pricingStamp'
 import type { DrillContext } from './DetailDrawer'
 
+
 interface Props {
   onDrill: (ctx: DrillContext) => void
 }
 
 export default function MetricStrip({ onDrill }: Props) {
   const navigate = useNavigate()
+
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
@@ -111,6 +113,7 @@ export default function MetricStrip({ onDrill }: Props) {
       </div>
       {tiles.map(t => (
         <div key={t.label}
+          className="metric-strip-tile"
           onClick={() => onDrill(t.drill)}
           style={{ padding: '4px 20px', cursor: 'pointer', textAlign: 'center', borderRight: '1px solid var(--border)' }}
         >

@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-07-11 (night) — Journal auto-enrich + CC v3 terminal (always on)
+
+### TradeInView — auto-tag, backfill, confirm
+
+- **`tagging_queue_auto_enrich`** — one-pass enrich: setup (AI heuristic), psychology (Calm),
+  **industry** (`symbol_profiles`), **market regime at entry + exit dates**
+  (`market_regime_snapshots` → journal labels), auto-confirm when complete.
+- **API** — `POST /api/v2/journal/tagging-queue/auto-enrich`; CSV import triggers enrich after Schwab rebuild.
+- **CLI** — `scripts/journal_trade_in_view.py --auto-enrich --days 365`
+- **Policy** — `config/trade_in_view_tagging_policy.json`: `auto_confirm_enriched_tags`,
+  `queue_requires_ai_critique: false` (critique is separate “Generate AI critiques” flow).
+- **CC v3 Tagging Queue** — auto-enrich on tab open (once/session); cards show `Regime: Entry → Exit`.
+- **Tests** — `tests/test_journal_auto_tag.py`
+
+### Command Center v3 — Bloomberg terminal (no toggle)
+
+- Terminal UI **always on** — removed Metric strip Terminal ON/OFF, Portfolio layout toggle, CVD toggle, Options Novice toggle.
+- Terminal chrome on all hubs; card v4 only (Open Trades, Watchlist, Proposals).
+- Archive fallback: `apps/command-center-v3/_archive/terminal-redesign-20260711/RESTORE.md`
+
+### Cost basis transfer (cross-account)
+
+- **`scripts/lib/cost_basis_transfer.py`** — detect Fidelity→Schwab (etc.) moves, write overrides, tag destinations.
+- Hook in `schwab_position_sync.py`; CLI `scripts/cost_basis_transfer_detect.py`; tests `tests/test_cost_basis_transfer.py`
+
 ## 2026-07-11 — Fidelity GTC stop registry audit (••5199)
 
 - **config/fidelity_rollover_stops.json** — reconciled to Fidelity Activity & Orders 2026-07-11 11:00 ET:

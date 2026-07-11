@@ -725,8 +725,12 @@ def score_trade_tags(review: dict | None, policy: dict | None = None) -> dict:
                 missing.append("operator_review")
 
     if payload.get("auto_tagged") and not payload.get("operator_confirmed"):
-        if "operator_review" not in missing:
-            missing.append("operator_review")
+        if not policy.get("auto_confirm_enriched_tags", True):
+            if "operator_review" not in missing:
+                missing.append("operator_review")
+
+    if payload.get("operator_confirmed") or payload.get("operator_reviewed"):
+        missing = [m for m in missing if m != "operator_review"]
 
     min_tags = int(policy.get("min_total_tags", 3))
     if tagging_done:
@@ -754,12 +758,13 @@ def score_trade_tags(review: dict | None, policy: dict | None = None) -> dict:
             ai_stale, _ = jac._stale_from_tags(review, crit_meta, critique)
         except Exception:
             ai_stale = bool(crit_meta.get("stale"))
-    if not has_critique:
-        if "ai_critique" not in missing:
-            missing.append("ai_critique")
-    elif ai_stale:
-        if "ai_critique_stale" not in missing:
-            missing.append("ai_critique_stale")
+    if policy.get("queue_requires_ai_critique", False):
+        if not has_critique:
+            if "ai_critique" not in missing:
+                missing.append("ai_critique")
+        elif ai_stale:
+            if "ai_critique_stale" not in missing:
+                missing.append("ai_critique_stale")
 
     if missing:
         incomplete = True
@@ -894,6 +899,9 @@ def tagging_queue(account=None, days=365, missing_category=None, min_pnl=None,
             "emotion_before": (rev.get("emotion_before") or "").strip() or None if rev else None,
             "industry": (payload.get("industry") or "").strip() or None,
             "sector": (payload.get("sector") or "").strip() or None,
+            "market_regime_entry": payload.get("market_regime_entry"),
+            "market_regime_exit": payload.get("market_regime_exit"),
+            "market_regime_display": payload.get("market_regime_display"),
             "_complete": score.get("complete", False),
         }
 
@@ -1074,6 +1082,84 @@ def tagging_queue_skip(trade_key: str, reason: str = ""):
     return {"ok": True, "trade_key": trade_key}
 
 
+REGIME_LABEL_MAP = {
+    "risk_on_trend": "Risk-On",
+    "risk_off": "Risk-Off",
+    "choppy_range": "Choppy",
+    "high_volatility": "High Volatility",
+    "low_volatility_grind": "Low Volume",
+    "broad_momentum": "Trending",
+    "unknown": "Ranging",
+}
+
+
+def _map_regime_label(raw: str | None) -> str:
+    if not raw:
+        return "Ranging"
+    key = str(raw).strip().lower().replace(" ", "_").replace("-", "_")
+    if key in REGIME_LABEL_MAP:
+        return REGIME_LABEL_MAP[key]
+    titled = str(raw).replace("_", " ").strip()
+    if not titled:
+        return "Ranging"
+    return " ".join(w[:1].upper() + w[1:].lower() for w in titled.split())[:80]
+
+
+def _lookup_regime_for_date(trade_date: str | None) -> dict:
+    """Best-effort market regime for a trade entry/exit calendar date."""
+    if not trade_date or str(trade_date).upper() == "UNKNOWN":
+        return {"regime": _default_market_regime(), "source": "default", "as_of": None}
+    d = str(trade_date)[:10]
+    row = _q(
+        "SELECT regime_label, generated_at::text FROM market_regime_snapshots "
+        "WHERE generated_at::date <= %s::date ORDER BY generated_at DESC LIMIT 1",
+        [d], fetch="one",
+    )
+    if row and row.get("regime_label"):
+        return {
+            "regime": _map_regime_label(row["regime_label"]),
+            "source": "market_regime_snapshots",
+            "as_of": str(row.get("generated_at") or "")[:10],
+        }
+    try:
+        row = _q(
+            "SELECT market_regime, created_at::text FROM trade_ai_runs "
+            "WHERE market_regime IS NOT NULL AND created_at::date <= %s::date "
+            "ORDER BY created_at DESC LIMIT 1",
+            [d], fetch="one",
+        )
+        if row and row.get("market_regime"):
+            return {
+                "regime": _map_regime_label(str(row["market_regime"])),
+                "source": "trade_ai_runs",
+                "as_of": str(row.get("created_at") or "")[:10],
+            }
+    except Exception:
+        pass
+    return {"regime": "Ranging", "source": "default_fallback", "as_of": d}
+
+
+def _regime_fields_for_trade(tc_row: dict | None, item: dict | None = None) -> dict:
+    src = tc_row or item or {}
+    open_d = src.get("open_date") or src.get("entry_date")
+    close_d = src.get("close_date") or src.get("execution_date")
+    entry = _lookup_regime_for_date(open_d or close_d)
+    exit_ = _lookup_regime_for_date(close_d or open_d)
+    display = entry["regime"]
+    if entry["regime"] != exit_["regime"]:
+        display = f"{entry['regime']} → {exit_['regime']}"
+    return {
+        "market_regime": entry["regime"],
+        "market_regime_entry": entry["regime"],
+        "market_regime_exit": exit_["regime"],
+        "market_regime_display": display,
+        "market_regime_entry_source": entry["source"],
+        "market_regime_exit_source": exit_["source"],
+        "market_regime_entry_as_of": entry.get("as_of"),
+        "market_regime_exit_as_of": exit_.get("as_of"),
+    }
+
+
 def _lookup_industry(symbol: str) -> dict:
     """Resolve industry/sector label from symbol_profiles (Finviz-backed)."""
     sym = (symbol or "").upper().strip()
@@ -1231,19 +1317,155 @@ def tagging_queue_bulk_tag(trade_keys: list, tags: dict):
     return {"ok": True, "applied": applied}
 
 
+def _enrich_one_trade_review(
+    tk: str,
+    sym: str,
+    tc_row: dict | None,
+    item: dict | None,
+    rev: dict,
+    *,
+    psych_default: str = "Calm",
+    refresh_regime: bool = True,
+    auto_confirm: bool = True,
+) -> dict[str, Any] | None:
+    """Apply auto-tags to one review row; returns patch summary or None if skipped."""
+    payload = _review_payload(rev)
+    updates: dict[str, Any] = {}
+    src = tc_row or item or {}
+
+    if not (rev.get("setup_family") or "").strip():
+        fam = ""
+        if item and item.get("tag_summary"):
+            fam = (item.get("tag_summary") or "").split(",")[0].strip()
+        if not fam or fam == "—":
+            try:
+                from api_v2 import _suggest_setup
+                setup, family, _rat, tags = _suggest_setup(src)
+                fam = family or setup or ""
+                if tags and not (rev.get("setup_types") or []):
+                    updates["setup_types"] = tags if isinstance(tags, list) else [tags]
+            except Exception:
+                fam = fam if fam and fam != "—" else ""
+        if fam and fam != "—":
+            updates["setup_family"] = fam
+
+    regime_fields = _regime_fields_for_trade(tc_row, item)
+    cur_regime = (rev.get("market_regime") or "").strip()
+    stale_regime = (
+        not cur_regime
+        or cur_regime == "Ranging"
+        or payload.get("auto_tag_defaults", {}).get("market_regime") == "Ranging"
+        or payload.get("market_regime_entry_source") in (None, "default", "default_fallback")
+    )
+    if refresh_regime or stale_regime or not cur_regime:
+        updates["market_regime"] = regime_fields["market_regime"]
+        payload.update({
+            "market_regime_entry": regime_fields["market_regime_entry"],
+            "market_regime_exit": regime_fields["market_regime_exit"],
+            "market_regime_display": regime_fields["market_regime_display"],
+            "market_regime_entry_source": regime_fields["market_regime_entry_source"],
+            "market_regime_exit_source": regime_fields["market_regime_exit_source"],
+            "market_regime_entry_as_of": regime_fields.get("market_regime_entry_as_of"),
+            "market_regime_exit_as_of": regime_fields.get("market_regime_exit_as_of"),
+        })
+
+    if not (rev.get("emotion_before") or "").strip():
+        updates["emotion_before"] = psych_default
+    else:
+        eb = str(rev.get("emotion_before") or "").strip()
+        if eb.lower() != eb:
+            updates["emotion_before"] = eb[0].upper() + eb[1:].lower()
+
+    setup_types = rev.get("setup_types") or []
+    if isinstance(setup_types, str):
+        setup_types = [setup_types] if setup_types else []
+    if not setup_types and not (rev.get("setup_name") or "").strip():
+        fam = (updates.get("setup_family") or rev.get("setup_family") or "").strip()
+        if fam:
+            updates["setup_types"] = [fam]
+
+    ind_info = _lookup_industry(sym)
+    if (not (payload.get("industry") or "").strip() or payload.get("industry_source") == "none") and ind_info.get("industry"):
+        payload["industry"] = ind_info["industry"]
+        payload["sector"] = ind_info.get("sector") or ""
+        payload["industry_source"] = ind_info.get("source")
+        updates["catalyst_type"] = ind_info["industry"]
+
+    payload["auto_tagged"] = True
+    payload["auto_tagged_at"] = datetime.utcnow().isoformat() + "Z"
+    payload["auto_tag_defaults"] = {
+        "market_regime": updates.get("market_regime") or cur_regime or regime_fields["market_regime"],
+        "emotion_before": updates.get("emotion_before") or (rev.get("emotion_before") or "").strip() or psych_default,
+    }
+
+    confirmed = False
+    if auto_confirm:
+        has_strategy = bool((updates.get("setup_family") or rev.get("setup_family") or "").strip())
+        has_setup = bool(updates.get("setup_types") or setup_types or (rev.get("setup_name") or "").strip())
+        has_regime = bool((updates.get("market_regime") or cur_regime or "").strip())
+        has_psych = bool((updates.get("emotion_before") or rev.get("emotion_before") or "").strip())
+        ind_ok = bool((payload.get("industry") or "").strip()) or not _lookup_industry(sym).get("industry")
+        if has_strategy and has_setup and has_regime and has_psych and ind_ok:
+            payload["operator_confirmed"] = True
+            payload["operator_reviewed"] = True
+            payload["tagging_complete"] = True
+            payload["auto_confirmed_at"] = datetime.utcnow().isoformat() + "Z"
+            confirmed = True
+
+    if _patch_review(tk, updates, payload):
+        return {"trade_key": tk, "updates": list(updates.keys()), "regime": regime_fields, "confirmed": confirmed}
+    return None
+
+
 def tagging_queue_auto_tag(days=365, account=None, trade_keys: list | None = None, defaults: dict | None = None):
-    """Fill missing tags on incomplete reviews (industry, regime, psychology defaults)."""
+    """Fill missing tags on incomplete reviews (industry, entry/exit regime, psychology, setup)."""
     defaults = defaults or {}
-    regime_default = defaults.get("market_regime") or _default_market_regime()
     psych_default = defaults.get("emotion_before") or "Calm"
-    q = tagging_queue(days=days, account=account, limit=10000, include_complete=False)
+    auto_confirm = defaults.get("auto_confirm", True)
+    refresh_regime = defaults.get("refresh_regime", True)
+    include_complete = bool(defaults.get("include_complete"))
+
+    q = tagging_queue(days=days, account=account, limit=10000, include_complete=include_complete)
     items = q.get("items") or []
+    if not items and include_complete:
+        q = tagging_queue(days=days, account=account, limit=10000, include_complete=True)
+        items = q.get("items") or []
+
     if trade_keys:
         keyset = set(trade_keys)
         items = [i for i in items if i.get("trade_key") in keyset]
+    elif not include_complete:
+        # Also scan trades with no review row yet (0% ready in queue UI)
+        params: list[Any] = [int(days)]
+        acct_sql = ""
+        if account:
+            acct_sql = " AND tc.account = %s"
+            params.append(account)
+        extra = _q(f"""
+            SELECT tc.symbol, tc.account, tc.open_date::text, tc.close_date::text,
+                   (tc.symbol || ':' || tc.account || ':' || tc.close_date::text) AS trade_key
+            FROM trade_closed tc
+            LEFT JOIN journal_trade_reviews r
+              ON r.trade_key = (tc.symbol || ':' || tc.account || ':' || tc.close_date::text)
+            WHERE (tc.buy_price > 0 OR tc.pnl != 0)
+              AND tc.close_date > now() - (%s || ' days')::interval {acct_sql}
+              AND r.id IS NULL
+        """, params)
+        seen = {i["trade_key"] for i in items}
+        for row in extra:
+            if row["trade_key"] not in seen:
+                items.append({
+                    "trade_key": row["trade_key"],
+                    "symbol": row["symbol"],
+                    "account": row["account"],
+                    "open_date": row["open_date"],
+                    "close_date": row["close_date"],
+                    "tag_summary": "—",
+                })
 
     applied = 0
     skipped = 0
+    confirmed = 0
     for item in items:
         tk = item["trade_key"]
         sym = item.get("symbol") or tk.split(":")[0]
@@ -1258,48 +1480,16 @@ def tagging_queue_auto_tag(days=365, account=None, trade_keys: list | None = Non
         if not rev:
             skipped += 1
             continue
-        payload = _review_payload(rev)
-        updates: dict[str, Any] = {}
-        if not (rev.get("setup_family") or "").strip():
-            fam = ""
-            if item.get("tag_summary"):
-                fam = (item.get("tag_summary") or "").split(",")[0].strip()
-            if not fam or fam == "—":
-                try:
-                    from api_v2 import _suggest_setup
-                    setup, family, _rat, tags = _suggest_setup(tc_row or item)
-                    fam = family or setup or ""
-                    if tags and not (rev.get("setup_types") or []):
-                        updates["setup_types"] = tags if isinstance(tags, list) else [tags]
-                except Exception:
-                    fam = fam if fam and fam != "—" else ""
-            if fam and fam != "—":
-                updates["setup_family"] = fam
-        if not (rev.get("market_regime") or "").strip():
-            updates["market_regime"] = regime_default
-        if not (rev.get("emotion_before") or "").strip():
-            updates["emotion_before"] = psych_default
-        setup_types = rev.get("setup_types") or []
-        if isinstance(setup_types, str):
-            setup_types = [setup_types] if setup_types else []
-        if not setup_types and not (rev.get("setup_name") or "").strip():
-            fam = (updates.get("setup_family") or rev.get("setup_family") or "").strip()
-            if fam:
-                updates["setup_types"] = [fam]
-        ind_info = _lookup_industry(sym)
-        if not (payload.get("industry") or "").strip() and ind_info.get("industry"):
-            payload["industry"] = ind_info["industry"]
-            payload["sector"] = ind_info.get("sector") or ""
-            payload["industry_source"] = ind_info.get("source")
-            updates["catalyst_type"] = ind_info["industry"]
-        payload["auto_tagged"] = True
-        payload["auto_tagged_at"] = datetime.utcnow().isoformat() + "Z"
-        payload["auto_tag_defaults"] = {
-            "market_regime": updates.get("market_regime") or (rev.get("market_regime") or "").strip() or regime_default,
-            "emotion_before": updates.get("emotion_before") or (rev.get("emotion_before") or "").strip() or psych_default,
-        }
-        if _patch_review(tk, updates, payload):
+        result = _enrich_one_trade_review(
+            tk, sym, tc_row, item, rev,
+            psych_default=psych_default,
+            refresh_regime=refresh_regime,
+            auto_confirm=auto_confirm,
+        )
+        if result:
             applied += 1
+            if result.get("confirmed"):
+                confirmed += 1
         else:
             skipped += 1
 
@@ -1307,7 +1497,32 @@ def tagging_queue_auto_tag(days=365, account=None, trade_keys: list | None = Non
         "ok": True,
         "applied": applied,
         "skipped": skipped,
-        "defaults_used": {"market_regime": regime_default, "emotion_before": psych_default},
+        "auto_confirmed": confirmed,
+        "defaults_used": {"emotion_before": psych_default, "auto_confirm": auto_confirm},
+    }
+
+
+def tagging_queue_auto_enrich(days=365, account=None, trade_keys: list | None = None, defaults: dict | None = None):
+    """Auto-tag + industry backfill + optional auto-confirm in one operator pass."""
+    defaults = {**(defaults or {}), "auto_confirm": defaults.get("auto_confirm", True) if defaults else True,
+                "refresh_regime": True, "include_complete": True}
+    tag = tagging_queue_auto_tag(days=days, account=account, trade_keys=trade_keys, defaults=defaults)
+    ind = tagging_queue_backfill_industry(
+        days=days, account=account, trade_keys=trade_keys, overwrite=False,
+    )
+    # Second pass picks up industry from backfill + confirms
+    tag2 = tagging_queue_auto_tag(
+        days=days, account=account, trade_keys=trade_keys,
+        defaults={**defaults, "include_complete": True},
+    )
+    return {
+        "ok": True,
+        "auto_tag": tag,
+        "industry_backfill": ind,
+        "auto_tag_pass2": tag2,
+        "applied": (tag.get("applied") or 0) + (tag2.get("applied") or 0),
+        "auto_confirmed": (tag.get("auto_confirmed") or 0) + (tag2.get("auto_confirmed") or 0),
+        "industry_applied": ind.get("applied") or 0,
     }
 
 
@@ -1424,11 +1639,11 @@ def reporting_audit(days=365):
     if need > 0:
         recs.append(f"Clear {need} trades in Tagging Queue ({100 - health:.0f}% incomplete) — unlocks pivot, behavioral, Zella.")
         if auto_pending:
-            recs.append(f"Review {auto_pending} auto-tagged trades — confirm regime/psychology defaults or edit via bulk tag.")
+            recs.append(f"Run Auto-enrich or confirm {auto_pending} auto-tagged trades still awaiting review.")
     elif health >= 99:
         recs.append("Tagging queue clear — reports should reflect regime + psychology on all trades.")
     if partial > 0 and need > 0:
-        recs.append("Use Same-stock bulk tag or Auto-tag to fill market_regime + psychology in one pass.")
+        recs.append("Use Auto-enrich to backfill entry/exit regime + industry; bulk-tag same-symbol legs if needed.")
 
     return {
         "ok": True,
@@ -1466,6 +1681,9 @@ if __name__ == "__main__":
     ap.add_argument("--exit", action="store_true")
     ap.add_argument("--zella", action="store_true")
     ap.add_argument("--behavioral", action="store_true")
+    ap.add_argument("--auto-enrich", action="store_true", help="Auto-tag + industry backfill + confirm")
+    ap.add_argument("--auto-tag", action="store_true", help="Auto-tag queue trades only")
+    ap.add_argument("--backfill-industry", action="store_true", help="Industry backfill from symbol_profiles")
     ap.add_argument("--account")
     ap.add_argument("--days", type=int, default=365)
     args = ap.parse_args()
@@ -1475,3 +1693,9 @@ if __name__ == "__main__":
         print(json.dumps(zella_score(args.account, args.days), indent=2))
     if args.behavioral:
         print(json.dumps(behavioral_analytics(args.account, args.days), indent=2, default=str))
+    if args.auto_enrich:
+        print(json.dumps(tagging_queue_auto_enrich(args.days, args.account), indent=2, default=str))
+    if args.auto_tag:
+        print(json.dumps(tagging_queue_auto_tag(args.days, args.account), indent=2, default=str))
+    if args.backfill_industry:
+        print(json.dumps(tagging_queue_backfill_industry(args.days, args.account), indent=2, default=str))

@@ -12,6 +12,7 @@ import {
 } from '../lib/holdingsTerminalTokens'
 import { mergeLiveStop, stopReviewTooltip } from '../lib/stopReviewTooltip'
 import { holdingReportEligible } from '../lib/reportLinks'
+import { useTerminalUi } from '../lib/terminalUi'
 
 const rsiZoneColor = (s?: string, cvd: HoldingsCvdMode = 'default') =>
   s === 'oversold' ? (cvd === 'cvd' ? BB.blue : BB.green) : s === 'overbought' ? BB.amber : BB.text3
@@ -85,6 +86,7 @@ export default function HoldingsCard({
   monitored, confirmedStop, brokerStopsFetchedAt, reportEntry, coverage,
   onClick, onAction, onRefreshMonitored, onPreflightUpdate,
 }: HoldingsCardProps) {
+  const [terminalUi] = useTerminalUi()
   const { dollars: pl$, pct: pl } = plMetrics(h)
   const sc = signalColor(h.signal, cvdMode)
   const zc = rsiZoneColor(h.rsi_status, cvdMode)
@@ -112,10 +114,15 @@ export default function HoldingsCard({
       onClick={onClick}
       title={`${h.symbol} · ${h.account}${row.needsAction ? ' · Action needed' : ''}`}
       style={{
-        background: BB.bgRow, border: isFocus ? `1px solid ${BB.amber}` : `1px solid ${BB.border}`,
+        background: terminalUi ? BB.bgRow : 'var(--bg1)',
+        border: isFocus
+          ? `1px solid ${terminalUi ? BB.amber : '#60a5fa'}`
+          : `1px solid ${terminalUi ? BB.border : 'var(--border)'}`,
         borderLeft: `4px solid ${row.needsAction ? (isRed ? BB.red : BB.amberAlt) : sc === BB.text3 ? acctColor : sc}`,
-        boxShadow: isFocus ? `0 0 0 2px ${BB.amber}44` : row.needsAction ? '0 2px 12px rgba(255,176,0,.08)' : 'none',
-        borderRadius: 10, padding: '14px 16px', cursor: 'pointer',
+        boxShadow: isFocus ? `0 0 0 2px ${terminalUi ? BB.amber : '#60a5fa'}44` : row.needsAction ? '0 2px 12px rgba(255,176,0,.08)' : 'none',
+        borderRadius: terminalUi ? 2 : 10,
+        padding: terminalUi ? '6px 10px' : '14px 16px',
+        cursor: 'pointer',
         transition: 'box-shadow .15s, border-color .15s',
       }}
       onMouseEnter={e => { if (!isFocus) e.currentTarget.style.boxShadow = '0 2px 14px rgba(255,176,0,.1)' }}

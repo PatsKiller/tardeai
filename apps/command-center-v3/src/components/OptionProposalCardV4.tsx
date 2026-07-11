@@ -14,6 +14,17 @@ import {
 } from '../lib/optionsMetricTooltips'
 import { composeWhy } from '../lib/watchlistCardV4'
 import { WL, numStyle } from '../lib/watchlistCardTokens'
+import type { ActionUrgency, CardVerdict } from '../lib/watchlistCardAction'
+import { useTerminalUi } from '../lib/terminalUi'
+import { cardShell, modRow, modLabel, gridClass, gridCellClass, statusStrip, ctxLine, ctxKey } from '../lib/terminalCardTheme'
+import {
+  BB,
+  numStyle as termNumStyle,
+  terminalRail,
+  terminalButton,
+  terminalVerdictBg,
+  terminalVerdictColor,
+} from '../lib/watchlistTerminalTokens'
 import {
   alpacaPaperButtonLabel,
   allowsManualLog,
@@ -34,6 +45,8 @@ import {
 import type { OptionProposal } from './OptionProposalCard'
 
 // Option Proposal Card v4 — options-desk member of the card-v4 family (2026-07-04).
+// Bloomberg Terminal UI mode (2026-07-11): dense shell, hairline borders, amber primary
+// actions when terminalUi on; legacy v4 chrome when off. All functionality preserved.
 // v3 (OptionProposalCard) stays untouched; the global cc.cards.v4 toggle selects.
 // One tinted two-row hero owns the card: row 1 = strategy word + one deduped
 // sentence (composeWhy over Aegis-stripped reasoning) + headline credit + actions;
@@ -102,6 +115,24 @@ import type { OptionProposal } from './OptionProposalCard'
 //                                                   HARD-BLOCKED for earnings families regardless of prime
 //                                                   verdict (operator spec: no live review until a separate
 //                                                   explicit policy enables it).
+
+function proposalVerdictFromSeverity(s?: string): { verdict: CardVerdict; urgency: ActionUrgency } {
+  const v = (s || '').toLowerCase()
+  if (/crit|urgent|danger/.test(v)) return { verdict: 'FIX', urgency: 'red' }
+  if (/warn|caution/.test(v)) return { verdict: 'WAIT', urgency: 'amber' }
+  if (/pos|ok|good/.test(v)) return { verdict: 'READY', urgency: 'green' }
+  return { verdict: 'WATCH', urgency: 'none' }
+}
+
+function termSignal(c: string, terminal: boolean): string {
+  if (!terminal) return c
+  if (c === WL.signal.red) return BB.red
+  if (c === WL.signal.amber) return BB.amber
+  if (c === WL.signal.teal) return BB.green
+  if (c === WL.price.up) return BB.green
+  if (c === WL.text.dim || c === WL.text.secondary) return BB.text3
+  return c
+}
 
 const STRAT_LABEL: Record<string, string> = {
   covered_call: 'Covered Call',
@@ -275,13 +306,9 @@ function fmtMoneyish(v: number | string | null | undefined): string {
   return fmt$(v, v < 10 ? 2 : 0)
 }
 
-const chip = (c: string, quiet = false): React.CSSProperties => ({
-  fontSize: 8.5, fontWeight: 800, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap',
-  color: c, background: quiet ? 'rgba(148,163,184,.08)' : `${c}18`,
-  border: `1px solid ${quiet ? 'rgba(148,163,184,.2)' : `${c}44`}`,
-})
-
-const statKey: React.CSSProperties = { color: WL.text.dim, fontWeight: 700 }
+const chip = (c: string, quiet = false, terminal = false): React.CSSProperties => terminal
+  ? { fontSize: 8, fontWeight: 800, padding: '1px 5px', borderRadius: 1, whiteSpace: 'nowrap', color: c, background: quiet ? 'transparent' : `${c}22`, border: `1px solid ${c}55`, letterSpacing: '.06em', textTransform: 'uppercase' as const }
+  : { fontSize: 8.5, fontWeight: 800, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap', color: c, background: quiet ? 'rgba(148,163,184,.08)' : `${c}18`, border: `1px solid ${quiet ? 'rgba(148,163,184,.2)' : `${c}44`}` }
 
 const METRIC_LABEL_KEY: Record<string, OptionsMetricKey> = {
   Spot: 'spot',
@@ -306,26 +333,29 @@ function Metric({
   color = WL.text.primary,
   metricKey,
   context,
+  terminal,
 }: {
   label: string
   value: React.ReactNode
   color?: string
   metricKey?: OptionsMetricKey
   context?: OptionsMetricContext
+  terminal?: boolean
 }) {
   const key = metricKey ?? METRIC_LABEL_KEY[label]
+  const valColor = terminal ? (color === WL.text.primary ? BB.text0 : termSignal(color, true)) : color
+  const labelStyle = { fontSize: 8, color: terminal ? BB.text3 : WL.text.dim, textTransform: 'uppercase' as const, fontWeight: 800, letterSpacing: '.04em' }
+  if (terminal) {
+    return (
+      <div style={{ padding: '4px 2px', minWidth: 0 }}>
+        {key ? <MetricChipTooltip metricKey={key} label={label} context={context} style={labelStyle} /> : <div style={labelStyle}>{label}</div>}
+        <div style={{ ...termNumStyle, fontSize: 11, color: valColor, fontWeight: 800, marginTop: 1 }}>{value}</div>
+      </div>
+    )
+  }
   return (
     <div style={{ background: WL.surface.inset, border: `1px solid ${WL.surface.edge}`, borderRadius: 8, padding: '7px 8px' }}>
-      {key ? (
-        <MetricChipTooltip
-          metricKey={key}
-          label={label}
-          context={context}
-          style={{ fontSize: 8, color: WL.text.dim, textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.04em' }}
-        />
-      ) : (
-        <div style={{ fontSize: 8, color: WL.text.dim, textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.04em' }}>{label}</div>
-      )}
+      {key ? <MetricChipTooltip metricKey={key} label={label} context={context} style={labelStyle} /> : <div style={labelStyle}>{label}</div>}
       <div style={{ ...numStyle, fontSize: 12.5, color, fontWeight: 800, marginTop: 2 }}>{value}</div>
     </div>
   )
@@ -386,6 +416,9 @@ export default function OptionProposalCardV4({
   onManualLog?: () => void
   reviewBar?: React.ReactNode
 }) {
+  const [terminalUi] = useTerminalUi()
+  const hair = `1px solid ${BB.border}`
+  const ns = terminalUi ? termNumStyle : numStyle
   const ext = p as OptionProposal & Record<string, unknown>
   const blocked = isCardBlocked(ext)
   const safetyBadge: SafetyStatusBadge | null = safetyStatusBadge(ext)
@@ -397,9 +430,14 @@ export default function OptionProposalCardV4({
   const liqWarnings = liquidityWarnings(p)
   const displayEdgeRaw = ext.display_edge_score ?? p.edge_score
   const tone = heroTone(p.severity || (displayEdgeRaw && Number(displayEdgeRaw) >= 75 ? 'positive' : 'info'))
+  const { verdict, urgency } = proposalVerdictFromSeverity(p.severity || (displayEdgeRaw && Number(displayEdgeRaw) >= 75 ? 'positive' : 'info'))
+  const rail = terminalUi ? terminalRail(verdict, urgency) : tone.c
+  const verdictColor = terminalVerdictColor(verdict, urgency)
+  const verdictBg = terminalVerdictBg(verdict, urgency)
   const strat = STRAT_LABEL[p.strategy] || p.strategy.replace(/_/g, ' ')
   const edge = displayEdgeRaw != null ? Math.round(Number(displayEdgeRaw)) : null
-  const edgeColor = edge == null ? WL.text.dim : edge >= 72 ? WL.signal.teal : edge >= 50 ? WL.signal.amber : WL.signal.red
+  const edgeColorRaw = edge == null ? WL.text.dim : edge >= 72 ? WL.signal.teal : edge >= 50 ? WL.signal.amber : WL.signal.red
+  const edgeColor = termSignal(edgeColorRaw, terminalUi)
   const ds = p.data_source === 'schwab_chain'
     ? { label: 'Schwab chain', c: WL.signal.teal, tip: 'Live bid/ask mid from Schwab option chain.' }
     : p.data_source === 'bs_estimate'
@@ -594,10 +632,9 @@ export default function OptionProposalCardV4({
     }
   }
 
-  const laneBtn: React.CSSProperties = {
-    fontSize: 9.5, fontWeight: 800, padding: '4px 9px', borderRadius: 5, cursor: 'pointer',
-    border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: WL.text.secondary, whiteSpace: 'nowrap',
-  }
+  const laneBtn: React.CSSProperties = terminalUi
+    ? terminalButton('secondary')
+    : { fontSize: 9.5, fontWeight: 800, padding: '4px 9px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: WL.text.secondary, whiteSpace: 'nowrap' }
 
   // IV-rank context line (2026-07-06) — advisory disclosure, one line:
   // teal = extrinsic cheap · amber = extrinsic rich (pay-up) · dim = building/unavailable.
@@ -613,6 +650,16 @@ export default function OptionProposalCardV4({
         : WL.text.secondary
 
   const btnStyle = (action: string): React.CSSProperties => {
+    if (terminalUi) {
+      if (action === 'hold') return terminalButton('ghost')
+      if (action === 'review_chain' || action === 'review_block_reason' || action === 'rerun_review') return terminalButton('secondary')
+      if (EXEC_ACTIONS.has(action)) {
+        const locked = !armed && !manualOnly
+        if (locked) return { ...terminalButton('ghost'), cursor: 'not-allowed', opacity: 0.75 }
+        return terminalButton('primary')
+      }
+      return terminalButton('secondary')
+    }
     const base: React.CSSProperties = { fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, whiteSpace: 'nowrap', cursor: 'pointer' }
     if (action === 'hold') return { ...base, border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: WL.text.dim }
     if (action === 'review_chain' || action === 'review_block_reason' || action === 'rerun_review') {
@@ -629,27 +676,28 @@ export default function OptionProposalCardV4({
     return { ...base, border: '1px solid rgba(148,163,184,.25)', background: 'transparent', color: WL.text.secondary }
   }
 
+  const bodyPad = terminalUi ? { ...modRow(terminalUi) } : { padding: '0 15px 12px' }
+
   return (
     <div
       onClick={onDrill}
       style={{
-        background: WL.surface.card,
-        border: `1px solid ${WL.surface.edge}`,
-        borderLeft: `3px solid ${tone.c}`,
-        borderRadius: WL.card.radius,
-        boxShadow: WL.card.shadow,
+        ...cardShell(rail, terminalUi),
         cursor: onDrill ? 'pointer' : 'default',
-        minWidth: 0,
-        overflow: 'hidden',
-        color: WL.text.primary,
+        boxShadow: terminalUi ? undefined : WL.card.shadow,
       }}
     >
-      {/* ① Header — identity + contract + provenance chips; quiet */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, padding: '10px 15px 8px' }}>
+      {/* ① Header — identity + contract + provenance chips */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={terminalUi
+          ? { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, padding: '5px 10px', borderBottom: hair }
+          : { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, padding: '10px 15px 8px' }}
+      >
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-            <span style={{ ...numStyle, fontSize: 18, fontWeight: 800 }}>{p.symbol}</span>
-            <span style={{ ...numStyle, fontSize: 13, fontWeight: 700, color: WL.text.secondary }}>
+            <span style={{ ...ns, fontSize: terminalUi ? 16 : 18, fontWeight: 800, color: terminalUi ? BB.text0 : undefined }}>{p.symbol}</span>
+            <span style={{ ...ns, fontSize: terminalUi ? 12 : 13, fontWeight: 700, color: terminalUi ? BB.text2 : WL.text.secondary }}>
               {p.short_strike && p.long_strike
                 ? <span title={PROPOSAL.spreadPair} style={{ cursor: 'help' }}>${fmtNum(p.short_strike, 0)}/${fmtNum(p.long_strike, 0)} spread</span>
                 : `$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`}
@@ -657,13 +705,13 @@ export default function OptionProposalCardV4({
             {p.desk_tier && (
               <span title={PROPOSAL.deskTier} style={{ fontSize: 9, fontWeight: 800, color: p.desk_tier === 'A' ? WL.signal.teal : WL.text.secondary, cursor: 'help' }}>Tier {p.desk_tier}</span>
             )}
-            <span style={{ fontSize: 10.5, color: WL.text.dim }}>{fmtExpiry(p.expiration)}</span>
+            <span style={{ fontSize: terminalUi ? 9.5 : 10.5, color: terminalUi ? BB.text3 : WL.text.dim }}>{fmtExpiry(p.expiration)}</span>
           </div>
-          <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', marginTop: 5 }}>
+          <div style={{ display: 'flex', gap: terminalUi ? 4 : 5, alignItems: 'center', flexWrap: 'wrap', marginTop: terminalUi ? 4 : 5 }}>
             {paper && (
               <span
                 title="Educational paper model — manual review only, never live-eligible. Outcomes feed the strategy validation gate (30 paper outcomes, PF>1.3, WR>55%) before any live consideration."
-                style={{ ...chip(WL.signal.amber), background: 'transparent', cursor: 'help' }}
+                style={{ ...chip(WL.signal.amber, false, terminalUi), background: 'transparent', cursor: 'help' }}
               >
                 {paperFamily} · PAPER MODEL
               </span>
@@ -673,32 +721,32 @@ export default function OptionProposalCardV4({
                 metricKey="paper_validation"
                 label={p.validation_progress.label}
                 context={metricCtx}
-                style={{ ...chip(WL.signal.amber, true), cursor: 'help' }}
+                style={{ ...chip(WL.signal.amber, true, terminalUi), cursor: 'help' }}
               />
             )}
             {paper && primeDisplay && (
               <span
                 title={`Prime rubric ${prime?.prime_score?.toFixed(1) ?? '—'}/100 → ${primeDisplay.label}. Advisory label only — never places orders.`}
-                style={{ ...chip(primeChipColor(primeDisplay), primeDisplay.verdict === 'NOT_PRIME'), cursor: 'help' }}
+                style={{ ...chip(primeChipColor(primeDisplay), primeDisplay.verdict === 'NOT_PRIME', terminalUi), cursor: 'help' }}
               >
                 {primeDisplay.shortLabel}
               </span>
             )}
             {laneState && (
-              <span title={laneState.tip} style={{ ...chip(laneState.color), cursor: 'help' }}>
+              <span title={laneState.tip} style={{ ...chip(laneState.color, false, terminalUi), cursor: 'help' }}>
                 ALPACA {laneState.label}
               </span>
             )}
             {(p.alpaca_paper_status || queueStatus) === 'ALPACA_PAPER_SUBMITTED' && alpacaJson?.response?.id && (
               <LivePaperOrderChip orderId={String(alpacaJson.response.id)} />
             )}
-            {ds && <span title={ds.tip} style={chip(ds.c)}>{ds.label}</span>}
+            {ds && <span title={ds.tip} style={chip(ds.c, false, terminalUi)}>{ds.label}</span>}
             {(route.kind === 'alpaca_paper' ? (
               <MetricChipTooltip
                 metricKey="alpaca_paper_only"
                 label={route.label}
                 context={metricCtx}
-                style={chip(WL.signal.amber)}
+                style={chip(WL.signal.amber, false, terminalUi)}
               />
             ) : (
               <span title="Execution route — distinct from data source (Schwab chain)" style={chip(
@@ -707,18 +755,19 @@ export default function OptionProposalCardV4({
                     : route.kind === 'paper_model' ? WL.signal.amber
                       : WL.text.dim,
                 route.kind === 'review_only',
+                terminalUi,
               )}>
                 {route.label}
               </span>
             ))}
-            {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={chip(WL.text.secondary, true)}>income sleeve</span>}
-            {p.enterprise?.live_eligible && !paper && <span title={PROPOSAL.liveOk} style={{ ...chip(WL.signal.teal), cursor: 'help' }}>live eligible</span>}
+            {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={chip(WL.text.secondary, true, terminalUi)}>income sleeve</span>}
+            {p.enterprise?.live_eligible && !paper && <span title={PROPOSAL.liveOk} style={{ ...chip(WL.signal.teal, false, terminalUi), cursor: 'help' }}>live eligible</span>}
             {paper && !p.enterprise?.live_eligible && (
               <MetricChipTooltip
                 metricKey="live_eligible_false"
                 label="live eligible false"
                 context={metricCtx}
-                style={{ ...chip(WL.signal.red), cursor: 'help' }}
+                style={{ ...chip(WL.signal.red, false, terminalUi), cursor: 'help' }}
               />
             )}
             {safetyBadge && (
@@ -728,7 +777,7 @@ export default function OptionProposalCardV4({
                 context={metricCtx}
                 tooltip={safetyBadge.kind === 'no_live_path' ? undefined : getOptionsMetricTooltip('live_eligible_false', { ...metricCtx, blocks: p.enterprise?.blocks })}
                 style={{
-                  ...chip(safetyBadge.severity === 'danger' ? WL.signal.red : WL.signal.amber),
+                  ...chip(safetyBadge.severity === 'danger' ? WL.signal.red : WL.signal.amber, false, terminalUi),
                   fontWeight: 900,
                   cursor: 'help',
                   background: safetyBadge.kind === 'no_live_path' ? 'rgba(245,166,35,.1)' : undefined,
@@ -738,24 +787,33 @@ export default function OptionProposalCardV4({
           </div>
         </div>
         {p.account && (
-          <span title={TIPS.account} style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 5, background: WL.surface.inset, border: `1px solid ${WL.surface.edge}`, color: WL.text.secondary, whiteSpace: 'nowrap', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 0 }}>
+          <span title={TIPS.account} style={{
+            fontSize: 9, fontWeight: 800, padding: terminalUi ? '2px 6px' : '3px 8px',
+            borderRadius: terminalUi ? 2 : 5,
+            background: terminalUi ? BB.bgShift : WL.surface.inset,
+            border: `1px solid ${terminalUi ? BB.border : WL.surface.edge}`,
+            color: terminalUi ? BB.text2 : WL.text.secondary,
+            whiteSpace: 'nowrap', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 0,
+          }}>
             {p.account.replace(/_/g, ' ')}
           </span>
         )}
       </div>
 
-      {/* ② Hero — two rows, the only tinted surface, owns the card */}
+      {/* ② Hero — strategy + reasoning + headline economics + actions */}
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: tone.bg, borderTop: `1px solid ${tone.border}`, borderBottom: `1px solid ${tone.border}`, padding: '10px 15px 9px', display: 'flex', flexDirection: 'column', gap: 7 }}
+        style={terminalUi
+          ? { ...statusStrip(verdictBg, true), flexDirection: 'column', alignItems: 'stretch', gap: 4 }
+          : { background: tone.bg, borderTop: `1px solid ${tone.border}`, borderBottom: `1px solid ${tone.border}`, padding: '10px 15px 9px', display: 'flex', flexDirection: 'column', gap: 7 }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span title={`${guide.oneLiner}`} style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: tone.c, flexShrink: 0, cursor: 'help' }}>
-            {guide.emoji} {strat}
+        <div style={{ display: 'flex', alignItems: 'center', gap: terminalUi ? 8 : 10 }}>
+          <span title={`${guide.oneLiner}`} style={{ fontSize: terminalUi ? 10 : 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: terminalUi ? verdictColor : tone.c, flexShrink: 0, cursor: 'help' }}>
+            {terminalUi ? strat : `${guide.emoji} ${strat}`}
           </span>
           <span
             title={p.reasoning || undefined}
-            style={{ fontSize: 12.5, fontWeight: 700, color: WL.text.primary, minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            style={{ fontSize: terminalUi ? 10 : 12.5, fontWeight: terminalUi ? 600 : 700, color: terminalUi ? BB.text0 : WL.text.primary, minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
           >
             {whyLine || '—'}
           </span>
@@ -764,7 +822,7 @@ export default function OptionProposalCardV4({
             label={p.premium_total != null ? fmt$(p.premium_total) : '—'}
             context={metricCtx}
             style={{ flexShrink: 0 }}
-            valueStyle={{ ...numStyle, fontSize: 13.5, fontWeight: 800, color: cfColor }}
+            valueStyle={{ ...ns, fontSize: terminalUi ? 12 : 13.5, fontWeight: 800, color: terminalUi ? (isCredit ? BB.green : BB.text0) : cfColor }}
           />
           <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
             {actionButtons.map((b, i) => {
@@ -793,7 +851,7 @@ export default function OptionProposalCardV4({
             })}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 11, color: WL.text.secondary }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: terminalUi ? 10 : 12, flexWrap: 'wrap', fontSize: terminalUi ? 9.5 : 11, color: terminalUi ? BB.text2 : WL.text.secondary }}>
           <HeroMetricChip metricKey="edge" label="edge" value={edge ?? '—'} context={metricCtx} color={edgeColor} />
           <HeroMetricChip metricKey="ev" label="EV" value={fmt$(p.expected_value)} context={metricCtx} />
           <HeroMetricChip
@@ -801,26 +859,26 @@ export default function OptionProposalCardV4({
             label="POP"
             value={p.pop_pct != null ? `${p.pop_pct.toFixed(1)}%` : '—'}
             context={metricCtx}
-            color={p.pop_pct != null && p.pop_pct >= 60 ? WL.signal.teal : WL.signal.amber}
+            color={termSignal(p.pop_pct != null && p.pop_pct >= 60 ? WL.signal.teal : WL.signal.amber, terminalUi)}
           />
           <HeroMetricChip
             metricKey="rr"
             label="R:R"
             value={p.risk_reward != null ? p.risk_reward.toFixed(2) : '—'}
             context={metricCtx}
-            color={p.risk_reward != null && p.risk_reward >= 0.3 ? WL.signal.teal : WL.text.primary}
+            color={termSignal(p.risk_reward != null && p.risk_reward >= 0.3 ? WL.signal.teal : WL.text.primary, terminalUi)}
           />
           <HeroMetricChip metricKey="dte" label="DTE" value={p.dte ?? '—'} context={metricCtx} />
           <span title={[tone.label, p.aegis_note].filter(Boolean).join(' — ') || PROPOSAL.recommended} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', cursor: 'help' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: tone.c, flex: 'none' }} />
-            <b style={{ color: tone.c, fontSize: 10, letterSpacing: '.06em' }}>{tone.label}</b>
-            {p.aegis_verdict && <span style={{ color: WL.text.dim }}>aegis {String(p.aegis_verdict).replace(/_/g, ' ')}</span>}
+            <span style={{ width: terminalUi ? 5 : 6, height: terminalUi ? 5 : 6, borderRadius: terminalUi ? 1 : '50%', background: terminalUi ? verdictColor : tone.c, flex: 'none' }} />
+            <b style={{ color: terminalUi ? verdictColor : tone.c, fontSize: 10, letterSpacing: '.06em' }}>{tone.label}</b>
+            {p.aegis_verdict && <span style={{ color: terminalUi ? BB.text3 : WL.text.dim }}>aegis {String(p.aegis_verdict).replace(/_/g, ' ')}</span>}
           </span>
         </div>
       </div>
 
       {liqWarnings.length > 0 && (
-        <div style={{ padding: '6px 15px 0' }}>
+        <div style={terminalUi ? { ...modRow(terminalUi) } : { padding: '6px 15px 0' }} onClick={e => e.stopPropagation()}>
           {liqWarnings.map(w => (
             <div
               key={w.code}
@@ -841,11 +899,20 @@ export default function OptionProposalCardV4({
         </div>
       )}
 
-      <div style={{ padding: '0 15px 12px' }}>
-        {/* Stage B: paper-model disclosure block — analysis one-liner, disclosed
-            flags, discovery lineage. Amber-only; no live affordance exists here. */}
+      <div style={bodyPad} onClick={e => e.stopPropagation()}>
+        {/* Stage B: paper-model disclosure block */}
         {paper && (
-          <div style={{ marginTop: 10, padding: '9px 10px', borderRadius: 8, background: 'rgba(245,166,35,.06)', border: '1px solid rgba(245,166,35,.28)', fontSize: 10.5, lineHeight: 1.55, color: WL.text.secondary }}>
+          <div style={{
+            marginTop: terminalUi ? 0 : 10,
+            padding: terminalUi ? '6px 0' : '9px 10px',
+            borderRadius: terminalUi ? 0 : 8,
+            background: terminalUi ? 'transparent' : 'rgba(245,166,35,.06)',
+            border: terminalUi ? 'none' : '1px solid rgba(245,166,35,.28)',
+            borderTop: terminalUi ? hair : undefined,
+            fontSize: terminalUi ? 9.5 : 10.5,
+            lineHeight: 1.55,
+            color: terminalUi ? BB.text2 : WL.text.secondary,
+          }}>
             {/* EARNINGS-SPREADS Stage 3: vertical-spread block — legs table from
                 meta.strategy_json.legs, package economics, event context line.
                 Amber-block members only; no live affordance exists here. */}
@@ -1086,32 +1153,31 @@ export default function OptionProposalCardV4({
 
         {novice && <RiskFlagChips flags={risks} />}
 
-        {/* ③ Economics grid — headline stats live in the hero; contract detail lives here */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(72px, 1fr))', gap: 7, marginTop: 11 }}>
-          <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} context={metricCtx} />
-          <Metric label="Strike" value={`$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`} context={metricCtx} />
-          <Metric label="Premium" value={p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? WL.price.up : WL.text.primary} metricKey="premium" context={metricCtx} />
-          <Metric
-            label={cashflowLabel}
-            value={fmt$(p.premium_total)}
-            color={cfColor}
-            metricKey={isCredit ? 'total_credit' : 'total_debit'}
-            context={metricCtx}
-          />
-          <Metric label="Breakeven" value={p.breakeven != null ? `$${fmtNum(p.breakeven, 2)}` : '—'} context={metricCtx} />
-          <Metric label="Max profit" value={fmtMoneyish(p.max_profit)} color={WL.price.up} context={metricCtx} />
-          {p.strategy === 'covered_call' ? (
-            <>
-              <Metric label="Stock risk" value={fmt$(stockRisk)} color={WL.signal.red} context={metricCtx} />
-              <Metric label="Upside cap" value={p.upside_cap ?? `$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)} if assigned`} color={WL.signal.amber} />
-            </>
-          ) : (
-            <Metric label="Max loss" value={fmtMoneyish(p.max_loss)} color={WL.signal.red} context={metricCtx} />
-          )}
-          <Metric label="IV rank" value={p.iv_rank != null ? `${p.iv_rank}%` : '—'} context={metricCtx} />
-          <Metric label="Contracts" value={p.contracts ?? '—'} context={metricCtx} />
-          {p.delta != null && <Metric label="Delta" value={p.delta.toFixed(2)} context={metricCtx} />}
-          {p.oi != null && <Metric label="OI" value={fmtNum(p.oi, 0)} context={metricCtx} />}
+        {/* ③ Economics grid */}
+        <div className={gridClass(terminalUi)} style={terminalUi ? undefined : { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(72px, 1fr))', gap: 7, marginTop: 11 }}>
+          <div className={gridCellClass(terminalUi)} style={terminalUi ? undefined : { gridColumn: '1 / -1' }}>
+            <div style={modLabel(terminalUi)}><span>Economics</span></div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: terminalUi ? 4 : 7 }}>
+              <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} context={metricCtx} terminal={terminalUi} />
+              <Metric label="Strike" value={`$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`} context={metricCtx} terminal={terminalUi} />
+              <Metric label="Premium" value={p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? WL.price.up : WL.text.primary} metricKey="premium" context={metricCtx} terminal={terminalUi} />
+              <Metric label={cashflowLabel} value={fmt$(p.premium_total)} color={cfColor} metricKey={isCredit ? 'total_credit' : 'total_debit'} context={metricCtx} terminal={terminalUi} />
+              <Metric label="Breakeven" value={p.breakeven != null ? `$${fmtNum(p.breakeven, 2)}` : '—'} context={metricCtx} terminal={terminalUi} />
+              <Metric label="Max profit" value={fmtMoneyish(p.max_profit)} color={WL.price.up} context={metricCtx} terminal={terminalUi} />
+              {p.strategy === 'covered_call' ? (
+                <>
+                  <Metric label="Stock risk" value={fmt$(stockRisk)} color={WL.signal.red} context={metricCtx} terminal={terminalUi} />
+                  <Metric label="Upside cap" value={p.upside_cap ?? `$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)} if assigned`} color={WL.signal.amber} terminal={terminalUi} />
+                </>
+              ) : (
+                <Metric label="Max loss" value={fmtMoneyish(p.max_loss)} color={WL.signal.red} context={metricCtx} terminal={terminalUi} />
+              )}
+              <Metric label="IV rank" value={p.iv_rank != null ? `${p.iv_rank}%` : '—'} context={metricCtx} terminal={terminalUi} />
+              <Metric label="Contracts" value={p.contracts ?? '—'} context={metricCtx} terminal={terminalUi} />
+              {p.delta != null && <Metric label="Delta" value={p.delta.toFixed(2)} context={metricCtx} terminal={terminalUi} />}
+              {p.oi != null && <Metric label="OI" value={fmtNum(p.oi, 0)} context={metricCtx} terminal={terminalUi} />}
+            </div>
+          </div>
         </div>
 
         {novice && <WhatIfBox strategy={p.strategy} symbol={p.symbol} card={p} />}
@@ -1120,23 +1186,33 @@ export default function OptionProposalCardV4({
 
         {/* ④ Underlying context — company + sector · industry · instrument (added 2026-07-04) */}
         {(p.company_description || p.sector) && (
-          <div style={{ fontSize: 10, color: WL.text.dim, marginTop: 10, lineHeight: 1.45, borderTop: `1px solid ${WL.surface.divider}`, paddingTop: 8 }}>
-            {p.company_description && <span style={{ color: WL.text.secondary }}>{String(p.company_description).slice(0, 160)} </span>}
+          <div style={{
+            ...(terminalUi ? ctxLine(terminalUi) : { fontSize: 10, color: WL.text.dim }),
+            marginTop: 10, lineHeight: 1.45,
+            borderTop: terminalUi ? hair : `1px solid ${WL.surface.divider}`,
+            paddingTop: terminalUi ? 5 : 8,
+          }}>
+            {p.company_description && <span style={{ color: terminalUi ? BB.text2 : WL.text.secondary }}>{String(p.company_description).slice(0, 160)} </span>}
             {(p.sector || p.industry) && (
-              <span>{[p.sector, p.industry, p.instrument_type].filter(Boolean).join(' · ')}</span>
+              <span style={terminalUi ? ctxKey(terminalUi) : undefined}>{[p.sector, p.industry, p.instrument_type].filter(Boolean).join(' · ')}</span>
             )}
           </div>
         )}
 
-        {/* ⑤ Footer — execution path + manual log (manual log hidden for paper
-            models: there is nothing to execute; desk review/ack is the only action) */}
+        {/* ⑤ Footer — execution path + manual log */}
         {(p.execution_note || showManualLog) && (
-          <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 9, paddingTop: 8, borderTop: `1px solid ${WL.surface.divider}` }}>
-            <span title="Execution route — not data source" style={{ fontSize: 9.5, color: WL.text.dim, fontStyle: 'italic', lineHeight: 1.4, minWidth: 0 }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            marginTop: 9, paddingTop: terminalUi ? 5 : 8,
+            borderTop: terminalUi ? hair : `1px solid ${WL.surface.divider}`,
+            background: terminalUi ? BB.bgPanel : undefined,
+            padding: terminalUi ? '5px 10px' : undefined,
+          }}>
+            <span title="Execution route — not data source" style={{ fontSize: terminalUi ? 9 : 9.5, color: terminalUi ? BB.text3 : WL.text.dim, fontStyle: 'italic', lineHeight: 1.4, minWidth: 0 }}>
               {p.execution_note || route.label}
             </span>
             {showManualLog && (
-              <button type="button" title={ACTIONS.manualLog} onClick={onManualLog} style={{ fontSize: 10, fontWeight: 800, padding: '5px 11px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: WL.text.secondary, cursor: 'help', flexShrink: 0 }}>
+              <button type="button" title={ACTIONS.manualLog} onClick={onManualLog} style={terminalUi ? terminalButton('secondary') : { fontSize: 10, fontWeight: 800, padding: '5px 11px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: WL.text.secondary, cursor: 'help', flexShrink: 0 }}>
                 Executed manually
               </button>
             )}

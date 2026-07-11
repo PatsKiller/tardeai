@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import AdvisorChangesPanel from '../components/AdvisorChangesPanel'
 import { runRotationOversight } from '../lib/cloudLlmRun'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 const PAGE_TABS = ['Review', 'Advisor Guide'] as const
 
@@ -183,6 +185,7 @@ function SummaryCard({ label, value, color, onClick, active }: { label: string; 
 
 // ── Page ────────────────────────────────────────────────────────────────────
 export default function RotationIntelligence() {
+  const [terminalUi] = useTerminalUi()
   const [searchParams, setSearchParams] = useSearchParams()
   const tabSlug = searchParams.get('tab') ?? ''
   const [pageTab, setPageTab] = useState<typeof PAGE_TABS[number]>(
@@ -517,18 +520,14 @@ export default function RotationIntelligence() {
       <header style={{ marginBottom: 18 }}>
         <div className="hub-title-row" style={{ marginBottom: 8 }}>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Rotation Intelligence</div>
-            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>
+            <div style={hubTitle()}>Rotation Intelligence</div>
+            <div style={hubSubtitle(terminalUi)}>
               Grounded local review + free/OAuth Grok second opinion
             </div>
           </div>
-          <div className="hub-tabs">
+          <div className="hub-tabs" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {PAGE_TABS.map(t => (
-              <button key={t} onClick={() => selectPageTab(t)} style={{
-                padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-                background: pageTab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-                color: pageTab === t ? '#60a5fa' : 'var(--text3)', fontWeight: pageTab === t ? 700 : 400,
-              }}>{t}</button>
+              <button key={t} onClick={() => selectPageTab(t)} style={hubTab(pageTab === t, terminalUi)}>{t}</button>
             ))}
           </div>
         </div>

@@ -13,6 +13,8 @@ import ExecutionCoachPanel from '../components/ExecutionCoachPanel'
 import DrawdownChart from '../components/risk/DrawdownChart'
 import ZellaScoreCard from '../components/tradeinview/ZellaScoreCard'
 import ExitIntelligencePanel from '../components/tradeinview/ExitIntelligencePanel'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 import BehavioralPanel from '../components/tradeinview/BehavioralPanel'
 import SavedFilterBar, { type FilterPayload } from '../components/tradeinview/SavedFilterBar'
 import TradeLogTable from '../components/tradeinview/TradeLogTable'
@@ -178,6 +180,7 @@ function TradeReviewForm({ tradeKey, symbol, account, closedDate, onClose }: any
 }
 
 export default function JournalHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
   const [chartTrade, setChartTrade] = useState<any>(null)
   const [tab, setTab] = useState<typeof TABS[number]>('Trades')
   const [critiqueQuery, setCritiqueQuery] = useState('')
@@ -506,19 +509,14 @@ export default function JournalHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div className="hub-title-row">
+      <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>TradeInView</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Trading journal & performance analytics · {realTradeCount} real trades · {Math.max(0, accountCounts.length - 1)} accounts <span style={{ color: 'var(--text4)' }}>· +{allTrades.length - realTradeCount} paper (opt-in)</span></div>
+          <div style={hubTitle()}>TradeInView</div>
+          <div style={hubSubtitle(terminalUi)}>Trading journal & performance analytics · {realTradeCount} real trades · {Math.max(0, accountCounts.length - 1)} accounts <span style={{ color: 'var(--text4)' }}>· +{allTrades.length - realTradeCount} paper (opt-in)</span></div>
         </div>
-        <div className="hub-tabs">
+        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: '4px 12px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer',
-              background: tab === t ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-              color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
-              position: 'relative',
-            }}>
+            <button key={t} onClick={() => setTab(t)} style={{ ...hubTab(tab === t, terminalUi), position: 'relative' }}>
               {t}
               {t === 'Tagging Queue' && tagQueueNeed > 0 && (
                 <span style={{ marginLeft: 5, fontSize: 8, padding: '1px 5px', borderRadius: 8, background: '#ef4444', color: '#fff', fontWeight: 700 }}>{tagQueueNeed}</span>

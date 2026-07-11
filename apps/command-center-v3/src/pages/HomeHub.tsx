@@ -6,6 +6,8 @@ import type { DrillContext } from '../components/DetailDrawer'
 import RiskGauge from '../components/risk/RiskGauge'
 import OperatorInboxPanel from '../components/OperatorInboxPanel'
 import { healthFindingCta } from '../lib/healthCta'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -24,6 +26,7 @@ function SCard({ title, count, accent, children }: { title: string; count?: any;
 const Line = ({ children, color }: any) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, color: color ?? 'var(--text2)' }}>{children}</div>
 
 export default function HomeHub({ onDrill }: Props) {
+  const [terminalUi] = useTerminalUi()
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
@@ -86,10 +89,10 @@ export default function HomeHub({ onDrill }: Props) {
 
   return (
     <div>
-      <div className="hub-title-row">
+      <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Home</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmt$(pv ?? 0, 0)} · {overview?.position_count ?? 0} positions · command router</div>
+          <div style={hubTitle()}>Home</div>
+          <div style={hubSubtitle(terminalUi)}>{fmt$(pv ?? 0, 0)} · {overview?.position_count ?? 0} positions · command router</div>
         </div>
         <Link to="/reports" style={{
           padding: '6px 14px', fontSize: 11, fontWeight: 700, borderRadius: 6, textDecoration: 'none',
@@ -99,8 +102,8 @@ export default function HomeHub({ onDrill }: Props) {
 
       <>
           {/* Command Center header — matches v2 layout */}
-          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 12 }}>Command Center</div>
+          <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...(terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }), marginBottom: 16 }}>
+            <div style={{ fontSize: terminalUi ? 11 : 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 12 }}>Command Center</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
               {[
                 { label: 'Portfolio', value: pv != null ? fmt$(pv, 0) : '—', color: 'var(--text0)' },

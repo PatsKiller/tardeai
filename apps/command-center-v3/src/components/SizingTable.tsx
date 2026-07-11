@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react'
 import { WL, numStyle } from '../lib/watchlistCardTokens'
+import { BB as TBB, numStyle as termNum } from '../lib/watchlistTerminalTokens'
 import {
   acctLabel,
   computeRiskSizedShares,
@@ -30,35 +31,45 @@ type Props = {
   /** Desk concentration policy: max % of available cash deployed per position (from proposal-accounts). */
   maxDeployPctOfCash?: number
   onSize?: (accountKey: string, riskPct: RiskPct) => void
+  /** Bloomberg terminal — tighter table, amber risk toggle, 3 rows max, no Deploy column. */
+  variant?: 'default' | 'terminal'
 }
 
-const label: CSSProperties = {
-  fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase',
-  color: WL.text.dim, marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-}
-const th: CSSProperties = {
-  textAlign: 'right', fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em',
-  color: WL.text.dim, fontWeight: 700, padding: '2px 6px', borderBottom: `1px solid ${WL.surface.divider}`,
-}
-const td: CSSProperties = {
-  ...numStyle, padding: '4px 6px', textAlign: 'right', fontSize: 11, color: WL.text.secondary,
-  borderBottom: `1px solid ${WL.surface.divider}`,
-}
+
 
 function k(v: number): string {
   return v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(0)}`
 }
 
-export default function SizingTable({ accounts, heldPositions, entry, stop, target, canPropose, maxDeployPctOfCash, onSize }: Props) {
+export default function SizingTable({ accounts, heldPositions, entry, stop, target, canPropose, maxDeployPctOfCash, onSize, variant = 'default' }: Props) {
   const [riskPct, setRiskPct] = useState<RiskPct>(1)
+  const term = variant === 'terminal'
+  const tk = term ? TBB : WL
+  const ns = term ? termNum : numStyle
 
   // Fractional risk (0.5/0.75) only enters via the wide-stop suggestion button below; while
   // active it renders as an extra selected segment so the toggle never lies about state.
   const riskOpts: RiskPct[] = riskPct === 0.5 || riskPct === 0.75 ? [riskPct, 1, 2] : [1, 2]
+  const label: CSSProperties = {
+    fontSize: term ? 8 : 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase',
+    color: term ? TBB.text3 : WL.text.dim, marginBottom: term ? 4 : 6,
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+  }
+  const th: CSSProperties = {
+    textAlign: 'right', fontSize: term ? 8 : 9, textTransform: 'uppercase', letterSpacing: '.06em',
+    color: term ? TBB.text3 : WL.text.dim, fontWeight: 700,
+    padding: term ? '1px 4px' : '2px 6px',
+    borderBottom: `1px solid ${term ? TBB.border : WL.surface.divider}`,
+  }
+  const td: CSSProperties = {
+    ...ns, padding: term ? '2px 4px' : '4px 6px', textAlign: 'right',
+    fontSize: term ? 10 : 11, color: term ? TBB.text2 : WL.text.secondary,
+    borderBottom: `1px solid ${term ? TBB.border : WL.surface.divider}`,
+  }
   const header = (
     <div style={label}>
-      <span>Sizing &amp; account risk</span>
-      <span style={{ display: 'inline-flex', border: '1px solid rgba(148,163,184,.25)', borderRadius: 5, overflow: 'hidden' }}>
+      <span>{term ? 'Sizing' : 'Sizing & account risk'}</span>
+      <span style={{ display: 'inline-flex', border: `1px solid ${term ? TBB.border : 'rgba(148,163,184,.25)'}`, borderRadius: term ? 2 : 5, overflow: 'hidden' }}>
         {riskOpts.map(p => (
           <button
             key={p}
@@ -67,9 +78,10 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
               : p === 1 ? '1% of available cash (default)'
               : `${p}% of available cash — volatility-reduced for a wide stop`}
             style={{
-              fontSize: 9.5, fontWeight: 800, padding: '2px 8px', border: 'none', cursor: 'pointer',
-              background: riskPct === p ? 'rgba(45,212,191,.15)' : 'transparent',
-              color: riskPct === p ? WL.signal.teal : WL.text.dim, letterSpacing: 'normal', textTransform: 'none',
+              fontSize: term ? 8 : 9.5, fontWeight: 800, padding: term ? '1px 6px' : '2px 8px', border: 'none', cursor: 'pointer',
+              background: riskPct === p ? (term ? TBB.amberDim : 'rgba(45,212,191,.15)') : 'transparent',
+              color: riskPct === p ? (term ? TBB.amber : WL.signal.teal) : (term ? TBB.text3 : WL.text.dim),
+              letterSpacing: 'normal', textTransform: 'none',
             }}
           >{p}%</button>
         ))}
@@ -93,7 +105,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
     .map(a => ({ a, base: resolveSizingBase(a) }))
     .filter(x => x.base >= 1000)
     .sort((l, r) => r.base - l.base)
-    .slice(0, 4)
+    .slice(0, term ? 3 : 4)
 
   if (!rows.length) {
     return (
@@ -146,7 +158,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
           <tr>
             <th style={{ ...th, textAlign: 'left' }}>Account</th>
             <th style={th}>Shares</th>
-            <th style={th} title="Capital deployed (shares × limit) — NOT the risk; risk is what you lose at the stop">Deploy</th>
+            {!term && <th style={th} title="Capital deployed (shares × limit) — NOT the risk; risk is what you lose at the stop">Deploy</th>}
             <th style={th} title="Max loss if stopped out — this is what the 1%/2% applies to">Risk $</th>
             <th style={th} title="Deployment as % of available cash">%Cash</th>
             <th style={th}></th>
@@ -159,27 +171,27 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
             const cell = last ? { ...td, borderBottom: 'none' } : td
             return (
               <tr key={r.key}>
-                <td style={{ ...cell, textAlign: 'left', fontFamily: 'inherit', fontVariantNumeric: 'normal', color: WL.text.primary, fontWeight: 600 }}>
-                  {r.name}
+                <td style={{ ...cell, textAlign: 'left', fontFamily: 'inherit', fontVariantNumeric: 'normal', color: term ? TBB.text0 : WL.text.primary, fontWeight: 600, fontSize: term ? 9 : cell.fontSize }}>
+                  {term ? acctLabel(r.key) : r.name}
                 </td>
                 {insufficient ? (
-                  <td colSpan={4} style={{ ...cell, color: WL.signal.amber, fontFamily: 'inherit' }}>exceeds available cash ({k(r.base)}) — reduce size</td>
+                  <td colSpan={term ? 3 : 4} style={{ ...cell, color: term ? TBB.amber : WL.signal.amber, fontFamily: 'inherit', fontSize: term ? 9 : cell.fontSize }}>exceeds cash ({k(r.base)})</td>
                 ) : (
                   <>
                     <td style={cell}>
                       <div>{r.pos.shares.toLocaleString()}{r.pos.concentrationCapped || r.cashCapped ? ' ⚠' : ''}</div>
-                      {r.pos.concentrationCapped && (
+                      {!term && r.pos.concentrationCapped && (
                         <div style={{ fontSize: 9, color: WL.signal.amber, fontWeight: 700, lineHeight: 1.3 }}>
                           ⚠ {r.cap?.label} cap (${((r.cap?.dollars ?? 0) / 1000).toFixed(1)}k)
                         </div>
                       )}
-                      {r.cashCapped && !r.pos.concentrationCapped && (
+                      {!term && r.cashCapped && !r.pos.concentrationCapped && (
                         <div style={{ fontSize: 9, color: WL.signal.amber, fontWeight: 700, lineHeight: 1.3 }}>
                           ⚠ cash-capped at {riskPct}% risk
                         </div>
                       )}
                     </td>
-                    <td style={cell}>{k(r.pos.investment)}</td>
+                    {!term && <td style={cell}>{k(r.pos.investment)}</td>}
                     <td style={cell}>
                       {k(r.pos.dollarRisk)}
                       {r.eq > 0 && (
@@ -205,8 +217,8 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
                       title={canPropose
                         ? `Open Propose Entry pre-filled: ${r.name} @ ${riskPct}% risk`
                         : 'data stale/caution — refresh before routing; proposal will still queue for review'}
-                      style={{ fontSize: 10.5, fontWeight: 700, color: canPropose ? WL.signal.teal : WL.signal.amber, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
-                    >size ▸</button>
+                      style={{ fontSize: term ? 9 : 10.5, fontWeight: 700, color: canPropose ? (term ? TBB.amber : WL.signal.teal) : (term ? TBB.orange : WL.signal.amber), background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+                    >{term ? '▸' : 'size ▸'}</button>
                   ) : (
                     <span style={{ color: WL.text.dim, fontSize: 10 }}>·</span>
                   )}
@@ -216,7 +228,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
           })}
         </tbody>
       </table>
-      <div style={{ fontSize: 10, color: WL.text.dim, marginTop: 5, lineHeight: 1.5 }}
+      {!term && <div style={{ fontSize: 10, color: WL.text.dim, marginTop: 5, lineHeight: 1.5 }}
            title="Risk budget = riskPct × available cash (never equity) ÷ stop distance, capped by available cash and the desk deployment limit — identical math to the Propose modal.">
         {riskPct}% = max loss if stopped (${rps.toFixed(2)}/sh) — not capital deployed · sized from available cash × risk% ÷ stop distance
         {eqPct != null && Number.isFinite(eqPct) ? ` · ≈${eqPct.toFixed(2)}% of total equity` : ''}
@@ -242,7 +254,7 @@ export default function SizingTable({ accounts, heldPositions, entry, stop, targ
             {' '}· holds: {holds.map(h => `${h.name} ${Math.round(h.held!.shares).toLocaleString()} sh (${k(h.held!.market_value)})`).join(', ')}
           </span>
         )}
-      </div>
+      </div>}
     </div>
   )
 }

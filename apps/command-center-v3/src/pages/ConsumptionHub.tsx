@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import CloudLlmRunButtons from '../components/CloudLlmRunButtons'
 import { lanePolicyColor, lanePolicyHint, PROCESS_LANE_POLICIES, runManualCloud } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
+import { useTerminalUi } from '../lib/terminalUi'
+import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 
 const GREEN = '#22c55e', RED = '#ef4444', AMBER = '#f59e0b', BLUE = '#60a5fa', MUTED = '#94a3b8', TEXT = '#f8fafc'
 
@@ -31,6 +33,7 @@ type LogRow = {
 }
 
 export default function ConsumptionHub() {
+  const [terminalUi] = useTerminalUi()
   const oauth = useOAuthLanes(90_000)
   const [overview, setOverview] = useState<any>(null)
   const [processes, setProcesses] = useState<ProcessRow[]>([])
@@ -118,13 +121,13 @@ export default function ConsumptionHub() {
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: TEXT, marginBottom: 4 }}>LLM Consumption</h1>
-      <p style={{ fontSize: 12, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>
+      <div style={hubTitle()}>LLM Consumption</div>
+      <p style={{ ...hubSubtitle(terminalUi), marginBottom: 16, lineHeight: 1.5, fontSize: 9 }}>
         Track and control <b style={{ color: TEXT }}>free OAuth</b> usage — Grok (xAI :8645) and ChatGPT (codex :8646).
         No metered API keys. <b>Manual</b> mode blocks automatic calls; use per-lane <b>▶ Grok / ▶ ChatGPT</b> on feature cards or below.
         <b> Automated</b> when you want hands-off cron.
       </p>
-      <div style={{ fontSize: 10, color: MUTED, marginBottom: 14, lineHeight: 1.5, padding: '8px 10px', borderRadius: 8, background: 'var(--bg1)', border: '1px solid var(--border)' }}>
+      <div className="cc-panel" style={{ ...hubPanel(terminalUi), marginBottom: 14, lineHeight: 1.5, fontSize: 9, color: MUTED }}>
         <b style={{ color: TEXT }}>Lane policies:</b>{' '}
         <span>Grok only</span> · <span>Grok or ChatGPT (pick one)</span> · <span>Both preferred</span> · <span>Ensemble (run both)</span>.
         Stop advisories stay <b>Manual</b> — use Grok batch (top 6) on Portfolio → Stop Management or the batch row here.
