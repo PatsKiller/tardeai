@@ -156,12 +156,26 @@ def build_context(trade_key: str) -> dict | None:
         return None
     review = tiv._q("SELECT * FROM journal_trade_reviews WHERE trade_key=%s", [trade_key], fetch="one") or {}
     payload = tiv._review_payload(review)
-    eq = tiv._q("""
-        SELECT * FROM trade_execution_quality
-        WHERE UPPER(symbol)=%s AND entry_time::date=%s::date
-          AND ABS(entry_price - %s) < 0.08
-        ORDER BY exit_time DESC LIMIT 1
-    """, [sym, cd, float(trade.get("buy_price") or 0)], fetch="one") or {}
+    eq = {}
+    dk_row = tiv._q("""
+        SELECT dedupe_key FROM trade_closed
+        WHERE symbol=%s AND account=%s AND close_date=%s::date
+        ORDER BY id DESC LIMIT 1
+    """, [sym, acct, cd], fetch="one")
+    if dk_row and dk_row.get("dedupe_key"):
+        dk = str(dk_row["dedupe_key"])
+        if dk.startswith("srt:"):
+            eq = tiv._q(
+                "SELECT * FROM trade_execution_quality WHERE trade_key=%s ORDER BY updated_at DESC LIMIT 1",
+                [dk], fetch="one") or {}
+    if not eq:
+        od = str(trade.get("open_date") or "")[:10]
+        eq = tiv._q("""
+            SELECT * FROM trade_execution_quality
+            WHERE UPPER(symbol)=%s AND entry_time::date=%s::date
+              AND ABS(entry_price - %s) < 0.08
+            ORDER BY exit_time DESC LIMIT 1
+        """, [sym, od, float(trade.get("buy_price") or 0)], fetch="one") or {}
 
     ent_iso = (eq.get("entry_time") or "").isoformat() if eq.get("entry_time") else None
     ext_iso = (eq.get("exit_time") or "").isoformat() if eq.get("exit_time") else None
@@ -198,6 +212,16 @@ def build_context(trade_key: str) -> dict | None:
     vwap_e = _indicator_at(chart, et, "vwap")
     rsi_e = _indicator_at(chart, et, "rsi")
     macd_e = _indicator_at(chart, et, "macd")
+    macd_state = eq.get("entry_macd_state")
+    if not macd_state and macd_e and et is not None and chart.get("macd"):
+        macd_rows = chart.get("macd") or []
+        idx = next((i for i, m in enumerate(macd_rows) if m.get("time") == et), None)
+        if idx is not None and idx >= 1 and macd_rows[idx].get("hist") is not None and macd_rows[idx - 1].get("hist") is not None:
+            macd_state = ("rising" if macd_rows[idx]["hist"] >= macd_rows[idx - 1]["hist"] else "falling")
+    if not eq.get("entry_rsi") and rsi_e:
+        eq = {**eq, "entry_rsi": rsi_e.get("value")}
+    if macd_state and not eq.get("entry_macd_state"):
+        eq = {**eq, "entry_macd_state": macd_state}
 
     return {
         "trade_key": trade_key,

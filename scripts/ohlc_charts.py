@@ -5,6 +5,7 @@ Source: Alpaca free historical bars (data.alpaca.markets, IEX feed) — OHLCV + 
 (VWAP/MACD/RSI) computed from the bars. No metered API; uses the existing paper Alpaca keys. Read-only.
 """
 import os, sys, json, urllib.request, urllib.error, datetime as dt
+from pathlib import Path
 
 ALPACA_DATA = "https://data.alpaca.markets/v2/stocks/{sym}/bars"
 # Data feed: 'sip' = full consolidated tape (covers OTC/microcaps; historical SIP is free since 2024),
@@ -152,6 +153,51 @@ def _schwab_bars(symbol, start, end, timeframe):
         return out
     except Exception:
         return []
+
+
+def _price_cache_bars(symbol, start, end):
+    """TIER 3: daily closes from price_cache (DB or JSON). Alpaca-shaped bars; volume=0."""
+    sym = (symbol or "").upper().strip()
+    try:
+        start_d = dt.datetime.fromisoformat(str(start).replace("Z", "+00:00")).date()
+        end_d = dt.datetime.fromisoformat(str(end).replace("Z", "+00:00")).date()
+    except Exception:
+        return []
+    rows = []
+    try:
+        from db_adapter import _execute
+        db_rows = _execute("""
+            SELECT price_date, close_price FROM price_cache
+            WHERE UPPER(symbol)=%s AND price_date >= %s AND price_date <= %s
+            ORDER BY price_date
+        """, (sym, start_d, end_d), fetch="all") or []
+        rows = [(r["price_date"], r["close_price"]) for r in db_rows]
+    except Exception:
+        rows = []
+    if not rows:
+        try:
+            cache_path = Path(__file__).resolve().parent.parent / "data" / "portfolios" / "state" / "price_cache.json"
+            if cache_path.exists():
+                raw = json.loads(cache_path.read_text(encoding="utf-8"))
+                prices = raw.get(sym) or raw.get(sym.upper()) or {}
+                if isinstance(prices, dict):
+                    for ds, px in sorted(prices.items()):
+                        if ds.startswith("_"):
+                            continue
+                        try:
+                            d = dt.date.fromisoformat(str(ds)[:10])
+                        except Exception:
+                            continue
+                        if start_d <= d <= end_d and px is not None:
+                            rows.append((d, px))
+        except Exception:
+            pass
+    out = []
+    for d, px in rows:
+        c = float(px)
+        t = f"{d.isoformat()}T00:00:00Z" if hasattr(d, "isoformat") else f"{str(d)[:10]}T00:00:00Z"
+        out.append({"o": c, "h": c, "l": c, "c": c, "v": 0, "t": t})
+    return out
 
 
 def _ema(vals, p):
@@ -474,8 +520,16 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         sbars = _schwab_bars(symbol, start, end, timeframe)
         if sbars:
             bars, err, source = sbars, None, "schwab"
+    if (err or not bars) and not same_day:
+        # TIER 3: price_cache daily bars — vendor monthly/weekly often missing without API keys.
+        pad = max(45, hold_days + 30)
+        pc_start = (ed - dt.timedelta(days=pad)).isoformat()
+        pc_end = (xd + dt.timedelta(days=max(25, hold_days // 4))).isoformat()
+        pc = _price_cache_bars(symbol, pc_start, pc_end)
+        if pc:
+            bars, err, source, timeframe = pc, None, "price_cache", "1Day"
     if err or not bars:
-        # TIER 3 FALLBACK: static Finviz Elite chart image
+        # TIER 4 FALLBACK: static Finviz Elite chart image
         # (served via the /api/v2/finviz-chart proxy which attaches the Elite cookie).
         return {"symbol": symbol, "timeframe": timeframe, "bars": [], "fallback": "finviz",
                 "fallback_image": f"/api/v2/finviz-chart?symbol={symbol}&p={_finviz_period(timeframe, same_day)}",

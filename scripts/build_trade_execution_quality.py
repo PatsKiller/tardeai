@@ -56,6 +56,8 @@ def _bars_for(symbol, ent, ext, review_min):
         src = "alpaca" if bars else None
         if not bars:
             bars = oc._schwab_bars(symbol, start, end, "1Day"); src = "schwab" if bars else None
+        if not bars:
+            bars = oc._price_cache_bars(symbol, start, end); src = "price_cache" if bars else None
         return bars or [], (src or "none"), None, True
     so = oc._sess(ent.date(), 9, 30)                                # SAME-DAY: 1-min intraday
     start = min(so, ent - dt.timedelta(minutes=15)).isoformat()
@@ -270,7 +272,13 @@ def run(source="schwab", limit=20, trade_key=None, apply=False):
                 pass
             report["rows"].append({"trade_key": t["trade_key"], "symbol": t["symbol"], "error": str(e)[:120]})
             continue
-        rec = {**t, **m}
+        hold_min = None
+        if t.get("ent") and t.get("ext"):
+            try:
+                hold_min = int((t["ext"] - t["ent"]).total_seconds() / 60)
+            except Exception:
+                hold_min = None
+        rec = {**t, **m, "hold_minutes": hold_min}
         report["rows"].append({"trade_key": t["trade_key"], "symbol": t["symbol"], "path": m.get("path_status"),
                                "outcome": m.get("outcome_grade"), "execution": m.get("execution_grade"),
                                "entry_timing": m.get("entry_timing_grade"), "exit_timing": m.get("exit_timing_grade"),
@@ -296,7 +304,7 @@ def run(source="schwab", limit=20, trade_key=None, apply=False):
                  missed_profit,missed_profit_pct,premature_exit_flag,early_entry_flag,late_entry_flag,
                  no_volume_entry_flag,strategy_rule_violations,computed_summary,runner_type,post_exit_gave_back_ratio,updated_at)
                 VALUES (%(trade_key)s,%(source)s,%(broker)s,%(account)s,%(symbol)s,%(strategy)s,%(ent)s,%(ext)s,
-                 %(entry_price)s,%(exit_price)s,%(qty)s,%(realized_pnl)s,NULL,%(bar_interval)s,%(bars_source)s,%(bars_count)s,
+                 %(entry_price)s,%(exit_price)s,%(qty)s,%(realized_pnl)s,%(hold_minutes)s,%(bar_interval)s,%(bars_source)s,%(bars_count)s,
                  %(path_status)s,%(entry_volume_confirmed)s,%(entry_volume_ratio)s,%(entry_relative_volume_window)s,
                  %(entry_above_vwap)s,%(entry_vwap_distance_pct)s,%(entry_macd_state)s,%(entry_rsi)s,
                  %(entry_timing_grade)s,%(exit_timing_grade)s,%(execution_grade)s,%(outcome_grade)s,
@@ -305,10 +313,31 @@ def run(source="schwab", limit=20, trade_key=None, apply=False):
                  %(capture_ratio)s,%(available_profit)s,%(captured_profit)s,%(missed_profit)s,%(missed_profit_pct)s,
                  %(premature_exit_flag)s,%(early_entry_flag)s,%(late_entry_flag)s,%(no_volume_entry_flag)s,
                  %(violjson)s,%(computed_summary)s,%(runner_type)s,%(post_exit_gave_back_ratio)s,NOW())
-                ON CONFLICT (trade_key, source) DO UPDATE SET execution_grade=EXCLUDED.execution_grade,
-                 capture_ratio=EXCLUDED.capture_ratio, computed_summary=EXCLUDED.computed_summary,
-                 runner_type=EXCLUDED.runner_type, post_exit_gave_back_ratio=EXCLUDED.post_exit_gave_back_ratio,
-                 missed_opportunity_grade=EXCLUDED.missed_opportunity_grade, updated_at=NOW()""",
+                ON CONFLICT (trade_key, source) DO UPDATE SET
+                 broker=EXCLUDED.broker, account=EXCLUDED.account, symbol=EXCLUDED.symbol,
+                 strategy_id=EXCLUDED.strategy_id, entry_time=EXCLUDED.entry_time, exit_time=EXCLUDED.exit_time,
+                 entry_price=EXCLUDED.entry_price, exit_price=EXCLUDED.exit_price, qty=EXCLUDED.qty,
+                 realized_pnl=EXCLUDED.realized_pnl, hold_minutes=EXCLUDED.hold_minutes,
+                 bar_interval=EXCLUDED.bar_interval, bars_source=EXCLUDED.bars_source, bars_count=EXCLUDED.bars_count,
+                 path_status=EXCLUDED.path_status, entry_volume_confirmed=EXCLUDED.entry_volume_confirmed,
+                 entry_volume_ratio=EXCLUDED.entry_volume_ratio,
+                 entry_relative_volume_window=EXCLUDED.entry_relative_volume_window,
+                 entry_above_vwap=EXCLUDED.entry_above_vwap, entry_vwap_distance_pct=EXCLUDED.entry_vwap_distance_pct,
+                 entry_macd_state=EXCLUDED.entry_macd_state, entry_rsi=EXCLUDED.entry_rsi,
+                 entry_timing_grade=EXCLUDED.entry_timing_grade, exit_timing_grade=EXCLUDED.exit_timing_grade,
+                 execution_grade=EXCLUDED.execution_grade, outcome_grade=EXCLUDED.outcome_grade,
+                 discipline_grade=EXCLUDED.discipline_grade, missed_opportunity_grade=EXCLUDED.missed_opportunity_grade,
+                 mfe_after_entry=EXCLUDED.mfe_after_entry, mae_after_entry=EXCLUDED.mae_after_entry,
+                 mfe_after_exit=EXCLUDED.mfe_after_exit, mfe_after_exit_pct=EXCLUDED.mfe_after_exit_pct,
+                 post_exit_high=EXCLUDED.post_exit_high, post_exit_high_time=EXCLUDED.post_exit_high_time,
+                 capture_ratio=EXCLUDED.capture_ratio, available_profit=EXCLUDED.available_profit,
+                 captured_profit=EXCLUDED.captured_profit, missed_profit=EXCLUDED.missed_profit,
+                 missed_profit_pct=EXCLUDED.missed_profit_pct, premature_exit_flag=EXCLUDED.premature_exit_flag,
+                 early_entry_flag=EXCLUDED.early_entry_flag, late_entry_flag=EXCLUDED.late_entry_flag,
+                 no_volume_entry_flag=EXCLUDED.no_volume_entry_flag,
+                 strategy_rule_violations=EXCLUDED.strategy_rule_violations,
+                 computed_summary=EXCLUDED.computed_summary, runner_type=EXCLUDED.runner_type,
+                 post_exit_gave_back_ratio=EXCLUDED.post_exit_gave_back_ratio, updated_at=NOW()""",
                 {**rec, "violjson": json.dumps(m.get("strategy_rule_violations", []))})
             conn.commit()
     print(json.dumps(report, indent=2, default=str))
