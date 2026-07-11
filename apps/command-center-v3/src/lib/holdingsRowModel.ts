@@ -1,4 +1,5 @@
 import type { StopStatusTone } from './holdingsTerminalTokens'
+import { buildStopLogic, type StopLogic } from './stopManagement'
 
 export interface HoldingsRowInput {
   h: any
@@ -25,8 +26,15 @@ export interface HoldingsRowModel {
   stopStatus: StopStatusTone
   stopDistPct: number | null
   stopPrice: number | null
+  liveStopPrice: number | null
   stopLabel: string
+  /** Imperative: what to do, e.g. "Tighten stop → $32.43" */
+  stopInstruction: string
+  /** Context line: e.g. "Live $35.00 now" */
+  stopContext: string
+  /** @deprecated use stopInstruction — kept for callers migrating */
   stopAdvisory: string
+  stopTooltip: string
   primaryAction: { label: string; tone: 'amber' | 'green' | 'red' | 'muted' }
   primaryActionTooltip: string
   needsAction: boolean
@@ -57,6 +65,151 @@ function acctShort(account: string): string {
   return parts.length > 2 ? `${parts[0]} ${parts[1]}` : a
 }
 
+const fmt$ = (n: number) => `$${n.toFixed(2)}`
+
+function stopCopyFromLogic(
+  logic: StopLogic,
+  opts: { isFidelity: boolean; isSchwab: boolean; health: string; signal: string | null; needsSellAll: boolean; shares: number },
+): { instruction: string; context: string; tooltip: string } {
+  const adv = logic.advisoryStop
+  const live = logic.liveStop
+  const tooltip = logic.primary_operator_action || logic.action_summary || ''
+
+  switch (logic.stop_action_decision) {
+    case 'PLACE_NEW_STOP':
+      return {
+        instruction: opts.isFidelity ? `Set stop → ${fmt$(adv!)}` : `Place stop → ${fmt$(adv!)}`,
+        context: logic.distancePct != null ? `Target · ${logic.distancePct.toFixed(1)}% below price` : 'No live stop yet',
+        tooltip,
+      }
+    case 'MODIFY_EXISTING_STOP':
+      return {
+        instruction: `Tighten stop → ${fmt$(adv!)}`,
+        context: live != null ? `${fmt$(live)} now → ${fmt$(adv!)}` : `Target ${fmt$(adv!)}`,
+        tooltip,
+      }
+    case 'KEEP_EXISTING_STOP':
+      if (logic.existing_stop_is_tighter_than_advisory && live != null) {
+        return {
+          instruction: `Keep stop at ${fmt$(live)}`,
+          context: adv != null ? `Already tighter than ${fmt$(adv)} advisory` : '',
+          tooltip,
+        }
+      }
+      return {
+        instruction: live != null ? `Stop OK at ${fmt$(live)}` : adv != null ? `Stop OK at ${fmt$(adv)}` : 'Stop in place',
+        context: adv != null && live != null ? `Matches ${fmt$(adv)} advisory` : '',
+        tooltip,
+      }
+    case 'BLOCKED_STALE_QUOTE':
+      return {
+        instruction: adv != null ? `Refresh quote → set ${fmt$(adv)}` : 'Refresh quote first',
+        context: 'Quote stale — refresh before placing',
+        tooltip,
+      }
+    case 'BLOCKED_SOURCE_MISMATCH':
+      return { instruction: 'Fix broker source mismatch', context: '', tooltip }
+    case 'NOT_APPLICABLE':
+      return { instruction: 'No live stop (fund/401k)', context: 'Review allocation instead', tooltip }
+    default:
+      break
+  }
+
+  if (opts.needsSellAll && adv != null) {
+    return {
+      instruction: `Set stop → ${fmt$(adv)}`,
+      context: `${opts.shares} sh — whole-share stop required`,
+      tooltip: `Schwab whole-share rule: ${opts.shares} shares — may need sell-all stop`,
+    }
+  }
+  if (opts.health === 'CONCERN' || opts.health === 'TRIM') {
+    return {
+      instruction: adv != null ? `Review → set ${fmt$(adv)}` : 'Review allocation',
+      context: `LLM health: ${opts.health}`,
+      tooltip: adv != null ? `Review ${opts.health} — advisory stop ${fmt$(adv)}` : `LLM health ${opts.health}`,
+    }
+  }
+  if (opts.signal === 'TRIM' || opts.signal === 'SELL' || opts.signal === 'EXIT') {
+    return {
+      instruction: adv != null ? `Review → ${fmt$(adv)}` : `Review ${opts.signal}`,
+      context: `${opts.signal} signal`,
+      tooltip,
+    }
+  }
+  if (adv != null) {
+    return {
+      instruction: opts.isFidelity ? `Set stop → ${fmt$(adv)}` : `Place stop → ${fmt$(adv)}`,
+      context: live != null ? `Live ${fmt$(live)}` : 'No live stop',
+      tooltip,
+    }
+  }
+  return {
+    instruction: 'No stop target',
+    context: logic.liveStop != null ? `Live ${fmt$(logic.liveStop)}` : 'No advisory',
+    tooltip: tooltip || 'Manual review — no actionable stop recommendation',
+  }
+}
+
+function primaryFromLogic(
+  logic: StopLogic,
+  sym: string,
+  acct: string,
+  opts: { isFidelity: boolean; isSchwab: boolean; hasLiveBroker: boolean; health: string; signal: string | null; needsSellAll: boolean; shares: number; instruction: string },
+): { label: string; tone: 'amber' | 'green' | 'red' | 'muted'; tooltip: string } {
+  const as = acctShort(acct)
+  const go = (label: string, tip: string, tone: 'amber' | 'green' | 'red' | 'muted' = 'amber') => ({ label, tone, tooltip: tip })
+
+  switch (logic.stop_action_decision) {
+    case 'PLACE_NEW_STOP':
+      if (opts.isFidelity) return go('Create Ticket', `Open ${sym} (${as}) → Fidelity ticket for ${opts.instruction}`)
+      if (opts.isSchwab) return go('Request 2FA Stop', `Open ${sym} (${as}) → ${logic.primary_operator_action}`)
+      return go('Place Stop', logic.primary_operator_action, 'amber')
+    case 'MODIFY_EXISTING_STOP':
+      if (opts.isSchwab && opts.hasLiveBroker) return go('Replace Stop', `Open ${sym} (${as}) → ${logic.primary_operator_action}`)
+      if (opts.isFidelity) return go('Modify Ticket', `Open ${sym} (${as}) → ${logic.primary_operator_action}`)
+      return go('Tighten Stop', `Open ${sym} (${as}) → ${logic.primary_operator_action}`)
+    case 'KEEP_EXISTING_STOP':
+      return go('Stable', logic.primary_operator_action, 'green')
+    case 'BLOCKED_STALE_QUOTE':
+      return go('Refresh Quote', `Open ${sym} (${as}) → refresh quote then ${opts.instruction}`, 'amber')
+    default:
+      break
+  }
+
+  if (opts.needsSellAll && logic.advisoryStop != null) {
+    return go('Review', `Open ${sym} (${as}) → whole-share stop (${opts.shares} sh)`, 'amber')
+  }
+  if (opts.health === 'CONCERN' || opts.health === 'TRIM' || opts.signal === 'TRIM' || opts.signal === 'SELL' || opts.signal === 'EXIT') {
+    const tone = opts.signal === 'TRIM' || opts.signal === 'SELL' || opts.signal === 'EXIT' ? 'red' as const : 'amber' as const
+    return go('Review', `Open ${sym} (${as}) → ${opts.instruction}`, tone)
+  }
+  if (logic.advisoryStop != null && !logic.liveStop) {
+    if (opts.isFidelity) return go('Create Ticket', `Open ${sym} (${as}) → ${opts.instruction}`)
+    if (opts.isSchwab) return go('Request 2FA Stop', `Open ${sym} (${as}) → ${opts.instruction}`)
+  }
+  if (logic.advisoryStop != null && logic.liveStop && logic.advisory_stop_is_tighter_than_existing) {
+    return go(opts.isSchwab ? 'Replace Stop' : 'Tighten Stop', `Open ${sym} (${as}) → ${opts.instruction}`)
+  }
+  if (logic.liveStop != null && logic.advisoryStop == null) {
+    return go('Stable', `Live stop ${fmt$(logic.liveStop)} — no new advisory`, 'green')
+  }
+  return go('Details', `Open ${sym} (${as}) holding details`, 'muted')
+}
+
+function stopStatusFromLogic(
+  logic: StopLogic,
+  health: string,
+  signal: string | null,
+  stopDist: number | null,
+): StopStatusTone {
+  if (health === 'CONCERN' || health === 'TRIM' || signal === 'TRIM' || signal === 'SELL' || signal === 'EXIT') return 'action'
+  if (logic.stop_action_decision === 'PLACE_NEW_STOP' || logic.stop_action_decision === 'MODIFY_EXISTING_STOP') return 'action'
+  if (logic.stop_action_decision === 'BLOCKED_STALE_QUOTE') return 'concern'
+  if (stopDist != null && stopDist < 5) return 'concern'
+  if (logic.stop_action_decision === 'KEEP_EXISTING_STOP') return 'stable'
+  return 'stable'
+}
+
 export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel {
   const h = input.h
   const pr = input.pr
@@ -77,67 +230,26 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   const isSchwab = acct.startsWith('schwab')
   const isFidelity = acct.startsWith('fidelity') && acct !== 'fidelity_401k'
   const needsSellAll = isSchwab && sh > 0 && sh < 40
-  const hasLive = Boolean(input.confirmedStop?.order_id || input.monitored?.stop_price)
 
-  let stopStatus: StopStatusTone = 'stable'
-  if (health === 'CONCERN' || health === 'TRIM' || signal === 'TRIM' || signal === 'SELL' || signal === 'EXIT') {
-    stopStatus = 'action'
-  } else if (stopDist != null && stopDist < 5) {
-    stopStatus = 'concern'
-  } else if (!hasLive && stopPrice && isSchwab) {
-    stopStatus = 'action'
-  } else if (needsSellAll && stopPrice) {
-    stopStatus = 'concern'
-  }
+  const logic = buildStopLogic({
+    h,
+    pr: pr ?? {},
+    monitored: input.monitored,
+    confirmedStop: input.confirmedStop,
+    sourceTimestamp: h?.source_timestamp ?? h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp,
+  })
 
-  let stopAdvisory = ''
-  if (stopPrice != null && stopDist != null) {
-    stopAdvisory = `Stop $${stopPrice.toFixed(2)} · ${stopDist.toFixed(1)}% below price`
-  } else if (stopPrice != null) {
-    stopAdvisory = `Advisory stop $${stopPrice.toFixed(2)}`
-  } else if (pr?.rec) {
-    stopAdvisory = String(pr.rec).split('·')[0].trim().slice(0, 42)
-  } else if (health === 'CONCERN') {
-    stopAdvisory = 'Review allocation'
-  } else {
-    stopAdvisory = hasLive ? 'Stop in place' : 'No advisory stop'
-  }
+  const liveStopPrice = logic.liveStop
+  const hasLiveBroker = Boolean(logic.liveStop != null && input.confirmedStop?.order_id)
 
-  let primaryAction: { label: string; tone: 'amber' | 'green' | 'red' | 'muted' } = { label: 'Details', tone: 'muted' }
-  let primaryActionTooltip = `Open ${sym} stop management in ${acctShort(acct)}`
-  if (isFidelity && stopPrice && !hasLive) {
-    primaryAction = { label: 'Create Ticket', tone: 'amber' }
-    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → create Fidelity stop ticket at $${stopPrice.toFixed(2)}`
-  } else if (isSchwab && stopPrice && !hasLive) {
-    primaryAction = { label: 'Request 2FA Stop', tone: 'amber' }
-    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → request 2FA stop at $${stopPrice.toFixed(2)}`
-  } else if (isSchwab && stopPrice && pr?.advisory_stop_is_tighter_than_existing) {
-    primaryAction = { label: 'Tighten Stop', tone: 'amber' }
-    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → tighten stop to $${stopPrice.toFixed(2)}`
-  } else if (hasLive && isSchwab && stopPrice) {
-    primaryAction = { label: 'Replace Stop', tone: 'amber' }
-    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → replace live stop (advisory $${stopPrice.toFixed(2)})`
-  } else if (needsSellAll && stopPrice) {
-    primaryAction = { label: 'Review', tone: 'amber' }
-    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → whole-share stop issue (${sh} sh) — review sell-all`
-  } else if (health === 'CONCERN' || health === 'TRIM') {
-    primaryAction = { label: 'Review', tone: 'amber' }
-    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → review stop (LLM health: ${health})`
-  } else if (signal === 'TRIM' || signal === 'SELL' || signal === 'EXIT') {
-    primaryAction = { label: 'Review', tone: 'red' }
-    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → review stop (${signal} signal)`
-  } else if (stopStatus === 'action') {
-    primaryAction = { label: 'Review', tone: 'amber' }
-    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) stop management — ${stopAdvisory || 'attention needed'}`
-  } else if (stopStatus === 'stable' && hasLive) {
-    primaryAction = { label: 'Stable', tone: 'green' }
-    primaryActionTooltip = 'Stop in place — no action required'
-  } else if (stopStatus === 'concern') {
-    primaryAction = { label: 'Review', tone: 'amber' }
-    primaryActionTooltip = `Go to ${sym} (${acctShort(acct)}) → ${stopAdvisory || 'stop within 5% of price'}`
-  }
+  const copy = stopCopyFromLogic(logic, { isFidelity, isSchwab, health, signal, needsSellAll, shares: sh })
+  const stopStatus = stopStatusFromLogic(logic, health, signal, stopDist)
+  const primary = primaryFromLogic(logic, sym, acct, {
+    isFidelity, isSchwab, hasLiveBroker, health, signal, needsSellAll, shares: sh,
+    instruction: copy.instruction,
+  })
 
-  const needsAction = primaryAction.tone === 'amber' || primaryAction.tone === 'red'
+  const needsAction = primary.tone === 'amber' || primary.tone === 'red'
   const stopLabel = stopStatus === 'stable' ? 'Stable' : stopStatus === 'concern' ? 'Concern' : 'Action'
 
   return {
@@ -157,10 +269,14 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     stopStatus,
     stopDistPct: stopDist,
     stopPrice,
+    liveStopPrice,
     stopLabel,
-    stopAdvisory,
-    primaryAction,
-    primaryActionTooltip,
+    stopInstruction: copy.instruction,
+    stopContext: copy.context,
+    stopAdvisory: copy.context ? `${copy.instruction} · ${copy.context}` : copy.instruction,
+    stopTooltip: copy.tooltip,
+    primaryAction: { label: primary.label, tone: primary.tone },
+    primaryActionTooltip: primary.tooltip,
     needsAction,
     llmHealth: h.llm_health ?? null,
     llmAction: h.llm_action ?? null,

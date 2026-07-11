@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-11 (late2) — Holdings stop imperative copy (→ target)
+
+- Stop column shows **what to adjust to**, e.g. `Tighten stop → $32.43` with `Live $35.00 now → $32.43` context.
+- Uses canonical `buildStopLogic` decisions (place / tighten / keep) — not passive distance-only text.
+- Column header: **Stop → target**; action labels aligned (Create Ticket, Replace Stop, Tighten Stop).
+
 ## 2026-07-11 (late) — Holdings stop clarity + action → stop drawer
 
 - **Stop column** — removed ambiguous bare `6.4%`; now reads `Stop $32.43 · 6.4% below price` (not portfolio %).

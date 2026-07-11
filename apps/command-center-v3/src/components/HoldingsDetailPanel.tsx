@@ -5,7 +5,7 @@ import HoldingReportLinks from './HoldingReportLinks'
 import ProAnalystPill, { useProAnalystMap } from './ProAnalystPill'
 import { EvidenceBlock } from './EvidenceBlock'
 import { fmt$ } from '../lib/format'
-import { plMetrics } from '../lib/holdingsRowModel'
+import { buildHoldingsRowModel, plMetrics } from '../lib/holdingsRowModel'
 import { BB, type HoldingsCvdMode, semanticSigned, semanticUp } from '../lib/holdingsTerminalTokens'
 import { mergeLiveStop, stopReviewTooltip } from '../lib/stopReviewTooltip'
 import { holdingReportEligible } from '../lib/reportLinks'
@@ -61,6 +61,7 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
   const sh = Number(h.shares) || 0
   const acct = String(h.account ?? '')
   const schwabSmall = acct.startsWith('schwab') && sh > 0 && sh < 40
+  const row = buildHoldingsRowModel({ h, pr, confirmedStop: ctx.confirmedStop, monitored: ctx.monitored })
   const stopMgmtRef = useRef<HTMLDivElement>(null)
   const focusStops = ctx.drawerFocus === 'stops'
 
@@ -86,16 +87,15 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
       <div style={{ fontSize: 10, fontWeight: 800, color: focusStops ? BB.amber : BB.text2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         Stop management · {symU} · {acct.replace(/_/g, ' ')}
       </div>
-      {pr && (
-        <div title={stopTip} style={{ padding: '8px 12px', background: BB.amberDim, border: `1px solid ${BB.amber}44`, borderRadius: 8, fontSize: 11 }}>
-          <span style={{ fontWeight: 800, color: BB.amber }}>Advisory</span>
-          <span style={{ color: BB.text2, marginLeft: 8 }}>
-            {pr.stop_price != null
-              ? `$${Number(pr.stop_price).toFixed(2)}${pr.stop_distance_pct != null ? ` · ${Number(pr.stop_distance_pct).toFixed(1)}% below current price` : ''}`
-              : pr.rec ?? '—'}
-          </span>
-        </div>
-      )}
+      <div title={row.stopTooltip} style={{ padding: '10px 12px', background: BB.amberDim, border: `1px solid ${BB.amber}44`, borderRadius: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: BB.amberAlt, fontFamily: BB.mono }}>{row.stopInstruction}</div>
+        {row.stopContext && <div style={{ fontSize: 10, color: BB.text2, marginTop: 4 }}>{row.stopContext}</div>}
+        {row.liveStopPrice != null && row.stopPrice != null && (
+          <div style={{ fontSize: 9, color: BB.text3, marginTop: 6 }} title={stopTip}>
+            Live {row.liveStopPrice.toFixed(2)} · Target {row.stopPrice.toFixed(2)}
+          </div>
+        )}
+      </div>
       {(pr?.stop_price || schwabSmall) ? (
         <HoldingProtectionActions
           h={h}

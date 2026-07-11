@@ -23,7 +23,7 @@ const COL_TIPS: Record<string, string> = {
   value: 'Market value and today\'s % change',
   port: 'Portfolio weight — % of your TOTAL portfolio value across all accounts (not stop distance)',
   price: 'Last price and average cost per share',
-  stop: 'Stop protection — status + advisory stop price. "X% below price" = how far stop is under current price, NOT % of portfolio',
+  stop: 'What to do with your stop — imperative target price (→ $X). NOT portfolio weight (see Wt %)',
   action: 'Opens this row\'s stop management drawer (2FA, tickets, replace stop)',
   reports: 'Analyst PDF / Word reports',
   agents: 'LLM lanes that reviewed this symbol (last 30d)',
@@ -82,8 +82,10 @@ function rowTooltip(m: ReturnType<typeof buildHoldingsRowModel>, h: any): string
     ctry ? `HQ: ${ctry.name}` : '',
     m.account,
     m.shares != null ? `${m.shares} shares` : '',
+    m.stopInstruction,
+    m.stopContext,
     m.needsAction ? '⚠ Action needed' : 'No urgent action',
-    'Click row or Enter for full drawer',
+    'Click row for overview · Action button → stop management',
   ].filter(Boolean)
   return parts.join('\n')
 }
@@ -106,7 +108,7 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode =
         <HeaderCell label="Value · Today" tip={COL_TIPS.value} />
         <HeaderCell label="Wt %" tip={COL_TIPS.port} />
         <HeaderCell label="Price / Cost" tip={COL_TIPS.price} />
-        <HeaderCell label="Stop status" tip={COL_TIPS.stop} />
+        <HeaderCell label="Stop → target" tip={COL_TIPS.stop} />
         <HeaderCell label="Action" tip={COL_TIPS.action} />
         <HeaderCell label="Reports" tip={COL_TIPS.reports} />
         <HeaderCell label="Agents" tip={COL_TIPS.agents} />
@@ -210,10 +212,10 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode =
 
               <div
                 title={[
-                  `Stop status: ${m.stopLabel}`,
-                  m.stopAdvisory,
-                  m.stopDistPct != null ? `${m.stopDistPct.toFixed(1)}% below current price — NOT portfolio weight` : '',
-                  m.portfolioPct != null ? `(Portfolio weight is ${m.portfolioPct.toFixed(1)}% in Wt % column)` : '',
+                  m.stopTooltip,
+                  m.liveStopPrice != null ? `Live stop: $${m.liveStopPrice.toFixed(2)}` : 'No live stop at broker',
+                  m.stopPrice != null ? `Advisory target: $${m.stopPrice.toFixed(2)}` : '',
+                  m.portfolioPct != null ? `Portfolio weight: ${m.portfolioPct.toFixed(1)}% (Wt % column)` : '',
                 ].filter(Boolean).join('\n')}
                 style={{
                   minWidth: 0, padding: '6px 8px', margin: '-6px -8px', borderRadius: 5,
@@ -224,9 +226,14 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode =
                   <span style={{ width: 8, height: 8, borderRadius: 4, background: stopColor, flexShrink: 0 }} />
                   <span style={{ fontSize: 11, fontWeight: 800, color: stopColor, letterSpacing: 0.2 }}>{m.stopLabel}</span>
                 </div>
-                <div style={{ fontSize: 9, color: BB.text2, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: BB.mono }}>
-                  {m.stopAdvisory}
+                <div style={{ fontSize: 10, fontWeight: 800, color: m.needsAction ? BB.amberAlt : BB.text0, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: BB.mono }}>
+                  {m.stopInstruction}
                 </div>
+                {m.stopContext && (
+                  <div style={{ fontSize: 8, color: BB.text3, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.stopContext}
+                  </div>
+                )}
               </div>
 
               <span onClick={e => { e.stopPropagation(); onPrimaryAction(rowCtx) }}>

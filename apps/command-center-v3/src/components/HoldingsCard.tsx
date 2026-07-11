@@ -126,7 +126,7 @@ export default function HoldingsCard({
         <span title={h.name} style={{ fontSize: 17, fontWeight: 800, color: BB.text0, fontFamily: BB.mono }}>{h.symbol}</span>
         <ProAnalystPill symbol={h.symbol} map={paMap} compact />
         <span style={{ flex: 1, minWidth: 8 }} />
-        <span title={`Stop: ${row.stopAdvisory}`} style={{
+        <span title={row.stopTooltip} style={{
           fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 4,
           background: stopStatusBg(row.stopStatus), color: stopColor, border: `1px solid ${stopColor}55`, cursor: 'help',
         }}>{row.stopLabel}</span>
@@ -190,6 +190,11 @@ export default function HoldingsCard({
         <span>{h.portfolio_pct != null ? `${h.portfolio_pct.toFixed(1)}% of portfolio` : ''}</span>
       </div>
 
+      <div title={row.stopTooltip} style={{ marginTop: 10, padding: '8px 10px', borderRadius: 6, background: stopStatusBg(row.stopStatus), border: `1px solid ${stopColor}44` }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: row.needsAction ? BB.amberAlt : BB.text0, fontFamily: BB.mono }}>{row.stopInstruction}</div>
+        {row.stopContext && <div style={{ fontSize: 9, color: BB.text3, marginTop: 3 }}>{row.stopContext}</div>}
+      </div>
+
       <div style={{ marginTop: 10 }} onClick={e => e.stopPropagation()}>
         <button type="button" title={row.primaryActionTooltip} onClick={onAction} style={{
           width: '100%', padding: isAmber || isRed ? '9px 12px' : '7px 10px', fontSize: 11, fontWeight: 800, borderRadius: 6, cursor: 'pointer',
@@ -207,11 +212,9 @@ export default function HoldingsCard({
             RSI {Math.round(h.rsi)}{h.proxy ? '*' : ''}</span>
         )}
         {pr && (
-          <span title={`${stopTip}\n\n${pr.rec}\n${pr.rationale ?? ''} · ADVISORY ONLY`}
-            style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 5, background: BB.amberDim, border: `1px solid ${BB.amber}44`, color: BB.amber, cursor: 'help' }}>
-            {pr.stop_price != null
-              ? `stop $${Number(pr.stop_price).toFixed(2)}${pr.stop_distance_pct != null ? ` (${Number(pr.stop_distance_pct).toFixed(1)}% below)` : ''}`
-              : String(pr.rec).split('·')[0].trim()}</span>
+          <span title={`${stopTip}\n\n${row.stopTooltip}`}
+            style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: BB.amberDim, border: `1px solid ${BB.amber}33`, color: BB.amber, cursor: 'help' }}>
+            {row.stopLabel}</span>
         )}
         <LlmHealthChip health={h.llm_health} action={h.llm_action} />
         <span style={{ flex: 1 }} />
