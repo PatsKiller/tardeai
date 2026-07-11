@@ -5,7 +5,7 @@ import ProAnalystPill, { useProAnalystMap } from './ProAnalystPill'
 import { EvidenceBlock } from './EvidenceBlock'
 import { fmt$ } from '../lib/format'
 import { plMetrics } from '../lib/holdingsRowModel'
-import { BB } from '../lib/holdingsTerminalTokens'
+import { BB, type HoldingsCvdMode, semanticSigned, semanticUp } from '../lib/holdingsTerminalTokens'
 import { mergeLiveStop, stopReviewTooltip } from '../lib/stopReviewTooltip'
 import { holdingReportEligible } from '../lib/reportLinks'
 
@@ -22,18 +22,21 @@ export interface HoldingsDetailContext {
   coverage?: any[]
   onRefreshMonitored?: () => void
   onPreflightUpdate?: (symbol: string, account: string, patch: { holding?: Record<string, unknown>; protection?: Record<string, unknown> }) => void
+  cvdMode?: HoldingsCvdMode
 }
 
-const rsiZoneColor = (s?: string) => s === 'oversold' ? BB.green : s === 'overbought' ? BB.amber : BB.text3
-const signalColor = (s?: string) => {
+const rsiZoneColor = (s: string | undefined, cvd: HoldingsCvdMode) =>
+  s === 'oversold' ? semanticUp(cvd) : s === 'overbought' ? BB.amber : BB.text3
+const signalColor = (s: string | undefined, cvd: HoldingsCvdMode) => {
   const t = (s || '').toUpperCase()
-  if (['ADD', 'BUY', 'STRONG_BUY', 'ACCUMULATE'].includes(t)) return BB.green
+  if (['ADD', 'BUY', 'STRONG_BUY', 'ACCUMULATE'].includes(t)) return semanticUp(cvd)
   if (['TRIM', 'SELL', 'REDUCE', 'EXIT'].includes(t)) return BB.red
   if (['MONITOR', 'WATCH', 'CAUTION'].includes(t)) return BB.amber
   return BB.text2
 }
 
 export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
+  const cvdMode = ctx.cvdMode ?? 'default'
   const h = ctx.h
   const symU = String(h.symbol || '').toUpperCase()
   const pr = ctx.protection ?? {}
@@ -62,7 +65,7 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
         <span style={{ fontSize: 22, fontWeight: 800, fontFamily: BB.mono, color: BB.text0 }}>{h.symbol}</span>
         <ProAnalystPill symbol={h.symbol} map={paMap} compact />
         {h.signal && (
-          <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 9px', borderRadius: 4, background: `${signalColor(h.signal)}22`, color: signalColor(h.signal) }}>{h.signal}</span>
+          <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 9px', borderRadius: 4, background: `${signalColor(h.signal, cvdMode)}22`, color: signalColor(h.signal, cvdMode) }}>{h.signal}</span>
         )}
         <span style={{ fontSize: 9, color: BB.text3 }}>{h.name}</span>
       </div>
@@ -70,8 +73,8 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
         {[
           { l: 'Market value', v: fmt$(h.market_value, 0) },
-          { l: 'Unrealized P/L', v: pl$ != null ? `${pl$ >= 0 ? '+' : ''}${fmt$(pl$, 0)}${pl != null ? ` (${pl >= 0 ? '+' : ''}${pl.toFixed(1)}%)` : ''}` : '—', c: pl$ != null ? (pl$ >= 0 ? BB.green : BB.red) : BB.text3 },
-          { l: 'Today', v: h.day_change_pct != null ? `${Number(h.day_change_pct) >= 0 ? '+' : ''}${Number(h.day_change_pct).toFixed(2)}%` : '—', c: (h.day_change_pct ?? 0) >= 0 ? BB.green : BB.red },
+          { l: 'Unrealized P/L', v: pl$ != null ? `${pl$ >= 0 ? '+' : ''}${fmt$(pl$, 0)}${pl != null ? ` (${pl >= 0 ? '+' : ''}${pl.toFixed(1)}%)` : ''}` : '—', c: pl$ != null ? semanticSigned(pl$, cvdMode) : BB.text3 },
+          { l: 'Today', v: h.day_change_pct != null ? `${Number(h.day_change_pct) >= 0 ? '+' : ''}${Number(h.day_change_pct).toFixed(2)}%` : '—', c: semanticSigned(Number(h.day_change_pct ?? 0), cvdMode) },
           { l: '% Portfolio', v: h.portfolio_pct != null ? `${Number(h.portfolio_pct).toFixed(1)}%` : '—' },
         ].map(m => (
           <div key={m.l} style={{ background: BB.bgRow, border: `1px solid ${BB.border}`, borderRadius: 8, padding: '8px 10px' }}>
@@ -138,12 +141,12 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 9, marginBottom: 6 }}>
             {scard.sector && <span style={{ color: '#60a5fa' }}>{scard.sector}</span>}
             {scard.vs_sector_week != null && (
-              <span style={{ color: scard.vs_sector_week >= 0 ? BB.green : BB.red, fontWeight: 700 }}>
+              <span style={{ color: semanticSigned(scard.vs_sector_week, cvdMode), fontWeight: 700 }}>
                 {scard.vs_sector_week >= 0 ? '+' : ''}{scard.vs_sector_week}% vs sector
               </span>
             )}
             {h.rsi != null && (
-              <span style={{ color: rsiZoneColor(h.rsi_status) }}>RSI {Math.round(h.rsi)} {h.rsi_status}</span>
+              <span style={{ color: rsiZoneColor(h.rsi_status, cvdMode) }}>RSI {Math.round(h.rsi)} {h.rsi_status}</span>
             )}
           </div>
           <AnalystReviews symbol={h.symbol} map={aMap} />

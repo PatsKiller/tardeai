@@ -3,7 +3,10 @@ import CountryFlag from './CountryFlag'
 import HoldingReportLinks from './HoldingReportLinks'
 import { fmt$ } from '../lib/format'
 import { buildHoldingsRowModel } from '../lib/holdingsRowModel'
-import { BB, stopStatusColor } from '../lib/holdingsTerminalTokens'
+import {
+  BB, type HoldingsCvdMode, primaryActionBg, primaryActionColor,
+  semanticSigned, stopStatusBg, stopStatusColor,
+} from '../lib/holdingsTerminalTokens'
 import { holdingReportEligible } from '../lib/reportLinks'
 
 const LLM_LANE: Record<string, { label: string; c: string }> = {
@@ -26,6 +29,7 @@ interface Props {
   rows: HoldingsTableRowContext[]
   acctColor: (a: string) => string
   focusKey?: string | null
+  cvdMode?: HoldingsCvdMode
   onOpenDetail: (ctx: HoldingsTableRowContext) => void
   onPrimaryAction: (ctx: HoldingsTableRowContext) => void
 }
@@ -54,7 +58,7 @@ function AgentBadges({ cov }: { cov?: any[] }) {
   )
 }
 
-export default function HoldingsTableView({ rows, acctColor, focusKey, onOpenDetail, onPrimaryAction }: Props) {
+export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode = 'default', onOpenDetail, onPrimaryAction }: Props) {
   const [hoverKey, setHoverKey] = useState<string | null>(null)
 
   return (
@@ -89,10 +93,10 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, onOpenDet
           const ac = acctColor(h.account ?? 'unknown')
           const focused = focusKey === m.key.replace(':', '-')
           const hovered = hoverKey === m.key
-          const bg = focused ? BB.bgRowHover : hovered ? BB.bgRowHover : i % 2 ? BB.bgRowAlt : BB.bgRow
-          const actionColor = m.primaryAction.tone === 'amber' ? BB.amber
-            : m.primaryAction.tone === 'green' ? BB.green
-            : m.primaryAction.tone === 'red' ? BB.red : BB.text3
+          const bg = focused ? BB.bgRowFocus : hovered ? BB.bgRowHover : i % 2 ? BB.bgRowAlt : BB.bgRow
+          const actionColor = primaryActionColor(m.primaryAction.tone, cvdMode)
+          const actionBg = primaryActionBg(m.primaryAction.tone, cvdMode)
+          const stopColor = stopStatusColor(m.stopStatus)
 
           return (
             <div
@@ -129,7 +133,7 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, onOpenDet
               <div style={{ fontSize: 10, lineHeight: 1.25 }}>
                 <div style={{ fontWeight: 700, color: BB.text0, fontFamily: BB.mono }}>{fmt$(m.marketValue, 0)}</div>
                 {m.dayPct != null && (
-                  <div style={{ fontSize: 9, fontWeight: 700, color: m.dayPct >= 0 ? BB.green : BB.red }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: semanticSigned(m.dayPct, cvdMode) }}>
                     {m.dayPct >= 0 ? '+' : ''}{m.dayPct.toFixed(2)}%
                   </div>
                 )}
@@ -144,15 +148,18 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, onOpenDet
                 <div style={{ color: BB.text3 }}>{m.cost != null ? `$${m.cost.toFixed(2)}` : '—'}</div>
               </div>
 
-              <div style={{ minWidth: 0 }}>
+              <div style={{
+                minWidth: 0, padding: '4px 6px', margin: '-4px -6px', borderRadius: 4,
+                background: stopStatusBg(m.stopStatus), borderLeft: `3px solid ${stopColor}`,
+              }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 4, background: stopStatusColor(m.stopStatus), flexShrink: 0 }} />
-                  <span style={{ fontSize: 9, fontWeight: 800, color: stopStatusColor(m.stopStatus) }}>{m.stopLabel}</span>
+                  <span style={{ width: 7, height: 7, borderRadius: 4, background: stopColor, flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, fontWeight: 800, color: stopColor, letterSpacing: 0.2 }}>{m.stopLabel}</span>
                   {m.stopDistPct != null && (
                     <span style={{ fontSize: 8, color: BB.text3, fontFamily: BB.mono }}>{m.stopDistPct.toFixed(1)}%</span>
                   )}
                 </div>
-                <div style={{ fontSize: 8, color: BB.text3, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.stopAdvisory}>
+                <div style={{ fontSize: 8, color: BB.text2, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.stopAdvisory}>
                   {m.stopAdvisory}
                 </div>
               </div>
@@ -160,9 +167,10 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, onOpenDet
               <span onClick={e => { e.stopPropagation(); onPrimaryAction(rowCtx) }}>
                 <button type="button" style={{
                   width: '100%', padding: '4px 8px', fontSize: 9, fontWeight: 800, borderRadius: 4, cursor: 'pointer',
-                  border: `1px solid ${actionColor}66`,
-                  background: m.primaryAction.tone === 'amber' ? BB.amberDim : m.primaryAction.tone === 'green' ? BB.greenDim : 'transparent',
-                  color: actionColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  border: `1px solid ${m.primaryAction.tone === 'amber' ? BB.amberAlt : actionColor}66`,
+                  background: actionBg,
+                  color: m.primaryAction.tone === 'amber' ? BB.amberAlt : actionColor,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                 }}>{m.primaryAction.label}</button>
               </span>
 
@@ -179,7 +187,7 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, onOpenDet
       </div>
 
       <div style={{ fontSize: 8, color: BB.text3, padding: '6px 10px', borderTop: `1px solid ${BB.border}` }}>
-        Terminal view · {rows.length} rows · Enter or click row for drawer · Amber = action needed
+        Terminal view · {rows.length} rows · Enter or click row for drawer · Green/blue = up · Red = down · Amber = action
       </div>
     </div>
   )

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-11 (pm) — Holdings Terminal Bloomberg color alignment
+
+- **Palette** — `#0f172a` rows, `#ffb000`/`#ffa028` amber, `#22c55e` up, `#ef4444` down, `#94a3b8` labels.
+- **Semantic colors** — green/red (or blue/red in CVD) for P&L and today's change only; amber for actions.
+- **Stop column** — left border + tinted background; green stable / amber concern / red action.
+- **Row hover** — subtle amber tint (Bloomberg selection pattern).
+- **CVD toggle** — Terminal layout: `CVD on/off` persists in localStorage (`cc-v3-holdings-cvd`).
+
 ## 2026-07-11 — Portfolio Holdings Terminal view (v2, approved)
 
 - **Holdings Terminal** — Bloomberg-inspired single-row table (default): symbol, account, value/P&L,

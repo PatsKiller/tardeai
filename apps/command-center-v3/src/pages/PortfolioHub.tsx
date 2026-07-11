@@ -20,6 +20,7 @@ import { EvidenceBlock } from '../components/EvidenceBlock'
 import HoldingsTableView, { type HoldingsTableRowContext } from '../components/HoldingsTableView'
 import HoldingsSideDrawer from '../components/HoldingsSideDrawer'
 import type { HoldingsDetailContext } from '../components/HoldingsDetailPanel'
+import { HOLDINGS_CVD_KEY, type HoldingsCvdMode } from '../lib/holdingsTerminalTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Holdings', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Stop Management'] as const
@@ -114,9 +115,19 @@ export default function PortfolioHub({ onDrill }: Props) {
   const [holdingsDrawer, setHoldingsDrawer] = useState<HoldingsDetailContext | null>(null)
   const [drawerTitle, setDrawerTitle] = useState('')
   const [drawerSubtitle, setDrawerSubtitle] = useState('')
+  const [holdingsCvd, setHoldingsCvd] = useState<HoldingsCvdMode>(() => {
+    try {
+      return localStorage.getItem(HOLDINGS_CVD_KEY) === 'cvd' ? 'cvd' : 'default'
+    } catch { return 'default' }
+  })
   const setViewMode = (m: HoldingsViewMode) => {
     setHoldingsView(m)
     try { localStorage.setItem(HOLDINGS_VIEW_KEY, m) } catch { /* private mode */ }
+  }
+  const toggleHoldingsCvd = () => {
+    const next: HoldingsCvdMode = holdingsCvd === 'cvd' ? 'default' : 'cvd'
+    setHoldingsCvd(next)
+    try { localStorage.setItem(HOLDINGS_CVD_KEY, next) } catch { /* private mode */ }
   }
   const [acctFilter, setAcctFilter] = useState<string | null>(null)
   const [sigTab, setSigTab] = useState('All')
@@ -293,6 +304,7 @@ export default function PortfolioHub({ onDrill }: Props) {
       reportEntry: rowCtx.reportEntry,
       coverage: rowCtx.coverage,
       onRefreshMonitored: () => refetchMonitored?.(),
+      cvdMode: holdingsCvd,
       onPreflightUpdate: (symbol, account, patch) => {
         const hk = `${symbol}:${account}`
         if (patch.holding) setHoldingPatches(p => ({ ...p, [hk]: { ...(p[hk] ?? {}), ...patch.holding } }))
@@ -459,6 +471,17 @@ export default function PortfolioHub({ onDrill }: Props) {
                       color: holdingsView === v ? (v === 'terminal' ? '#ffb000' : '#60a5fa') : 'var(--text3)',
                     }}>{v === 'terminal' ? 'Terminal' : 'Cards (legacy)'}</button>
                 ))}
+                {holdingsView === 'terminal' && (
+                  <button type="button" onClick={toggleHoldingsCvd}
+                    title="Bloomberg CVD mode: blue = up/gain, red = down/loss (PDFU COLORS pattern)"
+                    style={{
+                      padding: '3px 10px', fontSize: 9, borderRadius: 5, cursor: 'pointer', marginLeft: 6,
+                      fontWeight: holdingsCvd === 'cvd' ? 800 : 500,
+                      border: `1px solid ${holdingsCvd === 'cvd' ? '#3b82f6' : 'var(--border)'}`,
+                      background: holdingsCvd === 'cvd' ? 'rgba(59,130,246,.12)' : 'var(--bg2)',
+                      color: holdingsCvd === 'cvd' ? '#3b82f6' : 'var(--text3)',
+                    }}>CVD {holdingsCvd === 'cvd' ? 'on' : 'off'}</button>
+                )}
               </div>
               {/* signal sub-tab filters */}
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -483,6 +506,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                 rows={terminalRows}
                 acctColor={acctColor}
                 focusKey={focusKey}
+                cvdMode={holdingsCvd}
                 onOpenDetail={openHoldingsDrawer}
                 onPrimaryAction={openHoldingsDrawer}
               />
