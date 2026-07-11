@@ -163,7 +163,9 @@ export default function AiTradeCritique({ tradeKey, symbol }: { tradeKey: string
                   <div style={H}>Trade classification</div>
                   <p style={P}><b>{cls.type || '—'}</b> · {cls.setup_family || 'untagged'} · regime {cls.market_regime || '—'}</p>
                   <p style={{ ...P, fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>
-                    Entry RVOL {sq.entry_rvol ?? '—'} · VWAP {sq.above_vwap == null ? '—' : sq.above_vwap ? 'above' : 'below'}
+                    Entry RVOL {sq.entry_rvol ?? '—'}{cls.type === 'swing' && sq.entry_rvol != null ? ' (daily)' : ''}
+                    {' · VWAP '}
+                    {sq.above_vwap == null ? (cls.type === 'swing' ? 'n/a (swing)' : '—') : sq.above_vwap ? 'above' : 'below'}
                     {sq.vwap_distance_pct != null ? ` (${sq.vwap_distance_pct}%)` : ''} · RSI {sq.rsi ?? '—'} · MACD {sq.macd_state ?? '—'}
                   </p>
                 </div>

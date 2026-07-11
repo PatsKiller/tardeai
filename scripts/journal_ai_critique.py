@@ -419,7 +419,16 @@ def _deterministic_narrative(ctx: dict, sections: dict) -> dict:
     takeaways = []
     if eq.get("grok_what_to_do_next_time"):
         takeaways.append(str(eq["grok_what_to_do_next_time"])[:200])
-    takeaways.append(f"Repeat: {setup} only when regime is {regime} and RVOL confirms.")
+    trade_type = cls.get("type") or "day_trade"
+    sq = cls.get("setup_quality") or {}
+    rvol = sq.get("entry_rvol") or eq.get("entry_volume_ratio")
+    if trade_type == "swing":
+        takeaways.append(
+            f"Repeat: {setup} in {regime} — daily RVOL was {rvol if rvol is not None else 'unlogged'} "
+            "(session VWAP not applicable on multi-day holds)."
+        )
+    else:
+        takeaways.append(f"Repeat: {setup} only when regime is {regime} and RVOL confirms.")
     pr, rr = risk.get("planned_r"), risk.get("realized_r")
     if pr is not None and rr is not None:
         takeaways.append(f"Risk: planned {pr}R → realized {rr}R.")

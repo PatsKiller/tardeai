@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """ohlc_charts.py — free OHLCV + indicators for per-trade replay charts (TradingView Lightweight Charts).
 
-Source: Alpaca free historical bars (data.alpaca.markets, IEX feed) — OHLCV + VWAP, daily + intraday. Indicators
-(VWAP/MACD/RSI) computed from the bars. No metered API; uses the existing paper Alpaca keys. Read-only.
+Source priority: Alpaca → Schwab → Yahoo (yfinance) → price_cache closes. Indicators (VWAP/MACD/RSI) computed
+from bars. Finviz is chart-image fallback only — not a bar feed. Read-only.
 """
 import os, sys, json, urllib.request, urllib.error, datetime as dt
 from pathlib import Path
@@ -155,8 +155,112 @@ def _schwab_bars(symbol, start, end, timeframe):
         return []
 
 
+def _yahoo_bars(symbol, start, end, timeframe="1Day"):
+    """TIER 3: Yahoo Finance OHLCV (yfinance). Works without Alpaca/Schwab keys; daily has full volume."""
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return []
+    ckey = ("yahoo", sym, str(start), str(end), timeframe)
+    if ckey in _BARS_CACHE:
+        return _BARS_CACHE[ckey]
+    try:
+        start_dt = dt.datetime.fromisoformat(str(start).replace("Z", "+00:00"))
+        end_dt = dt.datetime.fromisoformat(str(end).replace("Z", "+00:00"))
+    except Exception:
+        return []
+    interval = "1m" if timeframe == "1Min" else "1d"
+    try:
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            import yfinance as yf
+    except Exception:
+        return []
+
+    def _col(df, name):
+        if name in df.columns:
+            ser = df[name]
+        elif hasattr(df.columns, "get_level_values") and name in df.columns.get_level_values(0):
+            ser = df[name]
+        else:
+            return None
+        if hasattr(ser, "columns"):
+            if sym in ser.columns:
+                ser = ser[sym]
+            elif len(ser.columns) == 1:
+                ser = ser.iloc[:, 0]
+            else:
+                ser = ser.squeeze()
+        return ser
+
+    def _rows_from_hist(hist):
+        out = []
+        o = _col(hist, "Open"); h = _col(hist, "High"); l = _col(hist, "Low")
+        c = _col(hist, "Close"); v = _col(hist, "Volume")
+        if c is None:
+            return out
+        for i, idx in enumerate(hist.index):
+            try:
+                close = float(c.iloc[i])
+                if close <= 0:
+                    continue
+                op = float(o.iloc[i]) if o is not None else close
+                hi = float(h.iloc[i]) if h is not None else close
+                lo = float(l.iloc[i]) if l is not None else close
+                vol = int(float(v.iloc[i])) if v is not None and v.iloc[i] == v.iloc[i] else 0
+                if hasattr(idx, "to_pydatetime"):
+                    ts = idx.to_pydatetime()
+                else:
+                    ts = dt.datetime.fromisoformat(str(idx)[:19])
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=dt.timezone.utc)
+                else:
+                    ts = ts.astimezone(dt.timezone.utc)
+                if timeframe == "1Day":
+                    t = f"{ts.date().isoformat()}T00:00:00Z"
+                else:
+                    t = ts.isoformat().replace("+00:00", "Z")
+                out.append({"o": op, "h": hi, "l": lo, "c": close, "v": vol, "t": t})
+            except Exception:
+                continue
+        return out
+
+    out = []
+    try:
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            import yfinance as yf
+            if timeframe == "1Min":
+                cur = start_dt.astimezone(dt.timezone.utc)
+                end_utc = end_dt.astimezone(dt.timezone.utc)
+                while cur < end_utc:
+                    chunk_end = min(cur + dt.timedelta(days=6), end_utc)
+                    hist = yf.download(
+                        sym,
+                        start=cur.date().isoformat(),
+                        end=(chunk_end.date() + dt.timedelta(days=1)).isoformat(),
+                        interval="1m", progress=False, auto_adjust=True, threads=False,
+                    )
+                    out.extend(_rows_from_hist(hist))
+                    cur = chunk_end
+            else:
+                hist = yf.download(
+                    sym,
+                    start=start_dt.date().isoformat(),
+                    end=(end_dt.date() + dt.timedelta(days=1)).isoformat(),
+                    interval="1d", progress=False, auto_adjust=True, threads=False,
+                )
+                out = _rows_from_hist(hist)
+    except Exception:
+        return []
+    if len(_BARS_CACHE) < _BARS_CACHE_MAX:
+        _BARS_CACHE[ckey] = out
+    return out
+
+
 def _price_cache_bars(symbol, start, end):
-    """TIER 3: daily closes from price_cache (DB or JSON). Alpaca-shaped bars; volume=0."""
+    """TIER 4: daily closes from price_cache (DB or JSON). Alpaca-shaped bars; volume=0."""
     sym = (symbol or "").upper().strip()
     try:
         start_d = dt.datetime.fromisoformat(str(start).replace("Z", "+00:00")).date()
@@ -520,8 +624,12 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         sbars = _schwab_bars(symbol, start, end, timeframe)
         if sbars:
             bars, err, source = sbars, None, "schwab"
+    if err or not bars:
+        ybars = _yahoo_bars(symbol, start, end, timeframe)
+        if ybars:
+            bars, err, source = ybars, None, "yahoo"
     if (err or not bars) and not same_day:
-        # TIER 3: price_cache daily bars — vendor monthly/weekly often missing without API keys.
+        # TIER 4: price_cache daily closes when Yahoo also fails.
         pad = max(45, hold_days + 30)
         pc_start = (ed - dt.timedelta(days=pad)).isoformat()
         pc_end = (xd + dt.timedelta(days=max(25, hold_days // 4))).isoformat()

@@ -57,6 +57,8 @@ def _bars_for(symbol, ent, ext, review_min):
         if not bars:
             bars = oc._schwab_bars(symbol, start, end, "1Day"); src = "schwab" if bars else None
         if not bars:
+            bars = oc._yahoo_bars(symbol, start, end, "1Day"); src = "yahoo" if bars else None
+        if not bars:
             bars = oc._price_cache_bars(symbol, start, end); src = "price_cache" if bars else None
         return bars or [], (src or "none"), None, True
     so = oc._sess(ent.date(), 9, 30)                                # SAME-DAY: 1-min intraday
@@ -69,6 +71,8 @@ def _bars_for(symbol, ent, ext, review_min):
     src = "alpaca"
     if not bars:
         bars = oc._schwab_bars(symbol, start, end, "1Min"); src = "schwab" if bars else None
+    if not bars:
+        bars = oc._yahoo_bars(symbol, start, end, "1Min"); src = "yahoo" if bars else None
     return bars or [], (src or "none"), so, False
 
 
