@@ -60,9 +60,23 @@ def test_stale_ai_critique_does_not_block_queue():
     assert "ai_critique_stale" in score["critique_gaps"]
 
 
+def test_stop_context_invalid_key():
+    ctx = tiv.stop_context_for_trade("BADKEY")
+    assert ctx.get("ok") is False
+
+
+def test_stop_context_schwab_trade():
+    ctx = tiv.stop_context_for_trade("ELAB:schwab_rollover_ira:2026-07-10")
+    assert ctx.get("ok") is True
+    assert ctx.get("symbol") == "ELAB"
+    assert "notes" in ctx
+
+
 if __name__ == "__main__":
     test_map_regime_label()
     test_regime_fields_for_trade_same_day()
     test_score_trade_tags_skips_ai_critique_by_default()
     test_stale_ai_critique_does_not_block_queue()
+    test_stop_context_invalid_key()
+    test_stop_context_schwab_trade()
     print("ok")

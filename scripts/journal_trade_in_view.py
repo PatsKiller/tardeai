@@ -1037,6 +1037,111 @@ def ai_critique_meta(trade_key: str) -> dict:
     }
 
 
+def _parse_trade_key(trade_key: str) -> tuple[str, str, str] | None:
+    parts = (trade_key or "").split(":")
+    if len(parts) < 3:
+        return None
+    return parts[0], ":".join(parts[1:-1]), parts[-1]
+
+
+def stop_context_for_trade(trade_key: str) -> dict:
+    """Stop management history + exit-type hints for manual review on save."""
+    parsed = _parse_trade_key(trade_key)
+    if not parsed:
+        return {"ok": False, "error": "invalid trade_key"}
+    sym, acct, cd = parsed
+
+    tc = _q(
+        "SELECT sell_price, buy_price, pnl, stop_used, shares FROM trade_closed "
+        "WHERE symbol=%s AND account=%s AND close_date=%s::date LIMIT 1",
+        [sym, acct, cd], fetch="one",
+    )
+    sell_px = float(tc.get("sell_price") or 0) if tc else 0.0
+
+    broker_stops = _q(
+        """SELECT order_type, stop_price, trail_pct, qty, status, active,
+                  placed_date::text, updated_at::text, note
+           FROM manual_broker_stops
+           WHERE UPPER(symbol)=UPPER(%s) AND account=%s
+           ORDER BY updated_at DESC LIMIT 12""",
+        [sym, acct],
+    ) or []
+
+    confirmations = _q(
+        """SELECT stop_status, stop_confirmed, stop_price_confirmed,
+                  stop_confirmed_at::text, updated_at::text
+           FROM stop_confirmations
+           WHERE UPPER(symbol)=UPPER(%s) AND account=%s
+           ORDER BY updated_at DESC LIMIT 5""",
+        [sym, acct],
+    ) or []
+
+    lifecycle = _q(
+        """SELECT symbol, account, stop_price, stop_type, health, updated_at::text
+           FROM stop_lifecycle
+           WHERE UPPER(symbol)=UPPER(%s) AND (account=%s OR account IS NULL)
+           ORDER BY updated_at DESC LIMIT 3""",
+        [sym, acct],
+    ) or []
+
+    grok_reviews = _q(
+        """SELECT order_id, grade, recommendation, should_trail, reviewed_at::text
+           FROM stop_grok_reviews
+           WHERE UPPER(symbol)=UPPER(%s) AND account=%s
+           ORDER BY reviewed_at DESC LIMIT 5""",
+        [sym, acct],
+    ) or []
+
+    suggested_exit_type = None
+    suggested_exit_signals: list[str] = []
+    notes: list[str] = []
+
+    for bs in broker_stops:
+        otype = (bs.get("order_type") or "").upper()
+        try:
+            sp = float(bs.get("stop_price") or 0)
+        except (TypeError, ValueError):
+            sp = 0.0
+        trail = bs.get("trail_pct")
+        is_trail = "TRAIL" in otype or (trail is not None and float(trail or 0) > 0)
+        if sell_px > 0 and sp > 0 and abs(sell_px - sp) / max(sp, 0.01) <= 0.02:
+            if is_trail:
+                suggested_exit_type = "trailing_stop"
+                suggested_exit_signals.append("trailing_stop")
+                notes.append(f"Exit ${sell_px:.4f} within 2% of recorded trailing stop ${sp:.2f}.")
+            else:
+                suggested_exit_type = "hard_stop"
+                suggested_exit_signals.append("stop_loss_hit")
+                notes.append(f"Exit ${sell_px:.4f} within 2% of recorded hard stop ${sp:.2f}.")
+            break
+
+    if not broker_stops and not confirmations and not lifecycle:
+        notes.append(
+            "No stop registry for this symbol/account — common for Schwab round-trips. "
+            "Set exit type manually if stopped out."
+        )
+    elif sell_px > 0 and not suggested_exit_type:
+        notes.append("Exit fill does not match any recorded stop price — likely manual or market exit.")
+
+    return {
+        "ok": True,
+        "trade_key": trade_key,
+        "symbol": sym,
+        "account": acct,
+        "close_date": cd,
+        "sell_price": sell_px or None,
+        "stop_used": tc.get("stop_used") if tc else None,
+        "broker_stops": broker_stops,
+        "stop_confirmations": confirmations,
+        "stop_lifecycle": lifecycle,
+        "stop_grok_reviews": grok_reviews,
+        "suggested_exit_type": suggested_exit_type,
+        "suggested_exit_signals": suggested_exit_signals,
+        "notes": notes,
+        "has_history": bool(broker_stops or confirmations or lifecycle or grok_reviews),
+    }
+
+
 def mark_ai_critique_stale(trade_key: str) -> bool:
     import journal_ai_critique as jac
     return jac.mark_stale_on_tag_change(trade_key)

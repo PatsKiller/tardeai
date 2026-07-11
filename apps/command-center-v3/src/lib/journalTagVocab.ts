@@ -182,6 +182,102 @@ export const TRADE_PLAN_CONFIG: VocabConfig = {
   emptyError: 'Enter a plan label.',
 }
 
+/** How the trade was closed — operator-tagged on save (not inferred from Schwab CSV) */
+export const EXIT_TYPE_DEFAULTS = [
+  'Hard stop',
+  'Trailing stop',
+  'Break-even stop',
+  'Target hit',
+  'Scale out / partial',
+  'Time stop (EOD)',
+  'Manual / discretionary',
+  'Broker auto-liquidation',
+  'Unknown / verify',
+] as const
+
+export const EXIT_TYPE_CONFIG: VocabConfig = {
+  storageKey: 'tradeai.exitTypes.v1',
+  defaults: EXIT_TYPE_DEFAULTS,
+  selectPlaceholder: 'How did you exit? (required for stop-outs)',
+  addTitle: 'Add exit type',
+  addHint: 'Saved for this browser.',
+  addPlaceholder: 'e.g. Gap-down stop, Software stop',
+  addConfirmLabel: 'Add exit type',
+  emptyError: 'Enter an exit type label.',
+}
+
+/** Exit mechanism / signal chips (v2 journal parity) */
+export const EXIT_SIGNAL_ITEMS: { value: string; label: string }[] = [
+  { value: 'target_hit', label: 'Target hit' },
+  { value: 'stop_loss_hit', label: 'Stop loss hit' },
+  { value: 'trailing_stop', label: 'Trailing stop' },
+  { value: 'break_even_stop', label: 'Break-even stop' },
+  { value: 'time_stop_eod', label: 'Time stop (EOD)' },
+  { value: 'scaling_out_partial', label: 'Scale out / partial' },
+  { value: 'discretionary_exit', label: 'Discretionary exit' },
+  { value: 'momentum_fade', label: 'Momentum fade' },
+  { value: 'resistance_rejection', label: 'Resistance rejection' },
+  { value: 'pattern_failure', label: 'Pattern failure' },
+  { value: 'macd_cross_against', label: 'MACD cross against' },
+  { value: 'vwap_rejection', label: 'VWAP rejection' },
+]
+
+export const EXIT_SIGNAL_LABEL_BY_VALUE = Object.fromEntries(
+  EXIT_SIGNAL_ITEMS.map(i => [i.value, i.label]),
+) as Record<string, string>
+
+export const EXIT_SIGNAL_VALUE_BY_LABEL = Object.fromEntries(
+  EXIT_SIGNAL_ITEMS.map(i => [i.label, i.value]),
+) as Record<string, string>
+
+export const EXIT_SIGNAL_CONFIG: VocabConfig = {
+  storageKey: 'tradeai.exitSignals.v1',
+  defaults: EXIT_SIGNAL_ITEMS.map(i => i.label),
+  selectPlaceholder: 'Add exit signal…',
+  addTitle: 'Add exit signal',
+  addHint: 'Custom exit signals saved for this browser.',
+  addPlaceholder: 'e.g. Chandelier trail, 6% trail hit',
+  addConfirmLabel: 'Add signal',
+  emptyError: 'Enter an exit signal label.',
+}
+
+/** Map exit type label → exit_type column slug for analytics */
+export function exitTypeToSlug(label: string): string {
+  const m: Record<string, string> = {
+    'hard stop': 'hard_stop',
+    'trailing stop': 'trailing_stop',
+    'break-even stop': 'break_even_stop',
+    'target hit': 'target_hit',
+    'scale out / partial': 'scale_out',
+    'time stop (eod)': 'time_stop',
+    'manual / discretionary': 'manual_exit',
+    'broker auto-liquidation': 'broker_liquidation',
+    'unknown / verify': 'unknown',
+  }
+  const k = (label || '').trim().toLowerCase()
+  return m[k] || k.replace(/\s+/g, '_').replace(/[^\w]/g, '') || 'unknown'
+}
+
+const EXIT_SLUG_TO_LABEL: Record<string, string> = {
+  hard_stop: 'Hard stop',
+  trailing_stop: 'Trailing stop',
+  break_even_stop: 'Break-even stop',
+  target_hit: 'Target hit',
+  scale_out: 'Scale out / partial',
+  time_stop: 'Time stop (EOD)',
+  manual_exit: 'Manual / discretionary',
+  broker_liquidation: 'Broker auto-liquidation',
+  unknown: 'Unknown / verify',
+  stop_hit: 'Hard stop',
+  instant_stop: 'Hard stop',
+}
+
+export function exitSlugToLabel(slug: string): string {
+  const s = (slug || '').trim().toLowerCase()
+  if (!s) return ''
+  return EXIT_SLUG_TO_LABEL[s] || slug.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
 /** Map plan selection → followed_plan boolean for analytics */
 export function planImpliesFollowed(plan: string): boolean | null {
   const p = (plan || '').toLowerCase()

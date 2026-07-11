@@ -10619,8 +10619,14 @@ def _journal_review_get(trade_key_encoded):
             ai_critique_meta = _tiv.ai_critique_meta(trade_key)
         except Exception:
             tagging_score = None
+    stop_context = None
+    try:
+        import journal_trade_in_view as _tiv3
+        stop_context = _tiv3.stop_context_for_trade(trade_key)
+    except Exception:
+        stop_context = None
     return {"exists": bool(row), "review": review, "tagging_score": tagging_score,
-            "ai_critique_meta": ai_critique_meta}
+            "ai_critique_meta": ai_critique_meta, "stop_context": stop_context}
 
 
 def _journal_timeframe_hint(t):

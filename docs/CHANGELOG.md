@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-11 (late night 2) — Manual exit review: hard stop vs trailing + stop context
+
+- **Review tab** — Exit type picker + exit signal chips (stop loss hit, trailing stop, etc.); stop management context panel from `manual_broker_stops` / confirmations.
+- **Save** — modal stays open for corrections; `auto_confirm_enriched_tags: false` until operator saves.
+- **API** — `stop_context_for_trade` on `GET /api/v2/journal/review/<key>`.
+
 ## 2026-07-11 (late night) — Tagging queue: save clears trade (AI critique optional)
 
 - **`score_trade_tags`** — `ai_critique` / `ai_critique_stale` no longer block queue completeness; surfaced as optional `critique_gaps` only.

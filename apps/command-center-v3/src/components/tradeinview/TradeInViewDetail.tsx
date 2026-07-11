@@ -8,10 +8,14 @@ import AiTradeCritique from './AiTradeCritique'
 import StopIntelligencePanel from '../StopIntelligencePanel'
 import IndustryPicker from './IndustryPicker'
 import TradePlanPicker from './TradePlanPicker'
+import ExitTypePicker from './ExitTypePicker'
+import StopContextPanel from './StopContextPanel'
 import TagChipGrid from './TagChipGrid'
 import {
   SETUP_TYPE_GROUPS, SETUP_TYPE_CONFIG, MISTAKE_CONFIG, STRENGTH_CONFIG,
-  MISTAKE_DEFAULTS, STRENGTH_DEFAULTS, planImpliesFollowed,
+  MISTAKE_DEFAULTS, STRENGTH_DEFAULTS, EXIT_SIGNAL_ITEMS, EXIT_SIGNAL_CONFIG,
+  EXIT_SIGNAL_LABEL_BY_VALUE, EXIT_SIGNAL_VALUE_BY_LABEL,
+  planImpliesFollowed, exitTypeToSlug, exitSlugToLabel,
 } from '../../lib/journalTagVocab'
 
 type Tab = 'Overview' | 'Review' | 'Reflection'
@@ -34,6 +38,7 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
   const [msg, setMsg] = useState('')
   const [attachments, setAttachments] = useState<any[]>([])
   const [tagScore, setTagScore] = useState<any>(null)
+  const [stopContext, setStopContext] = useState<any>(null)
 
   const tradeKey = trade.trade_key || `${trade.symbol}:${trade.account ?? trade.na}:${trade.exitDate ?? trade.close_date}`
 
@@ -42,13 +47,17 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
     const enc = tradeKey.replace(/:/g, '__')
     fetch(`/api/v2/journal/review/${enc}`).then(r => r.json()).then(d => {
       const r = d?.data?.review || d?.review || {}
+      const sc = d?.data?.stop_context ?? d?.stop_context ?? null
       setTagScore(d?.data?.tagging_score ?? d?.tagging_score ?? null)
+      setStopContext(sc)
       setForm({
         trade_key: tradeKey, symbol: trade.symbol, account: trade.account ?? trade.na,
         closed_date: trade.exitDate ?? trade.close_date,
         setup_types: r.setup_types || [], setup_family: r.setup_family || '',
         industry: r.payload?.industry || r.catalyst_type || '',
         trade_plan: r.payload?.trade_plan || '',
+        exit_type_label: exitSlugToLabel(r.exit_type || ''),
+        exit_signals: r.exit_signals || [],
         market_regime: r.market_regime || '', planned_r: r.planned_r, realized_r: r.realized_r,
         emotion_before: r.emotion_before || '', emotion_during: r.emotion_during || '', emotion_after: r.emotion_after || '',
         followed_plan: r.followed_plan, lesson_learned: r.lesson_learned || '', review_notes: r.review_notes || '',
@@ -58,7 +67,8 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
       })
     }).catch(() => {
       setTagScore(null)
-      setForm({ trade_key: tradeKey, symbol: trade.symbol, account: trade.account ?? trade.na, closed_date: trade.exitDate, mistake_tags: [], strength_tags: [], setup_types: [] })
+      setStopContext(null)
+      setForm({ trade_key: tradeKey, symbol: trade.symbol, account: trade.account ?? trade.na, closed_date: trade.exitDate, mistake_tags: [], strength_tags: [], setup_types: [], exit_signals: [] })
     })
     fetch(`/api/v2/journal/attachments?trade_key=${encodeURIComponent(tradeKey)}`).then(r => r.json())
       .then(d => setAttachments(d?.attachments || []))
@@ -84,8 +94,10 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
 
   const save = async () => {
     setSaving(true)
+    const exitSlug = form.exit_type_label ? exitTypeToSlug(form.exit_type_label) : undefined
     const payload = {
       ...form,
+      exit_type: exitSlug,
       catalyst_type: form.industry || undefined,
       followed_plan: planImpliesFollowed(form.trade_plan) ?? form.followed_plan,
       payload: {
@@ -105,7 +117,9 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
       fetch(`/api/v2/journal/review/${enc}`).then(x => x.json()).then(d => {
         setTagScore(d?.data?.tagging_score ?? d?.tagging_score ?? null)
       }).catch(() => {})
-      setMsg(r.tagging_complete ? '✓ saved — reports unlocked for this trade' : '✓ saved — finish missing tags to unlock reports')
+      setMsg(r.tagging_complete
+        ? '✓ saved — you can keep editing or close when done'
+        : '✓ saved — finish missing tags, then save again')
       onSaved?.()
     } else setMsg('⛔ failed')
   }
@@ -158,7 +172,21 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
           {tab === 'Review' && (
             <div style={focusTagging ? { border: '2px solid rgba(96,165,250,.5)', borderRadius: 10, padding: 14, background: 'rgba(96,165,250,.06)' } : undefined}>
               <TradeReportReadiness score={tagScore} />
-              {focusTagging && <div style={{ fontSize: 15, fontWeight: 800, color: '#93c5fd', marginBottom: 14, lineHeight: 1.4 }}>Complete tagging — required for report accuracy</div>}
+              <StopContextPanel ctx={stopContext} />
+              {stopContext?.suggested_exit_type && !form.exit_type_label && (
+                <button
+                  type="button"
+                  onClick={() => setForm((f: any) => ({
+                    ...f,
+                    exit_type_label: exitSlugToLabel(stopContext.suggested_exit_type),
+                    exit_signals: [...new Set([...(f.exit_signals || []), ...(stopContext.suggested_exit_signals || [])])],
+                  }))}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 6, border: '1px solid rgba(34,197,94,.45)', background: 'rgba(34,197,94,.12)', color: '#86efac', cursor: 'pointer', marginBottom: 12 }}
+                >
+                  Apply stop suggestion ({exitSlugToLabel(stopContext.suggested_exit_type)})
+                </button>
+              )}
+              {focusTagging && <div style={{ fontSize: 15, fontWeight: 800, color: '#93c5fd', marginBottom: 14, lineHeight: 1.4 }}>Review all fields — Save review is your final sign-off (correct anything before saving)</div>}
               <div style={LABEL}>Strategy / setup family</div>
               <SetupFamilyPicker
                 value={form.setup_family || ''}
@@ -176,6 +204,22 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
                 selected={form.setup_types || []}
                 onChange={tags => setForm((f: any) => ({ ...f, setup_types: tags }))}
                 color="#60a5fa"
+              />
+              <div style={LABEL}>Exit type (stop-outs: hard vs trailing)</div>
+              <ExitTypePicker
+                value={form.exit_type_label || ''}
+                onChange={v => setForm((f: any) => ({ ...f, exit_type_label: v }))}
+              />
+              <TagChipGrid
+                label="Exit signals (how you got out)"
+                flat={EXIT_SIGNAL_ITEMS.map(i => i.label)}
+                config={EXIT_SIGNAL_CONFIG}
+                selected={(form.exit_signals || []).map((v: string) => EXIT_SIGNAL_LABEL_BY_VALUE[v] || v)}
+                onChange={labels => setForm((f: any) => ({
+                  ...f,
+                  exit_signals: labels.map(l => EXIT_SIGNAL_VALUE_BY_LABEL[l] || l),
+                }))}
+                color="#f59e0b"
               />
               <div style={LABEL}>Trade plan</div>
               <TradePlanPicker

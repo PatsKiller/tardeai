@@ -721,8 +721,7 @@ export default function TaggingQueuePanel({ account, days, acctLabel = {} }: Pro
           onClose={() => setDetailTrade(null)}
           onReplay={() => openReplay(detailTrade)}
           onSaved={() => {
-            setDetailTrade(null)
-            showToast('Trade tagged successfully. Affected reports will refresh in the background.')
+            showToast('Saved — modal stays open so you can correct more; close × when done.')
             refresh()
           }}
         />
