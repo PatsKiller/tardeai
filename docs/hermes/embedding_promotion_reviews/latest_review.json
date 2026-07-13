@@ -1,10 +1,10 @@
 {
-  "date": "2026-07-11",
-  "timestamp": "2026-07-11T08:15:52.887805+00:00",
+  "date": "2026-07-12",
+  "timestamp": "2026-07-12T08:15:56.156382+00:00",
   "embedding_recommendations": [],
   "promotion_recommendations": [],
   "rejected": [],
-  "total_staged_non_backlog": 262,
+  "total_staged_non_backlog": 270,
   "embeddings_created": 0,
   "promotions_created": 0
 }
