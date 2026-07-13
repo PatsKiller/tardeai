@@ -18,6 +18,9 @@
      amber/WAIT, or red/AVOID. A Social Scout is "interesting, not there yet" — never tradeable. */
   --social-scout: #a855f7;
   --social-scout-dim: rgba(168, 85, 247, 0.15);
+  /* Pre-market social awareness (no Finviz data yet) — teal, distinct from scout violet */
+  --social-awareness: #14b8a6;
+  --social-awareness-dim: rgba(20, 184, 166, 0.15);
   --top-gainer: #f97316;
   --top-gainer-dim: rgba(249, 115, 22, 0.15);
   /* Squeeze / reverse-split manual review — cyan, not GO green */

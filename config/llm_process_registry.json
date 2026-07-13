@@ -22,6 +22,8 @@
     {"id": "hermes_external_research", "name": "Hermes External Research", "category": "Hermes", "lane_policy": "either", "description": "Escalation — first available OAuth lane"},
     {"id": "multi_tier_trade_reviewer", "name": "Multi-Tier Trade Reviewer", "category": "Journal", "lane_policy": "both_preferred", "description": "Cloud review of local trade reviews"},
     {"id": "reporting_grok_editorial", "name": "Report Grok Editorial", "category": "Reports", "lane_policy": "grok_only", "description": "Optional Grok polish on exports"},
+    {"id": "portfolio_weekly_report", "name": "Portfolio Weekly Report", "category": "Reports", "lane_policy": "either", "default_mode": "automated", "description": "Weekly portfolio narratives (6 sections) via OAuth LLM"},
+    {"id": "portfolio_monthly_report", "name": "Portfolio Monthly Report", "category": "Reports", "lane_policy": "either", "default_mode": "automated", "daily_soft_cap": 24, "description": "Monthly portfolio narratives (8 sections) via OAuth LLM"},
     {"id": "directive_keyword_enhancer", "name": "Directive Keyword Enhancer", "category": "Intel", "lane_policy": "ensemble", "description": "Merges keywords from grok + chatgpt + local"},
     {"id": "think_tank_signal_miner", "name": "Think Tank Signal Miner", "category": "Intel", "lane_policy": "either", "description": "Tries lanes in order"},
     {"id": "hermes_scalp_review", "name": "Hermes Scalp Post-Trade Review", "category": "Trading", "lane_policy": "either", "description": "OAuth enrichment — grok preferred"},

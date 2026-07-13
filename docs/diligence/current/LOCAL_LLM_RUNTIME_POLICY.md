@@ -41,7 +41,22 @@ Single-GPU box (Intel Arc B50). Ollama runs **one resident model at a time** —
 - **Cloud unavailable** (free-OAuth proxy down/auth-expired) → `DEFER`; **never** fall back to paid and **never** fall back to a local-heavy model.
 - Paid lane requested for a research call → `BLOCK` (paid is reserved for explicit cost-gated oversight outside this research path).
 
-## 6. Cross-references
+## 6. Health-agent escalation (`claude_escalation_handler.py`)
+
+Tier 3 local LLM is **ops triage only** — root-cause narrative from log tails; **never** auto-executes fixes (Tier 1 `retry_cmd` is separate and allowlisted).
+
+| Tier | Model | When |
+|------|--------|------|
+| 3a | gemma4:31b (llama.cpp) | Off-hours, low load — skipped 06:00–12:00 ET and when `load1` > cap |
+| 3b | **gemma3:4b** (default) | Market hours, batch ≥2 items, or high load — avoids 12b stalls/timeouts |
+| 3b fallback | gemma3:4b | If a heavier Ollama model was selected and fails |
+| 3c | Claude CLI | Opt-in (`ESCALATION_USE_CLAUDE_CLI=1`) only |
+
+**Trust model:** treat Tier 3 Telegram as **hypothesis for operator review**, not authoritative. Portfolio weekly/monthly **actions** use OAuth + `portfolio_report_llm.sanitize_action_text()`, not local 4b.
+
+Env: `ESCALATION_LLM_MODEL_SMALL` (default `gemma3:4b`), `ESCALATION_LLM_MODEL` (default `gemma3:12b`, avoided in practice), `ESCALATION_31B_LOAD_CAP`, `DISABLE_GEMMA4_31B_ESCALATION`.
+
+## 7. Cross-references
 - `config/hermes_research_budget.yaml` — `market_hours`, `lanes`, tier policy (must mirror §2–§5).
 - `scripts/hermes_research_budget_guard.py` — `_is_market_hours()`, `_lane_kind()`, the local-heavy block, no-paid-fallback enforcement.
 - `scripts/local_llm.py` / `scripts/local_llm_config.py` — single-job lock, disabled-model substitution, concurrency env.

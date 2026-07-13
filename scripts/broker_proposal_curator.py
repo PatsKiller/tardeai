@@ -75,6 +75,11 @@ def _compute_support_resistance(conn, symbol: str, live_price: float | None) -> 
     if not sym:
         return out
     try:
+        from price_db_sync import ensure_price_history
+        ensure_price_history([sym])
+    except Exception:
+        pass
+    try:
         from materialize_watchlist_strategy_cards import compute_support_resistance
         sr = compute_support_resistance(conn, sym)
         out["support_1"] = sr.get("support")

@@ -82,7 +82,7 @@ still shows `inactive`. `Failed: 0` on that page remains the real fault signal.
 | 3:00 | 1st/mo | Transcript purge | Deletes expired YouTube transcripts (purge_after < today) | youtube_transcripts DELETE | — |
 | 4:00 | M-F | `run_scheduled_atp2_research_cycle.sh --cycle premarket_4am` | Pre-market research — technical snapshots, catalyst checks, overnight news | proposal enrichment tables | — |
 | 4:00-19:50 | M-F | `auto_enrichment_runner.py` (*/10) | Continuous proposal enrichment — rate-limited, 3 workers max, failure tracking | proposal enrichment satellites | — |
-| 4:00-19:50 | M-F | `proposal_enrichment_loop.py` (*/10) | Enrichment stage runner — 8 stages (source, strategy, catalyst, technical, risk, execution, agents, llm) | proposal enrichment satellites | — |
+| 4:00-19:50 | M-F | `proposal_enrichment_loop.py` (*/10) | Enrichment stage runner — 8 stages (source, strategy, catalyst, technical, risk, execution, agents, llm); includes `ensure_price_history` per symbol | proposal enrichment satellites, ticker_prices | — |
 | 5:00 | M-F | `run_alex_daily.py --daily` | Alex agent daily run — retirement, tax, income analysis + Telegram summary | agent results, Telegram | — |
 
 ### Early Morning (6:00 AM – 8:00 AM)
@@ -119,7 +119,7 @@ still shows `inactive`. `Failed: 0` on that page remains the real fault signal.
 | 7:15 | M-F | `write_state_freshness_history.py` | Record data freshness timestamps | state_freshness_history | — |
 | 7:15 | M-F | `portfolio_orchestrator.py` | Portfolio pipeline — repricing, attribution, risk calc | portfolio_snapshots, risk_metrics | `/tmp/portfolio_orch.lock` |
 | 7:15 | M-F | `alex_hygiene.py` | Alex agent hygiene — verify research topic freshness | research_topics audit | — |
-| 7:20 | M-F | `price_db_sync.py` | Sync Finviz prices to price DB | price_history | — |
+| 7:20 | M-F | `price_db_sync.py` | Sync holdings + `market_quotes` → `ticker_prices`; yfinance gap-fill for Hermes top-250 and active proposal symbols | ticker_prices | — |
 | 7:20 | M-F | `llm_intelligence_enrichment.py` | LLM intelligence — 5 daily sections (sector thesis, catalyst, technical, fundamentals, risk) | llm_intelligence_cache | `/tmp/llm_enrichment.lock` |
 | 7:25 | M-F | `system_health_alerts.py` | System health alert check | alert_events | — |
 | 7:30 | M-F | `symbol_enrichment.py --limit 50` | Symbol-level enrichment (fundamentals, metadata) | symbol_metadata | — |

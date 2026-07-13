@@ -6,6 +6,7 @@ import {
   pageSlice, paginateTopN, toggleSelectedSymbol, selectSymbols, deselectSymbols,
   dedupeSymbols, formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, getTopGainerPill,
   getSqueezePill, getRunnerPill, isSqueezeRow, isRunnerRow, scannerSortKey, buildPillTooltip, missingPillarHints,
+  isSocialAwarenessRow, getSocialAwarenessPill,
 } from './scannerSelection.ts'
 
 declare const process: { exit(code?: number): never }
@@ -133,6 +134,15 @@ check('runner sorts above top gainer', scannerSortKey({ symbol: 'IOTR', awarenes
   > scannerSortKey({ symbol: 'X', awareness_status: 'TOP_GAINER', change_pct: 99 }))
 check('squeeze still above runner', scannerSortKey({ symbol: 'GMM', awareness_status: 'SQUEEZE', rvol: 100, gap_pct: 50 })
   > scannerSortKey({ symbol: 'IOTR', awareness_status: 'HIGH_RVOL', rvol: 12, gap_pct: 40 }))
+
+const aware = getSocialAwarenessPill({
+  symbol: 'QTEX', source: 'social', source_detail: 'stocktwits_premarket',
+  social_stocktwits: 2, catalyst: 'QTEX trending on StockTwits pre-market',
+})
+check('social awareness pill', !!(aware.isAwareness && aware.text?.includes('SOCIAL AWARENESS')))
+check('social awareness catalyst in hints', aware.hints?.some(h => h.includes('QTEX')) ?? false)
+check('isSocialAwarenessRow', isSocialAwarenessRow({ symbol: 'HITI', source: 'social', price: 0, rvol: 0 }))
+check('awareness not when finviz data', !isSocialAwarenessRow({ symbol: 'EHGO', source: 'social', price: 2.16, rvol: 10 }))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

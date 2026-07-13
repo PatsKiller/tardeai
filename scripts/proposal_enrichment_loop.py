@@ -674,6 +674,16 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
         proposal['entry_zone_status'] = zone
         proposal['lifecycle_status'] = new_lifecycle
 
+    # 2b. Close history for support/resistance / backtest / broker curator (same path as watchlist)
+    if not dry_run:
+        try:
+            from price_db_sync import ensure_price_history
+            _ph = ensure_price_history([symbol])
+            if (_ph.get("quotes_synced") or 0) > 0 or (_ph.get("yfinance") or {}).get("filled"):
+                actions.append("price_history")
+        except Exception as e:
+            log.debug(f"[price_history] #{pid} {symbol}: {e}")
+
     # 3. Technical snapshot (non-blocking)
     if not dry_run:
         try:

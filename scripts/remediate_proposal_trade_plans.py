@@ -95,6 +95,11 @@ def _proposal_price(conn, proposal_id: int | None, symbol: str) -> float | None:
 def _bootstrap_card_levels(conn, symbol: str, *, proposal_id: int | None = None) -> dict | None:
     """When ticker_prices is empty, derive support/resistance/stop/target from enrichment + live price."""
     sym = symbol.upper()
+    try:
+        from price_db_sync import ensure_price_history
+        ensure_price_history([sym])
+    except Exception:
+        pass
     price = _proposal_price(conn, proposal_id, sym)
     if not price or price <= 0:
         return None

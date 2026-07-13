@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-07-13 — Price history backfill, report grounding, proposal parity, escalation 4b
+
+### `ticker_prices` backfill (watchlist + proposals)
+
+- **`scripts/price_db_sync.py`** — `ensure_price_history()` syncs `market_quotes` → `ticker_prices` and yfinance gap-fills symbols short on history; daily job now covers Hermes top-250 **and** active proposal symbols.
+- **`scripts/backfill_ticker_prices.py`** — one-shot backfill (`--hermes-top`, `--rated`, `--proposals`, `--symbols`).
+- **`scripts/watchlist_enrichment_sweep.py`** — after each enrich batch, persists quotes into `ticker_prices`.
+- **`POST /api/v2/watchlist/<SYM>/refresh`** — runs `ensure_price_history` before strategy-card materialize.
+- **Proposals** — same path in `proposal_enrichment_loop.py`, `paper-proposals/refresh-data`, `broker-proposals/refresh-prices` (+ batch), `broker_proposal_curator.py`, `remediate_proposal_trade_plans.py`.
+- **Tests** — `tests/test_price_db_sync_backfill.py`
+
+### Weekly / monthly report action grounding (OAuth)
+
+- **`scripts/portfolio_report_llm.py`** — held-position table, OAuth via `llm_lane`, `sanitize_action_text()` blocks unheld tickers and >20% price drift (fixes TSLA @ $195 class hallucinations).
+- **`portfolio_weekly_report.py` / `portfolio_monthly_report.py`** — all narrative sections OAuth; Telegram send re-validates action before dispatch.
+- **`scripts/remediate_weekly_report_action.py`** — patch saved weekly JSON/HTML + optional correction Telegram.
+- **`linux_launchers/run_portfolio_weekly.sh`** — log string updated (no longer "Ollama qwen3:14b").
+- **Tests** — `tests/test_portfolio_report_llm.py`
+
+### Social awareness lane (Trading Hub)
+
+- **`scripts/lib/social_awareness.py`** — `SOCIAL_AWARENESS` status, catalyst builder; social-only `trade_ai_scans` rows tagged in API + CC v3 (teal **AWARE** pill, filter, catalyst ST badge).
+- **`premarket_watcher.py`** — catalyst on persist; never GO without Finviz enrichment.
+- **Tests** — `tests/test_social_awareness.py`, `scannerSelection.test.ts`
+
+### Scalp Telegram alerts — country + source badge
+
+- **`scripts/lib/scalp_alert_format.py`** — shared formatter (country flag/name, source badge like Command Center).
+- Wired in `continuous_runner.py`, `social_scalp_scanner.py`; **Tests** — `tests/test_scalp_alert_format.py`
+
+### Escalation handler — Tier 3b reliability
+
+- **`claude_escalation_handler.py`** — market hours / batch ≥2 / high load → **gemma3:4b** (not 12b); longer timeout; automatic 4b fallback on 12b failure. Output remains **advisory** (logged + Telegram; Tier 1 retry_cmd unchanged).
+
 ## 2026-07-11 (late night 2) — Manual exit review: hard stop vs trailing + stop context
 
 - **Review tab** — Exit type picker + exit signal chips (stop loss hit, trailing stop, etc.); stop management context panel from `manual_broker_stops` / confirmations.

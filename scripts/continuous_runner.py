@@ -125,6 +125,22 @@ LLM_HAIKU_COOLDOWN_MIN  = 30   # min minutes between Haiku calls per ticker
 LLM_SONNET_COOLDOWN_MIN = 120  # min minutes between Sonnet plans per ticker
 
 
+def _rvol_trigger_payload(kind: str, t: Dict, sym: str, rvol: float,
+                          cat: str, decision: str, score: int) -> Dict:
+    try:
+        from lib.scalp_alert_format import resolve_source_fields
+        src, src_detail = resolve_source_fields(t)
+    except Exception:
+        src, src_detail = "screener", ""
+    return {
+        "type": kind, "symbol": sym, "rvol": rvol,
+        "cat": cat, "decision": decision, "score": score,
+        "country": t.get("country") or "",
+        "source": src,
+        "source_detail": src_detail,
+    }
+
+
 # "   "    State tracker "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
 
 class CycleState:
@@ -180,9 +196,19 @@ class CycleState:
 
         for sym in go_now - self.prev_go:
             t = next((x for x in scored if x["symbol"] == sym), {})
-            triggers.append({"type": "NEW_GO", "symbol": sym, "score": t.get("score",0),
-                             "rvol": t.get("relative_volume",0),
-                             "cat": (t.get("top_catalyst") or {}).get("title","")[:60]})
+            try:
+                from lib.scalp_alert_format import resolve_source_fields
+                _src, _src_detail = resolve_source_fields(t)
+            except Exception:
+                _src, _src_detail = "screener", ""
+            triggers.append({
+                "type": "NEW_GO", "symbol": sym, "score": t.get("score", 0),
+                "rvol": t.get("relative_volume", 0),
+                "cat": (t.get("top_catalyst") or {}).get("title", "")[:60],
+                "country": t.get("country") or "",
+                "source": _src,
+                "source_detail": _src_detail,
+            })
 
         for h in halt_data.get("halted_tickers", []):
             if h["symbol"] not in self.halted_seen:
@@ -205,13 +231,11 @@ class CycleState:
             if rvol >= RVOL_8X_THRESHOLD and sym not in self.rvol8x_seen:
                 self.rvol8x_seen.add(sym)
                 if _actionable:
-                    triggers.append({"type": "RVOL_8X", "symbol": sym, "rvol": rvol,
-                                     "cat": _cat, "decision": _dec, "score": _sc})
+                    triggers.append(_rvol_trigger_payload("RVOL_8X", t, sym, rvol, _cat, _dec, _sc))
             elif rvol >= RVOL_5X_THRESHOLD and sym not in self.rvol5x_seen:
                 self.rvol5x_seen.add(sym)
                 if _actionable:
-                    triggers.append({"type": "RVOL_5X", "symbol": sym, "rvol": rvol,
-                                     "cat": _cat, "decision": _dec, "score": _sc})
+                    triggers.append(_rvol_trigger_payload("RVOL_5X", t, sym, rvol, _cat, _dec, _sc))
 
             prev  = self.prev_score.get(sym, 0)
             delta = t.get("score", 0) - prev
@@ -230,6 +254,19 @@ class CycleState:
 
 
 # "   "    Alert builder "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
+
+def _scalp_meta_line(trigger: Dict) -> str:
+    try:
+        from lib.scalp_alert_format import format_scalp_meta_line
+        return format_scalp_meta_line(
+            source=trigger.get("source") or "screener",
+            source_detail=trigger.get("source_detail") or "",
+            country=trigger.get("country") or "",
+            symbol=trigger.get("symbol") or "",
+        )
+    except Exception:
+        return ""
+
 
 def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
     spy = market.get("indices",{}).get("SPY",{}).get("change_percent",0)
@@ -285,7 +322,13 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
                 if _r: ai_line = "\n  \U0001f916 _" + _r[:80] + "_"
             except Exception: pass
 
-            lines.append(f"\U0001f3af *NEW GO* \u2014 *{sym}* score={_sc} RVOL {_rv:.1f}x\n  _{_cat}_" + critic_line + social_line + ai_line)
+            _meta = _scalp_meta_line(t)
+            _meta_line = f"\n  {_meta}" if _meta else ""
+            lines.append(
+                f"\U0001f3af *NEW GO* \u2014 *{sym}* score={_sc} RVOL {_rv:.1f}x"
+                + _meta_line
+                + f"\n  _{_cat}_" + critic_line + social_line + ai_line
+            )
 
             # Live WS broadcast — non-fatal
             try:
@@ -311,11 +354,15 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
         elif t["type"] == "RVOL_8X":
             _rl = f"\U0001f680 *RVOL 8x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x"
             if t.get("decision"): _rl += f"  [{t['decision']}]"
+            _meta = _scalp_meta_line(t)
+            if _meta: _rl += f"\n  {_meta}"
             if t.get("cat"): _rl += f"\n  _{t['cat']}_"
             lines.append(_rl)
         elif t["type"] == "RVOL_5X":
             _rl = f"\U0001f680 *RVOL 5x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x"
             if t.get("decision"): _rl += f"  [{t['decision']}]"
+            _meta = _scalp_meta_line(t)
+            if _meta: _rl += f"\n  {_meta}"
             if t.get("cat"): _rl += f"\n  _{t['cat']}_"
             lines.append(_rl)
         elif t["type"] == "SCORE_JUMP":

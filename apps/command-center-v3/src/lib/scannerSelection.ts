@@ -42,8 +42,18 @@ export interface ScannerRow {
   float_m?: number | string
   catalyst?: string
   catalyst_verified?: boolean
+  catalyst_source?: string
   sector?: string
   industry?: string
+  social_stocktwits?: number
+  mention_count?: number
+  social_sentiment?: string
+  run_type?: string
+  source_detail?: string
+}
+
+export interface SocialAwarenessPill extends PillDetail {
+  isAwareness: boolean
 }
 
 export interface PillDetail {
@@ -236,6 +246,44 @@ export function buildPillTooltip(
 
   lines.push(opts.footer || 'Awareness only — not auto GO / not validation-fast-path eligible.')
   return lines.join('\n')
+}
+
+/** Pre-market / StockTwits row with no Finviz price or RVOL — awareness only, never tradeable. */
+export function isSocialAwarenessRow(row: ScannerRow | null | undefined): boolean {
+  if (!row) return false
+  if (row.awareness_status === 'SOCIAL_AWARENESS' || row.setup_class === 'social_awareness_only') return true
+  if (row.scout_status === 'SOCIAL_SCOUT') return false
+  const src = (row.source || '').toLowerCase()
+  const detail = (row.source_detail || '').toLowerCase()
+  const runType = (row.run_type || '').toLowerCase()
+  const socialSrc = src === 'social' || src === 'premarket_social' || src.includes('premarket')
+    || detail.includes('stocktwits') || detail.includes('premarket') || runType === 'premarket_social'
+  if (!socialSrc) return false
+  const price = Number(row.price ?? 0)
+  const rvol = Number(row.rvol ?? 0)
+  return !(price > 0 || rvol > 0)
+}
+
+export function getSocialAwarenessPill(row: ScannerRow | null | undefined): SocialAwarenessPill {
+  if (!isSocialAwarenessRow(row)) return { isAwareness: false }
+  const posts = row?.mention_count ?? row?.social_stocktwits ?? 0
+  const text = row?.operator_pill || (posts ? `SOCIAL AWARENESS · ${posts} ST` : 'SOCIAL AWARENESS')
+  const cat = (row?.catalyst || '').trim()
+  const subtitle = row?.operator_subtitle || 'Pre-market social — needs Finviz scan before tradeable'
+  const hints = (row?.operator_tooltip_hints && row.operator_tooltip_hints.length)
+    ? row.operator_tooltip_hints
+    : cat ? [cat.slice(0, 120)] : ['No Finviz price/RVOL on this row yet']
+  return {
+    isAwareness: true,
+    text,
+    subtitle,
+    hints,
+    tooltip: buildPillTooltip(row!, 'scout', {
+      subtitle,
+      hints,
+      footer: 'Social awareness only — copy for watchlists OK; not a GO/WAIT trade setup until enriched.',
+    }),
+  }
 }
 
 /** Derive the Social Scout pill for a scanner row using API-provided fields (no pillar recompute).
@@ -489,6 +537,10 @@ export function scannerSortKey(row: ScannerRow): number {
   if (row.awareness_status === 'TOP_GAINER') {
     const chg = parseFloat(String(row.change_pct ?? '').replace('%', ''))
     return 1000 + (Number.isFinite(chg) ? chg : 0)
+  }
+  if (isSocialAwarenessRow(row)) {
+    const posts = Number(row.mention_count ?? row.social_stocktwits ?? 0)
+    return 920 + posts
   }
   return Number(row.score ?? 0)
 }

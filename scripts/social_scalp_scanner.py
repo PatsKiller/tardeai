@@ -699,11 +699,22 @@ def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
     float_m = finviz_data.get("float_m") or 0
     vol = finviz_data.get("volume_base") or finviz_data.get("volume") or 0
     sector = finviz_data.get("sector") or "?"
+    try:
+        from lib.scalp_alert_format import format_scalp_meta_line
+        meta = format_scalp_meta_line(
+            source="social",
+            source_detail=", ".join(str(s) for s in (sources or [])[:2]),
+            country=finviz_data.get("country") or "",
+            symbol=symbol,
+        )
+    except Exception:
+        meta = f"💬 Social {', '.join(str(s) for s in (sources or [])[:2])}".strip()
 
     vol_str = f"{int(vol):,}" if vol else "?"
 
     msg = (
         f"{grade_emoji} *{symbol}* — Social Scalp Setup\n"
+        f"{meta}\n"
         f"Score: {score}/55 | RVOL: {rvol:.1f}x | "
         f"Gap: {gap:.1f}% | Price: ${price:.2f}\n"
         f"Float: {float_m:.1f}M | Vol: {vol_str}\n"
@@ -720,8 +731,19 @@ def _send_wait_alert(symbol: str, score: int, finviz_data: dict, mention_count: 
     """WAIT tier — watching but not acting. Softer tone, no setup details."""
     rvol = finviz_data.get("rvol") or 0
     price = finviz_data.get("price") or 0
+    try:
+        from lib.scalp_alert_format import format_scalp_meta_line
+        meta = format_scalp_meta_line(
+            source="social",
+            source_detail="mention",
+            country=finviz_data.get("country") or "",
+            symbol=symbol,
+        )
+    except Exception:
+        meta = "💬 Social"
     msg = (
         f"\U0001f440 WAIT *{symbol}* \u2014 Social Mention\n"
+        f"{meta}\n"
         f"Score: {score}/55 | RVOL: {rvol:.1f}x | "
         f"Price: ${price:.2f}\n"
         f"Mentions: {mention_count}x \u2014 watching, not acting\n"

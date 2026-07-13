@@ -3,7 +3,7 @@ portfolio_monthly_report.py — Monthly portfolio intelligence report
 Version: 1.0 | April 17, 2026
 
 Runs 1st of month via linux_launchers/run_portfolio_monthly.sh
-Uses Claude Sonnet (Anthropic API) for deep multi-section analysis
+Uses OAuth LLM via llm_lane (Grok → ChatGPT → local) for deep multi-section analysis
 Reads last 4 weekly JSONs + all state files for comprehensive context
 
 Sections:
@@ -75,43 +75,24 @@ def _load_weekly_reports(n: int = 4) -> List[Dict]:
     return result
 
 
-_SONNET_SYSTEM = (
-    "You are a professional wealth manager writing a portfolio report. "
-    "FORMATTING RULES: Do not use markdown formatting. No asterisks for bold (**), "
-    "no hashtags for headers (#), no backticks for code (`). Write plain text only. "
-    "Use UPPERCASE section labels on their own line when needed (e.g. EXECUTIVE SUMMARY:). "
-    "Use numbered lists as '1. ' for action items. No bullet points with dashes."
-)
-
-
-def _clean_sonnet(text: str) -> str:
-    """Strip surviving markdown artifacts from Sonnet output."""
+def _clean_narrative(text: str) -> str:
+    """Strip surviving markdown artifacts from LLM output."""
     import re
-    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)   # **bold** → bold
-    text = re.sub(r'\*([^*]+)\*', r'\1', text)        # *italic* → italic
-    text = re.sub(r'^#{1,4}\s*', '', text, flags=re.MULTILINE)  # ## headings
-    text = re.sub(r'`([^`]+)`', r'\1', text)           # `code` → code
-    text = re.sub(r'\n{3,}', '\n\n', text)             # collapse triple+ newlines
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+    text = re.sub(r'\*([^*]+)\*', r'\1', text)
+    text = re.sub(r'^#{1,4}\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
 
-def _sonnet(prompt: str, max_tokens: int = 1500) -> str:
-    """Call Claude Sonnet via Anthropic API."""
-    try:
-        import anthropic
-        api_key = _get_env("ANTHROPIC_API_KEY")
-        if not api_key:
-            return "[Sonnet unavailable — no ANTHROPIC_API_KEY in .env]"
-        client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=max_tokens,
-            system=_SONNET_SYSTEM,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return _clean_sonnet(msg.content[0].text)
-    except Exception as e:
-        return f"[Sonnet error: {e}]"
+def _oauth_llm(prompt: str, *, task_summary: str, timeout: int = 120) -> str:
+    """OAuth narrative via portfolio_report_llm (Grok → ChatGPT → local)."""
+    from portfolio_report_llm import PROCESS_MONTHLY, generate_oauth_narrative
+    out = generate_oauth_narrative(
+        prompt, process_id=PROCESS_MONTHLY, task_summary=task_summary, timeout=timeout,
+    )
+    return _clean_narrative(out) if out else "[Report LLM unavailable]"
 
 
 def _send_telegram(message: str) -> None:
@@ -251,10 +232,22 @@ def _build_rebal_context(weeklies: List[Dict]) -> str:
 def _generate_monthly_sections(weeklies: List[Dict], holdings: Dict,
                                 perf: Dict, risk: Dict, dividends: Dict,
                                 retirement: Dict, enrichment: Dict) -> Dict:
-    """Generate all 8 monthly report sections using Claude Sonnet."""
+    """Generate all 8 monthly report sections using OAuth LLM."""
+    from portfolio_report_llm import (
+        build_grounding,
+        build_monthly_action_prompt,
+        sanitize_action_text,
+    )
+
     weekly_context = _build_weekly_context(weeklies)
     analyst_context = _build_analyst_context(weeklies)
     rebal_context = _build_rebal_context(weeklies)
+    rebal_rationale = []
+    for w in reversed(weeklies):
+        rebal_rationale = w.get("rebal_rationale") or []
+        if rebal_rationale:
+            break
+    grounding = build_grounding(holdings, enrichment, risk, rebal_rationale)
 
     totals = holdings.get("portfolio_totals", {})
     total_val = totals.get("total_value", 0) or 0
@@ -305,7 +298,7 @@ def _generate_monthly_sections(weeklies: List[Dict], holdings: Dict,
     annual_div = dividends.get("total_annual", 0) or 0
 
     # Risk data — compute weighted beta from enrichment (with coverage disclosure)
-    rebal_total = risk.get("total_to_rebalance", 0) or 0
+    rebal_total = grounding.rebal_total or risk.get("total_to_rebalance", 0) or 0
     _non_cash = [h for h in holdings.get("holdings", [])
                  if h.get("market_value", 0) > 0
                  and h.get("symbol") not in CASH_SYMS]
@@ -330,6 +323,8 @@ def _generate_monthly_sections(weeklies: List[Dict], holdings: Dict,
     # ── SECTION 1: Executive Summary ────────────────────────────────────────
     print("  [monthly-report] Section 1/8: Executive Summary...")
     prompt1 = f"""You are a senior wealth manager writing the executive summary for John W. Whiting's {month_name} portfolio report.
+
+{grounding.positions_table}
 
 INVESTOR PROFILE:
 - Age 58 (turns 59 Aug 2026) | SSDI $45,600/yr only | Conservative risk target (beta <0.5)
@@ -360,7 +355,7 @@ Write a 5-6 sentence executive summary. Cover:
 5. One-sentence outlook for next month
 Be direct, use real numbers. No generic disclaimers. No "Data unavailable"."""
 
-    narratives["executive_summary"] = _sonnet(prompt1, max_tokens=800)
+    narratives["executive_summary"] = _oauth_llm(prompt1, task_summary="monthly executive summary")
 
     # ── SECTION 2: Per-Account Performance vs Benchmarks ────────────────────
     print("  [monthly-report] Section 2/8: Account Performance...")
@@ -386,7 +381,7 @@ Write 4-5 sentences analyzing each account:
 4. Roth growth trajectory
 Note: Skip Fidelity 401k period returns (proprietary funds, no price data). Report its value only."""
 
-    narratives["account_performance"] = _sonnet(prompt2, max_tokens=700)
+    narratives["account_performance"] = _oauth_llm(prompt2, task_summary="monthly account performance")
 
     # ── SECTION 3: Month-Over-Month Changes ─────────────────────────────────
     print("  [monthly-report] Section 3/8: Month-Over-Month Changes...")
@@ -419,7 +414,7 @@ Write 3-4 sentences on what specifically changed:
 4. Any new risks that appeared this month
 Be specific. Name tickers. Use numbers."""
 
-    narratives["month_over_month"] = _sonnet(prompt3, max_tokens=600)
+    narratives["month_over_month"] = _oauth_llm(prompt3, task_summary="monthly MoM changes")
 
     # ── SECTION 4: Top Analyst Calls ────────────────────────────────────────
     print("  [monthly-report] Section 4/8: Analyst Intelligence...")
@@ -440,7 +435,7 @@ Write 4-5 sentences covering:
 4. One contrarian opportunity where John's thesis may override consensus
 Cite "Finviz Elite consensus" as source. Never fabricate analyst firm names."""
 
-    narratives["analyst_calls"] = _sonnet(prompt4, max_tokens=700)
+    narratives["analyst_calls"] = _oauth_llm(prompt4, task_summary="monthly analyst calls")
 
     # ── SECTION 5: Rebalancing Priority ─────────────────────────────────────
     print("  [monthly-report] Section 5/8: Rebalancing Priority...")
@@ -482,7 +477,7 @@ Write 3-4 sentences:
 4. Any position approaching dangerous concentration (>15%)?
 Be specific. Name tickers and dollar amounts."""
 
-    narratives["rebalancing"] = _sonnet(prompt5, max_tokens=600)
+    narratives["rebalancing"] = _oauth_llm(prompt5, task_summary="monthly rebalancing priority")
 
     # ── SECTION 6: Roth Conversion Progress ─────────────────────────────────
     print("  [monthly-report] Section 6/8: Roth Conversion...")
@@ -519,7 +514,7 @@ Write 3-4 sentences:
 4. What's the optimal conversion amount for remainder of 2026?
 Be specific with numbers. This is critical financial planning."""
 
-    narratives["roth_conversion"] = _sonnet(prompt6, max_tokens=600)
+    narratives["roth_conversion"] = _oauth_llm(prompt6, task_summary="monthly Roth conversion")
 
     # ── SECTION 7: Golden Window Countdown ──────────────────────────────────
     print("  [monthly-report] Section 7/8: Golden Window Countdown...")
@@ -560,7 +555,7 @@ Write 3-4 sentences:
 4. Income replacement readiness — will dividends + SS cover expenses by 68.5?
 Be specific and encouraging. This is John's North Star."""
 
-    narratives["golden_window"] = _sonnet(prompt7, max_tokens=600)
+    narratives["golden_window"] = _oauth_llm(prompt7, task_summary="monthly golden window")
 
     # ── SECTION 8: Action Plan ──────────────────────────────────────────────
     print("  [monthly-report] Section 8/8: Action Plan...")
@@ -574,33 +569,22 @@ Be specific and encouraging. This is John's North Star."""
         except Exception:
             pass
 
-    prompt8 = f"""Create a specific action plan for John W. Whiting for next month.
-
-{f"LAST MONTH'S PLAN: {last_action}" if last_action else ""}
-
-CURRENT STATE:
-- Portfolio: ${total_val:,.0f} | YTD: {pytd.get('change_pct', 0) or 0:+.2f}%
-- 1M change: {p1m.get('change_pct', 0) or 0:+.2f}% (${p1m.get('change', 0) or 0:+,.0f})
-- Cash: ${cash_total:,.0f} ({cash_pct:.1f}%)
-- Rebalancing needed: ${rebal_total:,.0f}
-- Roth conversion 2026: $35K done (room for more at 22% bracket)
-- 401k loan: ${loan_balance:,.0f} remaining
-- Annual dividends: ${annual_div:,.0f} (gap to $28K target: ${max(0, 28000-annual_div):,.0f})
-- Beta: {beta:.3f} ({beta_coverage}, {beta_coverage_pct}% MV coverage; target <0.5)
-
-WEEKLY TREND SUMMARY:
-{weekly_context[:500]}
-
-Write exactly 5 numbered action items for next month. Each should be:
-- ONE sentence
-- Start with a verb
-- Name specific tickers, dollar amounts, or accounts
-- Prioritized by urgency (most urgent first)
-
-Cover: (1) rebalancing, (2) Roth conversion, (3) dividend growth, (4) risk management, (5) opportunistic.
-No generic advice. Every item must be actionable THIS month."""
-
-    narratives["action_plan"] = _sonnet(prompt8, max_tokens=700)
+    action_context = (
+        f"- Portfolio: ${total_val:,.0f} | YTD: {pytd.get('change_pct', 0) or 0:+.2f}%\n"
+        f"- 1M change: {p1m.get('change_pct', 0) or 0:+.2f}% (${p1m.get('change', 0) or 0:+,.0f})\n"
+        f"- Cash: ${cash_total:,.0f} ({cash_pct:.1f}%)\n"
+        f"- Rebalancing needed: ${rebal_total:,.0f}\n"
+        f"- Roth conversion 2026: $35K done (room for more at 22% bracket)\n"
+        f"- 401k loan: ${loan_balance:,.0f} remaining\n"
+        f"- Annual dividends: ${annual_div:,.0f} (gap to $28K target: ${max(0, 28000-annual_div):,.0f})\n"
+        f"- Beta: {beta:.3f} ({beta_coverage}, {beta_coverage_pct}% MV coverage; target <0.5)\n"
+        f"- Weekly trend: {weekly_context[:400]}"
+    )
+    prompt8 = build_monthly_action_prompt(
+        grounding, last_action=last_action, context_lines=action_context,
+    )
+    raw_action = _oauth_llm(prompt8, task_summary="monthly action plan", timeout=150)
+    narratives["action_plan"] = sanitize_action_text(raw_action, grounding, monthly=True)
 
     return narratives
 
@@ -717,12 +701,12 @@ def _generate_html(date_str: str, weeklies: List[Dict], holdings: Dict,
         weekly_rows += f'<tr><td>{w.get("date","?")}</td><td>${w.get("total_value",0):,.0f}</td><td style="color:{color}">{wc:+.2f}%</td><td>{w.get("ytd_change_pct",0) or 0:+.2f}%</td><td>{w.get("cash_pct",0) or 0:.1f}%</td><td>{top_acct}</td></tr>'
 
     # Cleaned narratives
-    exec_text = _clean_sonnet(narratives.get("executive_summary", ""))
+    exec_text = _clean_narrative(narratives.get("executive_summary", ""))
     exec_sents = [s.strip() for s in _re.split(r'(?<=[.!?])\s+', exec_text) if s.strip()]
     exec_short = " ".join(exec_sents[:3]) if exec_sents else exec_text[:400]
-    acct_text = _clean_sonnet(narratives.get("account_performance", ""))
-    roth_text = _clean_sonnet(narratives.get("roth_conversion", ""))
-    golden_text = _clean_sonnet(narratives.get("golden_window", ""))
+    acct_text = _clean_narrative(narratives.get("account_performance", ""))
+    roth_text = _clean_narrative(narratives.get("roth_conversion", ""))
+    golden_text = _clean_narrative(narratives.get("golden_window", ""))
 
     # Hold details
     hold_detail = " ".join(f'{s["symbol"]} ({s["rule"]})' for s in hold_other)
@@ -906,7 +890,7 @@ def run_monthly_report(project_root: str = ".", dry_run: bool = False,
     enrichment = _load_state("ticker_enrichment_cache.json")
 
     print(f"[monthly-report] Portfolio: ${holdings.get('portfolio_totals', {}).get('total_value', 0):,.0f}")
-    print("[monthly-report] Generating Sonnet analysis (8 sections)...")
+    print("[monthly-report] Generating OAuth analysis (8 sections)...")
 
     # Generate all narrative sections
     narratives = _generate_monthly_sections(

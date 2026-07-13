@@ -5,6 +5,7 @@ import {
   pageSlice, toggleSelectedSymbol, selectSymbols, deselectSymbols, dedupeSymbols,
   formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, getTopGainerPill,
   getSqueezePill, getRunnerPill, getMicroFloatPill, getLowPricePill,
+  getSocialAwarenessPill, isSocialAwarenessRow,
   isSqueezeRow, isRunnerRow, isMicroFloatRow, isManualReviewRow,
   sortTickerList, type ScannerSortMode, type TosFormat,
 } from '../lib/scannerSelection'
@@ -50,7 +51,7 @@ export default function TradingHub({ onDrill }: Props) {
   }, [urlTab])
   // C2 monitor → "edit as DRAFT" hands a seeded intent to the Broker Orders Active Trader panel
   const [draftSeed, setDraftSeed] = useState<any | null>(null)
-  const [tradeFilter, setTradeFilter] = useState<'ACTIONABLE' | 'GO' | 'WAIT' | 'MANUAL' | 'SCOUT'>('ACTIONABLE')
+  const [tradeFilter, setTradeFilter] = useState<'ACTIONABLE' | 'GO' | 'WAIT' | 'MANUAL' | 'SCOUT' | 'AWARENESS'>('ACTIONABLE')
   const [tradeSort, setTradeSort] = useState<ScannerSortMode>('awareness')
   const [copied, setCopied] = useState<string | null>(null)
   // Trade AI scanner: top-30 pagination + persistent cross-page symbol selection + Thinkorswim copy.
@@ -183,16 +184,21 @@ export default function TradingHub({ onDrill }: Props) {
         }
         const tickers: any[] = sortTickerList(tradeAi?.tickers ?? [], tradeSort)
         const isScoutRow = (t: any) => t.scout_status === 'SOCIAL_SCOUT'
+        const isAwarenessRow = (t: any) => isSocialAwarenessRow(t)
+        const isScreenerWaitRow = (t: any) => (t.decision || '').toUpperCase() === 'WAIT' && !isAwarenessRow(t)
         const isActionableRow = (t: any) => {
           const d = (t.decision || '').toUpperCase()
           return d === 'GO' || d === 'WAIT' || d === 'MANUAL_REVIEW' || isManualReviewRow(t)
         }
         const filtered = tradeFilter === 'ACTIONABLE' ? tickers.filter(isActionableRow)
           : tradeFilter === 'SCOUT' ? tickers.filter(isScoutRow)
+          : tradeFilter === 'AWARENESS' ? tickers.filter(isAwarenessRow)
           : tradeFilter === 'MANUAL' ? tickers.filter(isManualReviewRow)
+          : tradeFilter === 'WAIT' ? tickers.filter(isScreenerWaitRow)
           : tickers.filter((t: any) => t.decision === tradeFilter)
         const actionableCount = tickers.filter(isActionableRow).length
         const scoutCount = tickers.filter(isScoutRow).length
+        const awarenessCount = tickers.filter(isAwarenessRow).length
         const manualCount = tickers.filter(isManualReviewRow).length
         const sortLabels: Record<ScannerSortMode, string> = {
           awareness: 'Awareness rank', score: 'Score', rvol: 'RVOL', change: 'Change %', symbol: 'Symbol A–Z',
@@ -204,7 +210,9 @@ export default function TradingHub({ onDrill }: Props) {
         const pageSymbols = pageRows.map((t: any) => t.symbol)
         const tosText = formatThinkorswimSymbols(selectedSyms, tosFormat)
         const copyBoxes = (['GO', 'WAIT', 'ALL'] as const).map(type => {
-          const subset = type === 'ALL' ? tickers : tickers.filter((t: any) => t.decision === type)
+          const subset = type === 'ALL' ? tickers
+            : type === 'WAIT' ? tickers.filter(isScreenerWaitRow)
+            : tickers.filter((t: any) => t.decision === type && !isAwarenessRow(t))
           const syms = sortTickerList(subset, tradeSort).map((t: any) => t.symbol)
           return { type, label: type === 'ALL' ? 'Universe' : type, syms, text: syms.join(','), color: type === 'GO' ? '#22c55e' : type === 'WAIT' ? '#f59e0b' : 'var(--text2)' }
         })
@@ -300,13 +308,13 @@ export default function TradingHub({ onDrill }: Props) {
 
             {/* Decision filter — default Actionable (GO+WAIT+Manual); Ross lanes collapsed under Manual */}
             <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              {(['ACTIONABLE', 'GO', 'WAIT', 'MANUAL', 'SCOUT'] as const).map(f => {
+              {(['ACTIONABLE', 'GO', 'WAIT', 'AWARENESS', 'MANUAL', 'SCOUT'] as const).map(f => {
                 const active = tradeFilter === f
-                const fc = f === 'GO' ? '#22c55e' : f === 'WAIT' ? '#f59e0b' : f === 'SCOUT' ? 'var(--social-scout)' : f === 'MANUAL' ? 'var(--squeeze)' : '#60a5fa'
-                const count = f === 'ACTIONABLE' ? actionableCount : f === 'SCOUT' ? scoutCount : f === 'MANUAL' ? manualCount : tickers.filter((t: any) => t.decision === f).length
-                const label = f === 'ACTIONABLE' ? 'Actionable' : f === 'SCOUT' ? 'Social Scouts' : f === 'MANUAL' ? 'Manual' : f
+                const fc = f === 'GO' ? '#22c55e' : f === 'WAIT' ? '#f59e0b' : f === 'AWARENESS' ? 'var(--social-awareness)' : f === 'SCOUT' ? 'var(--social-scout)' : f === 'MANUAL' ? 'var(--squeeze)' : '#60a5fa'
+                const count = f === 'ACTIONABLE' ? actionableCount : f === 'SCOUT' ? scoutCount : f === 'AWARENESS' ? awarenessCount : f === 'MANUAL' ? manualCount : f === 'WAIT' ? tickers.filter(isScreenerWaitRow).length : tickers.filter((t: any) => t.decision === f).length
+                const label = f === 'ACTIONABLE' ? 'Actionable' : f === 'SCOUT' ? 'Social Scouts' : f === 'AWARENESS' ? 'Social Awareness' : f === 'MANUAL' ? 'Manual' : f
                 return (
-                  <button key={f} onClick={() => { setTradeFilter(f); setScannerPage(1) }} title={f === 'ACTIONABLE' ? 'GO + WAIT + MANUAL_REVIEW — what matters today; hides 1500+ NO-GO universe noise' : f === 'SCOUT' ? 'Partial social setups (≥2/5 pillars) — awareness only, never GO/validation/tradeable' : f === 'MANUAL' ? 'Squeeze · Runner · Micro-float · Low-price — Entry Desk only; never auto GO' : undefined}
+                  <button key={f} onClick={() => { setTradeFilter(f); setScannerPage(1) }} title={f === 'ACTIONABLE' ? 'GO + WAIT + MANUAL_REVIEW — what matters today; hides 1500+ NO-GO universe noise' : f === 'SCOUT' ? 'Partial social setups (≥2/5 pillars) — awareness only, never GO/validation/tradeable' : f === 'AWARENESS' ? 'Pre-market StockTwits only — no Finviz price/RVOL; catalyst shown, not tradeable' : f === 'MANUAL' ? 'Squeeze · Runner · Micro-float · Low-price — Entry Desk only; never auto GO' : undefined}
                     style={{ ...hubKpiChip(active, terminalUi), fontFamily: 'monospace', color: active ? fc : (terminalUi ? undefined : 'var(--text3)') }}>{label} ({count})</button>
                 )
               })}
@@ -341,6 +349,7 @@ export default function TradingHub({ onDrill }: Props) {
               const socialColor = social.includes('Very Bullish') ? '#4ade80' : social.includes('Bullish') ? '#86efac' : social.includes('Bearish') ? '#f87171' : 'var(--text3)'
               const score = t.score ?? 0
               const scout = getSocialScoutPill(t)
+              const socialAware = getSocialAwarenessPill(t)
               const topGainer = getTopGainerPill(t)
               const squeeze = getSqueezePill(t)
               const runner = getRunnerPill(t)
@@ -349,7 +358,7 @@ export default function TradingHub({ onDrill }: Props) {
               const sym = String(t.symbol || '').toUpperCase()
               const checked = selectedSyms.includes(sym)
               const isManualLane = squeeze.isSqueeze || runner.isRunner || micro.isMicroFloat || lowPrice.isLowPrice
-              const rowAccent = scout.isScout ? 'var(--social-scout)' : squeeze.isSqueeze ? 'var(--squeeze)' : lowPrice.isLowPrice ? 'var(--low-price)' : micro.isMicroFloat ? 'var(--micro-float)' : runner.isRunner ? 'var(--runner)' : topGainer.isTopGainer ? 'var(--top-gainer)' : decisionColor(t.decision)
+              const rowAccent = socialAware.isAwareness ? 'var(--social-awareness)' : scout.isScout ? 'var(--social-scout)' : squeeze.isSqueeze ? 'var(--squeeze)' : lowPrice.isLowPrice ? 'var(--low-price)' : micro.isMicroFloat ? 'var(--micro-float)' : runner.isRunner ? 'var(--runner)' : topGainer.isTopGainer ? 'var(--top-gainer)' : decisionColor(t.decision)
               return (
               <div key={`${t.symbol}-${i}`} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.decision ?? ''} · score ${t.score ?? '—'} · ${t.sector ?? ''}`, endpoint: '/api/v2/trade-ai', rows: [t] })}
                 style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center', borderLeft: `3px solid ${rowAccent}` }}>
@@ -357,7 +366,7 @@ export default function TradingHub({ onDrill }: Props) {
                   <input type="checkbox" aria-label={`Select ${sym}`} checked={checked}
                     onChange={() => persistSel(toggleSelectedSymbol(selectedSyms, sym))} style={{ cursor: 'pointer' }} />
                 </span>
-                <span style={{ fontWeight: 700, fontSize: 9, color: scout.isScout ? 'var(--social-scout)' : isManualLane ? (lowPrice.isLowPrice ? 'var(--low-price)' : squeeze.isSqueeze ? 'var(--squeeze)' : micro.isMicroFloat ? 'var(--micro-float)' : 'var(--runner)') : decisionColor(t.decision) }}>{scout.isScout ? 'SCOUT' : isManualLane ? 'MANUAL' : (t.decision || 'NO-GO')}</span>
+                <span style={{ fontWeight: 700, fontSize: 9, color: socialAware.isAwareness ? 'var(--social-awareness)' : scout.isScout ? 'var(--social-scout)' : isManualLane ? (lowPrice.isLowPrice ? 'var(--low-price)' : squeeze.isSqueeze ? 'var(--squeeze)' : micro.isMicroFloat ? 'var(--micro-float)' : 'var(--runner)') : decisionColor(t.decision) }}>{socialAware.isAwareness ? 'AWARE' : scout.isScout ? 'SCOUT' : isManualLane ? 'MANUAL' : (t.decision || 'NO-GO')}</span>
                 <span title={sb.label} style={{ fontSize: 8, fontWeight: 600, padding: '1px 4px', borderRadius: 3, border: `1px solid ${sb.color}40`, color: sb.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sb.icon} {sb.label}</span>
                 <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <CountryFlag symbol={t.symbol} country={t.country} countryName={t.country_name} size={20} />
@@ -365,7 +374,11 @@ export default function TradingHub({ onDrill }: Props) {
                 <div style={{ overflow: 'hidden' }}>
                   <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
                   {t.decision_changed && <span title={`critic changed from ${t.original_decision}`} style={{ fontSize: 8, color: '#f59e0b', marginLeft: 4 }}>⟳</span>}
-                  {scout.isScout && (
+                  {socialAware.isAwareness && (
+                    <span title={socialAware.tooltip}
+                      style={{ marginLeft: 4, fontSize: 7.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--social-awareness-dim)', color: 'var(--social-awareness)', border: '1px solid var(--social-awareness)', whiteSpace: 'nowrap', cursor: 'help' }}>{socialAware.text}</span>
+                  )}
+                  {scout.isScout && !socialAware.isAwareness && (
                     <span title={scout.tooltip}
                       style={{ marginLeft: 4, fontSize: 7.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--social-scout-dim)', color: 'var(--social-scout)', border: '1px solid var(--social-scout)', whiteSpace: 'nowrap', cursor: 'help' }}>{scout.text}</span>
                   )}
@@ -414,11 +427,12 @@ export default function TradingHub({ onDrill }: Props) {
                     {(t.social_reddit || t.social_stocktwits) ? <span style={{ fontSize: 8, color: 'var(--text3)' }}>R:{t.social_reddit || 0} ST:{t.social_stocktwits || 0}{t.social_bullish_pct != null ? ` (${Math.round(t.social_bullish_pct)}% bull)` : ''}</span> : null}
                   </span>
                 ) : <span style={{ fontSize: 9, color: 'var(--text3)' }}>—</span>}
-                <span style={{ fontSize: 9, color: t.disqualified ? '#fca5a5' : t.catalyst_verified === false ? '#f59e0b' : 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }} title={t.catalyst}>
+                <span style={{ fontSize: 9, color: t.disqualified ? '#fca5a5' : socialAware.isAwareness ? 'var(--social-awareness)' : t.catalyst_verified === false ? '#f59e0b' : 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }} title={t.catalyst}>
                   {t.disqualified && <span style={{ fontSize: 7, background: '#7f1d1d', color: '#fca5a5', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>DQ</span>}
-                  {!t.disqualified && t.catalyst_verified === false && <span style={{ fontSize: 7, background: '#78350f', color: '#fcd34d', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>?</span>}
-                  {!t.disqualified && t.catalyst_verified === true && <span style={{ fontSize: 7, background: '#052e16', color: '#86efac', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>V</span>}
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.catalyst || '—'}</span>
+                  {socialAware.isAwareness && !t.disqualified && <span style={{ fontSize: 7, background: 'var(--social-awareness-dim)', color: 'var(--social-awareness)', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>ST</span>}
+                  {!t.disqualified && !socialAware.isAwareness && t.catalyst_verified === false && <span style={{ fontSize: 7, background: '#78350f', color: '#fcd34d', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>?</span>}
+                  {!t.disqualified && !socialAware.isAwareness && t.catalyst_verified === true && <span style={{ fontSize: 7, background: '#052e16', color: '#86efac', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>V</span>}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.catalyst || (socialAware.isAwareness ? 'StockTwits pre-market mention' : '—')}</span>
                 </span>
               </div>
             )})}
@@ -465,7 +479,7 @@ export default function TradingHub({ onDrill }: Props) {
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>Awareness/selection only — copying symbols never places, validates, or queues a trade. Social Scout, Top Gainer, and Squeeze (MANUAL_REVIEW) symbols can be copied but remain non-auto-tradeable.</div>
             </div>
 
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/MANUAL_REVIEW). Click a row for full scan detail. Default view: Actionable (GO+WAIT+Manual). Table shows top 30 of filtered set, 10/page, sorted by {sortLabels[tradeSort].toLowerCase()} ({tickers.length} universe). Copy lists use the same sort. Cyan SQUEEZE · orange RUNNER · purple MICRO · yellow LOW — Entry Desk only.</div>
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/MANUAL_REVIEW). Teal AWARE = pre-market StockTwits only (catalyst shown, no Finviz data, not in WAIT copy). Click a row for full scan detail. Default: Actionable. Cyan SQUEEZE · orange RUNNER · purple MICRO · yellow LOW — Entry Desk only.</div>
 
             {warriorAudit?.ok && (
               <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>

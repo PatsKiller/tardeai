@@ -137,6 +137,13 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
                 print(f"  [sweep] {sym} failed (non-fatal): {str(e)[:80]}")
         if not dry:
             conn.commit()
+    # Persist intraday quotes into ticker_prices so strategy cards / agents see close history.
+    if not dry and syms:
+        try:
+            from price_db_sync import sync_quotes_to_ticker_prices
+            sync_quotes_to_ticker_prices(syms)
+        except Exception as e:
+            print(f"  [sweep] ticker_prices sync failed (non-fatal): {str(e)[:80]}")
     conn.close()
     return {"total": len(syms), "enriched": enriched, "symbols": syms}
 

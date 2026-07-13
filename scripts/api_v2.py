@@ -929,19 +929,8 @@ def _f_or_none(v):
         return None
 
 
-def _after_hours_override_enabled():
-    """Is the explicit after-hours OVERRIDE policy enabled? Default OFF — the first live canary is restricted
-    to a regular session (READY_FOR_OPERATOR_NEXT_REGULAR_SESSION). AFTER_HOURS_GTC requires this override
-    (SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1) AND operator after_hours_ack."""
-    import os as _os
-    return str(_os.environ.get("SCHWAB_AFTER_HOURS_STOP_OVERRIDE", "")).lower() in ("1", "true", "yes")
-
-
-def _after_hours_ack(body=None):
-    """After-hours / pre-market submission is permitted ONLY when the override policy is enabled AND the
-    operator explicitly acknowledges it (GTC rests until triggered). Default: blocked → next regular session.
-    Never relaxes quote freshness / evidence-bound approval / whole-share / 2FA / read-back."""
-    return _after_hours_override_enabled() and bool((body or {}).get("after_hours_ack"))
+def _replace_order_id_from_body(body=None) -> str:
+    return str((body or {}).get("replace_order_id") or "").strip()
 
 
 # Holdings label accounts short (schwab_roth); broker_accounts uses the canonical key (schwab_roth_ira).
@@ -1053,7 +1042,6 @@ def _protective_stop_refresh_quote(body=None):
                       (sym, f"refresh:{source}", quote["price"], parsed.astimezone(_dt.timezone.utc)), fetch=None)
         except Exception:
             pass
-    override = _after_hours_override_enabled()
     blockers = []
     if quote is None:
         blockers.append("No quote available from any source.")
@@ -1062,8 +1050,6 @@ def _protective_stop_refresh_quote(body=None):
     elif not fresh:
         blockers.append(f"Quote is stale ({int(age) // 60}m old) — outside the {fresh_max_age_for(session) // 60}m "
                         f"{session.replace('_', '-')} freshness window.")
-    if quote is not None and parsed and session != "regular" and not override:
-        blockers.append("After-hours override is not enabled (regular session required by default).")
     out = {
         "ok": quote is not None and parsed is not None, "symbol": sym, "account": acct,
         "broker_request_sent": False,
@@ -1072,19 +1058,9 @@ def _protective_stop_refresh_quote(body=None):
         "quote_source": source, "quote_time_raw": str(raw_ts) if raw_ts else None,
         "quote_time_normalized": to_iso(raw_ts), "quote_parse_ok": parsed is not None,
         "session": session, "quote_age_sec": int(age) if age is not None else None, "quote_fresh": fresh,
-        "after_hours_ack_required": bool(quote is not None and parsed and session != "regular" and override),
-        "after_hours_override_enabled": override,
-        "can_submit_gtc_after_hours": bool(override and fresh and session != "regular"),
         "blockers": blockers,
     }
-    if quote is None or not parsed or not fresh:
-        out["operator_readiness"] = "BLOCKED"
-    elif session == "regular":
-        out["operator_readiness"] = "READY_FOR_OPERATOR"
-    elif override:
-        out["operator_readiness"] = "READY_FOR_OPERATOR_AFTER_HOURS_GTC"
-    else:
-        out["operator_readiness"] = "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION"
+    out["operator_readiness"] = "READY_FOR_OPERATOR" if (quote is not None and parsed and fresh) else "BLOCKED"
     return out
 
 
@@ -1169,11 +1145,8 @@ def _stop_live_readiness(query=None):
         and ex.get("operator_live_via_2fa_allowed") and ex.get("autonomous_live_submit_allowed") is False
         and out.get("oco_brackets_schwab_off") and (out.get("schwab_validator") or {}).get("pass")
         and out.get("account_api_write_enabled"))
-    # GTC stops are valid 24/7 (rest until triggered). A fresh, parseable quote + clean backend gates → ready,
-    # but after-hours/pre-market is RESTRICTED by default to the next regular session — AFTER_HOURS_GTC is
-    # opt-in only (SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1) and requires operator after_hours_ack at submit.
-    # Unparseable / stale → BLOCKED. Never READY while the quote is stale/unparseable.
-    out["after_hours_override_enabled"] = _after_hours_override_enabled()
+    # GTC protective stops are valid 24/7 (rest until triggered). Session is informational only —
+    # a fresh, parseable quote + clean backend gates → READY_FOR_OPERATOR any time.
     out["requires_after_hours_ack"] = False
     # One-V-canary discipline: a conflicting canary on another account blocks this one.
     conflict_acct = _one_symbol_canary_conflict(sym, acct)
@@ -1183,8 +1156,7 @@ def _stop_live_readiness(query=None):
         out["canary_blocker"] = "Quote timestamp could not be parsed; refresh quote."
     elif not out.get("quote_fresh"):
         out["canary_state"] = "BLOCKED"
-        out["canary_blocker"] = ("Blocked: quote is stale or after-hours freshness is not valid. Refresh during "
-                                 "regular market hours before arming live canary.")
+        out["canary_blocker"] = "Quote is stale — refresh the latest price before requesting a live stop."
     elif conflict_acct:
         out["canary_state"] = "BLOCKED"
         out["canary_blocker"] = (f"Another {sym} canary is already active on {conflict_acct}. Only one {sym} "
@@ -1196,18 +1168,11 @@ def _stop_live_readiness(query=None):
     elif not system_ready:
         out["canary_state"] = "BLOCKED"
         out["canary_blocker"] = "A backend readiness gate is not satisfied."
-    elif out.get("quote_session") == "regular":
-        out["canary_state"] = "READY_FOR_OPERATOR"
-    elif out.get("after_hours_override_enabled"):
-        out["canary_state"] = "READY_FOR_OPERATOR_AFTER_HOURS_GTC"
-        out["requires_after_hours_ack"] = True
-        out["canary_note"] = ("After-hours GTC stop: the order rests until triggered. Requires the operator "
-                              "after-hours acknowledgement; trigger behavior depends on regular-market conditions.")
     else:
-        out["canary_state"] = "READY_FOR_OPERATOR_NEXT_REGULAR_SESSION"
-        out["canary_blocker"] = ("After-hours quote: first live canary is restricted to a regular session. "
-                                 "After-hours override available only with explicit acknowledgement; not "
-                                 "recommended for first canary.")
+        out["canary_state"] = "READY_FOR_OPERATOR"
+        if out.get("quote_session") and out.get("quote_session") != "regular":
+            out["canary_note"] = "GTC stop — valid 24/7; rests until triggered."
+    out["replace_mode"] = bool(str(q.get("replace_order_id") or q.get("replace_mode") or "").strip())
     out["broker_submit_requires"] = "operator click + per-order 2FA + evidence revalidation"
     return out
 
@@ -5962,6 +5927,13 @@ def _wl_refresh_symbol(sym: str) -> tuple[int, dict]:
     steps["analyst"] = _wl_run_refresh_script(
         "hermes_analyst_coverage.py", ["--symbols", sym, "--apply"], timeout=180,
     )
+    try:
+        import sys as _sys_px
+        _sys_px.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from price_db_sync import sync_watchlist_prices
+        steps["price_history"] = sync_watchlist_prices([sym])
+    except Exception as e:
+        steps["price_history"] = {"error": str(e)[:120]}
     steps["strategy_card"] = _wl_run_refresh_script(
         "materialize_watchlist_strategy_cards.py", ["--symbols", sym], timeout=90,
     )
@@ -9871,6 +9843,34 @@ def _compute_trade_ai():
             else:
                 t["source"] = "screener"
                 t["source_detail"] = ""
+    except Exception:
+        pass
+
+    # Social awareness-only rows (premarket StockTwits without Finviz price/RVOL)
+    try:
+        import sys as _sys_sa
+        _sa_lib = PROJECT_ROOT / "scripts" / "lib"
+        if str(_sa_lib) not in _sys_sa.path:
+            _sys_sa.path.insert(0, str(_sa_lib))
+        from social_awareness import is_social_awareness_row, tag_social_awareness_row
+        _aware_syms = [t["symbol"] for t in tickers if is_social_awareness_row(t)]
+        _news_cat: dict = {}
+        if _aware_syms:
+            for nr in (_db_query("""
+                SELECT DISTINCT ON (symbol) symbol, title
+                FROM news_articles
+                WHERE symbol = ANY(%s) AND COALESCE(title, '') <> ''
+                ORDER BY symbol, published_at DESC NULLS LAST
+            """, (_aware_syms,)) or []):
+                _news_cat[nr["symbol"]] = nr.get("title") or ""
+        for t in tickers:
+            if not is_social_awareness_row(t):
+                continue
+            fb = _news_cat.get(t["symbol"]) or ""
+            if not fb and (t.get("social_stocktwits") or t.get("mention_count")):
+                mc = int(t.get("mention_count") or t.get("social_stocktwits") or 0)
+                fb = f"StockTwits pre-market activity ({mc} posts/2hr)"
+            tag_social_awareness_row(t, catalyst_fallback=fb)
     except Exception:
         pass
 
@@ -16800,6 +16800,15 @@ def _broker_refresh_prices(body: dict):
     if not row:
         return {"ok": False, "error": f"proposal #{pid} not found"}
     sym = str(row.get("symbol") or "").upper()
+    price_history = {}
+    if sym:
+        try:
+            import sys as _sys_ph
+            _sys_ph.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from price_db_sync import ensure_price_history
+            price_history = ensure_price_history([sym])
+        except Exception:
+            pass
     acct_override = str(b.get("account") or "").strip()
     quote = _broker_promote_quote(sym)
     last = quote.get("last")
@@ -16870,6 +16879,8 @@ def _broker_refresh_prices(body: dict):
         recal = {"quote": quote}
     enriched["refreshed_at"] = datetime.now(timezone.utc).isoformat()[:19]
     enriched["quote_provider"] = quote.get("provider")
+    if price_history:
+        enriched["price_history"] = price_history
     return {"ok": True, "data": enriched, "recalibration": recal}
 
 
@@ -16918,6 +16929,18 @@ def _broker_refresh_prices_batch(body: dict):
     ) or []
     if not rows:
         return {"ok": False, "error": "proposals not found"}
+    _batch_syms = list(dict.fromkeys(
+        str(r.get("symbol") or "").upper() for r in rows if r.get("symbol")
+    ))
+    _batch_price_history = {}
+    if _batch_syms:
+        try:
+            import sys as _sys_bph
+            _sys_bph.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from price_db_sync import ensure_price_history
+            _batch_price_history = ensure_price_history(_batch_syms)
+        except Exception:
+            pass
     qmap = _broker_batch_live_quotes([r.get("symbol") for r in rows])
     refreshed = []
     for row in rows:
@@ -16951,7 +16974,10 @@ def _broker_refresh_prices_batch(body: dict):
         _BROKER_LIST_CACHE.clear()
     except Exception:
         pass
-    return {"ok": True, "refreshed_count": len(refreshed), "data": refreshed}
+    out = {"ok": True, "refreshed_count": len(refreshed), "data": refreshed}
+    if _batch_price_history:
+        out["price_history"] = _batch_price_history
+    return out
 
 
 def _broker_proposal_detail(body: dict):
@@ -29315,24 +29341,6 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                              "error": "Quote is stale; refresh price before requesting a live stop.",
                                              "quote_age_sec": int(age), "quote_at_normalized": ts.isoformat(),
                                              "ticket": ticket, "account": acct}
-                            # After-hours policy: default is regular-session-only for the first live canary. A GTC
-                            # stop rests until triggered, so after-hours is technically valid, but it is opt-in ONLY
-                            # via the explicit override (SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1) AND the operator
-                            # after-hours acknowledgement. Without both → blocked to the next regular session.
-                            session = classify_session(ts)
-                            if acct.startswith("schwab") and session != "regular" and not _after_hours_ack(b):
-                                if _after_hours_override_enabled():
-                                    gate, err = "after_hours_ack_required", (
-                                        "After-hours GTC stop: trigger behavior depends on regular-market conditions — "
-                                        "check the after-hours acknowledgement to proceed.")
-                                else:
-                                    gate, err = "after_hours_blocked", (
-                                        "Blocked: quote is stale or after-hours freshness is not valid. Refresh during "
-                                        "regular market hours before arming live canary. After-hours override available "
-                                        "only with explicit acknowledgement; not recommended for first canary.")
-                                return 200, {"ok": False, "mode": "blocked", "gate": gate, "error": err,
-                                             "session": session, "quote_at_normalized": ts.isoformat(),
-                                             "ticket": ticket, "account": acct}
                         else:
                             return 200, {"ok": False, "mode": "blocked", "gate": "stale_quote",
                                          "error": "Quote timestamp missing; refresh price before requesting a live stop.",
@@ -29457,7 +29465,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                  "order": summ, "account": acct, "channels": req.get("channels"),
                                  "ttl_min": req.get("ttl_min"), "qty_note": qty_note,
                                  "route": "schwab_live",
+                                 "replace_mode": bool(replace_order_id),
+                                 "replace_order_id": (str(replace_order_id) if replace_order_id else None),
                                  "note": ((qty_note + " ") if qty_note else "")
+                                         + ("Replace mode — existing stop will be canceled before the new one is placed. "
+                                            if replace_order_id else "")
                                          + "Code sent to Telegram + email. Approve from EITHER — enter the code "
                                          "below, tap Approve in Telegram, or type the ticker. Then it submits LIVE at Schwab."}
                 _platform = summ.get("platform") or ("thinkorswim" if is_schwab else "Fidelity Active Trader Pro")
@@ -29552,28 +29564,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 acct = intent.account_key
                 _ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
                 _replace_id = _ev.get("replace_order_id")
-                _replace_stop_id = _ev.get("replace_stop_id")
-                replace_result = None
-                is_fidelity_intent = getattr(getattr(intent, "meta", None), "strategy_id", None) == FIDELITY_PROTECTIVE_MARKER
-                if _replace_stop_id and is_fidelity_intent:
-                    try:
-                        import fidelity_monitored_stop as _fms
-                        replace_result = _fms.cancel(stop_id=int(_replace_stop_id))
-                    except Exception as ce:
-                        return 200, {"ok": False, "stage": "modify_cancel",
-                                     "error": f"could not cancel monitored stop #{_replace_stop_id}: {str(ce)[:160]}"}
-                elif _replace_id and not is_fidelity_intent:
-                    try:
-                        import sys as _sys
-                        _sys.path.insert(0, str(Path(__file__).resolve().parent))
-                        import schwab_transport as _st
-                        replace_result = _st.cancel_order(acct, str(_replace_id))
-                    except Exception as ce:
-                        return 200, {"ok": False, "stage": "modify_cancel",
-                                     "error": f"could not cancel the existing stop #{_replace_id}: {str(ce)[:160]} — "
-                                              "new stop NOT placed (avoiding a double stop). Try again or cancel in ToS."}
                 from brokers import intent_submit_router as _isr
                 sub = _isr.submit_fully_approved(intent_id)
+                replace_result = sub.get("modify_cancel_result")
+                if sub.get("stage") == "modify_cancel":
+                    return 200, {"ok": False, "stage": "modify_cancel", "broker_submitted": False,
+                                 "error": (sub.get("error")
+                                           or "existing stop was not canceled at Schwab — new stop NOT placed"),
+                                 "modify_cancel_result": replace_result}
                 if sub.get("stage") == "submit" and not sub.get("ok"):
                     return 200, {"ok": False, "stage": "submit", "error": sub.get("error"),
                                  "result": sub.get("result"), "modify_cancel_result": replace_result}
@@ -33683,12 +33681,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
             from proposal_technical_snapshot import generate_snapshot
             from proposal_backtest_engine import backtest_proposal
+            from price_db_sync import ensure_price_history
             from session13_db import get_conn
             conn = get_conn()
             try:
+                _sym_row = _db_query(
+                    "SELECT symbol FROM paper_trade_proposals WHERE id=%s",
+                    (int(pid),), fetch="one",
+                ) or {}
+                _sym = str(_sym_row.get("symbol") or "").upper()
+                price_history = ensure_price_history([_sym]) if _sym else {}
                 tech = generate_snapshot(conn, proposal_id=int(pid))
                 bt = backtest_proposal(conn, int(pid))
                 return 200, {"ok": True, "data": {
+                    "price_history": price_history,
                     "technical_refreshed": bool(tech),
                     "backtest_refreshed": bool(bt),
                 }}

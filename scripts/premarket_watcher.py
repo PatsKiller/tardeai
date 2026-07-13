@@ -114,22 +114,21 @@ def check_stocktwits_premarket(symbol, conn, dry_run=False):
             'bullish_pct': round(bullish / total * 100, 1) if total > 0 else 0,
         }
 
-        # ── Persist to DB (the pipeline gap fix) ──
-        if not dry_run and total > 0:
-            _persist_stocktwits_premarket(conn, symbol, result, recent)
-
+        result["_messages"] = recent
         return result
     except Exception:
         return {}
 
 
-def _persist_stocktwits_premarket(conn, symbol, result, messages):
+def _persist_stocktwits_premarket(conn, symbol, result, messages, *, catalyst: str = ""):
     """Persist StockTwits pre-market data to social_posts and trade_ai_scans.
 
-    This closes the pipeline gap where pre-market StockTwits surge data was
-    only sent to Telegram but never written to the database, making it
-    invisible to the /v3/trading dashboard.
+    Rows are tagged SOCIAL_AWARENESS (not tradeable) until Finviz enrichment runs.
     """
+    try:
+        from lib.social_awareness import awareness_fields, build_catalyst_text
+    except Exception:
+        from social_awareness import awareness_fields, build_catalyst_text
     cur = conn.cursor()
     total = result['recent_count']
     bullish = result.get('bullish', 0)
@@ -167,6 +166,18 @@ def _persist_stocktwits_premarket(conn, symbol, result, messages):
     run_date = datetime.now().date()
     run_id = f"premarket_{run_date.strftime('%Y%m%d')}_{datetime.now().strftime('%H%M')}"
     sentiment_label = 'Very Bullish' if bullish_pct >= 70 else ('Bullish' if bullish_pct >= 55 else ('Bearish' if bearish > bullish else 'Neutral'))
+    st_body = ""
+    if messages:
+        st_body = (messages[0].get("body") or "")[:200]
+    cat_text = build_catalyst_text(
+        news_title=catalyst,
+        stocktwits_body=st_body,
+        mention_count=total,
+    )
+    aware = awareness_fields(catalyst=cat_text, mention_count=total, source_detail="stocktwits_premarket")
+    # Social awareness only — never promote to GO without Finviz enrichment.
+    score = min(total * 3, 50)
+    grade = 'B+' if total >= 10 else ('B' if total >= 5 else 'C')
 
     try:
         cur.execute("""
@@ -175,10 +186,18 @@ def _persist_stocktwits_premarket(conn, symbol, result, messages):
                 symbol, score, grade, decision,
                 social_stocktwits, social_score, social_sentiment,
                 social_bullish_pct, mention_count, social_sources,
+                catalyst, catalyst_verified, catalyst_source,
+                awareness_status, setup_class,
+                not_tradeable, not_validation_ready, manual_review_required,
+                operator_pill, operator_subtitle, operator_color_token,
                 source, scanned_at
             ) VALUES (
                 %s, %s, 'Pre-Market StockTwits', 'premarket_social',
                 %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s,
+                %s, %s,
                 %s, %s, %s,
                 %s, %s, %s,
                 'premarket_social', NOW()
@@ -196,6 +215,24 @@ def _persist_stocktwits_premarket(conn, symbol, result, messages):
                     THEN EXCLUDED.social_bullish_pct
                     ELSE COALESCE(trade_ai_scans.social_bullish_pct, EXCLUDED.social_bullish_pct) END,
                 mention_count = GREATEST(COALESCE(trade_ai_scans.mention_count, 0), EXCLUDED.mention_count),
+                catalyst = CASE
+                    WHEN COALESCE(trade_ai_scans.catalyst, '') = '' THEN EXCLUDED.catalyst
+                    WHEN EXCLUDED.social_stocktwits > COALESCE(trade_ai_scans.social_stocktwits, 0)
+                    THEN EXCLUDED.catalyst
+                    ELSE trade_ai_scans.catalyst END,
+                catalyst_verified = EXCLUDED.catalyst_verified,
+                catalyst_source = EXCLUDED.catalyst_source,
+                awareness_status = EXCLUDED.awareness_status,
+                setup_class = EXCLUDED.setup_class,
+                not_tradeable = EXCLUDED.not_tradeable,
+                not_validation_ready = EXCLUDED.not_validation_ready,
+                operator_pill = EXCLUDED.operator_pill,
+                operator_subtitle = EXCLUDED.operator_subtitle,
+                operator_color_token = EXCLUDED.operator_color_token,
+                decision = CASE
+                    WHEN COALESCE(trade_ai_scans.price, 0) > 0 OR COALESCE(trade_ai_scans.rvol, 0) > 0
+                    THEN trade_ai_scans.decision
+                    ELSE EXCLUDED.decision END,
                 source = CASE
                     WHEN trade_ai_scans.source IS NULL OR trade_ai_scans.source = ''
                     THEN 'premarket_social'
@@ -205,15 +242,26 @@ def _persist_stocktwits_premarket(conn, symbol, result, messages):
         """, [
             run_id, run_date,
             symbol,
-            min(total * 3, 50),  # rough score: 3 pts per post, cap 50
-            'B+' if total >= 10 else ('B' if total >= 5 else 'C'),
-            'WAIT' if total < 5 else 'GO',
+            score,
+            grade,
+            aware["decision"],
             total,
-            min(total / 30.0, 1.0),  # normalize: 30 posts = 1.0
+            min(total / 30.0, 1.0),
             sentiment_label,
             bullish_pct,
             total,
             ['stocktwits'],
+            aware["catalyst"],
+            aware["catalyst_verified"],
+            aware["catalyst_source"],
+            aware["awareness_status"],
+            aware["setup_class"],
+            aware["not_tradeable"],
+            aware["not_validation_ready"],
+            aware["manual_review_required"],
+            aware["operator_pill"],
+            aware["operator_subtitle"],
+            aware["operator_color_token"],
         ])
     except Exception as e:
         log.warning(f"trade_ai_scans upsert failed for {symbol}: {e}")
@@ -230,7 +278,7 @@ def _persist_stocktwits_premarket(conn, symbol, result, messages):
             symbol, total,
             min(total * 3, 50),
             'B+' if total >= 10 else ('B' if total >= 5 else 'C'),
-            'WAIT' if total < 5 else 'GO',
+            aware["decision"],
             ['stocktwits_premarket'],
             result.get('is_surging', False),
         ])
@@ -291,8 +339,19 @@ def run_premarket_scan(symbols, conn, dry_run=False):
         time.sleep(0.3)
         news = check_news_rss(symbol, conn, dry_run)
 
-        if edgar or (social and social.get('is_surging')) or news:
+        if edgar or (social and social.get('recent_count', 0) > 0) or news:
             all_findings[symbol] = {'edgar': edgar, 'social': social, 'news': news}
+
+        if not dry_run and social and social.get('recent_count', 0) > 0:
+            catalyst = ""
+            if news:
+                catalyst = (news[0].get("title") or "")[:200]
+            elif edgar:
+                catalyst = (edgar[0].get("title") or "")[:200]
+            _persist_stocktwits_premarket(
+                conn, symbol, social, social.get("_messages") or [],
+                catalyst=catalyst,
+            )
 
         if edgar or (social and social.get('is_surging')):
             parts = [f"PRE-MARKET: {symbol}"]

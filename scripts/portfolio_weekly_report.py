@@ -3,7 +3,7 @@ portfolio_weekly_report.py — Weekly portfolio intelligence report
 Version: 1.0 | April 16, 2026
 
 Runs Sunday 8PM via run_portfolio_weekly.sh
-Uses Ollama qwen3:1.7b (free) for all narrative sections
+Uses OAuth LLM via llm_lane (Grok → ChatGPT → local) for all narrative sections
 Outputs: HTML report + Telegram summary + JSON data file
 
 Sections:
@@ -73,33 +73,12 @@ def _load_data() -> Dict:
     return data
 
 
-def _ollama(prompt: str, timeout: int = 180) -> str:
-    """Call Ollama local model for narrative generation."""
-    import urllib.request
-    from local_llm_config import get_local_llm_model, get_local_llm_base_url
-    _model = get_local_llm_model()
-    _base = get_local_llm_base_url().rstrip("/")
-    payload = json.dumps({
-        "model": _model,
-        "stream": False,
-        "messages": [{"role": "user", "content": prompt}],
-        "think": False,
-        "options": {"temperature": 0.3, "num_predict": 500}
-    }).encode()
-    try:
-        req = urllib.request.Request(
-            f"{_base}/api/chat",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            import re
-            text = json.loads(resp.read()).get("message", {}).get("content", "").strip()
-            return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-    except Exception as e:
-        print(f"  [weekly-report] Ollama error: {e}")
-        return ""
+def _report_llm(prompt: str, *, task_summary: str, timeout: int = 120) -> str:
+    """OAuth narrative via portfolio_report_llm (Grok → ChatGPT → local)."""
+    from portfolio_report_llm import PROCESS_WEEKLY, generate_oauth_narrative
+    return generate_oauth_narrative(
+        prompt, process_id=PROCESS_WEEKLY, task_summary=task_summary, timeout=timeout,
+    )
 
 
 def _clean_md(text: str) -> str:
@@ -521,9 +500,33 @@ def _get_brave_analyst_commentary(symbols: list, brave_api_key: str) -> Dict:
     return commentary
 
 
-def _generate_narrative(perf_data: Dict, tech_data: Dict, journal_data: Dict) -> Dict:
+def _generate_narrative(
+    perf_data: Dict,
+    tech_data: Dict,
+    journal_data: Dict,
+    *,
+    holdings_data: Optional[Dict] = None,
+    enrichment: Optional[Dict] = None,
+    risk_data: Optional[Dict] = None,
+    analyst_intel: Optional[Dict] = None,
+    rebal_rationale: Optional[List] = None,
+    brave_commentary: Optional[Dict] = None,
+) -> Dict:
     """Generate AI narratives with full data context + previous weekly deltas."""
+    from portfolio_report_llm import (
+        build_grounding,
+        build_weekly_action_prompt,
+        sanitize_action_text,
+    )
+
     narratives = {}
+    holdings_data = holdings_data or {}
+    enrichment = enrichment or {}
+    risk_data = risk_data or {}
+    analyst_intel = analyst_intel or {}
+    rebal_rationale = rebal_rationale or []
+    brave_commentary = brave_commentary or {}
+    grounding = build_grounding(holdings_data, enrichment, risk_data, rebal_rationale)
     p1w  = perf_data.get("periods", {}).get("1W", {})
     p1m  = perf_data.get("periods", {}).get("1M", {})
     pytd = perf_data.get("periods", {}).get("YTD", {})
@@ -560,14 +563,14 @@ def _generate_narrative(perf_data: Dict, tech_data: Dict, journal_data: Dict) ->
     ob  = [t["symbol"] for t in tech_data.get("overbought", [])]
     os_ = [t["symbol"] for t in tech_data.get("oversold", [])]
 
-    # Load enrichment for earnings / analyst data
-    enrichment = {}
-    try:
-        ep = STATE_DIR / "ticker_enrichment_cache.json"
-        if ep.exists():
-            enrichment = json.loads(ep.read_text())
-    except Exception:
-        pass
+    # Load enrichment for earnings / analyst data (if not passed in)
+    if not enrichment:
+        try:
+            ep = STATE_DIR / "ticker_enrichment_cache.json"
+            if ep.exists():
+                enrichment = json.loads(ep.read_text())
+        except Exception:
+            enrichment = {}
 
     earnings_soon = []
     analyst_upgrades = []
@@ -598,12 +601,12 @@ def _generate_narrative(perf_data: Dict, tech_data: Dict, journal_data: Dict) ->
             risk_data = json.loads(rp.read_text())
     except Exception:
         pass
-    stops_near = []
-    for pos in risk_data.get("positions", {}).values() if isinstance(risk_data.get("positions"), dict) else []:
-        if isinstance(pos, dict) and pos.get("pct_from_stop") and abs(pos["pct_from_stop"]) < 5:
-            stops_near.append(f"{pos.get('symbol','?')} {pos['pct_from_stop']:+.1f}%")
+    stops_near = [
+        f"{s['symbol']} {s['dist_pct']:+.1f}%"
+        for s in grounding.stops_near[:6]
+    ]
 
-    rebal_total = risk_data.get("total_to_rebalance", 0)
+    rebal_total = grounding.rebal_total or risk_data.get("total_to_rebalance", 0)
     beta = risk_data.get("portfolio_beta", 0.38)
 
     # Account lines
@@ -617,8 +620,9 @@ def _generate_narrative(perf_data: Dict, tech_data: Dict, journal_data: Dict) ->
     top_losers  = [t for t in perf_data.get("top_movers",[]) if t.get("change_pct",0) < 0][-5:]
 
     # ── PROMPT 1: Performance (with delta from previous weeks) ────────────────
-    prompt1 = f"""/no_think
-You are a professional wealth manager analyzing John W. Whiting's portfolio.
+    prompt1 = f"""You are a professional wealth manager analyzing John W. Whiting's portfolio.
+{grounding.positions_table}
+
 {prev_context}
 THIS WEEK DATA:
 Portfolio: ${total:,.0f} | 1W: {p1w.get('change_pct',0):+.2f}% (${p1w.get('change',0):+,.0f})
@@ -634,11 +638,11 @@ Write a 4-sentence performance summary. Include: (1) what changed vs prior weeks
 Be direct. Use real numbers. No generic statements.
 NEVER say "Data unavailable". NEVER start with "Portfolio"."""
 
-    narratives["performance"] = _ollama(prompt1)
+    narratives["performance"] = _report_llm(prompt1, task_summary="weekly performance summary")
 
     # ── PROMPT 2: Technical Analysis ─────────────────────────────────────────
-    prompt2 = f"""/no_think
-Portfolio technical health for John W. Whiting:
+    prompt2 = f"""Portfolio technical health for John W. Whiting:
+{grounding.positions_table}
 {tech_detail}
 Overbought (RSI>70): {ob if ob else 'none'}
 Oversold (RSI<30): {os_ if os_ else 'none'}
@@ -649,11 +653,11 @@ Ex-dividend soon: {ex_div[:5] if ex_div else 'none'}
 
 Write 3 sentences on technical posture. Be specific about which positions are at risk (RSI>70 = overbought, consider trim) vs opportunity (RSI<30, SMA200 support). Name the actual tickers."""
 
-    narratives["technical"] = _ollama(prompt2)
+    narratives["technical"] = _report_llm(prompt2, task_summary="weekly technical health")
 
     # ── PROMPT 3: Risk & Rebalancing ─────────────────────────────────────────
-    prompt3 = f"""/no_think
-Portfolio risk assessment for John W. Whiting:
+    prompt3 = f"""Portfolio risk assessment for John W. Whiting:
+{grounding.positions_table}
 Beta: {beta:.3f} (target <0.5, conservative)
 Rebalancing: ${rebal_total:,.0f} across {len(risk_data.get('positions',{}) if isinstance(risk_data.get('positions'),dict) else [])} positions
 Stops near trigger (<5%): {stops_near if stops_near else 'none'}
@@ -663,11 +667,11 @@ V concentration: {next((h.get('portfolio_pct',0) for h in [] if h.get('symbol')=
 Write 2 sentences on risk posture. Is beta appropriate? Any stops about to trigger? Is rebalancing urgent or can it wait?
 Be specific. No generic statements."""
 
-    narratives["risk"] = _ollama(prompt3)
+    narratives["risk"] = _report_llm(prompt3, task_summary="weekly risk posture")
 
     # ── PROMPT 4: Income & Dividends ─────────────────────────────────────────
-    prompt4 = f"""/no_think
-Dividend income analysis for John W. Whiting (SSDI $45,600/yr, needs income growth):
+    prompt4 = f"""Dividend income analysis for John W. Whiting (SSDI $45,600/yr, needs income growth):
+{grounding.positions_table}
 Annual dividend income: ${annual_div:,.0f}/yr (${annual_div/12:,.0f}/mo)
 Target: $28,000-$34,000/yr (2.5-3.0% yield)
 Gap: ${max(0, 28000-annual_div):,.0f}/yr short of minimum target
@@ -676,30 +680,28 @@ Top dividend payers: {[d.get('symbol','') for d in div_data.get('holdings',[])[:
 
 Write 2 sentences. Is the income trajectory improving? What's the single best action to close the yield gap this week?"""
 
-    narratives["dividends"] = _ollama(prompt4)
+    narratives["dividends"] = _report_llm(prompt4, task_summary="weekly dividend income")
 
-    # ── PROMPT 5: Action Recommendation (with prior week follow-up) ──────────
+    # ── PROMPT 5: Action Recommendation (grounded + validated) ─────────────
     last_action = prev[-1].get("narratives", {}).get("action", "") if prev else ""
-    prompt5 = f"""/no_think
-You are John W. Whiting's wealth manager. Give ONE specific priority action for next week.
-{f"Last week you recommended: {last_action[:150]}" if last_action else ""}
-Current state:
-- 1W: {p1w.get('change_pct',0):+.2f}% | YTD: {pytd.get('change_pct',0):+.2f}%
-- Rebalancing needed: ${rebal_total:,.0f}
-- Overbought: {ob} | Stops near trigger: {stops_near}
-- Earnings soon: {earnings_soon[:3]}
-- Annual dividends: ${annual_div:,.0f} (target $28,000+)
-- Roth conversion 2026: $35,000 done, sweet spot $25K/yr
-
-Give exactly ONE actionable recommendation. One sentence. Start with a verb. Be specific (name tickers, amounts).
-Consider: Did last week's recommendation get acted on? What's most urgent now?"""
-
-    narratives["action"] = _ollama(prompt5)
+    action_context = (
+        f"- 1W: {p1w.get('change_pct',0):+.2f}% | YTD: {pytd.get('change_pct',0):+.2f}%\n"
+        f"- Rebalancing needed: ${rebal_total:,.0f}\n"
+        f"- Overbought: {ob} | Stops near trigger: {stops_near}\n"
+        f"- Earnings soon: {earnings_soon[:3]}\n"
+        f"- Annual dividends: ${annual_div:,.0f} (target $28,000+)\n"
+        f"- Roth conversion 2026: $35,000 done, sweet spot $25K/yr"
+    )
+    prompt5 = build_weekly_action_prompt(
+        grounding, last_action=last_action, context_lines=action_context,
+    )
+    raw_action = _report_llm(prompt5, task_summary="weekly action recommendation")
+    narratives["action"] = sanitize_action_text(raw_action, grounding, monthly=False)
 
     # ── PROMPT 6: Analyst Intelligence & Rebalancing WHY ─────────────────────
     # Build analyst context string
     analyst_lines = ""
-    for p in analyst_intel.get("positions", [])[:8] if "analyst_intel" in dir() else []:
+    for p in analyst_intel.get("positions", [])[:8]:
         score = p.get("recom_score")
         score_str = f"{score:.1f}" if score else "—"
         analyst_lines += (
@@ -710,7 +712,7 @@ Consider: Did last week's recommendation get acted on? What's most urgent now?""
         )
 
     rebal_lines = ""
-    for r in rebal_rationale[:5] if "rebal_rationale" in dir() else []:
+    for r in rebal_rationale[:5]:
         reasons_str = " | ".join(r.get("reasons", [])[:3])
         rebal_lines += (
             f"  {r['action']} {r['symbol']} ${abs(r.get('amount',0)):,.0f} "
@@ -718,12 +720,13 @@ Consider: Did last week's recommendation get acted on? What's most urgent now?""
         )
 
     brave_lines = ""
-    for sym, items in (brave_commentary.items() if "brave_commentary" in dir() else {}.items()):
+    for sym, items in brave_commentary.items():
         for item in items[:1]:
             brave_lines += f"  {sym} ({item['source']}): {item['snippet'][:150]}\n"
 
-    prompt6 = f"""/no_think
-You are a professional wealth manager. Analyze analyst consensus and rebalancing rationale for John W. Whiting.
+    prompt6 = f"""You are a professional wealth manager. Analyze analyst consensus and rebalancing rationale for John W. Whiting.
+{grounding.positions_table}
+
 SOURCE: Finviz Elite consensus ratings (institutional, not individual advisor)
 
 ANALYST RATINGS BY POSITION (1=Strong Buy, 3=Hold, 5=Strong Sell):
@@ -741,7 +744,7 @@ Write 3 sentences:
 3. One contrarian note — where Finviz consensus might be wrong based on John's personal thesis (AI WWIII defense, Roth conversion priority)
 Be specific. Cite Finviz as source. Never fabricate analyst firm names."""
 
-    narratives["analyst_intelligence"] = _ollama(prompt6)
+    narratives["analyst_intelligence"] = _report_llm(prompt6, task_summary="weekly analyst intelligence")
 
     return narratives
 
@@ -937,7 +940,7 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
 <div class="action-box">🎯 {narratives.get('action', '—')}</div>
 
 <div class="footer">
-  Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} · Local LLM (Ollama) · $0 API cost
+  Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} · OAuth LLM (Grok/ChatGPT) · grounded action validation
   <br><a href="/reports/reports_hub.html" style="color:var(--accent)">← Back to Reports Hub</a>
 </div>
 </body>
@@ -976,8 +979,16 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
     if brave_commentary:
         print(f"[weekly-report] Brave: {len(brave_commentary)} symbols with commentary")
 
-    print("[weekly-report] Generating Ollama narratives (6 sections ~3 min)...")
-    narratives = _generate_narrative(perf_data, tech_data, journal_data)
+    print("[weekly-report] Generating OAuth narratives (6 sections)...")
+    narratives = _generate_narrative(
+        perf_data, tech_data, journal_data,
+        holdings_data=holdings_raw,
+        enrichment=data.get("enrichment", {}),
+        risk_data=risk_raw,
+        analyst_intel=analyst_intel,
+        rebal_rationale=rebal_rationale,
+        brave_commentary=brave_commentary,
+    )
 
     # Generate HTML
     html = _generate_html(date_str, perf_data, tech_data, journal_data, narratives)
@@ -1081,7 +1092,22 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
             old_json.unlink()
         print(f"[weekly-report] Cleaned up {old.name}")
 
-    # Send Telegram summary
+    # Send Telegram summary (re-validate action — never ship unheld tickers / bad prices)
+    from portfolio_report_llm import build_grounding, sanitize_action_text
+    _tg_grounding = build_grounding(
+        holdings_raw, data.get("enrichment", {}), risk_raw, rebal_rationale,
+    )
+    safe_action = sanitize_action_text(
+        narratives.get("action", ""), _tg_grounding, monthly=False,
+    )
+    if safe_action != narratives.get("action"):
+        narratives["action"] = safe_action
+        html_path.write_text(_generate_html(date_str, perf_data, tech_data, journal_data, narratives))
+        try:
+            json_data["narratives"]["action"] = safe_action
+            json_path.write_text(json.dumps(json_data, indent=2))
+        except Exception:
+            pass
     w_chg = p1w.get("change_pct", 0) or 0
     ytd_chg = pytd.get("change_pct", 0) or 0
     tg_msg = (
@@ -1089,7 +1115,7 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
         f"<b>${perf_data.get('total_value',0):,.0f}</b> | "
         f"1W: <b>{w_chg:+.2f}%</b> | YTD: {ytd_chg:+.2f}%\n\n"
         f"{_clean_md(narratives.get('performance',''))[:300]}\n\n"
-        f"🎯 {_clean_md(narratives.get('action',''))[:200]}\n\n"
+        f"🎯 {_clean_md(safe_action)[:200]}\n\n"
         f"<a href='https://ms01-openclaw.tail163d14.ts.net/reports/weekly/weekly_{date_str}.html'>📄 Full Report</a>"
     )
     _send_telegram(tg_msg)

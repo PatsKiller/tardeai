@@ -16,7 +16,7 @@ source .venv/bin/activate
   fi
   echo "[WEEKLY] Updating per-account period returns..."
   python backfill_acct_periods_v3.py || echo "[WEEKLY] backfill skipped (non-fatal)"
-  echo "[WEEKLY] Generating weekly narrative report (Ollama qwen3:14b)..."
+  echo "[WEEKLY] Generating weekly narrative report (OAuth LLM + grounded action validation)..."
   python3 scripts/portfolio_weekly_report.py --project-root . || echo "[WEEKLY] report skipped (non-fatal)"
   python3 scripts/generate_reports_hub.py --project-root . || true
   if [ "$ENABLE_YAML_ADVISOR" = "1" ]; then

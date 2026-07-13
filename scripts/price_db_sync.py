@@ -4,12 +4,14 @@
 Called after repricing in the daily pipeline. Reads current prices from:
 1. finviz_quote_cache.json (Schwab tickers)
 2. holdings.json (Fidelity current prices)
-3. price_cache.json (Yahoo historical — only new dates)
+3. market_quotes (watchlist + proposal symbols — via ensure_price_history)
+4. yfinance gap-fill for symbols still short on close history
 
 Writes to: ticker_prices (symbol, price_date, close_price, source)
 Dedupes via UPSERT (ON CONFLICT DO UPDATE).
 
-Also provides get_price_from_db() for the backfill script to use DB as source of truth.
+Consumers: watchlist strategy cards, agent synthesis, paper/broker proposals
+(support/resistance, backtest, broker curator), portfolio backfill scripts.
 """
 import json, os, sys
 from datetime import date, timedelta
@@ -29,6 +31,95 @@ def _get_conn():
                 if line.startswith("DB_PASSWORD="):
                     pw = line.split("=", 1)[1].strip()
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+
+
+PROPOSAL_ACTIVE_STATUSES = (
+    "PENDING", "APPROVED_FOR_PAPER_TEST", "PROPOSED", "MODIFIED",
+    "BROKER_SUBMITTED", "APPROVED",
+)
+
+
+def active_proposal_symbols(*, statuses: tuple[str, ...] | None = None) -> list[str]:
+    """Distinct equity tickers on active paper/broker proposal queue."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    st = list(statuses or PROPOSAL_ACTIVE_STATUSES)
+    cur.execute(
+        """SELECT DISTINCT UPPER(symbol) FROM paper_trade_proposals
+           WHERE status = ANY(%s)
+             AND symbol IS NOT NULL AND symbol <> ''
+             AND symbol ~ '^[A-Z]{1,5}$'
+           ORDER BY 1""",
+        (st,),
+    )
+    syms = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return syms
+
+
+def _hermes_top_symbols(top: int = 250) -> list[str]:
+    """Distinct watchlist tickers in the Hermes top-N window."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT DISTINCT symbol FROM watchlist_items
+           WHERE status IN ('active','researched')
+             AND hermes_rank IS NOT NULL AND hermes_rank <= %s
+             AND symbol ~ '^[A-Z]{1,5}$'
+           ORDER BY symbol""",
+        (int(top),),
+    )
+    syms = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return syms
+
+
+def ensure_price_history(
+    symbols: list[str] | None = None,
+    *,
+    min_rows: int = 60,
+    yfinance_cap: int | None = None,
+) -> dict:
+    """Sync market_quotes → ticker_prices and yfinance-gap-fill symbols still short on history.
+
+    Used by watchlist refresh, proposal enrichment, and broker/paper proposal refresh endpoints.
+    """
+    syms = [str(s).upper().strip() for s in (symbols or []) if s and str(s).strip()]
+    syms = list(dict.fromkeys(syms))
+    n_quotes = sync_quotes_to_ticker_prices(syms if syms else None)
+    short = [s for s in syms if count_price_rows(s) < min_rows] if syms else []
+    cap = yfinance_cap if yfinance_cap is not None else (len(short) if len(short) <= 50 else 40)
+    yf_result = {"filled": 0}
+    if short and cap > 0:
+        yf_result = backfill_yfinance_history(short[:cap])
+    return {
+        "symbols": len(syms),
+        "quotes_synced": n_quotes,
+        "short_candidates": len(short),
+        "yfinance": yf_result,
+    }
+
+
+# Back-compat alias
+sync_watchlist_prices = ensure_price_history
+
+
+def sync_daily_watchlist_prices(*, yfinance_cap: int = 40, min_rows: int = 60) -> dict:
+    """Keep watchlist + active proposal ticker_prices current (daily cron)."""
+    n_quotes = sync_quotes_to_ticker_prices()
+    scope = list(dict.fromkeys(_hermes_top_symbols() + active_proposal_symbols()))
+    short = [s for s in scope if count_price_rows(s) < min_rows]
+    yf_result = {"filled": 0}
+    if short and yfinance_cap > 0:
+        yf_result = backfill_yfinance_history(short[:yfinance_cap])
+    return {
+        "quotes_synced": n_quotes,
+        "scope_symbols": len(scope),
+        "short_candidates": len(short),
+        "yfinance": yf_result,
+    }
 
 
 def sync_daily_prices():
@@ -73,6 +164,9 @@ def sync_daily_prices():
     cur.close()
     conn.close()
     print(f"  [price-db] Synced {written} prices to DB for {today}")
+    wl = sync_daily_watchlist_prices()
+    print(f"  [price-db] Watchlist quotes→ticker_prices: {wl.get('quotes_synced', 0)} rows; "
+          f"yfinance filled {wl.get('yfinance', {}).get('filled', 0)}")
     return written
 
 
@@ -115,6 +209,124 @@ def get_latest_price_from_db(symbol: str) -> float | None:
     row = cur.fetchone()
     cur.close(); conn.close()
     return float(row[0]) if row else None
+
+
+def count_price_rows(symbol: str) -> int:
+    """Count daily close rows for a symbol in ticker_prices."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM ticker_prices WHERE symbol=%s", (symbol.upper(),))
+    n = int((cur.fetchone() or [0])[0])
+    cur.close()
+    conn.close()
+    return n
+
+
+def sync_quotes_to_ticker_prices(symbols: list[str] | None = None) -> int:
+    """Upsert daily closes from market_quotes (last quote per symbol per day)."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    syms = [str(s).upper() for s in (symbols or []) if s]
+    if syms:
+        cur.execute(
+            """INSERT INTO ticker_prices (symbol, price_date, close_price, source)
+               SELECT DISTINCT ON (UPPER(symbol), fetched_at::date)
+                      UPPER(symbol), fetched_at::date, price, 'market_quotes'
+               FROM market_quotes
+               WHERE price IS NOT NULL AND price > 0
+                 AND UPPER(symbol) = ANY(%s)
+               ORDER BY UPPER(symbol), fetched_at::date, fetched_at DESC
+               ON CONFLICT (symbol, price_date) DO UPDATE SET
+                 close_price = EXCLUDED.close_price,
+                 source = CASE
+                   WHEN ticker_prices.source IN ('finviz', 'holdings', 'portfolio_repricer')
+                   THEN ticker_prices.source
+                   ELSE EXCLUDED.source
+                 END""",
+            (syms,),
+        )
+    else:
+        cur.execute(
+            """INSERT INTO ticker_prices (symbol, price_date, close_price, source)
+               SELECT DISTINCT ON (UPPER(symbol), fetched_at::date)
+                      UPPER(symbol), fetched_at::date, price, 'market_quotes'
+               FROM market_quotes
+               WHERE price IS NOT NULL AND price > 0
+               ORDER BY UPPER(symbol), fetched_at::date, fetched_at DESC
+               ON CONFLICT (symbol, price_date) DO UPDATE SET
+                 close_price = EXCLUDED.close_price,
+                 source = CASE
+                   WHEN ticker_prices.source IN ('finviz', 'holdings', 'portfolio_repricer')
+                   THEN ticker_prices.source
+                   ELSE EXCLUDED.source
+                 END"""
+        )
+    n = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    return n
+
+
+def backfill_yfinance_history(
+    symbols: list[str],
+    *,
+    period: str = "1y",
+    sleep_sec: float = 0.25,
+) -> dict:
+    """Fetch yfinance daily closes into ticker_prices for symbols still missing history."""
+    import time
+
+    try:
+        import yfinance as yf
+    except ImportError:
+        return {"error": "yfinance not installed", "filled": 0}
+
+    conn = _get_conn()
+    cur = conn.cursor()
+    filled, failed = [], []
+    for sym in symbols:
+        sym = str(sym).upper().strip()
+        if not sym:
+            continue
+        try:
+            hist = yf.Ticker(sym).history(period=period, interval="1d", auto_adjust=False)
+            if hist is None or len(hist) == 0:
+                failed.append(sym)
+                continue
+            rows = 0
+            for idx, row in hist.iterrows():
+                px = float(row.get("Close") or 0)
+                if px <= 0:
+                    continue
+                d = idx.date() if hasattr(idx, "date") else idx
+                cur.execute(
+                    """INSERT INTO ticker_prices (symbol, price_date, close_price, source)
+                       VALUES (%s, %s, %s, 'yfinance')
+                       ON CONFLICT (symbol, price_date) DO NOTHING""",
+                    (sym, d, round(px, 4)),
+                )
+                rows += cur.rowcount
+            conn.commit()
+            if rows:
+                filled.append(sym)
+        except Exception:
+            conn.rollback()
+            failed.append(sym)
+        if sleep_sec:
+            time.sleep(sleep_sec)
+    cur.close()
+    conn.close()
+    return {"filled": len(filled), "failed": len(failed), "symbols": filled[:20], "failed_sample": failed[:20]}
+
+
+def sync_watchlist_prices(symbols: list[str] | None = None, *, min_rows: int = 60) -> dict:
+    """Quotes sync + yfinance gap-fill for watchlist symbols (used by refresh + daily pipeline)."""
+    syms = [str(s).upper() for s in (symbols or []) if s]
+    n_quotes = sync_quotes_to_ticker_prices(syms if syms else None)
+    short = [s for s in syms if count_price_rows(s) < min_rows] if syms else []
+    yf_result = backfill_yfinance_history(short) if short else {"filled": 0}
+    return {"quotes_synced": n_quotes, "yfinance": yf_result}
 
 
 if __name__ == "__main__":

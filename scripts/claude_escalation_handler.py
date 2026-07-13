@@ -574,47 +574,70 @@ def process_queue(dry_run=False):
                     _llama_proc.kill()
                 log.info("  Stopped llama-server")
 
-    # ── Tier 3b: Ollama (use whatever model is loaded to avoid swap timeout) ──
+    # ── Tier 3b: Ollama — prefer gemma3:4b during market hours / multi-item batches ──
     if not success:
-        try:
-            import requests as _req
-            # Prefer smaller model for large batches; use loaded model when batch is tiny
-            _ps_resp = _req.get("http://localhost:11434/api/ps", timeout=5).json()
-            _loaded = [m["name"] for m in _ps_resp.get("models", []) if "embed" not in m["name"].lower()]
-            _small = os.getenv("ESCALATION_LLM_MODEL_SMALL", "gemma3:4b")
-            _default = os.getenv("ESCALATION_LLM_MODEL", "gemma3:12b")
-            if len(remaining) > 3:
-                _model = _small
-            else:
-                _model = _loaded[0] if _loaded else _default
-            _timeout = min(300, 90 + 20 * len(remaining))
-            _predict = 512 if len(remaining) > 3 else 1024
-            log.info(f"  Tier 3b: {_model} via Ollama · batch {len(remaining)} · timeout {_timeout}s")
+        import requests as _req
+
+        def _ollama_analyze(model: str, *, timeout: int, num_predict: int) -> tuple[str, str]:
             _resp = _req.post("http://localhost:11434/api/chat", json={
-                "model": _model,
+                "model": model,
                 "stream": False,
                 "messages": [
                     {"role": "system", "content": "You are a Trade AI system health analyst. Provide structured root cause analysis."},
                     {"role": "user", "content": analysis_prompt[:12000]},
                 ],
-                "options": {"temperature": 0.2, "num_predict": _predict, "num_ctx": 4096},
-            }, timeout=_timeout)
-            if _resp.ok:
-                _analysis = _resp.json().get("message", {}).get("content", "").strip()
-                if _analysis and len(_analysis) > 50:
-                    session_log = f"GEMMA3_12B (Ollama):\n{_analysis}"
-                    success = True
-                    _tier_used = "3b_gemma3_12b"
-                    log.info(f"  ✅ Tier 3b: gemma3:12b analysis complete ({len(_analysis)} chars)")
-                else:
-                    log.warning(f"  Tier 3b: insufficient analysis ({len(_analysis)} chars)")
-                    session_log = f"GEMMA3_12B: insufficient ({_analysis[:200]})"
+                "options": {"temperature": 0.2, "num_predict": num_predict, "num_ctx": 4096},
+            }, timeout=timeout)
+            if not _resp.ok:
+                return "", f"HTTP {_resp.status_code}"
+            _analysis = _resp.json().get("message", {}).get("content", "").strip()
+            if _analysis and len(_analysis) > 50:
+                return _analysis, ""
+            return _analysis or "", f"insufficient ({len(_analysis)} chars)"
+
+        try:
+            _small = os.getenv("ESCALATION_LLM_MODEL_SMALL", "gemma3:4b")
+            _default = os.getenv("ESCALATION_LLM_MODEL", "gemma3:12b")
+            try:
+                from zoneinfo import ZoneInfo as _ZI
+                _et = datetime.now(_ZI("America/New_York"))
+            except Exception:
+                _et = datetime.now()
+            _in_market = _et.weekday() < 5 and 9 <= _et.hour < 16
+            _load1 = os.getloadavg()[0]
+            _load_cap = float(os.getenv("ESCALATION_TIER3_LOAD_CAP", "3.5"))
+            _ps_resp = _req.get("http://localhost:11434/api/ps", timeout=5).json()
+            _loaded = [m["name"] for m in _ps_resp.get("models", []) if "embed" not in m["name"].lower()]
+
+            if _in_market or len(remaining) >= 2 or _load1 > _load_cap:
+                _model = _small
             else:
-                log.warning(f"  Tier 3b: Ollama HTTP {_resp.status_code}")
-                session_log = f"GEMMA3_12B: HTTP {_resp.status_code}"
+                _model = _loaded[0] if _loaded else _default
+            _timeout = min(300, max(180, 90 + 25 * len(remaining)))
+            _predict = 512 if len(remaining) >= 2 else 1024
+            log.info(f"  Tier 3b: {_model} via Ollama · batch {len(remaining)} · timeout {_timeout}s "
+                     f"(market={_in_market} load={_load1:.1f})")
+            _analysis, _err = _ollama_analyze(_model, timeout=_timeout, num_predict=_predict)
+            if _analysis:
+                session_log = f"{_model} (Ollama):\n{_analysis}"
+                success = True
+                _tier_used = f"3b_{_model.replace(':', '_')}"
+                log.info(f"  ✅ Tier 3b: {_model} analysis complete ({len(_analysis)} chars)")
+            elif _model != _small:
+                log.warning(f"  Tier 3b: {_model} failed ({_err}) — retrying {_small}")
+                _analysis, _err2 = _ollama_analyze(_small, timeout=240, num_predict=512)
+                if _analysis:
+                    session_log = f"{_small} (Ollama fallback):\n{_analysis}"
+                    success = True
+                    _tier_used = f"3b_{_small.replace(':', '_')}_fallback"
+                    log.info(f"  ✅ Tier 3b fallback: {_small} ({len(_analysis)} chars)")
+                else:
+                    session_log = f"{_model} error: {_err}; {_small} fallback: {_err2}"
+            else:
+                session_log = f"{_model} error: {_err}"
         except Exception as e:
-            log.warning(f"  Tier 3b: gemma3:12b failed: {e}")
-            session_log = f"GEMMA3_12B error: {e}"
+            log.warning(f"  Tier 3b: Ollama failed: {e}")
+            session_log = f"Ollama error: {e}"
 
     # ── Tier 3c: Claude Code CLI (optional, requires API credits) ──
     if not success and os.getenv("ESCALATION_USE_CLAUDE_CLI", "").lower() in ("1", "true"):
