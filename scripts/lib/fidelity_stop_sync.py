@@ -319,10 +319,15 @@ def default_fidelity_rollover_stops() -> list[dict[str, Any]]:
         return cfg
     acct = "fidelity_rollover_ira"  # hardcode-ok: fallback when config JSON missing
     return [
+        {
+            "symbol": "QCOM", "account": acct, "order_type": "TRAILING_STOP",
+            "stop_price": 174.79, "trail_pct": 7, "trail_link": "LAST",
+            "qty": 55, "placed_date": "2026-07-13",
+        },
         {"symbol": "CSCO", "account": acct, "stop_price": 115.0, "qty": 100, "placed_date": "2026-07-10"},
         {
             "symbol": "ANET", "account": acct, "order_type": "TRAILING_STOP",
-            "stop_price": 176.37, "trail_pct": 6, "trail_link": "LAST",
+            "stop_price": 178.03, "trail_pct": 6, "trail_link": "LAST",
             "qty": 200, "placed_date": "2026-07-10",
         },
         {
@@ -332,7 +337,7 @@ def default_fidelity_rollover_stops() -> list[dict[str, Any]]:
         },
         {
             "symbol": "DXCM", "account": acct, "order_type": "TRAILING_STOP",
-            "stop_price": 71.04, "trail_pct": 6, "trail_link": "LAST",
+            "stop_price": 71.06, "trail_pct": 6, "trail_link": "LAST",
             "qty": 225, "placed_date": "2026-07-08",
         },
         {"symbol": "ARKX", "account": acct, "stop_price": 31.06, "qty": 1000, "placed_date": "2026-07-07"},

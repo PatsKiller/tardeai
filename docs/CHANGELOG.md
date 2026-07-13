@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-13 — Fidelity GTC stops audit (••5199)
+
+- **`config/fidelity_rollover_stops.json`** — synced all 8 open GTC stops from Fidelity Activity & Orders (Jul 13): added **QCOM** trail 7% @$174.79 (55 sh); refreshed **ANET** trigger to $178.03, **DXCM** to $71.06; `_fidelity_as_of` → 2026-07-13.
+- **`scripts/lib/fidelity_stop_sync.py`** — fallback defaults aligned with config.
+- **Tests** — `tests/test_fidelity_stop_sync.py` (8 symbols incl. QCOM).
+
 ## 2026-07-13 — Price history backfill, report grounding, proposal parity, escalation 4b
 
 ### `ticker_prices` backfill (watchlist + proposals)

@@ -27,11 +27,11 @@ def test_normalize_anet_trailing_stop_row():
     mod = _load()
     row = mod.normalize_stop_row({
         "symbol": "ANET", "order_type": "TRAILING_STOP",
-        "stop_price": 176.37, "trail_pct": 6, "trail_link": "LAST", "qty": 200,
+        "stop_price": 178.03, "trail_pct": 6, "trail_link": "LAST", "qty": 200,
     })
     assert row["symbol"] == "ANET"
     assert row["order_type"] == "TRAILING_STOP"
-    assert row["stop_price"] == 176.37
+    assert row["stop_price"] == 178.03
     assert row["trail_pct"] == 6
     assert row["trail_link"] == "LAST"
     assert row["qty"] == 200
@@ -41,21 +41,23 @@ def test_normalize_anet_trailing_stop_row():
 def test_load_fidelity_stops_config_json():
     mod = _load()
     rows = mod.load_fidelity_stops_config()
-    assert len(rows) == 7
-    assert {r["symbol"] for r in rows} == {"CSCO", "SCHG", "ARKX", "XAR", "ANET", "DXCM", "DIVI"}
+    assert len(rows) == 8
+    assert {r["symbol"] for r in rows} == {
+        "QCOM", "CSCO", "SCHG", "ARKX", "XAR", "ANET", "DXCM", "DIVI",
+    }
 
 
 def test_default_stops_include_rollover_open_gtc():
     mod = _load()
     syms = {r["symbol"] for r in mod.default_fidelity_rollover_stops()}
-    assert {"CSCO", "SCHG", "ARKX", "XAR", "ANET", "DXCM", "DIVI"} == syms
+    assert {"QCOM", "CSCO", "SCHG", "ARKX", "XAR", "ANET", "DXCM", "DIVI"} == syms
 
 
 def test_snaptrade_open_orders_empty_is_documented_gap():
     """SnapTrade returns executed fills only — not Fidelity GTC pending stops."""
     mod = _load()
     row = mod.normalize_stop_row({
-        "symbol": "ANET", "stop_price": 176.37, "trail_pct": 6, "qty": 200,
+        "symbol": "ANET", "stop_price": 178.03, "trail_pct": 6, "qty": 200,
         "note": "Fidelity GTC — SnapTrade state=open returns 0 orders",
     })
     assert "Fidelity" in row["note"] or "GTC" in row["note"]
@@ -66,9 +68,18 @@ def test_anet_default_is_trailing_six_pct():
     defaults = {r["symbol"]: r for r in mod.default_fidelity_rollover_stops()}
     anet = defaults["ANET"]
     assert anet["order_type"] == "TRAILING_STOP"
-    assert anet["stop_price"] == 176.37
+    assert anet["stop_price"] == 178.03
     assert anet["trail_pct"] == 6
     assert anet["qty"] == 200
+
+
+def test_qcom_default_is_trailing_seven_pct():
+    mod = _load()
+    qcom = {r["symbol"]: r for r in mod.default_fidelity_rollover_stops()}["QCOM"]
+    assert qcom["order_type"] == "TRAILING_STOP"
+    assert qcom["stop_price"] == 174.79
+    assert qcom["trail_pct"] == 7
+    assert qcom["qty"] == 55
 
 
 def test_schg_default_is_trailing_six_pct():
@@ -104,6 +115,6 @@ def test_dxcm_default_is_trailing_six_pct():
     mod = _load()
     dxcm = {r["symbol"]: r for r in mod.default_fidelity_rollover_stops()}["DXCM"]
     assert dxcm["order_type"] == "TRAILING_STOP"
-    assert dxcm["stop_price"] == 71.04
+    assert dxcm["stop_price"] == 71.06
     assert dxcm["trail_pct"] == 6
     assert dxcm["qty"] == 225
