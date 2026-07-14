@@ -94,8 +94,18 @@ engine advises stop ─▶ [Queue stop ★] ─▶ REQUEST ─▶ 2FA ─▶ LIV
 
 - **Place** — `/api/v2/holdings/protective-stop` (request) → `/protective-stop/confirm` (2FA + submit).
 - **Modify** — same flow with `replace_order_id` threaded through the intent; on confirm the old stop is
-  cancelled **first**, then the new one placed. If the cancel fails the new stop is NOT placed (no double
-  stop). Amber **Modify** button on the protected banner, pre-filled with the current advised level.
+  cancelled **first**, then the new one placed. The cancel is **verified at the broker** before the new
+  submit: `schwab_transport.cancel_order_for_replace()` polls Schwab until the old order is terminal
+  (CANCELED/REPLACED/…) or gone from open orders; if that can't be confirmed, `place_order` raises
+  `replace_cancel_incomplete` and the new stop is NOT placed (no double stop). The cancel-then-place gate
+  lives **inside `schwab_transport.place_order`** — one gate shared by the web confirm path and the
+  Telegram `bkapprove` auto-fire, so no path can skip it. The duplicate-SELL-stop guard only skips the
+  replace target when it is actually no longer live; a still-WORKING replace target blocks. A repeat DELETE
+  after a successful cancel is treated as idempotent (broker truth re-checked). Only an **app-placed
+  (pilot)** order is replaceable in-app — `open_trades_intelligence` stamps `pilot_placed` on the broker-stop
+  payload from `schwab_pilot_orders`, and the UI sends `replace_order_id` only for pilot orders (a manual
+  ToS stop routes to "cancel it in ToS"). Amber **Modify** button on the protected banner, pre-filled with
+  the current advised level. Regression tests: `tests/test_stop_replace_flow.py`.
 - **Cancel** — `/api/v2/holdings/protective-stop/cancel` → `schwab_transport.cancel_order` (safe direction,
   no 2FA). Refuses non-pilot orders (a manual ToS stop must be cancelled in ToS).
 
@@ -154,7 +164,8 @@ never the Schwab guard. Schwab accounts are **never** auto-managed (manual + 2FA
 | `scripts/brokers/execution_guard.py` | `_protective_unlocked()` (standing), protective routing, grant logic. |
 | `scripts/brokers/protective_stop_pilot.py` | Spec/intent builders, request-2FA, submit, `replace_order_id`, `load_intent`/`spec_from_intent`. |
 | `scripts/brokers/approval_service.py` | Per-order 2FA (web ticker OR telegram/email code). |
-| `scripts/schwab_transport.py` | The only Schwab write path: `place_order`/`cancel_order` (kind-aware preconditions). |
+| `scripts/schwab_transport.py` | The only Schwab write path: `place_order`/`cancel_order` (kind-aware preconditions), `cancel_order_for_replace`/`verify_order_canceled` (verified cancel-then-place), REJECTED read-back detection (`rejected_by_broker`). |
+| `scripts/brokers/intent_submit_router.py` | Single post-2FA submit path (`submit_fully_approved`) shared by web confirm + Telegram auto-fire; `cancel_replace_stop_if_needed` for Fidelity monitored-stop replaces. |
 | `scripts/stop_lifecycle_monitor.py` | Lifecycle + proximity + coverage engine (Schwab + Alpaca). |
 | `scripts/stop_health_check.py` | Health-agent face → SIEM + Telegram + system_health + Hermes. |
 | `scripts/grok_stop_review.py` | Grok R:R curation → `stop_grok_reviews` + Hermes. |

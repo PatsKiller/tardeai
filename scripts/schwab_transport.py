@@ -138,6 +138,17 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     _pilot_ensure_table(cur)
     legs = (order_spec.get("orderLegCollection") or [{}])[0]
     _symbol = (legs.get("instrument") or {}).get("symbol")
+    _is_sell_leg = str(legs.get("instruction", "")).upper() in ("SELL", "SELL_SHORT")
+    _is_stop_order = "STOP" in str(order_spec.get("orderType", "")).upper() or "TRAIL" in str(order_spec.get("orderType", "")).upper()
+    _replace_oid = str(ev.get("replace_order_id") or "").strip()
+    if _replace_oid and _is_sell_leg and _is_stop_order and _symbol:
+        _cancel_res = cancel_order_for_replace(account_key, _replace_oid, verify=True)
+        if not _cancel_res.get("ok"):
+            _err = (_cancel_res.get("error")
+                    or f"could not confirm cancel of existing stop #{_replace_oid}")
+            raise NotProvenWrite(
+                f"replace_cancel_incomplete: {_symbol} stop #{_replace_oid} — {_err} — "
+                "new stop NOT placed (avoiding a double stop). Retry or cancel in ToS.")
     # Idempotency fence (P0-5): never create a second ACTIVE submit for the same
     # intent/account/symbol. Schwab does not dedupe, so a duplicate row = a duplicate live
     # order. A stale prior SUBMIT_REQUESTED must be reconciled (GET broker truth) first.
@@ -166,11 +177,9 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     # SECOND stop when the broker ALREADY has a live SELL stop from a different source (e.g. one placed
     # manually in ToS — the ARKQ case). Two live SELL stops on the same shares = over-sell / naked risk.
     # Rule: refuse to place a SELL stop when the broker shows a live SELL stop on this symbol, UNLESS the
-    # only such order is the one this intent explicitly replaces (replace_order_id, already cancelled just
-    # above in the confirm path). Fails CLOSED. Distinguishes pilot- vs manually-placed for the message.
-    _is_sell = str(legs.get("instruction", "")).upper() in ("SELL", "SELL_SHORT")
-    _is_stop = "STOP" in str(order_spec.get("orderType", "")).upper() or "TRAIL" in str(order_spec.get("orderType", "")).upper()
-    if _is_sell and _is_stop and _symbol:
+    # only such order is the one this intent explicitly replaces (replace_order_id, canceled above).
+    # Fails CLOSED. Distinguishes pilot- vs manually-placed for the message.
+    if _is_sell_leg and _is_stop_order and _symbol:
         try:
             _ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
             _replace_id = str(_ev.get("replace_order_id") or "").strip()
@@ -194,7 +203,14 @@ def place_order(account_key, order_spec, intent, kind="canary"):
                         and ("STOP" in str(_o.get("orderType", "")).upper() or "TRAIL" in str(_o.get("orderType", "")).upper())):
                     _oid = str(_o.get("orderId") or "")
                     if _oid and _oid == _replace_id:
-                        continue   # the order we are replacing (already cancelled) — allowed
+                        # Replace flow: only skip when the old stop is no longer live (cancel confirmed).
+                        # If it is still WORKING, block — placing a second stop would over-sell.
+                        _ost = str(_o.get("status", "")).upper()
+                        if _ost not in _live_states:
+                            continue
+                        raise NotProvenWrite(
+                            f"replace_cancel_incomplete: {_symbol} stop #{_oid} is still live ({_ost}) — "
+                            "refusing to place a second stop. Retry after cancel completes or cancel in ToS.")
                     _conflicts.append(_oid)
             if _conflicts:
                 _oid0 = _conflicts[0]
@@ -288,8 +304,79 @@ def place_order(account_key, order_spec, intent, kind="canary"):
         readback = rb.json() if rb.status_code == 200 else {"http_status": rb.status_code}
     except Exception as e:
         readback = {"error": str(e)[:120]}
+    _rb_status = str((readback or {}).get("status") or "").upper() if isinstance(readback, dict) else ""
+    if _rb_status == "REJECTED":
+        _detail_parts = [_rb_status]
+        if isinstance(readback, dict):
+            for act in (readback.get("orderActivityCollection") or []):
+                msg = str(act.get("message") or act.get("status") or "").strip()
+                if msg:
+                    _detail_parts.append(msg[:200])
+                    break
+        _detail = " · ".join(_detail_parts)[:300]
+        cur.execute("UPDATE schwab_pilot_orders SET status='rejected_by_broker', detail=%s, updated_at=NOW() "
+                    "WHERE id=%s", (_detail, row_id)); conn.commit()
+        return {"status": "rejected", "broker_order_id": order_id, "pilot_row_id": row_id,
+                "readback": readback, "error": _detail or "broker rejected order after accept"}
     return {"status": "submitted", "broker_order_id": order_id, "pilot_row_id": row_id,
             "readback": readback}
+
+
+_CANCEL_TERMINAL = frozenset({
+    "CANCELED", "CANCELLED", "REJECTED", "EXPIRED", "REPLACED",
+})
+
+
+def _order_status_from_raw(account_key: str, broker_order_id: str) -> str | None:
+    """Best-effort live status for a broker order id (None if not found in the open-order list)."""
+    raw = get_orders_raw(account_key)
+    if not isinstance(raw, list):
+        return None
+    want = str(broker_order_id or "").strip()
+    if not want:
+        return None
+    for o in raw:
+        if str(o.get("orderId") or "") == want:
+            return str(o.get("status") or "").upper() or None
+    return None
+
+
+def verify_order_canceled(account_key, broker_order_id, *, max_attempts: int = 5, sleep_sec: float = 1.0) -> dict:
+    """Poll Schwab until a pilot order reaches a terminal cancel state (or disappears from open orders)."""
+    import time
+    want = str(broker_order_id or "").strip()
+    if not want:
+        return {"ok": False, "error": "missing broker_order_id"}
+    last = None
+    for attempt in range(max(1, int(max_attempts))):
+        if attempt:
+            time.sleep(max(0.1, float(sleep_sec)))
+        last = _order_status_from_raw(account_key, want)
+        if last is None or last in _CANCEL_TERMINAL:
+            return {"ok": True, "broker_order_id": want, "status": last or "not_in_open_orders",
+                    "attempts": attempt + 1}
+    return {"ok": False, "broker_order_id": want, "status": last, "attempts": max_attempts,
+            "error": f"stop #{want} still live ({last}) after {max_attempts} cancel polls"}
+
+
+def cancel_order_for_replace(account_key, broker_order_id, *, verify: bool = True,
+                             max_attempts: int = 5, sleep_sec: float = 1.0) -> dict:
+    """Cancel a pilot protective stop and optionally verify cancellation before a replace submit."""
+    result = cancel_order(account_key, broker_order_id)
+    if result.get("status") != "cancel_requested":
+        result["ok"] = False
+        result["error"] = result.get("error") or f"cancel failed (HTTP {result.get('http_status')})"
+        return result
+    if not verify:
+        result["ok"] = True
+        return result
+    verified = verify_order_canceled(account_key, broker_order_id,
+                                   max_attempts=max_attempts, sleep_sec=sleep_sec)
+    result["verify"] = verified
+    result["ok"] = bool(verified.get("ok"))
+    if not verified.get("ok"):
+        result["error"] = verified.get("error") or "cancel not confirmed at broker"
+    return result
 
 
 def cancel_order(account_key, broker_order_id):
@@ -319,11 +406,24 @@ def cancel_order(account_key, broker_order_id):
     except Exception as e:
         return {"status": "error", "error": f"cancel exception: {str(e)[:160]}"}
     ok = resp.status_code in (200, 201)
+    if not ok:
+        # Idempotent replace: a second DELETE after a successful cancel returns 400 — treat as OK
+        # when broker truth shows the order is already terminal / gone from open orders.
+        verified = verify_order_canceled(account_key, broker_order_id, max_attempts=2, sleep_sec=0.5)
+        if verified.get("ok"):
+            ok = True
+            cur.execute("UPDATE schwab_pilot_orders SET status=%s, detail=%s, updated_at=NOW() WHERE id=%s",
+                        ("cancel_requested", f"HTTP {resp.status_code} (already canceled)", row_id))
+            conn.commit()
+            return {"status": "cancel_requested", "http_status": resp.status_code,
+                    "broker_order_id": str(broker_order_id), "already_canceled": True,
+                    "verify": verified}
     cur.execute("UPDATE schwab_pilot_orders SET status=%s, detail=%s, updated_at=NOW() WHERE id=%s",
                 ("cancel_requested" if ok else "cancel_rejected",
                  f"HTTP {resp.status_code}", row_id)); conn.commit()
     return {"status": "cancel_requested" if ok else "cancel_rejected",
-            "http_status": resp.status_code, "broker_order_id": str(broker_order_id)}
+            "http_status": resp.status_code, "broker_order_id": str(broker_order_id),
+            "body": (resp.text[:240] if not ok and hasattr(resp, "text") else None)}
 
 
 def replace_order(*_a, **_k):

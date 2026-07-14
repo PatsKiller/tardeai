@@ -16,7 +16,7 @@ def test_01_route_registered_and_read_only():
     api = API.read_text(encoding="utf-8")
     assert '"/api/v2/stops/management"' in api
     assert "def _stops_management_api" in api
-    fn = api.split("def _stops_management_api")[1].split("\ndef _after_hours_override_enabled")[0]
+    fn = api.split("def _stops_management_api")[1].split("\ndef _replace_order_id_from_body")[0]
     for bad in ("place_order", "submit_order", "schwab_transport.submit", "INSERT INTO", "UPDATE ", "DELETE "):
         assert bad not in fn, f"management endpoint must be read-only — found {bad!r}"
 
@@ -57,6 +57,9 @@ def test_03_alert_levels_from_synthetic_holdings(monkeypatch):
                 {"symbol": "TESTA", "evidence_json": {"recommendation": {"stop_price": 98.0}, "inputs": {"atr": 5.0}}},
                 {"symbol": "TESTB", "evidence_json": {"recommendation": {"stop_price": 96.0}, "inputs": {"atr": 1.0}}},
             ]
+        # Pin the regime — a live risk-off regime escalates naked holds amber→red and flakes the test.
+        if "market_regime_snapshots" in sql:
+            return {"regime_label": "risk_on", "trend_state": "", "confidence": None}
         return real_dbq(sql, params, fetch)
     monkeypatch.setattr(api_v2, "_db_query", fake_dbq)
 

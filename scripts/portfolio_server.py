@@ -83,6 +83,15 @@ def _get_api_v2():
                     if _m != _api_v2_mtime[0]:
                         importlib.reload(_mod)
                         _api_v2_mtime[0] = _m
+                    # Pilot submit stack (intent router + transport) is NOT inside api_v2 — reload it
+                    # whenever api_v2 reloads so long-lived servers pick up stop-replace fixes.
+                    for _pilot_mod in (
+                        "brokers.intent_submit_router",
+                        "schwab_transport",
+                        "brokers.protective_stop_pilot",
+                    ):
+                        if _pilot_mod in sys.modules:
+                            importlib.reload(sys.modules[_pilot_mod])
             finally:
                 _api_v2_lock.release()
         # else: another thread is mid-reload → return the current module now, pick up the new one next request

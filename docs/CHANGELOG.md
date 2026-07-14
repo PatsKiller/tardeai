@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-07-14 — Schwab stop replace hardened (verified cancel-then-place) + stop badge truth
+
+### Protective-stop replace — no path can double-stop
+
+- **`scripts/schwab_transport.py`** — `cancel_order_for_replace()` + `verify_order_canceled()`: the old stop's cancel is now **verified at the broker** (polled to a terminal state or gone from open orders) before the new stop is submitted; unverifiable cancel ⇒ `NotProvenWrite: replace_cancel_incomplete`, new stop NOT placed. Cancel-then-place moved **inside `place_order`** (single gate for web confirm + Telegram auto-fire; no double-DELETE). Duplicate-SELL-stop guard now blocks when the replace target is **still live** instead of skipping it. Repeat DELETE after a successful cancel treated as idempotent (broker truth re-checked). Read-back `REJECTED` ⇒ pilot row `rejected_by_broker` + structured error (no silent "submitted").
+- **`scripts/brokers/intent_submit_router.py`** — shared `cancel_replace_stop_if_needed()` (Fidelity monitored-stop replace path); Schwab replace cancel deferred to the transport gate.
+- **`scripts/telegram_callback_handler.py`** — `bkapprove` surfaces `modify_cancel` blocks ("Replace blocked — old stop not canceled").
+- **`scripts/open_trades_intelligence.py`** — broker-stop payload stamps **`pilot_placed`** from `schwab_pilot_orders` so only app-placed orders are replaceable in-app.
+- **`scripts/portfolio_server.py`** — api_v2 hot-reload also reloads the pilot submit stack (`intent_submit_router`, `schwab_transport`, `protective_stop_pilot`).
+- **UI (`HoldingProtectionActions.tsx`, `PositionDecisionCard[V4].tsx`)** — `replace_order_id` sent only for `pilot_placed` orders and resolved from the freshest preflight live-stop snap; submission + preview use the **floor-reconciled advisory stop** (`logic.advisoryStop`, SCHD case) not raw `pr.stop_price`; Telegram-approval polling flips the card to "LIVE stop … approved via Telegram" without re-typing the ticker; after-hours ack checkbox removed (backend readiness still gates); `closed` session renders warn not block; trailing-upgrade button now runs preflight first.
+- **`holdingsRowModel.ts`** — stop badge tracks stop-management truth first: `KEEP_EXISTING_STOP` ⇒ stable/concern (by stop distance), never "Action" purely because LLM health/signal says TRIM.
+- **Tests** — `tests/test_stop_replace_flow.py` (verified cancel before replace submit, single router path, live-target guard), `tests/test_schd_advised_order_params.py` (floor-reconciled fixed stop + suggested trail pct parity), `test_stop_management_endpoint.py` marker updated.
+- **Docs** — `docs/brokers/stop-management-architecture.md` §5 Modify + components map updated.
+
+### Hermes — vehicle_auctions research domain
+
+- **`config/hermes_research_domains.yaml`** — new `vehicle_auctions` domain (NYC DOF auction research: title brands, salvage/total-loss, NMVTIS/VIN history, comparable sales). `risk_level: operational`, promotion paths `research_topic`/`escalation_candidate`, **operator-gated, advisory only** — never authoritative pricing or title status.
+
+### Replay integrity
+
+- `docs/audits/REPLAY_INTEGRITY_2026-07-11.{md,json}` + `REPLAY_INTEGRITY_LATEST.*` refreshed by the scheduled replay audit.
+
 ## 2026-07-13 — Fidelity GTC stops audit (••5199)
 
 - **`config/fidelity_rollover_stops.json`** — synced all 8 open GTC stops from Fidelity Activity & Orders (Jul 13): added **QCOM** trail 7% @$174.79 (55 sh); refreshed **ANET** trigger to $178.03, **DXCM** to $71.06; `_fidelity_as_of` → 2026-07-13.

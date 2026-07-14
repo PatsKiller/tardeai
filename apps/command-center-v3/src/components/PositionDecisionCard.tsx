@@ -311,7 +311,11 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
       ? `MODIFY → SELL ${p.shares} ${p.symbol} TRAILING STOP ${trailPct?.toFixed(0)}% GTC`
       : `MODIFY → SELL ${p.shares} ${p.symbol} STOP $${(advStop ?? 0).toFixed(2)} GTC`
     _resetStop()
-    setStopOrder({ kind, qty: p.shares, stop: advStop, trailPct: kind === 'TRAILING' ? trailPct : null, label, advised: advStop, cur: recPrice, replace_order_id: effectiveBrokerStop.order_id })
+    setStopOrder({
+      kind, qty: p.shares, stop: advStop, trailPct: kind === 'TRAILING' ? trailPct : null, label,
+      advised: advStop, cur: recPrice,
+      replace_order_id: effectiveBrokerStop.pilot_placed ? effectiveBrokerStop.order_id : null,
+    })
   }
 
   return <div style={{ background: 'linear-gradient(180deg, rgba(30,41,59,.72), rgba(15,23,42,.74))', border: '1px solid rgba(148,163,184,.20)', borderLeft: `5px solid ${border}`, borderRadius: 14, padding: 16, boxShadow: '0 10px 28px rgba(0,0,0,.18)' }}>

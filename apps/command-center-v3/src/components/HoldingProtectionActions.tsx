@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import PreflightChangedPanel from './PreflightChangedPanel'
 import { protectionExplain, resolvedTrailPct } from '../lib/protectionTrail'
 import { fmtLiveStop, runProtectiveStopPreflight, unwrapApi, type PreflightDiff } from '../lib/protectiveStopPreflight'
-import { buildStopLogic, isTrailingBrokerStop, resolveLiveStop, type StopLogic, type StopOrderKind } from '../lib/stopManagement'
+import { buildStopLogic, hasLiveBrokerStopOrder, isTrailingBrokerStop, resolveLiveStop, type StopLogic, type StopOrderKind } from '../lib/stopManagement'
 import { formatReviewStamp, stopReviewTooltip } from '../lib/stopReviewTooltip'
 
 const MUTED = '#94a3b8', TEXT0 = '#f8fafc', GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', PURPLE = '#a855f7', RED = '#ef4444'
@@ -44,7 +44,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const [sellAllDone, setSellAllDone] = useState(false)
   const [tokenHealth, setTokenHealth] = useState<any>(null)
   const [wholeShareConfirmed, setWholeShareConfirmed] = useState(false)
-  const [afterHoursAck, setAfterHoursAck] = useState(false)
+
   const [activeApproval, setActiveApproval] = useState<any>(null)
   const [readiness, setReadiness] = useState<any>(null)
   const [refreshedQuote, setRefreshedQuote] = useState<any>(null)
@@ -70,13 +70,30 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     if (!isSchwab || !intentId || tokenHealth) return
     fetch('/api/v2/brokers/schwab/token-health').then(x => x.json()).then(j => setTokenHealth(unwrapApi(j))).catch(() => {})
   }, [isSchwab, intentId, tokenHealth])
+
+  // Telegram bkapprove auto-submits — poll so the card updates without re-typing the ticker here.
+  useEffect(() => {
+    if (!intentId || sellAllDone) return
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const raw = await fetch(`/api/v2/broker-orders/approval-status?intent_id=${encodeURIComponent(intentId)}`).then(x => x.json())
+        const s = unwrapApi(raw) ?? raw
+        if (cancelled || !s?.submitted) return
+        const sub = s.submission ?? {}
+        const oid = sub.broker_order_id
+        if (!oid) return
+        setSellAllDone(true)
+        setMsg(`✅ LIVE stop on Schwab · order #${oid} (${sub.status ?? 'submitted'}) — approved via Telegram`)
+        onRefresh?.()
+      } catch { /* retry on next interval */ }
+    }
+    void poll()
+    const iv = window.setInterval(poll, 5000)
+    return () => { cancelled = true; window.clearInterval(iv) }
+  }, [intentId, sellAllDone, onRefresh])
   const baseQuoteTs = h?.source_timestamp ?? h?.price_as_of ?? h?.quote_at ?? h?.price_timestamp ?? h?.last_repriced ?? ''
   const quoteTsForReadiness = refreshedQuote?.quote_time_normalized ?? baseQuoteTs
-  useEffect(() => {
-    if (!isSchwab) return
-    fetch(`/api/v2/holdings/stop-readiness?symbol=${encodeURIComponent(sym)}&account=${encodeURIComponent(acct)}&quote_at=${encodeURIComponent(String(quoteTsForReadiness))}`)
-      .then(x => x.json()).then(j => setReadiness(unwrapApi(j))).catch(() => {})
-  }, [isSchwab, sym, acct, quoteTsForReadiness])
 
   // Refresh latest quote (read-only; never submits a broker order) and re-evaluate readiness.
   const refreshQuote = async () => {
@@ -106,9 +123,23 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const liveStop = liveResolved.price
   // P2 — the existing broker order. Only an app-placed (pilot) order can be API-cancelled for a one-2FA
   // in-app Replace; a manually-placed (ToS) order routes to P3 (cancel in ToS).
-  const existingOrderId = String((effectiveConfirmed as any)?.order_id ?? '').trim() || null
-  const existingIsPilot = Boolean((effectiveConfirmed as any)?.pilot_placed)
-  const canReplaceInApp = Boolean(isSchwab && liveResolved.hasLiveBrokerOrder && existingIsPilot && existingOrderId)
+  const resolveReplaceParams = (confirmed?: any, kind: StopOrderKind | 'MARKET' = selectedKind) => {
+    const conf = confirmed ?? effectiveConfirmed
+    const orderId = String(conf?.order_id ?? '').trim() || null
+    const isPilot = Boolean(conf?.pilot_placed)
+    const canReplace = Boolean(isSchwab && kind !== 'MARKET' && hasLiveBrokerStopOrder(conf, monitored) && isPilot && orderId)
+    return { canReplace, orderId, replaceBody: canReplace && orderId ? { replace_order_id: orderId } : {} }
+  }
+  const replacePreview = resolveReplaceParams()
+  const existingOrderId = replacePreview.orderId
+  const canReplaceInApp = replacePreview.canReplace
+  const replaceReadinessQs = canReplaceInApp && existingOrderId
+    ? `&replace_order_id=${encodeURIComponent(existingOrderId)}` : ''
+  useEffect(() => {
+    if (!isSchwab) return
+    fetch(`/api/v2/holdings/stop-readiness?symbol=${encodeURIComponent(sym)}&account=${encodeURIComponent(acct)}&quote_at=${encodeURIComponent(String(quoteTsForReadiness))}${replaceReadinessQs}`)
+      .then(x => x.json()).then(j => setReadiness(unwrapApi(j))).catch(() => {})
+  }, [isSchwab, sym, acct, quoteTsForReadiness, replaceReadinessQs])
   const confirmedIsTrailing = isTrailingBrokerStop(effectiveConfirmed, monitored)
   const confirmedIsFixed = Boolean(liveResolved.hasLiveBrokerOrder && !confirmedIsTrailing && liveStop != null)
   const preferTrail = !confirmedIsFixed && Boolean(effectivePr?.trail_recommended || trail?.matchesStopWidth)
@@ -132,6 +163,32 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   }
 
   const logic = computeLogic(selectedKind)
+
+  /** Submission + preview use floor-reconciled advisory stop (logic.advisoryStop), not raw pr.stop_price. */
+  const advisedForKind = (kind: StopOrderKind): { advisoryStop: number | null; trailPct: number | null } => {
+    const lg = computeLogic(kind)
+    const advisoryStop = lg.advisoryStop ?? stop
+    const tr = kind === 'TRAILING'
+      ? (trail?.pct ?? (effectivePr?.suggested_trail_pct != null ? Number(effectivePr.suggested_trail_pct) : null))
+      : null
+    return { advisoryStop, trailPct: tr }
+  }
+
+  const trailLabelFor = (pct: number | null | undefined) => {
+    if (pct == null) return ''
+    return Math.abs(pct - Math.round(pct)) < 0.15 ? String(Math.round(pct)) : pct.toFixed(1)
+  }
+
+  const orderPreviewLine = (kind: StopOrderKind): string => {
+    const { advisoryStop: px, trailPct: tr } = advisedForKind(kind)
+    if (kind === 'TRAILING' && tr != null) {
+      return `SELL ${logic.wholeQty} ${sym} TRAILING_STOP ${trailLabelFor(tr)}% GTC`
+    }
+    if (px != null && (kind === 'STOP' || kind === 'STOP_LIMIT')) {
+      return `SELL ${logic.wholeQty} ${sym} ${kind === 'STOP_LIMIT' ? 'STOP_LIMIT' : 'STOP'} $${px.toFixed(2)} GTC`
+    }
+    return `SELL ${logic.wholeQty} ${sym} ${kind} GTC`
+  }
 
   const runClickPreflight = async (orderKind: StopOrderKind) => {
     setValidating(true)
@@ -198,7 +255,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   const resetApprove = () => { setIntentId(''); setApproveTk(''); setApproveCode(''); setSellAllDone(false) }
 
-  const requestOrder = async (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET', opts?: { label?: string; skipPreflight?: boolean }) => {
+  const requestOrder = async (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET', opts?: {
+    label?: string; skipPreflight?: boolean; liveSnap?: any
+  }) => {
     setSelectedKind(kind)
     const nextLogic = computeLogic(kind)
     if (kind !== 'MARKET' && !nextLogic.canRequestLive && isSchwab) {
@@ -206,22 +265,23 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       return
     }
     setBusy(true); setMsg(''); setTicket(''); resetApprove()
+    const advised = advisedForKind(kind)
     try {
       const body: Record<string, unknown> = {
         symbol: sym, account: acct, qty,
         order_kind: kind,
-        stop_price: kind === 'MARKET' ? null : stop,
-        trail_pct: kind === 'TRAILING' ? trailPct : null,
-        advised_stop: stop,
+        stop_price: kind === 'MARKET' ? null : advised.advisoryStop,
+        trail_pct: advised.trailPct,
+        advised_stop: advised.advisoryStop,
         current_price: effectivePrice,
         source_broker: effectivePr?.source_broker ?? effectivePr?.broker ?? effectivePr?.account ?? effectivePr?.source_account,
         instrument_type: nextLogic.instrumentType,
         quote_at: priceTimestamp ?? advisoryTimestamp,
         whole_share_confirmed: wholeShareConfirmed,
-        after_hours_ack: afterHoursAck,
         preflight_at: new Date().toISOString(),
         // P2 — replace an existing APP-placed stop: confirm path cancels it, then places the new one, one 2FA.
-        ...(canReplaceInApp && kind !== 'MARKET' ? { replace_order_id: existingOrderId } : {}),
+        // Use the freshest live-stop snap (preflight may have just fetched pilot_placed + order_id).
+        ...resolveReplaceParams(opts?.liveSnap ?? effectiveConfirmed, kind).replaceBody,
       }
       const raw = await fetch('/api/v2/holdings/protective-stop', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -230,8 +290,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       if (r?.mode === 'monitored_armed') {
         const t = r?.result?.ticket || r?.order?.ticket || ''
         setTicket(t)
-        const kindLbl = kind === 'TRAILING' ? `${trailPct}% trailing` : kind === 'MARKET' ? `market ${sellAllTif}` : 'fixed stop'
-        setMsg(`✅ Tracking armed — ${kindLbl} @ ${kind === 'MARKET' ? 'market' : `$${stop!.toFixed(2)}`}`)
+        const kindLbl = kind === 'TRAILING' ? `${advised.trailPct}% trailing` : kind === 'MARKET' ? `market ${sellAllTif}` : 'fixed stop'
+        setMsg(`✅ Tracking armed — ${kindLbl} @ ${kind === 'MARKET' ? 'market' : kind === 'TRAILING' ? `${advised.trailPct}%` : `$${advised.advisoryStop!.toFixed(2)}`}`)
         onRefresh?.()
       } else if (r?.mode === 'ticket') {
         setTicket(r.ticket || r.order?.ticket || '')
@@ -294,7 +354,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       return
     }
     setMsg('✓ Validated — proceeding…')
-    await requestOrder(kind, { ...opts, skipPreflight: true })
+    await requestOrder(kind, { ...opts, skipPreflight: true, liveSnap: pf.liveSnap })
   }
 
   // One-click apply: opened via a 🔒 row button (autoStageKind set) on a NAKED position → auto-fire the
@@ -356,6 +416,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         setMsg('channel confirmed — waiting on the other factor')
       } else if (r?.mode === 'blocked' || r?.broker_submitted === false) {
         setMsg(`⛔ ${internalBlockMessage(r) ?? apiReason(r)}`)
+      } else if (r?.stage === 'modify_cancel') {
+        setMsg(`⛔ Replace blocked — existing stop was not canceled at Schwab: ${apiReason(r)}. No new stop was placed.`)
       } else if (r?.stage === 'submit' && (ostatus === 'error' || r?.ok === false)) {
         setMsg(`⛔ Schwab rejected the submitted order: ${apiReason(r)}`)
       } else {
@@ -386,13 +448,11 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     readiness.account_api_write_enabled === false ? `${acct} is not armed for live API writes (ticket mode). Set broker_accounts.api_write_enabled=TRUE for ${resolveSchwabAcct(acct)}.`
       : readiness.other_account_canary ? `Another ${sym} canary is already active on ${readiness.other_account_canary}. Only one ${sym} canary may be armed at a time.`
         : readiness.quote_parse_ok === false ? 'Quote timestamp could not be parsed; refresh quote before requesting a live stop.'
-          : !readiness.quote_fresh ? 'Blocked: quote is stale or after-hours freshness is not valid. Refresh latest quote first.'
+          : !readiness.quote_fresh ? 'Quote is stale — refresh the latest price first.'
             : readiness.oco_brackets_schwab_off === false ? 'OCO is ON — must be OFF before any Schwab stop.'
               : (readiness.db_available === false || readiness.evidence_store_available === false) ? 'DB unavailable / evidence store unavailable.'
                 : (readiness.execution && readiness.execution.operator_live_via_2fa_allowed === false) ? 'Schwab 2FA live path disabled by execution_state.'
-                  : readiness.canary_state === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION' ? 'After-hours: restricted to next regular session unless SCHWAB_AFTER_HOURS_STOP_OVERRIDE=1 is enabled and you acknowledge after-hours GTC.'
-                    : (readiness.requires_after_hours_ack && !afterHoursAck) ? 'Check the after-hours GTC acknowledgement below to proceed.'
-                      : null
+                  : null
   ) : null
   const disabledReasonHuman = logic.disabledReasonHuman ?? backendHardBlock
   const liveBlocked = validating || !logic.canRequestLive || backendHardBlock != null
@@ -513,7 +573,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           {' '}<b style={{ fontFamily: 'monospace' }}>${liveFixedStopPx.toFixed(2)}</b>. It keeps ratcheting up as price rises.
           <div style={{ marginTop: 5, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
-              onClick={e => { e.stopPropagation(); requestOrder('TRAILING') }}
+              onClick={e => { e.stopPropagation(); preflightAndRequest('TRAILING') }}
               disabled={busy || needsReauth}
               title={isFidelity
                 ? `Fidelity has no trading API — arms a software-monitored ${trailLabel}% trailing stop + a manual Active Trader ticket to replace the fixed stop`
@@ -563,7 +623,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         const quoteStatus: 'ok' | 'warn' | 'block' = !quoteParseOk ? 'block' : !quoteFresh ? 'block' : 'ok'
         const quoteValue = !quoteParseOk ? 'could not be parsed — refresh quote'
           : !quoteFresh ? `stale — refresh price${rd.quote_age_sec != null ? ` (${Math.round(rd.quote_age_sec / 60)}m old)` : ''}` : 'fresh'
-        const sessionStatus: 'ok' | 'warn' | 'block' = session === 'regular' ? 'ok' : (session === 'after_hours' || session === 'pre_market') ? 'warn' : 'block'
+        const sessionStatus: 'ok' | 'warn' | 'block' = session === 'regular' ? 'ok' : (session === 'after_hours' || session === 'pre_market' || session === 'closed') ? 'warn' : 'block'
         const rows: { label: string; status: 'ok' | 'warn' | 'block'; value: string }[] = [
           { label: 'Build', status: 'ok', value: rd.build_marker || 'cc-v3 stop-lifecycle-close 2026-07-01' },
           { label: 'Quote', status: quoteStatus, value: quoteValue },
@@ -585,7 +645,11 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
               <div style={{ fontSize: 12, color: BLUE, fontWeight: 900, letterSpacing: 0.4, marginBottom: 3 }}>PROTECTIVE STOP PREVIEW — NOT SUBMITTED</div>
               <div style={{ fontSize: 13, color: TEXT0, fontWeight: 800, lineHeight: 1.5 }}>
                 Symbol: <b>{sym}</b> · Account: <b>{acct}</b><br />
-                Order: <b>SELL {logic.wholeQty} {sym} {selectedKind === 'TRAILING' ? `TRAILING_STOP ${trailLabel}%` : selectedKind} GTC</b><br />
+                Fixed: <b>{orderPreviewLine('STOP')}</b><br />
+                {trailPct != null && <>Trail: <b>{orderPreviewLine('TRAILING')}</b><br /></>}
+                {selectedKind !== 'STOP' && selectedKind !== 'TRAILING' && (
+                  <>Selected: <b>{orderPreviewLine(selectedKind)}</b><br /></>
+                )}
                 Residual: <b>{logic.residualQty.toFixed(4)} monitored</b>
               </div>
             </div>
@@ -599,14 +663,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
               {rd.canary_state && (() => {
                 const cs = rd.canary_state
                 const wholeOk = logic.residualQty <= 1e-6 || wholeShareConfirmed
-                const ackOk = cs !== 'READY_FOR_OPERATOR_AFTER_HOURS_GTC' || afterHoursAck
-                const fullReady = (cs === 'READY_FOR_OPERATOR' || cs === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC') && quoteFresh && wholeOk && ackOk
-                const label = fullReady
-                  ? (cs === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC' ? '✅ READY — AFTER-HOURS GTC' : '✅ READY_FOR_OPERATOR')
-                  : cs === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC' ? '⚠️ READY — ACKNOWLEDGE AFTER-HOURS'
-                    : cs === 'READY_FOR_OPERATOR_NEXT_REGULAR_SESSION' ? '⚠️ NEXT REGULAR SESSION'
-                      : '⛔ BLOCKED — resolve gates'
-                const col = fullReady ? GREEN : RED
+                const fullReady = cs === 'READY_FOR_OPERATOR' && quoteFresh && wholeOk
+                const label = fullReady ? '✅ READY_FOR_OPERATOR' : cs === 'READY_FOR_OPERATOR' ? '⚠️ CONFIRM WHOLE SHARES' : '⛔ BLOCKED — resolve gates'
+                const col = fullReady ? GREEN : cs === 'READY_FOR_OPERATOR' ? AMBER : RED
                 return (
                   <span data-testid="canary-state" style={{ fontSize: 11, fontWeight: 900, padding: '2px 8px', borderRadius: 999,
                     color: fullReady ? GREEN : AMBER, background: `${col}1e`, border: `1px solid ${fullReady ? GREEN : AMBER}` }}>{label}</span>
@@ -624,13 +683,11 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
             </div>
             {/* Human-readable readiness message — never a raw parse error. */}
             <div data-testid="readiness-message" style={{ marginTop: 7, fontSize: 11.5, fontWeight: 700,
-              color: (rd.canary_state === 'READY_FOR_OPERATOR' || rd.canary_state === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC') ? GREEN : RED }}>
+              color: rd.canary_state === 'READY_FOR_OPERATOR' ? GREEN : RED }}>
               {!quoteParseOk ? 'Quote timestamp could not be parsed; refresh quote.'
-                : rd.canary_state === 'READY_FOR_OPERATOR_AFTER_HOURS_GTC'
-                  ? (afterHoursAck ? 'After-hours GTC stop — acknowledged. Valid 24/7; rests until triggered.'
-                    : (rd.canary_note || 'After-hours GTC stop: valid 24/7. Check the after-hours acknowledgement to proceed.'))
-                  : rd.canary_state === 'READY_FOR_OPERATOR' ? 'Quote fresh.'
-                    : (rd.canary_blocker || 'Resolve the gates above before requesting a live stop.')}
+                : rd.canary_state === 'READY_FOR_OPERATOR'
+                  ? (rd.canary_note || 'GTC stop — valid 24/7 when quote is fresh.')
+                  : (rd.canary_blocker || 'Resolve the gates above before requesting a live stop.')}
             </div>
           </div>
         )
@@ -651,21 +708,6 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         </label>
       )}
 
-      {/* After-hours acknowledgement — a GTC stop is valid 24/7 (rests until triggered), but after-hours the
-          operator must acknowledge that trigger behavior depends on regular-market conditions. */}
-      {isSchwab && showProtect && readiness?.requires_after_hours_ack && (
-        <label
-          onClick={e => e.stopPropagation()}
-          style={{ marginTop: 8, marginBottom: 2, display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 13, color: TEXT0,
-                   fontWeight: 700, padding: '10px 11px', borderRadius: 8, cursor: 'pointer',
-                   background: afterHoursAck ? 'rgba(34,197,94,.12)' : 'rgba(245,158,11,.14)',
-                   border: `1px solid ${afterHoursAck ? GREEN : AMBER}` }}>
-          <input type="checkbox" checked={afterHoursAck} onChange={e => setAfterHoursAck(e.target.checked)}
-                 style={{ width: 18, height: 18, marginTop: 1, accentColor: afterHoursAck ? GREEN : AMBER, flexShrink: 0 }} />
-          <span>{afterHoursAck ? '✅ ' : '⚠️ '}I understand this is an after-hours GTC Schwab protective stop request. The order may rest as GTC, and execution/trigger behavior is governed by Schwab’s order rules. Submit only after per-order 2FA and broker read-back.</span>
-        </label>
-      )}
-
       {pendingAction && preflightDiff && (
         <PreflightChangedPanel
           diff={preflightDiff}
@@ -674,7 +716,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           onProceed={() => {
             const pa = pendingAction
             setPendingAction(null); setPreflightDiff(null)
-            if (pa?.kind === 'request') requestOrder(pa.orderKind, { skipPreflight: true })
+            if (pa?.kind === 'request') requestOrder(pa.orderKind, { skipPreflight: true, liveSnap: liveStopOverride ?? effectiveConfirmed })
             else if (pa?.kind === 'confirm') confirmOrder(pa.channel, true)
           }}
           onCancel={() => { setPendingAction(null); setPreflightDiff(null); setMsg('') }}
@@ -725,9 +767,17 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
             <div style={{ fontSize: 12, color: RED, marginBottom: 5 }}>Re-auth needed before submit — refresh Schwab token</div>
           )}
           <div style={{ fontSize: 12, color: MUTED, marginBottom: 7 }}>
-            Formula: current {logic.currentPrice != null ? `$${logic.currentPrice.toFixed(2)}` : 'missing'} · trail {trailPct != null ? `${trailLabel}%` : 'n/a'} · initial stop {logic.advisoryStop != null ? `$${logic.advisoryStop.toFixed(2)}` : 'n/a'} · qty {isSchwab && logic.residualQty > 1e-6 ? logic.wholeQty : qty} · broker Schwab · account {acct} · 2FA pending
+            {(() => {
+              const a = advisedForKind(selectedKind)
+              const kindLbl = selectedKind === 'TRAILING' && a.trailPct != null
+                ? `TRAILING ${trailLabelFor(a.trailPct)}%`
+                : selectedKind === 'STOP' && a.advisoryStop != null ? `STOP $${a.advisoryStop.toFixed(2)}` : selectedKind
+              return `Order: ${kindLbl} · current ${logic.currentPrice != null ? `$${logic.currentPrice.toFixed(2)}` : 'missing'} · qty ${isSchwab && logic.residualQty > 1e-6 ? logic.wholeQty : qty} · ${acct} · 2FA pending`
+            })()}
           </div>
-          <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>Type ticker <b style={{ color: TEXT0 }}>{sym}</b> or 6-digit code (either channel)</div>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>
+            Approve via <b style={{ color: TEXT0 }}>Telegram</b> (auto-submits) or type ticker <b style={{ color: TEXT0 }}>{sym}</b> / 6-digit code here
+          </div>
           <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
             <input value={approveTk} onChange={e => setApproveTk(e.target.value.toUpperCase())} placeholder={sym}
               onClick={e => e.stopPropagation()}
