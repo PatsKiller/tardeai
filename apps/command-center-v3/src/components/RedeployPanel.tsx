@@ -103,7 +103,8 @@ export default function RedeployPanel() {
 
   function openModal(ev: RedeployEventDetail) {
     // drawer retired 2026-07-14 — the workstation page replaces it
-    window.location.assign(`/redeploy?event=${ev.id}&tab=EVENT+OVERVIEW`)
+    // (app is served under the /v3 base path — a bare /redeploy 404s)
+    window.location.assign(`/v3/redeploy?event=${ev.id}&tab=EVENT+OVERVIEW`)
   }
 
   const gaps = data?.portfolio_gaps ?? selected?.metadata?.sleeve_gaps ?? []

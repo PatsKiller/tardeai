@@ -82,6 +82,28 @@ def test_no_execution_approval_language():
     assert "never execution approval" in flat
 
 
+def test_all_in_app_navigations_carry_v3_base_path():
+    """The app is served under /v3 — a bare window.location to '/redeploy' (or any
+    SPA route) 404s. Regression for the 2026-07-14 RedeployPanel link that shipped
+    without the base path. Scans EVERY component/page, not just RedeployDesk."""
+    src_root = PAGE.parent.parent  # apps/command-center-v3/src
+    nav_re = re.compile(
+        r"window\.location(?:\.href\s*=|\.assign\()\s*[`'\"](/[^`'\"]*)", re.M)
+    offenders = []
+    for f in src_root.rglob("*.tsx"):
+        for m in nav_re.finditer(f.read_text()):
+            target = m.group(1)
+            if not target.startswith("/v3"):
+                offenders.append(f"{f.relative_to(src_root)}: {target}")
+    assert not offenders, f"in-app navigation missing /v3 base path: {offenders}"
+
+
+def test_server_redirects_bare_redeploy_route():
+    server = (PAGE.parent.parent.parent.parent.parent / "scripts" / "portfolio_server.py").read_text()
+    assert '"/redeploy"' in server and '"/v3/redeploy"' in server, \
+        "portfolio_server must 302 bare /redeploy links to /v3/redeploy"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

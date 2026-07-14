@@ -79,6 +79,16 @@ def _get_conn():
     """Get or create a THREAD-LOCAL PostgreSQL connection (lazy, one per thread)."""
     conn = getattr(_tls, "conn", None)
     if conn is not None and not conn.closed:
+        # Self-heal a poisoned connection: if a prior handler swallowed a query error
+        # without rollback, every later query on this thread fails with "current
+        # transaction is aborted" forever (2026-07-14: Redeploy panel showed 0 events
+        # all session on the affected worker thread). Roll back and hand out a clean txn.
+        try:
+            import psycopg2.extensions as _pgext
+            if conn.get_transaction_status() == _pgext.TRANSACTION_STATUS_INERROR:
+                conn.rollback()
+        except Exception:
+            pass
         return conn
     try:
         import psycopg2

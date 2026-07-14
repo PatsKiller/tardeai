@@ -1228,6 +1228,15 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        # Bare SPA routes (old bookmarks / shared links missing the /v3 base) → /v3/<route>.
+        # /redeploy links were generated without the base until 2026-07-14; keep them working.
+        if path == "/redeploy":
+            q = self.path.split("?", 1)
+            self.send_response(302)
+            self.send_header("Location", "/v3/redeploy" + (f"?{q[1]}" if len(q) > 1 else ""))
+            self.end_headers()
+            return
+
         # Command Center v2 — serve built app at /v2/
         if path == "/v2" or path.startswith("/v2/"):
             _v2_dist = PROJECT_ROOT / "apps" / "command-center-v2" / "dist"

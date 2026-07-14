@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-14 — Redeploy 404 link + poisoned-connection self-heal
+
+- **404 on `/redeploy?...`** — `RedeployPanel.openModal` navigated without the `/v3` base path
+  (operator hit it live). Fixed to `/v3/redeploy?...`; `portfolio_server` now also 302s bare
+  `/redeploy` → `/v3/redeploy` (query preserved) so previously shared links keep working.
+  Regression tests: base-path scan of EVERY in-app `window.location` navigation + server-redirect
+  assertion (`test_redeploy_phase13_ui.py`, 9 tests).
+- **Panel showed "0 open" despite 4 open events** — one server worker thread's shared DB connection
+  was poisoned ("current transaction is aborted…": an earlier swallowed error, never rolled back),
+  so every request landing on that thread failed while curl on other threads succeeded.
+  `db_adapter._get_conn()` now self-heals: a handed-out connection in `TRANSACTION_STATUS_INERROR`
+  is rolled back before reuse. Verified: panel lists 4 events, OPEN → workstation, 69 tests green.
+
 ## 2026-07-14 — Redeploy Phase-13 completion: scenarios, candidates, comparison tab, quote-freshness chain
 
 - **Scenario engine** (`redeploy_performance.py` 1.1.0) — 10-scenario plan-level matrix (bull/base/bear
