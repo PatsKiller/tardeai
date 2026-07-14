@@ -764,6 +764,8 @@ def recompute_deploy_event(cur, event_id: int) -> dict[str, Any]:
             ev["metadata"] = json.loads(ev["metadata"])
         except Exception:
             ev["metadata"] = {}
+    from lib.redeploy_plan_db import event_lock_state
+    lock_before = event_lock_state(cur, event_id)
     enriched = enrich_event(ev)
     try:
         from lib.redeploy_phase_a_db import persist_phase_a
@@ -788,12 +790,16 @@ def recompute_deploy_event(cur, event_id: int) -> dict[str, Any]:
              event_id),
         )
     pb = (enriched.get("metadata") or {}).get("phase_b") or {}
+    lock_after = event_lock_state(cur, event_id)
     return {
         "ok": True,
         "id": event_id,
         "targets": len(enriched.get("redeploy_plan") or []),
         "institutional_plans": len(pb.get("plans") or []),
         "plan_version": (enriched.get("metadata") or {}).get("phase_b_persisted_version"),
+        "plan_locked": bool(lock_after.get("plan_locked_at")),
+        "locked_plan_version": lock_after.get("locked_plan_version"),
+        "new_version_created": bool(lock_before.get("plan_locked_at")),
     }
 
 

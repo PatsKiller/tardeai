@@ -27121,6 +27121,21 @@ def _deploy_events(query=None):
                     "restoration_pct": pe.get("restoration_pct"),
                     "last_fill_at": pe.get("last_fill_at"),
                 }
+            if ev.get("plan_locked_at") or meta.get("plan_lock"):
+                ev["plan_lock"] = meta.get("plan_lock") or {
+                    "locked_at": str(ev.get("plan_locked_at") or "")[:19],
+                    "plan_id": ev.get("locked_plan_id"),
+                    "version": ev.get("locked_plan_version"),
+                }
+            if ev.get("operator_status"):
+                ev["operator_status"] = ev.get("operator_status")
+            ov = meta.get("oversight") or {}
+            if ov:
+                ev["oversight_summary"] = {
+                    "oversight_status": ov.get("oversight_status"),
+                    "operator_status": ov.get("operator_status"),
+                    "last_run_at": ov.get("last_run_at"),
+                }
         return {
             "ok": True,
             "advisory_only": True,
@@ -27199,6 +27214,80 @@ def _deploy_export(query=None):
         if not result.get("ok", True) and result.get("error"):
             return result
         return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _deploy_analysis(query=None):
+    """GET /api/v2/deploy/analysis?event_id= — before/after exposure + context."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_oversight import get_event_analysis
+        q = query or {}
+        eid = int(q.get("event_id") or q.get("id") or 0)
+        if not eid:
+            return {"ok": False, "error": "event_id required"}
+        cur = _get_conn().cursor()
+        return get_event_analysis(cur, eid)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _deploy_plan_detail(query=None):
+    """GET /api/v2/deploy/plan?plan_id= — full institutional plan."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_plan_db import get_plan_by_id
+        q = query or {}
+        pid = int(q.get("plan_id") or q.get("id") or 0)
+        if not pid:
+            return {"ok": False, "error": "plan_id required"}
+        cur = _get_conn().cursor()
+        plan = get_plan_by_id(cur, pid)
+        if not plan:
+            return {"ok": False, "error": "plan_not_found"}
+        return {"ok": True, "advisory_only": True, "plan": plan}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _deploy_lock(body=None):
+    """POST /api/v2/deploy/lock — lock plan version for operator review."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_oversight import lock_deploy_plan
+        b = body or {}
+        eid = int(b.get("event_id") or b.get("id") or 0)
+        if not eid:
+            return {"ok": False, "error": "event_id required"}
+        conn = _get_conn()
+        cur = conn.cursor()
+        res = lock_deploy_plan(cur, eid, b)
+        if res.get("ok"):
+            conn.commit()
+        else:
+            conn.rollback()
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _deploy_oversight(body=None):
+    """POST /api/v2/deploy/oversight — PR-4 Grok/ChatGPT plan review (advisory)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_oversight import run_deploy_oversight
+        b = body or {}
+        if not (b.get("event_id") or b.get("id")):
+            return {"ok": False, "error": "event_id required"}
+        conn = _get_conn()
+        cur = conn.cursor()
+        res = run_deploy_oversight(cur, b)
+        if res.get("ok"):
+            conn.commit()
+        else:
+            conn.rollback()
+        return res
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
@@ -28623,6 +28712,8 @@ ROUTES = {
     "/api/v2/deploy/plans": lambda q=None: _deploy_plans(q),
     "/api/v2/deploy/export": lambda q=None: _deploy_export(q),
     "/api/v2/deploy/monitoring": lambda q=None: _deploy_monitoring(q),
+    "/api/v2/deploy/analysis": lambda q=None: _deploy_analysis(q),
+    "/api/v2/deploy/plan": lambda q=None: _deploy_plan_detail(q),
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/rotation/small-cap-bridge": _small_cap_rotation_bridge_status,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
@@ -33467,6 +33558,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/deploy/record-fill":
         try:
             res = _deploy_record_fill(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/deploy/lock":
+        try:
+            res = _deploy_lock(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/deploy/oversight":
+        try:
+            res = _deploy_oversight(body if isinstance(body, dict) else {})
             return (200 if res.get("ok") else 400), res
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}

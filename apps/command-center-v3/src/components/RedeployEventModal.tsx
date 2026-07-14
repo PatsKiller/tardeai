@@ -62,6 +62,7 @@ export default function RedeployEventModal({ event, onClose, onDismiss, onPropos
   const [selectedArch, setSelectedArch] = useState(primaryArch)
   const [exportMsg, setExportMsg] = useState('')
   const [fillMsg, setFillMsg] = useState('')
+  const [actionMsg, setActionMsg] = useState('')
   const [fillForm, setFillForm] = useState({ ticker: 'JEPQ', stage: '1', shares: '', price: '', note: '' })
 
   const { data: monitoring, refetch: refetchMonitoring } = useApi<{
@@ -84,6 +85,42 @@ export default function RedeployEventModal({ event, onClose, onDismiss, onPropos
     { id: 'memo', label: 'MEMO' },
     { id: 'legacy', label: 'LEGACY v1' },
   ]
+
+  async function lockPlan() {
+    setActionMsg('')
+    const arch = selectedPlan?.plan_archetype ?? primaryArch
+    try {
+      const r = await fetch('/api/v2/deploy/lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: ev.id, plan_archetype: arch }),
+      })
+      const j = await r.json()
+      setActionMsg(j.ok ? `LOCKED plan ${arch} v${j.plan_version}` : `ERR ${j.error}`)
+    } catch {
+      setActionMsg('ERR lock failed')
+    }
+  }
+
+  async function runOversight() {
+    setActionMsg('')
+    const arch = selectedPlan?.plan_archetype ?? primaryArch
+    try {
+      const r = await fetch('/api/v2/deploy/oversight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: ev.id, plan_archetype: arch }),
+      })
+      const j = await r.json()
+      if (!j.ok) {
+        setActionMsg(`ERR ${j.error}`)
+        return
+      }
+      setActionMsg(`OVERSIGHT ${j.oversight_status} · op ${j.operator_status}`)
+    } catch {
+      setActionMsg('ERR oversight failed')
+    }
+  }
 
   async function recordFill() {
     setFillMsg('')
@@ -422,10 +459,14 @@ export default function RedeployEventModal({ event, onClose, onDismiss, onPropos
         </div>
 
         <footer style={{ padding: '12px 18px', borderTop: `1px solid ${BB.border}`, flexShrink: 0 }}>
-          {exportMsg && (
-            <div style={{ fontSize: BB.fontXs, color: /ERR|STALE/.test(exportMsg) ? BB.amberAlt : BB.green, marginBottom: 8 }}>{exportMsg}</div>
+          {(exportMsg || actionMsg) && (
+            <div style={{ fontSize: BB.fontXs, color: /ERR|STALE/.test(exportMsg + actionMsg) ? BB.amberAlt : BB.green, marginBottom: 8 }}>
+              {[exportMsg, actionMsg].filter(Boolean).join(' · ')}
+            </div>
           )}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button type="button" onClick={() => void lockPlan()} style={actionBtn(BB.blue)}>LOCK PLAN</button>
+            <button type="button" onClick={() => void runOversight()} style={actionBtn(BB.amberAlt)}>OVERSIGHT</button>
             <button onClick={() => void exportPlan('json')} style={actionBtn(BB.green)} title="Requires fresh quotes">EXPORT JSON</button>
             <button onClick={() => void exportPlan('csv')} style={actionBtn(BB.blue)}>EXPORT CSV</button>
             {exportReady?.export_allowed === false && (

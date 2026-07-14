@@ -264,3 +264,52 @@ def fetch_institutional_plan(
             legs = []
     plan["legs"] = legs or []
     return plan
+
+
+def get_plan_by_id(cur, plan_id: int) -> dict[str, Any] | None:
+    ensure_plan_tables(cur)
+    cur.execute(
+        """SELECT id, deploy_event_id, version, plan_archetype, plan_type, tags, objective,
+                  total_deployable_usd, reserve_usd, deploy_pct_of_net, confidence,
+                  evidence_factor_count, operator_status, oversight_status, composite_rank,
+                  advantages, compromises, risks, hermes_narrative, unmet_exposure,
+                  scenarios, locked_at, locked_by, redeploy_plan
+           FROM deploy_plans WHERE id=%s""",
+        (plan_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    cols = [d[0] for d in cur.description]
+    plan = dict(zip(cols, row))
+    for jf in ("unmet_exposure", "scenarios"):
+        if isinstance(plan.get(jf), str):
+            try:
+                plan[jf] = json.loads(plan[jf])
+            except Exception:
+                pass
+    legs = plan.pop("redeploy_plan", None)
+    if isinstance(legs, str):
+        try:
+            legs = json.loads(legs)
+        except Exception:
+            legs = []
+    plan["legs"] = legs or []
+    return plan
+
+
+def event_lock_state(cur, event_id: int) -> dict[str, Any]:
+    cur.execute(
+        """SELECT plan_locked_at, locked_plan_id, locked_plan_version, operator_status
+           FROM deploy_events WHERE id=%s""",
+        (event_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return {}
+    return {
+        "plan_locked_at": str(row[0])[:19] if row[0] else None,
+        "locked_plan_id": row[1],
+        "locked_plan_version": row[2],
+        "operator_status": row[3],
+    }

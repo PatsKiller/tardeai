@@ -4,7 +4,7 @@
 
 Advisory-only pipeline that detects broker sells, scores redeploy targets, and surfaces plans in Portfolio → **Redeploy** (UI live). No broker execution path.
 
-**v2 design (institutional workbench):** `docs/design/REDEPLOY_DESK_INSTITUTIONAL_DESIGN.md` — approved with P0 corrections; **Phase A (data truth)** in progress (`redeploy_data_truth.py`, migration `2026_07_15_redeploy_phase_a_data_truth.sql`). Phases B–E not approved for merge.
+**v2 design (institutional workbench):** `docs/design/REDEPLOY_DESK_INSTITUTIONAL_DESIGN.md` — Phases **A–E implemented** on `main` (plans A–G, entry export, UI v2, monitoring, PR-4 lock/oversight, PR-5 cron installer).
 
 **Branch:** `main`  
 **Migration:** `migrations/2026_07_14_deploy_redeploy_events.sql`
@@ -75,6 +75,35 @@ Dry-run (no DB write):
 ```bash
 python3 scripts/deploy_recompute.py --symbol FCNTX
 ```
+
+### 4. Monitoring re-eval (Phase E)
+
+```bash
+python3 scripts/deploy_monitor.py --apply
+python3 scripts/deploy_monitor.py --apply --id 144
+```
+
+### 5. Cron install (PR-5)
+
+```bash
+bash scripts/install_deploy_redeploy_cron.sh
+```
+
+Runs **10:10** detect → **10:15** recompute → **10:20** monitor (Mon–Fri).
+
+### API (v2 institutional)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v2/deploy/events` | Queue + institutional summary |
+| GET | `/api/v2/deploy/plans?event_id=` | Plans A–G |
+| GET | `/api/v2/deploy/plan?plan_id=` | Full plan |
+| GET | `/api/v2/deploy/analysis?event_id=` | Before/after |
+| GET | `/api/v2/deploy/export?event_id=&archetype=` | Trade plan JSON/CSV |
+| GET | `/api/v2/deploy/monitoring?event_id=` | Fills + restoration |
+| POST | `/api/v2/deploy/lock` | Lock plan version |
+| POST | `/api/v2/deploy/oversight` | Grok/ChatGPT review (PR-4) |
+| POST | `/api/v2/deploy/record-fill` | Manual stage fill |
 
 ## Intelligence Engine
 

@@ -86,6 +86,11 @@ def upsert_deploy_event(cur, row: dict[str, Any]) -> dict[str, Any]:
 def list_deploy_events(cur, *, status: str | None = None, account: str | None = None,
                        source: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
     ensure_deploy_tables(cur)
+    try:
+        from lib.redeploy_oversight import ensure_oversight_schema
+        ensure_oversight_schema(cur)
+    except Exception:
+        pass
     clauses, params = [], []
     if status:
         clauses.append("status=%s")
@@ -102,7 +107,9 @@ def list_deploy_events(cur, *, status: str | None = None, account: str | None = 
         f"""SELECT id, event_key, symbol, account, sold_at, proceeds_usd, shares_sold, realized_pnl,
                    instrument_type, proxy_symbol, proxy_sleeve, status, proceeds_settled,
                    cash_visible_usd, lookthrough_delta, redeploy_plan, source, txn_ref, txn_id,
-                   dismiss_reason, metadata, created_at, updated_at
+                   dismiss_reason, metadata, created_at, updated_at,
+                   plan_locked_at, locked_plan_id, locked_plan_version, operator_status,
+                   reconciliation_status
             FROM deploy_events{where}
             ORDER BY sold_at DESC, id DESC LIMIT %s""",
         tuple(params),

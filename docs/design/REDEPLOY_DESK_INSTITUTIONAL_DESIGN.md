@@ -446,11 +446,13 @@ Staging **of leg dollars** (25/25/50):
 
 | Phase | Deliverable | PR hint |
 |-------|-------------|---------|
-| **A — Data truth** | **In progress** — `redeploy_data_truth.py`, migration, FCNTX tests | PR-Redeploy-A |
-| **B — Plan engine** | Archetypes A–G, versioning, verifier, rejections — **not approved for merge** until A proven | PR-Redeploy-B |
-| **C — Entry targets** | Entry adapter, staging, whole shares, export | PR-Redeploy-C |
-| **D — UI v2** | Executive row, plan tabs, before/after, memo, export | PR-Redeploy-D |
-| **E — Monitoring** | Fill recording, restoration metrics, Hermes outcomes, re-eval cron | PR-Redeploy-E |
+| **A — Data truth** | **Done** — `redeploy_data_truth.py`, migration, FCNTX tests | PR-Redeploy-A |
+| **B — Plan engine** | **Done** — Archetypes A–G, versioning, verifier, rejections | PR-Redeploy-B |
+| **C — Entry targets** | **Done** — Entry adapter, staging, whole shares, export | PR-Redeploy-C |
+| **D — UI v2** | **Done** — Executive row, plan tabs, before/after, memo, export | PR-Redeploy-D |
+| **E — Monitoring** | **Done** — Fill recording, restoration metrics, Hermes outcomes, re-eval cron | PR-Redeploy-E |
+| **PR-4 Oversight** | **Done** — `POST /deploy/lock`, `POST /deploy/oversight`, `deploy_oversight_runs` | PR-Redeploy-4 |
+| **PR-5 Cron** | **Done** — `install_deploy_redeploy_cron.sh` | PR-Redeploy-5 |
 
 **Dependency order:** A → B (FCNTX E2E) → C → D → PR-4 oversight → E → PR-5 cron.
 
