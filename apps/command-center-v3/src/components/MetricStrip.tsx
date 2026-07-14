@@ -69,17 +69,17 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'JOURNAL WIN RATE', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}` : '—',
       color: winRate != null && winRate >= 50 ? '#22c55e' : winRate != null ? '#f59e0b' : 'var(--text3)',
-      // P0-6: header journal stats = CSV-import FIFO journal (trade_journal.json) — a DIFFERENT basis
+      // P0-6: header journal stats = legacy FIFO journal (trade_journal.json) — a DIFFERENT basis
       // than TradeInView (broker round-trips). Label it so the mismatch is explicit, never silent.
-      tip: `CSV-import journal (FIFO over Schwab History CSV) — count includes $0 scratches; win rate excludes them${journalLastClose ? ` · through ${journalLastClose}` : ''}. TradeInView uses broker round-trips (a different basis).`,
-      drill: { title: 'Win Rate', subtitle: `CSV-import journal (all closed, incl. pre-2025 history${journalLastClose ? `, through ${journalLastClose}` : ''}) · TradeInView uses broker round-trips · paper-readiness shown separately`, endpoint: '/api/v2/overview',
+      tip: `Legacy FIFO journal — count includes $0 scratches; win rate excludes them${journalLastClose ? ` · through ${journalLastClose}` : ''}. TradeInView uses broker round-trips (a different basis).`,
+      drill: { title: 'Win Rate', subtitle: `Legacy FIFO journal (all closed, incl. pre-2025 history${journalLastClose ? `, through ${journalLastClose}` : ''}) · TradeInView uses broker round-trips · paper-readiness shown separately`, endpoint: '/api/v2/overview',
         rows: [{ journal_win_rate: overview?.journal?.win_rate, journal_trades: overview?.journal?.trade_count, journal_pnl: overview?.journal?.total_pnl, journal_basis: overview?.journal?.basis, journal_last_close_date: overview?.journal?.last_close_date, paper_readiness_win_rate: readiness?.win_rate, paper_usable_trades: readiness?.closed_usable, paper_level: readiness?.level }] },
     },
     {
       label: 'JOURNAL P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—',
       color: journalPnl == null ? 'var(--text3)' : journalPnl >= 0 ? '#22c55e' : '#ef4444',
-      tip: `Realized P&L from the CSV-import journal (FIFO${journalLastClose ? `, through ${journalLastClose}` : ''}). TradeInView totals use broker round-trips and will differ.`,
-      drill: { title: 'Journal P&L', subtitle: `Realized P&L · CSV-import journal (FIFO${journalLastClose ? `, through ${journalLastClose}` : ''}) · TradeInView uses broker round-trips`, endpoint: '/api/v2/overview',
+      tip: `Realized P&L from the legacy FIFO journal (${journalLastClose ? `, through ${journalLastClose}` : ''}). TradeInView totals use broker round-trips and will differ.`,
+      drill: { title: 'Journal P&L', subtitle: `Realized P&L · legacy FIFO journal (${journalLastClose ? `, through ${journalLastClose}` : ''}) · TradeInView uses broker round-trips`, endpoint: '/api/v2/overview',
         rows: [{ journal_total_pnl: overview?.journal?.total_pnl, journal_trades: overview?.journal?.trade_count, journal_win_rate: overview?.journal?.win_rate, journal_basis: overview?.journal?.basis, journal_last_close_date: overview?.journal?.last_close_date }] },
     },
     {

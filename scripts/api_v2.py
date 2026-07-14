@@ -1914,7 +1914,7 @@ def overview():
             # of the manually-imported Schwab History CSV. trade_count includes $0-P&L scratches
             # (win_rate excludes them) and spans pre-2025 history; it only advances when a new CSV is
             # imported. TradeInView reads broker round trips (trade_closed) — intentionally different.
-            "basis": "csv_import_fifo",
+            "basis": "legacy_fifo_journal",
             "last_close_date": max((t.get("close_date") or "" for t in j_all), default="") or None,
         },
         "news_count": len(news.get("catalysts", [])),

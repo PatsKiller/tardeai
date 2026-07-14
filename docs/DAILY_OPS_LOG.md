@@ -18,9 +18,10 @@ auto-auth setup exists and the token store shows a fresh seed 2026-07-14 10:15 (
 the audit's "needs manual re-auth" claim was wrong. Schwab token machinery NOT touched per
 operator instruction; the quote lane's fallback-provider slowness is now mitigated by caching
 regardless. Residual observation only: schwab_position_sync logs 'degraded_noop (no Schwab login
-token)' — left entirely alone. (2) journal CSV stale — newest on disk is
-data/portfolios/input/Individual_XXX469_Transactions_20260605-164914.csv (Jun 5); a fresh Schwab
-History export dropped into data/portfolios/input/ enables the header-journal rebuild.
+token)' — left entirely alone. (2) CORRECTED (operator): ALL pipelines are
+API-fed — NO CSV imports. The header FIFO journal is a legacy surface (labeled 'legacy FIFO
+journal'); trade_closed (broker round-trips, API) is the authoritative, current journal. Verified
+flow documented in session memory reference-schwab-api-dataflow.
 (3) ~40k orphaned content_embeddings await a retention decision. 112 tests green; holdings guard held
 throughout. Known non-issues honored (JEPQ legit, $21 rounding, look-through gap label).
 
