@@ -2,41 +2,11 @@ import { useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import { BB } from '../lib/holdingsTerminalTokens'
-import { hubPanel, hubStrip, hubFilterSelect } from '../lib/terminalHubChrome'
-
-type DeployTarget = {
-  symbol: string
-  score: number
-  sleeve?: string
-  rationale?: string
-  review_amount_range?: { low?: number; high?: number }
-  evidence?: Record<string, unknown>
-}
-
-type DeployEvent = {
-  id: number
-  symbol: string
-  account: string
-  sold_at: string
-  proceeds_usd?: number
-  proxy_symbol?: string
-  proxy_sleeve?: string
-  tier?: string
-  redeploy_plan?: DeployTarget[]
-  lookthrough_delta?: { theme?: string; delta_pct?: number }[]
-  metadata?: {
-    sale_context?: { tier?: string; reduced_themes?: string[]; proceeds_usd?: number }
-    advisory_note?: string
-    sleeve_gaps?: { theme?: string; gap_pct?: number; gap_usd?: number }[]
-    market_context?: {
-      geopolitical?: { posture?: string; catalyst_count?: number }
-      regime_posture?: string
-    }
-  }
-}
+import { hubPanel, hubStrip } from '../lib/terminalHubChrome'
+import RedeployEventModal, { type RedeployEventDetail } from './RedeployEventModal'
 
 const TIER_COLOR: Record<string, string> = { major: BB.amber, moderate: BB.blue, minor: BB.text3 }
-const GRID = '72px 56px 108px 92px 1fr 88px 72px'
+const GRID = '72px 56px 108px 92px 1fr 88px 52px 72px'
 
 const fmtDate = (s?: string) => {
   if (!s) return '—'
@@ -45,23 +15,32 @@ const fmtDate = (s?: string) => {
 
 export default function RedeployPanel() {
   const { data, loading, error, refetch } = useApi<any>('/api/v2/deploy/events?status=open&days=14&material_only=true', 60_000)
+  const { data: dismissedData, refetch: refetchDismissed } = useApi<any>('/api/v2/deploy/events?status=dismissed&days=14&material_only=false&limit=20', 60_000)
   const [busy, setBusy] = useState<'detect' | 'recompute' | null>(null)
   const [msg, setMsg] = useState('')
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [modalEvent, setModalEvent] = useState<RedeployEventDetail | null>(null)
   const [showAll, setShowAll] = useState(false)
 
-  const events: DeployEvent[] = data?.events ?? []
+  const events: RedeployEventDetail[] = data?.events ?? []
+  const dismissed: RedeployEventDetail[] = dismissedData?.events ?? []
   const selected = useMemo(
     () => events.find(e => e.id === selectedId) ?? events[0] ?? null,
     [events, selectedId],
   )
 
-  const { data: allData } = useApi<any>(
+  const { data: allData, refetch: refetchAll } = useApi<any>(
     '/api/v2/deploy/events?status=open&days=14&material_only=false',
     60_000,
     { enabled: showAll },
   )
-  const displayEvents: DeployEvent[] = showAll ? (allData?.events ?? []) : events
+  const displayEvents: RedeployEventDetail[] = showAll ? (allData?.events ?? []) : events
+
+  function refreshAll() {
+    refetch?.()
+    refetchDismissed?.()
+    refetchAll?.()
+  }
 
   async function run(action: 'detect' | 'recompute') {
     setBusy(action)
@@ -71,7 +50,7 @@ export default function RedeployPanel() {
       const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       const j = await r.json()
       setMsg(j?.ok ? `${action} ✓` : `ERR ${j?.error || 'failed'}`)
-      refetch?.()
+      refreshAll()
     } catch {
       setMsg('ERR request failed')
     }
@@ -86,10 +65,26 @@ export default function RedeployPanel() {
         body: JSON.stringify({ id, reason: 'operator_dismissed' }),
       })
       const j = await r.json()
-      setMsg(j?.ok ? `dismissed #${id}` : `ERR ${j?.error}`)
-      refetch?.()
+      setMsg(j?.ok ? `DISMISSED #${id}` : `ERR ${j?.error}`)
+      if (modalEvent?.id === id) setModalEvent(null)
+      refreshAll()
     } catch {
       setMsg('ERR dismiss failed')
+    }
+  }
+
+  async function restore(id: number) {
+    try {
+      const r = await fetch('/api/v2/deploy/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, recompute: true }),
+      })
+      const j = await r.json()
+      setMsg(j?.ok ? `RESTORED ${j.symbol ?? id}` : `ERR ${j?.error}`)
+      refreshAll()
+    } catch {
+      setMsg('ERR restore failed')
     }
   }
 
@@ -101,6 +96,11 @@ export default function RedeployPanel() {
     })
     const j = await r.json()
     setMsg(j?.ok ? `${symbol} → review queue` : `ERR ${j?.error}`)
+  }
+
+  function openModal(ev: RedeployEventDetail) {
+    setSelectedId(ev.id)
+    setModalEvent(ev)
   }
 
   const gaps = data?.portfolio_gaps ?? selected?.metadata?.sleeve_gaps ?? []
@@ -116,14 +116,12 @@ export default function RedeployPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontFamily: BB.mono, fontSize: BB.fontSm }}>
-      {/* Context strip */}
       <div style={hubStrip(true)}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
           <span style={{ color: BB.amber, fontWeight: 800, letterSpacing: '.08em' }}>REDEPLOY DESK</span>
           <span style={{ color: BB.text3 }}>ADVISORY · NO BROKER</span>
           <span style={{ color: BB.text2 }}>
-            {displayEvents.length} event{displayEvents.length === 1 ? '' : 's'}
-            {!showAll && (allData?.count != null || data?.minor_hidden) ? ' · minors hidden' : ''}
+            {displayEvents.length} open · click row or OPEN to expand
           </span>
           {data?.material_proceeds_usd > 0 && (
             <span style={{ color: BB.green }}>material proceeds {fmt$(data.material_proceeds_usd, 0)}</span>
@@ -143,7 +141,24 @@ export default function RedeployPanel() {
         {msg && <div style={{ marginTop: 4, fontSize: BB.fontXs, color: /ERR/.test(msg) ? BB.red : BB.green }}>{msg}</div>}
       </div>
 
-      {/* Portfolio gaps — shown once, not per event */}
+      {dismissed.length > 0 && (
+        <div style={{ ...panelStyle(), borderLeft: `3px solid ${BB.text3}` }}>
+          <div style={{ fontSize: BB.fontXs, color: BB.text3, marginBottom: 6, letterSpacing: '.06em' }}>DISMISSED (restore if accidental)</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {dismissed.slice(0, 8).map(ev => (
+              <button
+                key={ev.id}
+                onClick={() => void restore(ev.id)}
+                style={{ ...btn(false), color: BB.amber, fontSize: BB.fontXs }}
+                title={`Restore ${ev.symbol} sale — reopens queue`}
+              >
+                RESTORE {ev.symbol} {fmt$(Number(ev.proceeds_usd ?? 0), 0)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {gaps.length > 0 && (
         <div style={panelStyle()}>
           <div style={{ fontSize: BB.fontXs, color: BB.text3, marginBottom: 4, letterSpacing: '.06em' }}>PORTFOLIO UNDERWEIGHT (context — not auto-applied to every sale)</div>
@@ -158,10 +173,9 @@ export default function RedeployPanel() {
         </div>
       )}
 
-      {/* Event queue table */}
       <div style={{ ...panelStyle(), padding: 0, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '6px 10px', borderBottom: `1px solid ${BB.border}`, fontSize: BB.fontXs, color: BB.text3, letterSpacing: '.05em' }}>
-          <span>DATE</span><span>SOLD</span><span>ACCOUNT</span><span>PROCEEDS</span><span>REDUCED SLEEVE</span><span>TOP PICK</span><span />
+          <span>DATE</span><span>SOLD</span><span>ACCOUNT</span><span>PROCEEDS</span><span>REDUCED SLEEVE</span><span>TOP PICK</span><span>OPEN</span><span>DISMISS</span>
         </div>
         {displayEvents.length === 0 ? (
           <div style={{ padding: 20, textAlign: 'center', color: BB.text3, fontSize: BB.fontXs }}>
@@ -177,6 +191,7 @@ export default function RedeployPanel() {
             <div
               key={ev.id}
               onClick={() => setSelectedId(ev.id)}
+              onDoubleClick={() => openModal(ev)}
               style={{
                 display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '7px 10px', alignItems: 'center',
                 borderBottom: `1px solid ${BB.borderSubtle}`, cursor: 'pointer',
@@ -196,85 +211,47 @@ export default function RedeployPanel() {
                 {top ? `${top.symbol} ${top.score}` : tier === 'minor' ? 'CASH' : '—'}
               </span>
               <button
+                onClick={e => { e.stopPropagation(); openModal(ev) }}
+                style={{ ...btn(false), fontSize: 8, padding: '2px 6px', color: BB.amber }}
+              >OPEN</button>
+              <button
                 onClick={e => { e.stopPropagation(); void dismiss(ev.id) }}
                 style={{ ...btn(false), fontSize: 8, padding: '2px 6px', color: BB.text3 }}
-              >DSM</button>
+              >DISMISS</button>
             </div>
           )
         })}
       </div>
 
-      {/* Detail pane — single selected event */}
-      {selected && (
+      {selected && !modalEvent && (
         <div style={{ ...panelStyle(), borderLeft: `3px solid ${TIER_COLOR[selected.tier ?? 'moderate'] ?? BB.amber}` }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 10, alignItems: 'baseline' }}>
-            <span style={{ fontSize: 13, fontWeight: 800, color: BB.text0 }}>
-              {selected.symbol}
-            </span>
-            <span style={{ color: BB.text3, fontSize: BB.fontXs }}>
-              {fmtDate(selected.sold_at)} · {(selected.account ?? '').replace(/_/g, ' ')} · {fmt$(Number(selected.proceeds_usd ?? 0), 0)}
-            </span>
-            {selected.proxy_symbol && (
-              <span style={{ color: BB.text2, fontSize: BB.fontXs }}>
-                freed {selected.metadata?.sale_context?.reduced_themes?.[0] ?? 'exposure'} via proxy {selected.proxy_symbol}
-              </span>
-            )}
-            <span style={{ color: TIER_COLOR[selected.tier ?? 'moderate'], fontSize: BB.fontXs, fontWeight: 800 }}>
-              {(selected.tier ?? 'moderate').toUpperCase()}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <span style={{ color: BB.text2, fontSize: BB.fontXs }}>Preview — double-click row or OPEN for full modal</span>
+            <button onClick={() => openModal(selected)} style={{ ...btn(false), color: BB.amber, fontSize: 8 }}>EXPAND</button>
           </div>
-
-          {selected.metadata?.advisory_note && (
-            <div style={{ color: BB.text3, fontSize: BB.fontXs, marginBottom: 10, fontStyle: 'italic' }}>
-              {selected.metadata.advisory_note}
-            </div>
-          )}
-
-          {(selected.redeploy_plan ?? []).length === 0 ? (
-            <div style={{ color: BB.text3, fontSize: BB.fontXs }}>No redeploy targets — hold cash or dismiss</div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: BB.fontXs }}>
-              <thead>
-                <tr style={{ color: BB.text3, textAlign: 'left', borderBottom: `1px solid ${BB.border}` }}>
-                  <th style={{ padding: '4px 6px' }}>SYM</th>
-                  <th style={{ padding: '4px 6px' }}>SCORE</th>
-                  <th style={{ padding: '4px 6px' }}>SLEEVE</th>
-                  <th style={{ padding: '4px 6px' }}>REVIEW $</th>
-                  <th style={{ padding: '4px 6px' }}>WHY (this sale)</th>
-                  <th style={{ padding: '4px 6px' }} />
-                </tr>
-              </thead>
-              <tbody>
-                {(selected.redeploy_plan ?? []).map((t, i) => {
-                  const lo = t.review_amount_range?.low
-                  const hi = t.review_amount_range?.high
-                  const fills = t.evidence?.fills_sale_gap
-                  return (
-                    <tr key={t.symbol} style={{ borderBottom: `1px solid ${BB.borderSubtle}`, background: i === 0 ? BB.greenDim : 'transparent' }}>
-                      <td style={{ padding: '6px', color: i === 0 ? BB.green : BB.text0, fontWeight: 800 }}>{t.symbol}</td>
-                      <td style={{ padding: '6px', color: BB.blue }}>{t.score}</td>
-                      <td style={{ padding: '6px', color: BB.text2 }}>{t.sleeve}</td>
-                      <td style={{ padding: '6px', color: BB.text1 }}>
-                        {lo != null && hi != null ? `${fmt$(lo, 0)}–${fmt$(hi, 0)}` : '—'}
-                      </td>
-                      <td style={{ padding: '6px', color: BB.text2, lineHeight: 1.35, maxWidth: 420 }}>
-                        {fills ? <span style={{ color: BB.green, marginRight: 6 }}>▸ REPLACES</span> : null}
-                        {t.rationale}
-                      </td>
-                      <td style={{ padding: '6px' }}>
-                        <button
-                          onClick={() => void proposeTarget(t.symbol, t.sleeve || 'Redeploy', t.rationale || '')}
-                          style={{ ...btn(false), fontSize: 8, color: BB.green }}
-                        >PROPOSE</button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
+          <PreviewRow event={selected} onPropose={proposeTarget} />
         </div>
       )}
+
+      {modalEvent && (
+        <RedeployEventModal
+          event={modalEvent}
+          onClose={() => setModalEvent(null)}
+          onDismiss={id => void dismiss(id)}
+          onPropose={proposeTarget}
+        />
+      )}
+    </div>
+  )
+}
+
+function PreviewRow({ event, onPropose }: { event: RedeployEventDetail; onPropose: (s: string, sl: string, r: string) => void }) {
+  const top = event.redeploy_plan?.[0]
+  if (!top) return <div style={{ color: BB.text3, fontSize: BB.fontXs }}>No targets</div>
+  return (
+    <div style={{ fontSize: BB.fontXs, color: BB.text2 }}>
+      <b style={{ color: BB.green }}>{top.symbol}</b> score {top.score} — {top.rationale}
+      <button onClick={() => onPropose(top.symbol, top.sleeve || 'Redeploy', top.rationale || '')} style={{ ...btn(false), marginLeft: 10, fontSize: 8, color: BB.green }}>PROPOSE</button>
     </div>
   )
 }

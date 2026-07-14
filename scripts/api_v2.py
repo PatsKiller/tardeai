@@ -27141,6 +27141,35 @@ def _deploy_recompute(body=None):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _deploy_restore(body=None):
+    """POST /api/v2/deploy/restore — reopen a dismissed deploy event (+ optional recompute)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.deploy_events_db import ensure_deploy_tables
+        from lib.deploy_intelligence_engine import recompute_deploy_event
+        b = body or {}
+        eid = b.get("id")
+        if not eid:
+            return {"ok": False, "error": "id required"}
+        conn = _get_conn()
+        cur = conn.cursor()
+        ensure_deploy_tables(cur)
+        cur.execute(
+            """UPDATE deploy_events SET status='open', dismiss_reason=NULL, updated_at=NOW()
+               WHERE id=%s AND status='dismissed' RETURNING id, symbol""",
+            (int(eid),),
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"ok": False, "error": "not_found_or_not_dismissed"}
+        if b.get("recompute", True):
+            recompute_deploy_event(cur, int(eid))
+        conn.commit()
+        return {"ok": True, "id": row[0], "symbol": row[1], "status": "open"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _deploy_dismiss(body=None):
     """POST /api/v2/deploy/dismiss — operator dismisses a deploy event."""
     try:
@@ -33284,6 +33313,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/deploy/dismiss":
         try:
             res = _deploy_dismiss(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/deploy/restore":
+        try:
+            res = _deploy_restore(body if isinstance(body, dict) else {})
             return (200 if res.get("ok") else 400), res
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
