@@ -1,4 +1,14 @@
 
+## 2026-07-14 — Plan F v31 LOCKED + approved for operator implementation review
+
+Operator-directed: locked Plan F v31 (staged implementation of the Plan B destination, plan #1191)
+via /api/v2/deploy/lock — event #144 → `reviewing`, readiness **OPERATOR LOCKED**, capital ledger
+`reserved_locked` ($107,023 reservation, no overclaim). Quotes refreshed (8/8 fresh); implementation
+plan exported (docs/audits/FCNTX_144_IMPLEMENTATION_PLAN_F_v31.json — stage-1 ≈ $3.1k limit tranches
+across QQQ/XLC/XLF/XLY/XLI/AGG with do-not-chase bounds; XLV stage-1 rounds to 0 sh, enters at
+stage 2). Packet regenerated (v31-bound). Audit lineage: plan_locked + export rows. Implementation
+itself remains MANUAL — this desk places no orders.
+
 ## 2026-07-14 — Stale-event dismissal: capital overclaim CLEARED
 
 Operator-directed cleanup: dismissed 11 stale schwab_rollover_ira events (Apr–Jun sales — V #114/#124,

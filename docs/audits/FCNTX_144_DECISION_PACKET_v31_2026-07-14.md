@@ -1,13 +1,13 @@
 # FCNTX event #144 — operator decision packet (version-bound)
 
-**BOUND TO plan version 31** · generated 2026-07-14T17:00:43.365626+00:00 · generator `phase_b_2.0.0` ·
+**BOUND TO plan version 31** · generated 2026-07-14T17:04:56.627006+00:00 · generator `phase_b_2.0.0` ·
 decision policy `decision_1.1.0` ·
 regime basis `risk_off` · **advisory only — this desk places no orders.**
 If the workstation shows a different plan version, REGENERATE this packet before relying on it.
 
 ## Event
 Sold **FCNTX** in `schwab_rollover_ira` on 2026-07-14; net proceeds $107,023.01; settlement `verified`.
-Capital ledger: account visible cash $149,252.68, open claims $127,825.23, allocatable $149,252.68; this event: `claim_within_capital`.
+Capital ledger: account visible cash $149,252.68, open claims $127,825.23, allocatable $42,229.67; this event: `reserved_locked`.
 
 ## System recommendation
 **DECISIVE**
@@ -64,5 +64,5 @@ Why primary: sold exposure restoration: restores 84% of removed sector dollars (
 
 ## Governance
 Oversight (latest runs): chatgpt: needs_review (2026-07-14 12:48); grok: pass (2026-07-14 12:48); chatgpt: pass (2026-07-14 12:48); grok: pass (2026-07-14 12:48). Readiness:
-ANALYTICS READY — OVERSIGHT PENDING. Audit lineage rows: 74.
+ANALYTICS READY — OVERSIGHT PENDING. Audit lineage rows: 77.
 Pending oversight is NOT operator-ready; adjudicate the lanes to proceed.

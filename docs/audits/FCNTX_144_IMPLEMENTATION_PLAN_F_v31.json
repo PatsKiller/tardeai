@@ -1,0 +1,303 @@
+{
+  "advisory_only": true,
+  "no_broker_execution": true,
+  "event_id": 144,
+  "event_key": "txn:2026-07-14|Sell|FCNTX|4034.942|schwab_rollover_ira|ord:1007158466866",
+  "sold_symbol": "FCNTX",
+  "account": "schwab_rollover_ira",
+  "net_proceeds_usd": 107023.01,
+  "deployable_cash_usd": 107023.01,
+  "reconciliation_status": "verified",
+  "plan_archetype": "F",
+  "plan_type": "staged_deployment",
+  "objective": "Staged implementation of the Plan B destination \u2014 the current regime is risk-off and entry risk is elevated",
+  "operator_status": "draft",
+  "oversight_status": "pending",
+  "export_readiness": {
+    "quotes_fresh": true,
+    "stale_symbols": [],
+    "fresh_symbols": [
+      "AGG",
+      "ARCC",
+      "CSWC",
+      "DIVI",
+      "HTGC",
+      "ITA",
+      "JEPI",
+      "JEPQ",
+      "QQQ",
+      "VOO",
+      "XLC",
+      "XLE",
+      "XLF",
+      "XLI",
+      "XLV",
+      "XLY"
+    ],
+    "export_quote_max_age_minutes": 15,
+    "export_allowed": true
+  },
+  "regime_posture": "risk_off",
+  "legs": [
+    {
+      "ticker": "QQQ",
+      "account": "schwab_rollover_ira",
+      "target_dollars": 5765.68,
+      "target_shares": 8,
+      "current_price": 720.71,
+      "price_as_of": "2026-07-14T13:04:14.664717-04:00",
+      "price_stale": false,
+      "preferred_entry": 715.3,
+      "entry_range_low": 704.49,
+      "entry_range_high": 718.54,
+      "do_not_chase": 726.12,
+      "stages": [
+        {
+          "pct": 15,
+          "price": 715.3,
+          "shares": 1,
+          "dollars": 715.3
+        },
+        {
+          "pct": 20,
+          "price": 701.79,
+          "shares": 1,
+          "dollars": 701.79
+        },
+        {
+          "pct": 65,
+          "price": 688.27,
+          "shares": 6,
+          "dollars": 4129.62
+        }
+      ],
+      "thesis": "Tranche 1 of 3 \u2014 25% toward the Plan B destination (sector restoration:Technology)",
+      "invalidation": "Daily close below 704.49",
+      "monitoring_rules": "+1R -> stop to breakeven; stage fill -> trail 1R or prior-day low; close below invalidation = exit; never average down"
+    },
+    {
+      "ticker": "XLC",
+      "account": "schwab_rollover_ira",
+      "target_dollars": 5803.72,
+      "target_shares": 52,
+      "current_price": 111.61,
+      "price_as_of": "2026-07-14T13:04:14.664717-04:00",
+      "price_stale": false,
+      "preferred_entry": 110.77,
+      "entry_range_low": 109.1,
+      "entry_range_high": 111.27,
+      "do_not_chase": 112.45,
+      "stages": [
+        {
+          "pct": 15,
+          "price": 110.77,
+          "shares": 7,
+          "dollars": 775.39
+        },
+        {
+          "pct": 20,
+          "price": 108.68,
+          "shares": 10,
+          "dollars": 1086.8
+        },
+        {
+          "pct": 65,
+          "price": 106.58,
+          "shares": 35,
+          "dollars": 3730.3
+        }
+      ],
+      "thesis": "Tranche 1 of 3 \u2014 25% toward the Plan B destination (sector restoration:Communication Services)",
+      "invalidation": "Daily close below 109.1",
+      "monitoring_rules": "+1R -> stop to breakeven; stage fill -> trail 1R or prior-day low; close below invalidation = exit; never average down"
+    },
+    {
+      "ticker": "XLF",
+      "account": "schwab_rollover_ira",
+      "target_dollars": 3994.46,
+      "target_shares": 71,
+      "current_price": 56.26,
+      "price_as_of": "2026-07-14T13:04:14.664717-04:00",
+      "price_stale": false,
+      "preferred_entry": 55.84,
+      "entry_range_low": 55.0,
+      "entry_range_high": 56.09,
+      "do_not_chase": 56.68,
+      "stages": [
+        {
+          "pct": 15,
+          "price": 55.84,
+          "shares": 10,
+          "dollars": 558.4
+        },
+        {
+          "pct": 20,
+          "price": 54.79,
+          "shares": 14,
+          "dollars": 767.06
+        },
+        {
+          "pct": 65,
+          "price": 53.73,
+          "shares": 48,
+          "dollars": 2579.04
+        }
+      ],
+      "thesis": "Tranche 1 of 3 \u2014 25% toward the Plan B destination (sector restoration:Financial Services)",
+      "invalidation": "Daily close below 55.0",
+      "monitoring_rules": "+1R -> stop to breakeven; stage fill -> trail 1R or prior-day low; close below invalidation = exit; never average down"
+    },
+    {
+      "ticker": "XLY",
+      "account": "schwab_rollover_ira",
+      "target_dollars": 2660.87,
+      "target_shares": 23,
+      "current_price": 115.69,
+      "price_as_of": "2026-07-14T13:04:14.664717-04:00",
+      "price_stale": false,
+      "preferred_entry": 114.82,
+      "entry_range_low": 113.08,
+      "entry_range_high": 115.34,
+      "do_not_chase": 116.56,
+      "stages": [
+        {
+          "pct": 15,
+          "price": 114.82,
+          "shares": 3,
+          "dollars": 344.46
+        },
+        {
+          "pct": 20,
+          "price": 112.65,
+          "shares": 4,
+          "dollars": 450.6
+        },
+        {
+          "pct": 65,
+          "price": 110.48,
+          "shares": 15,
+          "dollars": 1657.2
+        }
+      ],
+      "thesis": "Tranche 1 of 3 \u2014 25% toward the Plan B destination (sector restoration:Consumer Cyclical)",
+      "invalidation": "Daily close below 113.08",
+      "monitoring_rules": "+1R -> stop to breakeven; stage fill -> trail 1R or prior-day low; close below invalidation = exit; never average down"
+    },
+    {
+      "ticker": "XLI",
+      "account": "schwab_rollover_ira",
+      "target_dollars": 1980.88,
+      "target_shares": 11,
+      "current_price": 180.08,
+      "price_as_of": "2026-07-14T13:04:14.664717-04:00",
+      "price_stale": false,
+      "preferred_entry": 176.59,
+      "entry_range_low": 173.46,
+      "entry_range_high": 177.53,
+      "do_not_chase": 181.65,
+      "stages": [
+        {
+          "pct": 15,
+          "price": 176.59,
+          "shares": 1,
+          "dollars": 176.59
+        },
+        {
+          "pct": 20,
+          "price": 172.68,
+          "shares": 2,
+          "dollars": 345.36
+        },
+        {
+          "pct": 65,
+          "price": 168.77,
+          "shares": 7,
+          "dollars": 1181.39
+        }
+      ],
+      "thesis": "Tranche 1 of 3 \u2014 25% toward the Plan B destination (sector restoration:Industrials)",
+      "invalidation": "Daily close below 173.46",
+      "monitoring_rules": "+1R -> stop to breakeven; stage fill -> trail 1R or prior-day low; close below invalidation = exit; never average down"
+    },
+    {
+      "ticker": "XLV",
+      "account": "schwab_rollover_ira",
+      "target_dollars": 474.84,
+      "target_shares": 3,
+      "current_price": 158.28,
+      "price_as_of": "2026-07-14T13:04:14.664717-04:00",
+      "price_stale": false,
+      "preferred_entry": 157.09,
+      "entry_range_low": 154.72,
+      "entry_range_high": 157.8,
+      "do_not_chase": 159.47,
+      "stages": [
+        {
+          "pct": 15,
+          "price": 157.09,
+          "shares": 0,
+          "dollars": 0.0
+        },
+        {
+          "pct": 20,
+          "price": 154.12,
+          "shares": 0,
+          "dollars": 0.0
+        },
+        {
+          "pct": 65,
+          "price": 151.15,
+          "shares": 2,
+          "dollars": 302.3
+        }
+      ],
+      "thesis": "Tranche 1 of 3 \u2014 25% toward the Plan B destination (sector restoration:Healthcare)",
+      "invalidation": "Daily close below 154.72",
+      "monitoring_rules": "+1R -> stop to breakeven; stage fill -> trail 1R or prior-day low; close below invalidation = exit; never average down"
+    },
+    {
+      "ticker": "AGG",
+      "account": "schwab_rollover_ira",
+      "target_dollars": 3723.24,
+      "target_shares": 38,
+      "current_price": 97.9799,
+      "price_as_of": "2026-07-14T13:04:14.664717-04:00",
+      "price_stale": false,
+      "preferred_entry": 97.25,
+      "entry_range_low": 95.78,
+      "entry_range_high": 97.69,
+      "do_not_chase": 98.71,
+      "stages": [
+        {
+          "pct": 15,
+          "price": 97.25,
+          "shares": 5,
+          "dollars": 486.25
+        },
+        {
+          "pct": 20,
+          "price": 95.41,
+          "shares": 8,
+          "dollars": 763.28
+        },
+        {
+          "pct": 65,
+          "price": 93.58,
+          "shares": 26,
+          "dollars": 2433.08
+        }
+      ],
+      "thesis": "Tranche 1 of 3 \u2014 25% toward the Plan B destination (fixed income ballast)",
+      "invalidation": "Daily close below 95.78",
+      "monitoring_rules": "+1R -> stop to breakeven; stage fill -> trail 1R or prior-day low; close below invalidation = exit; never average down"
+    },
+    {
+      "ticker": "BIL",
+      "is_reserve": true,
+      "target_dollars": 81094.5,
+      "account": "schwab_rollover_ira",
+      "thesis": "Reserved for tranches 2\u20133 in BIL earning 3.85%"
+    }
+  ],
+  "generated_at": "2026-07-14T17:04:16.014328+00:00"
+}
