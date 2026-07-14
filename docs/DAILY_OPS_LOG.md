@@ -1,4 +1,13 @@
 
+## 2026-07-14 — Stale-event dismissal: capital overclaim CLEARED
+
+Operator-directed cleanup: dismissed 11 stale schwab_rollover_ira events (Apr–Jun sales — V #114/#124,
+PFE, FATN, DFSC, PRSO, GOVX, RGNT, CAST, PETS×2 — $123k of claims, zero locks/fills; proceeds long
+absorbed into account cash) via /api/v2/deploy/dismiss with audit rows. Ledger now: open claims
+$127,825 vs visible cash $149,253 → **OVERCLAIMED: False**; event #144 `claim_within_capital`, red
+banners gone (verified on-screen). Packet regenerated (still bound to plan v31). Plan F (staged-B)
+remains OPERATOR-READY with cleared capital — ready for operator implementation review.
+
 ## 2026-07-14 — Oversight adjudication corrective + OPERATOR-READY reached
 
 All 10 blocking findings closed (deploy-now double-count, 4-field capital semantics, capital
