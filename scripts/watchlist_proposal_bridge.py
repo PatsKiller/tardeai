@@ -59,6 +59,66 @@ def _get_conn():
     return _get_conn()
 
 
+def _is_lock_error(exc: BaseException) -> bool:
+    try:
+        import psycopg2.errors as pg_errors
+        if isinstance(exc, pg_errors.LockNotAvailable):
+            return True
+    except Exception:
+        pass
+    msg = str(exc).lower()
+    return "lock timeout" in msg or "locknotavailable" in msg
+
+
+def _fill_quote_cache(symbols: list[str]) -> dict[str, float]:
+    """Batch quotes for entry-less candidates; Schwab first, Alpaca/market fallback."""
+    out: dict[str, float] = {}
+    syms = sorted({str(s or "").upper() for s in symbols if s})[:40]
+    if not syms:
+        return out
+    try:
+        import schwab_transport as _st
+        sq = _st.get_quotes(syms)
+        if sq.get("status") == "ok":
+            for sym, q in (sq.get("quotes") or {}).items():
+                if q.get("last"):
+                    out[str(sym).upper()] = float(q["last"])
+    except Exception:
+        pass
+    for sym in [s for s in syms if s not in out]:
+        try:
+            from market_quote_provider import get_best_quote
+            q = get_best_quote(sym) or {}
+            lp = q.get("last_price")
+            if lp and float(lp) > 0:
+                out[sym] = float(lp)
+        except Exception:
+            continue
+    if out:
+        log.info(f"quote_cache: {len(out)}/{len(syms)} symbols (schwab+market fallback)")
+    return out
+
+
+def _safe_db_write(conn, cur, label: str, write_fn, *, dry_run: bool) -> bool:
+    """Run one write + commit; on lock timeout rollback and continue."""
+    if dry_run:
+        write_fn()
+        return True
+    try:
+        write_fn()
+        conn.commit()
+        return True
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        if _is_lock_error(e):
+            log.warning(f"{label}: row locked — skipped (retry on next sync)")
+            return False
+        raise
+
+
 def _f(v):
     if v is None:
         return None
@@ -309,32 +369,28 @@ def _expire_stale_watchlist(cur, valid_symbols: set[str], *, dry_run: bool) -> i
 def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = None) -> dict:
     conn = _get_conn()
     cur = conn.cursor()
+    # Bridge holds rows briefly; enrichment/ATM may be updating proposals concurrently.
+    try:
+        cur.execute("SET lock_timeout = '8s'")
+    except Exception:
+        pass
     candidates = _fetch_buy_candidates(cur)
     valid_syms = {c["symbol"].upper() for c in candidates}
     reconciled = _reconcile_sleeve_strategy_ids(cur, dry_run=dry_run)
     deduped = _dedupe_watchlist_proposals(cur, dry_run=dry_run)
     expired = _expire_stale_watchlist(cur, valid_syms, dry_run=dry_run)
+    if not dry_run:
+        conn.commit()
 
-    created = refreshed = skipped = 0
+    created = refreshed = skipped = lock_skipped = 0
     cap = max_new if max_new is not None else MAX_NEW_PER_RUN
     lanes = _routing_lanes()
 
-    # Batch quotes only for top-ranked names missing entry plans (avoid 500+ sequential quote calls).
-    quote_cache: dict[str, float] = {}
-    need_quotes = [
-        str(c["symbol"]).upper() for c in candidates[:80]
-        if not (c.get("limit_price") or c.get("card_entry") or c.get("entry_zone_high"))
-    ]
-    if need_quotes:
-        try:
-            import schwab_transport as _st
-            sq = _st.get_quotes(need_quotes[:40])
-            if sq.get("status") == "ok":
-                for sym, q in (sq.get("quotes") or {}).items():
-                    if q.get("last"):
-                        quote_cache[str(sym).upper()] = float(q["last"])
-        except Exception:
-            pass
+    # Batch quotes for top candidates (entry validation + entry-less names). One Schwab try,
+    # then Alpaca/market fallback — avoids per-symbol OAuth hammer on 400 token errors.
+    quote_cache: dict[str, float] = _fill_quote_cache(
+        [str(c["symbol"]).upper() for c in candidates[:80]]
+    )
 
     new_eligible: list[dict] = []
 
@@ -358,31 +414,38 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         routing_lane: str,
         existing: dict | None,
     ) -> str:
-        nonlocal created, refreshed
+        nonlocal created, refreshed, lock_skipped
         lane_basis = {**basis, "routing_lane": routing_lane, "routing_lane_id": lane_id}
         risk_gate = risk_gate_for_lane(routing_lane)
         desc_suffix = " · ATM auto-test" if routing_lane == "paper_atm" else " · live 2FA"
         if existing:
-            refreshed += 1
             if dry_run:
+                refreshed += 1
                 return "refresh"
-            cur.execute(
-                """UPDATE paper_trade_proposals SET
-                       strategy_id=%s,
-                       proposed_entry=%s, proposed_stop=%s, proposed_target1=%s,
-                       proposed_shares=%s, proposed_dollar_size=%s, proposed_dollar_risk=%s,
-                       proposed_rr=%s, cio_view=%s, discovery_source='watchlist',
-                       intended_broker=%s, target_account=%s, proposed_account=%s,
-                       risk_gate_result=%s,
-                       expires_at=%s, max_expires_at=%s, lifecycle_status='ACTIVE',
-                       sizing_basis=COALESCE(sizing_basis, '{}'::jsonb) || %s::jsonb,
-                       updated_at=NOW()
-                   WHERE id=%s""",
-                (strat, entry, stop, target, shares, dollar_size, dollar_risk, rr,
-                 c["watchlist_rating"].upper(), intended, target_acct, target_acct,
-                 risk_gate, expires, expires, json.dumps(lane_basis), existing["id"]),
-            )
-            return "refresh"
+
+            def _do_refresh():
+                cur.execute(
+                    """UPDATE paper_trade_proposals SET
+                           strategy_id=%s,
+                           proposed_entry=%s, proposed_stop=%s, proposed_target1=%s,
+                           proposed_shares=%s, proposed_dollar_size=%s, proposed_dollar_risk=%s,
+                           proposed_rr=%s, cio_view=%s, discovery_source='watchlist',
+                           intended_broker=%s, target_account=%s, proposed_account=%s,
+                           risk_gate_result=%s,
+                           expires_at=%s, max_expires_at=%s, lifecycle_status='ACTIVE',
+                           sizing_basis=COALESCE(sizing_basis, '{}'::jsonb) || %s::jsonb,
+                           updated_at=NOW()
+                       WHERE id=%s""",
+                    (strat, entry, stop, target, shares, dollar_size, dollar_risk, rr,
+                     c["watchlist_rating"].upper(), intended, target_acct, target_acct,
+                     risk_gate, expires, expires, json.dumps(lane_basis), existing["id"]),
+                )
+
+            if _safe_db_write(conn, cur, f"refresh #{existing['id']} {sym}", _do_refresh, dry_run=dry_run):
+                refreshed += 1
+                return "refresh"
+            lock_skipped += 1
+            return "lock_skip"
         cur.execute(
             """SELECT count(*) FROM paper_trade_proposals
                WHERE symbol = %s AND status = 'PENDING'""",
@@ -391,33 +454,43 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         if int(cur.fetchone()[0] or 0) >= 2:
             log.warning(f"skip create {sym} lane={routing_lane}: symbol at 2-pending cap")
             return "skip_cap"
-        created += 1
         if dry_run:
+            created += 1
             return "create"
-        cur.execute(
-            """INSERT INTO paper_trade_proposals
-                   (symbol, strategy_id, status, origin, discovery_source,
-                    intended_broker, target_account, proposed_account,
-                    routing_state, proposed_entry, proposed_stop, proposed_target1,
-                    proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
-                    proposed_stop_pct, cio_view, setup_description, risk_gate_result,
-                    auto_created, proposed_by, expires_at, base_expires_at, max_expires_at,
-                    lifecycle_status, proposal_timeframe_class, sizing_basis)
-               VALUES (%s,%s,'PENDING','watchlist','watchlist',
-                       %s,%s,%s,'queued',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                       true,'watchlist_proposal_bridge',%s,%s,%s,'ACTIVE','swing',%s::jsonb)
-               RETURNING id""",
-            (sym, strat, intended, target_acct, target_acct,
-             entry, stop, target, shares, dollar_size, dollar_risk, rr,
-             round(abs(entry - stop) / entry, 4) if entry else 0,
-             c["watchlist_rating"].upper(),
-             f"Watchlist {c['watchlist_rating']} ({c.get('rating_source')}) — RR {rr} · Hermes #{c.get('hermes_rank') or '—'}{desc_suffix}",
-             risk_gate,
-             expires, expires, expires, json.dumps(lane_basis)),
-        )
-        pid = cur.fetchone()[0]
-        log.info(f"created watchlist #{pid} {sym} lane={routing_lane} RR {rr} @ ${entry}")
-        return "create"
+
+        pid_holder: list = [None]
+
+        def _do_insert():
+            cur.execute(
+                """INSERT INTO paper_trade_proposals
+                       (symbol, strategy_id, status, origin, discovery_source,
+                        intended_broker, target_account, proposed_account,
+                        routing_state, proposed_entry, proposed_stop, proposed_target1,
+                        proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
+                        proposed_stop_pct, cio_view, setup_description, risk_gate_result,
+                        auto_created, proposed_by, expires_at, base_expires_at, max_expires_at,
+                        lifecycle_status, proposal_timeframe_class, sizing_basis)
+                   VALUES (%s,%s,'PENDING','watchlist','watchlist',
+                           %s,%s,%s,'queued',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                           true,'watchlist_proposal_bridge',%s,%s,%s,'ACTIVE','swing',%s::jsonb)
+                   RETURNING id""",
+                (sym, strat, intended, target_acct, target_acct,
+                 entry, stop, target, shares, dollar_size, dollar_risk, rr,
+                 round(abs(entry - stop) / entry, 4) if entry else 0,
+                 c["watchlist_rating"].upper(),
+                 f"Watchlist {c['watchlist_rating']} ({c.get('rating_source')}) — RR {rr} · Hermes #{c.get('hermes_rank') or '—'}{desc_suffix}",
+                 risk_gate,
+                 expires, expires, expires, json.dumps(lane_basis)),
+            )
+            pid_holder[0] = cur.fetchone()[0]
+
+        if _safe_db_write(conn, cur, f"create {sym} lane={routing_lane}", _do_insert, dry_run=dry_run):
+            created += 1
+            pid = pid_holder[0]
+            log.info(f"created watchlist #{pid} {sym} lane={routing_lane} RR {rr} @ ${entry}")
+            return "create"
+        lock_skipped += 1
+        return "lock_skip"
 
     for c in candidates:
         sym = str(c["symbol"]).upper()
@@ -430,16 +503,23 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
             for _lane_id, target_acct, _intended, _routing_lane in lanes:
                 existing = _active_proposal(cur, sym, target_acct)
                 if existing and not dry_run:
-                    cur.execute(
-                        """UPDATE paper_trade_proposals
-                           SET status='REJECTED', lifecycle_status='EXPIRED',
-                               rejection_reason='stale_watchlist_entry_plan',
-                               lifecycle_message='Entry plan invalid or too far from live price',
-                               updated_at=NOW()
-                           WHERE id=%s AND status = ANY(%s)""",
-                        (existing["id"], list(ACTIVE_STATUSES)),
-                    )
-                    log.info(f"rejected #{existing['id']} {sym} — stale/invalid entry plan")
+                    pid_rej = existing["id"]
+
+                    def _do_reject():
+                        cur.execute(
+                            """UPDATE paper_trade_proposals
+                               SET status='REJECTED', lifecycle_status='EXPIRED',
+                                   rejection_reason='stale_watchlist_entry_plan',
+                                   lifecycle_message='Entry plan invalid or too far from live price',
+                                   updated_at=NOW()
+                               WHERE id=%s AND status = ANY(%s)""",
+                            (pid_rej, list(ACTIVE_STATUSES)),
+                        )
+
+                    if _safe_db_write(conn, cur, f"reject #{pid_rej} {sym}", _do_reject, dry_run=dry_run):
+                        log.info(f"rejected #{pid_rej} {sym} — stale/invalid entry plan")
+                    else:
+                        lock_skipped += 1
             skipped += len(lanes)
             continue
         entry, stop, target, exit_rationale, plan_source = levels
@@ -506,15 +586,13 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
                 intended=intended, routing_lane=routing_lane, existing=None,
             )
 
-    if not dry_run:
-        conn.commit()
-
     stats = {
         "ok": True,
         "candidates": len(candidates),
         "created": created,
         "refreshed": refreshed,
         "skipped": skipped,
+        "lock_skipped": lock_skipped,
         "reconciled": reconciled,
         "deduped": deduped,
         "expired_not_buy": expired,

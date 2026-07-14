@@ -72,6 +72,15 @@ class TestEntrySanity(unittest.TestCase):
         self.assertIsNone(out)
 
 
+class TestBridgeResilience(unittest.TestCase):
+
+    def test_fill_quote_cache_helper(self):
+        src = (PROJECT_ROOT / "scripts/watchlist_proposal_bridge.py").read_text()
+        self.assertIn("_fill_quote_cache", src)
+        self.assertIn("_safe_db_write", src)
+        self.assertIn("lock_skipped", src)
+
+
 class TestDualLaneSync(unittest.TestCase):
 
     def test_classify_entry_zone_wide(self):
