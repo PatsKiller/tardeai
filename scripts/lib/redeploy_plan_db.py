@@ -76,7 +76,22 @@ def persist_institutional_plans(cur, event_id: int, event: dict[str, Any]) -> di
                 generator_version,
                 input_hash,
                 json.dumps(plan.get("legs") or []),
-                json.dumps({"net_proceeds_usd": plan.get("net_proceeds_usd")}),
+                json.dumps({
+                    # canonical plan snapshot (Phase 1) — one calculation basis for every tab
+                    "net_proceeds_usd": plan.get("net_proceeds_usd"),
+                    "financials": plan.get("financials"),
+                    "plan_income": plan.get("plan_income"),
+                    "decision_score": plan.get("decision_score"),
+                    "readiness": plan.get("readiness"),
+                    "restoration_summary": plan.get("restoration_summary"),
+                    "ultimate_target": plan.get("ultimate_target"),
+                    "tranche_triggers": plan.get("tranche_triggers"),
+                    "reserve_vehicle": plan.get("reserve_vehicle"),
+                    "reserve_vehicle_yield_pct": plan.get("reserve_vehicle_yield_pct"),
+                    "revisit_date": plan.get("revisit_date"),
+                    "entry_triggers": plan.get("entry_triggers"),
+                    "settled_basis": plan.get("settled_basis"),
+                }),
                 plan.get("operator_status") or "draft",
                 plan.get("objective"),
             ),
@@ -137,6 +152,16 @@ def persist_institutional_plans(cur, event_id: int, event: dict[str, Any]) -> di
         "UPDATE deploy_events SET metadata=%s::jsonb, updated_at=NOW() WHERE id=%s",
         (json.dumps(meta), event_id),
     )
+    try:
+        from lib.redeploy_audit import audit_log
+        gen = bundle.get("generator_version")
+        primary = bundle.get("primary_archetype")
+        audit_log(cur, event_id, "plan_version_generated", plan_version=version,
+                  actor="deploy_recompute",
+                  new_value=f"{len(persisted_ids)} archetype plans (generator {gen}, primary {primary})",
+                  reason=f"settled_basis={bundle.get('settled_basis')} regime={bundle.get('regime_basis')}")
+    except Exception:
+        pass
     return {"ok": True, "version": version, "persisted": len(persisted_ids), "plan_ids": persisted_ids}
 
 
@@ -148,7 +173,7 @@ def list_plans_for_event(cur, event_id: int, *, version: int | None = None) -> l
                       total_deployable_usd, reserve_usd, deploy_pct_of_net, confidence,
                       operator_status, oversight_status, composite_rank, advantages, compromises,
                       risks, hermes_narrative, unmet_exposure, rejected_alternatives, scenarios,
-                      redeploy_plan
+                      redeploy_plan, impact
                FROM deploy_plans WHERE deploy_event_id=%s AND version=%s
                ORDER BY composite_rank DESC""",
             (event_id, version),
@@ -159,7 +184,7 @@ def list_plans_for_event(cur, event_id: int, *, version: int | None = None) -> l
                       total_deployable_usd, reserve_usd, deploy_pct_of_net, confidence,
                       operator_status, oversight_status, composite_rank, advantages, compromises,
                       risks, hermes_narrative, unmet_exposure, rejected_alternatives, scenarios,
-                      redeploy_plan
+                      redeploy_plan, impact
                FROM deploy_plans WHERE deploy_event_id=%s
                AND version = (SELECT MAX(version) FROM deploy_plans WHERE deploy_event_id=%s)
                ORDER BY composite_rank DESC""",
@@ -169,12 +194,20 @@ def list_plans_for_event(cur, event_id: int, *, version: int | None = None) -> l
     plans = []
     for row in cur.fetchall():
         p = dict(zip(cols, row))
-        for jf in ("unmet_exposure", "rejected_alternatives", "scenarios", "redeploy_plan"):
+        for jf in ("unmet_exposure", "rejected_alternatives", "scenarios", "redeploy_plan", "impact"):
             if isinstance(p.get(jf), str):
                 try:
                     p[jf] = json.loads(p[jf])
                 except Exception:
                     pass
+        snap = p.pop("impact", None) or {}
+        if isinstance(snap, dict):
+            for k in ("financials", "plan_income", "decision_score", "readiness",
+                      "restoration_summary", "ultimate_target", "tranche_triggers",
+                      "reserve_vehicle", "reserve_vehicle_yield_pct", "revisit_date",
+                      "entry_triggers", "settled_basis"):
+                if snap.get(k) is not None:
+                    p[k] = snap[k]
         legs = p.pop("redeploy_plan", None) or []
         if isinstance(legs, list) and legs:
             p["legs"] = legs

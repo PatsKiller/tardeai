@@ -1,0 +1,14 @@
+# Redeploy decision-scorecard weights (Phase 5, decision_1.0.1).
+# Operator-configurable: edit and re-run recompute. Must sum to 1.0 (±0.01) or the
+# engine falls back to these defaults. Every plan's scorecard shows raw score,
+# weight, and weighted contribution per dimension — the ranking is never opaque.
+sold_exposure_restoration: 0.20
+portfolio_improvement: 0.15
+diversification_overlap: 0.10
+risk_drawdown_suitability: 0.10
+income_quality: 0.10
+fees_efficiency: 0.10
+valuation_entry: 0.10
+regime_suitability: 0.05
+data_quality_evidence: 0.05
+account_suitability: 0.05

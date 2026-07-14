@@ -194,6 +194,12 @@ def lock_deploy_plan(cur, event_id: int, body: dict[str, Any]) -> dict[str, Any]
     }
     cur.execute("UPDATE deploy_events SET metadata=%s::jsonb WHERE id=%s", (json.dumps(meta), event_id))
     _audit(cur, event_id, "lock_plan", {"plan_id": pid, "version": version, "archetype": arch}, idempotency_key=idem)
+    try:
+        from lib.redeploy_audit import audit_log
+        audit_log(cur, event_id, "plan_locked", plan_id=pid, plan_version=version,
+                  actor=locked_by, new_value=f"Plan {arch} v{version}", correlation_id=idem)
+    except Exception:
+        pass
 
     return {
         "ok": True,
@@ -219,12 +225,22 @@ def _oversight_prompt(event: dict[str, Any], plan: dict[str, Any]) -> str:
         f"- {l.get('ticker')}: ${l.get('target_dollars')} ({l.get('thesis', '')[:80]})"
         for l in legs[:8]
     )
+    fin = plan.get("financials") or {}
+    fin_line = ""
+    if fin:
+        fin_line = (
+            f"Exact accounting: legs ${fin.get('executable_at_current_quote_usd')} + "
+            f"reserve ${fin.get('reserve_usd')} + whole-share residual "
+            f"${fin.get('whole_share_residual_usd')} = ${fin.get('total_accounted_usd')} "
+            f"(deployable ${fin.get('deployable_cash_usd')}; "
+            f"reconciles={fin.get('reconciles')}). Residual is rounding cash, not an error.\n")
     return (
-        f"You are reviewing an ADVISORY redeploy plan (no broker execution). "
+        f"You are reviewing an ADVISORY redeploy plan (no broker execution; your verdict "
+        f"gates an operator review step, it does not approve any trade). "
         f"Sold {sold} for ${recon.get('net_proceeds_usd') or event.get('proceeds_usd')}; "
         f"deployable ${recon.get('deployable_cash_usd')}; status {recon.get('reconciliation_status')}.\n"
         f"Plan {arch} ({plan.get('plan_type')}): {plan.get('objective')}\n"
-        f"Deploy ${plan.get('total_deployable_usd')}, reserve ${plan.get('reserve_usd')}.\n"
+        f"{fin_line}"
         f"Legs:\n{leg_lines}\n"
         "Reply JSON only: {\"verdict\":\"pass\"|\"fail\"|\"needs_review\", \"summary\":\"...\", \"risks\":[\"...\"]}"
     )
@@ -380,6 +396,13 @@ def run_deploy_oversight(cur, body: dict[str, Any]) -> dict[str, Any]:
     }
     cur.execute("UPDATE deploy_events SET metadata=%s::jsonb, updated_at=NOW() WHERE id=%s", (json.dumps(meta), event_id))
     _audit(cur, event_id, "oversight", {"plan_id": pid, "oversight_status": oversight_status, "results": len(results)})
+    try:
+        from lib.redeploy_audit import audit_log
+        audit_log(cur, event_id, "oversight_completed", plan_id=int(pid) if pid else None,
+                  actor="oversight_lanes", new_value=oversight_status,
+                  reason=f"{len(results)} lane verdicts")
+    except Exception:
+        pass
 
     return {
         "ok": True,

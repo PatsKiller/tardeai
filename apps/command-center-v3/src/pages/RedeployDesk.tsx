@@ -27,11 +27,43 @@ const T = (d: Density) => ({
   gap: d === 'compact' ? 10 : 16,
 })
 
+// Decision-first ordering (Phase 17): the operator lands on DECISION, then
+// comparison, then the lab. CAPITAL BOOK remains the no-event landing.
 const TABS = [
-  'CAPITAL BOOK', 'EVENT OVERVIEW', 'PLAN LAB', 'PLAN COMPARISON', 'PRO-FORMA', 'LOOK-THROUGH',
+  'CAPITAL BOOK', 'DECISION', 'PLAN COMPARISON', 'PLAN LAB', 'EVENT OVERVIEW', 'PRO-FORMA', 'LOOK-THROUGH',
   'PERFORMANCE', 'ENTRIES', 'MONITORING', 'REJECTED', 'PM MEMO', 'AUDIT',
 ] as const
 type Tab = (typeof TABS)[number]
+
+// PM memo (defect 21) — structured 18-section memo rendered as prose, never JSON.
+const MEMO_SECTIONS: [string, string][] = [
+  ['executive_recommendation', 'Executive recommendation'],
+  ['sale_summary', 'Sale summary'],
+  ['exposure_removed', 'Exposure removed'],
+  ['portfolio_context', 'Portfolio context'],
+  ['regime_context', 'Regime context'],
+  ['alternatives_considered', 'Alternatives considered'],
+  ['recommended_allocation', 'Recommended allocation'],
+  ['reserve', 'Reserve'],
+  ['entry_stages', 'Entry stages'],
+  ['expected_impact', 'Expected impact'],
+  ['income_and_fees', 'Income and fees'],
+  ['risk_analysis', 'Risk analysis'],
+  ['remaining_gaps', 'Remaining gaps'],
+  ['change_conditions', 'Change conditions'],
+  ['next_operator_action', 'Next operator action'],
+  ['sources_and_timestamps', 'Sources and timestamps'],
+  ['oversight_conclusion', 'Oversight conclusion'],
+  ['advisory_statement', 'Advisory statement'],
+]
+// Plain-language coercion for memo values — objects become "key: value" lines, never JSON.
+const memoLines = (v: any): string[] => {
+  if (v == null) return []
+  if (typeof v === 'string') return [v]
+  if (Array.isArray(v)) return v.flatMap(memoLines)
+  if (typeof v === 'object') return Object.entries(v).map(([k, x]) => `${k.replace(/_/g, ' ')}: ${memoLines(x).join('; ')}`)
+  return [String(v)]
+}
 
 // ── data hook (self-contained; refreshable; null url = idle) ─────────────────
 function useJson<T = any>(url: string | null) {
@@ -137,14 +169,17 @@ export default function RedeployDesk() {
   const [tab, setTab] = useState<Tab>(() => {
     const raw = params.get('tab')
     if (raw === 'PLANS') return 'PLAN LAB'  // legacy deep-links
-    return (TABS as readonly string[]).includes(raw || '') ? (raw as Tab) : 'CAPITAL BOOK'
+    if ((TABS as readonly string[]).includes(raw || '')) return raw as Tab
+    // No explicit ?tab= deep-link: an event deep-link lands decision-first.
+    return params.get('event') ? 'DECISION' : 'CAPITAL BOOK'
   })
   const eventId = params.get('event') ? Number(params.get('event')) : null
 
   const setEvent = useCallback((id: number | null, nextTab?: Tab) => {
     const p = new URLSearchParams(params)
     if (id) p.set('event', String(id)); else p.delete('event')
-    if (nextTab) { p.set('tab', nextTab); setTab(nextTab) }
+    const goto = nextTab ?? (id ? 'DECISION' as Tab : undefined) // selecting an event defaults to DECISION
+    if (goto) { p.set('tab', goto); setTab(goto) }
     setParams(p, { replace: true })
   }, [params, setParams])
 
@@ -168,6 +203,22 @@ export default function RedeployDesk() {
   const eventRow = useMemo(() => bookRows.find(r => r.event_id === eventId) || null, [bookRows, eventId])
   const plans: any[] = plansRes.data?.plans ?? []
 
+  // Phase 17 decision contract (all optional — backend agents land concurrently)
+  const rec = plansRes.data?.recommendation ?? null
+  const memoStruct = plansRes.data?.pm_memo_structured ?? null
+  const lockedPlanId = plansRes.data?.locked_plan_id ?? eventRow?.locked_plan_id ?? null
+  const primaryPlan = useMemo(() =>
+    (rec?.primary?.archetype ? plans.find((p: any) => p.plan_archetype === rec.primary.archetype) : null) ?? null,
+    [plans, rec])
+  const topQuantPlanId = useMemo(() => {
+    let best: any = null
+    for (const p of plans) {
+      const s = p?.decision_score?.total_score
+      if (s != null && (best == null || s > best.s)) best = { id: p.id, s }
+    }
+    return best?.id ?? null
+  }, [plans])
+
   // selected plan persists per event across tabs (Part F requirement)
   const planKey = `cc-v3-redeploy-plan-${eventId ?? 'none'}`
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null)
@@ -190,6 +241,22 @@ export default function RedeployDesk() {
   const [compareIds, setCompareIds] = useState<number[]>([])
   const [actionMsg, setActionMsg] = useState('')
 
+  // Defect 22: comparison never opens empty. Reset stale ids on event change,
+  // then preload system primary + strategic (A) + income (C) + staged (F).
+  useEffect(() => { setCompareIds([]) }, [eventId])
+  useEffect(() => {
+    if (!plans.length) return
+    setCompareIds(prev => {
+      if (prev.length) return prev // never fight manual toggling
+      const ids: number[] = []
+      for (const arch of [rec?.primary?.archetype, 'A', 'C', 'F']) {
+        const p = arch ? plans.find((x: any) => x.plan_archetype === arch) : null
+        if (p && !ids.includes(p.id)) ids.push(p.id)
+      }
+      return ids.slice(0, 4)
+    })
+  }, [eventId, plans.length, rec?.primary?.archetype]) // eslint-disable-line
+
   const refreshQuotes = async () => {
     setActionMsg('Refreshing quotes + recomputing plans…')
     try {
@@ -210,7 +277,8 @@ export default function RedeployDesk() {
     } catch (e) { setActionMsg(`${sym} refresh failed: ${e}`) }
   }
 
-  // Part G — plan-quality gate: composite score alone is never enough
+  // Part G — plan-quality gate: composite score alone is never enough.
+  // Legacy fallback only — the server readiness state machine is authoritative.
   const planReadiness = (p: any) => {
     const missing: string[] = []
     if (!(p.legs?.length)) missing.push('legs')
@@ -222,6 +290,53 @@ export default function RedeployDesk() {
     if (!eventRow?.settled) missing.push('settlement verification')
     return missing
   }
+
+  // Server readiness first (defect 1/23) — the UI never upgrades a plan the
+  // server holds back. Fallback for old rows keeps the legacy checks PLUS an
+  // oversight-pending gate on major events (> $25k proceeds).
+  const readinessOf = (p: any): { state: string; reasons: string[]; operator_ready: boolean; display: string } => {
+    if (p?.readiness?.state) {
+      return {
+        state: p.readiness.state,
+        reasons: p.readiness.reasons || [],
+        operator_ready: !!p.readiness.operator_ready,
+        display: p.readiness.display || String(p.readiness.state).replace(/_/g, ' '),
+      }
+    }
+    const missing = planReadiness(p)
+    const majorEvent = (eventRow?.proceeds_usd ?? 0) > 25_000
+    const oversightPassed = p?.oversight_status === 'pass' || p?.oversight_status === 'passed'
+    if (majorEvent && !oversightPassed && !missing.includes('oversight (failed)')) missing.push('oversight pending')
+    return missing.length
+      ? { state: missing.includes('oversight pending') ? 'OVERSIGHT_PENDING' : 'DATA_INCOMPLETE',
+          reasons: missing, operator_ready: false,
+          display: missing.includes('oversight pending') && missing.length === 1
+            ? 'ANALYTICS READY — OVERSIGHT PENDING'
+            : `NOT OPERATOR-READY: needs ${missing.join(', ')}` }
+      : { state: 'OPERATOR_READY', reasons: [], operator_ready: true, display: 'OPERATOR-READY' }
+  }
+  const readinessTone = (state: string) =>
+    ['OPERATOR_READY', 'OPERATOR_SELECTED', 'OPERATOR_LOCKED'].includes(state) ? BB.green
+      : ['ANALYTICS_READY', 'OVERSIGHT_PENDING'].includes(state) ? BB.amberAlt
+        : BB.red // OVERSIGHT_FAILED / QUOTES_STALE / DATA_INCOMPLETE / unknown
+  const nextActionFor = (p: any): string => {
+    const r = readinessOf(p)
+    if (r.state === 'QUOTES_STALE' || r.reasons.some(x => /stale|fresh quotes/i.test(x))) return 'Refresh quotes'
+    if (r.state === 'OVERSIGHT_PENDING' || r.reasons.some(x => /oversight pending/i.test(x))) return 'Run oversight'
+    if (r.state === 'OVERSIGHT_FAILED') return 'Review oversight findings'
+    if (r.operator_ready) return 'Review comparison, approve plan for operator implementation review'
+    return r.reasons.length ? `Resolve: ${r.reasons.join(', ')}` : 'Review plan readiness'
+  }
+  // Deploy-now dollars: executable + staged limit legs (financials block, defect 2)
+  const planDeployNow = (p: any): number | null => {
+    const f = p?.financials
+    if (!f) return null
+    return (f.executable_at_current_quote_usd ?? 0) + (f.staged_limit_order_usd ?? 0)
+  }
+  const planIncomeOf = (p: any): number | null =>
+    p?.plan_income?.expected_annual_income_usd
+      ?? ((p?.legs || []).reduce((s: number, l: any) =>
+        s + ((l.target_dollars && l.expected_yield_pct) ? l.target_dollars * l.expected_yield_pct / 100 : 0), 0) || null)
 
   // ── sticky context bar ─────────────────────────────────────────────────────
   const contextBar = (
@@ -266,6 +381,35 @@ export default function RedeployDesk() {
         density: {density}
       </button>
       <span style={{ fontSize: t.label, color: BB.text3 }}>book as of {ago(book.data?.as_of)}</span>
+      {eventId && plans.length > 0 && (() => {
+        // Persistent decision header (Phase 17) — the operator's standing answer
+        // to "what is the system's lean and what do I do next", on every tab.
+        const focus = selectedPlan ?? primaryPlan ?? plans[0]
+        const fr = readinessOf(focus)
+        const deployNow = rec?.primary?.deploy_now_usd ?? planDeployNow(focus)
+        const reserve = (selectedPlan ? focus?.financials?.reserve_usd ?? focus?.reserve_usd : null)
+          ?? rec?.primary?.reserve_usd ?? focus?.financials?.reserve_usd ?? focus?.reserve_usd
+        const income = planIncomeOf(focus)
+        const kv = (k: string, v: any, color: string = BB.text0) => (
+          <span key={k} style={{ fontSize: t.label, color: BB.text3, whiteSpace: 'nowrap' }}>
+            {k} <b style={{ color, fontFamily: BB.mono }}>{v}</b>
+          </span>
+        )
+        return (
+          <div style={{
+            flexBasis: '100%', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center',
+            borderTop: `1px solid ${BB.borderSubtle}`, paddingTop: 6, marginTop: 2,
+          }}>
+            {kv('SYSTEM LEAN', rec?.primary?.archetype ? `Plan ${rec.primary.archetype}` : '—', BB.amber)}
+            {kv('OPERATOR', selectedPlan ? `Plan ${selectedPlan.plan_archetype}` : 'none')}
+            <Pill text={fr.display} color={readinessTone(fr.state)} title={(fr.reasons || []).join('; ') || undefined} />
+            {kv('DEPLOY NOW', fmt$(deployNow))}
+            {kv('RESERVE', fmt$(reserve))}
+            {kv('INCOME Δ', income == null ? '—' : `${income >= 0 ? '+' : ''}${fmt$(income)}/yr`, income != null && income < 0 ? BB.red : BB.green)}
+            {kv('NEXT', nextActionFor(focus), BB.text1)}
+          </div>
+        )
+      })()}
     </div>
   )
 
@@ -308,7 +452,7 @@ export default function RedeployDesk() {
         </div>
         <DataTable t={t} rows={bookRows} empty={book.loading ? 'Loading…' : 'No events.'} cols={[
           { key: 'event_id', label: '#', render: r => (
-            <button onClick={() => setEvent(r.event_id, 'EVENT OVERVIEW')}
+            <button onClick={() => setEvent(r.event_id, 'DECISION')}
               style={{ background: 'none', border: 'none', color: BB.amber, cursor: 'pointer', fontFamily: BB.mono, fontSize: t.table, textDecoration: 'underline' }}>
               {r.event_id}
             </button>) },
@@ -397,10 +541,163 @@ export default function RedeployDesk() {
     </>
   )
 
+  // ── TAB: DECISION (Phase 17 — decision-first landing) ─────────────────────
+  const decisionTab = (() => {
+    if (!eventId) return <div style={{ fontSize: t.body, color: BB.text3 }}>Select a sale event.</div>
+    if (plansRes.loading && !plans.length) return <div style={{ fontSize: t.body, color: BB.text3 }}>Loading plans…</div>
+    if (!plans.length) return <div style={{ fontSize: t.body, color: BB.text3 }}>No plans generated for this event yet — use REFRESH QUOTES + RECOMPUTE in PLAN LAB.</div>
+    if (!rec?.primary) {
+      return (
+        <Section title="Decision" t={t}>
+          <div style={{ fontSize: t.body, color: BB.text3 }}>
+            No system recommendation is persisted for this event yet (plans predate the decision engine).
+            Recompute plans in PLAN LAB to generate a scored recommendation, or compare plans manually in PLAN COMPARISON.
+          </div>
+        </Section>
+      )
+    }
+    const prim = rec.primary
+    const primHoldings = (primaryPlan?.legs || []).filter((l: any) => !l.is_reserve)
+    // Scorecard: primary first, then next-best by total decision score (top 3)
+    const scored = plans.filter((p: any) => p.decision_score?.dimensions)
+    const scorePlans = [
+      ...(primaryPlan && scored.includes(primaryPlan) ? [primaryPlan] : []),
+      ...scored.filter((p: any) => p !== primaryPlan)
+        .sort((a: any, b: any) => (b.decision_score?.total_score ?? 0) - (a.decision_score?.total_score ?? 0)),
+    ].slice(0, 3)
+    const dimKeys: string[] = Object.keys(scorePlans[0]?.decision_score?.dimensions || {})
+    const changeTriggers: string[] = primaryPlan?.tranche_triggers?.length ? primaryPlan.tranche_triggers
+      : primaryPlan?.entry_triggers?.length ? primaryPlan.entry_triggers
+        : (memoStruct?.sections?.change_conditions || [])
+    const nextAction = memoStruct?.sections?.next_operator_action
+      || nextActionFor(selectedPlan ?? primaryPlan ?? plans[0])
+    return (
+      <>
+        <Section title="Recommended lean" t={t}
+          right={primaryPlan && <Pill text={readinessOf(primaryPlan).display} color={readinessTone(readinessOf(primaryPlan).state)} />}>
+          <div style={{ fontSize: t.title - 4, fontWeight: 800, color: BB.amber, marginBottom: 10 }}>
+            Plan {prim.archetype} — {prim.objective || primaryPlan?.objective || ''}
+          </div>
+          <div style={{ display: 'flex', gap: t.gap, flexWrap: 'wrap', marginBottom: t.gap }}>
+            {[
+              ['Deploy now', fmt$(prim.deploy_now_usd), BB.text0],
+              ['Reserve', fmt$(prim.reserve_usd), BB.text0],
+              ['Whole-share residual', fmt$(prim.residual_usd), BB.text2],
+              ['Quant score', prim.total_score != null ? num(prim.total_score, 1) : '—', BB.blue],
+            ].map(([k, v, c]) => (
+              <div key={k as string} style={{ border: `1px solid ${BB.border}`, borderRadius: 6, padding: 14, minWidth: 190 }}>
+                <div style={{ fontSize: t.label, color: BB.text3, marginBottom: 4 }}>{k}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: c as string, fontFamily: BB.mono }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          {primHoldings.length > 0 && (
+            <DataTable t={t} rows={primHoldings} cols={[
+              { key: 'ticker', label: 'TICKER', render: (l: any) => <b style={{ color: BB.text0 }}>{l.ticker}</b> },
+              { key: 'role', label: 'ROLE', render: (l: any) => String(l.role || l.dual_label || '—').replace(/_/g, ' ') },
+              { key: 'target_dollars', label: 'DOLLARS', align: 'right', render: (l: any) => fmt$(l.target_dollars) },
+              { key: 'target_shares', label: 'SHARES', align: 'right', render: (l: any) => l.target_shares ?? '—' },
+            ]} />
+          )}
+        </Section>
+        {(prim.reasons || []).length > 0 && (
+          <Section title="Why this is recommended" t={t}>
+            {prim.reasons.map((r: string, i: number) => (
+              <div key={i} style={{ fontSize: t.body, color: BB.text1, padding: '4px 0' }}>• {r}</div>
+            ))}
+            {prim.strongest && <div style={{ fontSize: t.body, color: BB.green, marginTop: 6 }}>Strongest dimension: {String(prim.strongest?.note ?? prim.strongest).replace(/_/g, ' ')}</div>}
+            {prim.weakest && <div style={{ fontSize: t.body, color: BB.amberAlt }}>Weakest dimension: {String(prim.weakest?.note ?? prim.weakest).replace(/_/g, ' ')}</div>}
+          </Section>
+        )}
+        {((rec.alternatives || []).length > 0 || (rec.do_not_choose || []).length > 0) && (
+          <Section title="Why not the other plans" t={t}>
+            {(rec.alternatives || []).map((a: any) => (
+              <div key={a.archetype} style={{ fontSize: t.body, color: BB.text2, padding: '5px 0' }}>
+                <b style={{ color: BB.text0 }}>Plan {a.archetype}</b>{a.objective ? ` — ${a.objective}` : ''}
+                {a.total_score != null && <span style={{ color: BB.blue }}> · score {num(a.total_score, 1)}</span>}
+                {a.gap_to_primary != null && <span style={{ color: BB.text3 }}> ({num(a.gap_to_primary, 1)} behind primary)</span>}
+                {a.choose_when && <div style={{ color: BB.text3, marginLeft: 14 }}>choose when: {a.choose_when}</div>}
+              </div>
+            ))}
+            {(rec.do_not_choose || []).map((d: any) => (
+              <div key={d.archetype} style={{ fontSize: t.body, color: BB.text2, padding: '5px 0' }}>
+                <b style={{ color: BB.red }}>Do not choose Plan {d.archetype}</b> — {d.reason}
+              </div>
+            ))}
+          </Section>
+        )}
+        {dimKeys.length > 0 && (
+          <Section title="Decision scorecard" t={t}
+            right={<span style={{ fontSize: t.label, color: BB.text3 }}>weighted composite — weights shown; score is one input, never the sole selector</span>}>
+            <DataTable t={t} rows={[
+              ...dimKeys.map(k => {
+                const w = scorePlans[0]?.decision_score?.dimensions?.[k]?.weight ?? rec.weights?.[k]
+                const row: any = {
+                  dim: k.replace(/_/g, ' '),
+                  weight: w == null ? '—' : pct(w <= 1 ? w * 100 : w, 0), // tolerate fraction or percent scale
+                }
+                scorePlans.forEach((p: any) => {
+                  const d = p.decision_score?.dimensions?.[k]
+                  row[`p${p.id}`] = d ? { text: `${num(d.raw, 1)} → ${num(d.weighted, 1)}`, note: d.note } : { text: '—' }
+                })
+                return row
+              }),
+              {
+                dim: 'TOTAL', weight: '',
+                ...Object.fromEntries(scorePlans.map((p: any) =>
+                  [`p${p.id}`, { text: num(p.decision_score?.total_score, 1), total: true }])),
+              },
+            ]} cols={[
+              { key: 'dim', label: 'DIMENSION' },
+              { key: 'weight', label: 'WEIGHT', align: 'right' },
+              ...scorePlans.map((p: any) => ({
+                key: `p${p.id}`, label: `PLAN ${p.plan_archetype}${p === primaryPlan ? ' ★' : ''} (raw → wtd)`, align: 'right' as const,
+                render: (r: any) => {
+                  const c = r[`p${p.id}`] || {}
+                  return <span title={c.note} style={{ fontFamily: BB.mono, fontWeight: c.total ? 800 : 400, color: c.total ? BB.amber : BB.text1, borderBottom: c.note ? `1px dotted ${BB.text3}` : undefined }}>{c.text ?? '—'}</span>
+                },
+              })),
+              { key: 'note', label: 'NOTE (PRIMARY)', render: (r: any) => (
+                <span style={{ fontSize: t.label, color: BB.text3, whiteSpace: 'normal' }}>{r[`p${scorePlans[0]?.id}`]?.note || ''}</span>) },
+            ]} />
+          </Section>
+        )}
+        {changeTriggers.length > 0 && (
+          <Section title="What could change the decision" t={t}>
+            {changeTriggers.map((c: string, i: number) => (
+              <div key={i} style={{ fontSize: t.body, color: BB.text2, padding: '4px 0' }}>• {c}</div>
+            ))}
+          </Section>
+        )}
+        <Section title="Next operator action" t={t}>
+          <div style={{ fontSize: t.body + 1, color: BB.text0 }}>{nextAction}</div>
+          <div style={{ fontSize: t.label, color: BB.text3, marginTop: 6 }}>
+            Advisory only — the operator approves a plan for operator implementation review, never execution approval.
+          </div>
+        </Section>
+      </>
+    )
+  })()
+
   // ── TAB: PLANS ─────────────────────────────────────────────────────────────
+  // Selection evidence (defects 15/20): why this ticker won its role, and who lost.
+  const evidenceText = (l: any) => {
+    const ev = l.selection_evidence
+    if (!ev) return ''
+    const alts = (ev.alternatives || [])
+      .map((a: any) => `${a.symbol}${a.score != null ? ` (${num(a.score, 1)})` : ''}${a.why_lost ? ` — ${a.why_lost}` : ''}`)
+      .join('\n  ')
+    return [
+      `role: ${ev.role ?? l.role ?? '—'}`,
+      `method: ${ev.method ?? '—'}`,
+      `score: ${ev.score != null ? num(ev.score, 1) : '—'} · margin: ${ev.selection_margin != null ? num(ev.selection_margin, 1) : '—'}`,
+      ev.eligible_pool != null ? `eligible pool: ${ev.eligible_pool}` : '',
+      alts ? `alternatives:\n  ${alts}` : 'alternatives: none recorded',
+    ].filter(Boolean).join('\n')
+  }
   const legCols = (p: any) => [
     { key: 'ticker', label: 'TICKER', render: (l: any) => <b style={{ color: BB.text0 }}>{l.is_reserve ? 'RESERVE' : l.ticker}</b> },
-    { key: 'dual_label', label: 'ROLE', render: (l: any) => (l.dual_label || l.role || (l.is_reserve ? 'cash reserve' : '—')).replace(/_/g, ' ') },
+    { key: 'role', label: 'ROLE', render: (l: any) => (l.role || l.dual_label || (l.is_reserve ? 'cash reserve' : '—')).replace(/_/g, ' ') },
     { key: 'allocation_pct_of_net', label: 'ALLOC %', align: 'right' as const, render: (l: any) => pct(l.allocation_pct_of_net ?? l.allocation_pct, 1) },
     { key: 'target_dollars', label: 'TARGET $', align: 'right' as const, render: (l: any) => fmt$(l.target_dollars) },
     { key: 'target_shares', label: 'SHARES', align: 'right' as const, render: (l: any) => l.target_shares ?? '—' },
@@ -410,7 +707,41 @@ export default function RedeployDesk() {
     { key: 'current_price', label: 'PRICE', align: 'right' as const, render: (l: any) => l.current_price ? `$${num(l.current_price)}` : '—' },
     { key: 'price_as_of', label: 'QUOTE AGE', render: (l: any) => (
       <span style={{ color: l.price_stale ? BB.red : BB.text3, fontSize: t.label }}>{l.price_stale ? 'STALE · ' : ''}{ago(l.price_as_of)}</span>) },
+    { key: 'why', label: 'WHY', render: (l: any) => l.selection_evidence
+      ? <span title={evidenceText(l)} style={{ fontSize: t.label, color: BB.blue, borderBottom: `1px dotted ${BB.blue}`, cursor: 'help' }}>why {l.ticker}</span>
+      : <span style={{ color: BB.text3 }}>—</span> },
   ]
+
+  // Financials reconciliation line (defect 2) — every plan dollar is accounted for.
+  const reconLine = (p: any) => {
+    const f = p?.financials
+    if (!f) return null
+    const legs$ = f.total_accounted_usd != null
+      ? f.total_accounted_usd - (f.reserve_usd ?? 0) - (f.whole_share_residual_usd ?? 0)
+      : (f.executable_at_current_quote_usd ?? 0) + (f.staged_limit_order_usd ?? 0)
+    const meaning = (k: string) => f.amount_meanings?.[k]
+    const term = (label: string, v: any, key: string) => (
+      <span title={meaning(key)} style={{ borderBottom: meaning(key) ? `1px dotted ${BB.text3}` : undefined, cursor: meaning(key) ? 'help' : undefined }}>
+        {label} <b style={{ color: BB.text0, fontFamily: BB.mono }}>{fmt$(v)}</b>
+      </span>
+    )
+    return (
+      <div style={{ fontSize: t.body, color: BB.text2, marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+        {term('Legs', legs$, 'executable_at_current_quote_usd')} +
+        {term('Reserve', f.reserve_usd, 'reserve_usd')} +
+        {term('Residual', f.whole_share_residual_usd, 'whole_share_residual_usd')} =
+        {term('Deployable', f.deployable_cash_usd, 'deployable_cash_usd')}
+        {f.reconciles
+          ? <b style={{ color: BB.green }}>✓ reconciles</b>
+          : <b style={{ color: BB.red }}>✗ gap {fmt$(f.reconciliation_gap_usd)}</b>}
+        {f.staged_limit_order_usd > 0 && (
+          <span title={meaning('staged_limit_order_usd')} style={{ fontSize: t.label, color: BB.text3 }}>
+            (of legs: {fmt$(f.executable_at_current_quote_usd)} executable at quote + {fmt$(f.staged_limit_order_usd)} staged limit)
+          </span>
+        )}
+      </div>
+    )
+  }
 
   const plansTab = (
     <>
@@ -423,7 +754,7 @@ export default function RedeployDesk() {
         </div>}>
         {actionMsg && <div style={{ fontSize: t.body, color: BB.amberAlt, marginBottom: 8 }}>{actionMsg}</div>}
         {plans.map((p: any) => {
-          const missing = planReadiness(p)
+          const ready = readinessOf(p)
           const isSel = p.id === selectedPlanId
           return (
             <div key={p.id} style={{
@@ -434,14 +765,17 @@ export default function RedeployDesk() {
                 <span style={{ fontSize: t.subheading, fontWeight: 800, color: BB.text0 }}>
                   Plan {p.plan_archetype} v{p.version} — {p.objective || p.plan_type}
                 </span>
-                <Pill text={`confidence ${num(p.confidence, 1)}`} color={BB.blue}
-                      title="One decision component — never the sole selector" />
-                {p.composite_rank != null && <Pill text={`rank ${p.composite_rank}`} color={BB.text3} />}
+                {/* Distinct governance chips (defect 23) — primary/selected/locked never conflated */}
+                {rec?.primary?.archetype === p.plan_archetype && <Pill text="SYSTEM PRIMARY" color={BB.amber} title="The system's recommended lean" />}
+                {p.id === selectedPlanId && <Pill text="OPERATOR SELECTED" color={BB.blue} title="Your working selection — carried across tabs" />}
+                {p.id === lockedPlanId && <Pill text="OPERATOR LOCKED" color={BB.green} title="Locked by the operator" />}
+                {p.id === topQuantPlanId && <Pill text="HIGHEST QUANT RANK" color={BB.text3} title="Top decision score — one input, never the sole selector" />}
+                {p.decision_score?.total_score != null
+                  ? <Pill text={`score ${num(p.decision_score.total_score, 1)}`} color={BB.blue} title="Weighted decision score — one component, never the sole selector" />
+                  : <Pill text={`confidence ${num(p.confidence, 1)}`} color={BB.blue} title="One decision component — never the sole selector" />}
                 {p.oversight_status && <Pill text={`oversight: ${p.oversight_status}`}
-                  color={p.oversight_status === 'pass' ? BB.green : p.oversight_status === 'failed' ? BB.red : BB.text3} />}
-                {missing.length
-                  ? <Pill text={`NOT OPERATOR-READY: needs ${missing.join(', ')}`} color={BB.red} />
-                  : <Pill text="OPERATOR-READY" color={BB.green} />}
+                  color={p.oversight_status === 'pass' || p.oversight_status === 'passed' ? BB.green : p.oversight_status === 'failed' ? BB.red : BB.text3} />}
+                <Pill text={ready.display} color={readinessTone(ready.state)} title={(ready.reasons || []).join('; ') || undefined} />
                 <span style={{ flex: 1 }} />
                 <label style={{ fontSize: t.label, color: BB.text2, display: 'flex', gap: 6, alignItems: 'center' }}>
                   <input type="checkbox" checked={compareIds.includes(p.id)}
@@ -455,6 +789,15 @@ export default function RedeployDesk() {
                 }}>{isSel ? 'SELECTED' : 'SELECT PLAN'}</button>
               </div>
               <DataTable t={t} rows={p.legs || []} empty="No legs — plan is not operator-ready." cols={legCols(p)} />
+              {reconLine(p)}
+              {p.plan_income && (
+                <div style={{ fontSize: t.body, color: BB.text2, marginTop: 4 }}>
+                  expected income <b style={{ color: BB.green, fontFamily: BB.mono }}>{fmt$(p.plan_income.expected_annual_income_usd)}/yr</b>
+                  {' '}· whole-plan yield <b style={{ color: BB.text0 }}>{pct(p.plan_income.whole_plan_yield_pct)}</b>
+                  {p.plan_income.invested_sleeve_yield_pct != null && <> · invested-sleeve yield <b style={{ color: BB.text0 }}>{pct(p.plan_income.invested_sleeve_yield_pct)}</b></>}
+                  {p.plan_income.calculation_as_of && <span style={{ fontSize: t.label, color: BB.text3 }}> · as of {String(p.plan_income.calculation_as_of).slice(0, 10)}</span>}
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: t.gap, marginTop: 10 }}>
                 {p.advantages?.length ? <div>
                   <div style={{ fontSize: t.label, color: BB.green, fontWeight: 700, marginBottom: 4 }}>ADVANTAGES</div>
@@ -477,26 +820,49 @@ export default function RedeployDesk() {
   )
 
   // ── TAB: PLAN COMPARISON ───────────────────────────────────────────────────
-  const planIncome = (p: any) => (p?.legs || []).reduce((s: number, l: any) =>
-    s + ((l.target_dollars && l.expected_yield_pct) ? l.target_dollars * l.expected_yield_pct / 100 : 0), 0)
   const staleLegs = (p: any) => (p?.legs || []).filter((l: any) => l.price_stale && !l.is_reserve).length
   const cmpCell = (fn: (p: any) => string) =>
     Object.fromEntries(compareIds.map(id => [String(id), fn(plans.find(p => p.id === id) || {})]))
   const comparisonTab = compareIds.length >= 2 ? (
     <Section title={`Plan comparison — ${compareIds.length} plans (differences, not merely winners)`} t={t}>
+      {rec?.primary && (
+        <div style={{ border: `1px solid ${BB.border}`, borderRadius: 8, padding: t.gap, marginBottom: t.gap }}>
+          <div style={{ fontSize: t.subheading, fontWeight: 800, color: BB.amber, marginBottom: 6 }}>
+            SYSTEM LEAN: Plan {rec.primary.archetype}{rec.primary.objective ? ` — ${rec.primary.objective}` : ''}
+          </div>
+          {(rec.primary.reasons || []).slice(0, 3).map((r: string, i: number) => (
+            <div key={i} style={{ fontSize: t.body, color: BB.text1, padding: '2px 0' }}>• {r}</div>
+          ))}
+          {(rec.alternatives || []).slice(0, 1).map((a: any) => (
+            <div key={a.archetype} style={{ fontSize: t.body, color: BB.text2, marginTop: 8 }}>
+              <b style={{ color: BB.blue }}>RUNNER-UP:</b> Plan {a.archetype}
+              {a.total_score != null && <span style={{ color: BB.text3 }}> (score {num(a.total_score, 1)})</span>}
+              {a.choose_when && <> — choose when: {a.choose_when}</>}
+            </div>
+          ))}
+          {(rec.do_not_choose || []).length > 0 && (
+            <div style={{ fontSize: t.body, color: BB.text2, marginTop: 6 }}>
+              <b style={{ color: BB.red }}>DO NOT USE:</b>{' '}
+              {rec.do_not_choose.map((d: any) => `Plan ${d.archetype} — ${d.reason}`).join(' · ')}
+            </div>
+          )}
+        </div>
+      )}
       <DataTable t={t} rows={[
         { k: 'Objective', ...cmpCell(p => p.objective || '—') },
+        { k: 'Readiness', ...cmpCell(p => readinessOf(p).display) },
+        { k: 'Decision score', ...cmpCell(p => p.decision_score?.total_score != null ? num(p.decision_score.total_score, 1) : '—') },
+        { k: 'Deploy now $', ...cmpCell(p => fmt$(planDeployNow(p) ?? p.total_deployable_usd)) },
+        { k: 'Reserve $', ...cmpCell(p => fmt$(p.financials?.reserve_usd ?? p.reserve_usd)) },
+        { k: 'Whole-share residual $', ...cmpCell(p => fmt$(p.financials?.whole_share_residual_usd)) },
         { k: 'Deployment % of net', ...cmpCell(p => pct(p.deploy_pct_of_net, 1)) },
-        { k: 'Deployable $', ...cmpCell(p => fmt$(p.total_deployable_usd)) },
-        { k: 'Reserve $', ...cmpCell(p => fmt$(p.reserve_usd)) },
+        { k: 'Deployable $', ...cmpCell(p => fmt$(p.financials?.deployable_cash_usd ?? p.total_deployable_usd)) },
         { k: 'Legs', ...cmpCell(p => (p.legs || []).map((l: any) => l.is_reserve ? 'RSV' : l.ticker).join(' + ') || '—') },
         { k: 'Leg count', ...cmpCell(p => String((p.legs || []).filter((l: any) => !l.is_reserve).length)) },
-        { k: 'Expected income /yr', ...cmpCell(p => planIncome(p) > 0 ? fmt$(planIncome(p)) : '—') },
-        { k: 'Confidence (component)', ...cmpCell(p => num(p.confidence, 1)) },
-        { k: 'Composite rank', ...cmpCell(p => p.composite_rank == null ? '—' : String(p.composite_rank)) },
+        { k: 'Whole-plan yield', ...cmpCell(p => pct(p.plan_income?.whole_plan_yield_pct)) },
+        { k: 'Expected income /yr', ...cmpCell(p => planIncomeOf(p) ? fmt$(planIncomeOf(p)) : '—') },
         { k: 'Oversight', ...cmpCell(p => p.oversight_status || '—') },
         { k: 'Stale-quote legs', ...cmpCell(p => String(staleLegs(p))) },
-        { k: 'Readiness', ...cmpCell(p => { const m = planReadiness(p); return m.length ? `needs: ${m.join(', ')}` : 'operator-ready' }) },
         { k: 'Principal advantage', ...cmpCell(p => p.advantages?.[0] || '—') },
         { k: 'Principal compromise', ...cmpCell(p => p.compromises?.[0] || '—') },
         { k: 'Principal risk', ...cmpCell(p => p.risks?.[0] || '—') },
@@ -614,12 +980,29 @@ export default function RedeployDesk() {
 
   // ── TAB: PERFORMANCE ───────────────────────────────────────────────────────
   const perf = performance.data
+  // Whole-plan vs invested-sleeve summary blocks (new contract), falling back
+  // to the legacy plan_weighted block — backend agents land concurrently.
+  const perfBlocks: { label: string; b: any }[] = perf?.ok ? [
+    ...(perf.whole_plan ? [{ label: 'Whole plan (incl. reserve)', b: perf.whole_plan }] : []),
+    ...(perf.invested_sleeve ? [{ label: 'Invested sleeve (risk legs only)', b: perf.invested_sleeve }] : []),
+    ...(!perf.whole_plan && !perf.invested_sleeve && perf.plan_weighted
+      ? [{ label: 'Plan (dollar-weighted)', b: perf.plan_weighted }] : []),
+  ] : []
   const performanceTab = perf?.ok ? (
     <>
       <Section title={`Performance — ${planLabel}`} t={t}
         right={<span style={{ fontSize: t.label, color: BB.text3 }}>total return where distributions cached; price return otherwise — see basis per leg</span>}>
         <DataTable t={t} rows={[
-          { k: 'Plan (dollar-weighted)', ...Object.fromEntries(['1Y', '3Y', '5Y'].map(w => [w, perf.plan_weighted.return_windows[w] ? `${perf.plan_weighted.return_windows[w].pct}% (${perf.plan_weighted.return_windows[w].coverage_pct_of_allocation}% cov)` : '—'])), yield: pct(perf.plan_weighted.yield_pct), er: perf.plan_weighted.expense_ratio_pct == null ? '—' : `${perf.plan_weighted.expense_ratio_pct}%`, income: fmt$(perf.plan_weighted.expected_annual_income_usd) },
+          ...perfBlocks.map(({ label, b }) => ({
+            k: label,
+            ...Object.fromEntries(['1Y', '3Y', '5Y'].map(w => {
+              const v = b?.return_windows?.[w]
+              return [w, v ? `${v.pct}%${v.coverage_pct_of_allocation != null ? ` (${v.coverage_pct_of_allocation}% cov)` : ''}` : '—']
+            })),
+            yield: pct(b?.yield_pct),
+            er: b?.expense_ratio_pct == null ? '—' : `${b.expense_ratio_pct}%`,
+            income: fmt$(b?.expected_annual_income_usd),
+          })),
           ...(perf.sold_reference ? [{
             k: `${perf.sold_reference.symbol} (sold)`,
             ...Object.fromEntries(['1Y', '3Y', '5Y'].map(w => {
@@ -640,16 +1023,26 @@ export default function RedeployDesk() {
         <Section title="Scenario matrix — plan-level, dollar-weighted" t={t}
           right={<span style={{ fontSize: t.label, color: BB.text3 }} title={perf.scenario_kinds_note}>hover a row for methodology · unavailable ≠ zero</span>}>
           <DataTable t={t} rows={perf.scenarios} cols={[
-            { key: 'label', label: 'SCENARIO', render: (s: any) => <span title={s.label}>{s.label.split('—')[0].trim()}</span> },
+            { key: 'label', label: 'SCENARIO', render: (s: any) => <span title={s.label}>{String(s.label || s.key || '').split('—')[0].trim()}</span> },
             { key: 'kind', label: 'KIND', render: (s: any) => (
-              <span style={{ fontSize: t.label, color: s.kind === 'HISTORICAL_OBSERVATION' ? BB.text2 : BB.blue }}>{s.kind}</span>) },
+              <span style={{ fontSize: t.label, color:
+                s.kind === 'HISTORICAL_OBSERVATION' ? BB.text2
+                  : s.kind === 'STATISTICAL_BAND' ? BB.blue
+                    : s.kind === 'DETERMINISTIC_SHOCK' ? BB.amberAlt
+                      : s.kind === 'UNAVAILABLE' ? BB.text3 : BB.blue }}>{s.kind}</span>) },
             { key: 'plan_pct', label: 'PLAN IMPACT', align: 'right', render: (s: any) => (
-              <span style={{ color: s.unavailable ? BB.text3 : toneFor(s.plan_pct), fontFamily: BB.mono }}>
-                {s.unavailable ? 'unavailable' : `${s.plan_pct > 0 ? '+' : ''}${s.plan_pct}%`}
+              // unavailable is never rendered as a number — 0% would be a lie
+              <span title={s.note} style={{ color: s.unavailable ? BB.amberAlt : toneFor(s.plan_pct), fontFamily: BB.mono }}>
+                {s.unavailable ? (s.note || 'UNAVAILABLE FOR RISKY LEGS') : `${s.plan_pct > 0 ? '+' : ''}${s.plan_pct}%`}
               </span>) },
-            { key: 'coverage_pct_of_plan', label: 'COVERAGE', align: 'right', render: (s: any) => pct(s.coverage_pct_of_plan, 0) },
+            { key: 'coverage_pct_of_plan', label: 'COVERAGE', align: 'right', render: (s: any) => (
+              <span title={s.risky_coverage_pct_of_invested != null ? `risky-leg coverage of invested sleeve: ${s.risky_coverage_pct_of_invested}%` : undefined}>
+                {pct(s.coverage_pct_of_plan, 0)}
+              </span>) },
             { key: 'label2', label: 'METHODOLOGY', render: (s: any) => (
-              <span style={{ fontSize: t.label, color: BB.text3 }}>{(s.note || s.label.split('—').slice(1).join('—')).trim()}</span>) },
+              <span style={{ fontSize: t.label, color: BB.text3 }} title={s.date_range || undefined}>
+                {(s.methodology || s.note || String(s.label || '').split('—').slice(1).join('—')).trim()}
+              </span>) },
           ]} />
         </Section>
       )}
@@ -706,14 +1099,73 @@ export default function RedeployDesk() {
     </>
   ) : <div style={{ fontSize: t.body, color: BB.text3 }}>{performance.loading ? 'Computing performance…' : 'Select an event and plan first.'}</div>
 
-  // ── TAB: ENTRIES ───────────────────────────────────────────────────────────
+  // ── TAB: ENTRIES (Phase 16 — operator workflow order) ─────────────────────
   const entriesLegs = selectedPlan?.legs || []
+  const riskLegs = entriesLegs.filter((l: any) => !l.is_reserve)
+  const legHasStages = (l: any) => [1, 2, 3].some(s => l[`stage_${s}_pct`])
+  const implementNowRows = riskLegs.map((l: any) => legHasStages(l)
+    ? { ticker: l.ticker, role: l.role || l.dual_label, shares: l.stage_1_shares, price: l.stage_1_price ?? l.preferred_entry, dollars: l.stage_1_dollars }
+    : { ticker: l.ticker, role: l.role || l.dual_label, shares: l.target_shares, price: l.preferred_entry ?? l.current_price, dollars: l.target_dollars })
+    .filter((r: any) => r.dollars || r.shares)
+  const waitRows = riskLegs.flatMap((l: any) => [2, 3]
+    .filter(s => l[`stage_${s}_pct`])
+    .map(s => ({ ticker: l.ticker, stage: s, price: l[`stage_${s}_price`], shares: l[`stage_${s}_shares`], dollars: l[`stage_${s}_dollars`] })))
+    .map((r: any, i: number) => ({
+      ...r,
+      trigger: (selectedPlan?.tranche_triggers || [])[i]
+        || (r.price != null ? `price trigger $${num(r.price)}` : '—'),
+    }))
+  const selReadiness = selectedPlan ? readinessOf(selectedPlan) : null
+  const subHead = (s: string, color: string = BB.text0) => (
+    <div style={{ fontSize: t.subheading, fontWeight: 800, color, margin: `${t.gap}px 0 6px` }}>{s}</div>
+  )
   const entriesTab = (
-    <Section title={`Entry targets — ${planLabel ?? 'no plan selected'}`} t={t}
+    <Section title={`Entry workflow — ${planLabel ?? 'no plan selected'}`} t={t}
       right={<button onClick={refreshQuotes} style={{ background: BB.blueDim, color: BB.blue, border: `1px solid ${BB.blue}55`, borderRadius: 4, padding: '6px 12px', fontSize: t.label, fontWeight: 700, cursor: 'pointer' }}>REFRESH ALL QUOTES</button>}>
       {actionMsg && <div style={{ fontSize: t.body, color: BB.amberAlt, marginBottom: 8 }}>{actionMsg}</div>}
       {!selectedPlan && <div style={{ fontSize: t.body, color: BB.text3 }}>Select a plan in PLAN LAB — entries are always shown in the context of their plan.</div>}
-      {entriesLegs.filter((l: any) => !l.is_reserve).map((l: any) => (
+      {selectedPlan && (
+        <>
+          {subHead('IMPLEMENT NOW', BB.green)}
+          <DataTable t={t} rows={implementNowRows} empty="No stage-1 tranche is priced yet." cols={[
+            { key: 'ticker', label: 'TICKER', render: (r: any) => <b style={{ color: BB.text0 }}>{r.ticker}</b> },
+            { key: 'role', label: 'ROLE', render: (r: any) => String(r.role || '—').replace(/_/g, ' ') },
+            { key: 'shares', label: 'SHARES', align: 'right' },
+            { key: 'price', label: 'TARGET PX', align: 'right', render: (r: any) => r.price != null ? `$${num(r.price)}` : '—' },
+            { key: 'dollars', label: 'DOLLARS', align: 'right', render: (r: any) => fmt$(r.dollars) },
+          ]} />
+          {subHead('WAIT FOR STAGE 2/3', BB.amberAlt)}
+          <DataTable t={t} rows={waitRows} empty="Single-tranche plan — nothing staged for later." cols={[
+            { key: 'ticker', label: 'TICKER', render: (r: any) => <b style={{ color: BB.text0 }}>{r.ticker}</b> },
+            { key: 'stage', label: 'STAGE', align: 'right', render: (r: any) => `Stage ${r.stage}` },
+            { key: 'trigger', label: 'TRIGGER', render: (r: any) => <span style={{ color: BB.text2 }}>{r.trigger}</span> },
+            { key: 'shares', label: 'SHARES', align: 'right' },
+            { key: 'dollars', label: 'DOLLARS', align: 'right', render: (r: any) => fmt$(r.dollars) },
+          ]} />
+          {subHead('REMAINING RESERVE', BB.blue)}
+          <div style={{ fontSize: t.body, color: BB.text2, marginBottom: 4 }}>
+            <b style={{ color: BB.text0, fontFamily: BB.mono }}>{fmt$(selectedPlan.financials?.reserve_usd ?? selectedPlan.reserve_usd)}</b>
+            {selectedPlan.reserve_vehicle && <> parked in <b style={{ color: BB.text0 }}>{selectedPlan.reserve_vehicle}</b></>}
+            {selectedPlan.reserve_vehicle_yield_pct != null && <> yielding <b style={{ color: BB.green }}>{pct(selectedPlan.reserve_vehicle_yield_pct)}</b></>}
+            {selectedPlan.revisit_date && <> · revisit <b style={{ color: BB.amberAlt }}>{String(selectedPlan.revisit_date).slice(0, 10)}</b></>}
+          </div>
+          {(selectedPlan.entry_triggers || []).map((tr: string, i: number) => (
+            <div key={i} style={{ fontSize: t.body, color: BB.text3 }}>• deploy trigger: {tr}</div>
+          ))}
+          {selReadiness && !selReadiness.operator_ready && (
+            <>
+              {subHead('BLOCKERS', BB.red)}
+              {(selReadiness.reasons.length ? selReadiness.reasons : [selReadiness.display]).map((r: string, i: number) => (
+                <div key={i} style={{ fontSize: t.body, color: BB.red }}>• {r}</div>
+              ))}
+            </>
+          )}
+          {subHead('CURRENT ACTION', BB.amber)}
+          <div style={{ fontSize: t.body + 1, color: BB.text0, marginBottom: t.gap }}>{nextActionFor(selectedPlan)}</div>
+          {subHead('PER-LEG DETAIL')}
+        </>
+      )}
+      {riskLegs.map((l: any) => (
         <div key={l.ticker} style={{ border: `1px solid ${BB.border}`, borderRadius: 8, padding: t.gap, marginBottom: t.gap }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
             <span style={{ fontSize: t.subheading, fontWeight: 800, color: BB.text0 }}>{l.ticker}</span>
@@ -809,7 +1261,10 @@ export default function RedeployDesk() {
         {(selectedPlan?.rejected_alternatives || []).length
           ? (selectedPlan.rejected_alternatives).map((r: any, i: number) => (
               <div key={i} style={{ fontSize: t.body, color: BB.text2, padding: '5px 0' }}>
-                <b style={{ color: BB.text0 }}>{r.ticker || r.symbol || r.name || `alt ${i + 1}`}</b> — {r.reason || r.note || JSON.stringify(r).slice(0, 160)}
+                <b style={{ color: BB.text0 }}>{r.ticker || r.symbol || r.name || `alt ${i + 1}`}</b>
+                {r.reason_code && <> <Pill text={String(r.reason_code).replace(/_/g, ' ')} color={BB.amberAlt} /></>}
+                {' '}— {r.reason || r.note || 'no reason recorded'}
+                {r.eligible_again_when && <div style={{ fontSize: t.label, color: BB.text3, marginLeft: 14 }}>eligible again when: {r.eligible_again_when}</div>}
               </div>
             ))
           : <div style={{ fontSize: t.body, color: BB.text3 }}>No rejected alternatives recorded on this plan.</div>}
@@ -819,53 +1274,114 @@ export default function RedeployDesk() {
         <DataTable t={t} rows={candidates.data?.rejected ?? []} cols={[
           { key: 'symbol', label: 'SYMBOL' },
           { key: 'sources', label: 'SOURCES', render: r => (r.sources || []).join(', ') },
-          { key: 'reason', label: 'REJECTION REASON' },
+          { key: 'reason_code', label: 'CODE', render: r => r.reason_code
+            ? <span style={{ color: BB.amberAlt, fontSize: t.label }}>{String(r.reason_code).replace(/_/g, ' ')}</span> : '—' },
+          { key: 'reason', label: 'REJECTION REASON', render: r => <span style={{ whiteSpace: 'normal' }}>{r.reason || '—'}</span> },
+          { key: 'eligible_again_when', label: 'ELIGIBLE AGAIN WHEN', render: r => (
+            <span style={{ color: BB.text3, whiteSpace: 'normal' }}>{r.eligible_again_when || '—'}</span>) },
         ]} />
       </Section>
     </>
   )
 
-  // ── TAB: PM MEMO ───────────────────────────────────────────────────────────
-  const memoTab = selectedPlan ? (
-    <Section title={`PM memo — ${planLabel}`} t={t}>
-      {selectedPlan.hermes_narrative
-        ? <div style={{ fontSize: t.body + 1, lineHeight: 1.65, color: BB.text1, whiteSpace: 'pre-wrap', maxWidth: 900 }}>{selectedPlan.hermes_narrative}</div>
-        : <div style={{ fontSize: t.body, color: BB.text3 }}>No narrative persisted for this plan version — plan is not operator-ready.</div>}
-      {selectedPlan.unmet_exposure?.length ? (
-        <div style={{ marginTop: t.gap }}>
-          <div style={{ fontSize: t.label, color: BB.amberAlt, fontWeight: 700, marginBottom: 4 }}>UNMET EXPOSURE</div>
-          {selectedPlan.unmet_exposure.map((u: any, i: number) => (
-            <div key={i} style={{ fontSize: t.body, color: BB.text2 }}>• {typeof u === 'string' ? u : `${u.sector ?? ''} ${u.usd ? fmt$(u.usd) : ''} ${u.note ?? ''}`}</div>
-          ))}
+  // ── TAB: PM MEMO (defect 21 — professional memo, never raw JSON) ──────────
+  const memoTab = !eventId ? <div style={{ fontSize: t.body, color: BB.text3 }}>Select a sale event.</div>
+    : memoStruct?.sections ? (
+      <Section title="PM memo" t={t}
+        right={<span style={{ fontSize: t.label, color: BB.text3 }}>memo v{memoStruct.memo_version ?? '—'} · structured synthesis</span>}>
+        <div style={{ maxWidth: 900 }}>
+          {[
+            ...MEMO_SECTIONS,
+            // any sections the builder adds later still render, after the known order
+            ...Object.keys(memoStruct.sections)
+              .filter(k => !MEMO_SECTIONS.some(([known]) => known === k))
+              .map(k => [k, k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())] as [string, string]),
+          ].map(([key, label]) => {
+            const lines = memoLines(memoStruct.sections[key])
+            if (!lines.length) return null
+            return (
+              <div key={key} style={{ marginBottom: t.gap }}>
+                <div style={{ fontSize: t.subheading, fontWeight: 800, color: BB.amber, marginBottom: 4 }}>{label}</div>
+                {lines.length === 1
+                  ? <div style={{ fontSize: t.body + 1, lineHeight: 1.65, color: BB.text1, whiteSpace: 'pre-wrap' }}>{lines[0]}</div>
+                  : lines.map((ln, i) => (
+                    <div key={i} style={{ fontSize: t.body + 1, lineHeight: 1.6, color: BB.text1, padding: '2px 0' }}>• {ln}</div>
+                  ))}
+              </div>
+            )
+          })}
         </div>
-      ) : null}
-      {selectedPlan.scenarios ? (
-        <div style={{ marginTop: t.gap }}>
-          <div style={{ fontSize: t.label, color: BB.blue, fontWeight: 700, marginBottom: 4 }}>PLAN SCENARIOS</div>
-          <pre style={{ fontSize: t.table, color: BB.text2, whiteSpace: 'pre-wrap', fontFamily: BB.mono }}>
-            {typeof selectedPlan.scenarios === 'string' ? selectedPlan.scenarios : JSON.stringify(selectedPlan.scenarios, null, 1)}
-          </pre>
+      </Section>
+    ) : selectedPlan ? (
+      <Section title={`PM memo — ${planLabel}`} t={t}>
+        <div style={{ fontSize: t.label, color: BB.text3, marginBottom: 8 }}>
+          Structured memo not yet generated for this event — showing the legacy plan narrative. Recompute plans to produce the full memo.
         </div>
-      ) : null}
-    </Section>
-  ) : <div style={{ fontSize: t.body, color: BB.text3 }}>Select a plan first.</div>
+        {selectedPlan.hermes_narrative
+          ? <div style={{ fontSize: t.body + 1, lineHeight: 1.65, color: BB.text1, whiteSpace: 'pre-wrap', maxWidth: 900 }}>{selectedPlan.hermes_narrative}</div>
+          : <div style={{ fontSize: t.body, color: BB.text3 }}>No narrative persisted for this plan version — plan is not operator-ready.</div>}
+        {selectedPlan.unmet_exposure?.length ? (
+          <div style={{ marginTop: t.gap }}>
+            <div style={{ fontSize: t.label, color: BB.amberAlt, fontWeight: 700, marginBottom: 4 }}>UNMET EXPOSURE</div>
+            {selectedPlan.unmet_exposure.map((u: any, i: number) => (
+              <div key={i} style={{ fontSize: t.body, color: BB.text2 }}>• {typeof u === 'string' ? u : `${u.sector ?? ''} ${u.usd ? fmt$(u.usd) : ''} ${u.note ?? ''}`}</div>
+            ))}
+          </div>
+        ) : null}
+      </Section>
+    ) : <div style={{ fontSize: t.body, color: BB.text3 }}>Select a plan first.</div>
 
-  // ── TAB: AUDIT ─────────────────────────────────────────────────────────────
+  // ── TAB: AUDIT — decision lineage first, legacy monitor rows collapsed ─────
+  const lineageRows: any[] = audit.data?.lineage ?? []
   const auditTab = (
-    <Section title="Audit trail" t={t}>
-      <DataTable t={t} rows={audit.data?.rows ?? []} empty="No audit rows for this event." cols={[
-        { key: 'created_at', label: 'AT', render: r => String(r.created_at).slice(0, 19) },
-        { key: 'action', label: 'ACTION' },
-        { key: 'is_test_artifact', label: 'INTEGRITY', render: r => r.is_test_artifact
-          ? <Pill text="TEST ARTIFACT — cleanup pending" color={BB.red} />
-          : <Pill text="operator" color={BB.green} /> },
-        { key: 'payload', label: 'PAYLOAD', render: r => <span style={{ fontSize: t.label, color: BB.text3 }}>{JSON.stringify(r.payload).slice(0, 140)}</span> },
-      ]} />
-    </Section>
+    <>
+      <Section title="Decision lineage" t={t}
+        right={<span style={{ fontSize: t.label, color: BB.text3 }}>who changed what, when, and why — per plan version</span>}>
+        {lineageRows.length ? (
+          <DataTable t={t} rows={lineageRows} cols={[
+            { key: 'when', label: 'WHEN', render: r => String(r.occurred_at || r.created_at || '—').slice(0, 19) },
+            { key: 'action', label: 'ACTION', render: r => <b style={{ color: BB.text0 }}>{String(r.action || '—').replace(/_/g, ' ')}</b> },
+            { key: 'actor', label: 'ACTOR', render: r => r.actor || '—' },
+            { key: 'detail', label: 'DETAIL', render: r => (
+              <span style={{ whiteSpace: 'normal' }}>
+                {r.prior_value != null && <span style={{ color: BB.text3 }}>{String(r.prior_value)} → </span>}
+                <span style={{ color: BB.text1 }}>{r.new_value != null ? String(r.new_value) : '—'}</span>
+                {r.reason && <span style={{ color: BB.text3 }}> — {r.reason}</span>}
+              </span>) },
+            { key: 'plan', label: 'PLAN', render: r => r.plan_id
+              ? `#${r.plan_id}${r.plan_version != null ? ` v${r.plan_version}` : ''}` : '—' },
+            { key: 'inferred', label: 'PROVENANCE', render: r => r.inferred
+              ? <Pill text="INFERRED" color={BB.amberAlt} title="Backfilled from surrounding evidence, not a recorded operator action" />
+              : <Pill text="recorded" color={BB.green} /> },
+          ]} />
+        ) : audit.loading ? (
+          <div style={{ fontSize: t.body, color: BB.text3 }}>Loading lineage…</div>
+        ) : (
+          <div style={{ fontSize: t.body, color: BB.red }}>
+            ⚠ GOVERNANCE GAP — no decision lineage exists for this event. Every plan generation,
+            selection, and lock must leave a lineage row; an empty trail means provenance cannot be audited.
+          </div>
+        )}
+      </Section>
+      <details style={{ marginBottom: t.gap }}>
+        <summary style={{ fontSize: t.body, color: BB.text2, cursor: 'pointer', padding: '6px 0' }}>
+          monitor events (legacy audit rows — {audit.data?.rows?.length ?? 0})
+        </summary>
+        <DataTable t={t} rows={audit.data?.rows ?? []} empty="No audit rows for this event." cols={[
+          { key: 'created_at', label: 'AT', render: r => String(r.created_at).slice(0, 19) },
+          { key: 'action', label: 'ACTION' },
+          { key: 'is_test_artifact', label: 'INTEGRITY', render: r => r.is_test_artifact
+            ? <Pill text="TEST ARTIFACT — cleanup pending" color={BB.red} />
+            : <Pill text="operator" color={BB.green} /> },
+          { key: 'payload', label: 'PAYLOAD', render: r => <span style={{ fontSize: t.label, color: BB.text3 }}>{JSON.stringify(r.payload).slice(0, 140)}</span> },
+        ]} />
+      </details>
+    </>
   )
 
   const body: Record<Tab, any> = {
     'CAPITAL BOOK': capitalBook,
+    'DECISION': decisionTab,
     'EVENT OVERVIEW': eventId ? eventOverview : <div style={{ fontSize: t.body, color: BB.text3 }}>Select a sale event.</div>,
     'PLAN LAB': eventId ? plansTab : null,
     'PLAN COMPARISON': eventId ? comparisonTab : null,

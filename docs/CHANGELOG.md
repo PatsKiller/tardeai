@@ -1,5 +1,54 @@
 # Changelog
 
+## 2026-07-14 — Redeploy semantic-integrity release (23-defect corrective, decision workstation)
+
+Full corrective release against the operator sign-off review (defect map:
+`docs/audits/REDEPLOY_DEFECT_MAP_2026-07-14.md`; decision packet:
+`docs/audits/FCNTX_144_DECISION_PACKET_2026-07-14.md`).
+
+- **Exact accounting (P0-2/3)** — every plan carries `financials`: legs + reserve + whole-share
+  residual = deployable, asserted at generation AND re-cut after Phase-C quote refresh
+  (`refresh_plan_snapshot`); residual is displayed, never dropped; each amount labels its meaning
+  (strategic target / executable at quote / staged limits / modeled). Cross-tab: Plan Lab, Performance,
+  Pro Forma, PM Memo and the recommendation all quote the SAME snapshot (verified identical A–G).
+- **Governed readiness (P0-1)** — `redeploy_decision.readiness_state`: majors are never
+  operator-ready with oversight pending → "ANALYTICS READY — OVERSIGHT PENDING"; distinct
+  SYSTEM PRIMARY / OPERATOR SELECTED / OPERATOR LOCKED / HIGHEST QUANT RANK chips.
+- **Per-plan export freshness (P0-4)** — `assess_export_readiness(plan_archetype=…)`; Plan B's stale
+  XLC can no longer block a Plan F export.
+- **State-aware narratives (P0-5)** — objectives/risks derive from settlement + regime; all
+  settlement language regenerates away once verified (Plan F: "Stage exposure because the current
+  regime is risk-off…").
+- **Audit lineage (P0-6)** — `redeploy_audit_log` (migration `2026_07_21`) + writers on plan-version
+  generation / oversight / lock / export + event-144 backfill (25 rows; unprovable moments labeled
+  `INFERRED_FROM_CURRENT_STATE`); AUDIT tab renders lineage, empty = red governance warning.
+- **Whole-plan analytics (P1-7/8/9)** — invested-sleeve vs whole-plan blocks (75%-reserve plan shows
+  ~1.6% whole-plan, not the sleeve's 6.7%); canonical income model `redeploy_income.income_snapshot`
+  (FCNTX: trailing 4.27% KNOWN with capital-gain note — never "unknown" beside a number).
+- **Scenario honesty (P1-10/11)** — ±1σ rows relabeled STATISTICAL_BAND ("NOT a forecast");
+  reserve-only coverage renders UNAVAILABLE FOR RISKY LEGS, never 0%.
+- **Honest archetypes (P1-12/13/14/16)** — A = "Strategic redesign"; B = "Partial multi-sector
+  restoration (top N of M)" with per-sector restoration; E gap-capped
+  (min(gap, 20%/leg, 30% sleeve): ITA $21.3k + XLE $2.9k vs the prior $53k/$53k); F states its
+  ultimate target + tranche triggers; G holds a named reserve vehicle (BIL 3.85%, revisit date,
+  opportunity-cost reference); every leg carries a role.
+- **Candidate-driven selection (P1-15/18/19/20)** — plans select per ROLE from the validated universe
+  with visible competition (method, score, margin, alternatives + why-lost; e.g. AGG beat BND/TLT/SHY);
+  security master rejects prose tokens (FORUM/WOULD/UNI → INVALID_SYMBOL); exclusions classified
+  (HISTORY_NOT_LOADED/PROVIDER_FAILED/GAPPED/INSUFFICIENT…); auto-backfill loaded MSFT/VIG/DGRO+22 more;
+  implausible short-series yields (ARKQ "23%") excluded from income roles by plausibility guards.
+- **Decision engine (Phases 5/6)** — transparent 10-dimension scorecard (visible, versioned,
+  operator-configurable weights in `config/redeploy_decision_weights.yaml`), plain-language
+  recommendation (primary + choose-when alternatives + do-not-choose), structured 18-section PM memo
+  (no raw JSON anywhere).
+- **Decision UI (Phases 13/16/17)** — new DECISION tab (default landing per event) + persistent
+  decision header (lean, selection, readiness, deploy/reserve, income Δ, next action); comparison
+  preloads primary+A+C+F; ENTRIES reorganized (IMPLEMENT NOW / WAIT FOR STAGE 2-3 / RESERVE /
+  BLOCKERS / CURRENT ACTION); oversight prompt now includes the exact accounting block.
+- **Tests** — +25 `test_redeploy_semantic_integrity.py`; full suite 97 green.
+- Oversight lanes ran live: Grok passed B/F; ChatGPT lane returns needs_review → plans honestly stay
+  OVERSIGHT PENDING (operator adjudication is the next action; the gate is working as required).
+
 ## 2026-07-14 — Redeploy 404 link + poisoned-connection self-heal
 
 - **404 on `/redeploy?...`** — `RedeployPanel.openModal` navigated without the `/v3` base path

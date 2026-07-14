@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from lib.redeploy_data_truth import STATE, _as_float, _load_json
+from lib.redeploy_income import income_snapshot
 from lib.redeploy_price_history import (
     annualized_vol_pct,
     beta_vs,
@@ -27,7 +28,7 @@ from lib.redeploy_price_history import (
     load_closes,
 )
 
-ENGINE_VERSION = "pro_forma_1.0.0"
+ENGINE_VERSION = "pro_forma_1.1.0"
 TOP_CONCENTRATION_N = 10
 
 
@@ -37,6 +38,21 @@ def _holdings() -> list[dict[str, Any]]:
 
 def _lookthrough() -> dict[str, Any]:
     return _load_json(Path(STATE) / "fund_lookthrough.json", {}) or {}
+
+
+def _known_fund_symbols() -> set[str]:
+    """Symbols known to be fund wrappers from state files (no hardcoded tickers):
+    fund_lookthrough.json + fund_holdings_cache.json membership."""
+    syms: set[str] = set()
+    for fname in ("fund_lookthrough.json", "fund_holdings_cache.json"):
+        d = _load_json(Path(STATE) / fname, {}) or {}
+        syms.update(str(k).upper() for k in d.keys() if not str(k).startswith("_"))
+    return syms
+
+
+def _is_fund_wrapper(sym: str, facts: dict[str, Any], known_funds: set[str]) -> bool:
+    qt = (facts.get("quote_type") or "").upper()
+    return qt in ("ETF", "MUTUALFUND") or sym.upper() in known_funds
 
 
 def _sector_maps() -> tuple[dict, dict]:
@@ -148,6 +164,15 @@ def analyze_state(cur, state: PortfolioState, *, facts_map: dict, lookthrough: d
     beta_covered = 0.0
     cash = 0.0
     data_gaps: list[str] = []
+    # defect #17: separated look-through tables
+    direct_agg: dict[str, dict[str, Any]] = {}     # symbol -> {dollars, is_fund_wrapper}
+    underlying: dict[str, dict[str, Any]] = {}     # issuer -> {direct_usd, indirect_usd, source_funds}
+    unresolved: dict[str, dict[str, Any]] = {}     # fund symbol -> row
+    known_funds = _known_fund_symbols()
+    # defect #8: canonical income model — one snapshot batch per state
+    inc_syms = sorted({p["symbol"] for p in state.positions
+                       if not p.get("is_cash") and _as_float(p.get("market_value")) > 0})
+    income_map = income_snapshot(cur, inc_syms) if inc_syms else {}
 
     for p in state.positions:
         sym = p["symbol"]
@@ -185,7 +210,9 @@ def analyze_state(cur, state: PortfolioState, *, facts_map: dict, lookthrough: d
             sec = _sector_of(sym, sector_cache, manual_map)
             sectors[sec] = sectors.get(sec, 0.0) + mv
 
-        # issuer exposure: direct + look-through top holdings
+        # DEPRECATED issuer table (mixes fund wrappers with underlying issuers);
+        # kept only for backward compat — use direct_positions/underlying_issuers/
+        # unresolved_lookthrough instead (defect #17).
         lt_holdings = lt.get("top_holdings") or facts.get("top_holdings") or []
         issuers[sym] = issuers.get(sym, 0.0) + (0.0 if lt_holdings else mv)
         for th in lt_holdings:
@@ -194,7 +221,39 @@ def analyze_state(cur, state: PortfolioState, *, facts_map: dict, lookthrough: d
             if t and w > 0:
                 issuers[t] = issuers.get(t, 0.0) + mv * w / 100.0
 
-        dy = facts.get("distribution_yield_pct")
+        # defect #17: three separated tables — fund wrappers NEVER appear as issuers
+        is_fund_wrapper = _is_fund_wrapper(sym, facts, known_funds) or bool(lt)
+        d = direct_agg.setdefault(sym, {"symbol": sym, "dollars": 0.0,
+                                        "is_fund_wrapper": is_fund_wrapper})
+        d["dollars"] += mv
+        if is_fund_wrapper:
+            resolved_w = 0.0
+            for th in lt_holdings:
+                t = str(th.get("ticker") or "").upper()
+                w = _as_float(th.get("weight") or th.get("weight_pct"))
+                if t and w > 0:
+                    u = underlying.setdefault(
+                        t, {"direct_usd": 0.0, "indirect_usd": 0.0, "source_funds": set()})
+                    u["indirect_usd"] += mv * w / 100.0
+                    u["source_funds"].add(sym)
+                    resolved_w += w
+            if resolved_w < 99.5:
+                row = unresolved.setdefault(sym, {
+                    "symbol": sym, "dollars": 0.0,
+                    "lookthrough_coverage_pct": round(min(resolved_w, 100.0), 1),
+                    "note": ("no holdings data — excluded from underlying_issuers"
+                             if resolved_w <= 0 else
+                             f"top-holdings look-through covers {min(resolved_w, 100.0):.1f}% "
+                             "of the fund — remainder unresolved"),
+                })
+                row["dollars"] += mv
+        else:
+            u = underlying.setdefault(
+                sym, {"direct_usd": 0.0, "indirect_usd": 0.0, "source_funds": set()})
+            u["direct_usd"] += mv
+
+        snap = income_map.get(sym) or {}
+        dy = snap.get("yield_pct")
         if dy is not None:
             income += mv * float(dy) / 100.0
         else:
@@ -217,6 +276,46 @@ def analyze_state(cur, state: PortfolioState, *, facts_map: dict, lookthrough: d
 
     top = sorted(((s, v) for s, v in issuers.items() if v > 0), key=lambda x: -x[1])
     equity_total = total - cash
+
+    # nested-fund filter: a look-through holding that is itself a known fund
+    # wrapper is not an economic issuer — reroute it to unresolved_lookthrough
+    lt_only = [t for t, u in underlying.items()
+               if u["indirect_usd"] > 0 and t not in facts_map]
+    nested_facts = get_instrument_facts(cur, lt_only) if lt_only else {}
+    for t in list(underlying):
+        u = underlying[t]
+        t_facts = facts_map.get(t) or nested_facts.get(t) or {}
+        if _is_fund_wrapper(t, t_facts, known_funds) and u["direct_usd"] <= 0:
+            row = unresolved.setdefault(t, {
+                "symbol": t, "dollars": 0.0,
+                "lookthrough_coverage_pct": 0.0,
+                "note": (f"nested fund inside {', '.join(sorted(u['source_funds']))} — "
+                         "not an economic issuer; second-level holdings unresolved"),
+            })
+            row["dollars"] += u["indirect_usd"]
+            del underlying[t]
+
+    underlying_rows = []
+    for issuer, u in underlying.items():
+        tot_usd = u["direct_usd"] + u["indirect_usd"]
+        if tot_usd <= 0:
+            continue
+        underlying_rows.append({
+            "issuer": issuer,
+            "direct_usd": round(u["direct_usd"], 2),
+            "indirect_usd": round(u["indirect_usd"], 2),
+            "total_usd": round(tot_usd, 2),
+            "pct_of_portfolio": round(tot_usd / total * 100.0, 2) if total > 0 else None,
+            "source_funds": sorted(u["source_funds"]),
+            "coverage_note": ("indirect exposure via top-holdings look-through only — "
+                              "uncovered fund weight listed in unresolved_lookthrough"
+                              if u["source_funds"] else None),
+        })
+    underlying_rows.sort(key=lambda r: -r["total_usd"])
+    unresolved_rows = sorted(
+        ({**r, "dollars": round(r["dollars"], 2)} for r in unresolved.values()),
+        key=lambda r: -r["dollars"])
+
     return {
         "label": state.label,
         "total_usd": round(total, 2),
@@ -232,11 +331,23 @@ def analyze_state(cur, state: PortfolioState, *, facts_map: dict, lookthrough: d
              "pct": round(v / total * 100.0, 2) if total > 0 else None}
             for k, v in sorted(sectors.items(), key=lambda x: -x[1])
         ],
+        # DEPRECATED: mixes fund wrappers with underlying issuers — kept only for
+        # backward compat; use the three separated tables below (defect #17).
         "top_issuers": [
             {"symbol": s, "usd": round(v, 2),
              "pct": round(v / total * 100.0, 2) if total > 0 else None}
             for s, v in top[:25]
         ],
+        "direct_positions": sorted(
+            ({**d, "dollars": round(d["dollars"], 2)} for d in direct_agg.values()),
+            key=lambda r: -r["dollars"])[:50],
+        "underlying_issuers": underlying_rows[:40],
+        "unresolved_lookthrough": unresolved_rows,
+        "lookthrough_note": ("direct_positions = what is actually held (wrappers flagged); "
+                             "underlying_issuers = economic issuers via look-through + direct "
+                             "single stocks (fund tickers never appear here); "
+                             "unresolved_lookthrough = fund dollars without (complete) "
+                             "holdings data"),
         "concentration_top10_pct": round(
             sum(v for _, v in top[:TOP_CONCENTRATION_N]) / total * 100.0, 2
         ) if total > 0 else None,

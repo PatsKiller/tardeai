@@ -219,7 +219,14 @@ def enrich_plan_legs(plan: dict[str, Any], *, regime_posture: str = "neutral") -
     return plan
 
 
-def assess_export_readiness(plans: list[dict[str, Any]]) -> dict[str, Any]:
+def assess_export_readiness(plans: list[dict[str, Any]],
+                            *, plan_archetype: str | None = None) -> dict[str, Any]:
+    """Freshness gate for export. When plan_archetype is given, ONLY that plan's legs
+    gate the export — a stale leg in another archetype must never block this plan
+    (defect 4: Plan F was blocked by Plan B's XLC)."""
+    if plan_archetype:
+        plans = [p for p in plans
+                 if str(p.get("plan_archetype") or "").upper() == plan_archetype.upper()[:1]]
     stale: set[str] = set()
     fresh: set[str] = set()
     for plan in plans:
@@ -245,10 +252,37 @@ def enrich_bundle_phase_c(bundle: dict[str, Any], *, market_context: dict[str, A
     posture = (market_context or {}).get("regime_posture") or "neutral"
     for plan in bundle.get("plans") or []:
         enrich_plan_legs(plan, regime_posture=posture)
+        # Phase-C re-floors whole shares on fresh quotes — re-cut the canonical snapshot
+        # from the FINAL legs so financials/plan_income match what every tab displays.
+        try:
+            from lib.redeploy_plan_engine import refresh_plan_snapshot
+            refresh_plan_snapshot(plan)
+        except Exception:
+            pass
     readiness = assess_export_readiness(bundle.get("plans") or [])
     bundle["entry_adapter_version"] = ADAPTER_VERSION
     bundle["regime_posture"] = posture
     bundle["export_readiness"] = readiness
+    # Recommendation + memo must quote the REFRESHED numbers (same snapshot as every tab)
+    try:
+        rec = bundle.get("recommendation") or {}
+        prim_arch = (rec.get("primary") or {}).get("archetype")
+        primary = next((p for p in bundle.get("plans") or []
+                        if p.get("plan_archetype") == prim_arch), None)
+        if primary:
+            fin = primary.get("financials") or {}
+            rec["primary"]["deploy_now_usd"] = fin.get("executable_at_current_quote_usd")
+            rec["primary"]["reserve_usd"] = fin.get("reserve_usd")
+            rec["primary"]["residual_usd"] = fin.get("whole_share_residual_usd")
+            from lib.redeploy_decision import build_pm_memo
+            bundle["pm_memo_structured"] = build_pm_memo(
+                bundle.get("_event_ref") or {}, primary, rec,
+                {"regime_posture": posture,
+                 "settled": bundle.get("settled_basis"),
+                 "exposure_removed_text": ((bundle.get("pm_memo_structured") or {})
+                                           .get("sections") or {}).get("exposure_removed")})
+    except Exception:
+        pass
     return bundle
 
 
@@ -257,8 +291,14 @@ def enrich_event_phase_c(event: dict[str, Any]) -> dict[str, Any]:
     bundle = meta.get("phase_b")
     if not bundle or not bundle.get("plans"):
         return event
+    bundle["_event_ref"] = {k: event.get(k) for k in ("symbol", "account", "sold_at", "proceeds_usd")}
     bundle = enrich_bundle_phase_c(bundle, market_context=meta.get("market_context"))
+    bundle.pop("_event_ref", None)
     meta["phase_b"] = bundle
+    if bundle.get("pm_memo_structured"):
+        meta["pm_memo_structured"] = bundle["pm_memo_structured"]
+    if bundle.get("recommendation"):
+        meta["recommendation"] = bundle["recommendation"]
     meta["phase_c"] = {
         "adapter_version": ADAPTER_VERSION,
         "regime_posture": bundle.get("regime_posture"),
@@ -373,14 +413,18 @@ def export_trade_plan(
     fmt: str = "json",
     force_stale: bool = False,
 ) -> dict[str, Any] | str:
-    readiness = (event.get("metadata") or {}).get("phase_c", {}).get("export_readiness") or {}
+    # Per-plan freshness (defect 4): the gate is THIS plan's legs only — never the
+    # event-wide union, so Plan B's stale sector ETF cannot block a Plan F export.
+    readiness = assess_export_readiness([plan],
+                                        plan_archetype=str(plan.get("plan_archetype") or "") or None)
     if not force_stale and not readiness.get("export_allowed"):
         return {
             "ok": False,
             "error": "stale_quotes",
+            "plan_archetype": plan.get("plan_archetype"),
             "stale_symbols": readiness.get("stale_symbols") or [],
             "export_quote_max_age_minutes": EXPORT_QUOTE_MAX_AGE_MINUTES,
-            "hint": "Refresh technical_snapshot or pass force_stale=1 for advisory preview only.",
+            "hint": "Refresh this plan's quotes or pass force_stale=1 for advisory preview only.",
         }
     payload = build_export_payload(event, plan)
     if fmt == "csv":

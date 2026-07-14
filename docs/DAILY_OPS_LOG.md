@@ -1,4 +1,16 @@
 
+## 2026-07-14 — Redeploy semantic-integrity release (operator 23-defect corrective)
+
+All 23 review defects closed (map in docs/audits/). Plans reconcile to the cent with explicit
+whole-share residual (re-cut after every quote refresh); readiness governed (oversight pending ≠
+operator-ready — lanes ran live, Grok passed B/F, ChatGPT lane needs_review → honestly PENDING);
+candidate-driven role selection with visible competition; honest archetype labels + gap-capped
+tactical sizing; canonical income model; whole-plan vs invested-sleeve; STATISTICAL_BAND scenario
+labels; audit lineage table backfilled (25 rows event #144); DECISION tab + persistent decision
+header + structured PM memo (no JSON). Cross-tab consistency verified identical across all 7 plans.
+97 tests green. Operator packet: docs/audits/FCNTX_144_DECISION_PACKET_2026-07-14.md. Evidence:
+artifacts/playwright/redeploy/decision_20260714T152534Z/.
+
 ## 2026-07-14 — Redeploy Phase-13 acceptance COMPLETE
 
 Closed every remaining spec gap: 10-scenario matrix (typed, coverage-honest), candidate universe 144

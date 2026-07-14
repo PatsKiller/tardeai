@@ -198,7 +198,12 @@ def test_plan_generation_not_hardcoded_only():
     # plan builder must accept dynamic inputs, not only static recipes
     assert "v1_targets" in src and "sleeve_gaps" in src
     assert 'exposure.get("sectors")' in src, "Plan B weights must derive from the event's removed sectors"
-    assert "_sleeve_gap_etfs" in src, "Plan E must consume live sleeve gaps"
+    # phase_b_2.0.0: legs are selected from the candidate universe per role with
+    # competition evidence (replaces the old _sleeve_gap_etfs even-split helper);
+    # Plan E consumes live sleeve gaps with gap-capped sizing
+    assert "_select_for_role" in src, "legs must be selected from the candidate universe by role"
+    assert "gap_usd" in src and "TACTICAL_SLEEVE_BUDGET_FRAC" in src, \
+        "Plan E must consume live sleeve gaps with gap-capped sizing"
     api = API.read_text()
     assert "/api/v2/redeploy/candidates" in api
     assert "build_candidates" in api, "dynamic candidate research must be wired into the API"

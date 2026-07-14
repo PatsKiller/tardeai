@@ -27195,7 +27195,29 @@ def _deploy_plans(query=None):
         ver = int(version) if version not in (None, "") else None
         cur = _get_conn().cursor()
         plans = list_plans_for_event(cur, eid, version=ver)
-        return {"ok": True, "advisory_only": True, "event_id": eid, "plans": plans}
+        # decision layer (Phases 5/6/14): recommendation + structured memo ride with plans
+        recommendation, memo, generated_basis = None, None, None
+        try:
+            cur.execute("SELECT metadata, locked_plan_id, locked_plan_version, operator_status "
+                        "FROM deploy_events WHERE id=%s", (eid,))
+            row = cur.fetchone()
+            meta = row[0] if row else {}
+            if isinstance(meta, str):
+                import json as _json
+                meta = _json.loads(meta)
+            bundle = (meta or {}).get("phase_b") or {}
+            recommendation = (meta or {}).get("recommendation") or bundle.get("recommendation")
+            memo = (meta or {}).get("pm_memo_structured") or bundle.get("pm_memo_structured")
+            generated_basis = {"settled_basis": bundle.get("settled_basis"),
+                               "regime_basis": bundle.get("regime_basis"),
+                               "generator_version": bundle.get("generator_version")}
+            locked = {"locked_plan_id": row[1], "locked_plan_version": row[2],
+                      "operator_status": row[3]} if row else {}
+        except Exception:
+            locked = {}
+        return {"ok": True, "advisory_only": True, "event_id": eid, "plans": plans,
+                "recommendation": recommendation, "pm_memo_structured": memo,
+                "generation_basis": generated_basis, **(locked or {})}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
@@ -27239,6 +27261,16 @@ def _deploy_export(query=None):
         if not plan:
             return {"ok": False, "error": "plan_not_found"}
         result = export_trade_plan(event, plan, fmt=fmt, force_stale=force)
+        try:
+            from lib.redeploy_audit import audit_log
+            exported_ok = isinstance(result, str) or result.get("ok", True)
+            audit_log(cur, eid, "export_requested", plan_id=pid,
+                      actor="operator",
+                      new_value=f"plan {plan.get('plan_archetype')} fmt={fmt} "
+                                f"{'ok' if exported_ok else 'blocked:' + str(result.get('error'))}")
+            cur.connection.commit()
+        except Exception:
+            pass
         if isinstance(result, str):
             return {"ok": True, "format": "csv", "content": result, "advisory_only": True}
         if not result.get("ok", True) and result.get("error"):
@@ -27545,6 +27577,15 @@ def _redeploy_audit(query=None):
             return {"ok": False, "error": "event_id required"}
         conn = _get_conn()
         cur = conn.cursor()
+        # governance lineage (Phase 15) — the primary audit surface
+        from lib.redeploy_audit import backfill_event_lineage, list_audit
+        backfill_event_lineage(cur, eid)   # idempotent; no-op once backfilled
+        lineage = list_audit(cur, eid)
+        for r in lineage:
+            for k in ("occurred_at", "created_at"):
+                if r.get(k) is not None:
+                    r[k] = r[k].isoformat()
+        # legacy monitor-audit rows (fills/locks) appended for completeness
         cur.execute(
             """SELECT id, action, idempotency_key, payload, created_at
                FROM redeploy_monitor_audit WHERE deploy_event_id=%s
@@ -27555,8 +27596,9 @@ def _redeploy_audit(query=None):
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
         for r in rows:
             r["is_test_artifact"] = bool(str(r.get("idempotency_key") or "").startswith("test-"))
-        conn.rollback()
-        return {"ok": True, "advisory_only": True, "event_id": eid, "rows": rows}
+        conn.commit()
+        return {"ok": True, "advisory_only": True, "event_id": eid,
+                "lineage": lineage, "rows": rows}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
