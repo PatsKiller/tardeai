@@ -13,8 +13,14 @@ archived rows — honest promoted coverage 100%, >100% structurally impossible n
 UI-fabricated (?? 0) over honest nulls → "—". Morning brief gets a ticking staleness banner >2h. PM
 memo oversight renders live from DB. Cross-tab plan income drift ($28) = reserve yield credited on
 unmodeled sweep — fixed. Home race → skeletons. Bonus: journal export SQL-precedence bug bypassing
-account/date filters — fixed. FLAG-BACKS for operator: (1) Schwab OAuth re-auth needed; (2) journal
-CSV stale since 2026-04-30 — import fresh Schwab History CSV or repoint header to broker truth;
+account/date filters — fixed. FLAG-BACKS for operator: (1) ~~Schwab OAuth re-auth needed~~ CORRECTED — operator confirms an
+auto-auth setup exists and the token store shows a fresh seed 2026-07-14 10:15 (expiry 07-21);
+the audit's "needs manual re-auth" claim was wrong. Schwab token machinery NOT touched per
+operator instruction; the quote lane's fallback-provider slowness is now mitigated by caching
+regardless. Residual observation only: schwab_position_sync logs 'degraded_noop (no Schwab login
+token)' — left entirely alone. (2) journal CSV stale — newest on disk is
+data/portfolios/input/Individual_XXX469_Transactions_20260605-164914.csv (Jun 5); a fresh Schwab
+History export dropped into data/portfolios/input/ enables the header-journal rebuild.
 (3) ~40k orphaned content_embeddings await a retention decision. 112 tests green; holdings guard held
 throughout. Known non-issues honored (JEPQ legit, $21 rounding, look-through gap label).
 
