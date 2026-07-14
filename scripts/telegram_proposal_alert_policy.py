@@ -31,6 +31,34 @@ def classify_proposal_alert_state(proposal: dict) -> str:
     return "NEEDS_OPERATOR_DECISION"
 
 
+def _account_meta(proposal: dict) -> dict:
+    acct = (proposal.get("target_account") or proposal.get("proposed_account")
+            or proposal.get("intended_broker") or proposal.get("final_account") or "")
+    acct = str(acct).strip()
+    display = acct
+    lane = "paper_atm"
+    try:
+        from broker_config import get_account_display_name
+        if acct:
+            display = get_account_display_name(acct)
+    except Exception:
+        try:
+            from automated_account import display_account_label
+            display = display_account_label(acct) if acct else "—"
+        except Exception:
+            display = acct.replace("_", " ").title() if acct else "—"
+    if acct.startswith("schwab") or acct.startswith("fidelity"):
+        lane = "live_2fa"
+    elif acct:
+        try:
+            from automated_account import is_automated_account
+            lane = "paper_atm" if is_automated_account(acct) else "live_2fa"
+        except Exception:
+            pass
+    lane_label = {"live_2fa": "Schwab/Fidelity · 2FA manual", "paper_atm": "Automated · Alpaca paper"}.get(lane, lane)
+    return {"account_key": acct, "account_display": display, "routing_lane": lane, "routing_lane_label": lane_label}
+
+
 def _strategy_meta(proposal: dict) -> dict:
     sid = proposal.get("strategy_id") or ""
     try:
@@ -56,6 +84,7 @@ def build_proposal_alert_packet(proposal: dict) -> dict:
     """Build the decision packet for a Telegram alert."""
     alert_state = classify_proposal_alert_state(proposal)
     _meta = _strategy_meta(proposal)
+    _acct = _account_meta(proposal)
     blockers = proposal.get("approval_blockers") or []
     er = proposal.get("execution_readiness") or {}
     rr = float(proposal.get("proposed_rr") or 0)
@@ -81,6 +110,12 @@ def build_proposal_alert_packet(proposal: dict) -> dict:
         "urgency": "HIGH" if alert_state == "ACTIONABLE_READY" else "MEDIUM" if "BLOCKED" in alert_state else "LOW",
         "proposal_id": proposal.get("id"),
         "symbol": proposal.get("symbol"),
+        "status": proposal.get("status"),
+        "proposed_by": proposal.get("proposed_by") or proposal.get("source"),
+        "account_key": _acct.get("account_key"),
+        "account_display": _acct.get("account_display"),
+        "routing_lane": _acct.get("routing_lane"),
+        "routing_lane_label": _acct.get("routing_lane_label"),
         "strategy_id": proposal.get("strategy_id"),
         "strategy_display": _meta.get("display_name") or proposal.get("strategy_id"),
         "strategy_type": _meta.get("strategy_type"),
@@ -136,12 +171,28 @@ def format_telegram_message(packet: dict) -> str:
     _type_line = _esc_md(packet.get("strategy_type_label") or packet.get("strategy_type") or "Unknown")
     if packet.get("strategy_timeframe"):
         _type_line += f" · {_esc_md(packet['strategy_timeframe'])}"
+    pid = packet.get("proposal_id") or "?"
+    try:
+        from notification_url_builder import build_proposal_url
+        detail_url = build_proposal_url(pid, packet.get("symbol"))
+    except Exception:
+        detail_url = None
+
     lines = [
-        f"{emoji} *Trade Proposal: {packet['symbol']}*",
+        f"{emoji} *Trade Proposal #{pid}: {packet['symbol']}*",
         f"Strategy: {_esc_md(packet['strategy_display'])}",
         f"Type: {_type_line} | {packet['alert_type'].replace('_', ' ')}",
-        "",
     ]
+    if packet.get("account_display"):
+        acct_line = f"Account: {_esc_md(packet['account_display'])}"
+        if packet.get("routing_lane_label"):
+            acct_line += f" · {_esc_md(packet['routing_lane_label'])}"
+        lines.append(acct_line)
+    if packet.get("status"):
+        src = packet.get("proposed_by") or ""
+        src_bit = f" · via {_esc_md(str(src).replace('_', ' '))}" if src else ""
+        lines.append(f"Status: {packet['status']}{src_bit}")
+    lines.append("")
 
     if packet.get("sector"):
         lines.append(f"Sector: {packet['sector']}" + (f" / {packet['industry']}" if packet.get("industry") else ""))
@@ -173,15 +224,17 @@ def format_telegram_message(packet: dict) -> str:
     if packet["approval_allowed"]:
         lines.append("_Approve & route available_")
     else:
-        lines.append("_Approval blocked — review required_")
+        lines.append("_Execution gates failed — review in Command Center (not a 2FA order approval)_")
 
     # ALERT-2: Add Telegram command shortcuts
-    pid = packet.get("proposal_id") or "?"
     lines.append("")
     if packet["approval_allowed"]:
         lines.append(f"`/ptapprove {pid}`")
     lines.append(f"`/ptreject {pid}`")
-    lines.append(f"`proposal status`  |  Details: https://ms01-openclaw.tail163d14.ts.net/v3/trading")
+    if detail_url:
+        lines.append(f"[Open proposal #{pid}]({detail_url})")
+    else:
+        lines.append(f"Details: /v3/trading?tab=Proposals&proposal={pid}")
 
     return "\n".join(lines)
 
@@ -209,5 +262,13 @@ def build_proposal_inline_keyboard(packet: dict) -> dict | None:
             {"text": "Reject", "callback_data": f"ptreject:{pid}"},
             {"text": "More Info", "callback_data": f"ptinfo:{pid}"},
         ])
+
+    try:
+        from notification_url_builder import build_proposal_url
+        url = build_proposal_url(pid, packet.get("symbol"))
+        if url:
+            rows.append([{"text": "🔎 Review proposal", "url": url}])
+    except Exception:
+        pass
 
     return {"inline_keyboard": rows}

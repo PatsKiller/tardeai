@@ -151,6 +151,7 @@ export default function WatchlistCardV4({
   }
 
   const sectorShort = sc?.sector || it.profile_sector || null
+  const companyDesc = sc?.description || it.profile_description || null
   const isHeld = it.in_portfolio || outcome?.held
   const analystDivergent = pa?.divergence === 'divergent'
   const allNews: any[] = sc?.news ?? []
@@ -224,6 +225,12 @@ export default function WatchlistCardV4({
   )
 
   const contextBullets: { key: string; node: React.ReactNode }[] = []
+  if (companyDesc) {
+    contextBullets.push({
+      key: 'co',
+      node: <><span style={{ color: BB.text3, fontWeight: 800 }}>CO </span>{truncate(String(companyDesc), 90)}</>,
+    })
+  }
   if (cioNote) {
     contextBullets.push({
       key: 'cio',
@@ -462,7 +469,7 @@ export default function WatchlistCardV4({
       {/* ④ Minimal context strip */}
       {contextBullets.length > 0 && (
         <div onClick={e => e.stopPropagation()} style={{ padding: '5px 10px', borderTop: hair, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {contextBullets.slice(0, 4).map(b => (
+          {contextBullets.slice(0, 5).map(b => (
             <div key={b.key} style={{ fontSize: 9.5, color: BB.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={typeof b.node === 'string' ? b.node : undefined}>
               {b.node}
             </div>
@@ -534,8 +541,8 @@ export default function WatchlistCardV4({
               {n.url ? link(n.url, String(n.title)) : n.title}
             </div>
           ))}
-          {(sc?.description || it.profile_description) && (
-            <div><span style={{ color: BB.text3, fontWeight: 800 }}>CO </span>{truncate(String(sc?.description || it.profile_description), 200)}</div>
+          {companyDesc && companyDesc.trim().length > 90 && (
+            <div><span style={{ color: BB.text3, fontWeight: 800 }}>CO </span>{truncate(String(companyDesc), 200)}</div>
           )}
           {llms.length > 0 && (
             <div><span style={{ color: BB.text3, fontWeight: 800 }}>INTEL </span>{llms.map((e: any) => e.lane).join(' · ')}</div>

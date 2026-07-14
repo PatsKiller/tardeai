@@ -166,7 +166,11 @@ def main():
                 action_result["applied"] = True
 
             elif action == "OPEN_DETAILS":
-                action_result["message"] = f"Details: https://ms01-openclaw.tail163d14.ts.net/v3/trading"
+                try:
+                    from notification_url_builder import build_proposal_url
+                    action_result["message"] = build_proposal_url(proposal.get("id"), proposal.get("symbol"))
+                except Exception:
+                    action_result["message"] = f"/v3/trading?tab=Proposals&proposal={proposal.get('id')}"
                 action_result["success"] = True
 
             _log_callback(cb_key, proposal.get("id"), symbol, action, True, True,

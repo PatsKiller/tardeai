@@ -529,12 +529,12 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
                 <div key={it.id} style={{ minWidth: 0, width: '100%' }}>
                 <WatchlistCardV4
                   it={it}
-                  adv={advMap[it.symbol]}
-                  sc={cardMap[it.symbol]}
-                  pa={paMap[it.symbol]}
+                  adv={advMap[symKey] ?? advMap[it.symbol]}
+                  sc={cardMap[symKey] ?? cardMap[it.symbol]}
+                  pa={paMap[symKey] ?? paMap[it.symbol]}
                   outcome={outcome ? { ...outcome, sold: (outcome.closed_trades ?? 0) > 0 } : undefined}
-                  llms={extMap[it.symbol] || []}
-                  fv={fvMap[it.symbol]}
+                  llms={extMap[symKey] ?? extMap[it.symbol] ?? []}
+                  fv={fvMap[symKey] ?? fvMap[it.symbol]}
                   reportEntry={reportMap[symKey]}
                   paMap={paMap}
                   accounts={proposalAccounts}

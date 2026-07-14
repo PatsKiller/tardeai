@@ -57,9 +57,17 @@ class TestAlertPolicy(unittest.TestCase):
             "catalyst": "Contract win", "catalyst_verified": True,
             "approval_blockers": [], "execution_readiness": {},
         })
+        pkt["proposal_id"] = 2297
+        pkt["account_display"] = "Schwab Taxable"
+        pkt["routing_lane_label"] = "Schwab/Fidelity · 2FA manual"
+        pkt["status"] = "PENDING"
+        pkt["proposed_by"] = "watchlist_proposal_bridge"
         msg = format_telegram_message(pkt)
         self.assertIn("ATLN", msg)
+        self.assertIn("#2297", msg)
         self.assertIn("Swing Breakout", msg)
+        self.assertIn("Schwab Taxable", msg)
+        self.assertIn("tab=Proposals&proposal=2297", msg)
         self.assertIn("1.50", msg)
         self.assertIn("1.43", msg)
         self.assertIn("1.65", msg)

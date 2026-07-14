@@ -16486,6 +16486,46 @@ def _broker_proposals(query=None):
         symbol_f = str(_broker_qp(query, "symbol", _broker_qp(query, "q", "")) or "").upper().strip()
         account_f = str(_broker_qp(query, "account", "") or "").strip()
         strategy_f = str(_broker_qp(query, "strategy_id", _broker_qp(query, "strategy", "")) or "").strip()
+        proposal_id_f = str(_broker_qp(query, "proposal_id", _broker_qp(query, "proposal", "")) or "").strip()
+        if proposal_id_f.isdigit():
+            _pid_row = _db_query(
+                """SELECT id, symbol, strategy_id, COALESCE(target_account, proposed_account) AS account,
+                          intended_broker, status, COALESCE(routing_state,'queued') AS routing_state,
+                          COALESCE(origin,'auto') AS origin, discovery_source, cio_view, sizing_basis,
+                          proposed_entry, proposed_stop, proposed_target1, current_price,
+                          proposed_shares, proposed_dollar_size, proposed_dollar_risk, proposed_rr,
+                          created_at, expires_at, updated_at, rvol, gap_pct, catalyst,
+                          last_curated_at, curation_status, curation_snapshot, technical_context,
+                          live_submit_path, last_correlation_id
+                   FROM paper_trade_proposals WHERE id = %s LIMIT 1""",
+                (int(proposal_id_f),), fetch="one",
+            )
+            if _pid_row:
+                _wl = _fetch_watchlist_buy_symbols([_pid_row.get("symbol")])
+                _prof = _broker_symbol_profiles_batch([_pid_row.get("symbol")])
+                _row = _broker_proposal_row_base(_pid_row, {}, _wl, _prof)
+                _acct = _row.get("account") or ""
+                _row.update(_broker_account_label_meta(_acct))
+                _row["activity"] = None
+                _row["activity_pending"] = True
+                _row["intel"] = {"ok": False, "lazy": True}
+                _row["detail_pending"] = True
+                _row["broker_diligence"] = None
+                _row["oversight"] = {"status": None, "lazy": True}
+                _one = _broker_reprice_proposal_rows([_row])
+                accounts = _db_query("""SELECT account_key, broker, display_name FROM broker_accounts
+                    WHERE broker ILIKE '%%schwab%%' OR broker ILIKE '%%fidelity%%' ORDER BY account_key""") or []
+                return {
+                    "proposals": _one,
+                    "quotes_live": True,
+                    "autocal": autocal_meta or None,
+                    "list_mode": "proposal_deeplink",
+                    "cached": False,
+                    "pagination": {"page": 1, "page_size": 1, "total": 1, "total_pages": 1},
+                    "filters": {"proposal_id": int(proposal_id_f), "symbol": _pid_row.get("symbol")},
+                    "accounts": [{**{k: _json_clean(v) for k, v in a.items()},
+                                  **_broker_account_label_meta(a.get("account_key") or "")} for a in accounts],
+                }
         rr_f = _broker_parse_rr_filters(query)
         if sort == "priority" and rr_f.get("sort_hint"):
             sort = rr_f["sort_hint"]

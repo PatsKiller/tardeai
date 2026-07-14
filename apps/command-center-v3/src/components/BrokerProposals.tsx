@@ -132,12 +132,20 @@ const RR_PRESET_SORT: Record<string, string> = {
   planned_2: 'rr',
 }
 
-export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string } = {}) {
+export default function BrokerProposals({
+  focusSymbol,
+  focusProposalId,
+}: { focusSymbol?: string; focusProposalId?: number } = {}) {
   // Global card-family v4 evaluation toggle (switch UI lives on the Watch hub).
   const ProposalCard = BrokerProposalCardV4
   const [listFilters, setListFilters] = useState<ListFilters>(DEFAULT_FILTERS)
   const [bypassCache, setBypassCache] = useState(false)
   const [view, setView] = useState<'active' | 'expired'>('active')
+  const [focus, setFocus] = useState((focusSymbol || '').toUpperCase())
+  const [focusPid, setFocusPid] = useState<number | null>(
+    focusProposalId != null && Number.isFinite(focusProposalId) ? focusProposalId : null,
+  )
+  const focusScrollRef = useRef<HTMLDivElement | null>(null)
   const listPath = useMemo(() => {
     const p = new URLSearchParams()
     if (view === 'expired') p.set('status', 'EXPIRED')
@@ -154,8 +162,9 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     if (listFilters.account) p.set('account', listFilters.account)
     if (listFilters.symbol) p.set('symbol', listFilters.symbol)
     if (listFilters.rrPreset) p.set('rr_preset', listFilters.rrPreset)
+    if (focusPid) p.set('proposal_id', String(focusPid))
     return `/api/v2/broker-proposals?${p.toString()}`
-  }, [listFilters, bypassCache, view])
+  }, [listFilters, bypassCache, view, focusPid])
 
   const [fastPoll, setFastPoll] = useState(false)
   const { data, loading, error, stale, refetch } = useApi<any>(listPath, fastPoll ? 15_000 : 30_000)
@@ -203,7 +212,6 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
   const [routeApproveCode, setRouteApproveCode] = useState<Record<number, string>>({})
   const [routeBusy, setRouteBusy] = useState<Record<number, boolean>>({})
   const [heldOnly, setHeldOnly] = useState(false)
-  const [focus, setFocus] = useState((focusSymbol || '').toUpperCase())
   const [modalSeed, setModalSeed] = useState<ManualExecSeed | null>(null)
   const [adjustSeed, setAdjustSeed] = useState<BrokerPromoteSeed | null>(null)
   const [destAccount, setDestAccount] = useState<Record<number, string>>({})
@@ -388,13 +396,25 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
     return merged
   }
 
+  useEffect(() => {
+    if (focusProposalId != null && Number.isFinite(focusProposalId)) setFocusPid(focusProposalId)
+  }, [focusProposalId])
+
   const isHeld = (sym: string) => !!outMap[String(sym).toUpperCase()]?.held
   const heldN = proposals.filter(p => isHeld(p.symbol)).length
   let shown = heldOnly ? proposals.filter(p => isHeld(p.symbol)) : proposals
-  if (focus && proposals.some(p => String(p.symbol).toUpperCase() === focus)) {
+  if (focusPid && proposals.some(p => p.id === focusPid)) {
+    shown = shown.filter(p => p.id === focusPid)
+  } else if (focus && proposals.some(p => String(p.symbol).toUpperCase() === focus)) {
     shown = shown.filter(p => String(p.symbol).toUpperCase() === focus)
   }
   shown = dedupeEntryProposals(shown)
+
+  useEffect(() => {
+    if (!focusPid || !proposals.some(p => p.id === focusPid)) return
+    const t = window.setTimeout(() => focusScrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120)
+    return () => window.clearTimeout(t)
+  }, [focusPid, proposals])
 
   const set = (k: string, v: any) => setF({ ...f, [k]: v })
 
@@ -941,10 +961,15 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
         />
       )}
 
-      {focus && (
+      {(focusPid || focus) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, fontSize: 11.5, background: 'rgba(96,165,250,.1)', border: '1px solid rgba(96,165,250,.35)', color: '#93c5fd' }}>
-          <span>Focused on <b style={{ fontFamily: 'monospace', color: TEXT0 }}>{focus}</b>.</span>
-          <button onClick={() => setFocus('')} style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }}>show all</button>
+          {focusPid
+            ? <span>Deep-linked to proposal <b style={{ fontFamily: 'monospace', color: TEXT0 }}>#{focusPid}</b>.</span>
+            : <span>Focused on <b style={{ fontFamily: 'monospace', color: TEXT0 }}>{focus}</b>.</span>}
+          <button
+            onClick={() => { setFocus(''); setFocusPid(null) }}
+            style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }}
+          >show all</button>
         </div>
       )}
 
@@ -1395,8 +1420,13 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
             const p = mergeProposal(rawP)
             const dest = destAccount[p.id] ?? p.account ?? ''
             return (
-              <ProposalCard
+              <div
                 key={p.id}
+                id={`proposal-${p.id}`}
+                ref={focusPid === p.id ? focusScrollRef : undefined}
+                style={focusPid === p.id ? { outline: `2px solid ${AMBER}`, borderRadius: 12, scrollMarginTop: 72 } : undefined}
+              >
+              <ProposalCard
                 proposal={p}
                 accounts={accounts}
                 destAccount={dest}
@@ -1439,6 +1469,7 @@ export default function BrokerProposals({ focusSymbol }: { focusSymbol?: string 
                 resizeBusy={!!resizeBusy[p.id]}
                 actionBusy={!!cardActionBusy[p.id]}
               />
+              </div>
             )
           })}
         </div>

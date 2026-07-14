@@ -85,8 +85,14 @@ def build_dashboard_url(path: str = "/v3/") -> str:
     return _to_v3(f"{PUBLIC_BASE_URL}{path}")
 
 
-def build_proposal_url(proposal_id) -> str:
-    return f"{PUBLIC_BASE_URL}/v3/trading?proposal={proposal_id}"
+def build_proposal_url(proposal_id, symbol: str | None = None) -> str:
+    """Deep-link to the exact broker proposal card on Trading → Proposals."""
+    host = os.getenv("TAILSCALE_HOSTNAME", "").strip()
+    base = f"https://{host}" if host else PUBLIC_BASE_URL
+    q = f"tab=Proposals&proposal={proposal_id}"
+    if symbol:
+        q += f"&symbol={str(symbol).upper()}"
+    return f"{base}/v3/trading?{q}"
 
 
 def build_trade_url(trade_id) -> str:

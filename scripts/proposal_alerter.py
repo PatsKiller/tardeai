@@ -128,7 +128,7 @@ def format_proposal_alert(proposal, alert_type, current_price):
     tailscale_host = os.environ.get("TAILSCALE_HOSTNAME", "").strip()
     if tailscale_host and rows:
         rows.append([
-            {"text": "\U0001f50e Review trade", "url": f"https://{tailscale_host}/v3/trading?tab=Review&proposal={pid}"},
+            {"text": "\U0001f50e Review trade", "url": f"https://{tailscale_host}/v3/trading?tab=Proposals&proposal={pid}"},
             {"text": "⚙️ Policy", "url": f"https://{tailscale_host}/v3/automation?account=alpaca_paper"},
         ])
 

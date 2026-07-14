@@ -43,7 +43,9 @@ export default function TradingHub({ onDrill }: Props) {
   const [searchParams] = useSearchParams()
   // Proposals unified into a single tab — old "Broker Proposals" deep-links land on "Proposals".
   const rawUrlTab = searchParams.get('tab')
-  const urlTab = rawUrlTab === 'Broker Proposals' ? 'Proposals' : (TAB_ALIASES[rawUrlTab ?? ''] ?? rawUrlTab)
+  const urlProposal = searchParams.get('proposal')
+  const urlTab = rawUrlTab === 'Broker Proposals' ? 'Proposals'
+    : (urlProposal && !rawUrlTab ? 'Proposals' : (TAB_ALIASES[rawUrlTab ?? ''] ?? rawUrlTab))
   const [tab, setTab] = useState<typeof TABS[number]>(
     (TABS as readonly string[]).includes(urlTab ?? '') ? (urlTab as typeof TABS[number]) : 'Trade AI')
   useEffect(() => {
@@ -558,7 +560,12 @@ export default function TradingHub({ onDrill }: Props) {
         </>
       )}
 
-      {tab === 'Proposals' && <BrokerProposals focusSymbol={searchParams.get('symbol') || undefined} />}
+      {tab === 'Proposals' && (
+        <BrokerProposals
+          focusSymbol={searchParams.get('symbol') || undefined}
+          focusProposalId={urlProposal ? Number(urlProposal) : undefined}
+        />
+      )}
       {tab === 'Broker Orders' && <BrokerOrders draftSeed={draftSeed} />}
       {tab === 'Schwab Accounts' && (
         <SchwabAccountsMonitor onEditDraft={(intent: any) => { setDraftSeed(intent); setTab('Broker Orders') }} />
