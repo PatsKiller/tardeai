@@ -1,13 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
-import { useTerminalUi } from '../lib/terminalUi'
-import { hubPanel } from '../lib/terminalHubChrome'
-
-const GREEN = '#22c55e'
-const AMBER = '#f59e0b'
-const BLUE = '#60a5fa'
-const PURPLE = '#a855f7'
+import { BB } from '../lib/holdingsTerminalTokens'
+import { hubPanel, hubStrip, hubFilterSelect } from '../lib/terminalHubChrome'
 
 type DeployTarget = {
   symbol: string
@@ -16,7 +11,6 @@ type DeployTarget = {
   rationale?: string
   review_amount_range?: { low?: number; high?: number }
   evidence?: Record<string, unknown>
-  market_context?: Record<string, unknown>
 }
 
 type DeployEvent = {
@@ -27,46 +21,47 @@ type DeployEvent = {
   proceeds_usd?: number
   proxy_symbol?: string
   proxy_sleeve?: string
-  status: string
+  tier?: string
   redeploy_plan?: DeployTarget[]
-  lookthrough_delta?: { theme?: string; delta_pct?: number; note?: string }[]
+  lookthrough_delta?: { theme?: string; delta_pct?: number }[]
   metadata?: {
+    sale_context?: { tier?: string; reduced_themes?: string[]; proceeds_usd?: number }
+    advisory_note?: string
+    sleeve_gaps?: { theme?: string; gap_pct?: number; gap_usd?: number }[]
     market_context?: {
-      geopolitical?: { posture?: string; catalyst_count?: number; active_themes?: string[] }
-      regime?: { label?: string }
+      geopolitical?: { posture?: string; catalyst_count?: number }
       regime_posture?: string
     }
-    sleeve_gaps?: { theme?: string; gap_pct?: number; gap_usd?: number }[]
-    methodology?: string
   }
 }
 
+const TIER_COLOR: Record<string, string> = { major: BB.amber, moderate: BB.blue, minor: BB.text3 }
+const GRID = '72px 56px 108px 92px 1fr 88px 72px'
+
 const fmtDate = (s?: string) => {
   if (!s) return '—'
-  const d = new Date(`${String(s).slice(0, 10)}T12:00:00`)
-  return isNaN(+d) ? String(s).slice(0, 10) : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  return String(s).slice(5).replace('-', '/') || String(s).slice(0, 10)
 }
-
-const daysSince = (s?: string) => {
-  if (!s) return null
-  const sold = new Date(`${String(s).slice(0, 10)}T12:00:00`)
-  if (isNaN(+sold)) return null
-  return Math.round((Date.now() - sold.getTime()) / 864e5)
-}
-
-const postureColor = (p?: string) => p === 'elevated' ? AMBER : p === 'moderate' ? BLUE : 'var(--text3)'
 
 export default function RedeployPanel() {
-  const [terminalUi] = useTerminalUi()
-  const panel = terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
-  const { data, loading, error, refetch } = useApi<any>('/api/v2/deploy/events?status=open&days=365', 60_000)
+  const { data, loading, error, refetch } = useApi<any>('/api/v2/deploy/events?status=open&days=14&material_only=true', 60_000)
   const [busy, setBusy] = useState<'detect' | 'recompute' | null>(null)
   const [msg, setMsg] = useState('')
-  const [dismissBusy, setDismissBusy] = useState<number | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [showAll, setShowAll] = useState(false)
 
   const events: DeployEvent[] = data?.events ?? []
-  const recent = useMemo(() => events.filter(e => (daysSince(e.sold_at) ?? 999) < 14), [events])
-  const market = data?.market_context ?? events[0]?.metadata?.market_context
+  const selected = useMemo(
+    () => events.find(e => e.id === selectedId) ?? events[0] ?? null,
+    [events, selectedId],
+  )
+
+  const { data: allData } = useApi<any>(
+    '/api/v2/deploy/events?status=open&days=14&material_only=false',
+    60_000,
+    { enabled: showAll },
+  )
+  const displayEvents: DeployEvent[] = showAll ? (allData?.events ?? []) : events
 
   async function run(action: 'detect' | 'recompute') {
     setBusy(action)
@@ -75,16 +70,15 @@ export default function RedeployPanel() {
       const path = action === 'detect' ? '/api/v2/deploy/detect' : '/api/v2/deploy/recompute'
       const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       const j = await r.json()
-      setMsg(j?.ok ? `${action} complete ✓` : `error: ${j?.error || 'failed'}`)
+      setMsg(j?.ok ? `${action} ✓` : `ERR ${j?.error || 'failed'}`)
       refetch?.()
     } catch {
-      setMsg('request failed')
+      setMsg('ERR request failed')
     }
     setBusy(null)
   }
 
   async function dismiss(id: number) {
-    setDismissBusy(id)
     try {
       const r = await fetch('/api/v2/deploy/dismiss', {
         method: 'POST',
@@ -92,165 +86,214 @@ export default function RedeployPanel() {
         body: JSON.stringify({ id, reason: 'operator_dismissed' }),
       })
       const j = await r.json()
-      setMsg(j?.ok ? `event #${id} dismissed` : `dismiss failed: ${j?.error || 'error'}`)
+      setMsg(j?.ok ? `dismissed #${id}` : `ERR ${j?.error}`)
       refetch?.()
     } catch {
-      setMsg('dismiss request failed')
+      setMsg('ERR dismiss failed')
     }
-    setDismissBusy(null)
   }
 
   async function proposeTarget(symbol: string, sleeve: string, rationale: string) {
-    try {
-      const r = await fetch('/api/v2/rotation/propose-etf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol, direction: 'long', instrument_type: 'etf', sleeve, rationale }),
-      })
-      const j = await r.json()
-      setMsg(j?.ok ? `${symbol} proposed for review ✓` : `propose failed: ${j?.error || 'error'}`)
-    } catch {
-      setMsg('propose request failed')
-    }
+    const r = await fetch('/api/v2/rotation/propose-etf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, direction: 'long', instrument_type: 'etf', sleeve, rationale }),
+    })
+    const j = await r.json()
+    setMsg(j?.ok ? `${symbol} → review queue` : `ERR ${j?.error}`)
   }
+
+  const gaps = data?.portfolio_gaps ?? selected?.metadata?.sleeve_gaps ?? []
+  const geo = data?.market_context?.geopolitical ?? selected?.metadata?.market_context?.geopolitical
+  const regime = data?.market_context?.regime_posture ?? selected?.metadata?.market_context?.regime_posture
 
   if (loading && !data) {
-    return <div style={{ ...panel, color: 'var(--text3)', fontSize: 12 }}>Loading redeploy events…</div>
+    return <div style={panelStyle()}>LOADING REDEPLOY QUEUE…</div>
   }
   if (error && !data) {
-    return <div style={{ ...panel, color: AMBER, fontSize: 12 }}>Redeploy API unavailable: {error}</div>
+    return <div style={{ ...panelStyle(), color: BB.red }}>API ERR — {error}</div>
   }
 
-  const geo = market?.geopolitical
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ ...panel, borderLeft: `4px solid ${GREEN}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)' }}>
-              Post-sale Redeploy
-              <span style={{ fontSize: 9, color: AMBER, fontWeight: 600, marginLeft: 8 }}>advisory only · no broker action</span>
-            </div>
-            <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 4, lineHeight: 1.45 }}>
-              Detects broker sells, scores redeploy targets from sleeve gaps, Hermes, CIO view, sentiment, regime, and geopolitical posture.
-              {recent.length > 0 && <span style={{ color: GREEN }}> {recent.length} sale{recent.length === 1 ? '' : 's'} in the last 14 days.</span>}
-            </div>
-          </div>
-          <button disabled={!!busy} onClick={() => void run('detect')} style={btnStyle(busy === 'detect')}>
-            {busy === 'detect' ? '⟳ Detecting…' : '⟳ Detect sells'}
-          </button>
-          <button disabled={!!busy} onClick={() => void run('recompute')} style={btnStyle(busy === 'recompute')}>
-            {busy === 'recompute' ? '⟳ Recomputing…' : '⟳ Recompute plans'}
-          </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontFamily: BB.mono, fontSize: BB.fontSm }}>
+      {/* Context strip */}
+      <div style={hubStrip(true)}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
+          <span style={{ color: BB.amber, fontWeight: 800, letterSpacing: '.08em' }}>REDEPLOY DESK</span>
+          <span style={{ color: BB.text3 }}>ADVISORY · NO BROKER</span>
+          <span style={{ color: BB.text2 }}>
+            {displayEvents.length} event{displayEvents.length === 1 ? '' : 's'}
+            {!showAll && (allData?.count != null || data?.minor_hidden) ? ' · minors hidden' : ''}
+          </span>
+          {data?.material_proceeds_usd > 0 && (
+            <span style={{ color: BB.green }}>material proceeds {fmt$(data.material_proceeds_usd, 0)}</span>
+          )}
+          {regime && <span style={{ color: BB.text2 }}>REGIME {String(regime).toUpperCase()}</span>}
+          {geo?.posture && geo.posture !== 'neutral' && (
+            <span style={{ color: BB.amberAlt }}>GEO {String(geo.posture).toUpperCase()}</span>
+          )}
+          <span style={{ flex: 1 }} />
+          <button disabled={!!busy} onClick={() => void run('detect')} style={btn(busy === 'detect')}>DETECT</button>
+          <button disabled={!!busy} onClick={() => void run('recompute')} style={btn(busy === 'recompute')}>RECOMPUTE</button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, color: BB.text3, fontSize: BB.fontXs, cursor: 'pointer' }}>
+            <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
+            SHOW MINORS
+          </label>
         </div>
-        {msg && <div style={{ fontSize: 10, color: /error|failed/.test(msg) ? '#ef4444' : GREEN }}>{msg}</div>}
-        {(geo || market?.regime) && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-            {market?.regime_posture && (
-              <Chip label={`Regime ${market.regime_posture}`} color={market.regime_posture === 'risk_off' ? '#ef4444' : GREEN} />
-            )}
-            {geo?.posture && geo.posture !== 'neutral' && (
-              <Chip label={`Geopolitical ${geo.posture}`} color={postureColor(geo.posture)} sub={geo.catalyst_count ? `${geo.catalyst_count} catalysts` : undefined} />
-            )}
-            {(geo?.active_themes ?? []).slice(0, 2).map((theme: string) => (
-              <Chip key={theme} label={theme} color={PURPLE} />
-            ))}
-          </div>
-        )}
-        {data?.methodology && (
-          <div style={{ fontSize: 9, color: 'var(--text4)', marginTop: 8 }}>{data.methodology}</div>
-        )}
+        {msg && <div style={{ marginTop: 4, fontSize: BB.fontXs, color: /ERR/.test(msg) ? BB.red : BB.green }}>{msg}</div>}
       </div>
 
-      {events.length === 0 ? (
-        <div style={{ ...panel, color: 'var(--text3)', fontSize: 12, textAlign: 'center', padding: 28 }}>
-          No open redeploy events. Run broker sync, then <b>Detect sells</b>, or check dismissed historical backfill (&gt;90d auto-dismissed).
+      {/* Portfolio gaps — shown once, not per event */}
+      {gaps.length > 0 && (
+        <div style={panelStyle()}>
+          <div style={{ fontSize: BB.fontXs, color: BB.text3, marginBottom: 4, letterSpacing: '.06em' }}>PORTFOLIO UNDERWEIGHT (context — not auto-applied to every sale)</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {gaps.slice(0, 5).map((g: { theme?: string; gap_pct?: number; gap_usd?: number }) => (
+              <span key={g.theme} style={{ color: BB.text1, fontSize: BB.fontXs }}>
+                {g.theme} <b style={{ color: BB.amber }}>-{g.gap_pct}%</b>
+                <span style={{ color: BB.text3 }}> ≈{fmt$(g.gap_usd ?? 0, 0)}</span>
+              </span>
+            ))}
+          </div>
         </div>
-      ) : events.map(ev => (
-        <div key={ev.id} style={{ ...panel, borderTop: `2px solid ${(daysSince(ev.sold_at) ?? 999) < 14 ? GREEN : 'var(--border)'}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)' }}>
-                Sold {ev.symbol}
-                <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 500, marginLeft: 8 }}>
-                  {fmtDate(ev.sold_at)}{(daysSince(ev.sold_at) ?? 0) < 14 ? ' · recent' : ''}
-                </span>
-              </div>
-              <div style={{ fontSize: 10.5, color: 'var(--text2)', marginTop: 3 }}>
-                {ev.account?.replace(/_/g, ' ')} · proceeds {fmt$(ev.proceeds_usd ?? 0, 0)}
-                {ev.proxy_symbol && <span> · proxy {ev.proxy_symbol} ({ev.proxy_sleeve || 'sleeve'})</span>}
-              </div>
-            </div>
-            <button
-              disabled={dismissBusy === ev.id}
-              onClick={() => void dismiss(ev.id)}
-              style={{ ...btnStyle(false), color: 'var(--text3)', borderColor: 'var(--border)' }}
+      )}
+
+      {/* Event queue table */}
+      <div style={{ ...panelStyle(), padding: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '6px 10px', borderBottom: `1px solid ${BB.border}`, fontSize: BB.fontXs, color: BB.text3, letterSpacing: '.05em' }}>
+          <span>DATE</span><span>SOLD</span><span>ACCOUNT</span><span>PROCEEDS</span><span>REDUCED SLEEVE</span><span>TOP PICK</span><span />
+        </div>
+        {displayEvents.length === 0 ? (
+          <div style={{ padding: 20, textAlign: 'center', color: BB.text3, fontSize: BB.fontXs }}>
+            No material redeploy events in 14d — run DETECT after broker sync
+          </div>
+        ) : displayEvents.map(ev => {
+          const tier = ev.tier ?? ev.metadata?.sale_context?.tier ?? 'moderate'
+          const reduced = ev.metadata?.sale_context?.reduced_themes
+            ?? (ev.lookthrough_delta ?? []).map(d => d.theme).filter(Boolean)
+          const top = ev.redeploy_plan?.[0]
+          const active = selected?.id === ev.id
+          return (
+            <div
+              key={ev.id}
+              onClick={() => setSelectedId(ev.id)}
+              style={{
+                display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '7px 10px', alignItems: 'center',
+                borderBottom: `1px solid ${BB.borderSubtle}`, cursor: 'pointer',
+                background: active ? BB.bgRowFocus : 'transparent',
+              }}
             >
-              {dismissBusy === ev.id ? '…' : 'Dismiss'}
-            </button>
+              <span style={{ color: BB.text3, fontSize: BB.fontXs }}>{fmtDate(ev.sold_at)}</span>
+              <span style={{ color: TIER_COLOR[tier] ?? BB.text0, fontWeight: 800 }}>{ev.symbol}</span>
+              <span style={{ color: BB.text2, fontSize: BB.fontXs, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {(ev.account ?? '').replace(/_/g, ' ').replace('schwab ', 'S·').replace('fidelity ', 'F·')}
+              </span>
+              <span style={{ color: BB.text0, fontWeight: 700 }}>{fmt$(Number(ev.proceeds_usd ?? 0), 0)}</span>
+              <span style={{ color: BB.text2, fontSize: BB.fontXs }} title={reduced.join(', ')}>
+                {reduced[0] ?? '—'}{reduced.length > 1 ? ` +${reduced.length - 1}` : ''}
+              </span>
+              <span style={{ color: top ? BB.green : BB.text3, fontWeight: 700 }}>
+                {top ? `${top.symbol} ${top.score}` : tier === 'minor' ? 'CASH' : '—'}
+              </span>
+              <button
+                onClick={e => { e.stopPropagation(); void dismiss(ev.id) }}
+                style={{ ...btn(false), fontSize: 8, padding: '2px 6px', color: BB.text3 }}
+              >DSM</button>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Detail pane — single selected event */}
+      {selected && (
+        <div style={{ ...panelStyle(), borderLeft: `3px solid ${TIER_COLOR[selected.tier ?? 'moderate'] ?? BB.amber}` }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 10, alignItems: 'baseline' }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: BB.text0 }}>
+              {selected.symbol}
+            </span>
+            <span style={{ color: BB.text3, fontSize: BB.fontXs }}>
+              {fmtDate(selected.sold_at)} · {(selected.account ?? '').replace(/_/g, ' ')} · {fmt$(Number(selected.proceeds_usd ?? 0), 0)}
+            </span>
+            {selected.proxy_symbol && (
+              <span style={{ color: BB.text2, fontSize: BB.fontXs }}>
+                freed {selected.metadata?.sale_context?.reduced_themes?.[0] ?? 'exposure'} via proxy {selected.proxy_symbol}
+              </span>
+            )}
+            <span style={{ color: TIER_COLOR[selected.tier ?? 'moderate'], fontSize: BB.fontXs, fontWeight: 800 }}>
+              {(selected.tier ?? 'moderate').toUpperCase()}
+            </span>
           </div>
 
-          {(ev.lookthrough_delta ?? []).length > 0 && (
-            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>
-              Look-through impact: {(ev.lookthrough_delta ?? []).map(d => `${d.theme} ${d.delta_pct}%`).join(' · ')}
+          {selected.metadata?.advisory_note && (
+            <div style={{ color: BB.text3, fontSize: BB.fontXs, marginBottom: 10, fontStyle: 'italic' }}>
+              {selected.metadata.advisory_note}
             </div>
           )}
 
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Redeploy targets</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {(ev.redeploy_plan ?? []).length === 0 ? (
-              <div style={{ fontSize: 10, color: 'var(--text3)' }}>No targets scored — run Recompute plans.</div>
-            ) : (ev.redeploy_plan ?? []).map((t, i) => {
-              const range = t.review_amount_range
-              const evd = t.evidence ?? {}
-              return (
-                <div key={`${ev.id}-${t.symbol}`} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-                    <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: i === 0 ? GREEN : 'var(--text0)' }}>#{i + 1} {t.symbol}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: BLUE }}>score {t.score}</span>
-                    {t.sleeve && <span style={{ fontSize: 9.5, color: 'var(--text3)' }}>{t.sleeve}</span>}
-                    {range?.low != null && range?.high != null && (
-                      <span style={{ fontSize: 9.5, color: PURPLE }}>review {fmt$(range.low, 0)}–{fmt$(range.high, 0)}</span>
-                    )}
-                    <span style={{ flex: 1 }} />
-                    <button
-                      onClick={() => void proposeTarget(t.symbol, t.sleeve || 'Redeploy', t.rationale || `Redeploy after ${ev.symbol} sale`)}
-                      style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 6, border: '1px solid #22c55e66', background: 'rgba(34,197,94,.12)', color: '#86efac', cursor: 'pointer' }}
-                    >
-                      + propose
-                    </button>
-                  </div>
-                  {t.rationale && <div style={{ fontSize: 10.5, color: 'var(--text2)', marginTop: 6, lineHeight: 1.45 }}>{t.rationale}</div>}
-                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>
-                    {evd.geopolitical_alignment != null ? <Chip label={String(evd.geopolitical_alignment)} color={AMBER} /> : null}
-                    {evd.regime_alignment != null ? <Chip label={String(evd.regime_alignment)} color={BLUE} /> : null}
-                    {evd.sleeve_gap_pct != null ? <Chip label={`gap ${evd.sleeve_gap_pct}%`} color={GREEN} /> : null}
-                    {evd.hermes_rank != null ? <Chip label={`Hermes #${evd.hermes_rank}`} color={PURPLE} /> : null}
-                    {evd.cio_view != null ? <Chip label={`CIO ${String(evd.cio_view)}`} color={BLUE} /> : null}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          {(selected.redeploy_plan ?? []).length === 0 ? (
+            <div style={{ color: BB.text3, fontSize: BB.fontXs }}>No redeploy targets — hold cash or dismiss</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: BB.fontXs }}>
+              <thead>
+                <tr style={{ color: BB.text3, textAlign: 'left', borderBottom: `1px solid ${BB.border}` }}>
+                  <th style={{ padding: '4px 6px' }}>SYM</th>
+                  <th style={{ padding: '4px 6px' }}>SCORE</th>
+                  <th style={{ padding: '4px 6px' }}>SLEEVE</th>
+                  <th style={{ padding: '4px 6px' }}>REVIEW $</th>
+                  <th style={{ padding: '4px 6px' }}>WHY (this sale)</th>
+                  <th style={{ padding: '4px 6px' }} />
+                </tr>
+              </thead>
+              <tbody>
+                {(selected.redeploy_plan ?? []).map((t, i) => {
+                  const lo = t.review_amount_range?.low
+                  const hi = t.review_amount_range?.high
+                  const fills = t.evidence?.fills_sale_gap
+                  return (
+                    <tr key={t.symbol} style={{ borderBottom: `1px solid ${BB.borderSubtle}`, background: i === 0 ? BB.greenDim : 'transparent' }}>
+                      <td style={{ padding: '6px', color: i === 0 ? BB.green : BB.text0, fontWeight: 800 }}>{t.symbol}</td>
+                      <td style={{ padding: '6px', color: BB.blue }}>{t.score}</td>
+                      <td style={{ padding: '6px', color: BB.text2 }}>{t.sleeve}</td>
+                      <td style={{ padding: '6px', color: BB.text1 }}>
+                        {lo != null && hi != null ? `${fmt$(lo, 0)}–${fmt$(hi, 0)}` : '—'}
+                      </td>
+                      <td style={{ padding: '6px', color: BB.text2, lineHeight: 1.35, maxWidth: 420 }}>
+                        {fills ? <span style={{ color: BB.green, marginRight: 6 }}>▸ REPLACES</span> : null}
+                        {t.rationale}
+                      </td>
+                      <td style={{ padding: '6px' }}>
+                        <button
+                          onClick={() => void proposeTarget(t.symbol, t.sleeve || 'Redeploy', t.rationale || '')}
+                          style={{ ...btn(false), fontSize: 8, color: BB.green }}
+                        >PROPOSE</button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
-      ))}
+      )}
     </div>
   )
 }
 
-function btnStyle(active: boolean): React.CSSProperties {
-  return {
-    fontSize: 10, fontWeight: 700, padding: '5px 12px', borderRadius: 6, cursor: active ? 'default' : 'pointer',
-    border: '1px solid var(--border)', background: active ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
-    color: active ? BLUE : 'var(--text2)', whiteSpace: 'nowrap',
-  }
+function panelStyle(): React.CSSProperties {
+  return hubPanel(true)
 }
 
-function Chip({ label, color, sub }: { label: string; color: string; sub?: string }) {
-  return (
-    <span style={{ fontSize: 8.5, fontWeight: 800, padding: '2px 7px', borderRadius: 4, background: `${color}1a`, color, border: `1px solid ${color}44` }}>
-      {label}{sub ? ` · ${sub}` : ''}
-    </span>
-  )
+function btn(active: boolean): React.CSSProperties {
+  return {
+    fontSize: 9,
+    fontWeight: 800,
+    padding: '3px 10px',
+    borderRadius: 2,
+    border: `1px solid ${active ? BB.amber : BB.border}`,
+    background: active ? BB.amberDim : BB.bgRow,
+    color: active ? BB.amber : BB.text2,
+    cursor: active ? 'default' : 'pointer',
+    letterSpacing: '.06em',
+    fontFamily: BB.mono,
+  }
 }

@@ -84,6 +84,32 @@ def test_geopolitical_boosts_defense_etf():
     assert row.get("evidence", {}).get("geopolitical_alignment") or row.get("evidence", {}).get("geopolitical_research_symbol")
 
 
+def test_minor_sale_no_targets():
+    eng = _load("deploy_intelligence_engine", "scripts/lib/deploy_intelligence_engine.py")
+    event = {"symbol": "LGPS", "proceeds_usd": 1281.67, "account": "schwab_rollover_ira"}
+    plan = eng.build_redeploy_plan(event)
+    assert plan.get("sale_context", {}).get("tier") == "minor"
+    assert (plan.get("targets") or []) == []
+    assert plan.get("advisory_note")
+
+
+def test_fcntx_differs_from_minor_stock_sale():
+    eng = _load("deploy_intelligence_engine", "scripts/lib/deploy_intelligence_engine.py")
+    major = eng.build_redeploy_plan({
+        "symbol": "FCNTX", "proxy_symbol": "SCHG", "proxy_sleeve": "US large-cap growth",
+        "instrument_type": "mutual_fund", "proceeds_usd": 107023, "account": "schwab_rollover_ira",
+    })
+    minor = eng.build_redeploy_plan({
+        "symbol": "LGPS", "proceeds_usd": 1281, "account": "schwab_rollover_ira",
+    })
+    major_syms = [t["symbol"] for t in major.get("targets") or []]
+    minor_syms = [t["symbol"] for t in minor.get("targets") or []]
+    assert major_syms != minor_syms or not minor_syms
+    if major_syms:
+        top = major_syms[0]
+        assert top in ("JEPQ", "QQQM", "SCHD", "ITA", "XAR", "BND")
+
+
 def test_cio_avoid_blocks_candidate():
     eng = _load("deploy_intelligence_engine", "scripts/lib/deploy_intelligence_engine.py")
 

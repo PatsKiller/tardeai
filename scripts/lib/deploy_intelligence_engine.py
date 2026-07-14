@@ -46,11 +46,45 @@ _GEOPOLITICAL_SLEEVE_BIAS = {
     },
 }
 _ETF_SLEEVE_MAP = {
-    "ITA": "Defense / Aerospace", "XAR": "Defense / Aerospace",
+    "ITA": "Defense / Aerospace", "XAR": "Defense / Aerospace", "PPA": "Defense / Aerospace",
     "SCHD": "S&P 500", "SCHG": "Nasdaq 100", "BND": "Fixed Income",
-    "JEPI": "S&P 500", "JEPQ": "Nasdaq 100", "VXUS": "China / EM",
+    "JEPI": "S&P 500", "JEPQ": "Nasdaq 100", "QQQM": "Nasdaq 100",
+    "VXUS": "China / EM", "FXI": "China / EM", "MCHI": "China / EM",
     "XLI": "S&P 500", "XLB": "S&P 500",
+    "XLE": "Energy", "VDE": "Energy", "XOP": "Energy",
+    "CIBR": "Cybersecurity", "BUG": "Cybersecurity",
+    "SMH": "Semiconductors", "SOXX": "Semiconductors",
 }
+_THEME_ETF_MAP: dict[str, list[str]] = {
+    "Nasdaq 100": ["JEPQ", "QQQM"],
+    "S&P 500": ["SCHD", "JEPI", "XLI"],
+    "Defense / Aerospace": ["ITA", "XAR"],
+    "Energy": ["XLE", "VDE"],
+    "Fixed Income": ["BND"],
+    "Cybersecurity": ["CIBR", "BUG"],
+    "China / EM": ["VXUS", "FXI"],
+    "Semiconductors": ["SMH", "SOXX"],
+    "AI mega-cap": ["JEPQ", "SCHD"],
+    "Magnificent 7": ["SCHD"],
+}
+_PROXY_SLEEVE_TO_THEME = {
+    "US large-cap growth": "Nasdaq 100",
+    "US large-cap blend (fund proxy)": "Nasdaq 100",
+}
+# ETF sold directly (no fund proxy row) — theme exposure reduced
+_SOLD_ETF_THEME: dict[str, str] = {
+    "ARKQ": "AI mega-cap",
+    "ARKG": "Semiconductors",
+    "ARKX": "Defense / Aerospace",
+    "ARKK": "AI mega-cap",
+    "SCHG": "Nasdaq 100",
+    "SCHD": "S&P 500",
+    "JEPQ": "Nasdaq 100",
+    "ITA": "Defense / Aerospace",
+    "XAR": "Defense / Aerospace",
+}
+MATERIAL_PROCEEDS_USD = 10_000.0
+MAJOR_PROCEEDS_USD = 25_000.0
 
 
 def _load_json(path: Path, default: Any) -> Any:
@@ -246,48 +280,134 @@ def _watchlist_row(cur, symbol: str) -> dict[str, Any]:
     return dict(zip(keys, row))
 
 
-def _candidate_pool(*, sold_proxy: str | None, account: str) -> list[str]:
-    """ETF sleeve plays + held add candidates + Hermes-top watchlist names."""
+def _normalize_theme(name: str | None) -> str:
+    raw = str(name or "").strip()
+    if not raw:
+        return ""
+    return _PROXY_SLEEVE_TO_THEME.get(raw, raw)
+
+
+def _sale_tier(event: dict[str, Any]) -> str:
+    proceeds = _as_float(event.get("proceeds_usd"))
+    inst = str(event.get("instrument_type") or "").lower()
+    if proceeds >= MAJOR_PROCEEDS_USD or inst in ("mutual_fund", "fund"):
+        return "major"
+    if proceeds >= MATERIAL_PROCEEDS_USD:
+        return "moderate"
+    return "minor"
+
+
+def _sale_context(event: dict[str, Any], lt: dict[str, Any]) -> dict[str, Any]:
+    tier = _sale_tier(event)
+    reduced: list[str] = []
+    for row in lookthrough_delta_for_sale(event, lt):
+        theme = _normalize_theme(str(row.get("theme") or ""))
+        if theme and theme not in reduced:
+            reduced.append(theme)
+    proxy_sleeve = _normalize_theme(str(event.get("proxy_sleeve") or ""))
+    if proxy_sleeve and proxy_sleeve not in reduced:
+        reduced.append(proxy_sleeve)
+    proxy = str(event.get("proxy_symbol") or "").upper()
+    if proxy:
+        mapped = _ETF_SLEEVE_MAP.get(proxy)
+        if mapped and mapped not in reduced:
+            reduced.append(mapped)
+    sold = str(event.get("symbol") or "").upper()
+    if sold in _SOLD_ETF_THEME:
+        theme = _SOLD_ETF_THEME[sold]
+        if theme not in reduced:
+            reduced.append(theme)
+    elif str(event.get("instrument_type") or "").lower() == "etf" and sold in _ETF_SLEEVE_MAP:
+        theme = _ETF_SLEEVE_MAP[sold]
+        if theme not in reduced:
+            reduced.append(theme)
+    return {
+        "tier": tier,
+        "proceeds_usd": _as_float(event.get("proceeds_usd")),
+        "reduced_themes": reduced,
+        "sold_symbol": str(event.get("symbol") or "").upper(),
+        "proxy_symbol": proxy or None,
+    }
+
+
+def _sector_peers(cur, sold_symbol: str, *, limit: int = 4) -> list[str]:
+    """Watchlist names in the same sector as the sold stock (stock trims only)."""
+    sym = sold_symbol.upper()
+    cur.execute(
+        """SELECT p.sector FROM symbol_profiles p WHERE upper(p.symbol)=%s LIMIT 1""",
+        (sym,),
+    )
+    row = cur.fetchone()
+    sector = str(row[0] or "").strip() if row else ""
+    if not sector:
+        return []
+    cur.execute(
+        """SELECT w.symbol FROM watchlist_items w
+           JOIN symbol_profiles p ON upper(p.symbol)=upper(w.symbol)
+           JOIN LATERAL (
+               SELECT recommendation FROM watchlist_final_synthesis f
+               WHERE upper(f.symbol)=upper(w.symbol) ORDER BY created_at DESC LIMIT 1
+           ) fs ON true
+           WHERE w.status IN ('active','researched')
+             AND p.sector=%s
+             AND upper(w.symbol)<>%s
+             AND w.symbol ~ '^[A-Z]{1,5}$'
+             AND fs.recommendation IN ('BUY','ADD','ADD_ON_PULLBACK')
+           ORDER BY w.hermes_rank ASC NULLS LAST LIMIT %s""",
+        (sector, sym, limit),
+    )
+    return [str(r[0]).upper() for r in cur.fetchall() if r and r[0]]
+
+
+def _candidate_pool(
+    *,
+    event: dict[str, Any],
+    sale_ctx: dict[str, Any],
+    sold_proxy: str | None,
+    account: str,
+    cur,
+) -> list[str]:
+    """Sale-specific candidates — replace reduced exposure first; portfolio gaps only on major sales."""
+    tier = sale_ctx.get("tier") or "minor"
+    if tier == "minor":
+        return []
+
+    reduced = list(sale_ctx.get("reduced_themes") or [])
+    sold = str(event.get("symbol") or "").upper()
     pool: list[str] = []
-    gaps = sleeve_gaps(load_lookthrough_summary())
-    gap_themes = {g["theme"] for g in gaps[:8]}
-    for sym, sleeve in _ETF_SLEEVE_MAP.items():
-        if sleeve in gap_themes or sym in ("SCHD", "BND", "ITA"):
+
+    for theme in reduced:
+        for sym in _THEME_ETF_MAP.get(theme, []):
             pool.append(sym)
+
+    if tier == "major":
+        gaps = sleeve_gaps(load_lookthrough_summary())
+        for g in gaps[:3]:
+            theme = g["theme"]
+            if theme in reduced:
+                continue
+            for sym in _THEME_ETF_MAP.get(theme, [])[:2]:
+                pool.append(sym)
+
+    if not event.get("proxy_symbol") and tier in ("moderate", "major"):
+        pool.extend(_sector_peers(cur, sold, limit=3))
+
     held = _held_symbols()
-    for sym in ("SCHD", "BND", "V", "JEPI", "JEPQ", "XLI", "XLB"):
-        if sym in held:
-            pool.append(sym)
-    try:
-        from db_adapter import _get_conn
-        cur = _get_conn().cursor()
-        cur.execute(
-            """SELECT w.symbol FROM watchlist_items w
-               JOIN LATERAL (
-                   SELECT recommendation FROM watchlist_final_synthesis f
-                   WHERE upper(f.symbol)=upper(w.symbol) ORDER BY created_at DESC LIMIT 1
-               ) fs ON true
-               WHERE w.status IN ('active','researched')
-                 AND w.symbol ~ '^[A-Z]{1,5}$'
-                 AND fs.recommendation IN ('BUY','ADD','ADD_ON_PULLBACK')
-               ORDER BY w.hermes_rank ASC NULLS LAST LIMIT 12"""
-        )
-        for (sym,) in cur.fetchall():
-            if sym and sym.upper() not in held:
-                pool.append(str(sym).upper())
-    except Exception:
-        pass
-    # De-dupe; drop sold proxy duplicate (FCNTX sale → don't recommend more SCHG)
+    if tier == "major":
+        for sym in ("SCHD", "BND", "JEPI", "JEPQ"):
+            if sym in held:
+                pool.append(sym)
+
     out, seen = [], set()
     for sym in pool:
         su = sym.upper()
-        if su in seen:
+        if su in seen or su == sold:
             continue
-        if sold_proxy and su == sold_proxy.upper():
+        if sold_proxy and su == str(sold_proxy).upper():
             continue
         seen.add(su)
         out.append(su)
-    return out[:24]
+    return out[:16]
 
 
 def _concentration_pct(symbol: str, lt: dict[str, Any]) -> float:
@@ -308,6 +428,7 @@ def score_candidate(
     gaps: list[dict[str, Any]],
     lt: dict[str, Any],
     cur,
+    sale_ctx: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     sym = symbol.upper()
     wl = _watchlist_row(cur, sym)
@@ -341,15 +462,29 @@ def score_candidate(
 
     score = 0.0
     evidence: dict[str, Any] = {"sleeve": sleeve, "instrument_type": wl.get("instrument_type") or ("etf" if is_sleeve_etf else "stock")}
+    ctx = sale_ctx or {}
+    tier = ctx.get("tier") or _sale_tier(event)
+    reduced = list(ctx.get("reduced_themes") or [])
+    fills_sale_gap = bool(reduced and (sleeve in reduced or any(rt in sleeve for rt in reduced)))
 
-    if gap:
-        score += min(45.0, gap["gap_pct"] * 10.0)
-        evidence["sleeve_gap_pct"] = gap["gap_pct"]
-        evidence["sleeve_gap_usd"] = gap["gap_usd"]
+    if fills_sale_gap:
+        score += 50.0
+        evidence["fills_sale_gap"] = True
+        evidence["replaces_theme"] = next((t for t in reduced if t in sleeve or sleeve in t), reduced[0])
+    elif gap and closes_sleeve_gap:
+        if tier == "major":
+            score += min(18.0, gap["gap_pct"] * 5.0)
+            evidence["rotation_to_portfolio_gap"] = gap["theme"]
+            evidence["sleeve_gap_pct"] = gap["gap_pct"]
+        else:
+            score -= 12.0
+            evidence["unrelated_portfolio_gap"] = gap["theme"]
+    elif gap:
+        evidence["sleeve_gap_pct"] = gap.get("gap_pct")
 
-    if is_sleeve_etf and closes_sleeve_gap:
-        score += 18.0
-        evidence["sleeve_etf_gap_fill"] = True
+    if is_sleeve_etf and fills_sale_gap:
+        score += 15.0
+        evidence["sleeve_etf_replacement"] = True
 
     proceeds = _as_float(event.get("proceeds_usd"))
     if is_sleeve_etf and proceeds >= 25000:
@@ -444,7 +579,7 @@ def score_candidate(
         "score": round(score, 1),
         "sleeve": sleeve,
         "review_amount_range": {"low": low, "high": high, "basis": "score-weighted share of proceeds"},
-        "rationale": _rationale(sym, evidence, event, market),
+        "rationale": _rationale(sym, evidence, event, market, sale_ctx=ctx),
         "evidence": evidence,
         "hermes": {
             "composite": h_score or None,
@@ -463,10 +598,20 @@ def score_candidate(
     }
 
 
-def _rationale(sym: str, evidence: dict, event: dict, market: dict) -> str:
+def _rationale(sym: str, evidence: dict, event: dict, market: dict, *, sale_ctx: dict | None = None) -> str:
     parts = []
-    if evidence.get("sleeve_gap_pct"):
-        parts.append(f"closes {evidence.get('sleeve')} sleeve gap ({evidence['sleeve_gap_pct']}% under floor)")
+    sold = str(event.get("symbol") or "").upper()
+    if evidence.get("fills_sale_gap") and evidence.get("replaces_theme"):
+        parts.append(f"replaces {evidence['replaces_theme']} exposure lost from selling {sold}")
+    elif evidence.get("rotation_to_portfolio_gap"):
+        parts.append(
+            f"rotation slice into underweight {evidence['rotation_to_portfolio_gap']} "
+            f"(not replacing {sold} sleeve)"
+        )
+    elif evidence.get("unrelated_portfolio_gap"):
+        return f"Deprioritized — portfolio gap fill unrelated to {sold} sale"
+    if evidence.get("sleeve_gap_pct") and evidence.get("rotation_to_portfolio_gap"):
+        parts.append(f"portfolio gap {evidence['sleeve_gap_pct']}% under floor")
     if evidence.get("hermes_rank"):
         parts.append(f"Hermes rank #{evidence['hermes_rank']}")
     if evidence.get("cio_view") in CIO_BUY:
@@ -484,9 +629,8 @@ def _rationale(sym: str, evidence: dict, event: dict, market: dict) -> str:
         parts.append("avoid — duplicates sold fund proxy exposure")
     if evidence.get("concentration_pct"):
         parts.append(f"watch concentration ({evidence['concentration_pct']}%)")
-    sold = event.get("symbol")
     proxy = event.get("proxy_symbol")
-    if sold and proxy:
+    if sold and proxy and not parts:
         parts.insert(0, f"Proceeds from {sold} (proxy {proxy})")
     return "; ".join(parts) if parts else f"Review {sym} for redeploy"
 
@@ -494,11 +638,21 @@ def _rationale(sym: str, evidence: dict, event: dict, market: dict) -> str:
 def lookthrough_delta_for_sale(event: dict[str, Any], lt: dict[str, Any]) -> list[dict[str, Any]]:
     """Estimate theme exposure reduction from selling symbol (via proxy sleeve)."""
     proxy = event.get("proxy_symbol")
+    sold = str(event.get("symbol") or "").upper()
     proceeds = _as_float(event.get("proceeds_usd"))
     total = _as_float(lt.get("portfolio_total"), 1.0)
-    if not proxy or not proceeds or not total:
+    if not proceeds or not total:
         return []
-    sleeve = _ETF_SLEEVE_MAP.get(str(proxy).upper(), "US large-cap growth")
+    if not proxy and sold in _SOLD_ETF_THEME:
+        sleeve = _SOLD_ETF_THEME[sold]
+    elif not proxy and str(event.get("instrument_type") or "").lower() == "etf" and sold in _ETF_SLEEVE_MAP:
+        sleeve = _ETF_SLEEVE_MAP[sold]
+    elif not proxy:
+        return []
+    else:
+        sleeve = _ETF_SLEEVE_MAP.get(str(proxy).upper()) or _normalize_theme(str(event.get("proxy_sleeve") or ""))
+    if not sleeve:
+        sleeve = "Unknown"
     delta_pct = round(-proceeds / total * 100.0, 2)
     return [{
         "theme": sleeve,
@@ -512,27 +666,44 @@ def build_redeploy_plan(event: dict[str, Any]) -> dict[str, Any]:
     market = load_market_context()
     lt = load_lookthrough_summary()
     gaps = sleeve_gaps(lt)
-    pool = _candidate_pool(
-        sold_proxy=event.get("proxy_symbol"),
-        account=str(event.get("account") or ""),
-    )
+    sale_ctx = _sale_context(event, lt)
     from db_adapter import _get_conn
     cur = _get_conn().cursor()
-    ranked = []
-    for sym in pool:
-        row = score_candidate(sym, event=event, market=market, gaps=gaps, lt=lt, cur=cur)
-        if row:
-            ranked.append(row)
-    ranked.sort(key=lambda r: -r["score"])
+    tier = sale_ctx.get("tier") or "minor"
+    advisory_note = None
+    ranked: list[dict[str, Any]] = []
+    if tier == "minor":
+        advisory_note = (
+            f"${sale_ctx.get('proceeds_usd', 0):,.0f} trim — below ${int(MATERIAL_PROCEEDS_USD):,} redeploy "
+            "threshold; hold as cash unless part of a larger rebalance."
+        )
+    else:
+        pool = _candidate_pool(
+            event=event,
+            sale_ctx=sale_ctx,
+            sold_proxy=event.get("proxy_symbol"),
+            account=str(event.get("account") or ""),
+            cur=cur,
+        )
+        for sym in pool:
+            row = score_candidate(
+                sym, event=event, market=market, gaps=gaps, lt=lt, cur=cur, sale_ctx=sale_ctx,
+            )
+            if row and not str(row.get("rationale") or "").startswith("Deprioritized"):
+                ranked.append(row)
+        ranked.sort(key=lambda r: -r["score"])
+    max_targets = 6 if tier == "major" else 4
     return {
         "market_context": market,
-        "sleeve_gaps": gaps[:8],
+        "sale_context": sale_ctx,
+        "sleeve_gaps": gaps[:6],
         "lookthrough_delta": lookthrough_delta_for_sale(event, lt),
-        "targets": ranked[:6],
+        "targets": ranked[:max_targets],
+        "advisory_note": advisory_note,
         "methodology": (
-            "Deterministic score: sleeve gap + Hermes score/rank/research + CIO view + "
-            "news sentiment + regime alignment + geopolitical posture − concentration − "
-            "duplicate-proxy penalty. Advisory only."
+            "Sale-specific score: replace reduced sleeve from THIS sell first; portfolio-gap "
+            "rotation only on major (≥$25k/fund) proceeds; minors suppressed. Hermes + CIO + "
+            "regime + geopolitical. Advisory only."
         ),
     }
 
@@ -543,7 +714,9 @@ def enrich_event(event: dict[str, Any]) -> dict[str, Any]:
     event["redeploy_plan"] = plan.get("targets") or []
     meta = dict(event.get("metadata") or {})
     meta["market_context"] = plan.get("market_context")
+    meta["sale_context"] = plan.get("sale_context")
     meta["sleeve_gaps"] = plan.get("sleeve_gaps")
+    meta["advisory_note"] = plan.get("advisory_note")
     meta["methodology"] = plan.get("methodology")
     event["metadata"] = meta
     return event

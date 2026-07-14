@@ -27022,6 +27022,23 @@ def _portfolio_sync_run(which):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _deploy_event_tier(ev: dict) -> str:
+    meta = ev.get("metadata") or {}
+    sc = meta.get("sale_context") or {}
+    if sc.get("tier"):
+        return str(sc["tier"])
+    try:
+        proceeds = float(ev.get("proceeds_usd") or 0)
+    except (TypeError, ValueError):
+        proceeds = 0.0
+    inst = str(ev.get("instrument_type") or "").lower()
+    if proceeds >= 25000 or inst in ("mutual_fund", "fund"):
+        return "major"
+    if proceeds >= 10000:
+        return "moderate"
+    return "minor"
+
+
 def _deploy_events(query=None):
     """GET /api/v2/deploy/events — post-sale redeploy events (advisory only)."""
     try:
@@ -27031,8 +27048,9 @@ def _deploy_events(query=None):
         q = query or {}
         status = str(q.get("status") or "open").strip().lower()
         account = str(q.get("account") or "").strip() or None
-        days = int(q.get("days") or 365)
+        days = int(q.get("days") or 14)
         limit = min(max(int(q.get("limit") or 100), 1), 200)
+        material_only = str(q.get("material_only") or "true").lower() in ("1", "true", "yes")
         cur = _get_conn().cursor()
         events = list_deploy_events(
             cur,
@@ -27056,18 +27074,26 @@ def _deploy_events(query=None):
                 for ts_key in ("created_at", "updated_at"):
                     if ev.get(ts_key) is not None:
                         ev[ts_key] = str(ev[ts_key])[:19]
+                ev["tier"] = _deploy_event_tier(ev)
+                if material_only and ev["tier"] == "minor":
+                    continue
                 filtered.append(ev)
         recent_14d = [
             e for e in filtered
             if (date.fromisoformat(str(e.get("sold_at"))[:10]) if e.get("sold_at") else date.min)
             >= date.today() - timedelta(days=14)
         ]
+        material_proceeds = sum(float(e.get("proceeds_usd") or 0) for e in filtered if e.get("tier") in ("major", "moderate"))
         meta0 = (filtered[0].get("metadata") or {}) if filtered else {}
+        portfolio_gaps = meta0.get("sleeve_gaps") or []
         return {
             "ok": True,
             "advisory_only": True,
             "count": len(filtered),
             "recent_14d_count": len(recent_14d),
+            "minor_hidden": material_only,
+            "material_proceeds_usd": round(material_proceeds, 2),
+            "portfolio_gaps": portfolio_gaps[:6],
             "events": filtered,
             "market_context": meta0.get("market_context"),
             "methodology": meta0.get("methodology"),
