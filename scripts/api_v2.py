@@ -27086,6 +27086,31 @@ def _deploy_events(query=None):
         material_proceeds = sum(float(e.get("proceeds_usd") or 0) for e in filtered if e.get("tier") in ("major", "moderate"))
         meta0 = (filtered[0].get("metadata") or {}) if filtered else {}
         portfolio_gaps = meta0.get("sleeve_gaps") or []
+        for ev in filtered:
+            meta = ev.get("metadata") or {}
+            pb = meta.get("phase_b") or {}
+            if pb.get("plans"):
+                ev["institutional_plans_summary"] = [
+                    {
+                        "archetype": p.get("plan_archetype"),
+                        "plan_type": p.get("plan_type"),
+                        "confidence": p.get("confidence"),
+                        "operator_status": p.get("operator_status"),
+                        "deploy_pct_of_net": p.get("deploy_pct_of_net"),
+                        "reserve_usd": p.get("reserve_usd"),
+                        "leg_count": len(p.get("legs") or []),
+                    }
+                    for p in pb.get("plans") or []
+                ]
+                ev["primary_plan_archetype"] = pb.get("primary_archetype")
+                ev["pm_memo"] = meta.get("pm_memo")
+            if meta.get("phase_a"):
+                ev["deployable_cash_usd"] = ev.get("deployable_cash_usd") or meta["phase_a"].get(
+                    "reconciliation", {}
+                ).get("deployable_cash_usd")
+                ev["reconciliation_status"] = ev.get("reconciliation_status") or meta["phase_a"].get(
+                    "reconciliation", {}
+                ).get("reconciliation_status")
         return {
             "ok": True,
             "advisory_only": True,
@@ -27098,6 +27123,24 @@ def _deploy_events(query=None):
             "market_context": meta0.get("market_context"),
             "methodology": meta0.get("methodology"),
         }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _deploy_plans(query=None):
+    """GET /api/v2/deploy/plans?event_id= — institutional plans A–G (Phase B)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_plan_db import list_plans_for_event
+        q = query or {}
+        eid = int(q.get("event_id") or q.get("id") or 0)
+        if not eid:
+            return {"ok": False, "error": "event_id required"}
+        version = q.get("version")
+        ver = int(version) if version not in (None, "") else None
+        cur = _get_conn().cursor()
+        plans = list_plans_for_event(cur, eid, version=ver)
+        return {"ok": True, "advisory_only": True, "event_id": eid, "plans": plans}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
@@ -28483,6 +28526,7 @@ ROUTES = {
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/fidelity-stops/status": lambda: _fidelity_stops_status(),
     "/api/v2/deploy/events": lambda q=None: _deploy_events(q),
+    "/api/v2/deploy/plans": lambda q=None: _deploy_plans(q),
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/rotation/small-cap-bridge": _small_cap_rotation_bridge_status,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,

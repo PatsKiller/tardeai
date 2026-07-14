@@ -709,8 +709,23 @@ def build_redeploy_plan(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def enrich_event(event: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from lib.redeploy_data_truth import enrich_event_phase_a
+        event = enrich_event_phase_a(event)
+    except Exception as e:
+        meta = dict(event.get("metadata") or {})
+        meta.setdefault("phase_a_error", str(e)[:200])
+        event["metadata"] = meta
     plan = build_redeploy_plan(event)
+    try:
+        from lib.redeploy_plan_engine import enrich_event_phase_b
+        event = enrich_event_phase_b(event, v1_plan=plan)
+    except Exception as e:
+        meta = dict(event.get("metadata") or {})
+        meta.setdefault("phase_b_error", str(e)[:200])
+        event["metadata"] = meta
     event["lookthrough_delta"] = plan.get("lookthrough_delta") or []
+    # Legacy v1 targets preserved for backward-compatible UI strip
     event["redeploy_plan"] = plan.get("targets") or []
     meta = dict(event.get("metadata") or {})
     meta["market_context"] = plan.get("market_context")
@@ -743,15 +758,36 @@ def recompute_deploy_event(cur, event_id: int) -> dict[str, Any]:
         except Exception:
             ev["metadata"] = {}
     enriched = enrich_event(ev)
-    cur.execute(
-        """UPDATE deploy_events SET lookthrough_delta=%s::jsonb, redeploy_plan=%s::jsonb,
-           metadata=%s::jsonb, updated_at=NOW() WHERE id=%s""",
-        (json.dumps(enriched.get("lookthrough_delta") or []),
-         json.dumps(enriched.get("redeploy_plan") or []),
-         json.dumps(enriched.get("metadata") or {}),
-         event_id),
-    )
-    return {"ok": True, "id": event_id, "targets": len(enriched.get("redeploy_plan") or [])}
+    try:
+        from lib.redeploy_phase_a_db import persist_phase_a
+        from lib.redeploy_plan_db import persist_institutional_plans
+        persist_phase_a(cur, event_id, enriched)
+        persist_institutional_plans(cur, event_id, enriched)
+    except Exception:
+        cur.execute(
+            """UPDATE deploy_events SET lookthrough_delta=%s::jsonb, redeploy_plan=%s::jsonb,
+               metadata=%s::jsonb, updated_at=NOW() WHERE id=%s""",
+            (json.dumps(enriched.get("lookthrough_delta") or []),
+             json.dumps(enriched.get("redeploy_plan") or []),
+             json.dumps(enriched.get("metadata") or {}),
+             event_id),
+        )
+    else:
+        cur.execute(
+            """UPDATE deploy_events SET lookthrough_delta=%s::jsonb, redeploy_plan=%s::jsonb,
+               updated_at=NOW() WHERE id=%s""",
+            (json.dumps(enriched.get("lookthrough_delta") or []),
+             json.dumps(enriched.get("redeploy_plan") or []),
+             event_id),
+        )
+    pb = (enriched.get("metadata") or {}).get("phase_b") or {}
+    return {
+        "ok": True,
+        "id": event_id,
+        "targets": len(enriched.get("redeploy_plan") or []),
+        "institutional_plans": len(pb.get("plans") or []),
+        "plan_version": (enriched.get("metadata") or {}).get("phase_b_persisted_version"),
+    }
 
 
 def recompute_all_open(cur, *, limit: int = 200) -> dict[str, Any]:

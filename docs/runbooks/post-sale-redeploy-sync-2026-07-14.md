@@ -2,7 +2,9 @@
 
 ## Scope
 
-Advisory-only pipeline that detects broker sells, scores redeploy targets, and surfaces plans in Portfolio → **Redeploy** (UI PR-3 pending). No broker execution path.
+Advisory-only pipeline that detects broker sells, scores redeploy targets, and surfaces plans in Portfolio → **Redeploy** (UI live). No broker execution path.
+
+**v2 design (institutional workbench):** `docs/design/REDEPLOY_DESK_INSTITUTIONAL_DESIGN.md` — approved with P0 corrections; **Phase A (data truth)** in progress (`redeploy_data_truth.py`, migration `2026_07_15_redeploy_phase_a_data_truth.sql`). Phases B–E not approved for merge.
 
 **Branch:** `main`  
 **Migration:** `migrations/2026_07_14_deploy_redeploy_events.sql`
