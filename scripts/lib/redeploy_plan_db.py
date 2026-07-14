@@ -18,6 +18,26 @@ def ensure_plan_tables(cur) -> None:
     run_migrations_once(cur, "plans", (MIGRATION_A, MIGRATION_B))
 
 
+_SNAPSHOT_KEYS = ("financials", "plan_income", "decision_score", "readiness",
+                  "restoration_summary", "ultimate_target", "tranche_triggers",
+                  "reserve_vehicle", "reserve_vehicle_yield_pct", "revisit_date",
+                  "entry_triggers", "settled_basis", "destination_archetype",
+                  "implementation_policy", "concentration_violations",
+                  "sold_annual_income_usd")
+
+
+def _merge_impact_snapshot(plan: dict[str, Any], snap: Any) -> None:
+    if isinstance(snap, str):
+        try:
+            snap = json.loads(snap)
+        except Exception:
+            snap = {}
+    if isinstance(snap, dict):
+        for k in _SNAPSHOT_KEYS:
+            if snap.get(k) is not None:
+                plan[k] = snap[k]
+
+
 def _next_plan_version(cur, deploy_event_id: int) -> int:
     cur.execute(
         "SELECT COALESCE(MAX(version), 0) + 1 FROM deploy_plans WHERE deploy_event_id=%s",
@@ -91,6 +111,10 @@ def persist_institutional_plans(cur, event_id: int, event: dict[str, Any]) -> di
                     "revisit_date": plan.get("revisit_date"),
                     "entry_triggers": plan.get("entry_triggers"),
                     "settled_basis": plan.get("settled_basis"),
+                    "destination_archetype": plan.get("destination_archetype"),
+                    "implementation_policy": plan.get("implementation_policy"),
+                    "concentration_violations": plan.get("concentration_violations"),
+                    "sold_annual_income_usd": plan.get("sold_annual_income_usd"),
                 }),
                 plan.get("operator_status") or "draft",
                 plan.get("objective"),
@@ -205,7 +229,9 @@ def list_plans_for_event(cur, event_id: int, *, version: int | None = None) -> l
             for k in ("financials", "plan_income", "decision_score", "readiness",
                       "restoration_summary", "ultimate_target", "tranche_triggers",
                       "reserve_vehicle", "reserve_vehicle_yield_pct", "revisit_date",
-                      "entry_triggers", "settled_basis"):
+                      "entry_triggers", "settled_basis", "destination_archetype",
+                      "implementation_policy", "concentration_violations",
+                      "sold_annual_income_usd"):
                 if snap.get(k) is not None:
                     p[k] = snap[k]
         legs = p.pop("redeploy_plan", None) or []
@@ -261,7 +287,7 @@ def fetch_institutional_plan(
     if plan_id:
         cur.execute(
             """SELECT id, deploy_event_id, version, plan_archetype, plan_type, objective,
-                      operator_status, oversight_status, redeploy_plan
+                      operator_status, oversight_status, redeploy_plan, impact
                FROM deploy_plans WHERE id=%s AND deploy_event_id=%s""",
             (plan_id, event_id),
         )
@@ -270,7 +296,7 @@ def fetch_institutional_plan(
         if version is not None:
             cur.execute(
                 """SELECT id, deploy_event_id, version, plan_archetype, plan_type, objective,
-                          operator_status, oversight_status, redeploy_plan
+                          operator_status, oversight_status, redeploy_plan, impact
                    FROM deploy_plans
                    WHERE deploy_event_id=%s AND version=%s AND plan_archetype=%s""",
                 (event_id, version, arch),
@@ -278,7 +304,7 @@ def fetch_institutional_plan(
         else:
             cur.execute(
                 """SELECT id, deploy_event_id, version, plan_archetype, plan_type, objective,
-                          operator_status, oversight_status, redeploy_plan
+                          operator_status, oversight_status, redeploy_plan, impact
                    FROM deploy_plans
                    WHERE deploy_event_id=%s AND plan_archetype=%s
                    AND version = (SELECT MAX(version) FROM deploy_plans WHERE deploy_event_id=%s)
@@ -290,6 +316,7 @@ def fetch_institutional_plan(
         return None
     cols = [d[0] for d in cur.description]
     plan = dict(zip(cols, row))
+    _merge_impact_snapshot(plan, plan.pop("impact", None))
     legs = plan.pop("redeploy_plan", None)
     if isinstance(legs, str):
         try:
@@ -307,7 +334,7 @@ def get_plan_by_id(cur, plan_id: int) -> dict[str, Any] | None:
                   total_deployable_usd, reserve_usd, deploy_pct_of_net, confidence,
                   evidence_factor_count, operator_status, oversight_status, composite_rank,
                   advantages, compromises, risks, hermes_narrative, unmet_exposure,
-                  scenarios, locked_at, locked_by, redeploy_plan
+                  scenarios, locked_at, locked_by, redeploy_plan, impact
            FROM deploy_plans WHERE id=%s""",
         (plan_id,),
     )
@@ -322,6 +349,7 @@ def get_plan_by_id(cur, plan_id: int) -> dict[str, Any] | None:
                 plan[jf] = json.loads(plan[jf])
             except Exception:
                 pass
+    _merge_impact_snapshot(plan, plan.pop("impact", None))
     legs = plan.pop("redeploy_plan", None)
     if isinstance(legs, str):
         try:

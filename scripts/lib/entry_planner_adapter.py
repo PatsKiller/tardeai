@@ -272,6 +272,10 @@ def enrich_bundle_phase_c(bundle: dict[str, Any], *, market_context: dict[str, A
         if primary:
             fin = primary.get("financials") or {}
             rec["primary"]["deploy_now_usd"] = fin.get("executable_at_current_quote_usd")
+            rec["primary"]["ultimate_target_usd"] = fin.get("executable_at_current_quote_usd")
+            rec["primary"]["implement_now_usd"] = fin.get("implement_now_usd")
+            rec["primary"]["pending_future_stages_usd"] = fin.get("pending_future_stages_usd")
+            rec["primary"]["uncommitted_cash_usd"] = fin.get("uncommitted_cash_usd")
             rec["primary"]["reserve_usd"] = fin.get("reserve_usd")
             rec["primary"]["residual_usd"] = fin.get("whole_share_residual_usd")
             from lib.redeploy_decision import build_pm_memo

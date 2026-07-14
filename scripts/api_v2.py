@@ -27195,6 +27195,28 @@ def _deploy_plans(query=None):
         ver = int(version) if version not in (None, "") else None
         cur = _get_conn().cursor()
         plans = list_plans_for_event(cur, eid, version=ver)
+        # Readiness is a LIVE governance state: recompute from current oversight_status
+        # (an oversight verdict lands after the plan snapshot was persisted; a passed
+        # plan must show OPERATOR-READY without waiting for a regeneration that would
+        # reset oversight to pending).
+        try:
+            from lib.redeploy_decision import readiness_state
+            cur.execute("""SELECT reconciliation_status, locked_plan_id, status,
+                                  metadata->'phase_a'->'portfolio_context'->>'is_major_sale'
+                           FROM deploy_events WHERE id=%s""", (eid,))
+            _er = cur.fetchone() or (None, None, None, None)
+            _rctx = {
+                "settled": str(_er[0] or "") in ("verified", "settled"),
+                "is_major": str(_er[3] or "").lower() in ("true", "1"),
+                "dismissed": _er[2] == "dismissed",
+                "analytics_exist": {}, "memo_exists": True, "audit_exists": True,
+                "p0_warnings": [],
+            }
+            for p in plans:
+                _rctx["locked"] = (_er[1] is not None and p.get("id") == _er[1])
+                p["readiness"] = readiness_state(p, _rctx)
+        except Exception:
+            pass
         # decision layer (Phases 5/6/14): recommendation + structured memo ride with plans
         recommendation, memo, generated_basis = None, None, None
         try:

@@ -16,7 +16,16 @@ from typing import Any
 
 from lib.redeploy_data_truth import _as_float
 
-BOOK_VERSION = "capital_book_1.0.0"
+BOOK_VERSION = "capital_book_1.1.0"
+
+CAPITAL_NOTE = (
+    "each dollar belongs to at most one open plan; events marked awaiting_capital "
+    "cannot become operator-ready until capital frees or events are pooled."
+)
+
+# operator_status values that count as a soft (unlocked) reservation
+_SELECTED_STATUSES = ("reviewing", "selected")
+_CENT = 0.005  # rounding tolerance for fits-in-pool checks
 
 # A plan whose quotes/creation are older than these bounds is flagged stale.
 PLAN_STALE_DAYS = 5
@@ -146,6 +155,100 @@ def _locked_plan_labels(cur, plan_ids: list[int]) -> dict[int, dict[str, Any]]:
     )
     cols = [d[0] for d in cur.description]
     return {int(r[0]): dict(zip(cols, r)) for r in cur.fetchall()}
+
+
+def apply_capital_ledger(
+    rows: list[dict[str, Any]], cash_by_account: dict[str, float]
+) -> dict[str, dict[str, Any]]:
+    """Per-account capital RESERVATION layer (OVR-P0-CAPITAL-POOL-OVERCLAIM).
+
+    Multiple open events may each carry a deployable figure derived from the same
+    visible-cash cap; they cannot independently reserve the same dollars. This
+    function never changes per-event deployable numbers (reconciliation truth) —
+    it stamps each row with a "capital_status" and returns the per-account ledger.
+
+    Allocation order within an account:
+      1. reserved_locked   — open events with a locked_plan_id (remaining $ reserved)
+      2. reserved_selected — open events operator_status in ('reviewing','selected')
+      3. remaining open events, oldest sale first, consume currently_allocatable;
+         events that don't fit are marked awaiting_capital and get a warning
+         "capital_overclaimed_awaiting_$<shortfall>".
+
+    Rows are mutated in place (capital_status added; warnings appended).
+    """
+    accounts: dict[str, dict[str, Any]] = {}
+
+    def _acct(name: str) -> dict[str, Any]:
+        if name not in accounts:
+            accounts[name] = {
+                "account": name,
+                "visible_cash_usd": round(float(cash_by_account.get(name, 0.0)), 2),
+                "locked_reservation_usd": 0.0,
+                "selected_reservation_usd": 0.0,
+                "implemented_usd": 0.0,
+                "open_claims_usd": 0.0,
+                "currently_allocatable_usd": 0.0,
+                "overclaimed": False,
+                "overclaim_usd": 0.0,
+            }
+        return accounts[name]
+
+    # Ensure accounts that only hold cash (no open events) still appear.
+    for name in cash_by_account:
+        _acct(name)
+
+    open_unreserved: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        row.setdefault("capital_status", None)
+        if row.get("completion_status") not in ("open", "partial"):
+            continue
+        acct = _acct(str(row.get("account") or "unknown"))
+        remaining = _as_float(row.get("remaining_usd"))
+        acct["open_claims_usd"] += remaining
+        acct["implemented_usd"] += _as_float(row.get("deployed_usd"))
+        if row.get("locked_plan_id"):
+            row["capital_status"] = "reserved_locked"
+            acct["locked_reservation_usd"] += remaining
+        elif str(row.get("operator_status") or "") in _SELECTED_STATUSES:
+            row["capital_status"] = "reserved_selected"
+            acct["selected_reservation_usd"] += remaining
+        else:
+            open_unreserved.setdefault(acct["account"], []).append(row)
+
+    for name, acct in accounts.items():
+        allocatable = max(
+            0.0,
+            acct["visible_cash_usd"]
+            - acct["locked_reservation_usd"]
+            - acct["selected_reservation_usd"]
+            - acct["implemented_usd"],
+        )
+        acct["currently_allocatable_usd"] = round(allocatable, 2)
+        # Oldest sale first; unknown sold_at sorts last, event_id breaks ties.
+        queue = sorted(
+            open_unreserved.get(name, []),
+            key=lambda r: (r.get("sold_at") is None, str(r.get("sold_at") or ""),
+                           r.get("event_id") or 0),
+        )
+        for row in queue:
+            remaining = _as_float(row.get("remaining_usd"))
+            if remaining <= allocatable + _CENT:
+                row["capital_status"] = "claim_within_capital"
+                allocatable = max(0.0, allocatable - remaining)
+            else:
+                row["capital_status"] = "awaiting_capital"
+                shortfall = round(remaining - allocatable, 2)
+                row.setdefault("warnings", []).append(
+                    f"capital_overclaimed_awaiting_${shortfall:.2f}"
+                )
+        for k in ("locked_reservation_usd", "selected_reservation_usd",
+                  "implemented_usd", "open_claims_usd"):
+            acct[k] = round(acct[k], 2)
+        acct["overclaim_usd"] = round(
+            max(0.0, acct["open_claims_usd"] - acct["visible_cash_usd"]), 2)
+        acct["overclaimed"] = acct["open_claims_usd"] > acct["visible_cash_usd"] + _CENT
+
+    return accounts
 
 
 def build_capital_book(cur, *, limit: int = 500, include_dismissed: bool = True) -> dict[str, Any]:
@@ -281,6 +384,13 @@ def build_capital_book(cur, *, limit: int = 500, include_dismissed: bool = True)
             totals["open_events"] += 1
             totals["unallocated"] += remaining
 
+    # Capital reservation ledger (OVR-P0-CAPITAL-POOL-OVERCLAIM): visible cash
+    # comes from the same holdings.json cash rows that event reconciliation used
+    # to cap deployable_cash_usd (redeploy_data_truth.account_cash_usd).
+    from lib.sale_event_detector import _cash_by_account
+
+    account_capital = apply_capital_ledger(rows, _cash_by_account())
+
     return {
         "ok": True,
         "advisory_only": True,
@@ -288,6 +398,8 @@ def build_capital_book(cur, *, limit: int = 500, include_dismissed: bool = True)
         "as_of": datetime.now(timezone.utc).isoformat(),
         "row_count": len(rows),
         "totals": {k: (round(v, 2) if isinstance(v, float) else v) for k, v in totals.items()},
+        "account_capital": account_capital,
+        "capital_note": CAPITAL_NOTE,
         "rows": rows,
     }
 

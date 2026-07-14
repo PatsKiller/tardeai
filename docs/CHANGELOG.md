@@ -1,5 +1,50 @@
 # Changelog
 
+## 2026-07-14 — Redeploy oversight-adjudication corrective (10 blocking findings closed)
+
+Corrective release against the operator oversight adjudication (verdict needs_review, 10 blocking
+findings). All rerun requirements executed; **Plan F (staged implementation of the Plan B
+destination) subsequently PASSED both oversight lanes on the version-bound v31 snapshot and is
+legitimately OPERATOR-READY.**
+
+- **OVR-P0-DEPLOY-NOW-DOUBLE-COUNT** — UI no longer sums executable + staged-limit valuations of
+  the same legs ($211k on $107k proceeds); reconciliation line reads financials fields verbatim.
+- **OVR-P0-TARGET-VS-CURRENT-ACTION** — four distinct capital fields everywhere (header, DECISION,
+  comparison, Plan Lab): ULTIMATE TARGET / IMPLEMENT NOW (stage-1) / PENDING STAGES / UNCOMMITTED
+  CASH (+reserve, residual); "DEPLOY NOW" label eliminated.
+- **OVR-P0-CAPITAL-POOL-OVERCLAIM** — account capital-reservation ledger in the Capital Book
+  (visible cash − locked − selected − implemented = allocatable; locked→selected→oldest-first
+  allocation; per-row capital_status; rollover IRA honestly shows **OVERCLAIMED $53,159** with
+  event #144 `awaiting_capital` + red banners).
+- **OVR-P0-OVERLAP-FALSE-NEGATIVE** — same-ticker overlap detected from holdings.json at leg build
+  (XLI flag now feeds the diversification score); LOOK-THROUGH renders the three separated tables
+  (underlying economic issuers wrapper-free; legacy table only as labeled fallback).
+- **OVR-P0-INCOME-DELTA-BASELINE** — plan income + vs-post-sale + vs-pre-sale with stated baselines
+  on every surface.
+- **OVR-P1-DESTINATION-CADENCE-CONFLATION** — two-axis model: destination (A–E/G) × implementation
+  policy (immediate/staged/hold). Plan F is now built AFTER scoring as the staged implementation of
+  the top eligible destination (currently Plan B) — same securities, staged cadence, ultimate target
+  + tranche triggers displayed.
+- **OVR-P1-SECTOR-OVERSHOOT** — Plan B uses a greedy tracking-error minimizer (dollar-for-dollar
+  across ALL removed sectors, largest first): capped restoration 68%→**84.6%**, over-restoration
+  →**$0**, tracking error $70.8k→**$16.4k**; restoration shows gross/capped/over/unrestored/tracking.
+- **OVR-P1-CONCENTRATION** — hard caps at construction (single equity/BDC 15%, single ETF 45%);
+  Plan C rebuilt diversified (HTGC 15/JEPQ 45/CSWC 15/ARCC 15/JEPI 10); violators excluded from
+  primary with stated reasons.
+- **OVR-P1-PACKET-VERSION-STALE** — `scripts/redeploy_operator_packet.py` regenerates the packet
+  BOUND to the exact plan version (`FCNTX_144_DECISION_PACKET_v31…` + _LATEST pointer); stale
+  unversioned packet removed; oversight prompt carries the plan version + full accounting block.
+- **OVR-DATA-STALE-QUOTE** — XLC + all leg symbols refreshed pre-regeneration.
+- **Tie policy** — score gap < 2.0 ⇒ NO DECISIVE WINNER banner + documented risk-off staged
+  tie-breaker (weights frozen pre-generation; decision_1.1.0). Current outcome is decisive
+  (F 73.6 vs B 61.1) without needing the tie-breaker.
+- **Reserve honesty** — reserves modeled as explicit executable BIL positions (shares/quote/ER,
+  RESERVE REQUIRES PURCHASE pill); yield credited only on the modeled position; no-quote ⇒ plain
+  cash with zero yield credit.
+- **Live readiness** — /deploy/plans recomputes readiness from CURRENT oversight status (a verdict
+  landing after snapshot persistence flips readiness without a regeneration that would reset it).
+- Tests: capital-ledger suite added; full redeploy + stop suites green (92).
+
 ## 2026-07-14 — Redeploy semantic-integrity release (23-defect corrective, decision workstation)
 
 Full corrective release against the operator sign-off review (defect map:

@@ -1,4 +1,15 @@
 
+## 2026-07-14 — Oversight adjudication corrective + OPERATOR-READY reached
+
+All 10 blocking findings closed (deploy-now double-count, 4-field capital semantics, capital
+reservation ledger [rollover IRA OVERCLAIMED $53k — #144 awaiting_capital], real overlap flags,
+income baselines, destination×cadence two-axis [F = staged Plan B], B tracking-error minimizer
+[84.6% capped, $0 over], concentration caps [C diversified], version-bound packet
+[FCNTX v31], XLC refresh, tie policy). Oversight RERUN on the bound v31 snapshot: **Plan F
+(staged-B) PASSED both lanes → first legitimately OPERATOR-READY plan**; B-immediate stays
+pending. Live readiness now recomputed from current oversight status at API read.
+Packet: docs/audits/FCNTX_144_DECISION_PACKET_v31_2026-07-14.md.
+
 ## 2026-07-14 — Redeploy semantic-integrity release (operator 23-defect corrective)
 
 All 23 review defects closed (map in docs/audits/). Plans reconcile to the cent with explicit

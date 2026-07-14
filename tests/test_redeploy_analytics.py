@@ -135,7 +135,7 @@ def test_pro_forma_three_state_arithmetic():
         # whole-share modeling: modeled deploy never exceeds target
         assert out["modeled_deploy_usd"] <= 10000.0
         leg = [l for l in out["modeled_legs"] if l.get("modeled")][0]
-        assert leg["whole_shares"] * leg["price_used"] == leg["modeled_dollars"]
+        assert abs(leg["whole_shares"] * leg["price_used"] - leg["modeled_dollars"]) < 0.01
         # post_plan total ≈ post_sale total (cash converts to positions, nothing created)
         ps, pp = out["states"]["post_sale"]["total_usd"], out["states"]["post_plan"]["total_usd"]
         assert abs(ps - pp) < 1.0

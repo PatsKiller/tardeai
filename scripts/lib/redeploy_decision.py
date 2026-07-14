@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
-DECISION_POLICY_VERSION = "decision_1.0.1"
+DECISION_POLICY_VERSION = "decision_1.1.0"
+DECISIVE_SCORE_GAP = 2.0  # below this: NO DECISIVE WINNER; documented tie-breaker applies
 
 # ── readiness state machine (Phase 2) ────────────────────────────────────────
 
@@ -299,7 +300,41 @@ def recommend(plans: list[dict[str, Any]], scores: dict[str, dict[str, Any]],
         key=lambda p: -scores[p["plan_archetype"]]["total_score"])
     if not ranked:
         return {"ok": False, "error": "no scored plans"}
-    primary = ranked[0]
+
+    # Concentration-cap violators are ineligible as primary (hard constraint, pre-scoring
+    # policy — OVR-P1-CONCENTRATION); they remain visible with their violations stated.
+    eligible = [p for p in ranked if not p.get("concentration_violations")]
+    ineligible = [p for p in ranked if p.get("concentration_violations")]
+    if not eligible:
+        eligible = ranked
+    primary = eligible[0]
+
+    # Tie policy (frozen BEFORE generation; weights are never tuned to manufacture a
+    # winner): a gap below DECISIVE_SCORE_GAP is NO DECISIVE WINNER. Documented
+    # tie-breaker: in a risk-off regime prefer STAGED implementation when the staged
+    # plan's destination is the quant leader (comparable destination quality).
+    risk_off = "off" in str(ctx.get("regime_posture") or "").lower() or \
+               "defensive" in str(ctx.get("regime_posture") or "").lower()
+    top_gap = (scores[eligible[0]["plan_archetype"]]["total_score"]
+               - scores[eligible[1]["plan_archetype"]]["total_score"]) if len(eligible) > 1 else 99.0
+    decisive = top_gap >= DECISIVE_SCORE_GAP
+    tie_note = None
+    if not decisive:
+        tie_note = (f"score gap {top_gap:.1f} < {DECISIVE_SCORE_GAP} — NO DECISIVE WINNER "
+                    "on quant score alone")
+        if risk_off:
+            staged = next((p for p in eligible
+                           if p.get("implementation_policy") == "staged"
+                           and p.get("destination_archetype") == eligible[0]["plan_archetype"]),
+                          None) or next((p for p in eligible
+                                         if p.get("implementation_policy") == "staged"), None)
+            if staged is not None:
+                primary = staged
+                tie_note += ("; tie-breaker applied: risk-off regime prefers STAGED "
+                             f"implementation of the leading destination "
+                             f"(Plan {staged.get('destination_archetype') or '—'})")
+        else:
+            tie_note += "; quant leader retained (no risk-off staging tie-breaker)"
     p_arch = primary["plan_archetype"]
     p_score = scores[p_arch]
 
@@ -331,14 +366,27 @@ def recommend(plans: list[dict[str, Any]], scores: dict[str, dict[str, Any]],
         if str(p.get("oversight_status")) == "failed":
             do_not.append({"archetype": a, "reason": "oversight verdict: failed"})
 
+    for p in ineligible:
+        do_not.append({"archetype": p["plan_archetype"],
+                       "reason": "concentration caps violated: "
+                                 + "; ".join(p.get("concentration_violations") or [])})
+
     fin = primary.get("financials") or {}
     return {
         "decision_policy_version": DECISION_POLICY_VERSION,
+        "decisive": decisive,
+        "tie_policy": tie_note,
         "primary": {
             "archetype": p_arch,
+            "destination_archetype": primary.get("destination_archetype") or p_arch,
+            "implementation_policy": primary.get("implementation_policy") or "immediate",
             "objective": primary.get("objective"),
             "total_score": p_score["total_score"],
-            "deploy_now_usd": fin.get("executable_at_current_quote_usd"),
+            "ultimate_target_usd": fin.get("executable_at_current_quote_usd"),
+            "implement_now_usd": fin.get("implement_now_usd"),
+            "pending_future_stages_usd": fin.get("pending_future_stages_usd"),
+            "uncommitted_cash_usd": fin.get("uncommitted_cash_usd"),
+            "deploy_now_usd": fin.get("executable_at_current_quote_usd"),  # legacy alias (= ultimate target)
             "reserve_usd": fin.get("reserve_usd"),
             "residual_usd": fin.get("whole_share_residual_usd"),
             "reasons": _reasons(primary, p_score),

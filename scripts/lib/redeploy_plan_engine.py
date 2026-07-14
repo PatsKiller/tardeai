@@ -69,9 +69,26 @@ _BLOCKED_REASON = {"SCHG": "RPL-001", "ITA": "RPL-004", "XAR": "RPL-004"}
 TACTICAL_SLEEVE_BUDGET_FRAC = 0.30      # of deployable, across ALL tactical legs
 TACTICAL_SINGLE_LEG_CAP_FRAC = 0.20     # of deployable, per leg
 
+# Hard concentration caps (OVR-P1-CONCENTRATION) — enforced BEFORE scoring; a plan
+# violating them is ineligible as primary until diversified.
+MAX_SINGLE_EQUITY_FRAC = 0.15   # individual equity / BDC, of deployable
+MAX_SINGLE_ETF_FRAC = 0.45      # single ETF / fund, of deployable
+DECISIVE_SCORE_GAP = 2.0        # below this, NO DECISIVE WINNER (tie policy applies)
+
 
 def _phase_a(event: dict[str, Any]) -> dict[str, Any]:
     return (event.get("metadata") or {}).get("phase_a") or {}
+
+
+def _held_map() -> dict[str, float]:
+    """symbol → current market value from holdings.json (same-ticker overlap truth)."""
+    out: dict[str, float] = {}
+    for h in _load_json(STATE / "holdings.json", {}).get("holdings") or []:
+        if not h.get("is_cash"):
+            sym = str(h.get("symbol") or "").upper()
+            if sym:
+                out[sym] = out.get(sym, 0.0) + _as_float(h.get("market_value"))
+    return out
 
 
 # ── candidate universe access (fail-soft) ────────────────────────────────────
@@ -206,6 +223,14 @@ def _select_sector_etf(cands: dict[str, dict], sector: str) -> tuple[str | None,
     prefs = _SECTOR_CANDIDATES.get(sector) or []
     avail = [cands[s] for s in prefs if s in cands]
     if not avail:
+        # sector ETF absent from the (top-N truncated) candidate list — the mapped
+        # SPDR is still the correct restoration vehicle; select it with fallback evidence
+        if prefs:
+            return prefs[0], {"role": f"sector_restoration:{sector}", "candidate_rank": None,
+                              "eligible_pool": 0, "selection_margin": None,
+                              "method": "sector-mapped fallback (not in truncated candidate list)",
+                              "alternatives": [{"symbol": x, "why_lost": "secondary sector vehicle"}
+                                               for x in prefs[1:3]]}
         return None, None
     ranked = sorted(avail, key=lambda c: ((_er_of(c) if _er_of(c) is not None else 0.5),
                                           -(c.get("history_days") or 0)))
@@ -252,6 +277,10 @@ def _equity_leg(sym: str, account: str, dollars: float, *, role: str,
     price = entry.get("current_price") or 0
     sh, filled = whole_shares(dollars, price) if price else (0, 0.0)
     c = cands.get(sym) or {}
+    held_now = _held_map().get(sym, 0.0)
+    if held_now > 0 and not overlap_note:
+        overlap_note = (f"same-ticker overlap: already hold ${held_now:,.0f} of {sym} — "
+                        "adding concentrates the position")
     leg = {
         "ticker": sym,
         "security_name": c.get("name"),
@@ -277,8 +306,12 @@ def _equity_leg(sym: str, account: str, dollars: float, *, role: str,
 
 
 def _reserve_leg(account: str, dollars: float, *, vehicle: str | None, vehicle_yield: float | None,
-                 thesis: str, actionable: bool = False) -> dict[str, Any]:
-    return {
+                 thesis: str, actionable: bool = False,
+                 cands: dict[str, dict] | None = None) -> dict[str, Any]:
+    """Reserve as an EXECUTABLE position when yield is credited: explicit vehicle leg with
+    shares/quote/ER (a reserve cannot be 'cash' and earn an ETF's yield without modeling
+    the ETF purchase). No live quote → plain cash, NO yield credit."""
+    leg = {
         "ticker": vehicle or "CASH",
         "security_name": (f"Reserve vehicle {vehicle}" if vehicle else "Uninvested cash reserve"),
         "account": account,
@@ -289,9 +322,33 @@ def _reserve_leg(account: str, dollars: float, *, vehicle: str | None, vehicle_y
         "target_shares": None,
         "is_reserve": True,
         "is_actionable": actionable,
-        "expected_yield_pct": vehicle_yield,
+        "expected_yield_pct": None,
         "thesis": thesis,
     }
+    if vehicle and dollars > 0:
+        entry = build_entry_package(vehicle, leg_dollars=dollars)
+        px = entry.get("current_price") or 0
+        if px:
+            sh, filled = whole_shares(dollars, px)
+            c = (cands or {}).get(vehicle.upper()) or {}
+            leg.update({
+                "target_shares": sh,
+                "current_price": px,
+                "price_as_of": entry.get("price_as_of"),
+                "price_stale": entry.get("price_stale"),
+                "expense_ratio_pct": c.get("expense_ratio_pct"),
+                "reserve_vehicle_dollars": filled,
+                "reserve_cash_unswept_usd": round(dollars - filled, 2),
+                "implementation_required": True,
+                "expected_yield_pct": vehicle_yield,
+                "note": (f"reserve modeled as an explicit {vehicle} position ({sh} sh at live "
+                         "quote); the unpurchased remainder is sweep cash at 0% — yield is "
+                         "credited ONLY on the modeled position"),
+            })
+        else:
+            leg["note"] = (f"no live quote for {vehicle} — reserve treated as plain cash, "
+                           "NO vehicle yield credited")
+    return leg
 
 
 # ── financial reconciliation (Phase 1) ───────────────────────────────────────
@@ -308,12 +365,19 @@ def _finalize_financials(legs: list[dict], *, net: float, deployable: float) -> 
     residual = round(deployable - executable - reserve, 2)
     total = round(executable + reserve + residual, 2)
     gap = round(total - round(deployable, 2), 2)
+    stage1 = round(sum(_as_float(l.get("stage_1_dollars")) for l in invested), 2)
+    implement_now = stage1 if stage1 > 0 else executable
+    pending_stages = round(sum(_as_float(l.get(f"stage_{i}_dollars"))
+                               for l in invested for i in (2, 3)), 2)
     fin = {
         "net_proceeds_usd": round(net, 2),
         "deployable_cash_usd": round(deployable, 2),
         "strategic_target_usd": strategic,
         "executable_at_current_quote_usd": executable,
         "staged_limit_order_usd": staged or None,
+        "implement_now_usd": implement_now,
+        "pending_future_stages_usd": pending_stages or None,
+        "uncommitted_cash_usd": round(deployable - implement_now, 2),
         "reserve_usd": reserve,
         "whole_share_residual_usd": residual,
         "total_accounted_usd": total,
@@ -324,18 +388,24 @@ def _finalize_financials(legs: list[dict], *, net: float, deployable: float) -> 
             "executable_at_current_quote_usd": "whole shares × current quote (what Plan Lab shows)",
             "staged_limit_order_usd": "sum of staged limit-order tranches (what Entries shows)",
             "whole_share_residual_usd": "cash left by whole-share rounding — never silently dropped",
+            "implement_now_usd": "stage-1 limit tranches actionable today (falls back to executable when unstaged)",
+            "pending_future_stages_usd": "stage-2/3 tranches awaiting their triggers",
+            "uncommitted_cash_usd": "deployable minus implement-now — cash not yet committed by today's action",
         },
     }
     return fin
 
 
-def compute_plan_income(legs: list[dict], *, deployable: float, invested: float) -> dict[str, Any]:
+def compute_plan_income(legs: list[dict], *, deployable: float, invested: float,
+                        sold_annual_income_usd: float | None = None) -> dict[str, Any]:
     """Canonical plan-income block — recomputed whenever legs change (Phase-C refresh)."""
     inc_legs = []
     inc_total = 0.0
     inv_income = 0.0
     for l in legs:
         d = _as_float(l.get("target_dollars"))
+        if l.get("is_reserve") and l.get("reserve_vehicle_dollars") is not None:
+            d = _as_float(l.get("reserve_vehicle_dollars"))  # yield only on the modeled position
         y = l.get("expected_yield_pct")
         if y is not None and d > 0:
             inc = round(d * float(y) / 100.0, 2)
@@ -349,6 +419,14 @@ def compute_plan_income(legs: list[dict], *, deployable: float, invested: float)
         "income_by_leg": inc_legs,
         "whole_plan_yield_pct": round(inc_total / deployable * 100.0, 2) if deployable else None,
         "invested_sleeve_yield_pct": round(inv_income / invested * 100.0, 2) if invested else None,
+        # explicit baselines (OVR-P0-INCOME-DELTA-BASELINE): a delta means nothing without one
+        "income_vs_post_sale_usd": round(inc_total, 2),
+        "income_vs_post_sale_note": "post-sale baseline = uninvested cash (sweep yield not modeled → $0)",
+        "income_vs_pre_sale_usd": (round(inc_total - sold_annual_income_usd, 2)
+                                   if sold_annual_income_usd is not None else None),
+        "income_vs_pre_sale_note": ("pre-sale baseline = sold fund trailing distributions"
+                                    if sold_annual_income_usd is not None
+                                    else "sold-fund income basis unavailable"),
         "calculation_as_of": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -368,7 +446,8 @@ def refresh_plan_snapshot(plan: dict[str, Any]) -> dict[str, Any]:
     plan["deploy_pct_of_net"] = round(
         fin["executable_at_current_quote_usd"] / net * 100.0, 2) if net else 0.0
     plan["plan_income"] = compute_plan_income(
-        legs, deployable=deployable, invested=fin["executable_at_current_quote_usd"])
+        legs, deployable=deployable, invested=fin["executable_at_current_quote_usd"],
+        sold_annual_income_usd=plan.get("sold_annual_income_usd"))
     return plan
 
 
@@ -417,7 +496,8 @@ def _plan_shell(archetype: str, *, net: float, deployable: float, account: str,
         "settled_basis": settled,
     }
     plan["plan_income"] = compute_plan_income(legs, deployable=deployable,
-                                              invested=fin["executable_at_current_quote_usd"])
+                                              invested=fin["executable_at_current_quote_usd"],
+                                              sold_annual_income_usd=plan.get("sold_annual_income_usd"))
     if extra:
         plan.update(extra)
     return plan
@@ -441,7 +521,17 @@ def _restoration_summary(exposure: dict, legs: list[dict]) -> dict[str, Any] | N
         by_sector.append({"sector": name, "usd_removed": removed,
                           "usd_allocated": round(alloc, 2),
                           "restoration_ratio": round(alloc / removed, 2) if removed else None})
+    gross_alloc = sum(x["usd_allocated"] for x in by_sector)
+    over = sum(max(0.0, x["usd_allocated"] - x["usd_removed"]) for x in by_sector)
+    unrestored = sum(max(0.0, x["usd_removed"] - x["usd_allocated"]) for x in by_sector)
+    tracking = sum(abs(x["usd_allocated"] - x["usd_removed"]) for x in by_sector)
     return {"restored_pct_of_removed": round(restored_total / total_removed * 100.0, 1),
+            "gross_restoration_pct": round(gross_alloc / total_removed * 100.0, 1),
+            "over_restoration_usd": round(over, 2),
+            "unrestored_usd": round(unrestored, 2),
+            "tracking_error_usd": round(tracking, 2),
+            "note": ("restored_pct is CAPPED per sector (over-restoring one sector never "
+                     "compensates for leaving another at zero); tracking error = Σ|alloc − removed|"),
             "by_sector": by_sector}
 
 
@@ -540,7 +630,7 @@ def build_institutional_plans(
                     (d_sym, 0.35, "dividend_quality_ballast", d_ev),
                     (f_sym, 0.20, "fixed_income_ballast", f_ev)], deployable)
     legs_a.append(_reserve_leg(account, 0.0 if settled else max(0.0, net - deployable),
-                               vehicle=rv_sym, vehicle_yield=rv_yield, thesis=reserve_thesis))
+                               vehicle=rv_sym, vehicle_yield=rv_yield, thesis=reserve_thesis, cands=cands))
     resto_a = _restoration_summary(exposure, legs_a)
     plans.append(_plan_shell(
         "A", net=net, deployable=deployable, account=account,
@@ -565,21 +655,34 @@ def build_institutional_plans(
                          key=lambda x: -_as_float(x.get("weight_pct")))[:5]
     weights_b: list[tuple[str, float, str, dict | None]] = []
     covered_sectors = []
-    if top_sectors:
-        share = 0.85 / len(top_sectors)
-        for s in top_sectors:
-            etf, ev = _select_sector_etf(cands, s["sector"])
-            if etf:
-                weights_b.append((etf, share, f"sector_restoration:{s['sector']}", ev))
-                covered_sectors.append(s["sector"])
-        weights_b.append((f_sym, 0.15, "fixed_income_ballast", f_ev))
+    all_sectors = sorted(exposure.get("sectors") or [],
+                         key=lambda x: -_as_float(x.get("usd_removed")))
+    if all_sectors:
+        # Greedy tracking-error minimizer (OVR-P1-SECTOR-OVERSHOOT): fill each removed
+        # sector dollar-for-dollar, largest first, across ALL sectors with a mapped ETF,
+        # until the 85% equity budget is spent. Never over-restores one sector while
+        # leaving another at zero; the 15% ballast is an explicit diversification choice.
+        budget = 0.85
+        for sec in all_sectors:
+            if budget <= 0.001:
+                break
+            etf, ev = _select_sector_etf(cands, sec["sector"])
+            if not etf:
+                continue
+            frac = min(_as_float(sec.get("usd_removed")) / (deployable or 1.0), budget)
+            if frac <= 0.005:
+                continue
+            weights_b.append((etf, frac, f"sector_restoration:{sec['sector']}", ev))
+            covered_sectors.append(sec["sector"])
+            budget -= frac
+        weights_b.append((f_sym, 0.15 + max(0.0, budget), "fixed_income_ballast", f_ev))
     else:
         weights_b = [(g_sym, 0.5, "large_growth_restoration", g_ev),
                      (d_sym, 0.3, "dividend_quality_ballast", d_ev),
                      (f_sym, 0.2, "fixed_income_ballast", f_ev)]
     legs_b = alloc(weights_b, deployable)
     legs_b.append(_reserve_leg(account, 0.0 if settled else max(0.0, net - deployable),
-                               vehicle=rv_sym, vehicle_yield=rv_yield, thesis=reserve_thesis))
+                               vehicle=rv_sym, vehicle_yield=rv_yield, thesis=reserve_thesis, cands=cands))
     n_total_sectors = len(exposure.get("sectors") or [])
     plans.append(_plan_shell(
         "B", net=net, deployable=deployable, account=account,
@@ -600,12 +703,31 @@ def build_institutional_plans(
         extra={"restoration_summary": _restoration_summary(exposure, legs_b)},
     ))
 
-    # --- Plan C: income-oriented ---
-    legs_c = alloc([(i1_sym, 0.55, "income_overlay", i1_ev),
-                    (i2_sym, 0.45, "income_overlay", i2_ev)], deployable,
+    # --- Plan C: income-oriented, hard concentration caps enforced at construction ---
+    inc_picks: list[tuple[str, float, str, dict | None]] = []
+    _inc_exclude: set[str] = set()
+    _pool_left = 1.0
+    while _pool_left > 0.02 and len(inc_picks) < 5:
+        _sym, _ev = _select_for_role(cands, "income_overlay", exclude=_inc_exclude, event=event)
+        if not _sym:
+            break
+        _inc_exclude.add(_sym)
+        _c = cands.get(_sym) or {}
+        _cap = MAX_SINGLE_EQUITY_FRAC if _c.get("asset_class") == "equity" else MAX_SINGLE_ETF_FRAC
+        _frac = min(_cap, _pool_left)
+        inc_picks.append((_sym, _frac, "income_overlay", _ev))
+        _pool_left -= _frac
+    if not inc_picks:
+        inc_picks = [(i1_sym, min(MAX_SINGLE_ETF_FRAC, 0.55), "income_overlay", i1_ev),
+                     (i2_sym, min(MAX_SINGLE_ETF_FRAC, 0.45), "income_overlay", i2_ev)]
+    legs_c = alloc(inc_picks, deployable,
                    dual={i1_sym: "partial_growth_restore+income_enhance"})
-    legs_c.append(_reserve_leg(account, 0.0 if settled else max(0.0, net - deployable),
-                               vehicle=rv_sym, vehicle_yield=rv_yield, thesis=reserve_thesis))
+    _c_reserve = round(deployable * max(0.0, _pool_left), 2) if settled else max(0.0, net - deployable)
+    legs_c.append(_reserve_leg(account, _c_reserve,
+                               vehicle=rv_sym, vehicle_yield=rv_yield,
+                               thesis=(reserve_thesis if not settled or _c_reserve <= 0 else
+                                       "Concentration caps route the un-allocatable remainder to reserve"),
+                               cands=cands))
     plans.append(_plan_shell(
         "C", net=net, deployable=deployable, account=account,
         tags=["income_oriented", "dual_label"],
@@ -624,7 +746,7 @@ def build_institutional_plans(
     legs_d = alloc([(f_sym, 0.70, "fixed_income_ballast", f_ev),
                     (d_sym, 0.30, "dividend_quality_ballast", d_ev)], deployable)
     legs_d.append(_reserve_leg(account, 0.0 if settled else max(0.0, net - deployable),
-                               vehicle=rv_sym, vehicle_yield=rv_yield, thesis=reserve_thesis))
+                               vehicle=rv_sym, vehicle_yield=rv_yield, thesis=reserve_thesis, cands=cands))
     growth_removed = sum(_as_float(s.get("usd_removed")) for s in (exposure.get("sectors") or [])
                          if s.get("sector") in ("Technology", "Communication Services"))
     plans.append(_plan_shell(
@@ -691,49 +813,70 @@ def build_institutional_plans(
         composite_rank=58.0, is_major=is_major, settled=settled,
     ))
 
-    # --- Plan F: staged deployment with ultimate target + triggers (Phase 4) ---
-    ultimate = [(g_sym, 0.45, "large_growth_restoration", g_ev),
-                (d_sym, 0.35, "dividend_quality_ballast", d_ev),
-                (f_sym, 0.20, "fixed_income_ballast", f_ev)]
-    tranche1 = round(deployable * 0.25, 2)
-    legs_f = alloc([(s, f * 0.25, r, e) for s, f, r, e in ultimate], deployable,
-                   dual={i1_sym: "partial_growth_restore+income_enhance"})
-    for l in legs_f:
-        l["thesis"] = f"Tranche 1 of 3 — 25% of deployable toward the ultimate target ({l['role'].replace('_', ' ')})"
-    reserve_f = round(deployable - sum(_as_float(l.get("target_dollars")) for l in legs_f), 2)
-    legs_f.append(_reserve_leg(
-        account, max(0.0, reserve_f if settled else net - tranche1),
-        vehicle=rv_sym, vehicle_yield=rv_yield,
-        thesis=f"Reserved for tranches 2–3 in {rv_sym or 'cash'}"
-               + (f" earning {rv_yield:.2f}%" if rv_yield else "")))
-    stage_reason = ("Stage exposure because the current regime is risk-off and entry risk is elevated"
-                    if risk_off and settled else
-                    "Stage exposure to control timing risk" if settled else
-                    "Deploy only verified cash now; reserve remainder for later stages")
-    tranche_triggers = [
-        "Tranche 2 (35% of deployable): regime exits risk-off OR the primary growth leg trades "
-        "5% below the tranche-1 fill for 5 sessions",
-        "Tranche 3 (remaining 40%): 30 trading days after tranche 2 OR a 10% market drawdown "
-        "entry trigger, whichever comes first",
-    ]
-    plans.append(_plan_shell(
-        "F", net=net, deployable=deployable, account=account,
-        tags=["staged_deployment", "strategic"],
-        objective=stage_reason,
-        legs=legs_f,
-        advantages=[
-            f"Regime-aware staging (current regime: {market.get('regime_posture') or 'unknown'})",
-            "Reduces entry-timing risk with explicit tranche triggers"],
-        compromises=["Slower exposure restoration than full deployment"],
-        risks=[_staging_risk(settled, market.get("regime_posture"))],
-        composite_rank=88.0 if risk_off else 70.0, is_major=is_major, settled=settled,
-        extra={
-            "ultimate_target": [
-                {"ticker": s, "role": r, "target_pct_of_deployable": round(f * 100, 1),
-                 "target_dollars": round(deployable * f, 2)} for s, f, r, _ in ultimate],
-            "tranche_triggers": tranche_triggers,
-        },
-    ))
+    # --- Plan F: STAGED IMPLEMENTATION of the top destination (two-axis model) ---
+    # Destination strategy (WHAT the portfolio should contain) and implementation
+    # cadence (HOW FAST to get there) are independent axes (OVR-P1-DESTINATION-
+    # CADENCE-CONFLATION). F is built AFTER preliminary scoring, staging the best
+    # eligible destination (A–D) rather than inventing a different portfolio.
+    def _build_staged_plan(dest: dict[str, Any]) -> dict[str, Any]:
+        dest_arch = dest["plan_archetype"]
+        dest_legs = [l for l in dest.get("legs") or [] if not l.get("is_reserve")]
+        dest_total = sum(_as_float(l.get("strategic_target_dollars") or l.get("target_dollars"))
+                         for l in dest_legs) or 1.0
+        legs_f = []
+        for dl in dest_legs:
+            frac = _as_float(dl.get("strategic_target_dollars") or dl.get("target_dollars")) / dest_total
+            d = round(deployable * frac * 0.25, 2)
+            if d <= 0:
+                continue
+            legs_f.append(_equity_leg(
+                dl["ticker"], account, d, role=dl.get("role") or "staged_leg",
+                pct_of_net=round(d / net * 100.0, 2) if net else None,
+                thesis=(f"Tranche 1 of 3 — 25% toward the Plan {dest_arch} destination "
+                        f"({(dl.get('role') or '').replace('_', ' ')})"),
+                cands=cands, evidence=dl.get("selection_evidence"),
+                overlap_note=dl.get("overlap_note")))
+        reserve_f = round(deployable - sum(_as_float(l.get("target_dollars")) for l in legs_f), 2)
+        legs_f.append(_reserve_leg(
+            account, max(0.0, reserve_f if settled else net - deployable * 0.25),
+            vehicle=rv_sym, vehicle_yield=rv_yield,
+            thesis=f"Reserved for tranches 2–3 in {rv_sym or 'cash'}"
+                   + (f" earning {rv_yield:.2f}%" if rv_yield else ""), cands=cands))
+        stage_reason = (
+            f"Staged implementation of the Plan {dest_arch} destination — "
+            + ("the current regime is risk-off and entry risk is elevated"
+               if risk_off and settled else "controls entry-timing risk"))
+        tranche_triggers = [
+            "Tranche 2 (35% of deployable): regime exits risk-off OR the primary leg trades "
+            "5% below the tranche-1 fill for 5 sessions",
+            "Tranche 3 (remaining 40%): 30 trading days after tranche 2 OR a 10% market "
+            "drawdown entry trigger, whichever comes first",
+        ]
+        return _plan_shell(
+            "F", net=net, deployable=deployable, account=account,
+            tags=["staged_implementation", f"destination_{dest_arch}"],
+            objective=stage_reason,
+            legs=legs_f,
+            advantages=[
+                f"Same destination as Plan {dest_arch} — staging changes WHEN, not WHAT",
+                "Reduces entry-timing risk with explicit tranche triggers"],
+            compromises=["Slower exposure restoration than immediate implementation"],
+            risks=[_staging_risk(settled, market.get("regime_posture"))],
+            composite_rank=0.0, is_major=is_major, settled=settled,
+            extra={
+                "destination_archetype": dest_arch,
+                "implementation_policy": "staged",
+                "ultimate_target": [
+                    {"ticker": l["ticker"], "role": l.get("role"),
+                     "target_pct_of_deployable": round(
+                         _as_float(l.get("strategic_target_dollars") or l.get("target_dollars"))
+                         / dest_total * 100.0, 1),
+                     "target_dollars": _as_float(l.get("strategic_target_dollars")
+                                                 or l.get("target_dollars"))}
+                    for l in dest_legs],
+                "tranche_triggers": tranche_triggers,
+                "restoration_summary": dest.get("restoration_summary"),
+            })
 
     # --- Plan G: hold in a named reserve vehicle (Phase 4) ---
     g_income = round(net * (rv_yield or 0.0) / 100.0, 2) if rv_yield else None
@@ -793,13 +936,46 @@ def build_institutional_plans(
         "sold_annual_income_usd": sold_income,
         "weights": load_weights(),
     }
-    scores = {}
-    for p in plans:
+
+    def _concentration_violations(plan: dict[str, Any]) -> list[str]:
+        fin = plan.get("financials") or {}
+        base = _as_float(fin.get("deployable_cash_usd")) or 1.0
+        out = []
+        for l in plan.get("legs") or []:
+            if l.get("is_reserve"):
+                continue
+            frac = _as_float(l.get("target_dollars")) / base
+            cls = (cands.get(l["ticker"]) or {}).get("asset_class")
+            cap = MAX_SINGLE_EQUITY_FRAC if cls == "equity" else MAX_SINGLE_ETF_FRAC
+            if frac > cap + 0.005:
+                out.append(f"{l['ticker']} {frac*100:.0f}% exceeds the "
+                           f"{'single-issuer' if cls == 'equity' else 'single-ETF'} cap {cap*100:.0f}%")
+        return out
+
+    def _score(p: dict[str, Any]) -> None:
+        p["sold_annual_income_usd"] = sold_income
+        p["concentration_violations"] = _concentration_violations(p)
+        p["implementation_policy"] = p.get("implementation_policy") or (
+            "hold" if p["plan_archetype"] == "G" else "immediate")
         sc = score_plan(p, dctx)
         p["decision_score"] = sc
         p["confidence"] = sc["total_score"]          # confidence IS the visible scorecard total
         p["composite_rank"] = sc["total_score"]
-        scores[p["plan_archetype"]] = sc
+
+    for p in plans:
+        _score(p)
+
+    # two-axis: stage the best ELIGIBLE destination among A–D (no concentration
+    # violations; E is gap rotation, G is hold — neither is a destination for staging)
+    dest_pool = [p for p in plans if p["plan_archetype"] in ("A", "B", "C", "D")
+                 and not p["concentration_violations"]]
+    if dest_pool:
+        dest = max(dest_pool, key=lambda p: p["decision_score"]["total_score"])
+        plan_f = _build_staged_plan(dest)
+        _score(plan_f)
+        plans.append(plan_f)
+
+    scores = {p["plan_archetype"]: p["decision_score"] for p in plans}
     plans.sort(key=lambda p: -p["decision_score"]["total_score"])
     recommendation = recommend(plans, scores, dctx)
 

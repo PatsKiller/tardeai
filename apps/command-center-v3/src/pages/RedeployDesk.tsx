@@ -327,16 +327,81 @@ export default function RedeployDesk() {
     if (r.operator_ready) return 'Review comparison, approve plan for operator implementation review'
     return r.reasons.length ? `Resolve: ${r.reasons.join(', ')}` : 'Review plan readiness'
   }
-  // Deploy-now dollars: executable + staged limit legs (financials block, defect 2)
-  const planDeployNow = (p: any): number | null => {
-    const f = p?.financials
-    if (!f) return null
-    return (f.executable_at_current_quote_usd ?? 0) + (f.staged_limit_order_usd ?? 0)
+  // Four capital fields (OVR-P0-TARGET-VS-CURRENT-ACTION). NEVER sum
+  // executable_at_current_quote_usd with staged_limit_order_usd — they are two
+  // valuations of the SAME legs (the old addition double-counted proceeds).
+  const planUltimateTarget = (p: any): number | null =>
+    p?.financials?.executable_at_current_quote_usd ?? null
+  const planImplementNow = (p: any): number | null =>
+    p?.financials?.implement_now_usd ?? null
+  const planPendingStages = (p: any): number | null =>
+    p?.financials?.pending_future_stages_usd ?? null
+  const planUncommittedCash = (p: any): number | null =>
+    p?.financials?.uncommitted_cash_usd ?? null
+  const meaningOf = (p: any, key: string): string | undefined =>
+    p?.financials?.amount_meanings?.[key]
+  // Sign-aware dollar delta (income baselines, OVR-P0-INCOME-DELTA-BASELINE)
+  const signed$ = (v: number | null | undefined): string =>
+    v == null ? '—' : v < 0 ? `−${fmt$(Math.abs(v))}` : `+${fmt$(v)}`
+  // Two-axis plan labels: implementation cadence vs destination portfolio.
+  const policyPill = (p: any) => {
+    const pol = p?.implementation_policy
+    if (pol === 'staged') return <Pill text={`STAGED → destination Plan ${p?.destination_archetype ?? '?'}`} color={BB.blue} title="Implementation cadence is staged; the destination portfolio is another archetype" />
+    if (pol === 'hold') return <Pill text="HOLD" color={BB.text3} title="No purchases — capital stays parked" />
+    if (pol) return <Pill text="IMMEDIATE" color={BB.green} title="Single-pass implementation at current quotes" />
+    return null
+  }
+  const policyText = (p: any): string => {
+    const pol = p?.implementation_policy
+    if (pol === 'staged') return `STAGED → destination Plan ${p?.destination_archetype ?? '?'}`
+    if (pol === 'hold') return 'HOLD'
+    return pol ? 'IMMEDIATE' : '—'
   }
   const planIncomeOf = (p: any): number | null =>
     p?.plan_income?.expected_annual_income_usd
       ?? ((p?.legs || []).reduce((s: number, l: any) =>
         s + ((l.target_dollars && l.expected_yield_pct) ? l.target_dollars * l.expected_yield_pct / 100 : 0), 0) || null)
+
+  // Tie banner (recommendation.decisive === false) — DECISION + PLAN COMPARISON.
+  const tieBanner = rec && rec.decisive === false ? (
+    <div style={{
+      border: `1px solid ${BB.amberAlt}`, background: BB.amberDim, borderRadius: 6,
+      padding: '10px 14px', fontSize: t.body, color: BB.amberAlt, fontWeight: 700, marginBottom: t.gap,
+    }}>
+      NO DECISIVE WINNER — {rec.tie_policy || 'plans are within the tie band; operator judgment decides.'}
+    </div>
+  ) : null
+
+  // Capital ledger banner (OVR-P0-CAPITAL-POOL-OVERCLAIM) — the selected event
+  // is claiming capital that older open events already claim.
+  const awaitingCapital = eventRow?.capital_status === 'awaiting_capital'
+  const awaitingCapitalBanner = awaitingCapital ? (
+    <div style={{
+      border: `1px solid ${BB.red}`, background: BB.redDim, borderRadius: 6,
+      padding: '10px 14px', fontSize: t.body, color: BB.red, fontWeight: 700, marginBottom: t.gap,
+    }}>
+      AWAITING CAPITAL — open events claim more than account cash; resolve older events or pool capital.
+    </div>
+  ) : null
+
+  // Reserve-leg detail (Plan Lab + Entries RESERVE): vehicle, shares, ER, sweep cash.
+  const reserveDetail = (p: any) => {
+    const legs = (p?.legs || []).filter((l: any) => l.is_reserve
+      && (l.reserve_vehicle_dollars != null || l.reserve_cash_unswept_usd != null || l.target_shares != null || l.implementation_required || l.note))
+    if (!legs.length) return null
+    return legs.map((l: any, i: number) => (
+      <div key={l.ticker || i} style={{ fontSize: t.body, color: BB.text2, marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <b style={{ color: BB.blue, fontSize: t.label }}>RESERVE</b>
+        <span style={{ fontFamily: BB.mono, color: BB.text0 }}>
+          {l.ticker || '—'} {l.target_shares ?? '—'} sh @ {l.current_price != null ? `$${num(l.current_price)}` : '—'}
+          {' '}(ER {l.expense_ratio_pct != null ? num(l.expense_ratio_pct, 2) : '—'}%)
+          {' '}+ {fmt$(l.reserve_cash_unswept_usd ?? 0)} sweep cash
+        </span>
+        {l.implementation_required && <Pill text="RESERVE REQUIRES PURCHASE" color={BB.amberAlt} title="The reserve vehicle is not held yet — parking the reserve is itself a purchase" />}
+        {l.note && <span style={{ fontSize: t.label, color: BB.text3 }}>{l.note}</span>}
+      </div>
+    ))
+  }
 
   // ── sticky context bar ─────────────────────────────────────────────────────
   const contextBar = (
@@ -386,12 +451,18 @@ export default function RedeployDesk() {
         // to "what is the system's lean and what do I do next", on every tab.
         const focus = selectedPlan ?? primaryPlan ?? plans[0]
         const fr = readinessOf(focus)
-        const deployNow = rec?.primary?.deploy_now_usd ?? planDeployNow(focus)
-        const reserve = (selectedPlan ? focus?.financials?.reserve_usd ?? focus?.reserve_usd : null)
-          ?? rec?.primary?.reserve_usd ?? focus?.financials?.reserve_usd ?? focus?.reserve_usd
+        const isFocusPrimary = focus === primaryPlan
+        const ultimate = planUltimateTarget(focus) ?? (isFocusPrimary ? rec?.primary?.ultimate_target_usd : null)
+        const implementNow = planImplementNow(focus) ?? (isFocusPrimary ? rec?.primary?.implement_now_usd : null)
+        const pendingStages = planPendingStages(focus) ?? (isFocusPrimary ? rec?.primary?.pending_future_stages_usd : null)
+        const uncommitted = planUncommittedCash(focus) ?? (isFocusPrimary ? rec?.primary?.uncommitted_cash_usd : null)
+        const reserve = focus?.financials?.reserve_usd ?? focus?.reserve_usd
+          ?? (isFocusPrimary ? rec?.primary?.reserve_usd : null)
+        const residual = focus?.financials?.whole_share_residual_usd
         const income = planIncomeOf(focus)
-        const kv = (k: string, v: any, color: string = BB.text0) => (
-          <span key={k} style={{ fontSize: t.label, color: BB.text3, whiteSpace: 'nowrap' }}>
+        const pi = focus?.plan_income
+        const kv = (k: string, v: any, color: string = BB.text0, title?: string) => (
+          <span key={k} title={title} style={{ fontSize: t.label, color: BB.text3, whiteSpace: 'nowrap', borderBottom: title ? `1px dotted ${BB.text3}` : undefined }}>
             {k} <b style={{ color, fontFamily: BB.mono }}>{v}</b>
           </span>
         )
@@ -403,10 +474,18 @@ export default function RedeployDesk() {
             {kv('SYSTEM LEAN', rec?.primary?.archetype ? `Plan ${rec.primary.archetype}` : '—', BB.amber)}
             {kv('OPERATOR', selectedPlan ? `Plan ${selectedPlan.plan_archetype}` : 'none')}
             <Pill text={fr.display} color={readinessTone(fr.state)} title={(fr.reasons || []).join('; ') || undefined} />
-            {kv('DEPLOY NOW', fmt$(deployNow))}
-            {kv('RESERVE', fmt$(reserve))}
-            {kv('INCOME Δ', income == null ? '—' : `${income >= 0 ? '+' : ''}${fmt$(income)}/yr`, income != null && income < 0 ? BB.red : BB.green)}
+            {kv('ULTIMATE TARGET', fmt$(ultimate), BB.text0, meaningOf(focus, 'executable_at_current_quote_usd'))}
+            {kv('IMPLEMENT NOW', fmt$(implementNow), BB.green, meaningOf(focus, 'implement_now_usd'))}
+            {kv('PENDING STAGES', fmt$(pendingStages), BB.amberAlt, meaningOf(focus, 'pending_future_stages_usd'))}
+            {kv('UNCOMMITTED CASH', fmt$(uncommitted), BB.text0, meaningOf(focus, 'uncommitted_cash_usd'))}
+            {kv('RESERVE', fmt$(reserve), BB.text0, residual != null ? `whole-share residual ${fmt$(residual)}` : meaningOf(focus, 'reserve_usd'))}
+            {kv('PLAN INCOME', income == null ? '—' : `${fmt$(income)}/yr`, BB.green)}
+            {kv('VS POST-SALE', signed$(pi?.income_vs_post_sale_usd), toneFor(pi?.income_vs_post_sale_usd), pi?.income_vs_post_sale_note)}
+            {pi?.income_vs_pre_sale_usd != null
+              ? kv('VS PRE-SALE', signed$(pi.income_vs_pre_sale_usd), toneFor(pi.income_vs_pre_sale_usd), pi?.income_vs_pre_sale_note)
+              : kv('VS PRE-SALE', '—', BB.text3, 'basis unavailable')}
             {kv('NEXT', nextActionFor(focus), BB.text1)}
+            {awaitingCapital && <div style={{ flexBasis: '100%' }}>{awaitingCapitalBanner}</div>}
           </div>
         )
       })()}
@@ -450,6 +529,29 @@ export default function RedeployDesk() {
             </div>
           ))}
         </div>
+        {book.data?.account_capital && Object.keys(book.data.account_capital).length > 0 && (
+          <div style={{ marginBottom: t.gap }}>
+            <div style={{ fontSize: t.label, color: BB.text3, fontWeight: 700, letterSpacing: 0.5, marginBottom: 6 }}>Account capital</div>
+            <div style={{ display: 'flex', gap: t.gap, flexWrap: 'wrap' }}>
+              {Object.entries(book.data.account_capital).map(([acct, c]: [string, any]) => (
+                <div key={acct} style={{ border: `1px solid ${c.overclaimed ? BB.red : BB.border}`, borderRadius: 6, padding: 12, minWidth: 280 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                    <span style={{ fontSize: t.body, fontWeight: 700, color: BB.text0 }}>{acct.replace(/_/g, ' ')}</span>
+                    {c.overclaimed && <Pill text={`OVERCLAIMED ${fmt$(c.overclaim_usd)}`} color={BB.red} title="Open events claim more than this account's visible cash" />}
+                  </div>
+                  <div style={{ fontSize: t.body, color: BB.text2 }}>
+                    visible cash <b style={{ color: BB.text0, fontFamily: BB.mono }}>{fmt$(c.visible_cash_usd)}</b>
+                    {' '}· open claims <b style={{ color: BB.amberAlt, fontFamily: BB.mono }}>{fmt$(c.open_claims_usd)}</b>
+                    {' '}· allocatable <b style={{ color: (c.currently_allocatable_usd ?? 0) > 0 ? BB.green : BB.amberAlt, fontFamily: BB.mono }}>{fmt$(c.currently_allocatable_usd)}</b>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {book.data?.capital_note && (
+              <div style={{ fontSize: t.label, color: BB.text3, marginTop: 6 }}>{book.data.capital_note}</div>
+            )}
+          </div>
+        )}
         <DataTable t={t} rows={bookRows} empty={book.loading ? 'Loading…' : 'No events.'} cols={[
           { key: 'event_id', label: '#', render: r => (
             <button onClick={() => setEvent(r.event_id, 'DECISION')}
@@ -469,6 +571,12 @@ export default function RedeployDesk() {
             <span style={{ color: toneFor(r.redeployed_pl_usd) }}>{r.redeployed_pl_usd == null ? '—' : fmt$(r.redeployed_pl_usd)}</span>) },
           { key: 'plan_selected', label: 'PLAN', render: r => r.plan_selected || (r.plan_count ? `${r.plan_count} drafts` : '—') },
           { key: 'plan_age_days', label: 'PLAN AGE', align: 'right', render: r => r.plan_age_days == null ? '—' : `${r.plan_age_days}d` },
+          { key: 'capital_status', label: 'CAPITAL', render: r => r.capital_status
+            ? <Pill text={String(r.capital_status).replace(/_/g, ' ').toUpperCase()} color={
+                r.capital_status === 'awaiting_capital' ? BB.red
+                  : r.capital_status === 'reserved_locked' ? BB.green
+                    : r.capital_status === 'reserved_selected' ? BB.blue : BB.text2} />
+            : <span style={{ color: BB.text3 }}>—</span> },
           { key: 'completion_status', label: 'STATUS', render: r => (
             <Pill text={r.completion_status.toUpperCase()} color={
               r.completion_status === 'completed' ? BB.green : r.completion_status === 'partial' ? BB.blue
@@ -571,26 +679,44 @@ export default function RedeployDesk() {
         : (memoStruct?.sections?.change_conditions || [])
     const nextAction = memoStruct?.sections?.next_operator_action
       || nextActionFor(selectedPlan ?? primaryPlan ?? plans[0])
+    const primPolicy = prim.implementation_policy ?? primaryPlan?.implementation_policy
+    const primDest = prim.destination_archetype ?? primaryPlan?.destination_archetype
+    const primPi = primaryPlan?.plan_income
     return (
       <>
+        {tieBanner}
+        {awaitingCapitalBanner}
         <Section title="Recommended lean" t={t}
           right={primaryPlan && <Pill text={readinessOf(primaryPlan).display} color={readinessTone(readinessOf(primaryPlan).state)} />}>
           <div style={{ fontSize: t.title - 4, fontWeight: 800, color: BB.amber, marginBottom: 10 }}>
-            Plan {prim.archetype} — {prim.objective || primaryPlan?.objective || ''}
+            {primPolicy === 'staged' && primDest
+              ? `Plan ${primDest} destination · staged implementation (Plan ${prim.archetype} cadence)`
+              : `Plan ${prim.archetype}`} — {prim.objective || primaryPlan?.objective || ''}
           </div>
           <div style={{ display: 'flex', gap: t.gap, flexWrap: 'wrap', marginBottom: t.gap }}>
-            {[
-              ['Deploy now', fmt$(prim.deploy_now_usd), BB.text0],
-              ['Reserve', fmt$(prim.reserve_usd), BB.text0],
-              ['Whole-share residual', fmt$(prim.residual_usd), BB.text2],
-              ['Quant score', prim.total_score != null ? num(prim.total_score, 1) : '—', BB.blue],
-            ].map(([k, v, c]) => (
-              <div key={k as string} style={{ border: `1px solid ${BB.border}`, borderRadius: 6, padding: 14, minWidth: 190 }}>
-                <div style={{ fontSize: t.label, color: BB.text3, marginBottom: 4 }}>{k}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: c as string, fontFamily: BB.mono }}>{v}</div>
+            {([
+              ['Ultimate target', fmt$(prim.ultimate_target_usd ?? planUltimateTarget(primaryPlan)), BB.text0, meaningOf(primaryPlan, 'executable_at_current_quote_usd')],
+              ['Implement now', fmt$(prim.implement_now_usd ?? planImplementNow(primaryPlan)), BB.green, meaningOf(primaryPlan, 'implement_now_usd')],
+              ['Pending stages', fmt$(prim.pending_future_stages_usd ?? planPendingStages(primaryPlan)), BB.amberAlt, meaningOf(primaryPlan, 'pending_future_stages_usd')],
+              ['Uncommitted cash', fmt$(prim.uncommitted_cash_usd ?? planUncommittedCash(primaryPlan)), BB.text0, meaningOf(primaryPlan, 'uncommitted_cash_usd')],
+              ['Reserve', fmt$(prim.reserve_usd), BB.text0, `whole-share residual ${fmt$(prim.residual_usd ?? primaryPlan?.financials?.whole_share_residual_usd)}`],
+              ['Quant score', prim.total_score != null ? num(prim.total_score, 1) : '—', BB.blue, undefined],
+            ] as [string, string, string, string | undefined][]).map(([k, v, c, tip]) => (
+              <div key={k} title={tip} style={{ border: `1px solid ${BB.border}`, borderRadius: 6, padding: 14, minWidth: 190, cursor: tip ? 'help' : undefined }}>
+                <div style={{ fontSize: t.label, color: BB.text3, marginBottom: 4, borderBottom: tip ? `1px dotted ${BB.text3}` : undefined, display: 'inline-block' }}>{k}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: c, fontFamily: BB.mono }}>{v}</div>
               </div>
             ))}
           </div>
+          {primPi && (
+            <div style={{ fontSize: t.body, color: BB.text2, marginBottom: t.gap }}>
+              plan income <b style={{ color: BB.green, fontFamily: BB.mono }}>{fmt$(primPi.expected_annual_income_usd)}/yr</b>
+              {' '}· vs post-sale <b title={primPi.income_vs_post_sale_note} style={{ color: toneFor(primPi.income_vs_post_sale_usd), fontFamily: BB.mono }}>{signed$(primPi.income_vs_post_sale_usd)}</b>
+              {' '}· vs pre-sale {primPi.income_vs_pre_sale_usd != null
+                ? <b title={primPi.income_vs_pre_sale_note} style={{ color: toneFor(primPi.income_vs_pre_sale_usd), fontFamily: BB.mono }}>{signed$(primPi.income_vs_pre_sale_usd)}</b>
+                : <span title="basis unavailable" style={{ color: BB.text3, borderBottom: `1px dotted ${BB.text3}`, cursor: 'help' }}>—</span>}
+            </div>
+          )}
           {primHoldings.length > 0 && (
             <DataTable t={t} rows={primHoldings} cols={[
               { key: 'ticker', label: 'TICKER', render: (l: any) => <b style={{ color: BB.text0 }}>{l.ticker}</b> },
@@ -712,13 +838,13 @@ export default function RedeployDesk() {
       : <span style={{ color: BB.text3 }}>—</span> },
   ]
 
-  // Financials reconciliation line (defect 2) — every plan dollar is accounted for.
+  // Financials reconciliation line (defect 2 / OVR-P0-DEPLOY-NOW-DOUBLE-COUNT):
+  // executable + reserve + residual = total, matching financials fields directly.
+  // executable_at_current_quote_usd and staged_limit_order_usd are two valuations
+  // of the SAME legs — they are NEVER summed.
   const reconLine = (p: any) => {
     const f = p?.financials
     if (!f) return null
-    const legs$ = f.total_accounted_usd != null
-      ? f.total_accounted_usd - (f.reserve_usd ?? 0) - (f.whole_share_residual_usd ?? 0)
-      : (f.executable_at_current_quote_usd ?? 0) + (f.staged_limit_order_usd ?? 0)
     const meaning = (k: string) => f.amount_meanings?.[k]
     const term = (label: string, v: any, key: string) => (
       <span title={meaning(key)} style={{ borderBottom: meaning(key) ? `1px dotted ${BB.text3}` : undefined, cursor: meaning(key) ? 'help' : undefined }}>
@@ -726,20 +852,24 @@ export default function RedeployDesk() {
       </span>
     )
     return (
-      <div style={{ fontSize: t.body, color: BB.text2, marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
-        {term('Legs', legs$, 'executable_at_current_quote_usd')} +
-        {term('Reserve', f.reserve_usd, 'reserve_usd')} +
-        {term('Residual', f.whole_share_residual_usd, 'whole_share_residual_usd')} =
-        {term('Deployable', f.deployable_cash_usd, 'deployable_cash_usd')}
-        {f.reconciles
-          ? <b style={{ color: BB.green }}>✓ reconciles</b>
-          : <b style={{ color: BB.red }}>✗ gap {fmt$(f.reconciliation_gap_usd)}</b>}
-        {f.staged_limit_order_usd > 0 && (
-          <span title={meaning('staged_limit_order_usd')} style={{ fontSize: t.label, color: BB.text3 }}>
-            (of legs: {fmt$(f.executable_at_current_quote_usd)} executable at quote + {fmt$(f.staged_limit_order_usd)} staged limit)
-          </span>
+      <>
+        <div style={{ fontSize: t.body, color: BB.text2, marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+          {term('Executable', f.executable_at_current_quote_usd, 'executable_at_current_quote_usd')} +
+          {term('Reserve', f.reserve_usd, 'reserve_usd')} +
+          {term('Residual', f.whole_share_residual_usd, 'whole_share_residual_usd')} =
+          {term('Deployable', f.deployable_cash_usd, 'deployable_cash_usd')}
+          {f.reconciles
+            ? <b style={{ color: BB.green }}>✓ reconciles</b>
+            : <b style={{ color: BB.red }}>✗ gap {fmt$(f.reconciliation_gap_usd)}</b>}
+        </div>
+        {(f.implement_now_usd != null || f.pending_future_stages_usd != null || f.uncommitted_cash_usd != null) && (
+          <div style={{ fontSize: t.body, color: BB.text2, marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+            {term('Implement now', f.implement_now_usd, 'implement_now_usd')} ·
+            {term('pending stages', f.pending_future_stages_usd, 'pending_future_stages_usd')} ·
+            {term('uncommitted', f.uncommitted_cash_usd, 'uncommitted_cash_usd')}
+          </div>
         )}
-      </div>
+      </>
     )
   }
 
@@ -773,6 +903,10 @@ export default function RedeployDesk() {
                 {p.decision_score?.total_score != null
                   ? <Pill text={`score ${num(p.decision_score.total_score, 1)}`} color={BB.blue} title="Weighted decision score — one component, never the sole selector" />
                   : <Pill text={`confidence ${num(p.confidence, 1)}`} color={BB.blue} title="One decision component — never the sole selector" />}
+                {policyPill(p)}
+                {(p.concentration_violations || []).length > 0 && (
+                  <Pill text="CONCENTRATION CAPS VIOLATED" color={BB.red} title={(p.concentration_violations || []).join('; ')} />
+                )}
                 {p.oversight_status && <Pill text={`oversight: ${p.oversight_status}`}
                   color={p.oversight_status === 'pass' || p.oversight_status === 'passed' ? BB.green : p.oversight_status === 'failed' ? BB.red : BB.text3} />}
                 <Pill text={ready.display} color={readinessTone(ready.state)} title={(ready.reasons || []).join('; ') || undefined} />
@@ -788,11 +922,23 @@ export default function RedeployDesk() {
                   fontSize: t.label, fontWeight: 800, cursor: 'pointer',
                 }}>{isSel ? 'SELECTED' : 'SELECT PLAN'}</button>
               </div>
+              {(p.concentration_violations || []).length > 0 && (
+                <div style={{ fontSize: t.body, color: BB.red, marginBottom: 6 }}>
+                  {(p.concentration_violations || []).map((v: string, i: number) => (
+                    <div key={i}>• {v}</div>
+                  ))}
+                </div>
+              )}
               <DataTable t={t} rows={p.legs || []} empty="No legs — plan is not operator-ready." cols={legCols(p)} />
               {reconLine(p)}
+              {reserveDetail(p)}
               {p.plan_income && (
                 <div style={{ fontSize: t.body, color: BB.text2, marginTop: 4 }}>
                   expected income <b style={{ color: BB.green, fontFamily: BB.mono }}>{fmt$(p.plan_income.expected_annual_income_usd)}/yr</b>
+                  {' '}· vs post-sale <b title={p.plan_income.income_vs_post_sale_note} style={{ color: toneFor(p.plan_income.income_vs_post_sale_usd), fontFamily: BB.mono }}>{signed$(p.plan_income.income_vs_post_sale_usd)}</b>
+                  {' '}· vs pre-sale {p.plan_income.income_vs_pre_sale_usd != null
+                    ? <b title={p.plan_income.income_vs_pre_sale_note} style={{ color: toneFor(p.plan_income.income_vs_pre_sale_usd), fontFamily: BB.mono }}>{signed$(p.plan_income.income_vs_pre_sale_usd)}</b>
+                    : <span title="basis unavailable" style={{ color: BB.text3, borderBottom: `1px dotted ${BB.text3}`, cursor: 'help' }}>—</span>}
                   {' '}· whole-plan yield <b style={{ color: BB.text0 }}>{pct(p.plan_income.whole_plan_yield_pct)}</b>
                   {p.plan_income.invested_sleeve_yield_pct != null && <> · invested-sleeve yield <b style={{ color: BB.text0 }}>{pct(p.plan_income.invested_sleeve_yield_pct)}</b></>}
                   {p.plan_income.calculation_as_of && <span style={{ fontSize: t.label, color: BB.text3 }}> · as of {String(p.plan_income.calculation_as_of).slice(0, 10)}</span>}
@@ -825,10 +971,14 @@ export default function RedeployDesk() {
     Object.fromEntries(compareIds.map(id => [String(id), fn(plans.find(p => p.id === id) || {})]))
   const comparisonTab = compareIds.length >= 2 ? (
     <Section title={`Plan comparison — ${compareIds.length} plans (differences, not merely winners)`} t={t}>
+      {tieBanner}
+      {awaitingCapitalBanner}
       {rec?.primary && (
         <div style={{ border: `1px solid ${BB.border}`, borderRadius: 8, padding: t.gap, marginBottom: t.gap }}>
           <div style={{ fontSize: t.subheading, fontWeight: 800, color: BB.amber, marginBottom: 6 }}>
-            SYSTEM LEAN: Plan {rec.primary.archetype}{rec.primary.objective ? ` — ${rec.primary.objective}` : ''}
+            SYSTEM LEAN: {(rec.primary.implementation_policy ?? primaryPlan?.implementation_policy) === 'staged' && (rec.primary.destination_archetype ?? primaryPlan?.destination_archetype)
+              ? `Plan ${rec.primary.destination_archetype ?? primaryPlan?.destination_archetype} destination · staged implementation (Plan ${rec.primary.archetype} cadence)`
+              : `Plan ${rec.primary.archetype}`}{rec.primary.objective ? ` — ${rec.primary.objective}` : ''}
           </div>
           {(rec.primary.reasons || []).slice(0, 3).map((r: string, i: number) => (
             <div key={i} style={{ fontSize: t.body, color: BB.text1, padding: '2px 0' }}>• {r}</div>
@@ -852,7 +1002,11 @@ export default function RedeployDesk() {
         { k: 'Objective', ...cmpCell(p => p.objective || '—') },
         { k: 'Readiness', ...cmpCell(p => readinessOf(p).display) },
         { k: 'Decision score', ...cmpCell(p => p.decision_score?.total_score != null ? num(p.decision_score.total_score, 1) : '—') },
-        { k: 'Deploy now $', ...cmpCell(p => fmt$(planDeployNow(p) ?? p.total_deployable_usd)) },
+        { k: 'Implementation', ...cmpCell(p => policyText(p)) },
+        { k: 'Ultimate target $', ...cmpCell(p => fmt$(planUltimateTarget(p) ?? p.total_deployable_usd)) },
+        { k: 'Implement now $', ...cmpCell(p => fmt$(planImplementNow(p))) },
+        { k: 'Pending stages $', ...cmpCell(p => fmt$(planPendingStages(p))) },
+        { k: 'Uncommitted cash $', ...cmpCell(p => fmt$(planUncommittedCash(p))) },
         { k: 'Reserve $', ...cmpCell(p => fmt$(p.financials?.reserve_usd ?? p.reserve_usd)) },
         { k: 'Whole-share residual $', ...cmpCell(p => fmt$(p.financials?.whole_share_residual_usd)) },
         { k: 'Deployment % of net', ...cmpCell(p => pct(p.deploy_pct_of_net, 1)) },
@@ -861,6 +1015,10 @@ export default function RedeployDesk() {
         { k: 'Leg count', ...cmpCell(p => String((p.legs || []).filter((l: any) => !l.is_reserve).length)) },
         { k: 'Whole-plan yield', ...cmpCell(p => pct(p.plan_income?.whole_plan_yield_pct)) },
         { k: 'Expected income /yr', ...cmpCell(p => planIncomeOf(p) ? fmt$(planIncomeOf(p)) : '—') },
+        { k: 'Income vs post-sale', ...cmpCell(p => signed$(p.plan_income?.income_vs_post_sale_usd)) },
+        { k: 'Income vs pre-sale', ...cmpCell(p => p.plan_income?.income_vs_pre_sale_usd != null ? signed$(p.plan_income.income_vs_pre_sale_usd) : 'basis unavailable') },
+        { k: 'Concentration', ...cmpCell(p => (p.concentration_violations || []).length
+          ? `CAPS VIOLATED: ${(p.concentration_violations || []).join('; ')}` : 'within caps') },
         { k: 'Oversight', ...cmpCell(p => p.oversight_status || '—') },
         { k: 'Stale-quote legs', ...cmpCell(p => String(staleLegs(p))) },
         { k: 'Principal advantage', ...cmpCell(p => p.advantages?.[0] || '—') },
@@ -945,15 +1103,57 @@ export default function RedeployDesk() {
   ) : <div style={{ fontSize: t.body, color: BB.text3 }}>{proForma.loading ? 'Computing three-state pro-forma…' : (pf?.error || 'Select an event and plan.')}</div>
 
   // ── TAB: LOOK-THROUGH ──────────────────────────────────────────────────────
+  // OVR-P0-OVERLAP-FALSE-NEGATIVE part 2: the wrapper-decontaminated contract
+  // (underlying_issuers / direct_positions / unresolved_lookthrough) renders as
+  // three separate tables; legacy top_issuers is a labeled fallback only.
+  const postPlanState = pf?.ok ? pf.states.post_plan : null
+  const hasIssuerContract = Array.isArray(postPlanState?.underlying_issuers)
   const lookThroughTab = pf?.ok ? (
     <>
-      <Section title="Post-plan issuer exposure (direct + fund look-through, top 25)" t={t}>
-        <DataTable t={t} rows={pf.states.post_plan.top_issuers} cols={[
-          { key: 'symbol', label: 'ISSUER' },
-          { key: 'usd', label: 'EXPOSURE', align: 'right', render: r => fmt$(r.usd) },
-          { key: 'pct', label: '% PORTFOLIO', align: 'right', render: r => pct(r.pct, 2) },
-        ]} />
-      </Section>
+      {hasIssuerContract ? (
+        <>
+          <Section title="Underlying economic issuers" t={t}
+            right={<span style={{ fontSize: t.label, color: BB.text3 }}>wrapper-free — funds are resolved to their underlying issuers</span>}>
+            <DataTable t={t} rows={postPlanState.underlying_issuers} empty="No resolved issuer exposure." cols={[
+              { key: 'issuer', label: 'ISSUER', render: r => <b style={{ color: BB.text0 }}>{r.issuer}</b> },
+              { key: 'direct_usd', label: 'DIRECT', align: 'right', render: r => fmt$(r.direct_usd) },
+              { key: 'indirect_usd', label: 'INDIRECT (VIA FUNDS)', align: 'right', render: r => fmt$(r.indirect_usd) },
+              { key: 'total_usd', label: 'TOTAL', align: 'right', render: r => fmt$(r.total_usd) },
+              { key: 'pct_of_portfolio', label: '% PORTFOLIO', align: 'right', render: r => pct(r.pct_of_portfolio, 2) },
+              { key: 'source_funds', label: 'SOURCE FUNDS', render: r => (r.source_funds || []).join(', ') || '—' },
+              { key: 'coverage_note', label: 'COVERAGE', render: r => (
+                <span style={{ fontSize: t.label, color: BB.text3, whiteSpace: 'normal' }}>{r.coverage_note || '—'}</span>) },
+            ]} />
+          </Section>
+          <Section title="Direct positions" t={t}
+            right={<span style={{ fontSize: t.label, color: BB.text3 }}>as held — fund wrappers flagged, not treated as issuers</span>}>
+            <DataTable t={t} rows={postPlanState.direct_positions || []} empty="No direct positions." cols={[
+              { key: 'symbol', label: 'SYMBOL', render: r => <b style={{ color: BB.text0 }}>{r.symbol}</b> },
+              { key: 'dollars', label: 'DOLLARS', align: 'right', render: r => fmt$(r.dollars) },
+              { key: 'is_fund_wrapper', label: 'TYPE', render: r => r.is_fund_wrapper
+                ? <Pill text="FUND WRAPPER" color={BB.blue} title="A fund, not an issuer — its economics live in the underlying-issuers table" />
+                : <span style={{ color: BB.text2 }}>single issuer</span> },
+            ]} />
+          </Section>
+          <Section title="Unresolved look-through" t={t}
+            right={<span style={{ fontSize: t.label, color: BB.text3 }}>fund dollars not resolvable to issuers — honest gap, not zero</span>}>
+            <DataTable t={t} rows={postPlanState.unresolved_lookthrough || []} empty="All fund positions fully resolved to underlying issuers." cols={[
+              { key: 'symbol', label: 'SYMBOL', render: r => <b style={{ color: BB.text0 }}>{r.symbol}</b> },
+              { key: 'dollars', label: 'DOLLARS', align: 'right', render: r => fmt$(r.dollars) },
+              { key: 'lookthrough_coverage_pct', label: 'COVERAGE', align: 'right', render: r => pct(r.lookthrough_coverage_pct, 0) },
+              { key: 'note', label: 'NOTE', render: r => <span style={{ whiteSpace: 'normal', color: BB.text3 }}>{r.note || '—'}</span> },
+            ]} />
+          </Section>
+        </>
+      ) : (
+        <Section title="Post-plan issuer exposure (legacy — may contain fund wrappers)" t={t}>
+          <DataTable t={t} rows={postPlanState?.top_issuers || []} cols={[
+            { key: 'symbol', label: 'ISSUER' },
+            { key: 'usd', label: 'EXPOSURE', align: 'right', render: r => fmt$(r.usd) },
+            { key: 'pct', label: '% PORTFOLIO', align: 'right', render: r => pct(r.pct, 2) },
+          ]} />
+        </Section>
+      )}
       <Section title="Per-leg underlying holdings (from fund data)" t={t}>
         {(candidates.data?.candidates ?? [])
           .filter((c: any) => (selectedPlan?.legs || []).some((l: any) => l.ticker === c.symbol))
@@ -1149,6 +1349,7 @@ export default function RedeployDesk() {
             {selectedPlan.reserve_vehicle_yield_pct != null && <> yielding <b style={{ color: BB.green }}>{pct(selectedPlan.reserve_vehicle_yield_pct)}</b></>}
             {selectedPlan.revisit_date && <> · revisit <b style={{ color: BB.amberAlt }}>{String(selectedPlan.revisit_date).slice(0, 10)}</b></>}
           </div>
+          {reserveDetail(selectedPlan)}
           {(selectedPlan.entry_triggers || []).map((tr: string, i: number) => (
             <div key={i} style={{ fontSize: t.body, color: BB.text3 }}>• deploy trigger: {tr}</div>
           ))}
