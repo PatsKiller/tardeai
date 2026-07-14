@@ -27337,6 +27337,68 @@ def _deploy_monitoring(query=None):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _redeploy_book(query=None):
+    """GET /api/v2/redeploy/book — portfolio-wide capital-allocation book (advisory only)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_capital_book import build_capital_book
+        q = query or {}
+        conn = _get_conn()
+        cur = conn.cursor()
+        res = build_capital_book(
+            cur,
+            limit=int(q.get("limit") or 500),
+            include_dismissed=str(q.get("include_dismissed") or "1") not in ("0", "false"),
+        )
+        conn.commit()  # idempotent ensure-tables DDL must not linger uncommitted
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _redeploy_history(query=None):
+    """GET /api/v2/redeploy/history — all material sells vs deploy_events (unresolved proceeds)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_capital_book import build_history
+        q = query or {}
+        conn = _get_conn()
+        cur = conn.cursor()
+        res = build_history(cur, days=int(q.get("days") or 3650))
+        conn.commit()
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _redeploy_capital_pools(query=None):
+    """GET /api/v2/redeploy/capital-pools — unallocated capital by account."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_capital_book import build_capital_pools
+        conn = _get_conn()
+        cur = conn.cursor()
+        res = build_capital_pools(cur)
+        conn.commit()
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _redeploy_opportunity_set(query=None):
+    """GET /api/v2/redeploy/opportunity-set — portfolio-wide gaps + deployable capital."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_capital_book import build_opportunity_set
+        conn = _get_conn()
+        cur = conn.cursor()
+        res = build_opportunity_set(cur)
+        conn.commit()
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _deploy_verify_settlement(body=None):
     """POST /api/v2/deploy/verify-settlement — operator confirms proceeds settled in sale account."""
     try:
@@ -28796,6 +28858,10 @@ ROUTES = {
     "/api/v2/deploy/monitoring": lambda q=None: _deploy_monitoring(q),
     "/api/v2/deploy/analysis": lambda q=None: _deploy_analysis(q),
     "/api/v2/deploy/plan": lambda q=None: _deploy_plan_detail(q),
+    "/api/v2/redeploy/book": lambda q=None: _redeploy_book(q),
+    "/api/v2/redeploy/history": lambda q=None: _redeploy_history(q),
+    "/api/v2/redeploy/capital-pools": lambda q=None: _redeploy_capital_pools(q),
+    "/api/v2/redeploy/opportunity-set": lambda q=None: _redeploy_opportunity_set(q),
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/rotation/small-cap-bridge": _small_cap_rotation_bridge_status,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
