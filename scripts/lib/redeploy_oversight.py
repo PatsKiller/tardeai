@@ -20,11 +20,21 @@ MIGRATION_LOCK = __import__("pathlib").Path(__file__).resolve().parent.parent.pa
 GENERATOR_VERSION = "oversight_1.0.0"
 
 
+MIGRATION_RUN_KEYS = __import__("pathlib").Path(__file__).resolve().parent.parent.parent / "migrations" / "2026_07_22_oversight_run_keys.sql"
+OVERSIGHT_POLICY_VERSION = "oversight_policy_1.1.0"
+
+
 def ensure_oversight_schema(cur) -> None:
     ensure_plan_tables(cur)
     ensure_monitor_tables(cur)
-    if MIGRATION_LOCK.is_file():
-        cur.execute(MIGRATION_LOCK.read_text())
+    try:
+        from lib.redeploy_schema import run_migrations_once
+        run_migrations_once(cur, "oversight_keys", (MIGRATION_LOCK, MIGRATION_RUN_KEYS))
+    except Exception:
+        if MIGRATION_LOCK.is_file():
+            cur.execute(MIGRATION_LOCK.read_text())
+        if MIGRATION_RUN_KEYS.is_file():
+            cur.execute(MIGRATION_RUN_KEYS.read_text())
 
 
 def _audit(cur, event_id: int, action: str, payload: dict, *, idempotency_key: str | None = None) -> None:
@@ -322,8 +332,9 @@ def run_deploy_oversight(cur, body: dict[str, Any]) -> dict[str, Any]:
         verdict = res.get("verdict") or ("needs_review" if res.get("ok") else "manual_required")
         cur.execute(
             """INSERT INTO deploy_oversight_runs
-               (deploy_event_id, lane, verdict, answer, model, ok, error)
-               VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+               (deploy_event_id, lane, verdict, answer, model, ok, error,
+                plan_id, plan_version, input_hash, oversight_policy_version)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
             (
                 event_id,
                 lane,
@@ -332,6 +343,10 @@ def run_deploy_oversight(cur, body: dict[str, Any]) -> dict[str, Any]:
                 lane,
                 bool(res.get("ok")),
                 res.get("error"),
+                int(plan["id"]) if plan.get("id") else None,
+                int(plan["version"]) if plan.get("version") else None,
+                plan.get("input_hash"),
+                OVERSIGHT_POLICY_VERSION,
             ),
         )
         run_id = cur.fetchone()[0]
@@ -416,4 +431,117 @@ def run_deploy_oversight(cur, body: dict[str, Any]) -> dict[str, Any]:
         "export_ready": export_ready,
         "results": results,
         "manual_prompt": prompt if not ok_runs else None,
+    }
+
+# ── canonical governance projection (adjudication: full immutable key) ────────
+
+def oversight_aggregate(cur, event_id: int, plan_id: int, plan_version: int) -> dict[str, Any]:
+    """Newest valid verdict PER LANE for exactly this plan snapshot. Rows without the
+    plan key (pre-2026_07_22) or from other plans/versions never participate."""
+    cur.execute(
+        """SELECT DISTINCT ON (lane) lane, verdict, id, ran_at, oversight_policy_version
+           FROM deploy_oversight_runs
+           WHERE deploy_event_id=%s AND plan_id=%s AND plan_version=%s
+             AND verdict IN ('pass','fail','needs_review')
+           ORDER BY lane, id DESC""",
+        (event_id, plan_id, plan_version),
+    )
+    lanes = {r[0]: {"verdict": r[1], "run_id": r[2],
+                    "ran_at": r[3].isoformat() if r[3] else None,
+                    "policy": r[4]} for r in cur.fetchall()}
+    if not lanes:
+        agg = "no_keyed_runs"
+    elif any(v["verdict"] == "fail" for v in lanes.values()):
+        agg = "fail"
+    elif all(v["verdict"] == "pass" for v in lanes.values()) and len(lanes) >= 2:
+        agg = "pass"
+    else:
+        agg = "pending"
+    return {"lanes": lanes, "aggregate": agg,
+            "run_ids": sorted(v["run_id"] for v in lanes.values()),
+            "completed_at": max((v["ran_at"] or "" for v in lanes.values()), default=None)}
+
+
+def governance_projection(cur, event_id: int) -> dict[str, Any]:
+    """One canonical governance block for packet + implementation export.
+
+    Cross-checks DB plan status, oversight aggregate (full key), event status and
+    capital reservation; any disagreement is listed in `mismatches` and consumers
+    MUST fail-closed on a locked export when mismatches exist."""
+    from lib.redeploy_decision import readiness_state
+
+    cur.execute("""SELECT status, operator_status, locked_plan_id, locked_plan_version,
+                          plan_locked_at, reconciliation_status,
+                          metadata->'phase_a'->'portfolio_context'->>'is_major_sale'
+                   FROM deploy_events WHERE id=%s""", (event_id,))
+    row = cur.fetchone()
+    if not row:
+        return {"ok": False, "error": "event_not_found"}
+    ev_status, op_status, lock_id, lock_ver, locked_at, recon, is_major = row
+    if not lock_id:
+        return {"ok": True, "locked": False, "event_status": ev_status,
+                "note": "no locked plan — governance projection applies to locked plans"}
+
+    plan = get_plan_by_id(cur, int(lock_id)) or {}
+    agg = oversight_aggregate(cur, event_id, int(lock_id), int(lock_ver or plan.get("version") or 0))
+    capital_status = None
+    try:
+        from lib.redeploy_capital_book import build_capital_book
+        book = build_capital_book(cur, limit=500)
+        r = next((x for x in book.get("rows") or []
+                  if int(x.get("event_id") or x.get("id") or 0) == event_id), {})
+        capital_status = r.get("capital_status")
+    except Exception:
+        pass
+
+    rctx = {"settled": str(recon or "") in ("verified", "settled"),
+            "is_major": str(is_major or "").lower() in ("true", "1"),
+            "locked": True, "analytics_exist": {}, "memo_exists": True,
+            "audit_exists": True, "p0_warnings": []}
+    plan_for_readiness = dict(plan)
+    plan_for_readiness["oversight_status"] = (
+        "passed" if agg["aggregate"] == "pass" else
+        "failed" if agg["aggregate"] == "fail" else "pending")
+    readiness = readiness_state(plan_for_readiness, rctx)
+
+    mismatches = []
+    if agg["aggregate"] == "pass" and str(plan.get("oversight_status")) not in ("passed", "pass"):
+        mismatches.append(f"db plan oversight_status={plan.get('oversight_status')} vs keyed aggregate=pass")
+    if agg["aggregate"] != "pass" and str(plan.get("oversight_status")) in ("passed", "pass"):
+        mismatches.append(f"db plan oversight_status=passed vs keyed aggregate={agg['aggregate']}")
+    if not plan.get("locked_at"):
+        mismatches.append("event has locked_plan_id but plan row carries no locked_at")
+    if op_status not in ("reviewing", "implementing"):
+        mismatches.append(f"event operator_status={op_status} inconsistent with a locked plan")
+    if capital_status not in ("reserved_locked", None):
+        mismatches.append(f"capital_status={capital_status} — locked plan should be reserved_locked")
+    if readiness.get("state") not in ("OPERATOR_LOCKED", "IMPLEMENTATION_IN_PROGRESS"):
+        mismatches.append(f"readiness={readiness.get('state')} inconsistent with lock")
+
+    return {
+        "ok": True,
+        "locked": True,
+        "plan_id": int(lock_id),
+        "plan_version": int(lock_ver or 0),
+        "plan_archetype": plan.get("plan_archetype"),
+        "destination_archetype": plan.get("destination_archetype"),
+        "implementation_policy": plan.get("implementation_policy"),
+        "operator_status": "locked",
+        "oversight_status": ("pass" if agg["aggregate"] == "pass" else agg["aggregate"]),
+        "oversight_lanes": {k: v["verdict"] for k, v in agg["lanes"].items()},
+        "oversight_run_ids": agg["run_ids"],
+        "oversight_completed_at": agg["completed_at"],
+        "oversight_policy_version": OVERSIGHT_POLICY_VERSION,
+        "readiness_status": readiness.get("state"),
+        "readiness_display": readiness.get("display"),
+        "event_status": ev_status,
+        "event_operator_status": op_status,
+        "capital_status": capital_status,
+        "locked_at": str(locked_at) if locked_at else str(plan.get("locked_at") or ""),
+        "locked_by": plan.get("locked_by"),
+        "calculation_snapshot_id": plan.get("input_hash"),
+        "implementation_review_approved": (
+            agg["aggregate"] == "pass" and not mismatches),
+        "mismatches": mismatches,
+        "consistent": not mismatches,
     }

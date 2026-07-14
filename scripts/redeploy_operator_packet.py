@@ -73,9 +73,8 @@ def main() -> int:
     except Exception as e:
         cap_line = f"capital ledger error: {str(e)[:80]}"
 
-    cur.execute("""SELECT lane, verdict, ran_at FROM deploy_oversight_runs
-                   WHERE deploy_event_id=%s ORDER BY id DESC LIMIT 4""", (args.event,))
-    oversight = [f"{l}: {v} ({str(t)[:16]})" for l, v, t in cur.fetchall()] or ["no runs"]
+    from lib.redeploy_oversight import governance_projection
+    gov = governance_projection(cur, args.event)
     cur.execute("SELECT COUNT(*) FROM redeploy_audit_log WHERE deploy_event_id=%s", (args.event,))
     audit_n = cur.fetchone()[0]
     conn.rollback()
@@ -149,11 +148,29 @@ Why primary: {'; '.join(prim.get('reasons') or [])}
 ### Do not choose
 {donot or '- none flagged'}
 
-## Governance
-Oversight (latest runs): {'; '.join(oversight)}. Readiness:
-{(primary_plan.get('readiness') or {}).get('display')}. Audit lineage rows: {audit_n}.
-Pending oversight is NOT operator-ready; adjudicate the lanes to proceed.
+## Governance (canonical projection — full immutable key)
+
+| Field | Value |
+|---|---|
+| Plan / ID / version | {gov.get('plan_archetype')} / {gov.get('plan_id')} / v{gov.get('plan_version')} |
+| Destination / policy | Plan {gov.get('destination_archetype')} / {gov.get('implementation_policy')} |
+| ChatGPT lane | {str((gov.get('oversight_lanes') or {}).get('chatgpt', '—')).upper()} |
+| Grok lane | {str((gov.get('oversight_lanes') or {}).get('grok', '—')).upper()} |
+| Oversight aggregate | {str(gov.get('oversight_status')).upper()} (runs {gov.get('oversight_run_ids')}, policy {gov.get('oversight_policy_version')}) |
+| Operator state | {gov.get('readiness_status')} |
+| Event state | {gov.get('event_operator_status')} |
+| Capital state | {gov.get('capital_status')} |
+| Locked | {gov.get('locked_at')} by {gov.get('locked_by')} |
+| Calculation snapshot | {gov.get('calculation_snapshot_id')} |
+| Implementation review approved | {gov.get('implementation_review_approved')} |
+| Governance consistent | {gov.get('consistent')}{' — MISMATCHES: ' + '; '.join(gov.get('mismatches') or []) if not gov.get('consistent') else ''} |
+
+Audit lineage rows: {audit_n}. This packet SUPERSEDES any packet generated before
+{gov.get('locked_at') or now.isoformat()} for this event.
 """
+    if gov.get("locked") and not gov.get("consistent"):
+        print("REFUSING packet: governance mismatches:", gov.get("mismatches"))
+        return 1
     out_dir = ROOT / "docs" / "audits"
     versioned = out_dir / f"{sym}_{args.event}_DECISION_PACKET_v{version}_{date}.md"
     versioned.write_text(body)

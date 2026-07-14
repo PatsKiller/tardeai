@@ -334,7 +334,7 @@ def get_plan_by_id(cur, plan_id: int) -> dict[str, Any] | None:
                   total_deployable_usd, reserve_usd, deploy_pct_of_net, confidence,
                   evidence_factor_count, operator_status, oversight_status, composite_rank,
                   advantages, compromises, risks, hermes_narrative, unmet_exposure,
-                  scenarios, locked_at, locked_by, redeploy_plan, impact
+                  scenarios, locked_at, locked_by, input_hash, redeploy_plan, impact
            FROM deploy_plans WHERE id=%s""",
         (plan_id,),
     )

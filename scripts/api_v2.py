@@ -27322,7 +27322,44 @@ def _deploy_export(query=None):
                 )
         if not plan:
             return {"ok": False, "error": "plan_not_found"}
+        # Governance projection gate (adjudication): a LOCKED plan's export must carry the
+        # canonical governance block and FAIL when any surface disagrees — force_stale is a
+        # quotes-only override and never bypasses governance consistency.
+        governance = None
+        try:
+            from lib.redeploy_oversight import governance_projection
+            cur.execute("SELECT locked_plan_id FROM deploy_events WHERE id=%s", (eid,))
+            _lp = (cur.fetchone() or [None])[0]
+            if _lp:
+                governance = governance_projection(cur, eid)
+                exporting_locked = (pid == _lp) or (pid is None and plan.get("id") == _lp) or \
+                    (str(plan.get("plan_archetype") or "") == str(governance.get("plan_archetype") or ""))
+                if exporting_locked and not governance.get("consistent"):
+                    return {"ok": False, "error": "governance_mismatch",
+                            "mismatches": governance.get("mismatches"),
+                            "hint": "locked-plan export refused until every governance surface agrees"}
+        except Exception as _ge:
+            return {"ok": False, "error": f"governance_projection_failed: {str(_ge)[:120]}"}
         result = export_trade_plan(event, plan, fmt=fmt, force_stale=force)
+        if isinstance(result, dict) and result.get("trade_plan") is not None and governance:
+            tp = result["trade_plan"]
+            tp["governance"] = governance
+            tp["operator_status"] = governance.get("operator_status")
+            tp["oversight_status"] = governance.get("oversight_status")
+            tp["readiness_status"] = governance.get("readiness_status")
+            tp["event_status"] = governance.get("event_operator_status")
+            tp["capital_status"] = governance.get("capital_status")
+            tp["locked_plan_id"] = governance.get("plan_id")
+            tp["locked_plan_version"] = governance.get("plan_version")
+            tp["implementation_review_approved"] = governance.get("implementation_review_approved")
+            tp["locked_at"] = governance.get("locked_at")
+            tp["locked_by"] = governance.get("locked_by")
+            tp["oversight_completed_at"] = governance.get("oversight_completed_at")
+            tp["oversight_run_ids"] = governance.get("oversight_run_ids")
+            tp["calculation_snapshot_id"] = governance.get("calculation_snapshot_id")
+            tp["quote_snapshot_id"] = max((str(l.get("price_as_of") or "")
+                                           for l in tp.get("legs") or []), default=None)
+            tp["packet_generated_at"] = tp.get("generated_at")
         try:
             from lib.redeploy_audit import audit_log
             exported_ok = isinstance(result, str) or result.get("ok", True)

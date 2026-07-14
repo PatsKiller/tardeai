@@ -1,6 +1,6 @@
 # FCNTX event #144 — operator decision packet (version-bound)
 
-**BOUND TO plan version 31** · generated 2026-07-14T17:04:56.627006+00:00 · generator `phase_b_2.0.0` ·
+**BOUND TO plan version 31** · generated 2026-07-14T17:26:58.065808+00:00 · generator `phase_b_2.0.0` ·
 decision policy `decision_1.1.0` ·
 regime basis `risk_off` · **advisory only — this desk places no orders.**
 If the workstation shows a different plan version, REGENERATE this packet before relying on it.
@@ -62,7 +62,22 @@ Why primary: sold exposure restoration: restores 84% of removed sector dollars (
 - Plan E: addresses portfolio gaps but does not replace the sold mandate — never a substitute for the sold exposure on a major sale
 - Plan D: concentration caps violated: AGG 70% exceeds the single-ETF cap 45%
 
-## Governance
-Oversight (latest runs): chatgpt: needs_review (2026-07-14 12:48); grok: pass (2026-07-14 12:48); chatgpt: pass (2026-07-14 12:48); grok: pass (2026-07-14 12:48). Readiness:
-ANALYTICS READY — OVERSIGHT PENDING. Audit lineage rows: 77.
-Pending oversight is NOT operator-ready; adjudicate the lanes to proceed.
+## Governance (canonical projection — full immutable key)
+
+| Field | Value |
+|---|---|
+| Plan / ID / version | F / 1191 / v31 |
+| Destination / policy | Plan B / staged |
+| ChatGPT lane | PASS |
+| Grok lane | PASS |
+| Oversight aggregate | PASS (runs [21, 23], policy oversight_policy_1.1.0) |
+| Operator state | OPERATOR_LOCKED |
+| Event state | reviewing |
+| Capital state | reserved_locked |
+| Locked | 2026-07-14 13:03:50.502396-04:00 by operator |
+| Calculation snapshot | 5ae45d8971ccff2e74cb2fd2 |
+| Implementation review approved | True |
+| Governance consistent | True |
+
+Audit lineage rows: 85. This packet SUPERSEDES any packet generated before
+2026-07-14 13:03:50.502396-04:00 for this event.

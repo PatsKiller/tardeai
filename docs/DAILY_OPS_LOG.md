@@ -1,4 +1,19 @@
 
+## 2026-07-14 — Governance projection: artifact/state mismatch CLOSED (implementation unblocked)
+
+Adjudication finding fixed: oversight runs now carry the full immutable key (plan_id/version/
+input_hash/policy — migration 2026_07_22); canonical reducer selects newest valid verdict PER LANE
+for exactly the locked snapshot (old Plan-B / unkeyed rows never participate). ChatGPT lane's keyed
+needs_review asked the plan "remain at operator review" — operator's written adjudication recorded
+as keyed run #23 (pass by operator_adjudication, full provenance + audit row); DB column reconciled
+to the keyed aggregate. New `governance_projection()` cross-checks DB plan status / oversight
+aggregate / event status / capital reservation / readiness — locked exports FAIL-CLOSED on any
+mismatch (force_stale never bypasses it; verified live when XLC aged out). Packet + implementation
+JSON regenerated through the projection: both now show F/1191/v31 · destination B · staged ·
+ChatGPT PASS · Grok PASS · aggregate PASS · OPERATOR_LOCKED · reviewing · reserved_locked ·
+implementation_review_approved TRUE · snapshot 5ae45d89… · quote snapshot 13:26 ET. 6 regression
+gates added (test_redeploy_governance_projection.py). Stage-1 orders now suitable for manual entry.
+
 ## 2026-07-14 — Plan F v31 LOCKED + approved for operator implementation review
 
 Operator-directed: locked Plan F v31 (staged implementation of the Plan B destination, plan #1191)
