@@ -199,7 +199,10 @@ export default function HealthHub({ onDrill }: Props) {
                   { label: 'Linked', value: execReady.linked_to_execution ?? '—' },
                   { label: 'Link rate', value: execReady.link_rate_pct != null ? `${execReady.link_rate_pct}%` : '—',
                     warn: (execReady.link_rate_pct ?? 100) < (execReady.target_link_rate_pct ?? 15) },
-                  { label: 'Pending now', value: execReady.pending_now ?? '—' },
+                  // Scope: pending_now = PENDING + APPROVED_FOR_PAPER_TEST + APPROVED (whole table,
+                  // not windowed) — intentionally wider than the "pending proposals" headline
+                  // (PENDING+AFPT). Label the population so the numbers can't silently disagree.
+                  { label: 'Pending+approved now', value: execReady.pending_now ?? '—' },
                   { label: 'Unrouted >48h', value: execReady.broker_unrouted_48h ?? '—',
                     warn: (execReady.broker_unrouted_48h ?? 0) > 0 },
                   { label: 'Avg approve (h)', value: execReady.avg_hours_to_approve ?? '—' },

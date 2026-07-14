@@ -1337,10 +1337,13 @@ def run_library_audit(dry_run=False):
         with _ur.urlopen("http://localhost:7777/api/v2/rag/status", timeout=10) as r:
             rag = json.loads(r.read()).get("data", {})
         coverage = rag.get("coverage_pct", 0)
-        low_sources = [s for s, v in rag.get("by_source", {}).items() if v.get("pct", 0) < 80]
+        # pct is None when embeddings outnumber current rows (orphans of pruned rows) — that is
+        # NOT low coverage, so exclude those sources rather than re-triggering the indexer.
+        low_sources = [s for s, v in rag.get("by_source", {}).items()
+                       if v.get("pct") is not None and v["pct"] < 80]
         report["rag_coverage_pct"] = coverage
         report["rag_low_sources"] = low_sources
-        print(f"  Coverage: {coverage}% | Low sources: {low_sources or 'none'}")
+        print(f"  Coverage: {coverage if coverage is not None else 'n/a (orphaned embeddings)'}% | Low sources: {low_sources or 'none'}")
         if low_sources and not dry_run:
             import subprocess
             subprocess.Popen([str(PROJECT_ROOT / ".venv/bin/python"),

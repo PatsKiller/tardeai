@@ -77,7 +77,10 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
 
     const load = async () => {
       const controller = new AbortController()
-      const timeoutMs = path.includes('broker-proposals') ? 45_000 : 30_000
+      // broker-proposals: 15s hard timeout (P0 2026-07-14) — the endpoint is now bounded
+      // server-side (quote budget + background autocal/summary); anything slower should
+      // surface the error/Retry state instead of an endless "Loading broker queue…".
+      const timeoutMs = path.includes('broker-proposals') ? 15_000 : 30_000
       const timer = setTimeout(() => controller.abort(), timeoutMs)
       try {
         const r = await fetch(path, { signal: controller.signal })

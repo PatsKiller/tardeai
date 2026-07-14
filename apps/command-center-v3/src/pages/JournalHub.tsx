@@ -580,6 +580,15 @@ export default function JournalHub({ onDrill }: Props) {
               </div>
             ))}
           </div>
+          {/* P0-6: TradeInView stats = broker round-trips — a DIFFERENT (and fresher) basis than the
+              global header's Journal tiles (CSV-import FIFO journal). Label it so the mismatch is
+              explicit, never silent. */}
+          <div style={{ fontSize: 12, color: 'var(--text3)', margin: '-8px 0 14px', lineHeight: 1.4 }}>
+            Stats basis: broker-verified round trips (Schwab API · unknown-basis &amp; canary trips excluded)
+            {acctFilter ? '' : ' · real accounts only, paper opt-in'} · filtered to the range above.
+            The header&apos;s Journal tiles use the CSV-import FIFO journal (older history, $0 scratches
+            counted, refreshed only on CSV import) — the two are expected to differ.
+          </div>
 
           {/* Charts row */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>

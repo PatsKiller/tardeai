@@ -242,6 +242,20 @@ export default function ReportsHub({ onDrill }: Props) {
     return parts.join('\n\n---\n\n')
   }, [aegisBrief, tradeAiBrief])
   const briefBody = unifiedBriefBody || todayBrief?.summary || ''
+  // Staleness guard — briefs snapshot portfolio/risk figures at generation time (created_at from
+  // /api/v2/reports/list). Re-check every minute so a page left open still warns honestly.
+  const [nowTs, setNowTs] = useState(() => Date.now())
+  useEffect(() => {
+    const t = window.setInterval(() => setNowTs(Date.now()), 60_000)
+    return () => window.clearInterval(t)
+  }, [])
+  const briefGeneratedAt: string | undefined = aegisBrief?.created_at || tradeAiBrief?.created_at
+  const briefAgeMin = useMemo(() => {
+    if (!briefGeneratedAt) return null
+    const ms = nowTs - new Date(briefGeneratedAt).getTime()
+    return Number.isFinite(ms) ? Math.floor(ms / 60_000) : null
+  }, [briefGeneratedAt, nowTs])
+  const briefIsStale = briefAgeMin != null && briefAgeMin > 120
   const briefSections = useMemo(() => parseBriefSections(briefBody), [briefBody])
   const briefExec = useMemo(() => executiveSummaryText(briefBody), [briefBody])
   const todayBriefActions = useMemo(() => {
@@ -359,6 +373,14 @@ export default function ReportsHub({ onDrill }: Props) {
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 9, color: 'var(--text3)' }}>
                   {aegisBrief && <span>🛡 Aegis · {fmtDate(aegisBrief.created_at)}</span>}
                   {tradeAiBrief && <span>📊 Trade AI · {fmtDate(tradeAiBrief.created_at)}</span>}
+                </div>
+              )}
+              {briefIsStale && briefGeneratedAt && (
+                <div style={{
+                  ...card, padding: '10px 14px', fontSize: 12, fontWeight: 600, color: '#f59e0b',
+                  border: '1px solid rgba(245,158,11,.5)', background: 'rgba(245,158,11,.08)',
+                }}>
+                  ⚠ This brief was generated {briefAgeMin}m ago at {new Date(briefGeneratedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}. Portfolio and risk figures reflect that snapshot, not live data.
                 </div>
               )}
               <BriefSectionPanels sections={briefSections} executiveFallback={briefExec} />

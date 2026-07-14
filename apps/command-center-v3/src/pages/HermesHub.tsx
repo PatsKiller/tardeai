@@ -639,7 +639,7 @@ export default function HermesHub({ onDrill }: Props) {
               {[
                 ['Backlog staged', String((backlog?.items ?? []).filter((i: any) => i.status === 'staged').length || staging.hermes_research_backlog || 0), 'hermes_backlog_drain.py drains → backlog_resolution'],
                 ['Embed queue', `${health?.embedding_queue?.pending ?? 0} pending · ${health?.embedding_queue?.failed ?? 0} failed (auto-retry)`, 'Coordinator resets failed → pending each tick'],
-                ['RAG coverage', `${health?.rag_pipeline?.embedded ?? 0}/${health?.rag_pipeline?.promoted ?? 0} (${health?.rag_pipeline?.coverage_pct ?? 0}%)`, 'backfill_promoted + embedding worker'],
+                ['RAG coverage', `${health?.rag_pipeline?.embedded ?? 0}/${health?.rag_pipeline?.promoted ?? 0} promoted embedded (${health?.rag_pipeline?.coverage_pct ?? 0}%)${health?.rag_pipeline?.embedded_total != null ? ` · ${health.rag_pipeline.embedded_total} research embeddings incl. archived` : ''}`, 'backfill_promoted + embedding worker'],
                 ['Source auto-approval', `${sourcesData?.stats?.news_active ?? 0}/${sourcesData?.stats?.news_total ?? 0} news active · ${sourcesData?.stats?.vetting_pending ?? 0} queued`, 'hermes_source_auto_approval.py — no operator step'],
                 ['24/7 Research Curator', 'Shared critique snapshot + API', 'research_critique_latest.json + /api/v2/hermes/research-critique consumed by Trade AI processes'],
               ].map(([k, v, hint]) => (

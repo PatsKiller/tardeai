@@ -38,6 +38,7 @@ export default function MetricStrip({ onDrill }: Props) {
   const todayChange = overview?.today_change
   const todayPct = overview?.today_pct
   const journalPnl = overview?.journal?.total_pnl
+  const journalLastClose = overview?.journal?.last_close_date
   const vix = tradeAi?.vix
   const approvals = overview?.pending_approvals ?? overview?.approvals_count
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
@@ -68,14 +69,18 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'JOURNAL WIN RATE', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}` : '—',
       color: winRate != null && winRate >= 50 ? '#22c55e' : winRate != null ? '#f59e0b' : 'var(--text3)',
-      drill: { title: 'Win Rate', subtitle: 'Journal (all closed) · paper-readiness shown separately', endpoint: '/api/v2/overview',
-        rows: [{ journal_win_rate: overview?.journal?.win_rate, journal_trades: overview?.journal?.trade_count, journal_pnl: overview?.journal?.total_pnl, paper_readiness_win_rate: readiness?.win_rate, paper_usable_trades: readiness?.closed_usable, paper_level: readiness?.level }] },
+      // P0-6: header journal stats = CSV-import FIFO journal (trade_journal.json) — a DIFFERENT basis
+      // than TradeInView (broker round-trips). Label it so the mismatch is explicit, never silent.
+      tip: `CSV-import journal (FIFO over Schwab History CSV) — count includes $0 scratches; win rate excludes them${journalLastClose ? ` · through ${journalLastClose}` : ''}. TradeInView uses broker round-trips (a different basis).`,
+      drill: { title: 'Win Rate', subtitle: `CSV-import journal (all closed, incl. pre-2025 history${journalLastClose ? `, through ${journalLastClose}` : ''}) · TradeInView uses broker round-trips · paper-readiness shown separately`, endpoint: '/api/v2/overview',
+        rows: [{ journal_win_rate: overview?.journal?.win_rate, journal_trades: overview?.journal?.trade_count, journal_pnl: overview?.journal?.total_pnl, journal_basis: overview?.journal?.basis, journal_last_close_date: overview?.journal?.last_close_date, paper_readiness_win_rate: readiness?.win_rate, paper_usable_trades: readiness?.closed_usable, paper_level: readiness?.level }] },
     },
     {
       label: 'JOURNAL P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—',
       color: journalPnl == null ? 'var(--text3)' : journalPnl >= 0 ? '#22c55e' : '#ef4444',
-      drill: { title: 'Journal P&L', subtitle: 'Realized P&L across closed journal trades', endpoint: '/api/v2/overview',
-        rows: [{ journal_total_pnl: overview?.journal?.total_pnl, journal_trades: overview?.journal?.trade_count, journal_win_rate: overview?.journal?.win_rate }] },
+      tip: `Realized P&L from the CSV-import journal (FIFO${journalLastClose ? `, through ${journalLastClose}` : ''}). TradeInView totals use broker round-trips and will differ.`,
+      drill: { title: 'Journal P&L', subtitle: `Realized P&L · CSV-import journal (FIFO${journalLastClose ? `, through ${journalLastClose}` : ''}) · TradeInView uses broker round-trips`, endpoint: '/api/v2/overview',
+        rows: [{ journal_total_pnl: overview?.journal?.total_pnl, journal_trades: overview?.journal?.trade_count, journal_win_rate: overview?.journal?.win_rate, journal_basis: overview?.journal?.basis, journal_last_close_date: overview?.journal?.last_close_date }] },
     },
     {
       label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',
@@ -90,10 +95,13 @@ export default function MetricStrip({ onDrill }: Props) {
         rows: tradeAi ? [{ vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_label: tradeAi.run_label }] : [] },
     },
     {
-      label: 'SETUPS', value: `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NOGO`,
+      // Scope (P0 2026-07-14): go_count/wait_count/avoid_count = LATEST RUN only — the Trading
+      // scanner's chips count the full scan universe (today + yesterday, all runs) and will be
+      // larger. Count unchanged; label the scope so the two surfaces can't silently disagree.
+      label: 'SETUPS · LATEST RUN', value: `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NOGO`,
       color: goCount > 0 ? '#22c55e' : 'var(--text3)',
-      drill: { title: 'Trade Setups', subtitle: 'From /api/v2/trade-ai', endpoint: '/api/v2/trade-ai',
-        rows: tradeAi ? [{ go_count: tradeAi.go_count, wait_count: tradeAi.wait_count, avoid_count: tradeAi.avoid_count, run_label: tradeAi.run_label, vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
+      drill: { title: 'Trade Setups', subtitle: 'Latest scanner run only — Trading → Trade AI shows the full scan universe (today + yesterday, all runs)', endpoint: '/api/v2/trade-ai',
+        rows: tradeAi ? [{ scope: 'latest run only', go_count: tradeAi.go_count, wait_count: tradeAi.wait_count, avoid_count: tradeAi.avoid_count, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
     },
   ]
 
@@ -114,6 +122,7 @@ export default function MetricStrip({ onDrill }: Props) {
       {tiles.map(t => (
         <div key={t.label}
           className="metric-strip-tile"
+          title={(t as any).tip}
           onClick={() => onDrill(t.drill)}
           style={{ padding: '4px 20px', cursor: 'pointer', textAlign: 'center', borderRight: '1px solid var(--border)' }}
         >

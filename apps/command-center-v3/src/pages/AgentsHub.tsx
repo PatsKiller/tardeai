@@ -273,7 +273,7 @@ export default function AgentsHub({ onDrill }: Props) {
           {agents.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 16 }}>No agent data from /agents/summary.</div> : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Agent / role', 'Model', 'Actions', 'Rec mix', 'Avg conf', 'Last run'].map(h => <th key={h} style={{ textAlign: ['Agent / role', 'Model'].includes(h) ? 'left' : 'right', padding: '7px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
+                {['Agent / role', 'Model', 'Actions (all-time)', 'Rec mix', 'Avg conf', 'Last run'].map(h => <th key={h} style={{ textAlign: ['Agent / role', 'Model'].includes(h) ? 'left' : 'right', padding: '7px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
               </tr></thead>
               <tbody>{agents.map((a: any, i: number) => {
                 const win = winByAgent[a.agent]
@@ -291,7 +291,13 @@ export default function AgentsHub({ onDrill }: Props) {
                       <div style={{ fontSize: 9, color: 'var(--text3)' }}>{ROLES[a.agent] ?? '—'}</div>
                     </td>
                     <td style={{ padding: '9px 10px', fontSize: 10 }}><span style={{ fontFamily: 'var(--mono)', color: 'var(--text2)' }}>{RUNTIME_MODEL}</span></td>
-                    <td style={{ padding: '9px 10px', textAlign: 'right', color: 'var(--text2)' }}>{a.actions_taken ?? a.total ?? '—'}</td>
+                    {/* P0-5: all-time count from the agent's home table (count_source) — the Home
+                        "Agent Health" card shows watchlist-runs (30d) instead, so numbers differ. */}
+                    <td style={{ padding: '9px 10px', textAlign: 'right', color: 'var(--text2)' }}
+                      title={`All-time count · source: ${a.count_source ?? 'watchlist_agent_results'}`}>
+                      <div>{a.actions_taken ?? a.total ?? '—'}</div>
+                      {a.actions_30d != null && <div style={{ fontSize: 9, color: 'var(--text3)' }}>{a.actions_30d} in 30d</div>}
+                    </td>
                     <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 11, color: 'var(--text3)' }}
                       title={['social_scalp', 'scalp_critic'].includes(a.agent) ? 'GO / AVOID / WAIT (scalp_scan_results)' : 'Buy / Sell / Hold'}>
                       {['social_scalp', 'scalp_critic'].includes(a.agent) ? (

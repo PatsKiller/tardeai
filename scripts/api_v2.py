@@ -1910,6 +1910,12 @@ def overview():
             "total_pnl": round(j_total_pnl, 2),
             "win_rate": round(j_win_rate, 1),
             "source": "journal",
+            # P0-6 labeling (2026-07-14): these numbers come from trade_journal.json — a FIFO rebuild
+            # of the manually-imported Schwab History CSV. trade_count includes $0-P&L scratches
+            # (win_rate excludes them) and spans pre-2025 history; it only advances when a new CSV is
+            # imported. TradeInView reads broker round trips (trade_closed) — intentionally different.
+            "basis": "csv_import_fifo",
+            "last_close_date": max((t.get("close_date") or "" for t in j_all), default="") or None,
         },
         "news_count": len(news.get("catalysts", [])),
         "notification_count": (notif_rows or {}).get("cnt", 0),
@@ -1992,9 +1998,14 @@ def portfolio_holdings():
 
     # Load cost basis from DB for gain/loss calculation
     basis_map = {}
-    basis_rows = _db_query("SELECT symbol, account_key, total_cost_basis FROM cost_basis_anchors") or []
+    basis_rows = _db_query(
+        "SELECT symbol, account_key, total_cost_basis, shares, per_share_basis FROM cost_basis_anchors") or []
     for br in (basis_rows or []):
-        basis_map[(br.get("symbol",""), br.get("account_key",""))] = float(br.get("total_cost_basis", 0))
+        basis_map[(br.get("symbol",""), br.get("account_key",""))] = {
+            "total": float(br.get("total_cost_basis", 0)),
+            "shares": float(br.get("shares") or 0),
+            "per_share": float(br.get("per_share_basis") or 0) or None,
+        }
 
     # Load signals and dividend data for enrichment
     signals_data = _load_json(STATE_DIR / "action_signals.json") or {}
@@ -2180,7 +2191,18 @@ def portfolio_holdings():
         else:
             _px_ts = None
         _mv = round(_shares * _px, 2) if (_px > 0 and _shares > 0 and not p.get("is_cash")) else float(p.get("market_value") or 0)
-        _cb = basis_map.get((sym, p.get("account", "")), p.get("cost_basis"))
+        # Basis anchors are point-in-time exports: after a partial/near-full sale the
+        # anchor TOTAL is stale relative to live shares (PFLT: $9,746 anchor vs 11.7 sh
+        # left -> phantom $829.71/sh). Only trust the anchor total when its share count
+        # still matches; otherwise scale by per-share basis, else fall back to broker.
+        _anchor = basis_map.get((sym, p.get("account", "")))
+        _cb = p.get("cost_basis")
+        if _anchor:
+            _a_sh = _anchor.get("shares") or 0
+            if _a_sh and _shares and abs(_a_sh - _shares) / max(_a_sh, _shares) <= 0.05:
+                _cb = _anchor["total"]
+            elif _anchor.get("per_share") and _shares:
+                _cb = round(_anchor["per_share"] * _shares, 2)
         if _cb is None and p.get("avg_cost") and _shares:
             _cb = float(p.get("avg_cost")) * _shares
         try:
@@ -4787,6 +4809,15 @@ def journal():
 
     return {
         "stats": stats,
+        # P0-6 labeling (2026-07-14): this endpoint reads trade_closed, which is refreshed from
+        # schwab_round_trips (broker-derived round trips; basis_unknown + canary trips excluded).
+        # The global header's "Journal" tiles read trade_journal.json instead — a FIFO rebuild of the
+        # manually-imported Schwab History CSV (includes pre-2025 history + $0 scratches, lags until a
+        # new CSV import). Different basis → intentionally different numbers; both surfaces are labeled.
+        "stats_basis": "broker_round_trips",
+        "stats_basis_note": ("Broker-verified round trips (schwab_round_trips → trade_closed); "
+                             "excludes unknown-basis and canary trips. Header Journal tiles use the "
+                             "CSV-import FIFO journal — a different, wider-history basis."),
         "trade_count": len(trades),
         "real_trade_count": len(real_trades),
         "trades": [{
@@ -6481,8 +6512,14 @@ def _alex_recent():
 
 def _agents_summary():
     """GET /api/v2/agents/summary — cross-agent activity summary."""
+    # P0-5 audit note: `total`/`actions_taken` are ALL-TIME. For alex/aegis/iris the count is
+    # enriched below from each agent's home table (cio_decisions / aegis_portfolio_briefs /
+    # iris_run_log), which is why this roster shows far larger numbers than the Home widget's
+    # "Agent Health" card (that card counts watchlist_agent_results only). `total_30d`/`actions_30d`
+    # are additive recent-window fields; `count_source` names the table the count came from.
     agent_counts = _db_query("""
         SELECT agent, count(*) as total,
+               count(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as total_30d,
                count(CASE WHEN recommendation IN ('BUY','ADD','STRONG_BUY') THEN 1 END) as buy_count,
                count(CASE WHEN recommendation IN ('SELL','TRIM','REDUCE') THEN 1 END) as sell_count,
                count(CASE WHEN recommendation IN ('HOLD','NEUTRAL') THEN 1 END) as hold_count,
@@ -6504,7 +6541,7 @@ def _agents_summary():
         WHERE from_agent NOT IN ('user','system')
         GROUP BY from_agent, to_agent ORDER BY cnt DESC LIMIT 10
     """) or []
-    agents_out = [{k: _json_clean(v) for k, v in r.items()} | {"last_run": _json_clean(r.get("latest")), "actions_taken": int(r.get("total", 0))} for r in agent_counts]
+    agents_out = [{k: _json_clean(v) for k, v in r.items()} | {"last_run": _json_clean(r.get("latest")), "actions_taken": int(r.get("total", 0)), "actions_30d": int(r.get("total_30d", 0) or 0), "count_source": "watchlist_agent_results"} for r in agent_counts]
     agent_names = {a.get('agent', '') for a in agents_out}
 
     # Add pipeline agents that don't write to watchlist_agent_results
@@ -6526,6 +6563,7 @@ def _agents_summary():
     # GO → buy_count, AVOID → sell_count, WAIT → hold_count.
     scalp_stats = _db_query("""
         SELECT COUNT(*) as cnt, MAX(scanned_at) as latest,
+               COUNT(*) FILTER (WHERE scanned_at > NOW() - INTERVAL '30 days') as cnt_30d,
                COUNT(*) FILTER (WHERE UPPER(decision) = 'GO') as go_count,
                COUNT(*) FILTER (WHERE UPPER(decision) = 'WAIT') as wait_count,
                COUNT(*) FILTER (WHERE UPPER(decision) = 'AVOID') as avoid_count,
@@ -6534,6 +6572,7 @@ def _agents_summary():
     """, fetch="one") or {}
     critic_stats = _db_query("""
         SELECT COUNT(*) as cnt, MAX(scanned_at) as latest,
+               COUNT(*) FILTER (WHERE scanned_at > NOW() - INTERVAL '30 days') as cnt_30d,
                COUNT(*) FILTER (WHERE UPPER(decision) = 'GO' AND disqualified IS NOT TRUE) as go_count,
                COUNT(*) FILTER (WHERE UPPER(decision) = 'WAIT' AND disqualified IS NOT TRUE) as wait_count,
                COUNT(*) FILTER (WHERE UPPER(decision) IN ('AVOID','BLOCK') OR disqualified IS TRUE) as avoid_count
@@ -6544,6 +6583,8 @@ def _agents_summary():
         for ea in extra_agents:
             if ea["agent"] == "social_scalp":
                 ea["total"] = int(scalp_stats.get("cnt", 0))
+                ea["total_30d"] = int(scalp_stats.get("cnt_30d", 0) or 0)
+                ea["count_source"] = "scalp_scan_results"
                 ea["latest"] = _json_clean(scalp_stats.get("latest"))
                 ea["buy_count"] = int(scalp_stats.get("go_count", 0))
                 ea["sell_count"] = int(scalp_stats.get("avoid_count", 0))
@@ -6555,6 +6596,8 @@ def _agents_summary():
         for ea in extra_agents:
             if ea["agent"] == "scalp_critic":
                 ea["total"] = int(critic_stats.get("cnt", 0))
+                ea["total_30d"] = int(critic_stats.get("cnt_30d", 0) or 0)
+                ea["count_source"] = "scalp_scan_results"
                 ea["latest"] = _json_clean(critic_stats.get("latest"))
                 ea["buy_count"] = int(critic_stats.get("go_count", 0))
                 ea["sell_count"] = int(critic_stats.get("avoid_count", 0))
@@ -6563,22 +6606,27 @@ def _agents_summary():
                 ea["wait_count"] = ea["hold_count"]
                 ea["avoid_count"] = ea["sell_count"]
     # Enrich iris (iris_run_log timestamp column is ran_at, not created_at)
-    iris_row = _db_query("SELECT COUNT(*) as cnt, MAX(ran_at) as latest FROM iris_run_log", fetch="one")
+    iris_row = _db_query("SELECT COUNT(*) as cnt, COUNT(*) FILTER (WHERE ran_at > NOW() - INTERVAL '30 days') as cnt_30d, MAX(ran_at) as latest FROM iris_run_log", fetch="one")
     if iris_row:
         for ea in extra_agents:
             if ea["agent"] == "iris":
                 ea["total"] = int(iris_row.get("cnt", 0))
+                ea["total_30d"] = int(iris_row.get("cnt_30d", 0) or 0)
+                ea["count_source"] = "iris_run_log"
                 ea["latest"] = _json_clean(iris_row.get("latest"))
 
     # Enrich agents from their actual home tables (not just watchlist_agent_results)
     _AGENT_HOME_TABLES = [
-        ("alex", "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM cio_decisions"),
-        ("aegis", "SELECT COUNT(*) as cnt, MAX(observed_at) as latest FROM aegis_portfolio_briefs"),
+        ("alex", "cio_decisions",
+         "SELECT COUNT(*) as cnt, COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as cnt_30d, MAX(created_at) as latest FROM cio_decisions"),
+        ("aegis", "aegis_portfolio_briefs",
+         "SELECT COUNT(*) as cnt, COUNT(*) FILTER (WHERE observed_at > NOW() - INTERVAL '30 days') as cnt_30d, MAX(observed_at) as latest FROM aegis_portfolio_briefs"),
         # iris writes to iris_run_log (ran_at), not watchlist_agent_results — without this its
         # dashboard "last run" stays pinned to its last watchlist row and looks stale.
-        ("iris", "SELECT COUNT(*) as cnt, MAX(ran_at) as latest FROM iris_run_log"),
+        ("iris", "iris_run_log",
+         "SELECT COUNT(*) as cnt, COUNT(*) FILTER (WHERE ran_at > NOW() - INTERVAL '30 days') as cnt_30d, MAX(ran_at) as latest FROM iris_run_log"),
     ]
-    for _agent_name, _sql in _AGENT_HOME_TABLES:
+    for _agent_name, _home_tbl, _sql in _AGENT_HOME_TABLES:
         try:
             _row = _db_query(_sql, fetch="one")
             if _row and _row.get("latest"):
@@ -6590,6 +6638,9 @@ def _agents_summary():
                         if _new > str(_cur):
                             a["last_run"] = _json_clean(_row["latest"])
                             a["actions_taken"] = max(a.get("actions_taken", 0), int(_row.get("cnt", 0)))
+                            a["actions_30d"] = max(a.get("actions_30d", 0), int(_row.get("cnt_30d", 0) or 0))
+                            if int(_row.get("cnt", 0)) >= a.get("actions_taken", 0):
+                                a["count_source"] = _home_tbl
                 # Also update in extra_agents
                 for ea in extra_agents:
                     if ea["agent"] == _agent_name:
@@ -6598,6 +6649,9 @@ def _agents_summary():
                         if _new > str(_cur):
                             ea["latest"] = _json_clean(_row["latest"])
                             ea["total"] = max(ea.get("total", 0), int(_row.get("cnt", 0)))
+                            ea["total_30d"] = max(ea.get("total_30d", 0) or 0, int(_row.get("cnt_30d", 0) or 0))
+                            if int(_row.get("cnt", 0)) >= ea.get("total", 0):
+                                ea["count_source"] = _home_tbl
         except Exception:
             pass
 
@@ -6605,6 +6659,7 @@ def _agents_summary():
         if ea["agent"] not in agent_names:
             ea["last_run"] = ea.get("latest")
             ea["actions_taken"] = ea.get("total", 0)
+            ea["actions_30d"] = ea.get("total_30d", 0) or 0
             agents_out.append(ea)
 
     return {
@@ -7754,23 +7809,52 @@ def _rag_status():
         "decision_outcome": "SELECT count(*) FROM decision_outcomes",
         "hermes_research": "SELECT count(*) FROM hermes_research_intelligence WHERE status='promoted'",
     }
+    # Per-source embedded-count overrides where the naive count is apples-to-oranges with the
+    # denominator: embeddings persist after source rows are archived/pruned, so counting ALL
+    # embeddings against only the CURRENT rows produced meaningless >100% "coverage".
+    # Only joins verified against real source_id semantics are listed here — agent_result and
+    # agent_synthesis use synthetic hash source_ids with no safe join, so they stay naive and
+    # fall through to the pct=None honesty guard below.
+    embedded_overrides = {
+        "hermes_research": """SELECT count(*) FROM content_embeddings ce
+            WHERE ce.source_type='hermes_research'
+              AND EXISTS (SELECT 1 FROM hermes_research_intelligence h
+                          WHERE h.id::text = ce.source_id::text AND h.status='promoted')""",
+        "news": """SELECT count(*) FROM content_embeddings ce
+            WHERE ce.source_type='news'
+              AND EXISTS (SELECT 1 FROM news_articles t WHERE t.id::text = ce.source_id::text)""",
+        "decision_outcome": """SELECT count(*) FROM content_embeddings ce
+            WHERE ce.source_type='decision_outcome'
+              AND EXISTS (SELECT 1 FROM decision_outcomes t WHERE t.id::text = ce.source_id::text)""",
+    }
     by_source = {}
     total_rows = 0
     total_embedded = 0
+    ratio_meaningful = True
     for src, sql in sources.items():
         try:
             t = (_db_query(sql, fetch="one") or {}).get("count", 0)
-            e = (_db_query("SELECT count(*) FROM content_embeddings WHERE source_type=%s", (src,), fetch="one") or {}).get("count", 0)
+            if src in embedded_overrides:
+                e = (_db_query(embedded_overrides[src], fetch="one") or {}).get("count", 0)
+            else:
+                e = (_db_query("SELECT count(*) FROM content_embeddings WHERE source_type=%s", (src,), fetch="one") or {}).get("count", 0)
         except Exception:
             t, e = 0, 0
-        pct = round(e / max(t, 1) * 100, 1) if t > 0 else 0
+        if e > t:
+            # More embeddings than current rows = orphans of pruned rows; a % here would be a lie.
+            pct = None
+            ratio_meaningful = False
+        else:
+            pct = round(e / max(t, 1) * 100, 1) if t > 0 else 0
         by_source[src] = {"total": t, "embedded": e, "pct": pct}
         total_rows += t
         total_embedded += e
     last = _db_query("SELECT max(created_at) as t FROM content_embeddings", fetch="one")
     return {
         "total_rows": total_rows, "total_embedded": total_embedded,
-        "coverage_pct": round(total_embedded / max(total_rows, 1) * 100, 1),
+        # Overall % only when every source ratio is meaningful — otherwise present the two raw
+        # counts as separate facts (embeddings vs current rows) instead of a bogus >100% figure.
+        "coverage_pct": round(total_embedded / max(total_rows, 1) * 100, 1) if ratio_meaningful and total_embedded <= total_rows else None,
         "by_source": by_source, "model": "nomic-embed-text", "dims": 768,
         "last_indexed": _json_clean((last or {}).get("t")),
     }
@@ -13121,12 +13205,23 @@ def _paper_proposals_enriched():
             if sid in strategy_perf:
                 by_strat[sid].update(strategy_perf[sid])
 
+        # Canonical pending count — COUNT(*) over the whole table, NOT len() of the
+        # LIMIT-50 display list. The old len() silently capped the headline number at 50,
+        # so Home / Trading disagreed with Health + the broker queue (P0 2026-07-14).
+        _true_pending_n = None
+        try:
+            _pc = _db_query("""SELECT COUNT(*) AS n FROM paper_trade_proposals
+                               WHERE status IN ('PENDING','APPROVED_FOR_PAPER_TEST')""", fetch="one")
+            _true_pending_n = int((_pc or {}).get("n") or 0)
+        except Exception:
+            _true_pending_n = None
+
         return 200, {
             "ok": True,
             "proposals": pending_list,
             "expired_today": expired_today,
             "summary": {
-                "pending": len(pending_list),
+                "pending": _true_pending_n if _true_pending_n is not None else len(pending_list),
                 "ready_count": ready_count,
                 "needs_review_count": review_count,
                 "stale_count": stale_count,
@@ -13160,7 +13255,11 @@ def _paper_proposals_enriched():
                                                    reverse=True)],
                 "multi_strategy_symbols": multi_strategy_symbols,
             },
-            "pending_count": len(pending_list),
+            # pending_count = canonical PENDING+APPROVED_FOR_PAPER_TEST count (whole table);
+            # shown_count/list_limit describe the capped display list for scope labels.
+            "pending_count": _true_pending_n if _true_pending_n is not None else len(pending_list),
+            "shown_count": len(pending_list),
+            "list_limit": 50,
             "count": len(proposals),
             "portfolio_value": round(portfolio_value, 2),
         }
@@ -16225,8 +16324,137 @@ def _broker_list_cache_put(key: str, data: dict) -> None:
 
 
 def _broker_batch_live_quotes(symbols: list[str]) -> dict:
-    from broker_proposal_autocal import batch_live_quotes
-    return batch_live_quotes(symbols)
+    return _broker_list_quote_map(symbols)
+
+
+# ── Broker list-path latency guards (P0 2026-07-14: Proposals tab forever-spinner) ────────────
+# broker_proposal_autocal.batch_live_quotes falls back to SERIAL per-symbol provider-chain
+# quotes (~3-4s each) whenever the Schwab batch lane is down (e.g. OAuth refresh 400) — a
+# 15-row page held /api/v2/broker-proposals for 35-60s, past the UI timeout, so the tab
+# never rendered. Same quotes / same payload shape, but the list path now: (1) serves a
+# short-TTL in-process quote cache, (2) waits at most BROKER_LIST_QUOTE_BUDGET_SEC for the
+# fetch, letting it finish on a daemon thread to warm the cache for the next poll. Symbols
+# with no quote inside the budget keep their DB price — identical to batch_live_quotes'
+# existing behavior for symbols the providers can't quote.
+_BROKER_QUOTE_CACHE: dict[str, tuple[float, dict]] = {}
+_BROKER_QUOTE_CACHE_TTL = float(os.getenv("BROKER_LIST_QUOTE_TTL_SEC", "90"))
+_BROKER_QUOTE_BUDGET_SEC = float(os.getenv("BROKER_LIST_QUOTE_BUDGET_SEC", "8"))
+_BROKER_QUOTE_FETCH: dict = {"event": None}   # single-flight: {"event": threading.Event}
+_BROKER_QUOTE_FETCH_LOCK = None               # created lazily (threading.Lock)
+
+
+def _broker_list_quote_map(symbols: list) -> dict:
+    import time as _t
+    import threading as _th
+    global _BROKER_QUOTE_FETCH_LOCK
+    if _BROKER_QUOTE_FETCH_LOCK is None:
+        _BROKER_QUOTE_FETCH_LOCK = _th.Lock()
+    syms = sorted({str(s or "").upper() for s in symbols if s})
+    if not syms:
+        return {}
+    now = _t.time()
+    out: dict = {}
+    missing: list[str] = []
+    for s in syms:
+        hit = _BROKER_QUOTE_CACHE.get(s)
+        if hit and (now - hit[0]) < _BROKER_QUOTE_CACHE_TTL:
+            out[s] = hit[1]
+        else:
+            missing.append(s)
+    if not missing:
+        return out
+    with _BROKER_QUOTE_FETCH_LOCK:
+        ev = _BROKER_QUOTE_FETCH.get("event")
+        if ev is None or ev.is_set():
+            # no fetch in flight — start one for this request's missing set
+            ev = _th.Event()
+            _BROKER_QUOTE_FETCH["event"] = ev
+
+            def _fetch(batch=list(missing), done=ev):
+                try:
+                    from broker_proposal_autocal import batch_live_quotes
+                    qmap = batch_live_quotes(batch) or {}
+                    ts = _t.time()
+                    for k, v in qmap.items():
+                        _BROKER_QUOTE_CACHE[str(k).upper()] = (ts, v)
+                except Exception:
+                    pass
+                finally:
+                    done.set()
+
+            _th.Thread(target=_fetch, name="broker-list-quotes", daemon=True).start()
+    # Wait up to the budget for the in-flight fetch (ours or a concurrent request's),
+    # then serve whatever the cache has. A slow fetch keeps running and warms the
+    # cache for the next 15-30s poll instead of wedging this response.
+    ev.wait(_BROKER_QUOTE_BUDGET_SEC)
+    now = _t.time()
+    for s in missing:
+        hit = _BROKER_QUOTE_CACHE.get(s)
+        if hit and (now - hit[0]) < _BROKER_QUOTE_CACHE_TTL:
+            out[s] = hit[1]
+    return out
+
+
+_BROKER_AUTOCAL_BG: dict = {"running": False}
+
+
+def _broker_autocal_kick() -> dict:
+    """Fire broker_proposal_autocal.maybe_auto_recalibrate WITHOUT blocking the request.
+    The recal itself is unchanged (same 5-min throttle, same DB writes); with the Schwab
+    lane degraded an inline run requoted the whole stale queue serially and held the
+    triggering /api/v2/broker-proposals request for minutes."""
+    import threading as _th
+    if _BROKER_AUTOCAL_BG.get("running"):
+        return {"skipped": True, "reason": "in_progress"}
+    _BROKER_AUTOCAL_BG["running"] = True
+
+    def _run():
+        try:
+            from broker_proposal_autocal import maybe_auto_recalibrate
+            maybe_auto_recalibrate()
+        except Exception:
+            pass
+        finally:
+            _BROKER_AUTOCAL_BG["running"] = False
+
+    _th.Thread(target=_run, name="broker-autocal", daemon=True).start()
+    return {"scheduled": True}
+
+
+_BROKER_QSUM_CACHE: dict = {"ts": 0.0, "data": None, "refreshing": False}
+_BROKER_QSUM_TTL = float(os.getenv("BROKER_QUEUE_SUMMARY_TTL_SEC", "60"))
+
+
+def _broker_queue_summary_fast():
+    """Serve the last queue summary; recompute on a daemon thread when stale.
+    compute_queue_summary() pushes every active proposal through the sizing/gate
+    evaluators (12s+ cold, includes network quote lookups) — too slow for the list
+    request path. Data is identical, just up to ~TTL+compute seconds old."""
+    import time as _t
+    import threading as _th
+    now = _t.time()
+    data = _BROKER_QSUM_CACHE.get("data")
+    if data is not None and (now - _BROKER_QSUM_CACHE["ts"]) < _BROKER_QSUM_TTL:
+        return data
+
+    def _compute():
+        try:
+            import broker_proposal_queue_ops as _bqo
+            res = _bqo.compute_queue_summary()
+            if res:
+                _BROKER_QSUM_CACHE["data"] = res
+                _BROKER_QSUM_CACHE["ts"] = _t.time()
+        except Exception:
+            pass
+        finally:
+            _BROKER_QSUM_CACHE["refreshing"] = False
+
+    if not _BROKER_QSUM_CACHE.get("refreshing"):
+        _BROKER_QSUM_CACHE["refreshing"] = True
+        _th.Thread(target=_compute, name="broker-qsum", daemon=True).start()
+    # Stale (or first-call None) copy — the UI tolerates a missing queue_summary and
+    # the next poll picks up the refreshed one.
+    return data
 
 
 def _broker_enrich_trust_rows(rows: list[dict]) -> list[dict]:
@@ -16288,7 +16516,13 @@ def _broker_reprice_proposal_rows(rows: list[dict]) -> list[dict]:
         return rows
     if BROKER_LIST_LIVE_QUOTES:
         from broker_proposal_autocal import apply_live_quotes_to_rows
-        rows = apply_live_quotes_to_rows(rows)
+        # Pass a pre-built bounded quote map — apply_live_quotes_to_rows' own
+        # batch_live_quotes call is unbounded/serial on provider fallback (P0 spinner).
+        # An empty map must NOT be passed through (falsy → it would refetch serially);
+        # no quotes inside the budget simply means rows keep their DB prices this poll.
+        _qmap = _broker_list_quote_map([r.get("symbol") for r in rows])
+        if _qmap:
+            rows = apply_live_quotes_to_rows(rows, quote_map=_qmap)
     return _broker_enrich_trust_rows(rows)
 
 
@@ -16453,12 +16687,9 @@ def _broker_proposals(query=None):
     Cached in-memory + disk (~120s) for fast tab load.
     Auto-recalibrates stale broker rows in DB (throttled ~5m) before serve.
     """
-    autocal_meta: dict = {}
-    try:
-        from broker_proposal_autocal import maybe_auto_recalibrate
-        autocal_meta = maybe_auto_recalibrate() or {}
-    except Exception:
-        pass
+    # Auto-recal runs on a daemon thread (same throttle/writes) — inline it wedged the
+    # request for the whole stale-queue requote whenever the 5-min throttle expired.
+    autocal_meta: dict = _broker_autocal_kick()
     cache_key = _broker_list_cache_key(query)
     if str(_broker_qp(query, "refresh", "") or "").lower() not in ("1", "true", "yes"):
         cached = _broker_list_cache_get(cache_key)
@@ -16466,11 +16697,7 @@ def _broker_proposals(query=None):
             out = dict(cached)
             out["proposals"] = _broker_reprice_proposal_rows(out.get("proposals") or [])
             out["quotes_live"] = True
-            try:
-                import broker_proposal_queue_ops as _bqo
-                out["queue_summary"] = _bqo.compute_queue_summary()
-            except Exception:
-                pass
+            out["queue_summary"] = _broker_queue_summary_fast()
             try:
                 import broker_desk_automation as _bda
                 out["desk_automation"] = _bda.get_desk_automation_state()
@@ -16789,12 +17016,7 @@ def _broker_proposals(query=None):
                 curator_meta = json.loads(_cp.read_text(encoding="utf-8"))
         except Exception:
             pass
-        queue_summary = None
-        try:
-            import broker_proposal_queue_ops as _bqo
-            queue_summary = _bqo.compute_queue_summary()
-        except Exception:
-            pass
+        queue_summary = _broker_queue_summary_fast()
         desk_automation = None
         try:
             import broker_desk_automation as _bda
@@ -18204,22 +18426,38 @@ def _morning_command():
     # ── Agent health ──
     agent_health = []
     try:
+        # NOTE (P0-5 audit 2026-07-14): these counts come from watchlist_agent_results ONLY — the
+        # shared watchlist analysis log. Agents whose primary output lives in a home table (alex →
+        # cio_decisions, aegis → aegis_portfolio_briefs) look tiny here (24 / 7) vs the Agents hub
+        # roster (/api/v2/agents/summary), which counts the home tables (2217 / 5806). Both are
+        # correct; they count different tables. Canonical per surface: Home widget = watchlist runs
+        # (recent-health signal), Agents roster = home-table actions (all-time activity). Additive
+        # fields total_30d + home_table_* let the UI label both explicitly.
         agents_raw = _db_query("""
-            SELECT agent, COUNT(*) as total, MAX(created_at) as latest
+            SELECT agent, COUNT(*) as total,
+                   COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as total_30d,
+                   MAX(created_at) as latest
             FROM watchlist_agent_results GROUP BY agent ORDER BY latest DESC
         """) or []
         _agent_max_days = {"maria": 1, "steph": 1, "risk_agent": 1,
                            "aegis": 3, "alex": 3, "tax_agent": 7, "iris": 7, "maria_research": 7}
         from datetime import timezone as _tz
         _now_utc = datetime.now(_tz.utc)
-        # Enrich aegis/alex from home tables
+        # Enrich aegis/alex from home tables (freshness + counts so the widget can reconcile
+        # against the Agents-hub roster numbers)
         _home_latest = {}
+        _home_stats = {}
         for _tbl, _col, _aname in [("aegis_portfolio_briefs", "observed_at", "aegis"),
                                      ("cio_decisions", "created_at", "alex")]:
             try:
-                _hrow = _db_query(f"SELECT MAX({_col}) as latest FROM {_tbl}", fetch="one")
+                _hrow = _db_query(
+                    f"SELECT MAX({_col}) as latest, COUNT(*) as cnt, "
+                    f"COUNT(*) FILTER (WHERE {_col} > NOW() - INTERVAL '30 days') as cnt_30d "
+                    f"FROM {_tbl}", fetch="one")
                 if _hrow and _hrow.get("latest"):
                     _home_latest[_aname] = _hrow["latest"]
+                    _home_stats[_aname] = {"table": _tbl, "total": int(_hrow.get("cnt", 0) or 0),
+                                           "total_30d": int(_hrow.get("cnt_30d", 0) or 0)}
             except Exception:
                 pass
         for ar in agents_raw:
@@ -18233,11 +18471,20 @@ def _morning_command():
             max_d = _agent_max_days.get(agent_name, 7)
             age_d = (_now_utc - latest).total_seconds() / 86400 if latest else 999
             status = "healthy" if age_d <= max_d else "stale" if age_d <= max_d * 3 else "dead"
-            agent_health.append({
+            _entry = {
                 "agent": agent_name, "total": ar.get("total", 0),
+                "total_30d": ar.get("total_30d", 0),
+                "count_source": "watchlist_agent_results",
                 "latest": str(latest) if latest else None,
                 "age_days": round(age_d, 1), "max_days": max_d, "status": status,
-            })
+            }
+            # Additive: home-table counts (the numbers the Agents-hub roster shows)
+            if agent_name in _home_stats:
+                _hs = _home_stats[agent_name]
+                _entry["home_table"] = _hs["table"]
+                _entry["home_table_total"] = _hs["total"]
+                _entry["home_table_total_30d"] = _hs["total_30d"]
+            agent_health.append(_entry)
     except Exception:
         pass
 
@@ -21768,7 +22015,17 @@ def _hermes_health():
         fetch="one",
     ) or {}
     promoted_n = (_db_query("SELECT count(*) as n FROM hermes_research_intelligence WHERE status='promoted'", fetch="one") or {}).get("n", 0)
-    embedded_n = (_db_query("SELECT count(*) as n FROM content_embeddings WHERE source_type='hermes_research'", fetch="one") or {}).get("n", 0)
+    # Coverage must compare like-with-like: embeddings persist after research rows are later
+    # ARCHIVED, so counting ALL hermes_research embeddings against only currently-PROMOTED rows
+    # produced a meaningless >100% "coverage" (e.g. 6,776/3,196 = 212%). Numerator = embeddings
+    # whose source row is still promoted; total embeddings reported separately as its own fact.
+    embedded_n = (_db_query(
+        """SELECT count(*) as n FROM content_embeddings ce
+           WHERE ce.source_type='hermes_research'
+             AND EXISTS (SELECT 1 FROM hermes_research_intelligence h
+                         WHERE h.id::text = ce.source_id::text AND h.status='promoted')""",
+        fetch="one") or {}).get("n", 0)
+    embedded_total_n = (_db_query("SELECT count(*) as n FROM content_embeddings WHERE source_type='hermes_research'", fetch="one") or {}).get("n", 0)
 
     return {
         "ok": True,
@@ -21789,7 +22046,8 @@ def _hermes_health():
         },
         "rag_pipeline": {
             "promoted": int(promoted_n or 0),
-            "embedded": int(embedded_n or 0),
+            "embedded": int(embedded_n or 0),               # embeddings for currently-promoted rows only
+            "embedded_total": int(embedded_total_n or 0),   # all hermes_research embeddings (incl. since-archived rows)
             "coverage_pct": round(int(embedded_n or 0) / max(int(promoted_n or 0), 1) * 100, 1),
         },
     }
@@ -27270,6 +27528,25 @@ def _deploy_plans(query=None):
             bundle = (meta or {}).get("phase_b") or {}
             recommendation = (meta or {}).get("recommendation") or bundle.get("recommendation")
             memo = (meta or {}).get("pm_memo_structured") or bundle.get("pm_memo_structured")
+            # PM memo is generated at plan-build time; status fields must render LIVE
+            # (P1-1: memo said 'oversight: pending' after the lanes passed). DB is
+            # authoritative for governance; the memo text is advisory.
+            try:
+                if memo and isinstance(memo.get("sections"), dict):
+                    _lp_id = row[1]
+                    _live_plan = next((p2 for p2 in plans if p2.get("id") == _lp_id), None) \
+                        or next((p2 for p2 in plans
+                                 if p2.get("plan_archetype") == ((recommendation or {}).get("primary") or {}).get("archetype")), None)
+                    if _live_plan:
+                        _ov = _live_plan.get("oversight_status")
+                        _rd = (_live_plan.get("readiness") or {}).get("display")
+                        memo = dict(memo)
+                        memo["sections"] = dict(memo["sections"])
+                        memo["sections"]["oversight_conclusion"] = (
+                            f"Oversight status: {_ov} (live from database"
+                            + (f"; readiness: {_rd}" if _rd else "") + ").")
+            except Exception:
+                pass
             generated_basis = {"settled_basis": bundle.get("settled_basis"),
                                "regime_basis": bundle.get("regime_basis"),
                                "generator_version": bundle.get("generator_version")}

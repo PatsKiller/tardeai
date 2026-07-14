@@ -41,7 +41,9 @@ def _agg(rows, pnl_key="pnl"):
 
 
 def _trade_where(account=None, date_from=None, date_to=None):
-    parts, params = ["tc.buy_price > 0 OR tc.pnl != 0"], []
+    # Parenthesized: parts are AND-joined, and an unparenthesized "a OR b AND account=..." binds as
+    # "a OR (b AND ...)" — every buy_price>0 row leaked past the account/date filters (P0-6 audit).
+    parts, params = ["(tc.buy_price > 0 OR tc.pnl != 0)"], []
     if account:
         parts.append("tc.account = %s")
         params.append(account)

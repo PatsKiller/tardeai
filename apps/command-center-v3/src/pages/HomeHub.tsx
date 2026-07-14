@@ -25,14 +25,24 @@ function SCard({ title, count, accent, children }: { title: string; count?: any;
 }
 const Line = ({ children, color }: any) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, color: color ?? 'var(--text2)' }}>{children}</div>
 
+// P2-1: loading skeletons — pulse placeholders so first-paint zeros/dashes ('—', '0 GO · 0 WAIT',
+// empty equity curve) never render as if they were real data while useApi is still loading.
+const skelAnim = 'ccHomeSkelPulse 1.3s ease-in-out infinite'
+const Skel = ({ w = 64, h = 16 }: { w?: number | string; h?: number }) => (
+  <span aria-hidden style={{ display: 'inline-block', width: w, height: h, background: '#1e293b', borderRadius: 4, animation: skelAnim, verticalAlign: 'middle' }} />
+)
+const SkelBlock = ({ h }: { h: number }) => (
+  <div aria-hidden style={{ height: h, background: '#1e293b', borderRadius: 8, animation: skelAnim }} />
+)
+
 export default function HomeHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
-  const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
+  const { data: overview, loading: overviewLoading } = useApi<any>('/api/v2/overview', 60_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
-  const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
-  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 60_000)
-  const { data: risk } = useApi<any>('/api/v2/risk', 60_000)
-  const { data: metricsHist } = useApi<any>('/api/v2/system/metrics-history', 300_000)
+  const { data: regime, loading: regimeLoading } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
+  const { data: tradeAi, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai', 60_000)
+  const { data: risk, loading: riskLoading } = useApi<any>('/api/v2/risk', 60_000)
+  const { data: metricsHist, loading: metricsLoading } = useApi<any>('/api/v2/system/metrics-history', 300_000)
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
   const { data: propHealth } = useApi<any>('/api/v2/health/proposals', 120_000)
   const { data: command } = useApi<any>('/api/v2/command', 60_000)
@@ -84,18 +94,19 @@ export default function HomeHub({ onDrill }: Props) {
       drill: { title: 'Paper validation win rate', subtitle: '/api/v2/paper-trade-readiness', endpoint: '/api/v2/paper-trade-readiness', rows: readiness ? [{ win_rate: readiness.win_rate, profit_factor: readiness.profit_factor, closed_usable: readiness.closed_usable }] : [] } },
     { label: 'REGIME', value: regimeLabel.replace(/_/g, ' '), sub: vix != null ? `VIX ${vix}` : '', color: regimeLabel === 'risk_off' ? '#ef4444' : regimeLabel === 'risk_on' ? '#22c55e' : '#f59e0b',
       drill: { title: 'Market Regime', subtitle: '/api/v2/risk-regime/latest', endpoint: '/api/v2/risk-regime/latest', rows: regime ? [regime] : [] } },
-    { label: 'SETUPS', value: `${goCount}/${waitCount}/${avoidCount}`, sub: 'GO/WAIT/NO', color: goCount > 0 ? '#22c55e' : 'var(--text3)',
-      drill: { title: 'Trade Setups', subtitle: '/api/v2/trade-ai', endpoint: '/api/v2/trade-ai', rows: tradeAi ? [{ go_count: goCount, wait_count: waitCount, avoid_count: avoidCount, vix, run_label: tradeAi.run_label }] : [] } },
+    { label: 'SETUPS', value: `${goCount}/${waitCount}/${avoidCount}`, sub: 'GO/WAIT/NO · latest run', color: goCount > 0 ? '#22c55e' : 'var(--text3)',
+      drill: { title: 'Trade Setups', subtitle: 'Latest scanner run only — Trading → Trade AI shows the full scan universe', endpoint: '/api/v2/trade-ai', rows: tradeAi ? [{ scope: 'latest run only', go_count: goCount, wait_count: waitCount, avoid_count: avoidCount, vix, run_label: tradeAi.run_label }] : [] } },
     { label: 'JOURNAL P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—', sub: 'cumulative', color: (journalPnl ?? 0) >= 0 ? '#22c55e' : '#ef4444',
       drill: { title: 'Journal P&L', subtitle: '/api/v2/overview → journal', endpoint: '/api/v2/overview', rows: journal ? [journal] : [] } },
   ]
 
   return (
     <div>
+      <style>{'@keyframes ccHomeSkelPulse { 0%, 100% { opacity: .35 } 50% { opacity: .85 } }'}</style>
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>Home</div>
-          <div style={hubSubtitle(terminalUi)}>{fmt$(pv ?? 0, 0)} · {overview?.position_count ?? 0} positions · command router</div>
+          <div style={hubSubtitle(terminalUi)}>{overviewLoading ? <Skel w={180} h={12} /> : <>{fmt$(pv ?? 0, 0)} · {overview?.position_count ?? 0} positions · command router</>}</div>
         </div>
         <Link to="/reports" style={{
           padding: '6px 14px', fontSize: 11, fontWeight: 700, borderRadius: 6, textDecoration: 'none',
@@ -109,27 +120,27 @@ export default function HomeHub({ onDrill }: Props) {
             <div style={{ fontSize: terminalUi ? 11 : 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 12 }}>Command Center</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
               {[
-                { label: 'Portfolio', value: pv != null ? fmt$(pv, 0) : '—', color: 'var(--text0)' },
-                { label: 'Today', value: todayChg != null ? `${todayChg >= 0 ? '+' : ''}${fmt$(todayChg, 0)}` : '—', color: (todayChg ?? 0) >= 0 ? '#22c55e' : '#ef4444' },
-                { label: 'VIX', value: vix ?? '—', color: 'var(--text0)' },
-                { label: 'Regime', value: regimeLabel ? regimeLabel.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '—', color: regimeLabel === 'risk_off' ? '#ef4444' : regimeLabel === 'risk_on' ? '#22c55e' : '#f59e0b' },
+                { label: 'Portfolio', value: pv != null ? fmt$(pv, 0) : '—', color: 'var(--text0)', loading: overviewLoading },
+                { label: 'Today', value: todayChg != null ? `${todayChg >= 0 ? '+' : ''}${fmt$(todayChg, 0)}` : '—', color: (todayChg ?? 0) >= 0 ? '#22c55e' : '#ef4444', loading: overviewLoading },
+                { label: 'VIX', value: vix ?? '—', color: 'var(--text0)', loading: tradeAiLoading },
+                { label: 'Regime', value: regimeLabel ? regimeLabel.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '—', color: regimeLabel === 'risk_off' ? '#ef4444' : regimeLabel === 'risk_on' ? '#22c55e' : '#f59e0b', loading: regimeLoading },
               ].map(t => (
                 <div key={t.label}>
                   <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>{t.label}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: t.color, fontFamily: 'monospace' }}>{t.value}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: t.color, fontFamily: 'monospace' }}>{t.loading ? <Skel w={72} h={18} /> : t.value}</div>
                 </div>
               ))}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16, marginTop: 12 }}>
               {[
-                { label: 'Last Run', value: tradeAi ? `${tradeAi.run_label ?? '—'} ${tradeAi.run_date ?? ''}` : '—', color: 'var(--text2)' },
-                { label: 'Setup State', value: `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NO GO`, color: goCount > 0 ? '#22c55e' : 'var(--text2)' },
-                { label: 'Journal P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—', color: (journalPnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' },
-                { label: `Win Rate (${journal?.trade_count ?? 0} trades)`, value: journal?.win_rate != null ? `${journal.win_rate}%` : '—', color: (journal?.win_rate ?? 0) >= 55 ? '#22c55e' : '#f59e0b' },
+                { label: 'Last Run', value: tradeAi ? `${tradeAi.run_label ?? '—'} ${tradeAi.run_date ?? ''}` : '—', color: 'var(--text2)', loading: tradeAiLoading },
+                { label: 'Setup State', value: `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NO GO`, color: goCount > 0 ? '#22c55e' : 'var(--text2)', loading: tradeAiLoading },
+                { label: 'Journal P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—', color: (journalPnl ?? 0) >= 0 ? '#22c55e' : '#ef4444', loading: overviewLoading },
+                { label: `Win Rate (${journal?.trade_count ?? 0} trades)`, value: journal?.win_rate != null ? `${journal.win_rate}%` : '—', color: (journal?.win_rate ?? 0) >= 55 ? '#22c55e' : '#f59e0b', loading: overviewLoading },
               ].map(t => (
                 <div key={t.label}>
                   <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>{t.label}</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: t.color, fontFamily: 'monospace' }}>{t.value}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: t.color, fontFamily: 'monospace' }}>{t.loading ? <Skel w={110} h={14} /> : t.value}</div>
                 </div>
               ))}
             </div>
@@ -137,13 +148,13 @@ export default function HomeHub({ onDrill }: Props) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 14 }}>
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-              <RiskGauge value={heat} max={15} threshold={5} label="Portfolio heat" unit="%" height={100} />
+              {riskLoading ? <SkelBlock h={100} /> : <RiskGauge value={heat} max={15} threshold={5} label="Portfolio heat" unit="%" height={100} />}
             </div>
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-              <RiskGauge value={triggered.length} max={Math.max(triggered.length, 5)} threshold={1} label="Stops triggered" unit="" height={100} />
+              {riskLoading ? <SkelBlock h={100} /> : <RiskGauge value={triggered.length} max={Math.max(triggered.length, 5)} threshold={1} label="Stops triggered" unit="" height={100} />}
             </div>
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-              <RiskGauge value={positions.filter((p: any) => !p.has_stop).length} max={Math.max(positions.length, 8)} threshold={2} label="Unprotected" unit="" height={100} />
+              {riskLoading ? <SkelBlock h={100} /> : <RiskGauge value={positions.filter((p: any) => !p.has_stop).length} max={Math.max(positions.length, 8)} threshold={2} label="Unprotected" unit="" height={100} />}
             </div>
           </div>
 
@@ -152,9 +163,11 @@ export default function HomeHub({ onDrill }: Props) {
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Equity Curve</span>
-                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{equityCurve.length} days · /system/metrics-history</span>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{metricsLoading ? 'loading…' : `${equityCurve.length} days`} · /system/metrics-history</span>
               </div>
-              {equityCurve.length < 2 ? (
+              {metricsLoading ? (
+                <SkelBlock h={200} />
+              ) : equityCurve.length < 2 ? (
                 <div style={{ color: 'var(--text3)', fontSize: 11, padding: 30, textAlign: 'center' }}>Insufficient daily history ({equityCurve.length} days)</div>
               ) : (
                 <ResponsiveContainer width="100%" height={200}>
@@ -346,8 +359,16 @@ export default function HomeHub({ onDrill }: Props) {
             {(cmd.agent_health?.length > 0) && (
               <SCard title="Agent Health" count={cmd.agent_health.length} accent="#22c55e">
                 {cmd.agent_health.slice(0, 8).map((a: any, i: number) => (
-                  <Line key={i}><span style={{ fontFamily: 'var(--mono)' }}>{a.agent}</span><span style={{ color: 'var(--text3)' }}>{a.last_run_human ?? a.last_run ?? ''} · {a.runs ?? a.actions_taken ?? a.total ?? 0} runs</span></Line>
+                  <Line key={i}>
+                    <span style={{ fontFamily: 'var(--mono)' }}>{a.agent}</span>
+                    {/* P0-5: counts here are watchlist_agent_results rows — NOT the same table as the
+                        Agents-hub "Actions" column (each agent's home table). Label both windows. */}
+                    <span style={{ color: 'var(--text3)' }} title={`Source: ${a.count_source ?? 'watchlist_agent_results'}${a.home_table ? ` — Agents hub counts ${a.home_table}: ${a.home_table_total} all-time` : ''}`}>
+                      {a.total_30d ?? a.runs ?? a.actions_taken ?? a.total ?? 0} runs (30d) · {a.total ?? 0} all-time
+                    </span>
+                  </Line>
                 ))}
+                <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>watchlist runs only — Agents hub “Actions” counts each agent's home table (alex→cio_decisions, aegis→aegis_portfolio_briefs)</div>
               </SCard>
             )}
             {/* Hermes info */}

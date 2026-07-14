@@ -1,4 +1,23 @@
 
+## 2026-07-14 — Full-site audit: 17 findings fixed (P0×6, P1×4, P2×7)
+
+Chrome-MCP audit corrective across 6 workstreams. Highlights: broker-proposals endpoint 35-50s
+(infinite spinner) → 8s bounded/1.3s warm — root cause is a FAILING SCHWAB OAUTH REFRESH (HTTP 400,
+flagged for operator re-auth; quote fallbacks now cached+budgeted). PFLT $829.71/sh phantom basis =
+stale cost_basis_anchor (pre-sale $9,746 total ÷ 11.7 residual shares) — anchor corrected to $111.66
+(per-share $9.5054 unchanged, stop-fill 1007000082502 documented) + share-count sanity guard in the
+consumer. Scanner/header, agent counts, journal stats: all "contradictions" were unlabeled scope
+differences (latest-run vs universe; watchlist log vs agent home tables; stale CSV-FIFO journal vs
+broker round-trips) — every surface now labels its basis; headers unchanged. RAG 212% = embeddings of
+archived rows — honest promoted coverage 100%, >100% structurally impossible now. SPCX 0.00 was
+UI-fabricated (?? 0) over honest nulls → "—". Morning brief gets a ticking staleness banner >2h. PM
+memo oversight renders live from DB. Cross-tab plan income drift ($28) = reserve yield credited on
+unmodeled sweep — fixed. Home race → skeletons. Bonus: journal export SQL-precedence bug bypassing
+account/date filters — fixed. FLAG-BACKS for operator: (1) Schwab OAuth re-auth needed; (2) journal
+CSV stale since 2026-04-30 — import fresh Schwab History CSV or repoint header to broker truth;
+(3) ~40k orphaned content_embeddings await a retention decision. 112 tests green; holdings guard held
+throughout. Known non-issues honored (JEPQ legit, $21 rounding, look-through gap label).
+
 ## 2026-07-14 — FINAL ADJUDICATION: APPROVED FOR OPERATOR IMPLEMENTATION REVIEW
 
 Operator's formal ruling recorded in audit lineage (implementation_review_approved, plan 1191 v31):

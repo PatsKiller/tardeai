@@ -283,9 +283,15 @@ def plan_performance(cur, event: dict[str, Any], plan_legs: list[dict[str, Any]]
             # canonical snapshot first (cross-tab consistency), live snapshot as fallback
             r_yield = leg.get("expected_yield_pct") if "expected_yield_pct" in leg \
                 else snap.get("yield_pct")
-            if r_yield is not None and dollars > 0:
-                reserve_income_usd += dollars * r_yield / 100.0
-                reserve_yield_cov += dollars
+            # canonical basis: yield is credited only on the MODELED vehicle position
+            # (whole shares), exactly as the plan engine does — the sweep remainder
+            # earns 0% (this was the $28 cross-tab income drift, P2-7)
+            yield_dollars = dollars
+            if leg.get("reserve_vehicle_dollars") is not None:
+                yield_dollars = _as_float(leg.get("reserve_vehicle_dollars"))
+            if r_yield is not None and yield_dollars > 0:
+                reserve_income_usd += yield_dollars * r_yield / 100.0
+                reserve_yield_cov += yield_dollars
             elif dollars > 0:
                 reserve_yield_notes.append(
                     f"{vehicle or 'reserve'}: reserve vehicle yield unavailable — contributes at 0%")

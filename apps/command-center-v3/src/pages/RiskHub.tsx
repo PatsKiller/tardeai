@@ -353,14 +353,25 @@ export default function RiskHub({ onDrill }: Props) {
                     <tr key={row}>
                       <td style={{ padding: '3px 6px', color: 'var(--text2)', fontFamily: 'monospace' }}>{row}</td>
                       {corrSymbols.map(col => {
-                        const v = corrMatrix[row]?.[col] ?? 0
-                        const abs = Math.abs(v)
-                        const bg = v >= 0.7 ? 'rgba(239,68,68,.4)' : v >= 0.4 ? 'rgba(245,158,11,.3)' : v <= -0.2 ? 'rgba(59,130,246,.3)' : 'rgba(255,255,255,.03)'
+                        // null/absent = not computed (e.g. <20 days of overlapping history) — render '—',
+                        // never fabricate 0.00 (which reads as "measured, uncorrelated").
+                        const raw = corrMatrix[row]?.[col]
+                        const v: number | null = (typeof raw === 'number' && Number.isFinite(raw)) ? raw : null
+                        if (row !== col && v == null) return (
+                          <td key={col}
+                            title="insufficient history — not computed"
+                            onClick={() => onDrill({ title: `${row} / ${col}`, subtitle: 'Correlation: not computed (insufficient history)', endpoint: '/api/v2/correlation', rows: [{ pair: `${row}/${col}`, correlation: null }] })}
+                            style={{ padding: '3px 6px', textAlign: 'center', background: 'rgba(255,255,255,.03)', cursor: 'pointer', color: 'var(--text3)', fontFamily: 'monospace' }}>
+                            —
+                          </td>
+                        )
+                        const vv = row === col ? 1 : (v as number)
+                        const bg = vv >= 0.7 ? 'rgba(239,68,68,.4)' : vv >= 0.4 ? 'rgba(245,158,11,.3)' : vv <= -0.2 ? 'rgba(59,130,246,.3)' : 'rgba(255,255,255,.03)'
                         return (
                           <td key={col}
-                            onClick={() => onDrill({ title: `${row} / ${col}`, subtitle: `Correlation: ${v.toFixed(3)}`, endpoint: '/api/v2/correlation', rows: [{ pair: `${row}/${col}`, correlation: v }] })}
+                            onClick={() => onDrill({ title: `${row} / ${col}`, subtitle: `Correlation: ${vv.toFixed(3)}`, endpoint: '/api/v2/correlation', rows: [{ pair: `${row}/${col}`, correlation: vv }] })}
                             style={{ padding: '3px 6px', textAlign: 'center', background: bg, cursor: 'pointer', color: 'var(--text0)', fontFamily: 'monospace' }}>
-                            {row === col ? '1.0' : v.toFixed(2)}
+                            {row === col ? '1.0' : vv.toFixed(2)}
                           </td>
                         )
                       })}
@@ -370,6 +381,7 @@ export default function RiskHub({ onDrill }: Props) {
               </table>
               <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>
                 Rate sensitivity: {corr?.rate_sensitivity?.toFixed(2)} — {corr?.rate_interpretation}
+                {' '}· "—" = insufficient history, correlation not computed
               </div>
             </div>
           )}

@@ -50,11 +50,19 @@ export default function IntelligenceSourcesTab({ onDrill }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
         <div style={{ ...card, padding: 12, textAlign: 'center' }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: pctColor(rag?.coverage_pct ?? 0) }}>
-            {ragLoading ? '…' : `${rag?.coverage_pct ?? 0}%`}
+          {/* pct is null when embeddings outnumber current rows (orphans of pruned rows) —
+              show the two raw counts as facts instead of a bogus >100% figure. */}
+          <div style={{ fontSize: rag?.coverage_pct == null && !ragLoading ? 14 : 22, fontWeight: 800, color: rag?.coverage_pct == null ? 'var(--text0)' : pctColor(rag?.coverage_pct ?? 0) }}>
+            {ragLoading ? '…' : rag?.coverage_pct == null
+              ? `${rag?.total_embedded?.toLocaleString() ?? '—'} embeddings · ${rag?.total_rows?.toLocaleString() ?? '—'} rows`
+              : `${rag?.coverage_pct}%`}
           </div>
           <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase' }}>RAG coverage</div>
-          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>{rag?.total_embedded?.toLocaleString() ?? '—'} embedded</div>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>
+            {rag?.coverage_pct == null && !ragLoading
+              ? 'embeddings incl. since-pruned rows — % n/a'
+              : `${rag?.total_embedded?.toLocaleString() ?? '—'} embedded`}
+          </div>
         </div>
         <div style={{ ...card, padding: 12, textAlign: 'center' }}>
           <div style={{ fontSize: 22, fontWeight: 800, color: hermes?.coordinator_active ? '#22c55e' : '#f59e0b' }}>
@@ -83,10 +91,11 @@ export default function IntelligenceSourcesTab({ onDrill }: Props) {
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Embedding coverage by source</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
           {Object.entries(bySource).map(([key, val]: any) => (
-            <div key={key} style={{ background: 'var(--bg2)', borderRadius: 6, padding: '8px 10px' }}>
+            <div key={key} style={{ background: 'var(--bg2)', borderRadius: 6, padding: '8px 10px' }}
+              title={val.pct == null ? 'embeddings include rows since pruned from the source table — coverage % not computable' : undefined}>
               <div style={{ fontSize: 9, color: 'var(--text3)' }}>{SOURCE_LABEL[key] ?? key}</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: pctColor(val.pct ?? 0), marginTop: 2 }}>{val.pct ?? 0}%</div>
-              <div style={{ fontSize: 9, color: 'var(--text3)' }}>{val.embedded}/{val.total}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: val.pct == null ? 'var(--text3)' : pctColor(val.pct ?? 0), marginTop: 2 }}>{val.pct == null ? '—' : `${val.pct}%`}</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)' }}>{val.pct == null ? `${val.embedded} embeddings · ${val.total} rows` : `${val.embedded}/${val.total}`}</div>
             </div>
           ))}
         </div>

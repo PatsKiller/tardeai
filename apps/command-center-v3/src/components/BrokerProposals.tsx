@@ -1137,8 +1137,10 @@ export default function BrokerProposals({
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0 }}>
+            {/* Scope label: this total = broker queue (active entries + protection rows),
+                a DIFFERENT population from the "pending proposals" count (PENDING+AFPT). */}
             Proposals ({shown.length}{heldOnly ? ` on page` : ''}
-            {queueTotal ? ` · ${queueTotal} total` : ''}
+            {queueTotal ? ` · ${queueTotal} in broker queue (entries + protection)` : ''}
             {hasQueuePages ? ` · page ${queuePage}/${queueTotalPages}` : ''})
           </div>
           <button onClick={() => setHeldOnly(h => !h)} aria-pressed={heldOnly} aria-label="Show held-symbol proposals only" style={{
@@ -1339,7 +1341,7 @@ export default function BrokerProposals({
 
         {loading && proposals.length === 0 && !error && (
           <div style={{ fontSize: 11, color: MUTED }}>
-            Loading broker queue… {stale ? '(showing cached)' : '(API may take 10–20s when server is busy)'}
+            Loading broker queue… {stale ? '(showing cached)' : '(times out after 15s with a Retry)'}
           </div>
         )}
         {error && proposals.length === 0 && (

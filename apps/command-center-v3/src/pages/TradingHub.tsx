@@ -103,6 +103,9 @@ export default function TradingHub({ onDrill }: Props) {
   const execList: any[] = Array.isArray(execQual) ? execQual : []
   const propList = proposals?.proposals ?? []
   const pending = propList.filter((p: any) => p.status === 'PENDING' || p.status === 'APPROVED_FOR_PAPER_TEST')
+  // Canonical pending count = API's whole-table PENDING+AFPT count. pending.length is the
+  // LIMIT-50 display list and silently capped the headline at 50 (P0 count-mismatch 2026-07-14).
+  const pendingCount = proposals?.pending_count ?? pending.length
   const alpaca = paperStatus?.alpaca ?? {}
 
   return (
@@ -115,7 +118,7 @@ export default function TradingHub({ onDrill }: Props) {
                 unrelated to Schwab. On the Schwab tabs, show the Schwab program state instead. */}
             {(tab === 'Broker Orders' || tab === 'Schwab Accounts')
               ? <span>{trades.length} open (automated) · Schwab program: <b style={{ color: '#f59e0b' }}>READ-ONLY — execution disabled</b> · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>
-              : <span>{trades.length} open · {brokerDesk ? 'broker queue active' : `${pending.length} pending proposals`} · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>}
+              : <span>{trades.length} open · {brokerDesk ? 'broker queue active' : `${pendingCount} pending proposals`} · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>}
             {readiness && <span> · Validation level: {readiness.level?.replace(/_/g, ' ')}</span>}
           </div>
         </div>
@@ -258,13 +261,19 @@ export default function TradingHub({ onDrill }: Props) {
         const universeN = tradeAi?.universe_count ?? tickers.length
         const noGoN = tradeAi?.universe_nogo ?? Math.max(0, universeN - goN - waitN)
         const scannedN = tradeAi?.current_run_scanned ?? tradeAi?.latest_run_symbols_scanned ?? tradeAi?.ticker_count
+        // Scope labels (P0 2026-07-14): these chips count the FULL SCAN UNIVERSE (latest scan
+        // per symbol, today + yesterday, all runs) — intentionally wider than the header
+        // SETUPS strip, which counts the LATEST RUN only (go_count/wait_count/avoid_count).
+        // Both scopes come from /api/v2/trade-ai; label them so identical-looking numbers
+        // can't silently disagree.
+        const universeScope = 'Full scan universe — latest scan per symbol, today + yesterday, all runs (wider than the header SETUPS strip, which counts the latest run only)'
         const kpis = [
-          { label: 'GO', value: goN, color: '#22c55e' },
-          { label: 'WAIT', value: waitN, color: '#f59e0b' },
-          { label: 'NO-GO', value: noGoN, color: '#ef4444' },
-          { label: 'Universe', value: universeN, color: 'var(--text0)' },
-          { label: 'VIX', value: tradeAi?.vix != null ? Number(tradeAi.vix).toFixed(1) : '—', color: '#60a5fa' },
-          { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: '#a855f7' },
+          { label: 'GO', value: goN, color: '#22c55e', title: universeScope },
+          { label: 'WAIT', value: waitN, color: '#f59e0b', title: universeScope },
+          { label: 'NO-GO', value: noGoN, color: '#ef4444', title: universeScope },
+          { label: 'Universe', value: universeN, color: 'var(--text0)', title: universeScope },
+          { label: 'VIX', value: tradeAi?.vix != null ? Number(tradeAi.vix).toFixed(1) : '—', color: '#60a5fa', title: undefined as string | undefined },
+          { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: '#a855f7', title: undefined as string | undefined },
         ]
         return (
           <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
@@ -277,13 +286,17 @@ export default function TradingHub({ onDrill }: Props) {
                 {tradeAi?.run_health_status && <span style={{ marginLeft: 6, color: /healthy/i.test(tradeAi.run_health_status) ? '#22c55e' : '#ef4444' }}>· {tradeAi.run_health_status}</span>}
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 6px' }}>
               {kpis.map(k => (
-                <div key={k.label} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: 'default' }}>
+                <div key={k.label} title={k.title} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: k.title ? 'help' : 'default' }}>
                   <div style={{ fontSize: terminalUi ? 14 : 17, fontWeight: 700, color: k.color }}>{k.value}</div>
                   <div style={{ fontSize: terminalUi ? 7 : 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
                 </div>
               ))}
+            </div>
+            <div style={{ fontSize: 8, color: 'var(--text3)', margin: '0 0 12px' }}>
+              Scope: full scan universe (latest scan per symbol · today + yesterday · all runs).
+              Header SETUPS = latest run only: {tradeAi?.go_count ?? 0} GO · {tradeAi?.wait_count ?? 0} WAIT · {tradeAi?.avoid_count ?? 0} NOGO.
             </div>
 
             {/* Copy lists (GO / WAIT / Universe) — paste into broker watchlist / ToS */}
