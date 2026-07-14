@@ -122,6 +122,9 @@ find "$SRC/docs" -type f \
   ! -path "*/.git/*" \
   ! -path "*/__pycache__/*" \
   ! -path "*/hermes/phase3b_dryrun/*" \
+  ! -path "*/artifacts/*" \
+  ! -path "*redeploy_review*" \
+  ! -path "*_review_20*/*.png" \
   ! -name "hermes_auto_*_payload.json" \
   ! -name "*.pyc" ! -name "*.log" ! -name "*.sql" \
   ! -name "*.tar.gz" ! -name "*.zip" \
