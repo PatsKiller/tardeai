@@ -1,6 +1,6 @@
 # FCNTX event #144 — operator decision packet (version-bound)
 
-**BOUND TO plan version 31** · generated 2026-07-14T17:26:58.065808+00:00 · generator `phase_b_2.0.0` ·
+**BOUND TO plan version 31** · generated 2026-07-14T17:46:56.697839+00:00 · generator `phase_b_2.0.0` ·
 decision policy `decision_1.1.0` ·
 regime basis `risk_off` · **advisory only — this desk places no orders.**
 If the workstation shows a different plan version, REGENERATE this packet before relying on it.
@@ -68,8 +68,8 @@ Why primary: sold exposure restoration: restores 84% of removed sector dollars (
 |---|---|
 | Plan / ID / version | F / 1191 / v31 |
 | Destination / policy | Plan B / staged |
-| ChatGPT lane | PASS |
-| Grok lane | PASS |
+| ChatGPT lane disposition | pass by operator adjudication (run 23; lane verdict was needs_review) |
+| Grok lane disposition | pass |
 | Oversight aggregate | PASS (runs [21, 23], policy oversight_policy_1.1.0) |
 | Operator state | OPERATOR_LOCKED |
 | Event state | reviewing |
@@ -79,5 +79,5 @@ Why primary: sold exposure restoration: restores 84% of removed sector dollars (
 | Implementation review approved | True |
 | Governance consistent | True |
 
-Audit lineage rows: 85. This packet SUPERSEDES any packet generated before
+Audit lineage rows: 87. This packet SUPERSEDES any packet generated before
 2026-07-14 13:03:50.502396-04:00 for this event.

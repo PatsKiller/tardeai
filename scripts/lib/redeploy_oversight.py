@@ -439,7 +439,7 @@ def oversight_aggregate(cur, event_id: int, plan_id: int, plan_version: int) -> 
     """Newest valid verdict PER LANE for exactly this plan snapshot. Rows without the
     plan key (pre-2026_07_22) or from other plans/versions never participate."""
     cur.execute(
-        """SELECT DISTINCT ON (lane) lane, verdict, id, ran_at, oversight_policy_version
+        """SELECT DISTINCT ON (lane) lane, verdict, id, ran_at, oversight_policy_version, model
            FROM deploy_oversight_runs
            WHERE deploy_event_id=%s AND plan_id=%s AND plan_version=%s
              AND verdict IN ('pass','fail','needs_review')
@@ -448,7 +448,7 @@ def oversight_aggregate(cur, event_id: int, plan_id: int, plan_version: int) -> 
     )
     lanes = {r[0]: {"verdict": r[1], "run_id": r[2],
                     "ran_at": r[3].isoformat() if r[3] else None,
-                    "policy": r[4]} for r in cur.fetchall()}
+                    "policy": r[4], "model": r[5]} for r in cur.fetchall()}
     if not lanes:
         agg = "no_keyed_runs"
     elif any(v["verdict"] == "fail" for v in lanes.values()):
@@ -457,7 +457,17 @@ def oversight_aggregate(cur, event_id: int, plan_id: int, plan_version: int) -> 
         agg = "pass"
     else:
         agg = "pending"
+    # Institutionally accurate presentation: an adjudicated pass is not a bare lane
+    # pass — the disposition names the mechanism (final adjudication 2026-07-14).
+    dispositions = {}
+    for lane, v in lanes.items():
+        if v.get("model") == "operator_adjudication":
+            dispositions[lane] = (f"{v['verdict']} by operator adjudication (run {v['run_id']}; "
+                                  "lane verdict was needs_review)")
+        else:
+            dispositions[lane] = v["verdict"]
     return {"lanes": lanes, "aggregate": agg,
+            "dispositions": dispositions,
             "run_ids": sorted(v["run_id"] for v in lanes.values()),
             "completed_at": max((v["ran_at"] or "" for v in lanes.values()), default=None)}
 
@@ -529,6 +539,7 @@ def governance_projection(cur, event_id: int) -> dict[str, Any]:
         "operator_status": "locked",
         "oversight_status": ("pass" if agg["aggregate"] == "pass" else agg["aggregate"]),
         "oversight_lanes": {k: v["verdict"] for k, v in agg["lanes"].items()},
+        "oversight_lane_dispositions": agg.get("dispositions") or {},
         "oversight_run_ids": agg["run_ids"],
         "oversight_completed_at": agg["completed_at"],
         "oversight_policy_version": OVERSIGHT_POLICY_VERSION,

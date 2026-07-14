@@ -1,4 +1,14 @@
 
+## 2026-07-14 — FINAL ADJUDICATION: APPROVED FOR OPERATOR IMPLEMENTATION REVIEW
+
+Operator's formal ruling recorded in audit lineage (implementation_review_approved, plan 1191 v31):
+methodology/destination/staging/capital/accounting/lock APPROVED-VERIFIED; **broker execution
+authorization NOT GRANTED** (manual only, as always). Terminology corrected per ruling: lane
+dispositions now distinguish "pass by operator adjudication (run 23; lane verdict was needs_review)"
+from a direct lane pass — in the reducer, packet and export. Implementation posture on record:
+refresh export at ticket time; use current limits + do-not-chase; never convert unfilled limits to
+market orders; record actual fills only; XLV stays deferred to stage 2.
+
 ## 2026-07-14 — Governance projection: artifact/state mismatch CLOSED (implementation unblocked)
 
 Adjudication finding fixed: oversight runs now carry the full immutable key (plan_id/version/

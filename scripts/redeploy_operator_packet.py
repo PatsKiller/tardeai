@@ -154,8 +154,8 @@ Why primary: {'; '.join(prim.get('reasons') or [])}
 |---|---|
 | Plan / ID / version | {gov.get('plan_archetype')} / {gov.get('plan_id')} / v{gov.get('plan_version')} |
 | Destination / policy | Plan {gov.get('destination_archetype')} / {gov.get('implementation_policy')} |
-| ChatGPT lane | {str((gov.get('oversight_lanes') or {}).get('chatgpt', '—')).upper()} |
-| Grok lane | {str((gov.get('oversight_lanes') or {}).get('grok', '—')).upper()} |
+| ChatGPT lane disposition | {(gov.get('oversight_lane_dispositions') or {}).get('chatgpt', '—')} |
+| Grok lane disposition | {(gov.get('oversight_lane_dispositions') or {}).get('grok', '—')} |
 | Oversight aggregate | {str(gov.get('oversight_status')).upper()} (runs {gov.get('oversight_run_ids')}, policy {gov.get('oversight_policy_version')}) |
 | Operator state | {gov.get('readiness_status')} |
 | Event state | {gov.get('event_operator_status')} |
