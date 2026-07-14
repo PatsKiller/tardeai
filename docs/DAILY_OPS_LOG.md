@@ -1,4 +1,16 @@
 
+## 2026-07-14 — Stop replace verified-cancel hardening + Redeploy visual review
+
+Hardened the Schwab protective-stop **Modify** flow: cancel of the old stop is now broker-verified
+(polled to terminal/gone) before the new stop is placed, gate moved inside `schwab_transport.place_order`
+(web confirm + Telegram `bkapprove` share it), still-live replace target blocks (`replace_cancel_incomplete`),
+idempotent repeat-DELETE, `REJECTED` read-back surfaced. Only `pilot_placed` orders replaceable in-app
+(`open_trades_intelligence` stamps the flag from `schwab_pilot_orders`). UI submits floor-reconciled
+advisory stops; stop badge follows stop-management truth (`KEEP_EXISTING_STOP` ≠ Action). New Hermes
+`vehicle_auctions` research domain (advisory, operator-gated). Tests: `test_stop_replace_flow.py`,
+`test_schd_advised_order_params.py`. Playwright captured all Redeploy Desk pages/sub-tabs →
+`docs/redeploy_review_2026-07-14/`. Docs: `stop-management-architecture.md`, `CHANGELOG.md`. Drive sync post-commit.
+
 ## 2026-07-13 — Redeploy Desk P0 audit + reopening
 
 Operator review rejected the shipped Redeploy Desk as a prototype shell (unreadable 780px

@@ -131,6 +131,8 @@ def handle_callback_query(cb):
                             if sub.get("stage") == "submit" and sub.get("ok"):
                                 oid = sub.get("broker_order_id") or (sub.get("result") or {}).get("broker_order_id")
                                 submit_line = f"\n✅ LIVE order submitted · #{oid or '—'} ({sub.get('status') or 'submitted'})"
+                            elif sub.get("stage") == "modify_cancel":
+                                submit_line = f"\n⛔ Replace blocked — old stop not canceled: {(sub.get('error') or 'cancel failed')[:160]}"
                             elif sub.get("stage") == "submit":
                                 submit_line = f"\n⛔ Submit failed: {(sub.get('error') or (sub.get('result') or {}).get('error') or 'unknown')[:160]}"
                         except Exception as se:

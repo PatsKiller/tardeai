@@ -405,7 +405,11 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
       ? `MODIFY → SELL ${p.shares} ${p.symbol} TRAILING STOP ${trailPct?.toFixed(0)}% GTC`
       : `MODIFY → SELL ${p.shares} ${p.symbol} STOP $${(advStop ?? 0).toFixed(2)} GTC`
     _resetStop()
-    setStopOrder({ kind, qty: p.shares, stop: advStop, trailPct: kind === 'TRAILING' ? trailPct : null, label, advised: advStop, cur: recPrice, replace_order_id: effectiveBrokerStop.order_id })
+    setStopOrder({
+      kind, qty: p.shares, stop: advStop, trailPct: kind === 'TRAILING' ? trailPct : null, label,
+      advised: advStop, cur: recPrice,
+      replace_order_id: effectiveBrokerStop.pilot_placed ? effectiveBrokerStop.order_id : null,
+    })
   }
   // ── end carried-over machinery ──
 

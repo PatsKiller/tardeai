@@ -35,7 +35,7 @@ NAV_ROUTES = [
 HUB_TABS: dict[str, list[str]] = {
     "/": [],
     "/watch": ["Watchlist", "Watchpool", "Sectors", "Pullback/MACD"],
-    "/portfolio": ["Holdings", "Look-through", "Returns", "Dividends", "Forecast", "Tax", "Stop Management"],
+    "/portfolio": ["Holdings", "Look-through", "Returns", "Dividends", "Forecast", "Tax", "Redeploy", "Stop Management"],
     "/risk": ["Exposure", "Correlation", "Regime", "Recovery"],
     "/trading": [
         "Trade AI", "Options", "Open Trades", "Proposals", "Entry Desk", "Execution",

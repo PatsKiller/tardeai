@@ -269,10 +269,10 @@ export function getSocialAwarenessPill(row: ScannerRow | null | undefined): Soci
   const posts = row?.mention_count ?? row?.social_stocktwits ?? 0
   const text = row?.operator_pill || (posts ? `SOCIAL AWARENESS · ${posts} ST` : 'SOCIAL AWARENESS')
   const cat = (row?.catalyst || '').trim()
-  const subtitle = row?.operator_subtitle || 'Pre-market social — needs Finviz scan before tradeable'
+  const subtitle = row?.operator_subtitle || 'Pre-market social — Finviz overlay when available (awareness only)'
   const hints = (row?.operator_tooltip_hints && row.operator_tooltip_hints.length)
     ? row.operator_tooltip_hints
-    : cat ? [cat.slice(0, 120)] : ['No Finviz price/RVOL on this row yet']
+    : cat ? [cat.slice(0, 120)] : ['Awaiting Finviz overlay for price/RVOL']
   return {
     isAwareness: true,
     text,

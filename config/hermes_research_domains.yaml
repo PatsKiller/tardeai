@@ -326,6 +326,31 @@ domains:
       - health check
       - rate limit
 
+  vehicle_auctions:
+    description: >-
+      NYC DOF vehicle auction research — title brand reconciliation, accident
+      history, salvage/total-loss verification, and comparable sales for bid
+      decisions. Advisory only; never authoritative pricing or title status.
+    risk_level: operational
+    allowed_candidate_types: [TOPIC_CANDIDATE, SOURCE_CANDIDATE]
+    promotion_paths: [research_topic, escalation_candidate]
+    requires_operator_for_promotion: true
+    classification_keywords:
+      - vehicle auction
+      - dof auction
+      - vin
+      - title brand
+      - salvage title
+      - rebuilt title
+      - nmvtis
+      - vinaudit
+      - copart
+      - iaai
+      - accident history
+      - total loss
+      - odometer rollback
+      - wholesale bid
+
   custom:
     description: >-
       Fallback for candidates that no registered domain claims. Everything

@@ -212,11 +212,17 @@ function stopStatusFromLogic(
   signal: string | null,
   stopDist: number | null,
 ): StopStatusTone {
-  if (health === 'CONCERN' || health === 'TRIM' || signal === 'TRIM' || signal === 'SELL' || signal === 'EXIT') return 'action'
+  // Stop badge tracks stop-management truth first — do not mark "Action" when the live stop is
+  // already aligned (KEEP_EXISTING_STOP) just because LLM health/signal says TRIM elsewhere.
+  if (logic.stop_action_decision === 'KEEP_EXISTING_STOP') {
+    const nearPrice = (logic.liveStopDistancePct != null && logic.liveStopDistancePct < 5)
+      || (stopDist != null && stopDist < 5)
+    return nearPrice ? 'concern' : 'stable'
+  }
   if (logic.stop_action_decision === 'PLACE_NEW_STOP' || logic.stop_action_decision === 'MODIFY_EXISTING_STOP') return 'action'
   if (logic.stop_action_decision === 'BLOCKED_STALE_QUOTE') return 'concern'
   if (stopDist != null && stopDist < 5) return 'concern'
-  if (logic.stop_action_decision === 'KEEP_EXISTING_STOP') return 'stable'
+  if (health === 'CONCERN' || health === 'TRIM' || signal === 'TRIM' || signal === 'SELL' || signal === 'EXIT') return 'action'
   return 'stable'
 }
 

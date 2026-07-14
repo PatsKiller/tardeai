@@ -1817,8 +1817,10 @@ def overview():
     jdq_cnt = (_db_query("SELECT count(*) AS cnt FROM john_decision_queue WHERE status='pending_john'", fetch="one") or {}).get("cnt", 0)
     pending_rows = {"cnt": aq_cnt + jdq_cnt}
 
-    # Today's change = sum of per-holding day_change (actual market-hours move)
-    today_change = sum(p.get("day_change") or 0 for p in holdings)
+    # Today's change — prefer repricer aggregate (matches portfolio_repricer totals)
+    today_change = totals.get("day_change")
+    if today_change is None:
+        today_change = sum(p.get("day_change") or 0 for p in holdings)
     total_val = totals.get("total_value", 0)
     today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
     # per-account breakdown (operator 2026-06-12: "show what's moved today by account") + top movers
@@ -2190,10 +2192,25 @@ def portfolio_holdings():
         _ppct = p.get("portfolio_pct")
         if (not _ppct) and _total_mv > 0 and _mv > 0:
             _ppct = round(_mv / _total_mv * 100, 4)
-        _day_pct = p.get("day_change_pct")
-        if (_day_pct is None or float(_day_pct or 0) == 0) and sym.upper() in _fv_day:
-            _day_pct = _fv_day[sym.upper()]
-        _day_chg = round(_mv * float(_day_pct or 0) / 100, 2) if (_day_pct and _mv) else p.get("day_change", 0)
+        _fv_day_pct = None if p.get("is_cash") or sym.upper() == "CASH" else _fv_day.get(sym.upper())
+        try:
+            import sys as _sys_hdc
+            _hdc_lib = PROJECT_ROOT / "scripts" / "lib"
+            if str(_hdc_lib) not in _sys_hdc.path:
+                _sys_hdc.path.insert(0, str(_hdc_lib))
+            from holding_day_change import resolve_holding_day_change
+            _day_chg, _day_pct = resolve_holding_day_change(
+                p,
+                market_value=_mv,
+                price=_px,
+                stale_price=_stale_px,
+                finviz_day_pct=_fv_day_pct,
+            )
+        except Exception:
+            _day_pct = p.get("day_change_pct")
+            if (_day_pct is None or float(_day_pct or 0) == 0) and _fv_day_pct is not None:
+                _day_pct = _fv_day_pct
+            _day_chg = round(_mv * float(_day_pct or 0) / 100, 2) if (_day_pct is not None and _mv) else float(p.get("day_change") or 0)
         rows.append({
             "symbol": sym,
             "name": (p.get("name") or "")[:40],
@@ -2320,6 +2337,14 @@ def portfolio_holdings():
 
     _priced_total = round(sum(r.get("market_value") or 0 for r in rows), 2)
     _day_total = round(sum(r.get("day_change") or 0 for r in rows), 2)
+    _totals_day = (h.get("portfolio_totals") or {}).get("day_change")
+    if _totals_day is not None:
+        try:
+            _td = float(_totals_day)
+            if abs(_day_total - _td) > 5:
+                _day_total = round(_td, 2)
+        except (TypeError, ValueError):
+            pass
     _mq_as_of = None
     try:
         _mqr = _db_query("SELECT MAX(fetched_at) AS ts FROM market_quotes", fetch="one") or {}
@@ -9852,7 +9877,11 @@ def _compute_trade_ai():
         _sa_lib = PROJECT_ROOT / "scripts" / "lib"
         if str(_sa_lib) not in _sys_sa.path:
             _sys_sa.path.insert(0, str(_sa_lib))
-        from social_awareness import is_social_awareness_row, tag_social_awareness_row
+        from social_awareness import (
+            enrich_awareness_market_fields,
+            is_social_awareness_row,
+            tag_social_awareness_row,
+        )
         _aware_syms = [t["symbol"] for t in tickers if is_social_awareness_row(t)]
         _news_cat: dict = {}
         if _aware_syms:
@@ -9871,6 +9900,7 @@ def _compute_trade_ai():
                 mc = int(t.get("mention_count") or t.get("social_stocktwits") or 0)
                 fb = f"StockTwits pre-market activity ({mc} posts/2hr)"
             tag_social_awareness_row(t, catalyst_fallback=fb)
+        enrich_awareness_market_fields(tickers, PROJECT_ROOT)
     except Exception:
         pass
 

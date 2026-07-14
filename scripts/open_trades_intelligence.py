@@ -739,6 +739,19 @@ def build_intelligence():
                                or "alpaca" in str(p.get("account", "")).lower()
                                or p.get("environment") == "paper"})   # paper key is TRADEAI_AUTOMATED
         bmap = _broker_protective_stops(_bstop_accts) if _bstop_accts else {}
+        _pilot_stop_ids: set[str] = set()
+        try:
+            from db_adapter import _get_conn as _gc
+            _pc = _gc().cursor()
+            _pc.execute(
+                """SELECT broker_order_id FROM schwab_pilot_orders
+                   WHERE broker_order_id IS NOT NULL
+                     AND status NOT IN ('canceled','cancelled','rejected','expired','error_reconcile_required')""")
+            for _pr in (_pc.fetchall() or []):
+                if _pr and _pr[0]:
+                    _pilot_stop_ids.add(str(_pr[0]))
+        except Exception:
+            pass
         positions = []
         for p in base:
             sym = p["symbol"]
@@ -784,7 +797,11 @@ def build_intelligence():
                         coverage = "oversized"
                     elif _sq < _held - 1e-6:
                         coverage = "partial"
-                broker_stop_payload = {**_bstop, "held_qty": _held, "coverage": coverage}
+                _oid = str(_bstop.get("order_id") or "")
+                broker_stop_payload = {
+                    **_bstop, "held_qty": _held, "coverage": coverage,
+                    "pilot_placed": (_oid in _pilot_stop_ids) if _oid else False,
+                }
             sh = p["shares"]
             # paper P&L (holdings already has it)
             upnl = p.get("unrealized_pnl")

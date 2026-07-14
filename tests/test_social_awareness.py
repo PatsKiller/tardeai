@@ -10,6 +10,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 from social_awareness import (  # noqa: E402
     awareness_fields,
     build_catalyst_text,
+    enrich_awareness_market_fields,
     is_social_awareness_row,
     tag_social_awareness_row,
 )
@@ -36,3 +37,22 @@ def test_tag_applies_catalyst_and_pill():
 
 def test_build_catalyst_prefers_news():
     assert build_catalyst_text(news_title="Breaking news", mention_count=3) == "Breaking news"
+
+
+def test_enrich_awareness_fills_from_enrichment_cache():
+    row = {
+        "symbol": "MCRP",
+        "awareness_status": "SOCIAL_AWARENESS",
+        "source_detail": "stocktwits_premarket",
+        "price": 0,
+        "rvol": 0,
+    }
+    enrich_awareness_market_fields(
+        [row],
+        PROJECT_ROOT,
+        fetch_live_quotes=False,
+    )
+    assert float(row.get("rvol") or 0) > 0
+    assert row.get("sector")
+    assert row.get("float_m")
+    assert row.get("awareness_status") == "SOCIAL_AWARENESS"
