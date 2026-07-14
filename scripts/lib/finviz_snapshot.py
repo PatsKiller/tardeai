@@ -126,6 +126,80 @@ def _list_finviz_csv_files(project_root: Path, trade_date: date) -> list[Path]:
     return sorted(base.glob("**/*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
 
 
+def _parse_numeric(raw: Any) -> float | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        val = float(str(raw).replace(",", "").replace("%", "").replace("x", "").strip())
+        return val
+    except ValueError:
+        return None
+
+
+def _parse_pct_str(raw: Any) -> str:
+    val = _parse_numeric(raw)
+    if val is None:
+        return ""
+    return str(round(val, 2))
+
+
+def load_latest_symbol_fields(
+    project_root: Path | str,
+    *,
+    trade_date: date | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Bulk symbol → market fields from newest Finviz CSV exports for the day."""
+    root = Path(project_root)
+    td = trade_date or date.today()
+    files = _list_finviz_csv_files(root, td)
+    if not files and td != date.today():
+        files = _list_finviz_csv_files(root, date.today())
+    if not files:
+        files = [p for _, p in list_prime_setup_files(root, td)]
+
+    col_map = {
+        "price": ("Price", "price"),
+        "rvol": ("Relative Volume", "RVOL", "relative_volume"),
+        "volume": ("Volume", "volume"),
+        "change_pct": ("Change", "Change%", "change_pct"),
+        "gap_pct": ("Gap", "Gap%", "gap_pct"),
+        "float_m": ("Shares Float", "Float", "float_m"),
+        "sector": ("Sector", "sector"),
+        "industry": ("Industry", "industry"),
+        "country": ("Country", "country"),
+    }
+    out: dict[str, dict[str, Any]] = {}
+    for fp in files:
+        try:
+            with open(fp, newline="", encoding="utf-8", errors="replace") as f:
+                for row in csv.DictReader(f):
+                    sym = (row.get("Ticker") or row.get("ticker") or "").strip().upper()
+                    if not sym:
+                        continue
+                    bucket = out.setdefault(sym, {})
+                    for field, keys in col_map.items():
+                        if bucket.get(field) not in (None, "", 0):
+                            continue
+                        raw = None
+                        for k in keys:
+                            if row.get(k) not in (None, ""):
+                                raw = row.get(k)
+                                break
+                        if raw is None:
+                            continue
+                        if field in ("sector", "industry", "country"):
+                            bucket[field] = str(raw).strip()
+                        elif field in ("change_pct", "gap_pct"):
+                            bucket[field] = _parse_pct_str(raw)
+                        else:
+                            val = _parse_numeric(raw)
+                            if val is not None and val > 0:
+                                bucket[field] = val
+        except Exception:
+            continue
+    return out
+
+
 def load_latest_field_map(
     project_root: Path | str,
     field: str = "volume",

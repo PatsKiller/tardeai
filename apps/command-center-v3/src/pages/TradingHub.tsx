@@ -314,7 +314,7 @@ export default function TradingHub({ onDrill }: Props) {
                 const count = f === 'ACTIONABLE' ? actionableCount : f === 'SCOUT' ? scoutCount : f === 'AWARENESS' ? awarenessCount : f === 'MANUAL' ? manualCount : f === 'WAIT' ? tickers.filter(isScreenerWaitRow).length : tickers.filter((t: any) => t.decision === f).length
                 const label = f === 'ACTIONABLE' ? 'Actionable' : f === 'SCOUT' ? 'Social Scouts' : f === 'AWARENESS' ? 'Social Awareness' : f === 'MANUAL' ? 'Manual' : f
                 return (
-                  <button key={f} onClick={() => { setTradeFilter(f); setScannerPage(1) }} title={f === 'ACTIONABLE' ? 'GO + WAIT + MANUAL_REVIEW — what matters today; hides 1500+ NO-GO universe noise' : f === 'SCOUT' ? 'Partial social setups (≥2/5 pillars) — awareness only, never GO/validation/tradeable' : f === 'AWARENESS' ? 'Pre-market StockTwits only — no Finviz price/RVOL; catalyst shown, not tradeable' : f === 'MANUAL' ? 'Squeeze · Runner · Micro-float · Low-price — Entry Desk only; never auto GO' : undefined}
+                  <button key={f} onClick={() => { setTradeFilter(f); setScannerPage(1) }} title={f === 'ACTIONABLE' ? 'GO + WAIT + MANUAL_REVIEW — what matters today; hides 1500+ NO-GO universe noise' : f === 'SCOUT' ? 'Partial social setups (≥2/5 pillars) — awareness only, never GO/validation/tradeable' : f === 'AWARENESS' ? 'Pre-market StockTwits — Finviz overlay when available; awareness only, not tradeable' : f === 'MANUAL' ? 'Squeeze · Runner · Micro-float · Low-price — Entry Desk only; never auto GO' : undefined}
                     style={{ ...hubKpiChip(active, terminalUi), fontFamily: 'monospace', color: active ? fc : (terminalUi ? undefined : 'var(--text3)') }}>{label} ({count})</button>
                 )
               })}
@@ -479,7 +479,7 @@ export default function TradingHub({ onDrill }: Props) {
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>Awareness/selection only — copying symbols never places, validates, or queues a trade. Social Scout, Top Gainer, and Squeeze (MANUAL_REVIEW) symbols can be copied but remain non-auto-tradeable.</div>
             </div>
 
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/MANUAL_REVIEW). Teal AWARE = pre-market StockTwits only (catalyst shown, no Finviz data, not in WAIT copy). Click a row for full scan detail. Default: Actionable. Cyan SQUEEZE · orange RUNNER · purple MICRO · yellow LOW — Entry Desk only.</div>
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/MANUAL_REVIEW). Teal AWARE = pre-market StockTwits with Finviz overlay when cached (still awareness-only, not in WAIT copy). Click a row for full scan detail. Default: Actionable. Cyan SQUEEZE · orange RUNNER · purple MICRO · yellow LOW — Entry Desk only.</div>
 
             {warriorAudit?.ok && (
               <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>

@@ -31,9 +31,18 @@ def is_squeeze_row(row: dict) -> bool:
     )
 
 
+def is_social_awareness_lane(row: dict) -> bool:
+    """Pre-market StockTwits awareness — keep teal AWARE lane even when RVOL is high."""
+    return (
+        row.get("awareness_status") == "SOCIAL_AWARENESS"
+        or row.get("setup_class") == "social_awareness_only"
+        or row.get("catalyst_source") == "premarket_social"
+    )
+
+
 def qualifies_high_rvol_manual(row: dict, *, threshold: float = HIGH_RVOL_THRESHOLD) -> bool:
     """True when a WAIT row should upgrade to MANUAL_REVIEW for operator awareness."""
-    if not row or is_squeeze_row(row):
+    if not row or is_squeeze_row(row) or is_social_awareness_lane(row):
         return False
     if row.get("disqualified"):
         return False

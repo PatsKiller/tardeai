@@ -9852,7 +9852,11 @@ def _compute_trade_ai():
         _sa_lib = PROJECT_ROOT / "scripts" / "lib"
         if str(_sa_lib) not in _sys_sa.path:
             _sys_sa.path.insert(0, str(_sa_lib))
-        from social_awareness import is_social_awareness_row, tag_social_awareness_row
+        from social_awareness import (
+            enrich_awareness_market_fields,
+            is_social_awareness_row,
+            tag_social_awareness_row,
+        )
         _aware_syms = [t["symbol"] for t in tickers if is_social_awareness_row(t)]
         _news_cat: dict = {}
         if _aware_syms:
@@ -9871,6 +9875,7 @@ def _compute_trade_ai():
                 mc = int(t.get("mention_count") or t.get("social_stocktwits") or 0)
                 fb = f"StockTwits pre-market activity ({mc} posts/2hr)"
             tag_social_awareness_row(t, catalyst_fallback=fb)
+        enrich_awareness_market_fields(tickers, PROJECT_ROOT)
     except Exception:
         pass
 

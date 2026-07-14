@@ -87,6 +87,19 @@ def attach_top_gainer_awareness(tickers: list[dict], project_root: Path, *, limi
         subtitle = "Leading Finviz gainer — awareness only, not momentum-scalp GO"
 
         if row:
+            if row.get("awareness_status") == "SOCIAL_AWARENESS" or row.get("setup_class") == "social_awareness_only":
+                for key, val in (
+                    ("price", g.get("price")),
+                    ("rvol", g.get("rvol")),
+                    ("change_pct", f"{g['change_pct']:.2f}" if g.get("change_pct") is not None else ""),
+                    ("gap_pct", f"{g['gap_pct']:.2f}" if g.get("gap_pct") is not None else ""),
+                    ("float_m", f"{g['float_m']:.2f}" if g.get("float_m") is not None else ""),
+                    ("sector", g.get("sector")),
+                    ("industry", g.get("industry")),
+                ):
+                    if val not in (None, "", 0, "0", "0.0") and not row.get(key):
+                        row[key] = val
+                continue
             if row.get("awareness_status") == "SQUEEZE" or row.get("decision") == "MANUAL_REVIEW":
                 row["awareness_status"] = "SQUEEZE"
                 if not row.get("operator_pill") or "TOP GAINER" in str(row.get("operator_pill")):
