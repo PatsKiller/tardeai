@@ -164,13 +164,17 @@ Run after broker sync completes (~10:10 ET trading days):
 1. `deploy_detect.py --apply --trading-days-only`
 2. Optional: `deploy_recompute.py --apply` if think-tank / Hermes refreshed same cycle
 
-## UI / API (pending PRs)
+## UI / API
 
-| PR | Deliverable |
-|----|-------------|
-| PR-3 | Portfolio → **Redeploy** tab (`/v3/portfolio?tab=Redeploy`) + Home banner (<14d events) |
-| PR-4 | `GET/POST /api/v2/deploy/*` + OAuth oversight |
-| PR-5 | Cron hooks after Schwab/SnapTrade sync |
+| PR | Deliverable | Status |
+|----|-------------|--------|
+| PR-3 | Portfolio → **Redeploy** tab (`/v3/portfolio?tab=Redeploy`) + Home banner (<14d events) | **Live** (2026-07-14) |
+| PR-4 | OAuth oversight (`POST /api/v2/deploy/oversight`) | Pending |
+| PR-5 | Cron hooks after Schwab/SnapTrade sync | Pending |
+
+**API (live):** `GET /api/v2/deploy/events`, `POST /api/v2/deploy/detect`, `POST /api/v2/deploy/recompute`, `POST /api/v2/deploy/dismiss`
+
+After deploy: `npm run build` in `apps/command-center-v3` — hard-refresh `/v3/portfolio` to pick up the new bundle.
 
 ## Approved Product Decisions (v1)
 

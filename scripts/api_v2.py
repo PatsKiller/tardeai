@@ -27022,6 +27022,125 @@ def _portfolio_sync_run(which):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _deploy_events(query=None):
+    """GET /api/v2/deploy/events — post-sale redeploy events (advisory only)."""
+    try:
+        from datetime import date, timedelta
+        from db_adapter import _get_conn
+        from lib.deploy_events_db import list_deploy_events
+        q = query or {}
+        status = str(q.get("status") or "open").strip().lower()
+        account = str(q.get("account") or "").strip() or None
+        days = int(q.get("days") or 365)
+        limit = min(max(int(q.get("limit") or 100), 1), 200)
+        cur = _get_conn().cursor()
+        events = list_deploy_events(
+            cur,
+            status=None if status in ("all", "any", "") else status,
+            account=account,
+            limit=limit,
+        )
+        cutoff = date.today() - timedelta(days=max(1, days))
+        filtered = []
+        for ev in events:
+            sold = ev.get("sold_at")
+            if sold is None:
+                continue
+            if not isinstance(sold, date):
+                try:
+                    sold = date.fromisoformat(str(sold)[:10])
+                except Exception:
+                    continue
+            if sold >= cutoff:
+                ev["sold_at"] = str(sold)
+                for ts_key in ("created_at", "updated_at"):
+                    if ev.get(ts_key) is not None:
+                        ev[ts_key] = str(ev[ts_key])[:19]
+                filtered.append(ev)
+        recent_14d = [
+            e for e in filtered
+            if (date.fromisoformat(str(e.get("sold_at"))[:10]) if e.get("sold_at") else date.min)
+            >= date.today() - timedelta(days=14)
+        ]
+        meta0 = (filtered[0].get("metadata") or {}) if filtered else {}
+        return {
+            "ok": True,
+            "advisory_only": True,
+            "count": len(filtered),
+            "recent_14d_count": len(recent_14d),
+            "events": filtered,
+            "market_context": meta0.get("market_context"),
+            "methodology": meta0.get("methodology"),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _deploy_detect(body=None):
+    """POST /api/v2/deploy/detect — sync recent sells into deploy_events."""
+    try:
+        from lib.sale_event_detector import sync_deploy_events
+        b = body or {}
+        days = int(b.get("days") or 14)
+        report = sync_deploy_events(apply=True, days=days, source="live_detect")
+        return {"ok": not report.get("errors"), "data": report,
+                "note": "Recent sells synced into deploy_events — advisory only."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _deploy_recompute(body=None):
+    """POST /api/v2/deploy/recompute — refresh redeploy plans for open events."""
+    try:
+        from db_adapter import _get_conn
+        from lib.deploy_intelligence_engine import recompute_all_open, recompute_deploy_event
+        b = body or {}
+        conn = _get_conn()
+        cur = conn.cursor()
+        if b.get("id"):
+            res = recompute_deploy_event(cur, int(b["id"]))
+        elif b.get("symbol"):
+            sym = str(b["symbol"]).upper()
+            cur.execute(
+                "SELECT id FROM deploy_events WHERE upper(symbol)=%s AND status='open' ORDER BY sold_at DESC",
+                (sym,),
+            )
+            results = [recompute_deploy_event(cur, r[0]) for r in cur.fetchall()]
+            res = {"ok": True, "recomputed": len(results), "results": results}
+        else:
+            res = recompute_all_open(cur, limit=int(b.get("limit") or 200))
+        conn.commit()
+        return {"ok": True, "data": res}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _deploy_dismiss(body=None):
+    """POST /api/v2/deploy/dismiss — operator dismisses a deploy event."""
+    try:
+        from db_adapter import _get_conn
+        from lib.deploy_events_db import ensure_deploy_tables
+        b = body or {}
+        eid = b.get("id")
+        if not eid:
+            return {"ok": False, "error": "id required"}
+        reason = str(b.get("reason") or "operator_dismissed")[:120]
+        conn = _get_conn()
+        cur = conn.cursor()
+        ensure_deploy_tables(cur)
+        cur.execute(
+            "UPDATE deploy_events SET status='dismissed', dismiss_reason=%s, updated_at=NOW() WHERE id=%s RETURNING id",
+            (reason, int(eid)),
+        )
+        row = cur.fetchone()
+        conn.commit()
+        if not row:
+            return {"ok": False, "error": "not_found"}
+        return {"ok": True, "id": row[0], "status": "dismissed"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _fidelity_stops_sync(body=None):
     """POST /api/v2/fidelity-stops/sync — record Fidelity GTC stops (manual_broker_stops).
 
@@ -28308,6 +28427,7 @@ ROUTES = {
     "/api/v2/proposals/execution-readiness": lambda: _proposals_execution_readiness(),
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/fidelity-stops/status": lambda: _fidelity_stops_status(),
+    "/api/v2/deploy/events": lambda q=None: _deploy_events(q),
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/rotation/small-cap-bridge": _small_cap_rotation_bridge_status,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
@@ -33117,6 +33237,27 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/fidelity-stops/sync":
         try:
             res = _fidelity_stops_sync(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/deploy/detect":
+        try:
+            res = _deploy_detect(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/deploy/recompute":
+        try:
+            res = _deploy_recompute(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/deploy/dismiss":
+        try:
+            res = _deploy_dismiss(body if isinstance(body, dict) else {})
             return (200 if res.get("ok") else 400), res
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}

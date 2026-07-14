@@ -38,6 +38,7 @@ export default function HomeHub({ onDrill }: Props) {
   const { data: command } = useApi<any>('/api/v2/command', 60_000)
   const { data: hermesHealth } = useApi<any>('/api/v2/hermes/health', 120_000)
   const { data: health } = useApi<any>('/api/v2/health', 120_000)
+  const { data: deployData } = useApi<any>('/api/v2/deploy/events?status=open&days=14', 120_000)
   const cmd = command?.data ?? command ?? {}
   const healthFindings: any[] = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').slice(0, 3)
 
@@ -57,6 +58,8 @@ export default function HomeHub({ onDrill }: Props) {
   const heat = risk?.portfolio_heat_pct ?? 0
   const pendingCount = proposals?.pending_count ?? 0
   const pipelineStatus = overview?.pipeline_status
+  const deployRecent = (deployData?.recent_14d_count ?? deployData?.events?.length ?? 0) as number
+  const deployTop = (deployData?.events ?? [])[0] as { symbol?: string; proceeds_usd?: number; sold_at?: string } | undefined
 
   // Equity curve from daily metrics
   const dailyMetrics = metricsHist?.metrics ?? []
@@ -168,6 +171,19 @@ export default function HomeHub({ onDrill }: Props) {
 
             {/* Alert rail */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {deployRecent > 0 && (
+                <div style={{ padding: '10px 12px', background: 'rgba(34,197,94,.12)', border: '1px solid rgba(34,197,94,.28)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>
+                    {deployRecent} post-sale redeploy{deployRecent === 1 ? '' : 's'} (&lt;14d)
+                  </div>
+                  <div style={{ fontSize: 10, color: '#86efac', marginTop: 2 }}>
+                    {deployTop?.symbol ? `Latest: ${deployTop.symbol} · ${fmt$(deployTop.proceeds_usd ?? 0, 0)}` : 'Review redeploy targets — advisory only'}
+                  </div>
+                  <Link to="/portfolio?tab=Redeploy" style={{ display: 'inline-block', marginTop: 8, fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>
+                    Portfolio → Redeploy →
+                  </Link>
+                </div>
+              )}
               {triggered.length > 0 && (
                 <div style={{ padding: '10px 12px', background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 8 }}>
                   <div onClick={() => onDrill({ title: `${triggered.length} Stops Triggered`, subtitle: 'Positions below stop', endpoint: '/api/v2/risk', rows: triggered })}

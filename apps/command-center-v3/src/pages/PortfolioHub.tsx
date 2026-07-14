@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { fmt$ } from '../lib/format'
@@ -16,6 +17,7 @@ import RiskHeatmapGrid from '../components/risk/RiskHeatmapGrid'
 import RiskContributionBars from '../components/risk/RiskContributionBars'
 import DrawdownChart from '../components/risk/DrawdownChart'
 import StopManagement from '../components/StopManagement'
+import RedeployPanel from '../components/RedeployPanel'
 import { EvidenceBlock } from '../components/EvidenceBlock'
 import HoldingsTableView, { type HoldingsTableRowContext } from '../components/HoldingsTableView'
 import HoldingsSideDrawer from '../components/HoldingsSideDrawer'
@@ -25,7 +27,7 @@ import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Holdings', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Stop Management'] as const
+const TABS = ['Holdings', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Redeploy', 'Stop Management'] as const
 const COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9', '#fb923c']
 
 const ACCT_COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9']
@@ -103,12 +105,28 @@ function LlmBadges({ cov }: { cov?: any[] }) {
 }
 
 export default function PortfolioHub({ onDrill }: Props) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const resolveTab = (t: string | null): typeof TABS[number] => {
+    if (!t) return 'Holdings'
+    return (TABS as readonly string[]).includes(t) ? t as typeof TABS[number] : 'Holdings'
+  }
+  const [tab, setTab] = useState<typeof TABS[number]>(resolveTab(searchParams.get('tab')))
   useEffect(() => {
     try { localStorage.removeItem('cc-v3-holdings-view') } catch { /* private mode */ }
   }, [])
+  useEffect(() => {
+    const t = resolveTab(searchParams.get('tab'))
+    if (t !== tab) setTab(t)
+  }, [searchParams, tab])
   const [terminalUi] = useTerminalUi()
   const tabPanel = terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
-  const [tab, setTab] = useState<typeof TABS[number]>('Holdings')
+  const selectTab = (t: typeof TABS[number]) => {
+    setTab(t)
+    const next = new URLSearchParams(searchParams)
+    if (t === 'Holdings') next.delete('tab')
+    else next.set('tab', t)
+    setSearchParams(next, { replace: true })
+  }
   const [holdingsDrawer, setHoldingsDrawer] = useState<HoldingsDetailContext | null>(null)
   const [drawerTitle, setDrawerTitle] = useState('')
   const [drawerSubtitle, setDrawerSubtitle] = useState('')
@@ -118,7 +136,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   const [focusKey, setFocusKey] = useState<string | null>(null)
   // From the Stop Management Adjust modal: jump to a holding's card (its inline gated 2FA / manual-ticket panel).
   const focusHolding = (symbol: string, account: string) => {
-    setTab('Holdings'); setAcctFilter(account); setSigTab('All')
+    selectTab('Holdings'); setAcctFilter(account); setSigTab('All')
     const key = `${symbol}-${account}`; setFocusKey(key)
     const tryScroll = (n: number) => {
       const el = document.getElementById(`hold-${key}`)
@@ -339,10 +357,12 @@ export default function PortfolioHub({ onDrill }: Props) {
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
+            <button key={t} onClick={() => selectTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
           ))}
         </div>
       </div>
+
+      {tab === 'Redeploy' && <RedeployPanel />}
 
       {tab === 'Stop Management' && <StopManagement onFocusHolding={focusHolding} />}
 
