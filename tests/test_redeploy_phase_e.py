@@ -69,38 +69,126 @@ def test_fill_summary_aggregates_stages():
     assert s["total_dollars_deployed"] == 2192.0
 
 
-def test_idempotent_record_fill():
-    mon = _load("redeploy_monitor", "scripts/lib/redeploy_monitor.py")
+def _db_cursor(mon):
+    """Open a DB transaction for guard tests. Every test using this MUST roll back —
+    the 2026-07-13 P0 pollution came from a test in this file committing real fills."""
     try:
         from db_adapter import get_connection
     except Exception:
-        return  # skip if no DB
+        return None, None
     conn = get_connection()
     cur = conn.cursor()
     mon.ensure_monitor_tables(cur)
-    conn.commit()
+    # Neutralize the JSON outcome-bus side effect — it is a file write and would
+    # survive a DB rollback.
+    mon.append_outcome_bus = lambda *a, **k: None
+    return conn, cur
 
-    idem = f"test-{uuid.uuid4().hex[:16]}"
+
+def _pick_open_event(cur):
+    cur.execute("SELECT id FROM deploy_events ORDER BY id DESC LIMIT 1")
+    row = cur.fetchone()
+    return int(row[0]) if row else None
+
+
+def test_fixture_note_rejected_in_production():
+    mon = _load("redeploy_monitor", "scripts/lib/redeploy_monitor.py")
+    conn, cur = _db_cursor(mon)
+    if not conn:
+        return  # skip if no DB
+    try:
+        r = mon.record_stage_fill(cur, 1, {
+            "ticker": "JEPQ", "stage": 1, "filled_shares": 18, "filled_price": 60.12,
+            "account": "schwab_rollover_ira",
+            "evidence_note": "phase_e test fixture",
+        })
+        assert not r.get("ok")
+        assert "fixture_marker_rejected" in str(r.get("error"))
+    finally:
+        conn.rollback()
+
+
+def test_test_environment_requires_optin():
+    import os
+    mon = _load("redeploy_monitor", "scripts/lib/redeploy_monitor.py")
+    conn, cur = _db_cursor(mon)
+    if not conn:
+        return
+    os.environ.pop("REDEPLOY_ALLOW_TEST_FILLS", None)
+    try:
+        r = mon.record_stage_fill(cur, 1, {
+            "ticker": "JEPQ", "stage": 1, "filled_shares": 18, "filled_price": 60.12,
+            "account": "schwab_rollover_ira", "environment": "test",
+        })
+        assert not r.get("ok")
+        assert "test_fills_forbidden" in str(r.get("error"))
+    finally:
+        conn.rollback()
+
+
+def test_test_fill_quarantined_from_metrics():
+    import os
+    mon = _load("redeploy_monitor", "scripts/lib/redeploy_monitor.py")
+    conn, cur = _db_cursor(mon)
+    if not conn:
+        return
+    eid = _pick_open_event(cur)
+    if not eid:
+        conn.rollback()
+        return
+    os.environ["REDEPLOY_ALLOW_TEST_FILLS"] = "1"
+    try:
+        before = mon.get_monitoring_state(cur, eid).get("fill_summary", {}).get("fill_count", 0)
+        r = mon.record_stage_fill(cur, eid, {
+            "ticker": "JEPQ", "stage": 1, "filled_shares": 7, "filled_price": 61.01,
+            "account": "schwab_rollover_ira", "environment": "test",
+            "idempotency_key": f"guard-{uuid.uuid4().hex[:16]}",
+        })
+        assert r.get("ok"), r
+        assert r.get("environment") == "test"
+        assert r.get("hermes_outcome_id") is None
+        after = mon.get_monitoring_state(cur, eid).get("fill_summary", {}).get("fill_count", 0)
+        assert after == before, "test fill leaked into production monitoring metrics"
+    finally:
+        os.environ.pop("REDEPLOY_ALLOW_TEST_FILLS", None)
+        conn.rollback()
+
+
+def test_duplicate_content_and_idempotency_rejected():
+    mon = _load("redeploy_monitor", "scripts/lib/redeploy_monitor.py")
+    conn, cur = _db_cursor(mon)
+    if not conn:
+        return
+    eid = _pick_open_event(cur)
+    if not eid:
+        conn.rollback()
+        return
+    idem = f"guard-{uuid.uuid4().hex[:16]}"
     body = {
-        "ticker": "JEPQ",
-        "stage": 1,
-        "filled_shares": 18,
-        "filled_price": 60.12,
-        "account": "schwab_rollover_ira",
-        "plan_archetype": "F",
+        "ticker": "JEPQ", "stage": 1, "filled_shares": 11, "filled_price": 60.55,
+        "account": "schwab_rollover_ira", "plan_archetype": "F",
         "idempotency_key": idem,
-        "evidence_note": "phase_e test fixture",
+        "evidence_note": "operator statement row 4",
     }
-    r1 = mon.record_stage_fill(cur, 144, body)
-    conn.commit()
-    assert r1.get("ok"), r1
-    r2 = mon.record_stage_fill(cur, 144, body)
-    assert r2.get("duplicate") is True
-    assert r2.get("fill_id") == r1.get("fill", {}).get("id")
-
-    state = mon.get_monitoring_state(cur, 144)
-    assert state.get("ok")
-    assert state.get("fill_summary", {}).get("fill_count", 0) >= 1
+    try:
+        r1 = mon.record_stage_fill(cur, eid, body)
+        assert r1.get("ok"), r1
+        # Same idempotency key → duplicate short-circuit
+        r2 = mon.record_stage_fill(cur, eid, body)
+        assert r2.get("duplicate") is True
+        assert r2.get("fill_id") == r1.get("fill", {}).get("id")
+        # Same content, different key → content-duplicate rejection
+        body3 = dict(body, idempotency_key=f"guard-{uuid.uuid4().hex[:16]}")
+        r3 = mon.record_stage_fill(cur, eid, body3)
+        assert not r3.get("ok")
+        assert r3.get("error") == "duplicate_fill_content"
+        # Same content with a distinct broker confirmation → accepted
+        body4 = dict(body3, idempotency_key=f"guard-{uuid.uuid4().hex[:16]}",
+                     broker_confirmation_id=f"CONF-{uuid.uuid4().hex[:8]}")
+        r4 = mon.record_stage_fill(cur, eid, body4)
+        assert r4.get("ok"), r4
+    finally:
+        conn.rollback()
 
 
 def test_reeval_flags_holdings_stale():
@@ -119,7 +207,10 @@ if __name__ == "__main__":
         test_restoration_metrics_with_jepq_fill,
         test_fill_summary_aggregates_stages,
         test_reeval_flags_holdings_stale,
-        test_idempotent_record_fill,
+        test_fixture_note_rejected_in_production,
+        test_test_environment_requires_optin,
+        test_test_fill_quarantined_from_metrics,
+        test_duplicate_content_and_idempotency_rejected,
     ]
     for t in tests:
         t()
