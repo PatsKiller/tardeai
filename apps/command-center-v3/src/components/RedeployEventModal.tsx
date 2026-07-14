@@ -226,7 +226,12 @@ export default function RedeployEventModal({ event, onClose, onDismiss, onPropos
             {reconStatus && (
               <Tag
                 label={reconStatus.toUpperCase()}
-                color={reconStatus === 'verified' ? BB.green : reconStatus === 'unsettled' ? BB.amberAlt : BB.blue}
+                color={
+                  reconStatus === 'verified' ? BB.green
+                    : reconStatus === 'holdings_stale' ? BB.blue
+                    : reconStatus === 'unsettled' ? BB.amberAlt
+                    : BB.text3
+                }
               />
             )}
             {plans.length > 0 && <Tag label={`${plans.length} PLANS`} color={BB.blue} />}

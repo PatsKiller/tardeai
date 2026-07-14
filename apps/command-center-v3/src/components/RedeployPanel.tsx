@@ -218,10 +218,10 @@ export default function RedeployPanel() {
                 {deployable != null ? fmt$(deployable, 0) : '—'}
               </span>
               <span style={{
-                color: recon === 'verified' ? BB.green : recon === 'unsettled' ? BB.amberAlt : BB.text3,
+                color: recon === 'verified' ? BB.green : recon === 'holdings_stale' ? BB.blue : recon === 'unsettled' ? BB.amberAlt : BB.text3,
                 fontSize: 8, fontWeight: 800,
-              }}>
-                {(recon ?? '—').slice(0, 4).toUpperCase()}
+              }} title={recon === 'holdings_stale' ? 'Holdings sync predates sale — not broker unsettled' : recon}>
+                {recon === 'holdings_stale' ? 'SYNC' : (recon ?? '—').slice(0, 4).toUpperCase()}
               </span>
               <span style={{ color: planCount ? BB.blue : BB.text3, fontWeight: 700, fontSize: BB.fontXs }}>
                 {planCount || '—'}

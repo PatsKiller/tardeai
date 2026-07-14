@@ -103,12 +103,14 @@ def test_idempotent_record_fill():
     assert state.get("fill_summary", {}).get("fill_count", 0) >= 1
 
 
-def test_reeval_flags_unsettled():
+def test_reeval_flags_holdings_stale():
     mon = _load("redeploy_monitor", "scripts/lib/redeploy_monitor.py")
     ev = _fcntx_event()
+    ev["sold_at"] = "2026-07-14"
+    ev["metadata"]["phase_a"]["reconciliation"]["reconciliation_status"] = "holdings_stale"
     flags = mon._reeval_flags(ev, [])
     codes = {f["code"] for f in flags}
-    assert "REEVAL-001" in codes
+    assert "REEVAL-000" in codes
 
 
 if __name__ == "__main__":
@@ -116,7 +118,7 @@ if __name__ == "__main__":
         test_restoration_metrics_empty_fills,
         test_restoration_metrics_with_jepq_fill,
         test_fill_summary_aggregates_stages,
-        test_reeval_flags_unsettled,
+        test_reeval_flags_holdings_stale,
         test_idempotent_record_fill,
     ]
     for t in tests:

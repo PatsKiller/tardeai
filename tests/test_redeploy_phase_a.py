@@ -18,16 +18,31 @@ def _load(name: str, rel: str):
     return mod
 
 
-def test_fcntx_deployable_cash_capped():
+def test_fcntx_holdings_stale_not_broker_unsettled():
+    """Sale 2026-07-14 with holdings as_of 2026-07-13 — sync lag, not broker unsettled."""
     dt = _load("redeploy_data_truth", "scripts/lib/redeploy_data_truth.py")
     recon = dt.reconcile_proceeds(
         account="schwab_rollover_ira",
         proceeds_usd=107023.01,
         cash_visible_usd=17540.67,
+        sold_at="2026-07-14",
     )
-    assert recon["reconciliation_status"] == "unsettled"
-    assert recon["deployable_cash_usd"] == 17540.67
-    assert recon["planned_not_actionable_usd"] == round(107023.01 - 17540.67, 2)
+    assert recon["reconciliation_status"] == "holdings_stale"
+    assert recon["deployable_cash_usd"] == 107023.01
+    assert recon["planned_not_actionable_usd"] == 0.0
+
+
+def test_fcntx_operator_verified_full_settlement():
+    dt = _load("redeploy_data_truth", "scripts/lib/redeploy_data_truth.py")
+    recon = dt.reconcile_proceeds(
+        account="schwab_rollover_ira",
+        proceeds_usd=107023.01,
+        cash_visible_usd=17540.67,
+        sold_at="2026-07-14",
+        operator_settlement={"verified": True, "settled_cash_usd": 107023.01},
+    )
+    assert recon["reconciliation_status"] == "verified"
+    assert recon["deployable_cash_usd"] == 107023.01
 
 
 def test_fcntx_income_unknown_not_zero():
@@ -79,6 +94,7 @@ def test_enrich_event_phase_a_metadata():
         "event_key": "test:fcntx",
         "symbol": "FCNTX",
         "account": "schwab_rollover_ira",
+        "sold_at": "2026-07-14",
         "proceeds_usd": 107023.01,
         "cash_visible_usd": 17540.67,
         "proxy_symbol": "SCHG",
@@ -86,14 +102,16 @@ def test_enrich_event_phase_a_metadata():
     }
     out = dt.enrich_event_phase_a(ev)
     pa = out["metadata"]["phase_a"]
-    assert pa["reconciliation"]["deployable_cash_usd"] == 17540.67
+    assert pa["reconciliation"]["reconciliation_status"] == "holdings_stale"
+    assert pa["reconciliation"]["deployable_cash_usd"] == 107023.01
     assert pa["portfolio_context"]["portfolio_equity_usd"] > 900000
     assert pa["portfolio_context"]["default_deployment_account"] == "schwab_rollover_ira"
 
 
 if __name__ == "__main__":
     tests = [
-        test_fcntx_deployable_cash_capped,
+        test_fcntx_holdings_stale_not_broker_unsettled,
+        test_fcntx_operator_verified_full_settlement,
         test_fcntx_income_unknown_not_zero,
         test_fcntx_sector_decomposition_sums_to_100,
         test_fcntx_brk_share_class_note,

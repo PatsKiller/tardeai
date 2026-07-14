@@ -27307,6 +27307,58 @@ def _deploy_monitoring(query=None):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _deploy_verify_settlement(body=None):
+    """POST /api/v2/deploy/verify-settlement — operator confirms proceeds settled in sale account."""
+    try:
+        from db_adapter import _get_conn
+        from lib.deploy_intelligence_engine import recompute_deploy_event
+        from lib.redeploy_data_truth import verify_operator_settlement
+        from lib.redeploy_plan_db import fetch_deploy_event
+        b = body or {}
+        eid = int(b.get("event_id") or b.get("id") or 0)
+        if not eid:
+            return {"ok": False, "error": "event_id required"}
+        settled = b.get("settled_cash_usd")
+        if settled is None:
+            return {"ok": False, "error": "settled_cash_usd required"}
+        conn = _get_conn()
+        cur = conn.cursor()
+        event = fetch_deploy_event(cur, eid)
+        if not event:
+            return {"ok": False, "error": "event_not_found"}
+        recon = verify_operator_settlement(
+            event,
+            settled_cash_usd=float(settled),
+            note=b.get("note"),
+            verified_by=str(b.get("verified_by") or "operator")[:64],
+        )
+        cur.execute(
+            """UPDATE deploy_events SET metadata=%s::jsonb, deployable_cash_usd=%s,
+               reconciliation_status=%s, proceeds_settled=%s, cash_visible_usd=%s, updated_at=NOW()
+               WHERE id=%s""",
+            (
+                json.dumps(event["metadata"]),
+                recon["deployable_cash_usd"],
+                recon["reconciliation_status"],
+                recon["reconciliation_status"] == "verified",
+                recon["settled_available_cash_usd"],
+                eid,
+            ),
+        )
+        if b.get("recompute", True):
+            recompute_deploy_event(cur, eid)
+        conn.commit()
+        return {
+            "ok": True,
+            "advisory_only": True,
+            "event_id": eid,
+            "reconciliation": recon,
+            "note": "Operator-verified settlement — not broker execution",
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _deploy_record_fill(body=None):
     """POST /api/v2/deploy/record-fill — manual stage fill evidence (advisory only)."""
     try:
@@ -33551,6 +33603,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/deploy/restore":
         try:
             res = _deploy_restore(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/deploy/verify-settlement":
+        try:
+            res = _deploy_verify_settlement(body if isinstance(body, dict) else {})
             return (200 if res.get("ok") else 400), res
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}

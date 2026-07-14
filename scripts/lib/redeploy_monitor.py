@@ -161,8 +161,13 @@ def _reeval_flags(event: dict[str, Any], fills: list[dict[str, Any]]) -> list[di
     meta = event.get("metadata") or {}
     recon = (meta.get("phase_a") or {}).get("reconciliation") or {}
     status = recon.get("reconciliation_status") or event.get("reconciliation_status")
-    if status == "unsettled":
-        flags.append({"code": "REEVAL-001", "message": "Proceeds unsettled — revisit deployable cap after settlement"})
+    if status == "holdings_stale":
+        flags.append({
+            "code": "REEVAL-000",
+            "message": "Holdings snapshot predates sale — run Schwab sync; deployable uses net proceeds until verified",
+        })
+    elif status == "unsettled":
+        flags.append({"code": "REEVAL-001", "message": "Cash in holdings below 50% of net — confirm settlement or sync broker"})
     if status == "partial":
         flags.append({"code": "REEVAL-002", "message": "Partial settlement — consider staged plan F tranche 2"})
     export_ready = (meta.get("phase_c") or {}).get("export_readiness") or {}

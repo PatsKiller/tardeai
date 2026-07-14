@@ -69,6 +69,20 @@ def holdings_snapshot_id() -> str:
         return "missing"
 
 
+def holdings_as_of_date() -> date | None:
+    """Best-effort holdings.json freshness (not broker settlement truth)."""
+    data = _load_json(STATE / "holdings.json", {})
+    for key in ("as_of", "last_repriced"):
+        raw = data.get(key)
+        if not raw:
+            continue
+        try:
+            return date.fromisoformat(str(raw)[:10])
+        except ValueError:
+            continue
+    return None
+
+
 def account_cash_usd(account: str) -> float:
     hold = _load_json(STATE / "holdings.json", {}).get("holdings") or []
     return sum(
@@ -76,6 +90,17 @@ def account_cash_usd(account: str) -> float:
         for h in hold
         if h.get("is_cash") and str(h.get("account") or "") == account
     )
+
+
+def _parse_sale_date(sold_at: Any) -> date | None:
+    if not sold_at:
+        return None
+    try:
+        if isinstance(sold_at, date):
+            return sold_at
+        return date.fromisoformat(str(sold_at)[:10])
+    except ValueError:
+        return None
 
 
 def portfolio_totals() -> dict[str, float]:
@@ -90,17 +115,41 @@ def reconcile_proceeds(
     account: str,
     proceeds_usd: float,
     cash_visible_usd: float | None = None,
+    sold_at: Any = None,
+    operator_settlement: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """deployable_cash = min(net_proceeds, settled_available_cash in source account)."""
+    """deployable_cash = min(net_proceeds, settled_available_cash in source account).
+
+    Never label broker proceeds 'unsettled' solely because holdings.json predates the sale —
+    that is holdings_stale (sync lag), not settlement failure.
+    """
     net = round(proceeds_usd, 2)
     cash = round(cash_visible_usd if cash_visible_usd is not None else account_cash_usd(account), 2)
-    deployable = round(min(net, cash), 2)
-    if cash >= net * 0.95:
+    hold_as_of = holdings_as_of_date()
+    sale_date = _parse_sale_date(sold_at)
+    op = operator_settlement or {}
+    reason = None
+
+    if op.get("verified"):
+        cash = round(_as_float(op.get("settled_cash_usd"), cash), 2)
+        deployable = round(min(net, cash), 2)
         status = "verified"
-    elif cash >= net * 0.50:
-        status = "partial"
+        reason = "operator_verified"
+    elif sale_date and hold_as_of and hold_as_of < sale_date and cash < net * 0.95:
+        # Sale posted in trade_transactions; holdings cash not refreshed yet.
+        status = "holdings_stale"
+        deployable = net
+        reason = "holdings_snapshot_predates_sale"
     else:
-        status = "unsettled"
+        deployable = round(min(net, cash), 2)
+        if cash >= net * 0.95:
+            status = "verified"
+        elif cash >= net * 0.50:
+            status = "partial"
+        else:
+            status = "unsettled"
+            reason = "cash_below_50pct_of_net_in_holdings"
+
     return {
         "net_proceeds_usd": net,
         "settled_available_cash_usd": cash,
@@ -108,7 +157,49 @@ def reconcile_proceeds(
         "reconciliation_status": status,
         "planned_not_actionable_usd": round(max(0.0, net - deployable), 2),
         "source_account": account,
+        "holdings_as_of": str(hold_as_of) if hold_as_of else None,
+        "sale_date": str(sale_date) if sale_date else None,
+        "reconciliation_reason": reason,
     }
+
+
+def verify_operator_settlement(
+    event: dict[str, Any],
+    *,
+    settled_cash_usd: float,
+    note: str | None = None,
+    verified_by: str = "operator",
+) -> dict[str, Any]:
+    """Operator attestation that proceeds are settled in the sale account (overrides stale holdings)."""
+    account = str(event.get("account") or "")
+    proceeds = _as_float(event.get("proceeds_usd"))
+    cash_vis = event.get("cash_visible_usd")
+    if cash_vis is not None:
+        cash_vis = _as_float(cash_vis)
+    op = {
+        "verified": True,
+        "settled_cash_usd": round(settled_cash_usd, 2),
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+        "verified_by": verified_by,
+        "note": (note or "")[:500] or None,
+    }
+    recon = reconcile_proceeds(
+        account=account,
+        proceeds_usd=proceeds,
+        cash_visible_usd=cash_vis,
+        sold_at=event.get("sold_at"),
+        operator_settlement=op,
+    )
+    meta = dict(event.get("metadata") or {})
+    pa = dict(meta.get("phase_a") or {})
+    pa["operator_settlement"] = op
+    pa["reconciliation"] = recon
+    meta["phase_a"] = pa
+    event["metadata"] = meta
+    event["deployable_cash_usd"] = recon["deployable_cash_usd"]
+    event["reconciliation_status"] = recon["reconciliation_status"]
+    event["proceeds_settled"] = recon["reconciliation_status"] == "verified"
+    return recon
 
 
 def _fund_lookthrough(symbol: str) -> dict[str, Any] | None:
@@ -363,7 +454,14 @@ def enrich_event_phase_a(event: dict[str, Any]) -> dict[str, Any]:
     else:
         cash_vis = account_cash_usd(account)
 
-    recon = reconcile_proceeds(account=account, proceeds_usd=proceeds, cash_visible_usd=cash_vis)
+    op_settle = (event.get("metadata") or {}).get("phase_a", {}).get("operator_settlement")
+    recon = reconcile_proceeds(
+        account=account,
+        proceeds_usd=proceeds,
+        cash_visible_usd=cash_vis,
+        sold_at=event.get("sold_at"),
+        operator_settlement=op_settle,
+    )
     exposure = decompose_exposure_loss(
         symbol=str(event.get("symbol") or ""),
         proceeds_usd=proceeds,
