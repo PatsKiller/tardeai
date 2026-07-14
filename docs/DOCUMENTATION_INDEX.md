@@ -44,6 +44,7 @@
 | `docs/runbooks/DB_HANG_PREVENTION.md` | **DB-induced dashboard hang** — root cause (ALTER queued behind idle-in-txn lock holder), per-connection + role-level `lock_timeout`/`statement_timeout`/idle guards, recovery steps | Active (2026-06-30) |
 | `docs/runbooks/protective-stop-integration-2026-06-30.md` | **Protective stop integration** — Schwab evidence-bound STOP / STOP_LIMIT / TRAILING_STOP, per-account arming (rollover default), one-V-canary-only, after-hours override-required policy, lifecycle + read-back proof, Fidelity manual-ticket, OCO off until canary proven | Active (2026-07-04) |
 | `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | **Post-sale redeploy sync** — `deploy_detect` / `deploy_backfill` / `deploy_recompute`, intelligence engine, FCNTX example, Phase A–E infrastructure ops, PR-5 cron installer | Active (2026-07-13) — desk itself REOPENED, see design doc §0 |
+| `docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md` | **Ephemeral artifact policy** — Playwright/visual captures go to `artifacts/playwright/<run_id>/` (gitignored, Drive-excluded, 7-day retention via `scripts/artifacts_retention.sh`); never under `docs/`, never to canonical Drive | Active (2026-07-14) |
 | `docs/v4_1_deployment_log.md` | **Living deployment log** — fleet state, phase completions, 2026-08-11 gemma4 eval gate | Active — created 2026-06-19 (d09a653c) |
 | `docs/_archive/prompts/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md` | CC execution prompt for fleet deploy | **Archived** *(was listed active; lives in _archive)* |
 

@@ -171,3 +171,5 @@ config/youtube_cookies.txt*
 state/
 # drive-inventory logs leak personal Drive filenames
 logs/drive_cleanup_*/
+# ephemeral run artifacts (Playwright captures etc.) — docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md
+artifacts/
