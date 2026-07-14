@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-07-13 — Redeploy Desk REOPENED: P0 fixture audit + documentation truth
+
+- **P0 audit** — `docs/audits/REDEPLOY_FIXTURE_AUDIT_2026-07-13.md`: Phase E test suite
+  committed 3 synthetic JEPQ fills to production event #144 (false \$3,246 / 3% restoration);
+  8 contaminated locations incl. a test plan-lock and 3 pending Hermes ledger rows.
+- **Guards** — migration `2026_07_19_redeploy_data_integrity.sql` (`environment` column,
+  fixture quarantine, content-level unique fill index, `broker_confirmation_id`);
+  `record_stage_fill` rejects fixture markers/test env/duplicate content; `list_fills`
+  production-only; polluting test replaced by rollback-only guard tests.
+- **Gated cleanup (NOT executed)** — `scripts/maintenance/redeploy_fixture_cleanup_2026_07_13.sql`
+  + outcome-bus cleaner; requires operator approval.
+- **Documentation truth** — design doc gained §0 implementation-truth matrix; desk status
+  corrected from "complete institutional desk" / "Phase A in progress" (both wrong) to
+  **REOPENED**: Phase A–E infrastructure real, analytics + full-page UI rebuild in progress.
+  Index + runbook resynced; Drive resync of both docs.
+
+
 ## 2026-07-13 — Fidelity GTC stops audit (••5199)
 
 - **`config/fidelity_rollover_stops.json`** — synced all 8 open GTC stops from Fidelity Activity & Orders (Jul 13): added **QCOM** trail 7% @$174.79 (55 sh); refreshed **ANET** trigger to $178.03, **DXCM** to $71.06; `_fidelity_as_of` → 2026-07-13.

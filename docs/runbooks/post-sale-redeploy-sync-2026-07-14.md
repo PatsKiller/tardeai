@@ -4,7 +4,9 @@
 
 Advisory-only pipeline that detects broker sells, scores redeploy targets, and surfaces plans in Portfolio → **Redeploy** (UI live). No broker execution path.
 
-**v2 design (institutional workbench):** `docs/design/REDEPLOY_DESK_INSTITUTIONAL_DESIGN.md` — Phases **A–E implemented** on `main` (plans A–G, entry export, UI v2, monitoring, PR-4 lock/oversight, PR-5 cron installer).
+**v2 design (institutional workbench):** `docs/design/REDEPLOY_DESK_INSTITUTIONAL_DESIGN.md` — Phase A–E **infrastructure** is on `main` (plans A–G, entry export, drawer UI, monitoring, PR-4 lock/oversight, PR-5 cron installer), but the desk was **rejected at operator review 2026-07-13 as a prototype shell and REOPENED** — see design doc §0 for the honest layer-by-layer state. Do not describe the desk as complete.
+
+**P0 (2026-07-13):** the Phase E test suite committed synthetic JEPQ fills against live event #144 (false 3% restoration). Guards + quarantine shipped; permanent deletion awaits operator approval — `docs/audits/REDEPLOY_FIXTURE_AUDIT_2026-07-13.md`.
 
 **Branch:** `main`  
 **Migration:** `migrations/2026_07_14_deploy_redeploy_events.sql`

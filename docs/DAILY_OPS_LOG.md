@@ -1,4 +1,15 @@
 
+## 2026-07-13 — Redeploy Desk P0 audit + reopening
+
+Operator review rejected the shipped Redeploy Desk as a prototype shell (unreadable 780px
+drawer, label-level plans, no pro-forma, contextless entries). P0 confirmed: the three
+identical JEPQ stage-1 fills on event #144 were written by the Phase E test suite against
+the production DB (evidence notes `phase_e test fixture`, keys `test-*`). Quarantine +
+permanent record-fill guards shipped (PR wt/redeploy-institutional-p0); transactional
+deletion staged for operator approval. Docs resynced to implementation truth — desk is
+REOPENED, not complete. Rebuild plan: capital-allocation book → candidate/pro-forma/
+performance engines → full-page /redeploy workstation + FCNTX #144 A–G acceptance.
+
 ## 2026-07-10 — Ross/Warrior TradeAI alignment + CC v3 scanner polish
 
 Deployed Ross-catalog awareness lanes (squeeze, runner, micro-float, low-price, top gainer, catalyst

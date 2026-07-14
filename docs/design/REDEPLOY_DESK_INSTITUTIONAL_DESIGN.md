@@ -1,12 +1,37 @@
 # Redeploy Desk — Institutional Capital-Allocation Design
 
-**Status:** **Approved with required changes** — Phase A implementation in progress  
-**Created:** 2026-07-14  
-**Review:** Operator verdict 2026-07-14 — Phase A authorized; Phases B–E not approved for production merge
-**Policy source:** Operator questionnaire (45 answers, 2026-07-14)  
-**Related runbook:** `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` (v1 as-built ops)  
-**Related commits:** `b2bccfef` → `de5131f1` (deploy detect, intelligence engine, UI)  
+**Status:** **REOPENED — institutional analytics + UX rebuild in progress (2026-07-13). NOT complete.**
+**Created:** 2026-07-14
+**Review:** Operator verdict 2026-07-14 — Phase A authorized; **second operator review 2026-07-13 rejected the shipped desk as a prototype shell** (see §0)
+**Policy source:** Operator questionnaire (45 answers, 2026-07-14)
+**Related runbook:** `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` (as-built ops)
+**Related commits:** `b2bccfef` → `34fcbe56` (detect → Phase A–E → oversight/cron → proceeds fix)
+**P0 audit:** `docs/audits/REDEPLOY_FIXTURE_AUDIT_2026-07-13.md` (test-fixture pollution of production monitoring)
 **Author:** Grok (with John Whiting)
+
+---
+
+## 0. Implementation truth (2026-07-13) — read this before trusting any status claim
+
+Earlier copies of this document (including the Google Drive copy) said "design
+pending, no implementation" while Git commit messages claimed a "complete
+institutional desk." Both were wrong. The honest state:
+
+| Layer | State | Evidence |
+|---|---|---|
+| Detection, events, proceeds reconciliation (Phase A) | **Implemented, production** | `sale_event_detector.py`, `redeploy_data_truth.py`, event #144 verified |
+| Plan archetypes A–G + legs + entry staging (Phases B–C) | **Implemented but insufficient** — templated ETF recipes, no dynamic candidate universe, no pro-forma | `redeploy_plan_engine.py` static sector→ETF map |
+| Plans UI (Phase D) | **Implemented but rejected** — 780 px drawer, 9–10 px type, label-level plan cards, contextless Entries, no before/after workstation | operator screenshots 2026-07-13 |
+| Monitoring + fills (Phase E) | **Implemented; was polluted** — test suite committed 3 synthetic JEPQ fills to production (false 3% restoration). Guards + quarantine shipped; deletion pending operator approval | P0 audit doc |
+| Oversight + cron (PR-4/PR-5) | **Implemented; oversight verdict on plan 8 is test residue** | P0 audit doc |
+| Portfolio-wide capital book, dynamic candidates, true pro-forma, look-through, performance/scenarios, full-page UI | **NOT implemented — the reopened scope** | this rebuild |
+
+**Do not label this desk "complete" until the rebuild acceptance matrix passes:**
+readable full-page workstation (≥14 px body type), plan legs with quantified
+restoration, three-state pro-forma (pre-sale / post-sale / post-plan),
+look-through overlap, performance/scenario tabs, capital book over all
+historical sales, FCNTX #144 A–G acceptance fixture, zero unresolved P0 data
+warnings.
 
 > **Scope:** Transform Portfolio → **Redeploy** from a single-score symbol list into an institutional post-sale capital-allocation workbench: exposure decomposition, competing multi-leg plans, entry staging, scenario/risk analysis, exportable trade plans, and post-entry monitoring. **Advisory only** — no broker execution from this desk.
 
