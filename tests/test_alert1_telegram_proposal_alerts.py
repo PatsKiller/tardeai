@@ -92,6 +92,10 @@ class TestAlertPolicy(unittest.TestCase):
         self.assertNotIn("BOT_TOKEN", src)
         self.assertNotIn("CHAT_ID", src)
 
+    def test_11_enrichment_module_compiles(self):
+        import py_compile
+        py_compile.compile(str(PROJECT_ROOT / "scripts/proposal_alert_enrichment.py"), doraise=True)
+
 
 class TestSafety(unittest.TestCase):
 

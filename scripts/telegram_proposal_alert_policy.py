@@ -105,7 +105,7 @@ def build_proposal_alert_packet(proposal: dict) -> dict:
     else:
         actions = ["WATCH", "REJECT", "OPEN_DETAILS"]
 
-    return {
+    packet = {
         "alert_type": alert_state,
         "urgency": "HIGH" if alert_state == "ACTIONABLE_READY" else "MEDIUM" if "BLOCKED" in alert_state else "LOW",
         "proposal_id": proposal.get("id"),
@@ -138,6 +138,25 @@ def build_proposal_alert_packet(proposal: dict) -> dict:
         "actions": actions,
         "recommended_action": actions[0] if actions else "WATCH",
     }
+
+    # Card-parity enrichment: RVOL, meme/high-risk, oversight gates, company line.
+    try:
+        from proposal_alert_enrichment import enrich_proposal_for_alert
+        enriched = enrich_proposal_for_alert(proposal) or {}
+        for k, v in enriched.items():
+            if v is None:
+                continue
+            if k in ("sector", "industry", "catalyst_verified", "catalyst") and packet.get(k) not in (None, "", False):
+                continue
+            if k == "catalyst_text" and enriched.get("catalyst_text"):
+                packet["catalyst"] = enriched["catalyst_text"]
+                packet["catalyst_verified"] = enriched.get("catalyst_verified")
+                continue
+            packet[k] = v
+    except Exception:
+        pass
+
+    return packet
 
 
 def alert_suppression_key(proposal: dict) -> str:
@@ -194,8 +213,36 @@ def format_telegram_message(packet: dict) -> str:
         lines.append(f"Status: {packet['status']}{src_bit}")
     lines.append("")
 
+    if packet.get("high_risk_label"):
+        lines.append(f"\u26a0\ufe0f *{_esc_md(packet['high_risk_label'])}*")
+        if packet.get("high_risk_reasons"):
+            lines.append(_esc_md(packet["high_risk_reasons"]))
+        if packet.get("high_risk_agent_note"):
+            lines.append(_esc_md(str(packet["high_risk_agent_note"])[:140]))
+
+    if packet.get("oversight_summary"):
+        lines.append(f"Gates: {_esc_md(packet['oversight_summary'])}")
+    elif packet.get("oversight_status"):
+        lines.append(f"Gates: oversight {_esc_md(packet['oversight_status'])}")
+
+    if packet.get("oversight_violations"):
+        for v in packet["oversight_violations"][:2]:
+            lines.append(f"\u2022 {_esc_md(str(v)[:100])}")
+
+    if packet.get("company_description"):
+        lines.append(f"Company: {_esc_md(packet['company_description'][:120])}")
+
     if packet.get("sector"):
         lines.append(f"Sector: {packet['sector']}" + (f" / {packet['industry']}" if packet.get("industry") else ""))
+
+    tech_bits = []
+    if packet.get("rvol") is not None:
+        tech_bits.append(f"RVOL {float(packet['rvol']):.0f}×")
+    if packet.get("gap_pct") is not None and abs(float(packet["gap_pct"])) >= 5:
+        g = float(packet["gap_pct"])
+        tech_bits.append(f"gap {'+' if g > 0 else ''}{g:.0f}%")
+    if tech_bits:
+        lines.append(" · ".join(tech_bits))
 
     if packet.get("catalyst"):
         cv = "\u2705" if packet.get("catalyst_verified") else "\u26a0\ufe0f"
@@ -222,9 +269,11 @@ def format_telegram_message(packet: dict) -> str:
     lines.append("")
     lines.append(f"*Action:* {packet['recommended_action']}")
     if packet["approval_allowed"]:
-        lines.append("_Approve & route available_")
+        lines.append("_Proposal ready — /ptapprove advances paper/broker queue (not 2FA order submit)_")
+    elif packet.get("high_risk"):
+        lines.append("_High-risk / gates failed — open card to review; /ptreject to dismiss (not 2FA)_")
     else:
-        lines.append("_Execution gates failed — review in Command Center (not a 2FA order approval)_")
+        lines.append("_Gates failed or incomplete — review in Command Center (not 2FA order approval)_")
 
     # ALERT-2: Add Telegram command shortcuts
     lines.append("")
@@ -258,7 +307,6 @@ def build_proposal_inline_keyboard(packet: dict) -> dict | None:
         ])
     else:
         rows.append([
-            {"text": "Approve", "callback_data": f"ptapprove:{pid}"},
             {"text": "Reject", "callback_data": f"ptreject:{pid}"},
             {"text": "More Info", "callback_data": f"ptinfo:{pid}"},
         ])
