@@ -724,6 +724,13 @@ def enrich_event(event: dict[str, Any]) -> dict[str, Any]:
         meta = dict(event.get("metadata") or {})
         meta.setdefault("phase_b_error", str(e)[:200])
         event["metadata"] = meta
+    try:
+        from lib.entry_planner_adapter import enrich_event_phase_c
+        event = enrich_event_phase_c(event)
+    except Exception as e:
+        meta = dict(event.get("metadata") or {})
+        meta.setdefault("phase_c_error", str(e)[:200])
+        event["metadata"] = meta
     event["lookthrough_delta"] = plan.get("lookthrough_delta") or []
     # Legacy v1 targets preserved for backward-compatible UI strip
     event["redeploy_plan"] = plan.get("targets") or []

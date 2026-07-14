@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lib.entry_planner_adapter import build_entry_package, whole_shares
 from lib.redeploy_data_truth import (
     DRAWDOWN_REJECT_THRESHOLD_PCT,
-    EXPORT_QUOTE_MAX_AGE_MINUTES,
     OPERATOR_READY_MIN_CONFIDENCE,
     OPERATOR_READY_MIN_EVIDENCE_FACTORS,
     PLAN_ARCHETYPES,
@@ -51,69 +51,12 @@ def _phase_a(event: dict[str, Any]) -> dict[str, Any]:
     return (event.get("metadata") or {}).get("phase_a") or {}
 
 
-def _technical(sym: str) -> dict[str, Any]:
-    tech = _load_json(STATE / "technical_snapshot.json", {})
-    row = tech.get(sym.upper()) or {}
-    meta = tech.get("_meta") or {}
-    return {
-        "price": _as_float(row.get("price")),
-        "atr": _as_float(row.get("atr")),
-        "sma20": _as_float(row.get("sma20")),
-        "sma50": _as_float(row.get("sma50")),
-        "rsi": _as_float(row.get("rsi")),
-        "as_of": meta.get("last_updated"),
-    }
-
-
 def _yield_pct(sym: str) -> float | None:
     for p in _load_json(STATE / "dividend_calendar.json", {}).get("payers") or []:
         if (p.get("symbol") or "").upper() == sym.upper():
             y = _as_float(p.get("yield_pct"))
             return y if y else None
     return None
-
-
-def _whole_shares(dollars: float, price: float) -> tuple[int, float]:
-    if price <= 0 or dollars <= 0:
-        return 0, 0.0
-    sh = int(dollars // price)
-    return sh, round(sh * price, 2)
-
-
-def _entry_package(sym: str, *, leg_dollars: float) -> dict[str, Any]:
-    t = _technical(sym)
-    price = t["price"]
-    atr = t["atr"] or (price * 0.015 if price else 0)
-    pref = round(price - atr * 0.5, 2) if price else None
-    if t["sma50"] and pref:
-        pref = round(min(pref, max(t["sma50"], price * 0.98)), 2)
-    stages = {}
-    if pref and leg_dollars > 0:
-        for i, (pct, mult) in enumerate([(25, 0), (25, 1.0), (50, 2.0)], 1):
-            stage_price = round(pref - atr * mult, 2)
-            stage_d = round(leg_dollars * pct / 100.0, 2)
-            sh, filled = _whole_shares(stage_d, stage_price)
-            stages[f"stage_{i}_pct"] = pct
-            stages[f"stage_{i}_price"] = stage_price
-            stages[f"stage_{i}_shares"] = sh
-            stages[f"stage_{i}_dollars"] = filled
-    stale = False
-    if t.get("as_of"):
-        try:
-            # technical_snapshot uses "YYYY-MM-DD HH:MM" local-style
-            pass
-        except Exception:
-            stale = True
-    return {
-        "current_price": price or None,
-        "price_as_of": t.get("as_of"),
-        "price_stale": stale,
-        "preferred_entry": pref,
-        "entry_range_low": round(pref - atr, 2) if pref else None,
-        "entry_range_high": round(pref + atr * 0.3, 2) if pref else None,
-        "do_not_chase": round(price + atr * 0.5, 2) if price else None,
-        **stages,
-    }
 
 
 def _reserve_leg(account: str, dollars: float, *, actionable: bool, thesis: str) -> dict[str, Any]:
@@ -141,9 +84,9 @@ def _equity_leg(
     dual_label: str | None = None,
 ) -> dict[str, Any]:
     sym = sym.upper()
-    entry = _entry_package(sym, leg_dollars=dollars)
+    entry = build_entry_package(sym, leg_dollars=dollars)
     price = entry.get("current_price") or 0
-    sh, filled = _whole_shares(dollars, price) if price else (0, 0.0)
+    sh, filled = whole_shares(dollars, price) if price else (0, 0.0)
     leg = {
         "ticker": sym,
         "account": account,

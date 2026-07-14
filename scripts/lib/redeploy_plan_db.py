@@ -91,8 +91,8 @@ def persist_institutional_plans(cur, event_id: int, event: dict[str, Any]) -> di
                     entry_range_high, do_not_chase, stage_1_pct, stage_1_price, stage_1_shares,
                     stage_1_dollars, stage_2_pct, stage_2_price, stage_2_shares, stage_2_dollars,
                     stage_3_pct, stage_3_price, stage_3_shares, stage_3_dollars,
-                    expected_yield_pct, thesis, overlap_note)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    expected_yield_pct, thesis, invalidation, overlap_note)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (
                     plan_id, idx,
                     leg.get("ticker"),
@@ -124,6 +124,7 @@ def persist_institutional_plans(cur, event_id: int, event: dict[str, Any]) -> di
                     leg.get("stage_3_dollars"),
                     leg.get("expected_yield_pct"),
                     leg.get("thesis"),
+                    leg.get("invalidation"),
                     leg.get("overlap_note"),
                 ),
             )
@@ -181,3 +182,74 @@ def list_plans_for_event(cur, event_id: int, *, version: int | None = None) -> l
         p["legs"] = [dict(zip(lcols, r)) for r in cur.fetchall()]
         plans.append(p)
     return plans
+
+
+def fetch_deploy_event(cur, event_id: int) -> dict[str, Any] | None:
+    cur.execute(
+        """SELECT id, event_key, symbol, account, proceeds_usd, cash_visible_usd,
+                  proxy_symbol, instrument_type, metadata
+           FROM deploy_events WHERE id=%s""",
+        (event_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    cols = [d[0] for d in cur.description]
+    ev = dict(zip(cols, row))
+    if isinstance(ev.get("metadata"), str):
+        try:
+            ev["metadata"] = json.loads(ev["metadata"])
+        except Exception:
+            ev["metadata"] = {}
+    return ev
+
+
+def fetch_institutional_plan(
+    cur,
+    event_id: int,
+    *,
+    plan_id: int | None = None,
+    archetype: str | None = None,
+    version: int | None = None,
+) -> dict[str, Any] | None:
+    ensure_plan_tables(cur)
+    if plan_id:
+        cur.execute(
+            """SELECT id, deploy_event_id, version, plan_archetype, plan_type, objective,
+                      operator_status, oversight_status, redeploy_plan
+               FROM deploy_plans WHERE id=%s AND deploy_event_id=%s""",
+            (plan_id, event_id),
+        )
+    else:
+        arch = (archetype or "F").upper()[:1]
+        if version is not None:
+            cur.execute(
+                """SELECT id, deploy_event_id, version, plan_archetype, plan_type, objective,
+                          operator_status, oversight_status, redeploy_plan
+                   FROM deploy_plans
+                   WHERE deploy_event_id=%s AND version=%s AND plan_archetype=%s""",
+                (event_id, version, arch),
+            )
+        else:
+            cur.execute(
+                """SELECT id, deploy_event_id, version, plan_archetype, plan_type, objective,
+                          operator_status, oversight_status, redeploy_plan
+                   FROM deploy_plans
+                   WHERE deploy_event_id=%s AND plan_archetype=%s
+                   AND version = (SELECT MAX(version) FROM deploy_plans WHERE deploy_event_id=%s)
+                   LIMIT 1""",
+                (event_id, arch, event_id),
+            )
+    row = cur.fetchone()
+    if not row:
+        return None
+    cols = [d[0] for d in cur.description]
+    plan = dict(zip(cols, row))
+    legs = plan.pop("redeploy_plan", None)
+    if isinstance(legs, str):
+        try:
+            legs = json.loads(legs)
+        except Exception:
+            legs = []
+    plan["legs"] = legs or []
+    return plan

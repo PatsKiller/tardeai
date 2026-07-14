@@ -27111,6 +27111,9 @@ def _deploy_events(query=None):
                 ev["reconciliation_status"] = ev.get("reconciliation_status") or meta["phase_a"].get(
                     "reconciliation", {}
                 ).get("reconciliation_status")
+            pc = meta.get("phase_c") or {}
+            if pc.get("export_readiness"):
+                ev["export_readiness"] = pc["export_readiness"]
         return {
             "ok": True,
             "advisory_only": True,
@@ -27141,6 +27144,54 @@ def _deploy_plans(query=None):
         cur = _get_conn().cursor()
         plans = list_plans_for_event(cur, eid, version=ver)
         return {"ok": True, "advisory_only": True, "event_id": eid, "plans": plans}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _deploy_export(query=None):
+    """GET /api/v2/deploy/export — trade plan JSON/CSV (Phase C; fresh quotes required)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.entry_planner_adapter import enrich_event_phase_c, export_trade_plan
+        from lib.redeploy_plan_db import fetch_deploy_event, fetch_institutional_plan
+        q = query or {}
+        eid = int(q.get("event_id") or q.get("id") or 0)
+        if not eid:
+            return {"ok": False, "error": "event_id required"}
+        plan_id = q.get("plan_id")
+        pid = int(plan_id) if plan_id not in (None, "") else None
+        archetype = (q.get("archetype") or q.get("plan_archetype") or "F").upper()[:1]
+        fmt = (q.get("format") or "json").lower()
+        force = str(q.get("force_stale") or "").lower() in ("1", "true", "yes")
+        version = q.get("version")
+        ver = int(version) if version not in (None, "") else None
+        cur = _get_conn().cursor()
+        event = fetch_deploy_event(cur, eid)
+        if not event:
+            return {"ok": False, "error": "event_not_found"}
+        event = enrich_event_phase_c(event)
+        meta = event.get("metadata") or {}
+        plans = (meta.get("phase_b") or {}).get("plans") or []
+        plan = None
+        if pid:
+            db_plan = fetch_institutional_plan(cur, eid, plan_id=pid, version=ver)
+            if db_plan:
+                arch = db_plan.get("plan_archetype")
+                plan = next((p for p in plans if p.get("plan_archetype") == arch), db_plan)
+        else:
+            plan = next((p for p in plans if p.get("plan_archetype") == archetype), None)
+            if not plan:
+                plan = fetch_institutional_plan(
+                    cur, eid, archetype=archetype, version=ver,
+                )
+        if not plan:
+            return {"ok": False, "error": "plan_not_found"}
+        result = export_trade_plan(event, plan, fmt=fmt, force_stale=force)
+        if isinstance(result, str):
+            return {"ok": True, "format": "csv", "content": result, "advisory_only": True}
+        if not result.get("ok", True) and result.get("error"):
+            return result
+        return result
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
@@ -28527,6 +28578,7 @@ ROUTES = {
     "/api/v2/fidelity-stops/status": lambda: _fidelity_stops_status(),
     "/api/v2/deploy/events": lambda q=None: _deploy_events(q),
     "/api/v2/deploy/plans": lambda q=None: _deploy_plans(q),
+    "/api/v2/deploy/export": lambda q=None: _deploy_export(q),
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/rotation/small-cap-bridge": _small_cap_rotation_bridge_status,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
