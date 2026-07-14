@@ -146,7 +146,8 @@ def list_plans_for_event(cur, event_id: int, *, version: int | None = None) -> l
             """SELECT id, version, plan_archetype, plan_type, tags, objective,
                       total_deployable_usd, reserve_usd, deploy_pct_of_net, confidence,
                       operator_status, oversight_status, composite_rank, advantages, compromises,
-                      risks, hermes_narrative, unmet_exposure, rejected_alternatives, scenarios
+                      risks, hermes_narrative, unmet_exposure, rejected_alternatives, scenarios,
+                      redeploy_plan
                FROM deploy_plans WHERE deploy_event_id=%s AND version=%s
                ORDER BY composite_rank DESC""",
             (event_id, version),
@@ -156,7 +157,8 @@ def list_plans_for_event(cur, event_id: int, *, version: int | None = None) -> l
             """SELECT id, version, plan_archetype, plan_type, tags, objective,
                       total_deployable_usd, reserve_usd, deploy_pct_of_net, confidence,
                       operator_status, oversight_status, composite_rank, advantages, compromises,
-                      risks, hermes_narrative, unmet_exposure, rejected_alternatives, scenarios
+                      risks, hermes_narrative, unmet_exposure, rejected_alternatives, scenarios,
+                      redeploy_plan
                FROM deploy_plans WHERE deploy_event_id=%s
                AND version = (SELECT MAX(version) FROM deploy_plans WHERE deploy_event_id=%s)
                ORDER BY composite_rank DESC""",
@@ -166,20 +168,29 @@ def list_plans_for_event(cur, event_id: int, *, version: int | None = None) -> l
     plans = []
     for row in cur.fetchall():
         p = dict(zip(cols, row))
-        for jf in ("unmet_exposure", "rejected_alternatives", "scenarios"):
+        for jf in ("unmet_exposure", "rejected_alternatives", "scenarios", "redeploy_plan"):
             if isinstance(p.get(jf), str):
                 try:
                     p[jf] = json.loads(p[jf])
                 except Exception:
                     pass
-        cur.execute(
-            """SELECT leg_index, ticker, account, target_dollars, target_shares, is_reserve,
-                      is_actionable, current_price, price_as_of, preferred_entry, thesis
-               FROM redeploy_plan_legs WHERE deploy_plan_id=%s ORDER BY leg_index""",
-            (p["id"],),
-        )
-        lcols = [d[0] for d in cur.description]
-        p["legs"] = [dict(zip(lcols, r)) for r in cur.fetchall()]
+        legs = p.pop("redeploy_plan", None) or []
+        if isinstance(legs, list) and legs:
+            p["legs"] = legs
+        else:
+            cur.execute(
+                """SELECT leg_index, ticker, account, target_dollars, target_shares, is_reserve,
+                          is_actionable, current_price, price_as_of, price_stale, preferred_entry,
+                          entry_range_low, entry_range_high, do_not_chase,
+                          stage_1_pct, stage_1_price, stage_1_shares, stage_1_dollars,
+                          stage_2_pct, stage_2_price, stage_2_shares, stage_2_dollars,
+                          stage_3_pct, stage_3_price, stage_3_shares, stage_3_dollars,
+                          thesis, invalidation
+                   FROM redeploy_plan_legs WHERE deploy_plan_id=%s ORDER BY leg_index""",
+                (p["id"],),
+            )
+            lcols = [d[0] for d in cur.description]
+            p["legs"] = [dict(zip(lcols, r)) for r in cur.fetchall()]
         plans.append(p)
     return plans
 

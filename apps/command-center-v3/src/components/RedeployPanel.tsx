@@ -3,15 +3,19 @@ import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import { BB } from '../lib/holdingsTerminalTokens'
 import { hubPanel, hubStrip } from '../lib/terminalHubChrome'
-import RedeployEventModal, { type RedeployEventDetail } from './RedeployEventModal'
+import { ARCHETYPE_LABELS, type RedeployEventDetail } from '../lib/redeployDeskTypes'
+import RedeployEventModal from './RedeployEventModal'
 
 const TIER_COLOR: Record<string, string> = { major: BB.amber, moderate: BB.blue, minor: BB.text3 }
-const GRID = '72px 56px 108px 92px 1fr 88px 52px 72px'
+const GRID = '64px 48px 96px 72px 72px 52px 44px 1fr 44px 44px 64px'
 
 const fmtDate = (s?: string) => {
   if (!s) return '—'
   return String(s).slice(5).replace('-', '/') || String(s).slice(0, 10)
 }
+
+const shortAcct = (a?: string) =>
+  (a ?? '').replace(/_/g, ' ').replace('schwab ', 'S·').replace('fidelity ', 'F·')
 
 export default function RedeployPanel() {
   const { data, loading, error, refetch } = useApi<any>('/api/v2/deploy/events?status=open&days=14&material_only=true', 60_000)
@@ -118,10 +122,10 @@ export default function RedeployPanel() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontFamily: BB.mono, fontSize: BB.fontSm }}>
       <div style={hubStrip(true)}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
-          <span style={{ color: BB.amber, fontWeight: 800, letterSpacing: '.08em' }}>REDEPLOY DESK</span>
+          <span style={{ color: BB.amber, fontWeight: 800, letterSpacing: '.08em' }}>REDEPLOY DESK v2</span>
           <span style={{ color: BB.text3 }}>ADVISORY · NO BROKER</span>
           <span style={{ color: BB.text2 }}>
-            {displayEvents.length} open · click row or OPEN to expand
+            {displayEvents.length} open · click row or OPEN for institutional plans
           </span>
           {data?.material_proceeds_usd > 0 && (
             <span style={{ color: BB.green }}>material proceeds {fmt$(data.material_proceeds_usd, 0)}</span>
@@ -174,8 +178,9 @@ export default function RedeployPanel() {
       )}
 
       <div style={{ ...panelStyle(), padding: 0, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '6px 10px', borderBottom: `1px solid ${BB.border}`, fontSize: BB.fontXs, color: BB.text3, letterSpacing: '.05em' }}>
-          <span>DATE</span><span>SOLD</span><span>ACCOUNT</span><span>PROCEEDS</span><span>REDUCED SLEEVE</span><span>TOP PICK</span><span>OPEN</span><span>DISMISS</span>
+        <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 6, padding: '6px 10px', borderBottom: `1px solid ${BB.border}`, fontSize: 8, color: BB.text3, letterSpacing: '.05em' }}>
+          <span>DATE</span><span>SOLD</span><span>ACCT</span><span>NET</span><span>DEPLOY</span>
+          <span>RECON</span><span>PLN</span><span>PRIMARY / SLEEVE</span><span>OPN</span><span>DIS</span><span />
         </div>
         {displayEvents.length === 0 ? (
           <div style={{ padding: 20, textAlign: 'center', color: BB.text3, fontSize: BB.fontXs }}>
@@ -185,7 +190,11 @@ export default function RedeployPanel() {
           const tier = ev.tier ?? ev.metadata?.sale_context?.tier ?? 'moderate'
           const reduced = ev.metadata?.sale_context?.reduced_themes
             ?? (ev.lookthrough_delta ?? []).map(d => d.theme).filter(Boolean)
-          const top = ev.redeploy_plan?.[0]
+          const planCount = ev.institutional_plans_summary?.length ?? ev.metadata?.phase_b?.plans?.length ?? 0
+          const primary = ev.primary_plan_archetype ?? ev.metadata?.phase_b?.primary_archetype
+          const deployable = ev.deployable_cash_usd ?? ev.metadata?.phase_a?.reconciliation?.deployable_cash_usd
+          const recon = ev.reconciliation_status ?? ev.metadata?.phase_a?.reconciliation?.reconciliation_status
+          const stale = ev.export_readiness?.export_allowed === false
           const active = selected?.id === ev.id
           return (
             <div
@@ -193,31 +202,47 @@ export default function RedeployPanel() {
               onClick={() => setSelectedId(ev.id)}
               onDoubleClick={() => openModal(ev)}
               style={{
-                display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '7px 10px', alignItems: 'center',
+                display: 'grid', gridTemplateColumns: GRID, gap: 6, padding: '7px 10px', alignItems: 'center',
                 borderBottom: `1px solid ${BB.borderSubtle}`, cursor: 'pointer',
                 background: active ? BB.bgRowFocus : 'transparent',
               }}
             >
               <span style={{ color: BB.text3, fontSize: BB.fontXs }}>{fmtDate(ev.sold_at)}</span>
               <span style={{ color: TIER_COLOR[tier] ?? BB.text0, fontWeight: 800 }}>{ev.symbol}</span>
-              <span style={{ color: BB.text2, fontSize: BB.fontXs, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {(ev.account ?? '').replace(/_/g, ' ').replace('schwab ', 'S·').replace('fidelity ', 'F·')}
+              <span style={{ color: BB.text2, fontSize: BB.fontXs, overflow: 'hidden', textOverflow: 'ellipsis' }} title={ev.account}>
+                {shortAcct(ev.account)}
               </span>
-              <span style={{ color: BB.text0, fontWeight: 700 }}>{fmt$(Number(ev.proceeds_usd ?? 0), 0)}</span>
-              <span style={{ color: BB.text2, fontSize: BB.fontXs }} title={reduced.join(', ')}>
-                {reduced[0] ?? '—'}{reduced.length > 1 ? ` +${reduced.length - 1}` : ''}
+              <span style={{ color: BB.text0, fontWeight: 700, fontSize: BB.fontXs }}>{fmt$(Number(ev.proceeds_usd ?? 0), 0)}</span>
+              <span style={{ color: BB.green, fontSize: BB.fontXs, fontWeight: 700 }} title="Deployable cash cap">
+                {deployable != null ? fmt$(deployable, 0) : '—'}
               </span>
-              <span style={{ color: top ? BB.green : BB.text3, fontWeight: 700 }}>
-                {top ? `${top.symbol} ${top.score}` : tier === 'minor' ? 'CASH' : '—'}
+              <span style={{
+                color: recon === 'verified' ? BB.green : recon === 'unsettled' ? BB.amberAlt : BB.text3,
+                fontSize: 8, fontWeight: 800,
+              }}>
+                {(recon ?? '—').slice(0, 4).toUpperCase()}
+              </span>
+              <span style={{ color: planCount ? BB.blue : BB.text3, fontWeight: 700, fontSize: BB.fontXs }}>
+                {planCount || '—'}
+              </span>
+              <span style={{ color: BB.text2, fontSize: BB.fontXs, overflow: 'hidden', textOverflow: 'ellipsis' }} title={reduced.join(', ')}>
+                {primary ? (
+                  <b style={{ color: BB.amber }}>{primary} {ARCHETYPE_LABELS[primary] ?? ''}</b>
+                ) : (
+                  reduced[0] ?? '—'
+                )}
+                {stale && <span style={{ color: BB.amberAlt, marginLeft: 4 }}>STALE</span>}
+                {!primary && reduced.length > 1 ? ` +${reduced.length - 1}` : ''}
               </span>
               <button
                 onClick={e => { e.stopPropagation(); openModal(ev) }}
-                style={{ ...btn(false), fontSize: 8, padding: '2px 6px', color: BB.amber }}
+                style={{ ...btn(false), fontSize: 8, padding: '2px 4px', color: BB.amber }}
               >OPEN</button>
               <button
                 onClick={e => { e.stopPropagation(); void dismiss(ev.id) }}
-                style={{ ...btn(false), fontSize: 8, padding: '2px 6px', color: BB.text3 }}
-              >DISMISS</button>
+                style={{ ...btn(false), fontSize: 8, padding: '2px 4px', color: BB.text3 }}
+              >DIS</button>
+              <span />
             </div>
           )
         })}
@@ -226,7 +251,7 @@ export default function RedeployPanel() {
       {selected && !modalEvent && (
         <div style={{ ...panelStyle(), borderLeft: `3px solid ${TIER_COLOR[selected.tier ?? 'moderate'] ?? BB.amber}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            <span style={{ color: BB.text2, fontSize: BB.fontXs }}>Preview — double-click row or OPEN for full modal</span>
+            <span style={{ color: BB.text2, fontSize: BB.fontXs }}>Preview — OPEN for full desk (plans A–G, entries, export)</span>
             <button onClick={() => openModal(selected)} style={{ ...btn(false), color: BB.amber, fontSize: 8 }}>EXPAND</button>
           </div>
           <PreviewRow event={selected} onPropose={proposeTarget} />
@@ -246,10 +271,30 @@ export default function RedeployPanel() {
 }
 
 function PreviewRow({ event, onPropose }: { event: RedeployEventDetail; onPropose: (s: string, sl: string, r: string) => void }) {
+  const plans = event.metadata?.phase_b?.plans ?? []
+  const primary = event.primary_plan_archetype ?? event.metadata?.phase_b?.primary_archetype
+  const plan = plans.find(p => p.plan_archetype === primary) ?? plans[0]
+  const memo = event.pm_memo ?? event.metadata?.phase_b?.pm_memo
+
+  if (plan) {
+    return (
+      <div style={{ fontSize: BB.fontXs, color: BB.text2, lineHeight: 1.45 }}>
+        <div>
+          <b style={{ color: BB.amber }}>Plan {plan.plan_archetype}</b> {ARCHETYPE_LABELS[plan.plan_archetype] ?? plan.plan_type}
+          {' · '}deploy {fmt$(plan.total_deployable_usd ?? 0, 0)}
+          {' · '}reserve {fmt$(plan.reserve_usd ?? 0, 0)}
+          {' · '}{plan.operator_status}/{plan.oversight_status}
+        </div>
+        {memo && <div style={{ marginTop: 4, color: BB.text3 }}>{memo.slice(0, 200)}{memo.length > 200 ? '…' : ''}</div>}
+      </div>
+    )
+  }
+
   const top = event.redeploy_plan?.[0]
-  if (!top) return <div style={{ color: BB.text3, fontSize: BB.fontXs }}>No targets</div>
+  if (!top) return <div style={{ color: BB.text3, fontSize: BB.fontXs }}>No plans — run RECOMPUTE</div>
   return (
     <div style={{ fontSize: BB.fontXs, color: BB.text2 }}>
+      <span style={{ color: BB.text3 }}>Legacy v1 · </span>
       <b style={{ color: BB.green }}>{top.symbol}</b> score {top.score} — {top.rationale}
       <button onClick={() => onPropose(top.symbol, top.sleeve || 'Redeploy', top.rationale || '')} style={{ ...btn(false), marginLeft: 10, fontSize: 8, color: BB.green }}>PROPOSE</button>
     </div>
