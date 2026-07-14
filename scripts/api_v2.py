@@ -27399,6 +27399,142 @@ def _redeploy_opportunity_set(query=None):
         return {"ok": False, "error": str(e)[:200]}
 
 
+_REDEPLOY_ANALYTICS_CACHE_TTL_SEC = 1800
+
+
+def _redeploy_analytics_cache(key: str, builder):
+    """Disk cache for heavy redeploy analytics (30-min TTL) — heavy endpoints must
+    be disk-cached or the watchdog kill-loops them blank."""
+    import json as _json
+    import time as _time
+    from pathlib import Path as _Path
+    cache_path = _Path(__file__).resolve().parent.parent / "data" / "portfolios" / "state" / "redeploy_analytics_cache.json"
+    try:
+        cache = _json.loads(cache_path.read_text()) if cache_path.exists() else {}
+    except Exception:
+        cache = {}
+    hit = cache.get(key)
+    if hit and (_time.time() - float(hit.get("_cached_at", 0))) < _REDEPLOY_ANALYTICS_CACHE_TTL_SEC:
+        out = dict(hit["payload"])
+        out["_cache"] = {"hit": True, "cached_at": hit["_cached_at"]}
+        return out
+    payload = builder()
+    if payload.get("ok"):
+        cache[key] = {"_cached_at": _time.time(), "payload": payload}
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = cache_path.with_suffix(".json.tmp")
+            tmp.write_text(_json.dumps(cache, default=str))
+            tmp.replace(cache_path)
+        except Exception:
+            pass
+    return payload
+
+
+def _redeploy_fetch_event_and_legs(cur, event_id: int, plan_id: int | None):
+    cur.execute(
+        """SELECT id, symbol, account, proceeds_usd, net_proceeds_usd, deployable_cash_usd,
+                  metadata FROM deploy_events WHERE id=%s""",
+        (event_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None, None
+    cols = [d[0] for d in cur.description]
+    event = dict(zip(cols, row))
+    legs = []
+    if plan_id:
+        cur.execute(
+            """SELECT ticker, target_dollars, is_reserve, current_price, allocation_pct_of_net
+               FROM redeploy_plan_legs WHERE deploy_plan_id=%s ORDER BY leg_index""",
+            (plan_id,),
+        )
+        lcols = [d[0] for d in cur.description]
+        legs = [dict(zip(lcols, r)) for r in cur.fetchall()]
+    return event, legs
+
+
+def _redeploy_candidates(query=None):
+    """GET /api/v2/redeploy/candidates?event_id= — dynamic candidate universe (Part C)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_candidate_research import build_candidates
+        q = query or {}
+        eid = int(q.get("event_id") or 0)
+        conn = _get_conn()
+        cur = conn.cursor()
+        sold = None
+        if eid:
+            cur.execute("SELECT symbol FROM deploy_events WHERE id=%s", (eid,))
+            r = cur.fetchone()
+            sold = r[0] if r else None
+
+        def build():
+            return build_candidates(cur, sold_symbol=sold)
+
+        res = _redeploy_analytics_cache(f"candidates:{sold or 'portfolio'}", build)
+        conn.commit()
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _redeploy_pro_forma(query=None):
+    """GET /api/v2/redeploy/portfolio-pro-forma?event_id=&plan_id= — three-state model (Part D)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_pro_forma import build_pro_forma
+        q = query or {}
+        eid = int(q.get("event_id") or 0)
+        pid = int(q.get("plan_id") or 0)
+        if not eid or not pid:
+            return {"ok": False, "error": "event_id and plan_id required"}
+        conn = _get_conn()
+        cur = conn.cursor()
+        event, legs = _redeploy_fetch_event_and_legs(cur, eid, pid)
+        if not event:
+            return {"ok": False, "error": "event_not_found"}
+        if not legs:
+            return {"ok": False, "error": "plan_has_no_legs"}
+
+        def build():
+            return build_pro_forma(cur, event, legs)
+
+        res = _redeploy_analytics_cache(f"proforma:{eid}:{pid}", build)
+        conn.commit()
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _redeploy_performance(query=None):
+    """GET /api/v2/redeploy/performance?event_id=&plan_id= — plan/leg history + scenarios (Part E)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_performance import plan_performance
+        q = query or {}
+        eid = int(q.get("event_id") or 0)
+        pid = int(q.get("plan_id") or 0)
+        if not eid or not pid:
+            return {"ok": False, "error": "event_id and plan_id required"}
+        conn = _get_conn()
+        cur = conn.cursor()
+        event, legs = _redeploy_fetch_event_and_legs(cur, eid, pid)
+        if not event:
+            return {"ok": False, "error": "event_not_found"}
+        if not legs:
+            return {"ok": False, "error": "plan_has_no_legs"}
+
+        def build():
+            return plan_performance(cur, event, legs)
+
+        res = _redeploy_analytics_cache(f"performance:{eid}:{pid}", build)
+        conn.commit()
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _deploy_verify_settlement(body=None):
     """POST /api/v2/deploy/verify-settlement — operator confirms proceeds settled in sale account."""
     try:
@@ -28862,6 +28998,9 @@ ROUTES = {
     "/api/v2/redeploy/history": lambda q=None: _redeploy_history(q),
     "/api/v2/redeploy/capital-pools": lambda q=None: _redeploy_capital_pools(q),
     "/api/v2/redeploy/opportunity-set": lambda q=None: _redeploy_opportunity_set(q),
+    "/api/v2/redeploy/candidates": lambda q=None: _redeploy_candidates(q),
+    "/api/v2/redeploy/portfolio-pro-forma": lambda q=None: _redeploy_pro_forma(q),
+    "/api/v2/redeploy/performance": lambda q=None: _redeploy_performance(q),
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/rotation/small-cap-bridge": _small_cap_rotation_bridge_status,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
