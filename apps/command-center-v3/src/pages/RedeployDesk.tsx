@@ -124,7 +124,7 @@ function Section({ title, t, children, right }: any) {
 
 function DataTable({ t, cols, rows, empty }: {
   t: ReturnType<typeof T>
-  cols: { key: string; label: string; align?: 'right' | 'left'; render?: (row: any) => any; width?: string }[]
+  cols: { key: string; label: string; align?: 'right' | 'left'; render?: (row: any) => any; width?: string; wrap?: boolean; minWidth?: string }[]
   rows: any[]
   empty?: string
 }) {
@@ -149,7 +149,9 @@ function DataTable({ t, cols, rows, empty }: {
               {cols.map(c => (
                 <td key={c.key} style={{
                   padding: `${t.cellPadY}px ${t.cellPadX}px`, textAlign: c.align || 'left',
-                  color: BB.text1, borderBottom: `1px solid ${BB.borderSubtle}`, whiteSpace: 'nowrap',
+                  color: BB.text1, borderBottom: `1px solid ${BB.borderSubtle}`,
+                  // long prose columns wrap so money columns are never pushed off-screen
+                  whiteSpace: c.wrap ? 'normal' : 'nowrap', minWidth: c.minWidth,
                 }}>{c.render ? c.render(r) : (r[c.key] ?? '—')}</td>
               ))}
             </tr>
@@ -431,11 +433,15 @@ export default function RedeployDesk() {
         <>
           <Pill text={eventRow.settled ? 'SETTLED' : eventRow.reconciliation_status.toUpperCase()}
                 color={eventRow.settled ? BB.green : BB.amberAlt} />
-          {eventRow.quote_age_minutes != null && (
-            <Pill text={`quotes ${Math.round(eventRow.quote_age_minutes)}m old`}
-                  color={eventRow.quote_age_minutes > 30 ? BB.red : BB.green} />
-          )}
-          {(eventRow.warnings || []).map((w: string) => (
+          {eventRow.quote_age_minutes != null && (() => {
+            const qa = Math.round(eventRow.quote_age_minutes)
+            const veryStale = qa > 60, stale = qa > 15
+            return <Pill
+              text={`${veryStale || stale ? '⚠ ' : ''}quotes ${qa}m old${veryStale ? ' · VERY STALE' : stale ? ' · STALE' : ' · fresh'}`}
+              color={veryStale ? BB.red : stale ? BB.amberAlt : BB.green}
+              title="fresh ≤15m · stale >15m (export blocked) · very stale >60m" />
+          })()}
+          {(eventRow.warnings || []).filter((w: string) => w !== 'quotes_stale').map((w: string) => (
             <Pill key={w} text={w.replace(/_/g, ' ')} color={w.startsWith('quarantined') ? BB.red : BB.amberAlt} />
           ))}
         </>
@@ -477,7 +483,20 @@ export default function RedeployDesk() {
             {kv('ULTIMATE TARGET', fmt$(ultimate), BB.text0, meaningOf(focus, 'executable_at_current_quote_usd'))}
             {kv('IMPLEMENT NOW', fmt$(implementNow), BB.green, meaningOf(focus, 'implement_now_usd'))}
             {kv('PENDING STAGES', fmt$(pendingStages), BB.amberAlt, meaningOf(focus, 'pending_future_stages_usd'))}
-            {kv('UNCOMMITTED CASH', fmt$(uncommitted), BB.text0, meaningOf(focus, 'uncommitted_cash_usd'))}
+            {kv('UNCOMMITTED (RESERVE+STAGES)', fmt$(uncommitted), BB.text0,
+                (meaningOf(focus, 'uncommitted_cash_usd') || '') +
+                ' — NOT freely spendable: it is the plan reserve plus later-stage tranches plus rounding residual')}
+            {(() => {
+              const fin = focus?.financials || {}
+              const net = fin.net_proceeds_usd, dep = fin.deployable_cash_usd
+              const pendingSettle = net != null && dep != null ? Math.max(0, net - dep) : 0
+              if (pendingSettle <= 0.01) return null
+              return <>
+                {kv('DEPLOYABLE NOW', fmt$(dep), BB.green, 'settled cash — min(net proceeds, settled account cash)')}
+                {kv('PENDING SETTLEMENT', fmt$(pendingSettle), BB.amberAlt,
+                    'proceeds not yet settled in the source account — planned-not-actionable until reconciliation verifies')}
+              </>
+            })()}
             {kv('RESERVE', fmt$(reserve), BB.text0, residual != null ? `whole-share residual ${fmt$(residual)}` : meaningOf(focus, 'reserve_usd'))}
             {kv('PLAN INCOME', income == null ? '—' : `${fmt$(income)}/yr`, BB.green)}
             {kv('VS POST-SALE', signed$(pi?.income_vs_post_sale_usd), toneFor(pi?.income_vs_post_sale_usd), pi?.income_vs_post_sale_note)}
@@ -1329,18 +1348,18 @@ export default function RedeployDesk() {
           {subHead('IMPLEMENT NOW', BB.green)}
           <DataTable t={t} rows={implementNowRows} empty="No stage-1 tranche is priced yet." cols={[
             { key: 'ticker', label: 'TICKER', render: (r: any) => <b style={{ color: BB.text0 }}>{r.ticker}</b> },
-            { key: 'role', label: 'ROLE', render: (r: any) => String(r.role || '—').replace(/_/g, ' ') },
+            { key: 'role', label: 'ROLE', wrap: true, render: (r: any) => String(r.role || '—').replace(/_/g, ' ') },
             { key: 'shares', label: 'SHARES', align: 'right' },
-            { key: 'price', label: 'TARGET PX', align: 'right', render: (r: any) => r.price != null ? `$${num(r.price)}` : '—' },
-            { key: 'dollars', label: 'DOLLARS', align: 'right', render: (r: any) => fmt$(r.dollars) },
+            { key: 'price', label: 'TARGET PX', align: 'right', minWidth: '90px', render: (r: any) => r.price != null ? `$${num(r.price)}` : '—' },
+            { key: 'dollars', label: 'DOLLARS', align: 'right', minWidth: '90px', render: (r: any) => fmt$(r.dollars) },
           ]} />
           {subHead('WAIT FOR STAGE 2/3', BB.amberAlt)}
           <DataTable t={t} rows={waitRows} empty="Single-tranche plan — nothing staged for later." cols={[
             { key: 'ticker', label: 'TICKER', render: (r: any) => <b style={{ color: BB.text0 }}>{r.ticker}</b> },
             { key: 'stage', label: 'STAGE', align: 'right', render: (r: any) => `Stage ${r.stage}` },
-            { key: 'trigger', label: 'TRIGGER', render: (r: any) => <span style={{ color: BB.text2 }}>{r.trigger}</span> },
+            { key: 'trigger', label: 'TRIGGER', wrap: true, render: (r: any) => <span style={{ color: BB.text2 }}>{r.trigger}</span> },
             { key: 'shares', label: 'SHARES', align: 'right' },
-            { key: 'dollars', label: 'DOLLARS', align: 'right', render: (r: any) => fmt$(r.dollars) },
+            { key: 'dollars', label: 'DOLLARS', align: 'right', minWidth: '90px', render: (r: any) => fmt$(r.dollars) },
           ]} />
           {subHead('REMAINING RESERVE', BB.blue)}
           <div style={{ fontSize: t.body, color: BB.text2, marginBottom: 4 }}>
