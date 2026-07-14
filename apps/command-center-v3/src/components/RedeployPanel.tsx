@@ -7,7 +7,7 @@ import { ARCHETYPE_LABELS, type RedeployEventDetail } from '../lib/redeployDeskT
 import RedeployEventModal from './RedeployEventModal'
 
 const TIER_COLOR: Record<string, string> = { major: BB.amber, moderate: BB.blue, minor: BB.text3 }
-const GRID = '64px 48px 96px 72px 72px 52px 44px 1fr 44px 44px 64px'
+const GRID = '64px 48px 96px 72px 72px 52px 44px 44px 1fr 44px 44px 64px'
 
 const fmtDate = (s?: string) => {
   if (!s) return '—'
@@ -180,7 +180,7 @@ export default function RedeployPanel() {
       <div style={{ ...panelStyle(), padding: 0, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 6, padding: '6px 10px', borderBottom: `1px solid ${BB.border}`, fontSize: 8, color: BB.text3, letterSpacing: '.05em' }}>
           <span>DATE</span><span>SOLD</span><span>ACCT</span><span>NET</span><span>DEPLOY</span>
-          <span>RECON</span><span>PLN</span><span>PRIMARY / SLEEVE</span><span>OPN</span><span>DIS</span><span />
+          <span>RECON</span><span>PLN</span><span>REST%</span><span>PRIMARY</span><span>OPN</span><span>DIS</span><span />
         </div>
         {displayEvents.length === 0 ? (
           <div style={{ padding: 20, textAlign: 'center', color: BB.text3, fontSize: BB.fontXs }}>
@@ -195,6 +195,7 @@ export default function RedeployPanel() {
           const deployable = ev.deployable_cash_usd ?? ev.metadata?.phase_a?.reconciliation?.deployable_cash_usd
           const recon = ev.reconciliation_status ?? ev.metadata?.phase_a?.reconciliation?.reconciliation_status
           const stale = ev.export_readiness?.export_allowed === false
+          const restPct = ev.monitoring_summary?.restoration_pct ?? ev.metadata?.phase_e?.restoration_pct
           const active = selected?.id === ev.id
           return (
             <div
@@ -224,6 +225,9 @@ export default function RedeployPanel() {
               </span>
               <span style={{ color: planCount ? BB.blue : BB.text3, fontWeight: 700, fontSize: BB.fontXs }}>
                 {planCount || '—'}
+              </span>
+              <span style={{ color: restPct != null && restPct > 0 ? BB.green : BB.text3, fontSize: BB.fontXs, fontWeight: 700 }}>
+                {restPct != null ? `${restPct}%` : '—'}
               </span>
               <span style={{ color: BB.text2, fontSize: BB.fontXs, overflow: 'hidden', textOverflow: 'ellipsis' }} title={reduced.join(', ')}>
                 {primary ? (

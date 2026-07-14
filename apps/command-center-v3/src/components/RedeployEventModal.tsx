@@ -13,7 +13,7 @@ import {
 
 export type { RedeployEventDetail, RedeployTarget } from '../lib/redeployDeskTypes'
 
-type TabId = 'overview' | 'plans' | 'entries' | 'rejected' | 'memo' | 'legacy'
+type TabId = 'overview' | 'plans' | 'entries' | 'monitoring' | 'rejected' | 'memo' | 'legacy'
 
 interface Props {
   event: RedeployEventDetail
@@ -61,6 +61,15 @@ export default function RedeployEventModal({ event, onClose, onDismiss, onPropos
   const [tab, setTab] = useState<TabId>('overview')
   const [selectedArch, setSelectedArch] = useState(primaryArch)
   const [exportMsg, setExportMsg] = useState('')
+  const [fillMsg, setFillMsg] = useState('')
+  const [fillForm, setFillForm] = useState({ ticker: 'JEPQ', stage: '1', shares: '', price: '', note: '' })
+
+  const { data: monitoring, refetch: refetchMonitoring } = useApi<{
+    fills?: Array<Record<string, unknown>>
+    restoration_metrics?: { restoration_pct?: number; sectors?: Array<Record<string, unknown>>; total_restored_usd?: number; total_removed_usd?: number }
+    fill_summary?: { fill_count?: number; total_dollars_deployed?: number }
+    reeval_flags?: Array<{ code?: string; message?: string }>
+  }>(`/api/v2/deploy/monitoring?event_id=${ev.id}`, 30_000)
 
   const selectedPlan = plans.find(p => p.plan_archetype === selectedArch) ?? plans[0] ?? null
   const rejected = rejectedFromEvent(ev)
@@ -70,10 +79,47 @@ export default function RedeployEventModal({ event, onClose, onDismiss, onPropos
     { id: 'overview', label: 'OVERVIEW' },
     { id: 'plans', label: 'PLANS' },
     { id: 'entries', label: 'ENTRIES' },
+    { id: 'monitoring', label: 'MONITOR' },
     { id: 'rejected', label: 'REJECTED' },
     { id: 'memo', label: 'MEMO' },
     { id: 'legacy', label: 'LEGACY v1' },
   ]
+
+  async function recordFill() {
+    setFillMsg('')
+    const shares = parseInt(fillForm.shares, 10)
+    const price = parseFloat(fillForm.price)
+    if (!fillForm.ticker || !shares || !price) {
+      setFillMsg('ERR ticker, shares, price required')
+      return
+    }
+    try {
+      const r = await fetch('/api/v2/deploy/record-fill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_id: ev.id,
+          ticker: fillForm.ticker.toUpperCase(),
+          stage: parseInt(fillForm.stage, 10),
+          filled_shares: shares,
+          filled_price: price,
+          account: ev.account,
+          plan_archetype: selectedPlan?.plan_archetype ?? primaryArch,
+          evidence_note: fillForm.note || 'operator manual fill',
+        }),
+      })
+      const j = await r.json()
+      if (!j.ok) {
+        setFillMsg(`ERR ${j.error || 'failed'}`)
+        return
+      }
+      setFillMsg(j.duplicate ? 'DUPLICATE (idempotent)' : `RECORDED stage ${fillForm.stage} ${fillForm.ticker}`)
+      refetchMonitoring?.()
+      setFillForm(f => ({ ...f, shares: '', note: '' }))
+    } catch {
+      setFillMsg('ERR request failed')
+    }
+  }
 
   async function exportPlan(fmt: 'json' | 'csv', forceStale = false) {
     setExportMsg('')
@@ -257,6 +303,59 @@ export default function RedeployEventModal({ event, onClose, onDismiss, onPropos
             ) : (
               <div style={{ color: BB.text3, fontSize: BB.fontXs }}>Select a plan in PLANS tab</div>
             )
+          )}
+
+          {tab === 'monitoring' && (
+            <>
+              <Section title="RESTORATION METRICS">
+                <Kv k="Restoration %" v={`${monitoring?.restoration_metrics?.restoration_pct ?? ev.metadata?.phase_e?.restoration_pct ?? 0}%`} accent={BB.green} />
+                <Kv k="Deployed (fills)" v={fmt$(monitoring?.fill_summary?.total_dollars_deployed ?? 0, 0)} />
+                <Kv k="Exposure removed" v={fmt$(monitoring?.restoration_metrics?.total_removed_usd ?? 0, 0)} />
+                {(monitoring?.restoration_metrics?.sectors ?? []).slice(0, 6).map(s => (
+                  <div key={String(s.sector)} style={{ fontSize: BB.fontXs, color: BB.text2, marginBottom: 2 }}>
+                    {String(s.sector)}: {fmt$(Number(s.usd_restored ?? 0), 0)} / {fmt$(Number(s.usd_removed ?? 0), 0)}
+                    <span style={{ color: BB.amber }}> ({Number(s.restoration_pct ?? 0)}%)</span>
+                  </div>
+                ))}
+              </Section>
+
+              {(monitoring?.reeval_flags ?? []).length > 0 && (
+                <Section title="RE-EVAL FLAGS">
+                  {(monitoring?.reeval_flags ?? []).map(f => (
+                    <div key={f.code} style={{ fontSize: BB.fontXs, color: BB.amberAlt, marginBottom: 3 }}>
+                      {f.code}: {f.message}
+                    </div>
+                  ))}
+                </Section>
+              )}
+
+              <Section title="RECORD STAGE FILL (manual evidence)">
+                <div style={{ fontSize: 9, color: BB.text3, marginBottom: 8 }}>Advisory only — records operator-confirmed fills; does not submit broker orders.</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 48px 64px 72px', gap: 6, marginBottom: 6 }}>
+                  <input value={fillForm.ticker} onChange={e => setFillForm(f => ({ ...f, ticker: e.target.value }))} placeholder="Ticker" style={inputStyle} />
+                  <select value={fillForm.stage} onChange={e => setFillForm(f => ({ ...f, stage: e.target.value }))} style={inputStyle}>
+                    <option value="1">S1</option><option value="2">S2</option><option value="3">S3</option>
+                  </select>
+                  <input value={fillForm.shares} onChange={e => setFillForm(f => ({ ...f, shares: e.target.value }))} placeholder="Shares" style={inputStyle} />
+                  <input value={fillForm.price} onChange={e => setFillForm(f => ({ ...f, price: e.target.value }))} placeholder="Price" style={inputStyle} />
+                </div>
+                <input value={fillForm.note} onChange={e => setFillForm(f => ({ ...f, note: e.target.value }))} placeholder="Evidence note (broker confirm, ticket #)" style={{ ...inputStyle, width: '100%', marginBottom: 8 }} />
+                <button type="button" onClick={() => void recordFill()} style={actionBtn(BB.green)}>RECORD FILL</button>
+                {fillMsg && <div style={{ marginTop: 6, fontSize: BB.fontXs, color: /ERR/.test(fillMsg) ? BB.red : BB.green }}>{fillMsg}</div>}
+              </Section>
+
+              <Section title="FILL HISTORY">
+                {(monitoring?.fills ?? []).length === 0 ? (
+                  <div style={{ color: BB.text3, fontSize: BB.fontXs }}>No fills recorded</div>
+                ) : (monitoring?.fills ?? []).map((f, i) => (
+                  <div key={i} style={{ fontSize: BB.fontXs, color: BB.text2, marginBottom: 4 }}>
+                    <b>{String(f.ticker)}</b> stage {String(f.stage)} · {String(f.filled_shares)}sh @ {fmtPx(Number(f.filled_price))}
+                    <span style={{ color: BB.text3 }}> · {fmt$(Number(f.filled_dollars ?? 0), 0)}</span>
+                    {f.evidence_note ? <span style={{ color: BB.text3 }}> — {String(f.evidence_note).slice(0, 60)}</span> : null}
+                  </div>
+                ))}
+              </Section>
+            </>
           )}
 
           {tab === 'rejected' && (
@@ -472,6 +571,16 @@ function tabBtn(active: boolean): React.CSSProperties {
     color: active ? BB.amber : BB.text3,
     cursor: 'pointer', letterSpacing: '.05em', fontFamily: BB.mono,
   }
+}
+
+const inputStyle: React.CSSProperties = {
+  fontSize: BB.fontXs,
+  fontFamily: BB.mono,
+  padding: '4px 6px',
+  background: BB.bgRow,
+  border: `1px solid ${BB.border}`,
+  color: BB.text1,
+  borderRadius: 2,
 }
 
 function actionBtn(color: string): React.CSSProperties {

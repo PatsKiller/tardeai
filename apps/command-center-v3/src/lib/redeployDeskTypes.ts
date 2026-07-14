@@ -10,6 +10,31 @@ export type InstitutionalPlanSummary = {
   leg_count?: number
 }
 
+export type MonitoringSummary = {
+  fill_count?: number
+  restoration_pct?: number
+  last_fill_at?: string
+}
+
+export type StageFill = {
+  id?: number
+  ticker: string
+  stage: number
+  filled_shares: number
+  filled_price: number
+  filled_dollars?: number
+  filled_at?: string
+  plan_archetype?: string
+  evidence_note?: string
+}
+
+export type RestorationMetrics = {
+  restoration_pct?: number
+  total_restored_usd?: number
+  total_removed_usd?: number
+  sectors?: { sector?: string; usd_removed?: number; usd_restored?: number; restoration_pct?: number }[]
+}
+
 export type ExportReadiness = {
   quotes_fresh?: boolean
   stale_symbols?: string[]
@@ -113,6 +138,7 @@ export type RedeployEventDetail = {
   primary_plan_archetype?: string
   pm_memo?: string
   export_readiness?: ExportReadiness
+  monitoring_summary?: MonitoringSummary
   metadata?: {
     sale_context?: { tier?: string; reduced_themes?: string[]; proceeds_usd?: number; proxy_symbol?: string }
     advisory_note?: string
@@ -149,6 +175,11 @@ export type RedeployEventDetail = {
     phase_c?: {
       export_readiness?: ExportReadiness
       regime_posture?: string
+    }
+    phase_e?: {
+      fill_count?: number
+      restoration_pct?: number
+      last_fill_at?: string
     }
   }
 }

@@ -27114,6 +27114,13 @@ def _deploy_events(query=None):
             pc = meta.get("phase_c") or {}
             if pc.get("export_readiness"):
                 ev["export_readiness"] = pc["export_readiness"]
+            pe = meta.get("phase_e") or {}
+            if pe:
+                ev["monitoring_summary"] = {
+                    "fill_count": pe.get("fill_count"),
+                    "restoration_pct": pe.get("restoration_pct"),
+                    "last_fill_at": pe.get("last_fill_at"),
+                }
         return {
             "ok": True,
             "advisory_only": True,
@@ -27192,6 +27199,42 @@ def _deploy_export(query=None):
         if not result.get("ok", True) and result.get("error"):
             return result
         return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _deploy_monitoring(query=None):
+    """GET /api/v2/deploy/monitoring?event_id= — fills, restoration metrics (Phase E)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_monitor import get_monitoring_state
+        q = query or {}
+        eid = int(q.get("event_id") or q.get("id") or 0)
+        if not eid:
+            return {"ok": False, "error": "event_id required"}
+        cur = _get_conn().cursor()
+        return get_monitoring_state(cur, eid)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _deploy_record_fill(body=None):
+    """POST /api/v2/deploy/record-fill — manual stage fill evidence (advisory only)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.redeploy_monitor import record_stage_fill
+        b = body or {}
+        eid = int(b.get("event_id") or b.get("id") or 0)
+        if not eid:
+            return {"ok": False, "error": "event_id required"}
+        conn = _get_conn()
+        cur = conn.cursor()
+        res = record_stage_fill(cur, eid, b)
+        if res.get("ok"):
+            conn.commit()
+        else:
+            conn.rollback()
+        return res
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
@@ -28579,6 +28622,7 @@ ROUTES = {
     "/api/v2/deploy/events": lambda q=None: _deploy_events(q),
     "/api/v2/deploy/plans": lambda q=None: _deploy_plans(q),
     "/api/v2/deploy/export": lambda q=None: _deploy_export(q),
+    "/api/v2/deploy/monitoring": lambda q=None: _deploy_monitoring(q),
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/rotation/small-cap-bridge": _small_cap_rotation_bridge_status,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
@@ -33416,6 +33460,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/deploy/restore":
         try:
             res = _deploy_restore(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/deploy/record-fill":
+        try:
+            res = _deploy_record_fill(body if isinstance(body, dict) else {})
             return (200 if res.get("ok") else 400), res
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
