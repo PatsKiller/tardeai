@@ -427,6 +427,19 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
 
         levels = _derive_levels(c, quote_cache)
         if not levels:
+            for _lane_id, target_acct, _intended, _routing_lane in lanes:
+                existing = _active_proposal(cur, sym, target_acct)
+                if existing and not dry_run:
+                    cur.execute(
+                        """UPDATE paper_trade_proposals
+                           SET status='REJECTED', lifecycle_status='EXPIRED',
+                               rejection_reason='stale_watchlist_entry_plan',
+                               lifecycle_message='Entry plan invalid or too far from live price',
+                               updated_at=NOW()
+                           WHERE id=%s AND status = ANY(%s)""",
+                        (existing["id"], list(ACTIVE_STATUSES)),
+                    )
+                    log.info(f"rejected #{existing['id']} {sym} — stale/invalid entry plan")
             skipped += len(lanes)
             continue
         entry, stop, target, exit_rationale, plan_source = levels

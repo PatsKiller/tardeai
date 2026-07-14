@@ -98,6 +98,74 @@ def classify_entry_zone(drift_pct, timeframe_class):
     return 'ENTRY_MISSED'
 
 
+def _sync_watchlist_dual_lane_prices(
+    conn,
+    symbol: str,
+    price: float,
+    source: str,
+    *,
+    trigger_pid: int,
+    timeframe: str,
+    dry_run: bool = False,
+) -> int:
+    """Apply the same live quote to all watchlist PENDING siblings (per-row drift/expiry)."""
+    import psycopg2.extras
+    sym = str(symbol or "").upper()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """SELECT id, proposed_entry FROM paper_trade_proposals
+           WHERE symbol = %s AND origin = 'watchlist' AND status = 'PENDING'""",
+        [sym],
+    )
+    rows = cur.fetchall() or []
+    n = 0
+    for row in rows:
+        pid = int(row["id"])
+        entry = float(row.get("proposed_entry") or 0)
+        if entry <= 0:
+            continue
+        drift_pct = round((price - entry) / entry * 100, 2)
+        zone = classify_entry_zone(drift_pct, timeframe)
+        lifecycle = (
+            "ENTRY_ZONE_VALID"
+            if zone == "ENTRY_ZONE_VALID"
+            else ("ACTIVE" if zone == "ENTRY_ZONE_MARGINAL" else "ENTRY_MISSED")
+        )
+        expired = zone == "ENTRY_MISSED" and abs(drift_pct) > 15
+        if dry_run:
+            n += 1
+            continue
+        if expired:
+            cur.execute(
+                """UPDATE paper_trade_proposals
+                   SET current_price=%s, price_drift_pct=%s, entry_zone_status=%s,
+                       lifecycle_status='EXPIRED', status='EXPIRED',
+                       lifecycle_message='Entry missed — price drifted >15%%',
+                       last_price_checked_at=NOW(), last_price_source=%s, updated_at=NOW()
+                   WHERE id=%s AND status='PENDING'""",
+                [price, drift_pct, zone, source, pid],
+            )
+        else:
+            cur.execute(
+                """UPDATE paper_trade_proposals
+                   SET current_price=%s, price_drift_pct=%s, entry_zone_status=%s,
+                       lifecycle_status=%s, last_price_checked_at=NOW(),
+                       last_price_source=%s, updated_at=NOW()
+                   WHERE id=%s AND status='PENDING'""",
+                [price, drift_pct, zone, lifecycle, source, pid],
+            )
+        if cur.rowcount:
+            n += 1
+            if pid != trigger_pid and expired:
+                log.info(
+                    "  %s #%s: dual-lane sync EXPIRED (drift %+.1f%%) from #%s",
+                    sym, pid, drift_pct, trigger_pid,
+                )
+    if not dry_run and n:
+        conn.commit()
+    return n
+
+
 # ── Strategy identity ─────────────────────────────────────────────────
 
 def ensure_strategy_identity(conn, proposal):
@@ -639,6 +707,16 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
             conn.commit()
 
         actions.append(f'price={price:.2f} drift={drift_pct:+.1f}% zone={zone}')
+        # Keep watchlist paper_atm + live_2fa siblings aligned (same quote, per-row drift).
+        if str(proposal.get("origin") or "").lower() == "watchlist" or (
+            str(proposal.get("discovery_source") or "").lower() == "watchlist"
+        ):
+            synced = _sync_watchlist_dual_lane_prices(
+                conn, symbol, price, source,
+                trigger_pid=pid, timeframe=timeframe, dry_run=dry_run,
+            )
+            if synced > 1:
+                actions.append(f'dual_lane_sync={synced}')
         if expired:
             actions.append('AUTO_EXPIRED')
             return {'id': pid, 'symbol': symbol, 'actions': actions, 'expired': True}

@@ -433,7 +433,8 @@ def _run_cycle_locked():
                p.proposed_target1, p.proposed_shares,
                p.enrichment_status, p.enrichment_last_attempt_at, p.enrichment_failures,
                p.created_at, p.atm_evaluation_count, p.atm_last_failure_reason,
-               p.proposed_rr, p.risk_gate_result, p.expires_at, p.lifecycle_status
+               p.proposed_rr, p.risk_gate_result, p.expires_at, p.lifecycle_status,
+               p.discovery_source, p.origin, p.proposed_by
         FROM paper_trade_proposals p
         WHERE p.status = 'PENDING' AND p.atm_expired_at IS NULL
           AND COALESCE(p.proposal_kind, 'entry') = 'entry'

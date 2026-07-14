@@ -30,6 +30,34 @@ GENERIC_SOURCE_MARKERS = (
 )
 
 RR_TOLERANCE = float(os.getenv("BROKER_TRADE_PLAN_RR_TOLERANCE", "0.03"))
+# Reject watchlist entries wildly off live price (stale limit_price / bad card data).
+WATCHLIST_ENTRY_MAX_LIVE_DRIFT_PCT = float(os.getenv("WATCHLIST_ENTRY_MAX_LIVE_DRIFT_PCT", "50"))
+
+
+def _live_reference_price(symbol: str, quote_cache: dict | None = None) -> float | None:
+    sym = str(symbol or "").upper().strip()
+    if quote_cache:
+        v = _f(quote_cache.get(sym))
+        if v and v > 0:
+            return v
+    try:
+        from market_quote_provider import get_best_quote
+        q = get_best_quote(sym) or {}
+        v = _f(q.get("last_price"))
+        if v and v > 0:
+            return v
+    except Exception:
+        pass
+    return None
+
+
+def entry_live_drift_ok(entry: float, live: float, *, max_drift_pct: float | None = None) -> bool:
+    """True when proposed entry is within max_drift_pct of live (both > 0)."""
+    if entry <= 0 or live <= 0:
+        return True
+    cap = WATCHLIST_ENTRY_MAX_LIVE_DRIFT_PCT if max_drift_pct is None else float(max_drift_pct)
+    drift = abs(live - entry) / entry * 100
+    return drift <= cap
 
 
 def _f(v: Any) -> float | None:
@@ -181,6 +209,9 @@ def resolve_authoritative_levels(
         stop = _f(tp.get("stop_loss"))
         target = _f(tp.get("target_1"))
         if entry and stop and target and entry > stop and target > entry:
+            live_ref = _live_reference_price(sym, quote_cache)
+            if live_ref and not entry_live_drift_ok(entry, live_ref):
+                return None
             strategy_id = str(tp.get("strategy_id") or "")
             resolved = bsr.resolve_executable_strategy(sym, strategy_id)
             return {
@@ -213,6 +244,10 @@ def resolve_authoritative_levels(
     if not entry and quote_cache is not None:
         entry = _f(quote_cache.get(sym))
     if not entry or entry <= 0:
+        return None
+
+    live_ref = _live_reference_price(sym, quote_cache)
+    if live_ref and not entry_live_drift_ok(entry, live_ref):
         return None
 
     stop = _f(c.get("card_stop"))
