@@ -4,7 +4,7 @@ import { fmt$ } from '../lib/format'
 import { BB } from '../lib/holdingsTerminalTokens'
 import { hubPanel, hubStrip } from '../lib/terminalHubChrome'
 import { ARCHETYPE_LABELS, type RedeployEventDetail } from '../lib/redeployDeskTypes'
-import RedeployEventModal from './RedeployEventModal'
+
 
 const TIER_COLOR: Record<string, string> = { major: BB.amber, moderate: BB.blue, minor: BB.text3 }
 const GRID = '64px 48px 96px 72px 72px 52px 44px 44px 1fr 44px 44px 64px'
@@ -23,7 +23,7 @@ export default function RedeployPanel() {
   const [busy, setBusy] = useState<'detect' | 'recompute' | null>(null)
   const [msg, setMsg] = useState('')
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [modalEvent, setModalEvent] = useState<RedeployEventDetail | null>(null)
+
   const [showAll, setShowAll] = useState(false)
 
   const events: RedeployEventDetail[] = data?.events ?? []
@@ -70,7 +70,6 @@ export default function RedeployPanel() {
       })
       const j = await r.json()
       setMsg(j?.ok ? `DISMISSED #${id}` : `ERR ${j?.error}`)
-      if (modalEvent?.id === id) setModalEvent(null)
       refreshAll()
     } catch {
       setMsg('ERR dismiss failed')
@@ -103,8 +102,8 @@ export default function RedeployPanel() {
   }
 
   function openModal(ev: RedeployEventDetail) {
-    setSelectedId(ev.id)
-    setModalEvent(ev)
+    // drawer retired 2026-07-14 — the workstation page replaces it
+    window.location.assign(`/redeploy?event=${ev.id}&tab=EVENT+OVERVIEW`)
   }
 
   const gaps = data?.portfolio_gaps ?? selected?.metadata?.sleeve_gaps ?? []
@@ -252,7 +251,7 @@ export default function RedeployPanel() {
         })}
       </div>
 
-      {selected && !modalEvent && (
+      {selected && (
         <div style={{ ...panelStyle(), borderLeft: `3px solid ${TIER_COLOR[selected.tier ?? 'moderate'] ?? BB.amber}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
             <span style={{ color: BB.text2, fontSize: BB.fontXs }}>Preview — OPEN for full desk (plans A–G, entries, export)</span>
@@ -262,14 +261,6 @@ export default function RedeployPanel() {
         </div>
       )}
 
-      {modalEvent && (
-        <RedeployEventModal
-          event={modalEvent}
-          onClose={() => setModalEvent(null)}
-          onDismiss={id => void dismiss(id)}
-          onPropose={proposeTarget}
-        />
-      )}
     </div>
   )
 }
