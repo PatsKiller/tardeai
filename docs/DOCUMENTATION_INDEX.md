@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-05
+**Updated:** 2026-07-14
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -43,6 +43,7 @@
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator runbook — phase gates, rollback triggers | Active |
 | `docs/runbooks/DB_HANG_PREVENTION.md` | **DB-induced dashboard hang** — root cause (ALTER queued behind idle-in-txn lock holder), per-connection + role-level `lock_timeout`/`statement_timeout`/idle guards, recovery steps | Active (2026-06-30) |
 | `docs/runbooks/protective-stop-integration-2026-06-30.md` | **Protective stop integration** — Schwab evidence-bound STOP / STOP_LIMIT / TRAILING_STOP, per-account arming (rollover default), one-V-canary-only, after-hours override-required policy, lifecycle + read-back proof, Fidelity manual-ticket, OCO off until canary proven | Active (2026-07-04) |
+| `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | **Post-sale redeploy sync** — `deploy_detect` / `deploy_backfill` / `deploy_recompute`, intelligence engine (Hermes + regime + geopolitical), FCNTX example, Fidelity stop sync, cron hooks (PR-5 pending) | Active (2026-07-14) |
 | `docs/v4_1_deployment_log.md` | **Living deployment log** — fleet state, phase completions, 2026-08-11 gemma4 eval gate | Active — created 2026-06-19 (d09a653c) |
 | `docs/_archive/prompts/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md` | CC execution prompt for fleet deploy | **Archived** *(was listed active; lives in _archive)* |
 

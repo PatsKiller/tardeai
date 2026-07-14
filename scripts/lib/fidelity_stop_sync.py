@@ -132,30 +132,25 @@ def mirror_stop_confirmation(cur, row: dict[str, Any]) -> None:
         )
 
 
-def _held_symbols_for_account(account: str) -> set[str]:
-    """Symbols with positive shares in holdings — used to avoid retiring live manual stops on sync gaps."""
-    try:
-        import stop_lifecycle_monitor as slm
-        hmap = slm._holdings_map() or {}
-        out: set[str] = set()
-        for (acct, sym), row in hmap.items():
-            if acct != account:
-                continue
-            try:
-                sh = float(row.get("shares") or row.get("quantity") or 0)
-            except (TypeError, ValueError):
-                sh = 0
-            if sh > 0 and sym:
-                out.add(str(sym).upper())
-        return out
-    except Exception:
-        return set()
+def clear_stop_confirmation(cur, symbol: str, account: str) -> None:
+    """Drop operator-confirmed stop when GTC order was canceled at Fidelity."""
+    cur.execute(
+        """UPDATE stop_confirmations SET
+           stop_status='unconfirmed', stop_confirmed=FALSE,
+           stop_price_confirmed=NULL, stop_confirmation_source='fidelity_manual_sync_retired',
+           updated_at=NOW()
+           WHERE UPPER(symbol)=%s AND account=%s""",
+        (symbol.upper(), account),
+    )
 
 
 def deactivate_stale_stops(cur, account: str, active_symbols: set[str]) -> list[str]:
-    """Mark manual stops inactive when absent from the sync batch AND no longer held."""
+    """Mark manual stops inactive when absent from the operator-edited sync batch.
+
+    Omission from fidelity_rollover_stops.json means the GTC was canceled/replaced at Fidelity —
+    retire even when shares remain held (e.g. XAR stop canceled but position kept).
+    """
     ensure_manual_broker_stops_table(cur)
-    held = _held_symbols_for_account(account)
     cur.execute(
         "SELECT UPPER(symbol) FROM manual_broker_stops WHERE account=%s AND active=TRUE",
         (account,),
@@ -164,13 +159,12 @@ def deactivate_stale_stops(cur, account: str, active_symbols: set[str]) -> list[
     for (sym,) in cur.fetchall():
         if sym in active_symbols:
             continue
-        if sym in held:
-            continue  # still held — keep manual stop even if omitted from this sync pass
         cur.execute(
-            "UPDATE manual_broker_stops SET active=FALSE, status='closed_position', updated_at=NOW() "
+            "UPDATE manual_broker_stops SET active=FALSE, status='cancelled', updated_at=NOW() "
             "WHERE UPPER(symbol)=%s AND account=%s AND active=TRUE",
             (sym, account),
         )
+        clear_stop_confirmation(cur, sym, account)
         retired.append(sym)
     return retired
 
@@ -321,15 +315,16 @@ def default_fidelity_rollover_stops() -> list[dict[str, Any]]:
     return [
         {
             "symbol": "QCOM", "account": acct, "order_type": "TRAILING_STOP",
-            "stop_price": 174.79, "trail_pct": 7, "trail_link": "LAST",
+            "stop_price": 176.62, "trail_pct": 4, "trail_link": "LAST",
             "qty": 55, "placed_date": "2026-07-13",
         },
-        {"symbol": "CSCO", "account": acct, "stop_price": 115.0, "qty": 100, "placed_date": "2026-07-10"},
         {
             "symbol": "ANET", "account": acct, "order_type": "TRAILING_STOP",
-            "stop_price": 178.03, "trail_pct": 6, "trail_link": "LAST",
-            "qty": 200, "placed_date": "2026-07-10",
+            "stop_price": 172.09, "trail_pct": 5, "trail_link": "LAST",
+            "qty": 200, "placed_date": "2026-07-13",
         },
+        {"symbol": "DIVI", "account": acct, "stop_price": 42.0, "qty": 1000, "placed_date": "2026-07-13"},
+        {"symbol": "CSCO", "account": acct, "stop_price": 115.0, "qty": 100, "placed_date": "2026-07-10"},
         {
             "symbol": "SCHG", "account": acct, "order_type": "TRAILING_STOP",
             "stop_price": 32.6, "trail_pct": 6, "trail_link": "LAST",
@@ -337,10 +332,8 @@ def default_fidelity_rollover_stops() -> list[dict[str, Any]]:
         },
         {
             "symbol": "DXCM", "account": acct, "order_type": "TRAILING_STOP",
-            "stop_price": 71.06, "trail_pct": 6, "trail_link": "LAST",
+            "stop_price": 71.83, "trail_pct": 6, "trail_link": "LAST",
             "qty": 225, "placed_date": "2026-07-08",
         },
         {"symbol": "ARKX", "account": acct, "stop_price": 31.06, "qty": 1000, "placed_date": "2026-07-07"},
-        {"symbol": "XAR", "account": acct, "stop_price": 263.03, "qty": 100, "placed_date": "2026-07-07"},
-        {"symbol": "DIVI", "account": acct, "stop_price": 40.58, "qty": 1000, "placed_date": "2026-07-02"},
     ]

@@ -1,17 +1,35 @@
 {
   "_comment": "Fidelity Rollover IRA #270135199 (••5199). SnapTrade does NOT sync open GTC stops — update when you place/modify/cancel at Fidelity, then ⟳ Sync Fidelity GTC stops (or cron 10:05+16:05 ET). Audited 2026-07-13 vs Fidelity Activity & Orders.",
-  "_fidelity_as_of": "2026-07-13T10:26:00-04:00",
+  "_fidelity_as_of": "2026-07-13T21:52:00-04:00",
   "account": "fidelity_rollover_ira",
   "stops": [
     {
       "symbol": "QCOM",
       "order_type": "TRAILING_STOP",
-      "stop_price": 174.79,
-      "trail_pct": 7,
+      "stop_price": 176.62,
+      "trail_pct": 4,
       "trail_link": "LAST",
       "qty": 55,
       "placed_date": "2026-07-13",
-      "note": "Fidelity GTC trailing 7% based on Last"
+      "note": "Fidelity GTC trailing 4% based on Last (replaced prior 7% trail)"
+    },
+    {
+      "symbol": "ANET",
+      "order_type": "TRAILING_STOP",
+      "stop_price": 172.09,
+      "trail_pct": 5,
+      "trail_link": "LAST",
+      "qty": 200,
+      "placed_date": "2026-07-13",
+      "note": "Fidelity GTC trailing 5% based on Last (replaced prior 6% trail)"
+    },
+    {
+      "symbol": "DIVI",
+      "order_type": "STOP",
+      "stop_price": 42.0,
+      "qty": 1000,
+      "placed_date": "2026-07-13",
+      "note": "Fidelity GTC stop loss (Good til Canceled)"
     },
     {
       "symbol": "CSCO",
@@ -20,16 +38,6 @@
       "qty": 100,
       "placed_date": "2026-07-10",
       "note": "Fidelity GTC stop loss (Good til Canceled)"
-    },
-    {
-      "symbol": "ANET",
-      "order_type": "TRAILING_STOP",
-      "stop_price": 178.03,
-      "trail_pct": 6,
-      "trail_link": "LAST",
-      "qty": 200,
-      "placed_date": "2026-07-10",
-      "note": "Fidelity GTC trailing 6% based on Last"
     },
     {
       "symbol": "SCHG",
@@ -44,7 +52,7 @@
     {
       "symbol": "DXCM",
       "order_type": "TRAILING_STOP",
-      "stop_price": 71.06,
+      "stop_price": 71.83,
       "trail_pct": 6,
       "trail_link": "LAST",
       "qty": 225,
@@ -57,22 +65,6 @@
       "stop_price": 31.06,
       "qty": 1000,
       "placed_date": "2026-07-07",
-      "note": "Fidelity GTC stop loss (Good til Canceled)"
-    },
-    {
-      "symbol": "XAR",
-      "order_type": "STOP",
-      "stop_price": 263.03,
-      "qty": 100,
-      "placed_date": "2026-07-07",
-      "note": "Fidelity GTC stop loss (Good til Canceled)"
-    },
-    {
-      "symbol": "DIVI",
-      "order_type": "STOP",
-      "stop_price": 40.58,
-      "qty": 1000,
-      "placed_date": "2026-07-02",
       "note": "Fidelity GTC stop loss (Good til Canceled)"
     }
   ]
