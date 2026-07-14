@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-14 — Redeploy institutional rebuild merged + fixture cleanup executed + deployed
+
+- **Merged** (operator-approved, in order): #142 P0 data-integrity guards → #148 docs truth (reopen of
+  #143) → #144 capital-allocation book → #145 candidate/pro-forma/performance engines → #146 full-page
+  `/redeploy` workstation → #147 Phase-0 cleanup + ephemeral artifact policy. Stack branches deleted.
+- **Fixture cleanup EXECUTED** (operator-approved): `redeploy_fixture_cleanup_2026_07_13.sql` — all 5
+  pre-verification counts matched; 3 JEPQ fixture fills, 3 monitor snapshots, 5 audit rows, 3 pending
+  Hermes ledger rows, 2 oversight runs deleted; event #144 unlocked (`open`, no locked plan, `phase_e`
+  metadata stripped); plan 8 lock/oversight reset. Outcome bus verified clean (0 JEPQ rows).
+- **Deployed**: migrations `2026_07_19`/`2026_07_20` applied; cc-v3 rebuilt; full server restart —
+  killed the orphaned Jul-13 `portfolio_server` that held :7777 and had the systemd unit in a
+  **56,329-restart crash-loop**; unit now active/running and serving the new routes.
+- **Cron installed**: `install_deploy_redeploy_cron.sh` — detect 10:10 / recompute 10:15 / monitor
+  10:20 ET, trading days.
+- **Plans**: manual `deploy_recompute --apply` built A–G plan sets for all 8 material open events
+  (FCNTX #144, V #114/#124, HPE #128, PFE #115, SMCI #134, ARKG #138, ARKQ #142).
+- **Tests**: 26/26 redeploy suites green (capital book, analytics, Phase-E guards, UI tokens).
+
 ## 2026-07-14 — Schwab stop replace hardened (verified cancel-then-place) + stop badge truth
 
 ### Protective-stop replace — no path can double-stop

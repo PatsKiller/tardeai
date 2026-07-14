@@ -752,7 +752,14 @@ export default function RedeployDesk() {
         ))}
       </Section>
     </>
-  ) : <div style={{ fontSize: t.body, color: BB.text3 }}>Select an event first.</div>
+  ) : !eventId ? <div style={{ fontSize: t.body, color: BB.text3 }}>Select an event first.</div>
+    : monitoring.loading ? <div style={{ fontSize: t.body, color: BB.text3 }}>Loading monitoring state…</div>
+      : (
+        <div style={{ fontSize: t.body, color: BB.red }}>
+          Monitoring failed to load{mon?.error ? `: ${String(mon.error).slice(0, 200)}` : monitoring.error ? `: ${monitoring.error.slice(0, 200)}` : ''}.
+          {' '}<button onClick={() => monitoring.refetch()} style={{ background: 'transparent', color: BB.amber, border: `1px solid ${BB.border}`, borderRadius: 4, padding: '2px 10px', fontSize: t.label, cursor: 'pointer' }}>RETRY</button>
+        </div>
+      )
 
   // ── TAB: REJECTED ──────────────────────────────────────────────────────────
   const rejectedTab = (

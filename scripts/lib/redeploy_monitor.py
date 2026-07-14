@@ -62,10 +62,11 @@ _THEME_SECTOR = {
 
 
 def ensure_monitor_tables(cur) -> None:
-    if MIGRATION_E.is_file():
-        cur.execute(MIGRATION_E.read_text())
-    if MIGRATION_INTEGRITY.is_file():
-        cur.execute(MIGRATION_INTEGRITY.read_text())
+    try:
+        from lib.redeploy_schema import run_migrations_once
+    except ImportError:
+        from redeploy_schema import run_migrations_once
+    run_migrations_once(cur, "monitor", (MIGRATION_E, MIGRATION_INTEGRITY))
 
 
 def _idempotency_key(payload: dict[str, Any]) -> str:

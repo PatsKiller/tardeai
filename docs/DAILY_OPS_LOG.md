@@ -1,4 +1,17 @@
 
+## 2026-07-14 — Redeploy institutional rebuild MERGED + fixture cleanup EXECUTED + deployed
+
+Operator approved: merged the full rebuild stack in order — #142 (P0 guards) → #148 (docs truth,
+reopened #143 after GitHub auto-closed it on base deletion) → #144 (capital book) → #145 (analytics
+engines) → #146 (/redeploy workstation) → #147 (Phase-0 cleanup + ephemeral artifact policy).
+Executed the approved fixture cleanup (all 5 pre-counts matched; fills/snapshots/audit/ledger/oversight
+rows deleted; event #144 unlocked → `open`, plan 8 reset, `phase_e` metadata stripped; outcome bus
+already clean). Applied migrations `2026_07_19` + `2026_07_20`. Built cc-v3, **ended a 56,329-cycle
+systemd crash-loop** (orphaned Jul-13 portfolio_server held :7777 outside systemd — killed; unit now
+active/running). Installed deploy-redeploy cron (detect 10:10 / recompute 10:15 / monitor 10:20 ET).
+Manual recompute: **A–G plans for all 8 material open events** (FCNTX, V×2, HPE, PFE, SMCI, ARKG, ARKQ).
+26/26 redeploy tests green. Acceptance captures → `artifacts/playwright/redeploy/` (ephemeral policy).
+
 ## 2026-07-14 — Stop replace verified-cancel hardening + Redeploy visual review
 
 Hardened the Schwab protective-stop **Modify** flow: cancel of the old stop is now broker-verified

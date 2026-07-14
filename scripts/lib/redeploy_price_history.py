@@ -34,8 +34,11 @@ STRESS_WINDOWS = [
 
 
 def ensure_analytics_tables(cur) -> None:
-    if MIGRATION_ANALYTICS.is_file():
-        cur.execute(MIGRATION_ANALYTICS.read_text())
+    try:
+        from lib.redeploy_schema import run_migrations_once
+    except ImportError:
+        from redeploy_schema import run_migrations_once
+    run_migrations_once(cur, "analytics", (MIGRATION_ANALYTICS,))
 
 
 # ── series loading ──────────────────────────────────────────────────────────

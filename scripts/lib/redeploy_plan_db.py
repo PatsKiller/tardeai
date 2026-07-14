@@ -11,10 +11,11 @@ MIGRATION_B = PROJECT_ROOT / "migrations" / "2026_07_16_redeploy_phase_b_plans.s
 
 
 def ensure_plan_tables(cur) -> None:
-    if MIGRATION_A.is_file():
-        cur.execute(MIGRATION_A.read_text())
-    if MIGRATION_B.is_file():
-        cur.execute(MIGRATION_B.read_text())
+    try:
+        from lib.redeploy_schema import run_migrations_once
+    except ImportError:
+        from redeploy_schema import run_migrations_once
+    run_migrations_once(cur, "plans", (MIGRATION_A, MIGRATION_B))
 
 
 def _next_plan_version(cur, deploy_event_id: int) -> int:
