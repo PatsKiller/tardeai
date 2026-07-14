@@ -363,12 +363,51 @@ def _build_account_rows(account_key, live, existing_by_key):
 _HOLDINGS_ACCT = {"schwab_roth_ira": "schwab_roth"}
 
 
+def _cash_rows_for_account(label: str, hold: list, account_key: str, st) -> list:
+    """Live Schwab cash balance → holdings CASH row (positions API omits cash)."""
+    existing = [
+        r for r in hold
+        if r.get("account") == label
+        and ((r.get("symbol") or "").upper() == "CASH" or r.get("is_cash"))
+    ]
+    acct = st.get_account(account_key)
+    if not isinstance(acct, dict) or acct.get("status") != "active":
+        return existing
+    try:
+        cash = float(acct.get("cash") or 0)
+    except (TypeError, ValueError):
+        return existing
+    if cash <= 0:
+        return existing
+    now = datetime.now(timezone.utc).isoformat()
+    as_of = datetime.now(timezone.utc).date().isoformat()
+    row = dict(existing[0]) if existing else {}
+    row.update({
+        "symbol": "CASH",
+        "account": label,
+        "account_id": label,
+        "asset_type": "cash",
+        "is_cash": True,
+        "shares": cash,
+        "price": 1.0,
+        "current_price": 1.0,
+        "market_value": round(cash, 2),
+        "name": row.get("name") or "Cash & Cash Investments",
+        "source": "schwab_api",
+        "updated_at": now,
+        "as_of": as_of,
+        "day_change": 0,
+        "day_change_pct": 0,
+    })
+    return [row]
+
+
 def sync_schwab_positions(account_key, dry_run=True):
     """LIVE Schwab position sync → holdings.json (auto-surface trades). Fetches live positions, replaces
     ONLY this account's equity rows (preserving every other account, the account's CASH row, and per-
     position enrichment), and writes through protected_holdings_write (GATE B: sane + catastrophic-drop
     guard + basis shield + backup/atomic/post-assert). dry_run=True returns the add/remove diff without
-    writing. CASH is preserved as-is (Schwab's positions endpoint excludes cash)."""
+    writing. Cash row refreshed from Schwab account API cashBalance (positions endpoint excludes cash)."""
     import schwab_transport as st
     label = _HOLDINGS_ACCT.get(account_key, account_key)   # write/read under the holdings.json label
     live = st.get_positions(account_key)
@@ -382,9 +421,8 @@ def sync_schwab_positions(account_key, dry_run=True):
     existing_by_key = {((r.get("symbol") or "").upper(), label): r
                        for r in hold if r.get("account") == label}
     equity_rows = _build_account_rows(label, live, existing_by_key)
-    # PRESERVE the account's cash row(s) — the positions endpoint omits cash; dropping it would erase cash.
-    cash_rows = [r for r in hold if r.get("account") == label
-                 and ((r.get("symbol") or "").upper() == "CASH" or r.get("is_cash"))]
+    # Cash from Schwab account API (positions endpoint omits cash); fall back to existing row on API miss.
+    cash_rows = _cash_rows_for_account(label, hold, account_key, st)
     new_rows = equity_rows + cash_rows
     old_syms = {(r.get("symbol") or "").upper() for r in hold if r.get("account") == label}
     new_syms = {(r.get("symbol") or "").upper() for r in new_rows}
