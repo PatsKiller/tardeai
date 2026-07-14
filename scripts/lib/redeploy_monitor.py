@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -12,8 +14,26 @@ from lib.redeploy_data_truth import POLICY_VERSION, _as_float, _load_json
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 STATE = PROJECT_ROOT / "data" / "portfolios" / "state"
 MIGRATION_E = PROJECT_ROOT / "migrations" / "2026_07_17_redeploy_phase_e_monitoring.sql"
+MIGRATION_INTEGRITY = PROJECT_ROOT / "migrations" / "2026_07_19_redeploy_data_integrity.sql"
 
-GENERATOR_VERSION = "phase_e_1.0.0"
+GENERATOR_VERSION = "phase_e_1.1.0"
+
+# P0 data-integrity guards (2026-07-13 fixture-pollution audit):
+# fills are production evidence unless explicitly environment='test', and test
+# fills are only accepted when REDEPLOY_ALLOW_TEST_FILLS=1 (never on the prod box).
+_FIXTURE_MARKER = re.compile(r"\b(fixture|synthetic|dummy|fake|test)\b", re.IGNORECASE)
+
+
+def _fixture_marker_in(body: dict[str, Any]) -> str | None:
+    """Return the offending field name if any fixture marker appears in operator-supplied text."""
+    for field in ("evidence_note", "recorded_by"):
+        val = str(body.get(field) or "")
+        if val and _FIXTURE_MARKER.search(val):
+            return field
+    idem = str(body.get("idempotency_key") or "")
+    if idem and (idem.startswith("test-") or _FIXTURE_MARKER.search(idem)):
+        return "idempotency_key"
+    return None
 
 # ETF → GICS sector (inverse of plan engine restore map)
 _ETF_SECTOR = {
@@ -44,6 +64,8 @@ _THEME_SECTOR = {
 def ensure_monitor_tables(cur) -> None:
     if MIGRATION_E.is_file():
         cur.execute(MIGRATION_E.read_text())
+    if MIGRATION_INTEGRITY.is_file():
+        cur.execute(MIGRATION_INTEGRITY.read_text())
 
 
 def _idempotency_key(payload: dict[str, Any]) -> str:
@@ -59,14 +81,16 @@ def _sector_for_ticker(ticker: str) -> str | None:
 
 
 def list_fills(cur, event_id: int, *, plan_archetype: str | None = None) -> list[dict[str, Any]]:
+    """Production fills only — test/quarantined rows never reach metrics, UI, or learning."""
     ensure_monitor_tables(cur)
     if plan_archetype:
         cur.execute(
             """SELECT id, deploy_event_id, deploy_plan_id, plan_version, plan_archetype,
                       leg_index, ticker, stage, filled_shares, filled_price, filled_dollars,
-                      filled_at, account, evidence_source, evidence_note, recorded_by, idempotency_key
+                      filled_at, account, evidence_source, evidence_note, recorded_by,
+                      idempotency_key, environment, broker_confirmation_id
                FROM redeploy_stage_fills
-               WHERE deploy_event_id=%s AND plan_archetype=%s
+               WHERE deploy_event_id=%s AND plan_archetype=%s AND environment='production'
                ORDER BY filled_at DESC, id DESC""",
             (event_id, plan_archetype.upper()[:1]),
         )
@@ -74,8 +98,10 @@ def list_fills(cur, event_id: int, *, plan_archetype: str | None = None) -> list
         cur.execute(
             """SELECT id, deploy_event_id, deploy_plan_id, plan_version, plan_archetype,
                       leg_index, ticker, stage, filled_shares, filled_price, filled_dollars,
-                      filled_at, account, evidence_source, evidence_note, recorded_by, idempotency_key
-               FROM redeploy_stage_fills WHERE deploy_event_id=%s
+                      filled_at, account, evidence_source, evidence_note, recorded_by,
+                      idempotency_key, environment, broker_confirmation_id
+               FROM redeploy_stage_fills
+               WHERE deploy_event_id=%s AND environment='production'
                ORDER BY filled_at DESC, id DESC""",
             (event_id,),
         )
@@ -178,7 +204,7 @@ def _reeval_flags(event: dict[str, Any], fills: list[dict[str, Any]]) -> list[di
     net = _as_float(recon.get("net_proceeds_usd") or event.get("proceeds_usd"))
     deployable = _as_float(recon.get("deployable_cash_usd"))
     if net > 0 and deployable >= net * 0.95:
-        flags.append({"code": "REEVAL-005", "message": "Settlement verified — operator may approve plan execution"})
+        flags.append({"code": "REEVAL-005", "message": "Settlement verified — plan may proceed to operator implementation review"})
     return flags
 
 
@@ -252,6 +278,24 @@ def record_stage_fill(cur, event_id: int, body: dict[str, Any]) -> dict[str, Any
     if shares <= 0 or price <= 0:
         return {"ok": False, "error": "invalid_shares_or_price"}
 
+    environment = str(body.get("environment") or "production").strip().lower()
+    if environment not in ("production", "test"):
+        return {"ok": False, "error": "environment must be 'production' or 'test'"}
+    if environment == "test" and os.environ.get("REDEPLOY_ALLOW_TEST_FILLS") != "1":
+        return {
+            "ok": False,
+            "error": "test_fills_forbidden: environment='test' requires REDEPLOY_ALLOW_TEST_FILLS=1 "
+                     "and must never run against the production database",
+        }
+    if environment == "production":
+        offending = _fixture_marker_in(body)
+        if offending:
+            return {
+                "ok": False,
+                "error": f"fixture_marker_rejected: {offending} contains a test/fixture marker; "
+                         "production fills must carry real operator evidence",
+            }
+
     idem = str(body.get("idempotency_key") or "").strip()
     if not idem:
         idem = _idempotency_key({
@@ -272,19 +316,19 @@ def record_stage_fill(cur, event_id: int, body: dict[str, Any]) -> dict[str, Any
         return {"ok": True, "duplicate": True, "fill_id": int(existing[0]), "idempotency_key": idem}
 
     cur.execute(
-        "SELECT id, metadata FROM deploy_events WHERE id=%s",
+        "SELECT id, symbol, metadata FROM deploy_events WHERE id=%s",
         (event_id,),
     )
     ev_row = cur.fetchone()
     if not ev_row:
         return {"ok": False, "error": "event_not_found"}
-    metadata = ev_row[1]
+    metadata = ev_row[2]
     if isinstance(metadata, str):
         try:
             metadata = json.loads(metadata)
         except Exception:
             metadata = {}
-    event = {"id": event_id, "metadata": metadata}
+    event = {"id": event_id, "symbol": ev_row[1], "metadata": metadata}
 
     plan_id = body.get("plan_id")
     plan_version = body.get("plan_version")
@@ -299,6 +343,38 @@ def record_stage_fill(cur, event_id: int, body: dict[str, Any]) -> dict[str, Any
         if prow:
             plan_id, plan_version, archetype = int(prow[0]), int(prow[1]), str(prow[2])
 
+    broker_confirmation_id = (str(body.get("broker_confirmation_id") or "").strip() or None)
+    if environment == "production":
+        # Content-level duplicate guard: identical production fills need a distinct
+        # broker confirmation id to prove they are genuinely separate executions.
+        cur.execute(
+            """SELECT id FROM redeploy_stage_fills
+               WHERE deploy_event_id=%s AND COALESCE(deploy_plan_id,0)=%s
+                 AND COALESCE(plan_version,0)=%s AND ticker=%s AND stage=%s
+                 AND filled_shares=%s AND filled_price=%s
+                 AND COALESCE(broker_confirmation_id,'')=%s
+                 AND environment='production'""",
+            (
+                event_id,
+                int(plan_id) if plan_id else 0,
+                int(plan_version) if plan_version else 0,
+                str(body["ticker"]).upper(),
+                stage,
+                shares,
+                price,
+                broker_confirmation_id or "",
+            ),
+        )
+        dup = cur.fetchone()
+        if dup:
+            return {
+                "ok": False,
+                "error": "duplicate_fill_content",
+                "existing_fill_id": int(dup[0]),
+                "hint": "identical fill already recorded — supply broker_confirmation_id "
+                        "if this is a genuinely separate execution",
+            }
+
     filled_at = body.get("filled_at")
     if filled_at:
         filled_at = str(filled_at)[:19]
@@ -309,10 +385,11 @@ def record_stage_fill(cur, event_id: int, body: dict[str, Any]) -> dict[str, Any
         """INSERT INTO redeploy_stage_fills
            (deploy_event_id, deploy_plan_id, plan_version, plan_archetype, leg_index,
             ticker, stage, filled_shares, filled_price, filled_dollars, filled_at,
-            account, evidence_source, evidence_note, idempotency_key, recorded_by)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            account, evidence_source, evidence_note, idempotency_key, recorded_by,
+            environment, broker_confirmation_id)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
            RETURNING id, deploy_event_id, ticker, stage, filled_shares, filled_price,
-                     filled_dollars, filled_at, plan_archetype, idempotency_key""",
+                     filled_dollars, filled_at, plan_archetype, idempotency_key, environment""",
         (
             event_id,
             int(plan_id) if plan_id else None,
@@ -330,6 +407,8 @@ def record_stage_fill(cur, event_id: int, body: dict[str, Any]) -> dict[str, Any
             (str(body.get("evidence_note") or "")[:500] or None),
             idem,
             str(body.get("recorded_by") or "operator")[:64],
+            environment,
+            broker_confirmation_id,
         ),
     )
     cols = [d[0] for d in cur.description]
@@ -341,6 +420,18 @@ def record_stage_fill(cur, event_id: int, body: dict[str, Any]) -> dict[str, Any
            ON CONFLICT (action, idempotency_key) DO NOTHING""",
         (event_id, idem, json.dumps(body, default=str)),
     )
+
+    # Test fills never reach Hermes learning, the outcome bus, or event metadata.
+    if environment != "production":
+        return {
+            "ok": True,
+            "advisory_only": True,
+            "manual_evidence_only": True,
+            "environment": environment,
+            "fill": fill,
+            "idempotency_key": idem,
+            "note": "test fill recorded in quarantine — excluded from restoration, learning, and outcome bus",
+        }
 
     hermes_id = emit_hermes_outcome(cur, fill, event=event)
     append_outcome_bus(fill, event, apply=True)
