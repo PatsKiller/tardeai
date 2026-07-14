@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-07-14 — Redeploy Phase-13 completion: scenarios, candidates, comparison tab, quote-freshness chain
+
+- **Scenario engine** (`redeploy_performance.py` 1.1.0) — 10-scenario plan-level matrix (bull/base/bear
+  1Y forecast bands, −20% equity-drawdown and −25% tech-selloff deterministic models, 2022 rate/inflation
+  + 2020 recession + 2022 geopolitical historical observations, regime-transition model), each row typed
+  FORECAST / DETERMINISTIC_MODEL / HISTORICAL_OBSERVATION with dollar-coverage %; unavailable ≠ zero.
+  New `geopolitical_2022` stress window in `redeploy_price_history`. Rendered in PERFORMANCE tab.
+- **Candidate universe** (`redeploy_candidate_research.py` 1.1.0) — +tradable mutual-fund roster
+  (SWPPX/SWTSX/SWAGX/FXAIX/FZROX, 5Y history backfilled), observed 30-day catalysts from
+  `catalyst_events` per candidate (forward calendar honestly "unavailable"), geopolitical sensitivity
+  from the deploy-intelligence sleeve map. Universe 130→144.
+- **UI** — PLANS split into **PLAN LAB** + dedicated **PLAN COMPARISON** tab (12 tabs; deployment/reserve/
+  legs/income/readiness/stale-legs/principal advantage-compromise-risk rows; `?tab=PLANS` deep-links alias).
+- **Quote-freshness chain fixed end-to-end** (was: plans NEVER operator-ready):
+  1. `_parse_snapshot_ts` assumed UTC for local-time stamps → every quote age overstated by 4h;
+  2. `load_technicals` now overlays the repricer's live `market_quotes` price when the morning
+     technical snapshot is stale — REFRESH QUOTES + RECOMPUTE actually refreshes;
+  3. capital book judged staleness across ALL historical plan versions (superseded v1 legs kept fresh
+     v20 flagged stale forever) → latest-version scope; `plan_count` = latest-version archetypes;
+  4. per-plan readiness — one stale leg in another archetype no longer gates every plan.
+  Verified: FCNTX plans OPERATOR-READY with 14m quotes; XLC refreshed via `external_market_data_ingest`.
+- **Tests** — `test_redeploy_phase13.py` (18) + `test_redeploy_phase13_ui.py` (7): duplicate-event
+  prevention, settlement reconciliation, decomposition≈100% with explicit residual, unknown≠zero,
+  whole-share/residual arithmetic, look-through/issuer overlap, income/fee honesty, stale-export gate,
+  versioning, lock concurrency, zero fixtures in production, **no broker-execution path** in any redeploy
+  lib or the workstation UI. Suite: 51 redeploy tests green.
+- **Visual matrix** — `scripts/redeploy_visual_matrix.py`: 1440/1680/1920/2560 widths × zoom 125/150/200,
+  asserting no horizontal overflow + non-blank; 22/22 pass; captures under `artifacts/` (ephemeral policy).
+- **Policy migration** — `docs/ui_redesign/screenshots/redeploy_workstation/` removed from Git (1.9 MB);
+  all captures now live under gitignored `artifacts/playwright/redeploy/`.
+
 ## 2026-07-14 — Redeploy institutional rebuild merged + fixture cleanup executed + deployed
 
 - **Merged** (operator-approved, in order): #142 P0 data-integrity guards → #148 docs truth (reopen of

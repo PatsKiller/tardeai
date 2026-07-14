@@ -31,18 +31,22 @@ _HIGH_ATR_PCT = 3.0
 
 
 def _parse_snapshot_ts(as_of: str | None) -> datetime | None:
+    """Timestamp → aware datetime. Offsets are honored; naive strings are MACHINE-LOCAL
+    (the technical snapshot writes local ET) — the old parser assumed UTC and overstated
+    every quote age by the UTC offset (4h), keeping legs 'stale' all session."""
     if not as_of:
         return None
     text = str(as_of).strip()
-    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"):
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
         try:
-            dt = datetime.strptime(text[: len(fmt.replace("%z", ""))], fmt.replace("%z", ""))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt
+            dt = datetime.strptime(text[:16], "%Y-%m-%d %H:%M")
         except ValueError:
-            continue
-    return None
+            return None
+    if dt.tzinfo is None:
+        dt = dt.astimezone()  # attach the machine-local zone the snapshot was written in
+    return dt
 
 
 def quote_age_minutes(as_of: str | None, *, now: datetime | None = None) -> float | None:
@@ -65,6 +69,22 @@ def is_quote_stale(
     return age > max_age_minutes
 
 
+def _fresh_db_quote(sym: str) -> tuple[float, str] | None:
+    """Latest market_quotes row (repricer, 15-min market-hours cadence) — fail-soft to None."""
+    try:
+        from db_adapter import _get_conn
+        cur = _get_conn().cursor()
+        cur.execute(
+            "SELECT price, fetched_at FROM market_quotes WHERE symbol=%s "
+            "ORDER BY fetched_at DESC LIMIT 1", (sym.upper(),))
+        r = cur.fetchone()
+        if r and r[0] and r[1]:
+            return float(r[0]), r[1].isoformat()
+    except Exception:
+        pass
+    return None
+
+
 def load_technicals(sym: str) -> dict[str, Any]:
     tech = _load_json(STATE / "technical_snapshot.json", {})
     row = tech.get(sym.upper()) or {}
@@ -78,6 +98,15 @@ def load_technicals(sym: str) -> dict[str, Any]:
         sma50 = price / (1 + _as_float(row.get("sma50_pct")) / 100.0)
     if not sma20 and price and row.get("sma20_pct") is not None:
         sma20 = price / (1 + _as_float(row.get("sma20_pct")) / 100.0)
+    as_of_snapshot = meta.get("last_updated") or row.get("as_of")
+    # Overlay the repricer's live quote when it is fresher than the morning snapshot —
+    # this is what makes "REFRESH QUOTES + RECOMPUTE" actually refresh. Technical fields
+    # (ATR/SMA/RSI) stay snapshot-based; only price + timestamp update.
+    fresh = _fresh_db_quote(sym)
+    if fresh and (is_quote_stale(as_of_snapshot) or not price):
+        db_px, db_as_of = fresh
+        if not is_quote_stale(db_as_of) or not price:
+            price, as_of_snapshot = db_px, db_as_of
     atr_pct = (atr / price * 100.0) if price and atr else 0.0
     return {
         "price": price,
@@ -87,7 +116,7 @@ def load_technicals(sym: str) -> dict[str, Any]:
         "sma20": sma20,
         "sma50": sma50,
         "sma200": sma200,
-        "as_of": meta.get("last_updated") or row.get("as_of"),
+        "as_of": as_of_snapshot,
     }
 
 

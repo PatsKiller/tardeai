@@ -19,7 +19,7 @@ from lib.redeploy_price_history import (
     series_profile,
 )
 
-ENGINE_VERSION = "performance_1.0.0"
+ENGINE_VERSION = "performance_1.1.0"
 
 
 def trailing_yield_pct(cur, symbol: str) -> float | None:
@@ -80,6 +80,117 @@ def leg_performance(cur, symbol: str, *, sold_symbol: str | None,
     return prof
 
 
+def _stress_pct(prof: dict[str, Any], key: str) -> float | None:
+    for w in (prof.get("stress") or []):
+        if w.get("key") == key and w.get("history_available"):
+            return w.get("pct")
+    return None
+
+
+def _tech_weight(facts: dict[str, Any]) -> float | None:
+    """Look-through technology weight 0..1; None (never 0) when unknown."""
+    sw = facts.get("sector_weights")
+    if isinstance(sw, dict) and sw:
+        for k, v in sw.items():
+            if "tech" in str(k).lower():
+                try:
+                    x = float(v)
+                    return x / 100.0 if x > 1.5 else x
+                except (TypeError, ValueError):
+                    return None
+        return 0.0  # weights known, technology genuinely absent
+    cat = str(facts.get("category") or "").lower()
+    if "technology" in cat:
+        return 1.0
+    return None
+
+
+def plan_scenarios(cur, plan_legs: list[dict[str, Any]], leg_profiles: dict[str, dict[str, Any]],
+                   facts_map: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """Plan-level scenario matrix — every row states its kind and coverage; no fabrication.
+
+    kinds: FORECAST (vol-derived band) · DETERMINISTIC_MODEL (stated shock × measured
+    sensitivity) · HISTORICAL_OBSERVATION (realized window return) · each with the % of
+    plan dollars its number actually covers. Cash reserve counts as 0% nominal for
+    market-shock rows (noted where that is itself an assumption, e.g. inflation)."""
+    regime = None
+    try:
+        cur.execute("SELECT regime_label FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 1")
+        row = cur.fetchone()
+        regime = str(row[0]) if row else None
+    except Exception:
+        pass
+
+    total = sum(_as_float(l.get("target_dollars")) for l in plan_legs)
+    if total <= 0:
+        return []
+
+    def leg_value(leg, kind_fn):
+        """(pct, covered_dollars) for one leg under one scenario; (None, 0) when unknowable."""
+        dollars = _as_float(leg.get("target_dollars"))
+        if leg.get("is_reserve"):
+            return 0.0, dollars  # nominal cash
+        prof = leg_profiles.get(str(leg.get("ticker") or "").upper()) or {}
+        facts = facts_map.get(str(leg.get("ticker") or "").upper()) or {}
+        pct_val = kind_fn(prof, facts)
+        return (pct_val, dollars) if pct_val is not None else (None, 0.0)
+
+    def beta_of(prof, facts):
+        b = prof.get("beta_1y_vs_spy")
+        return b if b is not None else facts.get("beta_3y")
+
+    rows = [
+        {"key": "bull_1y", "kind": "FORECAST",
+         "label": "Bull case (1Y) — +1σ realized volatility, zero drift, distributions excluded",
+         "fn": lambda p, f: p.get("volatility_1y_pct")},
+        {"key": "base_1y", "kind": "FORECAST",
+         "label": "Base case (1Y) — zero drift; realized-vol band midpoint, distributions excluded",
+         "fn": lambda p, f: 0.0 if p.get("volatility_1y_pct") is not None else None},
+        {"key": "bear_1y", "kind": "FORECAST",
+         "label": "Bear case (1Y) — −1σ realized volatility, zero drift, distributions excluded",
+         "fn": lambda p, f: -p["volatility_1y_pct"] if p.get("volatility_1y_pct") is not None else None},
+        {"key": "equity_drawdown_20", "kind": "DETERMINISTIC_MODEL",
+         "label": "Equity drawdown −20% — measured 1Y beta × −20% market shock",
+         "fn": lambda p, f: round(-20.0 * beta_of(p, f), 2) if beta_of(p, f) is not None else None},
+        {"key": "tech_selloff_25", "kind": "DETERMINISTIC_MODEL",
+         "label": "Technology selloff −25% — look-through technology weight × −25%; other sectors flat",
+         "fn": lambda p, f: (round(-25.0 * _tech_weight(f), 2) if _tech_weight(f) is not None else None)},
+        {"key": "rate_shock_2022", "kind": "HISTORICAL_OBSERVATION",
+         "label": "Rate shock — realized 2022-01-03 → 2022-10-12 (Fed +300bp cycle)",
+         "fn": lambda p, f: _stress_pct(p, "rate_shock_2022")},
+        {"key": "inflation_shock_2022", "kind": "HISTORICAL_OBSERVATION",
+         "label": "Inflation shock — realized 2022 window (CPI 9.1% peak); note: 2022 combined the "
+                  "rate and inflation shocks — separate attribution is unavailable, not fabricated",
+         "fn": lambda p, f: _stress_pct(p, "rate_shock_2022")},
+        {"key": "recession_2020", "kind": "HISTORICAL_OBSERVATION",
+         "label": "Recession — realized COVID crash 2020-02-19 → 2020-03-23",
+         "fn": lambda p, f: _stress_pct(p, "covid_2020")},
+        {"key": "geopolitical_2022", "kind": "HISTORICAL_OBSERVATION",
+         "label": "Geopolitical escalation — realized Russia-Ukraine invasion window 2022-02-18 → 2022-03-14",
+         "fn": lambda p, f: _stress_pct(p, "geopolitical_2022")},
+        {"key": "regime_transition", "kind": "DETERMINISTIC_MODEL",
+         "label": f"Regime transition — measured 1Y beta × −10% regime-break shock (current regime: {regime or 'unknown'})",
+         "fn": lambda p, f: round(-10.0 * beta_of(p, f), 2) if beta_of(p, f) is not None else None},
+    ]
+
+    out = []
+    for r in rows:
+        acc, covered = 0.0, 0.0
+        for leg in plan_legs:
+            pct_val, dollars = leg_value(leg, r["fn"])
+            if pct_val is not None and dollars > 0:
+                acc += dollars * pct_val
+                covered += dollars
+        out.append({
+            "key": r["key"], "kind": r["kind"], "label": r["label"],
+            "plan_pct": round(acc / covered, 2) if covered > 0 else None,
+            "coverage_pct_of_plan": round(covered / total * 100.0, 1),
+            "unavailable": covered == 0,
+            "note": None if covered > 0 else "no leg has the data this scenario needs — reported unavailable, never zero",
+        })
+    return out
+
+
 def plan_performance(cur, event: dict[str, Any], plan_legs: list[dict[str, Any]],
                      *, bench_symbol: str = "SPY") -> dict[str, Any]:
     """Weighted plan-level view + per-leg detail."""
@@ -120,6 +231,11 @@ def plan_performance(cur, event: dict[str, Any], plan_legs: list[dict[str, Any]]
     sold_yield = trailing_yield_pct(cur, sold) if sold else None
     sold_facts = get_instrument_facts(cur, [sold]).get(sold, {}) if sold else {}
 
+    leg_syms = [str(l.get("ticker") or "").upper() for l in plan_legs if not l.get("is_reserve")]
+    facts_map = get_instrument_facts(cur, leg_syms) if leg_syms else {}
+    profiles = {p.get("symbol"): p for p in legs_out if p.get("symbol")}
+    scenarios = plan_scenarios(cur, plan_legs, profiles, facts_map)
+
     plan_yield = round(weighted_yield / yield_cov, 2) if yield_cov > 0 else None
     return {
         "ok": True,
@@ -127,6 +243,11 @@ def plan_performance(cur, event: dict[str, Any], plan_legs: list[dict[str, Any]]
         "engine_version": ENGINE_VERSION,
         "as_of": datetime.now(timezone.utc).isoformat(),
         "benchmark": bench_symbol,
+        "scenarios": scenarios,
+        "scenario_kinds_note": ("FORECAST = vol-derived band; DETERMINISTIC_MODEL = stated shock × "
+                                "measured sensitivity; HISTORICAL_OBSERVATION = realized window return. "
+                                "Every row reports the % of plan dollars it covers; missing data is "
+                                "'unavailable', never zero."),
         "legs": legs_out,
         "plan_weighted": {
             "return_windows": {

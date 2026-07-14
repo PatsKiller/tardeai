@@ -28,7 +28,7 @@ const T = (d: Density) => ({
 })
 
 const TABS = [
-  'CAPITAL BOOK', 'EVENT OVERVIEW', 'PLANS', 'PRO-FORMA', 'LOOK-THROUGH',
+  'CAPITAL BOOK', 'EVENT OVERVIEW', 'PLAN LAB', 'PLAN COMPARISON', 'PRO-FORMA', 'LOOK-THROUGH',
   'PERFORMANCE', 'ENTRIES', 'MONITORING', 'REJECTED', 'PM MEMO', 'AUDIT',
 ] as const
 type Tab = (typeof TABS)[number]
@@ -134,7 +134,11 @@ export default function RedeployDesk() {
   const [density, setDensity] = useState<Density>(() =>
     (localStorage.getItem(DENSITY_KEY) as Density) || 'comfortable')
   const t = T(density)
-  const [tab, setTab] = useState<Tab>((params.get('tab') as Tab) || 'CAPITAL BOOK')
+  const [tab, setTab] = useState<Tab>(() => {
+    const raw = params.get('tab')
+    if (raw === 'PLANS') return 'PLAN LAB'  // legacy deep-links
+    return (TABS as readonly string[]).includes(raw || '') ? (raw as Tab) : 'CAPITAL BOOK'
+  })
   const eventId = params.get('event') ? Number(params.get('event')) : null
 
   const setEvent = useCallback((id: number | null, nextTab?: Tab) => {
@@ -210,7 +214,8 @@ export default function RedeployDesk() {
   const planReadiness = (p: any) => {
     const missing: string[] = []
     if (!(p.legs?.length)) missing.push('legs')
-    if (eventRow?.warnings?.includes('quotes_stale')) missing.push('fresh quotes')
+    // Per-plan staleness: one stale leg in ANOTHER archetype must not gate this plan.
+    if ((p.legs || []).some((l: any) => l.price_stale && !l.is_reserve)) missing.push('fresh quotes')
     if (!p.hermes_narrative && !p.advantages?.length) missing.push('PM memo')
     if (p.oversight_status !== 'pass' && p.oversight_status !== 'pending') missing.push('oversight (failed)')
     if ((eventRow?.warnings || []).some((w: string) => w.startsWith('quarantined_test_fills'))) missing.push('P0 cleanup pending')
@@ -468,30 +473,49 @@ export default function RedeployDesk() {
           )
         })}
       </Section>
-      {compareIds.length >= 2 && (
-        <Section title="Plan comparison" t={t}>
-          <DataTable t={t} rows={[
-            { k: 'Objective', ...Object.fromEntries(compareIds.map(id => [String(id), plans.find(p => p.id === id)?.objective || '—'])) },
-            { k: 'Confidence', ...Object.fromEntries(compareIds.map(id => [String(id), num(plans.find(p => p.id === id)?.confidence, 1)])) },
-            { k: 'Deployable', ...Object.fromEntries(compareIds.map(id => [String(id), fmt$(plans.find(p => p.id === id)?.total_deployable_usd)])) },
-            { k: 'Reserve', ...Object.fromEntries(compareIds.map(id => [String(id), fmt$(plans.find(p => p.id === id)?.reserve_usd)])) },
-            { k: 'Legs', ...Object.fromEntries(compareIds.map(id => [String(id),
-              (plans.find(p => p.id === id)?.legs || []).map((l: any) => l.is_reserve ? 'RSV' : l.ticker).join(' + ')])) },
-            { k: 'Oversight', ...Object.fromEntries(compareIds.map(id => [String(id), plans.find(p => p.id === id)?.oversight_status || '—'])) },
-            { k: 'Readiness', ...Object.fromEntries(compareIds.map(id => {
-              const m = planReadiness(plans.find(p => p.id === id) || {})
-              return [String(id), m.length ? `needs: ${m.join(', ')}` : 'operator-ready']
-            })) },
-          ]} cols={[
-            { key: 'k', label: '' },
-            ...compareIds.map(id => {
-              const p = plans.find(x => x.id === id)
-              return { key: String(id), label: `PLAN ${p?.plan_archetype} v${p?.version}` }
-            }),
-          ]} />
-        </Section>
-      )}
     </>
+  )
+
+  // ── TAB: PLAN COMPARISON ───────────────────────────────────────────────────
+  const planIncome = (p: any) => (p?.legs || []).reduce((s: number, l: any) =>
+    s + ((l.target_dollars && l.expected_yield_pct) ? l.target_dollars * l.expected_yield_pct / 100 : 0), 0)
+  const staleLegs = (p: any) => (p?.legs || []).filter((l: any) => l.price_stale && !l.is_reserve).length
+  const cmpCell = (fn: (p: any) => string) =>
+    Object.fromEntries(compareIds.map(id => [String(id), fn(plans.find(p => p.id === id) || {})]))
+  const comparisonTab = compareIds.length >= 2 ? (
+    <Section title={`Plan comparison — ${compareIds.length} plans (differences, not merely winners)`} t={t}>
+      <DataTable t={t} rows={[
+        { k: 'Objective', ...cmpCell(p => p.objective || '—') },
+        { k: 'Deployment % of net', ...cmpCell(p => pct(p.deploy_pct_of_net, 1)) },
+        { k: 'Deployable $', ...cmpCell(p => fmt$(p.total_deployable_usd)) },
+        { k: 'Reserve $', ...cmpCell(p => fmt$(p.reserve_usd)) },
+        { k: 'Legs', ...cmpCell(p => (p.legs || []).map((l: any) => l.is_reserve ? 'RSV' : l.ticker).join(' + ') || '—') },
+        { k: 'Leg count', ...cmpCell(p => String((p.legs || []).filter((l: any) => !l.is_reserve).length)) },
+        { k: 'Expected income /yr', ...cmpCell(p => planIncome(p) > 0 ? fmt$(planIncome(p)) : '—') },
+        { k: 'Confidence (component)', ...cmpCell(p => num(p.confidence, 1)) },
+        { k: 'Composite rank', ...cmpCell(p => p.composite_rank == null ? '—' : String(p.composite_rank)) },
+        { k: 'Oversight', ...cmpCell(p => p.oversight_status || '—') },
+        { k: 'Stale-quote legs', ...cmpCell(p => String(staleLegs(p))) },
+        { k: 'Readiness', ...cmpCell(p => { const m = planReadiness(p); return m.length ? `needs: ${m.join(', ')}` : 'operator-ready' }) },
+        { k: 'Principal advantage', ...cmpCell(p => p.advantages?.[0] || '—') },
+        { k: 'Principal compromise', ...cmpCell(p => p.compromises?.[0] || '—') },
+        { k: 'Principal risk', ...cmpCell(p => p.risks?.[0] || '—') },
+      ]} cols={[
+        { key: 'k', label: '' },
+        ...compareIds.map(id => {
+          const p = plans.find(x => x.id === id)
+          return { key: String(id), label: `PLAN ${p?.plan_archetype} v${p?.version}` }
+        }),
+      ]} />
+    </Section>
+  ) : (
+    <Section title="Plan comparison" t={t}>
+      <div style={{ fontSize: t.body, color: BB.text3 }}>
+        Select 2–4 plans to compare — tick the <b style={{ color: BB.text1 }}>compare</b> checkbox on plan
+        cards in PLAN LAB. Comparison highlights differences (deployment, reserve, income, readiness,
+        principal advantage/compromise/risk), not merely a winner.
+      </div>
+    </Section>
   )
 
   // ── TAB: PRO-FORMA ─────────────────────────────────────────────────────────
@@ -612,6 +636,23 @@ export default function RedeployDesk() {
           { key: 'er', label: 'FEES', align: 'right' }, { key: 'income', label: 'INCOME/YR', align: 'right' },
         ]} />
       </Section>
+      {(perf.scenarios || []).length > 0 && (
+        <Section title="Scenario matrix — plan-level, dollar-weighted" t={t}
+          right={<span style={{ fontSize: t.label, color: BB.text3 }} title={perf.scenario_kinds_note}>hover a row for methodology · unavailable ≠ zero</span>}>
+          <DataTable t={t} rows={perf.scenarios} cols={[
+            { key: 'label', label: 'SCENARIO', render: (s: any) => <span title={s.label}>{s.label.split('—')[0].trim()}</span> },
+            { key: 'kind', label: 'KIND', render: (s: any) => (
+              <span style={{ fontSize: t.label, color: s.kind === 'HISTORICAL_OBSERVATION' ? BB.text2 : BB.blue }}>{s.kind}</span>) },
+            { key: 'plan_pct', label: 'PLAN IMPACT', align: 'right', render: (s: any) => (
+              <span style={{ color: s.unavailable ? BB.text3 : toneFor(s.plan_pct), fontFamily: BB.mono }}>
+                {s.unavailable ? 'unavailable' : `${s.plan_pct > 0 ? '+' : ''}${s.plan_pct}%`}
+              </span>) },
+            { key: 'coverage_pct_of_plan', label: 'COVERAGE', align: 'right', render: (s: any) => pct(s.coverage_pct_of_plan, 0) },
+            { key: 'label2', label: 'METHODOLOGY', render: (s: any) => (
+              <span style={{ fontSize: t.label, color: BB.text3 }}>{(s.note || s.label.split('—').slice(1).join('—')).trim()}</span>) },
+          ]} />
+        </Section>
+      )}
       <Section title="Per-leg detail" t={t}>
         {(perf.legs || []).filter((l: any) => l.symbol).map((l: any) => (
           <div key={l.symbol} style={{ border: `1px solid ${BB.border}`, borderRadius: 8, padding: t.gap, marginBottom: t.gap }}>
@@ -671,7 +712,7 @@ export default function RedeployDesk() {
     <Section title={`Entry targets — ${planLabel ?? 'no plan selected'}`} t={t}
       right={<button onClick={refreshQuotes} style={{ background: BB.blueDim, color: BB.blue, border: `1px solid ${BB.blue}55`, borderRadius: 4, padding: '6px 12px', fontSize: t.label, fontWeight: 700, cursor: 'pointer' }}>REFRESH ALL QUOTES</button>}>
       {actionMsg && <div style={{ fontSize: t.body, color: BB.amberAlt, marginBottom: 8 }}>{actionMsg}</div>}
-      {!selectedPlan && <div style={{ fontSize: t.body, color: BB.text3 }}>Select a plan on the PLANS tab — entries are always shown in the context of their plan.</div>}
+      {!selectedPlan && <div style={{ fontSize: t.body, color: BB.text3 }}>Select a plan in PLAN LAB — entries are always shown in the context of their plan.</div>}
       {entriesLegs.filter((l: any) => !l.is_reserve).map((l: any) => (
         <div key={l.ticker} style={{ border: `1px solid ${BB.border}`, borderRadius: 8, padding: t.gap, marginBottom: t.gap }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
@@ -826,7 +867,8 @@ export default function RedeployDesk() {
   const body: Record<Tab, any> = {
     'CAPITAL BOOK': capitalBook,
     'EVENT OVERVIEW': eventId ? eventOverview : <div style={{ fontSize: t.body, color: BB.text3 }}>Select a sale event.</div>,
-    'PLANS': eventId ? plansTab : null,
+    'PLAN LAB': eventId ? plansTab : null,
+    'PLAN COMPARISON': eventId ? comparisonTab : null,
     'PRO-FORMA': proFormaTab,
     'LOOK-THROUGH': lookThroughTab,
     'PERFORMANCE': performanceTab,

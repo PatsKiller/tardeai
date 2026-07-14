@@ -1,4 +1,15 @@
 
+## 2026-07-14 — Redeploy Phase-13 acceptance COMPLETE
+
+Closed every remaining spec gap: 10-scenario matrix (typed, coverage-honest), candidate universe 144
+(+mutual funds, catalysts, geo sensitivity), PLAN LAB / PLAN COMPARISON split (12 tabs). Fixed the
+4-layer quote-staleness chain that kept every plan NOT OPERATOR-READY (UTC-misparse +4h, snapshot-only
+prices, all-versions staleness aggregate, event-wide gating) — FCNTX plans now **OPERATOR-READY** on
+14m quotes. 25 new Phase-13 tests (51 green): no-broker-execution proof, fixture-free production,
+arithmetic/honesty invariants. Visual matrix 22/22 (4 widths × 200% zoom, zero overflow). #146's
+committed screenshots migrated out of Git per artifact policy. Evidence:
+`artifacts/playwright/redeploy/acceptance_20260714T141004Z/` + `visual_matrix_20260714T141049Z/`.
+
 ## 2026-07-14 — Redeploy institutional rebuild MERGED + fixture cleanup EXECUTED + deployed
 
 Operator approved: merged the full rebuild stack in order — #142 (P0 guards) → #148 (docs truth,

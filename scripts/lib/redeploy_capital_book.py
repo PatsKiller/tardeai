@@ -113,15 +113,23 @@ def _plan_summaries(cur, event_ids: list[int]) -> dict[int, dict[str, Any]]:
     if not event_ids:
         return {}
     cur.execute(
-        """SELECT p.deploy_event_id, count(DISTINCT p.id) AS plan_count, max(p.version) AS latest_version,
+        """SELECT p.deploy_event_id,
+                  count(DISTINCT p.id) FILTER (WHERE p.version = lv.latest_version) AS plan_count,
+                  count(DISTINCT p.id) AS draft_count_all_versions,
+                  max(p.version) AS latest_version,
                   max(p.created_at) AS latest_plan_at,
-                  min(l.price_as_of) AS oldest_quote_at,
-                  bool_or(l.price_stale) AS any_quote_stale
+                  -- staleness is judged on the LATEST version only — superseded v1 legs
+                  -- must not keep a freshly recomputed plan set flagged stale forever
+                  min(l.price_as_of) FILTER (WHERE p.version = lv.latest_version) AS oldest_quote_at,
+                  bool_or(l.price_stale) FILTER (WHERE p.version = lv.latest_version) AS any_quote_stale
            FROM deploy_plans p
+           JOIN (SELECT deploy_event_id, max(version) AS latest_version
+                 FROM deploy_plans WHERE deploy_event_id = ANY(%s)
+                 GROUP BY deploy_event_id) lv ON lv.deploy_event_id = p.deploy_event_id
            LEFT JOIN redeploy_plan_legs l ON l.deploy_plan_id = p.id
            WHERE p.deploy_event_id = ANY(%s)
            GROUP BY p.deploy_event_id""",
-        (event_ids,),
+        (event_ids, event_ids),
     )
     cols = [d[0] for d in cur.description]
     return {int(r[0]): dict(zip(cols, r)) for r in cur.fetchall()}

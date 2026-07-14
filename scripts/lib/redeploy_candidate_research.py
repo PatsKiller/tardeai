@@ -37,7 +37,7 @@ from lib.redeploy_price_history import (
     total_return_series,
 )
 
-ENGINE_VERSION = "candidate_research_1.0.0"
+ENGINE_VERSION = "candidate_research_1.1.0"
 
 _CUSIP_RE = re.compile(r"^[0-9]{2}")
 
@@ -51,6 +51,9 @@ REFERENCE_ROSTER = {
     "income_etf": ["SCHD", "VYM", "DVY", "HDV", "JEPI", "JEPQ"],
     "bond_cash": ["BND", "AGG", "SHY", "TLT", "SGOV", "BIL"],
     "theme_etf": ["ITA", "XAR", "PPA"],
+    # Tradable index mutual funds — NTF at the brokers that hold the accounts
+    # (Schwab SW*, Fidelity FXAIX/FZROX). They compete on the same live metrics.
+    "mutual_fund": ["SWPPX", "SWTSX", "SWAGX", "FXAIX", "FZROX"],
 }
 
 MIN_HISTORY_DAYS = 120
@@ -215,6 +218,9 @@ def build_candidates(cur, *, sold_symbol: str | None = None,
         -(len(p.get("sources") or [])),
         p["symbol"],
     ))
+    _attach_catalysts(cur, accepted[:MAX_CANDIDATES])
+    for p in accepted[:MAX_CANDIDATES]:
+        p["geopolitical_sensitivity"] = _geo_sensitivity(p["symbol"], p.get("role_hint"))
     return {
         "ok": True,
         "advisory_only": True,
@@ -231,6 +237,61 @@ def build_candidates(cur, *, sold_symbol: str | None = None,
              "reason": p["rejection_reason"]} for p in rejected
         ],
         "source_breakdown": _source_breakdown(universe),
+    }
+
+
+def _attach_catalysts(cur, candidates: list[dict[str, Any]]) -> None:
+    """Observed catalysts, last 30 days, top-3 by impact — from catalyst_events.
+
+    This is a REALIZED catalyst record; no forward corporate calendar source is
+    connected, so upcoming_events is reported unavailable rather than guessed."""
+    syms = [c["symbol"] for c in candidates]
+    by_sym: dict[str, list[dict[str, Any]]] = {}
+    if syms:
+        try:
+            cur.execute(
+                """SELECT symbol, catalyst_type, headline, impact_score, published_at
+                   FROM (
+                     SELECT upper(symbol) AS symbol, catalyst_type, headline, impact_score,
+                            published_at,
+                            ROW_NUMBER() OVER (PARTITION BY upper(symbol)
+                                               ORDER BY impact_score DESC NULLS LAST,
+                                                        published_at DESC) rn
+                     FROM catalyst_events
+                     WHERE upper(symbol) = ANY(%s)
+                       AND published_at > NOW() - INTERVAL '30 days'
+                   ) t WHERE rn <= 3""",
+                (syms,),
+            )
+            for sym, ctype, headline, impact, pub in cur.fetchall():
+                by_sym.setdefault(sym, []).append({
+                    "type": ctype, "headline": (headline or "")[:160],
+                    "impact_score": float(impact) if impact is not None else None,
+                    "published_at": pub.isoformat() if pub else None,
+                })
+        except Exception:
+            by_sym = {}
+    for c in candidates:
+        c["recent_catalysts_30d"] = by_sym.get(c["symbol"], [])
+        c["upcoming_events"] = "unavailable — no forward corporate-calendar source connected"
+
+
+def _geo_sensitivity(symbol: str, role_hint: str | None) -> dict[str, Any]:
+    """Geopolitical sensitivity from the deploy intelligence sleeve map — honest 'unassessed' otherwise."""
+    try:
+        from lib.deploy_intelligence_engine import _ETF_SLEEVE_MAP, _GEOPOLITICAL_SLEEVE_BIAS
+    except ImportError:
+        return {"level": "unassessed", "basis": "sleeve map unavailable"}
+    sleeve = _ETF_SLEEVE_MAP.get(symbol.upper())
+    if sleeve is None and role_hint == "theme_etf":
+        sleeve = "Defense / Aerospace"
+    if sleeve is None:
+        return {"level": "unassessed", "basis": "symbol not in the geopolitical sleeve map — not scored, not zero"}
+    elevated = _GEOPOLITICAL_SLEEVE_BIAS.get("elevated", {})
+    return {
+        "level": "beneficiary_when_elevated" if sleeve in elevated else "mapped_neutral",
+        "sleeve": sleeve,
+        "basis": "deploy_intelligence_engine sleeve map (same source as the desk's geopolitical scoring)",
     }
 
 

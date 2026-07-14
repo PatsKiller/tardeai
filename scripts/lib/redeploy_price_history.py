@@ -28,6 +28,8 @@ STRESS_WINDOWS = [
      "start": date(2020, 2, 19), "end": date(2020, 3, 23)},
     {"key": "rate_shock_2022", "label": "2022 rate shock (2022-01-03 → 2022-10-12)",
      "start": date(2022, 1, 3), "end": date(2022, 10, 12)},
+    {"key": "geopolitical_2022", "label": "Geopolitical escalation — Russia-Ukraine invasion shock (2022-02-18 → 2022-03-14)",
+     "start": date(2022, 2, 18), "end": date(2022, 3, 14)},
     {"key": "recent_correction", "label": "Most recent 10%+ drawdown window (trailing 18M)",
      "start": None, "end": None},  # resolved per-series
 ]
