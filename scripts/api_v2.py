@@ -27505,6 +27505,32 @@ def _redeploy_performance(query=None):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _redeploy_audit(query=None):
+    """GET /api/v2/redeploy/audit?event_id= — monitor audit trail (read-only)."""
+    try:
+        from db_adapter import _get_conn
+        q = query or {}
+        eid = int(q.get("event_id") or 0)
+        if not eid:
+            return {"ok": False, "error": "event_id required"}
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT id, action, idempotency_key, payload, created_at
+               FROM redeploy_monitor_audit WHERE deploy_event_id=%s
+               ORDER BY created_at DESC LIMIT 200""",
+            (eid,),
+        )
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        for r in rows:
+            r["is_test_artifact"] = bool(str(r.get("idempotency_key") or "").startswith("test-"))
+        conn.rollback()
+        return {"ok": True, "advisory_only": True, "event_id": eid, "rows": rows}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _deploy_verify_settlement(body=None):
     """POST /api/v2/deploy/verify-settlement — operator confirms proceeds settled in sale account."""
     try:
@@ -28971,6 +28997,7 @@ ROUTES = {
     "/api/v2/redeploy/candidates": lambda q=None: _redeploy_candidates(q),
     "/api/v2/redeploy/portfolio-pro-forma": lambda q=None: _redeploy_pro_forma(q),
     "/api/v2/redeploy/performance": lambda q=None: _redeploy_performance(q),
+    "/api/v2/redeploy/audit": lambda q=None: _redeploy_audit(q),
     "/api/v2/rotation/summary": _rotation_summary,
     "/api/v2/rotation/small-cap-bridge": _small_cap_rotation_bridge_status,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
