@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-14 (Redeploy Desk institutional design added)
+**Updated:** 2026-07-13 (Redeploy Desk REOPENED — implementation-truth reconciliation + P0 fixture audit)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -43,7 +43,7 @@
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator runbook — phase gates, rollback triggers | Active |
 | `docs/runbooks/DB_HANG_PREVENTION.md` | **DB-induced dashboard hang** — root cause (ALTER queued behind idle-in-txn lock holder), per-connection + role-level `lock_timeout`/`statement_timeout`/idle guards, recovery steps | Active (2026-06-30) |
 | `docs/runbooks/protective-stop-integration-2026-06-30.md` | **Protective stop integration** — Schwab evidence-bound STOP / STOP_LIMIT / TRAILING_STOP, per-account arming (rollover default), one-V-canary-only, after-hours override-required policy, lifecycle + read-back proof, Fidelity manual-ticket, OCO off until canary proven | Active (2026-07-04) |
-| `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | **Post-sale redeploy sync** — `deploy_detect` / `deploy_backfill` / `deploy_recompute`, intelligence engine (Hermes + regime + geopolitical), FCNTX example, Fidelity stop sync, cron hooks (PR-5 pending) | Active (2026-07-14) |
+| `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | **Post-sale redeploy sync** — `deploy_detect` / `deploy_backfill` / `deploy_recompute`, intelligence engine, FCNTX example, Phase A–E infrastructure ops, PR-5 cron installer | Active (2026-07-13) — desk itself REOPENED, see design doc §0 |
 | `docs/v4_1_deployment_log.md` | **Living deployment log** — fleet state, phase completions, 2026-08-11 gemma4 eval gate | Active — created 2026-06-19 (d09a653c) |
 | `docs/_archive/prompts/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md` | CC execution prompt for fleet deploy | **Archived** *(was listed active; lives in _archive)* |
 
@@ -66,7 +66,8 @@
 | `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` | **Risk visualization layer** — Recharts components, hub integration map, library roadmap | Active (2026-06-24) |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options desk execution labels — same auto vs manual split as equity proposals | Active (2026-06-24) |
 | `docs/design/OCO_ATM_UNIFICATION_DESIGN.md` | **OCO brackets + ATM↔proposals unification** — Alpaca native OCO / Schwab API OCO (2FA) / Fidelity manual; auto-bracket at fill; §11 DD hardening (OCO_REPLACING + read-back + repair supervisor, reconciler `--fix` DB-only vs `--apply-oco-retrofit`, qty fail-closed) | **Partially implemented** — paper P1+P2 live + DD-hardened (2026-06-30); Schwab P3 staged inert (`OCO_BRACKETS_SCHWAB` off); P4/P5 pending |
-| `docs/design/REDEPLOY_DESK_INSTITUTIONAL_DESIGN.md` | **Redeploy Desk v2** — institutional post-sale capital-allocation workbench: exposure decomposition, competing plans A–G, entry staging, scenarios, export trade plan, monitoring; operator policy + P0 review; FCNTX #144 fixture; phased A–E | **Approved** (2026-07-14) — **Phase A in progress** |
+| `docs/design/REDEPLOY_DESK_INSTITUTIONAL_DESIGN.md` | **Redeploy Desk v2** — institutional post-sale capital-allocation workbench: exposure decomposition, competing plans A–G, entry staging, scenarios, export trade plan, monitoring; operator policy + implementation-truth matrix (§0); FCNTX #144 fixture | **REOPENED** (2026-07-13) — Phase A–E infrastructure on main; analytics + full-page UI rebuild in progress; NOT complete |
+| `docs/audits/REDEPLOY_FIXTURE_AUDIT_2026-07-13.md` | **P0 fixture-pollution audit** — Phase E test committed synthetic JEPQ fills to production event #144 (false 3% restoration); 8 contaminated locations; guards + quarantine shipped; gated cleanup transaction | **Open** — cleanup awaits operator approval |
 
 ### Rotation Intelligence *(paths corrected — docs/project/)*
 | Document | Purpose | Status |
