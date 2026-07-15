@@ -200,13 +200,22 @@ def fill_missing_period_cells(
                     periods[period] = None
                 continue
 
+            # Guard: never use a catastrophic live end vs recent snap (partial sync / UI lag)
+            # Classic false: end $472k vs $564k week-ago → fake −16% week.
+            if hist_val > 50_000 and cv > 0 and cv < 0.85 * hist_val and period in (
+                "1D", "1W", "1M", "3M"
+            ):
+                # Prefer last good snap end over suspect live
+                last_good, last_d, _ = account_nav_at(series, acct, date.today().isoformat())
+                if last_good and last_good > cv * 1.05:
+                    cv = last_good
             change = round(cv - hist_val, 2)
             change_pct = round((change / hist_val) * 100, 2) if hist_val else None
             src = "snapshot_linked" if acct in FIDELITY_ECONOMIC else "snapshot_fill"
             if partial:
                 src = f"{src}_partial"
             note = (
-                "Fidelity 401k→Rollover linked economic NAV at period start"
+                "Fidelity economic sleeve (401k+rollover) NAV at period start → current"
                 if acct in FIDELITY_ECONOMIC else
                 "Filled from account snapshot series (missing in performance_history)"
             )
@@ -222,6 +231,9 @@ def fill_missing_period_cells(
                 "end_value": round(cv, 2),
                 "change": change,
                 "change_pct": change_pct,
+                "display_change": change,
+                "display_change_pct": change_pct,
+                "display_label": "NAV (linked)" if acct in FIDELITY_ECONOMIC else "NAV",
                 "source": src,
                 "partial_history": partial,
                 "linked_accounts": list(FIDELITY_ECONOMIC) if acct in FIDELITY_ECONOMIC else None,
@@ -493,7 +505,7 @@ def apply_or_build_ytd_pin(
         return True
 
     # Invalidate pins from older logic (funding % rewrite)
-    pin_version = "2026-07-15b"
+    pin_version = "2026-07-15c"
     if (
         existing
         and existing.get("pin_date") == today
@@ -622,7 +634,7 @@ def apply_or_build_ytd_pin(
             "Refreshes next calendar day (or YTD_PIN_FORCE=1). pin_version bumps invalidate old pins."
         ),
         "pin_date": today,
-        "pin_version": "2026-07-15b",
+        "pin_version": "2026-07-15c",
         "end_snapshot": end_snapshot,
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "accounts": pin_accounts,
@@ -909,21 +921,48 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
             if f not in fl:
                 fl.append(f)
         end_snap = adj_r.get("end_date") or adj4.get("end_date")
+        # Since rollover account first appeared (for operator audit — not YTD false positive)
+        since_open_nav = None
+        since_open_pct = None
+        open_anchor = None
+        try:
+            # first non-live snap with fidelity_rollover > 0
+            for r in series:
+                if r.get("live"):
+                    continue
+                fr_v = _f(r.get("fidelity_rollover_ira"))
+                if fr_v > 1000:
+                    open_anchor = str(r.get("date"))[:10]
+                    open_start = fr_v
+                    open_end = _f(adj_r.get("end_value")) or cv
+                    since_open_nav = round(open_end - open_start, 2)
+                    since_open_pct = round(since_open_nav / open_start * 100, 2) if open_start > 0 else None
+                    break
+        except Exception:
+            pass
+
         y_fr = {
             **y_fr,
             "quality": "includes_transfers",
             "flags": fl,
+            # NOT a funding false positive: money existed all year as 401k
             "is_false_positive": False,
             "nav_is_not_market_only": True,
             "adjusted_change": round(mpl, 2),
             "adjusted_change_pct": pct,
             "display_change": round(mpl, 2),
             "display_change_pct": pct,
-            "display_label": "≈ market (401k→rollover linked)",
+            "display_label": "≈ market YTD (401k continuous)",
             "adjustment_note": (
-                "Fidelity 401k converted to Rollover IRA mid-year; "
-                f"combined estimated market P/L from year-start 401k ${start_401k:,.0f}. "
-                f"End {end_snap}; daily pin freezes UI."
+                "NOT a 2-month-only return. Fidelity Rollover IRA label opened mid-year "
+                f"({open_anchor or 'mid-year'}) when 401k converted; economic sleeve was the "
+                f"401k from year-start ${start_401k:,.0f}. "
+                f"YTD ≈ market P/L ${mpl:,.0f} ({pct}% on that base). "
+                + (
+                    f"Since account-open NAV Δ ${since_open_nav:,.0f} ({since_open_pct}%) "
+                    f"from {open_anchor} — separate from YTD."
+                    if since_open_nav is not None else ""
+                )
             ),
             "adjustment_method": adj_r.get("method") or "household_residual_live_end",
             "linked_start_value": start_401k,
@@ -931,9 +970,22 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
             "end_value": adj_r.get("end_value") or y_fr.get("end_value"),
             "ytd_end_snapshot": end_snap,
             "estimated_net_flow": round(_f(adj4.get("net_flow")) + _f(adj_r.get("net_flow")), 2),
+            "since_account_open_date": open_anchor,
+            "since_account_open_change": since_open_nav,
+            "since_account_open_change_pct": since_open_pct,
+            "audit": {
+                "ytd_is_false_positive": False,
+                "reason": (
+                    "YTD links fidelity_401k (held since year-start) + fidelity_rollover_ira "
+                    "after conversion. Residual splits market P/L from the conversion flow."
+                ),
+                "year_start_401k": start_401k,
+                "combined_market_pl": round(mpl, 2),
+                "since_open_nav_change": since_open_nav,
+            },
         }
-        # Linked % already uses year-start 401k (good base); keep if start_401k healthy
         fr.setdefault("periods", {})["YTD"] = y_fr
+        fr["performance_note"] = y_fr["adjustment_note"]
         accounts["fidelity_rollover_ira"] = fr
 
     # Re-fill multi-day periods after YTD mutations so Fidelity 1W/1M never drop off the response
