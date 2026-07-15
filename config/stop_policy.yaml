@@ -204,6 +204,7 @@ volatility_classification:
   beta_high_min: 1.0
   defensive_beta_max: 0.85      # covered-call/dividend/BDC names (SCHD-style) sit ~0.7
   defensive_yield_min_pct: 3.0
+  defensive_sectors: [Utilities, "Consumer Defensive"]  # sector counts as defensive at modest beta
   atr_low_max_pct: 1.5          # weekly volatility %
   atr_high_min_pct: 3.5
   high_vol_sectors: [Technology]

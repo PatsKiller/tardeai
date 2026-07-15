@@ -184,6 +184,8 @@ def classify_volatility_tier(beta: float | None, atr_pct: float | None,
                 return "low"
             if a is not None and a <= float(vc.get("atr_low_max_pct", 1.5)):
                 return "low"
+            if sector and sector in (vc.get("defensive_sectors") or []):
+                return "low"
     # HIGH: high beta, high realized volatility, or a high-vol sector with real beta
     if b is not None and b >= float(vc.get("beta_high_min", 1.0)):
         return "high"

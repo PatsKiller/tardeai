@@ -193,6 +193,8 @@ def test_classify_volatility_tier_rules():
     assert f(1.2, None) == "high"                      # beta > 1
     assert f(0.9, 5.0) == "high"                       # high realized volatility
     assert f(0.95, None, sector="Technology") == "high"  # high-vol sector escalation
+    assert f(0.7, None, sector="Utilities") == "low"   # defensive sector at modest beta
+    assert f(1.1, None, sector="Utilities") == "high"  # ...but real beta still wins
     assert f(None, None) is None                       # no data -> falls through
 
 
