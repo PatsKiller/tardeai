@@ -227,7 +227,7 @@ export default function HoldingsCard({
         {pr?.volatility_tier && (() => {
           const vc = pr.volatility_tier === 'low' ? BB.green : pr.volatility_tier === 'high' ? BB.red : BB.amber
           return (
-            <span title={volTierTooltip(pr)}
+            <span title={volTierTooltip(pr, { stop: row.liveStopPrice, price: h.current_price ?? h.price })}
               style={{ fontSize: 8.5, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: `${vc}1a`, border: `1px solid ${vc}33`, color: vc, cursor: 'help', textTransform: 'uppercase' }}>
               VOL {pr.volatility_tier}</span>
           )

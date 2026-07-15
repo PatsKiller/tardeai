@@ -29,18 +29,30 @@ const COL_TIPS: Record<string, string> = {
   agents: 'LLM lanes that reviewed this symbol (last 30d)',
 }
 
-/** Refined operator tooltip (2026-07-14): tier | regime influence | advisory disclaimer + trail range. */
-export function volTierTooltip(pr: any): string {
+/** Operator tooltip (current-vs-advise wording, 2026-07-14):
+ * "Current stop: $X (Y% below) / We advise A-B% trailing based on TIER tier
+ *  + regime / Minimum floor: F% (family/swing-low rule governs final placement)." */
+export function volTierTooltip(pr: any, live?: { stop?: number | null; price?: number | null; distancePct?: number | null }): string {
   const tier = String(pr?.volatility_tier || '').toUpperCase()
   const fb = pr?.family_bounds || {}
+  const stop = live?.stop
+  let distance = live?.distancePct
+  if (distance == null && stop != null && live?.price) distance = (live.price - stop) / live.price * 100
+  const cur = stop != null
+    ? `Current stop: $${Number(stop).toFixed(2)}${distance != null ? ` (${distance.toFixed(1)}% below)` : ''}`
+    : 'Current stop: none'
   const regime = pr?.regime ? String(pr.regime).replace(/_/g, '-') : null
   const adj = pr?.regime_adjustment_pct
-  const regimeLine = regime
-    ? `Regime: ${regime}${adj != null ? (adj > 0 ? ' (+ wider: ' : ' (tighter: ') + (adj > 0 ? '+' : '') + adj + '% cap)' : ''}`
-    : 'Regime: neutral (no adjustment)'
-  const trail = fb.trail_min_pct != null && fb.trail_max_pct != null
-    ? ` Recommended trail: ${fb.trail_min_pct}\u2013${fb.trail_max_pct}%.` : ''
-  return `Volatility Tier: ${tier}\n${regimeLine}\nAdvisory only \u2014 final placement uses swing-low anchor + family floor.${trail}`
+  const regimeBit = regime
+    ? ` + ${regime} regime${adj != null ? ` (${adj > 0 ? 'wider: +' : 'tighter: '}${adj}% cap)` : ''}`
+    : ''
+  const advise = fb.trail_min_pct != null && fb.trail_max_pct != null
+    ? `We advise ${fb.trail_min_pct}\u2013${fb.trail_max_pct}% trailing based on ${tier} tier${regimeBit}.`
+    : `${tier} tier${regimeBit}.`
+  const floor = fb.stop_min_pct != null
+    ? `Minimum floor: ${fb.stop_min_pct}% (family/swing-low rule governs final placement).`
+    : 'Family/swing-low rule governs final placement.'
+  return `${cur}\n${advise}\n${floor}`
 }
 
 export interface HoldingsTableRowContext {
@@ -243,7 +255,7 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode =
                     const vt = rowCtx.pr.volatility_tier
                     const vc = vt === 'low' ? BB.green : vt === 'high' ? BB.red : BB.amber
                     return (
-                      <span title={volTierTooltip(rowCtx.pr)}
+                      <span title={volTierTooltip(rowCtx.pr, { stop: m.liveStopPrice, price: h.current_price ?? h.price })}
                         style={{ fontSize: 8, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: `${vc}1a`, border: `1px solid ${vc}44`, color: vc, cursor: 'help', textTransform: 'uppercase', flexShrink: 0 }}>
                         VOL {vt}</span>
                     )

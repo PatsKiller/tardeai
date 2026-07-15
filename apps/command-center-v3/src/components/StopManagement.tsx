@@ -916,7 +916,7 @@ function PolicyMigrationView({ terminalUi }: { terminalUi: boolean }) {
       <div style={{ color: MUTED, fontSize: 11, marginBottom: 4 }}>In-band / no-stop holdings ({covered.length}) — tier assignments:</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
         {covered.map((r: any, i: number) => (
-          <span key={i} title={`Volatility Tier: ${r.tier_label} (${r.tier_source})\nStop band ${r.band_pct?.[0]}\u2013${r.band_pct?.[1]}% · Recommended trail: ${r.trail_band_pct?.[0]}\u2013${r.trail_band_pct?.[1]}%${r.note ? '\n' + r.note : ''}\nAdvisory only \u2014 final placement uses swing-low anchor + family floor.`}
+          <span key={i} title={`${r.stop_price != null ? `Current stop: $${Number(r.stop_price).toFixed(2)}${r.stop_distance_pct != null ? ` (${r.stop_distance_pct}% below)` : ''}` : 'Current stop: none'}\nWe advise ${r.trail_band_pct?.[0]}\u2013${r.trail_band_pct?.[1]}% trailing based on ${String(r.tier_label || r.tier).toUpperCase()} (${r.tier_source}).\nMinimum floor: ${r.band_pct?.[0]}% (family/swing-low rule governs final placement).${r.note ? '\n' + r.note : ''}`}
             style={{ fontSize: 11, padding: '2px 8px', borderRadius: 5, border: `1px solid ${tierColor(r.tier)}44`, color: tierColor(r.tier), background: `${tierColor(r.tier)}12` }}>
             {r.symbol} <span style={{ opacity: .75 }}>{r.tier}</span>
           </span>
