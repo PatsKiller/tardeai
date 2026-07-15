@@ -556,10 +556,15 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         const plNow = basisPs != null && px != null && basisPs > 0 ? (px - basisPs) / basisPs * 100 : null
         const plAtStop = basisPs != null && refStop != null && basisPs > 0 ? (refStop - basisPs) / basisPs * 100 : null
         const giveBack = px != null && refStop != null && px > 0 ? (px - refStop) / px * 100 : null
+        const sh = Number(h?.shares) || 0
+        const usd = (v: number) => `${v < 0 ? '-' : '+'}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+        const lockedUsd = basisPs != null && refStop != null && sh > 0 ? (refStop - basisPs) * sh : null
+        const nowUsd = basisPs != null && px != null && sh > 0 ? (px - basisPs) * sh : null
+        const giveBackUsd = px != null && refStop != null && sh > 0 ? (px - refStop) * sh : null
         const plLine = plAtStop != null
-          ? `If the ${logic.liveStop != null ? 'current' : 'advisory'} stop fills: P/L locked ${plAtStop >= 0 ? '+' : ''}${plAtStop.toFixed(1)}%`
-            + (plNow != null ? ` (now ${plNow >= 0 ? '+' : ''}${plNow.toFixed(1)}%` : '')
-            + (giveBack != null ? `${plNow != null ? ' · ' : ' ('}gives back ${giveBack.toFixed(1)}% from current)` : (plNow != null ? ')' : ''))
+          ? `If the ${logic.liveStop != null ? 'current' : 'advisory'} stop fills: P/L locked ${plAtStop >= 0 ? '+' : ''}${plAtStop.toFixed(1)}%${lockedUsd != null ? ` (${usd(lockedUsd)})` : ''}`
+            + (plNow != null ? ` \u00b7 now ${plNow >= 0 ? '+' : ''}${plNow.toFixed(1)}%${nowUsd != null ? ` (${usd(nowUsd)})` : ''}` : '')
+            + (giveBack != null ? ` \u00b7 gives back ${giveBack.toFixed(1)}%${giveBackUsd != null ? ` (${usd(giveBackUsd).replace('+', '')})` : ''} from current` : '')
           : null
         return (
           <div style={{ marginTop: 9, padding: '9px 12px', borderRadius: 8, fontSize: 12.5, lineHeight: 1.55,

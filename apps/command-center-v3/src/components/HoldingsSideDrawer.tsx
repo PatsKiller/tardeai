@@ -17,7 +17,7 @@ export default function HoldingsSideDrawer({ open, title, subtitle, ctx, onClose
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', justifyContent: 'flex-end', background: 'rgba(2,6,12,.55)' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
-        width: fullScreen ? '100vw' : 'min(1080px, 94vw)', height: '100vh', background: BB.bg,
+        width: fullScreen ? '100vw' : 'min(1400px, 96vw)', height: '100vh', background: BB.bg,
         borderLeft: `1px solid ${BB.border}`, display: 'flex', flexDirection: 'column',
         boxShadow: '-12px 0 40px rgba(0,0,0,.6)', transition: 'width .15s ease',
       }}>
