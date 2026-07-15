@@ -590,16 +590,30 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         if (fb.trail_min_pct != null && fb.trail_max_pct != null) ctxBits.push(`normal trail band ${fb.trail_min_pct}\u2013${fb.trail_max_pct}%`)
         if (logic.familyFloorPct != null) ctxBits.push(`hard floor ${logic.familyFloorPct}% (swing-low anchored)`)
         const context = ctxBits.length ? `Why: ${ctxBits.join(' \u00b7 ')}` : null
-        // 4 — consequence if the effective stop fills
-        const refStop = logic.liveStop ?? logic.advisoryStop
-        const plAtStop = basisPs != null && refStop != null && basisPs > 0 ? (refStop - basisPs) / basisPs * 100 : null
-        const lockedUsd = basisPs != null && refStop != null && sh > 0 ? (refStop - basisPs) * sh : null
-        const giveBack = px != null && refStop != null && px > 0 ? (px - refStop) / px * 100 : null
-        const giveBackUsd = px != null && refStop != null && sh > 0 ? (px - refStop) * sh : null
-        const consequence = plAtStop != null
-          ? `If the ${logic.liveStop != null || logic.liveStopIsTrailing ? 'current' : 'advisory'} stop fills: you ${plAtStop >= 0 ? 'LOCK IN' : 'take'} ${pct(plAtStop)}${lockedUsd != null ? ` (${usd(lockedUsd)})` : ''}`
-            + (giveBack != null ? ` \u00b7 giving back ${giveBack.toFixed(1)}%${giveBackUsd != null ? ` (${usd(giveBackUsd).replace('+', '')})` : ''} from today's price` : '')
-          : null
+        // 4 — consequence if a stop fills. When BOTH a live stop and a (different) advisory
+        // exist, show BOTH so the operator can compare what each locks in (operator 2026-07-14).
+        const stopLine = (stop: number | null, label: string) => {
+          if (stop == null) return null
+          const pl = basisPs != null && basisPs > 0 ? (stop - basisPs) / basisPs * 100 : null
+          if (pl == null) return null
+          const lUsd = sh > 0 && basisPs != null ? (stop - basisPs) * sh : null
+          const gb = px != null && px > 0 ? (px - stop) / px * 100 : null
+          const gbUsd = px != null && sh > 0 ? (px - stop) * sh : null
+          return {
+            pl,
+            text: `If the ${label} stop fills: you ${pl >= 0 ? 'LOCK IN' : 'take'} ${pct(pl)}${lUsd != null ? ` (${usd(lUsd)})` : ''}`
+              + (gb != null ? ` \u00b7 giving back ${gb.toFixed(1)}%${gbUsd != null ? ` (${usd(gbUsd).replace('+', '')})` : ''} from today's price` : ''),
+          }
+        }
+        const hasLive = logic.liveStop != null || logic.liveStopIsTrailing
+        const cLive = hasLive ? stopLine(logic.liveStop, 'current') : null
+        const advDiffers = logic.advisoryStop != null
+          && (!hasLive || logic.liveStop == null || Math.abs(logic.advisoryStop - logic.liveStop) > 0.005)
+        const cAdv = advDiffers ? stopLine(logic.advisoryStop, hasLive ? 'ADVISORY' : 'advisory') : null
+        const consequence = cLive?.text ?? cAdv?.text ?? null
+        const plAtStop = cLive?.pl ?? cAdv?.pl ?? null
+        const consequence2 = cLive && cAdv ? cAdv.text : null
+        const plAtStop2 = cLive && cAdv ? cAdv.pl : null
         if (!advParts.length && logic.liveStop == null) return null
         return (
           <div style={{ marginTop: 9, padding: '10px 13px', borderRadius: 8, fontSize: 12.5, lineHeight: 1.65,
@@ -608,6 +622,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
             <div style={{ color: advColor, fontWeight: 700 }}>{advise}</div>
             {context && <div style={{ color: MUTED }}>{context}</div>}
             {consequence && <div style={{ color: plAtStop != null && plAtStop < 0 ? RED : GREEN, fontWeight: 700 }}>{consequence}</div>}
+            {consequence2 && <div style={{ color: plAtStop2 != null && plAtStop2 < 0 ? RED : AMBER, fontWeight: 700 }}>{consequence2}</div>}
           </div>
         )
       })()}
