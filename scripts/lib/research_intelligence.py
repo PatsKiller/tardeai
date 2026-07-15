@@ -27,8 +27,10 @@ _CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
         r"estate\s+plan|estate\s+tax|\bprobate\b|"
         r"\bssdi\b|backdoor\s+roth|qualified\s+charitable|\bqcd\b|life\s+estate|"
         r"asset\s+protection|spend.?down|look.?back\s+period|\bmedigap\b|medicare\s+part\s+[bd]\b|"
-        r"retirement\s+tax|tax.?efficient\s+withdrawal|social\s+security\s+claim|"
-        r"tax\s+bracket\s+room|conversion\s+pacing|\bmapt\b",
+        r"retirement\s+tax|retirement\s+income|tax.?efficient(?:\s+retirement)?|"
+        r"income\s+drawdown|withdrawal\s+strateg|tax.?efficient\s+withdrawal|"
+        r"social\s+security\s+claim|tax\s+bracket\s+room|conversion\s+pacing|\bmapt\b|"
+        r"drawdown\s+plan(?:ning)?",
         re.I,
     )),
     ("dividend_income", re.compile(
@@ -47,9 +49,14 @@ _CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
         r"build-?out|infrastructure",
         re.I,
     )),
+    # Do NOT bare-match "drawdown" — that tags "retirement income drawdown" as risk.
+    # Do NOT bare-match "protection" — MAPT "asset protection" is retirement.
     ("risk_regime", re.compile(
-        r"\bstop\b|protection|drawdown|volatility|heat|risk.?on|risk.?off|"
-        r"stop.?health|stop.?curation|portfolio heat",
+        r"\bstop\b|stop.?health|stop.?curation|protection.?advisory|"
+        r"portfolio heat|risk.?on|risk.?off|"
+        r"(?:portfolio|max|peak|account)\s+drawdown|"
+        r"drawdown\s+(?:risk|guard|limit|protection)|"
+        r"\bvolatility\s+(?:tier|regime|spike)\b",
         re.I,
     )),
     ("catalyst_event", re.compile(
@@ -782,9 +789,15 @@ def build_feed(
                 return 10 + i
         return 20
 
+    _STOP_NOISE = {"stop_health", "stop_curation", "protection_advisory"}
+
     def _sk(it: dict) -> tuple:
+        # Demote pure stop noise on the default desk so retirement/macro/intel surface first.
+        # Still fully available under Risk category filter.
+        noise = 1 if (it.get("research_type") or "") in _STOP_NOISE else 0
         return (
             0 if it.get("starred") else 1,
+            noise,
             _focus_boost(it),
             pri_rank.get(it.get("priority") or "normal", 1),
             tier_rank.get(it.get("freshness_tier") or "aging", 2),
@@ -820,7 +833,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "2.1.2",
+        "version": "2.1.3",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -864,9 +877,9 @@ def build_feed(
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2.1.2 — taxonomy/freshness chips filter the story list; "
-            "chip counts always reflect the full desk universe. Primary-category match. "
-            "Empty category (e.g. compounding) shows Clear filters — not a blank desk."
+            "Research Intelligence v2.1.3 — income/retirement drawdown is retirement (not risk); "
+            "stop noise demoted on default desk; chip counts = full universe. "
+            "Filter Risk category to focus on stops/heat."
         ),
     }
 
