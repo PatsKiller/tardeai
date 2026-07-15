@@ -53,6 +53,7 @@
 |----------|---------|--------|
 | `docs/features/share-reconciliation.md` | **Share drift / DRIP** — system vs broker shares, approval workflow, API | Active (2026-07-15) |
 | `docs/features/transfer-aware-performance.md` | **Rollovers / Roth ladder / YTD** — transfer history, auto-normalize, residual ≈ market, Fidelity linked sleeve, daily YTD pin | Active (2026-07-15) |
+| `docs/ui/stop-management-desk-redesign-2026-07-15.md` | **Stop Management desk UX** — card layout, semantic status, primary CTA, filters | Active (2026-07-15) |
 
 ### Broker Integration *(paths corrected — these live under docs/architecture & docs/brokers)*
 | Document | Purpose | Status |

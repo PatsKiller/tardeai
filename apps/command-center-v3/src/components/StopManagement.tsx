@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { AgeChip, LadderLine } from './primitives/cardPrimitives'
 import { WL } from '../lib/watchlistCardTokens'
 import HoldingProtectionActions from './HoldingProtectionActions'
@@ -49,13 +49,6 @@ type Row = {
   regime_explanation?: string | null; trail_tighten_atr_mult?: number | null
   policy_suggestions?: string[]; stoplight_thresholds_used?: { regime?: string; yellow_r?: number; amber_r?: number; red_r?: number } | null
 }
-
-const REGIME_COLOR: Record<string, string> = {
-  strong_trending_bull: GREEN, strong_trending_bear: RED, trending: BLUE,
-  ranging: MUTED, high_volatility: AMBER, regime_shift: PURPLE,
-}
-
-const COLS = 11  // data columns + actions (Reasons moved to sub-row)
 
 // Days until a date-only string (parsed LOCAL — UTC parsing shifts to the prior evening ET).
 function daysUntil(d: string | null | undefined): number | null {
@@ -158,17 +151,6 @@ function bannerFor(r: Row): { word: string; tone: BannerTone; text: string } {
     word: r.stop_source === 'monitored' ? 'MONITORED' : 'PROTECTED', tone: 'quiet',
     text: `${r.is_trailing ? 'trailing' : (r.stop_type || 'stop').toLowerCase()} stop ${fmtStop(r.broker_stop)}${r.distance_pct != null ? ` · ${r.distance_pct}% below price` : ''}`,
   }
-}
-
-/** Collapsed-row scan chip: one amber ⚠ when the row carries a caution the scan layer must not
- *  miss (earnings ≤7d, advisory >48h stale, or no active stop). First match owns the tooltip. */
-function scanWarnTitle(r: Row): string | null {
-  const earnDays = daysUntil(r.next_earnings_date)
-  if (earnDays != null && earnDays >= 0 && earnDays <= 7) return `earnings in ${earnDays}d — price can gap through the stop`
-  const advAge = ageHours(r.rec_at)
-  if (advAge != null && advAge > 48) return `stop advisory ${ageLabel(advAge)} old — stale`
-  if (!r.has_active_stop) return 'no active stop at the broker'
-  return null
 }
 
 function ReasonsSubRow({ r }: { r: Row }) {
@@ -313,110 +295,7 @@ function ReasonsSubRow({ r }: { r: Row }) {
   )
 }
 
-function RegimeBadge({ r }: { r: Row }) {
-  if (!r.regime_short && !r.regime_label) return <span style={{ color: MUTED, fontSize: 10 }}>—</span>
-  const c = REGIME_COLOR[r.regime || ''] || MUTED
-  return (
-    <div title={[r.regime_label, r.regime_explanation, r.regime_shift_direction].filter(Boolean).join(' · ')}>
-      <div style={{
-        display: 'inline-block', fontSize: 10, fontWeight: 900, color: c,
-        background: `${c}18`, border: `1px solid ${c}55`, borderRadius: 5, padding: '2px 6px',
-      }}>
-        {r.regime_short || r.regime}
-        {r.regime_confidence != null ? ` ${Math.round(r.regime_confidence)}%` : ''}
-      </div>
-      {r.regime_shift_detected && (
-        <div style={{ fontSize: 9.5, color: PURPLE, fontWeight: 800, marginTop: 3 }}>⇄ {r.regime_shift_direction || 'shift'}</div>
-      )}
-      {r.regime_at_entry && r.regime_at_entry !== r.regime && !r.regime_shift_detected && (
-        <div style={{ fontSize: 9, color: MUTED, marginTop: 2 }}>entry: {r.regime_at_entry}</div>
-      )}
-    </div>
-  )
-}
-
-const effectiveConsensusStop = (r: Row): number | null =>
-  r.broker_stop ?? r.trailing_trigger ?? r.planned_stop ?? null
-
-const pctVsMean = (value: number | null | undefined, mean: number | null | undefined): number | null => {
-  if (value == null || mean == null || mean <= 0) return null
-  return Math.round(10000 * (Number(value) - mean) / mean) / 100
-}
-
-/** Signed %: stop vs Street mean (+ above, − below). API field with client-side fallback. */
-const stopDeltaPct = (r: Row): number | null => {
-  const api = r.stop_vs_consensus_pct
-  if (api != null && Number.isFinite(Number(api))) return Number(api)
-  return pctVsMean(effectiveConsensusStop(r), r.consensus_target_mean)
-}
-
-/** Signed %: current price vs Street mean — primary operator signal. */
-const priceDeltaPct = (r: Row): number | null => {
-  const api = r.price_vs_consensus_pct
-  if (api != null && Number.isFinite(Number(api))) return Number(api)
-  return pctVsMean(r.current_price, r.consensus_target_mean)
-}
-
-const fmtConsensusDelta = (pct: number | null | undefined, prefix = '') => {
-  if (pct == null || !Number.isFinite(Number(pct))) return null
-  const n = Math.abs(Number(pct))
-  const dir = pct > 0 ? `+${n.toFixed(1)}% above` : `${n.toFixed(1)}% below`
-  return prefix ? `${prefix} ${dir}` : dir
-}
-
-/** Long: price above Street = extended (red); below = room to target (green). */
-const priceVsStreetColor = (delta: number | null, priceAbove?: boolean) =>
-  priceAbove || (delta != null && delta > 0.5) ? RED : GREEN
-
-/** Stop above Street mean = red; under = green. */
-const stopVsStreetColor = (delta: number | null, stopAbove?: boolean) =>
-  stopAbove || (delta != null && delta > 0) ? RED : GREEN
-
-function DeltaBadge({ label, pct, color }: { label: string; pct: number | null; color: string }) {
-  const text = fmtConsensusDelta(pct)
-  if (!text) return null
-  return (
-    <div style={{
-      display: 'inline-block', marginTop: 3, fontSize: 10, fontWeight: 900, lineHeight: 1.35,
-      color, background: `${color}18`, border: `1px solid ${color}66`, borderRadius: 5, padding: '2px 6px',
-    }}>
-      <span style={{ color: MUTED, fontWeight: 700 }}>{label}</span> {text}
-    </div>
-  )
-}
-
-function StreetGauge({ price, low, high, mean }: { price: number; low?: number | null; high?: number | null; mean: number }) {
-  const lo = low ?? mean * 0.85
-  const hi = high ?? mean * 1.15
-  if (hi <= lo) return null
-  const pct = Math.max(0, Math.min(100, 100 * (price - lo) / (hi - lo)))
-  const meanPct = Math.max(0, Math.min(100, 100 * (mean - lo) / (hi - lo)))
-  return (
-    <div style={{ marginTop: 4, width: 88 }} title={`Price ${fmtStop(price)} on Street range ${fmtStop(lo)}–${fmtStop(hi)}`}>
-      <div style={{ height: 5, borderRadius: 3, background: 'rgba(148,163,184,.25)', position: 'relative' }}>
-        <div style={{ position: 'absolute', left: `${meanPct}%`, top: -2, width: 2, height: 9, background: MUTED, borderRadius: 1 }} title="Street mean" />
-        <div style={{
-          position: 'absolute', left: `${pct}%`, top: -3, width: 8, height: 8, marginLeft: -4,
-          borderRadius: '50%', background: price > mean ? RED : GREEN, border: '1px solid rgba(15,23,42,.8)',
-        }} />
-      </div>
-    </div>
-  )
-}
 type NextAction = { symbol: string; account: string; alert_level: Row['alert_level']; action: string | null; projection: string | null; dollars_at_risk: number | null }
-
-function Pill({ level, thresholds }: { level: string | null; thresholds?: Row['stoplight_thresholds_used'] }) {
-  if (!level) return <span style={{ fontSize: 11, color: GREEN }}>● ok</span>
-  const c = LEVEL_COLOR[level] || MUTED
-  const tip = thresholds?.regime
-    ? `${level} · regime ${thresholds.regime} (Y≤${thresholds.yellow_r}R A≤${thresholds.amber_r}R R≤${thresholds.red_r}R)`
-    : level
-  return (
-    <span title={tip} style={{ fontSize: 11, fontWeight: 800, color: c, background: `${c}1e`, border: `1px solid ${c}`, borderRadius: 999, padding: '2px 8px', textTransform: 'uppercase' }}>
-      {level}
-    </span>
-  )
-}
 
 function Card({ label, value, color = TEXT0, sub, terminalUi }: { label: string; value: string; color?: string; sub?: string; terminalUi?: boolean }) {
   return (
@@ -428,9 +307,537 @@ function Card({ label, value, color = TEXT0, sub, terminalUi }: { label: string;
   )
 }
 
-const QUICK = ['All', 'Needs Attention', 'Regime Shift', 'Has Street', 'Price > Street', 'Over Consensus', 'No Stop Placed', 'Has Active Stop', 'Trailing Not Active', 'High Heat'] as const
+/** Primary operator filters — scannable institutional desk views. */
+const QUICK = [
+  'All',
+  'Needs Action',
+  'Partial Coverage',
+  'No Stop',
+  'All Protected',
+  'Trailing Stops',
+  'Trailing Eligible',
+  'High Heat',
+  'Regime Shift',
+] as const
 
 const STOPS_CACHE_KEY = 'cc-v3-stops-management-v1'
+
+// ── Position status (semantic color + why) ────────────────────────────────────
+
+type StatusKind = 'needs_attention' | 'partial' | 'no_stop' | 'protected' | 'monitored' | 'review'
+
+type PositionStatus = {
+  kind: StatusKind
+  label: string
+  color: string
+  why: string
+  sort: number // lower = more urgent
+}
+
+function derivePositionStatus(r: Row): PositionStatus {
+  if (!r.has_active_stop) {
+    return {
+      kind: 'no_stop',
+      label: 'NO STOP',
+      color: RED,
+      why: r.planned_stop != null
+        ? `Advised ${fmtStop(r.planned_stop)} is not placed — ${fmt$(r.dollars_at_risk)} unprotected`
+        : 'No live broker stop on this lot',
+      sort: 0,
+    }
+  }
+  if (r.coverage === 'partial') {
+    return {
+      kind: 'partial',
+      label: 'PARTIAL',
+      color: AMBER,
+      why: `Stop covers ${r.stop_qty ?? '—'}/${r.qty} sh — ${Number(r.qty) - Number(r.stop_qty || 0)} sh unprotected after size-up`,
+      sort: 1,
+    }
+  }
+  if (r.coverage === 'oversized') {
+    return {
+      kind: 'needs_attention',
+      label: 'OVERSIZED',
+      color: RED,
+      why: `Stop ${r.stop_qty} sh > held ${r.qty} — may short/reject excess on trigger`,
+      sort: 1,
+    }
+  }
+  if (r.alert_level === 'red') {
+    return {
+      kind: 'needs_attention',
+      label: 'NEEDS ATTENTION',
+      color: RED,
+      why: (r.alert_reasons?.[0] || r.next_action || 'Red stoplight — review stop distance or risk').slice(0, 140),
+      sort: 2,
+    }
+  }
+  if (r.divergence && /looser/i.test(r.divergence)) {
+    return {
+      kind: 'review',
+      label: 'REVIEW',
+      color: AMBER,
+      why: `Broker stop looser than advised (${fmtStop(r.broker_stop)} vs ${fmtStop(r.planned_stop)})`,
+      sort: 3,
+    }
+  }
+  if (r.alert_level === 'amber' || r.trailing_should_be_active) {
+    return {
+      kind: 'review',
+      label: r.trailing_should_be_active ? 'TRAIL ELIGIBLE' : 'REVIEW',
+      color: AMBER,
+      why: r.trailing_should_be_active
+        ? 'Gains support a trailing stop — not yet active at broker'
+        : (r.alert_reasons?.[0] || 'Amber stoplight — moderate concern').slice(0, 140),
+      sort: 4,
+    }
+  }
+  if (r.stop_source === 'monitored') {
+    return {
+      kind: 'monitored',
+      label: 'MONITORED',
+      color: BLUE,
+      why: 'Software-monitored / Fidelity recorded stop — not a live Schwab GTC',
+      sort: 6,
+    }
+  }
+  return {
+    kind: 'protected',
+    label: 'PROTECTED',
+    color: GREEN,
+    why: `${r.is_trailing ? 'Trailing' : (r.stop_type || 'Fixed')} stop live${r.distance_pct != null ? ` · ${r.distance_pct}% below price` : ''}`,
+    sort: 8,
+  }
+}
+
+type PrimaryCta = {
+  label: string
+  autoStage: boolean
+  tone: 'amber' | 'green' | 'blue' | 'red'
+  reason: string
+  secondary?: string
+}
+
+function derivePrimaryCta(r: Row): PrimaryCta {
+  const isFid = r.account.startsWith('fidelity')
+  const via = isFid ? 'manual ticket' : '2FA'
+  if (r.coverage === 'partial') {
+    return {
+      label: `Replace to full ${Math.floor(r.qty)} sh via ${via}`,
+      autoStage: true,
+      tone: 'amber',
+      reason: `Stop only covers ${r.stop_qty}/${r.qty} shares — GTC does not auto-resize after buys`,
+      secondary: 'Adjust stop…',
+    }
+  }
+  if (r.coverage === 'oversized') {
+    return {
+      label: `Resize stop to ${Math.floor(r.qty)} sh via ${via}`,
+      autoStage: true,
+      tone: 'red',
+      reason: `Stop qty ${r.stop_qty} exceeds held ${r.qty}`,
+      secondary: 'Adjust stop…',
+    }
+  }
+  if (!r.has_active_stop && r.planned_stop != null) {
+    if (r.trail_recommended || r.trailing_should_be_active) {
+      const trailBit = r.trail_pct != null ? ` ${r.trail_pct}%` : ''
+      return {
+        label: `Set trailing${trailBit} via ${via}`,
+        autoStage: true,
+        tone: 'amber',
+        reason: r.rec_rationale || 'No live stop — advisory recommends trail',
+        secondary: 'Adjust stop…',
+      }
+    }
+    return {
+      label: `Set stop ${fmtStop(r.planned_stop)} via ${via}`,
+      autoStage: true,
+      tone: 'amber',
+      reason: r.rec_rationale || `Advised fixed stop not placed — ${fmt$(r.dollars_at_risk)} at risk`,
+      secondary: 'Adjust stop…',
+    }
+  }
+  if (r.trailing_should_be_active) {
+    const trailBit = r.trail_pct != null ? ` ${r.trail_pct}%` : ''
+    return {
+      label: `Trail${trailBit} via ${via}`,
+      autoStage: true,
+      tone: 'green',
+      reason: 'Position is trail-eligible; fixed stop still on book',
+      secondary: 'Adjust stop…',
+    }
+  }
+  if (r.divergence && /looser/i.test(r.divergence) && r.planned_stop != null) {
+    return {
+      label: `Tighten to ${fmtStop(r.planned_stop)}`,
+      autoStage: false,
+      tone: 'amber',
+      reason: 'Broker stop is looser than plan — review before replace',
+      secondary: 'Open adjust…',
+    }
+  }
+  if (r.alert_level === 'red' || r.alert_level === 'amber') {
+    return {
+      label: 'Review & adjust stop',
+      autoStage: false,
+      tone: r.alert_level === 'red' ? 'red' : 'amber',
+      reason: r.next_action && !/^(Monitor|None)/.test(r.next_action)
+        ? r.next_action
+        : (r.alert_reasons?.[0] || 'Stoplight flag — open adjust panel'),
+      secondary: 'Open adjust…',
+    }
+  }
+  return {
+    label: 'Adjust stop',
+    autoStage: false,
+    tone: 'blue',
+    reason: r.next_action && !/^(Monitor|None)/.test(r.next_action)
+      ? r.next_action
+      : 'Protected — optional adjust / trail / replace',
+  }
+}
+
+const CTA_TONE: Record<PrimaryCta['tone'], { bg: string; border: string; color: string }> = {
+  amber: { bg: `${AMBER}22`, border: AMBER, color: AMBER },
+  green: { bg: `${GREEN}20`, border: GREEN, color: GREEN },
+  blue: { bg: `${BLUE}18`, border: BLUE, color: BLUE },
+  red: { bg: `${RED}20`, border: RED, color: RED },
+}
+
+function StatusBadge({ status }: { status: PositionStatus }) {
+  return (
+    <span
+      title={status.why}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        fontSize: 10, fontWeight: 900, letterSpacing: '.06em',
+        color: status.color, background: `${status.color}18`,
+        border: `1px solid ${status.color}66`, borderRadius: 6,
+        padding: '3px 8px', whiteSpace: 'nowrap',
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: status.color, flexShrink: 0 }} />
+      {status.label}
+    </span>
+  )
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <div style={{
+      fontSize: 9.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase',
+      color: MUTED, marginBottom: 6,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function Metric({ label, value, sub, color = TEXT0, tip }: {
+  label: string; value: string; sub?: string; color?: string; tip?: string
+}) {
+  return (
+    <div title={tip} style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 9.5, color: MUTED, fontWeight: 700, marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: '-0.02em' }}>
+        {value}
+      </div>
+      {sub && <div style={{ fontSize: 10, color: MUTED, marginTop: 1, lineHeight: 1.3 }}>{sub}</div>}
+    </div>
+  )
+}
+
+function HoldingStopCard({
+  r, expanded, onToggle, onPrimary, onSecondary, onFocus,
+}: {
+  r: Row
+  expanded: boolean
+  onToggle: () => void
+  onPrimary: (auto: boolean) => void
+  onSecondary: () => void
+  onFocus?: (s: string, a: string) => void
+}) {
+  const status = derivePositionStatus(r)
+  const cta = derivePrimaryCta(r)
+  const tone = CTA_TONE[cta.tone]
+  const earnDays = daysUntil(r.next_earnings_date)
+  const borderAccent = status.kind === 'protected' || status.kind === 'monitored'
+    ? 'rgba(148,163,184,.18)'
+    : `${status.color}55`
+
+  const stopKindLabel = r.is_trailing
+    ? `TRAILING ${r.trail_pct != null ? `${r.trail_pct}%` : ''}`.trim()
+    : (r.stop_type || 'STOP').toUpperCase()
+
+  const healthBullets: string[] = []
+  if (r.holdings_llm_health) healthBullets.push(`Health: ${r.holdings_llm_health}`)
+  if (r.unrealized_dollars != null) {
+    healthBullets.push(`Unrealized ${r.unrealized_dollars >= 0 ? '+' : ''}${fmt$(r.unrealized_dollars)}${r.unrealized_r != null ? ` (${r.unrealized_r}R)` : ''}`)
+  }
+  if (r.heat_contribution_pct != null) healthBullets.push(`Heat ${r.heat_contribution_pct}% of book`)
+  if (earnDays != null && earnDays >= 0 && earnDays <= 14) {
+    healthBullets.push(earnDays <= 7 ? `⚠ Earnings in ${earnDays}d` : `Earnings in ${earnDays}d`)
+  }
+  if (r.regime_short || r.regime_now) {
+    healthBullets.push(`Regime ${r.regime_short || r.regime_now}${r.regime_shift_detected ? ' · shift' : ''}`)
+  }
+
+  return (
+    <article
+      data-testid={`stop-card-${r.symbol}-${r.account}`}
+      style={{
+        borderRadius: 12,
+        border: `1px solid ${borderAccent}`,
+        borderLeft: `3px solid ${status.color}`,
+        background: 'var(--bg1, rgba(15,23,42,.72))',
+        boxShadow: '0 1px 0 rgba(255,255,255,.03) inset, 0 8px 24px rgba(0,0,0,.18)',
+        overflow: 'hidden',
+      }}
+    >
+      {/* 1. Header */}
+      <header style={{
+        display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        padding: '12px 14px 10px',
+        borderBottom: '1px solid rgba(148,163,184,.12)',
+        background: 'rgba(15,23,42,.35)',
+      }}>
+        <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <button
+              type="button"
+              onClick={() => onFocus?.(r.symbol, r.account)}
+              title="Open full holding detail"
+              style={{
+                fontSize: 16, fontWeight: 900, color: BLUE, background: 'none', border: 'none',
+                cursor: onFocus ? 'pointer' : 'default', padding: 0, letterSpacing: 0.3,
+                textDecoration: onFocus ? 'underline' : 'none', textDecorationColor: `${BLUE}44`,
+              }}
+            >
+              {r.symbol}
+            </button>
+            <StatusBadge status={status} />
+            {r.is_trailing && r.has_active_stop && (
+              <span style={{
+                fontSize: 9.5, fontWeight: 800, color: GREEN, background: `${GREEN}14`,
+                border: `1px solid ${GREEN}44`, borderRadius: 4, padding: '2px 6px',
+              }} title="Live trailing stop at broker">
+                TRAILING
+              </span>
+            )}
+            {r.alert_level && (
+              <span
+                title={r.stoplight_thresholds_used?.regime
+                  ? `${r.alert_level} stoplight · regime ${r.stoplight_thresholds_used.regime}`
+                  : `${r.alert_level} stoplight`}
+                style={{
+                  fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase',
+                  color: LEVEL_COLOR[r.alert_level] || MUTED,
+                  border: `1px solid ${LEVEL_COLOR[r.alert_level] || MUTED}55`,
+                  borderRadius: 4, padding: '2px 6px',
+                }}
+              >
+                {r.alert_level}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: MUTED, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <span>{r.account.replace(/_/g, ' ')}</span>
+            <span style={{ opacity: 0.5 }}>·</span>
+            <span>{r.route}</span>
+            <span style={{ opacity: 0.5 }}>·</span>
+            <span style={{ fontFamily: 'monospace', color: TEXT0, fontWeight: 700 }}>
+              {fmtStop(r.current_price)}
+            </span>
+            {r.qty != null && (
+              <>
+                <span style={{ opacity: 0.5 }}>·</span>
+                <span>{r.qty} sh</span>
+              </>
+            )}
+          </div>
+          <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4, lineHeight: 1.35, maxWidth: 520 }} title={status.why}>
+            {status.why}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flex: '0 1 280px' }}>
+          <button
+            type="button"
+            data-testid="stop-card-primary-cta"
+            onClick={() => onPrimary(cta.autoStage)}
+            title={cta.reason}
+            style={{
+              fontSize: 12, fontWeight: 900, padding: '8px 14px', borderRadius: 8,
+              cursor: 'pointer', border: `1px solid ${tone.border}`, background: tone.bg,
+              color: tone.color, whiteSpace: 'nowrap', maxWidth: '100%',
+              boxShadow: `0 0 0 1px ${tone.border}22`,
+            }}
+          >
+            {cta.label}
+          </button>
+          {cta.secondary && (
+            <button
+              type="button"
+              onClick={onSecondary}
+              style={{
+                fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6,
+                cursor: 'pointer', border: '1px solid rgba(148,163,184,.28)',
+                background: 'transparent', color: MUTED,
+              }}
+            >
+              {cta.secondary}
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* 2. Protection / stop status */}
+      <section style={{ padding: '12px 14px', borderBottom: '1px solid rgba(148,163,184,.1)' }}>
+        <SectionLabel>Protection</SectionLabel>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+          gap: 12,
+        }}>
+          <Metric
+            label="Live stop"
+            value={r.has_active_stop ? fmtStop(r.broker_stop ?? r.stop) : '—'}
+            sub={r.has_active_stop ? `${stopKindLabel} · ${SRC_LABEL[r.stop_source] || r.stop_source}` : 'none at broker'}
+            color={r.has_active_stop ? GREEN : AMBER}
+            tip={r.is_trailing && r.trailing_trigger != null ? `Trail trigger ≈ ${fmtStop(r.trailing_trigger)}` : undefined}
+          />
+          <Metric
+            label="Distance"
+            value={r.distance_pct != null ? `${r.distance_pct}%` : '—'}
+            sub={[
+              r.distance_dollars != null ? fmt$(r.distance_dollars) : null,
+              r.distance_atr != null ? `${r.distance_atr} ATR` : null,
+              r.distance_r != null ? `${r.distance_r}R` : null,
+            ].filter(Boolean).join(' · ') || undefined}
+            tip="% / $ below current price to stop"
+          />
+          <Metric
+            label="At risk"
+            value={fmt$(r.dollars_at_risk)}
+            sub={r.heat_contribution_pct != null ? `${r.heat_contribution_pct}% heat` : undefined}
+            color={TEXT0}
+            tip="Loss if stop fills (approx)"
+          />
+          <Metric
+            label="Coverage"
+            value={
+              r.coverage === 'partial' ? `${r.stop_qty}/${r.qty}`
+                : r.coverage === 'oversized' ? `${r.stop_qty}/${r.qty}`
+                  : r.has_active_stop ? (r.stop_qty != null ? `${r.stop_qty} sh` : 'FULL')
+                    : '0'
+            }
+            sub={
+              r.coverage === 'partial' ? 'PARTIAL — undersized'
+                : r.coverage === 'oversized' ? 'OVERSIZED'
+                  : r.has_active_stop ? 'matches held'
+                    : 'unprotected'
+            }
+            color={r.coverage === 'partial' ? AMBER : r.coverage === 'oversized' ? RED : r.has_active_stop ? GREEN : AMBER}
+          />
+          <Metric
+            label="Advised"
+            value={fmtStop(r.planned_stop)}
+            sub={r.divergence || (r.trail_recommended ? 'prefers trail' : 'fixed plan') || undefined}
+            color={AMBER}
+            tip={r.rec_rationale || undefined}
+          />
+          {r.unrealized_dollars != null && (
+            <Metric
+              label="Unrealized"
+              value={`${r.unrealized_dollars >= 0 ? '+' : ''}${fmt$(r.unrealized_dollars)}`}
+              color={r.unrealized_dollars >= 0 ? GREEN : RED}
+            />
+          )}
+        </div>
+        {r.divergence && (
+          <div style={{
+            marginTop: 8, fontSize: 11, color: /looser/i.test(r.divergence) ? AMBER : MUTED,
+            fontWeight: /looser/i.test(r.divergence) ? 700 : 500,
+          }}>
+            Broker vs plan: {r.divergence}
+          </div>
+        )}
+      </section>
+
+      {/* 3. Health summary (compact) */}
+      {healthBullets.length > 0 && (
+        <section style={{ padding: '10px 14px', borderBottom: '1px solid rgba(148,163,184,.1)' }}>
+          <SectionLabel>Holdings health</SectionLabel>
+          <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 11.5, color: TEXT0, lineHeight: 1.5 }}>
+            {healthBullets.slice(0, 4).map((b, i) => (
+              <li key={i} style={{ color: b.startsWith('⚠') ? AMBER : MUTED }}>
+                <span style={{ color: b.startsWith('⚠') ? AMBER : TEXT0 }}>{b}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* 4. Recommended action + rationale */}
+      <section style={{
+        padding: '12px 14px',
+        borderBottom: expanded ? '1px solid rgba(148,163,184,.1)' : 'none',
+        background: `${tone.color}08`,
+      }}>
+        <SectionLabel>Recommended action</SectionLabel>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0, marginBottom: 4 }}>
+              {cta.label}
+            </div>
+            <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.45 }}>
+              {cta.reason}
+            </div>
+            {r.next_action && !/^(Monitor|None)/.test(r.next_action) && r.next_action !== cta.reason && (
+              <div style={{ fontSize: 11, color: BLUE, marginTop: 4 }}>System: {r.next_action}</div>
+            )}
+            {r.projection && (
+              <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4 }}>Projection: {r.projection}</div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => onPrimary(cta.autoStage)}
+            style={{
+              fontSize: 12, fontWeight: 900, padding: '9px 16px', borderRadius: 8,
+              cursor: 'pointer', border: `1px solid ${tone.border}`, background: tone.bg,
+              color: tone.color, whiteSpace: 'nowrap',
+            }}
+          >
+            {cta.autoStage ? '▶ ' : ''}{cta.label.length > 36 ? 'Run primary action' : cta.label}
+          </button>
+        </div>
+      </section>
+
+      {/* 5. Collapsible detail */}
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          width: '100%', textAlign: 'left', fontSize: 11, fontWeight: 700,
+          padding: '8px 14px', border: 'none', cursor: 'pointer',
+          background: 'rgba(15,23,42,.4)', color: MUTED,
+          borderTop: '1px solid rgba(148,163,184,.08)',
+        }}
+      >
+        {expanded ? '▾ Hide exit plan, Street, Grok & evidence' : '▸ Exit plan · Street · Grok · evidence'}
+      </button>
+      {expanded && (
+        <div style={{ padding: '4px 10px 12px', background: 'rgba(15,23,42,.25)' }}>
+          <ReasonsSubRow r={r} />
+        </div>
+      )}
+    </article>
+  )
+}
 
 export default function StopManagement({ onFocusHolding }: Props) {
   const [terminalUi] = useTerminalUi()
@@ -448,8 +855,8 @@ export default function StopManagement({ onFocusHolding }: Props) {
   const [level, setLevel] = useState('All')
   const [adjust, setAdjust] = useState<Row | null>(null)
   const [autoStage, setAutoStage] = useState(false)
-  // One-click apply: the 🔒 buttons open the modal AND auto-stage the advised stop straight to 2FA;
-  // "Adjust stop" opens in manual mode (no auto-stage).
+  const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({})
+  // One-click apply: primary CTAs may auto-stage; "Adjust" opens manual mode.
   const openAdjust = (r: Row, auto: boolean) => { setAutoStage(auto); setAdjust(r) }
 
   const load = (force = false) => {
@@ -478,20 +885,56 @@ export default function StopManagement({ onFocusHolding }: Props) {
   const summary = data?.summary ?? {}
   const accounts = useMemo(() => ['All', ...Array.from(new Set(rows.map(r => r.account)))], [rows])
 
-  const filtered = rows.filter(r => {
-    if (acct !== 'All' && r.account !== acct) return false
-    if (level !== 'All' && r.alert_level !== level) return false
-    if (quick === 'Needs Attention' && !(r.alert_level === 'amber' || r.alert_level === 'red')) return false
-    if (quick === 'Regime Shift' && !r.regime_shift_detected) return false
-    if (quick === 'Has Street' && r.consensus_target_mean == null) return false
-    if (quick === 'Price > Street' && !(r.price_above_consensus || (priceDeltaPct(r) ?? 0) > 0.5)) return false
-    if (quick === 'Over Consensus' && !r.stop_above_consensus) return false
-    if (quick === 'No Stop Placed' && r.has_active_stop) return false
-    if (quick === 'Has Active Stop' && !r.has_active_stop) return false
-    if (quick === 'Trailing Not Active' && !r.trailing_should_be_active) return false
-    if (quick === 'High Heat' && !((r.heat_contribution_pct ?? 0) >= 1.5)) return false
-    return true
-  })
+  const filtered = useMemo(() => {
+    const list = rows.filter(r => {
+      if (acct !== 'All' && r.account !== acct) return false
+      if (level !== 'All' && r.alert_level !== level) return false
+      const st = derivePositionStatus(r)
+      if (quick === 'Needs Action') {
+        return st.kind === 'needs_attention' || st.kind === 'no_stop' || st.kind === 'partial'
+          || r.alert_level === 'red' || r.alert_level === 'amber'
+          || r.coverage === 'partial' || r.coverage === 'oversized'
+          || Boolean(r.trailing_should_be_active)
+      }
+      if (quick === 'Partial Coverage' && r.coverage !== 'partial' && r.coverage !== 'oversized') return false
+      if (quick === 'No Stop' && r.has_active_stop) return false
+      if (quick === 'All Protected') {
+        return st.kind === 'protected' || st.kind === 'monitored'
+      }
+      if (quick === 'Trailing Stops' && !(r.has_active_stop && r.is_trailing)) return false
+      if (quick === 'Trailing Eligible' && !r.trailing_should_be_active) return false
+      if (quick === 'High Heat' && !((r.heat_contribution_pct ?? 0) >= 1.5)) return false
+      if (quick === 'Regime Shift' && !r.regime_shift_detected) return false
+      return true
+    })
+    // Urgent first: no stop / partial / red, then amber, then protected
+    return [...list].sort((a, b) => {
+      const sa = derivePositionStatus(a).sort
+      const sb = derivePositionStatus(b).sort
+      if (sa !== sb) return sa - sb
+      return (b.dollars_at_risk || 0) - (a.dollars_at_risk || 0)
+    })
+  }, [rows, acct, level, quick])
+
+  const deskStats = useMemo(() => {
+    let needs = 0, partial = 0, protectedN = 0, noStop = 0, trailing = 0
+    let atRiskNeeds = 0
+    for (const r of rows) {
+      const st = derivePositionStatus(r)
+      if (st.kind === 'no_stop') {
+        noStop++; needs++; atRiskNeeds += r.dollars_at_risk || 0
+      } else if (st.kind === 'partial' || st.kind === 'needs_attention') {
+        needs++; atRiskNeeds += r.dollars_at_risk || 0
+      } else if (st.kind === 'review') {
+        needs++
+      } else if (st.kind === 'protected' || st.kind === 'monitored') {
+        protectedN++
+      }
+      if (r.coverage === 'partial' || r.coverage === 'oversized') partial++
+      if (r.is_trailing && r.has_active_stop) trailing++
+    }
+    return { needs, partial, protectedN, noStop, trailing, atRiskNeeds, positions: rows.length }
+  }, [rows])
 
   const [fidSync, setFidSync] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: '' })
 
@@ -551,225 +994,174 @@ export default function StopManagement({ onFocusHolding }: Props) {
             </div>
           )}
 
-          {/* Summary cards */}
-          <div style={{ display: 'flex', gap: terminalUi ? 6 : 9, flexWrap: 'wrap', marginBottom: terminalUi ? 8 : 12 }}>
-            <Card terminalUi={terminalUi} label="Total Open Risk" value={fmt$(summary.total_open_risk)} />
-            <Card terminalUi={terminalUi} label="Active Stops" value={`${summary.broker_stops_active ?? 0} / ${summary.positions ?? 0}`}
-              color={(summary.no_stop ?? 0) > 0 ? AMBER : GREEN} sub={`${summary.no_stop ?? 0} with no active stop`} />
-            <Card terminalUi={terminalUi} label="Red / Amber / Yellow" value={`${summary.red ?? 0} / ${summary.amber ?? 0} / ${summary.yellow ?? 0}`}
-              color={(summary.red ?? 0) > 0 ? RED : (summary.amber ?? 0) > 0 ? AMBER : GREEN} />
-            <Card terminalUi={terminalUi} label="Portfolio Heat" value={`${(summary.portfolio_heat_pct ?? 0).toFixed(1)}% / ${summary.heat_cap ?? 5}%`}
-              color={(summary.portfolio_heat_pct ?? 0) > (summary.heat_cap ?? 5) ? RED : TEXT0} />
-            <Card terminalUi={terminalUi} label="Trailing Not Active" value={String(summary.trailing_not_active ?? 0)} color={(summary.trailing_not_active ?? 0) > 0 ? AMBER : TEXT0} />
-            <Card terminalUi={terminalUi} label="Street Coverage" value={`${summary.with_street_consensus ?? 0} / ${summary.positions ?? 0}`}
-              color={(summary.with_street_consensus ?? 0) > 0 ? BLUE : MUTED}
-              sub={`${summary.price_above_street ?? 0} price above · ${summary.stop_over_consensus ?? 0} stop above mean`} />
-            <Card terminalUi={terminalUi} label="Regime Shifts" value={String((summary as any).regime_shifts ?? 0)}
-              color={((summary as any).regime_shifts ?? 0) > 0 ? PURPLE : MUTED}
-              sub="Layer 4 tighten 0.5× ATR when Trending→Ranging" />
-            <Card terminalUi={terminalUi} label="Stop > Street Mean" value={String(summary.stop_over_consensus ?? 0)}
-              color={(summary.stop_over_consensus ?? 0) > 0 ? RED : GREEN}
-              sub="red/green badges in Street column (price + stop vs μ)" />
+          {/* Page header — desk summary */}
+          <div style={{
+            marginBottom: 12, padding: '12px 14px', borderRadius: 12,
+            border: '1px solid rgba(148,163,184,.16)',
+            background: 'linear-gradient(180deg, rgba(30,41,59,.55), rgba(15,23,42,.4))',
+          }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 900, color: TEXT0, letterSpacing: '-0.02em' }}>
+                  Stop Management desk
+                </div>
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>
+                  {loading ? 'Loading…' : `${deskStats.positions} positions`}
+                  {' · '}regime <b style={{ color: TEXT0 }}>{data?.regime_now ?? '—'}</b>
+                  {data?.cached ? ' · cached' : ''}
+                  {' · '}sorted by urgency
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                <button onClick={() => load(true)} style={{ fontSize: 12, fontWeight: 700, padding: '5px 11px', borderRadius: 7, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE }}>↻ Refresh</button>
+                <button onClick={() => void syncFidelityStops()} disabled={fidSync.busy} title="Re-apply Fidelity Rollover IRA GTC stops from config/fidelity_rollover_stops.json"
+                  style={{ fontSize: 12, fontWeight: 700, padding: '5px 11px', borderRadius: 7, cursor: fidSync.busy ? 'wait' : 'pointer', border: `1px solid ${PURPLE}`, background: `${PURPLE}18`, color: PURPLE }}>
+                  {fidSync.busy ? '⟳ Fidelity…' : '⟳ Fidelity GTC'}
+                </button>
+                <CloudLlmRunButtons processId="holding_protection_advisor_batch" lanePolicy="grok_only" batchLimit={6} onDone={() => load(true)} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Card terminalUi={terminalUi} label="Needs action" value={String(deskStats.needs)}
+                color={deskStats.needs > 0 ? AMBER : GREEN}
+                sub={deskStats.atRiskNeeds > 0 ? `${fmt$(deskStats.atRiskNeeds)} at risk on flagged` : 'all clear'} />
+              <Card terminalUi={terminalUi} label="Active stops" value={`${summary.broker_stops_active ?? 0} / ${deskStats.positions || summary.positions || 0}`}
+                color={(summary.no_stop ?? deskStats.noStop) > 0 ? AMBER : GREEN}
+                sub={`${deskStats.noStop || summary.no_stop || 0} with no stop`} />
+              <Card terminalUi={terminalUi} label="Partial / oversized" value={String(deskStats.partial)}
+                color={deskStats.partial > 0 ? AMBER : GREEN}
+                sub="size ≠ held shares" />
+              <Card terminalUi={terminalUi} label="Total open risk" value={fmt$(summary.total_open_risk)}
+                sub={`heat ${(summary.portfolio_heat_pct ?? 0).toFixed(1)}% / ${summary.heat_cap ?? 5}%`}
+                color={(summary.portfolio_heat_pct ?? 0) > (summary.heat_cap ?? 5) ? RED : TEXT0} />
+              <Card terminalUi={terminalUi} label="Trailing live" value={String(deskStats.trailing)}
+                color={GREEN}
+                sub={`${summary.trailing_not_active ?? 0} trail-eligible not active`} />
+              <Card terminalUi={terminalUi} label="Stoplight R/A/Y" value={`${summary.red ?? 0} / ${summary.amber ?? 0} / ${summary.yellow ?? 0}`}
+                color={(summary.red ?? 0) > 0 ? RED : (summary.amber ?? 0) > 0 ? AMBER : GREEN} />
+            </div>
+            {/* Color legend */}
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10, paddingTop: 10,
+              borderTop: '1px solid rgba(148,163,184,.12)', fontSize: 10.5, color: MUTED, alignItems: 'center',
+            }}>
+              <span style={{ fontWeight: 800, color: TEXT0, letterSpacing: '.04em', fontSize: 9.5, textTransform: 'uppercase' }}>Status</span>
+              {[
+                { c: GREEN, l: 'PROTECTED', w: 'Live stop aligned with held size' },
+                { c: AMBER, l: 'PARTIAL / REVIEW', w: 'Undersized stop or moderate concern' },
+                { c: RED, l: 'NO STOP / ATTENTION', w: 'Unprotected or misaligned — act first' },
+                { c: BLUE, l: 'MONITORED', w: 'Fidelity/software stop, not Schwab GTC' },
+              ].map(x => (
+                <span key={x.l} title={x.w} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'help' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: x.c }} />
+                  <b style={{ color: x.c, fontSize: 10 }}>{x.l}</b>
+                  <span style={{ opacity: 0.85 }}>— {x.w}</span>
+                </span>
+              ))}
+            </div>
+            {fidSync.msg && <div style={{ fontSize: 11, marginTop: 6, color: fidSync.msg.startsWith('✓') ? GREEN : RED }}>{fidSync.msg}</div>}
           </div>
 
-          {/* Next actions — plain-English, prioritized by real risk reduction (STOP_METHODOLOGY.md-aligned) */}
-          {Array.isArray((summary as any).next_actions) && (summary as any).next_actions.length > 0 && (
-            <div style={{ marginBottom: terminalUi ? 6 : 10, ...hubPanel(terminalUi), background: `${BLUE}10`, border: `1px solid ${BLUE}44` }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: BLUE, textTransform: 'uppercase', letterSpacing: .3, marginBottom: 5 }}>Next actions — what to do now</div>
-              {((summary as any).next_actions as NextAction[]).map((na, i) => (
-                <div key={i} style={{ fontSize: 12.5, color: TEXT0, lineHeight: 1.5, display: 'flex', gap: 7, alignItems: 'baseline', marginBottom: 3 }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, color: na.alert_level === 'red' ? RED : na.alert_level === 'amber' ? AMBER : MUTED }}>{i + 1}.</span>
-                  <span><b>{na.symbol}</b> <span style={{ color: MUTED }}>({na.account})</span> — {na.action}
-                    {na.projection ? <span style={{ color: MUTED, fontSize: 11.5 }}> · {na.projection}</span> : null}</span>
+          {/* Global actions needed */}
+          {(deskStats.needs > 0 || (Array.isArray((summary as any).next_actions) && (summary as any).next_actions.length > 0)) && (
+            <div style={{
+              marginBottom: 12, borderRadius: 10, padding: '10px 12px',
+              background: `${AMBER}0d`, border: `1px solid ${AMBER}40`,
+            }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: AMBER, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+                Actions needed — work top-down
+              </div>
+              {Array.isArray((summary as any).next_actions) && (summary as any).next_actions.length > 0 ? (
+                ((summary as any).next_actions as NextAction[]).slice(0, 8).map((na, i) => (
+                  <div key={i} style={{ fontSize: 12.5, color: TEXT0, lineHeight: 1.5, display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 900, color: na.alert_level === 'red' ? RED : na.alert_level === 'amber' ? AMBER : MUTED, minWidth: 14 }}>{i + 1}.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const row = rows.find(x => x.symbol === na.symbol && x.account === na.account)
+                        if (row) openAdjust(row, true)
+                      }}
+                      style={{
+                        background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+                        color: TEXT0, fontSize: 12.5,
+                      }}
+                    >
+                      <b style={{ color: BLUE }}>{na.symbol}</b>
+                      <span style={{ color: MUTED }}> ({na.account})</span>
+                      {' — '}{na.action}
+                      {na.projection ? <span style={{ color: MUTED, fontSize: 11 }}> · {na.projection}</span> : null}
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div style={{ fontSize: 12, color: MUTED }}>
+                  {deskStats.needs} holding{deskStats.needs === 1 ? '' : 's'} need review — use filter <b style={{ color: AMBER }}>Needs Action</b> below.
                 </div>
-              ))}
+              )}
             </div>
           )}
 
           {/* Filters */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
-            {QUICK.map(qv => (
-              <button key={qv} onClick={() => setQuick(qv)} style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
-                border: `1px solid ${quick === qv ? BLUE : 'rgba(148,163,184,.3)'}`, background: quick === qv ? `${BLUE}18` : 'transparent', color: quick === qv ? BLUE : MUTED }}>{qv}</button>
-            ))}
-            <span style={{ width: 8 }} />
-            <select value={acct} onChange={e => setAcct(e.target.value)} style={{ fontSize: 12, padding: '4px 6px', borderRadius: 6, background: 'var(--bg2)', color: TEXT0, border: '1px solid rgba(148,163,184,.3)' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+            {QUICK.map(qv => {
+              const active = quick === qv
+              const urgent = qv === 'Needs Action' || qv === 'No Stop' || qv === 'Partial Coverage'
+              return (
+                <button
+                  key={qv}
+                  onClick={() => setQuick(qv)}
+                  style={{
+                    fontSize: 11.5, fontWeight: 800, padding: '5px 11px', borderRadius: 7, cursor: 'pointer',
+                    border: `1px solid ${active ? (urgent ? AMBER : BLUE) : 'rgba(148,163,184,.28)'}`,
+                    background: active ? (urgent ? `${AMBER}18` : `${BLUE}18`) : 'transparent',
+                    color: active ? (urgent ? AMBER : BLUE) : MUTED,
+                  }}
+                >
+                  {qv}
+                </button>
+              )
+            })}
+            <span style={{ width: 4 }} />
+            <select value={acct} onChange={e => setAcct(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 7, background: 'var(--bg2)', color: TEXT0, border: '1px solid rgba(148,163,184,.3)' }}>
               {accounts.map(a => <option key={a} value={a}>{a === 'All' ? 'All accounts' : a}</option>)}
             </select>
-            <select value={level} onChange={e => setLevel(e.target.value)} style={{ fontSize: 12, padding: '4px 6px', borderRadius: 6, background: 'var(--bg2)', color: TEXT0, border: '1px solid rgba(148,163,184,.3)' }}>
-              {['All', 'red', 'amber', 'yellow'].map(l => <option key={l} value={l}>{l === 'All' ? 'All levels' : l}</option>)}
+            <select value={level} onChange={e => setLevel(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', borderRadius: 7, background: 'var(--bg2)', color: TEXT0, border: '1px solid rgba(148,163,184,.3)' }}>
+              {['All', 'red', 'amber', 'yellow'].map(l => <option key={l} value={l}>{l === 'All' ? 'All stoplights' : l}</option>)}
             </select>
-            <button onClick={() => load(true)} style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE }}>↻ Refresh</button>
-            <button onClick={() => void syncFidelityStops()} disabled={fidSync.busy} title="Re-apply Fidelity Rollover IRA GTC stops from config/fidelity_rollover_stops.json into manual_broker_stops. SnapTrade does not pull open stop orders — run after you change stops at Fidelity. Cron: 10:05 + 16:05 ET trading days."
-              style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: fidSync.busy ? 'wait' : 'pointer', border: `1px solid ${PURPLE}`, background: `${PURPLE}18`, color: PURPLE, whiteSpace: 'nowrap' }}>
-              {fidSync.busy ? '⟳ Fidelity stops…' : '⟳ Sync Fidelity GTC stops'}
-            </button>
-            {fidSync.msg && <span style={{ fontSize: 11, color: fidSync.msg.startsWith('✓') ? GREEN : RED }}>{fidSync.msg}</span>}
-            <CloudLlmRunButtons
-              processId="holding_protection_advisor_batch"
-              lanePolicy="grok_only"
-              batchLimit={6}
-              onDone={() => load(true)}
-            />
-            <span style={{ fontSize: 11, color: MUTED }}>{loading ? 'loading…' : `${filtered.length} of ${rows.length} · regime ${data?.regime_now ?? '—'}${data?.cached ? ' · cached' : ''}`}</span>
+            <span style={{ fontSize: 11, color: MUTED, marginLeft: 4 }}>
+              {loading ? 'loading…' : `Showing ${filtered.length} of ${rows.length}`}
+            </span>
           </div>
-          <div style={{ fontSize: 10, color: MUTED, marginBottom: 8, lineHeight: 1.45 }}>
-            <b style={{ color: PURPLE }}>Fidelity GTC stops</b> are operator-recorded (SnapTrade syncs positions only) — auto re-applied <b>10:05 + 16:05 ET</b> on trading days; edit <code style={{ fontSize: 9.5 }}>config/fidelity_rollover_stops.json</code> when you place/cancel stops at Fidelity.
-            {' '}Periodic advisories: <b style={{ color: PURPLE }}>▶ Grok (top 6)</b> runs priority holdings via free OAuth — stays Manual.
+          <div style={{ fontSize: 10, color: MUTED, marginBottom: 12, lineHeight: 1.45 }}>
+            Primary buttons stage Schwab 2FA or Fidelity manual tickets — nothing submits without approval.
+            {' '}<b style={{ color: PURPLE }}>Fidelity GTC</b> are operator-recorded (SnapTrade positions only).
           </div>
 
-          {/* Table */}
-          <div style={{ overflowX: 'auto', ...(terminalUi ? hubPanel(terminalUi) : { border: '1px solid rgba(148,163,184,.18)', borderRadius: 9 }) }}>
-            <table className={terminalUi ? 'cc-table-dense' : undefined} style={{ width: '100%', borderCollapse: 'collapse', fontSize: terminalUi ? 10 : 12.5 }}>
-              <thead>
-                <tr style={{ color: MUTED, textAlign: 'left', background: 'rgba(15,23,42,.5)' }}>
-                  {['Alert', 'Symbol · Account', 'Route', 'Regime', 'Active stop', 'Stop (broker / planned)', 'Street (μ)', 'Distance', 'Unreal.', '$ at risk', ''].map(h =>
-                    <th key={h} style={{ padding: '8px 9px', fontWeight: 800, whiteSpace: 'nowrap' }}>{h}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r, i) => (
-                  <Fragment key={`${r.symbol}-${r.account}-${i}`}>
-                  <tr style={{ borderTop: '1px solid rgba(148,163,184,.12)', color: TEXT0 }}>
-                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}>
-                      <Pill level={r.alert_level} thresholds={r.stoplight_thresholds_used} />
-                      {(() => { const w = scanWarnTitle(r); return w
-                        ? <span title={w} style={{ color: WL.signal.amber, fontWeight: 800, marginLeft: 5, cursor: 'help' }}>⚠</span>
-                        : null })()}
-                    </td>
-                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}><b>{r.symbol}</b><br /><span style={{ fontSize: 10.5, color: MUTED }}>{r.account}</span></td>
-                    <td style={{ padding: '7px 9px', color: MUTED, fontSize: 11 }}>{r.route}</td>
-                    <td style={{ padding: '7px 9px' }}><RegimeBadge r={r} /></td>
-                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap' }}>
-                      {r.has_active_stop
-                        ? <span style={{ color: GREEN, fontWeight: 700 }}>● {r.is_trailing ? 'TRAILING' : r.stop_type}<div style={{ fontSize: 9.5, color: MUTED, fontWeight: 400 }}>{SRC_LABEL[r.stop_source] || r.stop_source}</div></span>
-                        : <span style={{ color: AMBER }}>○ none<div style={{ fontSize: 9.5, color: MUTED }}>{r.planned_stop != null ? 'planned only' : '—'}</div></span>}
-                      {r.trailing_should_be_active ? <span style={{ color: AMBER }} title="trailing eligible but not active"> ⚠</span> : null}
-                      {(r.coverage === 'partial' || r.coverage === 'oversized') && r.stop_qty != null && (
-                        <div
-                          data-testid="sm-stop-size-badge"
-                          title={r.coverage === 'partial'
-                            ? `Stop covers only ${r.stop_qty} of ${r.qty} sh held — click Adjust → Update size via 2FA`
-                            : `Stop ${r.stop_qty} sh > held ${r.qty} — resize via 2FA`}
-                          style={{
-                            marginTop: 3, display: 'inline-block', fontSize: 9.5, fontWeight: 900, padding: '2px 6px', borderRadius: 4,
-                            color: r.coverage === 'oversized' ? RED : AMBER,
-                            background: r.coverage === 'oversized' ? 'rgba(239,68,68,.18)' : 'rgba(245,158,11,.18)',
-                            border: `1px solid ${r.coverage === 'oversized' ? RED : AMBER}`,
-                          }}
-                        >
-                          {r.coverage === 'partial' ? 'PARTIAL' : 'OVERSIZED'} · {r.stop_qty}/{r.qty} sh
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '7px 9px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                      <span style={{ color: r.broker_stop != null ? GREEN : MUTED }}>{fmtStop(r.broker_stop)}</span> / <span style={{ color: AMBER }}>{fmtStop(r.planned_stop)}</span>
-                      {r.trailing_trigger != null && (
-                        <div style={{ fontSize: 10, color: GREEN }} title="Trailing stop: ratchets up with price; shown at the current-equivalent trigger">
-                          trail {r.trail_pct}% (≈{fmtStop(r.trailing_trigger)})
-                        </div>
-                      )}
-                      {r.rec_source ? (
-                        <div style={{ fontSize: 9.5, color: /grok|gpt|claude/i.test(r.rec_model || '') ? PURPLE : MUTED }}
-                          title={r.rec_rationale || undefined}>
-                          rec: {r.trail_recommended ? 'trail' : 'fixed'} · {r.rec_source.split(' · ')[0]}
-                        </div>
-                      ) : null}
-                      {r.divergence ? <div style={{ fontSize: 10, color: r.has_active_stop ? RED : MUTED }}>{r.divergence}</div> : null}
-                    </td>
-                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', fontSize: 11, fontFamily: 'monospace', minWidth: 118 }}>
-                      {r.consensus_target_mean != null ? (() => {
-                        const pricePct = priceDeltaPct(r)
-                        const stopPct = stopDeltaPct(r)
-                        const priceUsd = r.price_vs_consensus_dollars ?? (
-                          r.current_price != null ? Math.round((r.current_price - r.consensus_target_mean!) * 100) / 100 : null
-                        )
-                        return (
-                          <div title="Yahoo Street consensus (pro analyst pills). Red = above μ · Green = below μ.">
-                            <div style={{ fontWeight: 900, color: TEXT0, fontSize: 12 }}>
-                              μ {fmtStop(r.consensus_target_mean)}
-                            </div>
-                            {(r.consensus_target_low != null || r.consensus_target_high != null) && (
-                              <div style={{ fontSize: 9.5, color: MUTED }}>
-                                {fmtStop(r.consensus_target_low)} – {fmtStop(r.consensus_target_high)}
-                              </div>
-                            )}
-                            <StreetGauge
-                              price={r.current_price}
-                              low={r.consensus_target_low}
-                              high={r.consensus_target_high}
-                              mean={r.consensus_target_mean}
-                            />
-                            <DeltaBadge label="Price" pct={pricePct} color={priceVsStreetColor(pricePct, r.price_above_consensus)} />
-                            {priceUsd != null && pricePct != null && (
-                              <div style={{ fontSize: 9, color: MUTED, marginTop: 1 }}>
-                                {priceUsd >= 0 ? '+' : ''}{fmtStop(priceUsd)} vs μ
-                              </div>
-                            )}
-                            <DeltaBadge label="Stop" pct={stopPct} color={stopVsStreetColor(stopPct, r.stop_above_consensus)} />
-                            {r.consensus_analysts ? (
-                              <div style={{ fontSize: 9.5, color: MUTED, marginTop: 3 }}>
-                                {r.consensus_analysts} analysts{r.consensus_stale ? ' · stale' : ''}
-                              </div>
-                            ) : null}
-                          </div>
-                        )
-                      })() : (
-                        <span style={{ color: MUTED, fontSize: 10 }} title="No professional analyst coverage (ETFs/mutual funds)">no Street</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', fontSize: 11 }}>
-                      {r.distance_pct != null ? `${r.distance_pct}%` : '—'}{r.distance_atr != null ? ` · ${r.distance_atr}ATR` : ''}{r.distance_r != null ? ` · ${r.distance_r}R` : ''}
-                    </td>
-                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', color: (r.unrealized_dollars ?? 0) >= 0 ? GREEN : RED }}>{r.unrealized_dollars != null ? fmt$(r.unrealized_dollars) : '—'}</td>
-                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', fontWeight: 700 }}>{fmt$(r.dollars_at_risk)}</td>
-                    <td style={{ padding: '7px 9px', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
-                      {r.trailing_should_be_active && (
-                        <button onClick={() => openAdjust(r, true)}
-                          title={`One-click: stages the advised ${r.trail_pct ?? ''}% trailing stop and goes straight to ${r.account.startsWith('fidelity') ? 'a manual ticket' : '2FA approve'}`}
-                          style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', marginRight: 5,
-                            border: `1px solid ${GREEN}`, background: `${GREEN}20`, color: GREEN, whiteSpace: 'nowrap' }}>
-                          🔒 Trail {r.account.startsWith('fidelity') ? 'manual' : '2FA'}
-                        </button>
-                      )}
-                      {!r.has_active_stop && r.planned_stop != null && !r.trailing_should_be_active && (
-                        <button onClick={() => openAdjust(r, true)}
-                          title={`One-click: stages the advised ${fmtStop(r.planned_stop)} stop and goes straight to ${r.account.startsWith('fidelity') ? 'a manual ticket' : '2FA approve'}`}
-                          style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', marginRight: 5, whiteSpace: 'nowrap',
-                            border: `1px solid ${AMBER}`, background: `${AMBER}20`, color: AMBER }}>
-                          🔒 Set {r.account.startsWith('fidelity') ? 'manual' : '2FA'} {fmtStop(r.planned_stop)}
-                        </button>
-                      )}
-                      {(r.coverage === 'partial' || r.coverage === 'oversized') && (
-                        <button
-                          onClick={() => openAdjust(r, true)}
-                          title={`Replace stop to full ${Math.floor(r.qty)} sh via same 2FA path (cancel + re-place)`}
-                          style={{
-                            fontSize: 11, fontWeight: 900, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', marginRight: 5,
-                            border: `1px solid ${AMBER}`, background: `${AMBER}22`, color: AMBER, whiteSpace: 'nowrap',
-                          }}
-                        >
-                          Update size → {Math.floor(r.qty)}
-                        </button>
-                      )}
-                      <button onClick={() => openAdjust(r, false)} style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE, whiteSpace: 'nowrap' }}>Adjust stop</button>
-                    </td>
-                  </tr>
-                  {rowHasReasons(r) && (
-                    <tr key={`${r.symbol}-${r.account}-${i}-reasons`} style={{ borderTop: 'none', background: 'rgba(15,23,42,.4)' }}>
-                      <td colSpan={COLS - 1} style={{ padding: '2px 9px 8px 24px', borderBottom: '1px solid rgba(148,163,184,.1)' }}>
-                        <ReasonsSubRow r={r} />
-                      </td>
-                      <td style={{ padding: '2px 9px 8px', borderBottom: '1px solid rgba(148,163,184,.1)' }} />
-                    </tr>
-                  )}
-                  </Fragment>
-                ))}
-                {!loading && filtered.length === 0 && (
-                  <tr><td colSpan={COLS} style={{ padding: 20, textAlign: 'center', color: MUTED }}>No positions match this filter.</td></tr>
-                )}
-              </tbody>
-            </table>
+          {/* Holding cards */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {filtered.map((r, i) => {
+              const key = `${r.symbol}:${r.account}:${i}`
+              const exp = Boolean(expandedKeys[key])
+              return (
+                <HoldingStopCard
+                  key={key}
+                  r={r}
+                  expanded={exp}
+                  onToggle={() => setExpandedKeys(prev => ({ ...prev, [key]: !prev[key] }))}
+                  onPrimary={(auto) => openAdjust(r, auto)}
+                  onSecondary={() => openAdjust(r, false)}
+                  onFocus={onFocusHolding}
+                />
+              )
+            })}
+            {!loading && filtered.length === 0 && (
+              <div style={{
+                padding: 28, textAlign: 'center', color: MUTED, borderRadius: 12,
+                border: '1px dashed rgba(148,163,184,.25)',
+              }}>
+                No positions match this filter.
+              </div>
+            )}
           </div>
 
           {adjust && <AdjustModal row={adjust} autoStage={autoStage} onClose={() => { setAdjust(null); setAutoStage(false) }} onFocusHolding={onFocusHolding} />}
