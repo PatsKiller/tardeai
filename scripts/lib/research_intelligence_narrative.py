@@ -248,6 +248,55 @@ def _from_stored_narrative(ev: Any) -> dict[str, Any] | None:
     return n
 
 
+def _attach_advisory(
+    base: dict[str, Any],
+    *,
+    title: str,
+    summary: str,
+    thesis: str | None,
+    cats: list[str],
+    symbol: str | None,
+    is_held: bool,
+    research_type: str | None,
+    portfolio: Any = None,
+) -> dict[str, Any]:
+    """Merge portfolio-aware ticker/sizing recommendations into narrative dict."""
+    try:
+        from lib.research_intelligence_portfolio import build_advisory
+        adv = build_advisory(
+            title=title,
+            summary=summary,
+            thesis=thesis,
+            cats=cats,
+            primary=(cats[0] if cats else "") or "",
+            symbol=symbol,
+            is_held=is_held,
+            research_type=research_type,
+            portfolio=portfolio,
+        )
+    except Exception:
+        return base
+    base["investment_implications"] = adv.get("investment_implications")
+    base["ticker_recommendations"] = adv.get("ticker_recommendations") or []
+    base["sizing_guidance"] = adv.get("sizing_guidance")
+    base["risk_caveat"] = adv.get("risk_caveat")
+    base["portfolio_snapshot"] = adv.get("portfolio_snapshot")
+    # Prefer portfolio-aware next_action unless topic_monitor needs ingest first
+    if research_type == "topic_monitor":
+        base["next_action"] = base.get("next_action") or adv.get("next_action")
+    else:
+        base["next_action"] = adv.get("next_action") or base.get("next_action")
+    # Elevate takeaways with top ticker line
+    ticks = base.get("ticker_recommendations") or []
+    if ticks and isinstance(base.get("key_takeaways"), list):
+        line = "Tickers: " + ", ".join(
+            f"{t.get('symbol')} ({t.get('role')})" for t in ticks[:4] if t.get("symbol")
+        )
+        if line not in base["key_takeaways"]:
+            base["key_takeaways"] = [line] + list(base["key_takeaways"])[:4]
+    return base
+
+
 def enrich_narrative(
     *,
     title: str,
@@ -264,6 +313,7 @@ def enrich_narrative(
     research_type: str | None = None,
     evidence_json: Any = None,
     source_system: str | None = None,
+    portfolio: Any = None,
 ) -> dict[str, Any]:
     """Return article-style narrative fields for a feed item."""
     cats = cats or []
@@ -274,7 +324,7 @@ def enrich_narrative(
             paras = [str(p) for p in overview if p]
         else:
             paras = _paras_from_text(str(overview), max_paras=4, max_chars=1600)
-        return {
+        out = {
             "lede": stored.get("lede") or _lede(title, summary or str(overview), cats),
             "executive_summary": paras,
             "key_takeaways": stored.get("key_takeaways") or _takeaways(summary, thesis, key_questions),
@@ -291,6 +341,10 @@ def enrich_narrative(
             "narrative_source": "stored_llm",
             "reading_minutes": max(1, min(6, len(" ".join(paras)) // 500 or 1)),
         }
+        return _attach_advisory(
+            out, title=title, summary=summary, thesis=thesis, cats=cats,
+            symbol=symbol, is_held=is_held, research_type=research_type, portfolio=portfolio,
+        )
 
     body_src = " ".join(x for x in [summary, thesis] if x)
     # Topic monitors: always write a proper desk brief (metadata is not an article)
@@ -345,7 +399,7 @@ def enrich_narrative(
         )
 
     lede_src = body_src if research_type == "topic_monitor" else (summary or body_src)
-    return {
+    out = {
         "lede": _lede(title, lede_src, cats),
         "executive_summary": paras,
         "key_takeaways": takeaways,
@@ -356,3 +410,7 @@ def enrich_narrative(
         "narrative_source": "synthesized",
         "reading_minutes": max(1, min(5, sum(len(p) for p in paras) // 450 or 1)),
     }
+    return _attach_advisory(
+        out, title=title, summary=summary, thesis=thesis, cats=cats,
+        symbol=symbol, is_held=is_held, research_type=research_type, portfolio=portfolio,
+    )

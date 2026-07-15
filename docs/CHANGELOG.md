@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-15 — Research Intelligence v2.2 (portfolio-aware tickers & sizing)
+
+Advisory upgrade: briefs now cite **live holdings weights** and suggest specific tickers/sizing with risk caveats.
+
+- **`research_intelligence_portfolio.py`** — aggregate household weights, concentration flags, theme sleeves.
+- **Advisory fields** on every item: `investment_implications`, `ticker_recommendations`, `sizing_guidance`, `risk_caveat`, `portfolio_snapshot`.
+- **Next step** prefers portfolio-aware CTAs (trim SCHG to fund theme, protect DXCM stop, income sleeve vs IRMAA, etc.).
+- **UI** — expanded Recommended next step strip (ticker chips + sizing); Book weights rail.
+- **Docs** — `RESEARCH_INTELLIGENCE_V2_2_PORTFOLIO_ADVISORY.md`.
+
 ## 2026-07-15 — Research Intelligence v2.1 (narrative quality + editorial UI)
 
 Major UX/content upgrade so the desk reads like financial research, not a DB browser.

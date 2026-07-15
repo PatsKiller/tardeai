@@ -404,6 +404,7 @@ def _item_base(
     evidence_json: Any = None,
 ) -> dict[str, Any]:
     from lib.research_intelligence_narrative import enrich_narrative
+    from lib.research_intelligence_portfolio import load_portfolio_context
 
     is_arch = (status or "").lower() == "archived"
     tier = freshness_tier(age, is_archived=is_arch, policy=policy)
@@ -415,6 +416,7 @@ def _item_base(
     fb = feedback or {}
     sent = _sentiment(blob)
     need_r = needs_refresh(age, cadence) and not is_arch
+    port = load_portfolio_context()
     narrative = enrich_narrative(
         title=title,
         summary=summary or "",
@@ -427,6 +429,7 @@ def _item_base(
         data_gaps=gaps,
         actionability=actionability,
         needs_refresh=need_r,
+        portfolio=port,
         research_type=research_type,
         evidence_json=evidence_json,
         source_system=source_system,
@@ -477,6 +480,12 @@ def _item_base(
         "next_action_detail": nxt.get("detail"),
         "narrative_source": narrative.get("narrative_source"),
         "reading_minutes": narrative.get("reading_minutes") or 1,
+        # Portfolio-aware advisory
+        "investment_implications": narrative.get("investment_implications"),
+        "ticker_recommendations": narrative.get("ticker_recommendations") or [],
+        "sizing_guidance": narrative.get("sizing_guidance"),
+        "risk_caveat": narrative.get("risk_caveat"),
+        "portfolio_snapshot": narrative.get("portfolio_snapshot"),
     }
     if extra:
         # Merge key_questions carefully
@@ -831,9 +840,12 @@ def build_feed(
     arch_n = sum(1 for i in page if i.get("is_archived"))
     star_n = sum(1 for i in page if i.get("starred"))
 
+    from lib.research_intelligence_portfolio import load_portfolio_context
+    port_ctx = load_portfolio_context()
+
     return {
         "ok": True,
-        "version": "2.1.3",
+        "version": "2.2",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -877,10 +889,15 @@ def build_feed(
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2.1.3 — income/retirement drawdown is retirement (not risk); "
-            "stop noise demoted on default desk; chip counts = full universe. "
-            "Filter Risk category to focus on stops/heat."
+            "Research Intelligence v2.2 — portfolio-aware tickers & sizing from live holdings weights; "
+            "investment implications + risk caveats; stop noise demoted on default desk."
         ),
+        "portfolio_context": {
+            "total_mv": port_ctx.get("total_mv"),
+            "top": port_ctx.get("top") or [],
+            "sleeves": port_ctx.get("sleeves") or {},
+            "flags": port_ctx.get("flags") or [],
+        },
     }
 
 

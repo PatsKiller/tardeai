@@ -87,6 +87,8 @@
 ### Research Intelligence (CC v3)
 | Document | Purpose | Status |
 |----------|---------|--------|
+| `docs/architecture/RESEARCH_INTELLIGENCE_V2_2_PORTFOLIO_ADVISORY.md` | **RI v2.2** — portfolio-aware tickers, sizing vs live weights, risk caveats | Active (2026-07-15) |
+| `scripts/lib/research_intelligence_portfolio.py` | Holdings weight context + `build_advisory()` | Active (2026-07-15) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_1_NARRATIVE_UI.md` | **RI v2.1** — article-style narrative fields + editorial dashboard redesign | Active (2026-07-15) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2.md` | **Research Intelligence v2** — freshness/archive, retirement pillar, feedback, professional UI | Active (2026-07-15) |
 | `scripts/lib/research_intelligence_narrative.py` | Narrative enrichment (lede, summary paras, takeaways, CTA) | Active (2026-07-15) |

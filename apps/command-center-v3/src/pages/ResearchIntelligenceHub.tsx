@@ -63,6 +63,21 @@ type Item = {
   vote?: number | null
   operator_note?: string | null
   status?: string
+  investment_implications?: string
+  ticker_recommendations?: {
+    symbol?: string
+    role?: string
+    suggested_weight_pct?: string | null
+    rationale?: string
+  }[]
+  sizing_guidance?: string
+  risk_caveat?: string
+  portfolio_snapshot?: {
+    total_mv?: number
+    related_weights?: Record<string, number>
+    flags?: string[]
+    sleeves?: Record<string, number>
+  }
 }
 
 /* Soft editorial palette — pleasant, not alarm-heavy */
@@ -177,21 +192,86 @@ function FreshnessDot({ tier, label }: { tier?: string; label?: string }) {
   )
 }
 
+const ROLE_COLOR: Record<string, string> = {
+  add_candidate: C.income,
+  trim_candidate: C.bear,
+  hold_review: C.accent,
+  protect: C.stale,
+  plan: C.retire,
+}
+
 function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
   const label = item.next_action_label || item.next_action?.label || item.actionability || 'Read full analysis'
   const detail = item.next_action_detail || item.next_action?.detail || item.why_it_matters || ''
+  const ticks = item.ticker_recommendations || []
   return (
     <div style={{
-      marginTop: 2, padding: '10px 12px', borderRadius: 10,
-      background: C.ctaBg, border: `1px solid ${catColor}33`,
-      display: 'flex', flexDirection: 'column', gap: 4,
+      marginTop: 2, padding: '12px 14px', borderRadius: 12,
+      background: C.ctaBg, border: `1px solid ${catColor}44`,
+      display: 'flex', flexDirection: 'column', gap: 8,
+      boxShadow: `inset 0 0 0 1px ${catColor}12`,
     }}>
       <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.cta }}>
         Recommended next step
       </div>
-      <div style={{ fontSize: 13, fontWeight: 750, color: C.ink }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>{label}</div>
       {detail && (
-        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>{detail}</div>
+        <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>{detail}</div>
+      )}
+      {item.investment_implications && (
+        <div style={{ fontSize: 12, color: C.ink, lineHeight: 1.5 }}>
+          <span style={{ fontWeight: 750, color: catColor }}>Investment implications · </span>
+          {item.investment_implications}
+        </div>
+      )}
+      {ticks.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft }}>
+            Tickers & sizing
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {ticks.slice(0, 6).map((t, i) => {
+              const role = t.role || 'review'
+              const rc = ROLE_COLOR[role] || C.accent
+              return (
+                <div key={`${t.symbol}-${i}`} style={{
+                  border: `1px solid ${rc}44`, background: `${rc}12`, borderRadius: 8,
+                  padding: '6px 10px', minWidth: 120, maxWidth: 220,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 13, color: C.accent }}>
+                      {t.symbol}
+                    </span>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: rc, textTransform: 'uppercase' }}>
+                      {(role || '').replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                  {t.suggested_weight_pct && (
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginTop: 2 }}>
+                      {t.suggested_weight_pct}
+                    </div>
+                  )}
+                  {t.rationale && (
+                    <div style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.35, marginTop: 2 }}>
+                      {t.rationale}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      {item.sizing_guidance && (
+        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
+          <span style={{ fontWeight: 750, color: C.macro }}>Sizing · </span>
+          {item.sizing_guidance}
+        </div>
+      )}
+      {item.risk_caveat && (
+        <div style={{ fontSize: 11, color: C.soft, lineHeight: 1.4, fontStyle: 'italic' }}>
+          {item.risk_caveat}
+        </div>
       )}
     </div>
   )
@@ -951,6 +1031,22 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
 
         {/* Right rail */}
         <aside style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 12 }}>
+          {!!(data?.portfolio_context?.top?.length) && (
+            <RailCard title="Book weights" accent={C.income}>
+              <div style={{ fontSize: 11, color: C.soft, marginBottom: 6 }}>
+                ${(Number(data.portfolio_context.total_mv || 0) / 1e6).toFixed(2)}M household
+              </div>
+              {(data.portfolio_context.top as { symbol: string; weight_pct: number }[]).slice(0, 8).map(t => (
+                <div key={t.symbol} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0' }}>
+                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, color: C.accent }}>{t.symbol}</span>
+                  <span style={{ color: C.ink, fontWeight: 700 }}>{t.weight_pct}%</span>
+                </div>
+              ))}
+              {((data.portfolio_context.flags as string[]) || []).slice(0, 2).map((f: string) => (
+                <div key={f} style={{ fontSize: 11, color: C.stale, marginTop: 6, lineHeight: 1.4 }}>{f}</div>
+              ))}
+            </RailCard>
+          )}
           <RailCard title="Retirement pillar" accent={C.retire}>
             <RailStat label="Briefs in filter" value={String(stats.by_category?.retirement_tax ?? retStats?.count ?? '—')} />
             <RailStat label="Freshest" value={retStats?.freshest_h != null ? `${retStats.freshest_h}h` : '—'} />
