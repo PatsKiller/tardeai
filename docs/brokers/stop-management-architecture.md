@@ -101,13 +101,16 @@ engine advises stop ─▶ [Queue stop ★] ─▶ REQUEST ─▶ 2FA ─▶ LIV
   lives **inside `schwab_transport.place_order`** — one gate shared by the web confirm path and the
   Telegram `bkapprove` auto-fire, so no path can skip it. The duplicate-SELL-stop guard only skips the
   replace target when it is actually no longer live; a still-WORKING replace target blocks. A repeat DELETE
-  after a successful cancel is treated as idempotent (broker truth re-checked). Only an **app-placed
-  (pilot)** order is replaceable in-app — `open_trades_intelligence` stamps `pilot_placed` on the broker-stop
-  payload from `schwab_pilot_orders`, and the UI sends `replace_order_id` only for pilot orders (a manual
-  ToS stop routes to "cancel it in ToS"). Amber **Modify** button on the protected banner, pre-filled with
-  the current advised level. Regression tests: `tests/test_stop_replace_flow.py`.
+  after a successful cancel is treated as idempotent (broker truth re-checked). **Any live Schwab SELL
+  stop** with a broker `order_id` is replaceable in-app (pilot or manual ToS): the UI sends
+  `replace_order_id`, and `cancel_order_for_replace` cancels after verifying a live SELL STOP/TRAIL
+  (`allow_manual_protective` only on this path). `open_trades_intelligence` still stamps `pilot_placed`
+  for display. Amber **Modify** button on the protected banner, pre-filled with the current advised
+  level. Regression tests: `tests/test_stop_replace_flow.py`. Native Schwab PUT `replace_order` remains
+  FENCED (cancel-then-place only).
 - **Cancel** — `/api/v2/holdings/protective-stop/cancel` → `schwab_transport.cancel_order` (safe direction,
-  no 2FA). Refuses non-pilot orders (a manual ToS stop must be cancelled in ToS).
+  no 2FA). Standalone cancel still refuses non-pilot orders; use **Modify/replace** (2FA) to retire a
+  manual ToS stop via cancel-then-place.
 
 ---
 

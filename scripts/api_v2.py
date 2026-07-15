@@ -1979,6 +1979,110 @@ def _fib_analysis(price, high_pct, low_pct):
 from holding_proxies import HOLDING_PROXY_MAP as _HOLDING_PROXY_MAP
 
 
+# ── Share reconciliation (dividend reinvestment / broker drift) ─────────────────
+
+def _share_drift_list(query=None):
+    """GET /api/v2/holdings/share-drift — open (and active-snoozed) share drift tasks."""
+    try:
+        import share_reconciliation as sr
+        open_tasks = sr.list_open_drifts(include_snoozed=True)
+        # attach impact previews (lightweight)
+        for t in open_tasks:
+            try:
+                t["impact"] = sr.impact_preview(t["account_key"], t["symbol"])
+            except Exception:
+                t["impact"] = None
+        return {"ok": True, "count": len(open_tasks), "items": open_tasks}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "items": []}
+
+
+def _share_drift_history(query=None):
+    """GET /api/v2/holdings/share-reconciliation/history?account=&symbol=&limit="""
+    try:
+        import share_reconciliation as sr
+        q = query or {}
+        acct = (q.get("account") or [None])[0] if isinstance(q.get("account"), list) else q.get("account")
+        sym = (q.get("symbol") or [None])[0] if isinstance(q.get("symbol"), list) else q.get("symbol")
+        lim = q.get("limit") or 50
+        if isinstance(lim, list):
+            lim = lim[0]
+        return {"ok": True, "history": sr.history(acct, sym, int(lim or 50))}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "history": []}
+
+
+def _share_drift_impact(query=None):
+    """GET /api/v2/holdings/share-drift/impact?account=&symbol="""
+    try:
+        import share_reconciliation as sr
+        q = query or {}
+        acct = (q.get("account") or [None])[0] if isinstance(q.get("account"), list) else q.get("account")
+        sym = (q.get("symbol") or [None])[0] if isinstance(q.get("symbol"), list) else q.get("symbol")
+        if not (acct and sym):
+            return {"ok": False, "error": "account and symbol required"}
+        return sr.impact_preview(str(acct), str(sym))
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _share_drift_apply(body=None):
+    """POST /api/v2/holdings/share-drift/apply — set system_shares = broker (approval).
+
+    Body: {account, symbol, task_id?, source?, notes?, new_shares?}
+    """
+    try:
+        import share_reconciliation as sr
+        b = body or {}
+        acct = str(b.get("account") or b.get("account_key") or "").strip()
+        sym = str(b.get("symbol") or "").strip().upper()
+        if not (acct and sym):
+            return {"ok": False, "error": "account and symbol required"}
+        tid = b.get("task_id")
+        try:
+            tid = int(tid) if tid is not None else None
+        except (TypeError, ValueError):
+            tid = None
+        ns = b.get("new_shares")
+        try:
+            ns = float(ns) if ns is not None else None
+        except (TypeError, ValueError):
+            ns = None
+        return sr.apply_reconciliation(
+            account=acct, symbol=sym,
+            source=str(b.get("source") or "manual"),
+            notes=b.get("notes"),
+            reconciled_by=str(b.get("reconciled_by") or "operator"),
+            task_id=tid,
+            new_shares=ns,
+        )
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _share_drift_snooze(body=None):
+    """POST /api/v2/holdings/share-drift/snooze — body: {task_id, days: 1|7}"""
+    try:
+        import share_reconciliation as sr
+        b = body or {}
+        tid = int(b.get("task_id") or 0)
+        days = int(b.get("days") or 1)
+        if not tid:
+            return {"ok": False, "error": "task_id required"}
+        return sr.snooze_drift(tid, days=days, notes=b.get("notes"))
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _share_drift_detect(body=None):
+    """POST /api/v2/holdings/share-drift/detect — rescan holdings.json and open tasks."""
+    try:
+        import share_reconciliation as sr
+        return sr.detect_from_holdings_file()
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def portfolio_holdings():
     h = _load_json(STATE_DIR / "holdings.json") or {}
     ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
@@ -2247,6 +2351,14 @@ def portfolio_holdings():
             "name": (p.get("name") or "")[:40],
             "account": p.get("account", ""),
             "shares": _shares or p.get("shares", 0),
+            # Share reconciliation dual fields (optional; null-safe for older snapshots)
+            "system_shares": p.get("system_shares") if p.get("system_shares") is not None else (_shares or p.get("shares")),
+            "broker_actual_shares": p.get("broker_actual_shares"),
+            "share_drift": p.get("share_drift"),
+            "share_drift_status": p.get("share_drift_status"),
+            "share_drift_source": p.get("share_drift_source"),
+            "last_reconciled_at": p.get("last_reconciled_at"),
+            "last_reconciliation_source": p.get("last_reconciliation_source"),
             "price": _px,
             "current_price": _px,
             "price_source": _px_source,
@@ -29498,6 +29610,9 @@ ROUTES = {
     "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
+    "/api/v2/holdings/share-drift": lambda q=None: _share_drift_list(q),
+    "/api/v2/holdings/share-drift/impact": lambda q=None: _share_drift_impact(q),
+    "/api/v2/holdings/share-reconciliation/history": lambda q=None: _share_drift_history(q),
     "/api/v2/holdings/stop-readiness": lambda q=None: _stop_live_readiness(q),
     "/api/v2/stops/management": lambda q=None: _stops_management_api(q),
     "/api/v2/stops/audit": lambda q=None: _stops_audit_api(q),
@@ -30786,9 +30901,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
         if base_path == "/api/v2/holdings/protective-stop/cancel":
             # Stage 2c — cancel a LIVE protective stop from the Open Trades card (the "remove" control).
-            # Cancel is the SAFE direction (no 2FA; guard grants cancel under an armed pilot). Only orders
-            # this pilot placed (a schwab_pilot_orders row) can be cancelled here; a stop placed manually in
-            # thinkorswim must be cancelled in ToS (cancel_order refuses non-pilot orders). (2026-06-15)
+            # Cancel is the SAFE direction (no 2FA; guard grants cancel under an armed pilot). Standalone
+            # cancel still requires a pilot row. Replace of a manual ToS stop uses cancel_order_for_replace
+            # on the confirm/submit path (allow_manual_protective) after 2FA — not this endpoint.
             try:
                 b = body or {}
                 acct = str(b.get("account") or "").strip()
@@ -34375,6 +34490,27 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return (200 if res.get("ok") else 400), res
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/holdings/share-drift/apply":
+        try:
+            res = _share_drift_apply(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/holdings/share-drift/snooze":
+        try:
+            res = _share_drift_snooze(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/holdings/share-drift/detect":
+        try:
+            res = _share_drift_detect(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
 
     if method == "POST" and base_path == "/api/v2/snaptrade/trade/preflight":
         try:

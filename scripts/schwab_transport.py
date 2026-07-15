@@ -13,7 +13,8 @@ but every call passes the FULL stack before any HTTP: committed pilot account al
 IRA keys raise unconditionally) → broker_accounts.api_write_enabled (DB) → execution_guard.require()
 (canary envelope → standing locks → pilot 5-order cap → per-trade 2FA web+telegram). A correlation row
 is persisted BEFORE the POST (Schwab does not dedupe — timeout ⇒ reconcile via GET before any retry).
-replace_order remains FENCED (NotProvenWrite) — no replace in the pilot; cancel + new order instead.
+replace_order remains FENCED (NotProvenWrite) — no native Schwab PUT replace; cancel-then-place instead
+(including verified live MANUAL ToS SELL stops when replace_order_id is set after operator 2FA).
 
 LIVE = NOT_PROVEN until credentials exist (SCHWAB_APP_KEY/SECRET/CALLBACK). Without them build_client()
 returns NOT_PROVEN and every read returns degraded. The NORMALIZERS are pure functions proven against
@@ -142,7 +143,10 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     _is_stop_order = "STOP" in str(order_spec.get("orderType", "")).upper() or "TRAIL" in str(order_spec.get("orderType", "")).upper()
     _replace_oid = str(ev.get("replace_order_id") or "").strip()
     if _replace_oid and _is_sell_leg and _is_stop_order and _symbol:
-        _cancel_res = cancel_order_for_replace(account_key, _replace_oid, verify=True)
+        # Cancel-then-place: works for pilot-placed AND verified live manual (ToS) SELL stops.
+        # allow_manual_protective is only on this replace path (standalone cancel stays pilot-only).
+        _cancel_res = cancel_order_for_replace(
+            account_key, _replace_oid, verify=True, expected_symbol=_symbol)
         if not _cancel_res.get("ok"):
             _err = (_cancel_res.get("error")
                     or f"could not confirm cancel of existing stop #{_replace_oid}")
@@ -341,8 +345,56 @@ def _order_status_from_raw(account_key: str, broker_order_id: str) -> str | None
     return None
 
 
+_LIVE_STOP_STATES = (
+    "WORKING", "AWAITING_STOP_CONDITION", "PENDING_ACTIVATION", "QUEUED", "ACCEPTED",
+    "AWAITING_MANUAL_REVIEW",
+)
+
+
+def _describe_live_sell_stop(account_key, broker_order_id, expected_symbol: str | None = None) -> dict | None:
+    """Return {order_id, symbol, qty, status, order_type} if broker_order_id is a live SELL STOP/TRAIL.
+
+    Raises NotProvenWrite when the broker order read is degraded (must not look like "order not found").
+    Returns None only when the read succeeded and the order is not a live SELL stop.
+    """
+    want = str(broker_order_id or "").strip()
+    if not want:
+        return None
+    raw = get_orders_raw(account_key)
+    if isinstance(raw, dict) and str(raw.get("status", "")).upper() in (
+            "NOT_PROVEN", "ERROR", "NEEDS_ACCOUNT_HASH", "DEGRADED"):
+        raise NotProvenWrite(
+            f"cannot verify order {want} on {account_key}: broker order read is "
+            f"{raw.get('status')} — refuse non-pilot cancel")
+    orders = raw if isinstance(raw, list) else ((raw.get("orders") if isinstance(raw, dict) else []) or [])
+    want_sym = (expected_symbol or "").strip().upper() or None
+    for o in (orders if isinstance(orders, list) else []):
+        if str(o.get("orderId") or "") != want:
+            continue
+        st = str(o.get("status") or "").upper()
+        if st not in _LIVE_STOP_STATES:
+            return None
+        ot = str(o.get("orderType") or "").upper()
+        if "STOP" not in ot and "TRAIL" not in ot:
+            return None
+        ol = (o.get("orderLegCollection") or [{}])[0]
+        instr = str(ol.get("instruction") or "").upper()
+        if instr not in ("SELL", "SELL_SHORT"):
+            return None
+        sym = str((ol.get("instrument") or {}).get("symbol") or "").upper()
+        if want_sym and sym and sym != want_sym:
+            return None
+        try:
+            qty = float(ol.get("quantity") or o.get("quantity") or 1)
+        except (TypeError, ValueError):
+            qty = 1.0
+        return {"order_id": want, "symbol": sym or (want_sym or "UNKNOWN"),
+                "qty": qty, "status": st, "order_type": ot}
+    return None
+
+
 def verify_order_canceled(account_key, broker_order_id, *, max_attempts: int = 5, sleep_sec: float = 1.0) -> dict:
-    """Poll Schwab until a pilot order reaches a terminal cancel state (or disappears from open orders)."""
+    """Poll Schwab until an order reaches a terminal cancel state (or disappears from open orders)."""
     import time
     want = str(broker_order_id or "").strip()
     if not want:
@@ -360,9 +412,12 @@ def verify_order_canceled(account_key, broker_order_id, *, max_attempts: int = 5
 
 
 def cancel_order_for_replace(account_key, broker_order_id, *, verify: bool = True,
-                             max_attempts: int = 5, sleep_sec: float = 1.0) -> dict:
-    """Cancel a pilot protective stop and optionally verify cancellation before a replace submit."""
-    result = cancel_order(account_key, broker_order_id)
+                             max_attempts: int = 5, sleep_sec: float = 1.0,
+                             expected_symbol: str | None = None) -> dict:
+    """Cancel a live protective stop (pilot or verified manual ToS) before a replace submit."""
+    result = cancel_order(account_key, broker_order_id,
+                          allow_manual_protective=True,
+                          expected_symbol=expected_symbol)
     if result.get("status") != "cancel_requested":
         result["ok"] = False
         result["error"] = result.get("error") or f"cancel failed (HTTP {result.get('http_status')})"
@@ -379,32 +434,72 @@ def cancel_order_for_replace(account_key, broker_order_id, *, verify: bool = Tru
     return result
 
 
-def cancel_order(account_key, broker_order_id):
-    """Stage 2b pilot cancel — the safe direction. Same structural asserts + guard (no 2FA for cancel)."""
+def cancel_order(account_key, broker_order_id, *, allow_manual_protective: bool = False,
+                 expected_symbol: str | None = None):
+    """Stage 2b cancel — safe direction (no 2FA for standalone cancel).
+
+    Default: only pilot-placed orders (schwab_pilot_orders row).
+    When allow_manual_protective=True (replace path only): also cancel a broker-verified live
+    SELL STOP/TRAIL that was placed in ToS — operator already 2FA'd the replacement place.
+    """
+    import logging as _logging
     from brokers.execution_guard import require
     from brokers.order_intent import OrderIntent, Instrument, Direction, EntrySpec, EntryMethod, Quantity
-    conn = _pilot_preconditions(account_key)
+    _log = _logging.getLogger("schwab_transport")
+    # Protective replace may target IRA accounts when IRA_PROTECTIVE is armed; use that envelope
+    # when allowing manual protective cancels. Standalone pilot cancel keeps the canary allowlist.
+    precond_kind = "protective_stop" if allow_manual_protective else "canary"
+    oid = str(broker_order_id)
+    # Resolve manual live-stop OUTSIDE a DB transaction so broker HTTP cannot hold row locks
+    # (schwab_pilot_orders lock timeouts were observed under concurrent live-stops reads).
+    live = None
+    if allow_manual_protective:
+        live = _describe_live_sell_stop(account_key, oid, expected_symbol=expected_symbol)
+    conn = _pilot_preconditions(account_key, precond_kind)
     cur = conn.cursor()
     _pilot_ensure_table(cur)
     cur.execute("SELECT id, symbol, qty FROM schwab_pilot_orders WHERE broker_order_id=%s AND account_key=%s "
-                "ORDER BY id DESC LIMIT 1", (str(broker_order_id), account_key))
+                "ORDER BY id DESC LIMIT 1", (oid, account_key))
     row = cur.fetchone()
+    manual = False
     if not row:
-        raise NotProvenWrite(f"order {broker_order_id} is not a pilot order — only pilot orders may be canceled")
-    row_id, sym, qty = row
+        if not allow_manual_protective:
+            raise NotProvenWrite(f"order {broker_order_id} is not a pilot order — only pilot orders may be canceled")
+        if not live:
+            raise NotProvenWrite(
+                f"order {broker_order_id} is not a live SELL stop on {account_key}"
+                + (f" for {expected_symbol}" if expected_symbol else "")
+                + " — refuse non-pilot cancel (not proven as replaceable protective stop)")
+        # Audit row so lifecycle + write scanners see the cancel (kind tags non-canary).
+        cur.execute(
+            """INSERT INTO schwab_pilot_orders
+                 (correlation_id, intent_id, account_key, symbol, side, qty, order_spec, status,
+                  broker_order_id, kind, detail)
+               VALUES (%s,NULL,%s,%s,'SELL',%s,'{}'::jsonb,'cancel_requested',%s,
+                       'manual_stop_replace',%s) RETURNING id""",
+            (f"manual-cancel-{oid}", account_key, live["symbol"], live["qty"], oid,
+             f"manual ToS stop cancel for replace ({live.get('order_type')}/{live.get('status')})"))
+        row_id = cur.fetchone()[0]
+        conn.commit()
+        sym, qty = live["symbol"], live["qty"]
+        manual = True
+        _log.info("manual protective cancel for replace: %s %s #%s (%s)",
+                  account_key, sym, oid, live.get("order_type"))
+    else:
+        row_id, sym, qty = row
     intent = OrderIntent(instrument=Instrument(sym or "UNKNOWN"), direction=Direction.LONG,
                          entry=EntrySpec(method=EntryMethod.LIMIT, limit_price=0.01),
                          quantity=Quantity(qty=float(qty or 1)), broker="schwab", account_key=account_key)
     require(intent, "cancel")
     client, err = build_client(account_key)
     if err:
-        return {"status": "error", "error": "client unavailable", "detail": err}
+        return {"status": "error", "error": "client unavailable", "detail": err, "manual": manual}
     h = _get_hash(account_key)
     _rate_acquire()
     try:
         resp = client.cancel_order(broker_order_id, h)
     except Exception as e:
-        return {"status": "error", "error": f"cancel exception: {str(e)[:160]}"}
+        return {"status": "error", "error": f"cancel exception: {str(e)[:160]}", "manual": manual}
     ok = resp.status_code in (200, 201)
     if not ok:
         # Idempotent replace: a second DELETE after a successful cancel returns 400 — treat as OK
@@ -417,19 +512,19 @@ def cancel_order(account_key, broker_order_id):
             conn.commit()
             return {"status": "cancel_requested", "http_status": resp.status_code,
                     "broker_order_id": str(broker_order_id), "already_canceled": True,
-                    "verify": verified}
+                    "verify": verified, "manual": manual}
     cur.execute("UPDATE schwab_pilot_orders SET status=%s, detail=%s, updated_at=NOW() WHERE id=%s",
                 ("cancel_requested" if ok else "cancel_rejected",
                  f"HTTP {resp.status_code}", row_id)); conn.commit()
     return {"status": "cancel_requested" if ok else "cancel_rejected",
             "http_status": resp.status_code, "broker_order_id": str(broker_order_id),
+            "manual": manual,
             "body": (resp.text[:240] if not ok and hasattr(resp, "text") else None)}
 
 
 def replace_order(*_a, **_k):
-    raise NotProvenWrite("Schwab replace_order is FENCED — no replace in the Stage 2b pilot "
-                         "(cancel + new order instead)")
-
+    raise NotProvenWrite("Schwab replace_order is FENCED — no native PUT replace in the Stage 2b pilot "
+                         "(cancel + new order instead; see cancel_order_for_replace)")
 
 def _creds():
     try:
@@ -595,7 +690,14 @@ def _read(account_key, fn_name, normalize, *args, **kwargs):
         data = resp.json() if hasattr(resp, "json") else resp
         return normalize(data)
     except Exception as e:
-        return {"status": "error", "error": str(e)[:160]}
+        err = str(e)[:160]
+        try:
+            import schwab_token_manager as tm
+            if tm.is_auth_failure(err):
+                tm.record_auth_failure(err, account_key=account_key, source=f"transport:{fn_name}")
+        except Exception:
+            pass
+        return {"status": "error", "error": err}
 
 
 def get_account(account_key, account_hash=None):

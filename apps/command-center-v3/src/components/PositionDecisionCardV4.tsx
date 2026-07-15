@@ -408,7 +408,8 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
     setStopOrder({
       kind, qty: p.shares, stop: advStop, trailPct: kind === 'TRAILING' ? trailPct : null, label,
       advised: advStop, cur: recPrice,
-      replace_order_id: effectiveBrokerStop.pilot_placed ? effectiveBrokerStop.order_id : null,
+      // Any live Schwab stop (pilot or manual ToS) — transport cancel-then-places after 2FA.
+      replace_order_id: effectiveBrokerStop.order_id || null,
     })
   }
   // ── end carried-over machinery ──

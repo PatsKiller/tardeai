@@ -11,14 +11,17 @@ Tokens are stored Fernet-encrypted in broker_oauth_tokens; the encryption key li
 config/broker_credentials.env (0600, gitignored) — never in the DB, Drive, logs, or UI. The DB and audit
 store ciphertext + fingerprints, never plaintext token material.
 
-NOTE: the live token EXCHANGE/REFRESH HTTP calls require Schwab Developer Portal app credentials
-(SCHWAB_APP_KEY/SECRET/CALLBACK) which are an architect open-item; without them those paths return
-AUTH_PENDING / NOT_PROVEN (fail closed). The STATE MACHINE, alerts, health, and re-auth persistence are
-fully functional and testable now.
+NOTE: live access-token REFRESH HTTP is implemented but GATED behind an operator approval lock in
+system_controls — refresh cannot touch Schwab until the operator runs approve-refresh-http with a
+typed phrase. Without approval (or app creds) those paths fail closed. exchange-code (manual re-auth)
+works independently. The STATE MACHINE, alerts, health, and re-auth persistence are fully functional.
 
   python3 scripts/schwab_token_manager.py init-key            # one-time: generate the encryption key
   python3 scripts/schwab_token_manager.py health [account]
   python3 scripts/schwab_token_manager.py check-alerts [--send]
+  python3 scripts/schwab_token_manager.py refresh-http-status
+  python3 scripts/schwab_token_manager.py approve-refresh-http --confirm "APPROVE SCHWAB HTTP REFRESH <YYYY-MM-DD>"
+  python3 scripts/schwab_token_manager.py revoke-refresh-http --confirm "REVOKE SCHWAB HTTP REFRESH"
   python3 scripts/schwab_token_manager.py reauth-url <account>                       # STEP 1: get login URL
   python3 scripts/schwab_token_manager.py exchange-code <account> "<redirect URL>"    # STEP 2: SAVE the token
 """
@@ -34,6 +37,7 @@ ENC_KEY_NAME = "SCHWAB_TOKEN_ENC_KEY"
 REFRESH_TTL_DAYS = 7          # GATE A worst case: assume 7d, no roll-forward, until the portal proves otherwise
 REAUTH_LEAD_DAYS = 1         # re-auth should happen at least 1 day before expiry
 ACCESS_REFRESH_MARGIN_S = 300  # refresh the ~29-min access token when <5 min remain
+HTTP_REFRESH_APPROVAL_KEY = "schwab_http_refresh_approved"  # system_controls gate — operator must approve
 ALERT_DAYS = {5, 6}          # day-5 and day-6 of the 7-day window (i.e. 2 and 1 days remaining)
 from tg_chat_ids import chat_ids  # no hardcoded chat IDs
 RATE_PER_MIN = 100           # conservative shared cap; exact Schwab per-minute number is an architect open-item
@@ -117,6 +121,77 @@ def _release_refresh_lock():
         pass
     _REFRESH_LOCK_TL.conn = None
     _REFRESH_LOCK_TL.key = None
+
+
+# ── HTTP REFRESH OPERATOR APPROVAL (fail closed until typed phrase confirms) ─────
+def _ensure_system_controls(cur):
+    cur.execute("""CREATE TABLE IF NOT EXISTS system_controls (
+                     key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())""")
+
+
+def _http_refresh_approved():
+    """True only when the operator has explicitly armed HTTP access-token refresh via system_controls."""
+    try:
+        conn = _conn(); cur = conn.cursor()
+        _ensure_system_controls(cur)
+        cur.execute("SELECT value FROM system_controls WHERE key=%s", (HTTP_REFRESH_APPROVAL_KEY,))
+        r = cur.fetchone()
+        return bool(r and str(r[0]).lower() == "true")
+    except Exception:
+        return False
+
+
+def http_refresh_status():
+    """Operator-facing status for the HTTP refresh approval gate."""
+    today = _now().date().isoformat()
+    approved = _http_refresh_approved()
+    return {
+        "http_refresh_approved": approved,
+        "approval_key": HTTP_REFRESH_APPROVAL_KEY,
+        "has_app_creds": _have_app_creds(),
+        "approve_phrase": f"APPROVE SCHWAB HTTP REFRESH {today}",
+        "revoke_phrase": "REVOKE SCHWAB HTTP REFRESH",
+        "note": "Until approved, stale access tokens fail closed — no Schwab refresh HTTP is sent. "
+                "Manual re-auth (exchange-code) is unaffected.",
+    }
+
+
+def approve_http_refresh(confirm: str):
+    """Arm the HTTP refresh path. Requires today's exact typed phrase — irreversible without revoke."""
+    today = _now().date().isoformat()
+    want = f"APPROVE SCHWAB HTTP REFRESH {today}"
+    if confirm != want:
+        return {"ok": False, "error": f"typed confirmation mismatch — must be exactly: {want!r}"}
+    if not _have_app_creds():
+        return {"ok": False, "error": "SCHWAB_APP_KEY/SECRET/CALLBACK_URL must be set before approving HTTP refresh"}
+    conn = _conn(); cur = conn.cursor()
+    _ensure_system_controls(cur)
+    cur.execute(f"""INSERT INTO system_controls (key, value) VALUES (%s,'true')
+                    ON CONFLICT (key) DO UPDATE SET value='true', updated_at=NOW()""",
+                (HTTP_REFRESH_APPROVAL_KEY,))
+    conn.commit()
+    key = canonical_token_key()
+    if key:
+        _audit(conn, key, "http_refresh_approved", "armed", None, f"operator_phrase={today}")
+    return {"ok": True, "http_refresh_approved": True, "status": http_refresh_status(),
+            "note": "HTTP refresh ARMED — stale access tokens will refresh against Schwab when requested."}
+
+
+def revoke_http_refresh(confirm: str):
+    """Disarm HTTP refresh — returns to fail-closed until re-approved."""
+    if confirm != "REVOKE SCHWAB HTTP REFRESH":
+        return {"ok": False, "error": "typed confirmation mismatch — must be exactly: 'REVOKE SCHWAB HTTP REFRESH'"}
+    conn = _conn(); cur = conn.cursor()
+    _ensure_system_controls(cur)
+    cur.execute(f"""INSERT INTO system_controls (key, value) VALUES (%s,'')
+                    ON CONFLICT (key) DO UPDATE SET value='', updated_at=NOW()""",
+                (HTTP_REFRESH_APPROVAL_KEY,))
+    conn.commit()
+    key = canonical_token_key()
+    if key:
+        _audit(conn, key, "http_refresh_revoked", "disarmed", None, "operator_revoke")
+    return {"ok": True, "http_refresh_approved": False, "status": http_refresh_status(),
+            "note": "HTTP refresh DISARMED — no Schwab refresh HTTP will be sent until re-approved."}
 
 
 # ── encryption (key only in the 0600 secrets file; never DB/Drive/logs/UI) ────────
@@ -238,6 +313,10 @@ def read_oauth_token(account_key, broker="schwab", environment="live"):
     fresh = bool(row[0] and row[2] and row[2] > _now() + timedelta(seconds=ACCESS_REFRESH_MARGIN_S))
     if fresh or row[4]:
         _release_refresh_lock()
+    elif not _http_refresh_approved():
+        # Operator has not armed HTTP refresh — fail closed; do NOT hand back a stale token for refresh.
+        _release_refresh_lock()
+        return None
     else:
         # Stale → a refresh is imminent. SINGLE-REFRESHER invariant: only one process/thread may refresh at a
         # time. A peer that refreshes with a now-superseded rotating token trips Schwab's reuse-detection and
@@ -342,6 +421,33 @@ def mark_degraded(error, broker="schwab", environment="live", account_key=None):
         return False
 
 
+def record_auth_failure(error, broker="schwab", environment="live", account_key=None, source=None):
+    """First-line response to Schwab OAuth/refresh failure: mark degraded immediately, alert operator once
+    per 4h (stops retry storms + surfaces re-auth need). Never raises."""
+    key = account_key or canonical_token_key(broker, environment)
+    detail = str(error)[:300]
+    mark_degraded(detail, broker, environment, key)
+    if not key:
+        return False
+    try:
+        conn = _conn(); cur = conn.cursor()
+        cur.execute("""SELECT 1 FROM broker_oauth_token_audit WHERE account_key=%s AND event='auth_failure_alert'
+                       AND created_at > now() - interval '4 hours' LIMIT 1""", (key,))
+        if cur.fetchone():
+            return True
+        src = source or "unknown"
+        msg = (f"🚨 Schwab auth failure — {key}: manual re-auth likely required.\n"
+               f"Source: {src}\n"
+               f"Error: {detail[:120]}\n"
+               f"Fix: python3 scripts/schwab_token_manager.py reauth-url {key}")
+        _telegram(msg)
+        _audit(conn, key, "auth_failure_alert", "sent", None, f"source={src}; {detail[:120]}")
+        conn.commit()
+    except Exception:
+        pass
+    return True
+
+
 def _clear_degraded(account_key, broker="schwab", environment="live"):
     """Clear a degraded flag after a live call proves the token works again. Never raises."""
     try:
@@ -379,14 +485,14 @@ def live_probe(account_key=None, broker="schwab", environment="live"):
             detail = " ".join(str(res.get(k, "")) for k in ("error", "reason", "detail", "body", "status"))
         if is_auth_failure(detail):
             out["needs_reauth"] = True; out["error"] = detail[:240]
-            mark_degraded(detail, broker, environment, key)
+            record_auth_failure(detail, broker, environment, key, source="live_probe")
         else:
             out["error"] = (detail or "live read not proven")[:240]
         return out
     except Exception as e:
         if is_auth_failure(str(e)):
             out["needs_reauth"] = True
-            mark_degraded(str(e), broker, environment, account_key)
+            record_auth_failure(str(e), broker, environment, account_key, source="live_probe")
         out["error"] = str(e)[:240]
         return out
 
@@ -414,6 +520,7 @@ def health(account_key, broker="schwab", environment="live"):
         base["refresh_valid"] = bool(rexp and rexp > now and rt_enc)
         if rexp:
             base["days_to_reauth"] = round((rexp - now).total_seconds() / 86400, 2)
+        base["http_refresh_approved"] = _http_refresh_approved()
         # fail closed: degraded unless refresh timestamp is valid AND we can decrypt the token AND the
         # persisted degraded flag is clear. HONOR degraded_flag (was previously masked to False by a buggy
         # `bool(x) and False or False` — that let a server-side-revoked token read 'healthy' on a still-
@@ -477,7 +584,7 @@ def check_and_alert(send=False):
 def get_access_token(account_key, broker="schwab", environment="live"):
     """Return a usable access token or None (fail closed). Refreshes the ~29-min access token when <5 min
     remain — but NEVER assumes the refresh token renews; if the refresh token is expired, return None and
-    mark degraded. The live refresh HTTP call needs portal app creds (architect open-item)."""
+    mark degraded. HTTP refresh requires operator approval (approve-refresh-http) plus portal app creds."""
     h = health(account_key, broker, environment)
     if not h["refresh_valid"]:
         _mark_degraded(account_key, broker, environment, h.get("last_error") or "refresh token expired/absent")
@@ -491,9 +598,11 @@ def get_access_token(account_key, broker="schwab", environment="live"):
             return _dec(row[0]) if row and row[0] else None
         except Exception:
             return None
-    # access stale but refresh valid → would refresh via Schwab; requires app creds → fail closed if absent
+    # access stale but refresh valid → refresh only when operator has armed HTTP refresh
+    if not _http_refresh_approved():
+        return None  # fail closed; do NOT mark degraded — waiting for operator approval
     if not _have_app_creds():
-        _mark_degraded(account_key, broker, environment, "access token stale; refresh requires Schwab app creds (NOT_PROVEN)")
+        _mark_degraded(account_key, broker, environment, "access token stale; refresh requires Schwab app creds")
         return None
     return _refresh_access_token(account_key, broker, environment)
 
@@ -511,11 +620,75 @@ def _mark_degraded(account_key, broker, environment, reason):
 
 
 def _refresh_access_token(account_key, broker, environment):
-    """Live access-token refresh against Schwab. Requires portal app creds. Persists a rotated refresh
-    token ATOMICALLY if Schwab returns one (Rule 7). NOT_PROVEN until creds + portal exist."""
+    """Live access-token refresh against Schwab. Requires operator approval + portal app creds. Persists a
+    rotated refresh token ATOMICALLY if Schwab returns one (Rule 7). Serialized via advisory lock."""
+    if not _http_refresh_approved():
+        return None
+    if not _have_app_creds():
+        return None
+    import base64, requests
+    import broker_secrets
+    broker_secrets.load_into_env()
+    appkey = os.environ.get("SCHWAB_APP_KEY"); secret = os.environ.get("SCHWAB_APP_SECRET")
     RATE.acquire()
-    raise RuntimeError("NOT_PROVEN: live Schwab access-token refresh requires app creds + portal callback "
-                       "(architect open-item). State machine ready; HTTP path intentionally fail-closed.")
+    lock_held = False
+    try:
+        if not _acquire_refresh_lock(broker, environment):
+            return None
+        lock_held = True
+        conn = _conn(); cur = conn.cursor()
+        cur.execute("""SELECT access_token_enc, refresh_token_enc, access_expires_at, refresh_expires_at, degraded
+                       FROM broker_oauth_tokens WHERE account_key=%s AND broker=%s AND environment=%s""",
+                    (account_key, broker, environment))
+        row = cur.fetchone()
+        if not row or not row[1]:
+            return None
+        if row[4]:
+            return None
+        if row[2] and row[2] > _now() + timedelta(seconds=ACCESS_REFRESH_MARGIN_S):
+            try:
+                return _dec(row[0]) if row[0] else None
+            except Exception:
+                return None
+        rexp = row[3]
+        if rexp and rexp <= _now():
+            _mark_degraded(account_key, broker, environment, "refresh token expired")
+            return None
+        try:
+            refresh_token = _dec(row[1])
+        except Exception:
+            _mark_degraded(account_key, broker, environment, "refresh token undecryptable")
+            return None
+        auth = base64.b64encode(f"{appkey}:{secret}".encode()).decode()
+        try:
+            resp = requests.post("https://api.schwabapi.com/v1/oauth/token",
+                                 headers={"Authorization": f"Basic {auth}",
+                                          "Content-Type": "application/x-www-form-urlencoded"},
+                                 data={"grant_type": "refresh_token", "refresh_token": refresh_token},
+                                 timeout=20)
+        except Exception as e:
+            _audit(conn, account_key, "access_refresh", "failed", None, str(e)[:200])
+            return None
+        if resp.status_code != 200:
+            detail = f"HTTP {resp.status_code} {resp.text[:140]}"
+            if is_auth_failure(detail):
+                mark_degraded(detail, broker, environment, account_key)
+            _audit(conn, account_key, "access_refresh", "failed", None, detail)
+            return None
+        tok = resp.json()
+        rt = tok.get("refresh_token") or refresh_token
+        at = tok.get("access_token")
+        exp = tok.get("expires_in")
+        if not at:
+            _audit(conn, account_key, "access_refresh", "failed", None, "no access_token in response")
+            return None
+        a_exp = _now() + timedelta(seconds=int(exp)) if exp else None
+        seed_token(account_key, refresh_token=rt, access_token=at, access_expires_at=a_exp,
+                   broker=broker, environment=environment, rotated=True)
+        return at
+    finally:
+        if lock_held:
+            _release_refresh_lock()
 
 
 def reauth_url(account_key):
@@ -612,11 +785,13 @@ def _load_dotenv():
 def main():
     _load_dotenv()
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["init-key", "health", "check-alerts", "reauth-url", "exchange-code"])
+    ap.add_argument("cmd", choices=["init-key", "health", "check-alerts", "reauth-url", "exchange-code",
+                                    "refresh-http-status", "approve-refresh-http", "revoke-refresh-http"])
     ap.add_argument("account", nargs="?", default=None)
     ap.add_argument("redirect_url", nargs="?", default=None,
                     help="for exchange-code: the FULL browser redirect URL containing ?code=...")
     ap.add_argument("--send", action="store_true")
+    ap.add_argument("--confirm", default="", help="typed phrase for approve-refresh-http / revoke-refresh-http")
     a = ap.parse_args()
     if a.cmd == "init-key":
         init_key()
@@ -628,6 +803,12 @@ def main():
             print(json.dumps([health(r[0]) for r in cur.fetchall()], indent=2))
     elif a.cmd == "check-alerts":
         print(json.dumps(check_and_alert(send=a.send), indent=2))
+    elif a.cmd == "refresh-http-status":
+        print(json.dumps(http_refresh_status(), indent=2))
+    elif a.cmd == "approve-refresh-http":
+        print(json.dumps(approve_http_refresh(a.confirm), indent=2, default=str))
+    elif a.cmd == "revoke-refresh-http":
+        print(json.dumps(revoke_http_refresh(a.confirm), indent=2, default=str))
     elif a.cmd == "reauth-url":
         print(json.dumps(reauth_url(a.account), indent=2))
     elif a.cmd == "exchange-code":

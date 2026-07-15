@@ -319,10 +319,16 @@ def _mark_delisted(row, sym):
 def _build_account_rows(account_key, live, existing_by_key):
     """Build holdings rows for ONE account from live Schwab positions, PRESERVING enrichment (name/bucket/
     cost_basis/sector) on positions we already track; minimal row for genuinely-new buys. Drops sold
-    positions (absent from `live`). The repricer/basis-sync refine prices/basis afterward."""
+    positions (absent from `live`). The repricer/basis-sync refine prices/basis afterward.
+
+    Share reconciliation (2026-07-15): always stamp broker_actual_shares from live qty. For small
+    positive DRIP-like drift, keep prior system shares sticky and open an approval task — do not
+    silently inflate stop/risk sizing until the operator reconciles.
+    """
     as_of = datetime.now(timezone.utc).date().isoformat()
     now = datetime.now(timezone.utc).isoformat()
     rows = []
+    drift_events = []
     for p in live:
         sym = (p.get("symbol") or "").upper()
         if not sym:
@@ -341,22 +347,42 @@ def _build_account_rows(account_key, live, existing_by_key):
         price = _f(p.get("current_price")) or None
         mv = _f(p.get("market_value")) or 0.0
         avg = _f(p.get("avg_entry_price")) or None
-        row = dict(existing_by_key.get((sym, account_key), {}))   # preserve enrichment if tracked
-        is_new = (sym, account_key) not in existing_by_key
+        prior = existing_by_key.get((sym, account_key))
+        row = dict(prior or {})   # preserve enrichment if tracked
+        is_new = prior is None
         row.update({"account": account_key, "account_id": account_key, "symbol": sym,
-                    "shares": qty, "price": price, "market_value": round(mv, 2),
+                    "price": price, "market_value": round(mv, 2),
                     "as_of": as_of, "updated_at": now, "is_cash": (sym == "CASH")})
+        # Share drift policy (approval-based for DRIP-like increases)
+        try:
+            from share_reconciliation import stamp_broker_qty
+            share_fields, drift_ev = stamp_broker_qty(
+                prior, qty, account_key=account_key, symbol=sym, name=row.get("name"))
+            row.update(share_fields)
+            if drift_ev:
+                drift_events.append(drift_ev)
+            # market_value: if shares sticky below broker, scale MV by system shares / broker when price known
+            sys_sh = float(row.get("shares") or qty)
+            if price and abs(sys_sh - qty) > 1e-6 and qty > 0:
+                row["market_value"] = round(sys_sh * price, 2)
+            elif not price and qty > 0 and abs(sys_sh - qty) > 1e-6:
+                row["market_value"] = round(mv * (sys_sh / qty), 2)
+        except Exception as _se:
+            row["shares"] = qty
+            row["system_shares"] = qty
+            row["broker_actual_shares"] = qty
+            print(f"  [share-recon] stamp failed {sym}: {str(_se)[:80]}")
         if is_new:
             row.setdefault("name", sym)
             row.setdefault("bucket", "US Equity")
             if avg and qty:
-                row.setdefault("cost_basis", round(avg * qty, 2))
+                row.setdefault("cost_basis", round(avg * float(row.get("shares") or qty), 2))
                 row.setdefault("cost_basis_source", "broker_api")
             if row.get("cost_basis"):
-                row["gain_loss"] = round(mv - float(row["cost_basis"]), 2)
-                row["gain_loss_pct"] = round((mv - float(row["cost_basis"])) / float(row["cost_basis"]) * 100, 4) if float(row["cost_basis"]) else None
+                row["gain_loss"] = round(float(row.get("market_value") or mv) - float(row["cost_basis"]), 2)
+                row["gain_loss_pct"] = round((float(row.get("market_value") or mv) - float(row["cost_basis"])) / float(row["cost_basis"]) * 100, 4) if float(row["cost_basis"]) else None
         rows.append(_mark_delisted(row, sym))   # auto-flag delisted (CUSIP-only) positions; self-clearing
-    return rows
+    return rows, drift_events
 
 
 # the broker account_key vs the holdings.json account label (the roth IRA is stored as 'schwab_roth')
@@ -412,15 +438,25 @@ def sync_schwab_positions(account_key, dry_run=True):
     label = _HOLDINGS_ACCT.get(account_key, account_key)   # write/read under the holdings.json label
     live = st.get_positions(account_key)
     if not isinstance(live, list):
-        _record(account_key, "degraded_noop", f"live fetch unavailable: {str(live)[:120]}")
-        return {"status": "degraded_noop", "reason": str(live)[:120], "wrote": False}
+        reason = str(live)[:120]
+        try:
+            import schwab_token_manager as tm
+            detail = reason
+            if isinstance(live, dict):
+                detail = " ".join(str(live.get(k, "")) for k in ("error", "reason", "status", "detail"))
+            if tm.is_auth_failure(detail):
+                tm.record_auth_failure(detail, account_key=account_key, source="schwab_position_sync")
+        except Exception:
+            pass
+        _record(account_key, "degraded_noop", f"live fetch unavailable: {reason}")
+        return {"status": "degraded_noop", "reason": reason, "wrote": False}
     if not HOLDINGS_PATH.exists():
         return {"status": "no_holdings_file", "wrote": False}
     cur = json.loads(HOLDINGS_PATH.read_text())
     hold = cur.get("holdings", [])
     existing_by_key = {((r.get("symbol") or "").upper(), label): r
                        for r in hold if r.get("account") == label}
-    equity_rows = _build_account_rows(label, live, existing_by_key)
+    equity_rows, drift_events = _build_account_rows(label, live, existing_by_key)
     # Cash from Schwab account API (positions endpoint omits cash); fall back to existing row on API miss.
     cash_rows = _cash_rows_for_account(label, hold, account_key, st)
     new_rows = equity_rows + cash_rows
@@ -429,10 +465,20 @@ def sync_schwab_positions(account_key, dry_run=True):
     added, removed = sorted(new_syms - old_syms), sorted(old_syms - new_syms)
     if dry_run:
         return {"status": "dry_run", "broker_account": account_key, "holdings_label": label,
-                "live_positions": len(equity_rows), "added": added, "removed": removed, "wrote": False}
+                "live_positions": len(equity_rows), "added": added, "removed": removed,
+                "share_drift_events": drift_events, "wrote": False}
     cur["holdings"] = [r for r in hold if r.get("account") != label] + new_rows
     res = protected_holdings_write(cur, source="schwab_position_sync", account_key=account_key, protect_basis=True)
     res.update({"added": added, "removed": removed})
+    # Open approval tasks for DRIP-like share drift (non-fatal)
+    if drift_events:
+        try:
+            from share_reconciliation import process_sync_events
+            res["share_drift_tasks"] = process_sync_events(drift_events)
+            res["share_drift_events"] = drift_events
+        except Exception as _de:
+            res["share_drift_error"] = str(_de)[:120]
+            print(f"  [share-recon] process_sync_events failed: {str(_de)[:120]}")
     return res
 
 

@@ -41,14 +41,24 @@ def _emit_health_alert(report):
     try:
         errs = {ak: a.get("error") for ak, a in report.get("accounts", {}).items() if a.get("error")}
         not_proven = any("NOT_PROVEN" in str(e).upper() or "ABSENT" in str(e).upper() for e in errs.values())
+        auth_fail = False
+        try:
+            import schwab_token_manager as tm
+            auth_fail = any(tm.is_auth_failure(str(e)) for e in errs.values())
+        except Exception:
+            pass
         weekday = datetime.datetime.now().weekday() < 5
         empty_all = weekday and report.get("rows_total", 0) == 0 and len(errs) >= len(ACCOUNTS)
-        if not (not_proven or empty_all):
+        if not (not_proven or empty_all or auth_fail):
             return
         from alert_event_writer import save_alert_event
-        msg = ("[schwab-ingest] AUTH FAILED — Schwab transport NOT_PROVEN (SCHWAB_APP_KEY/SECRET not loaded); "
-               "the journal trade-sync would pull ZERO rows" if not_proven
-               else f"[schwab-ingest] empty weekday ingest — 0 rows, {len(errs)} account error(s)")
+        if auth_fail:
+            msg = f"[schwab-ingest] Schwab OAuth/refresh failure — re-auth likely required; errors={errs}"
+        elif not_proven:
+            msg = ("[schwab-ingest] AUTH FAILED — Schwab transport NOT_PROVEN (SCHWAB_APP_KEY/SECRET not loaded); "
+                   "the journal trade-sync would pull ZERO rows")
+        else:
+            msg = f"[schwab-ingest] empty weekday ingest — 0 rows, {len(errs)} account error(s)"
         save_alert_event(alert_type="data_integrity", severity="urgent",
                          source_script="schwab_transaction_ingest.py", symbol=None, raw_text=msg,
                          parsed_payload={"kind": "schwab_ingest_health", "errors": errs,
@@ -165,10 +175,34 @@ def run(apply=False, days=365):
         client, err = t.build_client(ak)
         h = t._get_hash(ak)
         if err or not h:
-            report["accounts"][ak] = {"error": err or "no hash"}; continue
-        txns = client.get_transactions(h, start_date=start, end_date=now).json()
+            report["accounts"][ak] = {"error": err or "no hash"}
+            try:
+                import schwab_token_manager as tm
+                if tm.is_auth_failure(str(err or "")):
+                    tm.record_auth_failure(str(err), account_key=ak, source="schwab_transaction_ingest:build_client")
+            except Exception:
+                pass
+            continue
+        try:
+            txns = client.get_transactions(h, start_date=start, end_date=now).json()
+        except Exception as e:
+            err = str(e)
+            try:
+                import schwab_token_manager as tm
+                if tm.is_auth_failure(err):
+                    tm.record_auth_failure(err, account_key=ak, source="schwab_transaction_ingest:get_transactions")
+            except Exception:
+                pass
+            report["accounts"][ak] = {"error": err[:120]}; continue
         if not isinstance(txns, list):
-            report["accounts"][ak] = {"error": f"non-list response: {str(txns)[:120]}"}; continue
+            detail = f"non-list response: {str(txns)[:120]}"
+            try:
+                import schwab_token_manager as tm
+                if tm.is_auth_failure(str(txns)):
+                    tm.record_auth_failure(str(txns), account_key=ak, source="schwab_transaction_ingest:response")
+            except Exception:
+                pass
+            report["accounts"][ak] = {"error": detail}; continue
         rows = _map_rows(ak, txns)
         all_rows.extend(rows)
         report["accounts"][ak] = {"mapped": len(rows), "by_action": dict(collections.Counter(r["action"] for r in rows))}

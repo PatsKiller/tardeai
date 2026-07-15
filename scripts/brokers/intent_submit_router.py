@@ -33,7 +33,8 @@ def cancel_replace_stop_if_needed(intent) -> dict | None:
         from pathlib import Path
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
         import schwab_transport as _st
-        replace_result = _st.cancel_order_for_replace(acct, str(_replace_id), verify=True)
+        replace_result = _st.cancel_order_for_replace(
+            acct, str(_replace_id), verify=True, expected_symbol=sym or None)
         if not replace_result.get("ok"):
             _err = (replace_result.get("error")
                     or f"could not confirm cancel of existing stop #{_replace_id}")

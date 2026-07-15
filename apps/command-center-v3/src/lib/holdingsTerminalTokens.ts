@@ -23,7 +23,8 @@ export const BB = {
   blue: '#3b82f6',
   blueDim: 'rgba(59, 130, 246, 0.12)',
   mono: "'JetBrains Mono', 'Consolas', monospace",
-  rowH: 46,
+  /** Bloomberg denser row height (two metric lines + padding). */
+  rowH: 64,
   fontXs: 9,
   fontSm: 10,
   fontMd: 11,

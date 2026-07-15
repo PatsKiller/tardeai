@@ -314,7 +314,7 @@ export default function PositionDecisionCard({ p, paMap, expanded, onToggle, onD
     setStopOrder({
       kind, qty: p.shares, stop: advStop, trailPct: kind === 'TRAILING' ? trailPct : null, label,
       advised: advStop, cur: recPrice,
-      replace_order_id: effectiveBrokerStop.pilot_placed ? effectiveBrokerStop.order_id : null,
+      replace_order_id: effectiveBrokerStop.order_id || null,
     })
   }
 

@@ -130,13 +130,12 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const effectiveConfirmed = liveStopOverride ?? confirmedStop
   const liveResolved = resolveLiveStop(effectiveConfirmed, monitored, effectivePrice)
   const liveStop = liveResolved.price
-  // P2 — the existing broker order. Only an app-placed (pilot) order can be API-cancelled for a one-2FA
-  // in-app Replace; a manually-placed (ToS) order routes to P3 (cancel in ToS).
+  // Replace mode: any live Schwab SELL stop with an order_id (pilot OR manual ToS) → cancel-then-place
+  // in one 2FA. Transport verifies the target is a live SELL STOP before canceling non-pilot orders.
   const resolveReplaceParams = (confirmed?: any, kind: StopOrderKind | 'MARKET' = selectedKind) => {
     const conf = confirmed ?? effectiveConfirmed
     const orderId = String(conf?.order_id ?? '').trim() || null
-    const isPilot = Boolean(conf?.pilot_placed)
-    const canReplace = Boolean(isSchwab && kind !== 'MARKET' && hasLiveBrokerStopOrder(conf, monitored) && isPilot && orderId)
+    const canReplace = Boolean(isSchwab && kind !== 'MARKET' && hasLiveBrokerStopOrder(conf, monitored) && orderId)
     return { canReplace, orderId, replaceBody: canReplace && orderId ? { replace_order_id: orderId } : {} }
   }
   const replacePreview = resolveReplaceParams()
@@ -301,8 +300,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         quote_at: priceTimestamp ?? advisoryTimestamp,
         whole_share_confirmed: wholeShareConfirmed,
         preflight_at: new Date().toISOString(),
-        // P2 — replace an existing APP-placed stop: confirm path cancels it, then places the new one, one 2FA.
-        // Use the freshest live-stop snap (preflight may have just fetched pilot_placed + order_id).
+        // Replace existing live stop (pilot or manual ToS): confirm cancels then places, one 2FA.
+        // Use the freshest live-stop snap (preflight may have just fetched order_id).
         ...resolveReplaceParams(opts?.liveSnap ?? effectiveConfirmed, kind).replaceBody,
       }
       const raw = await fetch('/api/v2/holdings/protective-stop', {
@@ -648,20 +647,21 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           ))}
         </div>
       )}
-      {/* P2/P3 — existing live broker stop. App-placed (pilot) → Replace in one 2FA (cancel-then-place).
-          Manually-placed (ToS) → can't API-cancel; must modify in ToS. Guard blocks any naked duplicate. */}
+      {/* Existing live broker stop → Schwab replace (cancel-then-place, pilot or manual). Fidelity still ToS/Fidelity. */}
       {liveResolved.hasLiveBrokerOrder && canReplaceInApp && (
         <div style={{ fontSize: 11.5, color: GREEN, marginBottom: 6, padding: '7px 9px', borderRadius: 6, background: `${GREEN}12`, border: `1px solid ${GREEN}45`, lineHeight: 1.5 }}>
-          <div style={{ fontWeight: 900, marginBottom: 2 }}>🔄 Replace mode — existing app stop {fmtLiveStop(logic)}</div>
-          This stop was placed here, so requesting a new one will <b>cancel it and place the replacement in a single 2FA</b> —
-          no duplicate. (Order #{existingOrderId})
+          <div style={{ fontWeight: 900, marginBottom: 2 }}>🔄 Replace mode — existing stop {fmtLiveStop(logic)}</div>
+          Requesting a new stop will <b>cancel order #{existingOrderId} and place the replacement in a single 2FA</b>
+          {effectiveConfirmed?.pilot_placed ? ' (app-placed).' : ' (including a stop originally placed in ToS).'} No duplicate.
         </div>
       )}
       {liveResolved.hasLiveBrokerOrder && !canReplaceInApp && (
         <div style={{ fontSize: 11.5, color: AMBER, marginBottom: 6, padding: '7px 9px', borderRadius: 6, background: `${AMBER}12`, border: `1px solid ${AMBER}45`, lineHeight: 1.5 }}>
-          <div style={{ fontWeight: 900, marginBottom: 2 }}>⚠️ Existing {existingOrderId ? 'manual ' : ''}broker stop ({fmtLiveStop(logic)}) — modify it {isFidelity ? 'in Fidelity' : 'in ToS'}</div>
-          Placing a <b>second</b> stop is blocked (two SELL stops can over-sell). {existingOrderId ? 'This order was not placed here, so Trade AI can’t cancel it via API. ' : ''}
-          Cancel or modify the existing order {isFidelity ? 'in Fidelity' : 'in ToS'} first, then place here.
+          <div style={{ fontWeight: 900, marginBottom: 2 }}>⚠️ Existing broker stop ({fmtLiveStop(logic)}) — modify it {isFidelity ? 'in Fidelity' : 'in ToS'}</div>
+          Placing a <b>second</b> stop is blocked (two SELL stops can over-sell).
+          {isFidelity
+            ? ' Cancel or modify the existing order in Fidelity first, then place here.'
+            : ' Missing broker order id — cancel in ToS first, then place here.'}
           {!isFidelity && brokerUrl ? <> <a href={brokerUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: BLUE, fontWeight: 700 }}>Open ToS ↗</a></> : null}
         </div>
       )}

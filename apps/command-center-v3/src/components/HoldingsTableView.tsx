@@ -2,13 +2,19 @@ import { useState } from 'react'
 import CountryFlag from './CountryFlag'
 import HoldingReportLinks from './HoldingReportLinks'
 import { fmt$ } from '../lib/format'
-import { buildHoldingsRowModel } from '../lib/holdingsRowModel'
+import {
+  accountBrand,
+  buildHoldingsRowModel,
+  type RsiZone,
+  type VolTier,
+} from '../lib/holdingsRowModel'
 import { resolveCountry } from '../lib/country'
 import {
   BB, type HoldingsCvdMode, primaryActionBg, primaryActionColor,
-  semanticSigned, stopStatusBg, stopStatusColor,
+  semanticSigned, semanticUp, stopStatusBg, stopStatusColor,
 } from '../lib/holdingsTerminalTokens'
 import { holdingReportEligible } from '../lib/reportLinks'
+import { ShareDriftPill } from './ShareReconciliationModal'
 
 const LLM_LANE: Record<string, { label: string; c: string }> = {
   local: { label: 'G', c: '#2dd4bf' },
@@ -18,21 +24,23 @@ const LLM_LANE: Record<string, { label: string; c: string }> = {
 }
 
 const COL_TIPS: Record<string, string> = {
-  symbol: 'Ticker and HQ country flag',
-  acct: 'Broker account for this row (same symbol may appear in multiple accounts)',
-  value: 'Market value and today\'s % change',
-  port: 'Portfolio weight — % of your TOTAL portfolio value across all accounts (not stop distance)',
-  price: 'Last price and average cost per share',
-  stop: 'What to do with your stop — imperative target price (→ $X). NOT portfolio weight (see Wt %)',
-  action: 'Opens this row\'s stop management drawer (2FA, tickets, replace stop)',
-  reports: 'Analyst PDF / Word reports',
-  agents: 'LLM lanes that reviewed this symbol (last 30d)',
+  symbol: 'Ticker and short security name',
+  acct: 'Full brokerage account (color pill = brand)',
+  value: 'Market value and today % change',
+  pl: 'Unrealized P&L $ and % vs cost basis',
+  wt: 'Portfolio weight across all accounts',
+  px: 'Last price / average cost per share',
+  rsi: 'RSI — oversold green, overbought red, neutral muted',
+  vol: 'Volatility tier from stop advisory (LOW / MED / HIGH)',
+  news: 'Latest headline — hover for full text; click opens source',
+  earn: 'Next earnings date when known',
+  stop: 'Stop status and recommended action',
+  action: 'Open stop management (2FA / ticket) for this lot',
+  reports: 'Analyst PDF / Word',
+  agents: 'LLM research lanes (30d)',
 }
 
-/** Operator tooltip (2026-07-14 v3): "Current live stop: $X (Y% below) /
- * Advisory: Widen|Tighten to A-B% trailing (based on TIER tier + regime) /
- * Minimum floor: F% (family/swing-low rule still governs final placement)."
- * The verb compares the live stop distance to the advisory trail band. */
+/** Operator tooltip for vol tier band. */
 export function volTierTooltip(pr: any, live?: { stop?: number | null; price?: number | null; distancePct?: number | null }): string {
   const tier = String(pr?.volatility_tier || '').toUpperCase()
   const fb = pr?.family_bounds || {}
@@ -57,12 +65,12 @@ export function volTierTooltip(pr: any, live?: { stop?: number | null; price?: n
       : distance != null && distance > tMax ? 'Tighten to' : null
     advise = verb
       ? `Advisory: ${verb} ${range} trailing (based on ${tier} tier${regimeBit}).`
-      : `Advisory: ${range} trailing \u2014 current is within band (${tier} tier${regimeBit}).`
+      : `Advisory: ${range} trailing \u2014 within band (${tier} tier${regimeBit}).`
   } else {
-    advise = `Advisory: ${tier} tier${regimeBit}.`
+    advise = `Advisory: ${tier || '—'} tier${regimeBit}.`
   }
   const floor = fb.stop_min_pct != null
-    ? `Minimum floor: ${fb.stop_min_pct}% (family/swing-low rule still governs final placement).`
+    ? `Minimum floor: ${fb.stop_min_pct}% (family/swing-low still governs).`
     : 'Family/swing-low rule still governs final placement.'
   return `${cur}\n${advise}\n${floor}`
 }
@@ -74,6 +82,8 @@ export interface HoldingsTableRowContext {
   confirmedStop?: any
   reportEntry?: any
   coverage?: any[]
+  fv?: any
+  card?: any
 }
 
 interface Props {
@@ -81,30 +91,66 @@ interface Props {
   acctColor: (a: string) => string
   focusKey?: string | null
   cvdMode?: HoldingsCvdMode
+  /** Full ticker drawer (Overview tab) — row click except action cells */
   onOpenDetail: (ctx: HoldingsTableRowContext) => void
-  onPrimaryAction: (ctx: HoldingsTableRowContext) => void
+  /** Stop Management drawer tab — symbol / stop column / action button */
+  onOpenStops: (ctx: HoldingsTableRowContext) => void
+  /** @deprecated use onOpenStops — kept as alias for action buttons */
+  onPrimaryAction?: (ctx: HoldingsTableRowContext) => void
+  /** Open share-reconciliation modal for this holding (when drift pending) */
+  onShareDrift?: (ctx: HoldingsTableRowContext) => void
 }
 
-const GRID = '32px 84px 60px 120px 58px 80px 1.35fr 140px 76px 62px'
+/**
+ * Column template — scannable Bloomberg grid.
+ * Two-line cells where needed (value/today, P&L $/%, price/cost, news/earn).
+ */
+const GRID = [
+  '22px',           // expand
+  'minmax(100px, 1.1fr)', // symbol + name
+  'minmax(132px, 1.15fr)', // account full + pill
+  '88px',           // value · today
+  '86px',           // P&L
+  '48px',           // wt
+  '72px',           // px / cost
+  '52px',           // RSI
+  '56px',           // VOL
+  'minmax(90px, 1.2fr)', // news
+  '72px',           // earn
+  'minmax(110px, 1.15fr)', // stop
+  '108px',          // action
+  '56px',           // reports
+  '48px',           // agents
+].join(' ')
 
 function HeaderCell({ label, tip }: { label: string; tip: string }) {
-  return <span title={tip} style={{ cursor: 'help' }}>{label}</span>
+  return (
+    <span title={tip} style={{ cursor: 'help', userSelect: 'none' }}>{label}</span>
+  )
 }
 
 function AgentBadges({ cov }: { cov?: any[] }) {
-  if (!cov?.length) return <span title="No LLM research in last 30 days" style={{ color: BB.text3, fontSize: 9 }}>—</span>
+  if (!cov?.length) {
+    return <span title="No LLM research in last 30 days" style={{ color: BB.text3, fontSize: 9 }}>—</span>
+  }
   const byLane: Record<string, any> = {}
   for (const c of cov) {
     const k = LLM_LANE[c.lane] ? c.lane : 'local'
     if (!byLane[k] || c.last_at > byLane[k].last_at) byLane[k] = c
   }
   return (
-    <span style={{ display: 'inline-flex', gap: 3 }}>
+    <span style={{ display: 'inline-flex', gap: 2, flexWrap: 'wrap' }}>
       {Object.entries(byLane).map(([lane, c]: any) => {
         const m = LLM_LANE[lane]
         return (
-          <span key={lane} title={`${c.model} · ${String(c.last_at).slice(0, 10)} · ${c.n} review(s) — advisory research only`}
-            style={{ fontSize: 8, fontWeight: 800, padding: '2px 5px', borderRadius: 3, background: `${m.c}22`, color: m.c, border: `1px solid ${m.c}44`, cursor: 'help' }}>
+          <span
+            key={lane}
+            title={`${c.model} · ${String(c.last_at).slice(0, 10)} · ${c.n} review(s)`}
+            style={{
+              fontSize: 8, fontWeight: 800, padding: '1px 4px', borderRadius: 3,
+              background: `${m.c}22`, color: m.c, border: `1px solid ${m.c}44`, cursor: 'help',
+            }}
+          >
             {m.label}
           </span>
         )
@@ -113,64 +159,166 @@ function AgentBadges({ cov }: { cov?: any[] }) {
   )
 }
 
-function rowTooltip(m: ReturnType<typeof buildHoldingsRowModel>, h: any): string {
-  const ctry = resolveCountry({ symbol: h.symbol, country: h.country, countryName: h.country_name })
-  const parts = [
-    `${m.symbol}${h.name ? ` · ${h.name}` : ''}`,
-    ctry ? `HQ: ${ctry.name}` : '',
-    m.account,
-    m.shares != null ? `${m.shares} shares` : '',
-    m.stopInstruction,
-    m.stopContext,
-    m.needsAction ? '⚠ Action needed' : 'No urgent action',
-    'Click row for overview · Action button → stop management',
-  ].filter(Boolean)
-  return parts.join('\n')
+function rsiColor(zone: RsiZone, cvd: HoldingsCvdMode): string {
+  if (zone === 'oversold') return semanticUp(cvd)
+  if (zone === 'overbought') return BB.red
+  return BB.text2
 }
 
-export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode = 'default', onOpenDetail, onPrimaryAction }: Props) {
+function volMeta(tier: VolTier): { label: string; color: string } | null {
+  if (tier === 'low') return { label: 'LOW', color: BB.green }
+  if (tier === 'medium') return { label: 'MED', color: BB.amber }
+  if (tier === 'high') return { label: 'HIGH', color: BB.red }
+  return null
+}
+
+function truncate(s: string, n: number): string {
+  const t = s.replace(/\s+/g, ' ').trim()
+  if (t.length <= n) return t
+  return `${t.slice(0, n - 1)}…`
+}
+
+function AccountPill({ account, label }: { account: string; label: string }) {
+  const brand = accountBrand(account)
+  return (
+    <span
+      title={account}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%',
+        padding: '3px 8px 3px 4px', borderRadius: 999,
+        background: brand.bg, border: `1px solid ${brand.color}44`,
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+          background: brand.color, color: '#0a0e1a',
+          fontSize: 10, fontWeight: 900, display: 'inline-flex',
+          alignItems: 'center', justifyContent: 'center', fontFamily: BB.mono,
+        }}
+      >
+        {brand.letter}
+      </span>
+      <span style={{
+        fontSize: 11, fontWeight: 700, color: BB.text0,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        letterSpacing: 0.1,
+      }}>
+        {label}
+      </span>
+    </span>
+  )
+}
+
+function DualMetric({
+  primary, secondary, primaryColor, secondaryColor, tip,
+}: {
+  primary: string
+  secondary?: string | null
+  primaryColor?: string
+  secondaryColor?: string
+  tip?: string
+}) {
+  return (
+    <div title={tip} style={{ lineHeight: 1.35, fontFamily: BB.mono, minWidth: 0 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: primaryColor ?? BB.text0 }}>{primary}</div>
+      {secondary != null && secondary !== '' && (
+        <div style={{ fontSize: 10, fontWeight: 700, color: secondaryColor ?? BB.text3 }}>{secondary}</div>
+      )}
+    </div>
+  )
+}
+
+function rowTooltip(m: ReturnType<typeof buildHoldingsRowModel>, h: any): string {
+  const ctry = resolveCountry({ symbol: h.symbol, country: h.country, countryName: h.country_name })
+  return [
+    `${m.symbol}${h.name ? ` · ${h.name}` : ''}`,
+    ctry ? `HQ: ${ctry.name}` : '',
+    m.accountLabel,
+    m.shares != null ? `${m.shares} shares` : '',
+    m.pl$ != null
+      ? `Unrealized ${m.pl$ >= 0 ? '+' : ''}${fmt$(m.pl$, 0)}${m.plPct != null ? ` (${m.plPct >= 0 ? '+' : ''}${m.plPct.toFixed(1)}%)` : ''}`
+      : '',
+    m.rsi != null ? `RSI ${m.rsi.toFixed(1)}${m.rsiStatus ? ` (${m.rsiStatus})` : ''}` : '',
+    m.volTier ? `Vol tier: ${m.volTier.toUpperCase()}` : '',
+    m.earningsDate ? `Next earnings: ${m.earningsDate}` : '',
+    m.newsTitle ? `News: ${m.newsTitle}${m.newsSource ? ` · ${m.newsSource}` : ''}` : '',
+    m.stopInstruction,
+    m.stopContext,
+    m.liveStopPrice != null ? `Live stop $${m.liveStopPrice.toFixed(2)}` : '',
+    m.needsAction ? '⚠ Action needed' : 'No urgent stop action',
+    'Click row → drawer · Action → stop management',
+  ].filter(Boolean).join('\n')
+}
+
+/**
+ * Bloomberg-style holdings table: tall rows, full account names + brand pills,
+ * dual-line money cells, RSI/VOL badges, news + earnings, stop + action.
+ */
+export default function HoldingsTableView({
+  rows, focusKey, cvdMode = 'default', onOpenDetail, onOpenStops, onPrimaryAction, onShareDrift,
+}: Props) {
   const [hoverKey, setHoverKey] = useState<string | null>(null)
-  const actionableCount = rows.filter(r => buildHoldingsRowModel({ h: r.h, pr: r.pr, confirmedStop: r.confirmedStop, monitored: r.monitored }).needsAction).length
+  const openStops = onOpenStops || onPrimaryAction || onOpenDetail
+  const models = rows.map(r => ({
+    ctx: r,
+    m: buildHoldingsRowModel({
+      h: r.h, pr: r.pr, confirmedStop: r.confirmedStop, monitored: r.monitored, fv: r.fv, card: r.card,
+    }),
+  }))
+  const actionableCount = models.filter(x => x.m.needsAction).length
 
   return (
-    <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 8, overflow: 'hidden' }}>
-      <div style={{
-        display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '8px 12px',
-        fontSize: 9, fontWeight: 700, color: BB.text3, textTransform: 'uppercase', letterSpacing: 0.4,
-        borderBottom: `1px solid ${BB.border}`, background: BB.bgRow,
-        position: 'sticky', top: 0, zIndex: 2,
-      }}>
+    <div
+      data-testid="holdings-table"
+      style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 8, overflow: 'hidden' }}
+    >
+      {/* Sticky header */}
+      <div
+        data-testid="holdings-table-legend"
+        role="row"
+        style={{
+          display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '10px 12px',
+          fontSize: 9, fontWeight: 700, color: BB.text3, textTransform: 'uppercase', letterSpacing: 0.4,
+          borderBottom: `1px solid ${BB.border}`, background: BB.bgRow,
+          position: 'sticky', top: 0, zIndex: 2, alignItems: 'end',
+        }}
+      >
         <span />
         <HeaderCell label="Symbol" tip={COL_TIPS.symbol} />
-        <HeaderCell label="Acct" tip={COL_TIPS.acct} />
+        <HeaderCell label="Account" tip={COL_TIPS.acct} />
         <HeaderCell label="Value · Today" tip={COL_TIPS.value} />
-        <HeaderCell label="Wt %" tip={COL_TIPS.port} />
-        <HeaderCell label="Price / Cost" tip={COL_TIPS.price} />
-        <HeaderCell label="Stop → target" tip={COL_TIPS.stop} />
+        <HeaderCell label="P&L" tip={COL_TIPS.pl} />
+        <HeaderCell label="Wt %" tip={COL_TIPS.wt} />
+        <HeaderCell label="Px / Cost" tip={COL_TIPS.px} />
+        <HeaderCell label="RSI" tip={COL_TIPS.rsi} />
+        <HeaderCell label="Vol" tip={COL_TIPS.vol} />
+        <HeaderCell label="News" tip={COL_TIPS.news} />
+        <HeaderCell label="Earn" tip={COL_TIPS.earn} />
+        <HeaderCell label="Stop" tip={COL_TIPS.stop} />
         <HeaderCell label="Action" tip={COL_TIPS.action} />
-        <HeaderCell label="Reports" tip={COL_TIPS.reports} />
-        <HeaderCell label="Agents" tip={COL_TIPS.agents} />
+        <HeaderCell label="Rpt" tip={COL_TIPS.reports} />
+        <HeaderCell label="AI" tip={COL_TIPS.agents} />
       </div>
 
-      <div style={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
-        {rows.map((rowCtx, i) => {
+      <div style={{ maxHeight: 'calc(100vh - 300px)', overflowY: 'auto' }}>
+        {models.map(({ ctx: rowCtx, m }, i) => {
           const h = rowCtx.h
-          const m = buildHoldingsRowModel({
-            h,
-            pr: rowCtx.pr,
-            confirmedStop: rowCtx.confirmedStop,
-            monitored: rowCtx.monitored,
-          })
-          const ac = acctColor(h.account ?? 'unknown')
           const focused = focusKey === m.key.replace(':', '-')
           const hovered = hoverKey === m.key
           const bg = focused ? BB.bgRowFocus : hovered ? BB.bgRowHover : i % 2 ? BB.bgRowAlt : BB.bgRow
           const actionColor = primaryActionColor(m.primaryAction.tone, cvdMode)
           const actionBg = primaryActionBg(m.primaryAction.tone, cvdMode)
           const stopColor = stopStatusColor(m.stopStatus)
-          const isAmberAction = m.primaryAction.tone === 'amber'
-          const isRedAction = m.primaryAction.tone === 'red'
-          const ctry = resolveCountry({ symbol: h.symbol, country: h.country, countryName: h.country_name })
+          const isAmber = m.primaryAction.tone === 'amber'
+          const isRed = m.primaryAction.tone === 'red'
+          const rc = rsiColor(m.rsiStatus, cvdMode)
+          const vol = volMeta(m.volTier)
+          const nameLine = m.name || (h.name ? String(h.name).slice(0, 36) : null)
+          const hasShareDrift = h.share_drift_status === 'pending'
+            || (h.broker_actual_shares != null && h.shares != null
+              && Math.abs(Number(h.broker_actual_shares) - Number(h.shares)) > 0.01)
 
           return (
             <div
@@ -185,145 +333,245 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode =
               onClick={() => onOpenDetail(rowCtx)}
               style={{
                 display: 'grid', gridTemplateColumns: GRID, gap: 8, alignItems: 'center',
-                padding: '0 12px', minHeight: BB.rowH, background: bg,
+                padding: '12px 12px', minHeight: BB.rowH, background: bg,
                 borderBottom: `1px solid ${BB.borderSubtle}`, cursor: 'pointer',
                 borderLeft: m.needsAction
-                  ? `3px solid ${isRedAction ? BB.red : BB.amberAlt}`
+                  ? `3px solid ${isRed ? BB.red : BB.amberAlt}`
                   : focused ? `3px solid ${BB.amber}` : '3px solid transparent',
                 outline: focused ? `2px solid ${BB.amber}55` : 'none',
               }}
             >
-              <span style={{ display: 'flex', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
-                <button type="button" title="Open full drawer (charts, stops, reports)" onClick={() => onOpenDetail(rowCtx)}
-                  style={{ background: 'transparent', border: 'none', color: BB.text2, cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>⏵</button>
-              </span>
+              {/* Expand */}
+              <button
+                type="button"
+                title="Open drawer"
+                onClick={e => { e.stopPropagation(); onOpenDetail(rowCtx) }}
+                style={{
+                  background: 'transparent', border: 'none', color: BB.text2,
+                  cursor: 'pointer', fontSize: 12, padding: 0, lineHeight: 1,
+                }}
+              >▸</button>
 
+              {/* Symbol + short name — click opens Stop Management drawer */}
               <div
-                title={[m.symbol, h.name, ctry ? `HQ: ${ctry.name}` : '', m.shares != null ? `${m.shares} sh` : ''].filter(Boolean).join(' · ')}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}
+                role="button"
+                title="Open Stop Management for this symbol"
+                onClick={e => { e.stopPropagation(); openStops(rowCtx) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, cursor: 'pointer' }}
               >
-                <CountryFlag symbol={h.symbol} country={h.country} countryName={h.country_name} size={18} />
-                <span style={{ fontFamily: BB.mono, fontWeight: 800, fontSize: 13, color: BB.text0 }}>{m.symbol}</span>
-              </div>
-
-              <span title={`${m.account}${m.shares != null ? ` · ${m.shares} shares` : ''}`}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: BB.text2, overflow: 'hidden' }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: ac, flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.accountShort}</span>
-              </span>
-
-              <div
-                title={[
-                  `Market value ${fmt$(m.marketValue, 0)}`,
-                  m.dayPct != null ? `Today ${m.dayPct >= 0 ? '+' : ''}${m.dayPct.toFixed(2)}%` : 'Today: no quote',
-                  m.pl$ != null ? `Unrealized P/L ${m.pl$ >= 0 ? '+' : ''}${fmt$(m.pl$, 0)}` : '',
-                ].filter(Boolean).join(' · ')}
-                style={{ fontSize: 11, lineHeight: 1.3 }}
-              >
-                <div style={{ fontWeight: 700, color: BB.text0, fontFamily: BB.mono }}>{fmt$(m.marketValue, 0)}</div>
-                {m.dayPct != null && (
-                  <div style={{ fontSize: 10, fontWeight: 700, color: semanticSigned(m.dayPct, cvdMode) }}>
-                    {m.dayPct >= 0 ? '+' : ''}{m.dayPct.toFixed(2)}%
+                <CountryFlag symbol={h.symbol} country={h.country} countryName={h.country_name} size={16} />
+                <div style={{ minWidth: 0, lineHeight: 1.35 }}>
+                  <div style={{
+                    fontFamily: BB.mono, fontWeight: 800, fontSize: 13.5, color: BB.blue,
+                    letterSpacing: 0.2, textDecoration: 'underline', textDecorationColor: `${BB.blue}55`,
+                  }}>
+                    {m.symbol}
                   </div>
-                )}
+                  {nameLine && (
+                    <div style={{
+                      fontSize: 9, color: BB.text3, overflow: 'hidden',
+                      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {nameLine}
+                    </div>
+                  )}
+                  {hasShareDrift && (
+                    <div style={{ marginTop: 3 }} onClick={e => e.stopPropagation()}>
+                      <ShareDriftPill compact onClick={() => onShareDrift?.(rowCtx)} />
+                    </div>
+                  )}
+                </div>
               </div>
 
+              {/* Account — full name + brand pill */}
+              <AccountPill account={m.account} label={m.accountLabel} />
+
+              {/* Value · Today */}
+              <DualMetric
+                tip={[
+                  `Market value ${fmt$(m.marketValue, 0)}`,
+                  m.dayPct != null ? `Today ${m.dayPct >= 0 ? '+' : ''}${m.dayPct.toFixed(2)}%` : null,
+                ].filter(Boolean).join(' · ')}
+                primary={fmt$(m.marketValue, 0)}
+                secondary={m.dayPct != null ? `${m.dayPct >= 0 ? '+' : ''}${m.dayPct.toFixed(2)}%` : '—'}
+                secondaryColor={m.dayPct != null ? semanticSigned(m.dayPct, cvdMode) : BB.text3}
+              />
+
+              {/* Unrealized P&L */}
+              {m.pl$ != null ? (
+                <DualMetric
+                  tip={`Unrealized vs cost basis`}
+                  primary={`${m.pl$ >= 0 ? '+' : ''}${fmt$(m.pl$, 0)}`}
+                  secondary={m.plPct != null ? `${m.plPct >= 0 ? '+' : ''}${m.plPct.toFixed(1)}%` : '—'}
+                  primaryColor={semanticSigned(m.pl$, cvdMode)}
+                  secondaryColor={m.plPct != null ? semanticSigned(m.plPct, cvdMode) : BB.text3}
+                />
+              ) : (
+                <span style={{ color: BB.text3, fontSize: 11 }}>—</span>
+              )}
+
+              {/* Weight */}
               <span
-                title={m.portfolioPct != null
-                  ? `${m.portfolioPct.toFixed(1)}% of your total portfolio ($${Math.round(m.marketValue / (m.portfolioPct / 100)).toLocaleString()} est. total) — portfolio weight, NOT stop distance`
-                  : 'Portfolio weight unknown'}
-                style={{ fontSize: 11, fontFamily: BB.mono, color: BB.text2, fontWeight: 700 }}
+                title={m.portfolioPct != null ? `${m.portfolioPct.toFixed(1)}% of total portfolio` : 'Weight unknown'}
+                style={{ fontFamily: BB.mono, fontSize: 11, fontWeight: 700, color: BB.text2 }}
               >
                 {m.portfolioPct != null ? `${m.portfolioPct.toFixed(1)}%` : '—'}
               </span>
 
-              <div
-                title={[
-                  m.price != null ? `Last $${m.price.toFixed(2)}` : 'Price unavailable',
-                  m.cost != null ? `Avg cost $${m.cost.toFixed(2)}/sh` : 'Cost basis unavailable (e.g. 401k fund)',
-                ].join(' · ')}
-                style={{ fontSize: 10, fontFamily: BB.mono, lineHeight: 1.35 }}
-              >
-                <div style={{ color: BB.text0 }}>{m.price != null ? `$${m.price.toFixed(2)}` : '—'}</div>
-                <div style={{ color: BB.text3 }}>{m.cost != null ? `$${m.cost.toFixed(2)}` : '—'}</div>
-              </div>
+              {/* Price / Cost */}
+              <DualMetric
+                tip={[
+                  m.price != null ? `Last $${m.price.toFixed(2)}` : null,
+                  m.cost != null ? `Avg cost $${m.cost.toFixed(2)}` : null,
+                ].filter(Boolean).join(' · ') || 'Price / cost unavailable'}
+                primary={m.price != null ? `$${m.price.toFixed(2)}` : '—'}
+                secondary={m.cost != null ? `$${m.cost.toFixed(2)}` : '—'}
+              />
 
-              <div
-                title={[
-                  m.stopTooltip,
-                  m.liveStopPrice != null ? `Live stop: $${m.liveStopPrice.toFixed(2)}` : 'No live stop at broker',
-                  m.stopPrice != null ? `Advisory target: $${m.stopPrice.toFixed(2)}` : '',
-                  m.portfolioPct != null ? `Portfolio weight: ${m.portfolioPct.toFixed(1)}% (Wt % column)` : '',
-                ].filter(Boolean).join('\n')}
+              {/* RSI */}
+              <span
+                title={m.rsi != null ? `RSI ${m.rsi.toFixed(1)}${m.rsiStatus ? ` · ${m.rsiStatus}` : ''}` : 'RSI n/a'}
                 style={{
-                  minWidth: 0, padding: '6px 8px', margin: '-6px -8px', borderRadius: 5,
-                  background: stopStatusBg(m.stopStatus), borderLeft: `3px solid ${stopColor}`,
+                  fontFamily: BB.mono, fontSize: 12, fontWeight: 800, color: rc, cursor: 'help',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 4, background: stopColor, flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, fontWeight: 800, color: stopColor, letterSpacing: 0.2 }}>{m.stopLabel}</span>
-                  {rowCtx.pr?.volatility_tier && (() => {
-                    const vt = rowCtx.pr.volatility_tier
-                    const vc = vt === 'low' ? BB.green : vt === 'high' ? BB.red : BB.amber
-                    return (
-                      <span title={volTierTooltip(rowCtx.pr, { stop: m.liveStopPrice, price: h.current_price ?? h.price })}
-                        style={{ fontSize: 8, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: `${vc}1a`, border: `1px solid ${vc}44`, color: vc, cursor: 'help', textTransform: 'uppercase', flexShrink: 0 }}>
-                        VOL {vt}</span>
-                    )
-                  })()}
-                </div>
-                <div style={{ fontSize: 10, fontWeight: 800, color: m.needsAction ? BB.amberAlt : BB.text0, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: BB.mono }}>
-                  {m.stopInstruction}
-                </div>
-                {m.stopContext && (
-                  <div style={{ fontSize: 8, color: BB.text3, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {m.stopContext}
-                  </div>
-                )}
+                {m.rsi != null ? Math.round(m.rsi) : '—'}
+              </span>
+
+              {/* Vol tier badge */}
+              {vol ? (
+                <span
+                  title={volTierTooltip(rowCtx.pr, {
+                    stop: m.liveStopPrice,
+                    price: h.current_price ?? h.price,
+                  })}
+                  style={{
+                    justifySelf: 'start',
+                    fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4,
+                    background: `${vol.color}1a`, border: `1px solid ${vol.color}55`,
+                    color: vol.color, letterSpacing: 0.4, cursor: 'help',
+                  }}
+                >
+                  {vol.label}
+                </span>
+              ) : (
+                <span style={{ fontSize: 10, color: BB.text3 }}>—</span>
+              )}
+
+              {/* News */}
+              <div
+                title={m.newsTitle
+                  ? [m.newsTitle, m.newsSource, m.newsAt ? String(m.newsAt).slice(0, 16) : null].filter(Boolean).join('\n')
+                  : 'No recent headline'}
+                onClick={e => {
+                  if (!m.newsUrl) return
+                  e.stopPropagation()
+                  window.open(m.newsUrl, '_blank', 'noopener,noreferrer')
+                }}
+                style={{
+                  fontSize: 10, color: m.newsTitle ? BB.text1 : BB.text3, fontWeight: 500,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  textDecoration: m.newsUrl ? 'underline' : undefined,
+                  textDecorationColor: `${BB.blue}55`,
+                  cursor: m.newsUrl ? 'pointer' : 'help',
+                  minWidth: 0,
+                }}
+              >
+                {m.newsTitle ? truncate(m.newsTitle, 48) : '—'}
               </div>
 
-              <span onClick={e => { e.stopPropagation(); onPrimaryAction(rowCtx) }}>
-                <button
-                  type="button"
-                  title={m.primaryActionTooltip}
-                  style={{
-                    width: '100%', padding: isAmberAction || isRedAction ? '7px 10px' : '5px 8px',
-                    fontSize: isAmberAction || isRedAction ? 10 : 9, fontWeight: 800, borderRadius: 5, cursor: 'pointer',
-                    border: isAmberAction
-                      ? `2px solid ${BB.amberAlt}`
-                      : isRedAction
-                        ? `2px solid ${BB.red}`
-                        : `1px solid ${actionColor}55`,
-                    background: isAmberAction
-                      ? 'rgba(255, 160, 40, 0.28)'
-                      : isRedAction
-                        ? BB.redDim
-                        : actionBg,
-                    color: isAmberAction ? BB.amberAlt : actionColor,
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    boxShadow: isAmberAction ? '0 0 10px rgba(255, 176, 0, 0.22)' : undefined,
-                  }}
-                >{m.needsAction ? '▸ ' : ''}{m.primaryAction.label}</button>
+              {/* Earnings */}
+              <span
+                title={m.earningsDate ? `Next earnings: ${m.earningsDate}` : 'No earnings date'}
+                style={{
+                  fontFamily: BB.mono, fontSize: 10, fontWeight: 700,
+                  color: m.earningsLabel ? BB.amber : BB.text3, cursor: 'help',
+                }}
+              >
+                {m.earningsLabel || '—'}
               </span>
 
-              <span onClick={e => e.stopPropagation()} title={holdingReportEligible(h) ? 'Download analyst reports' : 'No report on file'}>
+              {/* Stop — click opens Stop Management drawer */}
+              <div
+                role="button"
+                title={[
+                  'Click → Stop Management drawer',
+                  m.stopTooltip,
+                  m.liveStopPrice != null ? `Live $${m.liveStopPrice.toFixed(2)}` : null,
+                ].filter(Boolean).join('\n')}
+                onClick={e => { e.stopPropagation(); openStops(rowCtx) }}
+                style={{
+                  minWidth: 0, padding: '5px 7px', borderRadius: 4, cursor: 'pointer',
+                  background: stopStatusBg(m.stopStatus), borderLeft: `2px solid ${stopColor}`,
+                  lineHeight: 1.35,
+                }}
+              >
+                <div style={{ fontSize: 9, fontWeight: 800, color: stopColor, textTransform: 'uppercase' }}>
+                  {m.stopLabel}
+                  {m.liveStopPrice != null && (
+                    <span style={{ color: BB.text2, fontWeight: 700, marginLeft: 4, fontFamily: BB.mono }}>
+                      ${m.liveStopPrice.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, color: m.needsAction ? BB.amberAlt : BB.text0,
+                  fontFamily: BB.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {m.stopInstruction}
+                </div>
+              </div>
+
+              {/* Action → Stop Management */}
+              <button
+                type="button"
+                data-testid={`hold-action-${m.symbol}-${m.account}`}
+                title={m.primaryActionTooltip}
+                onClick={e => { e.stopPropagation(); openStops(rowCtx) }}
+                style={{
+                  width: '100%', padding: '8px 8px', fontSize: 10, fontWeight: 800, borderRadius: 5,
+                  cursor: 'pointer',
+                  border: isAmber ? `2px solid ${BB.amberAlt}` : isRed ? `2px solid ${BB.red}` : `1px solid ${actionColor}55`,
+                  background: isAmber ? 'rgba(255,160,40,0.28)' : isRed ? BB.redDim : actionBg,
+                  color: isAmber ? BB.amberAlt : actionColor,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}
+              >
+                {m.needsAction ? '▸ ' : ''}{m.primaryAction.label}
+              </button>
+
+              {/* Reports */}
+              <span onClick={e => e.stopPropagation()}>
                 {holdingReportEligible(h) ? (
-                  <HoldingReportLinks symbol={h.symbol} entry={rowCtx.reportEntry} compact reportType={rowCtx.reportEntry?.report_type} />
-                ) : <span style={{ fontSize: 9, color: BB.text3 }}>—</span>}
+                  <HoldingReportLinks
+                    symbol={h.symbol}
+                    entry={rowCtx.reportEntry}
+                    compact
+                    reportType={rowCtx.reportEntry?.report_type}
+                  />
+                ) : (
+                  <span style={{ fontSize: 9, color: BB.text3 }}>—</span>
+                )}
               </span>
 
+              {/* Agents */}
               <AgentBadges cov={rowCtx.coverage} />
             </div>
           )
         })}
       </div>
 
-      <div style={{ fontSize: 9, color: BB.text3, padding: '8px 12px', borderTop: `1px solid ${BB.border}`, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <span>{rows.length} rows · hover for tooltips · Enter or click row for drawer</span>
+      <div style={{
+        fontSize: 9, color: BB.text3, padding: '8px 12px', borderTop: `1px solid ${BB.border}`,
+        display: 'flex', gap: 12, flexWrap: 'wrap',
+      }}>
+        <span data-testid="holdings-row-count">
+          {rows.length} positions · row click → full ticker drawer (75%) · symbol/stop/action → Stop Management
+        </span>
         {actionableCount > 0 && (
-          <span style={{ color: BB.amberAlt, fontWeight: 700 }}>▸ {actionableCount} need action (amber/red)</span>
+          <span style={{ color: BB.amberAlt, fontWeight: 700 }}>▸ {actionableCount} need stop action</span>
         )}
+        <span>Hover for full news / stop detail</span>
       </div>
     </div>
   )

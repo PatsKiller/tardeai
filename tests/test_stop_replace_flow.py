@@ -56,7 +56,9 @@ def test_place_order_marks_immediate_readback_rejection():
 
 def test_transport_cancels_replace_before_post():
     place = TRANSPORT_SRC[TRANSPORT_SRC.index("def place_order"):TRANSPORT_SRC.index("def cancel_order_for_replace")]
-    assert "cancel_order_for_replace(account_key, _replace_oid" in place
+    assert "cancel_order_for_replace(" in place
+    assert "_replace_oid" in place
+    assert "expected_symbol=_symbol" in place
     assert place.index("cancel_order_for_replace") < place.index("client.place_order")
 
 
@@ -72,8 +74,25 @@ def test_ui_threads_replace_from_fresh_preflight_snap():
     assert "opts?.liveSnap ?? effectiveConfirmed" in UI_SRC
 
 
-def test_open_modify_only_replaces_pilot_placed_stops():
-    assert "effectiveBrokerStop.pilot_placed ? effectiveBrokerStop.order_id : null" in CARD_SRC
+def test_open_modify_replaces_any_live_broker_stop():
+    # Manual ToS stops are replaceable via cancel-then-place (order_id always threaded).
+    assert "replace_order_id: effectiveBrokerStop.order_id || null" in CARD_SRC
+    assert "effectiveBrokerStop.pilot_placed ? effectiveBrokerStop.order_id : null" not in CARD_SRC
+
+
+def test_ui_replace_does_not_require_pilot_placed():
+    assert "canReplace = Boolean(isSchwab && kind !== 'MARKET' && hasLiveBrokerStopOrder(conf, monitored) && orderId)" in UI_SRC
+    assert "isPilot && orderId" not in UI_SRC
+
+
+def test_transport_replace_allows_manual_protective_cancel():
+    assert "allow_manual_protective=True" in TRANSPORT_SRC
+    assert "def _describe_live_sell_stop" in TRANSPORT_SRC
+    assert "manual_stop_replace" in TRANSPORT_SRC
+    cancel = TRANSPORT_SRC[TRANSPORT_SRC.index("def cancel_order("):TRANSPORT_SRC.index("def replace_order")]
+    assert "allow_manual_protective" in cancel
+    # Standalone cancel (default) still refuses non-pilot
+    assert "only pilot orders may be canceled" in cancel
 
 
 def test_open_trades_broker_stop_tags_pilot_placed():

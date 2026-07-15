@@ -13,21 +13,23 @@ import { mergeLiveStop, stopReviewTooltip } from '../lib/stopReviewTooltip'
 import HoldingReportLinks from '../components/HoldingReportLinks'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import { holdingReportEligible } from '../lib/reportLinks'
-import RiskHeatmapGrid from '../components/risk/RiskHeatmapGrid'
 import RiskContributionBars from '../components/risk/RiskContributionBars'
 import DrawdownChart from '../components/risk/DrawdownChart'
 import StopManagement from '../components/StopManagement'
 import RedeployPanel from '../components/RedeployPanel'
+import AllocationPanel from '../components/AllocationPanel'
 import { EvidenceBlock } from '../components/EvidenceBlock'
 import HoldingsTableView, { type HoldingsTableRowContext } from '../components/HoldingsTableView'
 import HoldingsSideDrawer from '../components/HoldingsSideDrawer'
+import ShareReconciliationModal, { type ShareDriftItem } from '../components/ShareReconciliationModal'
 import type { HoldingsDetailContext } from '../components/HoldingsDetailPanel'
 import type { HoldingsCvdMode } from '../lib/holdingsTerminalTokens'
+import { accountFullName } from '../lib/holdingsRowModel'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Holdings', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Redeploy', 'Stop Management'] as const
+const TABS = ['Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Redeploy', 'Stop Management'] as const
 const COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9', '#fb923c']
 
 const ACCT_COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9']
@@ -214,6 +216,9 @@ export default function PortfolioHub({ onDrill }: Props) {
   }
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: holdings, loading: holdingsLoading, error: holdingsError, stale: holdingsStale } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
+  const { data: shareDriftRaw, refetch: refetchShareDrift } = useApi<any>('/api/v2/holdings/share-drift', 60_000)
+  const shareDriftItems: ShareDriftItem[] = (shareDriftRaw?.items || shareDriftRaw?.data?.items || []) as ShareDriftItem[]
+  const [shareDriftModal, setShareDriftModal] = useState<ShareDriftItem | null>(null)
   const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 120_000)
   const { data: liveStops } = useApi<any>('/api/v2/holdings/live-stops', 60_000)
   const { data: monitoredStops, refetch: refetchMonitored } = useApi<any>('/api/v2/holdings/monitored-stops', 60_000)
@@ -285,14 +290,20 @@ export default function PortfolioHub({ onDrill }: Props) {
       confirmedStop: mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey]),
       reportEntry: reportMap[symU],
       coverage: coverage[symU],
+      // Existing enrichment only — Finviz strip + symbol cards (news / earnings)
+      fv: fvMap[symU],
+      card: cardMap[symU],
     }
   }
-  const openHoldingsDrawer = (rowCtx: HoldingsTableRowContext, opts?: { focus?: 'stops' }) => {
+  const openHoldingsDrawer = (rowCtx: HoldingsTableRowContext, opts?: { focus?: 'stops' | 'overview' }) => {
     const h = rowCtx.h
     const symU = (h.symbol || '').toUpperCase()
     const focusStops = opts?.focus === 'stops'
-    setDrawerTitle(h.symbol)
-    setDrawerSubtitle(`${(h.account ?? '').replace(/_/g, ' ')} · ${h.name ?? ''}${focusStops ? ' · Stop management' : ''}`)
+    const acctLabel = accountFullName(String(h.account ?? ''))
+    setDrawerTitle(String(h.symbol || '').toUpperCase())
+    setDrawerSubtitle(
+      `${acctLabel}${h.name ? ` · ${h.name}` : ''}${focusStops ? ' · Stop Management' : ' · Ticker detail'}`,
+    )
     setHoldingsDrawer({
       h,
       protection: rowCtx.pr,
@@ -308,6 +319,7 @@ export default function PortfolioHub({ onDrill }: Props) {
       onRefreshMonitored: () => refetchMonitored?.(),
       cvdMode: holdingsCvd,
       drawerFocus: focusStops ? 'stops' : null,
+      initialTab: focusStops ? 'stops' : 'overview',
       onPreflightUpdate: (symbol, account, patch) => {
         const hk = `${symbol}:${account}`
         if (patch.holding) setHoldingPatches(p => ({ ...p, [hk]: { ...(p[hk] ?? {}), ...patch.holding } }))
@@ -420,81 +432,145 @@ export default function PortfolioHub({ onDrill }: Props) {
         </div>
       )}
 
+      {tab === 'Allocation' && (
+        <AllocationPanel
+          sectors={overview?.sectors ?? sectors}
+          sectorsByAccount={sectorsByAccount}
+          holdings={allHoldings}
+          acctColor={acctColor}
+          onGoHoldings={() => selectTab('Holdings')}
+          onOpenHolding={(symbol, account) => {
+            selectTab('Holdings')
+            setAcctFilter(account)
+            setSigTab('All')
+            const key = `${symbol}-${account}`
+            setFocusKey(key)
+            setTimeout(() => {
+              document.getElementById(`hold-${symbol}-${account}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            }, 120)
+            setTimeout(() => setFocusKey(null), 4000)
+          }}
+        />
+      )}
+
       {tab === 'Holdings' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>
-          {/* Allocation donut */}
-          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Allocation</div>
-            {sectors.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No sector data</div> : (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={sectors} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} stroke="var(--bg0)" strokeWidth={2}>
-                    {sectors.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }} formatter={(v: number) => [fmt$(v, 0), 'Value']} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-            {sectors.map((s: any, i: number) => (
-              <div key={s.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '2px 0' }}>
-                <span style={{ color: COLORS[i % COLORS.length] }}>{s.name}</span>
-                <span style={{ color: 'var(--text2)' }}>{fmt$(s.value, 0)}</span>
-              </div>
-            ))}
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/overview → sectors</div>
-            {sectors.length > 0 && (
-              <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-                <RiskHeatmapGrid
-                  title="Sector exposure"
-                  valueLabel="allocation"
-                  columns={2}
-                  cells={sectors.slice(0, 8).map((s: any) => ({
-                    key: s.name,
-                    label: s.name,
-                    value: Number(s.value) || 0,
-                    sub: s.pct != null ? `${s.pct}%` : undefined,
-                  }))}
-                />
-              </div>
-            )}
+        <div data-testid="holdings-panel">
+          {/* Compact nav chips — allocation / stop desk live on their own tabs */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+            <button
+              type="button"
+              data-testid="holdings-open-allocation"
+              onClick={() => selectTab('Allocation')}
+              style={{
+                fontSize: 10.5, fontWeight: 700, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
+                border: '1px solid #60a5fa44', background: 'rgba(96,165,250,.1)', color: '#60a5fa',
+              }}
+            >
+              Allocation → sectors & accounts
+            </button>
+            <button
+              type="button"
+              data-testid="holdings-open-stops"
+              onClick={() => selectTab('Stop Management')}
+              style={{
+                fontSize: 10.5, fontWeight: 700, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
+                border: '1px solid #f59e0b44', background: 'rgba(245,158,11,.1)', color: '#f59e0b',
+              }}
+            >
+              Stop Management desk →
+            </button>
+            {priceStamp && <div style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 'auto' }} title={holdings?.pricing?.note}>{priceStamp}</div>}
           </div>
 
-          {/* Holdings — large graphical cards (operator request 2026-06-12) */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-              {/* signal sub-tab filters */}
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {SIGNAL_TABS.map(([k, sigs]) => {
-                  const n = sigCount(sigs)
-                  const c = k === 'Buy/Add' ? '#22c55e' : k === 'Trim/Sell' ? '#ef4444' : k === 'Watch' ? '#f59e0b' : '#60a5fa'
-                  return (
-                    <button key={k} onClick={() => setSigTab(k)} style={{
-                      padding: '4px 12px', fontSize: 10.5, borderRadius: 6, cursor: 'pointer',
-                      border: `1px solid ${sigTab === k ? c : 'var(--border)'}`,
-                      background: sigTab === k ? `${c}1f` : 'var(--bg2)',
-                      color: sigTab === k ? c : 'var(--text3)', fontWeight: sigTab === k ? 800 : 400,
-                    }}>{k} ({n})</button>
-                  )
-                })}
-              </div>
-              {priceStamp && <div style={{ fontSize: 8, color: 'var(--text3)' }} title={holdings?.pricing?.note}>{priceStamp}</div>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {SIGNAL_TABS.map(([k, sigs]) => {
+                const n = sigCount(sigs)
+                const c = k === 'Buy/Add' ? '#22c55e' : k === 'Trim/Sell' ? '#ef4444' : k === 'Watch' ? '#f59e0b' : '#60a5fa'
+                return (
+                  <button key={k} onClick={() => setSigTab(k)} style={{
+                    padding: '4px 12px', fontSize: 10.5, borderRadius: 6, cursor: 'pointer',
+                    border: `1px solid ${sigTab === k ? c : 'var(--border)'}`,
+                    background: sigTab === k ? `${c}1f` : 'var(--bg2)',
+                    color: sigTab === k ? c : 'var(--text3)', fontWeight: sigTab === k ? 800 : 400,
+                  }}>{k} ({n})</button>
+                )
+              })}
             </div>
+          </div>
 
-            <HoldingsTableView
-              rows={terminalRows}
-              acctColor={acctColor}
-              focusKey={focusKey}
-              cvdMode={holdingsCvd}
-              onOpenDetail={openHoldingsDrawer}
-              onPrimaryAction={openHoldingsStops}
-            />
-            {holdingsPending && <div style={{ padding: 20, color: 'var(--text3)', fontSize: 12, textAlign: 'center', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>Loading holdings from /api/v2/portfolio/holdings…</div>}
-            {holdingsUnavailable && <div style={{ padding: 20, color: '#f59e0b', fontSize: 12, textAlign: 'center', background: 'var(--bg1)', border: '1px solid rgba(245,158,11,.35)', borderRadius: 10 }}>Holdings request is still retrying: {holdingsError}</div>}
-            {!holdingsPending && !holdingsUnavailable && holdingsList.length === 0 && <div style={{ padding: 20, color: 'var(--text3)', fontSize: 11, textAlign: 'center', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>No holdings match this filter.</div>}
-
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>
-              Dense single-row scan · stop + action focal · row click or drawer = full controls (2FA, tickets, reports).
+          {shareDriftItems.length > 0 && (
+            <div
+              data-testid="share-drift-banner"
+              style={{
+                marginBottom: 10, padding: '10px 14px', borderRadius: 8,
+                background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.4)',
+                display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center',
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 800, color: '#f59e0b' }}>
+                Share drift · {shareDriftItems.length} position{shareDriftItems.length === 1 ? '' : 's'} need update
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+                Likely dividend reinvestment — system shares lag broker actual.
+              </span>
+              <span style={{ flex: 1 }} />
+              {shareDriftItems.slice(0, 4).map(it => (
+                <button
+                  key={it.id}
+                  type="button"
+                  onClick={() => setShareDriftModal(it)}
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                    border: '1px solid #f59e0b66', background: 'rgba(245,158,11,.15)', color: '#fbbf24',
+                  }}
+                >
+                  {it.symbol} ({it.drift_amount >= 0 ? '+' : ''}{it.drift_amount})
+                </button>
+              ))}
             </div>
+          )}
+
+          <HoldingsTableView
+            rows={terminalRows}
+            acctColor={acctColor}
+            focusKey={focusKey}
+            cvdMode={holdingsCvd}
+            onOpenDetail={openHoldingsDrawer}
+            onOpenStops={openHoldingsStops}
+            onPrimaryAction={openHoldingsStops}
+            onShareDrift={(ctx) => {
+              const match = shareDriftItems.find(
+                d => d.symbol === String(ctx.h.symbol || '').toUpperCase()
+                  && d.account_key === String(ctx.h.account || ''),
+              )
+              if (match) setShareDriftModal(match)
+              else {
+                // synthesize from holding dual fields when task list lags
+                const h = ctx.h
+                const sys = Number(h.system_shares ?? h.shares ?? 0)
+                const brk = Number(h.broker_actual_shares ?? h.shares ?? 0)
+                setShareDriftModal({
+                  id: 0,
+                  account_key: String(h.account || ''),
+                  symbol: String(h.symbol || '').toUpperCase(),
+                  system_shares: sys,
+                  broker_shares: brk,
+                  drift_amount: brk - sys,
+                  source: h.share_drift_source || 'dividend_reinvestment',
+                  status: 'open',
+                  message: `${String(h.symbol).toUpperCase()} share drift: system ${sys} vs broker ${brk}.`,
+                })
+              }
+            }}
+          />
+          {holdingsPending && <div style={{ padding: 20, color: 'var(--text3)', fontSize: 12, textAlign: 'center', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>Loading holdings from /api/v2/portfolio/holdings…</div>}
+          {holdingsUnavailable && <div style={{ padding: 20, color: '#f59e0b', fontSize: 12, textAlign: 'center', background: 'var(--bg1)', border: '1px solid rgba(245,158,11,.35)', borderRadius: 10 }}>Holdings request is still retrying: {holdingsError}</div>}
+          {!holdingsPending && !holdingsUnavailable && holdingsList.length === 0 && <div style={{ padding: 20, color: 'var(--text3)', fontSize: 11, textAlign: 'center', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>No holdings match this filter.</div>}
+
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8, lineHeight: 1.45 }}>
+            Row click → full ticker drawer (75%, tabbed). Symbol / Stop / Action → Stop Management tab.
+            Allocation & portfolio Stop Management desk: separate tabs.
           </div>
         </div>
       )}
@@ -505,6 +581,17 @@ export default function PortfolioHub({ onDrill }: Props) {
         subtitle={drawerSubtitle}
         ctx={holdingsDrawer}
         onClose={() => setHoldingsDrawer(null)}
+      />
+
+      <ShareReconciliationModal
+        open={!!shareDriftModal}
+        item={shareDriftModal}
+        onClose={() => setShareDriftModal(null)}
+        onApplied={() => {
+          refetchShareDrift?.()
+          // force holdings refresh by soft-reloading page data
+          try { window.dispatchEvent(new Event('focus')) } catch { /* */ }
+        }}
       />
 
       {tab === 'Look-through' && (() => {

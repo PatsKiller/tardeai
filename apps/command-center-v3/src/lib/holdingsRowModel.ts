@@ -7,12 +7,24 @@ export interface HoldingsRowInput {
   confirmedStop?: any
   monitored?: any
   llmHealth?: string | null
+  /** Finviz strip map row for this symbol (rsi / perf fallback). */
+  fv?: any
+  /** Symbol-card payload (news[], earnings{}). */
+  card?: any
 }
+
+export type RsiZone = 'oversold' | 'overbought' | 'neutral' | null
+export type VolTier = 'low' | 'medium' | 'high' | null
 
 export interface HoldingsRowModel {
   key: string
   symbol: string
+  /** Short security name (ETF/issuer), may be empty */
+  name: string | null
   account: string
+  /** Full display name e.g. "Schwab Rollover IRA" */
+  accountLabel: string
+  /** @deprecated use accountLabel */
   accountShort: string
   marketValue: number
   dayPct: number | null
@@ -23,6 +35,17 @@ export interface HoldingsRowModel {
   plPct: number | null
   signal: string | null
   shares: number | null
+  /** Technicals / enrichment (existing sources only) */
+  rsi: number | null
+  rsiStatus: RsiZone
+  volTier: VolTier
+  newsTitle: string | null
+  newsSource: string | null
+  newsAt: string | null
+  newsUrl: string | null
+  earningsDate: string | null
+  /** Short display e.g. "Jul 21" or "21d" */
+  earningsLabel: string | null
   stopStatus: StopStatusTone
   stopDistPct: number | null
   stopPrice: number | null
@@ -42,6 +65,68 @@ export interface HoldingsRowModel {
   llmAction: string | null
 }
 
+/** Normalize RSI zone for color coding (overbought → red, oversold → green). */
+export function resolveRsiZone(rsi: number | null, status?: string | null): RsiZone {
+  const s = String(status || '').toLowerCase()
+  if (s === 'oversold' || s === 'overbought') return s
+  if (rsi == null || Number.isNaN(rsi)) return null
+  if (rsi <= 30) return 'oversold'
+  if (rsi >= 70) return 'overbought'
+  return 'neutral'
+}
+
+export function resolveVolTier(raw: unknown): VolTier {
+  const t = String(raw || '').toLowerCase()
+  if (t === 'low' || t === 'medium' || t === 'high') return t
+  return null
+}
+
+/** Format ISO / date-like earnings for compact table cell. */
+export function formatEarningsLabel(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const s = String(raw).trim()
+  if (!s) return null
+  const d = new Date(s.includes('T') ? s : `${s}T12:00:00Z`)
+  if (Number.isNaN(d.getTime())) return s.slice(0, 10)
+  const now = new Date()
+  const days = Math.round((d.getTime() - now.getTime()) / 86_400_000)
+  const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
+  const day = d.getUTCDate()
+  if (days >= 0 && days <= 45) return `${mon} ${day} · ${days}d`
+  return `${mon} ${day}`
+}
+
+function pickNews(h: any, card?: any): {
+  title: string | null; source: string | null; at: string | null; url: string | null
+} {
+  if (h?.news_title) {
+    return {
+      title: String(h.news_title),
+      source: h.news_source != null ? String(h.news_source) : null,
+      at: h.news_at != null ? String(h.news_at) : null,
+      url: h.news_url != null ? String(h.news_url) : null,
+    }
+  }
+  const n0 = Array.isArray(card?.news) && card.news.length ? card.news[0] : null
+  if (n0?.title) {
+    return {
+      title: String(n0.title),
+      source: n0.source != null ? String(n0.source) : null,
+      at: n0.at != null ? String(n0.at) : null,
+      url: n0.url != null ? String(n0.url) : null,
+    }
+  }
+  return { title: null, source: null, at: null, url: null }
+}
+
+function pickEarningsDate(h: any, card?: any): string | null {
+  if (h?.next_earnings_date) return String(h.next_earnings_date)
+  const e = card?.earnings
+  if (e?.next_date) return String(e.next_date)
+  if (typeof e === 'string' && e.trim()) return e.trim()
+  return null
+}
+
 export function plMetrics(h: any): { dollars: number | null; pct: number | null } {
   const cb = h.cost_basis
   if (cb == null || cb <= 0) return { dollars: null, pct: null }
@@ -54,15 +139,55 @@ export function plMetrics(h: any): { dollars: number | null; pct: number | null 
   return { dollars, pct }
 }
 
+/** Human full account labels — never abbreviated in the holdings table. */
+export function accountFullName(account: string): string {
+  const key = (account || 'unknown').trim().toLowerCase().replace(/\s+/g, '_')
+  const MAP: Record<string, string> = {
+    schwab_taxable: 'Schwab Taxable',
+    schwab_rollover_ira: 'Schwab Rollover IRA',
+    schwab_roth_ira: 'Schwab Roth IRA',
+    schwab_roth: 'Schwab Roth IRA',
+    fidelity_rollover_ira: 'Fidelity Rollover IRA',
+    fidelity_roth_ira: 'Fidelity Roth IRA',
+    fidelity_taxable: 'Fidelity Taxable',
+    fidelity_401k: 'Fidelity 401(k)',
+  }
+  if (MAP[key]) return MAP[key]
+  // Title-case unknown keys: schwab_foo → Schwab Foo
+  return (account || 'Unknown')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .replace(/\bIra\b/g, 'IRA')
+    .replace(/\bRoth\b/g, 'Roth')
+}
+
+/** Brand palette for account pills (Fidelity blue, Schwab green, Roth purple, …). */
+export function accountBrand(account: string): { color: string; bg: string; letter: string } {
+  const k = (account || '').toLowerCase()
+  if (k.includes('fidelity') && k.includes('roth')) {
+    return { color: '#a78bfa', bg: 'rgba(167,139,250,0.16)', letter: 'F' }
+  }
+  if (k.includes('fidelity')) {
+    return { color: '#3b82f6', bg: 'rgba(59,130,246,0.16)', letter: 'F' }
+  }
+  if (k.includes('roth')) {
+    return { color: '#c084fc', bg: 'rgba(192,132,252,0.16)', letter: 'S' }
+  }
+  if (k.includes('rollover') || k.includes('ira')) {
+    return { color: '#34d399', bg: 'rgba(52,211,153,0.14)', letter: 'S' }
+  }
+  if (k.includes('schwab')) {
+    return { color: '#22c55e', bg: 'rgba(34,197,94,0.14)', letter: 'S' }
+  }
+  if (k.includes('401')) {
+    return { color: '#38bdf8', bg: 'rgba(56,189,248,0.14)', letter: '4' }
+  }
+  return { color: '#94a3b8', bg: 'rgba(148,163,184,0.14)', letter: '?' }
+}
+
+/** @deprecated prefer accountFullName — kept for any short-label callers */
 function acctShort(account: string): string {
-  const a = (account || 'unknown').replace(/_/g, ' ')
-  if (a.includes('schwab taxable')) return 'Schwab Tx'
-  if (a.includes('schwab roth')) return 'Schwab Roth'
-  if (a.includes('fidelity rollover')) return 'Fid IRA'
-  if (a.includes('fidelity')) return 'Fidelity'
-  if (a.includes('401')) return '401k'
-  const parts = a.split(' ')
-  return parts.length > 2 ? `${parts[0]} ${parts[1]}` : a
+  return accountFullName(account)
 }
 
 const fmt$ = (n: number) => `$${n.toFixed(2)}`
@@ -229,6 +354,8 @@ function stopStatusFromLogic(
 export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel {
   const h = input.h
   const pr = input.pr
+  const fv = input.fv
+  const card = input.card
   const sym = String(h.symbol || '').toUpperCase()
   const acct = String(h.account ?? 'unknown')
   const key = `${sym}:${acct}`
@@ -246,6 +373,18 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   const isSchwab = acct.startsWith('schwab')
   const isFidelity = acct.startsWith('fidelity') && acct !== 'fidelity_401k'
   const needsSellAll = isSchwab && sh > 0 && sh < 40
+
+  // RSI: holdings enrichment first, Finviz strip fallback
+  let rsi: number | null = h.rsi != null && h.rsi !== '' ? Number(h.rsi) : null
+  if (rsi == null || Number.isNaN(rsi)) {
+    rsi = fv?.rsi != null && fv.rsi !== '' ? Number(fv.rsi) : null
+    if (rsi != null && Number.isNaN(rsi)) rsi = null
+  }
+  const rsiStatus = resolveRsiZone(rsi, h.rsi_status ?? fv?.rsi_status)
+  const volTier = resolveVolTier(pr?.volatility_tier ?? h.volatility_tier)
+  const news = pickNews(h, card)
+  const earningsDate = pickEarningsDate(h, card)
+  const earningsLabel = formatEarningsLabel(earningsDate)
 
   const logic = buildStopLogic({
     h,
@@ -268,11 +407,19 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   const needsAction = primary.tone === 'amber' || primary.tone === 'red'
   const stopLabel = stopStatus === 'stable' ? 'Stable' : stopStatus === 'concern' ? 'Concern' : 'Action'
 
+  const nameRaw = String(h.name || h.security_name || h.company_name || '').trim()
+  const name = nameRaw
+    ? (nameRaw.length > 36 ? `${nameRaw.slice(0, 34)}…` : nameRaw)
+    : null
+  const accountLabel = accountFullName(acct)
+
   return {
     key,
     symbol: sym,
+    name,
     account: acct,
-    accountShort: acctShort(acct),
+    accountLabel,
+    accountShort: accountLabel,
     marketValue: Number(h.market_value) || 0,
     dayPct,
     portfolioPct: h.portfolio_pct != null ? Number(h.portfolio_pct) : null,
@@ -282,6 +429,15 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     plPct,
     signal,
     shares: sh || null,
+    rsi,
+    rsiStatus,
+    volTier,
+    newsTitle: news.title,
+    newsSource: news.source,
+    newsAt: news.at,
+    newsUrl: news.url,
+    earningsDate,
+    earningsLabel,
     stopStatus,
     stopDistPct: stopDist,
     stopPrice,

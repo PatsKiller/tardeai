@@ -141,12 +141,24 @@ def _load_account_map() -> dict:
 
 
 def _merge(current: dict, synced_by_account: dict[str, list[dict]]) -> dict:
-    """Replace ONLY the synced accounts' positions; keep everything else untouched. Pure function."""
+    """Replace ONLY the synced accounts' positions; keep everything else untouched. Pure function.
+
+    Also applies share-reconciliation sticky DRIP policy (broker_actual_shares stamp + optional
+    open approval tasks after write).
+    """
+    prior = current.get("holdings") or []
+    drift_events: list = []
+    try:
+        from share_reconciliation import apply_share_policy_to_synced_positions
+        synced_by_account, drift_events = apply_share_policy_to_synced_positions(synced_by_account, prior)
+    except Exception as e:
+        print(f"  [share-recon] snaptrade policy failed (non-fatal): {str(e)[:100]}")
     owned = set(synced_by_account.keys())
-    kept = [h for h in current.get("holdings", []) if h.get("account") not in owned]
+    kept = [h for h in prior if h.get("account") not in owned]
     fresh = [pos for positions in synced_by_account.values() for pos in positions]
     out = dict(current)
     out["holdings"] = kept + fresh
+    out["_share_drift_events"] = drift_events  # consumed by run() after successful write
     return out
 
 
@@ -276,9 +288,18 @@ def run(apply: bool = False) -> dict:
             _s["as_of"] = _today
             _s.pop("reported_total_stale", None)
             print(f"  reported_total refreshed: {_key} ${_amt:,.2f} as_of {_today}")
+    drift_events = merged.pop("_share_drift_events", []) or []
     result = sps.protected_holdings_write(merged, source="snaptrade",
                                           account_key=",".join(sorted(synced.keys())), protect_basis=False)
     print(f"holdings write: {result.get('status')} (wrote={result.get('wrote')})")
+    share_drift_tasks = 0
+    if result.get("wrote") and drift_events:
+        try:
+            from share_reconciliation import process_sync_events
+            share_drift_tasks = process_sync_events(drift_events)
+            print(f"  share-recon: {share_drift_tasks} drift task(s) from SnapTrade sync")
+        except Exception as _de:
+            print(f"  share-recon: process failed ({_de})")
     if result.get("wrote"):
         try:
             import portfolio_repricer as _pr
@@ -289,7 +310,8 @@ def run(apply: bool = False) -> dict:
         except Exception as _e:
             print(f"WARNING: post-sync repricer failed ({_e}) — run portfolio_repricer.py manually")
     return {"ok": bool(result.get("wrote")), "applied": True, "accounts": len(synced),
-            "zeroed": zeroed, "write": result}
+            "zeroed": zeroed, "write": result, "share_drift_tasks": share_drift_tasks,
+            "share_drift_events": drift_events}
 
 
 def main():
