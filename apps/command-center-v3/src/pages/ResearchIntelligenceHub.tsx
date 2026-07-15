@@ -1,6 +1,6 @@
 /**
- * Research Intelligence v2 — professional intelligence cockpit (CC v3).
- * Freshness tiers · archive search · stars/votes/notes · retirement pillar.
+ * Research Intelligence v2.1 — editorial intelligence desk (CC v3).
+ * Seeking Alpha / Benzinga / Yahoo Finance–inspired narrative UI.
  */
 import { useCallback, useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -20,11 +20,24 @@ type Cat = {
   pillar?: boolean
 }
 
+type NextAction = { label?: string; detail?: string; href_hint?: string }
+
 type Item = {
   id: string
   title: string
   summary?: string
   thesis?: string | null
+  lede?: string
+  executive_summary?: string[]
+  key_takeaways?: string[]
+  bull_case?: string | null
+  bear_case?: string | null
+  why_it_matters?: string
+  next_action?: NextAction
+  next_action_label?: string
+  next_action_detail?: string
+  narrative_source?: string
+  reading_minutes?: number
   symbol?: string | null
   categories?: string[]
   primary_category?: string
@@ -35,7 +48,6 @@ type Item = {
   freshness_label?: string
   needs_refresh?: boolean
   is_archived?: boolean
-  refresh_cadence_hours?: number
   created_at?: string
   source_system?: string
   research_type?: string
@@ -53,59 +65,59 @@ type Item = {
   status?: string
 }
 
-const PRI_COLOR: Record<string, string> = {
-  high: '#f59e0b',
-  normal: '#60a5fa',
-  low: '#64748b',
+/* Soft editorial palette — pleasant, not alarm-heavy */
+const C = {
+  ink: '#e8eef7',
+  muted: '#8b95a8',
+  soft: '#5c6578',
+  card: 'rgba(22, 28, 42, 0.92)',
+  cardHover: 'rgba(28, 36, 54, 0.98)',
+  line: 'rgba(120, 140, 180, 0.14)',
+  lineStrong: 'rgba(120, 140, 180, 0.22)',
+  accent: '#7eb6ff',
+  accentSoft: 'rgba(126, 182, 255, 0.12)',
+  retire: '#c4a1ff',
+  retireSoft: 'rgba(196, 161, 255, 0.12)',
+  income: '#6ee7b7',
+  incomeSoft: 'rgba(110, 231, 183, 0.10)',
+  macro: '#fcd34d',
+  macroSoft: 'rgba(252, 211, 77, 0.10)',
+  live: '#34d399',
+  fresh: '#7dd3fc',
+  aging: '#fbbf24',
+  stale: '#fb923c',
+  archive: '#94a3b8',
+  bull: '#6ee7b7',
+  bear: '#f9a8d4',
+  star: '#fde68a',
+  cta: '#93c5fd',
+  ctaBg: 'linear-gradient(135deg, rgba(96,165,250,.18), rgba(167,139,250,.12))',
 }
 
-const TIER_COLOR: Record<string, string> = {
-  live: '#22c55e',
-  fresh: '#60a5fa',
-  aging: '#f59e0b',
-  stale: '#f97316',
-  archive: '#64748b',
+const TIER: Record<string, { color: string; label: string }> = {
+  live: { color: C.live, label: 'Live' },
+  fresh: { color: C.fresh, label: 'Fresh' },
+  aging: { color: C.aging, label: 'Aging' },
+  stale: { color: C.stale, label: 'Stale' },
+  archive: { color: C.archive, label: 'Archive' },
 }
 
-const SENT_COLOR: Record<string, string> = {
-  bullish: '#22c55e',
-  bearish: '#ef4444',
-  neutral: '#94a3b8',
+const CAT_TINT: Record<string, string> = {
+  retirement_tax: C.retire,
+  dividend_income: C.income,
+  macro_geo: C.macro,
+  sector_thematic: C.accent,
+  compounding_wealth: '#5eead4',
+  risk_regime: '#fca5a5',
+  catalyst_event: '#fcd34d',
+  company_ticker: '#94a3b8',
+  academic_pro: '#d8b4fe',
 }
 
-function Chip({ label, color, active, onClick, small }: {
-  label: string; color?: string; active?: boolean; onClick?: () => void; small?: boolean
-}) {
-  const c = color || '#94a3b8'
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        fontSize: small ? 10 : 11, fontWeight: 800,
-        padding: small ? '3px 8px' : '5px 11px',
-        borderRadius: 8, cursor: onClick ? 'pointer' : 'default',
-        border: `1px solid ${active ? c : 'rgba(148,163,184,.28)'}`,
-        background: active ? `${c}22` : 'transparent',
-        color: active ? c : 'var(--text2)',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {label}
-    </button>
-  )
-}
-
-function Badge({ children, color }: { children: ReactNode; color: string }) {
-  return (
-    <span style={{
-      fontSize: 9, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase',
-      color, border: `1px solid ${color}55`, borderRadius: 4, padding: '2px 6px',
-      background: `${color}14`,
-    }}>
-      {children}
-    </span>
-  )
+function confPct(c?: number | null) {
+  if (c == null || !Number.isFinite(Number(c))) return null
+  const n = Number(c)
+  return Math.round(n * (n <= 1 ? 100 : 1))
 }
 
 async function postFeedback(body: Record<string, unknown>) {
@@ -117,45 +129,107 @@ async function postFeedback(body: Record<string, unknown>) {
   return r.json()
 }
 
-function IntelCard({ item, catMeta, view, onOpen, onFeedback }: {
+function SoftChip({ label, color, active, onClick }: {
+  label: string; color?: string; active?: boolean; onClick?: () => void
+}) {
+  const c = color || C.accent
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        fontSize: 11, fontWeight: 650, letterSpacing: '0.01em',
+        padding: '6px 12px', borderRadius: 999, cursor: onClick ? 'pointer' : 'default',
+        border: `1px solid ${active ? `${c}66` : C.line}`,
+        background: active ? `${c}18` : 'rgba(255,255,255,0.02)',
+        color: active ? c : C.muted,
+        transition: 'background .15s, border-color .15s, color .15s',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+function Tag({ children, color }: { children: ReactNode; color?: string }) {
+  const c = color || C.muted
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+      color: c, background: `${c}14`, border: `1px solid ${c}33`,
+      borderRadius: 6, padding: '3px 8px',
+    }}>
+      {children}
+    </span>
+  )
+}
+
+function FreshnessDot({ tier, label }: { tier?: string; label?: string }) {
+  const t = TIER[tier || 'aging'] || TIER.aging
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: t.color, fontWeight: 600 }}>
+      <span style={{
+        width: 7, height: 7, borderRadius: '50%', background: t.color,
+        boxShadow: `0 0 8px ${t.color}88`,
+      }} />
+      {label || t.label}
+    </span>
+  )
+}
+
+function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
+  const label = item.next_action_label || item.next_action?.label || item.actionability || 'Read full analysis'
+  const detail = item.next_action_detail || item.next_action?.detail || item.why_it_matters || ''
+  return (
+    <div style={{
+      marginTop: 2, padding: '10px 12px', borderRadius: 10,
+      background: C.ctaBg, border: `1px solid ${catColor}33`,
+      display: 'flex', flexDirection: 'column', gap: 4,
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.cta }}>
+        Recommended next step
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 750, color: C.ink }}>{label}</div>
+      {detail && (
+        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>{detail}</div>
+      )}
+    </div>
+  )
+}
+
+function ArticleCard({
+  item, catMeta, featured, view, onOpen, onFeedback,
+}: {
   item: Item
   catMeta: Record<string, Cat>
+  featured?: boolean
   view: 'cards' | 'list' | 'compact'
   onOpen: () => void
   onFeedback: (id: string, patch: Partial<Item>) => void
 }) {
-  const pri = item.priority || 'normal'
-  const pc = PRI_COLOR[pri] || PRI_COLOR.normal
   const primary = item.primary_category || item.categories?.[0] || ''
-  const catColor = catMeta[primary]?.color || '#94a3b8'
-  const tier = item.freshness_tier || 'aging'
-  const tc = TIER_COLOR[tier] || TIER_COLOR.aging
-  const sc = SENT_COLOR[item.sentiment || 'neutral'] || SENT_COLOR.neutral
+  const catColor = CAT_TINT[primary] || catMeta[primary]?.color || C.accent
+  const paras = item.executive_summary?.length
+    ? item.executive_summary
+    : (item.summary ? [item.summary] : [])
+  const takeaways = item.key_takeaways?.length ? item.key_takeaways : []
 
   const toggleStar = async (e: MouseEvent) => {
     e.stopPropagation()
     const next = !item.starred
     onFeedback(item.id, { starred: next })
     await postFeedback({
-      item_id: item.id,
-      starred: next,
-      source_system: item.source_system,
-      source_table: item.source_system === 'hermes' ? 'hermes_research_intelligence' : undefined,
-      symbol: item.symbol,
-      categories: item.categories,
+      item_id: item.id, starred: next, source_system: item.source_system,
+      symbol: item.symbol, categories: item.categories,
     })
   }
-
   const vote = async (e: MouseEvent, v: number) => {
     e.stopPropagation()
     const next = item.vote === v ? 0 : v
     onFeedback(item.id, { vote: next || null })
     await postFeedback({
-      item_id: item.id,
-      vote: next,
-      source_system: item.source_system,
-      symbol: item.symbol,
-      categories: item.categories,
+      item_id: item.id, vote: next, source_system: item.source_system,
+      symbol: item.symbol, categories: item.categories,
     })
   }
 
@@ -168,209 +242,257 @@ function IntelCard({ item, catMeta, view, onOpen, onFeedback }: {
         onKeyDown={e => { if (e.key === 'Enter') onOpen() }}
         style={{
           display: 'grid',
-          gridTemplateColumns: 'auto 1fr auto auto auto',
-          gap: 10, alignItems: 'center',
-          padding: '8px 12px',
-          borderBottom: '1px solid rgba(148,163,184,.1)',
+          gridTemplateColumns: '28px 1fr auto auto',
+          gap: 12, alignItems: 'center',
+          padding: '11px 14px',
+          borderBottom: `1px solid ${C.line}`,
           cursor: 'pointer',
-          background: item.starred ? 'rgba(250,204,21,.04)' : 'transparent',
+          background: item.starred ? 'rgba(253,230,138,.04)' : 'transparent',
         }}
       >
-        <button type="button" onClick={toggleStar} style={{
-          border: 'none', background: 'transparent', cursor: 'pointer',
-          color: item.starred ? '#facc15' : 'var(--text3)', fontSize: 14, padding: 0,
-        }} title="Star">{item.starred ? '★' : '☆'}</button>
+        <button type="button" onClick={toggleStar} style={iconBtn(item.starred ? C.star : C.soft)}>
+          {item.starred ? '★' : '☆'}
+        </button>
         <div style={{ minWidth: 0 }}>
           <div style={{
-            fontSize: 12, fontWeight: 700, color: 'var(--text0)',
+            fontSize: 13, fontWeight: 700, color: C.ink,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
-            {item.symbol && <span style={{ color: '#60a5fa', marginRight: 6 }}>{item.symbol}</span>}
+            {item.symbol && <span style={{ color: C.accent, marginRight: 8 }}>{item.symbol}</span>}
             {item.title}
           </div>
+          {item.lede && (
+            <div style={{
+              fontSize: 11.5, color: C.muted, marginTop: 2,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {item.lede}
+            </div>
+          )}
         </div>
-        <Badge color={catColor}>{catMeta[primary]?.label || primary}</Badge>
-        <span style={{ fontSize: 10, color: tc, fontWeight: 700 }}>{item.freshness_label || '—'}</span>
-        <span style={{ fontSize: 10, color: pc, fontWeight: 800, textTransform: 'uppercase' }}>{pri}</span>
+        <Tag color={catColor}>{catMeta[primary]?.label || primary}</Tag>
+        <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} />
       </div>
     )
   }
 
-  if (view === 'list') {
-    return (
-      <article
-        onClick={onOpen}
-        role="button"
-        tabIndex={0}
-        onKeyDown={e => { if (e.key === 'Enter') onOpen() }}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 200px',
-          gap: 14,
-          padding: '14px 16px',
-          borderRadius: 12,
-          border: `1px solid ${item.is_holdings ? 'rgba(34,197,94,.3)' : 'rgba(148,163,184,.14)'}`,
-          borderLeft: `3px solid ${pc}`,
-          background: 'var(--bg1)',
-          cursor: 'pointer',
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6, alignItems: 'center' }}>
-            <button type="button" onClick={toggleStar} style={{
-              border: 'none', background: 'transparent', cursor: 'pointer',
-              color: item.starred ? '#facc15' : 'var(--text3)', fontSize: 15, padding: 0, lineHeight: 1,
-            }}>★</button>
-            {item.symbol && (
-              <span style={{ fontFamily: 'var(--mono, monospace)', fontWeight: 900, fontSize: 13, color: '#60a5fa' }}>
-                {item.symbol}
-              </span>
-            )}
-            <Badge color={catColor}>{catMeta[primary]?.label || primary}</Badge>
-            {item.is_holdings && <Badge color="#22c55e">Holding</Badge>}
-            {item.is_archived && <Badge color="#64748b">Archived</Badge>}
-            {item.needs_refresh && <Badge color="#f97316">Needs refresh</Badge>}
-            <Badge color={sc}>{item.sentiment || 'neutral'}</Badge>
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)', lineHeight: 1.35, marginBottom: 6 }}>
-            {item.title}
-          </div>
-          <div style={{
-            fontSize: 12, color: 'var(--text2)', lineHeight: 1.5,
-            overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
-          }}>
-            {item.summary || item.thesis || '—'}
-          </div>
-          {!!item.key_questions?.length && (
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text3)' }}>
-              Q: {item.key_questions[0]}
-            </div>
-          )}
-        </div>
-        <div style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8,
-          borderLeft: '1px solid rgba(148,163,184,.12)', paddingLeft: 12,
-        }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: tc, textAlign: 'right' }}>
-            {item.freshness_label}
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', textAlign: 'right' }}>
-            {item.source_system} · {item.research_type || '—'}
-            {item.source_count ? ` · ${item.source_count} src` : ''}
-          </div>
-          {item.confidence != null && (
-            <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text1)' }}>
-              {Math.round(Number(item.confidence) * (Number(item.confidence) <= 1 ? 100 : 1))}% conf
-            </div>
-          )}
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', textAlign: 'right' }}>
-            {item.actionability?.slice(0, 42) || 'Open →'}
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button type="button" onClick={e => vote(e, 1)} style={voteBtn(item.vote === 1, '#22c55e')}>▲</button>
-            <button type="button" onClick={e => vote(e, -1)} style={voteBtn(item.vote === -1, '#ef4444')}>▼</button>
-          </div>
-        </div>
-      </article>
-    )
+  const shell: CSSProperties = {
+    borderRadius: featured ? 18 : 14,
+    border: `1px solid ${featured ? `${catColor}44` : C.line}`,
+    background: featured
+      ? `linear-gradient(155deg, ${catColor}14 0%, ${C.card} 42%, rgba(12,16,28,.95) 100%)`
+      : C.card,
+    padding: featured ? '22px 24px' : view === 'list' ? '18px 20px' : '16px 18px',
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: featured ? 14 : 11,
+    boxShadow: featured ? `0 12px 40px rgba(0,0,0,.28), 0 0 0 1px ${catColor}18` : '0 4px 18px rgba(0,0,0,.18)',
+    transition: 'border-color .15s, transform .12s, background .15s',
+    position: 'relative',
+    overflow: 'hidden',
   }
 
-  // cards (default)
   return (
     <article
       onClick={onOpen}
       role="button"
       tabIndex={0}
       onKeyDown={e => { if (e.key === 'Enter') onOpen() }}
-      style={{
-        borderRadius: 14,
-        border: `1px solid ${item.is_holdings ? 'rgba(34,197,94,.35)' : 'rgba(148,163,184,.14)'}`,
-        borderLeft: `3px solid ${pc}`,
-        background: 'linear-gradient(165deg, var(--bg1) 0%, rgba(15,23,42,.55) 100%)',
-        padding: '14px 15px',
-        cursor: 'pointer',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 9,
-        minHeight: 168,
-        boxShadow: '0 6px 20px rgba(0,0,0,.16)',
-        position: 'relative',
-      }}
+      style={shell}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${catColor}66` }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = featured ? `${catColor}44` : C.line }}
     >
+      {/* top accent */}
       <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0, height: 2,
-        background: `linear-gradient(90deg, ${tc}, transparent)`,
-        borderRadius: '14px 14px 0 0',
+        position: 'absolute', top: 0, left: 0, right: 0, height: featured ? 3 : 2,
+        background: `linear-gradient(90deg, ${catColor}, transparent 70%)`,
       }} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 5 }}>
-            <button type="button" onClick={toggleStar} style={{
-              border: 'none', background: 'transparent', cursor: 'pointer',
-              color: item.starred ? '#facc15' : 'var(--text3)', fontSize: 14, padding: 0, lineHeight: 1,
-            }} title="Star for priority">{item.starred ? '★' : '☆'}</button>
-            {item.symbol && (
-              <span style={{ fontFamily: 'var(--mono, monospace)', fontWeight: 900, fontSize: 13, color: '#60a5fa' }}>
-                {item.symbol}
-              </span>
-            )}
-            <Badge color={catColor}>{catMeta[primary]?.label || primary}</Badge>
-            {item.is_holdings && <Badge color="#22c55e">Holding</Badge>}
-            {item.is_archived && <Badge color="#64748b">Archived</Badge>}
-            <span style={{ fontSize: 9, fontWeight: 800, color: pc, textTransform: 'uppercase' }}>{pri}</span>
-          </div>
-          <div style={{
-            fontSize: 13.5, fontWeight: 800, color: 'var(--text0)', lineHeight: 1.35,
-            overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-          }}>
-            {item.title}
-          </div>
+
+      {/* meta row */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, alignItems: 'center' }}>
+          <button type="button" onClick={toggleStar} style={iconBtn(item.starred ? C.star : C.soft)} title="Star">
+            {item.starred ? '★' : '☆'}
+          </button>
+          {item.symbol && (
+            <span style={{
+              fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 12,
+              color: C.accent, letterSpacing: '0.04em',
+            }}>
+              {item.symbol}
+            </span>
+          )}
+          <Tag color={catColor}>{catMeta[primary]?.label || primary}</Tag>
+          {item.is_holdings && <Tag color={C.income}>In portfolio</Tag>}
+          {item.is_archived && <Tag color={C.archive}>Archived</Tag>}
+          {item.needs_refresh && <Tag color={C.stale}>Due refresh</Tag>}
+          {item.priority === 'high' && <Tag color={C.macro}>Priority</Tag>}
+          {item.sentiment && item.sentiment !== 'neutral' && (
+            <Tag color={item.sentiment === 'bullish' ? C.bull : C.bear}>{item.sentiment}</Tag>
+          )}
         </div>
-        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontSize: 10, fontWeight: 800, color: tc }}>{item.freshness_label || '—'}</div>
-          {item.confidence != null && (
-            <div style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 700, marginTop: 2 }}>
-              {Math.round(Number(item.confidence) * (Number(item.confidence) <= 1 ? 100 : 1))}%
-            </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} />
+          {item.reading_minutes != null && (
+            <span style={{ fontSize: 11, color: C.soft }}>{item.reading_minutes} min read</span>
           )}
         </div>
       </div>
+
+      {/* byline — Seeking Alpha / Yahoo style */}
       <div style={{
-        fontSize: 12, color: 'var(--text2)', lineHeight: 1.45, flex: 1,
-        overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
+        display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
+        fontSize: 11.5, color: C.soft,
       }}>
-        {item.summary || item.thesis || '—'}
+        <span style={{ fontWeight: 700, color: C.muted }}>
+          {item.source_system === 'hermes' ? 'Hermes Research Desk'
+            : item.source_system === 'topic_monitor' ? 'Topic Monitor · Standing watch'
+            : item.source_system === 'auto_research' ? 'Auto Research'
+            : 'Intelligence Desk'}
+        </span>
+        <span>·</span>
+        <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} />
+        {item.narrative_source === 'stored_llm' && (
+          <>
+            <span>·</span>
+            <span style={{ color: C.retire, fontWeight: 700 }}>LLM editorial</span>
+          </>
+        )}
       </div>
-      {(item.needs_refresh || item.data_gaps?.length) && (
-        <div style={{ fontSize: 10, color: '#f97316', fontWeight: 700 }}>
-          {item.needs_refresh ? '↻ Due for refresh' : ''}
-          {item.data_gaps?.length ? ` · Gap: ${item.data_gaps[0].slice(0, 60)}` : ''}
+
+      {/* headline */}
+      <h2 style={{
+        margin: 0, fontSize: featured ? 22 : view === 'list' ? 17 : 15.5,
+        fontWeight: 780, letterSpacing: '-0.02em', lineHeight: 1.28, color: C.ink,
+      }}>
+        {item.title}
+      </h2>
+
+      {/* lede / dek */}
+      {item.lede && (
+        <p style={{
+          margin: 0, fontSize: featured ? 15 : 13.5, lineHeight: 1.55,
+          color: C.muted, fontWeight: 500,
+        }}>
+          {item.lede}
+        </p>
+      )}
+
+      {/* body prose */}
+      {(featured || view === 'list') && paras.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {paras.slice(0, featured ? 3 : 2).map((p, i) => (
+            <p key={i} style={{
+              margin: 0, fontSize: featured ? 14 : 13, lineHeight: 1.65,
+              color: i === 0 ? C.ink : C.muted, fontWeight: i === 0 ? 450 : 400,
+            }}>
+              {p}
+            </p>
+          ))}
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-        <div style={{ fontSize: 10, color: 'var(--text3)' }}>
-          {item.source_system} · {item.research_type || '—'}
+      {view === 'cards' && !featured && (
+        <>
+          {paras[0] && (
+            <p style={{
+              margin: 0, fontSize: 13, lineHeight: 1.6, color: C.muted,
+              display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            }}>
+              {paras[0]}
+            </p>
+          )}
+          {takeaways[0] && (
+            <div style={{ fontSize: 12, color: C.ink, lineHeight: 1.45 }}>
+              <span style={{ color: catColor, fontWeight: 750 }}>Takeaway · </span>
+              {takeaways[0]}
+            </div>
+          )}
+          {item.why_it_matters && (
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
+              <span style={{ fontWeight: 750, color: catColor }}>Why it matters · </span>
+              {item.why_it_matters}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* key takeaways */}
+      {(featured || view === 'list') && takeaways.length > 0 && (
+        <div style={{
+          padding: '12px 14px', borderRadius: 10,
+          background: 'rgba(255,255,255,0.025)', border: `1px solid ${C.line}`,
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.soft, marginBottom: 8 }}>
+            Key takeaways
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {takeaways.slice(0, featured ? 4 : 3).map((t, i) => (
+              <li key={i} style={{ fontSize: 12.5, lineHeight: 1.45, color: C.ink }}>{t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* bull / bear */}
+      {(featured || view === 'list') && (item.bull_case || item.bear_case) && (
+        <div style={{ display: 'grid', gridTemplateColumns: item.bull_case && item.bear_case ? '1fr 1fr' : '1fr', gap: 8 }}>
+          {item.bull_case && (
+            <div style={{ padding: '10px 12px', borderRadius: 10, background: C.incomeSoft, border: `1px solid ${C.income}33` }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: C.income, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>Bull case</div>
+              <div style={{ fontSize: 12, lineHeight: 1.45, color: C.ink }}>{item.bull_case}</div>
+            </div>
+          )}
+          {item.bear_case && (
+            <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(249,168,212,0.08)', border: `1px solid ${C.bear}33` }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: C.bear, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>Bear case</div>
+              <div style={{ fontSize: 12, lineHeight: 1.45, color: C.ink }}>{item.bear_case}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* why it matters */}
+      {item.why_it_matters && (featured || view === 'list') && (
+        <div style={{ fontSize: 12.5, lineHeight: 1.5, color: C.muted }}>
+          <span style={{ fontWeight: 750, color: catColor }}>Why it matters · </span>
+          {item.why_it_matters}
+        </div>
+      )}
+
+      <ActionStrip item={item} catColor={catColor} />
+
+      {/* footer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 11, color: C.soft }}>
+          {item.source_system}
+          {item.research_type ? ` · ${item.research_type}` : ''}
           {item.source_count ? ` · ${item.source_count} sources` : ''}
-          {item.model ? ` · ${item.model}` : ''}
+          {confPct(item.confidence) != null ? ` · ${confPct(item.confidence)}% conf` : ''}
+          {item.narrative_source === 'stored_llm' ? ' · LLM narrative' : ''}
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <button type="button" onClick={e => vote(e, 1)} style={voteBtn(item.vote === 1, '#22c55e')} title="Useful">▲</button>
-          <button type="button" onClick={e => vote(e, -1)} style={voteBtn(item.vote === -1, '#ef4444')} title="Not useful">▼</button>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa' }}>
-            {item.actionability?.slice(0, 28) || 'Open →'}
-          </div>
+          <button type="button" onClick={e => vote(e, 1)} style={voteBtn(item.vote === 1, C.bull)} title="Useful">▲</button>
+          <button type="button" onClick={e => vote(e, -1)} style={voteBtn(item.vote === -1, C.bear)} title="Not useful">▼</button>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.accent }}>Open full brief →</span>
         </div>
       </div>
     </article>
   )
 }
 
+function iconBtn(color: string): CSSProperties {
+  return {
+    border: 'none', background: 'transparent', cursor: 'pointer',
+    color, fontSize: 15, padding: 0, lineHeight: 1,
+  }
+}
 function voteBtn(active: boolean, color: string): CSSProperties {
   return {
-    fontSize: 11, fontWeight: 900, padding: '2px 6px', borderRadius: 5, cursor: 'pointer',
-    border: `1px solid ${active ? color : 'rgba(148,163,184,.3)'}`,
+    fontSize: 11, fontWeight: 800, padding: '3px 7px', borderRadius: 6, cursor: 'pointer',
+    border: `1px solid ${active ? color : C.line}`,
     background: active ? `${color}22` : 'transparent',
-    color: active ? color : 'var(--text3)',
+    color: active ? color : C.soft,
   }
 }
 
@@ -385,7 +507,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   const [freshness, setFreshness] = useState<string | null>(null)
   const [sentiment, setSentiment] = useState<string | null>(null)
   const [lane, setLane] = useState<'all' | 'retirement' | 'dividends' | 'macro_sector'>('all')
-  const [view, setView] = useState<'cards' | 'list' | 'compact'>('cards')
+  const [view, setView] = useState<'cards' | 'list' | 'compact'>('list')
   const [localPatch, setLocalPatch] = useState<Record<string, Partial<Item>>>({})
 
   const qs = useMemo(() => {
@@ -398,7 +520,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     if (starredOnly) p.set('starred_only', '1')
     if (freshness) p.set('freshness', freshness)
     if (sentiment) p.set('sentiment', sentiment)
-    p.set('limit', '120')
+    p.set('limit', '100')
     return p.toString()
   }, [q, category, priority, holdingsOnly, includeArchived, starredOnly, freshness, sentiment])
 
@@ -425,17 +547,39 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   const tierCounts = stats.by_freshness || {}
 
   const displayItems: Item[] = useMemo(() => {
-    if (lane === 'all') return items
-    const laneItems = ((lanes[lane] as Item[]) || []).map(it => ({ ...it, ...(localPatch[it.id] || {}) }))
-    if (laneItems.length) return laneItems
-    if (lane === 'retirement') return items.filter(i => i.primary_category === 'retirement_tax')
-    if (lane === 'dividends') return items.filter(i => i.categories?.includes('dividend_income'))
-    if (lane === 'macro_sector') {
-      return items.filter(i =>
-        i.categories?.includes('macro_geo') || i.categories?.includes('sector_thematic'))
+    // Client-side lane filter always uses PRIMARY category (matches chip semantics)
+    let base = items
+    if (lane === 'retirement') {
+      base = items.filter(i => i.primary_category === 'retirement_tax')
+    } else if (lane === 'dividends') {
+      base = items.filter(i => i.primary_category === 'dividend_income')
+    } else if (lane === 'macro_sector') {
+      base = items.filter(i =>
+        i.primary_category === 'macro_geo' || i.primary_category === 'sector_thematic')
     }
-    return items
-  }, [lane, items, lanes, localPatch])
+    // Extra safety: if a taxonomy chip is selected, enforce primary match client-side
+    // (in case of stale server or multi-tag bleed)
+    if (category) {
+      base = base.filter(i => i.primary_category === category)
+    }
+    return base
+  }, [lane, items, category])
+
+  const featured = useMemo(() => {
+    // Prefer retirement with body, else first high-priority narrative
+    const pool = displayItems
+    return (
+      pool.find(i => i.primary_category === 'retirement_tax' && (i.executive_summary?.length || i.summary))
+      || pool.find(i => i.priority === 'high' && (i.executive_summary?.length || i.lede))
+      || pool[0]
+      || null
+    )
+  }, [displayItems])
+
+  const rest = useMemo(() => {
+    if (!featured) return displayItems
+    return displayItems.filter(i => i.id !== featured.id)
+  }, [displayItems, featured])
 
   const onFeedback = useCallback((id: string, patch: Partial<Item>) => {
     setLocalPatch(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }))
@@ -446,222 +590,340 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
       title: item.symbol ? `${item.symbol} · ${item.title}` : item.title,
       subtitle: [
         item.freshness_label,
+        item.next_action_label || item.actionability,
         item.primary_category && (catMeta[item.primary_category]?.label || item.primary_category),
-        item.priority,
-        item.source_system,
-        item.actionability,
       ].filter(Boolean).join(' · '),
       endpoint: '/api/v2/research-intelligence',
-      rows: [item],
+      rows: [{
+        ...item,
+        // flatten for drawer readability
+        article_lede: item.lede,
+        article_body: (item.executive_summary || []).join('\n\n'),
+        article_takeaways: (item.key_takeaways || []).join(' | '),
+        article_bull: item.bull_case,
+        article_bear: item.bear_case,
+        article_why: item.why_it_matters,
+        article_next: `${item.next_action_label || ''} — ${item.next_action_detail || ''}`,
+      }],
     })
   }
 
   const staleTopics = freshData?.stale_topics || []
+  const retStats = freshData?.by_category?.retirement_tax
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
-        <div>
-          <div style={hubTitle()}>Research Intelligence</div>
-          <div style={hubSubtitle(terminalUi)}>
-            Professional intelligence desk · freshness · archive · retirement pillar
-            {stats.matched != null && ` · ${stats.matched} matched`}
-            {loading ? ' · loading…' : ''}
-            {data?.version ? ` · v${data.version}` : ''}
-          </div>
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-          <Link to="/intelligence?tab=research" style={linkStyle('#94a3b8')}>Legacy Topics →</Link>
-          <Link to="/retirement" style={linkStyle('#a855f7')}>Retirement hub →</Link>
-          <Link to="/hermes" style={linkStyle('#60a5fa')}>Hermes →</Link>
-          <Link to="/portfolio" style={linkStyle('#22c55e')}>Portfolio →</Link>
-          <button type="button" onClick={() => refetch()} style={btnStyle}>↻ Refresh</button>
-        </div>
-      </div>
-
-      {/* KPI strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
-        {[
-          { l: 'In view', v: String(displayItems.length), c: 'var(--text0)' },
-          { l: 'High priority', v: String(stats.high_priority ?? 0), c: '#f59e0b' },
-          { l: 'Holdings', v: String(stats.holdings_linked ?? 0), c: '#22c55e' },
-          { l: 'Needs refresh', v: String(stats.needs_refresh ?? 0), c: '#f97316' },
-          { l: 'Live / Fresh', v: `${tierCounts.live || 0}/${tierCounts.fresh || 0}`, c: '#22c55e' },
-          { l: 'Stale topics', v: String(freshData?.stale_topic_count ?? '—'), c: '#a855f7' },
-          { l: 'Starred', v: String(stats.starred_in_view ?? 0), c: '#facc15' },
-          { l: 'Archive in view', v: String(stats.archived_in_view ?? 0), c: '#64748b' },
-        ].map(k => (
-          <div key={k.l} style={{
-            background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px',
-          }}>
-            <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--text3)', letterSpacing: '.06em', textTransform: 'uppercase' }}>{k.l}</div>
-            <div style={{ fontSize: 17, fontWeight: 900, color: k.c, marginTop: 2 }}>{k.v}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Priority lanes + view mode */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {([
-            ['all', 'All intelligence', '#60a5fa'],
-            ['retirement', 'Retirement & tax', '#a855f7'],
-            ['dividends', 'Dividends & income', '#22c55e'],
-            ['macro_sector', 'Macro / sector', '#f59e0b'],
-          ] as const).map(([id, lab, col]) => (
-            <Chip
-              key={id}
-              label={`${lab}${stats.lane_counts?.[id] != null ? ` (${stats.lane_counts[id]})` : ''}`}
-              color={col}
-              active={lane === id}
-              onClick={() => { setLane(id); if (id !== 'all') setCategory(null) }}
-            />
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {(['cards', 'list', 'compact'] as const).map(v => (
-            <Chip key={v} label={v} small active={view === v} onClick={() => setView(v)}
-              color="#94a3b8" />
-          ))}
-        </div>
-      </div>
-
-      {/* Filters panel */}
-      <div style={{
-        background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 14, padding: 14,
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1280 }}>
+      {/* Masthead */}
+      <header style={{
+        borderRadius: 18,
+        padding: '20px 22px',
+        background: 'linear-gradient(135deg, rgba(30,41,72,.9) 0%, rgba(18,22,36,.95) 55%, rgba(40,28,58,.55) 100%)',
+        border: `1px solid ${C.lineStrong}`,
+        boxShadow: '0 10px 36px rgba(0,0,0,.25)',
       }}>
-        <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-          Taxonomy & filters
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 14 }}>
+          <div style={{ maxWidth: 720 }}>
+            <div style={{
+              fontSize: 11, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase',
+              color: C.retire, marginBottom: 8,
+            }}>
+              Command Center · Intelligence Desk
+            </div>
+            <div style={{ ...hubTitle(), fontSize: 26, letterSpacing: '-0.03em', marginBottom: 6 }}>
+              Research Intelligence
+            </div>
+            <div style={{ ...hubSubtitle(terminalUi), fontSize: 13.5, lineHeight: 1.5, color: C.muted, maxWidth: 560 }}>
+              Editorial briefings with takeaways, bull/bear framing, and clear next steps —
+              retirement, dividends, macro, and holdings-aware research in one desk.
+              {stats.matched != null && ` · ${stats.matched} stories in filter`}
+              {loading ? ' · loading…' : ''}
+              {data?.version ? ` · v${data.version}` : ''}
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
+              <Link to="/retirement" style={navLink(C.retire)}>Retirement plan →</Link>
+              <Link to="/portfolio" style={navLink(C.income)}>Portfolio →</Link>
+              <Link to="/hermes" style={navLink(C.accent)}>Hermes →</Link>
+              <Link to="/risk" style={navLink('#fca5a5')}>Risk →</Link>
+              <button type="button" onClick={() => refetch()} style={refreshBtn}>↻ Refresh desk</button>
+            </div>
+            <div style={{ display: 'flex', gap: 14, fontSize: 12, color: C.muted }}>
+              <span><b style={{ color: C.live }}>{tierCounts.live || 0}</b> live</span>
+              <span><b style={{ color: C.fresh }}>{tierCounts.fresh || 0}</b> fresh</span>
+              <span><b style={{ color: C.stale }}>{stats.needs_refresh ?? 0}</b> due</span>
+              <span><b style={{ color: C.retire }}>{stats.lane_counts?.retirement ?? retStats?.count ?? '—'}</b> retirement</span>
+            </div>
+          </div>
         </div>
+      </header>
+
+      {/* Desk controls */}
+      <section style={{
+        background: C.card, border: `1px solid ${C.line}`, borderRadius: 16, padding: 16,
+      }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {([
+              ['all', 'Top stories', C.accent],
+              ['retirement', 'Retirement desk', C.retire],
+              ['dividends', 'Income & dividends', C.income],
+              ['macro_sector', 'Macro & sectors', C.macro],
+            ] as const).map(([id, lab, col]) => (
+              <SoftChip
+                key={id}
+                label={lab}
+                color={col}
+                active={lane === id}
+                onClick={() => { setLane(id); if (id !== 'all') setCategory(null) }}
+              />
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['list', 'cards', 'compact'] as const).map(v => (
+              <SoftChip key={v} label={v === 'list' ? 'Article' : v === 'cards' ? 'Cards' : 'Wire'} color={C.muted}
+                active={view === v} onClick={() => setView(v)} />
+            ))}
+          </div>
+        </div>
+
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-          <Chip label="All categories" active={!category} onClick={() => setCategory(null)} />
+          <SoftChip label="All topics" active={!category} onClick={() => setCategory(null)} />
           {cats.map(c => (
-            <Chip
+            <SoftChip
               key={c.id}
               label={`${c.pillar ? '◆ ' : ''}${c.label}${stats.by_category?.[c.id] != null ? ` (${stats.by_category[c.id]})` : ''}`}
-              color={c.color}
+              color={CAT_TINT[c.id] || c.color}
               active={category === c.id}
-              onClick={() => { setCategory(c.id); setLane('all') }}
+              onClick={() => {
+                // Toggle: click active chip again clears filter
+                setCategory(category === c.id ? null : c.id)
+                setLane('all')
+              }}
             />
           ))}
         </div>
+
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <input
             value={q}
             onChange={e => setQ(e.target.value)}
-            placeholder="Search title, thesis, symbol, retirement terms…"
+            placeholder="Search briefs — Roth, IRMAA, SCHD, Fed, thesis…"
             style={{
-              flex: '1 1 240px', minWidth: 200, fontSize: 13, padding: '9px 12px', borderRadius: 9,
-              border: '1px solid var(--border)', background: 'var(--bg0)', color: 'var(--text0)',
+              flex: '1 1 260px', minWidth: 200, fontSize: 13.5, padding: '11px 14px', borderRadius: 12,
+              border: `1px solid ${C.lineStrong}`, background: 'rgba(0,0,0,.25)', color: C.ink,
+              outline: 'none',
             }}
           />
-          <Chip label="High only" color="#f59e0b" active={priority === 'high'}
+          <SoftChip label="High priority" color={C.macro} active={priority === 'high'}
             onClick={() => setPriority(priority === 'high' ? null : 'high')} />
-          <Chip label="Holdings" color="#22c55e" active={holdingsOnly}
+          <SoftChip label="Holdings" color={C.income} active={holdingsOnly}
             onClick={() => setHoldingsOnly(v => !v)} />
-          <Chip label="★ Starred" color="#facc15" active={starredOnly}
+          <SoftChip label="★ Starred" color={C.star} active={starredOnly}
             onClick={() => setStarredOnly(v => !v)} />
-          <Chip label="Include archive" color="#64748b" active={includeArchived}
+          <SoftChip label="Archive" color={C.archive} active={includeArchived}
             onClick={() => setIncludeArchived(v => !v)} />
-          {(['live', 'fresh', 'aging', 'stale', 'archive'] as const).map(t => (
-            <Chip key={t} label={t} small color={TIER_COLOR[t]} active={freshness === t}
+          {(['live', 'fresh', 'aging', 'stale'] as const).map(t => (
+            <SoftChip key={t} label={t} color={TIER[t].color} active={freshness === t}
               onClick={() => setFreshness(freshness === t ? null : t)} />
           ))}
-          {(['bullish', 'bearish', 'neutral'] as const).map(s => (
-            <Chip key={s} label={s} small color={SENT_COLOR[s]} active={sentiment === s}
-              onClick={() => setSentiment(sentiment === s ? null : s)} />
-          ))}
         </div>
-      </div>
+      </section>
 
-      {/* Stale monitor alert */}
-      {staleTopics.length > 0 && (
+      {/* Stale / retirement SLO banner */}
+      {(staleTopics.length > 0 || (retStats && retStats.needs_refresh > 10)) && (
         <div style={{
-          padding: '10px 14px', borderRadius: 10,
-          border: '1px solid rgba(168,85,247,.35)', background: 'rgba(168,85,247,.08)',
-          fontSize: 12, color: 'var(--text1)',
+          padding: '12px 16px', borderRadius: 12,
+          border: `1px solid ${C.retire}44`, background: C.retireSoft,
+          fontSize: 12.5, color: C.ink, lineHeight: 1.45,
         }}>
-          <strong style={{ color: '#a855f7' }}>{staleTopics.length} topic monitors due for refresh</strong>
-          {' · '}
-          {staleTopics.slice(0, 5).map((t: any) => t.topic_id || t.display_name).join(', ')}
-          {staleTopics.length > 5 ? '…' : ''}
-          <span style={{ color: 'var(--text3)' }}>
-            {' '}— run topic_ingestion / research_intelligence_refresh
-          </span>
+          <strong style={{ color: C.retire }}>Desk status · </strong>
+          {staleTopics.length > 0 && (
+            <>{staleTopics.length} monitors need refresh
+              ({staleTopics.slice(0, 4).map((t: any) => t.topic_id).join(', ')}
+              {staleTopics.length > 4 ? '…' : ''}).{' '}
+            </>
+          )}
+          {retStats && (
+            <>Retirement pillar: {retStats.count} briefs · freshest {retStats.freshest_h}h · {retStats.needs_refresh} aging.</>
+          )}
         </div>
       )}
 
       {error && (
-        <div style={{ padding: 12, borderRadius: 10, border: '1px solid rgba(239,68,68,.4)', color: '#ef4444', fontSize: 12 }}>
-          Failed to load research intelligence: {error}
+        <div style={{ padding: 14, borderRadius: 12, border: '1px solid rgba(248,113,113,.35)', color: '#fca5a5', fontSize: 13 }}>
+          Could not load the intelligence desk: {error}
         </div>
       )}
 
-      {/* Feed */}
-      {loading && !data ? (
-        <div style={{ padding: 48, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-          Loading intelligence feed…
-        </div>
-      ) : displayItems.length === 0 ? (
-        <div style={{
-          padding: 40, textAlign: 'center', color: 'var(--text3)', fontSize: 12,
-          border: '1px dashed var(--border)', borderRadius: 14,
-        }}>
-          No items match these filters.
-          {lane === 'retirement' && (
-            <div style={{ marginTop: 8 }}>
-              Retirement corpus is building — seed topics via{' '}
-              <code>research_intelligence_retirement_seed.py --apply</code> then topic_ingestion.
+      {/* Main layout: feed + rail */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) 280px',
+        gap: 18,
+        alignItems: 'start',
+      }}
+        className="ri-desk-grid"
+      >
+        <main style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+          {loading && !data ? (
+            <div style={{ padding: 56, textAlign: 'center', color: C.soft, fontSize: 13 }}>
+              Composing intelligence briefings…
             </div>
-          )}
-        </div>
-      ) : view === 'compact' ? (
-        <div style={{
-          background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden',
-        }}>
-          {displayItems.map(item => (
-            <IntelCard key={item.id} item={item} catMeta={catMeta} view={view}
-              onOpen={() => openItem(item)} onFeedback={onFeedback} />
-          ))}
-        </div>
-      ) : view === 'list' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {displayItems.map(item => (
-            <IntelCard key={item.id} item={item} catMeta={catMeta} view={view}
-              onOpen={() => openItem(item)} onFeedback={onFeedback} />
-          ))}
-        </div>
-      ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))',
-          gap: 12,
-        }}>
-          {displayItems.map(item => (
-            <IntelCard key={item.id} item={item} catMeta={catMeta} view={view}
-              onOpen={() => openItem(item)} onFeedback={onFeedback} />
-          ))}
-        </div>
-      )}
+          ) : displayItems.length === 0 ? (
+            <div style={{
+              padding: 48, textAlign: 'center', color: C.muted, fontSize: 13,
+              border: `1px dashed ${C.line}`, borderRadius: 16, background: C.card,
+            }}>
+              No stories match these filters.
+              {lane === 'retirement' && (
+                <div style={{ marginTop: 10, color: C.soft }}>
+                  Seed retirement topics, then run topic ingestion for full article coverage.
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {featured && view !== 'compact' && (
+                <div>
+                  <div style={{
+                    fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                    color: C.soft, marginBottom: 10,
+                  }}>
+                    {lane === 'retirement' ? 'Featured · Retirement desk' : 'Featured briefing'}
+                  </div>
+                  <ArticleCard
+                    item={featured}
+                    catMeta={catMeta}
+                    featured
+                    view={view === 'cards' ? 'list' : view}
+                    onOpen={() => openItem(featured)}
+                    onFeedback={onFeedback}
+                  />
+                </div>
+              )}
 
-      <div style={{ fontSize: 10, color: 'var(--text3)', lineHeight: 1.5 }}>
-        {data?.note}
-        {' '}API: <code>/api/v2/research-intelligence</code>
-        {' · '}Freshness: <code>/api/v2/research-intelligence/freshness</code>
-        {' · '}Feedback: <code>POST …/feedback</code>
-        {' · '}Policy: <code>config/research_intelligence_freshness.json</code>
-        {' · '}Archive never deletes — toggle “Include archive” to search history.
+              <div style={{
+                fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                color: C.soft, marginTop: featured && view !== 'compact' ? 6 : 0,
+              }}>
+                {view === 'compact' ? 'Wire feed' : 'Latest briefings'}
+                <span style={{ fontWeight: 600, color: C.soft, marginLeft: 8, letterSpacing: 0, textTransform: 'none' }}>
+                  {rest.length + (featured && view === 'compact' ? 1 : 0)} stories
+                </span>
+              </div>
+
+              {view === 'compact' ? (
+                <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, overflow: 'hidden' }}>
+                  {displayItems.map(item => (
+                    <ArticleCard key={item.id} item={item} catMeta={catMeta} view="compact"
+                      onOpen={() => openItem(item)} onFeedback={onFeedback} />
+                  ))}
+                </div>
+              ) : view === 'cards' ? (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                  gap: 14,
+                }}>
+                  {rest.map(item => (
+                    <ArticleCard key={item.id} item={item} catMeta={catMeta} view="cards"
+                      onOpen={() => openItem(item)} onFeedback={onFeedback} />
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {rest.map(item => (
+                    <ArticleCard key={item.id} item={item} catMeta={catMeta} view="list"
+                      onOpen={() => openItem(item)} onFeedback={onFeedback} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </main>
+
+        {/* Right rail */}
+        <aside style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 12 }}>
+          <RailCard title="Retirement pillar" accent={C.retire}>
+            <RailStat label="Briefs in filter" value={String(stats.by_category?.retirement_tax ?? retStats?.count ?? '—')} />
+            <RailStat label="Freshest" value={retStats?.freshest_h != null ? `${retStats.freshest_h}h` : '—'} />
+            <RailStat label="Needs refresh" value={String(retStats?.needs_refresh ?? '—')} />
+            <p style={{ margin: '8px 0 0', fontSize: 12, lineHeight: 1.5, color: C.muted }}>
+              Roth ladder, Golden Window, IRMAA, conversion pacing, SSDI & MAPT stay on a tight monitor cadence.
+            </p>
+            <Link to="/retirement" style={{ ...navLink(C.retire), display: 'inline-block', marginTop: 10 }}>
+              Open retirement hub →
+            </Link>
+          </RailCard>
+
+          <RailCard title="Freshness" accent={C.fresh}>
+            {(['live', 'fresh', 'aging', 'stale', 'archive'] as const).map(t => (
+              <div key={t} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', color: C.muted }}>
+                <FreshnessDot tier={t} />
+                <span style={{ color: C.ink, fontWeight: 700 }}>{tierCounts[t] ?? 0}</span>
+              </div>
+            ))}
+            <p style={{ margin: '8px 0 0', fontSize: 11.5, color: C.soft, lineHeight: 1.45 }}>
+              Archive never deletes — toggle Archive in filters to search history.
+            </p>
+          </RailCard>
+
+          <RailCard title="Desk links" accent={C.accent}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Link to="/intelligence?tab=research" style={navLink(C.muted)}>Legacy research topics</Link>
+              <Link to="/watch" style={navLink(C.muted)}>Watchlist</Link>
+              <Link to="/rebalance" style={navLink(C.muted)}>Rebalance</Link>
+              <Link to="/agents" style={navLink(C.muted)}>Agents</Link>
+            </div>
+          </RailCard>
+
+          <div style={{ fontSize: 10.5, color: C.soft, lineHeight: 1.5, padding: '0 4px' }}>
+            {data?.note}
+          </div>
+        </aside>
       </div>
+
+      <style>{`
+        @media (max-width: 980px) {
+          .ri-desk-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
     </div>
   )
 }
 
-const linkStyle = (c: string): CSSProperties => ({
-  fontSize: 11, fontWeight: 700, color: c, textDecoration: 'none',
+function RailCard({ title, accent, children }: { title: string; accent: string; children: ReactNode }) {
+  return (
+    <div style={{
+      background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: 14,
+      borderTop: `2px solid ${accent}66`,
+    }}>
+      <div style={{
+        fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase',
+        color: accent, marginBottom: 10,
+      }}>
+        {title}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function RailStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '3px 0' }}>
+      <span style={{ color: C.muted }}>{label}</span>
+      <span style={{ color: C.ink, fontWeight: 750 }}>{value}</span>
+    </div>
+  )
+}
+
+const navLink = (c: string): CSSProperties => ({
+  fontSize: 12, fontWeight: 650, color: c, textDecoration: 'none',
 })
 
-const btnStyle: CSSProperties = {
-  fontSize: 11, fontWeight: 800, padding: '5px 10px', borderRadius: 7, cursor: 'pointer',
-  border: '1px solid rgba(96,165,250,.45)', background: 'rgba(96,165,250,.12)', color: '#60a5fa',
+const refreshBtn: CSSProperties = {
+  fontSize: 12, fontWeight: 750, padding: '7px 12px', borderRadius: 10, cursor: 'pointer',
+  border: `1px solid ${C.accent}55`, background: C.accentSoft, color: C.accent,
 }

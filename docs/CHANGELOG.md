@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-15 — Research Intelligence v2.1 (narrative quality + editorial UI)
+
+Major UX/content upgrade so the desk reads like financial research, not a DB browser.
+
+- **Narrative layer** — `research_intelligence_narrative.py`: lede, multi-paragraph executive summary, key takeaways, bull/bear, why-it-matters, structured next_action on every feed item (deterministic default; optional local-LLM batch via `research_intelligence_narrative_enrich.py`).
+- **UI redesign** — Seeking Alpha / Benzinga–inspired masthead, featured briefing, Article/Cards/Wire views, soft editorial palette, right rail (retirement pillar + freshness), recommended-next-step CTA strip on every card.
+- **Actionability** — Primary CTA answers “what should I do?” (Roth plan, position review, refresh, income sleeve, risk).
+- **Docs** — `docs/architecture/RESEARCH_INTELLIGENCE_V2_1_NARRATIVE_UI.md`.
+
 ## 2026-07-15 — Research Intelligence v2 (freshness, archive, retirement pillar)
 
 Professional intelligence desk upgrade on top of RI v1.

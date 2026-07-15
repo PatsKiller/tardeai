@@ -87,7 +87,10 @@
 ### Research Intelligence (CC v3)
 | Document | Purpose | Status |
 |----------|---------|--------|
+| `docs/architecture/RESEARCH_INTELLIGENCE_V2_1_NARRATIVE_UI.md` | **RI v2.1** — article-style narrative fields + editorial dashboard redesign | Active (2026-07-15) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2.md` | **Research Intelligence v2** — freshness/archive, retirement pillar, feedback, professional UI | Active (2026-07-15) |
+| `scripts/lib/research_intelligence_narrative.py` | Narrative enrichment (lede, summary paras, takeaways, CTA) | Active (2026-07-15) |
+| `scripts/research_intelligence_narrative_enrich.py` | Optional local-LLM batch writer for Hermes evidence_json.narrative | Active (2026-07-15) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V1.md` | Research Intelligence v1 baseline — taxonomy, aggregator, first cockpit | Active (superseded by v2 for ops) |
 | `config/research_intelligence_taxonomy.json` | Canonical category taxonomy v1.1 (pillars + subcategories) | Active (2026-07-15) |
 | `config/research_intelligence_freshness.json` | Freshness tiers, refresh cadence, archive policy | Active (2026-07-15) |

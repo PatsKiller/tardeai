@@ -42,8 +42,9 @@ _CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
         re.I,
     )),
     ("sector_thematic", re.compile(
-        r"sector|rotation|defense|aerospace|semiconductor|ai chip|datacenter|"
-        r"staples|healthcare|utilities|energy sector|materials|consumer defensive",
+        r"sector|rotation|defense|aerospace|semiconductor|ai\s*chip|data\s*center|datacenter|"
+        r"staples|healthcare|utilities|energy sector|materials|consumer defensive|"
+        r"build-?out|infrastructure",
         re.I,
     )),
     ("risk_regime", re.compile(
@@ -55,9 +56,10 @@ _CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
         r"catalyst|earnings|news_momentum|breakout|event.?driven|form.?4",
         re.I,
     )),
+    # Avoid matching ticker jargon "growth compounder" / "core compounder"
     ("compounding_wealth", re.compile(
-        r"compound|long.?term wealth|asset allocation|bucket strateg|"
-        r"drawdown plan|wealth framework|multi.?year",
+        r"\bcompounding\b|long.?term wealth|asset allocation|bucket strateg|"
+        r"drawdown plan|wealth framework|multi.?year wealth|wealth building",
         re.I,
     )),
     ("academic_pro", re.compile(
@@ -130,6 +132,43 @@ def classify_text(*parts: str | None, research_type: str | None = None) -> list[
             cats.append(cid)
     if not cats:
         cats.append("company_ticker" if (parts and parts[0]) else "sector_thematic")
+    return cats[:4]
+
+
+def classify_primary_secondary(
+    title: str | None,
+    *body_parts: str | None,
+    research_type: str | None = None,
+) -> list[str]:
+    """Title/topic drives primary category; body may only add secondary tags.
+
+    Prevents personal_context (e.g. IRMAA note on a dividend monitor) from
+    re-labeling 'Top Yield & Dividend Stocks' as retirement_tax.
+    """
+    title_cats = classify_text(title, research_type=research_type)
+    body_cats = classify_text(*body_parts) if any(body_parts) else []
+    # If title only got a weak fallback but body is clearly thematic, allow
+    # body primary when title had no strong keyword hit beyond type-map.
+    title_blob = title or ""
+    title_had_keyword = any(
+        rx.search(title_blob) for _, rx in _CATEGORY_RULES
+    )
+    mapped = _TYPE_TO_CAT.get(research_type or "")
+    if mapped and not title_had_keyword and body_cats:
+        # Keep type-map primary (e.g. stop_health → risk_regime)
+        cats = [mapped] + [c for c in body_cats if c != mapped]
+        return cats[:4]
+    if not title_had_keyword and not mapped and body_cats:
+        # Pure fallback title ("Industry: X") — prefer first body theme if any
+        # but keep company_ticker if title looks like industry/ticker research
+        if re.search(r"industry:|autonomous thesis|news_momentum:", title_blob, re.I):
+            primary = title_cats[0] if title_cats else "company_ticker"
+            cats = [primary] + [c for c in body_cats if c != primary]
+            return cats[:4]
+    cats = list(title_cats)
+    for c in body_cats:
+        if c not in cats:
+            cats.append(c)
     return cats[:4]
 
 
@@ -354,7 +393,10 @@ def _item_base(
     policy: dict,
     feedback: dict | None = None,
     extra: dict | None = None,
+    evidence_json: Any = None,
 ) -> dict[str, Any]:
+    from lib.research_intelligence_narrative import enrich_narrative
+
     is_arch = (status or "").lower() == "archived"
     tier = freshness_tier(age, is_archived=is_arch, policy=policy)
     pri = _priority_from(cats, conf, age, is_held)
@@ -363,14 +405,33 @@ def _item_base(
     key_q = _extract_questions(summary, thesis)
     gaps = _extract_gaps(summary, thesis)
     fb = feedback or {}
+    sent = _sentiment(blob)
+    need_r = needs_refresh(age, cadence) and not is_arch
+    narrative = enrich_narrative(
+        title=title,
+        summary=summary or "",
+        thesis=thesis,
+        cats=cats,
+        symbol=symbol,
+        is_held=is_held,
+        sentiment=sent,
+        key_questions=key_q,
+        data_gaps=gaps,
+        actionability=actionability,
+        needs_refresh=need_r,
+        research_type=research_type,
+        evidence_json=evidence_json,
+        source_system=source_system,
+    )
+    nxt = narrative.get("next_action") or {}
     item: dict[str, Any] = {
         "id": id_,
         "source_system": source_system,
         "source_table": source_table,
         "source_id": source_id,
         "title": title,
-        "summary": (summary or "")[:800],
-        "thesis": ((thesis or "")[:600] or None),
+        "summary": (summary or "")[:1200],
+        "thesis": ((thesis or "")[:800] or None),
         "symbol": symbol,
         "categories": cats,
         "primary_category": cats[0] if cats else "company_ticker",
@@ -380,7 +441,7 @@ def _item_base(
         "freshness_tier": tier,
         "freshness_label": freshness_label(age, tier),
         "refresh_cadence_hours": cadence,
-        "needs_refresh": needs_refresh(age, cadence) and not is_arch,
+        "needs_refresh": need_r,
         "is_archived": is_arch,
         "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
         "model": model,
@@ -390,14 +451,32 @@ def _item_base(
         "sources": sources[:8],
         "source_count": len(sources),
         "actionability": actionability,
-        "sentiment": _sentiment(blob),
+        "sentiment": sent,
         "key_questions": key_q,
         "data_gaps": gaps,
         "starred": bool(fb.get("starred")),
         "vote": fb.get("vote"),
         "operator_note": fb.get("note"),
+        # Article-style narrative (Seeking Alpha / The Information tone)
+        "lede": narrative.get("lede"),
+        "executive_summary": narrative.get("executive_summary") or [],
+        "key_takeaways": narrative.get("key_takeaways") or [],
+        "bull_case": narrative.get("bull_case"),
+        "bear_case": narrative.get("bear_case"),
+        "why_it_matters": narrative.get("why_it_matters"),
+        "next_action": nxt,
+        "next_action_label": nxt.get("label"),
+        "next_action_detail": nxt.get("detail"),
+        "narrative_source": narrative.get("narrative_source"),
+        "reading_minutes": narrative.get("reading_minutes") or 1,
     }
     if extra:
+        # Merge key_questions carefully
+        if extra.get("key_questions") and item.get("key_questions"):
+            item["key_questions"] = list(dict.fromkeys(
+                list(extra.get("key_questions") or []) + list(item["key_questions"])
+            ))[:5]
+            extra = {k: v for k, v in extra.items() if k != "key_questions"}
         item.update(extra)
     return item
 
@@ -416,8 +495,12 @@ def build_feed(
     starred_only: bool = False,
     sentiment: str | None = None,
     source_system: str | None = None,
+    primary_only: bool = True,
 ) -> dict[str, Any]:
-    """Unified research intelligence feed for the dashboard (v2)."""
+    """Unified research intelligence feed for the dashboard (v2).
+
+    Taxonomy chips filter by primary_category when primary_only=True (default).
+    """
     tax = load_taxonomy()
     policy = load_freshness_policy()
     held = holdings_symbols()
@@ -427,6 +510,15 @@ def build_feed(
 
     fb_map = _load_feedback_map(db_query)
     items: list[dict[str, Any]] = []
+
+    def _cat_ok(cats: list[str]) -> bool:
+        if not category:
+            return True
+        if not cats:
+            return False
+        if primary_only:
+            return cats[0] == category
+        return category in cats
 
     # ── Hermes research (active + optional archive) ────────────────────
     status_clause = "WHERE status IS NULL OR status NOT IN ('rejected','discarded')"
@@ -444,22 +536,20 @@ def build_feed(
     """) or []
 
     for r in rows:
-        topic_cats = classify_text(r.get("topic"), research_type=r.get("research_type"))
-        body_cats = classify_text(r.get("summary"), r.get("thesis"))
-        cats = list(topic_cats)
-        for c in body_cats:
-            if c not in cats:
-                cats.append(c)
-        cats = cats[:4]
+        cats = classify_primary_secondary(
+            r.get("topic"), r.get("summary"), r.get("thesis"),
+            research_type=r.get("research_type"),
+        )
         sym = (r.get("symbol") or "").upper() or None
         if not sym and r.get("topic"):
             m = re.search(r":\s*([A-Z]{1,5})\b", str(r.get("topic") or ""))
             if m:
                 sym = m.group(1)
         is_held = bool(sym and sym in held)
-        if holdings_only and not is_held and "retirement_tax" not in cats and "macro_geo" not in cats:
+        primary = cats[0] if cats else ""
+        if holdings_only and not is_held and primary not in ("retirement_tax", "macro_geo"):
             continue
-        if category and category not in cats:
+        if not _cat_ok(cats):
             continue
         if symbol and sym != symbol.upper():
             continue
@@ -476,9 +566,9 @@ def build_feed(
         ev_q = _evidence_questions(r.get("evidence_json"))
         iid = f"hermes:{r.get('id')}"
         act = (
-            "Review Roth/tax plan impact" if "retirement_tax" in cats else
-            "Check dividend/income exposure" if "dividend_income" in cats and is_held else
-            "Map to sector allocation" if "sector_thematic" in cats else
+            "Review Roth/tax plan impact" if primary == "retirement_tax" else
+            "Check dividend/income exposure" if primary == "dividend_income" and is_held else
+            "Map to sector allocation" if primary in ("sector_thematic", "macro_geo") else
             "Update thesis / stops" if is_held else
             "Advisory — watchlist or thematic"
         )
@@ -503,11 +593,9 @@ def build_feed(
             actionability=act,
             policy=policy,
             feedback=fb_map.get(iid),
-            extra={"key_questions": ev_q or None},  # may be overwritten below
+            evidence_json=r.get("evidence_json"),
+            extra={"key_questions": ev_q or []},
         )
-        # Merge evidence questions with extracted
-        kq = list(dict.fromkeys((ev_q or []) + (item.get("key_questions") or [])))[:5]
-        item["key_questions"] = kq
         items.append(item)
 
     # ── Auto-research / user topics ────────────────────────────────────
@@ -521,12 +609,16 @@ def build_feed(
         LIMIT 100
     """) or []
     for r in ut:
-        cats = classify_text(
-            r.get("topic"), r.get("latest_findings"), r.get("original_message"),
-            r.get("strategy_type"),
+        # Title primary; findings/body secondary only
+        cats = classify_primary_secondary(
+            r.get("topic"),
+            r.get("latest_findings"), r.get("original_message"), r.get("strategy_type"),
         )
-        if r.get("source") == "auto_research.py" and "company_ticker" not in cats:
-            cats = ["company_ticker"] + [c for c in cats if c != "company_ticker"]
+        if (r.get("source") or "").startswith("auto_research") and cats and cats[0] != "company_ticker":
+            # Ticker-style topics keep company primary when topic is a symbol brief
+            t = str(r.get("topic") or "").upper().strip()
+            if re.fullmatch(r"[A-Z]{1,5}", t) or re.search(r"\b[A-Z]{1,5}\b", t or ""):
+                cats = ["company_ticker"] + [c for c in cats if c != "company_ticker"]
         # Infer ticker from topic text (no symbol column on user_research_topics)
         sym = None
         if r.get("topic"):
@@ -538,7 +630,7 @@ def build_feed(
                 if m and m.group(1) in held:
                     sym = m.group(1)
         is_held = bool(sym and sym in held)
-        if category and category not in cats:
+        if not _cat_ok(cats):
             continue
         if symbol and (not sym or sym != symbol.upper()):
             continue
@@ -547,6 +639,12 @@ def build_feed(
             continue
         age = _age_hours(r.get("last_researched_at") or r.get("updated_at") or r.get("created_at"))
         iid = f"urt:{r.get('id')}"
+        primary = cats[0] if cats else ""
+        act = (
+            "Review Roth / tax plan" if primary == "retirement_tax" else
+            "Check income sleeve" if primary == "dividend_income" else
+            "Open full brief / manage topic"
+        )
         items.append(_item_base(
             id_=iid,
             source_system="auto_research" if (r.get("source") or "").startswith("auto_research") else "operator_topic",
@@ -565,7 +663,7 @@ def build_feed(
             status=r.get("status"),
             is_held=is_held,
             sources=[],
-            actionability="Open full brief / manage topic",
+            actionability=act,
             policy=policy,
             feedback=fb_map.get(iid),
             extra={"research_count": r.get("research_count")},
@@ -581,12 +679,14 @@ def build_feed(
         LIMIT 150
     """) or []
     for r in mon:
-        cats = classify_text(
-            r.get("display_name"), r.get("topic_id"),
+        # Title + topic_id + strategy_tags for primary; personal_context is SECONDARY only
+        # (operator notes often mention IRMAA/SSDI even on dividend/sector monitors)
+        cats = classify_primary_secondary(
+            f"{r.get('display_name') or ''} {r.get('topic_id') or ''}",
             " ".join(r.get("strategy_tags") or []),
             r.get("personal_context"),
         )
-        if category and category not in cats:
+        if not _cat_ok(cats):
             continue
         blob = f"{r.get('display_name')} {r.get('topic_id')} {r.get('personal_context') or ''}"
         if q and q.lower() not in blob.lower():
@@ -597,7 +697,8 @@ def build_feed(
         iid = f"tm:{r.get('topic_id')}"
         max_age = r.get("max_age_days") or 30
         cadence = int(max_age) * 24
-        pri = "high" if (r.get("priority") or 9) <= 2 or "retirement_tax" in cats else "normal"
+        primary = cats[0] if cats else ""
+        pri = "high" if (r.get("priority") or 9) <= 2 or primary == "retirement_tax" else "normal"
         item = _item_base(
             id_=iid,
             source_system="topic_monitor",
@@ -676,23 +777,28 @@ def build_feed(
 
     items.sort(key=_sk)
 
+    # Chip counts = PRIMARY category only (matches taxonomy filter behavior)
     cat_counts: dict[str, int] = {}
+    cat_counts_any: dict[str, int] = {}
     tier_counts: dict[str, int] = {}
     for it in items:
+        pc = it.get("primary_category") or (it.get("categories") or [None])[0]
+        if pc:
+            cat_counts[pc] = cat_counts.get(pc, 0) + 1
         for c in it.get("categories") or []:
-            cat_counts[c] = cat_counts.get(c, 0) + 1
+            cat_counts_any[c] = cat_counts_any.get(c, 0) + 1
         t = it.get("freshness_tier") or "aging"
         tier_counts[t] = tier_counts.get(t, 0) + 1
 
     def _lane(pred, n: int = 16) -> list[dict[str, Any]]:
         return [i for i in items if pred(i)][:n]
 
+    # Lanes use primary category so "Income" doesn't pull Roth-tagged dividend bleed
     priority_lanes = {
-        "retirement": _lane(lambda i: (i.get("primary_category") == "retirement_tax")),
-        "dividends": _lane(lambda i: "dividend_income" in (i.get("categories") or [])),
-        "macro_sector": _lane(lambda i: (
-            "macro_geo" in (i.get("categories") or [])
-            or "sector_thematic" in (i.get("categories") or [])
+        "retirement": _lane(lambda i: i.get("primary_category") == "retirement_tax"),
+        "dividends": _lane(lambda i: i.get("primary_category") == "dividend_income"),
+        "macro_sector": _lane(lambda i: i.get("primary_category") in (
+            "macro_geo", "sector_thematic"
         )),
     }
 
@@ -705,7 +811,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "2.0",
+        "version": "2.1.1",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -715,6 +821,7 @@ def build_feed(
         },
         "filters": {
             "category": category,
+            "primary_only": primary_only,
             "q": q,
             "priority": priority,
             "symbol": symbol,
@@ -735,6 +842,7 @@ def build_feed(
             "archived_in_view": arch_n,
             "starred_in_view": star_n,
             "by_category": cat_counts,
+            "by_category_any": cat_counts_any,
             "by_freshness": tier_counts,
             "holdings_universe": sorted(held)[:40],
             "holdings_count": len(held),
@@ -743,9 +851,9 @@ def build_feed(
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2 — freshness tiers, searchable archive, operator feedback. "
-            "Ingestion: topic_ingestion + Hermes loop + retirement seed topics. "
-            "Archive never deletes; set include_archived=1 to search history."
+            "Research Intelligence v2.1.1 — taxonomy chips filter by primary category; "
+            "title drives classification (personal notes don't re-tag); narrative + freshness. "
+            "Archive never deletes; include_archived=1 for history."
         ),
     }
 

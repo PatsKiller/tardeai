@@ -18308,6 +18308,12 @@ def _research_intelligence_feed(query=None):
         def _flag(k):
             return str(_one(k) or "").lower() in ("1", "true", "yes")
         hold_only = _flag("holdings_only")
+        # primary_only defaults True (taxonomy chips = primary category match)
+        po_raw = _one("primary_only")
+        if po_raw is None or str(po_raw) == "":
+            primary_only = True
+        else:
+            primary_only = str(po_raw).lower() not in ("0", "false", "no")
         try:
             lim = int(_one("limit") or 80)
         except (TypeError, ValueError):
@@ -18329,6 +18335,7 @@ def _research_intelligence_feed(query=None):
             starred_only=_flag("starred_only"),
             sentiment=_one("sentiment") or None,
             source_system=_one("source_system") or None,
+            primary_only=primary_only,
         )
         def _clean(obj):
             if isinstance(obj, dict):
