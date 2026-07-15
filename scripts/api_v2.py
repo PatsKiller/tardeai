@@ -18289,25 +18289,33 @@ def _portfolio_cadence_status():
 
 
 def _research_intelligence_feed(query=None):
-    """GET /api/v2/research-intelligence — taxonomy-tagged Research Intelligence cockpit.
+    """GET /api/v2/research-intelligence — taxonomy-tagged Research Intelligence cockpit (v2).
 
     Aggregates Hermes research, auto-research / operator topics, and topic_monitor under
-    config/research_intelligence_taxonomy.json. Query: category, q, priority, symbol,
-    holdings_only, limit.
+    config/research_intelligence_taxonomy.json.
+
+    Query: category, q, priority, symbol, holdings_only, limit,
+           include_archived, freshness, starred_only, sentiment, source_system.
     """
     try:
-        from lib.research_intelligence import build_feed, load_taxonomy
+        from lib.research_intelligence import build_feed
         q = query if isinstance(query, dict) else (_current_query or {})
         def _one(k, default=None):
             v = q.get(k, default)
             if isinstance(v, list):
                 v = v[0] if v else default
             return v
-        hold_only = str(_one("holdings_only") or "").lower() in ("1", "true", "yes")
+        def _flag(k):
+            return str(_one(k) or "").lower() in ("1", "true", "yes")
+        hold_only = _flag("holdings_only")
         try:
             lim = int(_one("limit") or 80)
         except (TypeError, ValueError):
             lim = 80
+        inc_arch = _one("include_archived")
+        include_archived = None
+        if inc_arch is not None and str(inc_arch) != "":
+            include_archived = str(inc_arch).lower() in ("1", "true", "yes")
         feed = build_feed(
             db_query=_db_query,
             category=_one("category") or None,
@@ -18316,8 +18324,12 @@ def _research_intelligence_feed(query=None):
             symbol=_one("symbol") or None,
             limit=lim,
             holdings_only=hold_only,
+            include_archived=include_archived,
+            freshness=_one("freshness") or None,
+            starred_only=_flag("starred_only"),
+            sentiment=_one("sentiment") or None,
+            source_system=_one("source_system") or None,
         )
-        # JSON-clean nested values
         def _clean(obj):
             if isinstance(obj, dict):
                 return {k: _clean(v) for k, v in obj.items()}
@@ -18332,10 +18344,56 @@ def _research_intelligence_feed(query=None):
 def _research_intelligence_taxonomy():
     """GET /api/v2/research-intelligence/taxonomy"""
     try:
-        from lib.research_intelligence import load_taxonomy
-        return {"ok": True, "taxonomy": load_taxonomy()}
+        from lib.research_intelligence import load_taxonomy, load_freshness_policy
+        return {
+            "ok": True,
+            "taxonomy": load_taxonomy(),
+            "freshness_policy": load_freshness_policy(),
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
+
+
+def _research_intelligence_freshness():
+    """GET /api/v2/research-intelligence/freshness — category SLO + stale topics."""
+    try:
+        from lib.research_intelligence import freshness_report
+        return freshness_report(db_query=_db_query)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _research_intelligence_feedback_post(body=None):
+    """POST /api/v2/research-intelligence/feedback — star / vote / note on an item."""
+    try:
+        from lib.research_intelligence import upsert_feedback
+        b = body or {}
+        item_id = (b.get("item_id") or "").strip()
+        if not item_id:
+            return {"ok": False, "error": "item_id required"}
+        vote = b.get("vote")
+        if vote is not None:
+            try:
+                vote = int(vote)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "vote must be -1, 0, or 1"}
+        starred = b.get("starred")
+        if starred is not None:
+            starred = bool(starred)
+        return upsert_feedback(
+            db_query=_db_query,
+            item_id=item_id,
+            starred=starred,
+            vote=vote,
+            note=b.get("note"),
+            source_system=b.get("source_system"),
+            source_table=b.get("source_table"),
+            source_id=b.get("source_id"),
+            categories=b.get("categories") if isinstance(b.get("categories"), list) else None,
+            symbol=b.get("symbol"),
+        )
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
 
 
 def _research_topics_unified():
@@ -29909,6 +29967,7 @@ ROUTES = {
     "/api/v2/research-topics/registry": lambda: _research_topics_registry(),
     "/api/v2/research-intelligence": lambda: _research_intelligence_feed(_current_query),
     "/api/v2/research-intelligence/taxonomy": lambda: _research_intelligence_taxonomy(),
+    "/api/v2/research-intelligence/freshness": lambda: _research_intelligence_freshness(),
     "/api/v2/atm/gate-status": lambda: _atm_gate_status(),
     "/api/v2/atm/schwab-readiness": lambda: _atm_schwab_readiness(),
     "/api/v2/atm/actionable-proposals": lambda: _atm_actionable_proposals(),
@@ -32956,6 +33015,30 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, {"ok": True, "symbol": sym, "starred": starred}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+    if method == "POST" and base_path == "/api/v2/research-intelligence/feedback":
+        try:
+            # Ensure feedback table exists (migration 2026_07_24; idempotent create)
+            _db_query("""
+                CREATE TABLE IF NOT EXISTS research_intelligence_feedback (
+                    id BIGSERIAL PRIMARY KEY,
+                    item_id TEXT NOT NULL UNIQUE,
+                    source_system TEXT,
+                    source_table TEXT,
+                    source_id TEXT,
+                    starred BOOLEAN NOT NULL DEFAULT FALSE,
+                    vote SMALLINT,
+                    note TEXT,
+                    categories TEXT[] DEFAULT '{}',
+                    symbol TEXT,
+                    meta_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )""", fetch="none")
+            result = _research_intelligence_feedback_post(body or {})
+            code = 200 if result.get("ok") else 400
+            return code, result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:240]}
     if method == "POST" and base_path == "/api/v2/hermes/curate-top20":
         try:
             return 200, _hermes_curate_top20_trigger(body or {})

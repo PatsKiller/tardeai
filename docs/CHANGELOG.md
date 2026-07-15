@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-15 — Research Intelligence v2 (freshness, archive, retirement pillar)
+
+Professional intelligence desk upgrade on top of RI v1.
+
+- **Freshness policy** — `config/research_intelligence_freshness.json`: live/fresh/aging/stale/archive tiers, per-category refresh cadence, SLO; UI labels like “Updated 14m ago”.
+- **Archive (searchable, never delete)** — Hermes soft-archive via `research_intelligence_refresh.py --archive`; retirement pillar protected; `include_archived=1` search.
+- **Retirement module** — `config/research_intelligence_retirement_topics.json` + `research_intelligence_retirement_seed.py` seeds Roth ladder, Golden Window, IRMAA, RMD, SSDI, MAPT, tax-bracket room into `topic_monitor` (`owner=shared`, tight `max_age_days`).
+- **Feedback loop** — `research_intelligence_feedback` table; `POST /api/v2/research-intelligence/feedback` (star / thumbs / note).
+- **API** — feed filters: freshness, starred, sentiment, include_archived; `GET …/freshness` SLO report; taxonomy returns freshness policy.
+- **Content fields** — key_questions, data_gaps, sentiment, source_count, needs_refresh, freshness_tier/label.
+- **UI** — cards/list/compact views, richer filters, stale-monitor banner, star/vote, cross-links to Retirement/Hermes/Portfolio.
+- **Docs** — `docs/architecture/RESEARCH_INTELLIGENCE_V2.md`.
+
 ## 2026-07-15 — Research Intelligence v1 (CC v3 first-class cockpit)
 
 Mature Research Intelligence surface replacing the immature “Research Topics list” as the primary operator cockpit. **Aggregates existing Hermes / auto-research / topic_monitor** — does not reinvent ingestion.

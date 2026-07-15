@@ -1,0 +1,191 @@
+{
+  "_description": "Canonical retirement / tax intelligence topics for topic_monitor + Hermes bridge. Seeded by scripts/research_intelligence_retirement_seed.py",
+  "version": "1.0",
+  "updated": "2026-07-15",
+  "default_owner": "shared",
+  "default_agent_owner": "Alex",
+  "topics": [
+    {
+      "topic_id": "roth_ladder",
+      "display_name": "Roth Conversion Ladder",
+      "priority": 1,
+      "max_age_days": 3,
+      "min_articles": 4,
+      "search_queries": [
+        "Roth conversion ladder strategy 2026",
+        "Roth IRA conversion ladder tax planning",
+        "multi-year Roth conversion pacing MAGI"
+      ],
+      "video_queries": [
+        "Roth conversion ladder explained 2026",
+        "Roth ladder vs backdoor Roth"
+      ],
+      "strategy_tags": ["retirement_planning", "roth_ladder", "retirement_tax"],
+      "personal_context": "Operator uses Roth ladder / conversion pacing during Golden Window before Medicare; coordinate IRMAA two-year lookback."
+    },
+    {
+      "topic_id": "golden_window",
+      "display_name": "Golden Window (Pre-Medicare)",
+      "priority": 1,
+      "max_age_days": 3,
+      "min_articles": 3,
+      "search_queries": [
+        "Roth conversion golden window before Medicare",
+        "low income years Roth conversion IRMAA planning",
+        "pre-Medicare tax planning Roth conversions 2026"
+      ],
+      "video_queries": [
+        "golden years Roth conversion strategy",
+        "convert to Roth before Medicare IRMAA"
+      ],
+      "strategy_tags": ["retirement_planning", "golden_window", "retirement_tax"],
+      "personal_context": "Golden Window before Dec ~2026 Medicare eligibility; prioritize conversion room without IRMAA cliff."
+    },
+    {
+      "topic_id": "roth_conversion",
+      "display_name": "Roth Conversion Strategy",
+      "priority": 1,
+      "max_age_days": 5,
+      "min_articles": 5,
+      "search_queries": [
+        "Roth conversion strategy 2026 tax brackets",
+        "Roth IRA conversion tax bracket room",
+        "backdoor Roth IRA rules 2026",
+        "pro-rata rule Roth conversion"
+      ],
+      "video_queries": [
+        "Roth conversion strategy low income years",
+        "Roth IRA conversion planning 2026"
+      ],
+      "strategy_tags": ["retirement_planning", "roth_conversion", "retirement_tax"],
+      "personal_context": "Tax bracket room and conversion batching; SSDI is not earned income for SGA."
+    },
+    {
+      "topic_id": "irmaa_medicare",
+      "display_name": "IRMAA & Medicare Premiums",
+      "priority": 1,
+      "max_age_days": 5,
+      "min_articles": 4,
+      "search_queries": [
+        "IRMAA thresholds 2026 2027 Medicare Part B Part D",
+        "IRMAA two year lookback MAGI Roth conversion",
+        "Medicare Part B premium surcharge married filing",
+        "IRMAA life-changing event appeal"
+      ],
+      "video_queries": [
+        "IRMAA explained Medicare premium 2026",
+        "avoid IRMAA with Roth conversion timing"
+      ],
+      "strategy_tags": ["retirement_planning", "irmaa", "medicare", "retirement_tax"],
+      "personal_context": "IRMAA determined by MAGI from two years prior; conversion timing critical before Medicare enrollment."
+    },
+    {
+      "topic_id": "rmd_planning",
+      "display_name": "RMD Planning",
+      "priority": 2,
+      "max_age_days": 14,
+      "min_articles": 3,
+      "search_queries": [
+        "required minimum distribution rules 2026",
+        "RMD age SECURE Act 2.0 planning",
+        "QCD qualified charitable distribution RMD"
+      ],
+      "video_queries": [
+        "RMD planning strategies 2026",
+        "qualified charitable distributions explained"
+      ],
+      "strategy_tags": ["retirement_planning", "rmd", "retirement_tax"],
+      "personal_context": "Long-horizon RMD awareness; Roth conversions reduce future RMD base."
+    },
+    {
+      "topic_id": "ssdi_coordination",
+      "display_name": "SSDI & Tax Coordination",
+      "priority": 1,
+      "max_age_days": 7,
+      "min_articles": 3,
+      "search_queries": [
+        "SSDI benefits tax treatment investment income 2026",
+        "SSDI substantial gainful activity investment income",
+        "Social Security disability earnings test portfolio income"
+      ],
+      "video_queries": [
+        "SSDI and investment income explained",
+        "disability benefits tax planning investments"
+      ],
+      "strategy_tags": ["retirement_planning", "ssdi", "disability_retirement_planning", "retirement_tax"],
+      "personal_context": "SSDI benefits; investment income and Roth conversions do not count toward SGA."
+    },
+    {
+      "topic_id": "medicaid_mapt",
+      "display_name": "Medicaid / MAPT Asset Protection",
+      "priority": 2,
+      "max_age_days": 14,
+      "min_articles": 3,
+      "search_queries": [
+        "Medicaid asset protection trust MAPT 2026",
+        "Medicaid look-back period planning NY",
+        "spend-down rules disability Medicaid estate recovery"
+      ],
+      "video_queries": [
+        "Medicaid asset protection trust explained",
+        "Medicaid lookback period planning"
+      ],
+      "strategy_tags": ["retirement_planning", "medicaid", "estate", "retirement_tax"],
+      "personal_context": "MAPT / asset protection coordination with retirement accounts; research only — professional review required."
+    },
+    {
+      "topic_id": "tax_bracket_room",
+      "display_name": "Tax Bracket Room & Conversion Pacing",
+      "priority": 1,
+      "max_age_days": 7,
+      "min_articles": 3,
+      "search_queries": [
+        "fill lower tax brackets Roth conversion 2026",
+        "tax bracket management retirement conversions",
+        "ordinary income stacking Roth conversion IRMAA"
+      ],
+      "video_queries": [
+        "tax bracket filling Roth conversion strategy",
+        "how much to convert to Roth each year"
+      ],
+      "strategy_tags": ["retirement_planning", "tax_bracket", "roth_conversion", "retirement_tax"],
+      "personal_context": "Annual conversion capacity vs brackets and IRMAA cliffs."
+    },
+    {
+      "topic_id": "dividend_income",
+      "display_name": "Dividend Income Strategy",
+      "priority": 2,
+      "max_age_days": 7,
+      "min_articles": 5,
+      "search_queries": [
+        "high dividend stocks 2026 retirement income",
+        "dividend growth investing SCHD JEPI JEPQ",
+        "monthly dividend income portfolio covered call ETF"
+      ],
+      "video_queries": [
+        "dividend income portfolio 2026",
+        "covered call ETF income strategy retirement"
+      ],
+      "strategy_tags": ["dividend_growth_compounder", "dividend_income", "tactical_income"],
+      "personal_context": "Holdings sleeve includes JEPI, JEPQ, SCHD, PFLT, CSWC, DIV/DIVI."
+    },
+    {
+      "topic_id": "macro_rates_regime",
+      "display_name": "Macro Rates & Regime",
+      "priority": 2,
+      "max_age_days": 3,
+      "min_articles": 4,
+      "search_queries": [
+        "Federal Reserve FOMC rate path 2026",
+        "Treasury yield curve recession risk",
+        "inflation CPI PCE market regime"
+      ],
+      "video_queries": [
+        "Fed rate decision market impact",
+        "yield curve investing strategy 2026"
+      ],
+      "strategy_tags": ["macro", "rates", "regime"],
+      "personal_context": "Macro context for sector rotation and risk regime on the book."
+    }
+  ]
+}

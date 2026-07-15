@@ -1,6 +1,6 @@
 {
   "_description": "Canonical Research Intelligence taxonomy for Command Center v3. Items may carry multiple categories.",
-  "version": "1.0",
+  "version": "1.1",
   "updated": "2026-07-15",
   "categories": [
     {
@@ -8,72 +8,93 @@
       "label": "Retirement & Tax Strategy",
       "priority": 100,
       "color": "#a855f7",
-      "description": "Roth ladder, conversions, Golden Window, RMD, IRMAA, Medicaid, estate/tax planning",
-      "subcategories": ["roth_ladder", "conversions", "golden_window", "rmd", "irmaa", "medicaid", "estate", "ssdi"]
+      "pillar": true,
+      "refresh_hours": 12,
+      "description": "Roth ladder, conversions, Golden Window, RMD, IRMAA, Medicaid/MAPT, SSDI coordination, tax-bracket room",
+      "subcategories": [
+        "roth_ladder", "conversions", "golden_window", "rmd", "irmaa",
+        "medicare", "medicaid", "mapt", "estate", "ssdi", "tax_bracket_room", "qcd"
+      ]
     },
     {
       "id": "dividend_income",
       "label": "Dividend & Income",
       "priority": 90,
       "color": "#22c55e",
-      "description": "Dividend aristocrats, covered-call ETFs, CEFs, income sleeves, holdings news",
-      "subcategories": ["holdings_dividends", "covered_call_etf", "bdc_cef", "bond_income"]
-    },
-    {
-      "id": "sector_thematic",
-      "label": "Sector & Thematic",
-      "priority": 80,
-      "color": "#60a5fa",
-      "description": "Sector rotation, defense, AI/infra, staples, energy, healthcare themes",
-      "subcategories": ["rotation", "defense", "ai_infra", "staples", "healthcare", "energy"]
-    },
-    {
-      "id": "macro_geo",
-      "label": "Macro & Geopolitical",
-      "priority": 85,
-      "color": "#f59e0b",
-      "description": "Rates, inflation, FRED, geopolitics, regime, VIX, breadth",
-      "subcategories": ["rates", "inflation", "geopolitics", "regime", "liquidity"]
-    },
-    {
-      "id": "company_ticker",
-      "label": "Company & Ticker",
-      "priority": 70,
-      "color": "#94a3b8",
-      "description": "Ticker-specific research, auto-research briefs, thesis challenges",
-      "subcategories": ["auto_research", "thesis_challenge", "earnings", "form4"]
-    },
-    {
-      "id": "compounding_wealth",
-      "label": "Compounding & Long-term Wealth",
-      "priority": 75,
-      "color": "#2dd4bf",
-      "description": "Multi-year compounding, asset allocation, wealth frameworks",
-      "subcategories": ["compounding", "allocation", "drawdown_buckets"]
+      "pillar": true,
+      "refresh_hours": 24,
+      "description": "Dividend aristocrats, covered-call ETFs, CEFs/BDCs, income sleeves, holdings news",
+      "subcategories": ["holdings_dividends", "covered_call_etf", "bdc_cef", "bond_income", "aristocrats"]
     },
     {
       "id": "risk_regime",
       "label": "Risk, Volatility & Regime",
       "priority": 88,
       "color": "#ef4444",
+      "pillar": false,
+      "refresh_hours": 12,
       "description": "Stops, heat, regime, volatility tiers, protection advisories",
-      "subcategories": ["stops", "heat", "regime", "volatility"]
+      "subcategories": ["stops", "heat", "regime", "volatility", "drawdown"]
+    },
+    {
+      "id": "macro_geo",
+      "label": "Macro & Geopolitical",
+      "priority": 85,
+      "color": "#f59e0b",
+      "pillar": true,
+      "refresh_hours": 12,
+      "description": "Rates, inflation, FRED, geopolitics, regime, VIX, liquidity, breadth",
+      "subcategories": ["rates", "inflation", "geopolitics", "regime", "liquidity", "fred"]
+    },
+    {
+      "id": "sector_thematic",
+      "label": "Sector & Thematic",
+      "priority": 80,
+      "color": "#60a5fa",
+      "pillar": true,
+      "refresh_hours": 24,
+      "description": "Sector rotation, defense, AI/infra, staples, energy, healthcare themes",
+      "subcategories": ["rotation", "defense", "ai_infra", "staples", "healthcare", "energy", "materials"]
+    },
+    {
+      "id": "compounding_wealth",
+      "label": "Compounding & Long-term Wealth",
+      "priority": 75,
+      "color": "#2dd4bf",
+      "pillar": true,
+      "refresh_hours": 72,
+      "description": "Multi-year compounding, asset allocation, wealth frameworks, bucket strategies",
+      "subcategories": ["compounding", "allocation", "drawdown_buckets", "wealth_framework"]
     },
     {
       "id": "catalyst_event",
       "label": "Catalyst & Event-Driven",
       "priority": 72,
       "color": "#eab308",
+      "pillar": false,
+      "refresh_hours": 6,
       "description": "Earnings, news momentum, catalysts tied to holdings/watchlist",
-      "subcategories": ["earnings", "news_momentum", "catalyst"]
+      "subcategories": ["earnings", "news_momentum", "catalyst", "form4"]
+    },
+    {
+      "id": "company_ticker",
+      "label": "Company & Ticker",
+      "priority": 70,
+      "color": "#94a3b8",
+      "pillar": false,
+      "refresh_hours": 24,
+      "description": "Ticker-specific research, auto-research briefs, thesis challenges, holdings deep-dives",
+      "subcategories": ["auto_research", "thesis_challenge", "earnings", "form4", "holdings"]
     },
     {
       "id": "academic_pro",
       "label": "Academic / Professional",
       "priority": 60,
       "color": "#c084fc",
-      "description": "Papers, professional research summaries, long-form sources",
-      "subcategories": ["papers", "pro_analyst", "transcripts"]
+      "pillar": false,
+      "refresh_hours": 168,
+      "description": "Papers, professional research summaries, long-form sources, transcripts",
+      "subcategories": ["papers", "pro_analyst", "transcripts", "whitepapers"]
     }
   ]
 }

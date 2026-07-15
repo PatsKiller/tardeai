@@ -1,0 +1,38 @@
+{
+  "_description": "Research Intelligence refresh cadences and archive policy (hours).",
+  "version": "1.0",
+  "updated": "2026-07-15",
+  "tiers": {
+    "live":   { "max_hours": 2,   "label": "Live", "color": "#22c55e" },
+    "fresh":  { "max_hours": 24,  "label": "Fresh", "color": "#60a5fa" },
+    "aging":  { "max_hours": 72,  "label": "Aging", "color": "#f59e0b" },
+    "stale":  { "max_hours": 336, "label": "Stale", "color": "#f97316" },
+    "archive":{ "max_hours": null,"label": "Archived", "color": "#64748b" }
+  },
+  "refresh_cadence_hours": {
+    "retirement_tax": 12,
+    "dividend_income": 24,
+    "macro_geo": 12,
+    "sector_thematic": 24,
+    "catalyst_event": 6,
+    "risk_regime": 12,
+    "company_ticker": 24,
+    "compounding_wealth": 72,
+    "academic_pro": 168,
+    "_holdings_linked": 12,
+    "_high_priority": 12,
+    "_default": 48
+  },
+  "archive": {
+    "hermes_auto_archive_after_days": 45,
+    "keep_searchable": true,
+    "exclude_statuses_from_default_feed": ["rejected", "discarded"],
+    "include_archived_default": false,
+    "never_auto_archive_categories": ["retirement_tax"]
+  },
+  "slo": {
+    "retirement_tax_max_stale_hours": 36,
+    "holdings_linked_max_stale_hours": 48,
+    "macro_geo_max_stale_hours": 36
+  }
+}

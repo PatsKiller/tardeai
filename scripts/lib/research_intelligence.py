@@ -1,8 +1,8 @@
-"""Research Intelligence aggregator — taxonomy + unified feed for CC v3.
+"""Research Intelligence aggregator v2 — taxonomy, freshness, archive, feedback.
 
-Builds a first-class intelligence dashboard payload from existing Hermes,
-topic_monitor, user_research_topics, news, and holdings — without reinventing
-ingestion. Classification is rule-based + research_type mapping (cheap, stable).
+Builds a professional intelligence-dashboard payload from Hermes, topic_monitor,
+user_research_topics, and holdings. Classification is rule-based (cheap, stable).
+Freshness tiers + archive policy from config/research_intelligence_freshness.json.
 """
 from __future__ import annotations
 
@@ -14,12 +14,12 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TAXONOMY_PATH = PROJECT_ROOT / "config" / "research_intelligence_taxonomy.json"
+FRESHNESS_PATH = PROJECT_ROOT / "config" / "research_intelligence_freshness.json"
 HOLDINGS_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 
 # Patterns → category ids (order matters: first match wins for primary)
 _CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
-    # Note: never bare "roth" (matches "Roth Capital" sell-side); never roth.?ira
-    # (matches account codes like schwab_roth_ira on stop health rows).
+    # Note: never bare "roth" (matches "Roth Capital"); never roth.?ira (account codes).
     ("retirement_tax", re.compile(
         r"roth\s+(?:ira|conversion|ladder|account|plans?)|conversion\s+ladder|"
         r"taxable\s+conversion|golden\s+window|"
@@ -27,7 +27,8 @@ _CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
         r"estate\s+plan|estate\s+tax|\bprobate\b|"
         r"\bssdi\b|backdoor\s+roth|qualified\s+charitable|\bqcd\b|life\s+estate|"
         r"asset\s+protection|spend.?down|look.?back\s+period|\bmedigap\b|medicare\s+part\s+[bd]\b|"
-        r"retirement\s+tax|tax.?efficient\s+withdrawal|social\s+security\s+claim",
+        r"retirement\s+tax|tax.?efficient\s+withdrawal|social\s+security\s+claim|"
+        r"tax\s+bracket\s+room|conversion\s+pacing|\bmapt\b",
         re.I,
     )),
     ("dividend_income", re.compile(
@@ -37,7 +38,7 @@ _CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
     )),
     ("macro_geo", re.compile(
         r"\bfed\b|fomc|inflation|cpi|pce|treasury|yield curve|geopolitic|"
-        r"tariff|oil shock|\bvix\b|regime|liquidity|rates? hike|recession|gdp",
+        r"tariff|oil shock|\bvix\b|regime|liquidity|rates? hike|recession|gdp|\bfred\b",
         re.I,
     )),
     ("sector_thematic", re.compile(
@@ -67,7 +68,7 @@ _CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 _TYPE_TO_CAT = {
-    "topic_research": None,  # classify by topic text
+    "topic_research": None,
     "momentum_catalyst": "catalyst_event",
     "protection_advisory": "risk_regime",
     "stop_curation": "risk_regime",
@@ -76,14 +77,42 @@ _TYPE_TO_CAT = {
     "options_desk": "company_ticker",
     "youtube_discovery": "academic_pro",
     "research_backlog": "company_ticker",
-    # operator_knowledge is multi-domain — classify by text, not type map
 }
+
+_SENT_BULL = re.compile(
+    r"\b(bullish|upgrade|outperform|beat|strong buy|accumulate|tailwind|accelerat)\b", re.I
+)
+_SENT_BEAR = re.compile(
+    r"\b(bearish|downgrade|underperform|miss|cut target|headwind|weaken|risk.?off)\b", re.I
+)
+_Q_SPLIT = re.compile(r"(?:^|\n)\s*(?:\d+[\.\)]\s*|[-•]\s*)?(.+\?)\s*$", re.M)
+_GAP_RX = re.compile(
+    r"(?:data gap|unknown|unclear|need(?:s)? (?:more |to )?(?:data|confirm|verify)|"
+    r"insufficient|limited (?:direct )?information|zero details|not (?:enough|available))",
+    re.I,
+)
 
 
 def load_taxonomy() -> dict[str, Any]:
     if TAXONOMY_PATH.exists():
         return json.loads(TAXONOMY_PATH.read_text(encoding="utf-8"))
     return {"categories": [], "version": "0"}
+
+
+def load_freshness_policy() -> dict[str, Any]:
+    if FRESHNESS_PATH.exists():
+        return json.loads(FRESHNESS_PATH.read_text(encoding="utf-8"))
+    return {
+        "tiers": {
+            "live": {"max_hours": 2},
+            "fresh": {"max_hours": 24},
+            "aging": {"max_hours": 72},
+            "stale": {"max_hours": 336},
+            "archive": {"max_hours": None},
+        },
+        "refresh_cadence_hours": {"_default": 48},
+        "archive": {"include_archived_default": False},
+    }
 
 
 def classify_text(*parts: str | None, research_type: str | None = None) -> list[str]:
@@ -93,8 +122,6 @@ def classify_text(*parts: str | None, research_type: str | None = None) -> list[
     mapped = _TYPE_TO_CAT.get(research_type or "")
     if mapped:
         cats.append(mapped)
-    # Stop / protection advisories are risk_regime-primary; skip soft keyword bleed
-    # (e.g. account name schwab_roth_ira) into retirement_tax.
     _risk_types = {"protection_advisory", "stop_curation", "stop_health"}
     for cid, rx in _CATEGORY_RULES:
         if cid == "retirement_tax" and (research_type or "") in _risk_types:
@@ -145,6 +172,236 @@ def _priority_from(cats: list[str], conf: float | None, age_h: float | None, hel
     return "normal"
 
 
+def freshness_tier(age_h: float | None, *, is_archived: bool = False, policy: dict | None = None) -> str:
+    if is_archived:
+        return "archive"
+    pol = policy or load_freshness_policy()
+    tiers = pol.get("tiers") or {}
+    if age_h is None:
+        return "aging"
+    for name in ("live", "fresh", "aging", "stale"):
+        t = tiers.get(name) or {}
+        mx = t.get("max_hours")
+        if mx is not None and age_h <= float(mx):
+            return name
+    return "archive"
+
+
+def freshness_label(age_h: float | None, tier: str) -> str:
+    if tier == "archive":
+        if age_h is None:
+            return "Archived — historical"
+        if age_h < 24:
+            return f"Archived — {int(age_h)}h ago"
+        return f"Archived — {int(age_h // 24)}d ago"
+    if age_h is None:
+        return "Unknown age"
+    if age_h < 1:
+        return f"Updated {max(1, int(age_h * 60))}m ago"
+    if age_h < 24:
+        return f"Updated {int(round(age_h))}h ago"
+    if age_h < 48:
+        return "Last refreshed ~1d ago"
+    return f"Last refreshed {int(age_h // 24)}d ago"
+
+
+def refresh_cadence_hours(cats: list[str], *, held: bool = False, priority: str = "normal",
+                          policy: dict | None = None) -> int:
+    pol = policy or load_freshness_policy()
+    cad = pol.get("refresh_cadence_hours") or {}
+    if held:
+        return int(cad.get("_holdings_linked") or cad.get("_default") or 12)
+    if priority == "high":
+        return int(cad.get("_high_priority") or 12)
+    best = None
+    for c in cats:
+        if c in cad:
+            v = int(cad[c])
+            best = v if best is None else min(best, v)
+    return int(best if best is not None else cad.get("_default") or 48)
+
+
+def needs_refresh(age_h: float | None, cadence_h: int) -> bool:
+    if age_h is None:
+        return True
+    return age_h > cadence_h
+
+
+def _sentiment(text: str) -> str:
+    if not text:
+        return "neutral"
+    b, r = len(_SENT_BULL.findall(text)), len(_SENT_BEAR.findall(text))
+    if b > r and b > 0:
+        return "bullish"
+    if r > b and r > 0:
+        return "bearish"
+    return "neutral"
+
+
+def _extract_questions(*parts: str | None) -> list[str]:
+    blob = "\n".join(p for p in parts if p)
+    found = [m.group(1).strip() for m in _Q_SPLIT.finditer(blob) if m.group(1)]
+    # de-dupe preserve order
+    out: list[str] = []
+    for q in found:
+        if q not in out and len(q) > 12:
+            out.append(q[:200])
+    return out[:5]
+
+
+def _extract_gaps(*parts: str | None) -> list[str]:
+    blob = "\n".join(p for p in parts if p) or ""
+    gaps: list[str] = []
+    for line in blob.splitlines():
+        if _GAP_RX.search(line) and line.strip() not in gaps:
+            gaps.append(line.strip()[:200])
+    return gaps[:4]
+
+
+def _parse_jsonish(val: Any) -> Any:
+    if isinstance(val, str):
+        try:
+            return json.loads(val)
+        except Exception:
+            return None
+    return val
+
+
+def _sources_from_row(r: dict) -> list[dict]:
+    sources: list[dict] = []
+    ev = _parse_jsonish(r.get("evidence_json")) or {}
+    if isinstance(ev, dict):
+        for g in (ev.get("grounded_on") or [])[:6]:
+            if isinstance(g, dict):
+                sources.append({
+                    "title": g.get("title"), "url": g.get("url"), "source": g.get("source"),
+                })
+        for k in ("key_questions", "questions", "open_questions"):
+            # handled elsewhere
+            pass
+    su = _parse_jsonish(r.get("source_urls_json")) or []
+    if isinstance(su, list):
+        for u in su[:4]:
+            if isinstance(u, str):
+                sources.append({"url": u})
+            elif isinstance(u, dict):
+                sources.append(u)
+    return sources[:8]
+
+
+def _evidence_questions(ev: Any) -> list[str]:
+    ev = _parse_jsonish(ev) or {}
+    if not isinstance(ev, dict):
+        return []
+    out: list[str] = []
+    for k in ("key_questions", "questions", "open_questions", "data_needed"):
+        v = ev.get(k)
+        if isinstance(v, list):
+            for x in v:
+                if isinstance(x, str) and x.strip():
+                    out.append(x.strip()[:200])
+                elif isinstance(x, dict) and x.get("q"):
+                    out.append(str(x["q"])[:200])
+        elif isinstance(v, str) and v.strip():
+            out.append(v.strip()[:200])
+    return out[:5]
+
+
+def _load_feedback_map(db_query) -> dict[str, dict]:
+    try:
+        rows = db_query("""
+            SELECT item_id, starred, vote, note, updated_at
+            FROM research_intelligence_feedback
+        """) or []
+    except Exception:
+        return {}
+    out: dict[str, dict] = {}
+    for r in rows:
+        iid = r.get("item_id")
+        if iid:
+            out[str(iid)] = {
+                "starred": bool(r.get("starred")),
+                "vote": r.get("vote"),
+                "note": r.get("note"),
+                "feedback_updated_at": (
+                    r.get("updated_at").isoformat()
+                    if hasattr(r.get("updated_at"), "isoformat") else r.get("updated_at")
+                ),
+            }
+    return out
+
+
+def _item_base(
+    *,
+    id_: str,
+    source_system: str,
+    source_table: str,
+    source_id: Any,
+    title: str,
+    summary: str,
+    thesis: str | None,
+    symbol: str | None,
+    cats: list[str],
+    conf: float | None,
+    age: float | None,
+    created_at: Any,
+    model: str | None,
+    research_type: str | None,
+    status: str | None,
+    is_held: bool,
+    sources: list[dict],
+    actionability: str,
+    policy: dict,
+    feedback: dict | None = None,
+    extra: dict | None = None,
+) -> dict[str, Any]:
+    is_arch = (status or "").lower() == "archived"
+    tier = freshness_tier(age, is_archived=is_arch, policy=policy)
+    pri = _priority_from(cats, conf, age, is_held)
+    cadence = refresh_cadence_hours(cats, held=is_held, priority=pri, policy=policy)
+    blob = f"{title} {summary or ''} {thesis or ''}"
+    key_q = _extract_questions(summary, thesis)
+    gaps = _extract_gaps(summary, thesis)
+    fb = feedback or {}
+    item: dict[str, Any] = {
+        "id": id_,
+        "source_system": source_system,
+        "source_table": source_table,
+        "source_id": source_id,
+        "title": title,
+        "summary": (summary or "")[:800],
+        "thesis": ((thesis or "")[:600] or None),
+        "symbol": symbol,
+        "categories": cats,
+        "primary_category": cats[0] if cats else "company_ticker",
+        "priority": pri,
+        "confidence": conf,
+        "freshness_hours": round(age, 1) if age is not None else None,
+        "freshness_tier": tier,
+        "freshness_label": freshness_label(age, tier),
+        "refresh_cadence_hours": cadence,
+        "needs_refresh": needs_refresh(age, cadence) and not is_arch,
+        "is_archived": is_arch,
+        "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
+        "model": model,
+        "research_type": research_type,
+        "status": status,
+        "is_holdings": is_held,
+        "sources": sources[:8],
+        "source_count": len(sources),
+        "actionability": actionability,
+        "sentiment": _sentiment(blob),
+        "key_questions": key_q,
+        "data_gaps": gaps,
+        "starred": bool(fb.get("starred")),
+        "vote": fb.get("vote"),
+        "operator_note": fb.get("note"),
+    }
+    if extra:
+        item.update(extra)
+    return item
+
+
 def build_feed(
     *,
     db_query,
@@ -154,38 +411,47 @@ def build_feed(
     symbol: str | None = None,
     limit: int = 80,
     holdings_only: bool = False,
+    include_archived: bool | None = None,
+    freshness: str | None = None,
+    starred_only: bool = False,
+    sentiment: str | None = None,
+    source_system: str | None = None,
 ) -> dict[str, Any]:
-    """Unified research intelligence feed for the dashboard."""
+    """Unified research intelligence feed for the dashboard (v2)."""
     tax = load_taxonomy()
+    policy = load_freshness_policy()
     held = holdings_symbols()
     limit = max(10, min(int(limit or 80), 200))
+    if include_archived is None:
+        include_archived = bool((policy.get("archive") or {}).get("include_archived_default"))
 
+    fb_map = _load_feedback_map(db_query)
     items: list[dict[str, Any]] = []
 
-    # ── Hermes research ──────────────────────────────────────────────────
-    rows = db_query("""
+    # ── Hermes research (active + optional archive) ────────────────────
+    status_clause = "WHERE status IS NULL OR status NOT IN ('rejected','discarded')"
+    if not include_archived:
+        status_clause += " AND (status IS NULL OR status <> 'archived')"
+    rows = db_query(f"""
         SELECT id, topic, summary, thesis, symbol, research_type, confidence_score,
                quality_score, status, model_used, source, created_at, freshness_date,
-               evidence_json, source_urls_json, tags, category_content, category_sector
+               evidence_json, source_urls_json, tags, category_content, category_sector,
+               updated_at
         FROM hermes_research_intelligence
-        WHERE status IS NULL OR status NOT IN ('rejected','discarded')
-        ORDER BY created_at DESC
-        LIMIT 500
+        {status_clause}
+        ORDER BY COALESCE(updated_at, created_at) DESC NULLS LAST
+        LIMIT 600
     """) or []
 
     for r in rows:
-        # Title/topic drives primary category; body may add secondary tags only.
-        # Prevents long Hermes summaries that mention Roth Capital / IRMAA in
-        # passing from re-labeling an Industry: or stop-health topic.
         topic_cats = classify_text(r.get("topic"), research_type=r.get("research_type"))
         body_cats = classify_text(r.get("summary"), r.get("thesis"))
-        cats: list[str] = list(topic_cats)
+        cats = list(topic_cats)
         for c in body_cats:
             if c not in cats:
                 cats.append(c)
         cats = cats[:4]
         sym = (r.get("symbol") or "").upper() or None
-        # Infer symbol from topic "news_momentum: XYZ"
         if not sym and r.get("topic"):
             m = re.search(r":\s*([A-Z]{1,5})\b", str(r.get("topic") or ""))
             if m:
@@ -205,203 +471,224 @@ def build_feed(
             conf = float(r.get("confidence_score")) if r.get("confidence_score") is not None else None
         except (TypeError, ValueError):
             pass
-        age = _age_hours(r.get("created_at") or r.get("freshness_date"))
-        pri = _priority_from(cats, conf, age, is_held)
-        if priority and pri != priority:
-            continue
-        # sources
-        sources = []
-        ev = r.get("evidence_json")
-        if isinstance(ev, str):
-            try:
-                ev = json.loads(ev)
-            except Exception:
-                ev = {}
-        if isinstance(ev, dict):
-            for g in (ev.get("grounded_on") or [])[:5]:
-                if isinstance(g, dict):
-                    sources.append({
-                        "title": g.get("title"), "url": g.get("url"), "source": g.get("source"),
-                    })
-        su = r.get("source_urls_json")
-        if isinstance(su, str):
-            try:
-                su = json.loads(su)
-            except Exception:
-                su = []
-        if isinstance(su, list):
-            for u in su[:3]:
-                if isinstance(u, str):
-                    sources.append({"url": u})
-                elif isinstance(u, dict):
-                    sources.append(u)
+        age = _age_hours(r.get("updated_at") or r.get("created_at") or r.get("freshness_date"))
+        sources = _sources_from_row(r)
+        ev_q = _evidence_questions(r.get("evidence_json"))
+        iid = f"hermes:{r.get('id')}"
+        act = (
+            "Review Roth/tax plan impact" if "retirement_tax" in cats else
+            "Check dividend/income exposure" if "dividend_income" in cats and is_held else
+            "Map to sector allocation" if "sector_thematic" in cats else
+            "Update thesis / stops" if is_held else
+            "Advisory — watchlist or thematic"
+        )
+        item = _item_base(
+            id_=iid,
+            source_system="hermes",
+            source_table="hermes_research_intelligence",
+            source_id=r.get("id"),
+            title=r.get("topic") or "Research finding",
+            summary=r.get("summary") or "",
+            thesis=r.get("thesis"),
+            symbol=sym,
+            cats=cats,
+            conf=conf,
+            age=age,
+            created_at=r.get("updated_at") or r.get("created_at"),
+            model=r.get("model_used"),
+            research_type=r.get("research_type"),
+            status=r.get("status"),
+            is_held=is_held,
+            sources=sources,
+            actionability=act,
+            policy=policy,
+            feedback=fb_map.get(iid),
+            extra={"key_questions": ev_q or None},  # may be overwritten below
+        )
+        # Merge evidence questions with extracted
+        kq = list(dict.fromkeys((ev_q or []) + (item.get("key_questions") or [])))[:5]
+        item["key_questions"] = kq
+        items.append(item)
 
-        items.append({
-            "id": f"hermes:{r.get('id')}",
-            "source_system": "hermes",
-            "source_table": "hermes_research_intelligence",
-            "source_id": r.get("id"),
-            "title": r.get("topic") or "Research finding",
-            "summary": (r.get("summary") or "")[:500],
-            "thesis": (r.get("thesis") or "")[:400] or None,
-            "symbol": sym,
-            "categories": cats,
-            "primary_category": cats[0],
-            "priority": pri,
-            "confidence": conf,
-            "freshness_hours": round(age, 1) if age is not None else None,
-            "created_at": r.get("created_at").isoformat() if hasattr(r.get("created_at"), "isoformat") else r.get("created_at"),
-            "model": r.get("model_used"),
-            "research_type": r.get("research_type"),
-            "status": r.get("status"),
-            "is_holdings": is_held,
-            "sources": sources[:6],
-            "actionability": (
-                "Review Roth/tax plan impact" if "retirement_tax" in cats else
-                "Check dividend/income exposure" if "dividend_income" in cats and is_held else
-                "Map to sector allocation" if "sector_thematic" in cats else
-                "Update thesis / stops" if is_held else
-                "Advisory — watchlist or thematic"
-            ),
-        })
-
-    # ── Auto-research / user topics ──────────────────────────────────────
+    # ── Auto-research / user topics ────────────────────────────────────
     ut = db_query("""
-        SELECT id, topic, symbol, latest_findings, priority, research_count,
-               status, source, updated_at, created_at, original_message, trigger
+        SELECT id, topic, latest_findings, priority, research_count,
+               status, source, updated_at, created_at, original_message,
+               strategy_type, last_researched_at
         FROM user_research_topics
         WHERE status = 'active' OR status IS NULL
         ORDER BY updated_at DESC NULLS LAST
-        LIMIT 80
+        LIMIT 100
     """) or []
     for r in ut:
-        cats = classify_text(r.get("topic"), r.get("latest_findings"), r.get("original_message"), r.get("trigger"))
+        cats = classify_text(
+            r.get("topic"), r.get("latest_findings"), r.get("original_message"),
+            r.get("strategy_type"),
+        )
         if r.get("source") == "auto_research.py" and "company_ticker" not in cats:
             cats = ["company_ticker"] + [c for c in cats if c != "company_ticker"]
-        sym = (r.get("symbol") or "").upper() or None
-        if not sym and r.get("topic"):
+        # Infer ticker from topic text (no symbol column on user_research_topics)
+        sym = None
+        if r.get("topic"):
             t = str(r.get("topic")).upper().strip()
             if re.fullmatch(r"[A-Z]{1,5}", t):
                 sym = t
+            else:
+                m = re.search(r"\b([A-Z]{1,5})\b", t)
+                if m and m.group(1) in held:
+                    sym = m.group(1)
         is_held = bool(sym and sym in held)
         if category and category not in cats:
             continue
-        if symbol and sym != symbol.upper():
+        if symbol and (not sym or sym != symbol.upper()):
             continue
         blob = f"{r.get('topic')} {r.get('latest_findings')} {r.get('original_message')}"
         if q and q.lower() not in blob.lower():
             continue
-        age = _age_hours(r.get("updated_at") or r.get("created_at"))
-        pri = "high" if (r.get("priority") or 0) >= 8 or is_held else _priority_from(cats, None, age, is_held)
-        if priority and pri != priority:
-            continue
-        items.append({
-            "id": f"urt:{r.get('id')}",
-            "source_system": "auto_research" if r.get("source") == "auto_research.py" else "operator_topic",
-            "source_table": "user_research_topics",
-            "source_id": r.get("id"),
-            "title": r.get("topic") or (sym or "Topic"),
-            "summary": (r.get("latest_findings") or r.get("original_message") or "")[:500],
-            "thesis": None,
-            "symbol": sym,
-            "categories": cats,
-            "primary_category": cats[0],
-            "priority": pri,
-            "confidence": None,
-            "freshness_hours": round(age, 1) if age is not None else None,
-            "created_at": r.get("updated_at").isoformat() if hasattr(r.get("updated_at"), "isoformat") else r.get("updated_at"),
-            "model": None,
-            "research_type": "auto_research" if r.get("source") == "auto_research.py" else "user_topic",
-            "status": r.get("status"),
-            "is_holdings": is_held,
-            "sources": [],
-            "actionability": "Open full brief / manage topic",
-            "research_count": r.get("research_count"),
-        })
+        age = _age_hours(r.get("last_researched_at") or r.get("updated_at") or r.get("created_at"))
+        iid = f"urt:{r.get('id')}"
+        items.append(_item_base(
+            id_=iid,
+            source_system="auto_research" if (r.get("source") or "").startswith("auto_research") else "operator_topic",
+            source_table="user_research_topics",
+            source_id=r.get("id"),
+            title=r.get("topic") or (sym or "Topic"),
+            summary=r.get("latest_findings") or r.get("original_message") or "",
+            thesis=None,
+            symbol=sym,
+            cats=cats,
+            conf=None,
+            age=age,
+            created_at=r.get("last_researched_at") or r.get("updated_at") or r.get("created_at"),
+            model=None,
+            research_type="auto_research" if (r.get("source") or "").startswith("auto_research") else "user_topic",
+            status=r.get("status"),
+            is_held=is_held,
+            sources=[],
+            actionability="Open full brief / manage topic",
+            policy=policy,
+            feedback=fb_map.get(iid),
+            extra={"research_count": r.get("research_count")},
+        ))
 
-    # ── Topic monitor registry (taxonomy-tagged) ─────────────────────────
+    # ── Topic monitor registry ─────────────────────────────────────────
     mon = db_query("""
         SELECT topic_id, display_name, priority, enabled, last_searched, last_found_count,
-               agent_owner, owner, strategy_tags
+               agent_owner, owner, strategy_tags, max_age_days, search_queries, personal_context
         FROM topic_monitor
         WHERE enabled IS TRUE OR enabled IS NULL
-        ORDER BY priority DESC NULLS LAST, last_searched DESC NULLS LAST
-        LIMIT 120
+        ORDER BY priority ASC NULLS LAST, last_searched DESC NULLS LAST
+        LIMIT 150
     """) or []
     for r in mon:
-        cats = classify_text(r.get("display_name"), r.get("topic_id"), " ".join(r.get("strategy_tags") or []))
+        cats = classify_text(
+            r.get("display_name"), r.get("topic_id"),
+            " ".join(r.get("strategy_tags") or []),
+            r.get("personal_context"),
+        )
         if category and category not in cats:
             continue
-        blob = f"{r.get('display_name')} {r.get('topic_id')}"
+        blob = f"{r.get('display_name')} {r.get('topic_id')} {r.get('personal_context') or ''}"
         if q and q.lower() not in blob.lower():
             continue
         if symbol:
-            continue  # monitor rows are thematic, not ticker
-        age = _age_hours(r.get("last_searched"))
-        pri = "high" if (r.get("priority") or 0) >= 8 or "retirement_tax" in cats else "normal"
-        if priority and pri != priority:
             continue
-        items.append({
-            "id": f"tm:{r.get('topic_id')}",
-            "source_system": "topic_monitor",
-            "source_table": "topic_monitor",
-            "source_id": r.get("topic_id"),
-            "title": r.get("display_name") or r.get("topic_id"),
-            "summary": f"Topic monitor · last found {r.get('last_found_count') or 0} items · owner {r.get('agent_owner') or r.get('owner') or '—'}",
-            "thesis": None,
-            "symbol": None,
-            "categories": cats,
-            "primary_category": cats[0],
-            "priority": pri,
-            "confidence": None,
-            "freshness_hours": round(age, 1) if age is not None else None,
-            "created_at": r.get("last_searched").isoformat() if hasattr(r.get("last_searched"), "isoformat") else r.get("last_searched"),
-            "model": None,
-            "research_type": "topic_monitor",
-            "status": "enabled" if r.get("enabled") else "paused",
-            "is_holdings": False,
-            "sources": [],
-            "actionability": "Ingest via topic_ingestion · curate with topic_curator",
-        })
+        age = _age_hours(r.get("last_searched"))
+        iid = f"tm:{r.get('topic_id')}"
+        max_age = r.get("max_age_days") or 30
+        cadence = int(max_age) * 24
+        pri = "high" if (r.get("priority") or 9) <= 2 or "retirement_tax" in cats else "normal"
+        item = _item_base(
+            id_=iid,
+            source_system="topic_monitor",
+            source_table="topic_monitor",
+            source_id=r.get("topic_id"),
+            title=r.get("display_name") or r.get("topic_id"),
+            summary=(
+                f"Topic monitor · last found {r.get('last_found_count') or 0} items · "
+                f"owner {r.get('agent_owner') or r.get('owner') or '—'} · "
+                f"max age {max_age}d"
+                + (f" · {(r.get('personal_context') or '')[:180]}" if r.get("personal_context") else "")
+            ),
+            thesis=None,
+            symbol=None,
+            cats=cats,
+            conf=None,
+            age=age,
+            created_at=r.get("last_searched"),
+            model=None,
+            research_type="topic_monitor",
+            status="enabled" if r.get("enabled") else "paused",
+            is_held=False,
+            sources=[],
+            actionability="Ingest via topic_ingestion · curate with topic_curator · Hermes bridge",
+            policy=policy,
+            feedback=fb_map.get(iid),
+            extra={
+                "refresh_cadence_hours": cadence,
+                "needs_refresh": needs_refresh(age, cadence),
+                "monitor_priority": r.get("priority"),
+                "search_queries": (r.get("search_queries") or [])[:6]
+                    if isinstance(r.get("search_queries"), list) else [],
+            },
+        )
+        # Override priority for monitor rows
+        item["priority"] = pri
+        items.append(item)
 
-    # Sort: operator-critical taxonomy first, then priority, holdings, freshness.
-    # Retirement / dividends / macro must not drown under ticker stop-noise.
+    # ── Filters: freshness tier, starred, sentiment, source ────────────
+    if freshness:
+        items = [i for i in items if i.get("freshness_tier") == freshness]
+    if starred_only:
+        items = [i for i in items if i.get("starred")]
+    if sentiment:
+        items = [i for i in items if i.get("sentiment") == sentiment]
+    if source_system:
+        items = [i for i in items if i.get("source_system") == source_system]
+    if priority:
+        items = [i for i in items if i.get("priority") == priority]
+
+    # Sort: focus pillars → priority → holdings → freshness
     pri_rank = {"high": 0, "normal": 1, "low": 2}
+    tier_rank = {"live": 0, "fresh": 1, "aging": 2, "stale": 3, "archive": 4}
     _FOCUS = ("retirement_tax", "dividend_income", "macro_geo", "sector_thematic")
 
     def _focus_boost(it: dict) -> int:
         cats = it.get("categories") or []
+        # Primary category focus wins harder
+        pc = it.get("primary_category")
+        if pc in _FOCUS:
+            return _FOCUS.index(pc)
         for i, c in enumerate(_FOCUS):
             if c in cats:
-                return i  # lower = more important
+                return 10 + i
         return 20
 
     def _sk(it: dict) -> tuple:
         return (
+            0 if it.get("starred") else 1,
             _focus_boost(it),
             pri_rank.get(it.get("priority") or "normal", 1),
+            tier_rank.get(it.get("freshness_tier") or "aging", 2),
             0 if it.get("is_holdings") else 1,
             it.get("freshness_hours") if it.get("freshness_hours") is not None else 9999,
         )
 
     items.sort(key=_sk)
 
-    # Category counts from full matched set (before hard limit)
     cat_counts: dict[str, int] = {}
+    tier_counts: dict[str, int] = {}
     for it in items:
         for c in it.get("categories") or []:
             cat_counts[c] = cat_counts.get(c, 0) + 1
+        t = it.get("freshness_tier") or "aging"
+        tier_counts[t] = tier_counts.get(t, 0) + 1
 
-    # Priority lanes from FULL match set so top-3 categories never go empty
-    # just because holdings stop-noise filled the first page.
     def _lane(pred, n: int = 16) -> list[dict[str, Any]]:
         return [i for i in items if pred(i)][:n]
 
-    # Retirement lane: primary category only (body-text can bleed IRMAA/Roth into
-    # unrelated industry notes as secondary tags). Dividends/macro allow multi-tag.
     priority_lanes = {
-        "retirement": _lane(lambda i: (i.get("primary_category") == "retirement_tax")
-                            or (i.get("categories") or [None])[0] == "retirement_tax"),
+        "retirement": _lane(lambda i: (i.get("primary_category") == "retirement_tax")),
         "dividends": _lane(lambda i: "dividend_income" in (i.get("categories") or [])),
         "macro_sector": _lane(lambda i: (
             "macro_geo" in (i.get("categories") or [])
@@ -412,17 +699,31 @@ def build_feed(
     page = items[:limit]
     high_n = sum(1 for i in page if i.get("priority") == "high")
     held_n = sum(1 for i in page if i.get("is_holdings"))
+    refresh_n = sum(1 for i in page if i.get("needs_refresh"))
+    arch_n = sum(1 for i in page if i.get("is_archived"))
+    star_n = sum(1 for i in page if i.get("starred"))
 
     return {
         "ok": True,
+        "version": "2.0",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
+        "freshness_policy": {
+            "tiers": policy.get("tiers"),
+            "archive": policy.get("archive"),
+            "slo": policy.get("slo"),
+        },
         "filters": {
             "category": category,
             "q": q,
             "priority": priority,
             "symbol": symbol,
             "holdings_only": holdings_only,
+            "include_archived": include_archived,
+            "freshness": freshness,
+            "starred_only": starred_only,
+            "sentiment": sentiment,
+            "source_system": source_system,
             "limit": limit,
         },
         "stats": {
@@ -430,7 +731,11 @@ def build_feed(
             "matched": len(items),
             "high_priority": high_n,
             "holdings_linked": held_n,
+            "needs_refresh": refresh_n,
+            "archived_in_view": arch_n,
+            "starred_in_view": star_n,
             "by_category": cat_counts,
+            "by_freshness": tier_counts,
             "holdings_universe": sorted(held)[:40],
             "holdings_count": len(held),
             "lane_counts": {k: len(v) for k, v in priority_lanes.items()},
@@ -438,8 +743,135 @@ def build_feed(
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v1 aggregates Hermes, auto-research, operator topics, "
-            "and topic_monitor under a shared taxonomy. Ingestion remains topic_ingestion + "
-            "Hermes autonomous loop — this surface is the operator cockpit."
+            "Research Intelligence v2 — freshness tiers, searchable archive, operator feedback. "
+            "Ingestion: topic_ingestion + Hermes loop + retirement seed topics. "
+            "Archive never deletes; set include_archived=1 to search history."
         ),
+    }
+
+
+def upsert_feedback(
+    *,
+    db_query,
+    item_id: str,
+    starred: bool | None = None,
+    vote: int | None = None,
+    note: str | None = None,
+    source_system: str | None = None,
+    source_table: str | None = None,
+    source_id: str | None = None,
+    categories: list[str] | None = None,
+    symbol: str | None = None,
+) -> dict[str, Any]:
+    """Insert or update operator feedback for an intelligence item."""
+    if not item_id:
+        return {"ok": False, "error": "item_id required"}
+    # Load existing
+    existing = db_query(
+        "SELECT item_id, starred, vote, note FROM research_intelligence_feedback WHERE item_id=%s",
+        (item_id,),
+        fetch="one",
+    )
+    if existing is None and starred is None and vote is None and note is None:
+        return {"ok": False, "error": "nothing to update"}
+
+    cur_star = bool(existing.get("starred")) if existing else False
+    cur_vote = existing.get("vote") if existing else None
+    cur_note = existing.get("note") if existing else None
+    if starred is not None:
+        cur_star = bool(starred)
+    if vote is not None:
+        # allow 0 to clear
+        cur_vote = None if vote == 0 else (1 if vote > 0 else -1)
+    if note is not None:
+        cur_note = note[:2000] if note else None
+
+    cats = categories or []
+    db_query(
+        """
+        INSERT INTO research_intelligence_feedback
+            (item_id, source_system, source_table, source_id, starred, vote, note, categories, symbol, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (item_id) DO UPDATE SET
+            starred = EXCLUDED.starred,
+            vote = EXCLUDED.vote,
+            note = EXCLUDED.note,
+            source_system = COALESCE(EXCLUDED.source_system, research_intelligence_feedback.source_system),
+            source_table = COALESCE(EXCLUDED.source_table, research_intelligence_feedback.source_table),
+            source_id = COALESCE(EXCLUDED.source_id, research_intelligence_feedback.source_id),
+            categories = CASE WHEN EXCLUDED.categories = '{}' THEN research_intelligence_feedback.categories
+                              ELSE EXCLUDED.categories END,
+            symbol = COALESCE(EXCLUDED.symbol, research_intelligence_feedback.symbol),
+            updated_at = NOW()
+        """,
+        (item_id, source_system, source_table, str(source_id) if source_id is not None else None,
+         cur_star, cur_vote, cur_note, cats, symbol),
+        fetch=None,
+    )
+    return {
+        "ok": True,
+        "item_id": item_id,
+        "starred": cur_star,
+        "vote": cur_vote,
+        "note": cur_note,
+    }
+
+
+def freshness_report(*, db_query) -> dict[str, Any]:
+    """Category-level freshness SLO report for ops / dashboard strip."""
+    policy = load_freshness_policy()
+    slo = policy.get("slo") or {}
+    feed = build_feed(db_query=db_query, limit=200, include_archived=False)
+    by_cat: dict[str, dict] = {}
+    for it in feed.get("items") or []:
+        pc = it.get("primary_category") or "unknown"
+        d = by_cat.setdefault(pc, {
+            "count": 0, "needs_refresh": 0, "live": 0, "fresh": 0, "stale": 0,
+            "avg_age_h": 0.0, "_ages": [],
+        })
+        d["count"] += 1
+        if it.get("needs_refresh"):
+            d["needs_refresh"] += 1
+        t = it.get("freshness_tier") or "aging"
+        if t in d:
+            d[t] = d.get(t, 0) + 1
+        if it.get("freshness_hours") is not None:
+            d["_ages"].append(float(it["freshness_hours"]))
+    for pc, d in by_cat.items():
+        ages = d.pop("_ages", [])
+        d["avg_age_h"] = round(sum(ages) / len(ages), 1) if ages else None
+        d["freshest_h"] = round(min(ages), 1) if ages else None
+        key = f"{pc}_max_stale_hours"
+        limit_h = slo.get(key)
+        d["slo_hours"] = limit_h
+        d["slo_ok"] = True if limit_h is None or not ages else (min(ages) <= float(limit_h))
+
+    mon = db_query("""
+        SELECT topic_id, display_name, last_searched, max_age_days, priority, enabled
+        FROM topic_monitor
+        WHERE enabled IS TRUE OR enabled IS NULL
+        ORDER BY priority ASC NULLS LAST
+        LIMIT 80
+    """) or []
+    stale_topics = []
+    for r in mon:
+        age = _age_hours(r.get("last_searched"))
+        max_h = (r.get("max_age_days") or 30) * 24
+        if age is None or age > max_h:
+            stale_topics.append({
+                "topic_id": r.get("topic_id"),
+                "display_name": r.get("display_name"),
+                "age_hours": round(age, 1) if age is not None else None,
+                "max_age_hours": max_h,
+                "priority": r.get("priority"),
+            })
+
+    return {
+        "ok": True,
+        "as_of": datetime.now(timezone.utc).isoformat(),
+        "by_category": by_cat,
+        "stale_topics": stale_topics[:30],
+        "stale_topic_count": len(stale_topics),
+        "feed_stats": feed.get("stats"),
+        "slo": slo,
     }

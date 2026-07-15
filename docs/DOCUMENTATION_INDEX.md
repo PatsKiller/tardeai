@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-15 (Research Intelligence v1 cockpit; transfer-aware performance + YTD pin)
+**Updated:** 2026-07-15 (Research Intelligence v2 freshness/archive/retirement; transfer-aware perf)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -87,11 +87,18 @@
 ### Research Intelligence (CC v3)
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/architecture/RESEARCH_INTELLIGENCE_V1.md` | **Research Intelligence v1** — taxonomy, architecture, data model, UI, ingestion reuse, API, nav | Active (2026-07-15) |
-| `config/research_intelligence_taxonomy.json` | Canonical category taxonomy (9 top-level + subcategories) | Active (2026-07-15) |
-| `scripts/lib/research_intelligence.py` | Aggregator — classify + `build_feed` (Hermes / topics / topic_monitor) | Active (2026-07-15) |
-| `GET /api/v2/research-intelligence` | Unified searchable feed + priority lanes | Active (2026-07-15) |
-| `GET /api/v2/research-intelligence/taxonomy` | Taxonomy JSON for UI | Active (2026-07-15) |
+| `docs/architecture/RESEARCH_INTELLIGENCE_V2.md` | **Research Intelligence v2** — freshness/archive, retirement pillar, feedback, professional UI | Active (2026-07-15) |
+| `docs/architecture/RESEARCH_INTELLIGENCE_V1.md` | Research Intelligence v1 baseline — taxonomy, aggregator, first cockpit | Active (superseded by v2 for ops) |
+| `config/research_intelligence_taxonomy.json` | Canonical category taxonomy v1.1 (pillars + subcategories) | Active (2026-07-15) |
+| `config/research_intelligence_freshness.json` | Freshness tiers, refresh cadence, archive policy | Active (2026-07-15) |
+| `config/research_intelligence_retirement_topics.json` | Retirement topic seed catalog (Roth ladder, Golden Window, IRMAA, …) | Active (2026-07-15) |
+| `scripts/lib/research_intelligence.py` | Aggregator v2 — classify, freshness, feedback join, `build_feed` | Active (2026-07-15) |
+| `scripts/research_intelligence_refresh.py` | Freshness SLO report + soft archive (never delete) | Active (2026-07-15) |
+| `scripts/research_intelligence_retirement_seed.py` | Upsert retirement topics into topic_monitor | Active (2026-07-15) |
+| `GET /api/v2/research-intelligence` | Unified feed (archive/freshness/star/sentiment filters) | Active (2026-07-15) |
+| `GET /api/v2/research-intelligence/taxonomy` | Taxonomy + freshness policy | Active (2026-07-15) |
+| `GET /api/v2/research-intelligence/freshness` | Category SLO + stale monitors | Active (2026-07-15) |
+| `POST /api/v2/research-intelligence/feedback` | Star / vote / note | Active (2026-07-15) |
 
 ### Hermes Closed Loop & Self-Learning
 | Document | Purpose | Status |
@@ -185,6 +192,7 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 
 | Date | Change |
 |------|--------|
+| 2026-07-15 | Research Intelligence v2: freshness/archive, retirement seed, feedback API, professional dashboard; `RESEARCH_INTELLIGENCE_V2.md`. |
 | 2026-07-15 | Research Intelligence v1: taxonomy + aggregator + `/api/v2/research-intelligence` + CC v3 Research Intel hub; `RESEARCH_INTELLIGENCE_V1.md`. |
 | 2026-07-05 | Hermes maturity hardening: learning scorecard, evidence gates, counterfactuals, do-no-harm report, symbol journey extensions, advisory-only governance; `HERMES_CLOSED_LOOP_TRACEABILITY.md` + CHANGELOG updated. |
 | 2026-07-04 | PR #33 canary hardening: reconciled after-hours policy (override-required), per-account arming, `protective_stop_canary.py` lifecycle/read-back; runbook + CHANGELOG updated; build marker `cc-v3 stop-evidence PR33 2026-07-04`. |
