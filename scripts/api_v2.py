@@ -2032,6 +2032,15 @@ def portfolio_holdings():
     for lr in llm_rows:
         llm_health_map[lr['symbol']] = lr
 
+    # lot count per symbol — the holdings-health LLM analysis is SYMBOL-level (one
+    # watchlist_items row per symbol), so a multi-lot symbol's facts may describe a
+    # different account's lot; the UI labels the block accordingly (operator 2026-07-14:
+    # Fidelity SCHD share counts were rendering on the Schwab SCHD drawer unlabeled).
+    _lots_per_symbol: dict[str, int] = {}
+    for _p in holdings:
+        _ls = str(_p.get("symbol") or "").upper()
+        if _ls:
+            _lots_per_symbol[_ls] = _lots_per_symbol.get(_ls, 0) + 1
     _total_mv = float((h.get("portfolio_totals") or {}).get("total_value") or 0)
     # Live quote overlay — source hierarchy by account:
     #   schwab_*     → Schwab API sync + portfolio_repricer (Finviz) in holdings.json FIRST;
@@ -2293,6 +2302,7 @@ def portfolio_holdings():
                 _hls = None
         _hlep = _evidence_packet(_hls if isinstance(_hls, dict) else (llm_health_map.get(sym) or {}).get('holdings_llm_summary'))
         rows[-1]["llm_evidence"] = _hlep.get("evidence") or []
+        rows[-1]["llm_lots"] = _lots_per_symbol.get(sym, 1)
         rows[-1]["llm_data_i_doubt"] = _hlep.get("data_i_doubt")
         # ── Technical analysis enrichment: RSI zone, fib levels, data availability ──
         _row = rows[-1]

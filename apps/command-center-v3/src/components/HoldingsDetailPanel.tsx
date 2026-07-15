@@ -151,7 +151,16 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
       {stopMgmtBlock}
 
       {(h.llm_evidence?.length > 0 || h.llm_data_i_doubt) && (
-        <EvidenceBlock title={h.llm_health ? `Holdings health · ${h.llm_health}` : 'Holdings LLM evidence'} evidence={h.llm_evidence} dataIDoubt={h.llm_data_i_doubt} maxItems={6} />
+        <div>
+          {Number(h.llm_lots) > 1 && (
+            <div title={`This review is keyed by SYMBOL, and ${h.symbol} is held in ${h.llm_lots} accounts — the facts below may describe a different lot (check share counts / acct tags).`}
+              style={{ fontSize: 10, color: '#f59e0b', fontWeight: 700, padding: '4px 9px', marginBottom: 4,
+                       borderRadius: 6, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.35)', cursor: 'help' }}>
+              ⚠ SYMBOL-LEVEL review — {h.symbol} spans {h.llm_lots} lots; facts may describe another account's lot.
+            </div>
+          )}
+          <EvidenceBlock title={h.llm_health ? `Holdings health · ${h.llm_health}${Number(h.llm_lots) > 1 ? ' · symbol-level' : ''}` : 'Holdings LLM evidence'} evidence={h.llm_evidence} dataIDoubt={h.llm_data_i_doubt} maxItems={6} />
+        </div>
       )}
 
       {(pr?.evidence?.length > 0 || sc?.evidence?.length > 0) && (

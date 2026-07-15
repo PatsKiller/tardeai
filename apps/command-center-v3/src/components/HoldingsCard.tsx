@@ -238,7 +238,7 @@ export default function HoldingsCard({
       </div>
 
       {(h.llm_evidence?.length > 0 || (h.llm_data_i_doubt && h.llm_data_i_doubt !== 'none')) && (
-        <EvidenceBlock title={h.llm_health ? `Holdings health · ${h.llm_health}` : 'Holdings LLM evidence'} evidence={h.llm_evidence} dataIDoubt={h.llm_data_i_doubt} compact maxItems={3} />
+        <EvidenceBlock title={h.llm_health ? `Holdings health · ${h.llm_health}${Number(h.llm_lots) > 1 ? ' · symbol-level' : ''}` : 'Holdings LLM evidence'} evidence={h.llm_evidence} dataIDoubt={h.llm_data_i_doubt} compact maxItems={3} />
       )}
       {(pr?.evidence?.length > 0 || stopCuration?.evidence?.length > 0) && (
         <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
