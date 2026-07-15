@@ -218,18 +218,23 @@ export default function HomeHub({ onDrill }: Props) {
                         const preferDisp = Boolean(d?.nav_is_not_market_only || d?.display_change != null)
                         const ch = (preferDisp && d?.display_change != null ? d.display_change : d?.change)
                           ?? (p === '1D' ? overview?.today_by_account?.[acct]?.change : null)
-                        const pct = (preferDisp && d?.display_change_pct != null ? d.display_change_pct : d?.change_pct)
+                        let pct = (preferDisp && d?.display_change_pct != null ? d.display_change_pct : d?.change_pct)
                           ?? (p === '1D' ? overview?.today_by_account?.[acct]?.pct : null)
+                        // Funding baseline: hide absurd % even if API lagged
+                        if (d?.display_pct_suppressed || (d?.is_false_positive && pct != null && Math.abs(Number(pct)) > 80)) {
+                          pct = null
+                        }
                         const col = (ch ?? 0) >= 0 ? '#22c55e' : '#ef4444'
                         const warn = Boolean(d?.nav_is_not_market_only || d?.is_false_positive)
+                        const tip = [d?.display_label, d?.display_pct_note, d?.adjustment_note].filter(Boolean).join(' · ')
                         return (
-                          <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }} title={d?.display_label || d?.adjustment_note || ''}>
+                          <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }} title={tip}>
                             <div style={{ color: ch != null ? col : 'var(--text3)', fontWeight: 700 }}>
                               {ch != null ? `${ch >= 0 ? '+' : ''}${fmt$(ch, 0)}` : '—'}
                             </div>
                             <div style={{ fontSize: 9, color: warn ? '#f59e0b' : (pct != null ? col : 'var(--text3)') }}>
-                              {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : ''}
-                              {warn ? ' ≈' : ''}
+                              {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : (ch != null && warn ? '≈ $' : '')}
+                              {warn && pct != null ? ' ≈' : ''}
                             </div>
                           </td>
                         )

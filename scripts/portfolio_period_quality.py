@@ -492,9 +492,12 @@ def apply_or_build_ytd_pin(
             return False
         return True
 
+    # Invalidate pins from older logic (funding % rewrite)
+    pin_version = "2026-07-15b"
     if (
         existing
         and existing.get("pin_date") == today
+        and existing.get("pin_version") == pin_version
         and isinstance(existing.get("accounts"), dict)
         and _pin_plausible(existing)
     ):
@@ -505,12 +508,28 @@ def apply_or_build_ytd_pin(
                 continue
             periods = accounts[acct].setdefault("periods", {})
             cur = periods.get("YTD") if isinstance(periods.get("YTD"), dict) else {}
-            periods["YTD"] = {
+            merged = {
                 **cur, **ycell,
                 "ytd_pinned": True,
                 "ytd_pin_date": today,
                 "ytd_pin_snapshot": existing.get("end_snapshot") or end_snapshot,
             }
+            # Re-apply funding % sanitizer so stale pins with +150% Roth don't stick
+            sane_pct, pct_meta = funding_sane_display_pct(
+                merged.get("display_change"),
+                start_value=merged.get("start_value") or merged.get("linked_start_value"),
+                end_value=merged.get("end_value") or (accounts[acct] or {}).get("current_value"),
+                quality=merged.get("quality"),
+                flags=merged.get("flags"),
+                raw_pct=merged.get("display_change_pct"),
+            )
+            merged["display_change_pct"] = sane_pct
+            if pct_meta.get("economic_start_value") is not None:
+                merged["economic_start_value"] = pct_meta["economic_start_value"]
+                merged["linked_start_value"] = pct_meta["economic_start_value"]
+            if pct_meta.get("display_pct_note"):
+                merged["display_pct_note"] = pct_meta["display_pct_note"]
+            periods["YTD"] = merged
         pin_port = existing.get("portfolio_ytd")
         if isinstance(pin_port, dict) and isinstance(port_ytd, dict):
             port_ytd = {
@@ -532,6 +551,7 @@ def apply_or_build_ytd_pin(
             "end_snapshot": existing.get("end_snapshot") or end_snapshot,
             "source": "ytd_daily_pin",
             "created_at": existing.get("created_at"),
+            "pin_version": pin_version,
         }
 
     # Build pin from current computed YTD cells
@@ -599,9 +619,10 @@ def apply_or_build_ytd_pin(
         "_description": (
             "Daily YTD ≈ market pin. First successful compute of pin_date freezes display "
             "values for the rest of the day so residual/live MTM does not wobble in the UI. "
-            "Refreshes next calendar day (or YTD_PIN_FORCE=1)."
+            "Refreshes next calendar day (or YTD_PIN_FORCE=1). pin_version bumps invalidate old pins."
         ),
         "pin_date": today,
+        "pin_version": "2026-07-15b",
         "end_snapshot": end_snapshot,
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "accounts": pin_accounts,
@@ -621,6 +642,57 @@ def apply_or_build_ytd_pin(
         "pin_date": today,
         "end_snapshot": end_snapshot,
         "source": src,
+    }
+
+
+def funding_sane_display_pct(
+    display_change: float | None,
+    *,
+    start_value: float | None,
+    end_value: float | None,
+    quality: str | None = None,
+    flags: list | None = None,
+    raw_pct: float | None = None,
+) -> tuple[float | None, dict[str, Any]]:
+    """Rewrite misleading % when year-start capital was tiny (Roth funding / conversion).
+
+    Uses economic base ≈ end − market P/L so +$2.7k on a ~$48k Roth is ~+5–6%, not +150%+.
+    Returns (pct_or_None, meta).
+    """
+    flags = list(flags or [])
+    funding = (
+        quality == "funding_false_positive"
+        or "funding_baseline" in flags
+        or "conversion_or_funding" in flags
+    )
+    ch = display_change
+    if ch is None:
+        return raw_pct, {}
+    sv, ev = _f(start_value), _f(end_value)
+    # Also treat absurd % as funding even if classifier missed
+    if raw_pct is not None and abs(_f(raw_pct)) > 80 and ev > 0 and sv < 0.15 * ev:
+        funding = True
+    if not funding:
+        return raw_pct, {}
+
+    # Capital that "supported" the residual market P/L
+    econ = ev - _f(ch)
+    if econ < max(5_000.0, 0.15 * max(ev, 1.0)):
+        # Still nonsense — suppress % entirely (show $ only)
+        return None, {
+            "display_pct_suppressed": True,
+            "display_pct_note": "Funding/conversion baseline — % suppressed; trust $ P/L only",
+            "display_pct_basis": "suppressed",
+        }
+    pct = round(_f(ch) / econ * 100, 2)
+    return pct, {
+        "display_pct_suppressed": False,
+        "display_pct_note": (
+            f"% vs economic capital ${econ:,.0f} (end − ≈ market P/L), "
+            f"not year-start NAV ${sv:,.0f}"
+        ),
+        "display_pct_basis": "economic_end_minus_market_pl",
+        "economic_start_value": round(econ, 2),
     }
 
 
@@ -644,6 +716,12 @@ def classify_period_quality(
     if sv > 0 and ev > 0 and sv < max(2000.0, 0.10 * ev) and cp is not None and abs(cp) > 100:
         flags.append("funding_baseline")
         quality = "funding_false_positive"
+    # Also: tiny start vs large end even if raw % wasn't computed yet
+    if sv > 0 and ev > 0 and sv < max(2000.0, 0.10 * ev) and ch is not None and abs(_f(ch)) > 500:
+        if "funding_baseline" not in flags:
+            flags.append("funding_baseline")
+        if quality == "reliable":
+            quality = "funding_false_positive"
     # Account appeared mid-period (401k→rollover conversion, new funding)
     if sv <= 0 and ev > 5000:
         flags.append("conversion_or_funding")
@@ -783,6 +861,26 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
                     enriched["display_change"] = ch
                     enriched["display_change_pct"] = cp
                     enriched["display_label"] = "NAV"
+                # Roth / funding: rewrite absurd % vs economic capital (not $1.7k year-start)
+                sane_pct, pct_meta = funding_sane_display_pct(
+                    enriched.get("display_change"),
+                    start_value=enriched.get("start_value") or sv,
+                    end_value=enriched.get("end_value") or ev,
+                    quality=enriched.get("quality"),
+                    flags=enriched.get("flags"),
+                    raw_pct=enriched.get("display_change_pct"),
+                )
+                enriched["display_change_pct"] = sane_pct
+                if pct_meta.get("economic_start_value") is not None:
+                    enriched["economic_start_value"] = pct_meta["economic_start_value"]
+                    # Prefer economic base for portfolio Σ % too
+                    enriched["linked_start_value"] = pct_meta["economic_start_value"]
+                if pct_meta.get("display_pct_note"):
+                    enriched["display_pct_note"] = pct_meta["display_pct_note"]
+                if pct_meta.get("display_pct_basis"):
+                    enriched["display_pct_basis"] = pct_meta["display_pct_basis"]
+                if pct_meta.get("display_pct_suppressed"):
+                    enriched["display_pct_suppressed"] = True
             else:
                 # Non-YTD: always show period NAV (snapshot/reprice for that window)
                 enriched["display_change"] = ch
@@ -834,8 +932,27 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
             "ytd_end_snapshot": end_snap,
             "estimated_net_flow": round(_f(adj4.get("net_flow")) + _f(adj_r.get("net_flow")), 2),
         }
+        # Linked % already uses year-start 401k (good base); keep if start_401k healthy
         fr.setdefault("periods", {})["YTD"] = y_fr
         accounts["fidelity_rollover_ira"] = fr
+
+    # Re-fill multi-day periods after YTD mutations so Fidelity 1W/1M never drop off the response
+    accounts = fill_missing_period_cells(accounts, series, holdings)
+    # Ensure filled cells have display_* for Home/Returns (fill only sets change)
+    for acct, data in list(accounts.items()):
+        if not isinstance(data, dict):
+            continue
+        periods = data.get("periods") or {}
+        for period, cell in list(periods.items()):
+            if not isinstance(cell, dict):
+                continue
+            if cell.get("display_change") is None and cell.get("change") is not None:
+                cell["display_change"] = cell.get("change")
+                cell["display_change_pct"] = cell.get("change_pct")
+                cell.setdefault("display_label", "NAV")
+            periods[period] = cell
+        data["periods"] = periods
+        accounts[acct] = data
 
     # Per-account transfer provenance notes (rollover / Roth ladder) for UI badges
     xfer_notes: dict[str, list[str]] = {}
@@ -949,12 +1066,24 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
         if any_fund and "funding_baseline" not in flags:
             flags.append("funding_baseline")
 
-        # Always prefer sum-of-accounts when we have enough rows so All accounts
-        # never silently drops Fidelity (or any sleeve) when history was sparse.
-        n_accts = sum(1 for a in accounts if isinstance(accounts.get(a), dict)
-                      and _f((accounts.get(a) or {}).get("current_value")) > 0)
-        use_sum = period == "YTD" or any_adj or (n_disp >= max(2, n_accts - 1) and n_disp > 0)
-        if use_sum and n_disp > 0:
+        # Always Σ accounts for every period once we have ≥1 sleeve with data
+        # (Fidelity linked fills must appear in All 1W/1M, not Schwab-only NAV).
+        if n_disp > 0:
+            # Prefer economic_start / linked_start for % when present (Roth funding)
+            start_sum = 0.0
+            for a in accounts:
+                ap = _acct_period(a)
+                if not ap:
+                    continue
+                sv = ap.get("economic_start_value")
+                if sv is None:
+                    sv = ap.get("linked_start_value")
+                if sv is None:
+                    sv = ap.get("start_value")
+                if sv is not None and _f(sv) > 0 and (
+                    ap.get("display_change") is not None or ap.get("change") is not None
+                ):
+                    start_sum += _f(sv)
             disp_pct = round(disp_sum / start_sum * 100, 2) if start_sum > 0 else None
             cell = {
                 **cell,
@@ -985,11 +1114,8 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
             }
         port_periods[period] = cell
 
-    # Ensure portfolio has every standard period once accounts do (Fidelity fill)
+    # Force every standard period onto portfolio from Σ accounts (includes Fidelity fills)
     for period in STANDARD_PERIODS:
-        if period in port_periods and isinstance(port_periods.get(period), dict):
-            # already handled above if present; recompute sum if cell was missing entirely
-            continue
         disp_sum = 0.0
         start_sum = 0.0
         n_disp = 0
@@ -1006,21 +1132,26 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
                 continue
             disp_sum += _f(dc)
             n_disp += 1
-            sv = ap.get("linked_start_value")
+            sv = ap.get("economic_start_value")
+            if sv is None:
+                sv = ap.get("linked_start_value")
             if sv is None:
                 sv = ap.get("start_value")
             if sv is not None and _f(sv) > 0:
                 start_sum += _f(sv)
         if n_disp > 0:
             disp_pct = round(disp_sum / start_sum * 100, 2) if start_sum > 0 else None
+            prior = port_periods.get(period) if isinstance(port_periods.get(period), dict) else {}
             port_periods[period] = {
+                **prior,
                 "period": period,
-                "change": round(disp_sum, 2),
-                "change_pct": disp_pct,
                 "display_change": round(disp_sum, 2),
                 "display_change_pct": disp_pct,
-                "display_label": "Σ accounts",
-                "source": "sum_accounts",
+                "display_label": prior.get("display_label") or "Σ accounts",
+                "source": prior.get("source") or "sum_accounts",
+                # Keep raw NAV in change if already present
+                "change": prior.get("change") if prior.get("change") is not None else round(disp_sum, 2),
+                "change_pct": prior.get("change_pct") if prior.get("change_pct") is not None else disp_pct,
             }
     result["periods"] = port_periods
 
