@@ -779,6 +779,65 @@ def build_feed(
         t = it.get("freshness_tier") or "aging"
         tier_counts_all[t] = tier_counts_all.get(t, 0) + 1
 
+    # Prefer real Hermes/LLM briefs over empty topic_monitor stubs; dedupe near-identical titles
+    def _norm_title(t: str | None) -> str:
+        t = re.sub(r"\s+", " ", (t or "").lower()).strip()
+        t = re.sub(r"[^a-z0-9 %$]+", "", t)
+        return t[:96]
+
+    def _quality(it: dict) -> float:
+        score = 0.0
+        if it.get("narrative_source") == "stored_llm":
+            score += 50
+        rt = it.get("research_type") or ""
+        ss = it.get("source_system") or ""
+        if rt == "topic_monitor" or ss == "topic_monitor":
+            score -= 45
+        elif ss == "hermes":
+            score += 25
+        body = " ".join(it.get("executive_summary") or []) or (it.get("summary") or "")
+        if len(body) > 280:
+            score += 20
+        elif len(body) > 120:
+            score += 8
+        # Boilerplate monitor stubs
+        if "standing watch on the Research Intelligence desk" in body:
+            score -= 60
+        sc = it.get("source_count") or len(it.get("sources") or [])
+        score += min(12, float(sc) * 2)
+        fh = it.get("freshness_hours")
+        if fh is not None:
+            score += max(0.0, 12.0 - float(fh) / 24.0)
+        if it.get("starred"):
+            score += 15
+        return score
+
+    deduped: list[dict[str, Any]] = []
+    best_by_title: dict[str, dict[str, Any]] = {}
+    for it in items:
+        key = _norm_title(it.get("title"))
+        if not key:
+            deduped.append(it)
+            continue
+        prev = best_by_title.get(key)
+        if prev is None or _quality(it) > _quality(prev):
+            best_by_title[key] = it
+    # preserve approximate recency order among winners
+    seen = set()
+    for it in items:
+        key = _norm_title(it.get("title"))
+        if not key:
+            continue
+        winner = best_by_title.get(key)
+        if winner is None:
+            continue
+        wid = winner.get("id")
+        if wid in seen:
+            continue
+        seen.add(wid)
+        deduped.append(winner)
+    items = deduped
+
     universe_n = len(items)
 
     # Chip filters (category / freshness / priority / star) applied AFTER counts
@@ -817,13 +876,22 @@ def build_feed(
     _STOP_NOISE = {"stop_health", "stop_curation", "protection_advisory"}
 
     def _sk(it: dict) -> tuple:
-        # Demote pure stop noise on the default desk so retirement/macro/intel surface first.
-        # Still fully available under Risk category filter.
+        # Demote stop noise + empty topic_monitor stubs so LLM/Hermes intel surfaces first.
+        # Starring a monitor stub must NOT outrank real Hermes/LLM briefs.
         noise = 1 if (it.get("research_type") or "") in _STOP_NOISE else 0
+        stub = 1 if (it.get("research_type") == "topic_monitor" or (
+            "standing watch on the Research Intelligence desk" in (
+                (it.get("summary") or "") + " ".join(it.get("executive_summary") or [])
+            )
+        )) else 0
+        starred_boost = 0 if (it.get("starred") and not stub) else 1
+        q = -_quality(it)
         return (
-            0 if it.get("starred") else 1,
+            stub,
+            starred_boost,
             noise,
             _focus_boost(it),
+            q,
             pri_rank.get(it.get("priority") or "normal", 1),
             tier_rank.get(it.get("freshness_tier") or "aging", 2),
             0 if it.get("is_holdings") else 1,
@@ -861,7 +929,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "2.2.1",
+        "version": "2.2.2",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -905,9 +973,8 @@ def build_feed(
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2.2.1 — portfolio-aware tickers only when primary category "
-            "supports them (no recycled SCHD sleeve on company briefs); body may promote weak titles "
-            "into retirement/macro/sector."
+            "Research Intelligence v2.2.2 — dedupe titles (prefer Hermes/LLM over topic_monitor stubs); "
+            "retirement sizing is topic-specific (IRMAA vs MAPT vs ladder); stop noise demoted."
         ),
         "portfolio_context": {
             "total_mv": port_ctx.get("total_mv"),

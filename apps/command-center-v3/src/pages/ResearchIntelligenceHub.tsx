@@ -682,11 +682,20 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   }, [lane, items, lanes, localPatch])
 
   const featured = useMemo(() => {
-    // Prefer retirement with body, else first high-priority narrative
+    // Prefer real Hermes/LLM briefs — never feature empty topic_monitor stubs
     const pool = displayItems
+    const isStub = (i: Item) =>
+      i.research_type === 'topic_monitor'
+      || (i.summary || '').includes('standing watch on the Research Intelligence desk')
+    const rich = (i: Item) =>
+      i.narrative_source === 'stored_llm'
+      || (i.executive_summary && i.executive_summary.join('').length > 200)
+      || ((i.summary || '').length > 280 && !isStub(i))
     return (
-      pool.find(i => i.primary_category === 'retirement_tax' && (i.executive_summary?.length || i.summary))
-      || pool.find(i => i.priority === 'high' && (i.executive_summary?.length || i.lede))
+      pool.find(i => i.primary_category === 'retirement_tax' && rich(i) && !isStub(i))
+      || pool.find(i => rich(i) && !isStub(i) && i.priority === 'high')
+      || pool.find(i => rich(i) && !isStub(i))
+      || pool.find(i => !isStub(i))
       || pool[0]
       || null
     )

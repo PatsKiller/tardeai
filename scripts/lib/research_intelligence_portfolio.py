@@ -207,36 +207,101 @@ def build_advisory(
             action_detail = "Open Stop Management for holdings without healthy protection."
             implications.append("Book-level stop hygiene dominates alpha until near-triggers are clean.")
 
-    # ── Retirement / tax ───────────────────────────────────────────────
+    # ── Retirement / tax (topic-specific — avoid identical blurb on every card) ─
     elif primary == "retirement_tax":
         action, href = "retirement_plan", "retirement"
-        action_label = "Review Roth / tax plan"
-        action_detail = (
-            "Map conversion pacing to Golden Window and IRMAA two-year lookback before any large conversion batch."
-        )
-        implications.append(
-            "This is tax/retirement sequencing — not a new equity risk bet. Prioritize MAGI management over chasing yield."
-        )
-        inc = sleeves.get("dividend_income") or sleeves.get("income") or 0
-        # sleeves keys are theme names
-        inc = sleeves.get("dividend_income") or 0
-        if inc >= 20:
-            sizing_bits.append(
-                f"Income-oriented sleeve is already ~{inc:.1f}% of book "
-                f"(SCHD/JEPI/JEPQ/DIVI) — do not add high-yield risk solely for cash flow."
-            )
+        # Prefer TITLE for subtype so body IRMAA mentions don't mis-route every card
+        title_l = (title or "").lower()
+        blob_l = f"{title} {summary or ''}".lower()
         schg = by_sym.get("SCHG", {}).get("weight_pct")
-        if schg and schg >= 15:
-            sizing_bits.append(
-                f"SCHG is ~{schg:.1f}% of household book — avoid forced growth sales to fund conversions at bad levels."
+        schd = by_sym.get("SCHD", {}).get("weight_pct")
+        inc = sleeves.get("dividend_income") or 0
+
+        if re.search(r"monitor|integration|workflow|dashboard|alert", title_l):
+            action_label = "Wire IRMAA / conversion alerts into the desk"
+            action_detail = (
+                "Ops task: alert on IRMAA thresholds and conversion calendar in Command Center — not a new buy list."
             )
-        for f in flags[:2]:
-            sizing_bits.append(f)
-        # Explicit concentration context only — no ticker shopping list
-        if by_sym.get("SCHD"):
-            sizing_bits.append(
-                f"SCHD ~{by_sym['SCHD']['weight_pct']:.1f}% already anchors quality income; leave size unless rebalancing."
+            implications.append(
+                "Monitoring stack tracks MAGI path and Medicare dates; equity weights are context only."
             )
+            if schg and schg >= 20:
+                sizing_bits.append(
+                    f"Surface SCHG concentration (~{schg:.1f}%) as a dashboard risk flag, not conversion funding default."
+                )
+
+        elif re.search(r"irmaa|medicare|premium", title_l) or (
+            re.search(r"irmaa|medicare\s+part|premium", blob_l)
+            and not re.search(r"roth|ladder|conversion", title_l)
+        ):
+            action_label = "Model IRMAA / MAGI before conversions"
+            action_detail = (
+                "Confirm 2026 IRMAA brackets and the two-year MAGI lookback. "
+                "Stage Roth conversions so MAGI stays under cliff tiers before Medicare ~Dec 2026."
+            )
+            implications.append(
+                "IRMAA is MAGI-driven (two-year lookback) — conversion timing is a premium decision, not equity beta."
+            )
+            sizing_bits.append(
+                "No new equity ticket. Cap conversion batches to remaining room under the next IRMAA tier "
+                "(verify SSA/CMS tables)."
+            )
+            if inc >= 30:
+                sizing_bits.append(
+                    f"Taxable income sleeve ~{inc:.1f}% already distributes — avoid stacking more taxable yield that lifts MAGI."
+                )
+
+        elif re.search(r"\bmapt\b|medicaid|asset protection|estate", title_l + " " + blob_l[:200]):
+            action_label = "Coordinate MAPT / estate with tax counsel"
+            action_detail = (
+                "Legal/asset-protection decision — coordinate with elder-law counsel before re-titling. "
+                "Do not conflate with IRMAA MAGI."
+            )
+            implications.append(
+                "Asset-protection moves interact with ownership and distributions; keep brokerage risk sizing separate."
+            )
+            sizing_bits.append(
+                "No default ticker add. Freeze large re-titling until counsel confirms look-back triggers."
+            )
+
+        elif re.search(r"ssdi|social security disability", title_l + " " + blob_l[:200]):
+            action_label = "Verify SSDI / SGA vs portfolio income"
+            action_detail = (
+                "Investment income and Roth conversions generally do not count toward SGA — confirm current rules."
+            )
+            implications.append(
+                "SSDI shapes Medicare start and tax sequencing; equity risk policy stays unless cash-flow needs shift."
+            )
+            if schd:
+                sizing_bits.append(
+                    f"Quality income (SCHD ~{schd:.1f}%) supports spending without wages — avoid junk yield swaps."
+                )
+
+        elif re.search(r"roth|conversion|ladder|golden window|drawdown", title_l):
+            action_label = "Set 2026 conversion batch calendar"
+            action_detail = (
+                "Define multi-year Roth conversion batches to fill lower brackets without IRMAA cliffs "
+                "before the Golden Window closes into Medicare."
+            )
+            implications.append(
+                "Conversion ladder is account-type sequencing — size by tax bracket room, not equity conviction."
+            )
+            if schg and schg >= 15:
+                sizing_bits.append(
+                    f"If sales fund conversions, avoid auto-liquidating SCHG at ~{schg:.1f}% — plan trims with stops."
+                )
+            if schd:
+                sizing_bits.append(
+                    f"SCHD ~{schd:.1f}% can remain the quality income anchor while conversions run in tax-advantaged accounts."
+                )
+        else:
+            action_label = "Review Roth / tax plan"
+            action_detail = "Map action to Golden Window, IRMAA lookback, and account placement."
+            implications.append(
+                "Retirement/tax intelligence — prioritize MAGI and sequencing over new equity risk."
+            )
+            if schg and schg >= 20:
+                sizing_bits.append(f"Note: SCHG concentration ~{schg:.1f}% is separate from tax sequencing.")
 
     # ── Dividend (PRIMARY only) ────────────────────────────────────────
     elif primary == "dividend_income":
