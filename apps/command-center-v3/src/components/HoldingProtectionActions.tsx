@@ -542,37 +542,63 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         <div><span style={{ color: MUTED }}>Advisor timestamp</span><br /><b>{String(advisoryTimestamp ?? 'missing').slice(0, 19)}</b></div>
       </div>
 
-      {/* Three-line advisory comparison — same text as the badge tooltips, but ON SCREEN so the
-          operator never needs a hover to see current vs advisory vs floor. */}
-      {effectivePr?.volatility_tier && (() => {
-        const lines = volTierTooltip(effectivePr, { stop: logic.liveStop, distancePct: logic.liveStopDistancePct }).split('\n')
-        const adv = lines[1] || ''
-        const advColor = adv.includes('within band') ? GREEN : adv.includes('Widen to') || adv.includes('Tighten to') || adv.includes('Set ') ? AMBER : TEXT0
-        // P/L drawdown at the stop: what this protection actually locks in if it fills.
+      {/* Stop picture — ONE coherent story from the ACTUAL advisory (not the generic band,
+          which contradicted the fixed-stop recommendation; operator 2026-07-14). */}
+      {(() => {
+        const fb = (effectivePr?.family_bounds || {}) as any
+        const px = logic.currentPrice
         const basisPs = (Number(h?.shares) > 0 && Number(h?.cost_basis) > 0)
           ? Number(h.cost_basis) / Number(h.shares) : null
-        const refStop = logic.liveStop ?? logic.advisoryStop
-        const px = logic.currentPrice
-        const plNow = basisPs != null && px != null && basisPs > 0 ? (px - basisPs) / basisPs * 100 : null
-        const plAtStop = basisPs != null && refStop != null && basisPs > 0 ? (refStop - basisPs) / basisPs * 100 : null
-        const giveBack = px != null && refStop != null && px > 0 ? (px - refStop) / px * 100 : null
         const sh = Number(h?.shares) || 0
-        const usd = (v: number) => `${v < 0 ? '-' : '+'}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+        const usd = (v: number) => `${v < 0 ? '\u2212' : '+'}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+        const pct = (v: number) => `${v < 0 ? '\u2212' : '+'}${Math.abs(v).toFixed(1)}%`
+        const plNow = basisPs != null && px != null && basisPs > 0 ? (px - basisPs) / basisPs * 100 : null
+        const plNowUsd = basisPs != null && px != null && sh > 0 ? (px - basisPs) * sh : null
+        // 1 — where you are
+        const cur = logic.liveStop != null || logic.liveStopIsTrailing
+          ? `Current: ${logic.liveStopIsTrailing && logic.liveTrailPct != null ? `TRAILING ${logic.liveTrailPct}%` : 'FIXED stop'}`
+            + (logic.liveStop != null ? ` ${logic.liveStopIsTrailing ? '\u2248' : 'at'} $${logic.liveStop.toFixed(2)}` : '')
+            + (logic.liveStopDistancePct != null ? ` (${logic.liveStopDistancePct.toFixed(1)}% below price)` : '')
+          : 'Current: NO live stop'
+        const curPl = plNow != null ? ` \u00b7 position P/L ${pct(plNow)}${plNowUsd != null ? ` (${usd(plNowUsd)})` : ''}` : ''
+        // 2 — what the advisor actually recommends (fixed value + optional/recommended trail)
+        const tr = trail?.pct ?? null
+        const advParts: string[] = []
+        if (logic.advisoryStop != null) {
+          advParts.push(`FIXED stop $${logic.advisoryStop.toFixed(2)}${logic.distancePct != null ? ` (${logic.distancePct.toFixed(1)}% below)` : ''}`)
+        }
+        if (tr != null && px != null) {
+          advParts.push(`${effectivePr?.trail_recommended ? 'recommended' : 'optional'} ${tr}% trail (\u2248$${(px * (1 - tr / 100)).toFixed(2)} now)`)
+        }
+        const advise = advParts.length ? `Advisor: ${advParts.join(' \u00b7 ')}` : 'Advisor: no recommendation yet'
+        const advColor = (logic.liveStop == null && !logic.liveStopIsTrailing) ? AMBER
+          : logic.advisory_stop_is_tighter_than_existing === false ? AMBER : GREEN
+        // 3 — tier context, explicitly labeled so band vs applied floor cannot read as contradiction
+        const vt = (effectivePr?.volatility_tier || logic.volatilityTier || '').toUpperCase()
+        const ctxBits: string[] = []
+        if (vt) ctxBits.push(`${vt} vol tier`)
+        if (logic.regime) ctxBits.push(`${logic.regime.replace(/_/g, '-')} regime${logic.regimeAdjustmentPct != null ? ` (${logic.regimeAdjustmentPct > 0 ? '+' : ''}${logic.regimeAdjustmentPct}% cap)` : ''}`)
+        if (fb.trail_min_pct != null && fb.trail_max_pct != null) ctxBits.push(`normal trail band ${fb.trail_min_pct}\u2013${fb.trail_max_pct}%`)
+        if (logic.familyFloorPct != null) ctxBits.push(`hard floor ${logic.familyFloorPct}% (swing-low anchored)`)
+        const context = ctxBits.length ? `Why: ${ctxBits.join(' \u00b7 ')}` : null
+        // 4 — consequence if the effective stop fills
+        const refStop = logic.liveStop ?? logic.advisoryStop
+        const plAtStop = basisPs != null && refStop != null && basisPs > 0 ? (refStop - basisPs) / basisPs * 100 : null
         const lockedUsd = basisPs != null && refStop != null && sh > 0 ? (refStop - basisPs) * sh : null
-        const nowUsd = basisPs != null && px != null && sh > 0 ? (px - basisPs) * sh : null
+        const giveBack = px != null && refStop != null && px > 0 ? (px - refStop) / px * 100 : null
         const giveBackUsd = px != null && refStop != null && sh > 0 ? (px - refStop) * sh : null
-        const plLine = plAtStop != null
-          ? `If the ${logic.liveStop != null ? 'current' : 'advisory'} stop fills: P/L locked ${plAtStop >= 0 ? '+' : ''}${plAtStop.toFixed(1)}%${lockedUsd != null ? ` (${usd(lockedUsd)})` : ''}`
-            + (plNow != null ? ` \u00b7 now ${plNow >= 0 ? '+' : ''}${plNow.toFixed(1)}%${nowUsd != null ? ` (${usd(nowUsd)})` : ''}` : '')
-            + (giveBack != null ? ` \u00b7 gives back ${giveBack.toFixed(1)}%${giveBackUsd != null ? ` (${usd(giveBackUsd).replace('+', '')})` : ''} from current` : '')
+        const consequence = plAtStop != null
+          ? `If the ${logic.liveStop != null || logic.liveStopIsTrailing ? 'current' : 'advisory'} stop fills: you ${plAtStop >= 0 ? 'LOCK IN' : 'take'} ${pct(plAtStop)}${lockedUsd != null ? ` (${usd(lockedUsd)})` : ''}`
+            + (giveBack != null ? ` \u00b7 giving back ${giveBack.toFixed(1)}%${giveBackUsd != null ? ` (${usd(giveBackUsd).replace('+', '')})` : ''} from today's price` : '')
           : null
+        if (!advParts.length && logic.liveStop == null) return null
         return (
-          <div style={{ marginTop: 9, padding: '9px 12px', borderRadius: 8, fontSize: 12.5, lineHeight: 1.55,
+          <div style={{ marginTop: 9, padding: '10px 13px', borderRadius: 8, fontSize: 12.5, lineHeight: 1.65,
                         background: 'rgba(148,163,184,.07)', border: `1px solid ${advColor}44` }}>
-            <div style={{ color: TEXT0, fontWeight: 700 }}>{lines[0]}</div>
-            <div style={{ color: advColor, fontWeight: 700 }}>{lines[1]}</div>
-            <div style={{ color: MUTED }}>{lines[2]}</div>
-            {plLine && <div style={{ color: plAtStop != null && plAtStop < 0 ? RED : GREEN, fontWeight: 700 }}>{plLine}</div>}
+            <div style={{ color: TEXT0, fontWeight: 700 }}>{cur}{curPl}</div>
+            <div style={{ color: advColor, fontWeight: 700 }}>{advise}</div>
+            {context && <div style={{ color: MUTED }}>{context}</div>}
+            {consequence && <div style={{ color: plAtStop != null && plAtStop < 0 ? RED : GREEN, fontWeight: 700 }}>{consequence}</div>}
           </div>
         )
       })()}
