@@ -145,6 +145,33 @@ def _parse(text):
         return None
 
 
+_LIFECYCLE_STAGES: dict | None = None
+
+
+def _lifecycle_stage(symbol: str) -> str | None:
+    """Holding's lifecycle stage from hermes_holdings_lifecycle state (fail-soft None)."""
+    global _LIFECYCLE_STAGES
+    if _LIFECYCLE_STAGES is None:
+        try:
+            import sys as _s
+            from pathlib import Path as _P
+            _lib = str(_P(__file__).resolve().parent / "lib")
+            if _lib not in _s.path:
+                _s.path.insert(0, _lib)
+            from hermes_holdings_lifecycle.holdings_lifecycle import load_holdings_lifecycle_state
+            st = load_holdings_lifecycle_state() or {}
+            rows = st.get("holdings") or st.get("positions") or st.get("rows") or []
+            if isinstance(rows, dict):
+                rows = list(rows.values())
+            _LIFECYCLE_STAGES = {
+                str(r.get("symbol") or "").upper():
+                    str(r.get("lifecycle_stage") or r.get("stage") or "").lower()
+                for r in rows if isinstance(r, dict) and r.get("symbol")}
+        except Exception:
+            _LIFECYCLE_STAGES = {}
+    return _LIFECYCLE_STAGES.get(str(symbol or "").upper()) or None
+
+
 def _sanity_check(rec, t, bounds=None):
     """Validate the LLM advisory against the ACTUAL technicals (all current holdings are long) and the
     holding's FAMILY bounds. Returns {verdict, issues}: fail = internally wrong (stop at/above price) ·
@@ -323,12 +350,14 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
         basis = float(c.get("cost_basis") or 0)
         basis_ps = basis / qty if qty and basis else t["price"]
         pnl_pct = (t["price"] - basis_ps) / basis_ps * 100 if basis_ps else 0.0
-        # classify the holding into a trailing family (config buckets + volatility) → per-family bounds
+        # classify the holding into a stop tier (stop_policy.yaml: buckets + asset class +
+        # volatility + operator pins) → per-tier bounds, tightened by lifecycle stage
         import holding_family as hf
         atr_pct = t["atr"] / t["price"] * 100 if t["price"] else None
         family, fam_source = hf.classify_family(sym, atr_pct)
-        fb = hf.protection_bounds(family)
-        _trail_min = hf.TRAIL_PNL_PCT_INCOME if not fb["trail_norm"] else hf.TRAIL_PNL_PCT_NORMAL
+        _stage = _lifecycle_stage(sym)
+        fb = hf.protection_bounds(family, lifecycle_stage=_stage)
+        _trail_min = hf.trail_pnl_threshold(family)
         trail_rule = (f"• {fb['label']} is held through noise — trail_recommended = TRUE only on a LARGE "
                       f"gain (unrealized ≥ +{_trail_min:.0f}%) AND price > 50d SMA; otherwise FALSE (fixed stop)."
                       if not fb["trail_norm"] else

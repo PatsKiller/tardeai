@@ -1,6 +1,6 @@
 # Stop & Trailing-Stop Methodology (canonical)
 
-**Status:** Active · **Updated:** 2026-06-30 · **Scope:** protective stop / trailing-stop advisories for **real-account holdings** (Schwab + Fidelity). Paper/Alpaca execution is covered separately by [`OCO_ATM_UNIFICATION_DESIGN.md`](design/OCO_ATM_UNIFICATION_DESIGN.md) and `alpaca_stop_manager.py`. **Momentum scalp paper trades** use a distinct layered policy: [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md). **Click-time preflight UX** (operator choices 1A–5A): see §9 and [`runbooks/protective-stop-integration-2026-06-30.md`](runbooks/protective-stop-integration-2026-06-30.md#click-time-preflight-portfolio-ux-1a5a).
+**Status:** Active · **Updated:** 2026-07-14 (dynamic tier policy) · **Scope:** protective stop / trailing-stop advisories for **real-account holdings** (Schwab + Fidelity). Paper/Alpaca execution is covered separately by [`OCO_ATM_UNIFICATION_DESIGN.md`](design/OCO_ATM_UNIFICATION_DESIGN.md) and `alpaca_stop_manager.py`. **Momentum scalp paper trades** use a distinct layered policy: [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md). **Click-time preflight UX** (operator choices 1A–5A): see §9 and [`runbooks/protective-stop-integration-2026-06-30.md`](runbooks/protective-stop-integration-2026-06-30.md#click-time-preflight-portfolio-ux-1a5a).
 
 > **Advisory only.** Nothing here places, modifies, or cancels a broker order. Real-account stops are operator-placed (Fidelity manual / Schwab per-order 2FA). The engine recommends; the operator executes.
 
@@ -10,13 +10,24 @@
 `scripts/holding_protection_advisor.py` produces one stop/trailing recommendation per holding. For each position it gathers **read-only** technicals (RSI14, ATR14, 20-day swing low, 50-day SMA) + the Yahoo analyst layer, then asks a free-lane LLM for a strict-JSON recommendation, validates it, and stores it to `hermes_research_intelligence` (`research_type='protection_advisory'`). Surfaced on the Portfolio cards via `/api/v2/portfolio/llm-coverage`.
 
 ## 2. How a stop is sized (the rules, in order)
-1. **Family classification** (`holding_family.classify_family`) → a per-family **% band**. The band is the hard envelope; the swing-low anchor places the stop *within* it.
+1. **Tier classification** (`holding_family.classify_family`) → a per-tier **% band**. The band is the hard envelope; the swing-low anchor places the stop *within* it. Since 2026-07-14 the tiers are **config-driven** from [`config/stop_policy.yaml`](../config/stop_policy.yaml) (operator-editable, mtime hot-reload, fail-soft to the legacy built-in bands if the file is missing/invalid).
 
-   | Family | Floor (min %) | Cap (max %) | Hold style |
-   |---|---|---|---|
-   | **income** (dividend/income ETFs: SCHD, DIVI, JEPI, BND…) | **4%** | 10% | held through noise |
-   | **position / core / growth** | **5%** | 12% | core compounding |
-   *(values from `holding_family.protection_bounds`; ATR-aware classification)*
+   | Tier | Stop band | Trail band | Hold style | Examples |
+   |---|---|---|---|---|
+   | **income_defensive** | **5–8%** | 6–8% | held through noise | SCHD, JEPI, BND, DIV, DIVI, PFLT, CSWC |
+   | **growth_tech** | **8–12%** | 10–12% | growth compounder | SCHG, JEPQ, QQQ |
+   | **sector_tactical** | **6–10%** | 7–10% | thesis-bound (wks–mos) | XLI, XLB (sector ETFs) |
+   | **stock_core** | **7–10%** | 8–10% | high-conviction stock | V, LMT, RTX, NOC |
+   | **stock_tactical** | **4–7%** | 5–7% | small/tactical (days–wks) | AVAV, KTOS, RKLB, LDOS |
+   | *legacy:* momentum / swing / income / position | 2–6 / 3–8 / 4–10 / 5–12% | — | unchanged (scalp lanes + fallback) | |
+
+   **Resolution order** (first match wins): `symbol_tier_overrides` (operator pins) → `bucket_map` (asset_classification_rules bucket tags) → `asset_class_map` (etf_classification_overrides) → type-aware volatility fallback (a low-ATR individual stock lands in stock_core, not the generic position band) → `default_tier` (position). Every advisory records `family`, `family_source` and the resolved `family_bounds` in `evidence_json`.
+
+   **Lifecycle modifier** (hermes_holdings_lifecycle): a `watch` stage shrinks the stop cap by 1 pct-pt, `trim_candidate` by 2 — biasing toward the tight end of the band. It never widens, never drops below `stop_min + 0.5`, and the applied shrink is recorded as `lifecycle_tightened_pct` in the bounds.
+
+   **Portfolio drawdown guard** (`stop_health_check._portfolio_drawdown_guard`): portfolio value ≥10% below its 90-day peak (from `daily_system_metrics`) → warning alert; ≥12% → critical (Telegram + SIEM + Hermes, deduped 6h, symbol `PORTFOLIO`). Advisory only — it never places or modifies an order.
+
+   > **L3 hybrid trailing stays OFF** (triple-confirmed backtest verdict) — `stop_policy.yaml` cannot re-enable it, and `tests/test_stop_policy.py` gates this.
 
 2. **Anchor to structure** — the stop sits at/just below the **20-day swing low**, between `swing_low − 1×ATR` and `swing_low` (anchored to real support, not arbitrary geometry).
 

@@ -101,6 +101,57 @@ def _log_health_event(ok: bool, summary: dict) -> None:
         pass
 
 
+def _portfolio_drawdown_guard() -> dict | None:
+    """Portfolio-level drawdown guard (stop_policy.yaml portfolio_drawdown_guard).
+
+    Advisory only — compares the newest daily_system_metrics portfolio_value to its
+    peak over peak_window_days and alerts at alert_pct / critical_pct below peak.
+    Never places or modifies an order. Fail-soft: any error returns None."""
+    try:
+        import holding_family as hf
+        cfg = (hf._policy().get("portfolio_drawdown_guard") or {})
+        if not cfg.get("enabled"):
+            return None
+        window = int(cfg.get("peak_window_days") or 90)
+        alert_pct = float(cfg.get("alert_pct") or 10.0)
+        critical_pct = float(cfg.get("critical_pct") or 12.0)
+        dedup_h = int(cfg.get("dedup_hours") or 6)
+        from db_adapter import _get_conn
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("""SELECT metric_date, portfolio_value FROM daily_system_metrics
+                       WHERE metric_date >= CURRENT_DATE - %s::int
+                         AND portfolio_value IS NOT NULL AND portfolio_value > 0
+                       ORDER BY metric_date""", (window,))
+        rows = cur.fetchall()
+        conn.rollback()
+        if len(rows) < 2:
+            return None
+        peak_date, peak = max(rows, key=lambda r: float(r[1]))
+        cur_date, cur_val = rows[-1]
+        dd_pct = (float(peak) - float(cur_val)) / float(peak) * 100.0
+        out = {"peak_usd": float(peak), "peak_date": str(peak_date),
+               "current_usd": float(cur_val), "as_of": str(cur_date),
+               "drawdown_pct": round(dd_pct, 2), "window_days": window,
+               "alert_pct": alert_pct, "critical_pct": critical_pct}
+        if dd_pct < alert_pct:
+            return {**out, "level": "ok"}
+        level = "critical" if dd_pct >= critical_pct else "warning"
+        cond = "PORTFOLIO_DRAWDOWN_CRITICAL" if level == "critical" else "PORTFOLIO_DRAWDOWN"
+        line = (f"portfolio ${float(cur_val):,.0f} is {dd_pct:.1f}% below its {window}d peak "
+                f"${float(peak):,.0f} ({peak_date}) — review stops/exposure (advisory; no orders placed)")
+        if not _recently_alerted("PORTFOLIO", cond, hours=dedup_h):
+            payload = {"kind": "stop_health", "condition": cond, **out}
+            _siem("PORTFOLIO", "critical" if level == "critical" else "warning",
+                  f"[stop-health] {cond} · {line}", payload)
+            _send_telegram(f"{'🚨' if level == 'critical' else '⚠️'} PORTFOLIO DRAWDOWN — {line}")
+            _hermes_finding("PORTFOLIO", cond, line, payload)
+        return {**out, "level": level, "condition": cond}
+    except Exception as e:
+        print(f"stop_health: drawdown guard skipped ({e})", file=sys.stderr)
+        return None
+
+
 def run(quiet: bool = False) -> dict:
     import stop_lifecycle_monitor as slm
     res = slm.scan(persist=True)
@@ -128,11 +179,17 @@ def run(quiet: bool = False) -> dict:
             _send_telegram(f"{'🚨' if sev == 'urgent' else '⚠️'} STOP HEALTH — {cond}: *{sym}* ({acct})\n{line}")
             _hermes_finding(sym, cond, line, payload)   # enter Hermes' research stream (deduped via the same 2h window)
             fired.append(f"{sym}:{cond}")
+    dd = _portfolio_drawdown_guard()
+    if dd and dd.get("level") in ("warning", "critical"):
+        fired.append(f"PORTFOLIO:{dd['condition']}")
+    summary["portfolio_drawdown"] = dd
     _log_health_event(ok=(not alerts), summary=summary)
     if not quiet:
         print(f"stop_health: {summary['total']} stops · health {summary['by_health']} · "
-              f"alerts {len(alerts)} · telegram fired {fired or 'none'}")
-    return {"summary": summary, "alert_count": len(alerts), "telegram_fired": fired}
+              f"alerts {len(alerts)} · telegram fired {fired or 'none'} · "
+              f"drawdown {dd.get('drawdown_pct') if dd else 'n/a'}%")
+    return {"summary": summary, "alert_count": len(alerts), "telegram_fired": fired,
+            "portfolio_drawdown": dd}
 
 
 if __name__ == "__main__":

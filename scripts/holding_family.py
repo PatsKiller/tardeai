@@ -35,6 +35,44 @@ FAMILY_PROTECTION = {
 }
 DEFAULT_FAMILY = "position"   # conservative default: widest stop, no premature tightening
 
+# ── stop_policy.yaml (2026-07-14): tiers/bands/maps are operator config, not code ──
+# Fail-soft: a missing or invalid file leaves the legacy constants above in force.
+_POLICY_PATH = Path(__file__).resolve().parent.parent / "config" / "stop_policy.yaml"
+_ETF_OVERRIDES_PATH = Path(__file__).resolve().parent.parent / "config" / "etf_classification_overrides.json"
+_POLICY_CACHE: Optional[dict] = None
+_POLICY_MTIME: float = 0.0
+
+
+def _policy() -> dict:
+    """Load stop_policy.yaml with mtime-based reload; {} on any failure (legacy fallback)."""
+    global _POLICY_CACHE, _POLICY_MTIME
+    try:
+        m = _POLICY_PATH.stat().st_mtime
+        if _POLICY_CACHE is None or m != _POLICY_MTIME:
+            import yaml
+            raw = yaml.safe_load(_POLICY_PATH.read_text()) or {}
+            _POLICY_CACHE = raw if raw.get("enabled", True) else {}
+            _POLICY_MTIME = m
+    except Exception:
+        _POLICY_CACHE = {}
+    return _POLICY_CACHE or {}
+
+
+def _etf_asset_class(symbol: str) -> str:
+    try:
+        d = json.loads(_ETF_OVERRIDES_PATH.read_text())
+        return str(((d.get("symbols") or {}).get(symbol) or {}).get("asset_class") or "").lower()
+    except Exception:
+        return ""
+
+
+def policy_tiers() -> dict:
+    """Active tier table: stop_policy.yaml tiers when present, else the legacy constants."""
+    tiers = (_policy().get("tiers") or {})
+    if tiers:
+        return tiers
+    return {k: dict(v) for k, v in FAMILY_PROTECTION.items()}
+
 # Trailing activation gates (STOP_METHODOLOGY §3; operator 2026-07-06: normal lowered 10→9%).
 TRAIL_PNL_PCT_NORMAL = 9.0
 TRAIL_PNL_PCT_INCOME = 20.0
@@ -42,8 +80,13 @@ TRAIL_PNL_PCT_RUNNER = 20.0   # extended runner override in protection_advisor p
 
 
 def trail_pnl_threshold(family: str) -> float:
-    """Min unrealized % gain before trailing is recommended (income families use the higher bar)."""
-    return TRAIL_PNL_PCT_INCOME if not protection_bounds(family).get("trail_norm") else TRAIL_PNL_PCT_NORMAL
+    """Min unrealized % gain before trailing is recommended. Per-tier value from
+    stop_policy.yaml when present; legacy income/normal split otherwise."""
+    b = protection_bounds(family)
+    v = b.get("trail_pnl_threshold_pct")
+    if v is not None:
+        return float(v)
+    return TRAIL_PNL_PCT_INCOME if not b.get("trail_norm") else TRAIL_PNL_PCT_NORMAL
 
 
 def trail_recommended_for_state(*, family: str, pnl_pct: float, price: float, sma50: float | None) -> bool:
@@ -94,10 +137,55 @@ def _resolve(symbol: str) -> str:
 
 
 def classify_family(symbol: str, atr_pct: float | None = None) -> tuple[str, str]:
-    """Return (family, source). Priority: committed bucket tags → asset_type + volatility → default.
-    source is human-readable provenance ('bucket:bond_income' / 'etf->position' / 'stock vol 6.1%')."""
+    """Return (tier, source). Resolution (stop_policy.yaml when present, legacy otherwise):
+    symbol_tier_overrides → bucket tags → etf asset_class → asset_type + ATR volatility →
+    default. source is human-readable provenance."""
     s = _resolve(symbol)
     cfg = _cfg()
+    pol = _policy()
+    tiers = policy_tiers()
+
+    if pol:
+        # 1. explicit operator pin
+        ov = {str(k).upper(): v for k, v in (pol.get("symbol_tier_overrides") or {}).items()}
+        if s in ov and ov[s] in tiers:
+            return ov[s], "symbol_tier_override"
+        # 2. bucket tags (asset_classification_rules.json)
+        buckets = [str(b).lower() for b in (cfg.get("bucket_overrides") or {}).get(s, [])]
+        for pair in (pol.get("bucket_map") or []):
+            try:
+                tag, tier = str(pair[0]).lower(), str(pair[1])
+            except Exception:
+                continue
+            if tier in tiers and any(tag in b for b in buckets):
+                return tier, f"bucket:{tag}"
+        # 3. ETF asset class (etf_classification_overrides.json)
+        ac = _etf_asset_class(s)
+        tier = (pol.get("asset_class_map") or {}).get(ac)
+        if tier and tier in tiers:
+            return tier, f"asset_class:{ac}"
+        # 4. asset type + volatility fallback (type-specific BEFORE the generic vol map:
+        # a low-vol individual stock is stock_core 7-10%, not the wide position band)
+        at = ((cfg.get("asset_type_overrides") or {}).get(s) or "").lower()
+        if at in ("mutual_fund", "fund"):
+            return (pol.get("default_tier") or DEFAULT_FAMILY), f"{at}->default"
+        if at == "stock":
+            if atr_pct is not None and atr_pct >= 8 and "momentum" in tiers:
+                return "momentum", f"stock vol {atr_pct:.1f}%"
+            if atr_pct is not None and atr_pct >= 4 and "stock_tactical" in tiers:
+                return "stock_tactical", f"stock vol {atr_pct:.1f}%"
+            return ("stock_core" if "stock_core" in tiers else DEFAULT_FAMILY,
+                    f"stock low-vol{f' {atr_pct:.1f}%' if atr_pct is not None else ''}")
+        if atr_pct is not None:
+            for row in (pol.get("volatility_map") or []):
+                try:
+                    if atr_pct <= float(row.get("max_atr_pct", 999)) and row.get("tier") in tiers:
+                        return row["tier"], f"vol {atr_pct:.1f}%"
+                except Exception:
+                    continue
+        return (pol.get("default_tier") or DEFAULT_FAMILY), "default"
+
+    # ── legacy path (no policy file) — unchanged behavior ──
     buckets = [str(b).lower() for b in (cfg.get("bucket_overrides") or {}).get(s, [])]
     for tag, fam in _BUCKET_TO_FAMILY:
         if any(tag in b for b in buckets):
@@ -157,8 +245,24 @@ def is_unstoppable_fund(symbol: str) -> bool:
     return False
 
 
-def protection_bounds(family: str) -> dict:
-    return FAMILY_PROTECTION.get(family, FAMILY_PROTECTION[DEFAULT_FAMILY])
+def protection_bounds(family: str, lifecycle_stage: str | None = None) -> dict:
+    """Band for a tier/family, optionally tightened by the holding's lifecycle stage
+    (hermes_holdings_lifecycle: watch/trim_candidate bias toward the TIGHT end — the
+    band never widens and stop_max never drops below stop_min + 0.5)."""
+    tiers = policy_tiers()
+    b = dict(tiers.get(family) or tiers.get(_policy().get("default_tier") or DEFAULT_FAMILY)
+             or FAMILY_PROTECTION[DEFAULT_FAMILY])
+    if lifecycle_stage:
+        mods = (_policy().get("lifecycle_modifiers") or {}).get(str(lifecycle_stage).lower()) or {}
+        shrink = float(mods.get("stop_max_shrink_pct") or 0.0)
+        if shrink > 0:
+            b["stop_max_pct"] = max(float(b["stop_min_pct"]) + 0.5,
+                                    float(b["stop_max_pct"]) - shrink)
+            b["trail_max_pct"] = max(float(b["trail_min_pct"]) + 0.5,
+                                     float(b["trail_max_pct"]) - shrink)
+            b["lifecycle_stage"] = lifecycle_stage
+            b["lifecycle_tightened_pct"] = shrink
+    return b
 
 
 if __name__ == "__main__":

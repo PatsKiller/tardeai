@@ -1,0 +1,173 @@
+# stop_policy.yaml — asset-type–driven stop tiers (operator-editable; advisory bands).
+#
+# Consumed by scripts/holding_family.py (fail-soft: if this file is missing or invalid the
+# engine falls back to its built-in legacy bands, so nothing breaks). These bands govern HOW
+# WIDE protection sits; strategy_trailing_policy's R-tier model still governs WHEN to tighten.
+# L3 hybrid trailing stays OFF per the triple-confirmed backtest verdict — this file does not
+# and must not re-enable it. No broker execution behavior lives here: Schwab applies stops via
+# the existing per-order 2FA path; Fidelity is monitor-only; Alpaca paper is automatic.
+version: "2026-07-14"
+enabled: true
+
+# ── Stop tiers ────────────────────────────────────────────────────────────────
+# Resolution order (first match wins):
+#   1. symbol_tier_overrides (below)
+#   2. bucket_overrides tags from config/asset_classification_rules.json (bucket_map below)
+#   3. asset_class from config/etf_classification_overrides.json (asset_class_map below)
+#   4. ATR%% volatility fallback (volatility_map below)
+#   5. default_tier
+# Legacy family names (momentum/swing/income/position) remain valid tier keys — existing
+# evidence rows, prompts and UI labels keep working unchanged.
+tiers:
+  income_defensive:
+    label: "Income / Defensive"
+    hold: "long / held through noise"
+    stop_min_pct: 5.0
+    stop_max_pct: 8.0
+    trail_min_pct: 6.0
+    trail_max_pct: 8.0
+    trail_norm: false          # income names hold through noise; trail only on big gains
+    trail_pnl_threshold_pct: 20.0
+  growth_tech:
+    label: "Growth / Tech"
+    hold: "long / growth compounder"
+    stop_min_pct: 8.0
+    stop_max_pct: 12.0
+    trail_min_pct: 10.0
+    trail_max_pct: 12.0
+    trail_norm: true
+    trail_pnl_threshold_pct: 9.0
+  sector_tactical:
+    label: "Sector / Tactical ETF"
+    hold: "weeks to months (thesis-bound)"
+    stop_min_pct: 6.0
+    stop_max_pct: 10.0
+    trail_min_pct: 7.0
+    trail_max_pct: 10.0
+    trail_norm: true
+    trail_pnl_threshold_pct: 9.0
+  stock_core:
+    label: "Stock / High-Conviction"
+    hold: "very long / compounder"
+    stop_min_pct: 7.0
+    stop_max_pct: 10.0
+    trail_min_pct: 8.0
+    trail_max_pct: 10.0
+    trail_norm: true
+    trail_pnl_threshold_pct: 9.0
+  stock_tactical:
+    label: "Stock / Small-Tactical"
+    hold: "days to weeks"
+    stop_min_pct: 4.0
+    stop_max_pct: 7.0
+    trail_min_pct: 5.0
+    trail_max_pct: 7.0
+    trail_norm: true
+    trail_pnl_threshold_pct: 9.0
+  # legacy families — unchanged values, kept for scalp/momentum lanes + fallback compatibility
+  momentum:
+    label: "Momentum"
+    hold: "fast / same-week"
+    stop_min_pct: 2.0
+    stop_max_pct: 6.0
+    trail_min_pct: 3.0
+    trail_max_pct: 6.0
+    trail_norm: true
+    trail_pnl_threshold_pct: 9.0
+  swing:
+    label: "Swing"
+    hold: "multi-day to weeks"
+    stop_min_pct: 3.0
+    stop_max_pct: 8.0
+    trail_min_pct: 4.0
+    trail_max_pct: 8.0
+    trail_norm: true
+    trail_pnl_threshold_pct: 9.0
+  income:
+    label: "Income"
+    hold: "long / held through noise"
+    stop_min_pct: 4.0
+    stop_max_pct: 10.0
+    trail_min_pct: 5.0
+    trail_max_pct: 10.0
+    trail_norm: false
+    trail_pnl_threshold_pct: 20.0
+  position:
+    label: "Position / Core"
+    hold: "very long / compounder"
+    stop_min_pct: 5.0
+    stop_max_pct: 12.0
+    trail_min_pct: 6.0
+    trail_max_pct: 12.0
+    trail_norm: true
+    trail_pnl_threshold_pct: 9.0
+
+default_tier: position   # conservative default: widest stop, no premature tightening
+
+# Explicit per-symbol tier pins (operator decisions that beat classification).
+# JEPQ: covered-call by bucket, but the operator treats it as medium-vol growth/tech.
+# PFLT/CSWC: BDCs held for income — the stock-type fallback would misplace them.
+# DIVI: international dividend ETF with no bucket tag.
+symbol_tier_overrides:
+  JEPQ: growth_tech
+  SCHG: growth_tech
+  QQQ: growth_tech
+  PFLT: income_defensive
+  CSWC: income_defensive
+  DIVI: income_defensive
+
+# bucket tag (asset_classification_rules.json bucket_overrides) → tier. First match wins.
+bucket_map:
+  - [bond_income, income_defensive]
+  - [dividend_income, income_defensive]
+  - [dividend_etf, income_defensive]
+  - [reit_income, income_defensive]
+  - [high_yield, income_defensive]
+  - [covered_call, income_defensive]
+  - [scalp, momentum]
+  - [gap, momentum]
+  - [momentum, momentum]
+  - [swing_trade, stock_tactical]
+  - [breakout, stock_tactical]
+  - [earnings, stock_tactical]
+  - [growth_fund, growth_tech]
+  - [core, stock_core]
+  - [index, position]
+  - [compounder, stock_core]
+  - [defense_aerospace, stock_core]
+  - [space_defense, stock_core]
+  - [defense_services, stock_core]
+
+# asset_class (etf_classification_overrides.json) → tier (used when no bucket matched).
+asset_class_map:
+  sector_etf: sector_tactical
+  broad_index_etf: position
+  bond_etf: income_defensive
+  thematic_interval_fund: position
+
+# ATR%% fallback for symbols with no bucket/class data (same thresholds as legacy code).
+volatility_map:
+  - {max_atr_pct: 1.5, tier: income_defensive}
+  - {max_atr_pct: 3.0, tier: position}
+  - {max_atr_pct: 5.0, tier: stock_tactical}
+  - {max_atr_pct: 999.0, tier: momentum}
+
+# Lifecycle-stage modifier (hermes_holdings_lifecycle stages). A stage under watch/trim
+# biases the band toward its TIGHT end; it never widens and never exits the tier band.
+lifecycle_modifiers:
+  healthy:        {stop_max_shrink_pct: 0.0}
+  watch:          {stop_max_shrink_pct: 1.0}   # stop_max reduced by 1.0 pct-pt
+  trim_candidate: {stop_max_shrink_pct: 2.0}   # strongest tightening, still >= stop_min
+
+# ── Portfolio-level drawdown guard (advisory alerts, never an order) ─────────
+portfolio_drawdown_guard:
+  enabled: true
+  peak_window_days: 90
+  alert_pct: 10.0        # portfolio ≥10% below its 90d peak → warning alert
+  critical_pct: 12.0     # ≥12% → critical alert
+  dedup_hours: 6
+
+# Account semantics (documentation of EXISTING behavior — not switches):
+#   schwab_*   → live stop changes require the per-order 2FA flow; never automatic
+#   fidelity_* → monitor-only software stops + manual Active Trader ticket (no broker API)
+#   alpaca     → paper account, automatic ratchet via alpaca_stop_manager (no 2FA, paper only)
