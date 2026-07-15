@@ -1424,12 +1424,17 @@ placed** — operator-approved execution is deferred to Phase 192.
 `holding_protection_advisor.py` produces a per-holding protective-stop + trailing recommendation on
 the free **Grok OAuth** lane (local-gemma fallback; both free), surfaced on the Open Trades cards and
 the Watchlist/Proposals exit ladders. Three reinforcing layers keep the advice honest:
-1. **Family WIDTH** — `holding_family.py` maps each holding to a trailing family
-   (momentum/swing/income/position) by REUSING `config/asset_classification_rules.json` bucket tags
-   (`dividend_income`/`bond_income`→income, `swing_trade`→swing, `growth_fund`/`defense`→position) +
-   asset_type + volatility fallback — no new per-symbol hardcoding. Each family carries a stop/trail
-   width band (momentum 2-6% … position 5-12%) injected into the prompt and shown as a card chip
-   (replaces "unclassified").
+1. **Tier WIDTH (dynamic since 2026-07-14)** — `holding_family.py` maps each holding to a stop tier
+   from **`config/stop_policy.yaml`**: operator pin → `asset_classification_rules.json` bucket tags →
+   **dynamic volatility tier** (`classify_volatility_tier`: beta / real ATR% / dividend yield /
+   sector — vol_low 5–8%, vol_medium 8–11%, vol_high 9–13%; NO hardcoded symbols; daily
+   `volatility_tier_refresh.py` cron 06:45 → `symbol_volatility_tiers` + state file) → ETF asset
+   class → type/ATR fallback → default. Bounds are then adjusted (cap end only, never below
+   `stop_min+0.5`) by **market regime** (`market_regime_snapshots`: risk-on widens the vol_high
+   trail cap +1 pt; risk-off tightens all caps −1), **lifecycle stage** (watch −1 / trim −2) and
+   **conviction size** (stock <$10k −1). Legacy families (momentum 2-6% … position 5-12%) remain
+   valid tier keys. Full spec: [`docs/STOP_METHODOLOGY.md`](STOP_METHODOLOGY.md). A portfolio-level
+   drawdown guard (90d peak, warn ≥10% / critical ≥12%) rides the stop-health cron.
 2. **Bounded prompt** — stop must be below price, anchored at/below the 20d swing low, inside the
    family band, `stop_pct_below` = the computed value; **fixed-vs-trailing is a RULE**: trail only if
    unrealized ≥ +10% AND price > 50d SMA (income: ≥ +20%), else fixed; trail is **PERCENT-only** so

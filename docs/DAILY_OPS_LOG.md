@@ -1,4 +1,23 @@
 
+## 2026-07-14 — Dynamic stop policy shipped (9 commits) + full advisory re-tier
+
+stop_policy.yaml tiers (vol_low/medium/high by beta/ATR%/yield/sector — zero hardcoded symbols,
+pins emptied) + regime adjust (risk-on widens vol_high trail +1 only; risk-off tightens all −1) +
+lifecycle/conviction modifiers + portfolio drawdown guard (2.4% current, ok). Daily 06:45 cron:
+volatility_tier_refresh → symbol_volatility_tiers + migration-report state. Full advisor batch:
+23/25 stoppable holdings re-tiered (12 low / 4 medium / 8 high); 4 gemma sanity WARNs flagged
+in-evidence (NOC/BAH/LDOS/CACI); V routed via gpt-4o-mini fallback on the local lane once. CC v3:
+VOL badges everywhere, three-line current-vs-advisory comparison (tooltip + on-screen drawer
+panel), CURRENT LIVE BROKER STOP vs ADVISORY RECOMMENDATION labels, Apply Fixed/Trailing/
+Stop-Limit (2FA) + Keep Current Stop (new audit-only /protective-stop/keep endpoint), editable
+stop/limit/trail params (limit_price was never sent by the UI before), Policy sub-tab with ranked
+band divergences (10 stops tighter than floor, SCHG largest — all individual 2FA actions, no bulk
+control by design). Facts for tomorrow: NO Schwab lot currently holds a live stop — the SCHG and
+ANET trailing stops are on Fidelity lots; SPCX unstoppable (no daily bars). Ops: found+killed
+another orphaned portfolio_server holding :7777 (systemd crash-loop count 61k) — same failure
+mode as the morning; systemd owns the port cleanly now. Playwright sweeps green (13/13 final);
+31 policy tests; holdings guard held all session.
+
 ## 2026-07-14 — Full-site audit: 17 findings fixed (P0×6, P1×4, P2×7)
 
 Chrome-MCP audit corrective across 6 workstreams. Highlights: broker-proposals endpoint 35-50s

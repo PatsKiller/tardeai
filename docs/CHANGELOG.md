@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-07-14 — Dynamic stop policy: volatility/regime tiers, advisory surfaces, drawer controls
+
+Nine-commit release (da36bf72…2f63d77d), advisory-only throughout — swing-low anchoring, family
+floors, per-order 2FA, Fidelity manual and Alpaca paper paths all untouched (test-enforced).
+
+- **`config/stop_policy.yaml`** (NEW, operator-editable, mtime hot-reload, fail-soft to legacy
+  bands): tiers vol_low 5–8%/trail 6–8 (trail only ≥+20% gains), vol_medium 8–11/9–11, vol_high
+  9–13/10–13 + the five asset-type tiers + legacy families unchanged; `volatility_classification`
+  (beta/ATR%/yield/defensive+high-vol sectors — NO hardcoded symbols; `symbol_tier_overrides`
+  emptied); `regime_adjustments` (risk-on: vol_high trail cap +1 only; risk-off: all caps −1;
+  stale snapshot → neutral); `lifecycle_modifiers` (watch −1 / trim −2); `conviction_modifiers`
+  (stock <$10k −1); `portfolio_drawdown_guard` (90d peak, warn ≥10% / critical ≥12%, dedup 6h).
+- **Engine** — `holding_family.py`: `classify_volatility_tier()`, `volatility_tier()` (state file →
+  live enrichment cache; the cache's `volatility_w_pct` is a misparsed Finviz column and is
+  deliberately unused), `current_regime()` (10-min cache, fail-closed to neutral),
+  `protection_bounds(lifecycle_stage=, regime=, position_value_usd=, is_stock=)` with full
+  adjustment provenance. `volatility_tier_refresh.py` cron 06:45 → `symbol_volatility_tiers` DB
+  table + `volatility_tiers_latest.json`, chained with the migration-report regen.
+- **Advisor batch** rerun across the book: 23/25 stoppable holdings advised under the new tiers
+  (SPCX no daily bars; SPAXX/AMANX funds excluded by design). Sanity gate flagged 4 gemma3:4b
+  arithmetic claims (NOC/BAH/LDOS/CACI) — advisories carry the warnings.
+- **CC v3** — color-coded VOL badges on Holdings table/cards/drawers; three-line comparison
+  ("Current live stop / Advisory: Widen to|Tighten to|Set A–B% (tier + regime) / Minimum floor")
+  as badge tooltip AND on-screen drawer panel; drawer cells CURRENT LIVE BROKER STOP vs ADVISORY
+  RECOMMENDATION; buttons Apply Fixed/Advisory Trailing/Stop-Limit (2FA) + Keep Current Stop;
+  operator-editable stop/limit/trail order parameters (blank = advisory; out-of-band warning;
+  UI previously never sent `limit_price` although the backend supported it since Stage 2c);
+  Stop Management → Policy sub-tab (ranked band divergences; deliberately no mass-update control).
+- **Endpoints** — `GET /api/v2/portfolio/stop-policy-migration` (disk-read of the report state
+  file); `POST /api/v2/holdings/protective-stop/keep` (audit-only `stop_decisions` KEEP_CURRENT).
+- **Hermes/rotation** — rotation candidate evidence surfaces `stop_tier`/`volatility_tier`
+  (display only, scoring untouched).
+- **Migration** — `stop_policy_migration_report.py` + `docs/audits/STOP_POLICY_MIGRATION_2026-07-14.txt`:
+  10 live stops sit TIGHTER than their new tier floor (largest: SCHG ~$237k at 5.7% vs 9% min) —
+  each widening is an individual operator 2FA/manual action.
+- **Tests** — `tests/test_stop_policy.py`: 28 gates incl. band values, resolution order, regime
+  math, no-hardcoded-pins, no-bulk-UI, L3-hybrid-stays-OFF, no-broker-imports, fail-soft fallbacks.
+- Playwright-verified throughout (badges, Policy panel, drawer params, 13/13 final sweep).
+
 ## 2026-07-14 — Redeploy oversight-adjudication corrective (10 blocking findings closed)
 
 Corrective release against the operator oversight adjudication (verdict needs_review, 10 blocking
