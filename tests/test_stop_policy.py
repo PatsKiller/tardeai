@@ -300,6 +300,24 @@ def test_lifecycle_yaml_still_parses_with_linkage_note():
     assert "stop_rules" not in d, "stop rules must live only in stop_policy.yaml"
 
 
+def test_drawer_order_parameter_overrides():
+    """Schwab 2FA drawer offers all stop types with operator-editable parameters:
+    stop price, limit price (stop-limit), trail % — blank falls back to advisory,
+    advised_stop in the request stays the PURE advisory for the audit trail."""
+    src = (ROOT / "apps/command-center-v3/src/components/HoldingProtectionActions.tsx").read_text()
+    assert "Request Schwab fixed stop via 2FA" in src
+    assert "Request Schwab trailing stop via 2FA" in src
+    assert "Request Schwab stop-limit via 2FA" in src
+    assert "limit_price: advised.limitPrice" in src
+    assert "advised_stop: advised.pureAdvisoryStop" in src
+    for field in ("ovStop", "ovLimit", "ovTrail"):
+        assert field in src, f"override field {field} missing"
+    assert "outside the" in src and "advisory band" in src, "out-of-band trail warning missing"
+    # backend already accepts these — pin the contract
+    api = (ROOT / "scripts" / "api_v2.py").read_text()
+    assert 'limit_price = b.get("limit_price")' in api
+
+
 if __name__ == "__main__":
     for k, v in sorted(globals().items()):
         if k.startswith("test_"):

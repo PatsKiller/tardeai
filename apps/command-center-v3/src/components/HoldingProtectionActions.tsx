@@ -53,6 +53,14 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const [preflightDiff, setPreflightDiff] = useState<PreflightDiff | null>(null)
   const [advisoryOverride, setAdvisoryOverride] = useState<any>(null)
   const [pendingAction, setPendingAction] = useState<{ kind: 'request'; orderKind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET' } | { kind: 'confirm'; channel: 'web' | 'telegram' } | null>(null)
+  // Operator overrides for the order parameters (2026-07-14). Empty = advisory value, so the
+  // default flow is byte-identical to before. Advisory values are still sent as advised_stop
+  // for the audit trail; the tier band is a hint, never a hard clamp — the per-order 2FA +
+  // server protective gate remain the actual guards.
+  const [ovStop, setOvStop] = useState('')
+  const [ovLimit, setOvLimit] = useState('')
+  const [ovTrail, setOvTrail] = useState('')
+  const numOr = (v: string): number | null => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : null }
   const [liveStopOverride, setLiveStopOverride] = useState<any>(null)
   const effectivePr = advisoryOverride ? { ...pr, ...advisoryOverride } : pr
   const stop = Number(effectivePr?.stop_price) || null
@@ -164,14 +172,17 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   const logic = computeLogic(selectedKind)
 
-  /** Submission + preview use floor-reconciled advisory stop (logic.advisoryStop), not raw pr.stop_price. */
-  const advisedForKind = (kind: StopOrderKind): { advisoryStop: number | null; trailPct: number | null } => {
+  /** Submission + preview use floor-reconciled advisory stop (logic.advisoryStop), not raw pr.stop_price.
+   * Operator override fields (ovStop/ovLimit/ovTrail) overlay the advisory when non-empty; the pure
+   * advisory is kept alongside so advised_stop in the request stays the advisory for the audit trail. */
+  const advisedForKind = (kind: StopOrderKind): { advisoryStop: number | null; trailPct: number | null; limitPrice: number | null; pureAdvisoryStop: number | null } => {
     const lg = computeLogic(kind)
-    const advisoryStop = lg.advisoryStop ?? stop
-    const tr = kind === 'TRAILING'
-      ? (trail?.pct ?? (effectivePr?.suggested_trail_pct != null ? Number(effectivePr.suggested_trail_pct) : null))
-      : null
-    return { advisoryStop, trailPct: tr }
+    const pureAdvisoryStop = lg.advisoryStop ?? stop
+    const advisoryStop = (kind === 'STOP' || kind === 'STOP_LIMIT') ? (numOr(ovStop) ?? pureAdvisoryStop) : pureAdvisoryStop
+    const advTrail = trail?.pct ?? (effectivePr?.suggested_trail_pct != null ? Number(effectivePr.suggested_trail_pct) : null)
+    const tr = kind === 'TRAILING' ? (numOr(ovTrail) ?? advTrail) : null
+    const limitPrice = kind === 'STOP_LIMIT' ? (numOr(ovLimit) ?? advisoryStop) : null
+    return { advisoryStop, trailPct: tr, limitPrice, pureAdvisoryStop }
   }
 
   const trailLabelFor = (pct: number | null | undefined) => {
@@ -185,7 +196,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       return `SELL ${logic.wholeQty} ${sym} TRAILING_STOP ${trailLabelFor(tr)}% GTC`
     }
     if (px != null && (kind === 'STOP' || kind === 'STOP_LIMIT')) {
-      return `SELL ${logic.wholeQty} ${sym} ${kind === 'STOP_LIMIT' ? 'STOP_LIMIT' : 'STOP'} $${px.toFixed(2)} GTC`
+      const { limitPrice } = advisedForKind(kind)
+      const lim = kind === 'STOP_LIMIT' && limitPrice != null && limitPrice !== px ? ` LIMIT $${limitPrice.toFixed(2)}` : ''
+      return `SELL ${logic.wholeQty} ${sym} ${kind === 'STOP_LIMIT' ? 'STOP_LIMIT' : 'STOP'} $${px.toFixed(2)}${lim} GTC`
     }
     return `SELL ${logic.wholeQty} ${sym} ${kind} GTC`
   }
@@ -271,8 +284,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         symbol: sym, account: acct, qty,
         order_kind: kind,
         stop_price: kind === 'MARKET' ? null : advised.advisoryStop,
+        limit_price: advised.limitPrice,
         trail_pct: advised.trailPct,
-        advised_stop: advised.advisoryStop,
+        advised_stop: advised.pureAdvisoryStop,
         current_price: effectivePrice,
         source_broker: effectivePr?.source_broker ?? effectivePr?.broker ?? effectivePr?.account ?? effectivePr?.source_account,
         instrument_type: nextLogic.instrumentType,
@@ -724,11 +738,51 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         />
       )}
 
+      {showProtect && isSchwab && (() => {
+        const fb = effectivePr?.family_bounds || {}
+        const advTrail = trail?.pct ?? (effectivePr?.suggested_trail_pct != null ? Number(effectivePr.suggested_trail_pct) : null)
+        const tMin = fb.trail_min_pct != null ? Number(fb.trail_min_pct) : null
+        const tMax = fb.trail_max_pct != null ? Number(fb.trail_max_pct) : null
+        const trailVal = numOr(ovTrail)
+        const trailOutOfBand = trailVal != null && tMin != null && tMax != null && (trailVal < tMin || trailVal > tMax)
+        const field = (label: string, val: string, set: (v: string) => void, ph: string, warn = false, hint = '') => (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 10, color: MUTED, fontWeight: 700 }}>
+            {label}{hint ? <span style={{ fontWeight: 400 }}> {hint}</span> : null}
+            <input value={val} onChange={e => set(e.target.value.replace(/[^0-9.]/g, ''))} placeholder={ph}
+              onClick={e => e.stopPropagation()} inputMode="decimal"
+              style={{ width: 110, fontSize: 12, fontWeight: 700, padding: '4px 7px', borderRadius: 6,
+                       background: 'var(--bg2, #1e293b)', color: TEXT0,
+                       border: `1px solid ${warn ? AMBER : 'rgba(148,163,184,.35)'}` }} />
+          </label>
+        )
+        return (
+          <div onClick={e => e.stopPropagation()}
+               style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end',
+                        padding: '8px 11px', borderRadius: 8, background: 'rgba(148,163,184,.06)',
+                        border: '1px solid rgba(148,163,184,.18)' }}>
+            <span style={{ fontSize: 10, color: MUTED, fontWeight: 800, alignSelf: 'center' }}>Order parameters<br />
+              <span style={{ fontWeight: 400 }}>blank = advisory</span></span>
+            {field('Stop $ (fixed / stop-limit)', ovStop, setOvStop,
+                   logic.advisoryStop != null ? logic.advisoryStop.toFixed(2) : '—')}
+            {field('Limit $ (stop-limit only)', ovLimit, setOvLimit,
+                   numOr(ovStop) != null ? String(numOr(ovStop)!.toFixed(2)) : (logic.advisoryStop != null ? logic.advisoryStop.toFixed(2) : '—'))}
+            {field('Trail % (trailing)', ovTrail, setOvTrail,
+                   advTrail != null ? String(advTrail) : '—', trailOutOfBand,
+                   tMin != null && tMax != null ? `(tier band ${tMin}\u2013${tMax}%)` : '')}
+            {trailOutOfBand && (
+              <span style={{ fontSize: 10, color: AMBER, fontWeight: 700, flexBasis: '100%' }}>
+                ⚠ Trail {trailVal}% is outside the {String(effectivePr?.volatility_tier || logic.familyFloorLabel || 'tier').toUpperCase()} advisory band {tMin}\u2013{tMax}% — allowed, but the advisory disagrees. 2FA still required.
+              </span>
+            )}
+          </div>
+        )
+      })()}
+
       {showProtect && (
         <div style={{ marginTop: 8, display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: MUTED, fontWeight: 800 }}>Action:</span>
           {isSchwab && btn(`Request Schwab fixed stop via 2FA`, 'STOP', !preferTrail && logic.advisory_stop_is_tighter_than_existing)}
-          {isSchwab && trailPct != null && btn(`Request Schwab trailing stop via 2FA`, 'TRAILING', preferTrail)}
+          {isSchwab && (trailPct != null || numOr(ovTrail) != null) && btn(`Request Schwab trailing stop via 2FA`, 'TRAILING', preferTrail)}
           {isSchwab && btn('Request Schwab stop-limit via 2FA', 'STOP_LIMIT')}
           {/* A disabled Schwab live-stop button is NEVER silent — the reason sits right beside it. */}
           {isSchwab && liveBlocked && disabledReasonHuman && (
