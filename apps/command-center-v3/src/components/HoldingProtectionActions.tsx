@@ -548,12 +548,26 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         const lines = volTierTooltip(effectivePr, { stop: logic.liveStop, distancePct: logic.liveStopDistancePct }).split('\n')
         const adv = lines[1] || ''
         const advColor = adv.includes('within band') ? GREEN : adv.includes('Widen to') || adv.includes('Tighten to') || adv.includes('Set ') ? AMBER : TEXT0
+        // P/L drawdown at the stop: what this protection actually locks in if it fills.
+        const basisPs = (Number(h?.shares) > 0 && Number(h?.cost_basis) > 0)
+          ? Number(h.cost_basis) / Number(h.shares) : null
+        const refStop = logic.liveStop ?? logic.advisoryStop
+        const px = logic.currentPrice
+        const plNow = basisPs != null && px != null && basisPs > 0 ? (px - basisPs) / basisPs * 100 : null
+        const plAtStop = basisPs != null && refStop != null && basisPs > 0 ? (refStop - basisPs) / basisPs * 100 : null
+        const giveBack = px != null && refStop != null && px > 0 ? (px - refStop) / px * 100 : null
+        const plLine = plAtStop != null
+          ? `If the ${logic.liveStop != null ? 'current' : 'advisory'} stop fills: P/L locked ${plAtStop >= 0 ? '+' : ''}${plAtStop.toFixed(1)}%`
+            + (plNow != null ? ` (now ${plNow >= 0 ? '+' : ''}${plNow.toFixed(1)}%` : '')
+            + (giveBack != null ? `${plNow != null ? ' · ' : ' ('}gives back ${giveBack.toFixed(1)}% from current)` : (plNow != null ? ')' : ''))
+          : null
         return (
           <div style={{ marginTop: 9, padding: '9px 12px', borderRadius: 8, fontSize: 12.5, lineHeight: 1.55,
                         background: 'rgba(148,163,184,.07)', border: `1px solid ${advColor}44` }}>
             <div style={{ color: TEXT0, fontWeight: 700 }}>{lines[0]}</div>
             <div style={{ color: advColor, fontWeight: 700 }}>{lines[1]}</div>
             <div style={{ color: MUTED }}>{lines[2]}</div>
+            {plLine && <div style={{ color: plAtStop != null && plAtStop < 0 ? RED : GREEN, fontWeight: 700 }}>{plLine}</div>}
           </div>
         )
       })()}

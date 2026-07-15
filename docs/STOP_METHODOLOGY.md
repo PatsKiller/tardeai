@@ -127,6 +127,41 @@ Build marker: `cc-v3 stop-lifecycle-close 2026-07-01`.
   doesn't dead-end placement. The daily advisor re-run re-floors the stored value.
 
 ## 10. Cross-references
+### Drawdown treatment (2026-07-14)
+Three distinct drawdown concepts, each handled explicitly:
+1. **Portfolio drawdown** — `stop_health_check._portfolio_drawdown_guard()`: portfolio value vs its
+   90-day peak (`daily_system_metrics`); warning ≥10%, critical ≥12% (Telegram + SIEM + Hermes,
+   symbol `PORTFOLIO`, dedup 6h). Advisory alert only — it never moves a stop.
+2. **P/L locked at the stop (per position)** — the drawer's comparison panel shows
+   `If the current|advisory stop fills: P/L locked ±X% (now ±Y% · gives back Z% from current)`
+   computed from cost basis, live price and the effective stop. This is the number that tells you
+   what a refreshed stop actually protects.
+3. **Drawdown-from-peak as a SIZING input — deliberately NOT used.** Give-back bounding is what
+   trailing stops do; sizing stops off recent peaks is the L3 hybrid-trailing model, and it
+   **failed the backtest three times** (net-negative on swing/momentum). Position P/L enters the
+   methodology only through the trail-eligibility thresholds (trail on ≥+9% gains, income ≥+20%).
+
+### Setting a TIGHTER (or any custom) stop — UI and API
+**UI:** drawer → Order parameters → type the stop price (or trail %) → Apply … (2FA). Values
+tighter than the tier floor show the amber out-of-band warning but are allowed — the band is
+advisory; the operator decides.
+**API (Schwab, same 2FA flow the UI uses):**
+```
+# STEP 1 — request (builds intent, runs protective gate, sends the 2FA code; places NOTHING)
+curl -X POST :7777/api/v2/holdings/protective-stop -H 'Content-Type: application/json' -d '{
+  "symbol":"SCHG","account":"schwab_taxable","qty":100,
+  "order_kind":"STOP","stop_price":33.10,          # tighter than advisory — operator choice
+  "advised_stop":31.47,"current_price":34.58,
+  "quote_at":"<fresh ISO timestamp>","whole_share_confirmed":true}'
+# → {mode:"awaiting_approval", intent_id}
+# STEP 2 — confirm with EITHER channel (web typed-ticker + emailed 6-digit code, or Telegram)
+curl -X POST :7777/api/v2/holdings/protective-stop/confirm -d '{"intent_id":"...","channel":"web",
+  "ticker_confirmation":"SCHG","code":"123456"}'
+```
+`order_kind` also accepts `STOP_LIMIT` (+`limit_price`) and `TRAILING_STOP` (+`trail_pct`).
+A stale `quote_at` is rejected (stale-quote gate); Fidelity accounts return a manual ticket
+instead of a 2FA request; nothing can be placed without STEP 2.
+
 ### Operator surfaces (2026-07-14, commits da36bf72…2f63d77d)
 - **VOL badges** — color-coded low/medium/high (green/amber/red) on every Holdings-table row, holdings
   card and drawer, sourced from the advisory `volatility_tier`.
