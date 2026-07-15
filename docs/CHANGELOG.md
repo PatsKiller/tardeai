@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-15 — Research Intelligence v1 (CC v3 first-class cockpit)
+
+Mature Research Intelligence surface replacing the immature “Research Topics list” as the primary operator cockpit. **Aggregates existing Hermes / auto-research / topic_monitor** — does not reinvent ingestion.
+
+- **Taxonomy** — `config/research_intelligence_taxonomy.json` (9 categories: retirement_tax, dividend_income, sector_thematic, macro_geo, company_ticker, compounding_wealth, risk_regime, catalyst_event, academic_pro + subcategories).
+- **Aggregator** — `scripts/lib/research_intelligence.py`: rule + research_type classification, holdings join, priority, source extraction, `build_feed()` with focus-boost sort and **priority lanes from full match set** (Retirement / Dividends / Macro-Sector never empty solely because page-1 is stop-noise).
+- **API** — `GET /api/v2/research-intelligence` (filters: category, q, priority, symbol, holdings_only, limit); `GET /api/v2/research-intelligence/taxonomy`.
+- **CC v3** — `ResearchIntelligenceHub.tsx`: KPI strip, priority lanes, taxonomy chips, search, high/holdings filters, card grid, DetailDrawer drill; Nav **Research Intel**; `/research` → `/research-intelligence`.
+- **Docs** — `docs/architecture/RESEARCH_INTELLIGENCE_V1.md` (taxonomy, architecture, data model, UI, pipeline, integration).
+
 ## 2026-07-15 — Transfer-aware performance, Fidelity period fills, daily YTD pin
 
 Rollover / Roth-ladder resilience so mid-year account moves no longer break YTD or blank Fidelity weeks/months.

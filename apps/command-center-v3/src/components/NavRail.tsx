@@ -19,6 +19,7 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
     label: 'Intel',
     hubs: [
       { to: '/agents', label: 'Agents' },
+      { to: '/research-intelligence', label: 'Research Intel' },
       { to: '/intelligence', label: 'Intelligence' },
       { to: '/hermes', label: 'Hermes' },
       { to: '/reports', label: 'Reports', hardNav: true },

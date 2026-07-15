@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-15 (Transfer-aware performance + daily YTD pin; share reconciliation)
+**Updated:** 2026-07-15 (Research Intelligence v1 cockpit; transfer-aware performance + YTD pin)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -83,6 +83,15 @@
 | `docs/project/ROTATION_PRODUCTION_READINESS_2026-06-19.md` | Rotation advisory readiness — trust_verdict, dual-LLM, no-override rule | Active (2026-06-19) |
 | `docs/project/V3_TRUST_HARDENING_AND_ROTATION_INTELLIGENCE.md` | v3 trust hardening + rotation intelligence baseline | Active (2026-06-16) |
 | `docs/project/ROTATION_LLM_ADVISOR.md` | `rotation_llm_advisor.py` runbook — advisory only, safety contract | Active (2026-06-18) |
+
+### Research Intelligence (CC v3)
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/architecture/RESEARCH_INTELLIGENCE_V1.md` | **Research Intelligence v1** — taxonomy, architecture, data model, UI, ingestion reuse, API, nav | Active (2026-07-15) |
+| `config/research_intelligence_taxonomy.json` | Canonical category taxonomy (9 top-level + subcategories) | Active (2026-07-15) |
+| `scripts/lib/research_intelligence.py` | Aggregator — classify + `build_feed` (Hermes / topics / topic_monitor) | Active (2026-07-15) |
+| `GET /api/v2/research-intelligence` | Unified searchable feed + priority lanes | Active (2026-07-15) |
+| `GET /api/v2/research-intelligence/taxonomy` | Taxonomy JSON for UI | Active (2026-07-15) |
 
 ### Hermes Closed Loop & Self-Learning
 | Document | Purpose | Status |
@@ -176,6 +185,7 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 
 | Date | Change |
 |------|--------|
+| 2026-07-15 | Research Intelligence v1: taxonomy + aggregator + `/api/v2/research-intelligence` + CC v3 Research Intel hub; `RESEARCH_INTELLIGENCE_V1.md`. |
 | 2026-07-05 | Hermes maturity hardening: learning scorecard, evidence gates, counterfactuals, do-no-harm report, symbol journey extensions, advisory-only governance; `HERMES_CLOSED_LOOP_TRACEABILITY.md` + CHANGELOG updated. |
 | 2026-07-04 | PR #33 canary hardening: reconciled after-hours policy (override-required), per-account arming, `protective_stop_canary.py` lifecycle/read-back; runbook + CHANGELOG updated; build marker `cc-v3 stop-evidence PR33 2026-07-04`. |
 | 2026-06-30 | Expanded `MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` to full policy text; cross-linked from `STOP_METHODOLOGY.md`. |

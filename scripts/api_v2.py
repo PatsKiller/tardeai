@@ -18288,6 +18288,56 @@ def _portfolio_cadence_status():
                        "safety_net_watchdog": "untouched"}}
 
 
+def _research_intelligence_feed(query=None):
+    """GET /api/v2/research-intelligence — taxonomy-tagged Research Intelligence cockpit.
+
+    Aggregates Hermes research, auto-research / operator topics, and topic_monitor under
+    config/research_intelligence_taxonomy.json. Query: category, q, priority, symbol,
+    holdings_only, limit.
+    """
+    try:
+        from lib.research_intelligence import build_feed, load_taxonomy
+        q = query if isinstance(query, dict) else (_current_query or {})
+        def _one(k, default=None):
+            v = q.get(k, default)
+            if isinstance(v, list):
+                v = v[0] if v else default
+            return v
+        hold_only = str(_one("holdings_only") or "").lower() in ("1", "true", "yes")
+        try:
+            lim = int(_one("limit") or 80)
+        except (TypeError, ValueError):
+            lim = 80
+        feed = build_feed(
+            db_query=_db_query,
+            category=_one("category") or None,
+            q=_one("q") or None,
+            priority=_one("priority") or None,
+            symbol=_one("symbol") or None,
+            limit=lim,
+            holdings_only=hold_only,
+        )
+        # JSON-clean nested values
+        def _clean(obj):
+            if isinstance(obj, dict):
+                return {k: _clean(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_clean(x) for x in obj]
+            return _json_clean(obj)
+        return _clean(feed)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240], "items": [], "taxonomy": {}, "stats": {}}
+
+
+def _research_intelligence_taxonomy():
+    """GET /api/v2/research-intelligence/taxonomy"""
+    try:
+        from lib.research_intelligence import load_taxonomy
+        return {"ok": True, "taxonomy": load_taxonomy()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _research_topics_unified():
     """GET /api/v2/research-topics — unified view of user research + topic monitor."""
     user_topics = _db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or []
@@ -29857,6 +29907,8 @@ ROUTES = {
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
     "/api/v2/research-topics": lambda: _research_topics_unified(),
     "/api/v2/research-topics/registry": lambda: _research_topics_registry(),
+    "/api/v2/research-intelligence": lambda: _research_intelligence_feed(_current_query),
+    "/api/v2/research-intelligence/taxonomy": lambda: _research_intelligence_taxonomy(),
     "/api/v2/atm/gate-status": lambda: _atm_gate_status(),
     "/api/v2/atm/schwab-readiness": lambda: _atm_schwab_readiness(),
     "/api/v2/atm/actionable-proposals": lambda: _atm_actionable_proposals(),

@@ -50,7 +50,8 @@ Generated: 2026-05-27 | Total pages: 67 | Nav groups: 11
 ### Research
 | Route | Label | What it does |
 |---|---|---|
-| `/v2/research-topics` | Research Intelligence | Research topic tracking. Iris-managed knowledge base, gap detection |
+| `/v3/research-intelligence` (**CC v3 canonical**) | Research Intel | **Taxonomy-tagged intelligence cockpit** — Hermes + auto-research + topic_monitor; priority lanes (Retirement, Dividends, Macro/Sector); search/filter; holdings-aware. API: `/api/v2/research-intelligence` |
+| `/v2/research-topics` | Research Topics (legacy list) | Research topic tracking. Iris-managed knowledge base, gap detection — linked from RI as “Legacy Research Topics” |
 | `/v2/topic-monitor` | Topic Monitor | Topic freshness monitoring. Stale topics, coverage gaps |
 | `/v2/research` | Ticker Research | Per-ticker research. Analyst data, financials, news, earnings |
 | `/v2/intelligence` | Intelligence Hub | Intelligence aggregation. Sources, entities, sentiment |
