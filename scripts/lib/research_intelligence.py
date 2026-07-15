@@ -56,10 +56,11 @@ _CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
         r"catalyst|earnings|news_momentum|breakout|event.?driven|form.?4",
         re.I,
     )),
-    # Avoid matching ticker jargon "growth compounder" / "core compounder"
+    # Avoid "growth compounder" / "core compounder" ticker jargon (no bare "compound")
     ("compounding_wealth", re.compile(
-        r"\bcompounding\b|long.?term wealth|asset allocation|bucket strateg|"
-        r"drawdown plan|wealth framework|multi.?year wealth|wealth building",
+        r"\bcompounding\b|\bcompound interest\b|long.?term wealth|asset allocation|"
+        r"bucket strateg|drawdown plan|wealth framework|multi.?year (wealth|plan|horizon)|"
+        r"wealth building|permanent portfolio|financial independence|\bfire\b strategy",
         re.I,
     )),
     ("academic_pro", re.compile(
@@ -547,9 +548,8 @@ def build_feed(
                 sym = m.group(1)
         is_held = bool(sym and sym in held)
         primary = cats[0] if cats else ""
+        # Early filters that define the universe (not taxonomy chips / freshness chips)
         if holdings_only and not is_held and primary not in ("retirement_tax", "macro_geo"):
-            continue
-        if not _cat_ok(cats):
             continue
         if symbol and sym != symbol.upper():
             continue
@@ -630,8 +630,6 @@ def build_feed(
                 if m and m.group(1) in held:
                     sym = m.group(1)
         is_held = bool(sym and sym in held)
-        if not _cat_ok(cats):
-            continue
         if symbol and (not sym or sym != symbol.upper()):
             continue
         blob = f"{r.get('topic')} {r.get('latest_findings')} {r.get('original_message')}"
@@ -686,8 +684,6 @@ def build_feed(
             " ".join(r.get("strategy_tags") or []),
             r.get("personal_context"),
         )
-        if not _cat_ok(cats):
-            continue
         blob = f"{r.get('display_name')} {r.get('topic_id')} {r.get('personal_context') or ''}"
         if q and q.lower() not in blob.lower():
             continue
@@ -737,17 +733,39 @@ def build_feed(
         item["priority"] = pri
         items.append(item)
 
-    # ── Filters: freshness tier, starred, sentiment, source ────────────
+    # Universe stats FIRST (before chip filters) so taxonomy counts never go blank
+    # when user selects an empty category like compounding_wealth.
+    cat_counts: dict[str, int] = {}
+    cat_counts_any: dict[str, int] = {}
+    tier_counts_all: dict[str, int] = {}
+    for it in items:
+        pc = it.get("primary_category") or (it.get("categories") or [None])[0]
+        if pc:
+            cat_counts[pc] = cat_counts.get(pc, 0) + 1
+        for c in it.get("categories") or []:
+            cat_counts_any[c] = cat_counts_any.get(c, 0) + 1
+        t = it.get("freshness_tier") or "aging"
+        tier_counts_all[t] = tier_counts_all.get(t, 0) + 1
+
+    universe_n = len(items)
+
+    # Chip filters (category / freshness / priority / star) applied AFTER counts
+    filtered = list(items)
+    if category:
+        if primary_only:
+            filtered = [i for i in filtered if i.get("primary_category") == category]
+        else:
+            filtered = [i for i in filtered if category in (i.get("categories") or [])]
     if freshness:
-        items = [i for i in items if i.get("freshness_tier") == freshness]
+        filtered = [i for i in filtered if i.get("freshness_tier") == freshness]
     if starred_only:
-        items = [i for i in items if i.get("starred")]
+        filtered = [i for i in filtered if i.get("starred")]
     if sentiment:
-        items = [i for i in items if i.get("sentiment") == sentiment]
+        filtered = [i for i in filtered if i.get("sentiment") == sentiment]
     if source_system:
-        items = [i for i in items if i.get("source_system") == source_system]
+        filtered = [i for i in filtered if i.get("source_system") == source_system]
     if priority:
-        items = [i for i in items if i.get("priority") == priority]
+        filtered = [i for i in filtered if i.get("priority") == priority]
 
     # Sort: focus pillars → priority → holdings → freshness
     pri_rank = {"high": 0, "normal": 1, "low": 2}
@@ -755,11 +773,10 @@ def build_feed(
     _FOCUS = ("retirement_tax", "dividend_income", "macro_geo", "sector_thematic")
 
     def _focus_boost(it: dict) -> int:
-        cats = it.get("categories") or []
-        # Primary category focus wins harder
         pc = it.get("primary_category")
         if pc in _FOCUS:
             return _FOCUS.index(pc)
+        cats = it.get("categories") or []
         for i, c in enumerate(_FOCUS):
             if c in cats:
                 return 10 + i
@@ -775,25 +792,12 @@ def build_feed(
             it.get("freshness_hours") if it.get("freshness_hours") is not None else 9999,
         )
 
-    items.sort(key=_sk)
-
-    # Chip counts = PRIMARY category only (matches taxonomy filter behavior)
-    cat_counts: dict[str, int] = {}
-    cat_counts_any: dict[str, int] = {}
-    tier_counts: dict[str, int] = {}
-    for it in items:
-        pc = it.get("primary_category") or (it.get("categories") or [None])[0]
-        if pc:
-            cat_counts[pc] = cat_counts.get(pc, 0) + 1
-        for c in it.get("categories") or []:
-            cat_counts_any[c] = cat_counts_any.get(c, 0) + 1
-        t = it.get("freshness_tier") or "aging"
-        tier_counts[t] = tier_counts.get(t, 0) + 1
+    filtered.sort(key=_sk)
 
     def _lane(pred, n: int = 16) -> list[dict[str, Any]]:
+        # Lanes from full universe (not chip-filtered) so Retirement desk still works
         return [i for i in items if pred(i)][:n]
 
-    # Lanes use primary category so "Income" doesn't pull Roth-tagged dividend bleed
     priority_lanes = {
         "retirement": _lane(lambda i: i.get("primary_category") == "retirement_tax"),
         "dividends": _lane(lambda i: i.get("primary_category") == "dividend_income"),
@@ -802,7 +806,12 @@ def build_feed(
         )),
     }
 
-    page = items[:limit]
+    page = filtered[:limit]
+    tier_counts_view: dict[str, int] = {}
+    for it in filtered:
+        t = it.get("freshness_tier") or "aging"
+        tier_counts_view[t] = tier_counts_view.get(t, 0) + 1
+
     high_n = sum(1 for i in page if i.get("priority") == "high")
     held_n = sum(1 for i in page if i.get("is_holdings"))
     refresh_n = sum(1 for i in page if i.get("needs_refresh"))
@@ -811,7 +820,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "2.1.1",
+        "version": "2.1.2",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -835,15 +844,19 @@ def build_feed(
         },
         "stats": {
             "returned": len(page),
-            "matched": len(items),
+            "matched": len(filtered),
+            "universe": universe_n,
             "high_priority": high_n,
             "holdings_linked": held_n,
             "needs_refresh": refresh_n,
             "archived_in_view": arch_n,
             "starred_in_view": star_n,
+            # Always full-universe primary counts (chips stay populated)
             "by_category": cat_counts,
             "by_category_any": cat_counts_any,
-            "by_freshness": tier_counts,
+            # Masthead freshness = universe (not empty when chip has 0 matches)
+            "by_freshness": tier_counts_all,
+            "by_freshness_filtered": tier_counts_view,
             "holdings_universe": sorted(held)[:40],
             "holdings_count": len(held),
             "lane_counts": {k: len(v) for k, v in priority_lanes.items()},
@@ -851,9 +864,9 @@ def build_feed(
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2.1.1 — taxonomy chips filter by primary category; "
-            "title drives classification (personal notes don't re-tag); narrative + freshness. "
-            "Archive never deletes; include_archived=1 for history."
+            "Research Intelligence v2.1.2 — taxonomy/freshness chips filter the story list; "
+            "chip counts always reflect the full desk universe. Primary-category match. "
+            "Empty category (e.g. compounding) shows Clear filters — not a blank desk."
         ),
     }
 

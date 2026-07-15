@@ -544,26 +544,47 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
 
   const lanes = data?.priority_lanes || {}
   const stats = data?.stats || {}
+  // Universe freshness for masthead (not zeroed by empty category filter)
   const tierCounts = stats.by_freshness || {}
 
+  const hasActiveFilters = !!(
+    category || priority || holdingsOnly || includeArchived || starredOnly
+    || freshness || sentiment || q.trim() || lane !== 'all'
+  )
+
+  const clearFilters = useCallback(() => {
+    setQ('')
+    setCategory(null)
+    setPriority(null)
+    setHoldingsOnly(false)
+    setIncludeArchived(false)
+    setStarredOnly(false)
+    setFreshness(null)
+    setSentiment(null)
+    setLane('all')
+  }, [])
+
   const displayItems: Item[] = useMemo(() => {
-    // Client-side lane filter always uses PRIMARY category (matches chip semantics)
-    let base = items
+    // Lanes use server priority_lanes when available (full universe, not empty filter page)
     if (lane === 'retirement') {
-      base = items.filter(i => i.primary_category === 'retirement_tax')
-    } else if (lane === 'dividends') {
-      base = items.filter(i => i.primary_category === 'dividend_income')
-    } else if (lane === 'macro_sector') {
-      base = items.filter(i =>
+      const laneItems = (lanes.retirement as Item[] | undefined) || []
+      if (laneItems.length) return laneItems.map(it => ({ ...it, ...(localPatch[it.id] || {}) }))
+      return items.filter(i => i.primary_category === 'retirement_tax')
+    }
+    if (lane === 'dividends') {
+      const laneItems = (lanes.dividends as Item[] | undefined) || []
+      if (laneItems.length) return laneItems.map(it => ({ ...it, ...(localPatch[it.id] || {}) }))
+      return items.filter(i => i.primary_category === 'dividend_income')
+    }
+    if (lane === 'macro_sector') {
+      const laneItems = (lanes.macro_sector as Item[] | undefined) || []
+      if (laneItems.length) return laneItems.map(it => ({ ...it, ...(localPatch[it.id] || {}) }))
+      return items.filter(i =>
         i.primary_category === 'macro_geo' || i.primary_category === 'sector_thematic')
     }
-    // Extra safety: if a taxonomy chip is selected, enforce primary match client-side
-    // (in case of stale server or multi-tag bleed)
-    if (category) {
-      base = base.filter(i => i.primary_category === category)
-    }
-    return base
-  }, [lane, items, category])
+    // Category already applied server-side; keep items as returned
+    return items
+  }, [lane, items, lanes, localPatch])
 
   const featured = useMemo(() => {
     // Prefer retirement with body, else first high-priority narrative
@@ -635,7 +656,8 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
             <div style={{ ...hubSubtitle(terminalUi), fontSize: 13.5, lineHeight: 1.5, color: C.muted, maxWidth: 560 }}>
               Editorial briefings with takeaways, bull/bear framing, and clear next steps —
               retirement, dividends, macro, and holdings-aware research in one desk.
-              {stats.matched != null && ` · ${stats.matched} stories in filter`}
+              {stats.matched != null && ` · ${stats.matched} in view`}
+              {stats.universe != null && stats.universe !== stats.matched && ` · ${stats.universe} on desk`}
               {loading ? ' · loading…' : ''}
               {data?.version ? ` · v${data.version}` : ''}
             </div>
@@ -648,11 +670,12 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               <Link to="/risk" style={navLink('#fca5a5')}>Risk →</Link>
               <button type="button" onClick={() => refetch()} style={refreshBtn}>↻ Refresh desk</button>
             </div>
-            <div style={{ display: 'flex', gap: 14, fontSize: 12, color: C.muted }}>
+            <div style={{ display: 'flex', gap: 14, fontSize: 12, color: C.muted, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <span><b style={{ color: C.live }}>{tierCounts.live || 0}</b> live</span>
               <span><b style={{ color: C.fresh }}>{tierCounts.fresh || 0}</b> fresh</span>
-              <span><b style={{ color: C.stale }}>{stats.needs_refresh ?? 0}</b> due</span>
-              <span><b style={{ color: C.retire }}>{stats.lane_counts?.retirement ?? retStats?.count ?? '—'}</b> retirement</span>
+              <span><b style={{ color: C.aging }}>{tierCounts.aging || 0}</b> aging</span>
+              <span><b style={{ color: C.stale }}>{tierCounts.stale || 0}</b> stale</span>
+              <span><b style={{ color: C.retire }}>{stats.lane_counts?.retirement ?? stats.by_category?.retirement_tax ?? retStats?.count ?? '—'}</b> retirement</span>
             </div>
           </div>
         </div>
@@ -724,10 +747,34 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
           <SoftChip label="Archive" color={C.archive} active={includeArchived}
             onClick={() => setIncludeArchived(v => !v)} />
           {(['live', 'fresh', 'aging', 'stale'] as const).map(t => (
-            <SoftChip key={t} label={t} color={TIER[t].color} active={freshness === t}
+            <SoftChip key={t} label={`${t}${tierCounts[t] != null ? ` ${tierCounts[t]}` : ''}`}
+              color={TIER[t].color} active={freshness === t}
               onClick={() => setFreshness(freshness === t ? null : t)} />
           ))}
+          {hasActiveFilters && (
+            <button type="button" onClick={clearFilters} style={{
+              fontSize: 11, fontWeight: 750, padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+              border: `1px solid ${C.lineStrong}`, background: 'rgba(255,255,255,0.04)', color: C.ink,
+            }}>
+              Clear all filters
+            </button>
+          )}
         </div>
+        {hasActiveFilters && (
+          <div style={{ marginTop: 10, fontSize: 12, color: C.soft }}>
+            Active:{' '}
+            {lane !== 'all' && <span style={{ color: C.accent }}>lane={lane} </span>}
+            {category && <span style={{ color: CAT_TINT[category] || C.accent }}>category={catMeta[category]?.label || category} </span>}
+            {freshness && <span style={{ color: TIER[freshness]?.color || C.muted }}>freshness={freshness} </span>}
+            {priority && <span>priority={priority} </span>}
+            {holdingsOnly && <span>holdings </span>}
+            {starredOnly && <span>starred </span>}
+            {q.trim() && <span>q=“{q.trim()}” </span>}
+            {stats.matched === 0 && (
+              <span style={{ color: C.stale }}> · no stories match — clear filters or pick another chip</span>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Stale / retirement SLO banner */}
@@ -775,12 +822,34 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               padding: 48, textAlign: 'center', color: C.muted, fontSize: 13,
               border: `1px dashed ${C.line}`, borderRadius: 16, background: C.card,
             }}>
-              No stories match these filters.
-              {lane === 'retirement' && (
-                <div style={{ marginTop: 10, color: C.soft }}>
-                  Seed retirement topics, then run topic ingestion for full article coverage.
+              <div style={{ fontWeight: 750, color: C.ink, marginBottom: 8 }}>No stories match these filters</div>
+              {category === 'compounding_wealth' && (
+                <div style={{ marginBottom: 10, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.5 }}>
+                  <strong style={{ color: '#5eead4' }}>Compounding & long-term wealth</strong> has no primary-tagged
+                  briefs yet (we no longer mis-tag “growth compounder” tickers as compounding).
+                  Desk still has {stats.universe ?? stats.by_category?.retirement_tax ?? 'many'} other stories —
+                  clear filters or open Retirement / Dividends.
                 </div>
               )}
+              {freshness === 'live' && (tierCounts.live || 0) === 0 && (
+                <div style={{ marginBottom: 10, lineHeight: 1.5 }}>
+                  Nothing is in the <strong style={{ color: C.live }}>live</strong> tier (≤2h) right now.
+                  Try <strong style={{ color: C.fresh }}>fresh</strong> or clear freshness.
+                </div>
+              )}
+              {category && category !== 'compounding_wealth' && (
+                <div style={{ marginBottom: 8 }}>
+                  Category <strong>{catMeta[category]?.label || category}</strong> has{' '}
+                  {stats.by_category?.[category] ?? 0} primary items on the full desk
+                  {stats.matched === 0 ? ' but none survive the other active filters' : ''}.
+                </div>
+              )}
+              <button type="button" onClick={clearFilters} style={{
+                marginTop: 8, fontSize: 12, fontWeight: 750, padding: '8px 16px', borderRadius: 10,
+                cursor: 'pointer', border: `1px solid ${C.accent}55`, background: C.accentSoft, color: C.accent,
+              }}>
+                Clear all filters → show full desk
+              </button>
             </div>
           ) : (
             <>
