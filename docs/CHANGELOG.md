@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-15 — Transfer-aware performance, Fidelity period fills, daily YTD pin
+
+Rollover / Roth-ladder resilience so mid-year account moves no longer break YTD or blank Fidelity weeks/months.
+
+- **Data model** — `migrations/2026_07_23_position_transfer_history.sql`: `position_transfer_history`, `position_normalization_log`, `position_transfer_notifications`. Holdings rows gain `original_source_account`, `current_account`, `transfer_history[]`, dual share fields, `performance_adjusted` / normalize status notes.
+- **Normalize pipeline** — `scripts/lib/position_transfer_normalize.py` + hook via `cost_basis_transfer.process_holdings_change` on every `protected_holdings_write` (Schwab/SnapTrade). Classifies `fidelity_to_schwab` / `traditional_to_roth` / internal; auto basis carry-forward when high confidence; DB audit + stop-impact flags; operator notifications.
+- **Performance** — `portfolio_period_quality.py`: household residual YTD (ex-transfers); Fidelity 401k↔rollover **linked economic sleeve** fills missing 1W/1M/3M/6M/1Y; portfolio periods = **Σ account display** (Fidelity no longer dropped from 1W/1M); outlier snap filter (e.g. partial 2026-07-14 wipe); **daily YTD pin** `data/portfolios/state/ytd_daily_pin.json` (first compute freezes ≈ market; `YTD_PIN_FORCE=1` to recompute).
+- **API** — `GET /api/v2/holdings/transfer-history`, `transfer-notifications`, `POST …/dismiss`, `POST …/transfer-detect`; holdings payload includes transfer provenance fields.
+- **CC v3** — Returns panel account matrix + transfer notes/notifications; holdings provenance chip; position detail transfer history; look-through allocation/sector normalize and PARTIAL stop coverage UX from the same release window.
+- **History rebuild** — `portfolio_performance_history.py` includes `fidelity_rollover_ira` + linked 401k snapshot anchors.
+- **Docs** — `docs/features/transfer-aware-performance.md`.
+- **Tests** — `tests/test_position_transfer_normalize.py` (+ existing cost-basis transfer tests).
+
 ## 2026-07-14 — Dynamic stop policy: volatility/regime tiers, advisory surfaces, drawer controls
 
 Nine-commit release (da36bf72…2f63d77d), advisory-only throughout — swing-low anchoring, family

@@ -273,22 +273,26 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     except Exception as _e:
         print(f"  [holdings-change] trigger failed (non-fatal): {str(_e)[:120]}")
 
-    # Cross-account transfer detection — when a ticker leaves one IRA/broker and lands in another,
-    # carry forward cost basis history into overrides + destination row tags (never silent fabrication).
+    # Cross-account transfer detection + normalization (Fidelity→Schwab rollover, Trad→Roth ladder).
+    # Carry cost basis, stamp transfer_history / original_source_account, persist DB audit, and
+    # re-write holdings when any provenance/basis change was applied (never silent fabrication).
     if not skip_transfer_detect and prior_doc is not None:
         try:
             from lib.cost_basis_transfer import process_holdings_change
             xfer = process_holdings_change(prior_doc, new_holdings, sync_source=source, apply=True)
             if xfer.get("events"):
-                print(f"  [cost-basis-transfer] {xfer.get('summary')}")
+                print(f"  [transfer-normalize] {xfer.get('summary')}")
+                if xfer.get("stop_flags"):
+                    print(f"  [transfer-normalize] {len(xfer['stop_flags'])} stop(s) may need replace-mode resize")
                 tagged = xfer.get("holdings_doc")
-                if tagged and xfer.get("applied_overrides"):
+                # Rewrite when overrides applied OR positions were provenance-normalized
+                if tagged and (xfer.get("applied_overrides") or xfer.get("normalized") or xfer.get("holdings_tagged")):
                     fd2, tmp2 = tempfile.mkstemp(dir=str(HP.parent), suffix=".tmp")
                     with os.fdopen(fd2, "w") as f:
                         json.dump(tagged, f, indent=2, default=str)
                     os.replace(tmp2, HP)
         except Exception as _e:
-            print(f"  [cost-basis-transfer] detect failed (non-fatal): {str(_e)[:120]}")
+            print(f"  [transfer-normalize] detect failed (non-fatal): {str(_e)[:120]}")
 
     return {"wrote": True, "status": "ok", "total_value": v, "position_count": n, "basis_flags": flagged}
 

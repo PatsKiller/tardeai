@@ -25,7 +25,8 @@ interface Props { onFocusHolding?: (symbol: string, account: string) => void }
 
 type Row = {
   symbol: string; account: string; broker: string; route: string; stop_type: string; stop_source: string
-  current_price: number; qty: number; broker_stop: number | null; planned_stop: number | null; stop: number
+  current_price: number; qty: number; stop_qty?: number | null; coverage?: string | null
+  broker_stop: number | null; planned_stop: number | null; stop: number
   divergence: string | null; distance_pct: number | null; distance_atr: number | null; distance_r: number | null
   distance_dollars?: number | null; unrealized_r?: number | null
   news_title?: string | null; news_source?: string | null; news_at?: string | null
@@ -644,6 +645,22 @@ export default function StopManagement({ onFocusHolding }: Props) {
                         ? <span style={{ color: GREEN, fontWeight: 700 }}>● {r.is_trailing ? 'TRAILING' : r.stop_type}<div style={{ fontSize: 9.5, color: MUTED, fontWeight: 400 }}>{SRC_LABEL[r.stop_source] || r.stop_source}</div></span>
                         : <span style={{ color: AMBER }}>○ none<div style={{ fontSize: 9.5, color: MUTED }}>{r.planned_stop != null ? 'planned only' : '—'}</div></span>}
                       {r.trailing_should_be_active ? <span style={{ color: AMBER }} title="trailing eligible but not active"> ⚠</span> : null}
+                      {(r.coverage === 'partial' || r.coverage === 'oversized') && r.stop_qty != null && (
+                        <div
+                          data-testid="sm-stop-size-badge"
+                          title={r.coverage === 'partial'
+                            ? `Stop covers only ${r.stop_qty} of ${r.qty} sh held — click Adjust → Update size via 2FA`
+                            : `Stop ${r.stop_qty} sh > held ${r.qty} — resize via 2FA`}
+                          style={{
+                            marginTop: 3, display: 'inline-block', fontSize: 9.5, fontWeight: 900, padding: '2px 6px', borderRadius: 4,
+                            color: r.coverage === 'oversized' ? RED : AMBER,
+                            background: r.coverage === 'oversized' ? 'rgba(239,68,68,.18)' : 'rgba(245,158,11,.18)',
+                            border: `1px solid ${r.coverage === 'oversized' ? RED : AMBER}`,
+                          }}
+                        >
+                          {r.coverage === 'partial' ? 'PARTIAL' : 'OVERSIZED'} · {r.stop_qty}/{r.qty} sh
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '7px 9px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                       <span style={{ color: r.broker_stop != null ? GREEN : MUTED }}>{fmtStop(r.broker_stop)}</span> / <span style={{ color: AMBER }}>{fmtStop(r.planned_stop)}</span>
@@ -721,6 +738,18 @@ export default function StopManagement({ onFocusHolding }: Props) {
                           style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', marginRight: 5, whiteSpace: 'nowrap',
                             border: `1px solid ${AMBER}`, background: `${AMBER}20`, color: AMBER }}>
                           🔒 Set {r.account.startsWith('fidelity') ? 'manual' : '2FA'} {fmtStop(r.planned_stop)}
+                        </button>
+                      )}
+                      {(r.coverage === 'partial' || r.coverage === 'oversized') && (
+                        <button
+                          onClick={() => openAdjust(r, true)}
+                          title={`Replace stop to full ${Math.floor(r.qty)} sh via same 2FA path (cancel + re-place)`}
+                          style={{
+                            fontSize: 11, fontWeight: 900, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', marginRight: 5,
+                            border: `1px solid ${AMBER}`, background: `${AMBER}22`, color: AMBER, whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Update size → {Math.floor(r.qty)}
                         </button>
                       )}
                       <button onClick={() => openAdjust(r, false)} style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${BLUE}`, background: `${BLUE}18`, color: BLUE, whiteSpace: 'nowrap' }}>Adjust stop</button>

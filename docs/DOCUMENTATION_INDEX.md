@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-13 (Redeploy Desk REOPENED — implementation-truth reconciliation + P0 fixture audit)
+**Updated:** 2026-07-15 (Transfer-aware performance + daily YTD pin; share reconciliation)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -47,6 +47,12 @@
 | `docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md` | **Ephemeral artifact policy** — Playwright/visual captures go to `artifacts/playwright/<run_id>/` (gitignored, Drive-excluded, 7-day retention via `scripts/artifacts_retention.sh`); never under `docs/`, never to canonical Drive | Active (2026-07-14) |
 | `docs/v4_1_deployment_log.md` | **Living deployment log** — fleet state, phase completions, 2026-08-11 gemma4 eval gate | Active — created 2026-06-19 (d09a653c) |
 | `docs/_archive/prompts/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md` | CC execution prompt for fleet deploy | **Archived** *(was listed active; lives in _archive)* |
+
+### Portfolio truth & performance
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/features/share-reconciliation.md` | **Share drift / DRIP** — system vs broker shares, approval workflow, API | Active (2026-07-15) |
+| `docs/features/transfer-aware-performance.md` | **Rollovers / Roth ladder / YTD** — transfer history, auto-normalize, residual ≈ market, Fidelity linked sleeve, daily YTD pin | Active (2026-07-15) |
 
 ### Broker Integration *(paths corrected — these live under docs/architecture & docs/brokers)*
 | Document | Purpose | Status |

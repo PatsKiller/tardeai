@@ -3,6 +3,7 @@ import PreflightChangedPanel from './PreflightChangedPanel'
 import { volTierTooltip } from './HoldingsTableView'
 import { protectionExplain, resolvedTrailPct } from '../lib/protectionTrail'
 import { fmtLiveStop, runProtectiveStopPreflight, unwrapApi, type PreflightDiff } from '../lib/protectiveStopPreflight'
+import { computeStopCoverage } from '../lib/stopCoverage'
 import { buildStopLogic, hasLiveBrokerStopOrder, isTrailingBrokerStop, resolveLiveStop, type StopLogic, type StopOrderKind } from '../lib/stopManagement'
 import { formatReviewStamp, stopReviewTooltip } from '../lib/stopReviewTooltip'
 
@@ -261,7 +262,13 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   }
 
   if (!qty) return null
-  if (!stop && !needsSellAll && !logic.isFundLike && logic.liveStop == null) return null
+  if (!stop && !needsSellAll && !logic.isFundLike && logic.liveStop == null && !liveResolved.hasLiveBrokerOrder) return null
+
+  // Stop qty vs held — GTC does not auto-resize after size-up (live order qty from broker).
+  const stopCoverage = liveResolved.hasLiveBrokerOrder
+    ? computeStopCoverage(effectiveConfirmed?.qty, qty)
+    : null
+  const needsSizeUpdate = stopCoverage?.kind === 'partial' || stopCoverage?.kind === 'oversized'
 
   // Lock-in advisory: you hold a LIVE FIXED stop, but a trailing stop at the advised width would sit
   // ABOVE that fixed trigger right now — so switching to trailing locks a HIGHER floor and keeps
@@ -275,8 +282,48 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   const resetApprove = () => { setIntentId(''); setApproveTk(''); setApproveCode(''); setSellAllDone(false) }
 
+  /** Resize live stop to full held qty — same 2FA replace path (cancel + re-place, one approval). */
+  const requestResizeToHeld = () => {
+    const oid = String(effectiveConfirmed?.order_id || '').trim()
+    if (!oid) { setMsg('⛔ no live broker order id to replace'); return }
+    if (!stopCoverage || (stopCoverage.kind !== 'partial' && stopCoverage.kind !== 'oversized')) {
+      setMsg('Stop qty already matches held shares.')
+      return
+    }
+    const target = stopCoverage.targetQty
+    if (target < 1) { setMsg('⛔ held shares too small for a whole-share stop'); return }
+    const liveTrail = liveResolved.trailPct ?? trailPct
+    const liveFixed = Number(effectiveConfirmed?.stop_price)
+    const useTrailing = confirmedIsTrailing || String(effectiveConfirmed?.order_type || '').toUpperCase().includes('TRAIL')
+    if (useTrailing) {
+      if (liveTrail == null) { setMsg('⛔ live trail % missing — cannot resize trailing stop'); return }
+      requestOrder('TRAILING', {
+        label: `RESIZE → ${target} sh TRAIL ${liveTrail}% (cancel #${oid})`,
+        qtyOverride: target,
+        trailPctOverride: liveTrail,
+        stopPriceOverride: stop,
+        forceReplaceId: oid,
+        skipPreflight: true,
+      })
+      return
+    }
+    const fixedPx = Number.isFinite(liveFixed) && liveFixed > 0 ? liveFixed : stop
+    if (fixedPx == null) { setMsg('⛔ stop price missing — cannot resize fixed stop'); return }
+    requestOrder('STOP', {
+      label: `RESIZE → ${target} sh STOP $${Number(fixedPx).toFixed(2)} (cancel #${oid})`,
+      qtyOverride: target,
+      stopPriceOverride: fixedPx,
+      forceReplaceId: oid,
+      skipPreflight: true,
+    })
+  }
+
   const requestOrder = async (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET', opts?: {
     label?: string; skipPreflight?: boolean; liveSnap?: any
+    qtyOverride?: number
+    stopPriceOverride?: number | null
+    trailPctOverride?: number | null
+    forceReplaceId?: string | null
   }) => {
     setSelectedKind(kind)
     const nextLogic = computeLogic(kind)
@@ -287,12 +334,18 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     setBusy(true); setMsg(''); setTicket(''); resetApprove()
     const advised = advisedForKind(kind)
     try {
+      const useQty = opts?.qtyOverride != null && Number.isFinite(opts.qtyOverride) ? opts.qtyOverride : qty
+      const useStop = opts?.stopPriceOverride !== undefined ? opts.stopPriceOverride : (kind === 'MARKET' ? null : advised.advisoryStop)
+      const useTrail = opts?.trailPctOverride !== undefined ? opts.trailPctOverride : advised.trailPct
+      const replaceExtra = opts?.forceReplaceId
+        ? { replace_order_id: opts.forceReplaceId }
+        : resolveReplaceParams(opts?.liveSnap ?? effectiveConfirmed, kind).replaceBody
       const body: Record<string, unknown> = {
-        symbol: sym, account: acct, qty,
+        symbol: sym, account: acct, qty: useQty,
         order_kind: kind,
-        stop_price: kind === 'MARKET' ? null : advised.advisoryStop,
+        stop_price: kind === 'MARKET' ? null : useStop,
         limit_price: advised.limitPrice,
-        trail_pct: advised.trailPct,
+        trail_pct: kind === 'TRAILING' ? useTrail : null,
         advised_stop: advised.pureAdvisoryStop,
         current_price: effectivePrice,
         source_broker: effectivePr?.source_broker ?? effectivePr?.broker ?? effectivePr?.account ?? effectivePr?.source_account,
@@ -302,7 +355,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         preflight_at: new Date().toISOString(),
         // Replace existing live stop (pilot or manual ToS): confirm cancels then places, one 2FA.
         // Use the freshest live-stop snap (preflight may have just fetched order_id).
-        ...resolveReplaceParams(opts?.liveSnap ?? effectiveConfirmed, kind).replaceBody,
+        ...replaceExtra,
       }
       const raw = await fetch('/api/v2/holdings/protective-stop', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -521,7 +574,60 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         <div title={reviewTip} style={{ fontSize: 15, color: statusColor, fontWeight: 900, letterSpacing: 0.2, cursor: 'help' }}>STOP STATUS: {logic.state}</div>
         <span style={{ fontSize: 12, color: MUTED }}>{logic.stop_action_decision.replace(/_/g, ' ')}</span>
         {reviewStamp && <span title={reviewTip} style={{ fontSize: 10, color: MUTED, cursor: 'help' }}>last reviewed {reviewStamp}</span>}
+        {needsSizeUpdate && stopCoverage && (
+          <button
+            type="button"
+            data-testid="stop-size-coverage-badge"
+            onClick={e => { e.stopPropagation(); requestResizeToHeld() }}
+            disabled={busy || needsReauth}
+            title={stopCoverage.tip}
+            style={{
+              fontSize: 11, fontWeight: 900, padding: '3px 9px', borderRadius: 999,
+              cursor: (busy || needsReauth) ? 'not-allowed' : 'pointer',
+              border: `1px solid ${stopCoverage.kind === 'oversized' ? RED : AMBER}`,
+              background: stopCoverage.kind === 'oversized' ? 'rgba(239,68,68,.18)' : 'rgba(245,158,11,.18)',
+              color: stopCoverage.kind === 'oversized' ? RED : AMBER, whiteSpace: 'nowrap',
+            }}
+          >{stopCoverage.label} · update via 2FA</button>
+        )}
       </div>
+
+      {needsSizeUpdate && stopCoverage && (
+        <div data-testid="stop-size-coverage-banner" style={{
+          marginBottom: 10, padding: '9px 11px', borderRadius: 8,
+          background: stopCoverage.kind === 'oversized' ? 'rgba(239,68,68,.12)' : 'rgba(245,158,11,.12)',
+          border: `1px solid ${stopCoverage.kind === 'oversized' ? 'rgba(239,68,68,.45)' : 'rgba(245,158,11,.45)'}`,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: stopCoverage.kind === 'oversized' ? RED : AMBER, marginBottom: 4 }}>
+            {stopCoverage.kind === 'partial' ? '⚠ PARTIAL STOP SIZE' : '⚠ OVERSIZED STOP'}
+          </div>
+          <div style={{ fontSize: 12, color: TEXT0, lineHeight: 1.45, marginBottom: 8 }}>
+            {stopCoverage.kind === 'partial'
+              ? <>Stop covers only <b>{stopCoverage.stopQty}</b> of <b>{stopCoverage.heldQty}</b> sh — <b>{Math.round(stopCoverage.gap)}</b> sh unprotected. Replace at <b>{stopCoverage.targetQty}</b> sh (same type/level).</>
+              : <>Stop covers <b>{stopCoverage.stopQty}</b> sh but you hold <b>{stopCoverage.heldQty}</b>. Replace at <b>{stopCoverage.targetQty}</b> sh.</>}
+            {effectiveConfirmed?.order_id && <span style={{ color: MUTED }}> · order #{effectiveConfirmed.order_id}</span>}
+          </div>
+          <button
+            type="button"
+            data-testid="stop-size-update-btn"
+            onClick={e => { e.stopPropagation(); requestResizeToHeld() }}
+            disabled={busy || needsReauth}
+            title={isFidelity
+              ? `Create ticket to replace stop at ${stopCoverage.targetQty} sh`
+              : `Cancel live stop + place same type at ${stopCoverage.targetQty} sh — one 2FA`}
+            style={{
+              fontSize: 12, fontWeight: 900, minHeight: 34, padding: '7px 12px', borderRadius: 6,
+              cursor: (busy || needsReauth) ? 'not-allowed' : 'pointer',
+              border: `1px solid ${stopCoverage.kind === 'oversized' ? RED : AMBER}`,
+              background: stopCoverage.kind === 'oversized' ? 'rgba(239,68,68,.2)' : 'rgba(245,158,11,.22)',
+              color: stopCoverage.kind === 'oversized' ? RED : AMBER, whiteSpace: 'nowrap',
+            }}
+          >{busy && !intentId ? '…' : isFidelity
+            ? `Update stop size → ${stopCoverage.targetQty} sh (ticket)`
+            : `Update stop size → ${stopCoverage.targetQty} sh via 2FA`}</button>
+          {needsReauth && <span style={{ marginLeft: 8, fontSize: 11, color: RED, fontWeight: 700 }}>Schwab re-auth required</span>}
+        </div>
+      )}
 
       <div style={{ marginBottom: 10, padding: '9px 10px', borderRadius: 7, background: 'rgba(2,6,23,.38)', border: `1px solid ${statusColor}44` }}>
         <div style={{ fontSize: 12, color: MUTED, fontWeight: 800, marginBottom: 3 }}>Recommendation</div>

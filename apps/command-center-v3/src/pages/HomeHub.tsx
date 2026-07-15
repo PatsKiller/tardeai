@@ -35,6 +35,12 @@ const SkelBlock = ({ h }: { h: number }) => (
   <div aria-hidden style={{ height: h, background: '#1e293b', borderRadius: 8, animation: skelAnim }} />
 )
 
+const PERF_PERIODS = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y'] as const
+
+function acctPretty(a: string) {
+  return a.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
 export default function HomeHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   const { data: overview, loading: overviewLoading } = useApi<any>('/api/v2/overview', 60_000)
@@ -49,6 +55,7 @@ export default function HomeHub({ onDrill }: Props) {
   const { data: hermesHealth } = useApi<any>('/api/v2/hermes/health', 120_000)
   const { data: health } = useApi<any>('/api/v2/health', 120_000)
   const { data: deployData } = useApi<any>('/api/v2/deploy/events?status=open&days=14', 120_000)
+  const { data: perfData, loading: perfLoading } = useApi<any>('/api/v2/portfolio/performance', 120_000)
   const cmd = command?.data ?? command ?? {}
   const healthFindings: any[] = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').slice(0, 3)
 
@@ -144,6 +151,103 @@ export default function HomeHub({ onDrill }: Props) {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Per-account P/L by period */}
+          <div data-testid="home-account-pnl" style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14, overflowX: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8, gap: 10, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>P/L by account · period</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
+                  Aggregate $ (top) · % (bottom). Source: /api/v2/portfolio/performance · accounts
+                </div>
+              </div>
+              <Link to="/portfolio?tab=Returns" style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>
+                Full Returns →
+              </Link>
+            </div>
+            {perfLoading && !perfData ? (
+              <SkelBlock h={120} />
+            ) : !(perfData?.accounts || overview?.today_by_account) ? (
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>Account performance not available yet.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 560 }}>
+                <thead>
+                  <tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
+                    <th style={{ textAlign: 'left', padding: '5px 8px', fontWeight: 700 }}>Account</th>
+                    <th style={{ padding: '5px 8px', fontWeight: 700 }}>Value</th>
+                    {PERF_PERIODS.map(p => (
+                      <th key={p} style={{ padding: '5px 8px', fontWeight: 700 }}>{p}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Portfolio total row */}
+                  <tr style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '7px 8px', fontWeight: 800, color: 'var(--text0)', textAlign: 'left' }}>All</td>
+                    <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{fmt$(perfData?.current_value ?? pv ?? 0, 0)}</td>
+                    {PERF_PERIODS.map(p => {
+                      const d = perfData?.periods?.[p]
+                      const ch = d?.change
+                      const pct = d?.change_pct
+                      const col = (ch ?? 0) >= 0 ? '#22c55e' : '#ef4444'
+                      return (
+                        <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }}>
+                          <div style={{ color: ch != null ? col : 'var(--text3)', fontWeight: 700 }}>
+                            {ch != null ? `${ch >= 0 ? '+' : ''}${fmt$(ch, 0)}` : '—'}
+                          </div>
+                          <div style={{ fontSize: 9, color: pct != null ? col : 'var(--text3)' }}>
+                            {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : ''}
+                          </div>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  {Object.entries(perfData?.accounts || {}).map(([acct, row]: [string, any]) => (
+                    <tr key={acct} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: 'var(--text1)' }}>{acctPretty(acct)}</td>
+                      <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{fmt$(row?.current_value ?? 0, 0)}</td>
+                      {PERF_PERIODS.map(p => {
+                        const d = row?.periods?.[p]
+                        // 1D fallback from overview.today_by_account if missing
+                        const ch = d?.change ?? (p === '1D' ? overview?.today_by_account?.[acct]?.change : null)
+                        const pct = d?.change_pct ?? (p === '1D' ? overview?.today_by_account?.[acct]?.pct : null)
+                        const col = (ch ?? 0) >= 0 ? '#22c55e' : '#ef4444'
+                        return (
+                          <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }}>
+                            <div style={{ color: ch != null ? col : 'var(--text3)', fontWeight: 700 }}>
+                              {ch != null ? `${ch >= 0 ? '+' : ''}${fmt$(ch, 0)}` : '—'}
+                            </div>
+                            <div style={{ fontSize: 9, color: pct != null ? col : 'var(--text3)' }}>
+                              {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : ''}
+                            </div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                  {/* If performance.accounts empty, fall back to today_by_account only */}
+                  {!perfData?.accounts && overview?.today_by_account && Object.entries(overview.today_by_account).map(([acct, row]: [string, any]) => (
+                    <tr key={acct} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700 }}>{acctPretty(acct)}</td>
+                      <td style={{ padding: '7px 8px', fontFamily: 'monospace' }}>{fmt$(row?.value ?? 0, 0)}</td>
+                      {PERF_PERIODS.map(p => {
+                        if (p !== '1D') return <td key={p} style={{ padding: '5px 8px', color: 'var(--text3)', textAlign: 'right' }}>—</td>
+                        const ch = row?.change
+                        const pct = row?.pct
+                        const col = (ch ?? 0) >= 0 ? '#22c55e' : '#ef4444'
+                        return (
+                          <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }}>
+                            <div style={{ color: col, fontWeight: 700 }}>{ch != null ? `${ch >= 0 ? '+' : ''}${fmt$(ch, 0)}` : '—'}</div>
+                            <div style={{ fontSize: 9, color: col }}>{pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : ''}</div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 14 }}>

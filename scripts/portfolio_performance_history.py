@@ -537,14 +537,51 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
     # ── Per-account period returns ────────────────────────────────────────────
     account_labels = {
         "fidelity_401k": "Fidelity 401k",
+        "fidelity_rollover_ira": "Fidelity Rollover IRA",
         "schwab_rollover_ira": "Rollover IRA",
         "schwab_roth": "Roth IRA",
         "schwab_taxable": "Taxable",
     }
+    # Same economic sleeve after mid-year 401k → Rollover IRA conversion
+    _FIDELITY_LINKED = ("fidelity_401k", "fidelity_rollover_ira")
+
+    def _linked_snap_val(acct_snap: dict, acct_key: str):
+        if acct_key in acct_snap and acct_snap[acct_key]:
+            return acct_snap[acct_key]
+        if acct_key in _FIDELITY_LINKED:
+            total = 0.0
+            found = False
+            for k in _FIDELITY_LINKED:
+                if k in acct_snap and acct_snap[k]:
+                    total += float(acct_snap[k] or 0)
+                    found = True
+            return total if found and total > 0 else None
+        return None
+
     acct_summaries = portfolio.get("account_summaries", {})
+    # Build summaries from holdings if missing (common for fidelity_rollover)
+    if not acct_summaries:
+        acct_summaries = {}
+    for h in portfolio.get("holdings", []) or []:
+        ak = h.get("account") or ""
+        if not ak:
+            continue
+        acct_summaries.setdefault(ak, {"total_value": 0})
+        try:
+            acct_summaries[ak]["total_value"] = float(acct_summaries[ak].get("total_value") or 0) + float(h.get("market_value") or 0)
+        except (TypeError, ValueError):
+            pass
+
     accounts_out = {}
     for acct_key, label in account_labels.items():
         acct_cv = acct_summaries.get(acct_key, {}).get("total_value", 0) or 0
+        if acct_cv <= 0:
+            # Live holdings may use fidelity_rollover while summaries still say 401k
+            acct_cv = sum(
+                float(h.get("market_value") or 0)
+                for h in portfolio.get("holdings", []) or []
+                if h.get("account") == acct_key
+            )
         if acct_cv <= 0:
             continue
         acct_holdings = [h for h in portfolio.get("holdings", [])
@@ -558,16 +595,21 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
             if start_dt is None:
                 continue
             start_str = start_dt.strftime("%Y-%m-%d")
-            # Snapshot match
+            # Snapshot match (Fidelity: 401k + rollover linked)
             hist_val = None
             src_label = None
-            for delta in range(0, 4):
+            for delta in range(0, 8):
                 for sign in [0, -1, 1]:
-                    candidate = (start_dt + timedelta(days=delta * sign)).strftime("%Y-%m-%d")
+                    if delta == 0 and sign != 0:
+                        continue
+                    candidate = (start_dt + timedelta(days=delta * sign if sign != 0 else 0)).strftime("%Y-%m-%d")
+                    if sign == 0 and delta > 0:
+                        candidate = (start_dt - timedelta(days=delta)).strftime("%Y-%m-%d")
                     acct_snap = account_snapshots.get(candidate, {})
-                    if acct_key in acct_snap:
-                        hist_val = acct_snap[acct_key]
-                        src_label = "snapshot"
+                    linked = _linked_snap_val(acct_snap, acct_key)
+                    if linked:
+                        hist_val = linked
+                        src_label = "snapshot" if acct_key not in _FIDELITY_LINKED else "snapshot_linked"
                         break
                 if hist_val:
                     break

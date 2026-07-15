@@ -476,6 +476,7 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
               </Section>
             )}
             <ShareReconHistory account={acct} symbol={symU} />
+            <TransferHistorySection holding={h} account={acct} symbol={symU} />
           </div>
         )}
 
@@ -984,6 +985,92 @@ function ShareReconHistory({ account, symbol }: { account: string; symbol: strin
             {r.notes && <div style={{ fontSize: 10, color: BB.text3, marginTop: 2 }}>{r.notes}</div>}
           </div>
         ))}
+      </div>
+    </Section>
+  )
+}
+
+/** Cross-account transfer / rollover provenance (Fidelity→Schwab, Trad→Roth). */
+function TransferHistorySection({
+  holding, account, symbol,
+}: { holding: any; account: string; symbol: string }) {
+  const [rows, setRows] = useState<any[] | null>(null)
+  useEffect(() => {
+    const q = new URLSearchParams({ account, symbol, limit: '20' })
+    fetch(`/api/v2/holdings/transfer-history?${q}`)
+      .then(r => r.json())
+      .then(j => setRows((j?.data || j)?.history || []))
+      .catch(() => setRows([]))
+  }, [account, symbol])
+  const localHist = Array.isArray(holding?.transfer_history) ? holding.transfer_history : []
+  const tag = holding?.transfer_history_tag
+  const displayRows = (rows && rows.length > 0)
+    ? rows
+    : localHist.map((e: any, i: number) => ({ id: e.event_id || i, ...e }))
+  const normalized = Boolean(holding?.normalized_after_transfer || holding?.performance_adjusted)
+  if (!displayRows.length && !normalized && !tag) return null
+  return (
+    <Section title="Transfer / rollover history">
+      {normalized && (
+        <div style={{
+          fontSize: 11, fontWeight: 700, color: '#f59e0b', marginBottom: 8,
+          padding: '6px 8px', borderRadius: 6, background: 'rgba(245,158,11,.08)',
+          border: '1px solid rgba(245,158,11,.35)',
+        }}>
+          {holding?.normalization_status || 'Position normalized after rollover/transfer'}
+          {holding?.transfer_display_note && (
+            <span style={{ fontWeight: 500, color: BB.text2 }}> · {holding.transfer_display_note}</span>
+          )}
+        </div>
+      )}
+      {(holding?.original_source_account || holding?.current_account) && (
+        <div style={{ fontSize: 11, color: BB.text2, marginBottom: 8 }}>
+          Source <b style={{ color: BB.text0 }}>{holding.original_source_account || '—'}</b>
+          {' → '}
+          current <b style={{ color: BB.text0 }}>{holding.current_account || account}</b>
+          {holding?.adjusted_for_transfer && (
+            <span style={{ color: BB.text3 }}> · adjusted {String(holding.adjusted_for_transfer).slice(0, 10)}</span>
+          )}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {displayRows.map((r: any) => (
+          <div key={r.id || r.event_id} style={{
+            padding: '8px 10px', borderRadius: 6, background: BB.bgRow, border: `1px solid ${BB.border}`,
+            fontSize: 11, color: BB.text1,
+          }}>
+            <div>
+              <span style={{ fontFamily: BB.mono, fontWeight: 700 }}>
+                {r.from_account || '?'} → {r.to_account || account}
+              </span>
+              <span style={{ color: BB.text3 }}>
+                {' · '}{r.shares_moved ?? r.shares ?? '—'} sh
+              </span>
+              {r.transfer_type && (
+                <span style={{ color: '#f59e0b', fontWeight: 700 }}>
+                  {' · '}{String(r.transfer_type).replace(/_/g, ' ')}
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 10, color: BB.text3, marginTop: 2 }}>
+              {r.display_note || r.notes || ''}
+              {r.detected_at ? ` · ${String(r.detected_at).slice(0, 10)}` : r.date ? ` · ${String(r.date).slice(0, 10)}` : ''}
+              {r.status ? ` · ${r.status}` : ''}
+              {r.per_share_basis != null ? ` · basis $${Number(r.per_share_basis).toFixed(2)}` : ''}
+            </div>
+          </div>
+        ))}
+        {!displayRows.length && tag && (
+          <div style={{
+            padding: '8px 10px', borderRadius: 6, background: BB.bgRow, border: `1px solid ${BB.border}`,
+            fontSize: 11, color: BB.text1,
+          }}>
+            <span style={{ fontFamily: BB.mono, fontWeight: 700 }}>
+              {tag.from_account} → {tag.to_account}
+            </span>
+            <span style={{ color: BB.text3 }}> · {tag.shares} sh · {tag.display_note || tag.status}</span>
+          </div>
+        )}
       </div>
     </Section>
   )

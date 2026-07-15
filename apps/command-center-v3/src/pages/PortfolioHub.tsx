@@ -13,11 +13,10 @@ import { mergeLiveStop, stopReviewTooltip } from '../lib/stopReviewTooltip'
 import HoldingReportLinks from '../components/HoldingReportLinks'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import { holdingReportEligible } from '../lib/reportLinks'
-import RiskContributionBars from '../components/risk/RiskContributionBars'
-import DrawdownChart from '../components/risk/DrawdownChart'
 import StopManagement from '../components/StopManagement'
 import RedeployPanel from '../components/RedeployPanel'
 import AllocationPanel from '../components/AllocationPanel'
+import ReturnsPanel from '../components/ReturnsPanel'
 import { EvidenceBlock } from '../components/EvidenceBlock'
 import HoldingsTableView, { type HoldingsTableRowContext } from '../components/HoldingsTableView'
 import HoldingsSideDrawer from '../components/HoldingsSideDrawer'
@@ -436,6 +435,9 @@ export default function PortfolioHub({ onDrill }: Props) {
         <AllocationPanel
           sectors={overview?.sectors ?? sectors}
           sectorsByAccount={sectorsByAccount}
+          sectorContributors={(overview as any)?.sector_contributors ?? {}}
+          sectorUnderlyings={(overview as any)?.sector_underlyings ?? {}}
+          lookthroughAsOf={(overview as any)?.lookthrough_as_of ?? null}
           holdings={allHoldings}
           acctColor={acctColor}
           onGoHoldings={() => selectTab('Holdings')}
@@ -782,74 +784,24 @@ export default function PortfolioHub({ onDrill }: Props) {
       )}
 
       {tab === 'Returns' && perfData && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div className={terminalUi ? 'cc-panel' : undefined} style={tabPanel}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Portfolio Performance</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)', marginBottom: 12 }}>{fmt$(perfData.current_value ?? 0, 0)}</div>
-            {(perfData.max_drawdown_pct_30d ?? perfData.max_drawdown_pct) != null && (
-              <div style={{ fontSize: 10, color: '#ef4444', marginBottom: 10 }}>
-                Max drawdown (30d) <b>{(perfData.max_drawdown_pct_30d ?? perfData.max_drawdown_pct).toFixed(1)}%</b>
-                {perfData.max_drawdown_pct_30d != null && perfData.max_drawdown_pct != null
-                  && perfData.max_drawdown_pct_30d !== perfData.max_drawdown_pct && (
-                  <span style={{ fontSize: 8, color: 'var(--text4)', marginLeft: 6 }}>
-                    all-time {perfData.max_drawdown_pct.toFixed(1)}%
-                  </span>
-                )}
-              </div>
-            )}
-            {perfData.periods && Object.entries(perfData.periods).map(([period, data]: [string, any]) => {
-              const src = data?.source === 'market_day' ? 'market' : (data?.estimated ? 'est.' : (data?.source ?? ''))
-              return (
-              <div key={period} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 6px', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
-                <span style={{ color: 'var(--text2)' }}>
-                  {period}
-                  {period === '1D' && src === 'market' && <span style={{ fontSize: 8, color: 'var(--text4)', marginLeft: 4 }}>market day</span>}
-                  {period === '1D' && data?.snapshot_replaced && data?.snapshot_1d_pct != null && (
-                    <span style={{ fontSize: 8, color: '#f59e0b', marginLeft: 4 }} title={`Snapshot-based 1D was ${data.snapshot_1d_pct}% (reconciliation correction excluded)`}>
-                      was {Number(data.snapshot_1d_pct).toFixed(1)}%
-                    </span>
-                  )}
-                </span>
-                <span style={{ color: (data?.change_pct ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>
-                  {data?.change_pct != null ? `${data.change_pct >= 0 ? '+' : ''}${data.change_pct.toFixed(2)}%` : '—'}
-                </span>
-                <span style={{ color: 'var(--text2)' }}>{data?.change != null ? fmt$(data.change, 0) : '—'}</span>
-              </div>
-            )})}
-            {perfData.snapshot_outliers?.length > 0 && (
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>
-                Drawdown excludes {perfData.snapshot_outliers.length} reconciliation outlier snapshot{perfData.snapshot_outliers.length > 1 ? 's' : ''} ({perfData.snapshot_outliers.slice(-2).join(', ')}).
-              </div>
-            )}
-            {perfData.warning && <div style={{ fontSize: 9, color: '#f59e0b', marginTop: 8 }}>{perfData.warning}</div>}
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/portfolio/performance</div>
-          </div>
-
-          {(perfData.drawdown_series?.length > 1) && (
-            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-              <DrawdownChart
-                title="Portfolio underwater / drawdown"
-                data={perfData.drawdown_series.map((p: any) => ({
-                  date: String(p.date || '').slice(5) || p.date,
-                  drawdown: Number(p.drawdown ?? 0),
-                  value: Number(p.value ?? 0),
-                }))}
-                valueKey="drawdown"
-              />
-            </div>
-          )}
-
-          {(riskData?.positions?.length > 0) && (
-            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-              <RiskContributionBars
-                positions={riskData.positions}
-                title="Risk contribution (max loss)"
-                mode="risk"
-                height={220}
-              />
-            </div>
-          )}
-        </div>
+        <ReturnsPanel
+          perfData={perfData}
+          holdings={allHoldings}
+          riskPositions={riskData?.positions ?? []}
+          acctColor={acctColor}
+          initialAccount={acctFilter}
+          onOpenHolding={(symbol, account) => {
+            selectTab('Holdings')
+            setAcctFilter(account)
+            setSigTab('All')
+            const key = `${symbol}-${account}`
+            setFocusKey(key)
+            setTimeout(() => {
+              document.getElementById(`hold-${symbol}-${account}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            }, 120)
+            setTimeout(() => setFocusKey(null), 4000)
+          }}
+        />
       )}
       {tab === 'Returns' && !perfData && <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20 }}>Loading performance data...</div>}
       {tab === 'Forecast' && (() => {

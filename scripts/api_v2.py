@@ -318,6 +318,7 @@ def _stops_management_api_build(query=None):
                 "is_trailing": "TRAIL" in ot, "trail_offset": bs.get("trail_offset"),
                 "broker": "schwab" if acct.startswith("schwab") else ("alpaca" if "alpaca" in acct.lower() else ""),
                 "status": bs.get("status"), "order_id": bs.get("order_id"),
+                "stop_qty": _f(bs.get("qty")),  # order size (may lag held shares after size-up)
                 "coverage": None, "stop_source": "broker",
             }
     except Exception:
@@ -616,6 +617,16 @@ def _stops_management_api_build(query=None):
                                                             and broker_stop < planned_stop - 0.01) else None)
         stop_source = ls.get("stop_source") or ("planned" if planned_stop is not None else "none")
         heat_contrib = round((max(dist_dollars, 0) / total_risk * heat_pct), 2) if total_risk else None
+        # Stop order qty vs shares held — GTC stops do NOT auto-resize after buys/trims.
+        stop_qty = _f(ls.get("stop_qty") if ls.get("stop_qty") is not None else ls.get("qty"))
+        _coverage = ls.get("coverage")
+        if broker_stop is not None and stop_qty is not None and qty > 0:
+            if stop_qty + 0.99 < qty:
+                _coverage = "partial"
+            elif stop_qty > qty + 0.99:
+                _coverage = "oversized"
+            else:
+                _coverage = _coverage or "full"
 
         # ---- alert level: regime-aware stoplight (protocol v2.0) + hard safety overrides ----
         is_active_trade = route.get(sym, "core-hold") in ("Pure Momentum", "Social+Momentum")
@@ -692,6 +703,17 @@ def _stops_management_api_build(query=None):
         if naked and not is_active_trade:
             reasons.append(("core hold: " if not is_fidelity else "") + naked_reason)
             level = _merge_alert_level(level, "yellow")
+        if _coverage == "partial" and stop_qty is not None:
+            _gap = max(0.0, float(qty) - float(stop_qty))
+            reasons.append(f"partial stop size: covers {stop_qty:g} of {qty:g} sh ({_gap:g} unprotected)")
+            level = _merge_alert_level(level, "amber")
+            _tgt = int(qty) if abs(qty - int(qty)) < 1e-6 else qty
+            _policy_suggestions = list(_policy_suggestions or []) + [
+                f"Replace stop to full {_tgt:g} sh via 2FA (same type/level)"
+            ]
+        if _coverage == "oversized" and stop_qty is not None:
+            reasons.append(f"oversized stop: {stop_qty:g} sh stop vs {qty:g} held")
+            level = _merge_alert_level(level, "red")
         if heat_pct > HEAT_CAP and (heat_contrib or 0) >= 1.5:
             reasons.append(f"portfolio heat {heat_pct:.1f}% > {HEAT_CAP}% cap")
             level = "red"
@@ -712,6 +734,23 @@ def _stops_management_api_build(query=None):
             dollars_at_risk=round(max(dist_dollars, 0), 2), is_trailing=is_trailing,
             trailing_should_be_active=should_trail, trail_pct=_trail_pct, trail_trigger=_trail_trigger,
             divergence=divergence, alert_level=level, naked=naked, unrealized_dollars=unreal_dollars)
+        # Size mismatch overrides next_action — methodology "keep" is wrong when stop qty lags a size-up.
+        if _coverage == "partial" and stop_qty is not None:
+            _tgt = int(qty) if abs(qty - int(qty)) < 1e-6 else qty
+            _next = (
+                f"PARTIAL stop size — covers {stop_qty:g} of {qty:g} sh. "
+                f"Replace (cancel + re-place) at {_tgt:g} sh via 2FA — same type/level."
+            )
+            _narr = (
+                f"Live stop is working but undersized after a buy/size-up: "
+                f"{stop_qty:g} sh protected, {max(0.0, float(qty) - float(stop_qty)):g} sh naked."
+            )
+        elif _coverage == "oversized" and stop_qty is not None:
+            _tgt = int(qty) if abs(qty - int(qty)) < 1e-6 else max(1, int(qty))
+            _next = (
+                f"OVERSIZED stop — {stop_qty:g} sh stop vs {qty:g} held. "
+                f"Replace at {_tgt:g} sh via 2FA to avoid short/reject on trigger."
+            )
         rows.append({
             "symbol": sym, "account": acct, "broker": ls.get("broker") or ("schwab" if acct.startswith("schwab") else ("fidelity" if is_fidelity else "")),
             "route": route.get(sym, "core-hold"),
@@ -721,7 +760,7 @@ def _stops_management_api_build(query=None):
             "stop_type": (("TRAILING" if is_trailing else "MONITORED" if _monitored else "HARD") if broker_stop is not None
                           else ("PLANNED" if planned_stop else "NONE")),
             "stop_source": stop_source, "has_active_stop": broker_stop is not None,
-            "current_price": px, "qty": qty, "coverage": ls.get("coverage"),
+            "current_price": px, "qty": qty, "stop_qty": stop_qty, "coverage": _coverage,
             "broker_stop": broker_stop, "planned_stop": planned_stop, "stop": stop, "divergence": divergence,
             "distance_dollars": dist_dollars, "distance_pct": dist_pct, "distance_atr": dist_atr, "distance_r": dist_r,
             "dollars_at_risk": round(max(dist_dollars, 0), 2),
@@ -1893,6 +1932,10 @@ def overview():
         "sectors": [{"name": n, "value": v} for n, v in sector_list],
         "sectors_by_account": {acct: [{"name": r.get("sector"), "value": r.get("value")} for r in (rows or [])]
                                for acct, rows in (h.get("resolved_sectors_by_account") or {}).items()},
+        # Allocation drill-down: which positions / underlyings feed each look-through sector
+        "sector_contributors": h.get("resolved_sector_contributors") or {},
+        "sector_underlyings": h.get("resolved_sector_underlyings") or {},
+        "lookthrough_as_of": h.get("lookthrough_as_of") or "",
         "top_movers": [{"symbol": m.get("symbol"), "name": (m.get("name") or "")[:30],
                         "day_change": m.get("day_change", 0), "day_change_pct": m.get("day_change_pct", 0)}
                        for m in movers],
@@ -2081,6 +2124,109 @@ def _share_drift_detect(body=None):
         return sr.detect_from_holdings_file()
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
+
+
+# ── Position transfer history / rollover normalization ─────────────────────────
+
+def _position_transfer_history(query=None):
+    """GET /api/v2/holdings/transfer-history?account=&symbol=&limit="""
+    try:
+        from lib.position_transfer_normalize import list_transfer_history
+        q = query or {}
+        def _one(k):
+            v = q.get(k)
+            return (v[0] if isinstance(v, list) else v) if v is not None else None
+        lim = _one("limit") or 50
+        try:
+            lim = int(lim)
+        except (TypeError, ValueError):
+            lim = 50
+        rows = list_transfer_history(
+            account=_one("account"), symbol=_one("symbol"), limit=lim
+        )
+        return {"ok": True, "count": len(rows), "history": rows}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "history": []}
+
+
+def _position_transfer_notifications(query=None):
+    """GET /api/v2/holdings/transfer-notifications — active rollover/Roth notices."""
+    try:
+        from lib.position_transfer_normalize import list_active_notifications
+        items = list_active_notifications()
+        return {"ok": True, "count": len(items), "items": items}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "items": []}
+
+
+def _position_transfer_dismiss(body=None):
+    """POST /api/v2/holdings/transfer-notifications/dismiss — body: {id}"""
+    try:
+        from lib.position_transfer_normalize import dismiss_notification
+        b = body or {}
+        nid = int(b.get("id") or b.get("notification_id") or 0)
+        if not nid:
+            return {"ok": False, "error": "id required"}
+        return dismiss_notification(nid)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _position_transfer_detect(body=None):
+    """POST /api/v2/holdings/transfer-detect — re-run transfer normalize on last holdings write.
+
+    Optional body: {dry_run: true} uses prior snapshot if available; otherwise no-op detect
+    against current holdings only (partial arrivals still need a prior snapshot).
+    """
+    try:
+        from lib.position_transfer_normalize import process_and_normalize, ensure_tables
+        ensure_tables()
+        hpath = STATE_DIR / "holdings.json"
+        if not hpath.exists():
+            return {"ok": False, "error": "holdings.json missing"}
+        current = json.loads(hpath.read_text())
+        # Prefer most recent backup as prior if present
+        prior = None
+        bak_dir = STATE_DIR / "backups"
+        if bak_dir.is_dir():
+            baks = sorted(bak_dir.glob("holdings*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            for b in baks[:5]:
+                try:
+                    prior = json.loads(b.read_text())
+                    break
+                except Exception:
+                    continue
+        # Also try cost_basis events replay against empty prior won't detect; require prior
+        b = body if isinstance(body, dict) else {}
+        dry = bool(b.get("dry_run"))
+        if prior is None:
+            # Still return any stored history
+            from lib.position_transfer_normalize import list_transfer_history, list_active_notifications
+            return {
+                "ok": True,
+                "events": 0,
+                "summary": "no prior snapshot for re-detect; returning stored history",
+                "history": list_transfer_history(limit=50),
+                "notifications": list_active_notifications(),
+            }
+        result = process_and_normalize(
+            prior, current, sync_source="manual_transfer_detect", apply=not dry
+        )
+        if not dry and result.get("holdings_doc") and result.get("normalized"):
+            try:
+                from schwab_position_sync import protected_holdings_write
+                protected_holdings_write(
+                    result["holdings_doc"],
+                    source="transfer_normalize",
+                    account_key="portfolio",
+                    skip_transfer_detect=True,
+                )
+            except Exception as we:
+                # Fall back to direct write through guard path only
+                result["write_error"] = str(we)[:160]
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
 
 
 def portfolio_holdings():
@@ -2359,6 +2505,16 @@ def portfolio_holdings():
             "share_drift_source": p.get("share_drift_source"),
             "last_reconciled_at": p.get("last_reconciled_at"),
             "last_reconciliation_source": p.get("last_reconciliation_source"),
+            # Transfer / rollover provenance (Fidelity→Schwab, Trad→Roth ladder)
+            "original_source_account": p.get("original_source_account"),
+            "current_account": p.get("current_account") or p.get("account"),
+            "transfer_history": p.get("transfer_history") or [],
+            "transfer_history_tag": p.get("transfer_history_tag"),
+            "transfer_display_note": p.get("transfer_display_note"),
+            "performance_adjusted": p.get("performance_adjusted"),
+            "adjusted_for_transfer": p.get("adjusted_for_transfer"),
+            "normalized_after_transfer": p.get("normalized_after_transfer"),
+            "normalization_status": p.get("normalization_status"),
             "price": _px,
             "current_price": _px,
             "price_source": _px_source,
@@ -2578,10 +2734,19 @@ def portfolio_performance():
             if isinstance(v, dict):
                 ap[k] = {
                     "change_pct": v.get("change_pct"), "change": v.get("change"),
+                    "start_value": v.get("start_value"), "end_value": v.get("end_value"),
+                    "start_date": v.get("start_date"),
                     "source": v.get("source"),
                     "snapshot_replaced": v.get("snapshot_replaced"),
                 }
         result["accounts"][acct] = {"current_value": data.get("current_value", 0), "periods": ap}
+
+    # Transfer / funding quality + contribution-adjusted (≈ market) P/L
+    try:
+        from portfolio_period_quality import annotate_performance_result
+        result = annotate_performance_result(result, STATE_DIR, holdings)
+    except Exception as _pq_err:
+        result["period_quality_error"] = str(_pq_err)[:160]
 
     # Drawdown / underwater series — sanitize reconciliation outlier peaks
     dd_series = []
@@ -29613,6 +29778,8 @@ ROUTES = {
     "/api/v2/holdings/share-drift": lambda q=None: _share_drift_list(q),
     "/api/v2/holdings/share-drift/impact": lambda q=None: _share_drift_impact(q),
     "/api/v2/holdings/share-reconciliation/history": lambda q=None: _share_drift_history(q),
+    "/api/v2/holdings/transfer-history": lambda q=None: _position_transfer_history(q),
+    "/api/v2/holdings/transfer-notifications": lambda q=None: _position_transfer_notifications(q),
     "/api/v2/holdings/stop-readiness": lambda q=None: _stop_live_readiness(q),
     "/api/v2/stops/management": lambda q=None: _stops_management_api(q),
     "/api/v2/stops/audit": lambda q=None: _stops_audit_api(q),
@@ -34509,6 +34676,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             res = _share_drift_detect(body if isinstance(body, dict) else {})
             return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/holdings/transfer-notifications/dismiss":
+        try:
+            res = _position_transfer_dismiss(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/holdings/transfer-detect":
+        try:
+            res = _position_transfer_detect(body if isinstance(body, dict) else {})
+            return (200 if res.get("ok") is not False else 400), res
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 

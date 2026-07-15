@@ -1,3 +1,6 @@
+## 2026-07-15 — Transfer-aware YTD + Fidelity period fills + daily pin
+
+Shipped transfer/rollover-resilient position provenance and performance continuity (Fidelity→Schwab, Trad→Roth, 401k→rollover rename). Postgres transfer history + normalize audit; auto-normalize on holdings write with basis carry-forward and stop-impact flags. Returns: residual YTD (ex-transfers), linked Fidelity economic sleeve restores 1W/1M/…, portfolio = Σ accounts, outlier snap path hygiene, **daily YTD pin** (`ytd_daily_pin.json`) so ≈ market does not wobble intraday (~+$54.2k household pin at ship). Force recompute: `YTD_PIN_FORCE=1` or delete pin file. Docs: `docs/features/transfer-aware-performance.md`. CC v3 Returns/Holdings surfaces notes + transfer history.
 
 ## 2026-07-14 — Dynamic stop policy shipped (9 commits) + full advisory re-tier
 

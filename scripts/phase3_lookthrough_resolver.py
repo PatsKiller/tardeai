@@ -149,9 +149,20 @@ def main():
     # Bucket: sector → total value (global) + per-account so the UI can filter the allocation by account
     sector_bucket = defaultdict(float)
     sector_by_account = defaultdict(lambda: defaultdict(float))
+    # sector → list of position contributions (fund look-through slices + direct stocks)
+    # key: (sector, symbol, account, method) → allocated $
+    contributor_bucket: dict[tuple, float] = defaultdict(float)
+    # sector → underlying ticker → $ (from fund top_holdings when ticker sector matches)
+    underlying_bucket: dict[tuple, float] = defaultdict(float)
+    underlying_via: dict[tuple, set] = defaultdict(set)  # (sector, ticker) → fund symbols
     # Per-symbol resolution log
     resolution_log = []
     unresolved = []
+
+    def _add_contributor(sector: str, symbol: str, account: str, method: str, value: float):
+        if value <= 0 or not sector or not symbol:
+            return
+        contributor_bucket[(sector, symbol, account, method)] += value
 
     for h in holdings_list:
         sym = h.get("symbol", "")
@@ -179,6 +190,26 @@ def main():
                     allocated = mv * (normalized_pct / 100)
                     sector_bucket[sector] += allocated
                     sector_by_account[acct][sector] += allocated
+                    _add_contributor(sector, sym, acct, "lookthrough", allocated)
+
+                # Top underlyings: attribute fund MV × holding % into the ticker's own sector
+                for th in (entry.get("top_holdings") or []):
+                    tick = str(th.get("ticker") or "").upper()
+                    pct = float(th.get("pct") or 0)
+                    if not tick or pct <= 0:
+                        continue
+                    uval = mv * (pct / 100.0)
+                    usec = None
+                    try:
+                        from sector_cache import get_sector
+                        usec = get_sector(tick)
+                    except Exception:
+                        usec = None
+                    if not usec:
+                        # Fall back: leave unassigned to sector underlyings
+                        continue
+                    underlying_bucket[(usec, tick)] += uval
+                    underlying_via[(usec, tick)].add(sym)
 
                 resolution_log.append({
                     "symbol": sym,
@@ -196,6 +227,7 @@ def main():
                 label = asset_class or "Other / Unclassified"
                 sector_bucket[label] += mv
                 sector_by_account[acct][label] += mv
+                _add_contributor(label, sym, acct, "asset_class_label", mv)
                 resolution_log.append({
                     "symbol": sym,
                     "method": "asset_class_label",
@@ -209,6 +241,7 @@ def main():
         sector, industry, source = _resolve_direct_stock(rec, manual_map)
         sector_bucket[sector] += mv
         sector_by_account[acct][sector] += mv
+        _add_contributor(sector, sym, acct, "direct_stock", mv)
 
         if sector == "Other / Unclassified":
             unresolved.append({"symbol": sym, "market_value": round(mv, 2)})
@@ -242,12 +275,42 @@ def main():
             for s, v in sorted(buckets.items(), key=lambda x: x[1], reverse=True)
         ]
 
+    # Position-level contributors per sector (Allocation drill-down)
+    resolved_sector_contributors: dict[str, list] = defaultdict(list)
+    for (sector, symbol, account, method), val in contributor_bucket.items():
+        sec_tot = sector_bucket.get(sector) or 1.0
+        resolved_sector_contributors[sector].append({
+            "symbol": symbol,
+            "account": account,
+            "method": method,
+            "value": round(val, 2),
+            "pct_of_sector": round(val / sec_tot * 100, 2),
+        })
+    for sector in resolved_sector_contributors:
+        resolved_sector_contributors[sector].sort(key=lambda x: -x["value"])
+
+    # Underlying names (stocks inside funds) per sector
+    resolved_sector_underlyings: dict[str, list] = defaultdict(list)
+    for (sector, ticker), val in underlying_bucket.items():
+        sec_tot = sector_bucket.get(sector) or 1.0
+        resolved_sector_underlyings[sector].append({
+            "symbol": ticker,
+            "value": round(val, 2),
+            "pct_of_sector": round(val / sec_tot * 100, 2),
+            "via": sorted(underlying_via.get((sector, ticker)) or []),
+        })
+    for sector in resolved_sector_underlyings:
+        resolved_sector_underlyings[sector].sort(key=lambda x: -x["value"])
+        resolved_sector_underlyings[sector] = resolved_sector_underlyings[sector][:25]
+
     # Build overlap analysis (passive)
     overlap_analysis = build_overlap_analysis(holdings_list, lookthrough, snapshot_tickers)
 
     # Write to holdings.json
     holdings_data["resolved_sectors"] = resolved_sectors
     holdings_data["resolved_sectors_by_account"] = resolved_sectors_by_account
+    holdings_data["resolved_sector_contributors"] = dict(resolved_sector_contributors)
+    holdings_data["resolved_sector_underlyings"] = dict(resolved_sector_underlyings)
     holdings_data["overlap_analysis"] = overlap_analysis
     holdings_data["lookthrough_as_of"] = date.today().isoformat()
     from holdings_guard import protected_holdings_write  # MANDATORY wipe-guard

@@ -67,6 +67,11 @@ Thresholds (env): `SHARE_DRIFT_TOL` (0.01), `SHARE_DRIFT_TRADE_PCT` (0.05), `SHA
 - Auto-replace broker stops  
 - Tax lot reconstruction  
 
+## Related
+
+Cross-account **rollovers / Roth ladder** and transfer-aware YTD:  
+→ `docs/features/transfer-aware-performance.md`
+
 ## Migration
 
 `migrations/2026_07_15_share_reconciliation.sql` (also auto-created by `share_reconciliation.ensure_tables()`).

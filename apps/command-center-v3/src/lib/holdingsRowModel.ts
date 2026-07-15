@@ -1,4 +1,5 @@
 import type { StopStatusTone } from './holdingsTerminalTokens'
+import { computeStopCoverage, type StopCoverage } from './stopCoverage'
 import { buildStopLogic, type StopLogic } from './stopManagement'
 
 export interface HoldingsRowInput {
@@ -61,6 +62,9 @@ export interface HoldingsRowModel {
   primaryAction: { label: string; tone: 'amber' | 'green' | 'red' | 'muted' }
   primaryActionTooltip: string
   needsAction: boolean
+  /** Stop order qty vs held shares (partial after size-up). Null when no live stop qty. */
+  stopCoverage: StopCoverage | null
+  stopQty: number | null
   llmHealth: string | null
   llmAction: string | null
 }
@@ -396,16 +400,40 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
 
   const liveStopPrice = logic.liveStop
   const hasLiveBroker = Boolean(logic.liveStop != null && input.confirmedStop?.order_id)
+  const stopQtyRaw = input.confirmedStop?.qty
+  const stopCoverage = (hasLiveBroker || stopQtyRaw != null)
+    ? computeStopCoverage(stopQtyRaw, sh)
+    : null
+  const sizeMismatch = stopCoverage?.kind === 'partial' || stopCoverage?.kind === 'oversized'
 
-  const copy = stopCopyFromLogic(logic, { isFidelity, isSchwab, health, signal, needsSellAll, shares: sh })
-  const stopStatus = stopStatusFromLogic(logic, health, signal, stopDist)
-  const primary = primaryFromLogic(logic, sym, acct, {
+  let copy = stopCopyFromLogic(logic, { isFidelity, isSchwab, health, signal, needsSellAll, shares: sh })
+  let stopStatus = stopStatusFromLogic(logic, health, signal, stopDist)
+  let primary = primaryFromLogic(logic, sym, acct, {
     isFidelity, isSchwab, hasLiveBroker, health, signal, needsSellAll, shares: sh,
     instruction: copy.instruction,
   })
+  // Size mismatch beats KEEP_EXISTING — GTC stop did not resize after buy/trim.
+  if (sizeMismatch && stopCoverage) {
+    stopStatus = 'action'
+    const tgt = stopCoverage.targetQty
+    primary = {
+      label: stopCoverage.kind === 'partial' ? `Update size → ${tgt}` : `Resize → ${tgt}`,
+      tone: stopCoverage.kind === 'oversized' ? 'red' : 'amber',
+      tooltip: `${stopCoverage.tip} Opens Stop Management / 2FA replace at full held size.`,
+    }
+    copy = {
+      instruction: stopCoverage.kind === 'partial'
+        ? `Resize → ${stopCoverage.stopQty}/${stopCoverage.heldQty} sh`
+        : `Oversized → ${stopCoverage.stopQty}/${stopCoverage.heldQty} sh`,
+      context: `Target ${tgt} sh via 2FA`,
+      tooltip: stopCoverage.tip,
+    }
+  }
 
   const needsAction = primary.tone === 'amber' || primary.tone === 'red'
-  const stopLabel = stopStatus === 'stable' ? 'Stable' : stopStatus === 'concern' ? 'Concern' : 'Action'
+  const stopLabel = sizeMismatch
+    ? (stopCoverage!.kind === 'partial' ? 'PARTIAL' : 'OVERSIZE')
+    : stopStatus === 'stable' ? 'Stable' : stopStatus === 'concern' ? 'Concern' : 'Action'
 
   const nameRaw = String(h.name || h.security_name || h.company_name || '').trim()
   const name = nameRaw
@@ -450,6 +478,8 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     primaryAction: { label: primary.label, tone: primary.tone },
     primaryActionTooltip: primary.tooltip,
     needsAction,
+    stopCoverage,
+    stopQty: stopCoverage?.stopQty ?? (stopQtyRaw != null ? Number(stopQtyRaw) : null),
     llmHealth: h.llm_health ?? null,
     llmAction: h.llm_action ?? null,
   }

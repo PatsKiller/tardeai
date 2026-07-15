@@ -319,6 +319,9 @@ export default function HoldingsTableView({
           const hasShareDrift = h.share_drift_status === 'pending'
             || (h.broker_actual_shares != null && h.shares != null
               && Math.abs(Number(h.broker_actual_shares) - Number(h.shares)) > 0.01)
+          const transferNote = h.transfer_display_note
+            || h.transfer_history_tag?.display_note
+            || (h.normalized_after_transfer ? 'normalized after transfer' : null)
 
           return (
             <div
@@ -378,6 +381,18 @@ export default function HoldingsTableView({
                   {hasShareDrift && (
                     <div style={{ marginTop: 3 }} onClick={e => e.stopPropagation()}>
                       <ShareDriftPill compact onClick={() => onShareDrift?.(rowCtx)} />
+                    </div>
+                  )}
+                  {transferNote && (
+                    <div
+                      title={h.normalization_status || transferNote}
+                      style={{
+                        marginTop: 3, fontSize: 8, fontWeight: 800, color: '#f59e0b',
+                        letterSpacing: 0.2, textTransform: 'uppercase',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120,
+                      }}
+                    >
+                      {String(transferNote).slice(0, 28)}
                     </div>
                   )}
                 </div>
@@ -491,22 +506,28 @@ export default function HoldingsTableView({
                 {m.earningsLabel || '—'}
               </span>
 
-              {/* Stop — click opens Stop Management drawer */}
+              {/* Stop — click opens Stop Management drawer (size mismatch → PARTIAL badge + Update size action) */}
               <div
                 role="button"
+                data-testid={m.stopCoverage?.kind === 'partial' || m.stopCoverage?.kind === 'oversized' ? 'holdings-stop-size-badge' : undefined}
                 title={[
-                  'Click → Stop Management drawer',
+                  'Click → Stop Management drawer (2FA replace when size mismatch)',
                   m.stopTooltip,
                   m.liveStopPrice != null ? `Live $${m.liveStopPrice.toFixed(2)}` : null,
+                  m.stopCoverage?.kind === 'partial' || m.stopCoverage?.kind === 'oversized'
+                    ? m.stopCoverage.tip : null,
                 ].filter(Boolean).join('\n')}
                 onClick={e => { e.stopPropagation(); openStops(rowCtx) }}
                 style={{
                   minWidth: 0, padding: '5px 7px', borderRadius: 4, cursor: 'pointer',
-                  background: stopStatusBg(m.stopStatus), borderLeft: `2px solid ${stopColor}`,
+                  background: (m.stopCoverage?.kind === 'partial' || m.stopCoverage?.kind === 'oversized')
+                    ? (m.stopCoverage.kind === 'oversized' ? 'rgba(239,68,68,.18)' : 'rgba(245,158,11,.18)')
+                    : stopStatusBg(m.stopStatus),
+                  borderLeft: `2px solid ${(m.stopCoverage?.kind === 'oversized') ? BB.red : (m.stopCoverage?.kind === 'partial') ? BB.amberAlt : stopColor}`,
                   lineHeight: 1.35,
                 }}
               >
-                <div style={{ fontSize: 9, fontWeight: 800, color: stopColor, textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 9, fontWeight: 800, color: (m.stopCoverage?.kind === 'partial' || m.stopCoverage?.kind === 'oversized') ? (m.stopCoverage.kind === 'oversized' ? BB.red : BB.amberAlt) : stopColor, textTransform: 'uppercase' }}>
                   {m.stopLabel}
                   {m.liveStopPrice != null && (
                     <span style={{ color: BB.text2, fontWeight: 700, marginLeft: 4, fontFamily: BB.mono }}>

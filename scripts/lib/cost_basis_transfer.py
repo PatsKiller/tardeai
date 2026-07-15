@@ -364,11 +364,46 @@ def process_holdings_change(
     sync_source: str = "holdings_sync",
     apply: bool = True,
 ) -> dict[str, Any]:
-    """Full pipeline: detect → persist events/overrides → tag holdings rows."""
+    """Full pipeline: detect → basis overrides → transfer normalize (DB + provenance).
+
+    Prefer position_transfer_normalize.process_and_normalize when available so
+    Fidelity→Schwab / Trad→Roth movements get source tracking, transfer_history,
+    performance_adjusted flags, audit log, and stop-impact flags. Falls back to
+    basis-only tagging if the normalize module is unavailable.
+    """
+    # Prefer full transfer-aware normalization (2026-07-23)
+    try:
+        from lib.position_transfer_normalize import process_and_normalize
+        full = process_and_normalize(
+            prior_doc, current_doc, sync_source=sync_source, apply=apply
+        )
+        if full.get("events"):
+            full["holdings_tagged"] = True
+        return full
+    except Exception:
+        pass
+
     events = detect_transfers(prior_doc, current_doc)
     result = apply_transfer_events(events, apply=apply, sync_source=sync_source)
     if apply and events:
         tagged = tag_holdings_with_transfers(current_doc, result.get("transfer_events") or events)
+        # Best-effort provenance stamps even without normalize module
+        try:
+            from lib.position_transfer_normalize import (
+                classify_transfer_type, transfer_display_note, annotate_holding_row,
+            )
+            for ev in result.get("transfer_events") or events:
+                ev = dict(ev)
+                ev["transfer_type"] = classify_transfer_type(
+                    ev.get("from_account") or "", ev.get("to_account") or ""
+                )
+                ev["display_note"] = transfer_display_note(ev["transfer_type"])
+                for h in tagged.get("holdings") or []:
+                    if ((h.get("account") or "").lower() == (ev.get("to_account") or "").lower()
+                            and (h.get("symbol") or "").upper() == (ev.get("symbol") or "").upper()):
+                        annotate_holding_row(h, ev)
+        except Exception:
+            pass
         result["holdings_tagged"] = True
         return {**result, "holdings_doc": tagged}
     return result
