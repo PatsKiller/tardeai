@@ -305,9 +305,11 @@ def test_drawer_order_parameter_overrides():
     stop price, limit price (stop-limit), trail % — blank falls back to advisory,
     advised_stop in the request stays the PURE advisory for the audit trail."""
     src = (ROOT / "apps/command-center-v3/src/components/HoldingProtectionActions.tsx").read_text()
-    assert "Request Schwab fixed stop via 2FA" in src
-    assert "Request Schwab trailing stop via 2FA" in src
-    assert "Request Schwab stop-limit via 2FA" in src
+    assert "Apply Fixed Stop (2FA)" in src
+    assert "Apply Advisory Trailing Stop (2FA)" in src
+    assert "Apply Stop-Limit (2FA)" in src
+    assert "Keep Current Stop" in src
+    assert "No broker action" in src or "audit" in src.lower()
     assert "limit_price: advised.limitPrice" in src
     assert "advised_stop: advised.pureAdvisoryStop" in src
     for field in ("ovStop", "ovLimit", "ovTrail"):

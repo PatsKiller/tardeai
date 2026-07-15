@@ -532,8 +532,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         <div><span style={{ color: MUTED }}>Current</span><br /><b>{logic.currentPrice != null ? `$${logic.currentPrice.toFixed(2)}` : 'missing'}</b></div>
         <div><span style={{ color: MUTED }}>Account + broker</span><br /><b>{acct}</b> · {logic.broker}</div>
         <div><span style={{ color: MUTED }}>Instrument</span><br /><b>{logic.instrumentType.replace(/_/g, ' ')}</b></div>
-        <div title={reviewTip}><span style={{ color: MUTED }}>{isFidelity ? 'Current stop' : 'Broker live stop'}</span><br /><b style={{ color: logic.liveStop != null || logic.liveStopIsTrailing ? GREEN : MUTED }}>{logic.liveStopIsTrailing && logic.liveTrailPct != null ? `TRAILING ${logic.liveTrailPct}%` : logic.liveStop != null ? `$${logic.liveStop.toFixed(2)}` : 'none'}</b>{logic.liveStopIsTrailing && logic.liveStop != null ? ` (~$${logic.liveStop.toFixed(2)} now)` : ''}{logic.liveStopDistancePct != null ? ` (${logic.liveStopDistancePct.toFixed(1)}% below)` : ''}</div>
-        <div title={reviewTip}><span style={{ color: MUTED }}>Advisor fixed stop</span><br /><b style={{ color: AMBER }}>{logic.advisoryStop != null ? `$${logic.advisoryStop.toFixed(2)}` : 'none'}</b>{logic.distancePct != null ? ` (${logic.distancePct.toFixed(1)}% below)` : ''}</div>
+        <div title={reviewTip}><span style={{ color: MUTED, fontWeight: 800 }}>CURRENT LIVE BROKER STOP</span><br /><b style={{ color: logic.liveStop != null || logic.liveStopIsTrailing ? GREEN : MUTED }}>{logic.liveStopIsTrailing && logic.liveTrailPct != null ? `TRAILING ${logic.liveTrailPct}%` : logic.liveStop != null ? `$${logic.liveStop.toFixed(2)}` : 'none'}</b>{logic.liveStopIsTrailing && logic.liveStop != null ? ` (~$${logic.liveStop.toFixed(2)} now)` : ''}{logic.liveStopDistancePct != null ? ` (${logic.liveStopDistancePct.toFixed(1)}% below)` : ''}</div>
+        <div title={reviewTip}><span style={{ color: MUTED, fontWeight: 800 }}>ADVISORY RECOMMENDATION</span><br /><b style={{ color: AMBER }}>{logic.advisoryStop != null ? `$${logic.advisoryStop.toFixed(2)}` : 'none'}</b>{logic.distancePct != null ? ` (${logic.distancePct.toFixed(1)}% below)` : ''}</div>
         <div><span style={{ color: MUTED }}>Optional trail</span><br /><b>{trailPct != null ? `${trailLabel}%` : 'none'}</b>{trailingFloorNow != null ? <span style={{ color: GREEN, fontSize: 11 }}> (≈${trailingFloorNow.toFixed(2)} now)</span> : null}</div>
         <div><span style={{ color: MUTED }}>Family floor/cap</span><br /><b style={{ color: logic.floor_math_consistent ? TEXT0 : RED }}>{logic.familyFloorLabel}</b></div>
         <div title={`${logic.liveStop != null ? `Current stop: $${logic.liveStop.toFixed(2)}${logic.liveStopDistancePct != null ? ` (${logic.liveStopDistancePct.toFixed(1)}% below)` : ''}` : 'Current stop: none'}\nWe advise trailing per ${(logic.volatilityTier ?? 'unclassified').toUpperCase()} tier${logic.regime ? ` + ${logic.regime.replace(/_/g, '-')} regime${logic.regimeAdjustmentPct != null ? ` (${logic.regimeAdjustmentPct > 0 ? 'wider: +' : 'tighter: '}${logic.regimeAdjustmentPct}% cap)` : ''}` : ''}.\nMinimum floor: ${logic.familyFloorPct != null ? logic.familyFloorPct + '%' : 'n/a'} (family/swing-low rule governs final placement).`} style={{ cursor: 'help' }}><span style={{ color: MUTED }}>Vol tier · regime</span><br /><b style={{ color: logic.volatilityTier === 'low' ? GREEN : logic.volatilityTier === 'high' ? RED : logic.volatilityTier === 'medium' ? AMBER : TEXT0 }}>{logic.volatilityTier ?? '—'}</b>{logic.regime ? <span> · {logic.regime.replace(/_/g, '-')}{logic.regimeAdjustmentPct != null ? <span style={{ color: logic.regimeAdjustmentPct > 0 ? GREEN : AMBER, fontSize: 11 }}> ({logic.regimeAdjustmentPct > 0 ? '+' : ''}{logic.regimeAdjustmentPct}% cap)</span> : null}</span> : null}</div>
@@ -781,9 +781,30 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
       {showProtect && (
         <div style={{ marginTop: 8, display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: MUTED, fontWeight: 800 }}>Action:</span>
-          {isSchwab && btn(`Request Schwab fixed stop via 2FA`, 'STOP', !preferTrail && logic.advisory_stop_is_tighter_than_existing)}
-          {isSchwab && (trailPct != null || numOr(ovTrail) != null) && btn(`Request Schwab trailing stop via 2FA`, 'TRAILING', preferTrail)}
-          {isSchwab && btn('Request Schwab stop-limit via 2FA', 'STOP_LIMIT')}
+          {isSchwab && btn(`Apply Fixed Stop (2FA)`, 'STOP', !preferTrail && logic.advisory_stop_is_tighter_than_existing)}
+          {isSchwab && (trailPct != null || numOr(ovTrail) != null) && btn(numOr(ovTrail) != null ? `Apply Trailing Stop (2FA)` : `Apply Advisory Trailing Stop (2FA)`, 'TRAILING', preferTrail)}
+          {isSchwab && btn('Apply Stop-Limit (2FA)', 'STOP_LIMIT')}
+          {logic.liveStop != null && (
+            <button
+              onClick={async e => {
+                e.stopPropagation()
+                try {
+                  const raw = await fetch('/api/v2/holdings/protective-stop/keep', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: sym, account: acct, live_stop: logic.liveStop,
+                                           advised_stop: logic.advisoryStop }),
+                  }).then(x => x.json())
+                  const r = unwrapApi(raw)
+                  setMsg(r?.ok !== false ? `\u2705 Kept current stop $${logic.liveStop!.toFixed(2)} \u2014 decision recorded` : `\u26d4 ${r?.error || 'keep failed'}`)
+                } catch { setMsg('\u26d4 keep request failed') }
+              }}
+              disabled={busy || validating}
+              title="Record that you reviewed the advisory and are keeping the current live stop. No broker action."
+              style={{ fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
+                       border: `1px solid ${MUTED}`, background: 'transparent', color: TEXT0 }}>
+              Keep Current Stop
+            </button>
+          )}
           {/* A disabled Schwab live-stop button is NEVER silent — the reason sits right beside it. */}
           {isSchwab && liveBlocked && disabledReasonHuman && (
             <div data-testid="schwab-stop-disabled-reason"

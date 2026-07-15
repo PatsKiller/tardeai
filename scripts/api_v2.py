@@ -30653,6 +30653,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200], "broker_request_sent": False}
 
+        if base_path == "/api/v2/holdings/protective-stop/keep":
+            # Operator reviewed the advisory and chose to KEEP the current live stop. Pure audit
+            # bookkeeping (stop_decisions row) — never touches a broker order.
+            try:
+                b = body or {}
+                sym = str(b.get("symbol") or "").strip().upper()
+                if not sym:
+                    return 400, {"ok": False, "error": "symbol required"}
+                note = (f"kept live stop {b.get('live_stop')} vs advisory {b.get('advised_stop')}"
+                        f" · account {b.get('account')}")[:400]
+                _db_query("""INSERT INTO stop_decisions (symbol, decision, decided_by, notes)
+                             VALUES (%s, 'KEEP_CURRENT', 'operator_web', %s)""",
+                          (sym, note), fetch=None)
+                return 200, {"ok": True, "recorded": True, "symbol": sym}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200], "broker_request_sent": False}
+
         if base_path == "/api/v2/holdings/protective-stop/refresh-quote":
             # Fetch the latest available quote (read-only) for a live-stop readiness check. Never submits,
             # modifies, or cancels a broker order.

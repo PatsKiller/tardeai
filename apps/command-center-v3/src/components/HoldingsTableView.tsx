@@ -29,9 +29,10 @@ const COL_TIPS: Record<string, string> = {
   agents: 'LLM lanes that reviewed this symbol (last 30d)',
 }
 
-/** Operator tooltip (current-vs-advise wording, 2026-07-14):
- * "Current stop: $X (Y% below) / We advise A-B% trailing based on TIER tier
- *  + regime / Minimum floor: F% (family/swing-low rule governs final placement)." */
+/** Operator tooltip (2026-07-14 v3): "Current live stop: $X (Y% below) /
+ * Advisory: Widen|Tighten to A-B% trailing (based on TIER tier + regime) /
+ * Minimum floor: F% (family/swing-low rule still governs final placement)."
+ * The verb compares the live stop distance to the advisory trail band. */
 export function volTierTooltip(pr: any, live?: { stop?: number | null; price?: number | null; distancePct?: number | null }): string {
   const tier = String(pr?.volatility_tier || '').toUpperCase()
   const fb = pr?.family_bounds || {}
@@ -39,19 +40,30 @@ export function volTierTooltip(pr: any, live?: { stop?: number | null; price?: n
   let distance = live?.distancePct
   if (distance == null && stop != null && live?.price) distance = (live.price - stop) / live.price * 100
   const cur = stop != null
-    ? `Current stop: $${Number(stop).toFixed(2)}${distance != null ? ` (${distance.toFixed(1)}% below)` : ''}`
-    : 'Current stop: none'
+    ? `Current live stop: $${Number(stop).toFixed(2)}${distance != null ? ` (${distance.toFixed(1)}% below)` : ''}`
+    : 'Current live stop: none'
   const regime = pr?.regime ? String(pr.regime).replace(/_/g, '-') : null
   const adj = pr?.regime_adjustment_pct
   const regimeBit = regime
     ? ` + ${regime} regime${adj != null ? ` (${adj > 0 ? 'wider: +' : 'tighter: '}${adj}% cap)` : ''}`
     : ''
-  const advise = fb.trail_min_pct != null && fb.trail_max_pct != null
-    ? `We advise ${fb.trail_min_pct}\u2013${fb.trail_max_pct}% trailing based on ${tier} tier${regimeBit}.`
-    : `${tier} tier${regimeBit}.`
+  const tMin = fb.trail_min_pct != null ? Number(fb.trail_min_pct) : null
+  const tMax = fb.trail_max_pct != null ? Number(fb.trail_max_pct) : null
+  let advise: string
+  if (tMin != null && tMax != null) {
+    const range = `${tMin}\u2013${tMax}%`
+    const verb = stop == null ? 'Set'
+      : distance != null && distance < tMin ? 'Widen to'
+      : distance != null && distance > tMax ? 'Tighten to' : null
+    advise = verb
+      ? `Advisory: ${verb} ${range} trailing (based on ${tier} tier${regimeBit}).`
+      : `Advisory: ${range} trailing \u2014 current is within band (${tier} tier${regimeBit}).`
+  } else {
+    advise = `Advisory: ${tier} tier${regimeBit}.`
+  }
   const floor = fb.stop_min_pct != null
-    ? `Minimum floor: ${fb.stop_min_pct}% (family/swing-low rule governs final placement).`
-    : 'Family/swing-low rule governs final placement.'
+    ? `Minimum floor: ${fb.stop_min_pct}% (family/swing-low rule still governs final placement).`
+    : 'Family/swing-low rule still governs final placement.'
   return `${cur}\n${advise}\n${floor}`
 }
 
