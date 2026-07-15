@@ -45,7 +45,7 @@ export function volTierTooltip(pr: any, live?: { stop?: number | null; price?: n
   const regime = pr?.regime ? String(pr.regime).replace(/_/g, '-') : null
   const adj = pr?.regime_adjustment_pct
   const regimeBit = regime
-    ? ` + ${regime} regime${adj != null ? ` (${adj > 0 ? 'wider: +' : 'tighter: '}${adj}% cap)` : ''}`
+    ? ` + ${regime} regime${adj != null ? `, ${adj > 0 ? '+' : ''}${adj}% cap` : ''}`
     : ''
   const tMin = fb.trail_min_pct != null ? Number(fb.trail_min_pct) : null
   const tMax = fb.trail_max_pct != null ? Number(fb.trail_max_pct) : null

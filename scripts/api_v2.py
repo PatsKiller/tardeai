@@ -30661,7 +30661,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 sym = str(b.get("symbol") or "").strip().upper()
                 if not sym:
                     return 400, {"ok": False, "error": "symbol required"}
-                note = (f"kept live stop {b.get('live_stop')} vs advisory {b.get('advised_stop')}"
+                _ls = b.get("live_stop") if b.get("live_stop") is not None else (
+                    f"{b.get('live_trail_pct')}% trailing" if b.get("live_trail_pct") is not None else "unknown")
+                note = (f"kept live stop {_ls} vs advisory {b.get('advised_stop')}"
                         f" · account {b.get('account')}")[:400]
                 _db_query("""INSERT INTO stop_decisions (symbol, decision, decided_by, notes)
                              VALUES (%s, 'KEEP_CURRENT', 'operator_web', %s)""",

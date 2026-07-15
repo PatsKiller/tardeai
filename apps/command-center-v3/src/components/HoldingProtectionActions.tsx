@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import PreflightChangedPanel from './PreflightChangedPanel'
+import { volTierTooltip } from './HoldingsTableView'
 import { protectionExplain, resolvedTrailPct } from '../lib/protectionTrail'
 import { fmtLiveStop, runProtectiveStopPreflight, unwrapApi, type PreflightDiff } from '../lib/protectiveStopPreflight'
 import { buildStopLogic, hasLiveBrokerStopOrder, isTrailingBrokerStop, resolveLiveStop, type StopLogic, type StopOrderKind } from '../lib/stopManagement'
@@ -541,6 +542,22 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         <div><span style={{ color: MUTED }}>Advisor timestamp</span><br /><b>{String(advisoryTimestamp ?? 'missing').slice(0, 19)}</b></div>
       </div>
 
+      {/* Three-line advisory comparison — same text as the badge tooltips, but ON SCREEN so the
+          operator never needs a hover to see current vs advisory vs floor. */}
+      {effectivePr?.volatility_tier && (() => {
+        const lines = volTierTooltip(effectivePr, { stop: logic.liveStop, distancePct: logic.liveStopDistancePct }).split('\n')
+        const adv = lines[1] || ''
+        const advColor = adv.includes('within band') ? GREEN : adv.includes('Widen to') || adv.includes('Tighten to') || adv.includes('Set ') ? AMBER : TEXT0
+        return (
+          <div style={{ marginTop: 9, padding: '9px 12px', borderRadius: 8, fontSize: 12.5, lineHeight: 1.55,
+                        background: 'rgba(148,163,184,.07)', border: `1px solid ${advColor}44` }}>
+            <div style={{ color: TEXT0, fontWeight: 700 }}>{lines[0]}</div>
+            <div style={{ color: advColor, fontWeight: 700 }}>{lines[1]}</div>
+            <div style={{ color: MUTED }}>{lines[2]}</div>
+          </div>
+        )
+      })()}
+
       <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 5, fontSize: 12 }}>
         {logic.why.map(row => (
           <div key={row.label} style={{ padding: '6px 7px', borderRadius: 6, background: 'rgba(15,23,42,.46)', border: '1px solid rgba(148,163,184,.14)' }}>
@@ -784,18 +801,21 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           {isSchwab && btn(`Apply Fixed Stop (2FA)`, 'STOP', !preferTrail && logic.advisory_stop_is_tighter_than_existing)}
           {isSchwab && (trailPct != null || numOr(ovTrail) != null) && btn(numOr(ovTrail) != null ? `Apply Trailing Stop (2FA)` : `Apply Advisory Trailing Stop (2FA)`, 'TRAILING', preferTrail)}
           {isSchwab && btn('Apply Stop-Limit (2FA)', 'STOP_LIMIT')}
-          {logic.liveStop != null && (
+          {(logic.liveStop != null || logic.liveStopIsTrailing) && (
             <button
               onClick={async e => {
                 e.stopPropagation()
+                const keptLabel = logic.liveStop != null ? `$${logic.liveStop.toFixed(2)}`
+                  : logic.liveTrailPct != null ? `${logic.liveTrailPct}% trailing` : 'current stop'
                 try {
                   const raw = await fetch('/api/v2/holdings/protective-stop/keep', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ symbol: sym, account: acct, live_stop: logic.liveStop,
+                                           live_trail_pct: logic.liveTrailPct,
                                            advised_stop: logic.advisoryStop }),
                   }).then(x => x.json())
                   const r = unwrapApi(raw)
-                  setMsg(r?.ok !== false ? `\u2705 Kept current stop $${logic.liveStop!.toFixed(2)} \u2014 decision recorded` : `\u26d4 ${r?.error || 'keep failed'}`)
+                  setMsg(r?.ok !== false ? `\u2705 Kept ${keptLabel} \u2014 decision recorded` : `\u26d4 ${r?.error || 'keep failed'}`)
                 } catch { setMsg('\u26d4 keep request failed') }
               }}
               disabled={busy || validating}
