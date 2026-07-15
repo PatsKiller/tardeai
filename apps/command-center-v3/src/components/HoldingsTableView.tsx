@@ -225,6 +225,15 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode =
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ width: 8, height: 8, borderRadius: 4, background: stopColor, flexShrink: 0 }} />
                   <span style={{ fontSize: 11, fontWeight: 800, color: stopColor, letterSpacing: 0.2 }}>{m.stopLabel}</span>
+                  {rowCtx.pr?.volatility_tier && (() => {
+                    const vt = rowCtx.pr.volatility_tier
+                    const vc = vt === 'low' ? BB.green : vt === 'high' ? BB.red : BB.amber
+                    return (
+                      <span title={`Dynamic volatility tier: ${vt}${rowCtx.pr.regime ? ` · regime ${String(rowCtx.pr.regime).replace(/_/g, '-')}${rowCtx.pr.regime_adjustment_pct != null ? ` (${rowCtx.pr.regime_adjustment_pct > 0 ? '+' : ''}${rowCtx.pr.regime_adjustment_pct}% cap)` : ''}` : ''}\nAdvisory only — placement stays swing-low anchored within the band.`}
+                        style={{ fontSize: 8, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: `${vc}1a`, border: `1px solid ${vc}44`, color: vc, cursor: 'help', textTransform: 'uppercase', flexShrink: 0 }}>
+                        VOL {vt}</span>
+                    )
+                  })()}
                 </div>
                 <div style={{ fontSize: 10, fontWeight: 800, color: m.needsAction ? BB.amberAlt : BB.text0, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: BB.mono }}>
                   {m.stopInstruction}

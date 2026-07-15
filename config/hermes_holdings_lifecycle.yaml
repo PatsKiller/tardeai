@@ -51,3 +51,8 @@ llm_health_scores:
 
 panel_limit: 25
 history_days: 14
+# ── Stop-policy linkage (documentation only — no engine reads this block) ─────
+# Lifecycle stages feed protective-stop sizing via config/stop_policy.yaml
+# `lifecycle_modifiers` (watch: cap −1 pct-pt, trim_candidate: cap −2). Stop rules
+# themselves live ONLY in stop_policy.yaml so the two files cannot drift; this
+# note exists so a reader of this file knows the stages have that second consumer.

@@ -433,7 +433,7 @@ const STOPS_CACHE_KEY = 'cc-v3-stops-management-v1'
 
 export default function StopManagement({ onFocusHolding }: Props) {
   const [terminalUi] = useTerminalUi()
-  const [sub, setSub] = useState<'Monitor' | 'Audit'>('Monitor')
+  const [sub, setSub] = useState<'Monitor' | 'Audit' | 'Policy'>('Monitor')
   const [data, setData] = useState<any>(() => {
     try {
       const raw = sessionStorage.getItem(STOPS_CACHE_KEY)
@@ -519,13 +519,13 @@ export default function StopManagement({ onFocusHolding }: Props) {
     <div style={{ padding: terminalUi ? '2px 0' : '4px 2px' }}>
       {/* sub-tabs */}
       <div style={{ display: 'flex', gap: terminalUi ? 3 : 4, marginBottom: terminalUi ? 8 : 12 }}>
-        {(['Monitor', 'Audit'] as const).map(t => (
+        {(['Monitor', 'Audit', 'Policy'] as const).map(t => (
           <button key={t} onClick={() => setSub(t)} style={{ fontSize: 13, fontWeight: 800, padding: '5px 14px', borderRadius: 7, cursor: 'pointer',
             border: `1px solid ${sub === t ? BLUE : 'rgba(148,163,184,.3)'}`, background: sub === t ? `${BLUE}18` : 'transparent', color: sub === t ? BLUE : MUTED }}>{t}</button>
         ))}
       </div>
 
-      {sub === 'Audit' ? <AuditView terminalUi={terminalUi} /> : (
+      {sub === 'Policy' ? <PolicyMigrationView terminalUi={terminalUi} /> : sub === 'Audit' ? <AuditView terminalUi={terminalUi} /> : (
         <>
           {fetchError && (
             <div style={{ marginBottom: terminalUi ? 6 : 10, ...hubPanel(terminalUi), background: `${AMBER}14`, border: `1px solid ${AMBER}55` }}>
@@ -860,6 +860,72 @@ function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; au
 }
 
 // Audit sub-tab — read-only trail of protective-stop actions (2FA requests + operator confirmations).
+/** Policy migration panel — ranked stops sitting outside their dynamic tier band.
+ * ADVISORY ONLY by design: there is deliberately no mass-update control; each row
+ * routes to the normal per-order path (Schwab 2FA / Fidelity manual / Alpaca paper). */
+function PolicyMigrationView({ terminalUi }: { terminalUi: boolean }) {
+  const [rep, setRep] = useState<any>(null)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => {
+    fetch('/api/v2/portfolio/stop-policy-migration')
+      .then(r => r.json())
+      .then(j => (j.ok ? setRep(j.data) : setErr(j.error || 'load failed')))
+      .catch(e => setErr(String(e)))
+  }, [])
+  if (err) return <div style={{ color: RED, fontSize: 12, padding: 10 }}>⛔ {err}</div>
+  if (!rep) return <div style={{ color: MUTED, fontSize: 12, padding: 10 }}>Loading policy report…</div>
+  const tierColor = (t: string) => t === 'vol_low' || t === 'income_defensive' ? GREEN
+    : t === 'vol_high' || t === 'momentum' ? RED : AMBER
+  const divergences: any[] = rep.divergences || []
+  const covered: any[] = (rep.rows || []).filter((r: any) => !r.divergence)
+  const regime = rep.regime?.posture
+  return (
+    <div style={{ fontSize: terminalUi ? 12 : 13 }}>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 8 }}>
+        <b style={{ color: TEXT0 }}>Stop-policy migration</b>
+        <span style={{ color: MUTED }}>policy {rep.policy_version} · {String(rep.generated_at || '').slice(0, 16)}</span>
+        {regime && <span style={{ color: regime === 'risk_on' ? GREEN : regime === 'risk_off' ? RED : MUTED, fontWeight: 700 }}>regime {String(regime).replace('_', '-')}</span>}
+        <span style={{ color: rep.diverged ? AMBER : GREEN, fontWeight: 800 }}>{rep.diverged} outside band</span>
+      </div>
+      <div style={{ color: MUTED, fontSize: 11, marginBottom: 10 }}>{rep.note}</div>
+      {divergences.length > 0 && (
+        <div style={{ overflowX: 'auto', marginBottom: 14 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead><tr style={{ color: MUTED, fontSize: 11, textAlign: 'left' }}>
+              <th style={{ padding: '4px 8px' }}>Symbol</th><th style={{ padding: '4px 8px' }}>Value</th>
+              <th style={{ padding: '4px 8px' }}>Tier</th><th style={{ padding: '4px 8px' }}>Band</th>
+              <th style={{ padding: '4px 8px' }}>Stop</th><th style={{ padding: '4px 8px' }}>Distance</th>
+              <th style={{ padding: '4px 8px' }}>Divergence</th>
+            </tr></thead>
+            <tbody>
+              {divergences.map((r: any, i: number) => (
+                <tr key={i} style={{ borderTop: '1px solid rgba(148,163,184,.15)', color: TEXT0 }}>
+                  <td style={{ padding: '5px 8px', fontWeight: 800 }}>{r.symbol}<span style={{ color: MUTED, fontWeight: 400, fontSize: 10 }}> {r.account}</span></td>
+                  <td style={{ padding: '5px 8px' }}>${Number(r.value_usd).toLocaleString()}</td>
+                  <td style={{ padding: '5px 8px' }}><b style={{ color: tierColor(r.tier) }}>{r.tier}</b><span style={{ color: MUTED, fontSize: 10 }}> {r.tier_source}</span></td>
+                  <td style={{ padding: '5px 8px' }}>{r.band_pct?.[0]}–{r.band_pct?.[1]}%</td>
+                  <td style={{ padding: '5px 8px' }}>{r.stop_price != null ? `$${Number(r.stop_price).toFixed(2)}` : '—'}</td>
+                  <td style={{ padding: '5px 8px' }}>{r.stop_distance_pct != null ? `${r.stop_distance_pct}%` : '—'}</td>
+                  <td style={{ padding: '5px 8px', color: AMBER, fontSize: 11 }}>{r.divergence}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div style={{ color: MUTED, fontSize: 11, marginBottom: 4 }}>In-band / no-stop holdings ({covered.length}) — tier assignments:</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+        {covered.map((r: any, i: number) => (
+          <span key={i} title={`${r.tier_label} · ${r.tier_source} · band ${r.band_pct?.[0]}–${r.band_pct?.[1]}%${r.note ? ' · ' + r.note : ''}`}
+            style={{ fontSize: 11, padding: '2px 8px', borderRadius: 5, border: `1px solid ${tierColor(r.tier)}44`, color: tierColor(r.tier), background: `${tierColor(r.tier)}12` }}>
+            {r.symbol} <span style={{ opacity: .75 }}>{r.tier}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function AuditView({ terminalUi }: { terminalUi: boolean }) {
   const [d, setD] = useState<any>(null)
   const [rw, setRw] = useState<any>(null)

@@ -24784,6 +24784,19 @@ def _symbol_cards(query=None):
                         "note": "unified card layer — description/sector/vs-sector/analyst/top-3 news; read-only"})
 
 
+def _portfolio_stop_policy_migration(query=None):
+    """GET /api/v2/portfolio/stop-policy-migration — ranked tier-divergence report
+    (advisory only). Served from the state file written by stop_policy_migration_report.py
+    (daily cron after the 06:45 volatility-tier refresh, or on-demand CLI); a disk read,
+    never computed inline (heavy-endpoint rule)."""
+    import json as _json
+    from pathlib import Path as _P
+    p = _P(__file__).resolve().parent.parent / "data" / "state" / "stop_policy_migration_latest.json"
+    if not p.exists():
+        return {"message": "no report yet — run scripts/stop_policy_migration_report.py"}
+    return _json_clean(_json.loads(p.read_text()))
+
+
 def _portfolio_llm_coverage(query=None):
     """GET /api/v2/portfolio/llm-coverage — per-symbol LLM research provenance (operator request
     2026-06-12: 'LLM name badge so we know which has looked at it'). Sources: hermes internal research
@@ -29747,6 +29760,7 @@ ROUTES = {
     "/api/v2/proposal-accounts": _proposal_accounts,
     "/api/v2/schwab/accounts-live": _schwab_accounts_live,
     "/api/v2/portfolio/llm-coverage": _portfolio_llm_coverage,
+    "/api/v2/portfolio/stop-policy-migration": _portfolio_stop_policy_migration,
     "/api/v2/symbol-cards": _symbol_cards,
     "/api/v2/schwab/quotes": _schwab_batch_quotes,
     "/api/v2/schwab/market-hours": _schwab_market_hours,

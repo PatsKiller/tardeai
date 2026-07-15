@@ -94,9 +94,22 @@ def main() -> int:
         rows.append(row)
 
     rows.sort(key=lambda r: -r["value_usd"])
-    report = {"policy_version": hf._policy().get("version"),
+    from datetime import datetime, timezone
+    report = {"generated_at": datetime.now(timezone.utc).isoformat(),
+              "policy_version": hf._policy().get("version"),
+              "regime": hf.current_regime(),
               "holdings": len(rows), "with_live_stop": len(stops_by_sym),
-              "diverged": len(diverged), "divergences": diverged, "rows": rows}
+              "diverged": len(diverged), "divergences": diverged, "rows": rows,
+              "note": ("advisory only — apply each change individually via the existing "
+                       "2FA (Schwab) / manual ticket (Fidelity) path; no bulk apply exists "
+                       "by design")}
+    # state file for /api/v2/portfolio/stop-policy-migration (CC v3 Policy panel)
+    state = ROOT / "data" / "state" / "stop_policy_migration_latest.json"
+    try:
+        state.parent.mkdir(parents=True, exist_ok=True)
+        state.write_text(json.dumps(report, indent=1))
+    except Exception as e:
+        print(f"note: state write failed ({e})", file=sys.stderr)
 
     if "--json" in sys.argv:
         print(json.dumps(report, indent=2))

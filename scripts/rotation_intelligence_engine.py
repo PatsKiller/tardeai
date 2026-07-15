@@ -262,6 +262,18 @@ def score_row(row: dict[str, Any], total_value: float, stops: dict[str, Any] | N
     if protection in {"unprotected", "alert", "near_trigger", "orphaned", "oversized"}:
         trim += 8
         evidence["protection_review"] = protection
+    # advisory surfacing only (stop_policy.yaml dynamic tiers) — never moves the score;
+    # gives the rotation LLM + UI the same tier context the protection advisor uses
+    try:
+        import holding_family as _hf
+        _fam, _fam_src = _hf.classify_family(symbol)
+        _vt = _hf.volatility_tier(symbol)
+        evidence["stop_tier"] = _fam
+        evidence["stop_tier_source"] = _fam_src
+        if _vt:
+            evidence["volatility_tier"] = _vt.get("tier")
+    except Exception:
+        pass
     if income_yield >= 0.05:
         trim = max(0.0, trim - 8)
         evidence["income_preservation"] = income_yield

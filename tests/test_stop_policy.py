@@ -257,6 +257,49 @@ def test_refresh_script_is_advisory_only():
         assert bad not in src
 
 
+def test_migration_state_file_and_endpoint_source():
+    """The Policy panel's endpoint serves the report state file (disk read, never
+    computed inline) and the report stays advisory with no bulk-apply concept."""
+    import json
+    p = ROOT / "data" / "state" / "stop_policy_migration_latest.json"
+    assert p.exists(), "run scripts/stop_policy_migration_report.py first"
+    rep = json.loads(p.read_text())
+    for k in ("generated_at", "policy_version", "regime", "diverged", "divergences", "rows", "note"):
+        assert k in rep, f"missing {k}"
+    assert "advisory only" in rep["note"] and "no bulk apply" in rep["note"]
+    api = (ROOT / "scripts" / "api_v2.py").read_text()
+    assert "/api/v2/portfolio/stop-policy-migration" in api
+    fn = api.split("def _portfolio_stop_policy_migration")[1].split("\ndef ")[0]
+    assert "stop_policy_migration_latest.json" in fn
+    assert "classify_family" not in fn, "endpoint must be a disk read, not inline compute"
+
+
+def test_rotation_engine_surfaces_tier_without_scoring():
+    """Rotation evidence carries stop_tier/volatility_tier but the tier never
+    changes trim/add scores (advisory surfacing only)."""
+    src = (ROOT / "scripts" / "rotation_intelligence_engine.py").read_text()
+    block = src.split('evidence["stop_tier"]')[1].split("except Exception")[0]
+    assert "trim" not in block and "add" not in block, \
+        "tier surfacing must not touch scoring"
+    assert 'evidence["volatility_tier"]' in src
+
+
+def test_no_bulk_apply_in_ui():
+    """CC v3 must not grow a bulk widen/apply-all control (per-order 2FA rule)."""
+    for rel in ("apps/command-center-v3/src/components/StopManagement.tsx",
+                "apps/command-center-v3/src/components/HoldingProtectionActions.tsx"):
+        src = (ROOT / rel).read_text().lower()
+        for bad in ("widen all", "apply all", "bulk apply", "apply-recommended-all"):
+            assert bad not in src, f"'{bad}' found in {rel}"
+
+
+def test_lifecycle_yaml_still_parses_with_linkage_note():
+    import yaml
+    d = yaml.safe_load((ROOT / "config" / "hermes_holdings_lifecycle.yaml").read_text())
+    assert "panel_limit" in d
+    assert "stop_rules" not in d, "stop rules must live only in stop_policy.yaml"
+
+
 if __name__ == "__main__":
     for k, v in sorted(globals().items()):
         if k.startswith("test_"):
