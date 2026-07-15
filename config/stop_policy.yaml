@@ -6,7 +6,7 @@
 # L3 hybrid trailing stays OFF per the triple-confirmed backtest verdict — this file does not
 # and must not re-enable it. No broker execution behavior lives here: Schwab applies stops via
 # the existing per-order 2FA path; Fidelity is monitor-only; Alpaca paper is automatic.
-version: "2026-07-14"
+version: "2026-07-14.2"
 enabled: true
 
 # ── Stop tiers ────────────────────────────────────────────────────────────────
@@ -64,6 +64,35 @@ tiers:
     trail_max_pct: 7.0
     trail_norm: true
     trail_pnl_threshold_pct: 9.0
+  # ── dynamic volatility tiers (assigned by classify_volatility_tier — beta/ATR/yield/sector,
+  # NO hardcoded symbols; regime posture can widen/tighten caps per regime_adjustments) ──
+  vol_low:
+    label: "Low Vol / Defensive"
+    hold: "long / held through noise"
+    stop_min_pct: 5.0
+    stop_max_pct: 8.0
+    trail_min_pct: 6.0
+    trail_max_pct: 8.0
+    trail_norm: false          # income/defensive holds through noise; trail only on big gains
+    trail_pnl_threshold_pct: 20.0
+  vol_medium:
+    label: "Medium Vol / Core Growth"
+    hold: "long / core compounder"
+    stop_min_pct: 8.0
+    stop_max_pct: 11.0
+    trail_min_pct: 9.0
+    trail_max_pct: 11.0
+    trail_norm: true
+    trail_pnl_threshold_pct: 9.0
+  vol_high:
+    label: "High Vol / Tactical"
+    hold: "thesis-bound / tactical"
+    stop_min_pct: 9.0
+    stop_max_pct: 13.0
+    trail_min_pct: 10.0
+    trail_max_pct: 13.0
+    trail_norm: true
+    trail_pnl_threshold_pct: 9.0
   # legacy families — unchanged values, kept for scalp/momentum lanes + fallback compatibility
   momentum:
     label: "Momentum"
@@ -104,17 +133,12 @@ tiers:
 
 default_tier: position   # conservative default: widest stop, no premature tightening
 
-# Explicit per-symbol tier pins (operator decisions that beat classification).
-# JEPQ: covered-call by bucket, but the operator treats it as medium-vol growth/tech.
-# PFLT/CSWC: BDCs held for income — the stock-type fallback would misplace them.
-# DIVI: international dividend ETF with no bucket tag.
-symbol_tier_overrides:
-  JEPQ: growth_tech
-  SCHG: growth_tech
-  QQQ: growth_tech
-  PFLT: income_defensive
-  CSWC: income_defensive
-  DIVI: income_defensive
+# Explicit per-symbol tier pins (operator decisions that beat ALL classification).
+# EMPTY by design (2026-07-14.2): tiers are dynamic — beta/volatility/yield/sector via
+# classify_volatility_tier — so no specific ETF is hardcoded here. The mechanism stays
+# for genuine operator overrides, e.g.:
+#   JEPQ: vol_medium
+symbol_tier_overrides: {}
 
 # bucket tag (asset_classification_rules.json bucket_overrides) → tier. First match wins.
 bucket_map:
@@ -166,6 +190,55 @@ portfolio_drawdown_guard:
   alert_pct: 10.0        # portfolio ≥10% below its 90d peak → warning alert
   critical_pct: 12.0     # ≥12% → critical alert
   dedup_hours: 6
+
+# ── Dynamic volatility classification (classify_volatility_tier) ─────────────
+# Inputs come from data/state/ticker_enrichment_cache.json (finviz_enrichment):
+# beta, volatility_w_pct (weekly ATR-like %), div_yield_pct, sector. Rules, in order:
+#   LOW    beta <= beta_low_max, OR modest beta AND (income yield OR low volatility)
+#   HIGH   beta >= beta_high_min, OR volatility >= atr_high_min_pct,
+#          OR a high-vol sector with beta >= sector_beta_min
+#   MEDIUM everything else with data; no data -> no vol tier (falls through resolution)
+volatility_classification:
+  enabled: true
+  beta_low_max: 0.6
+  beta_high_min: 1.0
+  defensive_beta_max: 0.85      # covered-call/dividend/BDC names (SCHD-style) sit ~0.7
+  defensive_yield_min_pct: 3.0
+  atr_low_max_pct: 1.5          # weekly volatility %
+  atr_high_min_pct: 3.5
+  high_vol_sectors: [Technology]
+  sector_beta_min: 0.9
+  stale_after_days: 7           # ignore enrichment rows older than this
+
+volatility_tier_map:            # volatility tier -> stop tier
+  low: vol_low
+  medium: vol_medium
+  high: vol_high
+
+# ── Regime adjustments (market_regime_snapshots via risk-regime/status) ──────
+# Posture mapping is label-driven; anything unlisted is neutral (no adjustment).
+# Adjustments move the CAP end of the band only, are clamped to stop_min + 0.5,
+# and are recorded in bounds provenance (regime / regime_adjustment_pct).
+regime_adjustments:
+  enabled: true
+  stale_after_hours: 24         # older snapshot (or stale_data flag) -> neutral
+  label_map:
+    risk_on: [risk_on_trend, broad_momentum, low_volatility_grind]
+    risk_off: [risk_off, high_volatility]
+  risk_on:
+    trail_max_widen_pct: 1.0    # high-vol/tactical gets room to run in risk-on
+    applies_to_tiers: [vol_high]
+  risk_off:
+    stop_max_shrink_pct: 1.0    # tighter across the board in risk-off
+    trail_max_shrink_pct: 1.0
+
+# ── Conviction modifier (individual stocks: volatility tier + position size) ─
+# A small tactical stock position gets a tighter cap; conviction-size positions
+# keep the full band. Applies to stock-type holdings only, never widens.
+conviction_modifiers:
+  enabled: true
+  small_position_max_usd: 10000
+  small_position_shrink_pct: 1.0
 
 # Account semantics (documentation of EXISTING behavior — not switches):
 #   schwab_*   → live stop changes require the per-order 2FA flow; never automatic

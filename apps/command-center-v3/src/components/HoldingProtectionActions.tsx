@@ -522,6 +522,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         <div title={reviewTip}><span style={{ color: MUTED }}>Advisor fixed stop</span><br /><b style={{ color: AMBER }}>{logic.advisoryStop != null ? `$${logic.advisoryStop.toFixed(2)}` : 'none'}</b>{logic.distancePct != null ? ` (${logic.distancePct.toFixed(1)}% below)` : ''}</div>
         <div><span style={{ color: MUTED }}>Optional trail</span><br /><b>{trailPct != null ? `${trailLabel}%` : 'none'}</b>{trailingFloorNow != null ? <span style={{ color: GREEN, fontSize: 11 }}> (≈${trailingFloorNow.toFixed(2)} now)</span> : null}</div>
         <div><span style={{ color: MUTED }}>Family floor/cap</span><br /><b style={{ color: logic.floor_math_consistent ? TEXT0 : RED }}>{logic.familyFloorLabel}</b></div>
+        <div><span style={{ color: MUTED }}>Vol tier · regime</span><br /><b>{logic.volatilityTier ?? '—'}</b>{logic.regime ? <span> · {logic.regime.replace(/_/g, '-')}{logic.regimeAdjustmentPct != null ? <span style={{ color: logic.regimeAdjustmentPct > 0 ? GREEN : AMBER, fontSize: 11 }}> ({logic.regimeAdjustmentPct > 0 ? '+' : ''}{logic.regimeAdjustmentPct}% cap)</span> : null}</span> : null}</div>
         <div><span style={{ color: MUTED }}>Price timestamp</span><br /><b>{String(priceTimestamp ?? 'missing').slice(0, 19)}</b></div>
         <div><span style={{ color: MUTED }}>Advisor timestamp</span><br /><b>{String(advisoryTimestamp ?? 'missing').slice(0, 19)}</b></div>
       </div>

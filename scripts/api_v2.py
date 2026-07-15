@@ -24846,6 +24846,9 @@ def _portfolio_llm_coverage(query=None):
                            "sanity": ev.get("sanity"),   # advisory self-consistency verdict + issues
                            "family": _fam, "family_source": ev.get("family_source"),
                            "family_bounds": _fb,
+                           "volatility_tier": ev.get("volatility_tier"),
+                           "regime": (ev.get("regime") or {}).get("posture") if isinstance(ev.get("regime"), dict) else ev.get("regime"),
+                           "regime_adjustment_pct": _fb.get("regime_adjustment_pct"),
                            "family_floor_pct": _floor_pct,
                            "family_floor": (f"{_fam} floor {_floor_pct}%" if _floor_pct is not None else _fam) or None,
                            "evidence": _pep.get("evidence") or [],

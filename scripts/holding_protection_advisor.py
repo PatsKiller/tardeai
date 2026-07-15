@@ -356,7 +356,12 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
         atr_pct = t["atr"] / t["price"] * 100 if t["price"] else None
         family, fam_source = hf.classify_family(sym, atr_pct)
         _stage = _lifecycle_stage(sym)
-        fb = hf.protection_bounds(family, lifecycle_stage=_stage)
+        _is_stock = ((hf._cfg().get("asset_type_overrides") or {}).get(sym, "").lower() == "stock"
+                     or fam_source.startswith("stock"))
+        fb = hf.protection_bounds(family, lifecycle_stage=_stage,
+                                  regime=hf.current_regime(),
+                                  position_value_usd=qty * t["price"] if qty else None,
+                                  is_stock=_is_stock)
         _trail_min = hf.trail_pnl_threshold(family)
         trail_rule = (f"• {fb['label']} is held through noise — trail_recommended = TRUE only on a LARGE "
                       f"gain (unrealized ≥ +{_trail_min:.0f}%) AND price > 50d SMA; otherwise FALSE (fixed stop)."
@@ -475,6 +480,8 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
                      json.dumps({"prompt_version": PROMPT_VERSION, "inputs": {**t, "basis_ps": basis_ps,
                                  "pnl_pct": pnl_pct}, "recommendation": rec, "lane": used_lane, "sanity": sanity,
                                  "family": family, "family_source": fam_source, "family_bounds": fb,
+                                 "volatility_tier": (hf.volatility_tier(sym) or {}).get("tier"),
+                                 "regime": hf.current_regime(),
                                  # explicit floor-clamp marker so the monthly Claude meta-review sanity-checks
                                  # widenings (rec._floored_from_pct = original too-tight %, now at the floor).
                                  "floored": ({"from_pct": rec.get("_floored_from_pct"),

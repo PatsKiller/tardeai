@@ -136,6 +136,129 @@ def _resolve(symbol: str) -> str:
     return (_cfg().get("aliases") or {}).get(s, s)
 
 
+_ENRICH_PATH = _POLICY_PATH.parent.parent / "data" / "state" / "ticker_enrichment_cache.json"
+_VOLTIER_PATH = _POLICY_PATH.parent.parent / "data" / "state" / "volatility_tiers_latest.json"
+_VOLTIER_CACHE: tuple[float, dict] | None = None
+_ENRICH_CACHE: tuple[float, dict] | None = None
+_REGIME_CACHE: tuple[float, dict] | None = None
+
+
+def _state_json(path, cache_attr: str) -> dict:
+    """mtime-cached JSON state file read; {} fail-soft."""
+    global _VOLTIER_CACHE, _ENRICH_CACHE
+    try:
+        mt = path.stat().st_mtime
+    except OSError:
+        return {}
+    cached = globals().get(cache_attr)
+    if cached and cached[0] == mt:
+        return cached[1]
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        data = {}
+    globals()[cache_attr] = (mt, data)
+    return data
+
+
+def classify_volatility_tier(beta: float | None, atr_pct: float | None,
+                             div_yield_pct: float | None = None,
+                             sector: str | None = None) -> str | None:
+    """Dynamic low/medium/high volatility tier — pure function of the inputs, rules
+    from stop_policy.yaml volatility_classification (NO hardcoded symbols).
+    Returns None when there is no usable data (caller falls through resolution)."""
+    vc = _policy().get("volatility_classification") or {}
+    if not vc.get("enabled", True):
+        return None
+    if beta is None and atr_pct is None:
+        return None
+    b = float(beta) if beta is not None else None
+    a = float(atr_pct) if atr_pct is not None else None
+    y = float(div_yield_pct) if div_yield_pct is not None else None
+    # LOW: outright low beta, or a modest-beta income/low-volatility name
+    if b is not None:
+        if b <= float(vc.get("beta_low_max", 0.6)):
+            return "low"
+        if b <= float(vc.get("defensive_beta_max", 0.85)):
+            if y is not None and y >= float(vc.get("defensive_yield_min_pct", 3.0)):
+                return "low"
+            if a is not None and a <= float(vc.get("atr_low_max_pct", 1.5)):
+                return "low"
+    # HIGH: high beta, high realized volatility, or a high-vol sector with real beta
+    if b is not None and b >= float(vc.get("beta_high_min", 1.0)):
+        return "high"
+    if a is not None and a >= float(vc.get("atr_high_min_pct", 3.5)):
+        return "high"
+    if (sector and b is not None
+            and sector in (vc.get("high_vol_sectors") or [])
+            and b >= float(vc.get("sector_beta_min", 0.9))):
+        return "high"
+    if b is None and a is not None and a <= float(vc.get("atr_low_max_pct", 1.5)):
+        return "low"
+    return "medium"
+
+
+def volatility_tier(symbol: str) -> dict | None:
+    """Stored volatility tier for a symbol: prefers the daily-refreshed state file
+    (volatility_tier_refresh.py), falls back to classifying live from the enrichment
+    cache. Returns {tier, beta, atr_pct, ...} or None."""
+    s = _resolve(symbol)
+    row = (_state_json(_VOLTIER_PATH, "_VOLTIER_CACHE").get("tiers") or {}).get(s)
+    if isinstance(row, dict) and row.get("tier") in ("low", "medium", "high"):
+        return row
+    rec = _state_json(_ENRICH_PATH, "_ENRICH_CACHE").get(s) or {}
+    # atr_pct deliberately None here: the cache's volatility_w_pct is a misparsed
+    # Finviz column (values like 46.58 for V) and atr is in dollars with no price.
+    # The daily refresh (volatility_tier_refresh.py) computes a real ATR% with live
+    # prices and writes it to the state file, which is preferred above.
+    tier = classify_volatility_tier(rec.get("beta"), None,
+                                    rec.get("div_yield_pct"), rec.get("sector"))
+    if tier:
+        return {"tier": tier, "beta": rec.get("beta"), "atr_pct": None,
+                "div_yield_pct": rec.get("div_yield_pct"),
+                "sector": rec.get("sector"), "source": "enrichment_cache_live"}
+    return None
+
+
+def current_regime() -> dict:
+    """Market regime posture from the newest market_regime_snapshots row (the same
+    source as /api/v2/risk-regime/status). In-process cached 10 minutes; a stale or
+    unreadable snapshot degrades to neutral — never blocks, never raises."""
+    global _REGIME_CACHE
+    import time
+    now = time.time()
+    if _REGIME_CACHE and now - _REGIME_CACHE[0] < 600:
+        return _REGIME_CACHE[1]
+    ra = _policy().get("regime_adjustments") or {}
+    out = {"posture": "neutral", "label": None, "stale": True}
+    if ra.get("enabled", True):
+        try:
+            from db_adapter import _get_conn
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("""SELECT regime_label, stale_data, generated_at,
+                                  EXTRACT(EPOCH FROM (NOW() - generated_at))/3600
+                           FROM market_regime_snapshots
+                           ORDER BY created_at DESC LIMIT 1""")
+            row = cur.fetchone()
+            conn.rollback()
+            if row:
+                label, stale_flag, gen_at, age_h = row
+                fresh = (not stale_flag) and float(age_h or 1e9) <= float(
+                    ra.get("stale_after_hours", 24))
+                lm = ra.get("label_map") or {}
+                posture = "neutral"
+                for p in ("risk_on", "risk_off"):
+                    if label in (lm.get(p) or []):
+                        posture = p
+                out = {"posture": posture if fresh else "neutral", "label": label,
+                       "generated_at": str(gen_at), "stale": not fresh}
+        except Exception:
+            pass
+    _REGIME_CACHE = (now, out)
+    return out
+
+
 def classify_family(symbol: str, atr_pct: float | None = None) -> tuple[str, str]:
     """Return (tier, source). Resolution (stop_policy.yaml when present, legacy otherwise):
     symbol_tier_overrides → bucket tags → etf asset_class → asset_type + ATR volatility →
@@ -159,12 +282,20 @@ def classify_family(symbol: str, atr_pct: float | None = None) -> tuple[str, str
                 continue
             if tier in tiers and any(tag in b for b in buckets):
                 return tier, f"bucket:{tag}"
-        # 3. ETF asset class (etf_classification_overrides.json)
+        # 3. dynamic volatility tier (beta/volatility/yield/sector — no hardcoded symbols)
+        vt = volatility_tier(s)
+        if vt:
+            tier = (pol.get("volatility_tier_map") or {}).get(vt["tier"])
+            if tier and tier in tiers:
+                b = vt.get("beta")
+                return tier, (f"vol_tier:{vt['tier']}"
+                              + (f" β{float(b):.2f}" if b is not None else ""))
+        # 4. ETF asset class (etf_classification_overrides.json)
         ac = _etf_asset_class(s)
         tier = (pol.get("asset_class_map") or {}).get(ac)
         if tier and tier in tiers:
             return tier, f"asset_class:{ac}"
-        # 4. asset type + volatility fallback (type-specific BEFORE the generic vol map:
+        # 5. asset type + volatility fallback (type-specific BEFORE the generic vol map:
         # a low-vol individual stock is stock_core 7-10%, not the wide position band)
         at = ((cfg.get("asset_type_overrides") or {}).get(s) or "").lower()
         if at in ("mutual_fund", "fund"):
@@ -245,13 +376,51 @@ def is_unstoppable_fund(symbol: str) -> bool:
     return False
 
 
-def protection_bounds(family: str, lifecycle_stage: str | None = None) -> dict:
-    """Band for a tier/family, optionally tightened by the holding's lifecycle stage
-    (hermes_holdings_lifecycle: watch/trim_candidate bias toward the TIGHT end — the
-    band never widens and stop_max never drops below stop_min + 0.5)."""
+def protection_bounds(family: str, lifecycle_stage: str | None = None,
+                      regime: dict | str | None = None,
+                      position_value_usd: float | None = None,
+                      is_stock: bool | None = None) -> dict:
+    """Band for a tier/family, adjusted (cap end only, never below stop_min + 0.5) by:
+    - regime posture (risk_on widens vol_high trail cap; risk_off tightens all caps);
+      pass current_regime() (or a posture string) to opt in — None means no adjustment
+    - lifecycle stage (hermes_holdings_lifecycle: watch/trim bias toward the tight end)
+    - conviction size (small stock positions get a tighter cap)
+    Every applied adjustment is recorded in the returned dict for provenance."""
     tiers = policy_tiers()
     b = dict(tiers.get(family) or tiers.get(_policy().get("default_tier") or DEFAULT_FAMILY)
              or FAMILY_PROTECTION[DEFAULT_FAMILY])
+    ra = _policy().get("regime_adjustments") or {}
+    posture = (regime.get("posture") if isinstance(regime, dict) else regime) or None
+    if posture and ra.get("enabled", True):
+        b["regime"] = posture
+        if isinstance(regime, dict) and regime.get("label"):
+            b["regime_label"] = regime["label"]
+        adj = ra.get(posture) or {}
+        applies = adj.get("applies_to_tiers")
+        if not applies or family in applies:
+            widen = float(adj.get("trail_max_widen_pct") or 0.0)
+            if widen > 0:
+                b["trail_max_pct"] = float(b["trail_max_pct"]) + widen
+                b["regime_adjustment_pct"] = widen
+            shrink_s = float(adj.get("stop_max_shrink_pct") or 0.0)
+            shrink_t = float(adj.get("trail_max_shrink_pct") or 0.0)
+            if shrink_s > 0:
+                b["stop_max_pct"] = max(float(b["stop_min_pct"]) + 0.5,
+                                        float(b["stop_max_pct"]) - shrink_s)
+                b["regime_adjustment_pct"] = -shrink_s
+            if shrink_t > 0:
+                b["trail_max_pct"] = max(float(b["trail_min_pct"]) + 0.5,
+                                         float(b["trail_max_pct"]) - shrink_t)
+    cm = _policy().get("conviction_modifiers") or {}
+    if (cm.get("enabled") and is_stock and position_value_usd is not None
+            and float(position_value_usd) < float(cm.get("small_position_max_usd", 10000))):
+        shrink = float(cm.get("small_position_shrink_pct") or 0.0)
+        if shrink > 0:
+            b["stop_max_pct"] = max(float(b["stop_min_pct"]) + 0.5,
+                                    float(b["stop_max_pct"]) - shrink)
+            b["trail_max_pct"] = max(float(b["trail_min_pct"]) + 0.5,
+                                     float(b["trail_max_pct"]) - shrink)
+            b["conviction_tightened_pct"] = shrink
     if lifecycle_stage:
         mods = (_policy().get("lifecycle_modifiers") or {}).get(str(lifecycle_stage).lower()) or {}
         shrink = float(mods.get("stop_max_shrink_pct") or 0.0)

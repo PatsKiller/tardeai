@@ -1,6 +1,6 @@
 # Stop & Trailing-Stop Methodology (canonical)
 
-**Status:** Active · **Updated:** 2026-07-14 (dynamic tier policy) · **Scope:** protective stop / trailing-stop advisories for **real-account holdings** (Schwab + Fidelity). Paper/Alpaca execution is covered separately by [`OCO_ATM_UNIFICATION_DESIGN.md`](design/OCO_ATM_UNIFICATION_DESIGN.md) and `alpaca_stop_manager.py`. **Momentum scalp paper trades** use a distinct layered policy: [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md). **Click-time preflight UX** (operator choices 1A–5A): see §9 and [`runbooks/protective-stop-integration-2026-06-30.md`](runbooks/protective-stop-integration-2026-06-30.md#click-time-preflight-portfolio-ux-1a5a).
+**Status:** Active · **Updated:** 2026-07-14 v2 (dynamic volatility + regime policy) · **Scope:** protective stop / trailing-stop advisories for **real-account holdings** (Schwab + Fidelity). Paper/Alpaca execution is covered separately by [`OCO_ATM_UNIFICATION_DESIGN.md`](design/OCO_ATM_UNIFICATION_DESIGN.md) and `alpaca_stop_manager.py`. **Momentum scalp paper trades** use a distinct layered policy: [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md). **Click-time preflight UX** (operator choices 1A–5A): see §9 and [`runbooks/protective-stop-integration-2026-06-30.md`](runbooks/protective-stop-integration-2026-06-30.md#click-time-preflight-portfolio-ux-1a5a).
 
 > **Advisory only.** Nothing here places, modifies, or cancels a broker order. Real-account stops are operator-placed (Fidelity manual / Schwab per-order 2FA). The engine recommends; the operator executes.
 
@@ -21,7 +21,21 @@
    | **stock_tactical** | **4–7%** | 5–7% | small/tactical (days–wks) | AVAV, KTOS, RKLB, LDOS |
    | *legacy:* momentum / swing / income / position | 2–6 / 3–8 / 4–10 / 5–12% | — | unchanged (scalp lanes + fallback) | |
 
-   **Resolution order** (first match wins): `symbol_tier_overrides` (operator pins) → `bucket_map` (asset_classification_rules bucket tags) → `asset_class_map` (etf_classification_overrides) → type-aware volatility fallback (a low-ATR individual stock lands in stock_core, not the generic position band) → `default_tier` (position). Every advisory records `family`, `family_source` and the resolved `family_bounds` in `evidence_json`.
+   **Dynamic volatility tiers (2026-07-14.2)** — classification is data-driven, NO hardcoded symbols. `classify_volatility_tier(beta, atr_pct, div_yield_pct, sector)` (rules in `volatility_classification`):
+
+   | Vol tier | Rule (config-driven) | Stop band | Trail band |
+   |---|---|---|---|
+   | **vol_low** | β ≤ 0.6, or β ≤ 0.85 with income yield ≥ 3% or ATR ≤ 1.5% | 5–8% | 6–8% (trail only ≥ +20% gain) |
+   | **vol_medium** | everything else with data | 8–11% | 9–11% |
+   | **vol_high** | β ≥ 1.0, ATR ≥ 3.5%, or high-vol sector with β ≥ 0.9 | 9–13% | 10–13% |
+
+   Inputs: `ticker_enrichment_cache.json` (finviz beta/ATR$/yield/sector) + live prices. `volatility_tier_refresh.py` (cron 06:45 weekdays) writes `data/state/volatility_tiers_latest.json` + `symbol_volatility_tiers` DB table; `holding_family.volatility_tier()` prefers the state file and falls back to live cache classification. (The cache's `volatility_w_pct` column is misparsed and deliberately unused.)
+
+   **Resolution order** (first match wins): `symbol_tier_overrides` (operator pins — EMPTY by design; mechanism kept for genuine overrides) → `bucket_map` (asset_classification_rules bucket tags; income/covered-call semantics beat raw beta) → **dynamic volatility tier** → `asset_class_map` (etf_classification_overrides) → type-aware volatility fallback (a low-ATR individual stock with no data lands in stock_core) → `default_tier` (position). Every advisory records `family`, `family_source` (e.g. `vol_tier:high β1.60`), `volatility_tier`, `regime` and the resolved `family_bounds` in `evidence_json`.
+
+   **Regime adjustment** (`regime_adjustments`, source `market_regime_snapshots` — same as `/api/v2/risk-regime/status`): posture mapping is label-driven (`risk_on_trend`/`broad_momentum`/`low_volatility_grind` → risk-on; `risk_off`/`high_volatility` → risk-off; anything else, a stale snapshot, or a DB error → neutral, fail-soft). Risk-on widens the **vol_high trail cap only** (+1 pct-pt: room to run); risk-off tightens every stop/trail cap by 1 pct-pt. Adjustments move the cap end only, clamp at `stop_min + 0.5`, and are recorded as `regime` / `regime_adjustment_pct` in bounds provenance.
+
+   **Conviction modifier** (`conviction_modifiers`): an individual **stock** position under $10K gets its cap tightened 1 pct-pt (small tactical ≠ conviction hold); ETFs/funds are unaffected. Recorded as `conviction_tightened_pct`.
 
    **Lifecycle modifier** (hermes_holdings_lifecycle): a `watch` stage shrinks the stop cap by 1 pct-pt, `trim_candidate` by 2 — biasing toward the tight end of the band. It never widens, never drops below `stop_min + 0.5`, and the applied shrink is recorded as `lifecycle_tightened_pct` in the bounds.
 

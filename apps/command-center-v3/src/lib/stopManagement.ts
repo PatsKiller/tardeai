@@ -45,6 +45,9 @@ export type StopLogic = {
   distancePct: number | null
   familyFloorPct: number | null
   familyFloorLabel: string
+  volatilityTier: string | null      // low | medium | high (dynamic beta/ATR/yield classification)
+  regime: string | null              // risk_on | risk_off | neutral posture at advisory time
+  regimeAdjustmentPct: number | null // +widen / -tighten applied to the band cap by regime
   floorMathConsistent: boolean
   wholeQty: number
   residualQty: number
@@ -368,6 +371,9 @@ export function buildStopLogic(input: {
     distancePct,
     familyFloorPct,
     familyFloorLabel,
+    volatilityTier: (pr?.volatility_tier ?? null) as string | null,
+    regime: (pr?.regime ?? null) as string | null,
+    regimeAdjustmentPct: pr?.regime_adjustment_pct != null ? Number(pr.regime_adjustment_pct) : null,
     floorMathConsistent,
     wholeQty,
     residualQty,

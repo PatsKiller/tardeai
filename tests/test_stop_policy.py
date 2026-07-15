@@ -55,24 +55,36 @@ def test_legacy_bands_unchanged():
 
 
 def test_resolution_order():
-    """symbol pin beats bucket beats asset_class beats volatility beats default."""
-    fam, src = hf.classify_family("JEPQ", atr_pct=1.0)   # covered_call bucket but pinned
-    assert fam == "growth_tech" and "override" in src
-    fam, src = hf.classify_family("JEPI", atr_pct=1.0)   # dividend_income bucket
+    """pin > bucket > dynamic vol tier > asset_class > type/ATR fallback > default."""
+    fam, src = hf.classify_family("JEPI", atr_pct=1.0)   # dividend_income bucket wins
     assert fam == "income_defensive" and "bucket" in src
-    fam, src = hf.classify_family("XLI", atr_pct=2.0)    # sector_etf asset class
-    assert fam == "sector_tactical" and "asset_class" in src
+    fam, src = hf.classify_family("JEPQ", atr_pct=1.0)   # no pin: dynamic beta 0.83
+    assert fam == "vol_medium" and src.startswith("vol_tier:medium"), (fam, src)
+    fam, src = hf.classify_family("XLI", atr_pct=2.0)    # vol tier beats asset_class now
+    assert fam == "vol_medium" and "vol_tier" in src
     fam, src = hf.classify_family("AVAV", atr_pct=6.0)   # swing_trade bucket
     assert fam == "stock_tactical"
 
 
-def test_low_vol_stock_is_stock_core_not_position():
-    """A low-ATR individual stock lands in the 7-10% stock_core band, not the
-    generic 5-12% position band (the type-specific rule beats the vol map)."""
+def test_low_vol_stock_fallback_without_vol_data():
+    """With NO beta/vol data available, a low-ATR individual stock still lands in
+    stock_core (7-10%), not the generic 5-12% position band."""
+    saved_v, saved_e = hf._VOLTIER_PATH, hf._ENRICH_PATH
+    try:
+        hf._VOLTIER_PATH = Path("/nonexistent/vt.json")
+        hf._ENRICH_PATH = Path("/nonexistent/ec.json")
+        fam, src = hf.classify_family("LMT", atr_pct=2.0)
+        assert fam == "stock_core", (fam, src)
+        fam, _ = hf.classify_family("V", atr_pct=1.8)
+        assert fam == "stock_core"
+    finally:
+        hf._VOLTIER_PATH, hf._ENRICH_PATH = saved_v, saved_e
+
+
+def test_low_vol_stock_with_data_uses_vol_tier():
+    """WITH beta data, dynamic classification wins (LMT beta 0.12 -> vol_low)."""
     fam, src = hf.classify_family("LMT", atr_pct=2.0)
-    assert fam == "stock_core", (fam, src)
-    fam, _ = hf.classify_family("V", atr_pct=1.8)
-    assert fam == "stock_core"
+    assert fam == "vol_low" and "vol_tier" in src, (fam, src)
 
 
 def test_mutual_fund_goes_to_default_tier():
@@ -160,6 +172,87 @@ def test_advisor_lifecycle_wiring():
     assert "_lifecycle_stage(" in src
     assert "lifecycle_stage=_stage" in src
     assert "load_holdings_lifecycle_state" in src
+
+
+def test_vol_tier_bands_match_operator_spec():
+    """Dynamic spec (2026-07-14.2): low 6-8 trail, medium 9-11, high 10-13."""
+    spec = {"vol_low": (6.0, 8.0), "vol_medium": (9.0, 11.0), "vol_high": (10.0, 13.0)}
+    for fam, (tmin, tmax) in spec.items():
+        b = hf.protection_bounds(fam)
+        assert (b["trail_min_pct"], b["trail_max_pct"]) == (tmin, tmax), fam
+
+
+def test_classify_volatility_tier_rules():
+    """Pure-function rules: beta cutoffs, income-yield defensive, sector escalation."""
+    f = hf.classify_volatility_tier
+    assert f(0.25, None) == "low"                      # BND-style outright low beta
+    assert f(0.7, None, div_yield_pct=3.25) == "low"   # SCHD-style dividend defensive
+    assert f(0.75, 1.0) == "low"                       # modest beta + low realized vol
+    assert f(0.83, None) == "medium"                   # JEPQ-style covered-call growth
+    assert f(0.75, 2.2, div_yield_pct=0.76) == "medium"  # V-style low-beta mega-cap
+    assert f(1.2, None) == "high"                      # beta > 1
+    assert f(0.9, 5.0) == "high"                       # high realized volatility
+    assert f(0.95, None, sector="Technology") == "high"  # high-vol sector escalation
+    assert f(None, None) is None                       # no data -> falls through
+
+
+def test_no_hardcoded_symbol_pins():
+    """2026-07-14.2 requirement: classification is dynamic — no ETFs pinned."""
+    assert not (hf._policy().get("symbol_tier_overrides") or {}), \
+        "symbol_tier_overrides must stay empty; add symbols only as operator decisions"
+
+
+def test_vol_tier_resolution_uses_state_or_cache():
+    """A held symbol with beta data resolves via the vol_tier step (bucket still wins)."""
+    fam, src = hf.classify_family("ANET")
+    assert fam == "vol_high" and src.startswith("vol_tier:high"), (fam, src)
+    fam, src = hf.classify_family("SCHD")   # bucket dividend_income beats vol tier
+    assert fam == "income_defensive" and "bucket" in src
+
+
+def test_regime_adjustments():
+    """risk_on widens ONLY vol_high trail cap; risk_off tightens all caps;
+    neutral/None changes nothing; floors always hold."""
+    base = hf.protection_bounds("vol_high")
+    on = hf.protection_bounds("vol_high", regime="risk_on")
+    assert on["trail_max_pct"] == base["trail_max_pct"] + 1.0
+    assert on["regime_adjustment_pct"] == 1.0 and on["regime"] == "risk_on"
+    med_on = hf.protection_bounds("vol_medium", regime="risk_on")
+    assert med_on["trail_max_pct"] == hf.protection_bounds("vol_medium")["trail_max_pct"], \
+        "risk_on must not widen non-high tiers"
+    off = hf.protection_bounds("vol_medium", regime="risk_off")
+    b = hf.protection_bounds("vol_medium")
+    assert off["stop_max_pct"] == b["stop_max_pct"] - 1.0
+    assert off["trail_max_pct"] == b["trail_max_pct"] - 1.0
+    assert off["stop_max_pct"] >= off["stop_min_pct"] + 0.5
+    neutral = hf.protection_bounds("vol_high", regime="neutral")
+    assert neutral["trail_max_pct"] == base["trail_max_pct"]
+    none_r = hf.protection_bounds("vol_high", regime=None)
+    assert "regime" not in none_r
+
+
+def test_current_regime_fail_soft_and_posture_map():
+    r = hf.current_regime()
+    assert r["posture"] in ("risk_on", "risk_off", "neutral")
+    lm = (hf._policy().get("regime_adjustments") or {}).get("label_map") or {}
+    assert "risk_on_trend" in (lm.get("risk_on") or [])
+    assert "risk_off" in (lm.get("risk_off") or [])
+    assert "high_volatility" in (lm.get("risk_off") or [])
+
+
+def test_conviction_modifier_small_stock_tightens():
+    full = hf.protection_bounds("vol_medium", position_value_usd=50_000, is_stock=True)
+    small = hf.protection_bounds("vol_medium", position_value_usd=5_000, is_stock=True)
+    assert small["stop_max_pct"] == full["stop_max_pct"] - 1.0
+    assert small.get("conviction_tightened_pct") == 1.0
+    etf = hf.protection_bounds("vol_medium", position_value_usd=5_000, is_stock=False)
+    assert etf["stop_max_pct"] == full["stop_max_pct"], "conviction applies to stocks only"
+
+
+def test_refresh_script_is_advisory_only():
+    src = (ROOT / "scripts" / "volatility_tier_refresh.py").read_text()
+    for bad in ("schwab_transport", "place_order", "submit_order", "alpaca_stop_manager"):
+        assert bad not in src
 
 
 if __name__ == "__main__":
