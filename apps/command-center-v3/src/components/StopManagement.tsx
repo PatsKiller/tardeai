@@ -535,20 +535,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
   )
 }
 
-function Metric({ label, value, sub, color = TEXT0, tip }: {
-  label: string; value: string; sub?: string; color?: string; tip?: string
-}) {
-  return (
-    <div title={tip} style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 9.5, color: MUTED, fontWeight: 700, marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 800, color, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: '-0.02em' }}>
-        {value}
-      </div>
-      {sub && <div style={{ fontSize: 10, color: MUTED, marginTop: 1, lineHeight: 1.3 }}>{sub}</div>}
-    </div>
-  )
-}
-
+/** Compact terminal strip + expandable depth. Protected lots stay one line; needs-action opens the plan. */
 function HoldingStopCard({
   r, expanded, onToggle, onPrimary, onSecondary, onFocus,
 }: {
@@ -562,276 +549,249 @@ function HoldingStopCard({
   const status = derivePositionStatus(r)
   const cta = derivePrimaryCta(r)
   const tone = CTA_TONE[cta.tone]
-  const earnDays = daysUntil(r.next_earnings_date)
-  const borderAccent = status.kind === 'protected' || status.kind === 'monitored'
-    ? 'rgba(148,163,184,.18)'
-    : `${status.color}55`
+  const urgent = status.kind === 'no_stop' || status.kind === 'partial' || status.kind === 'needs_attention'
+    || status.kind === 'review'
+  const showPlan = expanded || urgent
 
   const stopKindLabel = r.is_trailing
-    ? `TRAILING ${r.trail_pct != null ? `${r.trail_pct}%` : ''}`.trim()
-    : (r.stop_type || 'STOP').toUpperCase()
+    ? `TRAIL${r.trail_pct != null ? ` ${r.trail_pct}%` : ''}`
+    : (r.has_active_stop ? (r.stop_type || 'HARD') : 'NONE')
 
-  const healthBullets: string[] = []
-  if (r.holdings_llm_health) healthBullets.push(`Health: ${r.holdings_llm_health}`)
-  if (r.unrealized_dollars != null) {
-    healthBullets.push(`Unrealized ${r.unrealized_dollars >= 0 ? '+' : ''}${fmt$(r.unrealized_dollars)}${r.unrealized_r != null ? ` (${r.unrealized_r}R)` : ''}`)
-  }
-  if (r.heat_contribution_pct != null) healthBullets.push(`Heat ${r.heat_contribution_pct}% of book`)
-  if (earnDays != null && earnDays >= 0 && earnDays <= 14) {
-    healthBullets.push(earnDays <= 7 ? `⚠ Earnings in ${earnDays}d` : `Earnings in ${earnDays}d`)
-  }
-  if (r.regime_short || r.regime_now) {
-    healthBullets.push(`Regime ${r.regime_short || r.regime_now}${r.regime_shift_detected ? ' · shift' : ''}`)
-  }
+  const coverageLabel = r.coverage === 'partial'
+    ? `${r.stop_qty}/${r.qty} sh`
+    : r.coverage === 'oversized'
+      ? `${r.stop_qty}/${r.qty} sh`
+      : r.has_active_stop
+        ? (r.stop_qty != null ? `${r.stop_qty} sh` : 'full')
+        : '—'
+
+  const chip = (label: string, value: string, color = MUTED) => (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 1, minWidth: 64,
+      padding: '4px 8px', borderRadius: 6,
+      background: 'rgba(0,0,0,.22)', border: '1px solid rgba(148,163,184,.1)',
+    }}>
+      <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: MUTED }}>{label}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color, letterSpacing: '-0.02em' }}>{value}</span>
+    </div>
+  )
 
   return (
     <article
       data-testid={`stop-card-${r.symbol}-${r.account}`}
       style={{
-        borderRadius: 12,
-        border: `1px solid ${borderAccent}`,
-        borderLeft: `3px solid ${status.color}`,
-        background: 'var(--bg1, rgba(15,23,42,.72))',
-        boxShadow: '0 1px 0 rgba(255,255,255,.03) inset, 0 8px 24px rgba(0,0,0,.18)',
+        borderRadius: 10,
+        border: `1px solid ${urgent ? `${status.color}50` : 'rgba(148,163,184,.14)'}`,
+        background: urgent
+          ? `linear-gradient(90deg, ${status.color}14 0%, rgba(15,23,42,.85) 48%)`
+          : 'rgba(15,23,42,.78)',
+        boxShadow: urgent ? `0 0 0 1px ${status.color}18, 0 10px 28px rgba(0,0,0,.25)` : '0 4px 14px rgba(0,0,0,.18)',
         overflow: 'hidden',
       }}
     >
-      {/* 1. Header */}
-      <header style={{
-        display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start',
-        justifyContent: 'space-between',
-        padding: '12px 14px 10px',
-        borderBottom: '1px solid rgba(148,163,184,.12)',
-        background: 'rgba(15,23,42,.35)',
-      }}>
-        <div style={{ minWidth: 0, flex: '1 1 220px' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <button
-              type="button"
-              onClick={() => onFocus?.(r.symbol, r.account)}
-              title="Open full holding detail"
-              style={{
-                fontSize: 16, fontWeight: 900, color: BLUE, background: 'none', border: 'none',
-                cursor: onFocus ? 'pointer' : 'default', padding: 0, letterSpacing: 0.3,
-                textDecoration: onFocus ? 'underline' : 'none', textDecorationColor: `${BLUE}44`,
-              }}
-            >
-              {r.symbol}
-            </button>
-            <StatusBadge status={status} />
-            {r.is_trailing && r.has_active_stop && (
-              <span style={{
-                fontSize: 9.5, fontWeight: 800, color: GREEN, background: `${GREEN}14`,
-                border: `1px solid ${GREEN}44`, borderRadius: 4, padding: '2px 6px',
-              }} title="Live trailing stop at broker">
-                TRAILING
-              </span>
-            )}
-            {r.alert_level && (
-              <span
-                title={r.stoplight_thresholds_used?.regime
-                  ? `${r.alert_level} stoplight · regime ${r.stoplight_thresholds_used.regime}`
-                  : `${r.alert_level} stoplight`}
+      {/* ── SCAN STRIP (always visible) — not a table row ── */}
+      <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 64 }}>
+        {/* status rail */}
+        <div
+          title={status.why}
+          style={{
+            width: 6, flexShrink: 0, background: status.color,
+            boxShadow: `0 0 12px ${status.color}66`,
+          }}
+        />
+        <div style={{
+          flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap',
+          alignItems: 'center', gap: 10, padding: '10px 12px',
+        }}>
+          {/* Identity */}
+          <div style={{ flex: '0 1 168px', minWidth: 120 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => onFocus?.(r.symbol, r.account)}
                 style={{
-                  fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase',
-                  color: LEVEL_COLOR[r.alert_level] || MUTED,
-                  border: `1px solid ${LEVEL_COLOR[r.alert_level] || MUTED}55`,
-                  borderRadius: 4, padding: '2px 6px',
+                  fontSize: 17, fontWeight: 900, color: TEXT0, background: 'none', border: 'none',
+                  cursor: onFocus ? 'pointer' : 'default', padding: 0, letterSpacing: 0.4,
                 }}
               >
-                {r.alert_level}
-              </span>
-            )}
+                {r.symbol}
+              </button>
+              <StatusBadge status={status} />
+            </div>
+            <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3, lineHeight: 1.3 }}>
+              {r.account.replace(/_/g, ' ')}
+              <span style={{ opacity: 0.45 }}> · </span>
+              <span style={{ fontFamily: 'monospace', color: TEXT0, fontWeight: 700 }}>{fmtStop(r.current_price)}</span>
+              {r.qty != null && <span> · {r.qty} sh</span>}
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: MUTED, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            <span>{r.account.replace(/_/g, ' ')}</span>
-            <span style={{ opacity: 0.5 }}>·</span>
-            <span>{r.route}</span>
-            <span style={{ opacity: 0.5 }}>·</span>
-            <span style={{ fontFamily: 'monospace', color: TEXT0, fontWeight: 700 }}>
-              {fmtStop(r.current_price)}
-            </span>
-            {r.qty != null && (
-              <>
-                <span style={{ opacity: 0.5 }}>·</span>
-                <span>{r.qty} sh</span>
-              </>
-            )}
-          </div>
-          <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4, lineHeight: 1.35, maxWidth: 520 }} title={status.why}>
-            {status.why}
-          </div>
-        </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flex: '0 1 280px' }}>
-          <button
-            type="button"
-            data-testid="stop-card-primary-cta"
-            onClick={() => onPrimary(cta.autoStage)}
-            title={cta.reason}
-            style={{
-              fontSize: 12, fontWeight: 900, padding: '8px 14px', borderRadius: 8,
-              cursor: 'pointer', border: `1px solid ${tone.border}`, background: tone.bg,
-              color: tone.color, whiteSpace: 'nowrap', maxWidth: '100%',
-              boxShadow: `0 0 0 1px ${tone.border}22`,
-            }}
-          >
-            {cta.label}
-          </button>
-          {cta.secondary && (
+          {/* Key metrics as chips (not columns) */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, flex: '1 1 320px', alignItems: 'center' }}>
+            {chip(
+              'Stop',
+              r.has_active_stop ? fmtStop(r.broker_stop ?? r.stop) : 'none',
+              r.has_active_stop ? GREEN : AMBER,
+            )}
+            {chip(
+              'Dist',
+              r.distance_pct != null ? `${r.distance_pct}%` : '—',
+              (r.distance_pct != null && r.distance_pct < 3) ? AMBER : TEXT0,
+            )}
+            {chip('At risk', fmt$(r.dollars_at_risk), urgent ? status.color : TEXT0)}
+            {chip(
+              'Cover',
+              coverageLabel,
+              r.coverage === 'partial' ? AMBER : r.coverage === 'oversized' ? RED : r.has_active_stop ? GREEN : AMBER,
+            )}
+            {chip('Plan', fmtStop(r.planned_stop), AMBER)}
+            {r.unrealized_dollars != null && chip(
+              'P/L',
+              `${r.unrealized_dollars >= 0 ? '+' : ''}${fmt$(r.unrealized_dollars)}`,
+              r.unrealized_dollars >= 0 ? GREEN : RED,
+            )}
+            <div style={{ fontSize: 10, color: MUTED, paddingLeft: 2 }}>
+              <div style={{ fontWeight: 800, color: r.is_trailing ? GREEN : MUTED }}>{stopKindLabel}</div>
+              <div title={status.why} style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {status.why}
+              </div>
+            </div>
+          </div>
+
+          {/* CTA cluster */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flex: '0 0 auto', marginLeft: 'auto' }}>
             <button
               type="button"
-              onClick={onSecondary}
+              data-testid="stop-card-primary-cta"
+              onClick={() => onPrimary(cta.autoStage)}
+              title={cta.reason}
               style={{
-                fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6,
-                cursor: 'pointer', border: '1px solid rgba(148,163,184,.28)',
-                background: 'transparent', color: MUTED,
+                fontSize: 11.5, fontWeight: 900, padding: '9px 14px', borderRadius: 8,
+                cursor: 'pointer', border: `1px solid ${tone.border}`, background: tone.bg,
+                color: tone.color, whiteSpace: 'nowrap', maxWidth: 260,
+                boxShadow: urgent ? `0 0 16px ${tone.color}33` : undefined,
               }}
             >
-              {cta.secondary}
+              {cta.label}
             </button>
-          )}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {cta.secondary && (
+                <button
+                  type="button"
+                  onClick={onSecondary}
+                  style={{
+                    fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 5,
+                    cursor: 'pointer', border: '1px solid rgba(148,163,184,.25)',
+                    background: 'transparent', color: MUTED,
+                  }}
+                >
+                  {cta.secondary}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onToggle}
+                style={{
+                  fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 5,
+                  cursor: 'pointer', border: 'none', background: 'transparent', color: BLUE,
+                }}
+              >
+                {expanded ? '▾ less' : '▸ details'}
+              </button>
+            </div>
+          </div>
         </div>
-      </header>
+      </div>
 
-      {/* 2. Protection / stop status */}
-      <section style={{ padding: '12px 14px', borderBottom: '1px solid rgba(148,163,184,.1)' }}>
-        <SectionLabel>Protection</SectionLabel>
+      {/* ── ACTION PLAN (urgent always; optional expand) ── */}
+      {showPlan && (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
-          gap: 12,
+          gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)',
+          gap: 0,
+          borderTop: `1px solid ${status.color}33`,
+          background: 'rgba(0,0,0,.2)',
         }}>
-          <Metric
-            label="Live stop"
-            value={r.has_active_stop ? fmtStop(r.broker_stop ?? r.stop) : '—'}
-            sub={r.has_active_stop ? `${stopKindLabel} · ${SRC_LABEL[r.stop_source] || r.stop_source}` : 'none at broker'}
-            color={r.has_active_stop ? GREEN : AMBER}
-            tip={r.is_trailing && r.trailing_trigger != null ? `Trail trigger ≈ ${fmtStop(r.trailing_trigger)}` : undefined}
-          />
-          <Metric
-            label="Distance"
-            value={r.distance_pct != null ? `${r.distance_pct}%` : '—'}
-            sub={[
-              r.distance_dollars != null ? fmt$(r.distance_dollars) : null,
-              r.distance_atr != null ? `${r.distance_atr} ATR` : null,
-              r.distance_r != null ? `${r.distance_r}R` : null,
-            ].filter(Boolean).join(' · ') || undefined}
-            tip="% / $ below current price to stop"
-          />
-          <Metric
-            label="At risk"
-            value={fmt$(r.dollars_at_risk)}
-            sub={r.heat_contribution_pct != null ? `${r.heat_contribution_pct}% heat` : undefined}
-            color={TEXT0}
-            tip="Loss if stop fills (approx)"
-          />
-          <Metric
-            label="Coverage"
-            value={
-              r.coverage === 'partial' ? `${r.stop_qty}/${r.qty}`
-                : r.coverage === 'oversized' ? `${r.stop_qty}/${r.qty}`
-                  : r.has_active_stop ? (r.stop_qty != null ? `${r.stop_qty} sh` : 'FULL')
-                    : '0'
-            }
-            sub={
-              r.coverage === 'partial' ? 'PARTIAL — undersized'
-                : r.coverage === 'oversized' ? 'OVERSIZED'
-                  : r.has_active_stop ? 'matches held'
-                    : 'unprotected'
-            }
-            color={r.coverage === 'partial' ? AMBER : r.coverage === 'oversized' ? RED : r.has_active_stop ? GREEN : AMBER}
-          />
-          <Metric
-            label="Advised"
-            value={fmtStop(r.planned_stop)}
-            sub={r.divergence || (r.trail_recommended ? 'prefers trail' : 'fixed plan') || undefined}
-            color={AMBER}
-            tip={r.rec_rationale || undefined}
-          />
-          {r.unrealized_dollars != null && (
-            <Metric
-              label="Unrealized"
-              value={`${r.unrealized_dollars >= 0 ? '+' : ''}${fmt$(r.unrealized_dollars)}`}
-              color={r.unrealized_dollars >= 0 ? GREEN : RED}
-            />
-          )}
-        </div>
-        {r.divergence && (
-          <div style={{
-            marginTop: 8, fontSize: 11, color: /looser/i.test(r.divergence) ? AMBER : MUTED,
-            fontWeight: /looser/i.test(r.divergence) ? 700 : 500,
-          }}>
-            Broker vs plan: {r.divergence}
-          </div>
-        )}
-      </section>
-
-      {/* 3. Health summary (compact) */}
-      {healthBullets.length > 0 && (
-        <section style={{ padding: '10px 14px', borderBottom: '1px solid rgba(148,163,184,.1)' }}>
-          <SectionLabel>Holdings health</SectionLabel>
-          <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 11.5, color: TEXT0, lineHeight: 1.5 }}>
-            {healthBullets.slice(0, 4).map((b, i) => (
-              <li key={i} style={{ color: b.startsWith('⚠') ? AMBER : MUTED }}>
-                <span style={{ color: b.startsWith('⚠') ? AMBER : TEXT0 }}>{b}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* 4. Recommended action + rationale */}
-      <section style={{
-        padding: '12px 14px',
-        borderBottom: expanded ? '1px solid rgba(148,163,184,.1)' : 'none',
-        background: `${tone.color}08`,
-      }}>
-        <SectionLabel>Recommended action</SectionLabel>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0, marginBottom: 4 }}>
+          <div style={{ padding: '12px 14px', borderRight: '1px solid rgba(148,163,184,.1)' }}>
+            <SectionLabel>Next action</SectionLabel>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT0, marginBottom: 4, lineHeight: 1.3 }}>
               {cta.label}
             </div>
-            <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.45, marginBottom: 10 }}>
               {cta.reason}
             </div>
-            {r.next_action && !/^(Monitor|None)/.test(r.next_action) && r.next_action !== cta.reason && (
-              <div style={{ fontSize: 11, color: BLUE, marginTop: 4 }}>System: {r.next_action}</div>
-            )}
             {r.projection && (
-              <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4 }}>Projection: {r.projection}</div>
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
+                <span style={{ color: TEXT0, fontWeight: 700 }}>If you act: </span>{r.projection}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => onPrimary(cta.autoStage)}
+              style={{
+                fontSize: 12, fontWeight: 900, padding: '10px 16px', borderRadius: 8,
+                cursor: 'pointer', border: `1px solid ${tone.border}`, background: tone.bg,
+                color: tone.color,
+              }}
+            >
+              {cta.autoStage ? '▶ Stage now' : 'Open adjust'}
+            </button>
+          </div>
+          <div style={{ padding: '12px 14px' }}>
+            <SectionLabel>Protection snapshot</SectionLabel>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 11.5 }}>
+              <div>
+                <div style={{ color: MUTED, fontSize: 9.5, fontWeight: 700 }}>LIVE / ADVISED</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 800 }}>
+                  <span style={{ color: r.has_active_stop ? GREEN : AMBER }}>{fmtStop(r.broker_stop)}</span>
+                  <span style={{ color: MUTED }}> / </span>
+                  <span style={{ color: AMBER }}>{fmtStop(r.planned_stop)}</span>
+                </div>
+              </div>
+              <div>
+                <div style={{ color: MUTED, fontSize: 9.5, fontWeight: 700 }}>DISTANCE</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 800, color: TEXT0 }}>
+                  {r.distance_pct != null ? `${r.distance_pct}%` : '—'}
+                  {r.distance_atr != null ? <span style={{ color: MUTED, fontWeight: 600 }}> · {r.distance_atr}ATR</span> : null}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: MUTED, fontSize: 9.5, fontWeight: 700 }}>COVERAGE</div>
+                <div style={{ fontWeight: 800, color: r.coverage === 'partial' ? AMBER : r.has_active_stop ? GREEN : AMBER }}>
+                  {r.coverage === 'partial' ? `PARTIAL ${r.stop_qty}/${r.qty}`
+                    : r.coverage === 'oversized' ? `OVERSIZED ${r.stop_qty}/${r.qty}`
+                      : r.has_active_stop ? 'Full size' : 'No stop'}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: MUTED, fontSize: 9.5, fontWeight: 700 }}>HEALTH</div>
+                <div style={{ fontWeight: 700, color: TEXT0 }}>
+                  {r.holdings_llm_health || '—'}
+                  {r.unrealized_dollars != null && (
+                    <span style={{ color: r.unrealized_dollars >= 0 ? GREEN : RED, marginLeft: 6 }}>
+                      {r.unrealized_dollars >= 0 ? '+' : ''}{fmt$(r.unrealized_dollars)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            {r.divergence && (
+              <div style={{ marginTop: 8, fontSize: 11, color: /looser/i.test(r.divergence) ? AMBER : MUTED }}>
+                vs plan: {r.divergence}
+              </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => onPrimary(cta.autoStage)}
-            style={{
-              fontSize: 12, fontWeight: 900, padding: '9px 16px', borderRadius: 8,
-              cursor: 'pointer', border: `1px solid ${tone.border}`, background: tone.bg,
-              color: tone.color, whiteSpace: 'nowrap',
-            }}
-          >
-            {cta.autoStage ? '▶ ' : ''}{cta.label.length > 36 ? 'Run primary action' : cta.label}
-          </button>
         </div>
-      </section>
+      )}
 
-      {/* 5. Collapsible detail */}
-      <button
-        type="button"
-        onClick={onToggle}
-        style={{
-          width: '100%', textAlign: 'left', fontSize: 11, fontWeight: 700,
-          padding: '8px 14px', border: 'none', cursor: 'pointer',
-          background: 'rgba(15,23,42,.4)', color: MUTED,
-          borderTop: '1px solid rgba(148,163,184,.08)',
-        }}
-      >
-        {expanded ? '▾ Hide exit plan, Street, Grok & evidence' : '▸ Exit plan · Street · Grok · evidence'}
-      </button>
+      {/* ── DEEP DETAIL (explicit expand only — Grok/evidence/exit) ── */}
       {expanded && (
-        <div style={{ padding: '4px 10px 12px', background: 'rgba(15,23,42,.25)' }}>
+        <div style={{
+          borderTop: '1px solid rgba(148,163,184,.12)',
+          padding: '8px 12px 12px',
+          background: 'rgba(0,0,0,.28)',
+        }}>
+          <SectionLabel>Exit · Street · Grok · evidence</SectionLabel>
           <ReasonsSubRow r={r} />
         </div>
       )}
@@ -850,7 +810,7 @@ export default function StopManagement({ onFocusHolding }: Props) {
   })
   const [loading, setLoading] = useState(!data)
   const [fetchError, setFetchError] = useState<string | null>(null)
-  const [quick, setQuick] = useState<typeof QUICK[number]>('All')
+  const [quick, setQuick] = useState<typeof QUICK[number]>('Needs Action')
   const [acct, setAcct] = useState('All')
   const [level, setLevel] = useState('All')
   const [adjust, setAdjust] = useState<Row | null>(null)
