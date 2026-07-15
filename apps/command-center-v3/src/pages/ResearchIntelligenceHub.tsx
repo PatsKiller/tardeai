@@ -2,7 +2,7 @@
  * Research Intelligence v2.1 — editorial intelligence desk (CC v3).
  * Seeking Alpha / Benzinga / Yahoo Finance–inspired narrative UI.
  */
-import { useCallback, useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -564,6 +564,21 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     setLane('all')
   }, [])
 
+  // Auto-clear only truly empty filters (0 matches) when the desk has a full universe —
+  // e.g. stuck on Compounding primary=0. Do NOT clear intentional narrow filters (1–N stories).
+  const didAutoClear = useRef(false)
+  useEffect(() => {
+    if (didAutoClear.current || loading || !data?.stats) return
+    const matched = Number(data.stats.matched ?? 0)
+    const universe = Number(data.stats.universe ?? 0)
+    const deskBig = universe >= 20 || (data.stats.by_category
+      && Object.values(data.stats.by_category as Record<string, number>).reduce((a, b) => a + (Number(b) || 0), 0) >= 20)
+    if (hasActiveFilters && matched === 0 && deskBig) {
+      didAutoClear.current = true
+      clearFilters()
+    }
+  }, [data?.stats, loading, hasActiveFilters, clearFilters])
+
   const displayItems: Item[] = useMemo(() => {
     // Lanes use server priority_lanes when available (full universe, not empty filter page)
     if (lane === 'retirement') {
@@ -776,6 +791,28 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
           </div>
         )}
       </section>
+
+      {/* Filtered strip — always visible when not full desk */}
+      {hasActiveFilters && (stats.universe != null || stats.matched != null) && (
+        <div style={{
+          padding: '10px 14px', borderRadius: 12, display: 'flex', flexWrap: 'wrap', gap: 10,
+          alignItems: 'center', justifyContent: 'space-between',
+          border: `1px solid ${C.accent}44`, background: C.accentSoft, fontSize: 12.5, color: C.ink,
+        }}>
+          <span>
+            Showing <b>{stats.matched ?? displayItems.length}</b>
+            {stats.universe != null && <> of <b>{stats.universe}</b> desk stories</>}
+            {category && <> · category <b style={{ color: CAT_TINT[category] || C.accent }}>{catMeta[category]?.label || category}</b></>}
+            {freshness && <> · freshness <b>{freshness}</b></>}
+          </span>
+          <button type="button" onClick={clearFilters} style={{
+            fontSize: 12, fontWeight: 750, padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
+            border: `1px solid ${C.accent}66`, background: 'rgba(0,0,0,.2)', color: C.accent,
+          }}>
+            Show all stories
+          </button>
+        </div>
+      )}
 
       {/* Stale / retirement SLO banner */}
       {(staleTopics.length > 0 || (retStats && retStats.needs_refresh > 10)) && (
