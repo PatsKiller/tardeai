@@ -8,39 +8,47 @@
 
 | Before | After |
 |--------|--------|
-| Dense 11-column table + always-open evidence sub-rows → clutter | **One card per holding** with left accent, clear section borders |
-| Color badges without *why* | Status badge + one-line **why** under ticker; desk **legend** |
-| Actions buried in last table column | **Primary CTA** top-right + full **Recommended action** band |
-| Weak hierarchy (Street/Grok equal to stop $) | Ordered sections: Header → Protection metrics → Health (≤4 bullets) → Action → collapsible detail |
-| Hard to find what to do first | **Actions needed** strip + **Needs Action** filter; cards sorted by urgency |
+| Dense 11-column table + always-open evidence sub-rows | **No table** — compact scan strip per holding |
+| Color badges without *why* | Status badge + why text; desk **legend** |
+| Actions buried in last column | **Primary CTA** on every strip; action-plan band for urgent lots |
+| Street/Grok equal weight to stop $ | Deep detail only behind **▸ details** |
+| Hard to find what to do first | Default filter **Needs Action**; urgency sort; Actions needed strip |
 
-## Card structure
+## Layout (v2 strip cards)
 
-1. **Header** — ticker, account, price, qty · status badge (PROTECTED / PARTIAL / NO STOP / …) · primary CTA  
-2. **Protection** — live stop, distance, at-risk $, coverage, advised, unrealized (metric grid)  
-3. **Holdings health** — max 4 bullets (LLM verdict, unrealized, heat, earnings, regime)  
-4. **Recommended action** — plain-language CTA + reason + large button  
-5. **Detail (collapsed)** — exit ladder, Street, Grok evidence, narrative (existing `ReasonsSubRow`)
+1. **Scan strip (always)** — color rail · symbol · status · chips (Stop / Dist / At risk / Cover / Plan / P/L) · primary CTA  
+2. **Action plan** (auto for NO STOP / PARTIAL / REVIEW; else after expand) — Next action + Protection snapshot  
+3. **Deep detail** (▸ details only) — exit ladder, Street, Grok (`ReasonsSubRow`)
+
+Default filter: **Needs Action**. Sort: urgency, then $ at risk.
 
 ## Semantic colors
 
 | Color | Status | Meaning |
 |-------|--------|---------|
 | Green | PROTECTED | Live stop, size aligned |
-| Amber | PARTIAL / REVIEW / TRAIL ELIGIBLE | Undersized, looser than plan, or trail not placed |
-| Red | NO STOP / OVERSIZED / NEEDS ATTENTION | Unprotected or hard misalignment |
+| Amber | PARTIAL / REVIEW / TRAIL ELIGIBLE | Undersized or moderate concern |
+| Red | NO STOP / OVERSIZED / NEEDS ATTENTION | Act first |
 | Blue | MONITORED | Fidelity / software path |
 
 ## Filters
 
 `All` · `Needs Action` · `Partial Coverage` · `No Stop` · `All Protected` · `Trailing Stops` · `Trailing Eligible` · `High Heat` · `Regime Shift`
 
-## Unchanged (intentionally)
+## Deploy (important)
+
+UI is served from `apps/command-center-v3/dist` (**gitignored**). After source changes:
+
+```bash
+cd apps/command-center-v3 && npm run build
+```
+
+Confirm `http://127.0.0.1:7777/v3/` loads a new `index-*.js` hash and build footer updates. Hard-refresh the browser (cache-bust via `cc-boot.js` / build-meta).
+
+## Unchanged
 
 - Audit / Policy sub-tabs  
-- Adjust modal + HoldingProtectionActions 2FA path  
-- API `/api/v2/stops/management` payload  
+- Adjust modal + 2FA path  
+- API `/api/v2/stops/management`  
 
-## Operator note
-
-Primary buttons still **stage** only; Schwab requires 2FA, Fidelity uses manual ticket. Nothing auto-submits.
+Primary buttons still **stage** only; nothing auto-submits.
