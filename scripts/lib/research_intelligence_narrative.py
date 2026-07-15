@@ -286,14 +286,20 @@ def _attach_advisory(
         base["next_action"] = base.get("next_action") or adv.get("next_action")
     else:
         base["next_action"] = adv.get("next_action") or base.get("next_action")
-    # Elevate takeaways with top ticker line
-    ticks = base.get("ticker_recommendations") or []
+    # Elevate takeaways with ticker line only when we have real recommendations
+    ticks = [
+        t for t in (base.get("ticker_recommendations") or [])
+        if t.get("symbol") and t.get("role") in (
+            "add_candidate", "trim_candidate", "protect", "hold_review"
+        )
+    ]
     if ticks and isinstance(base.get("key_takeaways"), list):
         line = "Tickers: " + ", ".join(
-            f"{t.get('symbol')} ({t.get('role')})" for t in ticks[:4] if t.get("symbol")
+            f"{t.get('symbol')} ({t.get('role')})" for t in ticks[:4]
         )
-        if line not in base["key_takeaways"]:
-            base["key_takeaways"] = [line] + list(base["key_takeaways"])[:4]
+        # Avoid duplicating the same sleeve line on every card
+        base["key_takeaways"] = [x for x in base["key_takeaways"] if not str(x).startswith("Tickers:")]
+        base["key_takeaways"] = [line] + list(base["key_takeaways"])[:4]
     return base
 
 

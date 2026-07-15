@@ -26,27 +26,31 @@ _CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
         r"(?<![_\w])rmd(?![_\w])|required\s+minimum|\birmaa\b|\bmedicaid\b|"
         r"estate\s+plan|estate\s+tax|\bprobate\b|"
         r"\bssdi\b|backdoor\s+roth|qualified\s+charitable|\bqcd\b|life\s+estate|"
-        r"asset\s+protection|spend.?down|look.?back\s+period|\bmedigap\b|medicare\s+part\s+[bd]\b|"
+        r"asset\s+protection|spend.?down|look.?back\s+period|\bmedigap\b|"
+        r"medicare(?:\s+part\s+[bd])?|\birmaa\b|"
         r"retirement\s+tax|retirement\s+income|tax.?efficient(?:\s+retirement)?|"
         r"income\s+drawdown|withdrawal\s+strateg|tax.?efficient\s+withdrawal|"
-        r"social\s+security\s+claim|tax\s+bracket\s+room|conversion\s+pacing|\bmapt\b|"
-        r"drawdown\s+plan(?:ning)?",
+        r"social\s+security(?:\s+claim)?|tax\s+bracket\s+room|conversion\s+pacing|\bmapt\b|"
+        r"drawdown\s+plan(?:ning)?|medicare\s+eligib|medicare\s+premium|"
+        r"roth\s+conversion|monitoring.*(?:medicare|irmaa|ssdi|roth)",
         re.I,
     )),
     ("dividend_income", re.compile(
-        r"dividend|covered.?call|\bcef\b|\bbdc\b|income sleeve|aristocrat|"
-        r"monthly income|jepi|jepq|schd|pflt|cswc|distribution yield",
+        r"\bdividend\b|covered.?call|\bcef\b|\bbdc\b|income sleeve|aristocrat|"
+        r"monthly income|\bjepi\b|\bjepq\b|\bschd\b|\bpflt\b|\bcswc\b|distribution yield|"
+        r"high.?yield income",
         re.I,
     )),
     ("macro_geo", re.compile(
         r"\bfed\b|fomc|inflation|cpi|pce|treasury|yield curve|geopolitic|"
-        r"tariff|oil shock|\bvix\b|regime|liquidity|rates? hike|recession|gdp|\bfred\b",
+        r"tariff|oil shock|\bvix\b|regime|liquidity|rates? hike|recession|gdp|\bfred\b|"
+        r"bond ladder|\btips\b|fixed.?income|\btreasur",
         re.I,
     )),
     ("sector_thematic", re.compile(
         r"sector|rotation|defense|aerospace|semiconductor|ai\s*chip|data\s*center|datacenter|"
         r"staples|healthcare|utilities|energy sector|materials|consumer defensive|"
-        r"build-?out|infrastructure",
+        r"build-?out|infrastructure|industry:\s*",
         re.I,
     )),
     # Do NOT bare-match "drawdown" — that tags "retirement income drawdown" as risk.
@@ -148,32 +152,44 @@ def classify_primary_secondary(
     *body_parts: str | None,
     research_type: str | None = None,
 ) -> list[str]:
-    """Title/topic drives primary category; body may only add secondary tags.
+    """Title drives primary when it has keywords; otherwise body may set primary.
 
-    Prevents personal_context (e.g. IRMAA note on a dividend monitor) from
-    re-labeling 'Top Yield & Dividend Stocks' as retirement_tax.
+    Prevents IRMAA notes on dividend monitors from overriding a clear title,
+    while allowing weak titles ('Monitoring tools…') with strong retirement
+    body text to land in retirement_tax — not company_ticker noise.
     """
+    title_blob = title or ""
     title_cats = classify_text(title, research_type=research_type)
     body_cats = classify_text(*body_parts) if any(body_parts) else []
-    # If title only got a weak fallback but body is clearly thematic, allow
-    # body primary when title had no strong keyword hit beyond type-map.
-    title_blob = title or ""
-    title_had_keyword = any(
-        rx.search(title_blob) for _, rx in _CATEGORY_RULES
-    )
+    title_had_keyword = any(rx.search(title_blob) for _, rx in _CATEGORY_RULES)
     mapped = _TYPE_TO_CAT.get(research_type or "")
-    if mapped and not title_had_keyword and body_cats:
-        # Keep type-map primary (e.g. stop_health → risk_regime)
-        cats = [mapped] + [c for c in body_cats if c != mapped]
+
+    # Hard type maps always win (stops, options desk, etc.)
+    if mapped and mapped != "company_ticker":
+        cats = [mapped] + [c for c in (title_cats + body_cats) if c != mapped]
         return cats[:4]
-    if not title_had_keyword and not mapped and body_cats:
-        # Pure fallback title ("Industry: X") — prefer first body theme if any
-        # but keep company_ticker if title looks like industry/ticker research
-        if re.search(r"industry:|autonomous thesis|news_momentum:", title_blob, re.I):
-            primary = title_cats[0] if title_cats else "company_ticker"
-            cats = [primary] + [c for c in body_cats if c != primary]
-            return cats[:4]
-    cats = list(title_cats)
+
+    if title_had_keyword:
+        cats = list(title_cats)
+        for c in body_cats:
+            if c not in cats:
+                cats.append(c)
+        return cats[:4]
+
+    # Weak title: prefer strong body primary (retirement/macro/sector/dividend)
+    _strong = {
+        "retirement_tax", "dividend_income", "macro_geo", "sector_thematic",
+        "risk_regime", "catalyst_event", "compounding_wealth",
+    }
+    body_primary = next((c for c in body_cats if c in _strong), None)
+    if body_primary:
+        cats = [body_primary] + [c for c in body_cats + title_cats if c != body_primary]
+        return cats[:4]
+
+    if re.search(r"^industry:\s*", title_blob, re.I):
+        return (["sector_thematic"] + [c for c in body_cats if c != "sector_thematic"])[:4]
+
+    cats = list(title_cats) if title_cats else ["company_ticker"]
     for c in body_cats:
         if c not in cats:
             cats.append(c)
@@ -845,7 +861,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "2.2",
+        "version": "2.2.1",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -889,8 +905,9 @@ def build_feed(
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2.2 — portfolio-aware tickers & sizing from live holdings weights; "
-            "investment implications + risk caveats; stop noise demoted on default desk."
+            "Research Intelligence v2.2.1 — portfolio-aware tickers only when primary category "
+            "supports them (no recycled SCHD sleeve on company briefs); body may promote weak titles "
+            "into retirement/macro/sector."
         ),
         "portfolio_context": {
             "total_mv": port_ctx.get("total_mv"),
