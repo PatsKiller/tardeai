@@ -159,7 +159,8 @@ export default function HomeHub({ onDrill }: Props) {
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>P/L by account · period</div>
                 <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
-                  Aggregate $ (top) · % (bottom). Source: /api/v2/portfolio/performance · accounts
+                  Aggregate $ (top) · % (bottom). YTD uses ≈ market (ex-transfers) when flagged — not raw NAV.
+                  Source: /api/v2/portfolio/performance
                 </div>
               </div>
               <Link to="/portfolio?tab=Returns" style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>
@@ -188,16 +189,20 @@ export default function HomeHub({ onDrill }: Props) {
                     <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{fmt$(perfData?.current_value ?? pv ?? 0, 0)}</td>
                     {PERF_PERIODS.map(p => {
                       const d = perfData?.periods?.[p]
-                      const ch = d?.change
-                      const pct = d?.change_pct
+                      // Prefer transfer-adjusted display (YTD) so Home matches Returns; raw NAV misleads on rollovers.
+                      const preferDisp = Boolean(d?.nav_is_not_market_only || d?.display_change != null)
+                      const ch = preferDisp && d?.display_change != null ? d.display_change : d?.change
+                      const pct = preferDisp && d?.display_change_pct != null ? d.display_change_pct : d?.change_pct
                       const col = (ch ?? 0) >= 0 ? '#22c55e' : '#ef4444'
+                      const warn = Boolean(d?.nav_is_not_market_only || d?.is_false_positive)
                       return (
-                        <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }}>
+                        <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }} title={d?.display_label || d?.adjustment_note || ''}>
                           <div style={{ color: ch != null ? col : 'var(--text3)', fontWeight: 700 }}>
                             {ch != null ? `${ch >= 0 ? '+' : ''}${fmt$(ch, 0)}` : '—'}
                           </div>
-                          <div style={{ fontSize: 9, color: pct != null ? col : 'var(--text3)' }}>
+                          <div style={{ fontSize: 9, color: warn ? '#f59e0b' : (pct != null ? col : 'var(--text3)') }}>
                             {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : ''}
+                            {warn ? ' ≈' : ''}
                           </div>
                         </td>
                       )
@@ -209,17 +214,22 @@ export default function HomeHub({ onDrill }: Props) {
                       <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{fmt$(row?.current_value ?? 0, 0)}</td>
                       {PERF_PERIODS.map(p => {
                         const d = row?.periods?.[p]
-                        // 1D fallback from overview.today_by_account if missing
-                        const ch = d?.change ?? (p === '1D' ? overview?.today_by_account?.[acct]?.change : null)
-                        const pct = d?.change_pct ?? (p === '1D' ? overview?.today_by_account?.[acct]?.pct : null)
+                        // Prefer display_change (ex-transfers / linked Fidelity); 1D falls back to overview live day.
+                        const preferDisp = Boolean(d?.nav_is_not_market_only || d?.display_change != null)
+                        const ch = (preferDisp && d?.display_change != null ? d.display_change : d?.change)
+                          ?? (p === '1D' ? overview?.today_by_account?.[acct]?.change : null)
+                        const pct = (preferDisp && d?.display_change_pct != null ? d.display_change_pct : d?.change_pct)
+                          ?? (p === '1D' ? overview?.today_by_account?.[acct]?.pct : null)
                         const col = (ch ?? 0) >= 0 ? '#22c55e' : '#ef4444'
+                        const warn = Boolean(d?.nav_is_not_market_only || d?.is_false_positive)
                         return (
-                          <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }}>
+                          <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }} title={d?.display_label || d?.adjustment_note || ''}>
                             <div style={{ color: ch != null ? col : 'var(--text3)', fontWeight: 700 }}>
                               {ch != null ? `${ch >= 0 ? '+' : ''}${fmt$(ch, 0)}` : '—'}
                             </div>
-                            <div style={{ fontSize: 9, color: pct != null ? col : 'var(--text3)' }}>
+                            <div style={{ fontSize: 9, color: warn ? '#f59e0b' : (pct != null ? col : 'var(--text3)') }}>
                               {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : ''}
+                              {warn ? ' ≈' : ''}
                             </div>
                           </td>
                         )
