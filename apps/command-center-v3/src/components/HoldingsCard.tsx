@@ -5,6 +5,7 @@ import HoldingProtectionActions from './HoldingProtectionActions'
 import HoldingReportLinks from './HoldingReportLinks'
 import { EvidenceBlock } from './EvidenceBlock'
 import { fmt$ } from '../lib/format'
+import { volTierTooltip } from './HoldingsTableView'
 import { buildHoldingsRowModel, plMetrics } from '../lib/holdingsRowModel'
 import {
   BB, type HoldingsCvdMode, primaryActionBg, primaryActionColor,
@@ -226,7 +227,7 @@ export default function HoldingsCard({
         {pr?.volatility_tier && (() => {
           const vc = pr.volatility_tier === 'low' ? BB.green : pr.volatility_tier === 'high' ? BB.red : BB.amber
           return (
-            <span title={`Dynamic volatility tier (stop_policy.yaml): ${pr.volatility_tier}${pr.family ? ` · band ${pr.family}` : ''}${pr.regime ? `\nRegime ${String(pr.regime).replace(/_/g, '-')}${pr.regime_adjustment_pct != null ? ` (${pr.regime_adjustment_pct > 0 ? '+' : ''}${pr.regime_adjustment_pct}% cap)` : ''}` : ''}\nAdvisory only — placement stays swing-low anchored within the band.`}
+            <span title={volTierTooltip(pr)}
               style={{ fontSize: 8.5, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: `${vc}1a`, border: `1px solid ${vc}33`, color: vc, cursor: 'help', textTransform: 'uppercase' }}>
               VOL {pr.volatility_tier}</span>
           )

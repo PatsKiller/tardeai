@@ -29,6 +29,20 @@ const COL_TIPS: Record<string, string> = {
   agents: 'LLM lanes that reviewed this symbol (last 30d)',
 }
 
+/** Refined operator tooltip (2026-07-14): tier | regime influence | advisory disclaimer + trail range. */
+export function volTierTooltip(pr: any): string {
+  const tier = String(pr?.volatility_tier || '').toUpperCase()
+  const fb = pr?.family_bounds || {}
+  const regime = pr?.regime ? String(pr.regime).replace(/_/g, '-') : null
+  const adj = pr?.regime_adjustment_pct
+  const regimeLine = regime
+    ? `Regime: ${regime}${adj != null ? (adj > 0 ? ' (+ wider: ' : ' (tighter: ') + (adj > 0 ? '+' : '') + adj + '% cap)' : ''}`
+    : 'Regime: neutral (no adjustment)'
+  const trail = fb.trail_min_pct != null && fb.trail_max_pct != null
+    ? ` Recommended trail: ${fb.trail_min_pct}\u2013${fb.trail_max_pct}%.` : ''
+  return `Volatility Tier: ${tier}\n${regimeLine}\nAdvisory only \u2014 final placement uses swing-low anchor + family floor.${trail}`
+}
+
 export interface HoldingsTableRowContext {
   h: any
   pr?: any
@@ -229,7 +243,7 @@ export default function HoldingsTableView({ rows, acctColor, focusKey, cvdMode =
                     const vt = rowCtx.pr.volatility_tier
                     const vc = vt === 'low' ? BB.green : vt === 'high' ? BB.red : BB.amber
                     return (
-                      <span title={`Dynamic volatility tier: ${vt}${rowCtx.pr.regime ? ` · regime ${String(rowCtx.pr.regime).replace(/_/g, '-')}${rowCtx.pr.regime_adjustment_pct != null ? ` (${rowCtx.pr.regime_adjustment_pct > 0 ? '+' : ''}${rowCtx.pr.regime_adjustment_pct}% cap)` : ''}` : ''}\nAdvisory only — placement stays swing-low anchored within the band.`}
+                      <span title={volTierTooltip(rowCtx.pr)}
                         style={{ fontSize: 8, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: `${vc}1a`, border: `1px solid ${vc}44`, color: vc, cursor: 'help', textTransform: 'uppercase', flexShrink: 0 }}>
                         VOL {vt}</span>
                     )
