@@ -26,8 +26,8 @@ const BROKER_URL: Record<string, string> = {
   schwab: 'https://www.schwab.com/client-home',
 }
 
-export default function HoldingProtectionActions({ h, pr, monitored, confirmedStop, brokerStopsFetchedAt, autoStageKind, onRefresh, onPreflightUpdate }: {
-  h: any; pr: any; monitored?: any; confirmedStop?: any; brokerStopsFetchedAt?: string | null
+export default function HoldingProtectionActions({ h, pr, monitored, confirmedStop, brokerStopsFetchedAt, brokerStopReadOk, autoStageKind, onRefresh, onPreflightUpdate }: {
+  h: any; pr: any; monitored?: any; confirmedStop?: any; brokerStopsFetchedAt?: string | null; brokerStopReadOk?: string[]
   autoStageKind?: 'STOP' | 'TRAILING' | null
   onRefresh?: () => void
   onPreflightUpdate?: (symbol: string, account: string, patch: { holding?: Record<string, unknown>; protection?: Record<string, unknown> }) => void
@@ -172,6 +172,13 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   }
 
   const logic = computeLogic(selectedKind)
+  // Schwab orders lane health: if this account's live-stop read did NOT succeed, 'none' is a lie —
+  // the state is UNVERIFIABLE (e.g. degraded login token; operator-placed stops invisible to the API).
+  const _acctNorm = String(h?.account || '').replace(/_ira$/, '')
+  const brokerReadDegraded = String(h?.account || '').startsWith('schwab')
+    && Array.isArray(brokerStopReadOk)
+    && !brokerStopReadOk.some(a => String(a).replace(/_ira$/, '') === _acctNorm)
+    && logic.liveStop == null && !logic.liveStopIsTrailing
 
   /** Submission + preview use floor-reconciled advisory stop (logic.advisoryStop), not raw pr.stop_price.
    * Operator override fields (ovStop/ovLimit/ovTrail) overlay the advisory when non-empty; the pure
@@ -533,7 +540,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         <div><span style={{ color: MUTED }}>Current</span><br /><b>{logic.currentPrice != null ? `$${logic.currentPrice.toFixed(2)}` : 'missing'}</b></div>
         <div><span style={{ color: MUTED }}>Account + broker</span><br /><b>{acct}</b> · {logic.broker}</div>
         <div><span style={{ color: MUTED }}>Instrument</span><br /><b>{logic.instrumentType.replace(/_/g, ' ')}</b></div>
-        <div title={reviewTip}><span style={{ color: MUTED, fontWeight: 800 }}>CURRENT LIVE BROKER STOP</span><br /><b style={{ color: logic.liveStop != null || logic.liveStopIsTrailing ? GREEN : MUTED }}>{logic.liveStopIsTrailing && logic.liveTrailPct != null ? `TRAILING ${logic.liveTrailPct}%` : logic.liveStop != null ? `$${logic.liveStop.toFixed(2)}` : 'none'}</b>{logic.liveStopIsTrailing && logic.liveStop != null ? ` (~$${logic.liveStop.toFixed(2)} now)` : ''}{logic.liveStopDistancePct != null ? ` (${logic.liveStopDistancePct.toFixed(1)}% below)` : ''}</div>
+        <div title={brokerReadDegraded ? 'The Schwab open-orders read did not succeed on the last fetch (degraded token lane) — stops you placed directly at Schwab are invisible to the API right now. This is NOT confirmation that no stop exists.' : reviewTip}><span style={{ color: MUTED, fontWeight: 800 }}>CURRENT LIVE BROKER STOP</span><br /><b style={{ color: logic.liveStop != null || logic.liveStopIsTrailing ? GREEN : brokerReadDegraded ? AMBER : MUTED }}>{logic.liveStopIsTrailing && logic.liveTrailPct != null ? `TRAILING ${logic.liveTrailPct}%` : logic.liveStop != null ? `$${logic.liveStop.toFixed(2)}` : brokerReadDegraded ? 'UNVERIFIABLE \u2014 orders feed degraded' : 'none'}</b>{logic.liveStopIsTrailing && logic.liveStop != null ? ` (~$${logic.liveStop.toFixed(2)} now)` : ''}{logic.liveStopDistancePct != null ? ` (${logic.liveStopDistancePct.toFixed(1)}% below)` : ''}</div>
         <div title={reviewTip}><span style={{ color: MUTED, fontWeight: 800 }}>ADVISORY RECOMMENDATION</span><br /><b style={{ color: AMBER }}>{logic.advisoryStop != null ? `$${logic.advisoryStop.toFixed(2)}` : 'none'}</b>{logic.distancePct != null ? ` (${logic.distancePct.toFixed(1)}% below)` : ''}</div>
         <div><span style={{ color: MUTED }}>Optional trail</span><br /><b>{trailPct != null ? `${trailLabel}%` : 'none'}</b>{trailingFloorNow != null ? <span style={{ color: GREEN, fontSize: 11 }}> (≈${trailingFloorNow.toFixed(2)} now)</span> : null}</div>
         <div><span style={{ color: MUTED }}>Family floor/cap</span><br /><b style={{ color: logic.floor_math_consistent ? TEXT0 : RED }}>{logic.familyFloorLabel}</b></div>
@@ -559,7 +566,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           ? `Current: ${logic.liveStopIsTrailing && logic.liveTrailPct != null ? `TRAILING ${logic.liveTrailPct}%` : 'FIXED stop'}`
             + (logic.liveStop != null ? ` ${logic.liveStopIsTrailing ? '\u2248' : 'at'} $${logic.liveStop.toFixed(2)}` : '')
             + (logic.liveStopDistancePct != null ? ` (${logic.liveStopDistancePct.toFixed(1)}% below price)` : '')
-          : 'Current: NO live stop'
+          : brokerReadDegraded
+            ? 'Current: UNVERIFIABLE \u2014 the Schwab orders feed is degraded; a stop you placed at Schwab may exist but is invisible to the API right now'
+            : 'Current: NO live stop'
         const curPl = plNow != null ? ` \u00b7 position P/L ${pct(plNow)}${plNowUsd != null ? ` (${usd(plNowUsd)})` : ''}` : ''
         // 2 — what the advisor actually recommends (fixed value + optional/recommended trail)
         const tr = trail?.pct ?? null

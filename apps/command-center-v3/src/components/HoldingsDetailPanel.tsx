@@ -17,6 +17,7 @@ export interface HoldingsDetailContext {
   monitored?: any
   confirmedStop?: any
   brokerStopsFetchedAt?: string | null
+  brokerStopReadOk?: string[]
   cardMap?: Record<string, any>
   fvMap?: Record<string, any>
   reportEntry?: any
@@ -103,6 +104,7 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
           monitored={ctx.monitored}
           confirmedStop={ctx.confirmedStop}
           brokerStopsFetchedAt={ctx.brokerStopsFetchedAt}
+          brokerStopReadOk={ctx.brokerStopReadOk}
           onRefresh={ctx.onRefreshMonitored}
           onPreflightUpdate={ctx.onPreflightUpdate}
         />

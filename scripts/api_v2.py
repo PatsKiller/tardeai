@@ -24948,10 +24948,18 @@ def _portfolio_llm_coverage(query=None):
         _broker_fetched_at = _oti.broker_stops_fetched_at()
     except Exception:
         pass
+    try:
+        _read_ok = sorted(_oti.broker_stop_read_ok())
+    except Exception:
+        _read_ok = []
     return _json_clean({"coverage": cov, "protection": protection, "stop_curation": stop_curation_map,
                         "claude_verdicts": claude_verdicts,
                         "confirmed_stops": confirmed_stops,
                         "broker_stops_fetched_at": _broker_fetched_at,
+                        # accounts whose live-stop broker read SUCCEEDED on the last fetch. An account
+                        # missing here (e.g. Schwab orders lane degraded: no login token) means its
+                        # live-stop state is UNVERIFIABLE — the UI must not render 'none' for it.
+                        "broker_stop_read_ok_accounts": _read_ok,
                         "window_days": 30,
                         "note": "advisory research provenance — structured stop/trail fields + live "
                                 "distance-to-stop; confirmed_stops = operator-verified broker stops "
