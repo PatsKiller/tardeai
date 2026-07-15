@@ -157,9 +157,27 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
           {pr?.evidence?.length > 0 && (
             <EvidenceBlock title={`Stop advisory${pr.model ? ` · ${pr.model}` : ''}`} evidence={pr.evidence} dataIDoubt={pr.data_i_doubt} maxItems={5} />
           )}
-          {sc?.evidence?.length > 0 && (
-            <EvidenceBlock title={`Grok stop curation${sc.grade ? ` · ${sc.grade}` : ''}`} evidence={sc.evidence} dataIDoubt={sc.data_i_doubt} maxItems={4} />
-          )}
+          {sc?.evidence?.length > 0 && (() => {
+            // Stale-curation guard (operator 2026-07-14): a 2-day-old curation claimed a live stop
+            // on a holding whose broker state shows none — flag the contradiction instead of letting
+            // old LLM text silently outvote the live broker read.
+            const claimsLiveStop = (sc.evidence || []).some((e: any) =>
+              /live stop/i.test(String(e?.text ?? e ?? '')) && !/no live stop/i.test(String(e?.text ?? e ?? '')))
+            const hasLiveStop = ctx.confirmedStop != null || ctx.monitored != null
+            const contradicts = claimsLiveStop && !hasLiveStop
+            return (
+              <div>
+                {contradicts && (
+                  <div style={{ fontSize: 11, color: '#f59e0b', fontWeight: 700, padding: '5px 9px', marginBottom: 4,
+                                borderRadius: 6, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.4)' }}>
+                    ⚠ OUTDATED — this curation mentions a live stop, but the current broker state shows none.
+                    Trust the CURRENT LIVE BROKER STOP cell above.
+                  </div>
+                )}
+                <EvidenceBlock title={`Grok stop curation${sc.grade ? ` · ${sc.grade}` : ''}`} evidence={sc.evidence} dataIDoubt={sc.data_i_doubt} maxItems={4} />
+              </div>
+            )
+          })()}
         </div>
       )}
 
