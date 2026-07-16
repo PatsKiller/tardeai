@@ -38,7 +38,7 @@ A single intelligence desk aggregating company research, news/sentiment, analyst
 
 ## 4. QA LINT + CURATION SEMANTICS
 
-Deterministic lint (`research_intelligence_qa_lint.py`, inside materialization): `undated_claim`, `off_universe_mention` (Beauty-Farm class; corporate-suffix detector + universe check), `unsourced_advisory`, `no_counter_view` (else "single-view — treat as unconfirmed"), `duplicate_of` (0.8 shingles). Flags cap Tier A→B, gray chips, `qa_flag_counts` tracked. First run 21/50. Lint DETECTS; production-time prevention is Engine Room WS-2/3 (pending).
+Deterministic lint (`research_intelligence_qa_lint.py`, inside materialization): `undated_claim`, `off_universe_mention` (Beauty-Farm class; corporate-suffix detector + universe check), `unsourced_advisory`, `no_counter_view` (else "single-view — treat as unconfirmed"), `duplicate_of` (0.8 shingles). Flags cap Tier A→B, gray chips, `qa_flag_counts` tracked. First run 21/50 → 0/50 after Engine Room v1 (2026-07-16): prevention now lives at write (wire degrade + universe guard); lint remains the backstop for unguarded legacy items.
 
 Curation: ☆ star (rank boost; ★ Saved tab), ✕ Hide (`hidden=true`, recoverable, never deletes), ▼ demotes, topic-proposal Dismiss is a DIFFERENT object. Stage/RI Ideas → `ri_staged_ideas.json` (lifecycle, 14d expiry, created/expires/source shown).
 
@@ -66,9 +66,9 @@ Content production overnight/after-close ONLY. Queue drains 16:45 ET + 02:40 (�
 
 **Thin surfaces:** Finds tab = CIO band + ALL 90d screener/discovery emissions with per-row α/verdict/→proposal + track record (10,141 finds · α −4.82% · 123 converted). `imports/tos_watchlists/` created with honest awaiting-export README (no blind parser). items payload 1.41→1.12MB (conservative: `hermes_score_components`/`dual_consensus_json` KEPT — locked Card v4 reads them; tail = Engine Room follow-up).
 
-## 6. ENGINE ROOM (prompt delivered, pending execution)
+## 6. ENGINE ROOM v1 (EXECUTED 2026-07-16 — see docs/ENGINE_ROOM_V1.md)
 
-WS-1 topology (root cause canon: NOT feed compute — GIL ThreadingHTTPServer + CLOSE-WAIT zombies ~33/10min holding slots; Path A gunicorn :7778 off-hours cutover vs Path B watchdog/reaper; `DASHBOARD_MAX_CONCURRENCY=64` set as relief, server now loads .env). WS-2 provenance at production. WS-3 universe guard at generators. WS-4 Hermes intake (0-validated schema mismatch, 2,505/2,510 source-unknown). Payload audit: items 1.12MB remaining tail. No RTH server changes ever.
+All four workstreams shipped + verified same-day. **WS-1 Path B** (Path A gunicorn INFEASIBLE — raw http.server handler, not WSGI): `_peer_closed()` disconnect detect before compute + in-flight registry + 25s abandoned-compute watchdog thread in portfolio_server.py; verified 15-abort storm → health 1ms, CLOSE-WAIT ~0 (was ~33/10min). GOTCHA: `recv(MSG_PEEK)` on a timeout-mode socket blocks the full socket timeout — the zero-timeout `select` guard in `_peer_closed` is load-bearing. symbol-cards (1.95MB top offender) now 5-min cache + ETag → 304/14ms. **WS-2**: `user_research_topics.sources_json` + auto_research persists web sources; sourceless advisory degrades to wire in `enrich_narrative` (`provenance_grade`); synthesizer `--ids` targeted regen; lint 21→0. **WS-3**: `lib/universe_guard.py` at generators (synthesizer + auto_research), unknowns disclosed in-brief + conf capped 0.5, stored in `evidence_json.universe_guard`; lint skips guarded items. **WS-4**: backlog was 99% dup inflation (3 topics × ~825) → collapsed 2,480 reversibly (`rejected`+`duplicate_collapsed`), true backlog 30; source_surface 2,505-unknown → 0 (writers now attach); drain was STARVED (oldest-60 window all resolved) → `drained` tag excluded in SQL; nightly drain cron 02:20 N=25 + Telegram line.
 
 ## 7. HARD GUARDRAILS
 
@@ -88,9 +88,9 @@ Advisory/paper only; no broker writes, no 2FA/gate/threshold/supervisor/Phase-19
 
 ## 9. OPEN ITEMS + DATES
 
-**Operator:** 1) **Key rotation OVERDUE** (repo public twice 7/16; gitleaks full-history; before open 7/17). 2) Schwab dated Cost Basis export ×4 → GG v1.1. 3) Hard-reload pre-calm-client tabs. 4) **~2026-07-30 combined evidence review** (GG promote decision + lint trend + feedback tallies + source-league) — the gate for v3.2 desk work. 5) Tier-3 directive merge in Telegram (#420, #612 → #244). 6) CLOSE-WAIT topology decision (or run Engine Room WS-1 post-close).
+**Operator:** 1) **Key rotation OVERDUE** (repo public twice 7/16; gitleaks full-history; before open 7/17). 2) Schwab dated Cost Basis export ×4 → GG v1.1. 3) Hard-reload pre-calm-client tabs. 4) **~2026-07-30 combined evidence review** (GG promote decision + lint trend + feedback tallies + source-league) — the gate for v3.2 desk work. 5) Tier-3 directive merge in Telegram (#420, #612 → #244). 6) ~~CLOSE-WAIT topology~~ DONE (Engine Room WS-1 Path B, 2026-07-16).
 
-**CC queue:** Engine Room v1 (the only written-but-unrun prompt). Parked: keyboard nav, GG v1.1, Level II, ToS parser (awaiting real CSV), journal source-keys (unblocks full attribution chain), items payload tail.
+**CC queue:** (Engine Room v1 DONE 2026-07-16.) Parked: keyboard nav, GG v1.1, Level II, ToS parser (awaiting real CSV), journal source-keys (unblocks full attribution chain), items payload tail.
 
 **Strategic:** trading evidence base — strategy proof ~2/10 vs system maturity ~7.7; canary gate chain expired 06-22; live-money target 2026-11-15 ⇒ 60-day shadow must start ~2026-09-15.
 
