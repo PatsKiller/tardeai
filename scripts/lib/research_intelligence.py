@@ -1440,12 +1440,32 @@ def freshness_report(*, db_query) -> dict[str, Any]:
         if d["label"] != "(none)" and d["pct"] > 20.0
     ]
 
+    # Coverage gaps (v3 D4): categories whose live+fresh brief count sits under
+    # the configured floor — rendered in the rail with a Queue action.
+    floors = {
+        k: v for k, v in (policy.get("coverage_floors") or {}).items()
+        if not k.startswith("_") and isinstance(v, (int, float))
+    }
+    coverage_gaps = []
+    for cat, floor in floors.items():
+        d = by_cat.get(cat) or {}
+        fresh_n = int(d.get("live") or 0) + int(d.get("fresh") or 0)
+        if fresh_n < floor:
+            coverage_gaps.append({
+                "category": cat,
+                "fresh_briefs": fresh_n,
+                "floor": floor,
+                "total_briefs": int(d.get("count") or 0),
+            })
+    coverage_gaps.sort(key=lambda g: g["fresh_briefs"] - g["floor"])
+
     return {
         "ok": True,
         "as_of": datetime.now(timezone.utc).isoformat(),
         "by_category": by_cat,
         "stale_topics": stale_topics[:30],
         "stale_topic_count": len(stale_topics),
+        "coverage_gaps": coverage_gaps,
         "queued_research_count": (feed.get("stats") or {}).get("queued_research"),
         "action_label_distribution": label_dist[:15],
         "action_labels_over_20pct": over_cap,

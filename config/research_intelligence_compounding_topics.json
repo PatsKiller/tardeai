@@ -1,0 +1,65 @@
+{
+  "_description": "Compounding & long-term wealth pillar topics for topic_monitor (RI v3 D3 — closes the v2.6 open item). Seeded by scripts/research_intelligence_retirement_seed.py --config config/research_intelligence_compounding_topics.json",
+  "version": "1.0",
+  "updated": "2026-07-16",
+  "default_owner": "shared",
+  "default_agent_owner": "Alex",
+  "topics": [
+    {
+      "topic_id": "compounding_dividend_reinvest",
+      "display_name": "Dividend Reinvestment & Compounding Math",
+      "priority": 2,
+      "max_age_days": 14,
+      "min_articles": 3,
+      "search_queries": [
+        "dividend reinvestment compounding long term returns",
+        "DRIP vs cash dividends retirement portfolio",
+        "SCHD dividend growth compounding analysis"
+      ],
+      "strategy_tags": ["compounding_wealth", "dividend_income"],
+      "personal_context": "Income sleeve ~43% of book; reinvestment decisions must clear SSDI/IRMAA MAGI constraints."
+    },
+    {
+      "topic_id": "compounding_growth_quality",
+      "display_name": "Quality Growth Compounders",
+      "priority": 2,
+      "max_age_days": 14,
+      "min_articles": 3,
+      "search_queries": [
+        "quality compounder stocks high ROIC long term",
+        "SCHG large cap growth ETF long-term outlook",
+        "compounding machines wide moat stocks 2026"
+      ],
+      "strategy_tags": ["compounding_wealth", "growth"],
+      "personal_context": "SCHG is the primary growth compounder at ~25% of book (high concentration) — analysis should weigh trim/diversify paths, not add."
+    },
+    {
+      "topic_id": "compounding_sequence_risk",
+      "display_name": "Sequence-of-Returns & Drawdown Math",
+      "priority": 2,
+      "max_age_days": 14,
+      "min_articles": 3,
+      "search_queries": [
+        "sequence of returns risk early retirement drawdown",
+        "safe withdrawal rate research 2026",
+        "drawdown recovery math compounding portfolio"
+      ],
+      "strategy_tags": ["compounding_wealth", "retirement_planning"],
+      "personal_context": "Operator on SSDI pre-Medicare; drawdown sequencing interacts with Roth conversion pacing and IRMAA."
+    },
+    {
+      "topic_id": "compounding_fees_taxes_drag",
+      "display_name": "Fee & Tax Drag on Compounding",
+      "priority": 2,
+      "max_age_days": 21,
+      "min_articles": 3,
+      "search_queries": [
+        "expense ratio impact long term compounding",
+        "tax drag taxable account compounding ETF",
+        "asset location taxable vs IRA compounding"
+      ],
+      "strategy_tags": ["compounding_wealth", "retirement_tax"],
+      "personal_context": "Fee analyzer already flagged FCNTX→SCHD style savings; asset-location decisions must respect MAGI."
+    }
+  ]
+}

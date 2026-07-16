@@ -1260,6 +1260,29 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   const [bannerDismissed, setBannerDismissed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [staging, setStaging] = useState(false)
+  const [queuedTopics, setQueuedTopics] = useState<Record<string, boolean>>({})
+
+  // v3 (D1/D2/D4): enqueue a topic or coverage-gap category for the after-close
+  // research drain — nothing runs during RTH, the cron drains at 16:45/02:40
+  const queueResearch = useCallback(async (payload: { topic_id?: string; category?: string }) => {
+    const key = payload.topic_id || payload.category || ''
+    try {
+      const raw = await fetch('/api/v2/research-intelligence/run-topic', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(x => x.json())
+      const res = raw?.data && typeof raw.data === 'object' ? { ...raw.data, ok: raw.ok && raw.data.ok !== false } : raw
+      if (res?.ok) {
+        setQueuedTopics(p => ({ ...p, [key]: true }))
+        setToast(res.note ? `${key}: ${res.note}` : `${key} queued for after close`)
+      } else {
+        setToast(`Queue failed: ${res?.error || 'error'}`)
+      }
+    } catch {
+      setToast('Queue failed — server unreachable')
+    }
+  }, [])
+
 
   const qs = useMemo(() => {
     const p = new URLSearchParams()
@@ -1282,6 +1305,28 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     90_000,
   )
   const { data: freshData, refetch: refetchFresh } = useApi<any>('/api/v2/research-intelligence/freshness', 120_000)
+  // v3 (D5): Discovery Inbox TOPIC_CANDIDATEs — proposals only, operator decides
+  const { data: proposedData, refetch: refetchProposed } = useApi<any>(
+    '/api/v2/hermes/discovery-inbox?type=TOPIC_CANDIDATE&status=DISCOVERED&limit=6', 300_000,
+  )
+
+  // v3 (D5): route a proposed topic through the GOVERNED discovery pathways —
+  // approve-research-topic / reject; never a direct topic_monitor write from here
+  const decideProposedTopic = useCallback(async (candidateId: number, action: 'approve-research-topic' | 'reject') => {
+    try {
+      const raw = await fetch(`/api/v2/hermes/discovery-inbox/${candidateId}/${action}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: 'operator', notes: 'decided from RI desk (v3 proposed-topics rail)' }),
+      }).then(x => x.json())
+      const ok = raw?.ok ?? raw?.data?.ok
+      setToast(ok
+        ? (action === 'reject' ? 'Proposal dismissed' : 'Approved → research topic pipeline')
+        : `Decision failed: ${raw?.error || raw?.data?.error || 'error'}`)
+      refetchProposed()
+    } catch {
+      setToast('Decision failed — server unreachable')
+    }
+  }, [refetchProposed])
   const { data: stagedData, refetch: refetchStaged } = useApi<any>(
     '/api/v2/research-intelligence/staged?limit=40',
     60_000,
@@ -1765,13 +1810,27 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
         }}>
           <strong style={{ color: C.retire }}>Desk status · </strong>
           {staleTopics.length > 0 && (
-            <>{staleTopics.length} monitors need refresh
-              ({staleTopics.slice(0, 4).map((t: any) => t.topic_id).join(', ')}
-              {staleTopics.length > 4 ? '…' : ''}).{' '}
-            </>
+            <>{staleTopics.length} monitors need refresh.{' '}</>
           )}
           {retStats && (
             <>Retirement pillar: {retStats.count} briefs · freshest {retStats.freshest_h}h · {retStats.needs_refresh} aging.</>
+          )}
+          {staleTopics.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              {staleTopics.slice(0, 8).map((t: any) => (
+                <button key={t.topic_id} type="button"
+                  disabled={!!queuedTopics[t.topic_id]}
+                  onClick={() => queueResearch({ topic_id: t.topic_id })}
+                  title={`age ${t.age_hours ?? '—'}h · max ${t.max_age_hours}h — queue for the after-close research drain`}
+                  style={{
+                    fontSize: 10.5, fontWeight: 700, padding: '4px 9px', borderRadius: 999, cursor: 'pointer',
+                    border: `1px solid ${C.retire}55`, color: queuedTopics[t.topic_id] ? C.soft : C.retire,
+                    background: 'transparent',
+                  }}>
+                  {queuedTopics[t.topic_id] ? `✓ ${t.topic_id} queued` : `↻ Queue ${t.topic_id}`}
+                </button>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -1945,7 +2004,10 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                     {(data.queued_research as {
                       id: string; title?: string; primary_category?: string
                       freshness_label?: string; source_system?: string; needs_refresh?: boolean
-                    }[]).slice(0, 15).map(qi => (
+                      source_table?: string; source_id?: string | number
+                    }[]).slice(0, 15).map(qi => {
+                      const topicId = qi.source_table === 'topic_monitor' ? String(qi.source_id || '') : ''
+                      return (
                       <div key={qi.id} style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                         padding: '8px 12px', borderBottom: `1px solid ${C.line}`, fontSize: 12,
@@ -1961,9 +2023,24 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                             {catMeta[qi.primary_category || '']?.label || qi.primary_category}
                           </span>
                           {qi.freshness_label && <span style={{ color: C.soft, fontSize: 10.5 }}>{qi.freshness_label}</span>}
+                          {topicId ? (
+                            <button type="button"
+                              disabled={!!queuedTopics[topicId]}
+                              onClick={() => queueResearch({ topic_id: topicId })}
+                              style={{
+                                fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
+                                cursor: 'pointer', border: `1px solid ${C.accent}55`,
+                                color: queuedTopics[topicId] ? C.soft : C.accent, background: 'transparent',
+                              }}>
+                              {queuedTopics[topicId] ? '✓ Queued for after close' : '▸ Run research'}
+                            </button>
+                          ) : (
+                            <span style={{ color: C.soft, fontSize: 10, fontStyle: 'italic' }}>no monitor linked</span>
+                          )}
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </section>
               )}
@@ -1990,6 +2067,72 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               </button>
             </RailCard>
           )}
+          {/* v3 (D4): categories under their fresh-brief floor — actionable */}
+          {(freshData?.coverage_gaps?.length ?? 0) > 0 && (
+            <RailCard title="Coverage gaps" accent={C.stale}>
+              <div style={{ fontSize: 11, color: C.soft, marginBottom: 6 }}>
+                Fresh briefs below the category floor — queue for after close
+              </div>
+              {(freshData.coverage_gaps as {
+                category: string; fresh_briefs: number; floor: number
+              }[]).slice(0, 6).map(g => (
+                <div key={g.category} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  gap: 8, fontSize: 12, padding: '4px 0', borderBottom: `1px solid ${C.line}`,
+                }}>
+                  <span style={{ color: CAT_TINT[g.category] || C.ink }}>
+                    {catMeta[g.category]?.label || g.category}
+                    <span style={{ color: C.soft, marginLeft: 6, fontSize: 10.5 }}>
+                      {g.fresh_briefs}/{g.floor}
+                    </span>
+                  </span>
+                  <button type="button"
+                    disabled={!!queuedTopics[g.category]}
+                    onClick={() => queueResearch({ category: g.category })}
+                    style={{
+                      fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
+                      cursor: 'pointer', border: `1px solid ${C.stale}55`,
+                      color: queuedTopics[g.category] ? C.soft : C.stale, background: 'transparent',
+                    }}>
+                    {queuedTopics[g.category] ? '✓ Queued' : 'Queue'}
+                  </button>
+                </div>
+              ))}
+            </RailCard>
+          )}
+
+          {/* v3 (D5): Hermes Discovery TOPIC_CANDIDATE proposals — operator decides */}
+          <RailCard title="Proposed topics" accent={C.macro}>
+            {(proposedData?.candidates?.length ?? 0) > 0 ? (
+              (proposedData.candidates as {
+                id: number; label?: string; summary?: string; discovery_score?: number
+              }[]).slice(0, 5).map(cand => (
+                <div key={cand.id} style={{ padding: '6px 0', borderBottom: `1px solid ${C.line}` }}>
+                  <div style={{ fontSize: 12, color: C.ink, lineHeight: 1.35 }}>{cand.label}</div>
+                  {cand.summary && (
+                    <div style={{ fontSize: 10.5, color: C.soft, lineHeight: 1.35, marginTop: 2, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {cand.summary}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
+                    <button type="button" onClick={() => decideProposedTopic(cand.id, 'approve-research-topic')}
+                      style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 999, cursor: 'pointer', border: `1px solid ${C.income}55`, color: C.income, background: 'transparent' }}>
+                      Approve → topic
+                    </button>
+                    <button type="button" onClick={() => decideProposedTopic(cand.id, 'reject')}
+                      style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 999, cursor: 'pointer', border: `1px solid ${C.lineStrong}`, color: C.soft, background: 'transparent' }}>
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ fontSize: 11, color: C.soft }}>
+                No topic candidates in the Discovery Inbox — verified empty, not an error.
+              </div>
+            )}
+          </RailCard>
+
           {!!(data?.portfolio_context?.top?.length) && (
             <RailCard title="Book weights" accent={C.income}>
               <div style={{ fontSize: 11, color: C.soft, marginBottom: 6 }}>

@@ -34,5 +34,17 @@
     "retirement_tax_max_stale_hours": 36,
     "holdings_linked_max_stale_hours": 48,
     "macro_geo_max_stale_hours": 36
+  },
+  "coverage_floors": {
+    "_description": "Minimum live+fresh brief count per category; below floor = coverage gap (v3 D4)",
+    "retirement_tax": 5,
+    "dividend_income": 3,
+    "macro_geo": 3,
+    "sector_thematic": 3,
+    "risk_regime": 2,
+    "catalyst_event": 2,
+    "company_ticker": 3,
+    "compounding_wealth": 2,
+    "academic_pro": 1
   }
 }

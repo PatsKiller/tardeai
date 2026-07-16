@@ -18528,6 +18528,38 @@ def _research_intelligence_staged_get(query=None):
         return {"ok": False, "error": str(e)[:240]}
 
 
+def _research_intelligence_run_topic(body=None):
+    """POST /api/v2/research-intelligence/run-topic {topic_id} | {category} —
+    enqueue a topic (or a coverage-gap category's stalest monitors) for the
+    after-close research drain. RTH-safe: nothing runs until the cron drain."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from research_intelligence_queue import enqueue, enqueue_category
+        b = body or {}
+        who = str(b.get("requested_by") or "operator")[:60]
+        if b.get("topic_id"):
+            return enqueue(str(b["topic_id"]), requested_by=who)
+        if b.get("category"):
+            return enqueue_category(str(b["category"]), requested_by=who)
+        return {"ok": False, "error": "topic_id or category required"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _research_intelligence_queue_get(query=None):
+    """GET /api/v2/research-intelligence/queue — run-research queue state."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from research_intelligence_queue import list_queue
+        q = query or {}
+        limit = int((q.get("limit") if not isinstance(q.get("limit"), list) else q["limit"][0]) or 50)
+        return {"ok": True, "queue": list_queue(limit=max(1, min(limit, 100)))}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240], "queue": []}
+
+
 def _research_intelligence_stage_post(body=None):
     """POST /api/v2/research-intelligence/stage — stage a trade idea from a card."""
     try:
@@ -30125,6 +30157,7 @@ ROUTES = {
     "/api/v2/research-intelligence/taxonomy": lambda: _research_intelligence_taxonomy(),
     "/api/v2/research-intelligence/freshness": lambda: _research_intelligence_freshness(),
     "/api/v2/research-intelligence/staged": lambda: _research_intelligence_staged_get(_current_query),
+    "/api/v2/research-intelligence/queue": lambda: _research_intelligence_queue_get(_current_query),
     "/api/v2/atm/gate-status": lambda: _atm_gate_status(),
     "/api/v2/atm/schwab-readiness": lambda: _atm_schwab_readiness(),
     "/api/v2/atm/actionable-proposals": lambda: _atm_actionable_proposals(),
@@ -33192,6 +33225,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )""", fetch="none")
             result = _research_intelligence_feedback_post(body or {})
+            code = 200 if result.get("ok") else 400
+            return code, result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:240]}
+    if method == "POST" and base_path == "/api/v2/research-intelligence/run-topic":
+        try:
+            result = _research_intelligence_run_topic(body or {})
             code = 200 if result.get("ok") else 400
             return code, result
         except Exception as e:

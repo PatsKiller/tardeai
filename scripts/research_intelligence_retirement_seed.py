@@ -22,17 +22,19 @@ sys.path.insert(0, str(ROOT / "scripts"))
 TOPICS_PATH = ROOT / "config" / "research_intelligence_retirement_topics.json"
 
 
-def _load_topics() -> dict:
-    return json.loads(TOPICS_PATH.read_text(encoding="utf-8"))
+def _load_topics(path: Path | None = None) -> dict:
+    return json.loads((path or TOPICS_PATH).read_text(encoding="utf-8"))
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="Write to topic_monitor")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--config", default=None,
+                    help="Alternate topic catalog (e.g. config/research_intelligence_compounding_topics.json)")
     args = ap.parse_args()
 
-    cfg = _load_topics()
+    cfg = _load_topics(Path(args.config) if args.config else None)
     topics = cfg.get("topics") or []
     owner = cfg.get("default_owner") or "shared"
     agent = cfg.get("default_agent_owner") or "Alex"
