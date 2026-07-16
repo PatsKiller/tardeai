@@ -158,9 +158,14 @@ export default function HomeHub({ onDrill }: Props) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8, gap: 10, flexWrap: 'wrap' }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>P/L by account · period</div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
-                  Aggregate $ (top) · % (bottom). YTD uses ≈ market (ex-transfers) when flagged — not raw NAV.
-                  Benchmarks: SPY (S&amp;P 500), QQQ (Nasdaq-100), IWM, DIA — α = book − index.
+                <div
+                  style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, maxWidth: 720, lineHeight: 1.45 }}
+                  title={
+                    (perfData?.benchmarks?.methodology as string)
+                    || 'α = All-accounts % − index ETF %. Book may be transfer-adjusted (≈). Index is ETF price return, not your holdings mix.'
+                  }
+                >
+                  Aggregate $ (top) · % (bottom). YTD ≈ market (ex-transfers) when amber. Index rows: ETF return + α (hover cells).
                   Source: /api/v2/portfolio/performance
                 </div>
               </div>
@@ -179,25 +184,51 @@ export default function HomeHub({ onDrill }: Props) {
                     <th style={{ textAlign: 'left', padding: '5px 8px', fontWeight: 700 }}>Account</th>
                     <th style={{ padding: '5px 8px', fontWeight: 700 }}>Value</th>
                     {PERF_PERIODS.map(p => (
-                      <th key={p} style={{ padding: '5px 8px', fontWeight: 700 }}>{p}</th>
+                      <th
+                        key={p}
+                        style={{ padding: '5px 8px', fontWeight: 700, cursor: 'help' }}
+                        title={
+                          p === 'YTD'
+                            ? 'Year-to-date. Book may show ≈ when transfers excluded from %. Index is ETF calendar YTD.'
+                            : p === '1D'
+                              ? 'Today. Book = market-day household P/L. Index = ETF session move (see cell tooltip).'
+                              : `${p} return. Hover account or index cells for source and α definition.`
+                        }
+                      >
+                        {p}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {/* Portfolio total row */}
                   <tr style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: '7px 8px', fontWeight: 800, color: 'var(--text0)', textAlign: 'left' }}>All</td>
+                    <td
+                      style={{ padding: '7px 8px', fontWeight: 800, color: 'var(--text0)', textAlign: 'left', cursor: 'help' }}
+                      title="All accounts combined. $ = dollar P/L for period. % is household return used for α (transfer-adjusted when ≈)."
+                    >
+                      All
+                    </td>
                     <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{fmt$(perfData?.current_value ?? pv ?? 0, 0)}</td>
                     {PERF_PERIODS.map(p => {
                       const d = perfData?.periods?.[p]
                       // Prefer transfer-adjusted display (YTD) so Home matches Returns; raw NAV misleads on rollovers.
-                      const preferDisp = Boolean(d?.nav_is_not_market_only || d?.display_change != null)
+                      const preferDisp = Boolean(d?.nav_is_not_market_only || d?.display_change != null || d?.display_change_pct != null)
                       const ch = preferDisp && d?.display_change != null ? d.display_change : d?.change
                       const pct = preferDisp && d?.display_change_pct != null ? d.display_change_pct : d?.change_pct
                       const col = (ch ?? 0) >= 0 ? '#22c55e' : '#ef4444'
                       const warn = Boolean(d?.nav_is_not_market_only || d?.is_false_positive)
+                      const tip = [
+                        `All accounts · ${p}`,
+                        ch != null ? `P/L ${ch >= 0 ? '+' : ''}${fmt$(ch, 0)}` : null,
+                        pct != null ? `Return ${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : null,
+                        preferDisp ? 'Using display/≈ market % (ex-transfers when flagged) — this is the % used for index α' : 'Using NAV change %',
+                        d?.display_label,
+                        d?.adjustment_note,
+                        d?.source ? `Source: ${d.source}` : null,
+                      ].filter(Boolean).join('\n')
                       return (
-                        <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }} title={d?.display_label || d?.adjustment_note || ''}>
+                        <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right', cursor: 'help' }} title={tip}>
                           <div style={{ color: ch != null ? col : 'var(--text3)', fontWeight: 700 }}>
                             {ch != null ? `${ch >= 0 ? '+' : ''}${fmt$(ch, 0)}` : '—'}
                           </div>
@@ -264,19 +295,38 @@ export default function HomeHub({ onDrill }: Props) {
                   {/* Index benchmarks vs book */}
                   {((perfData?.benchmarks?.items as any[]) || []).map((b: any) => (
                     <tr key={b.symbol} style={{ borderTop: '1px solid var(--border)', background: 'rgba(148,163,184,.04)' }}>
-                      <td style={{ padding: '7px 8px', textAlign: 'left' }}>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#94a3b8' }}>{b.symbol}</span>
-                        <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 6 }}>{b.label}</span>
+                      <td
+                        style={{ padding: '7px 8px', textAlign: 'left', cursor: 'help' }}
+                        title={b.row_tooltip || `${b.symbol} · ${b.label}: ETF index proxy. α = All-accounts % − this index %.`}
+                      >
+                        <div style={{ fontFamily: 'monospace', fontWeight: 800, color: '#94a3b8' }}>
+                          {b.display_name || `${b.symbol} · ${b.label || ''}`}
+                        </div>
+                        <div style={{ fontSize: 9, color: 'var(--text4)', marginTop: 1 }}>ETF index · hover cells</div>
                       </td>
-                      <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontSize: 10, color: 'var(--text3)' }}>index</td>
+                      <td
+                        style={{ padding: '7px 8px', fontFamily: 'monospace', fontSize: 10, color: 'var(--text3)', cursor: 'help' }}
+                        title="Not a portfolio account — pure index ETF return for comparison only."
+                      >
+                        index
+                      </td>
                       {PERF_PERIODS.map(p => {
                         const bp = b.periods?.[p]
                         const pct = bp?.change_pct
                         const alpha = bp?.alpha_pct
                         const col = (pct ?? 0) >= 0 ? '#22c55e' : '#ef4444'
                         const acol = (alpha ?? 0) >= 0 ? '#22c55e' : '#ef4444'
+                        const tip = bp?.tooltip || [
+                          `${b.symbol} · ${b.label} · ${p}`,
+                          pct != null ? `Index: ${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : 'Index: n/a',
+                          alpha != null ? `α (book − index): ${alpha >= 0 ? '+' : ''}${Number(alpha).toFixed(2)}%` : 'α: n/a',
+                          bp?.portfolio_pct != null ? `Book % used: ${Number(bp.portfolio_pct) >= 0 ? '+' : ''}${Number(bp.portfolio_pct).toFixed(2)}%` : null,
+                          bp?.source ? `Source: ${bp.source}` : null,
+                          bp?.method_note,
+                          'Not risk-adjusted. Index ≠ your holdings mix.',
+                        ].filter(Boolean).join('\n')
                         return (
-                          <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }} title={bp?.source || ''}>
+                          <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right', cursor: 'help' }} title={tip}>
                             <div style={{ color: pct != null ? col : 'var(--text3)', fontWeight: 700 }}>
                               {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : '—'}
                             </div>

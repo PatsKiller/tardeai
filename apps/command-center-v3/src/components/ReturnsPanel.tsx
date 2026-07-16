@@ -46,12 +46,20 @@ type BenchPeriod = {
   change_pct?: number | null
   alpha_pct?: number | null
   source?: string
+  method_note?: string
+  period_help?: string
+  portfolio_pct?: number | null
+  portfolio_pct_source?: string
+  tooltip?: string
 }
 
 type BenchmarkItem = {
   symbol?: string
   label?: string
   short?: string
+  display_name?: string
+  description?: string
+  row_tooltip?: string
   periods?: Record<string, BenchPeriod>
 }
 
@@ -70,6 +78,7 @@ type PerfData = {
     by_symbol?: Record<string, BenchmarkItem>
     alpha?: Record<string, Record<string, { alpha_pct?: number | null }>>
     as_of_source?: string
+    methodology?: string
   }
   transfer_notifications?: {
     id?: number
@@ -268,12 +277,24 @@ export default function ReturnsPanel({
                 {view.scope === 'portfolio' && (spyA != null || qqqA != null) && (
                   <div style={{ fontSize: 9, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {spyA != null && (
-                      <span style={{ color: signedColor(spyA), fontWeight: 700 }}>
+                      <span
+                        style={{ color: signedColor(spyA), fontWeight: 700, cursor: 'help' }}
+                        title={
+                          (perfData.benchmarks?.by_symbol?.SPY?.periods?.[period] as BenchPeriod | undefined)?.tooltip
+                          || `α vs SPY (S&P 500) = book ${period} % − SPY ${period} %. Positive = beat the S&P proxy.`
+                        }
+                      >
                         vs SPY {spyA >= 0 ? '+' : ''}{Number(spyA).toFixed(2)}%
                       </span>
                     )}
                     {qqqA != null && (
-                      <span style={{ color: signedColor(qqqA), fontWeight: 700 }}>
+                      <span
+                        style={{ color: signedColor(qqqA), fontWeight: 700, cursor: 'help' }}
+                        title={
+                          (perfData.benchmarks?.by_symbol?.QQQ?.periods?.[period] as BenchPeriod | undefined)?.tooltip
+                          || `α vs QQQ (Nasdaq-100) = book ${period} % − QQQ ${period} %.`
+                        }
+                      >
                         vs QQQ {qqqA >= 0 ? '+' : ''}{Number(qqqA).toFixed(2)}%
                       </span>
                     )}
@@ -330,9 +351,12 @@ export default function ReturnsPanel({
         {/* Per-account matrix (always show so aggregate filters are visible) */}
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, overflowX: 'auto' }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>By account · all periods</div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>
-            Click a row to filter. Shows <b style={{ color: 'var(--text2)' }}>≈ market (ex-transfers)</b> when NAV is polluted by funding/transfers; amber = do not trust raw NAV %.
-            Benchmarks: SPY = S&amp;P 500, QQQ = Nasdaq-100, IWM = Russell 2000, DIA = Dow. Alpha = book − index.
+          <div
+            style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10, lineHeight: 1.45 }}
+            title={perfData.benchmarks?.methodology || undefined}
+          >
+            Click a row to filter. Amber ≈ = transfer-adjusted book % (used for α).
+            Index rows (SPY · S&amp;P 500, QQQ · Nasdaq-100, IWM, DIA): ETF return + α = book − index — <b style={{ color: 'var(--text2)' }}>hover any cell</b> for full math.
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 520 }}>
             <thead>
@@ -377,17 +401,31 @@ export default function ReturnsPanel({
                   data-testid={`returns-bench-${b.symbol}`}
                   style={{ borderTop: '1px solid var(--border)', background: 'rgba(148,163,184,.04)' }}
                 >
-                  <td style={{ padding: '8px', textAlign: 'left' }}>
-                    <span style={{ fontWeight: 800, color: '#94a3b8', fontFamily: 'monospace' }}>{b.symbol}</span>
-                    <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 6 }}>{b.label}</span>
+                  <td style={{ padding: '8px', textAlign: 'left', cursor: 'help' }} title={b.row_tooltip || undefined}>
+                    <div style={{ fontWeight: 800, color: '#94a3b8', fontFamily: 'monospace' }}>
+                      {b.display_name || `${b.symbol} · ${b.label || ''}`}
+                    </div>
+                    <div style={{ fontSize: 9, color: 'var(--text4)' }}>ETF index · hover cells for α math</div>
                   </td>
-                  <td style={{ padding: '8px', fontFamily: 'monospace', color: 'var(--text3)', fontSize: 10 }}>index</td>
+                  <td
+                    style={{ padding: '8px', fontFamily: 'monospace', color: 'var(--text3)', fontSize: 10, cursor: 'help' }}
+                    title="Not an account — index ETF return only."
+                  >
+                    index
+                  </td>
                   {periodCols.map(p => {
                     const bp = b.periods?.[p]
                     const pct = bp?.change_pct
                     const alpha = bp?.alpha_pct
+                    const tip = bp?.tooltip || [
+                      `${b.symbol} · ${b.label} · ${p}`,
+                      pct != null ? `Index ${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : null,
+                      alpha != null ? `α ${alpha >= 0 ? '+' : ''}${Number(alpha).toFixed(2)}% = book − index` : null,
+                      bp?.source,
+                      bp?.method_note,
+                    ].filter(Boolean).join('\n')
                     return (
-                      <td key={p} style={{ padding: '6px 8px', fontFamily: 'monospace', textAlign: 'right' }} title={bp?.source || ''}>
+                      <td key={p} style={{ padding: '6px 8px', fontFamily: 'monospace', textAlign: 'right', cursor: 'help' }} title={tip}>
                         <div style={{ color: signedColor(pct), fontWeight: 700 }}>
                           {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : '—'}
                         </div>
