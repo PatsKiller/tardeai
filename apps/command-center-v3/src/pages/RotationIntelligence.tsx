@@ -522,7 +522,8 @@ export default function RotationIntelligence() {
           <div>
             <div style={hubTitle()}>Rotation Intelligence</div>
             <div style={hubSubtitle(terminalUi)}>
-              Grounded local review + free/OAuth Grok second opinion
+              Grounded local review + free/OAuth Grok second opinion · strategy engine — monitoring
+              lens lives at <a href="/v3/watch?tab=sectors" style={{ color: 'inherit', textDecoration: 'underline dotted' }}>Watch → Sectors</a>
             </div>
           </div>
           <div className="hub-tabs" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

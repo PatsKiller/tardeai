@@ -28451,6 +28451,41 @@ def _sectors_monitor(query=None):
             # A4: normalize 'Financial' vs 'Financials' so the watching chip
             # matches regardless of which variant the directive stored
             watched[key.strip().lower().rstrip("s")] = {"id": d["id"], "label": d["label"]}
+    # v4 (E1): RS history — one grouped read of sector_rs_daily for all ETFs
+    _rs_hist: dict = {}
+    for _r in (_db_query("""SELECT symbol, rs_date, rs FROM sector_rs_daily
+                            WHERE rs_date > CURRENT_DATE - 95 AND rs IS NOT NULL
+                            ORDER BY symbol, rs_date""") or []):
+        _rs_hist.setdefault(_r["symbol"], []).append(float(_r["rs"]))
+
+    def _rs_block(etf: str):
+        ser = _rs_hist.get(etf) or []
+        if len(ser) < 5:
+            return {"rs_series": ser[-30:], "rs_n": len(ser), "rs_20d_pct": None, "rs_60d_pct": None, "rs_trend": "n/a"}
+        cur = ser[-1]
+        d20 = round((cur / ser[-21] - 1) * 100, 2) if len(ser) >= 21 else round((cur / ser[0] - 1) * 100, 2)
+        d60 = round((cur / ser[-61] - 1) * 100, 2) if len(ser) >= 61 else None
+        trend = "improving" if d20 is not None and d20 > 0.5 else "deteriorating" if d20 is not None and d20 < -0.5 else "flat"
+        return {"rs_series": [round(x, 5) for x in ser[-30:]], "rs_n": len(ser),
+                "rs_20d_pct": d20, "rs_60d_pct": d60, "rs_trend": trend}
+
+    # v4 (E2): book overlay — actual sector weights from canonical holdings.json
+    # resolved_sectors (the pipeline's fund LOOK-THROUGH decomposition, so SCHG/tech
+    # concentration shows honestly). Read-only. Names aliased to the monitor's keys.
+    _book: dict = {}
+    try:
+        _h = _load_json(STATE_DIR / "holdings.json") or {}
+        _rs = _h.get("resolved_sectors") or []
+        _tot = sum(float(r.get("value") or 0) for r in _rs)
+        _alias = {"Financial Services": "Financials", "Communication Services": "Communication Services"}
+        if _tot > 0:
+            for r in _rs:
+                _sname = _alias.get(r.get("sector") or "", r.get("sector") or "")
+                if _sname:
+                    _book[_sname] = _book.get(_sname, 0.0) + round(float(r.get("value") or 0) / _tot * 100, 1)
+    except Exception:
+        _book = {}
+
     out = []
     for sec, etf in _SECTOR_ETF_MAP.items():
         q = _db_query("SELECT day_change_pct FROM market_quotes WHERE symbol=%s ORDER BY fetched_at DESC LIMIT 1", (etf,), fetch="one") or {}
@@ -28483,11 +28518,18 @@ def _sectors_monitor(query=None):
             _nop = _c.get("analyst_opinions")
             _c["thin_coverage"] = _nop is None or int(_nop) < 3
         cands = [c for c in cands if not c["cio_avoid"]][:8]
+        _rsb = _rs_block(etf)
+        _bw = _book.get(sec)
         out.append({"sector": sec, "etf": etf, "etf_change_pct": _json_clean(etf_chg), "spy_change_pct": spy_chg,
                     "rel_strength": rel, "momentum": momentum, "constituent_count": cons.get("n", 0),
                     "setup_count": len(cands), "candidates": [{k: _json_clean(v) for k, v in c.items()} for c in cands],
                     "is_watched": sec.strip().lower().rstrip("s") in watched,
-                    "directive": watched.get(sec.strip().lower().rstrip("s"))})
+                    "directive": watched.get(sec.strip().lower().rstrip("s")),
+                    **_rsb,
+                    "book_weight_pct": _bw,
+                    # E2: one-glance answer to "am I overweight what's lagging?" — deterministic copy
+                    "book_flag": ("overweight_lagging" if (_bw or 0) >= 10 and _rsb["rs_trend"] == "deteriorating"
+                                  else None)})
     out.sort(key=lambda s: (not s["is_watched"],
                             {"leading": 0, "neutral": 1, "lagging": 2}.get(s["momentum"], 3)))
     return {"spy_change_pct": spy_chg, "sectors": out,

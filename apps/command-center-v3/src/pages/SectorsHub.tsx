@@ -12,6 +12,16 @@ import { Chip } from '../components/TerminalChip'
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
 const card: React.CSSProperties = { background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 2, padding: 14 }
+
+// v4 (E1): unicode RS sparkline from sector_rs_daily series
+const rsSpark = (ser?: number[]) => {
+  if (!ser || ser.length < 5) return null
+  const min = Math.min(...ser), max = Math.max(...ser)
+  const G = '▁▂▃▄▅▆▇█'
+  if (max === min) return G[3].repeat(Math.min(ser.length, 30))
+  return ser.slice(-30).map(v => G[Math.min(7, Math.round(((v - min) / (max - min)) * 7))]).join('')
+}
+const trendArrow = (t?: string) => t === 'improving' ? '↗' : t === 'deteriorating' ? '↘' : t === 'flat' ? '→' : ''
 const momRail = (m?: string) => (({ leading: RAIL.favorable, lagging: RAIL.breach, neutral: RAIL.neutral } as any)[m || ''] || RAIL.neutral)
 const momColor = (m?: string) => (({ leading: BB.green, lagging: BB.red, neutral: BB.text3 } as any)[m || ''] || BB.text3)
 const trendTone = (t?: string): 'green' | 'red' | 'amber' | 'slate' =>
@@ -55,6 +65,12 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
 
       {msg && <div style={{ fontSize: TYPE.sm, color: msg.startsWith('Error') ? BB.red : BB.green, marginBottom: 12 }}>{msg}</div>}
 
+      {/* v4 (E3): division of labor — Sectors is the monitoring lens; Rotation is the strategy engine */}
+      <div style={{ fontSize: TYPE.xs, color: BB.text3, margin: '2px 0 8px' }}>
+        Monitoring lens (RS history · book overlay · setups). Acting on a rotation? →{' '}
+        <a href="/v3/rotation" style={{ color: T.link }}>Rotation Intelligence</a> (pairs, review amounts, advisor oversight).
+      </div>
+
       <FinvizSectorPanel />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 12 }}>
@@ -73,13 +89,31 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
                         style={{ fontSize: TYPE.xs, fontWeight: 700, color: e.lane === 'grok' ? T.extIntel.grok : T.extIntel.gpt, cursor: 'pointer' }}>✦ {e.lane === 'grok' ? 'Grok' : 'ChatGPT'}</span>
                     ))}
                   </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                     <Chip kind="metric" title="sector ETF">{s.etf}</Chip>
-                    <Chip kind="metric" title={s.rel_strength != null ? `ETF vs SPY: ${s.rel_strength > 0 ? '+' : ''}${s.rel_strength}%` : 'no ETF data'}>
+                    <Chip kind="metric" title={s.rel_strength != null ? `ETF vs SPY: ${s.rel_strength > 0 ? '+' : ''}${s.rel_strength}% (day)` : 'no ETF data'}>
                       <span style={{ color: momColor(s.momentum) }}>{s.momentum}</span>
                     </Chip>
                     {s.etf_change_pct != null && <span style={{ ...numStyle, fontSize: TYPE.xs, color: Number(s.etf_change_pct) >= 0 ? BB.green : BB.red }}>{Number(s.etf_change_pct) >= 0 ? '+' : ''}{Number(s.etf_change_pct).toFixed(2)}%</span>}
+                    {s.book_weight_pct != null && (
+                      <Chip kind="metric" title="your actual book weight in this sector (fund look-through from holdings.json resolved_sectors)">
+                        book {s.book_weight_pct}%
+                      </Chip>
+                    )}
                   </div>
+                  {/* v4 (E1): RS history — trend, 20d/60d change, sparkline (n disclosed while history accrues) */}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 5, alignItems: 'baseline' }}>
+                    <span style={{ ...numStyle, fontSize: TYPE.xs, color: s.rs_trend === 'improving' ? BB.green : s.rs_trend === 'deteriorating' ? BB.red : BB.text3 }}>
+                      RS {trendArrow(s.rs_trend)} {s.rs_20d_pct != null ? `20d ${s.rs_20d_pct > 0 ? '+' : ''}${s.rs_20d_pct}%` : 'n/a'}{s.rs_60d_pct != null ? ` · 60d ${s.rs_60d_pct > 0 ? '+' : ''}${s.rs_60d_pct}%` : ''}
+                    </span>
+                    {rsSpark(s.rs_series) && <span title={`ETF/SPY ratio, last ${Math.min(30, s.rs_n)} sessions (n=${s.rs_n} — nightly job accrues history)`}
+                          style={{ ...numStyle, fontSize: TYPE.xs, color: BB.text3 }}>{rsSpark(s.rs_series)}</span>}
+                  </div>
+                  {s.book_flag === 'overweight_lagging' && (
+                    <div style={{ marginTop: 5, padding: '3px 8px', background: BB.amberDim, border: `1px solid ${BB.amber}55`, borderLeft: `3px solid ${RAIL.attention}`, borderRadius: 2, fontSize: TYPE.xs, color: BB.amber, fontWeight: 700 }}>
+                      ⚠ Overweight ({s.book_weight_pct}%) while relative strength deteriorates — review rotation candidates
+                    </div>
+                  )}
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ ...numStyle, fontSize: TYPE.lg, fontWeight: 700, color: s.setup_count > 0 ? T.link : BB.text3 }}>{s.setup_count}</div>
