@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-15 (Research Intelligence v2.5 security multi-factor sizing)
+**Updated:** 2026-07-16 (Research Intelligence v3.0 Decision Desk)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -87,7 +87,10 @@
 ### Research Intelligence (CC v3)
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/architecture/RESEARCH_INTELLIGENCE_V2_6_MATURITY.md` | **RI v2.6** — transparent conviction, data gates, analyst/options, action bar | Active (2026-07-16) |
+| `docs/architecture/RESEARCH_INTELLIGENCE_V3.md` | **RI v3.0 — Decision Desk**: one-corpus counts, real lanes, stub demotion, brief-scoped tickers, Hermes joins, run-research queue, staged-idea lifecycle | Active (2026-07-16) |
+| `docs/_findings/ri_v3_diagnosis_2026-07-16.md` | RI v3 Phase 0 diagnosis — live mechanisms vs assumptions, flag-backs | Active (2026-07-16) |
+| `scripts/research_intelligence_queue.py` | Run-research queue (after-close drain of topic_ingestion, cron 16:45/02:40) | Active (2026-07-16) |
+| `docs/architecture/RESEARCH_INTELLIGENCE_V2_6_MATURITY.md` | **RI v2.6** — transparent conviction, data gates, analyst/options, action bar | Superseded by v3 (2026-07-16) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_5_SECURITY_MULTIFACTOR.md` | **RI v2.5** — RSI/RS/valuation conviction + multi-factor sizing | Active (2026-07-15) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_4_CONCENTRATION_SIZING.md` | **RI v2.4** — concentration + heat sizing engine, theme capacity, funding trims | Active (2026-07-15) |
 | `scripts/lib/research_intelligence_security.py` | Security snapshots + conviction scoring for RI tickers | Active (2026-07-15) |

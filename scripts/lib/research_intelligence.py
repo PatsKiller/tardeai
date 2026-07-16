@@ -1055,7 +1055,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "2.7",
+        "version": "3.0",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -1108,9 +1108,9 @@ def build_feed(
         "hermes_wire": wire,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2.7 — Stage Trade + RI Ideas watchlist; cross-theme strips; "
-            "concentration banner; transparent conviction; RSI+RS gate; Finnhub + options desk; "
-            "funded-add when SCHG≥24% / top-3>50%."
+            "Research Intelligence v3.0 — Decision Desk: one-corpus counts, real lane filters, "
+            "stub demotion to Queued research, brief-scoped tickers, Hermes score/wire/directive "
+            "joins, run-research queue (after-close drain), staged-idea lifecycle + promotions."
         ),
         "portfolio_context": _portfolio_context_payload(port_ctx),
     }
