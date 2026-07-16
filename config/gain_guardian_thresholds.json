@@ -1,0 +1,44 @@
+{
+  "_description": "Gain Guardian thresholds — engine reads fresh each run (Phase 191 shadow-thresholds pattern). NOTHING publishes until published=true, flipped by the operator via --promote after the 10-trading-day shadow window.",
+  "version": "1.0",
+  "updated": "2026-07-16",
+  "published": false,
+  "shadow_started": "2026-07-16",
+  "shadow_min_trading_days": 10,
+  "weights": {
+    "_comment": "Parabolic score 0-100 = sum of weight * normalized component",
+    "ext50_atr": 30,
+    "rsi14": 25,
+    "rvol20": 20,
+    "up_streak": 15,
+    "slope_accel": 10
+  },
+  "normalize": {
+    "_comment": "Component x maps to [0,1]: ext50_atr/ext_max, (rsi-rsi_lo)/(rsi_hi-rsi_lo), rvol/rvol_max, streak/streak_max, (accel-1)/(accel_max-1); all clamped",
+    "ext50_atr_max": 4.0,
+    "rsi_lo": 50,
+    "rsi_hi": 90,
+    "rvol_max": 4.0,
+    "up_streak_max": 8,
+    "slope_accel_max": 3.0
+  },
+  "extension": {
+    "extended_score": 55,
+    "climax_score": 75,
+    "climax_rvol_min": 2.0
+  },
+  "giveback": {
+    "min_open_gain_pct": 15.0,
+    "watch_frac": 0.25,
+    "breach_frac": 0.40,
+    "breach_frac_big_weight": 0.30,
+    "big_weight_pct": 8.0
+  },
+  "trim": {
+    "fraction_default": 0.25,
+    "fraction_big_weight": 0.33
+  },
+  "gap_up_atr_mult": 1.5,
+  "skip_symbols": ["CASH"],
+  "skip_families": ["bond", "money_market", "cash"]
+}
