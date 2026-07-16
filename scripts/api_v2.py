@@ -5734,32 +5734,101 @@ def _screener_finds_candidates(query=None):
     })
 
 
+_WQG_CACHE = {"ts": 0.0, "cfg": None, "low": None, "per_source": None}
+
+
+def _watch_quality_gate():
+    """Watch Desk v4 (WS-D): per-source rolling efficacy from watch_candidate_events.
+    Returns (low_efficacy_sources: set, per_source: list). Cached 1h — the underlying
+    ledger only moves on the Sunday reconciler. Visibility throttle only, no blocking;
+    the label lifts automatically when the rolling median α recovers above the floor.
+    NOTE (Engine Room WS-4 hook): the Hermes backlog drain can read the same per-source
+    table to deprioritize research on low-efficacy discovery lanes — same corpus, one truth."""
+    import time as _t
+    if _WQG_CACHE["low"] is not None and _t.time() - _WQG_CACHE["ts"] < 3600:
+        return _WQG_CACHE["low"], _WQG_CACHE["per_source"]
+    cfg = {"alpha_floor_pct": -2.0, "min_n": 30, "window_days": 90}
+    try:
+        import json as _j
+        cfg.update({k: v for k, v in _j.loads(
+            (root / "config" / "watch_quality_gate.json").read_text()).items()
+            if isinstance(v, (int, float))})
+    except Exception:
+        pass
+    per_source, low = [], set()
+    try:
+        rows = _db_query("""SELECT source_type,
+                                   count(*) AS emitted,
+                                   count(*) FILTER (WHERE alpha_21d IS NOT NULL) AS n,
+                                   round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
+                                     FILTER (WHERE alpha_21d IS NOT NULL))::numeric, 2) AS alpha_21d_median,
+                                   round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
+                                     FILTER (WHERE alpha_21d IS NOT NULL AND proposed))::numeric, 2) AS converted_alpha_21d,
+                                   count(*) FILTER (WHERE proposed) AS converted
+                            FROM watch_candidate_events
+                            WHERE emitted_on > CURRENT_DATE - %s
+                            GROUP BY source_type ORDER BY source_type""",
+                         (int(cfg["window_days"]),)) or []
+        for r in rows:
+            rec = {k: _json_clean(v) for k, v in r.items()}
+            rec["low_efficacy"] = bool(
+                (rec.get("n") or 0) >= cfg["min_n"]
+                and rec.get("alpha_21d_median") is not None
+                and float(rec["alpha_21d_median"]) < float(cfg["alpha_floor_pct"]))
+            if rec["low_efficacy"]:
+                low.add(rec["source_type"])
+            per_source.append(rec)
+    except Exception:
+        pass
+    _WQG_CACHE.update({"ts": _t.time(), "cfg": cfg, "low": low, "per_source": per_source})
+    return low, per_source
+
+
 def _wide_finds_payload():
     """All screener_find + ai_discovered emissions (90d), newest first, for the
-    widened Finds band (CIO-qualified subset renders separately above)."""
+    widened Finds band (CIO-qualified subset renders separately above).
+    v4 (WS-D): rows from low-efficacy sources carry low_efficacy_source=True —
+    the UI folds them into a collapsed band; nothing is blocked or deleted."""
     try:
+        low, _ = _watch_quality_gate()
         rows = _db_query("""SELECT source_type, symbol, emitted_on, anchor_price, alpha_21d, verdict, proposed
                             FROM watch_candidate_events
                             WHERE source_type IN ('screener_find','ai_discovered')
                               AND emitted_on > CURRENT_DATE - 90
                             ORDER BY emitted_on DESC LIMIT 120""") or []
-        return [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+        return [{**{k: _json_clean(v) for k, v in r.items()},
+                 "low_efficacy_source": r.get("source_type") in low} for r in rows]
     except Exception:
         return []
 
 
 def _finds_track_record():
-    """WS-A header stats: 'Finds last 90d: N · 21d α median · M converted'."""
+    """WS-A header stats + v4 WS-D converted-α breakdown: 'all emissions α' vs
+    'converted-to-proposal α' vs per-source α with n — the number that decides how
+    damning the headline −4.82% actually is (funnel-top noise vs converted underperformance)."""
     try:
         r = _db_query("""SELECT count(*) AS n,
                                 count(*) FILTER (WHERE alpha_21d IS NOT NULL) AS scored,
                                 round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
                                   FILTER (WHERE alpha_21d IS NOT NULL))::numeric, 2) AS median_alpha_21d,
+                                round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
+                                  FILTER (WHERE alpha_21d IS NOT NULL AND proposed))::numeric, 2) AS converted_alpha_21d,
+                                count(*) FILTER (WHERE proposed AND alpha_21d IS NOT NULL) AS converted_scored,
                                 count(*) FILTER (WHERE proposed) AS converted
                          FROM watch_candidate_events
                          WHERE source_type IN ('screener_find','ai_discovered')
                            AND emitted_on > CURRENT_DATE - 90""", fetch="one") or {}
-        return {k: _json_clean(v) for k, v in r.items()}
+        out = {k: _json_clean(v) for k, v in r.items()}
+        low, per_source = _watch_quality_gate()
+        out["per_source"] = per_source
+        out["low_efficacy_sources"] = sorted(low)
+        try:
+            cfg = _WQG_CACHE.get("cfg") or {}
+            out["gate"] = {"alpha_floor_pct": cfg.get("alpha_floor_pct"), "min_n": cfg.get("min_n"),
+                           "note": "visibility throttle only — label lifts when rolling α recovers"}
+        except Exception:
+            pass
+        return out
     except Exception:
         return {}
 

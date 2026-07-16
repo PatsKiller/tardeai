@@ -1,0 +1,6 @@
+{
+  "_comment": "Watch Desk v4 WS-D: emission quality gate at the WATCH intake boundary. Sources with >= min_n evaluated events and rolling 21d median alpha below alpha_floor_pct get their NEW emissions labeled low_efficacy_source (folded band in UI). Visibility throttle only - nothing blocked or deleted; label lifts automatically when rolling alpha recovers. No auto-tuning: operator edits this file.",
+  "alpha_floor_pct": -2.0,
+  "min_n": 30,
+  "window_days": 90
+}
