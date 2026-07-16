@@ -31,6 +31,16 @@ PAIRS = [
     ("fused_signals",   "created_at", "catalyst_events", "created_at", "warning"),
 ]
 
+# RI v3.1 (WS-F): absolute staleness — these feeds must produce within
+# max_age_hours regardless of inputs. The external lanes died silently for two
+# weeks (PROMPT.format crash) because nothing watched their output tables.
+# (label, table, ts_col, where_sql, max_age_hours, severity)
+ABSOLUTE = [
+    ("external lane grok",    "hermes_external_research", "created_at", "lane='grok'",    96, "warning"),
+    ("external lane chatgpt", "hermes_external_research", "created_at", "lane='chatgpt'", 96, "warning"),
+    ("VIX close (regime)",    "market_regime_indicators", "created_at", "indicator_key='vix_close'", 30, "warning"),
+]
+
 
 def load_env():
     p = os.path.join(ROOT, ".env")
@@ -72,6 +82,22 @@ def detect(cur):
                 "intel": intel, "input": inp, "severity": sev,
                 "input_fresh_24h": input_fresh, "intel_fresh_24h": 0,
                 "detail": f"{intel} got 0 rows in {STALE_HOURS}h while {inp} got {input_fresh} — pipeline silently broken",
+            })
+    for label, table, ts_col, where_sql, max_h, sev in ABSOLUTE:
+        try:
+            cur.execute(
+                f"SELECT count(*) FROM {table} WHERE {where_sql} AND {ts_col} > %s",
+                (datetime.now(timezone.utc) - timedelta(hours=max_h),))
+            fresh = cur.fetchone()[0]
+        except Exception as e:
+            cur.connection.rollback()
+            findings.append({"intel": f"{table}[{label}]", "error": str(e)[:120]})
+            continue
+        if fresh == 0:
+            findings.append({
+                "intel": f"{table}[{label}]", "input": "(absolute)", "severity": sev,
+                "input_fresh_24h": None, "intel_fresh_24h": 0,
+                "detail": f"{label}: no rows in {max_h}h — feed dead or auth/pipeline broken",
             })
     return findings
 

@@ -326,7 +326,10 @@ def main():
     question = redact(args.question)
     ctx = safe_context(args.symbol)
     ctx = json.loads(redact(json.dumps(ctx)))  # defense-in-depth redaction pass over whole context
-    prompt = PROMPT.format(question=question, context=json.dumps(ctx))
+    # .format() breaks on the appended JSON schema's literal {braces} — every call
+    # since ~2026-07-02 died with KeyError before reaching any API (lanes "stalled").
+    # Placeholder substitution must not interpret the schema as format fields.
+    prompt = PROMPT.replace("{question}", question).replace("{context}", json.dumps(ctx))
 
     print(f"=== Hermes External Researcher — lane={args.lane} model={args.model} apply={args.apply} ===")
     print("REDACTED packet that WOULD be sent:")

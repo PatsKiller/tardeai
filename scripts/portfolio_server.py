@@ -45,6 +45,16 @@ from urllib.parse import urlparse, parse_qs
 PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
+# v3.1 (WS-F): load .env BEFORE class definitions so operational knobs like
+# DASHBOARD_MAX_CONCURRENCY / DASHBOARD_SEM_TIMEOUT_SEC are actually reachable
+# (the semaphore is sized at class-creation time; api_v2's load_dotenv runs too
+# late for it). Never overrides values already set by systemd.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+except Exception:
+    pass
+
 # ── api_v2 hot-reload guard ──────────────────────────────────────────────────
 # Reload api_v2 ONLY when its source file actually changes — not on every request.
 # Reloading the large api_v2 module on every /api/v2/ request, on a threaded server

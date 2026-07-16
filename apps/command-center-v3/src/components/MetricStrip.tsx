@@ -98,7 +98,12 @@ export default function MetricStrip({ onDrill }: Props) {
       // Scope (P0 2026-07-14): go_count/wait_count/avoid_count = LATEST RUN only — the Trading
       // scanner's chips count the full scan universe (today + yesterday, all runs) and will be
       // larger. Count unchanged; label the scope so the two surfaces can't silently disagree.
-      label: 'SETUPS · LATEST RUN', value: `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NOGO`,
+      // Honest empty state: no run label = the scanner hasn't produced today —
+      // "0 GO · 0 NOGO" before the first run reads as data when it's absence
+      label: 'SETUPS · LATEST RUN',
+      value: tradeAi?.latest_run_label || tradeAi?.run_label
+        ? `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NOGO`
+        : '— before first run',
       color: goCount > 0 ? '#22c55e' : 'var(--text3)',
       drill: { title: 'Trade Setups', subtitle: 'Latest scanner run only — Trading → Trade AI shows the full scan universe (today + yesterday, all runs)', endpoint: '/api/v2/trade-ai',
         rows: tradeAi ? [{ scope: 'latest run only', go_count: tradeAi.go_count, wait_count: tradeAi.wait_count, avoid_count: tradeAi.avoid_count, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },

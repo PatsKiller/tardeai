@@ -10044,6 +10044,26 @@ def _forecast():
         "retirement_age": ret.get("current_age"),
     }
 
+def _vix_effective(run_vix):
+    """v3.1 (WS-F2): the orchestrator's run_summary has carried vix=0 since its
+    fetch died — fall back to the regime collector's vix_close (fresh daily at
+    06:30) so the header tile never shows a dead '—' while real VIX exists."""
+    try:
+        v = float(run_vix or 0)
+        if v > 0:
+            return v
+    except (TypeError, ValueError):
+        pass
+    try:
+        row = _db_query(
+            """SELECT value FROM market_regime_indicators
+               WHERE indicator_key='vix_close' AND created_at > now() - interval '48 hours'
+               ORDER BY created_at DESC LIMIT 1""", fetch="one")
+        return float(row["value"]) if row and row.get("value") else None
+    except Exception:
+        return None
+
+
 def _compute_trade_ai():
     """Trade AI workspace — latest run data from run_summary + watchlist CSV. HEAVY (run JSON glob +
     a DISTINCT-ON scan of trade_ai_scans, hundreds of rows). Never call from the request path — go
@@ -10458,7 +10478,7 @@ def _compute_trade_ai():
         "current_run_wait": current_run_wait,
         "current_run_nogo": current_run_nogo,
         "run_health_status": _run_health_status,
-        "vix": latest.get("vix"),
+        "vix": _vix_effective(latest.get("vix")),
         "breadth": latest.get("breadth", ""),
         "market_regime": latest.get("breadth", latest.get("market_regime", "Neutral")),
         "go_count": current_run_go,
