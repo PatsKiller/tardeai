@@ -9,6 +9,7 @@ import ActionDeck, { buildDeckActions } from '../components/reports/ActionDeck'
 import ReportCoverageStrip from '../components/reports/ReportCoverageStrip'
 import ReportSearch from '../components/reports/ReportSearch'
 import DocxDownloads from '../components/reports/DocxDownloads'
+import ReportLibrary from '../components/reports/ReportLibrary'
 import AnalystReportsPanel from '../components/reports/AnalystReportsPanel'
 import { parseBriefSections, executiveSummaryText, rankedActionLines, SUPER_TABS } from '../components/reports/briefUtils'
 import { useTerminalUi } from '../lib/terminalUi'
@@ -124,7 +125,7 @@ function SeverityBadge({ sev }: { sev?: string }) {
 const RISK_CLASSES = ['stop_triggered', 'unprotected_position', 'risk_review']
 const SYSTEM_CLASSES = ['system_health', 'cron_or_backup', 'llm_review']
 type QV = '' | 'today' | 'needs_action' | 'risk' | 'approvals' | 'hermes' | 'system' | 'critical'
-type HubMode = 'brief' | 'archive' | 'analyst'
+type HubMode = 'library' | 'brief' | 'archive' | 'analyst'
 const isToday = (s?: string) => { if (!s) return false; const d = new Date(s); const n = new Date(); return d.toDateString() === n.toDateString() }
 function qvMatchesItem(qv: QV, it: any): boolean {
   const cls: string[] = it.action_classes || []
@@ -159,12 +160,12 @@ export default function ReportsHub({ onDrill }: Props) {
     try {
       const q = new URLSearchParams(window.location.search)
       const m = (q.get('mode') || '').trim().toLowerCase()
-      if (m === 'analyst' || m === 'archive' || m === 'brief') return m as HubMode
+      if (m === 'analyst' || m === 'archive' || m === 'brief' || m === 'library') return m as HubMode
       const sym = (q.get('symbol') || '').trim()
       const typ = (q.get('type') || '').trim()
       if (q.get('generate') === '1' || (sym && typ.startsWith('symbol_'))) return 'analyst'
     } catch { /* ignore */ }
-    return 'brief'
+    return 'library'
   })
   const [superTab, setSuperTab] = useState('briefs')
   const [active, setActive] = useState<string>('morning_briefs')
@@ -307,10 +308,12 @@ export default function ReportsHub({ onDrill }: Props) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ ...hubTitle(), margin: 0 }}>
-          {mode === 'brief' ? 'Morning Brief' : mode === 'analyst' ? 'Analyst Reports' : 'Report Archive'}
+          {mode === 'library' ? 'Report Library' : mode === 'brief' ? 'Morning Brief' : mode === 'analyst' ? 'Analyst Reports' : 'Report Archive'}
         </h1>
         <span style={hubSubtitle(terminalUi)}>
-          {mode === 'brief'
+          {mode === 'library'
+            ? 'every report the system produces — cadence lanes · freshness rails · in-page viewer'
+            : mode === 'brief'
             ? (todayBrief ? fmtDate(todayBrief.created_at) : 'loading today\'s brief…')
             : mode === 'analyst'
               ? 'analyst-grade reports · Word/PDF export · intelligence deep dives'
@@ -318,6 +321,7 @@ export default function ReportsHub({ onDrill }: Props) {
         </span>
         <span style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 6 }}>
+          {modeBtn('library', 'Library')}
           {modeBtn('brief', "Today's Brief")}
           {modeBtn('analyst', 'Analyst Reports')}
           {modeBtn('archive', 'Archive')}
@@ -343,6 +347,8 @@ export default function ReportsHub({ onDrill }: Props) {
           onArchive={() => { setMode('archive'); setQInput(searchQ); setQ(searchQ); setSearchInput(''); setSearchQ('') }}
         />
       )}
+
+      {mode === 'library' && !searchQ && <LibraryMode />}
 
       {mode === 'analyst' && !searchQ && (
         <AnalystReportsPanel />
@@ -488,4 +494,11 @@ function PurgeModal({ category, categoryLabel, onClose }: { category: string; ca
       </div>
     </div>
   )
+}
+
+
+// WS-A: light wrapper — fetches only the catalog (not the heavy /api/v2/reports aggregate)
+function LibraryMode() {
+  const { data } = useApi<any>('/api/v2/reports/catalog', 300_000)
+  return <ReportLibrary catalog={data?.catalog} />
 }

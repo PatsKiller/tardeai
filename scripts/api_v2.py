@@ -5751,7 +5751,7 @@ def _watch_quality_gate():
     try:
         import json as _j
         cfg.update({k: v for k, v in _j.loads(
-            (root / "config" / "watch_quality_gate.json").read_text()).items()
+            (PROJECT_ROOT / "config" / "watch_quality_gate.json").read_text()).items()
             if isinstance(v, (int, float))})
     except Exception:
         pass
@@ -19111,6 +19111,32 @@ def _research_topics_unified():
     }
 
 
+def _report_catalog_cached():
+    """WS-A: serve data/runtime/report_catalog.json; rebuild via the indexer when
+    missing or older than 1h (disk walk only — cheap, request-path safe)."""
+    import json as _j
+    import time as _t
+    p = PROJECT_ROOT / "data" / "runtime" / "report_catalog.json"
+    try:
+        if p.exists() and _t.time() - p.stat().st_mtime < 3600:
+            return _j.loads(p.read_text())
+    except Exception:
+        pass
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from generate_reports_hub import build_report_catalog
+        return build_report_catalog(str(PROJECT_ROOT))
+    except Exception as e:
+        return {"types": [], "error": str(e)[:200]}
+
+
+def _reports_catalog_route(query=None):
+    """GET /api/v2/reports/catalog — WS-A typed report catalog only (light: disk-cache read,
+    no DB) so the Library tab never pays for the full hub aggregate."""
+    return {"ok": True, "catalog": _report_catalog_cached()}
+
+
 def _reports_hub():
     """GET /api/v2/reports — Reports hub with weekly/monthly data + docx catalog."""
     import glob as _glob
@@ -19240,6 +19266,10 @@ def _reports_hub():
         "incubator_stats": [{k: _json_clean(v) for k, v in r.items()} for r in incubator],
         "social_ingestion": [{k: _json_clean(v) for k, v in r.items()} for r in social],
         "docx_catalog": docx_files,
+        # Reports Desk v1 (WS-A): the typed report catalog — every report family the
+        # system produces, latest artifacts + freshness + history. Built by
+        # generate_reports_hub.build_report_catalog (ONE indexer); rebuilt when >1h old.
+        "report_catalog": _report_catalog_cached(),
         "weekly_docx_status": {
             "latest": latest_weekly_docx,
             "age_days": weekly_docx_age_days,
@@ -31233,6 +31263,7 @@ ROUTES = {
     "/api/v2/broker-orders/activity": _broker_orders_activity,
     "/api/v2/broker-orders/pilot/status": _pilot_status,
     "/api/v2/stops/lifecycle": lambda: _stops_lifecycle_api(),
+    "/api/v2/reports/catalog": _reports_catalog_route,
     "/api/v2/reports/categories": _reports_categories,
     "/api/v2/reports/list": _reports_list,
     "/api/v2/reports/search": _reports_search,
