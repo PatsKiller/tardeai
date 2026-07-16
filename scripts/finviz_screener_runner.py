@@ -117,6 +117,32 @@ def _fetch_screener_tickers(url: str, cookie: str) -> list:
     return tickers  # Full CSV result — capping handled by caller with screener_id context
 
 
+def _sp_name(prefix: str, screener_id: str) -> str:
+    """Postgres SAVEPOINT identifier — alphanumeric + underscore only."""
+    safe = re.sub(r"[^A-Za-z0-9_]", "_", str(screener_id or "x"))[:48]
+    return f"{prefix}_{safe}"
+
+
+def _ensure_txn_usable(conn) -> bool:
+    """If the connection is in aborted state, ROLLBACK so later screeners can proceed.
+
+    Without this, a lock-timeout on membership leaves InFailedSqlTransaction and every
+    subsequent INSERT fails with 'current transaction is aborted'.
+    """
+    try:
+        from psycopg2.extensions import TRANSACTION_STATUS_INERROR
+        if conn.get_transaction_status() == TRANSACTION_STATUS_INERROR:
+            conn.rollback()
+            return True
+    except Exception:
+        try:
+            conn.rollback()
+            return True
+        except Exception:
+            pass
+    return False
+
+
 def _update_screener_membership(cur, screener_id, present, run_id):
     """Keep screener_symbol_membership fresh — the runner previously only wrote new classifications, so
     membership went stale. Pattern per run: reset present_this_run → mark present symbols (seen++/miss=0)
@@ -178,6 +204,8 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
 
     results = []
     total_new = 0
+    membership_failures = 0
+    db_write_failures = 0
 
     for s in screeners:
         sid = s["screener_id"]
@@ -217,49 +245,95 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
         }
         results.append(screener_result)
 
-        # Keep membership fresh for EVERY present symbol (not just new ones) — fixes the staleness where
-        # the runner only ever wrote new classifications. Runs on live runs only.
-        if not dry_run and tickers:
+        # Live DB writes: isolate each screener so lock timeout / partial failure cannot abort
+        # the whole multi-screener transaction (root cause of pipeline_critical 2026-07-16).
+        if not dry_run and (tickers or new_tickers):
+            if _ensure_txn_usable(conn):
+                print(f"  [screener] recovered aborted transaction before {sid}")
+            sp = _sp_name("sp_scr", sid)
             try:
-                screener_result["membership_updated"] = _update_screener_membership(cur, sid, tickers, _run_id)
-            except Exception as _me:
-                print(f"  [screener] membership update failed for {sid}: {str(_me)[:80]}")
+                cur.execute(f"SAVEPOINT {sp}")
 
-        if not dry_run and new_tickers:
-            for ticker in new_tickers[:200]:  # SCREENER-ARCH-2: raised from 10 to 200 per screener
-                # Auto-classify with the screener's strategy type
-                cur.execute("""
-                    INSERT INTO ticker_strategy_classifications
-                        (symbol, strategy_type, asset_type, classification_source, confidence, rationale)
-                    VALUES (%s, %s, 'stock', 'screener', 0.7, %s)
-                    ON CONFLICT (symbol) DO NOTHING
-                """, (ticker, strategy, f"Discovered by screener {sid}"))
+                # Membership: nested savepoint — lock timeout must not poison classifications
+                if tickers:
+                    sp_mem = _sp_name("sp_mem", sid)
+                    try:
+                        cur.execute(f"SAVEPOINT {sp_mem}")
+                        n_mem = _update_screener_membership(cur, sid, tickers, _run_id)
+                        cur.execute(f"RELEASE SAVEPOINT {sp_mem}")
+                        screener_result["membership_updated"] = n_mem
+                    except Exception as _me:
+                        membership_failures += 1
+                        try:
+                            cur.execute(f"ROLLBACK TO SAVEPOINT {sp_mem}")
+                        except Exception:
+                            # nested savepoint gone — roll outer and re-open outer for remaining writes
+                            try:
+                                cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+                                cur.execute(f"SAVEPOINT {sp}")
+                            except Exception:
+                                _ensure_txn_usable(conn)
+                                cur.execute(f"SAVEPOINT {sp}")
+                        print(f"  [screener] membership update failed for {sid}: {str(_me)[:120]}")
+                        screener_result["membership_error"] = str(_me)[:160]
 
-                # Add to watchlist
-                cur.execute("""
-                    INSERT INTO watchlist_items (symbol, source, status, updated_at)
-                    VALUES (%s, 'ai_discovered', 'active', now())
-                    ON CONFLICT DO NOTHING
-                """, (ticker,))
+                if new_tickers:
+                    for ticker in new_tickers[:200]:  # SCREENER-ARCH-2: raised from 10 to 200 per screener
+                        cur.execute("""
+                            INSERT INTO ticker_strategy_classifications
+                                (symbol, strategy_type, asset_type, classification_source, confidence, rationale)
+                            VALUES (%s, %s, 'stock', 'screener', 0.7, %s)
+                            ON CONFLICT (symbol) DO NOTHING
+                        """, (ticker, strategy, f"Discovered by screener {sid}"))
 
-                total_new += 1
-                known.add(ticker)
+                        cur.execute("""
+                            INSERT INTO watchlist_items (symbol, source, status, updated_at)
+                            VALUES (%s, 'ai_discovered', 'active', now())
+                            ON CONFLICT DO NOTHING
+                        """, (ticker,))
 
-            # Update screener last_run
-            cur.execute("UPDATE finviz_screeners SET last_run=now(), results_count=%s WHERE screener_id=%s",
-                        (len(tickers), sid))
+                        total_new += 1
+                        known.add(ticker)
 
-        # Intelligence event
-        if not dry_run and new_tickers:
-            cur.execute("""
-                INSERT INTO portfolio_intelligence_events (event_type, severity, source, payload)
-                VALUES ('screener_discovery', 'info', 'finviz_screener_runner.py', %s)
-            """, (json.dumps({"screener": sid, "new": len(new_tickers), "sample": new_tickers[:5]}, default=str),))
+                    cur.execute("""
+                        INSERT INTO portfolio_intelligence_events (event_type, severity, source, payload)
+                        VALUES ('screener_discovery', 'info', 'finviz_screener_runner.py', %s)
+                    """, (json.dumps({"screener": sid, "new": len(new_tickers), "sample": new_tickers[:5]}, default=str),))
+
+                # Always stamp last_run when we fetched (even 0 new) so freshness isn't stuck
+                if tickers or new_tickers:
+                    cur.execute(
+                        "UPDATE finviz_screeners SET last_run=now(), results_count=%s WHERE screener_id=%s",
+                        (len(tickers), sid),
+                    )
+
+                cur.execute(f"RELEASE SAVEPOINT {sp}")
+                screener_result["db_ok"] = True
+            except Exception as _dbe:
+                db_write_failures += 1
+                try:
+                    cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+                except Exception:
+                    if _ensure_txn_usable(conn):
+                        print(f"  [screener] full rollback after DB failure on {sid}")
+                print(f"  [screener] DB write failed for {sid}: {str(_dbe)[:120]}")
+                screener_result["db_error"] = str(_dbe)[:160]
+                screener_result["db_ok"] = False
 
         time.sleep(1)  # Rate limit between screeners
 
     if not dry_run:
-        conn.commit()
+        try:
+            if _ensure_txn_usable(conn):
+                print("  [screener] recovered aborted txn before final commit")
+            conn.commit()
+        except Exception as _ce:
+            print(f"  [screener] final commit failed: {_ce}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
 
     conn.close()
 
@@ -267,9 +341,16 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
         "mode": "dry_run" if dry_run else "live",
         "screeners_run": len(results),
         "total_new_tickers": total_new,
+        "membership_failures": membership_failures,
+        "db_write_failures": db_write_failures,
         "results": results,
     }
-    print(f"[screener] {'DRY RUN — ' if dry_run else ''}Ran {len(results)} screeners, discovered {total_new} new tickers")
+    print(
+        f"[screener] {'DRY RUN — ' if dry_run else ''}Ran {len(results)} screeners, "
+        f"discovered {total_new} new tickers"
+        + (f", membership_failures={membership_failures}" if membership_failures else "")
+        + (f", db_write_failures={db_write_failures}" if db_write_failures else "")
+    )
     return summary
 
 
