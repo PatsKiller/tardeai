@@ -59,7 +59,7 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
         {sectors.map((s: any) => {
           const isOpen = expanded === s.sector
           return (
-            <div key={s.sector} style={{ ...card, padding: 14, borderLeft: `3px solid ${momColor(s.momentum)}`, opacity: s.momentum === 'unknown' ? 0.7 : 1 }}>
+            <div key={s.sector} style={{ ...card, padding: 14, borderLeft: `3px solid ${momColor(s.momentum)}`, opacity: String(s.momentum).startsWith('n/a') ? 0.7 : 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -79,7 +79,7 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 18, fontWeight: 700, color: s.setup_count > 0 ? '#60a5fa' : 'var(--text3)' }}>{s.setup_count}</div>
-                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>setups / {s.constituent_count}</div>
+                  <div title="setups = score-ranked candidates surviving CIO-verdict + coverage filters; denominator = tracked constituents for this sector" style={{ fontSize: 8, color: 'var(--text3)' }}>setups / {s.constituent_count} tracked</div>
                 </div>
               </div>
 
@@ -114,7 +114,7 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
           )
         })}
       </div>
-      <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 12 }}>Source: /api/v2/sectors/monitor (sector ETF vs SPY from market_quotes + incubator_universe constituents + enriched watchlist). Advisory — momentum is informational; promotion stays governed.</div>
+      <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 12 }}>{data?.legend || 'Source: /api/v2/sectors/monitor.'} Advisory — momentum is informational; promotion stays governed.</div>
     </div>
   )
 }

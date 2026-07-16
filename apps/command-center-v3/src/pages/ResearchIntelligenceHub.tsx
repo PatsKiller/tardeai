@@ -3,6 +3,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import TickerLinks from '../components/TickerLinks'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
@@ -326,31 +327,6 @@ function FreshnessDot({ tier, label, asOf }: { tier?: string; label?: string; as
         width: 6, height: 6, borderRadius: '50%', background: t.color, opacity: 0.85,
       }} />
       {label || t.label}
-    </span>
-  )
-}
-
-// v3.1 (E2): one config map for outbound ticker links — extend here (e.g.
-// Finviz Elite deep-links) without touching components
-const TICKER_LINKS: { label: string; url: (s: string) => string }[] = [
-  { label: 'Finviz', url: s => `https://finviz.com/quote.ashx?t=${s}` },
-  { label: 'Yahoo', url: s => `https://finance.yahoo.com/quote/${s}` },
-  { label: 'EDGAR', url: s => `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${s}` },
-  { label: 'TradingView', url: s => `https://www.tradingview.com/chart/?symbol=${s}` },
-]
-
-function TickerLinks({ symbol }: { symbol?: string }) {
-  if (!symbol) return null
-  const s = symbol.toUpperCase()
-  return (
-    <span style={{ display: 'inline-flex', gap: 7, alignItems: 'baseline' }} onClick={e => e.stopPropagation()}>
-      {TICKER_LINKS.map(l => (
-        <a key={l.label} href={l.url(s)} target="_blank" rel="noopener noreferrer"
-          style={{ fontSize: 9.5, color: C.soft, textDecoration: 'none', borderBottom: `1px dotted ${C.soft}55` }}>
-          {l.label}↗
-        </a>
-      ))}
-      <Link to={`/watch?symbol=${s}`} style={{ fontSize: 9.5, color: C.accent, textDecoration: 'none' }}>Watchlist</Link>
     </span>
   )
 }

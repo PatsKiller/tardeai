@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import TickerLinks from '../components/TickerLinks'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 
@@ -47,8 +48,20 @@ function CandidateCard({ c, onDrill, onDismiss }: { c: any; onDrill: Props['onDr
         <span style={{ fontSize: 16, fontWeight: 800, cursor: 'pointer' }}
           onClick={() => onDrill({ kind: 'symbol', symbol: c.symbol } as any)}>{c.symbol}</span>
         <Pill text={trigger ? 'TRIGGER' : 'WATCH'} color={trigger ? '#22c55e' : '#64748b'} />
+        {c.held && (
+          <span title={`Held ${Math.round(c.held.shares)} sh · $${Math.round(c.held.market_value).toLocaleString()}${c.held.stop_price ? ` · stop $${c.held.stop_price}` : ' · NO STOP'}`}
+            style={{ fontSize: 10, fontWeight: 800, color: '#34d399', border: '1px solid #34d39955', borderRadius: 999, padding: '1px 8px' }}>
+            ● HELD · {Math.round(c.held.shares)} sh{c.held.stop_price ? ` · stop $${c.held.stop_price}${c.held.stop_distance_pct != null ? ` (${c.held.stop_distance_pct > 0 ? '+' : ''}${c.held.stop_distance_pct}%)` : ''}` : ' · no stop'}
+          </span>
+        )}
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text3)' }}>score {fmt(c.score, 0)}</span>
       </div>
+      {c.held_conflict && (
+        <div style={{ margin: '0 0 8px', padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+          background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.5)', color: '#f5c76a' }}>
+          ⚠ Held position near stop — adding here averages down; review stop plan first
+        </div>
+      )}
       <PullbackBanner c={c} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, fontSize: 11 }}>
         <Metric label="Entry" value={fmt(c.entry)} />
@@ -60,15 +73,16 @@ function CandidateCard({ c, onDrill, onDismiss }: { c: any; onDrill: Props['onDr
         <Metric label="vs VWAP" value={c.vwap_dist_pct == null ? '—' : `${c.vwap_dist_pct > 0 ? '+' : ''}${fmt(c.vwap_dist_pct, 2)}%`} tip="Last price vs intraday session VWAP — entry-timing confirmation" />
         <Metric label="ATR" value={fmt(c.atr)} />
       </div>
+      <div style={{ marginTop: 6 }}><TickerLinks symbol={c.symbol} /></div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
         {c.proposal_id
           ? <span style={{ fontSize: 10, color: '#60a5fa' }}>Advisory proposal #{c.proposal_id} in approval queue</span>
           : <span style={{ fontSize: 10, color: 'var(--text3)' }}>no proposal</span>}
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button style={btn('var(--bg2)')} title="Dismiss until next scan"
+          <button style={btn('var(--bg2)')} title="Hide for 10 trading days (re-shows early only if score improves ≥25%). Proposal untouched."
             onClick={() => onDismiss(c.symbol, false)}>Dismiss</button>
           {c.proposal_id
-            ? <button style={btn('rgba(239,68,68,.15)')} title="Dismiss and reject its advisory proposal"
+            ? <button style={btn('rgba(239,68,68,.15)')} title="Hide for 10 trading days AND reject the linked PENDING advisory proposal (no order surface involved)."
                 onClick={() => onDismiss(c.symbol, true)}>Dismiss + cancel</button>
             : null}
         </span>
@@ -118,13 +132,13 @@ export default function PullbackMacdHub({ onDrill, embedded }: Props) {
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
               S&P 500 uptrends pulled back 12–28%, earliest recovery confirmed (MACD histogram turning up + above VWAP) ·
               advisory only, proposals require approval ·
-              {run ? ` last scan ${run.scan_date} (${run.screened} screened)` : ' no scan recorded yet'}
+              {run ? ` last scan ${run.scan_date} (${run.screened} screened — ${data?.scan_provenance?.universe || 'S&P 500 uptrend pullbacks'})` : ' no scan recorded yet'}{data?.hit_stats ? ` · last ${data.hit_stats.window_days}d: ${data.hit_stats.triggers} triggers${data.hit_stats.evaluated ? ` · ${data.hit_stats.target1_first}/${data.hit_stats.evaluated} reached T1 first${data.hit_stats.median_days ? ` · median ${Math.round(data.hit_stats.median_days)}d` : ''}` : ' · outcomes n/a until evaluations accrue'}` : ''}{data?.dismissed_in_cooldown ? ` · ${data.dismissed_in_cooldown} in dismiss-cooldown` : ''}
             </div>
             {msg && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>{msg}</div>}
           </div>
         ) : (
           <div style={{ flex: 1, fontSize: 11, color: 'var(--text3)' }}>
-            {run ? `Last scan ${run.scan_date} (${run.screened} screened)` : 'No scan recorded yet'}
+            <span title={data?.scan_provenance?.schedule || ''}>{run ? `Last scan ${run.scan_date} (${run.screened} screened — ${data?.scan_provenance?.universe || 'S&P 500 uptrend pullbacks'})` : 'No scan recorded yet'}{data?.hit_stats ? ` · last ${data.hit_stats.window_days}d: ${data.hit_stats.triggers} triggers${data.hit_stats.evaluated ? ` · ${data.hit_stats.target1_first}/${data.hit_stats.evaluated} reached T1 first${data.hit_stats.median_days ? ` · median ${Math.round(data.hit_stats.median_days)}d` : ''}` : ' · outcomes n/a until evaluations accrue'}` : ''}{data?.dismissed_in_cooldown ? ` · ${data.dismissed_in_cooldown} in dismiss-cooldown` : ''}</span>
             {msg && <span style={{ marginLeft: 8, color: 'var(--text2)' }}>{msg}</span>}
           </div>
         )}

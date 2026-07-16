@@ -6003,7 +6003,34 @@ def _wl_items(query: dict = None):
             ))
     except Exception:
         pass
-    return {"count": len(_items), "items": _items}
+    # Watch Desk v2 (A2/C3): facet counts computed over the SAME corpus the rows
+    # come from (RI v3.0 lesson — one corpus), plus the honest denominator.
+    # setup_advisory is FREE TEXT ("RSI 46 · band 40-55") written by the
+    # enrichment pipeline / setup_quality_prior — not a favorable/caution enum.
+    _facets: dict = {}
+    for _it in _items:
+        _sa = str(_it.get("setup_advisory") or "").strip()
+        if not _sa:
+            _key = "(unset)"
+        elif "awaiting enrichment" in _sa:
+            _key = "awaiting enrichment"
+        elif "band" in _sa:
+            _key = "band " + _sa.split("band", 1)[1].strip()
+        else:
+            _key = _sa[:40]
+        _facets[_key] = _facets.get(_key, 0) + 1
+    try:
+        _uni = _db_query("SELECT count(*) AS n FROM watchlist_items WHERE status IN ('active','researched')",
+                         fetch="one") or {}
+        _universe_n = _uni.get("n")
+    except Exception:
+        _universe_n = None
+    return {"count": len(_items), "items": _items,
+            "facets": dict(sorted(_facets.items(), key=lambda x: -x[1])),
+            "universe_count": _universe_n,
+            "rank_name": "Hermes rank (composite score order)",
+            "facet_note": ("setup_advisory is descriptive text from the enrichment pipeline "
+                           "(RSI band), not a favorable/advisory/caution rating engine")}
 
 
 def _wl_summary():
@@ -23862,6 +23889,46 @@ def _hermes_catalyst_calibration(query=None):
             "by_type": types[:20], "trend": trend, "recent_transitions": transitions[:10]}
 
 
+def _watch_directive_update(body=None):
+    """POST /api/v2/watch/directives/update {id, action, target_id?} — Watch Desk
+    v2 (B3) row actions. Governed transitions only, never delete:
+      pause: active→paused · resume: paused/proposed→active · archive: →archived
+      merge_into: alias this directive onto target survivor, then archive it."""
+    b = body or {}
+    try:
+        did = int(b.get("id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "id required"}
+    action = (b.get("action") or "").lower()
+    row = _db_query("SELECT id, kind, label, status FROM watch_directives WHERE id=%s", (did,), fetch="one")
+    if not row:
+        return {"ok": False, "error": f"directive {did} not found"}
+    if action == "pause" and row["status"] == "active":
+        _db_query("UPDATE watch_directives SET status='paused', updated_at=NOW() WHERE id=%s", (did,), fetch=None)
+    elif action == "resume" and row["status"] in ("paused", "proposed"):
+        _db_query("UPDATE watch_directives SET status='active', updated_at=NOW() WHERE id=%s", (did,), fetch=None)
+    elif action == "archive" and row["status"] != "archived":
+        _db_query("UPDATE watch_directives SET status='archived', updated_at=NOW() WHERE id=%s", (did,), fetch=None)
+    elif action == "merge_into":
+        try:
+            tid = int(b.get("target_id") or 0)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "target_id required for merge_into"}
+        tgt = _db_query("SELECT id, status FROM watch_directives WHERE id=%s AND kind='trend'", (tid,), fetch="one")
+        if not tgt or tgt["status"] != "active":
+            return {"ok": False, "error": "merge target must be an active trend directive"}
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.watch_directive_gate import attach_alias
+        attach_alias(tid, row["label"], rationale=f"operator merge of #{did}", created_by="operator_merge")
+        _db_query("""UPDATE watch_directive_hits SET directive_id=%s WHERE directive_id=%s""", (tid, did), fetch=None)
+        _db_query("UPDATE watch_directives SET status='archived', updated_at=NOW() WHERE id=%s", (did,), fetch=None)
+        return {"ok": True, "id": did, "merged_into": tid, "hits_reassigned": True}
+    else:
+        return {"ok": False, "error": f"invalid transition {row['status']} → {action}"}
+    return {"ok": True, "id": did, "action": action}
+
+
 def _watch_directives(query=None):
     """GET /api/v2/watch-directives — operator watch directives + recent hits + Hermes staging (read-only)."""
     directives = _db_query("""SELECT id, kind, label, status, priority, trade_ai_enabled, hermes_enabled,
@@ -23874,8 +23941,23 @@ def _watch_directives(query=None):
     # by setting directive_id on the item — so the Watchlist directive filter must match on these symbols.
     _hs = _db_query("""SELECT directive_id, array_agg(DISTINCT upper(symbol)) syms,
                               count(*) hit_count,
-                              count(*) FILTER (WHERE promotion_status='STAGED_FOR_REVIEW') staged_count
+                              count(*) FILTER (WHERE promotion_status='STAGED_FOR_REVIEW') staged_count,
+                              max(surfaced_at) AS last_hit_at,
+                              count(*) FILTER (WHERE surfaced_at > now() - interval '7 days')  AS hits_7d,
+                              count(*) FILTER (WHERE surfaced_at > now() - interval '30 days') AS hits_30d
                        FROM watch_directive_hits GROUP BY directive_id""") or []
+    # Watch Desk v2 (B3): 8-week hit sparkline per directive (one grouped query)
+    _spark_rows = _db_query("""SELECT directive_id, (extract(days from now() - surfaced_at)::int / 7) AS wk, count(*) AS n
+                               FROM watch_directive_hits
+                               WHERE surfaced_at > now() - interval '56 days'
+                               GROUP BY 1, 2""") or []
+    _spark: dict = {}
+    for r in _spark_rows:
+        _spark.setdefault(r["directive_id"], [0] * 8)
+        wk = int(r["wk"])
+        if 0 <= wk < 8:
+            _spark[r["directive_id"]][7 - wk] = r["n"]
+    _hit_meta = {r["directive_id"]: r for r in _hs}
     _hit_sym_map = {r["directive_id"]: (r["syms"] or []) for r in _hs}
     # Per-directive TOTAL counts (fix 2026-06-19): the chip count must come from here, NOT from the global
     # recent_hits feed below — that feed is LIMIT 40 (most-recent activity), so older/ticker-tag hits fall
@@ -23916,14 +23998,29 @@ def _watch_directives(query=None):
             "directive_count": len(directives),
             # surface the spec context (gap_type/sleeve/symbol) + created_by so the Watchpool can label
             # rotate-gap directives instead of showing them as generic ticker directives (operator 2026-06-19)
-            "directives": [{**{k: _json_clean(v) for k, v in r.items()},
+            # Watch Desk v2 (B3+E): reviewable rows — age/last-hit/7d/30d/sparkline —
+            # with the LIST payload slimmed (full spec/rationale only behind ?full=1;
+            # the list was 793 KB of specs nobody reads in a table)
+            "directives": [{**{k: _json_clean(v) for k, v in r.items()
+                               if (query or {}).get("full") or k not in ("spec", "rationale")},
                             "symbol": (r.get("spec") or {}).get("symbol"),
                             "gap_type": (r.get("spec") or {}).get("gap_type"),
                             "sleeve": (r.get("spec") or {}).get("sleeve"),
+                            "aliases_n": len((r.get("spec") or {}).get("aliases") or []),
+                            "rationale_short": (str(r.get("rationale") or "")[:160] or None),
                             "critique": {k: _json_clean(v) for k, v in _extract(r.get("spec") or {}).items()},
-                            "hit_symbols": _hit_sym_map.get(r["id"], []),
+                            "hit_symbols": _hit_sym_map.get(r["id"], [])[:20],
                             "hit_count": _hit_cnt.get(r["id"], (0, 0))[0],
-                            "staged_count": _hit_cnt.get(r["id"], (0, 0))[1]} for r in directives],
+                            "staged_count": _hit_cnt.get(r["id"], (0, 0))[1],
+                            "last_hit_at": _json_clean((_hit_meta.get(r["id"]) or {}).get("last_hit_at")),
+                            "hits_7d": (_hit_meta.get(r["id"]) or {}).get("hits_7d") or 0,
+                            "hits_30d": (_hit_meta.get(r["id"]) or {}).get("hits_30d") or 0,
+                            "spark_8w": _spark.get(r["id"], [0] * 8),
+                            "age_days": _json_clean(
+                                (datetime.now(timezone.utc) - r["created_at"]).days
+                                if r.get("created_at") is not None and hasattr(r.get("created_at"), "year") else None),
+                            } for r in directives],
+            "proposed_count": sum(1 for r in directives if r.get("status") == "proposed"),
             "recent_hits": [{k: _json_clean(v) for k, v in r.items()} for r in hits],
             "hermes_staging": {"total": staging.get("c"), "undrained": staging.get("undrained")},
             "promoted_to_watchlist": promoted.get("c"), "health": health}
@@ -24464,10 +24561,15 @@ def _watch_directive_promote(body):
 def _watchpool_list(query=None):
     """GET /api/v2/watchpool — unified watchpool: strategy_watchpool rows with origin + directive link.
     Read-only. Powers the /v3/watchpool page (screener candidates + directive-sourced, same pill row)."""
-    rows = _db_query("""SELECT sp.id, sp.strategy_id, sp.symbol, sp.screener_id, sp.bucket, sp.current_status,
-                          sp.entered_at, sp.expires_at, sp.origin_system, sp.directive_id, d.label AS directive_label
-                        FROM strategy_watchpool sp LEFT JOIN watch_directives d ON d.id = sp.directive_id
-                        ORDER BY sp.entered_at DESC LIMIT 200""") or []
+    # Watch Desk v2 (A3): DISTINCT ON kills the duplicated-row rendering (same
+    # symbol+strategy+origin re-entered → keep the latest entry only)
+    rows = _db_query("""SELECT * FROM (
+                          SELECT DISTINCT ON (sp.symbol, sp.strategy_id, sp.origin_system)
+                                 sp.id, sp.strategy_id, sp.symbol, sp.screener_id, sp.bucket, sp.current_status,
+                                 sp.entered_at, sp.expires_at, sp.origin_system, sp.directive_id, d.label AS directive_label
+                          FROM strategy_watchpool sp LEFT JOIN watch_directives d ON d.id = sp.directive_id
+                          ORDER BY sp.symbol, sp.strategy_id, sp.origin_system, sp.entered_at DESC
+                        ) t ORDER BY t.entered_at DESC LIMIT 200""") or []
     by_status, by_origin = {}, {}
     for r in rows:
         st = r.get("current_status") or "?"
@@ -27238,6 +27340,47 @@ def _pullback_macd_adjustments(query=None):
     })
 
 
+def _held_context(symbols):
+    """Watch Desk v2 (C1): position-aware context for buy-side surfaces.
+    {SYM: {shares, market_value, stop_price, stop_distance_pct, stop_state, near_stop}}
+    from holdings.json + stop_lifecycle. Read-only, fail-open."""
+    out = {}
+    if not symbols:
+        return out
+    syms = sorted({str(s).upper() for s in symbols if s})
+    try:
+        import json as _j
+        hd = _j.loads((PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
+        for h in hd.get("holdings") or []:
+            s = str(h.get("symbol") or "").upper()
+            if s in syms and not h.get("is_cash"):
+                e = out.setdefault(s, {"shares": 0.0, "market_value": 0.0})
+                e["shares"] += float(h.get("shares") or 0)
+                e["market_value"] += float(h.get("market_value") or 0)
+    except Exception:
+        return {}
+    try:
+        rows = _db_query(
+            """SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS s, stop_price, proximity_pct, status
+               FROM stop_lifecycle
+               WHERE status IN ('working','open','awaiting_stop_condition','new')
+                 AND upper(symbol) = ANY(%s)
+               ORDER BY upper(symbol), snapshot_at DESC""",
+            (syms,), fetch="all") or []
+        for r in rows:
+            if r["s"] in out:
+                prox = r.get("proximity_pct")
+                out[r["s"]].update(
+                    stop_price=float(r["stop_price"]) if r.get("stop_price") else None,
+                    stop_distance_pct=float(prox) if prox is not None else None,
+                    stop_state=r.get("status"),
+                    near_stop=bool(prox is not None and abs(float(prox)) <= 5.0),
+                )
+    except Exception:
+        pass
+    return out
+
+
 def _pullback_macd_candidates(query=None):
     """GET /api/v2/pullback-macd/candidates — S&P 500 uptrend + pullback + approaching-MACD-cross.
 
@@ -27274,6 +27417,65 @@ def _pullback_macd_candidates(query=None):
             ORDER BY (c.tier='trigger') DESC, c.score DESC LIMIT %s""",
         params, fetch="all") or []
     run = _execute("SELECT * FROM pullback_macd_runs ORDER BY created_at DESC LIMIT 1", fetch="one")
+
+    # Watch Desk v2 (D1): idempotent trigger recorder — every active trigger gets
+    # one history row per (symbol, day); the weekly reconciler fills outcomes
+    try:
+        _execute("""INSERT INTO pullback_trigger_history (symbol, trigger_date, score, entry, stop, target1)
+                    SELECT symbol, COALESCE(scan_date, CURRENT_DATE), score, entry, stop, target1
+                    FROM pullback_macd_candidates WHERE tier='trigger' AND status='active'
+                    ON CONFLICT (symbol, trigger_date) DO NOTHING""", fetch=None)
+    except Exception:
+        pass
+
+    # Watch Desk v2 (D2): dismissal memory — dismissed symbols sit out a config
+    # cooldown (default 10 trading days ≈ 14 calendar) unless score improved ≥25%
+    dismissed_out = 0
+    try:
+        dis = _execute("""SELECT upper(symbol) AS s, score_at_dismiss, dismissed_at
+                          FROM pullback_macd_dismissals
+                          WHERE dismissed_at > now() - interval '14 days'""", fetch="all") or []
+        dmap = {r["s"]: r for r in dis}
+        if dmap:
+            kept = []
+            for r in rows:
+                drow = dmap.get(str(r.get("symbol") or "").upper())
+                if drow:
+                    old = float(drow.get("score_at_dismiss") or 0)
+                    if not (old > 0 and float(r.get("score") or 0) >= old * 1.25):
+                        dismissed_out += 1
+                        continue
+                    r["redisplay_reason"] = f"score improved ≥25% vs {old:g} at dismissal"
+                kept.append(r)
+            rows = kept
+    except Exception:
+        pass
+
+    # Watch Desk v2 (C1): held-position awareness — a buy TRIGGER on a held name
+    # near its stop must be impossible to miss
+    held = _held_context([r.get("symbol") for r in rows])
+    for r in rows:
+        hc = held.get(str(r.get("symbol") or "").upper())
+        if hc:
+            r["held"] = hc
+            r["held_conflict"] = bool(r.get("tier") == "trigger" and hc.get("near_stop"))
+
+    # Watch Desk v2 (D1): trailing trigger hit-rate from pullback_trigger_history
+    hit_stats = None
+    try:
+        hs = _execute("""SELECT count(*) AS n,
+                                count(*) FILTER (WHERE outcome='TARGET1_FIRST') AS wins,
+                                count(*) FILTER (WHERE outcome IS NOT NULL) AS evaluated,
+                                percentile_cont(0.5) WITHIN GROUP (ORDER BY days_to_resolve)
+                                  FILTER (WHERE days_to_resolve IS NOT NULL) AS median_days
+                         FROM pullback_trigger_history
+                         WHERE trigger_date > CURRENT_DATE - 90""", fetch="one")
+        if hs and hs.get("n"):
+            hit_stats = {"window_days": 90, "triggers": hs["n"], "evaluated": hs["evaluated"],
+                         "target1_first": hs["wins"], "median_days": hs.get("median_days")}
+    except Exception:
+        pass
+
     triggers = [r for r in rows if r.get("tier") == "trigger"]
     # a trigger is "queued" only if its linked proposal is still LIVE (PENDING/APPROVED); ones pointing
     # to expired/rejected proposals are counted separately so the widget matches the list.
@@ -27285,7 +27487,16 @@ def _pullback_macd_candidates(query=None):
         "trigger_live_count": len(trigger_live),
         "trigger_stale_count": len(triggers) - len(trigger_live),
         "watch_count": sum(1 for r in rows if r.get("tier") == "watch"),
+        "dismissed_in_cooldown": dismissed_out,
+        "hit_stats": hit_stats,
+        "held_count": sum(1 for r in rows if r.get("held")),
         "last_run": run,
+        # D3 provenance — universe + schedule stated on-page, not implied
+        "scan_provenance": {
+            "universe": "S&P 500 uptrend-intact pullbacks approaching MACD cross",
+            "screened": (run or {}).get("screened") or (run or {}).get("universe_count"),
+            "schedule": "cron-scheduled scans; Run-scan-now is compute-only (reads bars, writes candidates — RTH-safe)",
+        },
         "generated_at": (run or {}).get("created_at"),
     })
 
@@ -27320,6 +27531,17 @@ def _pullback_macd_dismiss(body=None):
     if not row:
         return {"ok": False, "error": "candidate not found"}
     _execute("UPDATE pullback_macd_candidates SET status='dismissed' WHERE symbol=%s", (sym,))
+    # Watch Desk v2 (D2): persistent cooldown memory — 10 trading days unless
+    # score improves ≥25% (enforced in the candidates read)
+    try:
+        _sc = _execute("SELECT score FROM pullback_macd_candidates WHERE symbol=%s ORDER BY last_scan_at DESC LIMIT 1", (sym,), fetch="one") or {}
+        _execute("""INSERT INTO pullback_macd_dismissals (symbol, mode, score_at_dismiss, dismissed_at)
+                    VALUES (%s,%s,%s,NOW())
+                    ON CONFLICT (symbol) DO UPDATE SET mode=EXCLUDED.mode,
+                      score_at_dismiss=EXCLUDED.score_at_dismiss, dismissed_at=NOW()""",
+                 (sym, 'dismiss_cancel' if b.get('cancel_proposal') else 'dismiss', _sc.get('score')), fetch=None)
+    except Exception:
+        pass
     cancelled = None
     if b.get("cancel_proposal") and row.get("proposal_id"):
         _execute("""UPDATE paper_trade_proposals
@@ -27879,13 +28101,17 @@ def _sectors_monitor(query=None):
         spec = d["spec"] if isinstance(d["spec"], dict) else _j.loads(d["spec"])
         key = spec.get("finviz_sector") or spec.get("gics_sector") or ""
         if key:
-            watched[key] = {"id": d["id"], "label": d["label"]}
+            # A4: normalize 'Financial' vs 'Financials' so the watching chip
+            # matches regardless of which variant the directive stored
+            watched[key.strip().lower().rstrip("s")] = {"id": d["id"], "label": d["label"]}
     out = []
     for sec, etf in _SECTOR_ETF_MAP.items():
         q = _db_query("SELECT day_change_pct FROM market_quotes WHERE symbol=%s ORDER BY fetched_at DESC LIMIT 1", (etf,), fetch="one") or {}
         etf_chg = q.get("day_change_pct")
         if etf_chg is None:
-            momentum, rel = "unknown", None
+            # Watch Desk v2 (A4): honest empty state — the calc didn't fail
+            # mysteriously, the ETF quote row is missing (XLRE class)
+            momentum, rel = "n/a · quote missing", None
         else:
             rel = round(float(etf_chg) - spy_chg, 2)
             momentum = "leading" if rel > 0.15 else "lagging" if rel < -0.15 else "neutral"
@@ -27913,9 +28139,16 @@ def _sectors_monitor(query=None):
         out.append({"sector": sec, "etf": etf, "etf_change_pct": _json_clean(etf_chg), "spy_change_pct": spy_chg,
                     "rel_strength": rel, "momentum": momentum, "constituent_count": cons.get("n", 0),
                     "setup_count": len(cands), "candidates": [{k: _json_clean(v) for k, v in c.items()} for c in cands],
-                    "is_watched": sec in watched, "directive": watched.get(sec)})
-    out.sort(key=lambda s: (not s["is_watched"], {"leading": 0, "neutral": 1, "lagging": 2, "unknown": 3}[s["momentum"]]))
-    return {"spy_change_pct": spy_chg, "sectors": out}
+                    "is_watched": sec.strip().lower().rstrip("s") in watched,
+                    "directive": watched.get(sec.strip().lower().rstrip("s"))})
+    out.sort(key=lambda s: (not s["is_watched"],
+                            {"leading": 0, "neutral": 1, "lagging": 2}.get(s["momentum"], 3)))
+    return {"spy_change_pct": spy_chg, "sectors": out,
+            # A4 legend: on-page semantics instead of implied meaning
+            "legend": ("setups/N: setups = score-ranked candidates surviving the CIO-verdict + "
+                       "coverage filters; N = tracked constituents in incubator_universe for the "
+                       "sector. 'n/a · quote missing' = sector ETF has no quote row (not a calc failure). "
+                       "'watching' chip = an active sector directive exists for this sector.")}
 
 
 def _llm_retry_health(query=None):
@@ -35111,6 +35344,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 
+    if method == "POST" and base_path == "/api/v2/pullback-macd/dismiss":
+        try:
+            result = _pullback_macd_dismiss(body or {})
+            return (200 if result.get("ok") else 400), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:240]}
+    if method == "POST" and base_path == "/api/v2/watch/directives/update":
+        try:
+            result = _watch_directive_update(body or {})
+            return (200 if result.get("ok") else 400), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:240]}
     if method == "POST" and base_path == "/api/v2/pullback-macd/scan":
         try:
             return 200, _pullback_macd_scan(body if isinstance(body, dict) else {})

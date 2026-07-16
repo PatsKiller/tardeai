@@ -18,6 +18,15 @@ const originColor = (o?: string) => {
   if (k.includes('portfolio') || k.includes('watchlist')) return '#eab308'
   return '#60a5fa'
 }
+
+// Watch Desk v2 (A3): ONE dictionary for raw pipeline states → human labels
+const STATUS_LABELS: Record<string, { label: string; tip: string }> = {
+  unavailable: { label: 'Data unavailable', tip: 'Not currently tradable — required data feed unavailable' },
+  monitored_no_qualify: { label: 'Monitored — not qualified', tip: 'Monitored — has not met qualification criteria yet' },
+  'monitored no qualify': { label: 'Monitored — not qualified', tip: 'Monitored — has not met qualification criteria yet' },
+}
+const humanStatus = (s?: string) => STATUS_LABELS[String(s || '').toLowerCase()] || { label: s || '—', tip: s || '' }
+
 const divColor = (d?: string) => (({ aligned: '#22c55e', mixed: '#f59e0b', divergent: '#ef4444', unavailable: '#64748b' } as any)[d || ''] || 'var(--text3)')
 
 const Pill = ({ text, color, tip }: any) => (
@@ -187,7 +196,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
               <span style={{ flex: '0 0 64px', fontWeight: 600, fontFamily: 'monospace', color: 'var(--text0)' }}>{r.symbol}</span>
               <span style={{ flex: '0 0 160px', color: 'var(--text2)', fontSize: 10 }}>{r.strategy_id}</span>
               <span style={{ flex: '0 0 96px' }}><Pill text={r.bucket || '?'} color="#60a5fa" /></span>
-              <span style={{ flex: '0 0 70px', color: 'var(--text2)', fontSize: 10 }}>{r.current_status}</span>
+              <span title={humanStatus(r.current_status).tip} style={{ flex: '0 0 110px', color: 'var(--text2)', fontSize: 10 }}>{humanStatus(r.current_status).label}</span>
               <span style={{ flex: '1 1 auto', display: 'flex', gap: 5, alignItems: 'center' }}>
                 <Pill text={r.origin_system || 'screener'} color={originColor(r.origin_system)} />
                 {r.directive_label && <span style={{ fontSize: 9, color: '#a855f7' }}>◆ {r.directive_label}</span>}
