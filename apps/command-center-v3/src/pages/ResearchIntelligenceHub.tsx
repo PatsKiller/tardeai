@@ -1152,7 +1152,8 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     if (starredOnly) p.set('starred_only', '1')
     if (freshness) p.set('freshness', freshness)
     if (sentiment) p.set('sentiment', sentiment)
-    p.set('limit', '100')
+    // 50 cards max — full 100 was ~3MB JSON and timed out the desk under Tailscale load
+    p.set('limit', '50')
     return p.toString()
   }, [q, category, priority, holdingsOnly, includeArchived, starredOnly, freshness, sentiment])
 

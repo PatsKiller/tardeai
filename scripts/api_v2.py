@@ -18343,6 +18343,11 @@ def _portfolio_cadence_status():
                        "safety_net_watchdog": "untouched"}}
 
 
+# Short TTL cache for RI feed — concurrent desk polls were each rebuilding a multi-MB feed.
+_RI_FEED_CACHE: dict = {"key": None, "ts": 0.0, "data": None}
+_RI_FEED_TTL_SEC = float(__import__("os").environ.get("RI_FEED_CACHE_TTL_SEC", "45"))
+
+
 def _research_intelligence_feed(query=None):
     """GET /api/v2/research-intelligence — taxonomy-tagged Research Intelligence cockpit (v2).
 
@@ -18353,6 +18358,7 @@ def _research_intelligence_feed(query=None):
            include_archived, freshness, starred_only, sentiment, source_system.
     """
     try:
+        import time as _time
         from lib.research_intelligence import build_feed
         q = query if isinstance(query, dict) else (_current_query or {})
         def _one(k, default=None):
@@ -18373,10 +18379,38 @@ def _research_intelligence_feed(query=None):
             lim = int(_one("limit") or 80)
         except (TypeError, ValueError):
             lim = 80
+        # Cap list payload — full desk was multi-MB and timed out over Tailscale under load
+        lim = max(10, min(lim, 60))
         inc_arch = _one("include_archived")
         include_archived = None
         if inc_arch is not None and str(inc_arch) != "":
             include_archived = str(inc_arch).lower() in ("1", "true", "yes")
+        cache_key = (
+            str(_one("category") or ""),
+            str(_one("q") or ""),
+            str(_one("priority") or ""),
+            str(_one("symbol") or ""),
+            str(lim),
+            str(hold_only),
+            str(include_archived),
+            str(_one("freshness") or ""),
+            str(_flag("starred_only")),
+            str(_one("sentiment") or ""),
+            str(_one("source_system") or ""),
+            str(primary_only),
+        )
+        now = _time.time()
+        if (
+            _RI_FEED_CACHE.get("key") == cache_key
+            and _RI_FEED_CACHE.get("data") is not None
+            and (now - float(_RI_FEED_CACHE.get("ts") or 0)) < _RI_FEED_TTL_SEC
+        ):
+            out = _RI_FEED_CACHE["data"]
+            if isinstance(out, dict):
+                out = dict(out)
+                out["cache_age_sec"] = round(now - float(_RI_FEED_CACHE.get("ts") or now))
+                out["from_cache"] = True
+            return out
         feed = build_feed(
             db_query=_db_query,
             category=_one("category") or None,
@@ -18398,7 +18432,13 @@ def _research_intelligence_feed(query=None):
             if isinstance(obj, list):
                 return [_clean(x) for x in obj]
             return _json_clean(obj)
-        return _clean(feed)
+        cleaned = _clean(feed)
+        if isinstance(cleaned, dict):
+            cleaned["from_cache"] = False
+        _RI_FEED_CACHE["key"] = cache_key
+        _RI_FEED_CACHE["ts"] = now
+        _RI_FEED_CACHE["data"] = cleaned
+        return cleaned
     except Exception as e:
         return {"ok": False, "error": str(e)[:240], "items": [], "taxonomy": {}, "stats": {}}
 

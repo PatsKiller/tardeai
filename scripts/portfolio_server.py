@@ -587,12 +587,30 @@ def json_response(handler, status: int, data: dict) -> None:
         body = json.dumps(data, default=str, allow_nan=False).encode("utf-8")
     except ValueError:
         body = json.dumps(_nan_safe(data), default=str, allow_nan=False).encode("utf-8")
+    # Gzip large JSON over the wire (RI/trade-ai are multi-MB; Tailscale + concurrent polls was
+    # saturating request threads and wedging "Reconnecting…" — 2026-07-16).
+    use_gzip = False
+    try:
+        ae = (handler.headers.get("Accept-Encoding") or "") if getattr(handler, "headers", None) else ""
+        if "gzip" in ae.lower() and len(body) >= 2048:
+            import gzip
+            body = gzip.compress(body, compresslevel=4)
+            use_gzip = True
+    except Exception:
+        use_gzip = False
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json")
+    if use_gzip:
+        handler.send_header("Content-Encoding", "gzip")
+        handler.send_header("Vary", "Accept-Encoding")
     handler.send_header("Content-Length", str(len(body)))
     handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Connection", "close")
     handler.end_headers()
-    handler.wfile.write(body)
+    try:
+        handler.wfile.write(body)
+    except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):
+        pass  # client gone — do not escalate to 500 handler
 
 
 def _content_type_for_path(path: Path) -> str:
@@ -2040,19 +2058,54 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     behind it. Thread-safety: db_adapter now hands each thread its OWN connection (closed in
     PortfolioHandler.finish), so concurrent requests never share cursor/transaction state.
 
-    Concurrency is BOUNDED by a semaphore (DASHBOARD_MAX_CONCURRENCY, default 16) so we never spawn an
-    unbounded number of request threads / DB connections under a poll burst; excess connections wait in
-    the request_queue_size=128 backlog rather than being dropped."""
+    Concurrency is BOUNDED by a semaphore (DASHBOARD_MAX_CONCURRENCY, default 24). Excess waits at most
+    SEM_ACQUIRE_TIMEOUT_SEC then gets 503 (not infinite queue → CLOSE-WAIT pileup / whole desk dead).
+    """
     allow_reuse_address = True
     # SO_REUSEPORT allowed a second portfolio_server to bind :7777 alongside the first (orphan twins).
     allow_reuse_port = False
     request_queue_size = 128
     daemon_threads = True
     _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "24")))
+    _sem_timeout = float(os.getenv("DASHBOARD_SEM_TIMEOUT_SEC", "1.5"))
 
     def process_request_thread(self, request, client_address):
-        with self._sem:
+        # Bound hung client I/O so dead Tailscale peers release slots
+        try:
+            request.settimeout(float(os.getenv("DASHBOARD_REQUEST_TIMEOUT_SEC", "45")))
+        except Exception:
+            pass
+        acquired = False
+        try:
+            acquired = self._sem.acquire(timeout=self._sem_timeout)
+            if not acquired:
+                # Fail fast — browser useApi will retry; better than wedging 300 CLOSE-WAIT threads
+                try:
+                    body = b'{"ok":false,"error":"server_busy","retry_after_sec":2}'
+                    resp = (
+                        b"HTTP/1.1 503 Service Unavailable\r\n"
+                        b"Content-Type: application/json\r\n"
+                        b"Content-Length: " + str(len(body)).encode() + b"\r\n"
+                        b"Connection: close\r\n"
+                        b"Retry-After: 2\r\n"
+                        b"Access-Control-Allow-Origin: *\r\n"
+                        b"\r\n" + body
+                    )
+                    request.sendall(resp)
+                except Exception:
+                    pass
+                try:
+                    request.close()
+                except Exception:
+                    pass
+                return
             super().process_request_thread(request, client_address)
+        finally:
+            if acquired:
+                try:
+                    self._sem.release()
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":
