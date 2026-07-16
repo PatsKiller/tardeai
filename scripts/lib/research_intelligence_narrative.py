@@ -319,9 +319,68 @@ def _from_stored_narrative(ev: Any) -> dict[str, Any] | None:
     return n
 
 
+def _norm_prose(s: str | None) -> str:
+    return re.sub(r"\s+", " ", (s or "")).strip().lower()
+
+
+def _dedupe_prose(base: dict[str, Any]) -> dict[str, Any]:
+    """v3 (B2): kill verbatim repetition — lede restated as a paragraph, repeated
+    sentences inside a paragraph, duplicate paragraphs/takeaways. Exact-match
+    after whitespace normalization only (no fuzzy matching)."""
+    lede_n = _norm_prose(base.get("lede"))
+    out_paras: list[str] = []
+    seen_paras: set[str] = set()
+    for p in base.get("executive_summary") or []:
+        if not p:
+            continue
+        # Sentence-level dedupe within the paragraph
+        sents = re.split(r"(?<=[.!?])\s+", str(p).strip())
+        kept: list[str] = []
+        seen_s: set[str] = set()
+        for s in sents:
+            sn = _norm_prose(s)
+            if not sn or sn in seen_s:
+                continue
+            if lede_n and len(sn) > 24 and sn in lede_n:
+                continue  # sentence already fully contained in the lede
+            seen_s.add(sn)
+            kept.append(s.strip())
+        para = " ".join(kept).strip()
+        pn = _norm_prose(para)
+        if not pn or pn in seen_paras:
+            continue
+        # Paragraph that merely restates the lede → drop; one that opens with
+        # the lede → strip the duplicated prefix
+        if lede_n:
+            if pn == lede_n:
+                continue
+            if pn.startswith(lede_n) and len(para) > len(base.get("lede") or ""):
+                para = para[len(base.get("lede") or ""):].lstrip(" .—–-").strip()
+                pn = _norm_prose(para)
+                if not pn or pn in seen_paras:
+                    continue
+        seen_paras.add(pn)
+        out_paras.append(para)
+    base["executive_summary"] = out_paras
+
+    takes = []
+    seen_t: set[str] = set()
+    for t in base.get("key_takeaways") or []:
+        tn = _norm_prose(str(t))
+        if not tn or tn in seen_t or tn == lede_n:
+            continue
+        if lede_n and len(tn) > 24 and tn in lede_n:
+            continue
+        seen_t.add(tn)
+        takes.append(t)
+    base["key_takeaways"] = takes
+    return base
+
+
 def _polish_narrative_depth(base: dict[str, Any], *, title: str, cats: list[str]) -> dict[str, Any]:
     """Ensure minimum advisory depth: implications paragraph, quality tier, no stub fluff."""
     primary = (cats[0] if cats else "") or "general"
+    base = _dedupe_prose(base)
     paras = list(base.get("executive_summary") or [])
     # Drop pure monitor boilerplate (replaced below if body becomes thin)
     paras = [
@@ -444,7 +503,7 @@ def _polish_narrative_depth(base: dict[str, Any], *, title: str, cats: list[str]
         takes = [impl[:200]]
     base["key_takeaways"] = takes[:5]
     base["reading_minutes"] = max(1, min(6, body_len // 450 or 1))
-    return base
+    return _dedupe_prose(base)
 
 
 def _attach_advisory(
@@ -487,14 +546,18 @@ def _attach_advisory(
     base["related_themes"] = adv.get("related_themes")
     base["stage_payload"] = adv.get("stage_payload")
     base["funding_context"] = adv.get("funding_context")
-    # Prefer portfolio-aware next_action unless topic_monitor needs ingest first
+    # Prefer portfolio-aware next_action unless topic_monitor needs ingest first.
+    # Advisory returning None is a deliberate omission (B4) — do not resurrect a
+    # generic fallback label for it.
     if research_type == "topic_monitor":
         base["next_action"] = base.get("next_action") or adv.get("next_action")
     else:
-        base["next_action"] = adv.get("next_action") or base.get("next_action")
+        base["next_action"] = adv.get("next_action") if "next_action" in adv else base.get("next_action")
+    # Takeaways ticker line: brief-scope only — book-context weights live in the
+    # desk-level concentration banner, not on every card (B3)
     ticks = [
         t for t in (base.get("ticker_recommendations") or [])
-        if t.get("symbol") and t.get("role") in (
+        if t.get("symbol") and t.get("scope") != "book" and t.get("role") in (
             "add_candidate", "trim_candidate", "protect", "hold_review", "watchlist",
         )
     ]

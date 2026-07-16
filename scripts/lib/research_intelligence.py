@@ -117,6 +117,9 @@ _GAP_RX = re.compile(
 )
 
 
+# Stop-signal research types — real desk items even when the body is short
+_STOP_NOISE_TYPES = {"stop_health", "stop_curation", "protection_advisory"}
+
 # Lane tabs = primary-category groupings. Used both to FILTER the feed (lane= param)
 # and to build the preview arrays; keep the two in sync via this single map.
 LANE_CATEGORIES: dict[str, tuple[str, ...]] = {
@@ -800,11 +803,39 @@ def build_feed(
         item["priority"] = pri
         items.append(item)
 
-    # Prefer real Hermes/LLM briefs over empty topic_monitor stubs; dedupe near-identical titles
     def _norm_title(t: str | None) -> str:
         t = re.sub(r"\s+", " ", (t or "").lower()).strip()
         t = re.sub(r"[^a-z0-9 %$]+", "", t)
         return t[:96]
+
+    # ── Stub partition (v3) ────────────────────────────────────────────
+    # Registry echoes / un-run topics are QUEUED WORK, not research. They never
+    # render as briefings, never reach featured/Tier A, and are counted separately.
+    def _is_stub_item(it: dict) -> bool:
+        rt = it.get("research_type") or ""
+        if rt in _STOP_NOISE_TYPES:
+            return False  # stop signals are real desk items, however short
+        if rt == "topic_monitor" or it.get("source_system") == "topic_monitor":
+            return True
+        summ = re.sub(r"\s+", " ", (it.get("summary") or "")).strip()
+        thes = it.get("thesis") or ""
+        low = f"{summ} {thes}".lower()
+        if "from the research topic registry" in low:
+            return True
+        body = f"{summ} {thes}".strip()
+        if len(body) >= 200:
+            return False
+        # Thin body: stub when it is (near-)empty or just restates the title
+        tn = _norm_title(it.get("title"))
+        bn = _norm_title(body)
+        if not bn:
+            return True
+        return bool(tn) and tn in bn and len(bn) <= max(2 * len(tn), 40)
+
+    stub_items = [i for i in items if _is_stub_item(i)]
+    items = [i for i in items if not _is_stub_item(i)]
+
+    # Prefer real Hermes/LLM briefs over empty topic_monitor stubs; dedupe near-identical titles
 
     def _quality(it: dict) -> float:
         score = 0.0
@@ -928,7 +959,7 @@ def build_feed(
                 return 10 + i
         return 20
 
-    _STOP_NOISE = {"stop_health", "stop_curation", "protection_advisory"}
+    _STOP_NOISE = _STOP_NOISE_TYPES
 
     def _sk(it: dict) -> tuple:
         # Demote stop noise + empty topic_monitor stubs so LLM/Hermes intel surfaces first.
@@ -968,6 +999,40 @@ def build_feed(
         name: sum(1 for i in items if i.get("primary_category") in cats)
         for name, cats in LANE_CATEGORIES.items()
     }
+
+    # Queued-research rail: compact stub records, deduped by title, never
+    # overlapping a title that already has a real brief on the desk.
+    brief_titles = {_norm_title(i.get("title")) for i in items}
+    queued: list[dict[str, Any]] = []
+    seen_q: set[str] = set()
+    for it in sorted(
+        stub_items,
+        key=lambda i: (
+            0 if i.get("priority") == "high" else 1,
+            0 if i.get("needs_refresh") else 1,
+            -(i.get("freshness_hours") or 0),
+        ),
+    ):
+        key = _norm_title(it.get("title"))
+        if not key or key in seen_q or key in brief_titles:
+            continue
+        seen_q.add(key)
+        queued.append({
+            "id": it.get("id"),
+            "title": it.get("title"),
+            "primary_category": it.get("primary_category"),
+            "source_system": it.get("source_system"),
+            "source_table": it.get("source_table"),
+            "source_id": it.get("source_id"),
+            "symbol": it.get("symbol"),
+            "priority": it.get("priority"),
+            "freshness_hours": it.get("freshness_hours"),
+            "freshness_label": it.get("freshness_label"),
+            "needs_refresh": it.get("needs_refresh"),
+            "stub": True,
+        })
+    queued_total = len(queued)
+    queued = queued[:40]  # payload cap; stats carry the full count
 
     page = filtered[:limit]
     tier_counts_view: dict[str, int] = {}
@@ -1027,12 +1092,15 @@ def build_feed(
             "holdings_universe": sorted(held)[:40],
             "holdings_count": len(held),
             "lane_counts": lane_counts_full,
+            "queued_research": queued_total,
+            "queued_research_shown": len(queued),
             "quality_tiers": {
                 t: sum(1 for i in page if (i.get("quality_tier") or "") == t)
                 for t in ("A", "B", "C")
             },
         },
         "items": page,
+        "queued_research": queued,
         "priority_lanes": priority_lanes,
         "note": (
             "Research Intelligence v2.7 — Stage Trade + RI Ideas watchlist; cross-theme strips; "
@@ -1187,12 +1255,33 @@ def freshness_report(*, db_query) -> dict[str, Any]:
                 "priority": r.get("priority"),
             })
 
+    # Next-action label distribution (B4 self-check): a CTA stamped on >20% of
+    # briefs is a default, not guidance — surface it so the desk stays honest.
+    action_labels: dict[str, int] = {}
+    briefs_n = 0
+    for it in feed.get("items") or []:
+        briefs_n += 1
+        na = it.get("next_action")
+        lab = (na.get("label") if isinstance(na, dict) else None) or "(none)"
+        action_labels[lab] = action_labels.get(lab, 0) + 1
+    label_dist = [
+        {"label": k, "count": v, "pct": round(100.0 * v / briefs_n, 1) if briefs_n else 0.0}
+        for k, v in sorted(action_labels.items(), key=lambda x: -x[1])
+    ]
+    over_cap = [
+        d for d in label_dist
+        if d["label"] != "(none)" and d["pct"] > 20.0
+    ]
+
     return {
         "ok": True,
         "as_of": datetime.now(timezone.utc).isoformat(),
         "by_category": by_cat,
         "stale_topics": stale_topics[:30],
         "stale_topic_count": len(stale_topics),
+        "queued_research_count": (feed.get("stats") or {}).get("queued_research"),
+        "action_label_distribution": label_dist[:15],
+        "action_labels_over_20pct": over_cap,
         "feed_stats": feed.get("stats"),
         "slo": slo,
     }

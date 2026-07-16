@@ -409,6 +409,7 @@ def funding_sources(portfolio: dict[str, Any], *, need_pct: float = 3.0) -> list
             sources.append({
                 "symbol": sym,
                 "role": "trim_candidate",
+                "scope": "book",
                 "weight_pct": w,
                 "level": lvl,
                 "suggested_weight_pct": f"trim {trim_lo:.1f}–{trim_hi:.1f}% of book (now {w:.1f}%)",
@@ -858,6 +859,7 @@ def _context_concentration_tickers(portfolio: dict[str, Any], limit: int = 3) ->
         out.append({
             "symbol": sym,
             "role": role,
+            "scope": "book",
             "suggested_weight_pct": f"current {w:.1f}% ({lvl})",
             "rationale": (
                 f"Concentration context — {sym} is a {lvl} weight. "
@@ -955,7 +957,7 @@ def build_advisory(
                 w = by_sym[t]["weight_pct"]
                 lvl = by_sym[t].get("concentration_level") or "normal"
                 tickers.append({
-                    "symbol": t, "role": "protect",
+                    "symbol": t, "role": "protect", "scope": "book",
                     "suggested_weight_pct": f"current {w:.1f}% — protect first ({lvl})",
                     "rationale": "Large weight — confirm stop health before net new risk.",
                 })
@@ -1165,8 +1167,9 @@ def build_advisory(
             themes = ["bonds"] + [t for t in themes if t != "bonds"]
         theme = themes[0] if themes else None
         if not theme:
-            action_label = "Map thesis to sleeves"
-            action_detail = "Identify which held ETFs express this theme before adding new names."
+            # v3 (B4): no fake CTA when no theme maps — omit next_action entirely
+            action_label = None
+            action_detail = None
             implications.append(
                 "No clear theme tickers from title — do not invent lists from body keywords. "
                 f"Book concentration {book_lvl}; heat ~{heat_pct:.1f}%."
@@ -1366,6 +1369,7 @@ def build_advisory(
             tickers.append({
                 "symbol": "SCHG",
                 "role": rev.get("role") or "hold_review",
+                "scope": "book",
                 "suggested_weight_pct": rev.get("label"),
                 "rationale": "Primary growth compounder — rebalance only on plan, not noise.",
             })
@@ -1373,7 +1377,7 @@ def build_advisory(
         for t in ("QQQ", "SPY", "V"):
             if t in by_sym and t != "SCHG":
                 tickers.append({
-                    "symbol": t, "role": "hold_review",
+                    "symbol": t, "role": "hold_review", "scope": "book",
                     "suggested_weight_pct": f"current {by_sym[t]['weight_pct']:.1f}%",
                     "rationale": "Growth/beta holding — keep unless thesis or tax plan requires a trim.",
                 })
@@ -1446,6 +1450,19 @@ def build_advisory(
         prev = dedup.get(sym)
         if prev is None or _role_pri.get(t.get("role") or "", 9) < _role_pri.get(prev.get("role") or "", 9):
             dedup[sym] = t
+
+    # Scope resolution: "brief" = derived from this brief's content/topic mapping;
+    # "book" = portfolio context (funding sources, concentration) — rendered once
+    # at desk level, never stamped per card. A book ticker the brief itself names
+    # is upgraded back to brief.
+    _blob_u = f"{title or ''} {summary or ''} {thesis or ''}".upper()
+    for t in dedup.values():
+        if not t.get("scope"):
+            t["scope"] = "brief"
+        elif t.get("scope") == "book" and t.get("symbol") and re.search(
+            rf"\b{re.escape(t['symbol'])}\b", _blob_u
+        ):
+            t["scope"] = "brief"
     tickers = _finalize_ticker_recs(list(dedup.values()), portfolio=portfolio)
 
     sizing_text = " ".join(sizing_bits)
@@ -1608,12 +1625,16 @@ def build_advisory(
             "concentration": portfolio.get("concentration"),
             "heat": portfolio.get("heat"),
         },
-        "next_action": {
-            "label": action_label,
-            "detail": action_detail,
-            "href_hint": href,
-            "action_type": action,
-        },
+        # None when the desk has no honest CTA (B4) — no action beats a fake one
+        "next_action": (
+            {
+                "label": action_label,
+                "detail": action_detail,
+                "href_hint": href,
+                "action_type": action,
+            }
+            if action_label else None
+        ),
         "card_template": {
             "version": "2.6",
             "sections": [

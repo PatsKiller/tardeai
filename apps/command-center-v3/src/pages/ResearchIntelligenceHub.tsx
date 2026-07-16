@@ -66,6 +66,7 @@ type Item = {
   ticker_recommendations?: {
     symbol?: string
     role?: string
+    scope?: string
     suggested_weight_pct?: string | null
     rationale?: string
     conviction_tier?: string
@@ -377,9 +378,12 @@ function ActionStrip({
   onThemeClick?: (themeId: string) => void
   staging?: boolean
 }) {
-  const label = item.next_action_label || item.next_action?.label || item.actionability || 'Read full analysis'
-  const detail = item.next_action_detail || item.next_action?.detail || item.why_it_matters || ''
-  const ticks = item.ticker_recommendations || []
+  // v3 (B4): no CTA label when the desk has none — a fake default guides nothing
+  const label = item.next_action_label || item.next_action?.label || null
+  const detail = item.next_action_detail || item.next_action?.detail || ''
+  // v3 (B3): rich security cards carry THIS BRIEF's tickers only; book-context
+  // weights (SCHG trim etc.) live in the desk-level concentration banner
+  const ticks = (item.ticker_recommendations || []).filter(t => t.scope !== 'book')
   const hasAdvisory = ticks.length > 0 || !!item.sizing_guidance || !!item.investment_implications
   const related = item.related_themes
   const stageOk = item.quality_gate?.stage_eligible !== false && item.stage_payload
@@ -433,8 +437,10 @@ function ActionStrip({
           </div>
         )}
       </div>
-      <div style={{ fontSize: 15, fontWeight: 750, color: C.ink, letterSpacing: '-0.01em' }}>{label}</div>
-      {detail && (
+      {label && (
+        <div style={{ fontSize: 15, fontWeight: 750, color: C.ink, letterSpacing: '-0.01em' }}>{label}</div>
+      )}
+      {label && detail && (
         <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.55 }}>{detail}</div>
       )}
 
@@ -889,7 +895,7 @@ function ArticleCard({
             </span>
           )}
           {item.is_holdings && <Tag color={C.income}>In portfolio</Tag>}
-          {(item.ticker_recommendations?.length ?? 0) > 0 && (
+          {(item.ticker_recommendations?.filter(t => t.scope !== 'book').length ?? 0) > 0 && (
             <Tag color={C.macro}>Tickers & size</Tag>
           )}
           {item.portfolio_snapshot?.concentration?.book_level &&
@@ -987,27 +993,43 @@ function ArticleCard({
               {item.why_it_matters}
             </div>
           )}
-          {(item.ticker_recommendations?.length ?? 0) > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {item.ticker_recommendations!.slice(0, 4).map((t, i) => {
-                const rc = ROLE_COLOR[t.role || ''] || C.accent
-                return (
-                  <span key={`${t.symbol}-${i}`} style={{
-                    fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 800,
-                    color: C.accent, background: `${rc}14`, border: `1px solid ${rc}44`,
-                    borderRadius: 6, padding: '3px 8px',
-                  }}>
-                    {t.symbol}
-                    {t.suggested_weight_pct ? (
-                      <span style={{ color: C.muted, fontWeight: 600, marginLeft: 5 }}>
-                        {t.suggested_weight_pct}
-                      </span>
-                    ) : null}
-                  </span>
-                )
-              })}
-            </div>
-          )}
+          {(() => {
+            // v3 (B3): per-card strip carries THIS BRIEF's tickers only — book
+            // context (SCHG trim / concentration weights) lives in the desk-level
+            // concentration banner, not on every card
+            const briefTicks = (item.ticker_recommendations || []).filter(t => t.scope !== 'book')
+            if (briefTicks.length === 0) {
+              return (item.ticker_recommendations?.length ?? 0) > 0 ? (
+                <div style={{ fontSize: 11, color: C.soft, fontStyle: 'italic' }}>
+                  No ticker mapping — book context in the concentration banner
+                </div>
+              ) : null
+            }
+            return (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
+                <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: C.soft }}>
+                  This brief
+                </span>
+                {briefTicks.slice(0, 4).map((t, i) => {
+                  const rc = ROLE_COLOR[t.role || ''] || C.accent
+                  return (
+                    <span key={`${t.symbol}-${i}`} style={{
+                      fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 800,
+                      color: C.accent, background: `${rc}14`, border: `1px solid ${rc}44`,
+                      borderRadius: 6, padding: '3px 8px',
+                    }}>
+                      {t.symbol}
+                      {t.suggested_weight_pct ? (
+                        <span style={{ color: C.muted, fontWeight: 600, marginLeft: 5 }}>
+                          {t.suggested_weight_pct}
+                        </span>
+                      ) : null}
+                    </span>
+                  )
+                })}
+              </div>
+            )
+          })()}
         </>
       )}
 
@@ -1773,6 +1795,45 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                       onStage={handleStage} onThemeClick={handleThemeClick} staging={staging} />
                   ))}
                 </div>
+              )}
+
+              {/* Queued research — un-run topics are work, not intelligence (v3 B1) */}
+              {(data?.queued_research?.length ?? 0) > 0 && (
+                <section style={{ marginTop: 8 }}>
+                  <div style={{
+                    fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                    color: C.soft, marginBottom: 8,
+                  }}>
+                    Queued research
+                    <span style={{ fontWeight: 600, marginLeft: 8, letterSpacing: 0, textTransform: 'none' }}>
+                      {data.queued_research.length} topics awaiting a research run — not briefings
+                    </span>
+                  </div>
+                  <div style={{ background: C.card, border: `1px dashed ${C.lineStrong}`, borderRadius: 12, overflow: 'hidden' }}>
+                    {(data.queued_research as {
+                      id: string; title?: string; primary_category?: string
+                      freshness_label?: string; source_system?: string; needs_refresh?: boolean
+                    }[]).slice(0, 15).map(qi => (
+                      <div key={qi.id} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                        padding: '8px 12px', borderBottom: `1px solid ${C.line}`, fontSize: 12,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <span style={{ color: C.soft, whiteSpace: 'nowrap', fontSize: 10, fontWeight: 700 }}>QUEUED</span>
+                          <span style={{ color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {qi.title}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+                          <span style={{ color: CAT_TINT[qi.primary_category || ''] || C.soft, fontSize: 10.5 }}>
+                            {catMeta[qi.primary_category || '']?.label || qi.primary_category}
+                          </span>
+                          {qi.freshness_label && <span style={{ color: C.soft, fontSize: 10.5 }}>{qi.freshness_label}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               )}
             </>
           )}

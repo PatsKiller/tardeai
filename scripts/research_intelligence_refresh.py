@@ -130,6 +130,16 @@ def main() -> int:
             print("  top stale monitors:")
             for t in (report.get("stale_topics") or [])[:8]:
                 print(f"    - {t.get('topic_id')}: age={t.get('age_hours')}h max={t.get('max_age_hours')}h")
+        print(f"  queued research (stubs off the desk): {report.get('queued_research_count')}")
+        print("  next-action label distribution (cap 20% per label):")
+        for d in report.get("action_label_distribution") or []:
+            print(f"    {d['pct']:5.1f}%  n={d['count']:3}  {d['label']}")
+        over = report.get("action_labels_over_20pct") or []
+        if over:
+            print(f"  ⚠ {len(over)} label(s) over the 20% cap: "
+                  + ", ".join(f"{d['label']} ({d['pct']}%)" for d in over))
+        else:
+            print("  ✓ no action label exceeds 20% of briefs")
     return 0
 
 
