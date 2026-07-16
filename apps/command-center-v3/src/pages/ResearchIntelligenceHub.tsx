@@ -1392,6 +1392,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
             <div style={{ ...hubSubtitle(terminalUi), fontSize: 13.5, lineHeight: 1.55, color: C.muted, maxWidth: 580 }}>
               Company identity, news &amp; sentiment, analyst consensus, and portfolio-aware sizing —
               retirement, dividends, macro, and holdings research in one desk.
+              {' '}Content production runs overnight / after close only (not during RTH).
               {stats.matched != null && ` · ${stats.matched} in view`}
               {stats.universe != null && stats.universe !== stats.matched && ` · ${stats.universe} on desk`}
               {loading ? ' · loading…' : ''}

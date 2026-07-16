@@ -159,13 +159,40 @@ research_intelligence.build_feed → CC dashboard
 
 ---
 
-## 9. Suggested cron (optional)
+## 9. Cron — overnight / non-trading hours only (2026-07-16)
 
-```cron
-# Daily freshness report + soft archive (off-hours)
-15 5 * * * cd /path/to/repo && .venv/bin/python scripts/research_intelligence_refresh.py --archive >> logs/ri_refresh.log 2>&1
-# Weekly re-seed retirement topics (idempotent)
-30 4 * * 1 cd /path/to/repo && .venv/bin/python scripts/research_intelligence_retirement_seed.py --apply >> logs/ri_seed.log 2>&1
+**Policy:** Research Intelligence *content production* (ingest, synthesize, LLM narrative, archive)
+runs **only outside** regular session and premarket. Desk **reads** stay 24/7 via
+`GET /api/v2/research-intelligence` (DB + short TTL cache).
+
+| Window | Behavior |
+|--------|----------|
+| RTH 09:30–16:00 ET | No RI write jobs (gate skips) |
+| Premarket 04:00–09:30 | No RI write jobs |
+| After close / overnight / weekend | Full RI overnight batch + gated hourly synth |
+
+Install / refresh crontab block:
+
+```bash
+bash scripts/install_research_intelligence_overnight_cron.sh
 ```
 
-Wire into existing topic_ingestion cadence for `max_age_days`-driven gaps (already supported via `--gaps-only`).
+Scripts:
+
+- `scripts/non_trading_hours_gate.sh` — skip regular + premarket
+- `scripts/run_research_intelligence_overnight.sh` — archive, topic bridge, synth, narrative, ingest
+- `market_session.is_research_intelligence_window()` — Python helper
+
+```cron
+# Installed by install_research_intelligence_overnight_cron.sh
+30 20 * * 1-5  after-close full batch
+15  2 * * *    deep overnight full batch
+15  5 * * *    archive-only
+20  * * * *    hourly topic synth (gated — no-op mid-session)
+```
+
+Weekly re-seed retirement topics (idempotent, still fine pre-open early):
+
+```cron
+30 4 * * 1 cd /path/to/repo && .venv/bin/python scripts/research_intelligence_retirement_seed.py --apply >> logs/ri_seed.log 2>&1
+```

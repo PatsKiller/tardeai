@@ -185,6 +185,17 @@ def is_market_open(now=None):
     return current_market_session(now) == "regular"
 
 
+def is_research_intelligence_window(now=None):
+    """True when Research Intelligence *content production* may run.
+
+    Allowed: afterhours, closed, weekend, holiday.
+    Blocked: regular RTH (09:30–16:00 ET) and premarket (04:00–09:30 ET)
+    so overnight/after-close batches do not compete with the trading desk.
+    Desk *read* APIs remain available 24/7.
+    """
+    return current_market_session(now) in ("afterhours", "closed", "weekend", "holiday")
+
+
 def is_trading_day(now=None):
     """Return True if today is a regular trading day (not weekend, not holiday)."""
     session = current_market_session(now)
