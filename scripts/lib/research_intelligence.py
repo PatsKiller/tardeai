@@ -403,7 +403,7 @@ def _evidence_questions(ev: Any) -> list[str]:
 def _load_feedback_map(db_query) -> dict[str, dict]:
     try:
         rows = db_query("""
-            SELECT item_id, starred, vote, note, updated_at
+            SELECT item_id, starred, vote, note, hidden, updated_at
             FROM research_intelligence_feedback
         """) or []
     except Exception:
@@ -416,6 +416,7 @@ def _load_feedback_map(db_query) -> dict[str, dict]:
                 "starred": bool(r.get("starred")),
                 "vote": r.get("vote"),
                 "note": r.get("note"),
+                "hidden": bool(r.get("hidden")),
                 "feedback_updated_at": (
                     r.get("updated_at").isoformat()
                     if hasattr(r.get("updated_at"), "isoformat") else r.get("updated_at")
@@ -513,6 +514,8 @@ def _item_base(
         "data_gaps": gaps,
         "starred": bool(fb.get("starred")),
         "vote": fb.get("vote"),
+        "hidden": bool(fb.get("hidden")),
+        "feedback_updated_at": fb.get("feedback_updated_at"),
         "operator_note": fb.get("note"),
         # Article-style narrative (Seeking Alpha / The Information tone)
         "lede": narrative.get("lede"),
@@ -924,8 +927,11 @@ def build_feed(
         t = it.get("freshness_tier") or "aging"
         tier_counts_all[t] = tier_counts_all.get(t, 0) + 1
 
-    # Chip filters (lane / category / freshness / priority / star) applied AFTER counts
-    filtered = list(items)
+    # Chip filters (lane / category / freshness / priority / star) applied AFTER counts.
+    # Hidden items (v3.1 B2, operator curation) are excluded from every default
+    # view; the footer count lets the UI reveal them on demand.
+    hidden_items = [i for i in items if i.get("hidden")]
+    filtered = [i for i in items if not i.get("hidden")]
     if lane and lane in LANE_CATEGORIES:
         _lane_cats = LANE_CATEGORIES[lane]
         filtered = [i for i in filtered if i.get("primary_category") in _lane_cats]
@@ -972,10 +978,13 @@ def build_feed(
             )
         )) else 0
         starred_boost = 0 if (it.get("starred") and not stub) else 1
+        # v3.1 (B3): ▼ mirrors the star, opposite sign — demoted, never removed
+        downvoted = 1 if (it.get("vote") or 0) < 0 else 0
         q = -_quality(it)
         return (
             stub,
             starred_boost,
+            downvoted,
             noise,
             _focus_boost(it),
             q,
@@ -1099,12 +1108,18 @@ def build_feed(
             "lane_counts": lane_counts_full,
             "queued_research": queued_total,
             "queued_research_shown": len(queued),
+            "hidden_count": len(hidden_items),
             "quality_tiers": {
                 t: sum(1 for i in page if (i.get("quality_tier") or "") == t)
                 for t in ("A", "B", "C")
             },
         },
         "items": page,
+        "hidden_items": [
+            {"id": i.get("id"), "title": i.get("title"), "symbol": i.get("symbol"),
+             "primary_category": i.get("primary_category")}
+            for i in hidden_items[:30]
+        ],
         "queued_research": queued,
         "hermes_wire": wire,
         "priority_lanes": priority_lanes,
@@ -1319,22 +1334,29 @@ def upsert_feedback(
     source_id: str | None = None,
     categories: list[str] | None = None,
     symbol: str | None = None,
+    hidden: bool | None = None,
 ) -> dict[str, Any]:
-    """Insert or update operator feedback for an intelligence item."""
+    """Insert or update operator feedback for an intelligence item.
+
+    hidden (v3.1 B2) is operator curation only — the Hermes row is untouched;
+    the default feed simply excludes hidden items."""
     if not item_id:
         return {"ok": False, "error": "item_id required"}
     # Load existing
     existing = db_query(
-        "SELECT item_id, starred, vote, note FROM research_intelligence_feedback WHERE item_id=%s",
+        "SELECT item_id, starred, vote, note, hidden FROM research_intelligence_feedback WHERE item_id=%s",
         (item_id,),
         fetch="one",
     )
-    if existing is None and starred is None and vote is None and note is None:
+    if existing is None and starred is None and vote is None and note is None and hidden is None:
         return {"ok": False, "error": "nothing to update"}
 
     cur_star = bool(existing.get("starred")) if existing else False
     cur_vote = existing.get("vote") if existing else None
     cur_note = existing.get("note") if existing else None
+    cur_hidden = bool(existing.get("hidden")) if existing else False
+    if hidden is not None:
+        cur_hidden = bool(hidden)
     if starred is not None:
         cur_star = bool(starred)
     if vote is not None:
@@ -1347,12 +1369,13 @@ def upsert_feedback(
     db_query(
         """
         INSERT INTO research_intelligence_feedback
-            (item_id, source_system, source_table, source_id, starred, vote, note, categories, symbol, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            (item_id, source_system, source_table, source_id, starred, vote, note, categories, symbol, hidden, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
         ON CONFLICT (item_id) DO UPDATE SET
             starred = EXCLUDED.starred,
             vote = EXCLUDED.vote,
             note = EXCLUDED.note,
+            hidden = EXCLUDED.hidden,
             source_system = COALESCE(EXCLUDED.source_system, research_intelligence_feedback.source_system),
             source_table = COALESCE(EXCLUDED.source_table, research_intelligence_feedback.source_table),
             source_id = COALESCE(EXCLUDED.source_id, research_intelligence_feedback.source_id),
@@ -1362,12 +1385,13 @@ def upsert_feedback(
             updated_at = NOW()
         """,
         (item_id, source_system, source_table, str(source_id) if source_id is not None else None,
-         cur_star, cur_vote, cur_note, cats, symbol),
+         cur_star, cur_vote, cur_note, cats, symbol, cur_hidden),
         fetch=None,
     )
     return {
         "ok": True,
         "item_id": item_id,
+        "hidden": cur_hidden,
         "starred": cur_star,
         "vote": cur_vote,
         "note": cur_note,
@@ -1460,6 +1484,27 @@ def freshness_report(*, db_query) -> dict[str, Any]:
             })
     coverage_gaps.sort(key=lambda g: g["fresh_briefs"] - g["floor"])
 
+    # v3.1 (B3): operator-feedback tallies per category (7d) — "12 hidden this
+    # week" is a research-engine quality signal, not UI trivia
+    feedback_tallies: dict[str, dict] = {}
+    try:
+        rows = db_query("""
+            SELECT unnest(CASE WHEN categories = '{}' OR categories IS NULL
+                               THEN ARRAY['(uncategorized)'] ELSE categories END) AS cat,
+                   count(*) FILTER (WHERE starred)  AS starred,
+                   count(*) FILTER (WHERE hidden)   AS hidden,
+                   count(*) FILTER (WHERE vote < 0) AS downvoted
+            FROM research_intelligence_feedback
+            WHERE updated_at > now() - interval '7 days'
+            GROUP BY 1 ORDER BY 3 DESC, 4 DESC
+        """) or []
+        feedback_tallies = {
+            r["cat"]: {"starred": r["starred"], "hidden": r["hidden"], "downvoted": r["downvoted"]}
+            for r in rows
+        }
+    except Exception:
+        feedback_tallies = {}
+
     return {
         "ok": True,
         "as_of": datetime.now(timezone.utc).isoformat(),
@@ -1467,6 +1512,7 @@ def freshness_report(*, db_query) -> dict[str, Any]:
         "stale_topics": stale_topics[:30],
         "stale_topic_count": len(stale_topics),
         "coverage_gaps": coverage_gaps,
+        "feedback_tallies_7d": feedback_tallies,
         "queued_research_count": (feed.get("stats") or {}).get("queued_research"),
         "action_label_distribution": label_dist[:15],
         "action_labels_over_20pct": over_cap,

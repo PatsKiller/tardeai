@@ -18573,11 +18573,15 @@ def _research_intelligence_feedback_post(body=None):
         starred = b.get("starred")
         if starred is not None:
             starred = bool(starred)
+        hidden = b.get("hidden")
+        if hidden is not None:
+            hidden = bool(hidden)
         return upsert_feedback(
             db_query=_db_query,
             item_id=item_id,
             starred=starred,
             vote=vote,
+            hidden=hidden,
             note=b.get("note"),
             source_system=b.get("source_system"),
             source_table=b.get("source_table"),

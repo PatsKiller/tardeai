@@ -60,6 +60,8 @@ type Item = {
   data_gaps?: string[]
   starred?: boolean
   vote?: number | null
+  hidden?: boolean
+  feedback_updated_at?: string | null
   operator_note?: string | null
   status?: string
   investment_implications?: string
@@ -312,10 +314,12 @@ function Tag({ children, color }: { children: ReactNode; color?: string }) {
   )
 }
 
-function FreshnessDot({ tier, label }: { tier?: string; label?: string }) {
+function FreshnessDot({ tier, label, asOf }: { tier?: string; label?: string; asOf?: string | null }) {
   const t = TIER[tier || 'aging'] || TIER.aging
+  // v3.1 (C2): relative on screen, absolute ET on hover — every claim carries when it was true
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, fontWeight: 550 }}>
+    <span title={asOf ? `${fmtET(asOf)} ET` : undefined}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, fontWeight: 550 }}>
       <span style={{
         width: 6, height: 6, borderRadius: '50%', background: t.color, opacity: 0.85,
       }} />
@@ -869,6 +873,21 @@ function ArticleCard({
       symbol: item.symbol, categories: item.categories,
     })
   }
+  // v3.1 (B2): operator curation only — the Hermes row is untouched
+  const hideCard = async (e: MouseEvent) => {
+    e.stopPropagation()
+    onFeedback(item.id, { hidden: true })
+    await postFeedback({
+      item_id: item.id, hidden: true, source_system: item.source_system,
+      symbol: item.symbol, categories: item.categories,
+    })
+  }
+  const savedAgo = (() => {
+    if (!item.starred || !item.feedback_updated_at) return null
+    const h = (Date.now() - new Date(item.feedback_updated_at).getTime()) / 3_600_000
+    if (!Number.isFinite(h) || h < 0) return null
+    return h < 24 ? `saved ${Math.max(1, Math.round(h))}h ago` : `saved ${Math.round(h / 24)}d ago`
+  })()
 
   if (view === 'compact') {
     return (
@@ -908,7 +927,7 @@ function ArticleCard({
           )}
         </div>
         <Tag color={catColor}>{catMeta[primary]?.label || primary}</Tag>
-        <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} />
+        <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} asOf={item.created_at} />
       </div>
     )
   }
@@ -949,6 +968,12 @@ function ArticleCard({
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, alignItems: 'center' }}>
           <button type="button" onClick={toggleStar} style={iconBtn(item.starred ? C.star : C.soft)} title="Star">
             {item.starred ? '★' : '☆'}
+          </button>
+          {savedAgo && <span style={{ fontSize: 9.5, color: C.star }}>{savedAgo}</span>}
+          <button type="button" onClick={hideCard} className="ri-hide-btn"
+            title="Hide from desk — operator curation only; the research row is untouched"
+            style={{ ...iconBtn(C.soft), fontSize: 11, opacity: 0.35 }}>
+            ✕
           </button>
           {item.symbol && (
             <span style={{
@@ -1009,7 +1034,7 @@ function ArticleCard({
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} />
+          <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} asOf={item.created_at} />
           {item.reading_minutes != null && (
             <span style={{ fontSize: 11, color: C.soft }}>{item.reading_minutes} min read</span>
           )}
@@ -1028,7 +1053,7 @@ function ArticleCard({
             : 'Intelligence Desk'}
         </span>
         <span>·</span>
-        <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} />
+        <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} asOf={item.created_at} />
         {item.narrative_source === 'stored_llm' && (
           <>
             <span>·</span>
@@ -1517,8 +1542,9 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   }, [data?.stats, loading, hasActiveFilters, clearFilters])
 
   const displayItems: Item[] = useMemo(() => {
-    // Lane + category are applied server-side (lane= param); items ARE the lane view
-    return items
+    // Lane + category are applied server-side (lane= param); items ARE the lane
+    // view. Locally-hidden cards (B2) drop out immediately.
+    return items.filter(i => !i.hidden)
   }, [items])
 
   const featured = useMemo(() => {
@@ -1743,11 +1769,25 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                         fontSize: 9.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase',
                         color: sm.color, border: `1px solid ${sm.color}55`, borderRadius: 999, padding: '1px 8px',
                       }}>{sm.label}</span>
-                      {idea.expires_at && promotable && (
-                        <span style={{ fontSize: 9.5, color: C.soft }}>
-                          expires {String(idea.expires_at).slice(0, 10)}
+                      {idea.staged_at && (
+                        <span style={{ fontSize: 9.5, color: C.soft }} title={String(idea.staged_at)}>
+                          created {fmtET(idea.staged_at)} ET
                         </span>
                       )}
+                      {idea.expires_at && promotable && (() => {
+                        const daysLeft = Math.ceil((new Date(idea.expires_at).getTime() - Date.now()) / 86_400_000)
+                        const amber = Number.isFinite(daysLeft) && daysLeft <= 3
+                        return (
+                          <span style={{
+                            fontSize: 9.5, fontWeight: amber ? 800 : 500,
+                            color: amber ? '#f59e0b' : C.soft,
+                            border: amber ? '1px solid #f59e0b55' : 'none',
+                            borderRadius: 999, padding: amber ? '0 6px' : 0,
+                          }}>
+                            expires in {daysLeft}d
+                          </span>
+                        )
+                      })()}
                     </div>
                     <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
                       {idea.funding_source || (idea.require_funding_trim ? `Fund via ${idea.funding_symbol || 'SCHG'}` : 'Cash / rebalance')}
@@ -1834,10 +1874,17 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                 key={id}
                 label={lab}
                 color={col}
-                active={lane === id}
-                onClick={() => { setLane(id); if (id !== 'all') setCategory(null) }}
+                active={lane === id && !starredOnly}
+                onClick={() => { setLane(id); setStarredOnly(false); if (id !== 'all') setCategory(null) }}
               />
             ))}
+            {/* v3.1 (B1): the saved shelf — starred briefs as a first-class tab */}
+            <SoftChip
+              label={`★ Saved${starredOnly && stats.matched != null ? ` ${stats.matched}` : ''}`}
+              color={C.star}
+              active={starredOnly}
+              onClick={() => { setStarredOnly(v => !v); setLane('all') }}
+            />
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
             {(['list', 'cards', 'compact'] as const).map(v => (
@@ -2075,7 +2122,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                           {w.text}
                         </span>
                         <span style={{ color: C.soft, fontSize: 10.5, whiteSpace: 'nowrap' }}>
-                          {(w.created_at || '').slice(11, 16)}
+                          {fmtET(w.created_at)}
                         </span>
                       </Link>
                     ))}
@@ -2178,6 +2225,30 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                     })}
                   </div>
                 </section>
+              )}
+
+              {/* v3.1 (B2): hidden fold — curation states, never deletions */}
+              {(stats.hidden_count ?? 0) > 0 && (
+                <details style={{ marginTop: 6 }}>
+                  <summary style={{ fontSize: 11, color: C.soft, cursor: 'pointer' }}>
+                    {stats.hidden_count} hidden · show
+                  </summary>
+                  {(data?.hidden_items || []).map((hi: { id: string; title?: string; symbol?: string }) => (
+                    <div key={hi.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 10px', fontSize: 11.5, color: C.soft }}>
+                      {hi.symbol && <span style={{ fontFamily: 'var(--mono)', fontWeight: 800 }}>{hi.symbol}</span>}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{hi.title}</span>
+                      <button type="button"
+                        onClick={async () => {
+                          await postFeedback({ item_id: hi.id, hidden: false })
+                          setToast('Unhidden — back on the desk after refresh')
+                          refetch()
+                        }}
+                        style={{ fontSize: 10, fontWeight: 700, color: C.accent, border: `1px solid ${C.accent}44`, background: 'transparent', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
+                        Unhide
+                      </button>
+                    </div>
+                  ))}
+                </details>
               )}
             </>
           )}

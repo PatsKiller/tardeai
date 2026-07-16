@@ -134,6 +134,11 @@ def main() -> int:
         print("  next-action label distribution (cap 20% per label):")
         for d in report.get("action_label_distribution") or []:
             print(f"    {d['pct']:5.1f}%  n={d['count']:3}  {d['label']}")
+        tallies = report.get("feedback_tallies_7d") or {}
+        if tallies:
+            print("  operator feedback (7d) — starred / hidden / downvoted per category:")
+            for cat, d in list(tallies.items())[:10]:
+                print(f"    {cat:22} ★{d.get('starred', 0):3}  ✕{d.get('hidden', 0):3}  ▼{d.get('downvoted', 0):3}")
         over = report.get("action_labels_over_20pct") or []
         if over:
             print(f"  ⚠ {len(over)} label(s) over the 20% cap: "
