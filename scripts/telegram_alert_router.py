@@ -184,18 +184,27 @@ def classify_alert(message: str) -> str:
             return "P0_INTERRUPT"
         return "P2_DASHBOARD_ONLY"   # below floor → dashboard, not a phone buzz
 
-    # continuous_runner NEW GO carve-out — restores morning momentum-scalp Telegram (2026-07-09).
-    # Trade AI LIVE per-ticker GO was intentionally P2 (hourly recap), but that silenced the lane for
-    # a week: GO setups were detected and archived to Reports, never delivered. Critic BLOCK/DOWNGRADE
-    # stays dashboard-only; CONFIRM/absent still fires above the score floor.
+    # continuous_runner NEW GO carve-out — morning momentum-scalp Telegram (restored 2026-07-09,
+    # critic-suppress fixed 2026-07-16).
+    # Trade AI LIVE digests were P2 (hourly recap) which silenced the lane: GOs detected, never
+    # delivered. Critic DOWNGRADE/BLOCK used to force P2 too — that hid JTAI-class morning GOs
+    # entirely. Critic text stays in the message; operator must still see the GO.
     if rules.get("scalp_realtime_enabled", True) and _NEW_GO_SCALP_PATTERN.search(message):
-        if _CRITIC_BLOCK_PATTERN.search(message):
-            return "P2_DASHBOARD_ONLY"
         _sm = _NEW_GO_SCORE_PATTERN.search(message)
-        _score = int(_sm.group(1)) if _sm else 0
-        if _score >= int(rules.get("scalp_realtime_min_score", 25)):
-            return "P0_INTERRUPT"
-        return "P2_DASHBOARD_ONLY"
+        min_score = int(rules.get("scalp_realtime_min_score", 18))
+        if _sm is not None:
+            _score = int(_sm.group(1))
+            if _score < min_score:
+                return "P2_DASHBOARD_ONLY"
+        # score absent → still a continuous NEW_GO fire; deliver
+        cm = _CRITIC_BLOCK_PATTERN.search(message)
+        if cm:
+            verdict = (cm.group(1) or "").upper()
+            if verdict == "BLOCK" and not rules.get("scalp_send_on_critic_block", True):
+                return "P2_DASHBOARD_ONLY"
+            if verdict == "DOWNGRADE" and not rules.get("scalp_send_on_critic_downgrade", True):
+                return "P2_DASHBOARD_ONLY"
+        return "P0_INTERRUPT"
 
     # Check P2 system noise (health agent, retries, staleness, LLM complete)
     for pattern, _ in _P2_SYSTEM_PATTERNS:
@@ -241,12 +250,23 @@ def classify_alert(message: str) -> str:
     if _STOP_PATTERN.search(message):
         return "P1_DIGEST"
 
-    # Trade AI LIVE — dashboard only unless trade plan present
+    # Trade AI LIVE — dashboard only unless trade plan present, or a GO score-jump
+    # (NEW GO already returned above; SCORE_JUMP updates re-surface active GOs).
     if _GO_PATTERN.search(message):
         if re.search(r"Entry.*Stop.*Target|R:R\s+\d", message):
             return "P0_INTERRUPT"
         if re.search(r"MORNING COMMAND", message, re.IGNORECASE):
             return "P1_DIGEST"
+        # SCORE_JUMP / RVOL lines that explicitly tag decision GO (not WAIT/AVOID)
+        if rules.get("scalp_score_jump_telegram", True) and re.search(
+            r"(?:\+\d+pts|RVOL\s+\d|RVOL\s+\d+\.\d+x).*?\bGO\b|\bGO\b.*?(?:\+\d+pts|RVOL)",
+            message,
+            re.IGNORECASE | re.DOTALL,
+        ):
+            if not re.search(r"\b(?:WAIT|AVOID)\b", message, re.IGNORECASE) or re.search(
+                r"\(GO\)|\[\s*GO\s*\]", message, re.IGNORECASE
+            ):
+                return "P0_INTERRUPT"
         return "P2_DASHBOARD_ONLY"
 
     # Aegis/morning brief

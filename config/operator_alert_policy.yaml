@@ -35,7 +35,7 @@ levels:
       - lifecycle/catalog status
       - Hermes rank-only shifts
       - Health Agent unchanged score
-      - Trade AI LIVE per-ticker GO below scalp score floor or Critic BLOCK/DOWNGRADE
+      - Trade AI LIVE per-ticker GO below scalp score floor (Critic DOWNGRADE/BLOCK still Telegram when scalp_send_on_critic_* true)
       - escalation investigation start
       - Incubator promoter stats
   P3_LOG_ONLY:
@@ -53,8 +53,12 @@ rules:
   # Momentum-scalp setups bypass suppress_wait and fire in REAL TIME above a score floor (2026-07-08).
   # Restores live GO/WAIT scalp alerts (silent since ~07-01 when all setups downgraded to suppressed WAIT).
   # Set scalp_realtime_enabled=false to revert; raise scalp_realtime_min_score to reduce volume (score is /55).
+  # 2026-07-16: Critic DOWNGRADE/BLOCK no longer silences NEW GO — critic line stays in message.
   scalp_realtime_enabled: true
   scalp_realtime_min_score: 18
+  scalp_send_on_critic_downgrade: true
+  scalp_send_on_critic_block: true
+  scalp_score_jump_telegram: true
   suppress_raw_catalyst_dump: true
   suppress_generic_critique_summary: true
   suppress_iris_content_gap_telegram: true
