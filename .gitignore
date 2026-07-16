@@ -173,3 +173,5 @@ state/
 logs/drive_cleanup_*/
 # ephemeral run artifacts (Playwright captures etc.) — docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md
 artifacts/
+data/runtime/gain_guardian_charts/
+data/runtime/ri_snapshots/

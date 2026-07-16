@@ -147,6 +147,34 @@ def _lots_basis(ex, symbol: str, account: str) -> float | None:
     return sum(float(r["quantity"]) * float(r["cost_per_share"]) for r in rows) / qty
 
 
+def _stop_state(ex) -> tuple[set[str], set[str]]:
+    """(symbols with an ACTIVE stop on any account, symbols whose stop FILLED in
+    ~5 trading days). Read-only; fail-open — unknown never counts as unprotected."""
+    active: set[str] = set()
+    recent: set[str] = set()
+    try:
+        rows = ex("""SELECT DISTINCT upper(symbol) AS s FROM stop_lifecycle
+                     WHERE status IN ('working','open','awaiting_stop_condition','new')""",
+                  fetch="all") or []
+        active |= {r["s"] for r in rows}
+        for tbl in ("fidelity_monitored_stops", "synthetic_stops"):
+            try:
+                rows = ex(f"""SELECT DISTINCT upper(symbol) AS s FROM {tbl}
+                              WHERE COALESCE(status,'active') NOT IN
+                              ('canceled','cancelled','filled','removed','inactive','disarmed')""",
+                          fetch="all") or []
+                active |= {r["s"] for r in rows}
+            except Exception:
+                continue
+        rows = ex("""SELECT DISTINCT upper(symbol) AS s FROM stop_lifecycle
+                     WHERE status='filled' AND snapshot_at > now() - interval '7 days'""",
+                  fetch="all") or []
+        recent = {r["s"] for r in rows}
+    except Exception:
+        return set(), set()
+    return active, recent
+
+
 def _bars_with_volume(symbol: str, days: int = 400) -> list[dict]:
     """Daily OHLCV. Schwab transport first (has volume); protection-advisor
     _bars() as fallback (its yfinance/proxy paths may drop volume — RVOL is
@@ -249,28 +277,37 @@ def compute_metrics(bars: list[dict]) -> dict[str, Any] | None:
 
 
 def parabolic_score(m: dict, cfg: dict) -> float:
+    """Weighted 0–100 score. Missing components (e.g. RVOL on volume-less
+    fallback bars) RENORMALIZE the remaining weights instead of deflating the
+    score — never fabricate the missing input (amended-build delta 4)."""
     w = cfg["weights"]
     n = cfg["normalize"]
 
     def clamp(x: float) -> float:
         return max(0.0, min(1.0, x))
-    parts = 0.0
+
+    comps: list[tuple[float, float]] = []  # (weight, normalized value)
     if m.get("ext50_atr") is not None:
-        parts += w["ext50_atr"] * clamp(m["ext50_atr"] / n["ext50_atr_max"])
+        comps.append((w["ext50_atr"], clamp(m["ext50_atr"] / n["ext50_atr_max"])))
     if m.get("rsi14") is not None:
-        parts += w["rsi14"] * clamp((m["rsi14"] - n["rsi_lo"]) / (n["rsi_hi"] - n["rsi_lo"]))
+        comps.append((w["rsi14"], clamp((m["rsi14"] - n["rsi_lo"]) / (n["rsi_hi"] - n["rsi_lo"]))))
     if m.get("rvol20") is not None:
-        parts += w["rvol20"] * clamp(m["rvol20"] / n["rvol_max"])
+        comps.append((w["rvol20"], clamp(m["rvol20"] / n["rvol_max"])))
     if m.get("up_streak") is not None:
-        parts += w["up_streak"] * clamp(m["up_streak"] / n["up_streak_max"])
+        comps.append((w["up_streak"], clamp(m["up_streak"] / n["up_streak_max"])))
     if m.get("slope_accel") is not None:
-        parts += w["slope_accel"] * clamp((m["slope_accel"] - 1.0) / (n["slope_accel_max"] - 1.0))
-    return round(parts, 1)
+        comps.append((w["slope_accel"], clamp((m["slope_accel"] - 1.0) / (n["slope_accel_max"] - 1.0))))
+    total_w = sum(c[0] for c in comps)
+    if total_w <= 0:
+        return 0.0
+    full_w = sum(v for v in w.values() if isinstance(v, (int, float)))
+    return round(full_w * sum(wi * xi for wi, xi in comps) / total_w, 1)
 
 
 def classify(m: dict, *, score: float, weight_pct: float, open_gain_pct: float | None,
              giveback_frac: float | None, basis_known: bool, provisional_hwm: bool,
-             cfg: dict) -> dict[str, Any]:
+             cfg: dict, no_raise_stop: bool = False,
+             no_raise_stop_reason: str | None = None) -> dict[str, Any]:
     ext_cfg, gb, trim = cfg["extension"], cfg["giveback"], cfg["trim"]
     ext_state = "NORMAL"
     if score >= ext_cfg["climax_score"] and (m.get("rvol20") or 0) >= ext_cfg["climax_rvol_min"]:
@@ -299,6 +336,14 @@ def classify(m: dict, *, score: float, weight_pct: float, open_gain_pct: float |
         advisory, severity = "REVIEW", "normal"
 
     notes = []
+    # Amended-build delta: unstoppable funds (can't carry a broker stop) and
+    # names that JUST stopped out never get RAISE_STOP — TRIM/REVIEW only
+    if advisory and "RAISE_STOP" in advisory and no_raise_stop:
+        if advisory == "RAISE_STOP_ADVISORY":
+            advisory, severity = "REVIEW", "normal"
+        else:  # combined breach advisory keeps the trim leg
+            advisory = "TRIM_ADVISORY"
+        notes.append(no_raise_stop_reason or "RAISE_STOP suppressed")
     if advisory and provisional_hwm:
         # Provisional HWMs never escalate above REVIEW
         if advisory != "REVIEW":
@@ -341,6 +386,29 @@ def run(*, apply: bool, shadow: bool, symbols: set[str] | None, limit: int, json
 
     published = bool(cfg.get("published")) and not shadow
     holds = _holdings(cfg, symbols)
+
+    # Priority ordering (2026-07-16 morning brief): unprotected large positions
+    # with open gains first — the $355K no-stop cohort is the population this
+    # engine exists for. Then everything else by position value.
+    active_stops, recently_stopped = _stop_state(ex)
+
+    def _rough_gain_pct(h: dict) -> float:
+        try:
+            cb = float(h.get("holdings_cost_basis") or 0)
+            if cb > 0:
+                return 100.0 * (h["market_value"] - cb) / cb
+        except (TypeError, ValueError):
+            pass
+        return 0.0
+
+    def _prio(h: dict):
+        unprotected_large = (
+            h["symbol"] not in active_stops
+            and h["market_value"] >= 10_000
+            and _rough_gain_pct(h) >= 15.0
+        )
+        return (0 if unprotected_large else 1, -h["market_value"])
+    holds.sort(key=_prio)
     if limit:
         holds = holds[:limit]
 
@@ -374,13 +442,16 @@ def run(*, apply: bool, shadow: bool, symbols: set[str] | None, limit: int, json
         if not basis_known:
             basis_source = "basis_unknown"
 
-        # HWM: ratchet-only; seeded from bar history (lots have no dates — verified)
+        # HWM: ratchet-only; seeded from bar history (lots have no dates — verified).
+        # seeded_from='bars_<n>d' is honest about the anchor: "peak over trailing
+        # <window>", never "peak since purchase" (amended-build delta 1).
         prev = hwm_rows.get((sym, acct))
         if prev and prev.get("hwm_price"):
             hwm = float(prev["hwm_price"])
-            seeded_from = prev.get("seeded_from") or "52w_high"
+            seeded_from = prev.get("seeded_from") or f"bars_{min(int(m.get('bars_n') or 252), 252)}d"
         elif m.get("hwm_52w"):
-            hwm, seeded_from = float(m["hwm_52w"]), "52w_high"
+            hwm = float(m["hwm_52w"])
+            seeded_from = f"bars_{min(int(m.get('bars_n') or 252), 252)}d"
         else:
             hwm, seeded_from = float(m["price"]), "provisional"
         hwm = max(hwm, float(m["price"]))
@@ -392,12 +463,26 @@ def run(*, apply: bool, shadow: bool, symbols: set[str] | None, limit: int, json
         if basis_known and hwm > basis:
             giveback_frac = round((hwm - m["price"]) / (hwm - basis), 3)
 
+        if not m.get("volume_available"):
+            m["rvol_note"] = "n/a (no volume on fallback bars)"
         score = parabolic_score(m, cfg)
+        nrs_reason = None
+        try:
+            import holding_family as _hf
+            if _hf.is_unstoppable_fund(sym):
+                nrs_reason = "unstoppable fund (no broker stop possible) — TRIM/REVIEW only"
+        except Exception:
+            pass
+        if not nrs_reason and sym in recently_stopped:
+            nrs_reason = "stopped out within ~5 trading days — no stop advice on a just-stopped name"
         cls = classify(
             m, score=score, weight_pct=h["weight_pct"], open_gain_pct=open_gain_pct,
             giveback_frac=giveback_frac, basis_known=basis_known,
             provisional_hwm=(seeded_from == "provisional"), cfg=cfg,
+            no_raise_stop=bool(nrs_reason), no_raise_stop_reason=nrs_reason,
         )
+        if sym not in active_stops:
+            cls["notes"].append("no active stop on file — priority cohort")
         if cls.get("advisory") == "RAISE_STOP_ADVISORY" or "RAISE_STOP" in (cls.get("advisory") or ""):
             cite = latest_protection_rec(ex, sym)
             if cite:

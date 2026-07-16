@@ -88,8 +88,8 @@ def annotate_trim(*, symbol: str, trim_fraction: float, price: float,
             lot_note = f"{lots['dated']}/{lots['n']} lots carry acquisition dates — LT/ST split computable."
         else:
             lot_note = (
-                f"Lot term UNVERIFIED — {lots['n']} lot rows on file, none carry acquisition dates. "
-                f"Confirm LT/ST at the broker before trimming taxable shares; assume ST for planning."
+                f"holding-period term unverified — export dated Cost Basis from Schwab to confirm "
+                f"LT/ST before acting ({lots['n']} lot rows on file, none dated; assume ST for planning)."
             )
         lines.append(f"Lot term ({trim_shares:.1f} sh of the taxable {shares_t:.1f}): {lot_note}")
 

@@ -36,3 +36,14 @@ Phase 191's giveback ladder + the protection advisor's technicals, ported to the
 2. `python scripts/gain_guardian_shadow_report.py --days 10` — tune `config/gain_guardian_thresholds.json` if the would-have-fired mix looks noisy.
 3. `python scripts/holdings_gain_guardian.py --promote` — publication on (RI cards, chart, one digest/run, morning-brief section).
 4. Outcomes accrue in `exit_advisory_outcomes`; threshold changes should cite verdict rates.
+
+## Amended-build delta pass (2026-07-16 PM, after morning stop storm)
+- **Priority ordering:** candidates evaluate unprotected-large-gain first (no row in stop_lifecycle working/open/awaiting + fidelity_monitored_stops + synthetic_stops, value ≥$10K, rough gain ≥15%), then by position value. NOTE: protection check is SYMBOL-level (any account, any table); per-account share coverage stays the stop supervisor's domain — rows carry "no active stop on file — priority cohort" only when no stop object exists anywhere.
+- **RAISE_STOP exclusions:** `is_unstoppable_fund` names (TRIM/REVIEW only) and names whose stop FILLED within ~5 trading days (stop_lifecycle.snapshot_at) never get stop advice; breach advisories keep the trim leg.
+- **RVOL renormalization:** missing components renormalize remaining weights (never fabricate volume); `rvol_note: 'n/a (no volume on fallback bars)'` recorded.
+- **HWM naming:** `seeded_from='bars_252d'` (existing rows migrated); copy must read "peak over trailing 12m", never "peak since purchase".
+- **Tax line (exact):** "holding-period term unverified — export dated Cost Basis from Schwab to confirm LT/ST before acting."
+- Charts → `data/runtime/gain_guardian_charts/` (gitignored). Reconciler cron moved to Sunday 09:00.
+
+## OPERATOR ACTION (unlocks v1.1)
+Export dated Cost Basis (Realized + Unrealized) CSVs from Schwab for ALL FOUR accounts → `imports/schwab_gainloss/` → rerun `ingest_schwab_gainloss.py --apply`. The current lots table is stale (2026-06-10), missing both rollover IRAs and Fidelity, and 100% date-less — this export unlocks LT/ST verification and purchase-anchored HWMs.

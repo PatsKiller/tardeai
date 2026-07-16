@@ -16,7 +16,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-CHART_DIR = ROOT / "data" / "runtime" / "exit_charts"
+CHART_DIR = ROOT / "data" / "runtime" / "gain_guardian_charts"
 
 
 def render_chart(symbol: str, bars: list[dict], *, hwm: float | None = None,
