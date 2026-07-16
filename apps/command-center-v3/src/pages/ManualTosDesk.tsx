@@ -183,7 +183,7 @@ export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
   const { data: proposalsR } = useApi<any>('/api/v2/paper-proposals', 60_000)
   const { data: watchlistR } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
-  const { data: schwabR } = useApi<any>('/api/v2/schwab/accounts-live', 35_000)
+  const { data: schwabR } = useApi<any>('/api/v2/schwab/accounts-live', 120_000)
   const { data: wlSummary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
   const { data: execState } = useApi<any>('/api/v2/execution/current-state', 120_000)
   const { data: automationR } = useApi<any>('/api/v2/entry-desk/automation', 120_000)

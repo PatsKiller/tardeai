@@ -25,7 +25,7 @@ const STATUS_C: Record<string, string> = {
 const SUBTABS = ['Positions', 'Working Orders', 'Order History'] as const
 
 export default function SchwabAccountsMonitor({ onEditDraft }: { onEditDraft: (intent: any) => void }) {
-  const { data, refetch, loading } = useApi<any>('/api/v2/schwab/accounts-live', 35_000)
+  const { data, refetch, loading } = useApi<any>('/api/v2/schwab/accounts-live', 120_000)
   const [sub, setSub] = useState<typeof SUBTABS[number]>('Positions')
   const [acct, setAcct] = useState<string>('all')
   const [snapOpen, setSnapOpen] = useState(false)

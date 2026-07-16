@@ -18349,6 +18349,28 @@ _RI_FEED_CACHE: dict = {"key": None, "ts": 0.0, "data": None}
 _RI_FEED_TTL_SEC = float(__import__("os").environ.get("RI_FEED_CACHE_TTL_SEC", "60"))
 _RI_FEED_LOCK = __import__("threading").Lock()
 
+# RI v3.1 snapshot loader — parsed-file cache keyed on mtime, so serving a
+# snapshot costs one stat() + dict copy, not a JSON parse per request.
+_RI_SNAP_CACHE: dict = {}
+
+
+def _ri_snapshot_load(lane: str):
+    import json as _j
+    path = PROJECT_ROOT / "data" / "runtime" / "ri_snapshots" / f"{lane}.json"
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    ent = _RI_SNAP_CACHE.get(lane)
+    if ent and ent[0] == mtime:
+        return ent[1]
+    try:
+        snap = _j.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    _RI_SNAP_CACHE[lane] = (mtime, snap)
+    return snap
+
 
 def _research_intelligence_feed(query=None):
     """GET /api/v2/research-intelligence — taxonomy-tagged Research Intelligence cockpit (v2).
@@ -18387,6 +18409,35 @@ def _research_intelligence_feed(query=None):
         include_archived = None
         if inc_arch is not None and str(inc_arch) != "":
             include_archived = str(inc_arch).lower() in ("1", "true", "yes")
+        # ── RI v3.1 (WS-A): snapshot-first ─────────────────────────────
+        # The default desk views (any lane, no chip filters) are served from
+        # materialized files with an ETag — request-time build_feed is the
+        # exception (rare filter combos), never the default path.
+        _lane_q = str(_one("lane") or "").strip()
+        _snapshot_servable = (
+            not any(str(_one(k) or "").strip() for k in
+                    ("category", "q", "priority", "symbol", "freshness", "sentiment", "source_system"))
+            and not hold_only and not _flag("starred_only")
+            and not (include_archived is True)
+            and primary_only
+            and _lane_q in ("", "retirement", "dividends", "macro_sector")
+        )
+        if _snapshot_servable:
+            snap = _ri_snapshot_load(_lane_q or "top")
+            if snap is not None:
+                feed = dict(snap.get("feed") or {})
+                items = list(feed.get("items") or [])
+                if lim < len(items):
+                    feed["items"] = items[:lim]
+                feed["meta"] = {
+                    "served_from": "snapshot",
+                    "generated_at": snap.get("generated_at"),
+                    "build_ms": snap.get("build_ms"),
+                }
+                feed["from_cache"] = True
+                feed["__etag__"] = f'W/"ri-{snap.get("lane")}-{snap.get("sha")}"'
+                return feed
+
         cache_key = (
             str(_one("category") or ""),
             str(_one("q") or ""),
@@ -18453,6 +18504,8 @@ def _research_intelligence_feed(query=None):
             cleaned = _clean(feed)
             if isinstance(cleaned, dict):
                 cleaned["from_cache"] = False
+                cleaned["meta"] = {"served_from": "live",
+                                   "generated_at": cleaned.get("as_of")}
             _RI_FEED_CACHE["key"] = cache_key
             _RI_FEED_CACHE["ts"] = _time.time()
             _RI_FEED_CACHE["data"] = cleaned
@@ -18625,6 +18678,22 @@ def _research_intelligence_stage_promote(body=None):
         except Exception:
             pass
         return {"ok": True, "idea": upd.get("idea"), "target": target, **extra}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _research_intelligence_rebuild(body=None):
+    """POST /api/v2/research-intelligence/rebuild — operator-triggered snapshot
+    rebuild (compute over existing rows — RTH-allowed; new research still
+    queues to the after-close drain). Flock-guarded, one concurrent."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from research_intelligence_materialize import materialize
+        res = materialize(log=lambda *_: None)
+        if res.get("ok"):
+            _RI_SNAP_CACHE.clear()
+        return res
     except Exception as e:
         return {"ok": False, "error": str(e)[:240]}
 
@@ -33328,6 +33397,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             result = _research_intelligence_feedback_post(body or {})
             code = 200 if result.get("ok") else 400
             return code, result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:240]}
+    if method == "POST" and base_path == "/api/v2/research-intelligence/rebuild":
+        try:
+            result = _research_intelligence_rebuild(body or {})
+            return (200 if result.get("ok") else 409), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:240]}
     if method == "POST" and base_path == "/api/v2/research-intelligence/run-topic":

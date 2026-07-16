@@ -76,18 +76,23 @@ function ReconnectingBar() {
   }, [degraded])
 
   if (!degraded) return null
+  // v3.1 (WS-A): quiet chip, not a red alarm — the data on screen is good, only
+  // the refresh is degraded. Stale-with-honest-timestamp is professional;
+  // a flashing failure banner over valid data is not.
   return (
-    <div style={{ background: '#f59e0b', color: '#1a1207', fontSize: 11, fontWeight: 800, textAlign: 'center', padding: '3px 8px', letterSpacing: .3 }}>
-      ⟳ Reconnecting to backend… showing last-known data{failing > 1 ? ` · ${failing} feeds` : ''}
+    <div style={{
+      background: 'rgba(245,158,11,0.10)', color: '#f5c76a', borderBottom: '1px solid rgba(245,158,11,0.28)',
+      fontSize: 10.5, fontWeight: 650, textAlign: 'center', padding: '2px 8px', letterSpacing: .2,
+    }}>
+      showing last-good data · live refresh paused (server busy{failing > 1 ? ` · ${failing} feeds` : ''}) · retrying with backoff
       {' · '}
       <button
         type="button"
         onClick={() => { void retryApiConnection() }}
-        style={{ background: 'transparent', border: 'none', color: '#1a1207', fontWeight: 800, fontSize: 11, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+        style={{ background: 'transparent', border: 'none', color: '#f5c76a', fontWeight: 750, fontSize: 10.5, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
       >
         retry now
       </button>
-      <span style={{ fontWeight: 500, opacity: .85 }}> (serve at {typeof window !== 'undefined' ? window.location.origin : 'localhost:7777'})</span>
     </div>
   )
 }

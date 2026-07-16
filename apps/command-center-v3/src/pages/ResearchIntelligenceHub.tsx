@@ -1233,6 +1233,20 @@ type StagedIdea = {
   require_funding_trim?: boolean
 }
 
+// v3.1 (C5): ONE Eastern-time formatter for every timestamp the desk renders.
+export function fmtET(iso: string | null | undefined, withDate = true): string {
+  if (!iso) return '—'
+  try {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return '—'
+    const time = d.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
+    if (!withDate) return time
+    const day = d.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' })
+    const today = new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' })
+    return day === today ? time : `${day}, ${time}`
+  } catch { return '—' }
+}
+
 const STAGED_STATUS_META: Record<string, { label: string; color: string }> = {
   staged: { label: 'Staged', color: '#34d399' },
   watchlisted: { label: 'Watchlisted', color: '#60a5fa' },
@@ -1272,6 +1286,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   const [toast, setToast] = useState<string | null>(null)
   const [staging, setStaging] = useState(false)
   const [queuedTopics, setQueuedTopics] = useState<Record<string, boolean>>({})
+  const [rebuilding, setRebuilding] = useState(false)
 
   // v3 (D1/D2/D4): enqueue a topic or coverage-gap category for the after-close
   // research drain — nothing runs during RTH, the cron drains at 16:45/02:40
@@ -1313,12 +1328,12 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
 
   const { data, loading, refreshing, error, refetch } = useApi<any>(
     `/api/v2/research-intelligence?${qs}`,
-    90_000,
+    300_000,
   )
-  const { data: freshData, refetch: refetchFresh } = useApi<any>('/api/v2/research-intelligence/freshness', 120_000)
+  const { data: freshData, refetch: refetchFresh } = useApi<any>('/api/v2/research-intelligence/freshness', 300_000)
   // v3 (D5): Discovery Inbox TOPIC_CANDIDATEs — proposals only, operator decides
   const { data: proposedData, refetch: refetchProposed } = useApi<any>(
-    '/api/v2/hermes/discovery-inbox?type=TOPIC_CANDIDATE&status=DISCOVERED&limit=6', 300_000,
+    '/api/v2/hermes/discovery-inbox?type=TOPIC_CANDIDATE&status=DISCOVERED&limit=6', 600_000,
   )
 
   // v3 (D5): route a proposed topic through the GOVERNED discovery pathways —
@@ -1340,7 +1355,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   }, [refetchProposed])
   const { data: stagedData, refetch: refetchStaged } = useApi<any>(
     '/api/v2/research-intelligence/staged?limit=40',
-    60_000,
+    300_000,
   )
 
   // Visible feedback when operator clicks Refresh desk (refetch alone looked like a no-op)
@@ -1591,6 +1606,13 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               {refreshing ? ' · refreshing…' : ''}
               {data?.version ? ` · v${data.version}` : ''}
             </div>
+            {data?.meta?.generated_at && (
+              <div style={{ fontSize: 11, color: C.soft, marginTop: 4, fontFamily: 'var(--mono)' }}>
+                Desk built {fmtET(data.meta.generated_at)} ET
+                {data.meta.served_from === 'snapshot' ? ' · snapshot' : ' · live build'}
+                {' · next build 16:45 / 02:40 ET'}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
@@ -1610,6 +1632,25 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                 }}
               >
                 {refreshing ? '↻ Refreshing…' : '↻ Refresh desk'}
+              </button>
+              <button
+                type="button"
+                disabled={rebuilding}
+                onClick={async () => {
+                  setRebuilding(true)
+                  setToast('Rebuilding desk snapshots (~30s)…')
+                  try {
+                    const raw = await fetch('/api/v2/research-intelligence/rebuild', { method: 'POST' }).then(x => x.json())
+                    const res = raw?.data && typeof raw.data === 'object' ? raw.data : raw
+                    setToast(res?.ok ? 'Desk rebuilt — refreshing' : `Rebuild failed: ${res?.error || 'busy'}`)
+                    if (res?.ok) refetch()
+                  } catch { setToast('Rebuild failed — server unreachable') }
+                  setRebuilding(false)
+                }}
+                title="Recompute the desk snapshots from current rows (compute only — new research still queues to after close)"
+                style={{ ...refreshBtn, opacity: rebuilding ? 0.7 : 1, cursor: rebuilding ? 'wait' : 'pointer' }}
+              >
+                {rebuilding ? '⟳ Rebuilding…' : '⟳ Rebuild desk (~30s)'}
               </button>
               <button
                 type="button"

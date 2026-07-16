@@ -43,6 +43,17 @@ export function useConnectionHealth() {
 
 export type UseApiOptions = { enabled?: boolean }
 
+// v3.1 (WS-A): manual ETag revalidation — server answers 304 before any JSON
+// serialize/gzip, which is where the CPU actually went. Keyed by path.
+const _etags = new Map<string, string>()
+
+// Exponential backoff with jitter: 1s → 2s → 4s … cap 30s. A retry hammer over
+// a busy single-process server just keeps it busy.
+function backoffMs(attempt: number): number {
+  const base = Math.min(30_000, 1_000 * Math.pow(2, attempt))
+  return Math.round(base * (0.5 + Math.random() * 0.5))
+}
+
 export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOptions) {
   const enabled = options?.enabled !== false
   const [data, setData] = useState<T | null>(null)
@@ -102,8 +113,18 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         // cache-bust so "Refresh" and polls never serve a stale browser cache
         const sep = path.includes('?') ? '&' : '?'
         const url = `${path}${sep}_=${Date.now()}`
-        const r = await fetch(url, { signal: controller.signal, cache: 'no-store' })
+        const etag = _etags.get(path)
+        const headers: Record<string, string> = etag ? { 'If-None-Match': etag } : {}
+        const r = await fetch(url, { signal: controller.signal, cache: 'no-store', headers })
         clearTimeout(timer)
+        if (r.status === 304) {
+          // Snapshot unchanged — last data is CURRENT, not stale
+          setError(null)
+          setStale(false)
+          clearFailing()
+          retries = 0
+          return
+        }
         if (r.status === 503) {
           // server_busy semaphore — keep last data, soft-retry with backoff (not a hard outage)
           let retryAfter = 2
@@ -117,11 +138,14 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           if (retries < 10) {
             retries++
             clearTimeout(retryRef.current)
-            retryRef.current = setTimeout(load, Math.min(retryAfter * 1000 * retries, 12_000))
+            // exponential + jitter, floored at the server's retry_after hint
+            retryRef.current = setTimeout(load, Math.max(retryAfter * 1000, backoffMs(retries)))
           }
           return
         }
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        const et = r.headers.get('ETag')
+        if (et) _etags.set(path, et)
         const json = await r.json()
         if (cancelled) return
         const next = json.ok !== undefined ? (json.data ?? json) : json
@@ -145,10 +169,10 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         if (retries < 8) {
           retries++
           clearTimeout(retryRef.current)
-          retryRef.current = setTimeout(load, Math.min(1500 * retries, 8000))
+          retryRef.current = setTimeout(load, backoffMs(retries))
         } else if (!slowRetryRef) {
-          // Keep probing while degraded instead of waiting for the full poll interval (60–120s).
-          slowRetryRef = setTimeout(() => { slowRetryRef = undefined; retries = 0; load() }, 15_000)
+          // Keep probing while degraded instead of waiting for the full poll interval — but calmly.
+          slowRetryRef = setTimeout(() => { slowRetryRef = undefined; retries = 0; load() }, 30_000)
         }
       } finally {
         if (!cancelled) {

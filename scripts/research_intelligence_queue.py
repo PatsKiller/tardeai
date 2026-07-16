@@ -182,6 +182,13 @@ def drain(cap: int = DRAIN_CAP_DEFAULT) -> dict:
         except Exception:
             pass
 
+    # v3.1 (WS-A): fresh content → fresh snapshots, still outside the request path
+    try:
+        from research_intelligence_materialize import materialize
+        materialize()
+    except Exception:
+        pass
+
     return {"ok": True, "processed": len(done) + len(failed), "done": done,
             "failed": failed, "still_queued": remaining.get("n")}
 

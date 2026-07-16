@@ -583,6 +583,27 @@ def json_response(handler, status: int, data: dict) -> None:
     # Phase 203 fix: never emit bare NaN/Infinity — Python json allows them by default but they are
     # INVALID JSON and browser JSON.parse() rejects the whole payload (was blanking the v3 scanner).
     # Fast path uses allow_nan=False (raises on NaN); only sanitize recursively when NaN is present.
+    # RI v3.1 (WS-A): routes may attach "__etag__" (top level or inside data["data"]). If the client
+    # sent a matching If-None-Match we answer 304 BEFORE any json.dumps/gzip — that serialize+compress
+    # of MB-scale payloads on every poll was the real CPU cost behind the server_busy storms.
+    etag = None
+    if isinstance(data, dict):
+        if "__etag__" in data:
+            etag = data.pop("__etag__")
+        elif isinstance(data.get("data"), dict) and "__etag__" in data["data"]:
+            etag = data["data"].pop("__etag__")
+    if etag and status == 200:
+        try:
+            inm = (handler.headers.get("If-None-Match") or "") if getattr(handler, "headers", None) else ""
+        except Exception:
+            inm = ""
+        if inm.strip() == etag:
+            handler.send_response(304)
+            handler.send_header("ETag", etag)
+            handler.send_header("Access-Control-Allow-Origin", "*")
+            handler.send_header("Connection", "close")
+            handler.end_headers()
+            return
     try:
         body = json.dumps(data, default=str, allow_nan=False).encode("utf-8")
     except ValueError:
@@ -602,6 +623,8 @@ def json_response(handler, status: int, data: dict) -> None:
         use_gzip = False
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json")
+    if etag and status == 200:
+        handler.send_header("ETag", etag)
     if use_gzip:
         handler.send_header("Content-Encoding", "gzip")
         handler.send_header("Vary", "Accept-Encoding")

@@ -12,10 +12,10 @@ interface Props {
 export default function MetricStrip({ onDrill }: Props) {
   const navigate = useNavigate()
 
-  const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
+  const { data: overview } = useApi<any>('/api/v2/overview', 120_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
-  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 60_000)
+  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 120_000)
   const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
   const { data: health } = useApi<any>('/api/v2/health', 120_000)
   const healthWarn = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').length
