@@ -90,6 +90,7 @@ _TYPE_TO_CAT = {
     "protection_advisory": "risk_regime",
     "stop_curation": "risk_regime",
     "stop_health": "risk_regime",
+    "exit_intelligence": "risk_regime",
     "ticker_thesis_challenge": "company_ticker",
     "options_desk": "company_ticker",
     "youtube_discovery": "academic_pro",

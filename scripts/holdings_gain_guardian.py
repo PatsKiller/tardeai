@@ -501,9 +501,22 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--promote", action="store_true", help="Operator: enable publication after shadow window")
+    ap.add_argument("--test-render", metavar="SYMBOL",
+                    help="Render one chart PNG + print the digest text — ZERO writes/sends")
     args = ap.parse_args()
     if args.promote:
         return promote()
+    if args.test_render:
+        from lib.gain_guardian_publish import render_chart, digest_text
+        sym = args.test_render.upper()
+        path = render_chart(sym, _bars_with_volume(sym, days=200))
+        print(f"chart: {path or 'RENDER FAILED'}")
+        print(digest_text([{
+            "symbol": sym, "extension_state": "CLIMAX_RISK", "giveback_state": None,
+            "parabolic_score": 81.0, "open_gain_pct": 42.0, "giveback_frac": 0.18,
+            "advisory": "TRIM_ADVISORY", "severity": "high",
+        }]))
+        return 0
     syms = {s.strip().upper() for s in args.symbols.split(",") if s.strip()} or None
     return run(apply=bool(args.apply and not args.dry_run), shadow=args.shadow,
                symbols=syms, limit=args.limit, json_out=args.json)

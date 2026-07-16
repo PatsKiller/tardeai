@@ -88,6 +88,8 @@
 | Document | Purpose | Status |
 |----------|---------|--------|
 | `docs/architecture/RESEARCH_INTELLIGENCE_V3.md` | **RI v3.0 — Decision Desk**: one-corpus counts, real lanes, stub demotion, brief-scoped tickers, Hermes joins, run-research queue, staged-idea lifecycle | Active (2026-07-16) |
+| `docs/architecture/GAIN_GUARDIAN.md` | **Gain Guardian** — live-book exit intelligence: HWMs, parabolic/giveback states, tax gate, outcomes; SHADOW until `--promote` | Active (2026-07-16) |
+| `docs/_findings/gain_guardian_diagnosis_2026-07-16.md` | Gain Guardian Phase 0 diagnosis — lots dateless, helper import map, cron slots | Active (2026-07-16) |
 | `docs/_findings/ri_v3_diagnosis_2026-07-16.md` | RI v3 Phase 0 diagnosis — live mechanisms vs assumptions, flag-backs | Active (2026-07-16) |
 | `scripts/research_intelligence_queue.py` | Run-research queue (after-close drain of topic_ingestion, cron 16:45/02:40) | Active (2026-07-16) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_6_MATURITY.md` | **RI v2.6** — transparent conviction, data gates, analyst/options, action bar | Superseded by v3 (2026-07-16) |

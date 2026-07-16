@@ -177,6 +177,38 @@ def _get_watch_directives_brief() -> list:
     return out
 
 
+def _get_gain_guardian_brief() -> list:
+    """GAIN GUARDIAN section — active CLIMAX_RISK / GIVEBACK states from the
+    latest holding_exit_metrics run only. Advisory; empty list when quiet or
+    when the table doesn't exist yet (fail-open)."""
+    try:
+        rows = _db_query(
+            """SELECT symbol, extension_state, giveback_state, advisory, severity,
+                      parabolic_score, open_gain_pct, giveback_frac
+               FROM holding_exit_metrics
+               WHERE run_at = (SELECT max(run_at) FROM holding_exit_metrics)
+                 AND (extension_state = 'CLIMAX_RISK' OR giveback_state IS NOT NULL)
+               ORDER BY (severity = 'urgent') DESC, parabolic_score DESC
+               LIMIT 6""",
+        ) or []
+    except Exception:
+        return []
+    if not rows:
+        return []
+    lines = ["*GAIN GUARDIAN* (advisory)"]
+    for r in rows:
+        state = r.get("extension_state") or ""
+        if r.get("giveback_state"):
+            state = f"{state}/{r['giveback_state']}" if state != "NORMAL" else r["giveback_state"]
+        lines.append(
+            f"  • {r['symbol']}: {state} score={r.get('parabolic_score')} "
+            f"gain={r.get('open_gain_pct')}% → {r.get('advisory') or 'review'}"
+            + (" !!!" if r.get("severity") == "urgent" else "")
+        )
+    lines.append("")
+    return lines
+
+
 def send_telegram_brief(brief: dict, summary: str) -> bool:
     """Send compact morning brief to Telegram."""
     sections = brief.get("sections", [])
@@ -241,6 +273,11 @@ def send_telegram_brief(brief: dict, summary: str) -> bool:
     if wd_lines:
         lines.extend(wd_lines)
         lines.append("")
+
+    # Gain Guardian exit-intelligence states (latest run only, advisory)
+    gg_lines = _get_gain_guardian_brief()
+    if gg_lines:
+        lines.extend(gg_lines)
 
     # Iris taxonomy section — only if pending proposals or low coverage
     try:
