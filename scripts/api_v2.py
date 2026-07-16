@@ -18344,8 +18344,10 @@ def _portfolio_cadence_status():
 
 
 # Short TTL cache for RI feed — concurrent desk polls were each rebuilding a multi-MB feed.
+# Single-flight lock: only one thread builds; others wait and reuse (prevents server_busy storms).
 _RI_FEED_CACHE: dict = {"key": None, "ts": 0.0, "data": None}
-_RI_FEED_TTL_SEC = float(__import__("os").environ.get("RI_FEED_CACHE_TTL_SEC", "45"))
+_RI_FEED_TTL_SEC = float(__import__("os").environ.get("RI_FEED_CACHE_TTL_SEC", "60"))
+_RI_FEED_LOCK = __import__("threading").Lock()
 
 
 def _research_intelligence_feed(query=None):
@@ -18380,7 +18382,7 @@ def _research_intelligence_feed(query=None):
         except (TypeError, ValueError):
             lim = 80
         # Cap list payload — full desk was multi-MB and timed out over Tailscale under load
-        lim = max(10, min(lim, 60))
+        lim = max(10, min(lim, 50))
         inc_arch = _one("include_archived")
         include_archived = None
         if inc_arch is not None and str(inc_arch) != "":
@@ -18399,46 +18401,60 @@ def _research_intelligence_feed(query=None):
             str(_one("source_system") or ""),
             str(primary_only),
         )
+
+        def _cached_hit(now: float):
+            if (
+                _RI_FEED_CACHE.get("key") == cache_key
+                and _RI_FEED_CACHE.get("data") is not None
+                and (now - float(_RI_FEED_CACHE.get("ts") or 0)) < _RI_FEED_TTL_SEC
+            ):
+                out = _RI_FEED_CACHE["data"]
+                if isinstance(out, dict):
+                    out = dict(out)
+                    out["cache_age_sec"] = round(now - float(_RI_FEED_CACHE.get("ts") or now))
+                    out["from_cache"] = True
+                return out
+            return None
+
         now = _time.time()
-        if (
-            _RI_FEED_CACHE.get("key") == cache_key
-            and _RI_FEED_CACHE.get("data") is not None
-            and (now - float(_RI_FEED_CACHE.get("ts") or 0)) < _RI_FEED_TTL_SEC
-        ):
-            out = _RI_FEED_CACHE["data"]
-            if isinstance(out, dict):
-                out = dict(out)
-                out["cache_age_sec"] = round(now - float(_RI_FEED_CACHE.get("ts") or now))
-                out["from_cache"] = True
-            return out
-        feed = build_feed(
-            db_query=_db_query,
-            category=_one("category") or None,
-            q=_one("q") or None,
-            priority=_one("priority") or None,
-            symbol=_one("symbol") or None,
-            limit=lim,
-            holdings_only=hold_only,
-            include_archived=include_archived,
-            freshness=_one("freshness") or None,
-            starred_only=_flag("starred_only"),
-            sentiment=_one("sentiment") or None,
-            source_system=_one("source_system") or None,
-            primary_only=primary_only,
-        )
-        def _clean(obj):
-            if isinstance(obj, dict):
-                return {k: _clean(v) for k, v in obj.items()}
-            if isinstance(obj, list):
-                return [_clean(x) for x in obj]
-            return _json_clean(obj)
-        cleaned = _clean(feed)
-        if isinstance(cleaned, dict):
-            cleaned["from_cache"] = False
-        _RI_FEED_CACHE["key"] = cache_key
-        _RI_FEED_CACHE["ts"] = now
-        _RI_FEED_CACHE["data"] = cleaned
-        return cleaned
+        hit = _cached_hit(now)
+        if hit is not None:
+            return hit
+
+        # Single-flight build — 24 parallel build_feed() was burning all request slots
+        with _RI_FEED_LOCK:
+            now = _time.time()
+            hit = _cached_hit(now)
+            if hit is not None:
+                return hit
+            feed = build_feed(
+                db_query=_db_query,
+                category=_one("category") or None,
+                q=_one("q") or None,
+                priority=_one("priority") or None,
+                symbol=_one("symbol") or None,
+                limit=lim,
+                holdings_only=hold_only,
+                include_archived=include_archived,
+                freshness=_one("freshness") or None,
+                starred_only=_flag("starred_only"),
+                sentiment=_one("sentiment") or None,
+                source_system=_one("source_system") or None,
+                primary_only=primary_only,
+            )
+            def _clean(obj):
+                if isinstance(obj, dict):
+                    return {k: _clean(v) for k, v in obj.items()}
+                if isinstance(obj, list):
+                    return [_clean(x) for x in obj]
+                return _json_clean(obj)
+            cleaned = _clean(feed)
+            if isinstance(cleaned, dict):
+                cleaned["from_cache"] = False
+            _RI_FEED_CACHE["key"] = cache_key
+            _RI_FEED_CACHE["ts"] = _time.time()
+            _RI_FEED_CACHE["data"] = cleaned
+            return cleaned
     except Exception as e:
         return {"ok": False, "error": str(e)[:240], "items": [], "taxonomy": {}, "stats": {}}
 

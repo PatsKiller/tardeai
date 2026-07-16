@@ -592,9 +592,11 @@ def json_response(handler, status: int, data: dict) -> None:
     use_gzip = False
     try:
         ae = (handler.headers.get("Accept-Encoding") or "") if getattr(handler, "headers", None) else ""
-        if "gzip" in ae.lower() and len(body) >= 2048:
+        # compresslevel 1: CPU-cheap; concurrent gzip of multi-MB JSON at level 4
+        # was saturating the request semaphore (server_busy 503 storms).
+        if "gzip" in ae.lower() and len(body) >= 4096:
             import gzip
-            body = gzip.compress(body, compresslevel=4)
+            body = gzip.compress(body, compresslevel=1)
             use_gzip = True
     except Exception:
         use_gzip = False
@@ -2049,6 +2051,36 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+def _peek_http_path(request) -> str:
+    """Best-effort request path from MSG_PEEK so health can bypass the concurrency semaphore."""
+    import socket
+    try:
+        raw = request.recv(2048, socket.MSG_PEEK)
+        if not raw:
+            return ""
+        line = raw.split(b"\r\n", 1)[0].decode("latin-1", errors="replace")
+        parts = line.split()
+        if len(parts) >= 2:
+            # GET /api/health?x=1 HTTP/1.1
+            return parts[1].split("?", 1)[0]
+    except Exception:
+        pass
+    return ""
+
+
+def _sem_exempt_path(path: str) -> bool:
+    """Always serve these without waiting on the global request semaphore."""
+    p = (path or "").rstrip("/") or "/"
+    if p in ("/api/health", "/api/v2/health"):
+        return True
+    # Static SPA/assets — cheap, high volume
+    if p.startswith("/v3/") or p.startswith("/v2/") or p.startswith("/assets/"):
+        return True
+    if p in ("/", "/v3", "/v2"):
+        return True
+    return False
+
+
 class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     """Threaded HTTPServer with SO_REUSEADDR.
 
@@ -2058,23 +2090,34 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     behind it. Thread-safety: db_adapter now hands each thread its OWN connection (closed in
     PortfolioHandler.finish), so concurrent requests never share cursor/transaction state.
 
-    Concurrency is BOUNDED by a semaphore (DASHBOARD_MAX_CONCURRENCY, default 24). Excess waits at most
-    SEM_ACQUIRE_TIMEOUT_SEC then gets 503 (not infinite queue → CLOSE-WAIT pileup / whole desk dead).
+    Concurrency is BOUNDED by a semaphore (DASHBOARD_MAX_CONCURRENCY, default 32). Excess waits at most
+    SEM_ACQUIRE_TIMEOUT_SEC then gets 503. Health + static assets bypass the semaphore so the
+    reconnect banner can always clear (2026-07-16 server_busy storm).
     """
     allow_reuse_address = True
     # SO_REUSEPORT allowed a second portfolio_server to bind :7777 alongside the first (orphan twins).
     allow_reuse_port = False
     request_queue_size = 128
     daemon_threads = True
-    _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "24")))
-    _sem_timeout = float(os.getenv("DASHBOARD_SEM_TIMEOUT_SEC", "1.5"))
+    _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "32")))
+    _sem_timeout = float(os.getenv("DASHBOARD_SEM_TIMEOUT_SEC", "3.0"))
 
     def process_request_thread(self, request, client_address):
         # Bound hung client I/O so dead Tailscale peers release slots
         try:
-            request.settimeout(float(os.getenv("DASHBOARD_REQUEST_TIMEOUT_SEC", "45")))
+            request.settimeout(float(os.getenv("DASHBOARD_REQUEST_TIMEOUT_SEC", "30")))
         except Exception:
             pass
+        path = _peek_http_path(request)
+        if _sem_exempt_path(path):
+            try:
+                super().process_request_thread(request, client_address)
+            except Exception:
+                try:
+                    request.close()
+                except Exception:
+                    pass
+            return
         acquired = False
         try:
             acquired = self._sem.acquire(timeout=self._sem_timeout)

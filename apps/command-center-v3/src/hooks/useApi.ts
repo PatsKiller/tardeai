@@ -104,6 +104,23 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         const url = `${path}${sep}_=${Date.now()}`
         const r = await fetch(url, { signal: controller.signal, cache: 'no-store' })
         clearTimeout(timer)
+        if (r.status === 503) {
+          // server_busy semaphore — keep last data, soft-retry with backoff (not a hard outage)
+          let retryAfter = 2
+          try {
+            const j = await r.json()
+            if (j?.retry_after_sec) retryAfter = Number(j.retry_after_sec) || 2
+          } catch { /* ignore */ }
+          if (dataRef.current != null) setStale(true)
+          setError('server busy — retrying')
+          if (!failingRef.current) { failingRef.current = true; _bumpFail(1) }
+          if (retries < 10) {
+            retries++
+            clearTimeout(retryRef.current)
+            retryRef.current = setTimeout(load, Math.min(retryAfter * 1000 * retries, 12_000))
+          }
+          return
+        }
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         const json = await r.json()
         if (cancelled) return
