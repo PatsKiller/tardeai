@@ -142,6 +142,17 @@ def gather_weekly_data(conn):
     """)
     data["strategy_scores"] = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
 
+    # Reports Desk v1 (WS-F): Intelligence Highlights — deterministic Hermes pull
+    # (June-7 audit gap: weekly read zero Hermes). No LLM.
+    try:
+        import sys as _s
+        from pathlib import Path as _P
+        _s.path.insert(0, str(_P(__file__).resolve().parent))
+        from lib.report_intel_highlights import fetch_intel_highlights
+        data["intel_highlights"] = fetch_intel_highlights(cur, days=7)
+    except Exception as _e:
+        data["intel_highlights"] = {"research": [], "exit_advisories": [], "error": str(_e)[:120]}
+
     return data
 
 
@@ -284,6 +295,24 @@ def generate_docx(data: dict, output_path: Path):
     doc.add_heading('CIO Decisions This Week', level=1)
     for d in data.get("cio_decisions", []):
         doc.add_paragraph(f"{d.get('action', 'Unknown')}: {d.get('cnt', 0)}", style='List Bullet')
+
+    # Reports Desk v1 (WS-F): Intelligence Highlights — Hermes research now feeds the weekly
+    ih = data.get("intel_highlights") or {}
+    doc.add_heading('Intelligence Highlights (Hermes)', level=1)
+    if ih.get("research"):
+        for r in ih["research"]:
+            doc.add_paragraph(
+                f"{(r.get('symbol') or 'MARKET')}: {str(r.get('topic') or '')[:90]} — "
+                f"{str(r.get('summary') or '')[:180]} (conf {r.get('confidence_score')}, {r.get('d')})",
+                style='List Bullet')
+    else:
+        doc.add_paragraph("No promoted/reviewed Hermes research this period.")
+    if ih.get("exit_advisories"):
+        doc.add_heading('Exit Intelligence (held names)', level=2)
+        for r in ih["exit_advisories"]:
+            doc.add_paragraph(
+                f"{(r.get('symbol') or '?')}: {str(r.get('summary') or r.get('topic') or '')[:200]} ({r.get('d')})",
+                style='List Bullet')
 
     # Learning Recommendations
     doc.add_heading('Pending Learning Recommendations', level=1)
