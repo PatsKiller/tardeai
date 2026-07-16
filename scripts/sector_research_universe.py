@@ -197,6 +197,16 @@ def sync_universe_batch(
                     (json.dumps(merged), theme.get("rationale"), existing),
                 )
             else:
+                # Watch Desk v2 (B1): family gate for trend-kind themes
+                if theme["kind"] == "trend":
+                    from lib.watch_directive_gate import family_gate, attach_alias
+                    _g = family_gate(theme["label"], "trend")
+                    if not _g["allow"]:
+                        attach_alias(_g["survivor_id"], theme["label"][:120],
+                                     rationale=theme.get("rationale"), created_by="sector_universe")
+                        existing = _g["survivor_id"]
+                        action = "aliased"
+                        continue
                 cur.execute(
                     """INSERT INTO watch_directives
                        (kind, label, spec, rationale, created_by, status, priority,

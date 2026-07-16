@@ -797,12 +797,23 @@ def _handle_watch(args: str) -> str:
         kws = [k.strip() for k in (rest.split(",") if "," in rest else rest.split())]
         spec, label = {"keywords": [k for k in kws if k]}, f"trend {rest[:40]}"
     try:
+        # Watch Desk v2 (B1): operator creations get a SOFT warning, never a block
+        _dup_warn = ""
+        if kind == "trend":
+            try:
+                from lib.watch_directive_gate import family_gate
+                _g = family_gate(label, "trend")
+                if not _g["allow"]:
+                    _dup_warn = (f"\n⚠ near-duplicate of #{_g['survivor_id']} "
+                                 f"'{_g['survivor_label']}' — consider merging instead.")
+            except Exception:
+                pass
         conn = _get_conn(); cur = conn.cursor()
         cur.execute("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by)
                        VALUES (%s, %s, %s::jsonb, %s, 'operator') RETURNING id""",
                     (kind, label, _j.dumps(spec), rationale))
         did = cur.fetchone()[0]; conn.commit()
-        msg = (f"✓ Watch directive #{did}: {kind} — {label}"
+        msg = (f"✓ Watch directive #{did}: {kind} — {label}" + _dup_warn
                + (f"\nthesis: {rationale}" if rationale else "")
                + "\nTrade AI + Hermes will honor it (Hermes proposes via staging only).")
         _notify_both(f"📌 New watch directive #{did}: {kind} — {label}")

@@ -281,6 +281,15 @@ def approve(intent: dict, impact: dict, advice: dict, directives: list | None = 
         label = (d.get("label") or d.get("spec") or "redeploy").strip()
         spec = {"symbol": label.upper()} if kind == "ticker" else {"term": label}
         try:
+            # Watch Desk v2 (B1): family gate — alias into the survivor, no near-dups
+            if kind == "trend":
+                from lib.watch_directive_gate import family_gate, attach_alias
+                _g = family_gate(label, "trend")
+                if not _g["allow"]:
+                    attach_alias(_g["survivor_id"], label,
+                                 rationale=d.get("rationale"), created_by="strategy_planner")
+                    dir_ids.append(_g["survivor_id"])
+                    continue
             cur.execute("""INSERT INTO watch_directives
                 (kind, label, spec, rationale, created_by, ttl_days, priority, status, trade_ai_enabled, hermes_enabled)
                 VALUES (%s,%s,%s::jsonb,%s,'strategy_planner',%s,'normal','active',true,true) RETURNING id""",

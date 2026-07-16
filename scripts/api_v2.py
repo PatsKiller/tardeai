@@ -1900,8 +1900,14 @@ def overview():
     if j_stats.get("total_pnl") is not None:
         j_total_pnl = j_stats["total_pnl"]
 
+    # Watch Desk v2 (A1): portfolio_totals.total_value is CANONICAL. The old
+    # ">$500 drift → silently swap to derived" rule made the shell header flip
+    # $96.9K whenever SPAXX (Fidelity MM sweep) was momentarily unpriced during
+    # a pipeline run — an unlabeled scope change on every page. Derived only
+    # fills in when totals are missing entirely; drift is FLAGGED, never swapped.
     _derived_total = round(sum(p.get("market_value") or 0 for p in holdings), 2)
-    if _derived_total > 0 and (not total_val or abs(_derived_total - total_val) > 500):
+    _total_drift = round(_derived_total - (total_val or 0), 2) if _derived_total > 0 else 0
+    if _derived_total > 0 and not total_val:
         total_val = _derived_total
         today_change = round(sum(p.get("day_change") or 0 for p in holdings), 2)
         today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
@@ -1909,6 +1915,9 @@ def overview():
     return {
         "portfolio_value": total_val,
         "derived_total_value": _derived_total,
+        # non-zero while a position is unpriced mid-pipeline (e.g. SPAXX) —
+        # UI may show a subtle "repricing…" hint but the total never flips
+        "total_value_drift": _total_drift if abs(_total_drift) > 500 else 0,
         "total_cash": totals.get("total_cash", 0),
         "today_change": round(today_change, 2),
         "today_pct": round(today_pct, 2),
@@ -24359,6 +24368,21 @@ def _watch_directive_create(body):
         if _ex:
             did = _ex["id"]
             reused = True
+    # Watch Desk v2 (B1): trend family gate — SOFT warning for operator UI:
+    # first call returns merge prompt; retry with force=true creates anyway
+    if kind == "trend" and did is None and not body.get("force"):
+        try:
+            import sys as _s
+            _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from lib.watch_directive_gate import family_gate as _fg
+            _g = _fg(label, "trend")
+            if not _g["allow"]:
+                return 200, {"ok": False, "needs_confirm": True,
+                             "merge_candidate": {"id": _g["survivor_id"], "label": _g["survivor_label"]},
+                             "note": (f"Merges with existing: '{_g['survivor_label']}' — "
+                                      f"retry with force=true to create anyway.")}
+        except Exception:
+            pass
     if did is None:
         row = _db_query("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by, ttl_days, priority,
                               trade_ai_enabled, hermes_enabled)

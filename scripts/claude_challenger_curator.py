@@ -234,10 +234,19 @@ def infuse_trends(trends: list[dict], apply: bool) -> int:
                         last_confirmed_at=NOW(), updated_at=NOW() WHERE id=%s""",
                      (spec, t["thesis"], dict(dup)["id"]), fetch=None)
         else:
+            # Watch Desk v2 (B1): family gate — same-family survivor absorbs this
+            # theme as an alias instead of a near-dup row (07-01 regrowth fence)
+            from lib.watch_directive_gate import family_gate, attach_alias
+            g = family_gate(label, "trend")
+            if not g["allow"]:
+                attach_alias(g["survivor_id"], label, rationale=t["thesis"],
+                             keywords=t.get("keywords"), created_by="claude_challenger")
+                continue
+            _status = "proposed" if g.get("propose") else "active"
             _execute("""INSERT INTO watch_directives (kind, label, spec, rationale, created_by, ttl_days,
                           priority, status, trade_ai_enabled, hermes_enabled, created_at, updated_at)
-                        VALUES ('trend',%s,%s::jsonb,%s,'claude_challenger',45,'normal','active',true,true,NOW(),NOW())""",
-                     (label, spec, t["thesis"]), fetch=None)
+                        VALUES ('trend',%s,%s::jsonb,%s,'claude_challenger',45,'normal',%s,true,true,NOW(),NOW())""",
+                     (label, spec, t["thesis"], _status), fetch=None)
         n += 1
     return n
 

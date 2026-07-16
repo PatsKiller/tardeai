@@ -1,0 +1,7 @@
+{
+  "_description": "Watch Desk v2 directive governance (B1/B4). Gate consulted by every trend-directive creator; cap enforced softly (new trends become status='proposed', actives never auto-archived).",
+  "version": "1.0",
+  "updated": "2026-07-16",
+  "gate_enabled": true,
+  "active_trend_cap": 150
+}
