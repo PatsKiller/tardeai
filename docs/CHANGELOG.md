@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-15 — Research Intelligence v2.4 (concentration-aware sizing)
+
+Concentration risk and portfolio heat become **active sizing inputs**, not sidebar labels.
+
+- **Concentration framework** — single-name elevated/caution/high/extreme; book top-3 + score; theme soft max + room.
+- **Heat from risk_management.json** — size multipliers; protected %; prefer funded adds when heat ≥ moderate.
+- **Sizing engine** — `size_new_position`, `size_held_review`, `funding_sources` with transparent **Why this size**.
+- **Roles** — `add_candidate` / `trim_candidate` / `hold_review` / `protect` / `watchlist`.
+- **Narrative** — portfolio-aware bull/bear; systematic quality tiers A/B/C.
+- **UI** — Concentration & heat rail, theme capacity, sizing reason, conc badges.
+- **Docs** — `RESEARCH_INTELLIGENCE_V2_4_CONCENTRATION_SIZING.md`. Feed `version: "2.4"`.
+
 ## 2026-07-15 — Research Intelligence v2.3 (consistent portfolio-aware recommendations)
 
 Quality and consistency upgrade so every relevant brief feels advisory-grade.

@@ -99,47 +99,118 @@ def _takeaways(summary: str, thesis: str | None, key_questions: list[str] | None
     return out[:5]
 
 
-def _bull_bear(text: str, cats: list[str], sentiment: str) -> tuple[str | None, str | None]:
-    """Bull/bear framed from PRIMARY category only (cats[0])."""
+def _bull_bear(
+    text: str,
+    cats: list[str],
+    sentiment: str,
+    portfolio: Any = None,
+) -> tuple[str | None, str | None]:
+    """Bull/bear framed from PRIMARY category, optionally portfolio-specific."""
     blob = text.lower()
     bull = bear = None
     primary = (cats[0] if cats else "") or ""
+    port = portfolio if isinstance(portfolio, dict) else {}
+    by_sym = port.get("by_symbol") or {}
+    heat = port.get("heat") or {}
+    conc = port.get("concentration") or {}
+    sleeves = port.get("sleeves") or {}
+    schg = (by_sym.get("SCHG") or {}).get("weight_pct")
+    schd = (by_sym.get("SCHD") or {}).get("weight_pct")
+    heat_pct = heat.get("portfolio_heat_pct")
+    book_lvl = conc.get("book_level") or "normal"
+    inc = sleeves.get("dividend_income")
+
     if primary == "retirement_tax":
         bull = (
             "Well-timed conversions during the Golden Window can fill lower brackets "
-            "and reduce future RMDs and IRMAA exposure if MAGI is managed carefully."
+            "and reduce future RMDs and IRMAA exposure if MAGI is managed carefully"
+            + (f" — while SCHD (~{schd:.1f}%) anchors quality income" if schd else "")
+            + "."
         )
         bear = (
             "Aggressive conversion pacing can push MAGI into IRMAA tiers (two-year lookback) "
-            "or create tax-bracket cliffs—verify brackets before batching conversions."
+            "or create tax-bracket cliffs"
+            + (f"; taxable income sleeve ~{inc:.0f}% already lifts MAGI" if inc and inc >= 25 else "")
+            + (f". Avoid auto-liquidating SCHG (~{schg:.1f}%) to fund tax without a plan" if schg and schg >= 20 else "")
+            + "."
         )
     elif primary == "dividend_income":
-        bull = "Sustainable yield and covered-call/ETF income can support retirement cash flow without forced sales."
-        bear = "High-yield traps, NAV decay, and rate shocks can erode total return even when coupons look attractive."
+        bull = (
+            "Sustainable yield can support retirement cash flow without forced sales"
+            + (f"; quality anchor SCHD is ~{schd:.1f}% of book" if schd else "")
+            + "."
+        )
+        bear = (
+            "High-yield traps, NAV decay, and rate shocks can erode total return"
+            + (f" — income sleeve already ~{inc:.0f}% of book" if inc and inc >= 25 else "")
+            + "; more yield is not always more after-tax spending power under IRMAA."
+        )
     elif primary in ("macro_geo", "sector_thematic"):
-        bull = "Clear regime or sector signals can improve allocation timing and reduce portfolio heat."
-        bear = "False regime breaks and headline-driven rotation can whipsaw if position sizing ignores risk limits."
+        bull = (
+            "Clear regime or sector signals can improve allocation timing"
+            + (f" if funded from concentrated growth (book {book_lvl})" if book_lvl != "normal" else "")
+            + " rather than stacking unhedged beta."
+        )
+        bear = (
+            "False regime breaks and headline-driven rotation can whipsaw"
+            + (f" while heat is ~{heat_pct:.1f}%" if heat_pct is not None else "")
+            + " — size only with stops and theme capacity room."
+        )
     elif primary == "catalyst_event":
-        bull = "A confirmed catalyst with source attribution can justify a watch or staged entry plan."
-        bear = "Crowded catalysts often price in optimism early; gaps in evidence raise false-positive risk."
+        bull = "A confirmed catalyst with source attribution can justify a watch or staged entry with a hard stop."
+        bear = (
+            "Crowded catalysts often price in optimism early; "
+            f"book concentration is {book_lvl} so any add should be funded, not layered on top."
+        )
     elif primary == "risk_regime":
-        bull = "Tight risk controls preserve capital when heat is elevated and setups are noisy."
-        bear = "Ignoring stop health or portfolio heat can turn a small drawdown into a book-level problem."
+        bull = (
+            "Tight risk controls preserve capital when setups are noisy"
+            + (f" (heat ~{heat_pct:.1f}%)" if heat_pct is not None else "")
+            + "; fixing stops on top weights is high-ROI work."
+        )
+        bear = (
+            "Ignoring stop health or portfolio heat can turn a small drawdown into a book-level problem"
+            + (f" — especially with SCHG ~{schg:.1f}%" if schg and schg >= 20 else "")
+            + "."
+        )
+    elif primary == "compounding_wealth":
+        bull = (
+            "Systematic compounding (DCA/reinvest) beats one-off growth adds when valuations are noisy"
+            + (f"; SCHG ~{schg:.1f}% already delivers core growth beta" if schg else "")
+            + "."
+        )
+        bear = (
+            "Stacking megacap growth on an already concentrated book "
+            f"({book_lvl}) raises drawdown risk without improving the long-term plan."
+        )
     else:
         if sentiment == "bullish":
-            bull = "Tone and evidence lean constructive; confirmation from holdings exposure would strengthen the case."
+            bull = (
+                "Tone and evidence lean constructive; size any expression against live weights "
+                f"and heat{f' (~{heat_pct:.1f}%)' if heat_pct is not None else ''}."
+            )
+        else:
+            bull = (
+                "If the thesis holds after source checks, prefer held names or a small funded starter "
+                f"given book concentration is {book_lvl}."
+            )
         if sentiment == "bearish":
             bear = "Tone and evidence lean cautious; review stops, size, and whether the thesis still holds."
+        else:
+            bear = (
+                "Acting without stop coverage or ignoring concentration "
+                f"({book_lvl}) can convert a research idea into unintended book risk."
+            )
 
     # Override from text if explicit
     m_b = re.search(r"(?:bull(?:ish)?\s*(?:case)?[:—-]\s*)(.+?)(?:\.|$)", text, re.I)
     m_r = re.search(r"(?:bear(?:ish)?\s*(?:case)?[:—-]\s*)(.+?)(?:\.|$)", text, re.I)
     if m_b:
-        bull = m_b.group(1).strip()[:240]
+        bull = m_b.group(1).strip()[:280]
     if m_r:
-        bear = m_r.group(1).strip()[:240]
+        bear = m_r.group(1).strip()[:280]
     if primary == "retirement_tax" and ("limited" in blob or "sparse" in blob or "zero details" in blob):
-        bear = ((bear or "") + " Source coverage is thin—treat conclusions as provisional.").strip()[:280]
+        bear = ((bear or "") + " Source coverage is thin—treat conclusions as provisional.").strip()[:320]
     return bull, bear
 
 
@@ -294,10 +365,29 @@ def _polish_narrative_depth(base: dict[str, Any], *, title: str, cats: list[str]
     base["executive_summary"] = paras[:4]
     body_len = sum(len(p or "") for p in paras)
 
-    # Ensure bull/bear exist (advisory maturity)
+    # Ensure bull/bear exist (advisory maturity) — portfolio-aware when possible
+    port = base.get("portfolio_snapshot")
+    # portfolio_snapshot is slim; full port may be absent — still improve generics
     if not base.get("bull_case") or not base.get("bear_case"):
         blob = " ".join(paras) + " " + (impl or "")
-        bull, bear = _bull_bear(blob, cats, "neutral")
+        # Reconstruct minimal port from snapshot for weight-aware bull/bear
+        mini_port = None
+        if isinstance(port, dict):
+            mini_port = {
+                "by_symbol": {
+                    k: {"weight_pct": v}
+                    for k, v in (port.get("related_weights") or {}).items()
+                },
+                "heat": port.get("heat") or {},
+                "concentration": port.get("concentration") or {},
+                "sleeves": port.get("sleeves") or {},
+            }
+            # Ensure SCHG/SCHD from top if present
+            for row in port.get("top") or []:
+                sym = row.get("symbol")
+                if sym:
+                    mini_port["by_symbol"][sym] = {"weight_pct": row.get("weight_pct")}
+        bull, bear = _bull_bear(blob, cats, "neutral", portfolio=mini_port)
         if not base.get("bull_case") and bull:
             base["bull_case"] = bull
         if not base.get("bear_case") and bear:
@@ -310,13 +400,26 @@ def _polish_narrative_depth(base: dict[str, Any], *, title: str, cats: list[str]
             cats=cats, is_held=False, symbol=None
         )
 
-    # Quality tier for UI
+    # Quality tier for UI — systematic A/B/C
     ticks = base.get("ticker_recommendations") or []
     has_llm = base.get("narrative_source") == "stored_llm"
     has_size = bool(base.get("sizing_guidance") and len(str(base.get("sizing_guidance") or "")) > 40)
-    if has_llm and body_len > 400 and (ticks or has_size):
+    has_reason = bool(base.get("sizing_reason"))
+    has_bull_bear = bool(base.get("bull_case") and base.get("bear_case"))
+    has_impl = bool(impl and len(impl) > 60)
+    advisory_score = sum([
+        1 if ticks else 0,
+        1 if has_size else 0,
+        1 if has_reason else 0,
+        1 if has_bull_bear else 0,
+        1 if has_impl else 0,
+        1 if body_len > 280 else 0,
+    ])
+    if has_llm and body_len > 400 and advisory_score >= 4:
         base["quality_tier"] = "A"
-    elif body_len > 220 and (base.get("next_action") or ticks or has_size):
+    elif advisory_score >= 4 or (body_len > 220 and ticks and has_size):
+        base["quality_tier"] = "A" if advisory_score >= 5 else "B"
+    elif body_len > 160 and (base.get("next_action") or ticks or has_size):
         base["quality_tier"] = "B"
     else:
         base["quality_tier"] = "C"
@@ -368,6 +471,7 @@ def _attach_advisory(
     base["investment_implications"] = adv.get("investment_implications")
     base["ticker_recommendations"] = adv.get("ticker_recommendations") or []
     base["sizing_guidance"] = adv.get("sizing_guidance")
+    base["sizing_reason"] = adv.get("sizing_reason")
     base["risk_caveat"] = adv.get("risk_caveat")
     base["portfolio_snapshot"] = adv.get("portfolio_snapshot")
     # Prefer portfolio-aware next_action unless topic_monitor needs ingest first
@@ -378,7 +482,7 @@ def _attach_advisory(
     ticks = [
         t for t in (base.get("ticker_recommendations") or [])
         if t.get("symbol") and t.get("role") in (
-            "add_candidate", "trim_candidate", "protect", "hold_review"
+            "add_candidate", "trim_candidate", "protect", "hold_review", "watchlist",
         )
     ]
     if ticks and isinstance(base.get("key_takeaways"), list):
@@ -488,7 +592,7 @@ def enrich_narrative(
     if len(paras) == 1 and thesis and _clean(thesis) not in paras[0]:
         paras.append(_clean(thesis)[:400])
 
-    bull, bear = _bull_bear(body_src, cats, sentiment)
+    bull, bear = _bull_bear(body_src, cats, sentiment, portfolio=portfolio)
     takeaways = _takeaways(summary, thesis, key_questions)
     if data_gaps:
         takeaways = takeaways[:4] + [f"Data gap: {_clean(data_gaps[0])[:160]}"]

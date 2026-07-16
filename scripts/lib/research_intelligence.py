@@ -515,6 +515,7 @@ def _item_base(
         "investment_implications": narrative.get("investment_implications"),
         "ticker_recommendations": narrative.get("ticker_recommendations") or [],
         "sizing_guidance": narrative.get("sizing_guidance"),
+        "sizing_reason": narrative.get("sizing_reason"),
         "risk_caveat": narrative.get("risk_caveat"),
         "portfolio_snapshot": narrative.get("portfolio_snapshot"),
     }
@@ -959,7 +960,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "2.3",
+        "version": "2.4",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -999,19 +1000,26 @@ def build_feed(
             "holdings_universe": sorted(held)[:40],
             "holdings_count": len(held),
             "lane_counts": {k: len(v) for k, v in priority_lanes.items()},
+            "quality_tiers": {
+                t: sum(1 for i in page if (i.get("quality_tier") or "") == t)
+                for t in ("A", "B", "C")
+            },
         },
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2.3 — consistent portfolio-aware recs by primary category; "
-            "options/thesis challenges stay company-level (no income-sleeve spam); quality tiers A/B/C; "
-            "narrative depth polish + title-specific retirement CTAs."
+            "Research Intelligence v2.4 — concentration + heat actively size recommendations; "
+            "theme capacity, funding trims, sizing reasons; quality tiers A/B/C; "
+            "portfolio-aware bull/bear and consistent tickers & allocation guidance."
         ),
         "portfolio_context": {
             "total_mv": port_ctx.get("total_mv"),
             "top": port_ctx.get("top") or [],
             "sleeves": port_ctx.get("sleeves") or {},
             "flags": port_ctx.get("flags") or [],
+            "concentration": port_ctx.get("concentration") or {},
+            "theme_capacity": port_ctx.get("theme_capacity") or {},
+            "heat": port_ctx.get("heat") or {},
         },
     }
 

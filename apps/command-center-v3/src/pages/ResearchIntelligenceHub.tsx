@@ -1,6 +1,6 @@
 /**
- * Research Intelligence v2.3 — editorial intelligence desk (CC v3).
- * Portfolio-aware tickers + sizing; quality tiers; Seeking Alpha–style narrative UI.
+ * Research Intelligence v2.4 — editorial intelligence desk (CC v3).
+ * Concentration-aware sizing + heat; theme capacity; quality tiers A/B/C.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -71,6 +71,7 @@ type Item = {
     rationale?: string
   }[]
   sizing_guidance?: string
+  sizing_reason?: string | null
   risk_caveat?: string
   quality_tier?: 'A' | 'B' | 'C' | string
   portfolio_snapshot?: {
@@ -78,6 +79,23 @@ type Item = {
     related_weights?: Record<string, number>
     flags?: string[]
     sleeves?: Record<string, number>
+    concentration?: {
+      book_level?: string
+      score?: number
+      top3_pct?: number
+      names?: { symbol?: string; weight_pct?: number; level?: string }[]
+    }
+    heat?: {
+      portfolio_heat_pct?: number
+      level?: string
+      pct_protected?: number
+    }
+    theme_capacity?: Record<string, {
+      current_pct?: number
+      target_max_pct?: number
+      room_pct?: number
+      level?: string
+    }>
   }
 }
 
@@ -198,13 +216,26 @@ const ROLE_COLOR: Record<string, string> = {
   trim_candidate: C.bear,
   hold_review: C.accent,
   protect: C.stale,
+  watchlist: C.macro,
   plan: C.retire,
+  context: C.soft,
 }
 
-const QUALITY: Record<string, { color: string; label: string }> = {
-  A: { color: C.income, label: 'Tier A' },
-  B: { color: C.accent, label: 'Tier B' },
-  C: { color: C.soft, label: 'Tier C' },
+const QUALITY: Record<string, { color: string; label: string; hint: string }> = {
+  A: { color: C.income, label: 'Tier A', hint: 'Deep + portfolio-aware' },
+  B: { color: C.accent, label: 'Tier B', hint: 'Solid advisory floor' },
+  C: { color: C.soft, label: 'Tier C', hint: 'Thin — verify sources' },
+}
+
+const CONC_COLOR: Record<string, string> = {
+  extreme: C.bear,
+  high: C.stale,
+  caution: C.macro,
+  elevated: C.aging,
+  normal: C.income,
+  full: C.stale,
+  moderate: C.aging,
+  room: C.income,
 }
 
 function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
@@ -293,6 +324,38 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
         }}>
           <span style={{ fontWeight: 800, color: C.macro }}>Sizing guidance · </span>
           {item.sizing_guidance}
+        </div>
+      )}
+      {item.sizing_reason && (
+        <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.45 }}>
+          <span style={{ fontWeight: 750, color: C.soft }}>Why this size · </span>
+          {item.sizing_reason}
+        </div>
+      )}
+      {item.portfolio_snapshot?.heat && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 11, color: C.soft }}>
+          {item.portfolio_snapshot.heat.portfolio_heat_pct != null && (
+            <span>
+              Heat{' '}
+              <strong style={{ color: CONC_COLOR[item.portfolio_snapshot.heat.level || ''] || C.ink }}>
+                {Number(item.portfolio_snapshot.heat.portfolio_heat_pct).toFixed(1)}%
+              </strong>
+              {item.portfolio_snapshot.heat.level ? ` (${item.portfolio_snapshot.heat.level})` : ''}
+            </span>
+          )}
+          {item.portfolio_snapshot.concentration?.book_level && (
+            <span>
+              Book conc.{' '}
+              <strong style={{
+                color: CONC_COLOR[item.portfolio_snapshot.concentration.book_level] || C.ink,
+              }}>
+                {item.portfolio_snapshot.concentration.book_level}
+              </strong>
+              {item.portfolio_snapshot.concentration.top3_pct != null
+                ? ` · top-3 ${Number(item.portfolio_snapshot.concentration.top3_pct).toFixed(0)}%`
+                : ''}
+            </span>
+          )}
         </div>
       )}
       {item.risk_caveat && (
@@ -432,11 +495,19 @@ function ArticleCard({
           )}
           <Tag color={catColor}>{catMeta[primary]?.label || primary}</Tag>
           {item.quality_tier && QUALITY[item.quality_tier] && (
-            <Tag color={QUALITY[item.quality_tier].color}>{QUALITY[item.quality_tier].label}</Tag>
+            <span title={QUALITY[item.quality_tier].hint}>
+              <Tag color={QUALITY[item.quality_tier].color}>{QUALITY[item.quality_tier].label}</Tag>
+            </span>
           )}
           {item.is_holdings && <Tag color={C.income}>In portfolio</Tag>}
           {(item.ticker_recommendations?.length ?? 0) > 0 && (
-            <Tag color={C.macro}>Ticker recs</Tag>
+            <Tag color={C.macro}>Tickers & size</Tag>
+          )}
+          {item.portfolio_snapshot?.concentration?.book_level &&
+            item.portfolio_snapshot.concentration.book_level !== 'normal' && (
+            <Tag color={CONC_COLOR[item.portfolio_snapshot.concentration.book_level] || C.stale}>
+              Conc. {item.portfolio_snapshot.concentration.book_level}
+            </Tag>
           )}
           {item.is_archived && <Tag color={C.archive}>Archived</Tag>}
           {item.needs_refresh && <Tag color={C.stale}>Due refresh</Tag>}
@@ -1099,15 +1170,96 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               <div style={{ fontSize: 11, color: C.soft, marginBottom: 6 }}>
                 ${(Number(data.portfolio_context.total_mv || 0) / 1e6).toFixed(2)}M household
               </div>
-              {(data.portfolio_context.top as { symbol: string; weight_pct: number }[]).slice(0, 8).map(t => (
-                <div key={t.symbol} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0' }}>
-                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, color: C.accent }}>{t.symbol}</span>
-                  <span style={{ color: C.ink, fontWeight: 700 }}>{t.weight_pct}%</span>
-                </div>
-              ))}
-              {((data.portfolio_context.flags as string[]) || []).slice(0, 2).map((f: string) => (
+              {(data.portfolio_context.top as {
+                symbol: string
+                weight_pct: number
+                concentration_level?: string
+              }[]).slice(0, 8).map(t => {
+                const lvl = t.concentration_level || 'normal'
+                const lc = CONC_COLOR[lvl] || C.ink
+                return (
+                  <div key={t.symbol} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 12, padding: '3px 0', gap: 8 }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, color: C.accent }}>{t.symbol}</span>
+                    <span style={{ color: lc, fontWeight: 700 }}>
+                      {t.weight_pct}%
+                      {lvl !== 'normal' ? (
+                        <span style={{ fontSize: 9, marginLeft: 5, opacity: 0.9, textTransform: 'uppercase' }}>{lvl}</span>
+                      ) : null}
+                    </span>
+                  </div>
+                )
+              })}
+              {((data.portfolio_context.flags as string[]) || []).slice(0, 3).map((f: string) => (
                 <div key={f} style={{ fontSize: 11, color: C.stale, marginTop: 6, lineHeight: 1.4 }}>{f}</div>
               ))}
+            </RailCard>
+          )}
+          {!!(data?.portfolio_context?.heat || data?.portfolio_context?.concentration) && (
+            <RailCard title="Concentration & heat" accent={C.stale}>
+              {data.portfolio_context.heat && (
+                <>
+                  <RailStat
+                    label="Portfolio heat"
+                    value={`${Number(data.portfolio_context.heat.portfolio_heat_pct || 0).toFixed(1)}%`}
+                  />
+                  <RailStat
+                    label="Heat level"
+                    value={String(data.portfolio_context.heat.level || '—')}
+                  />
+                  {data.portfolio_context.heat.pct_protected != null && (
+                    <RailStat
+                      label="Protected MV"
+                      value={`${Number(data.portfolio_context.heat.pct_protected).toFixed(0)}%`}
+                    />
+                  )}
+                </>
+              )}
+              {data.portfolio_context.concentration && (
+                <>
+                  <RailStat
+                    label="Book concentration"
+                    value={String(data.portfolio_context.concentration.book_level || '—')}
+                  />
+                  <RailStat
+                    label="Top-3 weight"
+                    value={
+                      data.portfolio_context.concentration.top3_pct != null
+                        ? `${Number(data.portfolio_context.concentration.top3_pct).toFixed(0)}%`
+                        : '—'
+                    }
+                  />
+                </>
+              )}
+              {data.portfolio_context.theme_capacity && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft, marginBottom: 4 }}>
+                    Theme capacity
+                  </div>
+                  {Object.entries(data.portfolio_context.theme_capacity as Record<string, {
+                    current_pct?: number
+                    room_pct?: number
+                    target_max_pct?: number
+                    level?: string
+                  }>)
+                    .filter(([, v]) => (v.current_pct || 0) > 0)
+                    .sort((a, b) => (b[1].current_pct || 0) - (a[1].current_pct || 0))
+                    .slice(0, 6)
+                    .map(([tid, v]) => (
+                      <div key={tid} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '2px 0', color: C.muted }}>
+                        <span>{tid.replace(/_/g, ' ')}</span>
+                        <span style={{ color: CONC_COLOR[v.level || ''] || C.ink, fontWeight: 700 }}>
+                          {Number(v.current_pct || 0).toFixed(1)}%
+                          <span style={{ color: C.soft, fontWeight: 500 }}>
+                            {' '}/ {Number(v.target_max_pct || 0).toFixed(0)}%
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
+              <p style={{ margin: '8px 0 0', fontSize: 11, lineHeight: 1.45, color: C.soft }}>
+                High concentration and heat shrink new-add size bands and prefer funding trims (e.g. SCHG).
+              </p>
             </RailCard>
           )}
           <RailCard title="Retirement pillar" accent={C.retire}>
