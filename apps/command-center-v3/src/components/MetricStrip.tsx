@@ -15,7 +15,8 @@ export default function MetricStrip({ onDrill }: Props) {
   const { data: overview } = useApi<any>('/api/v2/overview', 120_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
-  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 120_000)
+  // v3.1: header needs 4 scalars, not the multi-MB scan payload (Tailscale timeouts = '—' tiles)
+  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 120_000)
   const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
   const { data: health } = useApi<any>('/api/v2/health', 120_000)
   const healthWarn = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').length

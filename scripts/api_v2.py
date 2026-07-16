@@ -10543,6 +10543,25 @@ def _write_trade_ai_cache(path, data: dict) -> None:
     tmp.replace(path)
 
 
+def trade_ai_summary():
+    """GET /api/v2/trade-ai/summary — header-strip scalars only (~500 B).
+
+    The full /trade-ai payload is multi-MB; the MetricStrip only needs VIX +
+    run counts, and over Tailscale the big transfer loses to the client's 30s
+    abort behind the browser connection limit — which is why the VIX/SETUPS
+    tiles sat at '—' while curl worked (2026-07-16)."""
+    d = trade_ai() or {}
+    keys = (
+        "vix", "market_regime", "breadth", "run_health_status",
+        "latest_run_label", "latest_run_timestamp", "run_label", "run_date",
+        "latest_run_go_count", "latest_run_wait_count", "latest_run_no_go_count",
+        "go_count", "wait_count", "avoid_count",
+        "universe_go", "universe_wait", "universe_nogo",
+        "stale", "cache_age_sec", "cached_at",
+    )
+    return {k: d.get(k) for k in keys}
+
+
 def trade_ai(force=False):
     """GET /api/v2/trade-ai — served from a disk cache (data/runtime/trade_ai_cache.json) refreshed by
     warm_caches.py. The compute is heavy (run JSONs + a hundreds-row trade_ai_scans scan); running it
@@ -30419,6 +30438,7 @@ ROUTES = {
     "/api/v2/stop-confirmations": lambda: _stop_confirmations_list(),
     "/api/v2/ops/summary": ops_summary,
     "/api/v2/trade-ai": trade_ai,
+    "/api/v2/trade-ai/summary": trade_ai_summary,
     "/api/v2/warrior-audit/latest": warrior_audit_latest,
     "/api/v2/trade-ai/critique": _tradeai_critique_status,
     "/api/v2/trade-ai/history": _tradeai_history,
