@@ -1,6 +1,5 @@
 /**
- * Research Intelligence v2.6 — editorial intelligence desk (CC v3).
- * Transparent conviction, data gates, analyst/options snapshots, action bar.
+ * Research Intelligence v2.7 — stage trades, cross-theme, concentration banner.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -105,8 +104,15 @@ type Item = {
   sizing_reason?: string | null
   risk_caveat?: string
   quality_tier?: 'A' | 'B' | 'C' | string
-  actions?: { id?: string; label?: string; href?: string }[]
-  quality_gate?: { pass?: boolean; note?: string | null; incomplete_tickers?: number }
+  actions?: { id?: string; label?: string; href?: string; primary?: boolean; symbol?: string; role?: string; side?: string }[]
+  quality_gate?: { pass?: boolean; note?: string | null; incomplete_tickers?: number; stage_eligible?: boolean }
+  related_themes?: {
+    items?: { id?: string; label?: string; strength?: string; reason?: string }[]
+    impact_note?: string | null
+    impact_notes?: string[]
+  }
+  stage_payload?: Record<string, unknown> | null
+  funding_context?: { require_funding_trim?: boolean; funding_symbol?: string; schg_pct?: number }
   portfolio_snapshot?: {
     total_mv?: number
     related_weights?: Record<string, number>
@@ -271,24 +277,85 @@ const CONC_COLOR: Record<string, string> = {
   room: C.income,
 }
 
-function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
+async function postStage(body: Record<string, unknown>) {
+  const r = await fetch('/api/v2/research-intelligence/stage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return r.json()
+}
+
+async function postStageUpdate(body: Record<string, unknown>) {
+  const r = await fetch('/api/v2/research-intelligence/stage/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return r.json()
+}
+
+function ActionStrip({
+  item, catColor, onStage, onThemeClick, staging,
+}: {
+  item: Item
+  catColor: string
+  onStage?: (payload: Record<string, unknown>) => Promise<void>
+  onThemeClick?: (themeId: string) => void
+  staging?: boolean
+}) {
   const label = item.next_action_label || item.next_action?.label || item.actionability || 'Read full analysis'
   const detail = item.next_action_detail || item.next_action?.detail || item.why_it_matters || ''
   const ticks = item.ticker_recommendations || []
   const hasAdvisory = ticks.length > 0 || !!item.sizing_guidance || !!item.investment_implications
+  const related = item.related_themes
+  const stageOk = item.quality_gate?.stage_eligible !== false && item.stage_payload
+
+  const runAction = async (a: { id?: string; href?: string; symbol?: string; role?: string; side?: string }, e: MouseEvent) => {
+    e.stopPropagation()
+    const id = a.id || ''
+    if ((id === 'stage_trade' || id === 'ri_ideas' || id === 'propose_trim') && onStage) {
+      const base = (item.stage_payload || {}) as Record<string, unknown>
+      const payload: Record<string, unknown> = {
+        ...base,
+        source_item_id: item.id,
+        source_title: item.title,
+        primary_category: item.primary_category,
+        allow_stage: true,
+        data_complete: true,
+      }
+      if (id === 'propose_trim') {
+        payload.symbol = a.symbol || item.funding_context?.funding_symbol || 'SCHG'
+        payload.side = 'sell'
+        payload.role = 'trim_candidate'
+        payload.require_funding_trim = true
+        payload.funding_symbol = payload.symbol
+        payload.funding_source = `Trim ${payload.symbol}`
+      }
+      if (id === 'ri_ideas' && a.symbol) {
+        payload.symbol = a.symbol
+      }
+      await onStage(payload)
+      return
+    }
+    if (a.href) {
+      window.location.href = a.href.startsWith('/') ? a.href : `/${a.href}`
+    }
+  }
+
   return (
     <div style={{
       marginTop: 2, padding: '14px 16px', borderRadius: 12,
       background: hasAdvisory
-        ? `linear-gradient(145deg, ${catColor}16 0%, rgba(96,165,250,.12) 45%, rgba(167,139,250,.10) 100%)`
+        ? `linear-gradient(145deg, ${catColor}16 0%, rgba(96,165,250,.14) 45%, rgba(167,139,250,.12) 100%)`
         : C.ctaBg,
-      border: `1px solid ${hasAdvisory ? `${catColor}55` : `${catColor}44`}`,
+      border: `1px solid ${hasAdvisory ? `${catColor}66` : `${catColor}44`}`,
       display: 'flex', flexDirection: 'column', gap: 10,
-      boxShadow: `inset 0 0 0 1px ${catColor}14, 0 4px 16px rgba(0,0,0,.12)`,
+      boxShadow: `inset 0 0 0 1px ${catColor}18, 0 6px 20px rgba(0,0,0,.16)`,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.cta }}>
-          Recommended next step
+          Operator next step
         </div>
         {hasAdvisory && (
           <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.macro }}>
@@ -296,10 +363,60 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
           </div>
         )}
       </div>
-      <div style={{ fontSize: 14.5, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 850, color: C.ink, letterSpacing: '-0.01em' }}>{label}</div>
       {detail && (
         <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>{detail}</div>
       )}
+
+      {/* Primary action bar — top of strip for hierarchy */}
+      {((item.actions && item.actions.length > 0) || stageOk) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+          {(item.actions || []).slice(0, 6).map((a, i) => {
+            const primary = a.primary || a.id === 'stage_trade'
+            const isStage = a.id === 'stage_trade' || a.id === 'ri_ideas' || a.id === 'propose_trim'
+            if (a.id === 'stage_trade' && !stageOk) return null
+            return (
+              <button
+                key={`${a.id}-${i}`}
+                type="button"
+                disabled={!!staging && isStage}
+                onClick={e => runAction(a, e)}
+                style={{
+                  fontSize: primary ? 12.5 : 11, fontWeight: 800,
+                  padding: primary ? '9px 14px' : '6px 10px',
+                  borderRadius: 9, cursor: 'pointer',
+                  border: `1px solid ${primary ? C.income : C.accent}66`,
+                  background: primary
+                    ? 'linear-gradient(135deg, rgba(110,231,183,.28), rgba(96,165,250,.2))'
+                    : `${C.accent}16`,
+                  color: primary ? C.income : C.accent,
+                  boxShadow: primary ? '0 2px 12px rgba(110,231,183,.15)' : undefined,
+                }}
+              >
+                {staging && isStage ? 'Staging…' : a.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {item.sizing_guidance && (
+        <div style={{
+          fontSize: 13, color: C.ink, lineHeight: 1.5,
+          padding: '10px 12px', borderRadius: 9,
+          background: `${C.macro}14`, border: `1px solid ${C.macro}55`,
+        }}>
+          <span style={{ fontWeight: 850, color: C.macro }}>Why this size · </span>
+          {item.sizing_guidance}
+        </div>
+      )}
+      {item.sizing_reason && !item.sizing_guidance?.includes(item.sizing_reason.slice(0, 40)) && (
+        <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.45 }}>
+          <span style={{ fontWeight: 750, color: C.soft }}>Sizing factors · </span>
+          {item.sizing_reason}
+        </div>
+      )}
+
       {item.investment_implications && (
         <div style={{
           fontSize: 12.5, color: C.ink, lineHeight: 1.55,
@@ -413,22 +530,38 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
           </div>
         </div>
       )}
-      {item.sizing_guidance && (
+      {/* Related themes strip */}
+      {((related?.items?.length ?? 0) > 0 || related?.impact_note) && (
         <div style={{
-          fontSize: 12.5, color: C.ink, lineHeight: 1.5,
-          padding: '9px 11px', borderRadius: 8,
-          background: `${C.macro}12`, border: `1px solid ${C.macro}44`,
+          fontSize: 11.5, lineHeight: 1.45, padding: '8px 10px', borderRadius: 8,
+          background: 'rgba(252,211,77,.06)', border: `1px solid ${C.macro}33`,
         }}>
-          <span style={{ fontWeight: 800, color: C.macro }}>Sizing guidance · </span>
-          {item.sizing_guidance}
+          <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.macro, marginBottom: 4 }}>
+            Related themes
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: related?.impact_note ? 4 : 0 }}>
+            {(related?.items || []).map(r => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={e => { e.stopPropagation(); r.id && onThemeClick?.(r.id) }}
+                title={r.reason || ''}
+                style={{
+                  fontSize: 11, fontWeight: 700, cursor: onThemeClick ? 'pointer' : 'default',
+                  border: `1px solid ${C.macro}44`, background: `${C.macro}12`, color: C.macro,
+                  borderRadius: 6, padding: '3px 8px',
+                }}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          {related?.impact_note && (
+            <div style={{ color: C.muted, fontSize: 11 }}>{related.impact_note}</div>
+          )}
         </div>
       )}
-      {item.sizing_reason && (
-        <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.45 }}>
-          <span style={{ fontWeight: 750, color: C.soft }}>Why this size · </span>
-          {item.sizing_reason}
-        </div>
-      )}
+
       {item.portfolio_snapshot?.heat && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 11, color: C.soft }}>
           {item.portfolio_snapshot.heat.portfolio_heat_pct != null && (
@@ -461,30 +594,8 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
         </div>
       )}
       {item.quality_gate?.note && (
-        <div style={{ fontSize: 11, color: C.stale, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 11, color: C.stale, lineHeight: 1.4, fontWeight: 650 }}>
           {item.quality_gate.note}
-        </div>
-      )}
-      {/* Action bar */}
-      {((item.actions && item.actions.length > 0) || ticks.some(t => (t.actions || []).length > 0)) && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
-          {(item.actions && item.actions.length > 0
-            ? item.actions
-            : (ticks[0]?.actions || [])
-          ).slice(0, 5).map((a, i) => (
-            <Link
-              key={`${a.id || a.label}-${i}`}
-              to={a.href || '/watch'}
-              onClick={e => e.stopPropagation()}
-              style={{
-                fontSize: 11, fontWeight: 750, textDecoration: 'none',
-                padding: '6px 10px', borderRadius: 8,
-                border: `1px solid ${C.accent}55`, background: `${C.accent}18`, color: C.accent,
-              }}
-            >
-              {a.label}
-            </Link>
-          ))}
         </div>
       )}
     </div>
@@ -492,7 +603,7 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
 }
 
 function ArticleCard({
-  item, catMeta, featured, view, onOpen, onFeedback,
+  item, catMeta, featured, view, onOpen, onFeedback, onStage, onThemeClick, staging,
 }: {
   item: Item
   catMeta: Record<string, Cat>
@@ -500,6 +611,9 @@ function ArticleCard({
   view: 'cards' | 'list' | 'compact'
   onOpen: () => void
   onFeedback: (id: string, patch: Partial<Item>) => void
+  onStage?: (payload: Record<string, unknown>) => Promise<void>
+  onThemeClick?: (themeId: string) => void
+  staging?: boolean
 }) {
   const primary = item.primary_category || item.categories?.[0] || ''
   const catColor = CAT_TINT[primary] || catMeta[primary]?.color || C.accent
@@ -789,7 +903,13 @@ function ArticleCard({
         </div>
       )}
 
-      <ActionStrip item={item} catColor={catColor} />
+      <ActionStrip
+        item={item}
+        catColor={catColor}
+        onStage={onStage}
+        onThemeClick={onThemeClick}
+        staging={staging}
+      />
 
       {/* footer */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -825,6 +945,33 @@ function voteBtn(active: boolean, color: string): CSSProperties {
   }
 }
 
+type StagedIdea = {
+  id?: string
+  symbol?: string
+  side?: string
+  role?: string
+  status?: string
+  suggested_weight_pct?: string
+  funding_source?: string
+  funding_symbol?: string
+  conviction_tier?: string
+  conviction_score?: number
+  source_title?: string
+  staged_at?: string
+  require_funding_trim?: boolean
+}
+
+const THEME_TO_CATEGORY: Record<string, string> = {
+  dividend_income: 'dividend_income',
+  retirement: 'retirement_tax',
+  growth: 'compounding_wealth',
+  ai_infra: 'sector_thematic',
+  power_infra: 'sector_thematic',
+  industrials: 'sector_thematic',
+  defense: 'sector_thematic',
+  bonds: 'macro_geo',
+}
+
 export default function ResearchIntelligenceHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   const [q, setQ] = useState('')
@@ -838,6 +985,11 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   const [lane, setLane] = useState<'all' | 'retirement' | 'dividends' | 'macro_sector'>('all')
   const [view, setView] = useState<'cards' | 'list' | 'compact'>('list')
   const [localPatch, setLocalPatch] = useState<Record<string, Partial<Item>>>({})
+  const [stagedIdeas, setStagedIdeas] = useState<StagedIdea[]>([])
+  const [showStaged, setShowStaged] = useState(false)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const [staging, setStaging] = useState(false)
 
   const qs = useMemo(() => {
     const p = new URLSearchParams()
@@ -858,6 +1010,57 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     90_000,
   )
   const { data: freshData } = useApi<any>('/api/v2/research-intelligence/freshness', 120_000)
+  const { data: stagedData, refetch: refetchStaged } = useApi<any>(
+    '/api/v2/research-intelligence/staged?limit=40',
+    60_000,
+  )
+
+  useEffect(() => {
+    if (stagedData?.ideas) setStagedIdeas(stagedData.ideas)
+    else if (stagedData?.data?.ideas) setStagedIdeas(stagedData.data.ideas)
+  }, [stagedData])
+
+  useEffect(() => {
+    if (!toast) return
+    const t = window.setTimeout(() => setToast(null), 4200)
+    return () => window.clearTimeout(t)
+  }, [toast])
+
+  const handleStage = useCallback(async (payload: Record<string, unknown>) => {
+    setStaging(true)
+    try {
+      const res = await postStage(payload)
+      if (res?.ok) {
+        setToast(res.message || `Staged ${payload.symbol}`)
+        setShowStaged(true)
+        refetchStaged?.()
+        // also refresh list
+        const list = await fetch('/api/v2/research-intelligence/staged?limit=40').then(r => r.json())
+        const ideas = list?.ideas || list?.data?.ideas || []
+        setStagedIdeas(ideas)
+      } else {
+        setToast(res?.detail || res?.error || 'Stage failed')
+      }
+    } catch {
+      setToast('Stage request failed')
+    } finally {
+      setStaging(false)
+    }
+  }, [refetchStaged])
+
+  const handleDismissStaged = useCallback(async (id: string) => {
+    await postStageUpdate({ id, dismiss: true })
+    setStagedIdeas(prev => prev.filter(x => x.id !== id))
+    setToast('Staged idea dismissed')
+  }, [])
+
+  const handleThemeClick = useCallback((themeId: string) => {
+    const cat = THEME_TO_CATEGORY[themeId]
+    if (cat) {
+      setCategory(cat)
+      setLane('all')
+    }
+  }, [])
 
   const cats: Cat[] = data?.taxonomy?.categories || []
   const catMeta = useMemo(() => {
@@ -1022,6 +1225,18 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               <Link to="/hermes" style={navLink(C.accent)}>Hermes →</Link>
               <Link to="/risk" style={navLink('#fca5a5')}>Risk →</Link>
               <button type="button" onClick={() => refetch()} style={refreshBtn}>↻ Refresh desk</button>
+              <button
+                type="button"
+                onClick={() => setShowStaged(s => !s)}
+                style={{
+                  ...refreshBtn,
+                  borderColor: `${C.income}55`,
+                  color: C.income,
+                  background: `${C.income}14`,
+                }}
+              >
+                Staged Ideas ({stagedIdeas.length})
+              </button>
             </div>
             <div style={{ display: 'flex', gap: 14, fontSize: 12, color: C.muted, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <span><b style={{ color: C.live }}>{tierCounts.live || 0}</b> live</span>
@@ -1033,6 +1248,99 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
           </div>
         </div>
       </header>
+
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 80,
+          padding: '12px 16px', borderRadius: 12, maxWidth: 360,
+          background: 'rgba(16,24,40,.96)', border: `1px solid ${C.income}66`,
+          color: C.ink, fontSize: 13, fontWeight: 650, boxShadow: '0 12px 40px rgba(0,0,0,.4)',
+        }}>
+          {toast}
+        </div>
+      )}
+
+      {/* Concentration banner */}
+      {!bannerDismissed && data?.portfolio_context?.concentration_banner?.active && (
+        <div style={{
+          borderRadius: 12, padding: '12px 16px',
+          background: 'rgba(251,146,60,.1)', border: `1px solid ${C.stale}55`,
+          display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start',
+        }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 850, color: C.stale, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+              {data.portfolio_context.concentration_banner.title || 'Concentration active'}
+            </div>
+            <div style={{ fontSize: 12.5, color: C.ink, lineHeight: 1.45 }}>
+              {data.portfolio_context.concentration_banner.body}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBannerDismissed(true)}
+            style={{ border: 'none', background: 'transparent', color: C.soft, cursor: 'pointer', fontSize: 16 }}
+            title="Dismiss for this session"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Staged ideas panel */}
+      {showStaged && (
+        <div style={{
+          background: C.card, border: `1px solid ${C.income}44`, borderRadius: 14, padding: 14,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 850, color: C.income }}>Staged Ideas · RI desk</div>
+            <button type="button" onClick={() => setShowStaged(false)} style={{ ...iconBtn(C.soft), fontSize: 13 }}>Close</button>
+          </div>
+          {stagedIdeas.length === 0 ? (
+            <div style={{ fontSize: 12, color: C.muted }}>No staged ideas yet. Use <b style={{ color: C.income }}>Stage Trade</b> on a complete card.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {stagedIdeas.map(idea => (
+                <div key={idea.id} style={{
+                  display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 10, alignItems: 'center',
+                  padding: '10px 12px', borderRadius: 10, border: `1px solid ${C.line}`, background: 'rgba(0,0,0,.15)',
+                }}>
+                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 900, color: C.accent, fontSize: 14 }}>{idea.symbol}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 750, color: C.ink }}>
+                      {(idea.side || 'buy').toUpperCase()} · {idea.suggested_weight_pct || 'size TBD'}
+                      {idea.conviction_tier ? ` · Conv ${idea.conviction_tier}` : ''}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                      {idea.funding_source || (idea.require_funding_trim ? `Fund via ${idea.funding_symbol || 'SCHG'}` : 'Cash / rebalance')}
+                      {idea.source_title ? ` · ${idea.source_title.slice(0, 60)}` : ''}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                      <Link to={`/trading?symbol=${idea.symbol}&side=${idea.side === 'sell' ? 'sell' : 'buy'}&intent=ri_staged`}
+                        style={{ fontSize: 10, fontWeight: 750, color: C.accent, textDecoration: 'none' }}>
+                        Send to Trading →
+                      </Link>
+                      <Link to={`/portfolio?tab=Stop%20Management&symbol=${idea.symbol}`}
+                        style={{ fontSize: 10, fontWeight: 750, color: C.stale, textDecoration: 'none' }}>
+                        Set stop →
+                      </Link>
+                      {idea.funding_symbol && (
+                        <Link to={`/trading?symbol=${idea.funding_symbol}&side=sell&intent=ri_fund`}
+                          style={{ fontSize: 10, fontWeight: 750, color: C.bear, textDecoration: 'none' }}>
+                          Trim {idea.funding_symbol} →
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => idea.id && handleDismissStaged(idea.id)}
+                    style={{ fontSize: 10, fontWeight: 700, color: C.soft, border: `1px solid ${C.line}`, background: 'transparent', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>
+                    Dismiss
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Desk controls */}
       <section style={{
@@ -1243,6 +1551,9 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                     view={view === 'cards' ? 'list' : view}
                     onOpen={() => openItem(featured)}
                     onFeedback={onFeedback}
+                    onStage={handleStage}
+                    onThemeClick={handleThemeClick}
+                    staging={staging}
                   />
                 </div>
               )}
@@ -1261,7 +1572,8 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                 <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, overflow: 'hidden' }}>
                   {displayItems.map(item => (
                     <ArticleCard key={item.id} item={item} catMeta={catMeta} view="compact"
-                      onOpen={() => openItem(item)} onFeedback={onFeedback} />
+                      onOpen={() => openItem(item)} onFeedback={onFeedback}
+                      onStage={handleStage} onThemeClick={handleThemeClick} staging={staging} />
                   ))}
                 </div>
               ) : view === 'cards' ? (
@@ -1272,14 +1584,16 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                 }}>
                   {rest.map(item => (
                     <ArticleCard key={item.id} item={item} catMeta={catMeta} view="cards"
-                      onOpen={() => openItem(item)} onFeedback={onFeedback} />
+                      onOpen={() => openItem(item)} onFeedback={onFeedback}
+                      onStage={handleStage} onThemeClick={handleThemeClick} staging={staging} />
                   ))}
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {rest.map(item => (
                     <ArticleCard key={item.id} item={item} catMeta={catMeta} view="list"
-                      onOpen={() => openItem(item)} onFeedback={onFeedback} />
+                      onOpen={() => openItem(item)} onFeedback={onFeedback}
+                      onStage={handleStage} onThemeClick={handleThemeClick} staging={staging} />
                   ))}
                 </div>
               )}
@@ -1289,6 +1603,23 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
 
         {/* Right rail */}
         <aside style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 12 }}>
+          {stagedIdeas.length > 0 && (
+            <RailCard title="Staged Ideas" accent={C.income}>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>{stagedIdeas.length} active</div>
+              {stagedIdeas.slice(0, 5).map(idea => (
+                <div key={idea.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: `1px solid ${C.line}` }}>
+                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, color: C.accent }}>{idea.symbol}</span>
+                  <span style={{ color: C.soft, fontSize: 10 }}>{idea.side}</span>
+                </div>
+              ))}
+              <button type="button" onClick={() => setShowStaged(true)} style={{
+                marginTop: 8, fontSize: 11, fontWeight: 750, border: 'none', background: 'transparent',
+                color: C.income, cursor: 'pointer', padding: 0,
+              }}>
+                Open panel →
+              </button>
+            </RailCard>
+          )}
           {!!(data?.portfolio_context?.top?.length) && (
             <RailCard title="Book weights" accent={C.income}>
               <div style={{ fontSize: 11, color: C.soft, marginBottom: 6 }}>

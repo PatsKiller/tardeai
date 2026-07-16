@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-16 — Research Intelligence v2.7 (stage trades + cross-theme)
+
+- **Stage Trade** — persistent `ri_staged_ideas.json`; GET/POST stage APIs; incomplete data blocked.
+- **Staged Ideas** panel + sidebar on RI desk; toast confirmation; dismiss + links to Trading/Stops.
+- **Cross-theme strips** — income↔retirement MAGI, SCHG funding for power/AI, infrastructure cluster.
+- **Concentration banner** — SCHG ≥24% or top-3 ≥50% desk-level alert.
+- **CTA hierarchy** — Stage first; Propose Trim SCHG; demote Stage on incomplete cards.
+- **Docs** — `RESEARCH_INTELLIGENCE_V2_7_STAGING.md`. Feed `2.7`.
+
 ## 2026-07-16 — Research Intelligence v2.6 (maturity: transparent conviction + actions)
 
 - **Conviction breakdown** — RSI, RS, valuation, Finnhub analyst, earnings, SMAs, options, liquidity shown as scored components.

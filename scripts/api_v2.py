@@ -18422,6 +18422,42 @@ def _research_intelligence_feedback_post(body=None):
         return {"ok": False, "error": str(e)[:240]}
 
 
+def _research_intelligence_staged_get(query=None):
+    """GET /api/v2/research-intelligence/staged — RI staged trade ideas."""
+    try:
+        from lib.research_intelligence_stage import list_staged
+        q = query or {}
+        include = str(q.get("include_dismissed") or "").lower() in ("1", "true", "yes")
+        limit = int(q.get("limit") or 50)
+        return list_staged(include_dismissed=include, limit=max(1, min(limit, 100)))
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _research_intelligence_stage_post(body=None):
+    """POST /api/v2/research-intelligence/stage — stage a trade idea from a card."""
+    try:
+        from lib.research_intelligence_stage import stage_idea
+        return stage_idea(body or {})
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _research_intelligence_stage_patch(body=None):
+    """POST /api/v2/research-intelligence/stage/update — dismiss or update staged idea."""
+    try:
+        from lib.research_intelligence_stage import update_staged, dismiss_idea
+        b = body or {}
+        idea_id = (b.get("id") or b.get("idea_id") or "").strip()
+        if not idea_id:
+            return {"ok": False, "error": "id required"}
+        if b.get("dismiss") or b.get("dismissed") is True:
+            return dismiss_idea(idea_id)
+        return update_staged(idea_id, b)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
 def _research_topics_unified():
     """GET /api/v2/research-topics — unified view of user research + topic monitor."""
     user_topics = _db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or []
@@ -29994,6 +30030,7 @@ ROUTES = {
     "/api/v2/research-intelligence": lambda: _research_intelligence_feed(_current_query),
     "/api/v2/research-intelligence/taxonomy": lambda: _research_intelligence_taxonomy(),
     "/api/v2/research-intelligence/freshness": lambda: _research_intelligence_freshness(),
+    "/api/v2/research-intelligence/staged": lambda: _research_intelligence_staged_get(_current_query),
     "/api/v2/atm/gate-status": lambda: _atm_gate_status(),
     "/api/v2/atm/schwab-readiness": lambda: _atm_schwab_readiness(),
     "/api/v2/atm/actionable-proposals": lambda: _atm_actionable_proposals(),
@@ -33061,6 +33098,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )""", fetch="none")
             result = _research_intelligence_feedback_post(body or {})
+            code = 200 if result.get("ok") else 400
+            return code, result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:240]}
+    if method == "POST" and base_path == "/api/v2/research-intelligence/stage":
+        try:
+            result = _research_intelligence_stage_post(body or {})
+            code = 200 if result.get("ok") else 400
+            return code, result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:240]}
+    if method == "POST" and base_path == "/api/v2/research-intelligence/stage/update":
+        try:
+            result = _research_intelligence_stage_patch(body or {})
             code = 200 if result.get("ok") else 400
             return code, result
         except Exception as e:

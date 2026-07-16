@@ -1452,33 +1452,124 @@ def build_advisory(
     if size_reasons and "Why this size" not in sizing_text:
         sizing_text = (sizing_text + " " + "Why this size: " + "; ".join(size_reasons[:4]) + ".").strip()
 
-    # Card-level actions (first ticker primary; unique by id)
-    card_actions: list[dict[str, str]] = []
-    seen_act: set[str] = set()
+    # Cross-theme relationships
+    related: dict[str, Any] = {"items": [], "impact_note": None, "impact_notes": [], "themes": []}
+    try:
+        from lib.research_intelligence_themes import related_themes_for_card
+        related = related_themes_for_card(
+            primary=primary,
+            title=title,
+            portfolio=portfolio,
+            detected_themes=detect_themes_from_title(title),
+        )
+    except Exception:
+        pass
+
+    # Funding context for staging
+    funding_symbol = None
+    require_fund = book_lvl in ("high", "elevated") or heat_lvl in ("high", "extreme", "moderate")
+    schg_w = float((by_sym.get("SCHG") or {}).get("weight_pct") or 0)
+    if schg_w >= 20 or book_lvl == "high":
+        require_fund = True
+        funding_symbol = "SCHG"
+
+    # Card-level actions — Stage Trade first when eligible
+    stageable = [
+        t for t in tickers
+        if t.get("role") in ("add_candidate", "trim_candidate", "protect", "hold_review")
+        and t.get("data_complete") is not False
+        and t.get("symbol")
+    ]
+    card_actions: list[dict[str, Any]] = []
+    if stageable:
+        t0 = stageable[0]
+        can_stage = t0.get("role") in ("add_candidate", "trim_candidate") and t0.get("data_complete") is not False
+        if can_stage and t0.get("role") == "add_candidate":
+            card_actions.append({
+                "id": "stage_trade",
+                "label": "Stage Trade",
+                "primary": True,
+                "symbol": t0.get("symbol"),
+                "role": t0.get("role"),
+                "side": "buy",
+            })
+        if funding_symbol or any(t.get("role") == "trim_candidate" for t in tickers):
+            card_actions.append({
+                "id": "propose_trim",
+                "label": f"Propose Trim {funding_symbol or 'SCHG'}",
+                "primary": bool(not can_stage),
+                "symbol": funding_symbol or "SCHG",
+                "role": "trim_candidate",
+                "side": "sell",
+            })
+        if can_stage:
+            card_actions.append({
+                "id": "ri_ideas",
+                "label": "Add to RI Ideas",
+                "symbol": t0.get("symbol"),
+                "role": t0.get("role"),
+                "side": "buy" if t0.get("role") == "add_candidate" else "sell",
+            })
+    # Secondary links
+    seen_act = {a["id"] for a in card_actions}
     for t in tickers[:2]:
         for a in t.get("actions") or []:
-            aid = str(a.get("id") or a.get("label") or "")
-            if aid in seen_act or len(card_actions) >= 5:
+            aid = str(a.get("id") or "")
+            if aid in seen_act or aid in ("trade_ticket",):
+                # trade_ticket demoted — Stage Trade is primary
+                if aid == "trade_ticket":
+                    continue
+            if aid in seen_act or len(card_actions) >= 6:
                 continue
             seen_act.add(aid)
-            card_actions.append(a)
+            card_actions.append({**a, "primary": False})
     if not card_actions:
         card_actions = [
-            {"id": "watchlist", "label": "Open Watchlist", "href": "/watch"},
-            {"id": "portfolio", "label": "Open Portfolio", "href": "/portfolio"},
-            {"id": "stops", "label": "Stop Management", "href": "/portfolio?tab=Stop%20Management"},
+            {"id": "watchlist", "label": "Add to Watchlist", "href": "/watch", "primary": False},
+            {"id": "open_trading", "label": "Open in Trading", "href": "/trading", "primary": False},
+            {"id": "stop", "label": "Set / Refresh Stop", "href": "/portfolio?tab=Stop%20Management", "primary": False},
         ]
 
-    # Aggregate quality gate from tickers
+    # Incomplete: demote Stage Trade
     incomplete_n = sum(1 for t in tickers if t.get("data_complete") is False)
+    if incomplete_n and stageable and stageable[0].get("data_complete") is False:
+        card_actions = [a for a in card_actions if a.get("id") not in ("stage_trade",)]
+        card_actions = [
+            {"id": "watchlist", "label": "Add to Watchlist", "href": f"/watch?symbol={stageable[0].get('symbol')}", "primary": True},
+            {"id": "open_trading", "label": "Open in Trading", "href": f"/trading?symbol={stageable[0].get('symbol')}", "primary": False},
+        ] + [a for a in card_actions if a.get("id") not in ("watchlist", "open_trading")]
+
     quality_gate = {
         "pass": incomplete_n == 0 or primary in ("retirement_tax", "risk_regime"),
         "incomplete_tickers": incomplete_n,
+        "stage_eligible": bool(stageable and stageable[0].get("data_complete") is not False
+                               and stageable[0].get("role") in ("add_candidate", "trim_candidate")),
         "note": (
             None if incomplete_n == 0
-            else f"{incomplete_n} ticker(s) incomplete (missing RSI/RS) — demoted to watchlist / lower confidence"
+            else f"{incomplete_n} ticker(s) incomplete (missing RSI/RS) — demoted; Stage Trade disabled"
         ),
     }
+
+    stage_payload = None
+    if stageable and quality_gate.get("stage_eligible"):
+        t0 = stageable[0]
+        stage_payload = {
+            "symbol": t0.get("symbol"),
+            "role": t0.get("role"),
+            "side": "sell" if t0.get("role") == "trim_candidate" else "buy",
+            "suggested_weight_pct": t0.get("suggested_weight_pct"),
+            "conviction_tier": t0.get("conviction_tier"),
+            "conviction_score": t0.get("conviction_score"),
+            "require_funding_trim": require_fund,
+            "funding_symbol": funding_symbol,
+            "funding_source": (
+                f"Trim {funding_symbol}" if funding_symbol else "Cash / rebalance"
+            ),
+            "sizing_reason": "; ".join(size_reasons[:4]) if size_reasons else None,
+            "data_complete": t0.get("data_complete") is not False,
+            "primary_category": primary,
+            "related_themes": [x.get("id") for x in (related.get("items") or [])],
+        }
 
     return {
         "investment_implications": (" ".join(implications) or "Map to holdings before acting.")[:750],
@@ -1488,6 +1579,13 @@ def build_advisory(
         "risk_caveat": _risk_caveat(portfolio),
         "actions": card_actions,
         "quality_gate": quality_gate,
+        "related_themes": related,
+        "stage_payload": stage_payload,
+        "funding_context": {
+            "require_funding_trim": require_fund,
+            "funding_symbol": funding_symbol,
+            "schg_pct": schg_w,
+        },
         "portfolio_snapshot": {
             "total_mv": portfolio.get("total_mv"),
             "cash_mv": portfolio.get("cash_mv"),

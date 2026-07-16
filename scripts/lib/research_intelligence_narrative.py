@@ -484,6 +484,9 @@ def _attach_advisory(
     base["card_template"] = adv.get("card_template")
     base["actions"] = adv.get("actions") or []
     base["quality_gate"] = adv.get("quality_gate")
+    base["related_themes"] = adv.get("related_themes")
+    base["stage_payload"] = adv.get("stage_payload")
+    base["funding_context"] = adv.get("funding_context")
     # Prefer portfolio-aware next_action unless topic_monitor needs ingest first
     if research_type == "topic_monitor":
         base["next_action"] = base.get("next_action") or adv.get("next_action")

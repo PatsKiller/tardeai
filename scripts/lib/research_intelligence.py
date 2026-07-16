@@ -524,6 +524,9 @@ def _item_base(
         "card_template": narrative.get("card_template"),
         "actions": narrative.get("actions") or [],
         "quality_gate": narrative.get("quality_gate"),
+        "related_themes": narrative.get("related_themes"),
+        "stage_payload": narrative.get("stage_payload"),
+        "funding_context": narrative.get("funding_context"),
     }
     if extra:
         # Merge key_questions carefully
@@ -966,7 +969,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "2.6",
+        "version": "2.7",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -1014,22 +1017,40 @@ def build_feed(
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2.6 — transparent conviction breakdown; RSI+RS data gate; "
-            "Finnhub analyst consensus; options IV/bias from desk; dollar sizing + risk $; "
-            "action bar (ticket/stop/watch); funded-add when SCHG≥24% / top-3>50%."
+            "Research Intelligence v2.7 — Stage Trade + RI Ideas watchlist; cross-theme strips; "
+            "concentration banner; transparent conviction; RSI+RS gate; Finnhub + options desk; "
+            "funded-add when SCHG≥24% / top-3>50%."
         ),
-        "portfolio_context": {
-            "total_mv": port_ctx.get("total_mv"),
-            "cash_mv": port_ctx.get("cash_mv"),
-            "invested_mv": port_ctx.get("invested_mv"),
-            "top": port_ctx.get("top") or [],
-            "sleeves": port_ctx.get("sleeves") or {},
-            "flags": port_ctx.get("flags") or [],
-            "concentration": port_ctx.get("concentration") or {},
-            "theme_capacity": port_ctx.get("theme_capacity") or {},
-            "heat": port_ctx.get("heat") or {},
-        },
+        "portfolio_context": _portfolio_context_payload(port_ctx),
     }
+
+
+def _portfolio_context_payload(port_ctx: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "total_mv": port_ctx.get("total_mv"),
+        "cash_mv": port_ctx.get("cash_mv"),
+        "invested_mv": port_ctx.get("invested_mv"),
+        "top": port_ctx.get("top") or [],
+        "sleeves": port_ctx.get("sleeves") or {},
+        "flags": port_ctx.get("flags") or [],
+        "concentration": port_ctx.get("concentration") or {},
+        "theme_capacity": port_ctx.get("theme_capacity") or {},
+        "heat": port_ctx.get("heat") or {},
+    }
+    try:
+        from lib.research_intelligence_themes import build_cross_theme_context
+        ctx = build_cross_theme_context(port_ctx)
+        out["concentration_banner"] = ctx.get("concentration_banner")
+        out["cross_theme"] = {
+            "current_weights": ctx.get("current_weights"),
+            "soft_max": ctx.get("soft_max"),
+            "constrained_names": ctx.get("constrained_names"),
+            "income_over_capacity": ctx.get("income_over_capacity"),
+        }
+    except Exception:
+        pass
+    return out
+
 
 
 def upsert_feedback(
