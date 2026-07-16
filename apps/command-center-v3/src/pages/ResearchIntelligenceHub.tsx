@@ -330,6 +330,51 @@ function FreshnessDot({ tier, label, asOf }: { tier?: string; label?: string; as
   )
 }
 
+// v3.1 (E2): one config map for outbound ticker links — extend here (e.g.
+// Finviz Elite deep-links) without touching components
+const TICKER_LINKS: { label: string; url: (s: string) => string }[] = [
+  { label: 'Finviz', url: s => `https://finviz.com/quote.ashx?t=${s}` },
+  { label: 'Yahoo', url: s => `https://finance.yahoo.com/quote/${s}` },
+  { label: 'EDGAR', url: s => `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${s}` },
+  { label: 'TradingView', url: s => `https://www.tradingview.com/chart/?symbol=${s}` },
+]
+
+function TickerLinks({ symbol }: { symbol?: string }) {
+  if (!symbol) return null
+  const s = symbol.toUpperCase()
+  return (
+    <span style={{ display: 'inline-flex', gap: 7, alignItems: 'baseline' }} onClick={e => e.stopPropagation()}>
+      {TICKER_LINKS.map(l => (
+        <a key={l.label} href={l.url(s)} target="_blank" rel="noopener noreferrer"
+          style={{ fontSize: 9.5, color: C.soft, textDecoration: 'none', borderBottom: `1px dotted ${C.soft}55` }}>
+          {l.label}↗
+        </a>
+      ))}
+      <Link to={`/watch?symbol=${s}`} style={{ fontSize: 9.5, color: C.accent, textDecoration: 'none' }}>Watchlist</Link>
+    </span>
+  )
+}
+
+// v3.1 (E1): sources render as clickable domain-labeled links — every claim
+// can be walked back to where it came from
+function SourceLinks({ sources }: { sources?: { title?: string; url?: string; source?: string }[] }) {
+  const withUrl = (sources || []).filter(s => s.url)
+  if (!withUrl.length) return null
+  const domain = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return u.slice(0, 30) } }
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'baseline' }} onClick={e => e.stopPropagation()}>
+      <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: C.soft }}>Sources</span>
+      {withUrl.slice(0, 4).map((s, i) => (
+        <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" title={s.title || s.url}
+          style={{ fontSize: 10.5, color: C.accent, textDecoration: 'none', borderBottom: `1px dotted ${C.accent}66` }}>
+          {domain(s.url!)}↗
+        </a>
+      ))}
+      {withUrl.length > 4 && <span style={{ fontSize: 10, color: C.soft }}>+{withUrl.length - 4} more</span>}
+    </div>
+  )
+}
+
 const ROLE_COLOR: Record<string, string> = {
   add_candidate: C.positive,
   trim_candidate: C.negative,
@@ -632,6 +677,9 @@ function ActionStrip({
                           {[sector, industry].filter(Boolean).join(' · ')}
                         </div>
                       )}
+                      <div style={{ marginTop: 4 }}>
+                        <TickerLinks symbol={t.symbol} />
+                      </div>
                       {what && (
                         <div style={{ fontSize: 12, color: C.soft, marginTop: 4, lineHeight: 1.45 }}>
                           {what}
@@ -1166,6 +1214,8 @@ function ArticleCard({
         </>
       )}
 
+      {(featured || view === 'list') && <SourceLinks sources={item.sources} />}
+
       {/* key takeaways */}
       {(featured || view === 'list') && takeaways.length > 0 && (
         <div style={{
@@ -1614,7 +1664,8 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   const retStats = freshData?.by_category?.retirement_tax
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1280 }}>
+    // v3.1 (E3): tabular numerals desk-wide — numbers align in columns
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1280, fontVariantNumeric: 'tabular-nums' }}>
       {/* Masthead */}
       <header style={{
         borderRadius: 12,
