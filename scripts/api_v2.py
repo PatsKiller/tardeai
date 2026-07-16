@@ -10513,12 +10513,26 @@ def warrior_audit_latest():
         return {"ok": False, "error": str(exc)[:120]}
 
 
+def _write_trade_ai_cache(path, data: dict) -> None:
+    """Atomic cache write — avoids mid-write JSON that forces request-path recompute."""
+    import json as _j, os as _os
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + f".tmp.{_os.getpid()}")
+    tmp.write_text(_j.dumps(data, default=str))
+    tmp.replace(path)
+
+
 def trade_ai(force=False):
     """GET /api/v2/trade-ai — served from a disk cache (data/runtime/trade_ai_cache.json) refreshed by
     warm_caches.py. The compute is heavy (run JSONs + a hundreds-row trade_ai_scans scan); running it
-    in the single-threaded request path let one cold/loaded request hang long enough for the health
-    watchdog to kill+restart-loop the server (the 2026-06-25 "Reconnecting" outage). Stale is served
-    (flagged) rather than blocking. force=True (warm cron) recomputes + rewrites the cache."""
+    in the request path hangs all DASHBOARD_MAX_CONCURRENCY threads (~250s each) and wedges the
+    dashboard (2026-06-25 reconnection outage; 2026-07-16 CLOSE-WAIT pileup). Stale is served
+    (flagged) rather than blocking. force=True (warm cron) recomputes + rewrites the cache.
+
+    NEVER fall through to _compute_trade_ai on the live request path if any cache exists — a
+    torn mid-write read used to parse-fail and trigger full recompute under load.
+    """
     import time as _t, json as _j, datetime as _dt
     _disk = PROJECT_ROOT / "data" / "runtime" / "trade_ai_cache.json"
     _now = _t.time()
@@ -10527,24 +10541,46 @@ def trade_ai(force=False):
         if _TRADE_AI_CACHE["data"] and (_now - _TRADE_AI_CACHE["ts"] < 120):
             return _TRADE_AI_CACHE["data"]
         # 2) disk cache — serve fresh OR stale without a heavy recompute in the request path
-        try:
-            if _disk.exists():
-                _d = _j.loads(_disk.read_text())
-                _age = _now - (_d.get("_cached_ts") or 0)
-                _d["cached_at"] = _d.get("_cached_at")
-                _d["cache_age_sec"] = round(_age)
-                _d["stale"] = _age > 600
-                _TRADE_AI_CACHE.update(ts=_now - min(_age, 119), data=_d)
-                return _d
-        except Exception:
-            pass
-        # 3) no disk cache yet (first ever) — fall through to compute once to bootstrap
+        for _attempt in (1, 2):
+            try:
+                if _disk.exists():
+                    _raw = _disk.read_text()
+                    if not _raw or not _raw.strip():
+                        raise ValueError("empty trade_ai cache")
+                    _d = _j.loads(_raw)
+                    _age = _now - float(_d.get("_cached_ts") or 0)
+                    _d["cached_at"] = _d.get("_cached_at")
+                    _d["cache_age_sec"] = round(_age)
+                    _d["stale"] = _age > 600
+                    _TRADE_AI_CACHE.update(ts=_now - min(_age, 119), data=_d)
+                    return _d
+            except Exception:
+                # brief retry — warm_caches may have been mid-replace without atomic write (legacy)
+                if _attempt == 1:
+                    _t.sleep(0.05)
+                    continue
+                # Prefer last good in-memory over a 4-minute request-path recompute
+                if _TRADE_AI_CACHE["data"]:
+                    _d = dict(_TRADE_AI_CACHE["data"])
+                    _d["stale"] = True
+                    _d["cache_error"] = "disk_read_failed_served_memory"
+                    return _d
+        # 3) no disk cache and no memory — return light stub; warm_caches will fill it
+        return {
+            "ok": False,
+            "error": "trade_ai cache not ready — warm_caches still building",
+            "go_count": 0,
+            "wait_count": 0,
+            "avoid_count": 0,
+            "tickers": [],
+            "stale": True,
+            "cache_missing": True,
+        }
     data = _compute_trade_ai()
     try:
         data["_cached_ts"] = _now
         data["_cached_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
-        _disk.parent.mkdir(parents=True, exist_ok=True)
-        _disk.write_text(_j.dumps(data, default=str))
+        _write_trade_ai_cache(_disk, data)
     except Exception:
         pass
     _TRADE_AI_CACHE.update(ts=_now, data=data)
