@@ -62,6 +62,8 @@ type Item = {
   vote?: number | null
   hidden?: boolean
   feedback_updated_at?: string | null
+  quality_flags?: string[]
+  counter_view?: string | null
   operator_note?: string | null
   status?: string
   investment_implications?: string
@@ -1025,6 +1027,15 @@ function ArticleCard({
             <Tag color={CONC_COLOR[item.portfolio_snapshot.concentration.book_level] || C.stale}>
               Conc. {item.portfolio_snapshot.concentration.book_level}
             </Tag>
+          )}
+          {/* v3.1 (WS-D): QA flags demote and DISCLOSE — honest gray chips, never hidden */}
+          {(item.quality_flags || []).map((f, i) => (
+            <span key={`qf-${i}`} title="Deterministic QA lint flag — this brief is capped below Tier A">
+              <Tag color="#6b7280">{f.startsWith('duplicate_of:') ? 'duplicate' : f.replace(/_/g, ' ')}</Tag>
+            </span>
+          ))}
+          {(item.quality_flags || []).includes('no_counter_view') && (
+            <Tag color="#9ca3af">single-view — treat as unconfirmed</Tag>
           )}
           {item.is_archived && <Tag color={C.archive}>Archived</Tag>}
           {item.needs_refresh && <Tag color={C.stale}>Due refresh</Tag>}

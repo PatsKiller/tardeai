@@ -1398,6 +1398,18 @@ def upsert_feedback(
     }
 
 
+def _qa_flag_counts_from_snapshots() -> dict[str, int]:
+    """v3.1 (WS-D): the desk's tracked garbage rate — read from the 'top'
+    snapshot (lint runs at materialization). Empty dict when no snapshot yet."""
+    import json as _j
+    try:
+        p = PROJECT_ROOT / "data" / "runtime" / "ri_snapshots" / "top.json"
+        snap = _j.loads(p.read_text(encoding="utf-8"))
+        return (snap.get("feed") or {}).get("stats", {}).get("qa_flag_counts") or {}
+    except Exception:
+        return {}
+
+
 def freshness_report(*, db_query) -> dict[str, Any]:
     """Category-level freshness SLO report for ops / dashboard strip."""
     policy = load_freshness_policy()
@@ -1513,6 +1525,7 @@ def freshness_report(*, db_query) -> dict[str, Any]:
         "stale_topic_count": len(stale_topics),
         "coverage_gaps": coverage_gaps,
         "feedback_tallies_7d": feedback_tallies,
+        "qa_flag_counts": _qa_flag_counts_from_snapshots(),
         "queued_research_count": (feed.get("stats") or {}).get("queued_research"),
         "action_label_distribution": label_dist[:15],
         "action_labels_over_20pct": over_cap,

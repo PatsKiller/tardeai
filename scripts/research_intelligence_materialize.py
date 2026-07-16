@@ -49,6 +49,11 @@ def materialize(lanes: tuple[str, ...] = LANES, *, log=print) -> dict:
         return _execute(sql, params, fetch=fetch)
 
     from lib.research_intelligence import build_feed
+    try:
+        from research_intelligence_qa_lint import lint_feed, known_symbol_universe
+        known_syms = known_symbol_universe(dbq)
+    except Exception:
+        lint_feed, known_syms = None, set()
 
     lock = open(LOCK_PATH, "w")
     try:
@@ -71,6 +76,13 @@ def materialize(lanes: tuple[str, ...] = LANES, *, log=print) -> dict:
             log(f"[ri-materialize] {lane}: BUILD FAILED — {e}")
             continue
         build_ms = int((time.perf_counter() - t0) * 1000)
+        qa_counts = {}
+        if lint_feed is not None:
+            try:
+                qa_counts = lint_feed(feed.get("items") or [], known_symbols=known_syms)
+                feed.setdefault("stats", {})["qa_flag_counts"] = qa_counts
+            except Exception as e:
+                log(f"[ri-materialize] {lane}: qa-lint failed (non-fatal) — {e}")
         body = json.dumps(feed, default=str, allow_nan=False)
         sha = hashlib.sha256(body.encode("utf-8")).hexdigest()[:20]
         snap = {
