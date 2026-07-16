@@ -248,6 +248,95 @@ def _from_stored_narrative(ev: Any) -> dict[str, Any] | None:
     return n
 
 
+def _polish_narrative_depth(base: dict[str, Any], *, title: str, cats: list[str]) -> dict[str, Any]:
+    """Ensure minimum advisory depth: implications paragraph, quality tier, no stub fluff."""
+    primary = (cats[0] if cats else "") or "general"
+    paras = list(base.get("executive_summary") or [])
+    # Drop pure monitor boilerplate (replaced below if body becomes thin)
+    paras = [
+        p for p in paras
+        if "standing watch on the Research Intelligence desk" not in (p or "")
+        and "queued on the Research Intelligence desk" not in (p or "")
+    ]
+    impl = base.get("investment_implications") or ""
+    size = base.get("sizing_guidance") or ""
+    why = base.get("why_it_matters") or ""
+    body_len = sum(len(p or "") for p in paras)
+
+    # Thin body → inject advisory-grade paragraphs (not generic stubs)
+    if body_len < 180:
+        rebuilt: list[str] = []
+        if why:
+            rebuilt.append(why[:360])
+        if impl:
+            rebuilt.append(impl[:420])
+        if size:
+            rebuilt.append(f"Portfolio sizing context: {size[:380]}")
+        if not rebuilt:
+            rebuilt = [
+                f"{title}: operator briefing in the {primary.replace('_', ' ')} lane. "
+                f"Verify sources, then apply the action strip with current weights and stops."
+            ]
+        # Keep any non-boilerplate residual first
+        paras = (paras + rebuilt)[:4]
+        body_len = sum(len(p or "") for p in paras)
+    else:
+        if impl and not any(impl[:40] in (p or "") for p in paras) and body_len < 320:
+            paras.append(impl[:420])
+        if size and len(paras) < 3 and size not in " ".join(paras):
+            paras.append(f"Portfolio context: {size[:380]}")
+
+    if not paras:
+        paras = [
+            f"{title}: desk briefing with portfolio-aware next steps. "
+            f"Category {primary} — verify sources before acting."
+        ]
+    base["executive_summary"] = paras[:4]
+    body_len = sum(len(p or "") for p in paras)
+
+    # Ensure bull/bear exist (advisory maturity)
+    if not base.get("bull_case") or not base.get("bear_case"):
+        blob = " ".join(paras) + " " + (impl or "")
+        bull, bear = _bull_bear(blob, cats, "neutral")
+        if not base.get("bull_case") and bull:
+            base["bull_case"] = bull
+        if not base.get("bear_case") and bear:
+            base["bear_case"] = bear
+
+    if not base.get("why_it_matters") and why:
+        base["why_it_matters"] = why
+    elif not base.get("why_it_matters"):
+        base["why_it_matters"] = _why_it_matters(
+            cats=cats, is_held=False, symbol=None
+        )
+
+    # Quality tier for UI
+    ticks = base.get("ticker_recommendations") or []
+    has_llm = base.get("narrative_source") == "stored_llm"
+    has_size = bool(base.get("sizing_guidance") and len(str(base.get("sizing_guidance") or "")) > 40)
+    if has_llm and body_len > 400 and (ticks or has_size):
+        base["quality_tier"] = "A"
+    elif body_len > 220 and (base.get("next_action") or ticks or has_size):
+        base["quality_tier"] = "B"
+    else:
+        base["quality_tier"] = "C"
+
+    # Ensure takeaways exist and are actionable
+    takes = list(base.get("key_takeaways") or [])
+    takes = [t for t in takes if t and "standing watch" not in str(t).lower()]
+    if base.get("next_action") and isinstance(base["next_action"], dict):
+        lab = base["next_action"].get("label")
+        if lab and not any(lab in str(t) for t in takes):
+            takes = [f"Next: {lab}"] + takes
+    if size and not any("sizing" in str(t).lower() or "%" in str(t) for t in takes):
+        takes = takes[:4] + [f"Sizing: {str(size)[:180]}"]
+    if not takes and impl:
+        takes = [impl[:200]]
+    base["key_takeaways"] = takes[:5]
+    base["reading_minutes"] = max(1, min(6, body_len // 450 or 1))
+    return base
+
+
 def _attach_advisory(
     base: dict[str, Any],
     *,
@@ -286,7 +375,6 @@ def _attach_advisory(
         base["next_action"] = base.get("next_action") or adv.get("next_action")
     else:
         base["next_action"] = adv.get("next_action") or base.get("next_action")
-    # Elevate takeaways with ticker line only when we have real recommendations
     ticks = [
         t for t in (base.get("ticker_recommendations") or [])
         if t.get("symbol") and t.get("role") in (
@@ -297,7 +385,6 @@ def _attach_advisory(
         line = "Tickers: " + ", ".join(
             f"{t.get('symbol')} ({t.get('role')})" for t in ticks[:4]
         )
-        # Avoid duplicating the same sleeve line on every card
         base["key_takeaways"] = [x for x in base["key_takeaways"] if not str(x).startswith("Tickers:")]
         base["key_takeaways"] = [line] + list(base["key_takeaways"])[:4]
     return base
@@ -347,25 +434,46 @@ def enrich_narrative(
             "narrative_source": "stored_llm",
             "reading_minutes": max(1, min(6, len(" ".join(paras)) // 500 or 1)),
         }
-        return _attach_advisory(
+        out = _attach_advisory(
             out, title=title, summary=summary, thesis=thesis, cats=cats,
             symbol=symbol, is_held=is_held, research_type=research_type, portfolio=portfolio,
         )
+        return _polish_narrative_depth(out, title=title, cats=cats)
 
     body_src = " ".join(x for x in [summary, thesis] if x)
-    # Topic monitors: always write a proper desk brief (metadata is not an article)
+    # Topic monitors: category-aware desk brief (avoid empty metadata stubs)
     if research_type == "topic_monitor":
         ctx = summary or ""
-        # Strip mechanical "Topic monitor · …" prefix if present
         ctx = re.sub(r"^Topic monitor[^.]*\.\s*", "", ctx, flags=re.I).strip()
-        body_src = (
-            f"{title} is a standing watch on the Research Intelligence desk—kept on a short "
-            f"refresh cycle so policy, tax, and market shifts do not go unnoticed. "
-            f"{ctx + ' ' if ctx else ''}"
-            f"When new sources land, topic ingestion and Hermes turn the monitor into a sourced brief "
-            f"with thesis and citations. Until the next ingest cycle, use this card as the "
-            f"operator checklist for what matters and what to verify next."
-        )
+        primary = (cats[0] if cats else "") or "general"
+        lane = primary.replace("_", " ")
+        if primary == "retirement_tax":
+            body_src = (
+                f"{title} is an active retirement/tax watch on the {lane} pillar. "
+                f"Track IRMAA lookback, MAGI room, and conversion calendar against live portfolio weights. "
+                f"{ctx + ' ' if ctx else ''}"
+                f"When sources refresh, Hermes upgrades this monitor into a cited brief; until then, "
+                f"use the action strip for the next operator step (not a new equity ticket)."
+            )
+        elif primary == "dividend_income":
+            body_src = (
+                f"{title} watches the income sleeve: yield quality, covered-call/NAV risk, and IRMAA impact of "
+                f"taxable distributions. {ctx + ' ' if ctx else ''}"
+                f"Prefer quality (SCHD) over stacking high-yield traps; size against current sleeve weight."
+            )
+        elif primary == "risk_regime":
+            body_src = (
+                f"{title} is a risk/protection watch — stop hygiene and portfolio heat outrank alpha until clean. "
+                f"{ctx + ' ' if ctx else ''}"
+                f"Review largest weights first via Stop Management (Replace mode)."
+            )
+        else:
+            body_src = (
+                f"{title} is an active {lane} watch on the Research Intelligence desk. "
+                f"{ctx + ' ' if ctx else ''}"
+                f"On the next ingest cycle, Hermes will attach sources and thesis; until then, "
+                f"map implications to holdings using the portfolio-aware action strip below."
+            )
 
     paras = _paras_from_text(body_src, max_paras=3, max_chars=1400)
     if not paras and thesis:
@@ -416,7 +524,8 @@ def enrich_narrative(
         "narrative_source": "synthesized",
         "reading_minutes": max(1, min(5, sum(len(p) for p in paras) // 450 or 1)),
     }
-    return _attach_advisory(
+    out = _attach_advisory(
         out, title=title, summary=summary, thesis=thesis, cats=cats,
         symbol=symbol, is_held=is_held, research_type=research_type, portfolio=portfolio,
     )
+    return _polish_narrative_depth(out, title=title, cats=cats)

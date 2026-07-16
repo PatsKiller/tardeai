@@ -1,6 +1,6 @@
 /**
- * Research Intelligence v2.1 — editorial intelligence desk (CC v3).
- * Seeking Alpha / Benzinga / Yahoo Finance–inspired narrative UI.
+ * Research Intelligence v2.3 — editorial intelligence desk (CC v3).
+ * Portfolio-aware tickers + sizing; quality tiers; Seeking Alpha–style narrative UI.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -72,6 +72,7 @@ type Item = {
   }[]
   sizing_guidance?: string
   risk_caveat?: string
+  quality_tier?: 'A' | 'B' | 'C' | string
   portfolio_snapshot?: {
     total_mv?: number
     related_weights?: Record<string, number>
@@ -200,46 +201,68 @@ const ROLE_COLOR: Record<string, string> = {
   plan: C.retire,
 }
 
+const QUALITY: Record<string, { color: string; label: string }> = {
+  A: { color: C.income, label: 'Tier A' },
+  B: { color: C.accent, label: 'Tier B' },
+  C: { color: C.soft, label: 'Tier C' },
+}
+
 function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
   const label = item.next_action_label || item.next_action?.label || item.actionability || 'Read full analysis'
   const detail = item.next_action_detail || item.next_action?.detail || item.why_it_matters || ''
   const ticks = item.ticker_recommendations || []
+  const hasAdvisory = ticks.length > 0 || !!item.sizing_guidance || !!item.investment_implications
   return (
     <div style={{
-      marginTop: 2, padding: '12px 14px', borderRadius: 12,
-      background: C.ctaBg, border: `1px solid ${catColor}44`,
-      display: 'flex', flexDirection: 'column', gap: 8,
-      boxShadow: `inset 0 0 0 1px ${catColor}12`,
+      marginTop: 2, padding: '14px 16px', borderRadius: 12,
+      background: hasAdvisory
+        ? `linear-gradient(145deg, ${catColor}16 0%, rgba(96,165,250,.12) 45%, rgba(167,139,250,.10) 100%)`
+        : C.ctaBg,
+      border: `1px solid ${hasAdvisory ? `${catColor}55` : `${catColor}44`}`,
+      display: 'flex', flexDirection: 'column', gap: 10,
+      boxShadow: `inset 0 0 0 1px ${catColor}14, 0 4px 16px rgba(0,0,0,.12)`,
     }}>
-      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.cta }}>
-        Recommended next step
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.cta }}>
+          Recommended next step
+        </div>
+        {hasAdvisory && (
+          <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.macro }}>
+            Portfolio-aware
+          </div>
+        )}
       </div>
-      <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>{label}</div>
+      <div style={{ fontSize: 14.5, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>{label}</div>
       {detail && (
         <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>{detail}</div>
       )}
       {item.investment_implications && (
-        <div style={{ fontSize: 12, color: C.ink, lineHeight: 1.5 }}>
-          <span style={{ fontWeight: 750, color: catColor }}>Investment implications · </span>
+        <div style={{
+          fontSize: 12.5, color: C.ink, lineHeight: 1.55,
+          padding: '8px 10px', borderRadius: 8,
+          background: 'rgba(0,0,0,.18)', border: `1px solid ${C.line}`,
+        }}>
+          <span style={{ fontWeight: 800, color: catColor }}>Investment implications · </span>
           {item.investment_implications}
         </div>
       )}
       {ticks.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft }}>
-            Tickers & sizing
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.ink }}>
+            Tickers & allocation guidance
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
             {ticks.slice(0, 6).map((t, i) => {
               const role = t.role || 'review'
               const rc = ROLE_COLOR[role] || C.accent
               return (
                 <div key={`${t.symbol}-${i}`} style={{
-                  border: `1px solid ${rc}44`, background: `${rc}12`, borderRadius: 8,
-                  padding: '6px 10px', minWidth: 120, maxWidth: 220,
+                  border: `1px solid ${rc}55`, background: `${rc}14`, borderRadius: 9,
+                  padding: '8px 11px', minWidth: 132, maxWidth: 240,
+                  boxShadow: `0 2px 8px ${rc}12`,
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 13, color: C.accent }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 14, color: C.accent }}>
                       {t.symbol}
                     </span>
                     <span style={{ fontSize: 9, fontWeight: 800, color: rc, textTransform: 'uppercase' }}>
@@ -247,12 +270,12 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
                     </span>
                   </div>
                   {t.suggested_weight_pct && (
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginTop: 2 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: C.ink, marginTop: 3, letterSpacing: '-0.01em' }}>
                       {t.suggested_weight_pct}
                     </div>
                   )}
                   {t.rationale && (
-                    <div style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.35, marginTop: 2 }}>
+                    <div style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.35, marginTop: 3 }}>
                       {t.rationale}
                     </div>
                   )}
@@ -263,8 +286,12 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
         </div>
       )}
       {item.sizing_guidance && (
-        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
-          <span style={{ fontWeight: 750, color: C.macro }}>Sizing · </span>
+        <div style={{
+          fontSize: 12.5, color: C.ink, lineHeight: 1.5,
+          padding: '9px 11px', borderRadius: 8,
+          background: `${C.macro}12`, border: `1px solid ${C.macro}44`,
+        }}>
+          <span style={{ fontWeight: 800, color: C.macro }}>Sizing guidance · </span>
           {item.sizing_guidance}
         </div>
       )}
@@ -404,7 +431,13 @@ function ArticleCard({
             </span>
           )}
           <Tag color={catColor}>{catMeta[primary]?.label || primary}</Tag>
+          {item.quality_tier && QUALITY[item.quality_tier] && (
+            <Tag color={QUALITY[item.quality_tier].color}>{QUALITY[item.quality_tier].label}</Tag>
+          )}
           {item.is_holdings && <Tag color={C.income}>In portfolio</Tag>}
+          {(item.ticker_recommendations?.length ?? 0) > 0 && (
+            <Tag color={C.macro}>Ticker recs</Tag>
+          )}
           {item.is_archived && <Tag color={C.archive}>Archived</Tag>}
           {item.needs_refresh && <Tag color={C.stale}>Due refresh</Tag>}
           {item.priority === 'high' && <Tag color={C.macro}>Priority</Tag>}
@@ -492,6 +525,27 @@ function ArticleCard({
             <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
               <span style={{ fontWeight: 750, color: catColor }}>Why it matters · </span>
               {item.why_it_matters}
+            </div>
+          )}
+          {(item.ticker_recommendations?.length ?? 0) > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {item.ticker_recommendations!.slice(0, 4).map((t, i) => {
+                const rc = ROLE_COLOR[t.role || ''] || C.accent
+                return (
+                  <span key={`${t.symbol}-${i}`} style={{
+                    fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 800,
+                    color: C.accent, background: `${rc}14`, border: `1px solid ${rc}44`,
+                    borderRadius: 6, padding: '3px 8px',
+                  }}>
+                    {t.symbol}
+                    {t.suggested_weight_pct ? (
+                      <span style={{ color: C.muted, fontWeight: 600, marginLeft: 5 }}>
+                        {t.suggested_weight_pct}
+                      </span>
+                    ) : null}
+                  </span>
+                )
+              })}
             </div>
           )}
         </>

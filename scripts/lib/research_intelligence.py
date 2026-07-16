@@ -93,6 +93,13 @@ _TYPE_TO_CAT = {
     "research_backlog": "company_ticker",
 }
 
+# Hard title patterns that must stay company_ticker (not dividend/sector bleed)
+_FORCE_COMPANY_TITLE = re.compile(
+    r"autonomous thesis challenge|options desk|options:\s*|ticker thesis|"
+    r"^auto-research:|news_momentum:\s*[A-Z]{1,5}\b",
+    re.I,
+)
+
 _SENT_BULL = re.compile(
     r"\b(bullish|upgrade|outperform|beat|strong buy|accumulate|tailwind|accelerat)\b", re.I
 )
@@ -164,7 +171,14 @@ def classify_primary_secondary(
     title_had_keyword = any(rx.search(title_blob) for _, rx in _CATEGORY_RULES)
     mapped = _TYPE_TO_CAT.get(research_type or "")
 
-    # Hard type maps always win (stops, options desk, etc.)
+    # Force company lane for options desk / thesis challenges (prevent dividend sleeve spam)
+    if _FORCE_COMPANY_TITLE.search(title_blob) or mapped == "company_ticker" and (
+        research_type in ("options_desk", "ticker_thesis_challenge")
+    ):
+        cats = ["company_ticker"] + [c for c in (title_cats + body_cats) if c != "company_ticker"]
+        return cats[:4]
+
+    # Hard type maps always win (stops, etc.)
     if mapped and mapped != "company_ticker":
         cats = [mapped] + [c for c in (title_cats + body_cats) if c != mapped]
         return cats[:4]
@@ -496,6 +510,7 @@ def _item_base(
         "next_action_detail": nxt.get("detail"),
         "narrative_source": narrative.get("narrative_source"),
         "reading_minutes": narrative.get("reading_minutes") or 1,
+        "quality_tier": narrative.get("quality_tier") or "B",
         # Portfolio-aware advisory
         "investment_implications": narrative.get("investment_implications"),
         "ticker_recommendations": narrative.get("ticker_recommendations") or [],
@@ -803,6 +818,21 @@ def build_feed(
         # Boilerplate monitor stubs
         if "standing watch on the Research Intelligence desk" in body:
             score -= 60
+        # Quality tier + portfolio-aware advisory surface mature briefs
+        qt = (it.get("quality_tier") or "").upper()
+        if qt == "A":
+            score += 28
+        elif qt == "B":
+            score += 12
+        elif qt == "C":
+            score -= 8
+        ticks = it.get("ticker_recommendations") or []
+        if ticks:
+            score += min(18, 4 * len(ticks))
+        if it.get("sizing_guidance") and len(str(it.get("sizing_guidance") or "")) > 40:
+            score += 10
+        if it.get("bull_case") and it.get("bear_case"):
+            score += 6
         sc = it.get("source_count") or len(it.get("sources") or [])
         score += min(12, float(sc) * 2)
         fh = it.get("freshness_hours")
@@ -929,7 +959,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "2.2.2",
+        "version": "2.3",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -973,8 +1003,9 @@ def build_feed(
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2.2.2 — dedupe titles (prefer Hermes/LLM over topic_monitor stubs); "
-            "retirement sizing is topic-specific (IRMAA vs MAPT vs ladder); stop noise demoted."
+            "Research Intelligence v2.3 — consistent portfolio-aware recs by primary category; "
+            "options/thesis challenges stay company-level (no income-sleeve spam); quality tiers A/B/C; "
+            "narrative depth polish + title-specific retirement CTAs."
         ),
         "portfolio_context": {
             "total_mv": port_ctx.get("total_mv"),

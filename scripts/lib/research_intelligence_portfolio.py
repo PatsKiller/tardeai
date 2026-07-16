@@ -200,12 +200,39 @@ def build_advisory(
                 f"Capital preservation on {sym} comes before new theme adds while stops are weak."
             )
             sizing_bits.append(
-                f"Do not increase {sym} until stop is healthy; if conviction drops, trim 5–10% of the position after stop is set."
+                f"Do not increase {sym} until stop is healthy; if conviction drops, trim 5–10% of the "
+                f"{sym} position (~{w * 0.05:.1f}–{w * 0.10:.1f}% of book) after stop is set."
             )
         else:
             action_label = "Inspect risk / stops"
-            action_detail = "Open Stop Management for holdings without healthy protection."
-            implications.append("Book-level stop hygiene dominates alpha until near-triggers are clean.")
+            action_detail = (
+                "Open Stop Management for holdings without healthy protection. "
+                "Prioritize largest weights first."
+            )
+            implications.append(
+                "Book-level stop hygiene dominates alpha until near-triggers are clean."
+            )
+            # Surface top concentrated holdings as protect reviews (not a buy list)
+            for r in (portfolio.get("top") or [])[:4]:
+                t = r.get("symbol")
+                if not t or t not in by_sym:
+                    continue
+                w = by_sym[t]["weight_pct"]
+                tickers.append({
+                    "symbol": t, "role": "protect",
+                    "suggested_weight_pct": f"current {w:.1f}% — protect first",
+                    "rationale": "Elevated / large weight — confirm stop health before net new risk.",
+                })
+            if flags:
+                sizing_bits.append("Concentration: " + "; ".join(flags[:3]) + ".")
+            else:
+                tops = ", ".join(
+                    f"{t['symbol']} {t['weight_pct']}%" for t in (portfolio.get("top") or [])[:4]
+                )
+                if tops:
+                    sizing_bits.append(
+                        f"Largest weights today: {tops}. No size adds until stops are healthy."
+                    )
 
     # ── Retirement / tax (topic-specific — avoid identical blurb on every card) ─
     elif primary == "retirement_tax":
@@ -303,32 +330,72 @@ def build_advisory(
             if schg and schg >= 20:
                 sizing_bits.append(f"Note: SCHG concentration ~{schg:.1f}% is separate from tax sequencing.")
 
-    # ── Dividend (PRIMARY only) ────────────────────────────────────────
+    # ── Dividend (PRIMARY only — and only when title is clearly income strategy) ─
     elif primary == "dividend_income":
         action, href = "income_sleeve", "portfolio"
         inc = sleeves.get("dividend_income") or 0
-        action_label = "Check income sleeve vs IRMAA"
-        held_income = [t for t in THEME_TICKERS["dividend_income"] if t in by_sym]
-        for t in held_income[:5]:
+        title_l = (title or "").lower()
+        # Sleeve list only for strategy-level income briefs, not random dividend-keyword bleed
+        strategy_title = bool(re.search(
+            r"dividend|income etf|income sleeve|covered.?call|jepi|jepq|schd|yield strategy|"
+            r"bdc|aristocrat|retirement-focused dividend",
+            title_l, re.I,
+        ))
+        # Single-name in title?
+        one = None
+        m = re.search(r"\b([A-Z]{2,5})\b", title or "")
+        if m and m.group(1) in by_sym:
+            one = m.group(1)
+
+        if one and not strategy_title:
+            # Misrouted single name — treat as position review
+            w = by_sym[one]["weight_pct"]
+            action_label = f"Review {one} as income holding"
+            action_detail = f"{one} is ~{w:.1f}% of book — confirm yield quality, stop, and IRMAA impact of distributions."
             tickers.append({
-                "symbol": t, "role": "hold_review",
-                "suggested_weight_pct": f"current {by_sym[t]['weight_pct']:.1f}%",
-                "rationale": "Existing income holding — review yield quality vs credit/NAV risk.",
+                "symbol": one, "role": "hold_review",
+                "suggested_weight_pct": f"current {w:.1f}%",
+                "rationale": "Named holding — not a full-sleeve recommendation.",
             })
-        if inc >= 25:
-            sizing_bits.append(
-                f"Income sleeve ~{inc:.1f}% of book — prefer quality (SCHD) over stacking BDCs; "
-                f"any add ≤1–2% of book with a stop."
+            implications.append(
+                f"Treat {one} on its own merits; do not extrapolate to the entire income sleeve."
             )
-            action_detail = f"Income already ~{inc:.1f}%. Avoid high-yield traps."
+            sizing_bits.append(
+                f"If reducing, trim 10–15% of the {one} position (~{w*0.1:.1f}–{w*0.15:.1f}% of book), not a blanket sleeve cut."
+            )
         else:
-            sizing_bits.append(
-                f"Income sleeve ~{inc:.1f}% — room for +2–4% quality dividend if IRMAA budget allows."
+            action_label = "Check income sleeve vs IRMAA"
+            held_income = [t for t in THEME_TICKERS["dividend_income"] if t in by_sym]
+            # Rank held by weight — show top 4 only
+            held_income.sort(key=lambda t: -by_sym[t]["weight_pct"])
+            for t in held_income[:4]:
+                tickers.append({
+                    "symbol": t, "role": "hold_review",
+                    "suggested_weight_pct": f"current {by_sym[t]['weight_pct']:.1f}%",
+                    "rationale": "Core income holding — review yield quality vs credit/NAV risk.",
+                })
+            if inc >= 25:
+                sizing_bits.append(
+                    f"Income sleeve ~{inc:.1f}% of book (heavy). Prefer quality SCHD over stacking BDCs; "
+                    f"any new yield name ≤1–2% of book with a stop."
+                )
+                action_detail = (
+                    f"Income already ~{inc:.1f}%. Do not add high-yield for MAGI-heavy years; rebalance within sleeve."
+                )
+                # Explicit concentration action
+                if by_sym.get("SCHD", {}).get("weight_pct", 0) >= 15:
+                    sizing_bits.append(
+                        f"SCHD alone is ~{by_sym['SCHD']['weight_pct']:.1f}% — trim only if total income target is lower, "
+                        f"not because of short-term price noise."
+                    )
+            else:
+                sizing_bits.append(
+                    f"Income sleeve ~{inc:.1f}% — room for +2–4% quality dividend (SCHD first) if IRMAA budget allows."
+                )
+                action_detail = "Scale quality dividend modestly; clear MAGI before adding taxable yield."
+            implications.append(
+                "Income decisions must clear SSDI/IRMAA: more yield is not always more after-tax spending power."
             )
-            action_detail = "Scale quality dividend modestly; clear MAGI before adding taxable yield."
-        implications.append(
-            "Income decisions must clear SSDI/IRMAA: more yield is not always more after-tax spending power."
-        )
 
     # ── Sector / macro (PRIMARY only) ──────────────────────────────────
     elif primary in ("sector_thematic", "macro_geo"):
@@ -410,51 +477,145 @@ def build_advisory(
     elif primary == "company_ticker" or primary == "catalyst_event":
         sym = (symbol or "").upper() or None
         if not sym:
-            # Only extract from title (not body) to avoid random NY/AI tokens
-            for m in _TICKER_TOKEN.finditer(title or ""):
-                t = m.group(1)
-                if t in held:
-                    sym = t
-                    break
+            # Title patterns: "BAH autonomous…", "Auto-research: PFLT", "news_momentum: X"
+            m = re.search(
+                r"(?:auto-research:\s*|news_momentum:\s*|earnings:\s*)?([A-Z]{1,5})\b",
+                title or "",
+            )
+            if m and m.group(1) in held:
+                sym = m.group(1)
+            if not sym:
+                for m in _TICKER_TOKEN.finditer(title or ""):
+                    t = m.group(1)
+                    if t in held:
+                        sym = t
+                        break
         if sym and sym in by_sym:
             action, href = "position_review", "portfolio"
             w = by_sym[sym]["weight_pct"]
+            mv = by_sym[sym]["market_value"]
             action_label = f"Review {sym} position"
             tickers.append({
                 "symbol": sym, "role": "hold_review",
-                "suggested_weight_pct": f"current {w:.1f}%",
-                "rationale": "Holding-linked — update thesis, stop, and size.",
+                "suggested_weight_pct": f"current {w:.1f}% (${mv:,.0f})",
+                "rationale": "Holding-linked — update thesis, stop, and size only for this name.",
             })
             if w >= 12:
                 sizing_bits.append(
-                    f"{sym} is ~{w:.1f}% of book — if thesis weakens, trim 10–20% of the position (not all-or-nothing)."
+                    f"{sym} is ~{w:.1f}% of book — if thesis weakens, trim 10–20% of the position "
+                    f"(~{w*0.1:.1f}–{w*0.2:.1f}% of portfolio), not all-or-nothing."
                 )
-                action_detail = f"{sym} elevated at ~{w:.1f}%. Confirm stop health; staged trim if conviction drops."
-            else:
-                sizing_bits.append(f"{sym} ~{w:.1f}% — size changes stay within ±1–2% of book.")
-                action_detail = f"Update {sym} thesis and stops."
-            implications.append(f"Any add to {sym} must clear stop policy and heat limits.")
-        else:
-            # Generic company research — NO recycled SCHD/JEPI list
-            action_label = "Research only — no sleeve action"
-            action_detail = (
-                "No held ticker linked. Do not auto-allocate; promote to a watchlist symbol before sizing."
-            )
-            implications.append(
-                "Company/ticker brief without a portfolio link — advisory context only, not a buy list."
-            )
-            if flags:
+                action_detail = (
+                    f"{sym} elevated at ~{w:.1f}%. Confirm stop health (Replace mode); staged trim if conviction drops."
+                )
+            elif w >= 5:
                 sizing_bits.append(
-                    "Book concentration context only: " + "; ".join(flags[:2]) + "."
+                    f"{sym} ~{w:.1f}% — material but not book-dominant; size changes ±1–2% of book max per action."
                 )
+                action_detail = f"Update {sym} thesis and stops before any size change."
+            else:
+                sizing_bits.append(
+                    f"{sym} is a small ~{w:.1f}% sleeve — prefer fix stops over rebalancing noise."
+                )
+                action_detail = f"Maintain {sym} with a healthy stop; add only if thesis is high conviction."
+            implications.append(
+                f"Any add to {sym} must clear stop policy and not push concentration flags higher without a plan."
+            )
+        else:
+            # Named non-held ticker from title
+            m2 = re.search(r"\b([A-Z]{2,5})\b", title or "")
+            cand = m2.group(1) if m2 else None
+            if cand and cand not in {
+                "AUTO", "RESEARCH", "OPTIONS", "DESK", "GROK", "STOP", "NEAR", "HEALTH",
+            }:
+                action_label = f"Watchlist only — {cand} not held"
+                action_detail = (
+                    f"{cand} is not in the household book. Promote to watchlist / paper path before any size; "
+                    f"if adding later, start 1–2% of book with a stop."
+                )
+                tickers.append({
+                    "symbol": cand, "role": "add_candidate",
+                    "suggested_weight_pct": "1–2% starter only after diligence",
+                    "rationale": "Not currently held — research/watch, not a funded recommendation.",
+                })
+                implications.append(
+                    f"{cand} is off-book — do not size from this brief alone; run entry diligence first."
+                )
+                if by_sym.get("SCHG", {}).get("weight_pct", 0) >= 20:
+                    sizing_bits.append(
+                        f"Funding any new name should not auto-come from SCHG (~{by_sym['SCHG']['weight_pct']:.1f}%) "
+                        f"without an explicit rebalance plan."
+                    )
+            else:
+                action_label = "Research only — no sleeve action"
+                action_detail = (
+                    "No held ticker linked. Do not auto-allocate; promote a symbol before sizing."
+                )
+                implications.append(
+                    "Company/ticker brief without a portfolio link — context only, not a buy list."
+                )
+                if flags:
+                    sizing_bits.append("Book concentration context: " + "; ".join(flags[:2]) + ".")
 
-    # ── Academic / compounding / other ─────────────────────────────────
+    # ── Compounding wealth ─────────────────────────────────────────────
+    elif primary == "compounding_wealth":
+        action, href = "growth_review", "portfolio"
+        growth = sleeves.get("growth") or 0
+        schg = by_sym.get("SCHG", {}).get("weight_pct")
+        action_label = "Review growth / compounding sleeve"
+        implications.append(
+            "Compounding briefs map to long-horizon growth quality — size against concentration, not headlines."
+        )
+        if schg:
+            tickers.append({
+                "symbol": "SCHG", "role": "hold_review",
+                "suggested_weight_pct": f"current {schg:.1f}%",
+                "rationale": "Primary growth compounder in book — rebalance only on plan, not noise.",
+            })
+        for t in ("QQQ", "SPY", "V"):
+            if t in by_sym and t != "SCHG":
+                tickers.append({
+                    "symbol": t, "role": "hold_review",
+                    "suggested_weight_pct": f"current {by_sym[t]['weight_pct']:.1f}%",
+                    "rationale": "Growth/beta holding — keep unless thesis or tax plan requires a trim.",
+                })
+        if schg and schg >= 22:
+            sizing_bits.append(
+                f"SCHG ~{schg:.1f}% is book-dominant. Prefer hold + dividend reinvest over stacking more growth; "
+                f"if trimming for diversification, stage 3–6% of book with stops intact."
+            )
+            action_detail = (
+                f"Growth sleeve ~{growth:.1f}% (SCHG ~{schg:.1f}%). Avoid net new megacap beta without a funding trim."
+            )
+        elif growth >= 15:
+            sizing_bits.append(
+                f"Growth sleeve ~{growth:.1f}% — room for modest +1–3% quality growth only if funded and stopped."
+            )
+            action_detail = "Stay systematic: DCA/reinvest beats one-off adds unless a clear valuation edge."
+        else:
+            sizing_bits.append(
+                f"Growth sleeve ~{growth:.1f}% — if underweight long-term targets, add via SCHG/broad beta in 2–4% stages."
+            )
+            action_detail = "Build compounding exposure gradually; never skip stop policy on new lots."
+
+    # ── Academic / other ───────────────────────────────────────────────
     else:
         action_label = "Review implications"
         action_detail = "Map to holdings only if a clear sleeve or symbol is identified."
         implications.append(
             "General intelligence — no automatic ticker shopping list for this category."
         )
+        # Still surface concentration so academic/pro briefs stay portfolio-aware
+        schg = by_sym.get("SCHG", {}).get("weight_pct")
+        if schg and schg >= 20:
+            tickers.append({
+                "symbol": "SCHG", "role": "hold_review",
+                "suggested_weight_pct": f"current {schg:.1f}%",
+                "rationale": "Dominant weight — any research that implies portfolio change should size against SCHG first.",
+            })
+            sizing_bits.append(
+                f"SCHG is ~{schg:.1f}% of book — treat as the funding/concentration reference for any proposed shift."
+            )
         if flags:
             sizing_bits.extend(flags[:2])
 

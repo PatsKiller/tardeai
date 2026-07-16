@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-15 — Research Intelligence v2.3 (consistent portfolio-aware recommendations)
+
+Quality and consistency upgrade so every relevant brief feels advisory-grade.
+
+- **Category-gated advisory** — company/options/thesis stay single-name (no SCHD/JEPI sleeve spam); dividend sleeve only for income-strategy titles; risk shows top protect weights; compounding maps SCHG/growth.
+- **Narrative polish** — `_polish_narrative_depth`: strip stubs, ensure bull/bear/takeaways, inject portfolio context when thin; topic monitors use category-aware copy.
+- **Quality tiers** — `A` / `B` / `C` on feed items; sort boosts mature advisory briefs.
+- **UI** — Tier badges, ticker-rec chips, prominent sizing panel, stronger action strip hierarchy.
+- **Version** — feed `2.3`. Docs: `RESEARCH_INTELLIGENCE_V2_3_CONSISTENCY.md`.
+
 ## 2026-07-15 — Research Intelligence v2.2 (portfolio-aware tickers & sizing)
 
 Advisory upgrade: briefs now cite **live holdings weights** and suggest specific tickers/sizing with risk caveats.
