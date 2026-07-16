@@ -6136,11 +6136,16 @@ def _wl_items(query: dict = None):
     # Watch Desk v3 (D3): list payload trim — narrative/CIO-evidence blobs move
     # behind ?full=1 (the detail drawer refetches); list keeps snips only
     if not (query or {}).get("full"):
-        # Conservative cut: snips remain for everything dropped; fields consumed
-        # by the LOCKED Card v4 family (hermes_score_components._confidence,
-        # dual_consensus_json) are KEPT — flagged as the remaining payload tail
+        # Conservative cut: snips remain for everything dropped. v4 (B4) widened per a
+        # render census of the LOCKED Card v4 family: hermes_score_components is KEPT
+        # (card reads it); dual_consensus_json / synthesis_conflicts_snip / trigger_source /
+        # origin_detail / provenance_reason / technical_summary are rendered ONLY by the
+        # ToS desk diligence view, which now requests ?full=1.
         _HEAVY = ("synthesis_narrative", "profile_description", "conflicts",
-                  "research_summary", "unresolved", "synthesis_evidence")
+                  "research_summary", "unresolved", "synthesis_evidence",
+                  "dual_consensus_json", "synthesis_conflicts_snip", "trigger_source",
+                  "origin_detail", "provenance_reason", "technical_summary",
+                  "holdings_llm_summary")
         for _it in _items:
             for _k in _HEAVY:
                 _it.pop(_k, None)
@@ -24072,6 +24077,38 @@ def _watch_alerts_post(body=None):
             "note": "evaluated every 20 min during RTH; one batched Telegram per pass, daily cap applies"}
 
 
+def _ui_prefs_get(query=None):
+    """GET /api/v2/ui/prefs?key=K — Watch Desk v4 (B1): tiny server-side prefs store
+    (ui_prefs key/value jsonb). Server-side because the operator works desktop+phone
+    over Tailscale; localStorage doesn't travel. Read-only GET."""
+    q = query or {}
+    key = str((q.get("key") or [""])[0] if isinstance(q.get("key"), list) else q.get("key") or "").strip()
+    if not key:
+        return {"ok": False, "error": "key required"}
+    r = _db_query("SELECT value, updated_at FROM ui_prefs WHERE key=%s", (key,), fetch="one")
+    return {"ok": True, "key": key, "value": _json_clean(r["value"]) if r else None,
+            "updated_at": _json_clean(r["updated_at"]) if r else None}
+
+
+def _ui_prefs_set(body=None):
+    """POST /api/v2/ui/prefs {key, value} — upsert one pref blob (≤32KB)."""
+    b = body or {}
+    key = str(b.get("key") or "").strip()
+    if not key or len(key) > 128:
+        return {"ok": False, "error": "key required (≤128 chars)"}
+    import json as _j
+    try:
+        blob = _j.dumps(b.get("value"))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "value must be JSON-serializable"}
+    if len(blob) > 32768:
+        return {"ok": False, "error": "value too large (32KB cap)"}
+    _db_query("""INSERT INTO ui_prefs (key, value, updated_at) VALUES (%s, %s::jsonb, now())
+                 ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()""",
+              (key, blob), fetch=None)
+    return {"ok": True, "key": key}
+
+
 def _watch_directive_detail(query=None):
     """GET /api/v2/watch/directives/detail?id=N — Watch Desk v4 (C1): the directive
     drawer. Full thesis/spec + aliases, 90d hit timeline, α outcome events
@@ -31105,6 +31142,7 @@ ROUTES = {
     "/api/v2/watchpool": _watchpool_list,
     "/api/v2/watch/sectors": _watch_sectors,
     "/api/v2/watch/alerts/list": _watch_alerts_list,
+    "/api/v2/ui/prefs/get": _ui_prefs_get,
     "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
     "/api/v2/hermes/curate-top20": _hermes_curate_top20_status,
@@ -35669,6 +35707,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return (200 if result.get("ok") else 400), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:240]}
+    if method == "POST" and base_path == "/api/v2/ui/prefs":
+        try:
+            result = _ui_prefs_set(body or {})
+            return (200 if result.get("ok") else 400), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
     if method == "POST" and base_path == "/api/v2/watch/directives/update":
         try:
             result = _watch_directive_update(body or {})

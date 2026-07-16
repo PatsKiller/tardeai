@@ -181,7 +181,7 @@ export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
   const { data: draftsR, refetch } = useApi<any>('/api/v2/broker-orders/drafts?broker=schwab', 30_000)
   const { data: activityR } = useApi<any>('/api/v2/broker-orders/activity', 30_000)
   const { data: proposalsR } = useApi<any>('/api/v2/paper-proposals', 60_000)
-  const { data: watchlistR } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
+  const { data: watchlistR } = useApi<any>('/api/v2/watchlist/items?sort=hermes&full=1', 60_000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
   const { data: schwabR } = useApi<any>('/api/v2/schwab/accounts-live', 120_000)
   const { data: wlSummary } = useApi<any>('/api/v2/watchlist/summary', 120_000)

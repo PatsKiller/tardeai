@@ -3,6 +3,7 @@ import { marketAwareStale } from '../lib/watchlistCardV4'
 import { isExtremeVolItem } from '../lib/watchlistVolatility'
 import { useApi, useConnectionHealth } from '../hooks/useApi'
 import { BB, T, focusStyle } from '../lib/watchTokens'
+import { Chip } from '../components/TerminalChip'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useProAnalystMap } from '../components/ProAnalystPill'
 import DiscoveryPanel from '../components/DiscoveryPanel'
@@ -151,6 +152,30 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   const [fSector, setFSector] = useState('all')
   const [fAnalyst, setFAnalyst] = useState('all')   // analyst catalyst: upgrade / downgrade
   const [fVol, setFVol] = useState<'all' | 'extreme' | 'tight_stop'>('all')
+
+  // v4 (B1): saved views — named filter presets, SERVER-side (ui_prefs) because the
+  // operator works desktop+phone over Tailscale; localStorage doesn't travel. Max 8.
+  const VIEWS_KEY = 'watchlist.saved_views'
+  const { data: viewsPref, refetch: refetchViews } = useApi<any>(`/api/v2/ui/prefs/get?key=${VIEWS_KEY}`, 0)
+  const savedViews: Array<{ name: string; f: any }> = viewsPref?.value ?? []
+  const currentFilters = () => ({ fCio, fOrigin, fBand, fKind, fDir, fStatus, fRating, fList, fHeld, fStarred, fSector, fAnalyst, fVol, search })
+  const applyView = (v: any) => {
+    const f = v.f || {}
+    setFCio(f.fCio ?? 'all'); setFOrigin(f.fOrigin ?? 'all'); setFBand(f.fBand ?? 'all'); setFKind(f.fKind ?? 'all')
+    setFDir(f.fDir ?? 'all'); setFStatus(f.fStatus ?? 'all'); setFRating(f.fRating ?? 'all'); setFList(f.fList ?? 'all')
+    setFHeld(!!f.fHeld); setFStarred(!!f.fStarred); setFSector(f.fSector ?? 'all'); setFAnalyst(f.fAnalyst ?? 'all')
+    setFVol(f.fVol ?? 'all'); setSearch(f.search ?? '')
+    setActionToast(`View applied — ${v.name}`)
+  }
+  const saveViews = async (views: any[]) => {
+    await fetch('/api/v2/ui/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: VIEWS_KEY, value: views.slice(0, 8) }) })
+    refetchViews()
+  }
+
+  // v4 (B2): bulk row selection (≤25) → bulk Star / bulk Alert with one confirm.
+  // (Stage/Hide have no per-row watchlist endpoints — flagged in the closeout, not faked.)
+  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const selSyms = Object.keys(selected).filter(s => selected[s])
   const [showAdd, setShowAdd] = useState(false)
   const [page, setPage] = useState(0)
   const [showDormantDirs, setShowDormantDirs] = useState(false)   // collapse the 0-hit research-topic directives
@@ -512,6 +537,53 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
         <div style={{ marginLeft: 'auto', fontSize: 11, color: TEXT2 }}>{visible.length} / {items.length} shown</div>
       </div>
 
+      {/* v4 (B1): saved views chip row */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.05em', color: BB.text3 }}>VIEWS</span>
+        {savedViews.map((v, i) => (
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+            <button onClick={() => applyView(v)} style={{ fontSize: 10, fontWeight: 700, padding: '2px 9px', borderRadius: 999, border: `1px solid ${BB.border}`, background: 'var(--bg2)', color: BB.text2, cursor: 'pointer' }}>{v.name}</button>
+            <button title="delete view" onClick={() => saveViews(savedViews.filter((_, j) => j !== i))}
+                    style={{ fontSize: 10, border: 'none', background: 'transparent', color: BB.text3, cursor: 'pointer' }}>×</button>
+          </span>
+        ))}
+        {savedViews.length < 8 && (
+          <button onClick={() => { const name = window.prompt('Save current filters + search as view:'); if (name) void saveViews([...savedViews, { name: name.slice(0, 24), f: currentFilters() }]) }}
+                  style={{ fontSize: 10, fontWeight: 700, padding: '2px 9px', borderRadius: 999, border: `1px dashed ${BB.border}`, background: 'transparent', color: BB.text3, cursor: 'pointer' }}>+ save view</button>
+        )}
+      </div>
+
+      {/* v4 (B2): bulk action bar — appears when rows are selected */}
+      {selSyms.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, padding: '6px 10px', background: 'rgba(255, 176, 0, 0.08)', border: `1px solid ${BB.amber}44`, borderRadius: 2, fontSize: 11 }}>
+          <b style={{ color: BB.amber }}>{selSyms.length} selected</b>
+          <span style={{ color: BB.text3 }}>(cap 25)</span>
+          <button style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 2, border: `1px solid ${BB.amber}`, background: 'rgba(255, 176, 0, 0.14)', color: BB.amber, cursor: 'pointer' }}
+            onClick={() => {
+              const syms = selSyms.slice(0, 25)
+              if (!window.confirm(`Star ${syms.length} symbols?`)) return
+              syms.forEach(s => { const it = items.find((x: any) => String(x.symbol).toUpperCase() === s); if (it && !isStarred(it)) toggleStar(it) })
+              setActionToast(`Starred ${syms.length} symbols`); setSelected({})
+            }}>★ Star all</button>
+          <button style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 2, border: `1px solid ${BB.amber}`, background: 'transparent', color: BB.amber, cursor: 'pointer' }}
+            onClick={async () => {
+              const syms = selSyms.slice(0, 25)
+              const cond = window.prompt(`Bulk alert for ${syms.length} symbols — condition (rsi_below | rsi_above | price_cross_below | price_cross_above):`, 'rsi_below')
+              if (!cond) return
+              const th = window.prompt('Threshold (applied to all):', cond.startsWith('rsi') ? '40' : '')
+              if (!th) return
+              if (!window.confirm(`Arm ${syms.length} alerts: ${cond} ${th}?`)) return
+              let ok = 0
+              for (const s of syms) {
+                const r = await fetch('/api/v2/watch/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: s, condition_type: cond.trim(), threshold: Number(th) }) }).then(x => x.json()).catch(() => null)
+                if (r?.ok ?? r?.data?.ok) ok++
+              }
+              setActionToast(`Alerts armed on ${ok}/${syms.length}`); setSelected({})
+            }}>🔔 Alert all</button>
+          <button style={{ fontSize: 10, padding: '3px 10px', borderRadius: 2, border: `1px solid ${BB.border}`, background: 'transparent', color: BB.text3, cursor: 'pointer' }} onClick={() => setSelected({})}>Clear</button>
+        </div>
+      )}
+
       <div style={{ fontSize: 11, color: AMBER, marginBottom: 12, padding: '9px 13px', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.28)', borderRadius: 2 }}>{adv?.disclaimer ?? 'Advisory only — current technical posture vs the post-trade prior. Never gates promotion/scoring.'}</div>
       {screenerLane && symLookup && visible[0] && !visible[0].screener_pinned && (
         <div style={{ fontSize: 11, color: AMBER, marginBottom: 10, padding: '8px 12px', background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 2 }}>
@@ -581,9 +653,18 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
               const symKey = String(it.symbol).toUpperCase()
               const outcome = outMap[symKey]
               const kbFocused = pageItems[kbIdx]?.id === it.id
+              const held = !!(heldMap[symKey] || it.in_portfolio)
               return (
                 <div key={it.id} ref={el => { if (kbFocused && el) el.scrollIntoView({ block: 'nearest' }) }}
                      style={{ minWidth: 0, width: '100%', ...focusStyle(kbFocused) }}>
+                {/* v4 (B2/B3): select-for-bulk + HELD pill — rendered AROUND the locked Card v4 */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '1px 4px' }}>
+                  <input type="checkbox" checked={!!selected[symKey]} title="select for bulk Star/Alert"
+                         onChange={e => setSelected(o => ({ ...o, [symKey]: e.target.checked }))}
+                         style={{ accentColor: BB.amber, cursor: 'pointer' }} />
+                  {held && <Chip kind="state" tone="green"
+                                 title={`currently held — same _held_context as the pullback cards`}>HELD</Chip>}
+                </div>
                 {/* Watch Desk v3 (WS-C): deterministic context strip — reuses server _hermes_setup; not a quality score */}
                 {it.setup_context && (
                   <div title={it.setup_context.label} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 10.5, color: 'var(--text3)', padding: '2px 4px' }}>
