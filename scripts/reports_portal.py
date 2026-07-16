@@ -638,6 +638,19 @@ def _ar_where(cat) -> tuple[str, list] | None:
     return ("report_type = ANY(%s)", [types])
 
 
+
+def _tg_plain(text):
+    """Reports Desk v1 (WS-E): the ONE formatter for stored Telegram-HTML bodies —
+    strips <b>/<i>/<u>/<code>/<pre>/<a> tags and unescapes entities so archive rows
+    never leak markup. Content unchanged, tags only."""
+    import html as _html
+    import re as _re
+    if not text or "<" not in text:
+        return text
+    out = _re.sub(r"</?(?:b|i|u|s|em|strong|code|pre|tg-spoiler)>", "", text)
+    out = _re.sub(r"<a\s+[^>]*>", "", out).replace("</a>", "")
+    return _html.unescape(out)
+
 def categories() -> dict:
     """All portal categories with counts + last-activity date (cheap GROUP BY queries)."""
     cur = _conn().cursor()
@@ -749,9 +762,9 @@ def _category_rows(cat: dict, q: str = "", days: int | None = None) -> list:
         try:
             cur.execute(sql, op)
             for r in cur.fetchall():
-                body = r[4] or ""
+                body = _tg_plain(r[4] or "")
                 rows.append({"source": "ob", "id": r[0], "created_at": r[1], "category": category,
-                             "type": r[2], "channel": r[5] or "telegram", "title": r[3] or r[2], "summary": body,
+                             "type": r[2], "channel": r[5] or "telegram", "title": _tg_plain(r[3]) or r[2], "summary": body,
                              "severity": "info", "symbol": None, "status": ("sent" if r[6] else "failed"),
                              "actions": _action_links(body), "acknowledged": True})
         except Exception:

@@ -14,7 +14,7 @@ import StructuredBrief from '../components/reports/StructuredBrief'
 import AnalystReportsPanel from '../components/reports/AnalystReportsPanel'
 import { parseBriefSections, executiveSummaryText, rankedActionLines, SUPER_TABS } from '../components/reports/briefUtils'
 import { useTerminalUi } from '../lib/terminalUi'
-import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
+import { hubTitle, hubSubtitle, hubTab, BB, T } from '../lib/watchTokens'
 
 // v3 Reports — a COMMAND PORTAL for everything sent to the operator (Telegram / email / SIEM): briefs,
 // digests, alerts, advisories, recovery, dividends, regime, paper, system. Visual KPI summary + extracted
@@ -23,9 +23,9 @@ import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }
-const SEV: Record<string, string> = { critical: '#dc2626', urgent: '#ef4444', warning: '#f59e0b', info: '#60a5fa' }
-const sevColor = (s?: string) => SEV[(s || 'info').toLowerCase()] || '#60a5fa'
+const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 2 }
+const SEV: Record<string, string> = { critical: BB.red, urgent: BB.red, warning: BB.orange, info: T.link }
+const sevColor = (s?: string) => SEV[(s || 'info').toLowerCase()] || T.link
 const fmtDate = (s?: string) => {
   if (!s) return '—'
   const d = new Date(s)
@@ -77,10 +77,10 @@ function inline(text: string, sym?: string, riskLine?: boolean): ReactNode[] {
     const tok = m[0]
     if (tok.startsWith('**')) parts.push(<b key={key++} style={{ color: 'var(--text0)', fontWeight: 800 }}>{tok.slice(2, -2)}</b>)
     else if (tok.startsWith('*')) parts.push(<b key={key++} style={{ color: 'var(--text0)', fontWeight: 800 }}>{tok.slice(1, -1)}</b>)
-    else if (tok.startsWith('`')) parts.push(<code key={key++} style={{ fontFamily: 'monospace', fontSize: '.92em', background: 'var(--bg0)', padding: '1px 5px', borderRadius: 4, color: '#a5d6ff' }}>{tok.slice(1, -1)}</code>)
-    else if (tok.startsWith('/v')) { const { label, route } = pageLink(tok); const r = sym && /\/v3\/(risk|trading|portfolio)/.test(route) ? `${route}?symbol=${sym}` : route; parts.push(<a key={key++} href={FQDN + r} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 4, background: '#60a5fa18', color: '#60a5fa', textDecoration: 'none', whiteSpace: 'nowrap' }}>{label}{sym ? ` ${sym}` : ''} ↗</a>) }
-    else if (riskLine && /^[A-Z]{2,5}$/.test(tok) && !NOT_TICKER.has(tok)) { parts.push(<a key={key++} href={FQDN + `/v3/risk?symbol=${tok}`} target="_blank" rel="noreferrer" title={`open ${tok} risk / stop`} style={{ color: '#60a5fa', fontWeight: 700, fontFamily: 'monospace', textDecoration: 'none', borderBottom: '1px dotted #60a5fa66' }}>{tok}</a>) }
-    else parts.push(<a key={key++} href={tok} target="_blank" rel="noreferrer" style={{ color: '#60a5fa', wordBreak: 'break-all' }}>{tok}</a>)
+    else if (tok.startsWith('`')) parts.push(<code key={key++} style={{ fontFamily: BB.mono, fontVariantNumeric: 'tabular-nums', fontSize: '.92em', background: 'var(--bg0)', padding: '1px 5px', borderRadius: 2, color: BB.text1 }}>{tok.slice(1, -1)}</code>)
+    else if (tok.startsWith('/v')) { const { label, route } = pageLink(tok); const r = sym && /\/v3\/(risk|trading|portfolio)/.test(route) ? `${route}?symbol=${sym}` : route; parts.push(<a key={key++} href={FQDN + r} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 2, background: `${T.link}18`, color: T.link, textDecoration: 'none', whiteSpace: 'nowrap' }}>{label}{sym ? ` ${sym}` : ''} ↗</a>) }
+    else if (riskLine && /^[A-Z]{2,5}$/.test(tok) && !NOT_TICKER.has(tok)) { parts.push(<a key={key++} href={FQDN + `/v3/risk?symbol=${tok}`} target="_blank" rel="noreferrer" title={`open ${tok} risk / stop`} style={{ color: T.link, fontWeight: 700, fontFamily: BB.mono, fontVariantNumeric: 'tabular-nums', textDecoration: 'none', borderBottom: `1px dotted ${T.link}66` }}>{tok}</a>) }
+    else parts.push(<a key={key++} href={tok} target="_blank" rel="noreferrer" style={{ color: T.link, wordBreak: 'break-all' }}>{tok}</a>)
     last = m.index + tok.length
   }
   if (last < text.length) parts.push(text.slice(last))
@@ -104,12 +104,12 @@ function Article({ text }: { text: string }) {
           const lvl = md ? md[1].length : 2
           const label = (md ? md[2] : t).replace(/^\*|\*$/g, '').replace(/^#+\s*/, '')
           const sid = sectionIdOf(label)
-          return <div key={i} id={sid ? `rsec-${sid}` : undefined} style={{ scrollMarginTop: 12, fontSize: lvl <= 1 ? 16 : lvl === 2 ? 12.5 : 11.5, fontWeight: 900, letterSpacing: lvl >= 2 ? .4 : 0, textTransform: lvl >= 2 ? 'uppercase' : 'none', color: lvl <= 1 ? 'var(--text0)' : '#60a5fa', marginTop: i ? 14 : 0, marginBottom: 4 }}>{inline(label)}</div>
+          return <div key={i} id={sid ? `rsec-${sid}` : undefined} style={{ scrollMarginTop: 12, fontSize: lvl <= 1 ? 16 : lvl === 2 ? 12.5 : 11.5, fontWeight: 900, letterSpacing: lvl >= 2 ? .4 : 0, textTransform: lvl >= 2 ? 'uppercase' : 'none', color: lvl <= 1 ? 'var(--text0)' : T.link, marginTop: i ? 14 : 0, marginBottom: 4 }}>{inline(label)}</div>
         }
         const bul = t.match(/^[•\-▪◦·*]\s+(.*)$/)
         if (bul) return <div key={i} style={{ display: 'flex', gap: 8, paddingLeft: 4, marginBottom: 3 }}><span style={{ color: 'var(--text3)' }}>•</span><span style={{ flex: 1 }}>{inline(bul[1], lineSym(bul[1]), isRiskLine(bul[1]))}</span></div>
         const num = t.match(/^(\d+)\.\s+(.*)$/)
-        if (num) return <div key={i} style={{ display: 'flex', gap: 8, paddingLeft: 4, marginBottom: 3 }}><span style={{ color: '#60a5fa', fontWeight: 800 }}>{num[1]}.</span><span style={{ flex: 1 }}>{inline(num[2], lineSym(num[2]), isRiskLine(num[2]))}</span></div>
+        if (num) return <div key={i} style={{ display: 'flex', gap: 8, paddingLeft: 4, marginBottom: 3 }}><span style={{ color: T.link, fontWeight: 800 }}>{num[1]}.</span><span style={{ flex: 1 }}>{inline(num[2], lineSym(num[2]), isRiskLine(num[2]))}</span></div>
         return <div key={i} style={{ marginBottom: 3 }}>{inline(line, lineSym(t), isRiskLine(t))}</div>
       })}
     </div>
@@ -119,7 +119,7 @@ function Article({ text }: { text: string }) {
 // ── small visual primitives ──────────────────────────────────────────────────────────────────────────
 function SeverityBadge({ sev }: { sev?: string }) {
   const c = sevColor(sev)
-  return <span style={{ fontSize: 9.5, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: c + '22', color: c, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{sev || 'info'}</span>
+  return <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 2, background: c + '22', color: c, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{sev || 'info'}</span>
 }
 
 // ── quick views: predicate over a list item + matching action classes / severities ────────────────────
@@ -335,10 +335,10 @@ export default function ReportsHub({ onDrill }: Props) {
           value={searchInput}
           onChange={e => setSearchInput(e.target.value)}
           placeholder="Search all reports (symbol, topic, retirement, weekly…)…"
-          style={{ flex: 1, fontSize: 12, padding: '8px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text0)' }}
+          style={{ flex: 1, fontSize: 12, padding: '8px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 2, color: 'var(--text0)' }}
         />
         {searchInput && (
-          <button onClick={() => { setSearchInput(''); setSearchQ('') }} style={{ fontSize: 10, fontWeight: 700, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', cursor: 'pointer' }}>Clear</button>
+          <button onClick={() => { setSearchInput(''); setSearchQ('') }} style={{ fontSize: 10, fontWeight: 700, padding: '6px 10px', borderRadius: 2, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', cursor: 'pointer' }}>Clear</button>
         )}
       </div>
       {searchQ && (
@@ -372,22 +372,22 @@ export default function ReportsHub({ onDrill }: Props) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 15, fontWeight: 900, color: 'var(--text0)' }}>Unified Morning Intelligence</div>
                 {aegisBrief && <SeverityBadge sev={aegisBrief.severity} />}
-                {tradeAiBrief && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: '#60a5fa18', color: '#60a5fa' }}>Aegis + Trade AI</span>}
+                {tradeAiBrief && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 2, background: `${T.link}18`, color: T.link }}>Aegis + Trade AI</span>}
                 {(aegisBrief?.has_actions || tradeAiBrief?.has_actions) && (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: BB.orange }}>
                     {(aegisBrief?.action_count || 0) + (tradeAiBrief?.action_count || 0)} actions
                   </span>
                 )}
               </div>
               {(aegisBrief || tradeAiBrief) && (
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 9, color: 'var(--text3)' }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 10, color: 'var(--text3)' }}>
                   {aegisBrief && <span>🛡 Aegis · {fmtDate(aegisBrief.created_at)}</span>}
                   {tradeAiBrief && <span>📊 Trade AI · {fmtDate(tradeAiBrief.created_at)}</span>}
                 </div>
               )}
               {briefIsStale && briefGeneratedAt && (
                 <div style={{
-                  ...card, padding: '10px 14px', fontSize: 12, fontWeight: 600, color: '#f59e0b',
+                  ...card, padding: '10px 14px', fontSize: 12, fontWeight: 600, color: BB.orange,
                   border: '1px solid rgba(245,158,11,.5)', background: 'rgba(245,158,11,.08)',
                 }}>
                   ⚠ This brief was generated {briefAgeMin}m ago at {new Date(briefGeneratedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}. Portfolio and risk figures reflect that snapshot, not live data.
@@ -404,13 +404,13 @@ export default function ReportsHub({ onDrill }: Props) {
               </div>
               {briefBody.length > 400 && (
                 <div style={{ ...card, padding: '12px 16px' }}>
-                  <button onClick={() => setBriefExpanded(e => !e)} style={{ fontSize: 11, fontWeight: 700, padding: 0, border: 'none', background: 'transparent', color: '#60a5fa', cursor: 'pointer' }}>
+                  <button onClick={() => setBriefExpanded(e => !e)} style={{ fontSize: 11, fontWeight: 700, padding: 0, border: 'none', background: 'transparent', color: T.link, cursor: 'pointer' }}>
                     {briefExpanded ? '▲ Hide full report' : '▼ Full report (Telegram markdown)'}
                   </button>
                   {briefExpanded && <div style={{ marginTop: 12 }}><Article text={briefBody} /></div>}
                 </div>
               )}
-              <div style={{ fontSize: 9, color: 'var(--text3)' }}>
+              <div style={{ fontSize: 10, color: 'var(--text3)' }}>
                 Also on Home → Morning Command · Archive for historical briefs
               </div>
             </>
@@ -477,23 +477,23 @@ function PurgeModal({ category, categoryLabel, onClose }: { category: string; ca
   useEffect(() => { run(false) }, [olderThan, scope]) // eslint-disable-line
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ ...card, padding: 18, width: 'min(440px,94vw)', border: '1px solid #ef444466' }}>
-        <div style={{ fontSize: 14, fontWeight: 900, color: '#f87171' }}>🗑 Purge old reports</div>
+      <div onClick={e => e.stopPropagation()} style={{ ...card, padding: 18, width: 'min(440px,94vw)', border: `1px solid ${BB.red}66` }}>
+        <div style={{ fontSize: 14, fontWeight: 900, color: BB.red }}>🗑 Purge old reports</div>
         <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 8 }}>Delete reports older than <b style={{ color: 'var(--text0)' }}>{olderThan} days</b> in:</div>
         <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
           {([['category', categoryLabel], ['all', 'All categories']] as any).map(([v, l]: any) => (
-            <button key={v} onClick={() => setScope(v)} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${scope === v ? '#ef4444' : 'var(--border)'}`, background: scope === v ? '#ef444418' : 'transparent', color: scope === v ? '#f87171' : 'var(--text2)' }}>{l}</button>
+            <button key={v} onClick={() => setScope(v)} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 2, cursor: 'pointer', border: `1px solid ${scope === v ? BB.red : 'var(--border)'}`, background: scope === v ? `${BB.red}18` : 'transparent', color: scope === v ? BB.red : 'var(--text2)' }}>{l}</button>
           ))}
         </div>
-        <input type="range" min={7} max={365} value={olderThan} onChange={e => setOlderThan(Number(e.target.value))} style={{ width: '100%', marginTop: 12, accentColor: '#ef4444' }} />
+        <input type="range" min={7} max={365} value={olderThan} onChange={e => setOlderThan(Number(e.target.value))} style={{ width: '100%', marginTop: 12, accentColor: BB.red }} />
         <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 8 }}>
-          {done ? <span style={{ color: '#22c55e' }}>✓ Deleted {done.total} report(s).</span>
-            : preview ? <>Would delete <b style={{ color: '#f87171' }}>{preview.total}</b> report(s).</>
+          {done ? <span style={{ color: BB.green }}>✓ Deleted {done.total} report(s).</span>
+            : preview ? <>Would delete <b style={{ color: BB.red }}>{preview.total}</b> report(s).</>
               : 'calculating…'}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ fontSize: 11, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text2)', cursor: 'pointer' }}>{done ? 'close' : 'cancel'}</button>
-          {!done && <button disabled={busy || !preview?.total} onClick={() => run(true)} style={{ fontSize: 11, fontWeight: 800, padding: '6px 16px', borderRadius: 6, border: 'none', background: preview?.total ? '#dc2626' : 'var(--bg2)', color: preview?.total ? '#fff' : 'var(--text3)', cursor: preview?.total ? 'pointer' : 'not-allowed' }}>{busy ? '…' : `Delete ${preview?.total || 0}`}</button>}
+          <button onClick={onClose} style={{ fontSize: 11, padding: '6px 14px', borderRadius: 2, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text2)', cursor: 'pointer' }}>{done ? 'close' : 'cancel'}</button>
+          {!done && <button disabled={busy || !preview?.total} onClick={() => run(true)} style={{ fontSize: 11, fontWeight: 800, padding: '6px 16px', borderRadius: 2, border: 'none', background: preview?.total ? BB.red : 'var(--bg2)', color: preview?.total ? '#fff' : 'var(--text3)', cursor: preview?.total ? 'pointer' : 'not-allowed' }}>{busy ? '…' : `Delete ${preview?.total || 0}`}</button>}
         </div>
       </div>
     </div>
