@@ -27728,6 +27728,29 @@ def _held_context(symbols):
     return out
 
 
+def _pullback_score_formula():
+    """v4 (F2): score-formula constants from the screener's own YAML (render-only)."""
+    prox, tgt = 0.6, 20.0
+    try:
+        import yaml as _y
+        cfg = _y.safe_load((root / "config" / "pullback_macd_screener.yaml").read_text()) or {}
+        flat = {}
+        def _walk(d):
+            for k, v in (d or {}).items():
+                if isinstance(v, dict):
+                    _walk(v)
+                else:
+                    flat[k] = v
+        _walk(cfg)
+        prox = float(flat.get("macd_proximity_pct", prox))
+        tgt = float(flat.get("pullback_target_pct", tgt))
+    except Exception:
+        pass
+    return {"base": 100, "macd_weight": 30, "macd_proximity_pct": prox,
+            "pullback_target_pct": tgt, "pullback_weight": 1.5,
+            "formula": f"100 − (macd_prox/{prox})×30 − |pullback−{tgt:g}|×1.5 + trend_pct"}
+
+
 def _pullback_macd_candidates(query=None):
     """GET /api/v2/pullback-macd/candidates — S&P 500 uptrend + pullback + approaching-MACD-cross.
 
@@ -27838,6 +27861,10 @@ def _pullback_macd_candidates(query=None):
         "hit_stats": hit_stats,
         "held_count": sum(1 for r in rows if r.get("held")),
         "last_run": run,
+        # v4 (F2): the screener's actual score formula constants, so the UI can break the
+        # composite into its components on hover — read from the same YAML the screener
+        # reads; render-only, nothing about scoring changes.
+        "score_formula": _pullback_score_formula(),
         # D3 provenance — universe + schedule stated on-page, not implied
         "scan_provenance": {
             "universe": "S&P 500 uptrend-intact pullbacks approaching MACD cross",

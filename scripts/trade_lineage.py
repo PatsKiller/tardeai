@@ -68,6 +68,8 @@ def extract_lineage_from_proposal(conn, proposal_id):
             "source_signal_id": (str(sig) if sig is not None else None),
             "strategy_card_id": (str(card) if card is not None else None),
             "candidate_id": (str(cand) if cand is not None else None),
+            # Watch Desk v4 (F3): discovery trace threads proposal→fill verbatim (never inferred)
+            "discovery_trace_id": p.get("discovery_trace_id"),
             "execution_account": acct, "execution_broker": broker, "execution_environment": env,
             "lineage_confidence": "exact", "lineage_source": "proposal",
             "lineage_notes": {k: v for k, v in notes.items() if v is not None}}

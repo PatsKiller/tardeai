@@ -37,7 +37,26 @@ function PullbackBanner({ c }: { c: any }) {
   )
 }
 
-function CandidateCard({ c, onDrill, onDismiss }: { c: any; onDrill: Props['onDrill']; onDismiss: (sym: string, cancel: boolean) => void }) {
+// v4 (F2): deterministic score breakdown from the screener's own formula constants —
+// render-only; the composite itself is untouched.
+function scoreBreakdown(c: any, f: any): string {
+  if (!f) return 'composite screener score'
+  const prox = Number(c.macd_prox_pct ?? 0)
+  const pull = Number(c.pullback_pct ?? 0)
+  const trend = Number(c.trend_pct ?? 0)
+  const macdPen = (prox / Math.max(f.macd_proximity_pct, 0.01)) * f.macd_weight
+  const pullPen = Math.abs(pull - f.pullback_target_pct) * f.pullback_weight
+  return [
+    `score = ${f.formula}`,
+    `base 100`,
+    `− MACD distance ${macdPen.toFixed(1)} (prox ${prox}% of ${f.macd_proximity_pct}% × ${f.macd_weight})`,
+    `− pullback offset ${pullPen.toFixed(1)} (|${pull}−${f.pullback_target_pct}| × ${f.pullback_weight})`,
+    `+ trend ${trend.toFixed(1)} (50/200 SMA spread %)`,
+    `= ${(100 - macdPen - pullPen + trend).toFixed(1)}`,
+  ].join('\n')
+}
+
+function CandidateCard({ c, onDrill, onDismiss, riskOff, scoreFormula }: { c: any; onDrill: Props['onDrill']; onDismiss: (sym: string, cancel: boolean) => void; riskOff?: boolean; scoreFormula?: any }) {
   const trigger = c.tier === 'trigger'
   const rail = c.held_conflict ? RAIL.attention : trigger ? RAIL.favorable : RAIL.neutral
   const pills: Array<{ label: string; tone?: 'green' | 'amber' | 'red' | 'slate'; title?: string }> = [
@@ -55,9 +74,17 @@ function CandidateCard({ c, onDrill, onDismiss }: { c: any; onDrill: Props['onDr
           onClick={() => onDrill({ kind: 'symbol', symbol: c.symbol } as any)}>{c.symbol}</span>
         <StatePills pills={pills} />
         <span style={{ marginLeft: 'auto' }}>
-          <Chip kind="metric" title="composite screener score">score {fmt(c.score, 0)}</Chip>
+          <Chip kind="metric" title={scoreBreakdown(c, scoreFormula)}>score {fmt(c.score, 0)}</Chip>
         </span>
       </div>
+      {/* v4 (F1): regime disclosure on TRIGGER cards — no suppression until the outcome
+          ledger can prove suppression is warranted; disclosure only */}
+      {trigger && riskOff && (
+        <div style={{ margin: '0 0 8px', padding: '4px 10px', borderRadius: 2, fontSize: TYPE.xs, fontWeight: 700,
+          borderLeft: `3px solid ${RAIL.attention}`, background: BB.amberDim, color: BB.amber }}>
+          regime risk-off — historically weaker entries; sizing discretion advised
+        </div>
+      )}
       {c.held_conflict && (
         <div style={{ margin: '0 0 8px', padding: '6px 10px', borderRadius: 2, fontSize: TYPE.sm, fontWeight: 700,
           background: BB.amberDim, border: `1px solid ${BB.amber}66`, color: BB.amber }}>
@@ -102,6 +129,9 @@ const Metric = ({ label, value, tip }: any) => (
 
 export default function PullbackMacdHub({ onDrill, embedded }: Props) {
   const { data, loading, error, refetch } = useApi<any>('/api/v2/pullback-macd/candidates', 60_000)
+  // v4 (F1): same regime read as the tab-level WatchRegimeStrip — one source of truth
+  const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 300_000)
+  const riskOff = /off/i.test(String(regime?.regime_label || ''))
   const cands: any[] = data?.candidates ?? []
   const triggers = cands.filter(c => c.tier === 'trigger')
   const watch = cands.filter(c => c.tier === 'watch')
@@ -153,11 +183,11 @@ export default function PullbackMacdHub({ onDrill, embedded }: Props) {
 
       <section>
         <div style={{ fontSize: TYPE.base, fontWeight: 800, marginBottom: 8, color: BB.text0 }}>
-          🎯 Triggers <span style={{ color: BB.text3, fontWeight: 400 }}>({triggers.length}) — MACD turning up + above VWAP (earliest confirmed recovery)</span>
+          🎯 Triggers <span style={{ color: BB.text3, fontWeight: 400 }}>({triggers.length}) — MACD turning up + above VWAP (earliest confirmed recovery){riskOff ? ' · regime risk-off: historically weaker entries (disclosure only, nothing suppressed)' : ''}</span>
         </div>
         {triggers.length
           ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
-              {triggers.map(c => <CandidateCard key={c.symbol} c={c} onDrill={onDrill} onDismiss={dismiss} />)}
+              {triggers.map(c => <CandidateCard key={c.symbol} c={c} onDrill={onDrill} onDismiss={dismiss} riskOff={riskOff} scoreFormula={data?.score_formula} />)}
             </div>
           : <div style={{ ...card, color: BB.text3, fontSize: TYPE.base }}>No triggers today — a deep pullback in a standing uptrend with the cross about to fire is rare (expected on most days).</div>}
       </section>
@@ -168,7 +198,7 @@ export default function PullbackMacdHub({ onDrill, embedded }: Props) {
         </div>
         {watch.length
           ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
-              {watch.map(c => <CandidateCard key={c.symbol} c={c} onDrill={onDrill} onDismiss={dismiss} />)}
+              {watch.map(c => <CandidateCard key={c.symbol} c={c} onDrill={onDrill} onDismiss={dismiss} scoreFormula={data?.score_formula} />)}
             </div>
           : <div style={{ ...card, color: BB.text3, fontSize: TYPE.base }}>No watch candidates.</div>}
       </section>

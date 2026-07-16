@@ -1606,6 +1606,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 signal_id, source_signal_id, source_strategy_card_id, strategy_card_id, candidate_id,
                 source_proposal_id, execution_account, execution_broker, execution_environment,
                 lineage_source, lineage_stamped_at, lineage_confidence, lineage_notes,
+                discovery_trace_id,
                 status, lifecycle_state, broker, opened_via, logged_by, automation_source
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s,
@@ -1617,6 +1618,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s,
                 %s, NOW(), %s, %s,
+                %s,
                 'pending', 'pending', NULL, 'proposal_approved', 'dashboard', 'proposal'
             ) RETURNING id
         """, [
@@ -1634,6 +1636,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
             _lin.get('strategy_card_id'), _lin.get('candidate_id'),
             str(proposal_id), _lin.get('execution_account'), _lin.get('execution_broker'), _lin.get('execution_environment'),
             _lin.get('lineage_source'), _lin.get('lineage_confidence'), json.dumps(_lin.get('lineage_notes') or {}),
+            _lin.get('discovery_trace_id'),
         ])
         paper_trade_id = cur.fetchone()[0]
 

@@ -391,6 +391,12 @@ def _emit_proposals(cands: list[dict], cfg: dict) -> int:
                 "proposed_dollar_size": dollar_size, "proposed_dollar_risk": risk,
                 "proposed_rr": c["rr"], "proposed_by": "pullback_macd_screener",
                 "status": "PENDING", "discovery_source": "pullback_macd", "origin": "auto",
+                # Watch Desk v4 (F3): deterministic discovery trace stamped at proposal
+                # creation — same slug style as the momentum fast path (soc-…). Threads
+                # through paper_trade_logger into paper_trades.discovery_trace_id so every
+                # FUTURE fill is attributable end-to-end (the historical hop stays dead).
+                "discovery_trace_id": f"pbm-{datetime.now().strftime('%Y%m%d')}-{c['sym']}",
+                "source_table": "pullback_macd_candidates",
                 "intended_broker": intended, "target_account": target_acct,
                 "proposed_account": target_acct,
                 "auto_execution_label": "manual", "auto_created": True,
