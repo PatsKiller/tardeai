@@ -73,8 +73,12 @@ def search_web(query: str, count: int = 5, freshness: str = "pw") -> list:
         return []
 
 
-def research_symbol_web(symbol: str, focus: str = "", count: int = 5) -> str:
+def research_symbol_web(symbol: str, focus: str = "", count: int = 5,
+                        return_sources: bool = False):
     """Research a symbol via web search and return formatted context.
+
+    With return_sources=True returns (context_text, sources[]) so writers can
+    persist real provenance alongside findings (Engine Room v1 WS-2).
 
     Args:
         symbol: Ticker symbol
@@ -99,7 +103,7 @@ def research_symbol_web(symbol: str, focus: str = "", count: int = 5) -> str:
                 seen_urls.add(r["url"])
 
     if not all_results:
-        return ""
+        return ("", []) if return_sources else ""
 
     lines = [f"WEB RESEARCH ({len(all_results)} results for {symbol}):"]
     for r in all_results[:8]:
@@ -109,7 +113,11 @@ def research_symbol_web(symbol: str, focus: str = "", count: int = 5) -> str:
         lines.append(f"  [{age}] {title}")
         if desc:
             lines.append(f"    {desc}")
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    if return_sources:
+        return text, [{"title": r["title"][:120], "url": r["url"], "as_of": r.get("age") or None}
+                      for r in all_results[:8]]
+    return text
 
 
 if __name__ == "__main__":

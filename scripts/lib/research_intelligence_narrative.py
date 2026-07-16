@@ -597,8 +597,13 @@ def enrich_narrative(
     evidence_json: Any = None,
     source_system: str | None = None,
     portfolio: Any = None,
+    sources: list | None = None,
 ) -> dict[str, Any]:
-    """Return article-style narrative fields for a feed item."""
+    """Return article-style narrative fields for a feed item.
+
+    Engine Room v1 (WS-2): advisory framing (implications / ticker recs / sizing) is
+    only synthesized for items that carry real sources[]. Sourceless items degrade to
+    wire — informational narrative, no advisory — instead of being flagged post-hoc."""
     cats = cats or []
     stored = _from_stored_narrative(evidence_json)
     if stored:
@@ -624,10 +629,13 @@ def enrich_narrative(
             "narrative_source": "stored_llm",
             "reading_minutes": max(1, min(6, len(" ".join(paras)) // 500 or 1)),
         }
-        out = _attach_advisory(
-            out, title=title, summary=summary, thesis=thesis, cats=cats,
-            symbol=symbol, is_held=is_held, research_type=research_type, portfolio=portfolio,
-        )
+        if sources:
+            out = _attach_advisory(
+                out, title=title, summary=summary, thesis=thesis, cats=cats,
+                symbol=symbol, is_held=is_held, research_type=research_type, portfolio=portfolio,
+            )
+        else:
+            out["provenance_grade"] = "wire"  # sourceless → no synthesized advisory
         return _polish_narrative_depth(out, title=title, cats=cats)
 
     body_src = " ".join(x for x in [summary, thesis] if x)
@@ -714,8 +722,11 @@ def enrich_narrative(
         "narrative_source": "synthesized",
         "reading_minutes": max(1, min(5, sum(len(p) for p in paras) // 450 or 1)),
     }
-    out = _attach_advisory(
-        out, title=title, summary=summary, thesis=thesis, cats=cats,
-        symbol=symbol, is_held=is_held, research_type=research_type, portfolio=portfolio,
-    )
+    if sources:
+        out = _attach_advisory(
+            out, title=title, summary=summary, thesis=thesis, cats=cats,
+            symbol=symbol, is_held=is_held, research_type=research_type, portfolio=portfolio,
+        )
+    else:
+        out["provenance_grade"] = "wire"  # sourceless → no synthesized advisory
     return _polish_narrative_depth(out, title=title, cats=cats)

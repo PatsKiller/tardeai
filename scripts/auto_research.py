@@ -120,10 +120,16 @@ def _sync_screener_find_pin(symbol: str, reason: str = "", strategy_type: str = 
         return False
 
 
-def _persist_research_topic(symbol: str, reason: str, research: str, strategy_type: str = None) -> None:
-    """Write brief to user_research_topics for Intelligence → Research tab."""
+def _persist_research_topic(symbol: str, reason: str, research: str, strategy_type: str = None,
+                            sources: list = None) -> None:
+    """Write brief to user_research_topics for Intelligence → Research tab.
+
+    Engine Room v1 (WS-2): sources[] the research actually used are persisted with the
+    findings — sourceless briefs render as wire, so provenance is attached at write."""
+    import json as _json
     topic = f"Auto-research: {symbol}"
     snippet = (research or "")[:8000]
+    src = _json.dumps(sources[:8]) if sources else None
     conn = _get_conn()
     cur = conn.cursor()
     cur.execute("SELECT id, research_count FROM user_research_topics WHERE topic = %s LIMIT 1", (topic,))
@@ -134,17 +140,18 @@ def _persist_research_topic(symbol: str, reason: str, research: str, strategy_ty
                 source = 'auto_research.py', status = 'active', priority = 'normal',
                 original_message = %s, strategy_type = COALESCE(%s, strategy_type),
                 latest_findings = %s, latest_finding_at = NOW(), last_researched_at = NOW(),
+                sources_json = COALESCE(%s::jsonb, sources_json),
                 research_count = COALESCE(research_count, 0) + 1, updated_at = NOW()
             WHERE topic = %s
-        """, (reason[:500], strategy_type, snippet, topic))
+        """, (reason[:500], strategy_type, snippet, src, topic))
     else:
         cur.execute("""
             INSERT INTO user_research_topics (
                 topic, source, status, priority, strategy_type, original_message,
                 latest_findings, latest_finding_at, last_researched_at, research_count,
-                created_at, updated_at
-            ) VALUES (%s, 'auto_research.py', 'active', 'normal', %s, %s, %s, NOW(), NOW(), 1, NOW(), NOW())
-        """, (topic, strategy_type, reason[:500], snippet))
+                sources_json, created_at, updated_at
+            ) VALUES (%s, 'auto_research.py', 'active', 'normal', %s, %s, %s, NOW(), NOW(), 1, %s::jsonb, NOW(), NOW())
+        """, (topic, strategy_type, reason[:500], snippet, src))
     conn.commit()
     conn.close()
 
@@ -221,7 +228,8 @@ def research_symbol(symbol: str, reason: str = "manual", trigger_kind: str = "ma
     intel = get_intel_summary(symbol=symbol, min_quality=30, max_chars=500, days=14)
     agent_ctx = get_agent_context(symbol, requesting_agent="auto_research")
 
-    web_ctx = research_symbol_web(symbol, focus="analysis dividend risk")
+    web_ctx, web_sources = research_symbol_web(symbol, focus="analysis dividend risk",
+                                               return_sources=True)
     if web_ctx:
         intel = f"{intel}\n\n{web_ctx}" if intel else web_ctx
 
@@ -254,6 +262,20 @@ Keep under 300 words. Be specific with numbers and dates. Flag anything not pres
     provider = result.get("provider")
     model_used = result.get("model_used")
 
+    # Engine Room v1 (WS-3): universe guard at generation — disclose any entity the
+    # LLM named that we can't resolve against tracked symbols, instead of shipping it.
+    try:
+        from lib.universe_guard import known_reference, check_prose, disclosure_line
+        from db_adapter import _execute as _ug_ex
+        _syms, _names = known_reference(lambda sql, params=None: _ug_ex(sql, params, fetch="all"))
+        guard = check_prose(research, known_symbols=_syms, known_names_blob=_names,
+                            own_entities=[symbol])
+        disc = disclosure_line(guard)
+        if disc:
+            research = f"{research}\n\n{disc}"
+    except Exception as _e:
+        print(f"[auto-research] universe guard skipped: {_e}")
+
     strategy_type = None
     m = re.search(r"\(([^)]+)\)\s*$", reason)
     if m:
@@ -283,7 +305,7 @@ Keep under 300 words. Be specific with numbers and dates. Flag anything not pres
     conn.close()
 
     try:
-        _persist_research_topic(symbol, reason, research, strategy_type)
+        _persist_research_topic(symbol, reason, research, strategy_type, sources=web_sources)
     except Exception as e:
         print(f"[auto-research] topic persist failed for {symbol}: {e}")
 

@@ -89,24 +89,29 @@ def lint_item(item: dict, known_symbols: set[str]) -> list[str]:
         flags.append("undated_claim")
 
     if advisory:
+        # Engine Room v1 (WS-3): generator-side universe guard supersedes the post-hoc
+        # off-universe check — the writer already resolved and DISCLOSED every entity,
+        # so re-flagging here would double-punish a brief that is honest about its names.
+        guarded = isinstance(item.get("universe_guard"), dict)
         item_syms = {str(t.get("symbol") or "").upper()
                      for t in item.get("ticker_recommendations") or []}
         if item.get("symbol"):
             item_syms.add(str(item["symbol"]).upper())
         blob = _known_company_blob(item)
         off = False
-        for m in CORP_NAME_RE.finditer(prose):
-            name = m.group(1)
-            if name and name not in blob:
-                off = True
-                break
-        if not off:
-            # ticker-like tokens in the *implications* only (news quotes allowed elsewhere)
-            impl = item.get("investment_implications") or ""
-            for tok in TICKERISH_RE.findall(impl):
-                if tok not in CAPS_ALLOW and tok not in known_symbols and tok not in item_syms:
+        if not guarded:
+            for m in CORP_NAME_RE.finditer(prose):
+                name = m.group(1)
+                if name and name not in blob:
                     off = True
                     break
+            if not off:
+                # ticker-like tokens in the *implications* only (news quotes allowed elsewhere)
+                impl = item.get("investment_implications") or ""
+                for tok in TICKERISH_RE.findall(impl):
+                    if tok not in CAPS_ALLOW and tok not in known_symbols and tok not in item_syms:
+                        off = True
+                        break
         if off:
             flags.append("off_universe_mention")
 

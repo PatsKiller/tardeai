@@ -42,7 +42,8 @@ def _prompt(topic, context, articles=None):
         f'TOPIC: "{topic}"\n\n'
         'Be specific and current (2026). If it involves tax/Medicare/Medicaid/estate law, note that a '
         'professional (elder-law attorney / tax advisor) should confirm. Do not fabricate exact figures you '
-        'are unsure of — say "verify current figure".\n\n'
+        'are unsure of — say "verify current figure". Date every figure precisely (the source article\'s '
+        'date or an exact date like "as of 2026-07-16") — never vague dating like "as of mid-2026".\n\n'
         + build_topic_research_json_schema()
     )
 
@@ -79,9 +80,14 @@ def _synthesize(topic, context, articles=None):
     return None
 
 
-def run(apply=False, max_rows=20, reground=False):
+def run(apply=False, max_rows=20, reground=False, ids=None):
     conn = _get_conn(); cur = conn.cursor()
-    if reground:
+    if ids:
+        # Engine Room v1 (WS-2): targeted regeneration of QA-lint-flagged briefs —
+        # re-synthesize in place with the universe guard + precise-dating prompt live.
+        cur.execute("""SELECT id, topic, evidence_json FROM hermes_research_intelligence
+                       WHERE research_type='topic_research' AND id = ANY(%s)""", (list(ids),))
+    elif reground:
         # upgrade already-synthesized rows that grounded on 0 real articles (synthesized before the
         # crawler had ingested the topic) — re-runs them so they pick up exact crawler sources now.
         cur.execute("""SELECT id, topic, evidence_json FROM hermes_research_intelligence
@@ -174,6 +180,27 @@ def run(apply=False, max_rows=20, reground=False):
             ev["cio_evidence"] = res.get("evidence") or []
             ev["data_i_doubt"] = res.get("data_i_doubt")
             ev["agent_contract"] = res.get("agent_contract")
+            # Engine Room v1 (WS-3): universe guard at generation — resolve every entity
+            # the LLM named against the tracked reference; disclose unknowns in the brief
+            # and demote confidence rather than shipping unverifiable names silently.
+            try:
+                from lib.universe_guard import known_reference, check_prose, disclosure_line
+                def _dbq(sql, params=None):
+                    cur.execute(sql, params or ())
+                    cs = [d[0] for d in cur.description]
+                    return [dict(zip(cs, r)) for r in cur.fetchall()]
+                _syms, _names = known_reference(_dbq)
+                own = [a.get("title") or "" for a in (articles or [])] + [disp, topic or ""]
+                guard = check_prose(f"{res['summary']} {res['thesis']}",
+                                    known_symbols=_syms, known_names_blob=_names,
+                                    own_entities=own)
+                ev["universe_guard"] = guard
+                disc = disclosure_line(guard)
+                if disc:
+                    res["summary"] = (res["summary"] + "\n\n" + disc)[:1900]
+                    res["confidence"] = min(res["confidence"], 0.5)
+            except Exception as _e:
+                print(f"  [universe-guard] skipped: {_e}")
             cur.execute("""UPDATE hermes_research_intelligence
                            SET summary=%s, thesis=%s, confidence_score=%s,
                                model_used=%s, evidence_json=%s, updated_at=now()
@@ -198,8 +225,11 @@ def main():
     ap.add_argument("--reground", action="store_true",
                     help="Re-run already-synthesized rows that grounded on 0 articles, to pick up "
                          "exact crawler sources once the topic has been ingested.")
+    ap.add_argument("--ids", type=str, default=None,
+                    help="Comma-separated hermes_research_intelligence ids to re-synthesize in place")
     a = ap.parse_args()
-    return run(apply=a.apply, max_rows=a.max, reground=a.reground)
+    ids = [int(x) for x in a.ids.split(",") if x.strip()] if a.ids else None
+    return run(apply=a.apply, max_rows=a.max, reground=a.reground, ids=ids)
 
 
 if __name__ == "__main__":

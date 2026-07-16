@@ -480,6 +480,7 @@ def _item_base(
         research_type=research_type,
         evidence_json=evidence_json,
         source_system=source_system,
+        sources=sources,
     )
     nxt = narrative.get("next_action") or {}
     item: dict[str, Any] = {
@@ -530,6 +531,10 @@ def _item_base(
         "narrative_source": narrative.get("narrative_source"),
         "reading_minutes": narrative.get("reading_minutes") or 1,
         "quality_tier": narrative.get("quality_tier") or "B",
+        "provenance_grade": narrative.get("provenance_grade"),
+        # WS-3: generator-side entity resolution (universe guard), when the writer ran it
+        "universe_guard": (lambda e: e.get("universe_guard") if isinstance(e, dict) else None)(
+            _parse_jsonish(evidence_json) or {}),
         # Portfolio-aware advisory
         "investment_implications": narrative.get("investment_implications"),
         "ticker_recommendations": narrative.get("ticker_recommendations") or [],
@@ -676,7 +681,7 @@ def build_feed(
     ut = db_query("""
         SELECT id, topic, latest_findings, priority, research_count,
                status, source, updated_at, created_at, original_message,
-               strategy_type, last_researched_at
+               strategy_type, last_researched_at, sources_json
         FROM user_research_topics
         WHERE status = 'active' OR status IS NULL
         ORDER BY updated_at DESC NULLS LAST
@@ -734,7 +739,9 @@ def build_feed(
             research_type="auto_research" if (r.get("source") or "").startswith("auto_research") else "user_topic",
             status=r.get("status"),
             is_held=is_held,
-            sources=[],
+            # WS-2: real persisted provenance when the writer attached it; else stays
+            # sourceless and the narrative layer degrades the item to wire (no advisory)
+            sources=(lambda s: s[:8] if isinstance(s, list) else [])(_parse_jsonish(r.get("sources_json"))),
             actionability=act,
             policy=policy,
             feedback=fb_map.get(iid),
