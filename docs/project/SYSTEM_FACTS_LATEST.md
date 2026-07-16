@@ -1,42 +1,42 @@
 # System Facts — Latest
 
-Generated: 2026-07-14T07:40:55.709124
+Generated: 2026-07-15T07:40:00.400079
 
 ## Runtime
 - Hostname: ms01-openclaw
 - Python: 3.14.4
-- Git: main @ 34fcbe56
+- Git: main @ a60af251
 
 ## Database
 - Connected: True
-- Tables: 591
-- trade_ai_scans: 49353
-- paper_trade_proposals: 2142
-- paper_trades: 110
-- watchlist_agent_results: 18261
-- news_articles: 44406
+- Tables: 593
+- trade_ai_scans: 50771
+- paper_trade_proposals: 2441
+- paper_trades: 121
+- watchlist_agent_results: 19304
+- news_articles: 45786
 - topic_monitor: 362
-- content_embeddings: 377669
+- content_embeddings: 391242
 - pipeline_stages: 44
-- pipeline_runs: 27688
+- pipeline_runs: 28419
 - config_documents: 38
-- content_entity_links: 17475
-- blocked_content: 216
+- content_entity_links: 18158
+- blocked_content: 217
 
 ## Codebase
-- python_script_count: 1377
+- python_script_count: 1394
 - sql_migration_count: 53
-- yaml_config_count: 85
+- yaml_config_count: 87
 - json_config_count: 21
 - strategy_count: 29
 - frontend_page_count: 94
 - react_component_count: 156
-- cron_job_count: 396
+- cron_job_count: 400
 
 ## Safety
 - ALPACA_MODE: paper
 - Live trading: BLOCKED
-- Holdings: $1,117,258
+- Holdings: $1,262,849
 - Holdings guard: PASSED
 - Blocked reasons: policy_live_trading_allowed_false, validation_days_insufficient, closed_trade_sample_insufficient, governance_not_approved
 

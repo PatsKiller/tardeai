@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-07-14T11:40:55.570572+00:00",
-  "git_head": "34fcbe56",
-  "files_checked": 7,
+  "generated_at": "2026-07-15T11:40:00.254537+00:00",
+  "git_head": "a60af251",
+  "files_checked": 3,
   "findings_count": 2,
   "by_severity": {
     "P1": 1,
@@ -12,7 +12,7 @@
     {
       "severity": "P1",
       "check": "code_without_docs",
-      "message": "7 code files changed, 0 docs updated"
+      "message": "3 code files changed, 0 docs updated"
     },
     {
       "severity": "P2",
