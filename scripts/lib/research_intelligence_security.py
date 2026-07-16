@@ -185,7 +185,7 @@ def get_security_snapshot(symbol: str) -> dict[str, Any]:
         "SCHG", "SCHD", "QQQ", "SPY", "XAR", "XLI", "XLB", "JEPI", "JEPQ", "DIVI", "DIV", "BND", "TLT", "IEF", "AGG",
     }
 
-    # Relative strength vs benchmark (lazy: avoid recursion on bench itself)
+    # Relative strength vs SCHG (book core) + multi-index (SPY / QQQ / IWM)
     rel_m = None
     if sym != _BENCH and perf_m is not None:
         bench_enr = _load_enrich().get(_BENCH) or {}
@@ -193,6 +193,15 @@ def get_security_snapshot(symbol: str) -> dict[str, Any]:
         b_m = _f(bench_tech.get("perf_month") if bench_tech.get("perf_month") is not None else bench_enr.get("perf_month_pct"))
         if b_m is not None:
             rel_m = round(perf_m - b_m, 2)
+
+    rs_multi: dict[str, Any] = {}
+    try:
+        from lib.portfolio_benchmarks import multi_relative_strength
+        rs_multi = multi_relative_strength(perf_m, perf_w, perf_q) or {}
+    except Exception:
+        rs_multi = {}
+    vs_spy_m = rs_multi.get("vs_spy_month_pct")
+    vs_qqq_m = rs_multi.get("vs_qqq_month_pct")
 
     # Liquidity flag
     liq = "unknown"
@@ -260,7 +269,10 @@ def get_security_snapshot(symbol: str) -> dict[str, Any]:
         "perf_week_pct": perf_w,
         "perf_month_pct": perf_m,
         "perf_quarter_pct": perf_q,
-        "rel_strength_month_pct": rel_m,
+        "rel_strength_month_pct": rel_m,  # vs SCHG (book core)
+        "rel_strength_vs_spy_month_pct": vs_spy_m,
+        "rel_strength_vs_qqq_month_pct": vs_qqq_m,
+        "rel_strength_multi": rs_multi.get("vs") or {},
         "avg_vol_m": avg_vol,
         "rvol": rvol,
         "liquidity": liq,
@@ -306,20 +318,32 @@ def score_security(snap: dict[str, Any]) -> dict[str, Any]:
         else:
             why.append(f"RSI {rsi:.0f} ({snap.get('rsi_status')})")
 
+    # Prefer SPY relative strength for market edge; SCHG remains portfolio context
+    rel_spy = snap.get("rel_strength_vs_spy_month_pct")
     rel = snap.get("rel_strength_month_pct")
-    if rel is not None:
-        if rel >= 3:
+    rel_use = rel_spy if rel_spy is not None else rel
+    rel_label = "SPY" if rel_spy is not None else "SCHG"
+    if rel_use is not None:
+        if rel_use >= 3:
             score += 10
-            why.append(f"Outperforming SCHG by {rel:+.1f}% (1M)")
-        elif rel >= 0:
+            why.append(f"Outperforming {rel_label} by {rel_use:+.1f}% (1M)")
+        elif rel_use >= 0:
             score += 4
-            why.append(f"In-line/slightly ahead of SCHG ({rel:+.1f}% 1M)")
-        elif rel > -5:
+            why.append(f"In-line/slightly ahead of {rel_label} ({rel_use:+.1f}% 1M)")
+        elif rel_use > -5:
             score -= 4
-            risks.append(f"Lagging SCHG by {rel:.1f}% (1M)")
+            risks.append(f"Lagging {rel_label} by {rel_use:.1f}% (1M)")
         else:
             score -= 10
-            risks.append(f"Material underperformance vs SCHG ({rel:.1f}% 1M)")
+            risks.append(f"Material underperformance vs {rel_label} ({rel_use:.1f}% 1M)")
+    rel_qqq = snap.get("rel_strength_vs_qqq_month_pct")
+    if rel_qqq is not None and rel_spy is not None:
+        if rel_qqq >= 3 and rel_spy >= 0:
+            score += 3
+            why.append(f"Also beating QQQ by {rel_qqq:+.1f}% (1M)")
+        elif rel_qqq <= -5 and rel_spy <= -3:
+            score -= 2
+            risks.append(f"Lagging QQQ by {rel_qqq:.1f}% (1M)")
 
     earn = snap.get("earnings_momentum")
     if earn == "positive":
@@ -488,6 +512,8 @@ def enrich_ticker_recommendation(
         "rsi": snap.get("rsi"),
         "rsi_status": snap.get("rsi_status"),
         "rel_strength_month_pct": snap.get("rel_strength_month_pct"),
+        "rel_strength_vs_spy_month_pct": snap.get("rel_strength_vs_spy_month_pct"),
+        "rel_strength_vs_qqq_month_pct": snap.get("rel_strength_vs_qqq_month_pct"),
         "pe": snap.get("pe"),
         "peg": snap.get("peg"),
         "eps_next_y": snap.get("eps_next_y"),
@@ -500,7 +526,6 @@ def enrich_ticker_recommendation(
         "has_min_data": snap.get("has_min_data"),
         "data_coverage_pct": snap.get("data_coverage_pct"),
     }
-
     # Strengthen rationale with security why
     bits = list(snap.get("why_selected") or [])[:2]
     risks = list(snap.get("risk_flags") or [])[:1]

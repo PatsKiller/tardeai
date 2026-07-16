@@ -2748,6 +2748,25 @@ def portfolio_performance():
     except Exception as _pq_err:
         result["period_quality_error"] = str(_pq_err)[:160]
 
+    # Index benchmarks: SPY (S&P 500), QQQ (Nasdaq-100), IWM, DIA + alpha vs book
+    try:
+        from lib.portfolio_benchmarks import build_benchmarks
+        result["benchmarks"] = build_benchmarks(result.get("periods") or {})
+    except Exception as _bm_err:
+        try:
+            # Fallback if scripts/ not on path the same way
+            import sys
+            from pathlib import Path as _P
+            _root = _P(__file__).resolve().parent
+            if str(_root) not in sys.path:
+                sys.path.insert(0, str(_root))
+            if str(_root / "lib") not in sys.path:
+                sys.path.insert(0, str(_root / "lib"))
+            from portfolio_benchmarks import build_benchmarks  # type: ignore
+            result["benchmarks"] = build_benchmarks(result.get("periods") or {})
+        except Exception as _bm2:
+            result["benchmarks_error"] = str(_bm2)[:160]
+
     # Drawdown / underwater series — sanitize reconciliation outlier peaks
     dd_series = []
     _outlier_dates: list[str] = []

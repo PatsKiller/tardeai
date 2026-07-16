@@ -42,6 +42,19 @@ type PerfAccount = {
   transfer_notes?: string[]
 }
 
+type BenchPeriod = {
+  change_pct?: number | null
+  alpha_pct?: number | null
+  source?: string
+}
+
+type BenchmarkItem = {
+  symbol?: string
+  label?: string
+  short?: string
+  periods?: Record<string, BenchPeriod>
+}
+
 type PerfData = {
   current_value?: number
   periods?: Record<string, PeriodData>
@@ -52,6 +65,12 @@ type PerfData = {
   warning?: string
   period_quality_note?: string
   drawdown_series?: { date?: string; drawdown?: number; value?: number }[]
+  benchmarks?: {
+    items?: BenchmarkItem[]
+    by_symbol?: Record<string, BenchmarkItem>
+    alpha?: Record<string, Record<string, { alpha_pct?: number | null }>>
+    as_of_source?: string
+  }
   transfer_notifications?: {
     id?: number
     kind?: string
@@ -230,6 +249,8 @@ export default function ReturnsPanel({
             const data = view.periods[period]
             const disp = periodDisplay(data)
             const src = data?.source === 'market_day' ? 'market' : (data?.estimated ? 'est.' : (data?.source ?? ''))
+            const spyA = (perfData.benchmarks?.by_symbol?.SPY?.periods?.[period] as BenchPeriod | undefined)?.alpha_pct
+            const qqqA = (perfData.benchmarks?.by_symbol?.QQQ?.periods?.[period] as BenchPeriod | undefined)?.alpha_pct
             return (
               <div key={period} style={{ padding: '7px 4px', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -244,6 +265,20 @@ export default function ReturnsPanel({
                     {disp.ch != null ? `${disp.ch >= 0 ? '+' : ''}${fmt$(disp.ch, 0)}` : '—'}
                   </span>
                 </div>
+                {view.scope === 'portfolio' && (spyA != null || qqqA != null) && (
+                  <div style={{ fontSize: 9, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {spyA != null && (
+                      <span style={{ color: signedColor(spyA), fontWeight: 700 }}>
+                        vs SPY {spyA >= 0 ? '+' : ''}{Number(spyA).toFixed(2)}%
+                      </span>
+                    )}
+                    {qqqA != null && (
+                      <span style={{ color: signedColor(qqqA), fontWeight: 700 }}>
+                        vs QQQ {qqqA >= 0 ? '+' : ''}{Number(qqqA).toFixed(2)}%
+                      </span>
+                    )}
+                  </div>
+                )}
                 {disp.warn && (
                   <div style={{ fontSize: 9, color: '#f59e0b', marginTop: 2, fontWeight: 700 }}>
                     {data?.is_false_positive ? '⚠ funding baseline (false %)' : '⚠ includes transfers'}
@@ -297,6 +332,7 @@ export default function ReturnsPanel({
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>By account · all periods</div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>
             Click a row to filter. Shows <b style={{ color: 'var(--text2)' }}>≈ market (ex-transfers)</b> when NAV is polluted by funding/transfers; amber = do not trust raw NAV %.
+            Benchmarks: SPY = S&amp;P 500, QQQ = Nasdaq-100, IWM = Russell 2000, DIA = Dow. Alpha = book − index.
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 520 }}>
             <thead>
@@ -334,6 +370,37 @@ export default function ReturnsPanel({
                   )
                 })}
               </tr>
+              {/* Index benchmarks */}
+              {(perfData.benchmarks?.items || []).map((b) => (
+                <tr
+                  key={b.symbol}
+                  data-testid={`returns-bench-${b.symbol}`}
+                  style={{ borderTop: '1px solid var(--border)', background: 'rgba(148,163,184,.04)' }}
+                >
+                  <td style={{ padding: '8px', textAlign: 'left' }}>
+                    <span style={{ fontWeight: 800, color: '#94a3b8', fontFamily: 'monospace' }}>{b.symbol}</span>
+                    <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 6 }}>{b.label}</span>
+                  </td>
+                  <td style={{ padding: '8px', fontFamily: 'monospace', color: 'var(--text3)', fontSize: 10 }}>index</td>
+                  {periodCols.map(p => {
+                    const bp = b.periods?.[p]
+                    const pct = bp?.change_pct
+                    const alpha = bp?.alpha_pct
+                    return (
+                      <td key={p} style={{ padding: '6px 8px', fontFamily: 'monospace', textAlign: 'right' }} title={bp?.source || ''}>
+                        <div style={{ color: signedColor(pct), fontWeight: 700 }}>
+                          {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : '—'}
+                        </div>
+                        {alpha != null && (
+                          <div style={{ fontSize: 9, color: signedColor(alpha), fontWeight: 700 }}>
+                            α {alpha >= 0 ? '+' : ''}{Number(alpha).toFixed(2)}%
+                          </div>
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
               {accountKeys.map(a => {
                 const row = perfData.accounts?.[a]
                 const sel = activeAcct === a

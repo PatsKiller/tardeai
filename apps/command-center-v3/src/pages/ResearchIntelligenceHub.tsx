@@ -76,6 +76,8 @@ type Item = {
       rsi?: number | null
       rsi_status?: string
       rel_strength_month_pct?: number | null
+      rel_strength_vs_spy_month_pct?: number | null
+      rel_strength_vs_qqq_month_pct?: number | null
       pe?: number | null
       peg?: number | null
       valuation?: string
@@ -327,11 +329,17 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
                       {t.suggested_weight_pct}
                     </div>
                   )}
-                  {(sec?.rsi != null || sec?.rel_strength_month_pct != null || sec?.pe != null) && (
+                  {(sec?.rsi != null || sec?.rel_strength_vs_spy_month_pct != null || sec?.rel_strength_month_pct != null || sec?.pe != null) && (
                     <div style={{ fontSize: 10, color: C.soft, marginTop: 3, lineHeight: 1.35 }}>
                       {sec?.rsi != null && <span>RSI {Number(sec.rsi).toFixed(0)} </span>}
-                      {sec?.rel_strength_month_pct != null && (
-                        <span>RS {Number(sec.rel_strength_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_month_pct).toFixed(1)}% </span>
+                      {sec?.rel_strength_vs_spy_month_pct != null && (
+                        <span>vs SPY {Number(sec.rel_strength_vs_spy_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_vs_spy_month_pct).toFixed(1)}% </span>
+                      )}
+                      {sec?.rel_strength_vs_qqq_month_pct != null && (
+                        <span>vs QQQ {Number(sec.rel_strength_vs_qqq_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_vs_qqq_month_pct).toFixed(1)}% </span>
+                      )}
+                      {sec?.rel_strength_vs_spy_month_pct == null && sec?.rel_strength_month_pct != null && (
+                        <span>vs SCHG {Number(sec.rel_strength_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_month_pct).toFixed(1)}% </span>
                       )}
                       {sec?.pe != null && <span>P/E {Number(sec.pe).toFixed(1)} </span>}
                       {sec?.peg != null && <span>PEG {Number(sec.peg).toFixed(2)}</span>}

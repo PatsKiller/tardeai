@@ -160,6 +160,7 @@ export default function HomeHub({ onDrill }: Props) {
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>P/L by account · period</div>
                 <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
                   Aggregate $ (top) · % (bottom). YTD uses ≈ market (ex-transfers) when flagged — not raw NAV.
+                  Benchmarks: SPY (S&amp;P 500), QQQ (Nasdaq-100), IWM, DIA — α = book − index.
                   Source: /api/v2/portfolio/performance
                 </div>
               </div>
@@ -255,6 +256,35 @@ export default function HomeHub({ onDrill }: Props) {
                           <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }}>
                             <div style={{ color: col, fontWeight: 700 }}>{ch != null ? `${ch >= 0 ? '+' : ''}${fmt$(ch, 0)}` : '—'}</div>
                             <div style={{ fontSize: 9, color: col }}>{pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : ''}</div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                  {/* Index benchmarks vs book */}
+                  {((perfData?.benchmarks?.items as any[]) || []).map((b: any) => (
+                    <tr key={b.symbol} style={{ borderTop: '1px solid var(--border)', background: 'rgba(148,163,184,.04)' }}>
+                      <td style={{ padding: '7px 8px', textAlign: 'left' }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#94a3b8' }}>{b.symbol}</span>
+                        <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 6 }}>{b.label}</span>
+                      </td>
+                      <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontSize: 10, color: 'var(--text3)' }}>index</td>
+                      {PERF_PERIODS.map(p => {
+                        const bp = b.periods?.[p]
+                        const pct = bp?.change_pct
+                        const alpha = bp?.alpha_pct
+                        const col = (pct ?? 0) >= 0 ? '#22c55e' : '#ef4444'
+                        const acol = (alpha ?? 0) >= 0 ? '#22c55e' : '#ef4444'
+                        return (
+                          <td key={p} style={{ padding: '5px 8px', fontFamily: 'monospace', textAlign: 'right' }} title={bp?.source || ''}>
+                            <div style={{ color: pct != null ? col : 'var(--text3)', fontWeight: 700 }}>
+                              {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : '—'}
+                            </div>
+                            {alpha != null && (
+                              <div style={{ fontSize: 9, color: acol, fontWeight: 700 }}>
+                                α {alpha >= 0 ? '+' : ''}{Number(alpha).toFixed(2)}%
+                              </div>
+                            )}
                           </td>
                         )
                       })}
