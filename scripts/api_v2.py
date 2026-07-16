@@ -18400,6 +18400,7 @@ def _research_intelligence_feed(query=None):
             str(_one("sentiment") or ""),
             str(_one("source_system") or ""),
             str(primary_only),
+            str(_one("lane") or ""),
         )
 
         def _cached_hit(now: float):
@@ -18441,6 +18442,7 @@ def _research_intelligence_feed(query=None):
                 sentiment=_one("sentiment") or None,
                 source_system=_one("source_system") or None,
                 primary_only=primary_only,
+                lane=_one("lane") or None,
             )
             def _clean(obj):
                 if isinstance(obj, dict):

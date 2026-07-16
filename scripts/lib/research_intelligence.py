@@ -117,6 +117,15 @@ _GAP_RX = re.compile(
 )
 
 
+# Lane tabs = primary-category groupings. Used both to FILTER the feed (lane= param)
+# and to build the preview arrays; keep the two in sync via this single map.
+LANE_CATEGORIES: dict[str, tuple[str, ...]] = {
+    "retirement": ("retirement_tax",),
+    "dividends": ("dividend_income",),
+    "macro_sector": ("macro_geo", "sector_thematic"),
+}
+
+
 def load_taxonomy() -> dict[str, Any]:
     if TAXONOMY_PATH.exists():
         return json.loads(TAXONOMY_PATH.read_text(encoding="utf-8"))
@@ -554,6 +563,7 @@ def build_feed(
     sentiment: str | None = None,
     source_system: str | None = None,
     primary_only: bool = True,
+    lane: str | None = None,
 ) -> dict[str, Any]:
     """Unified research intelligence feed for the dashboard (v2).
 
@@ -790,20 +800,6 @@ def build_feed(
         item["priority"] = pri
         items.append(item)
 
-    # Universe stats FIRST (before chip filters) so taxonomy counts never go blank
-    # when user selects an empty category like compounding_wealth.
-    cat_counts: dict[str, int] = {}
-    cat_counts_any: dict[str, int] = {}
-    tier_counts_all: dict[str, int] = {}
-    for it in items:
-        pc = it.get("primary_category") or (it.get("categories") or [None])[0]
-        if pc:
-            cat_counts[pc] = cat_counts.get(pc, 0) + 1
-        for c in it.get("categories") or []:
-            cat_counts_any[c] = cat_counts_any.get(c, 0) + 1
-        t = it.get("freshness_tier") or "aging"
-        tier_counts_all[t] = tier_counts_all.get(t, 0) + 1
-
     # Prefer real Hermes/LLM briefs over empty topic_monitor stubs; dedupe near-identical titles
     def _norm_title(t: str | None) -> str:
         t = re.sub(r"\s+", " ", (t or "").lower()).strip()
@@ -880,8 +876,27 @@ def build_feed(
 
     universe_n = len(items)
 
-    # Chip filters (category / freshness / priority / star) applied AFTER counts
+    # ONE corpus for every number on the page: counts are computed over the SAME
+    # post-dedupe universe the desk renders (pre-chip-filter so chips never blank).
+    # Counting pre-dedupe inflated sidebar/freshness counts vs the visible feed
+    # (e.g. "248" vs 6 filtered — duplicate-titled stop_health rows).
+    cat_counts: dict[str, int] = {}
+    cat_counts_any: dict[str, int] = {}
+    tier_counts_all: dict[str, int] = {}
+    for it in items:
+        pc = it.get("primary_category") or (it.get("categories") or [None])[0]
+        if pc:
+            cat_counts[pc] = cat_counts.get(pc, 0) + 1
+        for c in it.get("categories") or []:
+            cat_counts_any[c] = cat_counts_any.get(c, 0) + 1
+        t = it.get("freshness_tier") or "aging"
+        tier_counts_all[t] = tier_counts_all.get(t, 0) + 1
+
+    # Chip filters (lane / category / freshness / priority / star) applied AFTER counts
     filtered = list(items)
+    if lane and lane in LANE_CATEGORIES:
+        _lane_cats = LANE_CATEGORIES[lane]
+        filtered = [i for i in filtered if i.get("primary_category") in _lane_cats]
     if category:
         if primary_only:
             filtered = [i for i in filtered if i.get("primary_category") == category]
@@ -945,11 +960,13 @@ def build_feed(
         return [i for i in items if pred(i)][:n]
 
     priority_lanes = {
-        "retirement": _lane(lambda i: i.get("primary_category") == "retirement_tax"),
-        "dividends": _lane(lambda i: i.get("primary_category") == "dividend_income"),
-        "macro_sector": _lane(lambda i: i.get("primary_category") in (
-            "macro_geo", "sector_thematic"
-        )),
+        name: _lane(lambda i, cs=cats: i.get("primary_category") in cs)
+        for name, cats in LANE_CATEGORIES.items()
+    }
+    # Full-universe lane totals (preview arrays above are capped at 16)
+    lane_counts_full = {
+        name: sum(1 for i in items if i.get("primary_category") in cats)
+        for name, cats in LANE_CATEGORIES.items()
     }
 
     page = filtered[:limit]
@@ -978,6 +995,7 @@ def build_feed(
             "slo": policy.get("slo"),
         },
         "filters": {
+            "lane": lane,
             "category": category,
             "primary_only": primary_only,
             "q": q,
@@ -1008,7 +1026,7 @@ def build_feed(
             "by_freshness_filtered": tier_counts_view,
             "holdings_universe": sorted(held)[:40],
             "holdings_count": len(held),
-            "lane_counts": {k: len(v) for k, v in priority_lanes.items()},
+            "lane_counts": lane_counts_full,
             "quality_tiers": {
                 t: sum(1 for i in page if (i.get("quality_tier") or "") == t)
                 for t in ("A", "B", "C")

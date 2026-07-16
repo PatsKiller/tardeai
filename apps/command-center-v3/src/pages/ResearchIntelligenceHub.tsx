@@ -1152,10 +1152,11 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     if (starredOnly) p.set('starred_only', '1')
     if (freshness) p.set('freshness', freshness)
     if (sentiment) p.set('sentiment', sentiment)
+    if (lane !== 'all') p.set('lane', lane)
     // 50 cards max — full 100 was ~3MB JSON and timed out the desk under Tailscale load
     p.set('limit', '50')
     return p.toString()
-  }, [q, category, priority, holdingsOnly, includeArchived, starredOnly, freshness, sentiment])
+  }, [q, category, priority, holdingsOnly, includeArchived, starredOnly, freshness, sentiment, lane])
 
   const { data, loading, refreshing, error, refetch } = useApi<any>(
     `/api/v2/research-intelligence?${qs}`,
@@ -1255,7 +1256,6 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     return raw.map(it => ({ ...it, ...(localPatch[it.id] || {}) }))
   }, [data?.items, localPatch])
 
-  const lanes = data?.priority_lanes || {}
   const stats = data?.stats || {}
   // Universe freshness for masthead (not zeroed by empty category filter)
   const tierCounts = stats.by_freshness || {}
@@ -1293,26 +1293,9 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   }, [data?.stats, loading, hasActiveFilters, clearFilters])
 
   const displayItems: Item[] = useMemo(() => {
-    // Lanes use server priority_lanes when available (full universe, not empty filter page)
-    if (lane === 'retirement') {
-      const laneItems = (lanes.retirement as Item[] | undefined) || []
-      if (laneItems.length) return laneItems.map(it => ({ ...it, ...(localPatch[it.id] || {}) }))
-      return items.filter(i => i.primary_category === 'retirement_tax')
-    }
-    if (lane === 'dividends') {
-      const laneItems = (lanes.dividends as Item[] | undefined) || []
-      if (laneItems.length) return laneItems.map(it => ({ ...it, ...(localPatch[it.id] || {}) }))
-      return items.filter(i => i.primary_category === 'dividend_income')
-    }
-    if (lane === 'macro_sector') {
-      const laneItems = (lanes.macro_sector as Item[] | undefined) || []
-      if (laneItems.length) return laneItems.map(it => ({ ...it, ...(localPatch[it.id] || {}) }))
-      return items.filter(i =>
-        i.primary_category === 'macro_geo' || i.primary_category === 'sector_thematic')
-    }
-    // Category already applied server-side; keep items as returned
+    // Lane + category are applied server-side (lane= param); items ARE the lane view
     return items
-  }, [lane, items, lanes, localPatch])
+  }, [items])
 
   const featured = useMemo(() => {
     // Prefer real Hermes/LLM briefs — never feature empty topic_monitor stubs
@@ -1817,7 +1800,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
           {!!(data?.portfolio_context?.top?.length) && (
             <RailCard title="Book weights" accent={C.income}>
               <div style={{ fontSize: 11, color: C.soft, marginBottom: 6 }}>
-                ${(Number(data.portfolio_context.total_mv || 0) / 1e6).toFixed(2)}M household
+                ${(Number(data.portfolio_context.total_mv || 0) / 1e6).toFixed(2)}M securities (ex-cash) — top-strip Portfolio includes cash
               </div>
               {(data.portfolio_context.top as {
                 symbol: string
