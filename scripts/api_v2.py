@@ -25703,8 +25703,29 @@ def _broker_orders_drafts(query=None):
     return _json_clean({"drafts": br_audit.load_drafts(b, 50)})
 
 
+_SYMBOL_CARDS_CACHE = {"ts": 0.0, "etag": None, "payload": None}
+_SYMBOL_CARDS_TTL = 300  # rebuild at most every 5 min; card inputs move on cron cadence
+
+
 def _symbol_cards(query=None):
-    """GET /api/v2/symbol-cards — ONE map powering the unified card layer on Watchlist / Open Trades /
+    """GET /api/v2/symbol-cards — cached wrapper. Engine Room v1: this was the top
+    unprotected payload (1.95MB × every tab poll, ~1s DB build each time). Serve from a
+    5-min in-process cache with a content ETag so repeat polls 304 before serialize/gzip."""
+    import time as _t
+    c = _SYMBOL_CARDS_CACHE
+    if c["payload"] is None or _t.time() - c["ts"] > _SYMBOL_CARDS_TTL:
+        import hashlib as _hl, json as _j
+        payload = _symbol_cards_build()
+        c["etag"] = 'W/"sc-' + _hl.sha1(_j.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:16] + '"'
+        c["payload"] = payload
+        c["ts"] = _t.time()
+    out = dict(c["payload"])  # shallow copy: json_response pops __etag__, must not mutate cache
+    out["__etag__"] = c["etag"]
+    return out
+
+
+def _symbol_cards_build():
+    """Build the unified card map — ONE map powering the card layer on Watchlist / Open Trades /
     Portfolio (operator 2026-06-12): per symbol -> {description, sector, industry, sector_etf,
     perf_week, sector_perf_week, vs_sector_week, analyst{...}, news[top 3 relevant]}. Read-only."""
     profs = _db_query("""SELECT symbol, description_1s, sector, industry, instrument_type, direction_hint,

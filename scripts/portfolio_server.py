@@ -1177,6 +1177,55 @@ API_AUTH_ENABLED = bool(API_AUTH_TOKEN)
 AUTH_EXEMPT_PREFIXES = ("/v2/", "/v3/", "/data/", "/archive/", "/reports/", "/assets/", "/api/health")
 
 
+# ── Engine Room v1 (WS-1, Path B): in-process topology relief ──────────────────
+# Root cause of the server-busy storms: threads keep computing + serializing MB
+# payloads for clients that already disconnected (cache-busted poll storms, dead
+# Tailscale peers), holding semaphore slots while sockets sit in CLOSE-WAIT.
+# Path A (gunicorn gthread cutover) is INFEASIBLE — this is a raw http.server
+# handler, not a WSGI app. Path B: detect the disconnect and stop paying for it.
+import socket as _socket
+import time as _wd_time
+
+_INFLIGHT: dict = {}  # thread ident -> (path, started_at, connection)
+_INFLIGHT_LOCK = threading.Lock()
+_WATCHDOG_ABANDON_SEC = float(os.getenv("DASHBOARD_WATCHDOG_ABANDON_SEC", "25"))
+
+
+def _peer_closed(conn) -> bool:
+    """True when the client has closed its end (socket EOF ⇒ our side is CLOSE-WAIT).
+    Zero-timeout select first: recv on a timeout-mode socket would block in select
+    for the full socket timeout when no bytes are pending."""
+    try:
+        import select as _select
+        readable, _, _ = _select.select([conn], [], [], 0)
+        if not readable:
+            return False  # nothing pending ⇒ peer alive
+        return conn.recv(1, _socket.MSG_PEEK) == b""
+    except Exception:
+        return True   # errored socket: treat as gone
+
+
+def _compute_watchdog() -> None:
+    """Every 5s: any request computing past the abandon threshold whose client is
+    gone gets its socket shut down, so the thread dies on its next write instead of
+    finishing a response nobody will read. Never touches a connected client."""
+    while True:
+        _wd_time.sleep(5)
+        now = _wd_time.time()
+        with _INFLIGHT_LOCK:
+            snapshot = list(_INFLIGHT.items())
+        for tid, (path, t0, conn) in snapshot:
+            age = now - t0
+            if age < _WATCHDOG_ABANDON_SEC:
+                continue
+            try:
+                if _peer_closed(conn):
+                    conn.shutdown(_socket.SHUT_RDWR)
+                    print(f"  [watchdog] reaped abandoned compute: {path} after {age:.0f}s")
+            except Exception:
+                pass
+
+
 class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
     def finish(self):
@@ -1237,6 +1286,21 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        # WS-1 Path B: don't start compute for a client that already hung up
+        # (poll storms abort + retry; the aborted request must cost ~0)
+        if _peer_closed(self.connection):
+            self.close_connection = True
+            return
+        tid = threading.get_ident()
+        with _INFLIGHT_LOCK:
+            _INFLIGHT[tid] = (self.path, _wd_time.time(), self.connection)
+        try:
+            return self._do_GET_inner()
+        finally:
+            with _INFLIGHT_LOCK:
+                _INFLIGHT.pop(tid, None)
+
+    def _do_GET_inner(self):
         if not self._check_auth():
             self._send_auth_error()
             return
@@ -1680,6 +1744,16 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         self.send_error(404, f"Not found: {path}")
 
     def do_POST(self):
+        tid = threading.get_ident()
+        with _INFLIGHT_LOCK:
+            _INFLIGHT[tid] = (self.path, _wd_time.time(), self.connection)
+        try:
+            return self._do_POST_inner()
+        finally:
+            with _INFLIGHT_LOCK:
+                _INFLIGHT.pop(tid, None)
+
+    def _do_POST_inner(self):
         if not self._check_auth():
             self._send_auth_error()
             return
@@ -2194,6 +2268,8 @@ if __name__ == "__main__":
         print(f"[fatal] Cannot bind port {PORT}: {e}")
         print("Another portfolio_server may already be listening. Check: ss -tlnp | grep 7777")
         sys.exit(1)
+    threading.Thread(target=_compute_watchdog, daemon=True,
+                     name="engine-room-compute-watchdog").start()
     print(f"Portfolio server → http://localhost:{PORT}")
     print(f"Project root: {PROJECT_ROOT}")
     print(f"Holdings: {HOLDINGS_PATH}")
