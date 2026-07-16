@@ -1049,6 +1049,10 @@ def build_feed(
     from lib.research_intelligence_portfolio import load_portfolio_context
     port_ctx = load_portfolio_context()
 
+    # v3 Hermes joins — read-only, fail-open, page-scope only (≤50 items)
+    _attach_hermes_context(page, db_query=db_query)
+    wire = _hermes_wire(db_query=db_query) if not (lane or category or q or symbol) else []
+
     return {
         "ok": True,
         "version": "2.7",
@@ -1101,6 +1105,7 @@ def build_feed(
         },
         "items": page,
         "queued_research": queued,
+        "hermes_wire": wire,
         "priority_lanes": priority_lanes,
         "note": (
             "Research Intelligence v2.7 — Stage Trade + RI Ideas watchlist; cross-theme strips; "
@@ -1109,6 +1114,168 @@ def build_feed(
         ),
         "portfolio_context": _portfolio_context_payload(port_ctx),
     }
+
+
+def _attach_hermes_context(page: list[dict[str, Any]], *, db_query) -> None:
+    """v3 (C1/C2/C4): read-only Hermes joins onto the rendered page.
+
+    Fail-open by design — a missing table/row never blocks the feed. Two scoring
+    systems disagreeing is information: divergence is FLAGGED, never blended.
+    """
+    syms: set[str] = set()
+    for it in page:
+        if it.get("symbol"):
+            syms.add(str(it["symbol"]).upper())
+        for t in it.get("ticker_recommendations") or []:
+            if t.get("symbol"):
+                syms.add(str(t["symbol"]).upper())
+    if not syms:
+        return
+    sym_list = sorted(syms)
+
+    scores: dict[str, dict[str, Any]] = {}
+    try:
+        rows = db_query(
+            """SELECT DISTINCT ON (symbol) symbol, hermes_composite_score,
+                      hermes_rank, scope_tier
+               FROM watchlist_items
+               WHERE symbol = ANY(%s) AND hermes_composite_score IS NOT NULL
+               ORDER BY symbol, hermes_scored_at DESC NULLS LAST""",
+            (sym_list,),
+        ) or []
+        for r in rows:
+            try:
+                scores[str(r["symbol"]).upper()] = {
+                    "composite": round(float(r["hermes_composite_score"]), 1),
+                    "rank": r.get("hermes_rank"),
+                    "scope_tier": r.get("scope_tier"),
+                }
+            except (TypeError, ValueError, KeyError):
+                continue
+    except Exception:
+        scores = {}
+
+    ext: dict[str, list[dict[str, Any]]] = {}
+    try:
+        rows = db_query(
+            """SELECT symbol, lane, recommendation, confidence, dissent, created_at
+               FROM hermes_external_research
+               WHERE created_at > now() - interval '14 days'
+                 AND symbol = ANY(%s) AND recommendation IS NOT NULL
+               ORDER BY created_at DESC""",
+            (sym_list,),
+        ) or []
+        seen_lane: set[tuple[str, str]] = set()
+        for r in rows:
+            s = str(r.get("symbol") or "").upper()
+            lane = str(r.get("lane") or "")
+            if not s or (s, lane) in seen_lane:
+                continue
+            seen_lane.add((s, lane))
+            ext.setdefault(s, []).append({
+                "lane": lane,
+                "recommendation": (r.get("recommendation") or "")[:400],
+                "confidence": r.get("confidence"),
+                "dissent": (r.get("dissent") or "")[:300] or None,
+                "created_at": str(r.get("created_at") or "")[:19],
+            })
+    except Exception:
+        ext = {}
+
+    directives: dict[str, dict[str, Any]] = {}
+    try:
+        rows = db_query(
+            """SELECT id, label, UPPER(spec->>'symbol') AS symbol
+               FROM watch_directives
+               WHERE kind = 'ticker' AND status = 'active'
+                 AND UPPER(spec->>'symbol') = ANY(%s)""",
+            (sym_list,),
+        ) or []
+        for r in rows:
+            if r.get("symbol"):
+                directives[str(r["symbol"])] = {"id": r.get("id"), "label": r.get("label")}
+    except Exception:
+        directives = {}
+
+    for it in page:
+        s = str(it.get("symbol") or "").upper()
+        if s and s in scores:
+            it["hermes_score"] = scores[s]
+            qt = (it.get("quality_tier") or "").upper()
+            comp = scores[s]["composite"]
+            # Material disagreement between the RI conviction tier and the Hermes
+            # composite — render both numbers, do not silently pick one
+            if (qt == "A" and comp < 40) or (qt == "C" and comp >= 70):
+                it["score_divergence"] = {"ri_tier": qt, "hermes_composite": comp}
+        if s and s in ext:
+            it["external_intel"] = ext[s]
+        if s and s in directives:
+            it["watch_directive"] = directives[s]
+        for t in it.get("ticker_recommendations") or []:
+            ts = str(t.get("symbol") or "").upper()
+            if ts and ts in scores:
+                t["hermes"] = scores[ts]
+                ct = (t.get("conviction_tier") or "").upper()
+                comp = scores[ts]["composite"]
+                if (ct == "A" and comp < 40) or (ct == "C" and comp >= 70):
+                    t["score_divergence"] = {"ri_tier": ct, "hermes_composite": comp}
+            if ts and ts in directives:
+                t["watch_directive"] = True
+
+
+_WIRE_SCORE_RE = re.compile(r"([+-]\d+)\s*→\s*(\d+)")
+_WIRE_RANK_RE = re.compile(r"rank\s*#(\d+)\s*\(from\s*#(\d+)\)", re.I)
+
+
+def _hermes_wire(*, db_query, hours: int = 48, cap: int = 10) -> list[dict[str, Any]]:
+    """v3 (C3): compact Hermes alert wire for Top stories.
+
+    alert_events carries thousands of hermes_rank_surge rows per 48h — threshold
+    hard (score move ≥8, rank improvement ≥20) and cap the strip. Fail-open.
+    """
+    try:
+        rows = db_query(
+            """SELECT alert_type, symbol, raw_text, severity, created_at
+               FROM alert_events
+               WHERE created_at > now() - make_interval(hours => %s)
+                 AND alert_type IN ('hermes_score_move', 'hermes_rank_surge',
+                                    'hermes_factor_shift', 'analyst_alert')
+               ORDER BY created_at DESC
+               LIMIT 500""",
+            (int(hours),),
+        ) or []
+    except Exception:
+        return []
+    wire: list[dict[str, Any]] = []
+    seen_sym: set[str] = set()
+    for r in rows:
+        sym = str(r.get("symbol") or "").upper()
+        txt = str(r.get("raw_text") or "")
+        atype = r.get("alert_type")
+        if not sym or sym in seen_sym:
+            continue
+        keep = False
+        if atype == "hermes_score_move":
+            m = _WIRE_SCORE_RE.search(txt)
+            keep = bool(m and abs(int(m.group(1))) >= 8)
+        elif atype == "hermes_rank_surge":
+            m = _WIRE_RANK_RE.search(txt)
+            keep = bool(m and (int(m.group(2)) - int(m.group(1))) >= 20)
+        elif atype in ("hermes_factor_shift", "analyst_alert"):
+            keep = True
+        if not keep:
+            continue
+        seen_sym.add(sym)
+        wire.append({
+            "alert_type": atype,
+            "symbol": sym,
+            "text": txt[:160],
+            "severity": r.get("severity"),
+            "created_at": str(r.get("created_at") or "")[:19],
+        })
+        if len(wire) >= cap:
+            break
+    return wire
 
 
 def _portfolio_context_payload(port_ctx: dict[str, Any]) -> dict[str, Any]:

@@ -63,10 +63,17 @@ type Item = {
   operator_note?: string | null
   status?: string
   investment_implications?: string
+  hermes_score?: { composite?: number; rank?: number | null; scope_tier?: string | null }
+  score_divergence?: { ri_tier?: string; hermes_composite?: number }
+  external_intel?: { lane?: string; recommendation?: string; confidence?: number | null; dissent?: string | null; created_at?: string }[]
+  watch_directive?: { id?: number; label?: string }
   ticker_recommendations?: {
     symbol?: string
     role?: string
     scope?: string
+    hermes?: { composite?: number; rank?: number | null; scope_tier?: string | null }
+    score_divergence?: { ri_tier?: string; hermes_composite?: number }
+    watch_directive?: boolean
     suggested_weight_pct?: string | null
     rationale?: string
     conviction_tier?: string
@@ -369,6 +376,18 @@ async function postStageUpdate(body: Record<string, unknown>) {
   return r.json()
 }
 
+async function postDirectiveCreate(symbol: string, rationale: string) {
+  const r = await fetch('/api/v2/watch/directives', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      kind: 'ticker', label: symbol, spec: { symbol },
+      rationale, created_by: 'operator_ri',
+    }),
+  })
+  return r.json()
+}
+
 function ActionStrip({
   item, catColor, onStage, onThemeClick, staging,
 }: {
@@ -378,6 +397,7 @@ function ActionStrip({
   onThemeClick?: (themeId: string) => void
   staging?: boolean
 }) {
+  const [dirState, setDirState] = useState<'idle' | 'busy' | 'done' | 'fail'>('idle')
   // v3 (B4): no CTA label when the desk has none — a fake default guides nothing
   const label = item.next_action_label || item.next_action?.label || null
   const detail = item.next_action_detail || item.next_action?.detail || ''
@@ -445,8 +465,33 @@ function ActionStrip({
       )}
 
       {/* Primary action bar — top of strip for hierarchy */}
-      {((item.actions && item.actions.length > 0) || stageOk) && (
+      {((item.actions && item.actions.length > 0) || stageOk || !!item.symbol) && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+          {/* C4: operator-clicked directive creation — prefilled from this brief */}
+          {item.symbol && !item.watch_directive && (
+            <button
+              type="button"
+              disabled={dirState === 'busy' || dirState === 'done'}
+              onClick={async e => {
+                e.stopPropagation()
+                setDirState('busy')
+                try {
+                  const r = await postDirectiveCreate(
+                    String(item.symbol).toUpperCase(),
+                    `RI brief: ${item.title || ''} — ${(item.lede || item.summary || '').slice(0, 200)}`,
+                  )
+                  setDirState(r?.ok ? 'done' : 'fail')
+                } catch { setDirState('fail') }
+              }}
+              style={{
+                fontSize: 11, fontWeight: 700, padding: '7px 11px', borderRadius: 8, cursor: 'pointer',
+                border: '1px solid #f59e0b55', background: 'rgba(245,158,11,0.08)', color: '#f59e0b',
+              }}
+            >
+              {dirState === 'done' ? '✓ Directive created' : dirState === 'busy' ? 'Creating…'
+                : dirState === 'fail' ? 'Directive failed — retry' : `Create Watch Directive · ${item.symbol}`}
+            </button>
+          )}
           {(item.actions || []).slice(0, 6).map((a, i) => {
             const primary = a.primary || a.id === 'stage_trade'
             const isStage = a.id === 'stage_trade' || a.id === 'ri_ideas' || a.id === 'propose_trim'
@@ -548,6 +593,31 @@ function ActionStrip({
                         {company && (
                           <span style={{ fontSize: 13.5, fontWeight: 650, color: C.ink }}>
                             {company}
+                          </span>
+                        )}
+                        {t.hermes && (
+                          <span title="Hermes composite score · rank · scope tier (read-only join)" style={{
+                            fontFamily: 'var(--mono)', fontSize: 10.5, fontWeight: 800, color: C.accent,
+                            border: `1px solid ${C.accent}44`, borderRadius: 6, padding: '1px 6px',
+                          }}>
+                            ★{t.hermes.rank != null ? `#${t.hermes.rank}` : ''} · {t.hermes.composite}
+                            {t.hermes.scope_tier ? ` · ${String(t.hermes.scope_tier).toUpperCase()}` : ''}
+                          </span>
+                        )}
+                        {t.score_divergence && (
+                          <span title="RI conviction and Hermes composite disagree — both shown, neither blended" style={{
+                            fontSize: 10, fontWeight: 800, color: C.stale,
+                            border: `1px solid ${C.stale}55`, borderRadius: 6, padding: '1px 6px',
+                          }}>
+                            ⚠ divergence: RI {t.score_divergence.ri_tier} / Hermes {t.score_divergence.hermes_composite}
+                          </span>
+                        )}
+                        {t.watch_directive && (
+                          <span title="Active watch directive on this symbol" style={{
+                            fontSize: 10, fontWeight: 800, color: '#f59e0b',
+                            border: '1px solid #f59e0b55', borderRadius: 6, padding: '1px 6px',
+                          }}>
+                            Directive
                           </span>
                         )}
                       </div>
@@ -895,6 +965,33 @@ function ArticleCard({
             </span>
           )}
           {item.is_holdings && <Tag color={C.income}>In portfolio</Tag>}
+          {item.hermes_score && (
+            <span title="Hermes composite · rank · scope tier (read-only join)">
+              <Tag color={C.accent}>
+                ★{item.hermes_score.rank != null ? `#${item.hermes_score.rank}` : ''} · {item.hermes_score.composite}
+                {item.hermes_score.scope_tier ? ` · ${String(item.hermes_score.scope_tier).toUpperCase()}` : ''}
+              </Tag>
+            </span>
+          )}
+          {item.score_divergence && (
+            <span title="RI conviction and Hermes composite disagree — both shown, neither blended">
+              <Tag color={C.stale}>
+                ⚠ RI {item.score_divergence.ri_tier} / Hermes {item.score_divergence.hermes_composite}
+              </Tag>
+            </span>
+          )}
+          {(item.external_intel?.length ?? 0) > 0 && item.external_intel!.map((x, i) => (
+            <span key={`ext-${i}`} title={
+              `${x.lane || 'external'} · conf ${x.confidence ?? '—'}\n${x.recommendation || ''}${x.dissent ? `\nCounter-view: ${x.dissent}` : ''}`
+            }>
+              <Tag color={C.macro}>✦ {String(x.lane || 'ext').replace(/_/g, ' ')}</Tag>
+            </span>
+          ))}
+          {item.watch_directive && (
+            <span title={`Active watch directive: ${item.watch_directive.label || item.symbol}`}>
+              <Tag color="#f59e0b">Directive</Tag>
+            </span>
+          )}
           {(item.ticker_recommendations?.filter(t => t.scope !== 'book').length ?? 0) > 0 && (
             <Tag color={C.macro}>Tickers & size</Tag>
           )}
@@ -1755,6 +1852,41 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                     staging={staging}
                   />
                 </div>
+              )}
+
+              {/* C3: Hermes alert wire — score spikes / rank surges / divergence flips (48h) */}
+              {lane === 'all' && (data?.hermes_wire?.length ?? 0) > 0 && (
+                <section>
+                  <div style={{
+                    fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                    color: C.soft, marginBottom: 8,
+                  }}>
+                    Hermes wire
+                    <span style={{ fontWeight: 600, marginLeft: 8, letterSpacing: 0, textTransform: 'none' }}>
+                      composite moves · rank surges · analyst divergence · 48h
+                    </span>
+                  </div>
+                  <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, overflow: 'hidden' }}>
+                    {(data.hermes_wire as {
+                      alert_type?: string; symbol?: string; text?: string; created_at?: string
+                    }[]).map((w, i) => (
+                      <Link key={`${w.symbol}-${i}`} to="/hermes" style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px',
+                        borderBottom: `1px solid ${C.line}`, fontSize: 12, textDecoration: 'none', color: C.ink,
+                      }}>
+                        <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, color: C.accent, minWidth: 52 }}>
+                          {w.symbol}
+                        </span>
+                        <span style={{ color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                          {w.text}
+                        </span>
+                        <span style={{ color: C.soft, fontSize: 10.5, whiteSpace: 'nowrap' }}>
+                          {(w.created_at || '').slice(11, 16)}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
               )}
 
               <div style={{
