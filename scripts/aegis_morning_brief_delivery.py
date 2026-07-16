@@ -479,6 +479,21 @@ def write_formal_export(brief: dict, summary: str) -> str:
     docs_path = PROJECT_ROOT / "docs" / f"openclaw_aegis_morning_brief_{today}.md"
     docs_path.write_text("\n".join(lines))
 
+    # Reports Desk v1 (WS-B, additive): persist the STRUCTURED brief beside the .md so
+    # the Reports page renders sections as data instead of re-parsing flattened text.
+    # Telegram send path and the .md export above are untouched (sacred contract).
+    try:
+        json_path = export_dir / f"aegis_morning_brief_{today}.json"
+        json_path.write_text(json.dumps({
+            "run_id": brief.get("run_id"),
+            "generated_at": datetime.now().isoformat(),
+            "summary": summary,
+            "has_findings": brief.get("has_findings"),
+            "sections": brief.get("sections", []),
+        }, default=str, indent=1))
+    except Exception as _je:
+        print(f"  [aegis-brief] json sidecar failed (non-fatal): {_je}")
+
     return str(export_path)
 
 

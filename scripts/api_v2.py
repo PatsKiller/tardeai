@@ -19131,6 +19131,21 @@ def _report_catalog_cached():
         return {"types": [], "error": str(e)[:200]}
 
 
+def _reports_brief_regenerate(body=None):
+    """POST /api/v2/reports/brief/regenerate — WS-B: rebuild today's aegis brief .md +
+    .json sidecar from live context. Deterministic-light (fetches the chat-context API,
+    formats, writes files). Telegram is NOT re-sent — send path untouched."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from aegis_morning_brief_delivery import _get_morning_brief, write_formal_export
+        brief, summary = _get_morning_brief()
+        path = write_formal_export(brief, summary)
+        return {"ok": True, "export": path, "sections": len(brief.get("sections", []))}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _reports_catalog_route(query=None):
     """GET /api/v2/reports/catalog — WS-A typed report catalog only (light: disk-cache read,
     no DB) so the Library tab never pays for the full hub aggregate."""
@@ -35807,6 +35822,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return (200 if result.get("ok") else 400), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:240]}
+    if method == "POST" and base_path == "/api/v2/reports/brief/regenerate":
+        try:
+            result = _reports_brief_regenerate(body or {})
+            return (200 if result.get("ok") else 500), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
     if method == "POST" and base_path == "/api/v2/ui/prefs":
         try:
             result = _ui_prefs_set(body or {})

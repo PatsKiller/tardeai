@@ -10,6 +10,7 @@ import ReportCoverageStrip from '../components/reports/ReportCoverageStrip'
 import ReportSearch from '../components/reports/ReportSearch'
 import DocxDownloads from '../components/reports/DocxDownloads'
 import ReportLibrary from '../components/reports/ReportLibrary'
+import StructuredBrief from '../components/reports/StructuredBrief'
 import AnalystReportsPanel from '../components/reports/AnalystReportsPanel'
 import { parseBriefSections, executiveSummaryText, rankedActionLines, SUPER_TABS } from '../components/reports/briefUtils'
 import { useTerminalUi } from '../lib/terminalUi'
@@ -354,6 +355,9 @@ export default function ReportsHub({ onDrill }: Props) {
         <AnalystReportsPanel />
       )}
 
+      {mode === 'brief' && !searchQ && (
+        <StructuredBrief liveStopsTriggered={(risk?.stops || risk?.data?.stops || []).filter?.((x: any) => String(x.status || '').toLowerCase() === 'triggered').length} />
+      )}
       {mode === 'brief' && !searchQ && (
         <>
       <ReportCoverageStrip categories={categories} />
