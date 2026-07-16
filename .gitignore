@@ -176,3 +176,8 @@ artifacts/
 data/runtime/gain_guardian_charts/
 data/runtime/ri_snapshots/
 apps/command-center-v3/test-results/
+
+# Claude Code project skills are shared config (settings.local stays ignored)
+!.claude/
+.claude/*
+!.claude/skills/
