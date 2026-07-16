@@ -38,11 +38,25 @@ def main() -> int:
         return (txt.strip().splitlines() or ["(no output)"])[-1][:220]
 
     merge_lines = [ln.strip() for ln in plan3.splitlines() if ln.strip().startswith("#") or "survivor" in ln][:10]
+    # Watch Desk v3 (A4): source league line — evidence for the cull decision
+    league = ""
+    try:
+        from db_adapter import _execute
+        rows = _execute("""SELECT source_type, count(*) FILTER (WHERE alpha_21d IS NOT NULL) AS n,
+                                  round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
+                                    FILTER (WHERE alpha_21d IS NOT NULL))::numeric,2) AS a
+                           FROM watch_candidate_events GROUP BY 1 ORDER BY 1""", fetch="all") or []
+        league = "\nSource league (21d α median): " + " · ".join(
+            f"{r['source_type']} {('%+.1f%%' % r['a']) if r['a'] is not None else 'n/a'} (n={r['n']})" for r in rows)
+    except Exception:
+        pass
+
     msg = ("🧹 Watch-directive hygiene (Sunday)\n"
            f"Tiers 1–2 applied: {_summary(applied)}\n"
            "Tier-3 family merges awaiting operator approval:\n"
            + ("\n".join(f"  {ln[:100]}" for ln in merge_lines) if merge_lines else "  none")
-           + "\nApprove via: python scripts/watch_directive_dedup.py --apply --tier 3")
+           + "\nApprove via: python scripts/watch_directive_dedup.py --apply --tier 3"
+           + league)
     try:
         from telegram_alert import send_telegram
         send_telegram(msg)

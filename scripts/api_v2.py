@@ -5726,7 +5726,42 @@ def _screener_finds_candidates(query=None):
         "items": items_out,
         "buy_side_only": True,
         "retention": "Active while CIO is BUY, STRONG_BUY, ADD, or ADD_ON_PULLBACK",
+        # Watch Desk v3 (D1): the CIO-qualified lane is structurally thin — widen the
+        # tab to ALL screener+discovery finds with the CIO subset highlighted, and
+        # give the tab its WS-A track record so it justifies existing
+        "wide_finds": _wide_finds_payload(),
+        "track_record": _finds_track_record(),
     })
+
+
+def _wide_finds_payload():
+    """All screener_find + ai_discovered emissions (90d), newest first, for the
+    widened Finds band (CIO-qualified subset renders separately above)."""
+    try:
+        rows = _db_query("""SELECT source_type, symbol, emitted_on, anchor_price, alpha_21d, verdict, proposed
+                            FROM watch_candidate_events
+                            WHERE source_type IN ('screener_find','ai_discovered')
+                              AND emitted_on > CURRENT_DATE - 90
+                            ORDER BY emitted_on DESC LIMIT 120""") or []
+        return [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+    except Exception:
+        return []
+
+
+def _finds_track_record():
+    """WS-A header stats: 'Finds last 90d: N · 21d α median · M converted'."""
+    try:
+        r = _db_query("""SELECT count(*) AS n,
+                                count(*) FILTER (WHERE alpha_21d IS NOT NULL) AS scored,
+                                round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
+                                  FILTER (WHERE alpha_21d IS NOT NULL))::numeric, 2) AS median_alpha_21d,
+                                count(*) FILTER (WHERE proposed) AS converted
+                         FROM watch_candidate_events
+                         WHERE source_type IN ('screener_find','ai_discovered')
+                           AND emitted_on > CURRENT_DATE - 90""", fetch="one") or {}
+        return {k: _json_clean(v) for k, v in r.items()}
+    except Exception:
+        return {}
 
 
 def _wl_items(query: dict = None):
@@ -6003,6 +6038,44 @@ def _wl_items(query: dict = None):
             ))
     except Exception:
         pass
+    # Watch Desk v3 (WS-C): deterministic setup_context per row — REUSES the
+    # existing _hermes_setup(rsi, trend) spec-§8 classifier (extraction, not
+    # duplication). Labeled context, NOT a quality score; the sample-gated
+    # setup_quality_prior stays untouched.
+    for _it in _items:
+        try:
+            _sc = _hermes_setup(_it.get("rsi"), _it.get("trend"))
+            _rv = _it.get("rvol")
+            _glyphs = []
+            _tr = (_it.get("trend") or "").lower()
+            _glyphs.append("▲" if _tr == "bullish" else "▼" if _tr == "bearish" else "◆")
+            _r = _it.get("rsi")
+            _glyphs.append("R↓" if (_r is not None and float(_r) < 40) else
+                           "R↑" if (_r is not None and float(_r) > 65) else "R·")
+            if _rv is not None:
+                _glyphs.append("V↑" if float(_rv) >= 2 else "V·")
+            _it["setup_context"] = {
+                "glyphs": " ".join(_glyphs),
+                "type": _sc.get("type"),
+                "hint": _sc.get("why"),
+                "conviction": _sc.get("conviction"),
+                "label": "deterministic context — not a quality score",
+            }
+        except Exception:
+            continue
+
+    # Watch Desk v3 (D3): list payload trim — narrative/CIO-evidence blobs move
+    # behind ?full=1 (the detail drawer refetches); list keeps snips only
+    if not (query or {}).get("full"):
+        # Conservative cut: snips remain for everything dropped; fields consumed
+        # by the LOCKED Card v4 family (hermes_score_components._confidence,
+        # dual_consensus_json) are KEPT — flagged as the remaining payload tail
+        _HEAVY = ("synthesis_narrative", "profile_description", "conflicts",
+                  "research_summary", "unresolved", "synthesis_evidence")
+        for _it in _items:
+            for _k in _HEAVY:
+                _it.pop(_k, None)
+
     # Watch Desk v2 (A2/C3): facet counts computed over the SAME corpus the rows
     # come from (RI v3.0 lesson — one corpus), plus the honest denominator.
     # setup_advisory is FREE TEXT ("RSI 46 · band 40-55") written by the
@@ -23889,6 +23962,47 @@ def _hermes_catalyst_calibration(query=None):
             "by_type": types[:20], "trend": trend, "recent_transitions": transitions[:10]}
 
 
+def _watch_alerts_list(query=None):
+    """GET /api/v2/watch/alerts/list — armed operator alerts (Watch Desk v3 B3)."""
+    rows = _db_query("""SELECT id, symbol, directive_id, condition_type, threshold, recurring,
+                               cooldown_days, active, created_at, last_fired_at, note
+                        FROM watch_alerts ORDER BY active DESC, created_at DESC LIMIT 100""") or []
+    return {"ok": True, "alerts": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+            "active_count": sum(1 for r in rows if r.get("active"))}
+
+
+def _watch_alerts_post(body=None):
+    """POST /api/v2/watch/alerts {action: arm|disarm, ...} — deterministic
+    conditions only; evaluation rides the 20-min RTH cron (notifications, not
+    content production)."""
+    b = body or {}
+    action = (b.get("action") or "arm").lower()
+    if action == "disarm":
+        try:
+            aid = int(b.get("id") or 0)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "id required"}
+        _db_query("UPDATE watch_alerts SET active=false WHERE id=%s", (aid,), fetch=None)
+        return {"ok": True, "id": aid, "disarmed": True}
+    ct = (b.get("condition_type") or "").lower()
+    allowed = ("price_cross_above", "price_cross_below", "rsi_above", "rsi_below", "directive_hit")
+    if ct not in allowed:
+        return {"ok": False, "error": f"condition_type must be one of {allowed}"}
+    sym = (b.get("symbol") or "").upper().strip() or None
+    did = b.get("directive_id")
+    if ct == "directive_hit" and not did:
+        return {"ok": False, "error": "directive_id required for directive_hit"}
+    if ct != "directive_hit" and not sym:
+        return {"ok": False, "error": "symbol required"}
+    row = _db_query("""INSERT INTO watch_alerts (symbol, directive_id, condition_type, threshold,
+                                                 recurring, note)
+                       VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (sym, did, ct, b.get("threshold"), bool(b.get("recurring")),
+                     (b.get("note") or "")[:200]), fetch="one")
+    return {"ok": True, "id": (row or {}).get("id"), "armed": True,
+            "note": "evaluated every 20 min during RTH; one batched Telegram per pass, daily cap applies"}
+
+
 def _watch_directive_update(body=None):
     """POST /api/v2/watch/directives/update {id, action, target_id?} — Watch Desk
     v2 (B3) row actions. Governed transitions only, never delete:
@@ -23958,6 +24072,22 @@ def _watch_directives(query=None):
         if 0 <= wk < 8:
             _spark[r["directive_id"]][7 - wk] = r["n"]
     _hit_meta = {r["directive_id"]: r for r in _hs}
+    # Watch Desk v3 (A3): per-directive outcome evidence from the source scoreboard —
+    # the input the 150-cap and Sunday hygiene were missing (cull by evidence)
+    _score_meta = {}
+    try:
+        for r in (_db_query("""SELECT source_id::bigint AS did,
+                                      count(*) AS events,
+                                      count(*) FILTER (WHERE alpha_21d IS NOT NULL) AS scored,
+                                      round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
+                                        FILTER (WHERE alpha_21d IS NOT NULL))::numeric, 2) AS alpha_21d_median,
+                                      count(*) FILTER (WHERE proposed) AS proposed_n
+                               FROM watch_candidate_events
+                               WHERE source_type='directive_hit' AND source_id ~ '^[0-9]+$'
+                               GROUP BY 1""") or []):
+            _score_meta[r["did"]] = r
+    except Exception:
+        _score_meta = {}
     _hit_sym_map = {r["directive_id"]: (r["syms"] or []) for r in _hs}
     # Per-directive TOTAL counts (fix 2026-06-19): the chip count must come from here, NOT from the global
     # recent_hits feed below — that feed is LIMIT 40 (most-recent activity), so older/ticker-tag hits fall
@@ -24016,6 +24146,11 @@ def _watch_directives(query=None):
                             "hits_7d": (_hit_meta.get(r["id"]) or {}).get("hits_7d") or 0,
                             "hits_30d": (_hit_meta.get(r["id"]) or {}).get("hits_30d") or 0,
                             "spark_8w": _spark.get(r["id"], [0] * 8),
+                            "alpha_21d_median": _json_clean((_score_meta.get(r["id"]) or {}).get("alpha_21d_median")),
+                            "alpha_n": (_score_meta.get(r["id"]) or {}).get("scored") or 0,
+                            "conv_pct": _json_clean(round(100.0 * (_score_meta.get(r["id"]) or {}).get("proposed_n", 0)
+                                                          / max(1, (_score_meta.get(r["id"]) or {}).get("events") or 1), 1)
+                                                    if _score_meta.get(r["id"]) else None),
                             "age_days": _json_clean(
                                 (datetime.now(timezone.utc) - r["created_at"]).days
                                 if r.get("created_at") is not None and hasattr(r.get("created_at"), "year") else None),
@@ -30792,6 +30927,7 @@ ROUTES = {
     "/api/v2/watch-directives": _watch_directives,
     "/api/v2/watchpool": _watchpool_list,
     "/api/v2/watch/sectors": _watch_sectors,
+    "/api/v2/watch/alerts/list": _watch_alerts_list,
     "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
     "/api/v2/hermes/curate-top20": _hermes_curate_top20_status,
@@ -35347,6 +35483,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/pullback-macd/dismiss":
         try:
             result = _pullback_macd_dismiss(body or {})
+            return (200 if result.get("ok") else 400), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:240]}
+    if method == "POST" and base_path == "/api/v2/watch/alerts":
+        try:
+            result = _watch_alerts_post(body or {})
             return (200 if result.get("ok") else 400), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:240]}

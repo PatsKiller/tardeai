@@ -1398,6 +1398,25 @@ def upsert_feedback(
     }
 
 
+def _source_league(db_query) -> list[dict]:
+    """Watch Desk v3 (A4): candidate-source league table — median 21d alpha per
+    lane. Small n renders as-is; consumers must draw no conclusions from n<10."""
+    try:
+        return [
+            {"source": r["source_type"], "n": r["n"],
+             "median_alpha_21d": float(r["a"]) if r.get("a") is not None else None,
+             "converted": r["conv"]}
+            for r in (db_query("""
+                SELECT source_type, count(*) FILTER (WHERE alpha_21d IS NOT NULL) AS n,
+                       round((percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)
+                         FILTER (WHERE alpha_21d IS NOT NULL))::numeric, 2) AS a,
+                       count(*) FILTER (WHERE proposed) AS conv
+                FROM watch_candidate_events GROUP BY 1 ORDER BY 1""") or [])
+        ]
+    except Exception:
+        return []
+
+
 def _qa_flag_counts_from_snapshots() -> dict[str, int]:
     """v3.1 (WS-D): the desk's tracked garbage rate — read from the 'top'
     snapshot (lint runs at materialization). Empty dict when no snapshot yet."""
@@ -1526,6 +1545,7 @@ def freshness_report(*, db_query) -> dict[str, Any]:
         "coverage_gaps": coverage_gaps,
         "feedback_tallies_7d": feedback_tallies,
         "qa_flag_counts": _qa_flag_counts_from_snapshots(),
+        "source_league": _source_league(db_query),
         "queued_research_count": (feed.get("stats") or {}).get("queued_research"),
         "action_label_distribution": label_dist[:15],
         "action_labels_over_20pct": over_cap,
