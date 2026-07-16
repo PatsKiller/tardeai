@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-16 — Morning ops stability (desk reliability + RI overnight)
+
+Findings: `docs/_findings/ops_morning_stability_2026-07-16.md`.
+
+- **Dashboard** — gzip large JSON; concurrency semaphore timeout → 503; health/static bypass; trade_ai never recomputes on GET; atomic cache write; RI feed TTL + single-flight lock; Refresh desk toast/cache-bust.
+- **Finviz** — per-screener SAVEPOINT + membership nested savepoint so lock timeout no longer aborts whole pipeline.
+- **Telegram scalps** — NEW GO still P0 when Critic DOWNGRADE/BLOCK (text stays in message).
+- **RI production** — overnight / after close only (`non_trading_hours_gate`, overnight runner, crontab installer); desk reads remain 24/7.
+
 ## 2026-07-16 — Research Intelligence v2.7 (stage trades + cross-theme)
 
 - **Stage Trade** — persistent `ri_staged_ideas.json`; GET/POST stage APIs; incomplete data blocked.
