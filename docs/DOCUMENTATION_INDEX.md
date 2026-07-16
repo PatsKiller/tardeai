@@ -88,6 +88,7 @@
 | Document | Purpose | Status |
 |----------|---------|--------|
 | `docs/ENGINE_ROOM_V1.md` | **Engine Room v1** — server topology Path B (disconnect detect + 25s watchdog + CLOSE-WAIT reaper; gunicorn Path A infeasible), symbol-cards ETag, provenance-at-write (wire degrade), universe guard at generators, Hermes backlog collapse 2,510→30 + nightly drain | Active (2026-07-16) |
+| `docs/architecture/WATCH_DESK_V4.md` | **Watch Desk v4 — Terminal Grade**: watchTokens design system (zero-hex, chips, rails, keyboard), saved views/bulk, directive drawer+TTL+in-UI tier-3 approvals, converted-α + low-efficacy gate, sector RS history + book overlay, discovery-trace threading | Active (2026-07-16) |
 | `docs/architecture/WATCH_DESK_V3.md` | **Watch Desk v3** — source scoreboard (α attribution), operator alerts, deterministic context, thin surfaces resolved | Active (2026-07-16) |
 | `docs/architecture/WATCH_DESK_V2.md` | **Watch Desk v2 P0s** — header truth (SPAXX flip killed), directive family gate + Sunday hygiene + trend cap | Active (2026-07-16) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V3_1.md` | **RI v3.1 — Institutional Desk**: snapshots/ETag reliability, curation shelf+hide, provenance timestamps, deterministic QA lint, outbound links, ops restore | Active (2026-07-16) |
