@@ -18528,6 +18528,107 @@ def _research_intelligence_staged_get(query=None):
         return {"ok": False, "error": str(e)[:240]}
 
 
+def _research_intelligence_stage_promote(body=None):
+    """POST /api/v2/research-intelligence/stage/promote {id, target, note?} —
+    operator-clicked promotion of a staged RI idea into an EXISTING pathway:
+    watchlist/directive (ticker watch_directive create, the governed entry into
+    the watch universe) or paper_proposal (PENDING row, manual_review_required,
+    normal review chain). Advisory/paper only — no broker surface, ever."""
+    b = body or {}
+    idea_id = str(b.get("id") or "").strip()
+    target = str(b.get("target") or "").strip()
+    note = str(b.get("note") or "")[:300]
+    if target not in ("watchlist", "directive", "paper_proposal"):
+        return {"ok": False, "error": "target must be watchlist|directive|paper_proposal"}
+    try:
+        from lib.research_intelligence_stage import get_idea, update_staged
+        idea = get_idea(idea_id)
+        if not idea:
+            return {"ok": False, "error": "idea_not_found"}
+        if idea.get("dismissed") or idea.get("status") in ("expired", "dismissed"):
+            return {"ok": False, "error": f"idea is {idea.get('status')} — restage before promoting"}
+        sym = str(idea.get("symbol") or "").upper()
+        extra: dict = {}
+
+        if target in ("watchlist", "directive"):
+            rationale = (
+                f"RI staged idea {idea_id}: {idea.get('rationale') or idea.get('source_title') or ''} · "
+                f"stop: {idea.get('provisional_stop_note') or '—'}"
+            )[:400]
+            res = _watch_directive_create({
+                "kind": "ticker", "label": sym, "spec": {"symbol": sym},
+                "rationale": rationale, "created_by": "operator_ri_staged",
+            })
+            code, payload = res if isinstance(res, tuple) else (200, res)
+            if code != 200 or not (payload or {}).get("ok"):
+                return {"ok": False, "error": (payload or {}).get("error") or "directive create failed"}
+            extra["directive"] = {k: payload.get(k) for k in ("directive_id", "reused") if k in payload}
+            new_status = "watchlisted" if target == "watchlist" else "directive_created"
+
+        else:  # paper_proposal — PENDING row in the normal review chain
+            qrow = _db_query(
+                """SELECT DISTINCT ON (symbol) price FROM market_quotes
+                   WHERE upper(symbol)=%s ORDER BY symbol, fetched_at DESC""",
+                (sym,), fetch="one",
+            )
+            px = float(qrow["price"]) if qrow and qrow.get("price") else None
+            if not px or px <= 0:
+                return {"ok": False, "error": f"no current price for {sym} — cannot size a proposal"}
+            side = "short" if idea.get("side") in ("sell", "trim") else "long"
+            # Advisory review levels only — operator + gates set the real plan
+            stop = round(px * (1.08 if side == "short" else 0.92), 2)
+            tgt = round(px * (0.90 if side == "short" else 1.12), 2)
+            try:
+                dollars = float(idea.get("dollar_lo") or 0)
+            except (TypeError, ValueError):
+                dollars = 0.0
+            shares = max(1, round((dollars if dollars > 0 else 500.0) / px))
+            dup = _db_query(
+                """SELECT id FROM paper_trade_proposals WHERE upper(symbol)=%s
+                   AND status IN ('PENDING','APPROVED') LIMIT 1""",
+                (sym,), fetch="one",
+            )
+            if dup:
+                return {"ok": False, "error": f"{sym} already has an active proposal (id {dup['id']})"}
+            desc = (
+                f"RI staged idea promotion · size band {idea.get('suggested_weight_pct') or '—'} · "
+                f"funding: {idea.get('funding_source') or 'cash/rebalance'} · "
+                f"stop note: {idea.get('provisional_stop_note') or '—'}"
+                + (f" · operator: {note}" if note else "")
+            )[:500]
+            import datetime as _dt
+            expires = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=7)
+            row = _db_query(
+                """INSERT INTO paper_trade_proposals
+                   (symbol, strategy_id, side, proposed_entry, proposed_stop, proposed_target1,
+                    proposed_shares, proposed_by, status, setup_description, discovery_source,
+                    expires_at, manual_review_required)
+                   VALUES (%s,'ri_staged',%s,%s,%s,%s,%s,'ri_staged_promotion','PENDING',%s,'ri_staged',%s,true)
+                   RETURNING id""",
+                (sym, side, px, stop, tgt, shares, desc, expires), fetch="one",
+            )
+            if not row:
+                return {"ok": False, "error": "proposal insert failed"}
+            extra["proposal_id"] = row["id"]
+            new_status = "proposed_paper"
+
+        upd = update_staged(idea_id, {"status": new_status, "note": note or None})
+        try:
+            import sys as _s
+            _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from telegram_alert import send_telegram
+            send_telegram(
+                f"📌 RI staged idea promoted: {sym} → {new_status}"
+                + (f" (proposal #{extra.get('proposal_id')})" if extra.get("proposal_id") else "")
+                + " — advisory/paper only; normal review chain applies."
+            )
+        except Exception:
+            pass
+        return {"ok": True, "idea": upd.get("idea"), "target": target, **extra}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
 def _research_intelligence_run_topic(body=None):
     """POST /api/v2/research-intelligence/run-topic {topic_id} | {category} —
     enqueue a topic (or a coverage-gap category's stalest monitors) for the
@@ -33239,6 +33340,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/research-intelligence/stage":
         try:
             result = _research_intelligence_stage_post(body or {})
+            code = 200 if result.get("ok") else 400
+            return code, result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:240]}
+    if method == "POST" and base_path == "/api/v2/research-intelligence/stage/promote":
+        try:
+            result = _research_intelligence_stage_promote(body or {})
             code = 200 if result.get("ok") else 400
             return code, result
         except Exception as e:

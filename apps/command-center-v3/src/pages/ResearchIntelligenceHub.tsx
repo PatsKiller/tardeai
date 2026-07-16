@@ -1228,7 +1228,18 @@ type StagedIdea = {
   conviction_score?: number
   source_title?: string
   staged_at?: string
+  expires_at?: string
+  provisional_stop_note?: string
   require_funding_trim?: boolean
+}
+
+const STAGED_STATUS_META: Record<string, { label: string; color: string }> = {
+  staged: { label: 'Staged', color: '#34d399' },
+  watchlisted: { label: 'Watchlisted', color: '#60a5fa' },
+  directive_created: { label: 'Directive', color: '#f59e0b' },
+  proposed_paper: { label: 'Paper proposal', color: '#a78bfa' },
+  expired: { label: 'Expired', color: '#64748b' },
+  dismissed: { label: 'Dismissed', color: '#64748b' },
 }
 
 const THEME_TO_CATEGORY: Record<string, string> = {
@@ -1375,7 +1386,19 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   const handleStage = useCallback(async (payload: Record<string, unknown>) => {
     setStaging(true)
     try {
-      const res = await postStage(payload)
+      let res = await postStage(payload)
+      // v3 (E3): no exit note = no plan — collect one inline and retry
+      if (!res?.ok && (res?.error === 'stop_note_required' || res?.data?.error === 'stop_note_required')) {
+        const note = window.prompt(
+          `Exit/stop note required to stage ${payload.symbol} — where does protection go, and why?`)
+        if (note && note.trim()) {
+          res = await postStage({ ...payload, provisional_stop_note: note.trim() })
+        } else {
+          setToast('Stage blocked: exit/stop note required — a staged idea without an exit note is not a plan')
+          setStaging(false)
+          return
+        }
+      }
       if (res?.ok) {
         setToast(res.message || `Staged ${payload.symbol}`)
         setShowStaged(true)
@@ -1399,6 +1422,28 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     setStagedIdeas(prev => prev.filter(x => x.id !== id))
     setToast('Staged idea dismissed')
   }, [])
+
+  // v3 (E2): operator-clicked promotion into existing pathways — never automatic
+  const handlePromoteStaged = useCallback(async (id: string, target: 'watchlist' | 'directive' | 'paper_proposal') => {
+    try {
+      const raw = await fetch('/api/v2/research-intelligence/stage/promote', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, target }),
+      }).then(x => x.json())
+      const res = raw?.data && typeof raw.data === 'object' ? raw.data : raw
+      if (res?.ok) {
+        setToast(target === 'paper_proposal'
+          ? `Promoted → PENDING paper proposal #${res.proposal_id ?? ''} (normal review chain)`
+          : `Promoted → ${target}`)
+        setStagedIdeas(prev => prev.map(x => (x.id === id ? { ...x, ...(res.idea || {}) } : x)))
+        refetchStaged?.()
+      } else {
+        setToast(`Promotion failed: ${res?.error || 'error'}`)
+      }
+    } catch {
+      setToast('Promotion failed — server unreachable')
+    }
+  }, [refetchStaged])
 
   const handleThemeClick = useCallback((themeId: string) => {
     const cat = THEME_TO_CATEGORY[themeId]
@@ -1640,22 +1685,55 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
             <div style={{ fontSize: 12, color: C.muted }}>No staged ideas yet. Use <b style={{ color: C.income }}>Stage Trade</b> on a complete card.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {stagedIdeas.map(idea => (
+              {stagedIdeas.filter(i => i.status !== 'expired').map(idea => {
+                const sm = STAGED_STATUS_META[idea.status || 'staged'] || STAGED_STATUS_META.staged
+                const promotable = (idea.status || 'staged') === 'staged'
+                return (
                 <div key={idea.id} style={{
                   display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 10, alignItems: 'center',
                   padding: '10px 12px', borderRadius: 10, border: `1px solid ${C.line}`, background: 'rgba(0,0,0,.15)',
                 }}>
                   <span style={{ fontFamily: 'var(--mono)', fontWeight: 900, color: C.accent, fontSize: 14 }}>{idea.symbol}</span>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 750, color: C.ink }}>
-                      {(idea.side || 'buy').toUpperCase()} · {idea.suggested_weight_pct || 'size TBD'}
-                      {idea.conviction_tier ? ` · Conv ${idea.conviction_tier}` : ''}
+                    <div style={{ fontSize: 12, fontWeight: 750, color: C.ink, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span>{(idea.side || 'buy').toUpperCase()} · {idea.suggested_weight_pct || 'size TBD'}
+                        {idea.conviction_tier ? ` · Conv ${idea.conviction_tier}` : ''}</span>
+                      <span style={{
+                        fontSize: 9.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase',
+                        color: sm.color, border: `1px solid ${sm.color}55`, borderRadius: 999, padding: '1px 8px',
+                      }}>{sm.label}</span>
+                      {idea.expires_at && promotable && (
+                        <span style={{ fontSize: 9.5, color: C.soft }}>
+                          expires {String(idea.expires_at).slice(0, 10)}
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
                       {idea.funding_source || (idea.require_funding_trim ? `Fund via ${idea.funding_symbol || 'SCHG'}` : 'Cash / rebalance')}
                       {idea.source_title ? ` · ${idea.source_title.slice(0, 60)}` : ''}
                     </div>
+                    {idea.provisional_stop_note && (
+                      <div style={{ fontSize: 10.5, color: C.stale, marginTop: 2 }}>
+                        Exit: {idea.provisional_stop_note.slice(0, 110)}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                      {promotable && idea.id && (
+                        <>
+                          <button type="button" onClick={() => handlePromoteStaged(idea.id!, 'watchlist')}
+                            style={{ fontSize: 10, fontWeight: 750, color: '#60a5fa', border: '1px solid #60a5fa44', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
+                            → Watchlist
+                          </button>
+                          <button type="button" onClick={() => handlePromoteStaged(idea.id!, 'directive')}
+                            style={{ fontSize: 10, fontWeight: 750, color: '#f59e0b', border: '1px solid #f59e0b44', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
+                            → Watch Directive
+                          </button>
+                          <button type="button" onClick={() => handlePromoteStaged(idea.id!, 'paper_proposal')}
+                            style={{ fontSize: 10, fontWeight: 750, color: '#a78bfa', border: '1px solid #a78bfa44', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
+                            → Paper proposal
+                          </button>
+                        </>
+                      )}
                       <Link to={`/trading?symbol=${idea.symbol}&side=${idea.side === 'sell' ? 'sell' : 'buy'}&intent=ri_staged`}
                         style={{ fontSize: 10, fontWeight: 750, color: C.accent, textDecoration: 'none' }}>
                         Send to Trading →
@@ -1677,7 +1755,23 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                     Dismiss
                   </button>
                 </div>
-              ))}
+                )
+              })}
+              {/* Expired fold — auto-expired after 14d, kept visible, never deleted */}
+              {stagedIdeas.some(i => i.status === 'expired') && (
+                <details>
+                  <summary style={{ fontSize: 11, color: C.soft, cursor: 'pointer' }}>
+                    Expired ({stagedIdeas.filter(i => i.status === 'expired').length}) — undecided past 14 days
+                  </summary>
+                  {stagedIdeas.filter(i => i.status === 'expired').map(idea => (
+                    <div key={idea.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 12px', fontSize: 11.5, color: C.soft }}>
+                      <span style={{ fontFamily: 'var(--mono)', fontWeight: 800 }}>{idea.symbol}</span>
+                      <span>{(idea.side || 'buy').toUpperCase()} · staged {String(idea.staged_at || '').slice(0, 10)}</span>
+                      <span style={{ color: C.soft }}>expired</span>
+                    </div>
+                  ))}
+                </details>
+              )}
             </div>
           )}
         </div>

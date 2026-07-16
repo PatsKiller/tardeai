@@ -1,22 +1,56 @@
-"""Persistent staged trade ideas for Research Intelligence desk (v2.7).
+"""Persistent staged trade ideas for Research Intelligence desk (v3).
 
 JSON SSOT: data/portfolios/state/ri_staged_ideas.json
 No DB migration required — survives reloads; operator can stage from cards.
+
+v3 lifecycle: staged → watchlisted | directive_created | proposed_paper |
+dismissed | expired (14d default). Promotions are operator-clicked only and
+run through EXISTING pathways (directive create, PENDING paper proposal) —
+this module never talks to a broker surface.
 """
 from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STATE_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "ri_staged_ideas.json"
 
+STATUSES = ("staged", "watchlisted", "directive_created", "proposed_paper", "dismissed", "expired")
+EXPIRY_DAYS_DEFAULT = 14
+# Statuses still awaiting an operator decision — only these auto-expire
+_EXPIRABLE = ("staged",)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _expire_pass(doc: dict[str, Any]) -> bool:
+    """Lazy expiry on read: undecided ideas past expires_at flip to 'expired'
+    (still listed — the Expired fold shows them; nothing is deleted)."""
+    changed = False
+    now = datetime.now(timezone.utc)
+    for idea in doc.get("ideas") or []:
+        if idea.get("status") not in _EXPIRABLE or idea.get("dismissed"):
+            continue
+        exp = idea.get("expires_at")
+        if not exp:
+            continue
+        try:
+            exp_dt = datetime.fromisoformat(str(exp))
+        except ValueError:
+            continue
+        if exp_dt.tzinfo is None:
+            exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+        if exp_dt < now:
+            idea["status"] = "expired"
+            idea["updated_at"] = _now()
+            changed = True
+    return changed
 
 
 def _load() -> dict[str, Any]:
@@ -43,17 +77,31 @@ def _save(doc: dict[str, Any]) -> None:
 
 def list_staged(*, include_dismissed: bool = False, limit: int = 50) -> dict[str, Any]:
     doc = _load()
+    if _expire_pass(doc):
+        _save(doc)
     ideas = list(doc.get("ideas") or [])
     if not include_dismissed:
         ideas = [i for i in ideas if not i.get("dismissed")]
     ideas.sort(key=lambda x: str(x.get("staged_at") or ""), reverse=True)
+    by_status: dict[str, int] = {}
+    for i in ideas:
+        s = i.get("status") or "staged"
+        by_status[s] = by_status.get(s, 0) + 1
     return {
         "ok": True,
         "count": len(ideas[:limit]),
         "ideas": ideas[:limit],
+        "by_status": by_status,
         "updated_at": doc.get("updated_at"),
         "path": str(STATE_PATH.relative_to(PROJECT_ROOT)),
     }
+
+
+def get_idea(idea_id: str) -> dict[str, Any] | None:
+    for idea in _load().get("ideas") or []:
+        if idea.get("id") == idea_id:
+            return idea
+    return None
 
 
 def stage_idea(body: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -70,6 +118,16 @@ def stage_idea(body: dict[str, Any] | None = None) -> dict[str, Any]:
             "error": "incomplete_data",
             "detail": b.get("incomplete_reason")
             or "Missing RSI/RS or critical fields — use Watchlist, not Stage Trade.",
+        }
+
+    # v3 (E3): a staged idea without an exit note is not a plan. The note must
+    # come from the caller — no silent boilerplate default.
+    stop_note = str(b.get("provisional_stop_note") or b.get("stop_note") or "").strip()
+    if not stop_note:
+        return {
+            "ok": False,
+            "error": "stop_note_required",
+            "detail": "Provide an exit/stop note (where protection goes and why) before staging.",
         }
 
     side = str(b.get("side") or "buy").lower()
@@ -101,12 +159,13 @@ def stage_idea(body: dict[str, Any] | None = None) -> dict[str, Any]:
         "funding_symbol": b.get("funding_symbol") or ("SCHG" if b.get("require_funding_trim") else None),
         "conviction_tier": b.get("conviction_tier"),
         "conviction_score": b.get("conviction_score"),
-        "provisional_stop_note": b.get("provisional_stop_note")
-            or "Place/refresh stop via Stop Management (Replace mode) before or with entry.",
+        "provisional_stop_note": stop_note[:400],
         "sizing_reason": (b.get("sizing_reason") or "")[:500],
         "rationale": (b.get("rationale") or b.get("why_selected") or "")[:400],
         "related_themes": b.get("related_themes") if isinstance(b.get("related_themes"), list) else [],
         "staged_at": _now(),
+        "created_at": _now(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=EXPIRY_DAYS_DEFAULT)).isoformat(),
         "updated_at": _now(),
         "meta": b.get("meta") if isinstance(b.get("meta"), dict) else {},
     }
