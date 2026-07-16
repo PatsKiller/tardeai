@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-16 (Research Intelligence v3.0 Decision Desk)
+**Updated:** 2026-07-16 (Research Intelligence v3.1 Institutional Desk)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -87,6 +87,7 @@
 ### Research Intelligence (CC v3)
 | Document | Purpose | Status |
 |----------|---------|--------|
+| `docs/architecture/RESEARCH_INTELLIGENCE_V3_1.md` | **RI v3.1 — Institutional Desk**: snapshots/ETag reliability, curation shelf+hide, provenance timestamps, deterministic QA lint, outbound links, ops restore | Active (2026-07-16) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V3.md` | **RI v3.0 — Decision Desk**: one-corpus counts, real lanes, stub demotion, brief-scoped tickers, Hermes joins, run-research queue, staged-idea lifecycle | Active (2026-07-16) |
 | `docs/architecture/GAIN_GUARDIAN.md` | **Gain Guardian** — live-book exit intelligence: HWMs, parabolic/giveback states, tax gate, outcomes; SHADOW until `--promote` | Active (2026-07-16) |
 | `docs/_findings/gain_guardian_diagnosis_2026-07-16.md` | Gain Guardian Phase 0 diagnosis — lots dateless, helper import map, cron slots | Active (2026-07-16) |

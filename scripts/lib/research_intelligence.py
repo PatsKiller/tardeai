@@ -1065,7 +1065,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "3.0",
+        "version": "3.1",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -1124,9 +1124,9 @@ def build_feed(
         "hermes_wire": wire,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v3.0 — Decision Desk: one-corpus counts, real lane filters, "
-            "stub demotion to Queued research, brief-scoped tickers, Hermes score/wire/directive "
-            "joins, run-research queue (after-close drain), staged-idea lifecycle + promotions."
+            "Research Intelligence v3.1 — Institutional Desk: v3.0 Decision Desk + materialized snapshots/ETag, "
+            "saved shelf + hide curation, provenance timestamps, deterministic QA lint, "
+            "outbound source/ticker links."
         ),
         "portfolio_context": _portfolio_context_payload(port_ctx),
     }
