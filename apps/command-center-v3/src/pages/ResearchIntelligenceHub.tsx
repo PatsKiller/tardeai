@@ -75,11 +75,62 @@ type Item = {
     why_selected?: string
     data_complete?: boolean
     incomplete_reason?: string
+    company?: string | null
+    sector?: string | null
+    industry?: string | null
+    what_they_do?: string | null
+    analyst_prediction?: string | null
+    news_sentiment?: string | null
+    news_headlines?: {
+      title?: string
+      source?: string
+      hours_old?: number
+      sentiment?: string
+      summary?: string | null
+      url?: string
+    }[]
+    identity?: {
+      symbol?: string
+      company?: string | null
+      sector?: string | null
+      industry?: string | null
+      what_they_do?: string | null
+      is_etf?: boolean
+    }
     technical_snapshot?: Record<string, unknown>
-    analyst_snapshot?: Record<string, unknown>
+    analyst_snapshot?: {
+      consensus?: string | null
+      prediction?: string | null
+      counts?: { buy?: number; hold?: number; sell?: number; n?: number }
+      pe?: number | null
+      peg?: number | null
+      eps_next_y?: number | null
+      earnings_momentum?: string
+      valuation?: string
+      coverage_flag?: string
+      as_of?: string | null
+      provider?: string | null
+      target?: number | null
+    }
+    news_snapshot?: {
+      sentiment?: string
+      headlines?: {
+        title?: string
+        source?: string
+        hours_old?: number
+        sentiment?: string
+        summary?: string | null
+      }[]
+      count?: number
+      note?: string | null
+    }
     options_flow_snapshot?: Record<string, unknown>
     actions?: { id?: string; label?: string; href?: string }[]
     security?: {
+      company?: string | null
+      sector?: string | null
+      industry?: string | null
+      what_they_do?: string | null
       rsi?: number | null
       rsi_status?: string
       rel_strength_month_pct?: number | null
@@ -95,6 +146,16 @@ type Item = {
       liquidity?: string
       analyst_rating?: string
       analyst_counts?: { buy?: number; hold?: number; sell?: number; n?: number }
+      analyst_prediction?: string | null
+      news_sentiment?: string | null
+      news_headlines?: {
+        title?: string
+        source?: string
+        hours_old?: number
+        sentiment?: string
+        summary?: string | null
+      }[]
+      news_count?: number
       iv_rank?: number | null
       options_sentiment?: string
       data_complete?: boolean
@@ -138,33 +199,39 @@ type Item = {
   }
 }
 
-/* Soft editorial palette — pleasant, not alarm-heavy */
+/* Institutional desk palette — muted steel/ink, no Christmas-tree neons */
 const C = {
-  ink: '#e8eef7',
-  muted: '#8b95a8',
-  soft: '#5c6578',
-  card: 'rgba(22, 28, 42, 0.92)',
-  cardHover: 'rgba(28, 36, 54, 0.98)',
-  line: 'rgba(120, 140, 180, 0.14)',
-  lineStrong: 'rgba(120, 140, 180, 0.22)',
-  accent: '#7eb6ff',
-  accentSoft: 'rgba(126, 182, 255, 0.12)',
-  retire: '#c4a1ff',
-  retireSoft: 'rgba(196, 161, 255, 0.12)',
-  income: '#6ee7b7',
-  incomeSoft: 'rgba(110, 231, 183, 0.10)',
-  macro: '#fcd34d',
-  macroSoft: 'rgba(252, 211, 77, 0.10)',
-  live: '#34d399',
-  fresh: '#7dd3fc',
-  aging: '#fbbf24',
-  stale: '#fb923c',
-  archive: '#94a3b8',
-  bull: '#6ee7b7',
-  bear: '#f9a8d4',
-  star: '#fde68a',
-  cta: '#93c5fd',
-  ctaBg: 'linear-gradient(135deg, rgba(96,165,250,.18), rgba(167,139,250,.12))',
+  ink: '#e6eaf0',
+  muted: '#9aa3b2',
+  soft: '#6b7385',
+  dim: '#4e5668',
+  card: 'rgba(16, 20, 30, 0.96)',
+  cardHover: 'rgba(22, 27, 40, 0.98)',
+  line: 'rgba(148, 163, 184, 0.12)',
+  lineStrong: 'rgba(148, 163, 184, 0.20)',
+  accent: '#8ba3c7',
+  accentSoft: 'rgba(139, 163, 199, 0.10)',
+  // Category accents: desaturated, same family
+  retire: '#a8a3c4',
+  retireSoft: 'rgba(168, 163, 196, 0.10)',
+  income: '#8fad9a',
+  incomeSoft: 'rgba(143, 173, 154, 0.10)',
+  macro: '#b0a890',
+  macroSoft: 'rgba(176, 168, 144, 0.10)',
+  // Status — readable, not neon
+  live: '#8fad9a',
+  fresh: '#8ba3c7',
+  aging: '#b0a890',
+  stale: '#b89191',
+  archive: '#7a8294',
+  bull: '#8fad9a',
+  bear: '#b89191',
+  star: '#c4b896',
+  cta: '#a8b8cc',
+  ctaBg: 'rgba(139, 163, 199, 0.08)',
+  positive: '#8fad9a',
+  negative: '#b89191',
+  caution: '#b0a890',
 }
 
 const TIER: Record<string, { color: string; label: string }> = {
@@ -180,11 +247,11 @@ const CAT_TINT: Record<string, string> = {
   dividend_income: C.income,
   macro_geo: C.macro,
   sector_thematic: C.accent,
-  compounding_wealth: '#5eead4',
-  risk_regime: '#fca5a5',
-  catalyst_event: '#fcd34d',
-  company_ticker: '#94a3b8',
-  academic_pro: '#d8b4fe',
+  compounding_wealth: C.income,
+  risk_regime: C.stale,
+  catalyst_event: C.macro,
+  company_ticker: C.muted,
+  academic_pro: C.retire,
 }
 
 function confPct(c?: number | null) {
@@ -240,10 +307,9 @@ function Tag({ children, color }: { children: ReactNode; color?: string }) {
 function FreshnessDot({ tier, label }: { tier?: string; label?: string }) {
   const t = TIER[tier || 'aging'] || TIER.aging
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: t.color, fontWeight: 600 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, fontWeight: 550 }}>
       <span style={{
-        width: 7, height: 7, borderRadius: '50%', background: t.color,
-        boxShadow: `0 0 8px ${t.color}88`,
+        width: 6, height: 6, borderRadius: '50%', background: t.color, opacity: 0.85,
       }} />
       {label || t.label}
     </span>
@@ -251,30 +317,37 @@ function FreshnessDot({ tier, label }: { tier?: string; label?: string }) {
 }
 
 const ROLE_COLOR: Record<string, string> = {
-  add_candidate: C.income,
-  trim_candidate: C.bear,
+  add_candidate: C.positive,
+  trim_candidate: C.negative,
   hold_review: C.accent,
-  protect: C.stale,
-  watchlist: C.macro,
-  plan: C.retire,
+  protect: C.caution,
+  watchlist: C.muted,
+  plan: C.accent,
   context: C.soft,
 }
 
 const QUALITY: Record<string, { color: string; label: string; hint: string }> = {
-  A: { color: C.income, label: 'Tier A', hint: 'Deep + portfolio-aware' },
+  A: { color: C.positive, label: 'Tier A', hint: 'Deep + portfolio-aware' },
   B: { color: C.accent, label: 'Tier B', hint: 'Solid advisory floor' },
   C: { color: C.soft, label: 'Tier C', hint: 'Thin — verify sources' },
 }
 
 const CONC_COLOR: Record<string, string> = {
-  extreme: C.bear,
+  extreme: C.negative,
   high: C.stale,
-  caution: C.macro,
+  caution: C.caution,
   elevated: C.aging,
-  normal: C.income,
+  normal: C.positive,
   full: C.stale,
   moderate: C.aging,
-  room: C.income,
+  room: C.positive,
+}
+
+function sentColor(s?: string | null) {
+  const v = (s || '').toLowerCase()
+  if (v.includes('construct') || v.includes('bull') || v === 'positive') return C.positive
+  if (v.includes('cautious') || v.includes('bear') || v === 'negative') return C.negative
+  return C.muted
 }
 
 async function postStage(body: Record<string, unknown>) {
@@ -345,27 +418,24 @@ function ActionStrip({
 
   return (
     <div style={{
-      marginTop: 2, padding: '14px 16px', borderRadius: 12,
-      background: hasAdvisory
-        ? `linear-gradient(145deg, ${catColor}16 0%, rgba(96,165,250,.14) 45%, rgba(167,139,250,.12) 100%)`
-        : C.ctaBg,
-      border: `1px solid ${hasAdvisory ? `${catColor}66` : `${catColor}44`}`,
-      display: 'flex', flexDirection: 'column', gap: 10,
-      boxShadow: `inset 0 0 0 1px ${catColor}18, 0 6px 20px rgba(0,0,0,.16)`,
+      marginTop: 2, padding: '14px 16px', borderRadius: 10,
+      background: C.card,
+      border: `1px solid ${C.lineStrong}`,
+      display: 'flex', flexDirection: 'column', gap: 12,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.cta }}>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.soft }}>
           Operator next step
         </div>
         {hasAdvisory && (
-          <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.macro }}>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted }}>
             Portfolio-aware
           </div>
         )}
       </div>
-      <div style={{ fontSize: 15, fontWeight: 850, color: C.ink, letterSpacing: '-0.01em' }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 750, color: C.ink, letterSpacing: '-0.01em' }}>{label}</div>
       {detail && (
-        <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>{detail}</div>
+        <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.55 }}>{detail}</div>
       )}
 
       {/* Primary action bar — top of strip for hierarchy */}
@@ -382,15 +452,12 @@ function ActionStrip({
                 disabled={!!staging && isStage}
                 onClick={e => runAction(a, e)}
                 style={{
-                  fontSize: primary ? 12.5 : 11, fontWeight: 800,
-                  padding: primary ? '9px 14px' : '6px 10px',
-                  borderRadius: 9, cursor: 'pointer',
-                  border: `1px solid ${primary ? C.income : C.accent}66`,
-                  background: primary
-                    ? 'linear-gradient(135deg, rgba(110,231,183,.28), rgba(96,165,250,.2))'
-                    : `${C.accent}16`,
-                  color: primary ? C.income : C.accent,
-                  boxShadow: primary ? '0 2px 12px rgba(110,231,183,.15)' : undefined,
+                  fontSize: primary ? 12.5 : 11, fontWeight: 700,
+                  padding: primary ? '8px 14px' : '6px 10px',
+                  borderRadius: 7, cursor: 'pointer',
+                  border: `1px solid ${primary ? C.accent : C.lineStrong}`,
+                  background: primary ? C.accentSoft : 'transparent',
+                  color: primary ? C.ink : C.muted,
                 }}
               >
                 {staging && isStage ? 'Staging…' : a.label}
@@ -403,16 +470,16 @@ function ActionStrip({
       {item.sizing_guidance && (
         <div style={{
           fontSize: 13, color: C.ink, lineHeight: 1.5,
-          padding: '10px 12px', borderRadius: 9,
-          background: `${C.macro}14`, border: `1px solid ${C.macro}55`,
+          padding: '10px 12px', borderRadius: 8,
+          background: C.accentSoft, border: `1px solid ${C.lineStrong}`,
         }}>
-          <span style={{ fontWeight: 850, color: C.macro }}>Why this size · </span>
+          <span style={{ fontWeight: 700, color: C.muted }}>Why this size · </span>
           {item.sizing_guidance}
         </div>
       )}
       {item.sizing_reason && !item.sizing_guidance?.includes(item.sizing_reason.slice(0, 40)) && (
         <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.45 }}>
-          <span style={{ fontWeight: 750, color: C.soft }}>Sizing factors · </span>
+          <span style={{ fontWeight: 650, color: C.soft }}>Sizing factors · </span>
           {item.sizing_reason}
         </div>
       )}
@@ -423,104 +490,190 @@ function ActionStrip({
           padding: '8px 10px', borderRadius: 8,
           background: 'rgba(0,0,0,.18)', border: `1px solid ${C.line}`,
         }}>
-          <span style={{ fontWeight: 800, color: catColor }}>Investment implications · </span>
+          <span style={{ fontWeight: 700, color: C.muted }}>Investment implications · </span>
           {item.investment_implications}
         </div>
       )}
       {ticks.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.ink }}>
-            Tickers & allocation guidance
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: C.soft }}>
+            Tickers · company · news · analysts
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {ticks.slice(0, 6).map((t, i) => {
               const role = t.role || 'review'
               const rc = ROLE_COLOR[role] || C.accent
               const ct = t.conviction_tier
-              const qc = ct && QUALITY[ct] ? QUALITY[ct].color : C.soft
               const sec = t.security
+              const company = t.company || t.identity?.company || sec?.company
+              const sector = t.sector || t.identity?.sector || sec?.sector
+              const industry = t.industry || t.identity?.industry || sec?.industry
+              const what = t.what_they_do || t.identity?.what_they_do || sec?.what_they_do
+              const headlines = (
+                t.news_headlines
+                || t.news_snapshot?.headlines
+                || sec?.news_headlines
+                || []
+              ).slice(0, 3)
+              const newsSent = t.news_sentiment || t.news_snapshot?.sentiment || sec?.news_sentiment
+              const prediction = (
+                t.analyst_prediction
+                || t.analyst_snapshot?.prediction
+                || sec?.analyst_prediction
+                || null
+              )
+              const consensus = t.analyst_snapshot?.consensus || sec?.analyst_rating
+              const counts = t.analyst_snapshot?.counts || sec?.analyst_counts
               return (
                 <div key={`${t.symbol}-${i}`} style={{
-                  border: `1px solid ${rc}55`, background: `${rc}14`, borderRadius: 9,
-                  padding: '8px 11px', minWidth: 148, maxWidth: 260,
-                  boxShadow: `0 2px 8px ${rc}12`,
+                  border: `1px solid ${C.lineStrong}`,
+                  background: 'rgba(0,0,0,.22)',
+                  borderRadius: 10,
+                  padding: '12px 14px',
+                  borderLeft: `3px solid ${rc}`,
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 900, fontSize: 14, color: C.accent }}>
-                      {t.symbol}
-                    </span>
-                    <span style={{ fontSize: 9, fontWeight: 800, color: rc, textTransform: 'uppercase' }}>
-                      {(role || '').replace(/_/g, ' ')}
-                    </span>
+                  {/* Header: symbol + company + role */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'baseline' }}>
+                        <span style={{ fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 15, color: C.ink, letterSpacing: '0.02em' }}>
+                          {t.symbol}
+                        </span>
+                        {company && (
+                          <span style={{ fontSize: 13.5, fontWeight: 650, color: C.ink }}>
+                            {company}
+                          </span>
+                        )}
+                      </div>
+                      {(sector || industry) && (
+                        <div style={{ fontSize: 11.5, color: C.muted, marginTop: 3, lineHeight: 1.4 }}>
+                          {[sector, industry].filter(Boolean).join(' · ')}
+                        </div>
+                      )}
+                      {what && (
+                        <div style={{ fontSize: 12, color: C.soft, marginTop: 4, lineHeight: 1.45 }}>
+                          {what}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {(role || '').replace(/_/g, ' ')}
+                      </div>
+                      {ct && (
+                        <div
+                          style={{ fontSize: 11, fontWeight: 650, color: C.soft, marginTop: 3, cursor: 'help' }}
+                          title={(t.conviction_breakdown_lines || []).join('\n') || 'Conviction score'}
+                        >
+                          Conv {ct}{t.conviction_score != null ? ` · ${Number(t.conviction_score).toFixed(0)}` : ''}
+                        </div>
+                      )}
+                      {t.suggested_weight_pct && (
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.ink, marginTop: 4 }}>
+                          {t.suggested_weight_pct}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {ct && (
-                    <div
-                      style={{ fontSize: 10, fontWeight: 800, color: qc, marginTop: 2, cursor: 'help' }}
-                      title={(t.conviction_breakdown_lines || []).join('\n') || 'Conviction score'}
-                    >
-                      Conv {ct}{t.conviction_score != null ? ` · ${Number(t.conviction_score).toFixed(0)}` : ''}
-                      {t.data_complete === false ? ' · incomplete' : ''}
+
+                  {/* Analyst reviews / predictions */}
+                  <div style={{
+                    marginTop: 10, paddingTop: 9, borderTop: `1px solid ${C.line}`,
+                    fontSize: 11.5, color: C.muted, lineHeight: 1.5,
+                  }}>
+                    <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft, marginBottom: 3 }}>
+                      Analyst reviews
                     </div>
-                  )}
-                  {t.suggested_weight_pct && (
-                    <div style={{ fontSize: 12, fontWeight: 800, color: C.ink, marginTop: 3, letterSpacing: '-0.01em' }}>
-                      {t.suggested_weight_pct}
+                    {consensus && (
+                      <div style={{ color: C.ink, fontWeight: 650, marginBottom: 2 }}>
+                        Consensus: {consensus}
+                        {counts?.n != null && (
+                          <span style={{ color: C.muted, fontWeight: 500 }}>
+                            {' '}· {counts.buy ?? 0} buy / {counts.hold ?? 0} hold / {counts.sell ?? 0} sell (n={counts.n})
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {prediction && (
+                      <div style={{ color: C.muted }}>{prediction}</div>
+                    )}
+                    {!consensus && !prediction && (
+                      <div style={{ color: C.soft }}>No Street consensus on file</div>
+                    )}
+                  </div>
+
+                  {/* Latest news + sentiment */}
+                  <div style={{
+                    marginTop: 9, paddingTop: 9, borderTop: `1px solid ${C.line}`,
+                    fontSize: 11.5, lineHeight: 1.45,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft }}>
+                        Latest news
+                      </div>
+                      {newsSent && (
+                        <div style={{ fontSize: 10.5, fontWeight: 650, color: sentColor(newsSent), textTransform: 'capitalize' }}>
+                          Sentiment: {(newsSent || '').replace(/_/g, ' ')}
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {/* Technical snapshot */}
+                    {headlines.length > 0 ? (
+                      <ul style={{ margin: 0, paddingLeft: 16, color: C.muted }}>
+                        {headlines.map((h, hi) => (
+                          <li key={hi} style={{ marginBottom: 3 }}>
+                            <span style={{ color: C.ink }}>{h.title}</span>
+                            {(h.source || h.hours_old != null) && (
+                              <span style={{ color: C.soft, fontSize: 10.5 }}>
+                                {' · '}{h.source || 'news'}
+                                {h.hours_old != null ? ` · ${Number(h.hours_old).toFixed(0)}h` : ''}
+                                {h.sentiment ? ` · ${h.sentiment}` : ''}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div style={{ color: C.soft, fontSize: 11.5 }}>
+                        {t.news_snapshot?.note || 'No recent desk news for this ticker'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Technicals row — compact, secondary */}
                   {(sec?.rsi != null || sec?.rel_strength_vs_spy_month_pct != null || sec?.sma50_pct != null) && (
-                    <div style={{ fontSize: 10, color: C.soft, marginTop: 4, lineHeight: 1.4 }}>
-                      <div style={{ fontWeight: 750, color: C.ink, marginBottom: 1 }}>Technicals</div>
-                      {sec?.rsi != null && <span>RSI {Number(sec.rsi).toFixed(0)} ({sec.rsi_status || '—'}) · </span>}
+                    <div style={{
+                      marginTop: 9, paddingTop: 8, borderTop: `1px solid ${C.line}`,
+                      fontSize: 11, color: C.soft, lineHeight: 1.45,
+                    }}>
+                      <span style={{ fontWeight: 650, color: C.muted }}>Technicals · </span>
+                      {sec?.rsi != null && <span>RSI {Number(sec.rsi).toFixed(0)} ({sec.rsi_status || '—'}) </span>}
                       {sec?.rel_strength_vs_spy_month_pct != null && (
-                        <span>vs SPY {Number(sec.rel_strength_vs_spy_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_vs_spy_month_pct).toFixed(1)}% · </span>
+                        <span>· vs SPY {Number(sec.rel_strength_vs_spy_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_vs_spy_month_pct).toFixed(1)}% </span>
                       )}
                       {sec?.rel_strength_vs_qqq_month_pct != null && (
-                        <span>vs QQQ {Number(sec.rel_strength_vs_qqq_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_vs_qqq_month_pct).toFixed(1)}% · </span>
+                        <span>· vs QQQ {Number(sec.rel_strength_vs_qqq_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_vs_qqq_month_pct).toFixed(1)}% </span>
                       )}
-                      {sec?.sma50_pct != null && <span>SMA50 {Number(sec.sma50_pct) >= 0 ? '+' : ''}{Number(sec.sma50_pct).toFixed(1)}% </span>}
-                      {sec?.sma200_pct != null && <span>SMA200 {Number(sec.sma200_pct) >= 0 ? '+' : ''}{Number(sec.sma200_pct).toFixed(1)}%</span>}
+                      {sec?.sma50_pct != null && <span>· SMA50 {Number(sec.sma50_pct) >= 0 ? '+' : ''}{Number(sec.sma50_pct).toFixed(1)}% </span>}
+                      {sec?.sma200_pct != null && <span>· SMA200 {Number(sec.sma200_pct) >= 0 ? '+' : ''}{Number(sec.sma200_pct).toFixed(1)}%</span>}
                     </div>
                   )}
-                  {/* Analyst snapshot */}
-                  {(sec?.analyst_rating || sec?.analyst_counts || sec?.pe != null) && (
-                    <div style={{ fontSize: 10, color: C.soft, marginTop: 3, lineHeight: 1.4 }}>
-                      <div style={{ fontWeight: 750, color: C.ink, marginBottom: 1 }}>Analyst</div>
-                      {sec?.analyst_rating && <span>{sec.analyst_rating} </span>}
-                      {sec?.analyst_counts?.n != null && (
-                        <span>({sec.analyst_counts.buy ?? 0}B/{sec.analyst_counts.hold ?? 0}H/{sec.analyst_counts.sell ?? 0}S) </span>
-                      )}
-                      {sec?.pe != null && <span>P/E {Number(sec.pe).toFixed(1)} </span>}
-                      {sec?.peg != null && <span>PEG {Number(sec.peg).toFixed(2)}</span>}
-                      {!sec?.analyst_counts?.n && !sec?.analyst_rating && <span>No coverage flag</span>}
-                    </div>
-                  )}
-                  {/* Options flow */}
-                  {sec?.options_sentiment && (
-                    <div style={{ fontSize: 10, color: C.soft, marginTop: 3, lineHeight: 1.4 }}>
-                      <div style={{ fontWeight: 750, color: C.ink, marginBottom: 1 }}>Options flow</div>
-                      <span>{sec.options_sentiment}</span>
+
+                  {/* Options — muted secondary */}
+                  {sec?.options_sentiment && !String(sec.options_sentiment).includes('No unusual') && (
+                    <div style={{ fontSize: 11, color: C.soft, marginTop: 6, lineHeight: 1.4 }}>
+                      <span style={{ fontWeight: 650, color: C.muted }}>Options · </span>
+                      {sec.options_sentiment}
                       {sec.iv_rank != null && <span> · IV rank {Number(sec.iv_rank).toFixed(0)}</span>}
                     </div>
                   )}
-                  {/* Conviction breakdown (compact) */}
-                  {(t.conviction_breakdown_lines || []).length > 0 && (
-                    <div
-                      style={{ fontSize: 9.5, color: C.muted, marginTop: 4, lineHeight: 1.35, maxHeight: 72, overflow: 'hidden' }}
-                      title={(t.conviction_breakdown_lines || []).join('\n')}
-                    >
-                      {(t.conviction_breakdown_lines || []).slice(0, 5).map((line, li) => (
-                        <div key={li}>{line}</div>
-                      ))}
-                    </div>
-                  )}
+
                   {(t.why_selected || t.rationale) && (
-                    <div style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.35, marginTop: 3 }}>
+                    <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.45, marginTop: 8 }}>
                       {t.why_selected || t.rationale}
                     </div>
                   )}
                   {t.data_complete === false && (
-                    <div style={{ fontSize: 10, color: C.stale, fontWeight: 700, marginTop: 3 }}>
+                    <div style={{ fontSize: 11, color: C.caution, fontWeight: 650, marginTop: 6 }}>
                       {t.incomplete_reason || 'Incomplete data — lower confidence'}
                     </div>
                   )}
@@ -534,9 +687,9 @@ function ActionStrip({
       {((related?.items?.length ?? 0) > 0 || related?.impact_note) && (
         <div style={{
           fontSize: 11.5, lineHeight: 1.45, padding: '8px 10px', borderRadius: 8,
-          background: 'rgba(252,211,77,.06)', border: `1px solid ${C.macro}33`,
+          background: 'rgba(0,0,0,.16)', border: `1px solid ${C.line}`,
         }}>
-          <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.macro, marginBottom: 4 }}>
+          <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft, marginBottom: 4 }}>
             Related themes
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: related?.impact_note ? 4 : 0 }}>
@@ -547,8 +700,8 @@ function ActionStrip({
                 onClick={e => { e.stopPropagation(); r.id && onThemeClick?.(r.id) }}
                 title={r.reason || ''}
                 style={{
-                  fontSize: 11, fontWeight: 700, cursor: onThemeClick ? 'pointer' : 'default',
-                  border: `1px solid ${C.macro}44`, background: `${C.macro}12`, color: C.macro,
+                  fontSize: 11, fontWeight: 650, cursor: onThemeClick ? 'pointer' : 'default',
+                  border: `1px solid ${C.lineStrong}`, background: C.accentSoft, color: C.muted,
                   borderRadius: 6, padding: '3px 8px',
                 }}
               >
@@ -685,18 +838,16 @@ function ArticleCard({
   }
 
   const shell: CSSProperties = {
-    borderRadius: featured ? 18 : 14,
-    border: `1px solid ${featured ? `${catColor}44` : C.line}`,
-    background: featured
-      ? `linear-gradient(155deg, ${catColor}14 0%, ${C.card} 42%, rgba(12,16,28,.95) 100%)`
-      : C.card,
-    padding: featured ? '22px 24px' : view === 'list' ? '18px 20px' : '16px 18px',
+    borderRadius: featured ? 14 : 12,
+    border: `1px solid ${featured ? C.lineStrong : C.line}`,
+    background: C.card,
+    padding: featured ? '20px 22px' : view === 'list' ? '16px 18px' : '14px 16px',
     cursor: 'pointer',
     display: 'flex',
     flexDirection: 'column',
-    gap: featured ? 14 : 11,
-    boxShadow: featured ? `0 12px 40px rgba(0,0,0,.28), 0 0 0 1px ${catColor}18` : '0 4px 18px rgba(0,0,0,.18)',
-    transition: 'border-color .15s, transform .12s, background .15s',
+    gap: featured ? 12 : 10,
+    boxShadow: featured ? '0 8px 28px rgba(0,0,0,.22)' : '0 2px 12px rgba(0,0,0,.14)',
+    transition: 'border-color .15s, background .15s',
     position: 'relative',
     overflow: 'hidden',
   }
@@ -708,13 +859,13 @@ function ArticleCard({
       tabIndex={0}
       onKeyDown={e => { if (e.key === 'Enter') onOpen() }}
       style={shell}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${catColor}66` }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = featured ? `${catColor}44` : C.line }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(148,163,184,.28)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = featured ? C.lineStrong : C.line }}
     >
-      {/* top accent */}
+      {/* subtle top rule — single steel accent, not category neon */}
       <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0, height: featured ? 3 : 2,
-        background: `linear-gradient(90deg, ${catColor}, transparent 70%)`,
+        position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+        background: featured ? C.lineStrong : C.line,
       }} />
 
       {/* meta row */}
@@ -1192,26 +1343,25 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1280 }}>
       {/* Masthead */}
       <header style={{
-        borderRadius: 18,
-        padding: '20px 22px',
-        background: 'linear-gradient(135deg, rgba(30,41,72,.9) 0%, rgba(18,22,36,.95) 55%, rgba(40,28,58,.55) 100%)',
+        borderRadius: 12,
+        padding: '18px 20px',
+        background: C.card,
         border: `1px solid ${C.lineStrong}`,
-        boxShadow: '0 10px 36px rgba(0,0,0,.25)',
       }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 14 }}>
           <div style={{ maxWidth: 720 }}>
             <div style={{
-              fontSize: 11, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase',
-              color: C.retire, marginBottom: 8,
+              fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase',
+              color: C.soft, marginBottom: 8,
             }}>
               Command Center · Intelligence Desk
             </div>
-            <div style={{ ...hubTitle(), fontSize: 26, letterSpacing: '-0.03em', marginBottom: 6 }}>
+            <div style={{ ...hubTitle(), fontSize: 24, letterSpacing: '-0.02em', marginBottom: 6, color: C.ink }}>
               Research Intelligence
             </div>
-            <div style={{ ...hubSubtitle(terminalUi), fontSize: 13.5, lineHeight: 1.5, color: C.muted, maxWidth: 560 }}>
-              Editorial briefings with takeaways, bull/bear framing, and clear next steps —
-              retirement, dividends, macro, and holdings-aware research in one desk.
+            <div style={{ ...hubSubtitle(terminalUi), fontSize: 13.5, lineHeight: 1.55, color: C.muted, maxWidth: 580 }}>
+              Company identity, news &amp; sentiment, analyst consensus, and portfolio-aware sizing —
+              retirement, dividends, macro, and holdings research in one desk.
               {stats.matched != null && ` · ${stats.matched} in view`}
               {stats.universe != null && stats.universe !== stats.matched && ` · ${stats.universe} on desk`}
               {loading ? ' · loading…' : ''}
@@ -1220,30 +1370,30 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
-              <Link to="/retirement" style={navLink(C.retire)}>Retirement plan →</Link>
-              <Link to="/portfolio" style={navLink(C.income)}>Portfolio →</Link>
-              <Link to="/hermes" style={navLink(C.accent)}>Hermes →</Link>
-              <Link to="/risk" style={navLink('#fca5a5')}>Risk →</Link>
+              <Link to="/retirement" style={navLink(C.muted)}>Retirement plan →</Link>
+              <Link to="/portfolio" style={navLink(C.muted)}>Portfolio →</Link>
+              <Link to="/hermes" style={navLink(C.muted)}>Hermes →</Link>
+              <Link to="/risk" style={navLink(C.muted)}>Risk →</Link>
               <button type="button" onClick={() => refetch()} style={refreshBtn}>↻ Refresh desk</button>
               <button
                 type="button"
                 onClick={() => setShowStaged(s => !s)}
                 style={{
                   ...refreshBtn,
-                  borderColor: `${C.income}55`,
-                  color: C.income,
-                  background: `${C.income}14`,
+                  borderColor: C.lineStrong,
+                  color: C.ink,
+                  background: C.accentSoft,
                 }}
               >
                 Staged Ideas ({stagedIdeas.length})
               </button>
             </div>
-            <div style={{ display: 'flex', gap: 14, fontSize: 12, color: C.muted, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <span><b style={{ color: C.live }}>{tierCounts.live || 0}</b> live</span>
-              <span><b style={{ color: C.fresh }}>{tierCounts.fresh || 0}</b> fresh</span>
-              <span><b style={{ color: C.aging }}>{tierCounts.aging || 0}</b> aging</span>
-              <span><b style={{ color: C.stale }}>{tierCounts.stale || 0}</b> stale</span>
-              <span><b style={{ color: C.retire }}>{stats.lane_counts?.retirement ?? stats.by_category?.retirement_tax ?? retStats?.count ?? '—'}</b> retirement</span>
+            <div style={{ display: 'flex', gap: 14, fontSize: 12, color: C.soft, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <span><b style={{ color: C.ink }}>{tierCounts.live || 0}</b> live</span>
+              <span><b style={{ color: C.ink }}>{tierCounts.fresh || 0}</b> fresh</span>
+              <span><b style={{ color: C.ink }}>{tierCounts.aging || 0}</b> aging</span>
+              <span><b style={{ color: C.ink }}>{tierCounts.stale || 0}</b> stale</span>
+              <span><b style={{ color: C.ink }}>{stats.lane_counts?.retirement ?? stats.by_category?.retirement_tax ?? retStats?.count ?? '—'}</b> retirement</span>
             </div>
           </div>
         </div>
@@ -1263,15 +1413,15 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
       {/* Concentration banner */}
       {!bannerDismissed && data?.portfolio_context?.concentration_banner?.active && (
         <div style={{
-          borderRadius: 12, padding: '12px 16px',
-          background: 'rgba(251,146,60,.1)', border: `1px solid ${C.stale}55`,
+          borderRadius: 10, padding: '12px 16px',
+          background: C.card, border: `1px solid ${C.lineStrong}`,
           display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start',
         }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 850, color: C.stale, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.caution, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
               {data.portfolio_context.concentration_banner.title || 'Concentration active'}
             </div>
-            <div style={{ fontSize: 12.5, color: C.ink, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.45 }}>
               {data.portfolio_context.concentration_banner.body}
             </div>
           </div>
@@ -1481,7 +1631,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
       )}
 
       {error && (
-        <div style={{ padding: 14, borderRadius: 12, border: '1px solid rgba(248,113,113,.35)', color: '#fca5a5', fontSize: 13 }}>
+        <div style={{ padding: 14, borderRadius: 10, border: `1px solid ${C.lineStrong}`, color: C.caution, fontSize: 13 }}>
           Could not load the intelligence desk: {error}
         </div>
       )}
@@ -1508,7 +1658,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               <div style={{ fontWeight: 750, color: C.ink, marginBottom: 8 }}>No stories match these filters</div>
               {category === 'compounding_wealth' && (
                 <div style={{ marginBottom: 10, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.5 }}>
-                  <strong style={{ color: '#5eead4' }}>Compounding & long-term wealth</strong> has no primary-tagged
+                  <strong style={{ color: C.ink }}>Compounding & long-term wealth</strong> has no primary-tagged
                   briefs yet (we no longer mis-tag “growth compounder” tickers as compounding).
                   Desk still has {stats.universe ?? stats.by_category?.retirement_tax ?? 'many'} other stories —
                   clear filters or open Retirement / Dividends.

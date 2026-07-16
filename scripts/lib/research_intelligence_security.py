@@ -7,6 +7,7 @@ liquidity, volatility — plus a conviction score used by sizing/selection.
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ TECH_PATH = STATE / "technical_snapshot.json"
 FINVIZ_PATH = STATE / "finviz_quote_cache.json"
 STOCK_INTEL_PATH = STATE / "stock_intelligence.json"
 OPTIONS_PROP_PATH = STATE / "options_proposals.json"
+NEWS_PATH = STATE / "portfolio_news.json"
 
 # Benchmark for relative strength (broad growth ETF widely held)
 _BENCH = "SCHG"
@@ -113,12 +115,79 @@ def _load_options_by_underlying() -> dict[str, list[dict[str, Any]]]:
         return {}
 
 
+def _news_article_symbols(a: dict[str, Any]) -> list[str]:
+    """Collect ticker keys for a news article (explicit fields + title mentions)."""
+    found: list[str] = []
+    for key in ("portfolio_symbol", "symbol", "ticker"):
+        s = str(a.get(key) or "").upper().strip()
+        if s and 1 < len(s) <= 5 and s.isalpha() and s not in found:
+            found.append(s)
+    title = str(a.get("title") or "")
+    # $NVDA or (RTX) or "NVDA:" style mentions
+    for m in re.finditer(r"(?:\$|[(])\s*([A-Z]{1,5})\s*[)]?|(?<![A-Za-z])([A-Z]{2,5})(?=[:\s,]|$)", title):
+        s = (m.group(1) or m.group(2) or "").upper()
+        if s and s.isalpha() and s not in found and s not in {
+            "THE", "AND", "FOR", "ETF", "USA", "CEO", "CFO", "IPO", "GDP", "FED", "SEC", "AI",
+        }:
+            found.append(s)
+    return found
+
+
+@lru_cache(maxsize=1)
+def _load_news_by_symbol() -> dict[str, list[dict[str, Any]]]:
+    """Merge live portfolio_news + recent history for broader per-ticker coverage."""
+    by: dict[str, list[dict[str, Any]]] = {}
+    paths: list[Path] = [NEWS_PATH]
+    weekly = STATE / "portfolio_news_weekly.json"
+    monthly = STATE / "portfolio_news_monthly.json"
+    if weekly.exists():
+        paths.append(weekly)
+    if monthly.exists():
+        paths.append(monthly)
+    hist_dir = STATE / "portfolio_news_history"
+    if hist_dir.is_dir():
+        # most recent 5 history dumps
+        for hp in sorted(hist_dir.glob("*.json"), reverse=True)[:5]:
+            paths.append(hp)
+
+    seen_titles: set[str] = set()
+    for path in paths:
+        if not path.exists():
+            continue
+        try:
+            d = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(d, dict):
+            continue
+        for a in d.get("all_scored") or d.get("catalysts") or []:
+            if not isinstance(a, dict):
+                continue
+            title = (a.get("title") or "").strip()
+            if not title:
+                continue
+            tkey = title[:120].lower()
+            if tkey in seen_titles:
+                continue
+            seen_titles.add(tkey)
+            for sym in _news_article_symbols(a):
+                by.setdefault(sym, []).append(a)
+
+    for sym in by:
+        by[sym].sort(
+            key=lambda x: float(x.get("hours_old") if x.get("hours_old") is not None else 9999)
+        )
+        by[sym] = by[sym][:8]
+    return by
+
+
 def clear_security_cache() -> None:
     _load_enrich.cache_clear()
     _load_tech.cache_clear()
     _load_finviz.cache_clear()
     _load_stock_intel.cache_clear()
     _load_options_by_underlying.cache_clear()
+    _load_news_by_symbol.cache_clear()
     get_security_snapshot.cache_clear()
     market_benchmark.cache_clear()
 
@@ -225,11 +294,85 @@ def get_security_snapshot(symbol: str) -> dict[str, Any]:
     trend = enr.get("trend") or None
     tech_score = _f(tech.get("tech_score"))
     tech_grade = tech.get("tech_grade")
-    sector = enr.get("sector")
-    industry = enr.get("industry")
+    sector = enr.get("sector") or tech.get("sector")
+    industry = enr.get("industry") or tech.get("industry")
+    company = (
+        enr.get("company") or enr.get("name") or enr.get("company_name")
+        or tech.get("company") or fin.get("company") or fin.get("name")
+    )
     is_etf = bool(industry and "exchange traded" in str(industry).lower()) or sym in {
-        "SCHG", "SCHD", "QQQ", "SPY", "XAR", "XLI", "XLB", "JEPI", "JEPQ", "DIVI", "DIV", "BND", "TLT", "IEF", "AGG",
+        "SCHG", "SCHD", "QQQ", "SPY", "DIA", "IWM", "XAR", "XLI", "XLB", "XLF", "XLK",
+        "JEPI", "JEPQ", "DIVI", "DIV", "BND", "TLT", "IEF", "AGG", "ARKX", "SPCX",
     }
+    # Short business identity for the desk card
+    _ETF_BLURB = {
+        "SCHG": "Schwab large-cap growth ETF — broad US growth core holding",
+        "SCHD": "Schwab US Dividend Equity ETF — quality dividend sleeve",
+        "QQQ": "Invesco Nasdaq-100 ETF — mega-cap tech/growth benchmark",
+        "SPY": "SPDR S&P 500 ETF — broad US large-cap benchmark",
+        "XAR": "SPDR S&P Aerospace & Defense ETF — sector sleeve for defense exposure",
+        "JEPI": "JPMorgan Equity Premium Income — covered-call income ETF",
+        "JEPQ": "JPMorgan Nasdaq Equity Premium Income — Nasdaq covered-call income",
+        "DIVI": "Franklin International Core Dividend Tilt ETF — intl dividend sleeve",
+        "ARKX": "ARK Space Exploration & Innovation ETF — space/aerospace theme",
+    }
+    if is_etf and sym in _ETF_BLURB:
+        what_they_do = _ETF_BLURB[sym]
+    elif company and industry and sector and sector not in str(industry):
+        what_they_do = f"{company} operates in {industry} ({sector})"
+    elif company and industry:
+        what_they_do = f"{company} — {industry}"
+    elif company and sector:
+        what_they_do = f"{company} — {sector} sector"
+    elif industry:
+        what_they_do = str(industry)
+    elif is_etf:
+        what_they_do = f"{company or sym} exchange-traded fund"
+    else:
+        what_they_do = None
+
+    # Latest news + crude sentiment from portfolio_news scores
+    news_items = (_load_news_by_symbol().get(sym) or [])[:4]
+    news_headlines: list[dict[str, Any]] = []
+    sent_scores: list[float] = []
+    for a in news_items:
+        title = (a.get("title") or "").strip()
+        if not title:
+            continue
+        score = _f(a.get("llm_score"))
+        cat = (a.get("llm_category") or a.get("impact_tier") or "").lower()
+        # Map score/category to sentiment label
+        sent = "neutral"
+        if score is not None:
+            sent_scores.append(score)
+            if score >= 70:
+                sent = "constructive"
+            elif score <= 40:
+                sent = "cautious"
+        if any(x in cat for x in ("bull", "positive", "upgrade")):
+            sent = "constructive"
+        if any(x in cat for x in ("bear", "risk", "downgrade", "negative")):
+            sent = "cautious"
+        news_headlines.append({
+            "title": title[:160],
+            "source": a.get("source") or a.get("provider"),
+            "hours_old": a.get("hours_old"),
+            "url": a.get("url"),
+            "summary": (a.get("llm_summary") or a.get("summary") or "")[:200] or None,
+            "sentiment": sent,
+            "score": score,
+        })
+    news_sentiment = "no_recent_news"
+    if sent_scores:
+        avg = sum(sent_scores) / len(sent_scores)
+        if avg >= 68:
+            news_sentiment = "constructive"
+        elif avg <= 42:
+            news_sentiment = "cautious"
+        else:
+            news_sentiment = "mixed"
+    elif news_headlines:
+        news_sentiment = "mixed"
 
     # Relative strength vs SCHG (book core) + multi-index (SPY / QQQ / IWM)
     rel_m = None
@@ -389,11 +532,17 @@ def get_security_snapshot(symbol: str) -> dict[str, Any]:
         "trend": trend,
         "tech_score": tech_score,
         "tech_grade": tech_grade,
+        "company": company,
         "sector": sector,
         "industry": industry,
+        "what_they_do": what_they_do,
         "is_etf": is_etf,
         "valuation": val,
         "earnings_momentum": earn,
+        "news_headlines": news_headlines,
+        "news_sentiment": news_sentiment,
+        "news_count": len(news_headlines),
+
         "has_min_data": has_min_data,
         "data_complete": data_complete,
         "incomplete_reason": incomplete_reason,
@@ -408,6 +557,14 @@ def get_security_snapshot(symbol: str) -> dict[str, Any]:
     score_pack = score_security(snap)
     snap.update(score_pack)
     # Structured snapshots for UI template
+    snap["identity"] = {
+        "symbol": sym,
+        "company": company,
+        "sector": sector,
+        "industry": industry,
+        "what_they_do": what_they_do,
+        "is_etf": is_etf,
+    }
     snap["technical_snapshot"] = {
         "rsi": rsi,
         "rsi_zone": _rsi_bucket(rsi),
@@ -419,15 +576,54 @@ def get_security_snapshot(symbol: str) -> dict[str, Any]:
         "rvol": rvol,
         "beta": beta,
     }
+    # Readable Street prediction + desk fundamentals fallback
+    pred_bits: list[str] = []
+    if fh_n and consensus_label:
+        pred_bits.append(
+            f"Street consensus {consensus_label} "
+            f"({fh_buy} buy / {fh_hold} hold / {fh_sell} sell · n={fh_n}"
+            + (f" · {fh.get('recommendation_period')}" if fh.get("recommendation_period") else "")
+            + ")"
+        )
+    elif analyst and fh_n == 0:
+        # only trust validated non-corrupted rating (already filtered)
+        pred_bits.append(f"Cached rating: {analyst} (verify — no Finnhub counts)")
+    else:
+        pred_bits.append("No Street consensus counts on file for this name")
+    if pe is not None and pe > 0:
+        pred_bits.append(f"P/E {pe:.1f}")
+    if peg is not None and peg > 0:
+        pred_bits.append(f"PEG {peg:.2f}")
+    if eps_next_y is not None:
+        pred_bits.append(f"EPS next yr {eps_next_y:+.1f}%")
+    if earn and earn != "unknown":
+        pred_bits.append(f"earnings {earn}")
+    if val and val not in ("unknown", "n/a"):
+        pred_bits.append(f"valuation {val}")
+    analyst_prediction = " · ".join(pred_bits)
+
     snap["analyst_snapshot"] = {
         "consensus": consensus_label or ("No coverage" if not fh_n else analyst),
         "counts": snap.get("analyst_counts"),
+        "prediction": analyst_prediction,
         "target": snap.get("target"),
         "pe": pe,
         "peg": peg,
         "eps_next_y": eps_next_y,
         "earnings_momentum": earn,
+        "valuation": val,
         "coverage_flag": "ok" if fh_n else "no_finnhub_coverage",
+        "as_of": (fh.get("recommendation_period") if fh_n else None),
+        "provider": (fh.get("provider") if fh_n else None),
+    }
+    snap["news_snapshot"] = {
+        "sentiment": news_sentiment,
+        "headlines": news_headlines[:3],
+        "count": len(news_headlines),
+        "note": (
+            None if news_headlines
+            else "No recent portfolio-news items for this ticker in the desk feed"
+        ),
     }
     snap["options_flow_snapshot"] = {
         "sentiment": opt_sentiment,
@@ -724,12 +920,22 @@ def enrich_ticker_recommendation(
     out["conviction_tier"] = snap.get("conviction_tier")
     out["conviction_breakdown"] = snap.get("conviction_breakdown")
     out["conviction_breakdown_lines"] = snap.get("conviction_breakdown_lines")
+    out["identity"] = snap.get("identity")
     out["technical_snapshot"] = snap.get("technical_snapshot")
     out["analyst_snapshot"] = snap.get("analyst_snapshot")
+    out["news_snapshot"] = snap.get("news_snapshot")
     out["options_flow_snapshot"] = snap.get("options_flow_snapshot")
     out["data_complete"] = snap.get("data_complete")
     out["incomplete_reason"] = snap.get("incomplete_reason")
+    out["company"] = snap.get("company")
+    out["sector"] = snap.get("sector")
+    out["industry"] = snap.get("industry")
+    out["what_they_do"] = snap.get("what_they_do")
     out["security"] = {
+        "company": snap.get("company"),
+        "sector": snap.get("sector"),
+        "industry": snap.get("industry"),
+        "what_they_do": snap.get("what_they_do"),
         "rsi": snap.get("rsi"),
         "rsi_status": snap.get("rsi_status"),
         "rel_strength_month_pct": snap.get("rel_strength_month_pct"),
@@ -746,6 +952,11 @@ def enrich_ticker_recommendation(
         "liquidity": snap.get("liquidity"),
         "analyst_rating": snap.get("analyst_consensus") or snap.get("analyst_rating"),
         "analyst_counts": snap.get("analyst_counts"),
+        "analyst_prediction": (snap.get("analyst_snapshot") or {}).get("prediction"),
+        "analyst_target": snap.get("target"),
+        "news_sentiment": snap.get("news_sentiment"),
+        "news_headlines": snap.get("news_headlines"),
+        "news_count": snap.get("news_count"),
         "iv_rank": snap.get("iv_rank"),
         "options_sentiment": snap.get("options_sentiment"),
         "trend": snap.get("trend"),
@@ -753,6 +964,9 @@ def enrich_ticker_recommendation(
         "data_complete": snap.get("data_complete"),
         "data_coverage_pct": snap.get("data_coverage_pct"),
     }
+    out["analyst_prediction"] = (snap.get("analyst_snapshot") or {}).get("prediction")
+    out["news_sentiment"] = snap.get("news_sentiment")
+    out["news_headlines"] = snap.get("news_headlines")
 
     bits = list(snap.get("why_selected") or [])[:2]
     risks = list(snap.get("risk_flags") or [])[:1]
