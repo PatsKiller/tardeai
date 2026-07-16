@@ -1,0 +1,145 @@
+/** Watch Desk v4 (WS-A): THE design-system entry point for all five Watch tabs.
+ *
+ * Extends the BB terminal tokens that Security Card v4 shipped with. Pages import
+ * from HERE (single import); raw hexes are banned in Watch pages — the zero-hex
+ * census is the acceptance gate.
+ *
+ * DEPRECATION MAP (v2/v3 ad-hoc palette → semantic replacement):
+ *   #a855f7 (purple accents)        → T.extIntel.hermes (muted, badges only) or BB.text2
+ *   #2dd4bf (teal one-offs)         → T.link or BB.text2
+ *   #a78bfa (violet chips)          → T.extIntel.hermes
+ *   #7dd3fc (sky chips)             → T.link
+ *   #10a37f (openai green)          → T.extIntel.gpt (badge only)
+ *   #ffa726 / #fbbf24 / #f5c76a /
+ *   #eab308 / #fb923c (ambers/orange)→ BB.amber (attention) or BB.orange (warm metric)
+ *   #34d399 / #86efac (soft greens) → BB.green / T.greenSoft
+ *   #f87171 (soft red)              → BB.red
+ *   #60a5fa / #93c5fd / #2563eb /
+ *   #dbeafe (blues)                 → T.link (links/drills only, never data color)
+ *   #64748b / #94a3b8 / #cbd5e1 /
+ *   #f8fafc (slates)                → BB.text3 / text2 / text1 / text0
+ *   #d8b4fe                         → T.extIntel.hermes
+ *   purple-tinted dark shell family (#0f1117 #171923 #1a192b #1e2130 #232640
+ *   #2d3148) → BB.bg / BB.bgPanel / BB.bgShift / BB.border — ONE dark ground.
+ *
+ * Type scale is LOCKED to 10/11/12/14/18/24. Nothing below 10 in Watch pages;
+ * density comes from row padding on the 4px grid, not glyph shrinkage.
+ */
+import type { CSSProperties } from 'react'
+import { BB, numStyle, terminalButton, terminalSigned } from './watchlistTerminalTokens'
+
+export { BB, numStyle, terminalButton, terminalSigned }
+export { terminalRail, terminalVerdictColor, terminalVerdictBg, terminalRrColor } from './watchlistTerminalTokens'
+export { hubTitle, hubSubtitle, hubTab, hubPanel, hubStrip, hubFilterSelect, hubKpiChip } from './terminalHubChrome'
+
+export const T = {
+  /** Links / drill affordances only — never a data color. */
+  link: '#60a5fa',
+  greenSoft: 'rgba(34, 197, 94, 0.55)',
+  /** External-intel brand tints — ONE muted tint each, badges only, defined nowhere else. */
+  extIntel: {
+    hermes: '#a78bfa',
+    gpt: '#10a37f',
+    grok: '#7dd3fc',
+  },
+  heldBadge: {
+    background: 'rgba(34, 197, 94, 0.12)',
+    color: '#22c55e',
+    border: '1px solid rgba(34, 197, 94, 0.35)',
+  },
+  focusRing: '0 0 0 2px rgba(255, 176, 0, 0.55)',
+} as const
+
+/** Rail semantics (A3): the 3px left spine every row-like element carries. */
+export const RAIL = {
+  favorable: BB.green,   // positive outcome / ready / winning
+  attention: BB.amber,   // near-stop, overdue, needs-review, caution
+  breach: BB.red,        // conflict / breach / underperforming
+  neutral: '#334155',    // slate — nothing notable
+} as const
+export type RailState = keyof typeof RAIL
+
+export function rowRail(state: RailState): CSSProperties {
+  return { borderLeft: `3px solid ${RAIL[state]}` }
+}
+
+/** Locked type scale (A2). Use these, never numeric literals below 10. */
+export const TYPE = { xs: 10, sm: 11, base: 12, md: 14, lg: 18, xl: 24 } as const
+
+/** Right-aligned tabular numeric cell (A2: one mono stack). */
+export const numCell: CSSProperties = {
+  ...numStyle,
+  textAlign: 'right' as const,
+}
+
+/** A6 chip classes — construction IS the distinction. */
+export function statePill(tone: 'green' | 'amber' | 'red' | 'slate' = 'slate'): CSSProperties {
+  const map = {
+    green: { background: BB.greenDim, color: BB.green },
+    amber: { background: BB.amberDim, color: BB.amber },
+    red: { background: BB.redDim, color: BB.red },
+    slate: { background: 'rgba(148, 163, 184, 0.10)', color: BB.text3 },
+  }[tone]
+  return {
+    ...map,
+    fontSize: TYPE.xs,
+    fontWeight: 800,
+    letterSpacing: '.05em',
+    textTransform: 'uppercase' as const,
+    padding: '1px 6px',
+    borderRadius: 2,
+    whiteSpace: 'nowrap' as const,
+    display: 'inline-block',
+  }
+}
+
+export function metricChip(clickable = false): CSSProperties {
+  return {
+    ...numStyle,
+    fontSize: TYPE.xs,
+    color: BB.text2,
+    border: `1px solid ${BB.borderHair}`,
+    background: 'transparent',
+    padding: '1px 6px',
+    borderRadius: 2,
+    whiteSpace: 'nowrap' as const,
+    display: 'inline-block',
+    cursor: clickable ? 'pointer' : 'default',
+  }
+}
+
+export function actionChip(): CSSProperties {
+  return {
+    fontSize: TYPE.xs,
+    fontWeight: 800,
+    letterSpacing: '.04em',
+    textTransform: 'uppercase' as const,
+    border: `1px solid ${BB.amber}`,
+    background: 'transparent',
+    color: BB.amber,
+    padding: '2px 10px',
+    borderRadius: 999,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  }
+}
+
+export function countBubble(warn = false): CSSProperties {
+  return {
+    ...numStyle,
+    fontSize: TYPE.xs,
+    fontWeight: 800,
+    background: warn ? BB.amberDim : 'rgba(148, 163, 184, 0.12)',
+    color: warn ? BB.amber : BB.text2,
+    padding: '0 6px',
+    borderRadius: 999,
+    display: 'inline-block',
+    minWidth: 16,
+    textAlign: 'center' as const,
+  }
+}
+
+/** A5: the visible focus ring for keyboard nav. Apply on :focus-visible via style when focused. */
+export function focusStyle(focused: boolean): CSSProperties {
+  return focused ? { boxShadow: T.focusRing, outline: 'none' } : {}
+}

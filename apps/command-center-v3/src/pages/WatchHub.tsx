@@ -7,7 +7,8 @@ import SectorsHub from './SectorsHub'
 import PullbackMacdHub from './PullbackMacdHub'
 import ScreenerFindsHub from './ScreenerFindsHub'
 import { useTerminalUi } from '../lib/terminalUi'
-import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
+import { hubTitle, hubSubtitle, hubTab, BB, TYPE, RAIL } from '../lib/watchTokens'
+import { ChipLegend } from '../components/TerminalChip'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -42,10 +43,11 @@ export default function WatchHub({ onDrill }: Props) {
           <div style={hubTitle()}>Watch</div>
           <div style={hubSubtitle(terminalUi)}>Curated list · screener finds · directive pool · sectors · pullback/MACD</div>
         </div>
-        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
+        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {TABS.map(t => (
             <button key={t} onClick={() => selectTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
           ))}
+          <ChipLegend />
         </div>
       </div>
       <WatchRegimeStrip />
@@ -66,18 +68,21 @@ function WatchRegimeStrip() {
   const label = String(regime?.regime_label || '').replace(/_/g, ' ')
   const riskOff = /off/i.test(label)
   return (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '6px 0', fontSize: 11 }}>
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '6px 0', fontSize: TYPE.sm }}>
       {label && (
-        <span style={{ fontWeight: 800, color: riskOff ? '#f59e0b' : '#34d399', border: `1px solid ${riskOff ? '#f59e0b44' : '#34d39944'}`, borderRadius: 999, padding: '2px 10px' }}>
+        <span style={{ fontWeight: 800, color: riskOff ? BB.amber : BB.green, border: `1px solid ${riskOff ? BB.amber : BB.green}55`, borderRadius: 999, padding: '2px 10px' }}>
           regime {label}
         </span>
       )}
-      {riskOff && <span style={{ color: 'var(--text3)' }}>Regime risk-off — pullback entries historically weaker; screeners unchanged.</span>}
+      {riskOff && <span style={{ color: BB.text3 }}>Regime risk-off — pullback entries historically weaker; screeners unchanged.</span>}
       {(alerts?.active_count ?? 0) > 0 && (
-        <span title="operator alerts armed — evaluated every 20 min RTH" style={{ fontWeight: 700, color: '#7dd3fc', border: '1px solid #7dd3fc44', borderRadius: 999, padding: '2px 10px' }}>
+        <span title="operator alerts armed — evaluated every 20 min RTH" style={{ fontWeight: 700, color: BB.amber, border: `1px solid ${BB.amber}44`, borderRadius: 999, padding: '2px 10px' }}>
           🔔 {alerts.active_count} armed
         </span>
       )}
+      <span style={{ color: BB.text3 }}>
+        rail: <span style={{ color: BB.green }}>▎favorable</span> <span style={{ color: BB.amber }}>▎attention</span> <span style={{ color: BB.red }}>▎breach</span> <span style={{ color: RAIL.neutral }}>▎neutral</span>
+      </span>
     </div>
   )
 }

@@ -2,18 +2,17 @@ import { useState } from 'react'
 import TickerLinks from '../components/TickerLinks'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
+import { BB, T, TYPE, RAIL, numStyle, terminalButton } from '../lib/watchTokens'
+import { Chip, StatePills } from '../components/TerminalChip'
 
 // v3 Pullback/MACD Screener — S&P 500 names in an uptrend that have pulled back ~20% off their
 // 52-week high and whose MACD is approaching a bullish cross. Two tiers: trigger / watch.
 // Advisory only — auto-generated proposals require operator approval; nothing auto-executes.
+// v4 (WS-A): watchTokens sweep — rails carry tier/conflict, chips replace ad-hoc pills.
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
-const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }
-
-const Pill = ({ text, color, tip }: any) => (
-  <span title={tip} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: color + '22', color, border: `1px solid ${color}55`, whiteSpace: 'nowrap', cursor: tip ? 'help' : 'default' }}>{text}</span>
-)
+const card = { background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 2, padding: 14 }
 
 const fmt = (v: any, d = 2) => (v === null || v === undefined ? '—' : Number(v).toFixed(d))
 
@@ -24,46 +23,49 @@ function PullbackBanner({ c }: { c: any }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-      background: 'linear-gradient(90deg, rgba(245,158,11,.16), rgba(245,158,11,.04))',
-      border: '1px solid rgba(245,158,11,.4)', borderRadius: 8, padding: '6px 10px', marginBottom: 8,
+      background: BB.amberDim,
+      border: `1px solid ${BB.amber}55`, borderRadius: 2, padding: '6px 10px', marginBottom: 8,
     }}>
-      <span style={{ fontSize: 12, fontWeight: 800, color: '#f59e0b' }}>📉 PULLBACK {fmt(c.pullback_pct, 1)}%</span>
-      <span style={{ fontSize: 10, color: 'var(--text3)' }}>off 52-wk high · uptrend intact</span>
-      {c.above_vwap === true && <span style={{ fontSize: 10, fontWeight: 800, color: '#22c55e' }}>↑ VWAP {fmt(c.vwap)}</span>}
-      {c.above_vwap === false && <span style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b' }}>↓ VWAP {fmt(c.vwap)}</span>}
+      <span style={{ ...numStyle, fontSize: TYPE.base, fontWeight: 800, color: BB.amber }}>📉 PULLBACK {fmt(c.pullback_pct, 1)}%</span>
+      <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>off 52-wk high · uptrend intact</span>
+      {c.above_vwap === true && <span style={{ ...numStyle, fontSize: TYPE.xs, fontWeight: 800, color: BB.green }}>↑ VWAP {fmt(c.vwap)}</span>}
+      {c.above_vwap === false && <span style={{ ...numStyle, fontSize: TYPE.xs, fontWeight: 700, color: BB.amber }}>↓ VWAP {fmt(c.vwap)}</span>}
       {trigger
-        ? <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, color: '#22c55e' }}>📈 RECOVERY CONFIRMED · MACD↑ + VWAP</span>
-        : <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text3)' }}>watch · {c.why_not || 'not confirmed'}</span>}
+        ? <span style={{ marginLeft: 'auto', fontSize: TYPE.xs, fontWeight: 800, color: BB.green }}>📈 RECOVERY CONFIRMED · MACD↑ + VWAP</span>
+        : <span style={{ marginLeft: 'auto', fontSize: TYPE.xs, color: BB.text3 }}>watch · {c.why_not || 'not confirmed'}</span>}
     </div>
   )
 }
 
-const btn = (bg: string) => ({ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: bg, color: 'var(--text0)', cursor: 'pointer' })
-
 function CandidateCard({ c, onDrill, onDismiss }: { c: any; onDrill: Props['onDrill']; onDismiss: (sym: string, cancel: boolean) => void }) {
   const trigger = c.tier === 'trigger'
+  const rail = c.held_conflict ? RAIL.attention : trigger ? RAIL.favorable : RAIL.neutral
+  const pills: Array<{ label: string; tone?: 'green' | 'amber' | 'red' | 'slate'; title?: string }> = [
+    { label: trigger ? 'TRIGGER' : 'WATCH', tone: trigger ? 'green' : 'slate' },
+  ]
+  if (c.held) pills.push({
+    label: `HELD · ${Math.round(c.held.shares)} sh${c.held.stop_price ? '' : ' · NO STOP'}`,
+    tone: c.held.stop_price ? 'green' : 'amber',
+    title: `Held ${Math.round(c.held.shares)} sh · $${Math.round(c.held.market_value).toLocaleString()}${c.held.stop_price ? ` · stop $${c.held.stop_price}${c.held.stop_distance_pct != null ? ` (${c.held.stop_distance_pct > 0 ? '+' : ''}${c.held.stop_distance_pct}%)` : ''}` : ' · NO STOP'}`,
+  })
   return (
-    <div style={{ ...card, borderColor: trigger ? 'rgba(34,197,94,.5)' : 'var(--border)' }}>
+    <div style={{ ...card, borderLeft: `3px solid ${rail}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 16, fontWeight: 800, cursor: 'pointer' }}
+        <span style={{ ...numStyle, fontSize: TYPE.md, fontWeight: 800, cursor: 'pointer', color: BB.text0 }}
           onClick={() => onDrill({ kind: 'symbol', symbol: c.symbol } as any)}>{c.symbol}</span>
-        <Pill text={trigger ? 'TRIGGER' : 'WATCH'} color={trigger ? '#22c55e' : '#64748b'} />
-        {c.held && (
-          <span title={`Held ${Math.round(c.held.shares)} sh · $${Math.round(c.held.market_value).toLocaleString()}${c.held.stop_price ? ` · stop $${c.held.stop_price}` : ' · NO STOP'}`}
-            style={{ fontSize: 10, fontWeight: 800, color: '#34d399', border: '1px solid #34d39955', borderRadius: 999, padding: '1px 8px' }}>
-            ● HELD · {Math.round(c.held.shares)} sh{c.held.stop_price ? ` · stop $${c.held.stop_price}${c.held.stop_distance_pct != null ? ` (${c.held.stop_distance_pct > 0 ? '+' : ''}${c.held.stop_distance_pct}%)` : ''}` : ' · no stop'}
-          </span>
-        )}
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text3)' }}>score {fmt(c.score, 0)}</span>
+        <StatePills pills={pills} />
+        <span style={{ marginLeft: 'auto' }}>
+          <Chip kind="metric" title="composite screener score">score {fmt(c.score, 0)}</Chip>
+        </span>
       </div>
       {c.held_conflict && (
-        <div style={{ margin: '0 0 8px', padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700,
-          background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.5)', color: '#f5c76a' }}>
+        <div style={{ margin: '0 0 8px', padding: '6px 10px', borderRadius: 2, fontSize: TYPE.sm, fontWeight: 700,
+          background: BB.amberDim, border: `1px solid ${BB.amber}66`, color: BB.amber }}>
           ⚠ Held position near stop — adding here averages down; review stop plan first
         </div>
       )}
       <PullbackBanner c={c} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, fontSize: 11 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, fontSize: TYPE.sm }}>
         <Metric label="Entry" value={fmt(c.entry)} />
         <Metric label="Stop" value={fmt(c.stop)} />
         <Metric label="Target1" value={fmt(c.target1)} />
@@ -76,13 +78,13 @@ function CandidateCard({ c, onDrill, onDismiss }: { c: any; onDrill: Props['onDr
       <div style={{ marginTop: 6 }}><TickerLinks symbol={c.symbol} /></div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
         {c.proposal_id
-          ? <span style={{ fontSize: 10, color: '#60a5fa' }}>Advisory proposal #{c.proposal_id} in approval queue</span>
-          : <span style={{ fontSize: 10, color: 'var(--text3)' }}>no proposal</span>}
+          ? <span style={{ fontSize: TYPE.xs, color: T.link }}>Advisory proposal #{c.proposal_id} in approval queue</span>
+          : <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>no proposal</span>}
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button style={btn('var(--bg2)')} title="Hide for 10 trading days (re-shows early only if score improves ≥25%). Proposal untouched."
+          <button style={terminalButton('ghost')} title="Hide for 10 trading days (re-shows early only if score improves ≥25%). Proposal untouched."
             onClick={() => onDismiss(c.symbol, false)}>Dismiss</button>
           {c.proposal_id
-            ? <button style={btn('rgba(239,68,68,.15)')} title="Hide for 10 trading days AND reject the linked PENDING advisory proposal (no order surface involved)."
+            ? <button style={terminalButton('danger')} title="Hide for 10 trading days AND reject the linked PENDING advisory proposal (no order surface involved)."
                 onClick={() => onDismiss(c.symbol, true)}>Dismiss + cancel</button>
             : null}
         </span>
@@ -93,8 +95,8 @@ function CandidateCard({ c, onDrill, onDismiss }: { c: any; onDrill: Props['onDr
 
 const Metric = ({ label, value, tip }: any) => (
   <div title={tip} style={{ cursor: tip ? 'help' : 'inherit' }}>
-    <div style={{ fontSize: 9, color: 'var(--text3)' }}>{label}</div>
-    <div style={{ fontWeight: 700 }}>{value}</div>
+    <div style={{ fontSize: TYPE.xs, color: BB.text3 }}>{label}</div>
+    <div style={{ ...numStyle, fontWeight: 700, color: BB.text1 }}>{value}</div>
   </div>
 )
 
@@ -128,47 +130,47 @@ export default function PullbackMacdHub({ onDrill, embedded }: Props) {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         {!embedded ? (
           <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Pullback / MACD Screener</h1>
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+            <h1 style={{ fontSize: TYPE.lg, fontWeight: 800, margin: 0, color: BB.text0 }}>Pullback / MACD Screener</h1>
+            <div style={{ fontSize: TYPE.sm, color: BB.text3, marginTop: 2 }}>
               S&P 500 uptrends pulled back 12–28%, earliest recovery confirmed (MACD histogram turning up + above VWAP) ·
               advisory only, proposals require approval ·
               {run ? ` last scan ${run.scan_date} (${run.screened} screened — ${data?.scan_provenance?.universe || 'S&P 500 uptrend pullbacks'})` : ' no scan recorded yet'}{data?.hit_stats ? ` · last ${data.hit_stats.window_days}d: ${data.hit_stats.triggers} triggers${data.hit_stats.evaluated ? ` · ${data.hit_stats.target1_first}/${data.hit_stats.evaluated} reached T1 first${data.hit_stats.median_days ? ` · median ${Math.round(data.hit_stats.median_days)}d` : ''}` : ' · outcomes n/a until evaluations accrue'}` : ''}{data?.dismissed_in_cooldown ? ` · ${data.dismissed_in_cooldown} in dismiss-cooldown` : ''}
             </div>
-            {msg && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>{msg}</div>}
+            {msg && <div style={{ fontSize: TYPE.sm, color: BB.text2, marginTop: 4 }}>{msg}</div>}
           </div>
         ) : (
-          <div style={{ flex: 1, fontSize: 11, color: 'var(--text3)' }}>
+          <div style={{ flex: 1, fontSize: TYPE.sm, color: BB.text3 }}>
             <span title={data?.scan_provenance?.schedule || ''}>{run ? `Last scan ${run.scan_date} (${run.screened} screened — ${data?.scan_provenance?.universe || 'S&P 500 uptrend pullbacks'})` : 'No scan recorded yet'}{data?.hit_stats ? ` · last ${data.hit_stats.window_days}d: ${data.hit_stats.triggers} triggers${data.hit_stats.evaluated ? ` · ${data.hit_stats.target1_first}/${data.hit_stats.evaluated} reached T1 first${data.hit_stats.median_days ? ` · median ${Math.round(data.hit_stats.median_days)}d` : ''}` : ' · outcomes n/a until evaluations accrue'}` : ''}{data?.dismissed_in_cooldown ? ` · ${data.dismissed_in_cooldown} in dismiss-cooldown` : ''}</span>
-            {msg && <span style={{ marginLeft: 8, color: 'var(--text2)' }}>{msg}</span>}
+            {msg && <span style={{ marginLeft: 8, color: BB.text2 }}>{msg}</span>}
           </div>
         )}
-        <button style={{ ...btn('var(--accent, #2563eb)'), fontSize: 12, padding: '7px 14px', opacity: busy ? 0.6 : 1 }}
+        <button style={{ ...terminalButton('primary'), opacity: busy ? 0.6 : 1 }}
           disabled={busy} onClick={runScan}>{busy ? 'Scanning…' : '↻ Run scan now'}</button>
       </div>
 
-      {error && <div style={{ ...card, color: '#ef4444' }}>API error: {String(error)}</div>}
-      {loading && !cands.length && <div style={{ ...card, color: 'var(--text3)' }}>Loading…</div>}
+      {error && <div style={{ ...card, color: BB.red }}>API error: {String(error)}</div>}
+      {loading && !cands.length && <div style={{ ...card, color: BB.text3 }}>Loading…</div>}
 
       <section>
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-          🎯 Triggers <span style={{ color: 'var(--text3)', fontWeight: 400 }}>({triggers.length}) — MACD turning up + above VWAP (earliest confirmed recovery)</span>
+        <div style={{ fontSize: TYPE.base, fontWeight: 800, marginBottom: 8, color: BB.text0 }}>
+          🎯 Triggers <span style={{ color: BB.text3, fontWeight: 400 }}>({triggers.length}) — MACD turning up + above VWAP (earliest confirmed recovery)</span>
         </div>
         {triggers.length
           ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
               {triggers.map(c => <CandidateCard key={c.symbol} c={c} onDrill={onDrill} onDismiss={dismiss} />)}
             </div>
-          : <div style={{ ...card, color: 'var(--text3)', fontSize: 12 }}>No triggers today — a deep pullback in a standing uptrend with the cross about to fire is rare (expected on most days).</div>}
+          : <div style={{ ...card, color: BB.text3, fontSize: TYPE.base }}>No triggers today — a deep pullback in a standing uptrend with the cross about to fire is rare (expected on most days).</div>}
       </section>
 
       <section>
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-          👀 Watch <span style={{ color: 'var(--text3)', fontWeight: 400 }}>({watch.length}) — in pullback, recovery not yet confirmed</span>
+        <div style={{ fontSize: TYPE.base, fontWeight: 800, marginBottom: 8, color: BB.text0 }}>
+          👀 Watch <span style={{ color: BB.text3, fontWeight: 400 }}>({watch.length}) — in pullback, recovery not yet confirmed</span>
         </div>
         {watch.length
           ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
               {watch.map(c => <CandidateCard key={c.symbol} c={c} onDrill={onDrill} onDismiss={dismiss} />)}
             </div>
-          : <div style={{ ...card, color: 'var(--text3)', fontSize: 12 }}>No watch candidates.</div>}
+          : <div style={{ ...card, color: BB.text3, fontSize: TYPE.base }}>No watch candidates.</div>}
       </section>
     </div>
   )

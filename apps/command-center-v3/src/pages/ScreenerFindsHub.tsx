@@ -3,7 +3,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 import WatchlistHub from './WatchlistHub'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubStrip } from '../lib/terminalHubChrome'
-import { BB } from '../lib/watchlistTerminalTokens'
+import { BB, T } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
 
@@ -23,10 +23,10 @@ export default function ScreenerFindsHub({ onDrill, embedded }: Props) {
           </>
         ) : (
           <>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#f8fafc' }}>🔍 Screener Finds — Auto-Research lane</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: BB.text0 }}>🔍 Screener Finds — Auto-Research lane</div>
+            <div style={{ fontSize: 11, color: BB.text3, marginTop: 4, lineHeight: 1.45 }}>
               {count} active · Finviz screener discoveries with auto-research briefs ·
-              stays visible while CIO is <b style={{ color: '#22c55e' }}>BUY</b>, <b style={{ color: '#22c55e' }}>STRONG_BUY</b>, <b style={{ color: '#60a5fa' }}>ADD</b>, or <b style={{ color: '#60a5fa' }}>ADD_ON_PULLBACK</b> ·
+              stays visible while CIO is <b style={{ color: BB.green }}>BUY</b>, <b style={{ color: BB.green }}>STRONG_BUY</b>, <b style={{ color: T.link }}>ADD</b>, or <b style={{ color: T.link }}>ADD_ON_PULLBACK</b> ·
               full watchlist cards below
             </div>
           </>
@@ -42,13 +42,13 @@ export default function ScreenerFindsHub({ onDrill, embedded }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 360, overflowY: 'auto' }}>
             {data.wide_finds.slice(0, 60).map((f: any, i: number) => (
               <div key={i} style={{ display: 'flex', gap: 10, fontSize: 11, padding: '3px 6px', borderBottom: '1px solid var(--border)', alignItems: 'baseline' }}>
-                <span style={{ fontFamily: 'monospace', fontWeight: 800, minWidth: 52 }}>{f.symbol}</span>
+                <span style={{ fontFamily: BB.mono, fontVariantNumeric: 'tabular-nums', fontWeight: 800, minWidth: 52 }}>{f.symbol}</span>
                 <span style={{ color: 'var(--text3)', minWidth: 92 }}>{f.source_type}</span>
                 <span style={{ color: 'var(--text3)', minWidth: 78 }}>{f.emitted_on}</span>
-                <span style={{ minWidth: 96, color: f.alpha_21d == null ? 'var(--text3)' : f.alpha_21d > 0 ? '#34d399' : '#f87171' }}>
+                <span style={{ minWidth: 96, color: f.alpha_21d == null ? 'var(--text3)' : f.alpha_21d > 0 ? BB.green : BB.red }}>
                   {f.alpha_21d != null ? `21d α ${f.alpha_21d > 0 ? '+' : ''}${f.alpha_21d}%` : (f.verdict || 'pending')}
                 </span>
-                {f.proposed && <span style={{ color: '#7dd3fc' }}>→ proposal</span>}
+                {f.proposed && <span style={{ color: T.link }}>→ proposal</span>}
               </div>
             ))}
           </div>

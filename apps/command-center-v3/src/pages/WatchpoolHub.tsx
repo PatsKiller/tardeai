@@ -1,23 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
-import { hubPanel } from '../lib/terminalHubChrome'
+import { hubPanel, BB, T, TYPE, RAIL, numStyle, terminalButton, focusStyle } from '../lib/watchTokens'
+import { Chip } from '../components/TerminalChip'
 
 // v3 Watchpool & Directives — operator watch directives (ticker/sector/trend) + the unified
 // strategy_watchpool, with the shared provenance pill row. Advisory; Hermes-firewall preserved.
+// v4 (WS-A): watchTokens sweep — zero raw hexes, type floor 10, rails, chip vocabulary,
+// j/k keyboard on the pool list.
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean }
-
-// Origin pill palette (per spec): screener=blue, social=orange, agent=green, watchlist=yellow, directive=violet
-const originColor = (o?: string) => {
-  const k = (o || '').toLowerCase()
-  if (k.includes('directive') || k === 'operator' || k === 'hermes' || k === 'trade_ai') return '#a855f7'
-  if (k.includes('social')) return '#f59e0b'
-  if (k.includes('agent')) return '#22c55e'
-  if (k.includes('portfolio') || k.includes('watchlist')) return '#eab308'
-  return '#60a5fa'
-}
 
 // Watch Desk v2 (A3): ONE dictionary for raw pipeline states → human labels
 const STATUS_LABELS: Record<string, { label: string; tip: string }> = {
@@ -27,17 +20,22 @@ const STATUS_LABELS: Record<string, { label: string; tip: string }> = {
 }
 const humanStatus = (s?: string) => STATUS_LABELS[String(s || '').toLowerCase()] || { label: s || '—', tip: s || '' }
 
-const divColor = (d?: string) => (({ aligned: '#22c55e', mixed: '#f59e0b', divergent: '#ef4444', unavailable: '#64748b' } as any)[d || ''] || 'var(--text3)')
+const divTone = (d?: string): 'green' | 'amber' | 'red' | 'slate' =>
+  (({ aligned: 'green', mixed: 'amber', divergent: 'red' } as any)[d || ''] || 'slate')
 
-const Pill = ({ text, color, tip }: any) => (
-  <span title={tip} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: color + '22', color, border: `1px solid ${color}55`, whiteSpace: 'nowrap', cursor: tip ? 'help' : 'default' }}>{text}</span>
-)
+const poolRail = (status?: string): string => {
+  const s = String(status || '').toUpperCase()
+  if (s === 'ACTIVE' || s === 'PROPOSED' || s === 'QUALIFIED') return RAIL.favorable
+  if (s === 'STAGED_FOR_REVIEW' || s.startsWith('MONITORED')) return RAIL.attention
+  if (s === 'REJECTED' || s === 'UNAVAILABLE') return RAIL.breach
+  return RAIL.neutral
+}
 
 function Field({ label, value, onChange, ph, wide }: any) {
   return (
-    <label style={{ fontSize: 9, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 2 }}>{label}
+    <label style={{ fontSize: TYPE.xs, color: BB.text3, display: 'flex', flexDirection: 'column', gap: 2 }}>{label}
       <input value={value} onChange={e => onChange(e.target.value)} placeholder={ph}
-        style={{ fontSize: 11, padding: '5px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text0)', width: wide ? 200 : 128 }} />
+        style={{ fontSize: TYPE.sm, padding: '5px 8px', background: BB.bgShift, border: `1px solid ${BB.border}`, borderRadius: 2, color: BB.text0, width: wide ? 200 : 128 }} />
     </label>
   )
 }
@@ -93,11 +91,31 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
   const pageCount = Math.max(1, Math.ceil(pool.length / PER_PAGE))
   const curPage = Math.min(page, pageCount - 1)
   const pagePool = pool.slice(curPage * PER_PAGE, (curPage + 1) * PER_PAGE)
+
+  // A5: j/k row focus + Enter drill on the pool list (list-dense tab)
+  const [focusIdx, setFocusIdx] = useState<number>(-1)
+  const listRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT')) return
+      if (e.key === 'j') setFocusIdx(i => Math.min(pagePool.length - 1, i + 1))
+      else if (e.key === 'k') setFocusIdx(i => Math.max(0, i - 1))
+      else if (e.key === 'Enter' && focusIdx >= 0 && pagePool[focusIdx]) {
+        const r = pagePool[focusIdx]
+        onDrill({ title: `${r.symbol} — provenance`, subtitle: `${r.strategy_id} · ${r.bucket}`, endpoint: `/api/v2/watch/provenance/${r.symbol}`, rows: [r] })
+      } else return
+      e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pagePool, focusIdx, onDrill])
+
   const pager = pageCount > 1 ? (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-      <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={curPage === 0} style={{ fontSize: 10, padding: '3px 9px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: curPage === 0 ? 'default' : 'pointer', opacity: curPage === 0 ? 0.4 : 1 }}>‹ Prev</button>
-      <span style={{ fontSize: 10, color: 'var(--text2)', fontWeight: 700, minWidth: 92, textAlign: 'center' }}>Page {curPage + 1} / {pageCount} · {curPage * PER_PAGE + 1}-{Math.min((curPage + 1) * PER_PAGE, pool.length)}</span>
-      <button onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} disabled={curPage >= pageCount - 1} style={{ fontSize: 10, padding: '3px 9px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: curPage >= pageCount - 1 ? 'default' : 'pointer', opacity: curPage >= pageCount - 1 ? 0.4 : 1 }}>Next ›</button>
+      <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={curPage === 0} style={{ ...terminalButton('secondary'), opacity: curPage === 0 ? 0.4 : 1 }}>‹ Prev</button>
+      <span style={{ ...numStyle, fontSize: TYPE.xs, color: BB.text2, fontWeight: 700, minWidth: 92, textAlign: 'center' }}>Page {curPage + 1} / {pageCount} · {curPage * PER_PAGE + 1}-{Math.min((curPage + 1) * PER_PAGE, pool.length)}</span>
+      <button onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} disabled={curPage >= pageCount - 1} style={{ ...terminalButton('secondary'), opacity: curPage >= pageCount - 1 ? 0.4 : 1 }}>Next ›</button>
     </div>
   ) : null
 
@@ -105,17 +123,18 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {!embedded && (
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Watchpool &amp; Directives</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{wd?.directive_count ?? 0} directives · {wp?.count ?? 0} watchpool entries · advisory · Hermes-firewall preserved (Hermes proposes via staging only)</div>
+          <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: BB.text0 }}>Watchpool &amp; Directives</div>
+          <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>{wd?.directive_count ?? 0} directives · {wp?.count ?? 0} watchpool entries · advisory · Hermes-firewall preserved (Hermes proposes via staging only)</div>
         </div>
       )}
 
       {/* Add directive */}
       <div style={card}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Add Watch Directive</div>
+        <div style={{ fontSize: TYPE.base, fontWeight: 800, color: BB.text0, marginBottom: 8 }}>Add Watch Directive</div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           {(['ticker', 'sector', 'trend'] as const).map(k => (
-            <button key={k} onClick={() => setKind(k)} style={{ padding: '4px 14px', fontSize: 11, borderRadius: 5, border: 'none', cursor: 'pointer', textTransform: 'capitalize', background: kind === k ? 'rgba(168,85,247,.2)' : 'var(--bg2)', color: kind === k ? '#a855f7' : 'var(--text3)', fontWeight: kind === k ? 700 : 400 }}>{k}</button>
+            <button key={k} onClick={() => setKind(k)}
+              style={{ ...(kind === k ? terminalButton('primary') : terminalButton('secondary')), textTransform: 'capitalize' }}>{k}</button>
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -124,39 +143,41 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
           {kind !== 'ticker' && <Field label={kind === 'sector' ? 'Extra universe (opt)' : 'Seed symbols (opt)'} value={seeds} onChange={setSeeds} ph="NVDA, AMD" />}
           <Field label="Label (opt)" value={label} onChange={setLabel} ph="auto" />
           <Field label="Rationale" value={rationale} onChange={setRationale} ph="thesis" wide />
-          <button disabled={busy || !field1} onClick={createDirective} style={{ padding: '7px 16px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: 'none', cursor: busy || !field1 ? 'not-allowed' : 'pointer', background: '#a855f7', color: '#fff', opacity: busy || !field1 ? 0.5 : 1 }}>Create</button>
+          <button disabled={busy || !field1} onClick={createDirective} style={{ ...terminalButton('primary'), opacity: busy || !field1 ? 0.5 : 1, cursor: busy || !field1 ? 'not-allowed' : 'pointer' }}>Watch</button>
         </div>
-        {msg && <div style={{ fontSize: 10, color: msg.startsWith('Error') ? '#ef4444' : '#22c55e', marginTop: 8 }}>{msg}</div>}
-        <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Ticker = exact symbol (auto-evaluated). Sector = ETF + Finviz constituents. Trend = keywords (Hermes discovers → stages). Sector/trend hits stage for one-tap.</div>
+        {msg && <div style={{ fontSize: TYPE.xs, color: msg.startsWith('Error') ? BB.red : BB.green, marginTop: 8 }}>{msg}</div>}
+        <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 6 }}>Ticker = exact symbol (auto-evaluated). Sector = ETF + Finviz constituents. Trend = keywords (Hermes discovers → stages). Sector/trend hits stage for one-tap.</div>
       </div>
 
       {/* Directives + hits + Promote */}
       <div style={card}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Directives</div>
-        {directives.length === 0 ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>No directives yet — add one above.</div> :
+        <div style={{ fontSize: TYPE.base, fontWeight: 800, color: BB.text0, marginBottom: 8 }}>Directives</div>
+        {directives.length === 0 ? <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>No directives yet — add one above.</div> :
           directives.map((d: any) => {
             const dhits = hits.filter((h: any) => h.directive_id === d.id)
+            const rail = d.status === 'paused' ? RAIL.attention : d.status === 'active' ? RAIL.favorable : RAIL.neutral
             return (
-              <div key={d.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+              <div key={d.id} style={{ padding: '8px 6px', borderBottom: `1px solid ${BB.border}`, borderLeft: `3px solid ${rail}` }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <Pill text={d.kind} color="#a855f7" />
-                  <span style={{ fontWeight: 600, color: 'var(--text0)', fontSize: 12 }}>{d.label}</span>
-                  <Pill text={d.status} color={d.status === 'active' ? '#22c55e' : d.status === 'paused' ? '#f59e0b' : 'var(--text3)'} tip={d.status === 'paused' ? 'Auto-paused (cold) — advisory; operator un-pause' : undefined} />
-                  {d.gap_type === 'rotate_gap' && <Pill text={`rotate-gap${d.sleeve ? ' · ' + d.sleeve : ''}`} color="#fb923c" tip={`Held position flagged for rotation review — seek ${d.sleeve || 'sleeve'} replacement (advisory). via ${d.created_by || 'operator'}`} />}
-                  <span style={{ fontSize: 9, color: 'var(--text3)' }}>TA {d.trade_ai_enabled ? '✓' : '✗'} · Hermes {d.hermes_enabled ? '✓' : '✗'}</span>
+                  <Chip kind="metric">{d.kind}</Chip>
+                  <span style={{ fontWeight: 700, color: BB.text0, fontSize: TYPE.base }}>{d.label}</span>
+                  <Chip kind="state" tone={d.status === 'active' ? 'green' : d.status === 'paused' ? 'amber' : 'slate'}
+                        title={d.status === 'paused' ? 'Auto-paused (cold) — advisory; operator un-pause' : undefined}>{d.status}</Chip>
+                  {d.gap_type === 'rotate_gap' && <Chip kind="state" tone="amber" title={`Held position flagged for rotation review — seek ${d.sleeve || 'sleeve'} replacement (advisory). via ${d.created_by || 'operator'}`}>{`ROTATE-GAP${d.sleeve ? ' · ' + d.sleeve : ''}`}</Chip>}
+                  <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>TA {d.trade_ai_enabled ? '✓' : '✗'} · Hermes {d.hermes_enabled ? '✓' : '✗'}</span>
                 </div>
                 {dhits.length > 0 && (
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
                     {dhits.slice(0, 14).map((h: any, i: number) => (
-                      <span key={i} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: 10, padding: '2px 6px', borderRadius: 5, background: 'var(--bg2)' }}>
-                        <b style={{ fontFamily: 'monospace', color: 'var(--text0)', cursor: 'pointer' }}
+                      <span key={i} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: TYPE.xs, padding: '2px 6px', borderRadius: 2, background: BB.bgShift }}>
+                        <b style={{ ...numStyle, color: BB.text0, cursor: 'pointer' }}
                           onClick={() => onDrill({ title: `${h.symbol} — provenance`, subtitle: d.label, endpoint: `/api/v2/watch/provenance/${h.symbol}`, rows: [h] })}>{h.symbol}</b>
-                        <Pill text={h.surfaced_by} color={originColor(h.surfaced_by)} />
-                        {h.divergence && <Pill text={h.divergence} color={divColor(h.divergence)} tip="internal vs Street" />}
-                        <span style={{ fontSize: 8, color: 'var(--text3)' }}>{(h.promotion_status || '').replace(/_/g, ' ').toLowerCase()}</span>
+                        <Chip kind="metric">{h.surfaced_by}</Chip>
+                        {h.divergence && <Chip kind="state" tone={divTone(h.divergence)} title="internal vs Street">{h.divergence}</Chip>}
+                        <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>{(h.promotion_status || '').replace(/_/g, ' ').toLowerCase()}</span>
                         {h.promotion_status === 'STAGED_FOR_REVIEW' && (
                           <button onClick={() => promote(h.symbol, d.id)} disabled={busy}
-                            style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 3, border: 'none', cursor: busy ? 'wait' : 'pointer', background: '#22c55e', color: '#fff' }}>Promote</button>
+                            style={{ ...terminalButton('primary'), cursor: busy ? 'wait' : 'pointer' }}>Promote</button>
                         )}
                       </span>
                     ))}
@@ -170,15 +191,15 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
       {/* Unified watchpool */}
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Watchpool</span>
+          <span style={{ fontSize: TYPE.base, fontWeight: 800, color: BB.text0 }}>Watchpool</span>
           {/* clickable status row — each chip filters the pool; 'all' resets */}
           {([['all', allRows.length]] as any[]).concat(Object.entries(wp?.by_status ?? {})).map(([k, v]: any) => {
             const active = fStatus.toUpperCase() === String(k).toUpperCase()
             return (
               <button key={k} onClick={() => setFStatus(k)} title={`show ${String(k).toLowerCase()}`}
-                style={{ fontSize: 9.5, fontWeight: active ? 800 : 600, padding: '3px 9px', borderRadius: 5, cursor: 'pointer',
-                  background: active ? 'rgba(96,165,250,.22)' : 'var(--bg2)', color: active ? '#93c5fd' : 'var(--text2)',
-                  border: `1px solid ${active ? '#60a5fa' : 'var(--border)'}` }}>
+                style={{ fontSize: TYPE.xs, fontWeight: active ? 800 : 600, padding: '3px 9px', borderRadius: 2, cursor: 'pointer',
+                  background: active ? BB.amberDim : BB.bgShift, color: active ? BB.amber : BB.text2,
+                  border: `1px solid ${active ? BB.amber : BB.border}` }}>
                 {v} {String(k).toLowerCase()}
               </button>
             )
@@ -186,26 +207,30 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
           <span style={{ flex: 1 }} />
           {pager}
         </div>
-        {pool.length === 0 ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>Watchpool empty.</div> : (<>
-          <div style={{ display: 'flex', fontSize: 9, color: 'var(--text3)', padding: '0 6px 4px', textTransform: 'uppercase', letterSpacing: 0.3 }}>
-            <span style={{ flex: '0 0 64px' }}>Symbol</span><span style={{ flex: '0 0 160px' }}>Strategy</span><span style={{ flex: '0 0 96px' }}>Bucket</span><span style={{ flex: '0 0 70px' }}>Status</span><span style={{ flex: '1 1 auto' }}>Origin</span>
+        {pool.length === 0 ? <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>Watchpool empty.</div> : (<>
+          <div style={{ display: 'flex', fontSize: TYPE.xs, color: BB.text3, padding: '0 6px 4px', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+            <span style={{ flex: '0 0 64px' }}>Symbol</span><span style={{ flex: '0 0 160px' }}>Strategy</span><span style={{ flex: '0 0 96px' }}>Bucket</span><span style={{ flex: '0 0 110px' }}>Status</span><span style={{ flex: '1 1 auto' }}>Origin</span>
           </div>
-          {pagePool.map((r: any) => (
+          <div ref={listRef}>
+          {pagePool.map((r: any, ri: number) => (
             <div key={r.id} onClick={() => onDrill({ title: `${r.symbol} — provenance`, subtitle: `${r.strategy_id} · ${r.bucket}`, endpoint: `/api/v2/watch/provenance/${r.symbol}`, rows: [r] })}
-              style={{ display: 'flex', alignItems: 'center', padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
-              <span style={{ flex: '0 0 64px', fontWeight: 600, fontFamily: 'monospace', color: 'var(--text0)' }}>{r.symbol}</span>
-              <span style={{ flex: '0 0 160px', color: 'var(--text2)', fontSize: 10 }}>{r.strategy_id}</span>
-              <span style={{ flex: '0 0 96px' }}><Pill text={r.bucket || '?'} color="#60a5fa" /></span>
-              <span title={humanStatus(r.current_status).tip} style={{ flex: '0 0 110px', color: 'var(--text2)', fontSize: 10 }}>{humanStatus(r.current_status).label}</span>
+              style={{ display: 'flex', alignItems: 'center', padding: '4px 6px', borderBottom: `1px solid ${BB.borderHair}`,
+                       borderLeft: `3px solid ${poolRail(r.current_status)}`, cursor: 'pointer', fontSize: TYPE.sm,
+                       ...(ri === focusIdx ? { background: BB.bgShift } : {}), ...focusStyle(ri === focusIdx) }}>
+              <span style={{ ...numStyle, flex: '0 0 64px', fontWeight: 700, color: BB.text0 }}>{r.symbol}</span>
+              <span style={{ flex: '0 0 160px', color: BB.text2, fontSize: TYPE.xs }}>{r.strategy_id}</span>
+              <span style={{ flex: '0 0 96px' }}><Chip kind="metric">{r.bucket || '?'}</Chip></span>
+              <span title={humanStatus(r.current_status).tip} style={{ flex: '0 0 110px', color: BB.text2, fontSize: TYPE.xs }}>{humanStatus(r.current_status).label}</span>
               <span style={{ flex: '1 1 auto', display: 'flex', gap: 5, alignItems: 'center' }}>
-                <Pill text={r.origin_system || 'screener'} color={originColor(r.origin_system)} />
-                {r.directive_label && <span style={{ fontSize: 9, color: '#a855f7' }}>◆ {r.directive_label}</span>}
+                <Chip kind="metric">{r.origin_system || 'screener'}</Chip>
+                {r.directive_label && <span style={{ fontSize: TYPE.xs, color: T.extIntel.hermes }}>◆ {r.directive_label}</span>}
               </span>
             </div>
           ))}
+          </div>
           {pageCount > 1 && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>{pager}</div>}
         </>)}
-        <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Click a row for full provenance (origin · tier · Street consensus · divergence). Advisory — promotion is gated; no execution.</div>
+        <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 8 }}>Click a row for full provenance (origin · tier · Street consensus · divergence). Keys: j/k move · Enter opens. Advisory — promotion is gated; no execution.</div>
       </div>
     </div>
   )

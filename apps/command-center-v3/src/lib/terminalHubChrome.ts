@@ -8,7 +8,7 @@ export function hubTitle(color?: string): CSSProperties {
 
 export function hubSubtitle(_terminal = true): CSSProperties {
   return {
-    fontSize: 9,
+    fontSize: 10,
     color: BB.text3,
     marginTop: 2,
     letterSpacing: '.04em',
@@ -18,7 +18,7 @@ export function hubSubtitle(_terminal = true): CSSProperties {
 export function hubTab(active: boolean, _terminal = true): CSSProperties {
   return {
     padding: '3px 10px',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: active ? 800 : 600,
     borderRadius: 2,
     border: `1px solid ${active ? BB.amber : BB.border}`,
@@ -40,7 +40,7 @@ export function hubStrip(_terminal = true): CSSProperties {
     border: `1px solid ${BB.border}`,
     borderRadius: 2,
     padding: '5px 10px',
-    fontSize: 9,
+    fontSize: 10,
     color: BB.text2,
     lineHeight: 1.4,
   }
@@ -48,7 +48,7 @@ export function hubStrip(_terminal = true): CSSProperties {
 
 export function hubFilterSelect(_terminal = true): CSSProperties {
   return {
-    fontSize: 9,
+    fontSize: 10,
     padding: '3px 8px',
     background: BB.bgShift,
     border: `1px solid ${BB.border}`,
@@ -60,7 +60,7 @@ export function hubFilterSelect(_terminal = true): CSSProperties {
 
 export function hubKpiChip(active: boolean, _terminal = true): CSSProperties {
   return {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: 800,
     padding: '2px 8px',
     borderRadius: 2,

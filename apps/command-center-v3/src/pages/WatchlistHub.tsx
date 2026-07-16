@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { marketAwareStale } from '../lib/watchlistCardV4'
 import { isExtremeVolItem } from '../lib/watchlistVolatility'
 import { useApi, useConnectionHealth } from '../hooks/useApi'
+import { BB, T, focusStyle } from '../lib/watchTokens'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useProAnalystMap } from '../components/ProAnalystPill'
 import DiscoveryPanel from '../components/DiscoveryPanel'
@@ -14,18 +15,18 @@ import { parseProposalAccounts, parseSizingPolicy, type RiskPct } from '../lib/w
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean; lane?: 'screener_finds' }
 
-const TEXT0 = '#f8fafc'
-const TEXT1 = '#dbeafe'
-const TEXT2 = '#cbd5e1'
-const MUTED = '#94a3b8'
-const DIM = '#64748b'
-const GREEN = '#22c55e'
-const RED = '#ef4444'
-const AMBER = '#f59e0b'
-const BLUE = '#60a5fa'
-const PURPLE = '#a855f7'
-const panel: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }
-const SEL: React.CSSProperties = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: TEXT0 }
+const TEXT0 = BB.text0
+const TEXT1 = BB.text1
+const TEXT2 = BB.text2
+const MUTED = BB.text3
+const DIM = BB.text3
+const GREEN = BB.green
+const RED = BB.red
+const AMBER = BB.orange
+const BLUE = T.link
+const PURPLE = T.extIntel.hermes
+const panel: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 2, padding: 16 }
+const SEL: React.CSSProperties = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 2, color: TEXT0 }
 
 
 // A directive's IDENTITY: a ticker directive is identified by its SYMBOL (label is just its list
@@ -40,7 +41,7 @@ const dirList = (d: any) => {
 }
 
 const Pill = ({ text, color, tip, strong = false }: any) => (
-  <span title={tip} style={{ fontSize: strong ? 10.5 : 9.5, fontWeight: strong ? 800 : 700, padding: strong ? '3px 8px' : '2px 7px', borderRadius: 5, background: color + '22', color, border: `1px solid ${color}66`, whiteSpace: 'nowrap', cursor: tip ? 'help' : 'default' }}>{text}</span>
+  <span title={tip} style={{ fontSize: strong ? 10.5 : 9.5, fontWeight: strong ? 800 : 700, padding: strong ? '3px 8px' : '2px 7px', borderRadius: 2, background: color + '22', color, border: `1px solid ${color}66`, whiteSpace: 'nowrap', cursor: tip ? 'help' : 'default' }}>{text}</span>
 )
 
 const ORIGIN_OPTS = [['all', 'All'], ['screener_finds', 'Screener Finds (buy-side)'], ['trade_ai_screener', 'Screener'], ['agent_discovery', 'AI-discovered'], ['operator', 'Operator-directive'], ['hermes', 'Hermes'], ['portfolio', 'Portfolio']]
@@ -371,6 +372,37 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   const curPage = Math.min(page, pageCount - 1)
   const pageItems = visible.slice(curPage * PER_PAGE, (curPage + 1) * PER_PAGE)
 
+  // v4 (A5): shared alert-composer flow — used by the 🔔 button and the `a` key
+  const armAlert = useCallback(async (it: any) => {
+    const cond = window.prompt(`Alert for ${it.symbol} — condition (price_cross_above | price_cross_below | rsi_above | rsi_below):`, 'price_cross_below')
+    if (!cond) return
+    const th = window.prompt('Threshold:', cond.startsWith('rsi') ? '40' : String(it.last_price ?? it.price ?? ''))
+    if (!th) return
+    const r = await fetch('/api/v2/watch/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: it.symbol, condition_type: cond.trim(), threshold: Number(th) }) }).then(x => x.json())
+    setActionToast((r?.ok ?? r?.data?.ok) ? `Alert armed — ${it.symbol} ${cond} ${th}` : `Alert failed: ${r?.error || r?.data?.error}`)
+  }, [])
+
+  // v4 (A5): keyboard nav — j/k focus, Enter expands the focused card's ensemble,
+  // s stars, a arms an alert. (x/hide: watchlist rows have no hide action — flagged in closeout.)
+  const [kbIdx, setKbIdx] = useState(-1)
+  useEffect(() => { setKbIdx(-1) }, [curPage, visible.length])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement
+      if (tgt && ['INPUT', 'TEXTAREA', 'SELECT'].includes(tgt.tagName)) return
+      if (!pageItems.length) return
+      if (e.key === 'j') setKbIdx(i => Math.min(pageItems.length - 1, i + 1))
+      else if (e.key === 'k') setKbIdx(i => Math.max(0, i - 1))
+      else if (e.key === 'Enter' && kbIdx >= 0 && pageItems[kbIdx]) { const it = pageItems[kbIdx]; setEnsOpen(o => ({ ...o, [it.id]: !o[it.id] })) }
+      else if (e.key === 's' && kbIdx >= 0 && pageItems[kbIdx]) toggleStar(pageItems[kbIdx])
+      else if (e.key === 'a' && kbIdx >= 0 && pageItems[kbIdx]) void armAlert(pageItems[kbIdx])
+      else return
+      e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pageItems, kbIdx, armAlert])   // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-refresh STALE cards on the current page (market-aware; once per symbol per session).
   // One at a time — each refresh is heavy; parallel refreshes used to wedge the API thread pool.
   useEffect(() => {
@@ -404,8 +436,8 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: embedded ? 0 : 'auto' }}>
-          <button onClick={runChatgptTop20} disabled={curateRunning} title="Run ChatGPT curation on the top-20 ranked names." style={{ padding: embedded ? '6px 10px' : '9px 15px', fontSize: embedded ? 10 : 12, fontWeight: 800, borderRadius: 8, border: '1px solid #10a37f', cursor: curateRunning ? 'default' : 'pointer', background: curateRunning ? 'rgba(16,163,127,.15)' : 'rgba(16,163,127,.12)', color: '#34d399', opacity: curateRunning ? 0.7 : 1 }}>{curateRunning ? `✦ ChatGPT… ${curateStatus?.chatgpt_curated_top20 ?? 0}/20` : '✦ ChatGPT Top 20'}</button>
-          <button onClick={() => setShowAdd(true)} style={{ padding: embedded ? '6px 12px' : '9px 17px', fontSize: embedded ? 10 : 12, fontWeight: 800, borderRadius: 8, border: 'none', cursor: 'pointer', background: PURPLE, color: '#fff' }}>+ Add Watch</button>
+          <button onClick={runChatgptTop20} disabled={curateRunning} title="Run ChatGPT curation on the top-20 ranked names." style={{ padding: embedded ? '6px 10px' : '9px 15px', fontSize: embedded ? 10 : 12, fontWeight: 800, borderRadius: 2, border: `1px solid ${T.extIntel.gpt}`, cursor: curateRunning ? 'default' : 'pointer', background: curateRunning ? 'rgba(16, 163, 127, 0.15)' : 'rgba(16, 163, 127, 0.12)', color: BB.green, opacity: curateRunning ? 0.7 : 1 }}>{curateRunning ? `✦ ChatGPT… ${curateStatus?.chatgpt_curated_top20 ?? 0}/20` : '✦ ChatGPT Top 20'}</button>
+          <button onClick={() => setShowAdd(true)} style={{ padding: embedded ? '6px 12px' : '9px 17px', fontSize: embedded ? 10 : 12, fontWeight: 800, borderRadius: 2, border: 'none', cursor: 'pointer', background: PURPLE, color: BB.text0 }}>+ Add Watch</button>
         </div>
       </div>
 
@@ -438,11 +470,11 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
             const renderDir = (d: any) => {
               const nHits = d.hit_count ?? (d.hit_symbols ?? []).length; const nStaged = d.staged_count ?? 0
               const lastHit = d.last_hit_at ? String(d.last_hit_at).slice(0, 10) : 'never'
-              return <div key={d.id} onClick={() => setFDir(fDir === String(d.id) ? 'all' : String(d.id))} title={fDir === String(d.id) ? 'click to clear this directive filter' : 'filter list to this directive'} style={{ padding: '7px 11px', background: 'var(--bg2)', borderRadius: 9, cursor: 'pointer', border: fDir === String(d.id) ? `1px solid ${PURPLE}` : '1px solid var(--border)' }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Pill text={d.kind} color={PURPLE} /><span style={{ fontSize: 12, fontWeight: 800, color: TEXT0 }}>{dirName(d)}</span>{dirList(d) && <Pill text={`☰ ${dirList(d)}`} color="#22d3ee" tip="list membership" />}<Pill text={d.status} color={d.status === 'active' ? GREEN : d.status === 'paused' ? AMBER : MUTED} />{(d.aliases_n ?? 0) > 0 && <Pill text={`${d.aliases_n} alias`} color="#a78bfa" tip="near-dup labels absorbed by the family gate" />}</div><div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{nHits} hits · {nStaged} staged · 7d {d.hits_7d ?? 0} · 30d {d.hits_30d ?? 0} · age {d.age_days ?? '—'}d · last {lastHit}{d.alpha_21d_median != null ? ` · 21d α ${d.alpha_21d_median > 0 ? '+' : ''}${d.alpha_21d_median}% (n=${d.alpha_n})` : ' · α n/a'}{d.conv_pct != null ? ` · conv ${d.conv_pct}%` : ''} <span style={{ fontFamily: 'monospace', color: PURPLE }} title="hits per week, last 8 weeks">{spark(d.spark_8w)}</span></div><div style={{ display: 'flex', gap: 5, marginTop: 4 }} onClick={e => e.stopPropagation()}>{d.status === 'active' && <button onClick={() => dirAction(d.id, 'pause')} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>Pause</button>}{(d.status === 'paused' || d.status === 'proposed') && <button onClick={() => dirAction(d.id, 'resume')} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: GREEN, cursor: 'pointer' }}>{d.status === 'proposed' ? 'Promote' : 'Resume'}</button>}{d.status !== 'archived' && <button onClick={() => dirAction(d.id, 'archive')} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>Archive</button>}{d.kind === 'trend' && d.status === 'active' && <button onClick={() => { const tid = window.prompt(`Merge #${d.id} '${dirName(d)}' into directive id:`); if (tid) dirAction(d.id, 'merge_into', Number(tid)) }} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: '#a78bfa', cursor: 'pointer' }}>Merge…</button>}</div></div>
+              return <div key={d.id} onClick={() => setFDir(fDir === String(d.id) ? 'all' : String(d.id))} title={fDir === String(d.id) ? 'click to clear this directive filter' : 'filter list to this directive'} style={{ padding: '7px 11px', background: 'var(--bg2)', borderRadius: 2, cursor: 'pointer', border: fDir === String(d.id) ? `1px solid ${PURPLE}` : '1px solid var(--border)' }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Pill text={d.kind} color={PURPLE} /><span style={{ fontSize: 12, fontWeight: 800, color: TEXT0 }}>{dirName(d)}</span>{dirList(d) && <Pill text={`☰ ${dirList(d)}`} color={T.link} tip="list membership" />}<Pill text={d.status} color={d.status === 'active' ? GREEN : d.status === 'paused' ? AMBER : MUTED} />{(d.aliases_n ?? 0) > 0 && <Pill text={`${d.aliases_n} alias`} color={T.extIntel.hermes} tip="near-dup labels absorbed by the family gate" />}</div><div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{nHits} hits · {nStaged} staged · 7d {d.hits_7d ?? 0} · 30d {d.hits_30d ?? 0} · age {d.age_days ?? '—'}d · last {lastHit}{d.alpha_21d_median != null ? ` · 21d α ${d.alpha_21d_median > 0 ? '+' : ''}${d.alpha_21d_median}% (n=${d.alpha_n})` : ' · α n/a'}{d.conv_pct != null ? ` · conv ${d.conv_pct}%` : ''} <span style={{ fontFamily: BB.mono, fontVariantNumeric: 'tabular-nums', color: PURPLE }} title="hits per week, last 8 weeks">{spark(d.spark_8w)}</span></div><div style={{ display: 'flex', gap: 5, marginTop: 4 }} onClick={e => e.stopPropagation()}>{d.status === 'active' && <button onClick={() => dirAction(d.id, 'pause')} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 2, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>Pause</button>}{(d.status === 'paused' || d.status === 'proposed') && <button onClick={() => dirAction(d.id, 'resume')} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 2, border: '1px solid var(--border)', background: 'transparent', color: GREEN, cursor: 'pointer' }}>{d.status === 'proposed' ? 'Promote' : 'Resume'}</button>}{d.status !== 'archived' && <button onClick={() => dirAction(d.id, 'archive')} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 2, border: '1px solid var(--border)', background: 'transparent', color: MUTED, cursor: 'pointer' }}>Archive</button>}{d.kind === 'trend' && d.status === 'active' && <button onClick={() => { const tid = window.prompt(`Merge #${d.id} '${dirName(d)}' into directive id:`); if (tid) dirAction(d.id, 'merge_into', Number(tid)) }} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 2, border: '1px solid var(--border)', background: 'transparent', color: T.extIntel.hermes, cursor: 'pointer' }}>Merge…</button>}</div></div>
             }
             return <>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                <button onClick={() => setDirSort(s => s === 'activity' ? 'needs_review' : 'activity')} style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }}>
+                <button onClick={() => setDirSort(s => s === 'activity' ? 'needs_review' : 'activity')} style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 2, border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED, cursor: 'pointer' }}>
                   Sort: {dirSort === 'activity' ? 'hits + staged' : 'needs review (worst α, then coldest)'}
                 </button>
                 {proposedDirs.length > 0 && <span style={{ fontSize: 10.5, color: AMBER }}>Proposed directives ({proposedDirs.length}) — over the {'{'}150{'}'} trend cap; Promote to activate</span>}
@@ -452,7 +484,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
               {actionableDirs.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>No active directives with hits yet — named tickers and surfacing sector/trend themes will appear here.</div>}
               {dormantDirs.length > 0 && (
                 <div style={{ marginTop: 10 }}>
-                  <button onClick={() => setShowDormantDirs(v => !v)} style={{ fontSize: 10.5, fontWeight: 700, padding: '5px 11px', borderRadius: 7, cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED }}>
+                  <button onClick={() => setShowDormantDirs(v => !v)} style={{ fontSize: 10.5, fontWeight: 700, padding: '5px 11px', borderRadius: 2, cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED }}>
                     {showDormantDirs ? '▲ Hide' : '▾ Show'} {dormantDirs.length} dormant directive{dormantDirs.length === 1 ? '' : 's'} <span style={{ color: DIM }}>· 0 hits / archived research-topics</span>
                   </button>
                   {showDormantDirs && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, opacity: 0.7 }}>{dormantDirs.map(renderDir)}</div>}
@@ -465,11 +497,11 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
 
       <div style={{ ...panel, marginBottom: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Status<select style={SEL} value={fStatus} onChange={e => setFStatus(e.target.value)}><option value="all">Active + Researched</option><option value="active">Active only</option><option value="researched">Researched only</option></select></label>
-        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Position<button onClick={() => setFHeld(h => !h)} title="show only currently-held positions (the ● held badge)" style={{ fontSize: 11, padding: '6px 11px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fHeld ? '#ffa726' : 'var(--border)'}`, background: fHeld ? 'rgba(255,167,38,.14)' : 'var(--bg2)', color: fHeld ? '#ffa726' : MUTED, fontWeight: fHeld ? 800 : 500, whiteSpace: 'nowrap' }}>● Held only{heldCount ? ` (${heldCount})` : ''}</button></label>
-        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Starred<button onClick={() => setFStarred(s => !s)} title="show only operator-starred symbols (★) — they always show first and refresh faster" style={{ fontSize: 11, padding: '6px 11px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fStarred ? '#fbbf24' : 'var(--border)'}`, background: fStarred ? 'rgba(251,191,36,.14)' : 'var(--bg2)', color: fStarred ? '#fbbf24' : MUTED, fontWeight: fStarred ? 800 : 500, whiteSpace: 'nowrap' }}>★ Starred only{starredCount ? ` (${starredCount})` : ''}</button></label>
+        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Position<button onClick={() => setFHeld(h => !h)} title="show only currently-held positions (the ● held badge)" style={{ fontSize: 11, padding: '6px 11px', borderRadius: 2, cursor: 'pointer', border: `1px solid ${fHeld ? BB.amber : 'var(--border)'}`, background: fHeld ? 'rgba(255, 176, 0, 0.14)' : 'var(--bg2)', color: fHeld ? BB.amber : MUTED, fontWeight: fHeld ? 800 : 500, whiteSpace: 'nowrap' }}>● Held only{heldCount ? ` (${heldCount})` : ''}</button></label>
+        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Starred<button onClick={() => setFStarred(s => !s)} title="show only operator-starred symbols (★) — they always show first and refresh faster" style={{ fontSize: 11, padding: '6px 11px', borderRadius: 2, cursor: 'pointer', border: `1px solid ${fStarred ? BB.amber : 'var(--border)'}`, background: fStarred ? 'rgba(255, 176, 0, 0.14)' : 'var(--bg2)', color: fStarred ? BB.amber : MUTED, fontWeight: fStarred ? 800 : 500, whiteSpace: 'nowrap' }}>★ Starred only{starredCount ? ` (${starredCount})` : ''}</button></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Origin<select style={SEL} value={fOrigin} onChange={e => setFOrigin(e.target.value)}>{ORIGIN_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Advisory band<select style={SEL} value={fBand} onChange={e => setFBand(e.target.value)}><option value="all">All</option><option value="any">With advisory</option><option value="favorable">Favorable ({favorableN})</option><option value="caution">Caution ({cautionN})</option><option value="none">None</option></select></label>
-        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Analyst rating<span style={{ display: 'flex', gap: 5 }}>{[['all', 'All', MUTED], ['strong_buy', 'Strong Buy', GREEN], ['buy_plus', 'Buy+', '#86efac'], ['hold', 'Hold', AMBER], ['no_coverage', 'No coverage', MUTED]].map(([k, lbl, c]) => <button key={k} onClick={() => setFRating(k as string)} style={{ fontSize: 10, padding: '5px 10px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${fRating === k ? c : 'var(--border)'}`, background: fRating === k ? `color-mix(in srgb, ${c} 18%, transparent)` : 'var(--bg2)', color: fRating === k ? c as string : MUTED, fontWeight: fRating === k ? 800 : 500 }}>{lbl}</button>)}</span></label>
+        <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Analyst rating<span style={{ display: 'flex', gap: 5 }}>{[['all', 'All', MUTED], ['strong_buy', 'Strong Buy', GREEN], ['buy_plus', 'Buy+', BB.green], ['hold', 'Hold', AMBER], ['no_coverage', 'No coverage', MUTED]].map(([k, lbl, c]) => <button key={k} onClick={() => setFRating(k as string)} style={{ fontSize: 10, padding: '5px 10px', borderRadius: 2, cursor: 'pointer', border: `1px solid ${fRating === k ? c : 'var(--border)'}`, background: fRating === k ? `color-mix(in srgb, ${c} 18%, transparent)` : 'var(--bg2)', color: fRating === k ? c as string : MUTED, fontWeight: fRating === k ? 800 : 500 }}>{lbl}</button>)}</span></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>CIO view<select style={SEL} value={fCio} onChange={e => setFCio(e.target.value)}><option value="all">All</option><option value="buy_side">Buy-side (BUY/ADD/pullback)</option><option value="BUY">BUY</option><option value="STRONG_BUY">STRONG_BUY</option><option value="ADD">ADD</option><option value="ADD_ON_PULLBACK">ADD_ON_PULLBACK</option><option value="HOLD">HOLD</option><option value="RESEARCH_MORE">RESEARCH_MORE</option><option value="TRIM">TRIM</option><option value="avoid_side">Avoid-side (AVOID/IGNORE/SELL/TRIM)</option><option value="AVOID">AVOID</option><option value="IGNORE">IGNORE</option><option value="none">No CIO view</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>List<select style={SEL} value={fList} onChange={e => setFList(e.target.value)}><option value="all">All lists</option>{listOpts.map(l => <option key={l} value={l}>{l}</option>)}<option value="__none">— no list —</option></select></label>
         <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>Sector<select style={SEL} value={fSector} onChange={e => setFSector(e.target.value)}><option value="all">All sectors</option>{sectorOpts.map(s => <option key={s} value={s}>{s}</option>)}</select></label>
@@ -480,16 +512,16 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
         <div style={{ marginLeft: 'auto', fontSize: 11, color: TEXT2 }}>{visible.length} / {items.length} shown</div>
       </div>
 
-      <div style={{ fontSize: 11, color: AMBER, marginBottom: 12, padding: '9px 13px', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.28)', borderRadius: 7 }}>{adv?.disclaimer ?? 'Advisory only — current technical posture vs the post-trade prior. Never gates promotion/scoring.'}</div>
+      <div style={{ fontSize: 11, color: AMBER, marginBottom: 12, padding: '9px 13px', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.28)', borderRadius: 2 }}>{adv?.disclaimer ?? 'Advisory only — current technical posture vs the post-trade prior. Never gates promotion/scoring.'}</div>
       {screenerLane && symLookup && visible[0] && !visible[0].screener_pinned && (
-        <div style={{ fontSize: 11, color: AMBER, marginBottom: 10, padding: '8px 12px', background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 7 }}>
+        <div style={{ fontSize: 11, color: AMBER, marginBottom: 10, padding: '8px 12px', background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 2 }}>
           <b style={{ color: TEXT0 }}>{symLookup}</b> graduated out of active Screener Finds — CIO is now{' '}
           <b>{String(visible[0].synthesis_recommendation || visible[0].latest_recommendation || 'non-buy-side').replace(/_/g, ' ')}</b>
           {' '}(lane requires BUY / STRONG_BUY / ADD / ADD_ON_PULLBACK). Showing direct lookup card.
         </div>
       )}
       {actionToast && (
-        <div style={{ fontSize: 11, color: GREEN, marginBottom: 10, padding: '8px 12px', background: 'rgba(34,197,94,.1)', border: '1px solid rgba(34,197,94,.25)', borderRadius: 7 }}>
+        <div style={{ fontSize: 11, color: GREEN, marginBottom: 10, padding: '8px 12px', background: 'rgba(34,197,94,.1)', border: '1px solid rgba(34,197,94,.25)', borderRadius: 2 }}>
           {actionToast}
           {actionToast.includes('proposal') && (
             <a href="/v3/trading?tab=Proposals" style={{ marginLeft: 10, color: BLUE, fontWeight: 700 }}>Open Proposals →</a>
@@ -502,7 +534,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: 15, fontWeight: 900, color: TEXT0 }}>Watchlist ({visible.length})</div>
             <span title="Security Card v4 — live on all desk surfaces (watchlist, proposals, positions, options)"
-                  style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 6, color: '#2dd4bf', background: 'rgba(45,212,191,.12)', border: '1px solid rgba(45,212,191,.35)' }}>
+                  style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 2, color: T.link, background: `${T.link}22`, border: `1px solid ${T.link}55` }}>
               Card v4 · live
             </span>
           </div>
@@ -548,25 +580,19 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
             {pageItems.map((it: any) => {
               const symKey = String(it.symbol).toUpperCase()
               const outcome = outMap[symKey]
+              const kbFocused = pageItems[kbIdx]?.id === it.id
               return (
-                <div key={it.id} style={{ minWidth: 0, width: '100%' }}>
+                <div key={it.id} ref={el => { if (kbFocused && el) el.scrollIntoView({ block: 'nearest' }) }}
+                     style={{ minWidth: 0, width: '100%', ...focusStyle(kbFocused) }}>
                 {/* Watch Desk v3 (WS-C): deterministic context strip — reuses server _hermes_setup; not a quality score */}
                 {it.setup_context && (
                   <div title={it.setup_context.label} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 10.5, color: 'var(--text3)', padding: '2px 4px' }}>
-                    <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#7dd3fc' }}>{it.setup_context.glyphs}</span>
+                    <span style={{ fontFamily: BB.mono, fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: T.link }}>{it.setup_context.glyphs}</span>
                     <span style={{ fontWeight: 700 }}>{it.setup_context.type}</span>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>· {it.setup_context.hint}</span>
                     <button title="Arm an alert on this symbol (WS-B): price/RSI threshold, evaluated every 20 min RTH"
-                      onClick={async (e) => {
-                        e.stopPropagation()
-                        const cond = window.prompt(`Alert for ${it.symbol} — condition (price_cross_above | price_cross_below | rsi_above | rsi_below):`, 'price_cross_below')
-                        if (!cond) return
-                        const th = window.prompt('Threshold:', cond.startsWith('rsi') ? '40' : String(it.last_price ?? it.price ?? ''))
-                        if (!th) return
-                        const r = await fetch('/api/v2/watch/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: it.symbol, condition_type: cond.trim(), threshold: Number(th) }) }).then(x => x.json())
-                        alert((r?.ok ?? r?.data?.ok) ? `🔔 armed: ${it.symbol} ${cond} ${th}` : `failed: ${r?.error || r?.data?.error}`)
-                      }}
-                      style={{ marginLeft: 'auto', fontSize: 11, border: 'none', background: 'transparent', color: '#7dd3fc', cursor: 'pointer' }}>🔔</button>
+                      onClick={(e) => { e.stopPropagation(); void armAlert(it) }}
+                      style={{ marginLeft: 'auto', fontSize: 11, border: 'none', background: 'transparent', color: T.link, cursor: 'pointer' }}>🔔</button>
                   </div>
                 )}
                 <WatchlistCardV4
@@ -608,7 +634,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
             <button onClick={() => { setPage(p => Math.min(pageCount - 1, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }} disabled={curPage >= pageCount - 1} style={{ ...SEL, cursor: curPage >= pageCount - 1 ? 'default' : 'pointer', opacity: curPage >= pageCount - 1 ? 0.4 : 1 }}>Next ›</button>
           </div>
         )}
-        <div style={{ fontSize: 9.5, color: MUTED, marginTop: 10 }}>Decision-first cards — CIO view, confidence, R:R, L/S/target, model, data-quality flags, and reasoning visible by default. Street analyst shown with divergence when CIO disagrees. Advisory-only — never places trades.</div>
+        <div style={{ fontSize: 10, color: MUTED, marginTop: 10 }}>Decision-first cards — CIO view, confidence, R:R, L/S/target, model, data-quality flags, and reasoning visible by default. Street analyst shown with divergence when CIO disagrees. Advisory-only — never places trades.</div>
       </div>
 
       {showAdd && <AddWatchModal onClose={() => setShowAdd(false)} onCreated={() => { refetchWd(); refetchWl() }} paMap={paMap} lists={listOpts} />}
@@ -645,7 +671,7 @@ function AddWatchModal({ onClose, onCreated, paMap, lists = [] }: { onClose: () 
   const selSector = sectors.find(s => s.sector === sector)
   const div = (paMap?.[(symbol || '').toUpperCase()]?.divergence) as string | undefined
   const governor = kind === 'ticker' ? `Operator-named ticker → evaluated immediately${div ? ` · current Street divergence: ${div}` : ''}` : 'Resolved symbols stage for one-tap promote if qualified'
-  const fld: React.CSSProperties = { fontSize: 11, padding: '7px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: TEXT0, width: '100%' }
+  const fld: React.CSSProperties = { fontSize: 11, padding: '7px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 2, color: TEXT0, width: '100%' }
   const lbl: React.CSSProperties = { fontSize: 10, color: MUTED, display: 'block', marginBottom: 4 }
   const save = async () => {
     setBusy(true); setMsg(null)
@@ -663,5 +689,5 @@ function AddWatchModal({ onClose, onCreated, paMap, lists = [] }: { onClose: () 
     setBusy(false)
   }
   const canSave = kind === 'ticker' ? !!symbol.trim() : kind === 'sector' ? !!sector : !!keywords.trim()
-  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.58)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}><div onClick={e => e.stopPropagation()} style={{ ...panel, width: 540, maxWidth: '92vw', maxHeight: '88vh', overflowY: 'auto' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><div style={{ fontSize: 16, fontWeight: 900, color: TEXT0 }}>Add Watch Directive</div><button onClick={onClose} style={{ background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 16 }}>x</button></div><div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>{(['ticker', 'sector', 'trend'] as const).map(k => <button key={k} onClick={() => setKind(k)} style={{ flex: 1, padding: '7px 0', fontSize: 11, borderRadius: 7, border: 'none', cursor: 'pointer', textTransform: 'capitalize', background: kind === k ? 'rgba(168,85,247,.2)' : 'var(--bg2)', color: kind === k ? '#d8b4fe' : MUTED, fontWeight: kind === k ? 800 : 500 }}>{k}</button>)}</div>{kind === 'ticker' && <div style={{ marginBottom: 10 }}><label style={lbl}>Symbol</label><input style={fld} value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} placeholder="RKLB" autoFocus /></div>}{kind === 'sector' && <div style={{ marginBottom: 10 }}><label style={lbl}>Sector</label><select style={fld} value={sector} onChange={e => setSector(e.target.value)}><option value="">— select sector —</option>{sectors.map(s => <option key={s.sector} value={s.sector}>{s.sector} ({s.count})</option>)}</select>{selSector && <div style={{ fontSize: 10, color: MUTED, marginTop: 6, padding: '7px 9px', background: 'var(--bg2)', borderRadius: 6 }}>Resolves to the sector ETF + up to 25 constituents. First: {(selSector.sample || []).join(', ')}</div>}</div>}{kind === 'trend' && <><div style={{ marginBottom: 10 }}><label style={lbl}>Keywords</label><input style={fld} value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="AI datacenter, power" autoFocus /></div><div style={{ marginBottom: 10 }}><label style={lbl}>Seed symbols</label><input style={fld} value={seeds} onChange={e => setSeeds(e.target.value)} placeholder="NVDA, VRT" /></div></>}<div style={{ marginBottom: 10 }}><label style={lbl}>List / label <span style={{ color: MUTED, fontWeight: 400 }}>— pick an existing list or type a new one</span></label><input style={fld} list="watchlist-list-names" value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Data Center (blank = general Watchlist)" /><datalist id="watchlist-list-names">{lists.map(l => <option key={l} value={l} />)}</datalist></div><div style={{ marginBottom: 10 }}><label style={lbl}>Rationale / thesis</label><input style={fld} value={rationale} onChange={e => setRationale(e.target.value)} placeholder="why watch this" /></div><div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}><label style={{ flex: 1, ...lbl }}>Priority<select style={fld} value={priority} onChange={e => setPriority(e.target.value)}><option value="normal">normal</option><option value="high">high</option></select></label><label style={{ flex: 1, ...lbl }}>TTL days<input style={fld} value={ttl} onChange={e => setTtl(e.target.value.replace(/\D/g, ''))} placeholder="standing" /></label></div><div style={{ display: 'flex', gap: 16, marginBottom: 12, fontSize: 11, color: TEXT2 }}><label><input type="checkbox" checked={taOn} onChange={e => setTaOn(e.target.checked)} /> Trade AI</label><label><input type="checkbox" checked={hermesOn} onChange={e => setHermesOn(e.target.checked)} /> Hermes</label></div><div style={{ fontSize: 10, color: MUTED, marginBottom: 12, padding: '8px 10px', background: 'var(--bg2)', borderRadius: 6, borderLeft: `3px solid ${PURPLE}` }}><b style={{ color: TEXT2 }}>How it promotes:</b> {governor}</div>{msg && <div style={{ fontSize: 11, color: msg.startsWith('Error') ? RED : GREEN, marginBottom: 10 }}>{msg}</div>}<div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button onClick={onClose} style={{ padding: '8px 14px', fontSize: 11, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: TEXT2, cursor: 'pointer' }}>Cancel</button><button disabled={busy || !canSave} onClick={save} style={{ padding: '8px 18px', fontSize: 11, fontWeight: 800, borderRadius: 6, border: 'none', background: PURPLE, color: '#fff', cursor: busy || !canSave ? 'not-allowed' : 'pointer', opacity: busy || !canSave ? 0.5 : 1 }}>Save Directive</button></div></div></div>
+  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.58)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}><div onClick={e => e.stopPropagation()} style={{ ...panel, width: 540, maxWidth: '92vw', maxHeight: '88vh', overflowY: 'auto' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><div style={{ fontSize: 16, fontWeight: 900, color: TEXT0 }}>Add Watch Directive</div><button onClick={onClose} style={{ background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 16 }}>x</button></div><div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>{(['ticker', 'sector', 'trend'] as const).map(k => <button key={k} onClick={() => setKind(k)} style={{ flex: 1, padding: '7px 0', fontSize: 11, borderRadius: 2, border: 'none', cursor: 'pointer', textTransform: 'capitalize', background: kind === k ? 'rgba(167, 139, 250, 0.2)' : 'var(--bg2)', color: kind === k ? T.extIntel.hermes : MUTED, fontWeight: kind === k ? 800 : 500 }}>{k}</button>)}</div>{kind === 'ticker' && <div style={{ marginBottom: 10 }}><label style={lbl}>Symbol</label><input style={fld} value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} placeholder="RKLB" autoFocus /></div>}{kind === 'sector' && <div style={{ marginBottom: 10 }}><label style={lbl}>Sector</label><select style={fld} value={sector} onChange={e => setSector(e.target.value)}><option value="">— select sector —</option>{sectors.map(s => <option key={s.sector} value={s.sector}>{s.sector} ({s.count})</option>)}</select>{selSector && <div style={{ fontSize: 10, color: MUTED, marginTop: 6, padding: '7px 9px', background: 'var(--bg2)', borderRadius: 2 }}>Resolves to the sector ETF + up to 25 constituents. First: {(selSector.sample || []).join(', ')}</div>}</div>}{kind === 'trend' && <><div style={{ marginBottom: 10 }}><label style={lbl}>Keywords</label><input style={fld} value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="AI datacenter, power" autoFocus /></div><div style={{ marginBottom: 10 }}><label style={lbl}>Seed symbols</label><input style={fld} value={seeds} onChange={e => setSeeds(e.target.value)} placeholder="NVDA, VRT" /></div></>}<div style={{ marginBottom: 10 }}><label style={lbl}>List / label <span style={{ color: MUTED, fontWeight: 400 }}>— pick an existing list or type a new one</span></label><input style={fld} list="watchlist-list-names" value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Data Center (blank = general Watchlist)" /><datalist id="watchlist-list-names">{lists.map(l => <option key={l} value={l} />)}</datalist></div><div style={{ marginBottom: 10 }}><label style={lbl}>Rationale / thesis</label><input style={fld} value={rationale} onChange={e => setRationale(e.target.value)} placeholder="why watch this" /></div><div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}><label style={{ flex: 1, ...lbl }}>Priority<select style={fld} value={priority} onChange={e => setPriority(e.target.value)}><option value="normal">normal</option><option value="high">high</option></select></label><label style={{ flex: 1, ...lbl }}>TTL days<input style={fld} value={ttl} onChange={e => setTtl(e.target.value.replace(/\D/g, ''))} placeholder="standing" /></label></div><div style={{ display: 'flex', gap: 16, marginBottom: 12, fontSize: 11, color: TEXT2 }}><label><input type="checkbox" checked={taOn} onChange={e => setTaOn(e.target.checked)} /> Trade AI</label><label><input type="checkbox" checked={hermesOn} onChange={e => setHermesOn(e.target.checked)} /> Hermes</label></div><div style={{ fontSize: 10, color: MUTED, marginBottom: 12, padding: '8px 10px', background: 'var(--bg2)', borderRadius: 2, borderLeft: `3px solid ${PURPLE}` }}><b style={{ color: TEXT2 }}>How it promotes:</b> {governor}</div>{msg && <div style={{ fontSize: 11, color: msg.startsWith('Error') ? RED : GREEN, marginBottom: 10 }}>{msg}</div>}<div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button onClick={onClose} style={{ padding: '8px 14px', fontSize: 11, borderRadius: 2, border: '1px solid var(--border)', background: 'var(--bg2)', color: TEXT2, cursor: 'pointer' }}>Cancel</button><button disabled={busy || !canSave} onClick={save} style={{ padding: '8px 18px', fontSize: 11, fontWeight: 800, borderRadius: 2, border: 'none', background: PURPLE, color: BB.text0, cursor: busy || !canSave ? 'not-allowed' : 'pointer', opacity: busy || !canSave ? 0.5 : 1 }}>Save Directive</button></div></div></div>
 }
