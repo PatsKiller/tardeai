@@ -271,6 +271,12 @@ def eligible_holding_symbols(
             action_sig if recommendation_actionable(action_sig) and not recommendation_actionable(rec_norm)
             else (rec_norm or action_sig or "HOLD")
         )
+        # Reports Desk v1 (C2): HELD names never display candidate verbs — AVOID/IGNORE
+        # are watchlist-candidate vocabulary; a held position gets the holdings action
+        # set (action_signals first, else the holdings-desk translation of the verb).
+        _CANDIDATE_ONLY = {"AVOID": "REVIEW", "IGNORE": "HOLD", "SELL": "EXIT REVIEW"}
+        if display_rec in _CANDIDATE_ONLY:
+            display_rec = action_sig if action_sig else _CANDIDATE_ONLY[display_rec]
         entry = {
             "symbol": sym,
             "recommendation": display_rec,

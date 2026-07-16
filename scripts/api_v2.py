@@ -1588,6 +1588,72 @@ def _reports_analyst_symbols(query=None):
     return {"holdings": h_syms, "watchlist": w_syms, "symbols": all_syms}
 
 
+def _reports_analyst_status(query=None):
+    """GET /api/v2/reports/analyst/status — Reports Desk v1 (C1/C3/C4): the truth pass.
+    One registry read defines every count on-page: eligible (live holdings+watchlist
+    eligibility fns), generated (registry), need-refresh (age ≥ stale_days; fingerprint
+    deltas are evaluated at generation time by should_regenerate — stated in the note),
+    former holdings (reports whose symbol left the book), unmapped instruments
+    (CUSIP-symbol $0 holdings rows — real rows, never hidden, never peers of equities)."""
+    import json as _j
+    import datetime as _dt
+    try:
+        reg = _j.loads((PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst" / "registry.json").read_text())
+    except Exception:
+        reg = {}
+    reps = reg.get("reports") or []
+    holdings = (_load_json(STATE_DIR / "holdings.json") or {}).get("holdings") or []
+    held = {str(h.get("symbol", "")).upper() for h in holdings
+            if h.get("symbol") and not h.get("is_cash") and (h.get("market_value") or 0) > 1}
+    unmapped = [{"symbol": str(h.get("symbol")), "market_value": _json_clean(h.get("market_value")),
+                 "description": h.get("description") or ""}
+                for h in holdings
+                if h.get("symbol") and (str(h.get("symbol"))[:1].isdigit()
+                                        or (not h.get("is_cash") and (h.get("market_value") or 0) <= 1))]
+    now = _dt.datetime.now(_dt.timezone.utc)
+    stale_days = 7
+    latest_by_symbol: dict = {}
+    for r in reps:
+        s = str(r.get("symbol") or "").upper()
+        g = r.get("generated_at") or ""
+        if s and g > (latest_by_symbol.get(s, {}).get("generated_at") or ""):
+            latest_by_symbol[s] = r
+    stale, fresh, former = [], 0, []
+    for s, r in latest_by_symbol.items():
+        try:
+            g = _dt.datetime.fromisoformat(str(r["generated_at"]).replace("Z", "+00:00"))
+            if g.tzinfo is None:
+                g = g.replace(tzinfo=_dt.timezone.utc)
+            age_d = (now - g).days
+        except Exception:
+            age_d = None
+        if s not in held and r.get("report_type") == "symbol_holding":
+            former.append(s)
+        if age_d is not None and age_d >= stale_days:
+            stale.append({"symbol": s, "age_days": age_d})
+        else:
+            fresh += 1
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import reporting_engine as _re
+        eligible_holdings = len(_re.eligible_holding_symbols())
+    except Exception:
+        eligible_holdings = None
+    return {"ok": True,
+            "registry_updated_at": reg.get("updated_at"),
+            "reports_total": len(reps),
+            "symbols_covered": len(latest_by_symbol),
+            "eligible_holdings": eligible_holdings,
+            "fresh": fresh,
+            "need_refresh": len(stale),
+            "need_refresh_definition": f"latest report age ≥ {stale_days}d (fingerprint deltas are evaluated at generation by should_regenerate — refresh runs Sun 21:15)",
+            "stale_list": sorted(stale, key=lambda x: -x["age_days"])[:20],
+            "former_holdings": sorted(set(former)),
+            "unmapped_instruments": unmapped,
+            "schedule": "weekly refresh Sun 21:15 · fingerprint-delta regeneration at run time"}
+
+
 def _protective_account_api_write(account_key: str) -> bool:
     """True only when broker_accounts.api_write_enabled is TRUE for this account (the live-submit route).
     Resolves holdings aliases (schwab_roth → schwab_roth_ira). Fail closed on any error."""
@@ -31288,6 +31354,7 @@ ROUTES = {
     "/api/v2/reports/analyst/types": _reports_analyst_types,
     "/api/v2/reports/analyst/preview": _reports_analyst_preview,
     "/api/v2/reports/analyst/symbols": _reports_analyst_symbols,
+    "/api/v2/reports/analyst/status": _reports_analyst_status,
     "/api/v2/reports/analyst/export": _reports_analyst_export,
     "/api/v2/reports/analyst/generate": _reports_analyst_generate,
     "/api/v2/reports/analyst/registry": _reports_analyst_registry,

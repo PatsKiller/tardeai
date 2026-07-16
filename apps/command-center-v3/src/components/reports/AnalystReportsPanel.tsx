@@ -249,6 +249,7 @@ export default function AnalystReportsPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <AnalystTruthBand />
       <ProspectusBatchPanel />
       <div style={{
         fontSize: 10, padding: '8px 12px', borderRadius: 8,
@@ -382,6 +383,58 @@ export default function AnalystReportsPanel() {
       </div>
 
       {preview && <AnalystReportViewer report={preview} />}
+    </div>
+  )
+}
+// Reports Desk v1 (WS-C): the truth band — every count defined on-page from
+// /api/v2/reports/analyst/status (one registry pass); unmapped CUSIP instruments
+// fold (real $0 rows, never hidden, never rendered as peers of equities);
+// former-holdings fold; stale · Nd semantics + the Sun 21:15 schedule stated.
+function AnalystTruthBand() {
+  const { data: st } = useApi<any>('/api/v2/reports/analyst/status', 120_000)
+  const [unmappedOpen, setUnmappedOpen] = useState(false)
+  const [formerOpen, setFormerOpen] = useState(false)
+  if (!st?.ok) return null
+  const chip = (label: string, tip: string): JSX.Element => (
+    <span title={tip} style={{ fontSize: 10, fontFamily: "'JetBrains Mono', ui-monospace, monospace", color: 'var(--text2)', border: '1px solid var(--border)', borderRadius: 2, padding: '1px 8px', cursor: 'help' }}>{label}</span>
+  )
+  const former = (st.former_holdings || []).filter((s: string) => !/^\d/.test(s))
+  return (
+    <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderLeft: '3px solid #ffb000', borderRadius: 2, padding: '8px 12px' }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: 'var(--text3)' }}>COVERAGE TRUTH</span>
+        {chip(`eligible holdings ${st.eligible_holdings ?? '—'}`, 'live eligible_holding_symbols() — holdings above value floor with actionable stance')}
+        {chip(`symbols covered ${st.symbols_covered}`, `registry.json latest report per symbol (${st.reports_total} total artifacts)`)}
+        {chip(`fresh ${st.fresh}`, 'latest report younger than 7d')}
+        {chip(`need refresh ${st.need_refresh}`, st.need_refresh_definition)}
+        <span style={{ fontSize: 10, color: 'var(--text3)' }}>{st.schedule}</span>
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+        {(st.unmapped_instruments?.length ?? 0) > 0 && (
+          <button onClick={() => setUnmappedOpen(o => !o)}
+            style={{ fontSize: 10, fontWeight: 800, color: '#ffb000', background: 'rgba(255,176,0,.1)', border: '1px solid rgba(255,176,0,.4)', borderRadius: 2, padding: '2px 8px', cursor: 'pointer' }}>
+            {unmappedOpen ? '▾' : '▸'} Unmapped instruments ({st.unmapped_instruments.length}) — awaiting instrument mapping
+          </button>
+        )}
+        {former.length > 0 && (
+          <button onClick={() => setFormerOpen(o => !o)}
+            style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', background: 'transparent', border: '1px solid var(--border)', borderRadius: 2, padding: '2px 8px', cursor: 'pointer' }}>
+            {formerOpen ? '▾' : '▸'} Former holdings ({former.length})
+          </button>
+        )}
+      </div>
+      {unmappedOpen && (
+        <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text2)', fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
+          {st.unmapped_instruments.map((u: any, i: number) => (
+            <div key={i}>{u.symbol} · ${u.market_value ?? 0} · {u.description || 'no description in feed'} — real holdings.json row; awaiting instrument mapping (dated basis export outstanding)</div>
+          ))}
+        </div>
+      )}
+      {formerOpen && (
+        <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text3)', fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
+          {former.join(' · ')} — reports retained (never deleted); excluded from freshness pressure
+        </div>
+      )}
     </div>
   )
 }
