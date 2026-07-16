@@ -47,6 +47,7 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
   const enabled = options?.enabled !== false
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(enabled)
+  const [refreshing, setRefreshing] = useState(false) // manual refetch in flight (keeps last data)
   const [error, setError] = useState<string | null>(null)
   const [stale, setStale] = useState(false)   // showing last-good data after a failed refetch
   const [tick, setTick] = useState(0)
@@ -54,8 +55,13 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
   const retryRef = useRef<ReturnType<typeof setTimeout>>()
   const dataRef = useRef<T | null>(null)       // latest good data, readable inside the fetch closure
   const failingRef = useRef(false)             // this hook's current contribution to the global fail count
+  const manualRef = useRef(false)              // true when user-triggered refetch
 
-  const refetch = useCallback(() => setTick(t => t + 1), [])
+  const refetch = useCallback(() => {
+    manualRef.current = true
+    setRefreshing(true)
+    setTick(t => t + 1)
+  }, [])
 
   useEffect(() => {
     const onRecover = () => refetch()
@@ -66,6 +72,8 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
   useEffect(() => {
     if (!enabled) {
       setLoading(false)
+      setRefreshing(false)
+      manualRef.current = false
       return () => {
         if (failingRef.current) { failingRef.current = false; _bumpFail(-1) }
       }
@@ -74,6 +82,12 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
     let retries = 0
     let slowRetryRef: ReturnType<typeof setTimeout> | undefined
     const clearFailing = () => { if (failingRef.current) { failingRef.current = false; _bumpFail(-1) } }
+    const clearManual = () => {
+      if (manualRef.current) {
+        manualRef.current = false
+        setRefreshing(false)
+      }
+    }
 
     const load = async () => {
       const controller = new AbortController()
@@ -82,8 +96,13 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       // surface the error/Retry state instead of an endless "Loading broker queue…".
       const timeoutMs = path.includes('broker-proposals') ? 15_000 : 30_000
       const timer = setTimeout(() => controller.abort(), timeoutMs)
+      // Initial load only — interval polls keep last data without blanking the UI
+      if (dataRef.current == null) setLoading(true)
       try {
-        const r = await fetch(path, { signal: controller.signal })
+        // cache-bust so "Refresh" and polls never serve a stale browser cache
+        const sep = path.includes('?') ? '&' : '?'
+        const url = `${path}${sep}_=${Date.now()}`
+        const r = await fetch(url, { signal: controller.signal, cache: 'no-store' })
         clearTimeout(timer)
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         const json = await r.json()
@@ -115,7 +134,10 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           slowRetryRef = setTimeout(() => { slowRetryRef = undefined; retries = 0; load() }, 15_000)
         }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+          clearManual()
+        }
       }
     }
     load()
@@ -129,5 +151,5 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
     }
   }, [path, intervalMs, tick, enabled])
 
-  return { data, loading, error, stale, refetch }
+  return { data, loading, refreshing, error, stale, refetch }
 }

@@ -1156,15 +1156,44 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     return p.toString()
   }, [q, category, priority, holdingsOnly, includeArchived, starredOnly, freshness, sentiment])
 
-  const { data, loading, error, refetch } = useApi<any>(
+  const { data, loading, refreshing, error, refetch } = useApi<any>(
     `/api/v2/research-intelligence?${qs}`,
     90_000,
   )
-  const { data: freshData } = useApi<any>('/api/v2/research-intelligence/freshness', 120_000)
+  const { data: freshData, refetch: refetchFresh } = useApi<any>('/api/v2/research-intelligence/freshness', 120_000)
   const { data: stagedData, refetch: refetchStaged } = useApi<any>(
     '/api/v2/research-intelligence/staged?limit=40',
     60_000,
   )
+
+  // Visible feedback when operator clicks Refresh desk (refetch alone looked like a no-op)
+  const wasRefreshing = useRef(false)
+  useEffect(() => {
+    if (refreshing) {
+      wasRefreshing.current = true
+      setToast('Refreshing desk…')
+      return
+    }
+    if (wasRefreshing.current) {
+      wasRefreshing.current = false
+      if (error) {
+        setToast(`Desk refresh failed — ${error}`)
+      } else {
+        const n = data?.stats?.matched ?? data?.items?.length
+        setToast(
+          typeof n === 'number'
+            ? `Desk refreshed · ${n} brief${n === 1 ? '' : 's'} in view`
+            : 'Desk refreshed',
+        )
+      }
+    }
+  }, [refreshing, error, data?.stats?.matched, data?.items?.length])
+
+  const refreshDesk = useCallback(() => {
+    refetch()
+    refetchStaged?.()
+    refetchFresh?.()
+  }, [refetch, refetchStaged, refetchFresh])
 
   useEffect(() => {
     if (stagedData?.ideas) setStagedIdeas(stagedData.ideas)
@@ -1365,6 +1394,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               {stats.matched != null && ` · ${stats.matched} in view`}
               {stats.universe != null && stats.universe !== stats.matched && ` · ${stats.universe} on desk`}
               {loading ? ' · loading…' : ''}
+              {refreshing ? ' · refreshing…' : ''}
               {data?.version ? ` · v${data.version}` : ''}
             </div>
           </div>
@@ -1374,7 +1404,19 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               <Link to="/portfolio" style={navLink(C.muted)}>Portfolio →</Link>
               <Link to="/hermes" style={navLink(C.muted)}>Hermes →</Link>
               <Link to="/risk" style={navLink(C.muted)}>Risk →</Link>
-              <button type="button" onClick={() => refetch()} style={refreshBtn}>↻ Refresh desk</button>
+              <button
+                type="button"
+                onClick={refreshDesk}
+                disabled={!!refreshing}
+                title="Reload Research Intelligence feed from the server"
+                style={{
+                  ...refreshBtn,
+                  opacity: refreshing ? 0.7 : 1,
+                  cursor: refreshing ? 'wait' : 'pointer',
+                }}
+              >
+                {refreshing ? '↻ Refreshing…' : '↻ Refresh desk'}
+              </button>
               <button
                 type="button"
                 onClick={() => setShowStaged(s => !s)}
