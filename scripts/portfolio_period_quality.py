@@ -162,6 +162,9 @@ def fill_missing_period_cells(
 
     Critical for Fidelity Rollover IRA: performance_history only knew fidelity_401k,
     so after the mid-year 401k→rollover rename every multi-day period was missing.
+
+    Also **rewrites** Fidelity (and extreme) cells that treat 401k→IRA / inter-account
+    transfers as profit (e.g. +$568k / +100% in 1W).
     """
     # Live current values from holdings when available
     live_cv: dict[str, float] = {}
@@ -185,7 +188,23 @@ def fill_missing_period_cells(
                 continue  # market-day overlay owns 1D
             cell = periods.get(period)
             has_change = isinstance(cell, dict) and cell.get("change") is not None
-            if has_change:
+            # Never clobber residual / ex-transfer display already applied
+            if isinstance(cell, dict) and str(cell.get("adjustment_method") or "").endswith("residual"):
+                continue
+            if isinstance(cell, dict) and cell.get("display_label", "").startswith("≈ market"):
+                continue
+            # Force recompute for Fidelity sleeves — performance_history NAV Δ treats
+            # 401k→rollover conversion as profit when start_value is ~0.
+            force_fidelity = acct in FIDELITY_ECONOMIC and period != "1D"
+            extreme = False
+            if has_change and isinstance(cell, dict):
+                cp = cell.get("change_pct")
+                ch = abs(_f(cell.get("change")))
+                if cp is not None and abs(_f(cp)) >= 40 and period in ("1W", "1M", "3M", "6M", "1Y"):
+                    extreme = True
+                if ch >= 200_000 and period in ("1W", "1M", "3M"):
+                    extreme = True
+            if has_change and not force_fidelity and not extreme:
                 continue
 
             start_date = _default_start(period)
@@ -202,23 +221,31 @@ def fill_missing_period_cells(
 
             # Guard: never use a catastrophic live end vs recent snap (partial sync / UI lag)
             # Classic false: end $472k vs $564k week-ago → fake −16% week.
-            if hist_val > 50_000 and cv > 0 and cv < 0.85 * hist_val and period in (
+            end_cv = cv
+            if hist_val > 50_000 and end_cv > 0 and end_cv < 0.85 * hist_val and period in (
                 "1D", "1W", "1M", "3M"
             ):
                 # Prefer last good snap end over suspect live
                 last_good, last_d, _ = account_nav_at(series, acct, date.today().isoformat())
-                if last_good and last_good > cv * 1.05:
-                    cv = last_good
-            change = round(cv - hist_val, 2)
+                if last_good and last_good > end_cv * 1.05:
+                    end_cv = last_good
+            change = round(end_cv - hist_val, 2)
             change_pct = round((change / hist_val) * 100, 2) if hist_val else None
             src = "snapshot_linked" if acct in FIDELITY_ECONOMIC else "snapshot_fill"
             if partial:
                 src = f"{src}_partial"
+            if force_fidelity or extreme:
+                src = f"{src}_rewrite"
             note = (
                 "Fidelity economic sleeve (401k+rollover) NAV at period start → current"
                 if acct in FIDELITY_ECONOMIC else
                 "Filled from account snapshot series (missing in performance_history)"
             )
+            if extreme and not force_fidelity:
+                note = (
+                    f"Rewrote extreme NAV Δ ({cell.get('change_pct')}% / ${cell.get('change')}) "
+                    f"using snapshot economic start {hist_date}."
+                )
             if partial:
                 note = (
                     f"Partial history: first Fidelity snapshot {hist_date} "
@@ -228,7 +255,10 @@ def fill_missing_period_cells(
                 "period": period,
                 "start_date": hist_date or start_date,
                 "start_value": round(hist_val, 2),
-                "end_value": round(cv, 2),
+                "end_value": round(end_cv, 2),
+                # Keep raw NAV change for audit when rewriting an existing cell
+                "nav_change": cell.get("change") if isinstance(cell, dict) else change,
+                "nav_change_pct": cell.get("change_pct") if isinstance(cell, dict) else change_pct,
                 "change": change,
                 "change_pct": change_pct,
                 "display_change": change,
@@ -238,7 +268,169 @@ def fill_missing_period_cells(
                 "partial_history": partial,
                 "linked_accounts": list(FIDELITY_ECONOMIC) if acct in FIDELITY_ECONOMIC else None,
                 "note": note,
+                "rewrote_extreme_nav": bool(extreme or force_fidelity),
             }
+        data["periods"] = periods
+        accounts[acct] = data
+    return accounts
+
+
+def fidelity_sleeve_adjusted(
+    series: list[dict],
+    start_date: str,
+    end_date: str | None = None,
+    *,
+    use_live: bool = True,
+) -> dict[str, Any]:
+    """401k + rollover market P/L (ex conversion flow) for a period window."""
+    end_date = end_date or date.today().isoformat()
+    adj4 = estimate_adjusted_return(
+        series, "fidelity_401k", start_date, end_date, use_live=use_live
+    )
+    adj_r = estimate_adjusted_return(
+        series, "fidelity_rollover_ira", start_date, end_date, use_live=use_live
+    )
+    mpl = _f(adj4.get("adjusted_change")) + _f(adj_r.get("adjusted_change"))
+    flow = _f(adj4.get("net_flow")) + _f(adj_r.get("net_flow"))
+    start_val, start_d, partial = fidelity_economic_at(
+        series, start_date, allow_first_after=True
+    )
+    end_val = None
+    for r in reversed(series):
+        if r.get("live") and use_live:
+            end_val = _f(r.get("_fidelity_economic"))
+            break
+    if end_val is None:
+        end_val = _f(adj_r.get("end_value")) + _f(adj4.get("end_value"))
+    pct = round(mpl / start_val * 100, 2) if start_val and start_val > 0 else None
+    return {
+        "ok": bool(adj4.get("ok") or adj_r.get("ok")),
+        "adjusted_change": round(mpl, 2),
+        "adjusted_change_pct": pct,
+        "net_flow": round(flow, 2),
+        "start_value": round(start_val, 2) if start_val else None,
+        "start_date": start_d or start_date,
+        "end_value": round(end_val, 2) if end_val else None,
+        "nav_change": round(end_val - start_val, 2) if start_val and end_val else None,
+        "partial_history": partial,
+        "method": "fidelity_economic_residual",
+        "note": (
+            "Fidelity 401k + Rollover IRA treated as one economic sleeve. "
+            f"Market P/L ${mpl:,.0f} after removing estimated conversion/transfer flows "
+            f"(${flow:,.0f}). Not raw account-label NAV Δ."
+        ),
+        "components": {
+            "fidelity_401k_mpl": adj4.get("adjusted_change"),
+            "fidelity_rollover_mpl": adj_r.get("adjusted_change"),
+            "fidelity_401k_flow": adj4.get("net_flow"),
+            "fidelity_rollover_flow": adj_r.get("net_flow"),
+        },
+    }
+
+
+def apply_transfer_residuals_all_periods(
+    accounts: dict,
+    series: list[dict],
+    *,
+    today: str | None = None,
+) -> dict:
+    """Apply household residual (ex-transfers) display to 1W/1M/3M/6M/1Y/YTD.
+
+    Fixes Fidelity 401k→IRA and Fidelity→Schwab position moves that inflate
+    short-period NAV as if they were trading profits.
+    """
+    today = today or date.today().isoformat()
+    for acct, data in list(accounts.items()):
+        if not isinstance(data, dict):
+            continue
+        periods = dict(data.get("periods") or {})
+        for period in STANDARD_PERIODS:
+            if period == "1D":
+                continue
+            cell = periods.get(period)
+            if not isinstance(cell, dict):
+                cell = {"period": period}
+            start_date = cell.get("start_date") or _default_start(period)
+            start_date = str(start_date)[:10]
+
+            if acct in FIDELITY_ECONOMIC:
+                # Only annotate the live rollover label; skip empty 401k shell
+                if acct == "fidelity_401k" and _f(data.get("current_value")) < 1000:
+                    continue
+                adj = fidelity_sleeve_adjusted(series, start_date, today, use_live=True)
+            else:
+                adj = estimate_adjusted_return(
+                    series, acct, start_date, today, use_live=True
+                )
+
+            if not adj.get("ok") or adj.get("adjusted_change") is None:
+                periods[period] = cell
+                continue
+
+            raw_ch = cell.get("change")
+            raw_pct = cell.get("change_pct")
+            adj_ch = _f(adj.get("adjusted_change"))
+            adj_pct = adj.get("adjusted_change_pct")
+            flow = abs(_f(adj.get("net_flow")))
+            nav_delta = abs(_f(adj.get("nav_change") if adj.get("nav_change") is not None else raw_ch))
+
+            # Prefer residual when flows are material OR raw looks like a transfer mirage
+            use_adj = False
+            if flow >= 2_000 and (
+                nav_delta <= 0
+                or flow >= 0.20 * max(nav_delta, 1)
+                or abs(_f(raw_ch) - adj_ch) >= 2_000
+            ):
+                use_adj = True
+            if raw_pct is not None and abs(_f(raw_pct)) >= 40 and period in (
+                "1W", "1M", "3M", "6M", "1Y"
+            ):
+                use_adj = True
+            if raw_ch is not None and abs(_f(raw_ch)) >= 100_000 and period in (
+                "1W", "1M", "3M", "6M", "1Y"
+            ):
+                use_adj = True
+            if acct in FIDELITY_ECONOMIC:
+                use_adj = True  # always for Fidelity multi-day
+            if period == "YTD":
+                use_adj = True
+
+            fl = list(cell.get("flags") or [])
+            if use_adj:
+                for f in ("includes_transfers", "ex_transfer_residual"):
+                    if f not in fl:
+                        fl.append(f)
+                if acct in FIDELITY_ECONOMIC and "linked_401k" not in fl:
+                    fl.append("linked_401k")
+                sv = adj.get("start_value") or cell.get("start_value")
+                cell = {
+                    **cell,
+                    "period": period,
+                    "start_date": adj.get("start_date") or start_date,
+                    "start_value": sv,
+                    "end_value": adj.get("end_value") or cell.get("end_value"),
+                    "change": raw_ch if raw_ch is not None else adj.get("nav_change"),
+                    "change_pct": raw_pct,
+                    "nav_change": adj.get("nav_change") if adj.get("nav_change") is not None else raw_ch,
+                    "nav_change_pct": raw_pct,
+                    "adjusted_change": adj_ch,
+                    "adjusted_change_pct": adj_pct,
+                    "estimated_net_flow": adj.get("net_flow"),
+                    "display_change": adj_ch,
+                    "display_change_pct": adj_pct,
+                    "display_label": "≈ market (ex-transfers)",
+                    "nav_is_not_market_only": True,
+                    "quality": "includes_transfers",
+                    "is_false_positive": False,
+                    "flags": fl,
+                    "adjustment_method": adj.get("method"),
+                    "adjustment_note": adj.get("note"),
+                    "linked_start_value": sv,
+                    "economic_start_value": sv if acct in FIDELITY_ECONOMIC else cell.get("economic_start_value"),
+                }
+                if acct in FIDELITY_ECONOMIC and isinstance(adj.get("components"), dict):
+                    cell["fidelity_components"] = adj["components"]
+            periods[period] = cell
         data["periods"] = periods
         accounts[acct] = data
     return accounts
@@ -786,8 +978,10 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
                 # Keep current_value live (performance_history can lag)
                 accounts[ak]["current_value"] = round(cv, 2)
 
-    # Fill 1W/1M/… for accounts that only have 1D (Fidelity after 401k→rollover rename)
+    # Fill / rewrite multi-day cells (Fidelity economic start, extreme NAV mirages)
     accounts = fill_missing_period_cells(accounts, series, holdings)
+    # Household residual: strip 401k→IRA and inter-account transfers from 1W…1Y (not just YTD)
+    accounts = apply_transfer_residuals_all_periods(accounts, series, today=today)
 
     for acct, data in list(accounts.items()):
         if not isinstance(data, dict):
@@ -808,125 +1002,81 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
             if not isinstance(cell, dict):
                 new_periods[period] = cell
                 continue
+            # Already residual-adjusted above — keep display, fill audit fields
+            if str(cell.get("display_label") or "").startswith("≈ market") or str(
+                cell.get("adjustment_method") or ""
+            ).endswith("residual"):
+                # Roth / funding: sane % vs economic capital when needed
+                if period == "YTD":
+                    sane_pct, pct_meta = funding_sane_display_pct(
+                        cell.get("display_change"),
+                        start_value=cell.get("linked_start_value") or cell.get("start_value"),
+                        end_value=cell.get("end_value") or cv,
+                        quality=cell.get("quality"),
+                        flags=cell.get("flags"),
+                        raw_pct=cell.get("display_change_pct"),
+                    )
+                    cell = dict(cell)
+                    cell["display_change_pct"] = sane_pct
+                    if pct_meta.get("economic_start_value") is not None:
+                        cell["economic_start_value"] = pct_meta["economic_start_value"]
+                        cell["linked_start_value"] = pct_meta["economic_start_value"]
+                    if pct_meta.get("display_pct_note"):
+                        cell["display_pct_note"] = pct_meta["display_pct_note"]
+                    if pct_meta.get("display_pct_suppressed"):
+                        cell["display_pct_suppressed"] = True
+                new_periods[period] = cell
+                continue
+
             start_date = cell.get("start_date") or (
                 f"{date.today().year}-01-01" if period == "YTD" else None
             )
-            # fill start_date defaults for common periods
             if not start_date:
                 start_date = _default_start(period)
 
-            # Residual transfer adjustment is only reliable for YTD (year-start statement anchor).
-            # Live end + outlier-filtered path; daily pin freezes display for the day.
-            adjusted = None
-            if start_date and period == "YTD":
-                adjusted = estimate_adjusted_return(
-                    series, acct, str(start_date)[:10], today, use_live=True
-                )
-
-            # Prefer stored start_value; else from adjusted
             sv = cell.get("start_value")
-            if sv is None and adjusted and adjusted.get("start_value") is not None:
-                sv = adjusted["start_value"]
             ev = cell.get("end_value")
-            if period == "YTD" and adjusted and adjusted.get("end_value") is not None:
-                # YTD end = pinned snapshot, not live
-                ev = adjusted["end_value"]
             if ev is None:
                 ev = cv
             ch = cell.get("change")
-            if period == "YTD" and adjusted and adjusted.get("nav_change") is not None:
-                # Align raw NAV change to pinned end as well
-                ch = adjusted["nav_change"]
-                if sv and _f(sv) > 0:
-                    cp = round(_f(ch) / _f(sv) * 100, 2)
-                else:
-                    cp = cell.get("change_pct")
-            else:
-                cp = cell.get("change_pct")
-
-            q = classify_period_quality(period, sv, ev, ch, cp, adjusted if period == "YTD" else None)
+            cp = cell.get("change_pct")
+            q = classify_period_quality(period, sv, ev, ch, cp, None)
 
             enriched = {
                 **cell,
                 "start_value": sv,
                 "end_value": ev if ev is not None else cv,
-                "quality": q["quality"] if period == "YTD" else (cell.get("quality") or "reliable"),
-                "flags": q["flags"] if period == "YTD" else [],
-                "is_false_positive": q["is_false_positive"] if period == "YTD" else False,
-                "nav_is_not_market_only": q["nav_is_not_market_only"] if period == "YTD" else False,
+                "quality": cell.get("quality") or q["quality"],
+                "flags": cell.get("flags") or q["flags"],
+                "is_false_positive": cell.get("is_false_positive", q["is_false_positive"]),
+                "nav_is_not_market_only": cell.get(
+                    "nav_is_not_market_only", q["nav_is_not_market_only"]
+                ),
+                "display_change": cell.get("display_change", ch),
+                "display_change_pct": cell.get("display_change_pct", cp),
+                "display_label": cell.get("display_label") or "NAV",
             }
-            if period == "YTD" and adjusted and adjusted.get("ok"):
-                enriched["change"] = ch
-                enriched["change_pct"] = cp
-                enriched["adjusted_change"] = adjusted["adjusted_change"]
-                enriched["adjusted_change_pct"] = adjusted["adjusted_change_pct"]
-                enriched["estimated_net_flow"] = adjusted["net_flow"]
-                enriched["adjustment_method"] = adjusted["method"]
-                enriched["adjustment_note"] = adjusted["note"]
-                enriched["ytd_end_snapshot"] = adjusted.get("end_date")
-                # Prefer adjusted as "real" when transfers/funding OR raw NAV missing
-                if q["nav_is_not_market_only"] or cell.get("change") is None:
-                    enriched["display_change"] = adjusted["adjusted_change"]
-                    enriched["display_change_pct"] = adjusted["adjusted_change_pct"]
-                    enriched["display_label"] = "≈ market (ex-transfers)"
-                else:
-                    enriched["display_change"] = ch
-                    enriched["display_change_pct"] = cp
-                    enriched["display_label"] = "NAV"
-                # Roth / funding: rewrite absurd % vs economic capital (not $1.7k year-start)
-                sane_pct, pct_meta = funding_sane_display_pct(
-                    enriched.get("display_change"),
-                    start_value=enriched.get("start_value") or sv,
-                    end_value=enriched.get("end_value") or ev,
-                    quality=enriched.get("quality"),
-                    flags=enriched.get("flags"),
-                    raw_pct=enriched.get("display_change_pct"),
-                )
-                enriched["display_change_pct"] = sane_pct
-                if pct_meta.get("economic_start_value") is not None:
-                    enriched["economic_start_value"] = pct_meta["economic_start_value"]
-                    # Prefer economic base for portfolio Σ % too
-                    enriched["linked_start_value"] = pct_meta["economic_start_value"]
-                if pct_meta.get("display_pct_note"):
-                    enriched["display_pct_note"] = pct_meta["display_pct_note"]
-                if pct_meta.get("display_pct_basis"):
-                    enriched["display_pct_basis"] = pct_meta["display_pct_basis"]
-                if pct_meta.get("display_pct_suppressed"):
-                    enriched["display_pct_suppressed"] = True
-            else:
-                # Non-YTD: always show period NAV (snapshot/reprice for that window)
-                enriched["display_change"] = ch
-                enriched["display_change_pct"] = cp
-                enriched["display_label"] = "NAV"
             new_periods[period] = enriched
         data["periods"] = new_periods
         accounts[acct] = data
 
-    # Fidelity economic IRA: 401k rolled into fidelity_rollover — combine market P/L for YTD only
+    # Fidelity YTD operator note (residual already applied; enrich audit / since-open)
     fr = accounts.get("fidelity_rollover_ira")
     if isinstance(fr, dict):
         y_fr = (fr.get("periods") or {}).get("YTD")
         y_fr = y_fr if isinstance(y_fr, dict) else {}
-        adj4 = estimate_adjusted_return(
-            series, "fidelity_401k", _default_start("YTD"), today, use_live=True
-        )
-        adj_r = estimate_adjusted_return(
-            series, "fidelity_rollover_ira", _default_start("YTD"), today, use_live=True
-        )
-        mpl = _f(adj4.get("adjusted_change")) + _f(adj_r.get("adjusted_change"))
-        start_401k = _f(adj4.get("start_value"))
-        pct = round(mpl / start_401k * 100, 2) if start_401k > 0 else None
+        sleeve = fidelity_sleeve_adjusted(series, _default_start("YTD"), today, use_live=True)
+        start_401k = _f(sleeve.get("start_value"))
+        mpl = _f(sleeve.get("adjusted_change"))
+        pct = sleeve.get("adjusted_change_pct")
         fl = list(y_fr.get("flags") or [])
         for f in ("conversion_or_funding", "includes_transfers", "linked_401k"):
             if f not in fl:
                 fl.append(f)
-        end_snap = adj_r.get("end_date") or adj4.get("end_date")
-        # Since rollover account first appeared (for operator audit — not YTD false positive)
         since_open_nav = None
         since_open_pct = None
         open_anchor = None
         try:
-            # first non-live snap with fidelity_rollover > 0
             for r in series:
                 if r.get("live"):
                     continue
@@ -934,9 +1084,11 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
                 if fr_v > 1000:
                     open_anchor = str(r.get("date"))[:10]
                     open_start = fr_v
-                    open_end = _f(adj_r.get("end_value")) or cv
+                    open_end = _f(sleeve.get("end_value")) or _f(fr.get("current_value"))
                     since_open_nav = round(open_end - open_start, 2)
-                    since_open_pct = round(since_open_nav / open_start * 100, 2) if open_start > 0 else None
+                    since_open_pct = (
+                        round(since_open_nav / open_start * 100, 2) if open_start > 0 else None
+                    )
                     break
         except Exception:
             pass
@@ -945,7 +1097,6 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
             **y_fr,
             "quality": "includes_transfers",
             "flags": fl,
-            # NOT a funding false positive: money existed all year as 401k
             "is_false_positive": False,
             "nav_is_not_market_only": True,
             "adjusted_change": round(mpl, 2),
@@ -954,22 +1105,22 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
             "display_change_pct": pct,
             "display_label": "≈ market YTD (401k continuous)",
             "adjustment_note": (
-                "NOT a 2-month-only return. Fidelity Rollover IRA label opened mid-year "
+                "NOT conversion profit. Fidelity Rollover IRA label opened mid-year "
                 f"({open_anchor or 'mid-year'}) when 401k converted; economic sleeve was the "
                 f"401k from year-start ${start_401k:,.0f}. "
                 f"YTD ≈ market P/L ${mpl:,.0f} ({pct}% on that base). "
                 + (
                     f"Since account-open NAV Δ ${since_open_nav:,.0f} ({since_open_pct}%) "
                     f"from {open_anchor} — separate from YTD."
-                    if since_open_nav is not None else ""
+                    if since_open_nav is not None
+                    else ""
                 )
             ),
-            "adjustment_method": adj_r.get("method") or "household_residual_live_end",
+            "adjustment_method": "fidelity_economic_residual",
             "linked_start_value": start_401k,
             "start_value": start_401k if start_401k > 0 else y_fr.get("start_value"),
-            "end_value": adj_r.get("end_value") or y_fr.get("end_value"),
-            "ytd_end_snapshot": end_snap,
-            "estimated_net_flow": round(_f(adj4.get("net_flow")) + _f(adj_r.get("net_flow")), 2),
+            "end_value": sleeve.get("end_value") or y_fr.get("end_value"),
+            "estimated_net_flow": sleeve.get("net_flow"),
             "since_account_open_date": open_anchor,
             "since_account_open_change": since_open_nav,
             "since_account_open_change_pct": since_open_pct,
@@ -988,9 +1139,8 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
         fr["performance_note"] = y_fr["adjustment_note"]
         accounts["fidelity_rollover_ira"] = fr
 
-    # Re-fill multi-day periods after YTD mutations so Fidelity 1W/1M never drop off the response
+    # Fill any still-missing multi-day shells (do not clobber residual)
     accounts = fill_missing_period_cells(accounts, series, holdings)
-    # Ensure filled cells have display_* for Home/Returns (fill only sets change)
     for acct, data in list(accounts.items()):
         if not isinstance(data, dict):
             continue
@@ -1220,12 +1370,11 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
     result["ytd_pin"] = pin_meta
 
     result["period_quality_note"] = (
-        "YTD '≈ market' is computed once per day (first request) and pinned so it does not "
-        f"wobble with live prices (pin end={end_key}). Outlier snapshots excluded from residual path. "
-        "All-accounts YTD = sum of account ≈ market rows. "
-        "1D still uses live market day. 1W/1M/… use linked NAV (Fidelity 401k→Rollover). "
-        "Transfers/rollovers: ex-transfers notes; residual strips funding false positives. "
-        "Dead $0 lots excluded from name losers. Force refresh: YTD_PIN_FORCE=1."
+        "YTD '≈ market' is pinned daily (pin end="
+        f"{end_key}). 1W/1M/3M/6M/1Y also use household residual so Fidelity 401k→IRA "
+        "and inter-account transfers are NOT counted as profit (α uses ≈ when shown). "
+        "Fidelity 401k+Rollover is one economic sleeve. 1D = live market day. "
+        "All-accounts = sum of account display rows. Force YTD refresh: YTD_PIN_FORCE=1."
     )
     return result
 
