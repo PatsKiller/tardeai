@@ -40,11 +40,77 @@ function Field({ label, value, onChange, ph, wide }: any) {
   )
 }
 
+// v4 (C1): directive detail drawer — thesis, aliases, 90d hit timeline, α events, children
+function DirectiveDrawer({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data: det } = useApi<any>(`/api/v2/watch/directives/detail?id=${id}`, 0)
+  const d = det?.directive
+  const spark = (tl: any[]) => {
+    if (!tl?.length) return '—'
+    const max = Math.max(...tl.map((t: any) => t.hits))
+    const G = '▁▂▃▄▅▆▇█'
+    return tl.slice(-30).map((t: any) => G[Math.min(7, Math.round((t.hits / max) * 7))]).join('')
+  }
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 80, display: 'flex', justifyContent: 'flex-end' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 480, maxWidth: '94vw', height: '100%', overflowY: 'auto', background: BB.bgPanel, borderLeft: `1px solid ${BB.border}`, padding: 14 }}>
+        {!d ? <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Loading…</div> : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: TYPE.md, fontWeight: 800, color: BB.text0 }}>#{d.id} {d.label}</span>
+              <Chip kind="state" tone={d.status === 'active' ? 'green' : d.status === 'paused' || d.status === 'expired' ? 'amber' : 'slate'}>{d.status}</Chip>
+              {det.expires_in_days != null && <Chip kind="state" tone={det.expires_in_days <= 7 ? 'amber' : 'slate'}>{det.expires_in_days >= 0 ? `EXPIRES ${det.expires_in_days}d` : 'PAST TTL'}</Chip>}
+              <button onClick={onClose} style={{ marginLeft: 'auto', ...terminalButton('ghost') }}>✕</button>
+            </div>
+            <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 4 }}>{d.kind} · by {d.created_by || 'operator'} · created {String(d.created_at || '').slice(0, 10)} · TA {d.trade_ai_enabled ? '✓' : '✗'} · Hermes {d.hermes_enabled ? '✓' : '✗'}</div>
+            {d.rationale && <div style={{ fontSize: TYPE.sm, color: BB.text1, marginTop: 8, lineHeight: 1.5 }}>{d.rationale}</div>}
+            {(det.aliases?.length ?? 0) > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: TYPE.xs, fontWeight: 800, color: BB.text3, letterSpacing: '.05em' }}>ALIASES ({det.aliases.length})</div>
+                <div style={{ fontSize: TYPE.xs, color: BB.text2, marginTop: 3 }}>{det.aliases.map((a: any) => typeof a === 'string' ? a : a?.label).filter(Boolean).join(' · ')}</div>
+              </div>
+            )}
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: TYPE.xs, fontWeight: 800, color: BB.text3, letterSpacing: '.05em' }}>HIT TIMELINE (90d)</div>
+              <div style={{ ...numStyle, fontSize: TYPE.base, color: T.extIntel.hermes, marginTop: 3 }}>{spark(det.hit_timeline_90d)}</div>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: TYPE.xs, fontWeight: 800, color: BB.text3, letterSpacing: '.05em' }}>OUTCOME LEDGER · α events (n={det.alpha_n} scored of {det.alpha_events?.length ?? 0})</div>
+              {(det.alpha_events ?? []).slice(0, 14).map((e: any, i: number) => (
+                <div key={i} style={{ display: 'flex', gap: 8, fontSize: TYPE.xs, padding: '2px 4px', borderBottom: `1px solid ${BB.borderHair}`, alignItems: 'baseline' }}>
+                  <span style={{ ...numStyle, fontWeight: 700, minWidth: 48, color: BB.text0 }}>{e.symbol}</span>
+                  <span style={{ color: BB.text3, minWidth: 72 }}>{e.emitted_on}</span>
+                  <span style={{ ...numStyle, color: e.alpha_21d == null ? BB.text3 : e.alpha_21d > 0 ? BB.green : BB.red }}>{e.alpha_21d != null ? `21d α ${e.alpha_21d > 0 ? '+' : ''}${e.alpha_21d}%` : (e.verdict || 'pending')}</span>
+                  {e.staged && <Chip kind="state" tone="amber">STAGED</Chip>}
+                  {e.proposed && <span style={{ color: T.link }}>→ proposal</span>}
+                </div>
+              ))}
+              {(det.alpha_events?.length ?? 0) === 0 && <div style={{ fontSize: TYPE.xs, color: BB.text3 }}>no candidate events yet</div>}
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: TYPE.xs, fontWeight: 800, color: BB.text3, letterSpacing: '.05em' }}>WATCHPOOL CHILDREN ({det.children?.length ?? 0})</div>
+              {(det.children ?? []).slice(0, 12).map((c: any, i: number) => (
+                <div key={i} style={{ display: 'flex', gap: 8, fontSize: TYPE.xs, padding: '2px 4px', alignItems: 'baseline' }}>
+                  <span style={{ ...numStyle, fontWeight: 700, minWidth: 48, color: BB.text0 }}>{c.symbol}</span>
+                  <span style={{ color: BB.text2, minWidth: 130 }}>{c.strategy_id}</span>
+                  <span style={{ color: BB.text3 }}>{String(c.current_status || '').toLowerCase()}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function WatchpoolHub({ onDrill, embedded }: Props) {
   const [terminalUi] = useTerminalUi()
   const card = hubPanel(terminalUi)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
   const { data: wp, refetch: refetchWp } = useApi<any>('/api/v2/watchpool', 60_000)
+  const { data: mergePlan, refetch: refetchPlan } = useApi<any>('/api/v2/watch/directives/merge-plan', 0)
+  const { data: finds } = useApi<any>('/api/v2/screener-finds/candidates', 300_000)
+  const [drawerId, setDrawerId] = useState<number | null>(null)
   const [kind, setKind] = useState<'ticker' | 'sector' | 'trend'>('ticker')
   const [label, setLabel] = useState('')
   const [field1, setField1] = useState('')
@@ -149,25 +215,74 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
         <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 6 }}>Ticker = exact symbol (auto-evaluated). Sector = ETF + Finviz constituents. Trend = keywords (Hermes discovers → stages). Sector/trend hits stage for one-tap.</div>
       </div>
 
+      {/* v4 (C3): tier-3 family-merge approvals — same governed merge_into as the Telegram/CLI path */}
+      {(mergePlan?.merges?.length ?? 0) > 0 && (
+        <div style={{ ...card, borderLeft: `3px solid ${RAIL.attention}` }}>
+          <div style={{ fontSize: TYPE.base, fontWeight: 800, color: BB.amber, marginBottom: 6 }}>
+            Tier-3 merge approvals ({mergePlan.count}) — Sunday hygiene plan, operator decision
+          </div>
+          {mergePlan.merges.map((m: any, i: number) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '5px 0', borderBottom: `1px solid ${BB.borderHair}`, fontSize: TYPE.sm }}>
+              <Chip kind="metric">{m.family}</Chip>
+              <span style={{ color: BB.text2 }}>
+                {m.dups.map((x: any) => `#${x.id} ${x.label} (${x.hits ?? 0} hits)`).join(' + ')} → <b style={{ color: BB.text0 }}>#{m.survivor.id} {m.survivor.label}</b> ({m.survivor.hits ?? 0} hits)
+              </span>
+              <button disabled={busy} style={{ ...terminalButton('primary'), marginLeft: 'auto' }}
+                onClick={async () => {
+                  setBusy(true); setMsg(null)
+                  try {
+                    for (const dup of m.dups) {
+                      const r = await fetch('/api/v2/watch/directives/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: dup.id, action: 'merge_into', target_id: m.survivor.id }) })
+                      const j = await r.json()
+                      const jj = j?.data ?? j
+                      if (!(jj?.ok)) { setMsg(`Error merging #${dup.id}: ${jj?.error || 'failed'}`); setBusy(false); return }
+                    }
+                    setMsg(`✓ Merged ${m.dups.length} directive(s) into #${m.survivor.id} — aliases attached, hits reassigned`)
+                    refetchWd(); refetchPlan()
+                  } catch (e: any) { setMsg('Error: ' + e.message) }
+                  setBusy(false)
+                }}>Approve merge</button>
+            </div>
+          ))}
+          <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 6 }}>{mergePlan.note}</div>
+        </div>
+      )}
+
       {/* Directives + hits + Promote */}
       <div style={card}>
-        <div style={{ fontSize: TYPE.base, fontWeight: 800, color: BB.text0, marginBottom: 8 }}>Directives</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
+          <span style={{ fontSize: TYPE.base, fontWeight: 800, color: BB.text0 }}>Directives</span>
+          {/* v4 (C4): evidence next to the cap — data display only, operator decides tuning */}
+          {(() => {
+            const ps = (finds?.track_record?.per_source ?? []).find((s: any) => s.source_type === 'directive_hit')
+            return ps ? (
+              <Chip kind="metric" title="directive-origin candidate outcomes from the source scoreboard (21d α median vs SPY) — evidence for cap tuning; nothing auto-tunes">
+                sweep cap 180 · pool 21d α {ps.alpha_21d_median != null ? `${ps.alpha_21d_median > 0 ? '+' : ''}${ps.alpha_21d_median}%` : 'n/a'} (n={ps.n})
+              </Chip>
+            ) : null
+          })()}
+          <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>click a row for the full drawer</span>
+        </div>
         {directives.length === 0 ? <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>No directives yet — add one above.</div> :
           directives.map((d: any) => {
             const dhits = hits.filter((h: any) => h.directive_id === d.id)
             const rail = d.status === 'paused' ? RAIL.attention : d.status === 'active' ? RAIL.favorable : RAIL.neutral
             return (
-              <div key={d.id} style={{ padding: '8px 6px', borderBottom: `1px solid ${BB.border}`, borderLeft: `3px solid ${rail}` }}>
+              <div key={d.id} onClick={() => setDrawerId(d.id)}
+                   style={{ padding: '8px 6px', borderBottom: `1px solid ${BB.border}`, borderLeft: `3px solid ${rail}`, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <Chip kind="metric">{d.kind}</Chip>
                   <span style={{ fontWeight: 700, color: BB.text0, fontSize: TYPE.base }}>{d.label}</span>
-                  <Chip kind="state" tone={d.status === 'active' ? 'green' : d.status === 'paused' ? 'amber' : 'slate'}
-                        title={d.status === 'paused' ? 'Auto-paused (cold) — advisory; operator un-pause' : undefined}>{d.status}</Chip>
+                  <Chip kind="state" tone={d.status === 'active' ? 'green' : d.status === 'paused' || d.status === 'expired' ? 'amber' : 'slate'}
+                        title={d.status === 'paused' ? 'Auto-paused (cold) — advisory; operator un-pause' : d.status === 'expired' ? 'TTL reached (Sunday hygiene) — resume to reactivate' : undefined}>{d.status}</Chip>
+                  {d.expires_in_days != null && d.status === 'active' && d.expires_in_days <= 14 && (
+                    <Chip kind="state" tone="amber" title={`ttl_days=${d.ttl_days} — enforced by Sunday hygiene since v4`}>{d.expires_in_days > 0 ? `EXPIRES ${d.expires_in_days}d` : 'EXPIRES SUN'}</Chip>
+                  )}
                   {d.gap_type === 'rotate_gap' && <Chip kind="state" tone="amber" title={`Held position flagged for rotation review — seek ${d.sleeve || 'sleeve'} replacement (advisory). via ${d.created_by || 'operator'}`}>{`ROTATE-GAP${d.sleeve ? ' · ' + d.sleeve : ''}`}</Chip>}
                   <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>TA {d.trade_ai_enabled ? '✓' : '✗'} · Hermes {d.hermes_enabled ? '✓' : '✗'}</span>
                 </div>
                 {dhits.length > 0 && (
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                  <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
                     {dhits.slice(0, 14).map((h: any, i: number) => (
                       <span key={i} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: TYPE.xs, padding: '2px 6px', borderRadius: 2, background: BB.bgShift }}>
                         <b style={{ ...numStyle, color: BB.text0, cursor: 'pointer' }}
@@ -232,6 +347,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
         </>)}
         <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 8 }}>Click a row for full provenance (origin · tier · Street consensus · divergence). Keys: j/k move · Enter opens. Advisory — promotion is gated; no execution.</div>
       </div>
+      {drawerId != null && <DirectiveDrawer id={drawerId} onClose={() => setDrawerId(null)} />}
     </div>
   )
 }

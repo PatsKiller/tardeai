@@ -24072,6 +24072,88 @@ def _watch_alerts_post(body=None):
             "note": "evaluated every 20 min during RTH; one batched Telegram per pass, daily cap applies"}
 
 
+def _watch_directive_detail(query=None):
+    """GET /api/v2/watch/directives/detail?id=N — Watch Desk v4 (C1): the directive
+    drawer. Full thesis/spec + aliases, 90d hit timeline, α outcome events
+    (watch_candidate_events, source_id = directive id), staged children in the
+    watchpool, and TTL expiry. Read-only."""
+    q = query or {}
+    try:
+        did = int((q.get("id") or [0])[0] if isinstance(q.get("id"), list) else q.get("id") or 0)
+    except (TypeError, ValueError):
+        did = 0
+    if not did:
+        return {"ok": False, "error": "id required"}
+    d = _db_query("SELECT * FROM watch_directives WHERE id=%s", (did,), fetch="one")
+    if not d:
+        return {"ok": False, "error": f"directive {did} not found"}
+    spec = d.get("spec") if isinstance(d.get("spec"), dict) else {}
+    try:
+        import json as _j
+        if isinstance(d.get("spec"), str):
+            spec = _j.loads(d["spec"])
+    except Exception:
+        spec = {}
+    timeline = _db_query("""SELECT surfaced_at::date AS day, count(*) AS hits
+                            FROM watch_directive_hits
+                            WHERE directive_id=%s AND surfaced_at > now() - interval '90 days'
+                            GROUP BY 1 ORDER BY 1""", (did,)) or []
+    alpha_events = _db_query("""SELECT symbol, emitted_on, alpha_21d, alpha_63d, verdict, staged, proposed
+                                FROM watch_candidate_events
+                                WHERE source_type='directive_hit' AND source_id=%s
+                                ORDER BY emitted_on DESC LIMIT 60""", (str(did),)) or []
+    children = _db_query("""SELECT symbol, strategy_id, bucket, current_status, origin_system
+                            FROM strategy_watchpool WHERE directive_id=%s
+                            ORDER BY symbol LIMIT 60""", (did,)) or []
+    expires_in = None
+    if d.get("ttl_days") is not None and d.get("created_at") is not None:
+        try:
+            import datetime as _dt
+            age = (_dt.datetime.now(_dt.timezone.utc) - d["created_at"]).days
+            expires_in = int(d["ttl_days"]) - age
+        except Exception:
+            pass
+    alpha_scored = [e for e in alpha_events if e.get("alpha_21d") is not None]
+    return {"ok": True, "directive": {k: _json_clean(v) for k, v in d.items() if k != "spec"},
+            "spec": _json_clean(spec), "aliases": _json_clean(spec.get("aliases") or []),
+            "hit_timeline_90d": [{k: _json_clean(v) for k, v in r.items()} for r in timeline],
+            "alpha_events": [{k: _json_clean(v) for k, v in r.items()} for r in alpha_events],
+            "alpha_n": len(alpha_scored),
+            "children": [{k: _json_clean(v) for k, v in r.items()} for r in children],
+            "expires_in_days": expires_in}
+
+
+_MERGE_PLAN_CACHE = {"ts": 0.0, "plan": None}
+
+
+def _watch_directive_merge_plan(query=None):
+    """GET /api/v2/watch/directives/merge-plan — Watch Desk v4 (C3): the Sunday tier-3
+    family-merge plan rendered as an in-UI approvals fold. Read-only plan; each approval
+    goes through the SAME governed merge_into action as the Telegram/CLI path. Cached 6h."""
+    import time as _t
+    if _MERGE_PLAN_CACHE["plan"] is not None and _t.time() - _MERGE_PLAN_CACHE["ts"] < 21600 \
+            and not (query or {}).get("refresh"):
+        return _MERGE_PLAN_CACHE["plan"]
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import importlib
+        wdd = importlib.import_module("watch_directive_dedup")
+        actions = wdd.plan([3])
+        merges = [{"family": m["family"],
+                   "survivor": {"id": m["survivor"]["id"], "label": m["survivor"]["label"],
+                                "hits": _json_clean(m["survivor"].get("hits"))},
+                   "dups": [{"id": x["id"], "label": x["label"], "hits": _json_clean(x.get("hits"))}
+                            for x in m["dups"]]}
+                  for m in actions.get("merges", [])]
+        out = {"ok": True, "merges": merges, "count": len(merges),
+               "note": "approve = governed merge_into per pair (alias + hits reassigned + dup archived); never deleted"}
+    except Exception as e:
+        out = {"ok": False, "error": str(e)[:200]}
+    _MERGE_PLAN_CACHE.update({"ts": _t.time(), "plan": out})
+    return out
+
+
 def _watch_directive_update(body=None):
     """POST /api/v2/watch/directives/update {id, action, target_id?} — Watch Desk
     v2 (B3) row actions. Governed transitions only, never delete:
@@ -24088,7 +24170,7 @@ def _watch_directive_update(body=None):
         return {"ok": False, "error": f"directive {did} not found"}
     if action == "pause" and row["status"] == "active":
         _db_query("UPDATE watch_directives SET status='paused', updated_at=NOW() WHERE id=%s", (did,), fetch=None)
-    elif action == "resume" and row["status"] in ("paused", "proposed"):
+    elif action == "resume" and row["status"] in ("paused", "proposed", "expired"):
         _db_query("UPDATE watch_directives SET status='active', updated_at=NOW() WHERE id=%s", (did,), fetch=None)
     elif action == "archive" and row["status"] != "archived":
         _db_query("UPDATE watch_directives SET status='archived', updated_at=NOW() WHERE id=%s", (did,), fetch=None)
@@ -24115,7 +24197,10 @@ def _watch_directive_update(body=None):
 def _watch_directives(query=None):
     """GET /api/v2/watch-directives — operator watch directives + recent hits + Hermes staging (read-only)."""
     directives = _db_query("""SELECT id, kind, label, status, priority, trade_ai_enabled, hermes_enabled,
-                              last_serviced_at, created_at, spec, created_by, rationale
+                              last_serviced_at, created_at, spec, created_by, rationale, ttl_days,
+                              CASE WHEN ttl_days IS NOT NULL
+                                   THEN ttl_days - extract(days FROM now() - created_at)::int
+                              END AS expires_in_days
                               FROM watch_directives ORDER BY created_at DESC""") or []
     hits = _db_query("""SELECT h.directive_id, d.label, h.symbol, h.surfaced_by, h.divergence, h.promotion_status,
                         h.surfaced_at FROM watch_directive_hits h JOIN watch_directives d ON d.id=h.directive_id
@@ -31015,6 +31100,8 @@ ROUTES = {
     "/api/v2/hermes/llm-auth-status": _hermes_llm_auth_status,
     "/api/v2/system/llm-retry-health": _llm_retry_health,
     "/api/v2/watch-directives": _watch_directives,
+    "/api/v2/watch/directives/detail": _watch_directive_detail,
+    "/api/v2/watch/directives/merge-plan": _watch_directive_merge_plan,
     "/api/v2/watchpool": _watchpool_list,
     "/api/v2/watch/sectors": _watch_sectors,
     "/api/v2/watch/alerts/list": _watch_alerts_list,

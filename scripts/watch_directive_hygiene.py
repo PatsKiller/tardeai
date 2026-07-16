@@ -27,8 +27,29 @@ def _run(args: list[str]) -> str:
     return (cp.stdout or "") + (cp.stderr or "")
 
 
+def _expire_ttl() -> str:
+    """Watch Desk v4 (C2): enforce ttl_days — stored since v2 but never enforced anywhere
+    (diagnosis 0.2). active + past TTL → status='expired' (visible fold in UI, never
+    deleted; operator resume un-expires). Returns a one-line summary for the Telegram plan."""
+    try:
+        from db_adapter import _execute
+        rows = _execute("""UPDATE watch_directives
+                           SET status='expired', updated_at=now()
+                           WHERE status='active' AND ttl_days IS NOT NULL
+                             AND created_at < now() - (ttl_days || ' days')::interval
+                           RETURNING id, label""", fetch="all") or []
+        if not rows:
+            return "TTL expiry: none due"
+        return ("TTL expiry: " + str(len(rows)) + " directive(s) → expired: "
+                + ", ".join(f"#{r['id']} {str(r['label'])[:40]}" for r in rows[:8])
+                + (" …" if len(rows) > 8 else ""))
+    except Exception as e:
+        return f"TTL expiry: FAILED ({str(e)[:80]})"
+
+
 def main() -> int:
     applied = _run(["--apply", "--tier", "1", "--tier", "2"])
+    ttl_line = _expire_ttl()
     plan3 = _run(["--tier", "3"])
 
     def _summary(txt: str) -> str:
@@ -53,6 +74,7 @@ def main() -> int:
 
     msg = ("🧹 Watch-directive hygiene (Sunday)\n"
            f"Tiers 1–2 applied: {_summary(applied)}\n"
+           f"{ttl_line}\n"
            "Tier-3 family merges awaiting operator approval:\n"
            + ("\n".join(f"  {ln[:100]}" for ln in merge_lines) if merge_lines else "  none")
            + "\nApprove via: python scripts/watch_directive_dedup.py --apply --tier 3"
