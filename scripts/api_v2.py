@@ -1588,6 +1588,68 @@ def _reports_analyst_symbols(query=None):
     return {"holdings": h_syms, "watchlist": w_syms, "symbols": all_syms}
 
 
+def _reports_analytics(query=None):
+    """GET /api/v2/reports/analytics?days=30 — Reports Desk v1 (WS-D): alert & message
+    analytics over the archive corpora. Deterministic SQL rollups: daily volume,
+    by-severity, top alert types, noisiest producers, channel parity (raw store counts
+    vs portal-indexed). Read-only; drill-through happens client-side via the existing
+    archive filters."""
+    q = query or {}
+    try:
+        days = int((q.get("days") or [30])[0] if isinstance(q.get("days"), list) else q.get("days") or 30)
+    except (TypeError, ValueError):
+        days = 30
+    days = max(1, min(days, 120))
+    out: dict = {"ok": True, "days": days}
+    out["by_day"] = [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query(f"""
+        SELECT d::date AS day,
+               coalesce(a.n,0) AS alerts, coalesce(o.n,0) AS telegram, coalesce(nl.n,0) AS notifications
+        FROM generate_series(CURRENT_DATE - {days - 1}, CURRENT_DATE, interval '1 day') d
+        LEFT JOIN (SELECT created_at::date dd, count(*) n FROM alert_events
+                   WHERE created_at > CURRENT_DATE - {days} GROUP BY 1) a ON a.dd = d::date
+        LEFT JOIN (SELECT sent_at::date dd, count(*) n FROM telegram_outbox
+                   WHERE sent_at > CURRENT_DATE - {days} GROUP BY 1) o ON o.dd = d::date
+        LEFT JOIN (SELECT created_at::date dd, count(*) n FROM notification_log
+                   WHERE created_at > CURRENT_DATE - {days} GROUP BY 1) nl ON nl.dd = d::date
+        ORDER BY 1""") or [])]
+    out["by_severity"] = [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query(f"""
+        SELECT coalesce(severity,'info') AS severity, count(*) AS n
+        FROM alert_events WHERE created_at > CURRENT_DATE - {days}
+        GROUP BY 1 ORDER BY 2 DESC""") or [])]
+    out["top_types"] = [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query(f"""
+        SELECT coalesce(alert_type,'?') AS alert_type, count(*) AS n, max(created_at) AS last_seen,
+               count(*) FILTER (WHERE acknowledged_at IS NOT NULL) AS acked
+        FROM alert_events WHERE created_at > CURRENT_DATE - {days}
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 14""") or [])]
+    out["noisiest_sources"] = [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query(f"""
+        SELECT coalesce(source_script,'?') AS source, count(*) AS n
+        FROM alert_events WHERE created_at > CURRENT_DATE - {days}
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 10""") or [])]
+    # Parity: raw store counts in-window vs what the portal indexes (categories() totals)
+    raw = {}
+    for name, sql in (
+        ("alert_events", f"SELECT count(*) n FROM alert_events WHERE created_at > CURRENT_DATE - {days}"),
+        ("telegram_outbox", f"SELECT count(*) n FROM telegram_outbox WHERE sent_at > CURRENT_DATE - {days}"),
+        ("notification_log", f"SELECT count(*) n FROM notification_log WHERE created_at > CURRENT_DATE - {days}"),
+        ("ai_reports", f"SELECT count(*) n FROM ai_reports WHERE generated_at > CURRENT_DATE - {days}"),
+    ):
+        r = _db_query(sql, fetch="one") or {}
+        raw[name] = _json_clean(r.get("n"))
+    indexed = None
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import reports_portal as _rp
+        cats = (_rp.categories() or {}).get("categories") or []
+        indexed = sum(int(c.get("count") or 0) for c in cats)
+    except Exception:
+        pass
+    out["parity"] = {"raw_stores": raw, "raw_total": sum(v or 0 for v in raw.values()),
+                     "portal_indexed_total": indexed,
+                     "note": "portal categories index ALL history (no day window) and route each row to exactly one category; raw totals here are windowed — differences are window + routing, stated not hidden"}
+    return out
+
+
 def _reports_analyst_status(query=None):
     """GET /api/v2/reports/analyst/status — Reports Desk v1 (C1/C3/C4): the truth pass.
     One registry read defines every count on-page: eligible (live holdings+watchlist
@@ -31355,6 +31417,7 @@ ROUTES = {
     "/api/v2/reports/analyst/preview": _reports_analyst_preview,
     "/api/v2/reports/analyst/symbols": _reports_analyst_symbols,
     "/api/v2/reports/analyst/status": _reports_analyst_status,
+    "/api/v2/reports/analytics": _reports_analytics,
     "/api/v2/reports/analyst/export": _reports_analyst_export,
     "/api/v2/reports/analyst/generate": _reports_analyst_generate,
     "/api/v2/reports/analyst/registry": _reports_analyst_registry,

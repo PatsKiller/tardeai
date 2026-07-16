@@ -11,6 +11,7 @@ import ReportSearch from '../components/reports/ReportSearch'
 import DocxDownloads from '../components/reports/DocxDownloads'
 import ReportLibrary from '../components/reports/ReportLibrary'
 import StructuredBrief from '../components/reports/StructuredBrief'
+import AlertAnalyticsBand from '../components/reports/AlertAnalyticsBand'
 import AnalystReportsPanel from '../components/reports/AnalystReportsPanel'
 import { parseBriefSections, executiveSummaryText, rankedActionLines, SUPER_TABS } from '../components/reports/briefUtils'
 import { useTerminalUi } from '../lib/terminalUi'
@@ -419,6 +420,9 @@ export default function ReportsHub({ onDrill }: Props) {
         </>
       )}
 
+      {mode === 'archive' && !searchQ && (
+        <AlertAnalyticsBand onDrillType={(t) => { setQInput(t); setQ(t) }} />
+      )}
       {mode === 'archive' && !searchQ && (
         <ReportsArchive
           categories={categories}
