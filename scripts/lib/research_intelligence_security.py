@@ -16,12 +16,17 @@ STATE = PROJECT_ROOT / "data" / "portfolios" / "state"
 ENRICH_PATH = STATE / "ticker_enrichment_cache.json"
 TECH_PATH = STATE / "technical_snapshot.json"
 FINVIZ_PATH = STATE / "finviz_quote_cache.json"
+STOCK_INTEL_PATH = STATE / "stock_intelligence.json"
+OPTIONS_PROP_PATH = STATE / "options_proposals.json"
 
 # Benchmark for relative strength (broad growth ETF widely held)
 _BENCH = "SCHG"
 
 # Data quality: fields that count toward "has security data"
 _CORE_FIELDS = ("rsi", "perf_month_pct", "pe", "eps_next_y", "avg_vol_m", "beta")
+
+# Gate for high-visibility adds: RSI + at least one RS metric
+_MIN_ADD_REQUIRES = ("rsi", "rel_strength")
 
 
 def _f(v: Any) -> float | None:
@@ -69,10 +74,51 @@ def _load_finviz() -> dict[str, Any]:
         return {}
 
 
+@lru_cache(maxsize=1)
+def _load_stock_intel() -> dict[str, Any]:
+    """Finnhub-backed analyst consensus from stock_intelligence.json."""
+    if not STOCK_INTEL_PATH.exists():
+        return {}
+    try:
+        d = json.loads(STOCK_INTEL_PATH.read_text(encoding="utf-8"))
+        out: dict[str, Any] = {}
+        for it in d.get("items") or []:
+            if not isinstance(it, dict):
+                continue
+            sym = str(it.get("symbol") or "").upper()
+            if not sym:
+                continue
+            out[sym] = it
+        return out
+    except Exception:
+        return {}
+
+
+@lru_cache(maxsize=1)
+def _load_options_by_underlying() -> dict[str, list[dict[str, Any]]]:
+    """Options desk proposals keyed by underlying (IV rank, bias)."""
+    if not OPTIONS_PROP_PATH.exists():
+        return {}
+    try:
+        d = json.loads(OPTIONS_PROP_PATH.read_text(encoding="utf-8"))
+        by: dict[str, list[dict[str, Any]]] = {}
+        for p in d.get("proposals") or []:
+            if not isinstance(p, dict):
+                continue
+            u = str(p.get("underlying") or p.get("symbol") or "").upper()
+            if u:
+                by.setdefault(u, []).append(p)
+        return by
+    except Exception:
+        return {}
+
+
 def clear_security_cache() -> None:
     _load_enrich.cache_clear()
     _load_tech.cache_clear()
     _load_finviz.cache_clear()
+    _load_stock_intel.cache_clear()
+    _load_options_by_underlying.cache_clear()
     get_security_snapshot.cache_clear()
     market_benchmark.cache_clear()
 
@@ -253,6 +299,60 @@ def get_security_snapshot(symbol: str) -> dict[str, Any]:
     has_min_data = rsi is not None  # hard min for adds
     data_coverage = round(100.0 * data_fields / 7.0, 0)
 
+    # Finnhub consensus (stock_intelligence) — prefer over corrupted enrichment ratings
+    si = _load_stock_intel().get(sym) or {}
+    fh = si.get("analyst") if isinstance(si.get("analyst"), dict) else {}
+    fh_buy = int(fh.get("buy") or 0) + int(fh.get("strong_buy") or 0)
+    fh_hold = int(fh.get("hold") or 0)
+    fh_sell = int(fh.get("sell") or 0) + int(fh.get("strong_sell") or 0)
+    fh_n = fh_buy + fh_hold + fh_sell
+    consensus_label = None
+    if fh_n > 0:
+        if fh_buy >= fh_hold and fh_buy >= fh_sell and fh_buy >= max(1, fh_n * 0.45):
+            consensus_label = "Buy" if int(fh.get("strong_buy") or 0) < fh_buy * 0.6 else "Strong Buy"
+            if int(fh.get("strong_buy") or 0) >= max(3, fh_buy * 0.4):
+                consensus_label = "Strong Buy"
+        elif fh_sell > fh_buy:
+            consensus_label = "Sell"
+        else:
+            consensus_label = "Hold"
+    # Override broken enrichment "Strong Sell" when Finnhub exists
+    if consensus_label:
+        analyst = consensus_label
+
+    # Options desk: IV rank / bias from proposals
+    opts = _load_options_by_underlying().get(sym) or []
+    iv_rank = None
+    opt_sentiment = "No unusual options activity detected"
+    opt_note = "Options data incomplete or no desk proposals for this name."
+    if opts:
+        ivs = [_f(p.get("iv_rank")) for p in opts if _f(p.get("iv_rank")) is not None]
+        iv_rank = round(sum(ivs) / len(ivs), 1) if ivs else None
+        calls = sum(1 for p in opts if str(p.get("option_type") or "").lower() == "call")
+        puts = sum(1 for p in opts if str(p.get("option_type") or "").lower() == "put")
+        if calls > puts * 1.5:
+            opt_sentiment = "Bullish bias (call-heavy desk proposals)"
+        elif puts > calls * 1.5:
+            opt_sentiment = "Bearish / hedge bias (put-heavy desk proposals)"
+        else:
+            opt_sentiment = "Mixed / income (covered-call style activity)"
+        opt_note = (
+            f"{len(opts)} desk proposal(s)"
+            + (f"; IV rank ~{iv_rank}" if iv_rank is not None else "")
+            + f"; call={calls} put={puts}."
+        )
+
+    has_rs = vs_spy_m is not None or vs_qqq_m is not None or rel_m is not None
+    data_complete = bool(rsi is not None and has_rs)
+    incomplete_reason = None
+    if not data_complete:
+        missing = []
+        if rsi is None:
+            missing.append("RSI")
+        if not has_rs:
+            missing.append("relative strength")
+        incomplete_reason = "Incomplete data — missing " + " + ".join(missing)
+
     snap = {
         "ok": data_fields >= 2,
         "symbol": sym,
@@ -277,6 +377,11 @@ def get_security_snapshot(symbol: str) -> dict[str, Any]:
         "rvol": rvol,
         "liquidity": liq,
         "analyst_rating": analyst,
+        "analyst_consensus": consensus_label,
+        "analyst_counts": {
+            "buy": fh_buy, "hold": fh_hold, "sell": fh_sell, "n": fh_n,
+            "provider": fh.get("provider"), "as_of": fh.get("recommendation_period"),
+        } if fh_n else None,
         "target": target if target and target > 0 else None,
         "sma20_pct": sma20,
         "sma50_pct": sma50,
@@ -290,180 +395,274 @@ def get_security_snapshot(symbol: str) -> dict[str, Any]:
         "valuation": val,
         "earnings_momentum": earn,
         "has_min_data": has_min_data,
+        "data_complete": data_complete,
+        "incomplete_reason": incomplete_reason,
         "data_coverage_pct": data_coverage,
         "data_fields": data_fields,
+        "iv_rank": iv_rank,
+        "options_sentiment": opt_sentiment,
+        "options_note": opt_note,
+        "intel_bucket": si.get("bucket"),
+        "intel_score": si.get("score"),
     }
     score_pack = score_security(snap)
     snap.update(score_pack)
+    # Structured snapshots for UI template
+    snap["technical_snapshot"] = {
+        "rsi": rsi,
+        "rsi_zone": _rsi_bucket(rsi),
+        "rs_spy_1m": vs_spy_m,
+        "rs_qqq_1m": vs_qqq_m,
+        "rs_schg_1m": rel_m,
+        "sma50_pct": sma50,
+        "sma200_pct": sma200,
+        "rvol": rvol,
+        "beta": beta,
+    }
+    snap["analyst_snapshot"] = {
+        "consensus": consensus_label or ("No coverage" if not fh_n else analyst),
+        "counts": snap.get("analyst_counts"),
+        "target": snap.get("target"),
+        "pe": pe,
+        "peg": peg,
+        "eps_next_y": eps_next_y,
+        "earnings_momentum": earn,
+        "coverage_flag": "ok" if fh_n else "no_finnhub_coverage",
+    }
+    snap["options_flow_snapshot"] = {
+        "sentiment": opt_sentiment,
+        "iv_rank": iv_rank,
+        "note": opt_note,
+        "source": "options_proposals desk" if opts else "none",
+        "proposal_count": len(opts),
+    }
     return snap
 
 
 def score_security(snap: dict[str, Any]) -> dict[str, Any]:
-    """Multi-factor conviction score 0–100 → tier A/B/C + why bullets."""
-    score = 50.0
+    """Multi-factor conviction 0–100 with transparent component breakdown."""
+    # Base 40; components sum toward 0–100 display
+    components: dict[str, float] = {
+        "rsi_momentum": 0.0,
+        "relative_strength": 0.0,
+        "valuation": 0.0,
+        "analyst_consensus": 0.0,
+        "earnings_revisions": 0.0,
+        "trend_smas": 0.0,
+        "options_flow": 0.0,
+        "liquidity_vol": 0.0,
+        "data_quality": 0.0,
+    }
     why: list[str] = []
     risks: list[str] = []
 
     rsi = snap.get("rsi")
     if rsi is not None:
         if 35 <= rsi <= 65:
-            score += 8
+            components["rsi_momentum"] = 14.0
             why.append(f"RSI {rsi:.0f} constructive/neutral zone")
         elif rsi < 30:
-            score += 4
-            why.append(f"RSI {rsi:.0f} oversold — mean-reversion watch, not chase")
+            components["rsi_momentum"] = 8.0
+            why.append(f"RSI {rsi:.0f} oversold — mean-reversion watch")
         elif rsi > 72:
-            score -= 12
+            components["rsi_momentum"] = -12.0
             risks.append(f"RSI {rsi:.0f} overbought — reduce size / wait pullback")
         else:
+            components["rsi_momentum"] = 6.0
             why.append(f"RSI {rsi:.0f} ({snap.get('rsi_status')})")
+    else:
+        components["rsi_momentum"] = -6.0
+        risks.append("Missing RSI — incomplete technicals")
 
-    # Prefer SPY relative strength for market edge; SCHG remains portfolio context
     rel_spy = snap.get("rel_strength_vs_spy_month_pct")
     rel = snap.get("rel_strength_month_pct")
     rel_use = rel_spy if rel_spy is not None else rel
     rel_label = "SPY" if rel_spy is not None else "SCHG"
     if rel_use is not None:
         if rel_use >= 3:
-            score += 10
+            components["relative_strength"] = 14.0
             why.append(f"Outperforming {rel_label} by {rel_use:+.1f}% (1M)")
         elif rel_use >= 0:
-            score += 4
+            components["relative_strength"] = 6.0
             why.append(f"In-line/slightly ahead of {rel_label} ({rel_use:+.1f}% 1M)")
         elif rel_use > -5:
-            score -= 4
+            components["relative_strength"] = -4.0
             risks.append(f"Lagging {rel_label} by {rel_use:.1f}% (1M)")
         else:
-            score -= 10
+            components["relative_strength"] = -12.0
             risks.append(f"Material underperformance vs {rel_label} ({rel_use:.1f}% 1M)")
+    else:
+        components["relative_strength"] = -5.0
+        risks.append("Missing relative strength vs SPY/SCHG")
     rel_qqq = snap.get("rel_strength_vs_qqq_month_pct")
     if rel_qqq is not None and rel_spy is not None:
         if rel_qqq >= 3 and rel_spy >= 0:
-            score += 3
+            components["relative_strength"] += 3.0
             why.append(f"Also beating QQQ by {rel_qqq:+.1f}% (1M)")
         elif rel_qqq <= -5 and rel_spy <= -3:
-            score -= 2
+            components["relative_strength"] -= 2.0
             risks.append(f"Lagging QQQ by {rel_qqq:.1f}% (1M)")
 
     earn = snap.get("earnings_momentum")
     if earn == "positive":
-        score += 10
+        components["earnings_revisions"] = 12.0
         bits = []
-        if snap.get("eps_qoq") is not None:
-            bits.append(f"EPS QoQ {snap['eps_qoq']:+.0%}" if abs(snap["eps_qoq"]) < 5 else f"EPS QoQ {snap['eps_qoq']:+.1f}")
         if snap.get("eps_next_y") is not None:
             bits.append(f"EPS NY {snap['eps_next_y']:+.0f}%")
         why.append("Earnings momentum positive" + (f" ({', '.join(bits)})" if bits else ""))
     elif earn == "negative":
-        score -= 10
-        risks.append("Earnings momentum negative — thesis needs extra proof")
+        components["earnings_revisions"] = -10.0
+        risks.append("Earnings momentum negative")
     elif earn == "mixed":
-        score += 1
+        components["earnings_revisions"] = 2.0
 
     val = snap.get("valuation")
     if val in ("attractive", "cheap_pe"):
-        score += 8
+        components["valuation"] = 12.0
         why.append(
             f"Valuation {val}"
             + (f" PEG {snap['peg']:.2f}" if snap.get("peg") else "")
             + (f" P/E {snap['pe']:.1f}" if snap.get("pe") else "")
         )
     elif val in ("rich", "rich_pe"):
-        score -= 8
+        components["valuation"] = -10.0
         risks.append(
             "Rich valuation"
             + (f" PEG {snap['peg']:.2f}" if snap.get("peg") else "")
-            + (f" P/E {snap['pe']:.1f}" if snap.get("pe") else "")
             + " — size down"
         )
     elif val in ("fair", "fair_pe"):
-        score += 2
-        why.append("Valuation roughly fair vs simple PEG/PE screen")
+        components["valuation"] = 4.0
+        why.append("Valuation roughly fair")
 
-    # Trend / SMAs
     sma50 = snap.get("sma50_pct")
     sma200 = snap.get("sma200_pct")
     if sma50 is not None and sma200 is not None:
         if sma50 > 0 and sma200 > 0:
-            score += 8
+            components["trend_smas"] = 10.0
             why.append(f"Above SMA50/200 ({sma50:+.1f}% / {sma200:+.1f}%)")
         elif sma50 < 0 and sma200 < 0:
-            score -= 8
+            components["trend_smas"] = -10.0
             risks.append(f"Below SMA50/200 ({sma50:+.1f}% / {sma200:+.1f}%)")
-    if snap.get("trend") == "uptrend":
-        score += 4
-        why.append("Trend up")
-    elif snap.get("trend") == "downtrend":
-        score -= 6
-        risks.append("Trend down")
-
-    if snap.get("tech_grade") == "green" or (snap.get("tech_score") or 0) >= 70:
-        score += 6
-        why.append(f"Tech grade {snap.get('tech_grade') or 'solid'} (score {snap.get('tech_score')})")
-    elif snap.get("tech_grade") == "red":
-        score -= 8
-        risks.append("Tech grade red")
-
-    ar = snap.get("analyst_rating")
-    if ar:
-        al = ar.lower()
-        if "strong buy" in al or al == "buy" or "outperform" in al or "overweight" in al:
-            score += 8
-            why.append(f"Analyst {ar}")
-        elif "sell" in al or "underperform" in al or "underweight" in al:
-            score -= 10
-            risks.append(f"Analyst {ar}")
         else:
-            why.append(f"Analyst {ar}")
+            components["trend_smas"] = 2.0
+    if snap.get("trend") == "uptrend":
+        components["trend_smas"] += 3.0
+    elif snap.get("trend") == "downtrend":
+        components["trend_smas"] -= 4.0
+    if snap.get("tech_grade") == "green" or (snap.get("tech_score") or 0) >= 70:
+        components["trend_smas"] += 4.0
+    elif snap.get("tech_grade") == "red":
+        components["trend_smas"] -= 6.0
 
-    # Liquidity
+    # Analyst — Finnhub consensus preferred
+    counts = snap.get("analyst_counts") or {}
+    n = int(counts.get("n") or 0)
+    if n > 0:
+        buy = int(counts.get("buy") or 0)
+        sell = int(counts.get("sell") or 0)
+        skew = (buy - sell) / max(n, 1)
+        if skew >= 0.5:
+            components["analyst_consensus"] = 14.0
+            why.append(f"Analyst consensus bullish ({buy} buy / {sell} sell, n={n})")
+        elif skew >= 0.2:
+            components["analyst_consensus"] = 8.0
+            why.append(f"Analyst lean positive (n={n})")
+        elif skew <= -0.2:
+            components["analyst_consensus"] = -12.0
+            risks.append(f"Analyst lean negative (n={n})")
+        else:
+            components["analyst_consensus"] = 2.0
+            why.append(f"Analyst mixed/hold (n={n})")
+    else:
+        components["analyst_consensus"] = 0.0
+        risks.append("No Finnhub analyst coverage flag")
+
+    # Options flow (confirming layer only)
+    sent = (snap.get("options_sentiment") or "").lower()
+    iv = snap.get("iv_rank")
+    if "bullish" in sent:
+        components["options_flow"] = 8.0
+        why.append(snap.get("options_sentiment") or "Bullish options bias")
+    elif "bearish" in sent or "put-heavy" in sent:
+        components["options_flow"] = -8.0
+        risks.append(snap.get("options_sentiment") or "Bearish options bias")
+    elif "mixed" in sent or "income" in sent:
+        components["options_flow"] = 2.0
+    if iv is not None:
+        if iv >= 60:
+            components["options_flow"] -= 2.0
+            risks.append(f"Elevated IV rank {iv}")
+        elif iv <= 25:
+            components["options_flow"] += 1.0
+
     if snap.get("liquidity") == "thin":
-        score -= 12
-        risks.append("Thin liquidity — cut size or skip")
+        components["liquidity_vol"] = -12.0
+        risks.append("Thin liquidity")
     elif snap.get("liquidity") == "low":
-        score -= 5
-        risks.append("Low average volume — smaller starter")
+        components["liquidity_vol"] = -5.0
     elif snap.get("liquidity") == "high":
-        score += 3
-
-    # Volatility penalty (beta)
+        components["liquidity_vol"] = 3.0
     beta = snap.get("beta")
     if beta is not None:
         if beta >= 1.6:
-            score -= 6
-            risks.append(f"High beta {beta:.2f} — smaller risk unit")
+            components["liquidity_vol"] -= 6.0
+            risks.append(f"High beta {beta:.2f}")
         elif beta <= 0.8:
-            score += 3
-            why.append(f"Lower beta {beta:.2f}")
+            components["liquidity_vol"] += 3.0
 
-    # Data coverage
-    cov = snap.get("data_coverage_pct") or 0
-    if cov < 40:
-        score -= 8
-        risks.append("Sparse security data — lower conviction")
-    elif cov >= 70:
-        score += 4
+    if not snap.get("data_complete"):
+        components["data_quality"] = -12.0
+        risks.append(snap.get("incomplete_reason") or "Incomplete RSI/RS data")
+    elif (snap.get("data_coverage_pct") or 0) >= 70:
+        components["data_quality"] = 6.0
+    else:
+        components["data_quality"] = 2.0
 
+    # Round components for display
+    components = {k: round(v, 1) for k, v in components.items()}
+    base = 40.0
+    score = base + sum(components.values())
     score = max(0.0, min(100.0, score))
-    if score >= 72:
+    if not snap.get("data_complete"):
+        # Cap tier for incomplete adds
+        score = min(score, 58.0)
+
+    if score >= 72 and snap.get("data_complete"):
         tier = "A"
     elif score >= 52:
         tier = "B"
     else:
         tier = "C"
 
-    # Human one-liner
     headline_bits = why[:2] + risks[:1]
     headline = "; ".join(headline_bits) if headline_bits else "Limited security factors available"
+
+    # Human-readable breakdown lines
+    breakdown_lines = [
+        f"RSI / Momentum: {components['rsi_momentum']:+.0f}",
+        f"Relative Strength: {components['relative_strength']:+.0f}",
+        f"Valuation: {components['valuation']:+.0f}",
+        f"Analyst Consensus: {components['analyst_consensus']:+.0f}",
+        f"Earnings / Growth: {components['earnings_revisions']:+.0f}",
+        f"Trend / SMAs: {components['trend_smas']:+.0f}",
+        f"Options Flow: {components['options_flow']:+.0f}",
+        f"Liquidity / Vol: {components['liquidity_vol']:+.0f}",
+        f"Data Quality: {components['data_quality']:+.0f}",
+    ]
 
     return {
         "conviction_score": round(score, 1),
         "conviction_tier": tier,
+        "conviction_base": base,
+        "conviction_breakdown": components,
+        "conviction_breakdown_lines": breakdown_lines,
         "why_selected": why[:5],
-        "risk_flags": risks[:4],
+        "risk_flags": risks[:5],
         "conviction_headline": headline[:220],
         "vol_size_mult": _vol_size_mult(snap),
-        "conviction_size_mult": {"A": 1.15, "B": 1.0, "C": 0.65}.get(tier, 0.8),
+        "conviction_size_mult": {"A": 1.15, "B": 1.0, "C": 0.55}.get(tier, 0.7),
+        "publishable_add": bool(snap.get("data_complete") and tier in ("A", "B") and score >= 52),
     }
 
 
@@ -497,8 +696,9 @@ def enrich_ticker_recommendation(
     rec: dict[str, Any],
     *,
     role: str | None = None,
+    portfolio_total_mv: float | None = None,
 ) -> dict[str, Any]:
-    """Attach security snapshot + conviction to a ticker recommendation dict."""
+    """Attach security snapshot + transparent conviction + action hints."""
     sym = (rec.get("symbol") or "").upper()
     if not sym:
         return rec
@@ -506,14 +706,37 @@ def enrich_ticker_recommendation(
     out = dict(rec)
     role = role or out.get("role") or "hold_review"
 
+    # Data gate: demote incomplete adds to watchlist
+    if role == "add_candidate" and not snap.get("data_complete"):
+        out["role"] = "watchlist"
+        out["suggested_weight_pct"] = "watch — incomplete RSI/RS data"
+        role = "watchlist"
+        out["data_gate"] = "blocked_incomplete"
+    elif role == "add_candidate" and not snap.get("publishable_add"):
+        out["role"] = "watchlist"
+        out["suggested_weight_pct"] = (
+            out.get("suggested_weight_pct") or "watch — low conviction / incomplete"
+        )
+        role = "watchlist"
+        out["data_gate"] = "demoted_low_conviction"
+
     out["conviction_score"] = snap.get("conviction_score")
     out["conviction_tier"] = snap.get("conviction_tier")
+    out["conviction_breakdown"] = snap.get("conviction_breakdown")
+    out["conviction_breakdown_lines"] = snap.get("conviction_breakdown_lines")
+    out["technical_snapshot"] = snap.get("technical_snapshot")
+    out["analyst_snapshot"] = snap.get("analyst_snapshot")
+    out["options_flow_snapshot"] = snap.get("options_flow_snapshot")
+    out["data_complete"] = snap.get("data_complete")
+    out["incomplete_reason"] = snap.get("incomplete_reason")
     out["security"] = {
         "rsi": snap.get("rsi"),
         "rsi_status": snap.get("rsi_status"),
         "rel_strength_month_pct": snap.get("rel_strength_month_pct"),
         "rel_strength_vs_spy_month_pct": snap.get("rel_strength_vs_spy_month_pct"),
         "rel_strength_vs_qqq_month_pct": snap.get("rel_strength_vs_qqq_month_pct"),
+        "sma50_pct": snap.get("sma50_pct"),
+        "sma200_pct": snap.get("sma200_pct"),
         "pe": snap.get("pe"),
         "peg": snap.get("peg"),
         "eps_next_y": snap.get("eps_next_y"),
@@ -521,64 +744,100 @@ def enrich_ticker_recommendation(
         "valuation": snap.get("valuation"),
         "beta": snap.get("beta"),
         "liquidity": snap.get("liquidity"),
-        "analyst_rating": snap.get("analyst_rating"),
+        "analyst_rating": snap.get("analyst_consensus") or snap.get("analyst_rating"),
+        "analyst_counts": snap.get("analyst_counts"),
+        "iv_rank": snap.get("iv_rank"),
+        "options_sentiment": snap.get("options_sentiment"),
         "trend": snap.get("trend"),
         "has_min_data": snap.get("has_min_data"),
+        "data_complete": snap.get("data_complete"),
         "data_coverage_pct": snap.get("data_coverage_pct"),
     }
-    # Strengthen rationale with security why
+
     bits = list(snap.get("why_selected") or [])[:2]
     risks = list(snap.get("risk_flags") or [])[:1]
     base_r = (out.get("rationale") or "").strip()
     extra = []
     if bits:
         extra.append("; ".join(bits))
-    if risks and role in ("add_candidate", "watchlist"):
+    if risks and role in ("add_candidate", "watchlist", "trim_candidate"):
         extra.append(risks[0])
     if snap.get("conviction_tier"):
         extra.append(f"Conviction {snap['conviction_tier']} ({snap.get('conviction_score')})")
+    if not snap.get("data_complete"):
+        extra.append(snap.get("incomplete_reason") or "Incomplete data")
     if extra:
         joined = " · ".join(extra)
-        out["rationale"] = (f"{base_r} {joined}" if base_r else joined)[:320]
+        out["rationale"] = (f"{base_r} {joined}" if base_r else joined)[:360]
     out["why_selected"] = snap.get("conviction_headline")
+
+    # Action bar for CC UI
+    actions = [
+        {"id": "watchlist", "label": "Add to Watchlist", "href": f"/watch?symbol={sym}"},
+        {"id": "open_trading", "label": "Open in Trading", "href": f"/trading?symbol={sym}"},
+        {"id": "stop", "label": "Set / Refresh Stop", "href": f"/portfolio?tab=Stop%20Management&symbol={sym}"},
+    ]
+    if role == "add_candidate":
+        actions.insert(0, {
+            "id": "trade_ticket",
+            "label": "Build Trade Ticket",
+            "href": f"/trading?symbol={sym}&side=buy&intent=ri_add",
+        })
+    if role == "trim_candidate":
+        actions.insert(0, {
+            "id": "propose_trim",
+            "label": f"Propose Trim {sym}",
+            "href": f"/trading?symbol={sym}&side=sell&intent=ri_trim",
+        })
+    if role == "protect":
+        actions.insert(0, {
+            "id": "stop_first",
+            "label": f"Protect {sym} Stop",
+            "href": f"/portfolio?tab=Stop%20Management&symbol={sym}",
+        })
+    out["actions"] = actions[:5]
     return out
 
 
 def filter_add_candidates(
     symbols: list[str],
     *,
-    min_conviction: float = 48.0,
+    min_conviction: float = 52.0,
     require_rsi: bool = True,
+    require_complete: bool = True,
     max_n: int = 4,
 ) -> list[dict[str, Any]]:
-    """Rank symbols for add/watchlist; drop sparse or toxic technicals when possible."""
+    """Rank symbols for adds; gate incomplete / low-conviction names."""
     ranked: list[tuple[float, dict[str, Any]]] = []
+    incomplete: list[tuple[float, dict[str, Any]]] = []
     for sym in symbols:
         snap = get_security_snapshot(sym)
-        if require_rsi and not snap.get("has_min_data"):
-            # Still allow with heavy penalty if nothing better
-            if snap.get("data_fields", 0) < 2:
-                continue
         score = float(snap.get("conviction_score") or 0)
-        # Soft-block extreme overbought adds
         rsi = snap.get("rsi")
         if rsi is not None and rsi >= 78:
             score -= 15
         if snap.get("liquidity") == "thin":
             score -= 10
-        if score < min_conviction and snap.get("data_fields", 0) >= 3:
+        if require_complete and not snap.get("data_complete"):
+            incomplete.append((score, snap))
+            continue
+        if require_rsi and not snap.get("has_min_data"):
+            incomplete.append((score, snap))
+            continue
+        if score < min_conviction:
             continue
         ranked.append((score, snap))
     ranked.sort(key=lambda x: -x[0])
-    out = []
-    for score, snap in ranked[:max_n]:
-        out.append(snap)
-    # If filter emptied list, return top by score without min (degraded)
+    out = [s for _, s in ranked[:max_n]]
+    # Fill with incomplete only as last resort (still returned for watchlist demotion)
+    if len(out) < max_n and incomplete:
+        incomplete.sort(key=lambda x: -x[0])
+        for _, s in incomplete:
+            if len(out) >= max_n:
+                break
+            out.append(s)
     if not out and symbols:
-        soft = []
-        for sym in symbols:
-            snap = get_security_snapshot(sym)
-            soft.append((float(snap.get("conviction_score") or 0), snap))
+        soft = [(float(get_security_snapshot(s).get("conviction_score") or 0), get_security_snapshot(s)) for s in symbols]
         soft.sort(key=lambda x: -x[0])
         out = [s for _, s in soft[:max_n]]
     return out

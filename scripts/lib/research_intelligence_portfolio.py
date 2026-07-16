@@ -166,7 +166,22 @@ def load_portfolio_context() -> dict[str, Any]:
         if h.get("account"):
             row["accounts"].add(str(h["account"]))
 
+    # Cash across accounts (is_cash holdings)
+    cash_mv = 0.0
+    try:
+        doc2 = doc  # from load above
+        for h in doc2.get("holdings") or []:
+            if h.get("is_cash"):
+                try:
+                    cash_mv += float(h.get("market_value") or 0)
+                except (TypeError, ValueError):
+                    pass
+    except Exception:
+        cash_mv = 0.0
+
     total = sum(r["market_value"] for r in by_sym.values()) or 1.0
+    # Household total including cash for dollar sizing
+    total_with_cash = total + cash_mv if cash_mv > 0 else total
     for r in by_sym.values():
         r["weight_pct"] = round(100.0 * r["market_value"] / total, 2)
         r["accounts"] = sorted(r["accounts"])
@@ -273,7 +288,9 @@ def load_portfolio_context() -> dict[str, Any]:
 
     return {
         "ok": True,
-        "total_mv": round(total, 2),
+        "total_mv": round(total_with_cash if cash_mv else total, 2),
+        "invested_mv": round(total, 2),
+        "cash_mv": round(cash_mv, 2),
         "by_symbol": by_sym,
         "top": [
             {
@@ -576,7 +593,30 @@ def size_new_position(
         reasons.append("prefer funding trim over cash/new beta (concentration/heat)")
         factors.append("funded")
 
+    total_mv = float(portfolio.get("total_mv") or 0.0)
+    cash = float(portfolio.get("cash_mv") or 0.0)
+    # Risk-aware: risk $ at ~1% of book for mid of band (stop ~8% below entry heuristic)
+    mid_pct = (min_pct + max_pct) / 2.0
+    dollar_lo = round(total_mv * min_pct / 100.0, 0) if total_mv else None
+    dollar_hi = round(total_mv * max_pct / 100.0, 0) if total_mv else None
+    risk_1pct = round(total_mv * 0.01, 0) if total_mv else None
+    # Cap size by cash if unfunded and cash is scarce
+    if not prefer_funded and cash > 0 and dollar_hi and dollar_hi > cash * 0.9:
+        # Shrink to available cash
+        max_from_cash = max(0.4, 100.0 * (cash * 0.85) / total_mv) if total_mv else max_pct
+        if max_from_cash < max_pct:
+            reasons.append(
+                f"cash ~${cash:,.0f} caps unfunded add → max ~{max_from_cash:.1f}% of book"
+            )
+            max_pct = round(max_from_cash, 2)
+            min_pct = round(max(0.4, max_pct * 0.55), 2)
+            dollar_lo = round(total_mv * min_pct / 100.0, 0)
+            dollar_hi = round(total_mv * max_pct / 100.0, 0)
+            mid_pct = (min_pct + max_pct) / 2.0
+
     label = f"{min_pct:.1f}–{max_pct:.1f}% of book"
+    if dollar_lo is not None and dollar_hi is not None:
+        label += f" (${dollar_lo:,.0f}–${dollar_hi:,.0f})"
     if prefer_funded:
         label += " (funded)"
     if not already_held:
@@ -584,11 +624,21 @@ def size_new_position(
     if sec_tier:
         label += f" · conv {sec_tier}"
 
+    if risk_1pct:
+        reasons.append(
+            f"risk budget: ~1% of book ≈ ${risk_1pct:,.0f} (size so a ~8% stop ≈ that risk)"
+        )
+        factors.append("risk_1pct")
+
     return {
         "allow_add": True,
         "min_pct": min_pct,
         "max_pct": max_pct,
         "label": label,
+        "dollar_lo": dollar_lo,
+        "dollar_hi": dollar_hi,
+        "risk_budget_1pct_usd": risk_1pct,
+        "cash_mv": cash,
         "require_funding_trim": prefer_funded,
         "reasons": reasons,
         "factors": factors,
@@ -624,11 +674,11 @@ def _finalize_ticker_recs(
     except Exception:
         return tickers[:6]
 
+    total_mv = float(portfolio.get("total_mv") or 0)
     out: list[dict[str, Any]] = []
     for t in tickers:
         role = t.get("role") or "hold_review"
         sym = (t.get("symbol") or "").upper()
-        # For pure adds, drop thin-data / toxic if we have alternatives later
         if role == "add_candidate" and sym:
             snap = get_security_snapshot(sym)
             rsi = snap.get("rsi")
@@ -636,11 +686,17 @@ def _finalize_ticker_recs(
                 t = dict(t)
                 t["role"] = "watchlist"
                 t["suggested_weight_pct"] = "watch — overbought / low conviction"
-            if snap.get("liquidity") == "thin" and role == "add_candidate":
+            if snap.get("liquidity") == "thin":
                 t = dict(t)
                 t["role"] = "watchlist"
                 t["suggested_weight_pct"] = "watch — thin liquidity"
-        out.append(enrich_ticker_recommendation(t, role=t.get("role")))
+            if not snap.get("data_complete"):
+                t = dict(t)
+                t["role"] = "watchlist"
+                t["suggested_weight_pct"] = "watch — incomplete RSI/RS"
+        out.append(enrich_ticker_recommendation(
+            t, role=t.get("role"), portfolio_total_mv=total_mv,
+        ))
     return out[:6]
 
 
@@ -1396,14 +1452,46 @@ def build_advisory(
     if size_reasons and "Why this size" not in sizing_text:
         sizing_text = (sizing_text + " " + "Why this size: " + "; ".join(size_reasons[:4]) + ".").strip()
 
+    # Card-level actions (first ticker primary; unique by id)
+    card_actions: list[dict[str, str]] = []
+    seen_act: set[str] = set()
+    for t in tickers[:2]:
+        for a in t.get("actions") or []:
+            aid = str(a.get("id") or a.get("label") or "")
+            if aid in seen_act or len(card_actions) >= 5:
+                continue
+            seen_act.add(aid)
+            card_actions.append(a)
+    if not card_actions:
+        card_actions = [
+            {"id": "watchlist", "label": "Open Watchlist", "href": "/watch"},
+            {"id": "portfolio", "label": "Open Portfolio", "href": "/portfolio"},
+            {"id": "stops", "label": "Stop Management", "href": "/portfolio?tab=Stop%20Management"},
+        ]
+
+    # Aggregate quality gate from tickers
+    incomplete_n = sum(1 for t in tickers if t.get("data_complete") is False)
+    quality_gate = {
+        "pass": incomplete_n == 0 or primary in ("retirement_tax", "risk_regime"),
+        "incomplete_tickers": incomplete_n,
+        "note": (
+            None if incomplete_n == 0
+            else f"{incomplete_n} ticker(s) incomplete (missing RSI/RS) — demoted to watchlist / lower confidence"
+        ),
+    }
+
     return {
         "investment_implications": (" ".join(implications) or "Map to holdings before acting.")[:750],
         "ticker_recommendations": tickers,
         "sizing_guidance": sizing_text[:750],
         "sizing_reason": ("; ".join(size_reasons[:5]) if size_reasons else None),
         "risk_caveat": _risk_caveat(portfolio),
+        "actions": card_actions,
+        "quality_gate": quality_gate,
         "portfolio_snapshot": {
             "total_mv": portfolio.get("total_mv"),
+            "cash_mv": portfolio.get("cash_mv"),
+            "invested_mv": portfolio.get("invested_mv"),
             "top": portfolio.get("top", [])[:8],
             "sleeves": {
                 k: sleeves.get(k)
@@ -1429,18 +1517,22 @@ def build_advisory(
             "action_type": action,
         },
         "card_template": {
+            "version": "2.6",
             "sections": [
                 "executive_summary",
                 "key_takeaways",
+                "technical_snapshot",
+                "analyst_snapshot",
+                "options_flow",
                 "bull_bear",
                 "investment_implications",
                 "tickers_allocation",
                 "sizing_guidance",
                 "sizing_reason",
+                "action_bar",
                 "concentration_heat",
                 "risk_caveat",
             ],
-            "version": "2.5",
         },
     }
 

@@ -71,7 +71,10 @@ _CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
     ("compounding_wealth", re.compile(
         r"\bcompounding\b|\bcompound interest\b|long.?term wealth|asset allocation|"
         r"bucket strateg|drawdown plan|wealth framework|multi.?year (wealth|plan|horizon)|"
-        r"wealth building|permanent portfolio|financial independence|\bfire\b strategy",
+        r"wealth building|permanent portfolio|financial independence|\bfire\b strategy|"
+        r"wealth compound|long.?horizon (invest|plan|wealth)|dca\b|dollar.?cost|"
+        r"reinvest(ment|ing)? dividends|core (growth )?compounder sleeve|"
+        r"long.?term (ownership|holder|holding) framework",
         re.I,
     )),
     ("academic_pro", re.compile(
@@ -519,6 +522,8 @@ def _item_base(
         "risk_caveat": narrative.get("risk_caveat"),
         "portfolio_snapshot": narrative.get("portfolio_snapshot"),
         "card_template": narrative.get("card_template"),
+        "actions": narrative.get("actions") or [],
+        "quality_gate": narrative.get("quality_gate"),
     }
     if extra:
         # Merge key_questions carefully
@@ -961,7 +966,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "2.5",
+        "version": "2.6",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -1009,12 +1014,14 @@ def build_feed(
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2.5 — security-level RSI/relative strength/valuation/earnings "
-            "drive ticker conviction; multi-factor sizing (heat × concentration × vol × conviction); "
-            "SCHG≥24% / top-3>50% force funded adds; standard card template."
+            "Research Intelligence v2.6 — transparent conviction breakdown; RSI+RS data gate; "
+            "Finnhub analyst consensus; options IV/bias from desk; dollar sizing + risk $; "
+            "action bar (ticket/stop/watch); funded-add when SCHG≥24% / top-3>50%."
         ),
         "portfolio_context": {
             "total_mv": port_ctx.get("total_mv"),
+            "cash_mv": port_ctx.get("cash_mv"),
+            "invested_mv": port_ctx.get("invested_mv"),
             "top": port_ctx.get("top") or [],
             "sleeves": port_ctx.get("sleeves") or {},
             "flags": port_ctx.get("flags") or [],

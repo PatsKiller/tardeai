@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-16 — Research Intelligence v2.6 (maturity: transparent conviction + actions)
+
+- **Conviction breakdown** — RSI, RS, valuation, Finnhub analyst, earnings, SMAs, options, liquidity shown as scored components.
+- **Data gate** — adds require RSI + relative strength or demote to watchlist / incomplete badge.
+- **Analyst** — Finnhub consensus from `stock_intelligence.json` (not broken enrichment Strong Sell stamps).
+- **Options** — IV rank + bias from options desk proposals; explicit empty state.
+- **Sizing** — $ band, 1% risk budget, cash-aware unfunded caps; funded-add still forced on concentration.
+- **Action bar** — trade ticket, watchlist, trading, stop, trim links on cards.
+- **Docs** — `RESEARCH_INTELLIGENCE_V2_6_MATURITY.md`. Feed `2.6`.
+
 ## 2026-07-15 — Research Intelligence v2.5 (security data + multi-factor sizing)
 
 Closes the “theme + portfolio math only” gap with security-level edge and smarter size math.

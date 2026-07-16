@@ -1,6 +1,6 @@
 /**
- * Research Intelligence v2.5 — editorial intelligence desk (CC v3).
- * Security-level RSI/RS/valuation + multi-factor sizing; conviction tiers.
+ * Research Intelligence v2.6 — editorial intelligence desk (CC v3).
+ * Transparent conviction, data gates, analyst/options snapshots, action bar.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -71,25 +71,42 @@ type Item = {
     rationale?: string
     conviction_tier?: string
     conviction_score?: number
+    conviction_breakdown?: Record<string, number>
+    conviction_breakdown_lines?: string[]
     why_selected?: string
+    data_complete?: boolean
+    incomplete_reason?: string
+    technical_snapshot?: Record<string, unknown>
+    analyst_snapshot?: Record<string, unknown>
+    options_flow_snapshot?: Record<string, unknown>
+    actions?: { id?: string; label?: string; href?: string }[]
     security?: {
       rsi?: number | null
       rsi_status?: string
       rel_strength_month_pct?: number | null
       rel_strength_vs_spy_month_pct?: number | null
       rel_strength_vs_qqq_month_pct?: number | null
+      sma50_pct?: number | null
+      sma200_pct?: number | null
       pe?: number | null
       peg?: number | null
       valuation?: string
       earnings_momentum?: string
       beta?: number | null
       liquidity?: string
+      analyst_rating?: string
+      analyst_counts?: { buy?: number; hold?: number; sell?: number; n?: number }
+      iv_rank?: number | null
+      options_sentiment?: string
+      data_complete?: boolean
     }
   }[]
   sizing_guidance?: string
   sizing_reason?: string | null
   risk_caveat?: string
   quality_tier?: 'A' | 'B' | 'C' | string
+  actions?: { id?: string; label?: string; href?: string }[]
+  quality_gate?: { pass?: boolean; note?: string | null; incomplete_tickers?: number }
   portfolio_snapshot?: {
     total_mv?: number
     related_weights?: Record<string, number>
@@ -320,8 +337,12 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
                     </span>
                   </div>
                   {ct && (
-                    <div style={{ fontSize: 10, fontWeight: 800, color: qc, marginTop: 2 }}>
+                    <div
+                      style={{ fontSize: 10, fontWeight: 800, color: qc, marginTop: 2, cursor: 'help' }}
+                      title={(t.conviction_breakdown_lines || []).join('\n') || 'Conviction score'}
+                    >
                       Conv {ct}{t.conviction_score != null ? ` · ${Number(t.conviction_score).toFixed(0)}` : ''}
+                      {t.data_complete === false ? ' · incomplete' : ''}
                     </div>
                   )}
                   {t.suggested_weight_pct && (
@@ -329,25 +350,61 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
                       {t.suggested_weight_pct}
                     </div>
                   )}
-                  {(sec?.rsi != null || sec?.rel_strength_vs_spy_month_pct != null || sec?.rel_strength_month_pct != null || sec?.pe != null) && (
-                    <div style={{ fontSize: 10, color: C.soft, marginTop: 3, lineHeight: 1.35 }}>
-                      {sec?.rsi != null && <span>RSI {Number(sec.rsi).toFixed(0)} </span>}
+                  {/* Technical snapshot */}
+                  {(sec?.rsi != null || sec?.rel_strength_vs_spy_month_pct != null || sec?.sma50_pct != null) && (
+                    <div style={{ fontSize: 10, color: C.soft, marginTop: 4, lineHeight: 1.4 }}>
+                      <div style={{ fontWeight: 750, color: C.ink, marginBottom: 1 }}>Technicals</div>
+                      {sec?.rsi != null && <span>RSI {Number(sec.rsi).toFixed(0)} ({sec.rsi_status || '—'}) · </span>}
                       {sec?.rel_strength_vs_spy_month_pct != null && (
-                        <span>vs SPY {Number(sec.rel_strength_vs_spy_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_vs_spy_month_pct).toFixed(1)}% </span>
+                        <span>vs SPY {Number(sec.rel_strength_vs_spy_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_vs_spy_month_pct).toFixed(1)}% · </span>
                       )}
                       {sec?.rel_strength_vs_qqq_month_pct != null && (
-                        <span>vs QQQ {Number(sec.rel_strength_vs_qqq_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_vs_qqq_month_pct).toFixed(1)}% </span>
+                        <span>vs QQQ {Number(sec.rel_strength_vs_qqq_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_vs_qqq_month_pct).toFixed(1)}% · </span>
                       )}
-                      {sec?.rel_strength_vs_spy_month_pct == null && sec?.rel_strength_month_pct != null && (
-                        <span>vs SCHG {Number(sec.rel_strength_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_month_pct).toFixed(1)}% </span>
+                      {sec?.sma50_pct != null && <span>SMA50 {Number(sec.sma50_pct) >= 0 ? '+' : ''}{Number(sec.sma50_pct).toFixed(1)}% </span>}
+                      {sec?.sma200_pct != null && <span>SMA200 {Number(sec.sma200_pct) >= 0 ? '+' : ''}{Number(sec.sma200_pct).toFixed(1)}%</span>}
+                    </div>
+                  )}
+                  {/* Analyst snapshot */}
+                  {(sec?.analyst_rating || sec?.analyst_counts || sec?.pe != null) && (
+                    <div style={{ fontSize: 10, color: C.soft, marginTop: 3, lineHeight: 1.4 }}>
+                      <div style={{ fontWeight: 750, color: C.ink, marginBottom: 1 }}>Analyst</div>
+                      {sec?.analyst_rating && <span>{sec.analyst_rating} </span>}
+                      {sec?.analyst_counts?.n != null && (
+                        <span>({sec.analyst_counts.buy ?? 0}B/{sec.analyst_counts.hold ?? 0}H/{sec.analyst_counts.sell ?? 0}S) </span>
                       )}
                       {sec?.pe != null && <span>P/E {Number(sec.pe).toFixed(1)} </span>}
                       {sec?.peg != null && <span>PEG {Number(sec.peg).toFixed(2)}</span>}
+                      {!sec?.analyst_counts?.n && !sec?.analyst_rating && <span>No coverage flag</span>}
+                    </div>
+                  )}
+                  {/* Options flow */}
+                  {sec?.options_sentiment && (
+                    <div style={{ fontSize: 10, color: C.soft, marginTop: 3, lineHeight: 1.4 }}>
+                      <div style={{ fontWeight: 750, color: C.ink, marginBottom: 1 }}>Options flow</div>
+                      <span>{sec.options_sentiment}</span>
+                      {sec.iv_rank != null && <span> · IV rank {Number(sec.iv_rank).toFixed(0)}</span>}
+                    </div>
+                  )}
+                  {/* Conviction breakdown (compact) */}
+                  {(t.conviction_breakdown_lines || []).length > 0 && (
+                    <div
+                      style={{ fontSize: 9.5, color: C.muted, marginTop: 4, lineHeight: 1.35, maxHeight: 72, overflow: 'hidden' }}
+                      title={(t.conviction_breakdown_lines || []).join('\n')}
+                    >
+                      {(t.conviction_breakdown_lines || []).slice(0, 5).map((line, li) => (
+                        <div key={li}>{line}</div>
+                      ))}
                     </div>
                   )}
                   {(t.why_selected || t.rationale) && (
                     <div style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.35, marginTop: 3 }}>
                       {t.why_selected || t.rationale}
+                    </div>
+                  )}
+                  {t.data_complete === false && (
+                    <div style={{ fontSize: 10, color: C.stale, fontWeight: 700, marginTop: 3 }}>
+                      {t.incomplete_reason || 'Incomplete data — lower confidence'}
                     </div>
                   )}
                 </div>
@@ -401,6 +458,33 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
       {item.risk_caveat && (
         <div style={{ fontSize: 11, color: C.soft, lineHeight: 1.4, fontStyle: 'italic' }}>
           {item.risk_caveat}
+        </div>
+      )}
+      {item.quality_gate?.note && (
+        <div style={{ fontSize: 11, color: C.stale, lineHeight: 1.4 }}>
+          {item.quality_gate.note}
+        </div>
+      )}
+      {/* Action bar */}
+      {((item.actions && item.actions.length > 0) || ticks.some(t => (t.actions || []).length > 0)) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+          {(item.actions && item.actions.length > 0
+            ? item.actions
+            : (ticks[0]?.actions || [])
+          ).slice(0, 5).map((a, i) => (
+            <Link
+              key={`${a.id || a.label}-${i}`}
+              to={a.href || '/watch'}
+              onClick={e => e.stopPropagation()}
+              style={{
+                fontSize: 11, fontWeight: 750, textDecoration: 'none',
+                padding: '6px 10px', borderRadius: 8,
+                border: `1px solid ${C.accent}55`, background: `${C.accent}18`, color: C.accent,
+              }}
+            >
+              {a.label}
+            </Link>
+          ))}
         </div>
       )}
     </div>

@@ -87,6 +87,7 @@
 ### Research Intelligence (CC v3)
 | Document | Purpose | Status |
 |----------|---------|--------|
+| `docs/architecture/RESEARCH_INTELLIGENCE_V2_6_MATURITY.md` | **RI v2.6** — transparent conviction, data gates, analyst/options, action bar | Active (2026-07-16) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_5_SECURITY_MULTIFACTOR.md` | **RI v2.5** — RSI/RS/valuation conviction + multi-factor sizing | Active (2026-07-15) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_4_CONCENTRATION_SIZING.md` | **RI v2.4** — concentration + heat sizing engine, theme capacity, funding trims | Active (2026-07-15) |
 | `scripts/lib/research_intelligence_security.py` | Security snapshots + conviction scoring for RI tickers | Active (2026-07-15) |
