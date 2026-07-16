@@ -175,3 +175,4 @@ logs/drive_cleanup_*/
 artifacts/
 data/runtime/gain_guardian_charts/
 data/runtime/ri_snapshots/
+apps/command-center-v3/test-results/
