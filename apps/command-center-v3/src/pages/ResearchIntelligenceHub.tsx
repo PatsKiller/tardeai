@@ -1,6 +1,6 @@
 /**
- * Research Intelligence v2.4 — editorial intelligence desk (CC v3).
- * Concentration-aware sizing + heat; theme capacity; quality tiers A/B/C.
+ * Research Intelligence v2.5 — editorial intelligence desk (CC v3).
+ * Security-level RSI/RS/valuation + multi-factor sizing; conviction tiers.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -69,6 +69,20 @@ type Item = {
     role?: string
     suggested_weight_pct?: string | null
     rationale?: string
+    conviction_tier?: string
+    conviction_score?: number
+    why_selected?: string
+    security?: {
+      rsi?: number | null
+      rsi_status?: string
+      rel_strength_month_pct?: number | null
+      pe?: number | null
+      peg?: number | null
+      valuation?: string
+      earnings_momentum?: string
+      beta?: number | null
+      liquidity?: string
+    }
   }[]
   sizing_guidance?: string
   sizing_reason?: string | null
@@ -286,10 +300,13 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
             {ticks.slice(0, 6).map((t, i) => {
               const role = t.role || 'review'
               const rc = ROLE_COLOR[role] || C.accent
+              const ct = t.conviction_tier
+              const qc = ct && QUALITY[ct] ? QUALITY[ct].color : C.soft
+              const sec = t.security
               return (
                 <div key={`${t.symbol}-${i}`} style={{
                   border: `1px solid ${rc}55`, background: `${rc}14`, borderRadius: 9,
-                  padding: '8px 11px', minWidth: 132, maxWidth: 240,
+                  padding: '8px 11px', minWidth: 148, maxWidth: 260,
                   boxShadow: `0 2px 8px ${rc}12`,
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
@@ -300,14 +317,29 @@ function ActionStrip({ item, catColor }: { item: Item; catColor: string }) {
                       {(role || '').replace(/_/g, ' ')}
                     </span>
                   </div>
+                  {ct && (
+                    <div style={{ fontSize: 10, fontWeight: 800, color: qc, marginTop: 2 }}>
+                      Conv {ct}{t.conviction_score != null ? ` · ${Number(t.conviction_score).toFixed(0)}` : ''}
+                    </div>
+                  )}
                   {t.suggested_weight_pct && (
                     <div style={{ fontSize: 12, fontWeight: 800, color: C.ink, marginTop: 3, letterSpacing: '-0.01em' }}>
                       {t.suggested_weight_pct}
                     </div>
                   )}
-                  {t.rationale && (
+                  {(sec?.rsi != null || sec?.rel_strength_month_pct != null || sec?.pe != null) && (
+                    <div style={{ fontSize: 10, color: C.soft, marginTop: 3, lineHeight: 1.35 }}>
+                      {sec?.rsi != null && <span>RSI {Number(sec.rsi).toFixed(0)} </span>}
+                      {sec?.rel_strength_month_pct != null && (
+                        <span>RS {Number(sec.rel_strength_month_pct) >= 0 ? '+' : ''}{Number(sec.rel_strength_month_pct).toFixed(1)}% </span>
+                      )}
+                      {sec?.pe != null && <span>P/E {Number(sec.pe).toFixed(1)} </span>}
+                      {sec?.peg != null && <span>PEG {Number(sec.peg).toFixed(2)}</span>}
+                    </div>
+                  )}
+                  {(t.why_selected || t.rationale) && (
                     <div style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.35, marginTop: 3 }}>
-                      {t.rationale}
+                      {t.why_selected || t.rationale}
                     </div>
                   )}
                 </div>

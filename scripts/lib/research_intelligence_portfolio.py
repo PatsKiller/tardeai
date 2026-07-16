@@ -1,7 +1,7 @@
-"""Portfolio context + concentration-aware sizing for Research Intelligence.
+"""Portfolio context + multi-factor sizing for Research Intelligence.
 
-v2.4: Concentration and portfolio heat are first-class inputs that actively
-shape ticker roles, suggested sizes, and funding/trim guidance.
+v2.5: Security-level data (RSI, relative strength, earnings, valuation,
+liquidity) plus concentration/heat drive ticker selection and size bands.
 
 Advisory is gated by PRIMARY category — company_ticker briefs never recycle
 the full SCHD/JEPI income sleeve unless the item is clearly dividend-primary.
@@ -17,6 +17,10 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 HOLDINGS_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 RISK_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "risk_management.json"
+
+# Soft single-name max for non-core adds (% of book)
+SINGLE_NAME_SOFT_MAX = 6.0
+SINGLE_NAME_HARD_MAX = 10.0
 
 # ── Theme universes ────────────────────────────────────────────────────
 THEME_TICKERS: dict[str, list[str]] = {
@@ -406,11 +410,11 @@ def size_new_position(
     *,
     symbol: str | None = None,
     theme: str | None = None,
-    conviction: str = "medium",  # low | medium | high
-    risk_profile: str = "normal",  # low_vol | normal | high_vol
+    conviction: str = "medium",  # low | medium | high  (operator thesis)
+    risk_profile: str = "normal",  # low_vol | normal | high_vol (theme default)
     already_held: bool = False,
 ) -> dict[str, Any]:
-    """Concentration- and heat-aware size band for a potential add.
+    """Multi-factor size band: theme capacity × heat × concentration × vol × security conviction.
 
     Returns min/max % of book, human label, reasons, and whether a funding trim is required.
     """
@@ -419,22 +423,14 @@ def size_new_position(
     heat_lvl = heat.get("level") or "low"
     book_lvl = conc.get("book_level") or "normal"
     heat_pct = float(heat.get("portfolio_heat_pct") or 0.0)
+    top3 = float(conc.get("top3_pct") or 0.0)
+    by_sym = portfolio.get("by_symbol") or {}
+    schg_w = float((by_sym.get("SCHG") or {}).get("weight_pct") or 0.0)
 
-    base = {"low": 1.25, "medium": 2.25, "high": 3.5}.get(conviction, 2.25)
-    vol_mult = {"low_vol": 1.15, "normal": 1.0, "high_vol": 0.7}.get(risk_profile, 1.0)
-
-    mult = _heat_size_mult(heat_lvl) * _book_conc_size_mult(book_lvl) * vol_mult
+    # 1) Base from theme capacity / conviction (not a flat 2%)
+    conv_base = {"low": 1.5, "medium": 2.5, "high": 3.75}.get(conviction, 2.5)
     reasons: list[str] = []
-
-    if heat_lvl in ("moderate", "high", "extreme"):
-        reasons.append(f"heat ~{heat_pct:.1f}% ({heat_lvl}) → size ×{_heat_size_mult(heat_lvl):.2f}")
-    if book_lvl != "normal":
-        top3 = conc.get("top3_pct")
-        reasons.append(
-            f"book concentration {book_lvl}"
-            + (f" (top-3 ~{top3:.0f}%)" if top3 is not None else "")
-            + f" → size ×{_book_conc_size_mult(book_lvl):.2f}"
-        )
+    factors: list[str] = []
 
     theme_room = None
     theme_cur = None
@@ -445,7 +441,7 @@ def size_new_position(
         theme_cur = float(cap.get("current_pct") or 0.0)
         theme_tgt = float(cap.get("target_max_pct") or THEME_TARGET_MAX.get(theme, 10.0))
         t_lvl = cap.get("level") or "room"
-        if t_lvl == "full":
+        if t_lvl == "full" or theme_room <= 0.25:
             reasons.append(
                 f"{theme.replace('_', ' ')} sleeve ~{theme_cur:.1f}% at soft max {theme_tgt:.0f}% — no net add"
             )
@@ -459,22 +455,82 @@ def size_new_position(
                 "theme_current_pct": theme_cur,
                 "theme_room_pct": 0.0,
                 "theme_target_pct": theme_tgt,
+                "factors": factors,
             }
-        # Cap add at ~40% of remaining theme room, at least 0.5 if room exists
-        room_cap = max(0.5, theme_room * 0.45) if theme_room > 0 else 0.5
-        base = min(base, room_cap)
+        # Base size = min(conviction base, ~40% of remaining theme room)
+        room_cap = max(0.6, theme_room * 0.40)
+        base = min(conv_base, room_cap)
+        factors.append(f"theme_room→base {base:.2f}%")
         reasons.append(
             f"{theme.replace('_', ' ')} ~{theme_cur:.1f}% / max {theme_tgt:.0f}% "
-            f"(room ~{theme_room:.1f}%)"
+            f"(room ~{theme_room:.1f}%) → base {base:.1f}%"
         )
+    else:
+        base = conv_base
+        factors.append(f"conviction_base {base:.2f}%")
 
-    # Single-name already held: recommend delta not full new sleeve
-    by_sym = portfolio.get("by_symbol") or {}
+    # 2) Heat multiplier
+    h_mult = _heat_size_mult(heat_lvl)
+    if heat_lvl != "low":
+        reasons.append(f"heat ~{heat_pct:.1f}% ({heat_lvl}) → ×{h_mult:.2f}")
+        factors.append(f"heat×{h_mult:.2f}")
+
+    # 3) Book concentration + proactive top-3 rule
+    c_mult = _book_conc_size_mult(book_lvl)
+    if top3 >= 50:
+        c_mult *= 0.75
+        reasons.append(f"top-3 concentration ~{top3:.0f}% > 50% → extra ×0.75")
+        factors.append("top3>50×0.75")
+    elif book_lvl != "normal":
+        reasons.append(
+            f"book concentration {book_lvl}"
+            + (f" (top-3 ~{top3:.0f}%)" if top3 else "")
+            + f" → ×{c_mult:.2f}"
+        )
+        factors.append(f"book×{c_mult:.2f}")
+
+    # 4) Theme default vol profile
+    profile_mult = {"low_vol": 1.1, "normal": 1.0, "high_vol": 0.75}.get(risk_profile, 1.0)
+
+    # 5) Security-level vol + conviction (when symbol known)
+    sec_vol_mult = 1.0
+    sec_conv_mult = 1.0
+    sec_tier = None
+    sec_score = None
+    if symbol:
+        try:
+            from lib.research_intelligence_security import get_security_snapshot
+            snap = get_security_snapshot(symbol)
+            sec_vol_mult = float(snap.get("vol_size_mult") or 1.0)
+            sec_conv_mult = float(snap.get("conviction_size_mult") or 1.0)
+            sec_tier = snap.get("conviction_tier")
+            sec_score = snap.get("conviction_score")
+            if sec_vol_mult != 1.0:
+                reasons.append(
+                    f"{symbol} vol/liquidity → ×{sec_vol_mult:.2f}"
+                    + (f" (beta {snap.get('beta')})" if snap.get("beta") is not None else "")
+                )
+                factors.append(f"sec_vol×{sec_vol_mult:.2f}")
+            if sec_tier:
+                reasons.append(
+                    f"{symbol} conviction {sec_tier} ({sec_score}) → ×{sec_conv_mult:.2f}"
+                )
+                factors.append(f"conv×{sec_conv_mult:.2f}")
+            if not snap.get("has_min_data"):
+                sec_conv_mult *= 0.7
+                reasons.append(f"{symbol} missing RSI/min data → ×0.70")
+                factors.append("sparse_data×0.70")
+        except Exception:
+            pass
+
+    # 6) Held headroom
     if already_held and symbol and symbol in by_sym:
         cur = float(by_sym[symbol]["weight_pct"])
-        soft = CONC_NONCORE_HARD if symbol not in CORE_HOLDINGS else CONC_CAUTION
+        soft = (
+            CONC_CAUTION if symbol in CORE_HOLDINGS
+            else min(CONC_NONCORE_HARD, SINGLE_NAME_SOFT_MAX)
+        )
         headroom = max(0.0, soft - cur)
-        base = min(base, max(0.5, headroom * 0.5)) if headroom > 0 else 0.0
         if headroom <= 0:
             reasons.append(f"{symbol} already ~{cur:.1f}% — at soft cap, prefer hold/trim not add")
             return {
@@ -487,29 +543,46 @@ def size_new_position(
                 "theme_current_pct": theme_cur,
                 "theme_room_pct": theme_room,
                 "theme_target_pct": theme_tgt,
+                "factors": factors,
+                "conviction_tier": sec_tier,
             }
+        base = min(base, max(0.5, headroom * 0.5))
         reasons.append(f"{symbol} held ~{cur:.1f}% — headroom to soft cap ~{headroom:.1f}%")
 
+    mult = h_mult * c_mult * profile_mult * sec_vol_mult * sec_conv_mult
     sized = base * mult
-    # Floor / ceiling
-    max_pct = round(min(4.0, max(0.5, sized)), 2)
-    min_pct = round(max(0.5, max_pct * 0.55), 2)
-    if max_pct < 0.75:
-        min_pct, max_pct = 0.5, 0.75
 
-    require_trim = book_lvl == "high" or heat_lvl in ("high", "extreme")
-    if book_lvl == "elevated" or heat_lvl == "moderate":
-        require_trim = require_trim or True  # prefer funded
+    # Hard caps
+    hard_cap = SINGLE_NAME_HARD_MAX if not already_held else SINGLE_NAME_SOFT_MAX
+    max_pct = round(min(hard_cap, max(0.4, sized)), 2)
+    min_pct = round(max(0.4, max_pct * 0.55), 2)
+    if max_pct < 0.7:
+        min_pct, max_pct = 0.4, 0.7
 
-    prefer_funded = require_trim or book_lvl != "normal" or heat_lvl not in ("low",)
-    if prefer_funded:
+    # Funded vs unfunded — proactive concentration rules
+    require_trim = (
+        book_lvl == "high"
+        or heat_lvl in ("high", "extreme")
+        or top3 >= 50
+        or schg_w >= 24.0
+    )
+    prefer_funded = require_trim or book_lvl == "elevated" or heat_lvl in ("moderate", "elevated")
+    if schg_w >= 24.0:
+        reasons.append(
+            f"SCHG ~{schg_w:.1f}% ≥ 24% → strongly prefer trim SCHG before unfunded add"
+        )
+        factors.append("SCHG≥24 fund")
+    elif prefer_funded:
         reasons.append("prefer funding trim over cash/new beta (concentration/heat)")
+        factors.append("funded")
 
     label = f"{min_pct:.1f}–{max_pct:.1f}% of book"
     if prefer_funded:
         label += " (funded)"
     if not already_held:
         label += " starter after diligence"
+    if sec_tier:
+        label += f" · conv {sec_tier}"
 
     return {
         "allow_add": True,
@@ -518,12 +591,120 @@ def size_new_position(
         "label": label,
         "require_funding_trim": prefer_funded,
         "reasons": reasons,
+        "factors": factors,
         "theme_current_pct": theme_cur,
         "theme_room_pct": theme_room,
         "theme_target_pct": theme_tgt,
         "heat_level": heat_lvl,
         "book_concentration": book_lvl,
+        "conviction_tier": sec_tier,
+        "conviction_score": sec_score,
+        "diversification_note": (
+            f"Top-3 is ~{top3:.0f}% today; a funded {max_pct:.1f}% add from SCHG "
+            f"slightly improves diversification if SCHG is trimmed first."
+            if prefer_funded and schg_w >= 20
+            else f"Top-3 ~{top3:.0f}% — unfunded adds worsen concentration."
+            if top3 >= 50
+            else None
+        ),
     }
+
+
+def _finalize_ticker_recs(
+    tickers: list[dict[str, Any]],
+    *,
+    portfolio: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Attach security conviction; rank/filter low-quality add candidates."""
+    try:
+        from lib.research_intelligence_security import (
+            enrich_ticker_recommendation,
+            get_security_snapshot,
+        )
+    except Exception:
+        return tickers[:6]
+
+    out: list[dict[str, Any]] = []
+    for t in tickers:
+        role = t.get("role") or "hold_review"
+        sym = (t.get("symbol") or "").upper()
+        # For pure adds, drop thin-data / toxic if we have alternatives later
+        if role == "add_candidate" and sym:
+            snap = get_security_snapshot(sym)
+            rsi = snap.get("rsi")
+            if rsi is not None and rsi >= 78 and snap.get("conviction_tier") == "C":
+                t = dict(t)
+                t["role"] = "watchlist"
+                t["suggested_weight_pct"] = "watch — overbought / low conviction"
+            if snap.get("liquidity") == "thin" and role == "add_candidate":
+                t = dict(t)
+                t["role"] = "watchlist"
+                t["suggested_weight_pct"] = "watch — thin liquidity"
+        out.append(enrich_ticker_recommendation(t, role=t.get("role")))
+    return out[:6]
+
+
+def _pick_theme_adds(
+    theme_tickers: list[str],
+    *,
+    held: set[str],
+    portfolio: dict[str, Any],
+    size: dict[str, Any],
+    max_n: int = 3,
+) -> list[dict[str, Any]]:
+    """Select add candidates using security ranking, not raw theme list order."""
+    try:
+        from lib.research_intelligence_security import filter_add_candidates
+    except Exception:
+        filter_add_candidates = None  # type: ignore
+
+    candidates = [t for t in theme_tickers if t not in held]
+    if not candidates:
+        return []
+    if filter_add_candidates:
+        ranked = filter_add_candidates(candidates, min_conviction=45.0, require_rsi=True, max_n=max_n)
+        symbols = [s.get("symbol") for s in ranked if s.get("symbol")]
+    else:
+        symbols = candidates[:max_n]
+
+    recs = []
+    for sym in symbols:
+        if not size.get("allow_add"):
+            recs.append({
+                "symbol": sym,
+                "role": "watchlist",
+                "suggested_weight_pct": "watch only — theme at capacity",
+                "rationale": "Theme capacity full — research/watch, not fund.",
+            })
+        else:
+            # Re-size per symbol for vol/conviction
+            sym_size = size_new_position(
+                portfolio,
+                symbol=sym,
+                theme=None,  # already capacity-checked
+                conviction="medium",
+                already_held=False,
+            )
+            # Re-apply theme room cap from parent size
+            if size.get("max_pct") and sym_size.get("max_pct"):
+                cap = float(size["max_pct"])
+                if float(sym_size["max_pct"]) > cap:
+                    sym_size = dict(sym_size)
+                    sym_size["max_pct"] = cap
+                    sym_size["min_pct"] = round(max(0.4, cap * 0.55), 2)
+                    sym_size["label"] = (
+                        f"{sym_size['min_pct']:.1f}–{sym_size['max_pct']:.1f}% of book"
+                        + (" (funded)" if size.get("require_funding_trim") else "")
+                        + " starter after diligence"
+                        + (f" · conv {sym_size.get('conviction_tier')}" if sym_size.get("conviction_tier") else "")
+                    )
+            recs.append({
+                "symbol": sym,
+                "role": "add_candidate" if sym_size.get("allow_add") else "watchlist",
+                "suggested_weight_pct": sym_size.get("label") if sym_size.get("allow_add") else "research only",
+                "rationale": "Theme peer ranked by RSI/relative strength/valuation/earnings factors.",
+            })
+    return recs
 
 
 def size_held_review(
@@ -964,32 +1145,14 @@ def build_advisory(
                         "rationale": f"Already held in {label_theme} (~{sleeve_pct:.1f}% sleeve).",
                     })
                 if size.get("allow_add") and room >= 1.0:
-                    for t in theme_tickers:
-                        if t not in by_sym and len(tickers) < 5:
-                            tickers.append({
-                                "symbol": t, "role": "add_candidate",
-                                "suggested_weight_pct": size.get("label"),
-                                "rationale": (
-                                    f"Theme peer not held — size reflects heat ({heat_lvl}) "
-                                    f"and {label_theme} room ~{room:.1f}%."
-                                ),
-                            })
+                    tickers.extend(_pick_theme_adds(
+                        theme_tickers, held=held, portfolio=portfolio, size=size, max_n=3,
+                    ))
             else:
                 action_label = f"Consider {label_theme} exposure"
-                if size.get("allow_add"):
-                    for t in theme_tickers[:3]:
-                        tickers.append({
-                            "symbol": t, "role": "add_candidate",
-                            "suggested_weight_pct": size.get("label"),
-                            "rationale": f"Not held — candidate for {label_theme} with stop + funded entry.",
-                        })
-                else:
-                    for t in theme_tickers[:2]:
-                        tickers.append({
-                            "symbol": t, "role": "watchlist",
-                            "suggested_weight_pct": "watch only — theme at capacity",
-                            "rationale": f"{label_theme} soft max reached; research/watch, not fund.",
-                        })
+                tickers.extend(_pick_theme_adds(
+                    theme_tickers, held=held, portfolio=portfolio, size=size, max_n=3,
+                ))
 
             if not size.get("allow_add") or sleeve_pct >= tgt * 0.95:
                 sizing_bits.append(
@@ -1006,8 +1169,12 @@ def build_advisory(
                     f"If high conviction, stage {size.get('min_pct', 1):.1f}–{size.get('max_pct', 2):.1f}% "
                     f"with stops; fund from concentrated growth when book is {book_lvl}."
                 )
+            if size.get("diversification_note"):
+                sizing_bits.append(size["diversification_note"])
 
-            if size.get("require_funding_trim") or book_lvl in ("elevated", "high"):
+            # Always fund when SCHG high / top-3 elevated
+            schg_w = float((by_sym.get("SCHG") or {}).get("weight_pct") or 0.0)
+            if size.get("require_funding_trim") or book_lvl in ("elevated", "high") or schg_w >= 24:
                 for src in funding_sources(portfolio, need_pct=size.get("max_pct") or 3.0):
                     if src["symbol"] not in {t["symbol"] for t in tickers}:
                         tickers.append(src)
@@ -1016,6 +1183,7 @@ def build_advisory(
                         )
             implications.append(
                 f"Express {label_theme} with held names when possible. "
+                f"Adds ranked by RSI/relative strength/valuation when data exists. "
                 f"Any add needs a stop (Replace mode). Heat ~{heat_pct:.1f}% ({heat_lvl}); "
                 f"book concentration {book_lvl}."
             )
@@ -1222,7 +1390,7 @@ def build_advisory(
         prev = dedup.get(sym)
         if prev is None or _role_pri.get(t.get("role") or "", 9) < _role_pri.get(prev.get("role") or "", 9):
             dedup[sym] = t
-    tickers = list(dedup.values())[:6]
+    tickers = _finalize_ticker_recs(list(dedup.values()), portfolio=portfolio)
 
     sizing_text = " ".join(sizing_bits)
     if size_reasons and "Why this size" not in sizing_text:
@@ -1260,8 +1428,27 @@ def build_advisory(
             "href_hint": href,
             "action_type": action,
         },
+        "card_template": {
+            "sections": [
+                "executive_summary",
+                "key_takeaways",
+                "bull_bear",
+                "investment_implications",
+                "tickers_allocation",
+                "sizing_guidance",
+                "sizing_reason",
+                "concentration_heat",
+                "risk_caveat",
+            ],
+            "version": "2.5",
+        },
     }
 
 
 def clear_portfolio_cache() -> None:
     load_portfolio_context.cache_clear()
+    try:
+        from lib.research_intelligence_security import clear_security_cache
+        clear_security_cache()
+    except Exception:
+        pass

@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-15 (Research Intelligence v2.4 concentration-aware sizing)
+**Updated:** 2026-07-15 (Research Intelligence v2.5 security multi-factor sizing)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -87,7 +87,9 @@
 ### Research Intelligence (CC v3)
 | Document | Purpose | Status |
 |----------|---------|--------|
+| `docs/architecture/RESEARCH_INTELLIGENCE_V2_5_SECURITY_MULTIFACTOR.md` | **RI v2.5** — RSI/RS/valuation conviction + multi-factor sizing | Active (2026-07-15) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_4_CONCENTRATION_SIZING.md` | **RI v2.4** — concentration + heat sizing engine, theme capacity, funding trims | Active (2026-07-15) |
+| `scripts/lib/research_intelligence_security.py` | Security snapshots + conviction scoring for RI tickers | Active (2026-07-15) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_3_CONSISTENCY.md` | **RI v2.3** — consistent category-aware recs, quality tiers A/B/C, UI polish | Active (2026-07-15) |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_2_PORTFOLIO_ADVISORY.md` | **RI v2.2** — portfolio-aware tickers, sizing vs live weights, risk caveats | Active (2026-07-15) |
 | `scripts/lib/research_intelligence_portfolio.py` | Holdings weight context + `build_advisory()` (v2.3 category gates) | Active (2026-07-15) |
@@ -199,6 +201,7 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 
 | Date | Change |
 |------|--------|
+| 2026-07-15 | Research Intelligence v2.5: security-level RSI/RS/valuation conviction + multi-factor sizing; `RESEARCH_INTELLIGENCE_V2_5_SECURITY_MULTIFACTOR.md`. |
 | 2026-07-15 | Research Intelligence v2.4: concentration + heat actively size recs, theme capacity, funding trims; `RESEARCH_INTELLIGENCE_V2_4_CONCENTRATION_SIZING.md`. |
 | 2026-07-15 | Research Intelligence v2.3: consistent portfolio-aware recs by primary, quality tiers, narrative polish; `RESEARCH_INTELLIGENCE_V2_3_CONSISTENCY.md`. |
 | 2026-07-15 | Research Intelligence v2: freshness/archive, retirement seed, feedback API, professional dashboard; `RESEARCH_INTELLIGENCE_V2.md`. |

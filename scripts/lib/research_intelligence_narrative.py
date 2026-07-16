@@ -400,13 +400,18 @@ def _polish_narrative_depth(base: dict[str, Any], *, title: str, cats: list[str]
             cats=cats, is_held=False, symbol=None
         )
 
-    # Quality tier for UI — systematic A/B/C
+    # Quality tier for UI — systematic A/B/C (includes security conviction on tickers)
     ticks = base.get("ticker_recommendations") or []
     has_llm = base.get("narrative_source") == "stored_llm"
     has_size = bool(base.get("sizing_guidance") and len(str(base.get("sizing_guidance") or "")) > 40)
     has_reason = bool(base.get("sizing_reason"))
     has_bull_bear = bool(base.get("bull_case") and base.get("bear_case"))
     has_impl = bool(impl and len(impl) > 60)
+    has_sec = any(
+        t.get("conviction_tier") or (t.get("security") or {}).get("rsi") is not None
+        for t in ticks
+    )
+    has_why = any(t.get("why_selected") for t in ticks)
     advisory_score = sum([
         1 if ticks else 0,
         1 if has_size else 0,
@@ -414,11 +419,13 @@ def _polish_narrative_depth(base: dict[str, Any], *, title: str, cats: list[str]
         1 if has_bull_bear else 0,
         1 if has_impl else 0,
         1 if body_len > 280 else 0,
+        1 if has_sec else 0,
+        1 if has_why else 0,
     ])
-    if has_llm and body_len > 400 and advisory_score >= 4:
+    if (has_llm and body_len > 400 and advisory_score >= 5) or advisory_score >= 6:
         base["quality_tier"] = "A"
     elif advisory_score >= 4 or (body_len > 220 and ticks and has_size):
-        base["quality_tier"] = "A" if advisory_score >= 5 else "B"
+        base["quality_tier"] = "B"
     elif body_len > 160 and (base.get("next_action") or ticks or has_size):
         base["quality_tier"] = "B"
     else:
@@ -474,6 +481,7 @@ def _attach_advisory(
     base["sizing_reason"] = adv.get("sizing_reason")
     base["risk_caveat"] = adv.get("risk_caveat")
     base["portfolio_snapshot"] = adv.get("portfolio_snapshot")
+    base["card_template"] = adv.get("card_template")
     # Prefer portfolio-aware next_action unless topic_monitor needs ingest first
     if research_type == "topic_monitor":
         base["next_action"] = base.get("next_action") or adv.get("next_action")
@@ -487,10 +495,20 @@ def _attach_advisory(
     ]
     if ticks and isinstance(base.get("key_takeaways"), list):
         line = "Tickers: " + ", ".join(
-            f"{t.get('symbol')} ({t.get('role')})" for t in ticks[:4]
+            f"{t.get('symbol')} ({t.get('role')}"
+            + (f"/conv {t.get('conviction_tier')}" if t.get("conviction_tier") else "")
+            + ")"
+            for t in ticks[:4]
         )
         base["key_takeaways"] = [x for x in base["key_takeaways"] if not str(x).startswith("Tickers:")]
         base["key_takeaways"] = [line] + list(base["key_takeaways"])[:4]
+        # Surface best add's why_selected
+        for t in ticks:
+            if t.get("why_selected") and t.get("role") in ("add_candidate", "watchlist", "hold_review"):
+                why_line = f"Why {t.get('symbol')}: {t.get('why_selected')}"
+                if not any(str(x).startswith(f"Why {t.get('symbol')}") for x in base["key_takeaways"]):
+                    base["key_takeaways"] = list(base["key_takeaways"])[:4] + [why_line]
+                break
     return base
 
 

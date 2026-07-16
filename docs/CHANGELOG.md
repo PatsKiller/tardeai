@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-15 — Research Intelligence v2.5 (security data + multi-factor sizing)
+
+Closes the “theme + portfolio math only” gap with security-level edge and smarter size math.
+
+- **`research_intelligence_security.py`** — RSI, relative strength vs SCHG, earnings momentum, PE/PEG valuation, liquidity, beta; conviction score A/B/C + why-selected.
+- **Multi-factor sizing** — theme room × heat × concentration (incl. top-3>50% ×0.75) × vol × conviction; SCHG≥24% forces funded trim.
+- **Ticker selection** — theme adds ranked by conviction; overbought/thin liquidity demoted to watchlist.
+- **UI** — conv tier, RSI/RS/PE on ticker chips; why-selected copy.
+- **Card template** — standard section list on every advisory payload.
+- **Docs** — `RESEARCH_INTELLIGENCE_V2_5_SECURITY_MULTIFACTOR.md`. Feed `2.5`.
+
 ## 2026-07-15 — Research Intelligence v2.4 (concentration-aware sizing)
 
 Concentration risk and portfolio heat become **active sizing inputs**, not sidebar labels.

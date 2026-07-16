@@ -518,6 +518,7 @@ def _item_base(
         "sizing_reason": narrative.get("sizing_reason"),
         "risk_caveat": narrative.get("risk_caveat"),
         "portfolio_snapshot": narrative.get("portfolio_snapshot"),
+        "card_template": narrative.get("card_template"),
     }
     if extra:
         # Merge key_questions carefully
@@ -960,7 +961,7 @@ def build_feed(
 
     return {
         "ok": True,
-        "version": "2.4",
+        "version": "2.5",
         "as_of": datetime.now(timezone.utc).isoformat(),
         "taxonomy": tax,
         "freshness_policy": {
@@ -1008,9 +1009,9 @@ def build_feed(
         "items": page,
         "priority_lanes": priority_lanes,
         "note": (
-            "Research Intelligence v2.4 — concentration + heat actively size recommendations; "
-            "theme capacity, funding trims, sizing reasons; quality tiers A/B/C; "
-            "portfolio-aware bull/bear and consistent tickers & allocation guidance."
+            "Research Intelligence v2.5 — security-level RSI/relative strength/valuation/earnings "
+            "drive ticker conviction; multi-factor sizing (heat × concentration × vol × conviction); "
+            "SCHG≥24% / top-3>50% force funded adds; standard card template."
         ),
         "portfolio_context": {
             "total_mv": port_ctx.get("total_mv"),
