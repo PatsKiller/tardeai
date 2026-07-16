@@ -25,6 +25,15 @@ OUT_DR.mkdir(parents=True, exist_ok=True)
 MAX_ROWS = 5
 MAX_RUNTIME = 600
 
+# Engine Room v1 (WS-4): every backlog row carries the surface that produced it,
+# so the health check can attribute intake instead of reporting "unknown".
+SURFACE_BY_FINDING = {
+    "backtest_weak_strategy": "backtest_results",
+    "catalyst_quality_gap": "catalyst_quality",
+    "screener_underfilled": "screener_registry",
+    "stale_source_discovery": "source_discovery",
+}
+
 def get_db():
     import psycopg2
     db_pass = [l.split("=",1)[1] for l in (PR/".env").read_text().splitlines() if l.startswith("DB_PASSWORD=")][0]
@@ -171,6 +180,7 @@ def main():
             (f"{f['type']}:{f['strategy']}: {f['detail']}" if f.get("strategy") else f"{f['type']}: {f['detail']}")[:200],
             f"Autonomous Librarian detected: {f['detail']}. Requires operator review.",
             json.dumps([{"type":"autonomous_librarian_finding","finding_type":f["type"],"priority":f["priority"],
+                        "source_surface":SURFACE_BY_FINDING.get(f["type"], "librarian_loop"),
                         "advisory_only":True,"not_execution":True,"operator_review_required":True,
                         "source_phase":"49","detail":f["detail"]}]),
             datetime.now(timezone.utc).strftime("%Y-%m-%d"),

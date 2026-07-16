@@ -85,18 +85,27 @@ def generate_backlog(max_items=5, dry_run=True):
         cur = conn.cursor()
         inserted = 0
         for c in candidates:
-            # Check for existing backlog with same topic prefix
-            cur.execute("SELECT COUNT(*) FROM hermes_research_intelligence WHERE topic LIKE %s AND research_type=%s",
-                        [f"{c['research_type']}:%", c["research_type"]])
-            # Always insert (dedup by topic content hash would be better, but simple for now)
+            # Engine Room v1 (WS-4): dedup is enforced, not just measured — same SIEM
+            # dedupe_key within 14 days means the finding is already filed.
+            dk = json.loads(c["source_urls_json"])[0].get("dedupe_key", "")
+            cur.execute("""SELECT 1 FROM hermes_research_intelligence
+                           WHERE research_type=%s AND source_urls_json::text LIKE %s
+                             AND created_at > NOW() - INTERVAL '14 days' LIMIT 1""",
+                        [c["research_type"], f'%"dedupe_key": "{dk}"%'])
+            if cur.fetchone():
+                print(f"  Skipped duplicate (14d): {c['topic'][:60]}")
+                continue
             cur.execute("""
                 INSERT INTO hermes_research_intelligence
                 (symbol, research_type, hermes_agent_name, topic, summary, confidence_score,
-                 source_urls_json, status, source, freshness_date, model_used)
-                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, 'staged', 'hermes', CURRENT_DATE, 'siem_normalizer')
+                 source_urls_json, evidence_json, status, source, freshness_date, model_used)
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, 'staged', 'hermes', CURRENT_DATE, 'siem_normalizer')
                 RETURNING id
             """, [c["symbol"], c["research_type"], c["hermes_agent_name"],
-                  c["topic"], c["summary"], c["confidence_score"], c["source_urls_json"]])
+                  c["topic"], c["summary"], c["confidence_score"], c["source_urls_json"],
+                  json.dumps([{"type": "siem_backlog_finding", "source_surface": "siem",
+                               "priority": "high" if c["confidence_score"] >= 0.5 else "medium",
+                               "dedupe_key": dk, "advisory_only": True, "not_execution": True}])])
             rid = cur.fetchone()[0]
             inserted += 1
             print(f"  Inserted backlog id={rid}: {c['topic'][:60]}")

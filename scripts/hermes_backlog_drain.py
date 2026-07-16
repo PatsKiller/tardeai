@@ -95,10 +95,14 @@ def fetch_backlog_targets(conn, limit: int) -> list[dict]:
     for status, status_rank in (("staged", 0), ("archived", 1)):
         if len(out) >= limit * 4:
             break
+        # Engine Room v1 (WS-4): resolved rows carry a 'drained' tag so the fetch
+        # window skips them in SQL — the old oldest-60 scan starved once its whole
+        # window was already resolved, wedging the drain with 2,400+ rows waiting.
         cur.execute(
             """SELECT id, topic, summary, evidence_json, created_at
                FROM hermes_research_intelligence
                WHERE research_type='research_backlog' AND status=%s
+                 AND NOT (tags && ARRAY['drained','duplicate_collapsed'])
                ORDER BY created_at ASC
                LIMIT %s""",
             (status, max(limit * 12, 60)),
@@ -281,7 +285,11 @@ def drain_backlog(*, apply: bool, max_rows: int) -> list[dict]:
             cur.execute(sql, vals)
             new_id = cur.fetchone()[0]
             cur.execute(
-                "UPDATE hermes_research_intelligence SET status='archived' WHERE id=%s AND status='staged'",
+                """UPDATE hermes_research_intelligence
+                   SET status = CASE WHEN status='staged' THEN 'archived' ELSE status END,
+                       tags = CASE WHEN 'drained' = ANY(tags) THEN tags
+                                   ELSE array_append(tags, 'drained') END
+                   WHERE id=%s""",
                 (bid,),
             )
             cur.execute(
@@ -307,21 +315,47 @@ def drain_backlog(*, apply: bool, max_rows: int) -> list[dict]:
 
 
 def main():
-    global start
+    global start, MAX_RUNTIME
     start = time.time()
     _env()
     parser = argparse.ArgumentParser(description="Drain Hermes research backlog into real research")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--max-rows", type=int, default=2)
+    parser.add_argument("--max-runtime", type=int, default=MAX_RUNTIME,
+                        help="Seconds before the drain stops picking new rows (nightly run uses a longer cap)")
+    parser.add_argument("--telegram-summary", action="store_true",
+                        help="Send one backlog-status line to Telegram after the run (nightly cron)")
     args = parser.parse_args()
+    MAX_RUNTIME = args.max_runtime
 
     check_kill_switch()
     lock_fd = acquire_lock()
     try:
         results = drain_backlog(apply=args.apply, max_rows=args.max_rows)
         applied = sum(1 for r in results if r["status"] == "applied")
-        failed = len(results) - applied
-        print(f"\nDone in {time.time() - start:.1f}s: {applied} drained, {failed} failed/rejected")
+        validated = sum(1 for r in results if r["status"] == "validated")
+        failed = len(results) - applied - validated
+        print(f"\nDone in {time.time() - start:.1f}s: {applied} drained, "
+              f"{validated} validated (dry-run), {failed} failed/rejected")
+        if args.telegram_summary:
+            try:
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute("""SELECT count(*) FROM hermes_research_intelligence
+                               WHERE research_type='research_backlog'
+                                 AND status IN ('staged','archived')
+                                 AND NOT (tags && ARRAY['drained','duplicate_collapsed'])""")
+                remaining = cur.fetchone()[0]
+                conn.close()
+                sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                from telegram_alert import send_telegram
+                send_telegram(
+                    f"🗂 Hermes backlog drain: {applied} drained, {failed} failed/rejected · "
+                    f"{remaining} remaining",
+                    bypass_router=True,  # operator-specced nightly ops line
+                )
+            except Exception as e:
+                print(f"Telegram summary failed: {e}")
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         lock_fd.close()

@@ -44,6 +44,7 @@ def main():
                tags, created_at
         FROM hermes_research_intelligence
         WHERE research_type = 'research_backlog'
+          AND NOT ('duplicate_collapsed' = ANY(tags))
         ORDER BY created_at
     """)
     cols = [d[0] for d in cur.description]
