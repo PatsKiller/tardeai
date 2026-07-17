@@ -14,6 +14,9 @@ from pathlib import Path
 # as never-generated rows — honest, not hidden. EXTENDS this indexer (the prompt's
 # rule: no parallel indexer).
 REPORT_TYPES = [
+    {"key": "system_digest", "title": "Daily System Digest (what the system did today)", "cadence": "daily",
+     "generator": "system_rollup_snapshot.py (20:40 nightly)", "max_age_h": 30,
+     "globs": {"md": "data/portfolios/reports/system_digest_*.md"}},
     {"key": "morning_brief", "title": "Morning Brief (DOCX + dashboard)", "cadence": "daily",
      "generator": "portfolio_orchestrator (07:30 controller)", "max_age_h": 72,
      "globs": {"docx": "data/portfolios/reports/portfolio_brief_*_morning.docx",

@@ -19474,6 +19474,113 @@ def _reports_catalog_route(query=None):
     return {"ok": True, "catalog": _report_catalog_cached()}
 
 
+_SYSTEM_ROLLUP_MEMO = {"ts": 0.0, "window": None, "data": None}
+
+
+def _system_rollup(window: str = "24h") -> dict:
+    """Reports v3 WS-B: the whole-system activity rollup — one dict, every panel corpus-tagged.
+    Reuses existing aggregates (consumption overview, health snapshot, data-source health) and
+    cheap COUNT queries; per-panel fail-soft; 60s memo. Panels report their own elapsed ms so a
+    >1s offender is visible (session contract: snapshot it rather than trim the dashboard)."""
+    import time as _t
+    iv = "24 hours" if window == "24h" else "7 days"
+    now = _t.time()
+    m = _SYSTEM_ROLLUP_MEMO
+    if m["data"] is not None and m["window"] == window and now - m["ts"] < 60:
+        return m["data"]
+    out: dict = {"window": window, "panels": {}, "timings_ms": {}}
+
+    def _panel(name, corpus, fn):
+        t0 = _t.time()
+        try:
+            out["panels"][name] = {"corpus": corpus, "data": fn()}
+        except Exception as e:
+            out["panels"][name] = {"corpus": corpus, "error": str(e)[:120]}
+        out["timings_ms"][name] = round((_t.time() - t0) * 1000)
+
+    _panel("pipelines", "pipeline_runs", lambda: {
+        "rows": _db_query(f"""SELECT pipeline_key, COUNT(*) runs,
+                    COUNT(*) FILTER (WHERE status='completed') successes,
+                    COUNT(*) FILTER (WHERE status='failed') failures
+                FROM pipeline_runs WHERE started_at > NOW() - INTERVAL '{iv}'
+                GROUP BY 1 ORDER BY runs DESC""") or []})
+    _panel("agents", "watchlist_agent_results", lambda: {
+        "rows": _db_query(f"""SELECT agent, COUNT(*) analyses, AVG(confidence)::numeric(3,2) avg_conf
+                FROM watchlist_agent_results WHERE created_at > NOW() - INTERVAL '{iv}'
+                GROUP BY 1 ORDER BY analyses DESC""") or []})
+    _panel("proposals", "paper_trade_proposals", lambda: {
+        "rows": _db_query(f"""SELECT status, COUNT(*) cnt FROM paper_trade_proposals
+                WHERE created_at > NOW() - INTERVAL '{iv}' GROUP BY 1 ORDER BY cnt DESC""") or []})
+    _panel("paper_trades", "paper_trades (journal)", lambda: (lambda r: {
+        "closed": int(r.get("total") or 0), "wins": int(r.get("wins") or 0),
+        "losses": int(r.get("losses") or 0), "pnl": _json_clean(r.get("pnl"))})(
+        _db_query(f"""SELECT COUNT(*) total, COUNT(*) FILTER (WHERE pnl > 0) wins,
+                COUNT(*) FILTER (WHERE pnl <= 0) losses, ROUND(SUM(pnl)::numeric, 2) pnl
+                FROM paper_trades WHERE status='closed'
+                AND exit_time > NOW() - INTERVAL '{iv}'""", fetch="one") or {}))
+    _panel("alerts", "alert_events RAW", lambda: {
+        "rows": _db_query(f"""SELECT severity, COUNT(*) n FROM alert_events
+                WHERE created_at > NOW() - INTERVAL '{iv}' GROUP BY 1 ORDER BY n DESC""") or []})
+    _panel("research", "hermes_research_intelligence + user_research_topics", lambda: {
+        "hermes_items": (_db_query(f"""SELECT COUNT(*) n FROM hermes_research_intelligence
+                WHERE created_at > NOW() - INTERVAL '{iv}'""", fetch="one") or {}).get("n", 0),
+        "topic_iterations": (_db_query(f"""SELECT COUNT(*) n FROM user_research_topics
+                WHERE last_researched_at > NOW() - INTERVAL '{iv}'""", fetch="one") or {}).get("n", 0)})
+    _panel("reports_generated", "ai_reports", lambda: {
+        "rows": _db_query(f"""SELECT report_type, COUNT(*) n FROM ai_reports
+                WHERE generated_at > NOW() - INTERVAL '{iv}' GROUP BY 1 ORDER BY n DESC""") or []})
+    _panel("directives", "watch_directives + hits", lambda: {
+        "created": (_db_query(f"""SELECT COUNT(*) n FROM watch_directives
+                WHERE created_at > NOW() - INTERVAL '{iv}'""", fetch="one") or {}).get("n", 0),
+        "hits": (_db_query(f"""SELECT COUNT(*) n FROM watch_directive_hits
+                WHERE surfaced_at > NOW() - INTERVAL '{iv}'""", fetch="one") or {}).get("n", 0)})
+
+    def _health_strip():
+        h = {}
+        try:
+            snap = _load_json(PROJECT_ROOT / "data" / "portfolios" / "state" / "health_agent_status.json") or {}
+            h["health_score"] = snap.get("overall_score")
+            h["category_scores"] = snap.get("category_scores")
+            h["captured_at"] = snap.get("captured_at")
+        except Exception:
+            pass
+        try:
+            ds = _data_source_health() or {}
+            srcs = ds.get("sources") or []
+            h["data_sources"] = {"total": len(srcs),
+                                 "unhealthy": sum(1 for s in srcs if (s.get("status") or "").lower() not in ("live", "ok", "healthy", "fresh"))}
+        except Exception:
+            pass
+        try:
+            co = _consumption_overview() or {}
+            h["llm"] = {k: co.get(k) for k in ("today_calls", "today_cost", "budget_pct", "budget_used_pct", "daily_budget") if k in co}
+        except Exception:
+            pass
+        return h
+    _panel("health", "health snapshot + data-source health + consumption (reused)", _health_strip)
+
+    def _trends():
+        rows = _db_query("""SELECT day, payload FROM system_rollup_daily
+                            ORDER BY day DESC LIMIT 14""") or []
+        return {"days": len(rows), "rows": [{"day": str(r["day"]), "payload": _json_clean(r["payload"])} for r in rows]}
+    _panel("trends", "system_rollup_daily snapshots", _trends)
+
+    try:
+        from datetime import datetime as _dtn, timezone as _tzn
+        out["generated_at"] = _dtn.now(_tzn.utc).isoformat()
+    except Exception:
+        out["generated_at"] = None
+    m.update(ts=now, window=window, data=out)
+    return out
+
+
+def _reports_system_rollup(query=None):
+    """GET /api/v2/reports/system-rollup?window=24h|7d — WS-B whole-system dashboard payload."""
+    q = query or {}
+    w = q.get("window") or "24h"
+    return _system_rollup("7d" if str(w) == "7d" else "24h")
+
+
 def _reports_hub():
     """GET /api/v2/reports — Reports hub with weekly/monthly data + docx catalog."""
     import glob as _glob
@@ -31658,6 +31765,7 @@ ROUTES = {
     "/api/v2/broker-orders/pilot/status": _pilot_status,
     "/api/v2/stops/lifecycle": lambda: _stops_lifecycle_api(),
     "/api/v2/reports/catalog": _reports_catalog_route,
+    "/api/v2/reports/system-rollup": _reports_system_rollup,
     "/api/v2/reports/categories": _reports_categories,
     "/api/v2/reports/list": _reports_list,
     "/api/v2/reports/search": _reports_search,

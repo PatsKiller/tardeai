@@ -13,6 +13,7 @@ import ReportLibrary from '../components/reports/ReportLibrary'
 import StructuredBrief from '../components/reports/StructuredBrief'
 import AlertAnalyticsBand from '../components/reports/AlertAnalyticsBand'
 import AnalystReportsPanel from '../components/reports/AnalystReportsPanel'
+import SystemRollupTab from '../components/reports/SystemRollupTab'
 import { parseBriefSections, executiveSummaryText, rankedActionLines, SUPER_TABS } from '../components/reports/briefUtils'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, BB, T } from '../lib/watchTokens'
@@ -127,7 +128,7 @@ function SeverityBadge({ sev }: { sev?: string }) {
 const RISK_CLASSES = ['stop_triggered', 'unprotected_position', 'risk_review']
 const SYSTEM_CLASSES = ['system_health', 'cron_or_backup', 'llm_review']
 type QV = '' | 'today' | 'needs_action' | 'risk' | 'approvals' | 'hermes' | 'system' | 'critical'
-type HubMode = 'library' | 'brief' | 'archive' | 'analyst'
+type HubMode = 'library' | 'brief' | 'archive' | 'analyst' | 'system'
 // qv predicates live SERVER-side now (reports_portal._qv_match) — one corpus, one query family (v3 WS-A)
 // ── Reader "Key sections": recognized markdown headers → anchor ids in Article body ──
 const SECTIONS = [
@@ -148,7 +149,7 @@ export default function ReportsHub({ onDrill }: Props) {
     try {
       const q = new URLSearchParams(window.location.search)
       const m = (q.get('mode') || '').trim().toLowerCase()
-      if (m === 'analyst' || m === 'archive' || m === 'brief' || m === 'library') return m as HubMode
+      if (m === 'analyst' || m === 'archive' || m === 'brief' || m === 'library' || m === 'system') return m as HubMode
       const sym = (q.get('symbol') || '').trim()
       const typ = (q.get('type') || '').trim()
       if (q.get('generate') === '1' || (sym && typ.startsWith('symbol_'))) return 'analyst'
@@ -301,7 +302,7 @@ export default function ReportsHub({ onDrill }: Props) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ ...hubTitle(), margin: 0 }}>
-          {mode === 'library' ? 'Report Library' : mode === 'brief' ? 'Morning Brief' : mode === 'analyst' ? 'Analyst Reports' : 'Report Archive'}
+          {mode === 'library' ? 'Report Library' : mode === 'brief' ? 'Morning Brief' : mode === 'analyst' ? 'Analyst Reports' : mode === 'system' ? 'System Rollup' : 'Report Archive'}
         </h1>
         <span style={hubSubtitle(terminalUi)}>
           {mode === 'library'
@@ -310,6 +311,8 @@ export default function ReportsHub({ onDrill }: Props) {
             ? (todayBrief ? fmtDate(todayBrief.created_at) : 'loading today\'s brief…')
             : mode === 'analyst'
               ? 'analyst-grade reports · Word/PDF export · intelligence deep dives'
+            : mode === 'system'
+              ? 'everything the system did — pipelines, agents, trades, research · daily digest 20:40'
               : 'searchable operator reports, alerts, and advisories'}
         </span>
         <span style={{ flex: 1 }} />
@@ -318,6 +321,7 @@ export default function ReportsHub({ onDrill }: Props) {
           {modeBtn('brief', "Today's Brief")}
           {modeBtn('analyst', 'Analyst Reports')}
           {modeBtn('archive', 'Archive')}
+          {modeBtn('system', 'System')}
         </div>
       </div>
 
@@ -411,6 +415,7 @@ export default function ReportsHub({ onDrill }: Props) {
         </>
       )}
 
+      {mode === 'system' && !searchQ && <SystemRollupTab />}
       {mode === 'archive' && !searchQ && (
         <AlertAnalyticsBand onDrillType={(t) => { setQInput(t); setQ(t) }} />
       )}
