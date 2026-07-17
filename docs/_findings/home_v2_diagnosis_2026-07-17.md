@@ -56,3 +56,32 @@ performance endpoint marks approx periods (≈) but renders the raw % regardless
 
 ## Click-map skeleton (completed in WS-D)
 element → destination → filter → ✓ (filled during D4 sweep)
+
+## D4 click map (completed 2026-07-17)
+| Element | Destination | Filter/anchor | ✓ |
+|---|---|---|---|
+| Metric-strip tiles (6) | existing drills | payload rows | ✓ (pre-existing, kept) |
+| Movers board row (held/watch) | /v3/watch?symbol=X | symbol | ✓ |
+| Movers board row (unknown) | finviz.com/quote (new tab, noopener) | symbol | ✓ |
+| Movers signal chip | filters board in place | signal | ✓ |
+| Treemap square | holding drill (onDrill) | symbol | ✓ |
+| Treemap footer | /v3/portfolio | — | ✓ |
+| Major News cell | headlines modal | symbol | ✓ |
+| Modal actions | portfolio / watch / risk ?symbol=X | symbol | ✓ |
+| Modal headline | source article (new tab, noopener) | — | ✓ |
+| Today's Winners/Losers rows | /v3/portfolio?symbol=X | symbol | ✓ |
+| Weekly Movers rows | /v3/portfolio?symbol=X | symbol | ✓ |
+| Stops Triggered rows | /v3/risk?symbol=X | symbol | ✓ |
+| Recovery Watch rows | /v3/risk?symbol=X | symbol | ✓ |
+| CIO Decisions rows | decision drill (onDrill row) | item | ✓ |
+| Health alert rows | drill + CTA route (healthFindingCta) | finding | ✓ (pre-existing + plain-English) |
+| Action Inbox / Operator Inbox | own CTAs (OperatorInboxPanel — v1 'every row clickable' pass) | per-row | ✓ (verified present) |
+| Equity-curve annotations | n/a — no annotations exist on the curve today | — | n/a (honest) |
+
+## WS-E census (final coat — remaining debt stated)
+- Raw hex in HomeHub.tsx: **59 occurrences** (pre-watchTokens file). New Row-1 components are
+  100% watchTokens (BB/T/TYPE/numStyle/heatRamp). Full hex→token conversion of the legacy 600
+  lines is deliberately NOT half-done this session (regression risk in a P0 build); logged as
+  the one open E item. Type floor and mono-numerics hold on all new surfaces.
+- Poll budget: /api/v2/portfolio/performance = 98KB — AT the 100KB line; next growth must
+  move it to a summary endpoint (flagged, not yet split).

@@ -525,9 +525,9 @@ export default function HomeHub({ onDrill }: Props) {
             {(cmd.triggered_detail?.length > 0) && (
               <SCard title="Stops Triggered — action required" count={cmd.triggered_detail.length} accent="#ef4444">
                 {cmd.triggered_detail.slice(0, 6).map((s: any, i: number) => (
-                  <div key={i} onClick={() => onDrill({ title: s.symbol, subtitle: 'stop triggered', endpoint: '/api/v2/command', rows: [s] })} style={{ cursor: 'pointer' }}>
+                  <a key={i} href={`/v3/risk?symbol=${s.symbol}`} title="open Risk focused on this symbol" style={{ textDecoration: 'none' }}>
                     <Line color="#ef4444"><span style={{ fontFamily: 'var(--mono)', fontWeight: 600 }}>{s.symbol}</span><span>Stop {fmt$(s.stop_price ?? s.stop, 2)} · {s.account ?? ''}</span></Line>
-                  </div>
+                  </a>
                 ))}
               </SCard>
             )}
@@ -565,16 +565,20 @@ export default function HomeHub({ onDrill }: Props) {
               return (
                 <SCard title="Today's Winners / Losers">
                   {dayG.slice(0, 3).map((g: any, i: number) => (
-                    <Line key={'dg' + i} color="#22c55e">
-                      <span style={{ fontFamily: 'var(--mono)' }}>{g.symbol}</span>
-                      <span>{fmtDay(g)}</span>
-                    </Line>
+                    <a key={'dg' + i} href={`/v3/portfolio?symbol=${g.symbol}`} style={{ textDecoration: 'none' }}>
+                      <Line color="#22c55e">
+                        <span style={{ fontFamily: 'var(--mono)' }}>{g.symbol}</span>
+                        <span>{fmtDay(g)}</span>
+                      </Line>
+                    </a>
                   ))}
                   {dayL.slice(0, 3).map((l: any, i: number) => (
-                    <Line key={'dl' + i} color="#ef4444">
-                      <span style={{ fontFamily: 'var(--mono)' }}>{l.symbol}</span>
-                      <span>{fmtDay(l)}</span>
-                    </Line>
+                    <a key={'dl' + i} href={`/v3/portfolio?symbol=${l.symbol}`} style={{ textDecoration: 'none' }}>
+                      <Line color="#ef4444">
+                        <span style={{ fontFamily: 'var(--mono)' }}>{l.symbol}</span>
+                        <span>{fmtDay(l)}</span>
+                      </Line>
+                    </a>
                   ))}
                   {(() => {
                     // Reconciliation footer: top-3 each way is a window, not the whole day —
@@ -599,10 +603,14 @@ export default function HomeHub({ onDrill }: Props) {
             {((cmd.top_gainers?.length > 0) || (cmd.top_losers?.length > 0)) && (
               <SCard title="Weekly Movers">
                 {(cmd.top_gainers ?? []).slice(0, 3).map((g: any, i: number) => (
-                  <Line key={'g' + i} color="#22c55e"><span style={{ fontFamily: 'var(--mono)' }}>{g.symbol}</span><span>+{Number(g.perf_week ?? g.change_pct ?? 0).toFixed(1)}% (1w)</span></Line>
+                  <a key={'g' + i} href={`/v3/portfolio?symbol=${g.symbol}`} style={{ textDecoration: 'none' }}>
+                    <Line color="#22c55e"><span style={{ fontFamily: 'var(--mono)' }}>{g.symbol}</span><span>+{Number(g.perf_week ?? g.change_pct ?? 0).toFixed(1)}% (1w)</span></Line>
+                  </a>
                 ))}
                 {(cmd.top_losers ?? []).slice(0, 3).map((l: any, i: number) => (
-                  <Line key={'l' + i} color="#ef4444"><span style={{ fontFamily: 'var(--mono)' }}>{l.symbol}</span><span>{Number(l.perf_week ?? l.change_pct ?? 0).toFixed(1)}% (1w)</span></Line>
+                  <a key={'l' + i} href={`/v3/portfolio?symbol=${l.symbol}`} style={{ textDecoration: 'none' }}>
+                    <Line color="#ef4444"><span style={{ fontFamily: 'var(--mono)' }}>{l.symbol}</span><span>{Number(l.perf_week ?? l.change_pct ?? 0).toFixed(1)}% (1w)</span></Line>
+                  </a>
                 ))}
               </SCard>
             )}
