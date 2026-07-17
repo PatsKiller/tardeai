@@ -920,6 +920,11 @@ def collect_log_errors() -> list[dict]:
             # the old mtime-gated behavior rather than going blind.
             _ts_pat = _re.compile(r"(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})")
             _cutoff = datetime.now() - timedelta(hours=window_h)
+            # Pre-first-timestamp fragments in a log that HAS timestamps are by construction
+            # the OLDEST content in the tail — counting them under the no-timestamp fallback
+            # pinned the 09:00 slot-exhaustion FATALs as "recent" all afternoon (2026-07-17).
+            # The fallback now applies ONLY to logs with no timestamps anywhere in the tail.
+            _has_any_ts = any(_ts_pat.search(ln) for ln in lines)
             _last_ts = None
             errs = []
             for ln in lines:
@@ -929,7 +934,12 @@ def collect_log_errors() -> list[dict]:
                         _last_ts = datetime.strptime(f"{_m.group(1)} {_m.group(2)}", "%Y-%m-%d %H:%M:%S")
                     except ValueError:
                         pass
-                if pat.search(ln) and (_last_ts is None or _last_ts >= _cutoff):
+                if not pat.search(ln):
+                    continue
+                if _last_ts is not None:
+                    if _last_ts >= _cutoff:
+                        errs.append(ln)
+                elif not _has_any_ts:
                     errs.append(ln)
             if len(errs) >= threshold:
                 out.append(_f("execution_health", "log_errors",

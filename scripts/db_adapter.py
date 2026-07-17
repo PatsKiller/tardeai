@@ -168,7 +168,8 @@ def _get_conn():
                 pass
         return conn
     except Exception as e:
-        print(f"  [db_adapter] PostgreSQL connection failed: {e}")
+        import datetime as _edt
+        print(f"{_edt.datetime.now():%Y-%m-%d %H:%M:%S}  [db_adapter] PostgreSQL connection failed: {e}")
         print(f"  [db_adapter] Falling back to JSON")
         return None
 
