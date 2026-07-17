@@ -10,9 +10,12 @@ pg configs, .pgpass, gog CLI auth, tool versions).
 backup — and its only copies are on this disk and inside backups encrypted WITH IT. If the
 disk dies and the operator does not hold this passphrase elsewhere, every `.gpg` on Drive is
 permanently unreadable.
-**OPERATOR ACTION (cannot be automated): store the passphrase in your password manager /
-offline location NOW.** Same for `gog_keyring_password` (secondary — Drive files are also
-reachable via browser login without it).
+**OPERATOR ACTION (cannot be automated): store the passphrase in your password manager NOW.**
+Recommended free manager: **Bitwarden** (bitwarden.com — free tier: unlimited items, syncs
+across devices, open-source, exportable; Proton Pass free is the alternative). Two minutes:
+create account → New item "TradeAI backup gpg passphrase" → paste the contents of
+`~/.openclaw/credentials/env_data_backup.pass` → save. Add `gog_keyring_password` too
+(secondary — Drive files are also reachable via browser login without it).
 
 ## What exists offsite (Drive folder `Trade_AI_Backups`, all gpg AES-256)
 | Artifact | Cadence | Contents |
@@ -26,6 +29,17 @@ reachable via browser login without it).
 
 Code: GitHub `PatsKiller/tardeai` (main + `generated-docs-backup` branch) and
 `PatsKiller/nyc-dof-auction` (created 2026-07-17). Docs mirror: Drive `Trade_AI_Docs_v2`.
+
+## Scripts (2026-07-17)
+- **Refresh everything now:** `bash scripts/backup_all.sh [--skip-db]` — runs every family
+  (pg dump → env → memory → ops → data → db-offsite → apps), stamps the weekly gates, prints
+  a per-family summary. Use before risky maintenance or a planned migration.
+- **Automated restore:** `bash scripts/bare_metal_recover.sh --backup-dir <staged .gpg dir>
+  --pass-file <passphrase>` — parameterized (`--project-dir`, `--db-name/--db-user`, `--fqdn`,
+  `--repo-url`, `--phases`, `--dry-run`); rewrites the old absolute paths embedded in the
+  restored crontab/systemd units to your chosen directories and sets TAILSCALE_HOSTNAME to
+  your FQDN. Phases: fetch,code,db,secrets,wiring,llm,verify (resumable via `--phases`).
+  Dry-run verified 2026-07-17 with custom dirs + FQDN.
 
 ## Recovery sequence
 1. **OS**: Ubuntu 26.04 (see `tool_versions.txt` in ops_backup for exact release/kernel).
