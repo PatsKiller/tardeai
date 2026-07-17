@@ -1,0 +1,20 @@
+{
+  "_comment": "Reports v3 WS-E1: source_script string (table/script/logfile) -> logical producer + kind chip. Unmapped producers render a 'raw' chip — visible debt, not mystery strings. Kinds: engine | pipeline | monitor | log.",
+  "producers": {
+    "hermes_score_alerts": {"producer": "Hermes scoring", "kind": "engine"},
+    "research_topics_api": {"producer": "Research topics", "kind": "engine"},
+    "auto_proposal_generator.py": {"producer": "Proposal generator", "kind": "pipeline"},
+    "hermes_coordinator.log": {"producer": "Hermes coordinator", "kind": "log"},
+    "atm.log": {"producer": "ATM engine", "kind": "log"},
+    "stop_health": {"producer": "Stop health", "kind": "monitor"},
+    "holdings_reconcile.py": {"producer": "Holdings reconcile", "kind": "pipeline"},
+    "protective_stop": {"producer": "Protective stops", "kind": "monitor"},
+    "watchlist_agent_jobs.log": {"producer": "Agent job queue", "kind": "log"},
+    "holdings_change_trigger.py": {"producer": "Holdings change trigger", "kind": "monitor"},
+    "health_agent": {"producer": "Health agent", "kind": "monitor"},
+    "system_health": {"producer": "Health agent", "kind": "monitor"},
+    "log_error_scraper": {"producer": "Log error scraper", "kind": "monitor"},
+    "alert_dispatcher": {"producer": "Alert dispatcher", "kind": "pipeline"},
+    "research_topics_api ": {"producer": "Research topics", "kind": "engine"}
+  }
+}

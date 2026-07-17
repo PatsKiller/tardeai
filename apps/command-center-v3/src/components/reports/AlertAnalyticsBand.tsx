@@ -60,12 +60,17 @@ export default function AlertAnalyticsBand({ onDrillType }: { onDrillType?: (q: 
             </div>
             <div>
               <div style={{ fontSize: TYPE.xs, fontWeight: 800, color: BB.text3, letterSpacing: '.05em', marginBottom: 4 }}>NOISIEST PRODUCERS</div>
-              {noisy.slice(0, 8).map((s, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8, fontSize: TYPE.xs, padding: '2px 0', borderBottom: `1px solid ${BB.borderHair}`, alignItems: 'baseline' }}>
-                  <span style={{ color: BB.text2, minWidth: 200 }}>{s.source}</span>
-                  <span style={{ ...numStyle, color: BB.text1 }}>{s.n.toLocaleString()}</span>
-                </div>
-              ))}
+              {noisy.slice(0, 8).map((s, i) => {
+                const kindTone: Record<string, string> = { engine: T.link, pipeline: BB.green, monitor: BB.amber, log: BB.text3, raw: BB.red }
+                const kc = kindTone[s.kind || 'raw'] || BB.text3
+                return (
+                  <div key={i} style={{ display: 'flex', gap: 8, fontSize: TYPE.xs, padding: '2px 0', borderBottom: `1px solid ${BB.borderHair}`, alignItems: 'baseline' }}>
+                    <span title={s.source} style={{ color: BB.text2, minWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.producer || s.source}</span>
+                    <span style={{ fontSize: 8.5, fontWeight: 800, textTransform: 'uppercase', color: kc, border: `1px solid ${kc}44`, borderRadius: 2, padding: '0 5px' }}>{s.kind || 'raw'}</span>
+                    <span style={{ ...numStyle, color: BB.text1, marginLeft: 'auto' }}>{s.n.toLocaleString()}</span>
+                  </div>
+                )
+              })}
               <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 6 }} title={par.note}>
                 parity: raw {Object.entries(par.raw_stores || {}).map(([k, v]: any) => `${k} ${v?.toLocaleString?.() ?? v}`).join(' · ')} → portal-indexed {par.portal_indexed_total?.toLocaleString?.()}
                 <span onClick={() => setShowPolicy(v => !v)} style={{ cursor: 'pointer', color: T.link }}> ⓘ indexing policy</span>

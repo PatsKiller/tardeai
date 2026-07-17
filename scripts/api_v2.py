@@ -1691,6 +1691,18 @@ def _reports_analytics(query=None):
         SELECT coalesce(source_script,'?') AS source, count(*) AS n
         FROM alert_events WHERE created_at > CURRENT_DATE - {days}
         GROUP BY 1 ORDER BY 2 DESC LIMIT 10""") or [])]
+    # WS-E1 (v3): normalize table/script/logfile strings through the producer registry —
+    # unmapped producers keep the raw string and get kind='raw' (visible debt, not mystery).
+    try:
+        import json as _pjson
+        _preg = (_pjson.loads((PROJECT_ROOT / "config" / "report_producer_registry.json").read_text())
+                 .get("producers") or {})
+        for _r in out["noisiest_sources"]:
+            _m = _preg.get(str(_r.get("source") or ""))
+            _r["producer"] = (_m or {}).get("producer") or _r.get("source")
+            _r["kind"] = (_m or {}).get("kind") or "raw"
+    except Exception:
+        pass
     # Parity: raw store counts in-window vs what the portal indexes (categories() totals)
     raw = {}
     for name, sql in (
