@@ -60,15 +60,21 @@ immediately. The connection drip continued until slots filled at ~08:26.
 - **Connection leak: mitigated, not root-caused.** Under post-fix load the drip does NOT
   reproduce (server holds 0–1 idle conns vs 2–3/min before), consistent with the leak being
   driven by the reap/abort storm itself — but the exact leak path (which thread type
-  strands its conn on abort) was not pinned down. **Open follow-ups:**
-  1. Health-agent check: alert (and optionally auto-remediate) when
-     `pg_stat_activity` count for `portfolio_server.py` exceeds ~40.
-  2. Consider a role-level `idle_session_timeout` (e.g. 30min) as the universal backstop —
-     BUT verify first that long-lived daemon connections survive it (`_get_conn` only
-     checks `conn.closed`, which does not detect a server-side disconnect until a query
-     fails once).
-  3. warm_caches should refuse to overwrite a non-empty trade_ai cache with a 0-ticker
-     result unless the DB query actually succeeded (fail-closed guard).
+  strands its conn on abort) was not pinned down. **Follow-ups — ALL CLOSED same day:**
+  1. ✅ Health-agent slot checks (`collect_db_connection_health`): `db_slots_single_app_high`
+     warning when one application_name holds >40 conns, `db_slots_near_exhaustion` critical
+     at >70 total, and `db_slots_exhausted` critical when the probe connect itself dies
+     FATAL (direct psycopg2 connect so the FATAL is catchable). Thresholds in
+     `config/health_agent_policy.json` → `db_connections.slots_*`. Alert-only (no
+     auto-remediation — restart target needs the attribution the finding provides).
+  2. ✅ `ALTER ROLE trade_ai SET idle_session_timeout = '30min'` applied + verified
+     (`rolconfig` confirms). Prerequisite shipped first: `db_adapter._get_conn` pings a
+     conn idle >60s (only when transaction-idle, never disturbing an open txn) and
+     transparently rebuilds a server-side-killed conn — verified E2E with
+     `pg_terminate_backend` (caller saw no error, new backend pid). Runbook updated.
+  3. ✅ Fail-closed guard in `api_v2.trade_ai(force=True)`: a 0-ticker compute NEVER
+     overwrites a non-empty cache — last-good is served flagged
+     `cache_error=empty_compute_kept_last_good`, and the refusal is logged.
 
 ## Gotchas recorded
 - `/api/v2/health` is currently reporting overall 48 (execution_health 0,

@@ -77,7 +77,32 @@ _tls = _threading.local()
 
 def _get_conn():
     """Get or create a THREAD-LOCAL PostgreSQL connection (lazy, one per thread)."""
+    import time as _time
     conn = getattr(_tls, "conn", None)
+    if conn is not None and not conn.closed:
+        # Server-side disconnects (idle_session_timeout reaper, PG restart) leave
+        # conn.closed == 0 until an operation fails — so a long-idle daemon would fail
+        # exactly one query per idle episode. Ping when this thread's conn has been
+        # idle >60s AND no transaction is open (never roll back a caller's open txn);
+        # a dead conn is rebuilt below instead of being handed out (2026-07-17,
+        # prerequisite for the role-level idle_session_timeout backstop).
+        try:
+            import psycopg2.extensions as _pgext
+            _idle = _time.time() - getattr(_tls, "last_used", 0.0)
+            if _idle > 60 and conn.get_transaction_status() == _pgext.TRANSACTION_STATUS_IDLE:
+                try:
+                    with conn.cursor() as _pc:
+                        _pc.execute("SELECT 1")
+                    conn.rollback()
+                except Exception:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                    conn = None
+                    _tls.conn = None
+        except Exception:
+            pass
     if conn is not None and not conn.closed:
         # Self-heal a poisoned connection: if a prior handler swallowed a query error
         # without rollback, every later query on this thread fails with "current
@@ -89,6 +114,7 @@ def _get_conn():
                 conn.rollback()
         except Exception:
             pass
+        _tls.last_used = _time.time()
         return conn
     try:
         import psycopg2
@@ -130,6 +156,7 @@ def _get_conn():
             except Exception:
                 pass
         _tls.conn = conn
+        _tls.last_used = _time.time()
         return conn
     except Exception as e:
         print(f"  [db_adapter] PostgreSQL connection failed: {e}")

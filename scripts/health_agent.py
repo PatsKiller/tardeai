@@ -2115,6 +2115,53 @@ def collect_db_connection_health() -> list[dict]:
                           f"check the killed PIDs in the PG log", count=n))
     except Exception:
         pass
+    # Connection-slot saturation (2026-07-17): portfolio_server leaked idle conns until 97/100
+    # slots were held, every new connection died FATAL, and warm_caches silently wrote an EMPTY
+    # trade_ai cache. Direct psycopg2 connect (NOT db_adapter) so the FATAL itself is catchable
+    # and attributable; per-app grouping via application_name names the offender.
+    try:
+        warn_per_app = int(cfg.get("slots_per_app_warn", 40))
+        crit_total = int(cfg.get("slots_total_crit", 70))
+        import psycopg2 as _pg
+        try:
+            _conn = _pg.connect(
+                host=os.getenv("DB_HOST", "localhost"), port=int(os.getenv("DB_PORT", "5432")),
+                dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
+                password=os.getenv("DB_PASSWORD", ""), connect_timeout=5,
+                application_name="health_agent_slotcheck",
+            )
+        except Exception as e:
+            if "connection slot" in str(e).lower():
+                out.append(_f("execution_health", "db_slots_exhausted", "critical",
+                              "Postgres connection slots EXHAUSTED — new connections are failing "
+                              "FATAL; DB-fed writers (warm_caches etc.) silently degrade. Find the "
+                              "holder: ss -tn 'dport = :5432' grouped by pid; restarting the "
+                              "offending service frees its slots (2026-07-17 incident)."))
+            return out
+        try:
+            with _conn.cursor() as c:
+                c.execute("""SELECT COALESCE(application_name,'?'), count(*)
+                             FROM pg_stat_activity WHERE usename = current_user
+                             GROUP BY 1 ORDER BY 2 DESC""")
+                rows = c.fetchall()
+        finally:
+            _conn.close()
+        total = sum(r[1] for r in rows)
+        top_app, top_n = (rows[0] if rows else ("?", 0))
+        if total >= crit_total:
+            out.append(_f("execution_health", "db_slots_near_exhaustion", "critical",
+                          f"{total} Postgres connections held by trade_ai (cap ~100; top holder "
+                          f"{top_app}={top_n}) — leak in progress, slots will exhaust and DB-fed "
+                          f"writers will silently degrade; restart the top holder",
+                          total=total, top_app=top_app, top_count=top_n))
+        elif top_n >= warn_per_app:
+            out.append(_f("execution_health", "db_slots_single_app_high", "warning",
+                          f"{top_app} holds {top_n} Postgres connections (warn at {warn_per_app}) — "
+                          f"idle-connection leak signature (2026-07-17 scanner incident); watch for "
+                          f"growth and restart the service if it keeps climbing",
+                          total=total, top_app=top_app, top_count=top_n))
+    except Exception:
+        pass
     return out
 
 

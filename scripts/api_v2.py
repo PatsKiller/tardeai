@@ -10951,6 +10951,26 @@ def trade_ai(force=False):
             "cache_missing": True,
         }, _disk)
     data = _compute_trade_ai()
+    # Fail-closed guard (2026-07-17): during the Postgres slot exhaustion _db_query returned
+    # None, the compute produced 0 tickers, and the warm cron overwrote a good 1.7MB cache
+    # with an empty one — every consumer then showed a legitimate-looking zero-row scan.
+    # An empty compute NEVER replaces a non-empty cache; keep serving last-good, flagged stale.
+    if not (data.get("tickers") if isinstance(data, dict) else None):
+        try:
+            if _disk.exists():
+                _old = _j.loads(_disk.read_text())
+                if isinstance(_old, dict) and _old.get("tickers"):
+                    print("  [trade_ai] compute returned 0 tickers — refusing to overwrite "
+                          "non-empty cache (fail-closed; check DB connectivity)")
+                    _age = _now - float(_old.get("_cached_ts") or 0)
+                    _old["cached_at"] = _old.get("_cached_at")
+                    _old["cache_age_sec"] = round(_age)
+                    _old["stale"] = True
+                    _old["cache_error"] = "empty_compute_kept_last_good"
+                    _TRADE_AI_CACHE.update(ts=_now - min(_age, 119), data=_old)
+                    return _trade_ai_with_etag(_old, _disk)
+        except Exception:
+            pass
     try:
         data["_cached_ts"] = _now
         data["_cached_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()

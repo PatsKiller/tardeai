@@ -39,9 +39,21 @@ conn = _get_conn(); conn.autocommit = True; c = conn.cursor()
 c.execute("ALTER ROLE trade_ai SET lock_timeout = '3s'")
 c.execute("ALTER ROLE trade_ai SET idle_in_transaction_session_timeout = '120s'")
 c.execute("ALTER ROLE trade_ai SET statement_timeout = '180s'")
+c.execute("ALTER ROLE trade_ai SET idle_session_timeout = '30min'")
 print("role-level DB guards applied")
 PY
 ```
+
+- `idle_session_timeout = '30min'` (added 2026-07-17) — **the slot-exhaustion backstop**: a plain-idle
+  session (no open transaction) abandoned by a leak is reaped after 30 min instead of holding a
+  connection slot forever. The 2026-07-17 scanner incident leaked idle conns until 97/100 slots were
+  held and every new connection failed FATAL. Safe for long-lived daemons because
+  `db_adapter._get_conn` now pings a conn idle >60s (transaction-idle only) and transparently rebuilds
+  it if the reaper killed it — verified by killing a live backend with `pg_terminate_backend`. Raw
+  `psycopg2.connect()` callers that idle >30min will get one failed query per idle episode; they
+  reconnect on their next connect() (crons are short-lived, so in practice this affects nothing).
+  Health-agent `db_slots_*` findings (config `db_connections.slots_per_app_warn/slots_total_crit`)
+  alert while a leak is still in progress.
 
 > Role-level `SET` only affects **new** connections. Restart long-lived daemons (the dashboard server) so
 > they reconnect and inherit the guards: `bash linux_launchers/restart_server.sh`.

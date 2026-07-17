@@ -198,11 +198,13 @@
     ]
   },
   "db_connections": {
-    "_comment": "Count Postgres idle-in-transaction kills (script holding a txn through slow non-DB work; killed at the 120s session timeout). Caught the 2026-07-04 scope-governor outage class.",
+    "_comment": "Count Postgres idle-in-transaction kills (script holding a txn through slow non-DB work; killed at the 120s session timeout). Caught the 2026-07-04 scope-governor outage class. slots_*: connection-slot saturation guard (2026-07-17 scanner incident: portfolio_server leaked idle conns to 97/100, warm_caches wrote an empty cache).",
     "enabled": true,
     "window_hours": 3,
     "idle_txn_kills_warn": 10,
-    "pg_log_glob": "/var/log/postgresql/postgresql-*-main.log"
+    "pg_log_glob": "/var/log/postgresql/postgresql-*-main.log",
+    "slots_per_app_warn": 40,
+    "slots_total_crit": 70
   },
   "remediation_map": {
     "_comment": "finding type -> allowlisted retry_cmd enqueued for claude_escalation_handler tier-1. Only verified, side-effect-safe scripts. LLM-heavy processor retries are flock-guarded on the SAME lock as the cron so they SINGLE-FLIGHT \u2014 multiple queued retries (or a retry racing the cron) can no longer stack concurrent processors and saturate the local LLM (the 2026-06-25 Ollama thundering-herd: 6+ --limit 15 processes \u2192 503/timeout cascade).",
