@@ -911,7 +911,26 @@ def collect_log_errors() -> list[dict]:
                 lines = p.read_text(errors="ignore").splitlines()[-tail:]
             except Exception:
                 continue
-            errs = [ln for ln in lines if pat.search(ln)]
+            # Timestamp window (2026-07-17): only count error lines DATED inside window_hours.
+            # The old tail-400 + mtime gate pinned quiet logs critical for DAYS after an
+            # incident — the error lines stayed inside the 400-line tail while unrelated
+            # writes kept mtime fresh (three logs held execution_health at 0 all day on
+            # morning-incident lines). Undated lines (traceback frames, continuation output)
+            # inherit the previous dated line's time; a log with no timestamps at all keeps
+            # the old mtime-gated behavior rather than going blind.
+            _ts_pat = _re.compile(r"(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})")
+            _cutoff = datetime.now() - timedelta(hours=window_h)
+            _last_ts = None
+            errs = []
+            for ln in lines:
+                _m = _ts_pat.search(ln)
+                if _m:
+                    try:
+                        _last_ts = datetime.strptime(f"{_m.group(1)} {_m.group(2)}", "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        pass
+                if pat.search(ln) and (_last_ts is None or _last_ts >= _cutoff):
+                    errs.append(ln)
             if len(errs) >= threshold:
                 out.append(_f("execution_health", "log_errors",
                               "critical" if len(errs) >= threshold * 3 else "warning",
