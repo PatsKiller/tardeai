@@ -71,12 +71,27 @@ if [ "$TARGET" = "db" ]; then
   ENC="$TAR.gpg"
 elif [ "$TARGET" = "ops" ]; then
   # regenerate the operational state that lives nowhere else: crontab + systemd user units
+  # + bare-metal recovery manifests (2026-07-17 audit — see docs/runbooks/BARE_METAL_RECOVERY.md)
   OPS_DIR="$TMP/ops_state"
-  mkdir -p "$OPS_DIR/systemd_user"
+  mkdir -p "$OPS_DIR/systemd_user" "$OPS_DIR/manifests" "$OPS_DIR/pg_config" "$OPS_DIR/gogcli"
   crontab -l > "$OPS_DIR/crontab.txt" 2>/dev/null || true
   cp "$HOME"/.config/systemd/user/*.service "$HOME"/.config/systemd/user/*.timer "$OPS_DIR/systemd_user/" 2>/dev/null || true
   systemctl --user list-timers --all --no-pager > "$OPS_DIR/timers_state.txt" 2>/dev/null || true
-  echo "[backup:ops] bundling crontab + $(ls "$OPS_DIR/systemd_user" | wc -l) systemd unit file(s)"
+  # dependency manifests — everything needed to rebuild this box from bare metal
+  dpkg-query -W -f='${Package}\t${Version}\n' > "$OPS_DIR/manifests/dpkg_packages.txt" 2>/dev/null || true
+  "$PROJ/.venv/bin/pip" freeze > "$OPS_DIR/manifests/pip_freeze_tradeai.txt" 2>/dev/null || true
+  [ -x "$HOME/nyc-dof-auction/.venv/bin/pip" ] && "$HOME/nyc-dof-auction/.venv/bin/pip" freeze > "$OPS_DIR/manifests/pip_freeze_nycdof.txt" 2>/dev/null || true
+  ollama list > "$OPS_DIR/manifests/ollama_models.txt" 2>/dev/null || true
+  { python3 --version; node --version; npm --version 2>/dev/null; psql --version; uname -a; lsb_release -d 2>/dev/null; } \
+      > "$OPS_DIR/manifests/tool_versions.txt" 2>&1 || true
+  # postgres server config (server major from the live cluster dir) + client auth file
+  cp /etc/postgresql/*/main/postgresql.conf /etc/postgresql/*/main/pg_hba.conf "$OPS_DIR/pg_config/" 2>/dev/null || true
+  cp "$HOME/.pgpass" "$OPS_DIR/pgpass" 2>/dev/null || true
+  # gog CLI Drive auth (config + encrypted keyring) — without these, Drive restores need the
+  # operator's browser login instead of the CLI (whole ops tar is gpg-encrypted, so safe here)
+  cp "$HOME"/.config/gogcli/config.json "$HOME"/.config/gogcli/credentials.json "$OPS_DIR/gogcli/" 2>/dev/null || true
+  cp -r "$HOME"/.config/gogcli/keyring "$OPS_DIR/gogcli/keyring" 2>/dev/null || true
+  echo "[backup:ops] bundling crontab + $(ls "$OPS_DIR/systemd_user" | wc -l) unit file(s) + manifests + pg/gog config"
   tar czf "$TAR" -C "$TMP" ops_state
 elif [ "$TARGET" = "apps" ]; then
   LIST=()
@@ -115,10 +130,12 @@ echo "[backup:$TARGET] encrypted -> $(basename "$ENC") ($SIZE)"
 echo "[backup:$TARGET] uploaded to Drive folder $DRIVE_FOLDER"
 
 # Retention: keep newest $KEEP for this prefix, delete the rest.
+# Sort by NAME (embeds YYYYMMDD_HHMMSS — lexically chronological and unambiguous); the old
+# modified-column sort once pruned 07-14's env instead of the oldest (2026-07-17 audit).
 mapfile -t OLD < <(
   "$GOG" drive ls -a "$ACCT" --parent "$DRIVE_FOLDER" -p 2>/dev/null \
-    | awk -F'\t' -v p="$PREFIX" '$2 ~ ("^"p"_") {print $5"\t"$1"\t"$2}' \
-    | sort -r | awk -v k="$KEEP" 'NR>k {print $2}'
+    | awk -F'\t' -v p="$PREFIX" '$2 ~ ("^"p"_") {print $2"\t"$1}' \
+    | sort -r | awk -F'\t' -v k="$KEEP" 'NR>k {print $2}'
 )
 for id in "${OLD[@]:-}"; do
   [ -z "$id" ] && continue
