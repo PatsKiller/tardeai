@@ -84,6 +84,23 @@ def _get_actionable_pairs(conn) -> list[tuple[str, str]]:
         LEFT JOIN ticker_strategy_classifications tsc ON tsc.symbol = u.symbol
     """)
     pairs = [(r["symbol"], r["strategy_type"]) for r in cur.fetchall() if r.get("symbol")]
+    # Held-name lane (2026-07-17, Home v2 follow-up): the docstring promised "holdings first"
+    # but nothing here ever read the REAL book — paper_trades is the validation sandbox, so
+    # held-only names (V/CSCO/SCHG class) had ZERO news coverage and the Major News grid sat
+    # dim. Canonical holdings.json equities go FIRST so the NEWS_INGEST_MAX cap can never
+    # squeeze them out.
+    try:
+        import json as _hj
+        _hpath = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+        _held = [str(h.get("symbol", "")).upper()
+                 for h in (_hj.loads(_hpath.read_text()).get("holdings") or [])
+                 if not h.get("is_cash") and h.get("symbol")
+                 and str(h.get("symbol", "")).isalpha()]
+        _seen0 = set(_held)
+        pairs = [(s, "held") for s in dict.fromkeys(_held)] + \
+                [p for p in pairs if p[0].upper() not in _seen0]
+    except Exception as _he:
+        print(f"  [news] held-lane skipped: {_he}")
     try:
         from watchlist_priority import load_daily_priority_symbols
         dcur = conn.cursor()
