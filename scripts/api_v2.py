@@ -4266,9 +4266,17 @@ def _compose_morning_brief(summary_text, steph_items, cc_items, rotations, recov
         "ORDER BY priority DESC, latest_finding_at DESC LIMIT 5"
     ) or []
     if _research:
+        # Reports v3 WS-C3: advisory = first SUBSTANTIVE sentence, preamble-stripped at display
+        # as fallback (write path + backfill already clean; this guards any legacy writer).
+        try:
+            from research_intelligence_qa_lint import strip_preamble as _sp
+        except ImportError:
+            _sp = lambda t: (t, False)
         rf_parts = []
         for rt in _research[:3]:
-            _findings_preview = (rt.get("latest_findings") or "")[:120].replace("\n", " ")
+            _clean, _ = _sp(rt.get("latest_findings") or "")
+            _first = (_clean.split(". ")[0] if _clean else "").replace("\n", " ").lstrip("#*– ").strip()
+            _findings_preview = (_first or _clean)[:140]
             rf_parts.append(f"{rt.get('topic','?')} (iter #{rt.get('research_count',0)}): {_findings_preview}… → /v2/research-topics")
         sections.append({"priority": 6, "title": "RESEARCH ADVISORIES", "items": rf_parts})
 
@@ -19410,6 +19418,12 @@ def _research_topics_unified():
         LIMIT 24
     """) or []
     auto_briefs_out = []
+    # WS-C3: off-universe auto-research symbols carry the standing guard disclosure
+    try:
+        from research_intelligence_qa_lint import known_symbol_universe as _ksu
+        _known_syms = _ksu(_db_query)
+    except Exception:
+        _known_syms = None
     for r in auto_briefs:
         row = {k: _json_clean(v) for k, v in r.items()}
         topic = str(row.get("topic") or "")
@@ -19417,6 +19431,16 @@ def _research_topics_unified():
         row["symbol"] = sym if sym else None
         row["trigger"] = row.get("original_message")
         row["findings"] = row.get("latest_findings")
+        # WS-C3: one-line actionable summary = first substantive sentence, display-fallback stripped
+        try:
+            from research_intelligence_qa_lint import strip_preamble as _sp3
+            _cl, _ = _sp3(row.get("latest_findings") or "")
+            row["summary_line"] = (_cl.split(". ")[0] if _cl else "").replace("\n", " ").lstrip("#*– ").strip()[:180]
+        except Exception:
+            row["summary_line"] = None
+        if _known_syms is not None and row.get("symbol") and row["symbol"].upper() not in _known_syms:
+            row["off_universe"] = True
+            row["universe_note"] = "off-universe symbol — advisory only, not tracked in watch universe (guard disclosure)"
         auto_briefs_out.append(row)
 
     return {

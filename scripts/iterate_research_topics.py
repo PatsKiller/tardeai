@@ -78,6 +78,15 @@ Keep it concise (3-4 paragraphs) and actionable."""
             if result.get("success"):
                 response = result["response"]
 
+                # Reports v3 WS-C: strip conversational preamble at WRITE time; preamble-only
+                # output degrades to the honest "research pending" stub — filler never becomes
+                # findings. (This writer previously bypassed the shared QA lint entirely.)
+                from research_intelligence_qa_lint import clean_advisory
+                response, _clean_meta = clean_advisory(response, iteration=count + 1)
+                if _clean_meta.get("stripped") or _clean_meta.get("degraded"):
+                    print(f"[iterate] {topic}: preamble stripped"
+                          f"{' → degraded to pending stub' if _clean_meta.get('degraded') else ''}")
+
                 # Update topic
                 cur.execute("""
                     UPDATE user_research_topics

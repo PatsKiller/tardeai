@@ -53,6 +53,62 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
 
+# ── Reports v3 WS-C: deterministic preamble stripping for LLM-derived advisory prose ──────────
+# The auto-research writer stored raw model output ("Okay, here's your updated advisory based on
+# the DJUL research iteration #3, incorporating…") verbatim and it rendered as findings. Strip
+# conversational openers at WRITE time; display gets the same helper as fallback. Deterministic
+# regex only — no LLM in this path.
+_PREAMBLE_SENTENCE = re.compile(
+    r"^\s*(?:\*\*[^*\n]{0,60}\*\*[:\s-]*)?"                       # leading "**Updated Advisory:**" label
+    r"(?:okay|ok(?:ay)?|sure|certainly|absolutely|of course|great|understood|got it|alright"
+    r"|here(?:['’]s| is| are)\b|below is\b|i(?:['’]ll| will| can| have)\b|as requested\b"
+    r"|based on (?:the )?(?:provided|your|this)\b|this (?:updated |is (?:an? )?)?advisor)"
+    r"[^.!?\n]*[.!?:]?\s*",
+    re.IGNORECASE)
+_PREAMBLE_LABEL = re.compile(r"^\s*(?:#{1,4}\s*)?\*{0,2}(?:updated )?advisor[a-z ]{0,24}\*{0,2}[:\s-]+", re.IGNORECASE)
+PREAMBLE_STUB = "research pending — no substantive findings yet (iter #{n})"
+
+
+_META_HEADER_LINE = re.compile(
+    r"^[\s#*\-–—]*(?:(?:updated|new)\s+)?advisor(?:y|ies)\b[^\n]{0,110}$"
+    r"|^[^\n]{0,90}iteration\s*#\d+[^\n]{0,25}$",
+    re.IGNORECASE)
+
+
+def strip_preamble(text: str, max_rounds: int = 4) -> tuple[str, bool]:
+    """Remove leading conversational/meta sentences, header labels, and orphan meta-header
+    lines ("**Updated Advisory – X – Iteration #30**"). Returns (cleaned, stripped_anything)."""
+    t = (text or "").lstrip()
+    stripped = False
+    for _ in range(max_rounds):
+        n = _PREAMBLE_LABEL.sub("", t, count=1)
+        n = _PREAMBLE_SENTENCE.sub("", n, count=1)
+        first_line, _, rest = n.partition("\n")
+        if _META_HEADER_LINE.match(first_line.strip()) and rest.strip():
+            n = rest
+        if n == t:
+            break
+        t = n.lstrip()
+        stripped = True
+    return t.strip(), stripped
+
+
+def is_substantive(text: str) -> bool:
+    """After stripping, does anything worth calling a finding remain?"""
+    t = (text or "").strip()
+    return len(t) >= 80
+
+
+def clean_advisory(text: str, iteration: int | None = None) -> tuple[str, dict]:
+    """WRITE-time cleaner: strip preamble; preamble-only content degrades to the honest stub.
+    Returns (content_to_store, {stripped, degraded})."""
+    cleaned, stripped = strip_preamble(text)
+    if not is_substantive(cleaned):
+        return PREAMBLE_STUB.format(n=iteration if iteration is not None else "?"), \
+            {"stripped": stripped, "degraded": True}
+    return cleaned, {"stripped": stripped, "degraded": False}
+
+
 def _shingles(text: str, k: int = 5) -> set:
     words = _norm(text).split()
     return {" ".join(words[i:i + k]) for i in range(max(0, len(words) - k + 1))}
@@ -87,6 +143,13 @@ def lint_item(item: dict, known_symbols: set[str]) -> list[str]:
 
     if VAGUE_DATE_RE.search(prose):
         flags.append("undated_claim")
+
+    # WS-C (v3): conversational preamble stored as findings ("Okay, here's your updated
+    # advisory…") — every LLM-derived writer must strip at write; this flags any that slip.
+    if prose:
+        _, _had_preamble = strip_preamble(prose)
+        if _had_preamble:
+            flags.append("preamble_leak")
 
     if advisory:
         # Engine Room v1 (WS-3): generator-side universe guard supersedes the post-hoc

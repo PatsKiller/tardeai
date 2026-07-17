@@ -80,6 +80,8 @@ export default function IntelligenceResearchTab({ onDrill, onManageTopics }: Pro
                   <div style={{ fontSize: 9, color: 'var(--text3)' }}>{fmtWhen(b.latest_finding_at ?? b.updated_at)}</div>
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>{b.trigger ?? b.original_message ?? ''}</div>
+                {b.universe_note && <div style={{ fontSize: 9, color: 'var(--orange, #f59e0b)', marginTop: 3 }}>⚠ {b.universe_note}</div>}
+                {b.summary_line && <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text1)', marginTop: 5 }}>{b.summary_line}</div>}
                 <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
                   {(b.findings ?? b.latest_findings ?? '').slice(0, 320)}{(b.findings ?? b.latest_findings ?? '').length > 320 ? '…' : ''}
                 </div>
