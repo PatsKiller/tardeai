@@ -312,7 +312,15 @@ def scan(persist: bool = True) -> dict:
     hmap = _holdings_map()
     hmap.update(_alpaca_positions_map())   # add paper held shares so paper stops aren't false-orphaned
     stops = _schwab_stops() + _alpaca_stops() + _manual_stops()
-    records = [_classify(s, hmap.get((s["account"], s["symbol"]))) for s in stops]
+    # Broker stops carry the schwab account_key ('schwab_roth_ira') but holdings.json labels the
+    # roth as 'schwab_roth' — translate via the SAME canonical map the position sync writes with,
+    # else every roth stop is falsely ORPHANED (2026-07-17: V/SCHG roth stops flagged 'no matching
+    # holding' while the broker held both; a cancel on that advice would have stripped protection).
+    from schwab_position_sync import _HOLDINGS_ACCT
+    def _held(s):
+        label = _HOLDINGS_ACCT.get(s["account"], s["account"])
+        return hmap.get((label, s["symbol"])) or hmap.get((s["account"], s["symbol"]))
+    records = [_classify(s, _held(s)) for s in stops]
     summary = {
         "total": len(records),
         "by_health": {h: sum(1 for r in records if r["health"] == h) for h in ("ok", "warn", "alert")},
