@@ -147,7 +147,7 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
   const { data: reportIntel } = useApi<any>('/api/v2/hermes/subject-intel-map?type=report', 300_000)
   const { data: market } = useApi<any>('/api/v2/market-intelligence', 120_000)
   const { data: risk } = useApi<any>('/api/v2/risk', 60_000)
-  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 60_000)
+  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/scanner', 60_000)
   const { data: watchlist } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
   const { data: openTrades } = useApi<any>('/api/v2/open-trades/intelligence', 60_000)
   const { data: research } = useApi<any>('/api/v2/research-topics', 120_000)

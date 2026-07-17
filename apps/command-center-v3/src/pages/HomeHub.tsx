@@ -46,7 +46,9 @@ export default function HomeHub({ onDrill }: Props) {
   const { data: overview, loading: overviewLoading } = useApi<any>('/api/v2/overview', 60_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: regime, loading: regimeLoading } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
-  const { data: tradeAi, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai', 60_000)
+  // Home only reads header scalars (vix, counts, run label) — the ~500B summary endpoint,
+  // not the multi-MB full payload (server-busy 500 loop, 2026-07-17).
+  const { data: tradeAi, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
   const { data: risk, loading: riskLoading } = useApi<any>('/api/v2/risk', 60_000)
   const { data: metricsHist, loading: metricsLoading } = useApi<any>('/api/v2/system/metrics-history', 300_000)
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)

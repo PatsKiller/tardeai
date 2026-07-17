@@ -10873,6 +10873,27 @@ def trade_ai_summary():
     return {k: d.get(k) for k in keys}
 
 
+def _trade_ai_with_etag(data, disk=None):
+    """Shallow-copy + attach content ETag so json_response can 304 / body-cache.
+
+    Must not mutate the in-memory cache dict — json_response pops __etag__.
+    """
+    if not isinstance(data, dict):
+        return data
+    out = dict(data)
+    try:
+        if disk is not None and getattr(disk, "exists", lambda: False)() and disk.exists():
+            st = disk.stat()
+            out["__etag__"] = f'W/"tai-{int(st.st_mtime)}-{st.st_size}"'
+        else:
+            n = len(out.get("tickers") or [])
+            ts = int(_TRADE_AI_CACHE.get("ts") or 0)
+            out["__etag__"] = f'W/"tai-mem-{ts}-{n}"'
+    except Exception:
+        out["__etag__"] = 'W/"tai-fallback"'
+    return out
+
+
 def trade_ai(force=False):
     """GET /api/v2/trade-ai — served from a disk cache (data/runtime/trade_ai_cache.json) refreshed by
     warm_caches.py. The compute is heavy (run JSONs + a hundreds-row trade_ai_scans scan); running it
@@ -10882,6 +10903,9 @@ def trade_ai(force=False):
 
     NEVER fall through to _compute_trade_ai on the live request path if any cache exists — a
     torn mid-write read used to parse-fail and trigger full recompute under load.
+
+    Always attaches __etag__ (disk mtime+size) so concurrent CC polls 304 / reuse a serialized
+    body instead of re-json.dumps a ~1.7MB payload under load (scanner timeout 2026-07-17).
     """
     import time as _t, json as _j, datetime as _dt
     _disk = PROJECT_ROOT / "data" / "runtime" / "trade_ai_cache.json"
@@ -10889,7 +10913,7 @@ def trade_ai(force=False):
     if not force:
         # 1) in-memory fresh (<2m)
         if _TRADE_AI_CACHE["data"] and (_now - _TRADE_AI_CACHE["ts"] < 120):
-            return _TRADE_AI_CACHE["data"]
+            return _trade_ai_with_etag(_TRADE_AI_CACHE["data"], _disk)
         # 2) disk cache — serve fresh OR stale without a heavy recompute in the request path
         for _attempt in (1, 2):
             try:
@@ -10903,7 +10927,7 @@ def trade_ai(force=False):
                     _d["cache_age_sec"] = round(_age)
                     _d["stale"] = _age > 600
                     _TRADE_AI_CACHE.update(ts=_now - min(_age, 119), data=_d)
-                    return _d
+                    return _trade_ai_with_etag(_d, _disk)
             except Exception:
                 # brief retry — warm_caches may have been mid-replace without atomic write (legacy)
                 if _attempt == 1:
@@ -10914,9 +10938,9 @@ def trade_ai(force=False):
                     _d = dict(_TRADE_AI_CACHE["data"])
                     _d["stale"] = True
                     _d["cache_error"] = "disk_read_failed_served_memory"
-                    return _d
+                    return _trade_ai_with_etag(_d, _disk)
         # 3) no disk cache and no memory — return light stub; warm_caches will fill it
-        return {
+        return _trade_ai_with_etag({
             "ok": False,
             "error": "trade_ai cache not ready — warm_caches still building",
             "go_count": 0,
@@ -10925,7 +10949,7 @@ def trade_ai(force=False):
             "tickers": [],
             "stale": True,
             "cache_missing": True,
-        }
+        }, _disk)
     data = _compute_trade_ai()
     try:
         data["_cached_ts"] = _now
@@ -10934,7 +10958,64 @@ def trade_ai(force=False):
     except Exception:
         pass
     _TRADE_AI_CACHE.update(ts=_now, data=data)
-    return data
+    return _trade_ai_with_etag(data, _disk)
+
+
+_TRADE_AI_SCANNER_CACHE = {"etag": None, "data": None}
+
+# Plain-AVOID universe rows are never rendered as table rows (no AVOID filter in the UI) —
+# they only feed the Universe copy list, KPI count fallbacks, and the Central Intelligence
+# score>=30 sweep. These keys cover every field those paths read (scannerSelection.ts sort
+# keys + CentralIntelligencePages catalyst??reason??sector fallback chain).
+_TRADE_AI_TRIM_KEYS = (
+    "symbol", "decision", "score", "grade", "rvol", "change_pct", "gap_pct",
+    "price", "volume", "float_m", "sector", "source", "catalyst", "reason",
+)
+
+# Any of these mark a row the scanner CAN render (social/manual/awareness lanes surface
+# rows whose decision is AVOID) — such rows must keep every field the pills read.
+_TRADE_AI_FLAG_KEYS = (
+    "scout_status", "awareness_status", "setup_class", "operator_color_token",
+    "operator_pill", "manual_review_required", "disqualified",
+)
+
+
+def trade_ai_scanner():
+    """GET /api/v2/trade-ai/scanner — scanner-grade slim projection of /trade-ai.
+
+    The full payload is ~1.7MB and 95% of it is plain-AVOID universe rows
+    (1,154/1,198 on 2026-07-17) that the scanner never renders. Under load the
+    multi-MB transfer × concurrent 60s polls is what blew the 30s watchdog and
+    500-looped the Market Opportunities Scanner. Full rows are kept for
+    actionable (GO/WAIT/MANUAL_REVIEW) and pill-flagged rows; the rest shrink
+    to _TRADE_AI_TRIM_KEYS. Result is memoized per underlying cache generation
+    (base ETag) so concurrent polls don't re-trim 1,200 rows.
+    """
+    d = trade_ai() or {}
+    if not isinstance(d, dict):
+        return d
+    base_etag = d.get("__etag__")
+    cached = _TRADE_AI_SCANNER_CACHE
+    if base_etag and cached["etag"] == base_etag and cached["data"] is not None:
+        # fresh copy per request — json_response pops __etag__ from what we hand it
+        return dict(cached["data"])
+    out = {k: v for k, v in d.items() if k not in ("tickers", "__etag__")}
+    slim = []
+    for row in (d.get("tickers") or []):
+        if not isinstance(row, dict):
+            continue
+        dec = str(row.get("decision") or "").upper()
+        if dec in ("GO", "WAIT", "MANUAL_REVIEW") or any(row.get(k) for k in _TRADE_AI_FLAG_KEYS):
+            slim.append(row)
+        else:
+            slim.append({k: row[k] for k in _TRADE_AI_TRIM_KEYS if k in row})
+    out["tickers"] = slim
+    out["slim"] = True
+    if base_etag:
+        out["__etag__"] = f'W/"scan-{base_etag.strip(chr(34)).replace("W/", "").strip(chr(34))}"'
+        _TRADE_AI_SCANNER_CACHE.update(etag=base_etag, data=out)
+        return dict(out)
+    return out
 
 
 # ── Journal Review Layer ──────────────────────────────────────────────────
@@ -31285,6 +31366,7 @@ ROUTES = {
     "/api/v2/ops/summary": ops_summary,
     "/api/v2/trade-ai": trade_ai,
     "/api/v2/trade-ai/summary": trade_ai_summary,
+    "/api/v2/trade-ai/scanner": trade_ai_scanner,
     "/api/v2/warrior-audit/latest": warrior_audit_latest,
     "/api/v2/trade-ai/critique": _tradeai_critique_status,
     "/api/v2/trade-ai/history": _tradeai_history,

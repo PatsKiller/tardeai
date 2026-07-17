@@ -185,7 +185,7 @@ export default function ReportsHub({ onDrill }: Props) {
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: risk } = useApi<any>('/api/v2/risk', 60_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
-  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 60_000)
+  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
   const briefListPath = '/api/v2/reports/list?category=morning_briefs&page=1&per_page=10&days=1'
   const { data: briefList } = useApi<any>(briefListPath, 0)
 

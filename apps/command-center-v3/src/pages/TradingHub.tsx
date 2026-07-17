@@ -74,7 +74,9 @@ export default function TradingHub({ onDrill }: Props) {
   const [tosCopied, setTosCopied] = useState(false)
   // Broker desk tab: skip heavy hub polls so single-threaded API can serve broker-proposals first.
   const brokerDesk = tab === 'Proposals' || tab === 'Broker Orders' || tab === 'Schwab Accounts'
-  const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai', 60_000, { enabled: tab === 'Trade AI' })
+  // Slim scanner projection (~10% of the full /trade-ai payload) — full universe rows are
+  // trimmed server-side; the multi-MB full endpoint 500-looped under load (2026-07-17).
+  const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai/scanner', 60_000, { enabled: tab === 'Trade AI' })
   const { data: warriorAudit } = useApi<any>('/api/v2/warrior-audit/latest', 300_000, { enabled: tab === 'Trade AI' })
   const paMap = useProAnalystMap()
   const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000, { enabled: tab === 'Open Trades' || !brokerDesk })
@@ -180,10 +182,10 @@ export default function TradingHub({ onDrill }: Props) {
               <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Market Opportunities Scanner</div>
               <div style={{ fontSize: 12, color: errored ? '#ef4444' : 'var(--text3)' }}>
                 {tradeAiLoading && !errored ? 'Loading latest scanner run…'
-                  : errored ? '⚠ Scanner data temporarily unavailable — /api/v2/trade-ai did not respond (auto-retrying every 60s). This is an API/data-availability issue, not necessarily an empty scan. Check backend load (e.g. a long-running backup) if it persists.'
+                  : errored ? '⚠ Scanner data temporarily unavailable — /api/v2/trade-ai/scanner did not respond (auto-retrying every 60s). This is an API/data-availability issue, not necessarily an empty scan. Check backend load (e.g. a long-running backup) if it persists.'
                   : 'No scanner data yet.'}
               </div>
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai{tradeAiError ? ` · error: ${String(tradeAiError).slice(0, 80)}` : ''}</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai/scanner{tradeAiError ? ` · error: ${String(tradeAiError).slice(0, 80)}` : ''}</div>
             </div>
           )
         }
@@ -375,7 +377,7 @@ export default function TradingHub({ onDrill }: Props) {
               const isManualLane = squeeze.isSqueeze || runner.isRunner || micro.isMicroFloat || lowPrice.isLowPrice
               const rowAccent = socialAware.isAwareness ? 'var(--social-awareness)' : scout.isScout ? 'var(--social-scout)' : squeeze.isSqueeze ? 'var(--squeeze)' : lowPrice.isLowPrice ? 'var(--low-price)' : micro.isMicroFloat ? 'var(--micro-float)' : runner.isRunner ? 'var(--runner)' : topGainer.isTopGainer ? 'var(--top-gainer)' : decisionColor(t.decision)
               return (
-              <div key={`${t.symbol}-${i}`} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.decision ?? ''} · score ${t.score ?? '—'} · ${t.sector ?? ''}`, endpoint: '/api/v2/trade-ai', rows: [t] })}
+              <div key={`${t.symbol}-${i}`} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.decision ?? ''} · score ${t.score ?? '—'} · ${t.sector ?? ''}`, endpoint: '/api/v2/trade-ai/scanner', rows: [t] })}
                 style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center', borderLeft: `3px solid ${rowAccent}` }}>
                 <span onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <input type="checkbox" aria-label={`Select ${sym}`} checked={checked}
@@ -494,7 +496,7 @@ export default function TradingHub({ onDrill }: Props) {
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>Awareness/selection only — copying symbols never places, validates, or queues a trade. Social Scout, Top Gainer, and Squeeze (MANUAL_REVIEW) symbols can be copied but remain non-auto-tradeable.</div>
             </div>
 
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/MANUAL_REVIEW). Teal AWARE = pre-market StockTwits with Finviz overlay when cached (still awareness-only, not in WAIT copy). Click a row for full scan detail. Default: Actionable. Cyan SQUEEZE · orange RUNNER · purple MICRO · yellow LOW — Entry Desk only.</div>
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai/scanner (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/MANUAL_REVIEW). Teal AWARE = pre-market StockTwits with Finviz overlay when cached (still awareness-only, not in WAIT copy). Click a row for full scan detail. Default: Actionable. Cyan SQUEEZE · orange RUNNER · purple MICRO · yellow LOW — Entry Desk only.</div>
 
             {warriorAudit?.ok && (
               <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>

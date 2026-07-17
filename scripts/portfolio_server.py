@@ -589,6 +589,14 @@ def _nan_safe(obj):
     return obj
 
 
+# Process-level body cache for ETag-bearing responses (trade-ai ~1.7MB etc.).
+# Keyed by ETag → {raw, gz}. Avoids re-json.dumps + re-gzip on every concurrent poll
+# when the browser hasn't sent If-None-Match yet (or first load of a new tab).
+_JSON_BODY_CACHE = {}
+_JSON_BODY_CACHE_LOCK = threading.Lock()
+_JSON_BODY_CACHE_MAX = 8
+
+
 def json_response(handler, status: int, data: dict) -> None:
     # Phase 203 fix: never emit bare NaN/Infinity — Python json allows them by default but they are
     # INVALID JSON and browser JSON.parse() rejects the whole payload (was blanking the v3 scanner).
@@ -614,23 +622,55 @@ def json_response(handler, status: int, data: dict) -> None:
             handler.send_header("Connection", "close")
             handler.end_headers()
             return
-    try:
-        body = json.dumps(data, default=str, allow_nan=False).encode("utf-8")
-    except ValueError:
-        body = json.dumps(_nan_safe(data), default=str, allow_nan=False).encode("utf-8")
-    # Gzip large JSON over the wire (RI/trade-ai are multi-MB; Tailscale + concurrent polls was
-    # saturating request threads and wedging "Reconnecting…" — 2026-07-16).
-    use_gzip = False
+    want_gzip = False
     try:
         ae = (handler.headers.get("Accept-Encoding") or "") if getattr(handler, "headers", None) else ""
+        want_gzip = "gzip" in ae.lower()
+    except Exception:
+        want_gzip = False
+
+    body = None
+    use_gzip = False
+    # Reuse pre-serialized body when ETag is known (trade-ai multi-MB path).
+    if etag and status == 200:
+        with _JSON_BODY_CACHE_LOCK:
+            cached = _JSON_BODY_CACHE.get(etag)
+        if cached:
+            if want_gzip and cached.get("gz") is not None:
+                body, use_gzip = cached["gz"], True
+            elif cached.get("raw") is not None:
+                body, use_gzip = cached["raw"], False
+
+    if body is None:
+        try:
+            raw_body = json.dumps(data, default=str, allow_nan=False).encode("utf-8")
+        except ValueError:
+            raw_body = json.dumps(_nan_safe(data), default=str, allow_nan=False).encode("utf-8")
+        # Gzip large JSON over the wire (RI/trade-ai are multi-MB; Tailscale + concurrent polls was
+        # saturating request threads and wedging "Reconnecting…" — 2026-07-16).
         # compresslevel 1: CPU-cheap; concurrent gzip of multi-MB JSON at level 4
         # was saturating the request semaphore (server_busy 503 storms).
-        if "gzip" in ae.lower() and len(body) >= 4096:
-            import gzip
-            body = gzip.compress(body, compresslevel=1)
-            use_gzip = True
-    except Exception:
-        use_gzip = False
+        gz_body = None
+        if len(raw_body) >= 4096:
+            try:
+                import gzip
+                gz_body = gzip.compress(raw_body, compresslevel=1)
+            except Exception:
+                gz_body = None
+        if etag and status == 200:
+            with _JSON_BODY_CACHE_LOCK:
+                if etag not in _JSON_BODY_CACHE and len(_JSON_BODY_CACHE) >= _JSON_BODY_CACHE_MAX:
+                    # drop an arbitrary oldest-ish entry
+                    try:
+                        _JSON_BODY_CACHE.pop(next(iter(_JSON_BODY_CACHE)))
+                    except Exception:
+                        _JSON_BODY_CACHE.clear()
+                _JSON_BODY_CACHE[etag] = {"raw": raw_body, "gz": gz_body}
+        if want_gzip and gz_body is not None:
+            body, use_gzip = gz_body, True
+        else:
+            body, use_gzip = raw_body, False
+
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json")
     if etag and status == 200:
@@ -2187,6 +2227,8 @@ def _sem_exempt_path(path: str) -> bool:
         "/api/v2/health",
         "/api/v2/overview",
         "/api/v2/trade-ai",
+        "/api/v2/trade-ai/summary",
+        "/api/v2/trade-ai/scanner",
         "/api/v2/risk-regime/latest",
         "/api/v2/live-trading-gate",
         "/api/v2/paper-trade-readiness",
