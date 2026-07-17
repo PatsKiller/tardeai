@@ -10908,6 +10908,10 @@ def trade_ai(force=False):
     body instead of re-json.dumps a ~1.7MB payload under load (scanner timeout 2026-07-17).
     """
     import time as _t, json as _j, datetime as _dt
+    # Defense-in-depth: only a literal True forces the heavy compute. The route dispatcher
+    # passes the query DICT to 1-param handlers — a truthy dict here silently became
+    # force=True on every cache-busted poll (the 2026-06-25..07-17 server-busy root cause).
+    force = force is True
     _disk = PROJECT_ROOT / "data" / "runtime" / "trade_ai_cache.json"
     _now = _t.time()
     if not force:
@@ -19298,13 +19302,13 @@ def _research_topics_unified():
                         [f"research_gap_{_topic_id}_{datetime.now().strftime('%Y%m%d')}",
                          f"topic:{_topic_id}",
                          f"Research gap: {g.get('display_name', _topic_id)} — {g.get('reason', 'stale')} (last searched: {g.get('last_searched', 'never')})"])
-                    # Queue agent job for Iris to investigate the gap
-                    _execute("""INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, request_type, priority, note, status)
-                        VALUES (%s, %s, 'iris', 'research_gap', 1, %s, 'queued')
-                        ON CONFLICT DO NOTHING""",
-                        [f"gap_{_topic_id}_{datetime.now().strftime('%Y%m%d')}",
-                         f"topic:{_topic_id}",
-                         f"Research gap detected for {g.get('display_name', _topic_id)}: {g.get('reason')}. Investigate alternative sources."])
+                    # NO agent job for topic gaps (2026-07-17): 'topic:*' is not a ticker, so every
+                    # such job dies at the processor's symbol gate — but research_gap is a
+                    # TIME_SENSITIVE request type, so ~271 priority-1 topic jobs jumped the whole
+                    # queue daily and starved real symbol jobs for a week (CAST/BCHT stuck since
+                    # 07-10, health critical 'decision-feeding jobs >2h'). The data_staleness
+                    # alert above keeps the gap visible; topic research runs in the Hermes/topic
+                    # lanes, never the ticker-job queue.
                 except Exception:
                     pass
 
@@ -30176,6 +30180,8 @@ def _rotation_summary(force=False):
     rotation_summary_cache.json) that the warm cron (warm_caches.py, force=True) refreshes. Stale is served
     (flagged) rather than blocking the single-threaded server — which previously let one cold request hang
     long enough for the health-probe watchdog to kill+restart-loop the server. Never calls a broker."""
+    # Defense-in-depth vs the dispatcher/force collision (see /api/v2/trade-ai route comment).
+    force = force is True
     import time as _t, json as _j, subprocess as _sp, sys
     import datetime as _dt
     _disk = PROJECT_ROOT / "data" / "runtime" / "rotation_summary_cache.json"
@@ -31213,7 +31219,9 @@ ROUTES = {
     "/api/v2/redeploy/portfolio-pro-forma": lambda q=None: _redeploy_pro_forma(q),
     "/api/v2/redeploy/performance": lambda q=None: _redeploy_performance(q),
     "/api/v2/redeploy/audit": lambda q=None: _redeploy_audit(q),
-    "/api/v2/rotation/summary": _rotation_summary,
+    # Same dispatcher/force collision as /trade-ai (see that route's comment): wrap so a
+    # cache-busted poll can't silently run the rotation compute with force=<query dict>.
+    "/api/v2/rotation/summary": lambda: _rotation_summary(),
     "/api/v2/rotation/small-cap-bridge": _small_cap_rotation_bridge_status,
     "/api/v2/symbol/fib-confluence": _symbol_fib_confluence,
     "/api/v2/rec-intel/summary": _rec_intel_summary,
@@ -31384,7 +31392,12 @@ ROUTES = {
     "/api/v2/stopped-out-watch": stopped_out_watch_list,
     "/api/v2/stop-confirmations": lambda: _stop_confirmations_list(),
     "/api/v2/ops/summary": ops_summary,
-    "/api/v2/trade-ai": trade_ai,
+    # trade_ai MUST be wrapped: the dispatcher passes `query` to any handler with >=1 param,
+    # and trade_ai's one param is `force` — a cache-busted poll (?_=...) made query truthy,
+    # so EVERY dashboard poll ran the multi-minute compute in the request path. Live since
+    # 2026-06-25 (afe44d29); root cause of the recurring server-busy/CLOSE-WAIT incidents
+    # (2026-06-25, 2026-07-16, 2026-07-17). Only warm_caches may pass force=True.
+    "/api/v2/trade-ai": lambda: trade_ai(),
     "/api/v2/trade-ai/summary": trade_ai_summary,
     "/api/v2/trade-ai/scanner": trade_ai_scanner,
     "/api/v2/warrior-audit/latest": warrior_audit_latest,

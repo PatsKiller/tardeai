@@ -157,6 +157,15 @@ def _get_conn():
                 pass
         _tls.conn = conn
         _tls.last_used = _time.time()
+        if os.getenv("DB_CONN_TRACE"):
+            try:
+                import traceback as _tb, threading as _th, datetime as _dt2
+                _stack = " <- ".join(
+                    f"{fr.name}:{fr.lineno}" for fr in _tb.extract_stack()[-8:-1])
+                with open(os.path.join(os.path.dirname(__file__), "..", "logs", "db_conn_trace.log"), "a") as _tf:
+                    _tf.write(f"{_dt2.datetime.now():%H:%M:%S} OPEN  {_th.current_thread().name} :: {_stack}\n")
+            except Exception:
+                pass
         return conn
     except Exception as e:
         print(f"  [db_adapter] PostgreSQL connection failed: {e}")
@@ -174,6 +183,13 @@ def close_thread_conn():
         except Exception:
             pass
         _tls.conn = None
+        if os.getenv("DB_CONN_TRACE"):
+            try:
+                import threading as _th, datetime as _dt2
+                with open(os.path.join(os.path.dirname(__file__), "..", "logs", "db_conn_trace.log"), "a") as _tf:
+                    _tf.write(f"{_dt2.datetime.now():%H:%M:%S} CLOSE {_th.current_thread().name}\n")
+            except Exception:
+                pass
 
 
 # Alias for scripts that import get_connection

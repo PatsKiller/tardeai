@@ -1,5 +1,25 @@
 # Ops: Market Opportunities Scanner 500-loop + Postgres slot exhaustion — 2026-07-17
 
+## ⚠ TRUE ROOT CAUSE (found later same day — supersedes the "GIL saturation" framing below)
+The api_v2 route dispatcher passes the parsed query dict to any handler whose signature has
+≥1 parameter. `trade_ai(force=False)`'s one parameter is `force` — so every cache-busted
+dashboard poll (`?_=<ts>`, which useApi ALWAYS appends) called `trade_ai(<non-empty dict>)`
+→ truthy → **the multi-minute `_compute_trade_ai` ran in the request path on every poll**,
+silently, since 2026-06-25 (afe44d29, the same day the "reconnection outage" lineage began;
+also behind the 2026-07-16 CLOSE-WAIT P0 and today's storm). curl without a query string
+took the fast cache path — which is why manual testing never reproduced what the dashboard
+experienced. The overlapping computes were the CPU pinning, the >30s watchdog reaps, the
+connection-slot exhaustion (compute threads churning conns), and the empty-cache write
+(a request-path forced compute during DB outage wrote its empty result).
+
+**Fixed (same day):** `"/api/v2/trade-ai": lambda: trade_ai()` (0-param wrapper → dispatcher
+can't inject query) + `force = force is True` defense-in-depth inside `trade_ai` — and the
+same pair for `/api/v2/rotation/summary`, the only other route the full-ROUTES signature
+audit flagged. Verified: cache-busted polls now 1–3ms; 20-poll concurrent storm left DB
+connections flat (3→3). An env-gated `DB_CONN_TRACE` open/close tracer now lives in
+db_adapter for future leak hunts (set DB_CONN_TRACE=1 in .env + restart).
+
+
 ## Symptom (operator-visible)
 Command Center showed "showing last-good data · live refresh paused (server busy · 16 feeds)"
 and the Trading → Trade AI scanner tile sat on
