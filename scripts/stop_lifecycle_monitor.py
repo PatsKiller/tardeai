@@ -56,7 +56,11 @@ def _holdings_map() -> dict:
                 px = float(r.get("current_price", r.get("price")) or 0) or None
             except Exception:
                 px = None
-            out[(acct, sym)] = {"shares": sh, "price": px}
+            try:
+                bsh = float(r.get("broker_actual_shares")) if r.get("broker_actual_shares") is not None else None
+            except Exception:
+                bsh = None
+            out[(acct, sym)] = {"shares": sh, "price": px, "broker_shares": bsh}
     except Exception:
         pass
     return out
@@ -180,7 +184,14 @@ def _classify(stop: dict, held: dict | None) -> dict:
     """Attach coverage, proximity, lifecycle, health + flags to one stop record."""
     flags = []
     status = (stop.get("status") or "").lower()
+    # Coverage is measured against BROKER-ACTUAL shares (stamped by every position sync),
+    # never the system-view `shares`, which is deliberately sticky during share-drift review
+    # and was stale for 2 days during the 2026-07-15/16 ACATS window (dual-writer revert):
+    # the JEPI stop correctly covered 1472 broker shares while system shares said 1000, and
+    # stop-health told the operator to shrink a CORRECT stop ("modify to 1000"). The stop
+    # lives at the broker, so the broker's share count is the only valid comparison.
     held_qty = held.get("shares") if held else None
+    cover_qty = (held.get("broker_shares") if held and held.get("broker_shares") else held_qty) if held else None
     price = held.get("price") if held else None
     sq = stop.get("qty")
     sp = stop.get("stop_price")
@@ -192,13 +203,17 @@ def _classify(stop: dict, held: dict | None) -> dict:
     coverage = "full"
     if _is_terminal:
         coverage = "closed"
-    elif held is None or not held_qty:
+    elif held is None or not cover_qty:
         coverage = "orphaned"
         flags.append("orphaned")            # a WORKING stop with no matching held position (dangerous)
-    elif sq and held_qty:
-        if sq > held_qty + 1e-6:
+    elif sq and cover_qty:
+        import math as _math
+        # Whole-share stop over a fractional holding is CORRECT practice (Schwab rejects
+        # fractional STOPs; synthetic stops cover the remainder) — ceil/floor tolerance so
+        # 201-share stops on 200.55-share holdings stop firing daily 'urgent' OVERSIZED noise.
+        if sq > _math.ceil(cover_qty) + 1e-6:
             coverage = "oversized"; flags.append("oversized")
-        elif sq < held_qty - 1e-6:
+        elif sq < _math.floor(cover_qty) - 1e-6:
             coverage = "partial"; flags.append("partial")
 
     # proximity (fixed stops only — trailing is dynamic; report the offset as the cushion)
@@ -234,7 +249,8 @@ def _classify(stop: dict, held: dict | None) -> dict:
     else:
         health = "ok"
 
-    return {**stop, "held_qty": held_qty, "current_price": price, "coverage": coverage,
+    # held_qty reported/persisted = broker-actual (what "you hold" at the broker); system view kept alongside
+    return {**stop, "held_qty": cover_qty, "system_shares": held_qty, "current_price": price, "coverage": coverage,
             "proximity_pct": proximity_pct, "is_trailing": is_trail, "lifecycle": lifecycle,
             "health": health, "flags": flags}
 
