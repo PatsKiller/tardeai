@@ -624,11 +624,24 @@ def normalize_transactions(raw):
 
 
 def normalize_quote(raw):
+    """Single-symbol marketdata quote → {sym: {last,bid,ask,mark,updated,...}}.
+    Includes quoteTime/tradeTime so protective-stop refresh can rank by event time."""
     out = {}
     for sym, blk in (raw or {}).items():
-        q = (blk or {}).get("quote", {})
-        out[sym] = {"symbol": sym, "last": q.get("lastPrice"), "bid": q.get("bidPrice"),
-                    "ask": q.get("askPrice"), "mark": q.get("mark")}
+        q = (blk or {}).get("quote", {}) or {}
+        out[sym] = {
+            "symbol": sym,
+            "last": q.get("lastPrice"),
+            "bid": q.get("bidPrice"),
+            "ask": q.get("askPrice"),
+            "mark": q.get("mark"),
+            "volume": q.get("totalVolume"),
+            "close": q.get("closePrice"),
+            # epoch ms when present — protective-stop refresh / market_quote_provider parse these
+            "updated": q.get("quoteTime") or q.get("tradeTime") or q.get("quoteTimeInLong"),
+            "quoteTime": q.get("quoteTime"),
+            "tradeTime": q.get("tradeTime"),
+        }
     return out
 
 

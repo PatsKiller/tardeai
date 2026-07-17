@@ -82,9 +82,10 @@ const BLOCKER_PRIORITY = [
 
 const FUND_SYMBOLS = new Set(['FCNTX', 'SPAXX'])
 const LIVE_STOP_KINDS = new Set<StopOrderKind>(['STOP', 'TRAILING', 'STOP_LIMIT', 'OCO'])
-/** Match brokers/quote_time.py — regular 15m; extended hours 60m (Finviz/Schwab after-hours update slower). */
+/** Match brokers/quote_time.py — regular 15m; extended 60m; closed/overnight 18h (GTC rests until RTH). */
 const FRESH_MAX_AGE_SEC = 15 * 60
 const AFTER_HOURS_MAX_AGE_SEC = 60 * 60
+const CLOSED_MAX_AGE_SEC = 18 * 60 * 60
 // Tolerance (% of price) between a trailing stop's start (current × (1−trail%)) and the advised FIXED stop.
 // These use different methodologies — the fixed stop is swing-low-anchored while the trail is a whole-number
 // % — so they legitimately differ by (|swing-low-dist% − trail%|) + price drift since the advisory ran
@@ -144,13 +145,21 @@ export function classifyQuoteSession(sourceTimestamp?: string | null): QuoteSess
 }
 
 export function freshMaxAgeSec(session: QuoteSession): number {
-  return session === 'after_hours' || session === 'pre_market' ? AFTER_HOURS_MAX_AGE_SEC : FRESH_MAX_AGE_SEC
+  if (session === 'after_hours' || session === 'pre_market') return AFTER_HOURS_MAX_AGE_SEC
+  if (session === 'closed') return CLOSED_MAX_AGE_SEC
+  return FRESH_MAX_AGE_SEC
+}
+
+/** Session for *now* (operator arming time) — mirrors brokers/quote_time.current_session. */
+export function currentQuoteSession(nowMs = Date.now()): QuoteSession {
+  return classifyQuoteSession(new Date(nowMs).toISOString())
 }
 
 export function isQuoteFresh(sourceTimestamp?: string | null, nowMs = Date.now()): boolean {
   const age = quoteAgeSeconds(sourceTimestamp, nowMs)
   if (age === null) return false
-  return age <= freshMaxAgeSec(classifyQuoteSession(sourceTimestamp))
+  // Window follows current clock session, not print session (AH print usable overnight for GTC).
+  return age <= freshMaxAgeSec(currentQuoteSession(nowMs))
 }
 
 export function isTrailingBrokerStop(stop?: any, monitored?: any): boolean {
@@ -261,7 +270,7 @@ export function buildStopLogic(input: {
   const blockers: StopBlocker[] = []
   const quoteTs = input.sourceTimestamp ?? input.h?.source_timestamp ?? pr?.source_timestamp ?? pr?.quote_at ?? pr?.at ?? null
   const quoteSession = classifyQuoteSession(quoteTs)
-  const quoteMaxAge = freshMaxAgeSec(quoteSession)
+  const quoteMaxAge = freshMaxAgeSec(currentQuoteSession(input.nowMs))
   const quoteAge = quoteAgeSeconds(quoteTs, input.nowMs)
   const staleQuote = !isQuoteFresh(quoteTs, input.nowMs)
   const familyFloorPct = familyFloorPctRaw
@@ -280,7 +289,9 @@ export function buildStopLogic(input: {
   }
   if (staleQuote) {
     const ageNote = quoteAge != null ? `${Math.round(quoteAge / 60)}m old` : 'timestamp missing/unparseable'
-    const winNote = `${quoteMaxAge / 60}m ${quoteSession.replace('_', ' ')} window`
+    const nowSession = currentQuoteSession(input.nowMs)
+    const nowMax = freshMaxAgeSec(nowSession)
+    const winNote = `${nowMax / 60}m ${nowSession.replace('_', ' ')} window`
     blockers.push({
       code: 'stale_quote',
       message: `Quote is outside the ${winNote} (${ageNote}); refresh price before requesting a live stop.`,

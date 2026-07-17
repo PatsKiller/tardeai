@@ -105,20 +105,39 @@ def classify_session(raw, now=None):
 
 # Freshness windows (seconds). Regular session is tight; extended hours is more lenient because quotes
 # update less often and the protective order is GTC (it rests until triggered, so a quote within the hour
-# is acceptable WITH the operator after-hours acknowledgement). Overnight/closed stays on the tight window
-# (no recent print → stale → blocked).
+# is acceptable). Overnight/closed: prints stop after ~20:00 ET, so a 15m window made GTC arming
+# impossible all night even though Schwab accepts GTC 24/7 and the stop rests until RTH. Allow the
+# last session print through the overnight window so operators can re-arm protection after ACATS /
+# before the open (still 2FA + evidence revalidation at submit).
 FRESH_MAX_AGE_SEC = 15 * 60
 AFTER_HOURS_MAX_AGE_SEC = 60 * 60
+# Last AH/overnight print → valid until roughly next premarket (covers ~20:00 → ~04:00 + margin).
+CLOSED_MAX_AGE_SEC = 18 * 60 * 60
 
 
 def fresh_max_age_for(session):
     """Session-aware freshness window in seconds."""
-    return AFTER_HOURS_MAX_AGE_SEC if session in ("after_hours", "pre_market") else FRESH_MAX_AGE_SEC
+    if session in ("after_hours", "pre_market"):
+        return AFTER_HOURS_MAX_AGE_SEC
+    if session == "closed":
+        return CLOSED_MAX_AGE_SEC
+    return FRESH_MAX_AGE_SEC
+
+
+def current_session(now=None):
+    """US-equity session for *now* (when the operator is checking), not the quote print time."""
+    now = now or _dt.datetime.now(_dt.timezone.utc)
+    return classify_session(now, now=now)
 
 
 def is_fresh(raw, now=None):
-    """Session-aware freshness check for a quote timestamp."""
+    """Session-aware freshness check for a quote timestamp.
+
+    Window follows the *current* session (when arming), not the session of the print.
+    Otherwise an after-hours print at 19:56 ET is stuck on the 60m AH window forever
+    overnight, even though GTC protective stops are valid 24/7 and no newer tape exists.
+    """
     age = quote_age_seconds(raw, now=now)
     if age is None:
         return False
-    return age <= fresh_max_age_for(classify_session(raw, now=now))
+    return age <= fresh_max_age_for(current_session(now))

@@ -360,9 +360,10 @@ export default function PortfolioHub({ onDrill }: Props) {
               title="Full Schwab refresh: positions + trade ledger + journal round-trips (read-only; no trading; stops not pulled).">
               {syncState.busy === 'schwab' ? '⟳ Syncing Schwab…' : '⟳ Sync Schwab'}
             </button>
-            <button onClick={() => void runFidelityStopSync()} disabled={!!syncState.busy} style={syncBtn(syncState.busy === 'fidelity_stops')}
-              title="Record Fidelity Rollover IRA GTC stops from config/fidelity_rollover_stops.json (SnapTrade does not return open stop orders). Auto: 10:05 + 16:05 ET trading days.">
-              {syncState.busy === 'fidelity_stops' ? '⟳ Fidelity stops…' : '⟳ Sync Fidelity GTC stops'}
+            {/* Fidelity Rollover IRA closed 2026-07-16 (ACATS → Schwab). Keep button but mark legacy so operators don't think Fidelity is still an active book. */}
+            <button onClick={() => void runFidelityStopSync()} disabled={!!syncState.busy} style={{ ...syncBtn(syncState.busy === 'fidelity_stops'), opacity: 0.55 }}
+              title="LEGACY — Fidelity Rollover IRA is CLOSED (rolled to Schwab 2026-07-16). Historical GTC stop map only (config/fidelity_rollover_stops.json). Re-arm protective stops on Schwab Rollover IRA instead.">
+              {syncState.busy === 'fidelity_stops' ? '⟳ Fidelity stops…' : '⟳ Sync Fidelity GTC stops (legacy)'}
             </button>
             {syncState.msg && (
               <span style={{ fontSize: 10, color: /error|failed/.test(syncState.msg) ? '#ef4444' : '#22c55e' }}>{syncState.msg}</span>

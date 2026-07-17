@@ -1006,8 +1006,13 @@ def _one_symbol_canary_conflict(symbol, account):
 
 
 def _protective_stop_refresh_quote(body=None):
-    """POST /api/v2/holdings/protective-stop/refresh-quote — fetch the LATEST available quote (read-only,
-    highest-trust source first) for a live-stop readiness check, persist it, and return a readiness object.
+    """POST /api/v2/holdings/protective-stop/refresh-quote — fetch the LATEST available quote (read-only)
+    from Schwab + Alpaca + Finviz (and DB fallback) for a live-stop readiness check.
+
+    Ranking: real trade/quote event time first (not cache pull time). Broker prints (Schwab, Alpaca)
+    outrank Finviz `last_fetched` (which is when we scraped, not when the tape printed). Ties broken by
+    source trust: Schwab > Alpaca > market_provider > DB > Finviz cache.
+
     NEVER submits, modifies, or cancels a broker order (broker_request_sent=false)."""
     import datetime as _dt
     from brokers.quote_time import (parse_quote_ts, classify_session, to_iso, quote_age_seconds,
@@ -1017,89 +1022,149 @@ def _protective_stop_refresh_quote(body=None):
     acct = str(b.get("account", "")).strip()
     if not sym:
         return {"ok": False, "error": "symbol required", "broker_request_sent": False}
-    # Gather quote candidates from every available source, then pick the FRESHEST parseable one (highest trust
-    # breaks ties). After-hours, Finviz/Schwab extended-hours prints are newer than Alpaca paper (which stops
-    # at the 16:00 close), so "latest available" must compare timestamps, not just take a fixed priority. All
-    # reads are READ-ONLY — no broker order is placed.
-    candidates = []  # (trust, parsed_ts, price, bid, ask, source, raw_ts)
 
-    def _add(price, src, raw_ts, trust, bid=None, ask=None):
+    # (trust, event_ts, price, bid, ask, source, raw_ts, is_event_time)
+    candidates = []
+    sources_tried = []
+
+    def _add(price, src, raw_ts, trust, bid=None, ask=None, is_event_time=True):
         try:
             if price is None:
                 return
             p = parse_quote_ts(raw_ts)
             if p is None:
+                sources_tried.append({"source": src, "ok": False, "error": "unparseable_ts", "raw_ts": str(raw_ts)[:80] if raw_ts else None})
                 return
-            candidates.append((trust, p, float(price), bid, ask, src, raw_ts))
-        except Exception:
-            pass
+            candidates.append((int(trust), p, float(price), bid, ask, src, raw_ts, bool(is_event_time)))
+            sources_tried.append({
+                "source": src, "ok": True, "price": float(price),
+                "ts": to_iso(raw_ts), "event_time": bool(is_event_time), "trust": int(trust),
+            })
+        except Exception as e:
+            sources_tried.append({"source": src, "ok": False, "error": str(e)[:80]})
 
-    if acct.startswith("schwab"):                      # Schwab extended-hours quote (read-only, best-effort)
+    def _ms_ts(v):
+        """Schwab quoteTime/tradeTime often arrives as epoch ms int."""
+        if v is None:
+            return None
         try:
-            from schwab_transport import get_quote as _sq
-            sq = _sq(acct, sym) or {}
-            qtl = sq.get("quoteTimeInLong") or sq.get("quote_time_in_long")
-            sts = sq.get("quote_time") or sq.get("timestamp") or sq.get("quoteTime")
-            if sts is None and qtl:
-                sts = _dt.datetime.fromtimestamp(int(qtl) / 1000, tz=_dt.timezone.utc)
-            _add(sq.get("last_price") or sq.get("last") or sq.get("price") or sq.get("mark"),
-                 "schwab", sts, trust=3, bid=sq.get("bid"), ask=sq.get("ask"))
+            n = int(v)
+            if n > 10_000_000_000:  # ms
+                return _dt.datetime.fromtimestamp(n / 1000.0, tz=_dt.timezone.utc)
+            if n > 1_000_000_000:  # s
+                return _dt.datetime.fromtimestamp(n, tz=_dt.timezone.utc)
         except Exception:
             pass
+        return v
+
+    # ── 1) Schwab live API (extended-hours + overnight last) ─────────────────
+    try:
+        from schwab_transport import get_quotes as _schwab_quotes
+        # Prefer account-keyed read when we have a Schwab holding account
+        ak = acct if (acct or "").startswith("schwab") else None
+        res = _schwab_quotes([sym], account_key=ak) or {}
+        q = ((res.get("quotes") or {}).get(sym) if isinstance(res, dict) else None) or {}
+        if q:
+            price = q.get("last") or q.get("mark")
+            if price is None and q.get("bid") is not None and q.get("ask") is not None:
+                price = (float(q["bid"]) + float(q["ask"])) / 2.0
+            sts = _ms_ts(q.get("updated") or q.get("quoteTime") or q.get("tradeTime"))
+            _add(price, "schwab", sts, trust=50, bid=q.get("bid"), ask=q.get("ask"), is_event_time=True)
+        else:
+            sources_tried.append({"source": "schwab", "ok": False, "error": (res or {}).get("status") or "empty"})
+    except Exception as e:
+        sources_tried.append({"source": "schwab", "ok": False, "error": str(e)[:80]})
+
+    # ── 2) Alpaca (IEX snapshot: last trade + bid/ask) ───────────────────────
+    try:
+        from market_quote_provider import fetch_alpaca_snapshot
+        aq = fetch_alpaca_snapshot(sym) or {}
+        if aq.get("last_price") is not None:
+            _add(aq.get("last_price"), "alpaca", aq.get("quote_timestamp"), trust=40,
+                 bid=aq.get("bid"), ask=aq.get("ask"), is_event_time=True)
+        else:
+            sources_tried.append({"source": "alpaca", "ok": False, "error": "no_last_price"})
+    except Exception as e:
+        sources_tried.append({"source": "alpaca", "ok": False, "error": str(e)[:80]})
+
+    # ── 3) market_quote_provider fan-out (may hit Schwab/Alpaca/others again) ─
     try:
         from market_quote_provider import get_best_quote
         q = get_best_quote(sym) or {}
-        _add(q.get("last_price"), q.get("provider") or "market_provider", q.get("quote_timestamp"),
-             trust=2, bid=q.get("bid"), ask=q.get("ask"))
-    except Exception:
-        pass
-    r = _db_query("SELECT price, source, fetched_at FROM market_quotes WHERE symbol=%s AND source NOT LIKE 'refresh:%%' "
-                  "ORDER BY fetched_at DESC LIMIT 1", (sym,), fetch="one")
+        if q.get("last_price") is not None:
+            # Real-time broker providers carry event times; finviz_cache does not
+            evt = str(q.get("provider") or "") in ("schwab", "alpaca", "polygon", "finnhub")
+            _add(q.get("last_price"), f"mqp:{q.get('provider') or 'unknown'}", q.get("quote_timestamp"),
+                 trust=30 if evt else 10, bid=q.get("bid"), ask=q.get("ask"), is_event_time=evt)
+    except Exception as e:
+        sources_tried.append({"source": "market_quote_provider", "ok": False, "error": str(e)[:80]})
+
+    # ── 4) DB market_quotes (prior refresh / ingest) ─────────────────────────
+    r = _db_query(
+        "SELECT price, source, fetched_at FROM market_quotes WHERE symbol=%s "
+        "AND source NOT LIKE 'refresh:%%' ORDER BY fetched_at DESC LIMIT 1",
+        (sym,), fetch="one")
     if r:
-        _add(r.get("price"), r.get("source") or "market_quotes", r.get("fetched_at"), trust=1)
+        # fetched_at is ingest time — lower trust, not a tape event
+        _add(r.get("price"), f"db:{(r.get('source') or 'market_quotes')}", r.get("fetched_at"),
+             trust=15, is_event_time=False)
+
+    # ── 5) Finviz Elite cache (price good; prefer last_updated trade-ish stamp) ─
     try:
         fv = (_load_json(STATE_DIR / "finviz_quote_cache.json") or {}).get(sym) or {}
-        _add(fv.get("price"), "finviz", fv.get("last_fetched") or fv.get("last_updated"), trust=0)
-    except Exception:
-        pass
+        # Prefer last_updated (market data stamp) over last_fetched (scrape clock) so we
+        # do not outrank Schwab/Alpaca solely because a cron re-pulled the cache.
+        fv_ts = fv.get("last_updated") or fv.get("quote_time") or fv.get("last_fetched")
+        _add(fv.get("price"), "finviz", fv_ts, trust=5, is_event_time=False)
+    except Exception as e:
+        sources_tried.append({"source": "finviz", "ok": False, "error": str(e)[:80]})
 
-    candidates.sort(key=lambda c: (c[1], c[0]), reverse=True)   # freshest first; trust breaks ties
+    # Rank: event-time quotes first, then freshest event_ts, then trust
+    candidates.sort(key=lambda c: (1 if c[7] else 0, c[1], c[0]), reverse=True)
     if candidates:
-        _, parsed, price, bid, ask, source, raw_ts = candidates[0]
+        _, parsed, price, bid, ask, source, raw_ts, _evt = candidates[0]
         quote = {"price": price, "bid": bid, "ask": ask}
     else:
         quote = parsed = source = raw_ts = None
         bid = ask = None
 
-    session = classify_session(raw_ts)
-    age = quote_age_seconds(raw_ts)
-    fresh = is_fresh(raw_ts)
+    session = classify_session(raw_ts) if raw_ts is not None else "unknown"
+    age = quote_age_seconds(raw_ts) if raw_ts is not None else None
+    fresh = is_fresh(raw_ts) if raw_ts is not None else False
     # persist the refreshed quote (advisory record; never touches a broker order)
     if quote and parsed:
         try:
-            _db_query("INSERT INTO market_quotes (symbol, source, price, fetched_at) VALUES (%s,%s,%s,%s)",
-                      (sym, f"refresh:{source}", quote["price"], parsed.astimezone(_dt.timezone.utc)), fetch=None)
+            _db_query(
+                "INSERT INTO market_quotes (symbol, source, price, fetched_at) VALUES (%s,%s,%s,%s)",
+                (sym, f"refresh:{source}", quote["price"], parsed.astimezone(_dt.timezone.utc)),
+                fetch=None)
         except Exception:
             pass
     blockers = []
     if quote is None:
-        blockers.append("No quote available from any source.")
+        blockers.append("No quote available from Schwab, Alpaca, or Finviz.")
     elif not parsed:
         blockers.append("Quote timestamp could not be parsed.")
     elif not fresh:
-        blockers.append(f"Quote is stale ({int(age) // 60}m old) — outside the {fresh_max_age_for(session) // 60}m "
-                        f"{session.replace('_', '-')} freshness window.")
+        blockers.append(
+            f"Quote is stale ({int(age) // 60}m old) — outside the {fresh_max_age_for(session) // 60}m "
+            f"{session.replace('_', '-')} freshness window.")
     out = {
         "ok": quote is not None and parsed is not None, "symbol": sym, "account": acct,
         "broker_request_sent": False,
         "quote_price": quote["price"] if quote else None,
         "quote_bid": quote.get("bid") if quote else None, "quote_ask": quote.get("ask") if quote else None,
         "quote_source": source, "quote_time_raw": str(raw_ts) if raw_ts else None,
-        "quote_time_normalized": to_iso(raw_ts), "quote_parse_ok": parsed is not None,
+        "quote_time_normalized": to_iso(raw_ts) if raw_ts is not None else None,
+        "quote_parse_ok": parsed is not None,
         "session": session, "quote_age_sec": int(age) if age is not None else None, "quote_fresh": fresh,
         "blockers": blockers,
+        "sources_tried": sources_tried,
+        "sources_available": sorted({s.get("source") for s in sources_tried if s.get("ok")}),
     }
     out["operator_readiness"] = "READY_FOR_OPERATOR" if (quote is not None and parsed and fresh) else "BLOCKED"
+    if out["operator_readiness"] == "READY_FOR_OPERATOR" and session and session != "regular":
+        out["note"] = f"GTC stop — valid 24/7 (source={source}); rests until triggered."
     return out
 
 
@@ -12450,8 +12515,21 @@ def _derive_pipeline_stages(prop):
     return stages
 
 
+_PAPER_PROPOSALS_CACHE = {"ts": 0.0, "payload": None}
+_PAPER_PROPOSALS_TTL_SEC = 15.0  # hub polls every 30–60s; avoid 10–20s N+1 rebuild storms
+
+
 def _paper_proposals_enriched():
     """GET /api/v2/paper-proposals — enriched decision packet proposals."""
+    import time as _ppt
+    _now = _ppt.time()
+    # Short TTL cache — this endpoint does many per-proposal DB lookups and was taking
+    # 10–20s under load, starving /api/v2/trade-ai (scanner "request timed out", 2026-07-17).
+    if (
+        _PAPER_PROPOSALS_CACHE["payload"] is not None
+        and (_now - _PAPER_PROPOSALS_CACHE["ts"]) < _PAPER_PROPOSALS_TTL_SEC
+    ):
+        return _PAPER_PROPOSALS_CACHE["payload"]
     try:
         # Expire stale proposals before reading
         try:
@@ -12459,7 +12537,8 @@ def _paper_proposals_enriched():
             _conn = _gc()
             if _conn:
                 _expire_stale_proposals(_conn)
-                _conn.close()
+                # Do NOT close here — thread-local conn is closed in PortfolioHandler.finish;
+                # closing early left poisoned/None state for later queries on this thread.
         except Exception:
             pass
 
@@ -14013,7 +14092,7 @@ def _paper_proposals_enriched():
         except Exception:
             _true_pending_n = None
 
-        return 200, {
+        _pp_payload = 200, {
             "ok": True,
             "proposals": pending_list,
             "expired_today": expired_today,
@@ -14060,6 +14139,9 @@ def _paper_proposals_enriched():
             "count": len(proposals),
             "portfolio_value": round(portfolio_value, 2),
         }
+        _PAPER_PROPOSALS_CACHE["ts"] = _ppt.time()
+        _PAPER_PROPOSALS_CACHE["payload"] = _pp_payload
+        return _pp_payload
     except Exception as e:
         return 500, {"ok": False, "error": str(e)}
 
@@ -19555,7 +19637,52 @@ def _morning_command():
     _cmd_ov = _get_stop_overrides()
     triggered = sum(1 for p in rm.get("positions", []) if p.get("status") == "TRIGGERED" and p.get("symbol") not in _cmd_ov)
 
-    # ── Top movers today (from holdings with perf data) ──
+    # ── Top movers TODAY (day $ P&L from holdings, multi-account aggregated) ──
+    # Separate from weekly movers below — Home previously only showed 1w and looked
+    # like "no day winners/losers" even when holdings.day_change was populated.
+    _day_agg = {}
+    for pos in holdings:
+        sym = pos.get("symbol", "")
+        if not sym or pos.get("is_cash"):
+            continue
+        mv = float(pos.get("market_value") or 0)
+        dc = float(pos.get("day_change") or 0)
+        if mv <= 50 and abs(dc) < 1:
+            continue
+        a = _day_agg.setdefault(sym, {
+            "symbol": sym, "day_change": 0.0, "market_value": 0.0,
+            "price": pos.get("price", 0),
+        })
+        a["day_change"] += dc
+        a["market_value"] += mv
+        if pos.get("price"):
+            a["price"] = pos.get("price")
+    day_movers = []
+    for a in _day_agg.values():
+        dc = round(a["day_change"], 2)
+        mv = a["market_value"]
+        base = mv - dc
+        pct = round(dc / base * 100, 2) if base > 0 else None
+        if dc == 0 and not pct:
+            continue
+        day_movers.append({
+            "symbol": a["symbol"],
+            "day_change": dc,
+            "day_change_pct": pct,
+            "change_pct": pct,  # UI convenience alias
+            "price": a.get("price") or 0,
+            "market_value": round(mv, 2),
+        })
+    top_day_gainers = sorted(
+        [m for m in day_movers if (m.get("day_change") or 0) > 0],
+        key=lambda x: -x["day_change"],
+    )[:5]
+    top_day_losers = sorted(
+        [m for m in day_movers if (m.get("day_change") or 0) < 0],
+        key=lambda x: x["day_change"],
+    )[:5]
+
+    # ── Weekly movers (perf_week — card title "Weekly Movers") ──
     ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
     movers = []
     _seen_mv = set()
@@ -19780,7 +19907,9 @@ def _morning_command():
             "triggered_count": triggered,
         },
         "actions": actions,
-        "top_gainers": top_gainers,
+        "top_day_gainers": top_day_gainers,
+        "top_day_losers": top_day_losers,
+        "top_gainers": top_gainers,   # weekly (perf_week) — keep name for Weekly Movers card
         "top_losers": top_losers,
         "dividends": {
             "month": this_month_div.get("month_name", ""),
@@ -32264,8 +32393,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                          "error": "Invalid current quote; live stop request blocked.",
                                          "ticket": ticket, "account": acct}
                         if quote_at:
-                            import datetime as _dt
-                            from brokers.quote_time import parse_quote_ts, classify_session, fresh_max_age_for
+                            from brokers.quote_time import (
+                                parse_quote_ts, is_fresh, quote_age_seconds,
+                                current_session, fresh_max_age_for,
+                            )
                             ts = parse_quote_ts(quote_at)
                             if ts is None:
                                 # Never surface a raw "Invalid isoformat string" — block with a human message.
@@ -32273,11 +32404,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                              "error": "Quote timestamp could not be parsed; refresh quote before "
                                                       "requesting a live stop.",
                                              "quote_raw": str(quote_at)[:40], "ticket": ticket, "account": acct}
-                            age = (_dt.datetime.now(_dt.timezone.utc) - ts.astimezone(_dt.timezone.utc)).total_seconds()
-                            if age > fresh_max_age_for(classify_session(ts)):
+                            # Match stop-readiness / refresh-quote: window follows *now* (operator arming),
+                            # not the print's session. An after-hours print must stay usable overnight for GTC.
+                            if not is_fresh(quote_at):
+                                age = quote_age_seconds(quote_at)
+                                sess_now = current_session()
                                 return 200, {"ok": False, "mode": "blocked", "gate": "stale_quote",
-                                             "error": "Quote is stale; refresh price before requesting a live stop.",
-                                             "quote_age_sec": int(age), "quote_at_normalized": ts.isoformat(),
+                                             "error": (f"Quote is stale ({int(age) // 60}m old) — outside the "
+                                                       f"{fresh_max_age_for(sess_now) // 60}m {sess_now} window; "
+                                                       "refresh price before requesting a live stop."),
+                                             "quote_age_sec": int(age) if age is not None else None,
+                                             "quote_at_normalized": ts.isoformat(),
+                                             "session_now": sess_now,
                                              "ticket": ticket, "account": acct}
                         else:
                             return 200, {"ok": False, "mode": "blocked", "gate": "stale_quote",

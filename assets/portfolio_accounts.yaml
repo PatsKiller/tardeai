@@ -12,23 +12,21 @@ tax_method: FIFO
 accounts:
 
   fidelity_rollover_ira:
-    display_name: "Fidelity Rollover IRA"
+    display_name: "Fidelity Rollover IRA (CLOSED — rolled to Schwab)"
     broker: fidelity
     type: rollover_ira
     account_id: "***199"
     taxable: false
-    read_only: true                         # no trading API; advisory only
-    loan_balance: 21735.38                   # NEEDS CONFIRMATION: outstanding 401k loan at rollover —
-    loan_payoff_deadline: "2027-12-31"       #   repaid, or treated as a taxable loan-offset distribution?
-    notes: "Rollover of Omnicom Group Retirement Savings Plan (#74608, terminated 02/28/2026). Rollover COMPLETE 2026-06-18 into a NEW Fidelity Rollover IRA #***199 (note: stayed at Fidelity — original plan assumed consolidating into the Schwab Rollover IRA). ~$568,436 / 100% cash awaiting deployment as of 2026-06-18. Read-only via SnapTrade (auth pending). OPEN: 401k loan tax treatment + whether to keep at Fidelity or transfer to Schwab."
+    read_only: true
+    closed: true
+    active: false
+    rolled_to: schwab_rollover_ira
+    closed_at: "2026-07-16"
+    loan_balance: 21735.38
+    loan_payoff_deadline: "2027-12-31"
+    notes: "CLOSED 2026-07-16: Operator confirmed ACATS/rollover of Fidelity Rollover IRA #***199 into Schwab Rollover IRA. Positions are SSOT under schwab_rollover_ira via Schwab API (no longer shown as Fidelity holdings). Original Omnicom 401k → Fidelity IRA path (2026-06-18). SnapTrade sync for this account_key is DISABLED to prevent ghost Fidelity rows. OPEN: 401k loan tax treatment still operator-owned."
     drip_enabled: false
-    target_allocation:
-      us_large_blend: 40
-      us_large_growth: 15
-      us_large_value: 15
-      us_small: 15
-      international: 15
-      bonds: 0
+    target_allocation: {}
 
   schwab_rollover_ira:
     display_name: "Schwab Rollover IRA"
@@ -37,7 +35,7 @@ accounts:
     account_id: "...258"
     taxable: false
     drip_enabled: true
-    notes: "Previously rolled from prior employer 401k. Contains worthless/revoked securities — see revoked_securities section. V (Visa) concentration risk. DGRO added 2026-04-26 as dividend growth complement to SCHD."
+    notes: "Previously rolled from prior employer 401k. As of 2026-07-16 ALSO holds all former Fidelity Rollover IRA (#***199) assets after ACATS — SSOT is Schwab API sync. Contains worthless/revoked securities — see revoked_securities. V (Visa) concentration risk. DGRO target still pending."
     target_allocation:
       us_equity: 57
       international_equity: 10
