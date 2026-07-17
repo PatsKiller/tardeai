@@ -522,6 +522,59 @@ export default function HomeHub({ onDrill }: Props) {
                 })}
               </SCard>
             )}
+            {(() => {
+              // Prefer command day fields; fall back to overview.top_movers split so the card
+              // still works if only the older API is warm.
+              const dayG = (cmd.top_day_gainers?.length
+                ? cmd.top_day_gainers
+                : (overview?.top_movers ?? []).filter((m: any) => (m.day_change ?? 0) > 0)
+              ) as any[]
+              const dayL = (cmd.top_day_losers?.length
+                ? cmd.top_day_losers
+                : (overview?.top_movers ?? []).filter((m: any) => (m.day_change ?? 0) < 0)
+              ) as any[]
+              if (!dayG.length && !dayL.length) return null
+              const fmtDay = (m: any) => {
+                const d = Number(m.day_change ?? 0)
+                const p = m.day_change_pct ?? m.change_pct
+                const ds = `${d >= 0 ? '+' : ''}${fmt$(d, 0)}`
+                const ps = p != null ? ` ${Number(p) >= 0 ? '+' : ''}${Number(p).toFixed(2)}%` : ''
+                return `${ds}${ps}`
+              }
+              return (
+                <SCard title="Today's Winners / Losers">
+                  {dayG.slice(0, 3).map((g: any, i: number) => (
+                    <Line key={'dg' + i} color="#22c55e">
+                      <span style={{ fontFamily: 'var(--mono)' }}>{g.symbol}</span>
+                      <span>{fmtDay(g)}</span>
+                    </Line>
+                  ))}
+                  {dayL.slice(0, 3).map((l: any, i: number) => (
+                    <Line key={'dl' + i} color="#ef4444">
+                      <span style={{ fontFamily: 'var(--mono)' }}>{l.symbol}</span>
+                      <span>{fmtDay(l)}</span>
+                    </Line>
+                  ))}
+                  {(() => {
+                    // Reconciliation footer: top-3 each way is a window, not the whole day —
+                    // without this the visible rows don't sum to the header TODAY number and
+                    // the card reads as "wrong" (operator report 2026-07-17, −7,131 vs −4,303).
+                    const shownSum = [...dayG.slice(0, 3), ...dayL.slice(0, 3)]
+                      .reduce((s: number, m: any) => s + Number(m.day_change ?? 0), 0)
+                    const total = Number(todayChg)
+                    if (!Number.isFinite(total)) return null
+                    const rest = total - shownSum
+                    return (
+                      <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 5, paddingTop: 4, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}
+                        title="Top 3 winners + top 3 losers shown; 'rest of portfolio' is every other position's day change so the card always sums to the header TODAY figure.">
+                        <span>rest of portfolio {rest >= 0 ? '+' : ''}{fmt$(rest, 0)}</span>
+                        <span>day total {total >= 0 ? '+' : ''}{fmt$(total, 0)}</span>
+                      </div>
+                    )
+                  })()}
+                </SCard>
+              )
+            })()}
             {((cmd.top_gainers?.length > 0) || (cmd.top_losers?.length > 0)) && (
               <SCard title="Weekly Movers">
                 {(cmd.top_gainers ?? []).slice(0, 3).map((g: any, i: number) => (
