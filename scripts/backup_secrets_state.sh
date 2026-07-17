@@ -33,7 +33,20 @@ case "$TARGET" in
   # private GitHub repo trade-ai-memory (this is the second, key-independent copy).
   memory) PREFIX="memory_backup"; KEEP=7; TAR_BASE="$HOME"
           SOURCES=(".claude/projects/-home-johnclaw/memory"); GLOB="" ;;
-  *) echo "usage: $0 {env|data|memory}" >&2; exit 2 ;;
+  # 2026-07-17 backup-scope audit additions:
+  # db   — newest local pg dump goes OFFSITE weekly (dumps were local-only: a disk loss
+  #        took the DB history with it). Already gzipped; gpg adds the encryption layer.
+  # ops  — crontab + systemd user units, regenerated at run time (tiny, daily).
+  # apps — the other applications on this box: OpenClaw config/credentials/agents/memory/
+  #        state (NOT the 2.2G workspace) + nyc-dof-auction (which has NO git remote),
+  #        minus venvs/caches. Weekly.
+  db)   PREFIX="db_backup"; KEEP=2; SOURCES=(); GLOB="" ;;
+  ops)  PREFIX="ops_backup"; KEEP=7; SOURCES=(); GLOB="" ;;
+  apps) PREFIX="apps_backup"; KEEP=2; TAR_BASE="$HOME"
+        SOURCES=(".openclaw/credentials" ".openclaw/agents" ".openclaw/memory"
+                 ".openclaw/state" ".openclaw/openclaw.json" ".openclaw/exec-approvals.json"
+                 "nyc-dof-auction"); GLOB="" ;;
+  *) echo "usage: $0 {env|data|memory|db|ops|apps}" >&2; exit 2 ;;
 esac
 
 [ -f "$PASS_FILE" ] || { echo "FATAL: passphrase file missing: $PASS_FILE" >&2; exit 1; }
@@ -47,20 +60,49 @@ trap 'rm -rf "$TMP"' EXIT
 TAR="$TMP/${PREFIX}_${STAMP}.tar.gz"
 ENC="$TAR.gpg"
 
-# Build the file list (exclude the safe template; include rotated .env.* variants for env mode).
-LIST=()
-for s in "${SOURCES[@]}"; do [ -e "$TAR_BASE/$s" ] && LIST+=("$s"); done
-if [ -n "$GLOB" ]; then
-  while IFS= read -r f; do
-    bn="$(basename "$f")"
-    [ "$bn" = ".env.example" ] && continue
-    LIST+=("$bn")
-  done < <(find "$PROJ" -maxdepth 1 -name "$GLOB" -type f 2>/dev/null)
-fi
-[ ${#LIST[@]} -gt 0 ] || { echo "FATAL: nothing to back up for target '$TARGET'" >&2; exit 1; }
+if [ "$TARGET" = "db" ]; then
+  # newest local pg dump (written by run_pg_backup.sh, integrity-tested at creation);
+  # no re-tar — gpg the .sql.gz directly.
+  NEWEST_DUMP="$(ls -t "$HOME"/db_backups/trade_ai_*.sql.gz 2>/dev/null | head -1)"
+  [ -n "$NEWEST_DUMP" ] || { echo "FATAL: no local db dump found" >&2; exit 1; }
+  echo "[backup:db] offsiting $(basename "$NEWEST_DUMP") ($(du -h "$NEWEST_DUMP" | cut -f1))"
+  TAR="$TMP/${PREFIX}_${STAMP}.sql.gz"
+  cp "$NEWEST_DUMP" "$TAR"
+  ENC="$TAR.gpg"
+elif [ "$TARGET" = "ops" ]; then
+  # regenerate the operational state that lives nowhere else: crontab + systemd user units
+  OPS_DIR="$TMP/ops_state"
+  mkdir -p "$OPS_DIR/systemd_user"
+  crontab -l > "$OPS_DIR/crontab.txt" 2>/dev/null || true
+  cp "$HOME"/.config/systemd/user/*.service "$HOME"/.config/systemd/user/*.timer "$OPS_DIR/systemd_user/" 2>/dev/null || true
+  systemctl --user list-timers --all --no-pager > "$OPS_DIR/timers_state.txt" 2>/dev/null || true
+  echo "[backup:ops] bundling crontab + $(ls "$OPS_DIR/systemd_user" | wc -l) systemd unit file(s)"
+  tar czf "$TAR" -C "$TMP" ops_state
+elif [ "$TARGET" = "apps" ]; then
+  LIST=()
+  for s in "${SOURCES[@]}"; do [ -e "$TAR_BASE/$s" ] && LIST+=("$s"); done
+  [ ${#LIST[@]} -gt 0 ] || { echo "FATAL: nothing to back up for target 'apps'" >&2; exit 1; }
+  echo "[backup:apps] bundling ${#LIST[@]} path(s) (excl. venv/caches): ${LIST[*]}"
+  tar czf "$TAR" -C "$TAR_BASE" \
+      --exclude='.venv' --exclude='node_modules' --exclude='__pycache__' \
+      --exclude='*.pyc' --exclude='.git/objects/pack/*.pack.tmp' \
+      "${LIST[@]}"
+else
+  # Build the file list (exclude the safe template; include rotated .env.* variants for env mode).
+  LIST=()
+  for s in "${SOURCES[@]}"; do [ -e "$TAR_BASE/$s" ] && LIST+=("$s"); done
+  if [ -n "$GLOB" ]; then
+    while IFS= read -r f; do
+      bn="$(basename "$f")"
+      [ "$bn" = ".env.example" ] && continue
+      LIST+=("$bn")
+    done < <(find "$PROJ" -maxdepth 1 -name "$GLOB" -type f 2>/dev/null)
+  fi
+  [ ${#LIST[@]} -gt 0 ] || { echo "FATAL: nothing to back up for target '$TARGET'" >&2; exit 1; }
 
-echo "[backup:$TARGET] bundling ${#LIST[@]} path(s): ${LIST[*]}"
-tar czf "$TAR" -C "$TAR_BASE" "${LIST[@]}"
+  echo "[backup:$TARGET] bundling ${#LIST[@]} path(s): ${LIST[*]}"
+  tar czf "$TAR" -C "$TAR_BASE" "${LIST[@]}"
+fi
 
 # Encrypt (AES-256, symmetric). Plaintext tar is deleted with $TMP on exit.
 gpg --batch --yes --pinentry-mode loopback --passphrase-file "$PASS_FILE" \

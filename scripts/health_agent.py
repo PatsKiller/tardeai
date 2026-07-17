@@ -2184,6 +2184,57 @@ def collect_db_connection_health() -> list[dict]:
     return out
 
 
+def collect_backup_health() -> list[dict]:
+    """Backup cadence liveness (2026-07-17 scope audit): the 02:30 cadence owns ALL backups
+    (pg dump, env/data/memory/ops/db-offsite/apps encrypted to Drive). Before this check a
+    failed or silently-dead run alerted NOBODY. Critical when the last-run summary is stale
+    (>26h) or any step failed; also checks the newest local pg dump is <26h old."""
+    out: list[dict] = []
+    cfg = (_POLICY.get("backup_health") or {})
+    if not cfg.get("enabled", True):
+        return out
+    max_age_h = float(cfg.get("max_age_hours", 26))
+    summary = PROJECT_ROOT / "data" / "runtime" / "portfolio_maintenance_backup_last_run.json"
+    try:
+        if not summary.exists():
+            out.append(_f("pipeline_freshness", "backup_cadence_missing", "critical",
+                          "backup cadence has never written its last-run summary — verify "
+                          "tradeai-portfolio-backup-cadence.timer"))
+            return out
+        age_h = (datetime.now().timestamp() - summary.stat().st_mtime) / 3600
+        if age_h > max_age_h:
+            out.append(_f("pipeline_freshness", "backup_cadence_stale", "critical",
+                          f"backup cadence last ran {age_h:.0f}h ago (>{max_age_h:.0f}h) — "
+                          f"pg dump + offsite encrypted backups are NOT running",
+                          age_hours=round(age_h, 1)))
+        try:
+            d = json.loads(summary.read_text())
+            bad = [s for s in (d.get("steps") or [])
+                   if str(s.get("status", "")).lower() not in
+                   ("ok", "gated_skip_fresh", "excluded_not_run", "")]
+            if bad:
+                out.append(_f("pipeline_freshness", "backup_step_failed", "critical",
+                              f"{len(bad)} backup step(s) failed in the last cadence run — "
+                              f"check journalctl --user -u tradeai-portfolio-backup-cadence",
+                              count=len(bad)))
+        except Exception:
+            pass
+        import glob as _g
+        dumps = sorted(_g.glob(str(Path.home() / "db_backups" / "trade_ai_*.sql.gz")))
+        if not dumps:
+            out.append(_f("pipeline_freshness", "db_dump_missing", "critical",
+                          "no local pg dumps exist in ~/db_backups"))
+        else:
+            dump_age_h = (datetime.now().timestamp() - Path(dumps[-1]).stat().st_mtime) / 3600
+            if dump_age_h > max_age_h:
+                out.append(_f("pipeline_freshness", "db_dump_stale", "critical",
+                              f"newest pg dump is {dump_age_h:.0f}h old (>{max_age_h:.0f}h)",
+                              age_hours=round(dump_age_h, 1)))
+    except Exception as e:
+        out.append(_f("pipeline_freshness", "backup_check_error", "info", str(e)[:120]))
+    return out
+
+
 def collect_broker_token_health() -> list[dict]:
     """Schwab OAuth token liveness — symmetric with the Finviz cookie check. The TTL-based
     `schwab_token_manager.health()` reports `refresh_valid=true` even after Schwab REVOKES the token
@@ -2261,6 +2312,7 @@ COLLECTORS = [
     collect_data_source_health,
     collect_failed_systemd_units,
     collect_db_connection_health,
+    collect_backup_health,
 ]
 
 

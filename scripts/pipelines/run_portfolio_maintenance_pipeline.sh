@@ -89,21 +89,33 @@ assert_review_only_chain() {
 #   - secrets_backup_data: folded in here with a WEEKLY staleness gate (>=6 days since last success),
 #     replacing the legacy Sun 05:45 data-weekly cron. Single owner, no new timer, self-healing.
 SECRETS_DATA_STAMP="$PROJ/data/runtime/last_secrets_data_backup.stamp"
+DB_OFFSITE_STAMP="$PROJ/data/runtime/last_db_offsite_backup.stamp"
+APPS_BACKUP_STAMP="$PROJ/data/runtime/last_apps_backup.stamp"
+
+# weekly-gated step helper (2026-07-17 backup-scope audit): stamp mtime = last success
+run_weekly_gated() {
+  local step="$1" stamp="$2" target="$3"
+  local age=999
+  [ -f "$stamp" ] && age=$(( ( $(date +%s) - $(stat -c %Y "$stamp") ) / 86400 ))
+  if [ "$age" -ge 6 ]; then
+    pm_step "$step" "BACKUP_WEEKLY_GATED" bash "$PROJ/scripts/backup_secrets_state.sh" "$target"
+    [ "${STEP_STATUS[${#STEP_STATUS[@]}-1]}" = "ok" ] && { mkdir -p "$(dirname "$stamp")"; touch "$stamp"; }
+  else
+    echo "  ---- GATED_SKIP: $step (last success ${age}d ago, <6d) ----"
+    STEP_NAMES+=("$step"); STEP_STATUS+=("GATED_SKIP_FRESH"); STEP_MS+=(0); STEP_LABEL+=("BACKUP_WEEKLY_GATED")
+  fi
+}
+
 run_backup() {
   pm_step "portfolio_backup"   "BACKUP_DAILY" bash "$PROJ/linux_launchers/run_pg_backup.sh"
   pm_step "secrets_backup_env" "BACKUP_DAILY" bash "$PROJ/scripts/backup_secrets_state.sh" env
   pm_step "memory_backup"      "BACKUP_DAILY" bash "$PROJ/scripts/backup_secrets_state.sh" memory
-  # weekly-gated secrets-data
-  local age=999
-  [ -f "$SECRETS_DATA_STAMP" ] && age=$(( ( $(date +%s) - $(stat -c %Y "$SECRETS_DATA_STAMP") ) / 86400 ))
-  if [ "$age" -ge 6 ]; then
-    pm_step "secrets_backup_data" "BACKUP_WEEKLY_GATED" bash "$PROJ/scripts/backup_secrets_state.sh" data
-    # stamp only on success (last recorded step status)
-    [ "${STEP_STATUS[${#STEP_STATUS[@]}-1]}" = "ok" ] && { mkdir -p "$(dirname "$SECRETS_DATA_STAMP")"; touch "$SECRETS_DATA_STAMP"; }
-  else
-    echo "  ---- GATED_SKIP: secrets_backup_data (last success ${age}d ago, <6d) ----"
-    STEP_NAMES+=("secrets_backup_data"); STEP_STATUS+=("GATED_SKIP_FRESH"); STEP_MS+=(0); STEP_LABEL+=("BACKUP_WEEKLY_GATED")
-  fi
+  # ops state (crontab + systemd user units) — tiny, regenerated daily (scope audit 2026-07-17)
+  pm_step "ops_state_backup"   "BACKUP_DAILY" bash "$PROJ/scripts/backup_secrets_state.sh" ops
+  run_weekly_gated "secrets_backup_data" "$SECRETS_DATA_STAMP" data
+  # DB dump OFFSITE weekly (dumps were local-only — same-disk loss took DB history) + other apps
+  run_weekly_gated "db_offsite_backup"   "$DB_OFFSITE_STAMP"   db
+  run_weekly_gated "apps_backup"         "$APPS_BACKUP_STAMP"  apps
 }
 run_daily()      {
   assert_review_only_chain "portfolio_daily_report" \
