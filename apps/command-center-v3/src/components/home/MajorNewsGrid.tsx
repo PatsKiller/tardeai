@@ -27,17 +27,31 @@ export default function MajorNewsGrid() {
   const [sym, setSym] = useState<string | null>(null)
   const { data: news } = useApi<any>(sym ? `/api/v2/news/symbol-headlines?symbol=${sym}` : '', 0, { enabled: !!sym } as any)
 
-  const rows: any[] = (book?.rows || [])
-    .filter((r: any) => /^[A-Z]{1,6}$/.test(r.symbol))
-    .sort((a: any, b: any) => Math.abs(b.day_change_pct ?? 0) - Math.abs(a.day_change_pct ?? 0))
-    .slice(0, 24)
+  // dedupe by symbol (multi-account holdings rendered one cell per account — operator bug
+  // 2026-07-17); same symbol has the same day % across accounts, day $ summed for tooltip
+  const rows: any[] = (() => {
+    const by = new Map<string, any>()
+    for (const r of (book?.rows || [])) {
+      if (!/^[A-Z]{1,6}$/.test(r.symbol)) continue
+      const prev = by.get(r.symbol)
+      if (prev) prev.day_change += r.day_change
+      else by.set(r.symbol, { ...r })
+    }
+    return [...by.values()]
+      .sort((a, b) => Math.abs(b.day_change_pct ?? 0) - Math.abs(a.day_change_pct ?? 0))
+      .slice(0, 24)
+  })()
+  // which cells actually HAVE guarded headlines — marked BEFORE the click
+  const symbolsKey = rows.map(r => r.symbol).join(',')
+  const { data: hlCounts } = useApi<any>(symbolsKey ? `/api/v2/news/headline-counts?symbols=${symbolsKey}` : '', 300_000, { enabled: !!symbolsKey } as any)
+  const counts: Record<string, number> = hlCounts?.counts || {}
   const ingest = news?.ingest
 
   return (
     <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderLeft: `3px solid ${BB.amber}`, borderRadius: 2, padding: '10px 12px' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 6, flexWrap: 'wrap' }}>
         <span style={{ fontSize: TYPE.xs, fontWeight: 800, letterSpacing: '.06em', color: BB.text2 }}>MAJOR NEWS</span>
-        <span style={{ fontSize: 8.5, fontWeight: 700, color: BB.text3, textTransform: 'uppercase' }}>· your names by |day %| · guarded headlines on click</span>
+        <span style={{ fontSize: 8.5, fontWeight: 700, color: BB.text3, textTransform: 'uppercase' }}>· your names by |day %| · badge = guarded headlines · dim = none in 72h</span>
         <span style={{ flex: 1 }} />
         <a href={`${FQDN}/v3/reports?mode=archive`} style={{ fontSize: TYPE.xs, fontWeight: 700, color: T.link, textDecoration: 'none' }}>All news →</a>
       </div>
@@ -45,13 +59,20 @@ export default function MajorNewsGrid() {
         {rows.map((r: any) => {
           const p = Number(r.day_change_pct ?? 0)
           const big = Math.abs(p) >= 2
+          const n = counts[r.symbol] ?? null
+          const hasNews = (n ?? 0) > 0
           return (
-            <button key={`${r.symbol}-${r.account}`} onClick={() => setSym(r.symbol)} style={{
-              display: 'flex', justifyContent: 'space-between', gap: 4, alignItems: 'baseline',
-              padding: '5px 7px', borderRadius: 2, cursor: 'pointer',
-              background: heatRamp(p), border: big ? `1.5px solid ${p >= 0 ? BB.green : BB.red}` : `1px solid ${BB.borderHair}`,
-            }}>
-              <span style={{ ...numStyle, fontSize: TYPE.xs, fontWeight: 800, color: '#fff' }}>{r.symbol}</span>
+            <button key={r.symbol} onClick={() => setSym(r.symbol)}
+              title={`${r.symbol} · day ${r.day_change >= 0 ? '+' : ''}$${Math.round(r.day_change).toLocaleString()}${n != null ? ` · ${n} guarded headline${n === 1 ? '' : 's'} 72h` : ''}`}
+              style={{
+                display: 'flex', justifyContent: 'space-between', gap: 4, alignItems: 'baseline',
+                padding: '5px 7px', borderRadius: 2, cursor: 'pointer',
+                background: heatRamp(p), border: big ? `1.5px solid ${p >= 0 ? BB.green : BB.red}` : `1px solid ${BB.borderHair}`,
+                opacity: n != null && !hasNews ? 0.55 : 1,
+              }}>
+              <span style={{ ...numStyle, fontSize: TYPE.xs, fontWeight: 800, color: '#fff' }}>
+                {r.symbol}{hasNews && <span style={{ fontSize: 8, fontWeight: 800, marginLeft: 3, color: '#fff', background: 'rgba(255,255,255,.25)', borderRadius: 2, padding: '0 3px' }}>{n}</span>}
+              </span>
               <span style={{ ...numStyle, fontSize: 9, fontWeight: 700, color: '#fff' }}>{p >= 0 ? '+' : ''}{p.toFixed(2)}%</span>
             </button>
           )

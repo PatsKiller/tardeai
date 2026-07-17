@@ -10986,6 +10986,49 @@ def _symbol_headlines(query=None):
             "ingest": {"guarded_72h": _json_clean(ing.get("n")), "latest": _json_clean(ing.get("latest"))}}
 
 
+_HL_COUNTS_MEMO = {"ts": 0.0, "key": None, "data": None}
+
+
+def _headline_counts(query=None):
+    """GET /api/v2/news/headline-counts?symbols=A,B,C — GUARDED headline counts per symbol
+    (72h). Lets the Major News grid mark which cells actually have news BEFORE the click
+    (operator 2026-07-17: 'major news listed and when i click no news' — cells for names
+    with zero guarded rows now say so up front). Guard applied row-by-row; 5-min memo."""
+    import time as _t
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    syms = [s.strip().upper() for s in (g("symbols") or "").split(",") if s.strip().isalnum()][:40]
+    if not syms:
+        return {"ok": False, "error": "no symbols"}
+    key = ",".join(sorted(syms))
+    now = _t.time()
+    m = _HL_COUNTS_MEMO
+    if m["data"] is not None and m["key"] == key and now - m["ts"] < 300:
+        return dict(m["data"])
+    rows = _db_query("""SELECT upper(symbol) s, title, summary FROM news_articles
+                        WHERE upper(symbol) = ANY(%s)
+                          AND published_at > now() - interval '72 hours'
+                          AND COALESCE(is_duplicate, false) = false
+                        LIMIT 400""", [syms]) or []
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from news_symbol_guard import headline_matches_symbol as _guard
+    except ImportError:
+        _guard = None
+    counts = {s: 0 for s in syms}
+    for r in rows:
+        s = r["s"]
+        if _guard is not None:
+            ok, _ = _guard(s, r.get("title") or "", r.get("summary") or "")
+            if not ok:
+                continue
+        counts[s] = counts.get(s, 0) + 1
+    out = {"ok": True, "counts": counts, "hours": 72}
+    m.update(ts=now, key=key, data=out)
+    return dict(out)
+
+
 _BOOK_MAP_MEMO = {"etag": None, "data": None}
 
 
@@ -31823,6 +31866,7 @@ ROUTES = {
     "/api/v2/market-movers": _market_movers,
     "/api/v2/portfolio/book-map": _portfolio_book_map,
     "/api/v2/news/symbol-headlines": _symbol_headlines,
+    "/api/v2/news/headline-counts": _headline_counts,
     "/api/v2/trade-ai": lambda: trade_ai(),
     "/api/v2/trade-ai/summary": trade_ai_summary,
     "/api/v2/trade-ai/scanner": trade_ai_scanner,

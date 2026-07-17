@@ -56,8 +56,23 @@ export default function BookTreemap({ onDrillSymbol }: { onDrillSymbol?: (symbol
   const W = 560, H = 340, HEAD = 13
 
   const rects = useMemo<Rect[]>(() => {
-    const rows: Row[] = data?.rows || []
+    let rows: Row[] = data?.rows || []
     if (!rows.length) return []
+    // sector view: merge same-symbol positions across accounts (Finviz semantics — one V
+    // square, not one per account; operator bug 2026-07-17). Account view keeps them split.
+    if (groupBy === 'sector') {
+      const by = new Map<string, Row>()
+      for (const r of rows) {
+        const prev = by.get(r.symbol)
+        if (prev) {
+          prev.value += r.value
+          prev.day_change += r.day_change
+          prev.account = `${prev.account}, ${r.account}`
+          if (r.stop === 'triggered' || (r.stop === 'unprotected' && prev.stop !== 'triggered')) prev.stop = r.stop
+        } else by.set(r.symbol, { ...r })
+      }
+      rows = [...by.values()]
+    }
     const groups = new Map<string, Row[]>()
     for (const r of rows) {
       const g = groupBy === 'sector' ? r.sector : (r.account || 'unknown')

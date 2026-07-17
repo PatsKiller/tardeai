@@ -54,7 +54,9 @@ def _cookie() -> str:
 
 
 def _fetch_signal(sig_param: str, cookie: str) -> list[dict]:
-    url = f"https://elite.finviz.com/export.ashx?v=111&s={sig_param}&o=-change"
+    # losers/new-low sort MOST NEGATIVE first (o=change asc); everything else biggest first
+    order = "change" if sig_param in ("ta_toplosers", "ta_newlow") else "-change"
+    url = f"https://elite.finviz.com/export.ashx?v=111&s={sig_param}&o={order}"
     _fv_acquire()
     req = urllib.request.Request(url, headers={
         "User-Agent": "Mozilla/5.0", "Cookie": cookie,
