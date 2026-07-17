@@ -143,3 +143,15 @@ export function countBubble(warn = false): CSSProperties {
 export function focusStyle(focused: boolean): CSSProperties {
   return focused ? { boxShadow: T.focusRing, outline: 'none' } : {}
 }
+
+/** Home v2 (WS-B): the Finviz day-change heat ramp — −3% deep red → 0 slate → +3% deep green.
+ *  Exact stops here so every heat surface (treemap, news grid) shares one ramp. */
+export function heatRamp(pct: number | null | undefined): string {
+  const p = Math.max(-3, Math.min(3, Number(pct ?? 0)))
+  if (!Number.isFinite(p) || p === 0) return '#41464e'
+  // interpolate darkness by |p|/3 between slate and the deep end
+  const t = Math.abs(p) / 3
+  const mix = (a: number[], b: number[]) => a.map((x, i) => Math.round(x + (b[i] - x) * t))
+  const rgb = p > 0 ? mix([54, 74, 61], [22, 163, 74]) : mix([82, 56, 60], [220, 38, 38])
+  return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`
+}

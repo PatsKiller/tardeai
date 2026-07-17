@@ -10946,6 +10946,150 @@ def _write_trade_ai_cache(path, data: dict) -> None:
     tmp.replace(path)
 
 
+def _symbol_headlines(query=None):
+    """GET /api/v2/news/symbol-headlines?symbol=X&hours=72 — Home v2 WS-C: GUARDED headlines.
+
+    ONLY rows passing news_symbol_guard.headline_matches_symbol render (session contract:
+    zero guarded headlines says so honestly — never padded with unguarded matches)."""
+    q = query or {}
+    g = (lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k))
+    sym = (g("symbol") or "").upper().strip()[:8]
+    hours = min(int(g("hours") or 72), 168)
+    if not sym.isalnum():
+        return {"ok": False, "error": "bad symbol"}
+    rows = _db_query(f"""SELECT title, summary, source, source_url, published_at, sentiment
+                         FROM news_articles
+                         WHERE upper(symbol) = %s AND published_at > now() - interval '{hours} hours'
+                           AND COALESCE(is_duplicate, false) = false
+                         ORDER BY published_at DESC LIMIT 40""", [sym]) or []
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from news_symbol_guard import headline_matches_symbol
+    except ImportError:
+        headline_matches_symbol = None
+    out_rows, rejected = [], 0
+    for r in rows:
+        if headline_matches_symbol is not None:
+            ok, _reason = headline_matches_symbol(sym, r.get("title") or "", r.get("summary") or "")
+            if not ok:
+                rejected += 1
+                continue
+        out_rows.append({"title": r.get("title"), "source": r.get("source"),
+                         "url": r.get("source_url"), "published_at": _json_clean(r.get("published_at")),
+                         "sentiment": r.get("sentiment")})
+        if len(out_rows) >= 12:
+            break
+    ing = _db_query("""SELECT count(*) n, max(published_at) latest FROM news_articles
+                       WHERE published_at > now() - interval '72 hours'""", fetch="one") or {}
+    return {"ok": True, "symbol": sym, "headlines": out_rows, "guard_rejected": rejected,
+            "ingest": {"guarded_72h": _json_clean(ing.get("n")), "latest": _json_clean(ing.get("latest"))}}
+
+
+_BOOK_MAP_MEMO = {"etag": None, "data": None}
+
+
+def _portfolio_book_map(query=None):
+    """GET /api/v2/portfolio/book-map — Home v2 WS-B: the operator's book as treemap rows.
+
+    One row per position (symbol×account): value, day change $/%, sector (symbol_profiles;
+    missing → Unclassified, visible never dropped), stop overlay (triggered / unprotected
+    ≥$10k / no_stop) from the same risk pass the Risk hub uses. ETag on holdings mtime. <10KB."""
+    hp = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    if not hp.exists():
+        return {"ok": False, "error": "holdings.json missing", "rows": []}
+    st = hp.stat()
+    etag = f'W/"bmap-{int(st.st_mtime)}-{st.st_size}"'
+    if _BOOK_MAP_MEMO["etag"] == etag and _BOOK_MAP_MEMO["data"] is not None:
+        return dict(_BOOK_MAP_MEMO["data"])
+    h = _load_json(hp) or {}
+    sect = {}
+    try:
+        for r in (_db_query("SELECT upper(symbol) s, sector FROM symbol_profiles WHERE sector IS NOT NULL") or []):
+            sect[r["s"]] = r["sector"]
+    except Exception:
+        pass
+    stop_state = {}
+    try:
+        rk = risk() or {}
+        for p in (rk.get("positions") or []):
+            sym = str(p.get("symbol", "")).upper()
+            mv = float(p.get("market_value") or 0)
+            if (p.get("status") or "").upper() == "TRIGGERED":
+                stop_state[(sym, p.get("account"))] = "triggered"
+            elif not p.get("has_stop") and not p.get("risk_excluded") and mv >= 10_000:
+                stop_state[(sym, p.get("account"))] = "unprotected"
+            elif not p.get("has_stop") and not p.get("risk_excluded"):
+                stop_state[(sym, p.get("account"))] = "no_stop"
+    except Exception:
+        pass
+    rows = []
+    for r in h.get("holdings", []):
+        if r.get("is_cash") or not r.get("symbol"):
+            continue
+        sym = str(r["symbol"]).upper()
+        rows.append({
+            "symbol": sym, "account": r.get("account"),
+            "value": round(float(r.get("market_value") or 0), 2),
+            "day_change": round(float(r.get("day_change") or 0), 2),
+            "day_change_pct": r.get("day_change_pct"),
+            "weight_pct": r.get("portfolio_pct"),
+            "sector": sect.get(sym) or "Unclassified",
+            "stop": stop_state.get((sym, r.get("account"))),
+            "delisted": bool(r.get("delisted")) or None,
+        })
+    out = {"ok": True, "as_of": h.get("as_of"), "rows": rows,
+           "total_value": round(sum(x["value"] for x in rows), 2),
+           "total_day_change": round(sum(x["day_change"] for x in rows), 2),
+           "__etag__": etag}
+    _BOOK_MAP_MEMO.update(etag=etag, data=out)
+    return dict(out)
+
+
+_MOVERS_MEMO = {"etag": None, "data": None}
+
+
+def _market_movers(query=None):
+    """GET /api/v2/market-movers — Home v2 WS-A: latest Finviz signal-board snapshot.
+
+    Disk snapshot (data/runtime/market_movers_latest.json, written by the throttled
+    finviz_market_movers cron ~12min RTH) + __etag__ from file mtime so concurrent Home
+    polls 304. Held (●) / watchlist (○) flags attached server-side. <50KB always."""
+    import json as _j
+    snap_p = PROJECT_ROOT / "data" / "runtime" / "market_movers_latest.json"
+    if not snap_p.exists():
+        return {"ok": False, "error": "no capture yet — finviz_market_movers cron pending",
+                "signals": {}, "captured_at": None}
+    st = snap_p.stat()
+    etag = f'W/"mvr-{int(st.st_mtime)}-{st.st_size}"'
+    if _MOVERS_MEMO["etag"] == etag and _MOVERS_MEMO["data"] is not None:
+        return dict(_MOVERS_MEMO["data"])
+    d = _j.loads(snap_p.read_text())
+    held = set()
+    try:
+        h = _load_json(PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json") or {}
+        held = {str(r.get("symbol", "")).upper() for r in h.get("holdings", []) if not r.get("is_cash")}
+    except Exception:
+        pass
+    watch = set()
+    try:
+        rows = _db_query("SELECT DISTINCT upper(symbol) AS s FROM watchlist_items WHERE COALESCE(status,'active')='active'") or []
+        watch = {r["s"] for r in rows}
+    except Exception:
+        pass
+    for sig in (d.get("signals") or {}).values():
+        for r in sig.get("rows") or []:
+            sym = str(r.get("symbol", "")).upper()
+            if sym in held:
+                r["held"] = True
+            elif sym in watch:
+                r["watch"] = True
+    d["ok"] = True
+    d["__etag__"] = etag
+    _MOVERS_MEMO.update(etag=etag, data=d)
+    return dict(d)
+
+
 def trade_ai_summary():
     """GET /api/v2/trade-ai/summary — header-strip scalars only (~500 B).
 
@@ -31676,6 +31820,9 @@ ROUTES = {
     # so EVERY dashboard poll ran the multi-minute compute in the request path. Live since
     # 2026-06-25 (afe44d29); root cause of the recurring server-busy/CLOSE-WAIT incidents
     # (2026-06-25, 2026-07-16, 2026-07-17). Only warm_caches may pass force=True.
+    "/api/v2/market-movers": _market_movers,
+    "/api/v2/portfolio/book-map": _portfolio_book_map,
+    "/api/v2/news/symbol-headlines": _symbol_headlines,
     "/api/v2/trade-ai": lambda: trade_ai(),
     "/api/v2/trade-ai/summary": trade_ai_summary,
     "/api/v2/trade-ai/scanner": trade_ai_scanner,

@@ -29,7 +29,8 @@ export default function RiskGauge({ value, max = 15, label, threshold, unit = '%
         </PieChart>
       </ResponsiveContainer>
       <div style={{ fontSize: 22, fontWeight: 800, color, marginTop: -24 }}>
-        {typeof value === 'number' ? value.toFixed(1) : '—'}{unit}
+        {/* Home v2 D1: counts are integers (unit='') — '4.0 stops' reads as dev-speak */}
+        {typeof value === 'number' ? (unit === '' ? String(Math.round(value)) : value.toFixed(1)) : '—'}{unit}
       </div>
       {threshold != null && (
         <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>threshold {threshold}{unit}</div>

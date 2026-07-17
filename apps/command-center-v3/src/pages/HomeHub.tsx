@@ -1,5 +1,9 @@
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import MarketMoversBoard from '../components/home/MarketMoversBoard'
+import BookTreemap from '../components/home/BookTreemap'
+import MajorNewsGrid from '../components/home/MajorNewsGrid'
+import { plain, plainAlert, runLabel, thresholdSentence } from '../lib/homeLabels'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fmt$, fmtPct } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -123,6 +127,13 @@ export default function HomeHub({ onDrill }: Props) {
         }}>Morning brief → Reports</Link>
       </div>
 
+      {/* Home v2 Row 1 — market context: the movers board, YOUR book, major news */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 12, marginBottom: 16 }}>
+        <MarketMoversBoard />
+        <BookTreemap onDrillSymbol={(sym) => onDrill({ title: sym, subtitle: 'holding', endpoint: '/api/v2/portfolio/book-map', rows: [] })} />
+        <MajorNewsGrid />
+      </div>
+
       <>
           {/* Command Center header — matches v2 layout */}
           <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...(terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }), marginBottom: 16 }}>
@@ -142,7 +153,7 @@ export default function HomeHub({ onDrill }: Props) {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16, marginTop: 12 }}>
               {[
-                { label: 'Last Run', value: tradeAi ? `${tradeAi.run_label ?? '—'} ${tradeAi.run_date ?? ''}` : '—', color: 'var(--text2)', loading: tradeAiLoading },
+                { label: 'Last Run', value: tradeAi ? runLabel(tradeAi.run_label, tradeAi.run_date) : '—', color: 'var(--text2)', loading: tradeAiLoading },
                 { label: 'Setup State', value: `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NO GO`, color: goCount > 0 ? '#22c55e' : 'var(--text2)', loading: tradeAiLoading },
                 { label: 'Journal P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—', color: (journalPnl ?? 0) >= 0 ? '#22c55e' : '#ef4444', loading: overviewLoading },
                 { label: `Win Rate (${journal?.trade_count ?? 0} trades)`, value: journal?.win_rate != null ? `${journal.win_rate}%` : '—', color: (journal?.win_rate ?? 0) >= 55 ? '#22c55e' : '#f59e0b', loading: overviewLoading },
@@ -235,8 +246,12 @@ export default function HomeHub({ onDrill }: Props) {
                             {ch != null ? `${ch >= 0 ? '+' : ''}${fmt$(ch, 0)}` : '—'}
                           </div>
                           <div style={{ fontSize: 9, color: warn ? '#f59e0b' : (pct != null ? col : 'var(--text3)') }}>
-                            {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : ''}
-                            {warn ? ' ≈' : ''}
+                            {/* D3 (Home v2): transfer-distorted %s beyond ±50% render n/a — the raw value
+                                stays in the cell tooltip. +104.92% Roth-class numbers stop lying. */}
+                            {pct != null && warn && Math.abs(Number(pct)) > 50
+                              ? 'n/a · transfers'
+                              : pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : ''}
+                            {warn && !(pct != null && Math.abs(Number(pct)) > 50) ? ' ≈' : ''}
                           </div>
                         </td>
                       )
@@ -267,8 +282,11 @@ export default function HomeHub({ onDrill }: Props) {
                               {ch != null ? `${ch >= 0 ? '+' : ''}${fmt$(ch, 0)}` : '—'}
                             </div>
                             <div style={{ fontSize: 9, color: warn ? '#f59e0b' : (pct != null ? col : 'var(--text3)') }}>
-                              {pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : (ch != null && warn ? '≈ $' : '')}
-                              {warn && pct != null ? ' ≈' : ''}
+                              {/* D3: the Roth +101.92% class — transfer-distorted %s render n/a, raw in tooltip */}
+                              {pct != null && warn && Math.abs(Number(pct)) > 50
+                                ? 'n/a · transfers'
+                                : pct != null ? `${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%` : (ch != null && warn ? '≈ $' : '')}
+                              {warn && pct != null && Math.abs(Number(pct)) <= 50 ? ' ≈' : ''}
                             </div>
                           </td>
                         )
@@ -412,10 +430,10 @@ export default function HomeHub({ onDrill }: Props) {
                 </div>
               )}
               {heat > 5 && (
-                <div onClick={() => onDrill({ title: 'Portfolio Heat', subtitle: `${heat}% over 5% threshold`, endpoint: '/api/v2/risk', rows: [{ portfolio_heat_pct: heat, total_risk: risk?.total_risk_dollars }] })}
+                <div onClick={() => onDrill({ title: 'Portfolio Heat', subtitle: thresholdSentence('Heat', heat, 5), endpoint: '/api/v2/risk', rows: [{ portfolio_heat_pct: heat, total_risk: risk?.total_risk_dollars }] })}
                   style={{ padding: '10px 12px', background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.25)', borderRadius: 8, cursor: 'pointer' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b' }}>Heat {heat}%</div>
-                  <div style={{ fontSize: 10, color: '#fbbf24', marginTop: 2 }}>above 5% threshold</div>
+                  <div style={{ fontSize: 10, color: '#fbbf24', marginTop: 2 }}>{thresholdSentence('Heat', heat, 5).split('— ')[1]}</div>
                 </div>
               )}
               <div onClick={() => onDrill({ title: 'Data Freshness', subtitle: pipelineStatus ?? '—', endpoint: '/api/v2/overview', rows: [{ pipeline_status: pipelineStatus, last_repriced: lastRepriced, as_of: overview?.as_of }] })}
@@ -453,8 +471,11 @@ export default function HomeHub({ onDrill }: Props) {
                 const cta = f.cta ?? healthFindingCta(f)
                 return (
                   <div key={`${f.type}-${i}`} style={{ padding: '10px 12px', background: f.severity === 'critical' ? 'rgba(239,68,68,.1)' : 'rgba(245,158,11,.08)', border: `1px solid ${f.severity === 'critical' ? 'rgba(239,68,68,.3)' : 'rgba(245,158,11,.25)'}`, borderRadius: 8 }}>
-                    <div onClick={() => onDrill({ title: f.type, subtitle: f.category, endpoint: '/api/v2/health', rows: [f] })} style={{ cursor: 'pointer', fontSize: 11, color: f.severity === 'critical' ? '#ef4444' : '#f59e0b', lineHeight: 1.4 }}>
-                      {f.message?.slice(0, 120)}{(f.message?.length ?? 0) > 120 ? '…' : ''}
+                    <div onClick={() => onDrill({ title: f.type, subtitle: f.category, endpoint: '/api/v2/health', rows: [f] })}
+                         title={f.message}
+                         style={{ cursor: 'pointer', fontSize: 11, color: f.severity === 'critical' ? '#ef4444' : '#f59e0b', lineHeight: 1.4 }}>
+                      {(plainAlert(f.message) ?? `${f.message?.slice(0, 120)}${(f.message?.length ?? 0) > 120 ? '…' : ''}`)}
+                      {!plainAlert(f.message) && <span style={{ fontSize: 8, fontWeight: 800, marginLeft: 5, padding: '0 4px', border: '1px solid currentColor', borderRadius: 2, opacity: .7 }}>raw</span>}
                     </div>
                     <Link to={cta.route.replace(/^\/v3/, '') || '/health'} style={{ display: 'inline-block', marginTop: 6, fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>{cta.label} →</Link>
                   </div>
@@ -589,7 +610,7 @@ export default function HomeHub({ onDrill }: Props) {
               <SCard title="CIO Decisions" count={cmd.cio_pending.length} accent="#a855f7">
                 {cmd.cio_pending.slice(0, 6).map((c: any, i: number) => (
                   <div key={i} onClick={() => onDrill({ title: c.symbol, subtitle: c.decision ?? c.action ?? '', endpoint: '/api/v2/cio-decisions', rows: [c] })} style={{ cursor: 'pointer' }}>
-                    <Line><span style={{ fontFamily: 'var(--mono)', fontWeight: 600, color: 'var(--text0)' }}>{c.symbol}</span><span style={{ fontSize: 8, color: '#f59e0b' }}>{(c.decision ?? c.action ?? 'review').toUpperCase()}</span></Line>
+                    <Line><span style={{ fontFamily: 'var(--mono)', fontWeight: 600, color: 'var(--text0)' }}>{c.symbol}</span><span title={String(c.decision ?? c.action ?? '')} style={{ fontSize: 8, color: '#f59e0b' }}>{plain(String(c.decision ?? c.action ?? '')) ?? (c.decision ?? c.action ?? 'review')}</span></Line>
                   </div>
                 ))}
               </SCard>
@@ -597,7 +618,9 @@ export default function HomeHub({ onDrill }: Props) {
             {(cmd.recovery_watch?.length > 0) && (
               <SCard title="Recovery Watch" count={cmd.recovery_watch.length} accent="#06b6d4">
                 {cmd.recovery_watch.slice(0, 6).map((r: any, i: number) => (
-                  <Line key={i}><span style={{ fontFamily: 'var(--mono)' }}>{r.symbol}</span><span style={{ color: 'var(--text3)' }}>{r.verdict ?? r.analyst_verdict ?? ''} {r.confidence != null ? `${Math.round((r.confidence <= 1 ? r.confidence * 100 : r.confidence))}%` : ''}</span></Line>
+                  <a key={i} href={`/v3/risk?symbol=${r.symbol}`} style={{ textDecoration: 'none' }}>
+                    <Line><span style={{ fontFamily: 'var(--mono)' }}>{r.symbol}</span><span title={String(r.verdict ?? r.analyst_verdict ?? '')} style={{ color: 'var(--text3)' }}>{plain(String(r.verdict ?? r.analyst_verdict ?? '')) ?? (r.verdict ?? r.analyst_verdict ?? '')} {r.confidence != null ? `${Math.round((r.confidence <= 1 ? r.confidence * 100 : r.confidence))}%` : ''}</span></Line>
+                  </a>
                 ))}
               </SCard>
             )}
