@@ -406,7 +406,7 @@ function AnalystTruthBand() {
         {chip(`eligible holdings ${st.eligible_holdings ?? '—'}`, 'live eligible_holding_symbols() — holdings above value floor with actionable stance')}
         {chip(`symbols covered ${st.symbols_covered}`, `registry.json latest report per symbol (${st.reports_total} total artifacts)`)}
         {chip(`fresh ${st.fresh}`, 'latest report younger than 7d')}
-        {chip(`need refresh ${st.need_refresh}`, st.need_refresh_definition)}
+        {chip(`need refresh ${st.need_refresh} across all ${st.symbols_covered} covered`, `${st.need_refresh_definition} — WIDER scope than the batch panel's 'N of eligible' count, which covers only the ${st.eligible_holdings} live eligible holdings`)}
         <span style={{ fontSize: 10, color: 'var(--text3)' }}>{st.schedule}</span>
       </div>
       <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>

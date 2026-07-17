@@ -33,6 +33,11 @@ export default function ProspectusBatchPanel() {
   const [eligible, setEligible] = useState<EligibleRow[]>([])
   const [registry, setRegistry] = useState<RegistryRow[]>([])
   const [needsRefresh, setNeedsRefresh] = useState(0)
+  const [residualOpen, setResidualOpen] = useState(false)
+  // config floor (env-overridable server-side later if needed); sub-floor rows fold, never peers
+  const RESIDUAL_FLOOR = 1000
+  const heldAction: Record<string, string> = Object.fromEntries(
+    eligible.filter(r => r.recommendation).map(r => [r.symbol, String(r.recommendation)]))
   const [loading, setLoading] = useState(true)
   const [batchRunning, setBatchRunning] = useState(false)
   const [singleSym, setSingleSym] = useState('')
@@ -148,7 +153,7 @@ export default function ProspectusBatchPanel() {
         }}>Refresh</button>
         {!loading && (
           <span style={{ fontSize: 9, color: needsRefresh > 0 ? '#f59e0b' : '#22c55e', fontWeight: 700 }}>
-            {needsRefresh > 0 ? `${needsRefresh} need refresh` : 'All up to date'}
+            {needsRefresh > 0 ? `${needsRefresh} of ${eligible.length} eligible symbols' reports need refresh` : 'All up to date'}
           </span>
         )}
       </div>
@@ -178,10 +183,10 @@ export default function ProspectusBatchPanel() {
       ) : (
         <>
           <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase' }}>
-            Eligible holdings ({eligible.length})
+            Eligible holdings ({eligible.filter(r => (r.market_value ?? 0) >= RESIDUAL_FLOOR).length})
           </div>
           <div style={{ display: 'grid', gap: 4, marginBottom: 14, maxHeight: 140, overflowY: 'auto' }}>
-            {eligible.map(row => (
+            {eligible.filter(r => (r.market_value ?? 0) >= RESIDUAL_FLOOR).map(row => (
               <div key={row.symbol} style={{
                 display: 'flex', gap: 8, alignItems: 'center', fontSize: 10, padding: '4px 8px',
                 borderRadius: 5, background: 'var(--bg2)', border: '1px solid var(--border)',
@@ -197,6 +202,33 @@ export default function ProspectusBatchPanel() {
             {eligible.length === 0 && <div style={{ fontSize: 10, color: 'var(--text4)' }}>No BUY/STRONG BUY holdings above threshold.</div>}
           </div>
 
+          {eligible.some(r => (r.market_value ?? 0) < RESIDUAL_FLOOR) && (
+            <div style={{ marginBottom: 14 }}>
+              <button onClick={() => setResidualOpen(o => !o)} style={{
+                fontSize: 9, fontWeight: 700, color: 'var(--text3)', background: 'transparent',
+                border: '1px solid var(--border)', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', textTransform: 'uppercase',
+              }}>
+                {residualOpen ? '▾' : '▸'} Residual positions ({eligible.filter(r => (r.market_value ?? 0) < RESIDUAL_FLOOR).length}) — under ${RESIDUAL_FLOOR.toLocaleString()} · stopped-out scraps, still generatable, not peers
+              </button>
+              {residualOpen && (
+                <div style={{ display: 'grid', gap: 4, marginTop: 6, maxHeight: 120, overflowY: 'auto' }}>
+                  {eligible.filter(r => (r.market_value ?? 0) < RESIDUAL_FLOOR).map(row => (
+                    <div key={row.symbol} style={{
+                      display: 'flex', gap: 8, alignItems: 'center', fontSize: 10, padding: '4px 8px',
+                      borderRadius: 5, background: 'var(--bg2)', border: '1px dashed var(--border)', opacity: 0.75,
+                    }}>
+                      <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text2)', minWidth: 48 }}>{row.symbol}</span>
+                      <span style={{ color: 'var(--text3)' }}>{fmtUsd(row.market_value)}</span>
+                      {row.needs_refresh
+                        ? <span style={{ color: '#f59e0b', fontWeight: 700, marginLeft: 'auto' }}>stale</span>
+                        : <span style={{ color: 'var(--text4)', marginLeft: 'auto' }}>current</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase' }}>
             Generated prospectus ({registry.length})
           </div>
@@ -210,7 +242,15 @@ export default function ProspectusBatchPanel() {
                   borderRadius: 5, background: 'var(--bg2)', border: '1px solid var(--border)',
                 }}>
                   <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text0)' }}>{row.symbol}</span>
-                  <span style={{ color: 'var(--text3)' }}>{row.recommendation || '—'}</span>
+                  {(() => {
+                    // D3 (v3): held names show the CURRENT holdings-vocabulary action; the original
+                    // registry verb stays in the tooltip (display-layer only — registry untouched).
+                    const cur = row.symbol ? heldAction[row.symbol] : undefined
+                    return cur && cur !== row.recommendation
+                      ? <span title={`registry: ${row.recommendation || '—'} · ${fmtDate(row.generated_at)}`}
+                              style={{ color: '#22c55e', fontWeight: 700, cursor: 'help' }}>{cur}</span>
+                      : <span style={{ color: 'var(--text3)' }}>{row.recommendation || '—'}</span>
+                  })()}
                   <span style={{ color: 'var(--text4)', fontSize: 9 }}>{fmtDate(row.generated_at)}</span>
                   {row.grok_edited && <span style={{ fontSize: 8, fontWeight: 700, color: '#60a5fa', padding: '1px 5px', borderRadius: 3, background: 'rgba(96,165,250,.12)' }}>Grok</span>}
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>

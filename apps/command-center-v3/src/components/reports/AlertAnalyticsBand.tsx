@@ -53,7 +53,8 @@ export default function AlertAnalyticsBand({ onDrillType }: { onDrillType?: (q: 
                      style={{ display: 'flex', gap: 8, fontSize: TYPE.xs, padding: '2px 0', borderBottom: `1px solid ${BB.borderHair}`, cursor: onDrillType ? 'pointer' : 'default', alignItems: 'baseline' }}>
                   <span style={{ color: T.link, minWidth: 170, textDecoration: 'underline dotted' }}>{t.alert_type}</span>
                   <span style={{ ...numStyle, color: BB.text1, minWidth: 60, textAlign: 'right' }}>{t.n.toLocaleString()}</span>
-                  <span style={{ ...numStyle, color: BB.text3 }}>acked {t.acked}</span>
+                  {/* D4 (v3): 'acked N' removed — no ack write path exists anywhere (read-only
+                      lifecycle_state), so the column was a dead affordance. */}
                 </div>
               ))}
             </div>
