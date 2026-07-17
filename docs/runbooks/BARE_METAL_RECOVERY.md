@@ -5,7 +5,12 @@ is either in git, in an encrypted Drive backup, or re-pullable by name from a ma
 the nightly `ops_backup` (crontab, systemd units, dpkg list, pip freezes, ollama models,
 pg configs, .pgpass, gog CLI auth, tool versions).
 
-## ⚠ P0 PREREQUISITE — the one thing that must live OFF this machine
+## ✅ P0 PREREQUISITE — SATISFIED 2026-07-17
+Both recovery secrets live in the operator's Bitwarden vault (items "TradeAI backup gpg
+passphrase" + "TradeAI gog keyring password", round-trip verified at push). If they ever
+rotate, re-push and re-verify. Original warning kept below for context:
+
+## ⚠ (historical) the one thing that must live OFF this machine
 **`~/.openclaw/credentials/env_data_backup.pass`** (gpg passphrase) decrypts EVERY offsite
 backup — and its only copies are on this disk and inside backups encrypted WITH IT. If the
 disk dies and the operator does not hold this passphrase elsewhere, every `.gpg` on Drive is
