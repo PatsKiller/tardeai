@@ -702,6 +702,16 @@ def sync_approval_queue(proposals: List[dict], *, apply: bool = True) -> dict:
         return {"ok": True, "skipped": True, "reason": "approval_not_required"}
     upserted = 0
     cur = conn.cursor()
+    # Self-cleaning sweep (2026-07-17): pending rows past expires_at auto-reject each desk
+    # cycle, so the queue can never accumulate stale approvals again (health finding
+    # 'queue not being cleaned' — 8 rows dating back to 06-26). The CHECK constraint has no
+    # 'expired' status; system-rejected is the terminal state the desk already understands,
+    # and the re-proposal path is unaffected (the desk re-queues fresh ids daily).
+    cur.execute(
+        """UPDATE options_approval_queue
+           SET status='rejected', reviewer='system_expiry', reviewed_at=NOW(), updated_at=NOW(),
+               review_note='auto-expired: passed 24h expires_at without operator review'
+           WHERE status='pending' AND expires_at < NOW()""")
     for p in proposals:
         pid = p.get("id")
         if not pid:
