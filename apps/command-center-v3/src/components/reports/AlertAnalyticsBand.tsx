@@ -11,6 +11,7 @@ export default function AlertAnalyticsBand({ onDrillType }: { onDrillType?: (q: 
   const [days, setDays] = useState(30)
   const { data } = useApi<any>(`/api/v2/reports/analytics?days=${days}`, 300_000)
   const [open, setOpen] = useState(true)
+  const [showPolicy, setShowPolicy] = useState(false)
   if (!data?.ok) return null
   const byDay: any[] = data.by_day ?? []
   const max = Math.max(1, ...byDay.map(d => (d.alerts || 0) + (d.telegram || 0) + (d.notifications || 0)))
@@ -23,7 +24,7 @@ export default function AlertAnalyticsBand({ onDrillType }: { onDrillType?: (q: 
   return (
     <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderLeft: `3px solid ${BB.amber}`, borderRadius: 2, padding: '10px 12px' }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: TYPE.xs, fontWeight: 800, letterSpacing: '.06em', color: BB.text3 }}>ALERT & MESSAGE ANALYTICS · {days}d</span>
+        <span style={{ fontSize: TYPE.xs, fontWeight: 800, letterSpacing: '.06em', color: BB.text3 }}>ALERT & MESSAGE ANALYTICS · {days}d <span style={{ fontWeight: 700, color: BB.amber }}>· raw events</span></span>
         {[7, 30, 90].map(d => (
           <button key={d} onClick={() => setDays(d)}
                   style={{ fontSize: TYPE.xs, fontWeight: days === d ? 800 : 600, padding: '1px 8px', borderRadius: 2, cursor: 'pointer',
@@ -66,8 +67,20 @@ export default function AlertAnalyticsBand({ onDrillType }: { onDrillType?: (q: 
               ))}
               <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 6 }} title={par.note}>
                 parity: raw {Object.entries(par.raw_stores || {}).map(([k, v]: any) => `${k} ${v?.toLocaleString?.() ?? v}`).join(' · ')} → portal-indexed {par.portal_indexed_total?.toLocaleString?.()}
-                <span style={{ cursor: 'help' }}> ⓘ</span>
+                <span onClick={() => setShowPolicy(v => !v)} style={{ cursor: 'pointer', color: T.link }}> ⓘ indexing policy</span>
               </div>
+              {showPolicy && data.index_policy && (
+                <div style={{ marginTop: 6, padding: '7px 9px', background: BB.bg, border: `1px solid ${BB.borderHair}`, borderRadius: 2 }}>
+                  <div style={{ fontSize: TYPE.xs, fontWeight: 800, color: BB.text3, letterSpacing: '.05em', marginBottom: 3 }}>INDEXING POLICY (config/report_index_policy.json)</div>
+                  <div style={{ fontSize: TYPE.xs, color: BB.text3, marginBottom: 4 }}>default: {data.index_policy.default}</div>
+                  {Object.entries(data.index_policy.classes || {}).map(([k, v]: any) => (
+                    <div key={k} style={{ fontSize: TYPE.xs, padding: '1px 0', display: 'flex', gap: 8 }}>
+                      <span style={{ ...numStyle, color: BB.text2, minWidth: 150, flexShrink: 0 }}>{k}</span>
+                      <span style={{ color: BB.text3 }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </>

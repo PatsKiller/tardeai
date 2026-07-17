@@ -1372,7 +1372,8 @@ def _reports_list(query=None):
     q = query or {}
     return _rp.list_items(q.get("category", "morning_briefs"), q=q.get("q", ""),
                           page=int(q.get("page", 1) or 1), per_page=int(q.get("per_page", 25) or 25),
-                          days=(int(q["days"]) if q.get("days") else None))
+                          days=(int(q["days"]) if q.get("days") else None),
+                          qv=q.get("qv", "") or "")
 
 
 def _reports_search(query=None):
@@ -1712,6 +1713,12 @@ def _reports_analytics(query=None):
     out["parity"] = {"raw_stores": raw, "raw_total": sum(v or 0 for v in raw.values()),
                      "portal_indexed_total": indexed,
                      "note": "portal categories index ALL history (no day window) and route each row to exactly one category; raw totals here are windowed — differences are window + routing, stated not hidden"}
+    # WS-A3: the indexing policy is CONFIG, rendered as the parity legend — not lore.
+    try:
+        import json as _pj
+        out["index_policy"] = _pj.loads((PROJECT_ROOT / "config" / "report_index_policy.json").read_text())
+    except Exception:
+        out["index_policy"] = None
     return out
 
 

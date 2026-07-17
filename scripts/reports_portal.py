@@ -835,22 +835,79 @@ def search_items(q: str = "", days: int | None = 30, limit: int = 25) -> dict:
     return {"items": items, "total": total, "q": q, "days": days}
 
 
-def list_items(category: str, q: str = "", page: int = 1, per_page: int = 25, days: int | None = None) -> dict:
-    """Normalized, paginated, searchable items for one category (UNION of all stores)."""
+# Quick-view predicates — SERVER-side (Reports v3 WS-A). Mirrors the UI's qvMatchesItem so the
+# chips and the list they filter are ONE query family over ONE corpus (this category+days+q scope).
+# Previously chips came from portal_summary (300/cat, all categories) while qv filtered the
+# fetched 15-row page client-side — "Open actions 486" beside "15 shown · 18 total".
+_QV_RISK_CLASSES = {"stop_triggered", "unprotected_position", "risk_review"}
+_QV_SYSTEM_CLASSES = {"system_health", "cron_or_backup", "llm_review"}
+_QV_KEYS = ("today", "needs_action", "risk", "approvals", "hermes", "system", "critical")
+_QV_ENRICH_CAP = 400   # action-extraction cost ceiling per request; qv_scanned reports honest n
+
+
+def _qv_match(qv: str, it: dict) -> bool:
+    cls = set(it.get("action_classes") or [])
+    if not qv:
+        return True
+    if qv == "today":
+        ca = it.get("created_at")
+        try:
+            from datetime import datetime, timezone
+            d = ca.date() if hasattr(ca, "date") else datetime.fromisoformat(str(ca)).date()
+            return d == datetime.now(timezone.utc).date()
+        except Exception:
+            return False
+    if qv == "needs_action":
+        return bool(it.get("has_actions"))
+    if qv == "risk":
+        return bool(cls & _QV_RISK_CLASSES)
+    if qv == "approvals":
+        return bool(cls & {"approval_needed", "broker_manual"})
+    if qv == "hermes":
+        return "hermes_review" in cls
+    if qv == "system":
+        return bool(cls & _QV_SYSTEM_CLASSES)
+    if qv == "critical":
+        return (it.get("severity") or "").lower() in ("urgent", "critical")
+    return True
+
+
+def list_items(category: str, q: str = "", page: int = 1, per_page: int = 25, days: int | None = None,
+               qv: str = "") -> dict:
+    """Normalized, paginated, searchable items for one category (UNION of all stores).
+
+    qv (WS-A): server-side quick-view filter + qv_counts computed in the SAME pass over the
+    SAME scoped rows — chip counts can no longer disagree with the list they filter."""
     cat = _BY_KEY.get(category)
     if not cat:
         return {"items": [], "total": 0, "page": 1, "pages": 0, "error": "unknown category"}
     page = max(1, int(page)); per_page = min(100, max(5, int(per_page)))
+    qv = qv if qv in _QV_KEYS else ""
     rows = _category_rows(cat, q=q, days=days)
     rows.sort(key=lambda x: x["created_at"] or "", reverse=True)
     total = len(rows)
+    # Enrich the scoped set (capped) so qv counts + filter see action metadata.
+    scanned = min(len(rows), _QV_ENRICH_CAP)
+    for it in rows[:scanned]:
+        _enrich_item(it)
+    qv_counts = {k: 0 for k in _QV_KEYS}
+    for it in rows[:scanned]:
+        for k in _QV_KEYS:
+            if _qv_match(k, it):
+                qv_counts[k] += 1
+    if qv:
+        rows = [it for it in rows[:scanned] if _qv_match(qv, it)]
+    matching = len(rows)
     start = (page - 1) * per_page
     items = rows[start:start + per_page]
     for it in items:
-        it["created_at"] = it["created_at"].isoformat() if it["created_at"] else None
-        _enrich_item(it)   # Phase 3: action_count/classes/symbols/has_actions/route_count (per-page only)
-    return {"items": items, "total": total, "page": page, "per_page": per_page,
-            "pages": (total + per_page - 1) // per_page}
+        if it.get("created_at") and hasattr(it["created_at"], "isoformat"):
+            it["created_at"] = it["created_at"].isoformat()
+        _enrich_item(it)   # idempotent for already-enriched rows past the cap
+    _basis = matching if qv else total
+    return {"items": items, "total": total, "matching": matching, "page": page, "per_page": per_page,
+            "pages": (_basis + per_page - 1) // per_page,
+            "qv": qv, "qv_counts": qv_counts, "qv_scanned": scanned, "corpus": "archive"}
 
 
 def _gather_rows(category: str | None = None, q: str = "", days: int | None = 7, per_cat_cap: int = 200) -> list:

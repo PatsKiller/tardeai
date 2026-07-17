@@ -77,6 +77,9 @@ interface Props {
   rawItems: any[]
   loading: boolean
   total: number
+  matching: number
+  qvCounts: Record<string, number> | null
+  qvScanned: number
   pages: number
   page: number
   setPage: (fn: (p: number) => number) => void
@@ -98,11 +101,16 @@ const relUrl = (u?: string) => (u ? u.replace(/^https?:\/\/[^/]+/, '') : u)
 export default function ReportsArchive(props: Props) {
   const {
     categories, superTab, setSuperTab, active, setActive, archiveCategories, activeCat,
-    qInput, setQInput, days, setDays, qv, setQv, items, rawItems, loading, total, pages, page, setPage,
+    qInput, setQInput, days, setDays, qv, setQv, items, rawItems, loading, total, matching, qvCounts,
+    qvScanned, pages, page, setPage,
     selId, setSelId, selected, kpis, effDays, reportActions, fmtDate, renderArticle, onPurge, onStatClick,
   } = props
 
   const k = kpis || {}
+  // WS-A (v3): chip values come from the SAME /reports/list pass that serves the list below —
+  // one corpus (this category + day window + search), so chips can never disagree with the list.
+  const qc = qvCounts || {}
+  const capped = qvScanned > 0 && qvScanned < total
   const sevRows = Object.entries(k.by_severity || {}).map(([label, value]: any) => ({ label, value, color: sevColor(label) })).sort((a: any, b: any) => b.value - a.value)
   const catRows = (k.by_category || []).slice(0, 7).map((c: any) => ({ label: c.label, value: c.count }))
 
@@ -116,13 +124,19 @@ export default function ReportsArchive(props: Props) {
         <button onClick={onPurge} style={{ fontSize: 10.5, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', cursor: 'pointer' }}>Retention / purge</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
-        <Kpi label={`Reports ${effDays || 7}d`} value={k.total ?? '—'} />
-        <Kpi label="Critical" value={k.critical_urgent ?? '—'} color="#ef4444" active={qv === 'critical'} onClick={() => onStatClick(qv === 'critical' ? '' : 'critical')} />
-        <Kpi label="Open actions" value={k.open_actions ?? '—'} color="#a855f7" active={qv === 'needs_action'} onClick={() => onStatClick(qv === 'needs_action' ? '' : 'needs_action')} />
-        <Kpi label="Risk / Stop" value={k.risk_stop ?? '—'} color="#f59e0b" active={qv === 'risk'} onClick={() => onStatClick(qv === 'risk' ? '' : 'risk')} />
-        <Kpi label="Approvals" value={k.approvals ?? '—'} color="#a855f7" active={qv === 'approvals'} onClick={() => onStatClick(qv === 'approvals' ? '' : 'approvals')} />
-        <Kpi label="System" value={k.system_hermes ?? '—'} color="#60a5fa" active={qv === 'system'} onClick={() => onStatClick(qv === 'system' ? '' : 'system')} />
+      <div>
+        <div style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>
+          · archive — {activeCat?.label || active} · {effDays ? `${effDays}d` : 'all time'}{capped ? ` · counts over newest ${qvScanned} of ${total}` : ''}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+          <Kpi label="In scope" value={total} />
+          <Kpi label="Today" value={qc.today ?? '—'} color="#4ade80" active={qv === 'today'} onClick={() => onStatClick(qv === 'today' ? '' : 'today')} />
+          <Kpi label="Critical" value={qc.critical ?? '—'} color="#ef4444" active={qv === 'critical'} onClick={() => onStatClick(qv === 'critical' ? '' : 'critical')} />
+          <Kpi label="Needs action" value={qc.needs_action ?? '—'} color="#a855f7" active={qv === 'needs_action'} onClick={() => onStatClick(qv === 'needs_action' ? '' : 'needs_action')} />
+          <Kpi label="Risk / Stop" value={qc.risk ?? '—'} color="#f59e0b" active={qv === 'risk'} onClick={() => onStatClick(qv === 'risk' ? '' : 'risk')} />
+          <Kpi label="Approvals" value={qc.approvals ?? '—'} color="#a855f7" active={qv === 'approvals'} onClick={() => onStatClick(qv === 'approvals' ? '' : 'approvals')} />
+          <Kpi label="System" value={qc.system ?? '—'} color="#60a5fa" active={qv === 'system'} onClick={() => onStatClick(qv === 'system' ? '' : 'system')} />
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -170,7 +184,7 @@ export default function ReportsArchive(props: Props) {
               ))}
             </div>
           </div>
-          <div style={{ fontSize: 10.5, color: 'var(--text3)', padding: '0 2px' }}>{items.length} shown · {total} total{(sectorFilter || trendFilter) ? ` · filtered` : ''}</div>
+          <div style={{ fontSize: 10.5, color: 'var(--text3)', padding: '0 2px' }}>{items.length} shown{qv ? ` · ${matching} matching '${qv.replace('_', ' ')}'` : ''} · {total} total in scope{(sectorFilter || trendFilter) ? ` · filtered` : ''}</div>
 
           {loading && rawItems.length === 0 && <div style={{ ...card, padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>loading…</div>}
           {!loading && items.length === 0 && <div style={{ ...card, padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>no reports here</div>}
@@ -233,8 +247,8 @@ export default function ReportsArchive(props: Props) {
               ))}
             </div>
           </div>
-          {sevRows.length > 0 && <div style={{ ...card, padding: 12 }}><div style={{ fontSize: 12, fontWeight: 900, marginBottom: 8 }}>Severity</div><MiniBarChart rows={sevRows} /></div>}
-          {catRows.length > 0 && <div style={{ ...card, padding: 12 }}><div style={{ fontSize: 12, fontWeight: 900, marginBottom: 8 }}>Categories</div><MiniBarChart rows={catRows} color="#60a5fa" /></div>}
+          {sevRows.length > 0 && <div style={{ ...card, padding: 12 }}><div style={{ fontSize: 12, fontWeight: 900, marginBottom: 8 }}>Severity <span style={{ fontSize: 8.5, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>· portal sample · {effDays || 7}d · all categories</span></div><MiniBarChart rows={sevRows} /></div>}
+          {catRows.length > 0 && <div style={{ ...card, padding: 12 }}><div style={{ fontSize: 12, fontWeight: 900, marginBottom: 8 }}>Categories <span style={{ fontSize: 8.5, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>· portal sample · {effDays || 7}d</span></div><MiniBarChart rows={catRows} color="#60a5fa" /></div>}
         </div>
       </div>
     </div>

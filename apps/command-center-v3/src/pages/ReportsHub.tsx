@@ -128,21 +128,7 @@ const RISK_CLASSES = ['stop_triggered', 'unprotected_position', 'risk_review']
 const SYSTEM_CLASSES = ['system_health', 'cron_or_backup', 'llm_review']
 type QV = '' | 'today' | 'needs_action' | 'risk' | 'approvals' | 'hermes' | 'system' | 'critical'
 type HubMode = 'library' | 'brief' | 'archive' | 'analyst'
-const isToday = (s?: string) => { if (!s) return false; const d = new Date(s); const n = new Date(); return d.toDateString() === n.toDateString() }
-function qvMatchesItem(qv: QV, it: any): boolean {
-  const cls: string[] = it.action_classes || []
-  switch (qv) {
-    case '': return true
-    case 'today': return isToday(it.created_at)
-    case 'needs_action': return !!it.has_actions
-    case 'risk': return cls.some(c => RISK_CLASSES.includes(c))
-    case 'approvals': return cls.includes('approval_needed') || cls.includes('broker_manual')
-    case 'hermes': return cls.includes('hermes_review')
-    case 'system': return cls.some(c => SYSTEM_CLASSES.includes(c))
-    case 'critical': return ['urgent', 'critical'].includes((it.severity || '').toLowerCase())
-    default: return true
-  }
-}
+// qv predicates live SERVER-side now (reports_portal._qv_match) — one corpus, one query family (v3 WS-A)
 // ── Reader "Key sections": recognized markdown headers → anchor ids in Article body ──
 const SECTIONS = [
   { id: 'exec', label: 'Executive Summary', rx: /executive summary/i },
@@ -195,7 +181,7 @@ export default function ReportsHub({ onDrill }: Props) {
     const grp = SUPER_TABS.find(s => s.key === superTab)
     if (grp && !grp.categories.includes(active)) setActive(grp.categories[0])
   }, [superTab]) // eslint-disable-line
-  useEffect(() => { setPage(1) }, [active, days, q])
+  useEffect(() => { setPage(1) }, [active, days, q, qv])
   useEffect(() => { setSelId(null) }, [active, days, q, page])
 
   const effDays = qv === 'today' ? 1 : days
@@ -206,14 +192,19 @@ export default function ReportsHub({ onDrill }: Props) {
   // lets the queue default to a small "Now" set instead of hundreds of rows.
   const actionsPath = `/api/v2/reports/action-items?days=${effDays || 7}&limit=1000`
   const { data: actionsData } = useApi<any>(actionsPath, 0)
+  // WS-A (v3): qv filters SERVER-side in the same query that serves the list — the chips render
+  // qv_counts computed in that same pass, so chip-vs-list disagreement (486 vs 18) is impossible.
   const listPath = useMemo(() =>
-    `/api/v2/reports/list?category=${active}&q=${encodeURIComponent(q)}&page=${page}&per_page=15${effDays ? `&days=${effDays}` : ''}`,
-    [active, q, page, effDays])
+    `/api/v2/reports/list?category=${active}&q=${encodeURIComponent(q)}&page=${page}&per_page=15${effDays ? `&days=${effDays}` : ''}${qv && qv !== 'today' ? `&qv=${qv}` : ''}`,
+    [active, q, page, effDays, qv])
   const { data: list, loading } = useApi<any>(listPath, 0)
 
   const rawItems = list?.items || []
-  const items = useMemo(() => rawItems.filter((it: any) => qvMatchesItem(qv, it)), [rawItems, qv])
+  const items = rawItems
   const total = list?.total ?? 0
+  const matching = list?.matching ?? total
+  const qvCounts = list?.qv_counts || null
+  const qvScanned = list?.qv_scanned ?? 0
   const pages = list?.pages ?? 1
   const activeCat = categories.find((c: any) => c.key === active)
 
@@ -442,6 +433,9 @@ export default function ReportsHub({ onDrill }: Props) {
           rawItems={rawItems}
           loading={loading}
           total={total}
+          matching={matching}
+          qvCounts={qvCounts}
+          qvScanned={qvScanned}
           pages={pages}
           page={page}
           setPage={setPage}

@@ -1,0 +1,13 @@
+{
+  "_comment": "Reports v3 WS-A3: WHY raw event counts differ from portal-indexed counts. Rendered as the parity legend — policy lives here (config), not in lore. Classes not listed follow the default.",
+  "default": "indexed — every raw row routes to exactly one portal category (no day window on the index)",
+  "classes": {
+    "hermes_rank_surge": "aggregates-only by design — 65% of all raw alert volume (v1 WS-D finding); individual surge rows would bury the archive, so analytics counts them raw and the archive carries only daily digests",
+    "system_health": "indexed individually — operator-actionable",
+    "data_staleness": "indexed individually; research-gap topic rows are visibility-only (no agent jobs since 2026-07-17 queue-starvation fix)",
+    "pipeline_critical": "indexed individually — failure rail feeds the System rollup",
+    "strategic_alert": "indexed individually — stop-health / protection lane",
+    "telegram_outbox": "delivery ledger only — parity line, never archive rows",
+    "notification_log": "delivery ledger only — parity line, never archive rows"
+  }
+}
