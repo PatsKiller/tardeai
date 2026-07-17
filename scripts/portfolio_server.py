@@ -2176,9 +2176,21 @@ def _peek_http_path(request) -> str:
 
 
 def _sem_exempt_path(path: str) -> bool:
-    """Always serve these without waiting on the global request semaphore."""
+    """Always serve these without waiting on the global request semaphore.
+
+    Home MetricStrip + SPA shell must stay responsive even when heavy endpoints
+    (RI, proposals, risk) are saturating the concurrency pool.
+    """
     p = (path or "").rstrip("/") or "/"
-    if p in ("/api/health", "/api/v2/health"):
+    if p in (
+        "/api/health",
+        "/api/v2/health",
+        "/api/v2/overview",
+        "/api/v2/trade-ai",
+        "/api/v2/risk-regime/latest",
+        "/api/v2/live-trading-gate",
+        "/api/v2/paper-trade-readiness",
+    ):
         return True
     # Static SPA/assets — cheap, high volume
     if p.startswith("/v3/") or p.startswith("/v2/") or p.startswith("/assets/"):
@@ -2206,8 +2218,8 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     allow_reuse_port = False
     request_queue_size = 128
     daemon_threads = True
-    _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "32")))
-    _sem_timeout = float(os.getenv("DASHBOARD_SEM_TIMEOUT_SEC", "3.0"))
+    _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "48")))
+    _sem_timeout = float(os.getenv("DASHBOARD_SEM_TIMEOUT_SEC", "5.0"))
 
     def process_request_thread(self, request, client_address):
         # Bound hung client I/O so dead Tailscale peers release slots

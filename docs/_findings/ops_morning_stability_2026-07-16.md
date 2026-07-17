@@ -213,4 +213,21 @@ crontab -l | sed -n '/BEGIN research-intelligence-overnight/,/END research-intel
 
 ---
 
-*Documented 2026-07-16 for operator handoff and A1A index sync.*
+## 11. Evening addendum (2026-07-16 ~20:55–23:15 ET)
+
+**Symptom:** Amber bar “live refresh paused (server busy · 10 feeds)” with last-good data still showing portfolio numbers / 1 GO · 3 WAIT · 389 NOGO.
+
+**Cause:**
+- portfolio_server process had been up ~7h with **91 threads / ~47% CPU** — concurrency slots exhausted again under overnight RI batch (20:30 full synth/reground/narrative) + multi-tab polling.
+- UI counted every **503** toward the global “failing feeds” tally even when last-good data was kept, so the bar stuck.
+
+**Actions:**
+1. Hard-restarted portfolio_server (service restored immediately).
+2. Expanded **semaphore-exempt** paths: `/api/v2/overview`, `/api/v2/trade-ai`, risk-regime, live-trading-gate, paper-trade-readiness (home strip).
+3. Raised defaults: concurrency **48**, sem wait **5s**.
+4. useApi: **503 with last-good data no longer bumps** the reconnect banner (soft local retry only).
+5. Burst retest: health + overview + trade-ai + RI all **200**.
+
+---
+
+*Documented 2026-07-16 for operator handoff and A1A index sync. Evening addendum same day.*

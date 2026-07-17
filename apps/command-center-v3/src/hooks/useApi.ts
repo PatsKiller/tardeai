@@ -126,19 +126,24 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           return
         }
         if (r.status === 503) {
-          // server_busy semaphore — keep last data, soft-retry with backoff (not a hard outage)
+          // server_busy — keep last-good data and soft-retry WITHOUT raising the global
+          // reconnect banner. Counting 503 toward "failing feeds" made the amber bar stick
+          // whenever heavy endpoints briefly saturated the semaphore (10 feeds × 503).
           let retryAfter = 2
           try {
             const j = await r.json()
             if (j?.retry_after_sec) retryAfter = Number(j.retry_after_sec) || 2
           } catch { /* ignore */ }
-          if (dataRef.current != null) setStale(true)
-          setError('server busy — retrying')
-          if (!failingRef.current) { failingRef.current = true; _bumpFail(1) }
+          if (dataRef.current != null) {
+            setStale(true)
+            setError(null) // last-good is valid; no hard error chip
+          } else {
+            setError('server busy — retrying')
+          }
+          // Do NOT _bumpFail for 503-with-data — only hard timeouts/network bump the banner
           if (retries < 10) {
             retries++
             clearTimeout(retryRef.current)
-            // exponential + jitter, floored at the server's retry_after hint
             retryRef.current = setTimeout(load, Math.max(retryAfter * 1000, backoffMs(retries)))
           }
           return
