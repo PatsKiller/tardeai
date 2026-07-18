@@ -62,7 +62,7 @@ function PairCard({ c, oversight }: { c: any; oversight?: any }) {
 function OversightPills({ cardId, factorsN, oversight }: { cardId: string; factorsN: number; oversight: any }) {
   // v8 WS-PILL — ① DET (native arithmetic) ② ✦GPT ③ ✦GK (④ ⚖API when a paid review exists).
   // Oversight INFORMS — it never blocks, edits, or stages.
-  const seats: Array<[string, string]> = [['chatgpt', '✦GPT'], ['grok', '✦GK'], ['paid', '⚖CL'], ['paid_gpt', '⚖GPT'], ['paid_xai', '⚖GK']]
+  const seats: Array<[string, string]> = [['chatgpt', '✦GPT'], ['grok', '✦Grok'], ['paid', '⚖Claude'], ['paid_gpt', '⚖GPT⁺'], ['paid_xai', '⚖Grok⁺']]
   const pill = (label: string, verdict: string | null, status: string, tip: string) => {
     const c = verdict === 'CONCUR' ? BB.green : verdict === 'QUALIFY' ? BB.amber : verdict === 'OBJECT' ? BB.red : BB.text3
     return (
@@ -81,7 +81,8 @@ function OversightPills({ cardId, factorsN, oversight }: { cardId: string; facto
     if (!v) { rendered.push(pill(label, null, 'n/a', `${seat} reviewed this build but returned no verdict for this card`)); continue }
     if (v.verdict === 'CONCUR') sawConcur = true
     if (v.verdict === 'OBJECT') sawObject = true
-    rendered.push(pill(label, v.verdict, '', `${seat} · ${d.at} · ${v.verdict}: ${v.reason || ''}${v.missed_risk ? ` · missed risk: ${v.missed_risk}` : ''}`))
+    const seatName = seat === 'paid' ? 'Claude (paid, claude-opus-4-8)' : seat === 'paid_gpt' ? 'GPT (paid, gpt-5.4)' : seat === 'paid_xai' ? 'Grok (paid, grok-4)' : seat === 'chatgpt' ? 'GPT (free lane)' : 'Grok (free lane)'
+    rendered.push(pill(label, v.verdict, '', `${seatName} · ${d.at} · ${v.verdict}: ${v.reason || ''}${v.missed_risk ? ` · missed risk: ${v.missed_risk}` : ''}`))
   }
   split = sawConcur && sawObject
   return (
