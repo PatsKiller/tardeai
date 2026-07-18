@@ -1,0 +1,31 @@
+{
+  "_comment": "Defense Desk v1 D1 — instrument matrix, ENFORCED in every real-money render. can_short_stock verified 2026-07-17: Schwab Taxable account record type=MARGIN, buyingPower $114,263 = 2x availableFunds. options_level: OPERATOR-FILL (per-account approval tier from Schwab settings, e.g. 0=none, 1=covered calls, 2=+long puts/calls, 3=+spreads); hedge menus degrade to inverse-ETF + covered-calls only where null.",
+  "accounts": {
+    "schwab_taxable": {
+      "can_short_stock": true,
+      "can_short_stock_verified": "2026-07-17 account record type=MARGIN",
+      "options_level": null,
+      "inverse_etf_ok": true,
+      "covered_calls_ok": true,
+      "short_size_cap_pct_of_book": 2.0
+    },
+    "schwab_rollover_ira": {
+      "can_short_stock": false,
+      "options_level": null,
+      "inverse_etf_ok": true,
+      "covered_calls_ok": true
+    },
+    "schwab_roth_ira": {
+      "can_short_stock": false,
+      "options_level": null,
+      "inverse_etf_ok": true,
+      "covered_calls_ok": true
+    },
+    "alpaca_paper": {
+      "can_short_stock": true,
+      "note": "paper proving ground — defensive_short strategy, <=$2K, <=3 concurrent",
+      "inverse_etf_ok": true,
+      "covered_calls_ok": false
+    }
+  }
+}

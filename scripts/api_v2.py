@@ -11089,6 +11089,45 @@ def _portfolio_book_map(query=None):
     return dict(out)
 
 
+def _defense_posture(query=None):
+    """GET /api/v2/defense/posture — Defense Desk v1: sector momentum state table +
+    confirmed transitions + would-have-fired (hypothetical, labeled). Disk snapshots
+    written by sector_momentum_engine (nightly 17:25); cheap reads."""
+    out = {"ok": True}
+    snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "sector_momentum_latest.json")
+    out["momentum"] = snap or {"rows": [], "note": "engine has not run yet"}
+    whf = _load_json(PROJECT_ROOT / "data" / "runtime" / "sector_momentum_wouldhavefired.json")
+    out["would_have_fired"] = whf or {"hypothetical": True, "transitions": []}
+    try:
+        caps = _pj_loads((PROJECT_ROOT / "config" / "account_capabilities.json").read_text())
+    except Exception:
+        caps = None
+    out["account_capabilities"] = caps
+    # net-exposure line inputs (D2 preview): cash weight from book-map total vs overview value
+    try:
+        bm = _portfolio_book_map() or {}
+        ov_val = None
+        try:
+            ov = _load_json(PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json") or {}
+            cash = sum(float(r.get("market_value") or 0) for r in ov.get("holdings", []) if r.get("is_cash"))
+            ov_val = cash
+        except Exception:
+            pass
+        eq = float(bm.get("total_value") or 0)
+        if ov_val is not None and eq:
+            tot = eq + ov_val
+            out["net_exposure"] = {"equity_pct": round(eq / tot * 100, 1),
+                                   "cash_pct": round(ov_val / tot * 100, 1),
+                                   "equity_dollars": round(eq), "cash_dollars": round(ov_val)}
+    except Exception:
+        pass
+    return out
+
+
+import json as _pj_mod
+_pj_loads = _pj_mod.loads
+
+
 _MOVERS_MEMO = {"etag": None, "data": None}
 
 
@@ -31864,6 +31903,7 @@ ROUTES = {
     # 2026-06-25 (afe44d29); root cause of the recurring server-busy/CLOSE-WAIT incidents
     # (2026-06-25, 2026-07-16, 2026-07-17). Only warm_caches may pass force=True.
     "/api/v2/market-movers": _market_movers,
+    "/api/v2/defense/posture": _defense_posture,
     "/api/v2/portfolio/book-map": _portfolio_book_map,
     "/api/v2/news/symbol-headlines": _symbol_headlines,
     "/api/v2/news/headline-counts": _headline_counts,
