@@ -19,7 +19,8 @@
 STATE LINE: `Market: SPY -1.4% wk · equal-weight leading cap-weight (+3.0% 20d) · small caps leading · NH/NL 15/15 — mixed tape · 4/11 sectors lagging`
 Cross-check coherent: QQQ rs20 −5.55 (tech-led weakness at index level) vs DIA +2.31; RSP−SPY s20 +3.01 LEADING (megacap-concentrated selling); VUG−VTV −0.1 slope +2.05 IMPROVING.
 
-## Scope
-A2+C2 shipped this pass (tests: scripts/test_sector_momentum_debounce.py v1+v2 all pass).
-B2 (industries, v=141) and D2 (DefenseHub rebuild) next; E2 = v1 engines as capacity allows —
-cut line per prompt: A2/B2/C2/D2 ship first.
+## Scope — final
+A2+C2 (4c72aa5a), B2 (65ff99ac), D2 (57e4ff37) ALL shipped + verified this session.
+**E2 fell below the cut line entirely** — no v1 engine was started (each is a multi-day
+build; a rushed fragment would violate the no-noise standard). All remain pre-verified
+viable per the v1 diagnosis. Order for Defense session 3: WS-B → WS-C → WS-D2–D5.
