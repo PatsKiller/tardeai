@@ -481,6 +481,25 @@ def stances(sectors, holdings, cur, enrich, hermes, as_of) -> list:
             else:
                 stance = "HOLD"
                 reason = f"{sec_label} {st}, no factors fired"
+        # v8.9 alignment (ARKX finding): a live trim advisory/escalated ladder must
+        # AGREE with the stance — TRIM-WATCH cannot coexist with a FIRED tranche
+        try:
+            cur.execute("""SELECT t1_fraction, t1_status, tranches FROM rotation_ladders
+                           WHERE symbol=%s AND account=%s AND status='open'""", (sym, h["account"]))
+            lad_row = cur.fetchone()
+        except Exception:
+            cur.connection.rollback()
+            lad_row = None
+        if lad_row and stance in ("TRIM-WATCH", "HOLD"):
+            trs = lad_row[2] if isinstance(lad_row[2], list) else json.loads(lad_row[2] or "[]")
+            fired_tr = [t["tranche"] for t in trs if t.get("status") == "fired"]
+            supp_chk = any(x["symbol"] == sym and not x.get("until")
+                           for x in CFG.get("operator_suppressions", []))
+            if not supp_chk:
+                stance = "TRIM"
+                reason = (f"upgraded from watch: live trim ladder T1 {lad_row[0]}% {lad_row[1]}"
+                          + (f" · {'/'.join(fired_tr)} FIRED — escalation live" if fired_tr else "")
+                          + " · " + reason)
         supp2 = next((x for x in CFG.get("operator_suppressions", [])
                       if x["symbol"] == sym and not x.get("until")), None)
         if supp2:
@@ -902,7 +921,9 @@ def main() -> int:
     stance_by = {(x["symbol"], x["account"]): x for x in stance_rows}
     for lad in ladders:
         st = stance_by.get((lad["symbol"], lad["account"]))
-        if st and st["stance"] == "HOLD" and lad.get("status") == "open":
+        if st and st["stance"] in ("HOLD", "TRIM-WATCH") and lad.get("status") == "open" and any(
+                t.get("status") == "fired" for t in lad.get("tranches", [])) or (
+                st and st["stance"] == "HOLD" and lad.get("status") == "open"):
             t = (f"{lad['symbol']}: stance HOLD but a {lad['t1_fraction']}% trim ladder is open — "
                  "explanation: the ladder came from an earlier factor set; if HOLD is right, disarm it")
             tensions.append(t)
