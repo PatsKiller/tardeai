@@ -151,7 +151,7 @@ export default function DefenseHub() {
       <RotationPlanPanel plan={recs?.rotation_plan || []} onConfirmed={refetchRecs} />
 
       {/* Row 2c — the recommendations rail */}
-      <RecommendationsRail recs={recs} />
+      <RecommendationsRail recs={recs} oversight={recsData?.oversight} />
 
       {/* Row 3 — the rotation picture */}
       <RotationBoards sectors={rows} industries={ind} spyLong={spyLong} />

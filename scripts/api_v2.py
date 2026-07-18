@@ -11213,6 +11213,7 @@ def _defense_recommendations(query=None):
             "hedging_radar": radar or {"radar": [], "note": "chain snapshot has not run yet"},
             "refresh_job": job,
             "intents": intents, "execution_log": exec_log,
+            "oversight": _oversight_latest(),
             "execution_caps": _pj_loads((PROJECT_ROOT / "config" / "defense_execution_caps.json").read_text())}
 
 
@@ -11289,6 +11290,18 @@ def _defense_core_toggle(body=None):
                     (sym, acct))
     conn.commit()
     return {"ok": True, "symbol": sym, "core": bool(body.get("on"))}
+
+
+def _oversight_latest():
+    """Current build's free-seat verdicts (v8 Tier 1) — cached rows, no LLM calls here."""
+    try:
+        import importlib
+        import defense_oversight
+        do = importlib.reload(defense_oversight)
+        from db_adapter import _get_conn
+        return do.latest_reviews(_get_conn().cursor())
+    except Exception:
+        return None
 
 
 def _dex():

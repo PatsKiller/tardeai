@@ -892,6 +892,15 @@ def main() -> int:
     }
     if not args.dry_run:
         SNAP.write_text(json.dumps(snap, default=str))
+    if not args.dry_run:
+        try:
+            import defense_oversight as do
+            ov = do.run_free_critiques(cur)
+            conn.commit()
+            print(f"[recs] oversight seats: {ov['seats']}")
+        except Exception as e:
+            conn.rollback()
+            print(f"[recs] oversight skipped: {str(e).splitlines()[0][:90]}")
     print(f"[recs] {sum(len(v) for v in groups.values())} cards "
           f"({', '.join(f'{g}:{len(v)}' for g, v in groups.items())}) · "
           f"{len(dropped)} dropped by field guard · {len(twins)} paper twins")

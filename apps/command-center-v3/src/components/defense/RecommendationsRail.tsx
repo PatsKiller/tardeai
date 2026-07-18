@@ -56,6 +56,39 @@ function PairCard({ c }: { c: any }) {
   )
 }
 
+function OversightPills({ cardId, factorsN, oversight }: { cardId: string; factorsN: number; oversight: any }) {
+  // v8 WS-PILL — ① DET (native arithmetic) ② ✦GPT ③ ✦GK (④ ⚖API when a paid review exists).
+  // Oversight INFORMS — it never blocks, edits, or stages.
+  const seats: Array<[string, string]> = [['chatgpt', '✦GPT'], ['grok', '✦GK'], ['paid', '⚖API']]
+  const pill = (label: string, verdict: string | null, status: string, tip: string) => {
+    const c = verdict === 'CONCUR' ? BB.green : verdict === 'QUALIFY' ? BB.amber : verdict === 'OBJECT' ? BB.red : BB.text3
+    return (
+      <span key={label} title={tip} style={{ fontSize: DASH.chip, fontWeight: 800, color: c, border: `1px solid ${c}`, borderRadius: 2, padding: '0 5px', cursor: 'help', opacity: verdict ? 1 : 0.6 }}>
+        {label}{verdict ? ` ${verdict.slice(0, 1)}` : ` ${status.slice(0, 5)}`}
+      </span>
+    )
+  }
+  const rendered = [pill('DET', null, `${factorsN}f`, `deterministic engine: ${factorsN} factors fired with values — the arithmetic IS the native verdict`)]
+  let split = false, sawConcur = false, sawObject = false
+  for (const [seat, label] of seats) {
+    const d = oversight?.seats?.[seat]
+    if (!d) { if (seat !== 'paid') rendered.push(pill(label, null, 'pend', 'critique pending — runs on the next recommendations build (cached per build, never per refresh)')); continue }
+    const v = (d.verdicts || []).find((x: any) => x.id === cardId)
+    if (d.status !== 'ok') { rendered.push(pill(label, null, d.status, `${seat}: ${d.status} — ${d.status === 'quota' ? 'daily share exhausted, resets 00:00' : d.status === 'unparseable' ? 'response failed the schema; raw kept, never coerced' : 'lane unreachable this build'}`)); continue }
+    if (!v) { rendered.push(pill(label, null, 'n/a', `${seat} reviewed this build but returned no verdict for this card`)); continue }
+    if (v.verdict === 'CONCUR') sawConcur = true
+    if (v.verdict === 'OBJECT') sawObject = true
+    rendered.push(pill(label, v.verdict, '', `${seat} · ${d.at} · ${v.verdict}: ${v.reason || ''}${v.missed_risk ? ` · missed risk: ${v.missed_risk}` : ''}`))
+  }
+  split = sawConcur && sawObject
+  return (
+    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', marginRight: 8 }}>
+      {rendered}
+      {split && <span title="the seats DISAGREE on this card — read both tooltips before acting" style={{ fontSize: DASH.chip, fontWeight: 800, color: BB.amber, cursor: 'help' }}>⚖ split</span>}
+    </span>
+  )
+}
+
 function StageOrderButton({ label, payload, accounts, autoTwin }: { label: string; payload: any; accounts?: string[]; autoTwin?: boolean }) {
   const [state, setState] = useState<'idle' | 'busy' | 'ok' | 'refused'>('idle')
   const [msg, setMsg] = useState('')
@@ -169,7 +202,7 @@ function QueueTradeButton({ cs, validatedAt }: { cs: any; validatedAt: string | 
   )
 }
 
-function Card({ c, tab, ladder }: { c: any; tab: string; ladder?: any }) {
+function Card({ c, tab, ladder, oversight }: { c: any; tab: string; ladder?: any; oversight?: any }) {
   const [open, setOpen] = useState(false)
   const [validatedAt, setValidatedAt] = useState<string | null>(null)
   const g = GROUPS.find(x => x.key === c.group)
@@ -226,6 +259,9 @@ function Card({ c, tab, ladder }: { c: any; tab: string; ladder?: any }) {
           </div>
         ))}
         {c.ticket && <div style={{ fontSize: DASH.chip, color: BB.text3, marginBottom: 3 }}>{c.instruments[0]?.price != null ? '' : ''}{(c.ticket.options?.[0]?.price_as_of) || ''} · estimates, not order instructions</div>}
+        <div style={{ marginBottom: 3 }}>
+          <OversightPills cardId={c.id} factorsN={(c.factors || []).length} oversight={oversight} />
+        </div>
         {ladder && <LadderTrack ladder={ladder} price={c.levels?.price} />}
         {c.playbook && !open && (
           <div title="full 4-step playbook in the expand — entry alerts are armed on the 20-min evaluator" style={{ fontSize: DASH.data, color: BB.amber, marginBottom: 3, cursor: 'help' }}>
@@ -296,7 +332,7 @@ function Card({ c, tab, ladder }: { c: any; tab: string; ladder?: any }) {
   )
 }
 
-export default function RecommendationsRail({ recs }: { recs: any }) {
+export default function RecommendationsRail({ recs, oversight }: { recs: any; oversight?: any }) {
   const [tab, setTab] = useState<string>('all')
   const accounts: Record<string, string> = recs?.accounts || {}
   const groups: Record<string, any[]> = recs?.groups || {}
@@ -324,6 +360,24 @@ export default function RecommendationsRail({ recs }: { recs: any }) {
           </button>
         ))}
       </div>
+      {/* v8 — the Oversight memo panel: each seat's top concerns, side by side */}
+      {oversight?.seats && Object.values(oversight.seats).some((d: any) => d.status === 'ok') && (
+        <details style={{ marginBottom: 10, border: `1px solid ${BB.border}`, borderRadius: 2, padding: '6px 10px' }}>
+          <summary style={{ fontSize: DASH.section, fontWeight: 800, color: BB.text2, cursor: 'pointer' }}>
+            Oversight memos · build {oversight.build_hash} — the seats' top concerns (informs, never blocks)
+          </summary>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 10, marginTop: 6 }}>
+            {Object.entries(oversight.seats).filter(([, d]: any) => d.status === 'ok' && d.memo).map(([seat, d]: any) => (
+              <div key={seat} style={{ fontSize: DASH.data, color: BB.text2 }}>
+                <div style={{ fontWeight: 800, color: BB.text1, marginBottom: 3 }}>{seat} · {d.at}</div>
+                {(d.memo.top_concerns || []).map((x: string, i: number) => <div key={i}>• {x}</div>)}
+                <div style={{ color: BB.amber, marginTop: 4 }}><b>strongest objection:</b> {d.memo.strongest_objection}</div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
       {/* v6 — funded rotation pairs: full-width, superseding their singles below */}
       {forTab(pairs).length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
@@ -350,7 +404,7 @@ export default function RecommendationsRail({ recs }: { recs: any }) {
                       : (recs?.empty_reasons?.[g.key] || 'none today')}
                   </div>
                 )}
-                {cards.map(c => <Card key={c.id} c={c} tab={tab} ladder={ladderFor(c.id)} />)}
+                {cards.map(c => <Card key={c.id} c={c} tab={tab} ladder={ladderFor(c.id)} oversight={oversight} />)}
               </div>
             </div>
           )
