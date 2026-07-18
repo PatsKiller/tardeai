@@ -310,8 +310,15 @@ def confirm_tranche(cur, ladder_id: int, tranche: str, qty=None, price=None) -> 
         cur.execute("UPDATE rotation_ladders SET tranches=%s WHERE id=%s",
                     (json.dumps(tranches), ladder_id))
     import rotation_round_trips as rt
+    try:
+        cur.execute("""SELECT 1 FROM operator_core_registry WHERE symbol=%s
+                       AND (account IS NULL OR account=%s) LIMIT 1""", (sym, acct))
+        slice_core = cur.fetchone() is not None
+    except Exception:
+        cur.connection.rollback()
+        slice_core = False
     conds = rt.conditions_from_card(
-        {"instruments": [{"symbol": sym}]}, None, None)  # price/elapsed conditions
+        {"instruments": [{"symbol": sym}]}, None, None, is_core=slice_core)
     cur.execute("""INSERT INTO rotation_round_trips
                    (advisory_id, symbol, account, status, exit_detected_at, exit_source,
                     exit_qty, exit_price, exit_loss_known, re_entry_conditions, tranche_of)

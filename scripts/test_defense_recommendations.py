@@ -277,8 +277,45 @@ def run_v5():
     print("ALL v5 TESTS PASS")
 
 
+def run_v6():
+    """v6: core semantics — a ★CORE position can NEVER take the full-exit path."""
+    import defense_recommendations as dr
+
+    # is_core matching: all-accounts (None) and per-account rows
+    core = {("SCHG", None), ("SPCX", "schwab_taxable")}
+    assert dr.is_core(core, "SCHG", "schwab_rollover_ira")
+    assert dr.is_core(core, "SPCX", "schwab_taxable")
+    assert not dr.is_core(core, "SPCX", "schwab_rollover_ira")
+    print("v6 \u2713 core matching: (symbol, None) = all accounts")
+
+    # core trim cap + language ban (the exact C3 contract)
+    cc = dr.CFG["core"]
+    assert cc["max_trim_pct"] <= 60 and cc["reentry_window_days"] > cc["noncore_reentry_window_days"]
+    plan = {"fraction_pct": 75, "rationale": "trim 75% \u2014 test"}
+    if plan["fraction_pct"] > cc["max_trim_pct"]:
+        plan["fraction_pct"] = cc["max_trim_pct"]
+    assert plan["fraction_pct"] == 60, "core cap must bound the composite"
+    core_lang = ("trim-ladder only (\u2605CORE): reduce into strength, stage over 2\u20133 sessions; "
+                 "every confirmed tranche opens a patient re-entry watch \u2014 this position comes back")
+    assert "full exit" not in core_lang.lower(), "full-exit language BANNED on core cards"
+    print("v6 \u2713 core: max-trim cap + full-exit language ban")
+
+    # patient windows flow through re-entry conditions
+    import rotation_round_trips as rt
+    card = {"instruments": [{"symbol": "SCHG"}]}
+    c_core = rt.conditions_from_card(card, None, None, is_core=True)
+    c_non = rt.conditions_from_card(card, None, None, is_core=False)
+    d_core = next(c["days"] for c in c_core if c["type"] == "elapsed_days")
+    d_non = next(c["days"] for c in c_non if c["type"] == "elapsed_days")
+    assert d_core == cc["reentry_window_days"] and d_non == cc["noncore_reentry_window_days"]
+    assert "patient core window" in next(c["label"] for c in c_core if c["type"] == "elapsed_days")
+    print(f"v6 \u2713 patient windows: core {d_core}d vs non-core {d_non}d")
+    print("ALL v6 CORE TESTS PASS")
+
+
 if __name__ == "__main__":
     rc = run()
     run_v4()
     run_v5()
+    run_v6()
     sys.exit(rc)

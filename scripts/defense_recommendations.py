@@ -114,6 +114,20 @@ def _materiality_min(total_book: float) -> float:
     return max(c["min_position_dollars"], total_book * c["min_position_pct_of_book"] / 100)
 
 
+def core_set(cur) -> set:
+    """v6 C1 — the operator-owned ★CORE registry. (symbol, None) = core in all accounts."""
+    try:
+        cur.execute("SELECT symbol, account FROM operator_core_registry")
+        return {(r[0], r[1]) for r in cur.fetchall()}
+    except Exception:
+        cur.connection.rollback()
+        return set()
+
+
+def is_core(core: set, symbol: str, account: str) -> bool:
+    return (symbol, None) in core or (symbol, account) in core
+
+
 def _profiles(cur, symbols):
     cur.execute("""SELECT symbol, sector, next_earnings_date, rsi14, sma50_pct
                    FROM symbol_profiles WHERE symbol = ANY(%s)""", (list(symbols),))
@@ -274,16 +288,19 @@ def move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=0, as_of_
     import defense_trim_ladders as dtl
     from fund_lookthrough import _cfg as _lt_cfg
     c = CFG["move_out"]
+    cc = CFG.get("core", {})
     smap = _sector_map(sectors)
     floor = _materiality_min(total_book)
     gg = dtl.gg_latest(cur)
     lt = _lt_cfg()
+    core = core_set(cur)
     by_symbol = {}
     for h in holdings:
         by_symbol.setdefault(h["symbol"], []).append(h)
     cards, scraps, seen = [], [], set()
     for h in holdings:
-        if h["value"] < floor:
+        h_core = is_core(core, h["symbol"], h["account"])
+        if h["value"] < floor and not h_core:  # cleanup NEVER touches core (C3)
             scraps.append(h)
             continue
         prof = _profiles_one(cur, h["symbol"])
@@ -306,6 +323,9 @@ def move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=0, as_of_
                      else 1.0)
         plan = dtl.compute_trim_plan(factors, urgent, gg.get((h["symbol"], h["account"])),
                                      eff_pct, dtl.stop_context(cur, h["symbol"], h["account"]))
+        if h_core and plan["fraction_pct"] > cc.get("max_trim_pct", 60):
+            plan["fraction_pct"] = cc["max_trim_pct"]
+            plan["rationale"] += f" · ★CORE cap {cc['max_trim_pct']}%"
         # DT2 — the sell ticket across every account holding the symbol
         acct_rows = by_symbol[h["symbol"]]
         ticket = dtl.sell_ticket(h["symbol"], acct_rows, plan["fraction_pct"], as_of_label,
@@ -315,18 +335,27 @@ def move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=0, as_of_
             continue  # one card per symbol — the ticket already covers all accounts
         seen.add(h["symbol"])
         tax = CFG["move_out"]["tax_gate_lt_gain_note"] if h["account"] == "schwab_taxable" else "IRA — no tax gate"
+        # C3: full-exit language is BANNED on core cards — trim-ladder only, round-trip
+        # by construction; the deepest core action is the config max-trim
+        entry_logic = ("trim-ladder only (★CORE): reduce into strength, stage over 2–3 sessions; "
+                       "every confirmed tranche opens a patient re-entry watch — this position comes back"
+                       if h_core else
+                       "reduce into strength, not into a flush; stage over 2–3 sessions; "
+                       "full exit only on continued deterioration")
         card = {
             "id": f"moveout-{h['symbol']}-{h['account']}-{as_of}", "group": "protect",
-            "title": f"MOVE-OUT · {h['symbol']} (${sum(a['value'] for a in acct_rows)/1000:.0f}K"
+            "title": f"{'★CORE TRIM' if h_core else 'MOVE-OUT'} · {h['symbol']} (${sum(a['value'] for a in acct_rows)/1000:.0f}K"
                      f"{' across ' + str(len(acct_rows)) + ' accounts' if len(acct_rows) > 1 else ' in ' + CFG['account_labels'].get(h['account'], h['account'])})",
             "instruments": [{"symbol": h["symbol"], "kind": "held position",
                              "note": f"{h['shares']:.0f} sh", "price": h["price"] or None}],
-            "accounts": sorted({a["account"] for a in acct_rows}), "direction": "reduce/exit",
+            "accounts": sorted({a["account"] for a in acct_rows}),
+            "direction": "trim (core — never full exit)" if h_core else "reduce/exit",
+            "is_core": h_core,
             "size_band": plan["rationale"],
             "trim_rationale": plan["rationale"],
             "trim_plan": plan,
             "ticket": ticket,
-            "entry_logic": "reduce into strength, not into a flush; stage over 2–3 sessions",
+            "entry_logic": entry_logic,
             "invalidation": "sector recovers out of WEAKENING/LAGGING (2-close) AND price reclaims the 50DMA",
             "factors": factors + [{"name": "tax gate", "value": tax}],
             "as_of": as_of, "mode": "SHADOW",
@@ -433,8 +462,12 @@ def stances(sectors, holdings, cur, enrich, hermes, as_of) -> list:
         out.append({"symbol": sym, "account": h["account"],
                     "account_label": CFG["account_labels"].get(h["account"], h["account"]),
                     "value": round(h["value"]), "stance": stance, "reason": reason,
-                    "sector": sec_label, "as_of": as_of})
+                    "sector": sec_label, "as_of": as_of,
+                    "is_core": is_core(_CORE_CACHE, sym, h["account"])})
     return out
+
+
+_CORE_CACHE: set = set()
 
 
 def inverse_etf(sectors, market, as_of, cur=None, equities=None) -> list:
@@ -707,7 +740,9 @@ def main() -> int:
 
     twins = paper_twins(ok, cur, args.dry_run)
 
-    # WS-L3 stances + WS-RT round-trip ledger
+    # WS-L3 stances + WS-RT round-trip ledger (core registry loaded first — chips + semantics)
+    global _CORE_CACHE
+    _CORE_CACHE = core_set(cur)
     stance_rows = stances(sectors, holdings, cur, enrich, hermes, as_of)
     import rotation_round_trips as rt
     rt.ensure_tables(cur)
@@ -718,6 +753,11 @@ def main() -> int:
     rt_prices = _prices(cur, list({x[0] for x in
                                    [(h["symbol"], 0) for h in holdings]}) or ["SPY"])
     round_trips = rt.evaluate(cur, sector_states, rt_prices, enrich)
+    # C3: core rollback-open rows rank FIRST in every digest surface
+    round_trips.sort(key=lambda t: (t["status"] != "rollback_open",
+                                    not is_core(_CORE_CACHE, t["symbol"], t["account"])))
+    for t in round_trips:
+        t["is_core"] = is_core(_CORE_CACHE, t["symbol"], t["account"])
 
     # EL2/RP2 — nightly ladder evaluation (fire AND disarm) + the Rotation Plan rows
     import defense_trim_ladders as dtl

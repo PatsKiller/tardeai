@@ -11162,6 +11162,81 @@ def _defense_recommendations(query=None):
             "refresh_job": job}
 
 
+def _defense_core_registry(query=None):
+    """GET /api/v2/defense/core — the OPERATOR-OWNED core registry (v6 C1).
+    Distinct from the core_holding strategy enum — this is ★CORE designation.
+    Returns rows + a one-time seed PROPOSAL (≥$25K positions + income sleeve,
+    pre-checked suggestions) until the operator confirms; after confirmation only
+    operator toggles write."""
+    from db_adapter import _get_conn
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("""CREATE TABLE IF NOT EXISTS operator_core_registry (
+        id serial PRIMARY KEY, symbol text NOT NULL, account text,
+        designated_at timestamptz DEFAULT now(), note text,
+        UNIQUE (symbol, account))""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS operator_core_registry_meta (
+        k text PRIMARY KEY, v text)""")
+    conn.commit()
+    cur.execute("SELECT symbol, account, designated_at, note FROM operator_core_registry ORDER BY symbol")
+    rows = [{"symbol": r[0], "account": r[1], "designated_at": str(r[2])[:16], "note": r[3]}
+            for r in cur.fetchall()]
+    cur.execute("SELECT v FROM operator_core_registry_meta WHERE k='seed_confirmed'")
+    confirmed = bool(cur.fetchone())
+    proposal = []
+    if not confirmed:
+        try:
+            h = _load_json(STATE_DIR / "holdings.json") or {}
+            agg = {}
+            for r in h.get("holdings", []):
+                if r.get("is_cash") or not r.get("symbol"):
+                    continue
+                agg[r["symbol"]] = agg.get(r["symbol"], 0) + (r.get("market_value") or 0)
+            income_sleeve = {"SCHD", "JEPI", "JEPQ"}
+            for sym, val in sorted(agg.items(), key=lambda x: -x[1]):
+                if val >= 25000 or sym in income_sleeve:
+                    proposal.append({"symbol": sym, "value": round(val),
+                                     "why": "income sleeve" if sym in income_sleeve and val < 25000
+                                            else "≥$25K position" + (" · income sleeve" if sym in income_sleeve else "")})
+        except Exception:
+            pass
+    return {"ok": True, "core": rows, "seed_confirmed": confirmed, "seed_proposal": proposal}
+
+
+def _defense_core_toggle(body=None):
+    """POST /api/v2/defense/core/toggle {symbol, account?, on, note?} — operator toggle.
+    POST /api/v2/defense/core/confirm {items:[{symbol,account?}]} routes here with
+    body['confirm_seed']=True — marks the seed confirmed and bulk-writes the checks."""
+    body = body or {}
+    from db_adapter import _get_conn
+    conn = _get_conn()
+    cur = conn.cursor()
+    if body.get("confirm_seed"):
+        for it in body.get("items") or []:
+            cur.execute("""INSERT INTO operator_core_registry (symbol, account, note)
+                           VALUES (%s,%s,'seed-confirmed by operator')
+                           ON CONFLICT (symbol, account) DO NOTHING""",
+                        (str(it.get("symbol", "")).upper()[:8], it.get("account")))
+        cur.execute("""INSERT INTO operator_core_registry_meta (k, v)
+                       VALUES ('seed_confirmed', now()::text)
+                       ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v""")
+        conn.commit()
+        return {"ok": True, "confirmed": True, "n": len(body.get("items") or [])}
+    sym = str(body.get("symbol", "")).upper()[:8]
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    acct = body.get("account")
+    if body.get("on"):
+        cur.execute("""INSERT INTO operator_core_registry (symbol, account, note)
+                       VALUES (%s,%s,%s) ON CONFLICT (symbol, account) DO NOTHING""",
+                    (sym, acct, (body.get("note") or "operator toggle")[:120]))
+    else:
+        cur.execute("DELETE FROM operator_core_registry WHERE symbol=%s AND account IS NOT DISTINCT FROM %s",
+                    (sym, acct))
+    conn.commit()
+    return {"ok": True, "symbol": sym, "core": bool(body.get("on"))}
+
+
 def _defense_refresh_start(body=None):
     """POST /api/v2/defense/refresh — QUEUE the 4-step producer chain (detached);
     the page polls refresh_job status via /defense/recommendations. Never live-waits."""
@@ -31983,6 +32058,7 @@ ROUTES = {
     "/api/v2/defense/posture": _defense_posture,
     "/api/v2/defense/industries": _defense_industries,
     "/api/v2/defense/recommendations": _defense_recommendations,
+    "/api/v2/defense/core": _defense_core_registry,
     "/api/v2/portfolio/book-map": _portfolio_book_map,
     "/api/v2/news/symbol-headlines": _symbol_headlines,
     "/api/v2/news/headline-counts": _headline_counts,
@@ -36670,6 +36746,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             result = _reports_brief_regenerate(body or {})
             return (200 if result.get("ok") else 500), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path in ("/api/v2/defense/core/toggle", "/api/v2/defense/core/confirm"):
+        try:
+            result = _defense_core_toggle(body or {})
+            return (200 if result.get("ok") else 400), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 

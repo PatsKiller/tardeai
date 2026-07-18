@@ -128,5 +128,11 @@
     "sector_persist_sessions": 5,
     "price_trigger_lookback_days": 20,
     "max_open_ladders": 8
+  },
+  "core": {
+    "_comment": "v6 WS-CORE \u2014 operator-owned registry semantics (distinct from the core_holding strategy enum). Core positions: NEVER full-exit, trim-ladder only, mandatory re-entry watch, patient windows, cleanup exempt.",
+    "max_trim_pct": 60,
+    "reentry_window_days": 90,
+    "noncore_reentry_window_days": 60
   }
 }

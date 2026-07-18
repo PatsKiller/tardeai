@@ -38,9 +38,17 @@ def ensure_tables(cur):
         created_at timestamptz DEFAULT now())""")
 
 
-def conditions_from_card(card: dict, sector: str | None, state: str | None) -> list:
+def conditions_from_card(card: dict, sector: str | None, state: str | None,
+                         is_core: bool = False) -> list:
     """Structured re-entry conditions derived from the advisory's invalidation —
-    whichever satisfies first opens the rollback window."""
+    whichever satisfies first opens the rollback window. Core positions get the
+    PATIENT window (v6 C3) — the desk expects them back."""
+    try:
+        core_cfg = json.loads((ROOT / "config" / "defense_recommendations.json").read_text()).get("core", {})
+        window = core_cfg.get("reentry_window_days", 90) if is_core else \
+            core_cfg.get("noncore_reentry_window_days", EXPIRE_DAYS)
+    except Exception:
+        window = EXPIRE_DAYS
     conds = []
     if sector and state:
         conds.append({"type": "sector_state_exit", "sector": sector, "from_state": state,
@@ -48,8 +56,8 @@ def conditions_from_card(card: dict, sector: str | None, state: str | None) -> l
     sym = card["instruments"][0]["symbol"]
     conds.append({"type": "price_reclaim_dma", "symbol": sym, "dma": 50,
                   "label": f"{sym} reclaims its 50DMA"})
-    conds.append({"type": "elapsed_days", "days": EXPIRE_DAYS,
-                  "label": f"{EXPIRE_DAYS} sessions elapsed (auto-expire review)"})
+    conds.append({"type": "elapsed_days", "days": window,
+                  "label": f"{window} sessions elapsed ({'patient core window' if is_core else 'auto-expire review'})"})
     return conds
 
 
@@ -75,7 +83,8 @@ def register_advisories(cur, cards: list, sector_states: dict):
                        (advisory_id, symbol, account, re_entry_conditions)
                        VALUES (%s,%s,%s,%s) ON CONFLICT (advisory_id) DO NOTHING""",
                     (card["id"], sym, acct,
-                     json.dumps(conditions_from_card(card, sec, state))))
+                     json.dumps(conditions_from_card(card, sec, state,
+                                                     is_core=bool(card.get("is_core"))))))
         n += cur.rowcount
     return n
 
