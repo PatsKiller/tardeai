@@ -249,6 +249,13 @@
       "set": "2026-07-18",
       "until": null,
       "_note": "engine still COMPUTES the factors (visible in the stance reason) \u2014 it just stops emitting the trim card/ladder/pair for this symbol until the operator removes this entry"
+    },
+    {
+      "symbol": "SPCX",
+      "scope": "move_out",
+      "reason": "operator 2026-07-18: HOLD affirmed + resolves the share-commitment conflict (156 committed > 125 held) \u2014 the covered call keeps sole claim on the shares; trim side muted",
+      "set": "2026-07-18",
+      "until": null
     }
   ]
 }

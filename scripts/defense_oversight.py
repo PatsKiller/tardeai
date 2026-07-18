@@ -59,6 +59,17 @@ def build_oversight_brief() -> dict:
                 "factors": [f"{f['name']}={f['value']}" for f in c.get("factors", [])],
                 "levels": c.get("levels"), "mode": c.get("mode"), "is_core": c.get("is_core", False),
             })
+    # stance pseudo-cards (operator ask): the seats verdict every HOLD/TRIM-WATCH —
+    # opinion only; a stance verdict changes NOTHING in the engine
+    for st in recs.get("stances", []):
+        cards.append({
+            "id": f"stance-{st['symbol']}-{st['account']}", "group": "stance",
+            "title": f"{st['symbol']} {st['stance']} (${st['value']/1000:.0f}K, {st.get('account_label')})",
+            "reason": st.get("reason"), "on_trigger": st.get("on_trigger"),
+            "is_core": st.get("is_core"),
+            "question": "Judge the STANCE itself: is this the right posture for this position "
+                        "right now? CONCUR = stance right; OBJECT = should be different (say what).",
+        })
     # posture pseudo-card (operator ask): the seats verdict THE ROTATION READ itself
     mkt = sect.get("market") or {}
     cards.append({

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BB, T, DASH, numStyle } from '../../lib/watchTokens'
+import { OversightPills } from './RecommendationsRail'
 
 // Defense v4 L3 — every ≥$10K position carries an explicit stance, INCLUDING HOLD.
 // v6 C1/C2 — the ★CORE registry lives here: operator-owned checkboxes (distinct from
@@ -10,7 +11,7 @@ const STANCE_COLOR: Record<string, string> = {
   HOLD: BB.green, ADD: T.link, TRIM: BB.red, 'TRIM-WATCH': BB.amber, ROTATE: BB.amber, HEDGED: BB.text2,
 }
 
-export default function BookStanceStrip({ stances, notDecomposed, ladders }: { stances: any[]; notDecomposed?: any; ladders?: any[] }) {
+export default function BookStanceStrip({ stances, notDecomposed, ladders, oversight }: { stances: any[]; notDecomposed?: any; ladders?: any[]; oversight?: any }) {
   const [open, setOpen] = useState<string | null>(null)
   const [coreData, setCoreData] = useState<any>(null)
   const [seedChecks, setSeedChecks] = useState<Record<string, boolean>>({})
@@ -132,6 +133,10 @@ export default function BookStanceStrip({ stances, notDecomposed, ladders }: { s
               )}
               {isOpen && (
                 <div style={{ fontSize: DASH.data, color: BB.text2, marginTop: 4 }}>
+                  <div style={{ marginBottom: 3 }}>
+                    <OversightPills cardId={`stance-${s.symbol}-${s.account}`} factorsN={null} oversight={oversight} />
+                    <span style={{ fontSize: DASH.chip, color: BB.text3, marginLeft: 6 }}>seat opinions on THIS stance — informational only, changes nothing</span>
+                  </div>
                   {s.reason}
                   {s.on_trigger && <div style={{ color: BB.amber, marginTop: 3 }}>{s.on_trigger}</div>}
                 </div>

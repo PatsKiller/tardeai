@@ -164,7 +164,7 @@ export default function DefenseHub() {
 
       {/* Row 2a — your book: every ≥$10K position has a stance (L3), ladder progress inline */}
       <BookStanceStrip stances={recs?.stances || []} notDecomposed={recs?.not_decomposed}
-        ladders={recs?.ladders || []} />
+        ladders={recs?.ladders || []} oversight={recsData?.oversight} />
 
       {/* Row 2a2 — v7 In Play: the execution rail's visible state */}
       <ExecutionPanel intents={recsData?.intents || []} execLog={recsData?.execution_log || []}
