@@ -56,8 +56,74 @@ function PairCard({ c }: { c: any }) {
   )
 }
 
-function QueueTradeButton({ cs }: { cs: any }) {
+function StageOrderButton({ label, payload }: { label: string; payload: any }) {
+  const [state, setState] = useState<'idle' | 'busy' | 'ok' | 'refused'>('idle')
+  const [msg, setMsg] = useState('')
+  const stage = async (e: any) => {
+    e.stopPropagation()
+    setState('busy')
+    try {
+      const r = await fetch('/api/v2/defense/intent/stage', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      const j = await r.json()
+      if (j.ok) { setState('ok'); setMsg('staged → APPROVALS') }
+      else { setState('refused'); setMsg(j.refused || j.error || 'refused') }
+    } catch { setState('idle') }
+  }
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', marginBottom: 3 }}>
+      <button onClick={stage} disabled={state === 'busy' || state === 'ok'}
+        title="stages this order intent: caps + whitelist checked now → APPROVALS queue → 2FA pill → paper auto-executes / live renders an armed ticket. Nothing executes from this click."
+        style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: state === 'ok' ? BB.green : BB.text1, background: 'transparent', border: `1px solid ${state === 'ok' ? BB.green : state === 'refused' ? BB.red : BB.amber}`, borderRadius: 2, padding: '2px 9px' }}>
+        {state === 'busy' ? '…' : state === 'ok' ? '✓ staged' : label}
+      </button>
+      {msg && <span style={{ fontSize: DASH.chip, color: state === 'refused' ? BB.red : BB.text3 }}>{msg}</span>}
+    </span>
+  )
+}
+
+function ValidateButton({ cs, onValid }: { cs: any; onValid: (ts: string) => void }) {
+  const [res, setRes] = useState<any>(null)
+  const [busy, setBusy] = useState(false)
+  const run = async (e: any) => {
+    e.stopPropagation()
+    setBusy(true)
+    try {
+      const r = await fetch('/api/v2/defense/chain/validate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: cs.symbol, strike: cs.strike, exp: cs.exp, delta: cs.delta }),
+      })
+      const j = await r.json()
+      setRes(j)
+      if (j.ok && j.all_pass) onValid(j.validated_at)
+    } finally { setBusy(false) }
+  }
+  return (
+    <span style={{ display: 'block', marginBottom: 3 }}>
+      <button onClick={run} disabled={busy}
+        title="fresh single-contract chain pull (throttled): re-checks OI, volume, spread, delta against the rails and shows the live book — the trade button stays locked until a validation ≤15 min old passes"
+        style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: BB.text1, background: 'transparent', border: `1px solid ${T.link}`, borderRadius: 2, padding: '2px 9px', marginRight: 6 }}>
+        {busy ? 'validating…' : '⟳ validate chain'}
+      </button>
+      {res && res.ok && (
+        <span style={{ fontSize: DASH.chip, color: res.all_pass ? BB.green : BB.red }}>
+          {res.rows.map((r: any) => `${r.pass ? '✓' : '✗'} ${r.rail} ${r.value}`).join(' · ')} · book ${res.book.bid}×${res.book.ask} · {String(res.validated_at).slice(11, 19)}Z
+        </span>
+      )}
+      {res && res.ok && res.drift && (
+        <span style={{ display: 'block', fontSize: DASH.chip, color: BB.amber }}>
+          drift: {res.drift.line} — re-stage required (never silently substituted)
+        </span>
+      )}
+      {res && !res.ok && <span style={{ fontSize: DASH.chip, color: BB.red }}>{res.error}</span>}
+    </span>
+  )
+}
+
+function QueueTradeButton({ cs, validatedAt }: { cs: any; validatedAt: string | null }) {
   const [state, setState] = useState<'idle' | 'busy' | 'queued'>('idle')
+  const fresh = validatedAt != null && (Date.now() - new Date(validatedAt).getTime()) < 15 * 60_000
   const queue = async (e: any) => {
     e.stopPropagation()
     setState('busy')
@@ -70,16 +136,18 @@ function QueueTradeButton({ cs }: { cs: any }) {
     } catch { setState('idle') }
   }
   return (
-    <button onClick={queue} disabled={state !== 'idle'}
-      title="queues this exact structure into the options approval queue — YOU approve there, and per-order 2FA gates the actual order; nothing executes from this page"
-      style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: state === 'queued' ? BB.green : BB.text1, background: 'transparent', border: `1px solid ${state === 'queued' ? BB.green : BB.amber}`, borderRadius: 2, padding: '2px 9px', marginBottom: 3 }}>
-      {state === 'busy' ? '…' : state === 'queued' ? '✓ queued — approve in Options (2FA)' : '⚡ queue trade (2FA approval)'}
+    <button onClick={queue} disabled={state !== 'idle' || !fresh}
+      title={fresh ? 'queues this exact structure into the options approval queue — YOU approve there, and per-order 2FA gates the actual order; nothing executes from this page'
+        : 'LOCKED — run ⟳ validate chain first (validation must be ≤15 min old); the click is gated on fresh rails'}
+      style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: fresh ? 'pointer' : 'not-allowed', opacity: fresh ? 1 : 0.45, color: state === 'queued' ? BB.green : BB.text1, background: 'transparent', border: `1px solid ${state === 'queued' ? BB.green : BB.amber}`, borderRadius: 2, padding: '2px 9px', marginBottom: 3 }}>
+      {state === 'busy' ? '…' : state === 'queued' ? '✓ queued — approve in Options (2FA)' : fresh ? '⚡ queue trade (2FA approval)' : '🔒 re-validate first'}
     </button>
   )
 }
 
 function Card({ c, tab, ladder }: { c: any; tab: string; ladder?: any }) {
   const [open, setOpen] = useState(false)
+  const [validatedAt, setValidatedAt] = useState<string | null>(null)
   const g = GROUPS.find(x => x.key === c.group)
   // v6: singles superseded by a pair fold to one line — reachable, never deleted
   const [unfolded, setUnfolded] = useState(false)
@@ -140,7 +208,35 @@ function Card({ c, tab, ladder }: { c: any; tab: string; ladder?: any }) {
             ▶ {c.playbook[0].slice(0, 118)}…
           </div>
         )}
-        {c.cc_struct && <QueueTradeButton cs={c.cc_struct} />}
+        {c.cc_struct && <ValidateButton cs={c.cc_struct} onValid={setValidatedAt} />}
+        {c.cc_struct && <QueueTradeButton cs={c.cc_struct} validatedAt={validatedAt} />}
+        {c.id?.startsWith('moveout-') && c.ticket?.options?.[0] && (
+          <StageOrderButton label={`stage sell (${c.ticket.options[0].account_label})`} payload={{
+            source_card: c.id, intent_type: 'trim_sell', symbol: c.instruments[0].symbol,
+            side: 'sell', qty: c.ticket.options[0].shares,
+            limit_low: c.levels?.price ? +(c.levels.price * 0.995).toFixed(2) : null,
+            limit_high: c.levels?.price ? +(c.levels.price * 1.005).toFixed(2) : null,
+            account: c.ticket.options[0].account, est_dollars: c.ticket.options[0].proceeds_est,
+          }} />
+        )}
+        {c.id?.startsWith('inverse-') && (
+          <StageOrderButton label="stage hedge entry (paper twin)" payload={{
+            source_card: c.id, intent_type: 'inverse_etf', symbol: c.instruments[0].symbol,
+            side: 'buy', qty: Math.max(1, Math.floor(2000 / (c.levels?.price || 1))),
+            limit_low: c.levels?.price ? +(c.levels.price * 0.995).toFixed(2) : null,
+            limit_high: c.levels?.price ? +(c.levels.price * 1.01).toFixed(2) : null,
+            account: 'alpaca_paper', est_dollars: 2000,
+          }} />
+        )}
+        {c.id?.startsWith('short-') && (
+          <StageOrderButton label="stage short (Taxable, 2FA)" payload={{
+            source_card: c.id, intent_type: 'taxable_short', symbol: c.instruments[0].symbol,
+            side: 'sell_short', qty: Math.max(1, Math.floor(700 / (c.levels?.price || 1))),
+            limit_low: c.levels?.price ? +(c.levels.price * 0.99).toFixed(2) : null,
+            limit_high: c.levels?.price ? +(c.levels.price * 1.005).toFixed(2) : null,
+            account: 'schwab_taxable', est_dollars: 700,
+          }} />
+        )}
         <div style={{ fontSize: DASH.data, color: BB.text3 }}>
           {topFactors.map((f: any, i: number) => (
             <span key={i} style={{ marginRight: 10 }}>{f.name}: <b style={{ color: BB.text2 }}>{String(f.value)}</b></span>

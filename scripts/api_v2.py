@@ -11132,6 +11132,34 @@ def _defense_posture(query=None):
                                  if t.get("status") == "rollback_open")}
     except Exception:
         pass
+    # v7 WS-HOME: the hedge playbook state machine — timing where the operator looks first
+    try:
+        from db_adapter import _get_conn as _hgc
+        _hc = _hgc().cursor()
+        _hc.execute("""SELECT status, fill_price, symbol FROM defense_order_intents
+                       WHERE intent_type='inverse_etf' AND status IN ('filled','armed_ticket','submitted_paper')
+                       ORDER BY updated_at DESC LIMIT 1""")
+        _hint = _hc.fetchone()
+        _hc.execute("""SELECT symbol, threshold, last_fired_at FROM watch_alerts
+                       WHERE created_by='defense_hedge' AND note LIKE '%%bounce%%' LIMIT 1""")
+        _bounce = _hc.fetchone()
+        _rows = (out.get("momentum") or {}).get("rows") or []
+        _tech = next((r for r in _rows if r.get("sector") == "Technology"), {})
+        if _tech.get("state") not in ("LAGGING", "WEAKENING", None) and _hint:
+            hs = {"state": "stand_down", "line": f"HEDGE: stand-down signaled — Technology recovered to {_tech.get('state')}"}
+        elif _hint and _hint[0] == "filled":
+            _hc.execute("""SELECT close_price FROM ticker_prices WHERE symbol=%s
+                           ORDER BY price_date DESC LIMIT 1""", (_hint[2],))
+            _px = _hc.fetchone()
+            _pl = round((float(_px[0]) - float(_hint[1])) / float(_hint[1]) * 100, 1) if _px and _hint[1] else None
+            hs = {"state": "in_play", "line": f"HEDGE: {_hint[2]} in play" + (f" {_pl:+.1f}%" if _pl is not None else "")}
+        elif _bounce and _bounce[2] and str(_bounce[2])[:10] == datetime.now(timezone.utc).date().isoformat():
+            hs = {"state": "entry_window_open", "line": f"HEDGE: entry window OPEN — {_bounce[0]} bounce ≥ ${_bounce[1]}"}
+        else:
+            hs = {"state": "armed", "line": f"HEDGE: waiting for a bounce day ({_bounce[0]} ≥ ${_bounce[1]})" if _bounce else "HEDGE: alerts arming tonight"}
+        out["hedge_state"] = hs
+    except Exception:
+        pass
     # net-exposure line inputs (D2 preview): cash weight from book-map total vs overview value
     try:
         bm = _portfolio_book_map() or {}

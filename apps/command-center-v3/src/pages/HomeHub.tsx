@@ -144,6 +144,14 @@ export default function HomeHub({ onDrill }: Props) {
               ) : null)}
               {hot.map((r: any) => <span key={r.etf} style={{ color: 'var(--text2)' }}>{r.sector.toLowerCase()} <b style={{ color: r.state === 'LAGGING' ? '#ef4444' : '#f59e0b' }}>{r.state}</b> · you {r.book_pct}%</span>)}
               {(() => {
+                const hs = (posture as any)?.hedge_state
+                if (hs) {
+                  const c = hs.state === 'entry_window_open' ? 'var(--green, var(--text0))' : hs.state === 'stand_down' ? 'var(--amber, var(--text2))' : 'var(--text2)'
+                  return <span style={{ color: c, fontWeight: 700 }} title="the hedge playbook state machine — click through for the full In-Play rail">{hs.line}</span>
+                }
+                return null
+              })()}
+              {(() => {
                 const rp = (posture as any)?.rotation_plan_counts
                 if (!rp || (!rp.plans && !rp.rollback_open)) return null
                 return (
