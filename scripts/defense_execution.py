@@ -369,11 +369,15 @@ def execution_log(cur, limit: int = 20) -> list:
 
 def open_intents(cur) -> list:
     ensure_tables(cur)
+    # the rail shows LIVE state: cancelled rows are terminal (audit keeps them
+    # forever); refusals only show same-day (they're feedback, not history)
     cur.execute("""SELECT intent_key, source_card, intent_type, symbol, side, qty,
                    limit_low, limit_high, account, lane, status, refusal, linked_intent,
                    sequence_gate, fill_qty, fill_price, created_at
                    FROM defense_order_intents
                    WHERE created_at > now() - interval '7 days'
+                     AND status != 'cancelled'
+                     AND (status != 'refused' OR created_at::date = CURRENT_DATE)
                    ORDER BY created_at DESC LIMIT 40""")
     cols = ["intent_key", "source_card", "intent_type", "symbol", "side", "qty",
             "limit_low", "limit_high", "account", "lane", "status", "refusal",
