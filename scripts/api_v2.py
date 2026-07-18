@@ -11124,6 +11124,16 @@ def _defense_posture(query=None):
     return out
 
 
+def _defense_industries(query=None):
+    """GET /api/v2/defense/industries — Defense Desk v2 B2: 144 Finviz industry groups,
+    rel-SPY quadrant states, top/bottom strips, candidate pools (advisory,
+    source_type=industry_momentum). Disk snapshot written by finviz_industry_groups
+    (12:30 refresh + 16:18 close); NOT folded into /defense/posture — the Home strip
+    polls posture and doesn't need this ~50KB."""
+    snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "industry_momentum_latest.json")
+    return {"ok": True, **(snap or {"industries": [], "note": "industry engine has not run yet"})}
+
+
 import json as _pj_mod
 _pj_loads = _pj_mod.loads
 
@@ -31904,6 +31914,7 @@ ROUTES = {
     # (2026-06-25, 2026-07-16, 2026-07-17). Only warm_caches may pass force=True.
     "/api/v2/market-movers": _market_movers,
     "/api/v2/defense/posture": _defense_posture,
+    "/api/v2/defense/industries": _defense_industries,
     "/api/v2/portfolio/book-map": _portfolio_book_map,
     "/api/v2/news/symbol-headlines": _symbol_headlines,
     "/api/v2/news/headline-counts": _headline_counts,
