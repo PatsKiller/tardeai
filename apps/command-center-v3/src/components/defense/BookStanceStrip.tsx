@@ -8,9 +8,18 @@ const STANCE_COLOR: Record<string, string> = {
   HOLD: BB.green, ADD: T.link, TRIM: BB.red, 'TRIM-WATCH': BB.amber, ROTATE: BB.amber, HEDGED: BB.text2,
 }
 
-export default function BookStanceStrip({ stances, notDecomposed }: { stances: any[]; notDecomposed?: any }) {
+export default function BookStanceStrip({ stances, notDecomposed, ladders }: { stances: any[]; notDecomposed?: any; ladders?: any[] }) {
   const [open, setOpen] = useState<string | null>(null)
   if (!stances?.length) return null
+  // v5 EL3 — ladder progress inline on the stance chip
+  const ladderFor = (sym: string, acct: string) => {
+    const lad = (ladders || []).find(l => l.symbol === sym && l.account === acct && l.status === 'open')
+    if (!lad) return null
+    const armed = (lad.tranches || []).filter((t: any) => t.status === 'armed').length
+    const fired = (lad.tranches || []).filter((t: any) => t.status === 'fired').length
+    return `T1 ${lad.t1_fraction}% ${lad.t1_status === 'executed' ? '✓' : 'advised'}`
+      + (fired ? ` · ${fired} FIRED` : armed ? ` · T2 armed` : '')
+  }
   const counts: Record<string, number> = {}
   stances.forEach(s => { counts[s.stance] = (counts[s.stance] || 0) + 1 })
   return (
@@ -40,6 +49,9 @@ export default function BookStanceStrip({ stances, notDecomposed }: { stances: a
               <span style={{ ...numStyle, fontSize: DASH.data, color: BB.text2, marginLeft: 6 }}>${Math.round(s.value / 1000)}K</span>
               <span style={{ fontSize: DASH.chip, fontWeight: 800, color: c, marginLeft: 8, textTransform: 'uppercase' }}>{s.stance}</span>
               <span style={{ fontSize: DASH.chip, color: BB.text3, marginLeft: 6 }}>{s.account_label}</span>
+              {ladderFor(s.symbol, s.account) && (
+                <span style={{ fontSize: DASH.chip, fontWeight: 700, color: BB.amber, marginLeft: 6 }}>{ladderFor(s.symbol, s.account)}</span>
+              )}
               {isOpen && (
                 <div style={{ fontSize: DASH.data, color: BB.text2, marginTop: 4 }}>{s.reason}</div>
               )}

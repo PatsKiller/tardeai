@@ -57,6 +57,13 @@ function Card({ c, tab }: { c: any; tab: string }) {
             {lv.stop ? <span style={{ color: BB.amber }}>{lv.stop}</span> : null}
           </div>
         )}
+        {/* v5 DT2 — the sell ticket ON the face (estimates, as-of labeled, IRA-first) */}
+        {c.ticket?.options?.map((o: any, i: number) => (
+          <div key={i} style={{ fontSize: DASH.data, color: o.kind === 'taxable_harvest' ? BB.amber : BB.text1, marginBottom: 2, fontWeight: 600 }}>
+            {o.line}
+          </div>
+        ))}
+        {c.ticket && <div style={{ fontSize: DASH.chip, color: BB.text3, marginBottom: 3 }}>{c.instruments[0]?.price != null ? '' : ''}{(c.ticket.options?.[0]?.price_as_of) || ''} · estimates, not order instructions</div>}
         <div style={{ fontSize: DASH.data, color: BB.text3 }}>
           {topFactors.map((f: any, i: number) => (
             <span key={i} style={{ marginRight: 10 }}>{f.name}: <b style={{ color: BB.text2 }}>{String(f.value)}</b></span>

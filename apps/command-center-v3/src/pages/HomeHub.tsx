@@ -143,6 +143,17 @@ export default function HomeHub({ onDrill }: Props) {
                 <span key={st} style={{ color: st === 'LEADING' ? '#22c55e' : st === 'LAGGING' ? '#ef4444' : st === 'WEAKENING' ? '#f59e0b' : '#60a5fa', fontWeight: 700 }}>{counts[st]} {st.toLowerCase()}</span>
               ) : null)}
               {hot.map((r: any) => <span key={r.etf} style={{ color: 'var(--text2)' }}>{r.sector.toLowerCase()} <b style={{ color: r.state === 'LAGGING' ? '#ef4444' : '#f59e0b' }}>{r.state}</b> · you {r.book_pct}%</span>)}
+              {(() => {
+                const rp = (posture as any)?.rotation_plan_counts
+                if (!rp || (!rp.plans && !rp.rollback_open)) return null
+                return (
+                  <span style={{ color: 'var(--text2)', fontWeight: 700 }}>
+                    rotation: {rp.plans} plan{rp.plans !== 1 ? 's' : ''}
+                    {rp.tranches_fired ? ` · ${rp.tranches_fired} tranche FIRED` : rp.tranches_armed ? ` · ${rp.tranches_armed} armed` : ''}
+                    {rp.rollback_open ? ` · ${rp.rollback_open} rollback OPEN` : ''}
+                  </span>
+                )
+              })()}
               <span style={{ marginLeft: 'auto', color: '#60a5fa', fontWeight: 700 }}>Defense Desk →</span>
             </div>
           </a>

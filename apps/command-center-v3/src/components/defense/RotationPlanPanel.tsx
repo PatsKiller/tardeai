@@ -1,0 +1,130 @@
+import { useState } from 'react'
+import { BB, T, DASH, numStyle } from '../../lib/watchTokens'
+
+// Defense v5 RP2 — THE ROTATION PLAN: the page's memory, first-class above the rail.
+// One row per position with ANY active rotation state: stance · ladder (T1/T2 chips,
+// nearest triggers, fire/disarm states) · re-entry watches with live distances ·
+// wash chip · days out. Tranche-granular one-tap confirm opens the slice's re-entry
+// watch. Advisory-only; estimates, never order instructions.
+
+const STANCE_COLOR: Record<string, string> = {
+  HOLD: BB.green, ADD: T.link, TRIM: BB.red, 'TRIM-WATCH': BB.amber, ROTATE: BB.amber,
+}
+const TRIP_COLOR: Record<string, string> = {
+  advised: BB.text3, stepped_out: BB.amber, rollback_open: BB.green,
+}
+
+function TrancheChip({ t }: { t: any }) {
+  const c = t.status === 'fired' ? BB.red : t.status === 'armed' ? BB.amber
+    : t.status === 'executed' ? BB.green : BB.text3
+  const label = t.status === 'fired' ? `${t.tranche} TRIGGERED — ${t.fired_by || ''}`
+    : t.status === 'armed' ? `${t.tranche} +${t.add_fraction_pct}% armed (${t.triggers?.length} triggers)`
+      : t.status === 'disarmed' ? `${t.tranche} DISARMED — ${t.disarmed_reason || ''}`
+        : `${t.tranche} ✓ executed`
+  return (
+    <span title={(t.triggers || []).map((x: any) => x.label).join(' · ')} style={{
+      fontSize: DASH.chip, fontWeight: 700, color: c, border: `1px solid ${c}`,
+      borderRadius: 2, padding: '1px 7px',
+    }}>{label}</span>
+  )
+}
+
+export default function RotationPlanPanel({ plan, onConfirmed }: { plan: any[]; onConfirmed?: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const confirm = async (body: any, key: string) => {
+    setBusy(key)
+    try {
+      await fetch('/api/v2/defense/round-trips/confirm', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      })
+      onConfirmed?.()
+    } finally { setBusy(null) }
+  }
+
+  return (
+    <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 2, padding: '10px 12px' }}>
+      <div style={{ fontSize: DASH.panel, fontWeight: 800, color: BB.text1, marginBottom: 8 }}>
+        Rotation Plan <span style={{ fontSize: DASH.data, color: BB.text3, fontWeight: 600 }}>· the desk's memory — trims, ladders, re-entry watches</span>
+      </div>
+      {(!plan || plan.length === 0) && (
+        <div style={{ fontSize: DASH.data, color: BB.text3 }}>
+          No active rotation plans — advisories you act on appear here automatically.
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {(plan || []).map(r => {
+          const lad = r.ladder_detail
+          return (
+            <div key={`${r.symbol}-${r.account}`} style={{ border: `1px solid ${BB.border}`, borderLeft: `3px solid ${STANCE_COLOR[r.stance] || BB.text3}`, borderRadius: 2, padding: '8px 10px' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
+                <span style={{ fontSize: DASH.data + 1, fontWeight: 800, color: BB.text1 }}>{r.symbol}</span>
+                {r.value != null && <span style={{ ...numStyle, fontSize: DASH.data, color: BB.text2 }}>${Math.round(r.value / 1000)}K</span>}
+                <span style={{ fontSize: DASH.chip, color: BB.text3 }}>{r.account_label}</span>
+                {r.stance && <span style={{ fontSize: DASH.chip, fontWeight: 800, color: STANCE_COLOR[r.stance] || BB.text2, textTransform: 'uppercase' }}>{r.stance}</span>}
+              </div>
+              {lad && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontSize: DASH.data, color: BB.text2 }}>
+                    T1 {lad.t1_fraction}% {lad.t1_status === 'executed' ? '✓ executed' : 'advised'}
+                  </span>
+                  {lad.t1_status !== 'executed' && (
+                    <button disabled={busy === `${lad.ladder_id}-T1`}
+                      onClick={() => confirm({ ladder_id: lad.ladder_id, tranche: 'T1' }, `${lad.ladder_id}-T1`)}
+                      style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: BB.text1, background: 'transparent', border: `1px solid ${BB.amber}`, borderRadius: 2, padding: '1px 7px' }}>
+                      {busy === `${lad.ladder_id}-T1` ? '…' : 'mark T1 sold'}
+                    </button>
+                  )}
+                  {(lad.tranches || []).map((t: any, i: number) => (
+                    <span key={i} style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                      <TrancheChip t={t} />
+                      {t.status === 'fired' && (
+                        <button disabled={busy === `${lad.ladder_id}-${t.tranche}`}
+                          onClick={() => confirm({ ladder_id: lad.ladder_id, tranche: t.tranche }, `${lad.ladder_id}-${t.tranche}`)}
+                          style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: BB.text1, background: 'transparent', border: `1px solid ${BB.red}`, borderRadius: 2, padding: '1px 7px' }}>
+                          {busy === `${lad.ladder_id}-${t.tranche}` ? '…' : `mark ${t.tranche} sold`}
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(r.round_trips || []).map((t: any) => (
+                <div key={t.id} style={{ marginBottom: 3 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', fontSize: DASH.data }}>
+                    <span style={{ fontSize: DASH.chip, fontWeight: 800, color: TRIP_COLOR[t.status] || BB.text3, textTransform: 'uppercase' }}>
+                      {t.status === 'rollback_open' ? 'ROLLBACK WINDOW OPEN' : t.status.replace('_', ' ')}
+                    </span>
+                    {t.exit?.detected_at && <span style={{ color: BB.text3 }}>out {t.exit.detected_at}{t.exit.price ? ` @ $${t.exit.price}` : ''}</span>}
+                    {t.now_vs_exit_pct != null && (
+                      <b style={{ color: t.now_vs_exit_pct < 0 ? BB.green : BB.red }}>
+                        {t.now_vs_exit_pct > 0 ? '+' : ''}{t.now_vs_exit_pct}% vs exit{t.now_vs_exit_pct < 0 ? ' — re-entry cheaper' : ''}
+                      </b>
+                    )}
+                    {t.status === 'advised' && (
+                      <button disabled={busy === `rt-${t.id}`} onClick={() => confirm({ id: t.id }, `rt-${t.id}`)}
+                        style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: BB.text1, background: 'transparent', border: `1px solid ${BB.amber}`, borderRadius: 2, padding: '1px 7px' }}>
+                        {busy === `rt-${t.id}` ? '…' : 'I executed this'}
+                      </button>
+                    )}
+                  </div>
+                  {t.wash_sale && <div style={{ fontSize: DASH.data, color: BB.amber }}>⚠ {t.wash_sale.line}</div>}
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 2 }}>
+                    {(t.conditions || []).map((c: any, i: number) => (
+                      <span key={i} style={{ fontSize: DASH.chip, fontWeight: 700, borderRadius: 2, padding: '1px 6px', color: c.met ? BB.green : BB.text3, border: `1px solid ${c.met ? BB.green : BB.borderHair}` }}>
+                        {c.met ? '✓ ' : ''}{c.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ fontSize: DASH.chip, color: BB.text3, marginTop: 6 }}>
+        tranche triggers frozen at creation (machine-evaluable only) · executed slices open re-entry watches automatically · outcomes score vs having held
+      </div>
+    </div>
+  )
+}

@@ -7,7 +7,7 @@ import RecommendationsRail from '../components/defense/RecommendationsRail'
 import RotationBoards from '../components/defense/RotationBoards'
 import DefenseDetails from '../components/defense/DefenseDetails'
 import BookStanceStrip from '../components/defense/BookStanceStrip'
-import RoundTripPanel from '../components/defense/RoundTripPanel'
+import RotationPlanPanel from '../components/defense/RotationPlanPanel'
 
 function ago(ts?: string | null): string {
   if (!ts) return 'never'
@@ -133,11 +133,12 @@ export default function DefenseHub() {
         )}
       </div>
 
-      {/* Row 2a — your book: every ≥$10K position has a stance (L3) */}
-      <BookStanceStrip stances={recs?.stances || []} notDecomposed={recs?.not_decomposed} />
+      {/* Row 2a — your book: every ≥$10K position has a stance (L3), ladder progress inline */}
+      <BookStanceStrip stances={recs?.stances || []} notDecomposed={recs?.not_decomposed}
+        ladders={recs?.ladders || []} />
 
-      {/* Row 2b — round trips: step out, tracked back in (WS-RT) */}
-      <RoundTripPanel trips={recs?.round_trips || []} onConfirmed={refetchRecs} />
+      {/* Row 2b — THE ROTATION PLAN (v5): trims, ladders, re-entry watches — the page's memory */}
+      <RotationPlanPanel plan={recs?.rotation_plan || []} onConfirmed={refetchRecs} />
 
       {/* Row 2c — the recommendations rail */}
       <RecommendationsRail recs={recs} />

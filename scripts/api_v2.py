@@ -11103,6 +11103,20 @@ def _defense_posture(query=None):
     except Exception:
         caps = None
     out["account_capabilities"] = caps
+    # v5 RP3: rotation-plan count chip for the Home posture strip (cheap disk read)
+    try:
+        recs = _load_json(PROJECT_ROOT / "data" / "runtime" / "defense_recommendations_latest.json") or {}
+        armed = sum(1 for lad in recs.get("ladders") or [] for t in lad.get("tranches", [])
+                    if t.get("status") == "armed")
+        fired = sum(1 for lad in recs.get("ladders") or [] for t in lad.get("tranches", [])
+                    if t.get("status") == "fired")
+        out["rotation_plan_counts"] = {
+            "plans": len(recs.get("rotation_plan") or []),
+            "tranches_armed": armed, "tranches_fired": fired,
+            "rollback_open": sum(1 for t in recs.get("round_trips") or []
+                                 if t.get("status") == "rollback_open")}
+    except Exception:
+        pass
     # net-exposure line inputs (D2 preview): cash weight from book-map total vs overview value
     try:
         bm = _portfolio_book_map() or {}
