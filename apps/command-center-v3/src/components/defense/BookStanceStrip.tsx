@@ -131,7 +131,10 @@ export default function BookStanceStrip({ stances, notDecomposed, ladders }: { s
                 <span title="ladder progress — T1 is the advised trim, T2 arms with frozen triggers; fills auto-detect from Schwab ingest (~12h)" style={{ fontSize: DASH.chip, fontWeight: 700, color: BB.amber, marginLeft: 6, cursor: 'help' }}>{ladderFor(s.symbol, s.account)}</span>
               )}
               {isOpen && (
-                <div style={{ fontSize: DASH.data, color: BB.text2, marginTop: 4 }}>{s.reason}</div>
+                <div style={{ fontSize: DASH.data, color: BB.text2, marginTop: 4 }}>
+                  {s.reason}
+                  {s.on_trigger && <div style={{ color: BB.amber, marginTop: 3 }}>{s.on_trigger}</div>}
+                </div>
               )}
             </div>
           )
