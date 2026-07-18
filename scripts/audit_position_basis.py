@@ -134,7 +134,12 @@ def main():
                 drift = abs(h_avg - a_avg) / a_avg
                 dollar = abs(h_avg - a_avg) * (a_qty or 0)
                 if drift > 0.02 and dollar > 50:
-                    flags.append(f"BASIS_DIVERGENT (holdings ${h_avg:.2f} vs API ${a_avg:.2f}/sh, ${dollar:,.0f} apart)")
+                    msg = f"BASIS_DIVERGENT (holdings ${h_avg:.2f} vs API ${a_avg:.2f}/sh, ${dollar:,.0f} apart)"
+                    # txn_history rows diverge from the API BY DESIGN (ACATS partial-basis guard,
+                    # 2026-07-18): broker basis is known-incomplete mid-transfer. Info, not alarm.
+                    (info if ha.get("src") == "txn_history" else flags).append(
+                        msg + (" — expected: txn_history overrides partial ACATS basis"
+                               if ha.get("src") == "txn_history" else ""))
         csv_note = f"csv_lot ${ca['basis']:,.0f}/{ca['qty']:g}sh" if ca else "no_csv_lot"
         ledger_note = (f"api_fills net {da['qty']:g}sh ${da['cost']:,.0f}" if da else "no_api_fills")
         rows.append({"account": acct, "symbol": sym, "flags": flags, "info": info,

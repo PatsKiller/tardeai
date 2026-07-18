@@ -184,7 +184,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
             _protected = {((p.get("symbol") or "").upper(), p.get("account") or ""):
                           (p.get("cost_basis"), p.get("cost_basis_source"))
                           for p in _cur_rows
-                          if p.get("cost_basis_source") in ("csv_lot", "broker_api") and p.get("cost_basis")}
+                          if p.get("cost_basis_source") in ("csv_lot", "broker_api", "txn_history") and p.get("cost_basis")}
             _shielded = []
             for p in _positions_of(new_holdings):
                 k = ((p.get("symbol") or "").upper(), p.get("account") or "")

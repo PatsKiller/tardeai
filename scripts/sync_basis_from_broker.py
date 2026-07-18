@@ -6,6 +6,12 @@ $31.04 → +$111K fake gain, etc.) because holdings.json basis came from stale C
 reconstruction. New hierarchy, applied here:
 
   1. schwab_cost_basis_lots (Positions/Gain-Loss export — true TAX LOTS) when qty matches ±1%
+  1.5 trade_transactions purchase history (txn_history) — ONLY for freshly ACATS'd positions
+      whose broker basis is provably incomplete (2026-07-18 finding: 7 Fidelity→Schwab positions
+      showed +97–104% because Schwab had received lots for only ~half the shares; QCOM "+101%"
+      was really −7.8%). Requires: Security Transfer ≤45d + complete net-buy history matching
+      held qty ±1% + broker basis <90% of txn basis. Self-heals: once Schwab's basis catches up,
+      tier 2 wins again.
   2. Schwab API averagePrice (broker's own average cost — includes transfer-carried basis)
   3. (nothing — flagged partial; reconstruction is DEMOTED to Fidelity-only, never Schwab-primary)
 
@@ -59,6 +65,37 @@ def _api_positions():
     return out, errors
 
 
+_BUY_ACTIONS = ("Buy", "Reinvest Shares", "Reinvest Dividend", "Reinvested Dividend",
+                "Long Term Cap Gain Reinvest")
+
+
+def _txn_history(cur):
+    """Purchase-history basis + recent-transfer map for the ACATS partial-basis guard.
+
+    Returns ({SYM: (net_qty, avg_cost_per_share)}, {(account_key, SYM)}) where the second set
+    marks symbols with a Security Transfer into that Schwab account in the last 45 days.
+    Basis is average-cost across ALL accounts' buys minus sells — correct only when the whole
+    position's history is in the ledger, which the qty-match gate in main() enforces.
+    """
+    cur.execute("""SELECT upper(symbol),
+                          sum(CASE WHEN action = ANY(%s) THEN quantity ELSE -quantity END),
+                          sum(CASE WHEN action = ANY(%s) THEN quantity * price ELSE 0 END),
+                          sum(CASE WHEN action = ANY(%s) THEN quantity ELSE 0 END)
+                   FROM trade_transactions
+                   WHERE action = ANY(%s) OR action = 'Sell'
+                   GROUP BY 1""",
+                (list(_BUY_ACTIONS), list(_BUY_ACTIONS), list(_BUY_ACTIONS), list(_BUY_ACTIONS)))
+    hist = {}
+    for sym, net_qty, buy_cost, buy_qty in cur.fetchall():
+        if float(buy_qty or 0) > 0:
+            hist[sym] = (float(net_qty or 0), float(buy_cost) / float(buy_qty))
+    cur.execute("""SELECT DISTINCT account, upper(symbol) FROM trade_transactions
+                   WHERE action = 'Security Transfer'
+                     AND trade_date >= CURRENT_DATE - INTERVAL '45 days'""")
+    recent_xfer = {(a, s) for a, s in cur.fetchall()}
+    return hist, recent_xfer
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
@@ -88,6 +125,8 @@ def main():
     cur.execute("SELECT account, symbol, quantity, cost_basis FROM schwab_cost_basis_lots WHERE kind='unrealized'")
     lots = {(r[0], r[1].upper()): (float(r[2] or 0), float(r[3] or 0)) for r in cur.fetchall()}
 
+    txn_hist, recent_xfer = _txn_history(cur)
+
     h = json.loads(HJ.read_text())
     changes = []
     for x in h.get("holdings", []):
@@ -105,8 +144,18 @@ def main():
             new_basis, new_src = lot[1], "csv_lot"                       # tier 1: true tax lots
         elif p and float(p["avg_entry_price"] or 0) > 0:
             new_basis, new_src = round(float(p["avg_entry_price"]) * qty, 2), "broker_api"   # tier 2
+            # tier 1.5 — ACATS partial-basis guard: fresh transfer + complete purchase history
+            # + broker basis provably short → the ledger's average cost is the truth.
+            th = txn_hist.get(sym)
+            if (th and qty and (ak, sym) in recent_xfer
+                    and abs(th[0] - qty) / qty <= 0.01
+                    and new_basis < 0.90 * round(th[1] * qty, 2)):
+                x["_broker_reported_basis"] = new_basis
+                new_basis, new_src = round(th[1] * qty, 2), "txn_history"
         if new_basis is None:
             continue
+        if new_src != "txn_history":
+            x.pop("_broker_reported_basis", None)
         if old_basis is None or abs(new_basis - float(old_basis or 0)) > max(1.0, 0.001 * new_basis) \
                 or old_src != new_src:
             mv = float(x.get("market_value") or 0)
