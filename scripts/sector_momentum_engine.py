@@ -293,22 +293,31 @@ def main() -> int:
 
     if args.backfill:
         # hypothetical would-have-fired ledger (states only, NO alerts, labeled by consumers)
-        fired = []
-        prev = {}
+        fired, confirmed = [], []
+        prev, hist = {}, {}
         for off in range(args.backfill, -1, -1):
             for row in compute_states(cur, as_of_idx_offset=off):
                 if not row.get("state"):
                     continue
-                key = row["etf"]
-                if prev.get(key) and prev[key] != row["state"]:
+                key, st = row["etf"], row["state"]
+                if prev.get(key) and prev[key] != st:
                     fired.append({"as_of": row["as_of"], "etf": key, "sector": row["sector"],
-                                  "from": prev[key], "to": row["state"], "rs20": row["rs20"]})
-                prev[key] = row["state"]
+                                  "from": prev[key], "to": st, "rs20": row["rs20"]})
+                # debounced view: same fire() rule the live engine uses (2nd consecutive
+                # close in the new state, differing from the state before that)
+                h = hist.setdefault(key, [])
+                if len(h) >= 2 and h[-1] == st and h[-2] != st:
+                    confirmed.append({"as_of": row["as_of"], "etf": key, "sector": row["sector"],
+                                      "from": h[-2], "to": st, "rs20": row["rs20"]})
+                h.append(st)
+                prev[key] = st
         out = ROOT / "data" / "runtime" / "sector_momentum_wouldhavefired.json"
         out.write_text(json.dumps({"generated_at": datetime.now(timezone.utc).isoformat(),
                                    "hypothetical": True, "sessions": args.backfill,
-                                   "transitions": fired[-40:]}, default=str))
-        print(f"[momentum] backfill: {len(fired)} hypothetical transitions over {args.backfill} sessions → {out.name}")
+                                   "transitions": fired[-40:],
+                                   "confirmed": confirmed[-40:]}, default=str))
+        print(f"[momentum] backfill: {len(fired)} raw flips / {len(confirmed)} debounce-confirmed "
+              f"over {args.backfill} sessions → {out.name}")
         return 0
 
     weights = _book_weights()
