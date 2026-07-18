@@ -56,6 +56,28 @@ function PairCard({ c }: { c: any }) {
   )
 }
 
+function QueueTradeButton({ cs }: { cs: any }) {
+  const [state, setState] = useState<'idle' | 'busy' | 'queued'>('idle')
+  const queue = async (e: any) => {
+    e.stopPropagation()
+    setState('busy')
+    try {
+      const r = await fetch('/api/v2/defense/cc/queue-trade', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cc_struct: cs }),
+      })
+      setState((await r.json()).ok ? 'queued' : 'idle')
+    } catch { setState('idle') }
+  }
+  return (
+    <button onClick={queue} disabled={state !== 'idle'}
+      title="queues this exact structure into the options approval queue — YOU approve there, and per-order 2FA gates the actual order; nothing executes from this page"
+      style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: state === 'queued' ? BB.green : BB.text1, background: 'transparent', border: `1px solid ${state === 'queued' ? BB.green : BB.amber}`, borderRadius: 2, padding: '2px 9px', marginBottom: 3 }}>
+      {state === 'busy' ? '…' : state === 'queued' ? '✓ queued — approve in Options (2FA)' : '⚡ queue trade (2FA approval)'}
+    </button>
+  )
+}
+
 function Card({ c, tab, ladder }: { c: any; tab: string; ladder?: any }) {
   const [open, setOpen] = useState(false)
   const g = GROUPS.find(x => x.key === c.group)
@@ -113,6 +135,12 @@ function Card({ c, tab, ladder }: { c: any; tab: string; ladder?: any }) {
         ))}
         {c.ticket && <div style={{ fontSize: DASH.chip, color: BB.text3, marginBottom: 3 }}>{c.instruments[0]?.price != null ? '' : ''}{(c.ticket.options?.[0]?.price_as_of) || ''} · estimates, not order instructions</div>}
         {ladder && <LadderTrack ladder={ladder} price={c.levels?.price} />}
+        {c.playbook && !open && (
+          <div title="full 4-step playbook in the expand — entry alerts are armed on the 20-min evaluator" style={{ fontSize: DASH.data, color: BB.amber, marginBottom: 3, cursor: 'help' }}>
+            ▶ {c.playbook[0].slice(0, 118)}…
+          </div>
+        )}
+        {c.cc_struct && <QueueTradeButton cs={c.cc_struct} />}
         <div style={{ fontSize: DASH.data, color: BB.text3 }}>
           {topFactors.map((f: any, i: number) => (
             <span key={i} style={{ marginRight: 10 }}>{f.name}: <b style={{ color: BB.text2 }}>{String(f.value)}</b></span>
@@ -122,6 +150,14 @@ function Card({ c, tab, ladder }: { c: any; tab: string; ladder?: any }) {
       </div>
       {open && (
         <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${BB.borderHair}`, fontSize: DASH.data, color: BB.text2, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {c.playbook && (
+            <div style={{ border: `1px solid ${BB.amber}`, borderRadius: 2, padding: '6px 9px', marginBottom: 3 }}>
+              <div style={{ fontSize: DASH.chip, fontWeight: 800, color: BB.amber, textTransform: 'uppercase', marginBottom: 3 }}>Playbook — in after highs, out with profits</div>
+              {c.playbook.map((line: string, i: number) => (
+                <div key={i} style={{ marginBottom: 3, color: BB.text1 }}>{line}</div>
+              ))}
+            </div>
+          )}
           {c.factors.slice(2).map((f: any, i: number) => (
             <div key={i}><span style={{ color: BB.text3 }}>{f.name}:</span> <b>{String(f.value)}</b></div>
           ))}

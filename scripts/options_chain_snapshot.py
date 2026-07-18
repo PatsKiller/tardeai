@@ -21,7 +21,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-CFG = json.loads((ROOT / "config" / "defense_recommendations.json").read_text())["chain_snapshot"]
+_FULL_CFG = json.loads((ROOT / "config" / "defense_recommendations.json").read_text())
+CFG = _FULL_CFG["chain_snapshot"]
+_CC_VAL = _FULL_CFG["cc_validation"]
 SNAP = ROOT / "data" / "runtime" / "hedging_radar_latest.json"
 
 
@@ -72,11 +74,27 @@ def aggregate(chain: dict) -> dict | None:
             dte = s.get("dte") or exp.get("dte") or 0
             if (s["side"] == "call" and 18 <= dte <= 50 and 0.15 <= ad <= 0.38
                     and s.get("bid") is not None and s.get("ask") is not None):
-                fit = abs(ad - 0.28)
+                # v6.1 operator ask: VALIDATE greeks + liquidity before a strike
+                # ever reaches a card — OI, volume, spread, delta band from config
+                vc = _CC_VAL
+                mid = (s["bid"] + s["ask"]) / 2
+                spread_pct = round((s["ask"] - s["bid"]) / mid * 100, 1) if mid else 999
+                oi = s.get("oi") or 0
+                vol = s.get("volume") or 0
+                valid = (oi >= vc["min_open_interest"]
+                         and max(oi, vol) >= vc["min_volume_or_oi"]
+                         and spread_pct <= vc["max_spread_pct_of_mid"]
+                         and vc["delta_band"][0] <= ad <= vc["delta_band"][1])
+                fit = abs(ad - 0.28) + (0 if valid else 10)  # valid picks always beat invalid
                 if cc_call is None or fit < cc_call["_fit"]:
                     cc_call = {"exp": s["exp"], "dte": dte, "strike": s["strike"],
-                               "delta": round(ad, 2),
-                               "mid": round((s["bid"] + s["ask"]) / 2, 2), "_fit": fit}
+                               "delta": round(ad, 2), "iv": round(float(iv), 1),
+                               "mid": round(mid, 2), "bid": s["bid"], "ask": s["ask"],
+                               "oi": oi, "volume": vol, "spread_pct": spread_pct,
+                               "validated": valid,
+                               "validation": (f"OI {oi} · vol {vol} · spread {spread_pct}% · Δ{round(ad, 2)} · IV {round(float(iv), 1)}"
+                                              + ("" if valid else f" — FAILED rails (need OI≥{vc['min_open_interest']}, spread≤{vc['max_spread_pct_of_mid']}%)")),
+                               "_fit": fit}
     if cc_call:
         cc_call.pop("_fit", None)
     mean = lambda xs: round(sum(xs) / len(xs), 2) if xs else None

@@ -11237,6 +11237,42 @@ def _defense_core_toggle(body=None):
     return {"ok": True, "symbol": sym, "core": bool(body.get("on"))}
 
 
+def _defense_cc_queue_trade(body=None):
+    """POST /api/v2/defense/cc/queue-trade — the CC card's 'queue trade (2FA)' bubble.
+    Inserts a pending row into options_approval_queue; the EXISTING approvals flow +
+    per-order 2FA owns everything downstream. The desk itself never places orders."""
+    body = body or {}
+    cs = body.get("cc_struct") or {}
+    sym = str(cs.get("symbol", "")).upper()[:8]
+    if not (sym and cs.get("strike") and cs.get("exp") and cs.get("contracts")):
+        return {"ok": False, "error": "cc_struct{symbol,strike,exp,contracts} required"}
+    from db_adapter import _get_conn
+    import json as _j
+    conn = _get_conn()
+    cur = conn.cursor()
+    pid = f"defense-cc-{sym}-{str(cs['exp'])[:10]}-{cs['strike']}"
+    proposal = {"id": pid, "symbol": sym, "strategy": "covered_call",
+                "source": "defense_desk_v6", "account": cs.get("account"),
+                "contracts": cs["contracts"], "strike": cs["strike"], "exp": cs["exp"],
+                "delta": cs.get("delta"), "mid": cs.get("mid"),
+                "premium_est": cs.get("premium_est"),
+                "note": "queued from the Defense CC card — greeks/liquidity validated at snapshot time"}
+    cur.execute(
+        """INSERT INTO options_approval_queue
+           (proposal_id, symbol, strategy, desk_tier, edge_score, status,
+            live_eligible, blocks_json, proposal_json, expires_at)
+           VALUES (%s,%s,'covered_call','C',NULL,'pending',false,'[]'::jsonb,%s::jsonb,
+                   NOW() + INTERVAL '24 hours')
+           ON CONFLICT (proposal_id) DO UPDATE SET proposal_json=EXCLUDED.proposal_json,
+             status=CASE WHEN options_approval_queue.status IN ('approved','rejected','executed')
+                        THEN options_approval_queue.status ELSE 'pending' END,
+             updated_at=NOW()""",
+        (pid, sym, _j.dumps(proposal, default=str)))
+    conn.commit()
+    return {"ok": True, "proposal_id": pid,
+            "next": "pending in the options approval queue — approve there; per-order 2FA gates execution"}
+
+
 def _defense_refresh_start(body=None):
     """POST /api/v2/defense/refresh — QUEUE the 4-step producer chain (detached);
     the page polls refresh_job status via /defense/recommendations. Never live-waits."""
@@ -36752,6 +36788,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path in ("/api/v2/defense/core/toggle", "/api/v2/defense/core/confirm"):
         try:
             result = _defense_core_toggle(body or {})
+            return (200 if result.get("ok") else 400), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/defense/cc/queue-trade":
+        try:
+            result = _defense_cc_queue_trade(body or {})
             return (200 if result.get("ok") else 400), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}

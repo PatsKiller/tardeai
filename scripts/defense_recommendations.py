@@ -489,6 +489,44 @@ def inverse_etf(sectors, market, as_of, cur=None, equities=None) -> list:
         inst_px = _prices(cur, [inst]).get(inst) if cur else None
         accounts = sorted(k for k, v in CAPS.items() if v.get("inverse_etf_ok"))
         band = dollars_band(c["size_band_pct"], accounts, equities or {})
+        # v6.1 operator ask: a CLEAR, ACTIONABLE playbook — when to get in after
+        # highs (bounce days), when to take profits, when to stand down — with
+        # matching alerts maintained nightly on the 20-min evaluator
+        pb = CFG["hedge_playbook"]
+        idx_sym = "QQQ" if tech_led else "SPY"
+        idx_px = _prices(cur, [idx_sym]).get(idx_sym) if cur else None
+        tp1 = round(inst_px * (1 + pb["take_profit_1_pct"] / 100), 2) if inst_px else None
+        tp2 = round(inst_px * (1 + pb["take_profit_2_pct"] / 100), 2) if inst_px else None
+        bounce_lvl = round(idx_px * (1 + pb["bounce_day_pct"] / 100), 2) if idx_px else None
+        playbook = [
+            f"1 · GET IN on BOUNCE days: {idx_sym} up ≥ +{pb['bounce_day_pct']}% (≥ ${bounce_lvl}) while the trigger state holds — "
+            f"the hedge is at a discount when the index pops. Buy 1/{pb['tranches']} per bounce day, never after a big down day (you'd pay up). ALERT armed: '{idx_sym} bounce — hedge entry window'.",
+            f"2 · TAKE PROFITS in halves: {inst} +{pb['take_profit_1_pct']}% (≈ ${tp1}) → sell half. ALERT armed. "
+            f"{inst} +{pb['take_profit_2_pct']}% (≈ ${tp2}) or a capitulation gap-down in {idx_sym} → take the rest. ALERT armed.",
+            "3 · STAND DOWN regardless of P&L when the trigger state exits (2-close confirmed) — the hedge's job ended; holding an inverse ETF past its reason bleeds daily-reset decay.",
+            "4 · Levels recompute nightly until an entry is recorded (auto-detected from Schwab ingest or your tap on the paper twin).",
+        ]
+        if cur and inst_px and idx_px:
+            for sym_a, cond, thr, note in [
+                (idx_sym, "price_cross_above", bounce_lvl, f"defense hedge: {idx_sym} bounce day — hedge entry window ({inst})"),
+                (inst, "price_cross_above", tp1, f"defense hedge: {inst} +{pb['take_profit_1_pct']}% — take profits on HALF"),
+                (inst, "price_cross_above", tp2, f"defense hedge: {inst} +{pb['take_profit_2_pct']}% — take remaining profits"),
+            ]:
+                try:
+                    cur.execute("""SELECT id FROM watch_alerts WHERE symbol=%s AND condition_type=%s
+                                   AND created_by='defense_hedge' AND note=%s LIMIT 1""",
+                                (sym_a, cond, note))
+                    row = cur.fetchone()
+                    if row:
+                        cur.execute("UPDATE watch_alerts SET threshold=%s, active=true WHERE id=%s",
+                                    (thr, row[0]))
+                    else:
+                        cur.execute("""INSERT INTO watch_alerts (symbol, condition_type, threshold,
+                                       recurring, cooldown_days, active, created_by, note)
+                                       VALUES (%s,%s,%s,true,1,true,'defense_hedge',%s)""",
+                                    (sym_a, cond, thr, note))
+                except Exception:
+                    cur.connection.rollback()
         cards.append({
             "id": f"inverse-{inst}-{as_of}", "group": "short_side",
             "title": f"HEDGE · {inst} (1x inverse {'QQQ — deterioration is tech-led' if tech_led else 'S&P 500'})",
@@ -501,9 +539,10 @@ def inverse_etf(sectors, market, as_of, cur=None, equities=None) -> list:
             "entry_logic": "scale in on bounce days, not after down days — hedges bought into weakness overpay",
             "invalidation": c["exit_rule"],
             "factors": factors, "as_of": as_of, "mode": "SHADOW",
+            "playbook": playbook,
             "levels": {"price": inst_px,
-                       "entry_zone": "scale in on bounce days",
-                       "stop": f"exit when trigger state exits (2-close); twin uses −5% ≈ ${round(inst_px * 0.95, 2) if inst_px else 'n/a'}"},
+                       "entry_zone": f"bounce days only — {idx_sym} ≥ ${bounce_lvl} (+{pb['bounce_day_pct']}%)" if bounce_lvl else "scale in on bounce days",
+                       "stop": f"take-profit ${tp1} / ${tp2}; hard exit on trigger-state exit (2-close)" if tp1 else "exit when trigger state exits"},
             "dollars_by_account": band,
             "impact_dollars": round(at_risk) or max((v[1] for v in band.values()), default=0),
             "routes": {"paper_twin": "inverse-ETF paper track via approval queue"},
@@ -598,7 +637,7 @@ def covered_calls(sectors, holdings, cur, as_of, total_book=0) -> list:
         n = int(h["shares"] // 100)
         cc = (radar.get(h["symbol"]) or {}).get("cc_call")
         px = (radar.get(h["symbol"]) or {}).get("underlying_price") or h["price"]
-        if cc and px:
+        if cc and px and cc.get("validated"):
             prem = round(cc["mid"] * 100 * n)
             prem_pct = round(prem / h["value"] * 100, 1) if h["value"] else 0
             cap_pct = round((cc["strike"] - px) / px * 100, 1)
@@ -607,6 +646,12 @@ def covered_calls(sectors, holdings, cur, as_of, total_book=0) -> list:
                            f"est ${prem} ({prem_pct}% of position) · caps upside at +{cap_pct}%")
             levels = {"price": px, "entry_zone": f"strike ${cc['strike']} ({cc['exp']})",
                       "stop": f"caps upside at +{cap_pct}%; premium ≈ ${prem}"}
+        elif cc and px and not cc.get("validated"):
+            cc_note = cc.get("validation", "failed liquidity rails")
+            cc = None
+            struct_note = (f"{c['tenor_dte'][0]}–{c['tenor_dte'][1]} DTE · {c['delta_band'][0]}–{c['delta_band'][1]}Δ "
+                           f"(best chain candidate WITHHELD: {cc_note})")
+            levels = {"price": px or None, "entry_zone": "per delta band", "stop": "upside capped at chosen strike"}
         else:
             struct_note = (f"{c['tenor_dte'][0]}–{c['tenor_dte'][1]} DTE · {c['delta_band'][0]}–{c['delta_band'][1]}Δ "
                            "(no chain pick in tonight's snapshot — strike from the chain at entry)")
@@ -622,10 +667,16 @@ def covered_calls(sectors, holdings, cur, as_of, total_book=0) -> list:
             "factors": [
                 {"name": "sector state", "value": f"{sec['sector']} {sec['state']} (RS20 {sec['rs20']:+.1f})"},
                 {"name": "position", "value": f"${h['value']/1000:.0f}K · {h['shares']:.0f} sh"},
-            ],
+            ] + ([{"name": "greeks/liquidity VALIDATED", "value": cc["validation"]},
+                  {"name": "order book", "value": f"${cc['bid']} × ${cc['ask']} (spread {cc['spread_pct']}%) · OI {cc['oi']}"}]
+                 if cc else []),
             "as_of": as_of, "mode": "SHADOW",
             "levels": levels, "impact_dollars": round(h["value"]),
-            "routes": {"options_desk": "route through the Options desk CC review flow"},
+            "cc_struct": ({"symbol": h["symbol"], "account": h["account"], "contracts": n,
+                           "strike": cc["strike"], "exp": cc["exp"], "delta": cc["delta"],
+                           "mid": cc["mid"], "premium_est": round(cc["mid"] * 100 * n)}
+                          if cc else None),
+            "routes": {"options_desk": "queue → operator approval → per-order 2FA (the desk itself never places orders)"},
         })
         if len(cards) >= c["max_cards"]:
             break
@@ -736,6 +787,10 @@ def main() -> int:
                            equities=equities)
     cards += covered_calls(sectors, holdings, cur, as_of, total_book=total_book)
     cards.append(options_locked_card(as_of))
+    if not args.dry_run:
+        # commit card-phase writes (ladder arms, hedge-alert registrations) NOW —
+        # later per-row fail-soft rollbacks must never erase them (learned twice)
+        conn.commit()
 
     ok, dropped = [], []
     for card in cards:

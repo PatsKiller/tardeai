@@ -180,5 +180,22 @@
       "why": "GG shadow \u00b7 move-out Telegram \u00b7 ladder/rollback Telegram \u2014 all three decided together",
       "since": "calendar"
     }
-  ]
+  ],
+  "cc_validation": {
+    "_comment": "operator ask 2026-07-18: validate greeks/liquidity before a CC strike renders \u2014 a pick failing these falls to the next candidate; none valid = honest fallback text",
+    "min_open_interest": 50,
+    "min_volume_or_oi": 25,
+    "max_spread_pct_of_mid": 12.0,
+    "delta_band": [
+      0.15,
+      0.38
+    ]
+  },
+  "hedge_playbook": {
+    "_comment": "PSQ/SH entry-exit playbook levels \u2014 alerts maintained nightly on the 20-min evaluator (created_by=defense_hedge)",
+    "bounce_day_pct": 0.75,
+    "take_profit_1_pct": 8,
+    "take_profit_2_pct": 15,
+    "tranches": 3
+  }
 }
