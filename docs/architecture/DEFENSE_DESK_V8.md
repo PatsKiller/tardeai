@@ -43,3 +43,16 @@ unparseable UI fixtures (code paths shipped).
 
 ## Score: structural 9.5 / proven ~6 — the desk now has adversarial external review
 on every build, with the first real memos in hand.
+
+## v8.1 addendum (same day) — COHERE + PAID complete
+C1 cash destinations (unpaired trims render cash + redeploy conditions; all current
+trims paired). C2 industry lookthrough for ≥$50K funds — SCHG ~44% of top-10 industry
+weight LAGGING vs SCHD ~25%: the contrast is now an argument. C3 coherence lint caught
+two REAL tensions day one (BND + SPCX: HOLD stance with open trim ladders) — rendered
+on-page and fed to brief §5. PAID: preview $0.261/review (4,877 real tokens) vs $25
+monthly budget; proven to the API door — blocked only by empty Anthropic API credits
+(no mock verdicts rendered; pill ④ populates on first funded run). OBJECT interlock
+proven LIVE: ChatGPT objected to the BND trim citing the lint's own tension → stage
+refused → override-ack staged + `oversight_override` in the audit chain. Pills also on
+pair cards (operator ask). weekly_paid_review: config, default OFF — operator decides
+after the first funded run.
