@@ -325,7 +325,7 @@ def run_paid_review(cur, seats=None) -> dict:
                     (art["build_hash"], name, status,
                      json.dumps(parsed["cards"]) if parsed else None,
                      json.dumps(parsed["memo"]) if parsed else None,
-                     raw[:8000], ms, sc["cost_est_usd"] if status == "ok" else 0))
+                     raw[:8000], ms, sc["cost_est_usd"] if status in ("ok", "unparseable") else 0))
         cur.connection.commit()
         results[name] = {"status": status, "model": sc["model"], "latency_ms": ms,
                          "cost_est_usd": sc["cost_est_usd"] if status == "ok" else 0,
