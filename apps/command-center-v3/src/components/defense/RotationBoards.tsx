@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { BB, T, DASH, numStyle, heatRamp } from '../../lib/watchTokens'
 import { rankWithinScope, boardCallout } from '../../lib/chipScope.mjs'
+import { OversightPills } from './RecommendationsRail'
 
 // Defense v3 WS-T — the rotation picture: RRG scatter (full sector names, W/M/Q axis
 // toggle) + leaders/laggards boards for sectors AND industries at W (5d) / M (20d) /
@@ -94,7 +95,7 @@ function Board({ title, rows, tf }: { title: string; rows: Array<{ name: string;
   )
 }
 
-export default function RotationBoards({ sectors, industries, spyLong }: { sectors: any[]; industries: any[]; spyLong: number | null }) {
+export default function RotationBoards({ sectors, industries, spyLong, oversight }: { sectors: any[]; industries: any[]; spyLong: number | null; oversight?: any }) {
   const [tf, setTf] = useState<Timeframe>('M')
   const [mode, setMode] = useState<'sectors' | 'industries'>('sectors')
 
@@ -150,7 +151,11 @@ export default function RotationBoards({ sectors, industries, spyLong }: { secto
   return (
     <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 2, padding: '10px 12px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: DASH.panel, fontWeight: 800, color: BB.text1 }}>Rotation</span>
+        <span style={{ fontSize: DASH.panel, fontWeight: 800, color: BB.text1 }}>Rotation
+          <span style={{ marginLeft: 10 }} title="the seats' verdict on THE ROTATION READ itself — is the desk's market interpretation right?">
+            <OversightPills cardId="posture-current" factorsN={null} oversight={oversight} />
+          </span>
+        </span>
         <div style={{ display: 'flex', gap: 4 }}>
           {tfBtn('W', 'W · 5d')}{tfBtn('M', 'M · 1m')}{tfBtn('Q', 'Q · 3m')}
           <span style={{ width: 10 }} />

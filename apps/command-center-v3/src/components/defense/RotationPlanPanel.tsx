@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { BB, T, DASH, numStyle } from '../../lib/watchTokens'
 import LadderTrack from './LadderTrack'
+import { OversightPills } from './RecommendationsRail'
 
 // Defense v5 RP2 — THE ROTATION PLAN: the page's memory, first-class above the rail.
 // One row per position with ANY active rotation state: stance · ladder (T1/T2 chips,
@@ -20,7 +21,7 @@ const STATUS_TIP: Record<string, string> = {
   rollback_open: 'a re-entry condition is MET — the window to rotate back in is open; ranks first for ★CORE',
 }
 
-export default function RotationPlanPanel({ plan, onConfirmed }: { plan: any[]; onConfirmed?: () => void }) {
+export default function RotationPlanPanel({ plan, onConfirmed, oversight }: { plan: any[]; onConfirmed?: () => void; oversight?: any }) {
   const [busy, setBusy] = useState<string | null>(null)
 
   const confirm = async (body: any, key: string) => {
@@ -53,6 +54,7 @@ export default function RotationPlanPanel({ plan, onConfirmed }: { plan: any[]; 
                 {r.value != null && <span style={{ ...numStyle, fontSize: DASH.data, color: BB.text2 }}>${Math.round(r.value / 1000)}K</span>}
                 <span style={{ fontSize: DASH.chip, color: BB.text3 }}>{r.account_label}</span>
                 {r.stance && <span style={{ fontSize: DASH.chip, fontWeight: 800, color: STANCE_COLOR[r.stance] || BB.text2, textTransform: 'uppercase' }}>{r.stance}</span>}
+                <OversightPills cardId={(r.ladder_detail?.advisory_id) || `moveout-${r.symbol}-${r.account}-*`} factorsN={null} oversight={oversight} />
               </div>
               {lad && (
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 4 }}>

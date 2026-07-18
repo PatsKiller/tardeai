@@ -60,7 +60,7 @@ function PairCard({ c, oversight }: { c: any; oversight?: any }) {
   )
 }
 
-function OversightPills({ cardId, factorsN, oversight }: { cardId: string; factorsN: number; oversight: any }) {
+export function OversightPills({ cardId, factorsN, oversight }: { cardId: string; factorsN: number | null; oversight: any }) {
   // v8 WS-PILL — ① DET (native arithmetic) ② ✦GPT ③ ✦GK (④ ⚖API when a paid review exists).
   // Oversight INFORMS — it never blocks, edits, or stages.
   const seats: Array<[string, string, string]> = [['chatgpt', 'openai', ''], ['grok', 'xai', ''], ['paid', 'anthropic', '⚖'], ['paid_gpt', 'openai', '⚖'], ['paid_xai', 'xai', '⚖']]
@@ -73,12 +73,12 @@ function OversightPills({ cardId, factorsN, oversight }: { cardId: string; facto
       </span>
     )
   }
-  const rendered = [pill('det', null, '', null, `${factorsN}f`, `deterministic engine: ${factorsN} factors fired with values — the arithmetic IS the native verdict`)]
+  const rendered = factorsN == null ? [] : [pill('det', null, '', null, `${factorsN}f`, `deterministic engine: ${factorsN} factors fired with values — the arithmetic IS the native verdict`)]
   let split = false, sawConcur = false, sawObject = false
   for (const [seat, provider, prefix] of seats) {
     const d = oversight?.seats?.[seat]
     if (!d) { if (!seat.startsWith('paid')) rendered.push(pill(seat, provider, prefix, null, 'pend', 'critique pending — runs on the next recommendations build (cached per build, never per refresh)')); continue }
-    const v = (d.verdicts || []).find((x: any) => x.id === cardId)
+    const v = (d.verdicts || []).find((x: any) => cardId.endsWith('*') ? x.id.startsWith(cardId.slice(0, -1)) : x.id === cardId)
     const seatName = seat === 'paid' ? 'Claude (paid, claude-opus-4-8)' : seat === 'paid_gpt' ? 'GPT (paid, gpt-5.4)' : seat === 'paid_xai' ? 'Grok (paid, grok-4)' : seat === 'chatgpt' ? 'GPT (free lane)' : 'Grok (free lane)'
     if (d.status !== 'ok') { rendered.push(pill(seat, provider, prefix, null, d.status, `${seatName}: ${d.status} — ${d.status === 'quota' ? 'daily share exhausted, resets 00:00' : d.status === 'unparseable' ? 'response failed the schema; raw kept, never coerced' : 'lane unreachable this build'}`)); continue }
     if (!v) { rendered.push(pill(seat, provider, prefix, null, 'n/a', `${seatName} reviewed this build but returned no verdict for this card`)); continue }

@@ -171,13 +171,13 @@ export default function DefenseHub() {
         capsCfg={recsData?.execution_caps} onChange={refetchRecs} />
 
       {/* Row 2b — THE ROTATION PLAN (v5): trims, ladders, re-entry watches — the page's memory */}
-      <RotationPlanPanel plan={recs?.rotation_plan || []} onConfirmed={refetchRecs} />
+      <RotationPlanPanel plan={recs?.rotation_plan || []} onConfirmed={refetchRecs} oversight={recsData?.oversight} />
 
       {/* Row 2c — the recommendations rail */}
       <RecommendationsRail recs={recs} oversight={recsData?.oversight} />
 
       {/* Row 3 — the rotation picture */}
-      <RotationBoards sectors={rows} industries={ind} spyLong={spyLong} />
+      <RotationBoards sectors={rows} industries={ind} spyLong={spyLong} oversight={recsData?.oversight} />
 
       {/* Row 4 — detail folds, collapsed by default */}
       <DefenseDetails posture={posture} industries={industries} radar={radar}

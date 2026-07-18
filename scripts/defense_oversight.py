@@ -59,6 +59,20 @@ def build_oversight_brief() -> dict:
                 "factors": [f"{f['name']}={f['value']}" for f in c.get("factors", [])],
                 "levels": c.get("levels"), "mode": c.get("mode"), "is_core": c.get("is_core", False),
             })
+    # posture pseudo-card (operator ask): the seats verdict THE ROTATION READ itself
+    mkt = sect.get("market") or {}
+    cards.append({
+        "id": "posture-current", "group": "posture",
+        "title": "THE ROTATION READ — is the desk's market interpretation right?",
+        "state_line": mkt.get("state_line"),
+        "claims": [f"{r['sector']}: {r['state']} (RS20 {r['rs20']:+.1f}, breadth {r.get('breadth_pct')}%)"
+                   for r in sect.get("rows", [])] +
+                  [f"style {st['key']}: {st['state']} ({st['s20']:+.1f})"
+                   for st in mkt.get("styles", [])],
+        "question": "Judge the INTERPRETATION: is this a rotation worth chasing, a bear-market "
+                    "head-fake, late-cycle breadth-thinning, or something else? CONCUR = the "
+                    "read is sound; OBJECT = the desk is misreading the tape.",
+    })
     for p in recs.get("pairs", []):
         cards.append({"id": p["id"], "group": "pair", "title": p["title"],
                       "sell": p["sell_ticket"]["line"], "buys": [l["line"] for l in p["buy_legs"]],
