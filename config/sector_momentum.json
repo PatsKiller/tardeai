@@ -1,20 +1,92 @@
 {
   "_comment": "Defense Desk v1 WS-A. Transitions-not-levels: alerts fire ONLY on confirmed state changes (debounce_days consecutive closes in the new state), capped per day. Thresholds deterministic; tune via the would-have-fired fold before trusting.",
   "sectors": {
-    "XLK": "Technology", "XLF": "Financials", "XLV": "Healthcare", "XLE": "Energy",
-    "XLI": "Industrials", "XLY": "Consumer Discretionary", "XLP": "Consumer Staples",
-    "XLU": "Utilities", "XLB": "Materials", "XLRE": "Real Estate", "XLC": "Communications"
+    "XLK": "Technology",
+    "XLF": "Financials",
+    "XLV": "Healthcare",
+    "XLE": "Energy",
+    "XLI": "Industrials",
+    "XLY": "Consumer Discretionary",
+    "XLP": "Consumer Staples",
+    "XLU": "Utilities",
+    "XLB": "Materials",
+    "XLRE": "Real Estate",
+    "XLC": "Communications"
   },
   "benchmark": "SPY",
   "tech_crosscheck": "QQQ",
-  "rs_windows": {"short": 5, "mid": 20, "long": 60},
+  "rs_windows": {
+    "short": 5,
+    "mid": 20,
+    "long": 60
+  },
   "slope_lookback_days": 5,
   "breadth_dma": 20,
   "breadth_min_members": 8,
   "debounce_days": 2,
   "max_alert_lines_per_day": 4,
-  "severity_book_weight_pct": {"urgent": 15, "warning": 3},
+  "severity_book_weight_pct": {
+    "urgent": 15,
+    "warning": 3
+  },
   "hermes_pulse_min_constituents": 3,
   "news_pressure_days": 5,
-  "news_pressure_upgrade_min_negatives": 4
+  "news_pressure_upgrade_min_negatives": 4,
+  "_comment_aliases": "C2 (v2): trade_ai_scans/finviz use different sector names than ETF labels \u2014 breadth/hermes/news queries resolve through these aliases (the v1 '\u2014' cells were a NAME MISMATCH, not thin coverage: membership is 80-480/sector).",
+  "sector_aliases": {
+    "Technology": [
+      "Technology"
+    ],
+    "Financials": [
+      "Financial Services",
+      "Financial"
+    ],
+    "Healthcare": [
+      "Healthcare"
+    ],
+    "Energy": [
+      "Energy"
+    ],
+    "Industrials": [
+      "Industrials"
+    ],
+    "Consumer Discretionary": [
+      "Consumer Cyclical"
+    ],
+    "Consumer Staples": [
+      "Consumer Defensive"
+    ],
+    "Utilities": [
+      "Utilities"
+    ],
+    "Materials": [
+      "Basic Materials"
+    ],
+    "Real Estate": [
+      "Real Estate"
+    ],
+    "Communications": [
+      "Communication Services"
+    ]
+  },
+  "indices": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "DIA"
+  ],
+  "style_pairs": {
+    "growth_vs_value": [
+      "VUG",
+      "VTV"
+    ],
+    "small_vs_large": [
+      "IWM",
+      "SPY"
+    ],
+    "equal_vs_cap": [
+      "RSP",
+      "SPY"
+    ]
+  }
 }

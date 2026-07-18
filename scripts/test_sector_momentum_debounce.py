@@ -62,6 +62,24 @@ def run():
     print(f"ALL {ok} DEBOUNCE TESTS PASS")
     return 0
 
+def run_v2():
+    """v2 additions: style-spread states + market-state line template."""
+    from sector_momentum_engine import market_state_line
+    assert classify(3.01, 2.6) == "LEADING"      # RSP−SPY live shape
+    assert classify(-0.1, 2.05) == "IMPROVING"   # VUG−VTV live shape
+    print("✓ style-spread quadrants")
+    m = {"indices": [{"symbol": "SPY", "short": -0.9}],
+         "styles": [{"key": "equal_vs_cap", "s20": 1.2}, {"key": "small_vs_large", "s20": -0.4}],
+         "internals": {"new_high": 89, "new_low": 412}}
+    line = market_state_line(m, [{"state": "LAGGING"}] * 3)
+    assert "SPY -0.9% wk" in line and "equal-weight leading" in line \
+        and "small caps lagging" in line and "NH/NL 89/412 — narrow tape" in line \
+        and "3/11 sectors lagging" in line, line
+    print("✓ market-state line template")
+
 
 if __name__ == "__main__":
-    sys.exit(run())
+    rc = run()
+    run_v2()
+    print("ALL v1+v2 TESTS PASS")
+    sys.exit(rc)

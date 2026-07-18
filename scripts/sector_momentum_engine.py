@@ -98,13 +98,17 @@ def compute_states(cur, as_of_idx_offset=0):
     return rows
 
 
+def _aliases(name):
+    return CFG.get("sector_aliases", {}).get(name, [name])
+
+
 def _breadth(cur, etf_sector_name):
     """% of sector members above their own 20DMA — fail-soft when membership thin."""
     try:
         cur.execute(
             """SELECT DISTINCT m.symbol FROM screener_symbol_membership m
                JOIN trade_ai_scans t ON upper(t.symbol) = upper(m.symbol)
-               WHERE t.sector = %s LIMIT 60""", (etf_sector_name,))
+               WHERE t.sector = ANY(%s) LIMIT 60""", (_aliases(etf_sector_name),))
         members = [r[0] for r in cur.fetchall()]
         if len(members) < CFG["breadth_min_members"]:
             return None, len(members)
@@ -138,7 +142,7 @@ def _hermes_pulse(cur, sector_name):
                                                        AND h.scored_at > now() - interval '10 days')
                FROM hermes_score_history h
                JOIN trade_ai_scans t ON upper(t.symbol) = upper(h.symbol)
-               WHERE t.sector = %s AND h.scored_at > now() - interval '10 days'""", (sector_name,))
+               WHERE t.sector = ANY(%s) AND h.scored_at > now() - interval '10 days'""", (_aliases(sector_name),))
         r = cur.fetchone()
         if r and r[0] is not None:
             return round(float(r[0]), 1), (round(float(r[1]), 1) if r[1] is not None else None)
@@ -153,16 +157,107 @@ def _news_pressure(cur, sector_name):
         cur.execute(
             """SELECT count(*), min(n.title)
                FROM news_articles n JOIN trade_ai_scans t ON upper(t.symbol) = upper(n.symbol)
-               WHERE t.sector = %s AND n.published_at > now() - make_interval(days => %s)
+               WHERE t.sector = ANY(%s) AND n.published_at > now() - make_interval(days => %s)
                  AND (lower(coalesce(n.sentiment,'')) IN ('negative','bearish')
                       OR n.sentiment_score < -0.2)""",
-            (sector_name, int(CFG["news_pressure_days"])))
+            (_aliases(sector_name), int(CFG["news_pressure_days"])))
         r = cur.fetchone()
         return (int(r[0]) if r else 0), (r[1] if r and r[1] else None)
     except Exception:
         try: cur.connection.rollback()
         except Exception: pass
         return 0, None
+
+
+def compute_market(cur):
+    """A2 (v2): the MARKET frame — indices absolute+RS, style spreads with the same quadrant
+    state machine (persisted as STYLE:<key> rows so debounce/transitions reuse one mechanism),
+    and internals from market_movers (NH/NL counts — labeled by source)."""
+    idx_syms = CFG.get("indices", [])
+    pair_syms = sorted({s for p in CFG.get("style_pairs", {}).values() for s in p})
+    px = _closes(cur, list(set(idx_syms + pair_syms + [CFG["benchmark"]])),
+                 days=CFG["rs_windows"]["long"] + CFG["slope_lookback_days"] + 30)
+    spy_by_date = dict(px.get(CFG["benchmark"], []))
+
+    def aligned(sym):
+        seen = {}
+        for d, p_ in px.get(sym, []):
+            if d in spy_by_date:
+                seen[d] = p_
+        return sorted(seen.items())
+
+    def rets(sym):
+        s_ = aligned(sym)
+        i = len(s_) - 1
+        out = {}
+        for k, w in CFG["rs_windows"].items():
+            out[k] = _ret(s_, i, w)
+        out["_i"] = i
+        out["_s"] = s_
+        return out
+
+    indices = []
+    spy_r = rets(CFG["benchmark"])
+    for sym in idx_syms:
+        r = rets(sym)
+        row = {"symbol": sym}
+        for k in CFG["rs_windows"]:
+            row[k] = round(r[k], 2) if r[k] is not None else None
+            if sym != CFG["benchmark"] and r[k] is not None and spy_r[k] is not None:
+                row[f"rs_{k}"] = round(r[k] - spy_r[k], 2)
+        indices.append(row)
+
+    styles = []
+    for key, (a, b) in CFG.get("style_pairs", {}).items():
+        ra, rb = rets(a), rets(b)
+        spread = {}
+        for k in CFG["rs_windows"]:
+            spread[k] = round(ra[k] - rb[k], 2) if ra[k] is not None and rb[k] is not None else None
+        lb = CFG["slope_lookback_days"]
+        sa = _ret(ra["_s"], ra["_i"] - lb, CFG["rs_windows"]["mid"])
+        sb = _ret(rb["_s"], rb["_i"] - lb, CFG["rs_windows"]["mid"])
+        slope = (round(spread["mid"] - (sa - sb), 2)
+                 if spread["mid"] is not None and sa is not None and sb is not None else None)
+        styles.append({"key": key, "pair": f"{a}−{b}", "s5": spread["short"],
+                       "s20": spread["mid"], "s60": spread["long"], "slope": slope,
+                       "state": classify(spread["mid"], slope)})
+
+    internals = {}
+    try:
+        cur.execute("""SELECT signal, count(*) FROM market_movers
+                       WHERE captured_at = (SELECT max(captured_at) FROM market_movers)
+                       GROUP BY 1""")
+        internals = {sig: int(n) for sig, n in cur.fetchall()}
+        internals["source"] = "market_movers latest capture (top-15 caps per signal)"
+    except Exception:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+    return {"indices": indices, "styles": styles, "internals": internals}
+
+
+def market_state_line(market, sectors):
+    """Template-driven one-liner. Deterministic; unit-tested."""
+    spy = next((i for i in market["indices"] if i["symbol"] == "SPY"), {})
+    eq = next((s for s in market["styles"] if s["key"] == "equal_vs_cap"), {})
+    sm = next((s for s in market["styles"] if s["key"] == "small_vs_large"), {})
+    nh = market.get("internals", {}).get("new_high")
+    nl = market.get("internals", {}).get("new_low")
+    lag = sum(1 for r in sectors if r.get("state") == "LAGGING")
+    parts = []
+    if spy.get("short") is not None:
+        parts.append(f"SPY {spy['short']:+.1f}% wk")
+    if eq.get("s20") is not None:
+        parts.append(("equal-weight leading cap-weight" if eq["s20"] > 0 else
+                      "cap-weight leading equal-weight") + f" ({eq['s20']:+.1f}% 20d)")
+    if sm.get("s20") is not None:
+        parts.append("small caps " + ("leading" if sm["s20"] > 0 else "lagging"))
+    if nh is not None and nl is not None:
+        tape = "narrow tape" if (nh + nl) and nl > nh * 2 else ("broad strength" if nh > nl * 2 else "mixed tape")
+        parts.append(f"NH/NL {nh}/{nl} — {tape}")
+    parts.append(f"{lag}/11 sectors lagging")
+    return "Market: " + " · ".join(parts)
 
 
 def _book_weights():
@@ -218,7 +313,26 @@ def main() -> int:
 
     weights = _book_weights()
     rows = compute_states(cur)
+    market = compute_market(cur)
+    # style spreads join the SAME debounce/transition mechanism (etf = STYLE:<key>)
     alerts = []
+    for st in market["styles"]:
+        if not st.get("state"):
+            continue
+        key = f"STYLE:{st['key']}"
+        cur.execute("""SELECT state FROM sector_momentum_state WHERE etf=%s
+                       ORDER BY as_of DESC LIMIT %s""", (key, CFG["debounce_days"]))
+        prior = [r[0] for r in cur.fetchall()]
+        if not args.dry_run:
+            cur.execute("""INSERT INTO sector_momentum_state (as_of, etf, sector, state, rs5, rs20, rs60, slope)
+                VALUES (CURRENT_DATE,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (as_of, etf) DO UPDATE SET state=EXCLUDED.state, rs5=EXCLUDED.rs5,
+                  rs20=EXCLUDED.rs20, rs60=EXCLUDED.rs60, slope=EXCLUDED.slope""",
+                (key, st["pair"], st["state"], st["s5"], st["s20"], st["s60"], st["slope"]))
+        if len(prior) >= CFG["debounce_days"] and prior[0] == st["state"] and prior[-1] != st["state"]:
+            alerts.append({"sector": st["pair"], "etf": key, "from": prior[-1], "to": st["state"],
+                           "severity": "warning",
+                           "line": f"⚠ Style {st['pair']}: {prior[-1]}→{st['state']} (day {CFG['debounce_days']} confirm) · spread {st['s5']:+.1f}% (5d)"})
     for row in rows:
         if not row.get("state"):
             continue
@@ -272,8 +386,9 @@ def main() -> int:
     conn.commit()
 
     alerts = alerts[:CFG["max_alert_lines_per_day"]]
+    market["state_line"] = market_state_line(market, rows)
     snap = {"generated_at": datetime.now(timezone.utc).isoformat(),
-            "rows": rows, "transitions_today": alerts}
+            "rows": rows, "market": market, "transitions_today": alerts}
     out = ROOT / "data" / "runtime" / "sector_momentum_latest.json"
     out.write_text(json.dumps(snap, default=str))
     for a in alerts:
