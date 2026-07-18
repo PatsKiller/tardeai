@@ -750,25 +750,110 @@ def covered_calls(sectors, holdings, cur, as_of, total_book=0) -> list:
     return cards
 
 
-def options_locked_card(as_of) -> dict:
-    # Per-account truth from config (Schwab-native tiers). "covered" already permits
-    # PROTECTIVE puts on held shares — what remains is the structure designer (R1),
-    # not broker approval. Index/QQQ puts (unheld) need the "long" tier.
+def protective_puts(sectors, holdings, cur, as_of, total_book=0) -> list:
+    """R1 put-structure designer (2026-07-18). Protective puts on HELD shares only —
+    the structure Schwab's 'covered' tier already permits (account_capabilities is the
+    gate; index/QQQ puts need the 'long' tier and render nowhere until it exists).
+    Consumes the radar's prot_put pick (same liquidity rails as cc_call); a position
+    qualifies on the SAME deterioration read as covered calls, and the premium must
+    clear the cost budget gate or the strike is WITHHELD honestly."""
+    c = CFG.get("protective_put")
+    if not c:
+        return []
+    tiers = set(c["put_capable_tiers"])
+    smap = _sector_map(sectors)
+    radar = {r["symbol"]: r for r in (_load("hedging_radar_latest.json").get("radar") or [])}
+    floor = max(c["min_position_dollars"], _materiality_min(total_book))
+    cards = []
+    for h in sorted(holdings, key=lambda x: -x["value"]):
+        if h["value"] < floor or h["shares"] < 100:
+            continue
+        if (CAPS.get(h["account"]) or {}).get("options_level") not in tiers:
+            continue
+        sec = smap.get((_profiles_one(cur, h["symbol"]) or {}).get("sector") or "")
+        if not sec or sec.get("state") not in ("WEAKENING", "LAGGING"):
+            continue
+        n = int(h["shares"] // 100)
+        pp = (radar.get(h["symbol"]) or {}).get("prot_put")
+        px = (radar.get(h["symbol"]) or {}).get("underlying_price") or h["price"]
+        withheld = None
+        if pp and px and pp.get("validated"):
+            cost = round(pp["mid"] * 100 * n)
+            cost_pct = round(cost / h["value"] * 100, 1) if h["value"] else 999
+            ann_pct = round(cost_pct * 365 / max(pp["dte"], 1), 1)
+            if ann_pct > c["max_cost_annualized_pct"]:
+                withheld = (f"chain pick WITHHELD: cost {cost_pct}% for {pp['dte']}d ≈ {ann_pct}%/yr — "
+                            f"exceeds the {c['max_cost_annualized_pct']}%/yr budget gate; "
+                            "protection at this IV is dear, not cheap")
+                pp = None
+        elif pp and not pp.get("validated"):
+            withheld = f"chain pick WITHHELD: {pp.get('validation', 'failed liquidity rails')}"
+            pp = None
+        if pp and px:
+            floor_pct = round((pp["strike"] - px) / px * 100, 1)
+            cost = round(pp["mid"] * 100 * n)
+            cost_pct = round(cost / h["value"] * 100, 1)
+            exp_short = pp["exp"][5:] if len(pp["exp"]) >= 10 else pp["exp"]
+            covers = f"{n * 100:.0f}/{h['shares']:.0f} sh" if n * 100 < h["shares"] else f"all {h['shares']:.0f} sh"
+            struct_note = (f"buy {n}× {exp_short} ${pp['strike']}P (~{pp['delta']}Δ, {pp['dte']}d) · "
+                           f"cost ≈ ${cost} ({cost_pct}% of position) · floors {covers} at ${pp['strike']} ({floor_pct:+.1f}%)")
+            levels = {"price": px, "entry_zone": f"strike ${pp['strike']} ({pp['exp']})",
+                      "stop": f"position floored at ${pp['strike']} ({floor_pct:+.1f}%); premium ≈ ${cost} is the max cost"}
+        else:
+            struct_note = (f"{c['tenor_dte'][0]}–{c['tenor_dte'][1]} DTE · {c['delta_band'][0]}–{c['delta_band'][1]}Δ"
+                           + (f" ({withheld})" if withheld else
+                              " (no chain pick in tonight's snapshot — strike from the chain at entry)"))
+            levels = {"price": px or None, "entry_zone": "per delta band", "stop": "floor at chosen strike"}
+        cards.append({
+            "id": f"pput-{h['symbol']}-{h['account']}-{as_of}", "group": "protect",
+            "title": f"PROTECTIVE PUT · {h['symbol']} ({n} contract{'s' if n != 1 else ''}, {CFG['account_labels'].get(h['account'], h['account'])})",
+            "instruments": [{"symbol": h["symbol"], "kind": "protective put vs held shares",
+                             "note": struct_note, "price": px}],
+            "accounts": [h["account"]], "direction": "buy put vs held shares",
+            "size_band": f"{n} contract{'s' if n != 1 else ''} against {h['shares']:.0f} sh (${h['value']/1000:.0f}K)",
+            "entry_logic": "buy protection into strength or IV dips — puts bought after the flush overpay; "
+                           "cost honesty: premium is insurance spend, recovered only if the floor matters",
+            "invalidation": f"{sec['sector']} recovers out of {sec['state']} (2-close) — let puts decay or close; "
+                            "roll/kill decision at 21 DTE, never hold to expiry by default",
+            "factors": [
+                {"name": "sector state", "value": f"{sec['sector']} {sec['state']} (RS20 {sec['rs20']:+.1f})"},
+                {"name": "position", "value": f"${h['value']/1000:.0f}K · {h['shares']:.0f} sh"},
+                {"name": "options tier", "value": f"{h['account']}: {(CAPS.get(h['account']) or {}).get('options_level')} (protective puts on held shares)"},
+            ] + ([{"name": "greeks/liquidity VALIDATED", "value": pp["validation"]},
+                  {"name": "order book", "value": f"${pp['bid']} × ${pp['ask']} (spread {pp['spread_pct']}%) · OI {pp['oi']}"}]
+                 if pp else []),
+            "as_of": as_of, "mode": "SHADOW",
+            "levels": levels, "impact_dollars": round(h["value"]),
+            "put_struct": ({"symbol": h["symbol"], "account": h["account"], "contracts": n,
+                            "strike": pp["strike"], "exp": pp["exp"], "delta": pp["delta"],
+                            "mid": pp["mid"], "cost_est": round(pp["mid"] * 100 * n)}
+                           if pp else None),
+            "routes": {"options_desk": "queue → operator approval → per-order 2FA (the desk itself never places orders)"},
+        })
+        if len(cards) >= c["max_cards"]:
+            break
+    return cards
+
+
+def options_locked_card(as_of, designed: int = 0) -> dict:
+    # Per-account truth from config (Schwab-native tiers). "covered" permits PROTECTIVE
+    # puts on held shares — protective_puts() designs those. Index/QQQ puts (unheld)
+    # need the "long" tier and stay locked until it exists.
     levels = {a: c.get("options_level") for a, c in CAPS.items() if a.startswith("schwab")}
     confirmed = {a: l for a, l in levels.items()
                  if l in ("covered", "long", "spreads", "short_uncovered")}
-    title = ("PUT HEDGES · protective puts permitted — designer pending"
+    title = (f"PUT HEDGES · designer live — {designed} structure{'s' if designed != 1 else ''} tonight"
              if confirmed else "PUT HEDGES · locked")
     return {
         "id": f"putlock-{as_of}", "group": "protect",
         "title": title,
         "instruments": [{"symbol": "—", "kind": "protective puts (held shares) / index puts",
-                         "note": ("protective puts on HELD symbols legal at 'covered' tier in: "
-                                  + ", ".join(sorted(confirmed)) +
-                                  " — put-structure designer (R1) is the remaining build item; "
-                                  "index puts require 'long' tier (advisor request)")
-                                 if confirmed else
-                                 "unlocks when options level confirmed — fill options_level in config/account_capabilities.json"}],
+                         "note": (("protective-put designer LIVE for: " + ", ".join(sorted(confirmed))
+                                   + (f" — {designed} structure card(s) rendered above" if designed
+                                      else " — no position cleared tonight's gates (deteriorating sector + ≥100 sh + cost budget)")
+                                   + " · index puts require 'long' tier (advisor request)")
+                                  if confirmed else
+                                  "unlocks when options level confirmed — fill options_level in config/account_capabilities.json")}],
         "accounts": sorted(CAPS.keys()), "direction": "n/a until designer ships",
         "size_band": "n/a", "entry_logic": "n/a — configuration gate, not a market call",
         "invalidation": "n/a",
@@ -868,7 +953,9 @@ def main() -> int:
                            held_symbols=frozenset(h["symbol"] for h in holdings),
                            equities=equities)
     cards += covered_calls(sectors, holdings, cur, as_of, total_book=total_book)
-    cards.append(options_locked_card(as_of))
+    pput_cards = protective_puts(sectors, holdings, cur, as_of, total_book=total_book)
+    cards += pput_cards
+    cards.append(options_locked_card(as_of, designed=len(pput_cards)))
     if not args.dry_run:
         # commit card-phase writes (ladder arms, hedge-alert registrations) NOW —
         # later per-row fail-soft rollbacks must never erase them (learned twice)

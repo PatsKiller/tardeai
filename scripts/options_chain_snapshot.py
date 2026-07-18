@@ -24,6 +24,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 _FULL_CFG = json.loads((ROOT / "config" / "defense_recommendations.json").read_text())
 CFG = _FULL_CFG["chain_snapshot"]
 _CC_VAL = _FULL_CFG["cc_validation"]
+_PP = _FULL_CFG.get("protective_put")  # R1: absent block = no put picks, never a crash
 SNAP = ROOT / "data" / "runtime" / "hedging_radar_latest.json"
 
 
@@ -53,6 +54,7 @@ def aggregate(chain: dict) -> dict | None:
     atm_ivs, put25, call25 = [], [], []
     tgt = CFG["skew_delta_target"]
     cc_call = None  # WS-CARD: concrete covered-call pick — ~0.25-0.30Δ, 21-45 DTE
+    prot_put = None  # R1: protective-put pick — ~0.25-0.30Δ, 45-120 DTE, same liquidity rails
     for exp in chain.get("expirations", []):
         put_oi += exp.get("total_put_oi") or 0
         call_oi += exp.get("total_call_oi") or 0
@@ -95,8 +97,32 @@ def aggregate(chain: dict) -> dict | None:
                                "validation": (f"OI {oi} · vol {vol} · spread {spread_pct}% · Δ{round(ad, 2)} · IV {round(float(iv), 1)}"
                                               + ("" if valid else f" — FAILED rails (need OI≥{vc['min_open_interest']}, spread≤{vc['max_spread_pct_of_mid']}%)")),
                                "_fit": fit}
+            if (_PP and s["side"] == "put"
+                    and _PP["tenor_dte"][0] <= dte <= _PP["tenor_dte"][1]
+                    and _PP["delta_band"][0] <= ad <= _PP["delta_band"][1]
+                    and s.get("bid") is not None and s.get("ask") is not None):
+                vc = _CC_VAL  # same liquidity rails as CC picks — one standard, one config
+                mid = (s["bid"] + s["ask"]) / 2
+                spread_pct = round((s["ask"] - s["bid"]) / mid * 100, 1) if mid else 999
+                oi = s.get("oi") or 0
+                vol = s.get("volume") or 0
+                valid = (oi >= vc["min_open_interest"]
+                         and max(oi, vol) >= vc["min_volume_or_oi"]
+                         and spread_pct <= vc["max_spread_pct_of_mid"])
+                fit = abs(ad - 0.28) + (0 if valid else 10)
+                if prot_put is None or fit < prot_put["_fit"]:
+                    prot_put = {"exp": s["exp"], "dte": dte, "strike": s["strike"],
+                                "delta": round(ad, 2), "iv": round(float(iv), 1),
+                                "mid": round(mid, 2), "bid": s["bid"], "ask": s["ask"],
+                                "oi": oi, "volume": vol, "spread_pct": spread_pct,
+                                "validated": valid,
+                                "validation": (f"OI {oi} · vol {vol} · spread {spread_pct}% · Δ{round(ad, 2)} · IV {round(float(iv), 1)}"
+                                               + ("" if valid else f" — FAILED rails (need OI≥{vc['min_open_interest']}, spread≤{vc['max_spread_pct_of_mid']}%)")),
+                                "_fit": fit}
     if cc_call:
         cc_call.pop("_fit", None)
+    if prot_put:
+        prot_put.pop("_fit", None)
     mean = lambda xs: round(sum(xs) / len(xs), 2) if xs else None
     return {
         "put_oi": put_oi, "call_oi": call_oi, "put_vol": put_vol, "call_vol": call_vol,
@@ -106,6 +132,7 @@ def aggregate(chain: dict) -> dict | None:
         "skew25": round(mean(put25) - mean(call25), 2) if put25 and call25 else None,
         "underlying_price": chain.get("underlying_price"),
         "cc_call": cc_call,
+        "prot_put": prot_put,
     }
 
 
