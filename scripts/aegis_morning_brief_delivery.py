@@ -209,6 +209,33 @@ def _get_gain_guardian_brief() -> list:
     return lines
 
 
+def _get_rotation_plan_brief() -> list:
+    """ROTATION PLAN one-liner (Defense v5 RP3) — reads the recommendations snapshot;
+    empty when no active rotation state. Fail-open."""
+    try:
+        import json as _json
+        from pathlib import Path as _P
+        snap = _json.loads((_P(__file__).resolve().parent.parent / "data" / "runtime" /
+                            "defense_recommendations_latest.json").read_text())
+    except Exception:
+        return []
+    bits = []
+    for lad in snap.get("ladders") or []:
+        if lad.get("status") != "open":
+            continue
+        t1 = f"T1 {'✓' if lad.get('t1_status') == 'executed' else 'pending'}"
+        fired = [t["tranche"] for t in lad.get("tranches", []) if t.get("status") == "fired"]
+        bits.append(f"{lad['symbol']} {t1}" + (f"+{'/'.join(fired)} FIRED" if fired else ""))
+    rollback = [t["symbol"] for t in snap.get("round_trips") or [] if t.get("status") == "rollback_open"]
+    if rollback:
+        bits.append(f"rollback OPEN: {'/'.join(rollback[:3])}")
+    armed_n = sum(1 for lad in snap.get("ladders") or [] for t in lad.get("tranches", [])
+                  if t.get("status") == "armed")
+    if bits or armed_n:
+        return [f"*Rotation:* {' · '.join(bits[:4])}" + (f" · {armed_n} ladder tranche(s) armed" if armed_n else ""), ""]
+    return []
+
+
 def send_telegram_brief(brief: dict, summary: str) -> bool:
     """Send compact morning brief to Telegram."""
     sections = brief.get("sections", [])
@@ -278,6 +305,11 @@ def send_telegram_brief(brief: dict, summary: str) -> bool:
     gg_lines = _get_gain_guardian_brief()
     if gg_lines:
         lines.extend(gg_lines)
+
+    # Rotation Plan one-liner (Defense v5 RP3 — advisory, empty when quiet)
+    rp_lines = _get_rotation_plan_brief()
+    if rp_lines:
+        lines.extend(rp_lines)
 
     # Iris taxonomy section — only if pending proposals or low coverage
     try:

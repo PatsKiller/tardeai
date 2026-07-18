@@ -11164,16 +11164,24 @@ def _defense_refresh_start(body=None):
 
 
 def _defense_round_trip_confirm(body=None):
-    """POST /api/v2/defense/round-trips/confirm {id, qty?, price?} — one-tap
-    'I executed this'. Reconciles against Schwab ingest when it lands."""
+    """POST /api/v2/defense/round-trips/confirm — one-tap 'I executed this'.
+    {id} = full round-trip confirm; {ladder_id, tranche} = TRANCHE-granular confirm
+    (v5) — the executed slice opens its own re-entry watch. Ingest reconciles later."""
     body = body or {}
-    rid = body.get("id")
-    if not rid:
-        return {"ok": False, "error": "id required"}
-    import rotation_round_trips as rt
     from db_adapter import _get_conn
     conn = _get_conn()
     cur = conn.cursor()
+    if body.get("ladder_id") and body.get("tranche"):
+        import defense_trim_ladders as dtl
+        okc = dtl.confirm_tranche(cur, int(body["ladder_id"]), str(body["tranche"]),
+                                  body.get("qty"), body.get("price"))
+        conn.commit()
+        return {"ok": okc, "ladder_id": body["ladder_id"], "tranche": body["tranche"],
+                "status": "executed → re-entry watch opened" if okc else "not_updatable"}
+    rid = body.get("id")
+    if not rid:
+        return {"ok": False, "error": "id or (ladder_id, tranche) required"}
+    import rotation_round_trips as rt
     okc = rt.confirm_exit(cur, int(rid), body.get("qty"), body.get("price"))
     conn.commit()
     return {"ok": okc, "id": rid, "status": "stepped_out" if okc else "not_updatable"}

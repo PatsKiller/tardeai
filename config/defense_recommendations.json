@@ -98,5 +98,35 @@
     "schwab_rollover_ira": "Rollover IRA",
     "schwab_roth_ira": "Roth IRA",
     "alpaca_paper": "Paper"
+  },
+  "trim_composite": {
+    "_comment": "DT1 \u2014 every number renders on the card; absent inputs listed, never silently defaulted",
+    "base_by_factor_count": {
+      "2": 20,
+      "3": 30,
+      "4": 40
+    },
+    "urgent_pct": 40,
+    "gg_giveback_watch_pp": 5,
+    "gg_giveback_breach_pp": 15,
+    "gg_extended_floor_pct": 25,
+    "concentration_target_pct": 12,
+    "concentration_cap_pp": 15,
+    "no_protection_pp": 5,
+    "tight_stop_pp": -5,
+    "bounds_pct": [
+      15,
+      60
+    ],
+    "round_to": 5
+  },
+  "ladder": {
+    "_comment": "EL \u2014 tranches armed at creation; triggers machine-evaluable ONLY (sector persistence, price level via 20-min watch_alerts evaluator, GG state, factor count)",
+    "t2_add_pp": 25,
+    "t3_add_pp": 25,
+    "t3_only_when_urgent": true,
+    "sector_persist_sessions": 5,
+    "price_trigger_lookback_days": 20,
+    "max_open_ladders": 8
   }
 }

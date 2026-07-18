@@ -61,6 +61,14 @@ def validate(card: dict) -> str | None:
             return "levels.price"
         if not lv.get("entry_zone") or not lv.get("stop"):
             return "levels"
+    # v5: a TRIM card without rendered arithmetic + a sell ticket does not render —
+    # the static-band regression is now guard-impossible
+    if card["id"].startswith("moveout-"):
+        if not card.get("trim_rationale"):
+            return "trim_rationale"
+        tk = card.get("ticket") or {}
+        if not tk.get("options"):
+            return "ticket"
     return None
 
 
@@ -262,11 +270,18 @@ def _fired_factors(h, sec, e, hz) -> list:
     return factors
 
 
-def move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=0) -> list:
+def move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=0, as_of_label="") -> list:
+    import defense_trim_ladders as dtl
+    from fund_lookthrough import _cfg as _lt_cfg
     c = CFG["move_out"]
     smap = _sector_map(sectors)
     floor = _materiality_min(total_book)
-    cards, scraps = [], []
+    gg = dtl.gg_latest(cur)
+    lt = _lt_cfg()
+    by_symbol = {}
+    for h in holdings:
+        by_symbol.setdefault(h["symbol"], []).append(h)
+    cards, scraps, seen = [], [], set()
     for h in holdings:
         if h["value"] < floor:
             scraps.append(h)
@@ -278,23 +293,58 @@ def move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=0) -> lis
         factors = _fired_factors(h, sec, e, hz)
         if len(factors) < c["factor_threshold"]:
             continue
+        # DT1 — the composite, arithmetic rendered; absent inputs listed
+        urgent = any("urgent" in str(f.get("value", "")).lower() for f in factors)
+        fund = lt.get(h["symbol"])
+        if fund and fund.get("weights") and not sec:
+            # fund positions: judge concentration via the DOMINANT lookthrough sleeve
+            dom = max(fund["weights"], key=lambda s: fund["weights"][s])
+            sec = smap.get(dom) or sec
+        sector_name = (sec or {}).get("sector")
+        eff_pct = (sec or {}).get("book_pct")
+        lt_weight = (fund["weights"].get(sector_name, 0) if fund and fund.get("weights")
+                     else 1.0)
+        plan = dtl.compute_trim_plan(factors, urgent, gg.get((h["symbol"], h["account"])),
+                                     eff_pct, dtl.stop_context(cur, h["symbol"], h["account"]))
+        # DT2 — the sell ticket across every account holding the symbol
+        acct_rows = by_symbol[h["symbol"]]
+        ticket = dtl.sell_ticket(h["symbol"], acct_rows, plan["fraction_pct"], as_of_label,
+                                 sector_name, (sec or {}).get("book_dollars"),
+                                 total_book, lookthrough_weight=lt_weight)
+        if h["symbol"] in seen:
+            continue  # one card per symbol — the ticket already covers all accounts
+        seen.add(h["symbol"])
         tax = CFG["move_out"]["tax_gate_lt_gain_note"] if h["account"] == "schwab_taxable" else "IRA — no tax gate"
-        cards.append({
+        card = {
             "id": f"moveout-{h['symbol']}-{h['account']}-{as_of}", "group": "protect",
-            "title": f"MOVE-OUT · {h['symbol']} (${h['value']/1000:.0f}K in {CFG['account_labels'].get(h['account'], h['account'])})",
-            "instruments": [{"symbol": h["symbol"], "kind": "held position", "note": f"{h['shares']:.0f} sh"}],
-            "accounts": [h["account"]], "direction": "reduce/exit",
-            "size_band": "trim 25–50% first; full exit only on continued deterioration",
+            "title": f"MOVE-OUT · {h['symbol']} (${sum(a['value'] for a in acct_rows)/1000:.0f}K"
+                     f"{' across ' + str(len(acct_rows)) + ' accounts' if len(acct_rows) > 1 else ' in ' + CFG['account_labels'].get(h['account'], h['account'])})",
+            "instruments": [{"symbol": h["symbol"], "kind": "held position",
+                             "note": f"{h['shares']:.0f} sh", "price": h["price"] or None}],
+            "accounts": sorted({a["account"] for a in acct_rows}), "direction": "reduce/exit",
+            "size_band": plan["rationale"],
+            "trim_rationale": plan["rationale"],
+            "trim_plan": plan,
+            "ticket": ticket,
             "entry_logic": "reduce into strength, not into a flush; stage over 2–3 sessions",
             "invalidation": "sector recovers out of WEAKENING/LAGGING (2-close) AND price reclaims the 50DMA",
             "factors": factors + [{"name": "tax gate", "value": tax}],
             "as_of": as_of, "mode": "SHADOW",
-            "levels": {"price": h["price"] or None, "position_value": round(h["value"]),
+            "levels": {"price": h["price"] or None, "position_value": round(sum(a["value"] for a in acct_rows)),
                        "basis_note": "unrealized P&L n/a — Cost Basis export pending"},
-            "impact_dollars": round(h["value"]),
+            "impact_dollars": round(sum(a["value"] for a in acct_rows)),
             "routes": {"shadow": f"10-trading-day shadow started {c['shadow_started']} — Telegram only after promote",
-                       "round_trip": "registers in the round-trip ledger on advise; one-tap confirm on exit"},
-        })
+                       "round_trip": "registers in the round-trip ledger; ladder arms T2 at creation"},
+        }
+        cards.append(card)
+        # EL1 — arm the ladder at creation (idempotent)
+        try:
+            dtl.ensure_ladder_tables(cur)
+            dtl.arm_ladder(cur, card, plan, sector_name, (sec or {}).get("state"),
+                           len(factors), urgent)
+        except Exception as ex:
+            cur.connection.rollback()
+            print(f"[recs] ladder arm failed for {h['symbol']}: {ex}")
         if len(cards) >= c["max_cards"]:
             break
     # L2: residual scraps collapse to ONE janitorial card — never dressed as strategy
@@ -633,9 +683,13 @@ def main() -> int:
     equities = account_equities(holdings)
     total_book = sum(equities.values())
 
+    h_raw = json.loads((ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
+    as_of_label = f"prices as of {str(h_raw.get('as_of', ''))[:16]} (holdings snapshot)"
+
     cards = []
     cards += rotate_in(sectors, cur, enrich, as_of, equities=equities)
-    cards += move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=total_book)
+    cards += move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=total_book,
+                      as_of_label=as_of_label)
     cards += inverse_etf(sectors, market, as_of, cur=cur, equities=equities)
     cards += taxable_short(industries, cur, enrich, as_of,
                            held_symbols=frozenset(h["symbol"] for h in holdings),
@@ -664,6 +718,19 @@ def main() -> int:
     rt_prices = _prices(cur, list({x[0] for x in
                                    [(h["symbol"], 0) for h in holdings]}) or ["SPY"])
     round_trips = rt.evaluate(cur, sector_states, rt_prices, enrich)
+
+    # EL2/RP2 — nightly ladder evaluation (fire AND disarm) + the Rotation Plan rows
+    import defense_trim_ladders as dtl
+    dtl.ensure_ladder_tables(cur)
+    factor_counts = {}
+    smap_all = _sector_map(sectors)
+    for h in holdings:
+        prof = _profiles_one(cur, h["symbol"])
+        sec_r = smap_all.get((prof or {}).get("sector") or "")
+        factor_counts[(h["symbol"], h["account"])] = len(
+            _fired_factors(h, sec_r, enrich.get(h["symbol"]) or {}, hermes.get(h["symbol"]) or {}))
+    ladders = dtl.evaluate_ladders(cur, sector_states, factor_counts, dtl.gg_latest(cur))
+    plan_rows = dtl.rotation_plan(cur, stance_rows, ladders, round_trips)
     if not args.dry_run:
         conn.commit()
 
@@ -688,6 +755,8 @@ def main() -> int:
         "account_equities": equities,
         "stances": stance_rows,
         "round_trips": round_trips,
+        "ladders": ladders,
+        "rotation_plan": plan_rows,
         "exposure_basis": sector_snap.get("exposure_basis"),
         "not_decomposed": sector_snap.get("not_decomposed"),
         "sources": {
