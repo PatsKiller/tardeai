@@ -62,6 +62,7 @@ export default function HomeHub({ onDrill }: Props) {
   const { data: health } = useApi<any>('/api/v2/health', 120_000)
   const { data: deployData } = useApi<any>('/api/v2/deploy/events?status=open&days=14', 120_000)
   const { data: perfData, loading: perfLoading } = useApi<any>('/api/v2/portfolio/performance', 120_000)
+  const { data: posture } = useApi<any>('/api/v2/defense/posture', 300_000)
   const cmd = command?.data ?? command ?? {}
   const healthFindings: any[] = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').slice(0, 3)
 
@@ -126,6 +127,27 @@ export default function HomeHub({ onDrill }: Props) {
           background: 'rgba(96,165,250,.12)', color: '#60a5fa', border: '1px solid rgba(96,165,250,.35)',
         }}>Morning brief → Reports</Link>
       </div>
+
+      {/* Defense Desk WS-E: compact market-posture strip — full desk at /v3/defense */}
+      {(() => {
+        const rows: any[] = (posture as any)?.momentum?.rows || []
+        if (!rows.length) return null
+        const counts: Record<string, number> = {}
+        rows.forEach((r: any) => { if (r.state) counts[r.state] = (counts[r.state] || 0) + 1 })
+        const hot = rows.filter((r: any) => (r.state === 'LAGGING' || r.state === 'WEAKENING') && (r.book_pct ?? 0) >= 3)
+        return (
+          <a href="/v3/defense" style={{ textDecoration: 'none' }}>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderLeft: `3px solid ${hot.length ? '#f59e0b' : '#22c55e'}`, borderRadius: 2, padding: '7px 12px', marginBottom: 12, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline', fontSize: 11 }}>
+              <span style={{ fontWeight: 800, fontSize: 10, letterSpacing: '.06em', color: 'var(--text2)' }}>MARKET POSTURE</span>
+              {(['LEADING', 'WEAKENING', 'LAGGING', 'IMPROVING'] as const).map(st => counts[st] ? (
+                <span key={st} style={{ color: st === 'LEADING' ? '#22c55e' : st === 'LAGGING' ? '#ef4444' : st === 'WEAKENING' ? '#f59e0b' : '#60a5fa', fontWeight: 700 }}>{counts[st]} {st.toLowerCase()}</span>
+              ) : null)}
+              {hot.map((r: any) => <span key={r.etf} style={{ color: 'var(--text2)' }}>{r.sector.toLowerCase()} <b style={{ color: r.state === 'LAGGING' ? '#ef4444' : '#f59e0b' }}>{r.state}</b> · you {r.book_pct}%</span>)}
+              <span style={{ marginLeft: 'auto', color: '#60a5fa', fontWeight: 700 }}>Defense Desk →</span>
+            </div>
+          </a>
+        )
+      })()}
 
       {/* Home v2 Row 1 — market context: the movers board, YOUR book, major news */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 12, marginBottom: 16 }}>

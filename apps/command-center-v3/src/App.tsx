@@ -15,6 +15,7 @@ import HermesHub from './pages/HermesHub'
 import RetirementHub from './pages/RetirementHub'
 import JournalHub from './pages/JournalHub'
 import WatchHub from './pages/WatchHub'
+import DefenseHub from './pages/DefenseHub'
 import ReportsHub from './pages/ReportsHub'
 import SystemHub from './pages/SystemHub'
 import RotationIntelligence from './pages/RotationIntelligence'
@@ -122,6 +123,7 @@ function Shell() {
             <Route path="journal" element={<JournalHub onDrill={setDrill} />} />
             <Route path="trade-in-view" element={<Navigate to="/journal" replace />} />
             <Route path="watch" element={<WatchHub onDrill={setDrill} />} />
+            <Route path="defense" element={<DefenseHub />} />
             <Route path="watchlist" element={<Navigate to="/watch?tab=watchlist" replace />} />
             <Route path="watchpool" element={<Navigate to="/watch?tab=watchpool" replace />} />
             <Route path="sectors" element={<Navigate to="/watch?tab=sectors" replace />} />
