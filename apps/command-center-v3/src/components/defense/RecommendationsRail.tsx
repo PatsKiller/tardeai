@@ -17,9 +17,19 @@ const chip: React.CSSProperties = {
   borderRadius: 2, padding: '1px 6px', border: `1px solid ${BB.border}`, color: BB.text2,
 }
 
-function Card({ c }: { c: any }) {
+function Card({ c, tab }: { c: any; tab: string }) {
   const [open, setOpen] = useState(false)
   const g = GROUPS.find(x => x.key === c.group)
+  const lv = c.levels || {}
+  // dollars for the SELECTED account tab; 'all' shows the largest valid account's band
+  const band = c.dollars_by_account && (
+    tab !== 'all' && c.dollars_by_account[tab]
+      ? { label: '', v: c.dollars_by_account[tab] }
+      : Object.entries(c.dollars_by_account).sort((a: any, b: any) => b[1][1] - a[1][1])[0]
+        ? { label: Object.entries(c.dollars_by_account).sort((a: any, b: any) => b[1][1] - a[1][1])[0][0], v: (Object.entries(c.dollars_by_account).sort((a: any, b: any) => b[1][1] - a[1][1])[0][1] as number[]) }
+        : null)
+  const fmt$ = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(1)}K` : `$${n}`
+  const topFactors = (c.factors || []).slice(0, 2)
   return (
     <div style={{ border: `1px solid ${BB.border}`, borderLeft: `3px solid ${g?.color || BB.text3}`, borderRadius: 2, padding: '8px 10px', background: BB.bg }}>
       <div onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
@@ -27,21 +37,36 @@ function Card({ c }: { c: any }) {
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
           <span style={{ ...chip, color: BB.amber, borderColor: BB.amber }}>{c.mode}</span>
           <span style={chip}>{c.direction}</span>
-          <span style={chip}>{c.size_band.split('(')[0].trim()}</span>
+          {band?.v
+            ? <span style={chip}>{fmt$(band.v[0])}–{fmt$(band.v[1])}{band.label ? ` (${band.label.replace('schwab_', '')})` : ''}</span>
+            : <span style={chip}>{c.size_band.split('(')[0].trim()}</span>}
         </div>
-        <div style={{ fontSize: DASH.data, color: BB.text2 }}>
+        <div style={{ fontSize: DASH.data, color: BB.text2, marginBottom: 3 }}>
           {c.instruments.map((i: any) => (
             <span key={i.symbol + i.kind} style={{ marginRight: 10 }}>
               <b style={{ ...numStyle, color: BB.text1 }}>{i.symbol}</b>
+              {i.price != null && <span style={{ ...numStyle, color: BB.text2 }}> ${i.price}</span>}
               <span style={{ color: BB.text3 }}> {i.kind}</span>
             </span>
           ))}
-          <span style={{ color: BB.text3 }}>{open ? '▾' : '▸'} factors</span>
+        </div>
+        {(lv.entry_zone || lv.stop || lv.position_value) && (
+          <div style={{ fontSize: DASH.data, color: BB.text2, marginBottom: 3 }}>
+            {lv.position_value ? <span>position <b style={numStyle}>{fmt$(lv.position_value)}</b> · </span> : null}
+            {lv.entry_zone ? <span>entry: {lv.entry_zone} · </span> : null}
+            {lv.stop ? <span style={{ color: BB.amber }}>{lv.stop}</span> : null}
+          </div>
+        )}
+        <div style={{ fontSize: DASH.data, color: BB.text3 }}>
+          {topFactors.map((f: any, i: number) => (
+            <span key={i} style={{ marginRight: 10 }}>{f.name}: <b style={{ color: BB.text2 }}>{String(f.value)}</b></span>
+          ))}
+          <span>{open ? '▾ less' : `▸ ${Math.max(0, (c.factors || []).length - 2)} more`}</span>
         </div>
       </div>
       {open && (
         <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${BB.borderHair}`, fontSize: DASH.data, color: BB.text2, display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {c.factors.map((f: any, i: number) => (
+          {c.factors.slice(2).map((f: any, i: number) => (
             <div key={i}><span style={{ color: BB.text3 }}>{f.name}:</span> <b>{String(f.value)}</b></div>
           ))}
           <div><span style={{ color: BB.text3 }}>entry:</span> {c.entry_logic}</div>
@@ -100,7 +125,7 @@ export default function RecommendationsRail({ recs }: { recs: any }) {
                       : (recs?.empty_reasons?.[g.key] || 'none today')}
                   </div>
                 )}
-                {cards.map(c => <Card key={c.id} c={c} />)}
+                {cards.map(c => <Card key={c.id} c={c} tab={tab} />)}
               </div>
             </div>
           )

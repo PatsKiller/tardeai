@@ -31,9 +31,13 @@ def universe() -> list:
         h = json.loads((ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
         rows = [r for r in h.get("holdings", []) if not r.get("is_cash") and r.get("symbol")]
         rows.sort(key=lambda r: -(r.get("market_value") or 0))
-        for r in rows[:CFG["top_holdings_n"]]:
+        added = 0
+        for r in rows:  # count UNIQUE additions — dup rows (V, SCHD in two accounts) must not eat slots
+            if added >= CFG["top_holdings_n"]:
+                break
             if r["symbol"] not in syms:
                 syms.append(r["symbol"])
+                added += 1
     except Exception as e:
         print(f"[radar] holdings unavailable ({e}) — priority universe only")
     return syms
@@ -66,7 +70,7 @@ def aggregate(chain: dict) -> dict | None:
             if s["side"] == "call" and abs(ad - tgt) <= 0.08:
                 call25.append(float(iv))
             dte = s.get("dte") or exp.get("dte") or 0
-            if (s["side"] == "call" and 21 <= dte <= 45 and 0.20 <= ad <= 0.32
+            if (s["side"] == "call" and 18 <= dte <= 50 and 0.15 <= ad <= 0.38
                     and s.get("bid") is not None and s.get("ask") is not None):
                 fit = abs(ad - 0.28)
                 if cc_call is None or fit < cc_call["_fit"]:

@@ -49,30 +49,47 @@ export default function DefenseDetails({ posture, industries, radar }: { posture
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <Fold title="Where the street is hedging" badge={`${radarRows.length} underlyings · ${(radar?.captured_at || '').slice(0, 10)} · inference, not order flow`}>
-        <div style={{ fontSize: DASH.data, color: BB.text3, marginBottom: 6 }}>{radar?.coverage?.note} · {radar?.history_note}</div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead><tr>
-              <th style={th}>Underlying</th><th style={th}>Put OI</th><th style={th}>P/C OI</th>
-              <th style={th}>ΔPut OI</th><th style={th}>ATM IV</th><th style={th}>Skew25</th><th style={th}>Read</th>
-            </tr></thead>
-            <tbody>
-              {radarRows.map(r => (
-                <tr key={r.symbol}>
-                  <td style={{ ...td, fontWeight: 700, color: BB.text1 }}>{r.symbol}</td>
-                  <td style={{ ...td, ...numStyle }}>{(r.put_oi / 1000).toFixed(0)}K</td>
-                  <td style={{ ...td, ...numStyle }}>{r.pc_oi_ratio ?? '—'}</td>
-                  <td style={{ ...td, ...numStyle, color: (r.put_oi_delta_pct ?? 0) > 5 ? BB.red : BB.text2 }}>{r.put_oi_delta_pct != null ? `${r.put_oi_delta_pct >= 0 ? '+' : ''}${r.put_oi_delta_pct}%` : 'baseline'}</td>
-                  <td style={{ ...td, ...numStyle }}>{r.atm_iv ?? '—'}</td>
-                  <td style={{ ...td, ...numStyle }}>{r.skew25 ?? '—'}</td>
-                  <td style={{ ...td, color: BB.text2 }}>{r.line.split('— ')[1] || r.line}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Fold>
+      {(() => {
+        // v4 WS-RADAR: honest emptiness — when NO row has a non-baseline signal the
+        // radar is ONE summary line, not 20 rows of dashes
+        const signal = radarRows.filter(r =>
+          (r.put_oi_delta_pct ?? 0) > 5 || (r.skew25_delta ?? 0) > 1 || (r.pc_vol_vs_mean ?? 0) > 1.5)
+        const histN = radarRows.length ? Math.max(...radarRows.map(r => r.pc_mean_n || 0)) : 0
+        if (signal.length === 0) {
+          return (
+            <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 2, padding: '9px 12px', fontSize: DASH.data, color: BB.text2 }}>
+              <b style={{ color: BB.text1 }}>Radar:</b> no unusual hedging across {radarRows.length} underlyings ·
+              baselines set {(radar?.captured_at || '').slice(0, 10)} · history n={histN}/20d — deltas earn a table when they exist
+            </div>
+          )
+        }
+        return (
+          <Fold title="Where the street is hedging" badge={`${signal.length} signals of ${radarRows.length} underlyings · inference, not order flow`}>
+            <div style={{ fontSize: DASH.data, color: BB.text3, marginBottom: 6 }}>{radar?.coverage?.note} · {radar?.history_note}</div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <thead><tr>
+                  <th style={th}>Underlying</th><th style={th}>Put OI</th><th style={th}>P/C OI</th>
+                  <th style={th}>ΔPut OI</th><th style={th}>ATM IV</th><th style={th}>Skew25</th><th style={th}>Read</th>
+                </tr></thead>
+                <tbody>
+                  {signal.map(r => (
+                    <tr key={r.symbol}>
+                      <td style={{ ...td, fontWeight: 700, color: BB.text1 }}>{r.symbol}</td>
+                      <td style={{ ...td, ...numStyle }}>{(r.put_oi / 1000).toFixed(0)}K</td>
+                      <td style={{ ...td, ...numStyle }}>{r.pc_oi_ratio ?? ''}</td>
+                      <td style={{ ...td, ...numStyle, color: (r.put_oi_delta_pct ?? 0) > 5 ? BB.red : BB.text2 }}>{r.put_oi_delta_pct != null ? `${r.put_oi_delta_pct >= 0 ? '+' : ''}${r.put_oi_delta_pct}%` : ''}</td>
+                      <td style={{ ...td, ...numStyle }}>{r.atm_iv ?? ''}</td>
+                      <td style={{ ...td, ...numStyle }}>{r.skew25 ?? ''}</td>
+                      <td style={{ ...td, color: BB.text2 }}>{r.line.split('— ')[1] || r.line}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Fold>
+        )
+      })()}
 
       <Fold title="Sector spine" badge={`${rows.length} sectors · nightly 17:25`}>
         <div style={{ overflowX: 'auto' }}>

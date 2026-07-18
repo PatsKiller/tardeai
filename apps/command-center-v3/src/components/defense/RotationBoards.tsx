@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { BB, T, DASH, numStyle, heatRamp } from '../../lib/watchTokens'
+import { rankWithinScope, boardCallout } from '../../lib/chipScope.mjs'
 
 // Defense v3 WS-T — the rotation picture: RRG scatter (full sector names, W/M/Q axis
 // toggle) + leaders/laggards boards for sectors AND industries at W (5d) / M (20d) /
@@ -62,31 +63,27 @@ function Scatter({ dots, xLabel, yLabel, xMax, yMax }: { dots: Dot[]; xLabel: st
   )
 }
 
-function Board({ title, rows, tf }: { title: string; rows: Array<{ name: string; value: number | null; prevRank: number | null; state: string | null; book: number }>; tf: Timeframe }) {
-  const ranked = rows.filter(r => r.value != null).sort((a, b) => (b.value as number) - (a.value as number))
-  const move = (i: number, r: { prevRank: number | null }) => {
-    if (r.prevRank == null) return null
-    const d = r.prevRank - (i + 1)
-    if (d === 0) return <span style={{ color: BB.text3 }}>=</span>
-    return <span style={{ color: d > 0 ? BB.green : BB.red }}>{d > 0 ? '▲' : '▼'}{Math.abs(d)}</span>
-  }
+function Board({ title, rows, tf }: { title: string; rows: Array<{ name: string; value: number | null; prevValue: number | null; state: string | null; book: number }>; tf: Timeframe }) {
+  // v4: ranks + movement computed WITHIN LIST SCOPE (lib/chipScope, unit-tested);
+  // callout separates the strongest IMPROVEMENT from the sharpest DETERIORATION.
+  const ranked = rankWithinScope(rows as any) as any[]
   const longer = tf === 'W' ? 'M' : tf === 'M' ? 'Q' : 'M'
-  const climbers = ranked
-    .map((r, i) => ({ r, i, d: r.prevRank != null ? r.prevRank - (i + 1) : 0 }))
-    .sort((a, b) => b.d - a.d)
-  const top = climbers[0]
-  const line = top && top.d > 0
-    ? `${top.r.name}: #${top.i + 1} on ${tf}, was #${top.r.prevRank} on ${longer} ▲${top.d} — the strongest rotation at this timeframe`
-    : `ranks broadly match the ${longer} view — no big rotation at this timeframe`
+  const line = boardCallout(ranked, tf, longer)
   return (
     <div style={{ minWidth: 0 }}>
       <div style={{ fontSize: DASH.section, fontWeight: 800, color: BB.text2, marginBottom: 4 }}>{title}</div>
-      {ranked.map((r, i) => (
-        <div key={r.name} style={{ display: 'grid', gridTemplateColumns: '22px 1fr 64px 40px 56px', gap: 6, alignItems: 'center', fontSize: DASH.data, padding: '2px 0', borderBottom: `1px solid ${BB.borderHair}` }}>
-          <span style={{ ...numStyle, color: BB.text3 }}>{i + 1}</span>
-          <span style={{ color: BB.text1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderLeft: `3px solid ${STATE_COLOR[r.state || ''] || BB.borderHair}`, paddingLeft: 6 }}>{r.name}</span>
+      {ranked.map((r: any) => (
+        <div key={r.name} style={{ display: 'grid', gridTemplateColumns: '22px 1fr 64px 44px 56px', gap: 6, alignItems: 'center', fontSize: DASH.data, padding: '2px 0', borderBottom: `1px solid ${BB.borderHair}` }}>
+          <span style={{ ...numStyle, color: BB.text3 }}>{r.rank}</span>
+          <span style={{ color: BB.text1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderLeft: `3px solid ${STATE_COLOR[r.state || ''] || BB.borderHair}`, paddingLeft: 6 }}>
+            {r.isNew && <span title={`new to this list on ${tf}`} style={{ color: T.link }}>● </span>}{r.name}
+          </span>
           <span style={{ ...numStyle, textAlign: 'right', background: heatRamp((r.value as number) / 3), color: BB.text0, borderRadius: 2, padding: '0 4px', fontWeight: 700 }}>{pct(r.value)}</span>
-          <span style={{ ...numStyle, textAlign: 'right', fontSize: DASH.chip + 1 }}>{move(i, r)}</span>
+          <span style={{ ...numStyle, textAlign: 'right', fontSize: DASH.chip + 1 }}>
+            {r.delta == null ? (r.isNew ? <span style={{ color: T.link }}>new</span> : <span style={{ color: BB.text3 }}>—</span>)
+              : r.delta === 0 ? <span style={{ color: BB.text3 }}>=</span>
+                : <span style={{ color: r.delta > 0 ? BB.green : BB.red }}>{r.delta > 0 ? '▲' : '▼'}{Math.abs(r.delta)}</span>}
+          </span>
           <span style={{ height: 6, background: BB.borderHair, borderRadius: 1, overflow: 'hidden' }}>
             <span style={{ display: 'block', height: '100%', width: `${Math.min(100, r.book * 4)}%`, background: BB.amber }} />
           </span>
@@ -105,22 +102,16 @@ export default function RotationBoards({ sectors, industries, spyLong }: { secto
   const indVal = (g: any, t: Timeframe) => t === 'W' ? g.rel1w : t === 'M' ? g.rel1m
     : (g.perf_quarter != null && spyLong != null ? +(g.perf_quarter - spyLong).toFixed(1) : null)
 
-  const rank = (rows: any[], val: (r: any) => number | null) => {
-    const ordered = rows.filter(r => val(r) != null).sort((a, b) => (val(b) as number) - (val(a) as number))
-    return new Map(ordered.map((r, i) => [r, i + 1]))
-  }
-
   const sectorRows = useMemo(() => {
     const longer: Timeframe = tf === 'W' ? 'M' : tf === 'M' ? 'Q' : 'M'
-    const prev = rank(sectors, r => secVal(r, longer))
-    return sectors.map(r => ({ name: r.sector, value: secVal(r, tf), prevRank: prev.get(r) ?? null, state: r.state, book: r.book_pct ?? 0 }))
+    return sectors.map(r => ({ name: r.sector, value: secVal(r, tf), prevValue: secVal(r, longer), state: r.state, book: r.book_pct ?? 0 }))
   }, [sectors, tf])
 
   const industryRows = useMemo(() => {
     const longer: Timeframe = tf === 'W' ? 'M' : tf === 'M' ? 'Q' : 'M'
-    const prev = rank(industries, g => indVal(g, longer))
-    const rows = industries.map(g => ({ name: g.industry, value: indVal(g, tf), prevRank: prev.get(g) ?? null, state: g.state, book: g.held?.length ? 3 : 0 }))
+    const rows = industries.map(g => ({ name: g.industry, value: indVal(g, tf), prevValue: indVal(g, longer), state: g.state, book: g.held?.length ? 3 : 0 }))
     const ordered = rows.filter(r => r.value != null).sort((a, b) => (b.value as number) - (a.value as number))
+    // scope = the 16 rendered rows; chipScope re-ranks within this scope only
     return [...ordered.slice(0, 8), ...ordered.slice(-8)]
   }, [industries, tf, spyLong])
 
@@ -175,6 +166,10 @@ export default function RotationBoards({ sectors, industries, spyLong }: { secto
         <Scatter dots={dots} xLabel={axis.x} yLabel={axis.y} xMax={axis.xMax} yMax={axis.yMax} />
         <Board title={`Sectors · ${tf}`} rows={sectorRows} tf={tf} />
         <Board title={`Industries · ${tf} (top/bottom 8)`} rows={industryRows} tf={tf} />
+      </div>
+      <div style={{ fontSize: DASH.chip, color: BB.text3, marginTop: 6 }}>
+        ▲▼ = rank change vs the {tf === 'W' ? 'M' : tf === 'M' ? 'Q' : 'M'} view, within this list ·
+        <span style={{ color: T.link }}> ●</span> new to the list at this timeframe · bar = your effective book weight · values are rel-SPY
       </div>
     </div>
   )

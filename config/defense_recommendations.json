@@ -1,10 +1,13 @@
 {
-  "_comment": "Defense Desk v3 WS-R. Every knob the recommendations engine uses — no hardcoded values in code. Neutral map = equal-weight 11 sectors unless operator overrides. Size bands are % of the target account's equity. Advisory/paper only; matrix in account_capabilities.json is ENFORCED at render.",
+  "_comment": "Defense Desk v3 WS-R. Every knob the recommendations engine uses \u2014 no hardcoded values in code. Neutral map = equal-weight 11 sectors unless operator overrides. Size bands are % of the target account's equity. Advisory/paper only; matrix in account_capabilities.json is ENFORCED at render.",
   "neutral_sector_weight_pct": 9.1,
   "underweight_floor_pct": 4.0,
   "overweight_alert_pct": 10.0,
   "rotate_in": {
-    "size_band_pct": [2.0, 4.0],
+    "size_band_pct": [
+      2.0,
+      4.0
+    ],
     "max_cards": 4,
     "constituent_min_dollar_vol_m": 20,
     "constituent_max_ext_above_sma50_pct": 12,
@@ -20,7 +23,7 @@
     "factor_threshold": 3,
     "shadow_trading_days": 10,
     "shadow_started": "2026-07-18",
-    "tax_gate_lt_gain_note": "long-term gain — operator tax review before any real-money exit",
+    "tax_gate_lt_gain_note": "long-term gain \u2014 operator tax review before any real-money exit",
     "max_cards": 4
   },
   "inverse_etf": {
@@ -32,8 +35,11 @@
     },
     "trigger_book_pct": 10.0,
     "index_trigger_lagging_sectors": 4,
-    "size_band_pct": [2.0, 5.0],
-    "decay_warning": "1x inverse ETFs reset daily — holding through chop bleeds; this is a WEEKS hedge, not a position",
+    "size_band_pct": [
+      2.0,
+      5.0
+    ],
+    "decay_warning": "1x inverse ETFs reset daily \u2014 holding through chop bleeds; this is a WEEKS hedge, not a position",
     "exit_rule": "close when the trigger state exits (2-close confirmed)"
   },
   "taxable_short": {
@@ -47,15 +53,35 @@
     "max_cards": 3
   },
   "covered_call": {
-    "tenor_dte": [21, 45],
-    "delta_band": [0.2, 0.3],
+    "tenor_dte": [
+      21,
+      45
+    ],
+    "delta_band": [
+      0.2,
+      0.3
+    ],
     "min_position_dollars": 2000,
     "max_cards": 4
   },
   "chain_snapshot": {
-    "priority_universe": ["SPY", "QQQ", "XLK", "XLF", "XLV", "XLE", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC"],
-    "top_holdings_n": 10,
-    "strike_count": 8,
+    "priority_universe": [
+      "SPY",
+      "QQQ",
+      "XLK",
+      "XLF",
+      "XLV",
+      "XLE",
+      "XLI",
+      "XLY",
+      "XLP",
+      "XLU",
+      "XLB",
+      "XLRE",
+      "XLC"
+    ],
+    "top_holdings_n": 16,
+    "strike_count": 14,
     "pc_mean_window_days": 20,
     "skew_delta_target": 0.25
   },
