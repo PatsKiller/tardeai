@@ -202,7 +202,7 @@
     "_comment": "v8.2 panel \u2014 three paid seats, per-seat models+prices; monthly budget shared. Primary=claude per the CRITICAL_CLOUD standing rule; gpt/xai optional (panel mode diffs them). env LLM_CRITICAL_CLOUD overrides the claude model.",
     "monthly_budget_usd": 25.0,
     "est_output_tokens": 4000,
-    "weekly_paid_review": false,
+    "weekly_paid_review": true,
     "seats": {
       "paid": {
         "provider": "anthropic",

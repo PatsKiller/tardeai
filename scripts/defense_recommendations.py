@@ -897,6 +897,32 @@ def main() -> int:
     for c in ok:
         if c["id"].startswith("moveout-") and not c.get("superseded_by_pair") and not c.get("destination"):
             tensions.append(f"{c['id']}: trim without destination (guard breach)")
+    # v8.5 — share-commitment collision (the Opus catch): the SAME held shares must
+    # never be promised to a trim AND a covered call; at least one card cannot execute
+    held_sh = {(h["symbol"], h["account"]): h["shares"] for h in holdings}
+    commits = {}
+    for c in ok:
+        sym = c["instruments"][0]["symbol"]
+        if c["id"].startswith("moveout-"):
+            for o in (c.get("ticket") or {}).get("options", []):
+                k = (sym, o["account"])
+                commits.setdefault(k, []).append((c["id"], "trim", o["shares"]))
+        elif c["id"].startswith("cc-"):
+            k = (sym, c["accounts"][0])
+            n = int(str(c.get("size_band", "0")).split(" contract")[0].split()[-1] or 0)
+            commits.setdefault(k, []).append((c["id"], "covered_call", n * 100))
+    for (sym, acct), lst in commits.items():
+        total = sum(x[2] for x in lst)
+        held = held_sh.get((sym, acct), 0)
+        if len({x[1] for x in lst}) > 1 and total > held:
+            t = (f"{sym} ({acct.replace('schwab_', '')}): {total:g} shares committed across "
+                 f"{'+'.join(x[1] for x in lst)} but only {held:g} held — at least one card "
+                 "cannot execute; pick ONE use for the shares")
+            tensions.append(t)
+            for cid, _, _ in lst:
+                card = next((c for c in ok if c["id"] == cid), None)
+                if card:
+                    card["tension"] = t
     if not args.dry_run:
         conn.commit()
 
