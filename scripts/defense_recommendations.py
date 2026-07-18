@@ -322,6 +322,12 @@ def move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=0, as_of_
                      if x["symbol"] == h["symbol"] and x.get("scope") == "move_out"
                      and not x.get("until")), None)
         if supp:
+            try:
+                cur.execute("""INSERT INTO defense_execution_audit (intent_key, hop, detail, actor)
+                               VALUES (%s,'advisory_suppressed',%s,'engine')""",
+                            (f"mute-{h['symbol']}", f"{h['symbol']} move_out suppressed (operator mute {supp['set']})"))
+            except Exception:
+                cur.connection.rollback()
             continue
         # DT1 — the composite, arithmetic rendered; absent inputs listed
         urgent = any("urgent" in str(f.get("value", "")).lower() for f in factors)

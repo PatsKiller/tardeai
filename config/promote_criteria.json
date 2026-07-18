@@ -1,0 +1,61 @@
+{
+  "_comment": "Defense v9 WS-A — PRE-REGISTERED promote criteria for the Jul 30-31 adjudication. Seeds registered 2026-07-18 BEFORE further evidence; operator edits then LOCKS (criteria_locked=true). Post-lock edits require a dated amendment with a reason. The console evaluates these nightly; decisions write dated directives here — nothing promotes silently.",
+  "criteria_locked": false,
+  "locked_at": null,
+  "review_window": "2026-07-30/31",
+  "amendments": [],
+  "decisions": {},
+  "entries": {
+    "gain_guardian_telegram": {
+      "registered_at": "2026-07-18",
+      "question": "Does Gain Guardian earn Telegram publication?",
+      "metrics": [
+        {"id": "shadow_runs", "def": "17:40 shadow runs completed", "threshold": ">=8"},
+        {"id": "would_have_fired", "def": "advisories that would have fired in shadow", "threshold": ">=3"},
+        {"id": "signal_wrong_pct", "def": "of evaluable at +5d, % SIGNAL_WRONG (exit_advisory_outcomes)", "threshold": "<=40"},
+        {"id": "incidents", "def": "iron-rule/state incidents attributable to GG", "threshold": "==0"}
+      ],
+      "options": ["PROMOTE", "EXTEND_10D"],
+      "extension_rule": "one extension max, then REDESIGN review"
+    },
+    "move_out_telegram": {
+      "registered_at": "2026-07-18",
+      "question": "Do move-out advisories earn Telegram?",
+      "metrics": [
+        {"id": "advisories_rendered", "def": "distinct move-out cards rendered in shadow", "threshold": ">=5"},
+        {"id": "operator_agreement", "def": "operator 👍 spot-agreements collected in console", "threshold": ">=3"},
+        {"id": "fabrication_findings", "def": "oversight-seat findings of factor fabrication", "threshold": "==0"}
+      ],
+      "options": ["PROMOTE", "EXTEND_10D"]
+    },
+    "ladder_rollback_telegram": {
+      "registered_at": "2026-07-18",
+      "question": "Do ladder fires/disarms + rollback alerts earn Telegram?",
+      "metrics": [
+        {"id": "tranche_events_correct", "def": "tranche fires+disarms operator-reviewed correct", "threshold": ">=3"},
+        {"id": "rollback_eval_sessions", "def": "sessions of error-free rollback-condition evaluation", "threshold": ">=10"}
+      ],
+      "options": ["PROMOTE", "EXTEND_10D"]
+    },
+    "execution_rail_continue": {
+      "registered_at": "2026-07-18",
+      "question": "Does the execution rail continue as-is?",
+      "metrics": [
+        {"id": "audit_completeness_pct", "def": "% intents with complete audit chains (staged→terminal)", "threshold": "==100"},
+        {"id": "unaudited_hops", "def": "state changes without an audit row", "threshold": "==0"},
+        {"id": "false_refusals", "def": "refusals of compliant intents (operator-flagged)", "threshold": "==0"}
+      ],
+      "options": ["CONTINUE", "FIX_FIRST"]
+    },
+    "oversight_weekly_paid": {
+      "registered_at": "2026-07-18",
+      "question": "Does the weekly paid Claude review stay scheduled?",
+      "metrics": [
+        {"id": "weekly_runs", "def": "scheduled Friday runs completed", "threshold": ">=2"},
+        {"id": "substantive_findings", "def": "findings the operator rated substantive (👍)", "threshold": ">=1"},
+        {"id": "budget_ok", "def": "monthly oversight spend within budget", "threshold": "==true"}
+      ],
+      "options": ["KEEP", "DEMOTE_TO_MANUAL"]
+    }
+  }
+}

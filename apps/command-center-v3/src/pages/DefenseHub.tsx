@@ -8,6 +8,7 @@ import RotationBoards from '../components/defense/RotationBoards'
 import DefenseDetails from '../components/defense/DefenseDetails'
 import BookStanceStrip from '../components/defense/BookStanceStrip'
 import ExecutionPanel from '../components/defense/ExecutionPanel'
+import ReviewConsole from '../components/defense/ReviewConsole'
 import RotationPlanPanel from '../components/defense/RotationPlanPanel'
 
 function ago(ts?: string | null): string {
@@ -178,6 +179,9 @@ export default function DefenseHub() {
 
       {/* Row 3 — the rotation picture */}
       <RotationBoards sectors={rows} industries={ind} spyLong={spyLong} oversight={recsData?.oversight} />
+
+      {/* Row 3.5 — v9 adjudication: promote console · governance · seat league */}
+      <ReviewConsole />
 
       {/* Row 4 — detail folds, collapsed by default */}
       <DefenseDetails posture={posture} industries={industries} radar={radar}

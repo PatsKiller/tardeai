@@ -11292,6 +11292,40 @@ def _defense_core_toggle(body=None):
     return {"ok": True, "symbol": sym, "core": bool(body.get("on"))}
 
 
+def _defense_review(query=None):
+    """GET /api/v2/defense/review — v9 promote console + governance + seat league."""
+    import importlib
+    import defense_adjudication
+    adj = importlib.reload(defense_adjudication)
+    from db_adapter import _get_conn
+    cur = _get_conn().cursor()
+    return {"ok": True, "console": adj.evaluate_console(cur),
+            "governance": adj.governance(cur), "league": adj.seat_league(cur)}
+
+
+def _defense_review_action(body=None):
+    """POST /api/v2/defense/review/action — {action: lock|decide|amend|spot, ...}."""
+    body = body or {}
+    import importlib
+    import defense_adjudication
+    adj = importlib.reload(defense_adjudication)
+    from db_adapter import _get_conn
+    conn = _get_conn()
+    cur = conn.cursor()
+    a = body.get("action")
+    if a == "lock":
+        return adj.lock_criteria()
+    if a == "decide":
+        return adj.record_decision(body.get("entry", ""), body.get("choice", ""), body.get("note", ""))
+    if a == "amend":
+        return adj.amend_criteria(body.get("entry", ""), body.get("field", ""), body.get("new_value"), body.get("reason", ""))
+    if a == "spot":
+        r = adj.spot_rate(cur, body.get("subject", ""), body.get("subject_key", ""), body.get("rating", ""), body.get("note", ""))
+        conn.commit()
+        return r
+    return {"ok": False, "error": "action must be lock|decide|amend|spot"}
+
+
 def _oversight_latest():
     """Current build's free-seat verdicts (v8 Tier 1) — cached rows, no LLM calls here."""
     try:
@@ -32269,6 +32303,7 @@ ROUTES = {
     "/api/v2/defense/industries": _defense_industries,
     "/api/v2/defense/recommendations": _defense_recommendations,
     "/api/v2/defense/core": _defense_core_registry,
+    "/api/v2/defense/review": _defense_review,
     "/api/v2/portfolio/book-map": _portfolio_book_map,
     "/api/v2/news/symbol-headlines": _symbol_headlines,
     "/api/v2/news/headline-counts": _headline_counts,
@@ -36956,6 +36991,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             result = _reports_brief_regenerate(body or {})
             return (200 if result.get("ok") else 500), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/defense/review/action":
+        try:
+            result = _defense_review_action(body or {})
+            return (200 if result.get("ok") else 400), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 
