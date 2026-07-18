@@ -11134,6 +11134,18 @@ def _defense_industries(query=None):
     return {"ok": True, **(snap or {"industries": [], "note": "industry engine has not run yet"})}
 
 
+def _defense_recommendations(query=None):
+    """GET /api/v2/defense/recommendations — Defense Desk v3 WS-R: complete-or-absent
+    recommendation cards (get_into/protect/short_side/income) + the hedging radar.
+    Disk snapshots: defense_recommendations (nightly 17:50) + options_chain_snapshot
+    (nightly 17:35). Cheap reads."""
+    recs = _load_json(PROJECT_ROOT / "data" / "runtime" / "defense_recommendations_latest.json")
+    radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
+    return {"ok": True,
+            "recommendations": recs or {"groups": {}, "note": "engine has not run yet"},
+            "hedging_radar": radar or {"radar": [], "note": "chain snapshot has not run yet"}}
+
+
 import json as _pj_mod
 _pj_loads = _pj_mod.loads
 
@@ -31915,6 +31927,7 @@ ROUTES = {
     "/api/v2/market-movers": _market_movers,
     "/api/v2/defense/posture": _defense_posture,
     "/api/v2/defense/industries": _defense_industries,
+    "/api/v2/defense/recommendations": _defense_recommendations,
     "/api/v2/portfolio/book-map": _portfolio_book_map,
     "/api/v2/news/symbol-headlines": _symbol_headlines,
     "/api/v2/news/headline-counts": _headline_counts,
