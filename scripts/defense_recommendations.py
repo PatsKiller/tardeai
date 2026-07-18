@@ -174,6 +174,12 @@ def rotate_in(sectors, cur, enrich, as_of, equities=None) -> list:
     cards = []
     ranked = sorted([r for r in sectors if r.get("state") in ("LEADING", "IMPROVING")],
                     key=lambda r: -(r.get("rs20") or 0))
+    # v8.10 — the defensive lean governs rotate-in IDEAS too (operator extension
+    # 2026-07-18, after the Opus catch: pairs excluded cyclicals while Get-Into
+    # still advised Energy): cyclical rotate-ins are excluded while lean is on
+    lean = (CFG.get("rotation_pairs") or {}).get("defensive_lean") or {}
+    if lean.get("enabled"):
+        ranked = [r for r in ranked if r["sector"] in lean.get("defensive_sectors", [])]
     for r in ranked:
         if (r.get("book_pct") or 0) >= CFG["underweight_floor_pct"]:
             continue
@@ -972,7 +978,10 @@ def main() -> int:
                         key=lambda c: -(c.get("impact_dollars") or 0))
               for g in ("get_into", "protect", "short_side", "income")}
     empty_reasons = {
-        "get_into": "no LEADING/IMPROVING sector is underweight vs your neutral map",
+        "get_into": ("DEFENSIVE LEAN active: cyclical rotate-ins excluded — no defensive sector "
+                     "(Utilities/Staples/Healthcare) is LEADING+underweight right now"
+                     if (CFG.get("rotation_pairs") or {}).get("defensive_lean", {}).get("enabled")
+                     else "no LEADING/IMPROVING sector is underweight vs your neutral map"),
         "protect": "no held position fired ≥%d factors" % CFG["move_out"]["factor_threshold"],
         "short_side": "no trigger: no >10%-book sector WEAKENING/LAGGING and short pool produced no clean candidate",
         "income": "no ≥100-share holding sits in a WEAKENING/LAGGING sector",
