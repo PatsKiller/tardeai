@@ -45,13 +45,22 @@ def _acct(name: str) -> str:
 
 
 def validate(card: dict) -> str | None:
-    """Return the missing field name, or None if the card is complete."""
+    """Return the missing field name, or None if the card is complete.
+    v4: actionable groups additionally require levels with a real price —
+    a card the operator can't act on from its face does not render."""
     for f in REQUIRED:
         v = card.get(f)
         if v is None or v == "" or v == [] or v == {}:
             return f
     if not all(("name" in x and "value" in x) for x in card["factors"]):
         return "factors"
+    locked = any(i.get("symbol") == "—" for i in card.get("instruments", []))
+    if card["group"] in ("get_into", "short_side", "income") and not locked:
+        lv = card.get("levels") or {}
+        if not lv.get("price"):
+            return "levels.price"
+        if not lv.get("entry_zone") or not lv.get("stop"):
+            return "levels"
     return None
 
 
@@ -73,6 +82,28 @@ def _holdings() -> list:
                     "value": r.get("market_value") or 0, "shares": r.get("shares") or 0,
                     "price": r.get("price") or 0, "name": r.get("name") or ""})
     return out
+
+
+def account_equities(holdings) -> dict:
+    eq = {}
+    for h in holdings:
+        eq[h["account"]] = eq.get(h["account"], 0) + h["value"]
+    return {k: round(v) for k, v in eq.items()}
+
+
+def dollars_band(pct_band, accounts, equities) -> dict:
+    """WS-CARD: '2–4%' becomes real dollars per account the card is valid for."""
+    out = {}
+    for a in accounts:
+        eq = equities.get(a)
+        if eq:
+            out[a] = [round(eq * pct_band[0] / 100), round(eq * pct_band[1] / 100)]
+    return out
+
+
+def _materiality_min(total_book: float) -> float:
+    c = CFG["materiality"]
+    return max(c["min_position_dollars"], total_book * c["min_position_pct_of_book"] / 100)
 
 
 def _profiles(cur, symbols):
@@ -116,7 +147,7 @@ def _earnings_soon(prof, days):
         return False
 
 
-def rotate_in(sectors, cur, enrich, as_of) -> list:
+def rotate_in(sectors, cur, enrich, as_of, equities=None) -> list:
     c = CFG["rotate_in"]
     cards = []
     ranked = sorted([r for r in sectors if r.get("state") in ("LEADING", "IMPROVING")],
@@ -148,11 +179,17 @@ def rotate_in(sectors, cur, enrich, as_of) -> list:
             picks.append({"symbol": sym, "hermes": round(sc, 1)})
             if len(picks) >= c["top_constituents"]:
                 break
-        instruments = [{"symbol": r["etf"], "kind": "sector ETF", "note": "valid every account"}]
+        etf_px = _prices(cur, [r["etf"]]).get(r["etf"])
+        etf_e = enrich.get(r["etf"]) or {}
+        sma20_lvl = round(etf_px / (1 + (etf_e.get("sma20_pct") or 0) / 100), 2) if etf_px else None
+        instruments = [{"symbol": r["etf"], "kind": "sector ETF", "note": "valid every account",
+                        "price": etf_px}]
         instruments += [{"symbol": p["symbol"], "kind": "constituent",
-                         "note": f"Hermes composite {p['hermes']}"} for p in picks]
+                         "note": f"Hermes composite {p['hermes']}",
+                         "price": px.get(p["symbol"])} for p in picks]
         if not picks:
             instruments[0]["note"] += " — no constituent passed the rails; ETF is the recommendation"
+        band = dollars_band(c["size_band_pct"], sorted(CAPS.keys()), equities or {})
         cards.append({
             "id": f"rotatein-{r['etf']}-{as_of}", "group": "get_into",
             "title": f"ROTATE-IN · {r['sector']} ({r['state']}, RS20 {r['rs20']:+.1f})",
@@ -167,6 +204,10 @@ def rotate_in(sectors, cur, enrich, as_of) -> list:
                 {"name": "breadth", "value": f"{r.get('breadth_pct')}% above own 20DMA"},
             ],
             "as_of": as_of, "mode": "SHADOW",
+            "levels": {"price": etf_px, "entry_zone": f"pullback toward 20DMA ≈ ${sma20_lvl}" if sma20_lvl else "stagger on pullbacks",
+                       "stop": f"thesis stop: {r['sector']} exits {r['state']} (2-close)"},
+            "dollars_by_account": band,
+            "impact_dollars": max((v[1] for v in band.values()), default=0),
             "routes": {"proposal": "watch-directive path — operator approves; nothing self-executes"},
         })
         if len(cards) >= c["max_cards"]:
@@ -195,52 +236,158 @@ def _profiles_one(cur, sym):
     return _PROF_CACHE[sym]
 
 
-def move_out(sectors, holdings, cur, enrich, hermes, as_of) -> list:
-    c = CFG["move_out"]
+def _sector_map(sectors):
     smap = {}
     for r in sectors:
         for name in [r["sector"]] + _sector_aliases(r["sector"]):
             smap[name] = r
-    cards = []
+    return smap
+
+
+def _fired_factors(h, sec, e, hz) -> list:
+    """The shared factor join (move-out + stances) — values always shown."""
+    factors = []
+    if sec and sec.get("state") in ("WEAKENING", "LAGGING"):
+        factors.append({"name": "sector state", "value": f"{sec['sector']} {sec['state']} (RS20 {sec['rs20']:+.1f})"})
+    if (e.get("sma200_pct") or 0) < 0:
+        factors.append({"name": "below 200DMA", "value": f"{e['sma200_pct']}%"})
+    if (e.get("sma50_pct") or 0) < 0:
+        factors.append({"name": "below 50DMA", "value": f"{e['sma50_pct']}%"})
+    if (hz.get("delta5") or 0) < -3:
+        factors.append({"name": "Hermes composite 5d", "value": f"{hz['delta5']:+.1f} → {hz['score']}"})
+    if (e.get("rsi") or 50) < 40:
+        factors.append({"name": "RSI14", "value": e["rsi"]})
+    if sec and (sec.get("news_negatives") or 0) > 0:
+        factors.append({"name": "sector negative catalysts 5d", "value": sec["news_negatives"]})
+    return factors
+
+
+def move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=0) -> list:
+    c = CFG["move_out"]
+    smap = _sector_map(sectors)
+    floor = _materiality_min(total_book)
+    cards, scraps = [], []
     for h in holdings:
+        if h["value"] < floor:
+            scraps.append(h)
+            continue
         prof = _profiles_one(cur, h["symbol"])
         sec = smap.get((prof or {}).get("sector") or "")
         e = enrich.get(h["symbol"]) or {}
         hz = hermes.get(h["symbol"]) or {}
-        factors = []
-        if sec and sec.get("state") in ("WEAKENING", "LAGGING"):
-            factors.append({"name": "sector state", "value": f"{sec['sector']} {sec['state']} (RS20 {sec['rs20']:+.1f})"})
-        if (e.get("sma200_pct") or 0) < 0:
-            factors.append({"name": "below 200DMA", "value": f"{e['sma200_pct']}%"})
-        if (e.get("sma50_pct") or 0) < 0:
-            factors.append({"name": "below 50DMA", "value": f"{e['sma50_pct']}%"})
-        if (hz.get("delta5") or 0) < -3:
-            factors.append({"name": "Hermes composite 5d", "value": f"{hz['delta5']:+.1f} → {hz['score']}"})
-        if (e.get("rsi") or 50) < 40:
-            factors.append({"name": "RSI14", "value": e["rsi"]})
-        if sec and (sec.get("news_negatives") or 0) > 0:
-            factors.append({"name": "sector negative catalysts 5d", "value": sec["news_negatives"]})
+        factors = _fired_factors(h, sec, e, hz)
         if len(factors) < c["factor_threshold"]:
             continue
         tax = CFG["move_out"]["tax_gate_lt_gain_note"] if h["account"] == "schwab_taxable" else "IRA — no tax gate"
         cards.append({
             "id": f"moveout-{h['symbol']}-{h['account']}-{as_of}", "group": "protect",
             "title": f"MOVE-OUT · {h['symbol']} (${h['value']/1000:.0f}K in {CFG['account_labels'].get(h['account'], h['account'])})",
-            "instruments": [{"symbol": h["symbol"], "kind": "held position", "note": f"{h['shares']} sh"}],
+            "instruments": [{"symbol": h["symbol"], "kind": "held position", "note": f"{h['shares']:.0f} sh"}],
             "accounts": [h["account"]], "direction": "reduce/exit",
             "size_band": "trim 25–50% first; full exit only on continued deterioration",
             "entry_logic": "reduce into strength, not into a flush; stage over 2–3 sessions",
             "invalidation": "sector recovers out of WEAKENING/LAGGING (2-close) AND price reclaims the 50DMA",
             "factors": factors + [{"name": "tax gate", "value": tax}],
             "as_of": as_of, "mode": "SHADOW",
-            "routes": {"shadow": f"10-trading-day shadow started {c['shadow_started']} — Telegram only after promote"},
+            "levels": {"price": h["price"] or None, "position_value": round(h["value"]),
+                       "basis_note": "unrealized P&L n/a — Cost Basis export pending"},
+            "impact_dollars": round(h["value"]),
+            "routes": {"shadow": f"10-trading-day shadow started {c['shadow_started']} — Telegram only after promote",
+                       "round_trip": "registers in the round-trip ledger on advise; one-tap confirm on exit"},
         })
         if len(cards) >= c["max_cards"]:
             break
+    # L2: residual scraps collapse to ONE janitorial card — never dressed as strategy
+    if scraps:
+        names = sorted(scraps, key=lambda x: -x["value"])
+        cards.append({
+            "id": f"cleanup-{as_of}", "group": "protect",
+            "title": f"CLEANUP · {len(names)} residual scraps ≤${floor/1000:.1f}K — consolidate or close; not strategy",
+            "instruments": [{"symbol": s["symbol"], "kind": "residual",
+                             "note": f"${s['value']:.0f} in {CFG['account_labels'].get(s['account'], s['account'])}"}
+                            for s in names[:10]],
+            "accounts": sorted({s["account"] for s in names}),
+            "direction": "janitorial", "size_band": f"total ${sum(s['value'] for s in names)/1000:.1f}K across {len(names)} lines",
+            "entry_logic": "close or consolidate at convenience — market timing is irrelevant at this size",
+            "invalidation": "n/a — housekeeping, not a thesis",
+            "factors": [{"name": "materiality floor", "value": f"${floor:,.0f} ({CFG['materiality']['min_position_pct_of_book']}% of book)"}],
+            "as_of": as_of, "mode": "SHADOW",
+            "levels": {"price": None, "position_value": round(sum(s["value"] for s in names))},
+            "impact_dollars": round(sum(s["value"] for s in names)),
+            "routes": {"note": "scraps no longer generate individual MOVE-OUT cards"},
+        })
     return cards
 
 
-def inverse_etf(sectors, market, as_of) -> list:
+def stances(sectors, holdings, cur, enrich, hermes, as_of) -> list:
+    """L3: every ≥$10K position gets an explicit stance — including HOLD.
+    Funds judge by lookthrough-weighted sector states; silence about the core
+    was the failure, assessed-and-holding is the fix."""
+    from fund_lookthrough import _cfg as _lt_cfg
+    lt = _lt_cfg()
+    smap = _sector_map(sectors)
+    state_by_sector = {r["sector"]: r for r in sectors}
+    floor = CFG["materiality"]["stance_min_dollars"]
+    # aggregate same symbol+account rows (holdings.json can split lots)
+    agg = {}
+    for h in holdings:
+        k = (h["symbol"], h["account"])
+        if k in agg:
+            agg[k]["value"] += h["value"]
+            agg[k]["shares"] += h["shares"]
+        else:
+            agg[k] = dict(h)
+    out = []
+    for h in sorted(agg.values(), key=lambda x: -x["value"]):
+        if h["value"] < floor:
+            continue
+        sym = h["symbol"]
+        fund = lt.get(sym)
+        if fund and fund.get("weights"):
+            weak = sum(w for s, w in fund["weights"].items()
+                       if (state_by_sector.get(s) or {}).get("state") in ("WEAKENING", "LAGGING"))
+            worst = max(fund["weights"], key=lambda s: fund["weights"][s])
+            worst_state = (state_by_sector.get(worst) or {}).get("state") or "?"
+            if weak >= 0.33:
+                stance, reason = "TRIM-WATCH", (
+                    f"{weak*100:.0f}% of fund weight sits in WEAKENING/LAGGING sectors "
+                    f"(top: {worst} {fund['weights'][worst]*100:.0f}% → {worst_state}); no stop on funds")
+            else:
+                stance, reason = "HOLD", (
+                    f"{(1-weak)*100:.0f}% of fund weight in LEADING/IMPROVING sectors; "
+                    f"top sleeve {worst} {fund['weights'][worst]*100:.0f}% → {worst_state}")
+            sec_label = "fund (lookthrough)"
+        elif fund and fund.get("lookthrough") == "none":
+            stance, reason, sec_label = "HOLD", f"not decomposed — {fund.get('why', 'no lookthrough map')}", "fund (not decomposed)"
+        else:
+            prof = _profiles_one(cur, sym)
+            sec = smap.get((prof or {}).get("sector") or "")
+            e = enrich.get(sym) or {}
+            hz = hermes.get(sym) or {}
+            factors = _fired_factors(h, sec, e, hz)
+            sec_label = (sec or {}).get("sector") or "?"
+            st = (sec or {}).get("state") or "?"
+            if len(factors) >= CFG["move_out"]["factor_threshold"]:
+                stance = "TRIM"
+                reason = " · ".join(f"{f['name']} {f['value']}" for f in factors[:2]) + f" ({len(factors)} factors fired)"
+            elif st == "LEADING" and (e.get("sma50_pct") or 0) > 0:
+                stance = "HOLD" if (sec or {}).get("book_pct", 0) >= CFG["underweight_floor_pct"] else "ADD"
+                reason = f"{sec_label} LEADING (RS20 {(sec or {}).get('rs20', 0):+.1f}), above 50DMA" + \
+                         ("" if stance == "HOLD" else f" · sector only {(sec or {}).get('book_pct')}% of book")
+            elif factors:
+                stance = "HOLD"
+                reason = f"{sec_label} {st} · watch: " + " · ".join(f"{f['name']} {f['value']}" for f in factors[:2])
+            else:
+                stance = "HOLD"
+                reason = f"{sec_label} {st}, no factors fired"
+        out.append({"symbol": sym, "account": h["account"],
+                    "account_label": CFG["account_labels"].get(h["account"], h["account"]),
+                    "value": round(h["value"]), "stance": stance, "reason": reason,
+                    "sector": sec_label, "as_of": as_of})
+    return out
+
+
+def inverse_etf(sectors, market, as_of, cur=None, equities=None) -> list:
     c = CFG["inverse_etf"]
     cards = []
     triggered = [r for r in sectors if r.get("state") in ("WEAKENING", "LAGGING")
@@ -256,23 +403,32 @@ def inverse_etf(sectors, market, as_of) -> list:
                    {"name": "QQQ RS20 vs SPY", "value": f"{qqq.get('rs_mid', 0):+.1f}%"}]
         for r in triggered:
             factors.append({"name": f"book in {r['sector']}", "value": f"{r['book_pct']}% ({r['state']})"})
+        inst_px = _prices(cur, [inst]).get(inst) if cur else None
+        accounts = sorted(k for k, v in CAPS.items() if v.get("inverse_etf_ok"))
+        band = dollars_band(c["size_band_pct"], accounts, equities or {})
         cards.append({
             "id": f"inverse-{inst}-{as_of}", "group": "short_side",
             "title": f"HEDGE · {inst} (1x inverse {'QQQ — deterioration is tech-led' if tech_led else 'S&P 500'})",
-            "instruments": [{"symbol": inst, "kind": "inverse ETF", "note": c["decay_warning"]}],
-            "accounts": sorted(k for k, v in CAPS.items() if v.get("inverse_etf_ok")),
+            "instruments": [{"symbol": inst, "kind": "inverse ETF", "note": c["decay_warning"],
+                             "price": inst_px}],
+            "accounts": accounts,
             "direction": "long (inverse exposure)",
             "size_band": f"{c['size_band_pct'][0]}–{c['size_band_pct'][1]}% of account equity"
                          + (f" (≈${at_risk/1000:.0f}K book in triggered sectors)" if at_risk else ""),
             "entry_logic": "scale in on bounce days, not after down days — hedges bought into weakness overpay",
             "invalidation": c["exit_rule"],
             "factors": factors, "as_of": as_of, "mode": "SHADOW",
+            "levels": {"price": inst_px,
+                       "entry_zone": "scale in on bounce days",
+                       "stop": f"exit when trigger state exits (2-close); twin uses −5% ≈ ${round(inst_px * 0.95, 2) if inst_px else 'n/a'}"},
+            "dollars_by_account": band,
+            "impact_dollars": round(at_risk) or max((v[1] for v in band.values()), default=0),
             "routes": {"paper_twin": "inverse-ETF paper track via approval queue"},
         })
     return cards
 
 
-def taxable_short(industries, cur, enrich, as_of, held_symbols=frozenset()) -> list:
+def taxable_short(industries, cur, enrich, as_of, held_symbols=frozenset(), equities=None) -> list:
     c = CFG["taxable_short"]
     if not CAPS.get("schwab_taxable", {}).get("can_short_stock"):
         return []
@@ -333,20 +489,22 @@ def taxable_short(industries, cur, enrich, as_of, held_symbols=frozenset()) -> l
                 {"name": "short float", "value": f"{x['sf']}% (<{c['max_short_float_pct']}% anti-squeeze)"},
             ],
             "as_of": as_of, "mode": "SHADOW",
+            "levels": {"price": x["price"], "entry_zone": f"near ${x['price']:.2f}",
+                       "stop": f"buy-stop ${stop:.2f} ({risk_per_sh / x['price'] * 100:+.1f}%)"},
+            "impact_dollars": round((equities or {}).get("schwab_taxable", 0) * c["size_cap_pct_of_book"] / 100),
             "routes": {"paper_twin": "defensive_short paper strategy via approval queue"},
         })
     return cards
 
 
-def covered_calls(sectors, holdings, cur, as_of) -> list:
+def covered_calls(sectors, holdings, cur, as_of, total_book=0) -> list:
     c = CFG["covered_call"]
-    smap = {}
-    for r in sectors:
-        for name in [r["sector"]] + _sector_aliases(r["sector"]):
-            smap[name] = r
+    smap = _sector_map(sectors)
+    radar = {r["symbol"]: r for r in (_load("hedging_radar_latest.json").get("radar") or [])}
+    floor = max(c["min_position_dollars"], _materiality_min(total_book))
     cards = []
     for h in holdings:
-        if h["value"] < c["min_position_dollars"] or h["shares"] < 100:
+        if h["value"] < floor or h["shares"] < 100:
             continue
         acct_caps = CAPS.get(h["account"]) or {}
         if not acct_caps.get("covered_calls_ok"):
@@ -354,20 +512,36 @@ def covered_calls(sectors, holdings, cur, as_of) -> list:
         sec = smap.get((_profiles_one(cur, h["symbol"]) or {}).get("sector") or "")
         if not sec or sec.get("state") not in ("WEAKENING", "LAGGING"):
             continue
+        n = int(h["shares"] // 100)
+        cc = (radar.get(h["symbol"]) or {}).get("cc_call")
+        px = (radar.get(h["symbol"]) or {}).get("underlying_price") or h["price"]
+        if cc and px:
+            prem = round(cc["mid"] * 100 * n)
+            prem_pct = round(prem / h["value"] * 100, 1) if h["value"] else 0
+            cap_pct = round((cc["strike"] - px) / px * 100, 1)
+            exp_short = cc["exp"][5:] if len(cc["exp"]) >= 10 else cc["exp"]
+            struct_note = (f"sell {n}× {exp_short} ${cc['strike']}C (~{cc['delta']}Δ, {cc['dte']}d) · "
+                           f"est ${prem} ({prem_pct}% of position) · caps upside at +{cap_pct}%")
+            levels = {"price": px, "entry_zone": f"strike ${cc['strike']} ({cc['exp']})",
+                      "stop": f"caps upside at +{cap_pct}%; premium ≈ ${prem}"}
+        else:
+            struct_note = (f"{c['tenor_dte'][0]}–{c['tenor_dte'][1]} DTE · {c['delta_band'][0]}–{c['delta_band'][1]}Δ "
+                           "(no chain pick in tonight's snapshot — strike from the chain at entry)")
+            levels = {"price": px or None, "entry_zone": "per delta band", "stop": "upside capped at chosen strike"}
         cards.append({
             "id": f"cc-{h['symbol']}-{h['account']}-{as_of}", "group": "income",
-            "title": f"COVERED CALL · {h['symbol']} ({int(h['shares'] // 100)} contract{'s' if h['shares'] >= 200 else ''}, {CFG['account_labels'].get(h['account'], h['account'])})",
-            "instruments": [{"symbol": h["symbol"], "kind": "covered call",
-                             "note": f"{c['tenor_dte'][0]}–{c['tenor_dte'][1]} DTE · {c['delta_band'][0]}–{c['delta_band'][1]} delta"}],
+            "title": f"COVERED CALL · {h['symbol']} ({n} contract{'s' if n != 1 else ''}, {CFG['account_labels'].get(h['account'], h['account'])})",
+            "instruments": [{"symbol": h["symbol"], "kind": "covered call", "note": struct_note, "price": px}],
             "accounts": [h["account"]], "direction": "sell call vs held shares",
-            "size_band": f"{int(h['shares'] // 100)} contract(s) against {h['shares']:.0f} sh",
-            "entry_logic": "sell into up-days/IV pops; premium honesty: income caps upside — this is a defensive yield, not a lottery hedge",
+            "size_band": f"{n} contract{'s' if n != 1 else ''} against {h['shares']:.0f} sh (${h['value']/1000:.0f}K)",
+            "entry_logic": "sell into up-days/IV pops; premium honesty: income caps upside — defensive yield, not a lottery hedge",
             "invalidation": f"{sec['sector']} recovers out of {sec['state']} — let calls expire/close, stop rolling",
             "factors": [
                 {"name": "sector state", "value": f"{sec['sector']} {sec['state']} (RS20 {sec['rs20']:+.1f})"},
                 {"name": "position", "value": f"${h['value']/1000:.0f}K · {h['shares']:.0f} sh"},
             ],
             "as_of": as_of, "mode": "SHADOW",
+            "levels": levels, "impact_dollars": round(h["value"]),
             "routes": {"options_desk": "route through the Options desk CC review flow"},
         })
         if len(cards) >= c["max_cards"]:
@@ -456,13 +630,17 @@ def main() -> int:
     holdings = _holdings()
     hermes = _hermes_latest(cur, [h["symbol"] for h in holdings])
 
+    equities = account_equities(holdings)
+    total_book = sum(equities.values())
+
     cards = []
-    cards += rotate_in(sectors, cur, enrich, as_of)
-    cards += move_out(sectors, holdings, cur, enrich, hermes, as_of)
-    cards += inverse_etf(sectors, market, as_of)
+    cards += rotate_in(sectors, cur, enrich, as_of, equities=equities)
+    cards += move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=total_book)
+    cards += inverse_etf(sectors, market, as_of, cur=cur, equities=equities)
     cards += taxable_short(industries, cur, enrich, as_of,
-                           held_symbols=frozenset(h["symbol"] for h in holdings))
-    cards += covered_calls(sectors, holdings, cur, as_of)
+                           held_symbols=frozenset(h["symbol"] for h in holdings),
+                           equities=equities)
+    cards += covered_calls(sectors, holdings, cur, as_of, total_book=total_book)
     cards.append(options_locked_card(as_of))
 
     ok, dropped = [], []
@@ -474,10 +652,23 @@ def main() -> int:
             ok.append(card)
 
     twins = paper_twins(ok, cur, args.dry_run)
+
+    # WS-L3 stances + WS-RT round-trip ledger
+    stance_rows = stances(sectors, holdings, cur, enrich, hermes, as_of)
+    import rotation_round_trips as rt
+    rt.ensure_tables(cur)
+    sector_states = {r["sector"]: r.get("state") for r in sectors}
+    if not args.dry_run:
+        rt.register_advisories(cur, ok, sector_states)
+        rt.detect_fills(cur)
+    rt_prices = _prices(cur, list({x[0] for x in
+                                   [(h["symbol"], 0) for h in holdings]}) or ["SPY"])
+    round_trips = rt.evaluate(cur, sector_states, rt_prices, enrich)
     if not args.dry_run:
         conn.commit()
 
-    groups = {g: [c for c in ok if c["group"] == g]
+    groups = {g: sorted([c for c in ok if c["group"] == g],
+                        key=lambda c: -(c.get("impact_dollars") or 0))
               for g in ("get_into", "protect", "short_side", "income")}
     empty_reasons = {
         "get_into": "no LEADING/IMPROVING sector is underweight vs your neutral map",
@@ -494,6 +685,16 @@ def main() -> int:
         "dropped_by_field_guard": dropped,
         "paper_twins_created": twins,
         "accounts": {k: CFG["account_labels"].get(k, k) for k in sorted(CAPS.keys())},
+        "account_equities": equities,
+        "stances": stance_rows,
+        "round_trips": round_trips,
+        "exposure_basis": sector_snap.get("exposure_basis"),
+        "not_decomposed": sector_snap.get("not_decomposed"),
+        "sources": {
+            "sectors": sector_snap.get("generated_at"),
+            "industries": industries.get("captured_at"),
+            "hedging_radar": (_load("hedging_radar_latest.json") or {}).get("captured_at"),
+        },
     }
     if not args.dry_run:
         SNAP.write_text(json.dumps(snap, default=str))

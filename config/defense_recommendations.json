@@ -11,6 +11,11 @@
     "earnings_blackout_days": 7,
     "top_constituents": 2
   },
+  "materiality": {
+    "min_position_dollars": 2000,
+    "min_position_pct_of_book": 0.15,
+    "stance_min_dollars": 10000
+  },
   "move_out": {
     "factor_threshold": 3,
     "shadow_trading_days": 10,

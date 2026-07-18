@@ -11141,9 +11141,42 @@ def _defense_recommendations(query=None):
     (nightly 17:35). Cheap reads."""
     recs = _load_json(PROJECT_ROOT / "data" / "runtime" / "defense_recommendations_latest.json")
     radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
+    job = _load_json(PROJECT_ROOT / "data" / "runtime" / "defense_refresh_job.json")
     return {"ok": True,
             "recommendations": recs or {"groups": {}, "note": "engine has not run yet"},
-            "hedging_radar": radar or {"radar": [], "note": "chain snapshot has not run yet"}}
+            "hedging_radar": radar or {"radar": [], "note": "chain snapshot has not run yet"},
+            "refresh_job": job}
+
+
+def _defense_refresh_start(body=None):
+    """POST /api/v2/defense/refresh — QUEUE the 4-step producer chain (detached);
+    the page polls refresh_job status via /defense/recommendations. Never live-waits."""
+    import subprocess
+    job = _load_json(PROJECT_ROOT / "data" / "runtime" / "defense_refresh_job.json") or {}
+    if job.get("state") == "running":
+        return {"ok": True, "queued": False, "already_running": True, "job": job}
+    subprocess.Popen(
+        [str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+         str(PROJECT_ROOT / "scripts" / "defense_refresh_job.py")],
+        cwd=PROJECT_ROOT, start_new_session=True,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {"ok": True, "queued": True}
+
+
+def _defense_round_trip_confirm(body=None):
+    """POST /api/v2/defense/round-trips/confirm {id, qty?, price?} — one-tap
+    'I executed this'. Reconciles against Schwab ingest when it lands."""
+    body = body or {}
+    rid = body.get("id")
+    if not rid:
+        return {"ok": False, "error": "id required"}
+    import rotation_round_trips as rt
+    from db_adapter import _get_conn
+    conn = _get_conn()
+    cur = conn.cursor()
+    okc = rt.confirm_exit(cur, int(rid), body.get("qty"), body.get("price"))
+    conn.commit()
+    return {"ok": okc, "id": rid, "status": "stepped_out" if okc else "not_updatable"}
 
 
 import json as _pj_mod
@@ -36615,6 +36648,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             result = _reports_brief_regenerate(body or {})
             return (200 if result.get("ok") else 500), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/defense/refresh":
+        try:
+            return 200, _defense_refresh_start(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/defense/round-trips/confirm":
+        try:
+            result = _defense_round_trip_confirm(body or {})
+            return (200 if result.get("ok") else 400), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 

@@ -1,0 +1,53 @@
+{
+  "_comment": "Defense v4 WS-L1. Sector lookthrough for funds >=10K in the book — weights from provider factsheets (seeded 2026-07-18, QUARTERLY REFRESH — operator eyeball per closeout). Sector-level only; holdings-level decomposition is out of scope. lookthrough:'none' = fund renders 'not decomposed' and its dollars land in the not_decomposed bucket — NEVER guessed weights. Sums may be <1.0; remainder is 'other'.",
+  "_refresh_due": "2026-10-01",
+  "funds": {
+    "SCHG": {
+      "name": "Schwab U.S. Large-Cap Growth",
+      "source": "Schwab factsheet 2026Q2",
+      "weights": {
+        "Technology": 0.46, "Consumer Discretionary": 0.14, "Communications": 0.12,
+        "Healthcare": 0.08, "Financials": 0.07, "Industrials": 0.06,
+        "Consumer Staples": 0.03, "Energy": 0.01, "Materials": 0.01, "Real Estate": 0.01
+      }
+    },
+    "SCHD": {
+      "name": "Schwab U.S. Dividend Equity",
+      "source": "Schwab factsheet 2026Q2",
+      "weights": {
+        "Financials": 0.18, "Healthcare": 0.16, "Consumer Staples": 0.14,
+        "Industrials": 0.13, "Energy": 0.10, "Technology": 0.09,
+        "Consumer Discretionary": 0.08, "Communications": 0.05, "Materials": 0.04, "Utilities": 0.02
+      }
+    },
+    "JEPI": {
+      "name": "JPMorgan Equity Premium Income",
+      "source": "JPM factsheet 2026Q2",
+      "weights": {
+        "Technology": 0.14, "Financials": 0.13, "Healthcare": 0.12, "Industrials": 0.11,
+        "Consumer Staples": 0.10, "Consumer Discretionary": 0.09, "Utilities": 0.08,
+        "Communications": 0.07, "Energy": 0.05, "Real Estate": 0.05, "Materials": 0.04
+      }
+    },
+    "JEPQ": {
+      "name": "JPMorgan Nasdaq Equity Premium Income",
+      "source": "JPM factsheet 2026Q2",
+      "weights": {
+        "Technology": 0.50, "Communications": 0.15, "Consumer Discretionary": 0.13,
+        "Healthcare": 0.06, "Consumer Staples": 0.05, "Industrials": 0.04,
+        "Financials": 0.03, "Utilities": 0.01, "Energy": 0.01, "Materials": 0.01
+      }
+    },
+    "XLI": { "name": "Industrial Select Sector SPDR", "source": "sector ETF — definitional", "weights": { "Industrials": 1.0 } },
+    "XLB": { "name": "Materials Select Sector SPDR", "source": "sector ETF — definitional", "weights": { "Materials": 1.0 } },
+    "XAR": { "name": "SPDR S&P Aerospace & Defense", "source": "industry ETF — definitional (aerospace & defense ⊂ Industrials)", "weights": { "Industrials": 1.0 } },
+    "ARKX": {
+      "name": "ARK Space Exploration & Innovation",
+      "source": "ARK factsheet 2026Q2 (active fund — weights drift; ESTIMATE)",
+      "weights": { "Industrials": 0.45, "Technology": 0.30, "Communications": 0.10, "Healthcare": 0.03, "Materials": 0.03 }
+    },
+    "SPCX": { "name": "SPAC and New Issue ETF", "lookthrough": "none", "why": "no reliable current factsheet — never guess" },
+    "DIVI": { "name": "Franklin International Core Dividend Tilt", "lookthrough": "none", "why": "international book — US 11-sector map does not apply" },
+    "BND": { "name": "Vanguard Total Bond Market", "lookthrough": "none", "why": "fixed income — not equity sector exposure" }
+  }
+}

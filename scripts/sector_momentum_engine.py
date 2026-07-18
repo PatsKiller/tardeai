@@ -261,15 +261,23 @@ def market_state_line(market, sectors):
 
 
 def _book_weights():
+    """v4 L1: EFFECTIVE sector weights — direct + fund lookthrough (config-mapped
+    factsheet weights, never inferred). Rows carry the decomposition for the UI."""
     try:
         import api_v2
+        from fund_lookthrough import effective_sector_exposure
         bm = api_v2._portfolio_book_map() or {}
-        tot = float(bm.get("total_value") or 0) or 1.0
-        agg = {}
-        for r in bm.get("rows", []):
-            agg.setdefault(r["sector"], [0.0, 0.0])
-            agg[r["sector"]][0] += float(r["value"] or 0)
-        return {k: {"dollars": round(v[0]), "pct": round(v[0] / tot * 100, 1)} for k, v in agg.items()}
+        eff = effective_sector_exposure(bm.get("rows", []))
+        out = {}
+        for sector, b in eff.items():
+            if sector.startswith("_"):
+                continue
+            out[sector] = {"dollars": b["dollars"], "pct": b["pct"],
+                           "direct_pct": b["direct_pct"],
+                           "lookthrough_dollars": b["lookthrough_dollars"],
+                           "contributors": b["contributors"]}
+        out["_not_decomposed"] = eff.get("_not_decomposed")
+        return out
     except Exception:
         return {}
 
@@ -352,7 +360,9 @@ def main() -> int:
         w = weights.get(name) or {}
         row.update({"breadth_pct": b_pct, "breadth_n": b_n, "hermes_pulse": hp,
                     "hermes_delta": hd, "news_negatives": nn, "top_negative": top_neg,
-                    "book_pct": w.get("pct"), "book_dollars": w.get("dollars")})
+                    "book_pct": w.get("pct"), "book_dollars": w.get("dollars"),
+                    "book_direct_pct": w.get("direct_pct"),
+                    "book_contributors": w.get("contributors")})
         # debounce: prior 2 persisted states
         cur.execute("""SELECT state FROM sector_momentum_state WHERE etf=%s
                        ORDER BY as_of DESC LIMIT %s""", (row["etf"], CFG["debounce_days"]))
@@ -397,7 +407,9 @@ def main() -> int:
     alerts = alerts[:CFG["max_alert_lines_per_day"]]
     market["state_line"] = market_state_line(market, rows)
     snap = {"generated_at": datetime.now(timezone.utc).isoformat(),
-            "rows": rows, "market": market, "transitions_today": alerts}
+            "rows": rows, "market": market, "transitions_today": alerts,
+            "not_decomposed": weights.get("_not_decomposed"),
+            "exposure_basis": "effective (direct + config fund lookthrough, factsheet weights)"}
     out = ROOT / "data" / "runtime" / "sector_momentum_latest.json"
     out.write_text(json.dumps(snap, default=str))
     for a in alerts:

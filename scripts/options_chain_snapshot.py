@@ -46,6 +46,7 @@ def aggregate(chain: dict) -> dict | None:
     put_oi = call_oi = put_vol = call_vol = 0
     atm_ivs, put25, call25 = [], [], []
     tgt = CFG["skew_delta_target"]
+    cc_call = None  # WS-CARD: concrete covered-call pick — ~0.25-0.30Δ, 21-45 DTE
     for exp in chain.get("expirations", []):
         put_oi += exp.get("total_put_oi") or 0
         call_oi += exp.get("total_call_oi") or 0
@@ -64,6 +65,16 @@ def aggregate(chain: dict) -> dict | None:
                 put25.append(float(iv))
             if s["side"] == "call" and abs(ad - tgt) <= 0.08:
                 call25.append(float(iv))
+            dte = s.get("dte") or exp.get("dte") or 0
+            if (s["side"] == "call" and 21 <= dte <= 45 and 0.20 <= ad <= 0.32
+                    and s.get("bid") is not None and s.get("ask") is not None):
+                fit = abs(ad - 0.28)
+                if cc_call is None or fit < cc_call["_fit"]:
+                    cc_call = {"exp": s["exp"], "dte": dte, "strike": s["strike"],
+                               "delta": round(ad, 2),
+                               "mid": round((s["bid"] + s["ask"]) / 2, 2), "_fit": fit}
+    if cc_call:
+        cc_call.pop("_fit", None)
     mean = lambda xs: round(sum(xs) / len(xs), 2) if xs else None
     return {
         "put_oi": put_oi, "call_oi": call_oi, "put_vol": put_vol, "call_vol": call_vol,
@@ -72,6 +83,7 @@ def aggregate(chain: dict) -> dict | None:
         "atm_iv": mean(atm_ivs),
         "skew25": round(mean(put25) - mean(call25), 2) if put25 and call25 else None,
         "underlying_price": chain.get("underlying_price"),
+        "cc_call": cc_call,
     }
 
 
