@@ -215,7 +215,7 @@ def _call_provider(provider: str, model: str, prompt: str, key_env: dict) -> str
     import urllib.error
     try:
         if provider == "anthropic":
-            body = json.dumps({"model": model, "max_tokens": 3000,
+            body = json.dumps({"model": model, "max_tokens": 6000,
                                "messages": [{"role": "user", "content": prompt}]}).encode()
             req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
                 "x-api-key": key_env["anthropic"], "anthropic-version": "2023-06-01",
@@ -227,7 +227,7 @@ def _call_provider(provider: str, model: str, prompt: str, key_env: dict) -> str
                else "https://api.x.ai/v1/chat/completions")
         key = key_env["openai" if provider == "openai" else "xai"]
         tok_key = "max_completion_tokens" if provider == "openai" else "max_tokens"
-        body = json.dumps({"model": model, tok_key: 3000,
+        body = json.dumps({"model": model, tok_key: 6000,
                            "messages": [{"role": "user", "content": prompt}]}).encode()
         req = urllib.request.Request(url, data=body, headers={
             "Authorization": f"Bearer {key}", "content-type": "application/json"})

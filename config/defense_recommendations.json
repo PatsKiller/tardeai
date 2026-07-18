@@ -201,7 +201,7 @@
   "oversight_paid": {
     "_comment": "v8.2 panel \u2014 three paid seats, per-seat models+prices; monthly budget shared. Primary=claude per the CRITICAL_CLOUD standing rule; gpt/xai optional (panel mode diffs them). env LLM_CRITICAL_CLOUD overrides the claude model.",
     "monthly_budget_usd": 25.0,
-    "est_output_tokens": 2500,
+    "est_output_tokens": 4000,
     "weekly_paid_review": false,
     "seats": {
       "paid": {
@@ -226,6 +226,6 @@
   },
   "oversight_free": {
     "_comment": "Tier-1 free-seat limits \u2014 oversight's share of each OAuth lane's GLOBAL daily quota (the lanes serve Hermes etc. too). Operator-owned.",
-    "daily_per_seat": 3
+    "daily_per_seat": 5
   }
 }
