@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 DAILY_PER_SEAT = 3  # oversight's share of each free lane's global daily quota
 
-CONTRACT = """Respond ONLY with JSON matching:
+CONTRACT = """MANDATORY COMPLETENESS: your "cards" array MUST contain exactly one verdict for EVERY card id in the brief — no omissions, no sampling. A review missing any card id is INVALID. Respond ONLY with JSON matching:
 {"cards": [{"id": "<card id>", "verdict": "CONCUR|QUALIFY|OBJECT",
             "reason": "<=40 words", "missed_risk": "<=25 words or null"}],
  "memo": {"top_concerns": ["...", "...", "..."],
@@ -144,6 +144,10 @@ def run_free_critiques(cur, force: bool = False) -> dict:
         ms = int((time.time() - t0) * 1000)
         parsed = _parse_strict(raw) if not raw.startswith("__error__") else None
         status = "ok" if parsed else ("unavailable" if raw.startswith("__error__") else "unparseable")
+        if parsed:
+            want = {c["id"] for c in art["brief"]["cards"]}
+            got = {c.get("id") for c in parsed["cards"]}
+            parsed["memo"]["coverage"] = f"{len(want & got)}/{len(want)} cards"
         cur.execute("""INSERT INTO oversight_reviews (build_hash, seat, status, verdicts, memo, raw, latency_ms)
                        VALUES (%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (build_hash, seat) DO UPDATE SET status=EXCLUDED.status,
@@ -265,6 +269,10 @@ def run_paid_review(cur, seats=None) -> dict:
         ms = int((time.time() - t0) * 1000)
         parsed = _parse_strict(raw) if not raw.startswith("__error__") else None
         status = "ok" if parsed else ("unavailable" if raw.startswith("__error__") else "unparseable")
+        if parsed:
+            want = {c["id"] for c in art["brief"]["cards"]}
+            got = {c.get("id") for c in parsed["cards"]}
+            parsed["memo"]["coverage"] = f"{len(want & got)}/{len(want)} cards"
         cur.execute("""INSERT INTO oversight_reviews (build_hash, seat, status, verdicts, memo, raw,
                        latency_ms, cost_est)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
