@@ -72,7 +72,7 @@ def build_oversight_brief() -> dict:
                                 for l in recs.get("ladders", [])],
                     "round_trips": [{"sym": t["symbol"], "status": t["status"]}
                                     for t in recs.get("round_trips", [])]},
-        "known_tensions": ["(coherence lint ships v8.1 — reviewer: surface contradictions yourself)"],
+        "known_tensions": recs.get("tensions") or ["lint ran clean — no unexplained contradictions on screen"],
         "response_contract": CONTRACT,
     }
     md = json.dumps(brief, indent=1, default=str)
@@ -172,3 +172,86 @@ def latest_reviews(cur) -> dict:
                        "memo": memo if isinstance(memo, dict) else (json.loads(memo) if memo else None),
                        "at": str(at)[:16]}
     return {"build_hash": bh, "seats": seats}
+
+
+def paid_preview(cur) -> dict:
+    """The ⚖ modal's numbers — REAL token estimate of the actual brief, per-seat cost,
+    monthly budget remaining. No send."""
+    ensure_tables(cur)
+    cur.execute("ALTER TABLE oversight_reviews ADD COLUMN IF NOT EXISTS cost_est numeric")
+    cur.connection.commit()
+    import os
+    pc = json.loads((ROOT / "config" / "defense_recommendations.json").read_text())["oversight_paid"]
+    art = build_oversight_brief()
+    model = os.environ.get("LLM_CRITICAL_CLOUD") or pc["model"]
+    in_cost = art["token_estimate"] / 1e6 * pc["input_per_mtok_usd"]
+    out_cost = pc["est_output_tokens"] / 1e6 * pc["output_per_mtok_usd"]
+    cur.execute("""SELECT COALESCE(sum(cost_est),0) FROM oversight_reviews
+                   WHERE seat='paid' AND date_trunc('month', created_at)=date_trunc('month', now())""")
+    spent = float(cur.fetchone()[0])
+    return {"ok": True, "build_hash": art["build_hash"], "model": model,
+            "input_tokens_est": art["token_estimate"], "output_tokens_est": pc["est_output_tokens"],
+            "cost_est_usd": round(in_cost + out_cost, 3),
+            "monthly_budget_usd": pc["monthly_budget_usd"],
+            "budget_remaining_usd": round(pc["monthly_budget_usd"] - spent, 2),
+            "weekly_paid_review": pc.get("weekly_paid_review", False)}
+
+
+def run_paid_review(cur) -> dict:
+    """Tier 2 — the metered seat. Budget-gated at send; result fills pill ④ + the memo
+    panel's paid column. Same contract, same strict parsing."""
+    import os
+    import time
+    import urllib.request
+    import urllib.error
+    pv = paid_preview(cur)
+    if pv["cost_est_usd"] > pv["budget_remaining_usd"]:
+        return {"ok": False, "error": f"monthly oversight budget: ${pv['budget_remaining_usd']} left < ${pv['cost_est_usd']} est"}
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not key:
+        return {"ok": False, "error": "ANTHROPIC_API_KEY not set"}
+    art = build_oversight_brief()
+    prompt = ("You are the PAID senior seat on an oversight panel for a retirement-scale defensive "
+              "trading desk. Two free seats have already reviewed; be the adjudicator: judge WITHIN "
+              "the constitution, be adversarial where warranted, and prioritize what the free seats "
+              "would plausibly miss.\n\n" + art["markdown"] + "\n\n" + CONTRACT)
+    body = json.dumps({"model": pv["model"], "max_tokens": 3000,
+                       "messages": [{"role": "user", "content": prompt}]}).encode()
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
+        "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            resp = json.loads(r.read().decode())
+        raw = "".join(b.get("text", "") for b in resp.get("content", []))
+    except urllib.error.HTTPError as e:
+        raw = f"__error__ HTTP {e.code}: {e.read().decode()[:300]}"
+    except Exception as e:
+        raw = f"__error__ {e}"
+    ms = int((time.time() - t0) * 1000)
+    parsed = _parse_strict(raw) if not raw.startswith("__error__") else None
+    status = "ok" if parsed else ("unavailable" if raw.startswith("__error__") else "unparseable")
+    cur.execute("""INSERT INTO oversight_reviews (build_hash, seat, status, verdicts, memo, raw,
+                   latency_ms, cost_est)
+                   VALUES (%s,'paid',%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (build_hash, seat) DO UPDATE SET status=EXCLUDED.status,
+                     verdicts=EXCLUDED.verdicts, memo=EXCLUDED.memo, raw=EXCLUDED.raw,
+                     latency_ms=EXCLUDED.latency_ms, cost_est=EXCLUDED.cost_est""",
+                (art["build_hash"], status,
+                 json.dumps(parsed["cards"]) if parsed else None,
+                 json.dumps(parsed["memo"]) if parsed else None,
+                 raw[:8000], ms, pv["cost_est_usd"]))
+    cur.connection.commit()
+    return {"ok": status == "ok", "status": status, "model": pv["model"],
+            "cost_est_usd": pv["cost_est_usd"], "latency_ms": ms}
+
+
+def card_objections(cur, source_card: str) -> list:
+    """Latest reviews' OBJECT verdicts for a card — the staging interlock reads this."""
+    lr = latest_reviews(cur)
+    out = []
+    for seat, d in lr.get("seats", {}).items():
+        for v in d.get("verdicts") or []:
+            if v.get("id") == source_card and v.get("verdict") == "OBJECT":
+                out.append({"seat": seat, "reason": v.get("reason", "")})
+    return out

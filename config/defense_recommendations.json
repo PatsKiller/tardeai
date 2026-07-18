@@ -197,5 +197,14 @@
     "take_profit_1_pct": 8,
     "take_profit_2_pct": 15,
     "tranches": 3
+  },
+  "oversight_paid": {
+    "_comment": "v8.1 WS-PAID \u2014 the \u2696 button. Model per the CRITICAL_CLOUD standing rule (env LLM_CRITICAL_CLOUD overrides). Costs are per-MTok; monthly budget is a hard gate at send.",
+    "model": "claude-opus-4-8",
+    "input_per_mtok_usd": 15.0,
+    "output_per_mtok_usd": 75.0,
+    "est_output_tokens": 2500,
+    "monthly_budget_usd": 25.0,
+    "weekly_paid_review": false
   }
 }

@@ -18,7 +18,7 @@ const chip: React.CSSProperties = {
   borderRadius: 2, padding: '1px 6px', border: `1px solid ${BB.border}`, color: BB.text2,
 }
 
-function PairCard({ c }: { c: any }) {
+function PairCard({ c, oversight }: { c: any; oversight?: any }) {
   const [open, setOpen] = useState(false)
   return (
     <div style={{ border: `1px solid ${T.link}`, borderLeft: `4px solid ${T.link}`, borderRadius: 2, padding: '10px 12px', background: BB.bg }}>
@@ -28,6 +28,9 @@ function PairCard({ c }: { c: any }) {
           <span style={{ ...chip, color: BB.amber, borderColor: BB.amber }}>{c.mode}</span>
           {c.is_core && <span style={{ ...chip, color: BB.amber }}>★CORE</span>}
           <span style={{ ...chip }}>{c.tax_note.split('—')[0].trim()}</span>
+        </div>
+        <div style={{ marginBottom: 3 }}>
+          <OversightPills cardId={c.id} factorsN={(c.factors || []).length} oversight={oversight} />
         </div>
         <div title="the sell leg: whole-share ESTIMATE at the labeled as-of price — confirming it runs the ladder/round-trip flow; never an order" style={{ fontSize: DASH.data, color: BB.text1, fontWeight: 600, marginBottom: 2, cursor: 'help' }}>{c.sell_ticket.line}</div>
         {c.buy_legs.map((l: any) => (
@@ -118,7 +121,19 @@ function StageOrderButton({ label, payload, accounts, autoTwin }: { label: strin
         }
         setMsg(m)
       }
-      else { setState('refused'); setMsg(j.refused || j.error || 'refused') }
+      else {
+        const reason = j.refused || j.error || 'refused'
+        if (reason.includes('oversight OBJECT') &&
+            window.confirm(`Oversight OBJECTS to this card:\n\n${reason}\n\nOverride oversight — I've read the objection?`)) {
+          const r2 = await fetch('/api/v2/defense/intent/stage', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...payload, account: acct, override_ack: true }),
+          })
+          const j2 = await r2.json()
+          if (j2.ok) { setState('ok'); setMsg('staged (override AUDITED) → APPROVALS'); return }
+        }
+        setState('refused'); setMsg(reason)
+      }
     } catch { setState('idle') }
   }
   return (
@@ -385,7 +400,7 @@ export default function RecommendationsRail({ recs, oversight }: { recs: any; ov
             Funded rotations <span style={{ ...numStyle, color: BB.text3, fontSize: DASH.data }}>{forTab(pairs).length}</span>
             <span style={{ fontSize: DASH.chip, color: BB.text3, fontWeight: 600, marginLeft: 8 }}>out of X, into Y — same account, both legs ticketed</span>
           </div>
-          {forTab(pairs).map(p => <PairCard key={p.id} c={p} />)}
+          {forTab(pairs).map(p => <PairCard key={p.id} c={p} oversight={oversight} />)}
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>

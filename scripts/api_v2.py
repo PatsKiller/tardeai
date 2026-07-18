@@ -11327,7 +11327,8 @@ def _defense_intent_stage(body=None):
             limit_low=body.get("limit_low"), limit_high=body.get("limit_high"),
             account=body.get("account", ""), linked_intent=body.get("linked_intent"),
             sequence_gate=body.get("sequence_gate"), cc_struct=body.get("cc_struct"),
-            est_dollars=float(body.get("est_dollars") or 0))
+            est_dollars=float(body.get("est_dollars") or 0),
+            override_ack=bool(body.get("override_ack")))
         conn.commit()
         return res
     except Exception as e:
@@ -36961,6 +36962,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path in ("/api/v2/defense/core/toggle", "/api/v2/defense/core/confirm"):
         try:
             result = _defense_core_toggle(body or {})
+            return (200 if result.get("ok") else 400), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/defense/oversight/paid":
+        try:
+            import importlib, defense_oversight
+            do = importlib.reload(defense_oversight)
+            from db_adapter import _get_conn
+            _c = _get_conn()
+            if (body or {}).get("confirm"):
+                result = do.run_paid_review(_c.cursor())
+            else:
+                result = do.paid_preview(_c.cursor())
+            _c.commit()
             return (200 if result.get("ok") else 400), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}

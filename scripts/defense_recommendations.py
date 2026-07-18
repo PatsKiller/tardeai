@@ -427,14 +427,29 @@ def stances(sectors, holdings, cur, enrich, hermes, as_of) -> list:
                        if (state_by_sector.get(s) or {}).get("state") in ("WEAKENING", "LAGGING"))
             worst = max(fund["weights"], key=lambda s: fund["weights"][s])
             worst_state = (state_by_sector.get(worst) or {}).get("state") or "?"
+            # v8.1 C2 — industry-level coherence for the ≥$50K funds (top-10 factsheet weights)
+            ind_line = ""
+            if fund.get("industries"):
+                ind_states = {g["industry"]: g.get("state")
+                              for g in _load("industry_momentum_latest.json").get("industries", [])}
+                tot_w = sum(fund["industries"].values()) or 1
+                lag = [(i, w) for i, w in fund["industries"].items()
+                       if ind_states.get(i) in ("LAGGING", "WEAKENING")]
+                if lag:
+                    worst_inds = ", ".join(i.split(" - ")[0] for i, _ in
+                                           sorted(lag, key=lambda x: -x[1])[:2])
+                    ind_line = (f" · ~{sum(w for _, w in lag)/tot_w*100:.0f}% of top-10 industry "
+                                f"weight in LAGGING/WEAKENING ({worst_inds})")
+                else:
+                    ind_line = " · top-10 industries LEADING/neutral"
             if weak >= 0.33:
                 stance, reason = "TRIM-WATCH", (
                     f"{weak*100:.0f}% of fund weight sits in WEAKENING/LAGGING sectors "
-                    f"(top: {worst} {fund['weights'][worst]*100:.0f}% → {worst_state}); no stop on funds")
+                    f"(top: {worst} {fund['weights'][worst]*100:.0f}% → {worst_state}); no stop on funds" + ind_line)
             else:
                 stance, reason = "HOLD", (
                     f"{(1-weak)*100:.0f}% of fund weight in LEADING/IMPROVING sectors; "
-                    f"top sleeve {worst} {fund['weights'][worst]*100:.0f}% → {worst_state}")
+                    f"top sleeve {worst} {fund['weights'][worst]*100:.0f}% → {worst_state}" + ind_line)
             sec_label = "fund (lookthrough)"
         elif fund and fund.get("lookthrough") == "none":
             stance, reason, sec_label = "HOLD", f"not decomposed — {fund.get('why', 'no lookthrough map')}", "fund (not decomposed)"
@@ -854,6 +869,34 @@ def main() -> int:
     for c in ok:
         if c["id"] in superseded_ids:
             c["superseded_by_pair"] = True
+        elif c["id"].startswith("moveout-"):
+            # v8.1 C1 — cash IS a recommendation, never a void
+            c["destination"] = (
+                "→ cash (money-market sweep) while the sector thesis stays broken · "
+                f"redeploy when: {c['invalidation'][:90]} · "
+                "no equity pair qualified (no same-account destination cleared the \$2K-leg rails)")
+
+    # v8.1 C3 — coherence lint: the desk confesses its own contradictions
+    tensions = []
+    stance_by = {(x["symbol"], x["account"]): x for x in stance_rows}
+    for lad in ladders:
+        st = stance_by.get((lad["symbol"], lad["account"]))
+        if st and st["stance"] == "HOLD" and lad.get("status") == "open":
+            t = (f"{lad['symbol']}: stance HOLD but a {lad['t1_fraction']}% trim ladder is open — "
+                 "explanation: the ladder came from an earlier factor set; if HOLD is right, disarm it")
+            tensions.append(t)
+            st["tension"] = t
+    for pcard in pairs:
+        for leg in pcard.get("buy_legs", []):
+            sec_leg = leg.get("sector")
+            row = next((r for r in sectors if r["sector"] == sec_leg), None)
+            if row and row.get("state") in ("LAGGING", "WEAKENING"):
+                t = f"pair {pcard['id']}: buy leg {leg['symbol']} targets {sec_leg} which is {row['state']}"
+                tensions.append(t)
+                pcard["tension"] = t
+    for c in ok:
+        if c["id"].startswith("moveout-") and not c.get("superseded_by_pair") and not c.get("destination"):
+            tensions.append(f"{c['id']}: trim without destination (guard breach)")
     if not args.dry_run:
         conn.commit()
 
@@ -884,6 +927,7 @@ def main() -> int:
         "exposure_basis": sector_snap.get("exposure_basis"),
         "not_decomposed": sector_snap.get("not_decomposed"),
         "operator_items": CFG.get("operator_items", []),
+        "tensions": tensions,
         "sources": {
             "sectors": sector_snap.get("generated_at"),
             "industries": industries.get("captured_at"),

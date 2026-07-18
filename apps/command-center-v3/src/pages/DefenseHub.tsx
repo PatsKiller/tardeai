@@ -82,6 +82,20 @@ export default function DefenseHub() {
   const spyLong = (market?.indices || []).find((i: any) => i.symbol === 'SPY')?.long ?? null
   const techRow = rows.find(r => r.sector === 'Technology')
 
+  const [paidBusy, setPaidBusy] = useState(false)
+  const runPaid = async () => {
+    setPaidBusy(true)
+    try {
+      const pv = await (await fetch('/api/v2/defense/oversight/paid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()
+      if (!pv.ok) { alert(pv.error || 'preview failed'); return }
+      const msg = `⚖ Paid oversight review\n\nModel: ${pv.model}\nBrief: ~${pv.input_tokens_est.toLocaleString()} tokens in / ~${pv.output_tokens_est.toLocaleString()} out\nEstimated cost: $${pv.cost_est_usd}\nMonthly budget remaining: $${pv.budget_remaining_usd} of $${pv.monthly_budget_usd}\n\nRun it?`
+      if (!window.confirm(msg)) return
+      const r = await (await fetch('/api/v2/defense/oversight/paid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"confirm":true}' })).json()
+      alert(r.ok ? `Paid review complete (${r.model}, $${r.cost_est_usd}, ${Math.round(r.latency_ms / 1000)}s) — pill ④ + memo panel updated` : `failed: ${r.error || r.status}`)
+      refetchRecs()
+    } finally { setPaidBusy(false) }
+  }
+
   const startRefresh = async () => {
     setQueueing(true)
     try {
@@ -99,6 +113,11 @@ export default function DefenseHub() {
             recommendations · rotation · hedging — advisory only, nothing here places orders
           </div>
         </div>
+        <button onClick={runPaid} disabled={paidBusy}
+          title="Tier 2 — sends the CURRENT curated brief (real token count shown with cost before anything is spent) to the highest-tier paid seat; verdicts fill pill ④ and the memo panel. Budget-gated monthly."
+          style={{ fontSize: DASH.data, fontWeight: 800, cursor: 'pointer', color: BB.text1, background: 'transparent', border: `1px solid ${BB.amber}`, borderRadius: 2, padding: '4px 12px' }}>
+          {paidBusy ? 'reviewing…' : '⚖ Oversight Review (paid)'}
+        </button>
         <FreshnessStrip
           sources={{ ...(recs?.sources || {}), recommendations: recs?.generated_at }}
           job={job} onRefresh={startRefresh} refreshing={queueing}

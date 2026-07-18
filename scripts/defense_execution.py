@@ -106,7 +106,8 @@ def _whitelist_check(intent_type: str, symbol: str) -> str | None:
 def stage_intent(cur, *, source_card: str, intent_type: str, symbol: str, side: str,
                  qty: float, limit_low=None, limit_high=None, account: str,
                  linked_intent: str = None, sequence_gate: str = None,
-                 cc_struct: dict = None, est_dollars: float = 0) -> dict:
+                 cc_struct: dict = None, est_dollars: float = 0,
+                 override_ack: bool = False) -> dict:
     """The single entry: kill file → whitelist → caps → intent row + action_queue
     mirror + audit + OPERATIONAL telegram. Refusals are rendered AND audited."""
     ensure_tables(cur)
@@ -135,6 +136,20 @@ def stage_intent(cur, *, source_card: str, intent_type: str, symbol: str, side: 
                    WHERE created_at::date = CURRENT_DATE AND status NOT IN ('refused')""")
     if cur.fetchone()[0] >= cfg["max_orders_per_day"]:
         return refuse(f"cap: {cfg['max_orders_per_day']} intents/day reached")
+    # v8.1 soft interlock: a card whose LATEST review is OBJECT needs an explicit,
+    # AUDITED acknowledgment — oversight informs, the operator decides
+    try:
+        import importlib, defense_oversight
+        do = importlib.reload(defense_oversight)
+        objs = do.card_objections(cur, source_card)
+        if objs and not override_ack:
+            seats = ", ".join(f"{o['seat']}: {o['reason'][:60]}" for o in objs)
+            return refuse(f"oversight OBJECT ({seats}) — restage with the override acknowledgment")
+        if objs and override_ack:
+            audit(cur, key, "oversight_override",
+                  "operator acknowledged OBJECT: " + "; ".join(o['seat'] for o in objs), "operator")
+    except Exception:
+        pass
     lane = "paper" if account in cfg["paper_accounts"] else "live"
     cur.execute("""INSERT INTO defense_order_intents
                    (intent_key, source_card, intent_type, symbol, side, qty, limit_low,
