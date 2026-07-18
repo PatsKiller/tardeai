@@ -66,6 +66,11 @@ export function rowRail(state: RailState): CSSProperties {
 /** Locked type scale (A2). Use these, never numeric literals below 10. */
 export const TYPE = { xs: 10, sm: 11, base: 12, md: 14, lg: 18, xl: 24 } as const
 
+/** Defense v3 D3.1 — THE house dashboard scale. body/data 12 · table rows 12–13 ·
+ * section headers 14 · panel titles 16 · verdict headline 20–24 · chips 10 CAPS ONLY.
+ * 7/8/9px are BANNED (check_design_tokens.sh enforces); 10 is legal only inside chips. */
+export const DASH = { data: 12, row: 12.5, section: 14, panel: 16, verdict: 22, chip: 10 } as const
+
 /** Right-aligned tabular numeric cell (A2: one mono stack). */
 export const numCell: CSSProperties = {
   ...numStyle,
