@@ -28,5 +28,12 @@
   "telegram": {
     "operational_prefix": "[OPERATIONAL]",
     "advisory_prefix": "[ADVISORY \u00b7 SHADOW until Jul 30-31 promote]"
+  },
+  "auto_paper_twin": true,
+  "account_display": {
+    "schwab_rollover_ira": "Rollover IRA",
+    "schwab_roth_ira": "Roth IRA",
+    "schwab_taxable": "Taxable",
+    "alpaca_paper": "Alpaca Paper (shadow)"
   }
 }

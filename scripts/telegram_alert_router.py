@@ -442,10 +442,26 @@ def get_suppression_log() -> list:
     return list(_suppression_log)
 
 
+def _ignore_verdict_escalation(message: str) -> bool:
+    """Defense v8 A5: an escalation whose VERDICT is IGNORE (esp. low-confidence) is
+    ops-digest material, not a page. Actionable verdicts and high-severity conflicts
+    still page. Measured monthly via the Reports alert-analytics noise review."""
+    import re as _re
+    if not _re.search(r"escalat", message, _re.IGNORECASE):
+        return False
+    if not _re.search(r"\bIGNORE\b", message):
+        return False
+    m = _re.search(r"(\d{1,3})\s*%", message)
+    conf = int(m.group(1)) if m else 0
+    return conf < 60  # low-confidence IGNORE = digest, never a 🚨
+
+
 def route_alert(message: str) -> dict:
     """Classify and route an alert, returning routing decision."""
     level = classify_alert(message)
     send = should_send_telegram(message)
+    if send and _ignore_verdict_escalation(message):
+        send = False  # A5: IGNORE-verdict escalations land in the ops digest, not a page
     policy = _load_policy()
     destinations = policy.get("destinations", {})
 

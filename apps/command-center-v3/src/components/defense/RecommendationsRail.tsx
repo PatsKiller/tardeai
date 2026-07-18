@@ -56,23 +56,47 @@ function PairCard({ c }: { c: any }) {
   )
 }
 
-function StageOrderButton({ label, payload }: { label: string; payload: any }) {
+function StageOrderButton({ label, payload, accounts, autoTwin }: { label: string; payload: any; accounts?: string[]; autoTwin?: boolean }) {
   const [state, setState] = useState<'idle' | 'busy' | 'ok' | 'refused'>('idle')
   const [msg, setMsg] = useState('')
+  // v8 A1 — the CARD's account is the default (real, first-listed); multi-account asks;
+  // NEVER silently paper-first. The paper twin is a SEPARATE, labeled SHADOW intent.
+  const real = (accounts || []).filter(a => a !== 'alpaca_paper')
+  const [acct, setAcct] = useState<string>(real[0] || payload.account)
+  const disp = (a: string) => a === 'alpaca_paper' ? 'Alpaca Paper (shadow)' : a.replace('schwab_', '').replace(/_/g, ' ')
   const stage = async (e: any) => {
     e.stopPropagation()
     setState('busy')
     try {
       const r = await fetch('/api/v2/defense/intent/stage', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, account: acct }),
       })
       const j = await r.json()
-      if (j.ok) { setState('ok'); setMsg('staged → APPROVALS') }
+      if (j.ok) {
+        setState('ok')
+        let m = `staged → APPROVALS (${disp(acct)})`
+        if (autoTwin && acct !== 'alpaca_paper') {
+          const t = await fetch('/api/v2/defense/intent/stage', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...payload, account: 'alpaca_paper', source_card: payload.source_card + '-twin' }),
+          })
+          if ((await t.json()).ok) m += ' + SHADOW twin (Alpaca Paper)'
+        }
+        setMsg(m)
+      }
       else { setState('refused'); setMsg(j.refused || j.error || 'refused') }
     } catch { setState('idle') }
   }
   return (
     <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', marginBottom: 3 }}>
+      {real.length > 1 && (
+        <select value={acct} onClick={e => e.stopPropagation()} onChange={e => setAcct(e.target.value)}
+          title="the card lists multiple valid accounts — pick the target (never silently chosen)"
+          style={{ fontSize: DASH.chip, background: 'transparent', color: BB.text1, border: `1px solid ${BB.border}`, borderRadius: 2, padding: '1px 4px' }}>
+          {real.map(a => <option key={a} value={a}>{disp(a)}</option>)}
+        </select>
+      )}
       <button onClick={stage} disabled={state === 'busy' || state === 'ok'}
         title="stages this order intent: caps + whitelist checked now → APPROVALS queue → 2FA pill → paper auto-executes / live renders an armed ticket. Nothing executes from this click."
         style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: state === 'ok' ? BB.green : BB.text1, background: 'transparent', border: `1px solid ${state === 'ok' ? BB.green : state === 'refused' ? BB.red : BB.amber}`, borderRadius: 2, padding: '2px 9px' }}>
@@ -220,12 +244,12 @@ function Card({ c, tab, ladder }: { c: any; tab: string; ladder?: any }) {
           }} />
         )}
         {c.id?.startsWith('inverse-') && (
-          <StageOrderButton label="stage hedge entry (paper twin)" payload={{
+          <StageOrderButton label="stage hedge entry" accounts={c.accounts} autoTwin={true} payload={{
             source_card: c.id, intent_type: 'inverse_etf', symbol: c.instruments[0].symbol,
             side: 'buy', qty: Math.max(1, Math.floor(2000 / (c.levels?.price || 1))),
             limit_low: c.levels?.price ? +(c.levels.price * 0.995).toFixed(2) : null,
             limit_high: c.levels?.price ? +(c.levels.price * 1.01).toFixed(2) : null,
-            account: 'alpaca_paper', est_dollars: 2000,
+            account: (c.accounts || []).filter((a: string) => a !== 'alpaca_paper')[0] || c.accounts?.[0], est_dollars: 2000,
           }} />
         )}
         {c.id?.startsWith('short-') && (

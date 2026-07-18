@@ -62,6 +62,10 @@ def _tg(msg: str, operational: bool = True):
         print(f"[defense-exec] telegram failed: {e}")
 
 
+def _acct_disp(a: str) -> str:
+    return caps().get("account_display", {}).get(a, a)
+
+
 def _held_symbols() -> set:
     try:
         h = json.loads((ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
@@ -111,14 +115,13 @@ def stage_intent(cur, *, source_card: str, intent_type: str, symbol: str, side: 
     key = f"dint-{intent_type}-{symbol}-{account}-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
 
     def refuse(reason: str) -> dict:
-        audit(cur, key, "stage_refused", reason)
+        audit(cur, key, "stage_refused", reason)  # toast + log fold ONLY (A3) — no Telegram for operator-click refusals
         cur.execute("""INSERT INTO defense_order_intents (intent_key, source_card, intent_type,
                        symbol, side, qty, account, lane, status, refusal)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,'none','refused',%s)
                        ON CONFLICT (intent_key) DO UPDATE SET refusal=EXCLUDED.refusal,
                          status='refused', updated_at=now()""",
                     (key, source_card, intent_type, symbol, side, qty, account, reason))
-        _tg(f"DEFENSE intent REFUSED · {symbol} {side} — {reason}")
         return {"ok": False, "refused": reason, "intent_key": key}
 
     if cfg.get("disabled"):
@@ -164,9 +167,17 @@ def stage_intent(cur, *, source_card: str, intent_type: str, symbol: str, side: 
                          key))
     except Exception as e:
         cur.connection.rollback()
-        return refuse(f"action_queue mirror failed: {str(e).splitlines()[0][:80]}")
+        err = str(e).splitlines()[0][:80]
+        # the mirror is a MIRROR (A2): primary intent path proceeds; systemic failure
+        # notifies ONCE per error class per day
+        cur.execute("""SELECT 1 FROM defense_execution_audit WHERE hop='mirror_failed'
+                       AND detail LIKE %s AND at::date=CURRENT_DATE LIMIT 1""", (err[:40] + '%',))
+        first_today = cur.fetchone() is None
+        audit(cur, key, "mirror_failed", err)
+        if first_today:
+            _tg(f"SYSTEMIC · defense approvals mirror failing ({err}) — intents still stage; fix the mirror")
     audit(cur, key, "staged", f"{side} {qty:g} {symbol} {account} lane={lane} band={limit_low}-{limit_high}")
-    _tg(f"DEFENSE intent staged · {side.upper()} {qty:g} {symbol} ({account.replace('schwab_', '')}, {lane}) — pending in APPROVALS")
+    _tg(f"Defense: staged {side.upper()} {qty:g} {symbol} · {_acct_disp(account)} · limit {limit_low}–{limit_high} — pending in Approvals")
     return {"ok": True, "intent_key": key, "lane": lane, "status": "staged",
             "next": "approve in the APPROVALS surface → 2FA pill arms it"}
 
@@ -188,8 +199,8 @@ def on_approval(cur, intent_key: str, actor: str = "operator") -> dict:
         return {"ok": False, "error": "intent not in a stageable state"}
     sym, side, qty, acct, lane = row
     audit(cur, intent_key, "approved_2fa_requested", f"pill sent (lane={lane})", actor)
-    _tg(f"2FA · defense intent {intent_key}\n{side.upper()} {qty:g} {sym} ({acct.replace('schwab_', '')}, {lane})\n"
-        f"Code: {code} — enter it on the Defense page to ARM. Expires 15 min.")
+    _tg(f"2FA code {code}\nDefense: {side.upper()} {qty:g} {sym} · {_acct_disp(acct)}\n"
+        f"Enter it on the Defense page to arm. Expires in 15 min.")
     return {"ok": True, "status": "awaiting_2fa", "next": "enter the Telegram code on the card"}
 
 
@@ -222,14 +233,14 @@ def verify_2fa(cur, intent_key: str, code: str) -> dict:
     audit(cur, intent_key, "2fa_consumed_armed", f"lane={lane} → {new_status}", "operator")
     if lane == "paper":
         _submit_paper(cur, intent_key, sym, side, qty, lo, hi, acct)
-        _tg(f"DEFENSE armed+submitted (paper) · {side.upper()} {qty:g} {sym} — Alpaca lane; fill poller will reconcile")
+        _tg(f"Defense: armed + submitted {side.upper()} {qty:g} {sym} · {_acct_disp(acct)} — fill will auto-reconcile")
         return {"ok": True, "status": "submitted_paper"}
     ticket = {"instrument": sym, "side": side.upper(), "qty": float(qty),
               "limit_band": [float(lo) if lo else None, float(hi) if hi else None],
               "account": acct, "type": "LIMIT (band = ticket estimate; set within it)",
               "note": "ARMED ORDER TICKET — place in ToS/web; the 10-min fill poller reconciles automatically"}
-    _tg(f"DEFENSE ARMED TICKET · {side.upper()} {qty:g} {sym} ({acct.replace('schwab_', '')}) "
-        f"limit {lo}–{hi} — place it; fills auto-reconcile")
+    _tg(f"Defense ARMED TICKET: {side.upper()} {qty:g} {sym} · {_acct_disp(acct)} · limit {lo}–{hi}\n"
+        f"Place it in ToS/web — the fill auto-reconciles within ~10 min market hours.")
     return {"ok": True, "status": "armed_ticket", "ticket": ticket}
 
 
