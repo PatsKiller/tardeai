@@ -1,6 +1,6 @@
 {
-  "date": "2026-07-16",
-  "timestamp": "2026-07-16T06:31:18.940225+00:00",
+  "date": "2026-07-17",
+  "timestamp": "2026-07-17T06:30:55.485378+00:00",
   "total_checks": 12,
   "passed": 11,
   "warnings": [
@@ -16,11 +16,11 @@
       "ok": true
     },
     "hermes_loop_last_log": {
-      "log": "Jul 15 21:05:19 ms01-openclaw python[398]:     VALIDATION FAILED: ['MISSING required column: summary', 'evidence_json has only 1 substantive keys (need >= 2)']\nJul 15 21:05:19 ms01-openclaw python[398]: Done in 24.0s: 0 validated, 2 failed/rejected\nJul 15 21:05:19 ms01-openclaw systemd[2949]: Finish",
+      "log": "Jul 16 21:03:37 ms01-openclaw python[1170268]:     VALIDATION FAILED: ['MISSING required column: summary', 'evidence_json has only 1 substantive keys (need >= 2)']\nJul 16 21:03:37 ms01-openclaw python[1170268]: Done in 41.6s: 0 validated, 2 failed/rejected\nJul 16 21:03:37 ms01-openclaw systemd[2949]",
       "ok": true
     },
     "searxng_container": {
-      "status": "Up 12 days",
+      "status": "Up 13 days",
       "ok": true
     },
     "searxng_endpoint": {
@@ -32,13 +32,13 @@
       "ok": true
     },
     "hermes_rows": {
-      "total": 10104,
-      "staged": 294,
-      "promoted": 3301,
+      "total": 10572,
+      "staged": 331,
+      "promoted": 3573,
       "ok": true
     },
     "hermes_embeddings": {
-      "count": 7198,
+      "count": 7578,
       "ok": true
     },
     "kill_switch": {
@@ -54,7 +54,7 @@
       "ok": true
     },
     "cron_count": {
-      "count": 397,
+      "count": 412,
       "ok": true
     }
   }
