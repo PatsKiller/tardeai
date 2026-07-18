@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { isCardBlocked } from '../lib/optionsCardSemantics'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { type OptionProposal } from '../components/OptionProposalCard'
@@ -65,6 +66,9 @@ export default function OptionsHub({ onDrill }: Props) {
   const [tierFilter, setTierFilter] = useState('')
   const [alpacaLaneFilter, setAlpacaLaneFilter] = useState('')
   const [liveOnly, setLiveOnly] = useState(false)
+  // Hide-blocked default (operator 2026-07-17): blocked cards are one click away, not gone —
+  // fail-closed transparency stays (chip shows the count), the default view shows tradeable ideas.
+  const [showBlocked, setShowBlocked] = useState(false)
   const [minPop, setMinPop] = useState(0)
   const [minEdge, setMinEdge] = useState(0)
   const [posSymbolFilter, setPosSymbolFilter] = useState('')
@@ -138,12 +142,17 @@ export default function OptionsHub({ onDrill }: Props) {
     }
     return counts
   }, [propList])
+  // canonical blocked semantics — same predicate the cards themselves render with
+  const isBlockedProp = (p: any) => isCardBlocked(p)
+  const blockedCount = useMemo(() => propList.filter(isBlockedProp).length, [propList])
   const shownProps = useMemo(() => {
-    if (!alpacaLaneFilter) return propList
+    let base = propList
+    if (!showBlocked) base = base.filter(p => !isBlockedProp(p))
+    if (!alpacaLaneFilter) return base
     const f = ALPACA_LANE_FILTERS.find(x => x.key === alpacaLaneFilter)
-    if (!f) return propList
-    return propList.filter(p => p.educational_paper_model && f.statuses.includes(p.queue_status || ''))
-  }, [propList, alpacaLaneFilter])
+    if (!f) return base
+    return base.filter(p => p.educational_paper_model && f.statuses.includes(p.queue_status || ''))
+  }, [propList, alpacaLaneFilter, showBlocked])
   const propCount = proposals?.filtered_count ?? proposals?.count ?? propList.length
   const propFacets = proposals?.filter_facets ?? {}
   const posList: Position[] = Array.isArray(monitor?.positions) ? monitor.positions : []
@@ -530,6 +539,7 @@ export default function OptionsHub({ onDrill }: Props) {
               {facetChip(FILTERS.tierB, 'Tier B', propFacets.by_tier?.B, tierFilter === 'B', () => setTierFilter(t => t === 'B' ? '' : 'B'), '#60a5fa')}
               {facetChip(FILTERS.tierC, 'Tier C', propFacets.by_tier?.C, tierFilter === 'C', () => setTierFilter(t => t === 'C' ? '' : 'C'), 'var(--text3)')}
               {facetChip(FILTERS.liveEligible, 'Live eligible', propFacets.live_eligible, liveOnly, () => setLiveOnly(v => !v), '#22c55e')}
+              {blockedCount > 0 && facetChip('Blocked proposals are hidden by default (fail-closed gates: liquidity/spread/data). Click to show them — every block reason stays reviewable on the card.', `Blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
               <Tip tip={FILTERS.showing} style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
                 Showing {propCount}{propFacets.total != null && propCount !== propFacets.total ? ` of ${propFacets.total}` : ''} ⓘ
               </Tip>
