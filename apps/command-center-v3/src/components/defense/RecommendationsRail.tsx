@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { BB, T, DASH, numStyle } from '../../lib/watchTokens'
 import LadderTrack from './LadderTrack'
+import { ProviderMark } from './LlmLogos'
 
 // Defense v3 R5 — the recommendations rail. Per-account tabs, four groups, every card
 // complete-or-absent (the engine's field guard enforces; this component renders what
@@ -62,27 +63,28 @@ function PairCard({ c, oversight }: { c: any; oversight?: any }) {
 function OversightPills({ cardId, factorsN, oversight }: { cardId: string; factorsN: number; oversight: any }) {
   // v8 WS-PILL — ① DET (native arithmetic) ② ✦GPT ③ ✦GK (④ ⚖API when a paid review exists).
   // Oversight INFORMS — it never blocks, edits, or stages.
-  const seats: Array<[string, string]> = [['chatgpt', '✦GPT'], ['grok', '✦Grok'], ['paid', '⚖Claude'], ['paid_gpt', '⚖GPT⁺'], ['paid_xai', '⚖Grok⁺']]
-  const pill = (label: string, verdict: string | null, status: string, tip: string) => {
+  const seats: Array<[string, string, string]> = [['chatgpt', 'openai', ''], ['grok', 'xai', ''], ['paid', 'anthropic', '⚖'], ['paid_gpt', 'openai', '⚖'], ['paid_xai', 'xai', '⚖']]
+  const pill = (key: string, provider: string | null, prefix: string, verdict: string | null, status: string, tip: string) => {
     const c = verdict === 'CONCUR' ? BB.green : verdict === 'QUALIFY' ? BB.amber : verdict === 'OBJECT' ? BB.red : BB.text3
     return (
-      <span key={label} title={tip} style={{ fontSize: DASH.chip, fontWeight: 800, color: c, border: `1px solid ${c}`, borderRadius: 2, padding: '0 5px', cursor: 'help', opacity: verdict ? 1 : 0.6 }}>
-        {label}{verdict ? ` ${verdict.slice(0, 1)}` : ` ${status.slice(0, 5)}`}
+      <span key={key} title={tip} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: DASH.chip, fontWeight: 800, color: c, border: `1px solid ${c}`, borderRadius: 2, padding: '0 5px', cursor: 'help', opacity: verdict ? 1 : 0.6 }}>
+        {prefix}{provider ? <ProviderMark provider={provider} /> : 'DET'}
+        {verdict ? ` ${verdict.slice(0, 1)}` : ` ${status.slice(0, 5)}`}
       </span>
     )
   }
-  const rendered = [pill('DET', null, `${factorsN}f`, `deterministic engine: ${factorsN} factors fired with values — the arithmetic IS the native verdict`)]
+  const rendered = [pill('det', null, '', null, `${factorsN}f`, `deterministic engine: ${factorsN} factors fired with values — the arithmetic IS the native verdict`)]
   let split = false, sawConcur = false, sawObject = false
-  for (const [seat, label] of seats) {
+  for (const [seat, provider, prefix] of seats) {
     const d = oversight?.seats?.[seat]
-    if (!d) { if (!seat.startsWith('paid')) rendered.push(pill(label, null, 'pend', 'critique pending — runs on the next recommendations build (cached per build, never per refresh)')); continue }
+    if (!d) { if (!seat.startsWith('paid')) rendered.push(pill(seat, provider, prefix, null, 'pend', 'critique pending — runs on the next recommendations build (cached per build, never per refresh)')); continue }
     const v = (d.verdicts || []).find((x: any) => x.id === cardId)
-    if (d.status !== 'ok') { rendered.push(pill(label, null, d.status, `${seat}: ${d.status} — ${d.status === 'quota' ? 'daily share exhausted, resets 00:00' : d.status === 'unparseable' ? 'response failed the schema; raw kept, never coerced' : 'lane unreachable this build'}`)); continue }
-    if (!v) { rendered.push(pill(label, null, 'n/a', `${seat} reviewed this build but returned no verdict for this card`)); continue }
+    const seatName = seat === 'paid' ? 'Claude (paid, claude-opus-4-8)' : seat === 'paid_gpt' ? 'GPT (paid, gpt-5.4)' : seat === 'paid_xai' ? 'Grok (paid, grok-4)' : seat === 'chatgpt' ? 'GPT (free lane)' : 'Grok (free lane)'
+    if (d.status !== 'ok') { rendered.push(pill(seat, provider, prefix, null, d.status, `${seatName}: ${d.status} — ${d.status === 'quota' ? 'daily share exhausted, resets 00:00' : d.status === 'unparseable' ? 'response failed the schema; raw kept, never coerced' : 'lane unreachable this build'}`)); continue }
+    if (!v) { rendered.push(pill(seat, provider, prefix, null, 'n/a', `${seatName} reviewed this build but returned no verdict for this card`)); continue }
     if (v.verdict === 'CONCUR') sawConcur = true
     if (v.verdict === 'OBJECT') sawObject = true
-    const seatName = seat === 'paid' ? 'Claude (paid, claude-opus-4-8)' : seat === 'paid_gpt' ? 'GPT (paid, gpt-5.4)' : seat === 'paid_xai' ? 'Grok (paid, grok-4)' : seat === 'chatgpt' ? 'GPT (free lane)' : 'Grok (free lane)'
-    rendered.push(pill(label, v.verdict, '', `${seatName} · ${d.at} · ${v.verdict}: ${v.reason || ''}${v.missed_risk ? ` · missed risk: ${v.missed_risk}` : ''}`))
+    rendered.push(pill(seat, provider, prefix + (d.stale ? '~' : ''), v.verdict, '', `${seatName} · ${d.at}${d.stale ? ` · STALE — reviewed an earlier build (${d.reviewed_build}); cards may have changed since — re-run ⚖ for fresh` : ''} · ${v.verdict}: ${v.reason || ''}${v.missed_risk ? ` · missed risk: ${v.missed_risk}` : ''}`))
   }
   split = sawConcur && sawObject
   return (

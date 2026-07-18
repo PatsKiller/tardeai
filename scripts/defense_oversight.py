@@ -167,7 +167,10 @@ def run_free_critiques(cur, force: bool = False) -> dict:
 
 
 def latest_reviews(cur) -> dict:
-    """Current build's verdicts for the pill row + memo panel."""
+    """Current build's verdicts for the pill row + memo panel. PAID reviews are too
+    expensive to evaporate on every rebuild: when the current build has no paid row,
+    the most recent paid review carries forward marked STALE (build named) — the
+    operator re-runs ⚖ for a fresh one; free seats simply re-critique per build."""
     ensure_tables(cur)
     cur.connection.commit()
     bh = build_oversight_brief()["build_hash"]
@@ -179,6 +182,17 @@ def latest_reviews(cur) -> dict:
                        "verdicts": verdicts if isinstance(verdicts, list) else (json.loads(verdicts) if verdicts else []),
                        "memo": memo if isinstance(memo, dict) else (json.loads(memo) if memo else None),
                        "at": str(at)[:16]}
+    for pseat in ("paid", "paid_gpt", "paid_xai"):
+        if pseat not in seats or seats[pseat].get("status") != "ok":
+            cur.execute("""SELECT build_hash, status, verdicts, memo, created_at
+                           FROM oversight_reviews WHERE seat=%s AND status='ok'
+                           ORDER BY created_at DESC LIMIT 1""", (pseat,))
+            r = cur.fetchone()
+            if r:
+                seats[pseat] = {"status": "ok", "stale": True, "reviewed_build": r[0],
+                                "verdicts": r[2] if isinstance(r[2], list) else (json.loads(r[2]) if r[2] else []),
+                                "memo": r[3] if isinstance(r[3], dict) else (json.loads(r[3]) if r[3] else None),
+                                "at": str(r[4])[:16]}
     return {"build_hash": bh, "seats": seats}
 
 
