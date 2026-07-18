@@ -3682,6 +3682,21 @@ def approval_decide(body: dict):
         (decision, queue_id)
     )
 
+    # Defense v7 hook: an approved defense intent gets its 2FA pill via the SAME flow
+    try:
+        _dk = _db_query("SELECT dedupe_key FROM action_queue WHERE id = %s", (queue_id,), fetch="one")
+        if decision == "approved" and _dk and str(_dk.get("dedupe_key", "")).startswith("dint-"):
+            _dexm = _dex()
+            from db_adapter import _get_conn as _gc
+            _c = _gc()
+            _cur = _c.cursor()
+            _res = _dexm.on_approval(_cur, _dk["dedupe_key"], actor="operator")
+            _c.commit()
+            if not _res.get("ok"):
+                return 409, {"ok": False, "error": f"defense intent: {_res.get('error')}"}
+    except Exception as _e:
+        return 500, {"ok": False, "error": f"defense 2FA hook failed: {str(_e)[:160]}"}
+
     # Write to approval_log
     _db_write(
         """INSERT INTO approval_log (action_queue_id, decision, decision_reason, decided_by, notes)
@@ -11156,10 +11171,21 @@ def _defense_recommendations(query=None):
     recs = _load_json(PROJECT_ROOT / "data" / "runtime" / "defense_recommendations_latest.json")
     radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
     job = _load_json(PROJECT_ROOT / "data" / "runtime" / "defense_refresh_job.json")
+    intents, exec_log = [], []
+    try:
+        dex = _dex()
+        from db_adapter import _get_conn
+        cur = _get_conn().cursor()
+        intents = dex.open_intents(cur)
+        exec_log = dex.execution_log(cur, 20)
+    except Exception:
+        pass
     return {"ok": True,
             "recommendations": recs or {"groups": {}, "note": "engine has not run yet"},
             "hedging_radar": radar or {"radar": [], "note": "chain snapshot has not run yet"},
-            "refresh_job": job}
+            "refresh_job": job,
+            "intents": intents, "execution_log": exec_log,
+            "execution_caps": _pj_loads((PROJECT_ROOT / "config" / "defense_execution_caps.json").read_text())}
 
 
 def _defense_core_registry(query=None):
@@ -11235,6 +11261,112 @@ def _defense_core_toggle(body=None):
                     (sym, acct))
     conn.commit()
     return {"ok": True, "symbol": sym, "core": bool(body.get("on"))}
+
+
+def _dex():
+    """defense_execution with reload — operator-action cadence, dev-friendly under hot-reload."""
+    import importlib
+    import defense_execution
+    return importlib.reload(defense_execution)
+
+
+def _defense_intent_stage(body=None):
+    """POST /api/v2/defense/intent/stage — WS-EXEC E1: unified staging from any card.
+    Whitelist + caps + kill enforced; refusals returned with the reason."""
+    body = body or {}
+    dex = _dex()
+    from db_adapter import _get_conn
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        res = dex.stage_intent(
+            cur, source_card=str(body.get("source_card", ""))[:80],
+            intent_type=body.get("intent_type", ""), symbol=str(body.get("symbol", "")).upper()[:8],
+            side=body.get("side", ""), qty=float(body.get("qty") or 0),
+            limit_low=body.get("limit_low"), limit_high=body.get("limit_high"),
+            account=body.get("account", ""), linked_intent=body.get("linked_intent"),
+            sequence_gate=body.get("sequence_gate"), cc_struct=body.get("cc_struct"),
+            est_dollars=float(body.get("est_dollars") or 0))
+        conn.commit()
+        return res
+    except Exception as e:
+        conn.rollback()
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _defense_intent_2fa(body=None):
+    """POST /api/v2/defense/intent/2fa {intent_key, code} — consume the pill → ARM."""
+    body = body or {}
+    dex = _dex()
+    from db_adapter import _get_conn
+    conn = _get_conn()
+    cur = conn.cursor()
+    res = dex.verify_2fa(cur, body.get("intent_key", ""), str(body.get("code", "")))
+    conn.commit()
+    return res
+
+
+def _defense_intent_fill_resolve(body=None):
+    """POST /api/v2/defense/intent/resolve-fill {intent_key, qty, price} — one-tap
+    disambiguation when the poller finds multiple candidate fills."""
+    body = body or {}
+    dex = _dex()
+    from db_adapter import _get_conn
+    conn = _get_conn()
+    cur = conn.cursor()
+    okr = dex.resolve_ambiguous(cur, body.get("intent_key", ""),
+                                float(body.get("qty") or 0), float(body.get("price") or 0))
+    conn.commit()
+    return {"ok": okr}
+
+
+def _defense_chain_validate(body=None):
+    """POST /api/v2/defense/chain/validate {symbol, strike, exp, delta} — WS-CHAIN:
+    fresh single-contract pull (throttled) → rails verdict rows + drift suggestion.
+    The trade control is gated on this being ≤15 min old (client + returned ts)."""
+    body = body or {}
+    sym = str(body.get("symbol", "")).upper()[:8]
+    strike = float(body.get("strike") or 0)
+    exp = str(body.get("exp", ""))[:10]
+    want_delta = float(body.get("delta") or 0.28)
+    if not (sym and strike and exp):
+        return {"ok": False, "error": "symbol/strike/exp required"}
+    from schwab_transport import get_option_chain
+    ch = get_option_chain(sym, strike_count=14)
+    if not ch or ch.get("status") != "ok":
+        return {"ok": False, "error": "chain unavailable"}
+    import json as _j
+    vc = _pj_loads((PROJECT_ROOT / "config" / "defense_recommendations.json").read_text())["cc_validation"]
+    target, best_alt = None, None
+    for e in ch.get("expirations", []):
+        for s in e.get("strikes", []):
+            if s["side"] != "call" or s.get("delta") is None:
+                continue
+            ad = abs(float(s["delta"]))
+            if e["exp"] == exp and abs(s["strike"] - strike) < 0.01:
+                target = {**s, "ad": ad}
+            if e["exp"] == exp and abs(ad - want_delta) < 0.05:
+                if best_alt is None or abs(ad - want_delta) < abs(best_alt["ad"] - want_delta):
+                    best_alt = {**s, "ad": ad}
+    now_ts = datetime.now(timezone.utc).isoformat()
+    if not target:
+        return {"ok": False, "error": f"{sym} {exp} ${strike}C not found in the live chain", "validated_at": now_ts}
+    mid = ((target.get("bid") or 0) + (target.get("ask") or 0)) / 2
+    spread_pct = round(((target.get("ask") or 0) - (target.get("bid") or 0)) / mid * 100, 1) if mid else 999
+    rows = [
+        {"rail": "open interest", "value": target.get("oi") or 0, "need": f"≥{vc['min_open_interest']}", "pass": (target.get("oi") or 0) >= vc["min_open_interest"]},
+        {"rail": "volume/OI", "value": max(target.get("volume") or 0, target.get("oi") or 0), "need": f"≥{vc['min_volume_or_oi']}", "pass": max(target.get("volume") or 0, target.get("oi") or 0) >= vc["min_volume_or_oi"]},
+        {"rail": "spread % of mid", "value": spread_pct, "need": f"≤{vc['max_spread_pct_of_mid']}%", "pass": spread_pct <= vc["max_spread_pct_of_mid"]},
+        {"rail": "delta", "value": round(target["ad"], 2), "need": f"{vc['delta_band'][0]}–{vc['delta_band'][1]}", "pass": vc["delta_band"][0] <= target["ad"] <= vc["delta_band"][1]},
+    ]
+    drift = None
+    if (abs(target["ad"] - want_delta) > 0.05 or spread_pct > 6) and best_alt and abs(best_alt["strike"] - strike) > 0.01:
+        drift = {"line": f"${strike}C Δ{round(target['ad'], 2)} → suggest ${best_alt['strike']}C Δ{round(best_alt['ad'], 2)}",
+                 "suggested_strike": best_alt["strike"], "requires_restage": True}
+    return {"ok": True, "validated_at": now_ts, "all_pass": all(r["pass"] for r in rows),
+            "rows": rows, "book": {"bid": target.get("bid"), "ask": target.get("ask"),
+                                   "mid": round(mid, 2), "iv": target.get("iv")},
+            "drift": drift}
 
 
 def _defense_cc_queue_trade(body=None):
@@ -36788,6 +36920,34 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path in ("/api/v2/defense/core/toggle", "/api/v2/defense/core/confirm"):
         try:
             result = _defense_core_toggle(body or {})
+            return (200 if result.get("ok") else 400), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/defense/intent/stage":
+        try:
+            result = _defense_intent_stage(body or {})
+            return (200 if result.get("ok") else 400), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/defense/intent/2fa":
+        try:
+            result = _defense_intent_2fa(body or {})
+            return (200 if result.get("ok") else 400), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/defense/intent/resolve-fill":
+        try:
+            result = _defense_intent_fill_resolve(body or {})
+            return (200 if result.get("ok") else 400), result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/defense/chain/validate":
+        try:
+            result = _defense_chain_validate(body or {})
             return (200 if result.get("ok") else 400), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}

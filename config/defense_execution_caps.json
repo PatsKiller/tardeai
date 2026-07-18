@@ -1,0 +1,32 @@
+{
+  "_comment": "Defense v7 WS-EXEC \u2014 canary-grade caps, config-owned. Checked at STAGING and APPROVAL. disabled=true is the desk's own kill file: nothing stages, nothing arms. Whitelist: anything outside it CANNOT be staged (refusal rendered with reason + audited).",
+  "disabled": false,
+  "max_order_dollars": 25000,
+  "max_orders_per_day": 6,
+  "fill_poll_minutes": 10,
+  "validation_fresh_minutes": 15,
+  "whitelist": {
+    "trim_sell": "held symbols only (holdings.json at stage time)",
+    "covered_call": "held symbols only, \u2265100 sh",
+    "inverse_etf": [
+      "SH",
+      "PSQ",
+      "DOG",
+      "RWM"
+    ],
+    "taxable_short": "defensive_short pool members only (industry snapshot at stage time)",
+    "pair_buy": "instruments on a rendered pair card only"
+  },
+  "paper_accounts": [
+    "alpaca_paper"
+  ],
+  "live_accounts": [
+    "schwab_rollover_ira",
+    "schwab_roth_ira",
+    "schwab_taxable"
+  ],
+  "telegram": {
+    "operational_prefix": "[OPERATIONAL]",
+    "advisory_prefix": "[ADVISORY \u00b7 SHADOW until Jul 30-31 promote]"
+  }
+}
