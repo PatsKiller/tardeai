@@ -751,15 +751,30 @@ def covered_calls(sectors, holdings, cur, as_of, total_book=0) -> list:
 
 
 def options_locked_card(as_of) -> dict:
+    # Per-account truth from config (Schwab-native tiers). "covered" already permits
+    # PROTECTIVE puts on held shares — what remains is the structure designer (R1),
+    # not broker approval. Index/QQQ puts (unheld) need the "long" tier.
+    levels = {a: c.get("options_level") for a, c in CAPS.items() if a.startswith("schwab")}
+    confirmed = {a: l for a, l in levels.items()
+                 if l in ("covered", "long", "spreads", "short_uncovered")}
+    title = ("PUT HEDGES · protective puts permitted — designer pending"
+             if confirmed else "PUT HEDGES · locked")
     return {
         "id": f"putlock-{as_of}", "group": "protect",
-        "title": "PUT HEDGES · locked",
-        "instruments": [{"symbol": "—", "kind": "long puts / put spreads",
-                         "note": "unlocks when options level confirmed — fill options_level in config/account_capabilities.json"}],
-        "accounts": sorted(CAPS.keys()), "direction": "n/a until unlocked",
+        "title": title,
+        "instruments": [{"symbol": "—", "kind": "protective puts (held shares) / index puts",
+                         "note": ("protective puts on HELD symbols legal at 'covered' tier in: "
+                                  + ", ".join(sorted(confirmed)) +
+                                  " — put-structure designer (R1) is the remaining build item; "
+                                  "index puts require 'long' tier (advisor request)")
+                                 if confirmed else
+                                 "unlocks when options level confirmed — fill options_level in config/account_capabilities.json"}],
+        "accounts": sorted(CAPS.keys()), "direction": "n/a until designer ships",
         "size_band": "n/a", "entry_logic": "n/a — configuration gate, not a market call",
         "invalidation": "n/a",
-        "factors": [{"name": "options_level", "value": "null in every account (operator fill)"}],
+        "factors": [{"name": "options_level",
+                     "value": " · ".join(f"{a.replace('schwab_', '')}: {l or 'operator fill'}"
+                                          for a, l in sorted(levels.items()))}],
         "as_of": as_of, "mode": "SHADOW", "routes": {"config": "account_capabilities.json"},
     }
 
