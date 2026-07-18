@@ -509,6 +509,26 @@ def _high_conviction_symbols(limit: int = 25) -> List[dict]:
                     }
     except Exception:
         pass
+    # Operator-starred symbols (2026-07-17): a star is the operator's own conviction signal —
+    # it now ALWAYS enters the options scan universe (was: inference/fused/action signals only,
+    # so starred names never got option plays unless something else also flagged them).
+    try:
+        from db_adapter import _execute as _star_q
+        starred = _star_q(
+            """SELECT symbol FROM operator_starred_symbols
+               ORDER BY starred_at DESC LIMIT 15""",
+            fetch="all") or []
+        for r in starred:
+            sym = (r.get("symbol") or "").upper()
+            if sym and sym not in out and sym.isalpha() and len(sym) <= 6:
+                out[sym] = {
+                    "symbol": sym,
+                    "source": "operator_starred",
+                    "confidence": 0.62,
+                    "summary": "operator-starred watchlist name",
+                }
+    except Exception:
+        pass
     if len(out) < 5:
         wl = _load_json(STATE_DIR / "action_signals.json") or {}
         for s in (wl.get("signals") or [])[:20]:
