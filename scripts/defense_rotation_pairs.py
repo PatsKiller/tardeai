@@ -53,10 +53,15 @@ def _destinations_for(account: str, rotate_cards: list, style: dict, source_symb
                       holdings_by_sym_acct: dict, prices: dict, sectors_by_name: dict) -> list:
     """Ranked destination candidates valid in this account. Never forced."""
     from fund_lookthrough import _cfg as _lt_cfg
+    lean = PC.get("defensive_lean") or {}
     dests = []
     for rank, rc in enumerate(rotate_cards):
         if account not in rc.get("accounts", []):
             continue
+        if lean.get("enabled"):
+            sec_name = rc["title"].split("· ")[1].split(" (")[0] if "· " in rc["title"] else ""
+            if sec_name not in lean.get("defensive_sectors", []):
+                continue  # DEFENSIVE LEAN (operator directive): cyclical destinations excluded
         etf = rc["instruments"][0]
         sector = rc["title"].split("· ")[1].split(" (")[0] if "· " in rc["title"] else None
         row = sectors_by_name.get(sector) or {}
@@ -102,8 +107,12 @@ def build_rotation_pairs(cur, trim_cards: list, rotate_cards: list, market: dict
             picks = dests[:PC["max_destinations"]]
             tot_score = sum(d["score"] for d in picks) or 1.0
             legs = []
+            lean_cap = ((PC.get("defensive_lean") or {}).get("max_single_destination_pct")
+                        if (PC.get("defensive_lean") or {}).get("enabled") else None)
             for d in picks:
                 alloc = opt["proceeds_est"] * d["score"] / tot_score
+                if lean_cap:
+                    alloc = min(alloc, opt["proceeds_est"] * lean_cap / 100)  # never pile one sector
                 if alloc < PC["min_leg_dollars"]:
                     continue
                 sh = math.floor(alloc / d["price"])
@@ -111,6 +120,15 @@ def build_rotation_pairs(cur, trim_cards: list, rotate_cards: list, market: dict
                     continue
                 legs.append({**d, "alloc_est": round(sh * d["price"]), "shares": sh,
                              "line": f"buy ≈ {sh} sh {d['symbol']} @ ~${d['price']:.2f} ≈ ${sh*d['price']/1000:.1f}K ({d['kind']})"})
+            lean_cfg = PC.get("defensive_lean") or {}
+            allocated = sum(l["alloc_est"] for l in legs)
+            if lean_cfg.get("enabled") and lean_cfg.get("cash_remainder") and \
+                    opt["proceeds_est"] - allocated > PC["min_leg_dollars"]:
+                rem = round(opt["proceeds_est"] - allocated)
+                legs.append({"symbol": "CASH", "kind": "money-market sweep", "price": 1.0,
+                             "sector": "cash", "score": 0, "alloc_est": rem, "shares": rem,
+                             "why": "defensive lean: no further defensive destination qualified — cash IS the position",
+                             "line": f"hold ≈ ${rem/1000:.1f}K in cash (money-market sweep) — defensive lean; redeploy when the tape confirms risk-on"})
             if not legs:
                 continue
             # cross-account note (never a funded leg): a destination that ranked but
@@ -138,7 +156,7 @@ def build_rotation_pairs(cur, trim_cards: list, rotate_cards: list, market: dict
                 "accounts": [acct], "direction": "rotate (sell → fund buys, same account)",
                 "size_band": f"${opt['proceeds_est']/1000:.1f}K rotates across {len(legs)} destination(s)",
                 "sell_ticket": opt, "buy_legs": legs,
-                "style_rationale": style["rationale"],
+                "style_rationale": style["rationale"] + (" · DEFENSIVE LEAN active (operator directive per the 5-seat panel 2026-07-18): cyclical destinations excluded" if (PC.get("defensive_lean") or {}).get("enabled") else ""),
                 "entry_logic": "execute the sell leg first (ladder T1); stage buys on pullbacks — "
                                "legs are independent tickets, not one order",
                 "invalidation": tc["invalidation"] + " — pair dissolves if the sell thesis dies",

@@ -474,9 +474,19 @@ def stances(sectors, holdings, cur, enrich, hermes, as_of) -> list:
             else:
                 stance = "HOLD"
                 reason = f"{sec_label} {st}, no factors fired"
+        lean = (CFG.get("rotation_pairs") or {}).get("defensive_lean") or {}
+        on_trigger = None
+        if stance in ("TRIM", "TRIM-WATCH") and lean.get("enabled"):
+            dests = "/".join(s0[:3] for s0 in []) or " · ".join(
+                ["XLU/XLP/XLV (defensive sectors, if LEADING+underweight)",
+                 "SCHD (income core, style-aligned)" if lean.get("allow_income_destination") else None,
+                 "cash (money-market sweep) — the default when nothing qualifies"])
+            on_trigger = (f"if the trim fires (defensive lean, operator directive 2026-07-18): "
+                          f"proceeds → {dests}")
         out.append({"symbol": sym, "account": h["account"],
                     "account_label": CFG["account_labels"].get(h["account"], h["account"]),
                     "value": round(h["value"]), "stance": stance, "reason": reason,
+                    "on_trigger": on_trigger,
                     "sector": sec_label, "as_of": as_of,
                     "is_core": is_core(_CORE_CACHE, sym, h["account"])})
     return out

@@ -147,7 +147,20 @@
       "VUG"
     ],
     "income_destination": "SCHD",
-    "stage_buy_legs": true
+    "stage_buy_legs": true,
+    "defensive_lean": {
+      "enabled": true,
+      "set_by": "operator, per the 5-seat oversight panel 2026-07-18 (opus/gpt-5.4: 'defensive rotation, not risk-on broadening \u2014 equal>cap may be a distribution tell')",
+      "defensive_sectors": [
+        "Utilities",
+        "Consumer Staples",
+        "Healthcare"
+      ],
+      "allow_income_destination": true,
+      "cash_remainder": true,
+      "_revoke": "set enabled=false when the tape confirms risk-on broadening (breadth + small caps + NH/NL)",
+      "max_single_destination_pct": 50
+    }
   },
   "operator_items": [
     {
