@@ -240,5 +240,15 @@
   "oversight_free": {
     "_comment": "Tier-1 free-seat limits \u2014 oversight's share of each OAuth lane's GLOBAL daily quota (the lanes serve Hermes etc. too). Operator-owned.",
     "daily_per_seat": 5
-  }
+  },
+  "operator_suppressions": [
+    {
+      "symbol": "BND",
+      "scope": "move_out",
+      "reason": "operator affirmed HOLD 2026-07-18 (all-seat consensus resolved the ladder tension) \u2014 bond ballast stays; the engine's factor join disagrees and that is fine",
+      "set": "2026-07-18",
+      "until": null,
+      "_note": "engine still COMPUTES the factors (visible in the stance reason) \u2014 it just stops emitting the trim card/ladder/pair for this symbol until the operator removes this entry"
+    }
+  ]
 }

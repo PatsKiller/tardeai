@@ -310,6 +310,13 @@ def move_out(sectors, holdings, cur, enrich, hermes, as_of, total_book=0, as_of_
         factors = _fired_factors(h, sec, e, hz)
         if len(factors) < c["factor_threshold"]:
             continue
+        # v8.7 — operator suppressions: dated, reasoned, revocable; the engine keeps
+        # computing (honesty) but stops emitting the card until the entry is removed
+        supp = next((x for x in CFG.get("operator_suppressions", [])
+                     if x["symbol"] == h["symbol"] and x.get("scope") == "move_out"
+                     and not x.get("until")), None)
+        if supp:
+            continue
         # DT1 — the composite, arithmetic rendered; absent inputs listed
         urgent = any("urgent" in str(f.get("value", "")).lower() for f in factors)
         fund = lt.get(h["symbol"])
@@ -474,6 +481,10 @@ def stances(sectors, holdings, cur, enrich, hermes, as_of) -> list:
             else:
                 stance = "HOLD"
                 reason = f"{sec_label} {st}, no factors fired"
+        supp2 = next((x for x in CFG.get("operator_suppressions", [])
+                      if x["symbol"] == sym and not x.get("until")), None)
+        if supp2:
+            reason += f" · TRIM ADVISORIES MUTED by operator {supp2['set']} (engine factors still shown — remove the config entry to unmute)"
         lean = (CFG.get("rotation_pairs") or {}).get("defensive_lean") or {}
         on_trigger = None
         if stance in ("TRIM", "TRIM-WATCH") and lean.get("enabled"):
