@@ -16,7 +16,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-DAILY_PER_SEAT = 3  # oversight's share of each free lane's global daily quota
+def _daily_per_seat() -> int:
+    try:
+        return json.loads((ROOT / "config" / "defense_recommendations.json").read_text())["oversight_free"]["daily_per_seat"]
+    except Exception:
+        return 3
 
 CONTRACT = """MANDATORY COMPLETENESS: your "cards" array MUST contain exactly one verdict for EVERY card id in the brief — no omissions, no sampling. A review missing any card id is INVALID. Respond ONLY with JSON matching:
 {"cards": [{"id": "<card id>", "verdict": "CONCUR|QUALIFY|OBJECT",
@@ -123,7 +127,7 @@ def run_free_critiques(cur, force: bool = False) -> dict:
             continue
         cur.execute("""SELECT count(*) FROM oversight_reviews WHERE seat=%s
                        AND created_at::date=CURRENT_DATE AND status='ok'""", (seat,))
-        if cur.fetchone()[0] >= DAILY_PER_SEAT:
+        if cur.fetchone()[0] >= _daily_per_seat():
             cur.execute("""INSERT INTO oversight_reviews (build_hash, seat, status, raw)
                            VALUES (%s,%s,'quota','oversight daily share exhausted; resets 00:00')
                            ON CONFLICT (build_hash, seat) DO NOTHING""", (bh, seat))

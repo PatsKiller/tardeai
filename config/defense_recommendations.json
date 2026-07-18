@@ -223,5 +223,9 @@
         "output_per_mtok_usd": 25.0
       }
     }
+  },
+  "oversight_free": {
+    "_comment": "Tier-1 free-seat limits \u2014 oversight's share of each OAuth lane's GLOBAL daily quota (the lanes serve Hermes etc. too). Operator-owned.",
+    "daily_per_seat": 3
   }
 }
