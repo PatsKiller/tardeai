@@ -14,6 +14,11 @@ const STANCE_COLOR: Record<string, string> = {
 const TRIP_COLOR: Record<string, string> = {
   advised: BB.text3, stepped_out: BB.amber, rollback_open: BB.green,
 }
+const STATUS_TIP: Record<string, string> = {
+  advised: 'advisory issued — no sell detected yet. Schwab ingest auto-detects fills (~12h lag); the button is an optional instant record',
+  stepped_out: 'exit recorded (ingest or your tap) — the re-entry conditions below are watched nightly',
+  rollback_open: 'a re-entry condition is MET — the window to rotate back in is open; ranks first for ★CORE',
+}
 
 export default function RotationPlanPanel({ plan, onConfirmed }: { plan: any[]; onConfirmed?: () => void }) {
   const [busy, setBusy] = useState<string | null>(null)
@@ -31,7 +36,7 @@ export default function RotationPlanPanel({ plan, onConfirmed }: { plan: any[]; 
   return (
     <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 2, padding: '10px 12px' }}>
       <div style={{ fontSize: DASH.panel, fontWeight: 800, color: BB.text1, marginBottom: 8 }}>
-        Rotation Plan <span style={{ fontSize: DASH.data, color: BB.text3, fontWeight: 600 }}>· the desk's memory — trims, ladders, re-entry watches</span>
+        Rotation Plan <span title="every advisory you act on lands here automatically: ladders escalate/stand down nightly, executed slices open re-entry watches, outcomes score vs having held. Fills auto-detect from Schwab ingest (~12h) — buttons are optional instant records." style={{ fontSize: DASH.data, color: BB.text3, fontWeight: 600, cursor: 'help' }}>· the desk's memory — trims, ladders, re-entry watches</span>
       </div>
       {(!plan || plan.length === 0) && (
         <div style={{ fontSize: DASH.data, color: BB.text3 }}>
@@ -55,6 +60,7 @@ export default function RotationPlanPanel({ plan, onConfirmed }: { plan: any[]; 
                   {lad.t1_status !== 'executed' && (
                     <button disabled={busy === `${lad.ladder_id}-T1`}
                       onClick={() => confirm({ ladder_id: lad.ladder_id, tranche: 'T1' }, `${lad.ladder_id}-T1`)}
+                      title="OPTIONAL — Schwab ingest auto-detects a T1-sized sell (≥60% of advised shares) within ~12h and marks it sold; tap for an instant record"
                       style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: BB.text1, background: 'transparent', border: `1px solid ${BB.amber}`, borderRadius: 2, padding: '2px 8px' }}>
                       {busy === `${lad.ladder_id}-T1` ? '…' : 'mark T1 sold'}
                     </button>
@@ -71,7 +77,7 @@ export default function RotationPlanPanel({ plan, onConfirmed }: { plan: any[]; 
               {(r.round_trips || []).map((t: any) => (
                 <div key={t.id} style={{ marginBottom: 3 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', fontSize: DASH.data }}>
-                    <span style={{ fontSize: DASH.chip, fontWeight: 800, color: TRIP_COLOR[t.status] || BB.text3, textTransform: 'uppercase' }}>
+                    <span title={STATUS_TIP[t.status] || ''} style={{ fontSize: DASH.chip, fontWeight: 800, color: TRIP_COLOR[t.status] || BB.text3, textTransform: 'uppercase', cursor: 'help' }}>
                       {t.status === 'rollback_open' ? 'ROLLBACK WINDOW OPEN' : t.status.replace('_', ' ')}
                     </span>
                     {t.exit?.detected_at && <span style={{ color: BB.text3 }}>out {t.exit.detected_at}{t.exit.price ? ` @ $${t.exit.price}` : ''}</span>}
@@ -82,6 +88,7 @@ export default function RotationPlanPanel({ plan, onConfirmed }: { plan: any[]; 
                     )}
                     {t.status === 'advised' && (
                       <button disabled={busy === `rt-${t.id}`} onClick={() => confirm({ id: t.id }, `rt-${t.id}`)}
+                        title="OPTIONAL — Schwab ingest auto-detects the sell within ~12h and records it for you; tap only if you want it logged immediately"
                         style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: BB.text1, background: 'transparent', border: `1px solid ${BB.amber}`, borderRadius: 2, padding: '1px 7px' }}>
                         {busy === `rt-${t.id}` ? '…' : 'I executed this'}
                       </button>
@@ -90,7 +97,7 @@ export default function RotationPlanPanel({ plan, onConfirmed }: { plan: any[]; 
                   {t.wash_sale && <div style={{ fontSize: DASH.data, color: BB.amber }}>⚠ {t.wash_sale.line}</div>}
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 2 }}>
                     {(t.conditions || []).map((c: any, i: number) => (
-                      <span key={i} style={{ fontSize: DASH.chip, fontWeight: 700, borderRadius: 2, padding: '1px 6px', color: c.met ? BB.green : BB.text3, border: `1px solid ${c.met ? BB.green : BB.borderHair}` }}>
+                      <span key={i} title={c.met ? 'condition MET — contributes to opening the rollback window (whichever condition satisfies first opens it)' : 're-entry condition frozen at advise time — evaluated nightly; not met yet'} style={{ fontSize: DASH.chip, fontWeight: 700, borderRadius: 2, padding: '1px 6px', color: c.met ? BB.green : BB.text3, border: `1px solid ${c.met ? BB.green : BB.borderHair}`, cursor: 'help' }}>
                         {c.met ? '✓ ' : ''}{c.label}
                       </span>
                     ))}

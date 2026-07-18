@@ -757,6 +757,11 @@ def main() -> int:
     if not args.dry_run:
         rt.register_advisories(cur, ok, sector_states)
         rt.detect_fills(cur)
+        import defense_trim_ladders as _dtl_af
+        _dtl_af.ensure_ladder_tables(cur)
+        auto_n = _dtl_af.detect_tranche_fills(cur)
+        if auto_n:
+            print(f"[recs] auto-detected {auto_n} tranche execution(s) from Schwab ingest")
     rt_prices = _prices(cur, list({x[0] for x in
                                    [(h["symbol"], 0) for h in holdings]}) or ["SPY"])
     round_trips = rt.evaluate(cur, sector_states, rt_prices, enrich)
@@ -823,6 +828,7 @@ def main() -> int:
         "rotation_plan": plan_rows,
         "exposure_basis": sector_snap.get("exposure_basis"),
         "not_decomposed": sector_snap.get("not_decomposed"),
+        "operator_items": CFG.get("operator_items", []),
         "sources": {
             "sectors": sector_snap.get("generated_at"),
             "industries": industries.get("captured_at"),

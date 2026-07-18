@@ -148,5 +148,37 @@
     ],
     "income_destination": "SCHD",
     "stage_buy_legs": true
-  }
+  },
+  "operator_items": [
+    {
+      "item": "Fill options_level in config/account_capabilities.json",
+      "why": "unlocks put-structure hedge cards (locked card names it)",
+      "since": "2026-07-17"
+    },
+    {
+      "item": "Schwab dated Cost Basis export \u00d74",
+      "why": "feeds GG term math + wash-sale LOSS detection + ticket realized-gain estimates",
+      "since": "2026-07-16"
+    },
+    {
+      "item": "2-minute factsheet eyeball of config/fund_lookthrough.json",
+      "why": "those weights drive every effective-exposure number on this page",
+      "since": "2026-07-18"
+    },
+    {
+      "item": "Decide: \u2605CORE checkbox on the Portfolio holdings card?",
+      "why": "Card v4 family is LOCKED by your own directive \u2014 needs your call to amend",
+      "since": "2026-07-18"
+    },
+    {
+      "item": "KEY ROTATION",
+      "why": "repo now PUBLIC by design for external review \u2014 keys in git history are reachable by anyone; rotation is the fix",
+      "since": "2026-07-06"
+    },
+    {
+      "item": "Jul 30\u201331: triple promote review",
+      "why": "GG shadow \u00b7 move-out Telegram \u00b7 ladder/rollback Telegram \u2014 all three decided together",
+      "since": "calendar"
+    }
+  ]
 }

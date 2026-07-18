@@ -33,7 +33,7 @@ function Heat({ v, scale = 1, suffix = '%' }: { v: number | null | undefined; sc
   )
 }
 
-export default function DefenseDetails({ posture, industries, radar }: { posture: any; industries: any; radar: any }) {
+export default function DefenseDetails({ posture, industries, radar, operatorItems }: { posture: any; industries: any; radar: any; operatorItems?: any[] }) {
   const [drill, setDrill] = useState<string | null>(null)
   const rows: any[] = posture?.momentum?.rows || []
   const whfC: any[] = posture?.would_have_fired?.confirmed || []
@@ -147,6 +147,19 @@ export default function DefenseDetails({ posture, industries, radar }: { posture
           Technology → LAGGING was confirmed Jul 14, three sessions before the operator asked why the system was silent.
         </div>
       </Fold>
+
+      {(operatorItems?.length || 0) > 0 && (
+        <Fold title="Operator items" badge={`${operatorItems!.length} standing — the desk keeps asking until they're done`}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {operatorItems!.map((it: any, i: number) => (
+              <div key={i} title={`open since ${it.since}`} style={{ fontSize: DASH.data, color: BB.text2, cursor: 'help' }}>
+                <b style={{ color: it.item.includes('KEY ROTATION') ? BB.red : BB.text1 }}>{it.item}</b>
+                <span style={{ color: BB.text3 }}> — {it.why}</span>
+              </div>
+            ))}
+          </div>
+        </Fold>
+      )}
 
       <Fold title="Build status" badge="what's live vs accruing">
         <div style={{ fontSize: DASH.data, color: BB.text2, display: 'flex', flexDirection: 'column', gap: 4 }}>

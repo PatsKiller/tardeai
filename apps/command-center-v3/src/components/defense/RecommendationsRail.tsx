@@ -6,11 +6,11 @@ import LadderTrack from './LadderTrack'
 // complete-or-absent (the engine's field guard enforces; this component renders what
 // survives). SHADOW chips until promote. Advisory only — cards route, never execute.
 
-const GROUPS: Array<{ key: string; label: string; color: string }> = [
-  { key: 'get_into', label: 'Get Into', color: BB.green },
-  { key: 'protect', label: 'Protect', color: BB.amber },
-  { key: 'short_side', label: 'Short-Side', color: BB.red },
-  { key: 'income', label: 'Income', color: T.link },
+const GROUPS: Array<{ key: string; label: string; color: string; tip: string }> = [
+  { key: 'get_into', label: 'Get Into', color: BB.green, tip: 'rotate-in candidates: LEADING/IMPROVING sectors where your effective book weight is under the 4% floor — ETF always valid, constituents pass liquidity/extension/earnings rails' },
+  { key: 'protect', label: 'Protect', color: BB.amber, tip: 'move-out/trim advisories on held positions (≥3 fired factors, values shown) + the residual-scraps cleanup card + locked put hedges' },
+  { key: 'short_side', label: 'Short-Side', color: BB.red, tip: 'inverse-ETF hedges (all accounts) + taxable-only short advisories from confirmed-LAGGING industries — anti-squeeze filtered, mandatory buy-stops, ≤2% cap' },
+  { key: 'income', label: 'Income', color: T.link, tip: 'covered-call candidates on ≥100-share holdings in WEAKENING/LAGGING sectors — concrete strike/premium from last night\'s chain snapshot' },
 ]
 
 const chip: React.CSSProperties = {
@@ -29,9 +29,9 @@ function PairCard({ c }: { c: any }) {
           {c.is_core && <span style={{ ...chip, color: BB.amber }}>★CORE</span>}
           <span style={{ ...chip }}>{c.tax_note.split('—')[0].trim()}</span>
         </div>
-        <div style={{ fontSize: DASH.data, color: BB.text1, fontWeight: 600, marginBottom: 2 }}>{c.sell_ticket.line}</div>
+        <div title="the sell leg: whole-share ESTIMATE at the labeled as-of price — confirming it runs the ladder/round-trip flow; never an order" style={{ fontSize: DASH.data, color: BB.text1, fontWeight: 600, marginBottom: 2, cursor: 'help' }}>{c.sell_ticket.line}</div>
         {c.buy_legs.map((l: any) => (
-          <div key={l.symbol} style={{ fontSize: DASH.data, color: BB.text2, marginBottom: 2 }}>→ {l.line}</div>
+          <div key={l.symbol} title="buy leg funded by the sell proceeds (same account) — staged as a PENDING idea in the approval queue; you approve, nothing self-executes" style={{ fontSize: DASH.data, color: BB.text2, marginBottom: 2, cursor: 'help' }}>→ {l.line}</div>
         ))}
         <div style={{ fontSize: DASH.data, color: BB.text3 }}>
           {c.style_rationale}
@@ -83,8 +83,8 @@ function Card({ c, tab, ladder }: { c: any; tab: string; ladder?: any }) {
       <div onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
         <div style={{ fontSize: DASH.data + 1, fontWeight: 700, color: BB.text1, marginBottom: 4 }}>{c.title}</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
-          <span style={{ ...chip, color: BB.amber, borderColor: BB.amber }}>{c.mode}</span>
-          <span style={chip}>{c.direction}</span>
+          <span title="SHADOW = advisory renders on-page only; Telegram alerts start only after the Jul 30–31 promote review" style={{ ...chip, color: BB.amber, borderColor: BB.amber, cursor: 'help' }}>{c.mode}</span>
+          <span title="what this card asks you to do — advisory only, nothing places orders" style={{ ...chip, cursor: 'help' }}>{c.direction}</span>
           {band?.v
             ? <span style={chip}>{fmt$(band.v[0])}–{fmt$(band.v[1])}{band.label ? ` (${band.label.replace('schwab_', '')})` : ''}</span>
             : <span style={chip}>{c.size_band.split('(')[0].trim()}</span>}
@@ -183,7 +183,7 @@ export default function RecommendationsRail({ recs }: { recs: any }) {
           const cards = forTab(groups[g.key] || [])
           return (
             <div key={g.key}>
-              <div style={{ fontSize: DASH.section, fontWeight: 800, color: g.color, marginBottom: 6 }}>
+              <div title={g.tip} style={{ fontSize: DASH.section, fontWeight: 800, color: g.color, marginBottom: 6, cursor: 'help' }}>
                 {g.label} <span style={{ ...numStyle, color: BB.text3, fontSize: DASH.data }}>{cards.length}</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

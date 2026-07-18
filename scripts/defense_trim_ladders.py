@@ -168,6 +168,10 @@ def ensure_ladder_tables(cur):
         closed_at timestamptz, close_reason text)""")
     cur.execute("""ALTER TABLE rotation_round_trips
                    ADD COLUMN IF NOT EXISTS tranche_of int""")
+    cur.execute("""ALTER TABLE rotation_ladders
+                   ADD COLUMN IF NOT EXISTS t1_shares_est numeric""")
+    cur.execute("""ALTER TABLE rotation_ladders
+                   ADD COLUMN IF NOT EXISTS t1_source text""")
 
 
 def swing_low(cur, symbol: str, days: int) -> float | None:
@@ -204,10 +208,18 @@ def arm_ladder(cur, card: dict, plan: dict, sector: str | None, state: str | Non
         tranches.append({"tranche": "T3", "add_fraction_pct": LC["t3_add_pp"], "status": "armed",
                          "triggers": [{"type": "gg_escalation", "symbol": sym, "account": acct,
                                        "label": "GG CLIMAX / giveback-breach after T2"}]})
+    t1_shares = None
+    try:
+        opt = next((o for o in (card.get("ticket") or {}).get("options", [])
+                    if o.get("account") == acct), None)
+        t1_shares = opt.get("shares") if opt else None
+    except Exception:
+        pass
     cur.execute("""INSERT INTO rotation_ladders (advisory_id, symbol, account, t1_fraction,
-                   tranches, factor_count_at_creation)
-                   VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
-                (card["id"], sym, acct, plan["fraction_pct"], json.dumps(tranches), factor_count))
+                   tranches, factor_count_at_creation, t1_shares_est)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                (card["id"], sym, acct, plan["fraction_pct"], json.dumps(tranches),
+                 factor_count, t1_shares))
     lid = cur.fetchone()[0]
     # price trigger hosted on the 20-min watch_alerts evaluator (reuse — no new loop)
     if low:
@@ -287,9 +299,10 @@ def evaluate_ladders(cur, sector_states: dict, factor_counts: dict, gg: dict) ->
     return out
 
 
-def confirm_tranche(cur, ladder_id: int, tranche: str, qty=None, price=None) -> bool:
-    """One-tap tranche execution → RP1: the executed slice opens a re-entry watch
-    (rotation_round_trips row keyed by tranche_of) with conditions frozen NOW."""
+def confirm_tranche(cur, ladder_id: int, tranche: str, qty=None, price=None,
+                    source: str = "operator_confirm") -> bool:
+    """Tranche execution (one-tap OR ingest auto-detect) → RP1: the executed slice
+    opens a re-entry watch (rotation_round_trips row keyed by tranche_of)."""
     cur.execute("SELECT symbol, account, tranches, t1_fraction FROM rotation_ladders WHERE id=%s",
                 (ladder_id,))
     row = cur.fetchone()
@@ -299,7 +312,8 @@ def confirm_tranche(cur, ladder_id: int, tranche: str, qty=None, price=None) -> 
     tranches = tranches if isinstance(tranches, list) else json.loads(tranches)
     frac = t1f
     if tranche == "T1":
-        cur.execute("UPDATE rotation_ladders SET t1_status='executed' WHERE id=%s", (ladder_id,))
+        cur.execute("UPDATE rotation_ladders SET t1_status='executed', t1_source=%s WHERE id=%s",
+                    (source, ladder_id))
     else:
         hit = next((t for t in tranches if t["tranche"] == tranche), None)
         if not hit or hit["status"] not in ("armed", "fired"):
@@ -322,11 +336,46 @@ def confirm_tranche(cur, ladder_id: int, tranche: str, qty=None, price=None) -> 
     cur.execute("""INSERT INTO rotation_round_trips
                    (advisory_id, symbol, account, status, exit_detected_at, exit_source,
                     exit_qty, exit_price, exit_loss_known, re_entry_conditions, tranche_of)
-                   VALUES (%s,%s,%s,'stepped_out',now(),'operator_confirm',%s,%s,false,%s,%s)
+                   VALUES (%s,%s,%s,'stepped_out',now(),%s,%s,%s,false,%s,%s)
                    ON CONFLICT (advisory_id) DO NOTHING""",
-                (f"tranche-{ladder_id}-{tranche}", sym, acct, qty, price,
+                (f"tranche-{ladder_id}-{tranche}", sym, acct, source, qty, price,
                  json.dumps(conds), ladder_id))
     return True
+
+
+def detect_tranche_fills(cur) -> int:
+    """AUTO-TRACKING (operator ask 2026-07-18): scan Schwab trade_transactions
+    (12h-lag ingest) for Sells matching open ladders — a fill ≥60% of the advised
+    tranche shares marks the tranche executed (source='ingest') and opens the
+    slice's re-entry watch. The one-tap button becomes optional, not required."""
+    cur.execute("""SELECT id, symbol, account, t1_status, t1_shares_est, tranches, created_at
+                   FROM rotation_ladders WHERE status='open'""")
+    n = 0
+    for lid, sym, acct, t1s, t1_est, tranches, created in cur.fetchall():
+        tranches = tranches if isinstance(tranches, list) else json.loads(tranches)
+        cur.execute("""SELECT trade_date, quantity, price FROM trade_transactions
+                       WHERE symbol=%s AND account=%s AND action='Sell'
+                         AND trade_date >= %s ORDER BY trade_date""",
+                    (sym, acct, created.date() if hasattr(created, "date") else created))
+        fills = cur.fetchall()
+        if not fills:
+            continue
+        total_sold = sum(abs(float(f[1] or 0)) for f in fills)
+        last = fills[-1]
+        if t1s != "executed" and t1_est and total_sold >= 0.6 * float(t1_est):
+            if confirm_tranche(cur, lid, "T1", qty=total_sold,
+                               price=float(last[2] or 0) or None, source="ingest"):
+                n += 1
+                total_sold -= float(t1_est)
+        # remaining sold size attributes to the next FIRED tranche (armed ones need
+        # their trigger — a fill alone doesn't fire a tranche, it executes one)
+        for t in tranches:
+            if t["status"] == "fired" and t1_est and total_sold >= 0.6 * float(t1_est) * t["add_fraction_pct"] / 100:
+                if confirm_tranche(cur, lid, t["tranche"], qty=total_sold,
+                                   price=float(last[2] or 0) or None, source="ingest"):
+                    n += 1
+                break
+    return n
 
 
 # ── RP2: the panel rows ────────────────────────────────────────────────────────

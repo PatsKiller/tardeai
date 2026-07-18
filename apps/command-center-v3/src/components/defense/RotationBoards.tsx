@@ -78,7 +78,7 @@ function Board({ title, rows, tf }: { title: string; rows: Array<{ name: string;
           <span style={{ color: BB.text1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderLeft: `3px solid ${STATE_COLOR[r.state || ''] || BB.borderHair}`, paddingLeft: 6 }}>
             {r.isNew && <span title={`new to this list on ${tf}`} style={{ color: T.link }}>● </span>}{r.name}
           </span>
-          <span style={{ ...numStyle, textAlign: 'right', background: heatRamp((r.value as number) / 3), color: BB.text0, borderRadius: 2, padding: '0 4px', fontWeight: 700 }}>{pct(r.value)}</span>
+          <span title={`return relative to SPY over the ${tf === 'W' ? '5-day' : tf === 'M' ? '20-day' : '60-day'} window — positive = beating the index`} style={{ ...numStyle, textAlign: 'right', background: heatRamp((r.value as number) / 3), color: BB.text0, borderRadius: 2, padding: '0 4px', fontWeight: 700, cursor: 'help' }}>{pct(r.value)}</span>
           <span style={{ ...numStyle, textAlign: 'right', fontSize: DASH.chip + 1 }}>
             {r.delta == null ? (r.isNew ? <span style={{ color: T.link }}>new</span> : <span style={{ color: BB.text3 }}>—</span>)
               : r.delta === 0 ? <span style={{ color: BB.text3 }}>=</span>

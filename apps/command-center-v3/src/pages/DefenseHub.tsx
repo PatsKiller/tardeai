@@ -25,7 +25,7 @@ function FreshnessStrip({ sources, job, onRefresh, refreshing }: {
   return (
     <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', fontSize: DASH.data, color: BB.text3 }}>
       {Object.entries(sources || {}).map(([k, ts]) => (
-        <span key={k}>
+        <span key={k} title={`last time the ${k.replace('_', ' ')} producer wrote its snapshot (${ts || 'never'}) — amber = older than 24h`} style={{ cursor: 'help' }}>
           {k.replace('_', ' ')} <b style={{ ...numStyle, color: stale(ts) ? BB.amber : BB.text2 }}>{ago(ts)}</b>
         </span>
       ))}
@@ -34,7 +34,7 @@ function FreshnessStrip({ sources, job, onRefresh, refreshing }: {
           ⟳ refresh running: {job.step || '…'} ({(job.steps || []).filter((s: any) => s.state === 'done').length}/{(job.steps || []).length})
         </span>
       ) : (
-        <button onClick={onRefresh} disabled={refreshing} style={{
+        <button onClick={onRefresh} disabled={refreshing} title="queues a detached 4-step refresh (sectors → industries → radar → recommendations); the page polls per-step status — no waiting. Industry STATES stay owned by the 16:18 close cron." style={{
           fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer',
           color: BB.text2, background: 'transparent', border: `1px solid ${BB.border}`, borderRadius: 2, padding: '2px 9px',
         }}>{refreshing ? 'queueing…' : '⟳ refresh all'}</button>
@@ -50,10 +50,10 @@ function FreshnessStrip({ sources, job, onRefresh, refreshing }: {
 // picture · Row 4 collapsed detail folds. House scale = DASH tokens; the design
 // guard (scripts/check_design_tokens.sh) blocks raw hex and sub-10px regressions.
 
-function Big({ label, value, tone }: { label: string; value: string; tone?: string }) {
+function Big({ label, value, tone, tip }: { label: string; value: string; tone?: string; tip?: string }) {
   return (
-    <div style={{ minWidth: 130 }}>
-      <div style={{ fontSize: DASH.chip, fontWeight: 800, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2 }}>{label}</div>
+    <div style={{ minWidth: 130 }} title={tip}>
+      <div style={{ fontSize: DASH.chip, fontWeight: 800, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2, cursor: tip ? 'help' : 'default' }}>{label}</div>
       <div style={{ ...numStyle, fontSize: DASH.verdict, fontWeight: 800, color: tone || BB.text1 }}>{value}</div>
     </div>
   )
@@ -110,12 +110,17 @@ export default function DefenseHub() {
           {market?.state_line || 'market engine warming up'}
         </div>
         <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <Big label="Net equity exposure" value={net ? `${net.equity_pct}%` : '—'} tone={BB.amber} />
+          <Big label="Net equity exposure" value={net ? `${net.equity_pct}%` : '—'} tone={BB.amber}
+            tip="equity ÷ (equity + cash) across all accounts — the cash remainder already acts as a hedge" />
           <Big label="Effective tech (LAGGING)" value={techRow?.book_pct != null ? `${techRow.book_pct}%` : '—'}
-            tone={(techRow?.book_pct ?? 0) > 15 ? BB.red : BB.text1} />
-          <Big label="Hedges · active / advised" value={`0 / ${shortAdvised}`} tone={shortAdvised ? BB.red : BB.text1} />
-          <Big label="Transitions today" value={String(transitions.length)} tone={transitions.length ? BB.amber : BB.text1} />
-          <Big label="VIX · regime" value={`${tradeAi?.vix ?? '—'}`} />
+            tone={(techRow?.book_pct ?? 0) > 15 ? BB.red : BB.text1}
+            tip={`direct tech holdings (${techRow?.book_direct_pct ?? '—'}%) + fund lookthrough via factsheet weights (SCHG 46% tech, JEPQ 50%…) — config/fund_lookthrough.json, quarterly refresh`} />
+          <Big label="Hedges · active / advised" value={`0 / ${shortAdvised}`} tone={shortAdvised ? BB.red : BB.text1}
+            tip="active = open hedge positions detected · advised = short-side cards live below (inverse ETF + taxable shorts)" />
+          <Big label="Transitions today" value={String(transitions.length)} tone={transitions.length ? BB.amber : BB.text1}
+            tip="sector/style state changes CONFIRMED today (2 consecutive closes in the new state — single-day flickers never alert)" />
+          <Big label="VIX · regime" value={`${tradeAi?.vix ?? '—'}`}
+            tip="CBOE VIX + the risk-regime engine's current read — regime gates sizing elsewhere in the system" />
           <div style={{ fontSize: DASH.data, color: BB.text3, paddingBottom: 4 }}>
             {regime?.regime_label?.replace(/_/g, ' ') ?? ''}
             {net && <span> · {net.cash_pct}% cash ≈ ${Math.round(net.cash_dollars / 1000)}K is already a hedge</span>}
@@ -147,7 +152,8 @@ export default function DefenseHub() {
       <RotationBoards sectors={rows} industries={ind} spyLong={spyLong} />
 
       {/* Row 4 — detail folds, collapsed by default */}
-      <DefenseDetails posture={posture} industries={industries} radar={radar} />
+      <DefenseDetails posture={posture} industries={industries} radar={radar}
+        operatorItems={recs?.operator_items} />
     </div>
   )
 }

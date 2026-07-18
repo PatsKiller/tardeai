@@ -123,12 +123,12 @@ export default function BookStanceStrip({ stances, notDecomposed, ladders }: { s
                   title={isCore(s.symbol, s.account) ? 'remove core designation' : 'mark ★CORE — trim-ladder-only semantics'}
                   style={{ fontSize: DASH.data, fontWeight: 800, color: isCore(s.symbol, s.account) ? BB.amber : BB.text3, marginRight: 5, cursor: 'pointer' }}>★</span>
               )}
-              <span style={{ fontSize: DASH.data, fontWeight: 800, color: BB.text1 }}>{s.symbol}</span>
+              <span title={s.reason} style={{ fontSize: DASH.data, fontWeight: 800, color: BB.text1, cursor: 'help' }}>{s.symbol}</span>
               <span style={{ ...numStyle, fontSize: DASH.data, color: BB.text2, marginLeft: 6 }}>${Math.round(s.value / 1000)}K</span>
-              <span style={{ fontSize: DASH.chip, fontWeight: 800, color: c, marginLeft: 8, textTransform: 'uppercase' }}>{s.stance}</span>
+              <span title={`${s.stance}: ${s.reason}`} style={{ fontSize: DASH.chip, fontWeight: 800, color: c, marginLeft: 8, textTransform: 'uppercase', cursor: 'help' }}>{s.stance}</span>
               <span style={{ fontSize: DASH.chip, color: BB.text3, marginLeft: 6 }}>{s.account_label}</span>
               {ladderFor(s.symbol, s.account) && (
-                <span style={{ fontSize: DASH.chip, fontWeight: 700, color: BB.amber, marginLeft: 6 }}>{ladderFor(s.symbol, s.account)}</span>
+                <span title="ladder progress — T1 is the advised trim, T2 arms with frozen triggers; fills auto-detect from Schwab ingest (~12h)" style={{ fontSize: DASH.chip, fontWeight: 700, color: BB.amber, marginLeft: 6, cursor: 'help' }}>{ladderFor(s.symbol, s.account)}</span>
               )}
               {isOpen && (
                 <div style={{ fontSize: DASH.data, color: BB.text2, marginTop: 4 }}>{s.reason}</div>
