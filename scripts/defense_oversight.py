@@ -174,76 +174,114 @@ def latest_reviews(cur) -> dict:
     return {"build_hash": bh, "seats": seats}
 
 
-def paid_preview(cur) -> dict:
-    """The ⚖ modal's numbers — REAL token estimate of the actual brief, per-seat cost,
-    monthly budget remaining. No send."""
+def paid_preview(cur, seats=None) -> dict:
+    """The ⚖ modal's numbers — REAL token estimate, PER-SEAT costs, shared monthly
+    budget remaining. No send. seats=None previews all three."""
     ensure_tables(cur)
     cur.execute("ALTER TABLE oversight_reviews ADD COLUMN IF NOT EXISTS cost_est numeric")
     cur.connection.commit()
     import os
     pc = json.loads((ROOT / "config" / "defense_recommendations.json").read_text())["oversight_paid"]
     art = build_oversight_brief()
-    model = os.environ.get("LLM_CRITICAL_CLOUD") or pc["model"]
-    in_cost = art["token_estimate"] / 1e6 * pc["input_per_mtok_usd"]
-    out_cost = pc["est_output_tokens"] / 1e6 * pc["output_per_mtok_usd"]
     cur.execute("""SELECT COALESCE(sum(cost_est),0) FROM oversight_reviews
-                   WHERE seat='paid' AND date_trunc('month', created_at)=date_trunc('month', now())""")
+                   WHERE seat LIKE 'paid%%' AND date_trunc('month', created_at)=date_trunc('month', now())""")
     spent = float(cur.fetchone()[0])
-    return {"ok": True, "build_hash": art["build_hash"], "model": model,
+    out_seats = {}
+    for name, sc in pc["seats"].items():
+        if seats and name not in seats:
+            continue
+        model = (os.environ.get("LLM_CRITICAL_CLOUD") or sc["model"]) if name == "paid" else sc["model"]
+        cost = round(art["token_estimate"] / 1e6 * sc["input_per_mtok_usd"]
+                     + pc["est_output_tokens"] / 1e6 * sc["output_per_mtok_usd"], 3)
+        out_seats[name] = {"provider": sc["provider"], "model": model, "cost_est_usd": cost}
+    return {"ok": True, "build_hash": art["build_hash"], "seats": out_seats,
             "input_tokens_est": art["token_estimate"], "output_tokens_est": pc["est_output_tokens"],
-            "cost_est_usd": round(in_cost + out_cost, 3),
+            "panel_cost_usd": round(sum(x["cost_est_usd"] for x in out_seats.values()), 3),
             "monthly_budget_usd": pc["monthly_budget_usd"],
             "budget_remaining_usd": round(pc["monthly_budget_usd"] - spent, 2),
             "weekly_paid_review": pc.get("weekly_paid_review", False)}
 
 
-def run_paid_review(cur) -> dict:
-    """Tier 2 — the metered seat. Budget-gated at send; result fills pill ④ + the memo
-    panel's paid column. Same contract, same strict parsing."""
-    import os
-    import time
+def _call_provider(provider: str, model: str, prompt: str, key_env: dict) -> str:
     import urllib.request
     import urllib.error
-    pv = paid_preview(cur)
-    if pv["cost_est_usd"] > pv["budget_remaining_usd"]:
-        return {"ok": False, "error": f"monthly oversight budget: ${pv['budget_remaining_usd']} left < ${pv['cost_est_usd']} est"}
-    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not key:
-        return {"ok": False, "error": "ANTHROPIC_API_KEY not set"}
+    try:
+        if provider == "anthropic":
+            body = json.dumps({"model": model, "max_tokens": 3000,
+                               "messages": [{"role": "user", "content": prompt}]}).encode()
+            req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
+                "x-api-key": key_env["anthropic"], "anthropic-version": "2023-06-01",
+                "content-type": "application/json"})
+            with urllib.request.urlopen(req, timeout=180) as r:
+                resp = json.loads(r.read().decode())
+            return "".join(b.get("text", "") for b in resp.get("content", []))
+        url = ("https://api.openai.com/v1/chat/completions" if provider == "openai"
+               else "https://api.x.ai/v1/chat/completions")
+        key = key_env["openai" if provider == "openai" else "xai"]
+        tok_key = "max_completion_tokens" if provider == "openai" else "max_tokens"
+        body = json.dumps({"model": model, tok_key: 3000,
+                           "messages": [{"role": "user", "content": prompt}]}).encode()
+        req = urllib.request.Request(url, data=body, headers={
+            "Authorization": f"Bearer {key}", "content-type": "application/json"})
+        with urllib.request.urlopen(req, timeout=180) as r:
+            resp = json.loads(r.read().decode())
+        return resp["choices"][0]["message"]["content"]
+    except urllib.error.HTTPError as e:
+        return f"__error__ HTTP {e.code}: {e.read().decode()[:250]}"
+    except Exception as e:
+        return f"__error__ {e}"
+
+
+def run_paid_review(cur, seats=None) -> dict:
+    """Tier 2 — the metered seats. seats=['paid'] (claude, default) or any of
+    paid/paid_gpt/paid_xai; panel mode runs several and the memo panel diffs them.
+    Shared monthly budget gated at send; same contract, same strict parsing."""
+    import os
+    import time
+    seats = seats or ["paid"]
+    pv = paid_preview(cur, seats=seats)
+    total = pv["panel_cost_usd"]
+    if total > pv["budget_remaining_usd"]:
+        return {"ok": False, "error": f"monthly oversight budget: ${pv['budget_remaining_usd']} left < ${total} est"}
+    keys = {"anthropic": os.environ.get("ANTHROPIC_API_KEY", "").strip(),
+            "openai": os.environ.get("OPENAI_API_KEY", "").strip(),
+            "xai": os.environ.get("XAI_API_KEY", "").strip()}
     art = build_oversight_brief()
-    prompt = ("You are the PAID senior seat on an oversight panel for a retirement-scale defensive "
+    prompt = ("You are a PAID senior seat on an oversight panel for a retirement-scale defensive "
               "trading desk. Two free seats have already reviewed; be the adjudicator: judge WITHIN "
               "the constitution, be adversarial where warranted, and prioritize what the free seats "
               "would plausibly miss.\n\n" + art["markdown"] + "\n\n" + CONTRACT)
-    body = json.dumps({"model": pv["model"], "max_tokens": 3000,
-                       "messages": [{"role": "user", "content": prompt}]}).encode()
-    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
-        "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
-    t0 = time.time()
-    try:
-        with urllib.request.urlopen(req, timeout=180) as r:
-            resp = json.loads(r.read().decode())
-        raw = "".join(b.get("text", "") for b in resp.get("content", []))
-    except urllib.error.HTTPError as e:
-        raw = f"__error__ HTTP {e.code}: {e.read().decode()[:300]}"
-    except Exception as e:
-        raw = f"__error__ {e}"
-    ms = int((time.time() - t0) * 1000)
-    parsed = _parse_strict(raw) if not raw.startswith("__error__") else None
-    status = "ok" if parsed else ("unavailable" if raw.startswith("__error__") else "unparseable")
-    cur.execute("""INSERT INTO oversight_reviews (build_hash, seat, status, verdicts, memo, raw,
-                   latency_ms, cost_est)
-                   VALUES (%s,'paid',%s,%s,%s,%s,%s,%s)
-                   ON CONFLICT (build_hash, seat) DO UPDATE SET status=EXCLUDED.status,
-                     verdicts=EXCLUDED.verdicts, memo=EXCLUDED.memo, raw=EXCLUDED.raw,
-                     latency_ms=EXCLUDED.latency_ms, cost_est=EXCLUDED.cost_est""",
-                (art["build_hash"], status,
-                 json.dumps(parsed["cards"]) if parsed else None,
-                 json.dumps(parsed["memo"]) if parsed else None,
-                 raw[:8000], ms, pv["cost_est_usd"]))
-    cur.connection.commit()
-    return {"ok": status == "ok", "status": status, "model": pv["model"],
-            "cost_est_usd": pv["cost_est_usd"], "latency_ms": ms}
+    results = {}
+    for name in seats:
+        sc = pv["seats"].get(name)
+        if not sc:
+            results[name] = {"status": "unknown_seat"}
+            continue
+        if not keys.get(sc["provider"], ""):
+            results[name] = {"status": "unavailable", "error": f"{sc['provider']} key not set"}
+            continue
+        t0 = time.time()
+        raw = _call_provider(sc["provider"], sc["model"], prompt, keys)
+        ms = int((time.time() - t0) * 1000)
+        parsed = _parse_strict(raw) if not raw.startswith("__error__") else None
+        status = "ok" if parsed else ("unavailable" if raw.startswith("__error__") else "unparseable")
+        cur.execute("""INSERT INTO oversight_reviews (build_hash, seat, status, verdicts, memo, raw,
+                       latency_ms, cost_est)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (build_hash, seat) DO UPDATE SET status=EXCLUDED.status,
+                         verdicts=EXCLUDED.verdicts, memo=EXCLUDED.memo, raw=EXCLUDED.raw,
+                         latency_ms=EXCLUDED.latency_ms, cost_est=EXCLUDED.cost_est""",
+                    (art["build_hash"], name, status,
+                     json.dumps(parsed["cards"]) if parsed else None,
+                     json.dumps(parsed["memo"]) if parsed else None,
+                     raw[:8000], ms, sc["cost_est_usd"] if status == "ok" else 0))
+        cur.connection.commit()
+        results[name] = {"status": status, "model": sc["model"], "latency_ms": ms,
+                         "cost_est_usd": sc["cost_est_usd"] if status == "ok" else 0,
+                         **({"error": raw[:150]} if raw.startswith("__error__") else {})}
+    ok_any = any(r.get("status") == "ok" for r in results.values())
+    return {"ok": ok_any, "results": results,
+            "spent_usd": round(sum(r.get("cost_est_usd", 0) for r in results.values()), 3)}
 
 
 def card_objections(cur, source_card: str) -> list:

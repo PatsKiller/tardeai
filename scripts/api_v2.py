@@ -36972,10 +36972,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             do = importlib.reload(defense_oversight)
             from db_adapter import _get_conn
             _c = _get_conn()
+            _seats = (body or {}).get("seats") or ["paid"]
             if (body or {}).get("confirm"):
-                result = do.run_paid_review(_c.cursor())
+                result = do.run_paid_review(_c.cursor(), seats=_seats)
             else:
-                result = do.paid_preview(_c.cursor())
+                result = do.paid_preview(_c.cursor(), seats=_seats)
             _c.commit()
             return (200 if result.get("ok") else 400), result
         except Exception as e:

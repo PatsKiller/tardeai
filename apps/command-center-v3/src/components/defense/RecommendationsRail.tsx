@@ -62,7 +62,7 @@ function PairCard({ c, oversight }: { c: any; oversight?: any }) {
 function OversightPills({ cardId, factorsN, oversight }: { cardId: string; factorsN: number; oversight: any }) {
   // v8 WS-PILL — ① DET (native arithmetic) ② ✦GPT ③ ✦GK (④ ⚖API when a paid review exists).
   // Oversight INFORMS — it never blocks, edits, or stages.
-  const seats: Array<[string, string]> = [['chatgpt', '✦GPT'], ['grok', '✦GK'], ['paid', '⚖API']]
+  const seats: Array<[string, string]> = [['chatgpt', '✦GPT'], ['grok', '✦GK'], ['paid', '⚖CL'], ['paid_gpt', '⚖GPT'], ['paid_xai', '⚖GK']]
   const pill = (label: string, verdict: string | null, status: string, tip: string) => {
     const c = verdict === 'CONCUR' ? BB.green : verdict === 'QUALIFY' ? BB.amber : verdict === 'OBJECT' ? BB.red : BB.text3
     return (
@@ -75,7 +75,7 @@ function OversightPills({ cardId, factorsN, oversight }: { cardId: string; facto
   let split = false, sawConcur = false, sawObject = false
   for (const [seat, label] of seats) {
     const d = oversight?.seats?.[seat]
-    if (!d) { if (seat !== 'paid') rendered.push(pill(label, null, 'pend', 'critique pending — runs on the next recommendations build (cached per build, never per refresh)')); continue }
+    if (!d) { if (!seat.startsWith('paid')) rendered.push(pill(label, null, 'pend', 'critique pending — runs on the next recommendations build (cached per build, never per refresh)')); continue }
     const v = (d.verdicts || []).find((x: any) => x.id === cardId)
     if (d.status !== 'ok') { rendered.push(pill(label, null, d.status, `${seat}: ${d.status} — ${d.status === 'quota' ? 'daily share exhausted, resets 00:00' : d.status === 'unparseable' ? 'response failed the schema; raw kept, never coerced' : 'lane unreachable this build'}`)); continue }
     if (!v) { rendered.push(pill(label, null, 'n/a', `${seat} reviewed this build but returned no verdict for this card`)); continue }

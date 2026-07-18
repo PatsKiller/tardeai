@@ -199,12 +199,29 @@
     "tranches": 3
   },
   "oversight_paid": {
-    "_comment": "v8.1 WS-PAID \u2014 the \u2696 button. Model per the CRITICAL_CLOUD standing rule (env LLM_CRITICAL_CLOUD overrides). Costs are per-MTok; monthly budget is a hard gate at send.",
-    "model": "claude-opus-4-8",
-    "input_per_mtok_usd": 15.0,
-    "output_per_mtok_usd": 75.0,
-    "est_output_tokens": 2500,
+    "_comment": "v8.2 panel \u2014 three paid seats, per-seat models+prices; monthly budget shared. Primary=claude per the CRITICAL_CLOUD standing rule; gpt/xai optional (panel mode diffs them). env LLM_CRITICAL_CLOUD overrides the claude model.",
     "monthly_budget_usd": 25.0,
-    "weekly_paid_review": false
+    "est_output_tokens": 2500,
+    "weekly_paid_review": false,
+    "seats": {
+      "paid": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-8",
+        "input_per_mtok_usd": 15.0,
+        "output_per_mtok_usd": 75.0
+      },
+      "paid_gpt": {
+        "provider": "openai",
+        "model": "gpt-5.4",
+        "input_per_mtok_usd": 10.0,
+        "output_per_mtok_usd": 40.0
+      },
+      "paid_xai": {
+        "provider": "xai",
+        "model": "grok-4",
+        "input_per_mtok_usd": 5.0,
+        "output_per_mtok_usd": 25.0
+      }
+    }
   }
 }

@@ -88,10 +88,14 @@ export default function DefenseHub() {
     try {
       const pv = await (await fetch('/api/v2/defense/oversight/paid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()
       if (!pv.ok) { alert(pv.error || 'preview failed'); return }
-      const msg = `⚖ Paid oversight review\n\nModel: ${pv.model}\nBrief: ~${pv.input_tokens_est.toLocaleString()} tokens in / ~${pv.output_tokens_est.toLocaleString()} out\nEstimated cost: $${pv.cost_est_usd}\nMonthly budget remaining: $${pv.budget_remaining_usd} of $${pv.monthly_budget_usd}\n\nRun it?`
-      if (!window.confirm(msg)) return
-      const r = await (await fetch('/api/v2/defense/oversight/paid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"confirm":true}' })).json()
-      alert(r.ok ? `Paid review complete (${r.model}, $${r.cost_est_usd}, ${Math.round(r.latency_ms / 1000)}s) — pill ④ + memo panel updated` : `failed: ${r.error || r.status}`)
+      const seatLines = Object.entries(pv.seats).map(([k, v]: any) => `  ${k}: ${v.model} — $${v.cost_est_usd}`).join('\n')
+      const pick = window.prompt(
+        `⚖ Paid oversight — brief ~${pv.input_tokens_est.toLocaleString()} tokens\n${seatLines}\n\nBudget remaining: $${pv.budget_remaining_usd} of $${pv.monthly_budget_usd}\n\nSeats to run (comma list or 'panel' for all):`, 'paid')
+      if (!pick) return
+      const seats = pick.trim() === 'panel' ? Object.keys(pv.seats) : pick.split(',').map(x => x.trim()).filter(Boolean)
+      const r = await (await fetch('/api/v2/defense/oversight/paid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: true, seats }) })).json()
+      const lines = Object.entries(r.results || {}).map(([k, v]: any) => `${k}: ${v.status}${v.error ? ' — ' + v.error.slice(0, 60) : ''}`).join('\n')
+      alert(`Paid review — spent $${r.spent_usd}\n${lines}\n\nPills + memo panel updated where ok.`)
       refetchRecs()
     } finally { setPaidBusy(false) }
   }
