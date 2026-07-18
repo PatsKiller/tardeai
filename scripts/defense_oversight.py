@@ -22,7 +22,7 @@ def _daily_per_seat() -> int:
     except Exception:
         return 3
 
-CONTRACT = """MANDATORY COMPLETENESS: your "cards" array MUST contain exactly one verdict for EVERY card id in the brief — no omissions, no sampling. A review missing any card id is INVALID. Respond ONLY with JSON matching:
+CONTRACT = """MANDATORY COMPLETENESS: your "cards" array MUST contain exactly one verdict for EVERY card id in the brief — no omissions, no sampling. A review missing any card id is INVALID. BREVITY IS MANDATORY: reasons ≤40 words, tighter where possible — completeness beats eloquence. Respond ONLY with JSON matching:
 {"cards": [{"id": "<card id>", "verdict": "CONCUR|QUALIFY|OBJECT",
             "reason": "<=40 words", "missed_risk": "<=25 words or null"}],
  "memo": {"top_concerns": ["...", "...", "..."],
@@ -254,7 +254,7 @@ def _call_provider(provider: str, model: str, prompt: str, key_env: dict) -> str
     import urllib.error
     try:
         if provider == "anthropic":
-            body = json.dumps({"model": model, "max_tokens": 6000,
+            body = json.dumps({"model": model, "max_tokens": 16000,
                                "messages": [{"role": "user", "content": prompt}]}).encode()
             req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
                 "x-api-key": key_env["anthropic"], "anthropic-version": "2023-06-01",
