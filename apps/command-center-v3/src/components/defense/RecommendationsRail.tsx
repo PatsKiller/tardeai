@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BB, T, DASH, numStyle } from '../../lib/watchTokens'
+import LadderTrack from './LadderTrack'
 
 // Defense v3 R5 — the recommendations rail. Per-account tabs, four groups, every card
 // complete-or-absent (the engine's field guard enforces; this component renders what
@@ -17,9 +18,56 @@ const chip: React.CSSProperties = {
   borderRadius: 2, padding: '1px 6px', border: `1px solid ${BB.border}`, color: BB.text2,
 }
 
-function Card({ c, tab }: { c: any; tab: string }) {
+function PairCard({ c }: { c: any }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ border: `1px solid ${T.link}`, borderLeft: `4px solid ${T.link}`, borderRadius: 2, padding: '10px 12px', background: BB.bg }}>
+      <div onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
+          <span style={{ fontSize: DASH.section, fontWeight: 800, color: BB.text1 }}>{c.title}</span>
+          <span style={{ ...chip, color: BB.amber, borderColor: BB.amber }}>{c.mode}</span>
+          {c.is_core && <span style={{ ...chip, color: BB.amber }}>★CORE</span>}
+          <span style={{ ...chip }}>{c.tax_note.split('—')[0].trim()}</span>
+        </div>
+        <div style={{ fontSize: DASH.data, color: BB.text1, fontWeight: 600, marginBottom: 2 }}>{c.sell_ticket.line}</div>
+        {c.buy_legs.map((l: any) => (
+          <div key={l.symbol} style={{ fontSize: DASH.data, color: BB.text2, marginBottom: 2 }}>→ {l.line}</div>
+        ))}
+        <div style={{ fontSize: DASH.data, color: BB.text3 }}>
+          {c.style_rationale}
+          {c.exposure_after?.sector && <span> · {c.exposure_after.sector} {c.exposure_after.before_pct}% → {c.exposure_after.after_pct}%</span>}
+          {c.exposure_after?.income_sleeve_pp && <span> · income sleeve {c.exposure_after.income_sleeve_pp}</span>}
+          <span> · {open ? '▾ less' : '▸ detail'}</span>
+        </div>
+      </div>
+      {open && (
+        <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${BB.borderHair}`, fontSize: DASH.data, color: BB.text2, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {c.factors.map((f: any, i: number) => (
+            <div key={i}><span style={{ color: BB.text3 }}>{f.name}:</span> <b>{String(f.value)}</b></div>
+          ))}
+          <div><span style={{ color: BB.text3 }}>entry:</span> {c.entry_logic}</div>
+          <div><span style={{ color: BB.text3 }}>invalidation:</span> {c.invalidation}</div>
+          <div style={{ color: BB.amber }}>{c.tax_note}</div>
+          {c.cross_account_note && <div style={{ color: BB.text3 }}>{c.cross_account_note}</div>}
+          <div style={{ color: BB.text3 }}>routes: sell — {c.routes.sell} · buys — {c.routes.buys}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Card({ c, tab, ladder }: { c: any; tab: string; ladder?: any }) {
   const [open, setOpen] = useState(false)
   const g = GROUPS.find(x => x.key === c.group)
+  // v6: singles superseded by a pair fold to one line — reachable, never deleted
+  const [unfolded, setUnfolded] = useState(false)
+  if (c.superseded_by_pair && !unfolded) {
+    return (
+      <div onClick={() => setUnfolded(true)} style={{ border: `1px dashed ${BB.borderHair}`, borderRadius: 2, padding: '5px 10px', cursor: 'pointer', fontSize: DASH.data, color: BB.text3 }}>
+        {c.title.split('(')[0].trim()} — superseded by a ROTATE pair above · click to expand the single
+      </div>
+    )
+  }
   const lv = c.levels || {}
   // dollars for the SELECTED account tab; 'all' shows the largest valid account's band
   const band = c.dollars_by_account && (
@@ -64,6 +112,7 @@ function Card({ c, tab }: { c: any; tab: string }) {
           </div>
         ))}
         {c.ticket && <div style={{ fontSize: DASH.chip, color: BB.text3, marginBottom: 3 }}>{c.instruments[0]?.price != null ? '' : ''}{(c.ticket.options?.[0]?.price_as_of) || ''} · estimates, not order instructions</div>}
+        {ladder && <LadderTrack ladder={ladder} price={c.levels?.price} />}
         <div style={{ fontSize: DASH.data, color: BB.text3 }}>
           {topFactors.map((f: any, i: number) => (
             <span key={i} style={{ marginRight: 10 }}>{f.name}: <b style={{ color: BB.text2 }}>{String(f.value)}</b></span>
@@ -95,6 +144,9 @@ export default function RecommendationsRail({ recs }: { recs: any }) {
   const [tab, setTab] = useState<string>('all')
   const accounts: Record<string, string> = recs?.accounts || {}
   const groups: Record<string, any[]> = recs?.groups || {}
+  const pairs: any[] = recs?.pairs || []
+  const ladders: any[] = recs?.ladders || []
+  const ladderFor = (cardId: string) => ladders.find(l => l.advisory_id === cardId)
   const all = Object.values(groups).flat()
   const forTab = (cards: any[]) => tab === 'all' ? cards : cards.filter(c => c.accounts.includes(tab))
   const countFor = (key: string) => key === 'all' ? all.length : all.filter(c => c.accounts.includes(key)).length
@@ -116,6 +168,16 @@ export default function RecommendationsRail({ recs }: { recs: any }) {
           </button>
         ))}
       </div>
+      {/* v6 — funded rotation pairs: full-width, superseding their singles below */}
+      {forTab(pairs).length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+          <div style={{ fontSize: DASH.section, fontWeight: 800, color: T.link }}>
+            Funded rotations <span style={{ ...numStyle, color: BB.text3, fontSize: DASH.data }}>{forTab(pairs).length}</span>
+            <span style={{ fontSize: DASH.chip, color: BB.text3, fontWeight: 600, marginLeft: 8 }}>out of X, into Y — same account, both legs ticketed</span>
+          </div>
+          {forTab(pairs).map(p => <PairCard key={p.id} c={p} />)}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
         {GROUPS.map(g => {
           const cards = forTab(groups[g.key] || [])
@@ -132,7 +194,7 @@ export default function RecommendationsRail({ recs }: { recs: any }) {
                       : (recs?.empty_reasons?.[g.key] || 'none today')}
                   </div>
                 )}
-                {cards.map(c => <Card key={c.id} c={c} tab={tab} />)}
+                {cards.map(c => <Card key={c.id} c={c} tab={tab} ladder={ladderFor(c.id)} />)}
               </div>
             </div>
           )

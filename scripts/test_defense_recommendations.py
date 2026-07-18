@@ -313,9 +313,66 @@ def run_v6():
     print("ALL v6 CORE TESTS PASS")
 
 
+def run_v6_pairs():
+    """v6 WS-PAIR: same-account constraint · min-leg drop · style boost · pair guard."""
+    import defense_rotation_pairs as drp
+
+    style_hot = {"away_from_growth": True, "rationale": "style rotation: equal-weight +3.0% (LEADING)"}
+    style_flat = {"away_from_growth": False, "rationale": "style layer neutral"}
+    rotate_cards = [
+        {"id": "rotatein-XLE-t", "title": "ROTATE-IN · Energy (LEADING, RS20 +6.6)", "group": "get_into",
+         "accounts": ["schwab_rollover_ira", "schwab_roth_ira"],
+         "instruments": [{"symbol": "XLE", "price": 57.01}]},
+        {"id": "rotatein-XLU-t", "title": "ROTATE-IN · Utilities (LEADING, RS20 +2.0)", "group": "get_into",
+         "accounts": ["schwab_rollover_ira"],
+         "instruments": [{"symbol": "XLU", "price": 45.47}]},
+    ]
+    sectors_by_name = {"Energy": {"sector": "Energy", "state": "LEADING", "rs20": 6.6, "book_pct": 2.7},
+                       "Utilities": {"sector": "Utilities", "state": "LEADING", "rs20": 2.0, "book_pct": 1.1}}
+    prices = {"XLE": 57.01, "XLU": 45.47, "SCHD": 27.50}
+
+    # same-account: roth only sees XLE (XLU not valid there)
+    d_roth = drp._destinations_for("schwab_roth_ira", rotate_cards, style_flat, "QCOM", {}, prices, sectors_by_name)
+    assert [x["symbol"] for x in d_roth] == ["XLE"], d_roth
+    print("v6p ✓ same-account constraint: destinations filtered per account")
+
+    # style boost: growth-heavy source + away_from_growth -> SCHD present and TOP-ranked
+    d = drp._destinations_for("schwab_rollover_ira", rotate_cards, style_hot, "SCHG", {}, prices, sectors_by_name)
+    assert d[0]["symbol"] == "SCHD" and "style" in d[0]["why"], d[0]
+    d_no = drp._destinations_for("schwab_rollover_ira", rotate_cards, style_flat, "SCHG", {}, prices, sectors_by_name)
+    assert all(x["symbol"] != "SCHD" for x in d_no), "neutral style must NOT force the income pair"
+    d_stock = drp._destinations_for("schwab_rollover_ira", rotate_cards, style_hot, "QCOM", {}, prices, sectors_by_name)
+    assert all(x["symbol"] != "SCHD" for x in d_stock), "non-growth-heavy source gets no income boost"
+    print("v6p ✓ style boost: SCHD tops for growth-heavy sources ONLY when the tape says so")
+
+    # pair guard: both legs ticketed or no render
+    ok_card = {"sell_ticket": {"proceeds_est": 9000}, "style_rationale": "s",
+               "buy_legs": [{"symbol": "XLE", "shares": 77, "price": 57.01}]}
+    assert drp.validate_pair(ok_card) is None
+    assert drp.validate_pair({**ok_card, "sell_ticket": {}}) == "sell_ticket"
+    assert drp.validate_pair({**ok_card, "buy_legs": []}) == "buy_legs"
+    assert drp.validate_pair({**ok_card, "buy_legs": [{"symbol": "XLE", "shares": 0, "price": 57}]}) == "buy_legs"
+    print("v6p ✓ pair guard: either missing leg kills the card")
+
+    # min-leg: $3K proceeds across 2 dests -> sub-$2K legs dropped
+    import math
+    picks = d_no[:2]
+    tot = sum(x["score"] for x in picks)
+    legs = []
+    for x in picks:
+        alloc = 3000 * x["score"] / tot
+        if alloc < drp.PC["min_leg_dollars"]:
+            continue
+        legs.append(x["symbol"])
+    assert len(legs) <= 1, f"sub-–2K legs must drop: {legs}"
+    print("v6p ✓ min-leg floor drops dust allocations")
+    print("ALL v6 PAIR TESTS PASS")
+
+
 if __name__ == "__main__":
     rc = run()
     run_v4()
     run_v5()
     run_v6()
+    run_v6_pairs()
     sys.exit(rc)

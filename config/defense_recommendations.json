@@ -134,5 +134,19 @@
     "max_trim_pct": 60,
     "reentry_window_days": 90,
     "noncore_reentry_window_days": 60
+  },
+  "rotation_pairs": {
+    "_comment": "v6 WS-PAIR \u2014 funded rotation pairs: trim proceeds routed to same-account destinations, one card. Style-aware via the market layer's existing spreads; never forced.",
+    "max_destinations": 3,
+    "min_leg_dollars": 2000,
+    "underweight_gap_weight": 0.1,
+    "style_boost": 1.5,
+    "growth_heavy_symbols": [
+      "SCHG",
+      "JEPQ",
+      "VUG"
+    ],
+    "income_destination": "SCHD",
+    "stage_buy_legs": true
   }
 }

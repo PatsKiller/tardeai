@@ -682,14 +682,21 @@ def paper_twins(cards, cur, dry: bool) -> list:
             target = round(entry * 1.08, 2)
         shares = max(1, int(c["dollar_size"] / entry))
         if not dry:
-            cur.execute("""INSERT INTO paper_trade_proposals
-                (symbol, strategy_id, side, proposed_entry, proposed_stop, proposed_target1,
-                 proposed_shares, proposed_dollar_size, status, proposed_by, origin,
-                 setup_description, expires_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'PENDING','defense_recommendations','auto',%s,%s)""",
-                (inst["symbol"], strategy, "short" if short else "long", entry, stop, target,
-                 shares, c["dollar_size"], card["title"][:180],
-                 datetime.now(timezone.utc) + timedelta(hours=c["expires_hours"])))
+            try:
+                cur.execute("""INSERT INTO paper_trade_proposals
+                    (symbol, strategy_id, side, proposed_entry, proposed_stop, proposed_target1,
+                     proposed_shares, proposed_dollar_size, status, proposed_by, origin,
+                     setup_description, expires_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'PENDING','defense_recommendations','auto',%s,%s)""",
+                    (inst["symbol"], strategy, "short" if short else "long", entry, stop, target,
+                     shares, c["dollar_size"], card["title"][:180],
+                     datetime.now(timezone.utc) + timedelta(hours=c["expires_hours"])))
+            except Exception as ex:
+                # DB-level guards (max-pending-per-symbol trigger etc.) are AUTHORITATIVE —
+                # skip the twin, never kill the run
+                cur.connection.rollback()
+                print(f"[recs] twin skipped for {inst['symbol']}: {str(ex).splitlines()[0][:100]}")
+                continue
         created.append({"symbol": inst["symbol"], "strategy": strategy, "entry": entry, "stop": stop})
         open_n += 1
     return created
@@ -774,6 +781,22 @@ def main() -> int:
     if not args.dry_run:
         conn.commit()
 
+    # v6 WS-PAIR — funded rotation pairs supersede their singles (never deleted)
+    import defense_rotation_pairs as drp
+    pair_prices = _prices(cur, [i["symbol"] for c in ok for i in c.get("instruments", [])
+                                if i.get("symbol") and i["symbol"] != "—"] +
+                          [drp.PC["income_destination"]])
+    pairs, superseded_ids = drp.build_rotation_pairs(
+        cur, [c for c in ok if c["id"].startswith("moveout-")],
+        [c for c in ok if c["group"] == "get_into"],
+        market, pair_prices, sectors, total_book, as_of, dry_run=args.dry_run)
+    pairs = [p for p in pairs if drp.validate_pair(p) is None]
+    for c in ok:
+        if c["id"] in superseded_ids:
+            c["superseded_by_pair"] = True
+    if not args.dry_run:
+        conn.commit()
+
     groups = {g: sorted([c for c in ok if c["group"] == g],
                         key=lambda c: -(c.get("impact_dollars") or 0))
               for g in ("get_into", "protect", "short_side", "income")}
@@ -788,6 +811,7 @@ def main() -> int:
         "as_of": as_of, "mode": "SHADOW",
         "shadow_note": f"all groups SHADOW — 10-trading-day window from {CFG['move_out']['shadow_started']}; Telegram only after promote",
         "groups": groups,
+        "pairs": pairs,
         "empty_reasons": {g: empty_reasons[g] for g in groups if not groups[g]},
         "dropped_by_field_guard": dropped,
         "paper_twins_created": twins,

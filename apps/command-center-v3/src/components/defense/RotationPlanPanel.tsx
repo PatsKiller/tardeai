@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BB, T, DASH, numStyle } from '../../lib/watchTokens'
+import LadderTrack from './LadderTrack'
 
 // Defense v5 RP2 — THE ROTATION PLAN: the page's memory, first-class above the rail.
 // One row per position with ANY active rotation state: stance · ladder (T1/T2 chips,
@@ -12,21 +13,6 @@ const STANCE_COLOR: Record<string, string> = {
 }
 const TRIP_COLOR: Record<string, string> = {
   advised: BB.text3, stepped_out: BB.amber, rollback_open: BB.green,
-}
-
-function TrancheChip({ t }: { t: any }) {
-  const c = t.status === 'fired' ? BB.red : t.status === 'armed' ? BB.amber
-    : t.status === 'executed' ? BB.green : BB.text3
-  const label = t.status === 'fired' ? `${t.tranche} TRIGGERED — ${t.fired_by || ''}`
-    : t.status === 'armed' ? `${t.tranche} +${t.add_fraction_pct}% armed (${t.triggers?.length} triggers)`
-      : t.status === 'disarmed' ? `${t.tranche} DISARMED — ${t.disarmed_reason || ''}`
-        : `${t.tranche} ✓ executed`
-  return (
-    <span title={(t.triggers || []).map((x: any) => x.label).join(' · ')} style={{
-      fontSize: DASH.chip, fontWeight: 700, color: c, border: `1px solid ${c}`,
-      borderRadius: 2, padding: '1px 7px',
-    }}>{label}</span>
-  )
 }
 
 export default function RotationPlanPanel({ plan, onConfirmed }: { plan: any[]; onConfirmed?: () => void }) {
@@ -64,28 +50,21 @@ export default function RotationPlanPanel({ plan, onConfirmed }: { plan: any[]; 
                 {r.stance && <span style={{ fontSize: DASH.chip, fontWeight: 800, color: STANCE_COLOR[r.stance] || BB.text2, textTransform: 'uppercase' }}>{r.stance}</span>}
               </div>
               {lad && (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 4 }}>
-                  <span style={{ fontSize: DASH.data, color: BB.text2 }}>
-                    T1 {lad.t1_fraction}% {lad.t1_status === 'executed' ? '✓ executed' : 'advised'}
-                  </span>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 4 }}>
+                  <LadderTrack ladder={lad} />
                   {lad.t1_status !== 'executed' && (
                     <button disabled={busy === `${lad.ladder_id}-T1`}
                       onClick={() => confirm({ ladder_id: lad.ladder_id, tranche: 'T1' }, `${lad.ladder_id}-T1`)}
-                      style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: BB.text1, background: 'transparent', border: `1px solid ${BB.amber}`, borderRadius: 2, padding: '1px 7px' }}>
+                      style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: BB.text1, background: 'transparent', border: `1px solid ${BB.amber}`, borderRadius: 2, padding: '2px 8px' }}>
                       {busy === `${lad.ladder_id}-T1` ? '…' : 'mark T1 sold'}
                     </button>
                   )}
-                  {(lad.tranches || []).map((t: any, i: number) => (
-                    <span key={i} style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-                      <TrancheChip t={t} />
-                      {t.status === 'fired' && (
-                        <button disabled={busy === `${lad.ladder_id}-${t.tranche}`}
-                          onClick={() => confirm({ ladder_id: lad.ladder_id, tranche: t.tranche }, `${lad.ladder_id}-${t.tranche}`)}
-                          style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: BB.text1, background: 'transparent', border: `1px solid ${BB.red}`, borderRadius: 2, padding: '1px 7px' }}>
-                          {busy === `${lad.ladder_id}-${t.tranche}` ? '…' : `mark ${t.tranche} sold`}
-                        </button>
-                      )}
-                    </span>
+                  {(lad.tranches || []).filter((t: any) => t.status === 'fired').map((t: any) => (
+                    <button key={t.tranche} disabled={busy === `${lad.ladder_id}-${t.tranche}`}
+                      onClick={() => confirm({ ladder_id: lad.ladder_id, tranche: t.tranche }, `${lad.ladder_id}-${t.tranche}`)}
+                      style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', color: BB.text1, background: 'transparent', border: `1px solid ${BB.red}`, borderRadius: 2, padding: '2px 8px' }}>
+                      {busy === `${lad.ladder_id}-${t.tranche}` ? '…' : `mark ${t.tranche} sold`}
+                    </button>
                   ))}
                 </div>
               )}
