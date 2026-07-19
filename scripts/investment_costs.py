@@ -42,6 +42,13 @@ def ensure_cost_tables(cur, conn):
         basis_value numeric, period_start date, period_end date,
         source_document text, confidence text, superseded boolean NOT NULL DEFAULT false,
         notes text, created_at timestamptz DEFAULT now())""")
+    for ddl in (
+        "ALTER TABLE investment_cost_events ADD COLUMN IF NOT EXISTS supersedes_cost_event_id int",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_supersedes_once
+           ON investment_cost_events (supersedes_cost_event_id)
+           WHERE supersedes_cost_event_id IS NOT NULL""",
+    ):
+        cur.execute(ddl)
     cur.execute("""CREATE TABLE IF NOT EXISTS fund_expense_rate_history (
         rate_id serial PRIMARY KEY,
         symbol text NOT NULL, cusip text, fund_name text, fund_type text,
@@ -67,10 +74,15 @@ def ingest_actual_fees(cur, conn) -> dict:
             VALUES (%s,%s,'trade_transactions',%s,%s,%s,%s,'equity','ACTUAL_CASH',
                     %s,'actual','cash',%s,%s,%s)
             ON CONFLICT (dedupe_key) DO NOTHING""",
-            ("schwab" if "schwab" in (acct or "") else (acct or "unknown"), acct,
+            ("schwab" if "schwab" in (acct or "") else
+             ("fidelity" if "fidelity" in (acct or "") else (acct or "unknown")), acct,
              dk, d, f"txn:{dk}", sym,
-             "regulatory_fee" if action == "Sell" else "other_broker_charge",
-             float(fees), float(qty or 0) or None, f"{action} posted fee ({src})"))
+             # P1-1: the ledger's `fees` column is a COMBINED charge — never
+             # infer a subtype (SEC/TAF/commission) the source doesn't state
+             "broker_charge_unclassified",
+             float(fees), float(qty or 0) or None,
+             f"raw_label='fees' raw_amount={float(fees)} rule=ledger-combined-v2 "
+             f"confidence=source_generic ({action}, {src})"))
         n += cur.rowcount
     # option fill fees (actual when broker-supplied)
     cur.execute("""SELECT evidence_id, strategy_position_id, ticket_id, broker, account_key,
