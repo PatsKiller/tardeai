@@ -416,12 +416,12 @@ def _grade(score: int, weights: Dict[str, Any]) -> tuple[str, str]:
     wait_min = rules.get("WAIT", {}).get("min_score", 30)
     # Regime-aware thresholds (2026-06-11): in fear regimes momentum follow-through degrades — demand more.
     vix = _vix_now()
-    if vix is not None and vix > 25:
-        go_min += 5
-        wait_min += 3
-    elif vix is not None and vix > 32:
+    if vix is not None and vix > 32:
         go_min += 10
         wait_min += 5
+    elif vix is not None and vix > 25:
+        go_min += 5
+        wait_min += 3
     if score >= go_min:
         decision = "GO"
     elif score >= wait_min:
