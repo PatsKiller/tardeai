@@ -53,6 +53,15 @@ def ensure_alert_tables(cur, conn):
     cur.execute("""CREATE INDEX IF NOT EXISTS ix_ola_open
                    ON options_lifecycle_alerts (strategy_position_id)
                    WHERE state NOT IN ('RESOLVED','SUPERSEDED')""")
+    # v1.2 P1: delivery-evidence columns in the committed builder (were workstation-only)
+    for ddl in (
+        "ALTER TABLE options_lifecycle_alerts ADD COLUMN IF NOT EXISTS attempted_at timestamptz",
+        "ALTER TABLE options_lifecycle_alerts ADD COLUMN IF NOT EXISTS delivered_at timestamptz",
+        "ALTER TABLE options_lifecycle_alerts ADD COLUMN IF NOT EXISTS message_id text",
+        "ALTER TABLE options_lifecycle_alerts ADD COLUMN IF NOT EXISTS failure_reason text",
+        "ALTER TABLE options_lifecycle_alerts ADD COLUMN IF NOT EXISTS retry_count int NOT NULL DEFAULT 0",
+    ):
+        cur.execute(ddl)
     conn.commit()
 
 

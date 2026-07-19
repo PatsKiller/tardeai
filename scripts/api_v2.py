@@ -29220,11 +29220,9 @@ def _options_lifecycle_post(base_path, body):
         s = _om.strategy_with_legs(cur, int(body["strategy_position_id"]))
         if not s:
             return {"ok": False, "error": "unknown strategy"}
-        quotes = {l["leg_id"]: _oe.quote_leg(l) for l in s["legs"] if l["status"] == "open"}
-        eco = _oe.strategy_economics(s, quotes)
-        d = _oe.reduce_decision(_oe.decide(s, eco, _oe.policy(),
-                                           _oe.defense_posture_for(s["underlying"])), [], eco)
-        res = _ov.run_free_review(cur, conn, s, eco, d, "operator_requested")
+        # v1.2 P2: the canonical decision path — never decide() without the reducer+findings
+        ev = _oe.evaluate_strategy(cur, conn, s, persist=False)
+        res = _ov.run_free_review(cur, conn, s, ev["eco"], ev["decision"], "operator_requested")
         return {"ok": True, "data": {"results": res,
                                      "strongest": _ov.strongest_objection(cur, s["strategy_position_id"])}}
     return {"ok": False, "error": f"unknown lifecycle action {action}"}

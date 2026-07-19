@@ -57,23 +57,16 @@ def run(dry: bool = False) -> dict:
     out_positions = []
     for s in open_strategies(cur):
         try:
-            quotes = {l["leg_id"]: quote_leg(l) for l in s["legs"] if l["status"] == "open"}
-            eco = strategy_economics(s, quotes)
+            # v1.2 P2: ONE canonical decision path for every caller
+            from options_lifecycle_engine import evaluate_strategy
+            ev = evaluate_strategy(cur, conn, s, persist=not dry)
+            eco, d, findings = ev["eco"], ev["decision"], ev["findings"]
             if dry:
-                findings = assignment_review(s, eco, pol)
-                d = reduce_decision(decide(s, eco, pol, defense_posture_for(s["underlying"])),
-                                    findings, eco)
                 alert = None
             else:
-                snap_id, eco = persist_snapshot(cur, conn, s, eco)
-                findings = assignment_review(s, eco, pol)
-                # v1.1 P1: ONE primary per snapshot — findings fold in via precedence
-                d = reduce_decision(decide(s, eco, pol, defense_posture_for(s["underlying"])),
-                                    findings, eco)
-                did = record_decision(cur, conn, s["strategy_position_id"], snap_id, d, pol)
+                snap_id, did = ev["snapshot_id"], ev["decision_id"]
                 alert = process_alerts(cur, conn, s, eco, d, did, pol, notify=True,
                                        findings=findings)
-                # v1.1 P7: free-lane oversight ONLY on configured exceptions
                 try:
                     from options_lifecycle_oversight import triggers, run_free_review
                     trig = triggers(cur, s, eco, d)

@@ -1,11 +1,16 @@
 {
   "_comment": "Options Lifecycle Desk policy — VERSIONED. Every decision row records the version that produced it. Edits bump policy_version (semver) with a dated note in policy_changelog. No literals in code; the engine reads only this file. No recommendation may fire solely because P&L is positive — every rule couples profit state to time, risk, or structure state.",
-  "policy_version": "1.0.0",
+  "policy_version": "1.1.0",
   "policy_changelog": [
     {
       "version": "1.0.0",
       "date": "2026-07-19",
       "note": "initial pre-registration — thresholds seeded from prompt + desk practice, min_sample tuning gate applies before any change proposal"
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-07-19",
+      "note": "single-primary precedence reducer (DATA_BLOCKED>EXPIRATION_CRITICAL>ASSIGNMENT_CRITICAL>DEFEND>ROLL>ACCEPT_ASSIGNMENT>EXERCISE_REVIEW>HARVEST_FULL>HARVEST_PARTIAL>LET_MATURE>HOLD); assignment/expiration critical recommendations added to the vocabulary; subordinate findings persist inside the primary decision (never independent contradictory alerts); alert identity headers + delivery evidence. Decisions recorded before this version under 1.0.0 predate the reducer — decision_engine_version disambiguates."
     }
   ],
   "quotes": {

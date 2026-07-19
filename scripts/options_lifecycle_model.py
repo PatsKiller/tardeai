@@ -131,7 +131,50 @@ def ensure_tables(cur, conn) -> None:
         resolved boolean NOT NULL DEFAULT false,
         eventual_outcome text,
         created_at timestamptz DEFAULT now())""")
+    # v1.2 P1: the CANONICAL migration — every v1.1+ column lives HERE, in the
+    # committed builder, so a clean database installs from the repository alone.
+    # (v1.1 shipped these as workstation-only ALTERs — validator P0 finding #1.)
+    for ddl in (
+        "ALTER TABLE options_lifecycle_decisions ADD COLUMN IF NOT EXISTS subordinate jsonb NOT NULL DEFAULT '[]'",
+        "ALTER TABLE options_lifecycle_decisions ADD COLUMN IF NOT EXISTS precedence_rule text",
+        "ALTER TABLE options_lifecycle_decisions ADD COLUMN IF NOT EXISTS prior_recommendation text",
+        "ALTER TABLE options_lifecycle_decisions ADD COLUMN IF NOT EXISTS transition_reason text",
+        "ALTER TABLE options_lifecycle_decisions ADD COLUMN IF NOT EXISTS decision_engine_version text",
+        "ALTER TABLE options_lifecycle_decisions ADD COLUMN IF NOT EXISTS code_commit_sha text",
+        "ALTER TABLE options_lifecycle_decisions ADD COLUMN IF NOT EXISTS policy_hash text",
+        "ALTER TABLE options_lifecycle_decisions ADD COLUMN IF NOT EXISTS reducer_version text",
+        "ALTER TABLE options_strategy_legs ADD COLUMN IF NOT EXISTS basis_source text",
+    ):
+        cur.execute(ddl)
     conn.commit()  # DDL commits NOW — before any fail-soft path can roll it back
+
+
+EXPECTED_SCHEMA = {
+    # v1.2 P1: ensure functions VERIFY this after building; the migration test
+    # asserts it against a clean database. Update alongside any DDL change.
+    "options_lifecycle_decisions": {"subordinate", "precedence_rule", "prior_recommendation",
+                                    "transition_reason", "decision_engine_version",
+                                    "code_commit_sha", "policy_hash", "reducer_version"},
+    "options_lifecycle_alerts": {"attempted_at", "delivered_at", "message_id",
+                                 "failure_reason", "retry_count"},
+    "options_lifecycle_tickets": {"idempotency_key", "challenge_generation",
+                                  "supersedes_challenge_id", "challenge_revoked_at",
+                                  "challenge_revoke_reason", "challenge_used_at",
+                                  "request_correlation_id"},
+    "options_strategy_legs": {"basis_source"},
+}
+
+
+def verify_schema(cur) -> list[str]:
+    """Return missing (table, column) problems — empty means reproducible."""
+    problems = []
+    for table, cols in EXPECTED_SCHEMA.items():
+        cur.execute("""SELECT column_name FROM information_schema.columns
+                       WHERE table_name=%s""", (table,))
+        have = {r[0] for r in cur.fetchall()}
+        for c in sorted(cols - have):
+            problems.append(f"{table}.{c} MISSING")
+    return problems
 
 
 def occ_symbol(underlying: str, expiration: str, opt_type: str, strike: float) -> str:

@@ -28,10 +28,26 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from options_lifecycle_model import ensure_tables, open_strategies
 
 POLICY_PATH = ROOT / "config" / "options_lifecycle_policy.json"
+DECISION_ENGINE_VERSION = "1.1.0"   # bump on any semantic change to decide()/reduce_decision()
+REDUCER_VERSION = "reducer-1.0"
 
 
 def policy() -> dict:
     return json.loads(POLICY_PATH.read_text())
+
+
+def _policy_hash() -> str:
+    import hashlib
+    return hashlib.sha256(POLICY_PATH.read_bytes()).hexdigest()[:16]
+
+
+def _commit_sha() -> str:
+    try:
+        import subprocess
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                              capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:
+        return "unknown"
 
 
 # ── quotes ────────────────────────────────────────────────────────────────────
@@ -510,18 +526,40 @@ def record_decision(cur, conn, spid: int, snap_id: int, d: dict, pol: dict) -> i
     cur.execute("""INSERT INTO options_lifecycle_decisions
         (strategy_position_id, snapshot_id, policy_version, recommendation, urgency,
          confidence, rationale, alternatives, subordinate, precedence_rule,
-         prior_recommendation, transition_reason)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING decision_id""",
+         prior_recommendation, transition_reason, decision_engine_version,
+         code_commit_sha, policy_hash, reducer_version)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING decision_id""",
         (spid, snap_id, pol["policy_version"], d["recommendation"], d["urgency"],
          d.get("confidence"), d["rationale"], json.dumps(d.get("alternatives") or []),
          json.dumps(d.get("subordinate") or []), d.get("precedence_rule"),
-         prev[1] if prev else None, transition))
+         prev[1] if prev else None, transition, DECISION_ENGINE_VERSION,
+         _commit_sha(), _policy_hash(), REDUCER_VERSION))
     did = cur.fetchone()[0]
     if prev:
         cur.execute("UPDATE options_lifecycle_decisions SET superseded_by=%s WHERE decision_id=%s",
                     (did, prev[0]))
     conn.commit()
     return did
+
+
+def evaluate_strategy(cur, conn, s: dict, *, persist: bool = True) -> dict:
+    """v1.2 P2: THE canonical decision-producing path. Everything that needs a
+    decision comes through here — quotes → economics → assignment findings →
+    decide → reduce → (persist snapshot + decision). No caller may combine
+    decide() and record_decision() without the reducer and findings again."""
+    from options_lifecycle_alerts import assignment_review
+    pol = policy()
+    quotes = {l["leg_id"]: quote_leg(l) for l in s["legs"] if l["status"] == "open"}
+    eco = strategy_economics(s, quotes)
+    snap_id = None
+    if persist:
+        snap_id, eco = persist_snapshot(cur, conn, s, eco)
+    findings = assignment_review(s, eco, pol)
+    d = reduce_decision(decide(s, eco, pol, defense_posture_for(s["underlying"])),
+                        findings, eco)
+    did = record_decision(cur, conn, s["strategy_position_id"], snap_id, d, pol) if persist else None
+    return {"eco": eco, "decision": d, "findings": findings,
+            "snapshot_id": snap_id, "decision_id": did}
 
 
 def defense_posture_for(underlying: str) -> dict:

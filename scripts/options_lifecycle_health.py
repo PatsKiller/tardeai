@@ -89,6 +89,45 @@ def health_checks(cur) -> list[dict]:
     check("stale_armed_tickets", n == 0,
           f"{n} armed ticket(s) >24h without fill evidence — confirm or cancel" if n else "none")
 
+    # v1.2 P4: projection integrity — fail closed and loud
+    try:
+        cur.execute("""SELECT count(*) FROM journal_projection_outbox WHERE state='FAILED'""")
+        n = cur.fetchone()[0]
+        check("projection_outbox_failed", n == 0,
+              f"{n} journal projection(s) FAILED after retries — journal is stale" if n else "none")
+        cur.execute("""SELECT count(*) FROM options_strategy_positions p
+                       JOIN trade_instances t ON t.source_table='options_strategy_positions'
+                        AND t.source_trade_id = p.strategy_position_id::text
+                       WHERE p.status IN ('closed','rolled','assigned','exercised','expired')
+                         AND t.status='open'""")
+        n = cur.fetchone()[0]
+        check("closed_strategy_open_instance", n == 0,
+              f"{n} closed strateg(ies) still open in trade_instances" if n else "none")
+        cur.execute("""SELECT count(*) FROM options_lifecycle_outcomes o
+                       WHERE NOT EXISTS (SELECT 1 FROM options_journal_events e
+                                         WHERE e.strategy_position_id=o.strategy_position_id)""")
+        n = cur.fetchone()[0]
+        check("outcome_without_journal_event", n == 0, f"{n} outcome(s) missing events" if n else "none")
+        cur.execute("""SELECT count(*) FROM trade_instances t
+                       JOIN options_lifecycle_outcomes o
+                         ON t.source_table='options_strategy_positions'
+                        AND t.source_trade_id=o.strategy_position_id::text
+                       WHERE t.pnl IS DISTINCT FROM o.realized_pnl AND t.status='closed'""")
+        n = cur.fetchone()[0]
+        check("instance_pnl_matches_outcome", n == 0,
+              f"{n} instance(s) disagree with lifecycle outcome P&L" if n else "match")
+    except Exception as e:
+        check("projection_integrity", False, f"check errored: {str(e)[:80]}")
+
+    # v1.2 P1: schema reproducibility
+    try:
+        from options_lifecycle_model import verify_schema
+        probs = verify_schema(cur)
+        check("schema_reproducible", not probs, "; ".join(probs) if probs else
+              "all expected columns present from committed builders")
+    except Exception as e:
+        check("schema_reproducible", False, str(e)[:80])
+
     # alert delivery: red alerts that never reached any channel
     cur.execute("""SELECT count(*) FROM options_lifecycle_alerts
                    WHERE urgency='red' AND state NOT IN ('RESOLVED','SUPERSEDED')

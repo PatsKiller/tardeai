@@ -58,12 +58,49 @@ def _txn_history_basis(cur, occ_ident: dict, account_key: str) -> dict | None:
     return None  # option rows are not representable in the current ledger shape — fail honest
 
 
+def _schwab_order_history_basis(cur, leg: dict, s: dict) -> dict | None:
+    """Priority 1+2 for Schwab: opening fills from broker order history
+    (read-only). Matches the exact OCC symbol in filled orders; returns
+    {premium, fees, ref} or None — never a guess."""
+    if s["broker"] != "schwab":
+        return None
+    try:
+        import schwab_transport as st
+        get_orders = getattr(st, "get_orders", None)
+        if get_orders is None:
+            return None
+        orders = get_orders(s["account_key"])
+        if isinstance(orders, dict) and orders.get("status") not in (None, "ok"):
+            return None
+        for o in (orders.get("orders") if isinstance(orders, dict) else orders) or []:
+            if str(o.get("status", "")).upper() not in ("FILLED", "REPLACED"):
+                continue
+            for leg_o in o.get("orderLegCollection", []) or []:
+                sym = ((leg_o.get("instrument") or {}).get("symbol") or "")
+                if sym.strip() != leg["occ_symbol"].strip():
+                    continue
+                px = o.get("price") or next(
+                    (a.get("executionLegs", [{}])[0].get("price")
+                     for a in (o.get("orderActivityCollection") or []) if a.get("executionLegs")),
+                    None)
+                if px:
+                    return {"premium": float(px), "fees": None,
+                            "ref": f"schwab_order:{o.get('orderId')}"}
+    except Exception:
+        return None
+    return None
+
+
 def resolve_leg_basis(cur, conn, leg: dict, s: dict) -> dict:
     """Try each source in priority order for one UNKNOWN-basis leg.
     Returns {resolved, source, premium} — never writes a guess."""
     from options_lifecycle_model import parse_occ
     ident = parse_occ(leg["occ_symbol"]) or {}
-    # 1+2. broker fills / order history — Alpaca paper reconcile evidence
+    # 1+2. Schwab opening fills / order history
+    so = _schwab_order_history_basis(cur, leg, s)
+    if so:
+        return _apply(cur, conn, leg, s, so["premium"], "broker_orders", so["ref"])
+    # 1+2 (Alpaca). broker fills — paper reconcile evidence
     if s["broker"] == "alpaca_paper":
         cur.execute("""SELECT entry_fill_price FROM options_monitored_positions
                        WHERE option_symbol=%s AND entry_fill_price IS NOT NULL LIMIT 1""",
@@ -130,14 +167,31 @@ def record_operator_basis(cur, conn, leg_id: int, *, opening_premium: float,
     cur.execute("""UPDATE options_strategy_legs SET opening_price=%s, opening_fees=%s,
                    basis_source='operator_evidence' WHERE leg_id=%s""",
                 (opening_premium, fees, leg_id))
-    cur.execute("""UPDATE options_strategy_positions SET data_quality_status='ok', updated_at=now()
-                   WHERE strategy_position_id=%s AND data_quality_status='incomplete_basis'
+    # v1.2 P7: manual basis stays PROVISIONAL — data quality moves to
+    # 'provisional_basis' (visible, non-blocking-for-display but flagged),
+    # and becomes 'ok' ONLY on operator confirmation or broker replacement.
+    cur.execute("""UPDATE options_strategy_positions SET data_quality_status='provisional_basis',
+                   updated_at=now()
+                   WHERE strategy_position_id=%s AND data_quality_status IN ('incomplete_basis','unreconciled')
                      AND NOT EXISTS (SELECT 1 FROM options_strategy_legs
                                      WHERE strategy_position_id=%s AND status='open'
                                        AND opening_price IS NULL)""", (spid, spid))
     conn.commit()
-    return {"ok": True, "evidence_id": eid,
-            "label": "MANUAL BASIS (operator evidence) — visible on the card until broker data confirms"}
+    return {"ok": True, "evidence_id": eid, "review_status": "unreviewed",
+            "label": "MANUAL BASIS — PROVISIONAL until operator confirmation or broker evidence"}
+
+
+def confirm_operator_basis(cur, conn, evidence_id: int, operator: str) -> dict:
+    cur.execute("""UPDATE options_basis_evidence SET review_status='operator_confirmed',
+                   notes=COALESCE(notes,'') || ' · confirmed by ' || %s
+                   WHERE evidence_id=%s RETURNING strategy_position_id""", (operator, evidence_id))
+    r = cur.fetchone()
+    if not r:
+        return {"ok": False, "error": "unknown evidence"}
+    cur.execute("""UPDATE options_strategy_positions SET data_quality_status='ok', updated_at=now()
+                   WHERE strategy_position_id=%s AND data_quality_status='provisional_basis'""", (r[0],))
+    conn.commit()
+    return {"ok": True}
 
 
 def cumulative_basis(cur, spid: int) -> dict:

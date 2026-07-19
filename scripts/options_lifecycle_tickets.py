@@ -58,6 +58,23 @@ def ensure_ticket_tables(cur, conn):
         evidence_json jsonb,
         created_at timestamptz DEFAULT now(),
         updated_at timestamptz DEFAULT now())""")
+    # v1.2 P1: idempotency + challenge lineage in the committed builder
+    # (were workstation-only ALTERs), plus DB-ENFORCED one-active-ticket-per-key —
+    # concurrent requests collapse to one row at the database, not via SELECT-then-INSERT.
+    for ddl in (
+        "ALTER TABLE options_lifecycle_tickets ADD COLUMN IF NOT EXISTS idempotency_key text",
+        "ALTER TABLE options_lifecycle_tickets ADD COLUMN IF NOT EXISTS challenge_generation int NOT NULL DEFAULT 0",
+        "ALTER TABLE options_lifecycle_tickets ADD COLUMN IF NOT EXISTS supersedes_challenge_id text",
+        "ALTER TABLE options_lifecycle_tickets ADD COLUMN IF NOT EXISTS challenge_revoked_at timestamptz",
+        "ALTER TABLE options_lifecycle_tickets ADD COLUMN IF NOT EXISTS challenge_revoke_reason text",
+        "ALTER TABLE options_lifecycle_tickets ADD COLUMN IF NOT EXISTS challenge_used_at timestamptz",
+        "ALTER TABLE options_lifecycle_tickets ADD COLUMN IF NOT EXISTS request_correlation_id text",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_active_ticket_per_idem_key
+           ON options_lifecycle_tickets (idempotency_key)
+           WHERE status IN ('draft','approved','awaiting_2fa','armed','partial')
+             AND idempotency_key IS NOT NULL""",
+    ):
+        cur.execute(ddl)
     cur.execute("""CREATE TABLE IF NOT EXISTS options_lifecycle_outcomes (
         outcome_id serial PRIMARY KEY,
         strategy_position_id int NOT NULL,
@@ -215,12 +232,20 @@ def build_close_ticket(cur, conn, spid: int, *, fraction: float = 1.0, tif: str 
     existing = _existing_active(cur, idem)
     if existing:
         return existing   # double click / network retry: one ticket, one challenge
+    # race-safe: the partial unique index collapses concurrent inserts to ONE row
     cur.execute("""INSERT INTO options_lifecycle_tickets
         (strategy_position_id, kind, ticket_json, approval_hash, tif, idempotency_key)
-        VALUES (%s,'close',%s,%s,%s,%s) RETURNING ticket_id""",
+        VALUES (%s,'close',%s,%s,%s,%s)
+        ON CONFLICT (idempotency_key)
+          WHERE status IN ('draft','approved','awaiting_2fa','armed','partial')
+          DO NOTHING
+        RETURNING ticket_id""",
         (spid, json.dumps(ticket, default=str), ticket["approval_hash"], tif, idem))
-    ticket["ticket_id"] = cur.fetchone()[0]
+    row = cur.fetchone()
     conn.commit()
+    if row is None:                      # concurrent request won the insert
+        return _existing_active(cur, idem)
+    ticket["ticket_id"] = row[0]
     return ticket
 
 
@@ -297,10 +322,17 @@ def build_roll_ticket(cur, conn, spid: int, *, new_expiration: str,
         return existing
     cur.execute("""INSERT INTO options_lifecycle_tickets
         (strategy_position_id, kind, ticket_json, approval_hash, tif, idempotency_key)
-        VALUES (%s,'roll',%s,%s,%s,%s) RETURNING ticket_id""",
+        VALUES (%s,'roll',%s,%s,%s,%s)
+        ON CONFLICT (idempotency_key)
+          WHERE status IN ('draft','approved','awaiting_2fa','armed','partial')
+          DO NOTHING
+        RETURNING ticket_id""",
         (spid, json.dumps(ticket, default=str), ticket["approval_hash"], ticket["tif"], idem))
-    ticket["ticket_id"] = cur.fetchone()[0]
+    row = cur.fetchone()
     conn.commit()
+    if row is None:
+        return _existing_active(cur, idem)
+    ticket["ticket_id"] = row[0]
     return ticket
 
 
@@ -432,8 +464,19 @@ def verify_ticket_2fa(cur, conn, ticket_id: int, code: str) -> dict:
 
 def record_fill_evidence(cur, conn, ticket_id: int, fills: list[dict], source: str,
                          operator_note: str = "") -> dict:
-    """fills: [{occ_symbol, instruction, contracts, price}]. source: broker id or
-    'operator_manual'. Applies to canonical legs; partial fills leave residuals."""
+    """v1.2: DELEGATES to options_fill_evidence.record_broker_evidence — atomic,
+    idempotent, cumulative across batches, durable journal projection, correct
+    close ordering. This wrapper only preserves the v1.0 call signature."""
+    from options_fill_evidence import record_broker_evidence
+    return record_broker_evidence(cur, conn, ticket_id, fills, source,
+                                  operator_note=operator_note)
+
+
+def _superseded_record_fill_evidence(cur, conn, ticket_id: int, fills: list[dict], source: str,
+                                     operator_note: str = "") -> dict:
+    """v1.0 implementation — SUPERSEDED by options_fill_evidence (kept for
+    reference only; validator findings #3/#4: premature journal upsert,
+    non-cumulative partials). Never called."""
     cur.execute("SELECT ticket_json, status, strategy_position_id FROM options_lifecycle_tickets WHERE ticket_id=%s",
                 (ticket_id,))
     r = cur.fetchone()
