@@ -1,10 +1,76 @@
 {
-  "date": "2026-07-17",
-  "timestamp": "2026-07-17T08:15:55.459596+00:00",
-  "embedding_recommendations": [],
-  "promotion_recommendations": [],
+  "date": "2026-07-18",
+  "timestamp": "2026-07-18T08:15:52.336241+00:00",
+  "embedding_recommendations": [
+    {
+      "id": 10975,
+      "symbol": "BIYA",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 10973,
+      "symbol": "ATAI",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 10974,
+      "symbol": "ATPC",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 10972,
+      "symbol": "AMSS",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    }
+  ],
+  "promotion_recommendations": [
+    {
+      "id": 10975,
+      "symbol": "BIYA",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 10973,
+      "symbol": "ATAI",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 10974,
+      "symbol": "ATPC",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 10972,
+      "symbol": "AMSS",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    }
+  ],
   "rejected": [],
-  "total_staged_non_backlog": 259,
+  "total_staged_non_backlog": 254,
   "embeddings_created": 0,
   "promotions_created": 0
 }
