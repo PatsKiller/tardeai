@@ -206,3 +206,40 @@ def test_giveback_bucket_steps():
     assert ola._giveback_bucket(eco_a, POL) == 0
     assert ola._giveback_bucket(eco_b, POL) == 2
     assert ola._giveback_bucket({"giveback": None, "mfe": None}, POL) == -1
+
+
+# ── Phase 6: ticket hash binding + freshness (pure) ──────────────────────────
+
+import options_lifecycle_tickets as olt
+from datetime import timedelta as _td
+
+
+def _ticket(quote_age_s=0, tif="DAY"):
+    t = {"legs": [{"leg_id": 1, "occ_symbol": "TEST  260821C00110000", "instruction": "BTC",
+                   "contracts": 1.0, "proposed_limit": 0.72}],
+         "net_debit_credit": -72.0, "strategy_position_id": 9,
+         "quote_ts": (datetime.now(timezone.utc) - _td(seconds=quote_age_s)).isoformat(),
+         "quote_max_age_seconds": 90}
+    t["approval_hash"] = olt._hash(t, tif)
+    return t
+
+
+def test_hash_changes_when_any_field_changes():
+    t = _ticket()
+    h0 = olt._hash(t, "DAY")
+    assert h0 == t["approval_hash"]
+    assert olt._hash(t, "GTC") != h0                      # TIF change invalidates
+    t2 = {**t, "legs": [{**t["legs"][0], "proposed_limit": 0.73}]}
+    assert olt._hash(t2, "DAY") != h0                     # price change invalidates
+    t3 = {**t, "net_debit_credit": -73.0}
+    assert olt._hash(t3, "DAY") != h0
+
+
+def test_stale_quotes_fail_freshness():
+    assert olt._fresh_enough(_ticket(quote_age_s=10)) is True
+    assert olt._fresh_enough(_ticket(quote_age_s=300)) is False
+
+
+def test_round_tick():
+    assert olt._round_tick(0.7249, 0.01) == 0.72
+    assert olt._round_tick(0.7251, 0.01) == 0.73

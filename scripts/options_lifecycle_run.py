@@ -86,6 +86,9 @@ def run(dry: bool = False) -> dict:
 
     escalated = [] if dry else escalate_unacked(cur, conn, pol)
 
+    from options_lifecycle_health import health_checks
+    health = health_checks(cur)
+
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "policy_version": pol["policy_version"],
@@ -95,6 +98,7 @@ def run(dry: bool = False) -> dict:
                                    "snoozed_until": str(a["snoozed_until"]) if a["snoozed_until"] else None}
                                   for a in open_alerts(cur)],
         "escalated": escalated,
+        "health": health,
         "counts": {
             "open_strategies": len(out_positions),
             "action_now": sum(1 for p in out_positions if p["decision"]["urgency"] == "red"),

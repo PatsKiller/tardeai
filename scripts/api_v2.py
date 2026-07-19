@@ -29105,6 +29105,79 @@ def _pullback_macd_dismiss(body=None):
     return {"ok": True, "symbol": sym, "dismissed": True, "proposal_cancelled": cancelled}
 
 
+def _olc():
+    """Options lifecycle modules with reload — same dev-cadence pattern as _dex()."""
+    import importlib
+    import options_lifecycle_tickets, options_lifecycle_alerts, options_lifecycle_run
+    return (importlib.reload(options_lifecycle_tickets),
+            importlib.reload(options_lifecycle_alerts),
+            importlib.reload(options_lifecycle_run))
+
+
+def _options_lifecycle_get():
+    """GET /api/v2/options/lifecycle — the desk payload (runner-written) + live
+    ticket states. File-served: cheap for the UI, refreshed by cron/refresh."""
+    import json as _json
+    p = PROJECT_ROOT / "data" / "runtime" / "options_lifecycle_latest.json"
+    payload = _json.loads(p.read_text()) if p.exists() else {
+        "positions": [], "alerts": [], "counts": {"open_strategies": 0},
+        "note": "no lifecycle run yet"}
+    try:
+        cur = _get_conn().cursor()
+        cur.execute("""SELECT ticket_id, strategy_position_id, kind, status, tif, created_at
+                       FROM options_lifecycle_tickets
+                       WHERE status IN ('draft','approved','awaiting_2fa','armed','partial')
+                       ORDER BY ticket_id DESC LIMIT 20""")
+        payload["live_tickets"] = [
+            {"ticket_id": r[0], "strategy_position_id": r[1], "kind": r[2],
+             "status": r[3], "tif": r[4], "created_at": str(r[5])} for r in cur.fetchall()]
+    except Exception:
+        payload["live_tickets"] = []
+    return payload
+
+
+def _options_lifecycle_post(base_path, body):
+    """POST /api/v2/options/lifecycle/* — alert lifecycle + hash-bound tickets.
+    Every action fail-closed; nothing here submits an order anywhere."""
+    tickets, alerts_mod, run_mod = _olc()
+    conn = _get_conn()
+    cur = conn.cursor()
+    action = base_path.rsplit("/", 1)[-1]
+    if action == "refresh":
+        r = run_mod.run(dry=False)
+        return {"ok": True, "data": {"counts": r["counts"], "generated_at": r["generated_at"]}}
+    if action == "alert-ack":
+        return {"ok": True, "data": alerts_mod.ack_alert(
+            cur, conn, int(body["alert_id"]), body.get("snooze_hours"))}
+    if action == "ticket-build":
+        if body.get("kind") == "roll":
+            t = tickets.build_roll_ticket(cur, conn, int(body["strategy_position_id"]),
+                                          new_expiration=body["new_expiration"],
+                                          strike_map=body.get("strike_map") or {},
+                                          tif=body.get("tif"))
+        else:
+            t = tickets.build_close_ticket(cur, conn, int(body["strategy_position_id"]),
+                                           fraction=float(body.get("fraction") or 1.0),
+                                           tif=body.get("tif"),
+                                           legs_subset=body.get("legs_subset"),
+                                           operator_acknowledged_leg_out=bool(
+                                               body.get("operator_acknowledged_leg_out")))
+        return {"ok": not t.get("blocked"), "data": t}
+    if action == "ticket-approve":
+        return {"ok": True, "data": tickets.approve_ticket(
+            cur, conn, int(body["ticket_id"]), str(body.get("hash") or ""))}
+    if action == "ticket-2fa":
+        return {"ok": True, "data": tickets.verify_ticket_2fa(
+            cur, conn, int(body["ticket_id"]), str(body.get("code") or ""))}
+    if action == "ticket-evidence":
+        return {"ok": True, "data": tickets.record_fill_evidence(
+            cur, conn, int(body["ticket_id"]), body.get("fills") or [],
+            str(body.get("source") or "operator_manual"), body.get("note") or "")}
+    if action == "ticket-cancel":
+        return {"ok": True, "data": tickets.cancel_ticket(cur, conn, int(body["ticket_id"]))}
+    return {"ok": False, "error": f"unknown lifecycle action {action}"}
+
+
 def _options_approval_resolve(body=None):
     """POST /api/v2/options/approval-queue/resolve — approve or reject desk proposal."""
     b = body if isinstance(body, dict) else {}
@@ -32467,6 +32540,7 @@ ROUTES = {
     "/api/v2/options/paper-positions/alerts": _options_paper_position_alerts,
     "/api/v2/options/open-positions": _options_open_positions,
     "/api/v2/options/overview": _options_overview,
+    "/api/v2/options/lifecycle": _options_lifecycle_get,
     "/api/v2/options/execution/status": _options_execution_status,
     "/api/v2/options/paper-order-status": _options_paper_order_status,
     "/api/v2/proxy/targets": _proxy_targets,
@@ -36944,6 +37018,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/options/approval-queue/resolve":
         try:
             return 200, _options_approval_resolve(body if isinstance(body, dict) else {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    # ── OPTIONS LIFECYCLE DESK (2026-07-19): strategy-aware open-position
+    #    management. Advisory + hash-bound 2FA tickets; zero live submission. ──
+    if method == "POST" and base_path.startswith("/api/v2/options/lifecycle/"):
+        try:
+            return 200, _options_lifecycle_post(base_path, body if isinstance(body, dict) else {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 
