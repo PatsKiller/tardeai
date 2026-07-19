@@ -30,13 +30,31 @@ sys.path.insert(0, str(ROOT / "scripts"))
 ACCOUNT = "john@jwwhiting.com"
 
 
+PARSER_VERSION = "econfirm-v2"   # per-fill parser (v1 emitted one row per section — superseded)
+
+
+class GmailAccessError(RuntimeError):
+    pass
+
+
 def _gog(*args) -> str:
+    """P0-2: nonzero exit / timeout / auth stderr / empty response = FAILURE,
+    surfaced — never silently treated as 'zero emails'."""
     env = dict(os.environ)
     kp = Path.home() / ".openclaw" / "credentials" / "gog_keyring_password"
     if kp.exists():
         env["GOG_KEYRING_PASSWORD"] = kp.read_text().strip()
-    r = subprocess.run(["gog", *args, "--account", ACCOUNT],
-                       capture_output=True, text=True, timeout=90, env=env)
+    try:
+        r = subprocess.run(["gog", *args, "--account", ACCOUNT],
+                           capture_output=True, text=True, timeout=120, env=env)
+    except subprocess.TimeoutExpired as e:
+        raise GmailAccessError(f"gog timeout: {e}")
+    if r.returncode != 0:
+        raise GmailAccessError(f"gog exit {r.returncode}: {r.stderr[:200]}")
+    if re.search(r"auth|credential|token|denied", r.stderr or "", re.I):
+        raise GmailAccessError(f"gog auth problem: {r.stderr[:200]}")
+    if not r.stdout.strip():
+        raise GmailAccessError("gog returned empty response")
     return r.stdout
 
 
@@ -62,6 +80,14 @@ def ensure_econfirm_tables(cur, conn):
         recon_status text DEFAULT 'pending',   -- pending | matched | mismatch | no_ledger_row
         recon_detail text,
         created_at timestamptz DEFAULT now())""")
+    for ddl in (
+        "ALTER TABLE econfirm_evidence ADD COLUMN IF NOT EXISTS parser_version text",
+        "ALTER TABLE econfirm_evidence ADD COLUMN IF NOT EXISTS section_ordinal int",
+        "ALTER TABLE econfirm_evidence ADD COLUMN IF NOT EXISTS fill_ordinal int",
+        "ALTER TABLE econfirm_evidence ADD COLUMN IF NOT EXISTS content_hash text",
+        "ALTER TABLE econfirm_evidence ADD COLUMN IF NOT EXISTS matched_txn_dedupe_key text",
+    ):
+        cur.execute(ddl)
     conn.commit()
 
 
@@ -70,6 +96,58 @@ def _f(x):
         return float(str(x).replace(",", "").replace("$", ""))
     except Exception:
         return None
+
+
+def _bare_num(t: str) -> bool:
+    return bool(re.match(r"^[\d,]+\.\d+$", t))
+
+
+def parse_fills(body: str) -> list[dict]:
+    """P0-2: ONE ROW PER FILL. Each Symbol section carries repeated value
+    groups (qty, $price, $principal, charge-tokens, $total) followed by a
+    'Totals' group (qty, principal, charge, total — NO price) which is a
+    SECTION TOTAL, not a fill. Zero/absent charges ('N/A: $0.00 N/A' or no
+    charge field) handled; mutual-fund fractional quantities allowed."""
+    fills = []
+    for s_ord, sec in enumerate(re.split(r"\bSymbol:\s*", body)[1:]):
+        sym_m = re.match(r"\s*([A-Z][A-Z0-9.]{0,9})\b", sec)
+        if not sym_m:
+            continue
+        meta = {"symbol": sym_m.group(1), "section_ordinal": s_ord}
+        for label, key in (("Action", "action"), (r"Security No\./CUSIP", "cusip"),
+                           ("Trade Date", "trade_date"), ("Settle Date", "settle_date")):
+            m = re.search(label + r":\s*\n?\s*\n?\s*([A-Za-z0-9/ ]+)", sec)
+            if m:
+                meta[key] = m.group(1).strip()
+        after = sec.split("Total Amount", 1)
+        if len(after) < 2:
+            continue
+        toks = [t.strip() for t in after[1].splitlines() if t.strip() and t.strip() != "."]
+        toks = toks[:400]
+        i, f_ord = 0, 0
+        while i < len(toks):
+            t = toks[i]
+            if t == "Totals":
+                break  # section totals — never a fill
+            if _bare_num(t) and i + 2 < len(toks) and toks[i + 1].startswith("$")                     and toks[i + 2].startswith("$"):
+                qty, price, principal = _f(t), _f(toks[i + 1]), _f(toks[i + 2])
+                j = i + 3
+                seg = []
+                while j < len(toks) and not _bare_num(toks[j]) and toks[j] != "Totals":
+                    seg.append(toks[j])
+                    j += 1
+                dollars = [_f(x) for x in seg if x.startswith("$")]
+                total = dollars[-1] if dollars else None
+                charge = dollars[0] if len(dollars) >= 2 else (None if not dollars else 0.0)
+                fills.append({**meta, "fill_ordinal": f_ord, "quantity": qty, "price": price,
+                              "principal": principal, "charge_or_interest": charge,
+                              "total_amount": total,
+                              "raw_excerpt": " | ".join([t] + toks[i + 1:j][:8])})
+                f_ord += 1
+                i = j
+            else:
+                i += 1
+    return fills
 
 
 def parse_trade_sections(body: str) -> list[dict]:
@@ -124,7 +202,7 @@ def ingest(cur, conn, days: int = 14, dry: bool = False) -> dict:
         recvd = (re.search(r"^date\t(.+)$", body, re.M) or [None, None])[1]
         tdate = (re.search(r"confirmation\(s\) for (\d{8})", body) or [None, None])[1]
         tdate_iso = f"{tdate[:4]}-{tdate[4:6]}-{tdate[6:]}" if tdate else None
-        matches = parse_trade_sections(body)
+        matches = parse_fills(body)
         if not matches:
             if not dry:
                 cur.execute("""INSERT INTO econfirm_evidence
@@ -134,23 +212,100 @@ def ingest(cur, conn, days: int = 14, dry: bool = False) -> dict:
                     (mid, recvd, suffix, tdate_iso, body[-1500:], f"econf:{mid}:unparsed"))
             out["unparsed"] += 1
             continue
-        for i, m in enumerate(matches):
+        import hashlib as _h
+        chash = _h.sha256(re.sub(r"https?://\S+", "", body).encode()).hexdigest()[:16]
+        if not dry:
+            # a parser upgrade SUPERSEDES old rows for this email — no manual deletion
+            cur.execute("""UPDATE econfirm_evidence SET parse_status='superseded_by_' || %s
+                           WHERE email_message_id=%s AND COALESCE(parser_version,'v1') != %s
+                             AND parse_status IN ('parsed','unparsed')""",
+                        (PARSER_VERSION, mid, PARSER_VERSION))
+        for m in matches:
             if not dry:
                 cur.execute("""INSERT INTO econfirm_evidence
                     (email_message_id, received_at, account_suffix, trade_date, settle_date,
                      symbol, cusip, action, quantity, price, principal, charge_or_interest,
-                     total_amount, parse_status, dedupe_key)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'parsed',%s)
+                     total_amount, parse_status, raw_excerpt, dedupe_key, parser_version,
+                     section_ordinal, fill_ordinal, content_hash)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'parsed',%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (dedupe_key) DO NOTHING""",
                     (mid, recvd, suffix,
                      _date_iso(m.get("trade_date")) or tdate_iso, _date_iso(m.get("settle_date")),
                      m["symbol"], m.get("cusip"), (m.get("action") or "").strip(),
                      m.get("quantity"), m.get("price"), m.get("principal"),
-                     m.get("charge_or_interest"), m.get("total_amount"), f"econf:{mid}:{i}"))
+                     m.get("charge_or_interest"), m.get("total_amount"),
+                     m.get("raw_excerpt", "")[:400],
+                     f"econf:{mid}:{PARSER_VERSION}:{m['section_ordinal']}:{m['fill_ordinal']}",
+                     PARSER_VERSION, m["section_ordinal"], m["fill_ordinal"], chash))
             out["parsed_trades"] += 1
     if not dry:
         conn.commit()
     return out
+
+
+SUFFIX_TO_ACCOUNT = {"258": "schwab_rollover_ira", "415": "schwab_roth", "469": "schwab_taxable"}
+
+
+def reconcile_one_to_one(cur, conn) -> dict:
+    """P0-3: deterministic one-to-one matching — each ledger transaction may
+    satisfy at most ONE eConfirm fill. States are explicit; nothing arbitrary."""
+    act_map = {"Sale": "Sell", "Purchase": "Buy"}
+    cur.execute("""SELECT econfirm_id, account_suffix, trade_date, settle_date, symbol, cusip,
+                          action, quantity, price, charge_or_interest
+                   FROM econfirm_evidence
+                   WHERE parse_status='parsed' AND parser_version=%s
+                   ORDER BY trade_date, symbol, fill_ordinal""", (PARSER_VERSION,))
+    fills = cur.fetchall()
+    used_ledger = set()
+    res = {"EXACT_MATCH": 0, "MATCH_WITH_DATE_FALLBACK": 0, "PRICE_MISMATCH": 0,
+           "CHARGE_MISMATCH": 0, "AMBIGUOUS_MULTIPLE_CANDIDATES": 0, "ECONFIRM_ONLY": 0}
+    for (eid, sfx, td, sd, sym, cusip, act, qty, px, chg) in fills:
+        acct = SUFFIX_TO_ACCOUNT.get((sfx or "").strip())
+        ledger_act = act_map.get((act or "").strip(), (act or "").strip())
+        px, chg, qty = (float(px) if px is not None else None,
+                        float(chg) if chg is not None else None, float(qty or 0))
+
+        def _cands(date_col_val):
+            cur.execute(f"""SELECT dedupe_key, price, fees FROM trade_transactions
+                            WHERE trade_date=%s AND upper(symbol)=%s AND action ILIKE %s
+                              AND abs(quantity-%s) < 0.01
+                              AND (%s IS NULL OR account=%s)""",
+                        (date_col_val, (sym or "").upper(), ledger_act + "%", qty, acct, acct))
+            return [c for c in cur.fetchall() if c[0] not in used_ledger]
+
+        cands, state_base = _cands(td), "EXACT_MATCH"
+        if not cands and sd:
+            cands, state_base = _cands(sd), "MATCH_WITH_DATE_FALLBACK"  # bounded: settle date only
+        if not cands:
+            status, detail = "ECONFIRM_ONLY", "no unconsumed ledger candidate (date+settle searched)"
+            res["ECONFIRM_ONLY"] += 1
+        else:
+            exact = [c for c in cands if px is None or abs(float(c[1] or 0) - px) < 0.005]
+            if len(exact) > 1:
+                status, detail = "AMBIGUOUS_MULTIPLE_CANDIDATES", f"{len(exact)} equal candidates"
+                res["AMBIGUOUS_MULTIPLE_CANDIDATES"] += 1
+            elif len(exact) == 1:
+                dk, lpx, lfees = exact[0]
+                used_ledger.add(dk)
+                if chg is not None and abs(float(lfees or 0) - chg) > 0.02:
+                    status, detail = "CHARGE_MISMATCH", f"ledger fees {lfees} vs charge {chg}"
+                    res["CHARGE_MISMATCH"] += 1
+                else:
+                    status, detail = state_base, f"1:1 vs ledger {dk[:40]}"
+                    res[state_base] += 1
+                cur.execute("UPDATE econfirm_evidence SET matched_txn_dedupe_key=%s WHERE econfirm_id=%s",
+                            (dk, eid))
+            else:
+                dk, lpx, lfees = cands[0]
+                used_ledger.add(dk)
+                status, detail = "PRICE_MISMATCH", f"ledger px {lpx} vs eConfirm {px}"
+                res["PRICE_MISMATCH"] += 1
+                cur.execute("UPDATE econfirm_evidence SET matched_txn_dedupe_key=%s WHERE econfirm_id=%s",
+                            (dk, eid))
+        cur.execute("UPDATE econfirm_evidence SET recon_status=%s, recon_detail=%s WHERE econfirm_id=%s",
+                    (status, detail, eid))
+    conn.commit()
+    return res
 
 
 def reconcile(cur, conn) -> dict:
@@ -200,4 +355,4 @@ if __name__ == "__main__":
     ensure_econfirm_tables(cur, conn)
     print(json.dumps(ingest(cur, conn, days=a.days, dry=a.dry_run), indent=1))
     if not a.dry_run:
-        print(json.dumps(reconcile(cur, conn), indent=1))
+        print(json.dumps(reconcile_one_to_one(cur, conn), indent=1))
