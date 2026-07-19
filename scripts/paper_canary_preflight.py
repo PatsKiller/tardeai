@@ -69,10 +69,23 @@ def main() -> int:
     try:
         from db_adapter import _get_conn
         conn = _get_conn(); cur = conn.cursor()
+        # Operator decision 2026-07-19: the Schwab pilot arm (gate #1) is
+        # INTENTIONALLY ARMED; the operative controls are per-order 2FA and the
+        # per-strategy live_allowed flags. The gate verifies that posture is
+        # RECORDED and that both operative controls are intact.
         cur.execute("SELECT value FROM system_controls WHERE key='options_execution_enabled'")
-        r = cur.fetchone()
-        check("schwab_pilot_disarmed", not (r and str(r[0]).lower() in ("true", "1", "approved")),
-              f"system_controls.options_execution_enabled = {r[0] if r else 'absent (disarmed)'}")
+        armed = (cur.fetchone() or [None])[0]
+        cur.execute("SELECT value, updated_by FROM system_controls WHERE key='options_execution_arm_note'")
+        note = cur.fetchone()
+        import subprocess as _sp
+        yaml_live = _sp.run(["grep", "-rl", "live_allowed: true", str(ROOT / "config" / "strategies")],
+                            capture_output=True, text=True).stdout.strip()
+        pilot_src = (ROOT / "scripts" / "brokers" / "options_order_pilot.py").read_text()
+        check("schwab_pilot_posture",
+              bool(note and "INTENTIONALLY ARMED" in note[0]) and not yaml_live
+              and "request_2fa" in pilot_src and "OPTIONS_EXECUTION_1" in pilot_src,
+              f"gate#1={armed} (operator-intent recorded by {note[1] if note else 'NOBODY — flag it'}) · "
+              f"2FA flow present · live_allowed:true strategies: {yaml_live or 'none'}")
         kill = ROOT / "config" / "defense_execution_caps.json"
         kc = json.loads(kill.read_text()) if kill.exists() else {}
         check("kill_file_state", not kc.get("disabled"), f"disabled={kc.get('disabled')}")

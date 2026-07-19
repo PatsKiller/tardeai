@@ -66,9 +66,12 @@ UI:  /v3/trading?tab=Options&otab=Lifecycle (lead tab) + Defense compact strip
 
 ## Safety boundary (verified in code and demos)
 
-- Advisory by default; **no autonomous live submission exists** — the Schwab
-  options pilot lane stays DISARMED and untouched; lifecycle tickets render
-  exact manual tickets after per-order 2FA. Fidelity is manual-only.
+- Advisory by default; **no autonomous live submission exists**. The Schwab
+  options pilot's DB arm switch (gate #1) is **INTENTIONALLY ARMED by operator
+  decision (2026-07-19, recorded in system_controls)** — the operative controls
+  are per-order 2FA (OPTIONS_EXECUTION_1 marker) and per-strategy
+  `live_allowed` flags (all false today). Lifecycle tickets render exact
+  manual tickets after per-order 2FA. Fidelity is manual-only.
 - Spreads decided and ticketed atomically; leg-out requires
   `operator_acknowledged_leg_out` and renders the incremental-risk warning.
 - A UI click never closes a position — only `record_fill_evidence` (broker fill
