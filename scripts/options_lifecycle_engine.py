@@ -36,47 +36,80 @@ def policy() -> dict:
 
 # ── quotes ────────────────────────────────────────────────────────────────────
 
-_CHAIN_CACHE: dict[str, dict] = {}   # per-process, per-run — the runner is short-lived
+_CHAIN_CACHE: dict[tuple, dict] = {}   # (underlying, strike_count) → chain; per-run process cache
 
 
-def quote_leg(leg: dict) -> dict:
-    """Fresh quote for one leg from a WIDE Schwab chain fetch (lifecycle legs sit
-    far from ATM; the 16-strike proposal window is not enough). One chain fetch
-    per underlying per run. {ok, bid, ask, mid, spread_pct, greeks, iv,
-    underlying_price, source, ts} — ok=False carries the error, never a guess."""
-    und = leg["occ_symbol"][:6].strip()
-    try:
-        chain = _CHAIN_CACHE.get(und)
-        if chain is None:
-            import schwab_transport
-            chain = schwab_transport.get_option_chain(
-                und, strike_count=int(policy()["quotes"].get("chain_strike_count", 48))) or {}
-            _CHAIN_CACHE[und] = chain
-    except Exception as e:
-        return {"ok": False, "error": str(e)[:120], "source": "schwab_chain"}
-    if chain.get("status") != "ok":
-        return {"ok": False, "error": f"chain status {chain.get('status')}", "source": "schwab_chain"}
-    exp_key = str(leg["expiration"])[:10]
-    want = float(leg["strike"])
-    side = "put" if leg["option_type"] == "put" else "call"
+def _fetch_chain(und: str, count: int) -> dict:
+    key = (und, count)
+    if key not in _CHAIN_CACHE:
+        import schwab_transport
+        _CHAIN_CACHE[key] = schwab_transport.get_option_chain(und, strike_count=count) or {}
+    return _CHAIN_CACHE[key]
+
+
+def _find_contract(chain: dict, exp_key: str, want: float, side: str):
+    saw_expiration = False
     for exp in chain.get("expirations") or []:
         if str(exp.get("exp") or "")[:10] != exp_key:
             continue
+        saw_expiration = True
         for s in exp.get("strikes") or []:
-            if s.get("side") != side or abs(float(s.get("strike") or 0) - want) > 0.02:
-                continue
-            bid, ask = s.get("bid"), s.get("ask")
-            mid = ((bid + ask) / 2 if bid is not None and ask is not None else s.get("last"))
-            if mid is None:
-                return {"ok": False, "error": "no two-sided quote or last", "source": "schwab_chain"}
-            spread_pct = (round((ask - bid) / mid * 100, 1) if bid and ask and mid else None)
-            return {"ok": True, "bid": bid, "ask": ask, "mid": round(float(mid), 2),
-                    "spread_pct": spread_pct, "delta": s.get("delta"), "gamma": s.get("gamma"),
-                    "theta": s.get("theta"), "vega": s.get("vega"), "iv": s.get("iv"),
-                    "underlying_price": chain.get("underlying_price"), "source": "schwab_chain",
-                    "ts": datetime.now(timezone.utc).isoformat()}
-    return {"ok": False, "error": "contract not in chain (check strike/expiration)",
-            "source": "schwab_chain"}
+            if s.get("side") == side and abs(float(s.get("strike") or 0) - want) <= 0.02:
+                return s, True
+    return None, saw_expiration
+
+
+def quote_leg(leg: dict) -> dict:
+    """v1.1 P3: CONTRACT-EXACT quote resolution. Parses exact identity, escalates
+    the strike window until the exact contract is found, verifies the expiration
+    exists when absent, and fails closed when exact identity cannot be proven —
+    an actionable price NEVER comes from a neighboring strike. Full provenance:
+    exact_match, attempts, received_at, source, spread."""
+    und = leg["occ_symbol"][:6].strip()
+    exp_key = str(leg["expiration"])[:10]
+    want = float(leg["strike"])
+    side = "put" if leg["option_type"] == "put" else "call"
+    windows = policy()["quotes"].get("chain_strike_windows", [48, 120, 250])
+    saw_exp_ever = False
+    for count in windows:
+        try:
+            chain = _fetch_chain(und, count)
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:120], "source": "schwab_chain",
+                    "exact_match": False}
+        if chain.get("status") != "ok":
+            return {"ok": False, "error": f"chain status {chain.get('status')}",
+                    "source": "schwab_chain", "exact_match": False}
+        s, saw_exp = _find_contract(chain, exp_key, want, side)
+        saw_exp_ever = saw_exp_ever or saw_exp
+        if s is None:
+            if not saw_exp and count == windows[0]:
+                # cheap pre-check: is this expiration listed at all?
+                try:
+                    import schwab_transport
+                    exps = schwab_transport.get_option_expirations(und)
+                    listed = [str(x.get("date") or "")[:10] for x in (exps.get("expirations") or [])]
+                    if listed and exp_key not in listed:
+                        return {"ok": False, "exact_match": False, "source": "schwab_chain",
+                                "error": f"expiration {exp_key} not listed by broker — identity unverifiable"}
+                except Exception:
+                    pass
+            continue
+        bid, ask = s.get("bid"), s.get("ask")
+        mid = ((bid + ask) / 2 if bid is not None and ask is not None else s.get("last"))
+        if mid is None:
+            return {"ok": False, "error": "exact contract found but no two-sided quote or last",
+                    "source": "schwab_chain", "exact_match": True}
+        spread_pct = (round((ask - bid) / mid * 100, 1) if bid and ask and mid else None)
+        return {"ok": True, "bid": bid, "ask": ask, "mid": round(float(mid), 2),
+                "spread_pct": spread_pct, "delta": s.get("delta"), "gamma": s.get("gamma"),
+                "theta": s.get("theta"), "vega": s.get("vega"), "iv": s.get("iv"),
+                "underlying_price": chain.get("underlying_price"), "source": "schwab_chain",
+                "exact_match": True, "attempts_strike_window": count,
+                "ts": datetime.now(timezone.utc).isoformat()}
+    return {"ok": False, "exact_match": False, "source": "schwab_chain",
+            "error": f"exact contract not found after {windows[-1]}-strike scan"
+                     + ("" if saw_exp_ever else f" (expiration {exp_key} never appeared)")}
 
 
 # ── economics ─────────────────────────────────────────────────────────────────
@@ -426,6 +459,44 @@ def decide(s: dict, eco: dict, pol: dict, defense_posture: dict | None = None) -
             "alternatives": []}
 
 
+PRECEDENCE = ["DATA_BLOCKED", "EXPIRATION_CRITICAL", "ASSIGNMENT_CRITICAL", "DEFEND",
+              "ROLL", "ACCEPT_ASSIGNMENT", "EXERCISE_REVIEW", "HARVEST_FULL",
+              "HARVEST_PARTIAL", "LET_MATURE", "HOLD"]
+_CRITICAL_URGENCY = {"DATA_BLOCKED": "amber", "EXPIRATION_CRITICAL": "red",
+                     "ASSIGNMENT_CRITICAL": "red"}
+
+
+def reduce_decision(d: dict, findings: list[dict], eco: dict) -> dict:
+    """v1.1 P1: ONE primary recommendation per snapshot. Assignment/expiry
+    findings compete with the policy decision under a fixed precedence; losers
+    become SUPPORTING CONTEXT inside the same decision — never independent
+    contradictory primaries (no simultaneous HARVEST_FULL and DEFEND)."""
+    candidates = [(d["recommendation"], d["urgency"], d["rationale"])]
+    for f in findings or []:
+        if f["code"] == "expiry_day":
+            candidates.append(("EXPIRATION_CRITICAL", "red", f["line"]))
+        elif f["code"].startswith(("early_assignment", "under_covered")) or (
+                f["code"].startswith("itm_short") and (eco.get("dte_nearest") or 99) <= 3):
+            candidates.append(("ASSIGNMENT_CRITICAL", "red", f["line"]))
+    ranked = sorted(candidates, key=lambda c: PRECEDENCE.index(c[0])
+                    if c[0] in PRECEDENCE else len(PRECEDENCE))
+    primary_rec, primary_urg, primary_line = ranked[0]
+    subordinate = [{"recommendation": r, "line": ln} for r, _, ln in ranked[1:]]
+    subordinate += [{"finding": f["code"], "line": f["line"]} for f in (findings or [])
+                    if f["line"] not in [c[2] for c in candidates]]
+    rationale = primary_line
+    if primary_rec != d["recommendation"]:
+        rationale = (f"{primary_line} Supporting economics: {d['rationale']}")
+    elif subordinate:
+        extra = "; ".join(s["line"] for s in subordinate[:2] if s.get("line"))
+        if extra:
+            rationale = f"{primary_line} Supporting context: {extra}"
+    return {**d, "recommendation": primary_rec,
+            "urgency": _CRITICAL_URGENCY.get(primary_rec, primary_urg),
+            "rationale": rationale, "subordinate": subordinate,
+            "precedence_rule": " > ".join(dict.fromkeys(c[0] for c in ranked))}
+
+
 def record_decision(cur, conn, spid: int, snap_id: int, d: dict, pol: dict) -> int | None:
     """Append to the ledger only when (recommendation, urgency) changed vs the
     latest live decision — supersedes the prior row. Returns decision_id or None."""
@@ -435,12 +506,16 @@ def record_decision(cur, conn, spid: int, snap_id: int, d: dict, pol: dict) -> i
     prev = cur.fetchone()
     if prev and prev[1] == d["recommendation"] and prev[2] == d["urgency"]:
         return None
+    transition = (f"{prev[1]}→{d['recommendation']}" if prev else "initial")
     cur.execute("""INSERT INTO options_lifecycle_decisions
         (strategy_position_id, snapshot_id, policy_version, recommendation, urgency,
-         confidence, rationale, alternatives)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING decision_id""",
+         confidence, rationale, alternatives, subordinate, precedence_rule,
+         prior_recommendation, transition_reason)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING decision_id""",
         (spid, snap_id, pol["policy_version"], d["recommendation"], d["urgency"],
-         d.get("confidence"), d["rationale"], json.dumps(d.get("alternatives") or [])))
+         d.get("confidence"), d["rationale"], json.dumps(d.get("alternatives") or []),
+         json.dumps(d.get("subordinate") or []), d.get("precedence_rule"),
+         prev[1] if prev else None, transition))
     did = cur.fetchone()[0]
     if prev:
         cur.execute("UPDATE options_lifecycle_decisions SET superseded_by=%s WHERE decision_id=%s",

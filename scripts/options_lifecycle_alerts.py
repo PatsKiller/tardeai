@@ -202,11 +202,12 @@ def _dedupe_key(spid: int, d: dict, eco: dict, pol: dict) -> str:
 URGENCY_RANK = {"green": 0, "amber": 1, "red": 2}
 
 
-def _telegram(text: str) -> bool:
+def _telegram_ev(text: str) -> dict:
+    """Send with delivery evidence: {ok, message_id, error}."""
     try:
         from telegram_alert_router import should_send_telegram, mark_sent
         if not should_send_telegram(text):
-            return False
+            return {"ok": False, "message_id": None, "error": "router_suppressed"}
         import requests
         tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         if not tok:
@@ -214,51 +215,86 @@ def _telegram(text: str) -> bool:
                 if l.startswith("TELEGRAM_BOT_TOKEN="):
                     tok = l.split("=", 1)[1].strip()
         from tg_chat_ids import chat_ids
-        ok = False
+        ok, mid, err = False, None, None
         for chat in chat_ids() or []:
             r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
                               json={"chat_id": chat, "text": text}, timeout=10)
-            ok = ok or r.ok
+            if r.ok:
+                ok = True
+                try:
+                    mid = str(r.json().get("result", {}).get("message_id"))
+                except Exception:
+                    pass
+            else:
+                err = f"http {r.status_code}"
         if ok:
             mark_sent(text)
-        return ok
-    except Exception:
-        return False
+        return {"ok": ok, "message_id": mid, "error": err}
+    except Exception as e:
+        return {"ok": False, "message_id": None, "error": str(e)[:80]}
+
+
+def _telegram(text: str) -> bool:
+    return _telegram_ev(text)["ok"]
+
+
+def _identity_header(s: dict, d: dict, eco: dict, decision_id) -> str:
+    """v1.1 P8: every alert names the exact contract, strategy, and decision."""
+    legs = [l for l in s["legs"] if l["status"] == "open"]
+    strikes = "/".join(f"{float(l['strike']):g}{'C' if l['option_type'] == 'call' else 'P'}" for l in legs)
+    exps = "/".join(sorted({str(l["expiration"])[:10] for l in legs}))
+    n = "+".join(f"{float(l['contracts']):g}" for l in legs)
+    return (f"{s['account_key']} · pos #{s['strategy_position_id']} · {s['underlying']} "
+            f"{s['strategy_type'].replace('_', ' ')} · {strikes} exp {exps} · {n} contract(s) · "
+            f"{d['recommendation']} · snapshot {datetime.now(timezone.utc).strftime('%m-%d %H:%MZ')}"
+            + (f" · decision #{decision_id}" if decision_id else ""))
 
 
 def process_alerts(cur, conn, s: dict, eco: dict, d: dict, decision_id: int | None,
-                   pol: dict, notify: bool = True) -> dict | None:
-    """One strategy's post-decision alert pass. Creates/updates at most one
-    live alert per dedupe key; supersedes stale ones; notifies per policy."""
-    findings = assignment_review(s, eco, pol)
-    worst = max([d["urgency"]] + [f["urgency"] for f in findings], key=lambda u: URGENCY_RANK[u])
+                   pol: dict, notify: bool = True, findings: list | None = None) -> dict | None:
+    """One strategy's post-decision alert pass. v1.1: `d` is the REDUCED primary
+    (one recommendation per snapshot — its urgency is authoritative); findings
+    ride INSIDE the same message as supporting context, never as independent
+    contradictory primaries. Delivery evidence recorded on the alert row."""
+    findings = assignment_review(s, eco, pol) if findings is None else findings
+    urgency = d["urgency"]
     key = _dedupe_key(s["strategy_position_id"], d, eco, pol)
     spid = s["strategy_position_id"]
     cur.execute("""SELECT alert_id, dedupe_key, urgency, state FROM options_lifecycle_alerts
                    WHERE strategy_position_id=%s AND state NOT IN ('RESOLVED','SUPERSEDED')
                    ORDER BY alert_id DESC LIMIT 1""", (spid,))
     live = cur.fetchone()
-    if live and live[1] == key and URGENCY_RANK[worst] <= URGENCY_RANK[live[2]]:
+    if live and live[1] == key and URGENCY_RANK[urgency] <= URGENCY_RANK[live[2]]:
         return None  # duplicate state — no re-alert
+    header = _identity_header(s, d, eco, decision_id)
     title = f"{s['underlying']} {s['strategy_type'].replace('_', ' ')} — {d['recommendation']}"
-    body = d["rationale"] + ("".join("\n• " + f["line"] for f in findings) if findings else "")
+    body = header + "\n" + d["rationale"] + (
+        "".join("\n• " + x.get("line", "") for x in (d.get("subordinate") or []) if x.get("line")) or
+        "".join("\n• " + f["line"] for f in findings))
     if live:
         cur.execute("""UPDATE options_lifecycle_alerts SET state='SUPERSEDED', resolved_at=now()
                        WHERE alert_id=%s""", (live[0],))
     cur.execute("""INSERT INTO options_lifecycle_alerts
         (strategy_position_id, decision_id, dedupe_key, urgency, title, body, findings)
         VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING alert_id""",
-        (spid, decision_id, key, worst, title, body, json.dumps(findings)))
+        (spid, decision_id, key, urgency, title, body, json.dumps(findings)))
     aid = cur.fetchone()[0]
     sent = []
-    if notify and worst in pol["alerts"]["telegram_urgencies"]:
-        mark = {"red": "🔴", "amber": "🟠"}.get(worst, "")
-        if _telegram(f"{mark} OPTIONS LIFECYCLE — {title}\n{d['rationale'][:400]}"):
+    if notify and urgency in pol["alerts"]["telegram_urgencies"]:
+        mark = {"red": "🔴", "amber": "🟠"}.get(urgency, "")
+        cur.execute("UPDATE options_lifecycle_alerts SET attempted_at=now() WHERE alert_id=%s", (aid,))
+        ev = _telegram_ev(f"{mark} OPTIONS LIFECYCLE\n{header}\n{d['rationale'][:400]}")
+        if ev["ok"]:
             sent.append("telegram")
+            cur.execute("""UPDATE options_lifecycle_alerts SET delivered_at=now(), message_id=%s
+                           WHERE alert_id=%s""", (ev["message_id"], aid))
+        else:
+            cur.execute("""UPDATE options_lifecycle_alerts SET failure_reason=%s,
+                           retry_count=retry_count+1 WHERE alert_id=%s""", (ev["error"], aid))
     cur.execute("UPDATE options_lifecycle_alerts SET channels_sent=%s WHERE alert_id=%s",
                 (json.dumps(sent), aid))
     conn.commit()
-    return {"alert_id": aid, "urgency": worst, "title": title, "sent": sent}
+    return {"alert_id": aid, "urgency": urgency, "title": title, "sent": sent}
 
 
 def resolve_alerts_for(cur, conn, spid: int, reason: str = "position closed"):

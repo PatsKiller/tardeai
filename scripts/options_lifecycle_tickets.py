@@ -88,6 +88,36 @@ def _hash(ticket: dict, tif: str) -> str:
     return hashlib.sha256(json.dumps(core, sort_keys=True, default=str).encode()).hexdigest()[:24]
 
 
+ACTIVE_TICKET_STATUSES = ("draft", "approved", "awaiting_2fa", "armed", "partial")
+
+
+def _idem_key(spid: int, kind: str, legs: list[dict], tif: str) -> str:
+    """v1.1 P2 idempotency: strategy + action + normalized legs/prices + TIF +
+    policy version. One ACTIVE ticket per key, ever."""
+    from options_lifecycle_engine import policy as _pol
+    norm = sorted(
+        [{"occ": (l.get("occ_symbol") or l.get("occ_target") or "").strip(),
+          "instruction": l["instruction"], "contracts": float(l["contracts"]),
+          "limit": float(l["proposed_limit"])} for l in legs],
+        key=lambda x: (x["occ"], x["instruction"]))
+    core = {"spid": spid, "kind": kind, "legs": norm, "tif": tif,
+            "policy": _pol()["policy_version"]}
+    return hashlib.sha256(json.dumps(core, sort_keys=True).encode()).hexdigest()[:24]
+
+
+def _existing_active(cur, idem_key: str) -> dict | None:
+    cur.execute("""SELECT ticket_id, ticket_json, status, approval_hash FROM options_lifecycle_tickets
+                   WHERE idempotency_key=%s AND status = ANY(%s)
+                   ORDER BY ticket_id DESC LIMIT 1""", (idem_key, list(ACTIVE_TICKET_STATUSES)))
+    r = cur.fetchone()
+    if not r:
+        return None
+    t = r[1] if isinstance(r[1], dict) else json.loads(r[1])
+    t["ticket_id"], t["status"], t["approval_hash"] = r[0], r[2], r[3]
+    t["idempotent_return"] = True   # double click / retry → SAME ticket, no new row
+    return t
+
+
 def _round_tick(x: float, tick: float) -> float:
     return round(round(x / tick) * tick, 2)
 
@@ -181,10 +211,14 @@ def build_close_ticket(cur, conn, spid: int, *, fraction: float = 1.0, tif: str 
               "broker_capability": _capability(s),
               "snapshot_note": "quotes fetched at build; approval binds to this exact state"}
     ticket["approval_hash"] = _hash(ticket, tif)
+    idem = _idem_key(spid, "close", tlegs, tif)
+    existing = _existing_active(cur, idem)
+    if existing:
+        return existing   # double click / network retry: one ticket, one challenge
     cur.execute("""INSERT INTO options_lifecycle_tickets
-        (strategy_position_id, kind, ticket_json, approval_hash, tif)
-        VALUES (%s,'close',%s,%s,%s) RETURNING ticket_id""",
-        (spid, json.dumps(ticket, default=str), ticket["approval_hash"], tif))
+        (strategy_position_id, kind, ticket_json, approval_hash, tif, idempotency_key)
+        VALUES (%s,'close',%s,%s,%s,%s) RETURNING ticket_id""",
+        (spid, json.dumps(ticket, default=str), ticket["approval_hash"], tif, idem))
     ticket["ticket_id"] = cur.fetchone()[0]
     conn.commit()
     return ticket
@@ -257,10 +291,14 @@ def build_roll_ticket(cur, conn, spid: int, *, new_expiration: str,
               "quote_max_age_seconds": c["quote_max_age_seconds"],
               "broker_capability": _capability(s)}
     ticket["approval_hash"] = _hash(ticket, ticket["tif"])
+    idem = _idem_key(spid, "roll", ticket["legs"], ticket["tif"])
+    existing = _existing_active(cur, idem)
+    if existing:
+        return existing
     cur.execute("""INSERT INTO options_lifecycle_tickets
-        (strategy_position_id, kind, ticket_json, approval_hash, tif)
-        VALUES (%s,'roll',%s,%s,%s) RETURNING ticket_id""",
-        (spid, json.dumps(ticket, default=str), ticket["approval_hash"], ticket["tif"]))
+        (strategy_position_id, kind, ticket_json, approval_hash, tif, idempotency_key)
+        VALUES (%s,'roll',%s,%s,%s,%s) RETURNING ticket_id""",
+        (spid, json.dumps(ticket, default=str), ticket["approval_hash"], ticket["tif"], idem))
     ticket["ticket_id"] = cur.fetchone()[0]
     conn.commit()
     return ticket
@@ -301,15 +339,31 @@ def _fresh_enough(ticket: dict) -> bool:
         return False
 
 
-def approve_ticket(cur, conn, ticket_id: int, expected_hash: str) -> dict:
-    cur.execute("SELECT ticket_json, approval_hash, status, tif FROM options_lifecycle_tickets WHERE ticket_id=%s",
-                (ticket_id,))
+def _twofa_text(code: str, ticket: dict, ticket_id: int, generation: int) -> str:
+    """v1.1 P2: the pill names the EXACT order — account, position, ticket, legs,
+    action, TIF, economics, snapshot time, hash suffix, expiry."""
+    strikes = "/".join(str(l.get("occ_symbol") or l.get("occ_target") or "?").strip()
+                       for l in ticket["legs"])
+    n = "+".join(f"{float(l['contracts']):g}" for l in ticket["legs"])
+    acts = "/".join(sorted({l["instruction"] for l in ticket["legs"]}))
+    return (f"2FA code {code}" + (f" (reissue #{generation})" if generation > 1 else "") + "\n"
+            f"OPTIONS {ticket['kind'].upper()} · ticket #{ticket_id} · pos #{ticket['strategy_position_id']}\n"
+            f"{ticket['account_key']} · {ticket['underlying']} {ticket['strategy_type'].replace('_', ' ')}\n"
+            f"{acts} {n}× {strikes}\nTIF {ticket['tif']} · {ticket['net_label']}\n"
+            f"quotes {str(ticket['quote_ts'])[11:16]}Z · hash …{ticket['approval_hash'][-8:]}\n"
+            f"Expires in {_cfg()['twofa_expiry_minutes']} min. Prior codes for this ticket are DEAD.")
+
+
+def approve_ticket(cur, conn, ticket_id: int, expected_hash: str,
+                   correlation_id: str = "") -> dict:
+    cur.execute("""SELECT ticket_json, approval_hash, status, tif, challenge_generation
+                   FROM options_lifecycle_tickets WHERE ticket_id=%s""", (ticket_id,))
     r = cur.fetchone()
     if not r:
         return {"ok": False, "error": "unknown ticket"}
-    ticket, stored_hash, status, tif = (r[0] if isinstance(r[0], dict) else json.loads(r[0])), r[1], r[2], r[3]
-    if status != "draft":
-        return {"ok": False, "error": f"ticket is {status}, not draft"}
+    ticket, stored_hash, status, tif, gen = (r[0] if isinstance(r[0], dict) else json.loads(r[0])), r[1], r[2], r[3], r[4]
+    if status not in ("draft", "awaiting_2fa"):
+        return {"ok": False, "error": f"ticket is {status}"}
     recomputed = _hash(ticket, tif)
     if not (expected_hash == stored_hash == recomputed):
         cur.execute("UPDATE options_lifecycle_tickets SET status='invalidated', updated_at=now() WHERE ticket_id=%s",
@@ -321,16 +375,24 @@ def approve_ticket(cur, conn, ticket_id: int, expected_hash: str) -> dict:
                     (ticket_id,))
         conn.commit()
         return {"ok": False, "error": "quotes stale — rebuild the ticket for fresh prices"}
+    reissue = status == "awaiting_2fa"
     code = f"{secrets.randbelow(1000000):06d}"
+    # v1.1: reissue EXPLICITLY revokes the prior challenge — never two live codes
     cur.execute("""UPDATE options_lifecycle_tickets SET status='awaiting_2fa', twofa_code=%s,
-                   twofa_requested_at=now(), approved_at=now(), updated_at=now() WHERE ticket_id=%s""",
-                (code, ticket_id))
+                   twofa_requested_at=now(), approved_at=COALESCE(approved_at, now()),
+                   challenge_generation=challenge_generation+1,
+                   supersedes_challenge_id=CASE WHEN %s THEN challenge_generation ELSE supersedes_challenge_id END,
+                   challenge_revoked_at=CASE WHEN %s THEN now() ELSE challenge_revoked_at END,
+                   challenge_revoke_reason=CASE WHEN %s THEN 'reissued on repeat approve' ELSE challenge_revoke_reason END,
+                   request_correlation_id=%s, updated_at=now()
+                   WHERE ticket_id=%s RETURNING challenge_generation""",
+                (code, reissue, reissue, reissue, correlation_id or None, ticket_id))
+    new_gen = cur.fetchone()[0]
     conn.commit()
     from options_lifecycle_alerts import _telegram
-    _telegram(f"2FA code {code}\nOptions lifecycle {ticket['kind'].upper()}: {ticket['underlying']} "
-              f"{ticket['strategy_type'].replace('_', ' ')} · {ticket['net_label']}\n"
-              f"Enter on the Options Lifecycle page. Expires in {_cfg()['twofa_expiry_minutes']} min.")
-    return {"ok": True, "status": "awaiting_2fa"}
+    _telegram(_twofa_text(code, {**ticket, "tif": tif}, ticket_id, new_gen))
+    return {"ok": True, "status": "awaiting_2fa", "challenge_generation": new_gen,
+            "reissued": reissue}
 
 
 def verify_ticket_2fa(cur, conn, ticket_id: int, code: str) -> dict:
@@ -356,7 +418,8 @@ def verify_ticket_2fa(cur, conn, ticket_id: int, code: str) -> dict:
         conn.commit()
         return {"ok": False, "error": "ticket changed after approval — rebuild"}
     cur.execute("""UPDATE options_lifecycle_tickets SET status='armed', armed_at=now(),
-                   twofa_code=NULL, updated_at=now() WHERE ticket_id=%s""", (ticket_id,))
+                   twofa_code=NULL, challenge_used_at=now(), updated_at=now()
+                   WHERE ticket_id=%s""", (ticket_id,))
     conn.commit()
     manual = {"title": f"ARMED {ticket['kind'].upper()} TICKET — enter at {ticket['broker']}",
               "account": ticket["account_key"], "tif": ticket["tif"],

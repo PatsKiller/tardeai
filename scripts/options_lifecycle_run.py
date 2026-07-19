@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from options_lifecycle_model import ensure_tables, open_strategies
 from options_lifecycle_engine import (policy, quote_leg, strategy_economics,
                                       persist_snapshot, decide, record_decision,
-                                      defense_posture_for)
+                                      reduce_decision, defense_posture_for)
 from options_lifecycle_alerts import (ensure_alert_tables, process_alerts,
                                       resolve_alerts_for, escalate_unacked,
                                       open_alerts, assignment_review)
@@ -52,15 +52,19 @@ def run(dry: bool = False) -> dict:
             quotes = {l["leg_id"]: quote_leg(l) for l in s["legs"] if l["status"] == "open"}
             eco = strategy_economics(s, quotes)
             if dry:
-                d = decide(s, eco, pol, defense_posture_for(s["underlying"]))
                 findings = assignment_review(s, eco, pol)
+                d = reduce_decision(decide(s, eco, pol, defense_posture_for(s["underlying"])),
+                                    findings, eco)
                 alert = None
             else:
                 snap_id, eco = persist_snapshot(cur, conn, s, eco)
-                d = decide(s, eco, pol, defense_posture_for(s["underlying"]))
+                findings = assignment_review(s, eco, pol)
+                # v1.1 P1: ONE primary per snapshot — findings fold in via precedence
+                d = reduce_decision(decide(s, eco, pol, defense_posture_for(s["underlying"])),
+                                    findings, eco)
                 did = record_decision(cur, conn, s["strategy_position_id"], snap_id, d, pol)
-                alert = process_alerts(cur, conn, s, eco, d, did, pol, notify=True)
-                findings = None  # inside alert already
+                alert = process_alerts(cur, conn, s, eco, d, did, pol, notify=True,
+                                       findings=findings)
             out_positions.append({
                 "strategy_position_id": s["strategy_position_id"], "broker": s["broker"],
                 "account_key": s["account_key"], "strategy_type": s["strategy_type"],

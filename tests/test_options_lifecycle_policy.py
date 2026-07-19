@@ -262,3 +262,63 @@ def test_losing_cc_hold_never_says_premium_earned():
     assert d["recommendation"] == "HOLD"
     assert "Premium is being earned" not in d["rationale"]
     assert d["urgency"] == "amber"
+
+
+# ── v1.1 P1: single-primary reducer ──────────────────────────────────────────
+
+from options_lifecycle_engine import reduce_decision
+
+
+def test_assignment_critical_overrides_harvest_with_subordinate_economics():
+    d = {"recommendation": "HARVEST_FULL", "urgency": "amber",
+         "rationale": "Covered call has captured 80% of maximum premium in 8 days.",
+         "alternatives": []}
+    findings = [{"code": "early_assignment_extrinsic", "urgency": "red",
+                 "line": "Extrinsic value ≈ $8 — below the $15 floor with an ITM short."}]
+    r = reduce_decision(d, findings, {"dte_nearest": 10})
+    assert r["recommendation"] == "ASSIGNMENT_CRITICAL"
+    assert r["urgency"] == "red"
+    assert "Supporting economics" in r["rationale"] and "80%" in r["rationale"]
+    assert any(s.get("recommendation") == "HARVEST_FULL" for s in r["subordinate"])
+
+
+def test_expiry_day_takes_top_precedence_over_defend():
+    d = {"recommendation": "DEFEND", "urgency": "red", "rationale": "Under assignment pressure.",
+         "alternatives": []}
+    findings = [{"code": "expiry_day", "urgency": "red", "line": "EXPIRATION DAY. Nothing expires unreviewed."}]
+    r = reduce_decision(d, findings, {"dte_nearest": 0})
+    assert r["recommendation"] == "EXPIRATION_CRITICAL"
+    assert any(s.get("recommendation") == "DEFEND" for s in r["subordinate"])
+
+
+def test_no_findings_passthrough_keeps_decision():
+    d = {"recommendation": "HOLD", "urgency": "green", "rationale": "On plan.", "alternatives": []}
+    r = reduce_decision(d, [], {"dte_nearest": 40})
+    assert r["recommendation"] == "HOLD" and r["urgency"] == "green"
+
+
+def test_data_blocked_beats_everything():
+    d = {"recommendation": "DATA_BLOCKED", "urgency": "amber", "rationale": "Cannot price.", "alternatives": []}
+    findings = [{"code": "expiry_day", "urgency": "red", "line": "EXPIRATION DAY."}]
+    r = reduce_decision(d, findings, {"dte_nearest": 0})
+    assert r["recommendation"] == "DATA_BLOCKED"
+
+
+# ── v1.1 P2: idempotency keys ────────────────────────────────────────────────
+
+def test_idempotency_key_stable_and_price_sensitive():
+    legs = [{"occ_symbol": "CSCO  260821C00140000", "instruction": "BTC",
+             "contracts": 1.0, "proposed_limit": 0.81}]
+    k1 = olt._idem_key(9, "close", legs, "DAY")
+    k2 = olt._idem_key(9, "close", list(legs), "DAY")
+    assert k1 == k2                                    # retry → same key
+    k3 = olt._idem_key(9, "close", [{**legs[0], "proposed_limit": 0.82}], "DAY")
+    k4 = olt._idem_key(9, "close", legs, "GTC")
+    k5 = olt._idem_key(8, "close", legs, "DAY")
+    assert len({k1, k3, k4, k5}) == 4                  # price/TIF/position all distinguish
+
+
+def test_two_distinct_cc_strategies_have_distinct_keys():
+    a = [{"occ_symbol": "CSCO  260821C00125000", "instruction": "BTC", "contracts": 1.0, "proposed_limit": 1.0}]
+    b = [{"occ_symbol": "CSCO  260821C00140000", "instruction": "BTC", "contracts": 1.0, "proposed_limit": 1.0}]
+    assert olt._idem_key(1, "close", a, "DAY") != olt._idem_key(2, "close", b, "DAY")
