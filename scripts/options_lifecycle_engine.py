@@ -36,25 +36,47 @@ def policy() -> dict:
 
 # ── quotes ────────────────────────────────────────────────────────────────────
 
+_CHAIN_CACHE: dict[str, dict] = {}   # per-process, per-run — the runner is short-lived
+
+
 def quote_leg(leg: dict) -> dict:
-    """Fresh quote for one leg. {ok, bid, ask, mid, spread_pct, delta, gamma,
-    theta, vega, iv, underlying_price, source, ts} — ok=False carries error."""
-    from lib.options_pipeline.paper_position_monitor import fetch_schwab_chain_quote
-    q = fetch_schwab_chain_quote(
-        leg["occ_symbol"][:6].strip(),
-        strike=float(leg["strike"]), expiration=str(leg["expiration"]),
-        option_type=leg["option_type"])
-    if not q.get("ok"):
-        return {"ok": False, "error": q.get("error", "no quote"), "source": q.get("source")}
-    bid, ask = q.get("bid"), q.get("ask")
-    mid = q.get("mid")
-    spread_pct = (round((ask - bid) / mid * 100, 1) if bid and ask and mid else None)
-    return {"ok": True, "bid": bid, "ask": ask, "mid": mid, "spread_pct": spread_pct,
-            "delta": q.get("delta"), "gamma": q.get("gamma"), "theta": q.get("theta"),
-            "vega": q.get("vega"), "iv": q.get("iv"),
-            "underlying_price": q.get("underlying_price"),
-            "source": q.get("source", "schwab_chain"),
-            "ts": datetime.now(timezone.utc).isoformat()}
+    """Fresh quote for one leg from a WIDE Schwab chain fetch (lifecycle legs sit
+    far from ATM; the 16-strike proposal window is not enough). One chain fetch
+    per underlying per run. {ok, bid, ask, mid, spread_pct, greeks, iv,
+    underlying_price, source, ts} — ok=False carries the error, never a guess."""
+    und = leg["occ_symbol"][:6].strip()
+    try:
+        chain = _CHAIN_CACHE.get(und)
+        if chain is None:
+            import schwab_transport
+            chain = schwab_transport.get_option_chain(
+                und, strike_count=int(policy()["quotes"].get("chain_strike_count", 48))) or {}
+            _CHAIN_CACHE[und] = chain
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:120], "source": "schwab_chain"}
+    if chain.get("status") != "ok":
+        return {"ok": False, "error": f"chain status {chain.get('status')}", "source": "schwab_chain"}
+    exp_key = str(leg["expiration"])[:10]
+    want = float(leg["strike"])
+    side = "put" if leg["option_type"] == "put" else "call"
+    for exp in chain.get("expirations") or []:
+        if str(exp.get("exp") or "")[:10] != exp_key:
+            continue
+        for s in exp.get("strikes") or []:
+            if s.get("side") != side or abs(float(s.get("strike") or 0) - want) > 0.02:
+                continue
+            bid, ask = s.get("bid"), s.get("ask")
+            mid = ((bid + ask) / 2 if bid is not None and ask is not None else s.get("last"))
+            if mid is None:
+                return {"ok": False, "error": "no two-sided quote or last", "source": "schwab_chain"}
+            spread_pct = (round((ask - bid) / mid * 100, 1) if bid and ask and mid else None)
+            return {"ok": True, "bid": bid, "ask": ask, "mid": round(float(mid), 2),
+                    "spread_pct": spread_pct, "delta": s.get("delta"), "gamma": s.get("gamma"),
+                    "theta": s.get("theta"), "vega": s.get("vega"), "iv": s.get("iv"),
+                    "underlying_price": chain.get("underlying_price"), "source": "schwab_chain",
+                    "ts": datetime.now(timezone.utc).isoformat()}
+    return {"ok": False, "error": "contract not in chain (check strike/expiration)",
+            "source": "schwab_chain"}
 
 
 # ── economics ─────────────────────────────────────────────────────────────────
@@ -168,8 +190,11 @@ def persist_snapshot(cur, conn, s: dict, eco: dict) -> tuple[int, dict]:
                    FROM options_position_snapshots WHERE strategy_position_id=%s""", (spid,))
     prior = cur.fetchone() or (None, None)
     upl = eco.get("unrealized_pnl")
-    mfe = max([x for x in (prior[0], upl) if x is not None], default=None)
-    mae = min([x for x in (prior[1], upl) if x is not None], default=None)
+    # DB numerics arrive as Decimal — coerce before any float arithmetic downstream
+    p0 = float(prior[0]) if prior[0] is not None else None
+    p1 = float(prior[1]) if prior[1] is not None else None
+    mfe = max([x for x in (p0, upl) if x is not None], default=None)
+    mae = min([x for x in (p1, upl) if x is not None], default=None)
     giveback = (round(float(mfe) - upl, 2) if (mfe is not None and upl is not None and float(mfe) > 0)
                 else None)
     assignment_flags = {"itm_short": eco.get("itm_short"),
@@ -247,11 +272,16 @@ def decide(s: dict, eco: dict, pol: dict, defense_posture: dict | None = None) -
                                          "assignment and upside-cap risk continue. HARVEST FULL.",
                             "alternatives": [{"action": "ROLL", "note": "roll out/up if income should continue"},
                                              {"action": "HOLD", "note": "accept cap risk for the residual"}]}
-        if eco.get("short_delta") is not None and eco["short_delta"] >= c["defend_delta"]:
+        strike_breached = eco.get("itm_short") or (
+            eco.get("short_distance_pct") is not None
+            and eco["short_distance_pct"] <= c["defend_strike_breach_pct"] * -1)
+        if strike_breached or (eco.get("short_delta") is not None
+                               and eco["short_delta"] >= c["defend_delta"]):
+            why = (f"spot is THROUGH the strike ({eco.get('short_distance_pct', 0):+.1f}%)"
+                   if strike_breached else f"short call delta {eco['short_delta']:.2f}")
             return {"recommendation": "DEFEND", "urgency": "red", "confidence": "high",
-                    "rationale": f"Short call delta {eco['short_delta']:.2f} — strike "
-                                 f"{eco.get('short_distance_pct', 0):+.1f}% away; shares face assignment. "
-                                 "Decide: roll up/out, or accept assignment (state intent).",
+                    "rationale": f"Covered call under assignment pressure — {why}; shares face being "
+                                 "called away. Decide: roll up/out, or accept assignment (state intent).",
                     "alternatives": [{"action": "ROLL", "note": "roll up/out for duration + strike room"},
                                      {"action": "ACCEPT_ASSIGNMENT", "note": "if parting with shares is acceptable"}]}
         if dte is not None and dte <= c["roll_review_dte"] and cap is not None and cap < c["harvest_full_pct_captured"]:
@@ -260,9 +290,15 @@ def decide(s: dict, eco: dict, pol: dict, defense_posture: dict | None = None) -
                                  "Review roll economics vs closing; do not drift into expiry week unmanaged.",
                     "alternatives": [{"action": "CLOSE", "note": "pay up and release the cap"},
                                      {"action": "LET_MATURE", "note": "only if strike distance is comfortable"}]}
-        return {"recommendation": "HOLD", "urgency": "green", "confidence": "medium",
-                "rationale": f"Covered call on plan: {cap if cap is not None else '?'}% captured, {dte} DTE, "
-                             f"strike {eco.get('short_distance_pct', 0):+.1f}% away. Premium is being earned.",
+        against = cap is not None and cap < 0
+        return {"recommendation": "HOLD", "urgency": "amber" if against else "green",
+                "confidence": "medium",
+                "rationale": (f"Covered call moving against: mark above entry credit "
+                              f"({cap:.0f}% captured), {dte} DTE, strike "
+                              f"{eco.get('short_distance_pct', 0):+.1f}% away — watch the defend triggers."
+                              if against else
+                              f"Covered call on plan: {cap if cap is not None else '?'}% captured, {dte} DTE, "
+                              f"strike {eco.get('short_distance_pct', 0):+.1f}% away. Premium is being earned."),
                 "alternatives": []}
 
     if stype == "cash_secured_put":

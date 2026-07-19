@@ -11,7 +11,8 @@
   "quotes": {
     "max_quote_age_minutes": 20,
     "max_leg_spread_pct_for_actionable": 15.0,
-    "market_hours_only_note": "off-hours snapshots are informational; tickets always refetch"
+    "market_hours_only_note": "off-hours snapshots are informational; tickets always refetch",
+    "chain_strike_count": 48
   },
   "covered_call": {
     "harvest_full_pct_captured": 65,

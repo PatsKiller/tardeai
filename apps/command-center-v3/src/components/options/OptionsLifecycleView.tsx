@@ -12,7 +12,7 @@ const URG: Record<string, string> = { red: BB.red, amber: BB.amber, green: BB.gr
 const SECTIONS = [
   { key: 'action_now', title: '1 · ACTION NOW', test: (p: any) => p.decision?.urgency === 'red' },
   { key: 'harvest', title: '2 · PROFITABLE — HARVEST REVIEW', test: (p: any) => (p.decision?.recommendation || '').startsWith('HARVEST') },
-  { key: 'mature', title: '3 · LET MATURE', test: (p: any) => p.decision?.recommendation === 'LET_MATURE' },
+  { key: 'mature', title: '3 · LET MATURE / ON PLAN', test: (p: any) => ['LET_MATURE', 'HOLD'].includes(p.decision?.recommendation) },
   { key: 'defend', title: '4 · DEFEND / ROLL', test: (p: any) => ['DEFEND', 'ROLL'].includes(p.decision?.recommendation) },
   { key: 'expiry', title: '5 · EXPIRATION & ASSIGNMENT', test: (p: any) => (p.economics?.dte_nearest ?? 99) <= 7 || ['ACCEPT_ASSIGNMENT', 'EXERCISE_REVIEW'].includes(p.decision?.recommendation) },
   { key: 'blocked', title: '6 · DATA BLOCKED', test: (p: any) => p.decision?.recommendation === 'DATA_BLOCKED' },
@@ -203,9 +203,10 @@ export default function OptionsLifecycleView() {
 
   const positions = data?.positions || []
   const strip = useMemo(() => {
-    const pnl = positions.reduce((a: number, p: any) => a + (p.economics?.unrealized_pnl || 0), 0)
-    const peak = positions.reduce((a: number, p: any) => a + (p.economics?.mfe || 0), 0)
-    const gb = positions.reduce((a: number, p: any) => a + (p.economics?.giveback || 0), 0)
+    const num = (v: any) => (v == null || isNaN(Number(v)) ? 0 : Number(v))
+    const pnl = positions.reduce((a: number, p: any) => a + num(p.economics?.unrealized_pnl), 0)
+    const peak = positions.reduce((a: number, p: any) => a + num(p.economics?.mfe), 0)
+    const gb = positions.reduce((a: number, p: any) => a + num(p.economics?.giveback), 0)
     return {
       open: positions.length, pnl, peak, giveback: gb,
       harvest: positions.filter((p: any) => (p.decision?.recommendation || '').startsWith('HARVEST')).length,

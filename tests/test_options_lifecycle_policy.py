@@ -243,3 +243,22 @@ def test_stale_quotes_fail_freshness():
 def test_round_tick():
     assert olt._round_tick(0.7249, 0.01) == 0.72
     assert olt._round_tick(0.7251, 0.01) == 0.73
+
+
+def test_itm_short_call_is_defend_even_below_delta_threshold():
+    # live-caught 2026-07-19: delta 0.576 < 0.60 but spot THROUGH the strike -> must DEFEND
+    s = _strategy("covered_call", [_leg(1, "call", "short", 110, dte=33, opening=3.50)], opened_days_ago=8)
+    eco = eco_for(s, {1: _quote(5.44, delta=0.576, und=111.94)})
+    assert eco["itm_short"] is True
+    d = decide(s, {**eco, "mfe": None, "mae": None, "giveback": None}, POL)
+    assert d["recommendation"] == "DEFEND", d
+    assert d["urgency"] == "red"
+
+
+def test_losing_cc_hold_never_says_premium_earned():
+    s = _strategy("covered_call", [_leg(1, "call", "short", 118, dte=33, opening=2.00)], opened_days_ago=3)
+    eco = eco_for(s, {1: _quote(3.00, delta=0.40, und=112)})  # mark above credit, OTM
+    d = decide(s, {**eco, "mfe": None, "mae": None, "giveback": None}, POL)
+    assert d["recommendation"] == "HOLD"
+    assert "Premium is being earned" not in d["rationale"]
+    assert d["urgency"] == "amber"
