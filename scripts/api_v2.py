@@ -29105,6 +29105,41 @@ def _pullback_macd_dismiss(body=None):
     return {"ok": True, "symbol": sym, "dismissed": True, "proposal_cancelled": cancelled}
 
 
+def _costs(query=None, which="summary"):
+    """GET /api/v2/journal/costs/* — canonical investment-cost ledger reads.
+    Every payload labels actual vs estimated; classes never merge silently."""
+    import importlib
+    import investment_costs as _ic
+    _ic = importlib.reload(_ic)
+    from db_adapter import _get_conn
+    conn = _get_conn(); cur = conn.cursor()
+    _ic.ensure_cost_tables(cur, conn)
+    fn = {"summary": _ic.costs_summary, "timeseries": _ic.costs_timeseries,
+          "by-security": _ic.costs_by_security, "unmatched": _ic.costs_unmatched,
+          "reconciliation": _ic.costs_reconciliation}[which]
+    return fn(cur, query or {})
+
+
+def _costs_summary(query=None):
+    return _costs(query, "summary")
+
+
+def _costs_timeseries(query=None):
+    return _costs(query, "timeseries")
+
+
+def _costs_by_security(query=None):
+    return _costs(query, "by-security")
+
+
+def _costs_unmatched(query=None):
+    return _costs(query, "unmatched")
+
+
+def _costs_reconciliation(query=None):
+    return _costs(query, "reconciliation")
+
+
 def _olc():
     """Options lifecycle modules with reload — same dev-cadence pattern as _dex()."""
     import importlib
@@ -32591,6 +32626,11 @@ ROUTES = {
     "/api/v2/options/open-positions": _options_open_positions,
     "/api/v2/options/overview": _options_overview,
     "/api/v2/options/lifecycle": _options_lifecycle_get,
+    "/api/v2/journal/costs/summary": _costs_summary,
+    "/api/v2/journal/costs/timeseries": _costs_timeseries,
+    "/api/v2/journal/costs/by-security": _costs_by_security,
+    "/api/v2/journal/costs/unmatched": _costs_unmatched,
+    "/api/v2/journal/costs/reconciliation": _costs_reconciliation,
     "/api/v2/options/execution/status": _options_execution_status,
     "/api/v2/options/paper-order-status": _options_paper_order_status,
     "/api/v2/proxy/targets": _proxy_targets,

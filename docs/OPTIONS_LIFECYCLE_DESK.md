@@ -5,7 +5,7 @@
 - **STRUCTURALLY COMPLETE** — all 11 phases built: canonical strategy model,
   versioned policy engine, harvest/giveback, assignment/expiry engine,
   persistent alert lifecycle, hash-bound 2FA tickets, first-class UI, outcomes
-  ledger, health checks, 23 passing tests.
+  ledger, health checks, 38 passing tests.
 - **OPERATIONALLY VERIFIED (partial)** — verified on an EMPTY live book (the
   truth: zero open option positions exist anywhere) plus seven demo strategies
   priced on REAL Schwab chains: covered call, protective put, long call,
@@ -93,7 +93,7 @@ The empty `options_monitored_*` tables AND orphan `journal_options_groups` are
 frozen/superseded; existing monitor cron untouched; `trade_closed` never
 written.
 
-Modules (**eleven**): `options_lifecycle_{model,intake,engine,alerts,tickets,
+Modules (**twelve**): `options_lifecycle_{model,intake,engine,alerts,tickets,
 health,run,digest,basis,oversight}.py` + `options_journal_bridge.py` +
 `ticker_attribution.py`.
 

@@ -28,11 +28,12 @@ import MonteCarloPanel from '../components/tradeinview/MonteCarloPanel'
 import TradeCompareReplay from '../components/tradeinview/TradeCompareReplay'
 import TaggingQueuePanel from '../components/tradeinview/TaggingQueuePanel'
 import ByTickerPanel from '../components/tradeinview/ByTickerPanel'
+import CostsPanel from '../components/tradeinview/CostsPanel'
 import { runJournalAsk } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trades', 'By Ticker', 'Tagging Queue', 'Analytics', 'Exit Intel', 'Behavioral', 'Session', 'Advanced', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Import'] as const
+const TABS = ['Trades', 'By Ticker', 'Costs', 'Tagging Queue', 'Analytics', 'Exit Intel', 'Behavioral', 'Session', 'Advanced', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Import'] as const
 const TIME_RANGES = ['6M', '3M', '1M', 'YTD', '1Y', 'ALL'] as const
 
 const ACCT_COLOR: Record<string, string> = {
@@ -1033,6 +1034,7 @@ export default function JournalHub({ onDrill }: Props) {
       )}
 
       {tab === 'By Ticker' && <ByTickerPanel account={acctFilter || undefined} from={cutoff || undefined} />}
+      {tab === 'Costs' && <CostsPanel />}
 
       {tab === 'Exit Intel' && <ExitIntelligencePanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />}
 
