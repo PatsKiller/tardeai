@@ -58,20 +58,25 @@ were all fixed at `f2988645` before results.
 (min_daily 0.50%, cum 0.75%, ATR≥1.0, chase≤1.5 ATR, trend veto, 20-session
 max hold) n=13 — `INSUFFICIENT N` already at selection time (noted, not hidden).
 
-**Out-of-sample (frozen params, 4 pairs × 2016-2020 + 2021-2026):**
+**Out-of-sample (frozen params, 4 pairs × 2016-2020 + 2021-2026) —
+SIGNAL-WEIGHTED (v2 correction: cells weighted by trade count, not averaged
+equally; the earlier unweighted table overstated magnitudes slightly without
+changing the verdict):**
 
-| arm | total n | avg net ret | whipsaw | bench +5d after entry (AAE) | efficiency/day |
-|---|---|---|---|---|---|
-| baseline (+0.75% day) | 138 | −0.50% | 15.2% | **−0.57%** | −0.042 |
-| two-day (frozen) | 56 | −0.53% | 15.3% | **+0.85%** | −0.125 |
-| untimed (thesis-open) | 90 | −0.58% | 12.4% | −0.07% | −0.047 |
+| arm | total n | avg net ret | whipsaw | bench +5d after entry (AAE) | eff/day | portfolio MDD reduction | downside β (hedged) |
+|---|---|---|---|---|---|---|---|
+| baseline (+0.75% day) | 138 | −0.49% | 15.2% | **−0.54%** | −0.041 | **+0.26 pp** | 0.980 |
+| two-day (frozen) | 56 | −0.58% | 16.1% | **+0.73%** | −0.115 | **−0.04 pp** | 0.994 |
+| untimed (thesis-open) | 90 | −0.61% | 13.3% | −0.04% | −0.049 | +0.54 pp | 0.988 |
 
-**Verdict against the pre-registered gates:** the two-day rule FAILS gate (a)
-decisively — instead of improving avoided-adverse-entry by ≥25%, it inverted
-the sign: the benchmark ROSE +0.85% in the five sessions after two-day entries
-(the rule systematically buys the hedge into relief rallies that continue),
-versus −0.57% after baseline bounce-day entries. Whipsaw did not improve;
-per-dollar-day efficiency was ~3× worse. Per-cell samples are mostly below
+**Verdict:** the two-day rule FAILS the DECISIVE ENTRY-TIMING gate (a) —
+instead of improving avoided-adverse-entry by ≥25%, it inverted the sign: the
+benchmark ROSE +0.73% (signal-weighted) in the five sessions after two-day
+entries — the rule systematically buys the hedge into relief rallies that
+continue — versus −0.54% after baseline bounce-day entries. Whipsaw worsened
+slightly (16.1% vs 15.2%); per-dollar-day efficiency ~3× worse; and the
+portfolio-MDD gate now also fails (−0.04 pp vs baseline +0.26 pp — a two-day-
+timed hedge protects LESS than no hedge at all). Per-cell samples are mostly below
 n=30 (`INSUFFICIENT N` marked in the results JSON), but the aggregate
 direction is consistent across benchmarks and windows.
 
@@ -104,6 +109,20 @@ positions share one envelope. GREEN entry authorizes ONLY the Stage action.
 SQQQ/SARK/REW listed LOCKED with reasons. UI: Defense rail + Home posture line,
 every light labeled with arithmetic and freshness.
 
+### Scope honesty (v2, validator finding): what the pre-registered framework
+did and did not execute
+
+The DECISIVE ENTRY-TIMING comparison was executed in full (grid, walk-forward,
+freeze, OOS, now including max holds 5/10/15/20, signal-weighted aggregates,
+portfolio-overlay MDD reduction, downside beta and downside capture). NOT
+implemented from the registration: the three staging methods (single-entry
+only — no tranche simulation), the prior-swing-low exit alternative, and
+hedge-ratio rebalance thresholds. The correct claim is therefore: **"the
+decisive entry-timing gate failed"** — not that every registered dimension
+ran. Because gate (a) inverted its sign and the new MDD gate also fails
+(two-day −0.04 pp vs baseline +0.26 pp), no unimplemented dimension could
+rescue the rule.
+
 ## 5. Limitations (honest)
 
 - Thesis proxy in the backtest is mechanical (50DMA-based), coarser than the
@@ -118,7 +137,8 @@ every light labeled with arithmetic and freshness.
 
 - METHODOLOGY RESEARCHED: **YES**
 - TWO-DAY RULE VALIDATED: **NO** (pre-registered gates failed out-of-sample)
-- STOPLIGHTS OPERATIONALLY VERIFIED: **PARTIAL** (live evaluation + ledger +
-  UI running; no completed hedge cycle through the lights yet)
+- STOPLIGHTS OPERATIONALLY VERIFIED: **PARTIAL** — THESIS/ENTRY display + REAL
+  MANAGE/EXIT position wiring (holdings-fed gain/held-sessions; drift labeled
+  not-computable until sizing tickets); no completed hedge cycle yet
 - PAPER OUTCOMES SUFFICIENT: **NO**
 - LIVE EXECUTION ELIGIBLE: **NO**

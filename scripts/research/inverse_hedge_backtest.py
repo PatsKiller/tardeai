@@ -155,6 +155,62 @@ def simulate(bench_bars, inv_bars, arm: str, p: dict) -> list[dict]:
     return trades
 
 
+def overlay_metrics(bench_bars, inv_bars, trades) -> dict:
+    """Pre-registered primary metrics: portfolio MDD reduction, downside beta,
+    downside capture — proxy book = 100% benchmark long, hedged at HEDGE_WEIGHT
+    in the ACTUAL inverse ETF while a position is open."""
+    if not trades:
+        return {}
+    dates_open = set()
+    idx = {b["d"]: i for i, b in enumerate(bench_bars)}
+    for t in trades:
+        i0, i1 = idx.get(t["entry"]), idx.get(t["exit"])
+        if i0 is None or i1 is None:
+            continue
+        for i in range(i0, i1 + 1):
+            dates_open.add(bench_bars[i]["d"])
+    inv_by = {b["d"]: b["c"] for b in inv_bars}
+    base_eq = hedged_eq = 1.0
+    base_curve, hedged_curve, br_list, hr_list = [], [], [], []
+    prev_b = prev_i = None
+    for b in bench_bars:
+        d, c = b["d"], b["c"]
+        iv = inv_by.get(d)
+        if prev_b is not None:
+            rb = c / prev_b - 1
+            ri = (iv / prev_i - 1) if (iv and prev_i) else -rb
+            rh = rb + (HEDGE_WEIGHT * ri if d in dates_open else 0.0)
+            base_eq *= (1 + rb)
+            hedged_eq *= (1 + rh)
+            base_curve.append(base_eq)
+            hedged_curve.append(hedged_eq)
+            br_list.append(rb)
+            hr_list.append(rh)
+        prev_b, prev_i = c, iv if iv else prev_i
+
+    def mdd(curve):
+        peak, worst = -1e9, 0.0
+        for v in curve:
+            peak = max(peak, v)
+            worst = min(worst, v / peak - 1)
+        return worst
+    downs = [(br_list[i], hr_list[i]) for i in range(len(br_list)) if br_list[i] < 0]
+    if downs:
+        mb = sum(x for x, _ in downs) / len(downs)
+        mh = sum(y for _, y in downs) / len(downs)
+        var_b = sum((x - mb) ** 2 for x, _ in downs) / len(downs)
+        cov = sum((x - mb) * (y - mh) for x, y in downs) / len(downs)
+        dbeta = cov / var_b if var_b else None
+        dcapture = mh / mb if mb else None
+    else:
+        dbeta = dcapture = None
+    return {"mdd_base_pct": round(100 * mdd(base_curve), 2),
+            "mdd_hedged_pct": round(100 * mdd(hedged_curve), 2),
+            "mdd_reduction_pp": round(100 * (mdd(base_curve) - mdd(hedged_curve)) * -1, 2),
+            "downside_beta_hedged": round(dbeta, 3) if dbeta is not None else None,
+            "downside_capture_hedged": round(dcapture, 3) if dcapture is not None else None}
+
+
 def metrics(trades: list[dict]) -> dict:
     n = len(trades)
     if n == 0:
@@ -180,7 +236,7 @@ GRID = [dict(min_daily=md, min_cum=mc, min_atr=ma, chase_atr=ca, trend_veto=True
         for mc in (0.75, 1.00, 1.50)
         for ma in (0.50, 0.75, 1.00)
         for ca in (1.5, 2.0)
-        for mh in (10, 20)
+        for mh in (5, 10, 15, 20)
         for tp in ("inverse_fixed", "underlying_atr")]
 
 
@@ -215,10 +271,13 @@ def run():
         for bsym, isym in PAIRS:
             key = f"{label}:{bsym}/{isym}"
             wb, wi = window(bench[bsym], lo, hi), window(inv[isym], lo, hi)
+            tb_ = simulate(wb, wi, "baseline", dict(max_hold=20, tp_mode="inverse_fixed"))
+            tt_ = simulate(wb, wi, "twoday", frozen)
+            tu_ = simulate(wb, wi, "untimed", dict(max_hold=20, tp_mode="inverse_fixed"))
             report["oos"][key] = {
-                "baseline": metrics(simulate(wb, wi, "baseline", dict(max_hold=20, tp_mode="inverse_fixed"))),
-                "twoday_frozen": metrics(simulate(wb, wi, "twoday", frozen)),
-                "untimed": metrics(simulate(wb, wi, "untimed", dict(max_hold=20, tp_mode="inverse_fixed"))),
+                "baseline": {**metrics(tb_), **overlay_metrics(wb, wi, tb_)},
+                "twoday_frozen": {**metrics(tt_), **overlay_metrics(wb, wi, tt_)},
+                "untimed": {**metrics(tu_), **overlay_metrics(wb, wi, tu_)},
             }
     out = ROOT / "data" / "research" / "inverse_hedge_results.json"
     out.write_text(json.dumps(report, indent=1))
@@ -228,14 +287,18 @@ def run():
         for arm in agg:
             if v[arm]["n"]:
                 agg[arm].append(v[arm])
-    print("\nOOS aggregate (mean across pair-windows with signals):")
+    print("\nOOS aggregate — SIGNAL-WEIGHTED (validator correction: cells weighted by n):")
     for arm, ms in agg.items():
         if ms:
-            print(f"  {arm:14} n_total={sum(m['n'] for m in ms):3} "
-                  f"avg_ret={sum(m['avg_inv_net_ret_pct'] for m in ms)/len(ms):+.2f}% "
-                  f"whipsaw={sum(m['whipsaw_rate_pct'] for m in ms)/len(ms):.1f}% "
-                  f"AAE={sum(m['avg_bench_5d_after_entry_pct'] for m in ms)/len(ms):+.2f}% "
-                  f"eff/day={sum(m['hedge_efficiency_per_day'] for m in ms)/len(ms):+.3f}")
+            N = sum(m["n"] for m in ms)
+            w = lambda k: sum(m[k] * m["n"] for m in ms if m.get(k) is not None) / N
+            print(f"  {arm:14} n_total={N:3} avg_ret={w('avg_inv_net_ret_pct'):+.2f}% "
+                  f"whipsaw={w('whipsaw_rate_pct'):.1f}% AAE={w('avg_bench_5d_after_entry_pct'):+.2f}% "
+                  f"eff/day={w('hedge_efficiency_per_day'):+.3f}")
+            mm = [m for m in ms if m.get("mdd_reduction_pp") is not None]
+            if mm:
+                print(f"  {'':14} MDD_reduction={sum(m['mdd_reduction_pp'] for m in mm)/len(mm):+.2f}pp "
+                      f"downside_beta={sum(m['downside_beta_hedged'] for m in mm if m['downside_beta_hedged'] is not None)/max(1,len([m for m in mm if m['downside_beta_hedged'] is not None])):.3f}")
     print("→", out)
 
 

@@ -10,8 +10,9 @@ Four INDEPENDENT, LABELED lights per candidate (never an unlabeled dot):
 Central correction (validated 2026-07-19, pre-registration f2988645):
 two positive days ARM a timing window; they never create the thesis. The
 pre-registered backtest REJECTED the two-day rule as the actionable entry gate
-(OOS: benchmark +0.85% five sessions after two-day entries vs −0.57% for the
-baseline bounce rule; efficiency/day −0.125 vs −0.042). The ACTIONABLE entry
+(OOS signal-weighted: benchmark +0.73% five sessions after two-day entries vs
+−0.54% baseline; efficiency/day −0.115 vs −0.041; MDD reduction −0.04pp vs
++0.26pp). The ACTIONABLE entry
 gate therefore remains the baseline +0.75% bounce-day rule; the two-day
 sequence is tracked and displayed as SHADOW telemetry ("day 1 of 2") so paper
 evidence keeps accruing without gating anything.
@@ -99,6 +100,50 @@ def ensure_stoplight_tables(cur, conn):
 
 
 _BARS_CACHE: dict[str, list] = {}
+STALE_CALENDAR_DAYS = 4   # latest completed close older than this = STALE (fail closed)
+
+
+def _bars_fresh(bars: list[dict]) -> bool:
+    """Fail-closed freshness: the latest completed session must be recent —
+    cached bars existing is NOT freshness (validator P0 finding)."""
+    if not bars:
+        return False
+    from datetime import date, timedelta
+    try:
+        last = date.fromisoformat(bars[-1]["d"])
+    except Exception:
+        return False
+    return (date.today() - last) <= timedelta(days=STALE_CALENDAR_DAYS)
+
+
+def _open_position(cur, inverse: str) -> dict | None:
+    """P0 (validator): REAL position state for MANAGE/EXIT — reads live
+    holdings; entry basis from holdings basis; held sessions from this
+    instrument's POSITION_SEEN ledger row (recorded on first sight)."""
+    import json as _json
+    try:
+        h = _json.loads((ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
+    except Exception:
+        return None
+    rows = [r for r in h.get("holdings", []) if (r.get("symbol") or "").upper() == inverse
+            and not r.get("is_cash") and float(r.get("shares") or 0) > 0]
+    if not rows:
+        return None
+    qty = sum(float(r["shares"]) for r in rows)
+    basis = sum(float(r.get("cost_basis") or 0) for r in rows)
+    px = float(rows[0].get("price") or 0)
+    gain_pct = ((px * qty - basis) / basis * 100) if basis else None
+    cur.execute("""SELECT min(created_at)::date FROM inverse_stoplight_transitions
+                   WHERE instrument=%s AND new_state='POSITION_SEEN'""", (inverse,))
+    first = (cur.fetchone() or [None])[0]
+    held = None
+    if first:
+        cur.execute("SELECT count(*) FROM generate_series(%s::date, CURRENT_DATE, '1 day') d "
+                    "WHERE extract(dow from d) BETWEEN 1 AND 5", (first,))
+        held = cur.fetchone()[0]
+    return {"qty": qty, "basis": basis, "price": px, "inv_gain_pct": round(gain_pct, 2)
+            if gain_pct is not None else None, "held_sessions": held,
+            "accounts": sorted({r.get("account") for r in rows})}
 
 
 def _bars(cur, sym: str, n: int = 80) -> list[dict]:
@@ -353,13 +398,26 @@ def evaluate_all(cur, conn, notify: bool = False) -> dict:
     for inst in LANE:
         bench, inv = inst["bench"], inst["inverse"]
         bars = _bars(cur, bench, 80)
-        fresh = bool(bars) and bars[-1]["d"] >= str(datetime.now(timezone.utc).date())[:8] + "01"
-        th = thesis_light(cur, bench, exposure.get(bench), trigger.get(bench), bool(bars))
-        en = entry_light(bars, th) if bars else {"state": "RED", "label": "DO NOT ENTER",
-                                                "reason": "no session history"}
-        # open positions: none exist today (holdings scan)
-        mg = manage_light(None, th, None, None, None)
-        ex = exit_light(None, th, bars, None, None)
+        fresh = _bars_fresh(bars)
+        th = thesis_light(cur, bench, exposure.get(bench), trigger.get(bench), fresh)
+        if not fresh:
+            en = {"state": "RED", "label": "DO NOT ENTER",
+                  "reason": f"session data STALE (latest close {bars[-1]['d'] if bars else 'none'}) "
+                            "— fail closed, no entry evaluation on stale bars"}
+        else:
+            en = entry_light(bars, th)
+        pos = _open_position(cur, inv)
+        if pos:
+            record_transition(cur, conn, inv, bench, "MANAGE", None, "POSITION_SEEN",
+                              "POSITION TRACKED",
+                              {"qty": pos["qty"], "as_of": bars[-1]["d"] if bars else None},
+                              f"live {inv} position detected ({pos['qty']:g} sh)")
+        mg = manage_light(pos, th, pos.get("inv_gain_pct") if pos else None,
+                          None if pos else None, pos.get("held_sessions") if pos else None)
+        if pos:
+            mg["note"] = "hedge-ratio drift not computable until sizing tickets persist a target (labeled, not hidden)"
+        ex = exit_light(pos, th, bars, pos.get("inv_gain_pct") if pos else None,
+                        pos.get("held_sessions") if pos else None)
         card = {**inst, "daily_objective": f"-1x of {bench}'s DAILY return",
                 "path_dependence_warning": PATH_WARNING,
                 "max_hold_sessions": _cfg()["max_hold_sessions"],
@@ -368,19 +426,25 @@ def evaluate_all(cur, conn, notify: bool = False) -> dict:
                 "lights": {"THESIS": th, "ENTRY": en, "MANAGE": mg, "EXIT": ex}}
         out["candidates"].append(card)
         for light, st in (("THESIS", th), ("ENTRY", en), ("MANAGE", mg), ("EXIT", ex)):
+            # P1 (validator): ENTRY transitions carry a SUBSTATE so DAY 1 OF 2
+            # produces a real transition+alert even while the color stays AMBER
+            sub = (st.get("arithmetic", {}) or {}).get("shadow_twoday_sequence", "")
+            state_key = st["state"] + (f"|{sub}" if light == "ENTRY" and sub else "")
             cur.execute("""SELECT new_state FROM inverse_stoplight_transitions
-                           WHERE instrument=%s AND light=%s ORDER BY transition_id DESC LIMIT 1""",
+                           WHERE instrument=%s AND light=%s AND new_state != 'POSITION_SEEN'
+                           ORDER BY transition_id DESC LIMIT 1""",
                         (inv, light))
             prev = (cur.fetchone() or [None])[0]
-            if prev != st["state"]:
+            st = {**st, "state_key": state_key}
+            if prev != state_key:
                 fresh_insert = record_transition(
-                    cur, conn, inv, bench, light, prev, st["state"], st["label"],
+                    cur, conn, inv, bench, light, prev, st["state_key"], st["label"],
                     {**st.get("arithmetic", {}), "as_of": bars[-1]["d"] if bars else None},
                     st["reason"], closes=st.get("arithmetic", {}).get("closes"))
                 if notify and fresh_insert and (
                         (light == "ENTRY" and st["state"] == "GREEN") or
                         (light == "EXIT" and st["state"] == "RED") or
-                        "DAY 1 OF 2" in json.dumps(st.get("arithmetic", {}))):
+                        (light == "ENTRY" and "DAY 1 OF 2" in state_key)):
                     _telegram(f"🚦 INVERSE HEDGE {inv}/{bench} — {light} {st['state']}: "
                               f"{st['label']}\n{st['reason'][:300]}")
     SNAP.write_text(json.dumps(out, default=str))

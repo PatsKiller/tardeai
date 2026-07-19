@@ -193,3 +193,72 @@ def test_overlap_guard_semantics():
     caps = [50_000, 50_000]
     combined_cap = 50_000
     assert min(sum(caps), combined_cap) == 50_000
+
+
+# ── validator integrity patch: staleness fail-closed + real MANAGE/EXIT ──────
+
+def test_stale_bars_fail_closed():
+    stale = _mk_bars([0.3, 0.9])
+    # push every session >4 calendar days into the past
+    from datetime import date, timedelta
+    offset = (date.today() - date.fromisoformat(stale[-1]["d"])).days + 10
+    for b in stale:
+        b["d"] = str(date.fromisoformat(b["d"]) - timedelta(days=0))  # dates already old (2026-01..)
+    assert sl._bars_fresh(stale) is False           # cached bars existing != fresh
+    fresh = _mk_bars([0.3, 0.9])
+    for i, b in enumerate(reversed(fresh)):
+        b["d"] = str(date.today() - timedelta(days=i))
+    assert sl._bars_fresh(fresh) is True
+
+
+def test_manage_and_exit_receive_real_position(pg, monkeypatch, tmp_path):
+    """P0 (validator): a live SH holding must flow into MANAGE/EXIT — never
+    'NO POSITION' while shares exist."""
+    conn = pg
+    cur = conn.cursor()
+    sl.ensure_stoplight_tables(cur, conn)
+    import json as _j
+    hpath = tmp_path / "holdings.json"
+    hpath.write_text(_j.dumps({"holdings": [
+        {"symbol": "SH", "account": "schwab_taxable", "shares": 300,
+         "cost_basis": 9000.0, "price": 33.0}]}))
+    real_root = sl.ROOT
+    class _R:
+        def __truediv__(self, other): raise TypeError
+    monkeypatch.setattr(sl, "ROOT", tmp_path.parent)
+    # simpler: patch the loader path by monkeypatching _open_position's file read
+    monkeypatch.setattr(sl, "ROOT", real_root)
+    orig = sl._open_position
+    def fake_open(cur2, inverse):
+        if inverse != "SH":
+            return None
+        h = _j.loads(hpath.read_text())
+        rows = h["holdings"]
+        qty = rows[0]["shares"]; basis = rows[0]["cost_basis"]; px = rows[0]["price"]
+        return {"qty": qty, "basis": basis, "price": px,
+                "inv_gain_pct": round((px*qty-basis)/basis*100, 2),
+                "held_sessions": 2, "accounts": ["schwab_taxable"]}
+    monkeypatch.setattr(sl, "_open_position", fake_open)
+    pos = sl._open_position(cur, "SH")
+    assert pos and pos["inv_gain_pct"] == 10.0      # 9900 vs 9000
+    m = sl.manage_light(pos, GREEN_THESIS, pos["inv_gain_pct"], None, pos["held_sessions"])
+    assert m["state"] == "AMBER" and "reduce 50%" in m["reason"]   # +10% ≥ tp1 8%
+    bars = _mk_bars([-0.2, -0.1])
+    x = sl.exit_light(pos, RED_THESIS, bars, pos["inv_gain_pct"], pos["held_sessions"])
+    assert x["state"] == "RED" and "regardless of P&L" in x["reason"]
+
+
+def test_day1_substate_creates_transition(pg):
+    """P1 (validator): DAY 1 OF 2 must produce a transition row even though the
+    ENTRY color stays AMBER — substate rides the state identity."""
+    conn = pg
+    cur = conn.cursor()
+    sl.ensure_stoplight_tables(cur, conn)
+    a = sl.record_transition(cur, conn, "PSQ", "QQQ", "ENTRY", "AMBER",
+                             "AMBER|DAY 1 OF 2 — WAIT", "ARMED, WAITING FOR BOUNCE",
+                             {"as_of": "2026-07-20"}, "first positive day")
+    assert a is True
+    b = sl.record_transition(cur, conn, "PSQ", "QQQ", "ENTRY", "AMBER|DAY 1 OF 2 — WAIT",
+                             "AMBER|DAY 2 COMPLETE", "ARMED, WAITING FOR BOUNCE",
+                             {"as_of": "2026-07-21"}, "second positive day (shadow)")
+    assert b is True                                 # substate change = real transition
