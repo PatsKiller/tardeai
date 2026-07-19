@@ -29116,7 +29116,8 @@ def _costs(query=None, which="summary"):
     _ic.ensure_cost_tables(cur, conn)
     fn = {"summary": _ic.costs_summary, "timeseries": _ic.costs_timeseries,
           "by-security": _ic.costs_by_security, "unmatched": _ic.costs_unmatched,
-          "reconciliation": _ic.costs_reconciliation}[which]
+          "reconciliation": _ic.costs_reconciliation, "events": _ic.costs_events,
+          "by-trade": _ic.costs_by_trade}[which]
     return fn(cur, query or {})
 
 
@@ -29138,6 +29139,14 @@ def _costs_unmatched(query=None):
 
 def _costs_reconciliation(query=None):
     return _costs(query, "reconciliation")
+
+
+def _costs_events(query=None):
+    return _costs(query, "events")
+
+
+def _costs_by_trade(query=None):
+    return _costs(query, "by-trade")
 
 
 def _olc():
@@ -32631,6 +32640,8 @@ ROUTES = {
     "/api/v2/journal/costs/by-security": _costs_by_security,
     "/api/v2/journal/costs/unmatched": _costs_unmatched,
     "/api/v2/journal/costs/reconciliation": _costs_reconciliation,
+    "/api/v2/journal/costs/events": _costs_events,
+    "/api/v2/journal/costs/by-trade": _costs_by_trade,
     "/api/v2/options/execution/status": _options_execution_status,
     "/api/v2/options/paper-order-status": _options_paper_order_status,
     "/api/v2/proxy/targets": _proxy_targets,

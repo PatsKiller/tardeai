@@ -96,20 +96,28 @@ def test_db_enforced_single_active_ticket(ephemeral_db):
         VALUES ('schwab','acct','covered_call','TEST','operator_manual')
         RETURNING strategy_position_id""")
     spid = cur.fetchone()[0]
+    # v1.2.2 P1-3: PERSIST the original row, provoke the violation inside a
+    # SAVEPOINT (original survives), then terminalize the SAME persisted row.
     cur.execute("""INSERT INTO options_lifecycle_tickets
         (strategy_position_id, kind, ticket_json, approval_hash, tif, idempotency_key)
-        VALUES (%s,'close','{}','h1','DAY','samekey')""", (spid,))
+        VALUES (%s,'close','{}','h1','DAY','samekey') RETURNING ticket_id""", (spid,))
+    original_tid = cur.fetchone()[0]
+    ephemeral_db.commit()
+    cur.execute("SAVEPOINT sp1")
     with pytest.raises(psycopg2.errors.UniqueViolation):
         cur.execute("""INSERT INTO options_lifecycle_tickets
             (strategy_position_id, kind, ticket_json, approval_hash, tif, idempotency_key)
             VALUES (%s,'close','{}','h2','DAY','samekey')""", (spid,))
-    ephemeral_db.rollback()
-    # but a terminal ticket frees the key
-    cur = ephemeral_db.cursor()
-    cur.execute("UPDATE options_lifecycle_tickets SET status='cancelled' WHERE idempotency_key='samekey'")
+    cur.execute("ROLLBACK TO SAVEPOINT sp1")
+    cur.execute("SELECT ticket_id, status FROM options_lifecycle_tickets WHERE idempotency_key='samekey'")
+    rows = cur.fetchall()
+    assert rows == [(original_tid, 'draft')]              # original persisted row intact
+    cur.execute("UPDATE options_lifecycle_tickets SET status='cancelled' WHERE ticket_id=%s",
+                (original_tid,))
     cur.execute("""INSERT INTO options_lifecycle_tickets
         (strategy_position_id, kind, ticket_json, approval_hash, tif, idempotency_key)
-        VALUES (%s,'close','{}','h3','DAY','samekey')""", (spid,))
+        VALUES (%s,'close','{}','h3','DAY','samekey') RETURNING ticket_id""", (spid,))
+    assert cur.fetchone()[0] != original_tid              # identical key reused after terminal
 
 
 def test_cumulative_two_batch_close_and_outcome(ephemeral_db):
@@ -541,3 +549,152 @@ def test_two_partial_cancel_cycles(ephemeral_db):
     n, qty, realized = cur.fetchone()
     assert n == 3 and float(qty) == 3.0
     assert abs(float(realized) - ((2.00-1.20)+(2.00-1.00)+(2.00-0.80))*100) < 0.01
+
+
+def _two_leg_provisional(cur, conn):
+    cur.execute("""INSERT INTO options_strategy_positions
+        (broker, account_key, strategy_type, underlying, source, status, data_quality_status)
+        VALUES ('schwab','acct','credit_spread','TEST','operator_manual','open','incomplete_basis')
+        RETURNING strategy_position_id""")
+    spid = cur.fetchone()[0]
+    legs = []
+    for occ, side in (("TEST  260918P00105000", "short"), ("TEST  260918P00100000", "long")):
+        cur.execute("""INSERT INTO options_strategy_legs
+            (strategy_position_id, occ_symbol, leg_role, option_type, instruction, side,
+             contracts, multiplier, strike, expiration)
+            VALUES (%s,%s,%s,'put',%s,%s,1,100,%s,'2026-09-18') RETURNING leg_id""",
+            (spid, occ, f"{side}_put", "STO" if side == "short" else "BTO", side,
+             105 if side == "short" else 100))
+        legs.append(cur.fetchone()[0])
+    conn.commit()
+    return spid, legs
+
+
+def test_multileg_provisional_promotion_gates(ephemeral_db):
+    """v1.2.2 P1-1: zero-of-two, one-of-two, two-of-two confirmations —
+    promotion ONLY at two-of-two; uses the REAL snapshot persistence path."""
+    conn = ephemeral_db
+    cur = _build_all(conn)
+    from options_lifecycle_basis import record_operator_basis, confirm_operator_basis
+    from options_lifecycle_engine import persist_snapshot
+    from options_lifecycle_model import strategy_with_legs
+    spid, (leg1, leg2) = _two_leg_provisional(cur, conn)
+    e1 = record_operator_basis(cur, conn, leg1, opening_premium=1.5, opening_date="2026-07-01",
+                               contracts=1, fees=None, source_ref="doc1.png", operator="john")
+    # zero-of-two confirmed, one leg still NULL → NOT promoted (still not even provisional-complete)
+    cur.execute("SELECT data_quality_status FROM options_strategy_positions WHERE strategy_position_id=%s", (spid,))
+    assert cur.fetchone()[0] == "incomplete_basis"
+    e2 = record_operator_basis(cur, conn, leg2, opening_premium=0.7, opening_date="2026-07-01",
+                               contracts=1, fees=None, source_ref="doc2.png", operator="john")
+    cur.execute("SELECT data_quality_status FROM options_strategy_positions WHERE strategy_position_id=%s", (spid,))
+    assert cur.fetchone()[0] == "provisional_basis"
+    # REAL snapshot persistence path must not clear provenance
+    s = strategy_with_legs(cur, spid)
+    persist_snapshot(cur, conn, s, {"flags": [], "legs_json": [], "dte_nearest": 30})
+    cur.execute("SELECT data_quality_status FROM options_strategy_positions WHERE strategy_position_id=%s", (spid,))
+    assert cur.fetchone()[0] == "provisional_basis"
+    # one-of-two confirmed → NOT promoted
+    r1 = confirm_operator_basis(cur, conn, e1["evidence_id"], "john")
+    assert r1["ok"] and r1["promoted"] is False and "unconfirmed" in r1["gate"]
+    cur.execute("SELECT data_quality_status FROM options_strategy_positions WHERE strategy_position_id=%s", (spid,))
+    assert cur.fetchone()[0] == "provisional_basis"
+    # two-of-two → promoted
+    r2 = confirm_operator_basis(cur, conn, e2["evidence_id"], "john")
+    assert r2["ok"] and r2["promoted"] is True
+    cur.execute("SELECT data_quality_status FROM options_strategy_positions WHERE strategy_position_id=%s", (spid,))
+    assert cur.fetchone()[0] == "ok"
+
+
+def test_broker_replacement_supersedes_and_promotes(ephemeral_db):
+    conn = ephemeral_db
+    cur = _build_all(conn)
+    from options_lifecycle_basis import record_operator_basis, _apply, _all_open_legs_confirmed
+    from options_lifecycle_model import strategy_with_legs
+    spid, (leg1, leg2) = _two_leg_provisional(cur, conn)
+    record_operator_basis(cur, conn, leg1, opening_premium=1.5, opening_date="2026-07-01",
+                          contracts=1, fees=None, source_ref="d1", operator="john")
+    record_operator_basis(cur, conn, leg2, opening_premium=0.7, opening_date="2026-07-01",
+                          contracts=1, fees=None, source_ref="d2", operator="john")
+    s = strategy_with_legs(cur, spid)
+    l1 = next(l for l in s["legs"] if l["leg_id"] == leg1)
+    # broker replaces ONE provisional leg → original evidence preserved w/ lineage; not yet promoted
+    _apply(cur, conn, l1, s, 1.48, "broker_orders", "schwab_order:999")
+    cur.execute("""SELECT review_status FROM options_basis_evidence
+                   WHERE leg_id=%s AND source_kind='operator_evidence'""", (leg1,))
+    assert cur.fetchone()[0] == "superseded_by_broker"
+    cur.execute("SELECT data_quality_status FROM options_strategy_positions WHERE strategy_position_id=%s", (spid,))
+    assert cur.fetchone()[0] == "provisional_basis"     # leg2 operator row still unconfirmed
+    # broker replaces the second → promotion completes without operator confirm
+    l2 = next(l for l in strategy_with_legs(cur, spid)["legs"] if l["leg_id"] == leg2)
+    _apply(cur, conn, l2, s, 0.69, "broker_fill", "alpaca:abc")
+    cur.execute("SELECT data_quality_status FROM options_strategy_positions WHERE strategy_position_id=%s", (spid,))
+    assert cur.fetchone()[0] == "ok"
+    ok_all, why = _all_open_legs_confirmed(cur, spid)
+    assert ok_all, why
+
+
+def test_outbox_two_workers_project_once(ephemeral_db):
+    """v1.2.2 P1-2: two REAL sessions run the claim loop concurrently — the row
+    is projected exactly once (FOR UPDATE SKIP LOCKED)."""
+    import threading, os
+    conn = ephemeral_db
+    cur = _build_all(conn)
+    cur.execute("SELECT current_schema()")
+    schema = cur.fetchone()[0]
+    from options_fill_evidence import _queue_projection
+    cur.execute("""INSERT INTO options_strategy_positions
+        (broker, account_key, strategy_type, underlying, source, status)
+        VALUES ('schwab','acct','covered_call','TEST','operator_manual','open')
+        RETURNING strategy_position_id""")
+    spid = cur.fetchone()[0]
+    conn.commit()
+    _queue_projection(cur, spid)
+    conn.commit()
+    results, errs = [], []
+
+    def worker():
+        try:
+            from options_fill_evidence import process_projection_outbox
+            c2 = psycopg2.connect(dbname=os.environ.get("DB_NAME", os.environ.get("PGDATABASE", "trade_ai")),
+                                  user=os.environ.get("DB_USER", "postgres"),
+                                  password=os.environ.get("DB_PASSWORD", ""),
+                                  host=os.environ.get("DB_HOST", "localhost"),
+                                  port=os.environ.get("DB_PORT", "5432"))
+            k2 = c2.cursor()
+            k2.execute(f'SET search_path TO "{schema}"')
+            results.append(process_projection_outbox(k2, c2))
+            c2.close()
+        except Exception as e:
+            errs.append(str(e))
+
+    t1, t2 = threading.Thread(target=worker), threading.Thread(target=worker)
+    t1.start(); t2.start(); t1.join(); t2.join()
+    assert not errs, errs
+    assert sum(r["projected"] for r in results) == 1      # exactly ONE projection
+    cur.execute("SELECT count(*) FROM trade_instances WHERE source_trade_id=%s", (str(spid),))
+    assert cur.fetchone()[0] == 1
+
+
+def test_outbox_crash_after_claim_recovers(ephemeral_db):
+    """v1.2.2 P1-2: crash injection — a worker claims (PROCESSING committed)
+    then dies; after the lease timeout the row recovers to RETRY and projects."""
+    conn = ephemeral_db
+    cur = _build_all(conn)
+    from options_fill_evidence import _queue_projection, process_projection_outbox
+    cur.execute("""INSERT INTO options_strategy_positions
+        (broker, account_key, strategy_type, underlying, source, status)
+        VALUES ('schwab','acct','covered_call','TEST','operator_manual','open')
+        RETURNING strategy_position_id""")
+    spid = cur.fetchone()[0]
+    conn.commit()
+    _queue_projection(cur, spid)
+    conn.commit()
+    # simulate the crash: claim committed as PROCESSING, worker never returns
+    cur.execute("""UPDATE journal_projection_outbox SET state='PROCESSING', attempts=1,
+                   claimed_at=now() - interval '11 minutes'
+                   WHERE strategy_position_id=%s""", (spid,))
+    conn.commit()
+    r = process_projection_outbox(cur, conn)   # stranded recovery (>10 min lease) then project
+    assert r["projected"] == 1
+    cur.execute("SELECT state FROM journal_projection_outbox WHERE strategy_position_id=%s", (spid,))
+    assert cur.fetchone()[0] == "PROJECTED"

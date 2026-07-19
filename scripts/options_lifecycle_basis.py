@@ -129,6 +129,17 @@ def resolve_leg_basis(cur, conn, leg: dict, s: dict) -> dict:
 
 
 def _apply(cur, conn, leg: dict, s: dict, premium: float, kind: str, ref: str) -> dict:
+    # v1.2.2 P1-1: broker evidence SUPERSEDES operator evidence with lineage —
+    # original rows preserved, never deleted; per-leg only (an order-level
+    # package price is never applied to a single leg by construction: every
+    # resolver here matches the exact OCC leg).
+    if kind in ("broker_fill", "broker_orders"):
+        cur.execute("""UPDATE options_basis_evidence
+                       SET review_status='superseded_by_broker',
+                           notes=COALESCE(notes,'') || ' · superseded by ' || %s
+                       WHERE leg_id=%s AND source_kind='operator_evidence'
+                         AND review_status IN ('unreviewed','operator_confirmed')""",
+                    (ref, leg["leg_id"]))
     cur.execute("""UPDATE options_strategy_legs SET opening_price=%s, basis_source=%s
                    WHERE leg_id=%s""", (premium, kind, leg["leg_id"]))
     cur.execute("""INSERT INTO options_basis_evidence
@@ -137,6 +148,16 @@ def _apply(cur, conn, leg: dict, s: dict, premium: float, kind: str, ref: str) -
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
         (leg["leg_id"], s["strategy_position_id"], leg["occ_symbol"].strip(),
          s["account_key"], premium, leg["contracts"], kind, ref))
+    # broker replacement may complete the promotion rule for the strategy
+    try:
+        ok_all, _ = _all_open_legs_confirmed(cur, s["strategy_position_id"])
+        if ok_all:
+            cur.execute("""UPDATE options_strategy_positions SET data_quality_status='ok',
+                           updated_at=now() WHERE strategy_position_id=%s
+                             AND data_quality_status='provisional_basis'""",
+                        (s["strategy_position_id"],))
+    except Exception:
+        pass
     conn.commit()
     return {"resolved": True, "source": kind, "premium": premium}
 
@@ -181,6 +202,24 @@ def record_operator_basis(cur, conn, leg_id: int, *, opening_premium: float,
             "label": "MANUAL BASIS — PROVISIONAL until operator confirmation or broker evidence"}
 
 
+def _all_open_legs_confirmed(cur, spid: int) -> tuple[bool, str]:
+    """v1.2.2 P1-1: promotion rule — EVERY open leg has non-null basis AND every
+    operator-supplied row governing an open leg is confirmed or superseded."""
+    cur.execute("""SELECT count(*) FROM options_strategy_legs
+                   WHERE strategy_position_id=%s AND status='open' AND opening_price IS NULL""", (spid,))
+    if cur.fetchone()[0]:
+        return False, "open leg(s) with NULL basis remain"
+    cur.execute("""SELECT count(*) FROM options_strategy_legs l
+                   JOIN options_basis_evidence e ON e.leg_id = l.leg_id
+                   WHERE l.strategy_position_id=%s AND l.status='open'
+                     AND l.basis_source='operator_evidence'
+                     AND e.source_kind='operator_evidence'
+                     AND e.review_status NOT IN ('operator_confirmed','superseded_by_broker')""",
+                (spid,))
+    n = cur.fetchone()[0]
+    return (n == 0), (f"{n} unconfirmed operator basis row(s) on open legs" if n else "all confirmed")
+
+
 def confirm_operator_basis(cur, conn, evidence_id: int, operator: str) -> dict:
     cur.execute("""UPDATE options_basis_evidence SET review_status='operator_confirmed',
                    notes=COALESCE(notes,'') || ' · confirmed by ' || %s
@@ -188,10 +227,14 @@ def confirm_operator_basis(cur, conn, evidence_id: int, operator: str) -> dict:
     r = cur.fetchone()
     if not r:
         return {"ok": False, "error": "unknown evidence"}
-    cur.execute("""UPDATE options_strategy_positions SET data_quality_status='ok', updated_at=now()
-                   WHERE strategy_position_id=%s AND data_quality_status='provisional_basis'""", (r[0],))
+    spid = r[0]
+    ok_all, why = _all_open_legs_confirmed(cur, spid)
+    if ok_all:
+        cur.execute("""UPDATE options_strategy_positions SET data_quality_status='ok', updated_at=now()
+                       WHERE strategy_position_id=%s AND data_quality_status='provisional_basis'""",
+                    (spid,))
     conn.commit()
-    return {"ok": True}
+    return {"ok": True, "promoted": ok_all, "gate": why}
 
 
 def cumulative_basis(cur, spid: int) -> dict:

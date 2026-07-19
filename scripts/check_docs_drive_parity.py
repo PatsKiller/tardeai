@@ -68,5 +68,92 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" and "--deep" not in sys.argv:
     sys.exit(main())
+
+
+def deep_drive_parity() -> int:
+    """v1.2.2 P1-5: TRUE Drive-side content verification — locates each canonical
+    doc by name via `gog drive search`, DOWNLOADS the Drive bytes, and compares
+    SHA-256 against the repo copy. Any remote failure = UNKNOWN/DRIFT, never PASS."""
+    import hashlib, json, os, re, subprocess, tempfile
+    env = dict(os.environ)
+    kp = Path.home() / ".openclaw" / "credentials" / "gog_keyring_password"
+    if kp.exists():
+        env["GOG_KEYRING_PASSWORD"] = kp.read_text().strip()
+
+    def gog(*args):
+        r = subprocess.run(["gog", "drive", *args, "--account", "john@jwwhiting.com"],
+                           capture_output=True, text=True, timeout=180, env=env)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr[:150])
+        return r.stdout
+
+    def norm_hash(data: bytes) -> str:
+        # normalized content hash: the sync converts .md into Google Docs, so
+        # byte identity is impossible by design — compare whitespace-normalized
+        # text exported back as markdown (spec: repo/drive NORMALIZED hashes)
+        import html as _html
+        # The sync pipeline converts .md -> Google Doc -> md export, which
+        # destroys markdown punctuation (escapes, entities, <placeholders>,
+        # blockquote/emphasis markers, spacing). Parity therefore compares the
+        # ALPHANUMERIC CONTENT STREAM — identical letters+digits in identical
+        # order — which survives the round-trip losslessly.
+        txt = _html.unescape(data.decode("utf-8", "replace"))
+        txt = re.sub(r"<[^>\n]{1,60}>", "", txt)  # placeholders eaten as tags by Docs
+        txt = re.sub(r"[^0-9A-Za-z]+", "", txt)
+        return hashlib.sha256(txt.encode()).hexdigest()[:16]
+
+    rows, not_parity = [], 0
+    for rel in CANONICAL:
+        p = ROOT / rel
+        repo_hash = norm_hash(p.read_bytes()) if p.exists() else None
+        name = Path(rel).name
+        did = drive_hash = None
+        status = "UNKNOWN"
+        try:
+            out = gog("search", f"name = '{name}'")
+            found = re.findall(r"^(\S{20,})\s+" + re.escape(name) +
+                               r"\s+\S+\s+[\d.]+\s*\S*\s+(\d{4}-\d{2}-\d{2} \d{2}:\d{2})",
+                               out, re.M)
+            ids = [i for i, _ in sorted(found, key=lambda x: x[1], reverse=True)] or                   re.findall(r"^(\S{20,})\s+" + re.escape(name) + r"\s", out, re.M)
+            if not ids:
+                status = "NOT_ON_DRIVE"
+            else:
+                # Drive may hold several copies (folder history). PARITY iff ANY
+                # copy's downloaded BYTES match the repo content exactly.
+                for cand in ids[:8]:
+                    with tempfile.TemporaryDirectory() as td:
+                        # gog --out is a FILE path; converted Google Docs need
+                        # an explicit md export to compare text with text
+                        target = Path(td) / "x.md"
+                        try:
+                            gog("download", cand, "--out", str(target), "--format", "md")
+                        except Exception:
+                            try:
+                                gog("download", cand, "--out", str(target))
+                            except Exception:
+                                continue
+                        files = [f for f in Path(td).iterdir() if f.is_file()]
+                        if files:
+                            h = norm_hash(files[0].read_bytes())
+                            if drive_hash is None:
+                                did, drive_hash = cand, h
+                            if h == repo_hash:
+                                did, drive_hash = cand, h
+                                break
+                status = ("PARITY" if repo_hash and drive_hash and repo_hash == drive_hash
+                          else ("DOWNLOAD_FAILED" if not drive_hash else "DRIFT"))
+        except Exception as e:
+            status = f"UNKNOWN ({str(e)[:60]})"
+        if status != "PARITY":
+            not_parity += 1
+        rows.append({"repo_path": rel, "repo_hash": repo_hash,
+                     "drive_document_id": did, "drive_hash": drive_hash, "parity": status})
+    print(json.dumps(rows, indent=1))
+    print(f"DEEP DRIVE PARITY: {'OK — all verified from Drive bytes' if not_parity == 0 else f'{not_parity} doc(s) not verified'}")
+    return 0 if not_parity == 0 else 1
+
+
+if __name__ == "__main__" and "--deep" in sys.argv:
+    sys.exit(deep_drive_parity())

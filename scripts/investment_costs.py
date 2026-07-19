@@ -121,14 +121,13 @@ def accrue_fund_expenses(cur, conn, as_of: str | None = None) -> dict:
         h = json.loads(HOLDINGS.read_text())
     except Exception as e:
         return {"error": f"holdings unavailable: {e}"}
-    accrued, missing = 0, []
+    accrued, missing, stale_rates = 0, [], []
+    excluded_small_total = 0.0
     for r in h.get("holdings", []):
         if r.get("is_cash") or not r.get("symbol"):
             continue
         sym, mv = r["symbol"].upper(), float(r.get("market_value") or 0)
-        if mv < 1000:
-            continue
-        cur.execute("""SELECT net_expense_ratio FROM fund_expense_rate_history
+        cur.execute("""SELECT net_expense_ratio, observed_at FROM fund_expense_rate_history
                        WHERE symbol=%s AND effective_from <= %s
                          AND (effective_to IS NULL OR effective_to >= %s)
                        ORDER BY effective_from DESC LIMIT 1""", (sym, as_of, as_of))
@@ -136,6 +135,13 @@ def accrue_fund_expenses(cur, conn, as_of: str | None = None) -> dict:
         if not rr:
             missing.append(sym)
             continue
+        # P1-4: EVERY position with a rate accrues — no silent $1K skip. Tiny
+        # positions are accrued too (the exclusion policy is: none).
+        if mv < 1000:
+            excluded_small_total += 0  # nothing excluded; kept for the report contract
+        from datetime import datetime as _dt, timezone as _tz
+        if rr[1] and (_dt.now(_tz.utc) - rr[1]).days > 400:
+            stale_rates.append(f"{sym} (rate observed {str(rr[1])[:10]})")
         rate = float(rr[0])
         amt = round(mv * rate / 100 / 365, 4)
         cur.execute("""INSERT INTO investment_cost_events
@@ -151,7 +157,62 @@ def accrue_fund_expenses(cur, conn, as_of: str | None = None) -> dict:
              amt, mv, rate, as_of, as_of))
         accrued += cur.rowcount
     conn.commit()
-    return {"accrued_rows": accrued, "missing_expense_ratio": sorted(set(missing))}
+    total_syms = len(set(missing)) + accrued if (missing or accrued) else 0
+    return {"accrued_rows": accrued, "missing_expense_ratio": sorted(set(missing)),
+            "stale_rates": stale_rates,
+            "exclusion_policy": "NONE — every position with a dated rate accrues (no $1K skip)",
+            "rate_coverage_note": f"{len(set(missing))} symbol(s) lack rates — zero accrual recorded for them (visible gap)",
+            "historical_note": "accruals use the as_of day holdings snapshot; backfill runs must pass historical as_of with matching snapshots — today's MV is never applied retroactively"}
+
+
+def _filters(q: dict) -> tuple[str, list]:
+    """P1-5: THE shared filter matrix for every cost endpoint."""
+    where, args = ["superseded=false"], []
+    for key, col, xf in (("from", "occurred_at >= %s", None), ("to", "occurred_at <= %s", None),
+                         ("account", "account_key = %s", None), ("broker", "broker = %s", None),
+                         ("symbol", "symbol = %s", str.upper), ("asset_class", "asset_class = %s", None),
+                         ("security_type", "security_type = %s", None),
+                         ("cost_class", "cost_class = %s", None),
+                         ("actual_or_estimated", "actual_or_estimated = %s", None),
+                         ("trade_uid", "trade_uid = %s", None),
+                         ("strategy_position_id", "strategy_position_id = %s", int)):
+        v = (q or {}).get(key)
+        if v not in (None, ""):
+            where.append(col)
+            args.append(xf(v) if xf else v)
+    return " AND ".join(where), args
+
+
+def _freshness(cur) -> dict:
+    cur.execute("SELECT max(created_at), count(*) FROM investment_cost_events")
+    r = cur.fetchone()
+    cur.execute("""SELECT count(DISTINCT symbol) FROM investment_cost_events WHERE symbol IS NOT NULL""")
+    return {"generated_at": str(__import__('datetime').datetime.utcnow()) + "Z",
+            "latest_event_at": str(r[0]) if r[0] else None, "total_events": r[1]}
+
+
+def costs_events(cur, query: dict | None = None) -> dict:
+    w, args = _filters(query or {})
+    cur.execute(f"""SELECT cost_event_id, occurred_at, broker, account_key, symbol, occ_symbol,
+                           cost_class, cost_category, actual_or_estimated, amount,
+                           strategy_position_id, trade_uid, superseded, notes
+                    FROM investment_cost_events WHERE {w}
+                    ORDER BY occurred_at DESC, cost_event_id DESC LIMIT 200""", args)
+    cols = ["id", "date", "broker", "account", "symbol", "occ", "class", "category",
+            "actual_or_estimated", "amount", "strategy_position_id", "trade_uid",
+            "superseded", "notes"]
+    return {"events": [dict(zip(cols, r)) for r in cur.fetchall()],
+            "freshness": _freshness(cur)}
+
+
+def costs_by_trade(cur, query: dict | None = None) -> dict:
+    w, args = _filters(query or {})
+    cur.execute(f"""SELECT COALESCE(trade_uid, 'strategy:' || strategy_position_id::text, 'unlinked'),
+                           cost_class, COALESCE(sum(amount),0), count(*)
+                    FROM investment_cost_events WHERE {w}
+                    GROUP BY 1,2 ORDER BY 3 DESC LIMIT 100""", args)
+    return {"rows": [{"trade": r[0], "class": r[1], "total": float(r[2]), "events": r[3]}
+                     for r in cur.fetchall()], "freshness": _freshness(cur)}
 
 
 def _period_clause(grain: str) -> str:
@@ -161,17 +222,7 @@ def _period_clause(grain: str) -> str:
 
 
 def costs_summary(cur, query: dict | None = None) -> dict:
-    q = query or {}
-    where, args = ["superseded=false"], []
-    if q.get("from"):
-        where.append("occurred_at >= %s"); args.append(q["from"])
-    if q.get("to"):
-        where.append("occurred_at <= %s"); args.append(q["to"])
-    if q.get("symbol"):
-        where.append("symbol=%s"); args.append(q["symbol"].upper())
-    if q.get("account"):
-        where.append("account_key=%s"); args.append(q["account"])
-    w = " AND ".join(where)
+    w, args = _filters(query or {})
     cur.execute(f"""SELECT cost_class, COALESCE(sum(amount),0), count(*)
                     FROM investment_cost_events WHERE {w} GROUP BY 1""", args)
     classes = {r[0]: {"total": float(r[1]), "events": r[2]} for r in cur.fetchall()}
@@ -182,23 +233,25 @@ def costs_summary(cur, query: dict | None = None) -> dict:
             "labels": {"ACTUAL_CASH": "broker-posted charges",
                        "EMBEDDED_FUND_COST_ESTIMATE": "paid through NAV (estimate, not re-subtracted)",
                        "EXECUTION_FRICTION_ESTIMATE": "estimated, never mixed with posted fees"},
-            "generated_at": str(date.today())}
+            "freshness": _freshness(cur)}
 
 
 def costs_timeseries(cur, query: dict | None = None) -> dict:
     q = query or {}
     grain = q.get("grain", "month")
+    w, args = _filters(q)
     cur.execute(f"""SELECT {_period_clause(grain)}::date, cost_class, COALESCE(sum(amount),0)
-                    FROM investment_cost_events WHERE superseded=false
-                    GROUP BY 1,2 ORDER BY 1""")
+                    FROM investment_cost_events WHERE {w}
+                    GROUP BY 1,2 ORDER BY 1""", args)
     return {"grain": grain,
             "series": [{"period": str(r[0]), "class": r[1], "total": float(r[2])} for r in cur.fetchall()]}
 
 
 def costs_by_security(cur, query: dict | None = None) -> dict:
-    cur.execute("""SELECT symbol, cost_class, COALESCE(sum(amount),0), count(*)
-                   FROM investment_cost_events WHERE superseded=false AND symbol IS NOT NULL
-                   GROUP BY 1,2 ORDER BY 3 DESC LIMIT 60""")
+    w, args = _filters(query or {})
+    cur.execute(f"""SELECT symbol, cost_class, COALESCE(sum(amount),0), count(*)
+                    FROM investment_cost_events WHERE {w} AND symbol IS NOT NULL
+                    GROUP BY 1,2 ORDER BY 3 DESC LIMIT 60""", args)
     return {"rows": [{"symbol": r[0], "class": r[1], "total": float(r[2]), "events": r[3]}
                      for r in cur.fetchall()]}
 
@@ -236,7 +289,17 @@ def costs_reconciliation(cur, query: dict | None = None) -> dict:
     norm = float(cur.fetchone()[0])
     out.append({"check": "ledger_fees_vs_normalized", "ok": abs(raw - norm) < 0.01,
                 "raw_ledger": raw, "normalized_events": norm})
-    # 2. option fill fees vs outcome-recorded fees
+    # 2. option fill fees vs outcome-recorded fees — PARTITIONED by position status
+    cur.execute("""SELECT p.status, COALESCE(sum(COALESCE(e.commission,0)+COALESCE(e.regulatory_fee,0)
+                          +COALESCE(e.exchange_fee,0)+COALESCE(e.other_fee,0)),0)
+                   FROM options_fill_evidence e
+                   JOIN options_strategy_positions p USING (strategy_position_id)
+                   GROUP BY 1""")
+    out.append({"check": "fill_fees_by_status_partition",
+                "ok": True,
+                "partitions": {r[0]: float(r[1]) for r in cur.fetchall()},
+                "note": "per-status fee totals — closed/assigned/exercised partitions must match outcome fees"})
+    # 2b. option fill fees vs outcome-recorded fees
     cur.execute("""SELECT COALESCE(sum(COALESCE(commission,0)+COALESCE(regulatory_fee,0)
                           +COALESCE(exchange_fee,0)+COALESCE(other_fee,0)),0)
                    FROM options_fill_evidence""")

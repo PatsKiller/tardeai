@@ -14,6 +14,8 @@ const CLASS_LABEL: Record<string, string> = {
 const fmt$ = (v: any) => (v == null ? '—' : `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })}`)
 
 export default function CostsPanel() {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<any>(null)
   const [series, setSeries] = useState<any>(null)
   const [bySec, setBySec] = useState<any>(null)
@@ -22,7 +24,10 @@ export default function CostsPanel() {
   const [grain, setGrain] = useState('month')
 
   useEffect(() => {
-    fetch('/api/v2/journal/costs/summary').then(r => r.json()).then(r => setSummary(r?.data)).catch(() => null)
+    setLoading(true)
+    fetch('/api/v2/journal/costs/summary').then(r => r.json())
+      .then(r => { setSummary(r?.data); setError(null) })
+      .catch(e => setError(String(e))).finally(() => setLoading(false))
     fetch('/api/v2/journal/costs/by-security').then(r => r.json()).then(r => setBySec(r?.data)).catch(() => null)
     fetch('/api/v2/journal/costs/unmatched').then(r => r.json()).then(r => setUnmatched(r?.data)).catch(() => null)
     fetch('/api/v2/journal/costs/reconciliation').then(r => r.json()).then(r => setRecon(r?.data)).catch(() => null)
@@ -32,12 +37,22 @@ export default function CostsPanel() {
   }, [grain])
 
   const classes = summary?.by_class || {}
+  const badge = (kind: string) => (
+    <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 5px', borderRadius: 4, marginLeft: 6,
+                   background: kind === 'actual' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
+                   color: kind === 'actual' ? BB.green : BB.amber, textTransform: 'uppercase' }}>{kind}</span>
+  )
+  if (loading) return <div style={{ fontSize: 12, color: 'var(--text3)', padding: 20 }}>loading cost ledger…</div>
+  if (error) return <div style={{ fontSize: 12, color: BB.red, padding: 20 }}>cost ledger unavailable: {error}</div>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+        data freshness: {summary?.freshness?.latest_event_at || 'no events'} · {summary?.freshness?.total_events ?? 0} events
+      </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         {Object.keys(CLASS_LABEL).map(k => (
           <div key={k} style={{ ...panel, minWidth: 220 }}>
-            <div style={{ fontSize: 11, color: 'var(--text3)' }}>{CLASS_LABEL[k]}</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)' }}>{CLASS_LABEL[k]}{badge(k === 'ACTUAL_CASH' ? 'actual' : 'estimated')}</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text0)' }}>{fmt$(classes[k]?.total ?? 0)}</div>
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>{classes[k]?.events ?? 0} events</div>
           </div>

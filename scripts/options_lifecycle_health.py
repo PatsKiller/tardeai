@@ -89,12 +89,31 @@ def health_checks(cur) -> list[dict]:
     check("stale_armed_tickets", n == 0,
           f"{n} armed ticket(s) >24h without fill evidence — confirm or cancel" if n else "none")
 
-    # v1.2 P4: projection integrity — fail closed and loud
+    # v1.2 P4 + v1.2.2 P1-2: projection integrity — fail closed and loud
     try:
         cur.execute("""SELECT count(*) FROM journal_projection_outbox WHERE state='FAILED'""")
         n = cur.fetchone()[0]
         check("projection_outbox_failed", n == 0,
               f"{n} journal projection(s) FAILED after retries — journal is stale" if n else "none")
+        cur.execute("""SELECT
+              count(*) FILTER (WHERE state='NEW' AND created_at < now() - interval '30 minutes'),
+              count(*) FILTER (WHERE state='RETRY' AND next_retry_at < now() - interval '30 minutes'),
+              count(*) FILTER (WHERE state='PROCESSING' AND claimed_at < now() - interval '15 minutes')
+            FROM journal_projection_outbox""")
+        stale_new, overdue_retry, stale_proc = cur.fetchone()
+        check("outbox_stale_new", stale_new == 0, f"{stale_new} NEW row(s) >30min old" if stale_new else "none")
+        check("outbox_overdue_retry", overdue_retry == 0,
+              f"{overdue_retry} RETRY row(s) overdue >30min" if overdue_retry else "none")
+        check("outbox_stale_processing", stale_proc == 0,
+              f"{stale_proc} PROCESSING row(s) past lease" if stale_proc else "none")
+        cur.execute("""SELECT count(*) FROM options_strategy_positions p
+                       WHERE p.status IN ('closed','rolled','assigned','exercised','expired')
+                         AND NOT EXISTS (SELECT 1 FROM journal_projection_outbox o
+                                         WHERE o.strategy_position_id=p.strategy_position_id
+                                           AND o.state='PROJECTED')""")
+        n = cur.fetchone()[0]
+        check("terminal_without_projection", n == 0,
+              f"{n} terminal strateg(ies) never projected" if n else "none")
         cur.execute("""SELECT count(*) FROM options_strategy_positions p
                        JOIN trade_instances t ON t.source_table='options_strategy_positions'
                         AND t.source_trade_id = p.strategy_position_id::text

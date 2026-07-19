@@ -1,0 +1,135 @@
+This email contains trade confirmation(s) for 20260707 .
+Symbol:
+ 
+BJDX
+ 
+Security Description:
+ 
+SANITIZED CO
+ 
+Action:
+ 
+Purchase
+ 
+Security No./CUSIP:
+ 
+000000000
+ 
+Trade Date:
+ 
+07/07/26
+ 
+Settle Date:
+ 
+07/08/26
+ 
+Quantity
+ 
+Price
+ 
+Principal
+ 
+Charge and/or Interest
+ 
+Total Amount
+ 
+1000.00000
+ 
+$1.400000000
+ 
+$1400.00
+ 
+N/A:
+ 
+$0.00
+ 
+N/A
+ 
+$1400.00
+ 
+1000.00000
+ 
+$1.430000000
+ 
+$1430.00
+ 
+N/A:
+ 
+$0.00
+ 
+N/A
+ 
+$1430.00
+ 
+1000.00000
+ 
+$1.620000000
+ 
+$1620.00
+ 
+N/A:
+ 
+$0.00
+ 
+N/A
+ 
+$1620.00
+ 
+Totals
+ 
+3000.00000
+ 
+$4450.00
+ 
+$0.00
+ 
+$4450.00
+Symbol:
+ 
+BJDX
+ 
+Action:
+ 
+Sale
+ 
+Security No./CUSIP:
+ 
+000000000
+ 
+Trade Date:
+ 
+07/07/26
+ 
+Settle Date:
+ 
+07/08/26
+ 
+Quantity
+ 
+Price
+ 
+Principal
+ 
+Charge and/or Interest
+ 
+Total Amount
+ 
+1000.00000
+ 
+$1.410000000
+ 
+$1410.00
+ 
+$0.23
+ 
+$1409.77
+ 
+Totals
+ 
+1000.00000
+ 
+$1410.00
+ 
+$0.23
+ 
+$1409.77

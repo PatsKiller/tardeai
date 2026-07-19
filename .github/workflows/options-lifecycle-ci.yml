@@ -1,9 +1,20 @@
 name: options-lifecycle-ci
 on:
   push:
-    paths: ['scripts/options_*.py', 'scripts/investment_costs.py', 'scripts/ticker_attribution.py',
-            'tests/test_options_lifecycle*.py', 'config/options_lifecycle_policy.json',
-            'apps/command-center-v3/**', '.github/workflows/options-lifecycle-ci.yml']
+    paths: &lifecycle_paths
+      - 'scripts/options_*.py'
+      - 'scripts/investment_costs.py'
+      - 'scripts/ticker_attribution.py'
+      - 'scripts/schwab_econfirm_reconcile.py'
+      - 'scripts/check_docs_drive_parity.py'
+      - 'tests/test_options_lifecycle*.py'
+      - 'tests/test_econfirm_parser.py'
+      - 'tests/fixtures/econfirm/**'
+      - 'config/options_lifecycle_policy.json'
+      - 'apps/command-center-v3/**'
+      - '.github/workflows/options-lifecycle-ci.yml'
+  pull_request:
+    paths: *lifecycle_paths
   workflow_dispatch: {}
 jobs:
   backend:
@@ -27,13 +38,30 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install pytest psycopg2-binary
-      - name: pure policy tests + REAL-PG integration (skips are FAILURES here)
+      - name: pure + REAL-PG + eConfirm tests (skips are FAILURES; JUnit published)
         run: |
           pytest tests/test_options_lifecycle_policy.py tests/test_options_lifecycle_migration.py \
-            -v -rs 2>&1 | tee /tmp/pytest.out
+            tests/test_econfirm_parser.py \
+            -v -rs --junitxml=/tmp/junit.xml 2>&1 | tee /tmp/pytest.out
           if grep -qE "SKIPPED|skipped" /tmp/pytest.out; then
             echo "::error::PostgreSQL-backed tests were skipped — CI must run them"; exit 1
           fi
+      - name: workflow summary
+        if: always()
+        run: |
+          {
+            echo "## Options Lifecycle CI"
+            echo "- commit: \`${{ github.sha }}\`"
+            echo "- postgres: $(psql --version 2>/dev/null || echo 'service postgres:17')"
+            tail -3 /tmp/pytest.out | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            /tmp/junit.xml
+            /tmp/pytest.out
   frontend:
     runs-on: ubuntu-latest
     steps:

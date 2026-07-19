@@ -1,0 +1,50 @@
+This email contains trade confirmation(s) for 20260713 .
+Symbol:
+ 
+FCNTX
+ 
+Action:
+ 
+Sale
+ 
+Trade Date:
+ 
+07/13/26
+ 
+Settle Date:
+ 
+07/14/26
+ 
+Quantity
+ 
+Price
+ 
+Principal
+ 
+Charge and/or Interest
+ 
+Total Amount
+ 
+4034.94200
+ 
+$26.530000000
+ 
+$107047.01
+ 
+N/A:
+ 
+$0.00
+ 
+N/A
+ 
+$107047.01
+ 
+Totals
+ 
+4034.94200
+ 
+$107047.01
+ 
+$0.00
+ 
+$107047.01
