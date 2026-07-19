@@ -1,10 +1,11 @@
-version: 4
+version: 5
 weights:
-  technical_momentum: 0.0809
-  setup_quality: 0.0297
-  analyst: 0.5168
-  social_sentiment: 0.1149
-  sector_strength: 0.0377
-  news_catalyst: 0.1149
-  risk_reward: 0.1051
-auto_grafted_at: '2026-06-27T21:00:01.482438+00:00'
+  technical_momentum: 0.0783
+  setup_quality: 0.0102
+  analyst: 0.5264
+  social_sentiment: 0.117
+  sector_strength: 0.0448
+  news_catalyst: 0.117
+  risk_reward: 0.1063
+auto_grafted_at: '2026-07-17T21:00:01.613271+00:00'
+graft_source: outcome_ledger

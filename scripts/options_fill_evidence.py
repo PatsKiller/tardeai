@@ -49,7 +49,8 @@ def ensure_evidence_tables(cur, conn):
     # concurrency guard: DDL takes AccessExclusive locks — when the newest table
     # already exists (steady state), skip the whole block so concurrent evidence
     # writers never contend on catalog locks (deadlock seen in P0-4 testing)
-    cur.execute("SELECT to_regclass('options_package_incidents'), to_regclass('options_fill_evidence')")
+    cur.execute("""SELECT to_regclass('options_package_incidents'), to_regclass('options_fill_evidence'),
+                          to_regclass('options_execution_friction')""")
     if all(cur.fetchone()):
         cur.execute("""SELECT 1 FROM information_schema.columns
                        WHERE table_name='journal_projection_outbox' AND column_name='claimed_at'""")
@@ -145,6 +146,8 @@ def ensure_evidence_tables(cur, conn):
     cur.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_close_alloc_ticket_leg
         ON options_close_allocations (ticket_id, leg_id)""")
     cur.execute("ALTER TABLE options_strategy_legs ADD COLUMN IF NOT EXISTS original_contracts numeric")
+    from options_execution_friction import ensure_friction_tables
+    ensure_friction_tables(cur, conn)
     conn.commit()
 
 
@@ -400,6 +403,18 @@ def record_broker_evidence(cur, conn, ticket_id: int, fills: list[dict], source:
             acc_realized, acc_fees = strategy_realized_from_allocations(cur, spid)
             if acc_realized is not None:
                 _upsert_outcome(cur, spid, ticket_id, acc_realized, acc_fees, source)
+        cur.execute("SAVEPOINT friction_sp")
+        try:
+            from options_execution_friction import record_friction
+            cum_named = {k: {**v, "fills_count": len([1 for f in fills
+                                                      if f["occ_symbol"].strip() == k[0]])}
+                         for k, v in cum.items()}
+            record_friction(cur, conn, {**ticket, "strategy_position_id": spid},
+                            ticket_id, cum_named, source, manage_txn=False)
+            cur.execute("RELEASE SAVEPOINT friction_sp")
+        except Exception as _fe:
+            cur.execute("ROLLBACK TO SAVEPOINT friction_sp")
+            print(f"  [friction] non-blocking: {str(_fe)[:100]}")
         _emit_event_idem(cur, spid,
                          "CLOSE" if (all_closed and kind == "close")
                          else ("ROLL" if kind == "roll" else "PARTIAL_CLOSE"),

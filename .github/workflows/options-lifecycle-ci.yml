@@ -10,6 +10,17 @@ on:
       - 'tests/test_options_lifecycle*.py'
       - 'tests/test_econfirm_parser.py'
       - 'tests/test_inverse_stoplights.py'
+      - 'tests/test_schwab_exec_parser.py'
+      - 'tests/test_outbox_process_crash.py'
+      - 'tests/test_drive_semantic_compare.py'
+      - 'tests/test_friction_statement_oer.py'
+      - 'scripts/options_schwab_exec_parser.py'
+      - 'scripts/drive_semantic_compare.py'
+      - 'scripts/options_execution_friction.py'
+      - 'scripts/statement_reconciliation.py'
+      - 'scripts/oer_rate_ingest.py'
+      - 'scripts/paper_canary_preflight.py'
+      - 'config/drive_parity_manifest.json'
       - 'scripts/defense_inverse_stoplights.py'
       - 'scripts/research/inverse_hedge_backtest.py'
       - 'tests/fixtures/econfirm/**'
@@ -45,6 +56,8 @@ jobs:
         run: |
           pytest tests/test_options_lifecycle_policy.py tests/test_options_lifecycle_migration.py \
             tests/test_econfirm_parser.py tests/test_inverse_stoplights.py \
+            tests/test_schwab_exec_parser.py tests/test_outbox_process_crash.py \
+            tests/test_drive_semantic_compare.py tests/test_friction_statement_oer.py \
             -v -rs --junitxml=/tmp/junit.xml 2>&1 | tee /tmp/pytest.out
           if grep -qE "SKIPPED|skipped" /tmp/pytest.out; then
             echo "::error::PostgreSQL-backed tests were skipped — CI must run them"; exit 1
