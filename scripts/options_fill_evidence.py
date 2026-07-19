@@ -127,6 +127,24 @@ def ensure_evidence_tables(cur, conn):
         resolved_by text)""")
     cur.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_journal_event_evidence
         ON options_journal_events (strategy_position_id, event, COALESCE(evidence_ref,''))""")
+    # v1.2.2 P0-1: IMMUTABLE per-ticket close allocations — every closed contract
+    # is attributable to its ticket + evidence; a later ticket can NEVER touch an
+    # earlier ticket's allocation (replaces the 90-day slice heuristic).
+    cur.execute("""CREATE TABLE IF NOT EXISTS options_close_allocations (
+        allocation_id serial PRIMARY KEY,
+        strategy_position_id int NOT NULL,
+        ticket_id int NOT NULL,
+        leg_id int NOT NULL,
+        occ_symbol text NOT NULL,
+        contracts numeric NOT NULL,
+        vwap numeric NOT NULL,
+        fees numeric NOT NULL DEFAULT 0,
+        realized numeric,                  -- (open − vwap)·sign·contracts·mult when basis known
+        created_at timestamptz DEFAULT now(),
+        updated_at timestamptz DEFAULT now())""")
+    cur.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_close_alloc_ticket_leg
+        ON options_close_allocations (ticket_id, leg_id)""")
+    cur.execute("ALTER TABLE options_strategy_legs ADD COLUMN IF NOT EXISTS original_contracts numeric")
     conn.commit()
 
 
@@ -196,40 +214,67 @@ def _cumulative(cur, ticket_id: int) -> dict:
             for occ, instr, q, n, f in cur.fetchall()}
 
 
-def _project_close_leg(cur, spid: int, leg: dict, target: float, filled: float, vwap: float):
-    """P0-3: canonical leg state PROJECTED from (target, cumulative) —
-    exactly one open residual row (target − filled) and at most one closed
-    slice row (= cumulative filled at VWAP)."""
-    occ = leg["occ_symbol"]
-    cur.execute("""SELECT leg_id FROM options_strategy_legs
-                   WHERE strategy_position_id=%s AND occ_symbol=%s AND status='closed'
-                     AND closed_at > now() - interval '90 days'""", (spid, occ))
-    slice_row = cur.fetchone()
-    residual = max(0.0, target - filled)
-    if filled <= 1e-9:
+def _project_close_leg(cur, spid: int, leg: dict, ticket_id: int, ticket_filled: float,
+                       ticket_vwap: float, ticket_fees: float):
+    """v1.2.2 P0-1: per-TICKET immutable allocation. This ticket's allocation
+    row (unique on ticket+leg) carries its own filled/vwap/fees/realized; the
+    ORIGINAL leg's residual = original_total − Σ allocations across ALL tickets.
+    Earlier tickets' allocations are never read for identity, never updated,
+    never deleted."""
+    if ticket_filled <= 1e-9:
         return
-    if abs(residual) < 1e-9:
-        # fully filled: close the ORIGINAL open row at cumulative VWAP; remove interim slice
+    realized = None
+    if leg["opening_price"] is not None:
+        realized = ((float(leg["opening_price"]) - ticket_vwap) if leg["side"] == "short"
+                    else (ticket_vwap - float(leg["opening_price"]))) \
+                   * ticket_filled * int(leg["multiplier"])
+    cur.execute("""INSERT INTO options_close_allocations
+        (strategy_position_id, ticket_id, leg_id, occ_symbol, contracts, vwap, fees, realized)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT (ticket_id, leg_id) DO UPDATE SET
+          contracts=EXCLUDED.contracts, vwap=EXCLUDED.vwap, fees=EXCLUDED.fees,
+          realized=EXCLUDED.realized, updated_at=now()""",
+        (spid, ticket_id, leg["leg_id"], leg["occ_symbol"], ticket_filled, ticket_vwap,
+         ticket_fees, realized))
+    cur.execute("""SELECT COALESCE(sum(contracts),0) FROM options_close_allocations
+                   WHERE leg_id=%s""", (leg["leg_id"],))
+    total_alloc = float(cur.fetchone()[0])
+    # original total = residual currently on the leg row + allocations OTHER than
+    # this ticket's previous value is already superseded by the upsert; recompute
+    # from the immutable opening contracts: derive from ticket target semantics —
+    # the leg row's contracts field holds ORIGINAL total until first allocation,
+    # after which we track residual = original − total_alloc via original stored once.
+    cur.execute("""SELECT original_contracts FROM options_strategy_legs WHERE leg_id=%s""",
+                (leg["leg_id"],))
+    orig = cur.fetchone()[0]
+    if orig is None:
+        orig = leg["contracts"]
+        cur.execute("UPDATE options_strategy_legs SET original_contracts=%s WHERE leg_id=%s",
+                    (orig, leg["leg_id"]))
+    residual = max(0.0, float(orig) - total_alloc)
+    if residual < 1e-9:
+        cur.execute("""SELECT sum(contracts*vwap)/NULLIF(sum(contracts),0)
+                       FROM options_close_allocations WHERE leg_id=%s""", (leg["leg_id"],))
+        blended = cur.fetchone()[0]
         cur.execute("""UPDATE options_strategy_legs SET status='closed', closed_price=%s,
                        closed_at=now(), contracts=%s WHERE leg_id=%s""",
-                    (vwap, target, leg["leg_id"]))
-        if slice_row:
-            cur.execute("DELETE FROM options_strategy_legs WHERE leg_id=%s", (slice_row[0],))
+                    (blended, float(orig), leg["leg_id"]))
     else:
         cur.execute("UPDATE options_strategy_legs SET contracts=%s WHERE leg_id=%s",
                     (residual, leg["leg_id"]))
-        if slice_row:
-            cur.execute("""UPDATE options_strategy_legs SET contracts=%s, closed_price=%s
-                           WHERE leg_id=%s""", (filled, vwap, slice_row[0]))
-        else:
-            cur.execute("""INSERT INTO options_strategy_legs
-                (strategy_position_id, occ_symbol, leg_role, option_type, instruction, side,
-                 contracts, multiplier, strike, expiration, opening_price, status,
-                 closed_price, closed_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'closed',%s,now())""",
-                (spid, occ, leg["leg_role"], leg["option_type"], leg["instruction"],
-                 leg["side"], filled, leg["multiplier"], leg["strike"], leg["expiration"],
-                 leg["opening_price"], vwap))
+
+
+def strategy_realized_from_allocations(cur, spid: int) -> tuple[float | None, float]:
+    """P0-1 outcome model (documented choice): ONE strategy outcome accumulating
+    realized close evidence across EVERY ticket's allocations. Returns
+    (realized_or_None_if_any_unknown, fees_total)."""
+    cur.execute("""SELECT realized, fees FROM options_close_allocations
+                   WHERE strategy_position_id=%s""", (spid,))
+    rows = cur.fetchall()
+    fees = sum(float(f or 0) for _, f in rows)
+    if any(r is None for r, _ in rows):
+        return None, fees
+    return sum(float(r) for r, _ in rows), fees
 
 
 def record_broker_evidence(cur, conn, ticket_id: int, fills: list[dict], source: str,
@@ -243,6 +288,26 @@ def record_broker_evidence(cur, conn, ticket_id: int, fills: list[dict], source:
         r = cur.fetchone()
         if not r:
             return {"ok": False, "error": "unknown ticket"}
+        if r[1] == "filled":
+            # v1.2.2: sequential replay of a FILLED ticket is an idempotent
+            # no-op returning the canonical result — never an error
+            spid0 = r[2]
+            cur.execute("""SELECT count(*) FROM options_fill_evidence WHERE ticket_id=%s""", (ticket_id,))
+            n_ev = cur.fetchone()[0]
+            cur.execute("""SELECT broker, account_key FROM options_strategy_positions
+                           WHERE strategy_position_id=%s""", (spid0,))
+            b0, a0 = cur.fetchone()
+            known = True
+            for f in fills or []:
+                cur.execute("SELECT 1 FROM options_fill_evidence WHERE dedupe_key=%s",
+                            (_dedupe_key(b0, a0, spid0, ticket_id, f),))
+                if not cur.fetchone():
+                    known = False
+            realized, fees = strategy_realized_from_allocations(cur, spid0)
+            return {"ok": True, "idempotent_noop": True, "ticket_complete": True,
+                    "position_closed": True, "inserted": 0,
+                    "evidence_rows": n_ev, "all_fills_known": bool(known),
+                    "realized_cumulative": realized, "fees_cumulative": fees}
         if r[1] not in ("armed", "partial"):
             return {"ok": False, "error": f"ticket is {r[1]} — evidence lands only on armed/partial tickets"}
         ticket = r[0] if isinstance(r[0], dict) else json.loads(r[0])
@@ -307,7 +372,7 @@ def record_broker_evidence(cur, conn, ticket_id: int, fills: list[dict], source:
                                            else (c["vwap"] - float(leg["opening_price"]))) \
                                           * c["qty"] * int(leg["multiplier"])
                     if leg["status"] == "open":
-                        _project_close_leg(cur, spid, leg, target, c["qty"], c["vwap"])
+                        _project_close_leg(cur, spid, leg, ticket_id, c["qty"], c["vwap"], c["fees"])
 
         result = {"ok": True, "inserted": inserted, "ticket_complete": complete,
                   "realized_cumulative": round(realized_total, 2),
@@ -330,7 +395,11 @@ def record_broker_evidence(cur, conn, ticket_id: int, fills: list[dict], source:
         if all_closed and kind == "close":
             cur.execute("""UPDATE options_strategy_positions SET status='closed', closed_at=now(),
                            updated_at=now() WHERE strategy_position_id=%s""", (spid,))
-            _upsert_outcome(cur, spid, ticket_id, realized_total, fees_total, source)
+            # v1.2.2 P0-1 outcome model: ONE strategy outcome accumulated from
+            # ALL tickets' immutable allocations — not just this ticket's batch
+            acc_realized, acc_fees = strategy_realized_from_allocations(cur, spid)
+            if acc_realized is not None:
+                _upsert_outcome(cur, spid, ticket_id, acc_realized, acc_fees, source)
         _emit_event_idem(cur, spid,
                          "CLOSE" if (all_closed and kind == "close")
                          else ("ROLL" if kind == "roll" else "PARTIAL_CLOSE"),

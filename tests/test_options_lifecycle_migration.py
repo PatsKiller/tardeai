@@ -290,11 +290,16 @@ def test_partial_then_cancel_leaves_correct_residual(ephemeral_db):
     # cancellation of the partial ticket: residual leg stays open at 1 contract
     cur.execute("UPDATE options_lifecycle_tickets SET status='cancelled' WHERE ticket_id=%s", (tid,))
     conn.commit()
+    # v1.2.2 model: ONE leg row holds the residual; the closed contract lives
+    # as an IMMUTABLE per-ticket allocation
     cur.execute("""SELECT status, contracts FROM options_strategy_legs
-                   WHERE strategy_position_id=%s ORDER BY status""", (spid,))
+                   WHERE strategy_position_id=%s""", (spid,))
     rows = cur.fetchall()
-    assert ("open", 1.0) in [(r[0], float(r[1])) for r in rows]
-    assert ("closed", 1.0) in [(r[0], float(r[1])) for r in rows]
+    assert [(r[0], float(r[1])) for r in rows] == [("open", 1.0)]
+    cur.execute("""SELECT ticket_id, contracts, vwap FROM options_close_allocations
+                   WHERE strategy_position_id=%s""", (spid,))
+    alloc = cur.fetchall()
+    assert len(alloc) == 1 and float(alloc[0][1]) == 1.0 and abs(float(alloc[0][2]) - 1.00) < 0.005
     cur.execute("SELECT status FROM options_strategy_positions WHERE strategy_position_id=%s", (spid,))
     assert cur.fetchone()[0] == "open"                  # position remains actionable
 
@@ -425,3 +430,114 @@ def test_concurrent_fill_evidence_cannot_corrupt(ephemeral_db):
     cur.execute("SELECT realized_pnl FROM options_lifecycle_outcomes WHERE strategy_position_id=%s", (spid,))
     # VWAP 1.00 → (2.00-1.00)*2*100 - 1.30? no commissions passed → 200 net
     assert abs(float(cur.fetchone()[0]) - 200.0) < 0.01
+
+
+def _mk_ticket_for(cur, conn, spid, contracts, key, occ="TEST  260821C00110000"):
+    import json as _j
+    ticket = {"kind": "close", "strategy_position_id": spid, "underlying": "TEST",
+              "strategy_type": "covered_call", "broker": "schwab", "account_key": "acct",
+              "legs": [{"occ_symbol": occ, "instruction": "BTC",
+                        "contracts": contracts, "proposed_limit": 1.0}],
+              "net_debit_credit": -100.0 * contracts, "net_label": "pay", "tif": "DAY",
+              "quote_ts": "t", "quote_max_age_seconds": 90}
+    cur.execute("""INSERT INTO options_lifecycle_tickets
+        (strategy_position_id, kind, ticket_json, approval_hash, tif, status, idempotency_key)
+        VALUES (%s,'close',%s,'h','DAY','armed',%s) RETURNING ticket_id""",
+        (spid, _j.dumps(ticket), key))
+    tid = cur.fetchone()[0]
+    conn.commit()
+    return tid
+
+
+def test_cross_ticket_partial_cancel_then_residual_close(ephemeral_db):
+    """v1.2.2 P0-1 MANDATED TRACE: Ticket A partial-fills then cancels; Ticket B
+    closes the residual. A's allocation stays immutable; totals exact."""
+    conn = ephemeral_db
+    cur = _build_all(conn)
+    from options_fill_evidence import record_broker_evidence
+    spid, tidA = _mk_position(cur, conn, contracts=2.0, opening=2.00)
+    occ = "TEST  260821C00110000"
+    # 3: Ticket A fills one at $1.00 (with a fee)
+    rA = record_broker_evidence(cur, conn, tidA, [
+        {"occ_symbol": occ, "instruction": "BTC", "contracts": 1, "price": 1.00,
+         "commission": 0.65, "broker_order_id": "oA", "broker_execution_id": "eA1"}], "schwab")
+    assert rA["ok"] and not rA["ticket_complete"]
+    # 4: Ticket A cancelled
+    cur.execute("UPDATE options_lifecycle_tickets SET status='cancelled' WHERE ticket_id=%s", (tidA,))
+    conn.commit()
+    # 5: one open residual + one immutable allocation
+    cur.execute("SELECT status, contracts FROM options_strategy_legs WHERE strategy_position_id=%s", (spid,))
+    assert [(r[0], float(r[1])) for r in cur.fetchall()] == [("open", 1.0)]
+    cur.execute("""SELECT allocation_id, ticket_id, contracts, vwap, fees
+                   FROM options_close_allocations WHERE strategy_position_id=%s""", (spid,))
+    allocA = cur.fetchall()
+    assert len(allocA) == 1 and allocA[0][1] == tidA and float(allocA[0][2]) == 1.0
+    alloc_a_snapshot = allocA[0]
+    # 6+7: Ticket B targets the 1-contract residual, fills at $0.50
+    tidB = _mk_ticket_for(cur, conn, spid, 1.0, "kB")
+    rB = record_broker_evidence(cur, conn, tidB, [
+        {"occ_symbol": occ, "instruction": "BTC", "contracts": 1, "price": 0.50,
+         "commission": 0.65, "broker_order_id": "oB", "broker_execution_id": "eB1"}], "schwab")
+    assert rB["ok"] and rB["ticket_complete"] and rB["position_closed"]
+    # 8: assertions from DATABASE rows
+    cur.execute("""SELECT allocation_id, ticket_id, contracts, vwap, fees
+                   FROM options_close_allocations WHERE strategy_position_id=%s
+                   ORDER BY allocation_id""", (spid,))
+    allocs = cur.fetchall()
+    assert len(allocs) == 2
+    assert allocs[0] == alloc_a_snapshot                      # A's row byte-identical
+    assert sum(float(a[2]) for a in allocs) == 2.0            # two contracts closed
+    cur.execute("SELECT count(*) FROM options_strategy_legs WHERE strategy_position_id=%s AND status='open'",
+                (spid,))
+    assert cur.fetchone()[0] == 0                             # no open residual
+    # gross P&L: (2.00-1.00)*100 + (2.00-0.50)*100 = 250; fees 1.30 once
+    cur.execute("SELECT realized_pnl, meta FROM options_lifecycle_outcomes WHERE strategy_position_id=%s",
+                (spid,))
+    out = cur.fetchone()
+    assert abs(float(out[0]) - (250.0 - 1.30)) < 0.01
+    assert abs(float(out[1]["fees"]) - 1.30) < 0.01
+    cur.execute("""SELECT status, pnl FROM trade_instances
+                   WHERE source_table='options_strategy_positions' AND source_trade_id=%s""",
+                (str(spid),))
+    inst = cur.fetchone()
+    assert inst[0] == "closed" and abs(float(inst[1]) - 248.70) < 0.01
+    # replay A's execution (cancelled ticket) → refused-not-mutating; replay B (filled) → idempotent noop
+    rA2 = record_broker_evidence(cur, conn, tidA, [
+        {"occ_symbol": occ, "instruction": "BTC", "contracts": 1, "price": 1.00,
+         "commission": 0.65, "broker_order_id": "oA", "broker_execution_id": "eA1"}], "schwab")
+    assert rA2["ok"] is False and "cancelled" in rA2["error"]
+    rB2 = record_broker_evidence(cur, conn, tidB, [
+        {"occ_symbol": occ, "instruction": "BTC", "contracts": 1, "price": 0.50,
+         "commission": 0.65, "broker_order_id": "oB", "broker_execution_id": "eB1"}], "schwab")
+    assert rB2["ok"] and rB2.get("idempotent_noop") and rB2["all_fills_known"]
+    cur.execute("SELECT realized_pnl FROM options_lifecycle_outcomes WHERE strategy_position_id=%s", (spid,))
+    assert abs(float(cur.fetchone()[0]) - 248.70) < 0.01      # replays changed nothing
+
+
+def test_two_partial_cancel_cycles(ephemeral_db):
+    conn = ephemeral_db
+    cur = _build_all(conn)
+    from options_fill_evidence import record_broker_evidence
+    spid, t1 = _mk_position(cur, conn, contracts=3.0, opening=2.00)
+    occ = "TEST  260821C00110000"
+    record_broker_evidence(cur, conn, t1, [
+        {"occ_symbol": occ, "instruction": "BTC", "contracts": 1, "price": 1.20,
+         "broker_order_id": "o1", "broker_execution_id": "x1"}], "schwab")
+    cur.execute("UPDATE options_lifecycle_tickets SET status='cancelled' WHERE ticket_id=%s", (t1,))
+    conn.commit()
+    t2 = _mk_ticket_for(cur, conn, spid, 2.0, "kC2")
+    record_broker_evidence(cur, conn, t2, [
+        {"occ_symbol": occ, "instruction": "BTC", "contracts": 1, "price": 1.00,
+         "broker_order_id": "o2", "broker_execution_id": "x2"}], "schwab")
+    cur.execute("UPDATE options_lifecycle_tickets SET status='cancelled' WHERE ticket_id=%s", (t2,))
+    conn.commit()
+    t3 = _mk_ticket_for(cur, conn, spid, 1.0, "kC3")
+    r = record_broker_evidence(cur, conn, t3, [
+        {"occ_symbol": occ, "instruction": "BTC", "contracts": 1, "price": 0.80,
+         "broker_order_id": "o3", "broker_execution_id": "x3"}], "schwab")
+    assert r["position_closed"]
+    cur.execute("""SELECT count(*), COALESCE(sum(contracts),0), COALESCE(sum(realized),0)
+                   FROM options_close_allocations WHERE strategy_position_id=%s""", (spid,))
+    n, qty, realized = cur.fetchone()
+    assert n == 3 and float(qty) == 3.0
+    assert abs(float(realized) - ((2.00-1.20)+(2.00-1.00)+(2.00-0.80))*100) < 0.01
