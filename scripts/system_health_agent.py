@@ -1052,7 +1052,12 @@ def run_health_check(dry_run=True, verbose=False):
         agent_latest = {r[0]: r[1] for r in cur.fetchall()}
         # Check agent-specific home tables
         for tbl, col, agent_name in [("aegis_portfolio_briefs", "observed_at", "aegis"),
-                                      ("cio_decisions", "created_at", "alex")]:
+                                      ("cio_decisions", "created_at", "alex"),
+                                      # iris is the taxonomy/curation agent — it never writes
+                                      # ticker rows to watchlist_agent_results (its rows there
+                                      # were legacy topic-lane artifacts), so measure it by its
+                                      # actual run ledger (2026-07-19 fix).
+                                      ("iris_run_log", "ran_at", "iris")]:
             try:
                 cur.execute(f"SELECT MAX({col}) FROM {tbl}")
                 r = cur.fetchone()
@@ -1099,10 +1104,16 @@ def run_health_check(dry_run=True, verbose=False):
                         cur.execute("""SELECT COUNT(*) FROM watchlist_agent_jobs
                             WHERE requested_agent=%s AND status IN ('queued','pending','processing')""", [agent])
                         if (cur.fetchone()[0] or 0) == 0:
-                            # Find a symbol to analyze (most recently analyzed per symbol)
+                            # Find a symbol to analyze (most recently analyzed per symbol).
+                            # 'topic:*' rows are legacy topic-lane results, not tickers — queueing
+                            # them dies at the processor's symbol gate, so remediation looped on
+                            # the same two invalid jobs every cycle while iris stayed "stale"
+                            # (368 failed jobs in 2 days, found 2026-07-19).
                             cur.execute("""SELECT symbol, MAX(created_at) AS latest
                                 FROM watchlist_agent_results
-                                WHERE agent=%s GROUP BY symbol ORDER BY latest DESC LIMIT 2""", [agent])
+                                WHERE agent=%s AND symbol NOT LIKE 'topic:%%'
+                                  AND symbol ~ '^[A-Z][A-Z0-9.\\-]{0,9}$'
+                                GROUP BY symbol ORDER BY latest DESC LIMIT 2""", [agent])
                             _syms = [r[0] for r in cur.fetchall()]
                             for _sym in _syms:
                                 cur.execute("""INSERT INTO watchlist_agent_jobs
