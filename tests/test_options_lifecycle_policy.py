@@ -149,3 +149,60 @@ def test_csp_assignment_ok_objective_changes_read():
     s2 = _strategy("cash_secured_put", [_leg(1, "put", "short", 98, dte=25, opening=2.00)], opened_days_ago=6)
     d2 = decide(s2, {**eco, "mfe": None, "mae": None, "giveback": None}, POL)
     assert d2["recommendation"] == "DEFEND", d2
+
+
+# ── Phase 4+5: assignment review + alert dedupe (pure, patched I/O) ──────────
+
+import options_lifecycle_alerts as ola
+
+
+def test_expiry_day_and_itm_short_escalate(monkeypatch):
+    monkeypatch.setattr(ola, "_fundamentals", lambda u: {})
+    monkeypatch.setattr(ola, "_held_shares_live", lambda a, s: 100.0)
+    s = _strategy("covered_call", [_leg(1, "call", "short", 95, dte=0, opening=2.0)], share_qty=100)
+    s["account_key"] = "schwab_rollover_ira"
+    eco = {"dte_nearest": 0, "underlying_price": 100.0, "extrinsic_value": -5.0}
+    f = ola.assignment_review(s, eco, POL)
+    codes = {x["code"] for x in f}
+    assert "expiry_day" in codes
+    assert any(c.startswith("itm_short") for c in codes)
+    assert any(x["code"] == "early_assignment_extrinsic" for x in f)
+    assert all(x["urgency"] == "red" for x in f if x["code"] == "expiry_day")
+
+
+def test_under_covered_is_red(monkeypatch):
+    monkeypatch.setattr(ola, "_fundamentals", lambda u: {})
+    monkeypatch.setattr(ola, "_held_shares_live", lambda a, s: 125.0)
+    s = _strategy("covered_call", [_leg(1, "call", "short", 120, dte=30, opening=2.0, contracts=2)])
+    s["account_key"] = "schwab_rollover_ira"
+    f = ola.assignment_review(s, {"dte_nearest": 30, "underlying_price": 100.0}, POL)
+    uc = [x for x in f if x["code"] == "under_covered"]
+    assert uc and uc[0]["urgency"] == "red" and "200" in uc[0]["line"]
+
+
+def test_exdiv_unknown_is_a_finding_not_silence(monkeypatch):
+    monkeypatch.setattr(ola, "_fundamentals", lambda u: {})
+    monkeypatch.setattr(ola, "_held_shares_live", lambda a, s: 100.0)
+    s = _strategy("covered_call", [_leg(1, "call", "short", 120, dte=30, opening=2.0)])
+    s["account_key"] = "schwab_rollover_ira"
+    f = ola.assignment_review(s, {"dte_nearest": 30, "underlying_price": 100.0}, POL)
+    assert any(x["code"] == "exdiv_unknown" for x in f)
+
+
+def test_dedupe_key_changes_with_state():
+    d = {"recommendation": "HOLD", "urgency": "green"}
+    eco30 = {"dte_nearest": 30, "giveback": None, "mfe": None}
+    eco7 = {"dte_nearest": 7, "giveback": None, "mfe": None}
+    k1 = ola._dedupe_key(1, d, eco30, POL)
+    k2 = ola._dedupe_key(1, d, eco30, POL)
+    k3 = ola._dedupe_key(1, d, eco7, POL)   # new DTE window -> new key
+    k4 = ola._dedupe_key(1, {**d, "urgency": "amber"}, eco30, POL)
+    assert k1 == k2 and k1 != k3 and k1 != k4
+
+
+def test_giveback_bucket_steps():
+    eco_a = {"giveback": 100.0, "mfe": 1000.0}   # 10% -> bucket 0 (step 15)
+    eco_b = {"giveback": 320.0, "mfe": 1000.0}   # 32% -> bucket 2
+    assert ola._giveback_bucket(eco_a, POL) == 0
+    assert ola._giveback_bucket(eco_b, POL) == 2
+    assert ola._giveback_bucket({"giveback": None, "mfe": None}, POL) == -1
