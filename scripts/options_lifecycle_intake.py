@@ -168,6 +168,16 @@ def reconcile(dry: bool = False) -> dict:
                     cur, conn, broker=broker, account_key=ak, underlying=und,
                     legs=legs, source="broker_sync", held_shares=held,
                     notes="registered by lifecycle intake reconciler")
+                # v1.1 P5: broker holding a position IS fill evidence — OPEN event + bridge
+                try:
+                    from options_journal_bridge import (ensure_bridge_tables, emit_event,
+                                                        upsert_trade_instance)
+                    ensure_bridge_tables(cur, conn)
+                    emit_event(cur, conn, spid, "OPEN", "broker_sync",
+                               ref=f"{broker}:{ak}", details={"legs": len(legs)})
+                    upsert_trade_instance(cur, conn, spid)
+                except Exception as _e:
+                    print(f"  [journal-bridge] non-blocking: {str(_e)[:120]}")
                 report["new"].append({"strategy_position_id": spid, "key": list(key), "legs": len(legs)})
 
     # VANISHED: canonical open legs the broker no longer reports (skip errored accounts)

@@ -26,6 +26,9 @@
 
 ## TIER 2 — Active Operational Docs
 
+- **OPTIONS_LIFECYCLE_DESK.md** — Options Lifecycle Desk architecture & acceptance (2026-07-19, v1.1 same day): strategy-aware open-position management, journal bridge into trade_instances, ticker attribution, free-lane oversight. Supersedes the per-leg monitor sections of options-module.md for management decisions.
+
+
 ### Security & Safety
 | Document | Purpose | Status |
 |----------|---------|--------|

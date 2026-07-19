@@ -107,5 +107,14 @@
       "DAY",
       "GTC"
     ]
+  },
+  "oversight": {
+    "_comment": "v1.1 P7: FREE lanes only for configured exceptions; deterministic policy canonical; LLMs advisory-only, no write path into decisions/tickets/2FA/outcomes. paid_enabled stays false until the operator flips it.",
+    "free_enabled": true,
+    "paid_enabled": false,
+    "close_vs_roll_diff_dollars": 500,
+    "roll_material_debit_dollars": 250,
+    "notional_threshold_dollars": 25000,
+    "flip_window_minutes": 30
   }
 }

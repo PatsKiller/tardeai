@@ -29191,6 +29191,42 @@ def _options_lifecycle_post(base_path, body):
             str(body.get("source") or "operator_manual"), body.get("note") or "")}
     if action == "ticket-cancel":
         return {"ok": True, "data": tickets.cancel_ticket(cur, conn, int(body["ticket_id"]))}
+    if action == "attribution":
+        import importlib, ticker_attribution as _ta
+        _ta = importlib.reload(_ta)
+        if body.get("symbol"):
+            return {"ok": True, "data": _ta.ticker_attribution(cur, str(body["symbol"]))}
+        return {"ok": True, "data": _ta.portfolio_attribution(cur)}
+    if action == "journal-entry":
+        import importlib, options_journal_bridge as _ob
+        _ob = importlib.reload(_ob)
+        _ob.ensure_bridge_tables(cur, conn)
+        return {"ok": True, "data": _ob.journal_entry(cur, int(body["strategy_position_id"]))}
+    if action == "record-basis":
+        import importlib, options_lifecycle_basis as _bs
+        _bs = importlib.reload(_bs)
+        _bs.ensure_basis_tables(cur, conn)
+        return {"ok": True, "data": _bs.record_operator_basis(
+            cur, conn, int(body["leg_id"]), opening_premium=float(body["opening_premium"]),
+            opening_date=str(body.get("opening_date") or ""), contracts=float(body["contracts"]),
+            fees=body.get("fees"), source_ref=str(body.get("source_ref") or ""),
+            operator=str(body.get("operator") or "operator"), notes=body.get("notes") or "")}
+    if action == "request-review":
+        import importlib
+        import options_lifecycle_oversight as _ov
+        import options_lifecycle_model as _om
+        import options_lifecycle_engine as _oe
+        _ov, _om, _oe = importlib.reload(_ov), importlib.reload(_om), importlib.reload(_oe)
+        s = _om.strategy_with_legs(cur, int(body["strategy_position_id"]))
+        if not s:
+            return {"ok": False, "error": "unknown strategy"}
+        quotes = {l["leg_id"]: _oe.quote_leg(l) for l in s["legs"] if l["status"] == "open"}
+        eco = _oe.strategy_economics(s, quotes)
+        d = _oe.reduce_decision(_oe.decide(s, eco, _oe.policy(),
+                                           _oe.defense_posture_for(s["underlying"])), [], eco)
+        res = _ov.run_free_review(cur, conn, s, eco, d, "operator_requested")
+        return {"ok": True, "data": {"results": res,
+                                     "strongest": _ov.strongest_objection(cur, s["strategy_position_id"])}}
     return {"ok": False, "error": f"unknown lifecycle action {action}"}
 
 

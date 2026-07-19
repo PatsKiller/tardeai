@@ -34,6 +34,14 @@ from options_lifecycle_intake import reconcile
 SNAP = ROOT / "data" / "runtime" / "options_lifecycle_latest.json"
 
 
+def _oversight_line(cur, spid: int):
+    try:
+        from options_lifecycle_oversight import strongest_objection
+        return strongest_objection(cur, spid)
+    except Exception:
+        return None
+
+
 def run(dry: bool = False) -> dict:
     from db_adapter import _get_conn
     conn = _get_conn()
@@ -65,6 +73,15 @@ def run(dry: bool = False) -> dict:
                 did = record_decision(cur, conn, s["strategy_position_id"], snap_id, d, pol)
                 alert = process_alerts(cur, conn, s, eco, d, did, pol, notify=True,
                                        findings=findings)
+                # v1.1 P7: free-lane oversight ONLY on configured exceptions
+                try:
+                    from options_lifecycle_oversight import triggers, run_free_review
+                    trig = triggers(cur, s, eco, d)
+                    if trig:
+                        run_free_review(cur, conn, s, eco, d, trig[0],
+                                        snapshot_id=snap_id, decision_id=did)
+                except Exception as _e:
+                    print(f"  [oversight] non-blocking: {str(_e)[:100]}")
             out_positions.append({
                 "strategy_position_id": s["strategy_position_id"], "broker": s["broker"],
                 "account_key": s["account_key"], "strategy_type": s["strategy_type"],
@@ -81,6 +98,9 @@ def run(dry: bool = False) -> dict:
                                "giveback", "extrinsic_value", "short_distance_pct", "short_delta",
                                "max_spread_pct", "net", "flags")},
                 "decision": d, "alert": alert,
+                "oversight": _oversight_line(cur, s["strategy_position_id"]),
+                "journal": {"trade_uid": f"options_strategy_positions:{s['strategy_position_id']}",
+                            "deep_link": "/v3/trade-in-view"},
             })
         except Exception as e:
             out_positions.append({"strategy_position_id": s["strategy_position_id"],

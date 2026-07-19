@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-19 — Options Lifecycle Desk (v1.0 + v1.1 same day)
+
+Docs: `docs/OPTIONS_LIFECYCLE_DESK.md` · findings: `OPTIONS_LIFECYCLE_DESK_DIAGNOSIS_2026-07-19.md`, `OPTIONS_LIFECYCLE_V1_1_INTEGRATION_AUDIT_2026-07-19.md`.
+
+- **v1.0 (32eeb596..8c56ba66)** — strategy-aware open-position management built ahead of the first position (Phase-0 truth: ZERO open options anywhere). Canonical strategy model (never loose legs, roll ancestry, UNKNOWN stays NULL), versioned policy engine v1.0.0 with harvest/giveback + assignment/expiry review, persistent alert lifecycle, hash-bound 2FA tickets (manual-ticket boundary; Schwab pilot stays disarmed), first-class Lifecycle UI + Defense strip, outcomes ledger (0 rows, no fixtures), 8 fail-closed health checks. STRUCTURALLY COMPLETE / OPERATIONALLY VERIFIED (partial) / OUTCOME VALIDATED: NO.
+- **v1.1 (same session)** — single-primary recommendation reducer (precedence, subordinate context), ticket/2FA idempotency (one active ticket per key; challenge generations, revocation), contract-exact quote resolution (48/120/250 strike escalation + expiration verification), basis-resolution workflow (priority chain, operator evidence with mandatory document ref, cumulative roll economics), authoritative journal bridge (one strategy = one trade_instances row; identity strategy_position_id+roll_root_id+account+underlying; events from fill evidence only; v_options_journal), per-ticker stock/options/dividends attribution with machine-checked reconciliation invariant, free-lane exception oversight (advisory-only; paid disabled by default), alert identity + delivery evidence, Drive docs parity checker.
+
+
 ## 2026-07-16 — Morning ops stability (desk reliability + RI overnight)
 
 Findings: `docs/_findings/ops_morning_stability_2026-07-16.md`.

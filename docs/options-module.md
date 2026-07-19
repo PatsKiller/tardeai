@@ -1,5 +1,17 @@
 # Options Module — Architecture & Operations
 
+> **SUPERSESSION NOTE (2026-07-19):** Open-position MANAGEMENT is now owned by
+> the **Options Lifecycle Desk** — see `docs/OPTIONS_LIFECYCLE_DESK.md`
+> (canonical) and `docs/_findings/OPTIONS_LIFECYCLE_DESK_DIAGNOSIS_2026-07-19.md`
+> + `OPTIONS_LIFECYCLE_V1_1_INTEGRATION_AUDIT_2026-07-19.md`. This document
+> remains canonical for PROPOSAL GENERATION (options_engine +
+> options_desk_enterprise + approval queue), which the lifecycle desk does not
+> touch. The per-leg monitor described below (`monitor_positions`,
+> `options_monitored_*` tables) is superseded for management decisions; the
+> lifecycle desk's strategy-grouped model + policy engine is authoritative.
+> UI: the Options tab's lead view is now **Lifecycle**
+> (`/v3/trading?tab=Options&otab=Lifecycle`).
+
 **Location:** Trading hub → **Options** tab (`/v3/trading?tab=Options`)  
 **Status:** **Enterprise trade desk** — systematic proposals, enterprise risk gates, operator approval queue, position monitor, Hermes/TradeAI research bridge. Live execution is operator-approved (`options_pilot_arm` + desk queue + per-order 2FA).
 

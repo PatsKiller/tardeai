@@ -157,6 +157,12 @@ function StrategyCard({ p, onTicket, onAck }: { p: any; onTicket: (spid: number)
         <span title="worst leg bid/ask spread — liquidity truth">spread {fmtP(e.max_spread_pct)}</span>
       </div>
       <div style={{ fontSize: DASH.data, color: BB.text1, marginTop: 6 }}>{d.rationale}</div>
+      {p.oversight?.objection && (
+        <div style={{ fontSize: DASH.chip, color: BB.amber, marginTop: 3 }}
+          title={`free-lane exception review (${p.oversight.trigger}) — advisory only, deterministic decision stays canonical`}>
+          ✦ {p.oversight.lane} {p.oversight.verdict}: {p.oversight.objection}
+        </div>
+      )}
       {(d.alternatives || []).length > 0 && (
         <div style={{ fontSize: DASH.chip, color: BB.text3, marginTop: 4 }}>
           alternatives: {(d.alternatives || []).map((a: any) => a.note ? `${a.action} (${a.note})` : a.action).join(' · ')}

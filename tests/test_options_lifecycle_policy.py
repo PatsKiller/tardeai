@@ -322,3 +322,44 @@ def test_two_distinct_cc_strategies_have_distinct_keys():
     a = [{"occ_symbol": "CSCO  260821C00125000", "instruction": "BTC", "contracts": 1.0, "proposed_limit": 1.0}]
     b = [{"occ_symbol": "CSCO  260821C00140000", "instruction": "BTC", "contracts": 1.0, "proposed_limit": 1.0}]
     assert olt._idem_key(1, "close", a, "DAY") != olt._idem_key(2, "close", b, "DAY")
+
+
+# ── v1.1 P4-P7: basis math, oversight gating (pure) ──────────────────────────
+
+import options_lifecycle_oversight as oov
+
+
+def test_paid_gate_disabled_by_default(monkeypatch):
+    monkeypatch.setattr(oov, "_ocfg", lambda: {"paid_enabled": False})
+    g = oov.paid_gate(None, {}, [{"lane": "chatgpt", "verdict": "OBJECT"},
+                                 {"lane": "grok", "verdict": "CONCUR"}], True)
+    assert g["allowed"] is False and "DISABLED" in g["reason"]
+
+
+def test_paid_gate_needs_disagreement_or_request(monkeypatch):
+    monkeypatch.setattr(oov, "_ocfg", lambda: {"paid_enabled": True})
+    both_concur = [{"lane": "chatgpt", "verdict": "CONCUR"}, {"lane": "grok", "verdict": "CONCUR"}]
+    assert oov.paid_gate(None, {}, both_concur, False)["allowed"] is False
+    disagree = [{"lane": "chatgpt", "verdict": "OBJECT"}, {"lane": "grok", "verdict": "CONCUR"}]
+    assert oov.paid_gate(None, {}, disagree, False)["allowed"] is True
+
+
+def test_oversight_trigger_assignment_vs_harvest():
+    class _Cur:
+        def execute(self, *a): pass
+        def fetchone(self): return (0,)
+    s = {"strategy_position_id": 1, "strategy_type": "covered_call",
+         "legs": [{"status": "open", "contracts": 1, "multiplier": 100}]}
+    d = {"recommendation": "ASSIGNMENT_CRITICAL", "urgency": "red",
+         "subordinate": [{"recommendation": "HARVEST_FULL", "line": "80% captured"}]}
+    t = oov.triggers(_Cur(), s, {"underlying_price": 100}, d)
+    assert "assignment_vs_harvest_conflict" in t
+
+
+def test_operator_basis_requires_source_ref():
+    from options_lifecycle_basis import record_operator_basis
+    class _Cur:
+        def execute(self, *a): raise AssertionError("must not reach DB without source_ref")
+    r = record_operator_basis(_Cur(), None, 1, opening_premium=1.0, opening_date="2026-07-01",
+                              contracts=1, fees=None, source_ref="  ", operator="john")
+    assert r["ok"] is False and "REQUIRED" in r["error"]

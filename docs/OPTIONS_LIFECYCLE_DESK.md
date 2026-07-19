@@ -78,20 +78,68 @@ UI:  /v3/trading?tab=Options&otab=Lifecycle (lead tab) + Defense compact strip
 - The existing options proposal engine (options_engine.py + desk enterprise)
   is UNTOUCHED.
 
-## Migration & rollback
+## Migration & rollback (v1.1-corrected counts)
 
-Migration: additive only — five new tables (`options_strategy_positions`,
-`options_strategy_legs`, `options_position_snapshots`,
-`options_lifecycle_decisions`, `options_lifecycle_alerts`,
-`options_lifecycle_tickets`, `options_lifecycle_outcomes`) created idempotently
-by `ensure_tables` (DDL commits immediately). No existing table altered; the
-empty `options_monitored_*` tables are frozen/superseded, their monitor cron
-untouched.
+Migration: additive only — **ten** lifecycle tables, created idempotently (DDL
+commits immediately): `options_strategy_positions`, `options_strategy_legs`,
+`options_position_snapshots`, `options_lifecycle_decisions`,
+`options_lifecycle_alerts`, `options_lifecycle_tickets`,
+`options_lifecycle_outcomes`, plus v1.1 `options_basis_evidence`,
+`options_journal_events`, `options_oversight_runs`; one view
+`v_options_journal`; additive columns on `options_strategy_legs`
+(`basis_source`) and rows in `trade_instances`
+(source_table='options_strategy_positions' — its own UNIQUE constraint).
+The empty `options_monitored_*` tables AND orphan `journal_options_groups` are
+frozen/superseded; existing monitor cron untouched; `trade_closed` never
+written.
 
-Rollback: remove the three cron lines (`options_lifecycle`,
-`options_lc_digest`), drop the seven new tables, delete the five
-`options_lifecycle_*.py` scripts + UI Lifecycle tab/strip + API routes. Nothing
-else depends on them.
+Modules (**eleven**): `options_lifecycle_{model,intake,engine,alerts,tickets,
+health,run,digest,basis,oversight}.py` + `options_journal_bridge.py` +
+`ticker_attribution.py`.
+
+Exact cron lines (installed 2026-07-19):
+```
+*/20 9-16 * * 1-5 cd <repo> && flock -n /tmp/options_lifecycle.lock bash -c "set -a; . ./.env; set +a; .venv/bin/python scripts/options_lifecycle_run.py" >> logs/options_lifecycle.log 2>&1
+*/5 15 * * 1-5   cd <repo> && flock -n /tmp/options_lifecycle.lock bash -c "set -a; . ./.env; set +a; .venv/bin/python scripts/options_lifecycle_run.py" >> logs/options_lifecycle.log 2>&1
+5 8 * * 1-5      cd <repo> && flock -n /tmp/options_lc_digest.lock bash -c "set -a; . ./.env; set +a; .venv/bin/python scripts/options_lifecycle_digest.py" >> logs/options_lifecycle.log 2>&1
+```
+
+Rollback dependencies: remove the three cron lines; drop the ten tables + view;
+delete the twelve scripts, the UI Lifecycle tab/strip, and the
+`/api/v2/options/lifecycle*` routes; `DELETE FROM trade_instances WHERE
+source_table='options_strategy_positions'`. Nothing else depends on them —
+the proposal engine, Defense oversight, journal builders, and Drive sync are
+all untouched by rollback.
+
+## v1.1 additions (2026-07-19, same day)
+
+- **Single-primary reducer** — precedence DATA_BLOCKED > EXPIRATION_CRITICAL >
+  ASSIGNMENT_CRITICAL > DEFEND > ROLL > ACCEPT_ASSIGNMENT > EXERCISE_REVIEW >
+  HARVEST_FULL > HARVEST_PARTIAL > LET_MATURE > HOLD; losers persist as
+  subordinate context in the same decision/alert.
+- **Ticket/2FA idempotency** — one active ticket per idempotency key
+  (position+action+legs+prices+TIF+policy); repeat approve revokes the prior
+  challenge (generation tracked); 2FA text names the exact order.
+- **Contract-exact quotes** — escalating strike windows (48/120/250) +
+  expiration verification; provenance persisted; neighbors never price tickets.
+- **Basis workflow** — priority chain broker_fill → broker_orders →
+  intent_evidence → txn_history → roll_parent → operator_evidence (document ref
+  REQUIRED, visibly labeled); cumulative roll economics across roll_root_id.
+- **Journal bridge** — one strategy = one trade_instances row
+  (trade_uid `options_strategy_positions:<id>`), journal events from fill
+  evidence only, `v_options_journal` canonical read, deep links both ways.
+  Identity: strategy_position_id + roll_root_id + account_key + underlying —
+  never underlying+date.
+- **Ticker attribution** — separate stock / options / dividends / fees
+  components with the machine-checked invariant
+  `stock + options + dividends − fees = combined`; protective-put premium is a
+  labeled hedge cost; covered-call premium never inflates stock return.
+- **Free-lane oversight** — llm_lane chatgpt/grok on configured exception
+  triggers only; verdicts CONCUR/QUALIFY/OBJECT/UNAVAILABLE; advisory-only (no
+  write path into decisions/tickets/2FA/outcomes); **paid disabled by default**.
+- **Alert identity + delivery evidence** — every alert names account/position/
+  contracts/strikes/expirations/decision; attempted/delivered/message_id/
+  failure/retry persisted.
 
 ## Acceptance evidence
 

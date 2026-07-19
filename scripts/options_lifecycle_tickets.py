@@ -484,6 +484,15 @@ def record_fill_evidence(cur, conn, ticket_id: int, fills: list[dict], source: s
                 (new_status, json.dumps([{"source": source, "fills": applied,
                                           "note": operator_note,
                                           "at": datetime.now(timezone.utc).isoformat()}]), ticket_id))
+    # v1.1 P5: journal events + canonical trade_instances bridge — FILL EVIDENCE ONLY
+    try:
+        from options_journal_bridge import ensure_bridge_tables, emit_event, upsert_trade_instance
+        ensure_bridge_tables(cur, conn)
+        emit_event(cur, conn, spid, "CLOSE" if all_closed else "PARTIAL_CLOSE",
+                   source, ref=f"ticket:{ticket_id}", details={"fills": applied})
+        upsert_trade_instance(cur, conn, spid)
+    except Exception as _e:
+        print(f"  [journal-bridge] non-blocking: {str(_e)[:120]}")
     if all_closed and ticket["kind"] == "close":
         cur.execute("""UPDATE options_strategy_positions SET status='closed', closed_at=now(),
                        updated_at=now() WHERE strategy_position_id=%s""", (spid,))
