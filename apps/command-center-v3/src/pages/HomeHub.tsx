@@ -152,6 +152,13 @@ export default function HomeHub({ onDrill }: Props) {
                 return null
               })()}
               {(() => {
+                const sl = (posture as any)?.inverse_stoplights
+                if (sl?.line) {
+                  return <span style={{ color: 'var(--text2)', fontWeight: 700 }} title={sl.tip || 'inverse-ETF hedge stoplights — THESIS|ENTRY|MANAGE|EXIT on the Defense page'}>{sl.line}</span>
+                }
+                return null
+              })()}
+              {(() => {
                 const rp = (posture as any)?.rotation_plan_counts
                 if (!rp || (!rp.plans && !rp.rollback_open)) return null
                 return (

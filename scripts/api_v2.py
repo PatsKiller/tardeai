@@ -11160,6 +11160,19 @@ def _defense_posture(query=None):
         out["hedge_state"] = hs
     except Exception:
         pass
+    try:
+        sl = _load_json(PROJECT_ROOT / "data" / "runtime" / "inverse_stoplights_latest.json")
+        active = [c for c in (sl or {}).get("candidates", [])
+                  if c["lights"]["THESIS"]["state"] != "RED"]
+        if active:
+            c0 = active[0]
+            L = c0["lights"]
+            out["inverse_stoplights"] = {
+                "line": (f"🚦 {c0['inverse']}/{c0['bench']}: THESIS {L['THESIS']['state']} · "
+                         f"ENTRY {L['ENTRY']['state']} — {L['ENTRY']['label']}"),
+                "tip": L["ENTRY"].get("reason", "")}
+    except Exception:
+        pass
     # net-exposure line inputs (D2 preview): cash weight from book-map total vs overview value
     try:
         bm = _portfolio_book_map() or {}
@@ -29149,6 +29162,16 @@ def _costs_by_trade(query=None):
     return _costs(query, "by-trade")
 
 
+def _inverse_stoplights_get(query=None):
+    """GET /api/v2/defense/inverse-stoplights — four labeled lights per -1x
+    candidate (runtime snapshot; refreshed by the defense nightly + refresh)."""
+    import json as _json
+    p = PROJECT_ROOT / "data" / "runtime" / "inverse_stoplights_latest.json"
+    if p.exists():
+        return _json.loads(p.read_text())
+    return {"candidates": [], "note": "no stoplight evaluation yet"}
+
+
 def _olc():
     """Options lifecycle modules with reload — same dev-cadence pattern as _dex()."""
     import importlib
@@ -32635,6 +32658,7 @@ ROUTES = {
     "/api/v2/options/open-positions": _options_open_positions,
     "/api/v2/options/overview": _options_overview,
     "/api/v2/options/lifecycle": _options_lifecycle_get,
+    "/api/v2/defense/inverse-stoplights": _inverse_stoplights_get,
     "/api/v2/journal/costs/summary": _costs_summary,
     "/api/v2/journal/costs/timeseries": _costs_timeseries,
     "/api/v2/journal/costs/by-security": _costs_by_security,

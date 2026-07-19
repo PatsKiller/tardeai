@@ -11,6 +11,7 @@ import ExecutionPanel from '../components/defense/ExecutionPanel'
 import ReviewConsole from '../components/defense/ReviewConsole'
 import RotationPlanPanel from '../components/defense/RotationPlanPanel'
 import OptionsLifecycleStrip from '../components/defense/OptionsLifecycleStrip'
+import InverseStoplightRail from '../components/defense/InverseStoplightRail'
 
 function ago(ts?: string | null): string {
   if (!ts) return 'never'
@@ -174,6 +175,9 @@ export default function DefenseHub() {
 
       {/* Options Lifecycle compact summary — counts only, deep-links to the full desk */}
       <OptionsLifecycleStrip />
+
+      {/* Inverse-ETF hedge stoplights — THESIS|ENTRY|MANAGE|EXIT, labeled */}
+      <InverseStoplightRail />
 
       {/* Row 2b — THE ROTATION PLAN (v5): trims, ladders, re-entry watches — the page's memory */}
       <RotationPlanPanel plan={recs?.rotation_plan || []} onConfirmed={refetchRecs} oversight={recsData?.oversight} />

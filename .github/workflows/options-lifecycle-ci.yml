@@ -9,6 +9,9 @@ on:
       - 'scripts/check_docs_drive_parity.py'
       - 'tests/test_options_lifecycle*.py'
       - 'tests/test_econfirm_parser.py'
+      - 'tests/test_inverse_stoplights.py'
+      - 'scripts/defense_inverse_stoplights.py'
+      - 'scripts/research/inverse_hedge_backtest.py'
       - 'tests/fixtures/econfirm/**'
       - 'config/options_lifecycle_policy.json'
       - 'apps/command-center-v3/**'
@@ -41,7 +44,7 @@ jobs:
       - name: pure + REAL-PG + eConfirm tests (skips are FAILURES; JUnit published)
         run: |
           pytest tests/test_options_lifecycle_policy.py tests/test_options_lifecycle_migration.py \
-            tests/test_econfirm_parser.py \
+            tests/test_econfirm_parser.py tests/test_inverse_stoplights.py \
             -v -rs --junitxml=/tmp/junit.xml 2>&1 | tee /tmp/pytest.out
           if grep -qE "SKIPPED|skipped" /tmp/pytest.out; then
             echo "::error::PostgreSQL-backed tests were skipped — CI must run them"; exit 1
