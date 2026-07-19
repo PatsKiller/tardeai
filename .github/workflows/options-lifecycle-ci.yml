@@ -1,0 +1,47 @@
+name: options-lifecycle-ci
+on:
+  push:
+    paths: ['scripts/options_*.py', 'scripts/investment_costs.py', 'scripts/ticker_attribution.py',
+            'tests/test_options_lifecycle*.py', 'config/options_lifecycle_policy.json',
+            'apps/command-center-v3/**', '.github/workflows/options-lifecycle-ci.yml']
+  workflow_dispatch: {}
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: ci, POSTGRES_DB: trade_ai }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DB_NAME: trade_ai
+      DB_USER: postgres
+      DB_PASSWORD: ci
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      TRADE_AI_CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install pytest psycopg2-binary
+      - name: pure policy tests + REAL-PG integration (skips are FAILURES here)
+        run: |
+          pytest tests/test_options_lifecycle_policy.py tests/test_options_lifecycle_migration.py \
+            -v -rs 2>&1 | tee /tmp/pytest.out
+          if grep -qE "SKIPPED|skipped" /tmp/pytest.out; then
+            echo "::error::PostgreSQL-backed tests were skipped — CI must run them"; exit 1
+          fi
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: typecheck + design guard + build
+        working-directory: apps/command-center-v3
+        run: |
+          npm ci
+          npm run build
