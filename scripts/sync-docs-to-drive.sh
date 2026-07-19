@@ -179,7 +179,7 @@ while IFS= read -r filepath; do
   fsize=$(stat -c%s "$filepath" 2>/dev/null || echo 0)
   if [ "$fsize" -le 1048576 ]; then
     case "$filepath" in
-      *.md)  CONVERT_FLAG="--convert-to=doc" ;;
+      *.md)  CONVERT_FLAG="" ;;   # v1.2.3 P0-2: markdown uploads RAW — byte parity with the repo; Docs conversion destroyed punctuation/placeholders (validator finding)
       *.csv) CONVERT_FLAG="--convert-to=sheet" ;;
       *.txt) CONVERT_FLAG="--convert-to=doc" ;;
     esac

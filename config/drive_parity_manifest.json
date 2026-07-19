@@ -1,0 +1,102 @@
+{
+ "_comment": "v1.2.3 P0-2 canonical Drive-parity manifest \u2014 verification is ID-BOUND (never filename discovery); raw .md sync (no Docs conversion); parity = SHA-256(repo bytes) == SHA-256(Drive bytes), LF/CRLF normalization only if transport changes it. Duplicate filenames WARN and never satisfy parity.",
+ "normalization_policy_version": "raw-bytes-v1",
+ "documents": [
+  {
+   "repo_path": "docs/OPTIONS_LIFECYCLE_DESK.md",
+   "drive_file_id": "1hnyOMS532aylWuC21983Zq7fCQFEI74u",
+   "expected_mime": "text/markdown",
+   "repo_sha256": "a9bf37cea1a6f13bb064f236579788de9810a18646eb03197a01f3c6ff35e03c",
+   "drive_sha256": "a9bf37cea1a6f13bb064f236579788de9810a18646eb03197a01f3c6ff35e03c",
+   "sync_mode": "raw_md",
+   "status": "canonical",
+   "duplicate_copies_on_drive": 0,
+   "byte_parity": true,
+   "last_verified": "2026-07-19T21:22:47.528764Z"
+  },
+  {
+   "repo_path": "docs/_findings/OPTIONS_LIFECYCLE_DESK_DIAGNOSIS_2026-07-19.md",
+   "drive_file_id": "1MtukKuVankjUNsBGc0Zthoqkon4iIjpv",
+   "expected_mime": "text/markdown",
+   "repo_sha256": "2db0ed3d3e020f75053b5f12f41849fa6ec60dde36bbd6812175d4f63dbd69d2",
+   "drive_sha256": "2db0ed3d3e020f75053b5f12f41849fa6ec60dde36bbd6812175d4f63dbd69d2",
+   "sync_mode": "raw_md",
+   "status": "canonical",
+   "duplicate_copies_on_drive": 0,
+   "byte_parity": true,
+   "last_verified": "2026-07-19T21:22:48.935537Z"
+  },
+  {
+   "repo_path": "docs/_findings/OPTIONS_LIFECYCLE_V1_1_INTEGRATION_AUDIT_2026-07-19.md",
+   "drive_file_id": "1T7kJGNkJYJrWQ8kS4l4EmqGMJqsVHM82",
+   "expected_mime": "text/markdown",
+   "repo_sha256": "8284b5d56213cdef675b60bb29262b8c59a6e6ea026c14affa50365bb620c149",
+   "drive_sha256": "8284b5d56213cdef675b60bb29262b8c59a6e6ea026c14affa50365bb620c149",
+   "sync_mode": "raw_md",
+   "status": "canonical",
+   "duplicate_copies_on_drive": 0,
+   "byte_parity": true,
+   "last_verified": "2026-07-19T21:22:50.312789Z"
+  },
+  {
+   "repo_path": "docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md",
+   "drive_file_id": "1wCV35-iZKzyE_Nk_98-6YYgzhnuYqKm5",
+   "expected_mime": "text/markdown",
+   "repo_sha256": "0e15ee1bf2719e794fac2906e12564cd8dddc9f71af56b11164a3fbc5c3c75dd",
+   "drive_sha256": "0e15ee1bf2719e794fac2906e12564cd8dddc9f71af56b11164a3fbc5c3c75dd",
+   "sync_mode": "raw_md",
+   "status": "canonical",
+   "duplicate_copies_on_drive": 0,
+   "byte_parity": true,
+   "last_verified": "2026-07-19T21:22:52.057073Z"
+  },
+  {
+   "repo_path": "docs/COST_INTELLIGENCE_ARCHITECTURE.md",
+   "drive_file_id": "1QscJJpdYQpzJFIE44zQyqNDwjIHIwfbE",
+   "expected_mime": "text/markdown",
+   "repo_sha256": "a1471ab7364481e3bf3d314a28b7675e251ce09614ebdbe806f87a1ca14347ec",
+   "drive_sha256": "a1471ab7364481e3bf3d314a28b7675e251ce09614ebdbe806f87a1ca14347ec",
+   "sync_mode": "raw_md",
+   "status": "canonical",
+   "duplicate_copies_on_drive": 0,
+   "byte_parity": true,
+   "last_verified": "2026-07-19T21:22:53.672013Z"
+  },
+  {
+   "repo_path": "docs/options-module.md",
+   "drive_file_id": "1MbKlRV2ke_1YlcOw-Fh06Bu20EDb-Bk5",
+   "expected_mime": "text/markdown",
+   "repo_sha256": "c5c94a4d61dc4028095eeebbf0fdfaaf1b8b76a55f4b9b10517ef9f2fc7baf9d",
+   "drive_sha256": "c5c94a4d61dc4028095eeebbf0fdfaaf1b8b76a55f4b9b10517ef9f2fc7baf9d",
+   "sync_mode": "raw_md",
+   "status": "canonical",
+   "duplicate_copies_on_drive": 1,
+   "byte_parity": true,
+   "last_verified": "2026-07-19T21:22:56.783208Z"
+  },
+  {
+   "repo_path": "docs/DOCUMENTATION_INDEX.md",
+   "drive_file_id": "1--PrUDM-CELhhMvKMUA9razfYuKYJB1-",
+   "expected_mime": "text/markdown",
+   "repo_sha256": "bc0885b97cab6e654fd78785f7b51b0a1dcfa56e251999afd6428ef4b0fd509f",
+   "drive_sha256": "bc0885b97cab6e654fd78785f7b51b0a1dcfa56e251999afd6428ef4b0fd509f",
+   "sync_mode": "raw_md",
+   "status": "canonical",
+   "duplicate_copies_on_drive": 1,
+   "byte_parity": true,
+   "last_verified": "2026-07-19T21:22:58.853637Z"
+  },
+  {
+   "repo_path": "docs/CHANGELOG.md",
+   "drive_file_id": "1QyHLDQF0diK48-kzLweIx5PLudoB1YUl",
+   "expected_mime": "text/markdown",
+   "repo_sha256": "59cde9d972768efb31bfa3eba505227a2967a4bb3a9f4722f57c6ccb48cdc397",
+   "drive_sha256": "59cde9d972768efb31bfa3eba505227a2967a4bb3a9f4722f57c6ccb48cdc397",
+   "sync_mode": "raw_md",
+   "status": "canonical",
+   "duplicate_copies_on_drive": 13,
+   "byte_parity": true,
+   "last_verified": "2026-07-19T21:23:00.369898Z"
+  }
+ ]
+}
