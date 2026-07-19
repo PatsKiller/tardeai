@@ -698,3 +698,37 @@ def test_outbox_crash_after_claim_recovers(ephemeral_db):
     assert r["projected"] == 1
     cur.execute("SELECT state FROM journal_projection_outbox WHERE strategy_position_id=%s", (spid,))
     assert cur.fetchone()[0] == "PROJECTED"
+
+
+def test_package_price_never_becomes_leg_basis(ephemeral_db, monkeypatch):
+    """v1.2.3 P0-1: with only a package net price available, the resolver
+    refuses — options_strategy_legs.opening_price stays NULL."""
+    conn = ephemeral_db
+    cur = _build_all(conn)
+    import options_lifecycle_basis as ob
+    from options_lifecycle_model import strategy_with_legs
+    spid, (leg1, leg2) = _two_leg_provisional(cur, conn)
+    pkg_orders = [{"orderId": "oPKG", "status": "FILLED", "price": 0.80,
+                   "orderLegCollection": [
+                       {"instrument": {"symbol": "TEST  260918P00105000"}, "quantity": 1, "legId": 1},
+                       {"instrument": {"symbol": "TEST  260918P00100000"}, "quantity": 1, "legId": 2}],
+                   "orderActivityCollection": []}]
+    class _ST:
+        @staticmethod
+        def get_orders(ak):
+            return {"status": "ok", "orders": pkg_orders}
+    monkeypatch.setitem(sys.modules, "schwab_transport", _ST)
+    s = strategy_with_legs(cur, spid)
+    l1 = next(l for l in s["legs"] if l["leg_id"] == leg1)
+    r = ob.resolve_leg_basis(cur, conn, l1, s)
+    assert r["resolved"] is False
+    cur.execute("SELECT opening_price FROM options_strategy_legs WHERE leg_id=%s", (leg1,))
+    assert cur.fetchone()[0] is None                 # package price NEVER written
+    # now provide exec-level evidence → EXACT promotes with the leg's own VWAP
+    pkg_orders[0]["orderActivityCollection"] = [{"activityId": "a1", "executionLegs": [
+        {"legId": 1, "price": 1.52, "quantity": 1, "time": "T", "executionId": "e1"}]}]
+    r2 = ob.resolve_leg_basis(cur, conn, l1, s)
+    assert r2["resolved"] and r2["premium"] == 1.52 and r2["source"] == "broker_orders"
+    cur.execute("SELECT opening_price, basis_source FROM options_strategy_legs WHERE leg_id=%s", (leg1,))
+    row = cur.fetchone()
+    assert float(row[0]) == 1.52 and row[1] == "broker_orders"

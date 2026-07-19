@@ -50,18 +50,17 @@ def ensure_basis_tables(cur, conn):
 def _txn_history_basis(cur, occ_ident: dict, account_key: str) -> dict | None:
     """Ledger match: an option txn would carry the OCC-ish symbol; today the
     ledger holds zero option rows, so this returns None honestly."""
-    cur.execute("""SELECT trade_date, price, quantity, amount FROM trade_transactions
-                   WHERE upper(symbol) LIKE %s AND action ILIKE 'buy%%' OR
-                         upper(symbol) LIKE %s AND action ILIKE 'sell%%'
-                   ORDER BY trade_date LIMIT 5""",
-                (occ_ident.get("underlying", "") + "%", occ_ident.get("underlying", "") + "%"))
-    return None  # option rows are not representable in the current ledger shape — fail honest
+    # The current ledger shape cannot represent option contracts (verified in
+    # the v1.2 audit) — this resolver is a documented honest no-op until the
+    # ledger gains OCC-typed rows. No query is issued (a probe here aborted
+    # transactions in schema-isolated tests for zero benefit).
+    return None
 
 
 def _schwab_order_history_basis(cur, leg: dict, s: dict) -> dict | None:
-    """Priority 1+2 for Schwab: opening fills from broker order history
-    (read-only). Matches the exact OCC symbol in filled orders; returns
-    {premium, fees, ref} or None — never a guess."""
+    """v1.2.3 P0-1: EXECUTION-LEVEL basis via the canonical parser. Only
+    EXACT_EXECUTION_BASIS promotes; PARTIAL persists as incomplete evidence
+    (recorded, never promoting); package net price is NEVER a per-leg basis."""
     if s["broker"] != "schwab":
         return None
     try:
@@ -69,25 +68,30 @@ def _schwab_order_history_basis(cur, leg: dict, s: dict) -> dict | None:
         get_orders = getattr(st, "get_orders", None)
         if get_orders is None:
             return None
-        orders = get_orders(s["account_key"])
-        if isinstance(orders, dict) and orders.get("status") not in (None, "ok"):
-            return None
-        for o in (orders.get("orders") if isinstance(orders, dict) else orders) or []:
-            if str(o.get("status", "")).upper() not in ("FILLED", "REPLACED"):
-                continue
-            for leg_o in o.get("orderLegCollection", []) or []:
-                sym = ((leg_o.get("instrument") or {}).get("symbol") or "")
-                if sym.strip() != leg["occ_symbol"].strip():
-                    continue
-                px = o.get("price") or next(
-                    (a.get("executionLegs", [{}])[0].get("price")
-                     for a in (o.get("orderActivityCollection") or []) if a.get("executionLegs")),
-                    None)
-                if px:
-                    return {"premium": float(px), "fees": None,
-                            "ref": f"schwab_order:{o.get('orderId')}"}
+        raw = get_orders(s["account_key"])
+        orders = (raw.get("orders") if isinstance(raw, dict) else raw)
+        if isinstance(raw, dict) and raw.get("status") not in (None, "ok"):
+            orders = None
     except Exception:
-        return None
+        orders = None
+    from options_schwab_exec_parser import resolve_leg_execution_basis
+    r = resolve_leg_execution_basis(orders, leg["occ_symbol"])
+    if r["status"] == "EXACT_EXECUTION_BASIS":
+        return {"premium": r["vwap"], "fees": r.get("fees"),
+                "ref": f"schwab_exec:{r['order_id']}:{','.join(r['execution_ids'])}"}
+    if r["status"] == "PARTIAL_EXECUTION_BASIS":
+        # persist incomplete evidence for audit — do NOT apply to the leg
+        try:
+            cur.execute("""INSERT INTO options_basis_evidence
+                (leg_id, strategy_position_id, occ_symbol, account_key, opening_premium,
+                 contracts, source_kind, source_ref, review_status, notes)
+                VALUES (%s,%s,%s,%s,%s,%s,'broker_orders',%s,'unreviewed',
+                        'PARTIAL_EXECUTION_BASIS — non-promoting evidence')""",
+                (leg["leg_id"], s["strategy_position_id"], leg["occ_symbol"].strip(),
+                 s["account_key"], r["vwap"], r["contracts"],
+                 f"schwab_exec_partial:{r['order_id']}"))
+        except Exception:
+            pass
     return None
 
 
