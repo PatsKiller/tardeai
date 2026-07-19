@@ -182,16 +182,14 @@ def classify_strategy(legs: list[dict], held_shares: float = 0) -> str:
                 return "collar"
             if c["side"] == p["side"] == "long":
                 return "straddle" if c["strike"] == p["strike"] else "strangle"
-        if len(shorts) == 1 and len(longs) == 1 and calls and puts is not None:
-            same_type = (len(calls) == 2 or len(puts) == 2)
-            if same_type:
-                s, g = shorts[0], longs[0]
-                # net direction decides credit vs debit when opening prices known;
-                # strike relation is the structural tell and always available
-                if s.get("opening_price") is not None and g.get("opening_price") is not None:
-                    net = s["opening_price"] - g["opening_price"]
-                    return "credit_spread" if net > 0 else "debit_spread"
-                return "credit_spread" if abs(s["strike"] - g["strike"]) > 0 else "unknown_multi_leg"
+        if len(shorts) == 1 and len(longs) == 1 and (len(calls) == 2 or len(puts) == 2):
+            s, g = shorts[0], longs[0]
+            # net direction decides credit vs debit when opening prices are known;
+            # without basis the structure is real but its economics are UNKNOWN
+            if s.get("opening_price") is not None and g.get("opening_price") is not None:
+                net = s["opening_price"] - g["opening_price"]
+                return "credit_spread" if net > 0 else "debit_spread"
+            return "credit_spread" if abs(s["strike"] - g["strike"]) > 0 else "unknown_multi_leg"
     return "unknown_multi_leg"
 
 

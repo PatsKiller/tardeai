@@ -1,0 +1,77 @@
+{
+  "_comment": "Options Lifecycle Desk policy — VERSIONED. Every decision row records the version that produced it. Edits bump policy_version (semver) with a dated note in policy_changelog. No literals in code; the engine reads only this file. No recommendation may fire solely because P&L is positive — every rule couples profit state to time, risk, or structure state.",
+  "policy_version": "1.0.0",
+  "policy_changelog": [
+    {"version": "1.0.0", "date": "2026-07-19", "note": "initial pre-registration — thresholds seeded from prompt + desk practice, min_sample tuning gate applies before any change proposal"}
+  ],
+  "quotes": {
+    "max_quote_age_minutes": 20,
+    "max_leg_spread_pct_for_actionable": 15.0,
+    "market_hours_only_note": "off-hours snapshots are informational; tickets always refetch"
+  },
+  "covered_call": {
+    "harvest_full_pct_captured": 65,
+    "harvest_min_days_held": 5,
+    "harvest_min_remaining_premium_dollars": 200,
+    "early_harvest_pct_if_fast": 50,
+    "fast_capture_days": 7,
+    "defend_delta": 0.60,
+    "defend_strike_breach_pct": 1.0,
+    "roll_review_dte": 14,
+    "exdiv_extrinsic_warning": true,
+    "let_mature_dte": 7,
+    "let_mature_pct_captured": 85
+  },
+  "cash_secured_put": {
+    "harvest_full_pct_captured": 60,
+    "harvest_min_days_held": 5,
+    "defend_delta": 0.45,
+    "defend_underlying_drop_from_entry_pct": -8.0,
+    "assignment_ok_hold_note": "if operator_objective=assignment_ok, deterioration reads as ACCEPT_ASSIGNMENT review, not DEFEND",
+    "roll_review_dte": 10
+  },
+  "protective_put": {
+    "never_harvest_solely_on_profit": true,
+    "hedge_still_needed_states": ["WEAKENING", "LAGGING"],
+    "roll_forward_dte": 21,
+    "convexity_floor_delta": 0.10,
+    "replacement_review_giveback_pct": 50
+  },
+  "long_option": {
+    "giveback_alert_pct": 35,
+    "giveback_harvest_pct": 50,
+    "scale_out_mfe_multiple": 2.0,
+    "theta_burn_warning_pct_per_week": 8.0,
+    "thesis_review_dte": 21,
+    "min_days_held_before_harvest": 2
+  },
+  "spread": {
+    "credit_harvest_pct_captured": 55,
+    "credit_defend_short_delta": 0.35,
+    "credit_defend_short_distance_pct": 2.0,
+    "debit_harvest_pct_of_max": 70,
+    "max_loss_consumed_defend_pct": 60,
+    "pin_risk_window_dte": 3,
+    "close_as_spread_default": true,
+    "leg_out_requires_explicit_operator": true
+  },
+  "assignment": {
+    "escalation_dte_windows": [14, 7, 3, 1, 0],
+    "near_money_pct": 1.5,
+    "early_assignment_extrinsic_floor_dollars": 15,
+    "do_not_expire_unreviewed": true,
+    "auto_exercise_threshold_note": "OCC auto-exercises 0.01 ITM at expiry — expiry-day ITM without review is a failure"
+  },
+  "alerts": {
+    "urgent_unacked_escalate_hours": 4,
+    "urgent_unacked_max_escalations": 2,
+    "telegram_urgencies": ["red", "amber"],
+    "daily_digest": true,
+    "giveback_notify_step_pct": 15
+  },
+  "tuning": {
+    "min_closed_positions_per_strategy": 20,
+    "max_threshold_change_pct": 20,
+    "note": "no automatic tuning — bounded reviewable proposals only, after min sample"
+  }
+}
