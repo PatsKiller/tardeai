@@ -29134,6 +29134,20 @@ def _options_lifecycle_get():
              "status": r[3], "tif": r[4], "created_at": str(r[5])} for r in cur.fetchall()]
     except Exception:
         payload["live_tickets"] = []
+    try:
+        cur.execute("""SELECT o.strategy_position_id, p.underlying, p.strategy_type,
+                              o.recommendation_at_action, o.operator_action, o.realized_pnl,
+                              o.closed_at
+                       FROM options_lifecycle_outcomes o
+                       JOIN options_strategy_positions p USING (strategy_position_id)
+                       ORDER BY o.closed_at DESC LIMIT 15""")
+        payload["closed_outcomes"] = [
+            {"strategy_position_id": r[0], "underlying": r[1], "strategy_type": r[2],
+             "recommendation": r[3], "operator_action": r[4],
+             "realized_pnl": float(r[5]) if r[5] is not None else None,
+             "closed_at": str(r[6])} for r in cur.fetchall()]
+    except Exception:
+        payload["closed_outcomes"] = []
     return payload
 
 

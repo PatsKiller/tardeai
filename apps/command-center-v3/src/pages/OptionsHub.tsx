@@ -9,6 +9,7 @@ import OptionPositionCardV4 from '../components/OptionPositionCardV4'
 import OptionReviewBar from '../components/OptionReviewBar'
 import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualExecutionModal'
 import ManualExecutionLog from '../components/ManualExecutionLog'
+import OptionsLifecycleView from '../components/options/OptionsLifecycleView'
 
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -22,7 +23,7 @@ import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Proposals', 'Open Options', 'Strategy Overview', 'Options Trends'] as const
+const TABS = ['Lifecycle', 'Proposals', 'Open Options', 'Strategy Overview', 'Options Trends'] as const
 const LEGACY_TAB_ALIASES: Record<string, typeof TABS[number]> = {
   'Open Positions': 'Open Options',
 }
@@ -48,7 +49,9 @@ type Position = OptionPosition
 export default function OptionsHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   const [searchParams, setSearchParams] = useSearchParams()
-  const urlTab = searchParams.get('tab')
+  // otab: deep-link param for THIS hub's tabs (tab= belongs to TradingHub —
+  // Defense's lifecycle strip links /trading?tab=Options&otab=Lifecycle)
+  const urlTab = searchParams.get('otab') || searchParams.get('tab')
   const resolveTab = (t: string | null): typeof TABS[number] => {
     if (!t) return 'Proposals'
     const mapped = LEGACY_TAB_ALIASES[t] || t
@@ -457,6 +460,8 @@ export default function OptionsHub({ onDrill }: Props) {
           {pendingIntent && <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text3)' }}>Pending intent: {pendingIntent}</div>}
         </div>
       )}
+
+      {tab === 'Lifecycle' && <OptionsLifecycleView />}
 
       {tab === 'Proposals' && (
         <>

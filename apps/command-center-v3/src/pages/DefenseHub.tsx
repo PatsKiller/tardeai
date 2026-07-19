@@ -10,6 +10,7 @@ import BookStanceStrip from '../components/defense/BookStanceStrip'
 import ExecutionPanel from '../components/defense/ExecutionPanel'
 import ReviewConsole from '../components/defense/ReviewConsole'
 import RotationPlanPanel from '../components/defense/RotationPlanPanel'
+import OptionsLifecycleStrip from '../components/defense/OptionsLifecycleStrip'
 
 function ago(ts?: string | null): string {
   if (!ts) return 'never'
@@ -170,6 +171,9 @@ export default function DefenseHub() {
       {/* Row 2a2 — v7 In Play: the execution rail's visible state */}
       <ExecutionPanel intents={recsData?.intents || []} execLog={recsData?.execution_log || []}
         capsCfg={recsData?.execution_caps} onChange={refetchRecs} />
+
+      {/* Options Lifecycle compact summary — counts only, deep-links to the full desk */}
+      <OptionsLifecycleStrip />
 
       {/* Row 2b — THE ROTATION PLAN (v5): trims, ladders, re-entry watches — the page's memory */}
       <RotationPlanPanel plan={recs?.rotation_plan || []} onConfirmed={refetchRecs} oversight={recsData?.oversight} />
