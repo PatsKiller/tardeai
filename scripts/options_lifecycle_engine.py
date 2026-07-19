@@ -267,11 +267,18 @@ def persist_snapshot(cur, conn, s: dict, eco: dict) -> tuple[int, dict]:
          mfe, mae, giveback, eco.get("extrinsic_value"),
          json.dumps(assignment_flags), json.dumps(eco.get("flags") or [])))
     snap_id = cur.fetchone()[0]
+    # v1.2.1 P0-2: two-axis rule — PRICING quality (ok/stale/incomplete) may not
+    # overwrite PROVENANCE quality. provisional_basis survives every monitoring
+    # cycle; only confirm_operator_basis() or broker evidence promotes it.
+    pricing = ("ok" if not eco.get("flags") else
+               ("stale" if any("no_quote" in f for f in eco["flags"]) else "incomplete_basis"))
     cur.execute("""UPDATE options_strategy_positions SET latest_snapshot_id=%s,
-                   data_quality_status=%s, updated_at=now() WHERE strategy_position_id=%s""",
-                (snap_id, ("ok" if not eco.get("flags") else
-                           ("stale" if any("no_quote" in f for f in eco["flags"]) else "incomplete_basis")),
-                 spid))
+                   data_quality_status=CASE
+                     WHEN data_quality_status='provisional_basis' AND %s='ok'
+                       THEN 'provisional_basis'
+                     ELSE %s END,
+                   updated_at=now() WHERE strategy_position_id=%s""",
+                (snap_id, pricing, pricing, spid))
     conn.commit()
     return snap_id, {**eco, "mfe": mfe, "mae": mae, "giveback": giveback}
 
@@ -557,6 +564,15 @@ def evaluate_strategy(cur, conn, s: dict, *, persist: bool = True) -> dict:
     findings = assignment_review(s, eco, pol)
     d = reduce_decision(decide(s, eco, pol, defense_posture_for(s["underlying"])),
                         findings, eco)
+    # v1.2.1 P0-2: basis-material recommendations stay explicitly QUALIFIED
+    # while the basis is provisional (operator evidence, unconfirmed)
+    if s.get("data_quality_status") == "provisional_basis" and \
+            d["recommendation"].startswith(("HARVEST", "CLOSE", "ROLL")):
+        d = {**d, "rationale": d["rationale"] +
+             " [QUALIFIED: economics rest on PROVISIONAL operator-supplied basis — "
+             "confirm or replace with broker evidence before acting on P&L grounds]",
+             "subordinate": (d.get("subordinate") or []) +
+             [{"finding": "provisional_basis", "line": "basis unconfirmed (operator evidence)"}]}
     did = record_decision(cur, conn, s["strategy_position_id"], snap_id, d, pol) if persist else None
     return {"eco": eco, "decision": d, "findings": findings,
             "snapshot_id": snap_id, "decision_id": did}
@@ -581,6 +597,9 @@ def defense_posture_for(underlying: str) -> dict:
 
 
 def run(dry: bool = False) -> dict:
+    """v1.2.1 P0-1: DELEGATES to evaluate_strategy() — the ONLY decision path.
+    (The prior implementation here bypassed the reducer + findings; CLI, cron,
+    API, and dry-run now all return the identical reduced recommendation.)"""
     from db_adapter import _get_conn
     conn = _get_conn()
     cur = conn.cursor()
@@ -588,17 +607,11 @@ def run(dry: bool = False) -> dict:
     pol = policy()
     out = {"evaluated": 0, "decisions": [], "policy_version": pol["policy_version"]}
     for s in open_strategies(cur):
-        quotes = {l["leg_id"]: quote_leg(l) for l in s["legs"] if l["status"] == "open"}
-        eco = strategy_economics(s, quotes)
-        if dry:
-            d = decide(s, eco, pol, defense_posture_for(s["underlying"]))
-            out["decisions"].append({"spid": s["strategy_position_id"], "dry": True, **d})
-        else:
-            snap_id, eco2 = persist_snapshot(cur, conn, s, eco)
-            d = decide(s, eco2, pol, defense_posture_for(s["underlying"]))
-            did = record_decision(cur, conn, s["strategy_position_id"], snap_id, d, pol)
-            out["decisions"].append({"spid": s["strategy_position_id"], "snapshot_id": snap_id,
-                                     "decision_id": did, **d})
+        ev = evaluate_strategy(cur, conn, s, persist=not dry)
+        out["decisions"].append({"spid": s["strategy_position_id"],
+                                 "snapshot_id": ev["snapshot_id"],
+                                 "decision_id": ev["decision_id"],
+                                 **({"dry": True} if dry else {}), **ev["decision"]})
         out["evaluated"] += 1
     return out
 

@@ -119,6 +119,16 @@ def health_checks(cur) -> list[dict]:
     except Exception as e:
         check("projection_integrity", False, f"check errored: {str(e)[:80]}")
 
+    # v1.2.1 P0-6: unresolved roll-package incidents = RED, operator action required
+    try:
+        cur.execute("""SELECT count(*), string_agg(DISTINCT state, ', ') FROM options_package_incidents
+                       WHERE resolved_at IS NULL""")
+        n, states = cur.fetchone()
+        check("roll_package_incidents", (n or 0) == 0,
+              f"{n} UNRESOLVED package incident(s): {states} — operator review required" if n else "none")
+    except Exception:
+        check("roll_package_incidents", True, "table not yet created")
+
     # v1.2 P1: schema reproducibility
     try:
         from options_lifecycle_model import verify_schema

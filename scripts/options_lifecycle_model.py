@@ -36,10 +36,11 @@ POSITION_STATUS = ("open", "closing", "closed", "rolled", "assigned",
                    "exercised", "expired", "unknown")
 LEG_ROLES = ("short_call", "long_call", "short_put", "long_put")
 DATA_QUALITY = ("ok", "stale", "incomplete_basis", "missing_leg",
-                "ambiguous", "unreconciled")
+                "ambiguous", "unreconciled", "provisional_basis")
 RECOMMENDATIONS = ("HOLD", "LET_MATURE", "HARVEST_PARTIAL", "HARVEST_FULL",
                    "DEFEND", "ROLL", "CLOSE", "ACCEPT_ASSIGNMENT",
-                   "EXERCISE_REVIEW", "DATA_BLOCKED")
+                   "EXERCISE_REVIEW", "DATA_BLOCKED",
+                   "EXPIRATION_CRITICAL", "ASSIGNMENT_CRITICAL")  # v1.2.1: reducer criticals are first-class
 
 
 def ensure_tables(cur, conn) -> None:
