@@ -29118,6 +29118,7 @@ def _options_lifecycle_get():
     """GET /api/v2/options/lifecycle — the desk payload (runner-written) + live
     ticket states. File-served: cheap for the UI, refreshed by cron/refresh."""
     import json as _json
+    from db_adapter import _get_conn
     p = PROJECT_ROOT / "data" / "runtime" / "options_lifecycle_latest.json"
     payload = _json.loads(p.read_text()) if p.exists() else {
         "positions": [], "alerts": [], "counts": {"open_strategies": 0},
@@ -29139,6 +29140,7 @@ def _options_lifecycle_get():
 def _options_lifecycle_post(base_path, body):
     """POST /api/v2/options/lifecycle/* — alert lifecycle + hash-bound tickets.
     Every action fail-closed; nothing here submits an order anywhere."""
+    from db_adapter import _get_conn
     tickets, alerts_mod, run_mod = _olc()
     conn = _get_conn()
     cur = conn.cursor()
