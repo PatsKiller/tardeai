@@ -63,11 +63,31 @@ SIGNAL-WEIGHTED (v2 correction: cells weighted by trade count, not averaged
 equally; the earlier unweighted table overstated magnitudes slightly without
 changing the verdict):**
 
-| arm | total n | avg net ret | whipsaw | bench +5d after entry (AAE) | eff/day | portfolio MDD reduction | downside β (hedged) |
-|---|---|---|---|---|---|---|---|
-| baseline (+0.75% day) | 138 | −0.49% | 15.2% | **−0.54%** | −0.041 | **+0.26 pp** | 0.980 |
-| two-day (frozen) | 56 | −0.58% | 16.1% | **+0.73%** | −0.115 | **−0.04 pp** | 0.994 |
-| untimed (thesis-open) | 90 | −0.61% | 13.3% | −0.04% | −0.049 | +0.54 pp | 0.988 |
+**DECISIVE ACCEPTED EVIDENCE (entry timing — unaffected by overlay corrections):**
+
+| arm | total n | avg net ret | whipsaw | bench +5d after entry (AAE) | eff/day |
+|---|---|---|---|---|---|
+| baseline (+0.75% day) | 138 | −0.49% | 15.2% | **−0.54%** | −0.041 |
+| two-day (frozen) | 56 | −0.58% | 16.1% | **+0.73%** | −0.115 |
+| untimed (thesis-open) | 90 | −0.61% | 13.3% | −0.04% | −0.049 |
+
+**CORRECTED OVERLAY EVIDENCE (v3: entry-day look-ahead REMOVED — hedge return
+attribution runs t+1 through exit close; missing inverse observations excluded
++ counted, never fabricated as −benchmark; result JSON byte-deterministic with
+full provenance):**
+
+| arm | portfolio MDD reduction | downside β (hedged) | missing inverse obs |
+|---|---|---|---|
+| baseline | **+0.60 pp** | 0.980 | 0 |
+| two-day (frozen) | **+0.07 pp** | 0.994 | 0 |
+| untimed | +0.46 pp | 0.989 | 0 |
+
+The earlier v2 overlay table carried entry-day look-ahead (it credited the
+inverse ETF's signal-session return to a hedge entered at that session's
+close); corrected, the two-day arm is no longer negative on MDD but remains
+~8× weaker than baseline. The rejection NEVER rested on the overlay — the
+decisive entry-timing gate stands on the corrected AAE/whipsaw/efficiency
+numbers above.
 
 **Verdict:** the two-day rule FAILS the DECISIVE ENTRY-TIMING gate (a) —
 instead of improving avoided-adverse-entry by ≥25%, it inverted the sign: the
@@ -119,9 +139,10 @@ implemented from the registration: the three staging methods (single-entry
 only — no tranche simulation), the prior-swing-low exit alternative, and
 hedge-ratio rebalance thresholds. The correct claim is therefore: **"the
 decisive entry-timing gate failed"** — not that every registered dimension
-ran. Because gate (a) inverted its sign and the new MDD gate also fails
-(two-day −0.04 pp vs baseline +0.26 pp), no unimplemented dimension could
-rescue the rule.
+ran. Because gate (a) inverted its sign (the decisive gate), no unimplemented
+dimension could rescue the rule; the timing-corrected overlay evidence
+(+0.07 pp vs +0.60 pp MDD reduction) is consistent but SUPPORTING, not
+decisive.
 
 ## 5. Limitations (honest)
 

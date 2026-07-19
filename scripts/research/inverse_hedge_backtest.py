@@ -155,38 +155,61 @@ def simulate(bench_bars, inv_bars, arm: str, p: dict) -> list[dict]:
     return trades
 
 
+EXECUTION_TIMING_CONVENTION = (
+    "signal evaluated on completed session t; entry AT the t close; hedge return "
+    "attribution begins at t+1; exit at session u close includes hedge return "
+    "THROUGH u; session u+1 is unhedged. No t-1->t return is ever attributed to "
+    "a hedge entered at the t close (v3 P0-1 look-ahead correction).")
+MISSING_INVERSE_POLICY = (
+    "benchmark and inverse series are aligned by completed session date; a "
+    "benchmark session with NO inverse observation contributes ZERO hedge "
+    "attribution for that interval (never a synthetic -benchmark return) and "
+    "is counted+dated in missing_inverse_observations.")
+
+
 def overlay_metrics(bench_bars, inv_bars, trades) -> dict:
-    """Pre-registered primary metrics: portfolio MDD reduction, downside beta,
-    downside capture — proxy book = 100% benchmark long, hedged at HEDGE_WEIGHT
-    in the ACTUAL inverse ETF while a position is open."""
+    """Pre-registered primary metrics under the v3 timing convention:
+    attribution runs t+1..u inclusive; missing inverse observations are never
+    fabricated as -benchmark; the affected interval is excluded and reported."""
     if not trades:
         return {}
-    dates_open = set()
+    hedged_dates = set()
     idx = {b["d"]: i for i, b in enumerate(bench_bars)}
     for t in trades:
         i0, i1 = idx.get(t["entry"]), idx.get(t["exit"])
         if i0 is None or i1 is None:
             continue
-        for i in range(i0, i1 + 1):
-            dates_open.add(bench_bars[i]["d"])
+        for i in range(i0 + 1, i1 + 1):     # t+1 .. u INCLUSIVE — never the entry day
+            hedged_dates.add(bench_bars[i]["d"])
     inv_by = {b["d"]: b["c"] for b in inv_bars}
     base_eq = hedged_eq = 1.0
     base_curve, hedged_curve, br_list, hr_list = [], [], [], []
-    prev_b = prev_i = None
+    missing = []
+    prev_b = None
+    prev_iv_by_date = {}
+    # build prev-inverse lookup strictly by session adjacency in the INVERSE series
+    inv_dates = [b["d"] for b in inv_bars]
+    inv_prev = {inv_dates[i]: inv_dates[i - 1] for i in range(1, len(inv_dates))}
     for b in bench_bars:
         d, c = b["d"], b["c"]
-        iv = inv_by.get(d)
         if prev_b is not None:
             rb = c / prev_b - 1
-            ri = (iv / prev_i - 1) if (iv and prev_i) else -rb
-            rh = rb + (HEDGE_WEIGHT * ri if d in dates_open else 0.0)
+            hedge_component = 0.0
+            if d in hedged_dates:
+                iv, pd = inv_by.get(d), inv_prev.get(d)
+                piv = inv_by.get(pd) if pd else None
+                if iv is not None and piv is not None:
+                    hedge_component = HEDGE_WEIGHT * (iv / piv - 1)
+                else:
+                    missing.append(d)        # excluded, counted — NEVER -rb
+            rh = rb + hedge_component
             base_eq *= (1 + rb)
             hedged_eq *= (1 + rh)
             base_curve.append(base_eq)
             hedged_curve.append(hedged_eq)
             br_list.append(rb)
             hr_list.append(rh)
-        prev_b, prev_i = c, iv if iv else prev_i
+        prev_b = c
 
     def mdd(curve):
         peak, worst = -1e9, 0.0
@@ -208,7 +231,9 @@ def overlay_metrics(bench_bars, inv_bars, trades) -> dict:
             "mdd_hedged_pct": round(100 * mdd(hedged_curve), 2),
             "mdd_reduction_pp": round(100 * (mdd(base_curve) - mdd(hedged_curve)) * -1, 2),
             "downside_beta_hedged": round(dbeta, 3) if dbeta is not None else None,
-            "downside_capture_hedged": round(dcapture, 3) if dcapture is not None else None}
+            "downside_capture_hedged": round(dcapture, 3) if dcapture is not None else None,
+            "hedged_session_count": len(hedged_dates),
+            "missing_inverse_observations": {"count": len(missing), "dates": missing[:20]}}
 
 
 def metrics(trades: list[dict]) -> dict:
@@ -261,7 +286,20 @@ def run():
     scored.sort(key=lambda x: (x[0], x[1], x[2]))
     best = scored[0]
     frozen = best[3]
-    report = {"preregistration": "f2988645",
+    import hashlib as _h
+    cfg_hash = _h.sha256(CACHE.read_bytes()).hexdigest()[:16]
+    import subprocess as _sp
+    code_sha = _sp.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                       capture_output=True, text=True).stdout.strip()
+    report = {"provenance": {
+                  "preregistration_sha": "f2988645", "code_sha": code_sha,
+                  "input_history_hash": cfg_hash,
+                  "execution_timing_convention": EXECUTION_TIMING_CONVENTION,
+                  "missing_inverse_policy": MISSING_INVERSE_POLICY,
+                  "aggregation_policy": "signal-weighted (cells weighted by completed-trade count)",
+                  "result_schema_version": "ihb-results-v3",
+                  "generation_note": "timestamp intentionally omitted — result JSON is byte-deterministic from unchanged inputs; generation time = git commit time"},
+              "preregistration": "f2988645",
               "train_SPY_2006_2015": {"baseline": base_train, "best_twoday": best[4],
                                       "frozen_params": frozen},
               "oos": {}}
@@ -279,8 +317,30 @@ def run():
                 "twoday_frozen": {**metrics(tt_), **overlay_metrics(wb, wi, tt_)},
                 "untimed": {**metrics(tu_), **overlay_metrics(wb, wi, tu_)},
             }
+    # signal-weighted aggregates INSIDE the persisted JSON (v3 requirement)
+    aggj = {}
+    for arm in ("baseline", "twoday_frozen", "untimed"):
+        ms = [v[arm] for v in report["oos"].values() if v[arm].get("n")]
+        if not ms:
+            continue
+        N = sum(m["n"] for m in ms)
+        wsum = lambda k: (sum(m[k] * m["n"] for m in ms if m.get(k) is not None) / N
+                          if any(m.get(k) is not None for m in ms) else None)
+        mm = [m for m in ms if m.get("mdd_reduction_pp") is not None]
+        aggj[arm] = {"n_total": N,
+                     "avg_inv_net_ret_pct_weighted": round(wsum("avg_inv_net_ret_pct"), 3),
+                     "whipsaw_rate_pct_weighted": round(wsum("whipsaw_rate_pct"), 2),
+                     "aae_bench_5d_pct_weighted": round(wsum("avg_bench_5d_after_entry_pct"), 3),
+                     "efficiency_per_day_weighted": round(wsum("hedge_efficiency_per_day"), 4),
+                     "mdd_reduction_pp_mean": round(sum(m["mdd_reduction_pp"] for m in mm) / len(mm), 3) if mm else None,
+                     "downside_beta_mean": round(sum(m["downside_beta_hedged"] for m in mm
+                                                     if m.get("downside_beta_hedged") is not None)
+                                                 / max(1, len([m for m in mm if m.get("downside_beta_hedged") is not None])), 4) if mm else None,
+                     "missing_inverse_total": sum((m.get("missing_inverse_observations") or {}).get("count", 0) for m in ms),
+                     "insufficient_n_cells": sum(1 for m in ms if m["n"] < MIN_N)}
+    report["oos_aggregate_signal_weighted"] = aggj
     out = ROOT / "data" / "research" / "inverse_hedge_results.json"
-    out.write_text(json.dumps(report, indent=1))
+    out.write_text(json.dumps(report, indent=1, sort_keys=True))
     print(json.dumps(report["train_SPY_2006_2015"], indent=1))
     agg = {"baseline": [], "twoday_frozen": [], "untimed": []}
     for k, v in report["oos"].items():

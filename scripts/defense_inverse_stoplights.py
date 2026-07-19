@@ -62,18 +62,71 @@ PATH_WARNING = ("daily-reset product: targets -1x of ONE DAY's benchmark return;
                 "max holding period applies, never passive holding")
 
 
+REQUIRED_CFG_FIELDS = ("bounce_day_pct", "materiality_exposure_pct", "band_pct",
+                       "max_hold_sessions", "anti_chase_atr", "tp1_inverse_pct",
+                       "tp2_inverse_pct", "hedge_ratio_tolerance_pct", "staging",
+                       "stale_calendar_days", "beta_book_source", "shadow_twoday")
+KNOWN_CFG_KEYS = set(REQUIRED_CFG_FIELDS) | {"_comment"}
+
+
+class StoplightConfigError(RuntimeError):
+    pass
+
+
+def validate_stoplight_config(c: dict) -> dict:
+    """v3 P1-1: the committed config is AUTHORITATIVE — no hidden defaults.
+    Any missing/malformed/invalid required field fails the evaluator CLOSED."""
+    errs = []
+    for f in REQUIRED_CFG_FIELDS:
+        if f not in c:
+            errs.append(f"missing required field: {f}")
+    unknown = set(c) - KNOWN_CFG_KEYS
+    if unknown:
+        errs.append(f"unknown config keys (typo?): {sorted(unknown)}")
+    def num(k, lo=None, hi=None):
+        v = c.get(k)
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            errs.append(f"{k} must be numeric (got {type(v).__name__})")
+            return None
+        if lo is not None and v < lo:
+            errs.append(f"{k}={v} below sensible floor {lo}")
+        if hi is not None and v > hi:
+            errs.append(f"{k}={v} above sensible ceiling {hi}")
+        return v
+    if not errs:
+        num("bounce_day_pct", 0.05, 5.0)
+        num("materiality_exposure_pct", 0.5, 100.0)
+        num("anti_chase_atr", 0.5, 5.0)
+        mh = num("max_hold_sessions", 1, 60)
+        sd = num("stale_calendar_days", 1, 14)
+        t1 = num("tp1_inverse_pct", 1, 50)
+        t2 = num("tp2_inverse_pct", 1, 80)
+        num("hedge_ratio_tolerance_pct", 1, 100)
+        if t1 is not None and t2 is not None and not (t2 > t1):
+            errs.append(f"tp2_inverse_pct ({t2}) must exceed tp1_inverse_pct ({t1})")
+        band = c.get("band_pct")
+        if (not isinstance(band, list) or len(band) != 2
+                or not all(isinstance(x, (int, float)) for x in band) or not band[0] < band[1]):
+            errs.append(f"band_pct must be an ordered [lo, hi] pair (got {band})")
+        st = c.get("staging")
+        if not isinstance(st, list) or abs(sum(st) - 100) > 1e-9:
+            errs.append(f"staging must total 100 (got {st})")
+        tw = c.get("shadow_twoday")
+        if not isinstance(tw, dict) or "min_daily_pct" not in tw or "min_cum_pct" not in tw:
+            errs.append("shadow_twoday must contain min_daily_pct and min_cum_pct")
+        if not isinstance(c.get("beta_book_source"), str):
+            errs.append("beta_book_source must be a string provenance label")
+    if errs:
+        raise StoplightConfigError("; ".join(errs))
+    return c
+
+
 def _cfg() -> dict:
     c = json.loads(CFG_PATH.read_text())
-    return c.get("inverse_stoplights", {
-        "bounce_day_pct": c.get("hedge_playbook", {}).get("bounce_day_pct", 0.75),
-        "materiality_exposure_pct": 8.0,
-        "band_pct": [2.0, 5.0],
-        "max_hold_sessions": 20,
-        "anti_chase_atr": 1.5,
-        "tp1_inverse_pct": 8, "tp2_inverse_pct": 15,
-        "hedge_ratio_tolerance_pct": 25,
-        "staging": [25, 25, 50],
-        "shadow_twoday": {"min_daily_pct": 0.0, "min_cum_pct": 0.75}})
+    section = c.get("inverse_stoplights")
+    if section is None:
+        raise StoplightConfigError("inverse_stoplights section MISSING from config — fail closed")
+    return validate_stoplight_config(section)
 
 
 def ensure_stoplight_tables(cur, conn):
@@ -100,50 +153,181 @@ def ensure_stoplight_tables(cur, conn):
 
 
 _BARS_CACHE: dict[str, list] = {}
-STALE_CALENDAR_DAYS = 4   # latest completed close older than this = STALE (fail closed)
 
 
-def _bars_fresh(bars: list[dict]) -> bool:
-    """Fail-closed freshness: the latest completed session must be recent —
-    cached bars existing is NOT freshness (validator P0 finding)."""
+def _bars_fresh(bars: list[dict], stale_days: int | None = None) -> bool:
+    """Fail-closed freshness from the VALIDATED config (v3: no second hardcoded
+    threshold). Cached bars existing is NOT freshness."""
     if not bars:
         return False
+    if stale_days is None:
+        stale_days = _cfg()["stale_calendar_days"]
     from datetime import date, timedelta
     try:
         last = date.fromisoformat(bars[-1]["d"])
     except Exception:
         return False
-    return (date.today() - last) <= timedelta(days=STALE_CALENDAR_DAYS)
+    return (date.today() - last) <= timedelta(days=int(stale_days))
 
 
-def _open_position(cur, inverse: str) -> dict | None:
-    """P0 (validator): REAL position state for MANAGE/EXIT — reads live
-    holdings; entry basis from holdings basis; held sessions from this
-    instrument's POSITION_SEEN ledger row (recorded on first sight)."""
+HOLDINGS_PATH = ROOT / "data" / "portfolios" / "state" / "holdings.json"
+
+
+def ensure_cycle_tables(cur, conn):
+    cur.execute("""CREATE TABLE IF NOT EXISTS inverse_position_cycles (
+        position_cycle_id serial PRIMARY KEY,
+        instrument text NOT NULL,
+        benchmark text,
+        accounts jsonb NOT NULL,
+        account_components jsonb NOT NULL,     -- per-account qty/basis, preserved
+        first_seen_at timestamptz NOT NULL DEFAULT now(),
+        first_seen_session date,
+        qty_at_first numeric,
+        basis_at_first numeric,
+        current_qty numeric,
+        current_basis numeric,                 -- NULL when any component basis unknown
+        last_seen_at timestamptz DEFAULT now(),
+        last_seen_session date,
+        status text NOT NULL DEFAULT 'OPEN',   -- OPEN|CLOSED|DATA_GAP|RECONCILED
+        closed_at timestamptz,
+        closed_session date,
+        holdings_snapshot_hash text,
+        policy_version text,
+        code_commit text,
+        superseded_by int,
+        created_at timestamptz DEFAULT now())""")
+    cur.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_one_open_cycle
+        ON inverse_position_cycles (instrument) WHERE status = 'OPEN'""")
+    conn.commit()
+
+
+def _read_holdings() -> tuple[dict | None, str | None, bool]:
+    """(snapshot, content_hash, fresh). Unreadable → (None, None, False)."""
+    import hashlib as _h
     import json as _json
     try:
-        h = _json.loads((ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
+        raw = Path(HOLDINGS_PATH).read_bytes()
+        h = _json.loads(raw)
+        # freshness: any updated_at within stale window, else generated marker
+        fresh = True
+        ts = h.get("as_of") or h.get("generated_at")
+        if ts:
+            from datetime import date, timedelta
+            try:
+                fresh = (date.today() - date.fromisoformat(str(ts)[:10])) <=                         timedelta(days=int(_cfg()["stale_calendar_days"]))
+            except Exception:
+                pass
+        return h, _h.sha256(raw).hexdigest()[:16], fresh
     except Exception:
+        return None, None, False
+
+
+def _held_sessions(bars: list[dict], first_session: str | None) -> tuple[int | None, list]:
+    """v3 P0-2: held sessions = COMPLETED trading sessions from the cycle's
+    first-seen session, counted from the benchmark's actual session list —
+    holidays never count, weekdays are irrelevant."""
+    if not first_session or not bars:
+        return None, []
+    dates = [b["d"] for b in bars if b["d"] >= str(first_session)]
+    return len(dates), dates
+
+
+def resolve_position_cycle(cur, conn, inverse: str, bench_bars: list[dict],
+                           benchmark: str | None = None) -> dict | None:
+    """THE cycle resolver: open/update/close/reopen with governed absence rules.
+    Returns the position dict for MANAGE/EXIT, or None when flat."""
+    ensure_cycle_tables(cur, conn)
+    snap, snap_hash, snap_fresh = _read_holdings()
+    cur.execute("""SELECT position_cycle_id, first_seen_session, current_qty
+                   FROM inverse_position_cycles
+                   WHERE instrument=%s AND status='OPEN' FOR UPDATE""", (inverse,))
+    open_cycle = cur.fetchone()
+    if snap is None:
+        # holdings data unavailable — NEVER a close signal; keep cycle, flag gap
+        if open_cycle:
+            conn.commit()
+            return {"cycle_id": open_cycle[0], "data_gap": True,
+                    "qty": float(open_cycle[2] or 0), "basis": None, "price": None,
+                    "inv_gain_pct": None, "held_sessions": None,
+                    "accounts": [], "note": "holdings data unavailable — cycle held open (DATA_GAP)"}
+        conn.commit()
         return None
-    rows = [r for r in h.get("holdings", []) if (r.get("symbol") or "").upper() == inverse
-            and not r.get("is_cash") and float(r.get("shares") or 0) > 0]
-    if not rows:
-        return None
-    qty = sum(float(r["shares"]) for r in rows)
-    basis = sum(float(r.get("cost_basis") or 0) for r in rows)
-    px = float(rows[0].get("price") or 0)
-    gain_pct = ((px * qty - basis) / basis * 100) if basis else None
-    cur.execute("""SELECT min(created_at)::date FROM inverse_stoplight_transitions
-                   WHERE instrument=%s AND new_state='POSITION_SEEN'""", (inverse,))
-    first = (cur.fetchone() or [None])[0]
-    held = None
-    if first:
-        cur.execute("SELECT count(*) FROM generate_series(%s::date, CURRENT_DATE, '1 day') d "
-                    "WHERE extract(dow from d) BETWEEN 1 AND 5", (first,))
-        held = cur.fetchone()[0]
-    return {"qty": qty, "basis": basis, "price": px, "inv_gain_pct": round(gain_pct, 2)
-            if gain_pct is not None else None, "held_sessions": held,
-            "accounts": sorted({r.get("account") for r in rows})}
+    comps = {}
+    for r in snap.get("holdings", []):
+        if (r.get("symbol") or "").upper() == inverse and not r.get("is_cash")                 and float(r.get("shares") or 0) > 0:
+            acct = r.get("account") or "unknown"
+            if acct in comps:      # account duplication guard
+                continue
+            comps[acct] = {"qty": float(r["shares"]),
+                           "basis": float(r["cost_basis"]) if r.get("cost_basis") is not None else None,
+                           "price": float(r.get("price") or 0)}
+    qty = sum(c["qty"] for c in comps.values())
+    basis_known = comps and all(c["basis"] is not None for c in comps.values())
+    basis = sum(c["basis"] for c in comps.values()) if basis_known else None
+    px = next((c["price"] for c in comps.values() if c["price"]), None)
+    last_session = bench_bars[-1]["d"] if bench_bars else None
+    from options_lifecycle_engine import _commit_sha
+    if qty > 0:
+        if open_cycle:
+            cur.execute("""UPDATE inverse_position_cycles SET current_qty=%s, current_basis=%s,
+                           account_components=%s, accounts=%s, last_seen_at=now(),
+                           last_seen_session=%s, holdings_snapshot_hash=%s
+                           WHERE position_cycle_id=%s""",
+                        (qty, basis, json.dumps(comps), json.dumps(sorted(comps)),
+                         last_session, snap_hash, open_cycle[0]))
+            cycle_id, first_session = open_cycle[0], open_cycle[1]
+        else:
+            cur.execute("""INSERT INTO inverse_position_cycles
+                (instrument, benchmark, accounts, account_components, first_seen_session,
+                 qty_at_first, basis_at_first, current_qty, current_basis,
+                 last_seen_session, holdings_snapshot_hash, policy_version, code_commit)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (instrument) WHERE status='OPEN' DO NOTHING
+                RETURNING position_cycle_id""",
+                (inverse, benchmark, json.dumps(sorted(comps)), json.dumps(comps),
+                 last_session, qty, basis, qty, basis, last_session, snap_hash,
+                 POLICY_VERSION, _commit_sha()))
+            row = cur.fetchone()
+            if row is None:   # concurrent evaluator won the insert
+                cur.execute("""SELECT position_cycle_id, first_seen_session FROM inverse_position_cycles
+                               WHERE instrument=%s AND status='OPEN'""", (inverse,))
+                row2 = cur.fetchone()
+                cycle_id, first_session = row2[0], row2[1]
+            else:
+                cycle_id, first_session = row[0], last_session
+        conn.commit()
+        held, _sess = _held_sessions(bench_bars, first_session)
+        gain = ((px * qty - basis) / basis * 100) if (basis and px) else None
+        return {"cycle_id": cycle_id, "qty": qty,
+                "basis": basis, "price": px,
+                "inv_gain_pct": round(gain, 2) if gain is not None else None,
+                "gain_note": None if gain is not None else
+                "gain UNAVAILABLE — aggregate basis incomplete (never shown as zero)",
+                "held_sessions": held, "first_seen_session": str(first_session) if first_session else None,
+                "accounts": sorted(comps), "account_components": comps}
+    # qty == 0 in THIS snapshot
+    if open_cycle:
+        if snap_fresh:
+            cur.execute("""UPDATE inverse_position_cycles SET status='CLOSED', closed_at=now(),
+                           closed_session=%s, holdings_snapshot_hash=%s, current_qty=0
+                           WHERE position_cycle_id=%s""",
+                        (last_session, snap_hash, open_cycle[0]))
+            conn.commit()
+            return None      # confirmed absent → cycle closed
+        conn.commit()
+        return {"cycle_id": open_cycle[0], "data_gap": True,
+                "qty": float(open_cycle[2] or 0), "basis": None, "price": None,
+                "inv_gain_pct": None, "held_sessions": None, "accounts": [],
+                "note": "holdings snapshot STALE — absence NOT confirmed; cycle held open"}
+    conn.commit()
+    return None
+
+
+def _open_position(cur, inverse: str, bench_bars: list[dict] | None = None,
+                   benchmark: str | None = None) -> dict | None:
+    """Compatibility wrapper → the cycle resolver (v3 P0-2)."""
+    conn = cur.connection
+    return resolve_position_cycle(cur, conn, inverse, bench_bars or [], benchmark)
 
 
 def _bars(cur, sym: str, n: int = 80) -> list[dict]:
@@ -369,6 +553,19 @@ def evaluate_all(cur, conn, notify: bool = False) -> dict:
     """Nightly/refresh evaluation for the whole lane; persists transitions,
     dedupes alerts (only meaningful transitions fire)."""
     ensure_stoplight_tables(cur, conn)
+    try:
+        _cfg()
+    except StoplightConfigError as ce:
+        # v3 P1-1: invalid/missing config = visible CONFIG ERROR, everything
+        # fails closed, ENTRY can never be GREEN, no hidden defaults
+        err = {"state": "RED", "label": "CONFIGURATION ERROR — FAIL CLOSED", "reason": str(ce)[:300]}
+        out = {"generated_at": datetime.now(timezone.utc).isoformat(),
+               "policy_version": POLICY_VERSION, "config_error": str(ce),
+               "candidates": [{**inst, "lights": {"THESIS": err, "ENTRY": err,
+                                                  "MANAGE": err, "EXIT": err}} for inst in LANE],
+               "locked": LOCKED, "path_warning": PATH_WARNING}
+        SNAP.write_text(json.dumps(out, default=str))
+        return out
     # book context from the defense snapshot (labeled data with timestamps)
     # THESIS truth comes from the DESK's own hedge computation: a rendered
     # HEDGE card already encodes "deterioration trigger active + exposure over
@@ -406,7 +603,7 @@ def evaluate_all(cur, conn, notify: bool = False) -> dict:
                             "— fail closed, no entry evaluation on stale bars"}
         else:
             en = entry_light(bars, th)
-        pos = _open_position(cur, inv)
+        pos = _open_position(cur, inv, bench_bars=bars, benchmark=bench)
         if pos:
             record_transition(cur, conn, inv, bench, "MANAGE", None, "POSITION_SEEN",
                               "POSITION TRACKED",
@@ -423,6 +620,7 @@ def evaluate_all(cur, conn, notify: bool = False) -> dict:
                 "max_hold_sessions": _cfg()["max_hold_sessions"],
                 "lane_status": "operator-stage eligible (existing rails)",
                 "latest_close": bars[-1] if bars else None,
+                "position": pos,
                 "lights": {"THESIS": th, "ENTRY": en, "MANAGE": mg, "EXIT": ex}}
         out["candidates"].append(card)
         for light, st in (("THESIS", th), ("ENTRY", en), ("MANAGE", mg), ("EXIT", ex)):
