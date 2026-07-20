@@ -12,7 +12,78 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict
 
+# Pipeline-stage failures for this run (see _stage_failed / _report_stage_failures).
+_STAGE_FAILURES = []
+
+
+def _stage_failed(stage: str, exc: BaseException, *, fatal: bool = False):
+    """Record a pipeline-stage failure LOUDLY instead of printing and moving on.
+
+    Why this exists (2026-07-20): every stage was wrapped in
+    `except Exception as e: print(f"  [x] ❌ {e}")`. That is the right resilience
+    — one bad stage should not kill the run — but it discarded the traceback and
+    left no durable signal, so a stage could die every day and the only evidence
+    was one line in a log nobody reads. The covered-call section silently
+    disappeared from the dashboard exactly this way.
+
+    Failures are now: printed with the exception TYPE (str(e) alone is often
+    empty or just a dict key), captured with a traceback, accumulated, and
+    summarized at the end of the run so the exit code and the health surface
+    can see them.
+    """
+    import traceback
+    _STAGE_FAILURES.append({
+        "stage": stage,
+        "error_type": type(exc).__name__,
+        "error": str(exc)[:300] or "(no message)",
+        "traceback": traceback.format_exc()[-1200:],
+        "fatal": fatal,
+        "at": datetime.now().isoformat(timespec="seconds"),
+    })
+    print(f"  [{stage}] ❌ {type(exc).__name__}: {str(exc)[:200] or '(no message)'}")
+
+
+def _report_stage_failures(state_dir):
+    """End-of-run summary + durable artifact + alert. Returns the failure count."""
+    if not _STAGE_FAILURES:
+        print("all pipeline stages completed")
+        return 0
+
+    n = len(_STAGE_FAILURES)
+    print("=" * 60)
+    print(f"⚠️  {n} PIPELINE STAGE(S) FAILED — output below is INCOMPLETE")
+    for f in _STAGE_FAILURES:
+        print(f"   • {f['stage']}: {f['error_type']}: {f['error'][:120]}")
+    print("=" * 60)
+
+    # Durable artifact so a failure survives the log and the health agent can read it.
+    try:
+        from pathlib import Path as _P
+        p = _P(state_dir) / "orchestrator_stage_failures.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({
+            "run_at": datetime.now().isoformat(timespec="seconds"),
+            "failure_count": n,
+            "failures": _STAGE_FAILURES,
+        }, indent=1, default=str))
+    except Exception as e:
+        print(f"  [stage-failures] could not persist artifact: {type(e).__name__}: {e}")
+
+    # A stage dying silently every day is exactly what this must prevent.
+    try:
+        from telegram_alert import send_telegram
+        send_telegram("⚠️ Portfolio pipeline: "
+                      f"{n} stage(s) failed — "
+                      + ", ".join(f"{f['stage']} ({f['error_type']})"
+                                  for f in _STAGE_FAILURES[:6])
+                      + "\nDashboard sections may be missing or stale.")
+    except Exception as e:
+        print(f"  [stage-failures] alert failed: {type(e).__name__}: {e}")
+    return n
+
+
 def run_portfolio_pipeline(project_root, run_label="manual", generate_report=True, run_type="daily"):
+    _STAGE_FAILURES.clear()
     root = Path(project_root)
     date_str  = datetime.now().strftime("%Y-%m-%d")
     now_str   = datetime.now().strftime("%H:%M ET")
@@ -312,8 +383,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         print("  [portfolio-news] Scanning portfolio holdings for news...")
         portfolio_news = run_portfolio_news(portfolio, state_dir, run_type=run_type, root=str(root))
     except Exception as e:
-        print(f"  [portfolio-news] ❌ {e}")
-
+        _stage_failed("portfolio-news", e)
     # ── Article Index persistence ────────────────────────────────────────────
     try:
         from db_adapter import save_article_index
@@ -337,8 +407,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         n = technical.get("analyzed_count", 0); sig = len(technical.get("signal_changes",[]))
         print(f"  [technical] ✅ {n} positions | score={technical.get('portfolio_score',0):.0f} | {sig} signals")
     except Exception as e:
-        print(f"  [technical] ❌ {e}")
-
+        _stage_failed("technical", e)
     # ── Supplemental Finviz enrichment for small positions ──────────────
     # Technical analysis only enriches positions > $1K. Enrich remaining
     # portfolio tickers so weekly reports, signals, and dashboards have
@@ -553,40 +622,35 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         tech_chart_paths = generate_all_technical_charts(technical, tech_charts_dir)
         print(f"  [tech-charts] ✅ {len(tech_chart_paths)} charts generated")
     except Exception as e:
-        print(f"  [tech-charts] ❌ {e}")
-
+        _stage_failed("tech-charts", e)
     options = {}
     try:
         from portfolio_options import scan_covered_calls
         options = scan_covered_calls(portfolio, technical.get("positions",{}), root, state_dir)
         print(f"  [options] ✅ {len(options.get('opportunities',[]))} CC opps | ${options.get('total_monthly_income',0):,.0f}/mo")
     except Exception as e:
-        print(f"  [options] ❌ {e}")
-
+        _stage_failed("options", e)
     tax_projection = {}
     try:
         from portfolio_tax_projection import calculate_tax_projection
         tax_projection = calculate_tax_projection(state_dir=state_dir)
         print(f"  [tax] ✅ bracket={tax_projection.get('tax',{}).get('current_bracket','?')} | est=${tax_projection.get('tax',{}).get('total_est',0):,.0f}")
     except Exception as e:
-        print(f"  [tax] ❌ {e}")
-
+        _stage_failed("tax", e)
     stress = {}
     try:
         from portfolio_stress import run_stress_tests
         stress = run_stress_tests(portfolio, state_dir)
         print(f"  [stress] ✅ worst case: ${stress.get('worst_case_loss',0):,.0f}")
     except Exception as e:
-        print(f"  [stress] ❌ {e}")
-
+        _stage_failed("stress", e)
     retirement = {}
     try:
         from portfolio_retirement import build_retirement_roadmap
         retirement = build_retirement_roadmap(portfolio, state_dir)
         print(f"  [retirement] ✅ {retirement.get('key_dates',{}).get('days_to_golden',0)}d to Golden Window")
     except Exception as e:
-        print(f"  [retirement] ❌ {e}")
-
+        _stage_failed("retirement", e)
     behavioral = {}
     try:
         from portfolio_behavioral import analyze_behavior
@@ -594,8 +658,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         best = (behavioral.get("best_day") or {}).get("day","?")
         if behavioral.get("has_data"): print(f"  [behavioral] ✅ best day: {best}")
     except Exception as e:
-        print(f"  [behavioral] ❌ {e}")
-
+        _stage_failed("behavioral", e)
     dividend_calendar = {}
     try:
         from portfolio_dividend_calendar import build_dividend_calendar
@@ -647,8 +710,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         except Exception as _div_e:
             print(f"  [dividends] Telegram alert skipped: {_div_e}")
     except Exception as e:
-        print(f"  [dividends] ❌ {e}")
-
+        _stage_failed("dividends", e)
     attribution = {}
     try:
         from portfolio_performance_attribution import compute_attribution, load_attribution
@@ -663,8 +725,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             astr = f"{alpha:+.1f}%" if alpha is not None else "N/A"
             print(f"  [attribution] ✅ Alpha: {astr}")
     except Exception as e:
-        print(f"  [attribution] ❌ {e}")
-
+        _stage_failed("attribution", e)
     correlation = {}
     try:
         from portfolio_correlation import compute_correlation
@@ -673,8 +734,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         rs = correlation.get("rate_sensitivity",0)
         print(f"  [correlation] ✅ Defense: {dp:.1f}% | Rate sensitivity: {rs:.2f}")
     except Exception as e:
-        print(f"  [correlation] ❌ {e}")
-
+        _stage_failed("correlation", e)
     watchlist = {}
     try:
         from portfolio_watchlist import build_watchlist_intelligence
@@ -684,8 +744,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         wo = len(watchlist.get("sizing_opportunities",[]))
         print(f"  [watchlist] ✅ {wn} watchlist items | {wo} sizing opportunities")
     except Exception as e:
-        print(f"  [watchlist] ❌ {e}")
-
+        _stage_failed("watchlist", e)
     perf_history = {}
     try:
         from portfolio_performance_history import compute_period_returns
@@ -703,8 +762,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         import json as _json
         ph_path.write_text(_json.dumps(perf_history, indent=2))
     except Exception as e:
-        print(f"  [perf-history] ❌ {e}")
-
+        _stage_failed("perf-history", e)
     # 9 — Dashboard
     from portfolio_dashboard import generate_portfolio_dashboard
     print("\n[9/10] Dashboard...")
@@ -806,8 +864,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 retirement, tax_projection, rebalancing, state_dir, root=str(root)
             )
         except Exception as e:
-            print(f"  [advisory] ❌ {e}")
-
+            _stage_failed("advisory", e)
     print("\n"+"="*60)
     print(f"  ✅ Portfolio Intelligence v1.2 complete  [{run_type.upper()}]")
     print(f"  💼 ${totals.get('total_value',0):,.2f}  📈 +${totals.get('total_gain',0):,.2f} ({totals.get('total_gain_pct',0):.1f}%)")
@@ -1037,8 +1094,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         shutil.copy(dash_path, server_live)
         print("  [dashboard-refresh] ✅ Live report updated with correct YTD")
     except Exception as e:
-        print(f"  [dashboard-refresh] ❌ {e}")
-
+        _stage_failed("dashboard-refresh", e)
     # ── Action Signals (rules engine v3) ────────────────────
     try:
         from portfolio_signals import generate_and_save_signals
@@ -1805,8 +1861,14 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
 
     print("="*60)
 
+    # Surface any stage that died. Without this the run "succeeds" while a
+    # dashboard section is quietly missing (2026-07-20).
+    _failed = _report_stage_failures(state_dir)
+
     return dict(portfolio=portfolio, analysis=analysis, tax=tax, rebalancing=rebalancing,
-                risk=risk, chart_paths=chart_paths, performance=performance, ai_analysis=ai_analysis)
+                risk=risk, chart_paths=chart_paths, performance=performance,
+                ai_analysis=ai_analysis,
+                stage_failures=list(_STAGE_FAILURES), stage_failure_count=_failed)
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Portfolio Intelligence v1.2")
@@ -1816,8 +1878,15 @@ if __name__ == "__main__":
     p.add_argument("--no-report",    action="store_true")
     args = p.parse_args()
     try:
-        run_portfolio_pipeline(Path(args.project_root), args.run_label, not args.no_report, args.run_type)
+        _res = run_portfolio_pipeline(Path(args.project_root), args.run_label,
+                                      not args.no_report, args.run_type)
     except Exception as e:
-        print(f"\n❌ {e}")
+        print(f"\n❌ {type(e).__name__}: {e}")
         import traceback; traceback.print_exc()
         sys.exit(1)
+    # Exit non-zero when stages failed so cron/monitoring can SEE a degraded run
+    # instead of reading a clean exit as a healthy one.
+    _n = (_res or {}).get("stage_failure_count", 0)
+    if _n:
+        print(f"exiting 2 — {_n} stage(s) failed (pipeline completed, output incomplete)")
+        sys.exit(2)
