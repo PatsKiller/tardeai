@@ -1,3 +1,14 @@
+# ⚠️  NOT THE EXECUTOR OF RECORD (verified 2026-07-20 Phase 0 reconciliation).
+#
+# The production screener runner reads the `finviz_screeners` DATABASE TABLE,
+# not this file (scripts/finviz_screener_runner.py:196-198). This file's only
+# production reader is scripts/finviz_ingestion.py, which is on NO cron.
+# Consequence: ALL 18 definitions below are ORPHANED — zero rows in
+# screener_symbol_membership, ever. The 29 screens that actually run are DB rows.
+#
+# ADDING A SCREEN HERE DOES NOT MAKE IT RUN. Register it in finviz_screeners.
+# Run scripts/finviz_registry_reconcile.py for the current three-way state.
+#
 # ⚠️  CRITICAL: finviz_url MUST use v=152 (custom view), NOT v=111 (overview).
 # v=111 ignores &c= columns and silently returns only default fields (no RVOL, Gap, Float).
 # Column IDs: 25=Float, 61=Gap, 63=AvgVol, 64=RelVol, 65=Price, 66=Change, 67=Volume
@@ -210,6 +221,14 @@ screeners:
     group: options
     status: active
     strategy_class: covered_call_income
-    description: "Established holdings with elevated IV rank — feeds covered_call_income."
+    description: >-
+      Mid-cap-and-larger optionable names with avg volume >1M — feeds
+      covered_call_income. CORRECTED 2026-07-20: previously claimed "elevated IV
+      rank", which this screen does not and cannot filter — the Finviz STOCK
+      screener has no IV-rank field, and the actual filters are only
+      cap_midover, sh_opt_optionshort, sh_avgvol_o1000. True IV rank requires an
+      option-IV history series; options_iv_history currently holds 230 rows /
+      68 symbols / 12 days, which is insufficient, so IV rank must be reported
+      UNAVAILABLE rather than proxied from ATR, beta or realized volatility.
     finviz_url: "https://elite.finviz.com/export?v=152&f=cap_midover,sh_opt_optionshort,sh_avgvol_o1000&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
     requires_existing_position: true

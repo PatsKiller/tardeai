@@ -27,24 +27,52 @@ def load_intent_cfg(root: Path) -> Dict:
         return yaml.safe_load((root/"assets"/"portfolio_intent.yaml").read_text()) or {}
     except: return {}
 
+class EarningsProviderError(RuntimeError):
+    """The earnings provider could not be reached or refused the request.
+
+    Distinct from 'the provider answered and this symbol has no scheduled
+    earnings'. Callers MUST NOT collapse the two: treating provider-down as
+    no-earnings makes every event gate fail OPEN.
+    """
+
+
 def _get_earnings_dates(tickers: List[str], root: Path) -> Dict[str, str]:
-    """Get next earnings date per ticker from FMP."""
+    """Next earnings date per ticker from FMP.
+
+    Raises EarningsProviderError when the provider is unusable (missing key,
+    non-OK HTTP, unparseable body). Returns {} ONLY when the provider answered
+    successfully and none of the requested tickers have a scheduled date.
+
+    2026-07-20: the v3 earning_calendar endpoint now returns HTTP 403
+    ("Legacy Endpoint ... only available for legacy users with valid
+    subscriptions prior August 31, 2025"). This previously returned {}
+    silently, so earnings_blackout_check saw "no earnings" for every symbol
+    and passed short-premium/directional entries straight through.
+    """
     _load_env_file(root)
     import os as _os
     fmp_key = _os.getenv("FMP_API_KEY","")
-    if not fmp_key: return {}
+    if not fmp_key:
+        raise EarningsProviderError("FMP_API_KEY is not set — no earnings provider configured")
     results = {}
     today = datetime.now()
     end   = (today + timedelta(days=90)).strftime("%Y-%m-%d")
+    url = f"https://financialmodelingprep.com/api/v3/earning_calendar?from={today.strftime('%Y-%m-%d')}&to={end}&apikey={fmp_key}"
     try:
-        url = f"https://financialmodelingprep.com/api/v3/earning_calendar?from={today.strftime('%Y-%m-%d')}&to={end}&apikey={fmp_key}"
         resp = requests.get(url, timeout=15)
-        if not resp.ok: return {}
-        for item in (resp.json() or []):
-            sym = item.get("symbol","").upper()
-            if sym in tickers:
-                results[sym] = item.get("date","")
-    except: pass
+    except Exception as e:
+        raise EarningsProviderError(f"FMP request failed: {e}") from e
+    if not resp.ok:
+        detail = (resp.text or "")[:160].replace("\n", " ")
+        raise EarningsProviderError(f"FMP HTTP {resp.status_code}: {detail}")
+    try:
+        payload = resp.json() or []
+    except Exception as e:
+        raise EarningsProviderError(f"FMP returned unparseable body: {e}") from e
+    for item in payload:
+        sym = (item.get("symbol") or "").upper()
+        if sym in tickers:
+            results[sym] = item.get("date","")
     return results
 
 def _estimate_premium(price: float, strike: float, atr: float, iv_pct: float, dte: int = 30) -> float:

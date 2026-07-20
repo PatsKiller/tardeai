@@ -1,0 +1,931 @@
+{
+ "commit": "699a5468",
+ "executor_of_record": "scripts/finviz_screener_runner.py (reads finviz_screeners DB table)",
+ "generated_at": "2026-07-20T11:23:06.303850+00:00",
+ "provider_claims": [
+  {
+   "claimed_provider": null,
+   "claimed_status": "SHADOW",
+   "notes": "Screeners find candidates but lack options chain data. Needs options liquidity provider.",
+   "source": "finviz_covered_call"
+  },
+  {
+   "claimed_provider": null,
+   "claimed_status": "SHADOW",
+   "notes": "Tax loss harvesting is operator-triggered, not screener-driven.",
+   "source": "finviz_tax"
+  },
+  {
+   "claimed_provider": "NOT_CONFIGURED",
+   "claimed_status": "SHADOW",
+   "notes": "Finviz screeners find earnings candidates but actual earnings dates need a calendar API (Alpha Vantage, Earnings Whispers, or Yahoo).",
+   "source": "earnings_calendar"
+  },
+  {
+   "claimed_provider": "NOT_CONFIGURED",
+   "claimed_status": "BLOCKED_PROVIDER_MISSING",
+   "notes": "Covered call analysis needs options chain data. Consider Alpaca options API or CBOE data.",
+   "source": "options_chain"
+  },
+  {
+   "claimed_provider": "internal_ohlcv",
+   "claimed_status": "SHADOW",
+   "notes": "Uses OHLC cache + RSI/Fibonacci calculations. Already partially implemented via trade_backtest_engine.py technicals.",
+   "source": "technical_pattern"
+  }
+ ],
+ "read_only": true,
+ "rows": [
+  {
+   "db_active": true,
+   "display_name": "Bond ETF Income",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:01.819108-04:00",
+   "last_run": "2026-07-20 07:00:01.819108-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=ind_exchangetradedfund,sec_financial&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67&o=-dividendyield",
+   "mapped_sources": [
+    "finviz_bond"
+   ],
+   "member_rows": 5604,
+   "reason": "running, mapped, 5604 member rows",
+   "results_count": 5557,
+   "screen_id": "bond_etf_income",
+   "state": "ACTIVE",
+   "strategy_type": "bond_income"
+  },
+  {
+   "db_active": null,
+   "display_name": "Bond / Fixed Income (Defensive)",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=fa_div_o2,ta_beta_u0.5,sh_avgvol_o200,ind_exchangetradedfund&ft=3&o=-dividend&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_bond"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "bond_income_defensive",
+   "state": "ORPHANED",
+   "strategy_type": "bond_income"
+  },
+  {
+   "db_active": true,
+   "display_name": "Core Compounder Value",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:01.819108-04:00",
+   "last_run": "2026-07-20 07:00:01.819108-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_largeover,fa_pe_u25,fa_epsqoq_pos,ta_sma200_pa",
+   "mapped_sources": [
+    "finviz_core_growth"
+   ],
+   "member_rows": 252,
+   "reason": "running, mapped, 252 member rows",
+   "results_count": 194,
+   "screen_id": "core_compounder_value",
+   "state": "ACTIVE",
+   "strategy_type": "core_growth_compounder"
+  },
+  {
+   "db_active": null,
+   "display_name": "Core Growth Compounders",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_midover,fa_eps5years_o10,fa_roe_o15,sh_avgvol_o500,ta_sma200_pa&ft=3&o=-marketcap&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_core_growth"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "core_growth_compounders",
+   "state": "ORPHANED",
+   "strategy_type": "core_growth_compounder"
+  },
+  {
+   "db_active": true,
+   "display_name": "Core Index / Broad Market",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:01.819108-04:00",
+   "last_run": "2026-07-20 07:00:01.819108-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=ind_exchangetradedfund,fa_div_pos,geo_usa&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67&o=-marketcap",
+   "mapped_sources": [
+    "finviz_core_growth"
+   ],
+   "member_rows": 4136,
+   "reason": "running, mapped, 4136 member rows",
+   "results_count": 4105,
+   "screen_id": "core_index_broad",
+   "state": "ACTIVE",
+   "strategy_type": "core_index"
+  },
+  {
+   "db_active": null,
+   "display_name": "Core Index ETFs",
+   "in_candidate_sources": false,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&t=SPY,QQQ,IWM,DIA,VTI,VXUS,AGG,BND,TLT,GLD,RSP&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml only \u2014 absent from executor DB and unmapped in candidate_sources; never runs",
+   "results_count": null,
+   "screen_id": "core_index_etfs",
+   "state": "ORPHANED",
+   "strategy_type": "core_index"
+  },
+  {
+   "db_active": null,
+   "display_name": "Covered Call Candidates",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_midover,sh_opt_optionshort,sh_avgvol_o1000&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_covered_call"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "covered_call_candidates",
+   "state": "ORPHANED",
+   "strategy_type": "covered_call_income"
+  },
+  {
+   "db_active": true,
+   "display_name": "Covered-Call ETF Scanner",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:01.819108-04:00",
+   "last_run": "2026-07-20 07:00:01.819108-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=ind_exchangetradedfund,fa_dividendyield_o5&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_covered_call"
+   ],
+   "member_rows": 5584,
+   "reason": "running, mapped, 5584 member rows",
+   "results_count": 5557,
+   "screen_id": "covered_call_etf",
+   "state": "ACTIVE",
+   "strategy_type": "covered_call_income"
+  },
+  {
+   "db_active": true,
+   "display_name": "Covered-Call Rotation Window",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:01.819108-04:00",
+   "last_run": "2026-07-20 07:00:01.819108-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=ind_exchangetradedfund,fa_dividendyield_o6,sh_avgvol_o500",
+   "mapped_sources": [
+    "finviz_covered_call"
+   ],
+   "member_rows": 805,
+   "reason": "running, mapped, 805 member rows",
+   "results_count": 753,
+   "screen_id": "covered_call_rotation",
+   "state": "ACTIVE",
+   "strategy_type": "covered_call_income"
+  },
+  {
+   "db_active": null,
+   "display_name": "Defense / Aerospace Thesis",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_midover,ind_aerospacedefense,sh_avgvol_o500,ta_sma200_pa&ft=3&o=-marketcap&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_sector"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "defense_aerospace",
+   "state": "ORPHANED",
+   "strategy_type": "defense_thesis"
+  },
+  {
+   "db_active": true,
+   "display_name": "Defense/Aerospace Basket",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:01.819108-04:00",
+   "last_run": "2026-07-20 07:00:01.819108-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=ind_aerospacedefense&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_sector"
+   ],
+   "member_rows": 90,
+   "reason": "running, mapped, 90 member rows",
+   "results_count": 88,
+   "screen_id": "defense_basket",
+   "state": "ACTIVE",
+   "strategy_type": "defense_thesis"
+  },
+  {
+   "db_active": true,
+   "display_name": "Defense Momentum",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:01.819108-04:00",
+   "last_run": "2026-07-20 07:00:01.819108-04:00",
+   "machine_url": "https://finviz.com/screener.ashx?v=111&f=geo_usa,ind_aerospacedefense,ta_perf_1mup",
+   "mapped_sources": [
+    "finviz_sector"
+   ],
+   "member_rows": 77,
+   "reason": "running, mapped, 77 member rows",
+   "results_count": 75,
+   "screen_id": "defense_momentum",
+   "state": "ACTIVE",
+   "strategy_type": "defense_thesis"
+  },
+  {
+   "db_active": null,
+   "display_name": "Defensive Quality (REIT / Bond / Dividend)",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=fa_div_high,fa_payoutratio_u85,ta_beta_u1,sh_avgvol_o500&ft=3&sec_realestate,sec_utilities,sec_consumerdefensive&o=dividend&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_bond"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "defensive_quality",
+   "state": "ORPHANED",
+   "strategy_type": "reit_income"
+  },
+  {
+   "db_active": true,
+   "display_name": "Dividend Growth Quality",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:01.819108-04:00",
+   "last_run": "2026-07-20 07:00:01.819108-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=fa_div_o3,fa_roe_o15,fa_payoutratio_u60p,ta_sma50_pa",
+   "mapped_sources": [
+    "finviz_dividend_income"
+   ],
+   "member_rows": 181,
+   "reason": "running, mapped, 181 member rows",
+   "results_count": 119,
+   "screen_id": "div_growth_quality",
+   "state": "ACTIVE",
+   "strategy_type": "dividend_growth_compounder"
+  },
+  {
+   "db_active": true,
+   "display_name": "Dividend Aristocrats (Growth)",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:01.819108-04:00",
+   "last_run": "2026-07-20 07:00:01.819108-04:00",
+   "machine_url": "https://finviz.com/screener.ashx?v=111&f=fa_div_o1.5,fa_epsyoy5_o5,cap_largeover,geo_usa",
+   "mapped_sources": [
+    "finviz_dividend_income"
+   ],
+   "member_rows": 771,
+   "reason": "running, mapped, 771 member rows",
+   "results_count": 718,
+   "screen_id": "dividend_aristocrats",
+   "state": "ACTIVE",
+   "strategy_type": "dividend_growth_compounder"
+  },
+  {
+   "db_active": true,
+   "display_name": "Dividend Growth Compounder",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=fa_div_o2,fa_epsqoq_pos,fa_payoutratio_u70,cap_largeover&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_dividend_income"
+   ],
+   "member_rows": 159,
+   "reason": "running, mapped, 159 member rows",
+   "results_count": 138,
+   "screen_id": "dividend_growth",
+   "state": "ACTIVE",
+   "strategy_type": "dividend_growth_compounder"
+  },
+  {
+   "db_active": null,
+   "display_name": "Dividend Value Pullback",
+   "in_candidate_sources": false,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=fa_div_pos,fa_payoutratio_u85,fa_divgrowth5y_o5,ta_rsi_30to50,sh_avgvol_o500&ft=3&o=relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml only \u2014 absent from executor DB and unmapped in candidate_sources; never runs",
+   "results_count": null,
+   "screen_id": "dividend_value_pullback",
+   "state": "ORPHANED",
+   "strategy_type": "dividend_growth_compounder"
+  },
+  {
+   "db_active": null,
+   "display_name": "Pre-Earnings Catalyst",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_midover,earningsdate_thisweek,sh_avgvol_o500,ta_rsi_nob40to65&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_earnings"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "earnings_catalyst_pre",
+   "state": "ORPHANED",
+   "strategy_type": "earnings_catalyst"
+  },
+  {
+   "db_active": true,
+   "display_name": "Income ETFs",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=ind_exchangetradedfund,fa_div_pos,fa_dividendyield_o3&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_covered_call"
+   ],
+   "member_rows": 4136,
+   "reason": "running, mapped, 4136 member rows",
+   "results_count": 4105,
+   "screen_id": "etf_income",
+   "state": "ACTIVE",
+   "strategy_type": "covered_call_income"
+  },
+  {
+   "db_active": true,
+   "display_name": "Fib Retracement Bounce \u2014 pullback in uptrend (targeted)",
+   "in_candidate_sources": false,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=sh_price_o5,sh_avgvol_o500,ta_sma20_pb,ta_sma50_pa,ta_sma200_pa,ta_rsi_nob60&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [],
+   "member_rows": 1341,
+   "reason": "running and producing members, but no candidate_sources mapping \u2014 no strategy consumes it (attribution gap, not proposal-eligible)",
+   "results_count": 275,
+   "screen_id": "fib_retracement_targeted",
+   "state": "SHADOW",
+   "strategy_type": "fib_retracement_bounce"
+  },
+  {
+   "db_active": null,
+   "display_name": "High Yield BDC / CEF Income",
+   "in_candidate_sources": false,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=fa_div_o5,cap_midover,sh_avgvol_o200,ind_assetmanagement&ft=3&o=-dividend&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml only \u2014 absent from executor DB and unmapped in candidate_sources; never runs",
+   "results_count": null,
+   "screen_id": "high_yield_bdc_income",
+   "state": "ORPHANED",
+   "strategy_type": "high_yield_income_bdc"
+  },
+  {
+   "db_active": true,
+   "display_name": "High-Yield BDC/REIT (>6%)",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://finviz.com/screener.ashx?v=111&f=fa_div_o6,cap_smallover,geo_usa",
+   "mapped_sources": [
+    "finviz_dividend_income"
+   ],
+   "member_rows": 364,
+   "reason": "running, mapped, 364 member rows",
+   "results_count": 325,
+   "screen_id": "high_yield_bdc_reit",
+   "state": "ACTIVE",
+   "strategy_type": "high_yield_income_bdc"
+  },
+  {
+   "db_active": true,
+   "display_name": "High-Yield Income (BDC/CEF)",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=fa_div_pos,fa_dividendyield_o5&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_dividend_income"
+   ],
+   "member_rows": 6479,
+   "reason": "running, mapped, 6479 member rows",
+   "results_count": 6422,
+   "screen_id": "high_yield_income",
+   "state": "ACTIVE",
+   "strategy_type": "high_yield_income_bdc"
+  },
+  {
+   "db_active": true,
+   "display_name": "Income Candidates (Div >3%)",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://finviz.com/screener.ashx?v=111&f=fa_div_o3,geo_usa,cap_smallover,sh_avgvol_o200",
+   "mapped_sources": [
+    "finviz_dividend_income"
+   ],
+   "member_rows": 578,
+   "reason": "running, mapped, 578 member rows",
+   "results_count": 498,
+   "screen_id": "income_candidates",
+   "state": "ACTIVE",
+   "strategy_type": "income_add"
+  },
+  {
+   "db_active": true,
+   "display_name": "International Dividend",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=geo_notusa,fa_div_pos,fa_dividendyield_o2&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_international"
+   ],
+   "member_rows": 386,
+   "reason": "running, mapped, 386 member rows",
+   "results_count": 376,
+   "screen_id": "intl_dividend",
+   "state": "ACTIVE",
+   "strategy_type": "international_dividend"
+  },
+  {
+   "db_active": true,
+   "display_name": "IRA-Friendly Income",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=fa_div_pos,fa_dividendyield_o4,fa_payoutratio_u80p&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_dividend_income"
+   ],
+   "member_rows": 6479,
+   "reason": "running, mapped, 6479 member rows",
+   "results_count": 6422,
+   "screen_id": "ira_income_friendly",
+   "state": "ACTIVE",
+   "strategy_type": "high_yield_income_bdc"
+  },
+  {
+   "db_active": null,
+   "display_name": "Oversold Quality (Recovery Watch)",
+   "in_candidate_sources": false,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_midover,fa_roe_pos,ta_rsi_os30,ta_sma200_pa,sh_avgvol_o500&ft=3&o=relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml only \u2014 absent from executor DB and unmapped in candidate_sources; never runs",
+   "results_count": null,
+   "screen_id": "oversold_quality",
+   "state": "ORPHANED",
+   "strategy_type": "recovery_watch"
+  },
+  {
+   "db_active": true,
+   "display_name": "Oversold Mean Reversion",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://finviz.com/screener.ashx?v=111&f=ta_rsi_ob30,geo_usa,sh_avgvol_o500,sh_price_o5",
+   "mapped_sources": [
+    "finviz_swing"
+   ],
+   "member_rows": 2860,
+   "reason": "running, mapped, 2860 member rows",
+   "results_count": 2658,
+   "screen_id": "oversold_reversion",
+   "state": "ACTIVE",
+   "strategy_type": "swing_trade"
+  },
+  {
+   "db_active": null,
+   "display_name": "PM Breakout Confirmation",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_midover,sh_avgvol_o500,sh_relvol_o2,ta_highlow20d_nh,ta_sma50_pa&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_swing"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "pm_breakout_confirmation",
+   "state": "ORPHANED",
+   "strategy_type": "swing_breakout"
+  },
+  {
+   "db_active": null,
+   "display_name": "PM Volume Continuation",
+   "in_candidate_sources": false,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_smallover,sh_avgvol_o500,sh_price_o5,sh_relvol_o1.5,ta_change_u&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml only \u2014 absent from executor DB and unmapped in candidate_sources; never runs",
+   "results_count": null,
+   "screen_id": "pm_volume_continuation",
+   "state": "ORPHANED",
+   "strategy_type": "swing_trade"
+  },
+  {
+   "db_active": null,
+   "display_name": "Post-Earnings Gappers",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=earningsdate_yesterday,sh_avgvol_o500,sh_curvol_o2000,ta_gap_u5&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_earnings"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "post_earnings_gappers",
+   "state": "ORPHANED",
+   "strategy_type": "earnings_post_momentum"
+  },
+  {
+   "db_active": null,
+   "display_name": "Prime Setups (Tier 1)",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u50,sh_price_2to20,sh_relvol_o5,ta_gap_u10&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_momentum"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "prime_setups",
+   "state": "ORPHANED",
+   "strategy_type": "day_scalp"
+  },
+  {
+   "db_active": true,
+   "display_name": "Quality Compounders",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://finviz.com/screener.ashx?v=111&f=fa_epsyoy5_o10,fa_roe_o15,cap_largeover,geo_usa",
+   "mapped_sources": [
+    "finviz_core_growth"
+   ],
+   "member_rows": 345,
+   "reason": "running, mapped, 345 member rows",
+   "results_count": 326,
+   "screen_id": "quality_compounders",
+   "state": "ACTIVE",
+   "strategy_type": "core_growth_compounder"
+  },
+  {
+   "db_active": null,
+   "display_name": "Quality Pullback (Fib / Income)",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_midover,fa_div_high,fa_payoutratio_u80,sh_avgvol_o500,ta_sma50_pa,ta_sma200_pa,ta_rsi_30to50&ft=3&o=relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_swing"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "quality_pullback",
+   "state": "ORPHANED",
+   "strategy_type": "swing_trade"
+  },
+  {
+   "db_active": true,
+   "display_name": "Recovery Watch Candidates",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=ta_sma50_pb,ta_rsi_os30,sh_relvol_o1&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_swing"
+   ],
+   "member_rows": 1218,
+   "reason": "running, mapped, 1218 member rows",
+   "results_count": 20,
+   "screen_id": "recovery_candidates",
+   "state": "ACTIVE",
+   "strategy_type": "recovery_watch"
+  },
+  {
+   "db_active": true,
+   "display_name": "REIT Income Scanner",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=sec_realestate,fa_div_pos,fa_dividendyield_o3&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_dividend_income"
+   ],
+   "member_rows": 191,
+   "reason": "running, mapped, 191 member rows",
+   "results_count": 187,
+   "screen_id": "reit_income_scan",
+   "state": "ACTIVE",
+   "strategy_type": "reit_income"
+  },
+  {
+   "db_active": true,
+   "display_name": "Roth-Friendly Growth",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_largeover,fa_epsqoq_pos,fa_salesqoq_pos,ta_sma200_pa&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_core_growth"
+   ],
+   "member_rows": 511,
+   "reason": "running, mapped, 511 member rows",
+   "results_count": 417,
+   "screen_id": "roth_growth",
+   "state": "ACTIVE",
+   "strategy_type": "core_growth_compounder"
+  },
+  {
+   "db_active": true,
+   "display_name": "Sector Leaders (Rotation)",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://finviz.com/screener.ashx?v=111&f=geo_usa,cap_midover,sh_avgvol_o1000,ta_perf_1wup",
+   "mapped_sources": [
+    "finviz_sector"
+   ],
+   "member_rows": 1187,
+   "reason": "running, mapped, 1187 member rows",
+   "results_count": 636,
+   "screen_id": "sector_leaders",
+   "state": "ACTIVE",
+   "strategy_type": "sector_rotation"
+  },
+  {
+   "db_active": null,
+   "display_name": "Sector Leadership (Relative Strength)",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&t=XLF,XLE,XLK,XLV,XLI,XLU,XLP,XLB,XLRE,XLC,XLY&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_sector"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "sector_leadership_rs",
+   "state": "ORPHANED",
+   "strategy_type": "sector_rotation"
+  },
+  {
+   "db_active": true,
+   "display_name": "Speculative w/ Catalyst",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-17 18:00:02.278096-04:00",
+   "last_run": "2026-07-17 18:00:02.278096-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_midover,sh_relvol_o2,ta_change_u5&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_core_growth"
+   ],
+   "member_rows": 325,
+   "reason": "active in DB but last_run is stale (2026-07-17 18:00:02.278096-04:00)",
+   "results_count": 6,
+   "screen_id": "speculative_catalyst",
+   "state": "BROKEN",
+   "strategy_type": "speculative_growth"
+  },
+  {
+   "db_active": null,
+   "display_name": "Speculative Growth Breakouts",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_smallover,fa_salesqoq_o20,sh_relvol_o2,ta_perf_4w20o,ta_rsi_50to70&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_core_growth"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "speculative_growth_breakouts",
+   "state": "ORPHANED",
+   "strategy_type": "speculative_growth"
+  },
+  {
+   "db_active": true,
+   "display_name": "Swing Breakout \u2014 base breakout (targeted)",
+   "in_candidate_sources": false,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=sh_price_o5,sh_price_u150,sh_float_u500,sh_relvol_o1.5,sh_avgvol_o500,ta_sma20_pa,ta_sma50_pa,ta_highlow52w_b0to10h&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [],
+   "member_rows": 1029,
+   "reason": "running and producing members, but no candidate_sources mapping \u2014 no strategy consumes it (attribution gap, not proposal-eligible)",
+   "results_count": 1,
+   "screen_id": "swing_breakout_targeted",
+   "state": "SHADOW",
+   "strategy_type": "swing_breakout"
+  },
+  {
+   "db_active": true,
+   "display_name": "Swing Trade Momentum",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=sh_relvol_o1.5,ta_sma20_pa,ta_sma50_pa,ta_rsi_nos60&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_swing"
+   ],
+   "member_rows": 7060,
+   "reason": "running, mapped, 7060 member rows",
+   "results_count": 17,
+   "screen_id": "swing_momentum",
+   "state": "ACTIVE",
+   "strategy_type": "swing_trade"
+  },
+  {
+   "db_active": true,
+   "display_name": "Tactical Momentum",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_midover,ta_sma20_pa,ta_sma50_pa,ta_change_u3&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_core_growth"
+   ],
+   "member_rows": 1538,
+   "reason": "running, mapped, 1538 member rows",
+   "results_count": 28,
+   "screen_id": "tactical_momentum",
+   "state": "ACTIVE",
+   "strategy_type": "speculative_growth"
+  },
+  {
+   "db_active": true,
+   "display_name": "Taxable-Friendly Qualified Dividends",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_largeover,fa_div_pos,fa_dividendyield_o1,fa_pe_u25&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_dividend_income"
+   ],
+   "member_rows": 415,
+   "reason": "running, mapped, 415 member rows",
+   "results_count": 371,
+   "screen_id": "taxable_qualified_div",
+   "state": "ACTIVE",
+   "strategy_type": "dividend_growth_compounder"
+  },
+  {
+   "db_active": true,
+   "display_name": "Value + Income",
+   "in_candidate_sources": true,
+   "in_executor_db": true,
+   "in_screeners_yaml": false,
+   "last_member_seen": "2026-07-20 07:00:02.039624-04:00",
+   "last_run": "2026-07-20 07:00:02.039624-04:00",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=fa_div_pos,fa_pe_u20,fa_peg_u2,fa_dividendyield_o1&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_dividend_income"
+   ],
+   "member_rows": 494,
+   "reason": "running, mapped, 494 member rows",
+   "results_count": 416,
+   "screen_id": "value_income",
+   "state": "ACTIVE",
+   "strategy_type": "dividend_growth_compounder"
+  },
+  {
+   "db_active": null,
+   "display_name": "Watchlist Setups (Tier 2)",
+   "in_candidate_sources": true,
+   "in_executor_db": false,
+   "in_screeners_yaml": true,
+   "last_member_seen": "",
+   "last_run": "",
+   "machine_url": "https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u100,sh_price_1to30,sh_relvol_o3,ta_gap_u5&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67",
+   "mapped_sources": [
+    "finviz_momentum"
+   ],
+   "member_rows": 0,
+   "reason": "defined in screeners.yaml and mapped in candidate_sources, but absent from the executor DB \u2014 never runs",
+   "results_count": null,
+   "screen_id": "watchlist_setups",
+   "state": "ORPHANED",
+   "strategy_type": "day_scalp"
+  }
+ ],
+ "state_counts": {
+  "ACTIVE": 26,
+  "BROKEN": 1,
+  "ORPHANED": 18,
+  "SHADOW": 2
+ },
+ "totals": {
+  "candidate_sources_referenced_ids": 40,
+  "distinct_ids_across_all_three": 47,
+  "executor_db_rows": 29,
+  "screeners_yaml_definitions": 18
+ }
+}

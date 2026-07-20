@@ -25,6 +25,11 @@ DESK_RUNTIME = PROJECT_ROOT / "data" / "runtime" / "options_desk_enterprise.json
 SHORT_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spread"})
 BLOCKING_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spread", "long_call"})
 
+# Sentinel: the earnings provider could not answer. NEVER equal to "" (no
+# scheduled earnings) — event gates must treat these two cases differently.
+EARNINGS_UNKNOWN = "UNKNOWN"
+_EARNINGS_LAST_ERROR = ""
+
 
 def _f(v, default=0.0) -> float:
     try:
@@ -233,8 +238,8 @@ def earnings_calendar(symbols: List[str]) -> Dict[str, str]:
     # yet — otherwise a name added mid-window silently skips its earnings blackout.
     if not fresh or missing:
         to_fetch = syms if not fresh else missing
+        from portfolio_options import _get_earnings_dates, EarningsProviderError
         try:
-            from portfolio_options import _get_earnings_dates
             fetched = _get_earnings_dates(list(to_fetch), PROJECT_ROOT)
             _EARNINGS_CACHE.update(fetched)
             # Record "looked, none found" so a no-earnings name doesn't refetch every call.
@@ -242,8 +247,12 @@ def earnings_calendar(symbols: List[str]) -> Dict[str, str]:
                 _EARNINGS_CACHE.setdefault(s, "")
             if not fresh:
                 _EARNINGS_CACHE_AT = _now()
-        except Exception:
-            pass
+        except EarningsProviderError as e:
+            # Provider down != no earnings. Surface UNKNOWN so event gates fail
+            # CLOSED instead of silently clearing every symbol (2026-07-20).
+            _EARNINGS_PROVIDER_ERROR = str(e)
+            globals()["_EARNINGS_LAST_ERROR"] = _EARNINGS_PROVIDER_ERROR
+            return {s: EARNINGS_UNKNOWN for s in syms}
     return {s: _EARNINGS_CACHE.get(s, "") for s in syms}
 
 
@@ -262,6 +271,22 @@ def earnings_blackout_check(
         return {"in_blackout": False, "symbol": sym, "strategy": strategy}
     cal = earnings_calendar([sym])
     earn_raw = cal.get(sym) or ""
+    if earn_raw == EARNINGS_UNKNOWN:
+        # FAIL CLOSED: unknown event timing is not "no event". A blocking
+        # strategy must not be cleared by a dead provider (2026-07-20 — FMP v3
+        # earning_calendar returns 403 for non-legacy keys).
+        return {
+            "in_blackout": True,
+            "symbol": sym,
+            "strategy": strategy,
+            "next_earnings": None,
+            "days_to_earnings": None,
+            "data_blocked": True,
+            "refusal_code": "EARNINGS_TIMESTAMP_UNKNOWN",
+            "reason": (f"Earnings timing unavailable — provider error "
+                       f"({_EARNINGS_LAST_ERROR[:120] or 'unknown'}); "
+                       f"{strategy} fails closed until an earnings source is restored"),
+        }
     if not earn_raw:
         return {"in_blackout": False, "symbol": sym, "next_earnings": None, "days_to_earnings": None}
     try:
