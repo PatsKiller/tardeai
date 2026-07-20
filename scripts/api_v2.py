@@ -11596,6 +11596,20 @@ def _defense_cc_queue_trade(body=None):
                         f"{b.get('code')}: {b.get('reason')}" for b in _cc_blocks)}
 
 
+def _shadow_strategy_packet(query=None):
+    """GET /api/v2/shadow/strategy/packet?symbol=X — the latest live shadow packet
+    plus its per-family blueprints. Read-only; the card renders this after a run
+    completes."""
+    query = query or {}
+    sym = query.get("symbol")
+    if isinstance(sym, (list, tuple)):
+        sym = sym[0] if sym else None
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    import shadow_decision_service as svc
+    return svc.readback(str(sym))
+
+
 def _shadow_strategy_build(body=None):
     """POST /api/v2/shadow/strategy/build — the 'Build Full Strategy' action.
 
@@ -32640,6 +32654,7 @@ ROUTES = {
     "/api/v2/defense/industries": _defense_industries,
     "/api/v2/defense/recommendations": _defense_recommendations,
     "/api/v2/shadow/strategy/status": _shadow_strategy_status,
+    "/api/v2/shadow/strategy/packet": _shadow_strategy_packet,
     "/api/v2/defense/core": _defense_core_registry,
     "/api/v2/defense/review": _defense_review,
     "/api/v2/portfolio/book-map": _portfolio_book_map,

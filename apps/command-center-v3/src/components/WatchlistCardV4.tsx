@@ -15,6 +15,7 @@ import {
   type CardActionType,
 } from '../lib/watchlistCardAction'
 import CountryFlag from './CountryFlag'
+import ShadowStrategyButton from './ShadowStrategyButton'
 import { LadderLine } from './primitives/cardPrimitives'
 import { type RiskPct } from '../lib/watchlistProposeSizing'
 import { EvidenceBlock } from './EvidenceBlock'
@@ -553,6 +554,9 @@ export default function WatchlistCardV4({
       {/* Expandable drawer — secondary intelligence + diligence */}
       {drawerOpen && (
         <div onClick={e => e.stopPropagation()} style={{ padding: '6px 10px', borderTop: hair, background: BB.bgShift, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 9.5, color: BB.text2 }}>
+          {/* Shadow multidimensional analysis — additive, does not replace the
+              primary card or its legacy label. Nothing here queues or submits. */}
+          <ShadowStrategyButton symbol={it.symbol} />
           {visibleDqFlags.length > 1 && (
             <div><span style={{ color: BB.text3, fontWeight: 800 }}>DATA </span>{visibleDqFlags.map(f => f.label).join(' · ')}</div>
           )}
