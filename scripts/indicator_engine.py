@@ -16,7 +16,14 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-import pandas_ta as ta
+try:
+    import pandas_ta as ta
+except ModuleNotFoundError:
+    # pandas_ta has no distribution for this environment (pandas 3.x / numpy 2.x /
+    # py3.14) and the import failure killed every run — 463 RETRY_EXHAUSTED events
+    # and a standing SIEM P1 (2026-07-20). The shim reproduces the exact function
+    # signatures and column names this module indexes.
+    import pandas_ta_shim as ta
 import yaml
 import yfinance as yf
 
