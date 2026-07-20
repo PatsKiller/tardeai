@@ -340,6 +340,25 @@ def _ingest_safe_flock_events(lookback_min=SAFE_FLOCK_LOOKBACK_MIN):
     return events, parse_errors
 
 
+
+def _last_scheduled_sync_fire(now=None):
+    """Most recent time `alpaca_paper_adapter --sync-only` should have run.
+
+    Cron: 0 10-16 * * 1-5 (hourly on the hour, 10:00-16:00 ET, weekdays).
+    A grace hour is allowed for run duration and cron jitter, so a position is
+    only 'unsynced' if it missed a fire that genuinely should have happened.
+    """
+    from datetime import timedelta as _td
+    from zoneinfo import ZoneInfo as _ZI
+    _et = _ZI("America/New_York")
+    cur_t = (now or datetime.now(_et)).astimezone(_et)
+    probe = cur_t.replace(minute=0, second=0, microsecond=0)
+    for _ in range(24 * 10):           # bounded scan back ~10 days
+        if probe.weekday() < 5 and 10 <= probe.hour <= 16 and probe <= cur_t:
+            return probe - _td(hours=1)    # grace
+        probe -= _td(hours=1)
+    return cur_t - _td(days=10)
+
 def _analyze_safe_flock(conn, dry_run=True, verbose=False):
     """Analyze safe_flock events and write health events for anomalies.
 
@@ -1273,11 +1292,23 @@ def run_health_check(dry_run=True, verbose=False):
                 if _today_trades == 0 and _h >= 11:
                     pipeline_alerts.append(f"⚠️ ATM=active but 0 trades today (check proposal pipeline)")
 
-            # 5. Alpaca position sync — DB vs broker divergence
-            cur.execute("SELECT COUNT(*) FROM paper_trades WHERE status='open' AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '4 hours')")
+            # 5. Alpaca position sync — SCHEDULE-AWARE.
+            # The syncing job (alpaca_paper_adapter --sync-only) runs hourly 10:00-16:00
+            # Mon-Fri. A flat 4-hour threshold therefore fired every weekday before
+            # 10:00 and all weekend: on 2026-07-20 it paged about an FCX position whose
+            # DB row matched the broker EXACTLY (79 sh @ 62.031392), simply because the
+            # last sync was Friday 16:00. Stale now means "older than the most recent
+            # SCHEDULED sync + grace" (2026-07-20 fix, same class as monitor_freshness).
+            _sync_cutoff = _last_scheduled_sync_fire()
+            cur.execute("""SELECT COUNT(*) FROM paper_trades
+                           WHERE status='open'
+                             AND (last_synced_at IS NULL OR last_synced_at < %s)""",
+                        [_sync_cutoff])
             _unsync = cur.fetchone()[0] or 0
             if _unsync > 0:
-                pipeline_alerts.append(f"📊 {_unsync} open trade(s) not synced with broker in 4h+")
+                pipeline_alerts.append(
+                    f"📊 {_unsync} open trade(s) not synced since the last scheduled "
+                    f"sync ({_sync_cutoff:%a %H:%M} ET)")
 
             # 6. Screener data quality — SOURCE-AWARE.
             # Counting every source together blamed "the screener" for rows written
