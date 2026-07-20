@@ -25,6 +25,34 @@ from options_lifecycle_engine import policy
 
 SNAP = ROOT / "data" / "runtime" / "options_lifecycle_latest.json"
 
+# Producing cron: */20 9-16 ET Mon-Fri (see crontab options-paper-lifecycle block).
+_CRON_HOURS = range(9, 17)
+_CRON_STEP_MIN = 20
+
+
+def _last_scheduled_fire(now=None):
+    """Most recent time the */20 9-16 ET Mon-Fri lifecycle cron should have fired.
+
+    Mirrors the cron exactly (weekday-based; the cron itself is holiday-blind,
+    so on holidays the payload still regenerates and stays fresh).
+    """
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    et = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("America/New_York"))
+    for _ in range(8 * 24 * 3):  # scan back tick-by-tick, bounded to ~8 days
+        cand = et.replace(minute=(et.minute // _CRON_STEP_MIN) * _CRON_STEP_MIN,
+                          second=0, microsecond=0)
+        if cand.weekday() < 5 and cand.hour in _CRON_HOURS and cand <= (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("America/New_York")):
+            return cand
+        et = et - timedelta(minutes=_CRON_STEP_MIN)
+    return et  # unreachable in practice
+
+
+def _market_hours_now(now=None):
+    from zoneinfo import ZoneInfo
+    et = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("America/New_York"))
+    return et.weekday() < 5 and et.hour in _CRON_HOURS
+
 
 def health_checks(cur) -> list[dict]:
     out = []
@@ -32,13 +60,24 @@ def health_checks(cur) -> list[dict]:
     def check(name, ok, detail):
         out.append({"check": name, "ok": bool(ok), "detail": detail})
 
-    # cron / payload freshness
+    # cron / payload freshness — schedule-aware (2026-07-19): the producing cron
+    # is */20 9-16 ET Mon-Fri, so blind wall-clock age flagged ⛔ every evening
+    # and all weekend (the 2026-06-06 health-agent false-alarm class). Stale
+    # means: older than the most recent scheduled fire + grace.
     try:
         snap = json.loads(SNAP.read_text())
-        age_min = (datetime.now(timezone.utc)
-                   - datetime.fromisoformat(snap["generated_at"])).total_seconds() / 60
-        check("monitor_freshness", age_min < 45,
-              f"lifecycle payload {age_min:.0f} min old (cron */20 market hours)")
+        generated = datetime.fromisoformat(snap["generated_at"])
+        age_min = (datetime.now(timezone.utc) - generated).total_seconds() / 60
+        last_fire = _last_scheduled_fire()
+        lag_min = (last_fire - generated).total_seconds() / 60
+        if lag_min <= 45:
+            check("monitor_freshness", True,
+                  f"lifecycle payload {age_min:.0f} min old; covers last scheduled "
+                  f"fire ({last_fire:%a %H:%M} ET{'' if _market_hours_now() else ' — off-hours, cron idle by schedule'})")
+        else:
+            check("monitor_freshness", False,
+                  f"lifecycle payload predates last scheduled fire by {lag_min:.0f} min "
+                  f"(payload {generated.isoformat()}, last fire {last_fire:%a %H:%M} ET)")
     except Exception as e:
         check("monitor_freshness", False, f"no lifecycle payload: {str(e)[:60]}")
 
