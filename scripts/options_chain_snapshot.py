@@ -28,6 +28,24 @@ _PP = _FULL_CFG.get("protective_put")  # R1: absent block = no put picks, never 
 SNAP = ROOT / "data" / "runtime" / "hedging_radar_latest.json"
 
 
+
+def _next_earnings(symbol: str):
+    """Next earnings date for the underlying, or None if genuinely unknown.
+
+    The covered-call picker was earnings-BLIND: it scored purely on DTE and
+    delta, so it happily recommended an expiry that straddles an earnings
+    report, and the downstream risk gate then refused the desk's own suggestion
+    (CSCO 2026-08-21 proposed while CSCO reports 2026-08-12 — operator hit this
+    2026-07-20). Selecting the contract is the right place to know this.
+    """
+    try:
+        from earnings_provider import get_one, SCHEDULED
+        info = get_one(symbol)
+        return info.date if info.state == SCHEDULED else None
+    except Exception:
+        return None
+
+
 def universe() -> list:
     syms = list(CFG["priority_universe"])
     try:
@@ -87,15 +105,26 @@ def aggregate(chain: dict) -> dict | None:
                          and max(oi, vol) >= vc["min_volume_or_oi"]
                          and spread_pct <= vc["max_spread_pct_of_mid"]
                          and vc["delta_band"][0] <= ad <= vc["delta_band"][1])
-                fit = abs(ad - 0.28) + (0 if valid else 10)  # valid picks always beat invalid
+                # Earnings inside the contract is a first-class selection
+                # criterion, not just a downstream refusal. An expiry that
+                # straddles the report is heavily penalised so an earnings-SAFE
+                # expiry wins whenever one exists; if none does we still pick,
+                # but the card carries the flag instead of silently proposing a
+                # trade the risk gate will reject.
+                _earn = _next_earnings(symbol)
+                _spans = bool(_earn and s["exp"] and str(s["exp"])[:10] >= _earn.isoformat())
+                fit = abs(ad - 0.28) + (0 if valid else 10) + (5 if _spans else 0)
                 if cc_call is None or fit < cc_call["_fit"]:
                     cc_call = {"exp": s["exp"], "dte": dte, "strike": s["strike"],
                                "delta": round(ad, 2), "iv": round(float(iv), 1),
                                "mid": round(mid, 2), "bid": s["bid"], "ask": s["ask"],
                                "oi": oi, "volume": vol, "spread_pct": spread_pct,
                                "validated": valid,
+                               "spans_earnings": _spans,
+                               "earnings_date": _earn.isoformat() if _earn else None,
                                "validation": (f"OI {oi} · vol {vol} · spread {spread_pct}% · Δ{round(ad, 2)} · IV {round(float(iv), 1)}"
-                                              + ("" if valid else f" — FAILED rails (need OI≥{vc['min_open_interest']}, spread≤{vc['max_spread_pct_of_mid']}%)")),
+                                              + ("" if valid else f" — FAILED rails (need OI≥{vc['min_open_interest']}, spread≤{vc['max_spread_pct_of_mid']}%)")
+                                              + (f" — ⚠ EARNINGS {_earn.isoformat()} INSIDE this contract" if _spans else "")),
                                "_fit": fit}
             if (_PP and s["side"] == "put"
                     and _PP["tenor_dte"][0] <= dte <= _PP["tenor_dte"][1]
