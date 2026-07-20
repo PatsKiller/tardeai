@@ -6,6 +6,7 @@ pipeline_watchdog.py — The nervous system. Runs every 5 min weekdays.
 4. Daily summary at 8:30 AM
 """
 import json, logging, os, subprocess, sys, time
+import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -14,6 +15,8 @@ import psycopg2, requests
 log = logging.getLogger(__name__)
 PROJECT_ROOT = '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild'
 MAX_RETRIES = 3
+# Enrichment attempts per entity per week before backing off to weekly.
+MAX_ENRICH_ATTEMPTS = int(os.getenv('WATCHDOG_MAX_ENRICH_ATTEMPTS', '6'))
 
 def _load_env():
     for line in Path(PROJECT_ROOT, '.env').read_text().splitlines():
@@ -61,17 +64,50 @@ def was_alerted_recently(conn, target, hours=1.0):
         return False
 
 
+
+def _runs_today(run_days, now) -> bool:
+    """Does a cron-style day-of-week spec include today?
+
+    Accepts '1-5', '0', '0,6', '*' (cron DOW: 0=Sunday). Unparseable or empty
+    means 'every day' — the previous behaviour — so a bad value can never make a
+    job invisible to the watchdog.
+    """
+    spec = (run_days or "*").strip()
+    if spec in ("*", ""):
+        return True
+    dow = (now.weekday() + 1) % 7          # Python Mon=0 -> cron Sun=0
+    try:
+        for part in spec.split(","):
+            part = part.strip()
+            if "-" in part:
+                a, b = (int(x) for x in part.split("-", 1))
+                if a <= dow <= b:
+                    return True
+            elif part.isdigit() and int(part) % 7 == dow:
+                return True
+    except (ValueError, TypeError):
+        return True
+    return False
+
+
 # ── FUNCTION 1: Pipeline Execution Monitor ──
 
 def check_pipeline_execution(conn):
     issues = []
     now = datetime.now()
-    if now.weekday() >= 5: return []
     cur = conn.cursor()
+    # run_days exists in the schema but was never read: the check simply skipped
+    # Sat/Sun and treated every entry as weekday-daily. Sunday-only jobs
+    # (agent_outcome_scorer, strategy_weekly_review) were therefore expected on
+    # weekdays they never run — and never checked on the day they DO run
+    # (2026-07-20 sweep).
     cur.execute("""SELECT script_name, display_name, expected_hour, expected_min,
-        max_latency_min, min_rows, critical, command FROM pipeline_schedule WHERE active=true""")
-    for (script, display, exp_h, exp_m, latency, min_rows, critical, command) in cur.fetchall():
+        max_latency_min, min_rows, critical, command, run_days
+        FROM pipeline_schedule WHERE active=true""")
+    for (script, display, exp_h, exp_m, latency, min_rows, critical, command,
+         run_days) in cur.fetchall():
         if exp_h is None: continue
+        if not _runs_today(run_days, now): continue
         expected = now.replace(hour=exp_h, minute=exp_m, second=0, microsecond=0)
         deadline = expected + timedelta(minutes=latency)
         if now < deadline: continue  # Not yet overdue
@@ -166,12 +202,28 @@ def check_go_coverage(conn):
 def run_ier_engine(conn):
     cur = conn.cursor()
     cur.execute("""
-        SELECT entity_id, entity_type, intelligence_score, iris_freshness, screener_decision
-        FROM intelligence_entities WHERE active=true
-        AND (iris_freshness IN ('CRITICAL','STALE') OR intelligence_score < 25)
-        AND (last_enriched IS NULL OR last_enriched < NOW()-INTERVAL '4 hours')
-        ORDER BY intelligence_score NULLS FIRST LIMIT 15
-    """)
+        SELECT e.entity_id, e.entity_type, e.intelligence_score, e.iris_freshness,
+               e.screener_decision
+        FROM intelligence_entities e
+        WHERE e.active=true
+        AND (e.iris_freshness IN ('CRITICAL','STALE') OR e.intelligence_score < 25)
+        AND (e.last_enriched IS NULL OR e.last_enriched < NOW()-INTERVAL '4 hours')
+        -- BOUNDED RETRY (2026-07-20). Selection is score-based, but enrichment
+        -- does not necessarily RAISE the score: an entity stuck at 7.0 stays
+        -- below 25 forever and was re-triggered every 4h indefinitely (61 times
+        -- in 14 days for the worst case, 2752 entities permanently eligible).
+        -- After MAX_ENRICH_ATTEMPTS tries with no improvement, back off to one
+        -- attempt per week so genuinely recoverable entities still retry while
+        -- un-enrichable ones stop burning the queue.
+        AND (
+              (SELECT count(*) FROM watchdog_actions w
+                WHERE w.action_type='trigger_enrichment' AND w.target=e.entity_id
+                  AND w.created_at > NOW()-INTERVAL '7 days') < %s
+              OR e.last_enriched IS NULL
+              OR e.last_enriched < NOW()-INTERVAL '7 days'
+            )
+        ORDER BY e.intelligence_score NULLS FIRST LIMIT 15
+    """, [MAX_ENRICH_ATTEMPTS])
     actions = 0
     for (eid, etype, score, freshness, decision) in cur.fetchall():
         if was_alerted_recently(conn, f'ier_{eid}', hours=4): continue
