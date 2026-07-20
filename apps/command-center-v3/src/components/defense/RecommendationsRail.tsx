@@ -198,25 +198,63 @@ function ValidateButton({ cs, onValid }: { cs: any; onValid: (ts: string) => voi
 
 function QueueTradeButton({ cs, validatedAt }: { cs: any; validatedAt: string | null }) {
   const [state, setState] = useState<'idle' | 'busy' | 'queued'>('idle')
+  const [acked, setAcked] = useState(false)
   const fresh = validatedAt != null && (Date.now() - new Date(validatedAt).getTime()) < 15 * 60_000
+  // A contract whose expiry falls after the earnings report is still offered —
+  // selling premium through a print is a legitimate strategy and the risk is the
+  // operator's. But it must be CHOSEN, not discovered at the 2FA step, which is
+  // what the CSCO incident was (2026-07-20). The backend honours this exact
+  // acknowledgement and refuses any that does not name this earnings date.
+  const needsAck: boolean = !!cs?.requires_ack && !!cs?.earnings_date
+  const gated = fresh && (!needsAck || acked)
   const queue = async (e: any) => {
     e.stopPropagation()
     setState('busy')
     try {
+      const body: any = { cc_struct: cs }
+      if (needsAck) {
+        body.operator_ack = {
+          code: cs.requires_ack,                 // EARNINGS_INSIDE_CONTRACT
+          earnings_date: cs.earnings_date,       // must match the block exactly
+          acknowledged_by: 'operator',
+          acknowledged_at: new Date().toISOString(),
+        }
+      }
       const r = await fetch('/api/v2/defense/cc/queue-trade', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cc_struct: cs }),
+        body: JSON.stringify(body),
       })
       setState((await r.json()).ok ? 'queued' : 'idle')
     } catch { setState('idle') }
   }
   return (
-    <button onClick={queue} disabled={state !== 'idle' || !fresh}
-      title={fresh ? 'queues this exact structure into the options approval queue. Then in Options: APPROVE (no code sent) and then SUBMIT — the 2FA code is generated at SUBMIT, not at queue or approve. Nothing executes from this page'
-        : 'LOCKED — run ⟳ validate chain first (validation must be ≤15 min old); the click is gated on fresh rails'}
-      style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: fresh ? 'pointer' : 'not-allowed', opacity: fresh ? 1 : 0.45, color: state === 'queued' ? BB.green : BB.text1, background: 'transparent', border: `1px solid ${state === 'queued' ? BB.green : BB.amber}`, borderRadius: 2, padding: '2px 9px', marginBottom: 3 }}>
-      {state === 'busy' ? '…' : state === 'queued' ? '✓ queued — approve, then SUBMIT in Options (2FA fires at submit)' : fresh ? '⚡ queue trade (approve + 2FA in Options)' : '🔒 re-validate first'}
+    <>
+    {needsAck && state !== 'queued' && (
+      <label onClick={(e: any) => e.stopPropagation()}
+        style={{ display: 'block', fontSize: DASH.chip, color: BB.amber, cursor: 'pointer',
+                 border: `1px solid ${BB.amber}`, borderRadius: 2, padding: '4px 8px', marginBottom: 4 }}>
+        <input type="checkbox" checked={acked} onChange={e => setAcked(e.target.checked)}
+               style={{ marginRight: 6, verticalAlign: 'middle' }} />
+        <b>⚠ EARNINGS {cs.earnings_date} INSIDE THIS CONTRACT</b>
+        <div style={{ color: BB.text3, fontWeight: 400, marginTop: 2 }}>
+          {cs.ack_prompt || `Assignment risk and an IV crush both sit inside this contract.
+            Confirm you intend to sell premium through the report.`}
+        </div>
+      </label>
+    )}
+    <button onClick={queue} disabled={state !== 'idle' || !gated}
+      title={!fresh ? 'LOCKED — run ⟳ validate chain first (validation must be ≤15 min old); the click is gated on fresh rails'
+        : needsAck && !acked ? `LOCKED — earnings ${cs.earnings_date} fall inside this contract. Tick the acknowledgement to accept that event risk; the backend requires it and refuses any acknowledgement that does not name this exact date`
+        : 'queues this exact structure into the options approval queue. Then in Options: APPROVE (no code sent) and then SUBMIT — the 2FA code is generated at SUBMIT, not at queue or approve. Nothing executes from this page'}
+      style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: gated ? 'pointer' : 'not-allowed', opacity: gated ? 1 : 0.45, color: state === 'queued' ? BB.green : BB.text1, background: 'transparent', border: `1px solid ${state === 'queued' ? BB.green : BB.amber}`, borderRadius: 2, padding: '2px 9px', marginBottom: 3 }}>
+      {state === 'busy' ? '…'
+        : state === 'queued' ? '✓ queued — approve, then SUBMIT in Options (2FA fires at submit)'
+        : !fresh ? '🔒 re-validate first'
+        : needsAck && !acked ? '🔒 acknowledge earnings risk to queue'
+        : needsAck ? '⚡ queue trade — earnings risk accepted (2FA in Options)'
+        : '⚡ queue trade (approve + 2FA in Options)'}
     </button>
+    </>
   )
 }
 

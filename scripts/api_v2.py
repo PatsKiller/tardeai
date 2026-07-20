@@ -11474,6 +11474,19 @@ def _defense_cc_queue_trade(body=None):
     sym = str(cs.get("symbol", "")).upper()[:8]
     if not (sym and cs.get("strike") and cs.get("exp") and cs.get("contracts")):
         return {"ok": False, "error": "cc_struct{symbol,strike,exp,contracts} required"}
+    # Operator acknowledgement of earnings inside the contract, carried from the
+    # card's tick-box. It is only ever an INPUT to the risk evaluation below —
+    # evaluate_hard_risk_blocks decides whether it actually applies, and refuses
+    # any acknowledgement that does not name the exact earnings date it is
+    # blocking on. The server never fabricates one (2026-07-20).
+    _op_ack = body.get("operator_ack")
+    _op_ack = _op_ack if isinstance(_op_ack, dict) else None
+    # A card that demands acknowledgement may not be queued without it.
+    if cs.get("requires_ack") and not _op_ack:
+        return {"ok": False, "error": "operator_ack required — this contract spans earnings",
+                "blocks": [{"code": "EARNINGS_INSIDE_CONTRACT",
+                            "reason": f"{sym} earnings {cs.get('earnings_date')} fall before "
+                                      f"expiration {cs.get('exp')}; acknowledge to queue"}]}
     from db_adapter import _get_conn
     import json as _j
     # live_eligible was hardcoded false with blocks_json '[]' — an incoherent
@@ -11483,13 +11496,6 @@ def _defense_cc_queue_trade(body=None):
     # approvals flow + per-order 2FA own everything downstream (2026-07-20).
     # Evaluate for real: eligible iff no hard block, and record the blocks so a
     # refusal always states its reason.
-    try:
-        import options_desk_enterprise as _ent
-        _cc_blocks = _ent.evaluate_hard_risk_blocks(proposal, mode="submit") or []
-    except Exception as _ce:
-        _cc_blocks = [{"code": "block_eval_failed",
-                       "reason": f"could not evaluate risk blocks: {type(_ce).__name__}"}]
-    _cc_live_eligible = not _cc_blocks
     conn = _get_conn()
     cur = conn.cursor()
     pid = f"defense-cc-{sym}-{str(cs['exp'])[:10]}-{cs['strike']}"
@@ -11499,6 +11505,22 @@ def _defense_cc_queue_trade(body=None):
                 "delta": cs.get("delta"), "mid": cs.get("mid"),
                 "premium_est": cs.get("premium_est"),
                 "note": "queued from the Defense CC card — greeks/liquidity validated at snapshot time"}
+    if _op_ack:
+        # Persisted on the proposal so the SAME acknowledgement is re-evaluated
+        # at approval and preflight, not just at queue time.
+        proposal["operator_ack"] = _op_ack
+    # NOTE: this evaluation must run AFTER `proposal` exists. It previously sat
+    # above the assignment and raised NameError into its own except, so every
+    # queued row silently got block_eval_failed and live_eligible=False —
+    # reintroducing the very "ineligible for no stated reason" state this code
+    # was added to remove (caught 2026-07-20).
+    try:
+        import options_desk_enterprise as _ent
+        _cc_blocks = _ent.evaluate_hard_risk_blocks(proposal, mode="submit") or []
+    except Exception as _ce:
+        _cc_blocks = [{"code": "block_eval_failed",
+                       "reason": f"could not evaluate risk blocks: {type(_ce).__name__}: {_ce}"[:200]}]
+    _cc_live_eligible = not _cc_blocks
     cur.execute(
         """INSERT INTO options_approval_queue
            (proposal_id, symbol, strategy, desk_tier, edge_score, status,
