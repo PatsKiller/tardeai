@@ -313,7 +313,22 @@ def load_all_portfolios(project_root_str: str) -> Dict:
     updated["holdings"] = repriced
     updated["account_summaries"] = account_summaries
     updated["as_of"] = today
-    updated["last_repriced"] = datetime.now().isoformat()
+    _now_iso = datetime.now().isoformat()
+    updated["last_repriced"] = _now_iso
+    # generated_at previously kept the date the POSITION LIST was first built and
+    # was never touched by repricing, so a fully-repriced file still advertised
+    # generated_at from days earlier (holdings.json read 2026-07-17 while
+    # last_repriced read 2026-07-20T10:00). Any consumer using the obvious
+    # freshness field would call live data three days stale. generated_at now
+    # means "these contents are current as of", and the original build time is
+    # preserved under positions_built_at (2026-07-20).
+    if current.get("generated_at") and not updated.get("positions_built_at"):
+        updated["positions_built_at"] = current["generated_at"]
+    updated["generated_at"] = _now_iso
+    updated["_freshness_note"] = (
+        "generated_at = contents current as of (updated every reprice). "
+        "positions_built_at = when the position list itself was constructed. "
+        "last_repriced = price refresh time (same as generated_at after a reprice).")
     prev_pt = dict(current.get("portfolio_totals", {}))
     prev_pt["total_value"] = portfolio_total
     prev_pt["day_change"] = portfolio_day_change

@@ -588,6 +588,20 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
 
     portfolio["last_repriced"]  = now_str
     portfolio["reprice_source"] = "finviz_live" if _is_market_hours(now) else "finviz_afterhours"
+    # generated_at used to hold the date the POSITION LIST was built and was never
+    # touched by repricing, so a file repriced seconds ago still advertised
+    # generated_at from days earlier (observed 2026-07-20: generated_at
+    # 2026-07-17 alongside last_repriced 10:05 the same morning). Anything using
+    # the obvious freshness field would call live data three days stale.
+    # generated_at now means "these contents are current as of"; the original
+    # build time is preserved once under positions_built_at.
+    if portfolio.get("generated_at") and not portfolio.get("positions_built_at"):
+        portfolio["positions_built_at"] = portfolio["generated_at"]
+    portfolio["generated_at"] = now_str
+    portfolio["_freshness_note"] = (
+        "generated_at = contents current as of (refreshed every reprice). "
+        "positions_built_at = when the position list was constructed. "
+        "last_repriced = price refresh time.")
 
     total = portfolio["portfolio_totals"]["total_value"]
     day   = portfolio["portfolio_totals"]["day_change"]
