@@ -14,6 +14,8 @@ from typing import Dict
 
 # Pipeline-stage failures for this run (see _stage_failed / _report_stage_failures).
 _STAGE_FAILURES = []
+# Non-fatal degradations: optional enrichments that silently yielded nothing.
+_DEGRADATIONS = []
 
 
 def _stage_failed(stage: str, exc: BaseException, *, fatal: bool = False):
@@ -41,6 +43,29 @@ def _stage_failed(stage: str, exc: BaseException, *, fatal: bool = False):
         "at": datetime.now().isoformat(timespec="seconds"),
     })
     print(f"  [{stage}] ❌ {type(exc).__name__}: {str(exc)[:200] or '(no message)'}")
+
+
+def _soft_fail(context: str, exc: BaseException):
+    """Record a NON-fatal degradation: an optional enrichment that silently
+    produced nothing.
+
+    Distinct from _stage_failed on purpose. A stage dying means a whole dashboard
+    section is missing and warrants a Telegram. These are narrower — a news-context
+    query, an analyst-target fetch — where the run is still usable. But they were
+    `except Exception: pass`, which renders "we failed to look" identically to
+    "there is nothing there". That is the same shape as the earnings gate failing
+    open, and it silently degrades the inputs the LLM and the report reason over.
+
+    Degradations are counted and written into the run artifact; they do NOT alert
+    and do NOT change the exit code.
+    """
+    _DEGRADATIONS.append({
+        "context": context,
+        "error_type": type(exc).__name__,
+        "error": str(exc)[:200] or "(no message)",
+        "at": datetime.now().isoformat(timespec="seconds"),
+    })
+    print(f"  [degraded] {context}: {type(exc).__name__}: {str(exc)[:120] or '(no message)'}")
 
 
 def _report_stage_failures(state_dir):
@@ -84,6 +109,7 @@ def _report_stage_failures(state_dir):
 
 def run_portfolio_pipeline(project_root, run_label="manual", generate_report=True, run_type="daily"):
     _STAGE_FAILURES.clear()
+    _DEGRADATIONS.clear()
     root = Path(project_root)
     date_str  = datetime.now().strftime("%Y-%m-%d")
     now_str   = datetime.now().strftime("%H:%M ET")
@@ -107,6 +133,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             if os.getenv("ANTHROPIC_API_KEY",""):
                 print("  [env] Loaded API key from .env")
         except Exception:
+            # AUDITED 2026-07-20: benign. Suppresses an informational print only;
+            # a missing key is reported by the explicit dashboard-key check later.
             pass
 
     # Auto-detect monthly run (1st of month or explicit)
@@ -501,8 +529,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                             "recommendation_key": _info.get("recommendationKey"),
                             "number_of_analyst_opinions": _info.get("numberOfAnalystOpinions"),
                         })
-                except Exception:
-                    pass
+                except Exception as _e:
+                    _soft_fail(f"analyst-targets:{_sym}", _e)
             if _targets_payload:
                 save_yahoo_analyst_targets_history(date_str, _targets_payload)
                 print(f"  [yahoo-targets] ✅ {len(_targets_payload)} symbols with analyst targets persisted")
@@ -695,6 +723,9 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                             from telegram_alert import send_telegram as _div_tg
                             _div_tg(_div_msg)
                         except Exception:
+                            # AUDITED 2026-07-20: alert delivery only. Deliberately
+                            # silent — a Telegram outage must not abort the dividend
+                            # stage that already produced its data.
                             pass
                     save_notification_log_entry({
                         "notification_date": date_str,
@@ -777,6 +808,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             load_dotenv(root/".env", override=True)
             _api_key = _os.getenv("ANTHROPIC_API_KEY","").strip()
         except Exception:
+            # AUDITED 2026-07-20: benign. _api_key stays empty and the explicit
+            # "API key not found" warning below surfaces it.
             pass
     if not _api_key:
         # Direct parse of .env file as last resort
@@ -1052,8 +1085,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             _md_final = portfolio_market_day(portfolio)
             if _md_final:
                 _ph.setdefault("periods", {})["1D"] = _md_final
-        except Exception:
-            pass
+        except Exception as _e:
+            _soft_fail("performance-history:1D", _e)
         json.dump(_ph, open(state_dir / "performance_history.json", "w"), indent=2, default=str)
         perf_history = _ph  # update for dashboard rebuild below
     except Exception as e:
@@ -1193,8 +1226,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                         "evidence": {"add_count": len(_adds), "symbols": [s["symbol"] for s in _adds]},
                         "source": "pipeline:action_signals", "freshness_hash": _h_hash,
                     })
-            except Exception:
-                pass
+            except Exception as _e:
+                _soft_fail("observations:action_signals", _e)
 
         # Category: risk
         _risk_path = state_dir / "risk_management.json"
@@ -1211,8 +1244,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                         "evidence": {"heat_pct": _heat, "triggered": _triggered, "danger": _danger},
                         "source": "pipeline:risk_management", "freshness_hash": _h_hash,
                     })
-            except Exception:
-                pass
+            except Exception as _e:
+                _soft_fail("observations:risk_management", _e)
 
         # Category: freshness
         _age = _freshness.get("pipeline_duration_seconds", 0) if '_freshness' in dir() else 0
@@ -1405,8 +1438,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                     ) or []
                     for _ar in _art_rows:
                         _article_ctx[_ar["portfolio_symbol"]] = _ar
-                except Exception:
-                    pass
+                except Exception as _e:
+                    _soft_fail("news-context:article_index", _e)
 
                 # Also get top 3 article titles per symbol for evidence
                 _article_titles = {}
@@ -1424,8 +1457,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                             _article_titles[_sym_key] = []
                         if len(_article_titles[_sym_key]) < 3:
                             _article_titles[_sym_key].append({"title": _tr["title"], "source": _tr["source"], "category": _tr["llm_category"]})
-                except Exception:
-                    pass
+                except Exception as _e:
+                    _soft_fail("news-context:titles", _e)
 
                 for _esc in _esc_rows:
                     _esc_sym = _esc.get("symbol") or ""
@@ -1627,8 +1660,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 "SELECT severity, symbol, trigger_rule, summary FROM escalation_queue WHERE created_at::date = %s ORDER BY severity",
                 (date_str,), fetch="all"
             ) or []
-        except Exception:
-            pass
+        except Exception as _e:
+            _soft_fail("escalations:queue_read", _e)
 
         if _obs_today:
             # Format prompt
