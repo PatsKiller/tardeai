@@ -37332,6 +37332,26 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 fresh = oe.generate_proposals(force=True)
                 proposal = next((p for p in (fresh.get("proposals") or []) if p.get("id") == proposal_id), None)
             if not proposal:
+                # Fall back to the APPROVAL QUEUE row. Proposals queued from the
+                # Defense CC card carry ids like "defense-cc-CSCO-2026-08-21-120"
+                # and are written straight to options_approval_queue — they never
+                # appear in options_engine's proposal list, so this lookup 404'd
+                # and the queued order could not reach 2FA at all. The card
+                # promised a path that did not connect (2026-07-20).
+                # The queue row stores a complete proposal_json, so it is a valid
+                # source; it is still subject to every gate below.
+                try:
+                    _qrow = _db_query(
+                        "SELECT proposal_json FROM options_approval_queue WHERE proposal_id=%s",
+                        (proposal_id,), fetch="one") or {}
+                    _pj = _qrow.get("proposal_json")
+                    if isinstance(_pj, str):
+                        _pj = _pj_loads(_pj)
+                    if isinstance(_pj, dict) and _pj.get("id") == proposal_id:
+                        proposal = _pj
+                except Exception:
+                    proposal = None
+            if not proposal:
                 return 404, {"ok": False, "error": "proposal not found"}
             account_key = str(b.get("account_key") or proposal.get("account") or "").strip()
             if not account_key:

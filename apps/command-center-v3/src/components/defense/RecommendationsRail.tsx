@@ -212,10 +212,10 @@ function QueueTradeButton({ cs, validatedAt }: { cs: any; validatedAt: string | 
   }
   return (
     <button onClick={queue} disabled={state !== 'idle' || !fresh}
-      title={fresh ? 'queues this exact structure into the options approval queue — YOU approve there, and per-order 2FA gates the actual order; nothing executes from this page'
+      title={fresh ? 'queues this exact structure into the options approval queue. Then in Options: APPROVE (no code sent) and then SUBMIT — the 2FA code is generated at SUBMIT, not at queue or approve. Nothing executes from this page'
         : 'LOCKED — run ⟳ validate chain first (validation must be ≤15 min old); the click is gated on fresh rails'}
       style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: fresh ? 'pointer' : 'not-allowed', opacity: fresh ? 1 : 0.45, color: state === 'queued' ? BB.green : BB.text1, background: 'transparent', border: `1px solid ${state === 'queued' ? BB.green : BB.amber}`, borderRadius: 2, padding: '2px 9px', marginBottom: 3 }}>
-      {state === 'busy' ? '…' : state === 'queued' ? '✓ queued — approve in Options (2FA)' : fresh ? '⚡ queue trade (2FA approval)' : '🔒 re-validate first'}
+      {state === 'busy' ? '…' : state === 'queued' ? '✓ queued — approve, then SUBMIT in Options (2FA fires at submit)' : fresh ? '⚡ queue trade (approve + 2FA in Options)' : '🔒 re-validate first'}
     </button>
   )
 }
