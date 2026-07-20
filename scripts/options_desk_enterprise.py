@@ -775,6 +775,19 @@ def sync_approval_queue(proposals: List[dict], *, apply: bool = True) -> dict:
             continue
         ent = p.get("enterprise") or {}
         status = "blocked" if p.get("enterprise_blocked") else "pending"
+        # A row marked blocked with an EMPTY blocks_json tells the operator
+        # nothing — the Options desk rendered "Blocked (11)" with no reasons
+        # attached (2026-07-20). If the enricher did not attach its block list,
+        # recompute it here so the refusal is always explainable. Same principle
+        # as everywhere else today: never show an absence where a reason exists.
+        _blocks = ent.get("blocks") or []
+        if status == "blocked" and not _blocks:
+            try:
+                _blocks = evaluate_hard_risk_blocks(p) or []
+            except Exception as _be:
+                _blocks = [{"code": "block_reason_unavailable",
+                            "reason": f"blocked, but reasons could not be recomputed: "
+                                      f"{type(_be).__name__}"}]
         cur.execute(
             """INSERT INTO options_approval_queue
                (proposal_id, symbol, strategy, desk_tier, edge_score, status,
@@ -797,7 +810,7 @@ def sync_approval_queue(proposals: List[dict], *, apply: bool = True) -> dict:
                 _f(p.get("edge_score")),
                 status,
                 bool(ent.get("live_eligible")),
-                json.dumps(ent.get("blocks") or []),
+                json.dumps(_blocks),
                 json.dumps(p, default=str),
             ),
         )

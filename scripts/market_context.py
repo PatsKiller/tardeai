@@ -74,6 +74,24 @@ _YAHOO_HEADERS = {
 
 # ── Env helpers ───────────────────────────────────────────────────────────────
 
+
+def _current_session(now=None) -> str:
+    """ET session for price-field selection: premarket|regular|afterhours|closed."""
+    from datetime import time as _t
+    from zoneinfo import ZoneInfo as _Z
+    n = (now or datetime.now(timezone.utc)).astimezone(_Z("America/New_York"))
+    if n.weekday() >= 5:
+        return "closed"
+    t = n.time()
+    if _t(4, 0) <= t < _t(9, 30):
+        return "premarket"
+    if _t(9, 30) <= t < _t(16, 0):
+        return "regular"
+    if _t(16, 0) <= t < _t(20, 0):
+        return "afterhours"
+    return "closed"
+
+
 def _env(k: str) -> str:
     return os.getenv(k, "").strip()
 
@@ -124,27 +142,47 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
             reg_price   = meta.get("regularMarketPrice") or 0.0
             prev_close  = meta.get("chartPreviousClose") or meta.get("previousClose") or reg_price
 
-            # Prefer the most live price available
-            # During pre-market (4–9:30 AM ET): preMarketPrice is set
-            # During regular hours: regularMarketPrice is live
-            # After hours: postMarketPrice is set
-            live_price = pre_price or reg_price or post_price or prev_close
+            # SESSION-AWARE selection (2026-07-20). The old chain was
+            #   pre_price or reg_price or post_price or prev_close
+            # which is session-BLIND: Yahoo keeps preMarketPrice populated after
+            # the premarket session ends, so during REGULAR hours the stale
+            # premarket print won the `or` and was published as the live price.
+            # Same for change%. Now the session picks the field, and a missing
+            # field for the CURRENT session degrades to the previous close
+            # LABELLED stale rather than silently substituting another session.
+            session = _current_session()
+            if session == "premarket":
+                live_price, px_field = (pre_price or 0.0), "preMarketPrice"
+            elif session == "regular":
+                live_price, px_field = (reg_price or 0.0), "regularMarketPrice"
+            elif session == "afterhours":
+                live_price, px_field = (post_price or 0.0), "postMarketPrice"
+            else:                                  # closed / overnight / weekend
+                live_price, px_field = 0.0, "closed"
+            price_is_stale = False
+            if not live_price:
+                live_price, px_field, price_is_stale = prev_close, "previousClose", True
 
             # ── Change % selection ───────────────────────────────────────────
             pre_chg_pct  = meta.get("preMarketChangePercent")  or 0.0
             post_chg_pct = meta.get("postMarketChangePercent") or 0.0
             reg_chg_pct  = meta.get("regularMarketChangePercent") or 0.0
 
-            # Use pre-market change if pre_price is set, else regular, else post
-            if pre_price and abs(pre_chg_pct) > 0:
-                change_pct = round(pre_chg_pct * 100, 2) if abs(pre_chg_pct) < 1 else round(pre_chg_pct, 2)
-            elif post_price and abs(post_chg_pct) > 0:
-                change_pct = round(post_chg_pct * 100, 2) if abs(post_chg_pct) < 1 else round(post_chg_pct, 2)
-            elif reg_chg_pct:
-                change_pct = round(reg_chg_pct * 100, 2) if abs(reg_chg_pct) < 1 else round(reg_chg_pct, 2)
-            elif prev_close and live_price:
+            # Change% must come from the SAME session as the price above —
+            # pairing a regular-hours price with a premarket change is incoherent.
+            def _pct(v):
+                return round(v * 100, 2) if abs(v) < 1 else round(v, 2)
+
+            if session == "premarket" and abs(pre_chg_pct) > 0:
+                change_pct = _pct(pre_chg_pct)
+            elif session == "regular" and abs(reg_chg_pct) > 0:
+                change_pct = _pct(reg_chg_pct)
+            elif session == "afterhours" and abs(post_chg_pct) > 0:
+                change_pct = _pct(post_chg_pct)
+            elif prev_close and live_price and not price_is_stale:
                 change_pct = round((live_price - prev_close) / prev_close * 100, 2)
             else:
+                # Closed, or the session field is missing: do NOT invent a move.
                 change_pct = 0.0
 
             results[sym] = {
@@ -155,6 +193,10 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
                 "prev_close":       round(float(prev_close), 2),
                 "pre_market_price": round(float(pre_price), 2) if pre_price else None,
                 "post_market_price": round(float(post_price), 2) if post_price else None,
+                "session":          session,
+                "price_field":      px_field,
+                "price_is_stale":   price_is_stale,
+                "quote_ts":         datetime.now(timezone.utc).isoformat(),
                 "source":           "yahoo",
             }
             time.sleep(0.15)
