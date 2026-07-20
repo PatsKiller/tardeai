@@ -197,8 +197,9 @@ function ValidateButton({ cs, onValid }: { cs: any; onValid: (ts: string) => voi
 }
 
 function QueueTradeButton({ cs, validatedAt }: { cs: any; validatedAt: string | null }) {
-  const [state, setState] = useState<'idle' | 'busy' | 'queued'>('idle')
+  const [state, setState] = useState<'idle' | 'busy' | 'queued' | 'blocked'>('idle')
   const [acked, setAcked] = useState(false)
+  const [blocks, setBlocks] = useState<any[]>([])
   const fresh = validatedAt != null && (Date.now() - new Date(validatedAt).getTime()) < 15 * 60_000
   // A contract whose expiry falls after the earnings report is still offered —
   // selling premium through a print is a legitimate strategy and the risk is the
@@ -224,12 +225,31 @@ function QueueTradeButton({ cs, validatedAt }: { cs: any; validatedAt: string | 
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      setState((await r.json()).ok ? 'queued' : 'idle')
+      // `ok` only means the row was written. A proposal can land in the queue and
+      // still carry a hard block (an earnings ack clears ONLY the earnings block;
+      // no_resolved_occ survives it). Telling the operator to approve and submit
+      // in that state is the CSCO failure again — a green confirmation followed
+      // by a refusal the system already knew about.
+      const j = await r.json()
+      if (j.ok && j.status === 'QUEUED_BLOCKED') { setBlocks(j.blocks || []); setState('blocked') }
+      else if (j.ok) { setState('queued') }
+      else { setBlocks(j.blocks || []); setState('idle') }
     } catch { setState('idle') }
   }
   return (
     <>
-    {needsAck && state !== 'queued' && (
+    {state === 'blocked' && (
+      <div style={{ fontSize: DASH.chip, color: BB.red, border: `1px solid ${BB.red}`,
+                    borderRadius: 2, padding: '4px 8px', marginBottom: 4 }}>
+        <b>QUEUED FOR RESEARCH — CANNOT APPROVE OR SUBMIT</b>
+        <div style={{ color: BB.text3, fontWeight: 400, marginTop: 2 }}>
+          {blocks.length
+            ? blocks.map((b: any) => `${b.code}: ${b.reason}`).join(' · ')
+            : 'a hard block remains on this proposal'}
+        </div>
+      </div>
+    )}
+    {needsAck && state !== 'queued' && state !== 'blocked' && (
       <label onClick={(e: any) => e.stopPropagation()}
         style={{ display: 'block', fontSize: DASH.chip, color: BB.amber, cursor: 'pointer',
                  border: `1px solid ${BB.amber}`, borderRadius: 2, padding: '4px 8px', marginBottom: 4 }}>
@@ -248,6 +268,7 @@ function QueueTradeButton({ cs, validatedAt }: { cs: any; validatedAt: string | 
         : 'queues this exact structure into the options approval queue. Then in Options: APPROVE (no code sent) and then SUBMIT — the 2FA code is generated at SUBMIT, not at queue or approve. Nothing executes from this page'}
       style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', cursor: gated ? 'pointer' : 'not-allowed', opacity: gated ? 1 : 0.45, color: state === 'queued' ? BB.green : BB.text1, background: 'transparent', border: `1px solid ${state === 'queued' ? BB.green : BB.amber}`, borderRadius: 2, padding: '2px 9px', marginBottom: 3 }}>
       {state === 'busy' ? '…'
+        : state === 'blocked' ? '⛔ queued but BLOCKED — not approvable'
         : state === 'queued' ? '✓ queued — approve, then SUBMIT in Options (2FA fires at submit)'
         : !fresh ? '🔒 re-validate first'
         : needsAck && !acked ? '🔒 acknowledge earnings risk to queue'

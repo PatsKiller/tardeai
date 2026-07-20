@@ -11535,8 +11535,25 @@ def _defense_cc_queue_trade(body=None):
         (pid, sym, _cc_live_eligible, _j.dumps(_cc_blocks, default=str),
          _j.dumps(proposal, default=str)))
     conn.commit()
-    return {"ok": True, "proposal_id": pid,
-            "next": "pending in the options approval queue — approve there; per-order 2FA gates execution"}
+
+    # QUEUE STATUS HONESTY (2026-07-20).
+    # A row can land in the queue and STILL carry a hard block — an acknowledged
+    # earnings risk clears only the earnings block, and something like
+    # no_resolved_occ survives it. Reporting that as a flat success and telling
+    # the operator to "approve, then SUBMIT" recreates the exact CSCO failure
+    # this desk was repaired for: a green confirmation followed by a refusal the
+    # system already knew about. The write succeeded either way; what differs is
+    # whether the thing that was written can actually be actioned, so say which.
+    if _cc_live_eligible:
+        return {"ok": True, "status": "QUEUED_REVIEWABLE", "proposal_id": pid,
+                "blocks": [], "actionable": True,
+                "next": "pending in the options approval queue — approve there; "
+                        "per-order 2FA gates execution"}
+    return {"ok": True, "status": "QUEUED_BLOCKED", "proposal_id": pid,
+            "blocks": _cc_blocks, "actionable": False,
+            "next": "QUEUED FOR RESEARCH — cannot be approved or submitted while these "
+                    "blocks stand: " + "; ".join(
+                        f"{b.get('code')}: {b.get('reason')}" for b in _cc_blocks)}
 
 
 def _defense_refresh_start(body=None):
