@@ -641,7 +641,9 @@ def _get_other_agent_views(symbol: str, current_agent: str) -> str:
             ORDER BY agent, created_at DESC
         """, (symbol, current_agent))
         rows = cur.fetchall()
-        conn.close()
+        # DO NOT close: _get_conn() returns a THREAD-LOCAL SHARED connection.
+        # Closing it here killed the caller's live cursor mid-run
+        # (psycopg2.InterfaceError: cursor already closed, 2026-07-20).
         if not rows:
             return ""
         lines = ["OTHER AGENT VIEWS (consider but form your own opinion):"]
@@ -667,7 +669,9 @@ def _get_content_gap_warnings(agent_name: str) -> str:
             ORDER BY created_at DESC LIMIT 5
         """, (agent_name,))
         rows = cur.fetchall()
-        conn.close()
+        # DO NOT close: _get_conn() returns a THREAD-LOCAL SHARED connection.
+        # Closing it here killed the caller's live cursor mid-run
+        # (psycopg2.InterfaceError: cursor already closed, 2026-07-20).
         if not rows:
             return ""
         lines = ["=== Content Gap Warnings (from Iris) ==="]
@@ -711,7 +715,9 @@ def _get_peer_agent_notes(symbol: str, current_agent: str) -> str:
             ORDER BY agent, created_at DESC
         """, (symbol, current_agent))
         rows = cur.fetchall()
-        conn.close()
+        # DO NOT close: _get_conn() returns a THREAD-LOCAL SHARED connection.
+        # Closing it here killed the caller's live cursor mid-run
+        # (psycopg2.InterfaceError: cursor already closed, 2026-07-20).
         if not rows:
             return ""
         _last_peer_agents = [r["agent"] for r in rows]
@@ -810,7 +816,9 @@ def _get_sentiment_social_context(symbol: str) -> str:
                 f" | Score: {float(fused['fused_score'] or 0):.2f}\n=== End Fused Signal ==="
             )
 
-        conn.close()
+        # DO NOT close: _get_conn() returns a THREAD-LOCAL SHARED connection.
+        # Closing it here killed the caller's live cursor mid-run
+        # (psycopg2.InterfaceError: cursor already closed, 2026-07-20).
     except Exception as e:
         print(f"  [sentiment] {symbol}: {e}")
     return "\n".join(parts) + "\n" if parts else ""
@@ -2534,9 +2542,33 @@ def process_jobs(limit: int = 10):
                 except Exception as se:
                     print(f"  [safety] {symbol}: assessment failed: {se}")
             except Exception as e:
-                print(f"  ✗ {symbol}: Synthesis failed: {e}")
-                cur.execute("UPDATE watchlist_analysis_maturity SET final_synthesis_status='failed', updated_at=now() WHERE symbol=%s", (symbol,))
-                conn.commit()
+                # Report the ORIGINAL failure first — the recovery write below used
+                # to raise InterfaceError on a dead connection, masking this error
+                # and aborting the entire job run (2026-07-20).
+                print(f"  ✗ {symbol}: Synthesis failed: {type(e).__name__}: {e}")
+                import traceback as _tb
+                print(_tb.format_exc()[-800:])
+                try:
+                    cur.execute("UPDATE watchlist_analysis_maturity "
+                                "SET final_synthesis_status='failed', updated_at=now() "
+                                "WHERE symbol=%s", (symbol,))
+                    conn.commit()
+                except Exception as _me:
+                    # The shared connection may itself be dead. Mark the failure on a
+                    # FRESH connection so the symbol does not stay stuck 'processing',
+                    # and never let the recovery path kill the run.
+                    print(f"  [recover] {symbol}: marking failed on the shared conn "
+                          f"raised {type(_me).__name__} — retrying on a fresh conn")
+                    try:
+                        _rc = _get_conn()
+                        with _rc.cursor() as _rcur:
+                            _rcur.execute("UPDATE watchlist_analysis_maturity "
+                                          "SET final_synthesis_status='failed', updated_at=now() "
+                                          "WHERE symbol=%s", (symbol,))
+                        _rc.commit()
+                    except Exception as _me2:
+                        print(f"  [recover] {symbol}: fresh-conn mark ALSO failed: "
+                              f"{type(_me2).__name__}: {_me2}")
 
     # Also check for any other symbols that became ready for synthesis
     _check_pending_synthesis(conn)
