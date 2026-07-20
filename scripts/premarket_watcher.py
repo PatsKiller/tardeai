@@ -285,6 +285,23 @@ def _persist_stocktwits_premarket(conn, symbol, result, messages, *, catalyst: s
     except Exception:
         pass
 
+    # Backfill float from internal data. This watcher is StockTwits-based and has
+    # no fundamentals of its own, so every row it wrote had float_m NULL. Float is
+    # a HARD scalp gate (micro-float <=20M), so a premarket mention without it
+    # cannot be evaluated against the rule at all — and the missing values were
+    # being misreported as a screener data-quality fault (2026-07-20).
+    # Internal join only: no extra Finviz load.
+    try:
+        cur.execute("""UPDATE trade_ai_scans s
+                       SET float_m = w.float_m
+                       FROM watchlist_items w
+                       WHERE upper(w.symbol) = upper(s.symbol)
+                         AND s.symbol = %s
+                         AND (s.float_m IS NULL OR s.float_m = 0)
+                         AND w.float_m IS NOT NULL AND w.float_m > 0""", (symbol,))
+    except Exception as _fe:
+        log.warning(f"float backfill failed for {symbol}: {type(_fe).__name__}: {_fe}")
+
     try:
         conn.commit()
         log.info(f"Persisted StockTwits pre-market: {symbol} ({total} posts, {sentiment_label})")

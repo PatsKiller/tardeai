@@ -1279,14 +1279,36 @@ def run_health_check(dry_run=True, verbose=False):
             if _unsync > 0:
                 pipeline_alerts.append(f"📊 {_unsync} open trade(s) not synced with broker in 4h+")
 
-            # 6. Screener data quality
-            cur.execute("""SELECT COUNT(*) FROM trade_ai_scans
-                WHERE scanned_at::date = CURRENT_DATE AND (float_m IS NULL OR float_m = 0)""")
-            _zero_float = cur.fetchone()[0] or 0
-            cur.execute("SELECT COUNT(*) FROM trade_ai_scans WHERE scanned_at::date = CURRENT_DATE")
-            _total_scans = cur.fetchone()[0] or 0
-            if _total_scans > 0 and _zero_float / _total_scans > 0.5:
-                pipeline_alerts.append(f"⚠️ Screener data quality: {_zero_float}/{_total_scans} scans have zero float")
+            # 6. Screener data quality — SOURCE-AWARE.
+            # Counting every source together blamed "the screener" for rows written
+            # by premarket_social, a StockTwits watcher that carries no fundamentals
+            # by design. On 2026-07-20 the screener itself was 6/6 clean while the
+            # alert read "16/27 scans have zero float" (2026-07-20 fix).
+            cur.execute("""SELECT COALESCE(source,'(none)') AS src,
+                                  COUNT(*) AS total,
+                                  COUNT(*) FILTER (WHERE float_m IS NULL OR float_m = 0) AS zero
+                           FROM trade_ai_scans
+                           WHERE scanned_at::date = CURRENT_DATE
+                           GROUP BY 1""")
+            _by_src = cur.fetchall() or []
+            # Only sources that are SUPPOSED to carry float can fail this check.
+            _float_bearing = ("screener",)
+            for _src, _tot, _zero in _by_src:
+                if not _tot or not str(_src).startswith(_float_bearing):
+                    continue
+                if _zero / _tot > 0.5:
+                    pipeline_alerts.append(
+                        f"⚠️ Screener data quality: {_zero}/{_tot} '{_src}' scans have zero float")
+            # Non-float-bearing sources are reported separately and only when a
+            # backfill that should have run clearly did not.
+            _social_zero = sum(z for s, t_, z in _by_src
+                               if not str(s).startswith(_float_bearing) and t_)
+            _social_tot = sum(t_ for s, t_, z in _by_src
+                              if not str(s).startswith(_float_bearing) and t_)
+            if _social_tot and _social_zero == _social_tot and _social_tot >= 5:
+                pipeline_alerts.append(
+                    f"ℹ️ {_social_zero}/{_social_tot} social-source scans lack float "
+                    f"(float backfill from watchlist_items may not be running)")
 
             # 7. Open trade agent coverage — detect trades with no recent agent analysis
             try:
