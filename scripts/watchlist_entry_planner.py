@@ -199,6 +199,18 @@ def _parse(text):
         return None
 
 
+# Thresholds for the Priority-2 "evidence of interest" signals (2026-07-20). Env-configurable
+# rather than literal: these are policy, they will need tuning as the watchlist grows, and the
+# standing rule is that no threshold is hardcoded. Defaults chosen from measured 2026-07-20
+# watchlist distribution — a 5% move WITH >=2x relative volume, which distinguishes "something
+# happened" from "this is a small cap on a normal day" (the bare 5% test admitted 523 names,
+# 434 of them volume-confirmed).
+INTEREST_MOVE_PCT = float(os.getenv("PLANNER_INTEREST_MOVE_PCT", "5.0"))
+INTEREST_MOVE_RVOL = float(os.getenv("PLANNER_INTEREST_MOVE_RVOL", "2.0"))
+INTEREST_CATALYST_DAYS = int(os.getenv("PLANNER_INTEREST_CATALYST_DAYS", "3"))
+INTEREST_CATALYST_CONF = float(os.getenv("PLANNER_INTEREST_CATALYST_CONF", "0.7"))
+
+
 def _weekly_drain_clause(sym_ref: str) -> str:
     """SQL predicate: TRUE when `sym_ref` needs (re)planning under the WEEKLY-with-catalyst-override
     cadence (operator 2026-07-01: "doesn't need daily grok — once weekly unless technicals drastically
@@ -276,10 +288,32 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
         # below the per-run `limit` cut (MRLN #71 sat at eligible-index ~114 and never re-planned)
         rows.sort(key=lambda r: (not r.get("_starred"), r["hermes_rank"] is None, r["hermes_rank"] or 1e9))
         rows = rows[:limit]
-        # PRIORITY 2 — CONVICTION COMPLETENESS (operator 2026-07-01: "no info should be missing on strong
-        # buy, buy, or wait"): plan every buy-side-rated name — recommendation BUY/STRONG_BUY/ADD/
-        # ADD_ON_PULLBACK ("wait"=pullback) from EITHER the research card OR the CIO final synthesis — so
-        # those cards never show a blank entry plan. ANY status: this now includes directive/active buy
+        # PRIORITY 2 — EVIDENCE OF INTEREST (was: CONVICTION COMPLETENESS).
+        #
+        # This lane used to select ONLY buy-side-rated names, which made the recommendation label a
+        # ROUTING decision rather than a summary: a symbol labelled IGNORE/AVOID/HOLD could never
+        # receive an entry plan, the card then displayed "no entry plan", and that absence read as
+        # further evidence against the symbol. The label produced the gap and the gap corroborated the
+        # label. Measured 2026-07-20: 96% plan coverage for BUY/ADD/ADD_ON_PULLBACK against 30-33% for
+        # AVOID/IGNORE/HOLD and 2% for RESEARCH_MORE — a step, not a slope. 3,526 watchlist symbols are
+        # reachable ONLY through this lane (Priority 1 requires directive/active/starred), so for those
+        # the verdict was the sole determinant of whether any entry analysis ever ran.
+        #
+        # The deeper problem is that the two questions are unrelated. "Do we like this company?" and
+        # "where would one enter it?" are different questions, and gating the second on the first means
+        # the system can never answer "good company, bad entry today" — it simply goes quiet instead.
+        # An entry plan is also what REFUTES a bad label: levels, invalidation and R:R are how an
+        # operator sees the verdict is wrong.
+        #
+        # So the label is now ONE signal among five rather than the gate. A name qualifies on buy-side
+        # conviction (unchanged), OR on evidence that someone should look regardless of the verdict:
+        # operator star, a move >= 5%, a fresh high-confidence catalyst, or S1 scope promotion. The
+        # buy_rated_cap still bounds per-run cost, so this widens WHO is reachable without widening how
+        # much is spent per run. (operator 2026-07-20: "remove the label gate from the entry planner")
+        #
+        # Original intent preserved (operator 2026-07-01: "no info should be missing on strong buy, buy,
+        # or wait") — buy-side names still qualify and still sort first. ANY status: this includes
+        # directive/active buy
         # names too (previously excluded, which starved directive buy names below Priority 1's rank cap,
         # e.g. MRLN). Deduped against Priority 1 (`have`) so nothing is planned twice. NOT planned in the
         # WEEKLY re-plan cadence with catalyst override (see _weekly_drain_clause) → the cron DRAINS the
@@ -292,10 +326,21 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                                wi.hermes_rank, wi.trend, NULL::int AS proposal_id,
                                NULL::numeric AS proposed_entry, NULL::numeric AS proposed_stop,
                                NULL::numeric AS proposed_target1, NULL::text AS strategy_id,
-                               (COALESCE(wi.in_directive_watch,false) OR wi.status='active') AS _displayed
+                               (COALESCE(wi.in_directive_watch,false) OR wi.status='active') AS _displayed,
+                               -- Ranked ABOVE _displayed below: an operator star or a same-session
+                               -- material move/catalyst is the most time-sensitive reason to plan, and
+                               -- sorting these by hermes score alone buries them. BETA sat at hermes
+                               -- rank 525 with six catalysts and a +7.6 pct day and was never
+                               -- reached. (No literal percent sign in this comment: psycopg2 reads
+                               -- it as a parameter placeholder and the execute raises IndexError.)
+                               (EXISTS (SELECT 1 FROM operator_starred_symbols s
+                                        WHERE UPPER(s.symbol) = UPPER(wi.symbol))
+                                OR (ABS(COALESCE(wi.change_pct, 0)) >= {INTEREST_MOVE_PCT}
+                                    AND COALESCE(wi.rvol, 0) >= {INTEREST_MOVE_RVOL})) AS _interest
                              FROM watchlist_items wi
                              WHERE wi.symbol ~ '^[A-Z]{{1,5}}$' AND wi.status <> 'removed'
                                AND (
+                                 -- SIGNAL 1 — buy-side conviction (research card / CIO / analyst).
                                  EXISTS (SELECT 1 FROM watchlist_research_cards rc WHERE rc.symbol = wi.symbol
                                          AND UPPER(rc.latest_recommendation) IN ('BUY','STRONG_BUY','ADD','ADD_ON_PULLBACK'))
                                  OR EXISTS (SELECT 1 FROM watchlist_final_synthesis fs WHERE UPPER(fs.symbol) = UPPER(wi.symbol)
@@ -306,6 +351,25 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                                  OR (SELECT LOWER(yat.recommendation_key) FROM yahoo_analyst_targets_history yat
                                      WHERE yat.symbol = wi.symbol ORDER BY yat.created_at DESC LIMIT 1)
                                      IN ('strong_buy','buy')
+                                 -- SIGNAL 2 — OPERATOR INTEREST. A star is a direct instruction to
+                                 -- analyse, and it must not be overruled by a verdict.
+                                 OR EXISTS (SELECT 1 FROM operator_starred_symbols s
+                                            WHERE UPPER(s.symbol) = UPPER(wi.symbol))
+                                 -- SIGNAL 3 — MATERIAL MOVE, volume-confirmed. A move this size on
+                                 -- elevated volume means the packet the verdict was formed from no
+                                 -- longer describes the tape. RVOL is required so this reads
+                                 -- "something happened" rather than "this is a small cap".
+                                 OR (ABS(COALESCE(wi.change_pct, 0)) >= {INTEREST_MOVE_PCT}
+                                     AND COALESCE(wi.rvol, 0) >= {INTEREST_MOVE_RVOL})
+                                 -- SIGNAL 4 — FRESH CATALYST. Same reasoning on the fundamental side.
+                                 OR EXISTS (SELECT 1 FROM catalyst_events ce
+                                            WHERE UPPER(ce.symbol) = UPPER(wi.symbol)
+                                              AND ce.catalyst_type <> 'other'
+                                              AND ce.published_at > now() - interval '{INTEREST_CATALYST_DAYS} days'
+                                              AND COALESCE(ce.confidence, 0) >= {INTEREST_CATALYST_CONF})
+                                 -- SIGNAL 5 — SCOPE PROMOTION. The governor already decided this name
+                                 -- warrants attention; planning is what "attention" should mean.
+                                 OR UPPER(COALESCE(wi.scope_tier, '')) = 'S1'
                                )
                                AND {_weekly_drain_clause('wi.symbol')}
                              ORDER BY wi.symbol, wi.hermes_composite_score DESC NULLS LAST
@@ -313,7 +377,8 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                            -- displayed conviction (directive/active + top-rank — what the operator actually
                            -- sees) fills the cap FIRST, so a low-hermes directive name (e.g. NTST rank ~918)
                            -- is never crowded out by a deep researched name.
-                           ORDER BY _displayed DESC, hermes_composite_score DESC NULLS LAST LIMIT %s""",
+                           ORDER BY _interest DESC, _displayed DESC,
+                                    hermes_composite_score DESC NULLS LAST LIMIT %s""",
                         (buy_rated_cap,))
             for r in cur.fetchall():
                 d = dict(zip([dd[0] for dd in cur.description], r))
