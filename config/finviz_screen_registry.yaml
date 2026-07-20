@@ -1,0 +1,147 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CANONICAL FINVIZ SCREEN REGISTRY  (Phase 1, 2026-07-20)
+#
+# This file is the version-controlled SOURCE of screen definitions. It is NOT
+# the runtime. The runtime executor reads the `finviz_screeners` DB table
+# (finviz_screener_runner.py:196-198), so definitions here reach production
+# only via:
+#
+#     finviz_screen_compiler.py --apply   (compile -> validate -> idempotent upsert)
+#
+# The compiler REFUSES to promote a definition whose filter tokens Finviz
+# silently ignores. That guard exists because 16 of 54 production tokens (30%)
+# were found doing nothing on 2026-07-20 — e.g. `high_yield_income` applied no
+# yield filter at all. Validate with:
+#
+#     finviz_filter_validator.py --tokens <comma,separated>
+#
+# Finviz filter vocabulary gotchas, all confirmed empirically:
+#   * DECIMALS are unsupported in several families: ta_beta_u1.2 and
+#     fa_div_o1.5 are IGNORED; ta_beta_u1.5 and fa_div_o2 work. Steps are
+#     discrete — pick a supported one and record the deviation.
+#   * `fa_dividendyield_*` does not exist. The real family is `fa_div_*`.
+#   * An inapplicable-but-valid token is dropped silently too: combining
+#     ind_exchangetradedfund with sec_financial returns all ETFs, because ETFs
+#     carry no sector.
+#   * Every token below carries its measured selectivity as of the stated date.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "1.0"
+registry_generated: "2026-07-20"
+
+defaults:
+  view: 152                    # custom view; v=111 ignores &c= columns
+  column_pack: "0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+  status: SHADOW               # nothing here is proposal-eligible on arrival
+  human_review_only: true
+
+screens:
+
+  OPT-CC-QUALITY-OVERWRITE:
+    display_name: "Covered Call — Quality Overwrite"
+    screen_version: 1
+    owner_surface: options
+    play_families: [covered_call, buy_write]
+    purpose: >-
+      High-quality, liquid, established-uptrend large caps suitable for
+      CONSERVATIVE covered-call research. Deliberately low-volatility: pairs
+      with a separate rich-premium list rather than standing alone, because low
+      ATR and low beta suppress premium.
+    universe_type: equity
+    strategy_type: covered_call_income
+    schedule: twice_weekly          # Tue/Thu post-close
+    status: SHADOW
+    requires_existing_position: preferred
+    portfolio_join_required: true
+    event_clearance_required: true
+    chain_qualification_required: true
+    max_result_count: 400
+    expected_result_range: [5, 250]
+    outcome_metric: annualized_premium_yield_vs_capped_upside
+    source_priority: discovery_only
+    created_by: "operator preset, 2026-07-20"
+
+    # Every token validated APPLIED on 2026-07-20 against an 11,501-row baseline.
+    hard_filters:
+      - token: cap_largeover
+        means: "large cap and above"
+        selectivity_pct: 8.3
+      - token: sh_avgvol_o2000
+        means: "average volume > 2M shares"
+        selectivity_pct: 15.3
+      - token: sh_opt_option
+        means: "optionable"
+        selectivity_pct: 51.5
+      - token: sh_price_o20
+        means: "price > $20"
+        selectivity_pct: 62.2
+      - token: sh_relvol_u1
+        means: "relative volume < 1 (not in an unusual-activity episode)"
+        selectivity_pct: 97.8
+      - token: ta_averagetruerange_u3
+        means: "ATR < 3"
+        selectivity_pct: 89.1
+      - token: ta_beta_u1.5
+        means: "beta < 1.5"
+        selectivity_pct: 71.4
+      - token: ta_highlow52w_b20h
+        means: "within 20% below the 52-week high"
+        selectivity_pct: 37.9
+      - token: ta_rsi_nos50
+        means: "RSI not oversold at 50 (i.e. RSI > 50)"
+        selectivity_pct: 44.2
+      - token: ta_rsi_nob60
+        means: "RSI not overbought at 60 (i.e. RSI < 60)"
+        selectivity_pct: 83.3
+      - token: ta_sma20_pa
+        means: "price above the 20-day SMA"
+        selectivity_pct: 44.4
+      - token: ta_sma50_pa
+        means: "price above the 50-day SMA"
+        selectivity_pct: 46.6
+      - token: ta_sma200_pa
+        means: "price above the 200-day SMA"
+        selectivity_pct: 54.8
+
+    # Where the compiled screen deliberately differs from the operator preset.
+    # Recorded rather than silently rounded, so the shadow evidence is read
+    # against what actually ran.
+    deviations_from_preset:
+      - requested: "beta <= 1.2"
+        implemented: "ta_beta_u1.5 (beta < 1.5)"
+        reason: >-
+          Finviz exposes discrete beta steps; ta_beta_u1.2 is silently IGNORED
+          (returns the full universe). 1.5 is the nearest supported ceiling, so
+          the screen is slightly LOOSER on beta than requested.
+      - requested: "RSI between 50 and 65"
+        implemented: "ta_rsi_nos50 + ta_rsi_nob60 (RSI 50-60)"
+        reason: >-
+          There is no RSI-65 step; ta_rsi_nob70 is IGNORED. 60 is the nearest
+          supported ceiling, making the screen slightly TIGHTER than requested.
+      - requested: "daily MACD >= 0"
+        implemented: "NOT EXPRESSED in the screener URL"
+        reason: >-
+          MACD is an Elite advanced-filter construct that the export endpoint
+          does not accept as a simple f= token. Rather than ship a token that
+          would be silently ignored, the MACD condition is left to the human
+          saved preset and to downstream confirmation. The compiled machine
+          screen is therefore a SUPERSET of the operator preset on this axis.
+
+    soft_ranking:
+      - held_position_with_100_uncommitted_shares
+      - weakening_but_not_broken_relative_strength
+      - true_iv_percentile          # UNAVAILABLE until options_iv_history matures
+      - annualized_premium_yield
+      - option_spread_quality
+      - acceptable_assignment_price
+      - no_earnings_inside_contract
+
+    exclusions:
+      - "earnings inside the proposed contract (event gate, enforced downstream)"
+      - "shares already committed to a trim, collar or existing call"
+      - "position under an active exit thesis"
+
+    notes: >-
+      Discovery only. A member of this screen is DISCOVERED/FINVIZ_CONFIRMED at
+      most; it cannot reach EVENT_CLEARED, CHAIN_QUALIFIED, STRUCTURE_READY or
+      proposal eligibility from membership alone.

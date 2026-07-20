@@ -144,7 +144,13 @@ def evaluate_hard_risk_blocks(
     # Earnings blackout
     blackout = ent.get("earnings") or earnings_blackout_check(sym, dte=dte, strategy=strat)
     if blackout.get("in_blackout"):
-        blocks.append(_hard_block("earnings_blackout", blackout.get("reason") or "earnings window",
+        # Preserve the SPECIFIC refusal (EARNINGS_TIMESTAMP_UNKNOWN /
+        # EARNINGS_TIMESTAMP_INVALID) as the top-level code. Flattening every
+        # earnings refusal to 'earnings_blackout' made a dead provider
+        # indistinguishable from a genuine scheduled blackout in the UI,
+        # refusal analytics and health alerts (2026-07-20 review).
+        code = blackout.get("refusal_code") or "earnings_blackout"
+        blocks.append(_hard_block(code, blackout.get("reason") or "earnings window",
                                   snapshot=blackout))
 
     # Ex-dividend risk for covered calls
@@ -300,9 +306,25 @@ def earnings_blackout_check(
     if not earn_raw:
         return {"in_blackout": False, "symbol": sym, "next_earnings": None, "days_to_earnings": None}
     try:
-        earn_dt = date.fromisoformat(str(earn_raw)[:10])
-    except ValueError:
-        return {"in_blackout": False, "symbol": sym, "next_earnings": earn_raw}
+        if not isinstance(earn_raw, (str, date)):
+            raise TypeError(f"non-date earnings value of type {type(earn_raw).__name__}")
+        earn_dt = earn_raw if isinstance(earn_raw, date) else date.fromisoformat(str(earn_raw)[:10])
+    except (ValueError, TypeError) as e:
+        # FAIL CLOSED: a value we cannot parse is UNKNOWN timing, not proof that
+        # no event exists. Previously this returned in_blackout=False, so a
+        # malformed/partial provider row cleared the gate (2026-07-20 review).
+        return {
+            "in_blackout": True,
+            "symbol": sym,
+            "strategy": strategy,
+            "next_earnings": None,
+            "days_to_earnings": None,
+            "data_blocked": True,
+            "refusal_code": "EARNINGS_TIMESTAMP_INVALID",
+            "raw_value": str(earn_raw)[:60],
+            "reason": (f"Earnings value {str(earn_raw)[:40]!r} is not a usable date "
+                       f"({e}) — {strategy} fails closed on unparseable event timing"),
+        }
     today = date.today()
     days_to = (earn_dt - today).days
     # Block if earnings falls before expiration or within blackout window

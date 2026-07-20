@@ -48,12 +48,68 @@ ARTIFACT = ROOT / "docs" / "_findings" / "FINVIZ_REGISTRY_RECONCILIATION.json"
 
 # The executor of record. Anything not here does not run, whatever the YAML says.
 EXECUTOR = "scripts/finviz_screener_runner.py (reads finviz_screeners DB table)"
-STALE_RUN_HOURS = 36
+
+# Staleness is SCHEDULE-AWARE. A fixed threshold marks a legitimate weekly or
+# Tue/Thu screen broken merely for not having run today (2026-07-20 review).
+# hours = the screen's own cadence + a grace allowance for a missed tick.
+SCHEDULE_MAX_AGE_HOURS = {
+    "daily": 36,
+    "daily_1600": 36,
+    "daily_1000_1600": 36,
+    "twice_weekly": 5 * 24,       # Tue/Thu lists: longest gap is Thu->Tue
+    "tue_thu_postclose": 5 * 24,
+    "weekly": 9 * 24,
+    "weekly_mon_1000": 9 * 24,
+    "weekly_sun_1000": 9 * 24,
+    "weekly_wed_1000": 9 * 24,
+    "biweekly": 17 * 24,
+    "monthly": 34 * 24,
+}
+DEFAULT_MAX_AGE_HOURS = 36
+
+
+def max_age_hours(schedule: str | None) -> int:
+    return SCHEDULE_MAX_AGE_HOURS.get((schedule or "").strip().lower(), DEFAULT_MAX_AGE_HOURS)
+
+
+def filter_signature(url: str | None) -> str:
+    """Normalized hash of a screen's SEMANTIC filter set, for duplicate detection.
+
+    Only the filter terms matter: column packs, sort order, view and auth token
+    do not change which symbols a screen selects. Filters are sorted so that
+    ordering differences do not read as different screens.
+    """
+    import hashlib
+    from urllib.parse import urlparse, parse_qs
+    if not url:
+        return ""
+    try:
+        q = parse_qs(urlparse(url).query)
+    except Exception:
+        return ""
+    filters = []
+    for key in ("f", "ft"):
+        for raw in q.get(key, []):
+            filters.extend(p.strip() for p in raw.split(",") if p.strip())
+    if not filters:
+        return ""
+    canon = ",".join(sorted(set(filters)))
+    return hashlib.sha1(canon.encode()).hexdigest()[:16]
 
 
 def _commit() -> str:
     return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
                           capture_output=True, text=True).stdout.strip()
+
+
+def load_canonical_ids() -> set:
+    """Screen ids declared in the Phase-1 canonical registry (the source of record
+    for anything the compiler deploys)."""
+    path = ROOT / "config" / "finviz_screen_registry.yaml"
+    try:
+        return set((yaml.safe_load(path.read_text()) or {}).get("screens") or {})
+    except Exception:
+        return set()
 
 
 def load_yaml_defs() -> dict:
@@ -80,25 +136,45 @@ def load_registry_map() -> tuple[dict, dict]:
 
 def load_db_state(cur) -> dict:
     cur.execute("""SELECT screener_id, display_name, strategy_type, active,
-                          last_run, results_count, finviz_url, description
+                          last_run, results_count, finviz_url, description, schedule
                    FROM finviz_screeners""")
     out = {}
     for r in cur.fetchall():
         out[r[0]] = {"display_name": r[1], "strategy_type": r[2], "active": r[3],
                      "last_run": r[4], "results_count": r[5], "finviz_url": r[6],
-                     "description": r[7]}
+                     "description": r[7], "schedule": r[8]}
     return out
 
 
 def load_membership(cur) -> dict:
-    cur.execute("""SELECT screener_id, count(*), max(last_seen_in_screener_at)
+    """CURRENT membership, not just lifetime history.
+
+    Counting every historical row made a collapsed screen look healthy:
+    swing_momentum showed 7,065 lifetime rows while currently returning 26
+    symbols (2026-07-20 review).
+    """
+    cur.execute("""SELECT screener_id,
+                          count(*)                                           AS historical,
+                          count(*) FILTER (WHERE present_this_run)            AS present_this_run,
+                          count(*) FILTER (WHERE membership_status='active')  AS active,
+                          count(*) FILTER (WHERE membership_status='stale')   AS stale,
+                          count(*) FILTER (WHERE membership_status='dropped') AS dropped,
+                          max(last_seen_in_screener_at)                       AS last_seen
                    FROM screener_symbol_membership GROUP BY 1""")
-    return {r[0]: {"members": r[1], "last_seen": r[2]} for r in cur.fetchall()}
+    return {r[0]: {"historical": r[1], "present_this_run": r[2], "active": r[3],
+                   "stale": r[4], "dropped": r[5], "last_seen": r[6]}
+            for r in cur.fetchall()}
 
 
-def classify(sid, in_yaml, in_registry, db, mem) -> tuple[str, str]:
+def classify(sid, in_yaml, in_registry, db, mem, *, duplicate_of=None,
+             superseded_by=None, in_canonical=False) -> tuple[str, str]:
     """Return (state, reason). Executor presence dominates: the DB is what runs."""
     now = datetime.now(timezone.utc)
+    if superseded_by:
+        return "SUPERSEDED", f"replaced by {superseded_by} (explicit supersedes lineage)"
+    if duplicate_of:
+        return "DUPLICATE", (f"identical normalized filter set to {duplicate_of} — "
+                             f"same symbols, duplicated capture cost and split attribution")
     if db is None:
         if in_yaml and in_registry:
             return "ORPHANED", ("defined in screeners.yaml and mapped in candidate_sources, "
@@ -113,38 +189,79 @@ def classify(sid, in_yaml, in_registry, db, mem) -> tuple[str, str]:
 
     # present in the executor
     last_run = db.get("last_run")
-    members = (mem or {}).get("members", 0)
+    m = mem or {}
+    historical = m.get("historical", 0)
+    current = m.get("present_this_run", 0)
+    limit_h = max_age_hours(db.get("schedule"))
     stale = (last_run is None
-             or (now - last_run.astimezone(timezone.utc)) > timedelta(hours=STALE_RUN_HOURS))
+             or (now - last_run.astimezone(timezone.utc)) > timedelta(hours=limit_h))
+
     if not db.get("active"):
+        # A canonical-registry screen that has never run is AWAITING PROMOTION,
+        # not retired. Only a screen that once ran and was switched off is
+        # retained-for-attribution.
+        if in_canonical and (mem or {}).get("historical", 0) == 0:
+            return "SHADOW", ("registered from the canonical registry, inactive by design — "
+                              "awaiting operator promotion; captures nothing yet")
         return "RETIRED_EVIDENCE", "row present but active=false — retained for attribution only"
-    if stale and members == 0:
-        return "BROKEN", f"active in DB but last_run={last_run} and zero members captured"
     if stale:
-        return "BROKEN", f"active in DB but last_run is stale ({last_run})"
-    if members == 0:
-        return "BROKEN", "runs but has never captured a member"
+        age = "never" if last_run is None else f"{(now - last_run.astimezone(timezone.utc)).days}d ago"
+        return "BROKEN", (f"active but last_run {age} — exceeds the "
+                          f"{limit_h}h allowance for schedule '{db.get('schedule')}'")
+    if historical == 0:
+        return "BROKEN", "runs on schedule but has never captured a single member"
+    if current == 0:
+        return "BROKEN", (f"ran on schedule but currently returns ZERO symbols "
+                          f"({historical} historical rows mask the collapse)")
     if not in_registry:
-        return "SHADOW", ("running and producing members, but no candidate_sources mapping — "
-                          "no strategy consumes it (attribution gap, not proposal-eligible)")
-    return "ACTIVE", f"running, mapped, {members} member rows"
+        return "SHADOW", (f"running ({current} current members) but no candidate_sources "
+                          f"mapping — no strategy consumes it (attribution gap)")
+    return "ACTIVE", f"running, mapped, {current} current members ({historical} historical)"
 
 
 def reconcile() -> dict:
     from db_adapter import _get_conn
     cur = _get_conn().cursor()
 
+    canonical_ids = load_canonical_ids()
     yaml_defs = load_yaml_defs()
     reg_by_screen, reg_sources = load_registry_map()
     db_state = load_db_state(cur)
     mem = load_membership(cur)
 
     all_ids = sorted(set(yaml_defs) | set(reg_by_screen) | set(db_state))
+
+    # ── duplicate + supersession detection ──
+    # Group by normalized filter signature; the earliest-named id in a group is
+    # the canonical one and the rest are DUPLICATE. Explicit 'supersedes' in a
+    # YAML definition records intentional replacement lineage.
+    sig_groups: dict[str, list] = {}
+    for sid in all_ids:
+        url = (db_state.get(sid) or {}).get("finviz_url") or (yaml_defs.get(sid) or {}).get("finviz_url")
+        sig = filter_signature(url)
+        if sig:
+            sig_groups.setdefault(sig, []).append(sid)
+    duplicate_of: dict[str, str] = {}
+    for sig, ids in sig_groups.items():
+        if len(ids) > 1:
+            canonical = sorted(ids)[0]
+            for other in sorted(ids)[1:]:
+                duplicate_of[other] = canonical
+    superseded_by: dict[str, str] = {}
+    for sid, d in yaml_defs.items():
+        for old in ([d.get("supersedes")] if isinstance(d.get("supersedes"), str)
+                    else (d.get("supersedes") or [])):
+            if old:
+                superseded_by[old] = sid
+
     rows = []
     for sid in all_ids:
         db = db_state.get(sid)
         m = mem.get(sid)
-        state, reason = classify(sid, sid in yaml_defs, sid in reg_by_screen, db, m)
+        state, reason = classify(sid, sid in yaml_defs, sid in reg_by_screen, db, m,
+                                 duplicate_of=duplicate_of.get(sid),
+                                 superseded_by=superseded_by.get(sid),
+                                 in_canonical=sid in canonical_ids)
         ydef = yaml_defs.get(sid) or {}
         rows.append({
             "screen_id": sid,
@@ -153,9 +270,24 @@ def reconcile() -> dict:
             "in_candidate_sources": sid in reg_by_screen,
             "in_executor_db": db is not None,
             "db_active": (db or {}).get("active"),
+            "schedule": (db or {}).get("schedule") or "",
+            "max_age_hours": max_age_hours((db or {}).get("schedule")) if db else None,
             "last_run": str((db or {}).get("last_run") or ""),
             "results_count": (db or {}).get("results_count"),
-            "member_rows": (m or {}).get("members", 0),
+            "members_historical": (m or {}).get("historical", 0),
+            "members_present_this_run": (m or {}).get("present_this_run", 0),
+            "members_active": (m or {}).get("active", 0),
+            "members_stale": (m or {}).get("stale", 0),
+            "members_dropped": (m or {}).get("dropped", 0),
+            # results_count is what the screen returned; present_this_run is what
+            # persisted. A wide gap means ingestion dropped rows silently.
+            "result_vs_membership_variance": (
+                ((db or {}).get("results_count") or 0) - ((m or {}).get("present_this_run", 0))
+                if db else None),
+            "filter_signature": filter_signature(
+                (db or {}).get("finviz_url") or ydef.get("finviz_url")),
+            "duplicate_of": duplicate_of.get(sid, ""),
+            "superseded_by": superseded_by.get(sid, ""),
             "last_member_seen": str((m or {}).get("last_seen") or ""),
             "mapped_sources": reg_by_screen.get(sid, []),
             "strategy_type": (db or {}).get("strategy_type") or ydef.get("strategy_class") or "",
@@ -218,14 +350,21 @@ def main() -> int:
     print(f"  executor DB rows           : {t['executor_db_rows']}")
     print(f"  distinct ids               : {t['distinct_ids_across_all_three']}")
     print(f"\nstate counts: {rep['state_counts']}\n")
-    print(f"{'STATE':<17}{'ID':<34}{'YML':<5}{'REG':<5}{'DB':<4}{'MEMBERS':>8}")
-    print("-" * 76)
+    print(f"{'STATE':<17}{'ID':<32}{'YML':<4}{'REG':<4}{'DB':<4}"
+          f"{'NOW':>7}{'HIST':>8}  {'SCHEDULE':<16}")
+    print("-" * 96)
     for r in sorted(rep["rows"], key=lambda x: (x["state"], x["screen_id"])):
-        print(f"{r['state']:<17}{r['screen_id']:<34}"
-              f"{'Y' if r['in_screeners_yaml'] else '-':<5}"
-              f"{'Y' if r['in_candidate_sources'] else '-':<5}"
+        note = ""
+        if r.get("duplicate_of"):
+            note = f"  == {r['duplicate_of']}"
+        elif r.get("superseded_by"):
+            note = f"  -> {r['superseded_by']}"
+        print(f"{r['state']:<17}{r['screen_id']:<32}"
+              f"{'Y' if r['in_screeners_yaml'] else '-':<4}"
+              f"{'Y' if r['in_candidate_sources'] else '-':<4}"
               f"{'Y' if r['in_executor_db'] else '-':<4}"
-              f"{r['member_rows']:>8}")
+              f"{r['members_present_this_run']:>7}{r['members_historical']:>8}  "
+              f"{r.get('schedule',''):<16}{note}")
     if rep["provider_claims"]:
         print("\nPROVIDER CLAIMS TO VERIFY:")
         for p in rep["provider_claims"]:

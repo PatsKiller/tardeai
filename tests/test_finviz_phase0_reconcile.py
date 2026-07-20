@@ -163,20 +163,20 @@ def test_reconciler_classifies_without_db(monkeypatch):
     assert st == "ORPHANED"
 
     st, _ = fr.classify("x", in_yaml=False, in_registry=True,
-                        db={"active": True, "last_run": fresh}, mem={"members": 10})
+                        db={"active": True, "last_run": fresh}, mem={"historical": 10, "present_this_run": 10})
     assert st == "ACTIVE"
 
     st, _ = fr.classify("x", in_yaml=False, in_registry=False,
-                        db={"active": True, "last_run": fresh}, mem={"members": 10})
+                        db={"active": True, "last_run": fresh}, mem={"historical": 10, "present_this_run": 10})
     assert st == "SHADOW"
 
     stale = fresh - timedelta(days=5)
     st, _ = fr.classify("x", in_yaml=False, in_registry=True,
-                        db={"active": True, "last_run": stale}, mem={"members": 3})
+                        db={"active": True, "last_run": stale}, mem={"historical": 3, "present_this_run": 3})
     assert st == "BROKEN"
 
     st, _ = fr.classify("x", in_yaml=False, in_registry=True,
-                        db={"active": False, "last_run": fresh}, mem={"members": 3})
+                        db={"active": False, "last_run": fresh}, mem={"historical": 3, "present_this_run": 3})
     assert st == "RETIRED_EVIDENCE"
 
 
@@ -250,3 +250,70 @@ def test_days_until_only_for_scheduled():
     assert ep.EarningsInfo("X", ep.SCHEDULED, date=d).days_until() == 4
     assert ep.EarningsInfo("X", ep.NONE_SCHEDULED).days_until() is None
     assert ep.EarningsInfo("X", ep.UNKNOWN).days_until() is None
+
+
+# ── P0.1: malformed earnings values must fail CLOSED ───────────────────────
+
+MALFORMED = [
+    ("garbage", "not a date at all"),
+    ("2026-13-45", "impossible date"),
+    ("07/21/2026", "unsupported format"),
+    ("Jul 21 2026", "human format"),
+    (12345, "non-string numeric"),
+    (["2026-07-21"], "non-string container"),
+    ({"date": "2026-07-21"}, "dict payload"),
+    ("2026-07", "partial date"),
+]
+
+
+@pytest.mark.parametrize("bad,label", MALFORMED)
+def test_malformed_earnings_value_fails_closed(monkeypatch, bad, label):
+    """Unparseable timing is UNKNOWN, never proof that no event exists."""
+    import options_desk_enterprise as ent
+    monkeypatch.setattr(ent, "earnings_calendar", lambda syms: {s: bad for s in syms})
+    r = ent.earnings_blackout_check("AAPL", dte=30, strategy="covered_call")
+    assert r["in_blackout"] is True, f"FAILED OPEN on {label}: {bad!r}"
+    assert r["refusal_code"] == "EARNINGS_TIMESTAMP_INVALID"
+    assert r.get("data_blocked") is True
+
+
+def test_real_date_object_is_accepted(monkeypatch):
+    """A datetime.date (not just an ISO string) must still parse normally."""
+    import options_desk_enterprise as ent
+    from datetime import date, timedelta
+    d = date.today() + timedelta(days=3)
+    monkeypatch.setattr(ent, "earnings_calendar", lambda syms: {s: d for s in syms})
+    r = ent.earnings_blackout_check("AAPL", dte=30, strategy="covered_call")
+    assert r["in_blackout"] is True
+    assert r["days_to_earnings"] == 3
+    assert "refusal_code" not in r        # a real blackout, not a data defect
+
+
+# ── P0.1: specific refusal codes survive to the top level ──────────────────
+
+@pytest.mark.parametrize("sentinel,expected", [
+    ("UNKNOWN", "EARNINGS_TIMESTAMP_UNKNOWN"),
+    ("garbage-date", "EARNINGS_TIMESTAMP_INVALID"),
+])
+def test_hard_block_preserves_specific_refusal_code(monkeypatch, sentinel, expected):
+    """evaluate_hard_risk_blocks must not flatten these to 'earnings_blackout'."""
+    import options_desk_enterprise as ent
+    monkeypatch.setattr(ent, "earnings_calendar", lambda syms: {s: sentinel for s in syms})
+    blocks = ent.evaluate_hard_risk_blocks(
+        {"symbol": "AAPL", "strategy": "covered_call", "dte": 30, "contracts": 1})
+    codes = [b.get("code") for b in blocks]
+    assert expected in codes, f"specific code lost; got {codes}"
+
+
+def test_genuine_blackout_keeps_generic_code(monkeypatch):
+    """A real scheduled blackout stays 'earnings_blackout' — codes stay distinguishable."""
+    import options_desk_enterprise as ent
+    from datetime import date, timedelta
+    soon = (date.today() + timedelta(days=4)).isoformat()
+    monkeypatch.setattr(ent, "earnings_calendar", lambda syms: {s: soon for s in syms})
+    blocks = ent.evaluate_hard_risk_blocks(
+        {"symbol": "AAPL", "strategy": "covered_call", "dte": 30, "contracts": 1})
+    codes = [b.get("code") for b in blocks]
+    assert "earnings_blackout" in codes
+    assert "EARNINGS_TIMESTAMP_UNKNOWN" not in codes
+    assert "EARNINGS_TIMESTAMP_INVALID" not in codes
