@@ -68,6 +68,10 @@ def aggregate(chain: dict) -> dict | None:
     """One underlying's chain → radar aggregates."""
     if not chain or chain.get("status") != "ok":
         return None
+    # Resolved ONCE per underlying: the covered-call picker needs to know whether
+    # an expiry straddles earnings, and a per-strike lookup would hammer the
+    # provider for every candidate contract.
+    _earn = _next_earnings(chain.get("symbol") or "")
     put_oi = call_oi = put_vol = call_vol = 0
     atm_ivs, put25, call25 = [], [], []
     tgt = CFG["skew_delta_target"]
@@ -111,7 +115,6 @@ def aggregate(chain: dict) -> dict | None:
                 # expiry wins whenever one exists; if none does we still pick,
                 # but the card carries the flag instead of silently proposing a
                 # trade the risk gate will reject.
-                _earn = _next_earnings(symbol)
                 _spans = bool(_earn and s["exp"] and str(s["exp"])[:10] >= _earn.isoformat())
                 fit = abs(ad - 0.28) + (0 if valid else 10) + (5 if _spans else 0)
                 if cc_call is None or fit < cc_call["_fit"]:
