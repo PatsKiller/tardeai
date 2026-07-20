@@ -475,12 +475,77 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
         model = "grok-3-mini" if eff_lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "local"
         if eff_lane == "grok":
             oauth_used += 1
-        # proximity check: already inside the zone upgrades urgency honestly
-        urg = p.get("urgency", "watch")
-        if p.get("entry_zone_low") and p.get("entry_zone_high") \
-                and p["entry_zone_low"] <= t["price"] <= p["entry_zone_high"] and urg == "watch":
-            urg = "ready"
+        # ── DETERMINISTIC R:R AND URGENCY (2026-07-20) ──────────────────────────
+        # Both were taken from the model. Neither survived checking.
+        #
+        # BETA's first plan stored risk_reward=1.5 against limit 17.75 / stop 16.94 /
+        # target 20.00, where the arithmetic gives 2.78 — and 1.00 to the T1 rung. The
+        # stored number was not derivable from any level in its own plan. The prompt
+        # asks for (target-limit)/(limit-stop); nothing verified it, so the answer was
+        # whatever the model felt like. The same plan claimed urgency=near_entry with
+        # spot at 19.805 and the entry zone topping out at 18.20 — 8.1% away — because
+        # the only server-side adjustment was an UPGRADE (watch -> ready when price is
+        # inside the zone) and no path could ever downgrade an overstated one.
+        #
+        # near_entry is one of the two urgency values that unlock PROPOSE_ENTRY, so an
+        # overstated urgency is not cosmetic — it is a button that should not be lit.
+        #
+        # These are arithmetic over levels the model already chose, so the model has no
+        # business authoring them. It picks the levels; the levels imply the rest.
+        _lim, _stop, _tgt = p.get("limit_price"), p.get("stop_price"), p.get("target_price")
+        _model_rr = p.get("risk_reward")
+        if _lim and _stop and _tgt and float(_lim) > float(_stop):
+            _risk = float(_lim) - float(_stop)
+            p["risk_reward"] = round((float(_tgt) - float(_lim)) / _risk, 1)
+            # Keep the model's claim when it differs, so the drift is auditable rather
+            # than silently overwritten.
+            if _model_rr is not None and abs(float(_model_rr) - p["risk_reward"]) >= 0.1:
+                p["risk_reward_model_claimed"] = _model_rr
+                p["risk_reward_source"] = "recomputed_from_levels"
+        else:
+            # Levels that cannot produce an R:R must not carry one.
+            p["risk_reward"] = None
+            if _model_rr is not None:
+                p["risk_reward_model_claimed"] = _model_rr
+                p["risk_reward_source"] = "rejected_unverifiable_levels"
+
+        # Urgency from distance to the zone, in ATR — the same rule the prompt states
+        # ("ready" = in zone, "near_entry" = within ~1 ATR) but enforced rather than
+        # requested. Distance is measured to the NEAR edge of the zone.
+        _zlo, _zhi, _atr = p.get("entry_zone_low"), p.get("entry_zone_high"), t.get("atr")
+        _model_urg = p.get("urgency", "watch")
+        if _zlo and _zhi and _atr and float(_atr) > 0:
+            _px = float(t["price"])
+            if float(_zlo) <= _px <= float(_zhi):
+                urg = "ready"
+            else:
+                _dist = (float(_zlo) - _px) if _px < float(_zlo) else (_px - float(_zhi))
+                urg = "near_entry" if _dist <= float(_atr) else "watch"
+            if urg != _model_urg:
+                p["urgency_model_claimed"] = _model_urg
+                p["urgency_source"] = "recomputed_from_atr_distance"
+                p["urgency_distance_atr"] = round(
+                    0.0 if urg == "ready"
+                    else ((float(_zlo) - _px) if _px < float(_zlo) else (_px - float(_zhi))) / float(_atr), 2)
+        else:
+            # No ATR means the distance rule cannot run. Fail to the value that does
+            # NOT unlock PROPOSE_ENTRY rather than trusting the model's.
+            urg = "ready" if (_zlo and _zhi and float(_zlo) <= float(t["price"]) <= float(_zhi)) else "watch"
+            if urg != _model_urg:
+                p["urgency_model_claimed"] = _model_urg
+                p["urgency_source"] = "no_atr_failed_closed"
+        p["urgency"] = urg
         prop = p.get("proposal") or {}
+        # The tag's own rule (line 49) makes it a FUNCTION of urgency and confidence,
+        # so a recomputed urgency must not leave a stale READY behind it. Enforced in
+        # one direction only: a model tag may be demoted by the arithmetic, never
+        # promoted by it — READY is a claim the model has to make for itself.
+        if str(prop.get("tag") or "").upper() == "READY" \
+                and not (urg == "ready" and float(p.get("confidence") or 0) >= 0.7):
+            prop["tag_model_claimed"] = prop.get("tag")
+            prop["tag"] = "NEEDS_CONFIRMATION"
+            prop["tag_source"] = "demoted_urgency_or_confidence"
+            p["proposal"] = prop
         p["scope"] = scope
         if c.get("proposal_id"):
             p["proposal_id"] = c["proposal_id"]
