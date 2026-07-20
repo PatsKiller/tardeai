@@ -32,7 +32,15 @@ registry_generated: "2026-07-20"
 defaults:
   view: 152                    # custom view; v=111 ignores &c= columns
   column_pack: "0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
-  status: SHADOW               # nothing here is proposal-eligible on arrival
+  # ── SEPARATED GOVERNANCE (Phase 1.2) ──
+  # `status: SHADOW` used to compile to active=false, which stopped the screen
+  # RUNNING — so shadow evidence could never accumulate (proved 2026-07-20:
+  # OPT-CC-QUALITY-OVERWRITE had 0 membership rows). Running and being allowed
+  # to propose are now independent, and the database enforces the separation.
+  run_enabled: true            # executor runs it and captures membership
+  research_mode: SHADOW        # SHADOW | VALIDATION_READY | OPERATIONAL
+  proposal_eligible: false     # may membership enter the proposal router
+  execution_eligible: false    # may a resulting proposal reach execution
   human_review_only: true
 
 screens:
@@ -50,7 +58,10 @@ screens:
     universe_type: equity
     strategy_type: covered_call_income
     schedule: twice_weekly          # Tue/Thu post-close
-    status: SHADOW
+    run_enabled: true
+    research_mode: SHADOW
+    proposal_eligible: false
+    execution_eligible: false
     requires_existing_position: preferred
     portfolio_join_required: true
     event_clearance_required: true

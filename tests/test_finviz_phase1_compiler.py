@@ -28,12 +28,19 @@ def test_registry_parses_and_has_the_operator_preset():
 
 
 def test_every_screen_ships_shadow_and_human_review_only():
-    """Nothing in the canonical library may arrive proposal-eligible."""
+    """Nothing in the canonical library may arrive proposal-eligible.
+
+    Phase 1.2: `status` was replaced by separated controls, because one field
+    could not express "runs but may not propose".
+    """
     r = _reg()
-    defaults = r.get("defaults", {})
+    d = r.get("defaults", {})
     for sid, spec in r["screens"].items():
-        status = spec.get("status") or defaults.get("status")
-        assert status == "SHADOW", f"{sid} is not SHADOW"
+        mode = spec.get("research_mode", d.get("research_mode"))
+        assert mode == "SHADOW", f"{sid} is not SHADOW"
+        assert spec.get("proposal_eligible", d.get("proposal_eligible")) is False
+        assert spec.get("execution_eligible", d.get("execution_eligible")) is False
+        assert d.get("human_review_only") is True
 
 
 def test_compile_is_deterministic():
@@ -139,8 +146,11 @@ def test_upsert_is_idempotent_when_nothing_changed():
         def execute(self, sql, params=None):
             assert "UPDATE" not in sql, "unchanged row must not be rewritten"
         def fetchone(self):
+            m = c["manifest"]
             return (c["machine_url"], desc, spec.get("schedule", ""),
-                    spec.get("strategy_type", ""), False)
+                    spec.get("strategy_type", ""), bool(m["run_enabled"]),
+                    m["research_mode"], bool(m["proposal_eligible"]),
+                    bool(m["execution_eligible"]))
 
     assert fc.upsert(c, Cur()) == "unchanged"
 
@@ -157,3 +167,81 @@ def test_validation_gate_blocks_ignored_tokens(monkeypatch):
                           r["screens"]["OPT-CC-QUALITY-OVERWRITE"], r["defaults"])
     v = fc.validate_tokens([c])
     assert v["bad_tokens"], "gate must surface ignored tokens"
+
+
+# ── Phase 1.2: separated governance (run vs propose vs execute) ────────────
+
+def test_shadow_screen_runs_but_cannot_propose():
+    """The Phase 1 defect: SHADOW compiled to active=false, so no evidence."""
+    r = _reg()
+    c = fc.compile_screen("OPT-CC-QUALITY-OVERWRITE",
+                          r["screens"]["OPT-CC-QUALITY-OVERWRITE"], r["defaults"])
+    m = c["manifest"]
+    assert m["research_mode"] == "SHADOW"
+    assert m["run_enabled"] is True, "a shadow screen MUST run or it gathers nothing"
+    assert m["proposal_eligible"] is False
+    assert m["execution_eligible"] is False
+
+
+def test_shadow_upserts_active_true():
+    """active means RUN, not PROPOSE."""
+    r = _reg()
+    c = fc.compile_screen("OPT-CC-QUALITY-OVERWRITE",
+                          r["screens"]["OPT-CC-QUALITY-OVERWRITE"], r["defaults"])
+    captured = {}
+
+    class Cur:
+        def execute(self, sql, params=None):
+            captured.setdefault("sqls", []).append(sql)
+            captured["params"] = params
+        def fetchone(self): return None
+
+    fc.upsert(c, Cur())
+    ins = [s for s in captured["sqls"] if "INSERT INTO finviz_screeners" in s]
+    assert ins, "expected an insert"
+    p = captured["params"]
+    assert True in p, "active must be true so the executor runs it"
+    assert "SHADOW" in p
+    assert p.count(False) >= 2, "proposal_eligible and execution_eligible must be false"
+
+
+def test_compiler_refuses_shadow_with_proposal_authority():
+    r = _reg()
+    spec = dict(r["screens"]["OPT-CC-QUALITY-OVERWRITE"])
+    spec["proposal_eligible"] = True          # SHADOW + propose = illegal
+    with pytest.raises(ValueError, match="cannot be proposal"):
+        fc.compile_screen("X", spec, r["defaults"])
+
+
+def test_compiler_refuses_execution_eligible():
+    r = _reg()
+    spec = dict(r["screens"]["OPT-CC-QUALITY-OVERWRITE"])
+    spec["research_mode"] = "OPERATIONAL"
+    spec["execution_eligible"] = True
+    with pytest.raises(ValueError, match="execution_eligible must be false"):
+        fc.compile_screen("X", spec, r["defaults"])
+
+
+def test_compiler_refuses_unknown_research_mode():
+    r = _reg()
+    spec = dict(r["screens"]["OPT-CC-QUALITY-OVERWRITE"])
+    spec["research_mode"] = "LIVE"
+    with pytest.raises(ValueError, match="research_mode"):
+        fc.compile_screen("X", spec, r["defaults"])
+
+
+def test_scoring_feeder_excludes_shadow_screens():
+    """Shadow membership must never reach the Hermes scoring pipeline."""
+    src = (ROOT / "scripts" / "hermes_score_event_feeder.py").read_text()
+    i = src.index('"finviz":')
+    q = src[i:i + 700]
+    assert "proposal_eligible = true" in q, "feeder must gate on proposal_eligible"
+    assert "research_mode <> 'SHADOW'" in q, "feeder must exclude SHADOW screens"
+
+
+def test_run_and_propose_are_independent_fields():
+    """Regression guard: never collapse these back into one flag."""
+    import yaml as _y
+    d = _y.safe_load((ROOT / "config" / "finviz_screen_registry.yaml").read_text())
+    for key in ("run_enabled", "research_mode", "proposal_eligible", "execution_eligible"):
+        assert key in d["defaults"], f"registry defaults lost {key}"

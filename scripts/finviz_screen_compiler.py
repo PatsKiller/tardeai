@@ -46,6 +46,29 @@ def load_registry() -> dict:
     return yaml.safe_load(REGISTRY.read_text()) or {}
 
 
+VALID_MODES = ("SHADOW", "VALIDATION_READY", "OPERATIONAL")
+
+
+def _gov(spec: dict, defaults: dict, key: str, fallback):
+    """Per-screen governance value, falling back to registry defaults."""
+    if key in spec:
+        return spec[key]
+    if key in defaults:
+        return defaults[key]
+    return fallback
+
+
+def _check_governance(sid: str, m: dict) -> None:
+    """Refuse to compile a definition that claims authority it must not have."""
+    if m["research_mode"] not in VALID_MODES:
+        raise ValueError(f"{sid}: research_mode {m['research_mode']!r} not in {VALID_MODES}")
+    if m["research_mode"] == "SHADOW" and (m["proposal_eligible"] or m["execution_eligible"]):
+        raise ValueError(f"{sid}: a SHADOW screen cannot be proposal- or execution-eligible")
+    if m["execution_eligible"]:
+        raise ValueError(f"{sid}: execution_eligible must be false — no Finviz list has "
+                         f"execution authority in this phase")
+
+
 def compile_screen(sid: str, spec: dict, defaults: dict) -> dict:
     """Definition -> deterministic URLs + manifest + hash. Pure; no network."""
     tokens = [f["token"] if isinstance(f, dict) else str(f)
@@ -70,8 +93,12 @@ def compile_screen(sid: str, spec: dict, defaults: dict) -> dict:
         "column_pack": cols,
         "schedule": spec.get("schedule", ""),
         "play_families": spec.get("play_families", []),
-        "status": spec.get("status") or defaults.get("status", "SHADOW"),
+        "run_enabled": _gov(spec, defaults, "run_enabled", True),
+        "research_mode": _gov(spec, defaults, "research_mode", "SHADOW"),
+        "proposal_eligible": _gov(spec, defaults, "proposal_eligible", False),
+        "execution_eligible": _gov(spec, defaults, "execution_eligible", False),
     }
+    _check_governance(sid, manifest)
     definition_hash = hashlib.sha256(
         json.dumps(manifest, sort_keys=True).encode()).hexdigest()[:16]
 
@@ -100,30 +127,41 @@ def upsert(compiled: dict, cur) -> str:
             f"[canonical registry v{spec.get('screen_version',1)}, "
             f"def#{compiled['definition_hash']}]").strip()
 
-    cur.execute("""SELECT finviz_url, description, schedule, strategy_type, active
+    cur.execute("""SELECT finviz_url, description, schedule, strategy_type, active,
+                          research_mode, proposal_eligible, execution_eligible
                    FROM finviz_screeners WHERE screener_id=%s""", (sid,))
     row = cur.fetchone()
-    # SHADOW definitions are registered but NOT active: they must not consume
-    # capture budget or produce members until the operator promotes them.
-    active = (spec.get("status") or "SHADOW").upper() == "ACTIVE"
+    # `active` means ONLY "the executor runs this screen". A SHADOW screen RUNS
+    # (that is how shadow evidence accumulates) but carries proposal_eligible
+    # false. Conflating the two is what produced 0 membership rows in Phase 1.
+    m = compiled["manifest"]
+    active = bool(m["run_enabled"])
     payload = (compiled["machine_url"], desc, spec.get("schedule", ""),
-               spec.get("strategy_type", ""), active)
+               spec.get("strategy_type", ""), active,
+               m["research_mode"], bool(m["proposal_eligible"]),
+               bool(m["execution_eligible"]))
 
     if row is None:
         cur.execute("""INSERT INTO finviz_screeners
                        (screener_id, display_name, strategy_type, finviz_url,
-                        description, schedule, active, added_by, created_at, updated_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,'finviz_screen_compiler',NOW(),NOW())""",
+                        description, schedule, active, research_mode,
+                        proposal_eligible, execution_eligible, human_review_only,
+                        added_by, created_at, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,
+                               'finviz_screen_compiler',NOW(),NOW())""",
                     (sid, spec.get("display_name", sid), spec.get("strategy_type", ""),
-                     compiled["machine_url"], desc, spec.get("schedule", ""), active))
+                     compiled["machine_url"], desc, spec.get("schedule", ""), active,
+                     m["research_mode"], bool(m["proposal_eligible"]),
+                     bool(m["execution_eligible"])))
         return "inserted"
 
-    if (row[0], row[1], row[2], row[3], row[4]) == payload:
+    if tuple(row[:8]) == payload:
         return "unchanged"
 
     cur.execute("""UPDATE finviz_screeners
                    SET finviz_url=%s, description=%s, schedule=%s,
-                       strategy_type=%s, active=%s, updated_at=NOW()
+                       strategy_type=%s, active=%s, research_mode=%s,
+                       proposal_eligible=%s, execution_eligible=%s, updated_at=NOW()
                    WHERE screener_id=%s""", (*payload, sid))
     return "updated"
 
@@ -157,7 +195,10 @@ def main() -> int:
     for c in compiled:
         result["screens"].append({
             "screen_id": c["screen_id"], "definition_hash": c["definition_hash"],
-            "tokens": c["tokens"], "status": c["manifest"]["status"],
+            "tokens": c["tokens"],
+            "research_mode": c["manifest"]["research_mode"],
+            "run_enabled": c["manifest"]["run_enabled"],
+            "proposal_eligible": c["manifest"]["proposal_eligible"],
             "schedule": c["manifest"]["schedule"], "machine_url": c["machine_url"],
             "human_url": c["human_url"]})
 
@@ -199,14 +240,16 @@ def main() -> int:
 
     print(f"\ncompiled {result['compiled']} canonical screen(s)")
     for s in result["screens"]:
-        print(f"\n  {s['screen_id']}  [{s['status']}]  def#{s['definition_hash']}")
+        print(f"\n  {s['screen_id']}  [{s['research_mode']}] "
+              f"run={s['run_enabled']} propose={s['proposal_eligible']}  "
+              f"def#{s['definition_hash']}")
         print(f"    schedule : {s['schedule']}")
         print(f"    filters  : {','.join(s['tokens'])}")
         print(f"    machine  : {s['machine_url'][:120]}")
     if result.get("actions"):
         print(f"\nupsert into finviz_screeners: {result['actions']}")
-        print("NOTE: SHADOW screens are registered with active=false — they are "
-              "visible to the runtime but do not run until promoted.")
+        print("NOTE: SHADOW screens RUN (active=true) so evidence accumulates, but "
+              "carry proposal_eligible=false — membership can never become a proposal.")
     return 0
 
 

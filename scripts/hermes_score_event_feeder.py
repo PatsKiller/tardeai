@@ -38,10 +38,19 @@ SOURCE_SQL = {
                FROM news_articles WHERE symbol IS NOT NULL
                  AND created_at > NOW() - make_interval(mins => %s)
                GROUP BY UPPER(symbol)""",
-    "finviz": """SELECT DISTINCT UPPER(symbol), 'screener:' || MAX(screener_id::text)
-                 FROM screener_symbol_membership
-                 WHERE first_seen_in_screener_at > NOW() - make_interval(mins => %s)
-                 GROUP BY UPPER(symbol)""",
+    # SHADOW screens must NOT feed scoring. They run purely to accumulate
+    # evidence; letting their membership raise a Hermes score would give a
+    # research-only list live influence, which is the whole thing shadow mode
+    # exists to prevent. Gated on the screen's own proposal_eligible flag
+    # (Phase 1.2, 2026-07-20) — the DB additionally CHECK-constrains a SHADOW
+    # screen to proposal_eligible=false, so this cannot be bypassed by data.
+    "finviz": """SELECT DISTINCT UPPER(m.symbol), 'screener:' || MAX(m.screener_id::text)
+                 FROM screener_symbol_membership m
+                 JOIN finviz_screeners f ON f.screener_id = m.screener_id
+                 WHERE m.first_seen_in_screener_at > NOW() - make_interval(mins => %s)
+                   AND f.proposal_eligible = true
+                   AND f.research_mode <> 'SHADOW'
+                 GROUP BY UPPER(m.symbol)""",
     # first-EVER hit for the (directive, symbol) pair only — discovery restages existing hits
     # every 30 min (bumping surfaced_at), and treating restages as events reflooded the live
     # tiers with the exact inflation Phase 1 exists to stop (274 fake events per 20-min window).
