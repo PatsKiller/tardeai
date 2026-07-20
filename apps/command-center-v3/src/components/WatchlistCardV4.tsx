@@ -314,7 +314,30 @@ export default function WatchlistCardV4({
         <span onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}><ProAnalystPill symbol={it.symbol} map={paMap} compact neutral={false} /></span>
         {analystDivergent && <span className="wlc-term-tag" style={{ color: BB.amber, border: `1px solid ${BB.amber}44` }}>CIO≠ST</span>}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
-          <span style={{ ...numStyle, fontSize: 16, fontWeight: 800, color: BB.text0 }}>{it.price != null ? money(it.price) : '—'}</span>
+          {/* The price carries its own as-of stamp. This card once showed $19.09
+              in the header and "current $19.83" in the Fib block simultaneously,
+              because the header read a cached enrichment snapshot and nothing
+              displayed when it was taken. The API now prefers the live quote and
+              returns price_as_of/price_source; an enrichment-sourced price older
+              than 15 minutes says so rather than presenting itself as current. */}
+          <span
+            title={it.price_as_of
+              ? `as of ${new Date(it.price_as_of).toLocaleTimeString()} · source ${it.price_source ?? 'unknown'}`
+              + (it.price_live != null && it.price_enriched != null
+                 && Math.abs(Number(it.price_live) - Number(it.price_enriched)) / Number(it.price_live) > 0.01
+                 ? ` · enrichment snapshot ${money(it.price_enriched)} differs from live ${money(it.price_live)}`
+                 : '')
+              : 'no as-of timestamp for this price'}
+            style={{ ...numStyle, fontSize: 16, fontWeight: 800, color: BB.text0 }}>
+            {it.price != null ? money(it.price) : '—'}
+          </span>
+          {it.price_source === 'enrichment' && it.price_as_of
+            && (Date.now() - new Date(it.price_as_of).getTime()) > 15 * 60_000 && (
+            <span style={{ fontSize: 10, fontWeight: 800, color: BB.amber, flexShrink: 0 }}
+                  title={`price is a cached snapshot from ${new Date(it.price_as_of).toLocaleTimeString()} — no fresher quote available`}>
+              @{new Date(it.price_as_of).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
           {it.change_pct != null && (
             <span style={{ ...numStyle, fontSize: 12, fontWeight: 800, color: terminalSigned(Number(it.change_pct)) }}>
               {Number(it.change_pct) >= 0 ? '+' : ''}{Number(it.change_pct).toFixed(2)}%

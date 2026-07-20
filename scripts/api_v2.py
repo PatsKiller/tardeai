@@ -6186,6 +6186,38 @@ def _wl_items(query: dict = None):
                      {sort} LIMIT {len(_sym_list) if _sym_list else (1 if _sym_lookup else 200)}
         )
         SELECT p.*,
+               -- ── ONE PRICE PER CARD (2026-07-20) ────────────────────────────
+               -- The BETA card showed $19.09 in its header and "current $19.83"
+               -- in the Fib block at the same moment — 4 pct apart on one card.
+               -- (No literal percent sign anywhere in this SQL: psycopg2 reads it
+               -- as a parameter placeholder and the execute dies with an
+               -- IndexError. Caught here the same day a test was added for the
+               -- identical mistake in watchlist_entry_planner.)
+               -- The header served watchlist_items.price, a cached enrichment
+               -- snapshot written by a cron (13:42), while the Fib panel derived
+               -- its price from the latest OHLC bar. Every percentage in the
+               -- header — today's change, distance to stop, distance to target —
+               -- was computed off the stale one.
+               --
+               -- market_quotes is the live source and was 48 minutes fresher than
+               -- the enrichment at the time. Overlay it when it is genuinely
+               -- newer; keep the enrichment value when it is not, so a stalled
+               -- quote feed cannot make the card go backwards.
+               --
+               -- price_as_of and price_source travel WITH the number: a price
+               -- with no timestamp cannot be judged stale by anything
+               -- downstream, which is how the divergence survived.
+               CASE WHEN mq.price IS NOT NULL
+                         AND (p.last_enriched_at IS NULL OR mq.fetched_at > p.last_enriched_at)
+                    THEN mq.price ELSE p.price END AS price,
+               CASE WHEN mq.price IS NOT NULL
+                         AND (p.last_enriched_at IS NULL OR mq.fetched_at > p.last_enriched_at)
+                    THEN mq.fetched_at ELSE p.last_enriched_at END AS price_as_of,
+               CASE WHEN mq.price IS NOT NULL
+                         AND (p.last_enriched_at IS NULL OR mq.fetched_at > p.last_enriched_at)
+                    THEN 'market_quotes' ELSE 'enrichment' END AS price_source,
+               p.price AS price_enriched,
+               mq.price AS price_live,
                sc.strategy_type, sc.latest_price, sc.support, sc.resistance,
                sc.ideal_entry, sc.stop_loss, sc.target_price, sc.risk_reward,
                sc.confidence as strategy_confidence, sc.account_fit,
@@ -6227,6 +6259,14 @@ def _wl_items(query: dict = None):
                 WHERE wd.kind='ticker' AND upper(wd.spec->>'symbol')=upper(p.symbol)
                   AND wd.label IS NOT NULL AND wd.label <> upper(p.symbol)) AS watch_lists
         FROM picked p
+        -- Plain equality, NOT upper(t.symbol) = upper(p.symbol). market_quotes has
+        -- 3.4M rows and an index on (symbol, fetched_at DESC); wrapping either side
+        -- in upper() makes it unusable and this endpoint took 142 SECONDS. Both
+        -- tables are verified all-uppercase (0 mixed-case rows in either), so the
+        -- functions bought nothing and cost everything. (2026-07-20)
+        LEFT JOIN LATERAL (SELECT t.price, t.fetched_at FROM market_quotes t
+                           WHERE t.symbol = p.symbol
+                           ORDER BY t.fetched_at DESC LIMIT 1) mq ON true
         LEFT JOIN LATERAL (SELECT * FROM watchlist_strategy_cards t WHERE t.symbol = p.symbol LIMIT 1) sc ON true
         LEFT JOIN LATERAL (SELECT * FROM watchlist_research_cards t WHERE t.symbol = p.symbol LIMIT 1) rc ON true
         -- failed-LLM artifacts ("LLM error: …") never surface as CIO notes (purged 2026-07-03; guard in run_synthesis)
