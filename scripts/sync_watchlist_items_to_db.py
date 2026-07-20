@@ -77,16 +77,24 @@ def sync():
             if isinstance(data, dict):
                 backtests[sym] = data
 
-    # Build trade plan lookup
-    trade_plans = {}
-    if isinstance(trade_plans_raw, dict):
-        for sym, data in trade_plans_raw.items():
-            if isinstance(data, dict):
-                trade_plans[sym] = data
-    elif isinstance(trade_plans_raw, list):
-        for item in trade_plans_raw:
-            if isinstance(item, dict) and item.get("symbol"):
-                trade_plans[item["symbol"]] = item
+    # RETIRED 2026-07-20: watchlist_items.trade_plan.
+    #
+    # This never worked. tos_trade_plans.json is shaped
+    # {"generated_at": ..., "trade_plans": [...]} but the dict branch below
+    # iterated the TOP-LEVEL keys, so "generated_at" (a str) and "trade_plans"
+    # (a list) both failed the isinstance(data, dict) test and nothing was ever
+    # collected. Result: all 12,169 watchlist rows carry an empty {} — while
+    # `trade_plan IS NOT NULL` still returns TRUE for an empty object, so
+    # callers were told a plan existed when none did.
+    #
+    # It is also superseded: real entry plans live in watchlist_entry_plans
+    # (5,230 rows, produced by watchlist_entry_planner at 17:35 weekdays). The
+    # ToS export behind this path was last written 2026-04-28.
+    #
+    # The shape bug is deliberately NOT fixed — reviving a 3-month-stale source
+    # to populate a superseded column would put a second, contradictory plan
+    # store back in front of the operator.
+    trade_plans: dict = {}
 
     # ── Source 1: Portfolio ──
     portfolio_items = []

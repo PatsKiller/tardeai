@@ -243,7 +243,7 @@ def _holding_for_symbol(symbol: str) -> dict | None:
 def _watchlist_row(symbol: str) -> dict | None:
     rows = _db_query(
         """SELECT wi.symbol, wi.trend, wi.score, wi.source, wi.bucket, wi.status,
-                  wi.trade_plan, wi.holdings_llm_action, wi.holdings_llm_confidence,
+                  wi.holdings_llm_action, wi.holdings_llm_confidence,
                   wi.holdings_llm_health, wi.updated_at, sp.sector
            FROM watchlist_items wi
            LEFT JOIN symbol_profiles sp ON sp.symbol = wi.symbol

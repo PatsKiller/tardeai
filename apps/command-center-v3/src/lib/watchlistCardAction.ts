@@ -567,7 +567,16 @@ export function actionReasoning(args: {
   }
 
   if (action.detail && !parts.length) parts.push(truncateWords(action.detail, 14))
-  if (!hasPlan && enriched) parts.push('No entry plan yet — build limit/stop/target before proposing')
+  if (!hasPlan && enriched) {
+    // "No entry plan yet" read as a defect — the operator starred BETA and saw
+    // an empty plan with no explanation (2026-07-20). Plans are produced by a
+    // BATCH: watchlist_entry_planner runs 17:35 ET weekdays, and starred names
+    // get a 1-day cadence instead of 7 and sort first. Say when it will arrive
+    // rather than implying something is broken or that manual work is required.
+    parts.push(it.starred
+      ? 'No entry plan yet — starred, queued for tonight’s planner (17:35 ET)'
+      : 'No entry plan yet — planner runs 17:35 ET weekdays; star it to move up the queue')
+  }
   if (stale && hasPlan) parts.push('Refresh before acting on RSI/advisory')
   if (rr != null && rr < 1.5 && hasPlan) parts.push(`Thin R:R ${rr.toFixed(1)}`)
 
