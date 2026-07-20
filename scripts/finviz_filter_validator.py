@@ -147,5 +147,69 @@ def main() -> int:
     return 1 if bad else 0
 
 
+
+# ── combination-level: a token can be valid alone yet absorbed in context ──
+
+ABSORBED = "ABSORBED"
+
+
+def validate_combination(tokens: list, cookie=None) -> dict:
+    """Detect tokens that change nothing WITHIN a specific filter combination.
+
+    Token-level validation is not sufficient. `ind_exchangetradedfund` and
+    `sec_financial` are each APPLIED alone, but combined the sector term is
+    absorbed — Finviz ETFs carry no sector — so `bond_etf_income` returned all
+    5,557 ETFs rather than bond ETFs (confirmed 2026-07-20).
+
+    Method: drop each token in turn and compare. Same count => that token
+    contributes nothing to this combination.
+    """
+    cookie = cookie or _cookie()
+    if not cookie or len(tokens) < 2:
+        return {"ok": False, "error": "need a cookie and >=2 tokens"}
+    base_f = ",".join(tokens)
+    try:
+        full = _rows(f"https://elite.finviz.com/export?v=152&f={base_f}&c=0,1,65", cookie)
+    except Exception as e:
+        return {"ok": False, "error": f"combined fetch failed: {e}"}
+
+    absorbed = {}
+    for t in tokens:
+        rest = [x for x in tokens if x != t]
+        try:
+            n = _rows("https://elite.finviz.com/export?v=152&f="
+                      f"{','.join(rest)}&c=0,1,65", cookie)
+        except Exception as e:
+            absorbed[t] = {"state": ERROR, "error": str(e)[:80]}
+            continue
+        if n == full:
+            absorbed[t] = {"state": ABSORBED, "rows_without_it": n,
+                           "combined_rows": full}
+    return {"ok": True, "combined_rows": full, "absorbed": absorbed}
+
+
+def check_production_screens(limit: int = 0) -> dict:
+    """Run combination validation across every production screen."""
+    from db_adapter import _get_conn
+    cur = _get_conn().cursor()
+    cur.execute("SELECT screener_id, finviz_url FROM finviz_screeners "
+                "WHERE active ORDER BY screener_id")
+    rows = cur.fetchall()
+    if limit:
+        rows = rows[:limit]
+    out = {}
+    for sid, url in rows:
+        toks = []
+        for raw in parse_qs(urlparse(url or "").query).get("f", []):
+            toks.extend(x.strip() for x in raw.split(",") if x.strip())
+        if len(toks) < 2:
+            continue
+        r = validate_combination(toks)
+        if r.get("ok") and r["absorbed"]:
+            out[sid] = {"tokens": toks, "combined_rows": r["combined_rows"],
+                        "absorbed": r["absorbed"]}
+    return out
+
+
 if __name__ == "__main__":
     sys.exit(main())
