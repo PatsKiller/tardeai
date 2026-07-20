@@ -11421,7 +11421,14 @@ def _defense_chain_validate(body=None):
     if not (sym and strike and exp):
         return {"ok": False, "error": "symbol/strike/exp required"}
     from schwab_transport import get_option_chain
-    ch = get_option_chain(sym, strike_count=14)
+    # strike_count is an ATM-CENTRED window, not a filter. 14 covered roughly
+    # +/-8% for SPCX, so a legitimately-listed 141.0 strike (15.7% OTM) reported
+    # "not found in the live chain" while Schwab returns it fine at 40
+    # (verified 2026-07-20: 14 -> 85.0..139.0, 40 -> 25.0..152.5).
+    # Covered-call recommendations routinely sit 15-16% OTM (ANET 200.0 vs
+    # 172.20 is +16.1%), so the window must cover the strikes we ourselves
+    # propose. Same class as the lifecycle 16->48 widening.
+    ch = get_option_chain(sym, strike_count=48)
     if not ch or ch.get("status") != "ok":
         return {"ok": False, "error": "chain unavailable"}
     import json as _j
