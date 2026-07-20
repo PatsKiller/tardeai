@@ -29,6 +29,7 @@ from scoring import score_ticker, _load_weights
 from telegram_alert import send_telegram
 from scalp_ws_client import broadcast_scalp_update
 from social_route_policy import route_social_candidate
+from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [SCALP] %(message)s")
 logger = logging.getLogger(__name__)
@@ -81,11 +82,12 @@ def fetch_finviz_base(symbols: list[str]) -> dict[str, dict]:
             return results
 
         try:
-            resp = requests.get(url, headers=headers, timeout=20)
+            # finviz_get publishes a GLOBAL cooldown on 429; the retry then
+            # waits on the shared throttle rather than sleeping locally.
+            resp = finviz_get(url, headers=headers, timeout=20, raise_on_429=False)
             if resp.status_code == 429:
-                logger.warning("Finviz rate limit — waiting 30s")
-                time.sleep(30)
-                resp = requests.get(url, headers=headers, timeout=20)
+                logger.warning("Finviz 429 — global cooldown set, retrying")
+                resp = finviz_get(url, headers=headers, timeout=20, raise_on_429=False)
             if not resp.ok:
                 logger.warning("Finviz v=111 HTTP %d", resp.status_code)
                 continue

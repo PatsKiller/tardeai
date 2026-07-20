@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TIMEOUT = 12
@@ -147,10 +148,10 @@ def _finviz_cookie(k):
            "sh_price_2to20,sh_relvol_o5,ta_gap_u10&ft=3&o=-relativevolume"
            "&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67")
     ua = _key("FINVIZ_USER_AGENT") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    r = requests.get(url, headers={
+    r = finviz_probe(url, headers={
         "User-Agent": ua, "Cookie": k, "Accept": "text/csv,*/*",
         "Referer": "https://elite.finviz.com/",
-    }, timeout=TIMEOUT)
+    })
     text = r.text or ""
     body = text[:500].lower()
     if r.status_code != 200:

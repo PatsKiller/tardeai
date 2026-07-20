@@ -21,6 +21,7 @@ import hashlib, os, time, re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 import requests
+from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -401,7 +402,7 @@ def _fetch_finviz_news(symbol: str) -> List[Dict]:
                 "User-Agent": _env("FINVIZ_USER_AGENT", "Mozilla/5.0"),
                 "Accept": "*/*",
             }
-            resp = requests.get(url, headers=headers, timeout=(5, 10))
+            resp = finviz_get(url, headers=headers, timeout=(5, 10), raise_on_429=False)
             if resp.status_code == 200:
                 data = []
                 content_type = resp.headers.get("content-type", "")
@@ -473,7 +474,7 @@ def _fetch_finviz_news(symbol: str) -> List[Dict]:
             "Cookie": cookie,
             "Accept": "text/html,*/*",
         }
-        resp = requests.get(url, headers=headers, timeout=(5, 10))
+        resp = finviz_get(url, headers=headers, timeout=(5, 10), raise_on_429=False)
         if resp.status_code != 200:
             return []
         html = resp.text

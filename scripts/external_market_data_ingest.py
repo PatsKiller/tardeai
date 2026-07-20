@@ -16,6 +16,7 @@ Usage:
 import json, os, sys
 from datetime import datetime, date
 from pathlib import Path
+from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -177,7 +178,8 @@ _FINVIZ_UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 
 def _finviz_quote(sym: str) -> dict:
     """Parse finviz.com/quote.ashx?t=SYM snapshot table -> {price, prev, rvol, volume}. Live values."""
     import requests, re
-    r = requests.get(f"https://finviz.com/quote.ashx?t={sym}", headers=_FINVIZ_UA, timeout=15)
+    r = finviz_get(f"https://finviz.com/quote.ashx?t={sym}", headers=_FINVIZ_UA, timeout=15,
+                   raise_on_429=False)
     if r.status_code != 200:
         return {}
     h = r.text

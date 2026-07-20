@@ -50,6 +50,9 @@ def check():
         if cookie:
             real_headers["Cookie"] = cookie
 
+        # urllib path: take a throttle slot explicitly (short wait — this is a probe)
+        import finviz_throttle
+        finviz_throttle.acquire(timeout=30)
         req = urllib.request.Request(test_url, headers=real_headers)
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = resp.read().decode("utf-8", errors="replace")

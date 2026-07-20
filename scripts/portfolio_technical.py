@@ -46,6 +46,7 @@ import yaml
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -338,11 +339,12 @@ def _finviz_api_batch(
         url = (f"https://elite.finviz.com/export.ashx"
                f"?v={FV_VIEW_FUNDAMENTAL}&t={ticker_str}&auth={token}")
         try:
-            resp = requests.get(url, headers=headers, timeout=20)
+            # Global cooldown is published by finviz_get on 429, so the retry
+            # below blocks on the shared throttle instead of a local sleep.
+            resp = finviz_get(url, headers=headers, timeout=20, raise_on_429=False)
             if resp.status_code == 429:
-                print("  [technical] Finviz API rate limited — waiting 30s")
-                time.sleep(30)
-                resp = requests.get(url, headers=headers, timeout=20)
+                print("  [technical] Finviz 429 — global cooldown set, retrying")
+                resp = finviz_get(url, headers=headers, timeout=20, raise_on_429=False)
             if not resp.ok or not resp.text.strip():
                 print(f"  [technical] v=152 HTTP {resp.status_code} for batch {i//BATCH_SIZE+1}")
                 continue

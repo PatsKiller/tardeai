@@ -47,6 +47,10 @@ def check_finviz() -> dict:
         return {"name": "Finviz", "status": "missing", "error": "FINVIZ_COOKIE not set in .env"}
     try:
         url = "https://elite.finviz.com/export?v=152&f=sh_price_u5&ft=3&c=0,1,65&o=-price"
+        # Credential probe: still throttled, but a short wait so monitoring
+        # reports rather than hangs behind a bulk consumer.
+        import finviz_throttle
+        finviz_throttle.acquire(timeout=30)
         req = urllib.request.Request(url, headers={
             "Cookie": cookie, "User-Agent": "Mozilla/5.0"
         })

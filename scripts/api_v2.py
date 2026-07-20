@@ -26427,6 +26427,10 @@ def _finviz_chart(query=None):
     ua = _os.environ.get("FINVIZ_USER_AGENT", "Mozilla/5.0").strip().strip('"\'')
     url = f"https://elite.finviz.com/chart.ashx?t={sym}&ty=c&ta=1&p={p}&s=l"
     try:
+        # On-demand chart proxy — throttled like every other Finviz call.
+        # Local import: api_v2 is hot-reloaded, keep module import surface stable.
+        import finviz_throttle
+        finviz_throttle.acquire(timeout=20)
         req = urllib.request.Request(url, headers={"Cookie": ck, "User-Agent": ua})
         with urllib.request.urlopen(req, timeout=12) as r:
             data = r.read()

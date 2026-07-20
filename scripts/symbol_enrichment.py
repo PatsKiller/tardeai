@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
 
 # Pipeline telemetry
 try:
@@ -104,7 +105,7 @@ def fetch_finviz_deep(symbol: str) -> Optional[dict]:
                            "Referer": "https://elite.finviz.com/"}
 
             try:
-                resp = requests.get(url, headers=headers, timeout=15)
+                resp = finviz_get(url, headers=headers, timeout=15, raise_on_429=False)
                 if not resp.ok:
                     continue
 

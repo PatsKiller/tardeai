@@ -12,6 +12,7 @@ Usage:
 import json, os, sys, urllib.request
 from datetime import datetime
 from pathlib import Path
+from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PASS = 0
@@ -46,7 +47,7 @@ def run():
     try:
         import requests
         url = "https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_relvol_o5&ft=3"
-        resp = requests.get(url, headers={"Cookie": cookie, "User-Agent": "Mozilla/5.0"}, timeout=15)
+        resp = finviz_probe(url, headers={"Cookie": cookie, "User-Agent": "Mozilla/5.0"})
         is_csv = "Ticker" in resp.text[:100]
         check("Finviz CSV download", is_csv, f"Got {resp.headers.get('Content-Type','?')} ({len(resp.text)} bytes)")
         if is_csv:

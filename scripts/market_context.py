@@ -26,6 +26,7 @@ import os, time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import requests
+from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -292,7 +293,7 @@ def _fetch_finviz_quotes(symbols: List[str]) -> Dict[str, Dict]:
             url = f"https://elite.finviz.com/export.ashx?v=152&t={sym}"
             if token:
                 url += f"&auth={token}"
-            resp = session.get(url, timeout=8)
+            resp = finviz_get(url, timeout=8, raise_on_429=False)
             if resp.status_code != 200:
                 continue
             lines = resp.text.strip().split("\n")
