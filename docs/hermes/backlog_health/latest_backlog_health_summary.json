@@ -1,6 +1,6 @@
 {
-  "date": "2026-07-18",
-  "timestamp": "2026-07-18T06:45:18.479314+00:00",
+  "date": "2026-07-19",
+  "timestamp": "2026-07-19T06:45:42.978854+00:00",
   "checks": {
     "total_backlog": 30,
     "open_count": 0,
@@ -35,12 +35,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3727,
+        "id": 3726,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
-        "id": 3726,
+        "id": 3727,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
@@ -126,12 +126,12 @@
     "oldest_item": {
       "id": 22,
       "created": "2026-05-31 21:36:31",
-      "age_days": 47
+      "age_days": 48
     },
     "newest_item": {
       "id": 9666,
       "created": "2026-07-14 12:03:57",
-      "age_days": 3
+      "age_days": 4
     },
     "ready_for_discovery": 0,
     "not_ready_for_discovery": 0,
