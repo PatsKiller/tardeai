@@ -112,6 +112,32 @@ def compute_risk_metrics(portfolio: Dict, state_dir: Path) -> Dict:
 
         stop_data = stops.get(sym)
 
+        if stop_data and stop_data.get("stop_price_unavailable"):
+            # A live broker trailing stop that has not armed yet publishes no
+            # absolute stopPrice. The position IS protected, but the trigger
+            # level is unknowable — so report protection honestly and refuse to
+            # compute a risk number rather than treating stop=0 as a real level
+            # (which would book the entire position value as max_loss).
+            _enr = enrichment.get(sym, {})
+            positions.append({
+                "symbol": sym, "account": acct, "shares": shares, "price": price,
+                "market_value": mv, "gain_loss": gl,
+                "stop_price": None, "trail_pct": stop_data.get("trail_pct", 0),
+                "dist_dollar": None, "dist_pct": None,
+                "max_loss_dollar": None, "risk_pct_port": None,
+                "notes": stop_data.get("notes", ""),
+                "set_date": stop_data.get("set_date", ""),
+                "status": "PROTECTED (LEVEL PENDING)",
+                "protected": True,
+                "risk_not_computable": True,
+                "broker_order_id": stop_data.get("broker_order_id", ""),
+                "order_type": stop_data.get("order_type", ""),
+                "rsi": _enr.get("rsi"),
+                "day_change_pct": day_changes.get(sym),
+            })
+            total_protected_mv += mv      # protected, but adds no quantified risk
+            continue
+
         if stop_data:
             stop_price      = stop_data.get("stop", 0)
             trail_pct       = stop_data.get("trail_pct", 0)
@@ -180,7 +206,8 @@ def compute_risk_metrics(portfolio: Dict, state_dir: Path) -> Dict:
             total_unprotected_mv += mv
 
     # Sort: triggered → danger → warning → ok → no stop
-    order = {"TRIGGERED": 0, "DANGER": 1, "WARNING": 2, "OK": 3, "NO STOP": 4}
+    order = {"TRIGGERED": 0, "DANGER": 1, "WARNING": 2, "OK": 3,
+             "PROTECTED (LEVEL PENDING)": 3, "NO STOP": 4}
     positions.sort(key=lambda x: (order.get(x.get("status",""), 5),
                                   -(x.get("market_value",0))))
 
