@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import datetime as _dt
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -774,16 +775,29 @@ def _allocate_strategy_slots(proposals: List[dict]) -> List[dict]:
     return picked
 
 
-def _proposal_id(strategy: str, sym: str, account: str, strike: Any, expiration: str = "") -> str:
-    """Stable id so Grok/ChatGPT ensemble verdicts persist across proposal rescans."""
+def _proposal_id(strategy: str, sym: str, account: str, strike: Any, expiration: str = "",
+                 trade_date: str = "") -> str:
+    """Stable WITHIN A TRADE DATE so ensemble verdicts persist across rescans."""
     acct = re.sub(r"[^a-z0-9]+", "_", (account or "default").lower()).strip("_")[:22]
     exp = (expiration or "")[:10].replace("-", "")
     try:
         st = f"{float(strike):.4f}".replace(".", "p")
     except (TypeError, ValueError):
         st = str(strike or "0").replace(".", "p")
+    # DATE-SCOPED (2026-07-20). The id was globally stable, so a contract that
+    # once reached a TERMINAL queue status could never be proposed again: the
+    # deterministic id collided with the old row and the upsert preserves
+    # terminal statuses. A July-6 RTX row stuck in ALPACA_PAPER_REJECTED (an
+    # expired DAY order, not a judgement on the trade) blocked the 2026-07-20
+    # canary at the pick step with "no fresh pending proposal".
+    # Scoping by TRADE DATE keeps the original purpose — ids stay stable within
+    # a session so rescans are idempotent and ensemble verdicts persist — while
+    # letting a new day propose the same contract on a fresh row. Old rows are
+    # retained as evidence rather than mutated.
+    day = (trade_date or _dt.datetime.now().strftime("%Y%m%d")).replace("-", "")[:8]
     base = f"opt_{strategy}_{sym.upper()}_{acct}_{st}_{exp}"
-    return base[:72]
+    # Reserve room for the suffix so truncation can never drop the date scope.
+    return f"{base[:61]}_d{day}"[:72]
 
 
 def _proposal_ensemble_content(p: dict) -> str:
