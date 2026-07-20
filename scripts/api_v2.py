@@ -11596,6 +11596,47 @@ def _defense_cc_queue_trade(body=None):
                         f"{b.get('code')}: {b.get('reason')}" for b in _cc_blocks)}
 
 
+def _shadow_strategy_build(body=None):
+    """POST /api/v2/shadow/strategy/build — the 'Build Full Strategy' action.
+
+    SHADOW ONLY: produces a shadow decision packet; queues, approves, submits and
+    confirms NOTHING. Returns a run_id immediately (the worker runs detached) so
+    the request never blocks on a model lane — the failure the whole Stage C
+    contract exists to prevent, after a BETA run once waited 600s on the local
+    model gate.
+    """
+    body = body or {}
+    sym = str(body.get("symbol", "")).upper().strip()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    import shadow_strategy_job as job
+    return job.enqueue(sym, requested_by=str(body.get("requested_by") or "operator"),
+                       run_models=body.get("run_models", True) is not False)
+
+
+def _shadow_strategy_status(query=None):
+    """GET /api/v2/shadow/strategy/status?run_id=N  (or ?symbol=X for the latest).
+
+    The poll payload: state, per-stage progress, provider actually used, and any
+    fallback or failure reason. Read-only."""
+    query = query or {}
+    import shadow_strategy_job as job
+    rid = query.get("run_id")
+    if isinstance(rid, (list, tuple)):
+        rid = rid[0] if rid else None
+    if rid:
+        try:
+            return job.status(int(rid))
+        except (ValueError, TypeError):
+            return {"ok": False, "error": f"bad run_id {rid!r}"}
+    sym = query.get("symbol")
+    if isinstance(sym, (list, tuple)):
+        sym = sym[0] if sym else None
+    if sym:
+        return job.latest_for(str(sym))
+    return {"ok": False, "error": "run_id or symbol required"}
+
+
 def _defense_refresh_start(body=None):
     """POST /api/v2/defense/refresh — QUEUE the 4-step producer chain (detached);
     the page polls refresh_job status via /defense/recommendations. Never live-waits."""
@@ -32598,6 +32639,7 @@ ROUTES = {
     "/api/v2/defense/posture": _defense_posture,
     "/api/v2/defense/industries": _defense_industries,
     "/api/v2/defense/recommendations": _defense_recommendations,
+    "/api/v2/shadow/strategy/status": _shadow_strategy_status,
     "/api/v2/defense/core": _defense_core_registry,
     "/api/v2/defense/review": _defense_review,
     "/api/v2/portfolio/book-map": _portfolio_book_map,
@@ -37375,6 +37417,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/defense/refresh":
         try:
             return 200, _defense_refresh_start(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/shadow/strategy/build":
+        try:
+            return 200, _shadow_strategy_build(body or {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 

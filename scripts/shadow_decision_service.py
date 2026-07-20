@@ -394,13 +394,32 @@ def build_options(facts, event, ownership) -> dict:
 # ── the packet ────────────────────────────────────────────────────────────────
 
 def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operator",
-             run_models: bool = True) -> dict:
+             run_models: bool = True, on_stage=None) -> dict:
+    """Build one shadow packet. `on_stage(name)` is invoked as each phase begins
+    so the on-demand job runner can report progress the operator polls; it is a
+    no-op when not supplied (the CLI/batch path)."""
+    def _stage(name):
+        if on_stage:
+            try:
+                on_stage(name)
+            except TimeoutError:
+                # An SLA breach MUST abort the evaluation. A first version
+                # swallowed every exception here "so progress reporting never
+                # fails the eval" — which also swallowed the timeout, so a run
+                # with a 1s SLA still ran to COMPLETE. Progress-write failures
+                # stay swallowed below; the deadline does not.
+                raise
+            except Exception:
+                pass          # a failed progress write must never fail the eval
+
     sym = str(symbol).upper()
     if conn is None:
         from db_adapter import _get_conn
         conn = _get_conn()
 
+    _stage("facts")
     facts = gather_facts(sym, conn)
+    _stage("events")
     event = ev.resolve_from_db(sym, conn)
 
     holdings_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
@@ -430,6 +449,7 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
                     "unresolved": ["blind pass not run"], "reconciled": None}
     reconciled = None
     if run_models and os.getenv("SHADOW_DISABLE_MODELS", "").lower() not in ("1", "true", "yes"):
+        _stage("blind_review")
         try:
             import blind_review as br
             import blind_review_runner as brr
@@ -495,9 +515,13 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
         if reconciled.get("tactical_timing") not in (None, "", "NO_VALID_SETUP"):
             timing = reconciled["tactical_timing"]
 
+    _stage("long_term")
     lt = build_long_term(facts, event, ownership, thesis_state, timing)
+    _stage("swing")
     sw = build_swing(facts, conn)
+    _stage("bearish")
     be = build_bearish(facts, event, ownership)
+    _stage("options")
     op = build_options(facts, event, ownership)
 
     packet = {
