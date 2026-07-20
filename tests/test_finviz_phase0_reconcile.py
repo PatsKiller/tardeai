@@ -178,3 +178,75 @@ def test_reconciler_classifies_without_db(monkeypatch):
     st, _ = fr.classify("x", in_yaml=False, in_registry=True,
                         db={"active": False, "last_run": fresh}, mem={"members": 3})
     assert st == "RETIRED_EVIDENCE"
+
+
+# ── earnings_provider: the replacement source of record ────────────────────
+
+def test_provider_three_states_are_distinct():
+    import earnings_provider as ep
+    assert len({ep.SCHEDULED, ep.NONE_SCHEDULED, ep.UNKNOWN}) == 3
+
+
+def test_stale_profile_row_is_unknown_not_none_scheduled(monkeypatch):
+    """A profile last enriched long ago cannot certify 'nothing scheduled'."""
+    import earnings_provider as ep
+    from datetime import datetime, timezone, timedelta
+
+    class Cur:
+        def execute(self, *a, **k): pass
+        def fetchall(self):
+            old = datetime.now(timezone.utc) - timedelta(days=90)
+            return [("AAPL", None, old)]
+
+    monkeypatch.setattr(ep, "_conn", lambda: type("C", (), {"cursor": lambda s: Cur()})())
+    got = ep._from_profiles(["AAPL"])["AAPL"]
+    assert got.state == ep.UNKNOWN
+    assert "stale" in got.reason
+
+
+def test_fresh_profile_with_null_date_is_none_scheduled(monkeypatch):
+    """Recently enriched + no date == provider looked and found nothing."""
+    import earnings_provider as ep
+    from datetime import datetime, timezone
+
+    class Cur:
+        def execute(self, *a, **k): pass
+        def fetchall(self):
+            return [("SCHD", None, datetime.now(timezone.utc))]
+
+    monkeypatch.setattr(ep, "_conn", lambda: type("C", (), {"cursor": lambda s: Cur()})())
+    got = ep._from_profiles(["SCHD"])["SCHD"]
+    assert got.state == ep.NONE_SCHEDULED
+
+
+def test_missing_profile_row_is_unknown(monkeypatch):
+    import earnings_provider as ep
+
+    class Cur:
+        def execute(self, *a, **k): pass
+        def fetchall(self): return []
+
+    monkeypatch.setattr(ep, "_conn", lambda: type("C", (), {"cursor": lambda s: Cur()})())
+    got = ep._from_profiles(["ZZZZ"])["ZZZZ"]
+    assert got.state == ep.UNKNOWN
+
+
+def test_db_failure_is_unknown_never_clearing(monkeypatch):
+    """A DB outage must not read as 'no earnings' for every symbol."""
+    import earnings_provider as ep
+
+    def boom():
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(ep, "_conn", boom)
+    got = ep._from_profiles(["AAPL", "MSFT"])
+    assert all(i.state == ep.UNKNOWN for i in got.values())
+
+
+def test_days_until_only_for_scheduled():
+    import earnings_provider as ep
+    from datetime import date, timedelta
+    d = date.today() + timedelta(days=4)
+    assert ep.EarningsInfo("X", ep.SCHEDULED, date=d).days_until() == 4
+    assert ep.EarningsInfo("X", ep.NONE_SCHEDULED).days_until() is None
+    assert ep.EarningsInfo("X", ep.UNKNOWN).days_until() is None

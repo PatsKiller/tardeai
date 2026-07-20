@@ -98,29 +98,34 @@ sources:
     status: SHADOW
     notes: "Tax loss harvesting is operator-triggered, not screener-driven."
 
-  # ── Non-Finviz: Earnings Calendar (BROKEN — diagnosed 2026-07-20 Phase 0) ──
+  # ── Non-Finviz: Earnings Calendar (REPAIRED 2026-07-20) ──
   earnings_calendar:
     source_type: earnings_calendar
     strategies: [earnings_pre_buildup, earnings_post_momentum]
-    provider: fmp_v3_earning_calendar
-    schedule: on_demand_6h_cache
-    status: BROKEN_PROVIDER_DEAD
+    provider: symbol_profiles_yfinance
+    schedule: daily_0635_weekdays_plus_on_demand
+    status: ACTIVE
     human_review_only: true
     notes: >-
-      P0 2026-07-20: a provider IS wired (FMP v3 earning_calendar, via
-      portfolio_options._get_earnings_dates, consumed by
-      options_desk_enterprise.earnings_blackout_check) but it returns HTTP 403:
-      "Legacy Endpoint ... only available for legacy users with valid
-      subscriptions prior August 31, 2025". FMP_API_KEY is set but non-legacy.
-      The failure was SILENT (`if not resp.ok: return {}` plus a bare except),
-      so every symbol looked like "no scheduled earnings" and the blackout gate
-      FAILED OPEN for covered_call, cash_secured_put, credit_spread and
-      long_call. Fixed same day: the fetcher now raises EarningsProviderError
-      and the gate fails CLOSED with refusal_code EARNINGS_TIMESTAMP_UNKNOWN.
-      CONSEQUENCE: those four strategies are event-blocked until a working
-      earnings provider is restored. This is intended fail-closed behavior, not
-      a regression. Operator action required — replace the endpoint (FMP stable
-      tier, Nasdaq, or Yahoo) before earnings-sensitive options resume.
+      REPAIRED 2026-07-20. History: the previous provider (FMP v3
+      earning_calendar) returns HTTP 403 — "Legacy Endpoint ... only for legacy
+      users with valid subscriptions prior August 31, 2025" — and the key is
+      additionally quota-exhausted (429 on every FMP endpoint). The failure was
+      SILENT (`if not resp.ok: return {}` plus a bare except), so every symbol
+      looked like "no scheduled earnings" and the blackout gate FAILED OPEN for
+      covered_call, cash_secured_put, credit_spread and long_call.
+      Now: scripts/earnings_provider.py is the source of record. Primary =
+      symbol_profiles.next_earnings_date, written daily 06:35 weekdays by
+      scripts/earnings_enrich.py from yfinance (held stocks + Hermes top-N
+      watchlist; 2079 profiles / 649 future-dated). Secondary = on-demand
+      yfinance for symbols outside that coverage, so the desk can price names
+      beyond the enriched set. Three-state contract: SCHEDULED /
+      NONE_SCHEDULED / UNKNOWN — UNKNOWN fails CLOSED with refusal_code
+      EARNINGS_TIMESTAMP_UNKNOWN and is never collapsed into "no earnings".
+      A profile row older than EARNINGS_PROFILE_TRUST_DAYS (7) is UNKNOWN, not
+      "none scheduled". Verified live: NOC blocked (earnings 2026-07-21),
+      RTX blocked (2026-07-23), SCHD cleared (ETF, no issuer earnings).
+      FMP_API_KEY is now unused by this path and may be retired.
 
   # ── Non-Finviz: Options Chain (LIVE — corrected 2026-07-20 Phase 0) ──
   options_chain:

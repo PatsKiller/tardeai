@@ -238,21 +238,31 @@ def earnings_calendar(symbols: List[str]) -> Dict[str, str]:
     # yet — otherwise a name added mid-window silently skips its earnings blackout.
     if not fresh or missing:
         to_fetch = syms if not fresh else missing
-        from portfolio_options import _get_earnings_dates, EarningsProviderError
-        try:
-            fetched = _get_earnings_dates(list(to_fetch), PROJECT_ROOT)
-            _EARNINGS_CACHE.update(fetched)
-            # Record "looked, none found" so a no-earnings name doesn't refetch every call.
-            for s in to_fetch:
-                _EARNINGS_CACHE.setdefault(s, "")
-            if not fresh:
-                _EARNINGS_CACHE_AT = _now()
-        except EarningsProviderError as e:
-            # Provider down != no earnings. Surface UNKNOWN so event gates fail
-            # CLOSED instead of silently clearing every symbol (2026-07-20).
-            _EARNINGS_PROVIDER_ERROR = str(e)
-            globals()["_EARNINGS_LAST_ERROR"] = _EARNINGS_PROVIDER_ERROR
-            return {s: EARNINGS_UNKNOWN for s in syms}
+        # Source of record is scripts/earnings_provider.py (symbol_profiles,
+        # written daily from yfinance by earnings_enrich.py, with an on-demand
+        # yfinance lookup for symbols outside enrichment coverage). The former
+        # FMP v3 path is dead: HTTP 403 for non-legacy keys, and the key is
+        # additionally quota-exhausted (verified 2026-07-20).
+        from earnings_provider import get_earnings, SCHEDULED, NONE_SCHEDULED
+        unknown: set[str] = set()
+        reasons = []
+        for s, info in get_earnings(to_fetch).items():
+            if info.state == SCHEDULED and info.date:
+                _EARNINGS_CACHE[s] = info.date.isoformat()
+            elif info.state == NONE_SCHEDULED:
+                _EARNINGS_CACHE[s] = ""
+            else:
+                # Provider could not answer for THIS symbol — never cache a
+                # clearing value; the event gate must fail closed on it.
+                _EARNINGS_CACHE.pop(s, None)
+                unknown.add(s)
+                reasons.append(f"{s}: {info.reason}")
+        if reasons:
+            globals()["_EARNINGS_LAST_ERROR"] = "; ".join(reasons)[:300]
+        if not fresh:
+            _EARNINGS_CACHE_AT = _now()
+        return {s: (EARNINGS_UNKNOWN if s in unknown else _EARNINGS_CACHE.get(s, ""))
+                for s in syms}
     return {s: _EARNINGS_CACHE.get(s, "") for s in syms}
 
 
