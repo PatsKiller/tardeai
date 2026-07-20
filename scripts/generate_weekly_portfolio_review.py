@@ -19,8 +19,17 @@ def generate():
 
     cur.execute("SELECT action, COUNT(*) as cnt FROM cio_decisions WHERE created_at > NOW()-INTERVAL '7 days' GROUP BY action ORDER BY cnt DESC")
     decisions = cur.fetchall()
+    # strategy_rotation_recommendations is created by migration 019 but NOTHING
+    # writes it — the v7 CIO rotation engine was schema'd and never implemented
+    # (verified 2026-07-20: 0 rows ever, 6 readers). Rendering a bare "0" reads
+    # as "we evaluated rotations and found none needed", which is a claim the
+    # system cannot support. Distinguish no-engine from no-recommendations.
     cur.execute("SELECT COUNT(*) as cnt FROM strategy_rotation_recommendations WHERE created_at > NOW()-INTERVAL '7 days'")
     rotations = cur.fetchone()["cnt"]
+    cur.execute("SELECT COUNT(*) as cnt FROM strategy_rotation_recommendations")
+    _rot_ever = cur.fetchone()["cnt"]
+    rotations_label = (str(rotations) if _rot_ever
+                       else "n/a (no rotation producer implemented)")
     cur.execute("SELECT agent, accuracy_pct FROM agent_performance_history ORDER BY created_at DESC LIMIT 5")
     agents = cur.fetchall()
     cur.execute("SELECT scope_value, actual_accuracy, calibration_error, recommendation FROM confidence_calibration_history ORDER BY calibration_date DESC LIMIT 8")
@@ -44,7 +53,7 @@ def generate():
     lines = ["*Weekly CIO Portfolio Review*", ""]
     lines.append(f"*Decisions*: {sum(d['cnt'] for d in decisions)} total")
     for d in decisions: lines.append(f"  {d['action']}: {d['cnt']}")
-    lines.append(f"Rotations: {rotations} | Outcomes evaluated: {outcomes}")
+    lines.append(f"Rotations: {rotations_label} | Outcomes evaluated: {outcomes}")
     lines.append(f"Income: ${income:,.0f}/yr")
     if agents:
         lines.append("*Agent Performance*")
