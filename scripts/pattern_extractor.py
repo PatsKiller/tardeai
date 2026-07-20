@@ -136,13 +136,24 @@ def _catalyst_bucket(catalyst: str | None) -> str | None:
 def _compute_pattern_stats(trades: list[dict]) -> dict:
     """Compute stats for a group of trades."""
     total = len(trades)
-    wins = [t for t in trades if (t.get('realized_pnl') or 0) > 0]
-    losses = [t for t in trades if (t.get('realized_pnl') or 0) < 0]
+    # realized_pnl arrives from PostgreSQL as Decimal. Mixing it with the float
+    # win_rate raised "unsupported operand type(s) for *: 'float' and
+    # 'decimal.Decimal'" and aborted every extraction — which is why this script
+    # produced 0 patterns and pattern_library sat empty despite 3,004 input rows
+    # and four consumers reading it (2026-07-20).
+    def _pnl(t) -> float:
+        try:
+            return float(t.get('realized_pnl') or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    wins = [t for t in trades if _pnl(t) > 0]
+    losses = [t for t in trades if _pnl(t) < 0]
     win_count = len(wins)
     win_rate = win_count / total if total else 0.0
 
-    gross_profit = sum(t['realized_pnl'] for t in wins) if wins else 0.0
-    gross_loss = abs(sum(t['realized_pnl'] for t in losses)) if losses else 0.0
+    gross_profit = sum(_pnl(t) for t in wins) if wins else 0.0
+    gross_loss = abs(sum(_pnl(t) for t in losses)) if losses else 0.0
     pf = (gross_profit / gross_loss) if gross_loss > 0 else (999.0 if gross_profit > 0 else 0.0)
 
     avg_winner = (gross_profit / len(wins)) if wins else 0.0
