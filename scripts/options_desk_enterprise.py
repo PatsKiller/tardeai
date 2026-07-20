@@ -872,10 +872,28 @@ def resolve_approval(
     if not row:
         conn.rollback()
         return {"ok": False, "error": "proposal not in queue or already resolved"}
-    if action == "approve" and row[3] is False:
+    if action == "approve":
         blocks = row[4] or []
-        conn.rollback()
-        return {"ok": False, "error": "cannot approve — enterprise blocks remain", "blocks": blocks}
+        # Refuse on ACTUAL blocks, not on live_eligible alone.
+        #
+        # This gate used to fire whenever live_eligible was False, and the
+        # Defense CC card inserts every queued covered call with
+        # live_eligible=false + blocks_json='[]'. The result was a row that
+        # could never be approved — refused for "enterprise blocks remain" while
+        # reporting an EMPTY block list — and therefore could never reach the
+        # 2FA/submit step at all (operator hit this on CSCO, 2026-07-20).
+        #
+        # This does not weaken anything: the approval queue is a MANUAL REVIEW
+        # queue and approving places no order. live_eligible is about LIVE
+        # execution eligibility, which is re-evaluated downstream —
+        # /api/v2/options/preflight re-runs evaluate_hard_risk_blocks in submit
+        # mode and per-order 2FA still gates the actual order. The real safety
+        # boundary is those gates, not this status flip.
+        if blocks:
+            conn.rollback()
+            return {"ok": False,
+                    "error": f"cannot approve — {len(blocks)} enterprise block(s) remain",
+                    "blocks": blocks}
     conn.commit()
     return {"ok": True, "proposal_id": proposal_id, "status": new_status, "symbol": row[1], "strategy": row[2]}
 

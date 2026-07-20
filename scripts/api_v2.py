@@ -11476,6 +11476,20 @@ def _defense_cc_queue_trade(body=None):
         return {"ok": False, "error": "cc_struct{symbol,strike,exp,contracts} required"}
     from db_adapter import _get_conn
     import json as _j
+    # live_eligible was hardcoded false with blocks_json '[]' — an incoherent
+    # pair ("ineligible, for no stated reason") that made every Defense-queued
+    # covered call PERMANENTLY unapprovable and therefore unable to ever reach
+    # the 2FA/submit step, contradicting this function's own contract that the
+    # approvals flow + per-order 2FA own everything downstream (2026-07-20).
+    # Evaluate for real: eligible iff no hard block, and record the blocks so a
+    # refusal always states its reason.
+    try:
+        import options_desk_enterprise as _ent
+        _cc_blocks = _ent.evaluate_hard_risk_blocks(proposal, mode="submit") or []
+    except Exception as _ce:
+        _cc_blocks = [{"code": "block_eval_failed",
+                       "reason": f"could not evaluate risk blocks: {type(_ce).__name__}"}]
+    _cc_live_eligible = not _cc_blocks
     conn = _get_conn()
     cur = conn.cursor()
     pid = f"defense-cc-{sym}-{str(cs['exp'])[:10]}-{cs['strike']}"
@@ -11489,13 +11503,15 @@ def _defense_cc_queue_trade(body=None):
         """INSERT INTO options_approval_queue
            (proposal_id, symbol, strategy, desk_tier, edge_score, status,
             live_eligible, blocks_json, proposal_json, expires_at)
-           VALUES (%s,%s,'covered_call','C',NULL,'pending',false,'[]'::jsonb,%s::jsonb,
+           VALUES (%s,%s,'covered_call','C',NULL,'pending',%s,%s::jsonb,%s::jsonb,
                    NOW() + INTERVAL '24 hours')
            ON CONFLICT (proposal_id) DO UPDATE SET proposal_json=EXCLUDED.proposal_json,
+             live_eligible=EXCLUDED.live_eligible, blocks_json=EXCLUDED.blocks_json,
              status=CASE WHEN options_approval_queue.status IN ('approved','rejected','executed')
                         THEN options_approval_queue.status ELSE 'pending' END,
              updated_at=NOW()""",
-        (pid, sym, _j.dumps(proposal, default=str)))
+        (pid, sym, _cc_live_eligible, _j.dumps(_cc_blocks, default=str),
+         _j.dumps(proposal, default=str)))
     conn.commit()
     return {"ok": True, "proposal_id": pid,
             "next": "pending in the options approval queue — approve there; per-order 2FA gates execution"}
