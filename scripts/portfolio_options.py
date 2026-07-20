@@ -1,7 +1,40 @@
-"""portfolio_options.py — Covered Call & Options Intelligence
-Scans all positions with >100 shares for covered call opportunities.
-Uses Finviz IV data + ATR to estimate premiums.
-Enforces earnings blackout, ex-dividend interaction, minimum lot size.
+"""portfolio_options.py — LEGACY covered-call MODEL ESTIMATOR (advisory display only).
+
+⚠️  SUPERSEDED for anything actionable. The authoritative covered-call path is the
+Schwab live option chain (options_lifecycle_engine / options_desk_enterprise),
+which uses real bid/ask/mid, real greeks, real open interest and real IV. This
+module never touches the approval queue, proposals, tickets or order placement —
+audited 2026-07-20, zero references — and its numbers must never be presented as
+tradeable prices.
+
+WHAT IT ACTUALLY COMPUTES (corrected 2026-07-20):
+The header used to claim "Uses Finviz IV data + ATR". That was false. The IV
+input reads technical_data[symbol]["iv"], and portfolio_technical.py has never
+emitted an "iv" key — it emits realized-volatility fields (volatility_w /
+volatility_m). So iv_pct was ALWAYS 0 and the Finviz-IV branch was dead code:
+100% of premiums came from the ATR-derived REALIZED-volatility proxy, priced
+through a simplified Black-Scholes.
+
+Realized volatility is NOT implied volatility. An ATR-annualized sigma tells you
+how the underlying HAS moved; an option premium is set by what the market expects
+it to move. They diverge most exactly when it matters (around events), so these
+figures can be badly wrong in either direction.
+
+MEASURED ERROR vs the live Schwab chain (2026-07-20, Aug-21 expiry, n=5 where a
+quote existed): median -28%, range -63% to +438%.
+    V     model 2.95 vs live 4.08   -28%
+    ARKX  model 0.30 vs live 0.82   -63%
+    XAR   model 2.34 vs live 5.25   -55%
+    JEPQ  model 0.43 vs live 0.08  +438%
+JEPQ is the clearest illustration: it is itself a covered-call ETF, so its
+realized volatility says nothing about the (heavily suppressed) premium the
+market actually pays on it. The proxy is not merely imprecise — it is
+structurally blind to why an option is priced the way it is.
+
+Every opportunity therefore carries estimate_basis and a disclaimer, and the
+scan result is stamped MODEL ESTIMATE — NO LIVE CHAIN.
+
+Still enforces earnings blackout, ex-dividend interaction and minimum lot size.
 """
 from __future__ import annotations
 import json, os, requests, yaml
@@ -75,28 +108,42 @@ def _get_earnings_dates(tickers: List[str], root: Path) -> Dict[str, str]:
             results[sym] = item.get("date","")
     return results
 
-def _estimate_premium(price: float, strike: float, atr: float, iv_pct: float, dte: int = 30) -> float:
-    """
-    Estimate call option premium using simplified Black-Scholes approximation.
-    Uses IV from Finviz (if available) or ATR-based IV proxy.
+MODEL_ESTIMATE_LABEL = "MODEL ESTIMATE — NO LIVE CHAIN"
+RISK_FREE = 0.05
+
+
+def _estimate_premium(price: float, strike: float, atr: float, sigma_pct: float,
+                      dte: int = 30) -> float:
+    """Simplified Black-Scholes premium from an ANNUALIZED REALIZED-VOLATILITY proxy.
+
+    NOT an implied-volatility calculation and NOT a quotable price. sigma_pct is
+    kept in the signature for callers that may one day supply a genuine vol
+    input, but the project has no such source wired: portfolio_technical emits
+    no "iv" key, so this is realized volatility annualized from ATR.
+
+    Use options_lifecycle_engine.quote_leg() for a real, tradeable price.
     """
     import math
     if not price or not strike or not atr: return 0.0
 
-    # Use Finviz IV if available, else derive from ATR
-    if iv_pct and iv_pct > 0:
-        iv = iv_pct / 100
+    if sigma_pct and sigma_pct > 0:
+        # Caller supplied a volatility figure. Still realized-vol semantics unless
+        # a live chain provided it — the caller owns that labeling.
+        sigma = sigma_pct / 100
     else:
-        # ATR-based IV proxy: annualize daily ATR
+        # ATR-annualized REALIZED volatility. Explicitly a proxy, not IV.
         daily_vol = atr / price
-        iv = daily_vol * math.sqrt(252)
+        sigma = daily_vol * math.sqrt(252)
 
-    # Simplified premium estimate (OTM call)
-    otm_pct = (strike - price) / price
+    if sigma <= 0:
+        return 0.0
+
     t = dte / 365
-    # Simple formula: premium ≈ price × iv × sqrt(t) × N(d2) adjusted for moneyness
-    d1 = (math.log(price/strike) + 0.5*iv*iv*t) / (iv*math.sqrt(t))
-    d2 = d1 - iv*math.sqrt(t)
+    # Standard Black-Scholes d1 including the risk-free drift. The previous
+    # version omitted r from d1 while discounting the strike at r=0.05, which is
+    # internally inconsistent (2026-07-20).
+    d1 = (math.log(price/strike) + (RISK_FREE + 0.5*sigma*sigma)*t) / (sigma*math.sqrt(t))
+    d2 = d1 - sigma*math.sqrt(t)
 
     def N(x):
         """Standard normal CDF approximation."""
@@ -106,7 +153,7 @@ def _estimate_premium(price: float, strike: float, atr: float, iv_pct: float, dt
         cdf = 1 - n*poly if x >= 0 else n*poly
         return cdf
 
-    premium = price * N(d1) - strike * math.exp(-0.05*t) * N(d2)
+    premium = price * N(d1) - strike * math.exp(-RISK_FREE*t) * N(d2)
     return max(0.01, round(premium, 2))
 
 def scan_covered_calls(portfolio: Dict, technical_data: Dict, root: Path, state_dir: Path) -> Dict:
@@ -130,15 +177,41 @@ def scan_covered_calls(portfolio: Dict, technical_data: Dict, root: Path, state_
         shares = h.get("shares", 0) or 0
         mv     = h.get("market_value", 0) or 0
         price  = h.get("price", 0) or 0
-        if shares >= min_shares and mv >= 1000 and price > 0 and not h.get("is_loan"):
+        # Exclude cash/MMF sleeves — they are not optionable and were being
+        # emitted as $1.00-strike "covered call opportunities" (2026-07-20).
+        # Mirrors the exclusion portfolio_stops.py already applied.
+        _is_cash = (h.get("is_cash") or sym in ("CASH", "CASH & CASH INVESTMENTS",
+                                                "MMKT", "SPAXX", "FDRXX"))
+        if (shares >= min_shares and mv >= 1000 and price > 0
+                and not h.get("is_loan") and not _is_cash):
             candidates.append(h)
             all_syms.append(sym)
 
     if not candidates:
-        return {"opportunities": [], "total_monthly_income": 0, "has_data": False}
+        return {"opportunities": [], "total_monthly_income": 0, "has_data": False,
+                "estimate_label": MODEL_ESTIMATE_LABEL, "is_tradeable_price": False}
 
-    # Get earnings dates for blackout
-    earnings_dates = _get_earnings_dates(all_syms, root)
+    # Earnings for the blackout gate. Uses the repaired provider
+    # (symbol_profiles/yfinance via earnings_provider) — the legacy FMP path
+    # here is dead (403 legacy endpoint + 429 quota) and raising from it would
+    # abort the whole scan, which silently removed the covered-call section from
+    # the dashboard (regression caught 2026-07-20).
+    #
+    # UNKNOWN timing FAILS CLOSED: the symbol is treated as in-blackout so an
+    # unpriceable event can never read as "safe to write".
+    earnings_dates = {}
+    earnings_unknown = set()
+    try:
+        from earnings_provider import get_earnings, SCHEDULED, NONE_SCHEDULED
+        for _s, _info in get_earnings(all_syms).items():
+            if _info.state == SCHEDULED and _info.date:
+                earnings_dates[_s] = _info.date.isoformat()
+            elif _info.state != NONE_SCHEDULED:
+                earnings_unknown.add(_s)
+    except Exception as _e:
+        # Provider unusable entirely -> every symbol is unknown -> all blackout.
+        earnings_unknown = set(all_syms)
+        print(f"  [options] earnings provider unavailable ({_e}) — all symbols fail closed")
 
     opportunities = []
     total_monthly  = 0.0
@@ -153,7 +226,11 @@ def scan_covered_calls(portfolio: Dict, technical_data: Dict, root: Path, state_
         # Get technical data
         tech   = technical_data.get(sym, {})
         atr    = tech.get("atr") or (price * 0.015 if price else 1.0)
-        iv_pct = tech.get("iv", 0)  # Finviz IV% if available
+        # NOTE: portfolio_technical.py emits NO "iv" key (it emits realized
+        # volatility_w / volatility_m), so this is always 0 and the ATR
+        # realized-vol proxy below is always what prices the premium.
+        # Verified 2026-07-20 — do not re-describe this as implied volatility.
+        sigma_pct = tech.get("iv", 0)
         target = tech.get("target", 0)
         sma200 = tech.get("sma200")
         rsi    = tech.get("rsi", 50)
@@ -166,7 +243,7 @@ def scan_covered_calls(portfolio: Dict, technical_data: Dict, root: Path, state_
 
         # Earnings blackout check
         earn_date = earnings_dates.get(sym)
-        in_blackout = False
+        in_blackout = sym in earnings_unknown   # unknown timing = fail closed
         days_to_earnings = None
         if earn_date:
             try:
@@ -193,7 +270,7 @@ def scan_covered_calls(portfolio: Dict, technical_data: Dict, root: Path, state_
         else:            strike = round(raw_strike / 5.0)  * 5.0
 
         # Premium estimate
-        premium_per_share = _estimate_premium(price, strike, atr, iv_pct, default_dte)
+        premium_per_share = _estimate_premium(price, strike, atr, sigma_pct, default_dte)
         premium_per_contract = round(premium_per_share * 100, 2)
         total_premium = round(premium_per_contract * contracts, 2)
         monthly_income = total_premium  # assuming monthly
@@ -220,6 +297,10 @@ def scan_covered_calls(portfolio: Dict, technical_data: Dict, root: Path, state_
             "strike":           strike,
             "otm_pct":          round(otm_pct*100, 1),
             "dte":              default_dte,
+            "estimate_basis":   ("realized_vol_atr_annualized" if not sigma_pct
+                                 else "caller_supplied_sigma"),
+            "estimate_label":   MODEL_ESTIMATE_LABEL,
+            "is_tradeable_price": False,
             "premium_per_share":premium_per_share,
             "premium_per_contract": premium_per_contract,
             "total_premium":    total_premium,
@@ -235,7 +316,12 @@ def scan_covered_calls(portfolio: Dict, technical_data: Dict, root: Path, state_
             "analyst_target":   target,
             "profit_if_called": profit_if_called,
             "roth_note":        roth_note,
-            "recommendation":   "WRITE CALL" if not in_blackout else f"WAIT — earnings in {days_to_earnings}d",
+            "recommendation":   ("WRITE CALL" if not in_blackout else
+                                 ("WAIT — earnings timing UNKNOWN (fail closed)"
+                                  if sym in earnings_unknown else
+                                  f"WAIT — earnings in {days_to_earnings}d")),
+            "blackout_reason":  ("earnings_timestamp_unknown" if sym in earnings_unknown
+                                 else ("earnings_inside_window" if in_blackout else "")),
         }
         opportunities.append(opp)
         if not in_blackout:
@@ -272,4 +358,18 @@ def scan_covered_calls(portfolio: Dict, technical_data: Dict, root: Path, state_
         "eligible_positions":  len(opportunities),
         "blackout_count":      sum(1 for o in opportunities if o["in_blackout"]),
         "last_updated":        datetime.now().strftime("%Y-%m-%d %H:%M"),
+        # Provenance stamp — every consumer must render this alongside the
+        # dollar figures. These are modelled from REALIZED volatility, not
+        # quoted from a live chain (2026-07-20 audit).
+        "estimate_label":      MODEL_ESTIMATE_LABEL,
+        "estimate_basis":      "realized_vol_atr_annualized",
+        "is_tradeable_price":  False,
+        "authoritative_source": ("Schwab live option chain via "
+                                 "options_lifecycle_engine.quote_leg()"),
+        "disclaimer": ("Premiums are MODELLED from ATR-annualized REALIZED volatility "
+                       "through a simplified Black-Scholes, not quoted from a live "
+                       "option chain. Realized volatility is not implied volatility; "
+                       "these figures can differ materially from tradeable prices, "
+                       "especially around events. Do not act on them — price any real "
+                       "covered call against the Schwab chain."),
     }

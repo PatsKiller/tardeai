@@ -183,13 +183,25 @@ def _build_options_section(options: Dict) -> str:
     if not options or not options.get("has_data") or not options.get("opportunities"):
         return """<div class='section-title' style='margin-top:20px'>📈 Covered Call Intelligence</div>
     <div style='background:#1a1a35;border:1px solid #2a2a5e;border-radius:8px;padding:14px'>
-      <span class='nt'>Run monthly pipeline to populate covered call analysis</span>
+      <span class='nt'>Run monthly pipeline to populate covered call analysis (MODEL ESTIMATE — priced from realized volatility, never a live chain)</span>
     </div>"""
 
     opps = options.get("opportunities", [])
     total_monthly = options.get("total_monthly_income", 0)
     total_annual  = options.get("total_annual_income", 0)
     v_strat = options.get("v_strategy") or {}
+
+    # Provenance banner — these premiums are MODELLED from realized volatility,
+    # not quoted from a live chain. Rendering the dollar figures without this
+    # reads as tradeable income (2026-07-20 audit).
+    _label = options.get("estimate_label") or "MODEL ESTIMATE — NO LIVE CHAIN"
+    _disc = options.get("disclaimer") or ""
+    estimate_banner = (
+        "<div style='background:#2a1f0d;border:1px solid #b8860b;border-radius:8px;"
+        "padding:10px;margin-bottom:12px'>"
+        f"<b style='color:#e6b800'>&#9888; {_label}</b>"
+        f"<div style='color:#c9b98a;font-size:12px;margin-top:4px'>{_disc}</div></div>"
+    )
 
     # V strategy callout
     v_html = ""
@@ -230,6 +242,7 @@ def _build_options_section(options: Dict) -> str:
                  f"</tr>")
 
     return f"""<div class='section-title' style='margin-top:24px'>📈 Covered Call Intelligence</div>
+    {estimate_banner}
     <div class='cards' style='margin-bottom:10px'>
       <div class='card' style='border-top:3px solid #0F9D58'>
         <div class='card-label'>Est. Monthly Income</div>
