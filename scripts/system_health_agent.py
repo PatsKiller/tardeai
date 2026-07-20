@@ -1465,12 +1465,19 @@ def run_health_check(dry_run=True, verbose=False):
             portfolio_alerts.append(f"⚡ {_cio_cnt} CIO critical/high decisions pending")
 
         # 5. Paper trade drift (open trades with no recent price sync)
+        # SCHEDULE-AWARE: this is the same check as the pipeline-side one and had
+        # the same flat-4h defect — it fired every weekday before the 10:00 sync
+        # and all weekend. Fixing only one copy left this one still paging
+        # (2026-07-20; duplicate found during the schedule-blind sweep).
+        _sync_cut = _last_scheduled_sync_fire()
         _stale_trades = _db_query("""SELECT COUNT(*) as cnt FROM paper_trades
-            WHERE status='open' AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '4 hours')""",
-            fetch="one") if not dry_run else {}
+            WHERE status='open' AND (last_synced_at IS NULL OR last_synced_at < %s)""",
+            (_sync_cut,), fetch="one") if not dry_run else {}
         _stale_trade_cnt = (_stale_trades or {}).get("cnt", 0)
         if _stale_trade_cnt > 0:
-            portfolio_alerts.append(f"📊 {_stale_trade_cnt} paper trade(s) not synced in 4h+")
+            portfolio_alerts.append(
+                f"📊 {_stale_trade_cnt} paper trade(s) not synced since the last "
+                f"scheduled sync ({_sync_cut:%a %H:%M} ET)")
 
         # 6. Portfolio live prices (Finviz repricer — not SnapTrade, not holdings file mtime)
         portfolio_alerts.extend(_portfolio_price_freshness_alerts(_now_et))
