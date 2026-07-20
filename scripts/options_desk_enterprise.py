@@ -134,6 +134,7 @@ def evaluate_hard_risk_blocks(
         return []
     cfg = cfg or load_desk_config()
     blocks: List[dict] = []
+    warnings: List[dict] = []
     sym = (proposal.get("symbol") or proposal.get("underlying") or "").upper()
     strat = proposal.get("strategy") or ""
     dte = int(proposal.get("dte") or 30)
@@ -150,8 +151,54 @@ def evaluate_hard_risk_blocks(
         # indistinguishable from a genuine scheduled blackout in the UI,
         # refusal analytics and health alerts (2026-07-20 review).
         code = blackout.get("refusal_code") or "earnings_blackout"
-        blocks.append(_hard_block(code, blackout.get("reason") or "earnings window",
-                                  snapshot=blackout))
+        # OPERATOR-ACKNOWLEDGED EARNINGS RISK — authorised by the operator
+        # 2026-07-20 ("wire it"), scoped deliberately narrow.
+        #
+        # Selling premium through an earnings print is a legitimate strategy and
+        # the risk is the operator's to take. Without this the desk offers an
+        # actionable covered_call_earnings_iv card that the gate always refuses,
+        # recreating the exact CSCO contradiction the incident was about. An
+        # acknowledgement the gate ignores is worse than no acknowledgement.
+        #
+        # ALL of these must hold for the downgrade:
+        #   * the block is a SCHEDULED-earnings blackout, not unknown/invalid;
+        #   * the ack names the EXACT earnings date carried in this block, so
+        #     consent to one report can never silently cover a different or
+        #     rescheduled one;
+        #   * the ack records who acknowledged it and when, for the audit trail.
+        #
+        # EARNINGS_TIMESTAMP_UNKNOWN and EARNINGS_TIMESTAMP_INVALID are NOT
+        # acknowledgeable — you cannot consent to a risk whose date the system
+        # could not establish. Share coverage, liquidity, account tier and
+        # per-order 2FA are untouched and still gate the order.
+        # Must be a dict. A truthy non-dict (e.g. operator_ack="yes" from a
+        # sloppy caller) previously raised AttributeError here — a crash inside
+        # the block evaluator is strictly worse than a block, since it can take
+        # out the whole evaluation. Anything that is not a mapping is simply not
+        # an acknowledgement.
+        _ack = proposal.get("operator_ack")
+        _ack = _ack if isinstance(_ack, dict) else {}
+        _blk_date = str(blackout.get("next_earnings") or "")
+        _ack_ok = (
+            code == "earnings_blackout"
+            and str(_ack.get("code")) == "EARNINGS_INSIDE_CONTRACT"
+            and bool(_blk_date)
+            and str(_ack.get("earnings_date") or "") == _blk_date
+            and bool(_ack.get("acknowledged_by"))
+            and bool(_ack.get("acknowledged_at"))
+        )
+        if _ack_ok:
+            warnings.append({
+                "code": "EARNINGS_INSIDE_CONTRACT_ACKNOWLEDGED",
+                "severity": "warning",
+                "reason": (f"Earnings {_blk_date} fall inside this contract — risk accepted by "
+                           f"{_ack.get('acknowledged_by')} at {_ack.get('acknowledged_at')}"),
+                "source": "options_desk_enterprise",
+                "snapshot": {"blackout": blackout, "operator_ack": _ack},
+            })
+        else:
+            blocks.append(_hard_block(code, blackout.get("reason") or "earnings window",
+                                      snapshot=blackout))
 
     # Ex-dividend risk for covered calls
     if strat == "covered_call" and proposal.get("ex_div_within_dte"):
