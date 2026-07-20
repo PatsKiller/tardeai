@@ -7,9 +7,33 @@ into a single strategy card per symbol in watchlist_strategy_cards.
 Usage:
     python3 scripts/materialize_watchlist_strategy_cards.py [--symbols JEPI SCHD] [--all] [--json]
 """
-import json, os, sys, math
+import json, os, re, sys, math
 from datetime import datetime, date, timedelta
 from pathlib import Path
+
+# Agent names as written to watchlist_agent_results.agent. Used to detect which
+# agent a synthesis conflict refers to, since conflicts are free text naming the
+# agent ("Steph narrative assumes..."). Sourced from the live distinct set
+# 2026-07-20; a new agent missing here is only ever UNDER-suppressed, so this
+# list failing open is visible on the card rather than silent.
+KNOWN_AGENTS = frozenset({
+    "maria", "steph", "risk_agent", "aegis", "alex", "iris", "tax_agent", "full_chain",
+})
+
+# A conflict entry only discards an agent when it says the agent contradicts
+# GROUND TRUTH — held shares, position size, portfolio state — not merely that
+# agents disagree with each other. Disagreement is the normal, useful case and
+# accounts for ~79% of conflict entries; treating it as grounds for suppression
+# blanked agent_rec on 1,025 symbols in a first attempt.
+GROUND_TRUTH_CONTRADICTION = re.compile(
+    r"ground truth"
+    r"|contradict"
+    r"|portfolio position block"
+    r"|zero shares|0 shares|no position|not held"
+    r"|misapplied|stale to this symbol"
+    r"|hallucinat",
+    re.I,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
@@ -82,9 +106,95 @@ def materialize(symbols: list[str] | None = None):
         for d in tp_raw:
             if isinstance(d, dict) and d.get("symbol"): trade_plans[d["symbol"]] = d
 
-    # Agent results
-    cur.execute("SELECT DISTINCT ON (symbol) symbol, recommendation, confidence, summary FROM watchlist_agent_results ORDER BY symbol, created_at DESC")
-    agent_results = {r["symbol"]: r for r in cur.fetchall()}
+    # ── Agent results — THE SYNTHESIS IS THE AUTHORITY (2026-07-20) ───────────
+    #
+    # Two defects lived in the one line this replaces.
+    #
+    # 1. DISTINCT ON ... ORDER BY created_at DESC took whichever agent's job
+    #    happened to finish LAST. For BETA that was steph, by 47 seconds over
+    #    risk_agent. So `agent_rec` was never an agent view — it was a scheduling
+    #    race, and re-running the agents in a different order changes the card.
+    #
+    # 2. It ignored the synthesis entirely. The CIO explicitly discarded steph's
+    #    TRIM on BETA — "Steph narrative assumes existing 17.3% overweight
+    #    position and $1.3M holding; directly contradicts PORTFOLIO POSITION
+    #    ground truth of 0 shares and $0 value" — and this cron re-stamped that
+    #    exact TRIM onto the card 74 minutes AFTER the rejection, then again
+    #    every 30 minutes. The card ended up displaying the discarded value
+    #    beside its own text saying the value had been discarded.
+    #
+    # A rejection that a downstream writer overwrites on a schedule is worse
+    # than the original bad output: the correction can never hold. Operator
+    # decision 2026-07-20: the synthesis wins.
+    #
+    # So: agents named as conflicted by the synthesis are excluded, and the most
+    # recent SURVIVING agent result is used. Provenance is recorded because
+    # "which agent said this" was never visible and the race above is only
+    # findable if it is.
+    cur.execute("""SELECT UPPER(symbol) AS symbol, recommendation, conflicts
+                   FROM watchlist_final_synthesis""")
+    _synth = {r["symbol"]: r for r in cur.fetchall()}
+
+    def _discarded_agents(sym: str) -> set:
+        """Agents the synthesis says contradict GROUND TRUTH, lowercased.
+
+        The narrowness here is the whole point. A first attempt suppressed any
+        agent merely NAMED in a conflict, which blanked agent_rec on 1,025
+        symbols — because most conflicts are ordinary disagreement that names
+        everyone ("Maria BUY vs Steph AVOID"). Measured on a 400-symbol sample:
+        only ~21% assert a ground-truth contradiction at all. Agent disagreement
+        is what the synthesis is FOR; resolving it is not the same as declaring
+        a participant wrong, and suppressing debate would hide the disagreement
+        signal the desk depends on.
+
+        So two conditions must hold IN THE SAME conflict entry:
+          1. the entry asserts a contradiction with ground truth / position data
+          2. that entry names the agent
+
+        Per-entry matching matters: joining the entries first would let a
+        ground-truth marker in one entry suppress an agent named only in
+        another. That is how the BETA case ("Steph narrative assumes existing
+        17.3% overweight position ... directly contradicts PORTFOLIO POSITION
+        ground truth of 0 shares") stays caught while "Maria BUY vs Steph AVOID"
+        correctly does not.
+        """
+        row = _synth.get(sym.upper()) or {}
+        conflicts = row.get("conflicts")
+        if not conflicts:
+            return set()
+        entries = conflicts if isinstance(conflicts, (list, tuple)) else [conflicts]
+        out = set()
+        for entry in entries:
+            text = str(entry).lower()
+            if not GROUND_TRUTH_CONTRADICTION.search(text):
+                continue          # ordinary disagreement — the synthesis resolves it
+            out |= {a for a in KNOWN_AGENTS if a in text}
+        return out
+
+    cur.execute("""SELECT UPPER(symbol) AS symbol, agent, recommendation, confidence,
+                          summary, created_at
+                   FROM watchlist_agent_results
+                   WHERE status = 'completed' AND recommendation IS NOT NULL
+                   ORDER BY symbol, created_at DESC""")
+    agent_results, _suppressed, _seen = {}, {}, set()
+    for r in cur.fetchall():
+        sym = r["symbol"]
+        if sym in agent_results:
+            continue                      # newest surviving wins
+        agent = str(r.get("agent") or "").lower()
+        if agent in _discarded_agents(sym):
+            # Record ONCE per agent, not once per historical row. A first cut
+            # appended every row and produced 53 entries for a single symbol,
+            # because a fully-suppressed symbol never short-circuits the loop.
+            key = (sym, agent)
+            if key not in _seen:
+                _seen.add(key)
+                _suppressed.setdefault(sym, []).append(f"{agent}:{r.get('recommendation')}")
+            continue                      # the synthesis discarded this one
+        agent_results[sym] = r
+    if _suppressed:
+        print(f"  suppressed {sum(len(v) for v in _suppressed.values())} synthesis-discarded "
+              f"agent rec(s) across {len(_suppressed)} symbol(s)")
 
     results = []
     for sym in target:
@@ -215,7 +325,14 @@ def materialize(symbols: list[str] | None = None):
               thesis[:500] if thesis else None, None,
               tech_summary, None, confidence, needs_iter,
               json.dumps({"enrichment": {k: e.get(k) for k in ["rsi", "sma20_pct", "sma50_pct", "sma200_pct", "atr", "beta", "sector", "industry"]},
-                          "backtest": bt, "trade_plan": tp, "agent_rec": ar.get("recommendation")})))
+                          "backtest": bt, "trade_plan": tp, "agent_rec": ar.get("recommendation"),
+                          # Provenance: which agent this came from, and what the
+                          # synthesis suppressed. Without the first, "whichever job
+                          # finished last" is invisible; without the second, a
+                          # suppressed rec looks like it was never produced.
+                          "agent_rec_agent": ar.get("agent"),
+                          "agent_rec_suppressed": _suppressed.get(sym.upper()) or None,
+                          "agent_rec_authority": "synthesis"})))
 
         results.append({"symbol": sym, "strategy_type": strategy_type, "latest_price": latest_price,
                         "support": support, "resistance": resistance, "stop_loss": stop_loss,
