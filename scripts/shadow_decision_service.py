@@ -393,7 +393,8 @@ def build_options(facts, event, ownership) -> dict:
 
 # ── the packet ────────────────────────────────────────────────────────────────
 
-def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operator") -> dict:
+def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operator",
+             run_models: bool = True) -> dict:
     sym = str(symbol).upper()
     if conn is None:
         from db_adapter import _get_conn
@@ -418,14 +419,70 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
               "generated_at": str(r[2]) if r else None,
               "note": "LEGACY SUMMARY — NOT THE DECISION SOURCE OF TRUTH"}
 
-    # Model lanes: Stage A records what was available; it does not yet run the
-    # blind pass in production (that is Stage B/C). Claiming otherwise would be
-    # the "consensus of one" defect in a new costume.
+    # ── BLIND MODEL PASS (Stage B) ────────────────────────────────────────────
+    # The models see the facts and NO verdict from anyone — not the legacy
+    # IGNORE, not each other. run_blind_pass re-checks blindness immediately
+    # before each call. A lane that fails is not a lane; one completed lane is
+    # SINGLE_LANE, never a consensus. Disabled (env or --no-models) falls back to
+    # the deterministic placeholders rather than fabricating agreement.
     model_review = {"mode": "UNAVAILABLE", "lanes_requested": [], "lanes_completed": [],
                     "agreement_by_dimension": {}, "minority_views": [],
-                    "unresolved": ["blind pass not wired into production in Stage A"]}
+                    "unresolved": ["blind pass not run"], "reconciled": None}
+    reconciled = None
+    if run_models and os.getenv("SHADOW_DISABLE_MODELS", "").lower() not in ("1", "true", "yes"):
+        try:
+            import blind_review as br
+            import blind_review_runner as brr
+            blind_facts = br.build_facts_packet(
+                symbol=sym,
+                price={"current": facts.get("live_price"),
+                       "enriched": facts.get("enriched_price"),
+                       "as_of": facts.get("live_price_as_of"),
+                       "change_pct": facts.get("change_pct")},
+                technicals={"rsi": facts.get("rsi"), "atr": facts.get("atr"),
+                            "support": facts.get("support"), "resistance": facts.get("resistance"),
+                            "sma50": facts.get("sma50"), "rvol": facts.get("rvol"),
+                            "float_m": facts.get("float_m"),
+                            "hermes_rank": facts.get("hermes_rank")},
+                fundamentals={"sector": facts.get("sector"), "industry": facts.get("industry")},
+                # Strip our internal per-catalyst `confidence` — it is data
+                # provenance (how sure we are the catalyst is real), but the
+                # blindness guard rightly refuses any key named "confidence"
+                # because a VERDICT confidence would anchor. The model gets the
+                # headline, type and date as evidence, which is all it should see.
+                catalysts=[{k: v for k, v in (c or {}).items() if k != "confidence"}
+                           for c in (facts.get("catalysts") or [])],
+                events={"earnings_state": event.state,
+                        "earnings_date": event.date.isoformat() if event.date else None},
+                ownership=ownership.to_dict(),
+                options_summary=None,
+                data_quality=dq)
+            mr = brr.run_blind_pass(blind_facts)
+            mr.pop("_completed_outputs", None)   # not persisted raw
+            reconciled = mr.get("reconciled")
+            model_review = mr
+        except Exception as exc:
+            model_review["unresolved"] = [f"blind pass error: {type(exc).__name__}: {str(exc)[:160]}"]
 
-    # Dimensions. Deterministic mapping from facts — no model authored these.
+    # The blind pass runs 30-120s per lane. An idle DB connection gets killed
+    # server-side during that window ("SSL connection has been closed
+    # unexpectedly") — the same hazard the planner's _live() guards. Rebuild the
+    # connection before any further DB read (build_swing, persist) rather than
+    # letting the next execute() raise.
+    try:
+        conn.cursor().execute("SELECT 1")
+    except Exception:
+        from db_adapter import _get_conn, close_thread_conn
+        try:
+            close_thread_conn()
+        except Exception:
+            pass
+        conn = _get_conn()
+
+    # Dimensions. Deterministic FALLBACK from facts; overridden by the reconciled
+    # model view when the blind pass produced one. Eligibility stays deterministic
+    # either way — the model only supplies thesis/direction/timing, never a
+    # family state or a payoff number.
     rsi = facts.get("rsi") or 50.0
     chg = facts.get("change_pct") or 0.0
     price = facts.get("live_price") or facts.get("enriched_price") or 0
@@ -433,6 +490,10 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
     extended = bool(price and res and price >= res * 0.98) or chg >= 5.0
     timing = "EXTENDED" if extended else "RANGE_BOUND" if 40 <= rsi <= 60 else "NO_VALID_SETUP"
     thesis_state = "INSUFFICIENT_EVIDENCE"
+    if reconciled:
+        thesis_state = reconciled.get("thesis_state") or thesis_state
+        if reconciled.get("tactical_timing") not in (None, "", "NO_VALID_SETUP"):
+            timing = reconciled["tactical_timing"]
 
     lt = build_long_term(facts, event, ownership, thesis_state, timing)
     sw = build_swing(facts, conn)
@@ -450,20 +511,30 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
         "source_commit_sha": _sha(),
         "ownership": ownership.to_dict(),
         "horizons": {
-            "tactical": {"direction": "UNRESOLVED", "timing": timing, "confidence": 0.0,
-                         "thesis": "Stage A: deterministic placeholder — blind model pass "
-                                   "not yet wired",
-                         "trigger": f"reclaim/hold vs resistance {res}",
-                         "invalidation": f"close below {min(facts.get('support') or [0])}"},
-            "swing": {"direction": "UNRESOLVED", "timing": timing, "confidence": 0.0,
-                      "thesis": "Stage A placeholder",
-                      "trigger": f"break and retest of {res}",
-                      "invalidation": f"close below {min(facts.get('support') or [0])}"},
-            "long_term": {"thesis_state": thesis_state, "direction": "UNRESOLVED",
-                          "confidence": 0.0,
-                          "thesis": "Stage A: thesis requires the blind model pass",
-                          "invalidation": "thesis review pending",
-                          "what_changes_view": []},
+            "tactical": {
+                "direction": (reconciled or {}).get("direction", {}).get("tactical", "UNRESOLVED"),
+                "timing": timing,
+                "confidence": (reconciled or {}).get("thesis_confidence", 0.0),
+                "thesis": ("reconciled from blind model pass" if reconciled
+                           else "deterministic fallback — no model lane completed"),
+                "trigger": f"reclaim/hold vs resistance {res}",
+                "invalidation": f"close below {min(facts.get('support') or [0])}"},
+            "swing": {
+                "direction": (reconciled or {}).get("direction", {}).get("swing", "UNRESOLVED"),
+                "timing": timing,
+                "confidence": (reconciled or {}).get("timing_agreement", 0.0),
+                "thesis": ("reconciled from blind model pass" if reconciled
+                           else "deterministic fallback"),
+                "trigger": f"break and retest of {res}",
+                "invalidation": f"close below {min(facts.get('support') or [0])}"},
+            "long_term": {
+                "thesis_state": thesis_state,
+                "direction": (reconciled or {}).get("direction", {}).get("long_term", "UNRESOLVED"),
+                "confidence": (reconciled or {}).get("thesis_confidence", 0.0),
+                "thesis": ("reconciled from blind model pass" if reconciled
+                           else "no model lane completed — thesis unresolved"),
+                "invalidation": "thesis review pending",
+                "what_changes_view": []},
         },
         "event_state": {"impact": ("CAUTION" if event.state == ev.SCHEDULED
                                    else "UNKNOWN" if event.blocks_action else "CLEAR"),
@@ -574,13 +645,15 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Shadow multidimensional decision service (Stage A)")
     ap.add_argument("--symbol", required=True)
     ap.add_argument("--readback", action="store_true", help="read the persisted packet only")
+    ap.add_argument("--no-models", action="store_true",
+                    help="skip the blind model pass (deterministic dimensions only)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     if args.readback:
         out = readback(args.symbol)
     else:
-        pkt = evaluate(args.symbol)
+        pkt = evaluate(args.symbol, run_models=not args.no_models)
         pid = persist(pkt)
         out = readback(args.symbol)
         out["persisted_packet_id"] = pid
@@ -599,8 +672,19 @@ def main() -> int:
     e = p["event_state"]["earnings"]
     print(f"  EVENT         : {e['state']} {e.get('date') or ''} · {e.get('source')}")
     print(f"  DATA QUALITY  : {p['data_quality']['state']}")
-    print(f"  MODEL REVIEW  : {p['model_review']['mode']} "
-          f"({len(p['model_review']['lanes_completed'])} lanes complete)")
+    mr = p['model_review']
+    print(f"  MODEL REVIEW  : {mr['mode']} "
+          f"({len(mr.get('lanes_completed') or [])} of {len(mr.get('lanes_requested') or [])} lanes: "
+          f"{', '.join(mr.get('lanes_completed') or []) or 'none'})")
+    if mr.get("agreement_by_dimension"):
+        print("    agreement   : " + " · ".join(
+            f"{d}={v}" for d, v in mr["agreement_by_dimension"].items()))
+    for _mv in (mr.get("minority_views") or [])[:4]:
+        print(f"    minority    : {_mv['dimension']}={_mv['view']} ({', '.join(_mv['lanes'])})")
+    if mr.get("reconciled"):
+        _rc = mr["reconciled"]
+        print(f"    reconciled  : thesis={_rc.get('thesis_state')} "
+              f"timing={_rc.get('tactical_timing')} instrument={_rc.get('preferred_instrument')}")
     print(f"  OWNERSHIP     : held={p['ownership']['held']} shares={p['ownership']['shares']}")
     print("  FAMILIES:")
     for f in REQUIRED_FAMILIES:
