@@ -72,6 +72,7 @@ def aggregate(chain: dict) -> dict | None:
     # an expiry straddles earnings, and a per-strike lookup would hammer the
     # provider for every candidate contract.
     _earn = _next_earnings(chain.get("symbol") or "")
+    _spanning_seen: list = []
     put_oi = call_oi = put_vol = call_vol = 0
     atm_ivs, put25, call25 = [], [], []
     tgt = CFG["skew_delta_target"]
@@ -116,7 +117,25 @@ def aggregate(chain: dict) -> dict | None:
                 # but the card carries the flag instead of silently proposing a
                 # trade the risk gate will reject.
                 _spans = bool(_earn and s["exp"] and str(s["exp"])[:10] >= _earn.isoformat())
-                fit = abs(ad - 0.28) + (0 if valid else 10) + (5 if _spans else 0)
+                # Earnings inside the contract is a DISCLOSURE, not a veto.
+                # Selling premium into an earnings print is a legitimate strategy
+                # — the premium is richer precisely because of the event — and
+                # the risk decision belongs to the operator, who approved this
+                # explicitly (2026-07-20).
+                #
+                # What the CSCO incident actually broke was silence: the card did
+                # not say earnings was inside, and the downstream gate then
+                # contradicted a green card. So an earnings-spanning contract is
+                # still selectable and still actionable, but it is ranked BELOW
+                # an equally good earnings-safe contract, and it must carry the
+                # disclosure through to the operator.
+                if _spans:
+                    _spanning_seen.append({
+                        "exp": s["exp"], "strike": s["strike"], "delta": round(ad, 2),
+                        "earnings_date": _earn.isoformat() if _earn else None})
+                # Tie-break only: a safe contract wins when one is comparable.
+                # Never large enough to hide a materially better spanning pick.
+                fit = abs(ad - 0.28) + (0 if valid else 10) + (0.05 if _spans else 0)
                 if cc_call is None or fit < cc_call["_fit"]:
                     cc_call = {"exp": s["exp"], "dte": dte, "strike": s["strike"],
                                "delta": round(ad, 2), "iv": round(float(iv), 1),
@@ -151,8 +170,32 @@ def aggregate(chain: dict) -> dict | None:
                                 "validation": (f"OI {oi} · vol {vol} · spread {spread_pct}% · Δ{round(ad, 2)} · IV {round(float(iv), 1)}"
                                                + ("" if valid else f" — FAILED rails (need OI≥{vc['min_open_interest']}, spread≤{vc['max_spread_pct_of_mid']}%)")),
                                 "_fit": fit}
+    # NO_ELIGIBLE_COVERED_CALL: an explicit, machine-readable verdict so the card
+    # can state why there is no pick instead of rendering an empty or substituted
+    # one. Distinguishes "earnings ruled everything out" from "nothing fit the
+    # DTE/delta/liquidity rails" — the operator needs to know which.
+    cc_verdict = None
     if cc_call:
         cc_call.pop("_fit", None)
+        if cc_call.get("spans_earnings"):
+            # Actionable, with informed consent. requires_ack makes the operator
+            # accept the event risk explicitly rather than discovering it at the
+            # 2FA step; the downstream gate honours that acceptance instead of
+            # contradicting the card.
+            cc_call["actionable"] = True
+            cc_call["requires_ack"] = "EARNINGS_INSIDE_CONTRACT"
+            cc_call["ack_prompt"] = (
+                f"CSCO-style event risk: earnings {cc_call.get('earnings_date')} fall before "
+                f"expiry {cc_call.get('exp')}. Assignment risk and an IV crush both sit inside "
+                f"this contract. Confirm you intend to sell premium through the report.")
+            cc_call["strategy_variant"] = "covered_call_earnings_iv"
+    else:
+        cc_verdict = {
+            "state": "NO_ELIGIBLE_COVERED_CALL",
+            "reason_code": "NO_CONTRACT_MEETS_RAILS",
+            "actionable": False,
+            "detail": "No contract met the DTE, delta and liquidity rails.",
+        }
     if prot_put:
         prot_put.pop("_fit", None)
     mean = lambda xs: round(sum(xs) / len(xs), 2) if xs else None
@@ -164,6 +207,7 @@ def aggregate(chain: dict) -> dict | None:
         "skew25": round(mean(put25) - mean(call25), 2) if put25 and call25 else None,
         "underlying_price": chain.get("underlying_price"),
         "cc_call": cc_call,
+        "cc_verdict": cc_verdict,
         "prot_put": prot_put,
     }
 
