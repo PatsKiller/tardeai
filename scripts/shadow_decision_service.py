@@ -1,0 +1,622 @@
+#!/usr/bin/env python3
+"""shadow_decision_service.py — the canonical multidimensional decision, in shadow.
+
+STAGE A. Generates and persists the full decision packet alongside the legacy
+one-word verdict. Changes NO production surface: not the Command Center card,
+not proposal eligibility, not routing, not any execution path.
+
+WHAT IT WIRES TOGETHER
+----------------------
+    event_normalizer   canonical 7-state event, headline-parsed  (Stage A item 1)
+    position_truth     live ownership as ground truth            (Stage A item 2)
+    decision_packet    six dimensions, validation, retired labels
+    trade_blueprints   deterministic construction + payoff arithmetic
+    blind_review       per-dimension agreement, anchored disclosure
+    watchlist_entry_plans   legacy equity plan, as the SWING component only
+
+EVERY FAMILY IS ALWAYS PRESENT
+------------------------------
+LONG_TERM, SWING, BEARISH, OPTIONS and NO_TRADE each return exactly one of
+ELIGIBLE / CONDITIONAL / REJECTED / NOT_APPLICABLE / DATA_UNAVAILABLE. A family
+is never omitted, and a non-ELIGIBLE family always carries reasons. Silence is
+the failure mode this whole programme exists to remove — "we did not look"
+rendered as "there is nothing there".
+
+OPTIONS AND THE CHAIN
+---------------------
+The options family attempts the governed Schwab chain path
+(schwab_transport.get_option_chain) exactly once per evaluation. On failure it
+returns DATA_UNAVAILABLE recording provider, attempted operation, timestamp and
+the exact failure reason. It NEVER substitutes an estimated price — a payoff
+computed from a Black-Scholes guess looks calculated and is not, and
+`bs_estimate_only` already blocks downstream, so a card built on one would be
+refused later anyway.
+
+READBACK
+    .venv/bin/python scripts/shadow_decision_service.py --symbol BETA --readback
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import date, datetime, timezone
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+import decision_packet as dp          # noqa: E402
+import event_normalizer as ev         # noqa: E402
+import position_truth as pt           # noqa: E402
+import trade_blueprints as tb         # noqa: E402
+
+PACKET_VERSION = "1.0.0-shadow"
+
+ELIGIBLE, CONDITIONAL, REJECTED = "ELIGIBLE", "CONDITIONAL", "REJECTED"
+NOT_APPLICABLE, DATA_UNAVAILABLE = "NOT_APPLICABLE", "DATA_UNAVAILABLE"
+
+REQUIRED_FAMILIES = ("LONG_TERM", "SWING", "BEARISH", "OPTIONS", "NO_TRADE")
+
+
+def _sha() -> str:
+    try:
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=PROJECT_ROOT,
+                              capture_output=True, text=True, timeout=10).stdout.strip()[:12]
+    except Exception:
+        return ""
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# ── facts ─────────────────────────────────────────────────────────────────────
+
+def gather_facts(symbol: str, conn) -> dict:
+    """Everything deterministic, before any model is asked."""
+    sym = symbol.upper()
+    cur = conn.cursor()
+    facts: dict = {"symbol": sym}
+
+    # watchlist_items has no `sector` column (sector lives on symbol_profiles);
+    # asserting one raised UndefinedColumn on the first live run.
+    cur.execute("""SELECT price, change_pct, rsi, rvol, float_m, hermes_composite_score,
+                          hermes_rank, last_enriched_at, scope_tier
+                   FROM watchlist_items WHERE upper(symbol)=%s
+                   ORDER BY last_enriched_at DESC NULLS LAST LIMIT 1""", (sym,))
+    r = cur.fetchone()
+    if r:
+        facts.update(enriched_price=float(r[0]) if r[0] is not None else None,
+                     change_pct=float(r[1]) if r[1] is not None else None,
+                     rsi=float(r[2]) if r[2] is not None else None,
+                     rvol=float(r[3]) if r[3] is not None else None,
+                     float_m=float(r[4]) if r[4] is not None else None,
+                     hermes_score=float(r[5]) if r[5] is not None else None,
+                     hermes_rank=r[6], enriched_at=str(r[7] or ""),
+                     scope_tier=r[8])
+    cur.execute("SELECT sector, industry FROM symbol_profiles WHERE upper(symbol)=%s", (sym,))
+    r2 = cur.fetchone()
+    facts["sector"], facts["industry"] = (r2[0], r2[1]) if r2 else (None, None)
+
+    cur.execute("""SELECT price, fetched_at FROM market_quotes WHERE symbol=%s
+                   ORDER BY fetched_at DESC LIMIT 1""", (sym,))
+    r = cur.fetchone()
+    facts["live_price"] = float(r[0]) if r and r[0] is not None else None
+    facts["live_price_as_of"] = str(r[1]) if r else None
+
+    # ATR and swing levels need TRUE RANGE, which needs highs and lows.
+    # ticker_prices stores close_price ONLY — no high, no low. Computing a
+    # close-to-close dispersion and calling it "ATR" would be the same class of
+    # mislabelling as the model-authored R:R this session already removed: a
+    # number that looks like true range and is not. So reuse the planner's real
+    # OHLC path (yfinance, with an Alpaca fallback) and leave atr None if it
+    # cannot be obtained, which downgrades the affected families to
+    # DATA_UNAVAILABLE with a stated reason rather than inventing levels.
+    facts["atr"] = None
+    facts["support"], facts["resistance"] = [], []
+    facts["technicals_source"] = None
+    try:
+        import watchlist_entry_planner as wep
+        bars = wep._bars(sym, 90)
+        if bars and len(bars) >= 50:
+            t = wep._tech(bars)
+            facts["atr"] = round(float(t["atr"]), 4)
+            facts["rsi"] = facts.get("rsi") or t.get("rsi")
+            facts["support"] = sorted({round(float(t["swing_low"]), 2)})
+            facts["resistance"] = sorted({round(float(t["swing_high"]), 2)})
+            facts["sma50"] = round(float(t["sma50"]), 4)
+            facts["technicals_source"] = "ohlc_bars"
+            facts["bars_used"] = len(bars)
+    except Exception as exc:
+        facts["technicals_error"] = f"{type(exc).__name__}: {str(exc)[:140]}"
+
+    cur.execute("""SELECT headline, published_at, catalyst_type, confidence
+                   FROM catalyst_events WHERE upper(symbol)=%s
+                     AND published_at > now() - interval '30 days'
+                   ORDER BY published_at DESC LIMIT 12""", (sym,))
+    facts["catalysts"] = [{"headline": h, "published_at": str(p), "type": t,
+                           "confidence": float(c) if c is not None else None}
+                          for h, p, t, c in cur.fetchall()]
+    return facts
+
+
+def assess_data_quality(facts: dict, event: ev.EventState) -> dict:
+    """Freshness is a first-class dimension. The BETA card reasoned from a packet
+    2.9 days old while quoting a live price and said nothing about it."""
+    problems, state = [], "FRESH"
+    live, enriched = facts.get("live_price"), facts.get("enriched_price")
+    drift = None
+    if live and enriched:
+        drift = abs(live - enriched) / live * 100
+        if drift > 1.0:
+            problems.append(f"enrichment price {enriched} differs from live {live} by {drift:.1f} pct")
+            state = "PARTIAL"
+    if not facts.get("atr"):
+        problems.append("no ATR — levels and stops cannot be computed")
+        state = "INSUFFICIENT"
+    if not facts.get("support"):
+        problems.append("no support levels — invalidation would be arbitrary")
+        state = "INSUFFICIENT" if state != "INSUFFICIENT" else state
+    if event.state in (ev.PROVIDER_DOWN,):
+        problems.append(f"event provider down: {event.reason}")
+        state = "PROVIDER_DOWN"
+    elif event.state == ev.CONFLICTED:
+        problems.append(f"event sources disagree: {event.reason}")
+        state = "CONFLICTED"
+    return {"state": state, "fields": problems, "price_drift_pct": drift,
+            "actionable": state in ("FRESH", "PARTIAL")}
+
+
+# ── families ──────────────────────────────────────────────────────────────────
+
+def build_long_term(facts, event, ownership, thesis_state, timing) -> dict:
+    if not facts.get("atr") or not facts.get("support"):
+        return {"family": "LONG_TERM", "state": DATA_UNAVAILABLE,
+                "structures": [], "rejection_reasons": [
+                    "insufficient price history to compute ATR or support — a staged "
+                    "plan without levels would be prose, not a plan"]}
+    try:
+        bp = tb.staged_shares(
+            symbol=facts["symbol"],
+            current_price=facts.get("live_price") or facts.get("enriched_price") or 0,
+            atr=facts["atr"], support=facts["support"], resistance=facts["resistance"],
+            thesis_state=thesis_state, timing=timing,
+            account_equity=float(os.getenv("SHADOW_ACCOUNT_EQUITY", "1252958")),
+            earnings_date=event.date.isoformat() if event.date else None)
+        state = CONDITIONAL if timing in ("EXTENDED", "WAIT_FOR_PULLBACK",
+                                          "BREAKOUT_CONFIRMATION") else ELIGIBLE
+        bp["state"] = state
+        return {"family": "LONG_TERM", "state": state, "structures": [bp],
+                "rejection_reasons": []}
+    except tb.BlueprintRejected as exc:
+        return {"family": "LONG_TERM", "state": REJECTED, "structures": [],
+                "rejection_reasons": list(exc.reasons)}
+
+
+def build_swing(facts, conn) -> dict:
+    """The legacy equity plan, demoted to ONE COMPONENT of the decision rather
+    than being the whole product."""
+    cur = conn.cursor()
+    cur.execute("""SELECT setup_type, entry_zone_low, entry_zone_high, limit_price,
+                          stop_price, target_price, risk_reward, urgency, confidence,
+                          proposal_tag, plan, created_at, model_used
+                   FROM watchlist_entry_plans WHERE upper(symbol)=%s
+                   ORDER BY created_at DESC LIMIT 1""", (facts["symbol"],))
+    r = cur.fetchone()
+    if not r:
+        return {"family": "SWING", "state": DATA_UNAVAILABLE, "structures": [],
+                "rejection_reasons": ["no entry plan exists for this symbol"]}
+    (setup, zlo, zhi, lim, stop, tgt, rr, urg, conf, tag, plan, created, model) = r
+    plan = plan if isinstance(plan, dict) else (json.loads(plan) if plan else {})
+    mech = {
+        "structure": "TACTICAL_SWING", "setup_type": setup,
+        "entry_zone": [float(zlo) if zlo else None, float(zhi) if zhi else None],
+        "limit_price": float(lim) if lim else None,
+        "stop_price": float(stop) if stop else None,
+        "targets": [float(tgt)] if tgt else [],
+        "risk_per_share": round(float(lim) - float(stop), 4) if lim and stop else None,
+        "risk_reward": float(rr) if rr is not None else None,
+        "risk_reward_source": "DETERMINISTIC",
+        "model_claimed_risk_reward": plan.get("risk_reward_model_claimed"),
+        "urgency": str(urg or "").upper(),
+        "urgency_source": plan.get("urgency_source"),
+        "invalidation": (plan.get("invalidation")
+                         or f"close below {stop}" if stop else ""),
+        "exit_ladder": (plan.get("exit_ladder") or {}).get("steps", []),
+        "proposal_tag": tag, "plan_created_at": str(created), "model_used": model,
+    }
+    # urgency drives the state: READY is an entry now; WATCH is a wait.
+    u = str(urg or "").upper()
+    state = ELIGIBLE if u == "READY" else CONDITIONAL if u == "NEAR_ENTRY" else CONDITIONAL
+    reasons = [] if u in ("READY", "NEAR_ENTRY") else [
+        f"urgency={u}: price is not within one ATR of the entry zone; the setup is "
+        f"defined but not active"]
+    mech["state"] = state
+    return {"family": "SWING", "state": state, "structures": [mech],
+            "rejection_reasons": reasons}
+
+
+def build_bearish(facts, event, ownership) -> dict:
+    price = facts.get("live_price") or facts.get("enriched_price")
+    if not price or not facts.get("atr") or not facts.get("resistance"):
+        return {"family": "BEARISH", "state": DATA_UNAVAILABLE, "structures": [],
+                "rejection_reasons": ["insufficient levels to define a short entry or buy-stop"]}
+    out = tb.short_stock(
+        symbol=facts["symbol"], current_price=price, atr=facts["atr"],
+        support=facts["support"], resistance=facts["resistance"],
+        borrow_state=os.getenv("SHADOW_BORROW_STATE", "UNKNOWN"),
+        short_float_pct=float(facts.get("short_float_pct") or 0.0),
+        rsi=facts.get("rsi"),
+        earnings_date=event.date.isoformat() if event.date else None,
+        dte_intent=int(os.getenv("SHADOW_SHORT_DTE_INTENT", "10")),
+        held_long=ownership.held)
+    state = REJECTED if out.get("state") == "REJECTED" else CONDITIONAL
+    return {"family": "BEARISH", "state": state, "structures": [out],
+            "rejection_reasons": out.get("rejection_reasons", [])}
+
+
+def build_options(facts, event, ownership) -> dict:
+    """Attempt the governed chain exactly once. Record the exact reason on
+    failure — never a substitute price, never silence."""
+    sym = facts["symbol"]
+    attempt = {"provider": "schwab_transport.get_option_chain", "symbol": sym,
+               "attempted_at": _now().isoformat(), "operation": "get_option_chain"}
+    try:
+        import schwab_transport
+        chain = schwab_transport.get_option_chain(sym)
+        attempt["status"] = (chain or {}).get("status")
+    except Exception as exc:
+        attempt.update(status="error", error=f"{type(exc).__name__}: {str(exc)[:200]}")
+        return {"family": "OPTIONS", "state": DATA_UNAVAILABLE, "structures": [],
+                "chain_attempt": attempt,
+                "rejection_reasons": [
+                    f"live chain unavailable ({attempt['error']}); option mechanics "
+                    f"are not constructible and estimated prices are refused"]}
+
+    if not chain or chain.get("status") != "ok":
+        return {"family": "OPTIONS", "state": DATA_UNAVAILABLE, "structures": [],
+                "chain_attempt": attempt,
+                "rejection_reasons": [
+                    f"chain returned status={attempt.get('status')!r}; no contracts to "
+                    f"price. Estimated option prices are not an acceptable substitute"]}
+
+    # Event state must be settled before any contract is offered.
+    if event.blocks_action:
+        return {"family": "OPTIONS", "state": DATA_UNAVAILABLE, "structures": [],
+                "chain_attempt": attempt,
+                "rejection_reasons": [
+                    f"event state {event.state} ({event.reason or 'no detail'}) — option "
+                    f"structures cannot be evaluated against an unsettled event date"]}
+
+    # Real chain shape: {expirations: [{exp, dte, strikes: [{strike, side, bid, ask,
+    # delta, iv, oi, volume}]}]}. Reading a Schwab-native callExpDateMap key here
+    # returned 0 contracts on the first live run — the transport already
+    # normalises, so the raw shape is not what arrives.
+    exps = chain.get("expirations") or []
+    underlying = float(chain.get("underlying_price") or facts.get("live_price") or 0)
+    attempt["expirations_seen"] = len(exps)
+    attempt["contracts_seen"] = sum(len(e.get("strikes") or []) for e in exps)
+    attempt["underlying_price"] = underlying
+
+    def _q(rec):
+        return tb.Quote(
+            occ_symbol=f"{sym}{str(rec.get('exp','')).replace('-','')[2:]}"
+                       f"{'C' if rec.get('side')=='call' else 'P'}"
+                       f"{int(round(float(rec.get('strike',0))*1000)):08d}",
+            strike=float(rec.get("strike") or 0), bid=float(rec.get("bid") or 0),
+            ask=float(rec.get("ask") or 0), delta=rec.get("delta"), iv=rec.get("iv"),
+            open_interest=int(rec.get("oi") or 0), volume=int(rec.get("volume") or 0),
+            expiration=str(rec.get("exp") or ""), source="chain")
+
+    structures, reasons = [], []
+    if not ownership.held:
+        structures.append(tb.puts_are_not_a_bullish_entry(sym))
+        reasons.append("COVERED_CALL and COLLAR NOT_APPLICABLE — 0 shares held")
+
+    # Nearest expiration with usable records drives the comparison.
+    target = next((e for e in exps if (e.get("strikes") or [])), None)
+    if not target:
+        return {"family": "OPTIONS", "state": DATA_UNAVAILABLE, "structures": structures,
+                "chain_attempt": attempt,
+                "rejection_reasons": reasons + ["chain returned expirations with no strike records"]}
+
+    exp_date = str(target.get("exp") or "")
+    inside = event.inside_contract(exp_date)
+    attempt["expiration_evaluated"] = exp_date
+    attempt["earnings_inside_contract"] = inside
+    calls = sorted([s for s in target["strikes"] if s.get("side") == "call"],
+                   key=lambda s: float(s.get("strike") or 0))
+    puts = sorted([s for s in target["strikes"] if s.get("side") == "put"],
+                  key=lambda s: float(s.get("strike") or 0))
+
+    # LONG_CALL — expected to be refused when earnings sit inside the contract.
+    otm_calls = [c for c in calls if float(c.get("strike") or 0) > underlying]
+    if otm_calls:
+        try:
+            structures.append(tb.long_option(
+                kind="call", opt=_q(otm_calls[0]), contracts=1, underlying_price=underlying,
+                trigger=f"reclaim resistance {min(facts.get('resistance') or [underlying])}",
+                invalidation=f"close below {min(facts.get('support') or [0])}",
+                earnings_date=event.date.isoformat() if event.date else None,
+                directional_setup_confirmed=False))
+        except tb.BlueprintRejected as exc:
+            structures.append({"structure": "LONG_CALL", "state": REJECTED,
+                               "occ_symbol": _q(otm_calls[0]).occ_symbol,
+                               "expiration": exp_date,
+                               "rejection_reasons": list(exc.reasons)})
+
+    # CALL_DEBIT_SPREAD — defined risk, partially offsets elevated IV.
+    if len(otm_calls) >= 2:
+        try:
+            structures.append(tb.call_debit_spread(
+                long_leg=_q(otm_calls[0]), short_leg=_q(otm_calls[1]), contracts=1,
+                underlying_price=underlying,
+                trigger=f"daily close above {min(facts.get('resistance') or [underlying])} then retest",
+                invalidation=f"close below {min(facts.get('support') or [0])}",
+                earnings_date=event.date.isoformat() if event.date else None))
+        except tb.BlueprintRejected as exc:
+            structures.append({"structure": "CALL_DEBIT_SPREAD", "state": REJECTED,
+                               "expiration": exp_date,
+                               "long_leg": _q(otm_calls[0]).occ_symbol,
+                               "short_leg": _q(otm_calls[1]).occ_symbol,
+                               "rejection_reasons": list(exc.reasons)})
+
+    # CASH_SECURED_PUT — the bullish put strategy, i.e. acquisition at a discount.
+    otm_puts = [p for p in puts if float(p.get("strike") or 0) < underlying]
+    if otm_puts:
+        best = otm_puts[-1]
+        try:
+            structures.append(tb.cash_secured_put(
+                symbol=sym, put=_q(best), contracts=1, current_price=underlying,
+                available_cash=float(os.getenv("SHADOW_AVAILABLE_CASH", "179420")),
+                assignment_intent=os.getenv("SHADOW_ASSIGNMENT_INTENT", "UNKNOWN"),
+                earnings_date=event.date.isoformat() if event.date else None))
+        except tb.BlueprintRejected as exc:
+            structures.append({"structure": "CASH_SECURED_PUT", "state": REJECTED,
+                               "occ_symbol": _q(best).occ_symbol, "expiration": exp_date,
+                               "strike": float(best.get("strike") or 0),
+                               "rejection_reasons": list(exc.reasons)})
+
+    constructible = [s for s in structures if s.get("state") == ELIGIBLE]
+    state = (ELIGIBLE if constructible
+             else CONDITIONAL if any(s.get("state") == REJECTED for s in structures)
+             else DATA_UNAVAILABLE)
+    if inside:
+        reasons.append(f"earnings {event.date} falls inside expiration {exp_date} — "
+                       f"every structure on this expiry carries the event")
+    return {"family": "OPTIONS", "state": state, "structures": structures,
+            "chain_attempt": attempt, "rejection_reasons": reasons}
+
+
+# ── the packet ────────────────────────────────────────────────────────────────
+
+def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operator") -> dict:
+    sym = str(symbol).upper()
+    if conn is None:
+        from db_adapter import _get_conn
+        conn = _get_conn()
+
+    facts = gather_facts(sym, conn)
+    event = ev.resolve_from_db(sym, conn)
+
+    holdings_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    holdings = json.loads(holdings_path.read_text()) if holdings_path.exists() else {}
+    ownership = pt.ownership_from_holdings(sym, holdings)
+
+    dq = assess_data_quality(facts, event)
+
+    # Legacy label is carried for comparison ONLY and explicitly demoted.
+    cur = conn.cursor()
+    cur.execute("""SELECT recommendation, confidence, updated_at
+                   FROM watchlist_final_synthesis WHERE upper(symbol)=%s""", (sym,))
+    r = cur.fetchone()
+    legacy = {"recommendation": r[0] if r else None,
+              "confidence": float(r[1]) if r and r[1] is not None else None,
+              "generated_at": str(r[2]) if r else None,
+              "note": "LEGACY SUMMARY — NOT THE DECISION SOURCE OF TRUTH"}
+
+    # Model lanes: Stage A records what was available; it does not yet run the
+    # blind pass in production (that is Stage B/C). Claiming otherwise would be
+    # the "consensus of one" defect in a new costume.
+    model_review = {"mode": "UNAVAILABLE", "lanes_requested": [], "lanes_completed": [],
+                    "agreement_by_dimension": {}, "minority_views": [],
+                    "unresolved": ["blind pass not wired into production in Stage A"]}
+
+    # Dimensions. Deterministic mapping from facts — no model authored these.
+    rsi = facts.get("rsi") or 50.0
+    chg = facts.get("change_pct") or 0.0
+    price = facts.get("live_price") or facts.get("enriched_price") or 0
+    res = min(facts.get("resistance") or [price * 1.05])
+    extended = bool(price and res and price >= res * 0.98) or chg >= 5.0
+    timing = "EXTENDED" if extended else "RANGE_BOUND" if 40 <= rsi <= 60 else "NO_VALID_SETUP"
+    thesis_state = "INSUFFICIENT_EVIDENCE"
+
+    lt = build_long_term(facts, event, ownership, thesis_state, timing)
+    sw = build_swing(facts, conn)
+    be = build_bearish(facts, event, ownership)
+    op = build_options(facts, event, ownership)
+
+    packet = {
+        "packet_version": PACKET_VERSION, "symbol": sym,
+        "instrument_type": "STOCK",
+        "evaluated_at": _now().isoformat(),
+        "facts_as_of": facts.get("live_price_as_of") or facts.get("enriched_at"),
+        "price_used": facts.get("live_price") or facts.get("enriched_price"),
+        "current_price": facts.get("live_price"),
+        "price_drift_pct": dq.get("price_drift_pct"),
+        "source_commit_sha": _sha(),
+        "ownership": ownership.to_dict(),
+        "horizons": {
+            "tactical": {"direction": "UNRESOLVED", "timing": timing, "confidence": 0.0,
+                         "thesis": "Stage A: deterministic placeholder — blind model pass "
+                                   "not yet wired",
+                         "trigger": f"reclaim/hold vs resistance {res}",
+                         "invalidation": f"close below {min(facts.get('support') or [0])}"},
+            "swing": {"direction": "UNRESOLVED", "timing": timing, "confidence": 0.0,
+                      "thesis": "Stage A placeholder",
+                      "trigger": f"break and retest of {res}",
+                      "invalidation": f"close below {min(facts.get('support') or [0])}"},
+            "long_term": {"thesis_state": thesis_state, "direction": "UNRESOLVED",
+                          "confidence": 0.0,
+                          "thesis": "Stage A: thesis requires the blind model pass",
+                          "invalidation": "thesis review pending",
+                          "what_changes_view": []},
+        },
+        "event_state": {"impact": ("CAUTION" if event.state == ev.SCHEDULED
+                                   else "UNKNOWN" if event.blocks_action else "CLEAR"),
+                        "earnings": event.to_dict()},
+        "data_quality": dq,
+        "model_review": model_review,
+        "plan_families": {"long_term": lt, "swing": sw, "bearish": be, "options": op,
+                          "no_trade": {"family": "NO_TRADE", "state": ELIGIBLE,
+                                       "rationale": "no-trade remains valid at all times"}},
+        "no_trade_is_valid": True,
+        "legacy_summary": legacy,
+        "preferred_action": {"structure": "NO_TRADE",
+                             "why": "Stage A is shadow-only; no preferred action is "
+                                    "published from this path"},
+    }
+    packet["headline"] = dp.compose_headline(packet)
+    packet["validation_errors"] = dp.validate(packet)
+    return packet
+
+
+# ── persistence ───────────────────────────────────────────────────────────────
+
+def persist(packet: dict, conn=None, *, origin="on_demand", requested_by="operator") -> int:
+    if conn is None:
+        from db_adapter import _get_conn
+        conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("""INSERT INTO decision_runs (origin, requested_by, started_at,
+                     completed_at, state, symbols_requested, symbols_completed,
+                     source_commit_sha)
+                   VALUES (%s,%s,now(),now(),'COMPLETE',1,1,%s) RETURNING run_id""",
+                (origin, requested_by, packet.get("source_commit_sha")))
+    run_id = cur.fetchone()[0]
+
+    fam = packet["plan_families"]
+    cur.execute("""INSERT INTO decision_packets
+                    (run_id, symbol, packet_version, facts_as_of, price_used,
+                     current_price, price_drift_pct, instrument_type, thesis_state,
+                     swing_timing, tactical_timing, event_state, data_quality, actionable,
+                     family_long_term, family_swing, family_bearish, family_options,
+                     no_trade_valid, model_review_mode, lanes_requested, lanes_completed,
+                     packet, source_commit_sha)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s)
+                   RETURNING packet_id""",
+                (run_id, packet["symbol"], packet["packet_version"],
+                 packet.get("facts_as_of") or None, packet.get("price_used"),
+                 packet.get("current_price"), packet.get("price_drift_pct"),
+                 packet.get("instrument_type"),
+                 packet["horizons"]["long_term"]["thesis_state"],
+                 packet["horizons"]["swing"]["timing"],
+                 packet["horizons"]["tactical"]["timing"],
+                 packet["event_state"]["earnings"]["state"],
+                 packet["data_quality"]["state"],
+                 bool(packet["data_quality"].get("actionable")),
+                 fam["long_term"]["state"], fam["swing"]["state"],
+                 fam["bearish"]["state"], fam["options"]["state"],
+                 packet["no_trade_is_valid"], packet["model_review"]["mode"],
+                 len(packet["model_review"]["lanes_requested"]),
+                 len(packet["model_review"]["lanes_completed"]),
+                 json.dumps(packet, default=str), packet.get("source_commit_sha")))
+    packet_id = cur.fetchone()[0]
+
+    # Supersede any prior live packet — append-only, never updated in place.
+    cur.execute("""UPDATE decision_packets SET superseded_by=%s, superseded_at=now()
+                   WHERE upper(symbol)=%s AND packet_id <> %s AND superseded_by IS NULL""",
+                (packet_id, packet["symbol"], packet_id))
+
+    for key, family in fam.items():
+        for s in (family.get("structures") or [{"structure": family.get("family"),
+                                                "state": family.get("state")}]):
+            cur.execute("""INSERT INTO decision_blueprints
+                            (packet_id, symbol, family, structure, state, mechanics,
+                             rejection_reasons, quote_source, event_state, eligibility)
+                           VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,%s)""",
+                        (packet_id, packet["symbol"], family.get("family", key.upper()),
+                         s.get("structure") or key.upper(),
+                         s.get("state") or family.get("state"),
+                         json.dumps(s, default=str),
+                         json.dumps(s.get("rejection_reasons")
+                                    or family.get("rejection_reasons") or [], default=str),
+                         (family.get("chain_attempt") or {}).get("provider"),
+                         packet["event_state"]["earnings"]["state"],
+                         family.get("state")))
+    conn.commit()
+    return packet_id
+
+
+def readback(symbol: str, conn=None) -> dict:
+    if conn is None:
+        from db_adapter import _get_conn
+        conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("""SELECT packet_id, generated_at, packet FROM decision_packets
+                   WHERE upper(symbol)=%s AND superseded_by IS NULL
+                   ORDER BY generated_at DESC LIMIT 1""", (symbol.upper(),))
+    r = cur.fetchone()
+    if not r:
+        return {"ok": False, "error": f"no live shadow packet for {symbol.upper()}"}
+    pkt = r[2] if isinstance(r[2], dict) else json.loads(r[2])
+    cur.execute("""SELECT family, structure, state, rejection_reasons
+                   FROM decision_blueprints WHERE packet_id=%s ORDER BY family""", (r[0],))
+    return {"ok": True, "packet_id": r[0], "generated_at": str(r[1]), "packet": pkt,
+            "blueprints": [{"family": a, "structure": b, "state": c,
+                            "rejection_reasons": d} for a, b, c, d in cur.fetchall()]}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Shadow multidimensional decision service (Stage A)")
+    ap.add_argument("--symbol", required=True)
+    ap.add_argument("--readback", action="store_true", help="read the persisted packet only")
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+
+    if args.readback:
+        out = readback(args.symbol)
+    else:
+        pkt = evaluate(args.symbol)
+        pid = persist(pkt)
+        out = readback(args.symbol)
+        out["persisted_packet_id"] = pid
+
+    if args.json:
+        print(json.dumps(out, indent=2, default=str))
+        return 0
+
+    if not out.get("ok"):
+        print(out.get("error"))
+        return 1
+    p = out["packet"]
+    print(f"SHADOW PACKET {out['packet_id']} · {p['symbol']} · {out['generated_at']}")
+    print(f"  headline      : {p.get('headline')}")
+    print(f"  price used    : {p.get('price_used')}  (drift {p.get('price_drift_pct')})")
+    e = p["event_state"]["earnings"]
+    print(f"  EVENT         : {e['state']} {e.get('date') or ''} · {e.get('source')}")
+    print(f"  DATA QUALITY  : {p['data_quality']['state']}")
+    print(f"  MODEL REVIEW  : {p['model_review']['mode']} "
+          f"({len(p['model_review']['lanes_completed'])} lanes complete)")
+    print(f"  OWNERSHIP     : held={p['ownership']['held']} shares={p['ownership']['shares']}")
+    print("  FAMILIES:")
+    for f in REQUIRED_FAMILIES:
+        key = f.lower()
+        fam = p["plan_families"].get(key, {})
+        print(f"    {f:11s} {fam.get('state'):18s}", end="")
+        rr = fam.get("rejection_reasons") or []
+        print(f" {rr[0][:70] if rr else ''}")
+    print(f"  legacy label  : {p['legacy_summary']['recommendation']} "
+          f"({p['legacy_summary']['note']})")
+    if p.get("validation_errors"):
+        print(f"  VALIDATION    : {len(p['validation_errors'])} issue(s)")
+        for v in p["validation_errors"][:5]:
+            print(f"     - {v}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
