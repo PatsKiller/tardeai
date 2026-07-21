@@ -130,6 +130,50 @@ export function deriveRecommendedAction(args: {
     })
   }
 
+  // ── CANONICAL ACTION POLICY (2026-07-21) ────────────────────────────────────
+  // When a valid decision packet exists, the backend action-policy is the SOLE
+  // authority for action eligibility (it.action_policy, computed by
+  // decision_action_policy.py and delivered inline). The card renders its result
+  // and therefore CANNOT advertise an action the API refuses — closing the
+  // display-vs-behaviour contradiction where cioAvoid(IGNORE) still gated the
+  // buttons under a "constructive" packet. Legacy cioAvoid applies ONLY when no
+  // packet exists (flagged "LEGACY FALLBACK — PACKET REQUIRED" below).
+  const ap = it.action_policy
+  if (ap && ap.policy_version) {
+    const trig = (ap.warnings || []).join(' · ')
+    if (ap.action === 'PROPOSE_ENTRY' && ap.allowed) {
+      return action('PROPOSE_ENTRY', 'READY', 'Propose entry', {
+        subtext: 'blueprint eligible · approve + per-order 2FA in Options',
+        urgency: 'green', primaryLabel: 'Propose Entry', buttonVariant: 'solid-green', allowPrimary: true,
+      })
+    }
+    if (ap.action === 'RESEARCH_OPTIONS' && ap.allowed) {
+      return action('VIEW_INTEL', 'READY', 'Research options — structure eligible', {
+        subtext: ap.reason, urgency: 'green', primaryLabel: 'Research Options',
+        buttonVariant: 'neutral', allowPrimary: true,
+      })
+    }
+    if (ap.state === 'STALE' || ap.action === 'REFRESH') {
+      return action('REFRESH_DATA', 'FIX', 'Refresh — packet stale', {
+        subtext: (ap.blocks || []).join(' · ') || ap.reason,
+        urgency: 'amber', primaryLabel: 'Refresh', buttonVariant: 'neutral', allowPrimary: true,
+      })
+    }
+    // CONDITIONAL / BLOCKED / NO_ACTION / MONITOR — expose the condition, never a
+    // ready entry. A conditional plan states its trigger but does not offer entry.
+    const blocked = ap.state === 'BLOCKED'
+    return action('VIEW_INTEL', blocked ? 'SKIP' : 'WAIT',
+      ap.action === 'NO_ACTION' ? 'No trade — nothing eligible'
+        : blocked ? 'Blocked — event/data' : 'Conditional — watch the trigger', {
+      subtext: trig || ap.reason,
+      urgency: blocked ? 'red' : 'amber',
+      primaryLabel: 'View Intel', buttonVariant: 'neutral', allowPrimary: false,
+      warning: (trig || ap.blocks?.length)
+        ? { text: trig || (ap.blocks || []).join(' · '), severity: blocked ? 'red' : 'amber' }
+        : undefined,
+    })
+  }
+
   const noStop = warns.some(w => w.text.includes('NO STOP'))
   if (noStop) {
     return action('ADJUST_PLAN', 'FIX', 'Set stop before entry', {
@@ -240,13 +284,16 @@ export function deriveRecommendedAction(args: {
   }
 
   if (cioAvoid(it.latest_recommendation)) {
-    // Negative state gets an honest button — never a CTA dressed as opportunity.
+    // LEGACY FALLBACK — reached ONLY when no decision packet exists (the policy
+    // branch above returns first when it does). The one-word label gates here as
+    // a compatibility path until this symbol is analysed; it is not the packet
+    // authority. Labelled so the operator can see the card is not packet-governed.
     return action('VIEW_INTEL', 'SKIP', 'Do not add', {
-      subtext: `CIO ${cioLabel(it.latest_recommendation)}`,
+      subtext: `LEGACY FALLBACK — packet required · CIO ${cioLabel(it.latest_recommendation)}`,
       urgency: 'amber',
       primaryLabel: 'Review Risks',
       buttonVariant: 'neutral',
-      warning: { text: `CIO view: ${cioLabel(it.latest_recommendation)}`, severity: 'red' },
+      warning: { text: `LEGACY FALLBACK — build a decision packet · CIO ${cioLabel(it.latest_recommendation)}`, severity: 'red' },
     })
   }
 

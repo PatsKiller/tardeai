@@ -6479,6 +6479,32 @@ def _wl_items(query: dict = None):
         _universe_n = _uni.get("n")
     except Exception:
         _universe_n = None
+    # CANONICAL ACTION POLICY (2026-07-21) — the ONE authority for action
+    # eligibility, computed from the inline packet so the card renders exactly
+    # what the API decides (no cioAvoid drift). Symbols without a valid packet get
+    # action_policy=None; the card falls back to legacy behaviour behind a clearly
+    # named flag ("LEGACY FALLBACK — PACKET REQUIRED"), defaulting to build/refresh.
+    try:
+        import decision_action_policy as _pol
+        _open_props = set()
+        try:
+            _pr = _db_query("""SELECT DISTINCT upper(symbol) AS s FROM options_approval_queue
+                               WHERE status IN ('pending','approved')""") or []
+            _open_props = {r["s"] for r in _pr}
+        except Exception:
+            pass
+        for _it in _items:
+            _pkt = _it.get("decision_packet")
+            if _pkt and isinstance(_pkt, dict):
+                _it["action_policy"] = _pol.evaluate_action(
+                    _pkt, packet_id=None, generated_at=_it.get("decision_packet_at"),
+                    existing_proposal=(str(_it.get("symbol") or "").upper() in _open_props))
+            else:
+                _it["action_policy"] = None
+    except Exception as _pe:
+        for _it in _items:
+            _it.setdefault("action_policy", None)
+
     return {"count": len(_items), "items": _items,
             "facets": dict(sorted(_facets.items(), key=lambda x: -x[1])),
             "universe_count": _universe_n,
@@ -11656,6 +11682,38 @@ def _shadow_batch_start(body=None):
     subprocess.Popen(cmd, cwd=PROJECT_ROOT, start_new_session=True,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return {"ok": True, "started": True}
+
+
+def _decision_action_policy(query=None):
+    """GET /api/v2/decision/action-policy?symbol=X — the canonical action decision
+    for a symbol's latest live packet. Same evaluator the card renders inline, so
+    this is the parity reference: the card cannot advertise an action this refuses.
+    Read-only; advisory (upstream of approval + per-order 2FA)."""
+    query = query or {}
+    sym = query.get("symbol")
+    if isinstance(sym, (list, tuple)):
+        sym = sym[0] if sym else None
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    import decision_action_policy as _pol
+    row = _db_query("""SELECT packet_id, packet, generated_at FROM decision_packets
+                       WHERE upper(symbol)=upper(%s) AND superseded_by IS NULL
+                       ORDER BY generated_at DESC LIMIT 1""", (str(sym),), fetch="one")
+    if not row:
+        return {"ok": True, "symbol": str(sym).upper(), "action_policy": None,
+                "note": "no live packet — LEGACY FALLBACK, build a packet first"}
+    pkt = row["packet"] if isinstance(row["packet"], dict) else json.loads(row["packet"])
+    op = set()
+    try:
+        _pr = _db_query("""SELECT 1 FROM options_approval_queue
+                           WHERE upper(symbol)=upper(%s) AND status IN ('pending','approved') LIMIT 1""",
+                        (str(sym),)) or []
+        op = bool(_pr)
+    except Exception:
+        op = False
+    res = _pol.evaluate_action(pkt, packet_id=row["packet_id"],
+                               generated_at=str(row["generated_at"]), existing_proposal=bool(op))
+    return {"ok": True, "symbol": str(sym).upper(), "action_policy": res}
 
 
 def _shadow_strategy_packet(query=None):
@@ -32717,6 +32775,7 @@ ROUTES = {
     "/api/v2/defense/recommendations": _defense_recommendations,
     "/api/v2/shadow/strategy/status": _shadow_strategy_status,
     "/api/v2/shadow/strategy/packet": _shadow_strategy_packet,
+    "/api/v2/decision/action-policy": _decision_action_policy,
     "/api/v2/shadow/strategy/batch": _shadow_batch_status,
     "/api/v2/defense/core": _defense_core_registry,
     "/api/v2/defense/review": _defense_review,
