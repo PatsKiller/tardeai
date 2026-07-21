@@ -1,4 +1,4 @@
-# Maturity Control Board — 6.8/10
+# Maturity Control Board — 7.1/10
 
 A-5: complete | Closed trades: 0
 
@@ -10,7 +10,7 @@ A-5: complete | Closed trades: 0
 | agent_learning | ? | blocked |
 | backup_recovery | 5.3 | blocked |
 | documentation | 6.5 | warning |
-| governance | 6.0 | warning |
+| governance | 8.0 | healthy |
 | operational | 8.0 | healthy |
 | live_readiness | ? | blocked |
 
