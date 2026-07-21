@@ -27,7 +27,14 @@ KNOWN = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY",
          # SnapTrade (read-only holdings aggregation): consumer key + the per-user userSecret are secrets
          # (masked). For PERSONAL (PERS-) keys, SnapTrade provisions one user at signup and shows its
          # userId + userSecret in the dashboard — you PASTE them here (registerUser is production-only).
-         "SNAPTRADE_CONSUMER_KEY", "SNAPTRADE_USER_SECRET"]
+         "SNAPTRADE_CONSUMER_KEY", "SNAPTRADE_USER_SECRET",
+         # Alpaca multi-account slots (R2 2026-07-21) — PAPER is active path; TAXABLE/IRA are
+         # NOT ACTIVE scaffolds (write-only storage only; no live adapter / no validation ping).
+         "ALPACA_PAPER_API_KEY", "ALPACA_PAPER_SECRET_KEY",
+         "ALPACA_TAXABLE_API_KEY", "ALPACA_TAXABLE_SECRET_KEY",
+         "ALPACA_IRA_API_KEY", "ALPACA_IRA_SECRET_KEY",
+         # Legacy paper pair (deprecated — prefer ALPACA_PAPER_*)
+         "ALPACA_API_KEY", "ALPACA_SECRET_KEY"]
 # Editable CONFIG values (NOT secrets) managed in the same modal for completeness — shown in full, not
 # masked. SCHWAB_REFRESH_TOKEN and SCHWAB_TOKEN_ENC_KEY are DELIBERATELY excluded (the refresh token is
 # OAuth-flow-owned by schwab_token_manager; rotating the Fernet key orphans every stored token).
