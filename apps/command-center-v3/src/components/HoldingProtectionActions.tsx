@@ -54,7 +54,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const [validating, setValidating] = useState(false)
   const [preflightDiff, setPreflightDiff] = useState<PreflightDiff | null>(null)
   const [advisoryOverride, setAdvisoryOverride] = useState<any>(null)
-  const [pendingAction, setPendingAction] = useState<{ kind: 'request'; orderKind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET' } | { kind: 'confirm'; channel: 'web' | 'telegram' } | null>(null)
+  const [pendingAction, setPendingAction] = useState<{ kind: 'request'; orderKind: 'STOP' | 'TRAILING' | 'TRAILING_LIMIT' | 'STOP_LIMIT' | 'MARKET' } | { kind: 'confirm'; channel: 'web' | 'telegram' } | null>(null)
   // Operator overrides for the order parameters (2026-07-14). Empty = advisory value, so the
   // default flow is byte-identical to before. Advisory values are still sent as advised_stop
   // for the audit trail; the tier band is a hint, never a hard clamp — the per-order 2FA +
@@ -62,6 +62,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const [ovStop, setOvStop] = useState('')
   const [ovLimit, setOvLimit] = useState('')
   const [ovTrail, setOvTrail] = useState('')
+  const [ovLimitOffset, setOvLimitOffset] = useState('')   // TRAILING_LIMIT: limit rests this % below LAST
   const numOr = (v: string): number | null => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : null }
   const [liveStopOverride, setLiveStopOverride] = useState<any>(null)
   const effectivePr = advisoryOverride ? { ...pr, ...advisoryOverride } : pr
@@ -183,14 +184,20 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   /** Submission + preview use floor-reconciled advisory stop (logic.advisoryStop), not raw pr.stop_price.
    * Operator override fields (ovStop/ovLimit/ovTrail) overlay the advisory when non-empty; the pure
    * advisory is kept alongside so advised_stop in the request stays the advisory for the audit trail. */
-  const advisedForKind = (kind: StopOrderKind): { advisoryStop: number | null; trailPct: number | null; limitPrice: number | null; pureAdvisoryStop: number | null } => {
+  const advisedForKind = (kind: StopOrderKind): { advisoryStop: number | null; trailPct: number | null; limitPrice: number | null; limitOffset: number | null; pureAdvisoryStop: number | null } => {
     const lg = computeLogic(kind)
     const pureAdvisoryStop = lg.advisoryStop ?? stop
     const advisoryStop = (kind === 'STOP' || kind === 'STOP_LIMIT') ? (numOr(ovStop) ?? pureAdvisoryStop) : pureAdvisoryStop
     const advTrail = trail?.pct ?? (effectivePr?.suggested_trail_pct != null ? Number(effectivePr.suggested_trail_pct) : null)
-    const tr = kind === 'TRAILING' ? (numOr(ovTrail) ?? advTrail) : null
+    const isTrail = kind === 'TRAILING' || kind === 'TRAILING_LIMIT'
+    const tr = isTrail ? (numOr(ovTrail) ?? advTrail) : null
+    // TRAILING_LIMIT: limit offset defaults to the trail (limit AT the trigger); operator may widen it.
+    // Never narrower than the trail — a limit above the trigger could not fill on the way down.
+    const limitOffset = kind === 'TRAILING_LIMIT'
+      ? Math.max(numOr(ovLimitOffset) ?? (tr ?? 0), tr ?? 0) || null
+      : null
     const limitPrice = kind === 'STOP_LIMIT' ? (numOr(ovLimit) ?? advisoryStop) : null
-    return { advisoryStop, trailPct: tr, limitPrice, pureAdvisoryStop }
+    return { advisoryStop, trailPct: tr, limitPrice, limitOffset, pureAdvisoryStop }
   }
 
   const trailLabelFor = (pct: number | null | undefined) => {
@@ -199,7 +206,10 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   }
 
   const orderPreviewLine = (kind: StopOrderKind): string => {
-    const { advisoryStop: px, trailPct: tr } = advisedForKind(kind)
+    const { advisoryStop: px, trailPct: tr, limitOffset: lo } = advisedForKind(kind)
+    if (kind === 'TRAILING_LIMIT' && tr != null) {
+      return `SELL ${logic.wholeQty} ${sym} TRAILING_STOP_LIMIT (trail ${trailLabelFor(tr)}% / limit ${trailLabelFor(lo ?? tr)}% below) GTC`
+    }
     if (kind === 'TRAILING' && tr != null) {
       return `SELL ${logic.wholeQty} ${sym} TRAILING_STOP ${trailLabelFor(tr)}% GTC`
     }
@@ -318,7 +328,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     })
   }
 
-  const requestOrder = async (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET', opts?: {
+  const requestOrder = async (kind: 'STOP' | 'TRAILING' | 'TRAILING_LIMIT' | 'STOP_LIMIT' | 'MARKET', opts?: {
     label?: string; skipPreflight?: boolean; liveSnap?: any
     qtyOverride?: number
     stopPriceOverride?: number | null
@@ -345,7 +355,8 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         order_kind: kind,
         stop_price: kind === 'MARKET' ? null : useStop,
         limit_price: advised.limitPrice,
-        trail_pct: kind === 'TRAILING' ? useTrail : null,
+        trail_pct: (kind === 'TRAILING' || kind === 'TRAILING_LIMIT') ? useTrail : null,
+        limit_offset: kind === 'TRAILING_LIMIT' ? advised.limitOffset : null,
         advised_stop: advised.pureAdvisoryStop,
         current_price: effectivePrice,
         source_broker: effectivePr?.source_broker ?? effectivePr?.broker ?? effectivePr?.account ?? effectivePr?.source_account,
@@ -413,7 +424,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     }
   }
 
-  type RequestKind = 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'MARKET'
+  type RequestKind = 'STOP' | 'TRAILING' | 'TRAILING_LIMIT' | 'STOP_LIMIT' | 'MARKET'
   const preflightAndRequest = async (kind: RequestKind, opts?: { label?: string }) => {
     if (kind === 'MARKET') { requestOrder(kind, opts); return }
     const pf = await runClickPreflight(kind)
@@ -504,7 +515,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
     }
   }
 
-  const armStop = (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT') => preflightAndRequest(kind)
+  const armStop = (kind: 'STOP' | 'TRAILING' | 'TRAILING_LIMIT' | 'STOP_LIMIT') => preflightAndRequest(kind)
   const requestSellAll = () => {
     if (!window.confirm(`Sell ALL ${qty} ${sym} @ MARKET (${sellAllTif}) on ${acct}? Requires 2FA before submit.`)) return
     requestOrder('MARKET', { label: `Sell all ${qty} sh @ MARKET ${sellAllTif}` })
@@ -538,10 +549,12 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
 
   // A disabled live-stop button must ALWAYS explain itself: the tooltip carries the primary blocker reason,
   // and an inline reason line is rendered under the button row (see below). Never a silent gray-out.
-  const enabledTitle = (kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT') => kind === 'TRAILING'
+  const enabledTitle = (kind: 'STOP' | 'TRAILING' | 'TRAILING_LIMIT' | 'STOP_LIMIT') => kind === 'TRAILING_LIMIT'
+    ? `Request ${trailPct}% trailing stop-LIMIT via 2FA (limit rests below the trigger to cap slippage) — operator-approved, whole-share, evidence-bound`
+    : kind === 'TRAILING'
     ? `Request ${trailPct}% trailing stop via 2FA — operator-approved, whole-share, evidence-bound`
     : `Request fixed stop at $${stop != null ? stop.toFixed(2) : '—'} via 2FA — operator-approved, whole-share, evidence-bound`
-  const btn = (label: string, kind: 'STOP' | 'TRAILING' | 'STOP_LIMIT', highlight = false) => (
+  const btn = (label: string, kind: 'STOP' | 'TRAILING' | 'TRAILING_LIMIT' | 'STOP_LIMIT', highlight = false) => (
     <button
       onClick={e => { e.stopPropagation(); armStop(kind) }}
       disabled={busy || validating || liveBlocked}
@@ -961,6 +974,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
             {field('Trail % (trailing)', ovTrail, setOvTrail,
                    advTrail != null ? String(advTrail) : '—', trailOutOfBand,
                    tMin != null && tMax != null ? `(tier band ${tMin}\u2013${tMax}%)` : '')}
+            {field('Limit offset % (trailing-limit)', ovLimitOffset, setOvLimitOffset,
+                   advTrail != null ? String(advTrail) : '—', false,
+                   '(>= trail; limit rests below trigger)')}
             {trailOutOfBand && (
               <span style={{ fontSize: 10, color: AMBER, fontWeight: 700, flexBasis: '100%' }}>
                 ⚠ Trail {trailVal}% is outside the {String(effectivePr?.volatility_tier || logic.familyFloorLabel || 'tier').toUpperCase()} advisory band {tMin}\u2013{tMax}% — allowed, but the advisory disagrees. 2FA still required.
@@ -975,6 +991,7 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
           <span style={{ fontSize: 12, color: MUTED, fontWeight: 800 }}>Action:</span>
           {isSchwab && btn(`Apply Fixed Stop (2FA)`, 'STOP', !preferTrail && logic.advisory_stop_is_tighter_than_existing)}
           {isSchwab && (trailPct != null || numOr(ovTrail) != null) && btn(numOr(ovTrail) != null ? `Apply Trailing Stop (2FA)` : `Apply Advisory Trailing Stop (2FA)`, 'TRAILING', preferTrail)}
+          {isSchwab && (trailPct != null || numOr(ovTrail) != null) && btn('Apply Trailing-Limit Stop (2FA)', 'TRAILING_LIMIT')}
           {isSchwab && btn('Apply Stop-Limit (2FA)', 'STOP_LIMIT')}
           {(logic.liveStop != null || logic.liveStopIsTrailing) && (
             <button

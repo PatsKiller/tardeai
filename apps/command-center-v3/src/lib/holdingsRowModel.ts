@@ -1,6 +1,6 @@
 import type { StopStatusTone } from './holdingsTerminalTokens'
 import { computeStopCoverage, type StopCoverage } from './stopCoverage'
-import { buildStopLogic, type StopLogic } from './stopManagement'
+import { buildStopLogic, deriveStopKind, type StopLogic } from './stopManagement'
 
 export interface HoldingsRowInput {
   h: any
@@ -54,6 +54,11 @@ export interface HoldingsRowModel {
   /** Realized position P/L if the current stop fills (live broker stop preferred,
    *  advisory fallback). Equals (stop − cost) × shares. Null when unknowable. */
   plIfFired: number | null
+  /** Pill kind for the current protective stop: FIXED / STOP_LIMIT / TRAILING /
+   *  TRAILING_LIMIT / MONITORED / PLANNED / NONE (same taxonomy as the Stop desk). */
+  stopKind: string
+  stopTrailPct: number | null
+  stopOrderType: string | null
   stopLabel: string
   /** Imperative: what to do, e.g. "Tighten stop → $32.43" */
   stopInstruction: string
@@ -415,6 +420,18 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   const plIfFired = (pl$ != null && cur != null && stopForPl != null && sh > 0)
     ? Math.round((pl$ - sh * (cur - stopForPl)) * 100) / 100
     : null
+
+  // Current-stop KIND pill (fixed / stop-limit / trailing / trailing-limit / monitored / none),
+  // derived from the live broker order the same way the Stop Management desk does.
+  const liveOrderType = (input.confirmedStop?.order_type ?? input.confirmedStop?.orderType ?? null) as string | null
+  const isMonitored = String(h.stop_source || '').toLowerCase() === 'monitored'
+  const stopKind = deriveStopKind({
+    orderType: liveOrderType,
+    isTrailing: logic.liveStopIsTrailing,
+    hasLiveStop: hasLiveBroker,
+    monitored: isMonitored && liveStopPrice != null,
+  })
+  const stopTrailPct = logic.liveTrailPct ?? null
   const sizeMismatch = stopCoverage?.kind === 'partial' || stopCoverage?.kind === 'oversized'
 
   let copy = stopCopyFromLogic(logic, { isFidelity, isSchwab, health, signal, needsSellAll, shares: sh })
@@ -482,6 +499,9 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     stopPrice,
     liveStopPrice,
     plIfFired,
+    stopKind,
+    stopTrailPct,
+    stopOrderType: liveOrderType,
     stopLabel,
     stopInstruction: copy.instruction,
     stopContext: copy.context,

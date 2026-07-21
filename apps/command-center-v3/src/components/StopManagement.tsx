@@ -7,41 +7,16 @@ import { EvidenceBlock } from './EvidenceBlock'
 import CloudLlmRunButtons from './CloudLlmRunButtons'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubPanel } from '../lib/terminalHubChrome'
+import { StopKindPill } from './StopKindPill'
 
 // Portfolio → Stop Management. Aggregates broker-actual + advisor-planned stops with Yellow/Amber/Red alerts,
 // plus an Audit sub-tab (2FA stop requests + operator confirmations). Read-only view; live adjustments route
 // through the holding's existing gated 2FA panel (Schwab) or manual ticket (Fidelity) via onFocusHolding.
 // See docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md.
 
-const MUTED = '#94a3b8', TEXT0 = '#f8fafc', GREEN = '#22c55e', AMBER = '#f59e0b', RED = '#ef4444', BLUE = '#60a5fa', PURPLE = '#a855f7', CYAN = '#22d3ee'
-
-// Stop KIND → labelled, colour-coded pill. Fixed / stop-limit / trailing /
-// trailing-limit are visually distinct so the type is legible at a glance and
-// on the manage modal — not collapsed to one word.
-const STOP_KIND_PILL: Record<string, { label: string; color: string }> = {
-  FIXED:          { label: 'FIXED',          color: BLUE },
-  STOP_LIMIT:     { label: 'STOP LIMIT',     color: CYAN },
-  TRAILING:       { label: 'TRAILING',       color: GREEN },
-  TRAILING_LIMIT: { label: 'TRAILING LIMIT', color: PURPLE },
-  MONITORED:      { label: 'MONITORED',      color: AMBER },
-  PLANNED:        { label: 'PLANNED',        color: AMBER },
-  NONE:           { label: 'NO STOP',        color: RED },
-}
-
-function StopKindPill({ kind, trailPct, orderType, small }: { kind?: string | null; trailPct?: number | null; orderType?: string | null; small?: boolean }) {
-  const k = String(kind || 'NONE').toUpperCase()
-  const p = STOP_KIND_PILL[k] || STOP_KIND_PILL.NONE
-  const isTrail = k === 'TRAILING' || k === 'TRAILING_LIMIT'
-  const label = isTrail && trailPct != null ? `${p.label} ${trailPct}%` : p.label
-  return (
-    <span title={orderType ? `broker order type: ${orderType}` : p.label}
-      style={{ display: 'inline-block', fontSize: small ? 10 : 11, fontWeight: 800, letterSpacing: '.02em',
-               color: p.color, border: `1px solid ${p.color}`, background: `${p.color}1a`,
-               borderRadius: 999, padding: small ? '0 6px' : '1px 8px', whiteSpace: 'nowrap' }}>
-      {label}
-    </span>
-  )
-}
+const MUTED = '#94a3b8', TEXT0 = '#f8fafc', GREEN = '#22c55e', AMBER = '#f59e0b', RED = '#ef4444', BLUE = '#60a5fa', PURPLE = '#a855f7'
+// StopKindPill (FIXED / STOP_LIMIT / TRAILING / TRAILING_LIMIT / MONITORED / NONE) is now a shared
+// component in ./StopKindPill so the Holdings table renders the identical pill — imported above.
 const unwrap = (j: any) => (j && typeof j === 'object' && 'data' in j && j.data && typeof j.data === 'object') ? j.data : j
 const LEVEL_COLOR: Record<string, string> = { red: RED, amber: AMBER, yellow: '#eab308' }
 const SRC_LABEL: Record<string, string> = { broker: 'broker live', confirmed: 'confirmed', broker_snapshot: 'broker (last read)', monitored: 'monitored', planned: 'planned', none: '—' }

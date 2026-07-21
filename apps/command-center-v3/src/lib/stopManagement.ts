@@ -8,7 +8,24 @@ export type StopState =
   | 'SOURCE MISMATCH — BLOCKED'
   | 'ACTION REQUIRED'
 
-export type StopOrderKind = 'STOP' | 'TRAILING' | 'STOP_LIMIT' | 'OCO' | 'MARKET'
+export type StopOrderKind = 'STOP' | 'TRAILING' | 'TRAILING_LIMIT' | 'STOP_LIMIT' | 'OCO' | 'MARKET'
+
+/** Normalize a live broker order_type + trailing flag into a pill kind
+ *  (FIXED / STOP_LIMIT / TRAILING / TRAILING_LIMIT / MONITORED / PLANNED / NONE).
+ *  Single source shared by the Stop Management desk and the Holdings table; mirrors
+ *  the server-side derivation in api_v2.py. */
+export function deriveStopKind(opts: {
+  orderType?: string | null; isTrailing?: boolean | null; hasLiveStop?: boolean | null
+  monitored?: boolean | null; planned?: boolean | null
+}): string {
+  const ot = String(opts.orderType || '').toUpperCase()
+  const hasLimit = ot.includes('LIMIT')
+  if (opts.isTrailing) return hasLimit ? 'TRAILING_LIMIT' : 'TRAILING'
+  if (opts.hasLiveStop) return hasLimit ? 'STOP_LIMIT' : 'FIXED'
+  if (opts.monitored) return 'MONITORED'
+  if (opts.planned) return 'PLANNED'
+  return 'NONE'
+}
 
 export type StopActionDecision =
   | 'KEEP_EXISTING_STOP'
@@ -81,7 +98,7 @@ const BLOCKER_PRIORITY = [
 ]
 
 const FUND_SYMBOLS = new Set(['FCNTX', 'SPAXX'])
-const LIVE_STOP_KINDS = new Set<StopOrderKind>(['STOP', 'TRAILING', 'STOP_LIMIT', 'OCO'])
+const LIVE_STOP_KINDS = new Set<StopOrderKind>(['STOP', 'TRAILING', 'TRAILING_LIMIT', 'STOP_LIMIT', 'OCO'])
 /** Match brokers/quote_time.py — regular 15m; extended 60m; closed/overnight 18h (GTC rests until RTH). */
 const FRESH_MAX_AGE_SEC = 15 * 60
 const AFTER_HOURS_MAX_AGE_SEC = 60 * 60

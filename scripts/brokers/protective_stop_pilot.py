@@ -20,9 +20,13 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-# Schwab order_kind aliases — the UI uses "STOP" / "STOP_LIMIT" / "TRAILING"; normalize to policy names.
+# Schwab order_kind aliases — the UI uses "STOP" / "STOP_LIMIT" / "TRAILING" / "TRAILING_LIMIT"; normalize.
 _KIND_ALIASES = {"STOP": "STOP", "STOP_LIMIT": "STOP_LIMIT", "STOPLIMIT": "STOP_LIMIT",
                  "TRAILING": "TRAILING_STOP", "TRAILING_STOP": "TRAILING_STOP", "TRAIL": "TRAILING_STOP",
+                 # TRAILING_LIMIT = trailing stop that rests a LIMIT (not a market) once triggered — the trail
+                 # ratchets the trigger up with price, and a second offset caps fill slippage below the trigger.
+                 "TRAILING_LIMIT": "TRAILING_STOP_LIMIT", "TRAILING_STOP_LIMIT": "TRAILING_STOP_LIMIT",
+                 "TRAIL_LIMIT": "TRAILING_STOP_LIMIT",
                  # MARKET = the synthetic-stop EXIT for fractional positions: Schwab rejects a resting STOP on
                  # a fractional qty but ACCEPTS a Market-Day sell of the full qty. Used as the sell-all trigger.
                  "MARKET": "MARKET", "MKT": "MARKET", "SELL_ALL": "MARKET", "MARKET_DAY": "MARKET"}
@@ -50,7 +54,7 @@ def normalize_kind(order_kind: str) -> str:
 
 
 def build_order_spec(symbol: str, qty, order_kind: str, *, stop_price=None,
-                     limit_price=None, trail_pct=None) -> dict:
+                     limit_price=None, trail_pct=None, limit_offset=None) -> dict:
     """Exact Schwab order JSON for a protective SELL stop. Single-leg, EQUITY, SINGLE strategy, GTC."""
     ot = normalize_kind(order_kind)
     if not ot:
@@ -74,6 +78,22 @@ def build_order_spec(symbol: str, qty, order_kind: str, *, stop_price=None,
         spec["stopPriceLinkBasis"] = "LAST"
         spec["stopPriceLinkType"] = "PERCENT"
         spec["stopPriceOffset"] = float(trail_pct)
+    elif ot == "TRAILING_STOP_LIMIT":
+        # The trigger trails price by trail_pct; once triggered a LIMIT rests limit_offset% below LAST so the
+        # exit fills without becoming a market order (caps slippage in a fast move). limit_offset must be >=
+        # trail_pct or the limit would sit ABOVE the trigger and could never fill on the way down — default to
+        # the trail itself (limit AT the trigger) when the operator does not widen it.
+        if trail_pct is None:
+            raise ValueError("TRAILING_STOP_LIMIT requires trail_pct")
+        lo = float(limit_offset if limit_offset is not None else trail_pct)
+        if lo < float(trail_pct):
+            raise ValueError("TRAILING_STOP_LIMIT limit_offset must be >= trail_pct (limit at or below trigger)")
+        spec["stopPriceLinkBasis"] = "LAST"
+        spec["stopPriceLinkType"] = "PERCENT"
+        spec["stopPriceOffset"] = float(trail_pct)
+        spec["priceLinkBasis"] = "LAST"
+        spec["priceLinkType"] = "PERCENT"
+        spec["priceOffset"] = lo
     elif ot == "MARKET":
         # Sell-all EXIT: full (possibly fractional) qty at market. Schwab requires DAY for fractional
         # market orders; whole-share positions may use GTC (operator liquidation path on small holdings).
@@ -82,8 +102,8 @@ def build_order_spec(symbol: str, qty, order_kind: str, *, stop_price=None,
 
 
 def build_intent(account_key: str, symbol: str, qty, order_kind: str, *, stop_price=None,
-                 limit_price=None, trail_pct=None, advised_stop=None, current_price=None,
-                 held_qty=None, replace_order_id=None):
+                 limit_price=None, trail_pct=None, limit_offset=None, advised_stop=None,
+                 current_price=None, held_qty=None, replace_order_id=None):
     """Gate-consistent OrderIntent stamped PROTECTIVE_STOP_2C. Direction stays LONG (the SELL closes the
     long). The non-intent envelope fields (advised stop, live price, held qty, order_type) ride in
     meta.signal_evidence where the guard's protective gate reads them."""
@@ -109,6 +129,7 @@ def build_intent(account_key: str, symbol: str, qty, order_kind: str, *, stop_pr
                                        "current_price": float(current_price) if current_price is not None else None,
                                        "held_qty": float(held_qty) if held_qty is not None else None,
                                        "trail_pct": float(trail_pct) if trail_pct is not None else None,
+                                       "limit_offset": float(limit_offset) if limit_offset is not None else None,
                                        "replace_order_id": (str(replace_order_id) if replace_order_id else None)})
     _tif = TIF.DAY if ot == "MARKET" and _is_fractional_qty(qty) else TIF.GTC
     return OrderIntent(
@@ -159,16 +180,20 @@ def spec_from_intent(intent) -> dict:
     return build_order_spec(intent.instrument.symbol, intent.quantity.qty, ot,
                             stop_price=getattr(intent.entry, "stop_price", None),
                             limit_price=getattr(intent.entry, "limit_price", None),
-                            trail_pct=ev.get("trail_pct"))
+                            trail_pct=ev.get("trail_pct"), limit_offset=ev.get("limit_offset"))
 
 
 def order_summary(symbol: str, qty, order_kind: str, *, stop_price=None, limit_price=None,
-                  trail_pct=None, account_key=None) -> dict:
+                  trail_pct=None, limit_offset=None, account_key=None) -> dict:
     """Human-facing summary the modal echoes back (qty / type / price / TIF)."""
     ot = normalize_kind(order_kind)
     if ot == "MARKET":
         tif = "DAY" if _is_fractional_qty(qty) else "GTC"
         line = f"SELL {qty} {symbol.upper()} MARKET {tif}"
+    elif ot == "TRAILING_STOP_LIMIT":
+        tif = "GTC"
+        _lo = limit_offset if limit_offset is not None else trail_pct
+        line = f"SELL {qty} {symbol.upper()} TRAILING STOP-LIMIT (trail {trail_pct}% / limit {_lo}% below) GTC"
     elif ot == "TRAILING_STOP":
         tif = "GTC"
         line = f"SELL {qty} {symbol.upper()} TRAILING STOP {trail_pct}% GTC"
@@ -179,5 +204,5 @@ def order_summary(symbol: str, qty, order_kind: str, *, stop_price=None, limit_p
         tif = "GTC"
         line = f"SELL {qty} {symbol.upper()} STOP ${stop_price} GTC"
     return {"symbol": symbol.upper(), "qty": qty, "order_type": ot, "stop_price": stop_price,
-            "limit_price": limit_price, "trail_pct": trail_pct, "tif": tif, "ticket": line,
-            "account_key": account_key}
+            "limit_price": limit_price, "trail_pct": trail_pct, "limit_offset": limit_offset,
+            "tif": tif, "ticket": line, "account_key": account_key}

@@ -15,6 +15,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 SM = ROOT / "apps" / "command-center-v3" / "src" / "components" / "StopManagement.tsx"
+# The pill was lifted into a shared component so the Holdings table renders the identical one.
+PILL = ROOT / "apps" / "command-center-v3" / "src" / "components" / "StopKindPill.tsx"
+HOLD = ROOT / "apps" / "command-center-v3" / "src" / "components" / "HoldingsTableView.tsx"
 
 
 def test_api_emits_stop_kind_and_order_type():
@@ -36,7 +39,7 @@ def test_stop_kind_preserves_the_limit_distinction():
 
 
 def test_pill_has_a_distinct_colour_per_kind():
-    src = SM.read_text()
+    src = PILL.read_text()
     assert "STOP_KIND_PILL" in src
     # four principal kinds each mapped to a colour
     for kind in ("FIXED", "STOP_LIMIT", "TRAILING", "TRAILING_LIMIT"):
@@ -44,7 +47,7 @@ def test_pill_has_a_distinct_colour_per_kind():
 
 
 def test_pill_labels_are_human_readable():
-    src = SM.read_text()
+    src = PILL.read_text()
     blk = src[src.index("STOP_KIND_PILL"):src.index("STOP_KIND_PILL") + 700]
     assert "'STOP LIMIT'" in blk and "'TRAILING LIMIT'" in blk
 
@@ -54,7 +57,13 @@ def test_pill_rendered_on_row_and_modal():
     assert src.count("<StopKindPill") >= 2, "pill must show on the row AND the manage modal"
 
 
+def test_pill_rendered_on_holdings_table():
+    """The pill is the SAME shared component on the Portfolio > Holdings table."""
+    src = HOLD.read_text()
+    assert "<StopKindPill" in src and "from './StopKindPill'" in src
+
+
 def test_trailing_pill_shows_the_trail_pct():
-    src = SM.read_text()
+    src = PILL.read_text()
     blk = src[src.index("function StopKindPill"):src.index("function StopKindPill") + 900]
     assert "trailPct" in blk and "%" in blk

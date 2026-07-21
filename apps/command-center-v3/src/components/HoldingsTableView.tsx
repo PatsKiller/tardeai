@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import CountryFlag from './CountryFlag'
 import HoldingReportLinks from './HoldingReportLinks'
+import { StopKindPill } from './StopKindPill'
 import { fmt$ } from '../lib/format'
 import {
   accountBrand,
@@ -535,6 +536,9 @@ export default function HoldingsTableView({
                       ${m.liveStopPrice.toFixed(2)}
                     </span>
                   )}
+                </div>
+                <div style={{ margin: '2px 0' }}>
+                  <StopKindPill kind={m.stopKind} trailPct={m.stopTrailPct} orderType={m.stopOrderType} small />
                 </div>
                 <div style={{
                   fontSize: 10, fontWeight: 700, color: m.needsAction ? BB.amberAlt : BB.text0,

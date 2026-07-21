@@ -31,8 +31,10 @@ def _money(v) -> str:
 
 
 def build_intent(account_key: str, symbol: str, qty, order_kind: str, *, stop_price=None,
-                 limit_price=None, trail_pct=None, advised_stop=None, current_price=None,
-                 held_qty=None, replace_order_id=None, replace_stop_id=None):
+                 limit_price=None, trail_pct=None, limit_offset=None, advised_stop=None,
+                 current_price=None, held_qty=None, replace_order_id=None, replace_stop_id=None):
+    # limit_offset: accepted for signature parity with the Schwab pilot; Fidelity/SnapTrade
+    # has no native trailing-stop-limit, so it is ignored here.
     from brokers.order_intent import (OrderIntent, Instrument, Direction, EntrySpec, EntryMethod,
                                        Quantity, TIF, SessionPolicy, IntentMeta)
     ot = normalize_kind(order_kind)
@@ -110,7 +112,7 @@ def load_intent(intent_id: str):
 
 
 def order_summary(symbol: str, qty, order_kind: str, *, stop_price=None, limit_price=None,
-                  trail_pct=None, account_key: str | None = None) -> dict:
+                  trail_pct=None, limit_offset=None, account_key: str | None = None) -> dict:
     from fidelity_monitored_stop import ticket_line, FIDELITY_TICKET_PLATFORM
     ot = normalize_kind(order_kind)
     ticket = ticket_line(symbol, qty, ot, stop_price=stop_price, limit_price=limit_price, trail_pct=trail_pct)

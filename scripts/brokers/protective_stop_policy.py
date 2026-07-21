@@ -29,7 +29,7 @@ ENABLED = True                                   # ← MASTER GATE (commit to fl
 # below (one-line revert; all gate logic is retained, just bypassed).
 GATES_REMOVED = True
 PROTECTIVE_ACCOUNT_ALLOWLIST: tuple[str, ...] = ("schwab_taxable",)   # base: taxable only (IRAs wired-but-off below)
-ALLOWED_ORDER_TYPES = ("STOP", "STOP_LIMIT", "TRAILING_STOP", "OCO")   # OCO = protective stop + take-profit (P3)
+ALLOWED_ORDER_TYPES = ("STOP", "STOP_LIMIT", "TRAILING_STOP", "TRAILING_STOP_LIMIT", "OCO")   # OCO = protective stop + take-profit (P3)
 ALLOWED_INSTRUCTION = "SELL"                     # sell-to-close a long; never SELL_SHORT
 MAX_STOP_DRIFT_PCT = 8.0                          # placed stop must be within ±8% of the advised stop
 MAX_POSITION_NOTIONAL_USD = 250_000.0            # full-envelope per-order ceiling (a held lot's value)

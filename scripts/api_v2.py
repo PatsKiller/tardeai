@@ -19,7 +19,11 @@ from pathlib import Path
 import sys as _sys_heal
 for _stale in ("decision_action_policy", "packet_invalidation", "decision_packet",
                "event_normalizer", "position_truth", "trade_blueprints",
-               "shadow_decision_service"):
+               "shadow_decision_service",
+               # protective-stop placement modules are imported inside the handler; pop them so a
+               # new order type (e.g. TRAILING_STOP_LIMIT) goes live with the api_v2 reload.
+               "brokers.protective_stop_pilot", "brokers.snaptrade_protective_stop_pilot",
+               "brokers.protective_stop_policy"):
     _sys_heal.modules.pop(_stale, None)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -33654,6 +33658,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 stop_price = b.get("stop_price")
                 limit_price = b.get("limit_price")
                 trail_pct = b.get("trail_pct")
+                limit_offset = b.get("limit_offset")   # TRAILING_STOP_LIMIT: limit rests this % below LAST
                 advised_stop = b.get("advised_stop")
                 source_broker = str(b.get("source_broker") or "").strip().lower()
                 instrument_type = str(b.get("instrument_type") or "").strip().lower()
@@ -33686,7 +33691,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 # MARKET sell-all keeps the FULL qty (fractional OK — DAY TIF). Stops require an explicit
                 # whole-share confirmation before the server floors qty; no silent broker-write path.
                 qty_note = None
-                if acct.startswith("schwab") and ot in ("STOP", "TRAILING_STOP", "STOP_LIMIT", "OCO"):
+                if acct.startswith("schwab") and ot in ("STOP", "TRAILING_STOP", "TRAILING_STOP_LIMIT", "STOP_LIMIT", "OCO"):
                     try:
                         _qf = float(qty); _qi = int(_qf)   # floor (positive long qty)
                         if _qi != _qf:
@@ -33719,7 +33724,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                             pass
                 summ = _psp.order_summary(sym, qty, kind, stop_price=stop_price,
                                           limit_price=limit_price, trail_pct=trail_pct,
-                                          account_key=acct)
+                                          limit_offset=limit_offset, account_key=acct)
                 ticket = summ["ticket"]
                 # server truth for the gate-critical fields (never trust the client for held qty / price)
                 held_qty, current_price = _protective_holding_truth(acct, sym)
@@ -33769,7 +33774,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                             return 200, {"ok": False, "mode": "blocked", "gate": "stop_not_protective",
                                          "error": f"Advisory stop ${float(stop_price):.2f} is at/above current price ${cp:.2f}.",
                                          "ticket": ticket, "account": acct}
-                        if ot == "TRAILING_STOP" and trail_pct is not None and stop_price is not None:
+                        if ot in ("TRAILING_STOP", "TRAILING_STOP_LIMIT") and trail_pct is not None and stop_price is not None:
                             expected = cp * (1 - float(trail_pct) / 100.0)
                             # An X% trailing order triggers X% below current BY DEFINITION — internally
                             # consistent. The advised FIXED stop is a SEPARATE swing-low-anchored fallback,
@@ -33840,6 +33845,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if schwab_live_route:
                     intent = _psp.build_intent(acct, sym, qty, kind, stop_price=stop_price,
                                                limit_price=limit_price, trail_pct=trail_pct,
+                                               limit_offset=limit_offset,
                                                advised_stop=advised_stop, current_price=current_price,
                                                held_qty=held_qty, replace_order_id=replace_order_id)
                     # Stamp residual_qty on the intent so the evidence-bound order_spec_hash binds
