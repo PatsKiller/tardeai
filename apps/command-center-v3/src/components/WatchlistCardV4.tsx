@@ -15,6 +15,7 @@ import {
   type CardActionType,
 } from '../lib/watchlistCardAction'
 import CountryFlag from './CountryFlag'
+import DecisionPacketBand from './DecisionPacketBand'
 import ShadowStrategyButton from './ShadowStrategyButton'
 import { LadderLine } from './primitives/cardPrimitives'
 import { type RiskPct } from '../lib/watchlistProposeSizing'
@@ -135,6 +136,10 @@ export default function WatchlistCardV4({
   const cioRec = it.latest_recommendation ? String(it.latest_recommendation).replace(/_/g, ' ') : null
   const cioLabel = cioRec ?? (pa?.rec ? String(pa.rec).replace(/_/g, ' ') : 'watch')
   const cioAccent = cioRecColor(it.latest_recommendation || cioLabel)
+  // When a multidimensional decision packet leads the card, the legacy verdict
+  // band is demoted: dimmed, its label prefixed "prior", and the anchored
+  // AGREE/SPLIT badge hidden (the packet shows blind per-dimension agreement).
+  const hasPacket = !!(it.decision_packet && typeof it.decision_packet === 'object')
   const confNum = it.research_confidence != null
     ? Number(it.research_confidence)
     : (it.hermes_score_components?._confidence != null ? Number(it.hermes_score_components._confidence) : null)
@@ -363,10 +368,18 @@ export default function WatchlistCardV4({
         </div>
       </div>
 
-      {/* ② Recommendation + status strip */}
+      {/* ①ª PRIMARY decision surface — the multidimensional packet leads when one
+          exists; renders nothing otherwise so the legacy band below is unchanged. */}
+      <DecisionPacketBand packet={it.decision_packet} generatedAt={it.decision_packet_at} />
+
+      {/* ② Recommendation + status strip — DEMOTED to a "prior" strip when a
+          decision packet is present above it (dimmer, relabelled, the anchored
+          AGREE/SPLIT badge hidden since the packet shows blind per-dimension
+          agreement instead). Unchanged when no packet exists. */}
       <div
         onClick={e => e.stopPropagation()}
         style={{
+          opacity: hasPacket ? 0.55 : 1,
           display: 'flex',
           alignItems: 'center',
           gap: 8,
@@ -389,11 +402,14 @@ export default function WatchlistCardV4({
         <span style={{ flex: 1, minWidth: 120, fontSize: 10.5, fontWeight: 600, color: BB.text0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={whyLine || action.heroText}>
           {whyLine || action.heroText}
         </span>
-        <span style={{ ...numStyle, fontSize: 9, fontWeight: 800, color: cioAccent, textTransform: 'uppercase', flexShrink: 0 }} title={`CIO view: ${cioLabel}`}>
-          {cioLabel}
+        <span style={{ ...numStyle, fontSize: 9, fontWeight: 800, color: cioAccent, textTransform: 'uppercase', flexShrink: 0 }}
+          title={hasPacket ? `prior one-word CIO label — the decision packet above is the source of truth` : `CIO view: ${cioLabel}`}>
+          {hasPacket ? `prior ${cioLabel}` : cioLabel}
         </span>
-        {it.models_agree === true && <span style={{ fontSize: 8, color: BB.green, fontWeight: 800, flexShrink: 0 }}>AGREE</span>}
-        {it.models_agree === false && <span style={{ fontSize: 8, color: BB.amber, fontWeight: 800, flexShrink: 0 }}>SPLIT</span>}
+        {/* the anchored models_agree badge is hidden when a packet leads — the
+            packet's blind per-dimension agreement replaces it */}
+        {!hasPacket && it.models_agree === true && <span style={{ fontSize: 8, color: BB.green, fontWeight: 800, flexShrink: 0 }}>AGREE</span>}
+        {!hasPacket && it.models_agree === false && <span style={{ fontSize: 8, color: BB.amber, fontWeight: 800, flexShrink: 0 }}>SPLIT</span>}
         {confNum != null && (
           <span style={{ ...numStyle, fontSize: 8, color: BB.text3, flexShrink: 0 }} title="Research confidence">{confNum.toFixed(2)}</span>
         )}

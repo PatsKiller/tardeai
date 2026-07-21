@@ -6218,6 +6218,13 @@ def _wl_items(query: dict = None):
                     THEN 'market_quotes' ELSE 'enrichment' END AS price_source,
                p.price AS price_enriched,
                mq.price AS price_live,
+               -- PRIMARY DECISION SURFACE (2026-07-21): the latest live shadow
+               -- decision packet, attached inline so the card renders the
+               -- multidimensional summary as its LEAD without firing a
+               -- per-card /packet request. Null for symbols not yet analysed —
+               -- the card falls back to the legacy verdict band, no regression.
+               dpk.packet AS decision_packet,
+               dpk.generated_at AS decision_packet_at,
                sc.strategy_type, sc.latest_price, sc.support, sc.resistance,
                sc.ideal_entry, sc.stop_loss, sc.target_price, sc.risk_reward,
                sc.confidence as strategy_confidence, sc.account_fit,
@@ -6267,6 +6274,10 @@ def _wl_items(query: dict = None):
         LEFT JOIN LATERAL (SELECT t.price, t.fetched_at FROM market_quotes t
                            WHERE t.symbol = p.symbol
                            ORDER BY t.fetched_at DESC LIMIT 1) mq ON true
+        LEFT JOIN LATERAL (SELECT dpp.packet, dpp.generated_at FROM decision_packets dpp
+                           WHERE upper(dpp.symbol) = upper(p.symbol)
+                             AND dpp.superseded_by IS NULL
+                           ORDER BY dpp.generated_at DESC LIMIT 1) dpk ON true
         LEFT JOIN LATERAL (SELECT * FROM watchlist_strategy_cards t WHERE t.symbol = p.symbol LIMIT 1) sc ON true
         LEFT JOIN LATERAL (SELECT * FROM watchlist_research_cards t WHERE t.symbol = p.symbol LIMIT 1) rc ON true
         -- failed-LLM artifacts ("LLM error: …") never surface as CIO notes (purged 2026-07-03; guard in run_synthesis)

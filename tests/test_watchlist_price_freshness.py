@@ -83,11 +83,19 @@ def test_no_literal_percent_in_the_price_sql():
 
 
 def test_lateral_join_does_not_defeat_the_index():
-    """upper() on either side of the join makes
+    """upper() on either side of the MARKET_QUOTES join makes
     idx_market_quotes_symbol_fetched_at_desc unusable against 3.4M rows and took
-    the endpoint from ~1.0s to 142s."""
-    blk = _price_block()
-    join = blk[blk.index("FROM market_quotes t"):]
+    the endpoint from ~1.0s to 142s.
+
+    Scoped to the market_quotes lateral only — a later decision_packets lateral
+    legitimately uses upper() because that table is tiny AND has a functional
+    index on upper(symbol) (idx_decision_packets_live); slicing to the whole
+    price block would wrongly flag it."""
+    from pathlib import Path
+    import api_v2
+    src = Path(api_v2.__file__).read_text()
+    start = src.index("FROM market_quotes t")
+    join = src[start:src.index("ON true", start)]
     assert "upper(t.symbol)" not in join and "upper(p.symbol)" not in join, \
         "upper() in the market_quotes join defeats the index — 142s regression"
     assert "t.symbol = p.symbol" in join
