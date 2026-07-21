@@ -72,6 +72,11 @@ engine advises stop  →  [Queue stop] (Open Trades card)  →  preflight (polic
    Fixed STOP only when the engine says no-trail (income / underwater). No manual walk-up needed.
 4. **Envelope = taxable only first** (IRAs excluded until proven), matching the canary pilot.
 
-These are wired into `protective_stop_policy.py` semantics: SELL-to-close · STOP/STOP_LIMIT/TRAILING_STOP
+> **2026-07-21 (commit 06cc5349):** a 4th Schwab type — **`TRAILING_STOP_LIMIT`** (trail offset + limit
+> offset, `limit_offset ≥ trail_pct`) — is now in the policy allowlist and UI. Trades market-on-trigger
+> slippage for non-fill/gap-through risk. Schwab only; Fidelity/SnapTrade advisory/manual. See
+> `docs/STOP_METHODOLOGY.md` → "Trailing STOP-LIMIT".
+
+These are wired into `protective_stop_policy.py` semantics: SELL-to-close · STOP/STOP_LIMIT/TRAILING_STOP/TRAILING_STOP_LIMIT
 · taxable · qty≤held · within ±5% of advised · ≤$250K/order. Build the execute endpoints + monitor
 NEXT, after the Stage 2b canary test passes and this spec is approved.

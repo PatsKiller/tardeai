@@ -45,7 +45,7 @@ holdings card  →  POST /api/v2/holdings/protective-stop  (build intent, server
    ├─ protective_stop_policy.evaluate()   ── the committed ENVELOPE (commit-only, tamper-evidenced)
    │     • ENABLED master gate
    │     • account ∈ effective_account_allowlist()  (taxable + IRAs when IRA_PROTECTIVE_ENABLED)
-   │     • instruction == SELL (sell-to-close)         • order_type ∈ STOP/STOP_LIMIT/TRAILING_STOP
+   │     • instruction == SELL (sell-to-close)         • order_type ∈ STOP/STOP_LIMIT/TRAILING_STOP/TRAILING_STOP_LIMIT/OCO
    │     • stop BELOW current price                     • |stop − advised| ≤ ±8% drift
    │     • qty ≤ shares held                            • notional ≤ $250,000
    │

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-21 — Holdings stop-kind pill + P/L-if-fired + trailing-STOP-LIMIT placement
+
+Docs: `docs/STOP_METHODOLOGY.md` (v3.1). Commits: `d251c84b`, `06cc5349`.
+Tests: `tests/test_holdings_pl_if_fired.py` (15), `tests/test_stop_kind_taxonomy.py` (13),
+`tests/test_stop_kind_pills.py`, `tests/test_trailing_limit_placement.py` (12).
+
+- **Holdings table P/L-if-fired** — each row shows "if fired ±$N", the realized position P/L if the
+  current stop executes: `pl$ − shares × (price − stop)` = `(stop − cost) × shares`; live broker stop
+  preferred, advisory fallback; null (never 0) when no stop/cost/price; tooltip names the stop source.
+- **Holdings stop-kind pill** — colour-coded FIXED / STOP LIMIT / TRAILING / TRAILING LIMIT / MONITORED /
+  NO STOP, from the shared `StopKindPill` + `deriveStopKind` (`lib/stopManagement.ts`); the Stop
+  Management desk imports the same component — one source of truth, no fork; unknown types → NO STOP.
+- **Trailing STOP-LIMIT** — 4th protective placement option (Schwab `TRAILING_STOP_LIMIT`): trail offset
+  + limit offset (`limit_offset ≥ trail_pct`, clamped in UI, revalidated in the spec builder). Full path
+  through `protective_stop_pilot` / `protective_stop_policy` / `api_v2` / `HoldingProtectionActions`;
+  Fidelity/SnapTrade unsupported (advisory/manual). Advisory/preview + per-order 2FA; no order submitted.
+- **Primary-card tests reconciled** — `test_primary_card_replacement.py` moved from stale literal-copy
+  assertions to semantic operator-contract assertions after the `82415fa6` operator-card refactor
+  (band leads, legacy only in audit drawer, READY-only proposal CTA, stale→REFRESH, held→position language).
+
 ## 2026-07-21 — Alpaca paper due diligence + trading-env taxonomy
 
 Docs: `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md`,

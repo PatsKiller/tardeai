@@ -1,6 +1,6 @@
 # Stop & Trailing-Stop Methodology (canonical)
 
-**Status:** Active · **Updated:** 2026-07-14 v3 (dynamic tiers + operator surfaces) · **Scope:** protective stop / trailing-stop advisories for **real-account holdings** (Schwab + Fidelity). Paper/Alpaca execution is covered separately by [`OCO_ATM_UNIFICATION_DESIGN.md`](design/OCO_ATM_UNIFICATION_DESIGN.md) and `alpaca_stop_manager.py`. **Momentum scalp paper trades** use a distinct layered policy: [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md). **Click-time preflight UX** (operator choices 1A–5A): see §9 and [`runbooks/protective-stop-integration-2026-06-30.md`](runbooks/protective-stop-integration-2026-06-30.md#click-time-preflight-portfolio-ux-1a5a).
+**Status:** Active · **Updated:** 2026-07-21 v3.1 (dynamic tiers + operator surfaces + trailing-STOP-LIMIT placement + Holdings stop-kind pill & P/L-if-fired; commits d251c84b, 06cc5349) · **Scope:** protective stop / trailing-stop advisories for **real-account holdings** (Schwab + Fidelity). Paper/Alpaca execution is covered separately by [`OCO_ATM_UNIFICATION_DESIGN.md`](design/OCO_ATM_UNIFICATION_DESIGN.md) and `alpaca_stop_manager.py`. **Momentum scalp paper trades** use a distinct layered policy: [`MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md`](MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md). **Click-time preflight UX** (operator choices 1A–5A): see §9 and [`runbooks/protective-stop-integration-2026-06-30.md`](runbooks/protective-stop-integration-2026-06-30.md#click-time-preflight-portfolio-ux-1a5a).
 
 > **Advisory only.** Nothing here places, modifies, or cancels a broker order. Real-account stops are operator-placed (Fidelity manual / Schwab per-order 2FA). The engine recommends; the operator executes.
 
@@ -158,9 +158,43 @@ curl -X POST :7777/api/v2/holdings/protective-stop -H 'Content-Type: application
 curl -X POST :7777/api/v2/holdings/protective-stop/confirm -d '{"intent_id":"...","channel":"web",
   "ticker_confirmation":"SCHG","code":"123456"}'
 ```
-`order_kind` also accepts `STOP_LIMIT` (+`limit_price`) and `TRAILING_STOP` (+`trail_pct`).
+`order_kind` also accepts `STOP_LIMIT` (+`limit_price`), `TRAILING_STOP` (+`trail_pct`) and
+`TRAILING_LIMIT` (+`trail_pct` +`limit_offset`, Schwab only — see below).
 A stale `quote_at` is rejected (stale-quote gate); Fidelity accounts return a manual ticket
 instead of a 2FA request; nothing can be placed without STEP 2.
+
+### Trailing STOP-LIMIT — fourth placement option (2026-07-21, commit 06cc5349, Schwab only)
+**Status:** live · advisory/preview + Schwab per-order 2FA · **broker:** Schwab (`TRAILING_STOP_LIMIT`);
+Fidelity/SnapTrade has **no native** trailing-stop-limit and stays advisory/manual.
+**Source:** `brokers/protective_stop_pilot.py` (`build_order_spec`/`build_intent`/`spec_from_intent`),
+`brokers/protective_stop_policy.py` (`ALLOWED_ORDER_TYPES`), `api_v2.py` `/api/v2/holdings/protective-stop`,
+`HoldingProtectionActions.tsx` + `lib/stopManagement.ts`. **Tests:** `tests/test_trailing_limit_placement.py`.
+**Non-goals:** does NOT protect against all slippage; not offered on non-Schwab brokers; never auto-submits.
+
+A trailing stop that rests a **LIMIT** (not a market order) once triggered. Two offsets:
+- **trail** (`trail_pct`, Schwab `stopPriceLinkType=PERCENT` / `stopPriceOffset`): the trigger ratchets
+  up with price and fires when price falls `trail_pct` below the peak.
+- **limit offset** (`limit_offset`, Schwab `priceLinkType=PERCENT` / `priceOffset`): once triggered, the
+  resting SELL limit sits `limit_offset` below LAST. **Invariant: `limit_offset ≥ trail_pct`** (a limit
+  above the trigger could never fill on the way down). The UI clamps it (`Math.max(limit, trail)`) and
+  the spec builder independently raises `ValueError` if violated — defence in depth. Default = the trail
+  (limit AT the trigger).
+- Side SELL, whole-share only (fractional → sell-all @ market path), TIF GTC.
+
+**Numerical example** — reference price $100, trail 5%, limit offset 6%:
+- The trigger trails 5% below the peak. If price peaks at $100 and falls, the stop triggers at **$95**.
+- On trigger a SELL LIMIT is placed **6% below LAST** (≈ **$94** if LAST is $100 at trigger).
+- **Risk disclosure:** this replaces market-order slippage with **non-fill / gap-through risk** — in a fast
+  decline price can gap below the $94 limit and the order does **not** fill, leaving the position unprotected
+  until re-worked. A **wider** limit offset raises fill probability but permits more loss before filling. It
+  is **not** protection against all slippage; it is a slippage-vs-fill tradeoff the operator chooses. A plain
+  `TRAILING_STOP` (market on trigger) fills but at an unknown price; `TRAILING_LIMIT` caps the price but may
+  not fill.
+
+Confirmation reconstructs the exact ticket server-side from the stored intent (`spec_from_intent`), so a
+tampered symbol / account / qty / trail / limit offset between STEP 1 and STEP 2 invalidates it. The
+`TRAILING_STOP_LIMIT` type is in the policy allowlist and passes the same protective gates as `TRAILING_STOP`
+(intent stop_price = advised floor < price). No path bypasses approval or per-order 2FA.
 
 ### Operator surfaces (2026-07-14, commits da36bf72…2f63d77d)
 - **VOL badges** — color-coded low/medium/high (green/amber/red) on every Holdings-table row, holdings
@@ -172,10 +206,18 @@ instead of a 2FA request; nothing can be placed without STEP 2.
   placement)`. One shared helper (`volTierTooltip`) drives every surface.
 - **Drawer** — cells labeled **CURRENT LIVE BROKER STOP** vs **ADVISORY RECOMMENDATION** (price + %
   for both); buttons **Apply Fixed Stop (2FA)** / **Apply (Advisory) Trailing Stop (2FA)** /
-  **Apply Stop-Limit (2FA)** / **Keep Current Stop**; operator-editable **order parameters** (stop $,
-  limit $ — the backend accepted `limit_price` since Stage 2c but the UI never sent it — and trail %
-  with tier-band hint + out-of-band amber warning; blank = advisory; `advised_stop` in the request
-  always carries the PURE advisory for the audit trail).
+  **Apply Trailing-Limit Stop (2FA)** (Schwab, 2026-07-21) / **Apply Stop-Limit (2FA)** /
+  **Keep Current Stop**; operator-editable **order parameters** (stop $,
+  limit $ — the backend accepted `limit_price` since Stage 2c but the UI never sent it — trail %
+  with tier-band hint + out-of-band amber warning, and **limit offset %** for trailing-limit;
+  blank = advisory; `advised_stop` in the request always carries the PURE advisory for the audit trail).
+- **Holdings table stop column (2026-07-21, commits d251c84b + 06cc5349)** — each row shows a
+  colour-coded **stop-kind pill** (FIXED / STOP LIMIT / TRAILING / TRAILING LIMIT / MONITORED / NO STOP)
+  from the shared `StopKindPill` + `deriveStopKind` (`lib/stopManagement.ts`; the Stop desk imports the
+  same component — no fork), plus **"if fired ±$N"**, the realized position P/L if the current stop
+  executes: `pl$ − shares × (price − stop)` = `(stop − cost) × shares`, using the live broker stop
+  (advisory fallback), the identical arithmetic the drawer shows. Null (not zero) when no stop/cost/price.
+  Tests: `tests/test_stop_kind_pills.py`, `tests/test_stop_kind_taxonomy.py`, `tests/test_holdings_pl_if_fired.py`.
 - **Keep Current Stop** → `POST /api/v2/holdings/protective-stop/keep`: audit-only
   `stop_decisions` row (`KEEP_CURRENT`, `operator_web`, live-vs-advisory note). Never touches a
   broker order.
