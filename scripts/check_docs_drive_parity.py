@@ -18,6 +18,10 @@ CANONICAL = [
     "docs/options-module.md",
     "docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md",
     "docs/COMMAND_CENTER_V3_WATCHLIST.md",
+    "docs/brokers/trading-environments.md",
+    "docs/brokers/paper-trading.md",
+    "docs/brokers/paca-accounts.md",
+    "docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md",
     "docs/DOCUMENTATION_INDEX.md",
     "docs/CHANGELOG.md",
 ]

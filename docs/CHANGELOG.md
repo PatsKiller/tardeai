@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-21 — Alpaca paper due diligence + trading-env taxonomy
+
+Docs: `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md`,
+`trading-environments.md`, `paper-trading.md`, `paca-accounts.md`.
+
+- Full-repo inventory of Alpaca/paper (~800 mentions; core runtime catalogued).
+- As-is Path A procedures (equity + options paper lanes) and Mermaid flows.
+- Canonical env IDs: `paper` | `paca_personal` | `paca_ira` (live not implemented).
+- Gap analysis for live Alpaca personal/IRA; credential split + factory backlog.
+- Security: no secrets in docs; flag bak-file key hygiene.
+
 ## 2026-07-21 — Operator decision card + RTH few-hour plan refresh
 
 Docs: `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` · watchlist: `docs/COMMAND_CENTER_V3_WATCHLIST.md`.  

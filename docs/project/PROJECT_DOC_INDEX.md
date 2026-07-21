@@ -1,3 +1,11 @@
+## Alpaca Paper Due Diligence + Trading Environments (2026-07-21)
+| Document | Purpose |
+|----------|---------|
+| `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md` | Full inventory + risks + backlog |
+| `docs/brokers/trading-environments.md` | Canonical `paper` / `paca_personal` / `paca_ira` taxonomy |
+| `docs/brokers/paper-trading.md` | Path A operator procedures |
+| `docs/brokers/paca-accounts.md` | Future live Alpaca personal/IRA (roadmap) |
+
 ## Decision Packet Operator Card + RTH Refresh (2026-07-21)
 | Document | Purpose |
 |----------|---------|

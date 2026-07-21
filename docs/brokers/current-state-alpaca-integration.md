@@ -3,6 +3,13 @@
 **Status:** COMPLETE (2026-06-11) · **Method:** full code-trace (file:line cited) · **Scope:** paper trading
 only — there is no live Alpaca path anywhere; live endpoint is BLOCKED at adapter init.
 
+> **2026-07-21 refresh:** Full inventory, options paper lane, taxonomy for future **Paca personal / Paca IRA**,
+> and operator procedures live in:
+> - `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md` (audit)
+> - `docs/brokers/trading-environments.md` (canonical env IDs)
+> - `docs/brokers/paper-trading.md` / `docs/brokers/paca-accounts.md`
+> This Phase-1 discovery remains valid for the equity paper order lifecycle.
+
 ## Verified facts
 - Paper-only enforcement is layered and fail-closed: `ENABLE_ALPACA_PAPER`, `ALPACA_MODE=paper` (init +
   runtime), live-endpoint detection (`alpaca_paper_adapter.py:47-49` raises on `api.alpaca.markets`),

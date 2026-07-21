@@ -218,6 +218,13 @@ port 7777); API checks OK.
 Pilot allowlist expanded to `schwab_taxable` + both IRAs; `schwab_pilot_standing_unlock` (no session
 expiry, armed_until 2099); `CANARY_SESSION_DATE=2099-12-31`; cap 9999. Per-order 2FA unchanged.
 
+## 2026-07-21 — Alpaca paper due diligence + trading-env taxonomy (docs + Drive)
+
+Full audit of Alpaca/paper usage; freeze taxonomy `paper` | `paca_personal` | `paca_ira` before any
+live Alpaca keys. Docs: `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md`,
+`trading-environments.md`, `paper-trading.md`, `paca-accounts.md`. No code path to live Alpaca opened.
+Synced to Drive with index/changelog.
+
 ## 2026-07-21 — Operator decision card + RTH plan refresh (docs + Drive)
 
 Shipped compact watchlist **operator card** (one state/CTA, timestamps) and fixed

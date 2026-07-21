@@ -119,6 +119,10 @@ Watchlist bridge rows land directly on `schwab_taxable` (configurable) — no ma
 
 ## Related docs
 
+- `docs/brokers/trading-environments.md` — **env taxonomy** (`paper` / `paca_personal` / `paca_ira`)
+- `docs/brokers/paper-trading.md` — Path A as-is procedures (Alpaca paper)
+- `docs/brokers/paca-accounts.md` — future live Alpaca personal/IRA (not implemented)
+- `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md` — full Alpaca inventory + gaps
 - `docs/BROKER_TRADE_PLAN_GATE.md` — authoritative trade plan gate + R:R policy floor
 - `docs/WATCHLIST_PROPOSAL_BRIDGE.md` — watchlist → broker queue sync + source badges
 - `docs/BROKER_PROPOSALS_UI.md` — Broker Proposals tab (thesis band, refresh, cloud oversight)

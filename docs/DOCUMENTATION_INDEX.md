@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-21 (Operator decision card + RTH few-hour plan refresh)
+**Updated:** 2026-07-21 (Alpaca due diligence + trading-env taxonomy; operator card RTH refresh)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -62,6 +62,11 @@
 ### Broker Integration *(paths corrected — these live under docs/architecture & docs/brokers)*
 | Document | Purpose | Status |
 |----------|---------|--------|
+| `docs/brokers/trading-environments.md` | **Canonical env taxonomy** — `paper` / `paca_personal` / `paca_ira`; account keys; credential layout | Active (2026-07-21) |
+| `docs/brokers/paper-trading.md` | **Path A as-is** — Alpaca paper equity + options procedures | Active (2026-07-21) |
+| `docs/brokers/paca-accounts.md` | **Future** live Alpaca personal + IRA — gaps, phases (not implemented) | Active roadmap (2026-07-21) |
+| `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md` | Full inventory, risks, refactor backlog | Active (2026-07-21) |
+| `docs/brokers/current-state-alpaca-integration.md` | 2026-06-11 equity paper code-trace (still valid) | Active |
 | `docs/architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md` | Schwab Phase 1 read-only — proven capabilities, fenced writes, Gate A | Active |
 | `docs/architecture/SCHWAB_API_CAPABILITY_MAP.md` | Every Schwab endpoint → BUILT / READY / FENCED / NEVER | Active |
 | `docs/brokers/stage2a-canary-protocol.md` | Stage 2a canary runbook — gap patches, risk caps, approval flow | Active — canary date set to **2026-06-22** in `canary_gate.py` |
