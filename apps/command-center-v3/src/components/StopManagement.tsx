@@ -59,7 +59,7 @@ type Row = {
   divergence: string | null; distance_pct: number | null; distance_atr: number | null; distance_r: number | null
   distance_dollars?: number | null; unrealized_r?: number | null
   news_title?: string | null; news_source?: string | null; news_at?: string | null
-  dollars_at_risk: number; unrealized_dollars: number | null; has_active_stop: boolean
+  dollars_at_risk: number; unrealized_dollars: number | null; pl_if_fired?: number | null; has_active_stop: boolean
   is_trailing: boolean; trailing_should_be_active: boolean; heat_contribution_pct: number | null
   trail_pct: number | null; trailing_trigger: number | null
   trail_recommended: boolean; rec_source: string | null; rec_model: string | null; rec_rationale: string | null
@@ -675,6 +675,12 @@ function HoldingStopCard({
               'P/L',
               `${r.unrealized_dollars >= 0 ? '+' : ''}${fmt$(r.unrealized_dollars)}`,
               r.unrealized_dollars >= 0 ? GREEN : RED,
+            )}
+            {/* Realized P/L if THIS stop fills — the outcome, not just the risk. */}
+            {r.pl_if_fired != null && chip(
+              'If fired',
+              `${r.pl_if_fired >= 0 ? '+' : ''}${fmt$(r.pl_if_fired)}`,
+              r.pl_if_fired >= 0 ? GREEN : RED,
             )}
             <div style={{ fontSize: 10, color: MUTED, paddingLeft: 2 }}>
               <div style={{ marginBottom: 2 }}>

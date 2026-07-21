@@ -779,6 +779,13 @@ def _stops_management_api_build(query=None):
             "distance_dollars": dist_dollars, "distance_pct": dist_pct, "distance_atr": dist_atr, "distance_r": dist_r,
             "dollars_at_risk": round(max(dist_dollars, 0), 2),
             "unrealized_dollars": unreal_dollars, "unrealized_r": unreal_r,
+            # Realized P/L if this stop FILLS at its trigger — the outcome the
+            # operator decides on (a near-trigger on a deep loser is capitulation;
+            # on a winner it locks a gain). Derived from unrealized-now less the
+            # move from current price down to the stop: qty x (current - stop).
+            "pl_if_fired": (round(unreal_dollars - (qty or 0) * (px - broker_stop), 2)
+                            if (broker_stop is not None and unreal_dollars is not None
+                                and px is not None and qty) else None),
             "is_trailing": is_trailing, "trailing_should_be_active": should_trail,
             "trail_pct": _trail_pct, "trailing_trigger": _trail_trigger,
             "trail_recommended": bool(adv.get("trail")), "rec_source": _rec_source,

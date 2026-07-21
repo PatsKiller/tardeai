@@ -9,6 +9,8 @@ interface Props {
   onDrill: (ctx: DrillContext) => void
 }
 
+const STALE_AMBER = '#f59e0b'   // staleness marker (legacy-hex file; reuse one const)
+
 export default function MetricStrip({ onDrill }: Props) {
   const navigate = useNavigate()
 
@@ -40,6 +42,16 @@ export default function MetricStrip({ onDrill }: Props) {
   const todayPct = overview?.today_pct
   const journalPnl = overview?.journal?.total_pnl
   const journalLastClose = overview?.journal?.last_close_date
+  // The header journal metrics come from a manually-imported CSV FIFO rebuild that
+  // only advances on re-import. They can sit unchanged for weeks and LOOK current.
+  // Compute the age so a stale journal is visibly stale, not silently trusted.
+  const journalStaleDays = (() => {
+    if (!journalLastClose) return null
+    const ms = Date.now() - new Date(String(journalLastClose)).getTime()
+    return isFinite(ms) && ms > 0 ? Math.floor(ms / 86_400_000) : null
+  })()
+  const journalStale = journalStaleDays != null && journalStaleDays > 7
+  const journalAgeMark = journalStale ? ` · ${journalStaleDays}d old` : ''
   const vix = tradeAi?.vix
   const approvals = overview?.pending_approvals ?? overview?.approvals_count
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
@@ -69,6 +81,7 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'JOURNAL WIN RATE', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}` : '—',
+      stale: journalStale ? journalAgeMark : null,
       color: winRate != null && winRate >= 50 ? '#22c55e' : winRate != null ? '#f59e0b' : 'var(--text3)',
       // P0-6: header journal stats = legacy FIFO journal (trade_journal.json) — a DIFFERENT basis
       // than TradeInView (broker round-trips). Label it so the mismatch is explicit, never silent.
@@ -78,6 +91,7 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'JOURNAL P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—',
+      stale: journalStale ? journalAgeMark : null,
       color: journalPnl == null ? 'var(--text3)' : journalPnl >= 0 ? '#22c55e' : '#ef4444',
       tip: `Realized P&L from the legacy FIFO journal (${journalLastClose ? `, through ${journalLastClose}` : ''}). TradeInView totals use broker round-trips and will differ.`,
       drill: { title: 'Journal P&L', subtitle: `Realized P&L · legacy FIFO journal (${journalLastClose ? `, through ${journalLastClose}` : ''}) · TradeInView uses broker round-trips`, endpoint: '/api/v2/overview',
@@ -132,8 +146,12 @@ export default function MetricStrip({ onDrill }: Props) {
           onClick={() => onDrill(t.drill)}
           style={{ padding: '4px 20px', cursor: 'pointer', textAlign: 'center', borderRight: '1px solid var(--border)' }}
         >
-          <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>{t.label}</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: t.color, fontFamily: 'monospace' }}>{t.value}</div>
+          <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+            {t.label}{(t as any).stale && <span style={{ color: STALE_AMBER, fontWeight: 800 }}>{' '}⚠ STALE</span>}
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: t.color, fontFamily: 'monospace' }}>
+            {t.value}{(t as any).stale && <span style={{ fontSize: 10, color: STALE_AMBER }}>{(t as any).stale}</span>}
+          </div>
         </div>
       ))}
       {approvals != null && approvals > 0 && (

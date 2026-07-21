@@ -51,7 +51,7 @@
   "components/SnapTradeCredsModal.tsx": 28,
   "components/ResearchTopicsModal.tsx": 15,
   "components/SchwabMonitor.tsx": 11,
-  "components/MetricStrip.tsx": 21,
+  "components/MetricStrip.tsx": 22,
   "components/tradeinview/AiCritiqueInsightsPanel.tsx": 8,
   "components/MetricChipTooltip.tsx": 5,
   "components/ReturnsPanel.tsx": 29,

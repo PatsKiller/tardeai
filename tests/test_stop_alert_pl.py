@@ -48,3 +48,25 @@ def test_alert_line_includes_pl():
     src = Path(shc.__file__).read_text()
     assert "_pl_line(_pl)" in src
     assert '"pl_if_fired"' in src   # also on the payload
+
+
+# ── P/L-if-fired on the stop-management row + journal staleness marker ─────────
+
+def test_stops_row_emits_pl_if_fired():
+    import api_v2
+    src = Path(api_v2.__file__).read_text()
+    assert '"pl_if_fired": (round(unreal_dollars - (qty or 0) * (px - broker_stop)' in src
+
+
+def test_stop_card_renders_if_fired_chip():
+    sm = ROOT / "apps" / "command-center-v3" / "src" / "components" / "StopManagement.tsx"
+    src = sm.read_text()
+    assert "pl_if_fired" in src and "'If fired'" in src
+
+
+def test_header_discloses_journal_staleness():
+    ms = ROOT / "apps" / "command-center-v3" / "src" / "components" / "MetricStrip.tsx"
+    src = ms.read_text()
+    assert "journalStaleDays" in src and "STALE" in src and "d old" in src
+    # threshold is a real age, not always-on
+    assert "journalStaleDays > 7" in src
