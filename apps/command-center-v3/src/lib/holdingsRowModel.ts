@@ -51,6 +51,9 @@ export interface HoldingsRowModel {
   stopDistPct: number | null
   stopPrice: number | null
   liveStopPrice: number | null
+  /** Realized position P/L if the current stop fills (live broker stop preferred,
+   *  advisory fallback). Equals (stop − cost) × shares. Null when unknowable. */
+  plIfFired: number | null
   stopLabel: string
   /** Imperative: what to do, e.g. "Tighten stop → $32.43" */
   stopInstruction: string
@@ -404,6 +407,14 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   const stopCoverage = (hasLiveBroker || stopQtyRaw != null)
     ? computeStopCoverage(stopQtyRaw, sh)
     : null
+
+  // Realized position P/L if the current stop fills. Prefer the live broker stop;
+  // fall back to the advisory/target when there is no live stop yet. Same arithmetic
+  // the Stop Management drawer shows: pl$ − shares × (price − stop) = (stop − cost) × shares.
+  const stopForPl = liveStopPrice ?? stopPrice
+  const plIfFired = (pl$ != null && cur != null && stopForPl != null && sh > 0)
+    ? Math.round((pl$ - sh * (cur - stopForPl)) * 100) / 100
+    : null
   const sizeMismatch = stopCoverage?.kind === 'partial' || stopCoverage?.kind === 'oversized'
 
   let copy = stopCopyFromLogic(logic, { isFidelity, isSchwab, health, signal, needsSellAll, shares: sh })
@@ -470,6 +481,7 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     stopDistPct: stopDist,
     stopPrice,
     liveStopPrice,
+    plIfFired,
     stopLabel,
     stopInstruction: copy.instruction,
     stopContext: copy.context,

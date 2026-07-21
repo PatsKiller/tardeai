@@ -247,6 +247,7 @@ function rowTooltip(m: ReturnType<typeof buildHoldingsRowModel>, h: any): string
     m.stopInstruction,
     m.stopContext,
     m.liveStopPrice != null ? `Live stop $${m.liveStopPrice.toFixed(2)}` : '',
+    m.plIfFired != null ? `P/L if stop fills: ${m.plIfFired >= 0 ? '+' : ''}${fmt$(m.plIfFired, 0)}` : '',
     m.needsAction ? '⚠ Action needed' : 'No urgent stop action',
     'Click row → drawer · Action → stop management',
   ].filter(Boolean).join('\n')
@@ -541,6 +542,14 @@ export default function HoldingsTableView({
                 }}>
                   {m.stopInstruction}
                 </div>
+                {m.plIfFired != null && (
+                  <div
+                    title={`Realized P/L on this position if the current stop fills (${m.liveStopPrice != null ? 'live broker stop' : 'advisory stop'} $${(m.liveStopPrice ?? m.stopPrice)!.toFixed(2)})`}
+                    style={{ fontSize: 10, fontWeight: 800, color: semanticSigned(m.plIfFired, cvdMode), fontFamily: BB.mono, whiteSpace: 'nowrap' }}
+                  >
+                    if fired {m.plIfFired >= 0 ? '+' : ''}{fmt$(m.plIfFired, 0)}
+                  </div>
+                )}
               </div>
 
               {/* Action → Stop Management */}
