@@ -9,7 +9,7 @@ import os
 
 AUTOMATED_ACCOUNT_KEY = os.getenv("AUTOMATED_ACCOUNT_KEY", "tradeai_automated")
 LEGACY_AUTOMATED_KEYS = frozenset({
-    "alpaca_paper", "ALPACA_PAPER", "paper", "PAPER", AUTOMATED_ACCOUNT_KEY,
+    "tradeai_automated", "ALPACA_PAPER", "paper", "PAPER", AUTOMATED_ACCOUNT_KEY,
 })
 DISPLAY_LABEL = "Automated (Alpaca)"
 

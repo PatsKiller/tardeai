@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-PAPER_ACCOUNTS = ("alpaca_paper",)
+PAPER_ACCOUNTS = ("tradeai_automated",)
 _BLOCKED_ROUTES = ("watch_only", "large_float_social_scout", "meme_squeeze_momentum", "portfolio_agents", "reject")
 QUOTE_FRESH_MAX_MIN = 15.0
 
@@ -130,7 +130,7 @@ def run(dry_run: bool = True) -> dict:
             FROM paper_trade_proposals p
             LEFT JOIN trade_ai_scans s ON s.symbol = p.symbol AND s.run_date = CURRENT_DATE
             WHERE p.status = 'PENDING' AND p.strategy_id = 'momentum_scalp'
-              AND p.target_account = 'alpaca_paper'
+              AND p.target_account = 'tradeai_automated'
               AND p.created_at > NOW() - INTERVAL '1 day'
         """)
         cols = [d[0] for d in cur.description]

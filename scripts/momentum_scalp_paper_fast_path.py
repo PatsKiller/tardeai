@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 SOURCE_TAG = "momentum_scalp_paper_fast_path"
-PAPER_ACCOUNT = "alpaca_paper"
+PAPER_ACCOUNT = "tradeai_automated"
 QUOTE_FRESH_MAX_MIN = 15.0
 MICRO_MAX_FLOAT_M = 20.0
 MICRO_MAX_PRICE = 25.0

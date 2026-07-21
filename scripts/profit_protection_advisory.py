@@ -214,7 +214,7 @@ def canonical_link(cur, paper_trade_id):
                     "execution_account": r[2], "execution_environment": r[3], "execution_broker": r[4]}
     except Exception:
         pass
-    return {"trade_instance_id": None, "source_system": "alpaca_paper",
+    return {"trade_instance_id": None, "source_system": "tradeai_automated",
             "execution_account": None, "execution_environment": "paper", "execution_broker": "alpaca"}
 
 

@@ -1163,7 +1163,7 @@ def promote_proposal_to_broker(
         sizing_basis = evaluation.get("sizing") or {}
         basis_patch = json.dumps({
             "engine": "paper_promoted_to_broker",
-            "promoted_from_broker": prev_broker or os.getenv("DEFAULT_PAPER_ACCOUNT", "alpaca_paper"),  # hardcode-ok: env-backed lineage fallback when prior broker unset
+            "promoted_from_broker": prev_broker or os.getenv("DEFAULT_PAPER_ACCOUNT", "tradeai_automated"),  # hardcode-ok: env-backed lineage fallback when prior broker unset
             "promoted_at": datetime.now(timezone.utc).isoformat(),
             "operator": operator,
             "shares": shares,

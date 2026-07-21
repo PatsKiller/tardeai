@@ -84,7 +84,7 @@ def get_all_accounts() -> list:
 
 
 def get_account_display_name(account_label: str) -> str:
-    """Return human-readable account name. e.g. 'alpaca_paper' → 'Alpaca Paper'"""
+    """Return human-readable account name. e.g. 'tradeai_automated' → 'Alpaca Paper'"""
     accounts = get_all_accounts()
     for a in accounts:
         if a["account_label"] == account_label:
@@ -98,7 +98,7 @@ def get_account_display_name(account_label: str) -> str:
 
 
 def get_account_broker(account_label: str) -> str:
-    """Return broker name for an account. e.g. 'alpaca_paper' → 'alpaca'"""
+    """Return broker name for an account. e.g. 'tradeai_automated' → 'alpaca'"""
     accounts = get_all_accounts()
     for a in accounts:
         if a["account_label"] == account_label:

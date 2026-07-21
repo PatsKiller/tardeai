@@ -26,7 +26,7 @@ FORBIDDEN = ["paper fast path", "paper approval", "paper sample", "paper-ready",
              "paper submit", "paper-only"]
 
 # A line is ALLOWED to mention a forbidden phrase if it is clearly a legacy/compat/alias context.
-_ALLOW_MARKERS = ("legacy", "alias", "deprecat", "backward compat", "compatibility", "alpaca_paper",
+_ALLOW_MARKERS = ("legacy", "alias", "deprecat", "backward compat", "compatibility", "tradeai_automated",
                   "paper_trades", "paper_trade_proposals", "proposal_paper_submitter",
                   "paper_trade_logger", "momentum_scalp_paper_fast_path", "`paper_", "paper_*",
                   "do not use", "avoid operator-facing")

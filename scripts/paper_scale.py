@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db_adapter import _get_conn
 
-ALPACA_KEYS = ("alpaca_paper", "ALPACA_PAPER", "alpaca")
+ALPACA_KEYS = ("tradeai_automated", "ALPACA_PAPER", "alpaca")
 
 
 def _broker_of(account: str) -> str:

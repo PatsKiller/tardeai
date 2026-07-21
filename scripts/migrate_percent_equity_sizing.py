@@ -26,7 +26,7 @@ ALTER TABLE account_automation_policies
 -- 2) Unified queue + Schwab-routing prep (req 8,9) — extend the existing proposal table ---------------
 ALTER TABLE paper_trade_proposals ADD COLUMN IF NOT EXISTS origin TEXT DEFAULT 'auto';            -- auto|manual_web|manual_telegram
 ALTER TABLE paper_trade_proposals ADD COLUMN IF NOT EXISTS target_account TEXT;                   -- account_key
-ALTER TABLE paper_trade_proposals ADD COLUMN IF NOT EXISTS intended_broker TEXT DEFAULT 'alpaca_paper';
+ALTER TABLE paper_trade_proposals ADD COLUMN IF NOT EXISTS intended_broker TEXT DEFAULT 'tradeai_automated';
 ALTER TABLE paper_trade_proposals ADD COLUMN IF NOT EXISTS routing_state TEXT DEFAULT 'queued';   -- queued|approved|routing|routed|filled|rejected|expired
 ALTER TABLE paper_trade_proposals ADD COLUMN IF NOT EXISTS equity_at_proposal NUMERIC;            -- equity snapshot used for sizing
 ALTER TABLE paper_trade_proposals ADD COLUMN IF NOT EXISTS sizing_basis JSONB DEFAULT '{}';       -- {engine,risk_pct,pos_pct,risk_cap,size_cap,binding,equity}
@@ -34,8 +34,8 @@ ALTER TABLE paper_trade_proposals ADD COLUMN IF NOT EXISTS sizing_basis JSONB DE
 CREATE OR REPLACE VIEW unified_trade_queue AS
   SELECT id, symbol, strategy_id,
          COALESCE(origin,'auto') AS origin,
-         COALESCE(target_account, 'alpaca_paper') AS target_account,
-         COALESCE(intended_broker,'alpaca_paper') AS intended_broker,
+         COALESCE(target_account, 'tradeai_automated') AS target_account,
+         COALESCE(intended_broker,'tradeai_automated') AS intended_broker,
          status, COALESCE(routing_state,'queued') AS routing_state,
          proposed_shares, final_shares, sizing_basis, equity_at_proposal,
          created_at, expires_at
@@ -67,7 +67,7 @@ UPDATE account_automation_policies p
        risk_per_trade_pct = COALESCE(risk_per_trade_pct, 5),
        max_position_allocation_pct = COALESCE(max_position_allocation_pct, 20)
   FROM broker_accounts b
- WHERE p.account_id = b.id AND b.account_key = 'alpaca_paper';
+ WHERE p.account_id = b.id AND b.account_key = 'tradeai_automated';
 """
 
 

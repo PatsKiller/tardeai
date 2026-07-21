@@ -282,7 +282,7 @@ try:
     with _mock.patch.object(_pc, "orders_used", return_value=0):
         ira_pass = _pc.evaluate("schwab_roth_ira")[0]
         tax_pass = _pc.evaluate("schwab_taxable")[0]
-        rogue_block = not _pc.evaluate("alpaca_paper")[0]
+        rogue_block = not _pc.evaluate("tradeai_automated")[0]
     ok("pilot caps: all 3 Schwab accounts + high cap + allowlist deny",
        caps_pure and lits and cap_block and ira_pass and tax_pass and rogue_block)
 except Exception as e:

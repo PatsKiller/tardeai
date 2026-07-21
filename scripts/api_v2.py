@@ -5443,7 +5443,7 @@ def risk():
             _mv = _sh * _cur if _cur else 0
             _dist = round(((_cur - _stop) / _cur) * 100, 1) if (_cur and _stop) else None
             positions.append({
-                "symbol": (_pr.get("symbol") or "").strip(), "account": "alpaca_paper",
+                "symbol": (_pr.get("symbol") or "").strip(), "account": "tradeai_automated",
                 "environment": "paper", "risk_excluded": True,
                 "market_value": round(_mv, 2), "current_price": _cur, "stop_price": _stop,
                 "distance_pct": _dist, "distance_to_stop_pct": _dist,
@@ -29798,7 +29798,7 @@ def _options_alpaca_record_outcome(body=None):
             closed_at=close.get("closed_at"), exit_reason="manual",
             notes="operator-entered exit premium via desk UI",
             meta={"alpaca_order_id": (aj.get("response") or {}).get("id"),
-                  "lane": "alpaca_paper", "source": "operator_manual_ui"})
+                  "lane": "tradeai_automated", "source": "operator_manual_ui"})
         if not rec.get("ok"):
             return 502, {"ok": False, "reason": f"record_outcome failed: {rec.get('error')} "
                                                 f"— row left in {ap.STATE_CLOSED} for retry"}
@@ -39494,7 +39494,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     if last_run_at is None:
                         if not _owner.get('owning_script'):
                             _nr_subtype = 'never_run_owner_unknown'
-                        elif _owner.get('safe_dry_run_cmd') is None and script_name in ('risk_gate', 'alpaca_paper'):
+                        elif _owner.get('safe_dry_run_cmd') is None and script_name in ('risk_gate', 'tradeai_automated'):
                             _nr_subtype = 'never_run_on_demand'
                         elif cadence_h >= 168:
                             _nr_subtype = 'never_run_on_demand'

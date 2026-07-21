@@ -99,7 +99,7 @@ def fetch_broker_option_legs() -> tuple[list[dict], dict]:
             if not ident:
                 continue
             qty = float(p.get("qty") or 0)
-            legs.append({"broker": "alpaca_paper", "account_key": "alpaca_paper",
+            legs.append({"broker": "tradeai_automated", "account_key": "tradeai_automated",
                          "occ_symbol": str(p["symbol"]), "underlying": ident["underlying"],
                          "option_type": ident["option_type"], "strike": ident["strike"],
                          "expiration": ident["expiration"],
@@ -108,7 +108,7 @@ def fetch_broker_option_legs() -> tuple[list[dict], dict]:
                                            if p.get("avg_entry_price") not in (None, 0) else None),
                          "broker_position_id": str(p.get("asset_id") or p.get("symbol"))})
     except Exception as e:
-        errors["alpaca_paper"] = str(e)[:80]
+        errors["tradeai_automated"] = str(e)[:80]
     return legs, errors
 
 
@@ -127,7 +127,7 @@ def reconcile(dry: bool = False) -> dict:
     canon = open_strategies(cur)
     canon_by_key: dict[tuple, list[dict]] = {}
     for s in canon:
-        canon_by_key.setdefault((("alpaca_paper" if s["broker"] == "alpaca_paper" else s["broker"]),
+        canon_by_key.setdefault((("tradeai_automated" if s["broker"] == "tradeai_automated" else s["broker"]),
                                  s["account_key"], s["underlying"]), []).append(s)
 
     report = {"new": [], "matched": [], "drifted": [], "vanished": [], "errors": errors}

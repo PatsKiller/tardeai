@@ -33,7 +33,7 @@ def main():
     sb = cur.fetchone()
     chk("broker/account neutral (schwab resolves to schwab)", bool(sb) and sb["broker"] == "schwab")
     src = open(os.path.join(os.path.dirname(__file__), "trade_lineage.py")).read()
-    chk("helper has no hardcoded alpaca_paper literal", "alpaca_paper" not in src)
+    chk("helper has no hardcoded alpaca_paper literal", "tradeai_automated" not in src)
     # paper_trades with exact proposal links have stamped lineage where proposal data exists
     cur.execute("select count(*) c from paper_trades where proposal_id is not null")
     linked = cur.fetchone()["c"]

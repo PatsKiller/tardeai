@@ -294,7 +294,7 @@ def poll_fills(cur) -> dict:
         try:
             if lane == "paper":
                 cur.execute("""SELECT quantity, price FROM trade_transactions
-                               WHERE symbol=%s AND account='alpaca_paper' AND trade_date >= %s
+                               WHERE symbol=%s AND account='tradeai_automated' AND trade_date >= %s
                                ORDER BY trade_date DESC LIMIT 3""",
                             (sym, (armed_at or datetime.now(timezone.utc)).date()))
                 cands = cur.fetchall()

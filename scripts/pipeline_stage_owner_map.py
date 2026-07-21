@@ -370,8 +370,8 @@ STAGE_OWNERS: dict[str, dict] = {
         "failure_hint": "Triggered by proposal approval flow; not scheduled.",
         "operator_next_action": "No manual run -- execution-only stage, runs when proposal reaches approval.",
     },
-    "alpaca_paper": {
-        "pipeline_key": "alpaca_paper",
+    "tradeai_automated": {
+        "pipeline_key": "tradeai_automated",
         "display_name": "Alpaca Paper Trading",
         "category": "Execution",
         "owning_script": "scripts/alpaca_paper_adapter.py",

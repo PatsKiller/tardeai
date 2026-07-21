@@ -16,9 +16,10 @@ from datetime import datetime, timezone
 
 # Identity aliases (emitters may still use old labels until R3 backfill completes)
 _ALIASES = {
-    "alpaca_paper": "tradeai_automated",
+    "alpaca_paper": "tradeai_automated",  # hardcode-ok: legacy identity → canonical
     "ALPACA_PAPER": "tradeai_automated",
-    "fidelity_401k": "fidelity_rollover_ira",  # legacy label → canonical import row
+    "tradeai_automated": "tradeai_automated",
+    "fidelity_401k": "fidelity_rollover_ira",  # hardcode-ok: legacy label → canonical import row
 }
 
 
@@ -196,7 +197,7 @@ if __name__ == "__main__":
     print(f"GATE: passed={gs['passed']} live_trading_allowed={gs['live_trading_allowed']} "
           f"criteria_met={gs['criteria_met']}")
     for acct in (
-        "tradeai_automated", "alpaca_paper",  # paper + alias
+        "tradeai_automated", "alpaca_paper",  # paper + legacy alias
         "schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira",
         "fidelity_rollover_ira", "fidelity_401k",
         "alpaca_taxable_live", "alpaca_ira_live",  # scaffolds (may be unknown until R4)

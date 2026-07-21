@@ -93,7 +93,7 @@ def slot_for_account_key(account_key: str) -> str:
     """Map account_key → credential_slot default when DB slot null."""
     ak = (account_key or "").strip().lower()
     # hardcode-ok: static account_key → credential_slot map (R2 taxonomy D1/D2)
-    if ak in ("tradeai_automated", "alpaca_paper"):
+    if ak in ("tradeai_automated", "alpaca_paper"):  # hardcode-ok: identity aliases
         return "ALPACA_PAPER"
     if ak in ("alpaca_taxable_live",):
         return "ALPACA_TAXABLE"

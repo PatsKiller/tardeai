@@ -29,7 +29,7 @@ def _get_max_positions():
         cfg_path = Path(__file__).resolve().parent.parent / 'config' / 'atm_config.yaml'
         if cfg_path.exists():
             cfg = yaml.safe_load(cfg_path.read_text())
-            return cfg.get('accounts', {}).get('alpaca_paper', {}).get('position_limits', {}).get('max_concurrent',
+            return cfg.get('accounts', {}).get('tradeai_automated', {}).get('position_limits', {}).get('max_concurrent',
                    cfg.get('defaults', {}).get('position_limits', {}).get('max_concurrent', 6))
     except Exception:
         pass

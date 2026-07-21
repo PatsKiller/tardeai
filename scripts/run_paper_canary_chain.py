@@ -124,7 +124,7 @@ def main() -> int:
                                     'ALPACA_PAPER_FILLED')""")
     inflight = cur.fetchone()[0]
     cur.execute("""SELECT count(*) FROM options_strategy_positions
-                   WHERE broker='alpaca_paper' AND status IN ('open','closing')""")
+                   WHERE broker='tradeai_automated' AND status IN ('open','closing')""")
     open_pos = cur.fetchone()[0]
     step({"step": "idempotency", "inflight_rows": inflight, "open_positions": open_pos})
     if inflight or open_pos:

@@ -155,8 +155,8 @@ def upsert_trade_instance(cur, conn, spid: int) -> dict:
           lineage_notes=EXCLUDED.lineage_notes, updated_at=now()
         RETURNING id, trade_uid""",
         (f"options_strategy_positions:{spid}", str(spid), s["broker"], s["account_key"],
-         "paper" if s["broker"] == "alpaca_paper" else "live",
-         "paper" if s["broker"] == "alpaca_paper" else "live",
+         "paper" if s["broker"] == "tradeai_automated" else "live",
+         "paper" if s["broker"] == "tradeai_automated" else "live",
          s["underlying"], f"opt_{s['strategy_type']}",
          status, side, n_contracts, net_entry, s.get("opened_at"),
          s.get("closed_at"), realized, json.dumps(lineage, default=str)))

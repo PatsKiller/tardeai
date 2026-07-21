@@ -17,7 +17,7 @@ submit_validation = _legacy.submit_paper          # sandbox/simulated submit via
 dry_run_validation_bracket = _legacy.dry_run_bracket
 
 LEGACY_MODULE = "proposal_paper_submitter"
-SANDBOX_ACCOUNT = "alpaca_paper"   # account identifier only
+SANDBOX_ACCOUNT = "tradeai_automated"   # account identifier only
 
 __all__ = ["validation_check_gates", "submit_validation", "dry_run_validation_bracket",
            "LEGACY_MODULE", "SANDBOX_ACCOUNT"]

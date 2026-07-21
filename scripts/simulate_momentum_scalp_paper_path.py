@@ -128,7 +128,7 @@ def simulate(spec: dict) -> dict:
     gates_passed.append(f"risk_gate:RR={rr:.2f}")
 
     # WOULD create the paper_trade — show the payload shape (NOT written).
-    payload = {"strategy_id": "momentum_scalp", "symbol": candidate["symbol"], "account": "alpaca_paper",
+    payload = {"strategy_id": "momentum_scalp", "symbol": candidate["symbol"], "account": "tradeai_automated",
                "entry_price": entry, "stop_loss": stop, "target_1": target, "side": "long",
                "discovery_trace_id": route["trace_id"], "status": "would_open(paper)",
                "execution_environment": "paper"}

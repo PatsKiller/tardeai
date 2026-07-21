@@ -142,7 +142,7 @@ def _log_exists(log_paths: list[str]) -> bool:
 # Execution-stage detection
 # ─────────────────────────────────────────────────────────────────────────────
 
-_EXECUTION_ON_DEMAND_KEYS = {"risk_gate", "alpaca_paper"}
+_EXECUTION_ON_DEMAND_KEYS = {"risk_gate", "tradeai_automated"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

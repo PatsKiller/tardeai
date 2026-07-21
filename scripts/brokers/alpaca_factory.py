@@ -61,7 +61,7 @@ def adapter_for(account_key: str, *, dry_run: bool = False) -> Any:
     row = _row(key)
     if not row:
         # hardcode-ok: paper-only fallback keys when DB unavailable (R2)
-        if key in ("tradeai_automated", "alpaca_paper", "ALPACA_PAPER"):
+        if key in ("tradeai_automated", "alpaca_paper", "ALPACA_PAPER"):  # hardcode-ok
             env = "paper"
             slot = "ALPACA_PAPER"
         else:

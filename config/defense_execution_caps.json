@@ -18,7 +18,7 @@
     "pair_buy": "instruments on a rendered pair card only"
   },
   "paper_accounts": [
-    "alpaca_paper"
+    "tradeai_automated"
   ],
   "live_accounts": [
     "schwab_rollover_ira",
@@ -34,6 +34,6 @@
     "schwab_rollover_ira": "Rollover IRA",
     "schwab_roth_ira": "Roth IRA",
     "schwab_taxable": "Taxable",
-    "alpaca_paper": "Alpaca Paper (shadow)"
+    "tradeai_automated": "Alpaca Paper (shadow)"
   }
 }

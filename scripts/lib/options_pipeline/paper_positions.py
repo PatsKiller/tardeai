@@ -118,7 +118,7 @@ def upsert_from_queue_fill(
     aj = _alpaca_meta(queue_row)
     route = execution_route_badge({**pj, **queue_row, "proposal_json": pj})
     if aj.get("request") or aj.get("response"):
-        route = {"label": "Alpaca paper only", "kind": "alpaca_paper"}
+        route = {"label": "Alpaca paper only", "kind": "tradeai_automated"}
     underlying = str(pj.get("underlying") or pj.get("symbol") or queue_row.get("symbol") or "")
     occ = str((aj.get("request") or {}).get("symbol") or pj.get("option_symbol") or "")
     fill_px = _f((fill or {}).get("price"))
@@ -131,7 +131,7 @@ def upsert_from_queue_fill(
     entry_dc = _debit_credit(str(pj.get("strategy") or queue_row.get("strategy") or ""),
                            pj.get("side"))
     meta = {
-        "lane": "alpaca_paper",
+        "lane": "tradeai_automated",
         "queue_status": queue_row.get("status"),
         "discovery_ref": (pj.get("meta") or {}).get("discovery_ref"),
     }

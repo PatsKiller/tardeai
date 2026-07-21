@@ -104,7 +104,7 @@ def main() -> int:
                        WHERE status='armed' AND armed_at < now() - interval '1 day'""")
         check("no_stale_armed_ticket", cur.fetchone()[0] == 0, "clean")
         cur.execute("""SELECT count(*) FROM options_strategy_positions
-                       WHERE broker='alpaca_paper' AND status IN ('open','closing')""")
+                       WHERE broker='tradeai_automated' AND status IN ('open','closing')""")
         check("no_other_open_canary", cur.fetchone()[0] == 0, "one position at a time")
         # quote freshness — one probe read
         from options_lifecycle_engine import quote_leg

@@ -51,7 +51,7 @@ def main():
     L["total_trades"] = cur.fetchone()["c"]
     cur.execute("SELECT COUNT(*) as c FROM paper_trades WHERE proposal_id IS NOT NULL")
     L["trades_with_proposal_id"] = cur.fetchone()["c"]
-    cur.execute("SELECT COUNT(*) as c FROM paper_trades WHERE broker='alpaca_paper'")
+    cur.execute("SELECT COUNT(*) as c FROM paper_trades WHERE broker='tradeai_automated'")
     L["trades_with_alpaca"] = cur.fetchone()["c"]
     cur.execute("SELECT COUNT(*) as c FROM paper_trades WHERE status='open'")
     L["open_trades"] = cur.fetchone()["c"]

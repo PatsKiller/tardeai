@@ -333,7 +333,7 @@ def _persist_reconciliation(conn, result):
         cur.execute("""INSERT INTO broker_reconciliation_runs
                        (broker, run_status, positions_seen, trades_matched,
                         unmatched_broker_orders, unmatched_local_trades)
-                       VALUES ('alpaca_paper', 'completed', %s, %s, %s, %s) RETURNING id""",
+                       VALUES ('tradeai_automated', 'completed', %s, %s, %s, %s) RETURNING id""",
                     (result.get("alpaca_count", 0), result.get("db_open_count", 0),
                      sum(1 for i in result.get("issues", []) if i.get("type") == "ORPHAN_BROKER"),
                      sum(1 for i in result.get("issues", []) if i.get("type") == "PHANTOM_DB")))
@@ -343,14 +343,14 @@ def _persist_reconciliation(conn, result):
             cur.execute("""INSERT INTO broker_reconciliation_items
                            (run_id, broker, symbol, paper_trade_id, reconciliation_state,
                             issue_code, severity, payload)
-                           VALUES (%s, 'alpaca_paper', %s, %s, %s, %s, %s, %s)""",
+                           VALUES (%s, 'tradeai_automated', %s, %s, %s, %s, %s, %s)""",
                         (run_id, i.get("symbol"), i.get("trade_id"), i.get("type"),
                          i.get("type"), i.get("severity"),
                          json.dumps({"detail": i.get("detail")})))
         if not issues:
             cur.execute("""INSERT INTO broker_reconciliation_items
                            (run_id, broker, symbol, reconciliation_state, severity, payload)
-                           VALUES (%s, 'alpaca_paper', '*', 'ALL_MATCHED', 'INFO', %s)""",
+                           VALUES (%s, 'tradeai_automated', '*', 'ALL_MATCHED', 'INFO', %s)""",
                         (run_id, json.dumps({"detail": f"clean run — {result.get('alpaca_count', 0)} "
                                              f"positions matched"})))
         cur.execute("DELETE FROM broker_reconciliation_items WHERE created_at < now() - interval '30 days' AND run_id <> %s", (run_id,))

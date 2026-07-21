@@ -93,7 +93,7 @@ def enrich_position_semantics(card: dict[str, Any]) -> dict[str, Any]:
         "paper_only": card.get("paper_only", True),
         "execution_route": card.get("execution_route"),
         "educational_paper_model": card.get("paper_only", True),
-        "alpaca_paper_enabled": card.get("execution_route") == "alpaca_paper",
+        "alpaca_paper_enabled": card.get("execution_route") == "tradeai_automated",
     }
     sem = apply_card_semantics(pseudo)
     card["execution_route_badge"] = sem.get("execution_route_badge")
@@ -171,7 +171,7 @@ def serialize_monitored_row(row: dict, snap: dict | None = None) -> dict[str, An
         "paper_only": out["paper_only"],
         "execution_route": out["execution_route"],
         "educational_paper_model": out["paper_only"],
-        "alpaca_paper_enabled": out["execution_route"] == "alpaca_paper",
+        "alpaca_paper_enabled": out["execution_route"] == "tradeai_automated",
     })
     out["route_badge"] = route
     return enrich_position_semantics(out)

@@ -1245,7 +1245,7 @@ def _record_and_finalize(row: dict, aj: dict, ex: Executor,
         exit_reason="manual",
         notes="alpaca paper close detected by reconcile_fills",
         meta={"alpaca_order_id": (aj.get("response") or {}).get("id"),
-              "occ_symbol": occ, "lane": "alpaca_paper"},
+              "occ_symbol": occ, "lane": "tradeai_automated"},
         executor=ex)
     if not rec.get("ok"):
         report["warnings"].append(

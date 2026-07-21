@@ -30,7 +30,7 @@ def _rows(cur, sql, params=None):
 def _broker_held_symbols():
     try:
         from broker_adapter import adapter_for
-        a = adapter_for("alpaca_paper")
+        a = adapter_for("tradeai_automated")
         return {p.get("symbol") for p in (a.get_positions() or []) if p.get("symbol")}
     except Exception:
         return set()
@@ -45,7 +45,7 @@ def main():
     # (get_all_accounts → conn.close()), which would invalidate our cursor mid-run. After warm-up
     # it is cache-only and never closes the connection again.
     from broker_config import get_account_broker
-    get_account_broker("alpaca_paper")
+    get_account_broker("tradeai_automated")
     held = _broker_held_symbols()
     conn = get_connection()      # fresh/reconnected after the warm-up close
     cur = conn.cursor()

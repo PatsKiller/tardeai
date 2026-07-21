@@ -65,7 +65,7 @@ def is_paper_model_row(proposal: dict[str, Any]) -> bool:
     if broker in ("paper_model", "alpaca"):
         return True
     kind = execution_route_badge(proposal).get("kind")
-    return kind in ("alpaca_paper", "paper_model")
+    return kind in ("tradeai_automated", "paper_model")
 
 
 def is_desk_trade_blocked(proposal: dict[str, Any]) -> bool:
@@ -124,7 +124,7 @@ def execution_route_badge(proposal: dict[str, Any]) -> dict[str, str]:
     """Execution route chip — distinct from data_source (Schwab chain)."""
     if proposal.get("educational_paper_model") or proposal.get("paper_only"):
         if proposal.get("alpaca_paper_enabled") or (proposal.get("meta") or {}).get("alpaca_paper_enabled"):
-            return {"label": "Alpaca paper only", "kind": "alpaca_paper"}
+            return {"label": "Alpaca paper only", "kind": "tradeai_automated"}
         return {"label": "Paper model only", "kind": "paper_model"}
     broker = str(proposal.get("broker") or "").lower()
     if broker == "paper_model":
@@ -132,7 +132,7 @@ def execution_route_badge(proposal: dict[str, Any]) -> dict[str, str]:
     if broker == "fidelity" or proposal.get("execution_mode") == "manual":
         return {"label": "Fidelity manual ticket only", "kind": "fidelity_manual"}
     if broker == "alpaca":
-        return {"label": "Alpaca paper only", "kind": "alpaca_paper"}
+        return {"label": "Alpaca paper only", "kind": "tradeai_automated"}
     ent = proposal.get("enterprise") or {}
     if ent.get("live_eligible") and broker == "schwab":
         return {"label": "Schwab live path · 2FA required", "kind": "schwab_live"}
@@ -147,7 +147,7 @@ def execution_route_note(proposal: dict[str, Any], *, schwab_armed: Optional[boo
     kind = route["kind"]
     if kind == "fidelity_manual":
         return "Manual Fidelity ticket only. Trade AI has no Fidelity broker-submit path."
-    if kind == "alpaca_paper":
+    if kind == "tradeai_automated":
         return (
             "Alpaca paper only. Simulated order; no live broker order. "
             "Validation credit starts only after fill, close, and outcome reconciliation."

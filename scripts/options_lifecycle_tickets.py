@@ -353,8 +353,8 @@ def _ancestry_realized(cur, s: dict) -> float:
 
 
 def _capability(s: dict) -> dict:
-    if s["broker"] == "alpaca_paper":
-        return {"route": "alpaca_paper", "note": "paper lane — closes recorded from reconcile evidence"}
+    if s["broker"] == "tradeai_automated":
+        return {"route": "tradeai_automated", "note": "paper lane — closes recorded from reconcile evidence"}
     if s["broker"] == "fidelity":
         return {"route": "manual_ticket", "note": "Fidelity is manual-only; exact ticket rendered after 2FA"}
     return {"route": "manual_ticket",

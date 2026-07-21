@@ -105,7 +105,7 @@ def resolve_leg_basis(cur, conn, leg: dict, s: dict) -> dict:
     if so:
         return _apply(cur, conn, leg, s, so["premium"], "broker_orders", so["ref"])
     # 1+2 (Alpaca). broker fills — paper reconcile evidence
-    if s["broker"] == "alpaca_paper":
+    if s["broker"] == "tradeai_automated":
         cur.execute("""SELECT entry_fill_price FROM options_monitored_positions
                        WHERE option_symbol=%s AND entry_fill_price IS NOT NULL LIMIT 1""",
                     (leg["occ_symbol"].strip(),))

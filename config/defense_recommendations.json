@@ -97,7 +97,7 @@
     "schwab_taxable": "Taxable",
     "schwab_rollover_ira": "Rollover IRA",
     "schwab_roth_ira": "Roth IRA",
-    "alpaca_paper": "Paper"
+    "tradeai_automated": "Paper"
   },
   "trim_composite": {
     "_comment": "DT1 — every number renders on the card; absent inputs listed, never silently defaulted",

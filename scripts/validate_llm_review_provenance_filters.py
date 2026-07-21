@@ -21,7 +21,7 @@ def main():
     chk("endpoint strict JSON", True)
     chk("has evaluations", n_all > 0, n_all)
     a1 = len(_get({"account":"schwab_rollover_ira"})["evaluations"])
-    a2 = len(_get({"account":"alpaca_paper"})["evaluations"])
+    a2 = len(_get({"account":"tradeai_automated"})["evaluations"])
     chk("account filter partitions (not global)", a1 < n_all and a1 >= 0, f"all={n_all} schwab_rollover={a1} alpaca={a2}")
     chk("account filter != all (silently global)", a1 != n_all or a2 != n_all, f"{a1}/{a2} vs {n_all}")
     # verdict filter sanity

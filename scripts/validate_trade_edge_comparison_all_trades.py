@@ -16,7 +16,7 @@ def main():
     cur.execute("""select coalesce(ti.source_system,'(none)') s, count(*) n from trade_edge_comparison e
                    left join trade_instances ti on ti.id=e.trade_instance_id group by 1 order by 2 desc""")
     rep["by_source_system"] = {r["s"]: r["n"] for r in cur.fetchall()}
-    rep["paper_rows"] = one("select count(*) c from trade_edge_comparison e join trade_instances ti on ti.id=e.trade_instance_id where ti.source_system='alpaca_paper'")
+    rep["paper_rows"] = one("select count(*) c from trade_edge_comparison e join trade_instances ti on ti.id=e.trade_instance_id where ti.source_system='tradeai_automated'")
     rep["imported_schwab_rows"] = one("select count(*) c from trade_edge_comparison e join trade_instances ti on ti.id=e.trade_instance_id where ti.source_system='schwab_import'")
     rep["imported_fidelity_rows"] = one("select count(*) c from trade_edge_comparison e join trade_instances ti on ti.id=e.trade_instance_id where ti.source_system='fidelity_import'")
     rep["rows_with_proposal_snapshot"] = one("select count(*) c from trade_edge_comparison where proposal_snapshot_id is not null")

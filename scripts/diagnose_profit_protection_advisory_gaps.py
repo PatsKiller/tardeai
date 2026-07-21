@@ -85,7 +85,7 @@ def run(json_path, md_path):
 
     # schwab/imported winners excluded entirely from paper-only advisory logic
     cur.execute("""SELECT count(*) n FROM trade_profit_capture_analysis
-                   WHERE winner=true AND source_system <> 'alpaca_paper'""")
+                   WHERE winner=true AND source_system <> 'tradeai_automated'""")
     paper_excluded_winners = cur.fetchone()["n"]
     conn.close()
 
@@ -96,7 +96,7 @@ def run(json_path, md_path):
         mfe_pct = f(r["mfe_pct"])
         mfe_r = f(r["mfe_r"])
         adv_count = r["adv_count"] or 0
-        is_paper = r["source_system"] == "alpaca_paper"
+        is_paper = r["source_system"] == "tradeai_automated"
         closed_before_engine = bool(engine_start and r["exit_time"] and r["exit_time"] < engine_start)
         peak_reached_threshold = mfe_pct is not None and mfe_pct >= GAIN_PCT_REVIEW
         trailing_tier_too_high = bool(first_tier is not None and mfe_r is not None and mfe_r < first_tier)

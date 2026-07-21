@@ -254,7 +254,7 @@ def _rows(source, limit, trade_key):
         q += f" ORDER BY COALESCE(exit_time, closed_at) DESC NULLS LAST LIMIT {int(limit)}"
         cur.execute(q)
         for r in cur.fetchall():
-            yield {"trade_key": r[0], "source": "paper_trade", "broker": "alpaca", "account": "alpaca_paper",
+            yield {"trade_key": r[0], "source": "paper_trade", "broker": "alpaca", "account": "tradeai_automated",
                    "symbol": r[1], "ent": r[2], "ext": r[3], "entry_price": float(r[4]) if r[4] else None,
                    "exit_price": float(r[5]) if r[5] else None, "qty": float(r[6]) if r[6] else None,
                    "realized_pnl": float(r[7]) if r[7] is not None else None, "strategy": r[8], "classification": r[8]}

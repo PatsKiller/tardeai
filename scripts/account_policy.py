@@ -129,7 +129,7 @@ def equity_for_account(account_key: str) -> tuple[float, str]:
 
 def _resolve_equity(low: str, key: str) -> tuple[float, str]:
 
-    if low in ("alpaca_paper", "alpaca"):
+    if low in ("tradeai_automated", "alpaca"):
         try:
             from alpaca_paper_adapter import AlpacaPaperAdapter
             acct = AlpacaPaperAdapter().get_account() or {}
@@ -264,7 +264,7 @@ def cash_for_account(account_key: str) -> tuple[float | None, str]:
     if cash and cash > 0:
         return cash, "holdings_snapshot"
 
-    if low in ("alpaca_paper", "alpaca"):
+    if low in ("tradeai_automated", "alpaca"):
         try:
             from alpaca_paper_adapter import AlpacaPaperAdapter
             acct = AlpacaPaperAdapter().get_account() or {}
@@ -403,8 +403,8 @@ def compute_sizing(policy: dict, equity: float, entry: float, stop: float,
 
 if __name__ == "__main__":
     # quick self-check: SNOW at 5% risk / 20% position on $100k
-    pol = load_policy("alpaca_paper")
-    eq, src = equity_for_account("alpaca_paper")
+    pol = load_policy("tradeai_automated")
+    eq, src = equity_for_account("tradeai_automated")
     print("policy:", {k: pol.get(k) for k in ("sizing_engine", "risk_per_trade_pct", "max_position_allocation_pct")})
     print("equity:", eq, "source:", src)
     s = compute_sizing(pol, eq, 236.50, 228.01)

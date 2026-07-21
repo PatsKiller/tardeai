@@ -125,7 +125,7 @@ def main():
         write = bool(is_paper)
         read = bool(is_paper)
         adapter = adapter or (f"scripts.{broker}_adapter" if broker in ("alpaca", "schwab") else None)
-        disp = {"alpaca_paper": "Alpaca Paper", "schwab_rollover_ira": "Schwab Rollover IRA",
+        disp = {"tradeai_automated": "Alpaca Paper", "schwab_rollover_ira": "Schwab Rollover IRA",
                 "schwab_roth_ira": "Schwab Roth IRA", "schwab_taxable": "Schwab Taxable",
                 "fidelity_401k": "Fidelity 401k"}.get(label, label)
         conn_status = "ok" if is_paper else "no_trading_api"

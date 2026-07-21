@@ -331,7 +331,7 @@ def _load_base_positions():
     # ── alpaca paper: paper_trades open (canonical paper ledger), aggregated by symbol ──
     try:
         c = _conn(); cur = c.cursor()
-        # UPPER(account): paper_trades carries mixed-case account keys ('ALPACA_PAPER' vs 'alpaca_paper'
+        # UPPER(account): paper_trades carries mixed-case account keys ('ALPACA_PAPER' vs 'tradeai_automated'
         # on older rows) — without normalization they surface as two phantom accounts in the UI filters
         # (operator caught this 2026-06-12 via the account badges).
         cur.execute("""SELECT UPPER(account) account, symbol, sum(shares) sh,
@@ -355,7 +355,7 @@ def _load_base_positions():
             })
         c.close()
     except Exception as e:
-        excluded.append({"account": "alpaca_paper", "symbol": None, "reason": f"paper_trades error: {e}", "source": "paper_trades"})
+        excluded.append({"account": "tradeai_automated", "symbol": None, "reason": f"paper_trades error: {e}", "source": "paper_trades"})
     return base, excluded, counts
 
 
@@ -367,7 +367,7 @@ _BSTOP_TERMINAL = {"canceled", "cancelled", "filled", "rejected", "expired", "re
 def _alpaca_protective_stops():
     """Stage 2c — read Alpaca's LIVE working SELL stop/trailing-stop orders for the PAPER account (source of
     truth for paper protection — the bracket/ratchet stops the paper pipeline places). Keyed by
-    (_norm_acct('alpaca_paper'), symbol), same shape as _broker_protective_stops so callers can merge the
+    (_norm_acct('tradeai_automated'), symbol), same shape as _broker_protective_stops so callers can merge the
     two transparently. Cached 60s; fail-open (empty on any read error so Open Trades never blocks)."""
     import time
     if time.time() - _ASTOP_CACHE["ts"] < 60 and _ASTOP_CACHE["map"]:
@@ -376,7 +376,7 @@ def _alpaca_protective_stops():
     try:
         import alpaca_paper_reconciler as apr
         env = apr.get_env()
-        acct_norm = _norm_acct("alpaca_paper")
+        acct_norm = _norm_acct("tradeai_automated")
         for o in (apr.get_alpaca_orders(env, status="open") or []):
             if str(o.get("side", "")).lower() != "sell":
                 continue
@@ -402,7 +402,7 @@ def _alpaca_protective_stops():
                 "order_id": str(o.get("id") or ""), "stop_price": sp,
                 "trail_offset": trail_offset, "trail_link": ("trail" if trail_offset else None),
                 "order_type": otype.replace(" ", "_"), "status": str(o.get("status", "")).lower(),
-                "qty": o.get("qty"), "account": "alpaca_paper", "source": "broker"}
+                "qty": o.get("qty"), "account": "tradeai_automated", "source": "broker"}
     except Exception:
         return out
     import datetime as _dt
@@ -447,7 +447,7 @@ def _broker_protective_stops(accounts):
     # (no stops working) still counts as verified, which is exactly the AGNC case
     if (_wants_paper
             and _ASTOP_CACHE.get("fetched_at") and time.time() - _ASTOP_CACHE.get("ts", 0) < 120):
-        read_ok.add(_norm_acct("alpaca_paper"))   # bounded: a stale success must not vouch during an outage
+        read_ok.add(_norm_acct("tradeai_automated"))   # bounded: a stale success must not vouch during an outage
     for acct in accounts:
         try:
             raw = st.get_orders_raw(acct)   # RAW so we capture trailing fields (offset/link), not just a fixed price
@@ -772,7 +772,7 @@ def build_intelligence():
             if _bstop is None and p.get("environment") == "paper":
                 # paper rows carry the ledger account key (TRADEAI_AUTOMATED) but Alpaca stops are
                 # keyed alpaca_paper — without this fallback a live paper stop could never match
-                _bstop = bmap.get((_norm_acct("alpaca_paper"), sym))
+                _bstop = bmap.get((_norm_acct("tradeai_automated"), sym))
             broker_protected = bool(_bstop)   # ANY live SELL stop/trailing order = protected (trailing has no fixed price)
             broker_stop_payload = None
             if broker_protected:
@@ -871,7 +871,7 @@ def build_intelligence():
             # 'protected' here while the supervisor alerted OPEN_POSITION_NO_BROKER_STOP for 6 days).
             # Unverifiable accounts (e.g. Fidelity without a manual record) keep the record heuristic.
             _acct_verified = _norm_acct(p["account"]) in broker_stop_read_ok() or (
-                p.get("environment") == "paper" and _norm_acct("alpaca_paper") in broker_stop_read_ok())
+                p.get("environment") == "paper" and _norm_acct("tradeai_automated") in broker_stop_read_ok())
             pr = {"protected": broker_protected or (bool(stop and not below) and not _acct_verified),
                   "tp_missing": tp_missing, "stop_near": stop_near,
                   "below_entry": below, "trailing_candidate": bool(upnl_pct is not None and upnl_pct > 8 and not stop_near),

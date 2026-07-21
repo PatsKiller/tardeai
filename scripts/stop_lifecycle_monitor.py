@@ -67,7 +67,7 @@ def _holdings_map() -> dict:
 
 
 def _alpaca_positions_map() -> dict:
-    """('alpaca_paper', SYMBOL) -> {shares, price} from the live Alpaca paper positions (paper held shares
+    """('tradeai_automated', SYMBOL) -> {shares, price} from the live Alpaca paper positions (paper held shares
     are NOT in holdings.json — they come from the Alpaca API), so paper stops aren't falsely 'orphaned'."""
     out = {}
     try:
@@ -85,7 +85,7 @@ def _alpaca_positions_map() -> dict:
                 px = float(p.get("current_price") or 0) or None
             except Exception:
                 px = None
-            out[("alpaca_paper", sym)] = {"shares": sh, "price": px}
+            out[("tradeai_automated", sym)] = {"shares": sh, "price": px}
     except Exception:
         pass
     return out
@@ -152,7 +152,7 @@ def _alpaca_stops() -> list[dict]:
                 qty = float(o.get("qty") or 0)
             except Exception:
                 qty = None
-            rows.append({"broker": "alpaca", "account": "alpaca_paper",
+            rows.append({"broker": "alpaca", "account": "tradeai_automated",
                          "symbol": str(o.get("symbol", "")).upper(), "order_id": str(o.get("id") or ""),
                          "order_type": otype.upper(), "stop_price": sp,
                          "trail_offset": o.get("trail_percent") or o.get("trail_price"),

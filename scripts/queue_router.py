@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db_adapter import _get_conn
 
-ALPACA = "alpaca_paper"
+ALPACA = "tradeai_automated"
 SCHWAB_PREFIX = "schwab"
 
 

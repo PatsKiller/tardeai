@@ -79,7 +79,7 @@ def report(verbose=False):
 
     # Hardcoding warnings
     r["hardcoding_warnings"] = [
-        "atm_auto_approver.py:255 defaults to 'alpaca_paper' if target_account NULL",
+        "atm_auto_approver.py:255 defaults to 'tradeai_automated' if target_account NULL",
         "paper_trade_proposals.proposed_account defaults to 'TOS_PAPER' in schema",
     ]
 

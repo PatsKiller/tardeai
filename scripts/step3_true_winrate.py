@@ -15,7 +15,7 @@ from trade_fill_verifier import trade_ai_verify
 
 def main():
     from broker_config import get_account_broker
-    get_account_broker("alpaca_paper")           # warm cache before opening our cursor
+    get_account_broker("tradeai_automated")           # warm cache before opening our cursor
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""

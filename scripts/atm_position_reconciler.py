@@ -226,8 +226,8 @@ def get_nested_arrays(payload: Any) -> List[List[Dict[str, Any]]]:
         (payload.get("data") or {}).get("open_positions") if isinstance(payload.get("data"), dict) else None,
         (payload.get("journal") or {}).get("open_trades") if isinstance(payload.get("journal"), dict) else None,
         (payload.get("journal") or {}).get("open_positions") if isinstance(payload.get("journal"), dict) else None,
-        (payload.get("alpaca_paper") or {}).get("open_trades") if isinstance(payload.get("alpaca_paper"), dict) else None,
-        (payload.get("alpaca_paper") or {}).get("open_positions") if isinstance(payload.get("alpaca_paper"), dict) else None,
+        (payload.get("tradeai_automated") or {}).get("open_trades") if isinstance(payload.get("tradeai_automated"), dict) else None,
+        (payload.get("tradeai_automated") or {}).get("open_positions") if isinstance(payload.get("tradeai_automated"), dict) else None,
     ]
     for item in candidates:
         if isinstance(item, list):

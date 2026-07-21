@@ -16,8 +16,8 @@ INSERT INTO trade_instances (trade_uid, source_system, source_table, source_trad
   symbol, strategy_id, signal_id, source_signal_id, strategy_card_id, candidate_id, proposal_id,
   status, side, shares, entry_price, entry_time, exit_price, exit_time, pnl, pnl_pct, r_multiple, hold_time_min,
   trade_key, lineage_confidence, lineage_source)
-SELECT 'paper_trades:'||id, 'alpaca_paper', 'paper_trades', id::text,
-  COALESCE(execution_broker,'alpaca'), COALESCE(execution_account, account, 'alpaca_paper'),
+SELECT 'paper_trades:'||id, 'tradeai_automated', 'paper_trades', id::text,
+  COALESCE(execution_broker,'alpaca'), COALESCE(execution_account, account, 'tradeai_automated'),
   COALESCE(execution_environment,'paper'), 'paper',
   symbol, strategy_id, signal_id, source_signal_id, source_strategy_card_id, candidate_id, proposal_id::text,
   COALESCE(status, CASE WHEN exit_time IS NOT NULL THEN 'closed' END), 'long', shares,

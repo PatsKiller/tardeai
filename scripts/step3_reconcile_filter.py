@@ -21,7 +21,7 @@ FAKE_BROKER_STATES = {"canceled", "cancelled", "rejected", "expired"}
 
 def main():
     from broker_config import get_account_broker
-    get_account_broker("alpaca_paper")
+    get_account_broker("tradeai_automated")
     conn = get_connection(); cur = conn.cursor()
     cur.execute("""
         SELECT id, symbol, account, shares, entry_price, broker_order_id, pnl,

@@ -792,7 +792,7 @@ def check_scan_decision(conn, symbol: str, *, trend_qualified: bool = False,
 
 
 def normalize_size(signal: dict, strategy_cfg: dict, shared_rules: dict,
-                   *, account_key: str = "alpaca_paper", equity: float | None = None,
+                   *, account_key: str = "tradeai_automated", equity: float | None = None,
                    policy: dict | None = None) -> dict:
     """Normalize proposal sizing via the percent-of-equity engine (operator 2026-06-19).
 

@@ -44,7 +44,7 @@ def main():
         JOIN trade_backtest_results br ON br.trade_instance_id = ti.id
         LEFT JOIN trade_edge_comparison ec ON ec.trade_instance_id = ti.id
         WHERE lower(coalesce(ti.status,'')) = 'closed'
-          AND ti.source_system <> 'alpaca_paper'
+          AND ti.source_system <> 'tradeai_automated'
           AND ec.trade_instance_id IS NULL
         ORDER BY ti.id
     """)

@@ -93,7 +93,7 @@ def main():
     cur.execute("""INSERT INTO paper_trades (symbol, account, strategy_id, shares, entry_price, stop_loss,
                      side, status, lifecycle_state, broker, execution_account, dollar_risk,
                      broker_order_id, take_profit_order_id, entry_time, created_at, broker_status)
-                   VALUES (%s,'ALPACA_PAPER',%s,1,%s,%s,'long','open','open','alpaca_paper','alpaca_paper',
+                   VALUES (%s,'ALPACA_PAPER',%s,1,%s,%s,'long','open','open','tradeai_automated','tradeai_automated',
                      %s,%s,%s,NOW()-interval '30 minutes',NOW()-interval '30 minutes','filled') RETURNING id""",
                 [SYM, STRAT, entry_px, round(entry_px * 0.95, 2), round(entry_px * 0.05, 2), entry_id, exit_id])
     tid = cur.fetchone()[0]; conn.commit()

@@ -14,10 +14,10 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 # Account capability policy
 BACKTEST_ENABLED = {
-    "alpaca_paper", "ALPACA_PAPER", "TOS_PAPER",
+    "tradeai_automated", "ALPACA_PAPER", "TOS_PAPER",
     "schwab_rollover_ira", "schwab_roth_ira", "schwab_roth", "schwab_taxable",
 }
-EXECUTION_ENABLED = {"alpaca_paper"}  # only paper execution
+EXECUTION_ENABLED = {"tradeai_automated"}  # only paper execution
 
 
 def _get_conn():

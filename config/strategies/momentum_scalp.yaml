@@ -38,7 +38,7 @@ intraday_execution:
   trading_window_et: {start: "06:00", end: "12:00"}     # 6am-noon ET, trading days only
   proposal_ttl_minutes: 30        # short TTL — a scalp setup is valid for minutes, not 9h
   fast_path_auto_approve: true    # gated auto-approve within window (paper account) so it converts
-  fast_path_account: alpaca_paper # build the sample on paper before promoting off TESTING
+  fast_path_account: tradeai_automated # build the sample on paper before promoting off TESTING
   max_price_drift_pct: 3.0        # kill the proposal if price drifts past this before fill
   social_momentum:
     enabled: true                 # social-surge scalps are in scope
@@ -125,7 +125,7 @@ validation_execution:
   mode: sandbox_simulated
   approval_required: false                 # deterministic gates replace human validation approval
   deterministic_gates_required: true
-  account: alpaca_paper                    # sandbox account identifier (legacy storage)
+  account: tradeai_automated                    # sandbox account identifier (legacy storage)
   account_label: sandbox_validation
   submit_mode: validation_fast_path
   legacy_storage: paper_trades
@@ -138,7 +138,7 @@ paper_trade_rules:
   auto_exit_at_close: true
   paper_approval_required: false           # legacy alias of validation_execution.approval_required
   deterministic_gates_required: true
-  allowed_account: alpaca_paper
+  allowed_account: tradeai_automated
   submit_mode: validation_fast_path
 live_trade_rules:
   max_position_size: 2000

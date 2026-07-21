@@ -1,11 +1,11 @@
 {
-  "_comment": "Defense Desk v1 D1 — instrument matrix, ENFORCED in every real-money render. can_short_stock verified 2026-07-17: Schwab Taxable account record type=MARGIN, buyingPower $114,263 = 2x availableFunds. options_level: OPERATOR-FILL from Schwab Profile > Margin & Options, SCHWAB-NATIVE tier names: covered (covered calls + PROTECTIVE puts on held shares) | long (+ calls/puts without owning) | spreads | short_uncovered. Rollover IRA read off the operator's Schwab page 2026-07-18 (advisor-managed: tier changes go through the IIA). Hedge menus degrade to inverse-ETF + covered-calls where null; protective puts on HELD symbols legal at covered tier; index/QQQ puts require long.",
+  "_comment": "Defense Desk v1 D1 \u2014 instrument matrix, ENFORCED in every real-money render. can_short_stock verified 2026-07-17: Schwab Taxable account record type=MARGIN, buyingPower $114,263 = 2x availableFunds. options_level: OPERATOR-FILL from Schwab Profile > Margin & Options, SCHWAB-NATIVE tier names: covered (covered calls + PROTECTIVE puts on held shares) | long (+ calls/puts without owning) | spreads | short_uncovered. Rollover IRA read off the operator's Schwab page 2026-07-18 (advisor-managed: tier changes go through the IIA). Hedge menus degrade to inverse-ETF + covered-calls where null; protective puts on HELD symbols legal at covered tier; index/QQQ puts require long.",
   "accounts": {
     "schwab_taxable": {
       "can_short_stock": true,
       "can_short_stock_verified": "2026-07-17 account record type=MARGIN",
       "options_level": "none",
-      "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (…469): no Current level on any tier",
+      "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (\u2026469): no Current level on any tier",
       "inverse_etf_ok": true,
       "covered_calls_ok": false,
       "short_size_cap_pct_of_book": 2.0
@@ -13,20 +13,20 @@
     "schwab_rollover_ira": {
       "can_short_stock": false,
       "options_level": "covered",
-      "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (…258): Current level = Covered",
+      "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (\u2026258): Current level = Covered",
       "inverse_etf_ok": true,
       "covered_calls_ok": true
     },
     "schwab_roth_ira": {
       "can_short_stock": false,
       "options_level": "none",
-      "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (…415): no Current level on any tier",
+      "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (\u2026415): no Current level on any tier",
       "inverse_etf_ok": true,
       "covered_calls_ok": false
     },
-    "alpaca_paper": {
+    "tradeai_automated": {
       "can_short_stock": true,
-      "note": "paper proving ground — defensive_short strategy, <=$2K, <=3 concurrent",
+      "note": "paper proving ground \u2014 defensive_short strategy, <=$2K, <=3 concurrent",
       "inverse_etf_ok": true,
       "covered_calls_ok": false
     }
