@@ -199,7 +199,9 @@ def select_targets(top_n: int = TOP_N) -> dict:
 
 
 def _fresh_symbols(symbols: list, hours: float) -> set:
-    """Symbols with a live packet younger than `hours` — skipped as already fresh."""
+    """(back-compat) symbols with a live packet younger than `hours`. The batch now
+    uses classify_freshness() which also honours input-hash invalidation; this is
+    retained for callers/tests that only want the coarse TTL view."""
     if not symbols:
         return set()
     conn = _conn()
@@ -210,6 +212,48 @@ def _fresh_symbols(symbols: list, hours: float) -> set:
                      AND upper(symbol) = ANY(%s)""",
                 (hours, [s.upper() for s in symbols]))
     return {r[0] for r in cur.fetchall()}
+
+
+def classify_freshness(symbols: list, hours: float) -> dict:
+    """Split symbols into {fresh: [...], regenerate: {sym: reason}}.
+
+    A symbol is FRESH only when its live packet is within TTL AND its input hash
+    is unchanged AND there is no material price drift AND no newer catalyst — the
+    full invalidation contract, not age alone. Everything else regenerates with an
+    explicit reason, so a two-hour-old packet overtaken by a fresh catalyst or a
+    material move is NOT silently skipped."""
+    import packet_invalidation as inv
+    if not symbols:
+        return {"fresh": [], "regenerate": {}}
+    conn = _conn()
+    cur = conn.cursor()
+    cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS s, packet, generated_at
+                   FROM decision_packets
+                   WHERE superseded_by IS NULL AND upper(symbol) = ANY(%s)
+                   ORDER BY upper(symbol), generated_at DESC""",
+                ([s.upper() for s in symbols],))
+    live = {}
+    for r in cur.fetchall():
+        pkt = r[1] if isinstance(r[1], dict) else json.loads(r[1])
+        live[r[0]] = (pkt, r[2])
+
+    fresh, regen = [], {}
+    for sym in {s.upper() for s in symbols}:
+        if sym not in live:
+            regen[sym] = "packet_absent"
+            continue
+        pkt, gen = live[sym]
+        try:
+            current = inv.current_material(sym, conn)
+            invalidated, reason = inv.evaluate_invalidation(
+                pkt, current, generated_at=str(gen), ttl_hours=hours)
+        except Exception as exc:
+            invalidated, reason = True, f"invalidation_check_error: {type(exc).__name__}"
+        if invalidated:
+            regen[sym] = reason
+        else:
+            fresh.append(sym)
+    return {"fresh": fresh, "regenerate": regen}
 
 
 def _generate_one(symbol: str) -> dict:
@@ -244,12 +288,26 @@ def run(*, top_n: int = TOP_N, dry_run: bool = False, force: bool = False,
         members = members[:HARD_CAP]
     symbols = [m["symbol"] for m in members]
 
-    fresh = set() if force else _fresh_symbols(symbols, fresh_hours)
+    # Input-hash invalidation, not age alone: a symbol is skipped only when its
+    # packet is genuinely current (within TTL, hash unchanged, no material drift,
+    # no newer catalyst). Regenerations carry their exact reason.
+    if force:
+        fresh, regen_reasons = set(), {s: "forced" for s in symbols}
+    else:
+        _cls = classify_freshness(symbols, fresh_hours)
+        fresh, regen_reasons = set(_cls["fresh"]), _cls["regenerate"]
     todo = [s for s in symbols if s not in fresh]
+
+    # composition of WHY each regen fires (ttl, hash change, drift, catalyst, absent)
+    from collections import Counter as _Counter
+    _regen_by_reason = _Counter(str(r).split(" ")[0].split("(")[0] for r in regen_reasons.values())
 
     summary = {
         "authorised": "operator 2026-07-21: EVIDENCE-based eligibility (label is sort-only)",
         "eligibility": "star | directive | held | material-move+rvol | catalyst | scope-S1 | packet-absent",
+        "invalidation": "ttl | packet_version | event/ownership/fundamentals hash | price_drift | fresh_catalyst",
+        "regenerate_reasons": dict(regen_reasons),
+        "regenerate_by_reason": dict(_regen_by_reason),
         "top_n": top_n, "concurrency": concurrency, "fresh_hours": fresh_hours,
         "target_count": len(symbols),
         "total_qualifying": sel["total_qualifying"], "selected": sel["selected"],

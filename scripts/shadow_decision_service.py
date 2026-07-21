@@ -612,6 +612,9 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
         "current_price": facts.get("live_price"),
         "price_drift_pct": dq.get("price_drift_pct"),
         "source_commit_sha": _sha(),
+        # Fundamentals recency, carried so packet invalidation can tell when a
+        # thesis rests on newer/older fundamentals than the packet was built on.
+        "fundamentals_as_of": (facts.get("fundamentals") or {}).get("fundamentals_as_of"),
         "ownership": ownership.to_dict(),
         "horizons": {
             "tactical": {
