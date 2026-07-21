@@ -73,8 +73,74 @@ def test_unchanged_inputs_within_ttl_matches():
 
 def test_tiny_price_tick_alone_does_not_invalidate():
     r = inv.compare_packet_inputs(_packet(), _snapshot(market={"price": 101.5}),
-                                  generated_at=GEN, price_drift_pct=3.0, now=NOW)
+                                  generated_at=GEN, price_drift_pct=5.0, now=NOW)
     assert r["inputs_match"] is True
+
+
+def test_enrichment_timestamp_churn_is_not_technicals_changed():
+    """last_enriched_at moving without RSI/chg/rvol band shift must not REFRESH."""
+    # Old-style hash that baked in as_of (simulates pre-fix packets)
+    old_h = inv._h({"rsi": None, "as_of": "2026-07-21T10:00:00+00:00"})
+    new_h = inv.technical_content_hash(rsi=None, change_pct=None, rvol=None)
+    pkt = _packet(snapshot=_snapshot(market={
+        "price": 100.0, "technical_content_hash": old_h, "technical_as_of": "2026-07-21T10:00:00+00:00",
+    }))
+    cur = _snapshot(market={
+        "price": 100.0, "technical_content_hash": new_h,
+        "technical_as_of": "2026-07-21T11:30:00+00:00",  # enrich tick
+        "rsi": None, "change_pct": None, "rvol": None,
+    })
+    r = inv.compare_packet_inputs(pkt, cur, generated_at=GEN, now=NOW)
+    assert "TECHNICALS_CHANGED" not in r["invalidation_reasons"]
+    assert r["inputs_match"] is True
+
+
+def test_material_rsi_band_shift_is_technicals_changed():
+    old_h = inv.technical_content_hash(rsi=40, change_pct=0, rvol=1.0)
+    new_h = inv.technical_content_hash(rsi=55, change_pct=0, rvol=1.0)
+    assert old_h != new_h
+    pkt = _packet(snapshot=_snapshot(market={
+        "price": 100.0, "technical_content_hash": old_h, "rsi": 40, "change_pct": 0, "rvol": 1.0,
+        "technical_as_of": GEN,
+    }))
+    cur = _snapshot(market={
+        "price": 100.0, "technical_content_hash": new_h, "rsi": 55, "change_pct": 0, "rvol": 1.0,
+        "technical_as_of": GEN,
+    })
+    r = inv.compare_packet_inputs(pkt, cur, generated_at=GEN, now=NOW)
+    assert "TECHNICALS_CHANGED" in r["invalidation_reasons"]
+
+
+def test_rth_ttl_is_shorter_than_overnight():
+    # Noon ET on a weekday in July ≈ RTH
+    rth = datetime(2026, 7, 21, 16, 0, tzinfo=timezone.utc)  # 12:00 ET
+    off = datetime(2026, 7, 21, 2, 0, tzinfo=timezone.utc)   # 22:00 ET prior
+    assert inv.effective_ttl_hours(rth) <= inv.effective_ttl_hours(off)
+    assert inv.is_us_cash_rth(rth) is True
+    assert inv.is_us_cash_rth(off) is False
+    assert inv.effective_ttl_hours(rth) == 4.0
+    assert inv.effective_ttl_hours(off) == 12.0
+
+
+def test_rth_ttl_expired_at_five_hours():
+    """5h-old packet during cash session → TTL_EXPIRED (few-hour rating refresh)."""
+    rth = datetime(2026, 7, 21, 16, 0, tzinfo=timezone.utc)
+    gen = (rth - timedelta(hours=5)).isoformat()
+    r = inv.compare_packet_inputs(
+        _packet(evaluated_at=gen), _snapshot(), generated_at=gen, now=rth)
+    assert "TTL_EXPIRED" in r["invalidation_reasons"]
+    assert r["ttl_hours_applied"] == 4.0
+    assert r.get("packet_age_hours", 0) >= 5.0
+    assert r.get("rth") is True
+
+
+def test_batch_fresh_hours_defaults_to_rth_aware():
+    import shadow_batch_generator as bg
+    rth = datetime(2026, 7, 21, 16, 0, tzinfo=timezone.utc)
+    off = datetime(2026, 7, 21, 2, 0, tzinfo=timezone.utc)
+    assert bg._effective_fresh_hours(None, now=rth) == 4.0
+    assert bg._effective_fresh_hours(None, now=off) == 12.0
+    assert bg._effective_fresh_hours(8.0, now=rth) == 8.0
 
 
 # ── each material change invalidates with a NAMED reason ──────────────────────

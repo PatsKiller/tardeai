@@ -238,7 +238,8 @@ export default function WatchlistCardV4({
       node: <><span style={{ color: BB.text3, fontWeight: 800 }}>CO </span>{truncate(String(companyDesc), 90)}</>,
     })
   }
-  if (cioNote) {
+  // Legacy CIO narrative stays off the primary surface when a decision packet leads.
+  if (cioNote && !hasPacket) {
     contextBullets.push({
       key: 'cio',
       node: <><span style={{ color: BB.amber, fontWeight: 800 }}>CIO</span> {cioNote}</>,
@@ -369,18 +370,30 @@ export default function WatchlistCardV4({
         </div>
       </div>
 
-      {/* ①ª PRIMARY decision surface — the multidimensional packet leads when one
-          exists; renders nothing otherwise so the legacy band below is unchanged. */}
-      <DecisionPacketBand packet={it.decision_packet} generatedAt={it.decision_packet_at} />
+      {/* ①ª OPERATOR decision surface — one action, not a packet viewer.
+          When a packet exists, this replaces the legacy verdict strip. */}
+      {hasPacket && (
+        <DecisionPacketBand
+          packet={it.decision_packet}
+          generatedAt={it.decision_packet_at}
+          actionPolicy={it.action_policy}
+          held={isHeld}
+          onRefresh={onRefresh}
+          onPrimary={(pres) => {
+            // Advisory CTAs only — never queue/approve/submit orders from this surface.
+            if (pres.state === 'READY' && onPropose) onPropose(it)
+            else if ((pres.state === 'MANAGE POSITION' || pres.state === 'WAIT') && onOpenDesk) onOpenDesk(it.symbol)
+            else onDrill(drillCtx)
+          }}
+          onAlert={() => { if (onOpenDesk) onOpenDesk(it.symbol); else onDrill(drillCtx) }}
+        />
+      )}
 
-      {/* ② Recommendation + status strip — DEMOTED to a "prior" strip when a
-          decision packet is present above it (dimmer, relabelled, the anchored
-          AGREE/SPLIT badge hidden since the packet shows blind per-dimension
-          agreement instead). Unchanged when no packet exists. */}
+      {/* ② Legacy verdict strip — ONLY when no packet (packet card is the decision). */}
+      {!hasPacket && (
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          opacity: hasPacket ? 0.55 : 1,
           display: 'flex',
           alignItems: 'center',
           gap: 8,
@@ -403,25 +416,21 @@ export default function WatchlistCardV4({
         <span style={{ flex: 1, minWidth: 120, fontSize: 10.5, fontWeight: 600, color: BB.text0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={whyLine || action.heroText}>
           {whyLine || action.heroText}
         </span>
-        {/* Dual unqualified "prior CIO X / prior HOLD" removed when a packet
-            leads — LEGACY @ BUILD is on DecisionPacketBand only. */}
-        {!hasPacket && (
-          <span style={{ ...numStyle, fontSize: 9, fontWeight: 800, color: cioAccent, textTransform: 'uppercase', flexShrink: 0 }}
-            title={`CIO view: ${cioLabel}`}>
-            {cioLabel}
-          </span>
-        )}
-        {!hasPacket && it.models_agree === true && <span style={{ fontSize: 8, color: BB.green, fontWeight: 800, flexShrink: 0 }}>AGREE</span>}
-        {!hasPacket && it.models_agree === false && <span style={{ fontSize: 8, color: BB.amber, fontWeight: 800, flexShrink: 0 }}>SPLIT</span>}
+        <span style={{ ...numStyle, fontSize: 10, fontWeight: 800, color: cioAccent, textTransform: 'uppercase', flexShrink: 0 }}
+          title={`CIO view: ${cioLabel}`}>
+          {cioLabel}
+        </span>
+        {it.models_agree === true && <span style={{ fontSize: 10, color: BB.green, fontWeight: 800, flexShrink: 0 }}>AGREE</span>}
+        {it.models_agree === false && <span style={{ fontSize: 10, color: BB.amber, fontWeight: 800, flexShrink: 0 }}>SPLIT</span>}
         {confNum != null && (
-          <span style={{ ...numStyle, fontSize: 8, color: BB.text3, flexShrink: 0 }} title="Research confidence">{confNum.toFixed(2)}</span>
+          <span style={{ ...numStyle, fontSize: 10, color: BB.text3, flexShrink: 0 }} title="Research confidence">{confNum.toFixed(2)}</span>
         )}
         {stale && (
           <span className="wlc-term-tag" style={{ color: BB.amber, border: `1px solid ${BB.amber}55`, background: BB.amberDim }} title="Data older than 1h during market hours">STALE</span>
         )}
         <span
           title={visibleDqFlags.map(f => f.label).join(' · ') || 'Data healthy'}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, fontSize: 8, color: BB.text3 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, fontSize: 10, color: BB.text3 }}
         >
           <span style={{ width: 5, height: 5, borderRadius: 1, background: dqColor, display: 'inline-block' }} />
           {worstDq ? worstDq.label : `ok ${ago(it.last_enriched_at)}`}
@@ -432,14 +441,16 @@ export default function WatchlistCardV4({
           </span>
         )}
         {action.warning && (
-          <span style={{ fontSize: 8, color: action.warning.severity === 'red' ? BB.red : BB.amber, fontWeight: 700, flexShrink: 0 }} title={action.warning.text}>
+          <span style={{ fontSize: 10, color: action.warning.severity === 'red' ? BB.red : BB.amber, fontWeight: 700, flexShrink: 0 }} title={action.warning.text}>
             ⚠ {truncate(action.warning.text, 48)}
           </span>
         )}
       </div>
+      )}
 
-      {/* ③ Trade plan ⟷ Sizing */}
-      <div className="wlc-term-grid" onClick={e => e.stopPropagation()}>
+      {/* ③ Trade plan ⟷ Sizing — collapsed when packet leads (mechanics live on the operator card). */}
+      <div className="wlc-term-grid" onClick={e => e.stopPropagation()}
+        style={hasPacket ? { opacity: 0.72 } : undefined}>
         <div className="wlc-term-cell">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
             <span style={micro}>Plan</span>
@@ -520,7 +531,8 @@ export default function WatchlistCardV4({
         </div>
       )}
 
-      {/* ⑤ Action row */}
+      {/* ⑤ Action row — when a packet leads, CTAs live on the operator decision band;
+          keep only secondary utilities here to avoid duplicate primary buttons. */}
       <div
         onClick={e => e.stopPropagation()}
         style={{
@@ -533,12 +545,12 @@ export default function WatchlistCardV4({
           flexWrap: 'wrap',
         }}
       >
-        {action.allowPrimary && (
+        {!hasPacket && action.allowPrimary && (
           <button onClick={handlePrimary} style={terminalButton(action.buttonVariant === 'outline-red' ? 'danger' : 'primary')}>
             {action.primaryLabel}
           </button>
         )}
-        {inlineSecondary && (
+        {!hasPacket && inlineSecondary && (
           <button onClick={e => executeAction(e, inlineSecondary.type)} style={terminalButton('secondary')}>{inlineSecondary.label}</button>
         )}
         <button onClick={e => { e.stopPropagation(); setDrawerOpen(v => !v) }} style={terminalButton('ghost')}>More {drawerOpen ? '▴' : '▾'}</button>

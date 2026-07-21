@@ -94,6 +94,38 @@ def test_old_packet_is_stale_by_wallclock():
     old = (NOW - timedelta(hours=30)).isoformat()
     r = pol.evaluate_action(p, generated_at=old, now=NOW)
     assert r["state"] == "STALE" and r["action"] == "REFRESH"
+    assert r.get("should_be_stale") is True
+    assert r.get("packet_age_hours") is not None
+    assert r.get("ttl_hours_applied") is not None
+
+
+def test_rth_few_hour_ttl_marks_packet_stale():
+    """During US cash session, star/buy plans older than ~4h must REFRESH.
+
+    NOW at 16:00 UTC = 12:00 ET on a July weekday → RTH. A 5h-old packet
+    exceeds the 4h RTH TTL but would still pass the legacy 12h overnight gate.
+    """
+    rth_now = datetime(2026, 7, 21, 16, 0, tzinfo=timezone.utc)  # 12:00 ET
+    p = _packet()
+    gen = (rth_now - timedelta(hours=5)).isoformat()
+    r = pol.evaluate_action(p, generated_at=gen, now=rth_now)
+    assert r["state"] == "STALE" and r["action"] == "REFRESH"
+    assert r.get("should_be_stale") is True
+    assert r.get("rth") is True
+    assert r.get("ttl_hours_applied", 99) <= 4.0 + 1e-6
+    assert any("RTH" in str(b) for b in r.get("blocks") or [])
+
+
+def test_off_hours_allows_packet_under_12h():
+    """Outside RTH the longer overnight TTL applies — 5h-old is still current."""
+    off_now = datetime(2026, 7, 21, 2, 0, tzinfo=timezone.utc)  # 22:00 ET prior
+    p = _packet()
+    gen = (off_now - timedelta(hours=5)).isoformat()
+    r = pol.evaluate_action(p, generated_at=gen, now=off_now, ttl_hours=None)
+    # Not age-stale (other gates may still apply for CONDITIONAL)
+    assert r.get("should_be_stale") is False
+    assert r["state"] != "STALE" or "packet is" not in str(r.get("blocks") or [])
+    assert r.get("ttl_hours_applied", 0) >= 12.0 - 1e-6
 
 
 def test_blocked_event_fails_closed_to_monitor():

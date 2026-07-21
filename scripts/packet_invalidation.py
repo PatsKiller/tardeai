@@ -36,13 +36,22 @@ from typing import Optional
 
 # Bumped in lockstep with the live packet/policy so a version change forces refresh.
 CURRENT_PACKET_VERSION = "1.1.0-shadow"
-POLICY_VERSION = "1.0.0"
+# 1.1.1: technical hash no longer includes enrichment timestamps (as_of churn
+# was marking every card REFRESH on each enrich pass); trading-day TTL + age-based
+# TECHNICALS_STALE / FUNDAMENTALS_STALE.
+POLICY_VERSION = "1.1.1"
 
+# Default TTL for overnight/weekend. During regular US cash session we use a
+# shorter cadence so ratings / strategy plans refresh every few hours RTH.
 TTL_HOURS = float(os.getenv("PACKET_TTL_HOURS", "12"))
-PRICE_DRIFT_PCT = float(os.getenv("PACKET_PRICE_DRIFT_PCT", "3.0"))
+TTL_HOURS_RTH = float(os.getenv("PACKET_TTL_HOURS_RTH", "4"))
+PRICE_DRIFT_PCT = float(os.getenv("PACKET_PRICE_DRIFT_PCT", "5.0"))
 # Fundamentals/technicals older than these are STALE regardless of hash equality.
 FUNDAMENTALS_STALE_DAYS = float(os.getenv("PACKET_FUNDAMENTALS_STALE_DAYS", "7"))
-TECHNICALS_STALE_HOURS = float(os.getenv("PACKET_TECHNICALS_STALE_HOURS", "36"))
+# Material technicals (RSI/levels) older than this → refresh during the week.
+TECHNICALS_STALE_HOURS = float(os.getenv("PACKET_TECHNICALS_STALE_HOURS", "4"))
+# Overnight/weekend technical age gate (do not force refresh every 4h off-hours).
+TECHNICALS_STALE_HOURS_OFF = float(os.getenv("PACKET_TECHNICALS_STALE_HOURS_OFF", "36"))
 
 # Invalidation reason codes (the batch/dry-run report by these).
 REASONS = (
@@ -65,6 +74,8 @@ def _parse(ts) -> Optional[datetime]:
         s = str(ts)
         if "T" not in s and " " in s:
             s = s.replace(" ", "T", 1)
+        # Strip trailing timezone labels like " ET" that are not ISO
+        s = s.replace(" ET", "").replace(" EDT", "").replace(" EST", "")
         s = s.replace("Z", "+00:00")
         d = datetime.fromisoformat(s[:32])
         return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
@@ -74,6 +85,60 @@ def _parse(ts) -> Optional[datetime]:
 
 def _h(obj) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def _et_now(now=None) -> datetime:
+    """Wall clock in America/New_York for RTH detection."""
+    try:
+        from zoneinfo import ZoneInfo
+        return _now(now).astimezone(ZoneInfo("America/New_York"))
+    except Exception:
+        # Fallback: UTC-4 approx (not perfect DST) — still usable for gating.
+        return _now(now).astimezone(timezone.utc)
+
+
+def is_us_cash_rth(now=None) -> bool:
+    """True Mon–Fri 09:30–16:00 America/New_York (regular cash session)."""
+    et = _et_now(now)
+    if et.weekday() >= 5:
+        return False
+    mins = et.hour * 60 + et.minute
+    return (9 * 60 + 30) <= mins < (16 * 60)
+
+
+def effective_ttl_hours(now=None) -> float:
+    """Shorter TTL during RTH so star/buy/strong-buy plans refresh every few hours."""
+    return TTL_HOURS_RTH if is_us_cash_rth(now) else TTL_HOURS
+
+
+def effective_technicals_stale_hours(now=None) -> float:
+    return TECHNICALS_STALE_HOURS if is_us_cash_rth(now) else TECHNICALS_STALE_HOURS_OFF
+
+
+def technical_content_hash(*, rsi=None, change_pct=None, rvol=None) -> str:
+    """Material technical shape only — NEVER enrichment timestamps.
+
+    Including last_enriched_at in the hash caused TECHNICALS_CHANGED on every
+    enrich cron tick (RSI often still null), flooding the card with REFRESH.
+    Bands: RSI 5-pt, daily change 1%, rvol 0.5x — noise inside a band is not a
+    new decision input.
+    """
+    def _band(v, step):
+        if v is None:
+            return None
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            return None
+        if step <= 0:
+            return round(x, 2)
+        return int(round(x / step)) * step
+
+    return _h({
+        "rsi_band": _band(rsi, 5.0),
+        "chg_band": _band(change_pct, 1.0),
+        "rvol_band": _band(rvol, 0.5),
+    })
 
 
 # ── the canonical snapshot ────────────────────────────────────────────────────
@@ -115,12 +180,17 @@ def build_current_input_snapshot(symbol: str, conn=None, *, include_options: boo
     cur.execute("""SELECT rsi, last_enriched_at, change_pct, rvol FROM watchlist_items
                    WHERE upper(symbol)=%s ORDER BY last_enriched_at DESC NULLS LAST LIMIT 1""", (sym,))
     tr = cur.fetchone()
-    rsi, tech_as_of = (float(tr[0]) if tr and tr[0] is not None else None,
-                       str(tr[1]) if tr and tr[1] else None)
-    tech_hash = _h({"rsi": rsi, "as_of": tech_as_of})
+    rsi = float(tr[0]) if tr and tr[0] is not None else None
+    tech_as_of = str(tr[1]) if tr and tr[1] else None
+    change_pct = float(tr[2]) if tr and tr[2] is not None else None
+    rvol = float(tr[3]) if tr and len(tr) > 3 and tr[3] is not None else None
+    # Hash material bands only — timestamp is for STALE age checks, not CHANGED.
+    tech_hash = technical_content_hash(rsi=rsi, change_pct=change_pct, rvol=rvol)
     market = {"price": price, "price_as_of": price_as_of,
               "price_drift_bucket": (round(price, 0) if price else None),  # audit-coarse; hash excludes price
-              "session": None, "technical_as_of": tech_as_of,
+              "session": "RTH" if is_us_cash_rth() else "OFF",
+              "technical_as_of": tech_as_of,
+              "rsi": rsi, "change_pct": change_pct, "rvol": rvol,
               "technical_content_hash": tech_hash}
 
     # ── fundamentals (with provenance) ────────────────────────────────────────
@@ -223,28 +293,43 @@ def _packet_snapshot(packet: dict) -> Optional[dict]:
 
 
 def compare_packet_inputs(packet: dict, current: dict, *, generated_at=None,
-                          ttl_hours: float = TTL_HOURS,
+                          ttl_hours: float = None,
                           price_drift_pct: float = PRICE_DRIFT_PCT, now=None) -> dict:
     """InvalidationResult: does the packet still match current source truth?
 
     Returns {inputs_match, invalidation_reasons, packet_input_hash,
-             current_input_hash}. A packet with NO persisted snapshot falls back to
-    comparing the material fields it does carry (older packets)."""
+             current_input_hash, ttl_hours_applied, technicals_as_of,
+             packet_age_hours}. A packet with NO persisted snapshot falls back to
+    comparing the material fields it does carry (older packets).
+
+    Time policy (trading day):
+      • RTH TTL default 4h — plans / ratings need a few-hour refresh cadence
+      • Off-hours TTL default 12h
+      • TECHNICALS_STALE when technical_as_of is older than the RTH/off gate
+      • TECHNICALS_CHANGED only on material RSI/chg/rvol band shifts — not enrich clocks
+    """
     p = packet or {}
     reasons = []
     cur_hash = current.get("input_hash") or compute_input_hash(current)
     pkt_snap = _packet_snapshot(p)
     pkt_hash = (pkt_snap or {}).get("input_hash") or p.get("input_hash")
+    ttl = float(ttl_hours) if ttl_hours is not None else effective_ttl_hours(now)
 
-    # 1. TTL
+    # 1. TTL (time-based refresh — primary “update every few hours” lever)
     gen = _parse(generated_at) or _parse(p.get("evaluated_at"))
-    if gen is not None and (_now(now) - gen).total_seconds() / 3600.0 > ttl_hours:
-        reasons.append("TTL_EXPIRED")
+    age_h = None
+    if gen is not None:
+        age_h = (_now(now) - gen).total_seconds() / 3600.0
+        if age_h > ttl:
+            reasons.append("TTL_EXPIRED")
 
-    # 2/3. versions
+    # 2/3. versions — only force on hard packet version bumps. Policy micro-bumps
+    # (hash formula fixes) must not REFRESH every live card until regenerate.
     if str(p.get("packet_version") or "") != CURRENT_PACKET_VERSION:
         reasons.append("PACKET_VERSION_CHANGED")
-    if str((p.get("action_policy_version") or POLICY_VERSION)) != POLICY_VERSION:
+    pkt_pol = str(p.get("action_policy_version") or "").strip()
+    # Only flag major policy series drift (e.g. 1.0 → 2.0), not 1.0.0 → 1.1.1.
+    if pkt_pol and pkt_pol.split(".")[0] != str(POLICY_VERSION).split(".")[0]:
         reasons.append("POLICY_VERSION_CHANGED")
 
     # 4. section-level comparison — precise reasons
@@ -263,13 +348,35 @@ def compare_packet_inputs(packet: dict, current: dict, *, generated_at=None,
             # only flag options if the packet actually used a chain
             if reason == "OPTIONS_CHAIN_STALE" and old_v is None:
                 continue
+            # Legacy technical hashes included enrichment as_of — if either side
+            # is missing material bands, re-hash from stored rsi if present.
+            if reason == "TECHNICALS_CHANGED" and old_v and new_v and old_v != new_v:
+                old_m = pkt_snap.get("market") or {}
+                new_m = current.get("market") or {}
+                # Recompute material hashes when we have fields (bridges old packets).
+                if "rsi" in new_m or "change_pct" in new_m:
+                    old_mat = technical_content_hash(
+                        rsi=old_m.get("rsi"), change_pct=old_m.get("change_pct"),
+                        rvol=old_m.get("rvol"))
+                    new_mat = technical_content_hash(
+                        rsi=new_m.get("rsi"), change_pct=new_m.get("change_pct"),
+                        rvol=new_m.get("rvol"))
+                    # If old snapshot lacked material fields, treat as_of-only hash
+                    # drift as NON-invalidating (clock noise) — age gate covers it.
+                    if old_m.get("rsi") is None and old_m.get("change_pct") is None \
+                            and old_m.get("rvol") is None:
+                        continue
+                    if old_mat == new_mat:
+                        continue
             if old_v != new_v:
                 reasons.append(reason)
         if pkt_hash and cur_hash and pkt_hash != cur_hash and not any(
                 r in reasons for r in ("FUNDAMENTALS_CHANGED", "EARNINGS_CHANGED",
                                        "OWNERSHIP_CHANGED", "TECHNICALS_CHANGED",
                                        "PROPOSAL_STATE_CHANGED", "OPTIONS_CHAIN_STALE")):
-            reasons.append("INPUT_HASH_MISMATCH")
+            # Overall hash mismatch with no section reason is usually legacy
+            # as_of-in-tech-hash noise — do not force REFRESH.
+            pass
     else:
         # legacy packet without a snapshot — compare the coarse fields it carries
         old_ev = (p.get("event_state") or {}).get("earnings") or {}
@@ -285,7 +392,7 @@ def compare_packet_inputs(packet: dict, current: dict, *, generated_at=None,
         if str(p.get("fundamentals_as_of") or "") != str((current.get("fundamentals") or {}).get("fetched_at") or ""):
             reasons.append("FUNDAMENTALS_CHANGED")
 
-    # 5. price drift (separate from the hash)
+    # 5. price drift (separate from the hash) — material move only
     pp = p.get("price_used")
     cp = (current.get("market") or {}).get("price")
     if pp and cp and abs(float(cp) - float(pp)) / float(pp) * 100.0 > price_drift_pct:
@@ -296,6 +403,28 @@ def compare_packet_inputs(packet: dict, current: dict, *, generated_at=None,
     if cat is not None and gen is not None and cat > gen:
         reasons.append("NEW_CATALYST")
 
+    # 7. Age gates (timestamp-based STALE — the “every few hours” rule)
+    tech_as_of = _parse((current.get("market") or {}).get("technical_as_of"))
+    tech_gate = effective_technicals_stale_hours(now)
+    if tech_as_of is not None:
+        tech_age_h = (_now(now) - tech_as_of).total_seconds() / 3600.0
+        if tech_age_h > tech_gate:
+            reasons.append("TECHNICALS_STALE")
+    fund_as_of = _parse((current.get("fundamentals") or {}).get("fetched_at"))
+    if fund_as_of is not None:
+        fund_age_d = (_now(now) - fund_as_of).total_seconds() / 86400.0
+        if fund_age_d > FUNDAMENTALS_STALE_DAYS:
+            reasons.append("FUNDAMENTALS_STALE")
+
     reasons = sorted(set(reasons))
-    return {"inputs_match": not reasons, "invalidation_reasons": reasons,
-            "packet_input_hash": pkt_hash, "current_input_hash": cur_hash}
+    return {
+        "inputs_match": not reasons,
+        "invalidation_reasons": reasons,
+        "packet_input_hash": pkt_hash,
+        "current_input_hash": cur_hash,
+        "ttl_hours_applied": ttl,
+        "technicals_stale_hours_gate": tech_gate,
+        "packet_age_hours": round(age_h, 2) if age_h is not None else None,
+        "technicals_as_of": (current.get("market") or {}).get("technical_as_of"),
+        "rth": is_us_cash_rth(now),
+    }

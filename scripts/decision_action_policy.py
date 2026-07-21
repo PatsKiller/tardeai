@@ -42,7 +42,8 @@ ACTIONS = ("PROPOSE_ENTRY", "RESEARCH_OPTIONS", "REFRESH", "MONITOR", "NO_ACTION
 STATES = ("READY", "CONDITIONAL", "BLOCKED", "STALE", "DATA_UNAVAILABLE")
 
 # Packet older than this is STALE for action purposes even if input-hash matched
-# (a coarse backstop; the input-hash invalidation is the finer test).
+# (coarse off-hours backstop). Live path prefers RTH-aware TTL via
+# packet_invalidation.effective_ttl_hours (default 4h during US cash session).
 DEFAULT_TTL_HOURS = 12
 
 # data_quality states that forbid anything but refresh/review.
@@ -62,6 +63,42 @@ def _parse(ts) -> Optional[datetime]:
         return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
     except (ValueError, TypeError):
         return None
+
+
+def _resolve_ttl_hours(ttl_hours, now=None) -> float:
+    """None → RTH-aware few-hour cadence; explicit value wins (tests / overrides)."""
+    if ttl_hours is not None:
+        return float(ttl_hours)
+    try:
+        import packet_invalidation as _inv
+        return float(_inv.effective_ttl_hours(now))
+    except Exception:
+        return float(DEFAULT_TTL_HOURS)
+
+
+def _is_rth(now=None) -> bool:
+    try:
+        import packet_invalidation as _inv
+        return bool(_inv.is_us_cash_rth(now))
+    except Exception:
+        return False
+
+
+def _freshness_meta(packet: dict, *, generated_at=None, ttl_hours=None, now=None) -> dict:
+    """Operator-facing age stamp: when built, how old, which TTL applied."""
+    gen = _parse(generated_at) or _parse((packet or {}).get("evaluated_at"))
+    ttl = _resolve_ttl_hours(ttl_hours, now)
+    age_h = None
+    if gen is not None:
+        age_h = (_now(now) - gen).total_seconds() / 3600.0
+    rth = _is_rth(now)
+    return {
+        "generated_at": gen.isoformat() if gen else (packet or {}).get("evaluated_at"),
+        "packet_age_hours": round(age_h, 2) if age_h is not None else None,
+        "ttl_hours_applied": ttl,
+        "rth": rth,
+        "should_be_stale": bool(age_h is not None and age_h > ttl),
+    }
 
 
 def compute_input_hash(packet: dict) -> str:
@@ -92,9 +129,10 @@ def compute_input_hash(packet: dict) -> str:
 
 
 def _result(action, allowed, state, *, packet=None, blueprint_id=None,
-            blocks=None, warnings=None, confirmations=None, reason=""):
+            blocks=None, warnings=None, confirmations=None, reason="",
+            freshness=None):
     p = packet or {}
-    return {
+    out = {
         "action": action, "allowed": bool(allowed), "state": state,
         "blocks": blocks or [], "warnings": warnings or [],
         "required_confirmations": confirmations or [],
@@ -105,14 +143,21 @@ def _result(action, allowed, state, *, packet=None, blueprint_id=None,
         "input_hash": compute_input_hash(p) if p else None,
         "reason": reason,
     }
+    if freshness:
+        out.update(freshness)
+    return out
 
 
 def evaluate_action(packet: dict, *, packet_id=None, generated_at=None,
-                    existing_proposal: bool = False, ttl_hours: float = DEFAULT_TTL_HOURS,
+                    existing_proposal: bool = False, ttl_hours: float = None,
                     current_snapshot: dict = None, now=None) -> dict:
     """Public entry — computes the decision, then guarantees the input-parity fields
     (packet_input_hash, current_input_hash, inputs_match, invalidation_reasons) are
-    present on the result whenever a current snapshot was available."""
+    present on the result whenever a current snapshot was available.
+
+    ttl_hours=None (default) uses RTH-aware cadence: ~4h during US cash session so
+    star / buy / strong-buy plans re-arm every few trading hours; ~12h off-hours.
+    """
     res = _evaluate_action_impl(
         packet, packet_id=packet_id, generated_at=generated_at,
         existing_proposal=existing_proposal, ttl_hours=ttl_hours,
@@ -123,11 +168,15 @@ def evaluate_action(packet: dict, *, packet_id=None, generated_at=None,
                                     or ((packet or {}).get("input_snapshot") or {}).get("input_hash"))
         res["inputs_match"] = True
         res["invalidation_reasons"] = []
+    # Always surface age / TTL stamp for the operator card.
+    if "packet_age_hours" not in res:
+        res.update(_freshness_meta(packet or {}, generated_at=generated_at,
+                                   ttl_hours=ttl_hours, now=now))
     return res
 
 
 def _evaluate_action_impl(packet: dict, *, packet_id=None, generated_at=None,
-                          existing_proposal: bool = False, ttl_hours: float = DEFAULT_TTL_HOURS,
+                          existing_proposal: bool = False, ttl_hours: float = None,
                           current_snapshot: dict = None, now=None) -> dict:
     """The canonical action decision for one symbol from its live packet.
 
@@ -150,20 +199,28 @@ def _evaluate_action_impl(packet: dict, *, packet_id=None, generated_at=None,
     if packet_id is not None:
         p["packet_id"] = packet_id
 
+    fresh = _freshness_meta(p, generated_at=generated_at, ttl_hours=ttl_hours, now=now)
+    ttl_hours = float(fresh["ttl_hours_applied"])
+
     # 0. CURRENT-INPUT VALIDATION — the packet must still match source truth.
+    # Pass RTH-aware TTL so star/buy plans expire every few trading hours, not only at 12h.
     if current_snapshot:
         try:
             import packet_invalidation as _inv
-            cmp = _inv.compare_packet_inputs(p, current_snapshot,
-                                             generated_at=generated_at, now=now)
+            cmp = _inv.compare_packet_inputs(
+                p, current_snapshot, generated_at=generated_at,
+                ttl_hours=ttl_hours, now=now)
             if not cmp["inputs_match"]:
                 res = _result("REFRESH", False, "STALE", packet=p,
                               blocks=cmp["invalidation_reasons"],
-                              reason="packet no longer matches current inputs — refresh")
+                              reason="packet no longer matches current inputs — refresh",
+                              freshness=fresh)
                 res["packet_input_hash"] = cmp["packet_input_hash"]
                 res["current_input_hash"] = cmp["current_input_hash"]
                 res["inputs_match"] = False
                 res["invalidation_reasons"] = cmp["invalidation_reasons"]
+                if cmp.get("packet_age_hours") is not None:
+                    res["packet_age_hours"] = cmp["packet_age_hours"]
                 return res
             _match = cmp
         except Exception:
@@ -175,21 +232,26 @@ def _evaluate_action_impl(packet: dict, *, packet_id=None, generated_at=None,
     if str(p.get("packet_version") or "") and not str(p.get("packet_version")).endswith("-shadow"):
         pass  # (accepts current shadow versions; a hard version gate lives in the caller)
 
-    # 2. STALE by wall-clock backstop.
+    # 2. STALE by wall-clock backstop (RTH → few-hour cadence for ratings / plans).
     gen = _parse(generated_at) or _parse(p.get("evaluated_at"))
     if gen is not None:
         age_h = (_now(now) - gen).total_seconds() / 3600.0
         if age_h > ttl_hours:
-            return _result("REFRESH", False, "STALE", packet=p,
-                           blocks=[f"packet is {age_h:.0f}h old (>{ttl_hours}h TTL)"],
-                           reason="stale packet — refresh before acting")
+            rth_tag = " RTH" if fresh.get("rth") else ""
+            return _result(
+                "REFRESH", False, "STALE", packet=p,
+                blocks=[f"packet is {age_h:.1f}h old (>{ttl_hours:.0f}h TTL{rth_tag})"],
+                reason="stale packet — refresh before acting",
+                freshness={**fresh, "packet_age_hours": round(age_h, 2),
+                           "should_be_stale": True})
 
     # 3. Data quality gate — a stale/conflicted packet may only refresh or review.
     dq = str((p.get("data_quality") or {}).get("state") or "INSUFFICIENT").upper()
     if dq in NON_ACTIONABLE_DQ:
         return _result("REFRESH", False, "STALE", packet=p,
                        blocks=[f"data_quality={dq}"],
-                       reason=f"data quality {dq} — refresh/review only")
+                       reason=f"data quality {dq} — refresh/review only",
+                       freshness=fresh)
 
     # 4. Event gate — BLOCKED or UNKNOWN event fails closed to monitoring.
     ev = p.get("event_state") or {}

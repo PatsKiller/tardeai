@@ -46,9 +46,27 @@ ELIGIBLE_RATINGS = ("STRONG_BUY", "BUY", "ADD", "ADD_ON_PULLBACK", "HOLD")
 
 TOP_N = int(os.getenv("SHADOW_BATCH_TOP_N", "50"))
 CONCURRENCY = int(os.getenv("SHADOW_BATCH_CONCURRENCY", "3"))
-FRESH_HOURS = float(os.getenv("SHADOW_BATCH_FRESH_HOURS", "12"))
+# None (default) → RTH-aware TTL from packet_invalidation (4h cash session / 12h off).
+# Explicit SHADOW_BATCH_FRESH_HOURS overrides for ops/tests.
+_ENV_FRESH = os.getenv("SHADOW_BATCH_FRESH_HOURS")
+FRESH_HOURS = float(_ENV_FRESH) if _ENV_FRESH not in (None, "") else None
 HARD_CAP = int(os.getenv("SHADOW_BATCH_HARD_CAP", "150"))   # absolute safety ceiling
 STATUS_FILE = PROJECT_ROOT / "data" / "runtime" / "shadow_batch_status.json"
+
+
+def _effective_fresh_hours(hours=None, now=None) -> float:
+    """Freshness window for star / buy / strong-buy packet regeneration.
+
+    Trading day: ~4h so plans re-arm every few RTH hours.
+    Overnight/weekend: ~12h.
+    """
+    if hours is not None:
+        return float(hours)
+    try:
+        import packet_invalidation as inv
+        return float(inv.effective_ttl_hours(now))
+    except Exception:
+        return 12.0
 
 
 def _now():
@@ -214,17 +232,22 @@ def _fresh_symbols(symbols: list, hours: float) -> set:
     return {r[0] for r in cur.fetchall()}
 
 
-def classify_freshness(symbols: list, hours: float) -> dict:
+def classify_freshness(symbols: list, hours: float = None) -> dict:
     """Split symbols into {fresh: [...], regenerate: {sym: reason}}.
 
     A symbol is FRESH only when its live packet is within TTL AND its input hash
     is unchanged AND there is no material price drift AND no newer catalyst — the
     full invalidation contract, not age alone. Everything else regenerates with an
     explicit reason, so a two-hour-old packet overtaken by a fresh catalyst or a
-    material move is NOT silently skipped."""
+    material move is NOT silently skipped.
+
+    hours=None uses RTH-aware TTL (few hours during cash session) so star / buy /
+    strong-buy decision plans re-arm on the trading-day cadence.
+    """
     import packet_invalidation as inv
+    ttl = _effective_fresh_hours(hours)
     if not symbols:
-        return {"fresh": [], "regenerate": {}}
+        return {"fresh": [], "regenerate": {}, "fresh_hours_applied": ttl}
     conn = _conn()
     cur = conn.cursor()
     cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS s, packet, generated_at
@@ -245,14 +268,17 @@ def classify_freshness(symbols: list, hours: float) -> dict:
         pkt, gen = live[sym]
         try:
             current = inv.build_current_input_snapshot(sym, conn)
-            res = inv.compare_packet_inputs(pkt, current, generated_at=str(gen), ttl_hours=hours)
+            # Do not hard-pin overnight 12h during RTH — let compare use the
+            # resolved few-hour trading-day window.
+            res = inv.compare_packet_inputs(
+                pkt, current, generated_at=str(gen), ttl_hours=ttl)
             if res["inputs_match"]:
                 fresh.append(sym)
             else:
                 regen[sym] = ", ".join(res["invalidation_reasons"]) or "INPUT_HASH_MISMATCH"
         except Exception as exc:
             regen[sym] = f"INVALIDATION_CHECK_ERROR: {type(exc).__name__}"
-    return {"fresh": fresh, "regenerate": regen}
+    return {"fresh": fresh, "regenerate": regen, "fresh_hours_applied": ttl}
 
 
 def _generate_one(symbol: str) -> dict:
@@ -280,7 +306,10 @@ def _write_status(status: dict):
 
 
 def run(*, top_n: int = TOP_N, dry_run: bool = False, force: bool = False,
-        concurrency: int = CONCURRENCY, fresh_hours: float = FRESH_HOURS) -> dict:
+        concurrency: int = CONCURRENCY, fresh_hours: float = None) -> dict:
+    if fresh_hours is None:
+        fresh_hours = FRESH_HOURS  # may still be None → RTH-aware
+    applied_fresh = _effective_fresh_hours(fresh_hours)
     sel = select_targets(top_n)
     members = sel["members"]
     if len(members) > HARD_CAP:
@@ -295,6 +324,7 @@ def run(*, top_n: int = TOP_N, dry_run: bool = False, force: bool = False,
     else:
         _cls = classify_freshness(symbols, fresh_hours)
         fresh, regen_reasons = set(_cls["fresh"]), _cls["regenerate"]
+        applied_fresh = float(_cls.get("fresh_hours_applied") or applied_fresh)
     todo = [s for s in symbols if s not in fresh]
 
     # composition of WHY each regen fires — counted per invalidation reason CODE
@@ -311,7 +341,9 @@ def run(*, top_n: int = TOP_N, dry_run: bool = False, force: bool = False,
         "invalidation": "ttl | packet_version | event/ownership/fundamentals hash | price_drift | fresh_catalyst",
         "regenerate_reasons": dict(regen_reasons),
         "regenerate_by_reason": dict(_regen_by_reason),
-        "top_n": top_n, "concurrency": concurrency, "fresh_hours": fresh_hours,
+        "top_n": top_n, "concurrency": concurrency,
+        "fresh_hours": applied_fresh,
+        "fresh_hours_policy": "rth_aware" if FRESH_HOURS is None and fresh_hours is None else "explicit",
         "target_count": len(symbols),
         "total_qualifying": sel["total_qualifying"], "selected": sel["selected"],
         "deferred_by_cap": sel["deferred_by_cap"], "by_reason": sel["by_reason"],
