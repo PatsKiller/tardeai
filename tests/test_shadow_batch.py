@@ -146,3 +146,37 @@ def test_batch_button_no_sub_ten_px_or_raw_hex():
     assert not re.search(r"#[0-9a-fA-F]{3,6}\b", src)
     for m in re.finditer(r"fontSize:\s*([0-9.]+)", src):
         assert float(m.group(1)) >= 10
+
+
+# ── fundamentals enrichment (2026-07-21) ──────────────────────────────────────
+
+def test_fundamentals_whitelist_excludes_analyst_verdicts():
+    """recom/recom_score/analyst_rating are analyst VERDICTS — feeding them the
+    blind pass would anchor it, the exact defect. They must not be in the set."""
+    import shadow_decision_service as svc
+    for anchor in ("recom", "recom_score", "analyst_rating", "trend", "rsi_status"):
+        assert anchor not in svc.FUNDAMENTAL_KEYS
+
+
+def test_fundamentals_excludes_the_misparsed_volatility_field():
+    import shadow_decision_service as svc
+    assert "volatility_w_pct" not in svc.FUNDAMENTAL_KEYS
+
+
+def test_fundamentals_include_the_thesis_evidence():
+    import shadow_decision_service as svc
+    for k in ("pe", "forward_pe", "oper_margin_pct", "lt_debt_equity",
+              "eps_next_5y", "roe_pct"):
+        assert k in svc.FUNDAMENTAL_KEYS
+
+
+def test_extracted_fundamentals_pass_the_blindness_guard():
+    """Whatever the extractor returns must never anchor the blind pass."""
+    import shadow_decision_service as svc
+    import blind_review as br
+    f = svc._fundamentals_for("NXPI")
+    if not f:
+        import pytest
+        pytest.skip("no enrichment for NXPI in this environment")
+    br.assert_blind({"symbol": "NXPI", "fundamentals": f})   # raises if an anchor slipped in
+    assert not any(w in k.lower() for k in f for w in ("recom", "rating", "verdict"))

@@ -53,7 +53,30 @@ import event_normalizer as ev         # noqa: E402
 import position_truth as pt           # noqa: E402
 import trade_blueprints as tb         # noqa: E402
 
-PACKET_VERSION = "1.0.0-shadow"
+PACKET_VERSION = "1.1.0-shadow"
+
+# Fundamental fields lifted from the Finviz enrichment cache into the blind facts
+# packet, so the models can form a THESIS from evidence instead of declining with
+# INSUFFICIENT_EVIDENCE off technicals alone (42/62 did on the first batch).
+#
+# The exclusions matter as much as the inclusions:
+#   recom, recom_score, analyst_rating  — analyst VERDICTS; feeding these anchors
+#                                          the blind pass (the whole defect).
+#   trend, rsi_status                   — pre-chewed signal labels, mild anchors.
+#   volatility_w_pct                    — known misparsed (do-not-use, per memory).
+FUNDAMENTAL_KEYS = (
+    "company", "country",
+    "pe", "forward_pe", "peg", "pb", "ps", "pfcf",
+    "eps_ttm", "eps_next_y", "eps_next_5y", "eps_past_5y", "eps_qoq",
+    "sales_past_5y", "sales_qoq",
+    "gross_margin_pct", "oper_margin_pct", "profit_margin_pct",
+    "roe_pct", "roa_pct", "roic_pct",
+    "lt_debt_equity", "total_debt_equity", "current_ratio", "quick_ratio",
+    "div_yield_pct", "beta", "inst_own_pct", "insider_own_pct",
+    "short_float_pct", "short_ratio", "shares_outstanding_m",
+    "week52_high_pct", "week52_low_pct",
+)
+_ENRICHMENT_CACHE = None
 
 ELIGIBLE, CONDITIONAL, REJECTED = "ELIGIBLE", "CONDITIONAL", "REJECTED"
 NOT_APPLICABLE, DATA_UNAVAILABLE = "NOT_APPLICABLE", "DATA_UNAVAILABLE"
@@ -74,6 +97,32 @@ def _now() -> datetime:
 
 
 # ── facts ─────────────────────────────────────────────────────────────────────
+
+def _fundamentals_for(symbol: str) -> dict:
+    """Clean fundamentals for a symbol from the Finviz enrichment cache.
+
+    Whitelisted keys only — analyst verdicts (recom/analyst_rating) and the
+    known-misparsed volatility_w_pct never enter. market_cap is normalised to
+    an unambiguous millions field (the cache's 'market_cap_b' is actually in
+    millions, e.g. 67674.87 for a ~$68B name)."""
+    global _ENRICHMENT_CACHE
+    if _ENRICHMENT_CACHE is None:
+        path = PROJECT_ROOT / "data" / "portfolios" / "state" / "ticker_enrichment_cache.json"
+        try:
+            _ENRICHMENT_CACHE = json.loads(path.read_text()) if path.exists() else {}
+        except Exception:
+            _ENRICHMENT_CACHE = {}
+    e = _ENRICHMENT_CACHE.get(symbol.upper()) or _ENRICHMENT_CACHE.get(symbol) or {}
+    if not isinstance(e, dict):
+        return {}
+    out = {k: e[k] for k in FUNDAMENTAL_KEYS if e.get(k) is not None}
+    mc = e.get("market_cap_b")
+    if mc is not None:
+        out["market_cap_usd_millions"] = mc     # cache mislabels millions as "_b"
+    if e.get("cached_at"):
+        out["fundamentals_as_of"] = e["cached_at"]
+    return out
+
 
 def gather_facts(symbol: str, conn) -> dict:
     """Everything deterministic, before any model is asked."""
@@ -100,6 +149,15 @@ def gather_facts(symbol: str, conn) -> dict:
     cur.execute("SELECT sector, industry FROM symbol_profiles WHERE upper(symbol)=%s", (sym,))
     r2 = cur.fetchone()
     facts["sector"], facts["industry"] = (r2[0], r2[1]) if r2 else (None, None)
+
+    # Fundamentals from the Finviz enrichment cache — the evidence the models
+    # need for a thesis. Anchor/verdict keys are excluded by the whitelist.
+    fund = _fundamentals_for(sym)
+    facts["fundamentals"] = fund
+    # A genuine short_float lets the bearish family's squeeze check use real data
+    # instead of the UNKNOWN default.
+    if fund.get("short_float_pct") is not None:
+        facts["short_float_pct"] = fund["short_float_pct"]
 
     cur.execute("""SELECT price, fetched_at FROM market_quotes WHERE symbol=%s
                    ORDER BY fetched_at DESC LIMIT 1""", (sym,))
@@ -464,7 +522,8 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
                             "sma50": facts.get("sma50"), "rvol": facts.get("rvol"),
                             "float_m": facts.get("float_m"),
                             "hermes_rank": facts.get("hermes_rank")},
-                fundamentals={"sector": facts.get("sector"), "industry": facts.get("industry")},
+                fundamentals={"sector": facts.get("sector"), "industry": facts.get("industry"),
+                              **(facts.get("fundamentals") or {})},
                 # Strip our internal per-catalyst `confidence` — it is data
                 # provenance (how sure we are the catalyst is real), but the
                 # blindness guard rightly refuses any key named "confidence"
