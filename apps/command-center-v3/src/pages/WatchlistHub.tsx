@@ -4,6 +4,7 @@ import { isExtremeVolItem } from '../lib/watchlistVolatility'
 import { useApi, useConnectionHealth } from '../hooks/useApi'
 import { BB, T, focusStyle } from '../lib/watchTokens'
 import { Chip } from '../components/TerminalChip'
+import ShadowBatchButton from '../components/ShadowBatchButton'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useProAnalystMap } from '../components/ProAnalystPill'
 import DiscoveryPanel from '../components/DiscoveryPanel'
@@ -463,6 +464,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: embedded ? 0 : 'auto' }}>
           <button onClick={runChatgptTop20} disabled={curateRunning} title="Run ChatGPT curation on the top-20 ranked names." style={{ padding: embedded ? '6px 10px' : '9px 15px', fontSize: embedded ? 10 : 12, fontWeight: 800, borderRadius: 2, border: `1px solid ${T.extIntel.gpt}`, cursor: curateRunning ? 'default' : 'pointer', background: curateRunning ? 'rgba(16, 163, 127, 0.15)' : 'rgba(16, 163, 127, 0.12)', color: BB.green, opacity: curateRunning ? 0.7 : 1 }}>{curateRunning ? `✦ ChatGPT… ${curateStatus?.chatgpt_curated_top20 ?? 0}/20` : '✦ ChatGPT Top 20'}</button>
           <button onClick={() => setShowAdd(true)} style={{ padding: embedded ? '6px 12px' : '9px 17px', fontSize: embedded ? 10 : 12, fontWeight: 800, borderRadius: 2, border: 'none', cursor: 'pointer', background: PURPLE, color: BB.text0 }}>+ Add Watch</button>
+          <ShadowBatchButton embedded={embedded} />
         </div>
       </div>
 

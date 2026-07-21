@@ -11607,6 +11607,36 @@ def _defense_cc_queue_trade(body=None):
                         f"{b.get('code')}: {b.get('reason')}" for b in _cc_blocks)}
 
 
+def _shadow_batch_status(query=None):
+    """GET /api/v2/shadow/strategy/batch — progress of the bounded batch run."""
+    import shadow_batch_generator as bg
+    return {"ok": True, **bg.status()}
+
+
+def _shadow_batch_start(body=None):
+    """POST /api/v2/shadow/strategy/batch — the 'run adhoc batch' button.
+
+    SHADOW ONLY. Spawns the bounded batch generator DETACHED (top-N by rank in the
+    eligible ratings + all starred), returns immediately. Idempotent: a run
+    already in flight is reported rather than started twice."""
+    import shadow_batch_generator as bg
+    st = bg.status()
+    if st.get("state") == "running":
+        return {"ok": True, "started": False, "already_running": True,
+                "done": st.get("done"), "to_generate": st.get("to_generate")}
+    import subprocess
+    body = body or {}
+    cmd = [str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+           str(PROJECT_ROOT / "scripts" / "shadow_batch_generator.py"), "--run"]
+    if body.get("top"):
+        cmd += ["--top", str(int(body["top"]))]
+    if body.get("force"):
+        cmd.append("--force")
+    subprocess.Popen(cmd, cwd=PROJECT_ROOT, start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {"ok": True, "started": True}
+
+
 def _shadow_strategy_packet(query=None):
     """GET /api/v2/shadow/strategy/packet?symbol=X — the latest live shadow packet
     plus its per-family blueprints. Read-only; the card renders this after a run
@@ -32666,6 +32696,7 @@ ROUTES = {
     "/api/v2/defense/recommendations": _defense_recommendations,
     "/api/v2/shadow/strategy/status": _shadow_strategy_status,
     "/api/v2/shadow/strategy/packet": _shadow_strategy_packet,
+    "/api/v2/shadow/strategy/batch": _shadow_batch_status,
     "/api/v2/defense/core": _defense_core_registry,
     "/api/v2/defense/review": _defense_review,
     "/api/v2/portfolio/book-map": _portfolio_book_map,
@@ -37449,6 +37480,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/shadow/strategy/build":
         try:
             return 200, _shadow_strategy_build(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/shadow/strategy/batch":
+        try:
+            return 200, _shadow_batch_start(body or {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 

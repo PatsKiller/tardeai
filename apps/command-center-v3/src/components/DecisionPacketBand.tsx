@@ -47,8 +47,60 @@ function ageStr(iso?: string): string {
   return `${Math.floor(h / 24)}d ago`
 }
 
+const n = (v: any, d = 2) => (v == null || isNaN(Number(v)) ? null : Number(v).toFixed(d))
+
+// Compact ACTIONABLE mechanics per family — the prices/levels/strikes, not just
+// a state word. Pulled from the family's first (preferred) structure.
+function mechanics(fam: string, f: any): string {
+  const s = (f?.structures || [])[0]
+  if (!s) return ''
+  if (fam === 'LONG_TERM') {
+    const z = s.starter_entry?.price_or_zone || []
+    const parts = []
+    if (z.length === 2) parts.push(`starter ${n(z[0])}–${n(z[1])}`)
+    if (s.stop_or_invalidation?.price) parts.push(`stop ${n(s.stop_or_invalidation.price)}`)
+    if ((s.targets || [])[0]?.price) parts.push(`target ${n(s.targets[0].price)}`)
+    if (s.reward_to_risk) parts.push(`R:R ${n(s.reward_to_risk, 1)}`)
+    if (s.maximum_position_pct) parts.push(`max ${n(s.maximum_position_pct, 0)}%`)
+    return parts.join(' · ')
+  }
+  if (fam === 'SWING') {
+    const z = s.entry_zone || []
+    const parts = []
+    if (z.length === 2 && z[0]) parts.push(`zone ${n(z[0])}–${n(z[1])}`)
+    if (s.limit_price) parts.push(`limit ${n(s.limit_price)}`)
+    if (s.stop_price) parts.push(`stop ${n(s.stop_price)}`)
+    if ((s.targets || [])[0]) parts.push(`tgt ${n(s.targets[0])}`)
+    if (s.risk_reward) parts.push(`R:R ${n(s.risk_reward, 1)}`)
+    if (s.urgency) parts.push(String(s.urgency))
+    return parts.join(' · ')
+  }
+  if (fam === 'BEARISH' && s.state === 'ELIGIBLE') {
+    const parts = []
+    if ((s.entry_zone || [])[0]) parts.push(`entry ${n(s.entry_zone[0])}–${n(s.entry_zone[1])}`)
+    if (s.buy_stop) parts.push(`buy-stop ${n(s.buy_stop)}`)
+    return parts.join(' · ')
+  }
+  return ''
+}
+
+// One option structure as an actionable line: name · state · strike/OCC · key numbers.
+function optionLine(s: any): string {
+  const parts = [s.structure, s.state]
+  if (s.strike) parts.push(`$${n(s.strike)}`)
+  else if (s.occ_symbol) parts.push(String(s.occ_symbol))
+  if (s.net_debit_mid) parts.push(`debit ${n(s.net_debit_mid)}`)
+  if (s.maximum_loss != null) parts.push(`maxloss $${n(s.maximum_loss, 0)}`)
+  if (s.breakeven) parts.push(`be ${n(s.breakeven)}`)
+  const reason = (s.rejection_reasons || [])[0]
+  if (reason) parts.push('— ' + String(reason).slice(0, 60))
+  return parts.filter(Boolean).join(' ')
+}
+
 export default function DecisionPacketBand({ packet, generatedAt }: { packet: any; generatedAt?: string }) {
-  const [open, setOpen] = useState(false)
+  // Expanded by default — the operator should not have to click to see the
+  // families and the actionable levels (feedback 2026-07-21).
+  const [open, setOpen] = useState(true)
   if (!packet || typeof packet !== 'object') return null
 
   const lt = packet.horizons?.long_term || {}
@@ -118,16 +170,40 @@ export default function DecisionPacketBand({ packet, generatedAt }: { packet: an
               )}
             </div>
           )}
-          {/* every family, always present, colour-coded by rollup state */}
+          {/* actionable price context: what triggers / invalidates */}
+          {(() => {
+            const tac = packet.horizons?.tactical || {}
+            if (!tac.trigger && !tac.invalidation) return null
+            return (
+              <div style={{ fontSize: 10, color: BB.text3 }}>
+                {tac.trigger && <span>TRIGGER <b style={{ color: BB.text2 }}>{tac.trigger}</b></span>}
+                {tac.invalidation && <span> · INVALIDATE <b style={{ color: BB.text2 }}>{tac.invalidation}</b></span>}
+              </div>
+            )
+          })()}
+          {/* every family, always present, colour-coded by rollup state, with its
+              actionable levels/strikes — not just a state word */}
           {FAMILY_ORDER.map(fam => {
             const f = fams[fam.toLowerCase()] || {}
             const state = f.state || 'DATA_UNAVAILABLE'
+            const mech = mechanics(fam, f)
             const reason = (f.rejection_reasons || [])[0]
+            const opts = fam === 'OPTIONS' ? (f.structures || []) : []
             return (
-              <div key={fam} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                <span style={{ minWidth: 66, color: BB.text2, fontWeight: 700, fontSize: 10 }}>{FAMILY_LABEL[fam]}</span>
-                <span style={{ minWidth: 96, fontWeight: 800, fontSize: 10, color: STATE_COLOR[state] || BB.text3 }}>{state}</span>
-                {reason && <span style={{ color: BB.text3, fontSize: 10 }}>{String(reason).slice(0, 82)}</span>}
+              <div key={fam} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                  <span style={{ minWidth: 66, color: BB.text2, fontWeight: 700, fontSize: 10 }}>{FAMILY_LABEL[fam]}</span>
+                  <span style={{ minWidth: 96, fontWeight: 800, fontSize: 10, color: STATE_COLOR[state] || BB.text3 }}>{state}</span>
+                  {mech
+                    ? <span style={{ color: BB.text1, fontSize: 10, fontWeight: 600 }}>{mech}</span>
+                    : reason && <span style={{ color: BB.text3, fontSize: 10 }}>{String(reason).slice(0, 82)}</span>}
+                </div>
+                {/* OPTIONS: every structure with its strike/OCC and reason */}
+                {opts.length > 0 && opts.map((s: any, i: number) => (
+                  <div key={i} style={{ paddingLeft: 72, color: BB.text3, fontSize: 10 }}>
+                    <span style={{ color: STATE_COLOR[s.state] || BB.text3, fontWeight: 700 }}>{optionLine(s)}</span>
+                  </div>
+                ))}
               </div>
             )
           })}
