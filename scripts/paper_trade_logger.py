@@ -1524,6 +1524,27 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
         except Exception:
             pass
 
+        # R4: submit-level capability gate (paper remains permissive; live scaffolds refuse)
+        try:
+            from brokers.capability_gate import capability_gate
+            acct = (prop.get("target_account") or prop.get("intended_broker")
+                    or "tradeai_automated")  # hardcode-ok: default paper account
+            side = str(prop.get("side") or prop.get("proposed_side") or "buy").lower()
+            cg = capability_gate(acct, {
+                "side": side,
+                "is_short": side in ("sell_short", "short"),
+                "is_option": bool(prop.get("option_symbol") or prop.get("is_option")),
+            })
+            if not cg.get("ok"):
+                conn.close()
+                return {
+                    "success": False,
+                    "message": "capability_gate blocked: " + "; ".join(cg.get("blocks") or []),
+                    "capability_gate": cg,
+                }
+        except Exception:
+            pass
+
         # Apply overrides
         entry = override_entry or prop['proposed_entry']
         stop = override_stop or prop['proposed_stop']

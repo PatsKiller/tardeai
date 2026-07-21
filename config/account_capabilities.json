@@ -28,7 +28,25 @@
       "can_short_stock": true,
       "note": "paper proving ground \u2014 defensive_short strategy, <=$2K, <=3 concurrent",
       "inverse_etf_ok": true,
-      "covered_calls_ok": false
+      "covered_calls_ok": false,
+      "verified": true
+    },
+    "alpaca_taxable_live": {
+      "can_short_stock": true,
+      "options_level": null,
+      "inverse_etf_ok": true,
+      "covered_calls_ok": false,
+      "verified": false,
+      "note": "R4 scaffold \u2014 compliance facts REQUIRE EXTERNAL RESEARCH at activation; not active"
+    },
+    "alpaca_ira_live": {
+      "can_short_stock": false,
+      "options_level": null,
+      "inverse_etf_ok": true,
+      "covered_calls_ok": false,
+      "margin": false,
+      "verified": false,
+      "note": "R4 scaffold \u2014 IRA constraints conservative; verified=false until activation research"
     }
   }
 }
