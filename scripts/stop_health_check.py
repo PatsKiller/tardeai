@@ -45,6 +45,57 @@ def _siem(symbol: str, severity: str, text: str, payload: dict) -> None:
         pass
 
 
+_HOLDINGS_BASIS = None
+
+
+def _pl_if_fired(symbol: str, account: str, stop_price, qty) -> dict | None:
+    """Realized P/L if the stop fills at stop_price: qty × (stop − avg_cost).
+
+    avg_cost per share = cost_basis / shares from holdings.json. Returns the
+    dollar P/L, the R-multiple-ish percent vs cost, and whether the basis is
+    partial (so the number is flagged, not silently wrong). None when basis is
+    unavailable — an unknown P/L is stated as unknown, never guessed."""
+    global _HOLDINGS_BASIS
+    try:
+        if _HOLDINGS_BASIS is None:
+            import json
+            from pathlib import Path
+            p = Path(__file__).resolve().parent.parent / "data" / "portfolios" / "state" / "holdings.json"
+            d = json.loads(p.read_text()) if p.exists() else {}
+            _HOLDINGS_BASIS = {}
+            for r in (d.get("holdings") or []):
+                key = (str(r.get("symbol", "")).upper(), str(r.get("account", "")))
+                _HOLDINGS_BASIS[key] = r
+        h = _HOLDINGS_BASIS.get((str(symbol).upper(), str(account)))
+        if not h:
+            return None
+        shares = float(h.get("shares") or h.get("quantity") or 0)
+        cost_basis = h.get("cost_basis")
+        if not shares or cost_basis in (None, ""):
+            return None
+        avg_cost = float(cost_basis) / shares
+        sold = float(qty) if qty else shares
+        pl = round(sold * (float(stop_price) - avg_cost), 2)
+        pct = round((float(stop_price) - avg_cost) / avg_cost * 100, 1) if avg_cost else None
+        return {"pl": pl, "pct": pct, "avg_cost": round(avg_cost, 2),
+                "partial_basis": bool(h.get("basis_partial"))}
+    except Exception:
+        return None
+
+
+def _pl_line(pl: dict | None) -> str:
+    """Human tail for a stop alert: ' · if fired: −$413 (−44% vs cost $179)'."""
+    if not pl or pl.get("pl") is None:
+        return " · P/L if fired: basis unavailable"
+    sign = "+" if pl["pl"] >= 0 else "−"
+    tail = f" · if fired: {sign}${abs(pl['pl']):,.0f}"
+    if pl.get("pct") is not None:
+        tail += f" ({'+' if pl['pct'] >= 0 else '−'}{abs(pl['pct'])}% vs cost ${pl['avg_cost']:g})"
+    if pl.get("partial_basis"):
+        tail += " [partial basis]"
+    return tail
+
+
 def _recently_alerted(symbol: str, condition: str, hours: int = 2) -> bool:
     """Dedup via alert_events: True if the same (symbol, condition) fired in the last `hours`."""
     try:
@@ -161,15 +212,21 @@ def run(quiet: bool = False) -> dict:
         sym, acct = r["symbol"], r["account"]
         # the single most severe condition for the message
         # severity MUST be one of the alert_events constraint values: info|warning|urgent|critical
+        # P/L that WOULD be realized if this stop fills — the number the operator
+        # actually decides on (a near-trigger on a deep loser reads very
+        # differently from one locking a gain).
+        _pl = _pl_if_fired(sym, acct, r.get("stop_price"), r.get("qty") or r.get("held_qty"))
         if "orphaned" in r["flags"]:
             cond, sev, line = "ORPHANED", "urgent", f"stop with no matching {acct} holding (#{r['order_id']}) — on trigger it could short/reject. Cancel it."
         elif "oversized" in r["flags"]:
-            cond, sev, line = "OVERSIZED", "urgent", f"stop covers {r['qty']} sh but you hold {r['held_qty']} — modify to {r['held_qty']} sh."
+            cond, sev, line = "OVERSIZED", "urgent", f"stop covers {r['qty']} sh but you hold {r['held_qty']} — modify to {r['held_qty']} sh.{_pl_line(_pl)}"
         elif "filled" in r["flags"]:
-            cond, sev, line = "TRIGGERED", "urgent", f"stop FILLED (#{r['order_id']}) — position may be flat; review."
+            cond, sev, line = "TRIGGERED", "urgent", f"stop FILLED (#{r['order_id']}) — position may be flat; review.{_pl_line(_pl)}"
         else:
-            cond, sev, line = "NEAR_TRIGGER", "warning", f"price within {r.get('proximity_pct')}% of stop ${r.get('stop_price')} — about to fire."
-        payload = {"kind": "stop_health", "condition": cond, **{k: r.get(k) for k in
+            cond, sev, line = "NEAR_TRIGGER", "warning", f"price within {r.get('proximity_pct')}% of stop ${r.get('stop_price')} — about to fire.{_pl_line(_pl)}"
+        payload = {"kind": "stop_health", "condition": cond,
+                   "pl_if_fired": (_pl or {}).get("pl"), "pl_if_fired_pct": (_pl or {}).get("pct"),
+                   **{k: r.get(k) for k in
                    ("account", "symbol", "broker", "order_id", "order_type", "stop_price", "qty",
                     "held_qty", "current_price", "proximity_pct", "coverage", "lifecycle", "health")}}
         # dedup ALL persistence (SIEM + Telegram + Hermes) to one per (symbol,condition) per 2h — the cron
