@@ -17303,7 +17303,9 @@ def _broker_accounts():
     """GET /api/v2/broker-accounts — broker/account list + automation mode summary (read-only).
     `?api_only=true` returns only API-capable accounts (the ATM page default)."""
     rows = _db_query("""SELECT ba.account_key, ba.display_name, ba.broker, ba.environment,
-        ba.api_read_enabled, ba.api_write_enabled, ba.connection_status, ba.broker_adapter, ba.last_sync_at,
+        ba.is_enabled, ba.api_read_enabled, ba.api_write_enabled, ba.connection_status,
+        ba.broker_adapter, ba.last_sync_at, ba.credential_slot,
+        (ba.live_arm_token IS NOT NULL AND length(trim(ba.live_arm_token)) > 0) AS armed,
         p.automation_mode, p.approval_policy, p.source AS policy_source, p.updated_at AS policy_updated_at
         FROM broker_accounts ba LEFT JOIN account_automation_policies p ON p.account_id=ba.id
         ORDER BY (ba.environment='paper') DESC, ba.account_key""") or []
@@ -17311,11 +17313,96 @@ def _broker_accounts():
     for r in rows:
         a = {k: _json_clean(v) for k, v in r.items()}
         a["api_capable"] = bool(a.get("api_read_enabled") or a.get("api_write_enabled"))
+        # Credential presence only — never values (for admin UI)
+        slot = (a.get("credential_slot") or "").upper()
+        a["has_credentials"] = False
+        a["read_only_data"] = (
+            str(a.get("broker") or "").lower() == "alpaca"
+            and str(a.get("environment") or "").lower() == "live"
+        )
+        a["execution_built"] = not a["read_only_data"]  # live alpaca scaffolds: false
+        try:
+            import os as _os_ba
+            if slot == "ALPACA_PAPER":
+                a["has_credentials"] = bool(
+                    _os_ba.getenv("ALPACA_PAPER_API_KEY") or _os_ba.getenv("ALPACA_API_KEY")
+                )
+            elif slot == "ALPACA_TAXABLE":
+                a["has_credentials"] = bool(_os_ba.getenv("ALPACA_TAXABLE_API_KEY"))
+            elif slot == "ALPACA_IRA":
+                a["has_credentials"] = bool(_os_ba.getenv("ALPACA_IRA_API_KEY"))
+        except Exception:
+            pass
         out.append(a)
     api_only = (_current_query.get("api_only") or "").lower() in ("1", "true", "yes")
     if api_only:
         out = [a for a in out if a["api_capable"]]
     return {"accounts": out, "api_only": api_only}
+
+
+def _broker_accounts_api_read_toggle(body=None):
+    """POST /api/v2/broker-accounts/api-read-toggle
+    Body: {account_key, enabled: bool}. Toggles api_read_enabled ONLY — never is_enabled/write/arm.
+    """
+    b = body or {}
+    acct = str(b.get("account_key") or b.get("account") or "").strip()
+    if not acct:
+        return 400, {"ok": False, "error": "account_key required"}
+    en = b.get("enabled")
+    if en is None:
+        return 400, {"ok": False, "error": "enabled bool required"}
+    enabled = bool(en) if not isinstance(en, str) else en.lower() in ("1", "true", "yes", "on")
+    row = _db_query(
+        """SELECT account_key, broker, environment, api_write_enabled, is_enabled
+             FROM broker_accounts WHERE account_key=%s""",
+        (acct,), fetch="one",
+    )
+    if not row:
+        return 404, {"ok": False, "error": f"unknown account {acct}"}
+    # Refuse if someone tries to smuggle write enable through this endpoint
+    if b.get("api_write_enabled") is not None or b.get("is_enabled") is not None or b.get("live_arm_token"):
+        return 400, {"ok": False, "error": "this endpoint only toggles api_read_enabled"}
+    _db_query(
+        """UPDATE broker_accounts SET api_read_enabled=%s, updated_at=now()
+           WHERE account_key=%s""",
+        (enabled, acct), fetch=None,
+    )
+    try:
+        _db_query(
+            """INSERT INTO audit_log (event_type, account, decision, reason_text, actor, input_snapshot)
+               VALUES (%s,%s,%s,%s,%s,%s::jsonb)""",
+            (
+                "alpaca_api_read_toggle",
+                acct,
+                "enable" if enabled else "disable",
+                "Enables read-only data sync (positions, balances, activity). Does NOT enable trading.",
+                "operator",
+                __import__("json").dumps({"api_read_enabled": enabled, "broker": row.get("broker")}),
+            ),
+            fetch=None,
+        )
+    except Exception:
+        pass
+    return 200, {
+        "ok": True,
+        "account_key": acct,
+        "api_read_enabled": enabled,
+        "note": "Read-only data sync only — execution not built / not enabled",
+    }
+
+
+def _broker_accounts_test_connection(body=None):
+    """POST /api/v2/broker-accounts/test-connection {account_key} — GET /v2/account probe."""
+    b = body or {}
+    acct = str(b.get("account_key") or b.get("account") or "").strip()
+    if not acct:
+        return 400, {"ok": False, "error": "account_key required"}
+    try:
+        from brokers import alpaca_read_client as arc
+        res = arc.test_connection(acct)
+        return (200 if res.get("ok") or res.get("status") == "no_credentials" else 502), {"ok": bool(res.get("ok")), **res}
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)[:200]}
 
 
 def _broker_account_policy():
@@ -35968,6 +36055,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
 
+    if method == "POST" and base_path == "/api/v2/broker-accounts/api-read-toggle":
+        return _broker_accounts_api_read_toggle(body)
+    if method == "POST" and base_path == "/api/v2/broker-accounts/test-connection":
+        return _broker_accounts_test_connection(body)
     if method == "POST" and base_path == "/api/v2/admin/secrets":
         # write-only secret rotation. NEVER log the value; return masked confirmation only.
         try:

@@ -91,10 +91,22 @@ export default function SecretsManager() {
               title={ro ? 'read-only — managed by the SnapTrade connect flow (snaptrade_connect.py)' : v ? `${v.status}: ${v.detail}` : 'rotate this secret'}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 7, cursor: ro ? 'default' : 'pointer', background: 'var(--bg2)', opacity: ro ? 0.78 : 1,
                 border: `1px solid ${v?.status === 'INVALID' ? '#ef4444' : v?.status === 'valid' ? '#22c55e44' : 'var(--border)'}` }}>
-              <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text1)' }}>{s.key}
-                {s.is_config && <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4, padding: '0 3px', border: '1px solid var(--border)', borderRadius: 3 }}>cfg</span>}
-                {ro && <span title="read-only · connect-flow managed" style={{ fontSize: 8, color: '#90caf9', marginLeft: 4, padding: '0 3px', border: '1px solid #1d4ed8', borderRadius: 3 }}>🔒 ro</span>}</span>
-              <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text1)' }}>{s.key}
+                  {s.is_config && <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4, padding: '0 3px', border: '1px solid var(--border)', borderRadius: 3 }}>cfg</span>}
+                  {ro && <span title="read-only · connect-flow managed" style={{ fontSize: 8, color: '#90caf9', marginLeft: 4, padding: '0 3px', border: '1px solid #1d4ed8', borderRadius: 3 }}>🔒 ro</span>}
+                </span>
+                {s.label && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{s.label}</span>}
+                {s.badge && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: 'var(--text2)',
+                    width: 'fit-content', padding: '1px 4px', borderRadius: 3,
+                    border: '1px solid var(--border)',
+                  }}>{s.badge}</span>
+                )}
+              </span>
+              <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
                 {vs && <span style={{ fontSize: 8.5, fontWeight: 800, color: vs.c }}>{vs.label}</span>}
                 <span style={{ fontSize: 10, color: s.present ? '#22c55e' : '#ef4444' }}>{s.present ? (s.masked || 'set') : 'not set'}</span>
               </span>

@@ -68,18 +68,39 @@ def _format_env_line(key: str, value: str) -> str:
     return f"{key}={value}"
 
 
+# Display labels for Alpaca live slots (READ-ONLY DATA · execution not built)
+_ALPACA_LIVE_LABELS = {
+    "ALPACA_TAXABLE_API_KEY": "Alpaca Taxable (Live) — API key",
+    "ALPACA_TAXABLE_SECRET_KEY": "Alpaca Taxable (Live) — secret",
+    "ALPACA_IRA_API_KEY": "Alpaca IRA (Live) — API key",
+    "ALPACA_IRA_SECRET_KEY": "Alpaca IRA (Live) — secret",
+    "ALPACA_PAPER_API_KEY": "Alpaca Paper — API key",
+    "ALPACA_PAPER_SECRET_KEY": "Alpaca Paper — secret",
+}
+
+
 def list_secrets():
     """Names + presence + masked hint. NEVER full values."""
     _, d = _read_env()
     keys = sorted((set(KNOWN) | {k for k in d if k.endswith(SECRET_SUFFIXES)}) - set(KNOWN_READONLY))
-    out = [{"key": k, "present": bool(d.get(k)), "masked": _mask(d.get(k)), "is_config": False} for k in keys]
+    out = []
+    for k in keys:
+        row = {"key": k, "present": bool(d.get(k)), "masked": _mask(d.get(k)), "is_config": False}
+        if k in _ALPACA_LIVE_LABELS:
+            row["label"] = _ALPACA_LIVE_LABELS[k]
+            row["badge"] = (
+                "READ-ONLY DATA · execution not built"
+                if "TAXABLE" in k or "IRA" in k
+                else "paper trading"
+            )
+        out.append(row)
     # config values are NOT secrets → shown in full (still editable here)
     out += [{"key": k, "present": bool(d.get(k)), "masked": d.get(k) or None, "is_config": True} for k in KNOWN_CONFIG]
     # read-only status rows (connect-flow-owned) — masked, present/absent only, NOT editable here
     out += [{"key": k, "present": bool(d.get(k)), "masked": _mask(d.get(k)), "is_config": False, "read_only": True}
             for k in KNOWN_READONLY]
     return {"secrets": out,
-            "note": "Secrets are write-only — the UI never shows or returns a secret value. Config values are shown in full. Read-only rows are managed by their own flow (e.g. SnapTrade connect). .env is 0600 + gitignored."}
+            "note": "Secrets are write-only — the UI never shows or returns a secret value. Config values are shown in full. Read-only rows are managed by their own flow (e.g. SnapTrade connect). .env is 0600 + gitignored. Alpaca TAXABLE/IRA slots store keys only — no live trading path."}
 
 
 def _audit(key, actor):

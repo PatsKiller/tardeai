@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import SecretsManager from '../components/SecretsManager'
+import AlpacaLiveReadPanel from '../components/AlpacaLiveReadPanel'
 
 // Deep-link: /v3/system?tab=Crons|LLM|SIEM|Brokers&query=<id> selects that tab (from a Reports action).
 function _dlTab<T extends readonly string[]>(tabs: T, fallback: T[number]): T[number] {
@@ -486,6 +487,7 @@ export default function SystemHub({ onDrill }: Props) {
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <SecretsManager />
+            <AlpacaLiveReadPanel />
             {/* READ-ONLY banner */}
             <div style={{ background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 8, padding: '8px 12px', fontSize: 10, color: '#f59e0b', lineHeight: 1.5 }}>
               <b>READ-ONLY AUDIT.</b> Every setting's current value, for due diligence — no controls, no toggles, no save. Changing any setting (ATM enable, risk-per-trade, account config) happens in a separate <b>guarded flow</b> (Telegram approval for ATM enable/risk; admin path for the rest), never from this dashboard. Level 7 prohibited.
