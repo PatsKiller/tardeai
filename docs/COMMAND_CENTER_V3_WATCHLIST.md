@@ -1,10 +1,15 @@
 # Command Center v3 — Watchlist Hub
 
-_Last updated 2026-07-03 (Security Card v3 — dashboard layout). Route: `/v3/watch`._
+_Last updated 2026-07-21 (operator decision card + RTH few-hour plan refresh). Route: `/v3/watch`._
 
 Decision-first watchlist: one full-width card per symbol with CIO view, plan levels, data-quality
 flags, and a unified verdict → CTA matrix. Operators can propose entries directly from a card
 without waiting for the cron bridge.
+
+**Decision packet surface (2026-07-21):** the primary strategy readout is the **operator card**
+(`DecisionPacketBand` + `operatorDecisionCard.ts`) — one state, one CTA, built timestamp/age,
+Details for audit. Canonical architecture:
+`docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md`.
 
 ## UI layout
 
@@ -39,11 +44,35 @@ reuses `computeRiskSizedShares` (cash-basis, retirement hard guard) and pre-fill
   held-only to held + Hermes-top-200 (`--watchlist-top`, staleness filter `--stale-days 3`
   keeps daily yfinance calls near the churn). Passed through on items as `next_earnings_date`.
 
-## Decision matrix (detailed card view)
+## Operator decision card (packet band — primary strategy surface)
+
+**Components:** `DecisionPacketBand.tsx` · `operatorDecisionCard.ts` · embedded from `WatchlistCardV4.tsx`.
+
+| Operator state | When | Primary CTA |
+|----------------|------|-------------|
+| READY | Action policy allows propose (eligible blueprint) | Review Swing Proposal |
+| WAIT | Conditional / pullback / no setup | Set Entry Alert / Details |
+| REFRESH | `should_be_stale` or invalidation reasons | Refresh Strategy |
+| BLOCKED | Event / data block | Review Event Risk |
+| NO TRADE | Preferred no-trade / nothing eligible | Details |
+| MANAGE POSITION | Held symbol — manage first | Review Position |
+
+**Freshness (star / buy / strong-buy plans):** during US cash RTH (09:30–16:00 ET) packet TTL is
+**4h**; overnight/weekend **12h**. Action policy returns `should_be_stale`, `packet_age_hours`,
+`ttl_hours_applied`, `generated_at`, `rth`. Card chips show ET build time + age; stale plans never
+masquerade as READY. Technical enrichment “stale after ~1h RTH” (`marketAwareStale`) remains a
+separate **data-quality** flag — not the decision-packet TTL.
+
+**Invalidation owner:** `scripts/packet_invalidation.py` (material tech bands; no enrich-clock
+false REFRESH). **Batch regen:** `scripts/shadow_batch_generator.py` uses the same RTH-aware window
+by default. Full contract: architecture doc above.
+
+## Decision matrix (legacy card action strip)
 
 Logic: `apps/command-center-v3/src/lib/watchlistCardAction.ts` — `deriveRecommendedAction` +
 `deriveSecondaryActions`. Each row sets hero text, **primary button**, **warning banner**, and
-up to two secondary actions.
+up to two secondary actions. Coexists with the operator packet band; the band is the strategy
+conclusion, this matrix still drives sizing / propose / data-refresh affordances on the broader card.
 
 Verdicts: `READY` · `WAIT` · `SKIP` · `STALE` · `FIX` · `BUILD` · `WATCH`
 

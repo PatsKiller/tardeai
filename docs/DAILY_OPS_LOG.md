@@ -218,6 +218,14 @@ port 7777); API checks OK.
 Pilot allowlist expanded to `schwab_taxable` + both IRAs; `schwab_pilot_standing_unlock` (no session
 expiry, armed_until 2099); `CANARY_SESSION_DATE=2099-12-31`; cap 9999. Per-order 2FA unchanged.
 
+## 2026-07-21 — Operator decision card + RTH plan refresh (docs + Drive)
+
+Shipped compact watchlist **operator card** (one state/CTA, timestamps) and fixed
+**should_be_stale**: RTH **4h** TTL on action policy + packet invalidation + shadow batch so
+star/buy/strong-buy plans re-arm every few trading hours. Canonical doc:
+`docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md`. Commit `b2fbcd90`.
+Docs index + changelog + watchlist hub updated; synced to Drive via `scripts/sync-docs-to-drive.sh`.
+
 ## 2026-06-22 — SnapTrade / Fidelity stops + one-share test (docs sync)
 
 **Fidelity (`fidelity_rollover_ira`):** SnapTrade read-only — monitor-only stops (`fidelity_monitored_stop`),

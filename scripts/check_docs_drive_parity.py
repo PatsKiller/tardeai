@@ -16,6 +16,8 @@ CANONICAL = [
     "docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md",
     "docs/COST_INTELLIGENCE_ARCHITECTURE.md",
     "docs/options-module.md",
+    "docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md",
+    "docs/COMMAND_CENTER_V3_WATCHLIST.md",
     "docs/DOCUMENTATION_INDEX.md",
     "docs/CHANGELOG.md",
 ]

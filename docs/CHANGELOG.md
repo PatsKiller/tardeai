@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-07-21 — Operator decision card + RTH few-hour plan refresh
+
+Docs: `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` · watchlist: `docs/COMMAND_CENTER_V3_WATCHLIST.md`.  
+Commit: `b2fbcd90`.
+
+- **Operator card** — `DecisionPacketBand` + `operatorDecisionCard.ts` replace audit-dense packet UI with one primary state (READY / WAIT / REFRESH / BLOCKED / NO TRADE / MANAGE POSITION), one CTA, mechanics line, Details drawer. No orders / no 2FA.
+- **Timestamps** — card shows build clock time (ET), age, and TTL applied; `should_be_stale` forces NEEDS REFRESH.
+- **RTH TTL (4h)** — `packet_invalidation.effective_ttl_hours`: US cash Mon–Fri 09:30–16:00 ET uses 4h so star / buy / strong-buy plans re-arm every few trading hours; overnight/weekend 12h. Technicals age gate mirrors RTH (4h) vs off (36h).
+- **should_be_stale fix** — action policy no longer hard-defaults `ttl_hours=12` (which blocked RTH); exposes `generated_at`, `packet_age_hours`, `ttl_hours_applied`, `rth`, `should_be_stale`.
+- **Technical hash** — material RSI/chg/rvol bands only; enrichment `as_of` churn is not `TECHNICALS_CHANGED`.
+- **Shadow batch** — default freshness is RTH-aware (unset `SHADOW_BATCH_FRESH_HOURS`); classifies via full invalidation contract.
+- **HELD** — sold names cleared via portfolio membership sync; phantom portfolio source rows no longer invent held.
+- **Tests** — invalidation + action-policy RTH cases; operator card contract; Playwright operator-card screenshots.
+
 ## 2026-07-19 — Options Lifecycle Desk (v1.0 + v1.1 same day)
 
 Docs: `docs/OPTIONS_LIFECYCLE_DESK.md` · findings: `OPTIONS_LIFECYCLE_DESK_DIAGNOSIS_2026-07-19.md`, `OPTIONS_LIFECYCLE_V1_1_INTEGRATION_AUDIT_2026-07-19.md`.

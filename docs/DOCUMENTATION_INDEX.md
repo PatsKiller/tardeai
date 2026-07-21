@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-16 (Research Intelligence v3.1 Institutional Desk)
+**Updated:** 2026-07-21 (Operator decision card + RTH few-hour plan refresh)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -27,6 +27,7 @@
 ## TIER 2 — Active Operational Docs
 
 - **OPTIONS_LIFECYCLE_DESK.md** — Options Lifecycle Desk architecture & acceptance (2026-07-19, v1.1 same day): strategy-aware open-position management, journal bridge into trade_instances, ticker attribution, free-lane oversight. Supersedes the per-leg monitor sections of options-module.md for management decisions.
+- **architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md** — Watchlist decision packet **operator card** + RTH **4h** plan refresh / `should_be_stale` (2026-07-21): compact READY/WAIT/REFRESH/BLOCKED/NO TRADE/MANAGE, timestamps, material technical hash, shadow-batch RTH freshness. Advisory only.
 
 
 ### Security & Safety
