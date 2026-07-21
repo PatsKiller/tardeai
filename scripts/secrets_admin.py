@@ -35,6 +35,7 @@ KNOWN = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY",
          "ALPACA_IRA_API_KEY", "ALPACA_IRA_SECRET_KEY",
          # Legacy paper pair (deprecated — prefer ALPACA_PAPER_*)
          "ALPACA_API_KEY", "ALPACA_SECRET_KEY"]
+# NOTE: BWS_* machine tokens are NEVER stored in SM or managed here (Rule 1).
 # Editable CONFIG values (NOT secrets) managed in the same modal for completeness — shown in full, not
 # masked. SCHWAB_REFRESH_TOKEN and SCHWAB_TOKEN_ENC_KEY are DELIBERATELY excluded (the refresh token is
 # OAuth-flow-owned by schwab_token_manager; rotating the Fernet key orphans every stored token).
@@ -78,13 +79,44 @@ _ALPACA_LIVE_LABELS = {
     "ALPACA_PAPER_SECRET_KEY": "Alpaca Paper — secret",
 }
 
+def _render_env_path() -> Path:
+    uid = os.getuid()
+    xdg = os.environ.get("XDG_RUNTIME_DIR")
+    if xdg:
+        p = Path(xdg) / "tradeai" / "env"
+        if p.is_file():
+            return p
+    return Path(f"/run/user/{uid}/tradeai/env")
+
+
+def _read_secret_store():
+    """Prefer tmpfs SM render, else disk .env (names+values for mask only)."""
+    rp = _render_env_path()
+    if rp.is_file():
+        return _read_env_file(rp)
+    return _read_env()
+
+
+def _read_env_file(path: Path):
+    lines = path.read_text().splitlines() if path.exists() else []
+    d = {}
+    for l in lines:
+        if "=" in l and not l.lstrip().startswith("#"):
+            k, _, v = l.partition("=")
+            d[k.strip()] = v.strip().strip("'\"")
+    return lines, d
+
 
 def list_secrets():
     """Names + presence + masked hint. NEVER full values."""
-    _, d = _read_env()
+    _, d = _read_secret_store()
+    # never surface BWS_*
+    d = {k: v for k, v in d.items() if not k.upper().startswith("BWS_")}
     keys = sorted((set(KNOWN) | {k for k in d if k.endswith(SECRET_SUFFIXES)}) - set(KNOWN_READONLY))
     out = []
     for k in keys:
+        if k.upper().startswith("BWS_"):
+            continue
         row = {"key": k, "present": bool(d.get(k)), "masked": _mask(d.get(k)), "is_config": False}
         if k in _ALPACA_LIVE_LABELS:
             row["label"] = _ALPACA_LIVE_LABELS[k]
@@ -100,7 +132,7 @@ def list_secrets():
     out += [{"key": k, "present": bool(d.get(k)), "masked": _mask(d.get(k)), "is_config": False, "read_only": True}
             for k in KNOWN_READONLY]
     return {"secrets": out,
-            "note": "Secrets are write-only — the UI never shows or returns a secret value. Config values are shown in full. Read-only rows are managed by their own flow (e.g. SnapTrade connect). .env is 0600 + gitignored. Alpaca TAXABLE/IRA slots store keys only — no live trading path."}
+            "note": "Secrets are write-only. Backend: Bitwarden Secrets Manager (trade-ai-prod) → tmpfs render. BWS machine tokens are never stored here."}
 
 
 def _audit(key, actor):
@@ -113,11 +145,66 @@ def _audit(key, actor):
         pass
 
 
+def _sm_upsert(key: str, value: str) -> str:
+    """Create or edit secret in SM project. Returns 'created'|'edited'. Never logs value."""
+    import json
+    import subprocess
+    from pathlib import Path as _P
+
+    bws = str(_P.home() / ".local" / "bin" / "bws")
+    write_tok = (_P.home() / ".openclaw" / "credentials" / "bws_write_token").read_text().strip()
+    read_tok = (_P.home() / ".openclaw" / "credentials" / "bws_read_token").read_text().strip()
+    env_w = os.environ.copy()
+    env_w["BWS_ACCESS_TOKEN"] = write_tok
+    env_r = os.environ.copy()
+    env_r["BWS_ACCESS_TOKEN"] = read_tok
+    # project id
+    pr = subprocess.run([bws, "project", "list", "--output", "json"], env=env_r,
+                        capture_output=True, text=True, timeout=60)
+    if pr.returncode != 0:
+        raise RuntimeError("SM project list failed")
+    pid = None
+    for item in json.loads(pr.stdout or "[]"):
+        if item.get("name") == "trade-ai-prod":
+            pid = item.get("id")
+            break
+    if not pid:
+        raise RuntimeError("trade-ai-prod not found")
+    # existing?
+    lr = subprocess.run([bws, "secret", "list", str(pid), "--output", "json"], env=env_r,
+                        capture_output=True, text=True, timeout=90)
+    existing_id = None
+    if lr.returncode == 0:
+        for item in json.loads(lr.stdout or "[]"):
+            if item.get("key") == key:
+                existing_id = item.get("id")
+                break
+    if existing_id:
+        r = subprocess.run(
+            [bws, "secret", "edit", str(existing_id), "--value", value, "--output", "json"],
+            env=env_w, capture_output=True, text=True, timeout=90,
+        )
+        if r.returncode != 0:
+            err = (r.stderr or r.stdout or "").replace(value, "[REDACTED]")[:160]
+            raise RuntimeError(f"SM edit failed: {err}")
+        return "edited"
+    r = subprocess.run(
+        [bws, "secret", "create", "--output", "json", "--", key, value, str(pid)],
+        env=env_w, capture_output=True, text=True, timeout=90,
+    )
+    if r.returncode != 0:
+        err = (r.stderr or r.stdout or "").replace(value, "[REDACTED]")[:160]
+        raise RuntimeError(f"SM create failed: {err}")
+    return "created"
+
+
 def set_secret(key, value, actor="operator"):
-    """Write/rotate one secret in .env atomically. Returns masked confirmation only — never the value."""
+    """Write/rotate one secret: Bitwarden SM → render tmpfs → process env. Never returns the value."""
     key = (key or "").strip()
     if not KEY_RE.match(key):
         raise ValueError("invalid key name (must be UPPER_SNAKE_CASE)")
+    if key.upper().startswith("BWS_"):
+        raise ValueError("BWS_* machine tokens cannot be stored via this modal (Rule 1)")
     if key in KNOWN_READONLY:
         raise ValueError(f"{key} is read-only here — it is managed by its own flow (e.g. snaptrade_connect.py)")
     is_config = key in KNOWN_CONFIG
@@ -126,26 +213,38 @@ def set_secret(key, value, actor="operator"):
     value = (value or "").strip()
     if len(value) < 4:
         raise ValueError("value too short")
-    lines, _ = _read_env()
-    newline = _format_env_line(key, value)
-    out, replaced = [], False
-    for l in lines:
-        if "=" in l and l.split("=", 1)[0].strip() == key and not l.lstrip().startswith("#"):
-            out.append(newline); replaced = True
-        else:
-            out.append(l)
-    if not replaced:
-        out.append(newline)
-    fd, tmp = tempfile.mkstemp(dir=str(ENV_PATH.parent), suffix=".tmp")
-    with os.fdopen(fd, "w") as f:
-        f.write("\n".join(out).rstrip("\n") + "\n")
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, ENV_PATH)
-    os.chmod(ENV_PATH, 0o600)
-    os.environ[key] = value           # current process picks it up immediately
+
+    # S5: SM is source of truth
+    action = _sm_upsert(key, value)
+    # re-render tmpfs
+    try:
+        import subprocess
+        from pathlib import Path as _P
+        root = _P(__file__).resolve().parent.parent
+        subprocess.run(
+            [str(root / ".venv" / "bin" / "python"), str(root / "scripts" / "secrets" / "render_env.py"), "--now"],
+            cwd=str(root), capture_output=True, text=True, timeout=180,
+        )
+    except Exception:
+        pass
+    os.environ[key] = value
     _audit(key, actor)
-    return {"ok": True, "key": key, "masked": (value if is_config else _mask(value)), "is_config": is_config, "rotated": replaced,
-            "note": "Written to .env (0600). Long-running services apply it on next restart; cron jobs on next run."}
+    # Telegram confirm (no values)
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(f"🔐 Secret {action}: `{key}` (SM → tmpfs render). Actor={actor}.", bypass_router=True)
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "key": key,
+        "masked": (value if is_config else _mask(value)),
+        "is_config": is_config,
+        "rotated": action == "edited",
+        "backend": "bitwarden_sm",
+        "action": action,
+        "note": "Written to Bitwarden SM + tmpfs render. Long-running services pick up on next restart.",
+    }
 
 
 if __name__ == "__main__":
