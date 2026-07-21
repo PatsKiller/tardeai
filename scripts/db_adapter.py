@@ -34,10 +34,23 @@ from typing import Dict, Optional, Any
 # ── Platform detection ────────────────────────────────────────────────────────
 
 def _load_dotenv_if_needed():
-    """Load .env file into os.environ if DB_PASSWORD not already set.
-    Handles cron context where env vars aren't inherited."""
+    """Load env if DB_PASSWORD not already set (cron-safe).
+
+    S4: prefer tmpfs SM render via env_bootstrap, then legacy disk .env.
+    """
     if os.getenv("DB_PASSWORD"):
         return  # already set
+    try:
+        import sys as _sys
+        _lib = str(Path(__file__).resolve().parent / "lib")
+        if _lib not in _sys.path:
+            _sys.path.insert(0, _lib)
+        from env_bootstrap import load_env
+        load_env()
+        if os.getenv("DB_PASSWORD"):
+            return
+    except Exception:
+        pass
     env_path = Path(__file__).resolve().parent.parent / ".env"
     if env_path.exists():
         for line in env_path.read_text().splitlines():
@@ -45,7 +58,7 @@ def _load_dotenv_if_needed():
             if line and not line.startswith("#") and "=" in line:
                 key, _, val = line.partition("=")
                 key = key.strip()
-                val = val.strip()
+                val = val.strip().strip("'\"")
                 if key.startswith("DB_") and key not in os.environ:
                     os.environ[key] = val
 

@@ -70,6 +70,17 @@ def resolve_credentials(slot: Optional[str] = "ALPACA_PAPER") -> Tuple[str, str,
     PAPER falls back to legacy ALPACA_API_KEY/SECRET if slot-specific unset.
     Live slots return empty strings when unset (scaffold).
     """
+    # S4: ensure tmpfs/disk env loaded for cron / env-only callers
+    try:
+        import sys
+        from pathlib import Path
+        _lib = str(Path(__file__).resolve().parents[1] / "lib")
+        if _lib not in sys.path:
+            sys.path.insert(0, _lib)
+        from env_bootstrap import ensure_loaded
+        ensure_loaded()
+    except Exception:
+        pass
     key = normalize_slot(slot)
     if key not in _SLOTS:
         raise ValueError(f"unknown credential_slot {slot!r}")

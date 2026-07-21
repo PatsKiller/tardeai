@@ -45,15 +45,24 @@ from urllib.parse import urlparse, parse_qs
 PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
-# v3.1 (WS-F): load .env BEFORE class definitions so operational knobs like
+# v3.1 (WS-F): load env BEFORE class definitions so operational knobs like
 # DASHBOARD_MAX_CONCURRENCY / DASHBOARD_SEM_TIMEOUT_SEC are actually reachable
 # (the semaphore is sized at class-creation time; api_v2's load_dotenv runs too
 # late for it). Never overrides values already set by systemd.
+# S4: tmpfs SM render first, then disk .env fallback.
 try:
-    from dotenv import load_dotenv
-    load_dotenv(PROJECT_ROOT / ".env")
+    import sys as _sys_eb
+    _lib = str(PROJECT_ROOT / "scripts" / "lib")
+    if _lib not in _sys_eb.path:
+        _sys_eb.path.insert(0, _lib)
+    from env_bootstrap import load_env
+    load_env()
 except Exception:
-    pass
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(PROJECT_ROOT / ".env")
+    except Exception:
+        pass
 
 # ── api_v2 hot-reload guard ──────────────────────────────────────────────────
 # Reload api_v2 ONLY when its source file actually changes — not on every request.
@@ -2158,43 +2167,12 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             return
 
         elif path == "/api/env/write":
-            # Phase-0 2026-07-21: DO NOT write full-file .env.bak* copies (historical-keys leak).
-            # Prefer POST /api/v2/admin/secrets (secrets_admin.set_secret) — atomic line replace, 0600, no bak.
-            # This legacy bulk path still updates .env in place only (no backup file).
-            import json as _ej, os as _os_env
-            _bstr = raw.decode("utf-8", errors="replace")
-            try:
-                _upd = _ej.loads(_bstr).get("updates", {})
-            except Exception:
-                json_response(self, 400, {"error": "Invalid JSON"}); return
-            _env = PROJECT_ROOT / ".env"
-            if not _env.exists():
-                json_response(self, 404, {"error": ".env not found"}); return
-            if not isinstance(_upd, dict) or not _upd:
-                json_response(self, 400, {"error": "updates object required"}); return
-            _el = _env.read_text(encoding="utf-8").splitlines()
-            _dk = set(); _nl = []
-            for _ln2 in _el:
-                _s2 = _ln2.strip()
-                _k2 = _s2.split("=",1)[0].strip() if (_s2 and not _s2.startswith("#") and "=" in _s2) else None
-                if _k2 and _k2 in _upd:
-                    _nl.append(_k2 + "=" + str(_upd[_k2])); _dk.add(_k2)
-                else:
-                    _nl.append(_ln2)
-            for _k3, _v3 in _upd.items():
-                if _k3 not in _dk: _nl.append(str(_k3) + "=" + str(_v3)); _dk.add(_k3)
-            _tmp = _env.with_suffix(".env.tmp_write")
-            _tmp.write_text(chr(10).join(_nl) + chr(10), encoding="utf-8")
-            _os_env.chmod(_tmp, 0o600)
-            _tmp.replace(_env)
-            _os_env.chmod(_env, 0o600)
-            for _k3, _v3 in _upd.items():
-                _os_env.environ[str(_k3)] = str(_v3)
-            json_response(self, 200, {
-                "ok": True,
-                "updated": list(_dk),
-                "backup": None,
-                "note": "No .env.bak written (Phase-0). Prefer /api/v2/admin/secrets for single-key rotation.",
+            # S5 2026-07-21: retired. Use POST /api/v2/admin/secrets (Bitwarden SM + render).
+            json_response(self, 410, {
+                "ok": False,
+                "error": "gone",
+                "message": "/api/env/write is retired. Use System → Admin → API Keys & Secrets "
+                           "(POST /api/v2/admin/secrets) which writes Bitwarden SM and re-renders tmpfs.",
             })
             return
 

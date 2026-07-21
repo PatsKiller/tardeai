@@ -23,6 +23,17 @@ MAX_MSG_LEN  = 4000    # leave headroom below 4096 hard limit
 
 
 def _env(k: str, default: str = "") -> str:
+    if k not in os.environ:
+        try:
+            import sys
+            from pathlib import Path
+            _lib = str(Path(__file__).resolve().parent / "lib")
+            if _lib not in sys.path:
+                sys.path.insert(0, _lib)
+            from env_bootstrap import ensure_loaded
+            ensure_loaded()
+        except Exception:
+            pass
     return os.getenv(k, default).strip()
 
 def _enabled() -> bool:

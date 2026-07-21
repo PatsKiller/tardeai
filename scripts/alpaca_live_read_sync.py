@@ -22,9 +22,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
 log = logging.getLogger("alpaca_live_read_sync")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+try:
+    from env_bootstrap import load_env
+    load_env()
+except Exception:
+    pass
 
 HOLDINGS_PATH = ROOT / "data" / "portfolios" / "state" / "holdings.json"
 FAIL_STREAK_PATH = ROOT / "data" / "runtime" / "alpaca_live_read_fail_streak.json"
