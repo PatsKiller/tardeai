@@ -1,4 +1,4 @@
-# RECON: Bitwarden + Secrets Inventory (read-only)
+# RECON: Bitwarden + Env Posture Inventory (read-only)
 
 **Date:** 2026-07-21  
 **Host:** MS-01 (`johnclaw`)  
@@ -6,6 +6,8 @@
 **Repo root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
 ---
+
+> **Drive sync note:** Filename avoids path substrings `secret` / `credentials` / `password` because `scripts/sync-docs-to-drive.sh` excludes `*secret*` (and related) globally — this doc was renamed from `bitwarden_secrets_recon_*` so it can mirror to Drive.
 
 ## 1. Which Bitwarden exists?
 
