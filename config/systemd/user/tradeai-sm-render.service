@@ -1,0 +1,14 @@
+[Unit]
+Description=Trade AI Bitwarden SM env render (tmpfs cache)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PATH=/home/johnclaw/.local/bin:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/secrets/render_env.py --now
+Nice=10
+
+[Install]
+WantedBy=default.target

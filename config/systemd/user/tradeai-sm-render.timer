@@ -1,0 +1,11 @@
+[Unit]
+Description=Trade AI SM env re-render every 4h
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=4h
+Persistent=true
+Unit=tradeai-sm-render.service
+
+[Install]
+WantedBy=timers.target
