@@ -3,6 +3,8 @@
 
 - Names preserved EXACTLY from .env
 - SKIP any key matching BWS_* (Rule 1 — tokens never enter SM)
+- Empty values + known scaffold blanks (e.g. ALPACA_IRA_*) stored as EMPTY_SENTINEL
+  (SM rejects truly empty strings); render decodes back to ""
 - Idempotent: skip-if-exists with value-hash compare; never silently overwrite
 - Prints counts only — never secret values
 """
@@ -20,6 +22,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "secrets"))
+
+from empty_sentinel import (  # noqa: E402
+    BLANK_SCAFFOLD_KEYS,
+    EMPTY_SENTINEL,
+    encode_empty,
+)
 
 BWS = os.environ.get("BWS_BIN") or str(Path.home() / ".local/bin/bws")
 READ_TOKEN = Path.home() / ".openclaw" / "credentials" / "bws_read_token"
@@ -101,38 +110,63 @@ def _list_secrets(token: str, project_id: str) -> dict[str, dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--env", type=Path, default=ROOT / ".env")
+    ap.add_argument("--env", type=Path, default=None,
+                    help="env file (default: .env then .env.pre-sm-migration)")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--sync-blanks", action="store_true", default=True,
+                    help="store empty/scaffold keys as EMPTY_SENTINEL (default on)")
+    ap.add_argument("--no-sync-blanks", action="store_true")
     args = ap.parse_args()
+    sync_blanks = args.sync_blanks and not args.no_sync_blanks
 
     if not WRITE_TOKEN.is_file() or not READ_TOKEN.is_file():
         print("FAIL: bws token files missing", file=sys.stderr)
         return 1
-    if not args.env.is_file():
-        print(f"FAIL: env missing {args.env}", file=sys.stderr)
+    env_path = args.env
+    if env_path is None:
+        for cand in (ROOT / ".env", ROOT / ".env.pre-sm-migration"):
+            if cand.is_file():
+                env_path = cand
+                break
+    if not env_path or not env_path.is_file():
+        print("FAIL: env missing (.env or .env.pre-sm-migration)", file=sys.stderr)
         return 1
 
     write_tok = _token(WRITE_TOKEN)
     read_tok = _token(READ_TOKEN)
-    env_map = _parse_env(args.env)
+    env_map = _parse_env(env_path)
 
     # Rule 1: strip BWS_*
     skipped_bws = sorted(k for k in env_map if BWS_SKIP_RE.match(k))
     to_import = {k: v for k, v in env_map.items() if not BWS_SKIP_RE.match(k)}
+
+    # Scaffold blanks (IRA, paper slots, etc.) even if absent from env file
+    blank_scaffolds_added = 0
+    if sync_blanks:
+        for k in BLANK_SCAFFOLD_KEYS:
+            if BWS_SKIP_RE.match(k):
+                continue
+            if k not in to_import:
+                to_import[k] = ""
+                blank_scaffolds_added += 1
 
     project_id = _project_id(read_tok)
     existing = _list_secrets(read_tok, project_id)
 
     created = skipped_exists_same = skipped_exists_diff = failed = 0
     fail_names: list[str] = []
+    blanks_synced = 0
 
-    skipped_empty = 0
     for key in sorted(to_import.keys()):
-        val = to_import[key]
-        if val == "":
-            skipped_empty += 1
+        raw_val = to_import[key]
+        is_blank = raw_val == ""
+        if is_blank and not sync_blanks:
             print(f"SKIP_EMPTY {key}")
             continue
+        # SM cannot store empty — encode blanks
+        val = encode_empty(raw_val)
+        if is_blank:
+            blanks_synced += 1
         if key in existing:
             # value-hash compare — need SM value
             sm_val = existing[key].get("value")
@@ -146,12 +180,24 @@ def main() -> int:
                             sm_val = json.loads(g.stdout).get("value")
                         except Exception:
                             sm_val = None
-            if sm_val is not None and _hash(str(sm_val)) == _hash(val):
+            # Compare using encoded form so empty env matches EMPTY_SENTINEL in SM
+            sm_cmp = encode_empty(str(sm_val)) if sm_val is not None else None
+            if sm_cmp is not None and _hash(sm_cmp) == _hash(val):
                 skipped_exists_same += 1
                 continue
-            if sm_val is not None:
+            # Allow upgrade: existing SM missing but we now want blank scaffold — only if
+            # operator force... keep no silent overwrite of non-empty SM values.
+            if sm_val is not None and str(sm_val) not in ("", EMPTY_SENTINEL) and is_blank:
+                skipped_exists_diff += 1
+                print(f"SKIP_DIFF exists non-empty (not blanking): {key}")
+                continue
+            if sm_val is not None and str(sm_val) not in ("", EMPTY_SENTINEL) and not is_blank:
                 skipped_exists_diff += 1
                 print(f"SKIP_DIFF exists (not overwriting): {key}")
+                continue
+            # SM has empty/sentinel and we have blank — treat as same
+            if sm_val is not None and str(sm_val) in ("", EMPTY_SENTINEL) and is_blank:
+                skipped_exists_same += 1
                 continue
             # unknown SM value — skip to avoid overwrite
             skipped_exists_diff += 1
@@ -199,29 +245,30 @@ def main() -> int:
     extra_in_sm = sorted(sm_names - env_names)
 
     print("=== S2 import report (counts only) ===")
+    print(f"env_path={env_path}")
     print(f"env_total_keys={len(env_map)}")
     print(f"skipped_BWS_={len(skipped_bws)} names={skipped_bws}")
     print(f"import_candidates={len(to_import)}")
+    print(f"blank_scaffolds_added={blank_scaffolds_added}")
+    print(f"blanks_synced={blanks_synced}")
     print(f"created={created}")
     print(f"skip_same_hash={skipped_exists_same}")
     print(f"skip_exists_diff_or_unknown={skipped_exists_diff}")
-    print(f"skipped_empty={skipped_empty}")
     print(f"failed={failed} fail_names={fail_names}")
     print(f"sm_secret_count={len(sm_names)}")
-    # empty env values are not expected in SM
-    env_nonempty = {k for k, v in to_import.items() if v != ""}
-    missing_nonempty = sorted(env_nonempty - sm_names)
-    print(f"missing_in_sm_nonempty={len(missing_nonempty)} {missing_nonempty[:20]}")
+    missing = sorted(set(to_import.keys()) - sm_names)
+    print(f"missing_in_sm={len(missing)} {missing[:20]}")
     print(f"extra_in_sm={len(extra_in_sm)} (ok if pre-existing)")
-    parity = not missing_nonempty
-    print(f"parity_nonempty_env_in_sm={parity}")
+    parity = not missing
+    print(f"parity_all_candidates_in_sm={parity}")
+    print(f"empty_sentinel={EMPTY_SENTINEL}")
     print(f"dry_run={args.dry_run}")
     print(f"project_id_present={bool(project_id)}")
 
     # Rule 1 post-check SM has no BWS_*
     bws_in_sm = [k for k in sm_names if BWS_SKIP_RE.match(k)]
     print(f"BWS_in_sm={len(bws_in_sm)} (must be 0)")
-    if bws_in_sm or failed or missing_nonempty:
+    if bws_in_sm or failed or missing:
         return 1
     return 0
 

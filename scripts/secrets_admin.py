@@ -211,11 +211,22 @@ def set_secret(key, value, actor="operator"):
     if not is_config and not key.endswith(SECRET_SUFFIXES):
         raise ValueError(f"key must end with one of {SECRET_SUFFIXES} (secret keys only) or be a known config key")
     value = (value or "").strip()
-    if len(value) < 4:
+    # allow blank clear (stores SM sentinel); real secrets still min length when non-empty
+    if value and len(value) < 4:
         raise ValueError("value too short")
+    try:
+        import sys
+        from pathlib import Path as _P
+        _sp = str(_P(__file__).resolve().parent / "secrets")
+        if _sp not in sys.path:
+            sys.path.insert(0, _sp)
+        from empty_sentinel import encode_empty
+        sm_value = encode_empty(value)
+    except Exception:
+        sm_value = value if value else "__TRADEAI_EMPTY__"
 
     # S5: SM is source of truth
-    action = _sm_upsert(key, value)
+    action = _sm_upsert(key, sm_value)
     # re-render tmpfs
     try:
         import subprocess

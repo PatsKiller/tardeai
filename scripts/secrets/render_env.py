@@ -23,6 +23,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts" / "secrets"))
+from empty_sentinel import decode_empty  # noqa: E402
+
 BWS = os.environ.get("BWS_BIN") or str(Path.home() / ".local" / "bin" / "bws")
 READ_TOKEN = Path.home() / ".openclaw" / "credentials" / "bws_read_token"
 PROJECT_NAME = "trade-ai-prod"
@@ -89,7 +92,8 @@ def _fetch_secrets(token: str) -> dict[str, str]:
                     v = None
         if v is None:
             continue
-        out[str(k)] = str(v)
+        # Decode EMPTY_SENTINEL → "" so blank scaffolds render as KEY=
+        out[str(k)] = decode_empty(str(v))
     return out
 
 
@@ -97,6 +101,10 @@ def _format_env(d: dict[str, str]) -> str:
     lines = []
     for k in sorted(d.keys()):
         v = d[k]
+        # empty values allowed in env file
+        if v == "":
+            lines.append(f"{k}=")
+            continue
         # quote if needed (match secrets_admin heuristic)
         if re.search(r"[;() $&|<>!#'\"\\]", v) or " " in v or "\n" in v:
             escaped = v.replace("'", "'\"'\"'")
