@@ -121,12 +121,22 @@ def request_approval(intent) -> dict:
 
 
 def intent_deep_link(intent_id: str) -> str | None:
-    """Tailscale FQDN deep-link to the exact order item in the v3 Broker Orders tab. Host comes from
-    env (TAILSCALE_HOSTNAME) — never hardcoded; None when unset (link simply omitted)."""
-    host = os.getenv("TAILSCALE_HOSTNAME", "").strip()
-    if not host:
-        return None
-    return f"https://{host}/v3/trading?tab=Broker+Orders&intent={intent_id}"
+    """Tailscale FQDN deep-link to the exact order item in the v3 Broker Orders tab.
+
+    Always via notification_url_builder (https serve / %20 tabs) — never ad-hoc host strings.
+    """
+    try:
+        import sys as _sys
+        from pathlib import Path as _P
+        _sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
+        from notification_url_builder import build_broker_order_url
+        url = build_broker_order_url(intent_id)
+        return url or None
+    except Exception:
+        host = os.getenv("TAILSCALE_HOSTNAME", "").strip()
+        if not host:
+            return None
+        return f"https://{host}/v3/trading?tab=Broker%20Orders&intent={intent_id}"
 
 
 def _approval_chat() -> str | None:
@@ -393,6 +403,8 @@ def _approval_telegram_payload(intent, code: str) -> tuple[str, str, dict] | Non
     sym = intent.instrument.symbol
     title = summ["action_label"].upper() + " APPROVAL" + (" — ⚠️ SCAFFOLD TEST" if is_test else "")
     notice = _execution_notice(intent)
+    # Body: bare URL on its own line (Telegram auto-linkifies; survives HTML/Markdown parse failures).
+    # Prefer inline URL button below — that is the reliable tap target.
     html = (f"🔐 <b>{_tg_html(title)}</b>\n\n"
             f"<b>{_tg_html(summ['headline'])}</b>\n"
             f"<i>{_tg_html(summ['detail'])}</i>\n"
@@ -403,11 +415,15 @@ def _approval_telegram_payload(intent, code: str) -> tuple[str, str, dict] | Non
             f"<i>{_tg_html(notice)}</i>")
     plain = (f"🔐 {title}\n\n{summ['headline']}\n{summ['detail']}\n"
              f"intent {intent.intent_id[:8]} · expires {TTL_MIN}min\nmanual fallback code: {code}\n"
-             + (f"Open: {link}\n" if link else "")
+             + (f"Open in Command Center:\n{link}\n" if link else "")
              + f"2nd factor: type ticker {sym} in web OR tap {summ['approve_btn']} in Telegram\n{notice}")
-    kb = {"inline_keyboard": [[
+    rows = [[
         {"text": f"✅ {summ['approve_btn']}", "callback_data": f"bkapprove:{intent.intent_id}:{code}"},
-        {"text": "❌ Reject", "callback_data": f"bkreject:{intent.intent_id}"}]]}
+        {"text": "❌ Reject", "callback_data": f"bkreject:{intent.intent_id}"},
+    ]]
+    if link:
+        rows.append([{"text": "🔎 Open in Command Center", "url": link}])
+    kb = {"inline_keyboard": rows}
     return html, plain, kb
 
 

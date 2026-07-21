@@ -123,14 +123,23 @@ def format_proposal_alert(proposal, alert_type, current_price):
             {"text": "\u2139\ufe0f More Info", "callback_data": f"ptinfo:{pid}"},
         ]]
 
-    # URL buttons — only when the public FQDN is configured (HTTPS, no port). Trade-review page (precise
-    # size/risk edit) + the sizing/automation policy page (operator 2026-06-19).
-    tailscale_host = os.environ.get("TAILSCALE_HOSTNAME", "").strip()
-    if tailscale_host and rows:
-        rows.append([
-            {"text": "\U0001f50e Review trade", "url": f"https://{tailscale_host}/v3/trading?tab=Proposals&proposal={pid}"},
-            {"text": "⚙️ Policy", "url": f"https://{tailscale_host}/v3/automation?account=alpaca_paper"},
-        ])
+    # URL buttons via canonical builder (survives Markdown body failures).
+    try:
+        from notification_url_builder import build_dashboard_url, build_proposal_url
+        prop_url = build_proposal_url(pid)
+        policy_url = build_dashboard_url("/v3/automation", {"account": "alpaca_paper"})
+        if prop_url and rows is not None:
+            rows.append([
+                {"text": "\U0001f50e Review trade", "url": prop_url},
+                {"text": "⚙️ Policy", "url": policy_url},
+            ])
+    except Exception:
+        tailscale_host = os.environ.get("TAILSCALE_HOSTNAME", "").strip()
+        if tailscale_host and rows:
+            rows.append([
+                {"text": "\U0001f50e Review trade",
+                 "url": f"https://{tailscale_host}/v3/trading?tab=Proposals&proposal={pid}"},
+            ])
 
     keyboard = {"inline_keyboard": rows} if rows else None
     return msg, keyboard
@@ -399,9 +408,14 @@ def format_stop_alert(data):
             {"text": "\u2139\ufe0f More Context", "callback_data": f"stopinfo:{sym}"},
         ],
     ]
-    tailscale_host = os.environ.get("TAILSCALE_HOSTNAME", "").strip()
-    if tailscale_host:
-        rows.append([{"text": "\U0001f4ca Open in Dashboard", "url": f"https://{tailscale_host}/v3/risk"}])
+    try:
+        from notification_url_builder import build_dashboard_url
+        rows.append([{"text": "\U0001f4ca Open in Dashboard", "url": build_dashboard_url("/v3/risk")}])
+    except Exception:
+        tailscale_host = os.environ.get("TAILSCALE_HOSTNAME", "").strip()
+        if tailscale_host:
+            rows.append([{"text": "\U0001f4ca Open in Dashboard",
+                          "url": f"https://{tailscale_host}/v3/risk"}])
 
     return msg, {"inline_keyboard": rows}
 

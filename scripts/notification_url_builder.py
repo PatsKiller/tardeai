@@ -4,50 +4,73 @@
 Converts local/internal IP links to the Tailscale FQDN AND rewrites legacy /v2/ dashboard paths to their
 /v3/ Command Center equivalents (v3 is the canonical UI). For Telegram/email messages only — does NOT modify
 internal health-check or API binding code.
+
+Deep-link contract (2026-07-21):
+  • Prefer https://{TAILSCALE_HOSTNAME} when set — matches `tailscale serve` → :7777 (no port in URL).
+  • Override with NOTIFICATION_PUBLIC_BASE_URL if needed.
+  • Query tabs use %20 (never +) so Telegram clients and SPA routers agree.
+  • All Telegram body/button links MUST go through this module.
 """
+from __future__ import annotations
+
 import os
 import re
+from urllib.parse import quote, urlencode
+# Host only (for rewrite rules)
+_FQDN = os.getenv("TAILSCALE_HOSTNAME", "ms01-openclaw.tail163d14.ts.net").strip() or "ms01-openclaw.tail163d14.ts.net"
 
-# Public dashboard base for user-facing links. The portfolio server speaks HTTP on
-# :7777; the Tailscale FQDN must carry that port for the link to reach it directly
-# over the tailnet (operator 2026-06-21). Env-overridable so the host/port is never
-# hardcoded. NOTE: TLS is only on :443 (Tailscale serve), so the port-bearing form
-# is http, not https.
-PUBLIC_BASE_URL = os.getenv(
-    "NOTIFICATION_PUBLIC_BASE_URL", "http://ms01-openclaw.tail163d14.ts.net:7777"
-).rstrip("/")
-DASHBOARD_PATH = "/v3/"   # v3 is canonical
-_FQDN = "ms01-openclaw.tail163d14.ts.net"            # host only (for the upgrade rule)
-_HOSTPORT = PUBLIC_BASE_URL.split("://", 1)[-1]      # host:port, scheme-stripped
 
-# Internal IPs/hosts AND a port-less public FQDN -> the canonical port-bearing FQDN.
-# `(?!:\d)` guards so an already-ported URL (e.g. the :8443 → 7776 DOF endpoint, or an
-# already-correct :7777) is never given a second port.
-_REPLACEMENTS = [
-    (re.compile(r"https?://192\.168\.50\.16:7777"), PUBLIC_BASE_URL),
-    (re.compile(r"https?://192\.168\.50\.16(?!:\d)"), PUBLIC_BASE_URL),
-    (re.compile(r"192\.168\.50\.16:7777"), _HOSTPORT),
-    (re.compile(r"https?://localhost:7777"), PUBLIC_BASE_URL),
-    (re.compile(r"https?://127\.0\.0\.1:7777"), PUBLIC_BASE_URL),
-    (re.compile(r"https?://100\.66\.120\.124:7777"), PUBLIC_BASE_URL),
-    (re.compile(r"https?://100\.66\.120\.124(?!:\d)"), PUBLIC_BASE_URL),
-    # Already-FQDN links that scripts hardcode without the port (e.g. morning brief,
-    # email footers, reports portal) — upgrade them to the port-bearing form so EVERY
-    # alert is consistent. Leaves :7777 and other explicit ports (:8443) alone.
-    (re.compile(r"https?://" + re.escape(_FQDN) + r"(?!:\d)"), PUBLIC_BASE_URL),
-]
+def get_public_base_url() -> str:
+    """Canonical public base for operator-facing links (no trailing slash).
 
-# Legacy /v2/ page -> /v3/ hub route. v3 routes: home(/v3/), portfolio, risk, trading, strategy, agents,
-# intelligence, hermes, retirement, journal, watchlist, watchpool, sectors, system. Order matters (specific
-# first); the trailing rules catch anything remaining so no /v2/ link survives.
+    Priority:
+      1. NOTIFICATION_PUBLIC_BASE_URL (explicit override)
+      2. https://{TAILSCALE_HOSTNAME}  — Tailscale serve on :443 → localhost:7777
+      3. http://{FQDN}:7777           — direct portfolio_server (fallback)
+    """
+    explicit = (os.getenv("NOTIFICATION_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    host = (os.getenv("TAILSCALE_HOSTNAME") or _FQDN).strip()
+    if host:
+        # Serve terminates TLS on 443 and proxies to :7777 — this is the URL phones on
+        # the tailnet can open. Do NOT force :7777 here (breaks serve / certs).
+        return f"https://{host}"
+    return f"http://{_FQDN}:7777"
+
+
+PUBLIC_BASE_URL = get_public_base_url()  # evaluated at import; prefer get_public_base_url() at call time
+DASHBOARD_PATH = "/v3/"
+_HOSTPORT = get_public_base_url().split("://", 1)[-1]
+
+# Internal IPs/hosts → canonical public base. Guard ports so :8443 DOF endpoint is preserved.
+def _replacements():
+    base = get_public_base_url()
+    hostport = base.split("://", 1)[-1]
+    fqdn = (os.getenv("TAILSCALE_HOSTNAME") or _FQDN).strip()
+    return [
+        (re.compile(r"https?://192\.168\.50\.16:7777"), base),
+        (re.compile(r"https?://192\.168\.50\.16(?!:\d)"), base),
+        (re.compile(r"192\.168\.50\.16:7777"), hostport),
+        (re.compile(r"https?://localhost:7777"), base),
+        (re.compile(r"https?://127\.0\.0\.1:7777"), base),
+        (re.compile(r"https?://100\.66\.120\.124:7777"), base),
+        (re.compile(r"https?://100\.66\.120\.124(?!:\d)"), base),
+        # Port-less FQDN already correct when base is https://fqdn — leave alone.
+        # Port-bearing :7777 form → upgrade to base if base is serve-https.
+        (re.compile(r"https?://" + re.escape(fqdn) + r":7777"), base),
+    ]
+
+
+# Legacy /v2/ page -> /v3/ hub route.
 _V2_TO_V3 = [
     (re.compile(r"/v2/(?:paper-proposals|paper-status|paper-governance|trade-ai|paper-trading)\b"), "/v3/trading"),
     (re.compile(r"/v2/(?:automated-trade-journal|paper-journal|journal)\b"), "/v3/journal"),
     (re.compile(r"/v2/(?:system-health|system_health|alerts|siem|jobs|crons)\b"), "/v3/system"),
     (re.compile(r"/v2/risk(?:-regime[a-z/_-]*|[_-][a-z/_-]*)?\b"), "/v3/risk"),
-    (re.compile(r"/v2/(?:recovery|reco)[a-z/_-]*\b"), "/v3/risk"),     # Recovery Watch section lives in Risk hub
-    (re.compile(r"/v2/(?:next-actions?|action-inbox|actions?)[a-z/_-]*\b"), "/v3/"),  # Action Inbox is on Home (longest-first; consume hyphen tails)
-    (re.compile(r"/v2/(?:approvals?|pending[_-]proposals?|proposals?)[a-z/_-]*\b"), "/v3/trading"),  # approvals/proposals live on Trading
+    (re.compile(r"/v2/(?:recovery|reco)[a-z/_-]*\b"), "/v3/risk"),
+    (re.compile(r"/v2/(?:next-actions?|action-inbox|actions?)[a-z/_-]*\b"), "/v3/"),
+    (re.compile(r"/v2/(?:approvals?|pending[_-]proposals?|proposals?)[a-z/_-]*\b"), "/v3/trading"),
     (re.compile(r"/v2/(?:retirement[a-z_-]*|tax-lots|tax_lots)\b"), "/v3/retirement"),
     (re.compile(r"/v2/(?:overnight[a-z-]*|intelligence[a-z-]*)\b"), "/v3/intelligence"),
     (re.compile(r"/v2/hermes[a-z/_-]*\b"), "/v3/hermes"),
@@ -61,11 +84,10 @@ _V2_TO_V3 = [
     (re.compile(r"/v2/portfolio[a-z/_-]*\b"), "/v3/portfolio"),
     (re.compile(r"/v2/agents?[a-z/_-]*\b"), "/v3/agents"),
     (re.compile(r"/v2/strateg(?:y|ies)[a-z/_-]*\b"), "/v3/strategy"),
-    (re.compile(r"/v2/symbol/[A-Z.]+/[a-z]+\b"), "/v3/journal"),  # symbol drilldown -> journal
-    # briefs / digests / home / dashboard have no standalone v3 page — they live on the v3 home (/v3/).
+    (re.compile(r"/v2/symbol/[A-Z.]+/[a-z]+\b"), "/v3/journal"),
     (re.compile(r"/v2/(?:morning-brief|daily-brief|evening-brief|briefing|brief|digest|home|dashboard|index)\b"), "/v3/"),
-    (re.compile(r"/v2/?(?=[\s\")]|$)"), "/v3/"),                   # bare /v2/ -> /v3/ home
-    (re.compile(r"/v2/"), "/v3/"),                                 # any remaining /v2/<x> -> /v3/<x>
+    (re.compile(r"/v2/?(?=[\s\")]|$)"), "/v3/"),
+    (re.compile(r"/v2/"), "/v3/"),
 ]
 
 
@@ -77,30 +99,44 @@ def _to_v3(url: str) -> str:
     return url
 
 
-def get_public_base_url() -> str:
-    return PUBLIC_BASE_URL
+def build_dashboard_url(path: str = "/v3/", query: dict | None = None) -> str:
+    """Build absolute CC v3 URL. `path` like /v3/trading; query values urlencoded (%20 not +)."""
+    base = get_public_base_url()
+    if not path.startswith("/"):
+        path = "/" + path
+    path = _to_v3(path)
+    if not query:
+        return f"{base}{path}"
+    # quote (not quote_plus) so spaces become %20 — Telegram + SPA both handle %20 reliably
+    def _qv(s, safe="", encoding=None, errors=None):
+        return quote(str(s), safe=safe, encoding=encoding, errors=errors)
 
-
-def build_dashboard_url(path: str = "/v3/") -> str:
-    return _to_v3(f"{PUBLIC_BASE_URL}{path}")
+    q = urlencode(
+        {k: v for k, v in query.items() if v is not None and v != ""},
+        quote_via=_qv,
+    )
+    return f"{base}{path}?{q}"
 
 
 def build_proposal_url(proposal_id, symbol: str | None = None) -> str:
-    """Deep-link to the exact broker proposal card on Trading → Proposals."""
-    host = os.getenv("TAILSCALE_HOSTNAME", "").strip()
-    base = f"https://{host}" if host else PUBLIC_BASE_URL
-    q = f"tab=Proposals&proposal={proposal_id}"
+    """Deep-link to Trading → Proposals for one proposal id."""
+    q = {"tab": "Proposals", "proposal": str(proposal_id)}
     if symbol:
-        q += f"&symbol={str(symbol).upper()}"
-    return f"{base}/v3/trading?{q}"
+        q["symbol"] = str(symbol).upper()
+    return build_dashboard_url("/v3/trading", q)
+
+
+def build_broker_order_url(intent_id: str) -> str:
+    """Deep-link to Trading → Broker Orders for one intent id (2FA approval)."""
+    return build_dashboard_url("/v3/trading", {"tab": "Broker Orders", "intent": str(intent_id)})
 
 
 def build_trade_url(trade_id) -> str:
-    return f"{PUBLIC_BASE_URL}/v3/journal?trade={trade_id}"
+    return build_dashboard_url("/v3/journal", {"trade": str(trade_id)})
 
 
 def build_system_health_url() -> str:
-    return f"{PUBLIC_BASE_URL}/v3/system"
+    return build_dashboard_url("/v3/system")
 
 
 def publicize_url(url: str) -> str:
@@ -108,9 +144,9 @@ def publicize_url(url: str) -> str:
     if not url:
         return url
     result = url
-    for pattern, replacement in _REPLACEMENTS:
+    for pattern, replacement in _replacements():
         result = pattern.sub(replacement, result)
-    result = re.sub(r"(?<!:)//+", "/", result)  # normalize double slashes (not in https://)
+    result = re.sub(r"(?<!:)//+", "/", result)
     return _to_v3(result)
 
 
@@ -119,6 +155,11 @@ def publicize_message(text: str) -> str:
     if not text:
         return text
     result = text
-    for pattern, replacement in _REPLACEMENTS:
+    for pattern, replacement in _replacements():
         result = pattern.sub(replacement, result)
     return _to_v3(result)
+
+
+def telegram_url_button(text: str, url: str) -> dict:
+    """Inline keyboard URL button — preferred over body Markdown links (survives parse failures)."""
+    return {"text": text, "url": url}

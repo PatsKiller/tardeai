@@ -31,6 +31,11 @@ const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Entry Desk', '
 const TAB_ALIASES: Record<string, typeof TABS[number]> = {
   'Manual ToS': 'Entry Desk',
   'Manual%20ToS': 'Entry Desk',
+  // Telegram / legacy deep-links sometimes use + or encoded space for "Broker Orders"
+  'Broker+Orders': 'Broker Orders',
+  'Broker%20Orders': 'Broker Orders',
+  'Broker Proposals': 'Proposals',
+  'Broker+Proposals': 'Proposals',
 }
 
 // GO / WAIT / MANUAL_REVIEW / NO-GO decision color

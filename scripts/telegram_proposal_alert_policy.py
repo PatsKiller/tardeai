@@ -280,8 +280,12 @@ def format_telegram_message(packet: dict) -> str:
     if packet["approval_allowed"]:
         lines.append(f"`/ptapprove {pid}`")
     lines.append(f"`/ptreject {pid}`")
+    # Bare URL on its own line — Telegram auto-linkifies even when Markdown parse fails.
+    # (Markdown [text](url) breaks when free-text has unescaped _/* and the whole message
+    # falls back to plain, leaving a non-clickable [text](url) blob.)
     if detail_url:
-        lines.append(f"[Open proposal #{pid}]({detail_url})")
+        lines.append(f"Open proposal #{pid}:")
+        lines.append(detail_url)
     else:
         lines.append(f"Details: /v3/trading?tab=Proposals&proposal={pid}")
 
