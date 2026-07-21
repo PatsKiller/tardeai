@@ -19,12 +19,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import os
 import sys
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+log = logging.getLogger(__name__)
+
+# Paper-only constant — same family as alpaca_paper_adapter.PAPER_BASE_URL.
+PAPER_BASE_URL = "https://paper-api.alpaca.markets"
+PAPER_HOST = "paper-api.alpaca.markets"
 
 _MIN_RAISE_PCT = 0.25   # ignore sub-0.25% nudges (avoid churn / fee-less but pointless order replacement)
 
@@ -36,8 +45,44 @@ def _f(v):
         return None
 
 
+def require_paper_trading_base(env=None) -> str:
+    """Paper-host bouncer before any HTTP call.
+
+    docs/_findings/alpaca_taxonomy_audit_2026-07-21.md §10 P0 / §4 paths 6–7 —
+    mirror alpaca_paper_adapter live-host refuse with *exact* hostname match
+    (urllib) + ALPACA_MODE=paper. Fail-closed; default base is paper constant.
+    """
+    e = env if isinstance(env, dict) else {}
+    base = (e.get("ALPACA_BASE_URL") or os.environ.get("ALPACA_BASE_URL")
+            or PAPER_BASE_URL).strip().rstrip("/")
+    mode = (e.get("ALPACA_MODE") or os.environ.get("ALPACA_MODE") or "paper").strip().lower()
+    if mode != "paper":
+        msg = (f"BLOCKED: ALPACA_MODE={mode!r} — only paper is allowed. "
+               f"Only {PAPER_HOST} is allowed for alpaca_stop_manager.")
+        log.error("[alpaca_stop_manager] %s", msg)
+        try:
+            from telegram_alert import send_telegram
+            send_telegram(f"🚨 alpaca_stop_manager host-lock: {msg}", bypass_router=True)
+        except Exception:
+            pass
+        raise RuntimeError(msg)
+    host = (urlparse(base).hostname or "").lower()
+    if host != PAPER_HOST:
+        # Same message family as alpaca_paper_adapter.py live-endpoint refusal.
+        msg = (f"BLOCKED: Live Alpaca endpoint detected (host={host!r}). "
+               f"Only {PAPER_HOST} is allowed.")
+        log.error("[alpaca_stop_manager] %s base=%r", msg, base)
+        try:
+            from telegram_alert import send_telegram
+            send_telegram(f"🚨 alpaca_stop_manager host-lock: {msg}", bypass_router=True)
+        except Exception:
+            pass
+        raise RuntimeError(msg)
+    return base
+
+
 def _alpaca_req(env, path, method="GET", body=None):
-    base = env.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+    base = require_paper_trading_base(env)
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(f"{base}{path}", data=data, method=method,
                                  headers={"APCA-API-KEY-ID": env.get("ALPACA_API_KEY", ""),

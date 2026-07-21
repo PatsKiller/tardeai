@@ -315,13 +315,13 @@ Adding a `broker_accounts` row for live Alpaca alone does **not** rewire equity 
 
 ### P0 — safety-structural
 
-| Gap | Evidence |
-|-----|----------|
-| Stop/reconcile paths honor `ALPACA_BASE_URL` without live-host refuse | `alpaca_stop_manager.py:40`; reconciler `:74,86` |
-| Single global API key pair for all Alpaca | `.env` key names only |
-| Global `ALPACA_MODE` couples all paper automation | 32+ scripts; api_v2 |
-| Interlock ignores `broker_accounts.environment`; unknown labels refuse | `live_trading_interlock.py:31-36,75-81` |
-| Dual registry fidelity/paper aliases | DB dumps §3.1 |
+| Gap | Evidence | Status |
+|-----|----------|--------|
+| Stop/reconcile paths honor `ALPACA_BASE_URL` without live-host refuse | was `alpaca_stop_manager.py:40`; reconciler `:74,86` | **REMEDIATED 2026-07-21** — exact host + `ALPACA_MODE=paper` bouncer (`require_paper_trading_base`); tests `tests/test_alpaca_paper_host_lock.py`. Commit: `6085874df70b64b757c2caac746dcc42d839f254` |
+| Single global API key pair for all Alpaca | `.env` key names only | open (taxonomy redesign) |
+| Global `ALPACA_MODE` couples all paper automation | 32+ scripts; api_v2 | open |
+| Interlock ignores `broker_accounts.environment`; unknown labels refuse | `live_trading_interlock.py:31-36,75-81` | open |
+| Dual registry fidelity/paper aliases | DB dumps §3.1 | open |
 
 ### P1 — semantic debt
 
@@ -394,3 +394,11 @@ Adding a `broker_accounts` row for live Alpaca alone does **not** rewire equity 
 - Interlock-on-`accounts.mode` is **original June design**, not accidental drift after `broker_accounts`.
 - AUTO_LIVE / paper-account edge cases may be enforced in **endpoint handlers** as well as `assert_writable` — multi-account design must centralize both layers.
 - ATM reads per-account `automation_mode`; submission still global `ALPACA_MODE` + paper adapter — confirmed seam.
+
+### P0 row 1 REMEDIATED (2026-07-21 host-lock)
+
+- **`scripts/alpaca_stop_manager.py`**: `require_paper_trading_base()` — exact hostname `paper-api.alpaca.markets` via `urllib.parse`, `ALPACA_MODE==paper`, Telegram alert (bypass_router) then `RuntimeError`; called from `_alpaca_req` before any HTTP.
+- **`scripts/alpaca_paper_reconciler.py`**: same bouncer on `get_alpaca_positions` / `get_alpaca_orders`.
+- **Tests:** `tests/test_alpaca_paper_host_lock.py` (live URL, spoof suffix, mode=live, unset→paper default, no urlopen on block).
+- **Not in scope / already gated:** `alpaca_paper_adapter` (unchanged), `proposal_paper_submitter` (paper-api substring gate), options pipeline (exact host), `proposal_execution_readiness` (label only, no HTTP).
+- **Holdings post-fix:** unchanged ($~1.26M / 36) — no broker calls.

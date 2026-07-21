@@ -31,13 +31,22 @@ paper API); nothing here ever touches a real/Schwab account. Design: docs/design
 
 import argparse
 import json
+import logging
+import os
 import sys
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 PROJ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJ / "scripts"))
+
+_log = logging.getLogger(__name__)
+
+# Paper-only constant — same family as alpaca_paper_adapter.PAPER_BASE_URL.
+PAPER_BASE_URL = "https://paper-api.alpaca.markets"
+PAPER_HOST = "paper-api.alpaca.markets"
 
 
 def get_db_connection():
@@ -68,10 +77,35 @@ def log(msg):
     print(f"{datetime.now().strftime('%H:%M:%S')} [recon] {msg}", flush=True)
 
 
+def require_paper_trading_base(env=None) -> str:
+    """Paper-host bouncer before any HTTP call.
+
+    docs/_findings/alpaca_taxonomy_audit_2026-07-21.md §10 P0 / §4 paths 6–7 —
+    mirror alpaca_paper_adapter live-host refuse with *exact* hostname match
+    (urllib) + ALPACA_MODE=paper. Fail-closed; default base is paper constant.
+    """
+    e = env if isinstance(env, dict) else {}
+    base = (e.get("ALPACA_BASE_URL") or os.environ.get("ALPACA_BASE_URL")
+            or PAPER_BASE_URL).strip().rstrip("/")
+    mode = (e.get("ALPACA_MODE") or os.environ.get("ALPACA_MODE") or "paper").strip().lower()
+    if mode != "paper":
+        msg = (f"BLOCKED: ALPACA_MODE={mode!r} — only paper is allowed. "
+               f"Only {PAPER_HOST} is allowed for alpaca_paper_reconciler.")
+        _log.error("[alpaca_paper_reconciler] %s", msg)
+        raise RuntimeError(msg)
+    host = (urlparse(base).hostname or "").lower()
+    if host != PAPER_HOST:
+        msg = (f"BLOCKED: Live Alpaca endpoint detected (host={host!r}). "
+               f"Only {PAPER_HOST} is allowed.")
+        _log.error("[alpaca_paper_reconciler] %s base=%r", msg, base)
+        raise RuntimeError(msg)
+    return base
+
+
 def get_alpaca_positions(env):
     key = env.get("ALPACA_API_KEY", "")
     secret = env.get("ALPACA_SECRET_KEY", "")
-    base = env.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+    base = require_paper_trading_base(env)
     req = urllib.request.Request(
         f"{base}/v2/positions",
         headers={"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret},
@@ -83,7 +117,7 @@ def get_alpaca_positions(env):
 def get_alpaca_orders(env, status="open"):
     key = env.get("ALPACA_API_KEY", "")
     secret = env.get("ALPACA_SECRET_KEY", "")
-    base = env.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+    base = require_paper_trading_base(env)
     # nested=true so OCO/bracket child legs (the 'held' stop leg) are returned inside the parent's legs[];
     # without it an OCO-protected position's stop is invisible and the position looks naked.
     req = urllib.request.Request(
