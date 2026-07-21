@@ -27,6 +27,7 @@ logged — a bounded run must say what it did not cover.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import sys
@@ -34,6 +35,8 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
+
+LOCK_PATH = "/tmp/shadow_batch.lock"
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -177,6 +180,19 @@ def run(*, top_n: int = TOP_N, dry_run: bool = False, force: bool = False,
         _write_status(summary)
         return summary
 
+    # Single-writer lock at the GENERATOR level, so no two runs overlap no matter
+    # how they were launched — cron, the API button, or a manual invocation. A
+    # first version put the lock only on the cron line, so a manual `--force` run
+    # (no flock) overlapped the 08:15 cron and left the set half on the old
+    # packet version. Harmless (idempotent, append-only) but messy; this prevents
+    # it. A second run backs off rather than blocking.
+    _lockf = open(LOCK_PATH, "w")
+    try:
+        fcntl.flock(_lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return {"ok": True, "state": "skipped_locked",
+                "reason": "another batch run holds the lock"}
+
     _write_status(summary)
     results = []
     with ThreadPoolExecutor(max_workers=concurrency) as ex:
@@ -195,6 +211,11 @@ def run(*, top_n: int = TOP_N, dry_run: bool = False, force: bool = False,
                    generated=len(ok), failed=len(results) - len(ok),
                    results=results)
     _write_status(summary)
+    try:
+        fcntl.flock(_lockf, fcntl.LOCK_UN)
+        _lockf.close()
+    except Exception:
+        pass
     return summary
 
 
