@@ -52,13 +52,32 @@ atm_decision_log.target_account: tradeai_automated + UNRESOLVED (no alpaca_paper
 
 Backup tables: `paper_trades_bak_r3_20260721`, `atm_decision_log_bak_r3_20260721`
 
-## Interlock self-test (post R4)
+## Interlock self-test (post R4) — rows verified live
+
+`SELECT account_key, environment, is_enabled, api_read_enabled, api_write_enabled,
+ credential_slot, live_arm_token IS NOT NULL AS armed FROM broker_accounts` (2026-07-21):
+
+| account_key | env | is_enabled | r/w | slot | armed |
+|-------------|-----|------------|-----|------|-------|
+| alpaca_ira_live | live | f | f/f | ALPACA_IRA | f |
+| alpaca_taxable_live | live | f | f/f | ALPACA_TAXABLE | f |
+| tradeai_automated | paper | t | t/t | ALPACA_PAPER | f |
+| (+ schwab×3 live, fidelity_rollover_ira import disabled) | | | | | |
+
+R4 insert is **not** fiction — both live scaffolds exist. Blank `canonical_answer` in
+parity log (if any) was pre-insert noise; post-row, canonical resolves to **live** and
+interlock REFUSEs with gate-not-passed (not unknown).
 
 - ALLOW: tradeai_automated, alpaca_paper (alias)
 - REFUSE live schwab_* (policy off)
-- REFUSE fidelity_* (live import / gate)
-- REFUSE alpaca_taxable_live / alpaca_ira_live (live + policy OR unknown before insert; after insert: live gate refuse)
+- REFUSE fidelity_* (import→live posture / gate)
+- REFUSE alpaca_taxable_live / alpaca_ira_live (**live gate refuse**, rows present)
 - REFUSE bogus
+
+**FK note:** `proposal_account_routes.selected_account_id` → `broker_accounts` — proposal
+routing already consumes the canonical registry (extra consumer vs original audit map).
+
+**Arm CHECK scope:** Alpaca-only (`broker='alpaca'`); Schwab not covered (own pilot stack).
 
 ## Factory / credentials
 

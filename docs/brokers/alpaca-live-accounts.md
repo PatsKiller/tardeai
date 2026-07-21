@@ -10,6 +10,25 @@
 
 **Supersedes:** `paca_personal` / `paca_ira` naming in earlier drafts (`paca-accounts.md` is a pointer stub).
 
+## Data-layer arm guard (Alpaca-only)
+
+`broker_accounts` CHECK `broker_accounts_alpaca_live_arm_chk` refuses
+`broker='alpaca' AND environment='live' AND is_enabled` unless `live_arm_token` is
+non-empty. **This guarantee is Alpaca-specific** — Schwab live rows use the separate
+pilot-arm / `BROKER_LIVE_ENABLED` / Stage-2b stack and are **not** covered by this
+CHECK (defensible; do not assume a general live-arm data rule).
+
+## Live registry rows (verified 2026-07-21)
+
+| account_key | environment | is_enabled | api_read | api_write | credential_slot | armed |
+|-------------|-------------|------------|----------|-----------|-----------------|-------|
+| tradeai_automated | paper | t | t | t | ALPACA_PAPER | f |
+| alpaca_taxable_live | live | f | f | f | ALPACA_TAXABLE | f |
+| alpaca_ira_live | live | f | f | f | ALPACA_IRA | f |
+
+R4 insert is real: both live scaffolds exist as DISABLED rows. Interlock resolves
+them as `environment=live` → REFUSE while `live_trading_allowed=false`.
+
 ## Not built
 
 - Live submit adapter (`alpaca_factory` raises `NotImplementedError` for live)
