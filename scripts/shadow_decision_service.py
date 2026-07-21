@@ -438,10 +438,30 @@ def build_options(facts, event, ownership) -> dict:
                                "strike": float(best.get("strike") or 0),
                                "rejection_reasons": list(exc.reasons)})
 
-    constructible = [s for s in structures if s.get("state") == ELIGIBLE]
-    state = (ELIGIBLE if constructible
-             else CONDITIONAL if any(s.get("state") == REJECTED for s in structures)
-             else DATA_UNAVAILABLE)
+    # If nothing is eligible or conditional yet, the family cannot legitimately be
+    # CONDITIONAL just because structures were REJECTED. But when earnings falls
+    # inside the contract and every concrete structure is rejected/NA, the honest
+    # actionable answer is an EXPLICIT conditional: re-evaluate after the print,
+    # when a post-earnings chain and reset IV can be priced. That is a real
+    # CONDITIONAL child, so the roll-up is legitimately CONDITIONAL — not a bare
+    # verdict masquerading as conditional.
+    have_live = any(s.get("state") in (ELIGIBLE, CONDITIONAL) for s in structures)
+    if not have_live and inside and any(s.get("state") == REJECTED for s in structures):
+        structures.append({
+            "structure": "POST_EARNINGS_REEVALUATION", "state": CONDITIONAL,
+            "condition": f"every current structure is rejected AND earnings {event.date} "
+                         f"falls inside expiration {exp_date}",
+            "event": f"earnings {event.date}",
+            "reevaluate_after": event.date.isoformat() if event.date else None,
+            "data_required": "post-earnings option chain (reset IV) and a confirmed "
+                             "directional setup",
+            "why_preferred": "the rejected structures all carry an unpriced earnings event; "
+                             "waiting for the post-print chain is preferable to entering "
+                             "into the binary now",
+            "rejection_reasons": [],
+        })
+
+    state = dp.rollup_family_state(structures)
     if inside:
         reasons.append(f"earnings {event.date} falls inside expiration {exp_date} — "
                        f"every structure on this expiry carries the event")

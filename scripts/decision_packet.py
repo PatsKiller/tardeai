@@ -329,6 +329,36 @@ def validate(packet: dict, *, provenance: dict | None = None) -> list[str]:
     return errs
 
 
+def rollup_family_state(structures: list) -> str:
+    """The family state implied by its child structures — the STRICT invariant.
+
+    A family cannot be CONDITIONAL merely because some structures are REJECTED
+    (the BETA options bug: OPTIONS showed CONDITIONAL while every structure was
+    REJECTED/NOT_APPLICABLE). CONDITIONAL requires at least one CONDITIONAL child
+    — which includes an explicit wait/re-evaluation blueprint such as
+    POST_EARNINGS_REEVALUATION.
+
+        ELIGIBLE         >= 1 ELIGIBLE child
+        CONDITIONAL      no ELIGIBLE, but >= 1 CONDITIONAL child
+        REJECTED         >= 1 applicable child, all REJECTED (or REJECTED+N/A)
+        NOT_APPLICABLE   every child structurally inapplicable
+        DATA_UNAVAILABLE no children, or evaluation could not complete
+    """
+    states = [str(s.get("state") or "").upper() for s in (structures or [])]
+    if not states:
+        return "DATA_UNAVAILABLE"
+    if "ELIGIBLE" in states:
+        return "ELIGIBLE"
+    if "CONDITIONAL" in states:
+        return "CONDITIONAL"
+    applicable = [s for s in states if s != "NOT_APPLICABLE"]
+    if not applicable:
+        return "NOT_APPLICABLE"
+    if all(s in ("REJECTED", "NOT_APPLICABLE") for s in states):
+        return "REJECTED"
+    return "DATA_UNAVAILABLE"
+
+
 def is_actionable(packet: dict) -> tuple[bool, str]:
     """(actionable, reason). Actionability is a property of the packet, not a
     judgement about the company — a great company with stale data is not

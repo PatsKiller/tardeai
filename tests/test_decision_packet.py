@@ -505,3 +505,28 @@ def test_no_fixture_is_symbol_specific():
         src = Path(mod.__file__).read_text()
         assert '"BETA"' not in src and "'BETA'" not in src, \
             f"{mod.__name__} contains a BETA-specific conditional"
+
+
+# ── family roll-up invariant (Control-Authority stage #5) ─────────────────────
+
+def test_rollup_rejected_children_are_not_conditional():
+    """The BETA options bug: OPTIONS showed CONDITIONAL while every structure was
+    REJECTED/NOT_APPLICABLE. A family is CONDITIONAL only with a CONDITIONAL child."""
+    assert dp.rollup_family_state([{"state": "REJECTED"}, {"state": "REJECTED"}]) == "REJECTED"
+    assert dp.rollup_family_state([{"state": "REJECTED"}, {"state": "NOT_APPLICABLE"}]) == "REJECTED"
+
+
+def test_rollup_conditional_requires_a_conditional_child():
+    assert dp.rollup_family_state([{"state": "CONDITIONAL"}, {"state": "REJECTED"}]) == "CONDITIONAL"
+
+
+def test_rollup_eligible_dominates():
+    assert dp.rollup_family_state([{"state": "ELIGIBLE"}, {"state": "REJECTED"}]) == "ELIGIBLE"
+
+
+def test_rollup_all_not_applicable():
+    assert dp.rollup_family_state([{"state": "NOT_APPLICABLE"}, {"state": "NOT_APPLICABLE"}]) == "NOT_APPLICABLE"
+
+
+def test_rollup_empty_is_data_unavailable():
+    assert dp.rollup_family_state([]) == "DATA_UNAVAILABLE"
