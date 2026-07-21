@@ -1,10 +1,13 @@
-## Alpaca Paper Due Diligence + Trading Environments (2026-07-21)
+## Alpaca Multi-Account Taxonomy R1–R5 (2026-07-21)
 | Document | Purpose |
 |----------|---------|
-| `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md` | Full inventory + risks + backlog |
-| `docs/brokers/trading-environments.md` | Canonical `paper` / `paca_personal` / `paca_ira` taxonomy |
+| `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md` | **Build handoff** — commits, proofs, next sessions |
+| `docs/_findings/alpaca_taxonomy_audit_2026-07-21.md` | Ground-truth audit + P0 remediations |
+| `docs/brokers/trading-environments.md` | D1 keys: `tradeai_automated` / `alpaca_taxable_live` / `alpaca_ira_live` |
+| `docs/brokers/alpaca-live-accounts.md` | Live scaffolds roadmap (DISABLED) |
+| `docs/brokers/tradingview-lanes.md` | TV manual + dormant webhook design |
 | `docs/brokers/paper-trading.md` | Path A operator procedures |
-| `docs/brokers/paca-accounts.md` | Future live Alpaca personal/IRA (roadmap) |
+| `docs/brokers/paca-accounts.md` | **Pointer only** — superseded naming |
 
 ## Decision Packet Operator Card + RTH Refresh (2026-07-21)
 | Document | Purpose |

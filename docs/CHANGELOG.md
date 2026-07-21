@@ -2,10 +2,11 @@
 
 ## 2026-07-21 — Alpaca multi-account taxonomy R1–R5
 
-Registry unification (interlock → broker_accounts + parity log), credential slots,
-label hard-map to `tradeai_automated`, live scaffolds DISABLED, TradingView lanes doc + 503 stub.
+Registry unification (interlock → `broker_accounts` + parity log), credential slots
+(`ALPACA_PAPER_*` / `TAXABLE_*` / `IRA_*`), hard identity map to `tradeai_automated`, live
+scaffolds `alpaca_taxable_live` / `alpaca_ira_live` DISABLED, TradingView lanes doc + 503 stub.
+P0 host-lock on stop/reconcile (`c9f31f6b`). Tip: `4fa3ba33`.
 Session: `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md`.
-
 
 ## 2026-07-21 — Holdings stop-kind pill + P/L-if-fired + trailing-STOP-LIMIT placement
 
@@ -30,13 +31,12 @@ Tests: `tests/test_holdings_pl_if_fired.py` (15), `tests/test_stop_kind_taxonomy
 ## 2026-07-21 — Alpaca paper due diligence + trading-env taxonomy
 
 Docs: `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md`,
-`trading-environments.md`, `paper-trading.md`, `paca-accounts.md`.
+`trading-environments.md`, `paper-trading.md`, `alpaca-live-accounts.md` (supersedes `paca-accounts.md` pointer).
 
-- Full-repo inventory of Alpaca/paper (~800 mentions; core runtime catalogued).
-- As-is Path A procedures (equity + options paper lanes) and Mermaid flows.
-- Canonical env IDs: `paper` | `paca_personal` | `paca_ira` (live not implemented).
-- Gap analysis for live Alpaca personal/IRA; credential split + factory backlog.
-- Security: no secrets in docs; flag bak-file key hygiene.
+- Full-repo inventory of Alpaca/paper; as-is Path A procedures.
+- **D1 account keys (later R1–R5):** `tradeai_automated` | `alpaca_taxable_live` | `alpaca_ira_live`
+  (`paca_*` naming superseded).
+- Gap analysis for live personal/IRA; credential split + factory (implemented R2).
 
 ## 2026-07-21 — Operator decision card + RTH few-hour plan refresh
 

@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-21 (Holdings stop-kind pill + P/L-if-fired + trailing-STOP-LIMIT; Alpaca due diligence + trading-env taxonomy; operator card RTH refresh)
+**Updated:** 2026-07-21 (Alpaca multi-account taxonomy R1–R5 tip `4fa3ba33`; holdings stop-kind; operator card RTH)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -28,6 +28,8 @@
 
 - **OPTIONS_LIFECYCLE_DESK.md** — Options Lifecycle Desk architecture & acceptance (2026-07-19, v1.1 same day): strategy-aware open-position management, journal bridge into trade_instances, ticker attribution, free-lane oversight. Supersedes the per-leg monitor sections of options-module.md for management decisions.
 - **architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md** — Watchlist decision packet **operator card** + RTH **4h** plan refresh / `should_be_stale` (2026-07-21): compact READY/WAIT/REFRESH/BLOCKED/NO TRADE/MANAGE, timestamps, material technical hash, shadow-batch RTH freshness. Advisory only.
+- **sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md** — Alpaca multi-account **R1–R5 build handoff** (registry, credentials, migration, live scaffolds, TV stub). Tip `4fa3ba33`.
+- **brokers/trading-environments.md** · **alpaca-live-accounts.md** · **tradingview-lanes.md** · **_findings/alpaca_taxonomy_audit_2026-07-21.md** — D1 keys `tradeai_automated` / `alpaca_taxable_live` / `alpaca_ira_live`; audit + TV lanes.
 
 
 ### Security & Safety
@@ -62,7 +64,10 @@
 ### Broker Integration *(paths corrected — these live under docs/architecture & docs/brokers)*
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/brokers/trading-environments.md` | **Canonical env taxonomy** — `paper` / `paca_personal` / `paca_ira`; account keys; credential layout | Active (2026-07-21) |
+| `docs/brokers/trading-environments.md` | **Canonical env taxonomy** — D1: `tradeai_automated` / `alpaca_taxable_live` / `alpaca_ira_live` | Active (2026-07-21) |
+| `docs/brokers/alpaca-live-accounts.md` | Live scaffolds roadmap (DISABLED) | Active (2026-07-21) |
+| `docs/brokers/tradingview-lanes.md` | TV manual + dormant webhook | Active (2026-07-21) |
+| `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md` | R1–R5 build handoff | Active (2026-07-21) |
 | `docs/brokers/paper-trading.md` | **Path A as-is** — Alpaca paper equity + options procedures | Active (2026-07-21) |
 | `docs/brokers/alpaca-live-accounts.md` | **Live scaffolds** `alpaca_taxable_live` / `alpaca_ira_live` (DISABLED) — gaps, phases (not implemented) | Active roadmap (2026-07-21) |
 | `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md` | Full inventory, risks, refactor backlog | Active (2026-07-21) |

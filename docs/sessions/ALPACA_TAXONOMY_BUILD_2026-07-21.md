@@ -2,17 +2,19 @@
 
 **Date:** 2026-07-21  
 **Machine:** MS-01  
-**Final HEAD:** b148f09482e0b59bc55b9f1c8156edce488c4a0b  
+**Final HEAD:** `4fa3ba338bdd07526f5aae5222f906b6ebcf10cc` (tip of R1–R5 stack on `main`)
 
 ## Commits (phase)
 
-| Phase | Message prefix | Notes |
-|-------|----------------|-------|
-| R1 | `feat(registry): R1 …` | Interlock → broker_accounts + parity log; Fidelity import historical |
-| Host-lock P0 | `fix(safety): host-lock …` | Pre-req `c9f31f6b` |
-| R2 | `feat(credentials): R2 …` | Credential slots + factory |
-| R3 | `chore(migration): R3 …` | Identity → tradeai_automated + DB backfill |
-| R4 | `feat(accounts): R4 …` | Live scaffolds + capability_gate |
+| Phase | Commit | Notes |
+|-------|--------|-------|
+| P0 host-lock | `c9f31f6b` | stop/reconcile paper host assert |
+| R1 registry | `91dc54a6` | Interlock → broker_accounts + parity log; Fidelity import historical |
+| R2 credentials | `1edc3674` | Credential slots + factory |
+| R3 migration | `484d9442` | Identity → tradeai_automated + DB backfill |
+| R4 scaffolds | `9f2d7c20` | Live scaffolds + capability_gate |
+| R5 docs/TV | `b148f094` | TV lanes + D1 doc ratification |
+| R5 stamp | `4fa3ba33` | Handoff HEAD stamp |
 | R5 | `docs(brokers): R5 …` | TV lanes + docs ratification |
 
 ## Operator decisions applied
