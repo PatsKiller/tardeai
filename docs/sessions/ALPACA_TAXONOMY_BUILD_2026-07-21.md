@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-21  
 **Machine:** MS-01  
-**Final HEAD:** (see git log for R5 commit)  
+**Final HEAD:** b148f09482e0b59bc55b9f1c8156edce488c4a0b  
 
 ## Commits (phase)
 
