@@ -27,6 +27,15 @@ PATTERNS = [
 # files that must NEVER be committed
 SECRET_FILE_RE = re.compile(r"(^|/)\.env(\.[^x]|$)|(^|/)\.env$|\.key$|\.pem$|broker_credentials\.env|"
                             r"secrets_admin_audit\.jsonl|gog_keyring_password|/credentials/")
+# Phase-0 2026-07-21: refuse backup sprawl — historical keys must never re-enter git or linger staged
+ENV_BAK_FILE_RE = re.compile(
+    r"(^|/)\.env\.bak|"
+    r"(^|/)\.env\.backup|"
+    r"\.env\.bak[-_.]|"
+    r"\.env\.old|"
+    r"\.env\.alert.*\.bak|"
+    r"(^|/)dot_env$"
+)
 ALLOW_FILE_RE = re.compile(r"\.env\.example$|check_no_secrets\.py$")  # the scanner itself names patterns
 
 
@@ -94,6 +103,9 @@ def main():
     secrets, hardcodes = [], []
     for f in files:
         if ALLOW_FILE_RE.search(f):
+            continue
+        if ENV_BAK_FILE_RE.search(f):
+            secrets.append((f, "env BACKUP file (*.env.bak* / *.env.old* / dot_env) must never be committed — shred, do not stage"))
             continue
         if SECRET_FILE_RE.search(f):
             secrets.append((f, "secret FILE must never be committed"))

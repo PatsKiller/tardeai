@@ -2158,7 +2158,10 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             return
 
         elif path == "/api/env/write":
-            import json as _ej, time as _et
+            # Phase-0 2026-07-21: DO NOT write full-file .env.bak* copies (historical-keys leak).
+            # Prefer POST /api/v2/admin/secrets (secrets_admin.set_secret) — atomic line replace, 0600, no bak.
+            # This legacy bulk path still updates .env in place only (no backup file).
+            import json as _ej, os as _os_env
             _bstr = raw.decode("utf-8", errors="replace")
             try:
                 _upd = _ej.loads(_bstr).get("updates", {})
@@ -2167,24 +2170,32 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             _env = PROJECT_ROOT / ".env"
             if not _env.exists():
                 json_response(self, 404, {"error": ".env not found"}); return
-            _ts2 = _et.strftime("%Y%m%d-%H%M%S")
-            _bd = PROJECT_ROOT / "file_backups" / ("env_" + _ts2)
-            _bd.mkdir(parents=True, exist_ok=True)
-            _bk = _bd / (".env.bak-" + _ts2)
-            _bk.write_bytes(_env.read_bytes())
+            if not isinstance(_upd, dict) or not _upd:
+                json_response(self, 400, {"error": "updates object required"}); return
             _el = _env.read_text(encoding="utf-8").splitlines()
             _dk = set(); _nl = []
             for _ln2 in _el:
                 _s2 = _ln2.strip()
                 _k2 = _s2.split("=",1)[0].strip() if (_s2 and not _s2.startswith("#") and "=" in _s2) else None
                 if _k2 and _k2 in _upd:
-                    _nl.append(_k2 + "=" + _upd[_k2]); _dk.add(_k2)
+                    _nl.append(_k2 + "=" + str(_upd[_k2])); _dk.add(_k2)
                 else:
                     _nl.append(_ln2)
             for _k3, _v3 in _upd.items():
-                if _k3 not in _dk: _nl.append(_k3 + "=" + _v3)
-            _env.write_text(chr(10).join(_nl) + chr(10), encoding="utf-8")
-            json_response(self, 200, {"ok": True, "backup": str(_bk), "updated": list(_dk)})
+                if _k3 not in _dk: _nl.append(str(_k3) + "=" + str(_v3)); _dk.add(_k3)
+            _tmp = _env.with_suffix(".env.tmp_write")
+            _tmp.write_text(chr(10).join(_nl) + chr(10), encoding="utf-8")
+            _os_env.chmod(_tmp, 0o600)
+            _tmp.replace(_env)
+            _os_env.chmod(_env, 0o600)
+            for _k3, _v3 in _upd.items():
+                _os_env.environ[str(_k3)] = str(_v3)
+            json_response(self, 200, {
+                "ok": True,
+                "updated": list(_dk),
+                "backup": None,
+                "note": "No .env.bak written (Phase-0). Prefer /api/v2/admin/secrets for single-key rotation.",
+            })
             return
 
         elif path == "/api/yaml-apply":

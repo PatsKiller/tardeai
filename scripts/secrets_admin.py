@@ -141,6 +141,7 @@ def set_secret(key, value, actor="operator"):
         f.write("\n".join(out).rstrip("\n") + "\n")
     os.chmod(tmp, 0o600)
     os.replace(tmp, ENV_PATH)
+    os.chmod(ENV_PATH, 0o600)
     os.environ[key] = value           # current process picks it up immediately
     _audit(key, actor)
     return {"ok": True, "key": key, "masked": (value if is_config else _mask(value)), "is_config": is_config, "rotated": replaced,

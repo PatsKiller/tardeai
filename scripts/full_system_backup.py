@@ -73,12 +73,12 @@ def create_backup(dry_run=False):
             print(f"  {'DRY RUN' if dry_run else 'No DB password'}")
 
         # 2. Environment file
+        # Phase-0 2026-07-21: NEVER write a raw plaintext .env / dot_env / .env.bak into backup
+        # trees (historical-keys leak, often mode 0664). Sanitized names-only snapshot only.
         print("[2/16] Environment variables...")
         env_dir = staging / "env"
         env_dir.mkdir()
         if not dry_run:
-            shutil.copy2(PROJECT_ROOT / ".env", env_dir / "dot_env")
-            # Also create a sanitized version (keys masked)
             lines = []
             for line in (PROJECT_ROOT / ".env").read_text().splitlines():
                 if "=" in line and not line.startswith("#"):
@@ -89,8 +89,16 @@ def create_backup(dry_run=False):
                         lines.append(line)
                 else:
                     lines.append(line)
-            (env_dir / "dot_env_SANITIZED.txt").write_text("\n".join(lines))
-        print(f"  .env backed up (+ sanitized version)")
+            outp = env_dir / "dot_env_SANITIZED.txt"
+            outp.write_text("\n".join(lines))
+            outp.chmod(0o600)
+            # Marker so restore docs know raw copy is intentionally absent
+            (env_dir / "README_NO_RAW_ENV.txt").write_text(
+                "Phase-0: raw .env is NOT backed up here. Restore secrets from Bitwarden "
+                "(or operator Secrets modal) + re-render. Only sanitized key names live in "
+                "dot_env_SANITIZED.txt.\n"
+            )
+        print(f"  .env sanitized names-only snapshot (raw copy DISABLED Phase-0)")
 
         # 3. Crontab
         print("[3/16] Crontab...")
