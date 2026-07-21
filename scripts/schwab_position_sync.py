@@ -273,6 +273,16 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     except Exception as _e:
         print(f"  [holdings-change] trigger failed (non-fatal): {str(_e)[:120]}")
 
+    # ROOT: sold names must not keep source='portfolio' rows (watchlist HELD badge /
+    # watchlist_symbol_master.in_portfolio = bool_or(source='portfolio')).
+    try:
+        from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
+        _ms = sync_portfolio_watchlist_membership(new_holdings)
+        if _ms.get("exited") or _ms.get("ensured"):
+            print(f"  [portfolio-membership] exited={_ms.get('exited')} ensured={_ms.get('ensured')}")
+    except Exception as _e:
+        print(f"  [portfolio-membership] sync failed (non-fatal): {str(_e)[:120]}")
+
     # Cross-account transfer detection + normalization (Fidelity→Schwab rollover, Trad→Roth ladder).
     # Carry cost basis, stamp transfer_history / original_source_account, persist DB audit, and
     # re-write holdings when any provenance/basis change was applied (never silent fabrication).

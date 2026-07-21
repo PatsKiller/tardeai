@@ -4,25 +4,20 @@ import { BB } from '../lib/watchlistTerminalTokens'
 /*
  * DecisionPacketBand — the PRIMARY decision surface (Stage: primary-card replacement).
  *
- * When a symbol has a live multidimensional decision packet, this band leads the
- * card: the composed headline, the six dimensions, per-dimension blind-model
- * agreement, and all five plan families — with the legacy one-word CIO label
- * (IGNORE/AVOID) demoted to a small "prior" chip, NOT removed.
+ * Three-axis family display (2026-07-21 semantic integration):
+ *   constructibility · decision · action
+ * so EVENT_BLOCKED never renders as "Swing ELIGIBLE · READY".
  *
- * It renders nothing when no packet exists, so cards for un-analysed symbols keep
- * their legacy verdict band unchanged (no regression). The packet is delivered
- * inline on the watchlist item (it.decision_packet) — no per-card fetch.
- *
- * This replaces the PRIMACY of the one-word verdict, not the card. Nothing here
- * queues, approves, or submits anything; it is an advisory display.
- *
- * Design: BB tokens only (no raw hex), no sub-10px fonts (the card design guard
- * rejects both).
+ * DATA AT BUILD (packet.data_quality) is separate from CURRENT VALIDITY
+ * (packet vs current input hash).
  */
 
 const STATE_COLOR: Record<string, string> = {
   ELIGIBLE: BB.green, CONDITIONAL: BB.amber, REJECTED: BB.red,
   NOT_APPLICABLE: BB.text3, DATA_UNAVAILABLE: BB.text3,
+  READY: BB.green, BLOCKED: BB.red, STALE: BB.amber,
+  CONSTRUCTIBLE: BB.green, UNCONSTRUCTIBLE: BB.red,
+  CURRENT: BB.green, INVALIDATED: BB.red,
 }
 const THESIS_COLOR: Record<string, string> = {
   STRONG_CONVICTION: BB.green, CONSTRUCTIVE: BB.green,
@@ -49,8 +44,6 @@ function ageStr(iso?: string): string {
 
 const n = (v: any, d = 2) => (v == null || isNaN(Number(v)) ? null : Number(v).toFixed(d))
 
-// Compact ACTIONABLE mechanics per family — the prices/levels/strikes, not just
-// a state word. Pulled from the family's first (preferred) structure.
 function mechanics(fam: string, f: any): string {
   const s = (f?.structures || [])[0]
   if (!s) return ''
@@ -75,7 +68,7 @@ function mechanics(fam: string, f: any): string {
     if (s.urgency) parts.push(String(s.urgency))
     return parts.join(' · ')
   }
-  if (fam === 'BEARISH' && s.state === 'ELIGIBLE') {
+  if (fam === 'BEARISH' && (s.state === 'ELIGIBLE' || s.decision_state === 'ELIGIBLE')) {
     const parts = []
     if ((s.entry_zone || [])[0]) parts.push(`entry ${n(s.entry_zone[0])}–${n(s.entry_zone[1])}`)
     if (s.buy_stop) parts.push(`buy-stop ${n(s.buy_stop)}`)
@@ -84,7 +77,6 @@ function mechanics(fam: string, f: any): string {
   return ''
 }
 
-// One option structure as an actionable line: name · state · strike/OCC · key numbers.
 function optionLine(s: any): string {
   const parts = [s.structure, s.state]
   if (s.strike) parts.push(`$${n(s.strike)}`)
@@ -97,9 +89,29 @@ function optionLine(s: any): string {
   return parts.filter(Boolean).join(' ')
 }
 
+/** Family display: constructibility · decision · action (never one overloaded word). */
+function familyStateLabel(f: any): { text: string; color: string } {
+  const dec = String(f?.decision_state || f?.state || 'DATA_UNAVAILABLE')
+  const act = String(f?.action_state || '')
+  const constr = String(f?.constructibility_state || '')
+  if (f?.family === 'NO_TRADE' || dec === 'NOT_APPLICABLE' && f?.available) {
+    const pref = f?.preferred ? 'PREFERRED' : f?.dominant ? 'DOMINANT' : 'AVAILABLE'
+    return { text: pref, color: f?.preferred || f?.dominant ? BB.amber : BB.text3 }
+  }
+  // Show decision · action when both present and differ; suppress READY under BLOCKED.
+  if (act && act !== dec) {
+    return {
+      text: `${dec} · ${act}`,
+      color: STATE_COLOR[act] || STATE_COLOR[dec] || BB.text3,
+    }
+  }
+  if (constr && constr !== 'CONSTRUCTIBLE' && dec === 'ELIGIBLE') {
+    return { text: `${constr} · ${dec}`, color: STATE_COLOR[dec] || BB.text3 }
+  }
+  return { text: dec, color: STATE_COLOR[dec] || BB.text3 }
+}
+
 export default function DecisionPacketBand({ packet, generatedAt }: { packet: any; generatedAt?: string }) {
-  // Expanded by default — the operator should not have to click to see the
-  // families and the actionable levels (feedback 2026-07-21).
   const [open, setOpen] = useState(true)
   if (!packet || typeof packet !== 'object') return null
 
@@ -111,9 +123,12 @@ export default function DecisionPacketBand({ packet, generatedAt }: { packet: an
   const fams = packet.plan_families || {}
   const legacy = packet.legacy_summary || {}
   const accent = THESIS_COLOR[thesis] || BB.text3
+  const cv = packet.current_validity || null
+  const cvState = String(cv?.state || '').toUpperCase()
+  const inputsStale = cvState === 'STALE' || cvState === 'INVALIDATED'
 
   const age = ageStr(generatedAt || packet.evaluated_at)
-  const stale = dq.state && ['STALE', 'CONFLICTED', 'INSUFFICIENT', 'PROVIDER_DOWN'].includes(String(dq.state))
+  const buildStale = dq.state && ['STALE', 'CONFLICTED', 'INSUFFICIENT', 'PROVIDER_DOWN'].includes(String(dq.state))
 
   const chip = (label: string, value: string, color: string) => (
     <span style={{ fontSize: 10, color: BB.text3, whiteSpace: 'nowrap' }}>
@@ -125,17 +140,17 @@ export default function DecisionPacketBand({ packet, generatedAt }: { packet: an
     <div onClick={e => e.stopPropagation()}
       style={{ borderLeft: `3px solid ${accent}`, background: BB.bgShift,
                borderBottom: `1px solid ${BB.border}`, padding: '5px 10px' }}>
-      {/* lead row: headline + demoted legacy chip + expander */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.08em', color: accent,
                        textTransform: 'uppercase', flexShrink: 0 }}>DECISION</span>
         <span style={{ flex: 1, minWidth: 160, fontSize: 11, fontWeight: 800, color: BB.text0 }}>
           {packet.headline}
         </span>
+        {/* One labelled legacy chip only — hide dual unqualified "prior" strips. */}
         {legacy.recommendation && (
-          <span title="Prior one-word CIO label — not the decision source of truth"
+          <span title={`LEGACY AT PACKET GENERATION · ${legacy.generated_at || 'unknown time'} — not the decision source of truth`}
             style={{ fontSize: 10, fontWeight: 700, color: BB.text3, textTransform: 'uppercase', flexShrink: 0 }}>
-            prior CIO {String(legacy.recommendation)}
+            LEGACY @ BUILD {String(legacy.recommendation)}
           </span>
         )}
         <button onClick={() => setOpen(v => !v)}
@@ -145,22 +160,33 @@ export default function DecisionPacketBand({ packet, generatedAt }: { packet: an
         </button>
       </div>
 
-      {/* dimension chips — always visible */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 3, alignItems: 'baseline' }}>
         {chip('THESIS', thesis.replace(/_/g, ' '), accent)}
         {chip('TIMING', String(packet.horizons?.tactical?.timing || '—').replace(/_/g, ' '),
-          packet.horizons?.tactical?.timing === 'READY' ? BB.green : BB.amber)}
+          packet.horizons?.tactical?.timing === 'READY' ? BB.green
+            : packet.horizons?.tactical?.timing === 'EVENT_BLOCKED' ? BB.red : BB.amber)}
         {chip('EVENT', `${ev.state || 'UNKNOWN'}${ev.date ? ' ' + ev.date : ''}`,
           ev.state === 'SCHEDULED' ? BB.amber : ev.state === 'NONE_CONFIRMED' ? BB.green : BB.text3)}
-        {chip('DATA', String(dq.state || '—'), stale ? BB.amber : BB.green)}
+        {/* DATA AT BUILD — not current validity */}
+        {chip('DATA @ BUILD', String(dq.state || '—'), buildStale ? BB.amber : BB.green)}
+        {/* CURRENT VALIDITY from input-hash comparison */}
+        {cv && chip('CURRENT VALIDITY', cvState || '—',
+          inputsStale ? BB.amber : (cvState === 'CURRENT' ? BB.green : BB.text3))}
         {chip('MODELS', `${mr.mode || 'UNAVAILABLE'} ${(mr.lanes_completed || []).length}/${(mr.lanes_requested || []).length}`,
           mr.mode === 'BLIND' ? BB.green : BB.amber)}
         {age && <span style={{ fontSize: 10, color: BB.text3 }}>· {age}</span>}
       </div>
+      {inputsStale && (
+        <div style={{ marginTop: 3, fontSize: 10, fontWeight: 700, color: BB.amber }}>
+          CURRENT VALIDITY {cvState}
+          {(cv?.invalidation_reasons || []).length > 0
+            ? ` — ${(cv.invalidation_reasons as string[]).slice(0, 3).join(' · ')}`
+            : ' — refresh before acting'}
+        </div>
+      )}
 
       {open && (
         <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {/* per-dimension blind agreement — replaces the anchored AGREE/SPLIT badge */}
           {mr.agreement_by_dimension && (
             <div style={{ fontSize: 10, color: BB.text3 }}>
               AGREEMENT {Object.entries(mr.agreement_by_dimension).map(([d, v]: any) =>
@@ -170,7 +196,6 @@ export default function DecisionPacketBand({ packet, generatedAt }: { packet: an
               )}
             </div>
           )}
-          {/* actionable price context: what triggers / invalidates */}
           {(() => {
             const tac = packet.horizons?.tactical || {}
             if (!tac.trigger && !tac.invalidation) return null
@@ -181,24 +206,28 @@ export default function DecisionPacketBand({ packet, generatedAt }: { packet: an
               </div>
             )
           })()}
-          {/* every family, always present, colour-coded by rollup state, with its
-              actionable levels/strikes — not just a state word */}
           {FAMILY_ORDER.map(fam => {
             const f = fams[fam.toLowerCase()] || {}
-            const state = f.state || 'DATA_UNAVAILABLE'
+            const label = familyStateLabel(f)
             const mech = mechanics(fam, f)
-            const reason = (f.rejection_reasons || [])[0]
+            const reason = (f.rejection_reasons || f.blocks || [])[0]
             const opts = fam === 'OPTIONS' ? (f.structures || []) : []
+            const constr = f.constructibility_state
             return (
               <div key={fam} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
                   <span style={{ minWidth: 66, color: BB.text2, fontWeight: 700, fontSize: 10 }}>{FAMILY_LABEL[fam]}</span>
-                  <span style={{ minWidth: 96, fontWeight: 800, fontSize: 10, color: STATE_COLOR[state] || BB.text3 }}>{state}</span>
+                  <span style={{ minWidth: 120, fontWeight: 800, fontSize: 10, color: label.color }}>{label.text}</span>
+                  {constr && constr !== 'CONSTRUCTIBLE' && (
+                    <span style={{ fontSize: 10, color: BB.text3 }} title="constructibility_state">{constr.replace(/_/g, ' ')}</span>
+                  )}
                   {mech
                     ? <span style={{ color: BB.text1, fontSize: 10, fontWeight: 600 }}>{mech}</span>
                     : reason && <span style={{ color: BB.text3, fontSize: 10 }}>{String(reason).slice(0, 82)}</span>}
+                  {fam === 'NO_TRADE' && f.reason && (
+                    <span style={{ color: BB.text3, fontSize: 10 }}>{String(f.reason).slice(0, 90)}</span>
+                  )}
                 </div>
-                {/* OPTIONS: every structure with its strike/OCC and reason */}
                 {opts.length > 0 && opts.map((s: any, i: number) => (
                   <div key={i} style={{ paddingLeft: 72, color: BB.text3, fontSize: 10 }}>
                     <span style={{ color: STATE_COLOR[s.state] || BB.text3, fontWeight: 700 }}>{optionLine(s)}</span>
@@ -207,8 +236,19 @@ export default function DecisionPacketBand({ packet, generatedAt }: { packet: an
               </div>
             )
           })}
+          {packet.ownership && (
+            <div style={{ fontSize: 10, color: BB.text3 }}>
+              OWNERSHIP {packet.ownership.held
+                ? `HELD ${Number(packet.ownership.shares || 0).toLocaleString()} sh`
+                : 'NOT HELD'}
+              {packet.ownership.uncommitted_shares != null
+                ? ` · uncommitted ${Number(packet.ownership.uncommitted_shares).toLocaleString()}`
+                : ''}
+              {packet.ownership.as_of ? ` · ${packet.ownership.as_of}` : ''}
+            </div>
+          )}
           <div style={{ fontSize: 10, color: BB.text3, fontStyle: 'italic', borderTop: `1px solid ${BB.border}`, paddingTop: 3 }}>
-            Multidimensional shadow decision · advisory only · legacy CIO label demoted, not the source of truth
+            Multidimensional decision · constructibility ≠ decision ≠ action · advisory only
           </div>
         </div>
       )}

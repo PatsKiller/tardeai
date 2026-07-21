@@ -207,10 +207,14 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   const sectorOpts = useMemo(() => Array.from(new Set(
     items.map((i: any) => String(i.profile_sector || '').trim()).filter(Boolean)
   )).sort(), [items])
-  // distinct currently-held symbols present in the loaded items (drives the Held-only toggle count)
+  // Currently held = live portfolio only (in_portfolio from holdings, or heldMap shares>0).
+  // Never use rec-intel outcomes.held for this — that is purchase/sale history, not open position.
   const heldCount = useMemo(() => new Set(items
-    .filter((it: any) => it.in_portfolio || outMap[String(it.symbol).toUpperCase()]?.held)
-    .map((it: any) => String(it.symbol).toUpperCase())).size, [items, outMap])
+    .filter((it: any) => {
+      const sym = String(it.symbol).toUpperCase()
+      return !!(it.in_portfolio || (heldMap[sym] && heldMap[sym].length > 0))
+    })
+    .map((it: any) => String(it.symbol).toUpperCase())).size, [items, heldMap])
 
   const openDesk = (sym: string) => {
     window.location.href = `/v3/trading?tab=Entry+Desk&symbol=${sym}`
@@ -363,7 +367,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
       }
       if (fKind !== 'all') { const itp = (it.instrument_type || 'stock').toLowerCase(); const norm = itp === 'inverse_etf' ? 'etf' : itp; if (norm !== fKind) return false }
       if (fDir !== 'all' && String(it.directive_id) !== fDir && !selDirSyms.has(symU)) return false
-      if (fHeld && !(it.in_portfolio || outMap[symU]?.held)) return false   // held-only (currently owned)
+      if (fHeld && !(it.in_portfolio || (heldMap[symU] && heldMap[symU].length > 0))) return false   // currently owned only
       if (fStarred && !isStarred(it)) return false   // operator-starred only
       if (fBand === 'any') { if (!advMap[it.symbol]) return false }   // "with setup advisory"
       else if (fBand !== 'all') { const b = advMap[it.symbol]?.advisory_flag || 'none'; if (b !== fBand) return false }
@@ -392,7 +396,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
       // starred first (stable — preserves the server's hermes order within each group; also reflects an
       // optimistic toggle immediately, before the server-ordered refetch lands)
       .sort((a, b) => (isStarred(b) ? 1 : 0) - (isStarred(a) ? 1 : 0))
-  }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, fHeld, fStarred, starOverride, fSector, fAnalyst, fVol, search, paMap, advMap, directives, outMap, screenerLane])
+  }, [items, bestBySym, fOrigin, fKind, fDir, fBand, fStatus, fRating, fCio, fList, fHeld, fStarred, starOverride, fSector, fAnalyst, fVol, search, paMap, advMap, directives, heldMap, screenerLane])
 
   const pageCount = Math.max(1, Math.ceil(visible.length / PER_PAGE))
   const curPage = Math.min(page, pageCount - 1)
@@ -655,7 +659,8 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
               const symKey = String(it.symbol).toUpperCase()
               const outcome = outMap[symKey]
               const kbFocused = pageItems[kbIdx]?.id === it.id
-              const held = !!(heldMap[symKey] || it.in_portfolio)
+              // Live holdings only — never outcome history or stale source=portfolio rows.
+              const held = !!(it.in_portfolio || (heldMap[symKey] && heldMap[symKey].length > 0))
               return (
                 <div key={it.id} ref={el => { if (kbFocused && el) el.scrollIntoView({ block: 'nearest' }) }}
                      style={{ minWidth: 0, width: '100%', ...focusStyle(kbFocused) }}>
@@ -665,7 +670,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
                          onChange={e => setSelected(o => ({ ...o, [symKey]: e.target.checked }))}
                          style={{ accentColor: BB.amber, cursor: 'pointer' }} />
                   {held && <Chip kind="state" tone="green"
-                                 title={`currently held — same _held_context as the pullback cards`}>HELD</Chip>}
+                                 title="Currently held in live portfolio (holdings.json)">HELD</Chip>}
                 </div>
                 {/* Watch Desk v3 (WS-C): deterministic context strip — reuses server _hermes_setup; not a quality score */}
                 {it.setup_context && (

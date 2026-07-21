@@ -76,9 +76,16 @@ def find_removals() -> dict:
            AND bool_and(recommendation IN ('SELL','TRIM','AVOID','IGNORE'))
     """)
     for r in cur.fetchall():
-        # Don't remove portfolio holdings — flag for review instead
-        cur.execute("SELECT symbol FROM watchlist_items WHERE symbol=%s AND source='portfolio'", (r["symbol"],))
-        is_held = cur.fetchone()
+        # Don't remove live portfolio holdings — flag for review instead.
+        # source='portfolio' alone is NOT "currently held" (sold names leave stale rows).
+        try:
+            from sync_portfolio_watchlist_membership import held_symbols_from_holdings
+            is_held = r["symbol"] and str(r["symbol"]).upper() in held_symbols_from_holdings()
+        except Exception:
+            cur.execute("""SELECT symbol FROM watchlist_items
+                           WHERE symbol=%s AND source='portfolio' AND status<>'removed'""",
+                        (r["symbol"],))
+            is_held = cur.fetchone()
         entry = {
             "symbol": r["symbol"],
             "reason": f"All agents negative: {', '.join(r['recs'])} (avg conf {float(r['avg_conf']):.0%})",

@@ -289,6 +289,9 @@ def build_long_term(facts, event, ownership, thesis_state, timing) -> dict:
                 "structures": [], "rejection_reasons": [
                     "insufficient price history to compute ATR or support — a staged "
                     "plan without levels would be prose, not a plan"]}
+    # Thesis gate first — a constructible ladder is not an ownership recommendation
+    # when the long-term thesis is unattractive or unproven.
+    thesis_decision = dp.thesis_to_long_term_decision(thesis_state)
     try:
         bp = tb.staged_shares(
             symbol=facts["symbol"],
@@ -297,11 +300,20 @@ def build_long_term(facts, event, ownership, thesis_state, timing) -> dict:
             thesis_state=thesis_state, timing=timing,
             account_equity=float(os.getenv("SHADOW_ACCOUNT_EQUITY", "1252958")),
             earnings_date=event.date.isoformat() if event.date else None)
-        state = CONDITIONAL if timing in ("EXTENDED", "WAIT_FOR_PULLBACK",
-                                          "BREAKOUT_CONFIRMATION") else ELIGIBLE
-        bp["state"] = state
+        # Mechanical default from timing; reconcile_plan_families applies thesis.
+        mech_state = CONDITIONAL if timing in ("EXTENDED", "WAIT_FOR_PULLBACK",
+                                               "BREAKOUT_CONFIRMATION") else ELIGIBLE
+        if thesis_decision in (REJECTED, DATA_UNAVAILABLE):
+            bp["state"] = thesis_decision
+            bp["rejection_reasons"] = [
+                f"thesis {thesis_state} → decision_state {thesis_decision} "
+                f"(mechanics constructible but ownership not recommended)"]
+            state = thesis_decision
+        else:
+            state = CONDITIONAL if thesis_decision == CONDITIONAL else mech_state
+            bp["state"] = state
         return {"family": "LONG_TERM", "state": state, "structures": [bp],
-                "rejection_reasons": []}
+                "rejection_reasons": list(bp.get("rejection_reasons") or [])}
     except tb.BlueprintRejected as exc:
         return {"family": "LONG_TERM", "state": REJECTED, "structures": [],
                 "rejection_reasons": list(exc.reasons)}
@@ -701,14 +713,19 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
         "data_quality": dq,
         "model_review": model_review,
         "plan_families": {"long_term": lt, "swing": sw, "bearish": be, "options": op,
-                          "no_trade": {"family": "NO_TRADE", "state": ELIGIBLE,
-                                       "rationale": "no-trade remains valid at all times"}},
+                          "no_trade": {"family": "NO_TRADE", "available": True,
+                                       "preferred": False, "dominant": False,
+                                       "state": "NOT_APPLICABLE",
+                                       "rationale": "placeholder — reconcile_plan_families fills"}},
         "no_trade_is_valid": True,
         "legacy_summary": legacy,
         "preferred_action": {"structure": "NO_TRADE",
                              "why": "Stage A is shadow-only; no preferred action is "
                                     "published from this path"},
     }
+    # Semantic integration layer: three-axis family states, thesis/event/options/
+    # no-trade invariants. Must run BEFORE validate so invariants are held at persist.
+    packet = dp.reconcile_plan_families(packet)
     # Persist the CURRENT-INPUT snapshot the packet was built on, so a later run
     # can tell whether the packet still matches source truth (not just whether it
     # is young). One canonical builder — the same one the batch and action policy
@@ -837,6 +854,9 @@ def readback(symbol: str, conn=None) -> dict:
     if not r:
         return {"ok": False, "error": f"no live shadow packet for {symbol.upper()}"}
     pkt = r[2] if isinstance(r[2], dict) else json.loads(r[2])
+    # Root egress gate: every read path materializes three-axis semantics so
+    # stored pre-axis packets cannot contradict thesis/event/options/no-trade.
+    pkt = dp.materialize_packet(pkt)
     cur.execute("""SELECT family, structure, state, rejection_reasons
                    FROM decision_blueprints WHERE packet_id=%s ORDER BY family""", (r[0],))
     return {"ok": True, "packet_id": r[0], "generated_at": str(r[1]), "packet": pkt,

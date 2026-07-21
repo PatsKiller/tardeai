@@ -6499,6 +6499,7 @@ def _wl_items(query: dict = None):
     # named flag ("LEGACY FALLBACK — PACKET REQUIRED"), defaulting to build/refresh.
     try:
         import decision_action_policy as _pol
+        import decision_packet as _dp
         import packet_invalidation as _inv
         from db_adapter import _get_conn as _gc
         _conn = _gc()
@@ -6512,18 +6513,59 @@ def _wl_items(query: dict = None):
         for _it in _items:
             _pkt = _it.get("decision_packet")
             if _pkt and isinstance(_pkt, dict):
+                # Single egress gate — same materialize used by readback + action-policy.
+                try:
+                    _pkt = _dp.materialize_packet(_pkt)
+                    _it["decision_packet"] = _pkt
+                except Exception:
+                    pass
                 # Same current-input builder the standalone endpoint uses, so the
                 # inline path never carries a weaker context than the endpoint.
                 try:
                     _snap = _inv.build_current_input_snapshot(str(_it.get("symbol")), _conn)
                 except Exception:
                     _snap = None
-                _it["action_policy"] = _pol.evaluate_action(
+                _ap = _pol.evaluate_action(
                     _pkt, packet_id=None, generated_at=_it.get("decision_packet_at"),
                     existing_proposal=(str(_it.get("symbol") or "").upper() in _open_props),
                     current_snapshot=_snap)
+                _it["action_policy"] = _ap
+                # Surface CURRENT VALIDITY separately from DATA AT BUILD.
+                if _ap and "inputs_match" in _ap:
+                    _pkt["current_validity"] = {
+                        "state": ("CURRENT" if _ap.get("inputs_match")
+                                  else "STALE" if _ap.get("state") == "STALE"
+                                  else "INVALIDATED"),
+                        "packet_input_hash": _ap.get("packet_input_hash"),
+                        "current_input_hash": _ap.get("current_input_hash"),
+                        "invalidation_reasons": _ap.get("invalidation_reasons") or _ap.get("blocks") or [],
+                    }
+                    _it["decision_packet"] = _pkt
             else:
                 _it["action_policy"] = None
+        # ROOT: in_portfolio from live holdings.json for every symbol — not the
+        # potentially stale watchlist_symbol_master flag (HELD badge contradictions).
+        try:
+            _hpath = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+            _held = set()
+            if _hpath.exists():
+                _hd = json.loads(_hpath.read_text())
+                for _h in (_hd.get("holdings") or []):
+                    if _h.get("is_cash"):
+                        continue
+                    _s = str(_h.get("symbol") or "").upper()
+                    if not _s:
+                        continue
+                    if float(_h.get("quantity") or _h.get("shares") or 0) > 0 or float(_h.get("market_value") or 0) > 0:
+                        _held.add(_s)
+            for _it in _items:
+                _sym = str(_it.get("symbol") or "").upper()
+                _it["in_portfolio"] = _sym in _held
+                # Packet ownership is authoritative for decision mechanics; when it
+                # disagrees with live holdings, current_validity/invalidation handles it.
+                # HELD badge uses in_portfolio (live holdings) only.
+        except Exception:
+            pass
     except Exception as _pe:
         for _it in _items:
             _it.setdefault("action_policy", None)
@@ -11726,6 +11768,11 @@ def _decision_action_policy(query=None):
         return {"ok": True, "symbol": str(sym).upper(), "action_policy": None,
                 "note": "no live packet — LEGACY FALLBACK, build a packet first"}
     pkt = row["packet"] if isinstance(row["packet"], dict) else json.loads(row["packet"])
+    try:
+        import decision_packet as _dp
+        pkt = _dp.materialize_packet(pkt)
+    except Exception:
+        pass
     op = set()
     try:
         _pr = _db_query("""SELECT 1 FROM options_approval_queue
@@ -11743,7 +11790,8 @@ def _decision_action_policy(query=None):
     res = _pol.evaluate_action(pkt, packet_id=row["packet_id"],
                                generated_at=str(row["generated_at"]), existing_proposal=bool(op),
                                current_snapshot=_snap)
-    return {"ok": True, "symbol": str(sym).upper(), "action_policy": res, "current_snapshot": _snap}
+    return {"ok": True, "symbol": str(sym).upper(), "action_policy": res,
+            "packet": pkt, "current_snapshot": _snap}
 
 
 def _shadow_strategy_packet(query=None):

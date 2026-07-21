@@ -583,6 +583,12 @@ def write_holdings(data: dict) -> None:
     # MANDATORY wipe-guard: never zero/overwrite a good holdings snapshot with a bad payload.
     from holdings_guard import protected_holdings_write
     protected_holdings_write(data, source="portfolio_server.write_holdings", target_path=str(HOLDINGS_PATH))
+    # ROOT: sold positions must not keep source='portfolio' rows (HELD badge on watchlist).
+    try:
+        from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
+        sync_portfolio_watchlist_membership(data)
+    except Exception as _e:
+        print(f"  [write_holdings] portfolio watchlist membership sync failed: {_e}")
 
 
 def _nan_safe(obj):

@@ -35,7 +35,7 @@ import json
 from datetime import datetime, timezone
 from typing import Optional
 
-POLICY_VERSION = "1.0.0"
+POLICY_VERSION = "1.1.0"  # three-axis family action_state + no-trade preferred/dominant
 
 # Actions the policy can advise (never an order — those live behind approval+2FA).
 ACTIONS = ("PROPOSE_ENTRY", "RESEARCH_OPTIONS", "REFRESH", "MONITOR", "NO_ACTION")
@@ -199,19 +199,46 @@ def _evaluate_action_impl(packet: dict, *, packet_id=None, generated_at=None,
                        blocks=[f"event_state={ev_impact}"],
                        reason="event state blocks action")
 
+    # Single egress materialize (idempotent) — root fix for every symbol's packet.
+    try:
+        import decision_packet as _dp
+        p = _dp.materialize_packet(p)
+    except Exception:
+        pass
+
     fams = p.get("plan_families") or {}
     swing = fams.get("swing") or {}
     tactical = p.get("horizons", {}).get("tactical") or {}
     options = fams.get("options") or {}
     no_trade = fams.get("no_trade") or {}
 
-    swing_state = str(swing.get("state") or "DATA_UNAVAILABLE").upper()
-    swing_struct = (swing.get("structures") or [{}])[0]
+    # Prefer action_state (three-axis); fall back to legacy single state.
+    def _action(fam):
+        return str(fam.get("action_state") or fam.get("state") or "DATA_UNAVAILABLE").upper()
 
-    # 5. Tactical/swing: PROPOSE_ENTRY only when the blueprint is ELIGIBLE, or its
-    #    defined trigger is satisfied. CONDITIONAL exposes the trigger but is NOT
-    #    allowed — it must not masquerade as ready.
-    if swing_state == "ELIGIBLE":
+    def _decision(fam):
+        return str(fam.get("decision_state") or fam.get("state") or "DATA_UNAVAILABLE").upper()
+
+    swing_action = _action(swing)
+    swing_decision = _decision(swing)
+    swing_struct = (swing.get("structures") or [{}])[0]
+    event_block = any("EVENT_BLOCKED" in str(b) for b in (swing.get("blocks") or []))
+    try:
+        import decision_packet as _dp2
+        event_block = event_block or _dp2.event_blocks_action(p)
+    except Exception:
+        pass
+
+    # 4b. EVENT_BLOCKED — never READY (distinct from decision REJECTED).
+    if event_block:
+        return _result("MONITOR", False, "BLOCKED", packet=p,
+                       blocks=list(swing.get("blocks") or ["EVENT_BLOCKED"]),
+                       reason="event/timing blocks action — mechanics may remain constructible")
+
+    # 5. Tactical/swing: PROPOSE_ENTRY only when action_state is READY (requires
+    #    decision ELIGIBLE + constructible + no event block). CONDITIONAL exposes
+    #    the trigger but is NOT allowed.
+    if swing_action == "READY" and swing_decision == "ELIGIBLE":
         conf = ["operator approval in Options/Proposals", "per-order 2FA at submit"]
         if existing_proposal:
             return _result("MONITOR", False, "CONDITIONAL", packet=p,
@@ -221,8 +248,9 @@ def _evaluate_action_impl(packet: dict, *, packet_id=None, generated_at=None,
                        confirmations=conf,
                        reason="swing blueprint is eligible with resolved mechanics")
 
-    if swing_state == "CONDITIONAL":
-        trig = swing_struct.get("underlying_trigger") or tactical.get("trigger") or "condition not met"
+    if swing_action == "CONDITIONAL" or swing_decision == "CONDITIONAL":
+        trig = (swing_struct.get("underlying_trigger") or tactical.get("trigger")
+                or "condition not met")
         inval = swing_struct.get("underlying_invalidation") or tactical.get("invalidation")
         warns = [f"conditional — trigger: {trig}"]
         if inval:
@@ -231,25 +259,37 @@ def _evaluate_action_impl(packet: dict, *, packet_id=None, generated_at=None,
                        warnings=warns,
                        reason="swing is conditional; expose the trigger, do not offer entry")
 
-    # 6. Options: an ELIGIBLE structure routes to research; otherwise research/refresh
-    #    only — never a proposal from an unresolved chain.
-    opt_state = str(options.get("state") or "DATA_UNAVAILABLE").upper()
+    # 6. Options: action READY + an ELIGIBLE child routes to research.
+    opt_action = _action(options)
+    opt_decision = _decision(options)
     opt_eligible = any(str(s.get("state") or "").upper() == "ELIGIBLE"
                        for s in (options.get("structures") or []))
-    if opt_eligible:
+    if opt_action == "READY" and opt_eligible:
         return _result("RESEARCH_OPTIONS", True, "READY", packet=p,
                        confirmations=["options approval + per-order 2FA at submit"],
                        reason="an exact option structure is eligible — research it")
-    if opt_state == "CONDITIONAL":
+    if opt_action == "CONDITIONAL" or opt_decision == "CONDITIONAL":
         return _result("RESEARCH_OPTIONS", False, "CONDITIONAL", packet=p,
                        warnings=["options are conditional — no resolvable structure yet"],
                        reason="options conditional; research, do not propose")
 
-    # 7. NO_TRADE ELIGIBLE blocks a proposal action when nothing else is actionable.
-    if str(no_trade.get("state") or "").upper() == "ELIGIBLE":
+    # 7. NO_TRADE blocks only when preferred or dominant — mere availability never
+    #    vetoes an otherwise ready plan (the old "No-trade ELIGIBLE" bug).
+    #    Legacy packets that only have state=ELIGIBLE on no_trade (without preferred)
+    #    are treated as preferred only when no other family is READY/ELIGIBLE.
+    nt_preferred = bool(no_trade.get("dominant") or no_trade.get("preferred"))
+    if not nt_preferred and str(no_trade.get("state") or "").upper() == "ELIGIBLE":
+        # Legacy shape: only block when nothing else is actionable.
+        others_ready = (
+            (swing_action == "READY" and swing_decision == "ELIGIBLE")
+            or (opt_action == "READY" and opt_eligible)
+        )
+        nt_preferred = not others_ready
+    if nt_preferred:
         return _result("NO_ACTION", False, "CONDITIONAL", packet=p,
-                       blocks=["no_trade is a valid outcome and nothing is eligible"],
-                       reason="no eligible structure; no-trade is valid")
+                       blocks=[no_trade.get("reason")
+                               or "no_trade preferred/dominant — no other plan actionable"],
+                       reason="no-trade is preferred; other families are not ready")
 
     # 8. Fallthrough — nothing actionable, keep watching.
     return _result("MONITOR", False, "CONDITIONAL", packet=p,

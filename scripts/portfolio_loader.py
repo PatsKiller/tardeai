@@ -360,6 +360,16 @@ def save_state(portfolio: Dict, project_root_str: str) -> None:
     # MANDATORY wipe-guard: never zero/overwrite a good holdings snapshot with a bad payload.
     from holdings_guard import protected_holdings_write
     protected_holdings_write(portfolio, source="portfolio_loader.save_state", target_path=str(holdings_path))
+    # Keep watchlist source=portfolio membership aligned with live holdings
+    # (sold names must not keep HELD via watchlist_symbol_master view).
+    try:
+        from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
+        _sync = sync_portfolio_watchlist_membership(portfolio)
+        if _sync.get("exited") or _sync.get("ensured"):
+            print(f"  [loader] portfolio watchlist membership: "
+                  f"exited={_sync.get('exited')} ensured={_sync.get('ensured')}")
+    except Exception as _e:
+        print(f"  [loader] portfolio watchlist membership sync failed: {_e}")
     print(f"  [loader] State saved → "
           f"{holdings_path.relative_to(project_root)}")
 

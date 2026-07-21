@@ -223,8 +223,9 @@ export default function WatchlistCard({
     sectorLine,
     tenureDays != null && tenureDays > 0 ? `on watchlist ${tenureDays}d` : null,
   ].filter(Boolean).join(' · ')
-  const isHeld = it.in_portfolio || outcome?.held
-  const heldTip = outcome?.held ? `unrealized ${outcome.unrealized_pnl_pct ?? '?'}%` : 'in portfolio'
+  // Live portfolio only. outcomes.held is purchase/sale history and must NOT drive HELD.
+  const isHeld = !!it.in_portfolio
+  const heldTip = 'Currently held in live portfolio'
 
   const companyDesc = sc?.description || it.profile_description || null
   const allNews: any[] = sc?.news ?? []

@@ -668,6 +668,13 @@ if __name__ == "__main__":
     print(f"After:  ${portfolio['portfolio_totals']['total_value']:,.0f} | "
           f"Day: ${portfolio['portfolio_totals']['day_change']:+,.0f}")
     print("holdings.json updated.")
+    try:
+        from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
+        _ms = sync_portfolio_watchlist_membership(portfolio)
+        if _ms.get("exited"):
+            print(f"portfolio watchlist membership: exited {_ms['exited']} sold symbols")
+    except Exception as _e:
+        print(f"portfolio watchlist membership sync failed: {_e}")
 
     cache_path = state_dir / "finviz_quote_cache.json"
     if cache_path.exists():
