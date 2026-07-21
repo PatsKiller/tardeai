@@ -170,17 +170,34 @@ export default function ShadowStrategyButton({ symbol }: { symbol: string }) {
                 </div>
               )}
 
-              {/* every family, always present, colour-coded by state */}
+              {/* every family, always present, colour-coded by state. The family
+                  STATE is the authoritative rollup from plan_families — not the
+                  first blueprint row, which for OPTIONS (several structures) would
+                  show one structure's state instead of the family's. */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 {FAMILY_ORDER.map(fam => {
                   const rows = families.filter(f => f.family === fam)
-                  const state = rows[0]?.state || 'DATA_UNAVAILABLE'
-                  const reason = rows.map(r => (r.rejection_reasons || [])[0]).filter(Boolean)[0]
+                  const famObj = packet?.plan_families?.[fam.toLowerCase()]
+                  const state = famObj?.state || rows[0]?.state || 'DATA_UNAVAILABLE'
+                  const famReason = (famObj?.rejection_reasons || [])[0]
+                    || rows.map(r => (r.rejection_reasons || [])[0]).filter(Boolean)[0]
                   return (
-                    <div key={fam} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                      <span style={{ minWidth: 118, color: BB.text2, fontWeight: 700 }}>{FAMILY_LABEL[fam]}</span>
-                      <span style={{ minWidth: 96, fontWeight: 800, color: STATE_COLOR[state] || BB.text3 }}>{state}</span>
-                      {reason && <span style={{ color: BB.text3, fontSize: 10 }}>{String(reason).slice(0, 88)}</span>}
+                    <div key={fam} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                        <span style={{ minWidth: 118, color: BB.text2, fontWeight: 700 }}>{FAMILY_LABEL[fam]}</span>
+                        <span style={{ minWidth: 96, fontWeight: 800, color: STATE_COLOR[state] || BB.text3 }}>{state}</span>
+                        {famReason && <span style={{ color: BB.text3, fontSize: 10 }}>{String(famReason).slice(0, 84)}</span>}
+                      </div>
+                      {/* OPTIONS evaluates several structures — show each so a
+                          rejection names the exact contract and rule, never a
+                          bare family verdict. */}
+                      {rows.length > 1 && rows.map((r, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 6, paddingLeft: 124, color: BB.text3, fontSize: 10 }}>
+                          <span style={{ minWidth: 150, color: BB.text3 }}>{r.structure}</span>
+                          <span style={{ minWidth: 92, fontWeight: 700, color: STATE_COLOR[r.state] || BB.text3 }}>{r.state}</span>
+                          <span>{String((r.rejection_reasons || [])[0] || '').slice(0, 70)}</span>
+                        </div>
+                      ))}
                     </div>
                   )
                 })}

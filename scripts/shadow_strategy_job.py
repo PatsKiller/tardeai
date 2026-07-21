@@ -171,7 +171,9 @@ def run_worker(run_id: int, symbol: str, *, run_models: bool = True) -> int:
         packet = svc.evaluate(sym, conn, origin="on_demand", run_models=run_models,
                               on_stage=on_stage)
         _set_stage(conn, run_id, "persistence", "running")
-        packet_id = svc.persist(packet, origin="on_demand")
+        # Pass our run_id so the packet links to THIS run rather than persist()
+        # minting a stageless orphan run the packet then points at.
+        packet_id = svc.persist(packet, origin="on_demand", run_id=run_id)
 
         # Mark every reached stage complete and record the honest provider.
         mr = packet.get("model_review") or {}

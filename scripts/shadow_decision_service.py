@@ -581,17 +581,25 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
 
 # ── persistence ───────────────────────────────────────────────────────────────
 
-def persist(packet: dict, conn=None, *, origin="on_demand", requested_by="operator") -> int:
+def persist(packet: dict, conn=None, *, origin="on_demand", requested_by="operator",
+            run_id: int = None) -> int:
+    """Persist a packet + its blueprints. When called from the job worker the
+    run already exists — pass its run_id so the packet links to THAT run instead
+    of minting an orphan. A first version always INSERTed a new decision_run, so
+    every on-demand run produced two rows: the worker's (with stages) and this
+    stageless duplicate the packet then pointed at. The CLI/batch path (no
+    existing run) still gets a fresh COMPLETE run created here."""
     if conn is None:
         from db_adapter import _get_conn
         conn = _get_conn()
     cur = conn.cursor()
-    cur.execute("""INSERT INTO decision_runs (origin, requested_by, started_at,
-                     completed_at, state, symbols_requested, symbols_completed,
-                     source_commit_sha)
-                   VALUES (%s,%s,now(),now(),'COMPLETE',1,1,%s) RETURNING run_id""",
-                (origin, requested_by, packet.get("source_commit_sha")))
-    run_id = cur.fetchone()[0]
+    if run_id is None:
+        cur.execute("""INSERT INTO decision_runs (origin, requested_by, started_at,
+                         completed_at, state, symbols_requested, symbols_completed,
+                         source_commit_sha)
+                       VALUES (%s,%s,now(),now(),'COMPLETE',1,1,%s) RETURNING run_id""",
+                    (origin, requested_by, packet.get("source_commit_sha")))
+        run_id = cur.fetchone()[0]
 
     fam = packet["plan_families"]
     cur.execute("""INSERT INTO decision_packets
