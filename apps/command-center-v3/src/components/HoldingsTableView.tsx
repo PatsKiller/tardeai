@@ -538,7 +538,7 @@ export default function HoldingsTableView({
                   )}
                 </div>
                 <div style={{ margin: '2px 0' }}>
-                  <StopKindPill kind={m.stopKind} trailPct={m.stopTrailPct} orderType={m.stopOrderType} small />
+                  <StopKindPill kind={m.stopKind} trailPct={m.stopTrailPct} distPct={m.stopLiveDistPct} orderType={m.stopOrderType} small />
                 </div>
                 <div style={{
                   fontSize: 10, fontWeight: 700, color: m.needsAction ? BB.amberAlt : BB.text0,

@@ -58,6 +58,8 @@ export interface HoldingsRowModel {
    *  TRAILING_LIMIT / MONITORED / PLANNED / NONE (same taxonomy as the Stop desk). */
   stopKind: string
   stopTrailPct: number | null
+  /** Actual distance of the current live stop below price (drawer's "N% below"). */
+  stopLiveDistPct: number | null
   stopOrderType: string | null
   stopLabel: string
   /** Imperative: what to do, e.g. "Tighten stop → $32.43" */
@@ -438,6 +440,12 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     monitored: isMonitored && liveStopPrice != null,
   })
   const stopTrailPct = logic.liveTrailPct ?? null
+  // Actual distance of the CURRENT live stop below price (what the drawer shows as "N% below"),
+  // computed from the live stop itself — NOT pr.stop_distance_pct, which is the advisory width.
+  const stopLiveForDist = liveStopPrice ?? stopPrice
+  const stopLiveDistPct = (cur != null && stopLiveForDist != null && cur > 0 && stopLiveForDist < cur)
+    ? Math.round(((cur - stopLiveForDist) / cur) * 1000) / 10
+    : null
   const sizeMismatch = stopCoverage?.kind === 'partial' || stopCoverage?.kind === 'oversized'
 
   let copy = stopCopyFromLogic(logic, { isFidelity, isSchwab, health, signal, needsSellAll, shares: sh })
@@ -507,6 +515,7 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     plIfFired,
     stopKind,
     stopTrailPct,
+    stopLiveDistPct,
     stopOrderType: liveOrderType,
     stopLabel,
     stopInstruction: copy.instruction,

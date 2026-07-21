@@ -660,7 +660,7 @@ function HoldingStopCard({
             <div style={{ fontSize: 10, color: MUTED, paddingLeft: 2 }}>
               <div style={{ marginBottom: 2 }}>
                 <StopKindPill kind={r.stop_kind || (r.is_trailing ? 'TRAILING' : r.has_active_stop ? (r.stop_type === 'MONITORED' ? 'MONITORED' : 'FIXED') : 'NONE')}
-                  trailPct={r.trail_pct} orderType={r.order_type} small />
+                  trailPct={r.trail_pct} distPct={r.distance_pct} orderType={r.order_type} small />
               </div>
               <div title={status.why} style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {status.why}
@@ -1188,7 +1188,7 @@ function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; au
             Manage stop — {row.symbol}
             {/* Current stop kind, so the type stays visible while managing */}
             <StopKindPill kind={row.stop_kind || (row.is_trailing ? 'TRAILING' : row.has_active_stop ? (row.stop_type === 'MONITORED' ? 'MONITORED' : 'FIXED') : 'NONE')}
-              trailPct={row.trail_pct} orderType={row.order_type} />
+              trailPct={row.trail_pct} distPct={row.distance_pct} orderType={row.order_type} />
           </div>
           <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
         </div>

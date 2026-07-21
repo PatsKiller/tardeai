@@ -98,3 +98,22 @@ def test_pill_is_not_redefined_in_stopmanagement():
     src = SM.read_text()
     assert "function StopKindPill(" not in src
     assert "import { StopKindPill }" in src
+
+
+def test_pill_shows_type_AND_percent_for_static_and_trailing():
+    """Every row states the stop TYPE and its % — trail % for trailing kinds, the
+    actual distance-below-price for static (fixed/limit/monitored) kinds."""
+    pill = PILL.read_text()
+    # trailing → trail %, static → distance %
+    assert "isTrail ? trailPct : distPct" in pill
+    assert "% ${suffix} price" in pill or "below" in pill
+
+
+def test_distance_is_the_live_stop_not_the_advisory_width():
+    """The pill's static % is computed from the live stop vs price (drawer's 'N% below'),
+    NOT pr.stop_distance_pct (the advisory band width)."""
+    row = ROW.read_text()
+    assert "stopLiveDistPct" in row
+    assert "(cur - stopLiveForDist) / cur" in row
+    # the table passes the live distance, not the advisory stopDistPct
+    assert "distPct={m.stopLiveDistPct}" in TABLE.read_text()
