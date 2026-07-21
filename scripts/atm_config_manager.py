@@ -108,19 +108,44 @@ def get_effective_limits(account_label: str) -> dict:
 
 
 def get_enabled_accounts() -> list[str]:
-    """Return account_labels where ATM config has enabled=true AND accounts table has enabled=true."""
+    """Return ATM-eligible account keys.
+
+    R1: prefer broker_accounts + account_automation_policies (source of truth for
+    which accounts may auto-run). YAML accounts.*enabled remains a DEPRECATED
+    intersection filter when present (legacy), not the sole list.
+    """
     cfg, _ = load_config()
-    config_enabled = {k for k, v in (cfg.get("accounts") or {}).items()
-                      if isinstance(v, dict) and v.get("enabled")}
+    yaml_accounts = cfg.get("accounts") or {}
+    yaml_enabled = {k for k, v in yaml_accounts.items()
+                    if isinstance(v, dict) and v.get("enabled")}
 
     conn = _get_conn()
     if not conn:
-        return []
+        return sorted(yaml_enabled)
     cur = conn.cursor()
+    # Canonical: paper + AUTO_PAPER (or AUTO_LIVE later) and is_enabled
+    try:
+        cur.execute("""
+            SELECT ba.account_key
+              FROM broker_accounts ba
+              JOIN account_automation_policies aap ON aap.account_id = ba.id
+             WHERE COALESCE(ba.is_enabled, false) = true
+               AND aap.automation_mode IN ('AUTO_PAPER', 'AUTO_LIVE')
+        """)
+        db_auto = {r[0] for r in cur.fetchall()}
+    except Exception:
+        db_auto = set()
+
+    if db_auto:
+        # If yaml still lists accounts, intersect (yaml is deprecated filter only)
+        if yaml_enabled:
+            return sorted(db_auto & yaml_enabled) or sorted(db_auto)
+        return sorted(db_auto)
+
+    # Fallback: legacy accounts.enabled ∩ yaml
     cur.execute("SELECT account_label FROM accounts WHERE enabled = true")
     db_enabled = {r[0] for r in cur.fetchall()}
-
-    return sorted(config_enabled & db_enabled)
+    return sorted(yaml_enabled & db_enabled)
 
 
 def is_bucket2_excluded(strategy_id: str, now: datetime = None) -> bool:

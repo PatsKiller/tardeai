@@ -1,16 +1,25 @@
-"""live_trading_interlock.py — the hard gate-interlock (2026-06-04).
+"""live_trading_interlock.py — the hard gate-interlock (2026-06-04; R1 2026-07-21).
 
 THE SAFETY for the editable ATM + proposal controls. Any write that would arm execution, change
 risk, or approve a trade against a LIVE account is REFUSED unless the live-trading gate has passed
 (paper_validation_policy.live_trading_allowed = TRUE). Paper accounts are always writable. Unknown
-accounts fail CLOSED (refused). This makes it physically impossible for the dashboard controls to
-reach a live account before the system's own readiness bar is met — regardless of what is clicked.
+accounts fail CLOSED (refused).
 
-The controls (ATM state, risk edits, proposal approve) call assert_writable(account) FIRST; if it
-raises InterlockRefused the endpoint returns 403 before any guard/confirm/apply runs.
+R1: account_mode() prefers broker_accounts.environment (+ automation posture); falls back to
+legacy accounts.mode and logs every fallback/disagreement to interlock_parity_log. Behavior
+contract unchanged. Legacy table remains until R1b (parity window clean).
 """
+from __future__ import annotations
+
 import os
 from datetime import datetime, timezone
+
+# Identity aliases (emitters may still use old labels until R3 backfill completes)
+_ALIASES = {
+    "alpaca_paper": "tradeai_automated",
+    "ALPACA_PAPER": "tradeai_automated",
+    "fidelity_401k": "fidelity_rollover_ira",  # legacy label → canonical import row
+}
 
 
 class InterlockRefused(Exception):
@@ -28,12 +37,103 @@ def _conn():
                             password=os.environ["DB_PASSWORD"])
 
 
-def account_mode(conn, account_label):
-    """Return 'paper' | 'live' | None (unknown) for an account_label."""
+def _normalize(account_label: str) -> str:
+    raw = (account_label or "").strip()
+    if not raw:
+        return ""
+    return _ALIASES.get(raw, _ALIASES.get(raw.lower(), raw))
+
+
+def _canonical_mode(conn, account_label: str):
+    """Return 'paper' | 'live' | None from broker_accounts.environment."""
+    key = _normalize(account_label)
+    if not key:
+        return None
     cur = conn.cursor()
-    cur.execute("SELECT mode FROM accounts WHERE account_label=%s", (account_label,))
+    cur.execute(
+        """SELECT environment FROM broker_accounts
+           WHERE account_key=%s OR lower(account_key)=lower(%s)
+           LIMIT 1""",
+        (key, key),
+    )
     r = cur.fetchone()
-    return r[0] if r else None
+    if not r:
+        return None
+    env = (r[0] or "").strip().lower()
+    if env == "paper":
+        return "paper"
+    if env in ("live", "import"):
+        # import = real-money book lineage, not paper automation — treat as live for arming
+        return "live"
+    return None
+
+
+def _legacy_mode(conn, account_label: str):
+    """Return 'paper' | 'live' | None from legacy accounts.mode."""
+    key = _normalize(account_label)
+    # also try raw label for pre-alias rows
+    cur = conn.cursor()
+    for candidate in (key, (account_label or "").strip()):
+        if not candidate:
+            continue
+        cur.execute("SELECT mode FROM accounts WHERE account_label=%s", (candidate,))
+        r = cur.fetchone()
+        if r:
+            m = (r[0] or "").strip().lower()
+            return m if m in ("paper", "live") else None
+    return None
+
+
+def _log_parity(conn, account, canonical, legacy, caller, action, detail=None):
+    try:
+        agreed = (canonical == legacy) or (canonical is None and legacy is None)
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO interlock_parity_log
+               (account, canonical_answer, legacy_answer, agreed, caller, action, detail)
+               VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb)""",
+            (
+                account,
+                canonical,
+                legacy,
+                agreed,
+                (caller or "")[:200],
+                (action or "")[:80],
+                __import__("json").dumps(detail or {}),
+            ),
+        )
+        conn.commit()
+        if not agreed:
+            try:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "interlock parity disagree account=%s canonical=%s legacy=%s caller=%s",
+                    account, canonical, legacy, caller,
+                )
+            except Exception:
+                pass
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def account_mode(conn, account_label, *, caller=None, action=None, log_parity=True):
+    """Return 'paper' | 'live' | None (unknown).
+
+    Prefers broker_accounts.environment; falls back to legacy accounts.mode.
+    """
+    raw = (account_label or "").strip()
+    canonical = _canonical_mode(conn, raw)
+    legacy = _legacy_mode(conn, raw)
+    if log_parity:
+        _log_parity(conn, raw or "?", canonical, legacy, caller or "account_mode",
+                    action or "resolve",
+                    {"normalized": _normalize(raw)})
+    if canonical is not None:
+        return canonical
+    return legacy
 
 
 def gate_status(conn):
@@ -75,7 +175,7 @@ def gate_status(conn):
 def assert_writable(conn, account_label, action="write"):
     """THE INTERLOCK. Raise InterlockRefused if the target account is LIVE and the gate hasn't
     passed. Paper accounts always pass. Unknown accounts fail CLOSED (refused)."""
-    mode = account_mode(conn, account_label)
+    mode = account_mode(conn, account_label, caller="assert_writable", action=action)
     if mode is None:
         raise InterlockRefused(f"unknown account '{account_label}' — refused (fail-closed)",
                                {"account": account_label})
@@ -90,13 +190,18 @@ def assert_writable(conn, account_label, action="write"):
 
 
 if __name__ == "__main__":
-    # Self-proof: live accounts refused, paper allowed, unknown refused.
+    # Self-proof: live refused (policy off), paper allowed, unknown refused; R1 canonical keys.
     conn = _conn()
     gs = gate_status(conn)
     print(f"GATE: passed={gs['passed']} live_trading_allowed={gs['live_trading_allowed']} "
           f"criteria_met={gs['criteria_met']}")
-    for acct in ("schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira", "fidelity_401k",
-                 "alpaca_paper", "bogus_account"):
+    for acct in (
+        "tradeai_automated", "alpaca_paper",  # paper + alias
+        "schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira",
+        "fidelity_rollover_ira", "fidelity_401k",
+        "alpaca_taxable_live", "alpaca_ira_live",  # scaffolds (may be unknown until R4)
+        "bogus_account",
+    ):
         try:
             r = assert_writable(conn, acct, "arm")
             print(f"  ALLOW  {acct:22} -> {r['mode']}")

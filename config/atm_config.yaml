@@ -49,6 +49,10 @@ same_day_skip_strategies:
 - gap_and_go
 
 # Per-account overrides. account_label must exist in accounts table.
+# DEPRECATED (R1 2026-07-21): which accounts are ATM-enabled is owned by
+# broker_accounts + account_automation_policies (automation_mode AUTO_PAPER/AUTO_LIVE).
+# The YAML list below is retained only as a temporary intersection filter +
+# position_limits overrides — do not add new accounts here; insert DB rows.
 accounts:
   tradeai_automated:
     enabled: true
