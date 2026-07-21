@@ -13,7 +13,35 @@ import { hubPanel } from '../lib/terminalHubChrome'
 // through the holding's existing gated 2FA panel (Schwab) or manual ticket (Fidelity) via onFocusHolding.
 // See docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md.
 
-const MUTED = '#94a3b8', TEXT0 = '#f8fafc', GREEN = '#22c55e', AMBER = '#f59e0b', RED = '#ef4444', BLUE = '#60a5fa', PURPLE = '#a855f7'
+const MUTED = '#94a3b8', TEXT0 = '#f8fafc', GREEN = '#22c55e', AMBER = '#f59e0b', RED = '#ef4444', BLUE = '#60a5fa', PURPLE = '#a855f7', CYAN = '#22d3ee'
+
+// Stop KIND → labelled, colour-coded pill. Fixed / stop-limit / trailing /
+// trailing-limit are visually distinct so the type is legible at a glance and
+// on the manage modal — not collapsed to one word.
+const STOP_KIND_PILL: Record<string, { label: string; color: string }> = {
+  FIXED:          { label: 'FIXED',          color: BLUE },
+  STOP_LIMIT:     { label: 'STOP LIMIT',     color: CYAN },
+  TRAILING:       { label: 'TRAILING',       color: GREEN },
+  TRAILING_LIMIT: { label: 'TRAILING LIMIT', color: PURPLE },
+  MONITORED:      { label: 'MONITORED',      color: AMBER },
+  PLANNED:        { label: 'PLANNED',        color: AMBER },
+  NONE:           { label: 'NO STOP',        color: RED },
+}
+
+function StopKindPill({ kind, trailPct, orderType, small }: { kind?: string | null; trailPct?: number | null; orderType?: string | null; small?: boolean }) {
+  const k = String(kind || 'NONE').toUpperCase()
+  const p = STOP_KIND_PILL[k] || STOP_KIND_PILL.NONE
+  const isTrail = k === 'TRAILING' || k === 'TRAILING_LIMIT'
+  const label = isTrail && trailPct != null ? `${p.label} ${trailPct}%` : p.label
+  return (
+    <span title={orderType ? `broker order type: ${orderType}` : p.label}
+      style={{ display: 'inline-block', fontSize: small ? 10 : 11, fontWeight: 800, letterSpacing: '.02em',
+               color: p.color, border: `1px solid ${p.color}`, background: `${p.color}1a`,
+               borderRadius: 999, padding: small ? '0 6px' : '1px 8px', whiteSpace: 'nowrap' }}>
+      {label}
+    </span>
+  )
+}
 const unwrap = (j: any) => (j && typeof j === 'object' && 'data' in j && j.data && typeof j.data === 'object') ? j.data : j
 const LEVEL_COLOR: Record<string, string> = { red: RED, amber: AMBER, yellow: '#eab308' }
 const SRC_LABEL: Record<string, string> = { broker: 'broker live', confirmed: 'confirmed', broker_snapshot: 'broker (last read)', monitored: 'monitored', planned: 'planned', none: '—' }
@@ -25,6 +53,7 @@ interface Props { onFocusHolding?: (symbol: string, account: string) => void }
 
 type Row = {
   symbol: string; account: string; broker: string; route: string; stop_type: string; stop_source: string
+  stop_kind?: string | null; order_type?: string | null
   current_price: number; qty: number; stop_qty?: number | null; coverage?: string | null
   broker_stop: number | null; planned_stop: number | null; stop: number
   divergence: string | null; distance_pct: number | null; distance_atr: number | null; distance_r: number | null
@@ -553,9 +582,6 @@ function HoldingStopCard({
     || status.kind === 'review'
   const showPlan = expanded || urgent
 
-  const stopKindLabel = r.is_trailing
-    ? `TRAIL${r.trail_pct != null ? ` ${r.trail_pct}%` : ''}`
-    : (r.has_active_stop ? (r.stop_type || 'HARD') : 'NONE')
 
   const coverageLabel = r.coverage === 'partial'
     ? `${r.stop_qty}/${r.qty} sh`
@@ -651,7 +677,10 @@ function HoldingStopCard({
               r.unrealized_dollars >= 0 ? GREEN : RED,
             )}
             <div style={{ fontSize: 10, color: MUTED, paddingLeft: 2 }}>
-              <div style={{ fontWeight: 800, color: r.is_trailing ? GREEN : MUTED }}>{stopKindLabel}</div>
+              <div style={{ marginBottom: 2 }}>
+                <StopKindPill kind={r.stop_kind || (r.is_trailing ? 'TRAILING' : r.has_active_stop ? (r.stop_type === 'MONITORED' ? 'MONITORED' : 'FIXED') : 'NONE')}
+                  trailPct={r.trail_pct} orderType={r.order_type} small />
+              </div>
               <div title={status.why} style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {status.why}
               </div>
@@ -1174,7 +1203,12 @@ function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; au
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: '4vh 0', overflow: 'auto' }}>
       <div onClick={e => e.stopPropagation()} style={{ width: 760, maxWidth: '94vw', maxHeight: '92vh', overflow: 'auto', background: 'var(--bg1, #0f172a)', border: '1px solid rgba(148,163,184,.3)', borderRadius: 12, padding: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontSize: 16, fontWeight: 900, color: TEXT0 }}>Manage stop — {row.symbol}</div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: TEXT0, display: 'flex', alignItems: 'center', gap: 9 }}>
+            Manage stop — {row.symbol}
+            {/* Current stop kind, so the type stays visible while managing */}
+            <StopKindPill kind={row.stop_kind || (row.is_trailing ? 'TRAILING' : row.has_active_stop ? (row.stop_type === 'MONITORED' ? 'MONITORED' : 'FIXED') : 'NONE')}
+              trailPct={row.trail_pct} orderType={row.order_type} />
+          </div>
           <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
         </div>
         <div style={{ fontSize: 12.5, color: TEXT0, lineHeight: 1.6, marginBottom: 10 }}>

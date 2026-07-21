@@ -135,7 +135,7 @@
   "components/DeskAutomationBar.tsx": 3,
   "components/BrokerOrders.tsx": 213,
   "pages/StrategyHub.tsx": 79,
-  "components/StopManagement.tsx": 17,
+  "components/StopManagement.tsx": 18,
   "pages/RecommendationIntelligence.tsx": 54,
   "components/SymbolJourneyPanel.tsx": 18,
   "components/tradeinview/TradeCompareReplay.tsx": 2,

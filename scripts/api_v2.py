@@ -759,6 +759,20 @@ def _stops_management_api_build(query=None):
             "narrative": _narr, "next_action": _next, "projection": _proj,
             "stop_type": (("TRAILING" if is_trailing else "MONITORED" if _monitored else "HARD") if broker_stop is not None
                           else ("PLANNED" if planned_stop else "NONE")),
+            # Precise stop KIND — keeps the LIMIT distinction the coarse stop_type
+            # above drops, so the UI can show fixed vs stop-limit vs trailing vs
+            # trailing-limit as distinct pills. order_type is the raw broker type
+            # (STOP / STOP_LIMIT / TRAILING_STOP / TRAILING_STOP_LIMIT).
+            "order_type": (str((ls or {}).get("order_type") or "").upper() or None),
+            "stop_kind": (
+                "NONE" if (broker_stop is None and not planned_stop) else
+                "PLANNED" if broker_stop is None else
+                "TRAILING_LIMIT" if (is_trailing and "LIMIT" in str((ls or {}).get("order_type") or "").upper()) else
+                "TRAILING" if is_trailing else
+                "MONITORED" if _monitored else
+                "STOP_LIMIT" if "LIMIT" in str((ls or {}).get("order_type") or "").upper() else
+                "FIXED"
+            ),
             "stop_source": stop_source, "has_active_stop": broker_stop is not None,
             "current_price": px, "qty": qty, "stop_qty": stop_qty, "coverage": _coverage,
             "broker_stop": broker_stop, "planned_stop": planned_stop, "stop": stop, "divergence": divergence,
