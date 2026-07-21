@@ -22,6 +22,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 CARD = ROOT / "apps" / "command-center-v3" / "src" / "components" / "WatchlistCardV4.tsx"
 BAND = ROOT / "apps" / "command-center-v3" / "src" / "components" / "DecisionPacketBand.tsx"
+# The band's decision/CTA logic moved into a presenter (operatorDecisionCard) in the
+# 82415fa6 operator-card refactor; the operator CONTRACT is asserted semantically
+# against it rather than against literal band copy.
+PRES = ROOT / "apps" / "command-center-v3" / "src" / "lib" / "operatorDecisionCard.ts"
 
 
 # ── backend: packet delivered inline on the item ──────────────────────────────
@@ -63,55 +67,93 @@ def test_inline_packet_does_not_blow_up_list_latency():
 
 
 # ── frontend: the band leads, and degrades gracefully ─────────────────────────
+#
+# SEMANTIC CONTRACT (survives the 82415fa6 operator-card refactor, which lifted the
+# decision logic into buildOperatorPresentation and hides — rather than merely dims
+# — the legacy strip when a packet leads). These assert the still-required operator
+# behaviour, not literal copy.
 
 def test_band_returns_nothing_without_a_packet():
-    """A card for an un-analysed symbol keeps its legacy band unchanged."""
-    src = BAND.read_text()
-    assert "if (!packet || typeof packet !== 'object') return null" in src
+    """No packet ⇒ the band renders nothing (guard now lives in the presenter)."""
+    assert "if (!pres) return null" in BAND.read_text()
+    assert "if (!packet || typeof packet !== 'object') return null" in PRES.read_text()
 
 
-def test_band_is_mounted_ABOVE_the_legacy_verdict_strip():
+def test_band_leads_above_the_legacy_verdict_strip():
+    """The decision band renders before the legacy strip, and the legacy strip is
+    gated so it appears ONLY when there is no packet."""
     src = CARD.read_text()
     band = src.index("<DecisionPacketBand")
-    strip = src.index("Recommendation + status strip")
-    assert band < strip, "the decision band must render before the legacy verdict strip"
+    legacy = src.index("Legacy verdict strip")
+    assert band < legacy, "the decision band must render before the legacy verdict strip"
+    # the legacy strip block is entirely conditional on NOT having a packet
+    assert "ONLY when no packet" in src
+    assert src.index("{hasPacket && (") < src.index("{!hasPacket && (")
 
 
-def test_legacy_strip_is_demoted_when_a_packet_leads():
+def test_legacy_one_word_label_is_absent_from_the_primary_surface_when_a_packet_leads():
+    """With a packet, the one-word CIO label / verdict strip does not render at all
+    (stronger than the old opacity demotion) — it is gated behind !hasPacket."""
     src = CARD.read_text()
-    assert "opacity: hasPacket ? 0.55 : 1" in src
-    assert "hasPacket ? `prior ${cioLabel}`" in src
+    gate = src.index("{!hasPacket && (")
+    label = src.index("title={`CIO view: ${cioLabel}`}")
+    assert gate < label, "the cioLabel must sit inside the !hasPacket-gated legacy strip"
+    # there is no unconditional render of the one-word label as a primary element
+    assert "hasPacket ? `prior ${cioLabel}`" not in src
 
 
-def test_anchored_agree_split_badge_hidden_when_packet_present():
-    """The old models_agree badge is the anchored one the blind per-dimension
-    agreement replaces; it must not show alongside the packet."""
+def test_agree_split_badge_hidden_when_packet_present():
+    """The anchored models_agree AGREE/SPLIT badge only shows on the legacy strip,
+    which is itself hidden when a packet leads."""
     src = CARD.read_text()
-    assert "!hasPacket && it.models_agree === true" in src
-    assert "!hasPacket && it.models_agree === false" in src
+    gate = src.index("{!hasPacket && (")
+    agree = src.index("it.models_agree === true")
+    assert gate < agree, "AGREE/SPLIT must sit inside the !hasPacket-gated legacy strip"
 
 
-def test_band_shows_every_family_and_demotes_legacy_label():
+def test_only_ready_leads_to_a_proposal_cta_stale_leads_to_refresh():
+    """The core operator-safety contract: a proposal CTA is reachable ONLY from a
+    READY state; a stale packet routes to REFRESH, never a proposal."""
+    pres = PRES.read_text()
+    # READY is the only state that produces the proposal CTA
+    assert "state = 'READY'" in pres and "Review Swing Proposal" in pres
+    # stale / should_be_stale ⇒ REFRESH with a refresh CTA (not a proposal)
+    assert "state = 'REFRESH'" in pres and "Refresh Strategy" in pres
+    # the card only calls onPropose on READY — never on a stale/blocked/wait state
+    card = CARD.read_text()
+    assert "pres.state === 'READY' && onPropose" in card
+    assert "never queue/approve/submit orders" in card
+
+
+def test_held_symbol_uses_position_management_language():
+    """A held symbol is framed as position management, not a fresh entry proposal."""
+    pres = PRES.read_text()
+    assert "MANAGE POSITION" in pres
+    assert "Review Position" in pres
+
+
+def test_audit_drawer_lists_all_families_and_demotes_legacy():
+    """Every family remains available in the audit drawer, and the legacy verdict is
+    explicitly demoted to 'not the operator decision'."""
     src = BAND.read_text()
-    assert "FAMILY_ORDER" in src
     for fam in ("LONG_TERM", "SWING", "BEARISH", "OPTIONS", "NO_TRADE"):
-        assert f"'{fam}'" in src
-    assert "prior CIO" in src
-    assert "not the source of truth" in src
+        assert f"'{fam}'" in src, f"audit drawer missing family {fam}"
+    assert "Legacy @ build" in src
+    assert "not the operator decision" in src
 
 
 def test_band_shows_per_dimension_agreement_not_one_badge():
-    src = BAND.read_text()
-    assert "agreement_by_dimension" in src
-    # and it warns when the mode is not a genuine blind consensus
-    assert "not an independent consensus" in src
+    """Per-dimension model agreement is surfaced (audit), not collapsed to one badge."""
+    assert "agreement_by_dimension" in BAND.read_text()
+    assert "model_review" in PRES.read_text()
 
 
-def test_band_reads_family_state_from_the_rollup_not_first_blueprint():
-    """plan_families carries the authoritative family state; reading a blueprint
-    row would mis-summarise OPTIONS (several structures)."""
-    src = BAND.read_text()
-    assert "plan_families" in src
+def test_family_state_reads_the_rollup_not_the_first_blueprint():
+    """plan_families' rolled-up decision_state is authoritative; a raw blueprint row
+    would mis-summarise OPTIONS (several structures)."""
+    pres = PRES.read_text()
+    assert "packet.plan_families" in pres
+    assert "decision_state" in pres and "structures[0]" not in pres
 
 
 def test_band_uses_no_raw_hex_or_sub_ten_px():
@@ -120,11 +162,3 @@ def test_band_uses_no_raw_hex_or_sub_ten_px():
     assert not re.search(r"#[0-9a-fA-F]{3,6}\b", src), "no raw hex — BB tokens only"
     for m in re.finditer(r"fontSize:\s*([0-9.]+)", src):
         assert float(m.group(1)) >= 10, f"fontSize {m.group(1)} below the 10px floor"
-
-
-def test_one_word_label_is_no_longer_the_primary_when_packet_exists():
-    """The decisive property of this stage: with a packet, the legacy label is
-    prefixed 'prior' and dimmed — it does not lead."""
-    src = CARD.read_text()
-    # the primary lead is the band; the legacy word is demoted text
-    assert "the decision packet above is the source of truth" in src
