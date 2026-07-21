@@ -29,19 +29,32 @@ CHECK (defensible; do not assume a general live-arm data rule).
 R4 insert is real: both live scaffolds exist as DISABLED rows. Interlock resolves
 them as `environment=live` → REFUSE while `live_trading_allowed=false`.
 
+## Read-only data path (built 2026-07-21)
+
+| Piece | Path / endpoint |
+|-------|-----------------|
+| GET-only client | `scripts/brokers/alpaca_read_client.py` |
+| Sync | `scripts/alpaca_live_read_sync.py` (cron: `install_alpaca_live_read_sync_cron.sh`) |
+| Toggle | `POST /api/v2/broker-accounts/api-read-toggle` — **api_read only** |
+| Probe | `POST /api/v2/broker-accounts/test-connection` — GET `/v2/account` |
+| Admin UI | System → Admin → Alpaca Live — Read-Only Data |
+
+With `api_read_enabled=false` (default), cron makes **zero** Alpaca API calls and never touches holdings.
+
 ## Not built
 
 - Live submit adapter (`alpaca_factory` raises `NotImplementedError` for live)
 - Live API key population (slots only in secrets modal)
-- Validation pings against `api.alpaca.markets`
+- Enabling `api_read` / arm / write (operator-gated; left false this session)
 
 ## Activation prerequisites (future session)
 
 1. Operator research on Alpaca IRA product constraints (external)
 2. Fill `ALPACA_TAXABLE_*` / `ALPACA_IRA_*` via secrets modal
-3. Set `live_arm_token` + `is_enabled` only after arm protocol (Alpaca-specific CHECK)
-4. Build live adapter with ExecutionGuard parity to Schwab Path B
-5. Mark `account_capabilities.verified=true` after portal confirmation
+3. Enable `api_read_enabled` only (data) via admin panel when ready to pull positions
+4. Set `live_arm_token` + `is_enabled` only after arm protocol (Alpaca-specific CHECK) — **execution path, not this session**
+5. Build live adapter with ExecutionGuard parity to Schwab Path B
+6. Mark `account_capabilities.verified=true` after portal confirmation
 
 ## See also
 
