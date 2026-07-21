@@ -1,0 +1,5 @@
+# Alpaca live read-only position/balance sync.
+# Install: bash scripts/install_alpaca_live_read_sync_cron.sh
+# Zero API calls while api_read_enabled=false (default scaffolds).
+# Never places orders; never flips is_enabled / api_write / live_arm.
+*/15 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/alpaca_live_read_sync.lock $PY scripts/alpaca_live_read_sync.py >> logs/alpaca_live_read_sync.log 2>&1
