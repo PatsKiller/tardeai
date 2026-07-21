@@ -64,7 +64,7 @@
 |----------|---------|--------|
 | `docs/brokers/trading-environments.md` | **Canonical env taxonomy** — `paper` / `paca_personal` / `paca_ira`; account keys; credential layout | Active (2026-07-21) |
 | `docs/brokers/paper-trading.md` | **Path A as-is** — Alpaca paper equity + options procedures | Active (2026-07-21) |
-| `docs/brokers/paca-accounts.md` | **Future** live Alpaca personal + IRA — gaps, phases (not implemented) | Active roadmap (2026-07-21) |
+| `docs/brokers/alpaca-live-accounts.md` | **Live scaffolds** `alpaca_taxable_live` / `alpaca_ira_live` (DISABLED) — gaps, phases (not implemented) | Active roadmap (2026-07-21) |
 | `docs/brokers/ALPACA_DUE_DILIGENCE_AUDIT_2026-07-21.md` | Full inventory, risks, refactor backlog | Active (2026-07-21) |
 | `docs/brokers/current-state-alpaca-integration.md` | 2026-06-11 equity paper code-trace (still valid) | Active |
 | `docs/architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md` | Schwab Phase 1 read-only — proven capabilities, fenced writes, Gate A | Active |

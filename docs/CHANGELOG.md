@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-07-21 — Alpaca multi-account taxonomy R1–R5
+
+Registry unification (interlock → broker_accounts + parity log), credential slots,
+label hard-map to `tradeai_automated`, live scaffolds DISABLED, TradingView lanes doc + 503 stub.
+Session: `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md`.
+
+
 ## 2026-07-21 — Holdings stop-kind pill + P/L-if-fired + trailing-STOP-LIMIT placement
 
 Docs: `docs/STOP_METHODOLOGY.md` (v3.1). Commits: `d251c84b`, `06cc5349`.
@@ -2692,6 +2699,13 @@ classify automatically; no manual_sector_map entry required for ordinary stocks/
 
 # Changelog
 
+## 2026-07-21 — Alpaca multi-account taxonomy R1–R5
+
+Registry unification (interlock → broker_accounts + parity log), credential slots,
+label hard-map to `tradeai_automated`, live scaffolds DISABLED, TradingView lanes doc + 503 stub.
+Session: `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md`.
+
+
 ## 2026-06-14 - Sector allocation fixed (401k look-through + unclassified stocks)
 
 The Portfolio Allocation showed 98%% "Other" — two bugs: (1) overview() aggregated a non-existent
@@ -2703,6 +2717,13 @@ GICS sectors for the unclassified equities to manual_sector_map. Result: Other 2
 classifies as Financial Services 22.8%%, Technology 19.3%%, Industrials 11.5%%, Healthcare 11%%, etc.
 
 # Changelog
+
+## 2026-07-21 — Alpaca multi-account taxonomy R1–R5
+
+Registry unification (interlock → broker_accounts + parity log), credential slots,
+label hard-map to `tradeai_automated`, live scaffolds DISABLED, TradingView lanes doc + 503 stub.
+Session: `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md`.
+
 
 ## 2026-06-14 - SnapTrade read-only holdings aggregation (LIVE — Fidelity 401k + IRA)
 
@@ -2766,6 +2787,13 @@ buy-rated names' CIO View refreshed on Grok to reflect the upgrade immediately.
 
 # Changelog
 
+## 2026-07-21 — Alpaca multi-account taxonomy R1–R5
+
+Registry unification (interlock → broker_accounts + parity log), credential slots,
+label hard-map to `tradeai_automated`, live scaffolds DISABLED, TradingView lanes doc + 503 stub.
+Session: `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md`.
+
+
 ## 2026-06-14 - CIO synthesis → free Grok OAuth (local fallback) + prompt versioning
 
 The watchlist CIO View (final synthesis) was running 100% on gemma3:4b (verified: 323 syntheses / 7d,
@@ -2778,6 +2806,13 @@ stored per row. Proven live: CIFR re-synthesized on grok-3-mini — grok flagged
 returned AVOID (vs gemma's HOLD), the sharper read. Both lanes free; no metered API.
 
 # Changelog
+
+## 2026-07-21 — Alpaca multi-account taxonomy R1–R5
+
+Registry unification (interlock → broker_accounts + parity log), credential slots,
+label hard-map to `tradeai_automated`, live scaffolds DISABLED, TradingView lanes doc + 503 stub.
+Session: `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md`.
+
 
 ## 2026-06-14 - Entry planner expanded to BUY-rated researched pool (pre-promotion plans)
 

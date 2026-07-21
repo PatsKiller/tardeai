@@ -33143,6 +33143,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # Strip query string from path if present
     base_path = path.split("?")[0] if "?" in path else path
 
+    # TradingView webhook ingress (R5) — dormant; returns 503 unless explicitly enabled.
+    if base_path == "/api/v2/ingress/tradingview":
+        import os as _os_tv
+        if _os_tv.getenv("TRADINGVIEW_INGRESS_ENABLED", "").lower() not in ("1", "true", "yes"):
+            return 503, {
+                "ok": False,
+                "error": "tradingview ingress disabled",
+                "enabled": False,
+                "docs": "docs/brokers/tradingview-lanes.md",
+            }
+        # Future: auth + paper_trade_proposals insert only — never orders
+        return 501, {"ok": False, "error": "tradingview ingress not implemented (stub)", "enabled": True}
+
     # Inference Layers routes (delegated to inference_api module; read-only)
     if base_path.startswith("/api/v2/inference"):
         try:
