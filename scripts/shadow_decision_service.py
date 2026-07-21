@@ -77,6 +77,7 @@ FUNDAMENTAL_KEYS = (
     "week52_high_pct", "week52_low_pct",
 )
 _ENRICHMENT_CACHE = None
+_ENRICHMENT_MTIME = None
 
 ELIGIBLE, CONDITIONAL, REJECTED = "ELIGIBLE", "CONDITIONAL", "REJECTED"
 NOT_APPLICABLE, DATA_UNAVAILABLE = "NOT_APPLICABLE", "DATA_UNAVAILABLE"
@@ -105,13 +106,28 @@ def _fundamentals_for(symbol: str) -> dict:
     known-misparsed volatility_w_pct never enter. market_cap is normalised to
     an unambiguous millions field (the cache's 'market_cap_b' is actually in
     millions, e.g. 67674.87 for a ~$68B name)."""
-    global _ENRICHMENT_CACHE
-    if _ENRICHMENT_CACHE is None:
-        path = PROJECT_ROOT / "data" / "portfolios" / "state" / "ticker_enrichment_cache.json"
+    global _ENRICHMENT_CACHE, _ENRICHMENT_MTIME
+    # Reload when the cache file changes (a long-running server would otherwise
+    # hold the first snapshot forever). Critically, NEVER lock in an empty parse:
+    # if the very first read lands on a missing/mid-rewrite file we serve {} for
+    # now but leave the mtime unset so the next call retries — otherwise every
+    # current-input snapshot would carry zero fundamentals and falsely flag every
+    # packet FUNDAMENTALS_CHANGED.
+    path = PROJECT_ROOT / "data" / "portfolios" / "state" / "ticker_enrichment_cache.json"
+    try:
+        mtime = path.stat().st_mtime if path.exists() else None
+    except OSError:
+        mtime = None
+    if _ENRICHMENT_CACHE is None or mtime != _ENRICHMENT_MTIME:
         try:
-            _ENRICHMENT_CACHE = json.loads(path.read_text()) if path.exists() else {}
+            data = json.loads(path.read_text()) if path.exists() else {}
         except Exception:
-            _ENRICHMENT_CACHE = {}
+            data = None
+        if data:
+            _ENRICHMENT_CACHE = data
+            _ENRICHMENT_MTIME = mtime
+        elif _ENRICHMENT_CACHE is None:
+            _ENRICHMENT_CACHE = {}   # first load failed; retry next call (mtime stays unset)
     e = _ENRICHMENT_CACHE.get(symbol.upper()) or _ENRICHMENT_CACHE.get(symbol) or {}
     if not isinstance(e, dict):
         return {}

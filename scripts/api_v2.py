@@ -18,7 +18,8 @@ from pathlib import Path
 # api_v2 change and no full server restart is needed.
 import sys as _sys_heal
 for _stale in ("decision_action_policy", "packet_invalidation", "decision_packet",
-               "event_normalizer", "position_truth", "trade_blueprints"):
+               "event_normalizer", "position_truth", "trade_blueprints",
+               "shadow_decision_service"):
     _sys_heal.modules.pop(_stale, None)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
