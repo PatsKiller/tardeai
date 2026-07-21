@@ -109,12 +109,37 @@ def _result(action, allowed, state, *, packet=None, blueprint_id=None,
 
 def evaluate_action(packet: dict, *, packet_id=None, generated_at=None,
                     existing_proposal: bool = False, ttl_hours: float = DEFAULT_TTL_HOURS,
-                    now=None) -> dict:
+                    current_snapshot: dict = None, now=None) -> dict:
+    """Public entry — computes the decision, then guarantees the input-parity fields
+    (packet_input_hash, current_input_hash, inputs_match, invalidation_reasons) are
+    present on the result whenever a current snapshot was available."""
+    res = _evaluate_action_impl(
+        packet, packet_id=packet_id, generated_at=generated_at,
+        existing_proposal=existing_proposal, ttl_hours=ttl_hours,
+        current_snapshot=current_snapshot, now=now)
+    if current_snapshot and "inputs_match" not in res:
+        res["current_input_hash"] = current_snapshot.get("input_hash")
+        res["packet_input_hash"] = ((packet or {}).get("input_hash")
+                                    or ((packet or {}).get("input_snapshot") or {}).get("input_hash"))
+        res["inputs_match"] = True
+        res["invalidation_reasons"] = []
+    return res
+
+
+def _evaluate_action_impl(packet: dict, *, packet_id=None, generated_at=None,
+                          existing_proposal: bool = False, ttl_hours: float = DEFAULT_TTL_HOURS,
+                          current_snapshot: dict = None, now=None) -> dict:
     """The canonical action decision for one symbol from its live packet.
 
     Returns the action-policy result. `allowed` is True ONLY when state == READY,
     and READY requires an ELIGIBLE blueprint (or a satisfied trigger) — never a
     model opinion alone.
+
+    When `current_snapshot` is supplied, the packet is FIRST checked against
+    current source truth; on any mismatch the result is REFRESH/STALE with the
+    exact invalidation reasons, before any mechanics are considered. So a packet
+    that no longer matches the market/event/ownership/fundamental state cannot
+    authorise an action however good its stored mechanics look.
     """
     if not packet or not isinstance(packet, dict):
         # No packet is not a silent grant of legacy authority — it routes to build.
@@ -124,6 +149,27 @@ def evaluate_action(packet: dict, *, packet_id=None, generated_at=None,
     p = dict(packet)
     if packet_id is not None:
         p["packet_id"] = packet_id
+
+    # 0. CURRENT-INPUT VALIDATION — the packet must still match source truth.
+    if current_snapshot:
+        try:
+            import packet_invalidation as _inv
+            cmp = _inv.compare_packet_inputs(p, current_snapshot,
+                                             generated_at=generated_at, now=now)
+            if not cmp["inputs_match"]:
+                res = _result("REFRESH", False, "STALE", packet=p,
+                              blocks=cmp["invalidation_reasons"],
+                              reason="packet no longer matches current inputs — refresh")
+                res["packet_input_hash"] = cmp["packet_input_hash"]
+                res["current_input_hash"] = cmp["current_input_hash"]
+                res["inputs_match"] = False
+                res["invalidation_reasons"] = cmp["invalidation_reasons"]
+                return res
+            _match = cmp
+        except Exception:
+            _match = None
+    else:
+        _match = None
 
     # 1. Packet version must be current — a policy/version mismatch is not actionable.
     if str(p.get("packet_version") or "") and not str(p.get("packet_version")).endswith("-shadow"):

@@ -240,19 +240,18 @@ def classify_freshness(symbols: list, hours: float) -> dict:
     fresh, regen = [], {}
     for sym in {s.upper() for s in symbols}:
         if sym not in live:
-            regen[sym] = "packet_absent"
+            regen[sym] = "PACKET_ABSENT"
             continue
         pkt, gen = live[sym]
         try:
-            current = inv.current_material(sym, conn)
-            invalidated, reason = inv.evaluate_invalidation(
-                pkt, current, generated_at=str(gen), ttl_hours=hours)
+            current = inv.build_current_input_snapshot(sym, conn)
+            res = inv.compare_packet_inputs(pkt, current, generated_at=str(gen), ttl_hours=hours)
+            if res["inputs_match"]:
+                fresh.append(sym)
+            else:
+                regen[sym] = ", ".join(res["invalidation_reasons"]) or "INPUT_HASH_MISMATCH"
         except Exception as exc:
-            invalidated, reason = True, f"invalidation_check_error: {type(exc).__name__}"
-        if invalidated:
-            regen[sym] = reason
-        else:
-            fresh.append(sym)
+            regen[sym] = f"INVALIDATION_CHECK_ERROR: {type(exc).__name__}"
     return {"fresh": fresh, "regenerate": regen}
 
 
@@ -298,9 +297,13 @@ def run(*, top_n: int = TOP_N, dry_run: bool = False, force: bool = False,
         fresh, regen_reasons = set(_cls["fresh"]), _cls["regenerate"]
     todo = [s for s in symbols if s not in fresh]
 
-    # composition of WHY each regen fires (ttl, hash change, drift, catalyst, absent)
+    # composition of WHY each regen fires — counted per invalidation reason CODE
+    # across all regenerating symbols (a symbol may carry several).
     from collections import Counter as _Counter
-    _regen_by_reason = _Counter(str(r).split(" ")[0].split("(")[0] for r in regen_reasons.values())
+    _regen_by_reason = _Counter()
+    for _r in regen_reasons.values():
+        for _code in str(_r).split(","):
+            _regen_by_reason[_code.strip().split(" ")[0].split("(")[0]] += 1
 
     summary = {
         "authorised": "operator 2026-07-21: EVIDENCE-based eligibility (label is sort-only)",

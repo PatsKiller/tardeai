@@ -9,6 +9,18 @@ from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+# SELF-HEAL on reload: the server hot-reloads api_v2 on mtime change but NOT the
+# decision-authority modules api_v2 imports. A signature change there (e.g. the
+# current_snapshot param on evaluate_action) would then be silently swallowed by a
+# handler's try/except because `import X` returns the stale cached module. Popping
+# them here — which runs every time api_v2 (re)loads — forces the handlers' next
+# `import` to fetch a fresh copy, so a decision-module change goes live with the
+# api_v2 change and no full server restart is needed.
+import sys as _sys_heal
+for _stale in ("decision_action_policy", "packet_invalidation", "decision_packet",
+               "event_normalizer", "position_truth", "trade_blueprints"):
+    _sys_heal.modules.pop(_stale, None)
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 
@@ -6486,6 +6498,9 @@ def _wl_items(query: dict = None):
     # named flag ("LEGACY FALLBACK — PACKET REQUIRED"), defaulting to build/refresh.
     try:
         import decision_action_policy as _pol
+        import packet_invalidation as _inv
+        from db_adapter import _get_conn as _gc
+        _conn = _gc()
         _open_props = set()
         try:
             _pr = _db_query("""SELECT DISTINCT upper(symbol) AS s FROM options_approval_queue
@@ -6496,9 +6511,16 @@ def _wl_items(query: dict = None):
         for _it in _items:
             _pkt = _it.get("decision_packet")
             if _pkt and isinstance(_pkt, dict):
+                # Same current-input builder the standalone endpoint uses, so the
+                # inline path never carries a weaker context than the endpoint.
+                try:
+                    _snap = _inv.build_current_input_snapshot(str(_it.get("symbol")), _conn)
+                except Exception:
+                    _snap = None
                 _it["action_policy"] = _pol.evaluate_action(
                     _pkt, packet_id=None, generated_at=_it.get("decision_packet_at"),
-                    existing_proposal=(str(_it.get("symbol") or "").upper() in _open_props))
+                    existing_proposal=(str(_it.get("symbol") or "").upper() in _open_props),
+                    current_snapshot=_snap)
             else:
                 _it["action_policy"] = None
     except Exception as _pe:
@@ -11711,9 +11733,16 @@ def _decision_action_policy(query=None):
         op = bool(_pr)
     except Exception:
         op = False
+    import packet_invalidation as _inv
+    from db_adapter import _get_conn as _gc
+    try:
+        _snap = _inv.build_current_input_snapshot(str(sym), _gc())
+    except Exception:
+        _snap = None
     res = _pol.evaluate_action(pkt, packet_id=row["packet_id"],
-                               generated_at=str(row["generated_at"]), existing_proposal=bool(op))
-    return {"ok": True, "symbol": str(sym).upper(), "action_policy": res}
+                               generated_at=str(row["generated_at"]), existing_proposal=bool(op),
+                               current_snapshot=_snap)
+    return {"ok": True, "symbol": str(sym).upper(), "action_policy": res, "current_snapshot": _snap}
 
 
 def _shadow_strategy_packet(query=None):

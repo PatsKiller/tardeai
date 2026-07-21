@@ -656,6 +656,20 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
                              "why": "Stage A is shadow-only; no preferred action is "
                                     "published from this path"},
     }
+    # Persist the CURRENT-INPUT snapshot the packet was built on, so a later run
+    # can tell whether the packet still matches source truth (not just whether it
+    # is young). One canonical builder — the same one the batch and action policy
+    # use — so the comparison is apples-to-apples.
+    try:
+        import packet_invalidation as _inv
+        packet["input_snapshot"] = _inv.build_current_input_snapshot(
+            sym, conn, source_commit_sha=packet.get("source_commit_sha") or "")
+        packet["input_hash"] = packet["input_snapshot"]["input_hash"]
+        packet["action_policy_version"] = _inv.POLICY_VERSION
+    except Exception as _ie:
+        packet["input_snapshot"] = None
+        packet["input_hash"] = None
+
     packet["headline"] = dp.compose_headline(packet)
     packet["validation_errors"] = dp.validate(packet)
     return packet
@@ -674,6 +688,21 @@ def persist(packet: dict, conn=None, *, origin="on_demand", requested_by="operat
     if conn is None:
         from db_adapter import _get_conn
         conn = _get_conn()
+
+    # ATOMICITY GUARD (Part E): a broken packet must never supersede a good one.
+    # Refuse to persist unless every required family is present and the packet has
+    # no fatal validation errors. On refusal the caller keeps the prior live packet
+    # (stale but valid) rather than being left with nothing.
+    fam = packet.get("plan_families") or {}
+    _required = ("long_term", "swing", "bearish", "options", "no_trade")
+    _missing = [f for f in _required if not (fam.get(f) or {}).get("state")]
+    if _missing:
+        raise ValueError(f"refusing to persist {packet.get('symbol')}: missing families {_missing}")
+    if packet.get("validation_errors"):
+        raise ValueError(f"refusing to persist {packet.get('symbol')}: "
+                         f"{len(packet['validation_errors'])} validation error(s): "
+                         f"{packet['validation_errors'][:2]}")
+
     cur = conn.cursor()
     if run_id is None:
         cur.execute("""INSERT INTO decision_runs (origin, requested_by, started_at,
@@ -732,7 +761,14 @@ def persist(packet: dict, conn=None, *, origin="on_demand", requested_by="operat
                          (family.get("chain_attempt") or {}).get("provider"),
                          packet["event_state"]["earnings"]["state"],
                          family.get("state")))
-    conn.commit()
+    # Single transaction: the new packet, its supersession of the old, and all
+    # blueprints commit together or not at all — so a mid-write failure leaves the
+    # prior packet live and unsuperseded rather than the symbol with nothing.
+    try:
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return packet_id
 
 

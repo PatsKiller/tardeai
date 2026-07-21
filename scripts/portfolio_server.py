@@ -99,6 +99,14 @@ def _get_api_v2():
                         "brokers.intent_submit_router",
                         "schwab_transport",
                         "brokers.protective_stop_pilot",
+                        # Decision-authority modules that api_v2 calls into — reload
+                        # them WITH api_v2 so a signature change (e.g. the
+                        # current_snapshot param on evaluate_action) is picked up
+                        # rather than silently swallowed by the handler's try/except.
+                        "decision_action_policy",
+                        "packet_invalidation",
+                        "decision_packet",
+                        "shadow_decision_service",
                     ):
                         if _pilot_mod in sys.modules:
                             importlib.reload(sys.modules[_pilot_mod])
