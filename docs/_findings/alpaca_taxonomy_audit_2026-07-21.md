@@ -317,7 +317,7 @@ Adding a `broker_accounts` row for live Alpaca alone does **not** rewire equity 
 
 | Gap | Evidence | Status |
 |-----|----------|--------|
-| Stop/reconcile paths honor `ALPACA_BASE_URL` without live-host refuse | was `alpaca_stop_manager.py:40`; reconciler `:74,86` | **REMEDIATED 2026-07-21** — exact host + `ALPACA_MODE=paper` bouncer (`require_paper_trading_base`); tests `tests/test_alpaca_paper_host_lock.py`. Commit: `6085874df70b64b757c2caac746dcc42d839f254` |
+| Stop/reconcile paths honor `ALPACA_BASE_URL` without live-host refuse | was `alpaca_stop_manager.py:40`; reconciler `:74,86` | **REMEDIATED 2026-07-21** — exact host + `ALPACA_MODE=paper` bouncer (`require_paper_trading_base`); tests `tests/test_alpaca_paper_host_lock.py`. Commit: `c9f31f6be22ee640166ea0ff6b56fb36d4ed5c2e` |
 | Single global API key pair for all Alpaca | `.env` key names only | open (taxonomy redesign) |
 | Global `ALPACA_MODE` couples all paper automation | 32+ scripts; api_v2 | open |
 | Interlock ignores `broker_accounts.environment`; unknown labels refuse | `live_trading_interlock.py:31-36,75-81` | open |
