@@ -81,6 +81,44 @@ accounts:
       growth_etf: 10
       cash: 10
 
+  # ── Alpaca live scaffolds (READ-ONLY DATA · execution not built) ───────────
+  # Populated into holdings only after operator enables api_read_enabled + keys.
+  # is_enabled / api_write / live_arm stay off. Never used for order submit.
+  alpaca_taxable_live:
+    display_name: "Alpaca Taxable (Live · read-only data)"
+    broker: alpaca
+    type: taxable
+    account_id: "scaffold"
+    taxable: true
+    read_only: true
+    active: false
+    execution_built: false
+    notes: "R4 scaffold + 2026-07-21 read-side wiring. Positions merge via alpaca_live_read_sync only when api_read_enabled=true. No live orders."
+    target_allocation: {}
+
+  alpaca_ira_live:
+    display_name: "Alpaca IRA (Live · read-only data)"
+    broker: alpaca
+    type: traditional_ira
+    account_id: "scaffold"
+    taxable: false
+    read_only: true
+    active: false
+    execution_built: false
+    notes: "R4 scaffold + 2026-07-21 read-side wiring. IRA product constraints require external research before any write path. Read sync only."
+    target_allocation: {}
+
+  tradeai_automated:
+    display_name: "Alpaca Paper (TradeAI Automated)"
+    broker: alpaca
+    type: paper
+    account_id: "paper"
+    taxable: false
+    read_only: false
+    active: true
+    notes: "Path A paper training account — existing alpaca_paper_adapter pipeline. Canonical D1 key."
+    target_allocation: {}
+
 # ── Portfolio-wide Targets ────────────────────────────────────────────────────
 portfolio_targets:
   max_single_stock_pct: 15.0

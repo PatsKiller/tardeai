@@ -163,6 +163,9 @@ export function accountFullName(account: string): string {
     fidelity_roth_ira: 'Fidelity Roth IRA',
     fidelity_taxable: 'Fidelity Taxable',
     fidelity_401k: 'Fidelity 401(k)',
+    tradeai_automated: 'Alpaca Paper (TradeAI Automated)',
+    alpaca_taxable_live: 'Alpaca Taxable (Live · read-only data)',
+    alpaca_ira_live: 'Alpaca IRA (Live · read-only data)',
   }
   if (MAP[key]) return MAP[key]
   // Title-case unknown keys: schwab_foo → Schwab Foo
@@ -190,6 +193,9 @@ export function accountBrand(account: string): { color: string; bg: string; lett
   }
   if (k.includes('schwab')) {
     return { color: '#22c55e', bg: 'rgba(34,197,94,0.14)', letter: 'S' }
+  }
+  if (k.includes('alpaca') || k.includes('tradeai')) {
+    return { color: '#fbbf24', bg: 'rgba(251,191,36,0.14)', letter: 'A' }
   }
   if (k.includes('401')) {
     return { color: '#38bdf8', bg: 'rgba(56,189,248,0.14)', letter: '4' }

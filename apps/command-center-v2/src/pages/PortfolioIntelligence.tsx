@@ -139,6 +139,9 @@ const ACCOUNT_LABELS: Record<string, string> = {
   schwab_rollover_ira: 'SCHWAB ROLLOVER IRA',
   schwab_roth: 'SCHWAB ROTH',
   schwab_taxable: 'SCHWAB TAXABLE',
+  tradeai_automated: 'ALPACA PAPER',
+  alpaca_taxable_live: 'ALPACA TAXABLE LIVE (READ-ONLY DATA)',
+  alpaca_ira_live: 'ALPACA IRA LIVE (READ-ONLY DATA)',
 };
 
 const ACCOUNT_COLORS: Record<string, string> = {
@@ -146,6 +149,9 @@ const ACCOUNT_COLORS: Record<string, string> = {
   schwab_rollover_ira: '#10B981',
   schwab_roth: '#F59E0B',
   schwab_taxable: '#8B5CF6',
+  tradeai_automated: '#FBBF24',
+  alpaca_taxable_live: '#F59E0B',
+  alpaca_ira_live: '#D97706',
 };
 
 // ── Watchlist Drawer ──────────────────────────────────────────────────────────
