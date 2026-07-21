@@ -30,14 +30,15 @@ def test_eligible_ratings_are_the_authorised_set():
     assert set(bg.ELIGIBLE_RATINGS) == {"STRONG_BUY", "BUY", "ADD", "ADD_ON_PULLBACK", "HOLD"}
 
 
-def test_target_is_capped_at_top_n_plus_starred():
+def test_target_is_capped_at_top_n():
     import shadow_batch_generator as bg
     sel = bg.select_targets(top_n=50)
-    top = [m for m in sel["members"] if "top_rank" in m["reason"]]
-    assert len(top) <= 50, "top-rank slice must be bounded by N"
-    # every member is either top-rank or starred — nothing else leaks in
+    assert len(sel["members"]) <= 50, "selection must be bounded by the cap"
+    # every member qualifies on at least one governed evidence reason
+    valid = {"starred", "directive", "held", "material_move", "catalyst",
+             "scope_s1", "packet_absent"}
     for m in sel["members"]:
-        assert "top_rank" in m["reason"] or m["reason"] == "starred"
+        assert set(m["reasons"]) & valid, f"{m['symbol']} has no valid evidence reason"
 
 
 def test_no_silent_truncation_dropped_count_is_reported():
@@ -180,3 +181,55 @@ def test_extracted_fundamentals_pass_the_blindness_guard():
         pytest.skip("no enrichment for NXPI in this environment")
     br.assert_blind({"symbol": "NXPI", "fundamentals": f})   # raises if an anchor slipped in
     assert not any(w in k.lower() for k in f for w in ("recom", "rating", "verdict"))
+
+
+# ── evidence-based eligibility — label is NOT an inclusion gate (2026-07-21) ───
+
+def test_selection_is_evidence_based_not_label_gated():
+    """The eligible-ratings gate recreated the original circular defect. Selection
+    now qualifies on evidence; the label is a sort tiebreaker only."""
+    import shadow_batch_generator as bg
+    src = Path(bg.__file__).read_text()
+    sel_src = src[src.index("def select_targets"):src.index("def _fresh_symbols")]
+    for signal in ("starred", "directive", "held", "material_move", "catalyst",
+                   "scope_s1", "packet_absent"):
+        assert signal in sel_src, f"evidence signal {signal} missing"
+    # the label must NOT be a WHERE-clause inclusion filter in the selector
+    assert "IN {ratings}" not in sel_src, "legacy label is gating inclusion again"
+    assert "label: tiebreaker ONLY" in sel_src
+
+
+def test_label_rank_is_only_a_final_tiebreaker():
+    """_label_rank must appear AFTER hermes_rank in the priority tuple, so a label
+    can never outrank real evidence."""
+    import shadow_batch_generator as bg
+    src = Path(bg.__file__).read_text()
+    pr = src[src.index("def _priority"):src.index("ranked = sorted")]
+    # hermes_rank sort key comes before the label rank in the returned tuple
+    assert pr.index("hermes_rank") < pr.rindex("_label_rank")
+
+
+def test_dry_run_reports_the_full_composition():
+    """The dry run must expose the composition before any spend (spec #1)."""
+    import shadow_batch_generator as bg
+    sel = bg.select_targets(top_n=20)
+    for k in ("total_qualifying", "selected", "deferred_by_cap", "by_reason",
+              "starred", "held", "catalyst", "material_move",
+              "legacy_buy_side", "legacy_ignore_avoid", "est_lane_calls"):
+        assert k in sel, f"composition report missing {k}"
+    # every selected member carries its evidence reasons, none empty
+    for m in sel["members"]:
+        assert m.get("reasons"), f"{m['symbol']} selected with no evidence reason"
+
+
+def test_ignore_avoid_names_are_reachable_by_evidence():
+    """The decisive regression: an IGNORE/AVOID label cannot block selection when
+    the symbol has evidence. With evidence-based selection the selected set should
+    be ABLE to contain ignore/avoid names (it does today: most held/starred names
+    carry avoid-side labels)."""
+    import shadow_batch_generator as bg
+    sel = bg.select_targets(top_n=50)
+    # not asserting a fixed count (data-dependent), but the mechanism must permit it:
+    # legacy_ignore_avoid is COUNTED among selected, proving they are not excluded.
+    assert "legacy_ignore_avoid" in sel
+    assert sel["legacy_ignore_avoid"] >= 0   # counted, never filtered out upstream

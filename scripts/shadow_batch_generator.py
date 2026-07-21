@@ -60,55 +60,142 @@ def _conn():
     return _get_conn()
 
 
-def select_targets(top_n: int = TOP_N) -> dict:
-    """The bounded target set: starred ∪ top-N-by-rank(eligible ratings).
+# Evidence conditions that qualify a symbol for analysis — NONE is the legacy
+# label. The label gated the first version and recreated the original circular
+# defect: an IGNORE/AVOID verdict blocked the very analysis that could revise it.
+# Here the label is a SORT feature only (see _label_rank); access is by evidence.
+INTEREST_MOVE_PCT = float(os.getenv("SHADOW_BATCH_MOVE_PCT", "5.0"))
+INTEREST_MOVE_RVOL = float(os.getenv("SHADOW_BATCH_MOVE_RVOL", "2.0"))
+CATALYST_DAYS = int(os.getenv("SHADOW_BATCH_CATALYST_DAYS", "3"))
+CATALYST_CONF = float(os.getenv("SHADOW_BATCH_CATALYST_CONF", "0.7"))
 
-    Returns the set plus provenance so the caller can show WHY each symbol is in.
-    Deterministic, read-only.
+# Rough per-symbol cost for the dry-run estimate: 2 cloud lanes per blind pass.
+LANE_CALLS_PER_SYMBOL = 2
+
+
+def _held_symbols() -> set:
+    try:
+        path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+        d = json.loads(path.read_text()) if path.exists() else {}
+        return {str(r.get("symbol", "")).upper()
+                for r in (d.get("holdings") or [])
+                if (r.get("market_value") or 0) or (r.get("quantity") or r.get("shares") or 0)}
+    except Exception:
+        return set()
+
+
+def select_targets(top_n: int = TOP_N) -> dict:
+    """Evidence-based target set. A symbol qualifies on any governed evidence of
+    interest; the legacy recommendation affects ORDERING only, never inclusion.
+
+    Deterministic, read-only. Returns members (each with its evidence reasons),
+    the full composition report, and a cost estimate — so a dry run shows exactly
+    what will be spent and WHY each symbol is in, before any model call.
     """
     conn = _conn()
     cur = conn.cursor()
-    ratings = "(" + ",".join("'%s'" % r for r in ELIGIBLE_RATINGS) + ")"
 
-    # top N by hermes rank among eligible-rated names
-    cur.execute(f"""
-        SELECT DISTINCT ON (wi.symbol) wi.symbol, wi.hermes_rank,
-               UPPER(COALESCE(fs.recommendation, rc.latest_recommendation)) AS rec
+    # One pass over the watchlist collecting every evidence signal per symbol.
+    cur.execute("""
+        SELECT UPPER(wi.symbol) AS symbol, wi.hermes_rank,
+               UPPER(COALESCE(fs.recommendation, rc.latest_recommendation)) AS rec,
+               COALESCE(wi.in_directive_watch, false) AS directive,
+               UPPER(COALESCE(wi.scope_tier, '')) = 'S1' AS s1,
+               (ABS(COALESCE(wi.change_pct,0)) >= %s AND COALESCE(wi.rvol,0) >= %s) AS moved,
+               EXISTS (SELECT 1 FROM operator_starred_symbols s
+                       WHERE UPPER(s.symbol) = UPPER(wi.symbol)) AS starred,
+               EXISTS (SELECT 1 FROM catalyst_events ce
+                       WHERE UPPER(ce.symbol) = UPPER(wi.symbol)
+                         AND ce.catalyst_type <> 'other'
+                         AND ce.published_at > now() - (%s || ' days')::interval
+                         AND COALESCE(ce.confidence,0) >= %s) AS catalyst,
+               EXISTS (SELECT 1 FROM decision_packets dp
+                       WHERE UPPER(dp.symbol) = UPPER(wi.symbol)
+                         AND dp.superseded_by IS NULL) AS has_packet
         FROM watchlist_items wi
         LEFT JOIN watchlist_final_synthesis fs ON UPPER(fs.symbol)=UPPER(wi.symbol)
         LEFT JOIN watchlist_research_cards rc ON rc.symbol=wi.symbol
-        WHERE wi.status <> 'removed' AND wi.symbol ~ '^[A-Z]{{1,5}}$'
-          AND UPPER(COALESCE(fs.recommendation, rc.latest_recommendation)) IN {ratings}
-        ORDER BY wi.symbol, wi.hermes_rank NULLS LAST
-    """)
-    rated = {r[0].upper(): {"symbol": r[0].upper(), "hermes_rank": r[1], "rec": r[2]}
-             for r in cur.fetchall()}
-    # rank across the whole rated set, then take top N
-    top = sorted(rated.values(),
-                 key=lambda d: (d["hermes_rank"] is None, d["hermes_rank"] or 1e9))[:top_n]
-    top_syms = {d["symbol"] for d in top}
+        WHERE wi.status <> 'removed' AND wi.symbol ~ '^[A-Z]{1,5}$'
+    """, (INTEREST_MOVE_PCT, INTEREST_MOVE_RVOL, CATALYST_DAYS, CATALYST_CONF))
 
-    cur.execute("SELECT DISTINCT UPPER(symbol) FROM operator_starred_symbols")
-    starred = {r[0] for r in cur.fetchall()}
+    held = _held_symbols()
+    rows = {}
+    for r in cur.fetchall():
+        sym, rank, rec, directive, s1, moved, starred, catalyst, has_pkt = r
+        reasons = []
+        if starred: reasons.append("starred")
+        if directive: reasons.append("directive")
+        if sym in held: reasons.append("held")
+        if moved: reasons.append("material_move")
+        if catalyst: reasons.append("catalyst")
+        if s1: reasons.append("scope_s1")
+        if not has_pkt: reasons.append("packet_absent")
+        if reasons:
+            rows[sym] = {"symbol": sym, "hermes_rank": rank, "rec": rec,
+                         "reasons": reasons, "has_packet": has_pkt}
 
-    members = {}
-    for d in top:
-        members[d["symbol"]] = {"symbol": d["symbol"], "reason": "top_rank",
-                                "hermes_rank": d["hermes_rank"], "rec": d["rec"]}
-    for s in starred:
-        if s in members:
-            members[s]["reason"] = "top_rank+starred"
-        else:
-            members[s] = {"symbol": s, "reason": "starred",
-                          "hermes_rank": (rated.get(s) or {}).get("hermes_rank"),
-                          "rec": (rated.get(s) or {}).get("rec")}
+    # A held name not on the watchlist still qualifies (held is ground-truth interest).
+    for sym in held:
+        if sym not in rows:
+            rows[sym] = {"symbol": sym, "hermes_rank": None, "rec": None,
+                         "reasons": ["held"], "has_packet": False}
 
-    eligible_total = len(rated)
-    dropped = max(0, eligible_total - len(top_syms))   # rated names below the top-N cut
-    return {"members": sorted(members.values(), key=lambda d: (d["reason"] != "starred",
-                                                               d["hermes_rank"] or 1e9)),
-            "top_n": top_n, "starred": len(starred),
-            "eligible_total": eligible_total, "dropped_below_cap": dropped}
+    def _label_rank(rec):
+        # ORDERING only: buy-side first, then hold/neutral, then avoid/ignore last —
+        # but every one is already INCLUDED. The label never gates access.
+        order = {"STRONG_BUY": 0, "BUY": 1, "ADD": 1, "ADD_ON_PULLBACK": 2,
+                 "HOLD": 3, "NEUTRAL": 4, "RESEARCH_MORE": 4,
+                 "TRIM": 6, "SELL": 6, "AVOID": 7, "IGNORE": 7}
+        return order.get(str(rec or "").upper(), 5)
+
+    # Priority tiers by EVIDENCE strength — the legacy label is NOT a tier and is
+    # only a final tiebreaker (so it cannot starve an IGNORE/AVOID name that has
+    # real evidence). An unstarred IGNORE with a fresh catalyst or volume-
+    # confirmed move sits in tier 2 and is selected on its own merits.
+    def _priority(m):
+        rs = set(m["reasons"])
+        if "starred" in rs:                        tier = 0   # explicit operator interest
+        elif "held" in rs:                         tier = 1   # ground-truth position
+        elif rs & {"catalyst", "material_move"}:   tier = 2   # time-sensitive
+        elif rs & {"directive", "scope_s1"}:       tier = 3   # governed watch
+        else:                                      tier = 4   # packet-absent only
+        return (tier, 0 if "packet_absent" in rs else 1,
+                m["hermes_rank"] is None, m["hermes_rank"] or 1e9,
+                _label_rank(m["rec"]))   # label: tiebreaker ONLY, never a gate
+
+    ranked = sorted(rows.values(), key=_priority)
+    selected = ranked[:top_n]
+    deferred = ranked[top_n:]
+
+    def _count(pool, reason):
+        return sum(1 for m in pool if reason in m["reasons"])
+
+    def _label_bucket(pool, labels):
+        return sum(1 for m in pool if str(m["rec"] or "").upper() in labels)
+
+    report = {
+        "members": selected,
+        "top_n": top_n,
+        "total_qualifying": len(rows),
+        "selected": len(selected),
+        "deferred_by_cap": len(deferred),
+        "by_reason": {r: _count(selected, r) for r in
+                      ("starred", "directive", "held", "material_move",
+                       "catalyst", "scope_s1", "packet_absent")},
+        "starred": _count(selected, "starred"),
+        "held": _count(selected, "held"),
+        "catalyst": _count(selected, "catalyst"),
+        "material_move": _count(selected, "material_move"),
+        "legacy_buy_side": _label_bucket(selected, {"STRONG_BUY", "BUY", "ADD", "ADD_ON_PULLBACK", "HOLD"}),
+        "legacy_ignore_avoid": _label_bucket(selected, {"IGNORE", "AVOID", "SELL", "TRIM"}),
+        "est_lane_calls": len(selected) * LANE_CALLS_PER_SYMBOL,
+        "est_cost_note": f"{len(selected) * LANE_CALLS_PER_SYMBOL} cloud-lane calls "
+                         f"(2/symbol); free OAuth lanes — no per-call charge",
+        # kept for back-compat with existing callers/tests
+        "eligible_total": len(rows),
+        "dropped_below_cap": len(deferred),
+    }
+    return report
 
 
 def _fresh_symbols(symbols: list, hours: float) -> set:
@@ -161,19 +248,25 @@ def run(*, top_n: int = TOP_N, dry_run: bool = False, force: bool = False,
     todo = [s for s in symbols if s not in fresh]
 
     summary = {
-        "authorised": "operator 2026-07-21: top N by rank (eligible ratings) + all starred",
-        "eligible_ratings": list(ELIGIBLE_RATINGS),
+        "authorised": "operator 2026-07-21: EVIDENCE-based eligibility (label is sort-only)",
+        "eligibility": "star | directive | held | material-move+rvol | catalyst | scope-S1 | packet-absent",
         "top_n": top_n, "concurrency": concurrency, "fresh_hours": fresh_hours,
-        "target_count": len(symbols), "starred_count": sel["starred"],
-        "eligible_total": sel["eligible_total"],
-        "dropped_below_cap": sel["dropped_below_cap"],
+        "target_count": len(symbols),
+        "total_qualifying": sel["total_qualifying"], "selected": sel["selected"],
+        "deferred_by_cap": sel["deferred_by_cap"], "by_reason": sel["by_reason"],
+        "starred_count": sel["starred"], "held_count": sel["held"],
+        "catalyst_count": sel["catalyst"], "material_move_count": sel["material_move"],
+        "legacy_buy_side": sel["legacy_buy_side"],
+        "legacy_ignore_avoid": sel["legacy_ignore_avoid"],
+        "est_lane_calls": sel["est_lane_calls"], "est_cost_note": sel["est_cost_note"],
         "already_fresh_skipped": len(fresh),
         "to_generate": len(todo), "members": members,
         "started_at": _now().isoformat(), "state": "dry_run" if dry_run else "running",
     }
-    if sel["dropped_below_cap"]:
-        print(f"[batch] NOTE: {sel['dropped_below_cap']} eligible-rated symbols are below the "
-              f"top-{top_n} cut and were NOT included (raise --top to cover more).")
+    if sel["deferred_by_cap"]:
+        print(f"[batch] NOTE: {sel['deferred_by_cap']} qualifying symbols are below the "
+              f"top-{top_n} cap and were deferred (raise --top to cover more). "
+              f"NONE were excluded by their legacy label.")
 
     if dry_run:
         summary["state"] = "dry_run"
@@ -248,14 +341,20 @@ def main() -> int:
     if args.json:
         print(json.dumps(out, indent=2, default=str))
     else:
-        print(f"\n  state={out.get('state')} target={out.get('target_count')} "
-              f"to_generate={out.get('to_generate')} "
-              f"already_fresh={out.get('already_fresh_skipped')} "
+        print(f"\n  state={out.get('state')} qualifying={out.get('total_qualifying')} "
+              f"selected={out.get('selected')} deferred={out.get('deferred_by_cap')} "
+              f"to_generate={out.get('to_generate')} already_fresh={out.get('already_fresh_skipped')} "
               f"generated={out.get('generated')} failed={out.get('failed')}")
-        if out.get("state") in ("dry_run",):
-            print("  members (reason · rank · rec):")
+        if out.get("by_reason"):
+            print(f"  by evidence reason: {out['by_reason']}")
+            print(f"  legacy buy-side={out.get('legacy_buy_side')} "
+                  f"ignore/avoid={out.get('legacy_ignore_avoid')} "
+                  f"(label is sort-only, NOT a gate) · est {out.get('est_lane_calls')} lane calls")
+        if out.get("state") == "dry_run":
+            print("  members (evidence · rank · rec):")
             for m in out.get("members", [])[:80]:
-                print(f"    {m['symbol']:6s} {m['reason']:16s} rank={m.get('hermes_rank')} rec={m.get('rec')}")
+                print(f"    {m['symbol']:6s} {'+'.join(m.get('reasons', [])):32s} "
+                      f"rank={m.get('hermes_rank')} rec={m.get('rec')}")
     return 0
 
 
