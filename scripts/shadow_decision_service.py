@@ -146,9 +146,10 @@ def gather_facts(symbol: str, conn) -> dict:
                      hermes_score=float(r[5]) if r[5] is not None else None,
                      hermes_rank=r[6], enriched_at=str(r[7] or ""),
                      scope_tier=r[8])
-    cur.execute("SELECT sector, industry FROM symbol_profiles WHERE upper(symbol)=%s", (sym,))
+    cur.execute("SELECT sector, industry, instrument_type, quote_type FROM symbol_profiles WHERE upper(symbol)=%s", (sym,))
     r2 = cur.fetchone()
-    facts["sector"], facts["industry"] = (r2[0], r2[1]) if r2 else (None, None)
+    (facts["sector"], facts["industry"], facts["instrument_type"], facts["quote_type"]) = (
+        (r2[0], r2[1], r2[2], r2[3]) if r2 else (None, None, None, None))
 
     # Fundamentals from the Finviz enrichment cache — the evidence the models
     # need for a thesis. Anchor/verdict keys are excluded by the whitelist.
@@ -224,7 +225,43 @@ def assess_data_quality(facts: dict, event: ev.EventState) -> dict:
     elif event.state == ev.CONFLICTED:
         problems.append(f"event sources disagree: {event.reason}")
         state = "CONFLICTED"
+
+    # ── PER-DIMENSION freshness (Part D) ──────────────────────────────────────
+    # The packet must NOT read DATA FRESH just because price is fresh while
+    # fundamentals are stale. Classify each dimension, keep them visible, and
+    # derive the overall state deterministically as the worst of them.
+    price_dim = ("STALE" if (drift is not None and drift > 3.0)
+                 else "PARTIAL" if (drift is not None and drift > 1.0) else "FRESH")
+    tech_dim = "FRESH" if facts.get("atr") else "STALE"
+    try:
+        import fundamentals_freshness as ff
+        fq = ff.classify(facts.get("fundamentals") or {},
+                         instrument_type=facts.get("instrument_type"),
+                         quote_type=facts.get("quote_type"),
+                         fetched_at=(facts.get("fundamentals") or {}).get("fundamentals_as_of"))
+    except Exception:
+        fq = {"state": "UNAVAILABLE", "missing_critical_fields": []}
+    fund_dim = fq.get("state")
+    event_dim = ("FRESH" if event.state in (ev.SCHEDULED, ev.NONE_CONFIRMED)
+                 else "CONFLICTED" if event.state == ev.CONFLICTED
+                 else "STALE" if event.state == ev.STALE else "UNKNOWN")
+    dims = {"price": price_dim, "technicals": tech_dim,
+            "fundamentals": fund_dim, "event": event_dim}
+
+    # A stale/partial FUNDAMENTAL set drags the overall state down (but a long-term
+    # thesis on it stays VISIBLE — the action policy is what refuses READY).
+    if fund_dim in ("STALE",):
+        problems.append(f"fundamentals stale ({fq.get('cache_age_days')}d) — thesis rests on old data")
+        state = "STALE" if state == "FRESH" else state
+    elif fund_dim in ("PARTIAL",):
+        problems.append(f"fundamentals partial — missing {fq.get('missing_critical_fields')}")
+        state = "PARTIAL" if state == "FRESH" else state
+    elif fund_dim == "UNAVAILABLE":
+        problems.append("no fundamentals for an operating company")
+        state = "PARTIAL" if state == "FRESH" else state
+
     return {"state": state, "fields": problems, "price_drift_pct": drift,
+            "dimensions": dims, "fundamentals_provenance": fq,
             "actionable": state in ("FRESH", "PARTIAL")}
 
 
