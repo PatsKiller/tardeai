@@ -52,12 +52,17 @@ export default function ShadowStrategyButton({ symbol }: { symbol: string }) {
 
   useEffect(() => () => { if (timer.current) window.clearInterval(timer.current) }, [])
 
+  // The api_v2 dispatcher wraps GET handler results as { ok, data: {...} } but
+  // returns POST results unwrapped. `unwrap` handles both so this component does
+  // not care which shape a given route uses — without it, the poll read s.stages
+  // off the wrapper (undefined), never saw COMPLETE, and the panel spun forever
+  // with the button visible but no result (the exact symptom observed).
+  const unwrap = (j: any) => (j && typeof j === 'object' && 'data' in j && j.data ? j.data : j)
+
   const readback = async () => {
-    // The status payload carries stages + the packet_id; the packet itself is
-    // read from the shadow readback so the families render with their reasons.
     try {
       const r = await fetch(`/api/v2/shadow/strategy/packet?symbol=${encodeURIComponent(symbol)}`)
-      const j = await r.json()
+      const j = unwrap(await r.json())
       if (j.ok) { setPacket(j.packet); setFamilies(j.blueprints || []) }
     } catch { /* packet endpoint optional; stages already tell the story */ }
   }
@@ -67,7 +72,7 @@ export default function ShadowStrategyButton({ symbol }: { symbol: string }) {
     timer.current = window.setInterval(async () => {
       try {
         const r = await fetch(`/api/v2/shadow/strategy/status?run_id=${runId}`)
-        const s = await r.json()
+        const s = unwrap(await r.json())
         if (!s.ok) return
         setStages(s.stages || [])
         setCurrentStage(s.current_stage || null)
@@ -90,7 +95,7 @@ export default function ShadowStrategyButton({ symbol }: { symbol: string }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol, requested_by: 'operator' }),
       })
-      const j = await r.json()
+      const j = unwrap(await r.json())
       if (!j.ok) { setPhase('failed'); setErr(j.error || 'could not start'); return }
       poll(j.run_id)
     } catch (e: any) { setPhase('failed'); setErr(String(e?.message || e)) }
