@@ -467,16 +467,21 @@ export function buildOperatorPresentation(opts: {
   ].filter(Boolean).join(' · ')
 
   // Thesis line (always operator language)
+  // V5 (Section 6D): the build timestamp is NEVER hidden — a stale card shows
+  // the prior build time PLUS the stale marker, not the marker instead of it.
   const thesisLine = [
     `Long term ${thesisWords(thesis)}`,
     `tactical ${timingWords(timing)}`,
     earnLabel || null,
-    inputsStale ? 'needs refresh' : (stampLine || 'data current'),
+    inputsStale ? [stampLine, 'STALE'].filter(Boolean).join(' · ') : (stampLine || 'data current'),
   ].filter(Boolean).join(' · ')
 
-  // Chips (max 3) — timestamp chip when current
+  // Chips (max 3) — stale keeps the timestamp chip alongside NEEDS REFRESH
   const chips: string[] = []
-  if (inputsStale) chips.push('NEEDS REFRESH')
+  if (inputsStale) {
+    chips.push('NEEDS REFRESH')
+    if (ageLabel) chips.push(ageLabel.toUpperCase().replace('BUILT ', 'BUILT '))
+  }
   else if (clockLabel && ageLabel) {
     chips.push(`${clockLabel} · ${ageLabel.replace(/^built /, '')}`.toUpperCase())
   } else if (ageLabel) chips.push(ageLabel.toUpperCase().replace('BUILT ', ''))

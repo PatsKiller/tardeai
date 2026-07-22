@@ -653,7 +653,18 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
     res = min(facts.get("resistance") or [price * 1.05])
     extended = bool(price and res and price >= res * 0.98) or chg >= 5.0
     timing = "EXTENDED" if extended else "RANGE_BOUND" if 40 <= rsi <= 60 else "NO_VALID_SETUP"
-    thesis_state = "INSUFFICIENT_EVIDENCE"
+    # V5: the deterministic thesis ENGINE (factor-based, instrument-aware, raw
+    # whitelisted evidence only) replaces the old bare INSUFFICIENT_EVIDENCE
+    # fallback — LOCAL_QUANT packets get a real explainable thesis. Always
+    # computed and stored for audit; a reconciled model view still overrides
+    # the headline thesis_state when the blind pass ran.
+    try:
+        import deterministic_thesis as dth
+        det_thesis = dth.evaluate(facts, facts.get("instrument_type"))
+    except Exception as _dte:
+        det_thesis = {"engine": "deterministic_thesis", "error": str(_dte)[:120],
+                      "thesis_state": "INSUFFICIENT_EVIDENCE"}
+    thesis_state = det_thesis.get("thesis_state") or "INSUFFICIENT_EVIDENCE"
     if reconciled:
         thesis_state = reconciled.get("thesis_state") or thesis_state
         if reconciled.get("tactical_timing") not in (None, "", "NO_VALID_SETUP"):
@@ -671,6 +682,7 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
     packet = {
         "packet_version": PACKET_VERSION, "symbol": sym,
         "instrument_type": "STOCK",
+        "deterministic_thesis": det_thesis,
         "evaluated_at": _now().isoformat(),
         "facts_as_of": facts.get("live_price_as_of") or facts.get("enriched_at"),
         "price_used": facts.get("live_price") or facts.get("enriched_price"),

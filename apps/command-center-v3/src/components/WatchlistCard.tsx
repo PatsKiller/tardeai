@@ -142,6 +142,10 @@ export type WatchlistCardProps = {
   onDrill: (ctx: DrillContext) => void
   onToggleStar: (e: React.MouseEvent) => void
   onRefresh: (e: React.MouseEvent) => void
+  /** V5: canonical strategy refresh (packet rebuild orchestrator). */
+  onRefreshStrategy?: (e: React.MouseEvent) => void
+  /** V5: a strategy-refresh run is in flight for this symbol. */
+  strategyRefreshing?: boolean
   onToggleEns: () => void
   isStarred: boolean
   onPropose?: (it: any, opts?: { account_key?: string; risk_pct?: RiskPct }) => void

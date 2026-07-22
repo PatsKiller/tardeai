@@ -1,0 +1,52 @@
+# Watch Decision Desk V5 — server-owned refresh policy (Section 4)
+# Loaded with mtime hot-reload by scripts/watch_decision_refresh.py (stop_policy.yaml pattern).
+# The browser is NEVER the scheduler; scripts/watch_decision_scheduler.py owns cadence.
+# Frequent tactical updates use LOCAL_QUANT (deterministic, zero model lanes).
+# STANDARD_BLIND uses the free OAuth lanes, bounded. PREMIUM never schedules automatically.
+
+version: "5.0.0"
+
+sessions:
+  premarket_prep: "07:45"        # ET — prepare P0/P1 before open
+  rth: ["09:30", "16:00"]        # priority scheduler active
+  postclose_reconcile: "16:25"   # ET
+
+tiers:
+  P0:   # held, starred, READY, near-entry, material mover, fresh catalyst, earnings <= 14d
+    local_projection_minutes: 15
+    full_local_packet_max_minutes: 60      # on invalidation; hard ceiling 60m RTH
+    standard_blind_max_minutes: 240        # on material thesis/event change only
+    premium: operator_only
+  P1:   # Strong Buy / Buy / Add / Wait-for-Pullback / high-ranked active
+    local_projection_minutes: 30
+    full_local_packet_max_minutes: 120
+    standard_blind_max_minutes: 240
+    premium: operator_only
+  P2:   # remaining top-200 / watch directives
+    local_projection_minutes: 60
+    full_local_packet_max_minutes: 240
+    standard_blind_max_minutes: 1440       # premarket/daily or material change
+    premium: operator_only
+  P3:   # dormant / research-only
+    local_projection_minutes: 1440
+    full_local_packet_max_minutes: 1440
+    standard_blind_max_minutes: 0          # 0 = on operator request only
+    premium: operator_only
+
+limits:
+  max_symbols_per_scheduler_pass: 40
+  max_blind_lane_calls_per_hour: 60        # both lanes combined — protects the free OAuth lanes
+  max_filtered_set_refresh: 100            # governed cap for filtered-population bulk refresh
+  worker_concurrency: 2
+
+# Section 5C — premium registry. NOTHING enabled by default; enabling requires an
+# operator edit here (provider stays out of code). Estimates come from this block.
+premium_providers: []
+#  - provider: example
+#    model: example-large
+#    capability: deep_thesis_review
+#    expected_latency_s: 60
+#    est_cost_per_symbol_usd: 0.40
+#    daily_budget_usd: 5
+#    monthly_budget_usd: 50
+#    enabled: false

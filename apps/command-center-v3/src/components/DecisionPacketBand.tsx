@@ -22,6 +22,11 @@ type Props = {
   actionPolicy?: any
   held?: boolean
   onRefresh?: (e: React.MouseEvent) => void
+  /** V5: canonical packet rebuild (watch_decision_refresh orchestrator). When
+   *  absent, the REFRESH primary falls back to onRefresh (legacy inputs-only). */
+  onRefreshStrategy?: (e: React.MouseEvent) => void
+  /** V5: a strategy-refresh run is in flight for this symbol. */
+  refreshing?: boolean
   onPrimary?: (pres: OperatorPresentation, e: React.MouseEvent) => void
   onAlert?: (pres: OperatorPresentation, e: React.MouseEvent) => void
 }
@@ -33,7 +38,7 @@ function stateBg(state: OperatorState): string {
 }
 
 export default function DecisionPacketBand({
-  packet, actionPolicy, held, onRefresh, onPrimary, onAlert,
+  packet, actionPolicy, held, onRefresh, onRefreshStrategy, refreshing, onPrimary, onAlert,
 }: Props) {
   const [details, setDetails] = useState(false)
   const [whyOpen, setWhyOpen] = useState(false)
@@ -171,27 +176,47 @@ export default function DecisionPacketBand({
         </div>
       )}
 
-      {/* CTAs */}
+      {/* V5 STRATEGY RAIL — all five families always visible (click → details) */}
+      <StrategyRail pres={pres} onOpen={() => setDetails(true)} />
+
+      {/* CTAs — V5 split: Refresh Strategy = packet rebuild orchestrator;
+          Refresh Inputs = the old enrichment-only endpoint, honestly labelled. */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
         <button
           onClick={e => {
             e.stopPropagation()
-            if (pres.state === 'REFRESH' && onRefresh) onRefresh(e)
+            if (pres.state === 'REFRESH') {
+              if (onRefreshStrategy) onRefreshStrategy(e)
+              else if (onRefresh) onRefresh(e)
+            }
             else if (pres.state === 'WAIT' && onAlert) onAlert(pres, e)
             else if (onPrimary) onPrimary(pres, e)
           }}
-          style={terminalButton(pres.state === 'READY' || pres.state === 'REFRESH' ? 'primary' : 'secondary')}
+          disabled={refreshing && pres.state === 'REFRESH'}
+          style={{
+            ...terminalButton(pres.state === 'READY' || pres.state === 'REFRESH' ? 'primary' : 'secondary'),
+            ...(refreshing && pres.state === 'REFRESH' ? { opacity: 0.6, cursor: 'wait' } : {}),
+          }}
         >
-          {pres.primaryCta}
+          {refreshing && pres.state === 'REFRESH' ? 'Refreshing…' : pres.primaryCta}
         </button>
         {pres.stale && (
           <button onClick={e => { e.stopPropagation(); setPrevOpen(v => !v) }} style={terminalButton('ghost')}>
             {prevOpen ? 'Hide previous plan' : 'View Previous Plan'}
           </button>
         )}
-        {!pres.stale && onRefresh && (
+        {!pres.stale && onRefreshStrategy && (
+          <button
+            onClick={e => { e.stopPropagation(); onRefreshStrategy(e) }}
+            disabled={refreshing}
+            style={{ ...terminalButton('ghost'), ...(refreshing ? { opacity: 0.6, cursor: 'wait' } : {}) }}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh Strategy'}
+          </button>
+        )}
+        {onRefresh && (
           <button onClick={e => { e.stopPropagation(); onRefresh(e) }} style={terminalButton('ghost')}>
-            Refresh
+            Refresh Inputs
           </button>
         )}
         <button
@@ -210,6 +235,61 @@ export default function DecisionPacketBand({
 
       {/* Audit drawer — internal codes, all families, hashes, legacy */}
       {details && <AuditDrawer pres={pres} />}
+    </div>
+  )
+}
+
+/** V5 Section 6C — compact always-visible five-family rail. The preferred family
+ *  is visually primary; rejection prose stays in the drawer (click to open). */
+function StrategyRail({ pres, onOpen }: { pres: OperatorPresentation; onOpen: () => void }) {
+  const fams = pres.audit?.families || {}
+  const order = [
+    ['long_term', 'LT'], ['swing', 'SWING'], ['bearish', 'BEAR'],
+    ['options', 'OPT'], ['no_trade', 'NO-TRADE'],
+  ] as const
+  const prefKey = pres.primaryFamily?.key === 'refresh' ? null : pres.primaryFamily?.key
+  // Operator words ONLY — internal packet codes (constructibility etc.) stay in
+  // the Audit drawer; unmapped states render as a neutral dash, never raw codes.
+  const famWord = (k: string, f: any): string => {
+    if (k === 'no_trade') return f.preferred || f.dominant ? 'PREFERRED' : f.available ? 'AVAILABLE' : '—'
+    const act = String(f.action_state || '').toUpperCase()
+    const dec = String(f.decision_state || f.state || '').toUpperCase()
+    if (act === 'READY') return 'READY'
+    if (act.startsWith('WAIT') || dec.startsWith('WAIT')) return 'WAIT'
+    if (dec.includes('REJECT') || act.includes('REJECT')) return 'REJECTED'
+    if (k === 'options' && (dec.includes('STALE') || act.includes('STALE'))) return 'CHAIN STALE'
+    if (dec.includes('UNAVAILABLE') || act.includes('UNAVAILABLE')) return 'UNAVAILABLE'
+    if (dec.includes('ELIGIBLE') || dec.includes('VALID') || dec.includes('CONSTRUCT')) return 'AVAILABLE'
+    return '—'
+  }
+  const toneColor = (w: string): string =>
+    w === 'READY' ? BB.green
+      : w === 'WAIT' || w === 'CHAIN STALE' ? BB.amber
+        : w === 'REJECTED' ? BB.red
+          : BB.text3
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
+      {order.map(([k, label]) => {
+        const f = (fams as any)[k] || {}
+        const w = famWord(k, f)
+        const primary = prefKey && String(prefKey).startsWith(k.split('_')[0])
+        return (
+          <button
+            key={k}
+            onClick={e => { e.stopPropagation(); onOpen() }}
+            title={`${label}: ${w} — click for mechanics, conditions, rejection reasons`}
+            style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: '.04em', cursor: 'pointer',
+              color: toneColor(w), background: 'transparent',
+              border: `1px solid ${primary ? toneColor(w) : BB.border}`,
+              borderRadius: 2, padding: '1px 5px',
+              boxShadow: primary ? `inset 0 0 0 1px ${toneColor(w)}` : undefined,
+            }}
+          >
+            {label} {w}
+          </button>
+        )
+      })}
     </div>
   )
 }

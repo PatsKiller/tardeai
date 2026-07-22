@@ -6684,8 +6684,10 @@ def _wl_items(query: dict = None):
                     pass
                 # Same current-input builder the standalone endpoint uses, so the
                 # inline path never carries a weaker context than the endpoint.
+                # V5 Section 11: 60s per-symbol cache — this ran per packet row on
+                # EVERY list request (23 × several queries = the 4.4s worst case).
                 try:
-                    _snap = _inv.build_current_input_snapshot(str(_it.get("symbol")), _conn)
+                    _snap = _v5_snapshot_cached(str(_it.get("symbol")), _conn, _inv)
                 except Exception:
                     _snap = None
                 _ap = _pol.evaluate_action(
@@ -6704,6 +6706,11 @@ def _wl_items(query: dict = None):
                         "invalidation_reasons": _ap.get("invalidation_reasons") or _ap.get("blocks") or [],
                     }
                     _it["decision_packet"] = _pkt
+                # V5 Section 11: LIST rows carry a presenter-sufficient TRIM, not the
+                # full forensic packet (input_snapshot + raw lane outputs + blind
+                # facts were ~70% of a 1.27MB list payload / 4.4s worst). The full
+                # packet stays on /api/v2/watch/decision/latest for Details/Audit.
+                _it["decision_packet"] = _trim_packet_for_list(_pkt)
             else:
                 _it["action_policy"] = None
         # ROOT: in_portfolio from live holdings.json for every symbol — not the
@@ -11987,6 +11994,171 @@ def _shadow_strategy_build(body=None):
     import shadow_strategy_job as job
     return job.enqueue(sym, requested_by=str(body.get("requested_by") or "operator"),
                        run_models=body.get("run_models", True) is not False)
+
+
+def _q1(query, key):
+    v = (query or {}).get(key)
+    return (v[0] if v else None) if isinstance(v, (list, tuple)) else v
+
+
+# Keys the card presenter + strategy rail + audit drawer actually render. The
+# heavyweights (input_snapshot, model raw lane outputs, blind facts, validation
+# internals) live only on /api/v2/watch/decision/latest.
+_LIST_PACKET_KEYS = (
+    "packet_version", "symbol", "instrument_type", "evaluated_at", "facts_as_of",
+    "price_used", "current_price", "price_drift_pct", "fundamentals_as_of",
+    "ownership", "horizons", "event_state", "data_quality", "no_trade_is_valid",
+    "preferred_action", "headline", "input_hash", "action_policy_version",
+    "current_validity", "deterministic_thesis", "legacy_summary",
+)
+_LIST_STRUCTURE_KEYS = ("structure", "state", "action_state", "occ_symbol",
+                        "entry_zone", "limit_price", "stop_price", "targets", "risk_reward",
+                        "rejection_reasons", "condition", "summary", "quote_source",
+                        "eligibility", "trigger", "invalidation")
+
+
+_V5_SNAP_CACHE: dict = {}
+
+
+def _v5_snapshot_cached(symbol: str, conn, inv, ttl: float = 60.0):
+    """60s TTL cache for build_current_input_snapshot on the LIST path only.
+    Staleness detection tolerates a ≤60s lag; the refresh orchestrator and the
+    standalone /watch/decision/latest always build fresh snapshots."""
+    import time as _t
+    key = symbol.upper()
+    hit = _V5_SNAP_CACHE.get(key)
+    if hit and _t.time() - hit[0] < ttl:
+        return hit[1]
+    snap = inv.build_current_input_snapshot(key, conn)
+    _V5_SNAP_CACHE[key] = (_t.time(), snap)
+    if len(_V5_SNAP_CACHE) > 600:
+        _V5_SNAP_CACHE.clear()
+    return snap
+
+
+def _trim_packet_for_list(pkt: dict) -> dict:
+    try:
+        out = {k: pkt[k] for k in _LIST_PACKET_KEYS if k in pkt}
+        fams = pkt.get("plan_families") or {}
+        tf = {}
+        for name, fam in fams.items():
+            if not isinstance(fam, dict):
+                tf[name] = fam
+                continue
+            f2 = {k: v for k, v in fam.items() if k != "structures"}
+            structs = fam.get("structures") or []
+            f2["structures"] = [
+                {k: s.get(k) for k in _LIST_STRUCTURE_KEYS if s.get(k) is not None}
+                for s in structs[:4] if isinstance(s, dict)
+            ]
+            tf[name] = f2
+        out["plan_families"] = tf
+        mr = pkt.get("model_review") or {}
+        out["model_review"] = {k: mr.get(k) for k in
+                               ("mode", "lanes_requested", "lanes_completed",
+                                "agreement_by_dimension", "consensus", "fallback_reason",
+                                "provider_families", "duration_s")
+                               if mr.get(k) is not None}
+        return out
+    except Exception:
+        return pkt  # never break the list over a trim failure
+
+
+def _watch_decision_refresh_start(body):
+    """POST /api/v2/watch/decision/refresh — V5 canonical strategy refresh (enqueue only,
+    returns <250ms). Body: {symbols, scope, analysis_tier, include_options, force,
+    requested_by, reason}. Advisory-only; no order/2FA surface."""
+    b = body or {}
+    import watch_decision_refresh as wdr
+    return wdr.enqueue_run(
+        b.get("symbols") or ([b["symbol"]] if b.get("symbol") else []),
+        scope=str(b.get("scope") or "FULL_STRATEGY").upper(),
+        analysis_tier=str(b.get("analysis_tier") or "LOCAL_QUANT").upper(),
+        include_options=bool(b.get("include_options")),
+        force=bool(b.get("force")),
+        requested_by=str(b.get("requested_by") or "operator")[:60],
+        reason=str(b.get("reason") or "")[:400])
+
+
+def _watch_decision_refresh_status(query=None):
+    """GET /api/v2/watch/decision/refresh/status?run_id=N — run + per-job states/stages."""
+    import watch_decision_refresh as wdr
+    rid = _q1(query, "run_id")
+    if not rid:
+        return {"ok": False, "error": "run_id required"}
+    try:
+        return wdr.run_status(int(rid))
+    except (ValueError, TypeError):
+        return {"ok": False, "error": f"bad run_id {rid!r}"}
+
+
+def _watch_decision_latest(query=None):
+    """GET /api/v2/watch/decision/latest?symbol=X — live packet + Section-8 freshness
+    contract + action policy. Timestamps present in EVERY state (stale included)."""
+    import watch_decision_refresh as wdr
+    import shadow_decision_service as svc
+    sym = (_q1(query, "symbol") or "").upper()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    out = svc.readback(sym)
+    fresh = wdr.build_freshness(sym)
+    out.update(fresh)
+    if out.get("ok") and out.get("packet"):
+        try:
+            import decision_action_policy as dap
+            out["action_policy"] = dap.evaluate_action(out["packet"], packet_id=out.get("packet_id"))
+        except Exception as e:
+            out["action_policy"] = {"error": str(e)[:120]}
+    return out
+
+
+def _watch_decision_summary(query=None):
+    """GET /api/v2/watch/decision/summary — desk-toolbar counts. TTL/wall-clock based
+    (cheap); per-symbol input-hash truth lives on /watch/decision/latest."""
+    import watch_decision_refresh as wdr
+    import packet_invalidation as pi
+    rows = _db_query("""SELECT symbol, generated_at, model_review_mode FROM decision_packets
+                        WHERE superseded_by IS NULL""") or []
+    live_jobs = {r["symbol"] for r in (_db_query(
+        """SELECT DISTINCT symbol FROM watch_decision_refresh_jobs
+           WHERE state IN ('QUEUED','RUNNING')""") or [])}
+    failed = {r["symbol"] for r in (_db_query(
+        """SELECT DISTINCT symbol FROM watch_decision_refresh_jobs
+           WHERE state='FAILED' AND completed_at > now() - interval '2 hours'""") or [])}
+    import datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc)
+    ttl_h = pi.effective_ttl_hours()
+    c = {"current": 0, "due_soon": 0, "stale": 0, "refreshing": 0, "failed": 0}
+    for r in rows:
+        s = r["symbol"]
+        if s in live_jobs:
+            c["refreshing"] += 1
+        elif s in failed:
+            c["failed"] += 1
+        else:
+            age_h = (now - r["generated_at"]).total_seconds() / 3600
+            if age_h <= ttl_h - 0.5:
+                c["current"] += 1
+            elif age_h <= ttl_h:
+                c["due_soon"] += 1
+            else:
+                c["stale"] += 1
+    lastr = _db_query("""SELECT run_id, state, completed_at, created_at, requested_by
+                         FROM watch_decision_refresh_runs ORDER BY run_id DESC LIMIT 1""")
+    return {"ok": True, "symbols": len(rows), **c,
+            "session": "RTH" if pi.is_us_cash_rth() else "OFF_HOURS",
+            "ttl_hours": ttl_h, "policy_version": wdr.policy_version(),
+            "last_run": (dict(lastr[0], created_at=_json_clean(lastr[0]["created_at"]),
+                              completed_at=_json_clean(lastr[0]["completed_at"])) if lastr else None)}
+
+
+def _watch_decision_premium_estimate(body):
+    """POST /api/v2/watch/decision/premium/estimate — cost preview for the governed
+    premium tier. NEVER runs analysis; returns the registry gate result."""
+    import watch_decision_refresh as wdr
+    b = body or {}
+    syms = b.get("symbols") or []
+    return {"ok": True, "symbols": len(syms), **wdr.premium_gate(len(syms), confirmed=False)}
 
 
 def _shadow_strategy_status(query=None):
@@ -33103,6 +33275,9 @@ ROUTES = {
     "/api/v2/defense/recommendations": _defense_recommendations,
     "/api/v2/shadow/strategy/status": _shadow_strategy_status,
     "/api/v2/shadow/strategy/packet": _shadow_strategy_packet,
+    "/api/v2/watch/decision/refresh/status": _watch_decision_refresh_status,
+    "/api/v2/watch/decision/latest": _watch_decision_latest,
+    "/api/v2/watch/decision/summary": _watch_decision_summary,
     "/api/v2/decision/action-policy": _decision_action_policy,
     "/api/v2/shadow/strategy/batch": _shadow_batch_status,
     "/api/v2/defense/core": _defense_core_registry,
@@ -37901,6 +38076,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/defense/refresh":
         try:
             return 200, _defense_refresh_start(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/watch/decision/refresh":
+        try:
+            return 200, _watch_decision_refresh_start(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/watch/decision/premium/estimate":
+        try:
+            return 200, _watch_decision_premium_estimate(body or {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 
