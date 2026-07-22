@@ -45,6 +45,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(1, str(PROJECT_ROOT / "scripts" / "lib"))  # env_bootstrap
 
 _VENV_PY = PROJECT_ROOT / ".venv" / "bin" / "python"
 PY = str(_VENV_PY) if _VENV_PY.exists() else sys.executable  # worktrees share the main venv
@@ -66,8 +67,36 @@ def _now():
 
 
 def _conn():
-    from db_adapter import _get_conn
-    return _get_conn()
+    """PRIVATE connection — NOT db_adapter's thread-local shared one. The inputs
+    stage runs foreign enrichment modules in-process, and at least one of them
+    closes the shared connection when it finishes (proven: 'connection already
+    closed' at the rebuild stage). Job bookkeeping must survive that."""
+    import psycopg2
+    try:  # ensure DB_* env is loaded the same way db_adapter does
+        from env_bootstrap import load_env
+        load_env()
+    except Exception:
+        pass
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=int(os.getenv("DB_PORT", "5432")),
+        dbname=os.getenv("DB_NAME", "trade_ai"),
+        user=os.getenv("DB_USER", "trade_ai"),
+        password=os.getenv("DB_PASSWORD", ""),
+        connect_timeout=10,
+        application_name="watch_decision_refresh")
+
+
+def _fresh_conn(conn):
+    """Return conn if alive, else a new private connection (foreign modules can
+    kill sockets server-side too)."""
+    try:
+        if conn is not None and not conn.closed:
+            conn.cursor().execute("SELECT 1")
+            return conn
+    except Exception:
+        pass
+    return _conn()
 
 
 def _commit_sha() -> str:
@@ -137,8 +166,13 @@ def _refresh_dimension(symbol: str, dim: str, source_calls: dict) -> None:
             pass  # ownership truth is read live from holdings.json by the snapshot builder
         elif dim == "options":
             pass  # chain is fetched inside build_options during the rebuild (governed single attempt)
-    except Exception as e:
-        ok, note = False, str(e)[:120]
+    except KeyboardInterrupt:
+        raise
+    except BaseException as e:
+        # BaseException on purpose: legacy enrichers call sys.exit() on their own
+        # error paths (SystemExit is NOT an Exception) — that must fail THIS
+        # dimension, never kill the worker mid-job (job 5 died exactly this way).
+        ok, note = False, f"{type(e).__name__}: {str(e)[:110]}"
     source_calls[dim] = {"ok": ok, "seconds": round(time.time() - t0, 1),
                          **({"note": note} if note else {})}
 
@@ -328,6 +362,9 @@ def process_one_job(conn) -> bool:
             if time.time() > deadline:
                 raise TimeoutError(f"SLA {JOB_SLA_SECONDS}s exceeded during inputs:{d}")
             _refresh_dimension(sym, d, source_calls)
+        # Foreign enrichers may have killed connections (including db_adapter's
+        # shared one) — job bookkeeping continues on a verified-alive private conn.
+        conn = _fresh_conn(conn); cur = conn.cursor()
 
         if scope == "INPUTS_ONLY":
             snap2 = pi.build_current_input_snapshot(sym, conn)
@@ -371,16 +408,27 @@ def process_one_job(conn) -> bool:
                 invalidation_reasons=reasons, refreshed_dimensions=dims,
                 source_calls=source_calls, lane_calls=lane_calls)
         return True
-    except Exception as e:
-        conn.rollback()
+    except KeyboardInterrupt:
+        raise
+    except BaseException as e:
+        # SystemExit from an imported legacy module must mark the JOB failed and
+        # keep the worker alive for the rest of the queue.
+        conn = _fresh_conn(conn)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         _finish(conn, job_id, "FAILED",
                 failure_class=type(e).__name__, error=str(e)[:400],
                 source_calls=source_calls)
         return True
     finally:
+        conn = _fresh_conn(conn)
         if locked:
             try:
-                _symbol_unlock(cur); conn.commit()
+                # Advisory locks are session-scoped: if the original session died,
+                # the lock is already gone and this unlock is a harmless no-op.
+                _symbol_unlock(conn.cursor()); conn.commit()
             except Exception:
                 pass
         _reconcile_run(conn, run_id)
@@ -408,8 +456,32 @@ def _reconcile_run(conn, run_id: int):
 
 def run_worker_loop():
     conn = _conn()
-    while process_one_job(conn):
-        pass
+    while True:
+        conn = _fresh_conn(conn)
+        if not process_one_job(conn):
+            break
+
+
+def sweep_stale(grace_seconds: int = 300) -> dict:
+    """Fail RUNNING jobs whose worker died without reaching a terminal state
+    (heartbeat older than the grace window), then reconcile their runs. Cron-run
+    alongside the scheduler so no job can sit RUNNING forever."""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""UPDATE watch_decision_refresh_jobs
+                   SET state='FAILED', failure_class='WorkerDied',
+                       error='worker heartbeat expired (stale-job sweep)', completed_at=now()
+                   WHERE state='RUNNING' AND heartbeat_at < now() - make_interval(secs => %s)
+                   RETURNING job_id, run_id, symbol""", (grace_seconds,))
+    swept = cur.fetchall()
+    conn.commit()
+    for _, rid, _ in swept:
+        _reconcile_run(conn, rid)
+    # also release any QUEUED jobs older than 30m with no worker (spawn died pre-claim)
+    cur.execute("""SELECT count(*) FROM watch_decision_refresh_jobs
+                   WHERE state='QUEUED' AND created_at < now() - interval '30 minutes'""")
+    orphaned_queued = cur.fetchone()[0]
+    return {"swept": [{"job_id": j, "run_id": r, "symbol": s} for j, r, s in swept],
+            "stale_queued": orphaned_queued}
 
 
 # ── status / freshness contract (Section 8) ──────────────────────────────────
@@ -539,6 +611,7 @@ def main():
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--status", type=int)
     ap.add_argument("--freshness")
+    ap.add_argument("--sweep", action="store_true")
     a = ap.parse_args()
     if a.worker:
         run_worker_loop()
@@ -549,6 +622,8 @@ def main():
         print(json.dumps(run_status(a.status), indent=2, default=str))
     elif a.freshness:
         print(json.dumps(build_freshness(a.freshness), indent=2, default=str))
+    elif a.sweep:
+        print(json.dumps(sweep_stale(), indent=2, default=str))
     else:
         ap.print_help()
 
