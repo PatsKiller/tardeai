@@ -170,7 +170,7 @@ def test_v6_legacy_vs_failed_vs_stale_explanations():
 
 def test_v6_list_summary_retains_error():
     api = (ROOT / "scripts/api_v2.py").read_text()
-    assert '"unavailable", "error")' in api, "list tech summary must retain error"
+    assert '"error"' in api.split("_LIST_TECH_KEYS")[1][:400], "list tech summary must retain error"
 
 
 def test_v6_timing_refinement_guarded():

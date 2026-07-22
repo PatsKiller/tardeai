@@ -351,13 +351,95 @@ def build_swing(facts, conn) -> dict:
         "exit_ladder": (plan.get("exit_ladder") or {}).get("steps", []),
         "proposal_tag": tag, "plan_created_at": str(created), "model_used": model,
     }
-    # urgency drives the state: READY is an entry now; WATCH is a wait.
-    u = str(urg or "").upper()
-    state = ELIGIBLE if u == "READY" else CONDITIONAL if u == "NEAR_ENTRY" else CONDITIONAL
-    reasons = [] if u in ("READY", "NEAR_ENTRY") else [
-        f"urgency={u}: price is not within one ATR of the entry zone; the setup is "
-        f"defined but not active"]
+    # V6 correction 1/2: the entry state is COMPUTED against the CURRENT price
+    # and mechanics — never inherited from the stored plan's legacy urgency
+    # (FATN showed "READY — swing entry confirmed" at $4.89 with a $4.30-4.55
+    # zone and a $6.76 reclaim trigger: two different strategies in one card).
+    # One selected plan gets exactly ONE coherent entry mode.
+    price = facts.get("live_price") or facts.get("enriched_price")
+    atr = facts.get("atr")
+    res_list = facts.get("resistance") or []
+    resistance = min(res_list) if res_list else None
+    zlo_f = float(zlo) if zlo else None
+    zhi_f = float(zhi) if zhi else None
+    stop_f = float(stop) if stop else None
+    entry_mode, entry_state, reasons = "PULLBACK", "WAIT_PULLBACK", []
+    if price is None or zhi_f is None or zlo_f is None:
+        entry_state = "UNRESOLVED"
+        reasons = ["missing current price or entry zone — cannot assess entry state"]
+        state = CONDITIONAL
+    elif stop_f is not None and price < stop_f:
+        entry_state, state = "INVALIDATED", REJECTED
+        reasons = [f"price {price:.2f} is below the plan invalidation {stop_f:.2f}"]
+    elif zlo_f <= price <= zhi_f:
+        # in the zone — READY only if support/confirmation holds (technicals may
+        # veto down to WAIT, never manufacture READY elsewhere)
+        _ts = facts.get("technical_state") or {}
+        _daily = ((_ts.get("timeframes") or {}).get("daily") or {})
+        _mc = (_daily.get("momentum_context") or {}).get("state", "")
+        if _mc == "OVERSOLD_CONTINUING_DOWN":
+            entry_state, state = "WAIT_PULLBACK", CONDITIONAL
+            reasons = ["price is in the entry zone but momentum still deteriorating — wait for stabilization"]
+        else:
+            entry_state, state = "READY_PULLBACK", ELIGIBLE
+        mech["trigger"] = f"price holds the {zlo_f:.2f}-{zhi_f:.2f} entry zone"
+    elif price > zhi_f:
+        dist_atr = ((price - zhi_f) / atr) if atr else None
+        if resistance is not None and price < resistance:
+            # BREAKOUT mode: one coherent plan — mechanics recalculated FROM the
+            # trigger, the stale pullback limit is not presented alongside it.
+            entry_mode = "BREAKOUT"
+            new_stop = round(resistance - 1.5 * atr, 2) if atr else stop_f
+            risk = (resistance - new_stop) if new_stop is not None else None
+            mech.update(
+                limit_price=round(resistance, 2),
+                entry_zone=[round(resistance, 2),
+                            round(resistance + (0.5 * atr if atr else 0), 2)],
+                stop_price=new_stop,
+                targets=[round(resistance + 2 * risk, 2)] if risk else mech["targets"],
+                risk_per_share=round(risk, 4) if risk else None,
+                risk_reward=2.0 if risk else mech["risk_reward"],
+                risk_reward_source="DETERMINISTIC_BREAKOUT_RECALC")
+            mech["trigger"] = f"closed bar reclaims {resistance:.2f}"
+            mech["invalidation"] = f"close below {new_stop}" if new_stop else mech["invalidation"]
+            # confirmation requires the LAST CLOSED daily bar to close above the
+            # trigger — the live price alone never confirms a breakout.
+            _confirmed = False
+            try:
+                cur.execute("""SELECT close FROM market_ohlcv_bars
+                               WHERE upper(symbol)=%s AND timeframe='daily'
+                                 AND bar_time < now() - interval '16 hours'
+                               ORDER BY bar_time DESC LIMIT 1""", (facts["symbol"],))
+                _cb = cur.fetchone()
+                _confirmed = bool(_cb) and float(_cb[0]) > resistance
+            except Exception:
+                _confirmed = False
+            if _confirmed:
+                entry_state, state = "READY_BREAKOUT", ELIGIBLE
+            else:
+                entry_state, state = "WAIT_BREAKOUT", CONDITIONAL
+                reasons = [f"breakout trigger {resistance:.2f} not confirmed on a closed bar "
+                           f"(current {price:.2f})"]
+        elif dist_atr is not None and dist_atr > 1.0:
+            entry_state, state = "EXTENDED", CONDITIONAL
+            reasons = [f"price {price:.2f} is {dist_atr:.1f} ATR above the "
+                       f"{zlo_f:.2f}-{zhi_f:.2f} entry zone — wait for a pullback"]
+            mech["trigger"] = f"pullback into the {zlo_f:.2f}-{zhi_f:.2f} zone"
+        else:
+            entry_state, state = "WAIT_PULLBACK", CONDITIONAL
+            reasons = [f"price {price:.2f} is above the entry zone — wait for a pullback"]
+            mech["trigger"] = f"pullback into the {zlo_f:.2f}-{zhi_f:.2f} zone"
+    else:  # below the zone but above invalidation
+        entry_state, state = "WAIT_PULLBACK", CONDITIONAL
+        reasons = [f"price {price:.2f} is below the entry zone — wait for reclaim"]
+        mech["trigger"] = f"reclaim and hold the {zlo_f:.2f}-{zhi_f:.2f} zone"
+    mech["entry_mode"] = entry_mode
+    mech["entry_state"] = entry_state
+    mech["legacy_plan_urgency"] = str(urg or "").upper()  # audit only, never authority
     mech["state"] = state
+    mech["action_state"] = ("READY" if entry_state.startswith("READY")
+                            else "WAIT_FOR_BREAKOUT" if entry_state == "WAIT_BREAKOUT"
+                            else "WAIT_FOR_PULLBACK")
     return {"family": "SWING", "state": state, "structures": [mech],
             "rejection_reasons": reasons}
 

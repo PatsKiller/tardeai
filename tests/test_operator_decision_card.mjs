@@ -55,7 +55,7 @@ const band = readFileSync(join(root, 'apps/command-center-v3/src/components/Deci
 const primary = band.split('function AuditDrawer')[0]
 assert(!primary.includes('constructibility_state'), 'primary surface must not show constructibility_state')
 assert(!primary.includes('CURRENT VALIDITY'), 'primary surface must not show CURRENT VALIDITY label')
-assert(band.includes('Audit & prior opinions'), 'audit drawer present')
+assert(band.includes('<AuditDrawer'), 'audit drawer present')  // V6 renamed the heading; the separated drawer component is the contract
 assert(band.includes('buildOperatorPresentation'), 'uses operator presentation')
 assert(band.includes('function AuditDrawer'), 'audit drawer is a separate component')
 

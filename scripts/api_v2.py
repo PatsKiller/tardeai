@@ -12014,7 +12014,7 @@ _LIST_PACKET_KEYS = (
 )
 _LIST_TECH_KEYS = ("schema_version", "computed_at", "overall_freshness",
                    "overall_direction", "primary_pattern", "pills", "source_hash",
-                   "conflicts", "unavailable", "error")
+                   "conflicts", "unavailable", "error", "verdict")
 _LIST_STRUCTURE_KEYS = ("structure", "state", "action_state", "occ_symbol",
                         "entry_zone", "limit_price", "stop_price", "targets", "risk_reward",
                         "rejection_reasons", "condition", "summary", "quote_source",
