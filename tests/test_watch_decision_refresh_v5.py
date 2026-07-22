@@ -270,3 +270,102 @@ def test_no_auto_conversion_remains_in_source():
     assert "DETERMINISTIC_BREAKOUT_RECALC" not in src, \
         "the pullback→breakout auto-conversion must be gone"
     assert "never mutates into a different strategy" in src
+
+
+# ── OVERSIGHT GATE: validator hard authority + review hierarchy ─────────────
+def test_validator_rejects_the_fatn_fabrication():
+    """The exact production numbers: $4.75 current, $6.76 entry / $5.94 stop /
+    $8.40 target claimed as CURRENT mechanics → HARD FAIL."""
+    import strategy_ticket_validator as stv
+    r = stv.validate_ticket("FATN", "SWING",
+                            {"structure": "TACTICAL_SWING", "entry_mode": "BREAKOUT",
+                             "entry_state": "WAIT_BREAKOUT", "mechanics_current": True,
+                             "entry_zone": [6.76, 7.03], "limit_price": 6.76,
+                             "stop_price": 5.94, "targets": [8.40], "risk_reward": 2.0,
+                             "proposal_tag": "old-pullback-tag"},
+                            {"live_price": 4.75, "atr": 0.45, "symbol": "FATN"})
+    assert r["state"] == "FAIL"
+    assert any("FUTURE SCENARIO" in h or "exceeds" in h for h in r["hard_failures"])
+    assert any("mutate" in h or "identity" in h or "inherits" in h for h in r["hard_failures"])
+    assert r["recomputed"]["risk_reward"] == 2.0  # arithmetic itself was fine — proximity wasn't
+
+
+def test_validator_recomputes_rr_and_ordering():
+    import strategy_ticket_validator as stv
+    bad_rr = stv.validate_ticket("X", "SWING",
+                                 {"mechanics_current": True, "entry_mode": "PULLBACK",
+                                  "entry_zone": [9.9, 10.1], "limit_price": 10.0,
+                                  "stop_price": 9.0, "targets": [11.0], "risk_reward": 5.0},
+                                 {"live_price": 10.0, "atr": 0.4})
+    assert bad_rr["state"] == "FAIL" and any("R:R mismatch" in h for h in bad_rr["hard_failures"])
+    bad_order = stv.validate_ticket("X", "SWING",
+                                    {"mechanics_current": True, "entry_mode": "PULLBACK",
+                                     "entry_zone": [9.9, 10.1], "limit_price": 10.0,
+                                     "stop_price": 10.5, "targets": [11.0]},
+                                    {"live_price": 10.0, "atr": 0.4})
+    assert bad_order["state"] == "FAIL" and any("ordering" in h for h in bad_order["hard_failures"])
+
+
+def test_validator_passes_a_coherent_nearby_ticket():
+    import strategy_ticket_validator as stv
+    r = stv.validate_ticket("X", "SWING",
+                            {"mechanics_current": True, "entry_mode": "PULLBACK",
+                             "entry_state": "READY_PULLBACK",
+                             "entry_zone": [9.8, 10.2], "limit_price": 10.0,
+                             "stop_price": 9.4, "targets": [11.2], "risk_reward": 2.0},
+                            {"live_price": 10.0, "atr": 0.4})
+    assert r["state"] == "PASS", r["hard_failures"]
+    assert r["ticket_hash"] and r["facts_hash"]
+
+
+def test_no_model_can_override_deterministic_fail():
+    import strategy_ticket_reconciler as rec
+    unanimous = {k: {"verdict": "PASS", "provider_family": f, "ticket_hash_reviewed": "h"}
+                 for k, f in (("local", "LOCAL_OLLAMA"), ("grok", "XAI"), ("chatgpt", "OPENAI"))}
+    r = rec.reconcile({"state": "FAIL", "hard_failures": ["x"], "ticket_hash": "h"},
+                      unanimous, {"verdict": "PASS"})
+    assert r["state"] == "DETERMINISTIC_FAIL"
+    assert r["proposal_allowed"] is False and r["display_mechanics"] is False
+
+
+def test_changed_ticket_hash_voids_reviews():
+    import strategy_ticket_reconciler as rec
+    r = rec.reconcile({"state": "PASS", "ticket_hash": "NEW"},
+                      {"local": {"verdict": "PASS", "provider_family": "LOCAL_OLLAMA",
+                                 "ticket_hash_reviewed": "OLD"}},
+                      current_ticket_hash="CHANGED")
+    assert r["state"] == "STALE_AFTER_REVIEW"
+    r2 = rec.reconcile({"state": "PASS", "ticket_hash": "h"},
+                       {"local": {"verdict": "REJECT", "provider_family": "LOCAL_OLLAMA",
+                                  "ticket_hash_reviewed": "OTHER"}})
+    assert r2["state"] == "REVIEW_UNAVAILABLE", "a stale review must not count"
+
+
+def test_single_lane_is_never_consensus():
+    import strategy_ticket_reconciler as rec
+    r = rec.reconcile({"state": "PASS", "ticket_hash": "h"},
+                      {"grok": {"verdict": "PASS", "provider_family": "XAI",
+                                "ticket_hash_reviewed": "h"}})
+    assert r["state"] == "VERIFIED_LOCAL_ONLY" and r["proposal_allowed"] is False
+
+
+def test_local_critic_is_structurally_local_only():
+    src = (ROOT / "scripts" / "local_llm.py").read_text()
+    fn = src.split("def generate_local_only")[1]
+    for banned in ("openai", "anthropic", "fallback", "api.openai", "oauth"):
+        assert banned not in fn.lower(), f"local-only path references {banned}"
+    rev = (ROOT / "scripts" / "strategy_ticket_review.py").read_text()
+    assert "generate_local_only" in rev
+
+
+def test_action_policy_withholds_ready_without_release_gate():
+    src = (ROOT / "scripts" / "decision_action_policy.py").read_text()
+    assert "proposal_allowed" in src and "verification release gate" in src
+
+
+def test_premium_fails_closed_and_needs_typed_confirmation():
+    import premium_ticket_review as ptr
+    est = ptr.estimate("FATN", "abc")
+    assert est["available"] is False and "PREMIUM_NOT_CONFIGURED" in est["reason"]
+    r = ptr.run("FATN", "abc", "yes please")
+    assert r["ok"] is False

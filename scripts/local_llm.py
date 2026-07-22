@@ -487,3 +487,35 @@ if __name__ == "__main__":
         timeout=30
     )
     print(f"Test result: {test}")
+
+
+# ── V6 TICKET OVERSIGHT (2026-07-22): LOCAL-ONLY generation — cloud fallback
+#    is STRUCTURALLY IMPOSSIBLE here. This function talks to the local Ollama
+#    socket and nothing else: no OpenAI, no Anthropic, no OAuth proxy, no retry
+#    into cloud. On failure the caller gets ok=False and must report
+#    UNAVAILABLE — never a substituted cloud answer still labelled LOCAL.
+def generate_local_only(prompt: str, *, system: str = "",
+                        timeout_s: int | None = None) -> dict:
+    import json as _json
+    import urllib.request as _rq
+    models = [m.strip() for m in os.getenv(
+        "LOCAL_TICKET_CRITIC_MODELS", "gemma3:12b,gemma3:4b").split(",") if m.strip()]
+    timeout_s = timeout_s or int(os.getenv("LOCAL_TICKET_CRITIC_TIMEOUT_S", "90"))
+    last_err = "no local models configured"
+    for model in models:
+        body = _json.dumps({"model": model, "prompt": prompt, "system": system,
+                            "stream": False,
+                            "options": {"temperature": 0.1, "num_predict": 900}}).encode()
+        req = _rq.Request(OLLAMA_BASE + "/api/generate", data=body,
+                          headers={"Content-Type": "application/json"})
+        try:
+            with _rq.urlopen(req, timeout=timeout_s) as r:
+                out = _json.loads(r.read())
+            text = out.get("response") or ""
+            if text.strip():
+                return {"ok": True, "model": model,
+                        "provider_family": "LOCAL_OLLAMA", "text": text}
+            last_err = f"{model}: empty response"
+        except Exception as e:
+            last_err = f"{model}: {type(e).__name__}: {str(e)[:120]}"
+    return {"ok": False, "error": last_err, "provider_family": "LOCAL_OLLAMA"}

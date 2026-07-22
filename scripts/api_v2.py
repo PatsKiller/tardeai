@@ -12010,7 +12010,8 @@ _LIST_PACKET_KEYS = (
     "ownership", "horizons", "event_state", "data_quality", "no_trade_is_valid",
     "preferred_action", "headline", "input_hash", "action_policy_version",
     "current_validity", "deterministic_thesis", "legacy_summary",
-    "freshness", "analysis_tier",
+    "freshness", "analysis_tier", "current_actionable_plan", "watch_scenarios",
+    "previous_plan", "ticket_review",
 )
 _LIST_TECH_KEYS = ("schema_version", "computed_at", "overall_freshness",
                    "overall_direction", "primary_pattern", "pills", "source_hash",
@@ -12118,6 +12119,58 @@ def _watch_decision_latest(query=None):
         except Exception as e:
             out["action_policy"] = {"error": str(e)[:120]}
     return out
+
+
+def _ticket_review_run(body):
+    """POST /api/v2/watch/ticket-review/run {symbol, lanes?} — free critic lanes
+    on the live actionable ticket, detached worker (results land in the packet's
+    ticket_review; poll status). Advisory only; deterministic authority unchanged."""
+    b = body or {}
+    sym = str(b.get("symbol") or "").upper()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    lanes = str(b.get("lanes") or "local,grok,chatgpt")
+    import subprocess
+    subprocess.Popen([str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+                      str(PROJECT_ROOT / "scripts" / "run_ticket_review_job.py"), sym, lanes],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True, cwd=PROJECT_ROOT)
+    return {"ok": True, "symbol": sym, "lanes": lanes, "state": "RUNNING",
+            "note": "poll /api/v2/watch/ticket-review/status?symbol=..."}
+
+
+def _ticket_review_status(query=None):
+    """GET /api/v2/watch/ticket-review/status?symbol=X"""
+    sym = (_q1(query, "symbol") or "").upper()
+    rows = _db_query("""SELECT packet_id, packet->'ticket_review' AS tr
+                        FROM decision_packets
+                        WHERE upper(symbol)=%s AND superseded_by IS NULL""", (sym,))
+    if not rows:
+        return {"ok": False, "error": "no live packet"}
+    return {"ok": True, "packet_id": rows[0]["packet_id"],
+            "ticket_review": rows[0]["tr"]}
+
+
+def _ticket_review_premium_estimate(body):
+    """POST /api/v2/watch/ticket-review/premium/estimate {symbol} — cost preview,
+    NEVER a call. Fail-closed registry."""
+    b = body or {}
+    sym = str(b.get("symbol") or "").upper()
+    rows = _db_query("""SELECT packet->'current_actionable_plan'->'ticket_validation'->>'ticket_hash' AS th
+                        FROM decision_packets WHERE upper(symbol)=%s AND superseded_by IS NULL""",
+                     (sym,)) or [{}]
+    th = rows[0].get("th") or "no-actionable-ticket"
+    import premium_ticket_review as ptr
+    return {"ok": True, "symbol": sym, **ptr.estimate(sym, th)}
+
+
+def _ticket_review_premium_run(body):
+    """POST /api/v2/watch/ticket-review/premium/run — requires the exact typed
+    confirmation from the estimate; fail-closed."""
+    b = body or {}
+    import premium_ticket_review as ptr
+    return ptr.run(str(b.get("symbol") or "").upper(),
+                   str(b.get("ticket_hash") or ""), str(b.get("confirmation") or ""))
 
 
 def _watch_decision_technicals(query=None):
@@ -33300,6 +33353,7 @@ ROUTES = {
     "/api/v2/watch/decision/latest": _watch_decision_latest,
     "/api/v2/watch/decision/summary": _watch_decision_summary,
     "/api/v2/watch/decision/technicals": _watch_decision_technicals,
+    "/api/v2/watch/ticket-review/status": _ticket_review_status,
     "/api/v2/decision/action-policy": _decision_action_policy,
     "/api/v2/shadow/strategy/batch": _shadow_batch_status,
     "/api/v2/defense/core": _defense_core_registry,
@@ -38104,6 +38158,24 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/watch/decision/refresh":
         try:
             return 200, _watch_decision_refresh_start(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/watch/ticket-review/run":
+        try:
+            return 200, _ticket_review_run(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/watch/ticket-review/premium/estimate":
+        try:
+            return 200, _ticket_review_premium_estimate(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/watch/ticket-review/premium/run":
+        try:
+            return 200, _ticket_review_premium_run(body or {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 

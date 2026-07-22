@@ -1,0 +1,34 @@
+# Premium ticket-review registry (V6 oversight §6). NOTHING enabled by default —
+# enabling requires an operator edit + credentials + budget. Provider-neutral;
+# no paid model is mandatory. A premium PASS can never override a deterministic
+# failure, and premium review is never scheduled automatically.
+version: "1.0.0"
+providers:
+  - provider: anthropic
+    model: claude-sonnet-5
+    provider_family: ANTHROPIC
+    enabled: false
+    capability: expert_ticket_review
+    pricing_basis: per_token
+    est_input_tokens: 3200
+    est_output_tokens: 900
+    est_cost_usd: 0.028
+    max_tokens: 1500
+    timeout_s: 90
+    daily_budget_usd: 2.00
+    monthly_budget_usd: 20.00
+    credentials_env: ANTHROPIC_API_KEY
+  - provider: openai
+    model: gpt-5.4
+    provider_family: OPENAI
+    enabled: false
+    capability: expert_ticket_review
+    pricing_basis: per_token
+    est_input_tokens: 3200
+    est_output_tokens: 900
+    est_cost_usd: 0.035
+    max_tokens: 1500
+    timeout_s: 90
+    daily_budget_usd: 2.00
+    monthly_budget_usd: 20.00
+    credentials_env: OPENAI_API_KEY

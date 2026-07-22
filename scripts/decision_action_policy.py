@@ -35,7 +35,7 @@ import json
 from datetime import datetime, timezone
 from typing import Optional
 
-POLICY_VERSION = "1.1.0"  # three-axis family action_state + no-trade preferred/dominant
+POLICY_VERSION = "1.2.0"  # V6: ticket-verification release gate  # three-axis family action_state + no-trade preferred/dominant
 
 # Actions the policy can advise (never an order — those live behind approval+2FA).
 ACTIONS = ("PROPOSE_ENTRY", "RESEARCH_OPTIONS", "REFRESH", "MONITOR", "NO_ACTION")
@@ -306,9 +306,20 @@ def _evaluate_action_impl(packet: dict, *, packet_id=None, generated_at=None,
             return _result("MONITOR", False, "CONDITIONAL", packet=p,
                            warnings=["a proposal already exists for this symbol"],
                            reason="proposal already open — monitor it")
+        # V6 OVERSIGHT GATE: a ticket reaches proposal review only through the
+        # reconciled release gate (deterministic validator + critic policy).
+        # Absent or non-allowing reconciliation → READY is withheld. No model
+        # can grant this; only the deterministic reconciler can.
+        _tr = ((p.get("ticket_review") or {}).get("reconciled") or {})
+        if not _tr.get("proposal_allowed"):
+            return _result("MONITOR", False, "CONDITIONAL", packet=p,
+                           warnings=[f"ticket verification: {_tr.get('state', 'UNVALIDATED')}"
+                                     + (f" — {_tr.get('detail')}" if _tr.get("detail") else "")],
+                           reason="mechanics resolved but the ticket has not passed "
+                                  "the verification release gate")
         return _result("PROPOSE_ENTRY", True, "READY", packet=p,
                        confirmations=conf,
-                       reason="swing blueprint is eligible with resolved mechanics")
+                       reason="swing blueprint is eligible, verified, and released")
 
     if swing_action == "CONDITIONAL" or swing_decision == "CONDITIONAL":
         trig = (swing_struct.get("underlying_trigger") or tactical.get("trigger")

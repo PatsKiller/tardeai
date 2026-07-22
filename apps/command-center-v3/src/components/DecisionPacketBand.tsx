@@ -249,6 +249,10 @@ export default function DecisionPacketBand({
         <TechnicalGrid tech={tech} onOpen={() => setDetails(true)} />
       </div>
 
+      {/* TICKET VERIFICATION — validation is shown, not implied (§8). VERIFIED
+          never appears on the compiler's own say-so. */}
+      <TicketVerification packet={packet} symbol={packet?.symbol} />
+
       {/* MECHANICS + WHAT CHANGES THE DECISION */}
       <div style={{
         display: 'grid', gridTemplateColumns: pres.mechanics ? 'minmax(0, 1.25fr) minmax(260px, .75fr)' : '1fr',
@@ -417,6 +421,71 @@ function StrategyGrid({ pres, onOpen }: { pres: OperatorPresentation; onOpen: ()
           </button>
         )
       })}
+    </div>
+  )
+}
+
+function TicketVerification({ packet, symbol }: { packet: any; symbol?: string }) {
+  const [busy, setBusy] = useState(false)
+  const tr = packet?.ticket_review
+  const cap = packet?.current_actionable_plan
+  if (!tr && !cap) return null
+  const validation = cap?.ticket_validation || {}
+  const rec = tr?.reconciled || {}
+  const reviews = tr?.reviews || {}
+  const rows: Array<[string, any]> = [
+    ['Deterministic validator', { verdict: validation.state || (tr?.tickets_validated?.[0]?.state ?? 'NOT RUN') }],
+    ['Local critic', reviews.local],
+    ['Grok OAuth critic', reviews.grok],
+    ['ChatGPT OAuth critic', reviews.chatgpt],
+    ['Premium expert', { verdict: 'NOT RUN' }],
+  ]
+  const vColor = (v?: string) =>
+    v === 'PASS' ? BB.green
+      : v === 'REJECT' || v === 'FAIL' ? BB.red
+        : v === 'CAUTION' || v === 'REVIEW_REQUIRED' ? BB.amber : BB.text3
+  const overall = rec.state || (validation.state === 'FAIL' ? 'DETERMINISTIC_FAIL' : 'UNVALIDATED')
+  const runFree = async () => {
+    if (!symbol || busy) return
+    setBusy(true)
+    try {
+      await fetch('/api/v2/watch/ticket-review/run', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol }),
+      })
+    } finally {
+      window.setTimeout(() => setBusy(false), 60_000)
+    }
+  }
+  return (
+    <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BB.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>
+          TICKET VERIFICATION
+        </span>
+        <span style={{ fontSize: 10.5, fontWeight: 900, color: vColor(rec.proposal_allowed ? 'PASS' : overall.includes('FAIL') || overall.includes('REJECT') ? 'FAIL' : 'CAUTION') }}>
+          {String(overall).replace(/_/g, ' ')}{rec.detail ? ` — ${String(rec.detail).slice(0, 90)}` : ''}
+        </span>
+        <button onClick={e => { e.stopPropagation(); void runFree() }} disabled={busy}
+          style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px',
+                   cursor: busy ? 'wait' : 'pointer', background: 'transparent',
+                   color: BB.text2, border: `1px solid ${BB.border}`, borderRadius: 3 }}>
+          {busy ? 'Reviewing…' : 'Run free review'}
+        </button>
+      </div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 5 }}>
+        {rows.map(([label, r]) => (
+          <span key={label} style={{ fontSize: 10, color: BB.text3 }}>
+            {label}: <b style={{ color: vColor(r?.verdict) }}>{r?.verdict || 'NOT RUN'}</b>
+            {r?.model ? <span style={{ color: BB.text3 }}> · {r.model}</span> : null}
+          </span>
+        ))}
+      </div>
+      {validation.hard_failures?.length > 0 && (
+        <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>
+          {validation.hard_failures.slice(0, 2).map((h: string, i: number) => <div key={i}>✕ {h}</div>)}
+        </div>
+      )}
     </div>
   )
 }

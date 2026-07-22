@@ -995,6 +995,45 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
         packet["input_snapshot"] = None
         packet["input_hash"] = None
 
+    # ── MANDATORY DETERMINISTIC TICKET GATE (cannot be disabled) ─────────────
+    # Runs AFTER construction, BEFORE the ticket can become current/actionable.
+    # A hard failure strips current mechanics into audit (validation_rejected),
+    # forces the family to REJECTED, and can never be overridden by any model.
+    _stage("ticket_validation")
+    import strategy_ticket_validator as stv
+    _tickets_validated = []
+    for _famname, _famobj in (("SWING", sw), ("BEARISH", be), ("LONG_TERM", lt)):
+        for _st in (_famobj or {}).get("structures") or []:
+            if not isinstance(_st, dict) or not _st.get("mechanics_current", True):
+                continue
+            if not any(_st.get(k) is not None for k in ("limit_price", "stop_price")):
+                continue
+            _vres = stv.validate_ticket(sym, _famname, _st, facts,
+                                        technical_snapshot=technical_state,
+                                        event_state=getattr(event, "state", None),
+                                        ownership=ownership)
+            _st["ticket_validation"] = _vres
+            _tickets_validated.append({"family": _famname,
+                                       "structure": _st.get("structure"),
+                                       "state": _vres["state"],
+                                       "ticket_hash": _vres["ticket_hash"],
+                                       "hard_failures": _vres["hard_failures"]})
+            if _vres["state"] == "FAIL":
+                _st["validation_rejected"] = {
+                    "mechanics": {k: _st.get(k) for k in
+                                  ("entry_zone", "limit_price", "stop_price",
+                                   "targets", "risk_reward")},
+                    "hard_failures": _vres["hard_failures"]}
+                for _k in ("limit_price", "stop_price", "risk_per_share", "risk_reward"):
+                    _st[_k] = None
+                _st["targets"], _st["entry_zone"] = [], []
+                _st["mechanics_current"] = False
+                _st["state"] = REJECTED
+                _st["action_state"] = "WAIT_FOR_PULLBACK"
+                _famobj["state"] = REJECTED if _famobj.get("state") == ELIGIBLE else _famobj.get("state")
+                _famobj.setdefault("rejection_reasons", []).extend(
+                    [f"ticket validator: {h}" for h in _vres["hard_failures"][:2]])
+
     # V6 item 6 — hard separation: current_actionable_plan / watch_scenarios /
     # previous_plan. watch_scenarios NEVER feed proposal mechanics (they carry
     # no limit/stop/target); a MISSED plan leaves current_actionable_plan None.
@@ -1005,6 +1044,35 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
     packet["watch_scenarios"] = (sw or {}).get("watch_scenarios") or []
     packet["previous_plan"] = next(
         (s.get("previous_plan") for s in _sw_structs if s.get("previous_plan")), None)
+
+    # ── TICKET REVIEW LAYER (critics + reconciliation) ───────────────────────
+    # Local critic runs inline ONLY when an actionable ticket exists (most
+    # packets have none → zero model cost). OAuth critics run on demand /
+    # per proposal policy via the API. Deterministic FAIL is never overridable.
+    _stage("ticket_review")
+    _cap = packet.get("current_actionable_plan")
+    _tv = (_cap or {}).get("ticket_validation") or (
+        _tickets_validated[0] if _tickets_validated else {"state": "PASS"})
+    _reviews = {}
+    # The local critic is LOCAL oversight, not a thesis lane — it runs whenever
+    # an actionable ticket exists, in every tier (including LOCAL_QUANT).
+    if _cap and str(_tv.get("state")) != "FAIL" and not os.getenv("SHADOW_DISABLE_TICKET_CRITIC"):
+        try:
+            import strategy_ticket_review as strv
+            _reviews["local"] = strv.run_local_critic(sym, _cap, facts,
+                                                      (_cap or {}).get("ticket_validation") or {})
+        except Exception as _re:
+            _reviews["local"] = {"review_type": "LOCAL_CRITIC",
+                                 "verdict": "UNAVAILABLE", "error": str(_re)[:120]}
+    try:
+        import strategy_ticket_reconciler as strec
+        _reconciled = strec.reconcile((_cap or {}).get("ticket_validation") or {"state": "PASS"},
+                                      _reviews)
+    except Exception as _rce:
+        _reconciled = {"state": "REVIEW_UNAVAILABLE", "proposal_allowed": False,
+                       "error": str(_rce)[:120]}
+    packet["ticket_review"] = {"tickets_validated": _tickets_validated,
+                               "reviews": _reviews, "reconciled": _reconciled}
 
     # ── V6 canonical contracts (2026-07-22): the card reads these EXACT fields —
     # freshness is generated server-side from the refresh policy, never in React.
