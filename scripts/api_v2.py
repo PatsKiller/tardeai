@@ -2192,23 +2192,47 @@ def overview():
     # tie exactly to the Journal page (157 / 50.3% / $150,706, current through today). Operator 2026-07-21:
     # switched OFF the legacy_fifo_journal basis (trade_journal.json), which was frozen at the last manual
     # CSV import (2026-04-30) and read 83 days stale. Falls back to the legacy CSV only if the table is empty.
+    # Split ACTIVE TRADING from LONG-TERM TRIMS (operator 2026-07-21). Selling decades-old buy-and-hold
+    # lots (e.g. a 17-yr Visa position, classification long_term_trim) is not a trading decision, yet it
+    # was 76% of realized P&L ($114.6k of $150.7k). The headline "trading" tiles must reflect trading
+    # skill (day_trade + swing); the full realized figure (incl. trims) is shown separately.
     j_basis = "broker_round_trips"
     j_trade_count = 0
     j_total_pnl = 0.0
     j_win_rate = 0.0
+    j_realized_count = 0
+    j_realized_pnl = 0.0
+    j_realized_win_rate = 0.0
+    j_long_term_trim_pnl = 0.0
     j_last_close = None
     try:
         _jr = _db_query(
-            "SELECT count(*) FILTER (WHERE pnl != 0) AS n, "
-            "COALESCE(SUM(pnl) FILTER (WHERE pnl != 0),0) AS pnl, "
-            "COALESCE(SUM((pnl>0)::int) FILTER (WHERE pnl != 0),0) AS wins, "
-            "MAX(close_date) AS last_close "
-            "FROM trade_closed WHERE buy_price > 0 OR pnl != 0", fetch="one") or {}
-        _n = int(_jr.get("n") or 0)
-        if _n > 0:
-            j_trade_count = _n
-            j_total_pnl = float(_jr.get("pnl") or 0)
-            j_win_rate = round(100.0 * float(_jr.get("wins") or 0) / _n, 1)
+            "WITH j AS ("
+            "  SELECT tc.pnl AS pnl, COALESCE(srt.classification,'') AS cls, tc.close_date AS close_date "
+            "  FROM trade_closed tc "
+            "  LEFT JOIN schwab_round_trips srt ON tc.dedupe_key = 'srt:' || srt.id "
+            "  WHERE tc.buy_price > 0 OR tc.pnl != 0"
+            ") "
+            "SELECT "
+            "  count(*) FILTER (WHERE cls NOT IN ('long_term_trim','pre_window_trim') AND pnl!=0) AS trade_n, "
+            "  COALESCE(SUM((pnl>0)::int) FILTER (WHERE cls NOT IN ('long_term_trim','pre_window_trim') AND pnl!=0),0) AS trade_wins, "
+            "  COALESCE(SUM(pnl) FILTER (WHERE cls NOT IN ('long_term_trim','pre_window_trim') AND pnl!=0),0) AS trade_pnl, "
+            "  count(*) FILTER (WHERE pnl!=0) AS all_n, "
+            "  COALESCE(SUM((pnl>0)::int) FILTER (WHERE pnl!=0),0) AS all_wins, "
+            "  COALESCE(SUM(pnl) FILTER (WHERE pnl!=0),0) AS all_pnl, "
+            "  COALESCE(SUM(pnl) FILTER (WHERE cls='long_term_trim'),0) AS ltt_pnl, "
+            "  MAX(close_date) AS last_close "
+            "FROM j", fetch="one") or {}
+        _tn = int(_jr.get("trade_n") or 0)
+        _an = int(_jr.get("all_n") or 0)
+        if _an > 0:
+            j_trade_count = _tn
+            j_total_pnl = float(_jr.get("trade_pnl") or 0)
+            j_win_rate = round(100.0 * float(_jr.get("trade_wins") or 0) / _tn, 1) if _tn else 0.0
+            j_realized_count = _an
+            j_realized_pnl = float(_jr.get("all_pnl") or 0)
+            j_realized_win_rate = round(100.0 * float(_jr.get("all_wins") or 0) / _an, 1)
+            j_long_term_trim_pnl = float(_jr.get("ltt_pnl") or 0)
             _lc = _jr.get("last_close")
             j_last_close = _lc.isoformat() if hasattr(_lc, "isoformat") else (str(_lc) if _lc else None)
     except Exception:
@@ -2228,6 +2252,10 @@ def overview():
         j_trade_count = len(j_all)
         j_last_close = max((t.get("close_date") or "" for t in j_all), default="") or None
         j_basis = "legacy_fifo_journal"
+        # No classification split available for the legacy CSV — realized mirrors the single figure.
+        j_realized_count = j_trade_count
+        j_realized_pnl = j_total_pnl
+        j_realized_win_rate = j_win_rate
 
     # Watch Desk v2 (A1): portfolio_totals.total_value is CANONICAL. The old
     # ">$500 drift → silently swap to derived" rule made the shell header flip
@@ -2241,13 +2269,20 @@ def overview():
         today_change = round(sum(p.get("day_change") or 0 for p in holdings), 2)
         today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
     _fv_meta = (_load_json(STATE_DIR / "finviz_quote_cache.json") or {}).get("_meta") or {}
+    # Cash = sum of the actual CASH positions. The stored portfolio_totals.total_cash had drifted to
+    # $478k while the real cash was $186k (it did NOT reconcile: $186k cash + $1.069M positions = the
+    # $1.255M total, whereas $478k would imply a $1.55M book). Recompute from the holdings so "cash
+    # available" for deploy/rotation sizing is correct. (2026-07-21 audit.)
+    _cash_live = round(sum(float(p.get("market_value") or 0) for p in holdings if p.get("is_cash")), 2)
+    _stored_cash = totals.get("total_cash")
+    _total_cash = _cash_live if _cash_live > 0 else (_stored_cash if _stored_cash is not None else 0)
     return {
         "portfolio_value": total_val,
         "derived_total_value": _derived_total,
         # non-zero while a position is unpriced mid-pipeline (e.g. SPAXX) —
         # UI may show a subtle "repricing…" hint but the total never flips
         "total_value_drift": _total_drift if abs(_total_drift) > 500 else 0,
-        "total_cash": totals.get("total_cash", 0),
+        "total_cash": _total_cash,
         "today_change": round(today_change, 2),
         "today_pct": round(today_pct, 2),
         "reprice_source": h.get("reprice_source", ""),
@@ -2287,13 +2322,19 @@ def overview():
             "run_label": tai.get("runLabel", tai.get("run_label", "")),
         },
         "journal": {
+            # TRADING = active decisions (day_trade + swing); the headline win-rate/P&L tile.
             "trade_count": j_trade_count,
             "total_pnl": round(j_total_pnl, 2),
             "win_rate": round(j_win_rate, 1),
+            # REALIZED = all closed trades incl. long-term trims of old buy-and-hold lots (shown as a
+            # separate tile so decades-old-position gains don't inflate the trading number).
+            "realized_count": j_realized_count,
+            "realized_pnl": round(j_realized_pnl, 2),
+            "realized_win_rate": round(j_realized_win_rate, 1),
+            "long_term_trim_pnl": round(j_long_term_trim_pnl, 2),
             "source": "journal",
-            # 2026-07-21: headline now reads the LOCAL broker-verified journal (trade_closed, same source
-            # as /api/v2/journal) so it stays current and ties to the Journal page. Was legacy_fifo_journal
-            # (trade_journal.json), frozen at the last manual CSV import. basis reflects which source fed it.
+            # 2026-07-21: reads the LOCAL broker-verified journal (trade_closed, same source as
+            # /api/v2/journal); was legacy_fifo_journal (trade_journal.json), frozen at the last CSV import.
             "basis": j_basis,
             "last_close_date": j_last_close,
         },
@@ -2303,7 +2344,7 @@ def overview():
         "pipeline_status": fresh.get("status", "unknown"),
         "pipeline_completed": fresh.get("completed_at", ""),
         # Sprint 4A additions
-        "total_cash": totals.get("total_cash", 0),
+        "total_cash": _total_cash,
         "weighted_beta": _weighted_beta(active_positions),
         "concentration_alerts": [{"symbol": p.get("symbol"), "pct": p.get("portfolio_pct", 0)}
                                   for p in active_positions if (p.get("portfolio_pct") or 0) > 20],

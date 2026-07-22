@@ -40,7 +40,10 @@ export default function MetricStrip({ onDrill }: Props) {
   // v2-parity header fields
   const todayChange = overview?.today_change
   const todayPct = overview?.today_pct
-  const journalPnl = overview?.journal?.total_pnl
+  const journalPnl = overview?.journal?.total_pnl            // TRADING P&L (day_trade + swing)
+  const realizedPnl = overview?.journal?.realized_pnl        // all closed incl. long-term trims
+  const realizedCount = overview?.journal?.realized_count
+  const longTermTrimPnl = overview?.journal?.long_term_trim_pnl
   const journalLastClose = overview?.journal?.last_close_date
   // The header journal metrics read the LOCAL broker-verified journal (trade_closed, same source as the
   // Journal page), refreshed by cron so last_close advances with real closes. The staleness guard stays
@@ -81,22 +84,22 @@ export default function MetricStrip({ onDrill }: Props) {
         ] : [] },
     },
     {
-      label: 'JOURNAL WIN RATE', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}` : '—',
+      // TRADING = active decisions only (day_trade + swing); excludes long-term trims of old buy-and-hold
+      // lots, which are investing outcomes, not trades. Win rate + trading P&L on one tile.
+      label: 'TRADING', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}${journalPnl != null ? ` · ${fmt$(journalPnl, 0)}` : ''}` : '—',
       stale: journalStale ? journalAgeMark : null,
       color: winRate != null && winRate >= 50 ? '#22c55e' : winRate != null ? '#f59e0b' : 'var(--text3)',
-      // P0-6: header journal stats = legacy FIFO journal (trade_journal.json) — a DIFFERENT basis
-      // than TradeInView (broker round-trips). Label it so the mismatch is explicit, never silent.
-      tip: `Legacy FIFO journal — count includes $0 scratches; win rate excludes them${journalLastClose ? ` · through ${journalLastClose}` : ''}. TradeInView uses broker round-trips (a different basis).`,
-      drill: { title: 'Win Rate', subtitle: `Legacy FIFO journal (all closed, incl. pre-2025 history${journalLastClose ? `, through ${journalLastClose}` : ''}) · TradeInView uses broker round-trips · paper-readiness shown separately`, endpoint: '/api/v2/overview',
-        rows: [{ journal_win_rate: overview?.journal?.win_rate, journal_trades: overview?.journal?.trade_count, journal_pnl: overview?.journal?.total_pnl, journal_basis: overview?.journal?.basis, journal_last_close_date: overview?.journal?.last_close_date, paper_readiness_win_rate: readiness?.win_rate, paper_usable_trades: readiness?.closed_usable, paper_level: readiness?.level }] },
+      tip: `Active trading only (day + swing), broker round-trips${journalLastClose ? ` · through ${journalLastClose}` : ''}. Excludes long-term trims of old holds — those are in REALIZED. Win rate excludes $0 scratches.`,
+      drill: { title: 'Trading (active)', subtitle: `Day + swing round-trips, excludes long-term position trims${journalLastClose ? ` · through ${journalLastClose}` : ''} · REALIZED tile shows all closed incl. trims`, endpoint: '/api/v2/overview',
+        rows: [{ trading_win_rate: overview?.journal?.win_rate, trading_trades: overview?.journal?.trade_count, trading_pnl: overview?.journal?.total_pnl, realized_win_rate: overview?.journal?.realized_win_rate, realized_trades: realizedCount, realized_pnl: realizedPnl, long_term_trim_pnl: longTermTrimPnl, basis: overview?.journal?.basis, last_close_date: overview?.journal?.last_close_date, paper_readiness_win_rate: readiness?.win_rate, paper_usable_trades: readiness?.closed_usable }] },
     },
     {
-      label: 'JOURNAL P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—',
+      label: 'REALIZED', value: realizedPnl != null ? fmt$(realizedPnl, 0) : '—',
       stale: journalStale ? journalAgeMark : null,
-      color: journalPnl == null ? 'var(--text3)' : journalPnl >= 0 ? '#22c55e' : '#ef4444',
-      tip: `Realized P&L from the legacy FIFO journal (${journalLastClose ? `, through ${journalLastClose}` : ''}). TradeInView totals use broker round-trips and will differ.`,
-      drill: { title: 'Journal P&L', subtitle: `Realized P&L · legacy FIFO journal (${journalLastClose ? `, through ${journalLastClose}` : ''}) · TradeInView uses broker round-trips`, endpoint: '/api/v2/overview',
-        rows: [{ journal_total_pnl: overview?.journal?.total_pnl, journal_trades: overview?.journal?.trade_count, journal_win_rate: overview?.journal?.win_rate, journal_basis: overview?.journal?.basis, journal_last_close_date: overview?.journal?.last_close_date }] },
+      color: realizedPnl == null ? 'var(--text3)' : realizedPnl >= 0 ? '#22c55e' : '#ef4444',
+      tip: `All closed P&L incl. long-term trims of old buy-and-hold lots${longTermTrimPnl ? ` (${fmt$(longTermTrimPnl, 0)} of it is long-term trims)` : ''}${journalLastClose ? ` · through ${journalLastClose}` : ''}. Trading-only P&L is ${journalPnl != null ? fmt$(journalPnl, 0) : '—'}.`,
+      drill: { title: 'Realized P&L (all closed)', subtitle: `Includes long-term position trims — not just trading${journalLastClose ? ` · through ${journalLastClose}` : ''}`, endpoint: '/api/v2/overview',
+        rows: [{ realized_pnl: realizedPnl, realized_trades: realizedCount, long_term_trim_pnl: longTermTrimPnl, trading_pnl: overview?.journal?.total_pnl, trading_trades: overview?.journal?.trade_count, basis: overview?.journal?.basis, last_close_date: overview?.journal?.last_close_date }] },
     },
     {
       label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',
