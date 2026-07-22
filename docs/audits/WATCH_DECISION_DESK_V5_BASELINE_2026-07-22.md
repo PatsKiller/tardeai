@@ -59,3 +59,29 @@ The card's primary CTA **"Refresh Strategy"** (`operatorDecisionCard.ts:273`, re
 ## Test baseline
 
 Recorded separately at implementation start (targeted: shadow/packet/action-policy suites; full: `TRADE_AI_CI=1` source-only CI set) — see V5 progress log.
+
+## Addendum — live reproduction + V5 build evidence (same day)
+
+**CECO both-directions proof:**
+- `POST /watchlist/CECO/refresh` (inputs) → 202 queued → live packet STILL 211. Defect proven.
+- `POST /shadow/strategy/build` → decision_run 348 COMPLETE → packet **258 supersedes 211**.
+
+**V5 orchestrator proof (this branch):**
+- Run 3 (FULL_STRATEGY · LOCAL_QUANT · force): all 6 dimensions refreshed → packet 260 → parity OK.
+- Run 9 (AFFECTED_DIMENSIONS · LOCAL_QUANT): detected `TECHNICALS_CHANGED` → refreshed ONLY
+  technicals (1.3s) → packet 261 → CECO freshness **STALE → CURRENT**, timestamps present
+  throughout, `lane_calls=0`.
+- Idempotency: duplicate enqueue vs live job → `SKIPPED_LOCKED` (partial unique index).
+- Sweeper: dead-worker job swept → run reconciled → re-runnable.
+
+**Production regressions found & fixed during the build:**
+1. Post-SM-migration, dozens of scripts `read_text()` the deleted `.env` at import
+   (`setup_quality_prior.py:22` et al) — every fresh process importing them crashed since
+   2026-07-21 15:58. Fixed globally: `.env` → symlink to the Bitwarden tmpfs render
+   (serving tree + worktree). Legacy readers get always-fresh env; no plaintext on disk.
+2. Foreign enrichers close db_adapter's shared thread-local connection and `sys.exit()` on
+   error paths — V5 workers use a private connection + BaseException isolation.
+
+**Pre-existing test failures (baseline-verified on main, identical node IDs):**
+`test_shadow_batch.py` band `useState(true)` trio — older band-open contract, already failing
+before V5.
