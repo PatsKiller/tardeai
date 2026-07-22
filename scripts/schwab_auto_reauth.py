@@ -151,7 +151,43 @@ OTP_INPUT_SEL = ["#securityCode", "input[name='securityCode']", "input[autocompl
                  "#otp_sms", "input[name='pinNumber']"]
 CONTINUE_SEL = ["#submit-btn", "#btn-continue", "#continueButton", "button[type='submit']"]
 REMEMBER_SEL = ["#rememberDevice", "input[name='rememberDevice']", "#checkbox-remember-device"]
-ACCEPT_SEL = ["#acceptTerms", "input[name='acceptTerms']"]
+
+# Post-login pages (Trader API terms → "Instruction and Informed Consent" modal → account
+# grant → done) use plain-text buttons, not stable ids — match by visible text. Order =
+# priority; the consent modal's Accept must win over the covered background Continue.
+AFFIRM_WORDS = ("accept", "continue", "done", "allow", "confirm", "authorize", "next", "submit")
+NEGATIVE_WORDS = ("cancel", "deny", "decline", "resend", "back", "close", "help", "forgot")
+
+
+def _click_affirmative(frame, actions: list) -> bool:
+    """Click the highest-priority visible affirmative button in this frame. Never clicks
+    negative-word buttons. Returns True if something was clicked."""
+    try:
+        btns = frame.query_selector_all("button, input[type='submit'], a[role='button']")
+    except Exception:
+        return False
+    cands = []
+    for b in btns:
+        try:
+            if not b.is_visible():
+                continue
+            txt = (b.inner_text() or b.get_attribute("value") or "").strip().lower()
+        except Exception:
+            continue
+        if not txt or any(w in txt for w in NEGATIVE_WORDS):
+            continue
+        for rank, w in enumerate(AFFIRM_WORDS):
+            if w in txt:
+                cands.append((rank, b, txt))
+                break
+    for rank, btn, txt in sorted(cands, key=lambda t: t[0]):
+        try:
+            btn.click(timeout=5000)
+            actions.append(f"clicked '{txt[:24]}'")
+            return True
+        except Exception:  # covered by a modal → try the next candidate
+            continue
+    return False
 
 
 def _first_visible(frame, selectors):
@@ -226,6 +262,7 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
         try:
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
             page.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined})")
+            page.set_default_timeout(8000)  # keep per-element waits snappy inside the poll loop
 
             # Intercept the 127.0.0.1 callback BEFORE any connection attempt — capture ?code=
             # and serve a friendly page instead of ERR_CONNECTION_REFUSED.
@@ -290,25 +327,21 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                                 if cont:
                                     cont.click(); actions.append("continued after TOTP")
                                 break
-                            # consent / terms / account-selection pages: accept + continue
-                            acc = _first_visible(frame, ACCEPT_SEL)
-                            if acc:
-                                try:
-                                    acc.check(); actions.append("accepted terms")
-                                except Exception:
-                                    pass
-                            if acc or (clicked_submit and not otp_el):
-                                cont = _first_visible(frame, CONTINUE_SEL)
-                                if cont:
-                                    txt = ""
-                                    try:
-                                        txt = (cont.inner_text() or "").strip().lower()
-                                    except Exception:
-                                        pass
-                                    if "cancel" not in txt and "deny" not in txt:
-                                        cont.click()
-                                        actions.append(f"clicked continue ({txt[:24] or 'submit'})")
-                                        break
+                            if otp_el and not code:
+                                continue  # push/SMS 2FA — wait for the operator, don't click around
+                            # Terms / consent-modal / account-grant pages: tick every visible
+                            # unchecked checkbox (terms box; per-account grant boxes — ALL
+                            # accounts share the one token, so grant all), then click the
+                            # highest-priority affirmative button (modal Accept first).
+                            try:
+                                for cb_el in frame.query_selector_all("input[type='checkbox']"):
+                                    if cb_el.is_visible() and not cb_el.is_checked():
+                                        cb_el.check(timeout=3000)
+                                        actions.append("checked a consent/account box")
+                            except Exception:
+                                pass
+                            if _click_affirmative(frame, actions):
+                                break
                     except Exception:
                         continue
                 time.sleep(STEP_POLL_S)
