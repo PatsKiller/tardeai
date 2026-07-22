@@ -5694,104 +5694,97 @@ def risk():
 
 
 def tax_lots():
-    lots = _load_json(STATE_DIR / "tax_lots.json") or {}
-    # Build price map from holdings for current_value computation
+    """Tax view built as ONE aggregate lot per CURRENT holding, from the holdings' authoritative
+    Schwab average-cost basis (2026-07-21, operator choice). Reconciles with the portfolio by
+    construction, so unrealized gains and taxable-loss harvest candidates are correct — replacing the
+    stale tax_lots.json (double-counted / phantom-full-basis-loss lots after the Fidelity→Schwab
+    transfer). Tradeoff: per-position, not per-purchase-lot; short/long-term is approximated from the
+    earliest known lot DATE (not the stale share counts) or 'unknown'. Precise per-lot terms need a
+    fresh Schwab Cost-Basis CSV import (imports/schwab_gainloss/)."""
     holdings = _load_json(STATE_DIR / "holdings.json") or {}
-    price_map = {}
-    for h in holdings.get("holdings", []):
-        sym = h.get("symbol", "")
-        if sym and h.get("price", 0) > 0:
-            price_map[sym] = h["price"]
-    # Also try enrichment cache
-    enrich = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
-    for sym, ec in enrich.items():
-        if isinstance(ec, dict) and sym not in price_map and ec.get("price", 0) > 0:
-            price_map[sym] = ec["price"]
 
-    flat = []
-    seen = set()
-    for key, lot_list in lots.items():
+    # Best-effort acquisition date per (symbol, account) — DATES ONLY from the legacy lot file, never
+    # its stale share counts — so we can approximate the holding-period term.
+    _old = _load_json(STATE_DIR / "tax_lots.json") or {}
+    _acq: dict[str, str] = {}
+    for key, lot_list in (_old.items() if isinstance(_old, dict) else []):
         if not isinstance(lot_list, list):
             continue
         for lot in lot_list:
-            # Skip closed lots (shares_remaining = 0 or closed = True)
-            shares_rem = lot.get("shares_remaining")
-            if shares_rem is not None and shares_rem <= 0:
+            ld = lot.get("lot_date") or lot.get("acquired")
+            if not ld:
                 continue
-            if lot.get("closed"):
-                continue
-            shares = lot.get("shares", 0)
-            if shares <= 0:
-                continue
+            sym = lot.get("symbol", key.split(":")[0])
+            acct = lot.get("account", key.split(":")[-1] if ":" in key else "")
+            k = f"{sym}:{acct}"
+            if k not in _acq or str(ld) < _acq[k]:   # earliest = conservative for long-term
+                _acq[k] = str(ld)
 
-            symbol = lot.get("symbol", key.split(":")[0])
-            account = lot.get("account", key.split(":")[-1] if ":" in key else "")
-            cost_per = lot.get("cost_per_share", 0)
-            cost_basis = lot.get("total_cost") or lot.get("cost_basis") or (cost_per * shares)
-            current_price = price_map.get(symbol, 0)
-            # A missing price does NOT mean the security is worthless. The old code booked the FULL cost
-            # basis as a loss whenever the symbol wasn't in the price map — but that fires for SOLD /
-            # TRANSFERRED lots and for funds the price source doesn't cover (e.g. the rolled-over Fidelity
-            # 401k funds: FID-CONTRA-F is a live $130k+ fund, not worthless). It produced a phantom
-            # -$838k loss across 95 lots and inverted the whole tax view (portfolio is +$60k). Skip lots we
-            # cannot price — tax lots reflect CURRENT open, priceable positions. (2026-07-21 audit.)
-            if current_price <= 0:
-                continue
-            current_value = shares * current_price
-            unrealized_gain = current_value - cost_basis
-            gain_pct = (unrealized_gain / cost_basis * 100) if cost_basis > 0 else 0
-
-            # Determine holding period from lot_date
-            lot_date = lot.get("lot_date") or lot.get("acquired", "")
-            holding_period = "unknown"
-            if lot_date:
-                try:
-                    from datetime import datetime, date
-                    ld = datetime.strptime(lot_date[:10], "%Y-%m-%d").date()
-                    days_held = (date.today() - ld).days
-                    holding_period = "long" if days_held > 365 else "short"
-                except Exception:
-                    pass
-
-            # Dedup key to avoid showing identical lots
-            dk = f"{symbol}:{account}:{lot_date}:{shares}"
-            if dk in seen:
-                continue
-            seen.add(dk)
-
-            flat.append({
-                "symbol": symbol, "account": account,
-                "shares": shares, "cost_basis": round(cost_basis, 2),
-                "current_value": round(current_value, 2),
-                "unrealized_gain": round(unrealized_gain, 2),
-                "gain_pct": round(gain_pct, 1),
-                "acquired": lot_date,
-                "holding_period": holding_period,
-            })
+    from datetime import datetime, date
+    flat = []
+    for p in holdings.get("holdings", []):
+        if p.get("is_cash"):
+            continue
+        shares = float(p.get("shares") or 0)
+        cost_basis = float(p.get("cost_basis") or 0)
+        mv = float(p.get("market_value") or 0)
+        px = float(p.get("current_price") or p.get("price") or 0)
+        worthless = bool(p.get("delisted")) or str(p.get("bucket") or "").lower().startswith("delisted")
+        if shares <= 0:
+            continue
+        # Include priced positions normally, AND genuinely delisted/worthless positions that carry a cost
+        # basis (a real capital loss — the ONE case where full-basis-as-loss is correct; SRNE, delisted
+        # CUSIPs). Skip only unpriced-but-LIVE positions we cannot value (e.g. rolled-over Fidelity funds).
+        if px <= 0 and not (worthless and cost_basis > 0):
+            continue
+        symbol = p.get("symbol", "")
+        account = p.get("account", "")
+        unrealized_gain = round(mv - cost_basis, 2)
+        gain_pct = round(unrealized_gain / cost_basis * 100, 1) if cost_basis > 0 else 0
+        lot_date = _acq.get(f"{symbol}:{account}", "")
+        holding_period = "unknown"
+        if lot_date:
+            try:
+                ld = datetime.strptime(lot_date[:10], "%Y-%m-%d").date()
+                holding_period = "long" if (date.today() - ld).days > 365 else "short"
+            except Exception:
+                pass
+        flat.append({
+            "symbol": symbol, "account": account,
+            "shares": round(shares, 4), "cost_basis": round(cost_basis, 2),
+            "current_value": round(mv, 2),
+            "unrealized_gain": unrealized_gain,
+            "gain_pct": gain_pct,
+            "acquired": lot_date,
+            "holding_period": holding_period,
+            "worthless": worthless and px <= 0,
+            "basis_source": p.get("cost_basis_source"),
+            "basis_partial": bool(p.get("basis_partial")),
+        })
     flat.sort(key=lambda x: abs(x.get("unrealized_gain", 0)), reverse=True)
-    # Summary stats
     total_lots = len(flat)
     harvest = [l for l in flat if l["unrealized_gain"] < -100 and l["account"] in ("schwab_taxable", "taxable")]
-    # Reconciliation check: do the priced lots' market value tie to current holdings? tax_lots.json is
-    # stale post Fidelity->Schwab transfer (some symbols double-counted, some lots missing), so flag it
-    # rather than present unreconciled lots as authoritative. (2026-07-21 audit.)
     _lot_mv = sum(l.get("current_value") or 0 for l in flat)
     _hold_mv = sum(float(h.get("market_value") or 0) for h in holdings.get("holdings", [])
                    if not h.get("is_cash"))
-    _reconciled = bool(_hold_mv) and abs(_lot_mv - _hold_mv) / _hold_mv < 0.02
+    _reconciled = bool(_hold_mv) and abs(_lot_mv - _hold_mv) < max(1.0, _hold_mv * 0.001)
+    _total_gain = round(sum(l.get("unrealized_gain") or 0 for l in flat), 2)
+    _worthless_loss = round(sum(l.get("unrealized_gain") or 0 for l in flat if l.get("worthless")), 2)
     return {
         "count": total_lots,
         "lots": flat[:500],
         "harvest_candidates": len(harvest),
+        "total_unrealized_gain": _total_gain,
+        "worthless_security_loss": _worthless_loss,
         "lots_market_value": round(_lot_mv, 2),
         "holdings_market_value": round(_hold_mv, 2),
         "reconciled_to_holdings": _reconciled,
-        "data_note": ("Open, priceable lots only (unpriced sold/transferred lots excluded)."
-                      if _reconciled else
-                      "⚠ Lots do not reconcile with current holdings — tax_lots.json is stale after the "
-                      "Fidelity→Schwab transfer (some symbols double-counted, some lots missing). Phantom "
-                      "full-basis losses removed, but treat lot-level gains/harvest candidates as approximate "
-                      "until the lot file is regenerated from broker data."),
+        "basis": "aggregate_per_position",
+        "data_note": ("One aggregate lot per current holding (Schwab average-cost basis); market value "
+                      "reconciles with the portfolio. Includes delisted/worthless positions (SRNE, delisted "
+                      "CUSIPs) as realizable capital losses, so total unrealized here is below the Holdings "
+                      "page's headline (which hides worthless names). Per-position, not per-purchase-lot; "
+                      "short/long-term is approximate — import fresh Schwab Cost-Basis CSVs for precise terms."),
     }
 
 
