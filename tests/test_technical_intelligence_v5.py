@@ -141,3 +141,41 @@ def test_30_technical_signal_grants_nothing():
     src = (ROOT / "scripts" / "decision_action_policy.py").read_text()
     assert "technical_state" not in src, \
         "action policy must not read technical_state (no new eligibility path)"
+
+
+# ── V6 integration contract (card ↔ packet) ──────────────────────────────────
+def test_v6_local_quant_never_displayed_unavailable():
+    band = (ROOT / "apps/command-center-v3/src/components/DecisionPacketBand.tsx").read_text()
+    assert "LOCAL QUANT · NO LLM" in band
+    assert "packet?.analysis_tier" in band
+    assert "model_review?.mode || packet?.analysis_tier" not in band, \
+        "model_review.mode must not take display priority over analysis_tier"
+
+
+def test_v6_packet_persists_freshness_and_aliases():
+    src = (ROOT / "scripts/shadow_decision_service.py").read_text()
+    for needle in ('packet["freshness"]', '"valid_until"', '"next_refresh_due_at"',
+                   'packet["current_input_snapshot"]', 'packet["analysis_tier"]',
+                   '"priority_tier"', '"policy_version"'):
+        assert needle in src, f"packet builder missing {needle}"
+
+
+def test_v6_legacy_vs_failed_vs_stale_explanations():
+    band = (ROOT / "apps/command-center-v3/src/components/DecisionPacketBand.tsx").read_text()
+    assert "LEGACY PACKET" in band
+    assert "Technical analysis FAILED" in band
+    assert "Technical data STALE" in band
+    assert "Technical refresh currently running" in band
+
+
+def test_v6_list_summary_retains_error():
+    api = (ROOT / "scripts/api_v2.py").read_text()
+    assert '"unavailable", "error")' in api, "list tech summary must retain error"
+
+
+def test_v6_timing_refinement_guarded():
+    src = (ROOT / "scripts/shadow_decision_service.py").read_text()
+    assert 'technical_state.get("overall_freshness") in ("CURRENT", "PARTIAL")' in src, \
+        "stale/failed technicals must never refine timing"
+    assert "never grant READY" in src
+    assert "BREAKOUT_CONFIRMATION" in src and "REVERSAL_WATCH" in src

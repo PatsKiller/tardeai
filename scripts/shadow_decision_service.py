@@ -677,10 +677,45 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
     _stage("technicals_mtf")
     try:
         import technical_intelligence as ti
-        technical_state = ti.analyze_technicals(sym, ("daily", "weekly"), conn)
+        import watch_decision_refresh as _wdrp
+        # Timeframe selection follows refresh-policy priority (V6 item 5): active
+        # tactical names (P0/P1) get intraday context; the rest get the
+        # long-term set. Never claimed unless bars actually exist (per-TF meta).
+        _prio_tf = _wdrp.classify_priority(sym, conn)
+        _tfs = (("15m", "1h", "daily", "weekly") if _prio_tf in ("P0", "P1")
+                else ("daily", "weekly", "monthly"))
+        technical_state = ti.analyze_technicals(sym, _tfs, conn)
+        facts["technical_state"] = technical_state  # family builders may consume
     except Exception as _te:
         technical_state = {"schema_version": "unavailable", "overall_freshness": "FAILED",
                           "overall_direction": "UNRESOLVED", "error": str(_te)[:160]}
+
+    # V6 item 6/7: technical evidence REFINES deterministic tactical timing when
+    # the snapshot is CURRENT and no model reconciliation overrode it. Guards:
+    # stale/failed technicals never contribute; EVENT_BLOCKED and every
+    # eligibility/risk gate live downstream and are untouched — technicals can
+    # move timing between WAIT/EXTENDED/etc. states but never grant READY
+    # (action policy does not read technical_state; test-enforced).
+    if (not reconciled) and technical_state.get("overall_freshness") in ("CURRENT", "PARTIAL"):
+        _daily = (technical_state.get("timeframes") or {}).get("daily") or {}
+        if (_daily.get("meta") or {}).get("freshness_state") == "CURRENT":
+            _mc = (_daily.get("momentum_context") or {}).get("state", "")
+            _pp = technical_state.get("primary_pattern") or {}
+            _vol_sig = ((_daily.get("indicators") or {}).get("volume_roc") or {}).get("signal")
+            _conf_state = str((_daily.get("confluence") or {}).get("state", ""))
+            if _pp.get("direction") == "BULLISH" and _pp.get("state") == "AWAITING_CONFIRMATION":
+                timing = "WAIT_FOR_BREAKOUT"
+            elif _pp.get("direction") == "BULLISH" and _pp.get("state") == "CONFIRMED" \
+                    and _vol_sig == "BULLISH" and timing != "EXTENDED":
+                timing = "BREAKOUT_CONFIRMATION"
+            elif _mc == "OVERBOUGHT_STRONG_TREND" or _mc == "OVERBOUGHT_EXHAUSTING":
+                timing = "EXTENDED"
+            elif _mc == "OVERSOLD_RECOVERY":
+                timing = "REVERSAL_WATCH"
+            elif _mc == "OVERSOLD_CONTINUING_DOWN":
+                timing = "NO_VALID_SETUP"
+            elif _conf_state == "MIXED" and timing == "NO_VALID_SETUP":
+                timing = "RANGE_BOUND"
 
     _stage("long_term")
     lt = build_long_term(facts, event, ownership, thesis_state, timing)
@@ -764,6 +799,53 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
     except Exception as _ie:
         packet["input_snapshot"] = None
         packet["input_hash"] = None
+
+    # ── V6 canonical contracts (2026-07-22): the card reads these EXACT fields —
+    # freshness is generated server-side from the refresh policy, never in React.
+    packet["current_input_snapshot"] = packet.get("input_snapshot")  # canonical alias
+    _now_iso = _now().isoformat()
+    _mr_mode = str((packet.get("model_review") or {}).get("mode") or "UNAVAILABLE")
+    # analysis_tier is EXPLICIT: LOCAL_QUANT is a real deterministic analysis, not
+    # an unavailable one. UNAVAILABLE stays reserved for actual failures.
+    if _mr_mode in ("BLIND", "SINGLE_LANE"):
+        packet["analysis_tier"] = "STANDARD_BLIND"
+    elif _mr_mode == "PREMIUM":
+        packet["analysis_tier"] = "PREMIUM_REVIEW"
+    else:
+        packet["analysis_tier"] = "LOCAL_QUANT"
+    try:
+        import watch_decision_refresh as _wdr
+        import packet_invalidation as _pinv
+        _ttl_h = _pinv.effective_ttl_hours()
+        _prio = _wdr.classify_priority(sym, conn)
+        _pol = _wdr.load_policy()
+        _cad_min = ((_pol.get("tiers") or {}).get(_prio) or {}).get("full_local_packet_max_minutes")
+        from datetime import timedelta as _td
+        _built = _now()
+        _snap_ts = []
+        for _sec in (packet.get("input_snapshot") or {}).values():
+            if isinstance(_sec, dict):
+                _snap_ts += [str(v) for k, v in _sec.items()
+                             if v and (k.endswith("_as_of") or k in ("as_of", "fetched_at"))]
+        packet["freshness"] = {
+            "overall_state": "CURRENT",
+            "last_input_refresh_at": max(_snap_ts) if _snap_ts else _now_iso,
+            "last_strategy_build_at": _now_iso,
+            "last_local_quant_at": _now_iso,
+            "last_standard_blind_at": _now_iso if packet["analysis_tier"] == "STANDARD_BLIND" else None,
+            "last_premium_review_at": None,
+            "valid_until": (_built + _td(hours=_ttl_h)).isoformat(),
+            "next_refresh_due_at": (_built + _td(minutes=int(_cad_min))).isoformat()
+            if _cad_min else (_built + _td(hours=_ttl_h)).isoformat(),
+            "invalidated_at": None,
+            "invalidation_reasons": [],
+            "policy_version": _wdr.policy_version(),
+            "priority_tier": _prio,
+        }
+    except Exception as _fe:
+        packet["freshness"] = {"overall_state": "CURRENT",
+                               "last_strategy_build_at": _now_iso,
+                               "error": str(_fe)[:120]}
 
     packet["headline"] = dp.compose_headline(packet)
     packet["validation_errors"] = dp.validate(packet)
