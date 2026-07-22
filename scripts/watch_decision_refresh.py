@@ -384,6 +384,15 @@ def process_one_job(conn) -> bool:
         packet = svc.evaluate(sym, conn, origin="v5_refresh",
                               requested_by=f"wdr_run_{run_id}",
                               run_models=run_models, on_stage=stage_cb)
+        # evaluate() may have run a long local-critic generation — the idle
+        # reaper can kill connections meanwhile; persist on verified-alive ones.
+        conn = _fresh_conn(conn); cur = conn.cursor()
+        try:
+            from db_adapter import _get_conn as _shared
+            _sh = _shared()
+            _sh.cursor().execute("SELECT 1")
+        except Exception:
+            pass  # db_adapter rebuilds its thread-local on next use
         packet_id_after = svc.persist(packet, origin="v5_refresh", run_id=None)  # returns packet_id int
         lane_calls = 0
         if run_models:
