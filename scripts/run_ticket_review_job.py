@@ -27,6 +27,8 @@ def main(symbol: str, lanes: str):
         return
     pid, packet = row
     cap = packet.get("current_actionable_plan")
+    if not isinstance(cap, dict):
+        cap = None
     validation = (cap or {}).get("ticket_validation") or {}
     facts = {"live_price": packet.get("current_price"),
              "enriched_price": packet.get("price_used"),
