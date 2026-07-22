@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hooks/useApi'
 import MetricStrip from './components/MetricStrip'
 import NavRail from './components/NavRail'
@@ -98,6 +98,25 @@ function ReconnectingBar() {
   )
 }
 
+/** Telegram-safe path deep-link → Trading Broker Orders with intent open. */
+function GoOrderDeepLink() {
+  const { intentId } = useParams()
+  const id = encodeURIComponent(intentId || '')
+  return <Navigate to={`/trading?tab=Broker%20Orders&intent=${id}`} replace />
+}
+
+/** Telegram-safe path deep-link → Trading Proposals with proposal focused. */
+function GoProposalDeepLink() {
+  const { proposalId } = useParams()
+  const [sp] = useSearchParams()
+  const sym = sp.get('symbol')
+  const id = encodeURIComponent(proposalId || '')
+  const q = sym
+    ? `/trading?tab=Proposals&proposal=${id}&symbol=${encodeURIComponent(sym)}`
+    : `/trading?tab=Proposals&proposal=${id}`
+  return <Navigate to={q} replace />
+}
+
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
   return (
@@ -112,6 +131,9 @@ function Shell() {
             <Route path="portfolio" element={<PortfolioHub onDrill={setDrill} />} />
             <Route path="risk" element={<RiskHub onDrill={setDrill} />} />
             <Route path="trading" element={<TradingHub onDrill={setDrill} />} />
+            {/* Telegram-safe deep links: path-only (no multi-param query). Messengers truncate at &. */}
+            <Route path="go/order/:intentId" element={<GoOrderDeepLink />} />
+            <Route path="go/proposal/:proposalId" element={<GoProposalDeepLink />} />
             <Route path="manual-execution" element={<Navigate to="/trading?tab=Entry+Desk" replace />} />
             <Route path="strategy" element={<StrategyHub onDrill={setDrill} />} />
             <Route path="agents" element={<AgentsHub onDrill={setDrill} />} />

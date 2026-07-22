@@ -942,14 +942,20 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
   const activity: any[] = ((activityR as any)?.data ?? activityR)?.activity ?? []
   const recon = (reconR as any)?.data ?? reconR
 
-  // Telegram deep-link (?intent=<id>) → auto-open that exact order item
+  // Telegram deep-link (?intent=<id> or /go/order/:id) → auto-open that exact order item
   const intentParam = searchParams.get('intent')
+  const [deepLinkMiss, setDeepLinkMiss] = useState(false)
   useEffect(() => {
-    if (intentParam && drafts.some(d => d.intent_id === intentParam)) {
+    if (!intentParam) { setDeepLinkMiss(false); return }
+    if (drafts.some(d => d.intent_id === intentParam)) {
       setOpen(intentParam)
+      setDeepLinkMiss(false)
       setTimeout(() => deepLinkRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200)
+    } else if (drafts.length > 0) {
+      // drafts loaded but intent missing (expired / executed / other broker)
+      setDeepLinkMiss(true)
     }
-  }, [intentParam, drafts.length])
+  }, [intentParam, drafts.length, drafts])
 
   const lastRun = recon?.runs?.[0]
 
@@ -969,6 +975,17 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
 
       <ActiveTraderPanel seed={draftSeed ?? null} onPreviewed={() => { refetch(); refetchEvents() }} />
 
+      {intentParam && deepLinkMiss && (
+        <div style={{ padding: '10px 12px', marginBottom: 10, borderRadius: 6, border: `1px solid ${T.border}`, background: T.card, fontSize: 12, color: T.amber }}>
+          Telegram deep-link intent {intentParam.slice(0, 8)}… not in draft list (expired/executed/window). Use manual code or refresh.
+          <button type="button" onClick={() => refetch()} style={{ marginLeft: 8, fontSize: 12, color: T.text, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}>refresh</button>
+        </div>
+      )}
+      {intentParam && !deepLinkMiss && (
+        <div style={{ padding: '8px 12px', marginBottom: 10, borderRadius: 6, border: `1px solid ${T.border}`, background: T.card, fontSize: 12, color: T.dim }}>
+          Opened from Telegram · intent {intentParam.slice(0, 8)}…
+        </div>
+      )}
       <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 2 }}>
         Draft order intents <button onClick={() => refetch()} style={btn('#333')}>refresh</button>
       </div>

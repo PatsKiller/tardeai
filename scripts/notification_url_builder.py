@@ -119,15 +119,33 @@ def build_dashboard_url(path: str = "/v3/", query: dict | None = None) -> str:
 
 
 def build_proposal_url(proposal_id, symbol: str | None = None) -> str:
-    """Deep-link to Trading → Proposals for one proposal id."""
-    q = {"tab": "Proposals", "proposal": str(proposal_id)}
+    """Deep-link to Trading → Proposals for one proposal id.
+
+    Path form /v3/go/proposal/{id} — NO query-string & separators.
+    Telegram / many mobile browsers truncate URLs at the first bare &.
+    """
+    base = get_public_base_url()
+    pid = str(proposal_id).strip()
+    url = f"{base}/v3/go/proposal/{pid}"
     if symbol:
-        q["symbol"] = str(symbol).upper()
-    return build_dashboard_url("/v3/trading", q)
+        # single optional query only (no second &)
+        url += f"?symbol={quote(str(symbol).upper(), safe='')}"
+    return url
 
 
 def build_broker_order_url(intent_id: str) -> str:
-    """Deep-link to Trading → Broker Orders for one intent id (2FA approval)."""
+    """Deep-link to Trading → Broker Orders for one intent id (2FA approval).
+
+    Path form /v3/go/order/{intent_id} — avoids ?tab=...&intent=... which Telegram
+    often truncates after the first & so the intent id never arrives.
+    """
+    base = get_public_base_url()
+    iid = str(intent_id).strip()
+    return f"{base}/v3/go/order/{iid}"
+
+
+def build_broker_order_url_legacy_query(intent_id: str) -> str:
+    """Legacy query form (kept for tests / local SPA). Prefer build_broker_order_url."""
     return build_dashboard_url("/v3/trading", {"tab": "Broker Orders", "intent": str(intent_id)})
 
 
