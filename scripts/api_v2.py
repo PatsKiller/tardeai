@@ -6684,8 +6684,10 @@ def _wl_items(query: dict = None):
                     pass
                 # Same current-input builder the standalone endpoint uses, so the
                 # inline path never carries a weaker context than the endpoint.
+                # V5 Section 11: 60s per-symbol cache — this ran per packet row on
+                # EVERY list request (23 × several queries = the 4.4s worst case).
                 try:
-                    _snap = _inv.build_current_input_snapshot(str(_it.get("symbol")), _conn)
+                    _snap = _v5_snapshot_cached(str(_it.get("symbol")), _conn, _inv)
                 except Exception:
                     _snap = None
                 _ap = _pol.evaluate_action(
@@ -6704,6 +6706,11 @@ def _wl_items(query: dict = None):
                         "invalidation_reasons": _ap.get("invalidation_reasons") or _ap.get("blocks") or [],
                     }
                     _it["decision_packet"] = _pkt
+                # V5 Section 11: LIST rows carry a presenter-sufficient TRIM, not the
+                # full forensic packet (input_snapshot + raw lane outputs + blind
+                # facts were ~70% of a 1.27MB list payload / 4.4s worst). The full
+                # packet stays on /api/v2/watch/decision/latest for Details/Audit.
+                _it["decision_packet"] = _trim_packet_for_list(_pkt)
             else:
                 _it["action_policy"] = None
         # ROOT: in_portfolio from live holdings.json for every symbol — not the
@@ -11992,6 +11999,69 @@ def _shadow_strategy_build(body=None):
 def _q1(query, key):
     v = (query or {}).get(key)
     return (v[0] if v else None) if isinstance(v, (list, tuple)) else v
+
+
+# Keys the card presenter + strategy rail + audit drawer actually render. The
+# heavyweights (input_snapshot, model raw lane outputs, blind facts, validation
+# internals) live only on /api/v2/watch/decision/latest.
+_LIST_PACKET_KEYS = (
+    "packet_version", "symbol", "instrument_type", "evaluated_at", "facts_as_of",
+    "price_used", "current_price", "price_drift_pct", "fundamentals_as_of",
+    "ownership", "horizons", "event_state", "data_quality", "no_trade_is_valid",
+    "preferred_action", "headline", "input_hash", "action_policy_version",
+    "current_validity", "deterministic_thesis", "legacy_summary",
+)
+_LIST_STRUCTURE_KEYS = ("structure", "state", "action_state", "occ_symbol",
+                        "entry_zone", "limit_price", "stop_price", "targets", "risk_reward",
+                        "rejection_reasons", "condition", "summary", "quote_source",
+                        "eligibility", "trigger", "invalidation")
+
+
+_V5_SNAP_CACHE: dict = {}
+
+
+def _v5_snapshot_cached(symbol: str, conn, inv, ttl: float = 60.0):
+    """60s TTL cache for build_current_input_snapshot on the LIST path only.
+    Staleness detection tolerates a ≤60s lag; the refresh orchestrator and the
+    standalone /watch/decision/latest always build fresh snapshots."""
+    import time as _t
+    key = symbol.upper()
+    hit = _V5_SNAP_CACHE.get(key)
+    if hit and _t.time() - hit[0] < ttl:
+        return hit[1]
+    snap = inv.build_current_input_snapshot(key, conn)
+    _V5_SNAP_CACHE[key] = (_t.time(), snap)
+    if len(_V5_SNAP_CACHE) > 600:
+        _V5_SNAP_CACHE.clear()
+    return snap
+
+
+def _trim_packet_for_list(pkt: dict) -> dict:
+    try:
+        out = {k: pkt[k] for k in _LIST_PACKET_KEYS if k in pkt}
+        fams = pkt.get("plan_families") or {}
+        tf = {}
+        for name, fam in fams.items():
+            if not isinstance(fam, dict):
+                tf[name] = fam
+                continue
+            f2 = {k: v for k, v in fam.items() if k != "structures"}
+            structs = fam.get("structures") or []
+            f2["structures"] = [
+                {k: s.get(k) for k in _LIST_STRUCTURE_KEYS if s.get(k) is not None}
+                for s in structs[:4] if isinstance(s, dict)
+            ]
+            tf[name] = f2
+        out["plan_families"] = tf
+        mr = pkt.get("model_review") or {}
+        out["model_review"] = {k: mr.get(k) for k in
+                               ("mode", "lanes_requested", "lanes_completed",
+                                "agreement_by_dimension", "consensus", "fallback_reason",
+                                "provider_families", "duration_s")
+                               if mr.get(k) is not None}
+        return out
+    except Exception:
+        return pkt  # never break the list over a trim failure
 
 
 def _watch_decision_refresh_start(body):

@@ -629,6 +629,48 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
               }
               setActionToast(`Alerts armed on ${ok}/${syms.length}`); setSelected({})
             }}>🔔 Alert all</button>
+          {/* V5 (Section 7): decision-desk bulk actions — cap 25, cost preview, idempotent server-side */}
+          {watchV5Enabled() && (
+            <>
+              <button style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 2, border: `1px solid ${T.link}88`, background: 'transparent', color: T.link, cursor: 'pointer' }}
+                disabled={Object.keys(strategyBusy).length > 0}
+                onClick={() => {
+                  const syms = selSyms.slice(0, 25)
+                  if (!window.confirm(`Rebuild LOCAL strategies for ${syms.length} symbols?\nDeterministic — zero model calls, ~1–2 min.`)) return
+                  void refreshStrategy(syms, 'bulk_local_rebuild'); setSelected({})
+                }}>⟳ Rebuild Local</button>
+              <button style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 2, border: `1px solid ${T.link}88`, background: 'transparent', color: T.link, cursor: 'pointer' }}
+                disabled={Object.keys(strategyBusy).length > 0}
+                onClick={async () => {
+                  const syms = selSyms.slice(0, 25)
+                  if (!window.confirm(`Run STANDARD BLIND for ${syms.length} symbols?\nEstimated model-lane calls: ${2 * syms.length} (free OAuth lanes — Grok + ChatGPT). Paid cost: $0.`)) return
+                  const res = await enqueueStrategyRefresh(syms, { scope: 'AFFECTED_DIMENSIONS', tier: 'STANDARD_BLIND', force: true, reason: 'bulk_standard_blind' })
+                  if (!res.ok || !res.run_id) { setActionToast(`Blind refresh failed: ${res.error ?? 'unknown'}`); return }
+                  setActionToast(`Standard Blind queued (run ${res.run_id}) — ${res.queued} symbols, est ${res.estimated_lane_calls} lane calls`)
+                  setSelected({})
+                  const done = await pollRefreshRun(res.run_id, { timeoutMs: 420_000 })
+                  const bad = done?.jobs?.filter(j => j.state === 'FAILED').length ?? 0
+                  setActionToast(bad ? `Blind refresh: ${bad} failed — see run ${res.run_id}` : `Blind refresh complete (run ${res.run_id})`)
+                  await refetchWl(); void refetchDeskSummary()
+                }}>◎ Standard Blind</button>
+              <button style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 2, border: `1px solid ${BB.border}`, background: 'transparent', color: BB.text2, cursor: 'pointer' }}
+                onClick={async () => {
+                  const syms = selSyms.slice(0, 25)
+                  const r = await fetch('/api/v2/watch/decision/premium/estimate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: syms }) }).then(x => x.json()).catch(() => null)
+                  const d = r?.data ?? r
+                  setActionToast(d?.allowed === false
+                    ? `Premium: ${String(d.reason || '').slice(0, 120)}`
+                    : `Premium estimate: ${d?.estimated_calls ?? syms.length} calls ≈ $${d?.estimated_cost_usd ?? '?'} (${d?.provider ?? '?'})`)
+                }}>$ Premium Estimate</button>
+              <button style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 2, border: `1px solid ${BB.border}`, background: 'transparent', color: BB.text2, cursor: 'pointer' }}
+                onClick={() => {
+                  const syms = selSyms.slice(0, 25)
+                  if (!window.confirm(`Refresh INPUTS (news/technicals/enrichment) for ${syms.length} symbols? Packets are NOT rebuilt.`)) return
+                  syms.forEach((s, i) => window.setTimeout(() => void runRefresh(s, 'manual'), i * 1500))
+                  setActionToast(`Inputs refresh queued for ${syms.length} symbols (staggered)`); setSelected({})
+                }}>Refresh Inputs</button>
+            </>
+          )}
           <button style={{ fontSize: 10, padding: '3px 10px', borderRadius: 2, border: `1px solid ${BB.border}`, background: 'transparent', color: BB.text3, cursor: 'pointer' }} onClick={() => setSelected({})}>Clear</button>
         </div>
       )}
