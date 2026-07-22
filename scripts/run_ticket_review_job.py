@@ -42,6 +42,9 @@ def main(symbol: str, lanes: str):
     merged_reviews = {**(prior.get("reviews") or {}), **reviews}
     reconciled = strec.reconcile(validation or {"state": "PASS"}, merged_reviews)
     tr = {**prior, "reviews": merged_reviews, "reconciled": reconciled}
+    # model generations run for minutes — the idle reaper kills the original
+    # connection; persist on a FRESH one.
+    conn = _get_conn(); cur = conn.cursor()
     cur.execute("""UPDATE decision_packets
                    SET packet = jsonb_set(packet, '{ticket_review}', %s::jsonb)
                    WHERE packet_id=%s""", (json.dumps(tr, default=str), pid))
