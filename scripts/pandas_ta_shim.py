@@ -121,3 +121,58 @@ def kc(high: pd.Series, low: pd.Series, close: pd.Series,
         f"KCBe_{length}_{scalar}": basis,
         f"KCUe_{length}_{scalar}": basis + scalar * rng,
     })
+
+
+# ── V5 technicals (2026-07-22): the four functions the engine calls that the
+#    shim previously LACKED — their absence silently degraded OBV/CMF/ADX/Aroon
+#    to NEUTRAL via the engine's nonfatal handlers. Formula parity with
+#    pandas_ta (column names included) is test-enforced.
+
+def obv(close: pd.Series, volume: pd.Series, **_):
+    """On-Balance Volume: cumulative signed volume."""
+    direction = close.diff().apply(lambda x: 1.0 if x > 0 else (-1.0 if x < 0 else 0.0))
+    direction.iloc[0] = 0.0
+    return (direction * volume).cumsum()
+
+
+def cmf(high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series,
+        length: int = 20, **_):
+    """Chaikin Money Flow: sum(MFV, n) / sum(volume, n)."""
+    rng = (high - low).replace(0.0, pd.NA)
+    mfm = ((close - low) - (high - close)) / rng
+    mfv = (mfm * volume).fillna(0.0)
+    return mfv.rolling(length, min_periods=length).sum() / \
+        volume.rolling(length, min_periods=length).sum()
+
+
+def adx(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14, **_):
+    """Wilder ADX with +DI/−DI. Columns match pandas_ta: ADX_{l}, DMP_{l}, DMN_{l}."""
+    up = high.diff()
+    dn = -low.diff()
+    plus_dm = ((up > dn) & (up > 0)) * up
+    minus_dm = ((dn > up) & (dn > 0)) * dn
+    tr = true_range(high, low, close)
+    atr_w = _wilder(tr, length)
+    plus_di = 100.0 * _wilder(plus_dm.fillna(0.0), length) / atr_w
+    minus_di = 100.0 * _wilder(minus_dm.fillna(0.0), length) / atr_w
+    dx = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0.0, pd.NA)
+    adx_s = _wilder(dx.fillna(0.0), length)
+    return pd.DataFrame({f"ADX_{length}": adx_s,
+                         f"DMP_{length}": plus_di,
+                         f"DMN_{length}": minus_di})
+
+
+def aroon(high: pd.Series, low: pd.Series, length: int = 25, **_):
+    """Aroon up/down. Columns match pandas_ta: AROOND_{l}, AROONU_{l}, AROONOSC_{l}."""
+    def _since_max(x):
+        return float(len(x) - 1 - x.argmax())
+
+    def _since_min(x):
+        return float(len(x) - 1 - x.argmin())
+    bars_hi = high.rolling(length + 1, min_periods=length + 1).apply(_since_max, raw=True)
+    bars_lo = low.rolling(length + 1, min_periods=length + 1).apply(_since_min, raw=True)
+    up_s = 100.0 * (length - bars_hi) / length
+    dn_s = 100.0 * (length - bars_lo) / length
+    return pd.DataFrame({f"AROOND_{length}": dn_s,
+                         f"AROONU_{length}": up_s,
+                         f"AROONOSC_{length}": up_s - dn_s})

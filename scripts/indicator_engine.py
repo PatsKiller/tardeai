@@ -101,6 +101,16 @@ def _neutral(details=None):
     return {'signal': 'NEUTRAL', 'value': None, 'details': details or {}}
 
 
+def _unavailable(reason, details=None):
+    """V5 (2026-07-22): a computation FAILURE or missing implementation is NOT a
+    neutral market read — silent NEUTRAL made the engine look more complete than
+    it was (obv/cmf/adx/aroon under the pandas_ta shim). UNAVAILABLE is excluded
+    from confluence and rendered gray, never counted as evidence."""
+    d = dict(details or {})
+    d['error'] = str(reason)[:160]
+    return {'signal': 'UNAVAILABLE', 'value': None, 'details': d}
+
+
 # ── Individual Indicator Functions ────────────────────────────────────────────
 
 def _compute_rsi(df: pd.DataFrame, cfg: dict) -> dict:
@@ -108,7 +118,7 @@ def _compute_rsi(df: pd.DataFrame, cfg: dict) -> dict:
         period = cfg.get('period', 14)
         rsi_series = ta.rsi(df['close'], length=period)
         if rsi_series is None or rsi_series.dropna().empty:
-            return _neutral()
+            return _unavailable('insufficient_bars')
         rsi_val = float(rsi_series.dropna().iloc[-1])
 
         # Divergence: last N bars price higher but RSI lower
@@ -157,7 +167,7 @@ def _compute_rsi(df: pd.DataFrame, cfg: dict) -> dict:
                 'details': {'rsi': round(rsi_val, 2), 'divergence': divergence, 'entry_quality': eq}}
     except Exception as e:
         logger.warning(f"RSI computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_stochastic(df: pd.DataFrame, cfg: dict) -> dict:
@@ -168,7 +178,7 @@ def _compute_stochastic(df: pd.DataFrame, cfg: dict) -> dict:
         result = ta.stoch(df['high'], df['low'], df['close'],
                           k=k_period, d=d_period, smooth_k=smooth)
         if result is None or result.dropna().empty:
-            return _neutral()
+            return _unavailable('insufficient_bars')
 
         k_col = f'STOCHk_{k_period}_{d_period}_{smooth}'
         d_col = f'STOCHd_{k_period}_{d_period}_{smooth}'
@@ -198,7 +208,7 @@ def _compute_stochastic(df: pd.DataFrame, cfg: dict) -> dict:
                 'details': {'k': round(k_val, 2), 'd': round(d_val, 2), 'crossover': crossover}}
     except Exception as e:
         logger.warning(f"Stochastic computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_macd(df: pd.DataFrame, cfg: dict) -> dict:
@@ -208,7 +218,7 @@ def _compute_macd(df: pd.DataFrame, cfg: dict) -> dict:
         sig = cfg.get('signal', 9)
         result = ta.macd(df['close'], fast=fast, slow=slow, signal=sig)
         if result is None or result.dropna().empty:
-            return _neutral()
+            return _unavailable('insufficient_bars')
 
         macd_col = f'MACD_{fast}_{slow}_{sig}'
         hist_col = f'MACDh_{fast}_{slow}_{sig}'
@@ -250,7 +260,7 @@ def _compute_macd(df: pd.DataFrame, cfg: dict) -> dict:
                             'histogram': round(hist_val, 4), 'histogram_direction': hist_dir}}
     except Exception as e:
         logger.warning(f"MACD computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_williams_r(df: pd.DataFrame, cfg: dict) -> dict:
@@ -258,7 +268,7 @@ def _compute_williams_r(df: pd.DataFrame, cfg: dict) -> dict:
         period = cfg.get('period', 14)
         wr = ta.willr(df['high'], df['low'], df['close'], length=period)
         if wr is None or wr.dropna().empty:
-            return _neutral()
+            return _unavailable('insufficient_bars')
         wr_val = float(wr.dropna().iloc[-1])
 
         oversold = cfg.get('oversold', -80)
@@ -275,7 +285,7 @@ def _compute_williams_r(df: pd.DataFrame, cfg: dict) -> dict:
                 'details': {'williams_r': round(wr_val, 2)}}
     except Exception as e:
         logger.warning(f"Williams %R computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_ema(df: pd.DataFrame, cfg: dict) -> dict:
@@ -330,7 +340,7 @@ def _compute_ema(df: pd.DataFrame, cfg: dict) -> dict:
         return {'signal': signal, 'value': round(current_price, 2), 'details': details}
     except Exception as e:
         logger.warning(f"EMA computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_sma(df: pd.DataFrame, cfg: dict) -> dict:
@@ -371,7 +381,7 @@ def _compute_sma(df: pd.DataFrame, cfg: dict) -> dict:
         return {'signal': signal, 'value': round(current_price, 2), 'details': details}
     except Exception as e:
         logger.warning(f"SMA computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_vwap(df: pd.DataFrame, cfg: dict) -> dict:
@@ -411,7 +421,7 @@ def _compute_vwap(df: pd.DataFrame, cfg: dict) -> dict:
                             'position': position}}
     except Exception as e:
         logger.warning(f"VWAP computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_bollinger(df: pd.DataFrame, cfg: dict) -> dict:
@@ -420,7 +430,7 @@ def _compute_bollinger(df: pd.DataFrame, cfg: dict) -> dict:
         std_dev = cfg.get('std_dev', 2.0)
         result = ta.bbands(df['close'], length=period, std=std_dev)
         if result is None or result.dropna().empty:
-            return _neutral()
+            return _unavailable('insufficient_bars')
 
         suffix = f'{period}_{std_dev}_{std_dev}'
         lower = float(result[f'BBL_{suffix}'].dropna().iloc[-1])
@@ -457,7 +467,7 @@ def _compute_bollinger(df: pd.DataFrame, cfg: dict) -> dict:
                             'expanding': expanding}}
     except Exception as e:
         logger.warning(f"Bollinger computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_keltner(df: pd.DataFrame, cfg: dict) -> dict:
@@ -466,7 +476,7 @@ def _compute_keltner(df: pd.DataFrame, cfg: dict) -> dict:
         atr_mult = cfg.get('atr_multiple', 2.0)
         kc = ta.kc(df['high'], df['low'], df['close'], length=period, scalar=atr_mult)
         if kc is None or kc.dropna().empty:
-            return _neutral()
+            return _unavailable('insufficient_bars')
 
         kc_lower = float(kc[f'KCLe_{period}_{atr_mult}'].dropna().iloc[-1])
         kc_middle = float(kc[f'KCBe_{period}_{atr_mult}'].dropna().iloc[-1])
@@ -520,7 +530,7 @@ def _compute_keltner(df: pd.DataFrame, cfg: dict) -> dict:
                             'squeeze_fired': squeeze_fired, 'direction': direction}}
     except Exception as e:
         logger.warning(f"Keltner computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_atr(df: pd.DataFrame, cfg: dict) -> dict:
@@ -528,7 +538,7 @@ def _compute_atr(df: pd.DataFrame, cfg: dict) -> dict:
         period = cfg.get('period', 14)
         atr_series = ta.atr(df['high'], df['low'], df['close'], length=period)
         if atr_series is None or atr_series.dropna().empty:
-            return _neutral()
+            return _unavailable('insufficient_bars')
 
         atr_val = float(atr_series.dropna().iloc[-1])
         current_price = float(df['close'].iloc[-1])
@@ -566,7 +576,7 @@ def _compute_atr(df: pd.DataFrame, cfg: dict) -> dict:
                             'target_1x': round(current_price + atr_val, 2)}}
     except Exception as e:
         logger.warning(f"ATR computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_fibonacci(df: pd.DataFrame, cfg: dict) -> dict:
@@ -629,7 +639,7 @@ def _compute_fibonacci(df: pd.DataFrame, cfg: dict) -> dict:
                             'swing_low': round(swing_low, 2)}}
     except Exception as e:
         logger.warning(f"Fibonacci computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_pivots(df: pd.DataFrame, cfg: dict, timeframe: str = 'daily') -> dict:
@@ -697,7 +707,7 @@ def _compute_pivots(df: pd.DataFrame, cfg: dict, timeframe: str = 'daily') -> di
         return {'signal': signal, 'value': levels.get('pp'), 'details': levels}
     except Exception as e:
         logger.warning(f"Pivot ({timeframe}) computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_pivots_daily(df: pd.DataFrame, cfg: dict) -> dict:
@@ -742,14 +752,14 @@ def _compute_volume_profile(df: pd.DataFrame, cfg: dict) -> dict:
                             'avg_volume': round(avg_vol, 0)}}
     except Exception as e:
         logger.warning(f"Volume profile computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_obv(df: pd.DataFrame, cfg: dict) -> dict:
     try:
         obv = ta.obv(df['close'], df['volume'])
         if obv is None or obv.dropna().empty:
-            return _neutral()
+            return _unavailable('insufficient_bars')
 
         obv_val = float(obv.dropna().iloc[-1])
         window = cfg.get('divergence_window', 5)
@@ -785,7 +795,7 @@ def _compute_obv(df: pd.DataFrame, cfg: dict) -> dict:
                             'divergence': divergence}}
     except Exception as e:
         logger.warning(f"OBV computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_volume_roc(df: pd.DataFrame, cfg: dict) -> dict:
@@ -795,7 +805,7 @@ def _compute_volume_roc(df: pd.DataFrame, cfg: dict) -> dict:
         institutional_t = cfg.get('institutional_threshold', 5.0)
 
         if 'volume' not in df.columns:
-            return _neutral()
+            return _unavailable('insufficient_bars')
 
         avg_vol = float(df['volume'].iloc[-period:].mean()) if len(df) >= period else float(df['volume'].mean())
         current_vol = float(df['volume'].iloc[-1])
@@ -825,7 +835,7 @@ def _compute_volume_roc(df: pd.DataFrame, cfg: dict) -> dict:
                             'classification': classification}}
     except Exception as e:
         logger.warning(f"Volume ROC computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_cmf(df: pd.DataFrame, cfg: dict) -> dict:
@@ -833,7 +843,7 @@ def _compute_cmf(df: pd.DataFrame, cfg: dict) -> dict:
         period = cfg.get('period', 20)
         cmf = ta.cmf(df['high'], df['low'], df['close'], df['volume'], length=period)
         if cmf is None or cmf.dropna().empty:
-            return _neutral()
+            return _unavailable('insufficient_bars')
 
         cmf_val = float(cmf.dropna().iloc[-1])
         acc_t = cfg.get('accumulation', 0.1)
@@ -853,7 +863,7 @@ def _compute_cmf(df: pd.DataFrame, cfg: dict) -> dict:
                 'details': {'cmf': round(cmf_val, 4), 'flow': flow}}
     except Exception as e:
         logger.warning(f"CMF computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_adx(df: pd.DataFrame, cfg: dict) -> dict:
@@ -861,7 +871,7 @@ def _compute_adx(df: pd.DataFrame, cfg: dict) -> dict:
         period = cfg.get('period', 14)
         result = ta.adx(df['high'], df['low'], df['close'], length=period)
         if result is None or result.dropna().empty:
-            return _neutral()
+            return _unavailable('insufficient_bars')
 
         adx_val = float(result[f'ADX_{period}'].dropna().iloc[-1])
         plus_di = float(result[f'DMP_{period}'].dropna().iloc[-1])
@@ -889,7 +899,7 @@ def _compute_adx(df: pd.DataFrame, cfg: dict) -> dict:
                             'minus_di': round(minus_di, 2), 'regime': regime}}
     except Exception as e:
         logger.warning(f"ADX computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
 
 
 def _compute_aroon(df: pd.DataFrame, cfg: dict) -> dict:
@@ -897,7 +907,7 @@ def _compute_aroon(df: pd.DataFrame, cfg: dict) -> dict:
         period = cfg.get('period', 25)
         result = ta.aroon(df['high'], df['low'], length=period)
         if result is None or result.dropna().empty:
-            return _neutral()
+            return _unavailable('insufficient_bars')
 
         aroon_up = float(result[f'AROONU_{period}'].dropna().iloc[-1])
         aroon_down = float(result[f'AROOND_{period}'].dropna().iloc[-1])
@@ -920,7 +930,110 @@ def _compute_aroon(df: pd.DataFrame, cfg: dict) -> dict:
                             'trend': trend}}
     except Exception as e:
         logger.warning(f"Aroon computation failed (non-fatal): {e}")
-        return _neutral()
+        return _unavailable(e)
+
+
+# ── V5 confluence v2: weighted, family-grouped, correlation-capped (17.8) ─────
+# Correlated indicators must not multiply confirmation: EMA+SMA are one TREND
+# read; RSI+Williams%R are one oscillator read. Each signal contributes its
+# CONFIGURED YAML weight (finally applied — the legacy counter never read them),
+# capped per evidence family, and STRONG requires >=3 independent families.
+EVIDENCE_FAMILIES = {
+    'TREND': ('ema', 'sma', 'adx', 'aroon'),
+    'MOMENTUM': ('rsi', 'stochastic', 'macd', 'williams_r'),
+    'VOLUME_FLOW': ('vwap', 'obv', 'volume_roc', 'cmf', 'volume_profile'),
+    'VOLATILITY': ('bollinger', 'keltner', 'atr'),
+    'LEVEL': ('fibonacci', 'pivots_daily', 'pivots_weekly', 'pivots_fibonacci'),
+}
+FAMILY_CAP = 2.0          # max weighted contribution per family per direction
+STRONG_MIN_FAMILIES = 3   # no single family may create STRONG confluence alone
+
+
+def analyze_confluence_v2(signals: dict, strategy_cfgs: dict | None = None) -> dict:
+    """Pure: signals {name: {signal, value, details}} -> family-capped weighted
+    confluence. UNAVAILABLE/FAILED/STALE signals are excluded from scoring and
+    listed, never counted as neutral evidence."""
+    strategy_cfgs = strategy_cfgs or (CONFIG.get('strategies', {}) if CONFIG else {})
+    fam_of = {ind: fam for fam, inds in EVIDENCE_FAMILIES.items() for ind in inds}
+    fams: dict = {}
+    contributors, detractors, neutral, unavailable = [], [], [], []
+    for name, sig in (signals or {}).items():
+        state = str((sig or {}).get('signal') or 'UNAVAILABLE').upper()
+        w = float((strategy_cfgs.get(name) or {}).get('weight', 1.0))
+        fam = fam_of.get(name, 'OTHER')
+        f = fams.setdefault(fam, {'bull': 0.0, 'bear': 0.0})
+        if state == 'BULLISH':
+            f['bull'] += w
+            contributors.append(name)
+        elif state == 'BEARISH':
+            f['bear'] += w
+            detractors.append(name)
+        elif state == 'NEUTRAL':
+            neutral.append(name)
+        else:
+            unavailable.append(name)
+    bull_raw = sum(min(f['bull'], FAMILY_CAP) for f in fams.values())
+    bear_raw = sum(min(f['bear'], FAMILY_CAP) for f in fams.values())
+    denom = max(1.0, len(EVIDENCE_FAMILIES) * FAMILY_CAP)
+    bullish_score = round(100.0 * bull_raw / denom)
+    bearish_score = round(100.0 * bear_raw / denom)
+    fams_bull = sum(1 for f in fams.values() if f['bull'] > 0)
+    fams_bear = sum(1 for f in fams.values() if f['bear'] > 0)
+    net = bullish_score - bearish_score
+    conflicts = [f"{fam} split (bull {round(v['bull'],1)} vs bear {round(v['bear'],1)})"
+                 for fam, v in fams.items() if v['bull'] > 0 and v['bear'] > 0]
+    if bullish_score >= 55 and fams_bull >= STRONG_MIN_FAMILIES and net >= 30:
+        state = 'BULLISH_STRONG'
+    elif net >= 15 and fams_bull >= 2:
+        state = 'BULLISH_CONDITIONAL'
+    elif bearish_score >= 55 and fams_bear >= STRONG_MIN_FAMILIES and -net >= 30:
+        state = 'BEARISH_STRONG'
+    elif net <= -15 and fams_bear >= 2:
+        state = 'BEARISH_CONDITIONAL'
+    elif conflicts or (fams_bull >= 2 and fams_bear >= 2):
+        state = 'MIXED'
+    else:
+        state = 'NEUTRAL'
+    return {'bullish_score': bullish_score, 'bearish_score': bearish_score,
+            'net_score': net, 'state': state,
+            'independent_families_bullish': fams_bull,
+            'independent_families_bearish': fams_bear,
+            'family_contributions': {k: {'bull': round(min(v['bull'], FAMILY_CAP), 2),
+                                         'bear': round(min(v['bear'], FAMILY_CAP), 2)}
+                                     for k, v in fams.items()},
+            'conflicts': conflicts, 'contributors': contributors,
+            'detractors': detractors, 'neutral': neutral,
+            'unavailable': unavailable,
+            'weights_applied': True, 'family_cap': FAMILY_CAP,
+            'strong_min_families': STRONG_MIN_FAMILIES}
+
+
+def capability_audit() -> dict:
+    """Startup capability truth (17.11): run every dispatch entry against a tiny
+    synthetic OHLCV frame; an enabled indicator whose implementation is missing
+    reports MISSING_IMPLEMENTATION — it must never masquerade as NEUTRAL."""
+    import numpy as _np
+    n = 80
+    idx = pd.date_range('2025-01-01', periods=n, freq='D')
+    base = 100 + _np.cumsum(_np.random.default_rng(7).normal(0, 1, n))
+    df = pd.DataFrame({'open': base, 'high': base + 1, 'low': base - 1,
+                       'close': base + 0.2, 'volume': _np.full(n, 1e6)}, index=idx)
+    out = {}
+    for name, fn in STRATEGY_FUNCTIONS.items():
+        try:
+            r = fn(df, (CONFIG.get('strategies', {}).get(name, {}) if CONFIG else {}))
+            sig = str(r.get('signal', ''))
+            err = str((r.get('details') or {}).get('error', ''))
+            if sig == 'UNAVAILABLE' and ('has no attribute' in err or 'AttributeError' in err):
+                out[name] = 'MISSING_IMPLEMENTATION'
+            elif sig == 'UNAVAILABLE':
+                out[name] = f'UNAVAILABLE:{err[:40]}'
+            else:
+                out[name] = 'AVAILABLE'
+        except Exception as e:
+            out[name] = f'FAILED:{str(e)[:40]}'
+    out['_using_pandas_ta_shim'] = 'pandas_ta_shim' in getattr(ta, '__name__', str(ta))
+    return out
 
 
 # ── Strategy Dispatch Map ─────────────────────────────────────────────────────
@@ -1034,7 +1147,7 @@ def analyze_confluence(symbol: str, profile: str = 'swing') -> dict:
 
             except Exception as e:
                 logger.warning(f"Strategy {strat_name} failed for {symbol} (non-fatal): {e}")
-                signals[strat_name] = {'signal': 'NEUTRAL', 'error': str(e)}
+                signals[strat_name] = _unavailable(e)
 
         # Score confluence
         bullish_count = sum(1 for s in signals.values() if s.get('signal') == 'BULLISH')
@@ -1076,6 +1189,7 @@ def analyze_confluence(symbol: str, profile: str = 'swing') -> dict:
             'atr': atr_value,
             'adx_regime': adx_regime,
             'entry_quality': entry_quality,
+            'confluence_v2': analyze_confluence_v2(signals, strategy_cfgs),
             'computed_at': datetime.now(timezone.utc).isoformat(),
         }
 
