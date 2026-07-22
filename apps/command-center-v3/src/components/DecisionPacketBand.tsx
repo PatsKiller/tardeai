@@ -229,7 +229,7 @@ export default function DecisionPacketBand({
                   background: 'rgba(2,6,23,.28)', border: `1px solid ${BB.border}`,
                   borderRadius: 4, padding: '6px 8px', minHeight: 42,
                 }}>
-                  <div style={{ fontSize: 9, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.07em' }}>{label}</div>
+                  <div style={{ fontSize: 10, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.07em' }}>{label}</div>
                   <div style={{ ...numStyle, marginTop: 2, fontSize: 14, fontWeight: 850, color: BB.text0 }}>{value || '—'}</div>
                 </div>
               ))}
@@ -298,7 +298,7 @@ export default function DecisionPacketBand({
         <button onClick={e => { e.stopPropagation(); setDetails(v => !v) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>
           {details ? 'Hide audit' : 'Details & audit'}
         </button>
-        <span style={{ marginLeft: 'auto', fontSize: 9.5, color: BB.text3 }}>Advisory only · proposal review remains separate</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: BB.text3 }}>Advisory only · proposal review remains separate</span>
       </div>
 
       {prevOpen && pres.mechanics?.previous && (
@@ -327,7 +327,7 @@ function SectionTitle({ title, note }: { title: string; note?: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
       <span style={{ fontSize: 10, fontWeight: 900, color: BB.text2, textTransform: 'uppercase', letterSpacing: '.08em' }}>{title}</span>
-      {note && <span style={{ fontSize: 9.5, color: BB.text3 }}>{note}</span>}
+      {note && <span style={{ fontSize: 10, color: BB.text3 }}>{note}</span>}
     </div>
   )
 }
@@ -335,7 +335,7 @@ function SectionTitle({ title, note }: { title: string; note?: string }) {
 function Meta({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 8.5, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
+      <div style={{ fontSize: 10, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
       <div style={{ marginTop: 1, fontSize: 10, color: tone || BB.text1, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis' }} title={value}>{value}</div>
     </div>
   )
@@ -344,7 +344,7 @@ function Meta({ label, value, tone }: { label: string; value: string; tone?: str
 function Condition({ label, text, color }: { label: string; text: string; color: string }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', gap: 7, alignItems: 'start' }}>
-      <span style={{ fontSize: 9, fontWeight: 900, color, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</span>
+      <span style={{ fontSize: 10, fontWeight: 900, color, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</span>
       <span style={{ fontSize: 10.5, color: BB.text1, lineHeight: 1.35 }}>{text}</span>
     </div>
   )
@@ -372,10 +372,10 @@ function StrategyGrid({ pres, onOpen }: { pres: OperatorPresentation; onOpen: ()
             }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{ fontSize: 10.5, fontWeight: 900, color: preferred ? BB.text0 : BB.text2 }}>{label}</span>
-              {preferred && <span style={{ fontSize: 7.5, fontWeight: 900, color, border: `1px solid ${color}66`, borderRadius: 3, padding: '0 4px' }}>PRIMARY</span>}
+              {preferred && <span style={{ fontSize: 10, fontWeight: 900, color, border: `1px solid ${color}66`, borderRadius: 3, padding: '0 4px' }}>PRIMARY</span>}
             </div>
             <div style={{ marginTop: 4, fontSize: 10, fontWeight: 900, color }}>{word}</div>
-            <div style={{ marginTop: 2, fontSize: 8.8, lineHeight: 1.25, color: BB.text3 }}>{familyReason(key, fam).slice(0, 72)}</div>
+            <div style={{ marginTop: 2, fontSize: 10, lineHeight: 1.25, color: BB.text3 }}>{familyReason(key, fam).slice(0, 72)}</div>
           </button>
         )
       })}
@@ -406,12 +406,12 @@ function TechnicalGrid({ tech, onOpen }: { tech: any; onOpen: () => void }) {
               background: technicalBg(p), border: `1px solid ${color}55`,
               borderRadius: 5, padding: '7px 8px',
             }}>
-            <div style={{ fontSize: 8.3, color: BB.text3, fontWeight: 850, textTransform: 'uppercase', letterSpacing: '.07em' }}>
+            <div style={{ fontSize: 10, color: BB.text3, fontWeight: 850, textTransform: 'uppercase', letterSpacing: '.07em' }}>
               {String(p.kind || 'technical').replace(/_/g, ' ')}
             </div>
             <div style={{ marginTop: 3, fontSize: 10.5, color, fontWeight: 900, lineHeight: 1.2 }}>{p.label}</div>
-            <div style={{ marginTop: 3, fontSize: 9, color: BB.text2, fontWeight: 700 }}>{p.value || lifecycle || '—'}</div>
-            <div style={{ marginTop: 2, fontSize: 8.3, color: fresh === 'CURRENT' ? BB.text3 : BB.amber }}>{fresh}{lifecycle ? ` · ${lifecycle}` : ''}</div>
+            <div style={{ marginTop: 3, fontSize: 10, color: BB.text2, fontWeight: 700 }}>{p.value || lifecycle || '—'}</div>
+            <div style={{ marginTop: 2, fontSize: 10, color: fresh === 'CURRENT' ? BB.text3 : BB.amber }}>{fresh}{lifecycle ? ` · ${lifecycle}` : ''}</div>
           </button>
         )
       })}
@@ -431,7 +431,7 @@ function AuditDrawer({ pres, tech }: { pres: OperatorPresentation; tech: any }) 
       <div style={{ fontSize: 10, fontWeight: 900, color: BB.amber, letterSpacing: '.07em', textTransform: 'uppercase' }}>
         Details & audit — not the primary decision
       </div>
-      <div style={{ fontSize: 9.5, color: BB.text3 }}>
+      <div style={{ fontSize: 10, color: BB.text3 }}>
         Packet {a.packet?.packet_version || '—'} · policy {a.actionPolicy?.policy_version || '—'}
         {a.inputHashes.packet ? ` · packet ${a.inputHashes.packet}` : ''}
         {a.inputHashes.current ? ` · current ${a.inputHashes.current}` : ''}
@@ -448,7 +448,7 @@ function AuditDrawer({ pres, tech }: { pres: OperatorPresentation; tech: any }) 
           const f = fams[key] || {}
           const kids = f.structures || []
           return (
-            <div key={key} style={{ padding: '6px 7px', border: `1px solid ${BB.border}`, borderRadius: 4, fontSize: 9, color: BB.text3 }}>
+            <div key={key} style={{ padding: '6px 7px', border: `1px solid ${BB.border}`, borderRadius: 4, fontSize: 10, color: BB.text3 }}>
               <div style={{ fontWeight: 900, color: BB.text1, textTransform: 'uppercase' }}>{key.replace('_', ' ')}</div>
               <div>construct={f.constructibility_state || '—'}</div>
               <div>decision={f.decision_state || f.state || '—'}</div>
@@ -461,25 +461,25 @@ function AuditDrawer({ pres, tech }: { pres: OperatorPresentation; tech: any }) 
         })}
       </div>
       {tech?.timeframes && (
-        <div style={{ fontSize: 9.5, color: BB.text3 }}>
+        <div style={{ fontSize: 10, color: BB.text3 }}>
           Technical timeframes: {Object.entries(tech.timeframes).map(([tf, r]: any) => `${tf} ${r?.meta?.freshness_state || '—'} @ ${r?.meta?.last_closed_bar || '—'}`).join(' · ')}
         </div>
       )}
       {a.modelReview && (
-        <div style={{ fontSize: 9.5, color: BB.text3 }}>
+        <div style={{ fontSize: 10, color: BB.text3 }}>
           Models: {a.modelReview.mode || '—'}{a.modelReview.agreement_by_dimension ? ` · agreement ${JSON.stringify(a.modelReview.agreement_by_dimension)}` : ''}
         </div>
       )}
       {a.ownership && (
-        <div style={{ fontSize: 9.5, color: BB.text3 }}>
+        <div style={{ fontSize: 10, color: BB.text3 }}>
           Ownership: {a.ownership.held ? `HELD ${a.ownership.shares}` : 'NOT HELD'}{a.ownership.source ? ` · ${a.ownership.source}` : ''}{a.ownership.as_of ? ` · ${a.ownership.as_of}` : ''}
         </div>
       )}
       {a.legacy?.recommendation && (
-        <div style={{ fontSize: 9.5, color: BB.text3 }}>Legacy @ build: {String(a.legacy.recommendation)}{a.legacy.generated_at ? ` · ${a.legacy.generated_at}` : ''}</div>
+        <div style={{ fontSize: 10, color: BB.text3 }}>Legacy @ build: {String(a.legacy.recommendation)}{a.legacy.generated_at ? ` · ${a.legacy.generated_at}` : ''}</div>
       )}
       {a.actionPolicy && (
-        <div style={{ fontSize: 9.5, color: BB.text3 }}>
+        <div style={{ fontSize: 10, color: BB.text3 }}>
           Action policy: {a.actionPolicy.action} · state={a.actionPolicy.state} · allowed={String(!!a.actionPolicy.allowed)}{a.actionPolicy.reason ? ` · ${a.actionPolicy.reason}` : ''}
         </div>
       )}
