@@ -121,6 +121,10 @@ def main():
                           "deferred_in_flight": plan["skipped_in_flight"]},
                          indent=2, default=str))
         return
+    _pause = PROJECT_ROOT / "data" / "runtime" / "WATCH_SCHEDULER_PAUSED"
+    if _pause.exists():
+        print(json.dumps({"paused": True, "reason": _pause.read_text()[:200] or "operator pause"}))
+        return
     swept = wdr.sweep_stale()
     plan = build_plan(conn)
     out = {"swept": len(swept.get("swept", [])), **plan["estimates"], "runs": []}
