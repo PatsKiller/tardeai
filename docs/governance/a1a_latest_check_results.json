@@ -1,9 +1,23 @@
 {
-  "generated_at": "2026-07-20T11:40:00.287730+00:00",
-  "git_head": "6dac31fd",
-  "files_checked": 1,
-  "findings_count": 0,
-  "by_severity": {},
-  "status": "healthy",
-  "findings": []
+  "generated_at": "2026-07-21T11:40:00.294964+00:00",
+  "git_head": "b6402a47",
+  "files_checked": 6,
+  "findings_count": 2,
+  "by_severity": {
+    "P1": 1,
+    "P2": 1
+  },
+  "status": "warning",
+  "findings": [
+    {
+      "severity": "P1",
+      "check": "code_without_docs",
+      "message": "6 code files changed, 0 docs updated"
+    },
+    {
+      "severity": "P2",
+      "check": "deployment_log_stale",
+      "message": "Code changed but deployment log not updated"
+    }
+  ]
 }
