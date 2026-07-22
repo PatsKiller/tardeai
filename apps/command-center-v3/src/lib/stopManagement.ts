@@ -262,7 +262,13 @@ export function buildStopLogic(input: {
   const symbol = String(h?.symbol ?? '').toUpperCase()
   const broker = accountBroker(String(h?.account ?? ''))
   const sourceBroker = accountBroker(String(pr?.source_broker ?? pr?.broker ?? pr?.account ?? pr?.source_account ?? h?.stop_source_account ?? ''))
-  const currentPrice = finiteNum(pr?.price) ?? finiteNum(h?.current_price) ?? finiteNum(h?.price) ?? null
+  // Prefer the LIVE holdings price over pr.price. On the Holdings table pr is the advisory/technicals
+  // snapshot (e.g. 07:59), so a stale pr.price made the TRAILING estimate price×(1−trail%) drift from
+  // the live Stop desk (ANET showed $169.63 off the 07:59 price vs the desk's $163.55 off the live
+  // price — and the pill %, distance and "if fired" P/L inherited the drift). The placement UI
+  // (HoldingProtectionActions) sets pr.price === h.current_price, so this reordering is a no-op there
+  // and only corrects the stale-snapshot case. Fixed stops use a static stop_price and are unaffected.
+  const currentPrice = finiteNum(h?.current_price) ?? finiteNum(h?.price) ?? finiteNum(pr?.price) ?? null
   const familyFloorPctRaw = extractFamilyFloorPct(pr)
   const rawAdvisoryStop = finiteNum(pr?.stop_price)
   // Family-floor reconciliation: a FIXED advised stop is frozen at advisory time. If price has since
