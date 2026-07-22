@@ -670,6 +670,18 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
         if reconciled.get("tactical_timing") not in (None, "", "NO_VALID_SETUP"):
             timing = reconciled["tactical_timing"]
 
+    # V5 Section 17.12: canonical multi-timeframe technical snapshot in every
+    # packet (daily+weekly; deterministic, LLM-free; bars cached in
+    # market_ohlcv_bars so batch rebuilds don't refetch). Fail-soft: a technical
+    # outage never blocks the packet — it shows as UNAVAILABLE, not silence.
+    _stage("technicals_mtf")
+    try:
+        import technical_intelligence as ti
+        technical_state = ti.analyze_technicals(sym, ("daily", "weekly"), conn)
+    except Exception as _te:
+        technical_state = {"schema_version": "unavailable", "overall_freshness": "FAILED",
+                          "overall_direction": "UNRESOLVED", "error": str(_te)[:160]}
+
     _stage("long_term")
     lt = build_long_term(facts, event, ownership, thesis_state, timing)
     _stage("swing")
@@ -683,6 +695,7 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
         "packet_version": PACKET_VERSION, "symbol": sym,
         "instrument_type": "STOCK",
         "deterministic_thesis": det_thesis,
+        "technical_state": technical_state,
         "evaluated_at": _now().isoformat(),
         "facts_as_of": facts.get("live_price_as_of") or facts.get("enriched_at"),
         "price_used": facts.get("live_price") or facts.get("enriched_price"),

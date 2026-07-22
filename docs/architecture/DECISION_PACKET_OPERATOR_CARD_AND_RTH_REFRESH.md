@@ -220,3 +220,20 @@ Corrections to earlier statements in this document:
 
 Status at writing: branch `wt/watch-decision-desk-v5`, feature flag `WATCH_DECISION_DESK_V5`
 (localStorage; 'off' = Card v4 presentation). Action-policy authority unchanged either way.
+
+## §17 Technical Intelligence (2026-07-22, same-day V5 extension)
+
+`scripts/technical_intelligence.py` is THE canonical technical snapshot (packets, Local Quant,
+card rail, drawer): multi-TF closed-bar OHLCV (native 5m/15m/1h/daily via the governed
+market_data_snapshot_loader cached in `market_ohlcv_bars`; weekly/monthly deterministic daily
+resamples), all 20 indicators with UNAVAILABLE-not-NEUTRAL failure semantics + startup
+`capability_audit()` (shim now implements obv/cmf/adx/aroon — the silent-NEUTRAL gap is closed),
+`analyze_confluence_v2` (YAML weights APPLIED, five evidence families, per-family caps, STRONG
+needs ≥3 independent families), deterministic chart-pattern engine (`chart_patterns.py`: H&S/
+inverse, double/triple, flags, triangles/wedges, cup&handle, candles; ATR-normalized, lifecycle
+FORMING→CONFIRMED from closed bars only, quality components, measured targets), pivot-aligned
+divergences, OB/OS CONTEXT states (oversold ≠ buy), levels with provenance + cross-TF clustering.
+Packets carry `technical_state` (17.12 contract + source_hash); the card renders max-6 ranked
+pills (freshness and direction are separate axes — stale renders gray with its age, never as
+direction); full snapshot at `GET /api/v2/watch/decision/technicals?symbol=`. Technical signals
+grant NO action eligibility (test-enforced: action policy never reads technical_state).

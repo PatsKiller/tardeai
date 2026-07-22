@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-22 — V5 §17: institutional technical intelligence (canonical service + pattern engine)
+
+technical_intelligence.py canonical multi-TF snapshot in every packet; chart_patterns.py
+deterministic pattern engine (fixtures-tested, no lookahead, scale-invariant); shim parity for
+obv/cmf/adx/aroon (silent-NEUTRAL removed, capability audit); weighted family confluence with
+correlation caps; OB/OS context semantics; max-6 technical pills on the card; /watch/decision/
+technicals drawer endpoint. 44 V5 tests green. Advisory-only; no new action authority.
+
 ## 2026-07-22 — Watch Decision Desk V5: refresh semantics corrected, tiers, server-owned cadence
 
 Branch `wt/watch-decision-desk-v5` (feature flag `WATCH_DECISION_DESK_V5`, v4 rollback kept).

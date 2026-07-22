@@ -179,6 +179,10 @@ export default function DecisionPacketBand({
       {/* V5 STRATEGY RAIL — all five families always visible (click → details) */}
       <StrategyRail pres={pres} onOpen={() => setDetails(true)} />
 
+      {/* 17.14 TECHNICAL SETUP RAIL — max 6 server-ranked pills; freshness and
+          direction are separate axes (a stale bullish pill renders gray). */}
+      <TechSetupRail tech={packet?.technical_state} onOpen={() => setDetails(true)} />
+
       {/* CTAs — V5 split: Refresh Strategy = packet rebuild orchestrator;
           Refresh Inputs = the old enrichment-only endpoint, honestly labelled. */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
@@ -290,6 +294,46 @@ function StrategyRail({ pres, onOpen }: { pres: OperatorPresentation; onOpen: ()
           </button>
         )
       })}
+    </div>
+  )
+}
+
+/** 17.14 pill colors: green only for CONFIRMED bullish AND CURRENT; red for
+ *  confirmed bearish current; amber for forming/conditional/mixed/due-soon;
+ *  gray for neutral, unavailable, or stale evidence. */
+function TechSetupRail({ tech, onOpen }: { tech: any; onOpen: () => void }) {
+  const pills: any[] = tech?.pills || []
+  if (!pills.length) return null
+  const color = (p: any): string => {
+    const stale = p.freshness !== 'CURRENT'
+    const confirmed = p.lifecycle === 'CONFIRMED'
+    if (stale) return BB.text3
+    if (confirmed && p.direction === 'BULLISH') return BB.green
+    if (confirmed && p.direction === 'BEARISH') return BB.red
+    if (p.lifecycle === 'FORMING' || p.lifecycle === 'AWAITING_CONFIRMATION'
+        || p.direction === 'MIXED') return BB.amber
+    return BB.text3
+  }
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+      <span style={{ fontSize: 10, fontWeight: 800, color: BB.text3, letterSpacing: '.05em', alignSelf: 'center' }}>
+        TECH
+      </span>
+      {pills.slice(0, 6).map((p, i) => (
+        <button
+          key={i}
+          onClick={e => { e.stopPropagation(); onOpen() }}
+          title={`${p.tooltip || ''} · ${p.lifecycle} · ${p.freshness}`}
+          style={{
+            fontSize: 10, fontWeight: 800, letterSpacing: '.03em', cursor: 'pointer',
+            color: color(p), background: 'transparent',
+            border: `1px solid ${BB.border}`, borderRadius: 2, padding: '1px 5px',
+          }}
+        >
+          {p.label}{p.value ? ` · ${p.value}` : ''}
+          {p.freshness !== 'CURRENT' ? ` · ${String(p.freshness)}` : ''}
+        </button>
+      ))}
     </div>
   )
 }
