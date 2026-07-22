@@ -12010,10 +12010,11 @@ _LIST_PACKET_KEYS = (
     "ownership", "horizons", "event_state", "data_quality", "no_trade_is_valid",
     "preferred_action", "headline", "input_hash", "action_policy_version",
     "current_validity", "deterministic_thesis", "legacy_summary",
+    "freshness", "analysis_tier",
 )
 _LIST_TECH_KEYS = ("schema_version", "computed_at", "overall_freshness",
                    "overall_direction", "primary_pattern", "pills", "source_hash",
-                   "conflicts", "unavailable")
+                   "conflicts", "unavailable", "error")
 _LIST_STRUCTURE_KEYS = ("structure", "state", "action_state", "occ_symbol",
                         "entry_zone", "limit_price", "stop_price", "targets", "risk_reward",
                         "rejection_reasons", "condition", "summary", "quote_source",

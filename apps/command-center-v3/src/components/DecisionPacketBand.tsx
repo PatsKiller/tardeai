@@ -141,7 +141,19 @@ export default function DecisionPacketBand({
   const validUntil = packet?.freshness?.valid_until || actionPolicy?.valid_until
   const nextDue = packet?.freshness?.next_refresh_due_at || actionPolicy?.next_refresh_due_at
   const invalidatedAt = packet?.freshness?.invalidated_at || packet?.current_validity?.invalidated_at
-  const analysisMode = String(packet?.model_review?.mode || packet?.analysis_tier || 'LOCAL_QUANT').replace(/_/g, ' ')
+  // V6 fix: analysis_tier is authoritative — a deterministic run is LOCAL QUANT,
+  // never "UNAVAILABLE" (that word is reserved for analyses that actually failed).
+  const lanesDone = packet?.model_review?.lanes_completed
+  const lanesN = Array.isArray(lanesDone) ? lanesDone.length : (lanesDone ?? null)
+  const tier = String(packet?.analysis_tier
+    || (['BLIND', 'SINGLE_LANE'].includes(String(packet?.model_review?.mode)) ? 'STANDARD_BLIND' : 'LOCAL_QUANT'))
+  const analysisMode = tier === 'LOCAL_QUANT'
+    ? 'LOCAL QUANT · NO LLM'
+    : tier === 'STANDARD_BLIND'
+      ? (String(packet?.model_review?.mode) === 'SINGLE_LANE'
+        ? 'STANDARD BLIND · SINGLE LANE'
+        : `STANDARD BLIND${lanesN != null ? ` · ${lanesN}/2` : ''}`)
+      : tier.replace(/_/g, ' ')
   const pills: any[] = tech?.pills || []
 
   return (
@@ -386,9 +398,22 @@ function StrategyGrid({ pres, onOpen }: { pres: OperatorPresentation; onOpen: ()
 function TechnicalGrid({ tech, onOpen }: { tech: any; onOpen: () => void }) {
   const pills: any[] = tech?.pills || []
   if (!pills.length) {
+    // V6 item 7/8: the exact operator explanation, never a generic empty state.
+    const fresh = String(tech?.overall_freshness || '').toUpperCase()
+    const msg = !tech || !tech.schema_version || tech.schema_version === 'unavailable' && !tech.error
+      ? 'LEGACY PACKET — technical snapshot not built. Refresh Strategy to build it.'
+      : tech.error || fresh === 'FAILED'
+        ? `Technical analysis FAILED — ${String(tech.error || 'unknown error')}`
+        : fresh === 'STALE'
+          ? `Technical data STALE — computed ${String(tech.computed_at || '').slice(0, 16)}. Refresh Strategy.`
+          : fresh === 'REFRESHING'
+            ? 'Technical refresh currently running…'
+            : (tech.unavailable?.length
+              ? `Technical timeframes unavailable: ${tech.unavailable.join(', ')}`
+              : 'Technical snapshot missing — packet predates the technical schema. Refresh Strategy.')
     return (
       <div style={{ padding: '8px 10px', border: `1px dashed ${BB.border}`, borderRadius: 5, color: BB.text3, fontSize: 10.5 }}>
-        Technical snapshot unavailable. Refresh Strategy to rebuild the canonical multi-timeframe analysis.
+        {msg}
       </div>
     )
   }
