@@ -942,20 +942,28 @@ export default function BrokerOrders({ draftSeed }: { draftSeed?: any | null }) 
   const activity: any[] = ((activityR as any)?.data ?? activityR)?.activity ?? []
   const recon = (reconR as any)?.data ?? reconR
 
-  // Telegram deep-link (?intent=<id> or /go/order/:id) → auto-open that exact order item
-  const intentParam = searchParams.get('intent')
+  // Telegram deep-link (?intent= or /go/order/:id via sessionStorage backup)
+  const intentFromUrl = searchParams.get('intent')
+  const intentFromSession = (() => {
+    try { return sessionStorage.getItem('cc_deep_intent') } catch { return null }
+  })()
+  const intentParam = intentFromUrl || intentFromSession
   const [deepLinkMiss, setDeepLinkMiss] = useState(false)
+  const draftIdsKey = drafts.map(d => d.intent_id).join(',')
   useEffect(() => {
     if (!intentParam) { setDeepLinkMiss(false); return }
-    if (drafts.some(d => d.intent_id === intentParam)) {
+    const hit = drafts.some(d => d.intent_id === intentParam)
+    if (hit) {
       setOpen(intentParam)
       setDeepLinkMiss(false)
-      setTimeout(() => deepLinkRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200)
+      try { sessionStorage.removeItem('cc_deep_intent') } catch { /* ignore */ }
+      window.setTimeout(() => {
+        try { deepLinkRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) } catch { /* ignore */ }
+      }, 200)
     } else if (drafts.length > 0) {
-      // drafts loaded but intent missing (expired / executed / other broker)
       setDeepLinkMiss(true)
     }
-  }, [intentParam, drafts.length, drafts])
+  }, [intentParam, draftIdsKey, drafts.length])
 
   const lastRun = recon?.runs?.[0]
 

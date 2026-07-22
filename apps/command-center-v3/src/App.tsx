@@ -98,11 +98,26 @@ function ReconnectingBar() {
   )
 }
 
-/** Telegram-safe path deep-link → Trading Broker Orders with intent open. */
+/** Telegram-safe path deep-link → Trading Broker Orders with intent open.
+ *  Uses sessionStorage so intent survives query stripping / remounts.
+ *  Falls back to hard navigation if React Router Navigate is a no-op. */
 function GoOrderDeepLink() {
   const { intentId } = useParams()
-  const id = encodeURIComponent(intentId || '')
-  return <Navigate to={`/trading?tab=Broker%20Orders&intent=${id}`} replace />
+  const id = (intentId || '').trim()
+  useEffect(() => {
+    if (!id) return
+    try { sessionStorage.setItem('cc_deep_intent', id) } catch { /* private mode */ }
+    // Hard-nav fallback: some in-app browsers drop query after client redirect
+    const target = `/v3/trading?tab=${encodeURIComponent('Broker Orders')}&intent=${encodeURIComponent(id)}`
+    const t = window.setTimeout(() => {
+      if (!window.location.search.includes('intent=')) {
+        window.location.replace(target)
+      }
+    }, 400)
+    return () => window.clearTimeout(t)
+  }, [id])
+  if (!id) return <Navigate to="/trading?tab=Broker%20Orders" replace />
+  return <Navigate to={`/trading?tab=${encodeURIComponent('Broker Orders')}&intent=${encodeURIComponent(id)}`} replace />
 }
 
 /** Telegram-safe path deep-link → Trading Proposals with proposal focused. */
@@ -110,10 +125,15 @@ function GoProposalDeepLink() {
   const { proposalId } = useParams()
   const [sp] = useSearchParams()
   const sym = sp.get('symbol')
-  const id = encodeURIComponent(proposalId || '')
+  const id = (proposalId || '').trim()
+  useEffect(() => {
+    if (!id) return
+    try { sessionStorage.setItem('cc_deep_proposal', id) } catch { /* private mode */ }
+  }, [id])
+  if (!id) return <Navigate to="/trading?tab=Proposals" replace />
   const q = sym
-    ? `/trading?tab=Proposals&proposal=${id}&symbol=${encodeURIComponent(sym)}`
-    : `/trading?tab=Proposals&proposal=${id}`
+    ? `/trading?tab=Proposals&proposal=${encodeURIComponent(id)}&symbol=${encodeURIComponent(sym)}`
+    : `/trading?tab=Proposals&proposal=${encodeURIComponent(id)}`
   return <Navigate to={q} replace />
 }
 
