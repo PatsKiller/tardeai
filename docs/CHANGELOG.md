@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-22 — Watch Decision Desk V5: refresh semantics corrected, tiers, server-owned cadence
+
+Branch `wt/watch-decision-desk-v5` (feature flag `WATCH_DECISION_DESK_V5`, v4 rollback kept).
+ROOT CAUSE fixed: card "Refresh Strategy" hit the enrichment endpoint and never rebuilt the
+decision packet (CECO proven live). New canonical orchestrator `watch_decision_refresh.py`
+(scopes INPUTS_ONLY/AFFECTED_DIMENSIONS/FULL_STRATEGY; tiers LOCAL_QUANT/STANDARD_BLIND/
+PREMIUM_REVIEW fail-closed), run/job tables + per-symbol locks + idempotency + sweeper,
+policy YAML v5.0.0 + `watch_decision_scheduler.py` (browser sweep retired), Section-8
+freshness contract (timestamps in EVERY state incl. stale), deterministic thesis engine
+(`deterministic_thesis.py` — factor-based, instrument-aware, misparse-hardened), StrategyRail
+(5 families always visible), desk toolbar, bulk Rebuild-Local/Standard-Blind/Premium-Estimate,
+legacy plan grid removed when a packet leads, list packet trim + snapshot cache.
+Baseline audit: `docs/audits/WATCH_DECISION_DESK_V5_BASELINE_2026-07-22.md`. 19 new tests.
+Advisory-only throughout — no order, approval, or 2FA surface touched.
+
 ## 2026-07-21 — Alpaca multi-account taxonomy R1–R5
 
 Registry unification (interlock → `broker_accounts` + parity log), credential slots
