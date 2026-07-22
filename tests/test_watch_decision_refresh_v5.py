@@ -369,3 +369,66 @@ def test_premium_fails_closed_and_needs_typed_confirmation():
     assert est["available"] is False and "PREMIUM_NOT_CONFIGURED" in est["reason"]
     r = ptr.run("FATN", "abc", "yes please")
     assert r["ok"] is False
+
+
+# ── UNIVERSAL RELEASE GATE: presentation invariants ─────────────────────────
+def test_presentation_no_verified_ticket_no_mechanics():
+    import operator_presentation as op
+    legacy = op.build({"plan_families": {}}, {})
+    assert legacy["verification_state"] == "UNVERIFIED_LEGACY"
+    assert legacy["display_current_mechanics"] is False
+    assert all(v is None for v in legacy["mechanics"].values())
+
+
+def test_presentation_blocked_and_preferred_and_missed_suppress_mechanics():
+    import operator_presentation as op
+    base_cap = {"ticket_validation": {"state": "PASS", "ticket_hash": "h"},
+                "limit_price": 10, "stop_price": 9, "targets": [12]}
+    blocked = op.build({"current_actionable_plan": dict(base_cap),
+                        "ticket_review": {"reconciled": {"state": "VERIFIED_FREE_REVIEW"}},
+                        "event_state": {"earnings": {"state": "EVENT_BLOCKED"}},
+                        "plan_families": {}}, {"state": "BLOCKED"})
+    assert blocked["display_current_mechanics"] is False and blocked["header_state"] == "BLOCKED"
+    ntp = op.build({"current_actionable_plan": dict(base_cap),
+                    "ticket_review": {"reconciled": {}},
+                    "plan_families": {"no_trade": {"preferred": True}}}, {})
+    assert ntp["display_current_mechanics"] is False and ntp["header_state"] == "NO TRADE"
+    missed = op.build({"current_actionable_plan": dict(base_cap),
+                       "ticket_review": {"reconciled": {}},
+                       "plan_families": {"swing": {"structures": [{"entry_state": "MISSED_ENTRY"}]}}}, {})
+    assert missed["display_current_mechanics"] is False
+
+
+def test_presentation_held_requires_position_management():
+    import operator_presentation as op
+    held = op.build({"current_actionable_plan": {"ticket_validation": {"state": "PASS"}},
+                     "ticket_review": {"reconciled": {"proposal_allowed": True}},
+                     "ownership": {"held": True}, "plan_families": {}},
+                    {"state": "READY", "allowed": True, "action": "PROPOSE_ENTRY"})
+    assert held["header_state"] == "MANAGE POSITION"
+    assert held["display_current_mechanics"] is False and held["proposal_allowed"] is False
+
+
+def test_presentation_header_governs_family_tile():
+    import operator_presentation as op
+    r = op.build({"current_actionable_plan": None,
+                  "ticket_review": {"reconciled": {"state": "DETERMINISTIC_FAIL"},
+                                    "tickets_validated": [{"state": "FAIL"}]},
+                  "plan_families": {"swing": {"state": "ELIGIBLE",
+                                              "structures": [{"action_state": "READY"}]}}}, {})
+    assert r["header_state"] != "READY"
+    assert "swing" in r["tile_overrides"], "READY tile must be overridden when header is not READY"
+
+
+def test_presentation_verified_path_allows_mechanics():
+    import operator_presentation as op
+    r = op.build({"current_actionable_plan": {"ticket_validation": {"state": "PASS", "ticket_hash": "h"},
+                                              "limit_price": 10, "stop_price": 9.4,
+                                              "targets": [11.2], "risk_reward": 2.0},
+                  "ticket_review": {"reconciled": {"state": "VERIFIED_FREE_REVIEW",
+                                                   "proposal_allowed": True}},
+                  "plan_families": {}},
+                 {"state": "READY", "allowed": True, "action": "PROPOSE_ENTRY"})
+    assert r["verification_state"] == "VERIFIED"
+    assert r["display_current_mechanics"] is True and r["proposal_allowed"] is True
+    assert r["header_state"] == "READY"
