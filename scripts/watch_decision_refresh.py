@@ -388,7 +388,8 @@ def process_one_job(conn) -> bool:
         lane_calls = 0
         if run_models:
             mr = packet.get("model_review") or {}
-            lane_calls = int(mr.get("lanes_completed") or 0)
+            lc = mr.get("lanes_completed") or 0
+            lane_calls = len(lc) if isinstance(lc, (list, tuple)) else int(lc)
 
         # policy: recompute advisory action from persisted truth (parity evidence)
         _stage(conn, job_id, "policy")
