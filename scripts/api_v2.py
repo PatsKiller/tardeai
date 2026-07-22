@@ -11989,6 +11989,108 @@ def _shadow_strategy_build(body=None):
                        run_models=body.get("run_models", True) is not False)
 
 
+def _q1(query, key):
+    v = (query or {}).get(key)
+    return (v[0] if v else None) if isinstance(v, (list, tuple)) else v
+
+
+def _watch_decision_refresh_start(body):
+    """POST /api/v2/watch/decision/refresh — V5 canonical strategy refresh (enqueue only,
+    returns <250ms). Body: {symbols, scope, analysis_tier, include_options, force,
+    requested_by, reason}. Advisory-only; no order/2FA surface."""
+    b = body or {}
+    import watch_decision_refresh as wdr
+    return wdr.enqueue_run(
+        b.get("symbols") or ([b["symbol"]] if b.get("symbol") else []),
+        scope=str(b.get("scope") or "FULL_STRATEGY").upper(),
+        analysis_tier=str(b.get("analysis_tier") or "LOCAL_QUANT").upper(),
+        include_options=bool(b.get("include_options")),
+        force=bool(b.get("force")),
+        requested_by=str(b.get("requested_by") or "operator")[:60],
+        reason=str(b.get("reason") or "")[:400])
+
+
+def _watch_decision_refresh_status(query=None):
+    """GET /api/v2/watch/decision/refresh/status?run_id=N — run + per-job states/stages."""
+    import watch_decision_refresh as wdr
+    rid = _q1(query, "run_id")
+    if not rid:
+        return {"ok": False, "error": "run_id required"}
+    try:
+        return wdr.run_status(int(rid))
+    except (ValueError, TypeError):
+        return {"ok": False, "error": f"bad run_id {rid!r}"}
+
+
+def _watch_decision_latest(query=None):
+    """GET /api/v2/watch/decision/latest?symbol=X — live packet + Section-8 freshness
+    contract + action policy. Timestamps present in EVERY state (stale included)."""
+    import watch_decision_refresh as wdr
+    import shadow_decision_service as svc
+    sym = (_q1(query, "symbol") or "").upper()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    out = svc.readback(sym)
+    fresh = wdr.build_freshness(sym)
+    out.update(fresh)
+    if out.get("ok") and out.get("packet"):
+        try:
+            import decision_action_policy as dap
+            out["action_policy"] = dap.evaluate_action(out["packet"], packet_id=out.get("packet_id"))
+        except Exception as e:
+            out["action_policy"] = {"error": str(e)[:120]}
+    return out
+
+
+def _watch_decision_summary(query=None):
+    """GET /api/v2/watch/decision/summary — desk-toolbar counts. TTL/wall-clock based
+    (cheap); per-symbol input-hash truth lives on /watch/decision/latest."""
+    import watch_decision_refresh as wdr
+    import packet_invalidation as pi
+    rows = _db_query("""SELECT symbol, generated_at, model_review_mode FROM decision_packets
+                        WHERE superseded_by IS NULL""") or []
+    live_jobs = {r["symbol"] for r in (_db_query(
+        """SELECT DISTINCT symbol FROM watch_decision_refresh_jobs
+           WHERE state IN ('QUEUED','RUNNING')""") or [])}
+    failed = {r["symbol"] for r in (_db_query(
+        """SELECT DISTINCT symbol FROM watch_decision_refresh_jobs
+           WHERE state='FAILED' AND completed_at > now() - interval '2 hours'""") or [])}
+    import datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc)
+    ttl_h = pi.effective_ttl_hours()
+    c = {"current": 0, "due_soon": 0, "stale": 0, "refreshing": 0, "failed": 0}
+    for r in rows:
+        s = r["symbol"]
+        if s in live_jobs:
+            c["refreshing"] += 1
+        elif s in failed:
+            c["failed"] += 1
+        else:
+            age_h = (now - r["generated_at"]).total_seconds() / 3600
+            if age_h <= ttl_h - 0.5:
+                c["current"] += 1
+            elif age_h <= ttl_h:
+                c["due_soon"] += 1
+            else:
+                c["stale"] += 1
+    lastr = _db_query("""SELECT run_id, state, completed_at, created_at, requested_by
+                         FROM watch_decision_refresh_runs ORDER BY run_id DESC LIMIT 1""")
+    return {"ok": True, "symbols": len(rows), **c,
+            "session": "RTH" if pi.is_us_cash_rth() else "OFF_HOURS",
+            "ttl_hours": ttl_h, "policy_version": wdr.policy_version(),
+            "last_run": (dict(lastr[0], created_at=_json_clean(lastr[0]["created_at"]),
+                              completed_at=_json_clean(lastr[0]["completed_at"])) if lastr else None)}
+
+
+def _watch_decision_premium_estimate(body):
+    """POST /api/v2/watch/decision/premium/estimate — cost preview for the governed
+    premium tier. NEVER runs analysis; returns the registry gate result."""
+    import watch_decision_refresh as wdr
+    b = body or {}
+    syms = b.get("symbols") or []
+    return {"ok": True, "symbols": len(syms), **wdr.premium_gate(len(syms), confirmed=False)}
+
+
 def _shadow_strategy_status(query=None):
     """GET /api/v2/shadow/strategy/status?run_id=N  (or ?symbol=X for the latest).
 
@@ -33103,6 +33205,9 @@ ROUTES = {
     "/api/v2/defense/recommendations": _defense_recommendations,
     "/api/v2/shadow/strategy/status": _shadow_strategy_status,
     "/api/v2/shadow/strategy/packet": _shadow_strategy_packet,
+    "/api/v2/watch/decision/refresh/status": _watch_decision_refresh_status,
+    "/api/v2/watch/decision/latest": _watch_decision_latest,
+    "/api/v2/watch/decision/summary": _watch_decision_summary,
     "/api/v2/decision/action-policy": _decision_action_policy,
     "/api/v2/shadow/strategy/batch": _shadow_batch_status,
     "/api/v2/defense/core": _defense_core_registry,
@@ -37901,6 +38006,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/defense/refresh":
         try:
             return 200, _defense_refresh_start(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/watch/decision/refresh":
+        try:
+            return 200, _watch_decision_refresh_start(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/watch/decision/premium/estimate":
+        try:
+            return 200, _watch_decision_premium_estimate(body or {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 
