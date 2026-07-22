@@ -72,7 +72,9 @@ function age(v?: string | null): string {
   return `${Math.round(hours / 24)}d ago`
 }
 
-function familyWord(k: string, f: any): string {
+function familyWord(k: string, f: any, overrides?: any): string {
+  const ov = overrides?.[k]
+  if (ov) return ov[0]
   if (k === 'no_trade') return f?.preferred || f?.dominant ? 'PREFERRED' : f?.available ? 'ALTERNATIVE' : '—'
   const act = String(f?.action_state || '').toUpperCase()
   const dec = String(f?.decision_state || f?.state || '').toUpperCase()
@@ -160,6 +162,16 @@ export default function DecisionPacketBand({
   const pres = buildOperatorPresentation({ packet, actionPolicy, held })
   if (!pres) return null
 
+  // V6 UNIVERSAL GATE: the server presentation object governs header, tiles,
+  // CTA and mechanics. No verified ticket → no current mechanics, anywhere.
+  const op = packet?.operator_presentation
+  if (op?.header_state && op.header_state !== pres.state) {
+    pres.state = op.header_state as OperatorState
+    if (op.header_note) pres.headline = op.header_note
+  }
+  const mechAllowed = op ? !!op.display_current_mechanics : !pres.stale
+  if (op && !mechAllowed) pres.mechanics = null
+
   const accent = operatorStateColor(pres.state)
   const tech = packet?.technical_state || {}
   const builtAt = generatedAt || packet?.evaluated_at || packet?.generated_at
@@ -237,7 +249,7 @@ export default function DecisionPacketBand({
       {/* FIVE STRATEGIES — visible, comparable, preferred obvious */}
       <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BB.border}` }}>
         <SectionTitle title="Strategies evaluated" note="Every family is visible; only the selected family drives mechanics and the primary action." />
-        <StrategyGrid pres={pres} onOpen={() => setDetails(true)} />
+        <StrategyGrid pres={pres} onOpen={() => setDetails(true)} tileOverrides={op?.tile_overrides} />
       </div>
 
       {/* TECHNICAL SETUP — real pills with hierarchy */}
@@ -392,14 +404,14 @@ function Condition({ label, text, color }: { label: string; text: string; color:
   )
 }
 
-function StrategyGrid({ pres, onOpen }: { pres: OperatorPresentation; onOpen: () => void }) {
+function StrategyGrid({ pres, onOpen, tileOverrides }: { pres: OperatorPresentation; onOpen: () => void; tileOverrides?: any }) {
   const fams = pres.audit?.families || {}
   const prefKey = pres.primaryFamily?.key === 'refresh' ? null : String(pres.primaryFamily?.key || '')
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(120px, 1fr))', gap: 6 }}>
       {FAMILY_ORDER.map(([key, label]) => {
         const fam = fams[key] || {}
-        const word = familyWord(key, fam)
+        const word = familyWord(key, fam, tileOverrides)
         const color = statusColor(word)
         const preferred = !!prefKey && (prefKey === key || prefKey.startsWith(key.split('_')[0]))
         return (
@@ -429,7 +441,24 @@ function TicketVerification({ packet, symbol }: { packet: any; symbol?: string }
   const [busy, setBusy] = useState(false)
   const tr = packet?.ticket_review
   const cap = packet?.current_actionable_plan
-  if (!tr && !cap) return null
+  const op = packet?.operator_presentation
+  // V6 universal rule: the panel ALWAYS renders a state — legacy packets must
+  // look visibly unverified, never silently normal.
+  if (!tr && !cap) {
+    return (
+      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BB.border}` }}>
+        <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>
+          TICKET VERIFICATION{' '}
+        </span>
+        <span style={{ fontSize: 10.5, fontWeight: 900, color: BB.amber }}>
+          {String(op?.verification_state || 'UNVERIFIED_LEGACY').replace(/_/g, ' ')} — REBUILD REQUIRED
+        </span>
+        <span style={{ marginLeft: 8, fontSize: 10, color: BB.text3 }}>
+          packet predates the oversight schema; current mechanics are suppressed
+        </span>
+      </div>
+    )
+  }
   const validation = cap?.ticket_validation || {}
   const rec = tr?.reconciled || {}
   const reviews = tr?.reviews || {}

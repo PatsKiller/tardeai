@@ -6706,6 +6706,15 @@ def _wl_items(query: dict = None):
                         "invalidation_reasons": _ap.get("invalidation_reasons") or _ap.get("blocks") or [],
                     }
                     _it["decision_packet"] = _pkt
+                # V6 universal gate: ONE server-side presentation object — header,
+                # tiles, CTA, mechanics and verification all derive from it.
+                try:
+                    import operator_presentation as _opres
+                    _pkt["operator_presentation"] = _opres.build(_pkt, _ap)
+                except Exception as _ope:
+                    _pkt["operator_presentation"] = {"verification_state": "UNVERIFIED_LEGACY",
+                                                     "display_current_mechanics": False,
+                                                     "error": str(_ope)[:120]}
                 # V5 Section 11: LIST rows carry a presenter-sufficient TRIM, not the
                 # full forensic packet (input_snapshot + raw lane outputs + blind
                 # facts were ~70% of a 1.27MB list payload / 4.4s worst). The full
@@ -12011,7 +12020,7 @@ _LIST_PACKET_KEYS = (
     "preferred_action", "headline", "input_hash", "action_policy_version",
     "current_validity", "deterministic_thesis", "legacy_summary",
     "freshness", "analysis_tier", "current_actionable_plan", "watch_scenarios",
-    "previous_plan", "ticket_review",
+    "previous_plan", "ticket_review", "operator_presentation",
 )
 _LIST_TECH_KEYS = ("schema_version", "computed_at", "overall_freshness",
                    "overall_direction", "primary_pattern", "pills", "source_hash",
@@ -12118,6 +12127,13 @@ def _watch_decision_latest(query=None):
             out["action_policy"] = dap.evaluate_action(out["packet"], packet_id=out.get("packet_id"))
         except Exception as e:
             out["action_policy"] = {"error": str(e)[:120]}
+        try:
+            import operator_presentation as opres
+            out["operator_presentation"] = opres.build(out["packet"], out.get("action_policy"))
+        except Exception as e:
+            out["operator_presentation"] = {"verification_state": "UNVERIFIED_LEGACY",
+                                            "display_current_mechanics": False,
+                                            "error": str(e)[:120]}
     return out
 
 
@@ -12187,41 +12203,55 @@ def _watch_decision_technicals(query=None):
 
 
 def _watch_decision_summary(query=None):
-    """GET /api/v2/watch/decision/summary — desk-toolbar counts. TTL/wall-clock based
-    (cheap); per-symbol input-hash truth lives on /watch/decision/latest."""
+    """GET /api/v2/watch/decision/summary — desk counts from VERIFICATION truth
+    (V6 universal gate), not wall-clock TTL optimism. A packet is never
+    'current' with absent validation, stale technicals, or an overdue review."""
     import watch_decision_refresh as wdr
     import packet_invalidation as pi
-    rows = _db_query("""SELECT symbol, generated_at, model_review_mode FROM decision_packets
-                        WHERE superseded_by IS NULL""") or []
+    rows = _db_query("""SELECT symbol, generated_at,
+                               packet->'ticket_review'->'reconciled'->>'state' AS rec,
+                               packet->'ticket_review'->'tickets_validated'->0->>'state' AS tv0,
+                               jsonb_typeof(packet->'current_actionable_plan') = 'object' AS has_cap,
+                               jsonb_typeof(packet->'ticket_review') = 'object' AS has_tr,
+                               packet->'technical_state'->>'overall_freshness' AS tfresh,
+                               packet->'freshness'->>'next_refresh_due_at' AS next_due
+                        FROM decision_packets WHERE superseded_by IS NULL""") or []
     live_jobs = {r["symbol"] for r in (_db_query(
         """SELECT DISTINCT symbol FROM watch_decision_refresh_jobs
            WHERE state IN ('QUEUED','RUNNING')""") or [])}
-    failed = {r["symbol"] for r in (_db_query(
-        """SELECT DISTINCT symbol FROM watch_decision_refresh_jobs
-           WHERE state='FAILED' AND completed_at > now() - interval '2 hours'""") or [])}
     import datetime as _dt
     now = _dt.datetime.now(_dt.timezone.utc)
-    ttl_h = pi.effective_ttl_hours()
-    c = {"current": 0, "due_soon": 0, "stale": 0, "refreshing": 0, "failed": 0}
+    c = {"verified": 0, "unverified": 0, "validation_failed": 0, "review_required": 0,
+         "stale": 0, "refreshing": 0, "blocked": 0, "no_actionable_ticket": 0}
     for r in rows:
-        s = r["symbol"]
-        if s in live_jobs:
+        s_ = r["symbol"]
+        overdue = False
+        try:
+            nd = r.get("next_due")
+            overdue = bool(nd) and _dt.datetime.fromisoformat(str(nd)) < now
+        except Exception:
+            pass
+        if s_ in live_jobs:
             c["refreshing"] += 1
-        elif s in failed:
-            c["failed"] += 1
+        elif not r["has_tr"] and not r["has_cap"]:
+            c["unverified"] += 1
+        elif r.get("rec") == "DETERMINISTIC_FAIL" or r.get("tv0") == "FAIL":
+            c["validation_failed"] += 1
+        elif r.get("rec") == "REVIEW_SPLIT":
+            c["review_required"] += 1
+        elif str(r.get("tfresh") or "") in ("STALE", "FAILED") or overdue:
+            c["stale"] += 1
+        elif not r["has_cap"]:
+            c["no_actionable_ticket"] += 1
         else:
-            age_h = (now - r["generated_at"]).total_seconds() / 3600
-            if age_h <= ttl_h - 0.5:
-                c["current"] += 1
-            elif age_h <= ttl_h:
-                c["due_soon"] += 1
-            else:
-                c["stale"] += 1
+            c["verified"] += 1
     lastr = _db_query("""SELECT run_id, state, completed_at, created_at, requested_by
                          FROM watch_decision_refresh_runs ORDER BY run_id DESC LIMIT 1""")
+    paused = (PROJECT_ROOT / "data" / "runtime" / "WATCH_SCHEDULER_PAUSED").exists()
     return {"ok": True, "symbols": len(rows), **c,
+            "scheduler_paused": paused,
             "session": "RTH" if pi.is_us_cash_rth() else "OFF_HOURS",
-            "ttl_hours": ttl_h, "policy_version": wdr.policy_version(),
+            "ttl_hours": pi.effective_ttl_hours(), "policy_version": wdr.policy_version(),
             "last_run": (dict(lastr[0], created_at=_json_clean(lastr[0]["created_at"]),
                               completed_at=_json_clean(lastr[0]["completed_at"])) if lastr else None)}
 
