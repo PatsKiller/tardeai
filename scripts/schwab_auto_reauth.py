@@ -176,6 +176,26 @@ def _totp_code() -> str | None:
         return None
 
 
+def _ensure_display() -> tuple[dict, object | None]:
+    """Headed beats headless: Schwab's Akamai serves 'Access Denied' to headless Chromium
+    (proven 2026-07-22). Prefer an existing $DISPLAY; else start a private Xvfb. Returns
+    (env_overrides, xvfb_proc_or_None). Empty overrides + None ⇒ caller must run headless."""
+    import shutil
+    import subprocess
+    if os.environ.get("DISPLAY"):
+        return {}, None
+    xvfb = shutil.which("Xvfb")
+    if not xvfb:
+        return {}, None
+    disp = ":97"
+    proc = subprocess.Popen([xvfb, disp, "-screen", "0", "1280x900x24", "-nolisten", "tcp"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.5)
+    if proc.poll() is not None:  # e.g. :97 already taken by a stale Xvfb
+        return {}, None
+    return {"DISPLAY": disp}, proc
+
+
 def _attempt_login(authorize_url: str, callback_url: str) -> dict:
     """Drive the OAuth login. Returns {ok, redirect_url?, error?, log: [...]}."""
     from playwright.sync_api import sync_playwright
@@ -185,13 +205,24 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
     actions: list[str] = []
     captured: dict = {}
 
+    disp_env, xvfb_proc = _ensure_display()
+    headed = bool(disp_env) or bool(os.environ.get("DISPLAY"))
+    if disp_env:
+        os.environ.update(disp_env)
+        actions.append(f"xvfb display {disp_env['DISPLAY']}")
+    elif not headed:
+        actions.append("WARNING: no display + no Xvfb — headless (Akamai may deny)")
+
     with sync_playwright() as pw:
+        # Headed: keep the browser's own UA (a spoofed version mismatch is itself a bot
+        # signal). Headless fallback keeps the stealth UA as a best effort.
+        kwargs = dict(viewport={"width": 1280, "height": 900}, locale="en-US",
+                      args=["--disable-blink-features=AutomationControlled"])
+        if not headed:
+            kwargs["user_agent"] = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                                    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
         ctx = pw.chromium.launch_persistent_context(
-            str(PROFILE_DIR), headless=True,
-            viewport={"width": 1280, "height": 900}, locale="en-US",
-            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"),
-            args=["--disable-blink-features=AutomationControlled"])
+            str(PROFILE_DIR), headless=not headed, **kwargs)
         try:
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
             page.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined})")
@@ -214,6 +245,18 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                 if "code=" in (page.url or ""):
                     captured["url"] = page.url
                     break
+                try:
+                    if (page.title() or "").strip().lower() == "access denied":
+                        shot = DEBUG_DIR / f"reauth_denied_{_now().strftime('%Y%m%d_%H%M%S')}.png"
+                        try:
+                            page.screenshot(path=str(shot))
+                        except Exception:
+                            pass
+                        return {"ok": False, "log": actions,
+                                "error": "Schwab bot-defense served 'Access Denied' "
+                                         + ("(headed)" if headed else "(headless — install Xvfb: sudo apt-get install -y xvfb)")}
+                except Exception:
+                    pass
                 for frame in page.frames:
                     try:
                         if not filled_login:
@@ -281,7 +324,15 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                                               f"(last page: {page.url[:100]})", "log": actions}
             return {"ok": True, "redirect_url": captured["url"], "log": actions}
         finally:
-            ctx.close()
+            try:
+                ctx.close()
+            except Exception:
+                pass
+            if xvfb_proc is not None:
+                try:
+                    xvfb_proc.terminate()
+                except Exception:
+                    pass
 
 
 # ── orchestration ────────────────────────────────────────────────────────────────────────
