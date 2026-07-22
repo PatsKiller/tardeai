@@ -17,6 +17,7 @@ import {
 import CountryFlag from './CountryFlag'
 import DecisionPacketBand from './DecisionPacketBand'
 import ShadowStrategyButton from './ShadowStrategyButton'
+import { watchV5Enabled } from '../lib/watchV5'
 import { LadderLine } from './primitives/cardPrimitives'
 import { type RiskPct } from '../lib/watchlistProposeSizing'
 import { EvidenceBlock } from './EvidenceBlock'
@@ -100,7 +101,8 @@ const hair = `1px solid ${BB.border}`
 
 export default function WatchlistCardV4({
   it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap, accounts, heldPositions, maxDeployPctOfCash,
-  ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onToggleEns, isStarred,
+  ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onRefreshStrategy,
+  strategyRefreshing, onToggleEns, isStarred,
   onPropose, onAdjust, onBuildPlan, onOpenDesk, onCioDone,
 }: WatchlistCardProps) {
   const enriched = !!it.last_enriched_at
@@ -379,6 +381,8 @@ export default function WatchlistCardV4({
           actionPolicy={it.action_policy}
           held={isHeld}
           onRefresh={onRefresh}
+          onRefreshStrategy={onRefreshStrategy}
+          refreshing={strategyRefreshing}
           onPrimary={(pres) => {
             // Advisory CTAs only — never queue/approve/submit orders from this surface.
             if (pres.state === 'READY' && onPropose) onPropose(it)
@@ -448,7 +452,10 @@ export default function WatchlistCardV4({
       </div>
       )}
 
-      {/* ③ Trade plan ⟷ Sizing — collapsed when packet leads (mechanics live on the operator card). */}
+      {/* ③ Trade plan ⟷ Sizing — legacy surface. V5 (Section 6E): when a decision
+          packet exists this grid is REMOVED, not dimmed — the packet card is the
+          only active plan; legacy mechanics stay reachable via the Audit drawer. */}
+      {!(hasPacket && watchV5Enabled()) && (
       <div className="wlc-term-grid" onClick={e => e.stopPropagation()}
         style={hasPacket ? { opacity: 0.72 } : undefined}>
         <div className="wlc-term-cell">
@@ -504,6 +511,7 @@ export default function WatchlistCardV4({
           />
         </div>
       </div>
+      )}
 
       {ladderOpen && ladder && (
         <div onClick={e => e.stopPropagation()} style={{ padding: '6px 10px', borderTop: hair, background: BB.bgShift }}>

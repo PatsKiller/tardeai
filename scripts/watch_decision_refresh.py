@@ -455,8 +455,9 @@ def build_freshness(symbol: str, conn=None) -> dict:
 
     snap = pi.build_current_input_snapshot(sym, conn)
     sources = {k: v for k, v in (snap or {}).items() if isinstance(v, dict)}
-    input_ts = [v.get("as_of") or v.get("fetched_at") for v in sources.values()
-                if isinstance(v, dict) and (v.get("as_of") or v.get("fetched_at"))]
+    input_ts = [str(v2) for v in sources.values() if isinstance(v, dict)
+                for k2, v2 in v.items()
+                if v2 and (k2.endswith("_as_of") or k2 in ("as_of", "fetched_at"))]
 
     if not prow:
         overall, reasons, generated_at, mode = "STALE", ["PACKET_ABSENT"], None, None
@@ -512,12 +513,15 @@ def classify_priority(symbol: str, conn) -> str:
     except Exception:
         pass
     try:
-        cur.execute("SELECT starred, cio_verdict FROM watchlist_items WHERE upper(symbol)=%s LIMIT 1", (sym,))
+        cur.execute("SELECT 1 FROM operator_starred_symbols WHERE upper(symbol)=%s", (sym,))
+        if cur.fetchone():
+            return "P0"
+        cur.execute("""SELECT hermes_rank, status FROM watchlist_items
+                       WHERE upper(symbol)=%s ORDER BY updated_at DESC LIMIT 1""", (sym,))
         r = cur.fetchone()
         if r:
-            if r[0]:
-                return "P0"
-            if str(r[1] or "").upper() in ("STRONG BUY", "BUY", "ADD", "WAIT_FOR_PULLBACK"):
+            rank = r[0]
+            if rank is not None and int(rank) <= 50:
                 return "P1"
             return "P2"
     except Exception:

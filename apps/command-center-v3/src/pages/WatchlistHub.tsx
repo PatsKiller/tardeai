@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { marketAwareStale } from '../lib/watchlistCardV4'
+import { watchV5Enabled, enqueueStrategyRefresh, pollRefreshRun, fetchDeskSummary } from '../lib/watchV5'
 import { isExtremeVolItem } from '../lib/watchlistVolatility'
 import { useApi, useConnectionHealth } from '../hooks/useApi'
 import { BB, T, focusStyle } from '../lib/watchTokens'
@@ -323,6 +324,45 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
     await runRefresh(sym, 'manual')
   }
 
+  // ── V5 canonical strategy refresh: enqueue → poll → refetch. The packet is
+  //    rebuilt server-side (LOCAL_QUANT by default — zero model-lane cost).
+  const [strategyBusy, setStrategyBusy] = useState<Record<string, boolean>>({})
+  const refreshStrategy = useCallback(async (syms: string[], reason = 'manual_card_refresh') => {
+    const keys = syms.map(s => String(s).toUpperCase())
+    setStrategyBusy(b => ({ ...b, ...Object.fromEntries(keys.map(k => [k, true])) }))
+    try {
+      const res = await enqueueStrategyRefresh(keys, { scope: 'AFFECTED_DIMENSIONS', tier: 'LOCAL_QUANT', reason })
+      if (!res.ok || !res.run_id) {
+        setActionToast(`Strategy refresh failed to enqueue: ${res.error ?? 'unknown'}`)
+        return
+      }
+      setActionToast(`Strategy refresh queued (run ${res.run_id}) — ${res.queued ?? 0} symbol(s)`)
+      const done = await pollRefreshRun(res.run_id, { timeoutMs: 300_000 })
+      const jobs = done?.jobs ?? []
+      const okN = jobs.filter(j => ['COMPLETE', 'SKIPPED_CURRENT'].includes(j.state)).length
+      const badN = jobs.filter(j => j.state === 'FAILED').length
+      setActionToast(badN
+        ? `Strategy refresh: ${okN} rebuilt, ${badN} failed — ${jobs.find(j => j.state === 'FAILED')?.error ?? ''}`.slice(0, 160)
+        : `Strategy refresh complete — ${okN} packet(s) current`)
+      await refetchWl()
+      void refetchDeskSummary()
+    } finally {
+      setStrategyBusy(b => { const n = { ...b }; keys.forEach(k => delete n[k]); return n })
+    }
+  }, [refetchWl])
+
+  // Desk-toolbar summary (server-owned freshness counts)
+  const [deskSummary, setDeskSummary] = useState<any>(null)
+  const refetchDeskSummary = useCallback(async () => {
+    try { setDeskSummary(await fetchDeskSummary()) } catch { /* toolbar is best-effort */ }
+  }, [])
+  useEffect(() => {
+    if (!watchV5Enabled()) return
+    void refetchDeskSummary()
+    const t = window.setInterval(() => void refetchDeskSummary(), 60_000)
+    return () => window.clearInterval(t)
+  }, [refetchDeskSummary])
+
   const runChatgptTop20 = async () => {
     if (curateRunning) return
     try {
@@ -436,6 +476,9 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   // Auto-refresh STALE cards on the current page (market-aware; once per symbol per session).
   // One at a time — each refresh is heavy; parallel refreshes used to wedge the API thread pool.
   useEffect(() => {
+    // V5: the SERVER owns refresh cadence (watch_decision_scheduler + policy YAML).
+    // The legacy one-per-session browser sweep only runs with V5 rolled back.
+    if (watchV5Enabled()) return
     if (connDegraded || autoRefreshBusy.current) return
     const staleOnPage = pageItems.filter(it => {
       const key = String(it.symbol).toUpperCase()
@@ -608,12 +651,36 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
       )}
 
       <div style={panel}>
+        {/* V5 DESK TOOLBAR — server-owned freshness truth + bounded page refresh */}
+        {watchV5Enabled() && deskSummary?.ok && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 10,
+                        padding: '6px 10px', border: `1px solid ${T.link}44`, borderRadius: 2, fontSize: 11 }}>
+            <b style={{ letterSpacing: '.06em', color: TEXT0 }}>WATCH DECISION DESK</b>
+            <span style={{ color: TEXT2 }}>{deskSummary.symbols} packets</span>
+            <span style={{ color: BB.green }}>{deskSummary.current} current</span>
+            <span style={{ color: BB.amber }}>{deskSummary.due_soon} due soon</span>
+            <span style={{ color: BB.red }}>{deskSummary.stale} stale</span>
+            {deskSummary.refreshing > 0 && <span style={{ color: T.link }}>{deskSummary.refreshing} refreshing</span>}
+            {deskSummary.failed > 0 && <span style={{ color: BB.red }}>{deskSummary.failed} failed</span>}
+            <span style={{ color: TEXT2 }}>· {deskSummary.session} · TTL {deskSummary.ttl_hours}h · policy v{deskSummary.policy_version}</span>
+            <button
+              onClick={() => {
+                const syms = pageItems.filter(it => it.decision_packet).map(it => String(it.symbol).toUpperCase())
+                if (syms.length) void refreshStrategy(syms, 'toolbar_refresh_page')
+              }}
+              disabled={Object.keys(strategyBusy).length > 0}
+              style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px', cursor: 'pointer',
+                       background: 'transparent', color: T.link, border: `1px solid ${T.link}66`, borderRadius: 2 }}>
+              Refresh Current Page
+            </button>
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: 15, fontWeight: 900, color: TEXT0 }}>Watchlist ({visible.length})</div>
             <span title="Security Card v4 — live on all desk surfaces (watchlist, proposals, positions, options)"
                   style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 2, color: T.link, background: `${T.link}22`, border: `1px solid ${T.link}55` }}>
-              Card v4 · live
+              {watchV5Enabled() ? 'Decision Desk v5' : 'Card v4 · live'}
             </span>
           </div>
           {pageCount > 1 && (
@@ -702,6 +769,8 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
                   onDrill={onDrill}
                   onToggleStar={e => { e.stopPropagation(); toggleStar(it) }}
                   onRefresh={e => refreshSymbol(it.symbol, e)}
+                  onRefreshStrategy={watchV5Enabled() ? (e => { e.stopPropagation(); void refreshStrategy([it.symbol]) }) : undefined}
+                  strategyRefreshing={!!strategyBusy[symKey]}
                   onToggleEns={() => setEnsOpen(o => ({ ...o, [it.id]: !o[it.id] }))}
                   onPropose={openProposeModal}
                   onAdjust={it => openDesk(it.symbol)}
