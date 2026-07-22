@@ -124,6 +124,14 @@ if phase_on secrets; then
   fi
   run "cp '$STAGE/ops/ops_state/pgpass' '$HOME/.pgpass' 2>/dev/null && chmod 600 '$HOME/.pgpass' || true"
   run "mkdir -p '$HOME/.config/gogcli' && cp -r '$STAGE/ops/ops_state/gogcli/.' '$HOME/.config/gogcli/' 2>/dev/null || true"
+  # Bitwarden SM (secrets source of truth since 2026-07-21). apps_backup restored
+  # ~/.openclaw/credentials/bws_{read,write}_token above; render the tmpfs env cache now.
+  # bws binary is NOT in any backup — reinstall from bitwarden.com/help/secrets-manager-cli
+  # (or mint fresh machine tokens in the Bitwarden web console if the token files are lost;
+  # project: trade-ai-prod — holds ALL env keys incl. SCHWAB_LOGIN_ID/PASSWORD for
+  # auto-reauth and a mirror of SCHWAB_TOKEN_ENC_KEY). If Bitwarden is unreachable,
+  # env_bootstrap falls back to the restored .env / .env.pre-sm-migration automatically.
+  run "[ -x '$HOME/.local/bin/bws' ] && '$PROJECT_DIR/.venv/bin/python' '$PROJECT_DIR/scripts/secrets/render_env.py' --now || echo 'NOTE: install bws CLI then run scripts/secrets/render_env.py --now'"
 fi
 
 if phase_on wiring; then
@@ -144,6 +152,12 @@ if phase_on wiring; then
   run "loginctl enable-linger \"\$(whoami)\" 2>/dev/null || sudo loginctl enable-linger \"\$(whoami)\""
   run "systemctl --user enable --now portfolio-server.service"
   run "for t in \$(ls '$HOME/.config/systemd/user' | grep -E '\\.timer\$'); do systemctl --user enable --now \"\$t\"; done"
+  # Schwab auto-reauth deps (2026-07-22): the weekly OAuth login runs a HEADED chromium
+  # under Xvfb (Akamai denies headless). xvfb is in the dpkg manifest; playwright browsers
+  # are not in any backup. The browser profile (data/runtime/schwab_browser_profile) is
+  # intentionally NOT backed up — first post-restore login just re-prompts one 2FA approval.
+  run "command -v Xvfb >/dev/null || sudo apt-get install -y xvfb || echo 'NOTE: apt install xvfb (auto-reauth headed browser)'"
+  run "'$PROJECT_DIR/.venv/bin/python' -m playwright install chromium || echo 'NOTE: playwright install chromium (auto-reauth)'"
 fi
 
 if phase_on llm; then

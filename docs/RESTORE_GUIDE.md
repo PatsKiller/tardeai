@@ -18,9 +18,39 @@
 | Ollama LLM | `ollama serve` (auto-starts) | Model: qwen3:14b |
 | PostgreSQL | `sudo systemctl start postgresql` | DB: trade_ai, user: trade_ai |
 
-## 2. Critical Environment Variables (.env)
+## 2. Critical Environment Variables — Bitwarden SM is the source of truth (2026-07-21)
 
-**Quoting rule:** Values containing parentheses, spaces, or semicolons MUST be
+**`.env` no longer exists on disk.** All env secrets (106 keys) live in the Bitwarden
+Secrets Manager project **`trade-ai-prod`** and are rendered to a tmpfs cache
+(`/run/user/<uid>/tradeai/env`, 0600) by `scripts/secrets/render_env.py` — scheduled via
+`tradeai-sm-render.timer`. Processes load them through `scripts/lib/env_bootstrap.py`,
+which falls back to `.env` / `.env.pre-sm-migration` if Bitwarden is unreachable.
+
+**Restore order:**
+1. Restore `~/.openclaw/credentials/` from the **apps** backup → brings back
+   `bws_read_token` / `bws_write_token` (machine tokens). If lost, mint new machine
+   tokens in the Bitwarden web console (they are NOT recoverable any other way).
+2. Install the `bws` CLI to `~/.local/bin/bws` (bitwarden.com/help/secrets-manager-cli —
+   the binary is not in any backup).
+3. `python scripts/secrets/render_env.py --now` → verify key count in the render output.
+4. Restore `config/broker_credentials.env` from the **env** backup (holds
+   `SCHWAB_TOKEN_ENC_KEY`, the Fernet key for the encrypted broker OAuth tokens in
+   Postgres; also mirrored in SM — restore = write the value back to that file, chmod 600).
+   Without it the DB token rows are undecryptable — recover by running one Schwab
+   auto-reauth instead (see §2b).
+
+### 2b. Schwab auto-reauth (weekly OAuth login — 2026-07-22)
+
+`scripts/schwab_auto_reauth.py` re-does the Schwab browser login every 7 days (cron
+`--check` every 17 min, 08–21h; notifies Telegram+email FIRST, operator approves the 2FA
+push). Restore requirements: `sudo apt install xvfb` (headed browser — Akamai denies
+headless), `.venv/bin/python -m playwright install chromium`, Schwab brokerage login creds
+in Bitwarden SM (`SCHWAB_LOGIN_ID`/`SCHWAB_LOGIN_PASSWORD` — re-store with
+`scripts/secrets/store_schwab_login.py` if the SM project was rebuilt). The browser
+profile `data/runtime/schwab_browser_profile/` is deliberately NOT backed up — the first
+post-restore run simply prompts one extra 2FA approval. Runbook: `docs/SCHWAB_AUTO_REAUTH.md`.
+
+**Quoting rule (legacy env files):** Values containing parentheses, spaces, or semicolons MUST be
 wrapped in single quotes. This includes `FINVIZ_USER_AGENT` and `FINVIZ_COOKIE`.
 python-dotenv strips quotes automatically; direct `.env` parsers use `.strip("'\"")`.
 

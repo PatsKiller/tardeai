@@ -26,7 +26,12 @@ STAMP="$(date +%Y%m%d_%H%M%S)"
 
 TAR_BASE="$PROJ"
 case "$TARGET" in
-  env)  PREFIX="env_backup";  KEEP=7;  SOURCES=(".env"); GLOB=".env.*" ;;
+  # env — post-SM-migration (2026-07-21) Bitwarden SM is the secrets source of truth and .env
+  # no longer exists; this family now carries the LOCAL-ONLY secrets Bitwarden cannot restore:
+  # config/broker_credentials.env (SCHWAB_TOKEN_ENC_KEY — the Fernet key for the encrypted
+  # OAuth tokens in Postgres; also mirrored to SM 2026-07-22) + the .env.pre-sm-migration
+  # fallback snapshot (via GLOB) that env_bootstrap uses when Bitwarden is unreachable.
+  env)  PREFIX="env_backup";  KEEP=7;  SOURCES=(".env" "config/broker_credentials.env"); GLOB=".env.*" ;;
   data) PREFIX="data_backup"; KEEP=4;  SOURCES=("data");  GLOB="" ;;
   # Claude persistent memory (financial profile, project state) lives OUTSIDE the project
   # tree — tar from $HOME. Small (<1MB), daily, same encryption; also mirrored to the
