@@ -204,3 +204,69 @@ def test_thesis_engine_confidence_is_coverage_not_prediction():
     import deterministic_thesis as dth
     r = dth.evaluate({}, None)
     assert "not outcome probability" in r["confidence_basis"]
+
+
+# ── V6 SAFETY: a missed plan is NO trade, never a manufactured one ──────────
+def _svc():
+    import shadow_decision_service as svc
+    return svc
+
+
+def test_fatn_defect_no_mechanics_at_distant_resistance():
+    """$4.75 / zone-high $4.55 / resistance $6.76 must NOT produce current
+    mechanics at 6.76 — the exact production defect."""
+    svc = _svc()
+    a = svc.assess_swing_entry(price=4.75, zone_low=4.30, zone_high=4.55,
+                               stop=4.10, atr=0.25)
+    assert a["entry_state"] == "MISSED_ENTRY"
+    assert a["mechanics_current"] is False
+    assert a["family_state"] == "REJECTED"
+    bo = svc.assess_breakout_blueprint(symbol="FATN", price=4.75, atr=0.25,
+                                       resistance=6.76, conn=None)
+    assert bo.get("blueprint") is None, "a 42% trigger must never be a blueprint"
+    ws = bo.get("watch_scenario")
+    assert ws and ws["actionable"] is False and "FUTURE SCENARIO" in ws["note"]
+
+
+def test_missed_entry_shows_no_current_mechanics_and_no_proposal():
+    svc = _svc()
+    a = svc.assess_swing_entry(price=10.0, zone_low=8.0, zone_high=8.5,
+                               stop=7.5, atr=0.3)
+    assert a["entry_state"] == "MISSED_ENTRY" and a["mechanics_current"] is False
+    assert "Do not chase" in a["summary"]
+    assert any(w["kind"] == "PULLBACK_REENTRY" and not w["actionable"]
+               for w in a["watch_scenarios"])
+
+
+def test_chase_tolerance_keeps_reference_mechanics():
+    svc = _svc()
+    a = svc.assess_swing_entry(price=8.58, zone_low=8.0, zone_high=8.5,
+                               stop=7.5, atr=0.3)  # 0.9% above / 0.27 ATR
+    assert a["entry_state"] == "WAIT_PULLBACK" and a["mechanics_current"] is True
+
+
+def test_breakout_trigger_distance_limits():
+    svc = _svc()
+    far_pct = svc.assess_breakout_blueprint(symbol="X", price=100, atr=10,
+                                            resistance=109, conn=None)  # 9% > 8%
+    assert far_pct.get("blueprint") is None
+    far_atr = svc.assess_breakout_blueprint(symbol="X", price=100, atr=2,
+                                            resistance=105, conn=None)  # 2.5 ATR > 2
+    assert far_atr.get("blueprint") is None
+
+
+def test_in_zone_is_ready_and_below_stop_invalidated():
+    svc = _svc()
+    ok = svc.assess_swing_entry(price=8.2, zone_low=8.0, zone_high=8.5,
+                                stop=7.5, atr=0.3)
+    assert ok["entry_state"] == "READY_PULLBACK" and ok["family_state"] == "ELIGIBLE"
+    dead = svc.assess_swing_entry(price=7.0, zone_low=8.0, zone_high=8.5,
+                                  stop=7.5, atr=0.3)
+    assert dead["entry_state"] == "INVALIDATED" and dead["mechanics_current"] is False
+
+
+def test_no_auto_conversion_remains_in_source():
+    src = (ROOT / "scripts" / "shadow_decision_service.py").read_text()
+    assert "DETERMINISTIC_BREAKOUT_RECALC" not in src, \
+        "the pullback→breakout auto-conversion must be gone"
+    assert "never mutates into a different strategy" in src
