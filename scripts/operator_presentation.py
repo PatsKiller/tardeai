@@ -123,12 +123,24 @@ def build(packet: dict, action_policy: dict | None = None) -> dict:
                 "structure": cap.get("structure"),
                 "reason": (tv.get("hard_failures") or ["validation incomplete"])[0]}
 
-    # family tile words must agree with the header (SWBI: header WAIT vs tile READY)
+    # family tile words must agree with the header (SWBI: header WAIT vs tile
+    # READY). The raw family result is NEVER erased — a divergence is recorded
+    # as a consistency exception so contradictory calculations cannot hide
+    # behind a corrected label.
     tile_overrides = {}
+    consistency_exceptions = []
     if header != "READY":
         sw_action = str(sw_struct.get("action_state", "")).upper()
-        if sw_action == "READY" or str(sw.get("state", "")).upper() == "ELIGIBLE":
+        sw_state = str(sw.get("state", "")).upper()
+        if sw_action == "READY" or sw_state == "ELIGIBLE":
             tile_overrides["swing"] = ("WAIT", "header governs: ticket not released")
+            consistency_exceptions.append({
+                "kind": "RAW_FAMILY_VS_RELEASED_STATE",
+                "family": "swing",
+                "raw": {"action_state": sw_action, "state": sw_state},
+                "released_header": header,
+                "note": "raw swing computed READY/ELIGIBLE but the release gate "
+                        "withheld it — raw result retained in plan_families audit"})
 
     return {
         "presentation_version": PRESENTATION_VERSION,
@@ -141,6 +153,7 @@ def build(packet: dict, action_policy: dict | None = None) -> dict:
         "mechanics": mech,
         "non_current": non_current,
         "tile_overrides": tile_overrides,
+        "consistency_exceptions": consistency_exceptions,
         "held": held,
         "event_blocked": event_blocked,
         "no_trade_preferred": no_trade_pref,
