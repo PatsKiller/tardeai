@@ -500,7 +500,7 @@ def generate_local_only(prompt: str, *, system: str = "",
     import urllib.request as _rq
     models = [m.strip() for m in os.getenv(
         "LOCAL_TICKET_CRITIC_MODELS", "gemma3:12b,gemma3:4b").split(",") if m.strip()]
-    timeout_s = timeout_s or int(os.getenv("LOCAL_TICKET_CRITIC_TIMEOUT_S", "90"))
+    timeout_s = timeout_s or int(os.getenv("LOCAL_TICKET_CRITIC_TIMEOUT_S", "240"))
     last_err = "no local models configured"
     for model in models:
         body = _json.dumps({"model": model, "prompt": prompt, "system": system,

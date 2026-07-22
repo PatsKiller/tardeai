@@ -132,8 +132,8 @@ def run_oauth_critic(lane: str, symbol, ticket, facts, validation) -> dict:
         if not llm_lane.available(lane):
             base["error"] = f"{lane} lane unavailable"
             return base
-        out = llm_lane.generate(lane, _SYSTEM + "\n\n" + _prompt(pkt),
-                                max_tokens=900)
+        out = llm_lane.generate(_SYSTEM + "\n\n" + _prompt(pkt), lane=lane,
+                                timeout=120)
         text = out.get("text") if isinstance(out, dict) else str(out)
         base["model"] = (out.get("model") if isinstance(out, dict) else None) or lane
         return _finish(base, _parse(text), f"{lane} returned non-schema text")
