@@ -182,3 +182,41 @@ in the Details drawer.
 | Packet materialize / families | `scripts/decision_packet.py` |
 | Operator presentation | `operatorDecisionCard.ts` + `DecisionPacketBand.tsx` |
 | Watchlist embed | `WatchlistCardV4.tsx` / Watch hub |
+
+---
+
+## V5 (2026-07-22) — refresh semantics CORRECTED; this section supersedes contrary claims above
+
+Corrections to earlier statements in this document:
+
+1. **The browser auto-refresh does NOT own packet freshness** (and never did — it refreshed
+   enrichment inputs only, one symbol per session). Under V5 it is disabled entirely; cadence
+   is server-owned by `scripts/watch_decision_scheduler.py` + `config/
+   watch_decision_refresh_policy.yaml` (v5.0.0, P0–P3 tiers, mtime hot-reload).
+2. **"4h RTH / 12h off-hours" is a validity TTL, not a rebuild cadence.** Before V5 the only
+   scheduled rebuild was the 08:15 batch — packets expired every 4h RTH but were rebuilt once
+   a day. The V5 scheduler rebuilds on invalidation with per-tier ceilings (P0 60m / P1 120m /
+   P2 240m / P3 daily).
+3. **Timestamps are now visible in EVERY state.** The pre-V5 card replaced the build stamp
+   with a bare `NEEDS REFRESH` chip when stale (operatorDecisionCard.ts) — contradicting this
+   document. V5 keeps `built …` + STALE marker + reasons, test-guarded.
+
+**The V5 contract:** *Refresh Inputs updates evidence. Rebuild Strategy updates the decision.*
+- `POST /api/v2/watch/decision/refresh` — canonical rebuild (scopes INPUTS_ONLY /
+  AFFECTED_DIMENSIONS / FULL_STRATEGY; tiers LOCAL_QUANT / STANDARD_BLIND / PREMIUM_REVIEW).
+  Runs/jobs persist in `watch_decision_refresh_runs/_jobs` (SKIP-LOCKED claim, per-symbol
+  advisory locks, idempotency on (symbol, scope, tier, input-hash), SLA + stale-job sweep,
+  readback parity evidence).
+- `GET /api/v2/watch/decision/latest?symbol=` — full packet + freshness contract
+  (overall_state, last_input_refresh_at, last_strategy_build_at, valid_until,
+  next_refresh_due_at, invalidation_reasons, analysis_tier, priority_tier) + action policy.
+- `GET /api/v2/watch/decision/summary` — desk toolbar counts.
+- LOCAL_QUANT = deterministic, zero model lanes; long-term thesis from
+  `scripts/deterministic_thesis.py` (factor contributions + missing evidence; confidence =
+  coverage + rule stability, never predicted success). STANDARD_BLIND = existing free-OAuth
+  Grok/ChatGPT lanes. PREMIUM_REVIEW = fail-closed registry + cost preview + explicit
+  confirmation; never scheduled.
+- Baseline audit + live CECO proofs: `docs/audits/WATCH_DECISION_DESK_V5_BASELINE_2026-07-22.md`.
+
+Status at writing: branch `wt/watch-decision-desk-v5`, feature flag `WATCH_DECISION_DESK_V5`
+(localStorage; 'off' = Card v4 presentation). Action-policy authority unchanged either way.

@@ -7,6 +7,17 @@ Handoff: `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md`. Audit findings:
 canonical **`.md`**; Drive mirror via `scripts/sync-docs-to-drive.sh` (raw markdown parity).
 Holdings ~$1.26M / 36. No live Alpaca submit path; no public TV webhook.
 
+## 2026-07-22 — Watch Decision Desk V5 build (branch) + Schwab auto-reauth E2E + .env symlink fix
+
+V5: refresh-vs-rebuild split proven (CECO), canonical orchestrator + tiers + scheduler +
+freshness contract + deterministic thesis engine, all E2E-tested from `wt-watch-v5`; NOT yet
+merged/deployed. Schwab: 7-day token expiry root-caused (rotation never reset the clock —
+fingerprint artifact); TRUE auto-reauth built and proven live in 74s (Xvfb-headed beats Akamai;
+consent-modal Accept text-matched); weekly cron armed. P0 side-fix: post-SM-migration `.env`
+deletion broke import-time readers in fresh processes — `.env` is now a symlink to the
+Bitwarden tmpfs render (serving tree), un-breaking affected crons. Backup scope: Fernet key
+into env family + Bitwarden/auto-reauth restore steps in RESTORE_GUIDE §2/§2b.
+
 ## 2026-07-15 — Transfer-aware YTD + Fidelity period fills + daily pin
 
 Shipped transfer/rollover-resilient position provenance and performance continuity (Fidelity→Schwab, Trad→Roth, 401k→rollover rename). Postgres transfer history + normalize audit; auto-normalize on holdings write with basis carry-forward and stop-impact flags. Returns: residual YTD (ex-transfers), linked Fidelity economic sleeve restores 1W/1M/…, portfolio = Σ accounts, outlier snap path hygiene, **daily YTD pin** (`ytd_daily_pin.json`) so ≈ market does not wobble intraday (~+$54.2k household pin at ship). Force recompute: `YTD_PIN_FORCE=1` or delete pin file. Docs: `docs/features/transfer-aware-performance.md`. CC v3 Returns/Holdings surfaces notes + transfer history.

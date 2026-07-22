@@ -251,3 +251,9 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 | 2026-06-22 | A1A consolidation: LIVE_SYSTEM_FACTS.md, canonical docs → live pointers, drift detector hardened, DOCS_CONSOLIDATION closeout; runtime YAML/JSON/scripts committed. |
 | 2026-06-22 | Added stabilization + maturity audit docs; open-items updated (overnight LLM cron, KTOS/KBR stops); SYSTEM_FACTS + STATE_OF_REPO regenerated. |
 | 2026-06-19 | Index created + path/status verified against filesystem (14 corrections vs draft). Reflects commits d09a653c (deployment log) / 075bd602 (canary 2026-06-22) / 94e7275d (rotate-gap directives) / 65b3c751 (watchpool gap chip). |
+
+### Watch Decision Desk V5 (2026-07-22)
+- `docs/audits/WATCH_DECISION_DESK_V5_BASELINE_2026-07-22.md` — baseline audit + live CECO proofs
+- `config/watch_decision_refresh_policy.yaml` — server-owned refresh policy (P0–P3)
+- `scripts/watch_decision_refresh.py` / `watch_decision_scheduler.py` / `deterministic_thesis.py`
+- API: POST /api/v2/watch/decision/refresh · GET …/refresh/status · …/latest · …/summary

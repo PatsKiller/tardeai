@@ -245,3 +245,21 @@ curl -s http://127.0.0.1:8765/api/v2/proposal-accounts | jq '.accounts[] | {acco
 - `9aa8119c` — Restore pullback zone, plan line, Fib confluence on cards
 - `2ac2d7ad` — Rich single-column cards with intel visible by default
 - `bd642190` — Propose modal: size on available cash, include Fidelity accounts
+---
+
+## V5 Decision Desk (2026-07-22, flag `WATCH_DECISION_DESK_V5`)
+
+- **Desk toolbar**: packets · current / due-soon / stale / refreshing / failed · session ·
+  TTL · policy version · Refresh Current Page.
+- **Card**: primary CTA **Refresh Strategy** → canonical orchestrator (poll + toast); ghost
+  **Refresh Inputs** → legacy enrichment endpoint (honest label). Stale cards keep the build
+  timestamp + STALE marker + which input changed. **StrategyRail**: LT / SWING / BEAR / OPT /
+  NO-TRADE always visible in operator words (preferred family outlined); click → Details
+  drawer for mechanics/conditions/rejections. Analysis-tier provenance from the packet
+  (`LOCAL_QUANT` / `STANDARD_BLIND`). Legacy plan/sizing grid is REMOVED when a packet leads.
+- **Bulk bar** (≤25 selected): ★ Star · 🔔 Alert · ⟳ Rebuild Local · ◎ Standard Blind (lane-call
+  preview) · $ Premium Estimate (registry-gated) · Refresh Inputs (staggered).
+- **Rollback**: `localStorage.setItem('WATCH_DECISION_DESK_V5','off')` → Card v4 presentation;
+  action-policy authority identical in both.
+- Obsolete references to "Security Card v2" and to browser-owned refresh are superseded; see
+  `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` §V5.
