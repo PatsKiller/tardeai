@@ -123,20 +123,27 @@ def request_approval(intent) -> dict:
 def intent_deep_link(intent_id: str) -> str | None:
     """Tailscale FQDN deep-link to the exact order item in the v3 Broker Orders tab.
 
-    Always via notification_url_builder (https serve / %20 tabs) — never ad-hoc host strings.
+    ALWAYS path form /v3/go/order/{id} — never ?tab=…&intent=… (Telegram truncates at &).
     """
+    iid = str(intent_id or "").strip()
+    if not iid:
+        return None
     try:
         import sys as _sys
         from pathlib import Path as _P
         _sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
         from notification_url_builder import build_broker_order_url
-        url = build_broker_order_url(intent_id)
-        return url or None
+        url = build_broker_order_url(iid)
+        if url and "/go/order/" in url and "&" not in url.split("?", 1)[0]:
+            # path segment must not contain bare multi-query form
+            return url
+        if url and "/go/order/" in url:
+            return url
     except Exception:
-        host = os.getenv("TAILSCALE_HOSTNAME", "").strip()
-        if not host:
-            return None
-        return f"https://{host}/v3/trading?tab=Broker%20Orders&intent={intent_id}"
+        pass
+    host = (os.getenv("TAILSCALE_HOSTNAME") or "ms01-openclaw.tail163d14.ts.net").strip()
+    # Hard fallback — still path-only, never &intent=
+    return f"https://{host}/v3/go/order/{iid}"
 
 
 def _approval_chat() -> str | None:
@@ -405,12 +412,14 @@ def _approval_telegram_payload(intent, code: str) -> tuple[str, str, dict] | Non
     notice = _execution_notice(intent)
     # Body: bare URL on its own line (Telegram auto-linkifies; survives HTML/Markdown parse failures).
     # Prefer inline URL button below — that is the reliable tap target.
+    # Prefer URL button + bare path URL (no &). Avoid HTML <a href> with &amp; mangling.
+    link_line_html = (f"Open in Command Center:\n<code>{_tg_html(link)}</code>\n" if link else "")
     html = (f"🔐 <b>{_tg_html(title)}</b>\n\n"
             f"<b>{_tg_html(summ['headline'])}</b>\n"
             f"<i>{_tg_html(summ['detail'])}</i>\n"
             f"intent <code>{_tg_html(intent.intent_id[:8])}</code> · expires {TTL_MIN}min\n"
             f"manual fallback code: <code>{_tg_html(code)}</code>\n"
-            + (f'<a href="{_tg_html(link)}">Open this order in Command Center</a>\n' if link else "")
+            + link_line_html
             + f"<i>2nd factor: type ticker <b>{_tg_html(sym)}</b> in web OR tap {_tg_html(summ['approve_btn'])} here</i>\n"
             f"<i>{_tg_html(notice)}</i>")
     plain = (f"🔐 {title}\n\n{summ['headline']}\n{summ['detail']}\n"
@@ -422,6 +431,7 @@ def _approval_telegram_payload(intent, code: str) -> tuple[str, str, dict] | Non
         {"text": "❌ Reject", "callback_data": f"bkreject:{intent.intent_id}"},
     ]]
     if link:
+        # URL button is the reliable tap target (full path, no query &)
         rows.append([{"text": "🔎 Open in Command Center", "url": link}])
     kb = {"inline_keyboard": rows}
     return html, plain, kb
