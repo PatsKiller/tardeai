@@ -2074,6 +2074,52 @@ def _weighted_beta(positions):
     return round(beta_sum, 3)
 
 
+def _live_portfolio_day_change(holdings_list):
+    """Portfolio day change = Σ per-holding day $ recomputed from the fresh Finviz day % at the live
+    Finviz price. The stored portfolio_totals.day_change and per-row day_change go $0 whenever the
+    repricer wrote prev_price == new_price, so summing them silently under-counts (the header read
+    +$171 while the book had moved ~+$5,258). Shared by /overview (header TODAY) and
+    /portfolio/performance (Returns 1D) so both surfaces agree. Returns None if it cannot compute."""
+    try:
+        import sys as _s
+        _lib = str(PROJECT_ROOT / "scripts" / "lib")
+        if _lib not in _s.path:
+            _s.path.insert(0, _lib)
+        from holding_day_change import resolve_holding_day_change as _rhdc
+        _fv = _load_json(STATE_DIR / "finviz_quote_cache.json") or {}
+        _day: dict[str, float] = {}
+        _px: dict[str, float] = {}
+        for _fs, _fr in _fv.items():
+            if not isinstance(_fr, dict):
+                continue
+            _u = str(_fs).upper()
+            if _fr.get("change_pct") is not None:
+                try:
+                    _day[_u] = float(_fr["change_pct"])
+                except (TypeError, ValueError):
+                    pass
+            if _fr.get("price"):
+                try:
+                    _px[_u] = float(_fr["price"])
+                except (TypeError, ValueError):
+                    pass
+        _tc = 0.0
+        for _p in (holdings_list or []):
+            if _p.get("is_cash") or _p.get("is_loan"):
+                continue
+            _u = str(_p.get("symbol") or "").upper()
+            _fvpx = _px.get(_u)
+            _sh = float(_p.get("shares") or 0)
+            _mv = (_sh * _fvpx) if (_fvpx and _sh) else float(_p.get("market_value") or 0)
+            _pxp = _fvpx or float(_p.get("price") or 0)
+            _dc, _ = _rhdc(_p, market_value=_mv, price=_pxp, stale_price=_pxp,
+                           finviz_day_pct=_day.get(_u))
+            _tc += (_dc or 0)
+        return round(_tc, 2)
+    except Exception:
+        return None
+
+
 def overview():
     h = _load_json(STATE_DIR / "holdings.json") or {}
     perf = _load_json(STATE_DIR / "performance_history.json") or {}
@@ -2114,47 +2160,7 @@ def overview():
     # prev_price == new_price at write time, so trusting them silently under-counts — the header
     # once read +$171 while the portfolio had truly moved ~+$5,258. Fall back to the stored
     # aggregate only if the live recompute yields nothing.
-    today_change = None
-    try:
-        import sys as _sys_ovr
-        _ovr_lib = str(PROJECT_ROOT / "scripts" / "lib")
-        if _ovr_lib not in _sys_ovr.path:
-            _sys_ovr.path.insert(0, _ovr_lib)
-        from holding_day_change import resolve_holding_day_change as _rhdc_ovr
-        _ovr_fv = _load_json(STATE_DIR / "finviz_quote_cache.json") or {}
-        _ovr_fv_day: dict[str, float] = {}
-        _ovr_fv_px: dict[str, float] = {}
-        for _fs, _fr in _ovr_fv.items():
-            if not isinstance(_fr, dict):
-                continue
-            _u = str(_fs).upper()
-            if _fr.get("change_pct") is not None:
-                try:
-                    _ovr_fv_day[_u] = float(_fr["change_pct"])
-                except (TypeError, ValueError):
-                    pass
-            if _fr.get("price"):
-                try:
-                    _ovr_fv_px[_u] = float(_fr["price"])
-                except (TypeError, ValueError):
-                    pass
-        _tc = 0.0
-        for _p in holdings:
-            if _p.get("is_cash"):
-                continue
-            _u = str(_p.get("symbol") or "").upper()
-            # Match /api/v2/portfolio/holdings: value at the live Finviz price so the top
-            # strip and the Portfolio subheader agree.
-            _fvpx = _ovr_fv_px.get(_u)
-            _shp = float(_p.get("shares") or 0)
-            _mvp = (_shp * _fvpx) if (_fvpx and _shp) else float(_p.get("market_value") or 0)
-            _pxp = _fvpx or float(_p.get("price") or 0)
-            _dc, _ = _rhdc_ovr(_p, market_value=_mvp, price=_pxp, stale_price=_pxp,
-                               finviz_day_pct=_ovr_fv_day.get(_u))
-            _tc += (_dc or 0)
-        today_change = round(_tc, 2)
-    except Exception:
-        today_change = None
+    today_change = _live_portfolio_day_change(holdings)
     if today_change is None or today_change == 0:
         today_change = totals.get("day_change")
         if today_change is None:
@@ -3081,7 +3087,23 @@ def portfolio_performance():
     accounts = perf.get("accounts", {})
     repriced_list = perf.get("reconstructed", [])
 
-    # Overlay 1D with canonical market day (matches header TODAY)
+    # Overlay 1D with canonical market day (matches header TODAY). The 1D comes from
+    # portfolio_totals.day_change; inject the live per-position day change (Finviz day %) so the
+    # Returns 1D equals the header TODAY instead of the stale repricer $0-undercount (2026-07-21 audit).
+    try:
+        _live_dc = _live_portfolio_day_change(holdings.get("holdings") or [])
+        if _live_dc is not None and _live_dc != 0:
+            _pt = dict(holdings.get("portfolio_totals") or {})
+            _pt["day_change"] = _live_dc
+            try:
+                _tv = float(_pt.get("total_value") or 0)
+            except (TypeError, ValueError):
+                _tv = 0
+            if _tv and (_tv - _live_dc):
+                _pt["day_change_pct"] = round(_live_dc / (_tv - _live_dc) * 100, 4)
+            holdings = {**holdings, "portfolio_totals": _pt}
+    except Exception:
+        pass
     try:
         from portfolio_snapshot_sanity import apply_market_day_1d
         perf = apply_market_day_1d(perf, holdings)

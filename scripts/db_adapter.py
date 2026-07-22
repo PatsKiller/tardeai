@@ -364,11 +364,14 @@ def save_snapshot(snapshot: Dict, state_dir: Path) -> None:
     total_value = float(snapshot.get("total_value", 0))
     source = snapshot.get("source", "live")
 
-    # Sanity guard: reject snapshots that jump >30% from the most recent saved value
+    # Sanity guard: reject snapshots that jump >30% from the most recent saved value, OR where a
+    # materially-valued position has collapsed to $0 — the classic pre-market mispricing (a snapshot
+    # taken at 07:15 records mutual funds like FCNTX before they price, dropping ~$120k as a phantom
+    # trim that recovers the next day; the 07-14 glitch was 9.8% and slipped past the 30% guard).
     if USE_DB and date_str and total_value > 0:
         try:
             prev = _execute(
-                "SELECT total_value FROM portfolio_snapshots ORDER BY snapshot_date DESC LIMIT 1",
+                "SELECT total_value, data FROM portfolio_snapshots ORDER BY snapshot_date DESC LIMIT 1",
                 fetch="one"
             )
             if prev:
@@ -377,6 +380,32 @@ def save_snapshot(snapshot: Dict, state_dir: Path) -> None:
                     drift_pct = abs(total_value - prev_val) / prev_val * 100
                     if drift_pct > 30:
                         print(f"  [db_adapter] ⛔ SNAPSHOT REJECTED: ${total_value:,.0f} vs prev ${prev_val:,.0f} ({drift_pct:.1f}% drift > 30% guard)")
+                        return
+                # per-position zero-collapse guard
+                def _hv(data):
+                    h = (data or {}).get("holdings") or (data or {}).get("positions") or {}
+                    out = {}
+                    if isinstance(h, dict):
+                        for k, v in h.items():
+                            out[k] = float((v.get("market_value") if isinstance(v, dict) else v) or 0)
+                    elif isinstance(h, list):
+                        for p in h:
+                            out[f"{p.get('symbol')}:{p.get('account','')}"] = float(p.get("market_value") or 0)
+                    return out
+                _pd = prev.get("data")
+                if isinstance(_pd, str):
+                    try:
+                        _pd = json.loads(_pd)
+                    except Exception:
+                        _pd = {}
+                prev_h = _hv(_pd)
+                new_h = _hv(snapshot)
+                if prev_h and new_h:
+                    zeroed = [k for k, pv in prev_h.items() if pv > 500 and new_h.get(k, 0) <= 0.01]
+                    if zeroed:
+                        _lost = sum(prev_h[k] for k in zeroed)
+                        print(f"  [db_adapter] ⛔ SNAPSHOT REJECTED: {len(zeroed)} material position(s) collapsed to $0 "
+                              f"(≈${_lost:,.0f} — likely unpriced mutual funds/pre-market): {zeroed[:4]}")
                         return
         except Exception:
             pass  # If we can't check, allow the write
