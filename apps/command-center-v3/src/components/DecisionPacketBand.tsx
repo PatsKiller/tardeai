@@ -248,6 +248,8 @@ function StrategyRail({ pres, onOpen }: { pres: OperatorPresentation; onOpen: ()
     ['options', 'OPT'], ['no_trade', 'NO-TRADE'],
   ] as const
   const prefKey = pres.primaryFamily?.key === 'refresh' ? null : pres.primaryFamily?.key
+  // Operator words ONLY — internal packet codes (constructibility etc.) stay in
+  // the Audit drawer; unmapped states render as a neutral dash, never raw codes.
   const famWord = (k: string, f: any): string => {
     if (k === 'no_trade') return f.preferred || f.dominant ? 'PREFERRED' : f.available ? 'AVAILABLE' : '—'
     const act = String(f.action_state || '').toUpperCase()
@@ -255,9 +257,10 @@ function StrategyRail({ pres, onOpen }: { pres: OperatorPresentation; onOpen: ()
     if (act === 'READY') return 'READY'
     if (act.startsWith('WAIT') || dec.startsWith('WAIT')) return 'WAIT'
     if (dec.includes('REJECT') || act.includes('REJECT')) return 'REJECTED'
-    if (dec.includes('UNAVAILABLE') || String(f.constructibility_state || '').includes('UNAVAILABLE')) return 'UNAVAILABLE'
-    if (k === 'options' && String(f.constructibility_state || '').includes('STALE')) return 'CHAIN STALE'
-    return dec || act || '—'
+    if (k === 'options' && (dec.includes('STALE') || act.includes('STALE'))) return 'CHAIN STALE'
+    if (dec.includes('UNAVAILABLE') || act.includes('UNAVAILABLE')) return 'UNAVAILABLE'
+    if (dec.includes('ELIGIBLE') || dec.includes('VALID') || dec.includes('CONSTRUCT')) return 'AVAILABLE'
+    return '—'
   }
   const toneColor = (w: string): string =>
     w === 'READY' ? BB.green
