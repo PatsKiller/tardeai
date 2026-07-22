@@ -5729,10 +5729,17 @@ def tax_lots():
             cost_per = lot.get("cost_per_share", 0)
             cost_basis = lot.get("total_cost") or lot.get("cost_basis") or (cost_per * shares)
             current_price = price_map.get(symbol, 0)
+            # A missing price does NOT mean the security is worthless. The old code booked the FULL cost
+            # basis as a loss whenever the symbol wasn't in the price map — but that fires for SOLD /
+            # TRANSFERRED lots and for funds the price source doesn't cover (e.g. the rolled-over Fidelity
+            # 401k funds: FID-CONTRA-F is a live $130k+ fund, not worthless). It produced a phantom
+            # -$838k loss across 95 lots and inverted the whole tax view (portfolio is +$60k). Skip lots we
+            # cannot price — tax lots reflect CURRENT open, priceable positions. (2026-07-21 audit.)
+            if current_price <= 0:
+                continue
             current_value = shares * current_price
-            # If price is 0 but we have cost basis, it's a worthless security — loss = full basis
-            unrealized_gain = current_value - cost_basis if (current_price > 0 or cost_basis > 0) else 0
-            gain_pct = (unrealized_gain / cost_basis * 100) if cost_basis > 0 and current_price > 0 else 0
+            unrealized_gain = current_value - cost_basis
+            gain_pct = (unrealized_gain / cost_basis * 100) if cost_basis > 0 else 0
 
             # Determine holding period from lot_date
             lot_date = lot.get("lot_date") or lot.get("acquired", "")
@@ -5765,11 +5772,26 @@ def tax_lots():
     # Summary stats
     total_lots = len(flat)
     harvest = [l for l in flat if l["unrealized_gain"] < -100 and l["account"] in ("schwab_taxable", "taxable")]
+    # Reconciliation check: do the priced lots' market value tie to current holdings? tax_lots.json is
+    # stale post Fidelity->Schwab transfer (some symbols double-counted, some lots missing), so flag it
+    # rather than present unreconciled lots as authoritative. (2026-07-21 audit.)
+    _lot_mv = sum(l.get("current_value") or 0 for l in flat)
+    _hold_mv = sum(float(h.get("market_value") or 0) for h in holdings.get("holdings", [])
+                   if not h.get("is_cash"))
+    _reconciled = bool(_hold_mv) and abs(_lot_mv - _hold_mv) / _hold_mv < 0.02
     return {
         "count": total_lots,
         "lots": flat[:500],
         "harvest_candidates": len(harvest),
-        "data_note": "Showing open lots only. Closed/sold lots excluded." if total_lots < 500 else None,
+        "lots_market_value": round(_lot_mv, 2),
+        "holdings_market_value": round(_hold_mv, 2),
+        "reconciled_to_holdings": _reconciled,
+        "data_note": ("Open, priceable lots only (unpriced sold/transferred lots excluded)."
+                      if _reconciled else
+                      "⚠ Lots do not reconcile with current holdings — tax_lots.json is stale after the "
+                      "Fidelity→Schwab transfer (some symbols double-counted, some lots missing). Phantom "
+                      "full-basis losses removed, but treat lot-level gains/harvest candidates as approximate "
+                      "until the lot file is regenerated from broker data."),
     }
 
 
