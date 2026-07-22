@@ -852,13 +852,56 @@ export default function PortfolioHub({ onDrill }: Props) {
 
       {tab === 'Tax' && (
         <div className={terminalUi ? 'cc-panel' : undefined} style={tabPanel}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Tax Lots ({taxLots?.count ?? 0})</div>
-          {taxLots?.harvest_candidates?.length > 0 && (
-            <div style={{ marginBottom: 12, padding: '6px 10px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 6, fontSize: 11, color: '#f59e0b' }}>
-              {taxLots.harvest_candidates.length} harvest candidates
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <span>Tax Lots ({taxLots?.count ?? 0})</span>
+            {taxLots?.total_unrealized_gain != null && (
+              <span style={{ fontSize: 12, fontWeight: 800, color: taxLots.total_unrealized_gain >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                {taxLots.total_unrealized_gain >= 0 ? '+' : ''}{fmt$(taxLots.total_unrealized_gain, 0)} unrealized
+              </span>
+            )}
+            {taxLots?.reconciled_to_holdings === false && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--amber)' }}>⚠ not reconciled</span>
+            )}
+          </div>
+          {(taxLots?.harvest_candidates ?? 0) > 0 && (
+            <div style={{ marginBottom: 10, padding: '6px 10px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 6, fontSize: 11, color: 'var(--amber)' }}>
+              {taxLots.harvest_candidates} taxable-loss harvest candidate{taxLots.harvest_candidates === 1 ? '' : 's'}
+              {taxLots?.worthless_security_loss ? ` · incl. ${fmt$(taxLots.worthless_security_loss, 0)} worthless-security losses` : ''}
             </div>
           )}
-          <div style={{ fontSize: 9, color: 'var(--text3)' }}>{taxLots?.data_note ?? 'Source: /api/v2/tax-lots'}</div>
+          {Array.isArray(taxLots?.lots) && taxLots.lots.length > 0 && (
+            <div style={{ overflowX: 'auto', marginBottom: 10 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ color: 'var(--text3)' }}>
+                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Symbol</th>
+                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Account</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Shares</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Cost basis</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Value</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Unrealized</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>%</th>
+                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Term</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {taxLots.lots.map((l: any, i: number) => (
+                    <tr key={i} style={{ borderTop: '1px solid rgba(148,163,184,.12)', color: 'var(--text1)' }}>
+                      <td style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 700, color: 'var(--text0)' }}>{l.symbol}{l.worthless ? ' ⚠' : ''}</td>
+                      <td style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text3)' }}>{String(l.account || '').replace('schwab_', '')}</td>
+                      <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace' }}>{l.shares}</td>
+                      <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace' }}>{fmt$(l.cost_basis, 0)}</td>
+                      <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace' }}>{fmt$(l.current_value, 0)}</td>
+                      <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace', fontWeight: 700, color: (l.unrealized_gain ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>{(l.unrealized_gain ?? 0) >= 0 ? '+' : ''}{fmt$(l.unrealized_gain, 0)}</td>
+                      <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace', color: (l.gain_pct ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>{l.gain_pct}%</td>
+                      <td style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text3)' }}>{l.holding_period}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div style={{ fontSize: 10, color: 'var(--text3)' }}>{taxLots?.data_note ?? 'Source: /api/v2/tax-lots'}</div>
         </div>
       )}
     </div>
