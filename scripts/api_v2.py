@@ -23,7 +23,9 @@ for _stale in ("decision_action_policy", "packet_invalidation", "decision_packet
                # protective-stop placement modules are imported inside the handler; pop them so a
                # new order type (e.g. TRAILING_STOP_LIMIT) goes live with the api_v2 reload.
                "brokers.protective_stop_pilot", "brokers.snaptrade_protective_stop_pilot",
-               "brokers.protective_stop_policy"):
+               "brokers.protective_stop_policy",
+               # per-holding day P&L is imported inside portfolio_holdings; pop so fixes go live.
+               "holding_day_change"):
     _sys_heal.modules.pop(_stale, None)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -2106,10 +2108,57 @@ def overview():
     jdq_cnt = (_db_query("SELECT count(*) AS cnt FROM john_decision_queue WHERE status='pending_john'", fetch="one") or {}).get("cnt", 0)
     pending_rows = {"cnt": aq_cnt + jdq_cnt}
 
-    # Today's change — prefer repricer aggregate (matches portfolio_repricer totals)
-    today_change = totals.get("day_change")
-    if today_change is None:
-        today_change = sum(p.get("day_change") or 0 for p in holdings)
+    # Today's change — recompute per-holding from the day % (holding_day_change) merging the
+    # fresh Finviz day %, exactly like /api/v2/portfolio/holdings. The stored totals.day_change
+    # (and the raw per-row day_change in holdings.json) are written $0 by the repricer whenever
+    # prev_price == new_price at write time, so trusting them silently under-counts — the header
+    # once read +$171 while the portfolio had truly moved ~+$5,258. Fall back to the stored
+    # aggregate only if the live recompute yields nothing.
+    today_change = None
+    try:
+        import sys as _sys_ovr
+        _ovr_lib = str(PROJECT_ROOT / "scripts" / "lib")
+        if _ovr_lib not in _sys_ovr.path:
+            _sys_ovr.path.insert(0, _ovr_lib)
+        from holding_day_change import resolve_holding_day_change as _rhdc_ovr
+        _ovr_fv = _load_json(STATE_DIR / "finviz_quote_cache.json") or {}
+        _ovr_fv_day: dict[str, float] = {}
+        _ovr_fv_px: dict[str, float] = {}
+        for _fs, _fr in _ovr_fv.items():
+            if not isinstance(_fr, dict):
+                continue
+            _u = str(_fs).upper()
+            if _fr.get("change_pct") is not None:
+                try:
+                    _ovr_fv_day[_u] = float(_fr["change_pct"])
+                except (TypeError, ValueError):
+                    pass
+            if _fr.get("price"):
+                try:
+                    _ovr_fv_px[_u] = float(_fr["price"])
+                except (TypeError, ValueError):
+                    pass
+        _tc = 0.0
+        for _p in holdings:
+            if _p.get("is_cash"):
+                continue
+            _u = str(_p.get("symbol") or "").upper()
+            # Match /api/v2/portfolio/holdings: value at the live Finviz price so the top
+            # strip and the Portfolio subheader agree.
+            _fvpx = _ovr_fv_px.get(_u)
+            _shp = float(_p.get("shares") or 0)
+            _mvp = (_shp * _fvpx) if (_fvpx and _shp) else float(_p.get("market_value") or 0)
+            _pxp = _fvpx or float(_p.get("price") or 0)
+            _dc, _ = _rhdc_ovr(_p, market_value=_mvp, price=_pxp, stale_price=_pxp,
+                               finviz_day_pct=_ovr_fv_day.get(_u))
+            _tc += (_dc or 0)
+        today_change = round(_tc, 2)
+    except Exception:
+        today_change = None
+    if today_change is None or today_change == 0:
+        today_change = totals.get("day_change")
+        if today_change is None:
+            today_change = sum(p.get("day_change") or 0 for p in holdings)
     total_val = totals.get("total_value", 0)
     today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
     # per-account breakdown (operator 2026-06-12: "show what's moved today by account") + top movers
@@ -2895,13 +2944,16 @@ def portfolio_holdings():
             equity_curve.append({"date": s["date"], "value": round(total, 0)})
 
     _priced_total = round(sum(r.get("market_value") or 0 for r in rows), 2)
+    # Per-row day_change is recomputed live from the day % (holding_day_change), so the
+    # row-sum is authoritative. The stored portfolio_totals.day_change comes from the same
+    # repricer that writes $0 when prev_price == new_price at write time, so it can silently
+    # under-count (it once read +$171 while the rows truly summed to ~+$5,258). Only fall back
+    # to the stored total when we have NO per-row signal at all (row-sum ~0 but a total exists).
     _day_total = round(sum(r.get("day_change") or 0 for r in rows), 2)
     _totals_day = (h.get("portfolio_totals") or {}).get("day_change")
-    if _totals_day is not None:
+    if abs(_day_total) < 0.01 and _totals_day is not None:
         try:
-            _td = float(_totals_day)
-            if abs(_day_total - _td) > 5:
-                _day_total = round(_td, 2)
+            _day_total = round(float(_totals_day), 2)
         except (TypeError, ValueError):
             pass
     _mq_as_of = None

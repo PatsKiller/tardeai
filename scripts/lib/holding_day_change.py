@@ -30,13 +30,29 @@ def resolve_holding_day_change(
         and abs(price - stale_price) > max(0.005, abs(stale_price) * 1e-6)
     )
 
-    if h_day is not None and not price_changed:
+    pct_num = float(day_pct) if day_pct is not None else None
+
+    # The stored dollar day_change is only trustworthy when it is CONSISTENT with the
+    # day %: either the % is ~0 (genuinely flat) OR the stored $ is materially non-zero.
+    # A stored $0 sitting next to a non-zero % (fresh from Finviz) is a stale/never-priced
+    # dollar value — the repricer wrote 0 because prev_price == new_price at write time,
+    # while Finviz carries the real intraday %. In that case fall through and recompute
+    # the $ from the %; otherwise the portfolio day total silently drops those positions.
+    stored_consistent = (
+        h_day is not None
+        and (abs(float(h_day)) > 0.005 or pct_num is None or abs(pct_num) < 0.01)
+    )
+
+    if stored_consistent and not price_changed:
         return float(h_day), day_pct if day_pct is not None else h_day_pct
 
-    if price_changed and h_day is not None and h_mv > 0 and market_value > 0:
+    if price_changed and h_day is not None and abs(float(h_day)) > 0.005 and h_mv > 0 and market_value > 0:
         return round(float(h_day) * (market_value / h_mv), 2), day_pct
 
-    if day_pct is not None and market_value:
-        return round(market_value * float(day_pct) / 100, 2), day_pct
+    # Accurate $ from %: day$ = MV − MV/(1+pct/100) = MV·pct/(100+pct). Matches the
+    # repricer convention (e.g. QCOM stored 175.17 = MV·pct/(100+pct), not MV·pct/100).
+    if pct_num is not None and market_value:
+        prev_mv = market_value / (1.0 + pct_num / 100.0) if (1.0 + pct_num / 100.0) != 0 else market_value
+        return round(market_value - prev_mv, 2), day_pct
 
     return float(h_day or 0), day_pct if day_pct is not None else h_day_pct
