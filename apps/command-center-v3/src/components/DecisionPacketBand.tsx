@@ -8,12 +8,13 @@ import {
 } from '../lib/operatorDecisionCard'
 
 /*
- * DecisionPacketBand — OPERATOR primary surface (not a packet viewer).
+ * DecisionPacketBand — Watch Decision Desk V6 presentation.
  *
- * Answers only: what now? why? at what price? what invalidates? what next?
- * Full packet / family / model audit lives behind Details.
+ * The packet remains the audit record. This component is the operator surface:
+ * action first, five strategies second, technical setup third, mechanics and
+ * freshness always visible, audit/detail explicitly separated.
  *
- * No orders. No 2FA. Advisory only.
+ * Advisory only. No orders. No approvals. No 2FA.
  */
 
 type Props = {
@@ -22,23 +23,109 @@ type Props = {
   actionPolicy?: any
   held?: boolean
   onRefresh?: (e: React.MouseEvent) => void
-  /** V5: canonical packet rebuild (watch_decision_refresh orchestrator). When
-   *  absent, the REFRESH primary falls back to onRefresh (legacy inputs-only). */
   onRefreshStrategy?: (e: React.MouseEvent) => void
-  /** V5: a strategy-refresh run is in flight for this symbol. */
   refreshing?: boolean
   onPrimary?: (pres: OperatorPresentation, e: React.MouseEvent) => void
   onAlert?: (pres: OperatorPresentation, e: React.MouseEvent) => void
 }
 
+const FAMILY_ORDER = [
+  ['long_term', 'Long term'],
+  ['swing', 'Swing'],
+  ['bearish', 'Bearish'],
+  ['options', 'Options'],
+  ['no_trade', 'No trade'],
+] as const
+
 function stateBg(state: OperatorState): string {
-  if (state === 'READY') return 'rgba(34,197,94,.12)'
-  if (state === 'BLOCKED' || state === 'NO TRADE') return 'rgba(239,68,68,.10)'
-  return 'rgba(255,176,0,.12)'
+  if (state === 'READY') return 'rgba(34,197,94,.10)'
+  if (state === 'BLOCKED' || state === 'NO TRADE') return 'rgba(239,68,68,.09)'
+  if (state === 'MANAGE POSITION') return 'rgba(96,165,250,.09)'
+  return 'rgba(245,158,11,.09)'
+}
+
+function asDate(v?: string | null): Date | null {
+  if (!v) return null
+  const d = new Date(v)
+  return Number.isFinite(d.getTime()) ? d : null
+}
+
+function clock(v?: string | null): string {
+  const d = asDate(v)
+  if (!d) return '—'
+  return d.toLocaleString([], {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    timeZoneName: 'short',
+  })
+}
+
+function age(v?: string | null): string {
+  const d = asDate(v)
+  if (!d) return '—'
+  const mins = Math.max(0, Math.round((Date.now() - d.getTime()) / 60_000))
+  if (mins < 1) return 'now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 48) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
+}
+
+function familyWord(k: string, f: any): string {
+  if (k === 'no_trade') return f?.preferred || f?.dominant ? 'PREFERRED' : f?.available ? 'AVAILABLE' : '—'
+  const act = String(f?.action_state || '').toUpperCase()
+  const dec = String(f?.decision_state || f?.state || '').toUpperCase()
+  if (act === 'READY') return 'READY'
+  if (act.startsWith('WAIT') || dec.startsWith('WAIT') || dec === 'CONDITIONAL') return 'WAIT'
+  if (dec.includes('REJECT') || act.includes('REJECT')) return 'REJECTED'
+  if (k === 'options' && (dec.includes('STALE') || act.includes('STALE'))) return 'CHAIN STALE'
+  if (dec.includes('UNAVAILABLE') || act.includes('UNAVAILABLE') || dec.includes('DATA_UNAVAILABLE')) return 'UNAVAILABLE'
+  if (dec.includes('ELIGIBLE') || dec.includes('VALID') || dec.includes('CONSTRUCT')) return 'AVAILABLE'
+  return '—'
+}
+
+function statusColor(word: string): string {
+  if (word === 'READY') return BB.green
+  if (word === 'WAIT' || word === 'CHAIN STALE' || word === 'PREFERRED') return BB.amber
+  if (word === 'REJECTED') return BB.red
+  return BB.text3
+}
+
+function familyReason(k: string, f: any): string {
+  if (k === 'no_trade') return String(f?.reason || (f?.preferred ? 'No constructive plan is currently preferred' : 'Available as the risk-off alternative'))
+  const reason = (f?.rejection_reasons || f?.blocks || [])[0]
+  if (reason) return String(reason)
+  const structure = (f?.structures || [])[0]
+  if (structure?.structure) return String(structure.structure).replace(/_/g, ' ').toLowerCase()
+  const word = familyWord(k, f)
+  if (word === 'READY') return 'Mechanics resolved and current'
+  if (word === 'WAIT') return 'Conditions are not yet confirmed'
+  if (word === 'UNAVAILABLE') return k === 'options' ? 'Exact option chain or eligible structure unavailable' : 'Required evidence unavailable'
+  if (word === 'REJECTED') return 'Eligibility or risk constraints failed'
+  return 'No active construction'
+}
+
+function technicalColor(p: any): string {
+  const fresh = String(p?.freshness || 'UNAVAILABLE').toUpperCase()
+  const lifecycle = String(p?.lifecycle || '').toUpperCase()
+  const direction = String(p?.direction || 'NEUTRAL').toUpperCase()
+  if (fresh !== 'CURRENT') return BB.text3
+  if (lifecycle === 'CONFIRMED' && direction === 'BULLISH') return BB.green
+  if (lifecycle === 'CONFIRMED' && direction === 'BEARISH') return BB.red
+  if (lifecycle === 'FORMING' || lifecycle === 'AWAITING_CONFIRMATION' || direction === 'MIXED') return BB.amber
+  return BB.text2
+}
+
+function technicalBg(p: any): string {
+  const c = technicalColor(p)
+  if (c === BB.green) return 'rgba(34,197,94,.08)'
+  if (c === BB.red) return 'rgba(239,68,68,.08)'
+  if (c === BB.amber) return 'rgba(245,158,11,.08)'
+  return 'rgba(148,163,184,.05)'
 }
 
 export default function DecisionPacketBand({
-  packet, actionPolicy, held, onRefresh, onRefreshStrategy, refreshing, onPrimary, onAlert,
+  packet, generatedAt, actionPolicy, held, onRefresh, onRefreshStrategy,
+  refreshing, onPrimary, onAlert,
 }: Props) {
   const [details, setDetails] = useState(false)
   const [whyOpen, setWhyOpen] = useState(false)
@@ -48,249 +135,247 @@ export default function DecisionPacketBand({
   if (!pres) return null
 
   const accent = operatorStateColor(pres.state)
-  const mechDim = pres.stale || !!pres.mechanics?.previous
+  const tech = packet?.technical_state || {}
+  const builtAt = generatedAt || packet?.evaluated_at || packet?.generated_at
+  const inputsAt = packet?.freshness?.last_input_refresh_at || packet?.current_input_snapshot?.computed_at
+  const validUntil = packet?.freshness?.valid_until || actionPolicy?.valid_until
+  const nextDue = packet?.freshness?.next_refresh_due_at || actionPolicy?.next_refresh_due_at
+  const invalidatedAt = packet?.freshness?.invalidated_at || packet?.current_validity?.invalidated_at
+  const analysisMode = String(packet?.model_review?.mode || packet?.analysis_tier || 'LOCAL_QUANT').replace(/_/g, ' ')
+  const pills: any[] = tech?.pills || []
 
   return (
-    <div
+    <section
+      aria-label="Decision strategy desk"
       onClick={e => e.stopPropagation()}
       style={{
-        borderLeft: `3px solid ${accent}`,
+        borderLeft: `4px solid ${accent}`,
         background: stateBg(pres.state),
         borderBottom: `1px solid ${BB.border}`,
-        padding: '8px 10px',
       }}
     >
-      {/* LINE 1 — ACTION */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{
-          fontSize: 12, fontWeight: 900, letterSpacing: '.06em', color: accent,
-          textTransform: 'uppercase', flexShrink: 0,
-        }}>
-          {pres.state}
-        </span>
-        <span style={{ fontSize: 13, fontWeight: 800, color: BB.text0, flex: 1, minWidth: 140 }}>
-          {pres.headline}
-        </span>
-      </div>
-
-      {/* LINE 2 — THESIS */}
-      <div style={{ marginTop: 4, fontSize: 11, color: BB.text2, fontWeight: 600 }}>
-        {pres.thesisLine}
-      </div>
-
-      {/* chips — max 3 */}
-      {pres.chips.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 5 }}>
-          {pres.chips.map(c => (
-            <span key={c} style={{
-              fontSize: 10, fontWeight: 800, letterSpacing: '.04em',
-              color: c.includes('REFRESH') || c.includes('REJECT') ? BB.amber : BB.text3,
-              border: `1px solid ${BB.border}`, borderRadius: 2, padding: '1px 6px',
-            }}>{c}</span>
-          ))}
-        </div>
-      )}
-
-      {/* LINE 3 — MECHANICS */}
-      {pres.mechanics && (
-        <div style={{
-          marginTop: 8,
-          opacity: mechDim ? 0.55 : 1,
-          filter: mechDim ? 'grayscale(0.25)' : undefined,
-        }}>
-          {mechDim && (
-            <div style={{ fontSize: 10, fontWeight: 800, color: BB.amber, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-              Previous plan — not current
-            </div>
-          )}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))',
-            gap: 6,
-          }}>
-            {([
-              ['ENTRY', pres.mechanics.entry],
-              ['LIMIT', pres.mechanics.limit],
-              ['STOP', pres.mechanics.stop],
-              ['TARGET', pres.mechanics.target],
-              ['R:R', pres.mechanics.rr],
-            ] as const).filter(([, v]) => v).map(([lbl, val]) => (
-              <div key={lbl}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: BB.text3, letterSpacing: '.06em' }}>{lbl}</div>
-                <div style={{ ...numStyle, fontSize: 13, fontWeight: 800, color: BB.text0 }}>{val}</div>
-              </div>
-            ))}
+      {/* ACTION + FRESHNESS HEADER */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(280px, .8fr)',
+        gap: 12, padding: '12px 14px 10px', borderBottom: `1px solid ${BB.border}`,
+      }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: 13, fontWeight: 950, letterSpacing: '.10em', color: accent,
+              textTransform: 'uppercase',
+            }}>{pres.state}</span>
+            <span style={{ fontSize: 17, fontWeight: 850, color: BB.text0 }}>{pres.headline}</span>
           </div>
-          {!pres.mechanics.entry && !pres.mechanics.limit && (
-            <div style={{ ...numStyle, fontSize: 11, fontWeight: 700, color: BB.text1, marginTop: 2 }}>
-              {pres.mechanics.summary}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Why */}
-      {pres.whyLines.length > 0 && (
-        <div style={{ marginTop: 7 }}>
-          <div style={{ fontSize: 10, fontWeight: 800, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>
-            {pres.state === 'REFRESH' ? 'Why refresh' : pres.state === 'WAIT' ? 'Why wait' : pres.state === 'READY' ? 'Why this' : 'Why'}
+          <div style={{ marginTop: 5, fontSize: 11.5, lineHeight: 1.45, color: BB.text2, fontWeight: 650 }}>
+            {pres.thesisLine}
           </div>
-          {pres.whyLines.map((line, i) => (
-            <div key={i} style={{ fontSize: 11, color: BB.text1, lineHeight: 1.35 }}>{line}</div>
-          ))}
-        </div>
-      )}
-
-      {/* Selected plan + alternative (compact) */}
-      {!pres.stale && pres.primaryFamily && (
-        <div style={{ marginTop: 6, fontSize: 11, color: BB.text2 }}>
-          <span style={{ fontWeight: 800, color: BB.text0 }}>PRIMARY </span>
-          {pres.primaryFamily.title} — {pres.primaryFamily.statusLabel}
-        </div>
-      )}
-      {!pres.stale && pres.alternative && (
-        <div style={{ marginTop: 2, fontSize: 11, color: BB.text3 }}>
-          <span style={{ fontWeight: 700 }}>ALTERNATIVE </span>
-          {pres.alternative.title} — {pres.alternative.statusLabel}
-        </div>
-      )}
-
-      {/* Why not alternatives */}
-      {pres.whyNot.length > 0 && (
-        <div style={{ marginTop: 4 }}>
-          <button
-            onClick={() => setWhyOpen(v => !v)}
-            style={{ ...terminalButton('ghost'), fontSize: 10, padding: '2px 0' }}
-          >
-            Why not the alternatives? {whyOpen ? '▴' : '▾'}
-          </button>
-          {whyOpen && (
-            <div style={{ marginTop: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {pres.whyNot.map(w => (
-                <div key={w.title} style={{ fontSize: 10, color: BB.text3 }}>
-                  <b style={{ color: BB.text2 }}>{w.title}</b> {w.reason}
-                </div>
+          {pres.whyLines.length > 0 && (
+            <div style={{ marginTop: 7, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+              {pres.whyLines.slice(0, 2).map((line, i) => (
+                <span key={i} style={{
+                  fontSize: 10.5, color: BB.text1, background: 'rgba(15,23,42,.34)',
+                  border: `1px solid ${BB.border}`, borderRadius: 4, padding: '3px 7px',
+                }}>{line}</span>
               ))}
             </div>
           )}
         </div>
-      )}
 
-      {/* V5 STRATEGY RAIL — all five families always visible (click → details) */}
-      <StrategyRail pres={pres} onOpen={() => setDetails(true)} />
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 10px', alignContent: 'start',
+          background: 'rgba(2,6,23,.28)', border: `1px solid ${BB.border}`,
+          borderRadius: 5, padding: '8px 10px',
+        }}>
+          <Meta label="Strategy built" value={`${clock(builtAt)} · ${age(builtAt)}`} />
+          <Meta label="Analysis" value={analysisMode} />
+          <Meta label="Inputs refreshed" value={clock(inputsAt)} />
+          <Meta label="Technical snapshot" value={tech?.computed_at ? `${clock(tech.computed_at)} · ${tech.overall_freshness || '—'}` : 'Unavailable'} />
+          <Meta label={pres.stale ? 'Invalidated' : 'Valid until'} value={pres.stale ? clock(invalidatedAt) : clock(validUntil)} tone={pres.stale ? BB.amber : undefined} />
+          <Meta label="Next scheduled review" value={clock(nextDue)} />
+        </div>
+      </div>
 
-      {/* 17.14 TECHNICAL SETUP RAIL — max 6 server-ranked pills; freshness and
-          direction are separate axes (a stale bullish pill renders gray). */}
-      <TechSetupRail tech={packet?.technical_state} onOpen={() => setDetails(true)} />
+      {/* FIVE STRATEGIES — visible, comparable, preferred obvious */}
+      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BB.border}` }}>
+        <SectionTitle title="Strategies evaluated" note="Every family is visible; only the selected family drives mechanics and the primary action." />
+        <StrategyGrid pres={pres} onOpen={() => setDetails(true)} />
+      </div>
 
-      {/* CTAs — V5 split: Refresh Strategy = packet rebuild orchestrator;
-          Refresh Inputs = the old enrichment-only endpoint, honestly labelled. */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+      {/* TECHNICAL SETUP — real pills with hierarchy */}
+      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BB.border}` }}>
+        <SectionTitle
+          title="Technical setup"
+          note={tech?.source_hash ? `${tech.overall_direction || 'UNRESOLVED'} · source ${tech.source_hash}` : 'Canonical technical snapshot unavailable'}
+        />
+        <TechnicalGrid tech={tech} onOpen={() => setDetails(true)} />
+      </div>
+
+      {/* MECHANICS + WHAT CHANGES THE DECISION */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: pres.mechanics ? 'minmax(0, 1.25fr) minmax(260px, .75fr)' : '1fr',
+        gap: 12, padding: '10px 14px', borderBottom: `1px solid ${BB.border}`,
+      }}>
+        {pres.mechanics && (
+          <div style={{ opacity: pres.stale || pres.mechanics.previous ? .58 : 1 }}>
+            <SectionTitle title={pres.stale ? 'Previous mechanics — not current' : 'Current mechanics'} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(76px, 1fr))', gap: 7 }}>
+              {([
+                ['Entry', pres.mechanics.entry], ['Limit', pres.mechanics.limit],
+                ['Stop', pres.mechanics.stop], ['Target', pres.mechanics.target],
+                ['R:R', pres.mechanics.rr],
+              ] as const).map(([label, value]) => (
+                <div key={label} style={{
+                  background: 'rgba(2,6,23,.28)', border: `1px solid ${BB.border}`,
+                  borderRadius: 4, padding: '6px 8px', minHeight: 42,
+                }}>
+                  <div style={{ fontSize: 9, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.07em' }}>{label}</div>
+                  <div style={{ ...numStyle, marginTop: 2, fontSize: 14, fontWeight: 850, color: BB.text0 }}>{value || '—'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <SectionTitle title="What changes the decision" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {(packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger) && (
+              <Condition label="Trigger" text={packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger} color={BB.green} />
+            )}
+            {(packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation) && (
+              <Condition label="Invalidation" text={packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation} color={BB.red} />
+            )}
+            {!packet?.horizons?.tactical?.trigger && !packet?.horizons?.swing?.trigger && (
+              <Condition label="Next" text={pres.primaryFamily?.why || pres.whyLines[0] || 'Review the full evidence'} color={BB.amber} />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ACTION BAR */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', padding: '9px 14px' }}>
         <button
           onClick={e => {
             e.stopPropagation()
             if (pres.state === 'REFRESH') {
               if (onRefreshStrategy) onRefreshStrategy(e)
               else if (onRefresh) onRefresh(e)
-            }
-            else if (pres.state === 'WAIT' && onAlert) onAlert(pres, e)
+            } else if (pres.state === 'WAIT' && onAlert) onAlert(pres, e)
             else if (onPrimary) onPrimary(pres, e)
           }}
           disabled={refreshing && pres.state === 'REFRESH'}
           style={{
             ...terminalButton(pres.state === 'READY' || pres.state === 'REFRESH' ? 'primary' : 'secondary'),
-            ...(refreshing && pres.state === 'REFRESH' ? { opacity: 0.6, cursor: 'wait' } : {}),
+            fontSize: 11, padding: '5px 10px',
+            ...(refreshing && pres.state === 'REFRESH' ? { opacity: .6, cursor: 'wait' } : {}),
           }}
         >
-          {refreshing && pres.state === 'REFRESH' ? 'Refreshing…' : pres.primaryCta}
+          {refreshing && pres.state === 'REFRESH' ? 'Refreshing strategy…' : pres.primaryCta}
         </button>
-        {pres.stale && (
-          <button onClick={e => { e.stopPropagation(); setPrevOpen(v => !v) }} style={terminalButton('ghost')}>
-            {prevOpen ? 'Hide previous plan' : 'View Previous Plan'}
-          </button>
-        )}
+
         {!pres.stale && onRefreshStrategy && (
-          <button
-            onClick={e => { e.stopPropagation(); onRefreshStrategy(e) }}
-            disabled={refreshing}
-            style={{ ...terminalButton('ghost'), ...(refreshing ? { opacity: 0.6, cursor: 'wait' } : {}) }}
-          >
+          <button onClick={e => { e.stopPropagation(); onRefreshStrategy(e) }} disabled={refreshing}
+            style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>
             {refreshing ? 'Refreshing…' : 'Refresh Strategy'}
           </button>
         )}
         {onRefresh && (
-          <button onClick={e => { e.stopPropagation(); onRefresh(e) }} style={terminalButton('ghost')}>
+          <button onClick={e => { e.stopPropagation(); onRefresh(e) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>
             Refresh Inputs
           </button>
         )}
-        <button
-          onClick={e => { e.stopPropagation(); setDetails(v => !v) }}
-          style={terminalButton('ghost')}
-        >
-          {details ? 'Hide details' : 'Details'}
+        {pres.stale && pres.mechanics?.previous && (
+          <button onClick={e => { e.stopPropagation(); setPrevOpen(v => !v) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>
+            {prevOpen ? 'Hide Previous Strategy' : 'View Previous Strategy'}
+          </button>
+        )}
+        {pres.whyNot.length > 0 && (
+          <button onClick={e => { e.stopPropagation(); setWhyOpen(v => !v) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>
+            {whyOpen ? 'Hide alternatives' : 'Why not alternatives?'}
+          </button>
+        )}
+        <button onClick={e => { e.stopPropagation(); setDetails(v => !v) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>
+          {details ? 'Hide audit' : 'Details & audit'}
         </button>
+        <span style={{ marginLeft: 'auto', fontSize: 9.5, color: BB.text3 }}>Advisory only · proposal review remains separate</span>
       </div>
 
       {prevOpen && pres.mechanics?.previous && (
-        <div style={{ marginTop: 6, fontSize: 11, color: BB.text3 }}>
-          Previous plan: {pres.mechanics.summary}
+        <div style={{ margin: '0 14px 9px', padding: '7px 9px', fontSize: 10.5, color: BB.text3, border: `1px solid ${BB.border}`, borderRadius: 4 }}>
+          Previous strategy: {pres.mechanics.summary}
         </div>
       )}
 
-      {/* Audit drawer — internal codes, all families, hashes, legacy */}
-      {details && <AuditDrawer pres={pres} />}
+      {whyOpen && (
+        <div style={{ margin: '0 14px 9px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 6 }}>
+          {pres.whyNot.map(w => (
+            <div key={w.title} style={{ padding: '6px 8px', border: `1px solid ${BB.border}`, borderRadius: 4, background: 'rgba(2,6,23,.22)' }}>
+              <div style={{ fontSize: 10, fontWeight: 850, color: BB.text2 }}>{w.title}</div>
+              <div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{w.reason}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {details && <AuditDrawer pres={pres} tech={tech} />}
+    </section>
+  )
+}
+
+function SectionTitle({ title, note }: { title: string; note?: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 10, fontWeight: 900, color: BB.text2, textTransform: 'uppercase', letterSpacing: '.08em' }}>{title}</span>
+      {note && <span style={{ fontSize: 9.5, color: BB.text3 }}>{note}</span>}
     </div>
   )
 }
 
-/** V5 Section 6C — compact always-visible five-family rail. The preferred family
- *  is visually primary; rejection prose stays in the drawer (click to open). */
-function StrategyRail({ pres, onOpen }: { pres: OperatorPresentation; onOpen: () => void }) {
-  const fams = pres.audit?.families || {}
-  const order = [
-    ['long_term', 'LT'], ['swing', 'SWING'], ['bearish', 'BEAR'],
-    ['options', 'OPT'], ['no_trade', 'NO-TRADE'],
-  ] as const
-  const prefKey = pres.primaryFamily?.key === 'refresh' ? null : pres.primaryFamily?.key
-  // Operator words ONLY — internal packet codes (constructibility etc.) stay in
-  // the Audit drawer; unmapped states render as a neutral dash, never raw codes.
-  const famWord = (k: string, f: any): string => {
-    if (k === 'no_trade') return f.preferred || f.dominant ? 'PREFERRED' : f.available ? 'AVAILABLE' : '—'
-    const act = String(f.action_state || '').toUpperCase()
-    const dec = String(f.decision_state || f.state || '').toUpperCase()
-    if (act === 'READY') return 'READY'
-    if (act.startsWith('WAIT') || dec.startsWith('WAIT')) return 'WAIT'
-    if (dec.includes('REJECT') || act.includes('REJECT')) return 'REJECTED'
-    if (k === 'options' && (dec.includes('STALE') || act.includes('STALE'))) return 'CHAIN STALE'
-    if (dec.includes('UNAVAILABLE') || act.includes('UNAVAILABLE')) return 'UNAVAILABLE'
-    if (dec.includes('ELIGIBLE') || dec.includes('VALID') || dec.includes('CONSTRUCT')) return 'AVAILABLE'
-    return '—'
-  }
-  const toneColor = (w: string): string =>
-    w === 'READY' ? BB.green
-      : w === 'WAIT' || w === 'CHAIN STALE' ? BB.amber
-        : w === 'REJECTED' ? BB.red
-          : BB.text3
+function Meta({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
-      {order.map(([k, label]) => {
-        const f = (fams as any)[k] || {}
-        const w = famWord(k, f)
-        const primary = prefKey && String(prefKey).startsWith(k.split('_')[0])
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 8.5, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
+      <div style={{ marginTop: 1, fontSize: 10, color: tone || BB.text1, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis' }} title={value}>{value}</div>
+    </div>
+  )
+}
+
+function Condition({ label, text, color }: { label: string; text: string; color: string }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', gap: 7, alignItems: 'start' }}>
+      <span style={{ fontSize: 9, fontWeight: 900, color, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</span>
+      <span style={{ fontSize: 10.5, color: BB.text1, lineHeight: 1.35 }}>{text}</span>
+    </div>
+  )
+}
+
+function StrategyGrid({ pres, onOpen }: { pres: OperatorPresentation; onOpen: () => void }) {
+  const fams = pres.audit?.families || {}
+  const prefKey = pres.primaryFamily?.key === 'refresh' ? null : String(pres.primaryFamily?.key || '')
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(120px, 1fr))', gap: 6 }}>
+      {FAMILY_ORDER.map(([key, label]) => {
+        const fam = fams[key] || {}
+        const word = familyWord(key, fam)
+        const color = statusColor(word)
+        const preferred = !!prefKey && (prefKey === key || prefKey.startsWith(key.split('_')[0]))
         return (
-          <button
-            key={k}
-            onClick={e => { e.stopPropagation(); onOpen() }}
-            title={`${label}: ${w} — click for mechanics, conditions, rejection reasons`}
+          <button key={key} onClick={e => { e.stopPropagation(); onOpen() }}
+            title={`${label}: ${word}. ${familyReason(key, fam)}`}
             style={{
-              fontSize: 10, fontWeight: 800, letterSpacing: '.04em', cursor: 'pointer',
-              color: toneColor(w), background: 'transparent',
-              border: `1px solid ${primary ? toneColor(w) : BB.border}`,
-              borderRadius: 2, padding: '1px 5px',
-              boxShadow: primary ? `inset 0 0 0 1px ${toneColor(w)}` : undefined,
-            }}
-          >
-            {label} {w}
+              textAlign: 'left', cursor: 'pointer', minHeight: 58,
+              background: preferred ? `${color}12` : 'rgba(2,6,23,.22)',
+              border: `1px solid ${preferred ? color : BB.border}`,
+              borderRadius: 5, padding: '7px 8px',
+              boxShadow: preferred ? `inset 3px 0 0 ${color}` : undefined,
+            }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 900, color: preferred ? BB.text0 : BB.text2 }}>{label}</span>
+              {preferred && <span style={{ fontSize: 7.5, fontWeight: 900, color, border: `1px solid ${color}66`, borderRadius: 3, padding: '0 4px' }}>PRIMARY</span>}
+            </div>
+            <div style={{ marginTop: 4, fontSize: 10, fontWeight: 900, color }}>{word}</div>
+            <div style={{ marginTop: 2, fontSize: 8.8, lineHeight: 1.25, color: BB.text3 }}>{familyReason(key, fam).slice(0, 72)}</div>
           </button>
         )
       })}
@@ -298,134 +383,104 @@ function StrategyRail({ pres, onOpen }: { pres: OperatorPresentation; onOpen: ()
   )
 }
 
-/** 17.14 pill colors: green only for CONFIRMED bullish AND CURRENT; red for
- *  confirmed bearish current; amber for forming/conditional/mixed/due-soon;
- *  gray for neutral, unavailable, or stale evidence. */
-function TechSetupRail({ tech, onOpen }: { tech: any; onOpen: () => void }) {
+function TechnicalGrid({ tech, onOpen }: { tech: any; onOpen: () => void }) {
   const pills: any[] = tech?.pills || []
-  if (!pills.length) return null
-  const color = (p: any): string => {
-    const stale = p.freshness !== 'CURRENT'
-    const confirmed = p.lifecycle === 'CONFIRMED'
-    if (stale) return BB.text3
-    if (confirmed && p.direction === 'BULLISH') return BB.green
-    if (confirmed && p.direction === 'BEARISH') return BB.red
-    if (p.lifecycle === 'FORMING' || p.lifecycle === 'AWAITING_CONFIRMATION'
-        || p.direction === 'MIXED') return BB.amber
-    return BB.text3
+  if (!pills.length) {
+    return (
+      <div style={{ padding: '8px 10px', border: `1px dashed ${BB.border}`, borderRadius: 5, color: BB.text3, fontSize: 10.5 }}>
+        Technical snapshot unavailable. Refresh Strategy to rebuild the canonical multi-timeframe analysis.
+      </div>
+    )
   }
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
-      <span style={{ fontSize: 10, fontWeight: 800, color: BB.text3, letterSpacing: '.05em', alignSelf: 'center' }}>
-        TECH
-      </span>
-      {pills.slice(0, 6).map((p, i) => (
-        <button
-          key={i}
-          onClick={e => { e.stopPropagation(); onOpen() }}
-          title={`${p.tooltip || ''} · ${p.lifecycle} · ${p.freshness}`}
-          style={{
-            fontSize: 10, fontWeight: 800, letterSpacing: '.03em', cursor: 'pointer',
-            color: color(p), background: 'transparent',
-            border: `1px solid ${BB.border}`, borderRadius: 2, padding: '1px 5px',
-          }}
-        >
-          {p.label}{p.value ? ` · ${p.value}` : ''}
-          {p.freshness !== 'CURRENT' ? ` · ${String(p.freshness)}` : ''}
-        </button>
-      ))}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(115px, 1fr))', gap: 6 }}>
+      {pills.slice(0, 6).map((p, i) => {
+        const color = technicalColor(p)
+        const lifecycle = String(p.lifecycle || '').replace(/_/g, ' ')
+        const fresh = String(p.freshness || 'UNAVAILABLE')
+        return (
+          <button key={`${p.kind || 'tech'}-${i}`} onClick={e => { e.stopPropagation(); onOpen() }}
+            title={`${p.tooltip || ''} · ${lifecycle} · ${fresh}`}
+            style={{
+              textAlign: 'left', cursor: 'pointer', minHeight: 60,
+              background: technicalBg(p), border: `1px solid ${color}55`,
+              borderRadius: 5, padding: '7px 8px',
+            }}>
+            <div style={{ fontSize: 8.3, color: BB.text3, fontWeight: 850, textTransform: 'uppercase', letterSpacing: '.07em' }}>
+              {String(p.kind || 'technical').replace(/_/g, ' ')}
+            </div>
+            <div style={{ marginTop: 3, fontSize: 10.5, color, fontWeight: 900, lineHeight: 1.2 }}>{p.label}</div>
+            <div style={{ marginTop: 3, fontSize: 9, color: BB.text2, fontWeight: 700 }}>{p.value || lifecycle || '—'}</div>
+            <div style={{ marginTop: 2, fontSize: 8.3, color: fresh === 'CURRENT' ? BB.text3 : BB.amber }}>{fresh}{lifecycle ? ` · ${lifecycle}` : ''}</div>
+          </button>
+        )
+      })}
     </div>
   )
 }
 
-function AuditDrawer({ pres }: { pres: OperatorPresentation }) {
+function AuditDrawer({ pres, tech }: { pres: OperatorPresentation; tech: any }) {
   const a = pres.audit
   const fams = a.families || {}
   const order = ['long_term', 'swing', 'bearish', 'options', 'no_trade'] as const
-  const labels: Record<string, string> = {
-    long_term: 'LONG_TERM', swing: 'SWING', bearish: 'BEARISH',
-    options: 'OPTIONS', no_trade: 'NO_TRADE',
-  }
   return (
     <div style={{
-      marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BB.border}`,
-      display: 'flex', flexDirection: 'column', gap: 6,
+      margin: '0 14px 12px', padding: 10, border: `1px solid ${BB.border}`,
+      borderRadius: 5, background: 'rgba(2,6,23,.30)', display: 'flex', flexDirection: 'column', gap: 7,
     }}>
-      <div style={{ fontSize: 10, fontWeight: 800, color: BB.amber, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-        Audit & prior opinions — not the operator decision
+      <div style={{ fontSize: 10, fontWeight: 900, color: BB.amber, letterSpacing: '.07em', textTransform: 'uppercase' }}>
+        Details & audit — not the primary decision
       </div>
-
-      <div style={{ fontSize: 10, color: BB.text3 }}>
+      <div style={{ fontSize: 9.5, color: BB.text3 }}>
         Packet {a.packet?.packet_version || '—'} · policy {a.actionPolicy?.policy_version || '—'}
-        {a.inputHashes.packet ? ` · packet hash ${a.inputHashes.packet}` : ''}
-        {a.inputHashes.current ? ` · current hash ${a.inputHashes.current}` : ''}
+        {a.inputHashes.packet ? ` · packet ${a.inputHashes.packet}` : ''}
+        {a.inputHashes.current ? ` · current ${a.inputHashes.current}` : ''}
+        {tech?.source_hash ? ` · technical ${tech.source_hash}` : ''}
       </div>
-
       {a.currentValidity && (
         <div style={{ fontSize: 10, color: BB.text2 }}>
           Current validity: <b>{String(a.currentValidity.state || '—')}</b>
-          {(a.currentValidity.invalidation_reasons || []).length > 0 && (
-            <span> — {(a.currentValidity.invalidation_reasons as string[]).join('; ')}</span>
-          )}
+          {(a.currentValidity.invalidation_reasons || []).length > 0 && <span> — {(a.currentValidity.invalidation_reasons as string[]).join('; ')}</span>}
         </div>
       )}
-
-      {order.map(k => {
-        const f = fams[k] || {}
-        const kids = f.structures || []
-        return (
-          <div key={k} style={{ fontSize: 10, color: BB.text3, borderTop: `1px solid ${BB.border}`, paddingTop: 4 }}>
-            <div>
-              <b style={{ color: BB.text1 }}>{labels[k]}</b>
-              {' '}constr={f.constructibility_state || '—'}
-              {' · '}dec={f.decision_state || f.state || '—'}
-              {' · '}act={f.action_state || '—'}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(130px, 1fr))', gap: 6 }}>
+        {order.map(key => {
+          const f = fams[key] || {}
+          const kids = f.structures || []
+          return (
+            <div key={key} style={{ padding: '6px 7px', border: `1px solid ${BB.border}`, borderRadius: 4, fontSize: 9, color: BB.text3 }}>
+              <div style={{ fontWeight: 900, color: BB.text1, textTransform: 'uppercase' }}>{key.replace('_', ' ')}</div>
+              <div>construct={f.constructibility_state || '—'}</div>
+              <div>decision={f.decision_state || f.state || '—'}</div>
+              <div>action={f.action_state || '—'}</div>
+              {kids.slice(0, 4).map((s: any, i: number) => (
+                <div key={i} style={{ marginTop: 3 }}>{s.structure || '?'} · {s.state}{s.occ_symbol ? ` · ${s.occ_symbol}` : ''}</div>
+              ))}
             </div>
-            {kids.slice(0, 6).map((s: any, i: number) => (
-              <div key={i} style={{ paddingLeft: 8 }}>
-                {s.structure || '?'} · {s.state}
-                {s.occ_symbol ? ` · ${s.occ_symbol}` : ''}
-                {(s.rejection_reasons || [])[0] ? ` — ${String(s.rejection_reasons[0]).slice(0, 70)}` : ''}
-              </div>
-            ))}
-            {k === 'no_trade' && (
-              <div style={{ paddingLeft: 8 }}>
-                available={String(!!f.available)} preferred={String(!!f.preferred)} dominant={String(!!f.dominant)}
-                {f.reason ? ` · ${f.reason}` : ''}
-              </div>
-            )}
-          </div>
-        )
-      })}
-
+          )
+        })}
+      </div>
+      {tech?.timeframes && (
+        <div style={{ fontSize: 9.5, color: BB.text3 }}>
+          Technical timeframes: {Object.entries(tech.timeframes).map(([tf, r]: any) => `${tf} ${r?.meta?.freshness_state || '—'} @ ${r?.meta?.last_closed_bar || '—'}`).join(' · ')}
+        </div>
+      )}
       {a.modelReview && (
-        <div style={{ fontSize: 10, color: BB.text3 }}>
-          Models: mode={a.modelReview.mode || '—'}
-          {a.modelReview.agreement_by_dimension && (
-            <span> · agreement {JSON.stringify(a.modelReview.agreement_by_dimension)}</span>
-          )}
+        <div style={{ fontSize: 9.5, color: BB.text3 }}>
+          Models: {a.modelReview.mode || '—'}{a.modelReview.agreement_by_dimension ? ` · agreement ${JSON.stringify(a.modelReview.agreement_by_dimension)}` : ''}
         </div>
       )}
-
       {a.ownership && (
-        <div style={{ fontSize: 10, color: BB.text3 }}>
-          Ownership: {a.ownership.held ? `HELD ${a.ownership.shares}` : 'NOT HELD'}
-          {a.ownership.source ? ` · ${a.ownership.source}` : ''}
-          {a.ownership.as_of ? ` · ${a.ownership.as_of}` : ''}
+        <div style={{ fontSize: 9.5, color: BB.text3 }}>
+          Ownership: {a.ownership.held ? `HELD ${a.ownership.shares}` : 'NOT HELD'}{a.ownership.source ? ` · ${a.ownership.source}` : ''}{a.ownership.as_of ? ` · ${a.ownership.as_of}` : ''}
         </div>
       )}
-
       {a.legacy?.recommendation && (
-        <div style={{ fontSize: 10, color: BB.text3 }}>
-          Legacy @ build: {String(a.legacy.recommendation)}
-          {a.legacy.generated_at ? ` · ${a.legacy.generated_at}` : ''}
-        </div>
+        <div style={{ fontSize: 9.5, color: BB.text3 }}>Legacy @ build: {String(a.legacy.recommendation)}{a.legacy.generated_at ? ` · ${a.legacy.generated_at}` : ''}</div>
       )}
-
       {a.actionPolicy && (
-        <div style={{ fontSize: 10, color: BB.text3 }}>
-          Action policy: {a.actionPolicy.action} · state={a.actionPolicy.state} · allowed={String(!!a.actionPolicy.allowed)}
-          {a.actionPolicy.reason ? ` · ${a.actionPolicy.reason}` : ''}
+        <div style={{ fontSize: 9.5, color: BB.text3 }}>
+          Action policy: {a.actionPolicy.action} · state={a.actionPolicy.state} · allowed={String(!!a.actionPolicy.allowed)}{a.actionPolicy.reason ? ` · ${a.actionPolicy.reason}` : ''}
         </div>
       )}
     </div>
