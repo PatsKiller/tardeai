@@ -319,6 +319,150 @@ def build_long_term(facts, event, ownership, thesis_state, timing) -> dict:
                 "rejection_reasons": list(exc.reasons)}
 
 
+# ── V6 swing-entry governance (pure, fixture-testable) ───────────────────────
+CHASE_TOLERANCE_PCT = 1.5      # marginally-above-zone tolerance
+CHASE_TOLERANCE_ATR = 0.5
+BREAKOUT_MAX_PCT = 8.0         # a trigger farther than min(8%, 2 ATR) is NEVER
+BREAKOUT_MAX_ATR = 2.0         # an actionable candidate — watch scenario only
+BREAKOUT_TEST_WINDOW_BARS = 20
+BREAKOUT_TEST_TOL_ATR = 1.0
+BREAKOUT_BASE_RANGE_ATR = 2.5
+
+
+def assess_swing_entry(*, price, zone_low, zone_high, stop, atr,
+                       technical_state=None) -> dict:
+    """THE rule: a missed plan becomes NO CURRENT TRADE. It never mutates into a
+    different strategy to keep the card populated (the FATN defect: $4.75 price
+    was rendered as a $6.76 'entry' because a stale pullback plan auto-converted
+    to breakout mode at any resistance above price)."""
+    out = {"entry_state": "UNRESOLVED", "family_state": "CONDITIONAL",
+           "action_state": "WAIT_FOR_PULLBACK", "mechanics_current": True,
+           "trigger": None, "reasons": [], "summary": None, "watch_scenarios": []}
+    if price is None or zone_low is None or zone_high is None:
+        out["reasons"] = ["missing current price or entry zone — cannot assess entry state"]
+        return out
+    if stop is not None and price < stop:
+        out.update(entry_state="INVALIDATED", family_state="REJECTED",
+                   mechanics_current=False,
+                   reasons=[f"price {price:.2f} is below the plan invalidation {stop:.2f}"],
+                   summary="INVALIDATED — the plan's stop level was breached; no current entry")
+        return out
+    if zone_low <= price <= zone_high:
+        mc = (((technical_state or {}).get("timeframes") or {}).get("daily") or {}) \
+            .get("momentum_context") or {}
+        if mc.get("state") == "OVERSOLD_CONTINUING_DOWN":
+            out.update(entry_state="WAIT_PULLBACK",
+                       trigger=f"price holds the {zone_low:.2f}-{zone_high:.2f} zone with stabilizing momentum",
+                       reasons=["price is in the entry zone but momentum is still deteriorating — wait for stabilization"])
+        else:
+            out.update(entry_state="READY_PULLBACK", family_state="ELIGIBLE",
+                       action_state="READY",
+                       trigger=f"price holds the {zone_low:.2f}-{zone_high:.2f} entry zone")
+        return out
+    if price > zone_high:
+        dist_abs = price - zone_high
+        dist_pct = 100.0 * dist_abs / price
+        dist_atr = (dist_abs / atr) if atr else None
+        within_chase = (dist_pct <= CHASE_TOLERANCE_PCT
+                        or (dist_atr is not None and dist_atr <= CHASE_TOLERANCE_ATR))
+        if within_chase:
+            out.update(entry_state="WAIT_PULLBACK",
+                       trigger=f"pullback into the {zone_low:.2f}-{zone_high:.2f} zone",
+                       reasons=[f"price {price:.2f} is marginally above the zone "
+                                f"({dist_pct:.1f}%{f' / {dist_atr:.1f} ATR' if dist_atr is not None else ''}) "
+                                f"— inside chase tolerance; original mechanics shown as reference"])
+            return out
+        out.update(entry_state="MISSED_ENTRY", family_state="REJECTED",
+                   mechanics_current=False,
+                   reasons=[f"entry missed: price {price:.2f} is {dist_pct:.1f}%"
+                            f"{f' / {dist_atr:.1f} ATR' if dist_atr is not None else ''} above the "
+                            f"{zone_low:.2f}-{zone_high:.2f} zone — no current entry, do not chase"],
+                   summary=(f"MISSED ENTRY — price {price:.2f} is above the "
+                            f"{zone_low:.2f}-{zone_high:.2f} zone. No current entry. Do not chase."),
+                   watch_scenarios=[{"kind": "PULLBACK_REENTRY",
+                                     "zone": [zone_low, zone_high], "actionable": False,
+                                     "note": "next valid condition: pullback and stabilization near the original zone"}])
+        return out
+    out.update(entry_state="WAIT_PULLBACK",
+               trigger=f"reclaim and hold the {zone_low:.2f}-{zone_high:.2f} zone",
+               reasons=[f"price {price:.2f} is below the entry zone — wait for reclaim"])
+    return out
+
+
+def assess_breakout_blueprint(*, symbol, price, atr, resistance, conn=None,
+                              technical_state=None) -> dict:
+    """A breakout is a SEPARATE blueprint, built independently from current
+    closed-bar structure — never a re-labeling of stale pullback mechanics.
+    Eligibility: trigger within min(8%, 2 ATR) of price, resistance tested
+    within the recent closed-bar window, a consolidation base beneath it, and
+    non-thin volume. Anything farther/looser is a non-actionable watch level."""
+    if not (price and resistance and resistance > price):
+        return {}
+    dist_abs = resistance - price
+    dist_pct = 100.0 * dist_abs / price
+    dist_atr = (dist_abs / atr) if atr else None
+    scenario = {"kind": "BREAKOUT_WATCH_LEVEL", "level": round(resistance, 2),
+                "distance_pct": round(dist_pct, 1),
+                "distance_atr": round(dist_atr, 2) if dist_atr is not None else None,
+                "actionable": False}
+    if dist_pct > BREAKOUT_MAX_PCT or (dist_atr is not None and dist_atr > BREAKOUT_MAX_ATR):
+        scenario["note"] = (f"distant resistance ({dist_pct:.1f}% away) — FUTURE SCENARIO only, "
+                            f"never current mechanics")
+        return {"watch_scenario": scenario}
+    if not atr or conn is None:
+        scenario["note"] = "breakout candidacy unassessable (missing ATR or bars)"
+        return {"watch_scenario": scenario}
+    # closed-bar structure checks
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT high, low, close FROM market_ohlcv_bars
+                       WHERE upper(symbol)=%s AND timeframe='daily'
+                         AND bar_time < now() - interval '16 hours'
+                       ORDER BY bar_time DESC LIMIT %s""",
+                    (symbol.upper(), BREAKOUT_TEST_WINDOW_BARS))
+        bars = cur.fetchall()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        bars = []
+    if len(bars) < 10:
+        scenario["note"] = "insufficient closed daily bars to validate a breakout base"
+        return {"watch_scenario": scenario}
+    tested = any(float(h) >= resistance - BREAKOUT_TEST_TOL_ATR * atr for h, _, _ in bars)
+    closes = [float(c) for _, _, c in bars[:10]]
+    base_ok = (max(closes) - min(closes)) <= BREAKOUT_BASE_RANGE_ATR * atr
+    vroc = ((((technical_state or {}).get("timeframes") or {}).get("daily") or {})
+            .get("indicators") or {}).get("volume_roc") or {}
+    vol_ratio = (vroc.get("details") or {}).get("volume_ratio")
+    vol_ok = vol_ratio is None or vol_ratio >= 0.8
+    failed = [w for ok, w in ((tested, "resistance not tested in the recent window"),
+                              (base_ok, "no consolidation base beneath the trigger"),
+                              (vol_ok, f"volume too thin (RVOL {vol_ratio})")) if not ok]
+    if failed:
+        scenario["note"] = "breakout candidacy failed: " + "; ".join(failed)
+        return {"watch_scenario": scenario}
+    new_stop = round(resistance - 1.2 * atr, 2)
+    risk = resistance - new_stop
+    last_close = float(bars[0][2])
+    confirmed = last_close > resistance
+    bp = {"structure": "BREAKOUT_SWING", "entry_mode": "BREAKOUT",
+          "entry_state": "READY_BREAKOUT" if confirmed else "WAIT_BREAKOUT",
+          "state": ELIGIBLE if confirmed else CONDITIONAL,
+          "action_state": "READY" if confirmed else "WAIT_FOR_BREAKOUT",
+          "mechanics_current": True,
+          "entry_zone": [round(resistance, 2), round(resistance + 0.25 * atr, 2)],
+          "limit_price": round(resistance, 2), "stop_price": new_stop,
+          "targets": [round(resistance + 2 * risk, 2)],
+          "risk_per_share": round(risk, 4), "risk_reward": 2.0,
+          "risk_reward_source": "DETERMINISTIC_BREAKOUT_BLUEPRINT",
+          "trigger": f"closed daily bar above {resistance:.2f}",
+          "invalidation": f"close below {new_stop:.2f}",
+          "independent_of_pullback_plan": True}
+    return {"blueprint": bp}
+
+
 def build_swing(facts, conn) -> dict:
     """The legacy equity plan, demoted to ONE COMPONENT of the decision rather
     than being the whole product."""
@@ -351,11 +495,13 @@ def build_swing(facts, conn) -> dict:
         "exit_ladder": (plan.get("exit_ladder") or {}).get("steps", []),
         "proposal_tag": tag, "plan_created_at": str(created), "model_used": model,
     }
-    # V6 correction 1/2: the entry state is COMPUTED against the CURRENT price
-    # and mechanics — never inherited from the stored plan's legacy urgency
-    # (FATN showed "READY — swing entry confirmed" at $4.89 with a $4.30-4.55
-    # zone and a $6.76 reclaim trigger: two different strategies in one card).
-    # One selected plan gets exactly ONE coherent entry mode.
+    # V6 SAFETY FIX (2026-07-22 afternoon): a MISSED plan becomes NO CURRENT
+    # TRADE — it never mutates into a different strategy to keep the card
+    # populated. The earlier "correction" auto-converted a stale pullback plan
+    # into breakout mechanics at any resistance above price (FATN: $4.75 price
+    # rendered a $6.76 "entry") — removed. Breakouts are SEPARATE blueprints
+    # built by assess_breakout_blueprint() under strict eligibility; distant
+    # levels appear only as non-actionable watch_scenarios.
     price = facts.get("live_price") or facts.get("enriched_price")
     atr = facts.get("atr")
     res_list = facts.get("resistance") or []
@@ -363,84 +509,51 @@ def build_swing(facts, conn) -> dict:
     zlo_f = float(zlo) if zlo else None
     zhi_f = float(zhi) if zhi else None
     stop_f = float(stop) if stop else None
-    entry_mode, entry_state, reasons = "PULLBACK", "WAIT_PULLBACK", []
-    if price is None or zhi_f is None or zlo_f is None:
-        entry_state = "UNRESOLVED"
-        reasons = ["missing current price or entry zone — cannot assess entry state"]
-        state = CONDITIONAL
-    elif stop_f is not None and price < stop_f:
-        entry_state, state = "INVALIDATED", REJECTED
-        reasons = [f"price {price:.2f} is below the plan invalidation {stop_f:.2f}"]
-    elif zlo_f <= price <= zhi_f:
-        # in the zone — READY only if support/confirmation holds (technicals may
-        # veto down to WAIT, never manufacture READY elsewhere)
-        _ts = facts.get("technical_state") or {}
-        _daily = ((_ts.get("timeframes") or {}).get("daily") or {})
-        _mc = (_daily.get("momentum_context") or {}).get("state", "")
-        if _mc == "OVERSOLD_CONTINUING_DOWN":
-            entry_state, state = "WAIT_PULLBACK", CONDITIONAL
-            reasons = ["price is in the entry zone but momentum still deteriorating — wait for stabilization"]
-        else:
-            entry_state, state = "READY_PULLBACK", ELIGIBLE
-        mech["trigger"] = f"price holds the {zlo_f:.2f}-{zhi_f:.2f} entry zone"
-    elif price > zhi_f:
-        dist_atr = ((price - zhi_f) / atr) if atr else None
-        if resistance is not None and price < resistance:
-            # BREAKOUT mode: one coherent plan — mechanics recalculated FROM the
-            # trigger, the stale pullback limit is not presented alongside it.
-            entry_mode = "BREAKOUT"
-            new_stop = round(resistance - 1.5 * atr, 2) if atr else stop_f
-            risk = (resistance - new_stop) if new_stop is not None else None
-            mech.update(
-                limit_price=round(resistance, 2),
-                entry_zone=[round(resistance, 2),
-                            round(resistance + (0.5 * atr if atr else 0), 2)],
-                stop_price=new_stop,
-                targets=[round(resistance + 2 * risk, 2)] if risk else mech["targets"],
-                risk_per_share=round(risk, 4) if risk else None,
-                risk_reward=2.0 if risk else mech["risk_reward"],
-                risk_reward_source="DETERMINISTIC_BREAKOUT_RECALC")
-            mech["trigger"] = f"closed bar reclaims {resistance:.2f}"
-            mech["invalidation"] = f"close below {new_stop}" if new_stop else mech["invalidation"]
-            # confirmation requires the LAST CLOSED daily bar to close above the
-            # trigger — the live price alone never confirms a breakout.
-            _confirmed = False
-            try:
-                cur.execute("""SELECT close FROM market_ohlcv_bars
-                               WHERE upper(symbol)=%s AND timeframe='daily'
-                                 AND bar_time < now() - interval '16 hours'
-                               ORDER BY bar_time DESC LIMIT 1""", (facts["symbol"],))
-                _cb = cur.fetchone()
-                _confirmed = bool(_cb) and float(_cb[0]) > resistance
-            except Exception:
-                _confirmed = False
-            if _confirmed:
-                entry_state, state = "READY_BREAKOUT", ELIGIBLE
-            else:
-                entry_state, state = "WAIT_BREAKOUT", CONDITIONAL
-                reasons = [f"breakout trigger {resistance:.2f} not confirmed on a closed bar "
-                           f"(current {price:.2f})"]
-        elif dist_atr is not None and dist_atr > 1.0:
-            entry_state, state = "EXTENDED", CONDITIONAL
-            reasons = [f"price {price:.2f} is {dist_atr:.1f} ATR above the "
-                       f"{zlo_f:.2f}-{zhi_f:.2f} entry zone — wait for a pullback"]
-            mech["trigger"] = f"pullback into the {zlo_f:.2f}-{zhi_f:.2f} zone"
-        else:
-            entry_state, state = "WAIT_PULLBACK", CONDITIONAL
-            reasons = [f"price {price:.2f} is above the entry zone — wait for a pullback"]
-            mech["trigger"] = f"pullback into the {zlo_f:.2f}-{zhi_f:.2f} zone"
-    else:  # below the zone but above invalidation
-        entry_state, state = "WAIT_PULLBACK", CONDITIONAL
-        reasons = [f"price {price:.2f} is below the entry zone — wait for reclaim"]
-        mech["trigger"] = f"reclaim and hold the {zlo_f:.2f}-{zhi_f:.2f} zone"
-    mech["entry_mode"] = entry_mode
+    assess = assess_swing_entry(price=price, zone_low=zlo_f, zone_high=zhi_f,
+                                stop=stop_f, atr=atr,
+                                technical_state=facts.get("technical_state"))
+    entry_state = assess["entry_state"]
+    state = {"ELIGIBLE": ELIGIBLE, "CONDITIONAL": CONDITIONAL,
+             "REJECTED": REJECTED}[assess["family_state"]]
+    reasons = assess["reasons"]
+    mech["entry_mode"] = "PULLBACK"
     mech["entry_state"] = entry_state
     mech["legacy_plan_urgency"] = str(urg or "").upper()  # audit only, never authority
     mech["state"] = state
-    mech["action_state"] = ("READY" if entry_state.startswith("READY")
-                            else "WAIT_FOR_BREAKOUT" if entry_state == "WAIT_BREAKOUT"
-                            else "WAIT_FOR_PULLBACK")
-    return {"family": "SWING", "state": state, "structures": [mech],
+    mech["action_state"] = assess["action_state"]
+    mech["mechanics_current"] = assess["mechanics_current"]
+    mech["trigger"] = assess.get("trigger")
+    if not assess["mechanics_current"]:
+        # ORIGINAL SETUP — MISSED / NOT CURRENT: prior mechanics move to
+        # previous_plan; the current-mechanics surface stays EMPTY.
+        mech["previous_plan"] = {
+            "entry_zone": mech.get("entry_zone"), "limit_price": mech.get("limit_price"),
+            "stop_price": mech.get("stop_price"), "targets": mech.get("targets"),
+            "risk_reward": mech.get("risk_reward"), "invalidation": mech.get("invalidation"),
+            "plan_created_at": mech.get("plan_created_at"), "label": "MISSED / NOT CURRENT",
+        }
+        for _k in ("entry_zone", "limit_price", "stop_price", "targets",
+                   "risk_per_share", "risk_reward"):
+            mech[_k] = None if _k != "targets" and _k != "entry_zone" else []
+        mech["invalidation"] = ""
+        mech["summary"] = assess.get("summary", "MISSED ENTRY — no current mechanics")
+        mech["cta"] = "SET PULLBACK ALERT"
+    structures = [mech]
+    watch_scenarios = list(assess.get("watch_scenarios") or [])
+    # independent BREAKOUT blueprint — never derived from the pullback plan
+    bo = assess_breakout_blueprint(symbol=facts["symbol"], price=price, atr=atr,
+                                   resistance=resistance, conn=conn,
+                                   technical_state=facts.get("technical_state"))
+    if bo.get("blueprint"):
+        structures.append(bo["blueprint"])
+        if bo["blueprint"]["state"] == ELIGIBLE and state != ELIGIBLE:
+            state = ELIGIBLE
+        elif bo["blueprint"]["state"] == CONDITIONAL and state == REJECTED:
+            state = CONDITIONAL
+    if bo.get("watch_scenario"):
+        watch_scenarios.append(bo["watch_scenario"])
+    return {"family": "SWING", "state": state, "structures": structures,
+            "watch_scenarios": watch_scenarios,
             "rejection_reasons": reasons}
 
 
@@ -881,6 +994,17 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
     except Exception as _ie:
         packet["input_snapshot"] = None
         packet["input_hash"] = None
+
+    # V6 item 6 — hard separation: current_actionable_plan / watch_scenarios /
+    # previous_plan. watch_scenarios NEVER feed proposal mechanics (they carry
+    # no limit/stop/target); a MISSED plan leaves current_actionable_plan None.
+    _sw_structs = (sw or {}).get("structures") or []
+    packet["current_actionable_plan"] = next(
+        (s for s in _sw_structs if s.get("mechanics_current")
+         and s.get("state") in (ELIGIBLE, CONDITIONAL)), None)
+    packet["watch_scenarios"] = (sw or {}).get("watch_scenarios") or []
+    packet["previous_plan"] = next(
+        (s.get("previous_plan") for s in _sw_structs if s.get("previous_plan")), None)
 
     # ── V6 canonical contracts (2026-07-22): the card reads these EXACT fields —
     # freshness is generated server-side from the refresh policy, never in React.
