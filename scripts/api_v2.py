@@ -12011,6 +12011,9 @@ _LIST_PACKET_KEYS = (
     "preferred_action", "headline", "input_hash", "action_policy_version",
     "current_validity", "deterministic_thesis", "legacy_summary",
 )
+_LIST_TECH_KEYS = ("schema_version", "computed_at", "overall_freshness",
+                   "overall_direction", "primary_pattern", "pills", "source_hash",
+                   "conflicts", "unavailable")
 _LIST_STRUCTURE_KEYS = ("structure", "state", "action_state", "occ_symbol",
                         "entry_zone", "limit_price", "stop_price", "targets", "risk_reward",
                         "rejection_reasons", "condition", "summary", "quote_source",
@@ -12053,6 +12056,10 @@ def _trim_packet_for_list(pkt: dict) -> dict:
             ]
             tf[name] = f2
         out["plan_families"] = tf
+        ts_full = pkt.get("technical_state") or {}
+        if ts_full:
+            out["technical_state"] = {k: ts_full.get(k) for k in _LIST_TECH_KEYS
+                                      if ts_full.get(k) is not None}
         mr = pkt.get("model_review") or {}
         out["model_review"] = {k: mr.get(k) for k in
                                ("mode", "lanes_requested", "lanes_completed",
@@ -12110,6 +12117,19 @@ def _watch_decision_latest(query=None):
         except Exception as e:
             out["action_policy"] = {"error": str(e)[:120]}
     return out
+
+
+def _watch_decision_technicals(query=None):
+    """GET /api/v2/watch/decision/technicals?symbol=X[&timeframes=1h,daily,weekly] —
+    full canonical technical snapshot for the Technicals drawer (17.15).
+    Deterministic, LLM-free; bars cached; heavier than the packet's slim block."""
+    sym = (_q1(query, "symbol") or "").upper()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    tfs = tuple((_q1(query, "timeframes") or "1h,daily,weekly").split(","))
+    import technical_intelligence as ti
+    snap = ti.analyze_technicals(sym, tfs)
+    return {"ok": True, **snap}
 
 
 def _watch_decision_summary(query=None):
@@ -33278,6 +33298,7 @@ ROUTES = {
     "/api/v2/watch/decision/refresh/status": _watch_decision_refresh_status,
     "/api/v2/watch/decision/latest": _watch_decision_latest,
     "/api/v2/watch/decision/summary": _watch_decision_summary,
+    "/api/v2/watch/decision/technicals": _watch_decision_technicals,
     "/api/v2/decision/action-policy": _decision_action_policy,
     "/api/v2/shadow/strategy/batch": _shadow_batch_status,
     "/api/v2/defense/core": _defense_core_registry,
