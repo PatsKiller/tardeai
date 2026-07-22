@@ -42,9 +42,11 @@ def main(symbol: str, lanes: str):
     merged_reviews = {**(prior.get("reviews") or {}), **reviews}
     reconciled = strec.reconcile(validation or {"state": "PASS"}, merged_reviews)
     tr = {**prior, "reviews": merged_reviews, "reconciled": reconciled}
-    # model generations run for minutes — the idle reaper kills the original
-    # connection; persist on a FRESH one.
-    conn = _get_conn(); cur = conn.cursor()
+    # model generations run for minutes — the idle reaper kills connections,
+    # and db_adapter's thread-local can hand back the same dead one. Persist on
+    # a genuinely NEW private connection.
+    import watch_decision_refresh as _wdr
+    conn = _wdr._conn(); cur = conn.cursor()
     cur.execute("""UPDATE decision_packets
                    SET packet = jsonb_set(packet, '{ticket_review}', %s::jsonb)
                    WHERE packet_id=%s""", (json.dumps(tr, default=str), pid))
