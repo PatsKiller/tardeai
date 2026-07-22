@@ -1066,8 +1066,11 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
                                  "verdict": "UNAVAILABLE", "error": str(_re)[:120]}
     try:
         import strategy_ticket_reconciler as strec
-        _reconciled = strec.reconcile((_cap or {}).get("ticket_validation") or {"state": "PASS"},
-                                      _reviews)
+        # When the validator stripped the only candidate, reconcile over THAT
+        # verdict — the release state must read DETERMINISTIC_FAIL, never
+        # "verified" merely because nothing actionable remained.
+        _reconciled = strec.reconcile(
+            (_cap or {}).get("ticket_validation") or _tv or {"state": "PASS"}, _reviews)
     except Exception as _rce:
         _reconciled = {"state": "REVIEW_UNAVAILABLE", "proposal_allowed": False,
                        "error": str(_rce)[:120]}
