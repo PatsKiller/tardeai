@@ -51,11 +51,13 @@ function asDate(v?: string | null): Date | null {
 }
 
 function clock(v?: string | null): string {
+  // THE shared datetime formatter (V6 item 4/5): every visible timestamp renders
+  // in the operator timezone (America/New_York); UTC lives only in tooltips.
   const d = asDate(v)
   if (!d) return '—'
-  return d.toLocaleString([], {
+  return d.toLocaleString('en-US', {
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-    timeZoneName: 'short',
+    timeZone: 'America/New_York', timeZoneName: 'short',
   })
 }
 
@@ -71,7 +73,7 @@ function age(v?: string | null): string {
 }
 
 function familyWord(k: string, f: any): string {
-  if (k === 'no_trade') return f?.preferred || f?.dominant ? 'PREFERRED' : f?.available ? 'AVAILABLE' : '—'
+  if (k === 'no_trade') return f?.preferred || f?.dominant ? 'PREFERRED' : f?.available ? 'ALTERNATIVE' : '—'
   const act = String(f?.action_state || '').toUpperCase()
   const dec = String(f?.decision_state || f?.state || '').toUpperCase()
   if (act === 'READY') return 'READY'
@@ -90,8 +92,32 @@ function statusColor(word: string): string {
   return BB.text3
 }
 
+function optionsFamilySummary(f: any): string {
+  // V6 item 6: summarize the WHOLE family, not just held-share structures.
+  const structs: any[] = f?.structures || []
+  const allReasons = [...(f?.rejection_reasons || []),
+                      ...structs.flatMap((s: any) => s?.rejection_reasons || [])].join(' · ')
+  if (/chain|provider|schwab|quote/i.test(allReasons)
+      || String(f?.state || '').includes('UNAVAILABLE')) {
+    return 'Exact option chain unavailable'
+  }
+  const directional = structs.filter((s: any) => !/COVERED_CALL|COLLAR/i.test(String(s?.structure)))
+  const rejected = directional.filter((s: any) => /REJECT/i.test(String(s?.state)))
+  const conditional = directional.filter((s: any) => /CONDITIONAL/i.test(String(s?.state)))
+  if (/event/i.test(allReasons)) return 'Event risk blocks every structure'
+  if (directional.length && rejected.length === directional.length) {
+    return `All ${directional.length} directional structures rejected — liquidity/spread/OI/event rules`
+  }
+  if (conditional.length) return `${conditional.length} structure(s) conditional — open details`
+  if (!directional.length && structs.length) {
+    return 'Only held-share structures evaluated (0 shares held) — no directional structure eligible'
+  }
+  return allReasons.slice(0, 90) || 'No eligible structure'
+}
+
 function familyReason(k: string, f: any): string {
-  if (k === 'no_trade') return String(f?.reason || (f?.preferred ? 'No constructive plan is currently preferred' : 'Available as the risk-off alternative'))
+  if (k === 'options') return optionsFamilySummary(f)
+  if (k === 'no_trade') return String(f?.reason || (f?.preferred ? 'No constructive plan is currently preferred' : 'Stand-aside alternative — another family is selected'))
   const reason = (f?.rejection_reasons || f?.blocks || [])[0]
   if (reason) return String(reason)
   const structure = (f?.structures || [])[0]
@@ -417,7 +443,37 @@ function TechnicalGrid({ tech, onOpen }: { tech: any; onOpen: () => void }) {
       </div>
     )
   }
+  const verdict = tech?.verdict
   return (
+    <div>
+      {verdict && (
+        <div style={{ marginBottom: 7, padding: '7px 10px', border: `1px solid ${BB.border}`, borderRadius: 5,
+                      background: 'rgba(15,23,42,.30)' }}>
+          <div style={{ fontSize: 10, fontWeight: 850, letterSpacing: '.08em', color: BB.text3 }}>
+            TECHNICAL VERDICT
+          </div>
+          <div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 850,
+                        color: verdict.state === 'SUPPORTIVE' ? BB.green
+                          : verdict.state === 'OPPOSED' ? BB.red
+                            : verdict.state === 'STALE' ? BB.text3 : BB.amber }}>
+            {String(verdict.state)} — {verdict.line}
+          </div>
+          <div style={{ display: 'flex', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
+            {(verdict.supporting || []).length > 0 && (
+              <div style={{ fontSize: 10, color: BB.text2 }}>
+                <b style={{ color: BB.green }}>Supports:</b>
+                {(verdict.supporting || []).map((x: string, i: number) => <div key={i}>• {x}</div>)}
+              </div>
+            )}
+            {(verdict.conflicting || []).length > 0 && (
+              <div style={{ fontSize: 10, color: BB.text2 }}>
+                <b style={{ color: BB.amber }}>Conflicts:</b>
+                {(verdict.conflicting || []).map((x: string, i: number) => <div key={i}>• {x}</div>)}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(115px, 1fr))', gap: 6 }}>
       {pills.slice(0, 6).map((p, i) => {
         const color = technicalColor(p)
@@ -435,11 +491,14 @@ function TechnicalGrid({ tech, onOpen }: { tech: any; onOpen: () => void }) {
               {String(p.kind || 'technical').replace(/_/g, ' ')}
             </div>
             <div style={{ marginTop: 3, fontSize: 10.5, color, fontWeight: 900, lineHeight: 1.2 }}>{p.label}</div>
-            <div style={{ marginTop: 3, fontSize: 10, color: BB.text2, fontWeight: 700 }}>{p.value || lifecycle || '—'}</div>
+            <div style={{ marginTop: 3, fontSize: 10, color: BB.text2, fontWeight: 700 }}>
+              {p.kind === 'freshness' && p.as_of ? clock(p.as_of) : (p.value || lifecycle || '—')}
+            </div>
             <div style={{ marginTop: 2, fontSize: 10, color: fresh === 'CURRENT' ? BB.text3 : BB.amber }}>{fresh}{lifecycle ? ` · ${lifecycle}` : ''}</div>
           </button>
         )
       })}
+    </div>
     </div>
   )
 }

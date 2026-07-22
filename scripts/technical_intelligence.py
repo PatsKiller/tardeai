@@ -361,8 +361,69 @@ def analyze_technicals(symbol: str, timeframes=("1h", "daily", "weekly"),
         "levels": build_levels(tf_results), "conflicts": conflicts,
         "unavailable": unavailable, "source_hash": src_hash,
     }
+    snap["verdict"] = build_verdict(snap)
     snap["pills"] = select_pills(snap)
     return snap
+
+
+def build_verdict(snap: dict) -> dict:
+    """Deterministic synthesized verdict (V6 item 8): one operator conclusion +
+    supporting/conflicting evidence lists, from the same snapshot the tiles use.
+    The operator must never have to mentally reconcile six tiles."""
+    tfs = snap.get("timeframes") or {}
+    daily = tfs.get("daily") or {}
+    conf = daily.get("confluence") or {}
+    mc = (daily.get("momentum_context") or {})
+    supporting, conflicting = [], []
+    pp = snap.get("primary_pattern")
+    if pp:
+        line = f"{pp['timeframe']} {pp['pattern'].replace('_', ' ').lower()} {pp['state'].replace('_', ' ').lower()}"
+        (supporting if pp["direction"] == "BULLISH" and pp["state"] in ("CONFIRMED", "RETESTING")
+         else conflicting if pp["direction"] == "BEARISH" and pp["state"] in ("CONFIRMED", "RETESTING")
+         else conflicting if pp["state"] in ("FORMING", "AWAITING_CONFIRMATION")
+         else supporting).append(line + ("" if pp["state"] == "CONFIRMED" else " (not yet confirmed)"))
+    lv = (snap.get("levels") or [None])[0]
+    if lv and lv.get("confluence", 0) >= 3:
+        supporting.append(f"{lv['confluence']}x support/level confluence at ${lv['price']}")
+    st = str(conf.get("state", ""))
+    if st.startswith("BULLISH"):
+        supporting.append(f"daily confluence {st.replace('_', ' ').lower()}")
+    elif st.startswith("BEARISH"):
+        conflicting.append(f"daily confluence {st.replace('_', ' ').lower()}")
+    elif st == "MIXED":
+        conflicting.append("daily trend mixed")
+    mcs = str(mc.get("state", ""))
+    if mcs == "OVERSOLD_RECOVERY":
+        supporting.append("oversold recovery underway")
+    elif mcs in ("OVERSOLD_CONTINUING_DOWN", "OVERBOUGHT_EXHAUSTING"):
+        conflicting.append(mcs.replace("_", " ").lower())
+    elif mcs == "NEUTRAL_RANGE":
+        conflicting.append("neutral momentum")
+    vroc = ((daily.get("indicators") or {}).get("volume_roc") or {})
+    vr = (vroc.get("details") or {}).get("volume_ratio")
+    if vr is not None:
+        if vroc.get("signal") == "BULLISH":
+            supporting.append(f"RVOL {vr}x confirms")
+        elif vr < 1.0:
+            conflicting.append(f"RVOL {vr}x — below average, no confirmation")
+    for c in (snap.get("conflicts") or [])[:2]:
+        conflicting.append(str(c).lower())
+    n_sup, n_con = len(supporting), len(conflicting)
+    if snap.get("overall_freshness") not in ("CURRENT", "PARTIAL"):
+        state, line = "STALE", "technical evidence is stale — refresh before acting"
+    elif n_sup >= 2 and n_con == 0:
+        state = "SUPPORTIVE"
+        line = "technical evidence supports the setup"
+    elif n_con >= 2 and n_sup == 0:
+        state = "OPPOSED"
+        line = "technical evidence opposes entry here"
+    elif n_sup and n_con:
+        state = "MIXED"
+        line = "mixed — setup not confirmed by current evidence"
+    else:
+        state, line = "NEUTRAL", "no decisive technical evidence"
+    return {"state": state, "line": line,
+            "supporting": supporting[:4], "conflicting": conflicting[:4]}
 
 
 def _direction_word(conf: dict) -> str:
@@ -441,7 +502,7 @@ def select_pills(snap: dict) -> list[dict]:
                       "tooltip": " + ".join(lv["sources"][:4])})
     pills.append({"rank": 6, "kind": "freshness",
                   "label": f"TECH {snap['overall_freshness']}",
-                  "value": snap["computed_at"][11:16] + " UTC",
+                  "value": "", "as_of": snap["computed_at"],
                   "direction": "NEUTRAL", "lifecycle": "CONFIRMED",
                   "freshness": snap["overall_freshness"],
                   "tooltip": f"source hash {snap['source_hash']} · {FORMULA_VERSION}"})

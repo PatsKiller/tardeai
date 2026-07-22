@@ -593,9 +593,10 @@ export default function WatchlistCardV4({
       {/* Expandable drawer — secondary intelligence + diligence */}
       {drawerOpen && (
         <div onClick={e => e.stopPropagation()} style={{ padding: '6px 10px', borderTop: hair, background: BB.bgShift, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 9.5, color: BB.text2 }}>
-          {/* Shadow multidimensional analysis — additive, does not replace the
-              primary card or its legacy label. Nothing here queues or submits. */}
-          <ShadowStrategyButton symbol={it.symbol} />
+          {/* V6 item 7: "Build Full Strategy (shadow)" is redundant with the
+              canonical Refresh Strategy CTA and leaks rollout terminology —
+              hidden on the production desk; still available with V5/V6 off. */}
+          {!watchV5Enabled() && <ShadowStrategyButton symbol={it.symbol} />}
           {visibleDqFlags.length > 1 && (
             <div><span style={{ color: BB.text3, fontWeight: 800 }}>DATA </span>{visibleDqFlags.map(f => f.label).join(' · ')}</div>
           )}
