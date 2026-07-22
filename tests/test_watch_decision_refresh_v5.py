@@ -154,3 +154,53 @@ def test_legacy_grid_absent_when_packet_leads():
     card = (ROOT / "apps/command-center-v3/src/components/WatchlistCardV4.tsx").read_text()
     assert "!(hasPacket && watchV5Enabled())" in card, \
         "legacy plan/sizing grid must be removed (not dimmed) when a packet exists under V5"
+
+
+# ── deterministic thesis engine (Section 5A) ─────────────────────────────────
+def test_thesis_engine_deterministic_and_stateful():
+    import deterministic_thesis as dth
+    facts = {"fundamentals": {"eps_past_5y": 20, "sales_past_5y": 15, "profit_margin_pct": 18,
+                              "roic_pct": 22, "total_debt_equity": 0.3, "current_ratio": 2.1,
+                              "peg": 1.1, "short_float_pct": 2.0, "inst_own_pct": 70},
+             "live_price": 100.0, "sma50": 90.0, "rsi": 60, "bars_used": 250}
+    a = dth.evaluate(facts, "STOCK"); b = dth.evaluate(dict(facts), "STOCK")
+    assert a == b, "engine must be deterministic"
+    assert a["thesis_state"] == "CONSTRUCTIVE"
+    assert a["evidence_coverage_pct"] >= 80
+    assert all("factor" in f and "evidence" in f for f in a["factors"])
+
+
+def test_thesis_engine_never_reads_verdict_fields():
+    src = (ROOT / "scripts" / "deterministic_thesis.py").read_text()
+    for banned in ('get("recom', "get('recom", 'get("analyst', "get('analyst",
+                   'get("cio_verdict', 'get("grok_verdict', 'get("chatgpt_verdict',
+                   '"recom_score"', '"analyst_rating"'):
+        assert banned not in src, f"engine must not access pre-chewed field via {banned!r}"
+
+
+def test_thesis_engine_instrument_awareness():
+    import deterministic_thesis as dth
+    etf = dth.evaluate({"quote_type": "ETF", "live_price": 50, "sma50": 45, "rsi": 55}, "ETF")
+    assert etf["instrument_class"] == "etf_fund"
+    pre = dth.evaluate({"fundamentals": {"profit_margin_pct": -30, "ps": 20,
+                                         "eps_past_5y": 10, "sales_past_5y": 40},
+                        "live_price": 10, "sma50": 12, "rsi": 40, "bars_used": 300}, "STOCK")
+    assert pre["instrument_class"] == "pre_profit"
+    assert pre["thesis_state"] in ("NEUTRAL", "SPECULATIVE_CONSTRUCTIVE", "FUNDAMENTALLY_UNATTRACTIVE")
+    empty = dth.evaluate({}, None)
+    assert empty["thesis_state"] == "INSUFFICIENT_EVIDENCE"
+
+
+def test_thesis_engine_rejects_misparsed_magnitudes():
+    import deterministic_thesis as dth
+    r = dth.evaluate({"fundamentals": {"sales_qoq": 164877.0, "profit_margin_pct": 5},
+                      "live_price": 10, "sma50": 9, "rsi": 55, "bars_used": 300}, "STOCK")
+    g = next((x for x in r["factors"] if x["factor"] == "growth"), None)
+    assert g is None, "an implausible growth magnitude must be excluded, not averaged"
+    assert any("growth" in m for m in r["missing_evidence"])
+
+
+def test_thesis_engine_confidence_is_coverage_not_prediction():
+    import deterministic_thesis as dth
+    r = dth.evaluate({}, None)
+    assert "not outcome probability" in r["confidence_basis"]
