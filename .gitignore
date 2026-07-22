@@ -181,3 +181,8 @@ apps/command-center-v3/test-results/
 !.claude/
 .claude/*
 !.claude/skills/
+
+# Schwab auto-reauth runtime (persistent browser profile carries session cookies — never commit)
+data/runtime/schwab_browser_profile/
+data/runtime/schwab_reauth_debug/
+data/runtime/schwab_auto_reauth_state.json
