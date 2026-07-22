@@ -2186,18 +2186,48 @@ def overview():
         tai = _load_json(Path(_runs[-1])) or {}
 
     # Journal stats (exclude flat/zero-pnl trades from win rate, matching v1)
-    journal = _load_json(STATE_DIR / "trade_journal.json") or {}
-    j_all = journal.get("closed_trades") or journal.get("trades") or []
-    j_total_pnl = sum(t.get("pnl") or t.get("realized_pnl") or 0 for t in j_all)
-    j_real = [t for t in j_all if (t.get("pnl") or t.get("realized_pnl") or 0) != 0]
-    j_wins = sum(1 for t in j_real if (t.get("pnl") or t.get("realized_pnl") or 0) > 0)
-    j_win_rate = (j_wins / len(j_real) * 100) if j_real else 0
-    # Use pre-computed stats if available
-    j_stats = journal.get("stats", {})
-    if j_stats.get("win_rate"):
-        j_win_rate = j_stats["win_rate"]
-    if j_stats.get("total_pnl") is not None:
-        j_total_pnl = j_stats["total_pnl"]
+    # Headline journal metrics — the LOCAL journal the operator sees on the Journal page: broker-verified
+    # round trips in trade_closed (refreshed from schwab_round_trips by the 6:15pm + intraday cron;
+    # unknown-basis + canary trips excluded). Same source + filter as /api/v2/journal, so the header tiles
+    # tie exactly to the Journal page (157 / 50.3% / $150,706, current through today). Operator 2026-07-21:
+    # switched OFF the legacy_fifo_journal basis (trade_journal.json), which was frozen at the last manual
+    # CSV import (2026-04-30) and read 83 days stale. Falls back to the legacy CSV only if the table is empty.
+    j_basis = "broker_round_trips"
+    j_trade_count = 0
+    j_total_pnl = 0.0
+    j_win_rate = 0.0
+    j_last_close = None
+    try:
+        _jr = _db_query(
+            "SELECT count(*) FILTER (WHERE pnl != 0) AS n, "
+            "COALESCE(SUM(pnl) FILTER (WHERE pnl != 0),0) AS pnl, "
+            "COALESCE(SUM((pnl>0)::int) FILTER (WHERE pnl != 0),0) AS wins, "
+            "MAX(close_date) AS last_close "
+            "FROM trade_closed WHERE buy_price > 0 OR pnl != 0", fetch="one") or {}
+        _n = int(_jr.get("n") or 0)
+        if _n > 0:
+            j_trade_count = _n
+            j_total_pnl = float(_jr.get("pnl") or 0)
+            j_win_rate = round(100.0 * float(_jr.get("wins") or 0) / _n, 1)
+            _lc = _jr.get("last_close")
+            j_last_close = _lc.isoformat() if hasattr(_lc, "isoformat") else (str(_lc) if _lc else None)
+    except Exception:
+        j_trade_count = 0
+    if j_trade_count == 0:
+        journal = _load_json(STATE_DIR / "trade_journal.json") or {}
+        j_all = journal.get("closed_trades") or journal.get("trades") or []
+        j_total_pnl = sum(t.get("pnl") or t.get("realized_pnl") or 0 for t in j_all)
+        j_real = [t for t in j_all if (t.get("pnl") or t.get("realized_pnl") or 0) != 0]
+        j_wins = sum(1 for t in j_real if (t.get("pnl") or t.get("realized_pnl") or 0) > 0)
+        j_win_rate = (j_wins / len(j_real) * 100) if j_real else 0
+        j_stats = journal.get("stats", {})
+        if j_stats.get("win_rate"):
+            j_win_rate = j_stats["win_rate"]
+        if j_stats.get("total_pnl") is not None:
+            j_total_pnl = j_stats["total_pnl"]
+        j_trade_count = len(j_all)
+        j_last_close = max((t.get("close_date") or "" for t in j_all), default="") or None
+        j_basis = "legacy_fifo_journal"
 
     # Watch Desk v2 (A1): portfolio_totals.total_value is CANONICAL. The old
     # ">$500 drift → silently swap to derived" rule made the shell header flip
@@ -2257,16 +2287,15 @@ def overview():
             "run_label": tai.get("runLabel", tai.get("run_label", "")),
         },
         "journal": {
-            "trade_count": len(j_all),
+            "trade_count": j_trade_count,
             "total_pnl": round(j_total_pnl, 2),
             "win_rate": round(j_win_rate, 1),
             "source": "journal",
-            # P0-6 labeling (2026-07-14): these numbers come from trade_journal.json — a FIFO rebuild
-            # of the manually-imported Schwab History CSV. trade_count includes $0-P&L scratches
-            # (win_rate excludes them) and spans pre-2025 history; it only advances when a new CSV is
-            # imported. TradeInView reads broker round trips (trade_closed) — intentionally different.
-            "basis": "legacy_fifo_journal",
-            "last_close_date": max((t.get("close_date") or "" for t in j_all), default="") or None,
+            # 2026-07-21: headline now reads the LOCAL broker-verified journal (trade_closed, same source
+            # as /api/v2/journal) so it stays current and ties to the Journal page. Was legacy_fifo_journal
+            # (trade_journal.json), frozen at the last manual CSV import. basis reflects which source fed it.
+            "basis": j_basis,
+            "last_close_date": j_last_close,
         },
         "news_count": len(news.get("catalysts", [])),
         "notification_count": (notif_rows or {}).get("cnt", 0),

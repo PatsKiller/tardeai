@@ -42,9 +42,10 @@ export default function MetricStrip({ onDrill }: Props) {
   const todayPct = overview?.today_pct
   const journalPnl = overview?.journal?.total_pnl
   const journalLastClose = overview?.journal?.last_close_date
-  // The header journal metrics come from a manually-imported CSV FIFO rebuild that
-  // only advances on re-import. They can sit unchanged for weeks and LOOK current.
-  // Compute the age so a stale journal is visibly stale, not silently trusted.
+  // The header journal metrics read the LOCAL broker-verified journal (trade_closed, same source as the
+  // Journal page), refreshed by cron so last_close advances with real closes. The staleness guard stays
+  // as a safety net: if the journal ever stops advancing (cron down / no closes), it shows visibly stale
+  // rather than silently trusted. (Until 2026-07-21 this read a manual-CSV FIFO rebuild frozen at import.)
   const journalStaleDays = (() => {
     if (!journalLastClose) return null
     const ms = Date.now() - new Date(String(journalLastClose)).getTime()
