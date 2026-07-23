@@ -9,11 +9,12 @@
 1. Pre-existing baseline failure: `release-readiness` (strict metric-label lint) fails at the
    base SHA both locally and in GitHub Actions on main — inherited, not introduced; Stage 0
    changed no application code. Tracked in stage-00-tests.json.
-2. Email delivery: the connected Gmail integration is draft-only. A completion **draft** was
-   created for the operator, and the operator receives the full Stage 0 report interactively
-   in-session. Proven programmatic send (required for the *unattended* night run by §16K.10)
-   is an OPERATOR_TODO (A.4) before Stage 11 — it is a night-run prerequisite, not a Stage 0
-   artifact gate.
+2. Email delivery: RESOLVED at continuation. The Stage 0 completion email was **SENT** to
+   john@jwwhiting.com via the repo-canonical `gog gmail send` lane on 2026-07-22
+   (messageId 19f8c7f6046a841f). An earlier draft-only copy (from the connected claude.ai
+   Gmail integration, which cannot send) may remain in Drafts and can be discarded.
+   For the *unattended* night run, §16K.10 still requires a decided, preflight-provable send
+   path (OPERATOR_TODO A.4 — confirm gog lane or dedicated Gmail API slot) before Stage 11.
 
 ## What was done
 - Base SHA verified against origin/main; branch + isolated worktree created (architecture-owner

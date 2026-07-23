@@ -17,7 +17,8 @@
   "verification": "11/11 files SHA-256 match between local worktree and Drive re-download (2026-07-22)",
   "files": [
     {"name": "stage-00-plan.md", "drive_id": "1BuZCCRZ_T_TAAkxL-UjnUdu6iUPOXmdZ", "sha256": "a4e10817abad0e3ebeac56c7764e5f534634725247f723be37f122d1eb624163", "verified": true},
-    {"name": "stage-00-closeout.md", "drive_id": "1x8qUuvEuVr4jXK4S5uK_0oaxdBlBELrs", "sha256": "c9709a7e52abc31563f22547edab09833a2000947db9ece78d3b63b72d9ebb1d", "verified": true},
+    {"name": "stage-00-closeout.md", "drive_id": "1x8qUuvEuVr4jXK4S5uK_0oaxdBlBELrs", "sha256": "039b7ab97aec64c4b7f0d1ac3b1758234a96d093c21c91d93a03752d2719e91a", "verified": true, "note": "revised at continuation to record email delivery; replaced in place on Drive"},
+    {"name": "stage-00-changes.txt", "drive_id": "1KYaKSd3kUjpPSNyYye4ZHqZzQo80J6sq", "sha256": "76cc483235474cfbaaef80104e462df6842adcc35ffc0225a3686a56524fc5df", "verified": true},
     {"name": "stage-00-tests.json", "drive_id": "1XdG5S3-R8GxyOZNep6v0-MSDlN5T6aBd", "sha256": "c7bdef156b4738c3155fbc811d094201947a8b088245304257e6800a35876645", "verified": true},
     {"name": "ACTIVE_TRADER_STAGE0_BASELINE.md", "drive_id": "1aBhSLC8vmQtzwnz7RDbkRVb2-cXW_dCL", "sha256": "74129770019b378775e757933687835c7d2e0500c76db217dee49ee4ba49d6d4", "verified": true},
     {"name": "ACTIVE_TRADER_ROUTE_API_DB_MAP.md", "drive_id": "1dB9Icm24rA4wycL8N6KWNl_72vnwTSAs", "sha256": "ddf92f417211f87866ecce4cb5dea85743ca46cc72848f7ed28a98f8f9da7201", "verified": true},
@@ -28,9 +29,16 @@
     {"name": "OPERATOR_TODO.md", "drive_id": "1Ju8ClTUiCzWMout7HDKTIgna97plvVyN", "sha256": "7bda6df68c6a74b4dc34f5723dedfad0e6c9af5b7c81111c085d49ebebff34eb", "verified": true},
     {"name": "STAGE_1_TO_13_EXECUTION_RECOMMENDATION.md", "drive_id": "1RXwA6uBvGFWH4A9DXuCdzjGUW3H6O3_d", "sha256": "ccc44bc338a81aa734e0008c08939098fbdebee72323c3a7dd0fc6a4831976d3", "verified": true}
   ],
+  "operator_email": {
+    "state": "SENT",
+    "sent_at": "2026-07-22",
+    "to": "john@jwwhiting.com",
+    "lane": "gog gmail send (repo-canonical)",
+    "gmail_message_id": "19f8c7f6046a841f"
+  },
   "notes": [
     "review_hash for ACTIVE_TRADER_LITMUS_REVIEW.md = its sha256 above (51053bb0...), per controller attestation in that file",
-    "stage-00-changes.txt and this manifest were created after the sync snapshot and are committed to git; they will reach Drive via the hourly docs sync cron and/or the Stage 1 sync",
+    "this manifest file is itself uploaded to the stage-00 folder; it cannot contain its own drive_id/sha256 — its committed git hash is authoritative",
     "no secret value or secret-bearing file was uploaded"
   ]
 }
