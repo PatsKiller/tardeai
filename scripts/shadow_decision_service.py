@@ -361,7 +361,7 @@ def assess_swing_entry(*, price, zone_low, zone_high, stop, atr,
         return out
     if price > zone_high:
         dist_abs = price - zone_high
-        dist_pct = 100.0 * dist_abs / price
+        dist_pct = 100.0 * dist_abs / zone_high
         dist_atr = (dist_abs / atr) if atr else None
         within_chase = (dist_pct <= CHASE_TOLERANCE_PCT
                         or (dist_atr is not None and dist_atr <= CHASE_TOLERANCE_ATR))
@@ -656,8 +656,9 @@ def build_options(facts, event, ownership) -> dict:
         try:
             structures.append(tb.long_option(
                 kind="call", opt=_q(otm_calls[0]), contracts=1, underlying_price=underlying,
-                trigger=f"reclaim resistance {min(facts.get('resistance') or [underlying])}",
-                invalidation=f"close below {min(facts.get('support') or [0])}",
+                trigger=f"reclaim resistance {min(facts.get('resistance') or [underlying]):.2f}",
+                invalidation=(f"close below {min(facts['support']):.2f}" if facts.get("support")
+                              else "invalidation unavailable — no support levels"),
                 earnings_date=event.date.isoformat() if event.date else None,
                 directional_setup_confirmed=False))
         except tb.BlueprintRejected as exc:
@@ -672,8 +673,9 @@ def build_options(facts, event, ownership) -> dict:
             structures.append(tb.call_debit_spread(
                 long_leg=_q(otm_calls[0]), short_leg=_q(otm_calls[1]), contracts=1,
                 underlying_price=underlying,
-                trigger=f"daily close above {min(facts.get('resistance') or [underlying])} then retest",
-                invalidation=f"close below {min(facts.get('support') or [0])}",
+                trigger=f"daily close above {min(facts.get('resistance') or [underlying]):.2f} then retest",
+                invalidation=(f"close below {min(facts['support']):.2f}" if facts.get("support")
+                              else "invalidation unavailable — no support levels"),
                 earnings_date=event.date.isoformat() if event.date else None))
         except tb.BlueprintRejected as exc:
             structures.append({"structure": "CALL_DEBIT_SPREAD", "state": REJECTED,
@@ -845,7 +847,10 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
     rsi = facts.get("rsi") or 50.0
     chg = facts.get("change_pct") or 0.0
     price = facts.get("live_price") or facts.get("enriched_price") or 0
-    res = min(facts.get("resistance") or [price * 1.05])
+    res = round(min(facts.get("resistance") or [price * 1.05]), 2)
+    _sup = min(facts["support"]) if facts.get("support") else None
+    _inval = (f"close below {_sup:.2f}" if _sup is not None
+              else "invalidation unavailable — no support levels")
     extended = bool(price and res and price >= res * 0.98) or chg >= 5.0
     timing = "EXTENDED" if extended else "RANGE_BOUND" if 40 <= rsi <= 60 else "NO_VALID_SETUP"
     # V5: the deterministic thesis ENGINE (factor-based, instrument-aware, raw
@@ -944,7 +949,7 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
                 "thesis": ("reconciled from blind model pass" if reconciled
                            else "deterministic fallback — no model lane completed"),
                 "trigger": f"reclaim/hold vs resistance {res}",
-                "invalidation": f"close below {min(facts.get('support') or [0])}"},
+                "invalidation": _inval},
             "swing": {
                 "direction": (reconciled or {}).get("direction", {}).get("swing", "UNRESOLVED"),
                 "timing": timing,
@@ -952,7 +957,7 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
                 "thesis": ("reconciled from blind model pass" if reconciled
                            else "deterministic fallback"),
                 "trigger": f"break and retest of {res}",
-                "invalidation": f"close below {min(facts.get('support') or [0])}"},
+                "invalidation": _inval},
             "long_term": {
                 "thesis_state": thesis_state,
                 "direction": (reconciled or {}).get("direction", {}).get("long_term", "UNRESOLVED"),
@@ -1052,7 +1057,7 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
     _stage("ticket_review")
     _cap = packet.get("current_actionable_plan")
     _tv = (_cap or {}).get("ticket_validation") or (
-        _tickets_validated[0] if _tickets_validated else {"state": "PASS"})
+        _tickets_validated[0] if _tickets_validated else {"state": "NOT_RUN"})
     _reviews = {}
     # The local critic is LOCAL oversight, not a thesis lane — it runs whenever
     # an actionable ticket exists, in every tier (including LOCAL_QUANT).
@@ -1070,7 +1075,7 @@ def evaluate(symbol: str, conn=None, *, origin="on_demand", requested_by="operat
         # verdict — the release state must read DETERMINISTIC_FAIL, never
         # "verified" merely because nothing actionable remained.
         _reconciled = strec.reconcile(
-            (_cap or {}).get("ticket_validation") or _tv or {"state": "PASS"}, _reviews)
+            (_cap or {}).get("ticket_validation") or _tv, _reviews)
     except Exception as _rce:
         _reconciled = {"state": "REVIEW_UNAVAILABLE", "proposal_allowed": False,
                        "error": str(_rce)[:120]}

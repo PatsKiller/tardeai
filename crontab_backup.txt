@@ -470,7 +470,7 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # ── Catalyst calibration monitor (read-only): daily track of per-type multipliers as they sharpen. ──
 40 5 * * * cd $PROJ && flock -n /tmp/catalyst_calibration_monitor.lock $PY scripts/catalyst_calibration_monitor.py >> logs/catalyst_calibration_monitor.log 2>&1
 # ── Professional analyst layer (Gate A, advisory): fetch Yahoo consensus for actionable universe -> unified read model. Daily 06:10. ──
-10 6 * * * cd $PROJ && flock -n /tmp/pro_analyst.lock bash -c "$PY scripts/pro_analyst_fetch.py --max 60; $PY scripts/build_pro_analyst_read_model.py; $PY scripts/pro_analyst_monitor.py --send" >> logs/pro_analyst.log 2>&1
+10 6 * * * cd $PROJ && flock -n /tmp/pro_analyst.lock bash -c "$PY scripts/pro_analyst_fetch.py --max 250; $PY scripts/build_pro_analyst_read_model.py; $PY scripts/pro_analyst_monitor.py --send" >> logs/pro_analyst.log 2>&1
 */15 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/mkt_quotes_intraday.lock $PY scripts/external_market_data_ingest.py --quotes >> logs/market_data.log 2>&1  # intraday live quotes (Alpaca primary)
 # ── LLM retry/transient-failure monitor (read-only): daily aggregate of retry incidents (DNS/5xx) + status. ──
 0 7 * * * cd $PROJ && flock -n /tmp/llm_retry_monitor.lock $PY scripts/llm_retry_monitor.py >> logs/llm_retry_monitor.log 2>&1

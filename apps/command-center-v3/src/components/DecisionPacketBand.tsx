@@ -120,11 +120,16 @@ function optionsFamilySummary(f: any): string {
 function familyReason(k: string, f: any): string {
   if (k === 'options') return optionsFamilySummary(f)
   if (k === 'no_trade') return String(f?.reason || (f?.preferred ? 'No constructive plan is currently preferred' : 'Stand-aside alternative — another family is selected'))
-  const reason = (f?.rejection_reasons || f?.blocks || [])[0]
+  const word = familyWord(k, f)
+  // rejection text only belongs on negative rows — an AVAILABLE/WAIT family
+  // can still carry rejection_reasons from a sibling evaluation pass
+  const negative = word === 'REJECTED' || word === 'UNAVAILABLE' || word === 'CHAIN STALE'
+  const reason = negative
+    ? (f?.rejection_reasons || f?.blocks || [])[0]
+    : (f?.blocks || [])[0]
   if (reason) return String(reason)
   const structure = (f?.structures || [])[0]
   if (structure?.structure) return String(structure.structure).replace(/_/g, ' ').toLowerCase()
-  const word = familyWord(k, f)
   if (word === 'READY') return 'Mechanics resolved and current'
   if (word === 'WAIT') return 'Conditions are not yet confirmed'
   if (word === 'UNAVAILABLE') return k === 'options' ? 'Exact option chain or eligible structure unavailable' : 'Required evidence unavailable'

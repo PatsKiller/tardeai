@@ -40,7 +40,7 @@ def main(symbol: str, lanes: str):
                                     lanes=tuple(lanes.split(",")))
     prior = (packet.get("ticket_review") or {})
     merged_reviews = {**(prior.get("reviews") or {}), **reviews}
-    reconciled = strec.reconcile(validation or {"state": "PASS"}, merged_reviews)
+    reconciled = strec.reconcile(validation or {}, merged_reviews)
     tr = {**prior, "reviews": merged_reviews, "reconciled": reconciled}
     # model generations run for minutes — the idle reaper kills connections,
     # and db_adapter's thread-local can hand back the same dead one. Persist on
