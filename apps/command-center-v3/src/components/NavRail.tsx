@@ -7,7 +7,8 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
     label: 'Trade',
     hubs: [
       { to: '/', label: 'Home', exact: true },
-      { to: '/portfolio', label: 'Portfolio' },
+      { to: '/portfolio', label: 'Portfolio', exact: true },
+      { to: '/portfolio/re-entry', label: '↳ Re-Entry' },
       { to: '/risk', label: 'Risk' },
       { to: '/trading', label: 'Trading' },
       { to: '/strategy', label: 'Strategy' },
