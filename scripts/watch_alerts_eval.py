@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Watch Desk v3 (WS-B): operator-alert evaluation pass.
+"""Watch Desk operator-alert evaluation pass.
 
-Deterministic conditions over data that already exists (market_quotes price,
-watchlist_items.rsi, watch_directive_hits). Fires into alert_events (alert_uid
-dedupe `(alert_id, date)`) and ONE batched Telegram per pass, global daily cap
-from config (default 12 lines/day; overflow noted, never dropped silently).
-RTH-safe by design: alerts are notifications, not content production.
-Conditions: price_cross_above/below · rsi_above/below · directive_hit.
-(pct_from_52w_high / atr_extension / earnings_within_days: enrichment columns
-absent on watchlist_items — flagged in diagnosis, not fabricated.)
+Deterministic conditions over data that already exists. Fires into alert_events
+with daily dedupe and sends ONE batched Telegram per pass under the shared daily
+cap. Re-Entry exit detail, rotation-back composite monitors, and closed-session
+resistance intelligence are refreshed in this same RTH lane.
+
+Advisory only: no proposal, approval, broker order, or 2FA path is reachable.
 """
 from __future__ import annotations
 
@@ -35,72 +33,141 @@ def _cfg():
         return {"daily_cap": 12}
 
 
+def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str], list[int]]:
+    lines: list[str] = []
+    fired_ids: list[int] = []
+    for alert in alerts:
+        uid = f"watch_alert:{alert['id']}:{today}"
+        if ex("SELECT 1 FROM alert_events WHERE alert_uid=%s LIMIT 1", (uid,), fetch="one"):
+            continue
+        if alert.get("last_fired_at") and not alert.get("recurring"):
+            continue
+        if alert.get("recurring") and alert.get("last_fired_at"):
+            cooldown = int(alert.get("cooldown_days") or 5)
+            days = (dt.datetime.now(dt.timezone.utc) - alert["last_fired_at"]).days
+            if days < cooldown * 1.4:  # trading-day approximation
+                continue
+        symbol = (alert.get("symbol") or "").upper()
+        condition = alert["condition_type"]
+        threshold = alert.get("threshold")
+        hit, current = False, None
+        if condition in ("price_cross_above", "price_cross_below") and symbol and threshold is not None:
+            quote = ex(
+                "SELECT price FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
+                (symbol,), fetch="one",
+            )
+            current = float(quote["price"]) if quote and quote.get("price") else None
+            hit = current is not None and (
+                current >= float(threshold) if condition.endswith("above") else current <= float(threshold)
+            )
+        elif condition in ("rsi_above", "rsi_below") and symbol and threshold is not None:
+            row = ex(
+                """SELECT rsi FROM watchlist_items
+                   WHERE upper(symbol)=%s AND rsi IS NOT NULL
+                   ORDER BY first_seen_at DESC LIMIT 1""",
+                (symbol,), fetch="one",
+            )
+            current = float(row["rsi"]) if row and row.get("rsi") is not None else None
+            hit = current is not None and (
+                current >= float(threshold) if condition.endswith("above") else current <= float(threshold)
+            )
+        elif condition == "directive_hit" and alert.get("directive_id"):
+            row = ex(
+                """SELECT count(*) AS n FROM watch_directive_hits
+                   WHERE directive_id=%s
+                     AND surfaced_at > COALESCE(%s, now() - interval '1 day')""",
+                (alert["directive_id"], alert.get("last_fired_at")), fetch="one",
+            )
+            current = (row or {}).get("n") or 0
+            hit = current > 0
+        if not hit:
+            continue
+        message = (
+            f"🔔 {symbol or ('directive #' + str(alert.get('directive_id')))} · "
+            f"{condition.replace('_', ' ')} {threshold if threshold is not None else ''} · "
+            f"now {current} · open Pullback/Watchlist card"
+        )
+        ex(
+            """INSERT INTO alert_events
+               (alert_uid, alert_type, symbol, severity, source_script, raw_text, created_at)
+               VALUES (%s,'watch_alert',%s,'info','watch_alerts_eval',%s,NOW())
+               ON CONFLICT (alert_uid) DO NOTHING""",
+            (uid, symbol or None, message), fetch=None,
+        )
+        ex(
+            "UPDATE watch_alerts SET last_fired_at=NOW(), active=%s WHERE id=%s",
+            (bool(alert.get("recurring")), alert["id"]), fetch=None,
+        )
+        lines.append(message)
+        fired_ids.append(alert["id"])
+    return lines, fired_ids
+
+
 def main() -> int:
     from db_adapter import _execute as ex, USE_DB
     if not USE_DB:
         return 2
-    alerts = ex("SELECT * FROM watch_alerts WHERE active", fetch="all") or []
-    if not alerts:
-        print("[watch-alerts] none armed")
-        return 0
+
     today = dt.date.today().isoformat()
     cap = int(_cfg().get("daily_cap") or 12)
-    sent_today = (ex("""SELECT count(*) AS n FROM alert_events
-                        WHERE alert_type='watch_alert' AND created_at::date=CURRENT_DATE""",
-                     fetch="one") or {}).get("n") or 0
-    lines, fired_ids = [], []
-    for a in alerts:
-        uid = f"watch_alert:{a['id']}:{today}"
-        if ex("SELECT 1 FROM alert_events WHERE alert_uid=%s LIMIT 1", (uid,), fetch="one"):
-            continue  # dedupe (alert_id, date)
-        if a.get("last_fired_at") and not a.get("recurring"):
-            continue
-        if a.get("recurring") and a.get("last_fired_at"):
-            cool = int(a.get("cooldown_days") or 5)
-            days = (dt.datetime.now(dt.timezone.utc) - a["last_fired_at"]).days
-            if days < cool * 1.4:  # trading-day approximation
-                continue
-        sym, ct, th = (a.get("symbol") or "").upper(), a["condition_type"], a.get("threshold")
-        hit, cur = False, None
-        if ct in ("price_cross_above", "price_cross_below") and sym and th is not None:
-            q = ex("SELECT price FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
-                   (sym,), fetch="one")
-            cur = float(q["price"]) if q and q.get("price") else None
-            hit = cur is not None and (cur >= float(th) if ct.endswith("above") else cur <= float(th))
-        elif ct in ("rsi_above", "rsi_below") and sym and th is not None:
-            q = ex("SELECT rsi FROM watchlist_items WHERE upper(symbol)=%s AND rsi IS NOT NULL ORDER BY first_seen_at DESC LIMIT 1",
-                   (sym,), fetch="one")
-            cur = float(q["rsi"]) if q and q.get("rsi") is not None else None
-            hit = cur is not None and (cur >= float(th) if ct.endswith("above") else cur <= float(th))
-        elif ct == "directive_hit" and a.get("directive_id"):
-            q = ex("""SELECT count(*) AS n FROM watch_directive_hits
-                      WHERE directive_id=%s AND surfaced_at > COALESCE(%s, now() - interval '1 day')""",
-                   (a["directive_id"], a.get("last_fired_at")), fetch="one")
-            cur = (q or {}).get("n") or 0
-            hit = cur > 0
-        if not hit:
-            continue
-        txt = (f"🔔 {sym or ('directive #' + str(a.get('directive_id')))} · {ct.replace('_', ' ')} "
-               f"{th if th is not None else ''} · now {cur} · open Pullback/Watchlist card")
-        ex("""INSERT INTO alert_events (alert_uid, alert_type, symbol, severity, source_script, raw_text, created_at)
-              VALUES (%s,'watch_alert',%s,'info','watch_alerts_eval',%s,NOW())
-              ON CONFLICT (alert_uid) DO NOTHING""", (uid, sym or None, txt), fetch=None)
-        ex("UPDATE watch_alerts SET last_fired_at=NOW(), active=%s WHERE id=%s",
-           (bool(a.get("recurring")), a["id"]), fetch=None)
-        lines.append(txt)
-        fired_ids.append(a["id"])
+    sent_today = (
+        ex(
+            """SELECT count(*) AS n FROM alert_events
+               WHERE alert_type='watch_alert' AND created_at::date=CURRENT_DATE""",
+            fetch="one",
+        ) or {}
+    ).get("n") or 0
+
+    alerts = ex("SELECT * FROM watch_alerts WHERE active", fetch="all") or []
+    lines, fired_ids = _evaluate_single_condition_alerts(ex, alerts, today)
+
+    exit_count = 0
+    try:
+        from lib.reentry_exit_cache import refresh_exit_cache
+        exit_payload = refresh_exit_cache(ex)
+        exit_count = int((exit_payload.get("counts") or {}).get("exits_found") or 0)
+    except Exception as error:
+        print(f"[watch-alerts] re-entry exit-cache refresh error: {str(error)[:200]}")
+
+    resistance_count = 0
+    try:
+        from lib.reentry_resistance import refresh_resistance_cache
+        resistance = refresh_resistance_cache(ex)
+        resistance_count = int(resistance.get("symbol_count") or 0)
+    except Exception as error:
+        print(f"[watch-alerts] re-entry resistance refresh error: {str(error)[:200]}")
+
+    # Re-Entry v4: the six mandatory return-to-growth gates are recomputed from
+    # primary DB evidence on every scheduled pass. The helper persists the same
+    # alert_events evidence and returns lines for this shared Telegram batch.
+    try:
+        from lib.reentry_rotation_alerts import evaluate_armed_rotation_alerts
+        composite = evaluate_armed_rotation_alerts(ex, today=today)
+    except Exception as error:
+        composite = {"lines": [], "fired": [], "error": str(error)[:200]}
+        print(f"[watch-alerts] re-entry composite evaluator error: {composite['error']}")
+    lines.extend(composite.get("lines") or [])
+
     if lines:
         room = max(0, cap - sent_today)
         shown = lines[:room]
-        msg = "🔔 Watch alerts\n" + "\n".join(shown)
+        message = "🔔 Watch alerts\n" + "\n".join(shown)
         if len(lines) > len(shown):
-            msg += f"\n…and {len(lines) - len(shown)} more (daily cap {cap}; in next digest)"
+            message += f"\n…and {len(lines) - len(shown)} more (daily cap {cap}; in next digest)"
         try:
             from telegram_alert import send_telegram
-            send_telegram(msg, bypass_router=True)  # operator-armed = P1 by definition
+            send_telegram(message, bypass_router=True)
         except Exception:
             pass
-    print(f"[watch-alerts] {len(alerts)} armed · {len(fired_ids)} fired: {fired_ids}")
+
+    print(
+        f"[watch-alerts] {len(alerts)} single-condition armed · "
+        f"{len(fired_ids)} fired: {fired_ids} · "
+        f"{len(composite.get('fired') or [])} re-entry composites fired: "
+        f"{composite.get('fired') or []} · "
+        f"{exit_count} full exit rows refreshed · "
+        f"{resistance_count} resistance rows refreshed"
+    )
     return 0
 
 
