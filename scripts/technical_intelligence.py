@@ -134,10 +134,31 @@ def load_bars(symbol: str, tf: str, conn=None, *, allow_fetch: bool = True) -> d
     fresh_limit_min = float(_freshness_cfg().get(tf, DEFAULT_FRESHNESS_MIN.get(tf, 1440)))
     try:
         import packet_invalidation as pi
-        if not pi.is_us_cash_rth():
-            fresh_limit_min *= 6
+        _rth = pi.is_us_cash_rth()
     except Exception:
-        pass
+        _rth = True
+    if not _rth:
+        fresh_limit_min *= 6
+    if tf in ("5m", "15m", "1h"):
+        # Intraday bars only close during the cash session. Off-hours — and in
+        # the morning window before the first bar of this timeframe has closed —
+        # the prior session's final bar IS the freshest possible data, so a
+        # wall-clock window must not mark it stale (it flagged every card STALE
+        # from close until ~10:30 ET). Cap 4 days: covers weekends + holidays.
+        try:
+            from zoneinfo import ZoneInfo
+            _et = now.astimezone(ZoneInfo("America/New_York"))
+            _since_open = (_et - _et.replace(hour=9, minute=30, second=0,
+                                             microsecond=0)).total_seconds()
+            if not _rth or _since_open < TF_SECONDS[tf] + 300:
+                fresh_limit_min = max(fresh_limit_min, 4 * 24 * 60)
+            else:
+                # freshest possible closed bar is stamped open+(n-1)*interval;
+                # allow its age plus the configured grace before calling STALE
+                _n = int(_since_open // TF_SECONDS[tf])
+                fresh_limit_min += (_since_open - (_n - 1) * TF_SECONDS[tf]) / 60.0
+        except Exception:
+            pass
     age_s = (now - closed[-1]["ts"] if False else
              (now - datetime.fromisoformat(closed[-1]["ts"])).total_seconds()) if closed else None
     state = ("UNAVAILABLE" if not closed

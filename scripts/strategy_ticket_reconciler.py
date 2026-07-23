@@ -66,8 +66,12 @@ def reconcile(validation: dict, reviews: dict | None = None,
                    display_mechanics=True, detail="premium confirmed")
         return out
     if not completed:
+        vstate = v.get("state")
         out.update(state="REVIEW_UNAVAILABLE", display_mechanics=True,
-                   detail="deterministically verified — independent model review unavailable")
+                   detail=("deterministically verified — independent model review unavailable"
+                           if vstate == "PASS" else
+                           f"deterministic validation {vstate or 'not run'}"
+                           " — independent model review unavailable"))
         return out
     fams = {r.get("provider_family") for r in completed.values()}
     if len(fams) >= 2 and not cautions:

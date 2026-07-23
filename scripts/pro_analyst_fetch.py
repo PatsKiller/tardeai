@@ -57,6 +57,17 @@ def main():
                 syms.append(h)
     except Exception as _e:
         print(f"  (holdings union skipped: {str(_e)[:60]})")
+    # Rotate least-recently-ATTEMPTED first. The universe SELECT has no ORDER BY,
+    # so `syms[:mx]` re-fetched the same arbitrary cap-full daily and starved the
+    # rest (07-23 audit: 298 names stale >7d while the cron ran green). Attempts
+    # are tracked in a state file because no-coverage names write no history row
+    # and would otherwise hog every run.
+    _attempts_path = ROOT / "data" / "runtime" / "pro_analyst_last_attempt.json"
+    try:
+        _attempts = json.loads(_attempts_path.read_text())
+    except Exception:
+        _attempts = {}
+    syms.sort(key=lambda s: _attempts.get(s, ""))
     print(f"actionable symbols to fetch: {len(syms)} (cap {mx})")
 
     try:
@@ -86,6 +97,14 @@ def main():
             no_cov.append(s)
     if payload:
         save_yahoo_analyst_targets_history(date_str, payload)
+    try:
+        _now_iso = datetime.now().isoformat(timespec="seconds")
+        for s in syms[:mx]:
+            _attempts[s] = _now_iso
+        _attempts_path.parent.mkdir(parents=True, exist_ok=True)
+        _attempts_path.write_text(json.dumps(_attempts, indent=0))
+    except Exception as _e:
+        print(f"  (attempt-state write skipped: {str(_e)[:60]})")
     print(json.dumps({"fetched_with_coverage": len(payload), "no_analyst_coverage": len(no_cov),
                       "no_coverage_sample": no_cov[:10]}, indent=2))
 
