@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import AuthoritativeExitUniverse from '../components/reentry/AuthoritativeExitUniverse'
 import ReEntryAnalystEvidence from '../components/reentry/ReEntryAnalystEvidence'
 import ReEntryAnalystLookthroughBoard from '../components/reentry/ReEntryAnalystLookthroughBoard'
+import ReEntryCurrentIntelligence from '../components/reentry/ReEntryCurrentIntelligence'
 import ReEntryExitDetailLedger from '../components/reentry/ReEntryExitDetailLedger'
+import ReEntryExitWorkbench from '../components/reentry/ReEntryExitWorkbench'
 import ReEntryHelpGuide from '../components/reentry/ReEntryHelpGuide'
 import ReEntryResistanceBoard from '../components/reentry/ReEntryResistanceBoard'
 import ReEntryRotationWorkspace from '../components/reentry/ReEntryRotationWorkspace'
@@ -48,12 +49,15 @@ export default function RedeployDeskIntegrated() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <ReEntryHelpGuide compact />
-              <AuthoritativeExitUniverse />
+              <ReEntryCurrentIntelligence />
+              <ReEntryExitWorkbench />
               <ReEntryExitDetailLedger />
               <ReEntryAnalystEvidence />
               <ReEntryResistanceBoard />
               <ReEntryAnalystLookthroughBoard />
-              <ReEntryRotationWorkspace mode="bridge" eventId={eventId} />
+              <div id="rotation-workspace">
+                <ReEntryRotationWorkspace mode="bridge" eventId={eventId} />
+              </div>
             </div>
           </div>
         </div>
