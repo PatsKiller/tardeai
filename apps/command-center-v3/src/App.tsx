@@ -4,6 +4,7 @@ import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hoo
 import MetricStrip from './components/MetricStrip'
 import NavRail from './components/NavRail'
 import DetailDrawer, { type DrillContext } from './components/DetailDrawer'
+import SharedIntelligenceBridge from './components/SharedIntelligenceBridge'
 import StrategyHub from './pages/StrategyHub'
 import RiskHub from './pages/RiskHub'
 import HomeHub from './pages/HomeHub'
@@ -29,7 +30,6 @@ import ConsumptionHub from './pages/ConsumptionHub'
 
 declare const __ANALYST_UI_VERSION__: string
 declare const __BUILD_DATE__: string
-// Real build stamp (vite define) — the old hardcoded label misled deploy verification.
 const BUILD_MARKER_FALLBACK = `cc-v3 ${__ANALYST_UI_VERSION__} · built ${__BUILD_DATE__}`
 
 function BuildMarker() {
@@ -78,9 +78,6 @@ function ReconnectingBar() {
   }, [degraded])
 
   if (!degraded) return null
-  // v3.1 (WS-A): quiet chip, not a red alarm — the data on screen is good, only
-  // the refresh is degraded. Stale-with-honest-timestamp is professional;
-  // a flashing failure banner over valid data is not.
   return (
     <div style={{
       background: 'rgba(245,158,11,0.10)', color: '#f5c76a', borderBottom: '1px solid rgba(245,158,11,0.28)',
@@ -99,16 +96,12 @@ function ReconnectingBar() {
   )
 }
 
-/** Telegram-safe path deep-link → Trading Broker Orders with intent open.
- *  Uses sessionStorage so intent survives query stripping / remounts.
- *  Falls back to hard navigation if React Router Navigate is a no-op. */
 function GoOrderDeepLink() {
   const { intentId } = useParams()
   const id = (intentId || '').trim()
   useEffect(() => {
     if (!id) return
     try { sessionStorage.setItem('cc_deep_intent', id) } catch { /* private mode */ }
-    // Hard-nav fallback: some in-app browsers drop query after client redirect
     const target = `/v3/trading?tab=${encodeURIComponent('Broker Orders')}&intent=${encodeURIComponent(id)}`
     const t = window.setTimeout(() => {
       if (!window.location.search.includes('intent=')) {
@@ -121,7 +114,6 @@ function GoOrderDeepLink() {
   return <Navigate to={`/trading?tab=${encodeURIComponent('Broker Orders')}&intent=${encodeURIComponent(id)}`} replace />
 }
 
-/** Telegram-safe path deep-link → Trading Proposals with proposal focused. */
 function GoProposalDeepLink() {
   const { proposalId } = useParams()
   const [sp] = useSearchParams()
@@ -147,13 +139,13 @@ function Shell() {
       <div className="app-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <NavRail />
         <main className="app-main" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', padding: '16px 24px' }}>
+          <SharedIntelligenceBridge />
           <Routes>
             <Route index element={<HomeHub onDrill={setDrill} />} />
             <Route path="portfolio" element={<PortfolioHub onDrill={setDrill} />} />
             <Route path="portfolio/re-entry" element={<ReEntryPage />} />
             <Route path="risk" element={<RiskHub onDrill={setDrill} />} />
             <Route path="trading" element={<TradingHub onDrill={setDrill} />} />
-            {/* Telegram-safe deep links: path-only (no multi-param query). Messengers truncate at &. */}
             <Route path="go/order/:intentId" element={<GoOrderDeepLink />} />
             <Route path="go/proposal/:proposalId" element={<GoProposalDeepLink />} />
             <Route path="manual-execution" element={<Navigate to="/trading?tab=Entry+Desk" replace />} />
