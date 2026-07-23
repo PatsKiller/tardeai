@@ -8,7 +8,7 @@
 - Was the latest exit identified as a stop or an operator sale?
 - What are the current cached price, RSI state, and candidate entry mechanics?
 - How far is price from the current candidate pullback zone?
-- Which names are ready for review, near the zone, overbought, stale, or missing evidence?
+- Which names are ready for review, near the zone, overbought, stale, already held, or missing evidence?
 - What long-term role would a renewed position serve?
 - Which price and RSI alerts are armed?
 
@@ -25,6 +25,7 @@ No second trade ledger or alert engine is introduced.
 | cached direct symbol intelligence | `/api/v2/watchlist/items?symbol=SYMBOL` |
 | canonical symbol cards | `/api/v2/symbol-cards` |
 | RSI/setup advisory | `/api/v2/setup-advisory/candidates?entity=watchlist` |
+| current-position exclusion/status | `/api/v2/portfolio/holdings` |
 | market regime | `/api/v2/risk-regime/latest` |
 | persistent operator classification | `/api/v2/ui/prefs`, key `portfolio.reentry.assignments.v1` |
 | persistent price/RSI alerts | `/api/v2/watch/alerts` and `/api/v2/watch/alerts/list` |
@@ -53,10 +54,11 @@ Long-side states use current cached RSI plus the current candidate entry zone:
 - `OVERSOLD_REVIEW`: RSI is oversold; this is a review state, not an automatic buy.
 - `OVERBOUGHT_WAIT`: RSI is overbought.
 - `WATCH`: evidence is current but no review threshold is met.
+- `CURRENTLY_HELD`: the symbol has been repurchased and is no longer a clean re-entry candidate.
 - `STALE`: the source timestamp exceeds the bounded cache age.
-- `NEEDS_DATA`: price, RSI, or entry mechanics are unavailable.
+- `NEEDS_DATA`: price, RSI, or same-side entry mechanics are unavailable.
 
-A `SHORT` classification inverts the default alert directions to price-at-resistance and RSI-overbought review. It does not convert a long plan into a short plan; the operator must confirm that the cached mechanics and thesis are actually bearish before action.
+A `SHORT` classification uses only an explicitly bearish/short plan family. It never re-labels a long entry plan as a short plan. Short-side review uses `OVERBOUGHT_REVIEW`, and a short price alert is blocked when no bearish entry mechanics are available.
 
 ## Alerts
 
@@ -67,7 +69,7 @@ The modal can arm independent server-side Watch rules:
 - `rsi_below`
 - `rsi_above`
 
-Price and RSI rules notify independently. An alert is not a combined re-entry approval. Fresh data, price-zone agreement, risk/event context, account eligibility, and operator review remain necessary.
+Price and RSI rules notify independently. An alert is not a combined re-entry approval. Fresh data, same-side price-zone agreement, risk/event context, account eligibility, and operator review remain necessary.
 
 ## Safety boundary
 
