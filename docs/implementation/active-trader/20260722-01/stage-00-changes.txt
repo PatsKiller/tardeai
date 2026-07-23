@@ -1,0 +1,24 @@
+# Stage 0 changed-file list — run 20260722-01
+# Base SHA: 87c2fa09fa95a8a69233959b04b1144e1297b923
+# All changes are ADDITIVE documentation under docs/implementation/active-trader/20260722-01/.
+# No application code, schema, config, service, flag, or guardrail was changed.
+
+A docs/implementation/active-trader/20260722-01/stage-00-plan.md                       sha256=a4e10817abad0e3ebeac56c7764e5f534634725247f723be37f122d1eb624163
+A docs/implementation/active-trader/20260722-01/stage-00-closeout.md                   sha256=c9709a7e52abc31563f22547edab09833a2000947db9ece78d3b63b72d9ebb1d
+A docs/implementation/active-trader/20260722-01/stage-00-tests.json                    sha256=c7bdef156b4738c3155fbc811d094201947a8b088245304257e6800a35876645
+A docs/implementation/active-trader/20260722-01/stage-00-changes.txt                   (this file)
+A docs/implementation/active-trader/20260722-01/stage-00-drive-manifest.json           sha256=30cf723c61742caffd9cdd470e607a9c57507b09227a37a14614d84714454b9e
+A docs/implementation/active-trader/20260722-01/ACTIVE_TRADER_STAGE0_BASELINE.md       sha256=74129770019b378775e757933687835c7d2e0500c76db217dee49ee4ba49d6d4
+A docs/implementation/active-trader/20260722-01/ACTIVE_TRADER_ROUTE_API_DB_MAP.md      sha256=ddf92f417211f87866ecce4cb5dea85743ca46cc72848f7ed28a98f8f9da7201
+A docs/implementation/active-trader/20260722-01/ACTIVE_TRADER_BROKER_ACCOUNT_INVENTORY.md sha256=d0c083e9239652786cd395037081f050dc8938842702468a1470d75e4b7564e7
+A docs/implementation/active-trader/20260722-01/ACTIVE_TRADER_CURRENT_GUARDRAILS.md    sha256=2e1fdd42de61bec47a167f2077e1c1306750c175671c5d396fc2192d1bad7003
+A docs/implementation/active-trader/20260722-01/ACTIVE_TRADER_LITMUS_REVIEW.md         sha256=51053bb074aa47191e866f05fadbc651cb44888795f41aed1b376a0e3ee75983
+A docs/implementation/active-trader/20260722-01/CREDENTIAL_REQUIREMENTS.md             sha256=5d009a723f0bd68e44558bc2d8b4478706591fed070c85056139ed1a73b6a905
+A docs/implementation/active-trader/20260722-01/OPERATOR_TODO.md                       sha256=7bda6df68c6a74b4dc34f5723dedfad0e6c9af5b7c81111c085d49ebebff34eb
+A docs/implementation/active-trader/20260722-01/STAGE_1_TO_13_EXECUTION_RECOMMENDATION.md sha256=ccc44bc338a81aa734e0008c08939098fbdebee72323c3a7dd0fc6a4831976d3
+
+# Side-effect note: running the read-only validator suite (run_release_ci_equivalent.py)
+# regenerated 3 tracked evidence docs in the worktree (docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md,
+# docs/project/CI_EVIDENCE_LATEST.md, docs/project/RELEASE_MANIFEST_LATEST.md).
+# They were restored to HEAD before commit to keep Stage 0 purely additive.
+# The production checkout was never touched.
