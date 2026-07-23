@@ -3,8 +3,9 @@
 
 Deterministic conditions over data that already exists. Fires into alert_events
 with daily dedupe and sends ONE batched Telegram per pass under the shared daily
-cap. Re-Entry exit detail, rotation-back composite monitors, and closed-session
-resistance intelligence are refreshed in this same RTH lane.
+cap. Re-Entry exit detail, rotation-back composite monitors, closed-session
+resistance intelligence, and the shared Watch/Journal/Re-Entry context are
+refreshed in this same RTH lane.
 
 Advisory only: no proposal, approval, broker order, or 2FA path is reachable.
 """
@@ -122,6 +123,7 @@ def main() -> int:
     lines, fired_ids = _evaluate_single_condition_alerts(ex, alerts, today)
 
     exit_count = 0
+    exit_payload = None
     try:
         from lib.reentry_exit_cache import refresh_exit_cache
         exit_payload = refresh_exit_cache(ex)
@@ -130,12 +132,25 @@ def main() -> int:
         print(f"[watch-alerts] re-entry exit-cache refresh error: {str(error)[:200]}")
 
     resistance_count = 0
+    resistance_payload = None
     try:
         from lib.reentry_resistance import refresh_resistance_cache
-        resistance = refresh_resistance_cache(ex)
-        resistance_count = int(resistance.get("symbol_count") or 0)
+        resistance_payload = refresh_resistance_cache(ex)
+        resistance_count = int(resistance_payload.get("symbol_count") or 0)
     except Exception as error:
         print(f"[watch-alerts] re-entry resistance refresh error: {str(error)[:200]}")
+
+    shared_context_count = 0
+    try:
+        from lib.reentry_shared_context import refresh_shared_symbol_context
+        shared_context = refresh_shared_symbol_context(
+            ex,
+            exit_payload=exit_payload,
+            resistance_payload=resistance_payload,
+        )
+        shared_context_count = int(shared_context.get("symbol_count") or 0)
+    except Exception as error:
+        print(f"[watch-alerts] shared Watch/Journal/Re-Entry context refresh error: {str(error)[:200]}")
 
     # Re-Entry v4: the six mandatory return-to-growth gates are recomputed from
     # primary DB evidence on every scheduled pass. The helper persists the same
@@ -166,7 +181,8 @@ def main() -> int:
         f"{len(composite.get('fired') or [])} re-entry composites fired: "
         f"{composite.get('fired') or []} · "
         f"{exit_count} full exit rows refreshed · "
-        f"{resistance_count} resistance rows refreshed"
+        f"{resistance_count} resistance rows refreshed · "
+        f"{shared_context_count} shared context rows refreshed"
     )
     return 0
 
