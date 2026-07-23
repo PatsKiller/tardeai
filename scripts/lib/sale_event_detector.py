@@ -1,7 +1,12 @@
-"""sale_event_detector — detect broker sells → deploy_events rows (advisory only).
+"""sale_event_detector — detect broker exits → deploy_events rows (advisory only).
 
-Sources: trade_transactions SELL rows (Schwab + Fidelity/SnapTrade ingest).
+Sources: trade_transactions exit rows (Schwab + Fidelity/SnapTrade ingest).
 Idempotent on event_key derived from dedupe_key or txn id.
+
+The public history reader needs every real-account exposure-reducing transaction,
+including same-day rows, partial trims, minor proceeds, and option lifecycle exits.
+The legacy deploy-event sync intentionally remains bounded to the original account
+allowlist and $500 materiality threshold unless a caller explicitly opts out.
 """
 from __future__ import annotations
 
@@ -15,6 +20,10 @@ STATE = PROJECT_ROOT / "data" / "portfolios" / "state"
 CLASS_RULES = PROJECT_ROOT / "config" / "asset_classification_rules.json"
 
 SELL_ACTIONS = frozenset({"sell", "sold"})
+EXIT_ACTION_TOKENS = (
+    "assign", "assigned", "assignment", "expir", "exercise", "exercised",
+    "close", "closed",
+)
 SKIP_SYMBOLS = frozenset({"CASH", "SPAXX"})
 DEFAULT_ACCOUNTS = (
     "schwab_rollover_ira",
@@ -56,14 +65,29 @@ def _instrument_meta(symbol: str) -> dict[str, Any]:
     }
 
 
+def _is_real_account(account: Any) -> bool:
+    """Exclude explicit paper/simulation/test accounts without hiding new real sources."""
+    name = str(account or "").strip().lower()
+    if not name:
+        return False
+    return not any(token in name for token in ("paper", "sim", "sandbox", "test"))
+
+
 def _is_sell_row(row: dict[str, Any]) -> bool:
     action = str(row.get("action") or "").strip().lower()
+    description = str(row.get("description") or "").strip().lower()
     sym = str(row.get("symbol") or "").upper().strip()
     if sym in SKIP_SYMBOLS or not sym:
         return False
     if action in SELL_ACTIONS:
         return True
-    return "sell" in action and "short" not in action
+    if "sell" in action and "short" not in action:
+        return True
+    combined = f"{action} {description}"
+    if any(token in combined for token in EXIT_ACTION_TOKENS):
+        # Never infer an exit from an explicit opening/buy transaction.
+        return not any(token in combined for token in ("buy to open", "bto", "open buy"))
+    return False
 
 
 def _proceeds(row: dict[str, Any]) -> float:
@@ -130,29 +154,54 @@ def normalize_sell_row(row: dict[str, Any], *, source: str = "live_detect",
         "metadata": {
             "description": (str(row.get("description") or ""))[:200] or None,
             "import_source": row.get("import_source"),
+            "action": row.get("action"),
+            "trade_time": str(row.get("trade_time") or "") or None,
         },
     }
     return out
 
 
-def load_sell_transactions(*, days: int = 730, accounts: tuple[str, ...] | None = None,
-                           since: date | None = None) -> list[dict[str, Any]]:
+def load_sell_transactions(
+    *,
+    days: int = 730,
+    accounts: tuple[str, ...] | None = None,
+    since: date | None = None,
+    include_all_real_accounts: bool = True,
+    min_proceeds_usd: float = 0.0,
+) -> list[dict[str, Any]]:
+    """Load exposure-reducing real-account transactions.
+
+    History callers use the default all-real-account / no-minimum behavior. The
+    material deploy-event detector passes the legacy account allowlist and $500
+    threshold explicitly, preserving its original bounded queue semantics.
+    """
     from db_adapter import _get_conn
     conn = _get_conn()
     cur = conn.cursor()
-    accts = accounts or DEFAULT_ACCOUNTS
     start = since or (date.today() - timedelta(days=days))
-    cur.execute(
-        """SELECT id, trade_date, action, symbol, quantity, price, amount, fees,
-                  description, account, import_source, dedupe_key, trade_time
-           FROM trade_transactions
-           WHERE trade_date >= %s AND account = ANY(%s)
-           ORDER BY trade_date, trade_time NULLS LAST, id""",
-        (start.isoformat(), list(accts)),
-    )
+    columns = """SELECT id, trade_date, action, symbol, quantity, price, amount, fees,
+                        description, account, import_source, dedupe_key, trade_time
+                 FROM trade_transactions
+                 WHERE trade_date >= %s"""
+    params: list[Any] = [start.isoformat()]
+    if not include_all_real_accounts:
+        accts = accounts or DEFAULT_ACCOUNTS
+        columns += " AND account = ANY(%s)"
+        params.append(list(accts))
+    columns += " ORDER BY trade_date, trade_time NULLS LAST, id"
+    cur.execute(columns, tuple(params))
     keys = [d[0] for d in cur.description]
-    rows = [dict(zip(keys, r)) for r in cur.fetchall()]
-    return [r for r in rows if _is_sell_row(r) and _proceeds(r) >= MIN_PROCEEDS_USD]
+    raw = [dict(zip(keys, row)) for row in cur.fetchall()]
+    result = []
+    for row in raw:
+        if include_all_real_accounts and not _is_real_account(row.get("account")):
+            continue
+        if not _is_sell_row(row):
+            continue
+        if _proceeds(row) < max(0.0, float(min_proceeds_usd or 0.0)):
+            continue
+        result.append(row)
+    return result
 
 
 def enrich_realized_pnl(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -174,9 +223,9 @@ def enrich_realized_pnl(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             sym = str(r.get("symbol") or "").upper()
             td = str(r.get("trade_date") or "")[:10]
             trips = (agg.get(sym) or {}).get("round_trips") or []
-            for t in trips:
-                if str(t.get("date") or "")[:10] == td:
-                    r["realized_pnl"] = t.get("realized_pnl")
+            for trip in trips:
+                if str(trip.get("date") or "")[:10] == td:
+                    r["realized_pnl"] = trip.get("realized_pnl")
                     break
     except Exception:
         pass
@@ -187,11 +236,11 @@ def _cash_by_account() -> dict[str, float]:
     out: dict[str, float] = {}
     try:
         hold = _load_json(STATE / "holdings.json", {}).get("holdings") or []
-        for h in hold:
-            if not h.get("is_cash"):
+        for holding in hold:
+            if not holding.get("is_cash"):
                 continue
-            acct = str(h.get("account") or "")
-            out[acct] = out.get(acct, 0.0) + float(h.get("market_value") or 0)
+            acct = str(holding.get("account") or "")
+            out[acct] = out.get(acct, 0.0) + float(holding.get("market_value") or 0)
     except Exception:
         pass
     return out
@@ -199,22 +248,28 @@ def _cash_by_account() -> dict[str, float]:
 
 def attach_cash_snapshot(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     cash = _cash_by_account()
-    for ev in events:
-        acct = str(ev.get("account") or "")
-        ev["cash_visible_usd"] = round(cash.get(acct, 0.0), 2) if acct else None
-        proc = float(ev.get("proceeds_usd") or 0)
-        vis = float(ev.get("cash_visible_usd") or 0)
+    for event in events:
+        acct = str(event.get("account") or "")
+        event["cash_visible_usd"] = round(cash.get(acct, 0.0), 2) if acct else None
+        proc = float(event.get("proceeds_usd") or 0)
+        vis = float(event.get("cash_visible_usd") or 0)
         if proc > 0 and vis >= proc * 0.85:
-            ev["proceeds_settled"] = True
+            event["proceeds_settled"] = True
     return events
 
 
 def detect_sell_events(*, days: int = 14, accounts: tuple[str, ...] | None = None,
                        since: date | None = None, source: str = "live_detect",
                        dismiss_after_days: int | None = None) -> list[dict[str, Any]]:
-    """Build normalized deploy event dicts from recent sells (no DB write)."""
+    """Build material normalized deploy-event dicts from recent exits (no DB write)."""
     from lib.deploy_events_db import backfill_status_for_date
-    raw = load_sell_transactions(days=days, accounts=accounts, since=since)
+    raw = load_sell_transactions(
+        days=days,
+        accounts=accounts or DEFAULT_ACCOUNTS,
+        since=since,
+        include_all_real_accounts=False,
+        min_proceeds_usd=MIN_PROCEEDS_USD,
+    )
     raw = enrich_realized_pnl(raw)
     events = []
     for row in raw:
@@ -228,8 +283,8 @@ def detect_sell_events(*, days: int = 14, accounts: tuple[str, ...] | None = Non
             if sold:
                 status, dismiss_reason = backfill_status_for_date(
                     sold, dismiss_after_days=dismiss_after_days)
-        ev = normalize_sell_row(row, source=source, status=status, dismiss_reason=dismiss_reason)
-        events.append(ev)
+        event = normalize_sell_row(row, source=source, status=status, dismiss_reason=dismiss_reason)
+        events.append(event)
     return attach_cash_snapshot(events)
 
 
@@ -254,18 +309,18 @@ def sync_deploy_events(*, apply: bool = True, days: int = 14, since: date | None
         return report
     conn = _get_conn()
     cur = conn.cursor()
-    for ev in events:
+    for event in events:
         try:
             if apply:
                 try:
                     from lib.deploy_intelligence_engine import enrich_event
-                    ev = enrich_event(ev)
+                    event = enrich_event(event)
                 except Exception:
                     pass
-            report["upserted"].append(upsert_deploy_event(cur, ev))
-        except Exception as e:
-            report["errors"].append({"event_key": ev.get("event_key"), "error": str(e)[:200]})
+            report["upserted"].append(upsert_deploy_event(cur, event))
+        except Exception as error:
+            report["errors"].append({"event_key": event.get("event_key"), "error": str(error)[:200]})
     conn.commit()
-    report["created"] = sum(1 for u in report["upserted"] if u.get("created"))
-    report["updated"] = sum(1 for u in report["upserted"] if not u.get("created"))
+    report["created"] = sum(1 for item in report["upserted"] if item.get("created"))
+    report["updated"] = sum(1 for item in report["upserted"] if not item.get("created"))
     return report
