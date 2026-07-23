@@ -1,0 +1,35 @@
+{
+  "run_id": "20260722-01",
+  "stage": 1,
+  "start_head": "a7c9376bbae172877d1c1b482f062b015861285c",
+  "executed_at": "2026-07-22",
+  "suites": [
+    {
+      "name": "contract tests (pure) — tests/test_active_trader_stage1_contracts.py",
+      "status": "PASS",
+      "detail": "34 passed / 0 failed in 0.09s. Covers: environment no-default + unknown rejection; draft immutability; changed-hash cannot reuse authorization; new version changes hash; LIVE-without-auth rejected; unauthorized account rejected; out-of-envelope quantity rejected; expired rejected; revoked rejected; SHADOW cannot carry write authorization; SIM/LIVE unambiguous; all prod+test flag defaults OFF; dev visible=READ_ONLY only; flags cannot authorize (even all-LIVE_CANARY); flag OFF blocks but ON does not grant; invalid modes/names fail; expiry->OFF; capability UNSUPPORTED/UNKNOWN explicit; stale SUPPORTED->UNKNOWN; SUPPORTED-without-evidence rejected; unknown rejection non-retryable; broker-assistance requires operator; approved moomoo 15/12/3 + 20/16/4 @30s; independent ceilings; shared-budget/overflow/zero-window/missing-scope rejected; ordinary cannot consume reserve; ceiling absolute even for protection; checkpoint optimistic conflict; idempotent update; FAILED cannot advance without explicit resume; GREEN_CLOSED requires verified artifacts; manifest verified-requires-upload; litmus verdicts + READ_ONLY + write_attempted enforcement; sentinel rejection; v1 broker scope closed"
+    },
+    {
+      "name": "database tests (lab cluster only) — tests/test_active_trader_stage1_db.py",
+      "status": "PASS",
+      "detail": "12 passed / 0 failed in 0.60s against trade_ai_test (port 5433, role trade_ai_lab). Covers: forward/rollback/reapply cycle + idempotent re-up + no drift; runner refuses trade_ai name, port 5432, sentinel DSN; DB CHECK LIVE-requires-authorization; environment NOT NULL + invalid value; idempotency-key reuse across environments blocked (UNIQUE); SHADOW write-state rows blocked; session drafts append-only trigger; feature flags append-only + mode CHECK; journal append-only; SUPPORTED-requires-evidence CHECK; checkpoint state CHECK; all 14 tables + tracking table present"
+    },
+    {
+      "name": "secret tests",
+      "status": "PASS_WITH_BLOCKED_ITEM",
+      "detail": "sentinel rejected by contracts and by migration runner (tested); no secret values in any artifact (regex scan of stage-01 docs + repo pre-commit secrets scanner on commit); BLOCKED: 'production Bitwarden access unavailable from lab token' NOT RUN — lab machine-account token does not exist (recorded deviation; re-run at Stage 2 start)"
+    },
+    {
+      "name": "no-behavior-change proofs",
+      "status": "PASS",
+      "detail": "git working set purely additive (AGENTS.md, migrations/active_trader/, scripts/active_trader/, 2 test files); zero diff in apps/, scripts/brokers/, schwab adapters, api_v2, portfolio_server, requirements.txt, .github/; /v3 npm ci + full build GREEN in worktree (tsc + design guards + vite, 4.3s); production schema hash da4405cf85... IDENTICAL before/after; existing approval service + per-order 2FA untouched; Moomoo/futu absent from requirements and host; no OpenD service; no package upgraded; no service changed; no broker API called; production DB row count of touched tables: zero (never connected for writes)"
+    },
+    {
+      "name": "validators — run_release_ci_equivalent --source-only",
+      "status": "16 PASS / 1 FAIL (pre-existing)",
+      "detail": "identical single failure (release_readiness strict metric lint, MetricStrip.tsx:88) reproduced at Stage 0 base AND Stage 1 head with exit=1; also failing in GitHub CI on main at base SHA; not introduced or fixed per launcher instruction; validator-churned evidence docs restored before commit"
+    }
+  ],
+  "totals": {"passed": 46, "failed": 0, "blocked": 1, "pre_existing_failures": 1},
+  "gate_result": "GREEN with recorded Bitwarden machine-account deviation (BLOCKED isolation test) and inherited pre-existing lint failure"
+}

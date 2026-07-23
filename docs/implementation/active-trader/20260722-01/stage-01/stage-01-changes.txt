@@ -1,0 +1,45 @@
+# Stage 1 changed-file list — run 20260722-01
+# Start HEAD: a7c9376bbae172877d1c1b482f062b015861285c
+# ALL changes are ADDITIVE. Zero modifications to existing files, /v3, broker adapters,
+# approval service, per-order 2FA, requirements, workflows, or production anything.
+
+## Code (additive)
+A AGENTS.md
+A scripts/active_trader/__init__.py
+A scripts/active_trader/contracts.py
+A scripts/active_trader/migrate.py
+A scripts/active_trader/provision_test_db.sh
+A migrations/active_trader/0001_sessions.up.sql
+A migrations/active_trader/0001_sessions.down.sql
+A migrations/active_trader/0002_orders_positions.up.sql
+A migrations/active_trader/0002_orders_positions.down.sql
+A migrations/active_trader/0003_journal_scores_parity.up.sql
+A migrations/active_trader/0003_journal_scores_parity.down.sql
+A migrations/active_trader/0004_broker_fabric.up.sql
+A migrations/active_trader/0004_broker_fabric.down.sql
+A migrations/active_trader/0005_controls.up.sql
+A migrations/active_trader/0005_controls.down.sql
+A tests/test_active_trader_stage1_contracts.py
+A tests/test_active_trader_stage1_db.py
+
+## Stage 1 evidence artifacts (docs/implementation/active-trader/20260722-01/stage-01/)
+A stage-01-plan.md                  sha256=10865443f58e4a44b5b59614e621f6d414f030151b55f3f517c63aa46273793f
+A stage-01-closeout.md              sha256=e7476fe14975bf9a16aa754fe1f758e04ab3919f712244099136674678bedfbb
+A stage-01-tests.json               sha256=3b96158ff7358b13fb0d2a1b08d834928565b50ceaafc1c878598d04e3969801
+A stage-01-changes.txt              (this file)
+A stage-01-drive-manifest.json      (written after Drive sync)
+A TEST_DATABASE_PROVISIONING.md     sha256=a07a2b37d03e5c7bff6f1cb465a9c161355f30636d661ac750e2b981da4ad9ce
+A BITWARDEN_LAB_PROVISIONING.md     sha256=94d18a91923141b0e183a5e8c5aebca76a4cfca7627deb683bf8bd326f2d0e17
+A SCHEMA_CONTRACT_MATRIX.md         sha256=35af9920551f84e5ef54a5f7d1c2a04bb987b454da33be5e19619eb60596167d
+A FEATURE_FLAG_MATRIX.md            sha256=5262110c1f43940cb5723b512d54be8371fc4dee0c669275b5c7723304ab2d7b
+A RATE_POLICY_CONTRACT.md           sha256=b20a5d307bf252f9a862453f962f6d8a685216c6be05532a17bc4824699c2cfb
+A OPERATOR_TODO.md                  sha256=4d319f31fac5f5b85a5a17f2ce3da60b3888b437175d736cf5cc4dffc358bb8a
+
+## Off-repo provisioning (documented, no secrets)
+- ~/tradeai-lab/pg17 lab PostgreSQL cluster (:5433) with trade_ai_test / trade_ai_lab
+- Bitwarden project trade-ai-lab + secret ACTIVE_TRADER_TEST_DATABASE_DSN (value never recorded)
+
+## Side-effect note
+Running the validator suite again regenerated the same 3 tracked evidence docs as Stage 0
+(OPTIONS_RISK_BLOCK_MATRIX.md, CI_EVIDENCE_LATEST.md, RELEASE_MANIFEST_LATEST.md); they
+were restored to HEAD before commit. /v3 build outputs (node_modules, dist) are gitignored.
