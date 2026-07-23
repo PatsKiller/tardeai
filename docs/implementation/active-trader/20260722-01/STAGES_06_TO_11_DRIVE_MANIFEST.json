@@ -1,0 +1,24 @@
+{
+  "run_id": "20260722-01",
+  "controller": "stages_06_to_11",
+  "start_head": "5c8bc5af",
+  "end_head": "94bd5d12",
+  "drive_root_folder_id": "1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR",
+  "stage_folders": {
+    "stage-06": "1jizBWEwVaIzmHVMYVQZT9mm-M8YECIDP",
+    "stage-07": "1Zl6r70GuIH3t9bf6sOQVklWsBykjZPs5",
+    "stage-08": "161GeeWqzvTD3WSyuyLHIc6OZS2HDhHpu",
+    "stage-09": "1-JtkY0j1C9CQCxBTZ4kEtfnO3RofGY8b",
+    "stage-10": "1LgtGMiPfLixnKtklzgqHtC1Rt9O6Aoae",
+    "stage-11": "1LdzCgSZWgy2USjD7gp5ObGXXW3-iK-XP"
+  },
+  "stage_states": {
+    "6": "GREEN_CLOSED",
+    "7": "GREEN_CLOSED",
+    "8": "GREEN_CLOSED",
+    "9": "GREEN_IMPLEMENTED_DATA_VALIDATION_PENDING",
+    "10": "GREEN_IMPLEMENTED_PROMOTION_BLOCKED",
+    "11": "GREEN_CLOSED"
+  },
+  "all_verified": "each stage manifest self-reports N/N SHA-256 verified"
+}
