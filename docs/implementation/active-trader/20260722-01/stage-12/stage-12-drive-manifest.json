@@ -1,0 +1,77 @@
+{
+  "run_id": "20260722-01",
+  "stage": 12,
+  "drive_account": "john@jwwhiting.com",
+  "drive_folder_id": "1FsethOZ_Ef2nJCyiY_s04VPyAdHvzD1J",
+  "drive_folder": "Trade_AI_Docs_v2/implementation/active-trader/20260722-01/stage-12",
+  "verification": "downloaded each by id; sha256 byte-identical to local (11/11)",
+  "file_count": 11,
+  "files": [
+    {
+      "name": "ACTIVE_TRADER_FINAL_LITMUS_REVIEW.md",
+      "drive_id": "1agik0iN9P-NDXkD-GRi5l5zldWSRxGpF",
+      "sha256": "9f174dbe4dbb4b2b7f1d702658d3eb1db54e034672efb90414c2623f1e907f97",
+      "verified": true
+    },
+    {
+      "name": "CONDITIONAL_GATES.md",
+      "drive_id": "123Hpjq3aWpaSIxB5cDd_0-5vuLynXv8P",
+      "sha256": "6d90d882e12b634d64dacb4ccea033d161754b19c2625a8e5d4963e21e3ef349",
+      "verified": true
+    },
+    {
+      "name": "OPERATOR_TODO.md",
+      "drive_id": "1z-DS5Iq-H3Ny-VrHsUWGjd7wFWBFh79P",
+      "sha256": "266f6b61894f25b090fe2c2ef820a2623bc07f3b6db815ca5cf4b6ad131a32f1",
+      "verified": true
+    },
+    {
+      "name": "PROCEDURAL_DEVIATIONS.md",
+      "drive_id": "1fr7pjaKVoa9SzGcmuhuXTX7ifuo-6DIL",
+      "sha256": "7585dd4bcae2dea37ee76400a6b78bcd9c15c19b21dda4bbe60a1365925726cb",
+      "verified": true
+    },
+    {
+      "name": "READ_ONLY_REVIEWER_ISOLATION.md",
+      "drive_id": "1ALYZsBeCxIm3fqN_Nz7Nac2FOJXviD3n",
+      "sha256": "79bf59403b967c4999fe0d5a82e41ac9aa61e3b9e23d51b6805cdbdf1f4390c6",
+      "verified": true
+    },
+    {
+      "name": "REVIEW_INPUT_MANIFEST.json",
+      "drive_id": "1jM50rZGzMb7liNkH99a-O6z35gPQO1Lu",
+      "sha256": "f5d3ec84f62908ef90ca81eff629a817745d69add7fc3f4641aebd0df1e622c0",
+      "verified": true
+    },
+    {
+      "name": "SECURITY_AND_BOUNDARY_EVIDENCE.md",
+      "drive_id": "1BfCxmwq_vMPrC1rHfjZnd6id8NBFpwT_",
+      "sha256": "91a3b90bda28397fca6915a0a26fa531bc213bba3e6b28d770fed8354bf513c4",
+      "verified": true
+    },
+    {
+      "name": "stage-12-changes.txt",
+      "drive_id": "1VxFmOctB82f671-45VML75y7MNt72MhP",
+      "sha256": "359ec02409baf61f71f7be50c673795dcfa83e63916b12d3b7a5855bc6c2a390",
+      "verified": true
+    },
+    {
+      "name": "stage-12-closeout.md",
+      "drive_id": "1s89OOuirs8DAfqYotiPxnHQqmPsN-pN5",
+      "sha256": "d7318a642267b220c76415af07dd6a59ab62ac4f090fc9928bc7ad6e22e72a2f",
+      "verified": true
+    },
+    {
+      "name": "stage-12-plan.md",
+      "drive_id": "1O2JIQKIf2hvk0mrp2D8xVrn77G3MnTxk",
+      "sha256": "fb952ed47f40cd7d4838053b6a45d7b0dc1b69ef2ea14e76dea3effba0448db3",
+      "verified": true
+    },
+    {
+      "name": "stage-12-tests.json",
+      "drive_id": "19SNvqJKTBm5fIB9Y1Ia11XuUgjkXkO1F",
+      "sha256": "97ef0ce5680f0bf1ad637ea9fa6c78a59ad6c9b487c13a7471b03dabc680deee",
+      "verified": true
+    }
+  ]
+}
