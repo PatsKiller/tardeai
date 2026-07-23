@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import AuthoritativeExitUniverse from '../components/reentry/AuthoritativeExitUniverse'
+import ReEntryAnalystEvidence from '../components/reentry/ReEntryAnalystEvidence'
 import ReEntryAnalystLookthroughBoard from '../components/reentry/ReEntryAnalystLookthroughBoard'
 import ReEntryExitDetailLedger from '../components/reentry/ReEntryExitDetailLedger'
+import ReEntryHelpGuide from '../components/reentry/ReEntryHelpGuide'
 import ReEntryResistanceBoard from '../components/reentry/ReEntryResistanceBoard'
 import ReEntryRotationWorkspace from '../components/reentry/ReEntryRotationWorkspace'
 import { BB } from '../lib/holdingsTerminalTokens'
@@ -39,12 +42,15 @@ export default function RedeployDeskIntegrated() {
           onMouseDown={() => setOpen(false)}
           style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(2,6,23,.86)', padding: 18, overflowY: 'auto' }}
         >
-          <div onMouseDown={event => event.stopPropagation()} style={{ maxWidth: 1600, margin: '0 auto', background: 'var(--bg0)', border: '1px solid var(--border)', borderRadius: 8, padding: 16 }}>
+          <div onMouseDown={event => event.stopPropagation()} style={{ maxWidth: 1700, margin: '0 auto', background: 'var(--bg0)', border: '1px solid var(--border)', borderRadius: 8, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
               <button onClick={() => setOpen(false)} style={{ fontSize: 10.5, fontWeight: 800, padding: '6px 10px', borderRadius: 5, cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)' }}>CLOSE</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <ReEntryHelpGuide compact />
+              <AuthoritativeExitUniverse />
               <ReEntryExitDetailLedger />
+              <ReEntryAnalystEvidence />
               <ReEntryResistanceBoard />
               <ReEntryAnalystLookthroughBoard />
               <ReEntryRotationWorkspace mode="bridge" eventId={eventId} />
