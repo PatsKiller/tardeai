@@ -1,0 +1,820 @@
+{
+  "generated_at": "2026-07-23T02:03:47.372177+00:00",
+  "source_sha": "42f0c2cbccfed016ae3295a9abd7db995f6f688c",
+  "brokers": [
+    "alpaca",
+    "schwab",
+    "moomoo"
+  ],
+  "projection": {
+    "accounts": [
+      {
+        "broker": "alpaca",
+        "account_label": "alpaca_paper",
+        "masked_account_id": "***ASV1",
+        "environment": "SIMULATION",
+        "account_type": "paper",
+        "status": "ACTIVE",
+        "read_state": "OK",
+        "authentication_state": "OK",
+        "capabilities": [
+          {
+            "capability": "READ_BALANCES",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-07-24T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "READ_ACCOUNT",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-07-24T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "READ_POSITIONS",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-07-24T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "READ_OPEN_ORDERS",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-07-24T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "SYMBOL_TRADABILITY",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-07-24T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "PLACE_MARKET_RTH",
+            "state": "SUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "PLACE_LIMIT_RTH",
+            "state": "SUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "CANCEL_ORDER",
+            "state": "SUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "BRACKET_ORDER",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "OTO_PROTECTION",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "TRAILING_STOP",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "NATIVE_CLOSE_POSITION",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "NATIVE_CLOSE_ALL",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "CANCEL_ALL_ACCOUNT",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "REPLACE_ORDER",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "PLACE_LIMIT_EXTENDED",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "SHORT_SELL",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "FRACTIONAL_SHARES",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          }
+        ],
+        "evidence": {
+          "credential_slot_status": "PRESENT",
+          "READ_ACCOUNT": "200",
+          "account_status": "ACTIVE",
+          "buying_power_present": true,
+          "READ_POSITIONS": "200",
+          "READ_OPEN_ORDERS": "200",
+          "_CLOCK": "200",
+          "_ASSET": "200"
+        },
+        "observed_at": "2026-07-23T02:03:44.791401+00:00",
+        "expires_at": "",
+        "credential_slot": "ALPACA_PAPER",
+        "notes": ""
+      },
+      {
+        "broker": "alpaca",
+        "account_label": "alpaca_taxable_live",
+        "masked_account_id": "***4834",
+        "environment": "LIVE",
+        "account_type": "taxable",
+        "status": "ACTIVE",
+        "read_state": "OK",
+        "authentication_state": "OK",
+        "capabilities": [
+          {
+            "capability": "READ_BALANCES",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-07-24T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "READ_ACCOUNT",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-07-24T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "READ_POSITIONS",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-07-24T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "READ_OPEN_ORDERS",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-07-24T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "SYMBOL_TRADABILITY",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-07-24T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "BRACKET_ORDER",
+            "state": "UNSUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "CANCEL_ALL_ACCOUNT",
+            "state": "UNSUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "CANCEL_ORDER",
+            "state": "UNSUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "NATIVE_CLOSE_ALL",
+            "state": "UNSUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "NATIVE_CLOSE_POSITION",
+            "state": "UNSUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "OTO_PROTECTION",
+            "state": "UNSUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "PLACE_LIMIT_EXTENDED",
+            "state": "UNSUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "PLACE_LIMIT_RTH",
+            "state": "UNSUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "PLACE_MARKET_RTH",
+            "state": "UNSUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "REPLACE_ORDER",
+            "state": "UNSUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          },
+          {
+            "capability": "TRAILING_STOP",
+            "state": "UNSUPPORTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:44.791401+00:00",
+            "expires_at": "2026-08-22T02:03:44.791401+00:00"
+          }
+        ],
+        "evidence": {
+          "credential_slot_status": "PRESENT",
+          "READ_ACCOUNT": "200",
+          "account_status": "ACTIVE",
+          "buying_power_present": true,
+          "READ_POSITIONS": "200",
+          "READ_OPEN_ORDERS": "200",
+          "_CLOCK": "200",
+          "_ASSET": "200"
+        },
+        "observed_at": "2026-07-23T02:03:44.791401+00:00",
+        "expires_at": "",
+        "credential_slot": "ALPACA_TAXABLE",
+        "notes": ""
+      },
+      {
+        "broker": "alpaca",
+        "account_label": "alpaca_ira_live",
+        "masked_account_id": "***",
+        "environment": "LIVE",
+        "account_type": "ira",
+        "status": "NOT_CONFIGURED",
+        "read_state": "UNAVAILABLE",
+        "authentication_state": "NOT_CONFIGURED",
+        "capabilities": [],
+        "evidence": {
+          "credential_slot_status": "EMPTY"
+        },
+        "observed_at": "2026-07-23T02:03:44.791401+00:00",
+        "expires_at": "",
+        "credential_slot": "ALPACA_IRA",
+        "notes": "credential slot unset (expected for unarmed live scaffolds)"
+      },
+      {
+        "broker": "schwab",
+        "account_label": "schwab_rollover_ira",
+        "masked_account_id": "***",
+        "environment": "LIVE",
+        "account_type": "rollover_ira",
+        "status": "ACTIVE",
+        "read_state": "OK",
+        "authentication_state": "OK",
+        "capabilities": [
+          {
+            "capability": "READ_ACCOUNT",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-07-24T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "READ_POSITIONS",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-07-24T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "READ_OPEN_ORDERS",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-07-24T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "CANCEL_ORDER",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "TRAILING_STOP",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PLACE_LIMIT_RTH",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PLACE_MARKET_RTH",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PLACE_LIMIT_EXTENDED",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "REPLACE_ORDER",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "CANCEL_ALL_ACCOUNT",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "CANCEL_ALL_SYMBOL",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "NATIVE_CLOSE_POSITION",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "NATIVE_CLOSE_ALL",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "BRACKET_ORDER",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "OTO_PROTECTION",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "SHORT_SELL",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "FRACTIONAL_SHARES",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PRETRADE_ESTIMATE",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "ELECTRONIC_ENTRY_ELIGIBILITY",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          }
+        ],
+        "evidence": {
+          "READ_ACCOUNT": "OK",
+          "READ_POSITIONS": "OK",
+          "READ_OPEN_ORDERS": "OK",
+          "MARKET_HOURS": "error:RuntimeError"
+        },
+        "observed_at": "2026-07-23T02:03:47.299663+00:00",
+        "expires_at": "",
+        "credential_slot": "SCHWAB_* (managed by schwab_token_manager)",
+        "notes": ""
+      },
+      {
+        "broker": "schwab",
+        "account_label": "schwab_roth",
+        "masked_account_id": "***",
+        "environment": "LIVE",
+        "account_type": "roth",
+        "status": "ACTIVE",
+        "read_state": "OK",
+        "authentication_state": "OK",
+        "capabilities": [
+          {
+            "capability": "READ_ACCOUNT",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-07-24T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "READ_POSITIONS",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-07-24T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "READ_OPEN_ORDERS",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-07-24T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "CANCEL_ORDER",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "TRAILING_STOP",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PLACE_LIMIT_RTH",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PLACE_MARKET_RTH",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PLACE_LIMIT_EXTENDED",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "REPLACE_ORDER",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "CANCEL_ALL_ACCOUNT",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "CANCEL_ALL_SYMBOL",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "NATIVE_CLOSE_POSITION",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "NATIVE_CLOSE_ALL",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "BRACKET_ORDER",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "OTO_PROTECTION",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "SHORT_SELL",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "FRACTIONAL_SHARES",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PRETRADE_ESTIMATE",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "ELECTRONIC_ENTRY_ELIGIBILITY",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          }
+        ],
+        "evidence": {
+          "READ_ACCOUNT": "OK",
+          "READ_POSITIONS": "OK",
+          "READ_OPEN_ORDERS": "OK",
+          "MARKET_HOURS": "error:RuntimeError"
+        },
+        "observed_at": "2026-07-23T02:03:47.299663+00:00",
+        "expires_at": "",
+        "credential_slot": "SCHWAB_* (managed by schwab_token_manager)",
+        "notes": ""
+      },
+      {
+        "broker": "schwab",
+        "account_label": "schwab_taxable",
+        "masked_account_id": "***",
+        "environment": "LIVE",
+        "account_type": "taxable",
+        "status": "ACTIVE",
+        "read_state": "OK",
+        "authentication_state": "OK",
+        "capabilities": [
+          {
+            "capability": "READ_ACCOUNT",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-07-24T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "READ_POSITIONS",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-07-24T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "READ_OPEN_ORDERS",
+            "state": "SUPPORTED",
+            "source": "RUNTIME_PROBE",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-07-24T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "CANCEL_ORDER",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "TRAILING_STOP",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PLACE_LIMIT_RTH",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PLACE_MARKET_RTH",
+            "state": "RESTRICTED",
+            "source": "DOCUMENTATION",
+            "verified_at": "2026-07-23T02:03:47.299663+00:00",
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PLACE_LIMIT_EXTENDED",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "REPLACE_ORDER",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "CANCEL_ALL_ACCOUNT",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "CANCEL_ALL_SYMBOL",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "NATIVE_CLOSE_POSITION",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "NATIVE_CLOSE_ALL",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "BRACKET_ORDER",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "OTO_PROTECTION",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "SHORT_SELL",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "FRACTIONAL_SHARES",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "PRETRADE_ESTIMATE",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          },
+          {
+            "capability": "ELECTRONIC_ENTRY_ELIGIBILITY",
+            "state": "UNKNOWN",
+            "source": "DOCUMENTATION",
+            "verified_at": null,
+            "expires_at": "2026-08-22T02:03:47.299663+00:00"
+          }
+        ],
+        "evidence": {
+          "READ_ACCOUNT": "OK",
+          "READ_POSITIONS": "OK",
+          "READ_OPEN_ORDERS": "OK",
+          "MARKET_HOURS": "error:RuntimeError"
+        },
+        "observed_at": "2026-07-23T02:03:47.299663+00:00",
+        "expires_at": "",
+        "credential_slot": "SCHWAB_* (managed by schwab_token_manager)",
+        "notes": ""
+      }
+    ],
+    "discrepancies": [
+      {
+        "kind": "configured_but_not_returned_by_broker",
+        "broker": "alpaca",
+        "account_label": "tradeai_automated",
+        "configured_active": true
+      },
+      {
+        "kind": "returned_by_broker_but_not_configured",
+        "broker": "alpaca",
+        "account_label": "alpaca_paper",
+        "masked_account_id": "***ASV1"
+      }
+    ]
+  },
+  "broker_states": [
+    {
+      "broker": "alpaca",
+      "connector_state": "AVAILABLE",
+      "account_discovery": "PARTIAL",
+      "errors": []
+    },
+    {
+      "broker": "schwab",
+      "connector_state": "AVAILABLE",
+      "account_discovery": "OK",
+      "errors": []
+    },
+    {
+      "broker": "moomoo",
+      "connector_state": "NOT_INSTALLED",
+      "account_discovery": "UNAVAILABLE",
+      "errors": []
+    }
+  ]
+}
