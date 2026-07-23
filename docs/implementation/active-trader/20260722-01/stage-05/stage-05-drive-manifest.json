@@ -1,0 +1,123 @@
+{
+  "run_id": "20260722-01",
+  "stage": 5,
+  "synced_at": "2026-07-23",
+  "drive_root": {
+    "folder_name": "Trade_AI_Docs_v2",
+    "folder_id": "1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR",
+    "path": "Trade_AI_Docs_v2/implementation/active-trader/20260722-01/stage-05/",
+    "stage_folder_id": "1pZznnDU5x_gg7xhTUsBCD_bQJ9XS3eZj"
+  },
+  "upload_method": "gog CLI; verified by re-download + sha256",
+  "verification": "17/17 files SHA-256 match (2026-07-23)",
+  "stage_commit": "e39ba8b22a7b985e56c0f69175adbd3c610f44c7",
+  "files": [
+    {
+      "name": "stage-05-plan.md",
+      "drive_id": "1V_lt6zvKn03tUifKArVBJk8dGmicxuYT",
+      "sha256": "5ab166aa9863ee357286208c8429f55f34c15e78d984c7da62c098154be31180",
+      "verified": true
+    },
+    {
+      "name": "stage-05-closeout.md",
+      "drive_id": "1JW7QWh5V6x6ufw9bynQykXZNn32n3cOo",
+      "sha256": "28fdffa507aacf6b46fb7d48e6215d226d4e1c91270f8173157aa02eb19178f4",
+      "verified": true
+    },
+    {
+      "name": "stage-05-tests.json",
+      "drive_id": "13TdW0jydwU7d69O3tgYxYKkkeaQawq_C",
+      "sha256": "d8132cc190d970216b088e55b715563eb2b76fb1f1d635a7029df98dad14ef7e",
+      "verified": true
+    },
+    {
+      "name": "stage-05-changes.txt",
+      "drive_id": "1KJfydoAq0-5uGpR0txieltdMHCfUcH6G",
+      "sha256": "self-referencing",
+      "verified": true
+    },
+    {
+      "name": "MOOMOO_INSTALLATION_MANIFEST.md",
+      "drive_id": "1mNLKU0Wjo88srn6C63VlK0LvL6v2Bl7o",
+      "sha256": "1a53168ecb0940cbfa5b1e55d134357a14ebd75b51d763f1057931892c9fbf1e",
+      "verified": true
+    },
+    {
+      "name": "MOOMOO_CREDENTIAL_REQUIREMENTS.md",
+      "drive_id": "1pFsUioyiMpngcuiTSjRmb2hUSwCP1Wgh",
+      "sha256": "93ee77ed8ef94fe7788c5417fc4430cf7dd6eff72599b28ca28764353b0239e3",
+      "verified": true
+    },
+    {
+      "name": "MOOMOO_OPEND_CONFIGURATION.md",
+      "drive_id": "1HhGD5vpAxNxAp55hRiaMHua7Xn0YgS-1",
+      "sha256": "91006694f04f81c3333487f2bf54047ea237cc5bc8ff6ebe5a1396f296838b9c",
+      "verified": true
+    },
+    {
+      "name": "MOOMOO_SUBSCRIPTION_ENTITLEMENT_REPORT.md",
+      "drive_id": "1oE5zPj2Gq6SJj4EhddvZXK-Gh4ip2gn9",
+      "sha256": "d41af3593557875330ba2119230a538fbd7899d4ff0f34dac1cc7dd7687871db",
+      "verified": true
+    },
+    {
+      "name": "MOOMOO_DATA_QUALITY_REPORT.md",
+      "drive_id": "1DYOlq6uPKwovQ0_rV-Mb9YmRMTAH8Q8H",
+      "sha256": "6f04069bdb2fdddf3f52be6fd17e660b5b02cd893df9964bb0322fa3f390e268",
+      "verified": true
+    },
+    {
+      "name": "MOOMOO_RATE_GOVERNOR_REPORT.md",
+      "drive_id": "1nA3kqpcs1v7XdSp90nAHFNHOScaIzQbB",
+      "sha256": "cfb87d060b9f9df47b6b85a57e34cb399a3e122f5d7440653a8724a98fbcb2fc",
+      "verified": true
+    },
+    {
+      "name": "MOOMOO_REPLAY_RECOVERY_REPORT.md",
+      "drive_id": "1REhBPKYTJr_y1lClcTRezMPJ_YG-rBJq",
+      "sha256": "10946cc5a7c7923dd1136d1f63b98a0a24fb8942f9835fda6c4483fac08d291a",
+      "verified": true
+    },
+    {
+      "name": "MOOMOO_FEATURE_VALIDATION_REPORT.md",
+      "drive_id": "1XaVFAh5gPe0SPOpYPS4y9S7GKMptu00c",
+      "sha256": "a61825b7b74b275847b45e6ae53eac82f832c9c77789d8c6e8d49414a620b446",
+      "verified": true
+    },
+    {
+      "name": "MOOMOO_SERVICE_RUNBOOK.md",
+      "drive_id": "1JkiFDqA805N53N66cOJ6xIRvv1_kjAtk",
+      "sha256": "baea2864ef9d4d15710de704ce8ba58eb44d30abe9698c6019c6aea890c1de2f",
+      "verified": true
+    },
+    {
+      "name": "MOOMOO_ROLLBACK.md",
+      "drive_id": "14XWLLSPYtSty2C12E_esUv9vGYBS1djM",
+      "sha256": "9416221383d0ccfcf3720267c1d974ec5db0487d33e5325f1955b1ce1ddc1719",
+      "verified": true
+    },
+    {
+      "name": "BF1_BROKER_RESIDENT_PROTECTION_EVIDENCE.md",
+      "drive_id": "1ucSRkQ9EO7LnGbIP0OCBn5jzib5r9N9M",
+      "sha256": "b7c24dda71f8ef7d41064c861e9d4c189ed8559876f4fb7410f9dc27775d9555",
+      "verified": true
+    },
+    {
+      "name": "RTH_OBSERVATION_CHECKPOINT.md",
+      "drive_id": "1xcQ2KPNP8UdJE8sRQG5c8j_Mm19HGZuB",
+      "sha256": "4a718079fb2151c29876a8dbaa38be8cc47c7692bf2ba73f9ce987a7bfe92689",
+      "verified": true
+    },
+    {
+      "name": "OPERATOR_TODO.md",
+      "drive_id": "1QxlK0hfrVbJVDIzU8hW85JmG5iCoXj4T",
+      "sha256": "bdb7786b4d67fe1ac8058c764955b664ec8caf9ad677efd1efc26d18e836f192",
+      "verified": true
+    }
+  ],
+  "notes": [
+    "state BLOCKED_CREDENTIAL_GATE \u2014 offline implementation GREEN, live-data login blocked",
+    "no secret value, credential XML, MD5, DSN, or token uploaded",
+    "manifest committed after writing; cannot self-reference its own drive id"
+  ]
+}
