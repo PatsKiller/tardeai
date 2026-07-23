@@ -22,7 +22,7 @@ import SystemHub from './pages/SystemHub'
 import RotationIntelligence from './pages/RotationIntelligence'
 import RecommendationIntelligence from './pages/RecommendationIntelligence'
 import ResearchIntelligenceHub from './pages/ResearchIntelligenceHub'
-import RedeployDesk from './pages/RedeployDesk'
+import RedeployDeskIntegrated from './pages/RedeployDeskIntegrated'
 import HealthHub from './pages/HealthHub'
 import ConsumptionHub from './pages/ConsumptionHub'
 
@@ -174,7 +174,7 @@ function Shell() {
             <Route path="pullback-macd" element={<Navigate to="/watch?tab=pullback-macd" replace />} />
             <Route path="reports" element={<ReportsHub onDrill={setDrill} />} />
             <Route path="rotation" element={<RotationIntelligence />} />
-            <Route path="redeploy" element={<RedeployDesk />} />
+            <Route path="redeploy" element={<RedeployDeskIntegrated />} />
             <Route path="advisor-changes" element={<Navigate to="/rotation?tab=advisor-guide" replace />} />
             <Route path="rec-intel" element={<RecommendationIntelligence />} />
             <Route path="health" element={<HealthHub onDrill={setDrill} />} />
