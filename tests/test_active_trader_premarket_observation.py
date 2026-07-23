@@ -274,12 +274,29 @@ def test_wal_parquet_roundtrip(tmp_path):
 
 # ---- security --------------------------------------------------------------
 
+def test_live_sink_wal_roundtrip(tmp_path):
+    from active_trader import premarket_observation_live as live
+    sink = live._Sink("s1", tmp_path / "s1.wal", {"US.AAPL": "BASELINE"})
+    sink.push("ORDER_BOOK", "US.AAPL", {"bid": 10.0, "ask": 10.02, "bid_size": 100, "ask_size": 90,
+                                        "bids": [(10.0, 100), (9.99, 50)], "asks": [(10.02, 90)]})
+    sink.push("ORDER_BOOK", "US.AAPL", {"bid": 10.01, "ask": 10.03, "bids": [(10.01, 80)], "asks": [(10.03, 70)]})
+    sink.push("TICKER", "US.AAPL", {"last": 10.01, "trade_size": 5})
+    sink.close()
+    evs = live.events_from_wal(tmp_path / "s1.wal")
+    assert len(evs) == 3
+    bk = [e for e in evs if e.stream == "ORDER_BOOK"]
+    assert bk[0].bid == 10.0 and bk[0].ask == 10.02 and len(bk[0].bids) == 2
+    assert bk[0].symbol_role == "BASELINE"
+    assert bk[0].cached_first_push is True and bk[1].cached_first_push is False   # first push cached
+
+
 def test_ast_no_trade_methods_in_harness():
     from active_trader.moomoo.ast_guard import scan_source
     root = Path(__file__).resolve().parents[1] / "scripts" / "active_trader"
     findings = 0
     for name in ("premarket_observation.py", "premarket_symbol_selector.py",
-                 "market_calendar.py", "premarket_observation_schedule.py"):
+                 "market_calendar.py", "premarket_observation_schedule.py",
+                 "premarket_observation_live.py"):
         findings += len(scan_source((root / name).read_text(), name))
     findings += len(scan_source(
         (Path(__file__).resolve().parents[1] / "scripts" / "run_active_trader_premarket_observation.py").read_text(),

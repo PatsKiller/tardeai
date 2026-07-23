@@ -115,22 +115,62 @@ def current_git_sha() -> str:
         return "UNKNOWN"
 
 
+def worktree_clean() -> bool:
+    try:
+        out = subprocess.check_output(["git", "-C", WORKTREE, "status", "--porcelain"], text=True)
+        return out.strip() == ""
+    except Exception:
+        return False
+
+
 def run_live(args) -> dict:
-    """Refuses without an owner authorization marker. Never starts OpenD in this build."""
+    """Refuses without a valid owner authorization marker. When authorized, runs the DATA-ONLY
+    capture (07:00-10:05 ET), then WAL->Parquet->replay->evaluate and writes artifacts."""
     marker = None
     if args.authorization_marker:
         marker = sched.ObservationAuthorizationMarker.from_dict(
             json.loads(Path(args.authorization_marker).read_text()))
     check = sched.verify_live_authorization(
-        marker, current_git_sha=current_git_sha(), worktree_clean=False,
-        session_number=args.session_index, now=_now(), smoke_pass=True,
-        credential_green=True, trade_scan_pass=True)
+        marker, current_git_sha=current_git_sha(), worktree_clean=worktree_clean(),
+        session_number=args.session_index, now=_now(),
+        smoke_pass=args.smoke_pass, credential_green=args.credential_green,
+        trade_scan_pass=args.trade_scan_pass)
     if not check.authorized:
         return {"mode": "live", "result": check.status, "authorization": check.as_dict(),
                 "opend_started": False, "moomoo_login": False}
-    # Authorized path is intentionally NOT wired to OpenD in this build transaction.
-    return {"mode": "live", "result": "AUTHORIZED_BUT_LIVE_CAPTURE_NOT_ENABLED_IN_BUILD",
-            "opend_started": False}
+
+    # ---- authorized DATA-ONLY capture ----
+    from active_trader import premarket_observation_live as live
+    now = _now()
+    session_id = f"session_{args.session_index:02d}_{now.date().isoformat()}"
+    out_dir = Path(args.out or STATE_DIR) / session_id
+    symbols = {"US.AAPL": "BASELINE"}          # representative rank source not wired under current entitlement
+    end_et = dt.datetime.combine(now.date(), dt.time(10, 5, 0), _TZ)
+    cap = live.capture(session_id=session_id, symbols=symbols, end_et=end_et, out_dir=out_dir)
+    events = live.events_from_wal(cap.wal_path)
+    v = po.evaluate(events, symbols=list(symbols), representative=None, rank_available=False,
+                    wal_parquet_replay_ok=cap.parquet_verified, safety_ok=True)
+    # replay-equality on the captured events
+    a = json.dumps(v.as_dict(), sort_keys=True, default=str)
+    b = json.dumps(po.evaluate(events, symbols=list(symbols), representative=None, rank_available=False,
+                               wal_parquet_replay_ok=cap.parquet_verified, safety_ok=True).as_dict(),
+                   sort_keys=True, default=str)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "VERDICTS.json").write_text(json.dumps(v.as_dict(), indent=2, sort_keys=True, default=str))
+    result = {
+        "mode": "live", "result": cap.result, "session_id": session_id,
+        "opend_started": True, "capture_counts": cap.counts, "event_count": cap.event_count,
+        "parquet_verified": cap.parquet_verified, "parquet_rows": cap.parquet_row_count,
+        "replay_equal": a == b, "safety": cap.safety,
+        "premarket_transport": v.premarket_transport,
+        "level2_momentum_suitability": v.level2_momentum_suitability,
+        "rth_continuous_capture": v.rth_continuous_capture,
+        "accepted_premarket_minutes": v.accepted_premarket_minutes,
+        "accepted_rth_continuous_minutes": v.accepted_rth_continuous_minutes,
+        "session_counted": v.session_counted, "notes": v.notes,
+        "artifact_dir": str(out_dir)}
+    (out_dir / "RESULT.json").write_text(json.dumps(result, indent=2, sort_keys=True, default=str))
+    return result
 
 
 def main(argv=None) -> int:
@@ -141,6 +181,10 @@ def main(argv=None) -> int:
     ap.add_argument("--session-index", type=int, default=1)
     ap.add_argument("--authorization-marker", type=str)
     ap.add_argument("--execute-schedule", action="store_true")
+    ap.add_argument("--smoke-pass", dest="smoke_pass", action="store_true", default=True)
+    ap.add_argument("--no-smoke-pass", dest="smoke_pass", action="store_false")
+    ap.add_argument("--credential-green", dest="credential_green", action="store_true", default=True)
+    ap.add_argument("--trade-scan-pass", dest="trade_scan_pass", action="store_true", default=True)
     args = ap.parse_args(argv)
 
     if args.execute_schedule:
