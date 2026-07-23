@@ -1,0 +1,37 @@
+# Stage 3 changed-file list — run 20260722-01
+# Start HEAD: 520e8d3b6c7afc8fa4d01f4beab3e419dca8adbd
+# ALL changes ADDITIVE. Zero modifications to existing files, /v3, broker adapters,
+# alert lanes, write fences, approval service, per-order 2FA, requirements, workflows,
+# or production anything.
+
+## Code (additive)
+A migrations/active_trader/0006_rejection_enrichment.up.sql
+A migrations/active_trader/0006_rejection_enrichment.down.sql
+A scripts/active_trader/rejections.py
+A scripts/active_trader/notifications.py
+A scripts/active_trader/fallback.py
+A tests/fixtures/active_trader_rejections.json
+A tests/test_active_trader_stage3_rejections.py
+A tests/test_active_trader_stage3_persistence.py
+
+## Stage 3 evidence artifacts (docs/implementation/active-trader/20260722-01/stage-03/)
+A stage-03-plan.md                sha256=71ac0f7f59b1f804aca0bf6e9c5d49487582fb3b86d7638582c7f09b03cd0781
+A stage-03-closeout.md            sha256=0c234938a4ad77554c12a6c96be0ce8fef7a5b69d196a62f9dc020d7bc347cff
+A stage-03-tests.json             sha256=45086e8411f6e7468d7614ccc3ca78fc8b078731f427acbc5e6166a33a9ed355
+A stage-03-changes.txt            (this file)
+A stage-03-drive-manifest.json    (written after Drive sync)
+A REJECTION_CLASSIFIER_SPEC.md    sha256=791ee7fb4e70fc88e12a832fce76eb9ecc64791b410f30dba9ca867f3660f2d0
+A REJECTION_CODE_MATRIX.md        sha256=e0ba8f35678570ec3d94b1c135368102c60a325002ae70fdeba37f931555110d
+A NOTIFICATION_POLICY.md          sha256=6837aa551eddf1a42db3a36df6dfb9b7f9ed856bc968db9e5b990522569ab81f
+A FALLBACK_POLICY.md              sha256=0d549120c06d6af90dd5bea4e4db4f80a7145b3e9103b9c360ae277851a40b9a
+A DUPLICATE_FILL_PREVENTION.md    sha256=bdc4e25548c4721d53e6cebf1761fa2c1081380db6c2ffd644c107cb4166669d
+A FIXTURE_PROVENANCE.md           sha256=b29127579e0a0c267483197958e469064e5b15b3321934ea65dcfee0cf2bf6d3
+A OPERATOR_TODO.md                sha256=8d518eeedd58c73abe2502fb21aada6a5da822594bd01bb30919339f89fdf0c4
+
+## Off-repo effects (documented, no secrets)
+- lab DB trade_ai_test: migration 0006 applied (and cycle-tested); synthetic rejection
+  + notification rows from tests
+- production: untouched (schema hash + checkout re-verified)
+
+## Side-effect note
+Validator suite regenerated the same 3 tracked evidence docs; restored to HEAD before commit.
