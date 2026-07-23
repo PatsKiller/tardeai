@@ -1,0 +1,46 @@
+name: reentry-frontend-diagnostic
+on:
+  pull_request:
+    paths:
+      - 'apps/command-center-v3/**'
+      - '.github/workflows/reentry-frontend-diagnostic.yml'
+  workflow_dispatch: {}
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: install
+        working-directory: apps/command-center-v3
+        run: npm ci --silent
+      - name: capture typecheck and design diagnostics
+        id: diagnose
+        continue-on-error: true
+        working-directory: apps/command-center-v3
+        run: |
+          set +e
+          npx tsc --pretty false > /tmp/reentry-tsc.log 2>&1
+          echo $? > /tmp/reentry-tsc.exit
+          bash ../../scripts/check_design_tokens.sh > /tmp/reentry-design.log 2>&1
+          echo $? > /tmp/reentry-design.exit
+          node ../../scripts/test_chip_scope.mjs > /tmp/reentry-chip.log 2>&1
+          echo $? > /tmp/reentry-chip.exit
+          npm run build > /tmp/reentry-build.log 2>&1
+          echo $? > /tmp/reentry-build.exit
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reentry-frontend-diagnostic
+          path: /tmp/reentry-*.log
+      - name: fail when a diagnostic failed
+        run: |
+          cat /tmp/reentry-tsc.log
+          cat /tmp/reentry-design.log
+          cat /tmp/reentry-chip.log
+          cat /tmp/reentry-build.log
+          test "$(cat /tmp/reentry-tsc.exit)" = 0
+          test "$(cat /tmp/reentry-design.exit)" = 0
+          test "$(cat /tmp/reentry-chip.exit)" = 0
+          test "$(cat /tmp/reentry-build.exit)" = 0
