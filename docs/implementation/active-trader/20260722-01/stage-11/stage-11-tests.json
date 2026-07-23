@@ -1,0 +1,6 @@
+{"run_id":"20260722-01","stage":11,"start_head":"9adcb3fb","executed_at":"2026-07-23",
+"suites":[{"name":"governance — tests/test_active_trader_stage11_governance.py","status":"PASS",
+"detail":"8 passed: journal catalog + replay reference-only (raw inlining rejected); Darwin requires full evidence/sample/rollback/confounders/kind + never applies; Hermes transitions + no auto-activation (approved is terminal INACTIVE; skip-review illegal); LLM boundaries (summarize/draft/compare allowed; authorize/trade/merge/deploy/activate forbidden); Bitwarden registry metadata-only (suffix<=12, no trade-unlock); controller disabled-by-default + fail-stop + prohibitions raise; no broker/network symbols"},
+{"name":"full all-stage regression","status":"PASS","detail":"213 passed across stages 1-11 Python suites; moomoo AST guard 0 trade constructors/methods; strict metric lint exit=1 (pre-existing, unchanged)"}],
+"totals":{"tests_passed":8,"all_stage_regression":213,"failed":0},
+"gate_result":"GREEN_CLOSED"}

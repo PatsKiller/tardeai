@@ -1,0 +1,22 @@
+# Stage 11 changed-file list — run 20260722-01
+# Start HEAD: 9adcb3fb · additive; production-inactive governance; no broker/activation.
+
+A docs/implementation/active-trader/20260722-01/STAGE5_RESUME_REQUIREMENTS.md
+A docs/implementation/active-trader/20260722-01/STAGES_06_TO_11_COMMIT_MANIFEST.md
+A docs/implementation/active-trader/20260722-01/STAGES_06_TO_11_CONTROLLER_PLAN.md
+A docs/implementation/active-trader/20260722-01/STAGES_06_TO_11_GATE_MATRIX.md
+A docs/implementation/active-trader/20260722-01/stage-11/BITWARDEN_CREDENTIAL_REGISTRY.md
+A docs/implementation/active-trader/20260722-01/stage-11/DARWIN_PROPOSAL_SCHEMA.md
+A docs/implementation/active-trader/20260722-01/stage-11/DRIVE_SYNC_RUNBOOK.md
+A docs/implementation/active-trader/20260722-01/stage-11/GMAIL_NOTIFICATION_RUNBOOK.md
+A docs/implementation/active-trader/20260722-01/stage-11/HERMES_GOVERNANCE_WORKFLOW.md
+A docs/implementation/active-trader/20260722-01/stage-11/JOURNAL_EVENT_CATALOG.md
+A docs/implementation/active-trader/20260722-01/stage-11/LEARNING_SAFETY_BOUNDARIES.md
+A docs/implementation/active-trader/20260722-01/stage-11/OPERATOR_TODO.md
+A docs/implementation/active-trader/20260722-01/stage-11/OVERNIGHT_CONTROLLER_RUNBOOK.md
+A docs/implementation/active-trader/20260722-01/stage-11/REPLAY_ARCHITECTURE.md
+A docs/implementation/active-trader/20260722-01/stage-11/STAGE5_AND_PROMOTION_GATES.md
+A docs/implementation/active-trader/20260722-01/stage-11/stage-11-plan.md
+A docs/implementation/active-trader/20260722-01/stage-11/stage-11-tests.json
+A scripts/active_trader/governance.py
+A tests/test_active_trader_stage11_governance.py
