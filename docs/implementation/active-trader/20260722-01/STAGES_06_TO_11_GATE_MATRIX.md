@@ -9,7 +9,8 @@
 | Stage 11 | GREEN_CLOSED |
 | Stage 5 credential/agreement gate | ~~BLOCKED_CREDENTIAL_GATE~~ → **CLEARED** (agreement complete; device trusted) |
 | Stage 5 data-only smoke | **PASS** (2026-07-23, post-agreement) |
-| Stage 5 continuous open-session capture | PENDING (needs open RTH; launcher not yet checked in) |
+| Stage 5 observation launcher | **IMPLEMENTED** (GREEN_OBSERVATION_HARNESS_READY, 2026-07-23) |
+| Stage 5 continuous open-session capture | PENDING (needs open RTH + owner authorization marker) |
 | Five-RTH observation | 0 of 5 — PENDING/in progress |
 | Premarket Level 2 suitability | UNPROVEN |
 | Stage 9 promotion | BLOCKED (until Stage 5 observation PASS AND required scored-fire corpus) |

@@ -1,0 +1,21 @@
+{
+  "run_id": "20260722-01",
+  "transaction": "premarket observation harness build v1.1",
+  "date": "2026-07-23",
+  "focused_tests": {
+    "test_active_trader_market_calendar.py": "normal weekday, weekend, full holidays, no-weekday-inference, early closes labeled+qualify, DST offsets, next_session, unsupported-year fail-closed, metadata",
+    "test_active_trader_premarket_symbol_selector.py": "valid common, ETF/ETN excl, warrant/right/unit/option/preferred excl, OTC excl, leveraged/inverse name excl, price bounds, low volume/small gap, negative gap by abs, ties deterministic, baseline excluded, malformed/empty/unavailable, repeatable",
+    "test_active_trader_premarket_observation.py": "window boundaries, naive rejected, freshness, RTH 35:00 pass/34:59 fail, gap/startup exclusion, two-sided/one-sided/locked/unchanged metrics, replenishment+cancellation labeled, window partitioning, cross-checks extended-hours present/absent, open transition, verdicts (representative provisional-pass / AAPL-only insufficient / no-book-fail / entitlement-insufficient), replay-equality, extended-hours exact SDK args, subscribe!=freshness, state machine idempotent/illegal/no-retry/teardown, WAL-Parquet round-trip, AST 0 findings, no trade/network symbols",
+    "test_active_trader_premarket_schedule.py": "schedule plan next-session/start-now/schedule-today, transient-unit render no-secret/absolute/oneshot/no-linger/no-persistence, execute-schedule blocked, live blocked without marker, live pass with valid marker, live fails on sha/expiry/session/evidence/dirty, marker rejects secrets, no scheduler invocation in module"
+  },
+  "results": {
+    "harness_focused_prod_venv": "55 passed",
+    "harness_plus_stage5_lab_venv": "63 passed, 1 skipped (0 failed)",
+    "full_active_trader_regression_prod_venv": "216 passed, 53 skipped, 0 failed",
+    "trade_api_ast_scan": "35 modules + run-root, 0 findings",
+    "network_scan_harness": "clean",
+    "production_target_scan": "clean",
+    "wal_parquet_roundtrip": "verified (pyarrow, lab venv)"
+  },
+  "failures": 0
+}
