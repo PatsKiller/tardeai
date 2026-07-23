@@ -2,6 +2,26 @@
 
 **Run ID:** 20260722-01 · **Date:** 2026-07-22
 
+---
+
+## CURRENT STATE (updated 2026-07-23 — Corrected Stage 12/13 v1.1 §A)
+
+Moomoo credential/agreement gate is **CLEARED**; data-only smoke **PASSED**. Items A.1–A.5 below
+(Stage-1 prerequisites) are historical and were satisfied during Stages 1–5. The **open** operator
+actions now are:
+
+1. **Run the five-RTH observation** (0 of 5). Requires: (a) the Stage 5 observation launcher to be
+   built + checked in (not yet present — see `STAGE5_RESUME_REQUIREMENTS.md`), then (b) ≥30-min
+   continuous open-RTH capture, then (c) five qualifying sessions. This is the hard gate for Stage 9
+   acceptance / Stage 10 promotion.
+2. **BF-1** (item 6 below) — still required before any Moomoo live canary (Stage 14).
+3. **Stage 14** — needs a separate exact-SHA owner authorization; do not merge PR #150.
+
+The A–D sections below are **retained as history** and reflect the state after Stage 0.
+
+---
+
+
 ## A. Required before Stage 1 can start
 1. **Decide the wedged production checkout.** `config/hermes_score_weights.yaml` and
    `scripts/watchlist_entry_planner.py` sit in an unresolved UU index state (no MERGE_HEAD) in
