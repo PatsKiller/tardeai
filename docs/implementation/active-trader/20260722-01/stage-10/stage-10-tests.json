@@ -1,0 +1,6 @@
+{"run_id":"20260722-01","stage":10,"start_head":"43e8427e","executed_at":"2026-07-23",
+"suites":[{"name":"simulation — tests/test_active_trader_stage10_simulation.py","status":"PASS",
+"detail":"11 passed: submit accept/reject/unreachable/idempotent; partial->full fill + avg; cancel pending/confirmed; late-fill-after-terminal ignored; protection; translation matrix (alpaca native/opposite, moomoo opposite+limit-only+governed, schwab market/marketable-limit/broker-assist, excluded raise); unknown/unsupported fails closed; smart-limit all branches incl. HOLD_AT_CAP (no 750ms loop, >=1.9s); fallback duplicate-exposure-safe quantity; P&L + unavailable mark; no network/broker-write symbols"}],
+"totals":{"tests_passed":11,"failed":0},
+"gate":{"stage5_data_gate":"PENDING","stage9_acceptance":"PENDING","stage10_promotion":"BLOCKED"},
+"gate_result":"GREEN_IMPLEMENTED_PROMOTION_BLOCKED"}

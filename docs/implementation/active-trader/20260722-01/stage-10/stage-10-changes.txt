@@ -1,0 +1,16 @@
+# Stage 10 changed-file list — run 20260722-01
+# Start HEAD: 43e8427e · additive; internal simulation only; no network/broker/production.
+
+A docs/implementation/active-trader/20260722-01/stage-10/BROKER_TRANSLATION_MATRIX.md
+A docs/implementation/active-trader/20260722-01/stage-10/MULTI_ACCOUNT_SIMULATION.md
+A docs/implementation/active-trader/20260722-01/stage-10/OPERATOR_TODO.md
+A docs/implementation/active-trader/20260722-01/stage-10/PROMOTION_GATE_STATUS.md
+A docs/implementation/active-trader/20260722-01/stage-10/PROTECTION_SIMULATION.md
+A docs/implementation/active-trader/20260722-01/stage-10/SIMULATION_ARCHITECTURE.md
+A docs/implementation/active-trader/20260722-01/stage-10/SIMULATION_FILL_MODEL.md
+A docs/implementation/active-trader/20260722-01/stage-10/SIMULATION_PNL_REPORT.md
+A docs/implementation/active-trader/20260722-01/stage-10/SMART_LIMIT_SIMULATION.md
+A docs/implementation/active-trader/20260722-01/stage-10/stage-10-plan.md
+A docs/implementation/active-trader/20260722-01/stage-10/stage-10-tests.json
+A scripts/active_trader/simulation.py
+A tests/test_active_trader_stage10_simulation.py
