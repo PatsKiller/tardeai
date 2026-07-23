@@ -16,12 +16,15 @@ The page is advisory only. It does not create, approve, submit, modify, or cance
 
 The page must union and deduplicate all available trailing-year sources:
 
-- `GET /api/v2/redeploy/history?days=365` — canonical material SELL transaction coverage;
+- `GET /api/v2/journal` — primary event-level real closed-trade ledger, including every returned close regardless of redeploy materiality;
+- `GET /api/v2/journal/by-ticker?from=<one-year-ago>` — aggregate count and symbol reconciliation against the event-level journal;
+- `GET /api/v2/redeploy/history?days=365` — material SELL transaction coverage and transaction reconciliation;
 - `GET /api/v2/redeploy/book?limit=1000&include_dismissed=1` — event details and historical statuses;
-- `GET /api/v2/stops/reentry-watch?days=365` — stopped-out lifecycle and re-entry state;
-- `GET /api/v2/journal/by-ticker?from=<one-year-ago>` — closed-trade fallback and reconciliation.
+- `GET /api/v2/stops/reentry-watch?days=365` — stopped-out lifecycle and re-entry state.
 
-A source failure, `ok=false`, or a mismatch between a source-declared sell count and the rendered union is a visible blocking coverage warning. The UI must never present a partial result as “all exits.”
+The real closed-trade journal defines the closed-position universe. Redeploy history enriches it but must not replace it because redeploy uses account and materiality filters.
+
+A source failure, `ok=false`, or a mismatch between the source-declared journal/sell counts and the rendered union is a visible blocking coverage warning. The UI must never present a partial result as “all exits.”
 
 Each exit event must retain, when available:
 
@@ -32,6 +35,7 @@ Each exit event must retain, when available:
 - shares;
 - execution/exit price;
 - proceeds;
+- realized P&L;
 - exit reason;
 - source and source status.
 
@@ -124,6 +128,8 @@ The default table must show:
 - priority and target account;
 - alert count and monitor state.
 
+The expanded row must show every trailing-year event, including exit price, proceeds, realized P&L, reason, and source.
+
 The page must provide filters for symbol/account/reason, each independent flag, current state, and exit type.
 
 ## R6 — Acceptance tests
@@ -133,14 +139,15 @@ Before merge or deployment:
 1. A saved symbol can simultaneously be `CORE`, `COMPOUNDING`, and `DIVIDEND`.
 2. A saved symbol can be `SHORT` and `SWING` without becoming `CORE`.
 3. A legacy `intent=CORE` assignment loads as `core=true` without deleting other stored fields.
-4. The rendered union count is at least the canonical source-declared count, or the page shows a blocking coverage warning.
-5. Multiple exits for the same symbol remain visible in expansion.
-6. A source returning HTTP 200 with `{ok:false,error:...}` produces a visible source error.
-7. A symbol absent from Watch renders `NO_CURRENT_COVERAGE`, not empty status fields.
-8. A held symbol renders `CURRENTLY_HELD`.
-9. A short-flagged symbol without bearish mechanics renders `SHORT_PLAN_REQUIRED` and cannot arm a short-side price-zone alert.
-10. No ticker examples are hard-coded into the application.
-11. No broker call, proposal, approval, order, or 2FA path is introduced.
+4. Every `/api/v2/journal` close inside the trailing-year window is represented in the rendered union unless an exact duplicate is merged.
+5. The rendered union count is at least the maximum of the real-journal, By-Ticker, and material-sell source counts, or the page shows a blocking coverage warning.
+6. Multiple exits for the same symbol remain visible in expansion.
+7. A source returning HTTP 200 with `{ok:false,error:...}` produces a visible source error.
+8. A symbol absent from Watch renders `NO_CURRENT_COVERAGE`, not empty status fields.
+9. A held symbol renders `CURRENTLY_HELD`.
+10. A short-flagged symbol without bearish mechanics renders `SHORT_PLAN_REQUIRED` and cannot arm a short-side price-zone alert.
+11. No ticker examples are hard-coded into the application.
+12. No broker call, proposal, approval, order, or 2FA path is introduced.
 
 ## Non-goals
 
