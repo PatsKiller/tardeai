@@ -1,0 +1,15 @@
+# Stage 8 changed-file list — run 20260722-01
+# Start HEAD: 1090127c · ALL additive; no 2FA, no broker, no production change.
+
+A docs/implementation/active-trader/20260722-01/stage-08/ACTION_CONTRACT_MATRIX.md
+A docs/implementation/active-trader/20260722-01/stage-08/AUTHORIZATION_ENVELOPE_SCHEMA.md
+A docs/implementation/active-trader/20260722-01/stage-08/DESTRUCTIVE_ACTION_CONFIRMATION.md
+A docs/implementation/active-trader/20260722-01/stage-08/LIVE_INACTIVE_PROOF.md
+A docs/implementation/active-trader/20260722-01/stage-08/OPERATOR_TODO.md
+A docs/implementation/active-trader/20260722-01/stage-08/REAUTHORIZATION_RULES.md
+A docs/implementation/active-trader/20260722-01/stage-08/SESSION_AUTHORIZATION_ARCHITECTURE.md
+A docs/implementation/active-trader/20260722-01/stage-08/SESSION_REVOCATION_POLICY.md
+A docs/implementation/active-trader/20260722-01/stage-08/stage-08-plan.md
+A docs/implementation/active-trader/20260722-01/stage-08/stage-08-tests.json
+A scripts/active_trader/authorization.py
+A tests/test_active_trader_stage8_authorization.py

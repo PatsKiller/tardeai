@@ -1,0 +1,6 @@
+{"run_id":"20260722-01","stage":8,"start_head":"1090127c","executed_at":"2026-07-23",
+"suites":[{"name":"authorization + inactive actions — tests/test_active_trader_stage8_authorization.py","status":"PASS",
+"detail":"16 passed. Test provider issues bounded SHADOW/SIMULATION session; production provider LIVE_INACTIVE (no issue); rejected verification no issue; LIVE not issued; hash binding; account/symbol envelope + __UNIVERSE__; expiry+revocation; reauthorization triggers (hash/account/quantity/env); all 14 inactive actions VALIDATED_INACTIVE when clean (inactive=True, lab intent id, journal event); blocked when not allowed; capability UNSUPPORTED/UNKNOWN + data STALE/GAP + risk gates; unauthorized account/symbol -> REAUTHORIZATION_REQUIRED; destructive confirmation required; quantity envelope rejects oversize; idempotent intent id; nothing executes"}],
+"totals":{"tests_passed":16,"failed":0},
+"safety":{"real_2fa":false,"broker_write":false,"live_activation":false,"executes":false},
+"gate_result":"GREEN_CLOSED"}
