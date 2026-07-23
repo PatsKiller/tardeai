@@ -1,10 +1,14 @@
 {
-  "date": "2026-07-21",
-  "timestamp": "2026-07-21T06:31:24.728520+00:00",
+  "date": "2026-07-22",
+  "timestamp": "2026-07-22T06:30:56.728339+00:00",
   "total_checks": 12,
-  "passed": 11,
+  "passed": 7,
   "warnings": [
-    "hermes_gateway"
+    "hermes_gateway",
+    "research_backlog_count",
+    "hermes_rows",
+    "hermes_embeddings",
+    "safe_views"
   ],
   "checks": {
     "hermes_gateway": {
@@ -16,11 +20,11 @@
       "ok": true
     },
     "hermes_loop_last_log": {
-      "log": "Jul 20 21:02:11 ms01-openclaw systemd[2924]: hermes-autonomous-loop.service: Main process exited, code=exited, status=1/FAILURE\nJul 20 21:02:11 ms01-openclaw systemd[2924]: hermes-autonomous-loop.service: Failed with result 'exit-code'.\nJul 20 21:02:11 ms01-openclaw systemd[2924]: Failed to start he",
+      "log": "Jul 21 21:01:52 ms01-openclaw systemd[2924]: hermes-autonomous-loop.service: Main process exited, code=exited, status=1/FAILURE\nJul 21 21:01:52 ms01-openclaw systemd[2924]: hermes-autonomous-loop.service: Failed with result 'exit-code'.\nJul 21 21:01:52 ms01-openclaw systemd[2924]: Failed to start he",
       "ok": true
     },
     "searxng_container": {
-      "status": "Up 3 days",
+      "status": "Up 4 days",
       "ok": true
     },
     "searxng_endpoint": {
@@ -28,33 +32,33 @@
       "ok": true
     },
     "research_backlog_count": {
-      "count": 2510,
-      "ok": true
+      "count": "ERROR: [Errno 2] No such file or directory: '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env'",
+      "ok": false
     },
     "hermes_rows": {
-      "total": 11459,
-      "staged": 281,
-      "promoted": 3899,
-      "ok": true
+      "total": "ERROR: [Errno 2] No such file or directory: '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env'",
+      "staged": "ERROR: [Errno 2] No such file or directory: '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env'",
+      "promoted": "ERROR: [Errno 2] No such file or directory: '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env'",
+      "ok": false
     },
     "hermes_embeddings": {
-      "count": 8407,
-      "ok": true
+      "count": "ERROR: [Errno 2] No such file or directory: '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env'",
+      "ok": false
     },
     "kill_switch": {
       "active": false,
       "ok": true
     },
     "safe_views": {
-      "accessible": true,
-      "ok": true
+      "accessible": false,
+      "ok": false
     },
     "dashboard_health": {
       "http_status": 200,
       "ok": true
     },
     "cron_count": {
-      "count": 448,
+      "count": 449,
       "ok": true
     }
   }
