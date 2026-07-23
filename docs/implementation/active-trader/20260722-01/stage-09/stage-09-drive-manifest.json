@@ -1,0 +1,88 @@
+{
+  "run_id": "20260722-01",
+  "stage": 9,
+  "stage_commit": "43e8427e39da49c7d7f430d1ccadaa8b42acc9ac",
+  "drive_folder_id": "1-JtkY0j1C9CQCxBTZ4kEtfnO3RofGY8b",
+  "path": "Trade_AI_Docs_v2/implementation/active-trader/20260722-01/stage-09/",
+  "verification": "13/13 SHA-256 verified",
+  "files": [
+    {
+      "name": "FIRE_RULE_MATRIX.md",
+      "drive_id": "1Z3ZrqwozlWLEa7tQ3MDAyPxNle5-KOwW",
+      "sha256": "528132c636bf663471bb52603dbbc6bda125516884a65223e56e759052bbf4fe",
+      "verified": true
+    },
+    {
+      "name": "NO_LOOKAHEAD_REPORT.md",
+      "drive_id": "1zGqXrkPYIqm3V8p6C5kdlJxVpljv4Pda",
+      "sha256": "37bf416dadd68dafebaf58fef0da301fe614b2b631a6a176127deafcc43d97d8",
+      "verified": true
+    },
+    {
+      "name": "OPERATOR_TODO.md",
+      "drive_id": "1Ipz1uFZwP_JEKXqjMcaIdeJ5MVVa0K8_",
+      "sha256": "0223578e7d5bc6ac6fc93452fc35e70c5a71b381fd7f20633e6c6069d5e79931",
+      "verified": true
+    },
+    {
+      "name": "PRIME_RULE_MATRIX.md",
+      "drive_id": "1BRPKRWcoDAvuh5L4haaJrGoSJh-EcK7l",
+      "sha256": "0f0d34d8b62727951a40b9f4adc275cbc8190f812170defa1f4528ab57ce70dd",
+      "verified": true
+    },
+    {
+      "name": "REPLAY_DETERMINISM_REPORT.md",
+      "drive_id": "1cfqF85OhdfMbK1-ObBaSFkkxeJGYdWz9",
+      "sha256": "a2dcff078f4692a252da0b4a1162c7e037c5597d6c93da09b83794bedc55a4e5",
+      "verified": true
+    },
+    {
+      "name": "RES_SPECIFICATION.md",
+      "drive_id": "1IeA8bF3V96pZbqmuX9o5_JVoH46aLxzv",
+      "sha256": "9e74a385d2082b5602cd1c592f8c3c72c89aa0d98db6b4fa14efa5228df80327",
+      "verified": true
+    },
+    {
+      "name": "RRS_SPECIFICATION.md",
+      "drive_id": "1L-rp4GlXKRNDrOXGUqxYKnxATr77V0g7",
+      "sha256": "93a1d09944a6726b710dc982f20e2b0f26526455631c62dd8a6088816c033760",
+      "verified": true
+    },
+    {
+      "name": "RUNNER_METHODOLOGY.md",
+      "drive_id": "1p50qubWmdpwPHcBhghYIPAIRAos720XO",
+      "sha256": "1d042634caf6ac2f488af306df888c49a296135e6f11670c7eed89a24d562953",
+      "verified": true
+    },
+    {
+      "name": "SHADOW_DECISION_ENGINE.md",
+      "drive_id": "1P3wLp6l2VfR5CfGcOTTnjCw-OJ0CXNRJ",
+      "sha256": "7fbea0309941af210fdf2d0f22f4ec6be14394cdb7ddb95ce18d80e8d2fd7e68",
+      "verified": true
+    },
+    {
+      "name": "stage-09-plan.md",
+      "drive_id": "1OGPKjQG-ba3RjVnYAW8jF9jHS6aay00Y",
+      "sha256": "50f1ad0d50e84f5606706a5886085b2300b27775f498e5aa1463d237c16ae538",
+      "verified": true
+    },
+    {
+      "name": "STAGE5_DATA_GATE_STATUS.md",
+      "drive_id": "1Gp2IOAHJv4HdvWPbyLDyHd8iuBctWRKV",
+      "sha256": "a4a12faeb9e885d43c21f83a2861da5c551bf4b0ca6b6d30d304568b1128869f",
+      "verified": true
+    },
+    {
+      "name": "stage-09-tests.json",
+      "drive_id": "1R2UDe-kgw4ca5EsIZwESkZxiVmyUAbHb",
+      "sha256": "4815989c62853e4ff68c77b182f397de51bc44db3bfe177012b39f165c25e76b",
+      "verified": true
+    },
+    {
+      "name": "stage-09-changes.txt",
+      "drive_id": "1H9ubARMWwEB7EO6BkugtxebdKD4irLAj",
+      "sha256": "self",
+      "verified": true
+    }
+  ]
+}
