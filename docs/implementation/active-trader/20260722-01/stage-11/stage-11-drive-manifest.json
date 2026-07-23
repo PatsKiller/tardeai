@@ -1,0 +1,94 @@
+{
+  "run_id": "20260722-01",
+  "stage": 11,
+  "stage_commit": "94bd5d12ed23f45296811e67b55eae2ea9b2a7ff",
+  "drive_folder_id": "1LdzCgSZWgy2USjD7gp5ObGXXW3-iK-XP",
+  "path": "Trade_AI_Docs_v2/implementation/active-trader/20260722-01/stage-11/",
+  "verification": "14/14 SHA-256 verified",
+  "files": [
+    {
+      "name": "BITWARDEN_CREDENTIAL_REGISTRY.md",
+      "drive_id": "1j7trW_12m0L3akUSFc1LwRiODFp6C7Sy",
+      "sha256": "0299c9a1a71215a9746ac637c9b519fe5176f1a3402a747657bdc56c423e0cbc",
+      "verified": true
+    },
+    {
+      "name": "DARWIN_PROPOSAL_SCHEMA.md",
+      "drive_id": "1wJyaZ0ezDA6vA1wmLGMKJOC0l_E7MJ9P",
+      "sha256": "e7612186a8c677082dacfd4d35b249fd2122e9a8577c64f329704e7df047599b",
+      "verified": true
+    },
+    {
+      "name": "DRIVE_SYNC_RUNBOOK.md",
+      "drive_id": "1AfvxEyNKKABUav5Qq6QAN1Y79djCRR27",
+      "sha256": "6da8db5db0afe69a51e088d43a93ccf58885f3210e52142ccbe79c0e3609f280",
+      "verified": true
+    },
+    {
+      "name": "GMAIL_NOTIFICATION_RUNBOOK.md",
+      "drive_id": "10UYAHcAZ4iH0SwXiFyUqBff_8wGzgfYr",
+      "sha256": "2cc0ceacdeaab74547613614bb219dc106c866877d70dcbcfd797789c4a08782",
+      "verified": true
+    },
+    {
+      "name": "HERMES_GOVERNANCE_WORKFLOW.md",
+      "drive_id": "12621VKGaFaU13PlTAFlmRO6XTCkdRdf_",
+      "sha256": "934723b2443369a061c49427032194d66e289ac37db64087c3a6f512d016e860",
+      "verified": true
+    },
+    {
+      "name": "JOURNAL_EVENT_CATALOG.md",
+      "drive_id": "1tmkxX06huBgpKCQnQkqwFy7QbD-HJr4j",
+      "sha256": "e51be5ba24bf8de1ff0567bb3587d71c44c76a0bd02d591723db0298289e7876",
+      "verified": true
+    },
+    {
+      "name": "LEARNING_SAFETY_BOUNDARIES.md",
+      "drive_id": "18neNJx_Je12oK-r1M9ueBV5608b_uQRS",
+      "sha256": "70316b834d2d121f0d1e95267369cdb99caac4ea09ee6532a1e3c5dd06e59035",
+      "verified": true
+    },
+    {
+      "name": "OPERATOR_TODO.md",
+      "drive_id": "1AtlrYUe5L4vutkLReZvmrZRYIO6_UDq6",
+      "sha256": "d79c680c400b053f01377d5f9f70a7ab9fe8dbd60df29e2a217b58bf3f6d58ce",
+      "verified": true
+    },
+    {
+      "name": "OVERNIGHT_CONTROLLER_RUNBOOK.md",
+      "drive_id": "1tTKrUQbxkZH6kHgqBPbkxwQKn-O1_ZA8",
+      "sha256": "8c47817e84a7eacbeb43e751e166138d0ebe814c7743fedf2d4cd0a63fd1decf",
+      "verified": true
+    },
+    {
+      "name": "REPLAY_ARCHITECTURE.md",
+      "drive_id": "10t3dzA7m2SMIBzXuYYrDdcKEdXsM2BIE",
+      "sha256": "4014f793cdd83e28cbc8cdf7e8b8bad2abcc05132ba142be8c71c4354ec393bf",
+      "verified": true
+    },
+    {
+      "name": "stage-11-plan.md",
+      "drive_id": "1QrCuTj16YxijfdvuPT1Bc2BzVooknxlW",
+      "sha256": "91e706f982dba81527abcf0173a8d051ba9dfc6634a8c1b2c5e1b5eab5f0e5f5",
+      "verified": true
+    },
+    {
+      "name": "STAGE5_AND_PROMOTION_GATES.md",
+      "drive_id": "1zo4nRjkqNHSk-fIPBxQk7OQD_ejZf4Bp",
+      "sha256": "99ae0e82e612aa185cc47cd40c42cdd38e6c7ffa9debf1d5adc9f730cd3e44bf",
+      "verified": true
+    },
+    {
+      "name": "stage-11-tests.json",
+      "drive_id": "14W6vWaujXQ29diFv1QlWA6NuaBe_dYmo",
+      "sha256": "ae043e741f0d9c6abb2afecdbd38e782b90f06ba1fc33ef58884e510de73f75a",
+      "verified": true
+    },
+    {
+      "name": "stage-11-changes.txt",
+      "drive_id": "1N7wSVlK9HpTAX7HXhwBgBn6FrP8EKDjm",
+      "sha256": "self",
+      "verified": true
+    }
+  ]
+}
