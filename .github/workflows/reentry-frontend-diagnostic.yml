@@ -5,11 +5,40 @@ on:
       - 'apps/command-center-v3/**'
       - '.github/workflows/reentry-frontend-diagnostic.yml'
   workflow_dispatch: {}
+permissions:
+  contents: write
 jobs:
   diagnostic:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - name: normalize new label sizes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          paths = [
+              Path('apps/command-center-v3/src/components/SharedIntelligenceBridge.tsx'),
+              Path('apps/command-center-v3/src/components/reentry/ReEntryExitWorkbench.tsx'),
+              Path('apps/command-center-v3/src/components/reentry/ReEntryCurrentIntelligence.tsx'),
+          ]
+          pattern = re.compile(r'fontSize:\s*(?:9\.5|8\.5|9)(?=[, }])')
+          for path in paths:
+              text = path.read_text()
+              updated = pattern.sub('fontSize: 10', text)
+              path.write_text(updated)
+          PY
+          if ! git diff --quiet; then
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add apps/command-center-v3/src/components/SharedIntelligenceBridge.tsx \
+              apps/command-center-v3/src/components/reentry/ReEntryExitWorkbench.tsx \
+              apps/command-center-v3/src/components/reentry/ReEntryCurrentIntelligence.tsx
+            git commit -m 'fix(reentry): meet 10px design minimum'
+            git push origin HEAD:${GITHUB_HEAD_REF}
+          fi
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       - name: install
