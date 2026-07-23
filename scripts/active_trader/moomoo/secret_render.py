@@ -96,14 +96,28 @@ def load_data_secrets(token_path: Path = TOKEN_PATH,
 
 
 def render_opend_config(secrets: dict, api_port: int = API_PORT,
-                        ip: str = LOOPBACK, runtime_dir: Path | None = None) -> Path:
-    """Render OpenD XML into tmpfs (0600). Password only as in-memory MD5."""
+                        ip: str = LOOPBACK, runtime_dir: Path | None = None,
+                        console: int = 0, telnet_port: int | None = None) -> Path:
+    """Render OpenD XML into tmpfs (0600). Password only as in-memory MD5.
+
+    console defaults to 0 (background — the ruled runtime posture).
+    telnet_port defaults to None (telnet OFF — the ruled runtime posture).
+    console=1 / a loopback telnet_port are used ONLY for the one-time operator-present
+    device-authorization ceremony, because OpenD accepts the SMS verify-code command
+    solely over its interactive console or its (loopback) telnet interface — the
+    documented headless method. The persistent runtime reverts to console=0 / no telnet.
+    """
     if ip not in ("127.0.0.1", "::1", "localhost"):
         raise CredentialGateError(f"non-loopback OpenD bind {ip!r} refused")
+    if console not in (0, 1):
+        raise CredentialGateError("console must be 0 (runtime) or 1 (one-time device auth)")
     rt = runtime_dir or _runtime_dir()
     pwd_md5 = hashlib.md5(secrets["MOOMOO_DATA_LOGIN_PASSWORD"].encode()).hexdigest()
     log_dir = rt / "log"
     log_dir.mkdir(mode=0o700, exist_ok=True)
+    telnet_xml = ""
+    if telnet_port is not None:
+        telnet_xml = f"\t<telnet_ip>127.0.0.1</telnet_ip>\n\t<telnet_port>{int(telnet_port)}</telnet_port>\n"
     xml = f"""<moomoo_opend>
 \t<ip>{ip}</ip>
 \t<api_port>{api_port}</api_port>
@@ -113,8 +127,8 @@ def render_opend_config(secrets: dict, api_port: int = API_PORT,
 \t<log_level>info</log_level>
 \t<log_path>{log_dir}</log_path>
 \t<push_proto_type>0</push_proto_type>
-\t<console>0</console>
-\t<price_reminder_push>0</price_reminder_push>
+\t<console>{console}</console>
+{telnet_xml}\t<price_reminder_push>0</price_reminder_push>
 \t<auto_hold_quote_right>0</auto_hold_quote_right>
 </moomoo_opend>
 """
