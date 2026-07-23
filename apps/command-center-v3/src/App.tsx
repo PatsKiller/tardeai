@@ -8,6 +8,7 @@ import StrategyHub from './pages/StrategyHub'
 import RiskHub from './pages/RiskHub'
 import HomeHub from './pages/HomeHub'
 import PortfolioHub from './pages/PortfolioHub'
+import ReEntryPage from './pages/ReEntryPage'
 import TradingHub from './pages/TradingHub'
 import AgentsHub from './pages/AgentsHub'
 import IntelligenceHub from './pages/IntelligenceHub'
@@ -149,6 +150,7 @@ function Shell() {
           <Routes>
             <Route index element={<HomeHub onDrill={setDrill} />} />
             <Route path="portfolio" element={<PortfolioHub onDrill={setDrill} />} />
+            <Route path="portfolio/re-entry" element={<ReEntryPage />} />
             <Route path="risk" element={<RiskHub onDrill={setDrill} />} />
             <Route path="trading" element={<TradingHub onDrill={setDrill} />} />
             {/* Telegram-safe deep links: path-only (no multi-param query). Messengers truncate at &. */}
