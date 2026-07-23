@@ -1,0 +1,38 @@
+{
+  "_provenance": "SYNTHETIC — deterministic Stage 4 read-API fixture; no real account or market data",
+  "generated_at": "2026-07-22T21:00:00+00:00",
+  "source_sha": "stage4-fixture",
+  "candidates": [
+    {
+      "symbol": "TESTA", "company": "Test Alpha Corp", "exchange": "NASDAQ",
+      "state": "IN_SCOPE", "reason_in_scope": "synthetic daily-tier candidate",
+      "reason_blocked": null, "broker": "alpaca",
+      "price": 4.20, "gap_percent": 12.5, "market_cap": 85000000,
+      "capital_structure": {"issued_shares": 21000000, "outstanding_shares": 20000000,
+        "float_shares": 12000000, "float_source": "SYNTHETIC_FIXTURE",
+        "float_source_timestamp": "2026-07-22T12:00:00+00:00", "float_confidence": "LOW"},
+      "participation": {"volume": 3400000, "premarket_volume": 400000,
+        "regular_volume": 3000000, "dollar_volume": 14280000, "rvol": 4.1,
+        "float_turnover": 0.28},
+      "price_structure": {"vwap": 4.05, "high": 4.44, "low": 3.61, "spread": null},
+      "rvol": 4.1,
+      "book_state": "UNAVAILABLE", "tape_state": "UNAVAILABLE", "halt_state": "NONE",
+      "catalyst": {"summary": "synthetic catalyst", "source": "SYNTHETIC",
+                   "timestamp": "2026-07-22T11:30:00+00:00"},
+      "eligibility": "ELIGIBLE_WATCH"
+    },
+    {
+      "symbol": "TESTB", "company": "Test Beta Inc", "exchange": "NYSE",
+      "state": "BLOCKED", "reason_in_scope": null,
+      "reason_blocked": "synthetic event block", "broker": "schwab",
+      "price": 2.10, "gap_percent": null, "market_cap": null,
+      "capital_structure": "UNAVAILABLE",
+      "participation": "UNAVAILABLE",
+      "price_structure": "UNAVAILABLE",
+      "rvol": null,
+      "book_state": "UNAVAILABLE", "tape_state": "UNAVAILABLE", "halt_state": "UNKNOWN",
+      "catalyst": "UNAVAILABLE",
+      "eligibility": "BLOCKED"
+    }
+  ]
+}
