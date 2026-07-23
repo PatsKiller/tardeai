@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
+import { BB } from '../lib/holdingsTerminalTokens'
 
 const PREF_KEY = 'portfolio.reentry.assignments.v1'
-const GREEN = '#22c55e'
-const RED = '#ef4444'
-const AMBER = '#f59e0b'
-const BLUE = '#60a5fa'
-const PURPLE = '#a855f7'
-const MUTED = 'var(--text3)'
+const GREEN = BB.green
+const RED = BB.red
+const AMBER = BB.amber
+const BLUE = BB.blue
+const COMPOUNDING = BB.amberAlt
+const MUTED = BB.text3
+const MICRO = 10
 
 const INTENTS = ['UNASSIGNED', 'CORE', 'COMPOUNDING', 'DIVIDEND', 'SHORT', 'SWING'] as const
 const PRIORITIES = ['HIGH', 'NORMAL', 'LOW'] as const
@@ -68,7 +70,7 @@ const panel: React.CSSProperties = {
 const button = (active = false): React.CSSProperties => ({
   fontSize: 10.5, fontWeight: 750, padding: '5px 10px', borderRadius: 5, cursor: 'pointer',
   border: `1px solid ${active ? BLUE : 'var(--border)'}`,
-  background: active ? 'rgba(96,165,250,.14)' : 'var(--bg2)',
+  background: active ? BB.blueDim : 'var(--bg2)',
   color: active ? BLUE : 'var(--text2)',
 })
 const input: React.CSSProperties = {
@@ -167,7 +169,7 @@ function defaultAssignment(): Assignment {
 }
 function intentColor(intent: Intent): string {
   if (intent === 'CORE') return BLUE
-  if (intent === 'COMPOUNDING') return PURPLE
+  if (intent === 'COMPOUNDING') return COMPOUNDING
   if (intent === 'DIVIDEND') return GREEN
   if (intent === 'SHORT') return RED
   if (intent === 'SWING') return AMBER
@@ -177,7 +179,7 @@ function statusColor(status: ReEntryStatus): string {
   if (status === 'READY_FOR_REVIEW') return GREEN
   if (['NEAR_ZONE', 'OVERSOLD_REVIEW', 'OVERBOUGHT_REVIEW'].includes(status)) return AMBER
   if (status === 'OVERBOUGHT_WAIT') return RED
-  if (status === 'CURRENTLY_HELD') return PURPLE
+  if (status === 'CURRENTLY_HELD') return COMPOUNDING
   if (status === 'WATCH') return BLUE
   return MUTED
 }
@@ -492,14 +494,14 @@ export default function ReEntryPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 10, color: MUTED, marginBottom: 4 }}>
+          <div style={{ fontSize: MICRO, color: MUTED, marginBottom: 4 }}>
             <Link to="/portfolio" style={{ color: BLUE, textDecoration: 'none' }}>Portfolio</Link> / Re-Entry
           </div>
           <div style={{ fontSize: 24, fontWeight: 900 }}>Re-Entry Intelligence</div>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>
             Last 12 months of exited positions · deterministic pullback review · persistent classifications · advisory alerts
           </div>
-          <div style={{ fontSize: 9.5, color: /off|defensive|disrupt/i.test(regime) ? AMBER : MUTED, marginTop: 5 }}>
+          <div style={{ fontSize: MICRO, color: /off|defensive|disrupt/i.test(regime) ? AMBER : MUTED, marginTop: 5 }}>
             MARKET REGIME {regime.toUpperCase()} · cached technicals show their age · no order or broker authority
           </div>
         </div>
@@ -511,13 +513,13 @@ export default function ReEntryPage() {
       <div style={{ ...panel, display: 'grid', gridTemplateColumns: 'repeat(5, minmax(100px, 1fr))', gap: 1, overflow: 'hidden' }}>
         {[
           ['Exited symbols', rows.length, BLUE],
-          ['Monitored', counts.monitored, PURPLE],
+          ['Monitored', counts.monitored, COMPOUNDING],
           ['Ready for review', counts.ready, GREEN],
           ['Near pullback', counts.near, AMBER],
           ['Oversold / stale', `${counts.oversold} / ${counts.stale}`, RED],
         ].map(([label, value, color]) => (
           <div key={String(label)} style={{ padding: '10px 12px', background: 'var(--bg2)' }}>
-            <div style={{ fontSize: 8.5, color: MUTED, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
+            <div style={{ fontSize: MICRO, color: MUTED, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
             <div style={{ fontSize: 20, fontWeight: 900, color: String(color), marginTop: 2 }}>{value}</div>
           </div>
         ))}
@@ -546,7 +548,7 @@ export default function ReEntryPage() {
 
       <div style={{ ...panel, overflowX: 'auto' }}>
         <div style={{ minWidth: 1180 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '70px 112px 105px 90px 92px 118px 150px 138px 76px 122px', gap: 8, padding: '7px 10px', borderBottom: '1px solid var(--border)', fontSize: 8.5, color: MUTED, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '70px 112px 105px 90px 92px 118px 150px 138px 76px 122px', gap: 8, padding: '7px 10px', borderBottom: '1px solid var(--border)', fontSize: MICRO, color: MUTED, letterSpacing: '.06em', textTransform: 'uppercase' }}>
             <span>Symbol</span><span>Latest exit</span><span>Classification</span><span>Last / exit</span><span>RSI</span><span>Pullback distance</span><span>Candidate entry</span><span>State</span><span>Alerts</span><span>Actions</span>
           </div>
           {shown.length === 0 ? (
@@ -559,23 +561,23 @@ export default function ReEntryPage() {
               <div key={row.symbol} style={{ borderBottom: '1px solid var(--border)' }}>
                 <div
                   onClick={() => setExpanded(open ? null : row.symbol)}
-                  style={{ display: 'grid', gridTemplateColumns: '70px 112px 105px 90px 92px 118px 150px 138px 76px 122px', gap: 8, padding: '9px 10px', alignItems: 'center', cursor: 'pointer', background: open ? 'rgba(96,165,250,.05)' : 'transparent' }}
+                  style={{ display: 'grid', gridTemplateColumns: '70px 112px 105px 90px 92px 118px 150px 138px 76px 122px', gap: 8, padding: '9px 10px', alignItems: 'center', cursor: 'pointer', background: open ? BB.blueDim : 'transparent' }}
                 >
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 900 }}>{row.symbol}</div>
-                    <div style={{ fontSize: 8.5, color: MUTED }}>{row.events.length} exit{row.events.length === 1 ? '' : 's'}</div>
+                    <div style={{ fontSize: MICRO, color: MUTED }}>{row.events.length} exit{row.events.length === 1 ? '' : 's'}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 800, color: row.latest.exitType === 'STOPPED' ? RED : AMBER }}>{row.latest.exitType}</div>
-                    <div style={{ fontSize: 9, color: MUTED }}>{row.latest.date || 'date —'}</div>
+                    <div style={{ fontSize: MICRO, color: MUTED }}>{row.latest.date || 'date —'}</div>
                   </div>
                   <div>
-                    <span style={{ fontSize: 9, fontWeight: 850, color: classificationColor, border: `1px solid ${classificationColor}55`, padding: '2px 6px', borderRadius: 3 }}>{row.assignment.intent}</span>
-                    <div style={{ fontSize: 8, color: MUTED, marginTop: 3 }}>{row.assignment.priority}</div>
+                    <span style={{ fontSize: MICRO, fontWeight: 850, color: classificationColor, border: `1px solid ${classificationColor}55`, padding: '2px 6px', borderRadius: 3 }}>{row.assignment.intent}</span>
+                    <div style={{ fontSize: MICRO, color: MUTED, marginTop: 3 }}>{row.assignment.priority}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 800 }}>{money(row.intel.last)}</div>
-                    <div style={{ fontSize: 9, color: row.moveSinceExit === null ? MUTED : row.moveSinceExit >= 0 ? GREEN : RED }}>
+                    <div style={{ fontSize: MICRO, color: row.moveSinceExit === null ? MUTED : row.moveSinceExit >= 0 ? GREEN : RED }}>
                       {row.moveSinceExit === null ? 'exit —' : `${row.moveSinceExit >= 0 ? '+' : ''}${row.moveSinceExit.toFixed(1)}% vs exit`}
                     </div>
                   </div>
@@ -583,27 +585,27 @@ export default function ReEntryPage() {
                     <div style={{ fontSize: 14, fontWeight: 900, color: row.intel.rsiZone === 'OVERSOLD' ? GREEN : row.intel.rsiZone === 'OVERBOUGHT' ? RED : 'var(--text1)' }}>
                       {row.intel.rsi === null ? '—' : row.intel.rsi.toFixed(1)}
                     </div>
-                    <div style={{ fontSize: 8.5, color: MUTED }}>{row.intel.rsiZone}</div>
+                    <div style={{ fontSize: MICRO, color: MUTED }}>{row.intel.rsiZone}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 850, color: row.intel.distancePct === 0 ? GREEN : row.intel.distancePct !== null && Math.abs(row.intel.distancePct) <= 3 ? AMBER : 'var(--text1)' }}>
                       {row.intel.distancePct === null ? '—' : row.intel.distancePct === 0 ? 'IN ZONE' : `${Math.abs(row.intel.distancePct).toFixed(1)}% ${row.intel.distancePct > 0 ? 'above' : 'below'}`}
                     </div>
-                    <div style={{ fontSize: 8.5, color: MUTED }}>to {row.intel.planSide.toLowerCase()} zone</div>
+                    <div style={{ fontSize: MICRO, color: MUTED }}>to {row.intel.planSide.toLowerCase()} zone</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 800 }}>
                       {row.intel.entryLow === null ? '—' : row.intel.entryLow === row.intel.entryHigh ? money(row.intel.entryLow) : `${money(row.intel.entryLow)}–${money(row.intel.entryHigh)}`}
                     </div>
-                    <div style={{ fontSize: 8.5, color: MUTED }}>stop {money(row.intel.stop)} · target {money(row.intel.target)}</div>
+                    <div style={{ fontSize: MICRO, color: MUTED }}>stop {money(row.intel.stop)} · target {money(row.intel.target)}</div>
                   </div>
                   <div>
-                    <span style={{ fontSize: 9, fontWeight: 900, color: stateColor, border: `1px solid ${stateColor}55`, borderRadius: 3, padding: '2px 6px' }}>{row.intel.status.replace(/_/g, ' ')}</span>
-                    <div style={{ fontSize: 8, color: MUTED, marginTop: 3 }}>{ageLabel(row.intel.asOf)}</div>
+                    <span style={{ fontSize: MICRO, fontWeight: 900, color: stateColor, border: `1px solid ${stateColor}55`, borderRadius: 3, padding: '2px 6px' }}>{row.intel.status.replace(/_/g, ' ')}</span>
+                    <div style={{ fontSize: MICRO, color: MUTED, marginTop: 3 }}>{ageLabel(row.intel.asOf)}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 900, color: alertCount(row.symbol) ? AMBER : MUTED }}>🔔 {alertCount(row.symbol)}</div>
-                    <div style={{ fontSize: 8, color: row.assignment.monitor ? GREEN : MUTED }}>{row.assignment.monitor ? 'MONITOR' : 'PAUSED'}</div>
+                    <div style={{ fontSize: MICRO, color: row.assignment.monitor ? GREEN : MUTED }}>{row.assignment.monitor ? 'MONITOR' : 'PAUSED'}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 5 }} onClick={event => event.stopPropagation()}>
                     <button onClick={() => setEditSymbol(row.symbol)} style={button(false)}>ASSIGN</button>
@@ -614,7 +616,7 @@ export default function ReEntryPage() {
                 {open && (
                   <div style={{ padding: '9px 12px 12px 90px', background: 'rgba(2,6,23,.26)', display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(240px, .7fr)', gap: 18 }}>
                     <div>
-                      <div style={{ fontSize: 9, fontWeight: 850, color: MUTED, letterSpacing: '.06em', marginBottom: 5 }}>EXIT HISTORY — 12 MONTHS</div>
+                      <div style={{ fontSize: MICRO, fontWeight: 850, color: MUTED, letterSpacing: '.06em', marginBottom: 5 }}>EXIT HISTORY — 12 MONTHS</div>
                       {row.events.map(event => (
                         <div key={event.id} style={{ display: 'grid', gridTemplateColumns: '82px 70px 85px 1fr', gap: 8, fontSize: 10, padding: '3px 0' }}>
                           <span style={{ color: MUTED }}>{event.date}</span>
@@ -625,7 +627,7 @@ export default function ReEntryPage() {
                       ))}
                     </div>
                     <div>
-                      <div style={{ fontSize: 9, fontWeight: 850, color: MUTED, letterSpacing: '.06em', marginBottom: 5 }}>RE-ENTRY REVIEW</div>
+                      <div style={{ fontSize: MICRO, fontWeight: 850, color: MUTED, letterSpacing: '.06em', marginBottom: 5 }}>RE-ENTRY REVIEW</div>
                       <div style={{ fontSize: 10, lineHeight: 1.55, color: 'var(--text2)' }}>
                         <b>Classification:</b> {row.assignment.intent} · {row.assignment.priority}<br />
                         <b>Plan side:</b> {row.intel.planSide}<br />
@@ -643,7 +645,7 @@ export default function ReEntryPage() {
         </div>
       </div>
 
-      <div style={{ fontSize: 9.5, color: MUTED, lineHeight: 1.5 }}>
+      <div style={{ fontSize: MICRO, color: MUTED, lineHeight: 1.5 }}>
         READY FOR REVIEW is not a buy or short order. It requires current cached RSI, a same-side candidate entry zone, and price/RSI agreement. Alerts notify independently and may fire before the combined state is ready. No broker call, proposal, approval, or 2FA is created here.
       </div>
 
@@ -752,7 +754,7 @@ function AssignmentModal({
           style={{ ...input, marginTop: 4, resize: 'vertical' }}
         />
       </label>
-      <div style={{ marginTop: 10, padding: 9, border: '1px solid var(--border)', borderRadius: 5, fontSize: 9.5, color: MUTED }}>
+      <div style={{ marginTop: 10, padding: 9, border: '1px solid var(--border)', borderRadius: 5, fontSize: MICRO, color: MUTED }}>
         CORE = strategic long-duration holding · COMPOUNDING = repeated/add-on accumulation plan · DIVIDEND = income mandate · SHORT = bearish re-entry review requiring a bearish plan · SWING = bounded tactical holding period.
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
@@ -857,7 +859,7 @@ function AlertModal({
           <input disabled={!rsiEnabled} type="number" min="0" max="100" step="1" value={rsiThreshold} onChange={event => setRsiThreshold(event.target.value)} style={input} />
         </div>
       </div>
-      <div style={{ fontSize: 9.5, color: MUTED, lineHeight: 1.5, marginTop: 10 }}>
+      <div style={{ fontSize: MICRO, color: MUTED, lineHeight: 1.5, marginTop: 10 }}>
         The rules notify independently. A notification is not a combined re-entry approval: the page still requires fresh data, same-side entry mechanics, price-zone agreement, risk/event context, and operator review.
       </div>
       {error && <div style={{ color: RED, fontSize: 10.5, marginTop: 9 }}>{error}</div>}
