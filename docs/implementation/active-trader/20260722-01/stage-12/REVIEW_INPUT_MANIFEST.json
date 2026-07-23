@@ -1,0 +1,42 @@
+{
+  "run_id": "20260722-01",
+  "stage": 12,
+  "branch": "feat/active-trader-next",
+  "controller": "Corrected Stage 12/13 v1.1",
+  "baseline_head": "fb46d4bdbf570f09e200bf723022a083fb344ed1",
+  "actual_start_head": "fb46d4bdbf570f09e200bf723022a083fb344ed1",
+  "review_head": "ea0d611020e85d0993393c89c525778f6879503e",
+  "case": "A (start == baseline) + Section A commit ea0d6110",
+  "reviewer": {
+    "type": "fresh read-only subagent (Plan)",
+    "write_tools_available": false,
+    "capabilities_denied": ["git-write", "db-write", "drive-write", "gmail-send", "service-control", "broker-access", "secret-value-access"]
+  },
+  "inputs_provided": [
+    "architecture v3.3", "implementation prompt v1.1", "baseline SHA", "review SHA",
+    "complete branch diff (242 files, 18486 insertions vs origin/main)",
+    "changed-file inventory", "all stage plans/closeouts/tests",
+    "all migrations + rollback", "API contracts (contracts.py)",
+    "read API (read_api.py)", "UI bundle/route report (v3-next base /v3-next/)",
+    "capability matrix (discovery_*)", "rejection/fallback policy",
+    "authorization/action contracts (authorization.py)", "simulation proof (simulation.py)",
+    "journal/replay (shadow_engine.py, replay.py, governance.py)",
+    "Darwin/Hermes governance (governance.py)", "Bitwarden metadata policy",
+    "Drive manifests", "current gate matrix", "procedural deviations"
+  ],
+  "objective_checks": {
+    "regression_prod_venv": "162 passed / 0 failed / 52 skipped (env-gated)",
+    "regression_lab_venv_moomoo": "30 passed / 0 failed / 1 skipped",
+    "v3_build": "PASS (1252 modules)",
+    "v3_next_build": "PASS (35 modules) + 9 vitest",
+    "secret_scan": "clean (pre-commit 4 files, pre-push 5854 files, reviewer regex 0 hits)",
+    "trade_api_ast_scan": "30 files, 0 findings",
+    "network_scan_shadow_sim": "0 network imports",
+    "migration_target_scan": "refuses trade_ai / 5432 / production / sentinel",
+    "feature_flag_scan": "production all 22 OFF incl live_canary",
+    "user_unit_scan": "5 moomoo units static + inactive",
+    "pr_draft_state": "draft=true state=OPEN"
+  },
+  "verdict": "CONDITIONAL_PASS",
+  "excluded_from_review": ["secret values", "raw dynamic agreement URL", "production DB queries"]
+}

@@ -1,0 +1,21 @@
+{
+  "run_id": "20260722-01",
+  "stage": 12,
+  "head": "ea0d611020e85d0993393c89c525778f6879503e",
+  "date": "2026-07-23",
+  "results": [
+    {"name": "active_trader regression (prod venv, source-only)", "status": "PASS", "detail": "pytest -k active_trader: 162 passed, 0 failed, 52 skipped; skips env-gated (ACTIVE_TRADER_TEST_DATABASE_DSN unset — lab DB required, never runs on production; moomoo SDK absent in prod venv)"},
+    {"name": "active_trader moomoo SDK tests (lab venv)", "status": "PASS", "detail": "stage5_moomoo + stage5_replay_db: 30 passed, 1 skipped, 0 failed on isolated moomoo-api venv (SDK 10.9.6908 + pyarrow 25.0.0)"},
+    {"name": "v3 build (existing app, preservation)", "status": "PASS", "detail": "vite build 1252 modules OK; 0 files changed vs origin/main; pre-existing chunk-size advisory only"},
+    {"name": "v3-next build + vitest", "status": "PASS", "detail": "9 vitest passed; vite build 35 modules; base '/v3-next/'; bundle 176.63 kB"},
+    {"name": "source-only CI equivalent (secret scan)", "status": "PASS", "detail": "pre-commit (4 files) + pre-push (5854 files) + reviewer regex: 0 secret values"},
+    {"name": "trade-API AST prohibition scan", "status": "PASS", "detail": "ast_guard.scan_source over 30 files: 0 findings; FORBIDDEN_NAMES cover place/modify/cancel/close/unlock + TrdEnv.REAL/SIMULATE"},
+    {"name": "network-call scan (shadow/simulation)", "status": "PASS", "detail": "0 imports of requests/socket/urllib/http.client/OpenQuoteContext in shadow_engine.py + simulation.py"},
+    {"name": "migration target scan", "status": "PASS", "detail": "migrate.py refuses db 'trade_ai', port 5432, sentinel DSN; re-checks current_database() at connect"},
+    {"name": "feature-flag scan", "status": "PASS", "detail": "22 flags; DEFAULTS['production'] all OFF incl active_trader_live_canary_enabled; dev only next_visible=READ_ONLY"},
+    {"name": "user-unit enabled-state scan", "status": "PASS", "detail": "5 trade-ai-lab-moomoo-*.service all static + inactive (no [Install], cannot enable)"},
+    {"name": "PR draft-state verification", "status": "PASS", "detail": "PR #150 draft=true state=OPEN; not ready, not merged"}
+  ],
+  "verdict": "CONDITIONAL_PASS",
+  "failures": 0
+}
