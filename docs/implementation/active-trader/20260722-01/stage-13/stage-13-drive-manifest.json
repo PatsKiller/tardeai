@@ -1,0 +1,95 @@
+{
+  "run_id": "20260722-01",
+  "stage": 13,
+  "drive_account": "john@jwwhiting.com",
+  "drive_folder_id": "1x0A8qq-4-FOrL4f0SzEmpBLBtqvWgx92",
+  "drive_folder": "Trade_AI_Docs_v2/implementation/active-trader/20260722-01/stage-13",
+  "verification": "downloaded each by id; sha256 byte-identical to local",
+  "file_count": 14,
+  "files": [
+    {
+      "name": "DUAL_OPERATION_READINESS.md",
+      "drive_id": "1-Ipr8RK3Ua19u841W8QCRnTH4XZ3OdGW",
+      "sha256": "3b2344e8d7661b2d7adaeca4e506a5d565ebc595f4f634a2413bf45bcd08b8e2",
+      "verified": true
+    },
+    {
+      "name": "LIVE_FLAG_AND_SERVICE_REPORT.md",
+      "drive_id": "1Kn20fHV6u-USnD9X2nnnA2FiQCgkF-ks",
+      "sha256": "fb6778f07eaa16c54b9c2700e38067ba7bad0db0f75a68395c9c2663a9bb3c5c",
+      "verified": true
+    },
+    {
+      "name": "LOCAL_DUAL_RUN_REPORT.md",
+      "drive_id": "161RjCnvkUfsZzVwGx_MUUKIcdC0YUVQY",
+      "sha256": "a95fbbe0aac776d941c8f589d43bbc3a6de418dd13e6ae7bbfb391e6257866ce",
+      "verified": true
+    },
+    {
+      "name": "OPERATOR_TODO.md",
+      "drive_id": "1kxxni4M8i3-vmS-9RPTg8L1FhI5J5BOD",
+      "sha256": "306b3797448ecc34b0fa0f0ee29c5e59844157a7287d8f878ccd71b5d07c03ef",
+      "verified": true
+    },
+    {
+      "name": "PROMOTION_GATE_MATRIX.md",
+      "drive_id": "12EplQCS4lw-XfsASUBoUH3u5KYDLDI6d",
+      "sha256": "827e66870644ab676fcc4ae9a99ac337b9a4790f7455d931114b72b06f537a7f",
+      "verified": true
+    },
+    {
+      "name": "ROLLBACK_RUNBOOK.md",
+      "drive_id": "1GFxOItGmtjiYvD2lc-XM0bDKw1alSlXd",
+      "sha256": "3a7fd967dd0d942edf02f663e9ed9025af36201a96aec5a421019965f3e6cd0a",
+      "verified": true
+    },
+    {
+      "name": "ROUTE_ASSET_COLLISION_REPORT.md",
+      "drive_id": "1grLhqZOFb_6Sc3ScFwA19uHBCsearfqR",
+      "sha256": "771125a87b0ca4b860473e57ca5083b5304c346448e53665b8d4a41c83f7d4d2",
+      "verified": true
+    },
+    {
+      "name": "STAGE14_BLOCKERS.md",
+      "drive_id": "11VSEZZ1Nr-ZQIurifpgv1NDxAd_XmRkt",
+      "sha256": "cda2ffab993095287d56f84a40d36f649c6b832893e9f71406d6e914e083b2eb",
+      "verified": true
+    },
+    {
+      "name": "SWITCH_RUNBOOK.md",
+      "drive_id": "15CFYRfg5bRfIDNKh7xZg3tegw85edwcF",
+      "sha256": "9129bea9d929530e64b805ce1d4c2611a7ba2e50c228393408b33e6570208d18",
+      "verified": true
+    },
+    {
+      "name": "V3_V3NEXT_PARITY_MATRIX.md",
+      "drive_id": "1uh7CEjdmbvh1r-biZnidmGoLb5e9s51e",
+      "sha256": "c06d052bee2edfaf0442fa2444e107ffd0634e66ff03da357fb7d28abee220b7",
+      "verified": true
+    },
+    {
+      "name": "stage-13-changes.txt",
+      "drive_id": "1Rv6G_hpx4XLTxErMJhn5a4fGbseNYU7R",
+      "sha256": "4b8a23e389ba86c6b8cc878afdcd308ba2d559727ce4cf1e0cde7dddac2d8a65",
+      "verified": true
+    },
+    {
+      "name": "stage-13-closeout.md",
+      "drive_id": "1fy5y_6B0NMc00uJOwYzfcRytZF8TzQ4X",
+      "sha256": "715b8a916362d2bbfe7f59507c72462f9a6f82edf4fdee3f3e22ee6cc28dbb5d",
+      "verified": true
+    },
+    {
+      "name": "stage-13-plan.md",
+      "drive_id": "1PbpQiDnCuf8Aq-se1xqoa7SGGUaFhFrJ",
+      "sha256": "2cfd56b1a30ea74ee07a39a0ee3698a2be6439daf6210fb6652299e0619492e4",
+      "verified": true
+    },
+    {
+      "name": "stage-13-tests.json",
+      "drive_id": "13JDZZ6u8oewdcRGSGHWIq8D4yTkCcOuR",
+      "sha256": "81d558e4f43d97d1b40e7cb5b973bcabcb937ce518cc928e940550baff196885",
+      "verified": true
+    }
+  ]
+}
