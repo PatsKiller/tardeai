@@ -3,8 +3,8 @@
 
 Deterministic conditions over data that already exists. Fires into alert_events
 with daily dedupe and sends ONE batched Telegram per pass under the shared daily
-cap. Re-Entry rotation-back composite monitors and closed-session resistance
-intelligence are evaluated in this same RTH lane.
+cap. Re-Entry exit detail, rotation-back composite monitors, and closed-session
+resistance intelligence are refreshed in this same RTH lane.
 
 Advisory only: no proposal, approval, broker order, or 2FA path is reachable.
 """
@@ -121,6 +121,14 @@ def main() -> int:
     alerts = ex("SELECT * FROM watch_alerts WHERE active", fetch="all") or []
     lines, fired_ids = _evaluate_single_condition_alerts(ex, alerts, today)
 
+    exit_count = 0
+    try:
+        from lib.reentry_exit_cache import refresh_exit_cache
+        exit_payload = refresh_exit_cache(ex)
+        exit_count = int((exit_payload.get("counts") or {}).get("exits_found") or 0)
+    except Exception as error:
+        print(f"[watch-alerts] re-entry exit-cache refresh error: {str(error)[:200]}")
+
     resistance_count = 0
     try:
         from lib.reentry_resistance import refresh_resistance_cache
@@ -157,6 +165,7 @@ def main() -> int:
         f"{len(fired_ids)} fired: {fired_ids} · "
         f"{len(composite.get('fired') or [])} re-entry composites fired: "
         f"{composite.get('fired') or []} · "
+        f"{exit_count} full exit rows refreshed · "
         f"{resistance_count} resistance rows refreshed"
     )
     return 0
