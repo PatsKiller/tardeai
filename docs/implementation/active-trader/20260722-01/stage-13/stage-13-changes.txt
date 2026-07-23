@@ -1,0 +1,21 @@
+# Stage 13 — changes (docs-only additive artifact set)
+# HEAD before: 4e4176ba
+# Files created by Stage 13 (all under docs/; no code/config/migration/flag/unit/proxy change):
+
+  stage-13/DUAL_OPERATION_READINESS.md
+  stage-13/LIVE_FLAG_AND_SERVICE_REPORT.md
+  stage-13/LOCAL_DUAL_RUN_REPORT.md
+  stage-13/OPERATOR_TODO.md
+  stage-13/PROMOTION_GATE_MATRIX.md
+  stage-13/ROLLBACK_RUNBOOK.md
+  stage-13/ROUTE_ASSET_COLLISION_REPORT.md
+  stage-13/STAGE14_BLOCKERS.md
+  stage-13/SWITCH_RUNBOOK.md
+  stage-13/V3_V3NEXT_PARITY_MATRIX.md
+  stage-13/stage-13-changes.txt
+  stage-13/stage-13-plan.md
+  stage-13/stage-13-tests.json
+
+# Local dual-run drill used loopback ports 7789/7790 (vite preview of pre-built dist);
+# fully torn down — 0 processes / 0 listeners after. No production process/route/service touched.
+# Stage 13 authored ZERO changes to code, tests, migrations, config, flags, units, or proxy.
