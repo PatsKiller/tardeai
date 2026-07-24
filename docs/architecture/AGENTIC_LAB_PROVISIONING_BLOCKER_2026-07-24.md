@@ -1,86 +1,82 @@
 # Agentic LAB Provisioning Checkpoint — 2026-07-24
 
 **Scope:** PR #163 only  
-**Disposition:** `LAB_CLUSTER_AUTHORITY_VERIFIED — DATABASE CLASSIFICATION PENDING — NO DATABASE WRITE`
+**Disposition:** `PASS_LAB_CANDIDATE — NEW EMPTY TARGET AUTHORIZED — EXECUTION PENDING`
 
-## Evidence reviewed
+## Sanitized evidence reviewed
 
-The sanitized host inventory in PR #169 closes the broad host-inventory prerequisite. The operator subsequently supplied read-only listener, process, authentication-configuration and peer-socket probes that verify:
+The host inventory in PR #169 and the operator-supplied read-only PostgreSQL probes establish:
 
-- production PostgreSQL is cluster `17/main`, owned by `postgres`, bound to loopback port 5432, with data directory `/var/lib/postgresql/17/main`;
-- a second PostgreSQL 17 server is bound to loopback port 5433;
-- the port-5433 process is owned by `johnclaw` and uses `/home/johnclaw/tradeai-lab/pg17`;
-- the two servers have separate postmaster processes, owners, ports and data directories;
-- the LAB cluster listens only on `127.0.0.1`, publishes a Unix socket at `/home/johnclaw/tradeai-lab/sock`, uses peer authentication for local socket sessions and SCRAM-SHA-256 for TCP sessions;
-- peer-authenticated metadata access succeeded as `johnclaw` against the LAB cluster's `postgres` database;
-- `/usr/bin/createdb` and Docker are available;
-- the interactive shell defines a `psql` alias that points to production `trade_ai` on port 5432.
+- production PostgreSQL is cluster `17/main`, owned by `postgres`, on loopback port `5432`, data directory `/var/lib/postgresql/17/main`;
+- the LAB PostgreSQL 17 cluster is a separate `johnclaw`-owned postmaster on loopback port `5433`, data directory `/home/johnclaw/tradeai-lab/pg17`;
+- the LAB socket is `/home/johnclaw/tradeai-lab/sock`, with local peer authentication and TCP SCRAM-SHA-256;
+- peer-authenticated metadata access succeeds as `johnclaw`;
+- `johnclaw` has LAB-side `SUPERUSER`, `CREATEDB` and `CREATEROLE` authority;
+- the shell `psql` alias points to production and remains prohibited.
 
-The alias remains prohibited. Administrative classification may use only `/usr/bin/psql` through the verified LAB socket. Future runtime-role proof must use `/usr/bin/psql` with explicit TCP target `127.0.0.1:5433` after SCRAM credentials are provisioned through a non-repository secret path.
+Every approved command uses `/usr/bin/psql`. Administrative work uses only the verified LAB socket. Reader/writer proof uses explicit TCP target `127.0.0.1:5433`.
 
-## Database metadata now proven
+## Database classification
 
-| Database | Owner | Approximate size | Connection allowed | Disposition |
-|---|---|---:|---|---|
-| `postgres` | `johnclaw` | 7,706,291 bytes | yes | administrative database; never the MVL target |
-| `trade_ai_test` | `trade_ai_lab` | 12,097,203 bytes | yes | existing database; contents and relation inventory still unclassified, therefore not authorized for reuse |
+| Database | Owner | Approximate size | Non-system inventory | `agentic_runtime` | Disposition |
+|---|---|---:|---|---|---|
+| `postgres` | `johnclaw` | 7,706,291 bytes | `public`: 0 tables, 0 views, 0 sequences | absent | administrative database only |
+| `trade_ai_test` | `trade_ai_lab` | 12,097,203 bytes | `public`: 25 tables, 0 views, 7 sequences | absent | non-empty and unclassified; reuse and deletion forbidden |
 
-No row contents were queried or preserved.
+No application rows or data values were read. Because `trade_ai_test` is non-empty and its data provenance is unknown, it is excluded regardless of its name.
 
-## LAB administrator and authority
+## Authorized disposable target
 
-The peer-authenticated `johnclaw` role is verified with:
-
-- `LOGIN = true`;
-- `SUPERUSER = true`;
-- `CREATEDB = true`;
-- `CREATEROLE = true`.
-
-This proves role- and database-creation authority exists inside the isolated LAB cluster. It does not authorize any action on production port 5432.
-
-Existing LAB roles:
-
-- `trade_ai_lab` — LOGIN, not superuser, no CREATEDB, no CREATEROLE;
-- `trade_ai_lab_ro` — LOGIN, not superuser, no CREATEDB, no CREATEROLE.
-
-They are not substitutes for the three PR #163 identities because their current grants, intended use and credentials have not been proven against the MVL contract.
-
-## Selected disposable target and cleanup boundary
-
-The selected target name is:
+The authorized target is a **new empty database**:
 
 `trade_ai_agentic_lab`
 
-It does not yet exist and must be created empty on the isolated port-5433 cluster. Creating a new empty database avoids reusing `trade_ai_test`, whose contents remain unclassified.
+It must be created only on the isolated port-5433 cluster. It must never be cloned from, restored from, or linked to production or `trade_ai_test`.
 
-The authorized cleanup scope, after evidence export, is limited to:
+The cleanup boundary is limited to:
 
 - database `trade_ai_agentic_lab`;
 - roles `agentic_lab_migrator`, `trade_ai_shadow_ro` and `agentic_runtime_lab_rw`;
-- objects created inside that database for synthetic canonical-view and protected-schema denial tests.
+- synthetic schemas and objects created inside that database;
+- host-local proof credentials and sanitized evidence created by the operator script.
 
-Cleanup must not remove the PostgreSQL cluster, its data directory, `postgres`, `trade_ai_test`, `trade_ai_lab`, `trade_ai_lab_ro`, production roles, production databases or any service configuration.
+Cleanup must not remove or alter the PostgreSQL cluster, `postgres`, `trade_ai_test`, existing LAB roles, production roles, production databases or service configuration.
 
-## What remains unproven before writes
+## Identity design
 
-1. Non-system schema and relation counts for `postgres` and `trade_ai_test`, without reading row contents.
-2. Whether `trade_ai_test` contains production-derived, operator or sensitive structures. It remains out of scope regardless of the result.
-3. Whether any existing `agentic_runtime` schema exists on either current LAB database and requires preservation.
-4. A confirmed non-repository secret-delivery path for SCRAM credentials for the three new identities.
-5. The exact synthetic canonical views and synthetic protected schema used for harmless denial tests.
+- `agentic_lab_migrator` — `NOLOGIN`; owns the disposable database and migration objects; used only through an explicit LAB-admin `SET ROLE` session.
+- `trade_ai_shadow_ro` — `LOGIN`; may connect only for proof/runtime reading and receives `SELECT` only on the approved synthetic canonical view.
+- `agentic_runtime_lab_rw` — `LOGIN`; receives `USAGE`, `SELECT`, `INSERT` in `agentic_runtime` plus column-limited run-control updates; no schema creation, DELETE, TRUNCATE or writes elsewhere.
 
-## Repository guardrails
+SCRAM credentials for the two login roles are generated at execution time and written only to `/home/johnclaw/tradeai-lab/secrets/agentic-runtime` with directory mode `0700` and file mode `0600`. Passwords, DSNs and secret values are never printed or committed.
 
-- `scripts/agent_runtime/lab_preflight.py` rejects production port 5432, database `trade_ai`, production data directories, paths outside `/home/johnclaw/tradeai-lab`, incorrect role names and missing disposable/no-production-data acknowledgement.
-- `scripts/agent_runtime/lab_classify_readonly.sh` performs only metadata discovery through the verified LAB peer socket, refuses an unexpected data directory or port, does not reuse an existing database and proposes only the new empty target `trade_ai_agentic_lab`.
-- `tests/test_agent_runtime_lab_classifier.py` statically forbids database/role/schema mutations and application-row reads in the classifier.
+## Synthetic denial surface
 
-## Next decision
+The proof uses no production data. It creates:
 
-Run the committed read-only classifier and preserve its sanitized output. Record `PASS_LAB_CANDIDATE` only when schema/relation counts and `agentic_runtime` presence are known. The PASS authorizes creation of a new empty `trade_ai_agentic_lab`; it never authorizes reuse or deletion of `trade_ai_test`.
+- approved read-only view `approved_canonical.v_agentic_market_snapshot`, containing constants only;
+- synthetic denial schemas `public`, `trade`, `broker`, `account`, `position`, `approval`, `configuration` and `lab_protected`;
+- one harmless `denial_target` table in each non-public denial schema.
 
-## Safety confirmation
+## Eight-stage execution packet
 
-No database or role creation, grant, migration, package installation, service restart, OpenClaw/Hermes change, agent activation, provider call, broker/order/approval/2FA path, production configuration, secret value, production data row or application row was accessed or changed by this repository update.
+`scripts/agent_runtime/lab_evolve_1_to_8.sh` performs, only after the exact disposable acknowledgement:
 
-PR #163 remains draft. The migration proof and persistence slice remain gated on completed LAB classification and role provisioning.
+1. create the new empty database;
+2. create the three separated identities;
+3. preserve host-local secrets and an explicit rollback file;
+4. create the synthetic approved-view and denial surfaces;
+5. prove reader and writer access through explicit TCP port 5433;
+6. apply the migration and verify exactly eight tables, owners and grants;
+7. prove append-only triggers, producer/reviewer/scorer separation and clean down migration;
+8. replay the up migration and require an identical schema-manifest hash.
+
+Static tests prohibit service management, package installation and target drift.
+
+## Authorization boundary
+
+`PASS_LAB_CANDIDATE` authorizes only execution of the committed LAB packet against the new empty target. It does not by itself prove the database migration. The persistence slice remains gated until sanitized output ends with:
+
+`final_status|PASS_DB_PROOF`
+
+PR #163 remains draft. No service, schedule, OpenClaw, Hermes, agent, model route, channel, broker, order, approval, 2FA, production configuration or production database action is authorized.
