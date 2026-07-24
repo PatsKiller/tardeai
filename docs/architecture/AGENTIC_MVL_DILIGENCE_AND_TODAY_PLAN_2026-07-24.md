@@ -248,3 +248,42 @@ No database connection or write was attempted. The required prerequisites were n
 `BLOCKED_PRECONDITION — NO DATABASE ACTION`
 
 The migration, role creation, grants, denied-write tests, append-only trigger tests, and producer/reviewer/scorer separation tests remain unexecuted. PR #163 remains draft. No DSN, credential, secret, database connection, production schema, OpenClaw/Hermes service, broker, order, approval, or 2FA path was accessed or changed.
+
+## 8. Read-only host inventory — BLOCKED_HOST_ACCESS (15:20 ET)
+
+The GitHub-connected execution environment cannot reach the private Tailnet host, open a desktop terminal, invoke SSH, or connect to a desktop-only MCP bridge. Repository inspection found no completed host-inventory artifact, sanitized command output, or additional host-evidence file on PR #163 beyond the earlier blocked database-preflight note.
+
+### Verified repository state
+
+- PR #163 remains open, mergeable and draft.
+- Branch head before this documentation update was `48da55ce2658c753116cba3838966af8237d7fa8`.
+- The only branch movement after the runtime-hardening head was the documentation commit recording `BLOCKED_PRECONDITION — NO DATABASE ACTION`.
+- No repository evidence verifies deployed host SHA/dirty state, installed versions, services, ports, channels, profiles, MCP tools, environment-variable names, model inventory, pgvector, cron/systemd, database roles, grants, canonical views, or migration tooling.
+
+### Exact access or evidence required
+
+Provide one of these read-only evidence paths:
+
+1. **Sanitized inventory commit on PR #163** containing command output with secret values removed; or
+2. **Uploaded sanitized inventory file** from `ms01-openclaw`; or
+3. **Connected read-only SSH/MCP terminal bridge** restricted to an approved command allowlist.
+
+The evidence must include:
+
+- deployed repository path, SHA and porcelain dirty-state output;
+- OpenClaw and Hermes executable/package versions and provenance;
+- home/profile paths, service/unit names, listening ports and channel names;
+- MCP tool names and Hermes auto-graft state;
+- inherited environment-variable names only, with all values omitted;
+- OpenAI SDK, Python, Node, npm, Ollama and installed-model versions;
+- pgvector extension version;
+- relevant user/system cron and systemd unit names/status;
+- logical database endpoint names only;
+- role names, memberships, schema owners, grants and canonical read-only view names;
+- available migration command/tooling and disposable-LAB target identity.
+
+### Disposition
+
+`BLOCKED_HOST_ACCESS — NO HOST OR DATABASE ACTION`
+
+No package, service, channel, configuration, database, secret, broker, order, approval, 2FA or production path was accessed or changed. The later LAB-provisioning and database-proof tasks must stop unless a completed sanitized inventory is committed or otherwise made available before their preflight.
