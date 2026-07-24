@@ -5,6 +5,7 @@ import {
   finite,
   prefValue,
   text,
+  type ExitEvidenceField,
   type ExitEvidenceRow,
 } from '../lib/reentrySharedContext'
 
@@ -27,16 +28,27 @@ export type ReEntryExitEvidence = {
   refetch: () => void
 }
 
+type Candidate = { row: ExitEvidenceRow; priority: number }
+
 function unwrap(value: any): any {
   let result = value
-  for (let index = 0; index < 3 && result?.data && typeof result.data === 'object'; index += 1) result = result.data
+  for (let index = 0; index < 4 && result?.data && typeof result.data === 'object'; index += 1) result = result.data
   return result ?? {}
 }
 
-function arrayFrom(value: any, keys: string[]): any[] {
+function recordsFrom(value: any, keys: string[]): any[] {
   const payload = unwrap(value)
-  for (const key of keys) if (Array.isArray(payload?.[key])) return payload[key]
-  return Array.isArray(payload) ? payload : []
+  for (const key of keys) {
+    const candidate = payload?.[key]
+    if (Array.isArray(candidate)) return candidate
+    if (candidate && typeof candidate === 'object') return Object.values(candidate)
+  }
+  if (Array.isArray(payload)) return payload
+  if (payload && typeof payload === 'object') {
+    const values = Object.values(payload)
+    if (values.length && values.every(item => item && typeof item === 'object')) return values
+  }
+  return []
 }
 
 function isoDay(value: any): string {
@@ -53,83 +65,257 @@ function isoTime(value: any): string {
   return match?.[1] ?? (/^\d{2}:\d{2}/.test(raw) ? raw.slice(0, 8) : '')
 }
 
+function nestedObjects(raw: any): any[] {
+  return [
+    raw,
+    raw?.metadata,
+    raw?.transaction,
+    raw?.trade,
+    raw?.execution,
+    raw?.fill,
+    raw?.order,
+    raw?.broker,
+    raw?.details,
+  ].filter(value => value && typeof value === 'object')
+}
+
+function pickNumber(objects: any[], keys: string[]): number | null {
+  for (const object of objects) for (const key of keys) {
+    const value = key.split('.').reduce((current: any, part) => current?.[part], object)
+    const parsed = finite(value)
+    if (parsed !== null) return parsed
+  }
+  return null
+}
+
+function pickText(objects: any[], keys: string[]): string {
+  for (const object of objects) for (const key of keys) {
+    const value = key.split('.').reduce((current: any, part) => current?.[part], object)
+    const parsed = text(value)
+    if (parsed) return parsed
+  }
+  return ''
+}
+
+function withSource(target: Partial<Record<ExitEvidenceField, string>>, field: ExitEvidenceField, value: any, source: string) {
+  if (value !== null && value !== undefined && value !== '') target[field] = source
+}
+
 function normalizeExit(raw: any, index: number, source: string): ExitEvidenceRow | null {
-  const symbol = text(raw?.symbol, raw?.sold_symbol, raw?.ticker, raw?.security_symbol).toUpperCase()
+  const objects = nestedObjects(raw)
+  const symbol = pickText(objects, ['symbol', 'sold_symbol', 'ticker', 'security_symbol', 'instrument.symbol']).toUpperCase()
   if (!symbol) return null
-  const dateRaw = raw?.sold_at ?? raw?.stopped_at ?? raw?.triggered_at ?? raw?.close_date
-    ?? raw?.trade_date ?? raw?.closed_at ?? raw?.executed_at ?? raw?.transaction_date ?? raw?.date
-  const quantityRaw = finite(raw?.shares_sold, raw?.shares, raw?.quantity, raw?.qty, raw?.filled_quantity)
-  const quantity = quantityRaw === null ? null : Math.abs(quantityRaw)
-  const proceedsRaw = finite(raw?.proceeds_usd, raw?.net_proceeds_usd, raw?.proceeds, raw?.amount, raw?.net_amount)
-  const proceeds = proceedsRaw === null ? null : Math.abs(proceedsRaw)
-  let price = finite(raw?.sell_price, raw?.exit_price, raw?.stop_fill_price, raw?.price, raw?.avg_price, raw?.execution_price, raw?.average_price)
-  if (price === null && proceeds !== null && quantity !== null && quantity > 0) price = proceeds / quantity
-  const metadata = raw?.metadata && typeof raw.metadata === 'object' ? raw.metadata : {}
-  const description = text(
-    raw?.description, raw?.exit_reason, raw?.sell_reason, raw?.reason, raw?.stop_reason,
-    raw?.dismiss_reason, raw?.strategy, raw?.classification, metadata?.description,
-  )
-  const action = text(raw?.action, raw?.transaction_type, raw?.order_type, raw?.type)
+
+  const dateRaw = pickText(objects, [
+    'sold_at', 'stopped_at', 'triggered_at', 'close_date', 'trade_date', 'closed_at', 'executed_at',
+    'transaction_date', 'date', 'filled_at', 'execution_time', 'timestamp', 'created_at',
+  ])
+  const account = pickText(objects, ['account', 'account_key', 'account_name', 'account_label', 'broker_account', 'account_id_masked'])
+  let quantity = pickNumber(objects, [
+    'shares_sold', 'shares', 'quantity', 'qty', 'filled_quantity', 'filled_qty', 'executed_quantity',
+    'execution_quantity', 'units', 'closed_quantity', 'position_quantity', 'total_quantity',
+  ])
+  quantity = quantity === null ? null : Math.abs(quantity)
+  let proceeds = pickNumber(objects, [
+    'proceeds_usd', 'net_proceeds_usd', 'gross_proceeds_usd', 'proceeds', 'net_proceeds', 'gross_proceeds',
+    'amount', 'net_amount', 'cash_amount', 'net_cash', 'settlement_amount', 'value',
+  ])
+  proceeds = proceeds === null ? null : Math.abs(proceeds)
+  let price = pickNumber(objects, [
+    'sell_price', 'exit_price', 'stop_fill_price', 'price', 'avg_price', 'average_price', 'execution_price',
+    'fill_price', 'avg_fill_price', 'average_fill_price', 'close_price', 'filled_avg_price',
+  ])
+  price = price === null ? null : Math.abs(price)
+
+  const derivedFields: string[] = []
+  if (price === null && proceeds !== null && quantity !== null && quantity > 0) {
+    price = proceeds / quantity
+    derivedFields.push('price = proceeds ÷ shares')
+  }
+  if (quantity === null && proceeds !== null && price !== null && price > 0) {
+    quantity = proceeds / price
+    derivedFields.push('shares = proceeds ÷ price')
+  }
+  if (proceeds === null && quantity !== null && price !== null) {
+    proceeds = quantity * price
+    derivedFields.push('proceeds = shares × price')
+  }
+
+  const description = pickText(objects, [
+    'description', 'exit_reason', 'sell_reason', 'reason', 'stop_reason', 'dismiss_reason', 'strategy',
+    'classification', 'memo', 'note', 'notes', 'order_description',
+  ])
+  const action = pickText(objects, ['action', 'transaction_type', 'order_type', 'type', 'side', 'instruction', 'event_type'])
+  const externalId = pickText(objects, [
+    'transaction_id', 'execution_id', 'fill_id', 'trade_id', 'order_id', 'broker_order_id', 'activity_id',
+    'event_id', 'matched_event_id', 'dedupe_key', 'trade_key',
+  ])
+  const tradeDate = isoDay(dateRaw)
+  const tradeTime = isoTime(dateRaw) || pickText(objects, ['trade_time', 'time', 'execution_time'])
   const eventKey = text(
-    raw?.event_key, raw?.trade_key, raw?.dedupe_key, raw?.transaction_id,
-    raw?.matched_event_id, raw?.event_id, raw?.id,
-    `${source}:${symbol}:${isoDay(dateRaw)}:${text(raw?.account, raw?.account_key)}:${proceeds ?? quantity ?? index}`,
+    raw?.event_key,
+    externalId ? `external:${externalId}` : '',
+    `${source}:${symbol}:${tradeDate}:${account}:${proceeds ?? quantity ?? price ?? index}`,
   )
-  return {
+  const fieldSources: Partial<Record<ExitEvidenceField, string>> = {}
+  withSource(fieldSources, 'account', account, source)
+  withSource(fieldSources, 'trade_date', tradeDate, source)
+  withSource(fieldSources, 'trade_time', tradeTime, source)
+  withSource(fieldSources, 'quantity', quantity, derivedFields.some(value => value.startsWith('shares')) ? `${source} (derived)` : source)
+  withSource(fieldSources, 'price', price, derivedFields.some(value => value.startsWith('price')) ? `${source} (derived)` : source)
+  withSource(fieldSources, 'proceeds_usd', proceeds, derivedFields.some(value => value.startsWith('proceeds')) ? `${source} (derived)` : source)
+  withSource(fieldSources, 'action', action, source)
+  withSource(fieldSources, 'description', description, source)
+
+  const row: ExitEvidenceRow = {
     event_key: eventKey,
+    external_id: externalId || null,
     symbol,
-    account: text(raw?.account, raw?.account_key, raw?.account_name, raw?.broker_account) || null,
-    trade_date: isoDay(dateRaw) || null,
-    trade_time: isoTime(dateRaw) || text(raw?.trade_time, raw?.time) || null,
+    account: account || null,
+    trade_date: tradeDate || null,
+    trade_time: tradeTime || null,
     quantity,
     price,
     proceeds_usd: proceeds,
     action: action || null,
     description: description || null,
-    import_source: text(raw?.import_source, raw?.source_system, raw?.source, source) || source,
+    import_source: source,
     matched_event_id: finite(raw?.matched_event_id),
-    reconciliation: text(raw?.reconciliation) || null,
-    event_status: text(raw?.event_status, raw?.status) || null,
-    completion_status: text(raw?.completion_status) || null,
-    operator_status: text(raw?.operator_status) || null,
+    reconciliation: pickText(objects, ['reconciliation', 'reconciliation_state']) || null,
+    event_status: pickText(objects, ['event_status', 'status']) || null,
+    completion_status: pickText(objects, ['completion_status']) || null,
+    operator_status: pickText(objects, ['operator_status']) || null,
+    field_sources: fieldSources,
+    derived_fields: derivedFields,
   }
+  row.evidence_gaps = evidenceGaps(row)
+  return row
 }
 
-function identity(row: ExitEvidenceRow): string {
-  const symbol = String(row.symbol || '').toUpperCase()
-  const date = row.trade_date ?? ''
-  const account = row.account ?? ''
-  const proceeds = finite(row.proceeds_usd)
-  const quantity = finite(row.quantity)
-  const price = finite(row.price)
-  if (symbol && date && account && (proceeds !== null || quantity !== null || price !== null)) {
-    return `${symbol}|${date}|${account}|${proceeds ?? ''}|${quantity ?? ''}|${price ?? ''}`
+function nearlyEqual(a: number | null, b: number | null, relativeTolerance = 0.015): boolean {
+  if (a === null || b === null) return true
+  const scale = Math.max(1, Math.abs(a), Math.abs(b))
+  return Math.abs(a - b) / scale <= relativeTolerance
+}
+
+function compatible(a: ExitEvidenceRow, b: ExitEvidenceRow): boolean {
+  if (a.symbol !== b.symbol) return false
+  if (a.trade_date && b.trade_date && a.trade_date !== b.trade_date) return false
+  if (a.account && b.account && a.account !== b.account) return false
+  if (a.external_id && b.external_id) return a.external_id === b.external_id
+  const quantityA = finite(a.quantity); const quantityB = finite(b.quantity)
+  const priceA = finite(a.price); const priceB = finite(b.price)
+  const proceedsA = finite(a.proceeds_usd); const proceedsB = finite(b.proceeds_usd)
+  if (!nearlyEqual(quantityA, quantityB)) return false
+  if (!nearlyEqual(priceA, priceB)) return false
+  if (!nearlyEqual(proceedsA, proceedsB)) return false
+  if (proceedsA !== null && quantityB !== null && priceB !== null && !nearlyEqual(proceedsA, quantityB * priceB, .025)) return false
+  if (proceedsB !== null && quantityA !== null && priceA !== null && !nearlyEqual(proceedsB, quantityA * priceA, .025)) return false
+  return true
+}
+
+function lineage(...values: Array<string | null | undefined>): string {
+  return Array.from(new Set(values.flatMap(value => String(value || '').split(',')).map(value => value.trim()).filter(Boolean))).join(', ')
+}
+
+function mergeFieldSources(preferred: ExitEvidenceRow, fallback: ExitEvidenceRow, merged: ExitEvidenceRow): Partial<Record<ExitEvidenceField, string>> {
+  const result: Partial<Record<ExitEvidenceField, string>> = {}
+  const fields: ExitEvidenceField[] = ['account', 'trade_date', 'trade_time', 'quantity', 'price', 'proceeds_usd', 'action', 'description']
+  for (const field of fields) {
+    const preferredValue = preferred[field]
+    const fallbackValue = fallback[field]
+    if (preferredValue !== null && preferredValue !== undefined && preferredValue !== '') result[field] = preferred.field_sources?.[field] || preferred.import_source || 'preferred source'
+    else if (fallbackValue !== null && fallbackValue !== undefined && fallbackValue !== '') result[field] = fallback.field_sources?.[field] || fallback.import_source || 'fallback source'
+    else if (merged[field] !== null && merged[field] !== undefined && merged[field] !== '') result[field] = 'derived'
   }
-  return row.event_key
+  return result
+}
+
+function evidenceGaps(row: ExitEvidenceRow): string[] {
+  const gaps: string[] = []
+  if (!row.account) gaps.push('account unavailable')
+  if (!row.trade_date) gaps.push('exit date unavailable')
+  if (finite(row.quantity) === null) gaps.push('shares unavailable from broker/journal sources')
+  if (finite(row.price) === null) gaps.push('execution price unavailable')
+  if (finite(row.proceeds_usd) === null) gaps.push('proceeds unavailable')
+  if (!row.description) gaps.push('exit reason unavailable')
+  return gaps
 }
 
 function mergeRow(preferred: ExitEvidenceRow, fallback: ExitEvidenceRow): ExitEvidenceRow {
-  const sources = Array.from(new Set(`${preferred.import_source ?? ''},${fallback.import_source ?? ''}`.split(',').map(value => value.trim()).filter(Boolean))).join(', ')
-  return {
+  const quantity = finite(preferred.quantity) ?? finite(fallback.quantity)
+  const price = finite(preferred.price) ?? finite(fallback.price)
+  const proceeds = finite(preferred.proceeds_usd) ?? finite(fallback.proceeds_usd)
+  const derivedFields = Array.from(new Set([...(preferred.derived_fields ?? []), ...(fallback.derived_fields ?? [])]))
+  let resolvedQuantity = quantity
+  let resolvedPrice = price
+  let resolvedProceeds = proceeds
+  if (resolvedPrice === null && resolvedProceeds !== null && resolvedQuantity !== null && resolvedQuantity > 0) { resolvedPrice = resolvedProceeds / resolvedQuantity; derivedFields.push('price = proceeds ÷ shares') }
+  if (resolvedQuantity === null && resolvedProceeds !== null && resolvedPrice !== null && resolvedPrice > 0) { resolvedQuantity = resolvedProceeds / resolvedPrice; derivedFields.push('shares = proceeds ÷ price') }
+  if (resolvedProceeds === null && resolvedQuantity !== null && resolvedPrice !== null) { resolvedProceeds = resolvedQuantity * resolvedPrice; derivedFields.push('proceeds = shares × price') }
+
+  const merged: ExitEvidenceRow = {
     ...fallback,
     ...preferred,
-    event_key: preferred.event_key || fallback.event_key,
+    event_key: preferred.external_id ? preferred.event_key : fallback.external_id ? fallback.event_key : preferred.event_key || fallback.event_key,
+    external_id: preferred.external_id || fallback.external_id,
     symbol: preferred.symbol || fallback.symbol,
     account: preferred.account || fallback.account,
     trade_date: preferred.trade_date || fallback.trade_date,
     trade_time: preferred.trade_time || fallback.trade_time,
-    quantity: finite(preferred.quantity) ?? finite(fallback.quantity),
-    price: finite(preferred.price) ?? finite(fallback.price),
-    proceeds_usd: finite(preferred.proceeds_usd) ?? finite(fallback.proceeds_usd),
+    quantity: resolvedQuantity,
+    price: resolvedPrice,
+    proceeds_usd: resolvedProceeds,
     action: preferred.action || fallback.action,
     description: preferred.description || fallback.description,
-    import_source: sources || preferred.import_source || fallback.import_source,
+    import_source: lineage(preferred.import_source, fallback.import_source),
     matched_event_id: preferred.matched_event_id ?? fallback.matched_event_id,
     reconciliation: preferred.reconciliation || fallback.reconciliation,
     event_status: preferred.event_status || fallback.event_status,
     completion_status: preferred.completion_status || fallback.completion_status,
     operator_status: preferred.operator_status || fallback.operator_status,
+    derived_fields: Array.from(new Set(derivedFields)),
   }
+  merged.field_sources = mergeFieldSources(preferred, fallback, merged)
+  merged.evidence_gaps = evidenceGaps(merged)
+  return merged
+}
+
+function mergeCandidates(candidates: Candidate[]): ExitEvidenceRow[] {
+  const clusters: Candidate[] = []
+  for (const candidate of candidates.sort((a, b) => b.priority - a.priority)) {
+    const exactIndex = candidate.row.external_id
+      ? clusters.findIndex(cluster => cluster.row.external_id === candidate.row.external_id)
+      : -1
+    const compatibleIndexes = clusters
+      .map((cluster, index) => ({ cluster, index }))
+      .filter(item => compatible(item.cluster.row, candidate.row))
+      .map(item => item.index)
+    const targetIndex = exactIndex >= 0 ? exactIndex : compatibleIndexes.length === 1 ? compatibleIndexes[0] : -1
+    if (targetIndex < 0) clusters.push(candidate)
+    else {
+      const prior = clusters[targetIndex]
+      const preferred = prior.priority >= candidate.priority ? prior.row : candidate.row
+      const fallback = prior.priority >= candidate.priority ? candidate.row : prior.row
+      clusters[targetIndex] = { priority: Math.max(prior.priority, candidate.priority), row: mergeRow(preferred, fallback) }
+    }
+  }
+  return clusters.map(cluster => cluster.row)
+}
+
+function aggregateRow(raw: any, index: number): ExitEvidenceRow | null {
+  const normalized = normalizeExit({
+    ...raw,
+    symbol: raw?.symbol ?? raw?.ticker,
+    trade_date: raw?.last_close_date ?? raw?.last_trade_at ?? raw?.last_close ?? raw?.trade_date,
+    quantity: raw?.last_shares ?? raw?.shares_sold ?? raw?.total_shares ?? raw?.quantity,
+    price: raw?.last_sell_price ?? raw?.last_exit_price ?? raw?.average_exit_price ?? raw?.avg_exit,
+    proceeds_usd: raw?.last_proceeds ?? raw?.proceeds_usd ?? raw?.total_proceeds,
+    account: raw?.last_account ?? raw?.account ?? raw?.account_key,
+    description: raw?.last_description ?? raw?.description,
+    event_key: raw?.last_event_key,
+  }, index, 'journal-ticker-aggregate')
+  return normalized
 }
 
 export function useReEntryExitEvidence(days = 365): ReEntryExitEvidence {
@@ -147,21 +333,21 @@ export function useReEntryExitEvidence(days = 365): ReEntryExitEvidence {
   const stopped = useApi<any>(`/api/v2/stops/reentry-watch?days=${days}`, 120_000)
 
   const cachePayload = prefValue(cache.data)
-  const cacheRows = Array.isArray(cachePayload?.rows) ? cachePayload.rows : []
-  const journalRows = arrayFrom(journal.data, ['trades']).filter(row => {
-    const day = isoDay(row?.close_date ?? row?.closed_at ?? row?.sold_at ?? row?.trade_date)
+  const cacheRows = recordsFrom(cachePayload, ['rows', 'items', 'events', 'transactions'])
+  const journalRows = recordsFrom(journal.data, ['trades', 'rows', 'items', 'events', 'transactions', 'closed_trades']).filter(row => {
+    const day = isoDay(row?.close_date ?? row?.closed_at ?? row?.sold_at ?? row?.trade_date ?? row?.executed_at)
     return !day || day >= from
   })
-  const historyRows = arrayFrom(history.data, ['rows'])
-  const bookRows = arrayFrom(book.data, ['rows'])
-  const stoppedRows = arrayFrom(stopped.data, ['rows', 'items', 'reentry_watch', 'watch'])
-  const tickerRows = arrayFrom(byTicker.data, ['tickers'])
+  const historyRows = recordsFrom(history.data, ['rows', 'items', 'events', 'transactions'])
+  const bookRows = recordsFrom(book.data, ['rows', 'items', 'events', 'transactions'])
+  const stoppedRows = recordsFrom(stopped.data, ['rows', 'items', 'reentry_watch', 'watch', 'events'])
+  const tickerRows = recordsFrom(byTicker.data, ['tickers', 'rows', 'items', 'map'])
 
   const rows = useMemo(() => {
-    const collected: Array<{ row: ExitEvidenceRow; priority: number }> = []
+    const candidates: Candidate[] = []
     const add = (rawRows: any[], source: string, priority: number) => rawRows.forEach((raw, index) => {
       const row = normalizeExit(raw, index, source)
-      if (row && (!row.trade_date || row.trade_date >= from)) collected.push({ row, priority })
+      if (row && (!row.trade_date || row.trade_date >= from)) candidates.push({ row, priority })
     })
     add(cacheRows, 'full-fidelity-cache', 100)
     add(journalRows, 'real-closed-trade-journal', 90)
@@ -169,37 +355,23 @@ export function useReEntryExitEvidence(days = 365): ReEntryExitEvidence {
     add(historyRows, 'redeploy-history', 70)
     add(stoppedRows, 'stops-reentry-watch', 60)
 
-    const merged = new Map<string, { row: ExitEvidenceRow; priority: number }>()
-    for (const item of collected.sort((a, b) => b.priority - a.priority)) {
-      const key = identity(item.row)
-      const prior = merged.get(key)
-      if (!prior) merged.set(key, item)
-      else merged.set(key, { priority: Math.max(prior.priority, item.priority), row: mergeRow(prior.row, item.row) })
+    let output = mergeCandidates(candidates)
+    const aggregates = tickerRows.map(aggregateRow).filter((row): row is ExitEvidenceRow => Boolean(row))
+    for (const aggregate of aggregates) {
+      const matches = output.map((row, index) => ({ row, index })).filter(item => compatible(item.row, aggregate))
+      if (matches.length === 1) output[matches[0].index] = mergeRow(matches[0].row, aggregate)
+      else if (matches.length === 0) {
+        const sameSymbolDay = output.filter(row => row.symbol === aggregate.symbol && (!aggregate.trade_date || row.trade_date === aggregate.trade_date))
+        if (sameSymbolDay.length === 1) {
+          const index = output.indexOf(sameSymbolDay[0])
+          output[index] = mergeRow(sameSymbolDay[0], aggregate)
+        } else output.push(aggregate)
+      }
     }
 
-    const latestByTicker = new Map<string, any>()
-    for (const aggregate of tickerRows) {
-      const symbol = text(aggregate?.symbol, aggregate?.ticker).toUpperCase()
-      if (symbol) latestByTicker.set(symbol, aggregate)
-    }
-
-    const output = [...merged.values()].map(item => item.row)
-    const bySymbol = new Map<string, ExitEvidenceRow[]>()
-    for (const row of output) bySymbol.set(row.symbol, [...(bySymbol.get(row.symbol) ?? []), row])
-    for (const [symbol, symbolRows] of bySymbol) {
-      symbolRows.sort((a, b) => `${b.trade_date ?? ''}T${b.trade_time ?? ''}`.localeCompare(`${a.trade_date ?? ''}T${a.trade_time ?? ''}`))
-      const latest = symbolRows[0]
-      const aggregate = latestByTicker.get(symbol)
-      if (!latest || !aggregate) continue
-      const aggregateDay = isoDay(aggregate?.last_close_date ?? aggregate?.last_trade_at ?? aggregate?.last_close)
-      if (aggregateDay && latest.trade_date && aggregateDay !== latest.trade_date) continue
-      latest.price = finite(latest.price) ?? finite(aggregate?.last_sell_price, aggregate?.last_exit_price)
-      latest.quantity = finite(latest.quantity) ?? finite(aggregate?.last_shares, aggregate?.shares_sold)
-      latest.proceeds_usd = finite(latest.proceeds_usd) ?? finite(aggregate?.last_proceeds, aggregate?.proceeds_usd)
-      latest.import_source = Array.from(new Set(`${latest.import_source ?? ''}, journal-by-ticker`.split(',').map(value => value.trim()).filter(Boolean))).join(', ')
-    }
-
-    return output.sort((a, b) => `${b.trade_date ?? ''}T${b.trade_time ?? ''}`.localeCompare(`${a.trade_date ?? ''}T${a.trade_time ?? ''}`))
+    return output
+      .map(row => ({ ...row, evidence_gaps: evidenceGaps(row) }))
+      .sort((a, b) => `${b.trade_date ?? ''}T${b.trade_time ?? ''}`.localeCompare(`${a.trade_date ?? ''}T${a.trade_time ?? ''}`))
   }, [cacheRows, journalRows, historyRows, bookRows, stoppedRows, tickerRows, from])
 
   const sources: ExitEvidenceSource[] = [
