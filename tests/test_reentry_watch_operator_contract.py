@@ -34,7 +34,7 @@ def test_reentry_reconciler_normalizes_account_aliases_and_preserves_truth() -> 
     assert "rolloverira" in source
     assert "function accountsCompatible" in source
     assert "sameSymbolDayAccount" in source
-    assert "no compatible event or aggregate supplied" in source
+    assert "compatible ticker aggregate supplied quantity" in source
     assert "price = proceeds ÷ shares" in source
     assert "shares = proceeds ÷ price" in source
     assert "proceeds = shares × price" in source
