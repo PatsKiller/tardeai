@@ -14,6 +14,7 @@ on:
       - 'apps/command-center-v3/package.json'
       - 'apps/command-center-v3/package-lock.json'
       - 'scripts/apply_defense_data_hardening.py'
+      - 'scripts/defense_account_exposure.py'
       - 'scripts/defense_data_quality.py'
       - 'scripts/fund_lookthrough.py'
       - 'scripts/sector_momentum_engine.py'
@@ -22,6 +23,7 @@ on:
       - 'config/industry_sector_map.json'
       - 'config/defense_recommendations.json'
       - 'config/fund_lookthrough.json'
+      - 'tests/test_defense_account_exposure.py'
       - 'tests/test_defense_data_quality.py'
       - 'tests/test_defense_data_hardening_wiring.py'
       - 'docs/architecture/DEFENSE_SECTORS_DATA_HARDENING_2026-07-24.md'
@@ -52,8 +54,8 @@ jobs:
       - name: Compile and run focused backend tests
         run: |
           python -m pip install --disable-pip-version-check pytest
-          python -m compileall -q scripts/defense_data_quality.py scripts/sector_momentum_engine.py scripts/finviz_industry_groups.py scripts/defense_recommendations.py scripts/fund_lookthrough.py
-          python -m pytest -q tests/test_defense_data_quality.py tests/test_defense_data_hardening_wiring.py
+          python -m compileall -q scripts/defense_account_exposure.py scripts/defense_data_quality.py scripts/sector_momentum_engine.py scripts/finviz_industry_groups.py scripts/defense_recommendations.py scripts/fund_lookthrough.py
+          python -m pytest -q tests/test_defense_account_exposure.py tests/test_defense_data_quality.py tests/test_defense_data_hardening_wiring.py
 
       - name: Install locked frontend dependencies
         working-directory: apps/command-center-v3
@@ -156,11 +158,13 @@ jobs:
           path: |
             config/defense_recommendations.json
             config/fund_lookthrough.json
+            scripts/defense_account_exposure.py
             scripts/defense_data_quality.py
             scripts/fund_lookthrough.py
             scripts/sector_momentum_engine.py
             scripts/finviz_industry_groups.py
             scripts/defense_recommendations.py
+            tests/test_defense_account_exposure.py
             tests/test_defense_data_quality.py
             tests/test_defense_data_hardening_wiring.py
             docs/architecture/DEFENSE_SECTORS_DATA_HARDENING_2026-07-24.md
