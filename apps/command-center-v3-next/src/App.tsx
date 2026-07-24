@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import {
-  SessionStrip, MoomooBadge, PrimeQueue, SymbolWorkspace, TicketPanels, PnlPanel,
+  SessionStrip, MoomooBadge, PrimeQueue, DecisionDeck, SymbolDecision, TicketPanels, PnlPanel,
   AccountsPanel, BrokersPanel, CapabilitiesPanel, RejectionsPanel, NotificationsPanel,
   JournalPanel, FeatureModal, ParityPanel,
 } from './panels/panels';
@@ -28,13 +28,15 @@ function Workspace() {
         <label>Symbol:{' '}
           <select value={symbol} onChange={(e) => setSymbol(e.target.value)} data-testid="symbol-select">
             <option value="TESTA">TESTA</option>
+            <option value="TESTW">TESTW</option>
             <option value="TESTB">TESTB</option>
           </select>
         </label>
       </div>
       <main style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <DecisionDeck />
+        <SymbolDecision symbol={symbol} />
         <PrimeQueue />
-        <SymbolWorkspace symbol={symbol} />
         <div><TicketPanels /><PnlPanel /></div>
         <AccountsPanel />
         <BrokersPanel />

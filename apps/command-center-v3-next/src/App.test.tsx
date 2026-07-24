@@ -11,13 +11,26 @@ describe('/v3-next read-only workspace', () => {
   it('renders every required panel', () => {
     render(<App />);
     for (const id of [
-      'session-strip', 'prime-queue', 'symbol-workspace', 'tickets', 'pnl-panel',
+      'session-strip', 'decision-deck', 'symbol-decision', 'prime-queue', 'tickets', 'pnl-panel',
       'accounts-panel', 'brokers-panel', 'capabilities-panel', 'rejections-panel',
       'notifications-panel', 'journal-panel', 'feature-modal', 'parity-panel',
-      'chart', 'level2', 'time-and-sales', 'symbol-selector', 'classic-next-nav',
+      'symbol-selector', 'classic-next-nav',
     ]) {
       expect(screen.getByTestId(id)).toBeInTheDocument();
     }
+  });
+
+  it('presents GO / WAIT / NO-GO decisions (not charts/L2/tape)', () => {
+    render(<App />);
+    expect(screen.getByTestId('decision-TESTA').textContent).toContain('GO');
+    expect(screen.getByTestId('decision-TESTW').textContent).toContain('WAIT');
+    expect(screen.getByTestId('decision-TESTB').textContent).toContain('NO-GO');
+    // raw microstructure panels are intentionally gone from the live decision view
+    expect(screen.queryByTestId('chart')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('level2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('time-and-sales')).not.toBeInTheDocument();
+    // L2/tape are inputs, explicitly not displayed
+    expect(screen.getByTestId('decision-note').textContent).toMatch(/not displayed/i);
   });
 
   it('classic nav points at untouched /v3, next at /v3-next', () => {
@@ -35,10 +48,10 @@ describe('/v3-next read-only workspace', () => {
     expect(screen.getByTestId('moomoo-broker').textContent).toContain('NOT_INSTALLED');
   });
 
-  it('renders explicit UNAVAILABLE for L2/tape/marks — never fabricated', () => {
+  it('renders explicit UNAVAILABLE for marks — never fabricated', () => {
     render(<App />);
-    expect(screen.getByTestId('level2').textContent).toMatch(/UNAVAILABLE|requires/i);
-    expect(screen.getByTestId('time-and-sales').textContent).toMatch(/UNAVAILABLE|requires/i);
+    // marks/P&L still explicitly unavailable pre-market-data stage
+    expect(screen.getByTestId('pnl-panel').textContent).toMatch(/UNAVAILABLE|require/i);
     // TESTB candidate has null rvol/float → Unavailable markers
     const testb = screen.getByTestId('candidate-TESTB');
     expect(testb.querySelectorAll('[data-testid="unavailable"]').length).toBeGreaterThan(0);
@@ -63,10 +76,12 @@ describe('/v3-next read-only workspace', () => {
     expect(screen.getByTestId('parity-panel').textContent).toMatch(/BASELINE_ONLY|no UI parity/);
   });
 
-  it('symbol selector switches the workspace', () => {
+  it('symbol selector switches the decision detail', () => {
     render(<App />);
     fireEvent.change(screen.getByTestId('symbol-select'), { target: { value: 'TESTB' } });
-    expect(screen.getByTestId('symbol-workspace').textContent).toContain('TESTB');
+    const sd = screen.getByTestId('symbol-decision').textContent || '';
+    expect(sd).toContain('TESTB');
+    expect(sd).toContain('NO-GO');
   });
 
   it('masked account ids only (no raw numbers)', () => {

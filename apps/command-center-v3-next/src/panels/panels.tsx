@@ -213,3 +213,67 @@ export function ParityPanel() {
     </section>
   );
 }
+
+/* ---- Decision surface (LIVE presents GO/WAIT/NO-GO, not charts/L2/tape) ---- */
+
+type Decision = {
+  symbol: string; verdict: 'GO' | 'WAIT' | 'NO_GO'; price: number; entry_trigger: string;
+  prime_state: string; fire_state: string; runner_state: string;
+  res: number | null; rrs: number | null; confidence: string; freshness: string; reason: string;
+};
+
+const verdictLabel = (v: string) => (v === 'NO_GO' ? 'NO-GO' : v);
+
+function DecisionCard({ d, solo }: { d: Decision; solo?: boolean }) {
+  return (
+    <div className={`decision-card v-${d.verdict}${solo ? ' solo' : ''}`}
+      data-testid={`${solo ? 'decision-detail' : 'decision'}-${d.symbol}`}>
+      <div className="dc-top">
+        <span className="dc-verdict">{verdictLabel(d.verdict)}</span>
+        <span className="dc-symbol">{d.symbol}</span>
+        <span className="dc-price">${d.price.toFixed(2)}</span>
+      </div>
+      <div className="dc-entry"><span className="dc-label">right entry</span> {d.entry_trigger}</div>
+      <div className="dc-scores">
+        <span className="dc-score res">RES {d.res ?? '—'}</span>
+        <span className="dc-score rrs">RRS {d.rrs ?? '—'}</span>
+        <span className="dc-conf">{d.confidence}</span>
+      </div>
+      <div className="dc-chips">
+        <span className="chip">{d.prime_state}</span>
+        <span className="chip">{d.fire_state}</span>
+        {d.runner_state !== 'NONE' && <span className="chip">RUN·{d.runner_state}</span>}
+        <span className="chip fresh">{d.freshness}</span>
+      </div>
+      <div className="dc-reason">{d.reason}</div>
+    </div>
+  );
+}
+
+export function DecisionDeck() {
+  const { data, warnings } = fixtures.decisions();
+  return (
+    <section data-testid="decision-deck" aria-label="trade decisions" className="span-all">
+      <h3>Decisions · GO / WAIT / NO-GO</h3>
+      <Warnings items={warnings} />
+      <div className="decision-grid">
+        {(data.items as Decision[]).map((d) => <DecisionCard key={d.symbol} d={d} />)}
+      </div>
+      <div className="dc-foot" data-testid="decision-note">
+        Level 2 / tape / OFI feed these calls — consumed by the engine, not displayed.
+      </div>
+    </section>
+  );
+}
+
+export function SymbolDecision({ symbol }: { symbol: string }) {
+  const { data } = fixtures.decisions();
+  const d = (data.items as Decision[]).find((x) => x.symbol === symbol);
+  return (
+    <section data-testid="symbol-decision" aria-label={`decision ${symbol}`}>
+      <h3>{symbol} · Decision</h3>
+      {d ? <DecisionCard d={d} solo /> : <Unavailable label="no active decision for this symbol" />}
+      <div data-testid="eligibility">eligibility: {fixtures.symbol(symbol).data.eligibility}</div>
+    </section>
+  );
+}

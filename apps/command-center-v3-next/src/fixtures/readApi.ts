@@ -134,4 +134,31 @@ export const fixtures = {
   parity: () =>
     env({ parity_state: 'BASELINE_ONLY', note: 'no UI parity claimed; comparison begins post-/v3-next' },
       [{ category: 'UNVERIFIED', detail: 'pre-parity baseline' }]),
+
+  // Decision surface — the LIVE /v3-next presents THIS (GO/WAIT/NO-GO that matches the right entry),
+  // not raw charts/L2/tape. Verdict derives from the shadow engine (PRIME x FIRE); RES/RRS = confidence;
+  // L2/tape/OFI are inputs consumed to produce the call and are deliberately NOT displayed.
+  decisions: () =>
+    env(
+      {
+        items: [
+          { symbol: 'TESTA', verdict: 'GO', price: 4.2, entry_trigger: 'limit ≤ 4.22 (VWAP reclaim)',
+            prime_state: 'PRIMED', fire_state: 'FIRE', runner_state: 'ELIGIBLE',
+            res: 72, rrs: 38, confidence: 'HIGH', freshness: 'FRESH',
+            reason: 'reclaimed VWAP on RVOL 4.1×; resistance thin above' },
+          { symbol: 'TESTW', verdict: 'WAIT', price: 8.05, entry_trigger: 'awaiting break > 8.20',
+            prime_state: 'PRIMED', fire_state: 'NO_FIRE', runner_state: 'NONE',
+            res: 64, rrs: 51, confidence: 'MEDIUM', freshness: 'FRESH',
+            reason: 'primed but no trigger yet; sellers stacked at 8.20' },
+          { symbol: 'TESTB', verdict: 'NO_GO', price: 2.1, entry_trigger: '—',
+            prime_state: 'BLOCKED', fire_state: 'NO_FIRE', runner_state: 'NONE',
+            res: null, rrs: null, confidence: 'LOW', freshness: 'AGING',
+            reason: 'blocked: halt/eligibility gate; float unverified' },
+        ],
+        next_cursor: null,
+      },
+      [{ category: 'UNVERIFIED', detail: 'shadow decisions from fixtures; live GO/WAIT requires the Stage 5 Moomoo data plane' }],
+    ),
 };
+
+export type Verdict = 'GO' | 'WAIT' | 'NO_GO';
