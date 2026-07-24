@@ -38,6 +38,7 @@ const recommendations = {
       ],
       short_side: [], income: [],
     },
+    empty_reasons: { get_into: 'Defensive lean remains active and requires dated review.' },
   },
 }
 
@@ -83,13 +84,16 @@ async function assertNoContentOverflow(page: any) {
   expect(values.main).toBeLessThanOrEqual(2)
 }
 
-test('Sectors renders evidence at desktop and narrow widths', async ({ page }) => {
+test('Sectors renders the decision board and screening evidence at desktop and narrow widths', async ({ page }) => {
   test.setTimeout(90_000)
   await installRoutes(page)
   await page.setViewportSize({ width: 1440, height: 1100 })
   await page.goto('/v3/sectors')
   const main = page.locator('main')
   await expect(main.getByText('Sectors & Industries', { exact: true })).toBeVisible()
+  await expect(main.getByText('Sector decision board', { exact: true })).toBeVisible()
+  await expect(main.getByText('RESEARCH WATCH', { exact: true }).first()).toBeVisible()
+  await expect(main.getByText('AVOID / REDUCE', { exact: true }).first()).toBeVisible()
   await expect(main.getByText(/screen matches/i).first()).toBeVisible()
   await page.getByRole('button', { name: /Screened names/ }).first().click()
   await expect(main.getByText('THIN COVERAGE', { exact: true }).first()).toBeVisible()
@@ -100,6 +104,7 @@ test('Sectors renders evidence at desktop and narrow widths', async ({ page }) =
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()
   await expect(main.getByText('Sectors & Industries', { exact: true })).toBeVisible()
+  await expect(main.getByText('Sector decision board', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: /Screened names/ }).first().click()
   await expect(main.getByText('THIN COVERAGE', { exact: true }).first()).toBeVisible()
   await assertNoContentOverflow(page)
