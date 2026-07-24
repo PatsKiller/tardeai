@@ -17,6 +17,7 @@ from .contracts import (
     canonical_hash,
 )
 from .runtime import MvlRuntime
+from .sentinel import SentinelFinding, SentinelReport, finding_codes, inspect_population, inspect_ticket
 
 __all__ = [
     "AgentDefinition",
@@ -27,7 +28,12 @@ __all__ = [
     "Review",
     "ReviewVerdict",
     "RunStatus",
+    "SentinelFinding",
+    "SentinelReport",
     "ToolDecision",
     "ToolPolicy",
     "canonical_hash",
+    "finding_codes",
+    "inspect_population",
+    "inspect_ticket",
 ]
