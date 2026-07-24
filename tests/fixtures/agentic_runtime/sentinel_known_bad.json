@@ -1,0 +1,135 @@
+{
+  "now": "2026-07-23T13:00:00+00:00",
+  "cases": [
+    {
+      "name": "deterministic validation failure",
+      "ticket": {"symbol": "BAD01", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}},
+      "validation": {"state": "FAIL", "proposal_allowed": false},
+      "expected": "DETERMINISTIC_FAILURE_SOVEREIGN"
+    },
+    {
+      "name": "hard failure list",
+      "ticket": {"symbol": "BAD02", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}},
+      "validation": {"state": "PASS", "proposal_allowed": false, "hard_failures": ["fixture"]},
+      "expected": "DETERMINISTIC_FAILURE_SOVEREIGN"
+    },
+    {
+      "name": "missing symbol",
+      "ticket": {"state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "MISSING_SYMBOL"
+    },
+    {
+      "name": "missing validation hash",
+      "ticket": {"symbol": "BAD04", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "MISSING_VALIDATION_HASH"
+    },
+    {
+      "name": "missing input hash",
+      "ticket": {"symbol": "BAD05", "state": "READY", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "MISSING_INPUT_HASH"
+    },
+    {
+      "name": "freshness missing",
+      "ticket": {"symbol": "BAD06", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "mechanics": {"entry": 10, "stop": 9, "target": 12}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "FRESHNESS_UNPROVEN"
+    },
+    {
+      "name": "stale ticket",
+      "ticket": {"symbol": "BAD07", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-20T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "STALE_TICKET"
+    },
+    {
+      "name": "blocked ticket exposes mechanics",
+      "ticket": {"symbol": "BAD08", "state": "BLOCKED", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}},
+      "validation": {"state": "PASS", "proposal_allowed": false},
+      "expected": "MECHANICS_EXPOSED_FOR_NONACTIONABLE_STATE"
+    },
+    {
+      "name": "no-trade ticket exposes mechanics",
+      "ticket": {"symbol": "BAD09", "state": "NO_TRADE", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}},
+      "validation": {"state": "PASS", "proposal_allowed": false},
+      "expected": "MECHANICS_EXPOSED_FOR_NONACTIONABLE_STATE"
+    },
+    {
+      "name": "entry range reversed",
+      "ticket": {"symbol": "BAD10", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry_low": 11, "entry_high": 10, "stop": 9, "target": 12}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "ENTRY_RANGE_REVERSED"
+    },
+    {
+      "name": "long stop above entry",
+      "ticket": {"symbol": "BAD11", "state": "READY", "direction": "LONG", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 10.5, "target": 12}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "LONG_STOP_DIRECTION_INVALID"
+    },
+    {
+      "name": "long target below entry",
+      "ticket": {"symbol": "BAD12", "state": "READY", "direction": "LONG", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 9.5}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "LONG_TARGET_DIRECTION_INVALID"
+    },
+    {
+      "name": "short stop below entry",
+      "ticket": {"symbol": "BAD13", "state": "READY", "direction": "SHORT", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9.5, "target": 8}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "SHORT_STOP_DIRECTION_INVALID"
+    },
+    {
+      "name": "short target above entry",
+      "ticket": {"symbol": "BAD14", "state": "READY", "direction": "SHORT", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 11, "target": 10.5}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "SHORT_TARGET_DIRECTION_INVALID"
+    },
+    {
+      "name": "limit outside entry range",
+      "ticket": {"symbol": "BAD15", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry_low": 10, "entry_high": 11, "limit": 12, "stop": 9, "target": 14}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "LIMIT_OUTSIDE_ENTRY_RANGE"
+    },
+    {
+      "name": "nonpositive risk reward",
+      "ticket": {"symbol": "BAD16", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12, "rr": 0}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "NONPOSITIVE_RISK_REWARD"
+    },
+    {
+      "name": "blocked state but proposal allowed",
+      "ticket": {"symbol": "BAD17", "state": "BLOCKED", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00"},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "PROPOSAL_ALLOWED_STATE_CONTRADICTION"
+    },
+    {
+      "name": "broker action embedded",
+      "ticket": {"symbol": "BAD18", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}, "broker_action": {"type": "submit"}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "FINANCIAL_AUTHORITY_IN_REFLECTIVE_TICKET"
+    },
+    {
+      "name": "order payload embedded",
+      "ticket": {"symbol": "BAD19", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}, "order_payload": {"side": "buy"}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "FINANCIAL_AUTHORITY_IN_REFLECTIVE_TICKET"
+    },
+    {
+      "name": "authorization embedded",
+      "ticket": {"symbol": "BAD20", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}, "authorization": {"state": "armed"}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "FINANCIAL_AUTHORITY_IN_REFLECTIVE_TICKET"
+    },
+    {
+      "name": "two-factor material embedded",
+      "ticket": {"symbol": "BAD21", "state": "READY", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry": 10, "stop": 9, "target": 12}, "two_factor": {"state": "live"}},
+      "validation": {"state": "PASS", "proposal_allowed": true},
+      "expected": "FINANCIAL_AUTHORITY_IN_REFLECTIVE_TICKET"
+    }
+  ],
+  "valid": {
+    "ticket": {"symbol": "GOOD", "state": "READY", "direction": "LONG", "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "validation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "as_of": "2026-07-23T12:00:00+00:00", "mechanics": {"entry_low": 10, "entry_high": 11, "limit": 10.5, "stop": 9, "target": 14, "rr": 3}},
+    "validation": {"state": "PASS", "proposal_allowed": true}
+  }
+}
