@@ -2,7 +2,7 @@
 """Deterministic quality, provenance and risk contracts for Defense/Sectors.
 
 This module is intentionally advisory and side-effect free except for read-only SQL in
-``realized_vol_corr``.  It never places orders, changes permissions, or promotes rules.
+``realized_vol_corr``. It never places orders, changes permissions, or promotes rules.
 """
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ from statistics import median, pstdev
 from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
-CONTRACT_VERSION = "defense-data-quality-v1"
-SECTOR_CALC_VERSION = "sector-rs-v3-exact20"
+CONTRACT_VERSION = "defense-data-quality-v2"
+SECTOR_CALC_VERSION = "sector-rs-v4-exact20-covered-universe"
 INDUSTRY_CALC_VERSION = "industry-rs-v3-finviz-aligned"
-RECOMMENDATION_CALC_VERSION = "defense-recommendations-v9-risk-aware"
+RECOMMENDATION_CALC_VERSION = "defense-recommendations-v10-account-specific"
 
 
 def canonical_json(value: Any) -> str:
@@ -137,9 +137,14 @@ def realized_vol_corr(cur, symbol: str, benchmark: str = "SPY", sessions: int = 
             "correlation": round(corr, 3) if corr is not None else None}
 
 
-def allocation_decision(cfg: dict, *, sector: str, current_weight_pct: float,
+def allocation_decision(cfg: dict, *, sector: str, current_weight_pct: float | None,
                         risk_context: dict, account: str | None = None) -> dict:
-    """Benchmark/mandate/volatility/correlation-aware active-weight capacity."""
+    """Account-specific benchmark/mandate/risk capacity with a hard policy ceiling.
+
+    A missing account exposure is not silently replaced with the total-book weight. The
+    caller must provide the target account's effective sector weight or the decision fails
+    closed. ``max_active_tilt_pct`` is a ceiling, not a free amount added after scaling.
+    """
     policy = cfg.get("allocation_policy") or {}
     benchmark_name = policy.get("default_benchmark", "equal_sector")
     benchmark = (policy.get("benchmarks") or {}).get(benchmark_name, {})
@@ -147,14 +152,29 @@ def allocation_decision(cfg: dict, *, sector: str, current_weight_pct: float,
     mandate_name = (policy.get("account_mandates") or {}).get(account, "total_return")
     mandate = (policy.get("mandates") or {}).get(mandate_name, {})
     tilt = float((mandate.get("sector_tilts_pct") or {}).get(sector, 0.0))
-    raw_target = base_target + tilt
+    mandate_target = base_target + tilt
+
+    base = {
+        "benchmark": benchmark_name,
+        "mandate": mandate_name,
+        "base_target_pct": round(base_target, 2),
+        "mandate_tilt_pct": round(tilt, 2),
+        "mandate_target_pct": round(mandate_target, 2),
+        "risk_context": risk_context,
+    }
+    if current_weight_pct is None:
+        return {**base, "eligible": False, "quality": "missing_account_exposure",
+                "current_account_weight_pct": None, "current_weight_pct": None,
+                "capacity_pct": 0.0}
+
     vol = risk_context.get("annualized_vol_pct")
     corr = risk_context.get("correlation")
     if risk_context.get("quality") != "ok" or vol is None or corr is None:
-        return {"eligible": False, "quality": "missing_risk_context", "benchmark": benchmark_name,
-                "mandate": mandate_name, "base_target_pct": round(base_target, 2),
-                "target_pct": round(raw_target, 2), "capacity_pct": 0.0,
-                "risk_context": risk_context}
+        return {**base, "eligible": False, "quality": "missing_risk_context",
+                "current_account_weight_pct": round(float(current_weight_pct), 2),
+                "current_weight_pct": round(float(current_weight_pct), 2),
+                "capacity_pct": 0.0}
+
     target_vol = float(policy.get("target_annualized_vol_pct", 22.0))
     vol_floor = float(policy.get("vol_scalar_floor", 0.45))
     vol_cap = float(policy.get("vol_scalar_cap", 1.20))
@@ -162,24 +182,26 @@ def allocation_decision(cfg: dict, *, sector: str, current_weight_pct: float,
     corr_soft = float(policy.get("correlation_soft_limit", 0.85))
     corr_penalty = float(policy.get("correlation_penalty", 0.75))
     corr_scalar = max(0.50, 1.0 - max(0.0, float(corr) - corr_soft) * corr_penalty)
+
     max_tilt = float(policy.get("max_active_tilt_pct", 4.0))
     sector_cap = float(policy.get("sector_cap_pct", 25.0))
-    risk_target = min(sector_cap, raw_target * vol_scalar * corr_scalar + max_tilt)
-    capacity = max(0.0, risk_target - float(current_weight_pct or 0.0))
+    scaled_target = max(0.0, mandate_target * vol_scalar * corr_scalar)
+    policy_ceiling = min(sector_cap, mandate_target + max_tilt)
+    risk_target = min(policy_ceiling, scaled_target)
+    capacity = max(0.0, risk_target - float(current_weight_pct))
     minimum = float(policy.get("min_capacity_pct", 1.0))
     return {
+        **base,
         "eligible": capacity >= minimum,
         "quality": "ok",
-        "benchmark": benchmark_name,
-        "mandate": mandate_name,
-        "base_target_pct": round(base_target, 2),
-        "mandate_tilt_pct": round(tilt, 2),
+        "risk_scaled_target_pct": round(scaled_target, 2),
+        "policy_target_ceiling_pct": round(policy_ceiling, 2),
         "risk_target_pct": round(risk_target, 2),
-        "current_weight_pct": round(float(current_weight_pct or 0.0), 2),
+        "current_account_weight_pct": round(float(current_weight_pct), 2),
+        "current_weight_pct": round(float(current_weight_pct), 2),
         "capacity_pct": round(capacity, 2),
         "vol_scalar": round(vol_scalar, 3),
         "correlation_scalar": round(corr_scalar, 3),
-        "risk_context": risk_context,
     }
 
 
@@ -194,11 +216,12 @@ def peer_medians(records: Iterable[dict]) -> dict:
 
 
 def stock_quality_assessment(record: dict, peers: dict, cfg: dict) -> dict:
-    """Transparent quality gate using available valuation, growth and balance-sheet data."""
+    """Transparent stock gate; required institutional evidence fails closed."""
     qcfg = cfg.get("stock_quality") or {}
     required = ("forward_pe", "pfcf", "eps_next_y", "eps_qoq", "sales_qoq", "roic_pct",
                 "profit_margin_pct", "total_debt_equity", "short_float_pct", "beta", "sma50_pct")
     present = [k for k in required if record.get(k) is not None]
+    missing = [k for k in required if k not in present]
     coverage = len(present) / len(required)
     score, factors, hard_fail = 0.0, [], []
 
@@ -206,11 +229,14 @@ def stock_quality_assessment(record: dict, peers: dict, cfg: dict) -> dict:
         nonlocal score
         if ok:
             score += points
-        factors.append({"name": name, "value": value, "passed": bool(ok), "points": points if ok else 0})
+        factors.append({"name": name, "value": value, "passed": bool(ok),
+                        "points": points if ok else 0})
 
     fpe, pfcf = record.get("forward_pe"), record.get("pfcf")
-    add("forward valuation", fpe is not None and fpe > 0 and (peers.get("forward_pe") is None or fpe <= peers["forward_pe"] * 1.25), 10, fpe)
-    add("FCF valuation", pfcf is not None and pfcf > 0 and (peers.get("pfcf") is None or pfcf <= peers["pfcf"] * 1.25), 10, pfcf)
+    add("forward valuation", fpe is not None and fpe > 0 and
+        (peers.get("forward_pe") is None or fpe <= peers["forward_pe"] * 1.25), 10, fpe)
+    add("FCF valuation", pfcf is not None and pfcf > 0 and
+        (peers.get("pfcf") is None or pfcf <= peers["pfcf"] * 1.25), 10, pfcf)
     add("next-year EPS", (record.get("eps_next_y") or 0) > 0, 10, record.get("eps_next_y"))
     add("EPS revisions/growth", (record.get("eps_qoq") or 0) > 0, 9, record.get("eps_qoq"))
     add("sales growth", (record.get("sales_qoq") or 0) > 0, 8, record.get("sales_qoq"))
@@ -228,12 +254,21 @@ def stock_quality_assessment(record: dict, peers: dict, cfg: dict) -> dict:
         hard_fail.append("excess_leverage")
     if short is not None and short > float(qcfg.get("hard_fail_short_float_pct", 25.0)):
         hard_fail.append("extreme_crowding")
+
     min_coverage = float(qcfg.get("min_coverage", 0.60))
     min_score = float(qcfg.get("min_score", 60.0))
-    return {"passed": coverage >= min_coverage and score >= min_score and not hard_fail,
-            "score": round(score, 1), "coverage": round(coverage, 3),
-            "missing": [k for k in required if k not in present], "hard_fail": hard_fail,
-            "factors": factors, "version": "institutional-stock-gate-v1"}
+    require_all = bool(qcfg.get("require_all_fields", True))
+    evidence_complete = not missing if require_all else coverage >= min_coverage
+    return {
+        "passed": evidence_complete and coverage >= min_coverage and score >= min_score and not hard_fail,
+        "score": round(score, 1),
+        "coverage": round(coverage, 3),
+        "evidence_complete": evidence_complete,
+        "missing": missing,
+        "hard_fail": hard_fail,
+        "factors": factors,
+        "version": "institutional-stock-gate-v2",
+    }
 
 
 def directive_review_status(lean_cfg: dict, sectors: list[dict], now: date | None = None) -> dict:
