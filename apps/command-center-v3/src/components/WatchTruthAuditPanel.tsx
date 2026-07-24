@@ -2,9 +2,15 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useApi } from '../hooks/useApi'
 import { BB, T } from '../lib/watchTokens'
 
+export const WATCH_OPERATOR_CONTRACT = 'watch-operator-v2'
+
 const panel: CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 4 }
 const button = (active = false): CSSProperties => ({ fontSize: 10.5, fontWeight: 800, padding: '6px 9px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${active ? T.link : 'var(--border)'}`, background: active ? 'rgba(96,165,250,.10)' : 'transparent', color: active ? T.link : BB.text2 })
 const primaryButton: CSSProperties = { ...button(true), minWidth: 104, textAlign: 'center' }
+const PAGE_SIZE = 20
+
+type Lane = 'favorites' | 'automated' | 'all'
+type QueueFilter = 'all' | 'needs_review' | 'deterministic_fail' | 'data_gaps' | 'actionable'
 
 function num(...values: any[]): number | null { for (const value of values) { if (value === null || value === undefined || value === '') continue; const parsed = Number(value); if (Number.isFinite(parsed)) return parsed } return null }
 function text(...values: any[]): string { for (const value of values) if (value !== null && value !== undefined && String(value).trim()) return String(value).trim(); return '' }
@@ -37,21 +43,30 @@ function isFailure(value: string): boolean { return /FAIL|REJECT|BLOCK/.test(val
 function originLabel(item: any): string { return item?.starred ? 'Operator favorite' : text(item?.origin_system, item?.source, 'Automated').replace(/_/g, ' ') }
 function updateReviewUrl(symbol: string, reviewOpen: boolean) {
   const url = new URL(window.location.href)
-  if (symbol) url.searchParams.set('symbol', symbol)
-  else url.searchParams.delete('symbol')
-  if (reviewOpen) url.searchParams.set('review', '1')
-  else url.searchParams.delete('review')
+  if (symbol) url.searchParams.set('symbol', symbol); else url.searchParams.delete('symbol')
+  if (reviewOpen) url.searchParams.set('review', '1'); else url.searchParams.delete('review')
   window.history.replaceState(window.history.state, '', url)
+}
+function nextAction(item: any, ticket: ReturnType<typeof ticketState>, value: ReturnType<typeof valuation>, rsi: number | null): string {
+  if (isFailure(ticket.deterministic)) return 'Open evidence; deterministic failure blocks proposal.'
+  if (ticket.reconciled === 'UNVALIDATED' || /UNAVAILABLE|PENDING|REQUIRED/.test(ticket.reconciled)) return 'Run or inspect independent review.'
+  if (rsi === null) return 'Refresh technical inputs before acting.'
+  if (!value.notApplicable && !value.available) return 'Valuation is missing; review source coverage.'
+  if (item?.starred) return 'Review current plan, alert and Re-Entry context.'
+  return 'Decide whether to promote, suppress or keep automated.'
 }
 
 export default function WatchTruthAuditPanel() {
   const { data: wl, refetch: refetchWatch } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
   const { data: fv } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
   const { data: cards } = useApi<any>('/api/v2/symbol-cards', 300_000)
-  const [open, setOpen] = useState(() => new URL(window.location.href).searchParams.get('review') === '1')
-  const [lane, setLane] = useState<'favorites' | 'automated' | 'all'>('favorites')
+  const initialUrl = new URL(window.location.href)
+  const [open, setOpen] = useState(() => initialUrl.searchParams.get('review') !== '0')
+  const [lane, setLane] = useState<Lane>('favorites')
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>('all')
   const [search, setSearch] = useState('')
-  const [selected, setSelected] = useState(() => new URL(window.location.href).searchParams.get('symbol')?.toUpperCase() ?? '')
+  const [selected, setSelected] = useState(() => initialUrl.searchParams.get('symbol')?.toUpperCase() ?? '')
+  const [page, setPage] = useState(0)
   const [reviewBusy, setReviewBusy] = useState('')
   const [message, setMessage] = useState('')
   const [premium, setPremium] = useState<any>(null)
@@ -73,31 +88,43 @@ export default function WatchTruthAuditPanel() {
   }, [items])
   const favorites = unique.filter(item => Boolean(item.starred))
   const automated = unique.filter(item => !item.starred)
-  const shown = (lane === 'favorites' ? favorites : lane === 'automated' ? automated : unique)
-    .filter(item => !search.trim() || `${item.symbol} ${item.origin_system ?? ''} ${item.profile_sector ?? ''}`.toUpperCase().includes(search.trim().toUpperCase()))
-    .slice(0, 30)
 
+  const classified = useMemo(() => unique.map(item => {
+    const symbol = String(item.symbol).toUpperCase()
+    const value = valuation(item, fvMap[symbol], cardMap[symbol])
+    const ticket = ticketState(item)
+    const rsi = num(item.rsi, item.rsi_14, fvMap[symbol]?.rsi)
+    const price = num(item.price, item.last_price, item.price_live)
+    const priceAt = text(item.price_as_of, item.last_enriched_at)
+    const hasDataGap = price === null || rsi === null || (!value.notApplicable && !value.available)
+    const needsReview = ticket.reconciled === 'UNVALIDATED' || /UNAVAILABLE|PENDING|REQUIRED/.test(ticket.reconciled)
+    const actionable = !isFailure(ticket.deterministic) && !hasDataGap && !needsReview
+    return { item, symbol, value, ticket, rsi, price, priceAt, hasDataGap, needsReview, actionable, next: nextAction(item, ticket, value, rsi) }
+  }), [unique, fv, cards])
+
+  const laneRows = classified.filter(row => lane === 'all' || (lane === 'favorites' ? row.item.starred : !row.item.starred))
+  const filtered = laneRows.filter(row => {
+    if (search.trim() && !`${row.symbol} ${row.item.origin_system ?? ''} ${row.item.profile_sector ?? ''} ${row.ticket.deterministic} ${row.ticket.reconciled} ${row.next}`.toUpperCase().includes(search.trim().toUpperCase())) return false
+    if (queueFilter === 'needs_review' && !row.needsReview) return false
+    if (queueFilter === 'deterministic_fail' && !isFailure(row.ticket.deterministic)) return false
+    if (queueFilter === 'data_gaps' && !row.hasDataGap) return false
+    if (queueFilter === 'actionable' && !row.actionable) return false
+    return true
+  })
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, pageCount - 1)
+  const shown = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+
+  useEffect(() => { setPage(0) }, [lane, queueFilter, search])
   useEffect(() => {
     if (selected && unique.some(item => String(item.symbol).toUpperCase() === selected)) return
     const first = favorites[0] ?? unique[0]
     if (first) setSelected(String(first.symbol).toUpperCase())
   }, [unique.length, favorites.length])
 
-  const selectedItem = unique.find(item => String(item.symbol).toUpperCase() === selected)
-  const selectedVal = selectedItem ? valuation(selectedItem, fvMap[selected], cardMap[selected]) : null
-  const selectedTicket = selectedItem ? ticketState(selectedItem) : null
-
-  const selectForReview = (symbol: string) => {
-    setSelected(symbol)
-    setOpen(true)
-    setMessage('')
-    setPremium(null)
-    updateReviewUrl(symbol, true)
-  }
-  const setDeskOpen = (next: boolean) => {
-    setOpen(next)
-    updateReviewUrl(selected, next)
-  }
+  const selectedRow = classified.find(row => row.symbol === selected)
+  const selectForReview = (symbol: string) => { setSelected(symbol); setOpen(true); setMessage(''); setPremium(null); updateReviewUrl(symbol, true) }
+  const setDeskOpen = (next: boolean) => { setOpen(next); updateReviewUrl(selected, next) }
 
   const toggleStar = async (item: any) => {
     const symbol = String(item.symbol).toUpperCase(); setMessage(`${symbol} — updating favorite state…`)
@@ -141,40 +168,57 @@ export default function WatchTruthAuditPanel() {
     } catch (error: any) { setMessage(`${selected} — ${String(error?.message || error)}`) } finally { setReviewBusy('') }
   }
 
-  const selectedPrice = selectedItem ? num(selectedItem.price, selectedItem.last_price, selectedItem.price_live) : null
-  const selectedRsi = selectedItem ? num(selectedItem.rsi, selectedItem.rsi_14, fvMap[selected]?.rsi) : null
-  const selectedPriceAt = selectedItem ? text(selectedItem.price_as_of, selectedItem.last_enriched_at) : ''
+  const counts = {
+    needsReview: classified.filter(row => row.needsReview).length,
+    failures: classified.filter(row => isFailure(row.ticket.deterministic)).length,
+    gaps: classified.filter(row => row.hasDataGap).length,
+    actionable: classified.filter(row => row.actionable).length,
+  }
 
-  return <section style={{ ...panel, margin: '8px 0 12px', overflow: 'hidden' }} aria-label="Watch truth and independent review">
+  return <section style={{ ...panel, margin: '8px 0 12px', overflow: 'hidden' }} aria-label="Watch operator queue and independent review">
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', alignItems: 'center', gap: 12, padding: '10px 12px' }}>
-      <div><div style={{ fontSize: 13, fontWeight: 900 }}>Truth & independent review</div><div style={{ marginTop: 2, fontSize: 10.5, color: BB.text3 }}>Choose a symbol, then use the clearly labeled review actions. Row clicks and Enter/Space select the symbol; no broker action occurs here.</div></div>
-      <button onClick={() => setDeskOpen(!open)} aria-expanded={open} style={primaryButton}>{open ? 'CLOSE REVIEW DESK' : 'OPEN REVIEW DESK'}</button>
+      <div><div style={{ fontSize: 14, fontWeight: 900 }}>Watch Operator Queue</div><div style={{ marginTop: 2, fontSize: 10.5, color: BB.text3 }}>Click a row or OPEN REVIEW. The selected symbol's evidence and actions remain visible at right. Contract {WATCH_OPERATOR_CONTRACT}.</div></div>
+      <button onClick={() => setDeskOpen(!open)} aria-expanded={open} style={primaryButton}>{open ? 'COLLAPSE QUEUE' : 'OPEN OPERATOR QUEUE'}</button>
     </div>
 
-    {!open && <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', borderTop: '1px solid var(--border)', background: 'var(--bg2)', flexWrap: 'wrap' }}><span style={{ fontSize: 10.5, color: BB.text3 }}>Favorites {favorites.length} · Automated {automated.length}</span>{selected && <><span style={{ color: BB.text2, fontSize: 10.5 }}>Current symbol: <b>{selected}</b></span><button onClick={() => setDeskOpen(true)} style={button(true)}>REVIEW {selected}</button><button onClick={() => { window.location.href = `/v3/portfolio/re-entry?classify=${encodeURIComponent(selected)}` }} style={button(false)}>CLASSIFY RE-ENTRY</button></>}</div>}
+    {!open && <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', borderTop: '1px solid var(--border)', background: 'var(--bg2)', flexWrap: 'wrap' }}><span style={{ fontSize: 10.5, color: BB.text3 }}>Favorites {favorites.length} · Automated {automated.length} · Review needed {counts.needsReview} · Data gaps {counts.gaps}</span>{selected && <><span style={{ color: BB.text2, fontSize: 10.5 }}>Selected: <b>{selected}</b></span><button onClick={() => setDeskOpen(true)} style={button(true)}>REVIEW {selected}</button><button onClick={() => { window.location.href = `/v3/portfolio/re-entry?classify=${encodeURIComponent(selected)}` }} style={button(false)}>CLASSIFY RE-ENTRY</button></>}</div>}
 
     {open && <div style={{ borderTop: '1px solid var(--border)', padding: 10 }}>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>{([['favorites', `★ Favorites ${favorites.length}`], ['automated', `Automated ${automated.length}`], ['all', `All ${unique.length}`]] as const).map(([key, label]) => <button key={key} onClick={() => setLane(key)} style={button(lane === key)}>{label}</button>)}<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Filter symbol, origin, sector…" aria-label="Filter Watch review symbols" style={{ marginLeft: 'auto', minWidth: 240, fontSize: 11, padding: '6px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', color: BB.text0 }} /></div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        {([['favorites', `★ Favorites ${favorites.length}`], ['automated', `Automated ${automated.length}`], ['all', `All ${unique.length}`]] as const).map(([key, label]) => <button key={key} onClick={() => setLane(key)} style={button(lane === key)}>{label}</button>)}
+        <select value={queueFilter} onChange={event => setQueueFilter(event.target.value as QueueFilter)} aria-label="Watch operator queue filter" style={{ fontSize: 11, padding: '6px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', color: BB.text0 }}><option value="all">ALL QUEUE STATES</option><option value="needs_review">NEEDS REVIEW ({counts.needsReview})</option><option value="deterministic_fail">DETERMINISTIC FAIL ({counts.failures})</option><option value="data_gaps">DATA GAPS ({counts.gaps})</option><option value="actionable">ACTIONABLE ({counts.actionable})</option></select>
+        <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Filter symbol, origin, sector, ticket, action…" aria-label="Filter Watch review symbols" style={{ marginLeft: 'auto', minWidth: 280, fontSize: 11, padding: '6px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', color: BB.text0 }} />
+      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(620px,1.2fr) minmax(330px,.8fr)', gap: 10, marginTop: 9, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(650px,1.25fr) minmax(350px,.75fr)', gap: 10, marginTop: 9, alignItems: 'start' }}>
         <div style={{ ...panel, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '100px 155px 85px 85px 120px 1fr 118px', gap: 7, padding: '7px 8px', borderBottom: '1px solid var(--border)', fontSize: 10, color: BB.text3, textTransform: 'uppercase' }}><span>Symbol</span><span>Origin</span><span>Price</span><span>Valuation</span><span>Ticket</span><span>Coverage</span><span>Open</span></div>
-          {shown.map(item => {
-            const symbol = String(item.symbol).toUpperCase(); const value = valuation(item, fvMap[symbol], cardMap[symbol]); const ticket = ticketState(item); const rsi = num(item.rsi, item.rsi_14, fvMap[symbol]?.rsi); const price = num(item.price, item.last_price, item.price_live); const priceAt = text(item.price_as_of, item.last_enriched_at); const isSelected = selected === symbol
-            const coverage = [price === null ? 'price unavailable' : `price ${age(priceAt)}`, rsi === null ? 'technical unavailable' : `RSI ${rsi.toFixed(1)}`, value.notApplicable ? 'valuation N/A' : value.available ? `valuation ${age(value.asOf)}` : 'valuation unavailable', item.catalyst_headline ? `catalyst ${age(item.catalyst_at)}` : 'catalyst unavailable'].join(' · ')
-            return <div key={symbol} role="button" tabIndex={0} aria-selected={isSelected} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectForReview(symbol) } }} onClick={() => selectForReview(symbol)} style={{ display: 'grid', gridTemplateColumns: '100px 155px 85px 85px 120px 1fr 118px', gap: 7, padding: '8px', borderBottom: '1px solid var(--border)', alignItems: 'center', fontSize: 10.5, cursor: 'pointer', background: isSelected ? 'var(--bg2)' : 'transparent', boxShadow: isSelected ? `inset 3px 0 0 ${T.link}` : undefined }}><div><b style={{ fontSize: 13 }}>{symbol}</b><br /><span style={{ color: BB.text3 }}>{item.starred ? '★ favorite' : 'system'}</span></div><div>{originLabel(item)}<br /><span style={{ color: BB.text3 }}>{text(item.profile_sector, 'sector unavailable')}</span></div><div><b>{money(price)}</b><br /><span style={{ color: BB.text3 }}>{age(priceAt)}</span></div><div>{value.notApplicable ? 'N/A' : <><span>P/E {value.pe === null ? '—' : value.pe.toFixed(1)}</span><br /><span style={{ color: BB.text3 }}>Fwd {value.forwardPe === null ? '—' : value.forwardPe.toFixed(1)}</span></>}</div><div><b style={{ color: isFailure(ticket.deterministic) ? BB.red : BB.text1 }}>{ticket.deterministic}</b><br /><span style={{ color: isFailure(ticket.reconciled) ? BB.red : BB.text3 }}>{ticket.reconciled}</span></div><div style={{ color: BB.text3 }}>{coverage}</div><div onClick={event => event.stopPropagation()}><button onClick={() => selectForReview(symbol)} aria-label={`Open review for ${symbol}`} style={isSelected ? primaryButton : button(false)}>{isSelected ? 'SELECTED' : 'OPEN REVIEW'}</button></div></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '95px 145px 80px 85px 120px 1fr 118px', gap: 7, padding: '7px 8px', borderBottom: '1px solid var(--border)', fontSize: 10, color: BB.text3, textTransform: 'uppercase' }}><span>Symbol</span><span>Origin</span><span>Price</span><span>Valuation</span><span>Ticket</span><span>Next action / coverage</span><span>Open</span></div>
+          {shown.map(row => {
+            const isSelected = selected === row.symbol
+            const coverage = [row.price === null ? 'price unavailable' : `price ${age(row.priceAt)}`, row.rsi === null ? 'technical unavailable' : `RSI ${row.rsi.toFixed(1)}`, row.value.notApplicable ? 'valuation N/A' : row.value.available ? `valuation ${age(row.value.asOf)}` : 'valuation unavailable', row.item.catalyst_headline ? `catalyst ${age(row.item.catalyst_at)}` : 'catalyst unavailable'].join(' · ')
+            return <div key={row.symbol} role="button" tabIndex={0} aria-selected={isSelected} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectForReview(row.symbol) } }} onClick={() => selectForReview(row.symbol)} style={{ display: 'grid', gridTemplateColumns: '95px 145px 80px 85px 120px 1fr 118px', gap: 7, padding: '8px', borderBottom: '1px solid var(--border)', alignItems: 'center', fontSize: 10.5, cursor: 'pointer', background: isSelected ? 'var(--bg2)' : 'transparent', boxShadow: isSelected ? `inset 3px 0 0 ${T.link}` : undefined }}>
+              <div><b style={{ fontSize: 13 }}>{row.symbol}</b><br /><span style={{ color: BB.text3 }}>{row.item.starred ? '★ favorite' : 'system'}</span></div>
+              <div>{originLabel(row.item)}<br /><span style={{ color: BB.text3 }}>{text(row.item.profile_sector, 'sector unavailable')}</span></div>
+              <div><b>{money(row.price)}</b><br /><span style={{ color: BB.text3 }}>{age(row.priceAt)}</span></div>
+              <div>{row.value.notApplicable ? 'N/A' : <><span>P/E {row.value.pe === null ? '—' : row.value.pe.toFixed(1)}</span><br /><span style={{ color: BB.text3 }}>Fwd {row.value.forwardPe === null ? '—' : row.value.forwardPe.toFixed(1)}</span></>}</div>
+              <div><b style={{ color: isFailure(row.ticket.deterministic) ? BB.red : BB.text1 }}>{row.ticket.deterministic}</b><br /><span style={{ color: isFailure(row.ticket.reconciled) ? BB.red : BB.text3 }}>{row.ticket.reconciled}</span></div>
+              <div><b style={{ color: isFailure(row.ticket.deterministic) ? BB.red : BB.text1 }}>{row.next}</b><br /><span style={{ color: BB.text3 }}>{coverage}</span></div>
+              <div onClick={event => event.stopPropagation()}><button onClick={() => selectForReview(row.symbol)} aria-label={`Open review for ${row.symbol}`} style={isSelected ? primaryButton : button(false)}>{isSelected ? 'SELECTED' : 'OPEN REVIEW'}</button></div>
+            </div>
           })}
-          {!shown.length && <div style={{ padding: 16, color: BB.text3 }}>No symbols match this lane and filter.</div>}
+          {!shown.length && <div style={{ padding: 16, color: BB.text3 }}>No symbols match this lane, queue state and filter.</div>}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 8px', borderTop: '1px solid var(--border)', color: BB.text3, fontSize: 10.5 }}><span>{filtered.length} matching · page {safePage + 1} of {pageCount}</span><span style={{ display: 'flex', gap: 5 }}><button disabled={safePage === 0} onClick={() => setPage(value => Math.max(0, value - 1))} style={{ ...button(false), opacity: safePage === 0 ? .5 : 1 }}>PREVIOUS</button><button disabled={safePage >= pageCount - 1} onClick={() => setPage(value => Math.min(pageCount - 1, value + 1))} style={{ ...button(false), opacity: safePage >= pageCount - 1 ? .5 : 1 }}>NEXT</button></span></div>
         </div>
 
         <aside style={{ ...panel, padding: 10, position: 'sticky', top: 8 }} aria-live="polite">
-          {!selectedItem || !selectedVal || !selectedTicket ? <div style={{ color: BB.text3 }}>Choose a symbol from the list to open its evidence and actions.</div> : <>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><b style={{ fontSize: 16 }}>{selected}</b><span style={{ color: BB.text3, fontSize: 10.5 }}>{originLabel(selectedItem)}</span><button onClick={() => void toggleStar(selectedItem)} style={{ ...button(Boolean(selectedItem.starred)), marginLeft: 'auto' }}>{selectedItem.starred ? 'UNSTAR' : 'PROMOTE ★'}</button></div>
-            <div style={{ marginTop: 5, fontSize: 10.5, color: BB.text3 }}>{text(selectedItem.profile_sector, 'sector unavailable')} · price {money(selectedPrice)} ({age(selectedPriceAt)}) · RSI {selectedRsi === null ? '—' : selectedRsi.toFixed(1)}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginTop: 9, borderTop: '1px solid var(--border)', borderLeft: '1px solid var(--border)' }}>{[['DETERMINISTIC', selectedTicket.deterministic], ['RECONCILED', selectedTicket.reconciled], ['LOCAL', selectedTicket.local], ['GROK OAUTH', selectedTicket.grok], ['CHATGPT OAUTH', selectedTicket.chatgpt], ['VALUATION', selectedVal.notApplicable ? 'N/A' : selectedVal.available ? `P/E ${selectedVal.pe ?? '—'}` : 'UNAVAILABLE']].map(([label, value]) => <div key={label} style={{ padding: 7, borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}><div style={{ color: BB.text3, fontSize: 10 }}>{label}</div><b style={{ color: isFailure(String(value)) ? BB.red : BB.text1 }}>{value}</b></div>)}</div>
-            <div style={{ marginTop: 8, fontSize: 10, color: BB.text3 }}>Review actions create independent critique artifacts only. Deterministic validation remains the release authority.</div>
+          {!selectedRow ? <div style={{ color: BB.text3 }}>Choose a symbol from the queue to open its evidence and actions.</div> : <>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><b style={{ fontSize: 17 }}>{selectedRow.symbol}</b><span style={{ color: BB.text3, fontSize: 10.5 }}>{originLabel(selectedRow.item)}</span><button onClick={() => void toggleStar(selectedRow.item)} style={{ ...button(Boolean(selectedRow.item.starred)), marginLeft: 'auto' }}>{selectedRow.item.starred ? 'UNSTAR' : 'PROMOTE ★'}</button></div>
+            <div style={{ marginTop: 5, fontSize: 10.5, color: BB.text3 }}>{text(selectedRow.item.profile_sector, 'sector unavailable')} · price {money(selectedRow.price)} ({age(selectedRow.priceAt)}) · RSI {selectedRow.rsi === null ? '—' : selectedRow.rsi.toFixed(1)}</div>
+            <div style={{ ...panel, marginTop: 8, padding: 8, background: 'var(--bg2)' }}><div style={{ fontSize: 10, color: BB.text3 }}>NEXT OPERATOR ACTION</div><b style={{ color: isFailure(selectedRow.ticket.deterministic) ? BB.red : BB.text1 }}>{selectedRow.next}</b></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginTop: 9, borderTop: '1px solid var(--border)', borderLeft: '1px solid var(--border)' }}>{[['DETERMINISTIC', selectedRow.ticket.deterministic], ['RECONCILED', selectedRow.ticket.reconciled], ['LOCAL', selectedRow.ticket.local], ['GROK OAUTH', selectedRow.ticket.grok], ['CHATGPT OAUTH', selectedRow.ticket.chatgpt], ['VALUATION', selectedRow.value.notApplicable ? 'N/A' : selectedRow.value.available ? `P/E ${selectedRow.value.pe ?? '—'}` : 'UNAVAILABLE']].map(([label, value]) => <div key={label} style={{ padding: 7, borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}><div style={{ color: BB.text3, fontSize: 10 }}>{label}</div><b style={{ color: isFailure(String(value)) ? BB.red : BB.text1 }}>{value}</b></div>)}</div>
+            <div style={{ marginTop: 8, fontSize: 10, color: BB.text3 }}>Reviews create independent critique artifacts. Deterministic arithmetic, freshness, validation and release remain authoritative.</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 9 }}><button disabled={Boolean(reviewBusy)} onClick={() => void runReview('local', 'Local critic')} style={button(false)}>{reviewBusy === 'Local critic' ? 'LOCAL…' : 'RUN LOCAL'}</button><button disabled={Boolean(reviewBusy)} onClick={() => void runReview('grok', 'Grok OAuth')} style={button(false)}>{reviewBusy === 'Grok OAuth' ? 'GROK…' : 'RUN GROK OAUTH'}</button><button disabled={Boolean(reviewBusy)} onClick={() => void runReview('chatgpt', 'ChatGPT OAuth')} style={button(false)}>{reviewBusy === 'ChatGPT OAuth' ? 'CHATGPT…' : 'RUN CHATGPT OAUTH'}</button><button disabled={Boolean(reviewBusy)} onClick={() => void runReview('local,grok,chatgpt', 'All free critics')} style={button(true)}>{reviewBusy === 'All free critics' ? 'ALL FREE…' : 'RUN ALL FREE'}</button></div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}><button onClick={() => { window.location.href = `/v3/portfolio/re-entry?classify=${encodeURIComponent(selected)}` }} style={primaryButton}>CLASSIFY RE-ENTRY</button><button onClick={() => { window.location.href = `/v3/rotation?symbol=${encodeURIComponent(selected)}` }} style={button(false)}>OPEN ROTATION</button><button disabled={Boolean(reviewBusy)} onClick={() => void estimatePremium()} style={button(false)}>{reviewBusy === 'premium estimate' ? 'ESTIMATING…' : 'PAID EXPERT…'}</button></div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}><button onClick={() => { window.location.href = `/v3/portfolio/re-entry?classify=${encodeURIComponent(selectedRow.symbol)}` }} style={primaryButton}>CLASSIFY RE-ENTRY</button><button onClick={() => { window.location.href = `/v3/rotation?symbol=${encodeURIComponent(selectedRow.symbol)}` }} style={button(false)}>OPEN ROTATION</button><button disabled={Boolean(reviewBusy)} onClick={() => void estimatePremium()} style={button(false)}>{reviewBusy === 'premium estimate' ? 'ESTIMATING…' : 'PAID EXPERT…'}</button></div>
             {message && <div style={{ marginTop: 8, color: /failed|error|not configured|not implemented/i.test(message) ? BB.red : BB.text2, fontSize: 10.5 }}>{message}</div>}
             {premium && <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>{premium.available ? <><div style={{ fontSize: 10 }}>{premium.provider}/{premium.model} · estimated ${Number(premium.est_cost_usd).toFixed(4)} · latency {premium.expected_latency_s}s</div><label style={{ display: 'block', fontSize: 10, color: BB.text3, marginTop: 7 }}>TYPE EXACTLY: <code>{premium.confirm_with}</code><input value={confirmation} onChange={event => setConfirmation(event.target.value)} style={{ width: '100%', boxSizing: 'border-box', marginTop: 4, fontSize: 11, padding: '6px 8px', background: 'var(--bg1)', border: '1px solid var(--border)', color: BB.text0 }} /></label><button disabled={confirmation !== premium.confirm_with || Boolean(reviewBusy)} onClick={() => void runPremium()} style={{ ...button(true), marginTop: 7, opacity: confirmation === premium.confirm_with ? 1 : .5 }}>CONFIRM PAID REVIEW</button></> : <div style={{ fontSize: 10, color: BB.text2 }}>{premium.reason}<br />No paid call was made.</div>}</div>}
           </>}
