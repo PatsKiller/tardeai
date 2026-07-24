@@ -1,0 +1,45 @@
+name: ui-calm-diagnostic
+on:
+  pull_request:
+    paths:
+      - 'apps/command-center-v3/**'
+      - '.github/workflows/ui-calm-diagnostic.yml'
+  workflow_dispatch: {}
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: install
+        working-directory: apps/command-center-v3
+        run: npm ci --silent
+      - name: capture diagnostics
+        continue-on-error: true
+        working-directory: apps/command-center-v3
+        run: |
+          set +e
+          npx tsc --pretty false > /tmp/ui-calm-tsc.log 2>&1
+          echo $? > /tmp/ui-calm-tsc.exit
+          bash ../../scripts/check_design_tokens.sh > /tmp/ui-calm-design.log 2>&1
+          echo $? > /tmp/ui-calm-design.exit
+          node ../../scripts/test_chip_scope.mjs > /tmp/ui-calm-chip.log 2>&1
+          echo $? > /tmp/ui-calm-chip.exit
+          npm run build > /tmp/ui-calm-build.log 2>&1
+          echo $? > /tmp/ui-calm-build.exit
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-calm-diagnostic
+          path: /tmp/ui-calm-*.log
+      - name: report
+        run: |
+          cat /tmp/ui-calm-tsc.log
+          cat /tmp/ui-calm-design.log
+          cat /tmp/ui-calm-chip.log
+          cat /tmp/ui-calm-build.log
+          test "$(cat /tmp/ui-calm-tsc.exit)" = 0
+          test "$(cat /tmp/ui-calm-design.exit)" = 0
+          test "$(cat /tmp/ui-calm-chip.exit)" = 0
+          test "$(cat /tmp/ui-calm-build.exit)" = 0
