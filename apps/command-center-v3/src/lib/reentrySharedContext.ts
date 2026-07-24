@@ -20,6 +20,7 @@ export type ReEntryMandate = {
 }
 export type ReEntryEvent = { eventType: typeof EXIT_TYPES[number]; reason: string; notes: string; updatedAt: string }
 export type ReEntryDisposition = { state: 'review' | 'monitor' | 'suppressed'; reason: string; updatedAt: string }
+export type ExitEvidenceField = 'account' | 'trade_date' | 'trade_time' | 'quantity' | 'price' | 'proceeds_usd' | 'action' | 'description'
 export type ExitEvidenceRow = {
   event_key: string
   symbol: string
@@ -37,6 +38,10 @@ export type ExitEvidenceRow = {
   event_status?: string | null
   completion_status?: string | null
   operator_status?: string | null
+  external_id?: string | null
+  field_sources?: Partial<Record<ExitEvidenceField, string>>
+  evidence_gaps?: string[]
+  derived_fields?: string[]
 }
 
 export type ClassificationState = 'CLASSIFIED' | 'AUTO-TAGGED' | 'UNCLASSIFIED'
@@ -60,7 +65,7 @@ export function inferExitEvent(row: ExitEvidenceRow): ReEntryEvent {
   const evidence = `${row.action ?? ''} ${row.description ?? ''} ${row.event_status ?? ''} ${row.completion_status ?? ''} ${row.operator_status ?? ''}`
   if (/\b(stop(?:ped)?|stop[- ]loss|trailing stop|protective stop)\b/i.test(evidence)) return { eventType: 'stopped_out', reason: text(row.description, 'Broker/journal evidence indicates a stop execution.'), notes: 'Auto-tagged from broker action/description. Review and edit if needed.', updatedAt: '' }
   if (/\b(partial|trim|reduce|scaled? out)\b/i.test(evidence)) return { eventType: 'partial_trim', reason: text(row.description, 'Broker/journal evidence indicates a partial reduction.'), notes: 'Auto-tagged from broker action/description.', updatedAt: '' }
-  if (/\b(assign(?:ed|ment)|expire(?:d|ation))\b/i.test(evidence)) return { eventType: 'assignment_expiration', reason: text(row.description, 'Option assignment or expiration event.'), notes: 'Auto-tagged from broker/journal evidence.', updatedAt: '' }
+  if (/\b(assign(?:ed|ment)|expire(?:d|ation))\b/i.test(evidence)) return { eventType: 'assignment_expiration', reason: text(row.description, 'Option assignment or expiration event.'), notes: 'Auto-tagged from broker/journal description.', updatedAt: '' }
   if (/\b(day[ -]?trade|intraday|scalp|round trip)\b/i.test(evidence)) return { eventType: 'momentum_scalp', reason: text(row.description, 'Detected short-duration tactical trade.'), notes: 'Auto-tagged from journal/broker description.', updatedAt: '' }
   if (/\b(sell|sold|closed|exit)\b/i.test(evidence)) return { eventType: 'discretionary_sale', reason: text(row.description, 'Broker/journal evidence indicates a discretionary sale.'), notes: 'Auto-tagged from broker action/description.', updatedAt: '' }
   return { eventType: 'other', reason: text(row.description, 'Exit reason is not explicit in source data.'), notes: '', updatedAt: '' }
