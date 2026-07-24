@@ -102,7 +102,7 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
       {msg && <div style={{ fontSize: TYPE.sm, color: msg.startsWith('Error') ? BB.red : BB.green, marginBottom: 12 }}>{msg}</div>}
 
       <div style={{ fontSize: TYPE.xs, color: BB.text3, margin: '2px 0 8px' }}>
-        Monitoring lens (RS history · book overlay · setups) plus an evidence-linked rotation brief. Allocation workflow →{' '}
+        Monitoring lens (RS history · book overlay · screen matches) plus an evidence-linked rotation brief. Allocation workflow →{' '}
         <a href="/v3/rotation" style={{ color: T.link }}>Rotation Intelligence</a>. Order staging remains a separate governed action.
       </div>
 
@@ -129,7 +129,7 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
             .filter((industry: any) => ['WEAKENING', 'LAGGING'].includes(String(industry.state || '').toUpperCase()))
             .sort((a, b) => Number(a.rel1m ?? 999) - Number(b.rel1m ?? 999))
             .slice(0, 2)
-          const postureLabel = rec ? 'ADD ON PULLBACK' : s.momentum === 'leading' ? 'MONITOR FOR ENTRY' : s.momentum === 'lagging' ? 'UNDERWEIGHT / REVIEW' : 'WATCH'
+          const postureLabel = rec ? 'ADD ON PULLBACK' : s.momentum === 'lagging' ? 'UNDERWEIGHT / REVIEW' : 'RESEARCH WATCH'
           const postureTone: 'green' | 'amber' | 'red' | 'slate' = rec ? 'green' : s.momentum === 'lagging' ? 'red' : s.momentum === 'leading' ? 'amber' : 'slate'
           return (
             <div key={s.sector} style={{ ...card, borderLeft: `3px solid ${momRail(s.momentum)}`, opacity: String(s.momentum).startsWith('n/a') ? 0.7 : 1 }}>
@@ -185,10 +185,15 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
                       ⚠ Overweight ({s.book_weight_pct}%) while relative strength deteriorates — review funding and rotation candidates
                     </div>
                   )}
+                  {!rec && s.momentum === 'leading' && (
+                    <div style={{ marginTop: 7, padding: '4px 8px', background: BB.bgShift, borderLeft: `3px solid ${BB.amber}`, fontSize: TYPE.xs, color: BB.text3 }}>
+                      Leading monitor signal only — no governed add card is active for this sector.
+                    </div>
+                  )}
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <div style={{ ...numStyle, fontSize: TYPE.lg, fontWeight: 700, color: s.setup_count > 0 ? T.link : BB.text3 }}>{s.setup_count}</div>
-                  <div title="setups = score-ranked candidates surviving CIO-verdict + coverage filters; denominator = tracked constituents" style={{ fontSize: TYPE.xs, color: BB.text3 }}>setups / {s.constituent_count} tracked</div>
+                  <div title="screen matches = enriched watch-universe names satisfying broad strategy filters; this is not an expected-return, conviction or recommendation score" style={{ fontSize: TYPE.xs, color: BB.text3 }}>screen matches / {s.constituent_count} tracked</div>
                 </div>
               </div>
 
@@ -202,7 +207,7 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 {s.setup_count > 0 && (
                   <button onClick={() => setExpanded(isOpen ? null : s.sector)} style={terminalButton('secondary')}>
-                    {isOpen ? 'Hide stocks' : `Stock candidates (${s.setup_count})`}
+                    {isOpen ? 'Hide screen matches' : `Screened names (${s.setup_count})`}
                   </button>
                 )}
                 {!s.is_watched && (
@@ -215,17 +220,20 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
               {isOpen && (
                 <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {(s.candidates || []).map((c: any) => (
-                    <div key={c.symbol} onClick={() => onDrill({ title: c.symbol, subtitle: `${s.sector} stock candidate`, endpoint: `/api/v2/watch/provenance/${c.symbol}`, rows: [c] })}
+                    <div key={c.symbol} onClick={() => onDrill({ title: c.symbol, subtitle: `${s.sector} screen match · not a recommendation`, endpoint: `/api/v2/watch/provenance/${c.symbol}`, rows: [c] })}
                       style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 8px', background: BB.bgShift, borderLeft: `3px solid ${RAIL.neutral}`, borderRadius: 2, cursor: 'pointer' }}>
                       <span style={{ ...numStyle, fontWeight: 700, color: BB.text0, fontSize: TYPE.sm }}>{c.symbol}</span>
-                      <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         {c.rsi != null && <Chip kind="metric" title="RSI-14 from enriched watchlist"><span style={{ color: Number(c.rsi) >= 70 ? BB.red : Number(c.rsi) < 40 ? BB.green : BB.text2 }}>RSI {Number(c.rsi).toFixed(0)}</span></Chip>}
                         {c.trend && <Chip kind="state" tone={trendTone(c.trend)}>{c.trend}</Chip>}
-                        {c.score != null && <Chip kind="metric" title={c.watch_score_kind}><span style={{ color: c.watch_score_kind === 'strategy_qualified' ? BB.green : BB.text3 }}>{Number(c.score).toFixed(0)}</span></Chip>}
+                        {c.score != null && <Chip kind="metric" title={`${c.watch_score_kind || 'screen'} eligibility score — not conviction or expected return`}><span style={{ color: BB.text2 }}>screen {Number(c.score).toFixed(0)}</span></Chip>}
+                        {c.thin_coverage && <Chip kind="state" tone="amber" title="Thin analyst/evidence coverage; do not elevate this screen match without additional diligence">THIN COVERAGE</Chip>}
+                        {!c.cio_view && <Chip kind="state" tone="slate" title="No CIO synthesis is attached to this screen match">NO CIO VIEW</Chip>}
+                        {c.analyst_opinions != null && <Chip kind="metric" title="analyst opinion count available to the screen">{c.analyst_opinions} analysts</Chip>}
                       </span>
                     </div>
                   ))}
-                  <div style={{ fontSize: TYPE.xs, color: BB.text3 }}>Stock candidates come from the enriched watch universe. Click for provenance; no candidate is an order instruction.</div>
+                  <div style={{ fontSize: TYPE.xs, color: BB.text3 }}>These are enriched watch-universe screen matches. Repeated scores reflect filter eligibility, not equal conviction. Click for provenance; only a complete governed recommendation card can carry an add posture.</div>
                 </div>
               )}
             </div>
@@ -233,7 +241,7 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
         })}
       </div>
       <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 12 }}>
-        Sources: sector monitor, deterministic defense posture, Finviz industry snapshot, portfolio look-through and complete recommendation cards. Industry relative windows currently mix Finviz week/month with local SPY 5/21-session baselines; close rankings should be treated as approximate until normalized.
+        Sources: sector monitor, deterministic defense posture, Finviz industry snapshot, portfolio look-through and complete recommendation cards. Screen-match scores are not forecasts or conviction. Industry relative windows currently mix Finviz week/month with local SPY 5/21-session baselines; close rankings should be treated as approximate until normalized.
       </div>
     </div>
   )
