@@ -16,6 +16,7 @@ from .contracts import (
     ToolPolicy,
     canonical_hash,
 )
+from .critics import CriticLane, CriticPanel, CriticReconciliation, CriticResult, reconcile_critics
 from .knowledge import (
     EmbeddingProvenance,
     KnowledgeIndex,
@@ -26,11 +27,21 @@ from .knowledge import (
 )
 from .runtime import MvlRuntime
 from .sentinel import SentinelFinding, SentinelReport, finding_codes, inspect_population, inspect_ticket
+from .sentinel_pipeline import (
+    ReviewDecision,
+    ScoreDecision,
+    SentinelPipelineResult,
+    SentinelShadowPipeline,
+)
 from .watch_artifact import WatchAdapterResult, WatchArtifact, WatchProvenance, adapt_watch_item
 
 __all__ = [
     "AgentDefinition",
     "Artifact",
+    "CriticLane",
+    "CriticPanel",
+    "CriticReconciliation",
+    "CriticResult",
     "DeploymentState",
     "EmbeddingProvenance",
     "Environment",
@@ -40,10 +51,14 @@ __all__ = [
     "RetrievalBundle",
     "RetrievalHit",
     "Review",
+    "ReviewDecision",
     "ReviewVerdict",
     "RunStatus",
+    "ScoreDecision",
     "SentinelFinding",
+    "SentinelPipelineResult",
     "SentinelReport",
+    "SentinelShadowPipeline",
     "ToolDecision",
     "ToolPolicy",
     "WatchAdapterResult",
@@ -55,4 +70,5 @@ __all__ = [
     "finding_codes",
     "inspect_population",
     "inspect_ticket",
+    "reconcile_critics",
 ]
