@@ -75,15 +75,18 @@ class WatchArtifact:
             raise WatchArtifactError("Watch artifact requires a symbol")
         if self.financial_authority != "DENIED" or not self.advisory_only:
             raise WatchArtifactError("Watch artifact must remain advisory with financial authority denied")
-        for value, label in ((self.input_hash, "input_hash"), (self.validation_hash, "validation_hash"), (self.provenance.source_hash, "source_hash")):
-            if len(value) != 64 or any(character not in "0123456789abcdef" for character in value.lower()):
+        for value, label in (
+            (self.input_hash, "input_hash"),
+            (self.validation_hash, "validation_hash"),
+            (self.provenance.source_hash, "source_hash"),
+        ):
+            if not _valid_sha(value):
                 raise WatchArtifactError(f"{label} must be sha256")
         if not self.source_refs:
             raise WatchArtifactError("at least one source reference is required")
         assert_no_secret_material(asdict(self))
 
     def sentinel_ticket(self) -> dict[str, Any]:
-        """Return the exact deterministic surface consumed by Sentinel."""
         self.validate()
         return {
             "symbol": self.symbol,
@@ -144,7 +147,7 @@ def _first(value: Mapping[str, Any], paths: Sequence[str]) -> Any:
     return None
 
 
-def _first_mapping(value: Mapping[str, Any], paths: Sequence[str]) -> Mapping[str, Any]:
+def _mapping(value: Mapping[str, Any], paths: Sequence[str]) -> Mapping[str, Any]:
     resolved = _first(value, paths)
     return dict(resolved) if isinstance(resolved, Mapping) else {}
 
@@ -192,10 +195,9 @@ def _scan_authority(value: Any, path: str = "root") -> list[str]:
 
 
 def _mechanics(raw: Mapping[str, Any]) -> Mapping[str, Any]:
-    packet = _first_mapping(raw, ["decision_packet"])
-    mechanics = _first_mapping(
+    source = _mapping(
         raw,
-        [
+        (
             "decision_packet.current_actionable_plan.mechanics",
             "decision_packet.current_mechanics",
             "decision_packet.selected_family.mechanics",
@@ -204,13 +206,8 @@ def _mechanics(raw: Mapping[str, Any]) -> Mapping[str, Any]:
             "selected_family.mechanics",
             "reentry_plan",
             "mechanics",
-        ],
+        ),
     )
-    if not mechanics and packet:
-        selected = packet.get("selected_family")
-        if isinstance(selected, Mapping) and isinstance(selected.get("mechanics"), Mapping):
-            mechanics = dict(selected["mechanics"])
-    allowed: dict[str, Any] = {}
     aliases = {
         "entry": ("entry", "entry_price", "entry_limit"),
         "entry_low": ("entry_low", "entry_zone_low", "reentry_zone_low"),
@@ -223,37 +220,40 @@ def _mechanics(raw: Mapping[str, Any]) -> Mapping[str, Any]:
         "time_horizon": ("time_horizon", "horizon"),
         "direction": ("direction", "side"),
     }
+    result: dict[str, Any] = {}
     for target, candidates in aliases.items():
         for candidate in candidates:
-            if candidate not in mechanics:
+            if candidate not in source:
                 continue
-            value = mechanics[candidate]
+            value = source[candidate]
             if target in {"entry", "entry_low", "entry_high", "limit", "stop", "target", "rr"}:
                 numeric = _number(value)
                 if numeric is not None:
-                    allowed[target] = numeric
+                    result[target] = numeric
             elif _text(value):
-                allowed[target] = _text(value)
+                result[target] = _text(value)
             break
-    return allowed
+    return result
 
 
 def _validation(raw: Mapping[str, Any]) -> Mapping[str, Any]:
-    validation = _first_mapping(
+    validation = _mapping(
         raw,
-        [
+        (
             "decision_packet.current_actionable_plan.ticket_validation",
             "decision_packet.ticket_validation",
             "current_actionable_plan.ticket_validation",
             "ticket_validation",
             "validation",
-        ],
+        ),
     )
-    review = _first_mapping(raw, ["decision_packet.ticket_review", "ticket_review"])
-    tickets = review.get("tickets_validated") if isinstance(review, Mapping) else None
+    review = _mapping(raw, ("decision_packet.ticket_review", "ticket_review"))
+    tickets = review.get("tickets_validated")
     if not validation and isinstance(tickets, list) and tickets and isinstance(tickets[0], Mapping):
         validation = dict(tickets[0])
-    state = _state(validation.get("state") or validation.get("verdict") or review.get("reconciled", {}).get("state") if isinstance(review.get("reconciled"), Mapping) else None, "NOT_RUN")
+    reconciled = review.get("reconciled")
+    reconciled_state = reconciled.get("state") if isinstance(reconciled, Mapping) else None
+    state = _state(validation.get("state") or validation.get("verdict") or reconciled_state, "NOT_RUN")
     failures = validation.get("hard_failures") or validation.get("failures") or []
     if not isinstance(failures, list):
         failures = [failures]
@@ -264,27 +264,31 @@ def _validation(raw: Mapping[str, Any]) -> Mapping[str, Any]:
         "state": state,
         "proposal_allowed": bool(proposal_allowed),
         "hard_failures": [str(item) for item in failures if _text(item)],
-        "source": _first_text(raw, ["decision_packet.current_actionable_plan.ticket_validation.source", "ticket_validation.source"], "watch-source"),
+        "source": _first_text(
+            raw,
+            (
+                "decision_packet.current_actionable_plan.ticket_validation.source",
+                "decision_packet.ticket_validation.source",
+                "ticket_validation.source",
+            ),
+            "watch-source",
+        ),
     }
 
 
 def _market_context(raw: Mapping[str, Any]) -> Mapping[str, Any]:
-    price = _first_number(raw, ["price", "last_price", "price_live", "current_price", "quote.last", "decision_packet.current_input_snapshot.price"])
-    rsi = _first_number(raw, ["rsi", "rsi_14", "technical.rsi", "technicals.rsi", "decision_packet.current_input_snapshot.rsi"])
-    resistance = _first_number(raw, ["resistance", "resistance_level", "decision_packet.selected_family.mechanics.resistance"])
-    support = _first_number(raw, ["support", "support_level", "decision_packet.selected_family.mechanics.support"])
     return {
-        "price": price,
-        "rsi": rsi,
-        "trend": _state(_first(raw, ["trend_state", "trend_direction", "technical_state.overall_direction", "decision_packet.technical_state.overall_direction"]), "UNAVAILABLE"),
-        "resistance": resistance,
-        "support": support,
-        "regime": _state(_first(raw, ["regime", "regime_label", "decision_packet.regime"]), "UNAVAILABLE"),
+        "price": _first_number(raw, ("price", "last_price", "price_live", "current_price", "quote.last", "decision_packet.current_input_snapshot.price")),
+        "rsi": _first_number(raw, ("rsi", "rsi_14", "technical.rsi", "technicals.rsi", "decision_packet.current_input_snapshot.rsi")),
+        "trend": _state(_first(raw, ("trend_state", "trend_direction", "technical_state.overall_direction", "decision_packet.technical_state.overall_direction")), "UNAVAILABLE"),
+        "resistance": _first_number(raw, ("resistance", "resistance_level", "decision_packet.selected_family.mechanics.resistance")),
+        "support": _first_number(raw, ("support", "support_level", "decision_packet.selected_family.mechanics.support")),
+        "regime": _state(_first(raw, ("regime", "regime_label", "decision_packet.regime", "decision_packet.current_input_snapshot.regime")), "UNAVAILABLE"),
     }
 
 
 def _strategy_context(raw: Mapping[str, Any]) -> Mapping[str, Any]:
-    flags = _first(raw, ["flags", "strategy_flags", "portfolio_flags"])
+    flags = _first(raw, ("flags", "strategy_flags", "portfolio_flags"))
     if isinstance(flags, Mapping):
         normalized_flags = sorted(_text(key).upper() for key, enabled in flags.items() if enabled)
     elif isinstance(flags, list):
@@ -292,29 +296,28 @@ def _strategy_context(raw: Mapping[str, Any]) -> Mapping[str, Any]:
     else:
         normalized_flags = []
     return {
-        "recommendation": _state(_first(raw, ["synthesis_recommendation", "latest_recommendation", "recommendation"]), "UNAVAILABLE"),
-        "sector": _first_text(raw, ["profile_sector", "sector"], ""),
-        "catalyst": _first_text(raw, ["catalyst_headline", "catalyst"], ""),
-        "earnings_date": _first_text(raw, ["earnings_date", "next_earnings_date"], ""),
+        "recommendation": _state(_first(raw, ("synthesis_recommendation", "latest_recommendation", "recommendation")), "UNAVAILABLE"),
+        "sector": _first_text(raw, ("profile_sector", "sector"), ""),
+        "catalyst": _first_text(raw, ("catalyst_headline", "catalyst"), ""),
+        "earnings_date": _first_text(raw, ("earnings_date", "next_earnings_date"), ""),
         "flags": normalized_flags,
         "starred": bool(raw.get("starred")),
-        "origin": _first_text(raw, ["origin_system", "source"], "watch"),
+        "origin": _first_text(raw, ("origin_system", "source"), "watch"),
     }
 
 
 def _source_refs(raw: Mapping[str, Any], symbol: str) -> tuple[str, ...]:
-    refs = [
-        _first_text(raw, ["watch_id", "id", "item_id", "directive_id"], ""),
-        _first_text(raw, ["decision_packet.packet_id", "decision_packet.id"], ""),
-        _first_text(raw, ["source_ref", "source_record_id"], ""),
-    ]
-    normalized = [f"watch:{symbol}"]
-    normalized.extend(f"source:{value}" for value in refs if value)
-    return tuple(dict.fromkeys(normalized))
+    values = (
+        _first_text(raw, ("watch_id", "id", "item_id", "directive_id"), ""),
+        _first_text(raw, ("decision_packet.packet_id", "decision_packet.id"), ""),
+        _first_text(raw, ("source_ref", "source_record_id"), ""),
+    )
+    refs = [f"watch:{symbol}"]
+    refs.extend(f"source:{value}" for value in values if value)
+    return tuple(dict.fromkeys(refs))
 
 
 def adapt_watch_item(raw: Mapping[str, Any], *, now: datetime | None = None) -> WatchAdapterResult:
-    """Normalize one Watch row into a non-financial, hash-bound artifact."""
     if not isinstance(raw, Mapping):
         raise WatchArtifactError("Watch source must be a mapping")
     authority_paths = _scan_authority(raw)
@@ -323,30 +326,35 @@ def adapt_watch_item(raw: Mapping[str, Any], *, now: datetime | None = None) -> 
     assert_no_secret_material(raw)
 
     current_time = now or datetime.now(timezone.utc)
-    symbol = _first_text(raw, ["symbol", "ticker"], "UNKNOWN").upper()
-    packet = _first_mapping(raw, ["decision_packet"])
+    symbol = _first_text(raw, ("symbol", "ticker"), "UNKNOWN").upper()
     state = _state(
         _first(
             raw,
-            [
+            (
                 "decision_packet.current_actionable_plan.state",
                 "decision_packet.state",
                 "action_state",
                 "decision_state",
                 "state",
                 "status",
-            ],
+            ),
         ),
         "UNKNOWN",
     )
     mechanics = _mechanics(raw)
-    direction = _state(_first(raw, ["direction", "side", "decision_packet.direction", "decision_packet.selected_family.mechanics.direction"]), _state(mechanics.get("direction"), "LONG"))
-    observed = _iso(_first(raw, ["decision_packet_at", "last_enriched_at", "computed_at", "as_of", "updated_at", "created_at"]), now=current_time)
+    direction = _state(
+        _first(raw, ("direction", "side", "decision_packet.direction", "decision_packet.selected_family.mechanics.direction")),
+        _state(mechanics.get("direction"), "LONG"),
+    )
+    observed = _iso(
+        _first(raw, ("decision_packet_at", "last_enriched_at", "computed_at", "as_of", "updated_at", "created_at")),
+        now=current_time,
+    )
     validation = _validation(raw)
     market = _market_context(raw)
     strategy = _strategy_context(raw)
 
-    input_snapshot = _first_mapping(raw, ["decision_packet.current_input_snapshot", "current_input_snapshot", "input_snapshot"])
+    input_snapshot = _mapping(raw, ("decision_packet.current_input_snapshot", "current_input_snapshot", "input_snapshot"))
     if not input_snapshot:
         input_snapshot = {
             "symbol": symbol,
@@ -357,11 +365,21 @@ def adapt_watch_item(raw: Mapping[str, Any], *, now: datetime | None = None) -> 
             "strategy_context": strategy,
             "mechanics": mechanics,
         }
-    existing_input_hash = _valid_sha(_first(raw, ["input_hash", "source_hash", "decision_packet.input_hash", "decision_packet.current_input_snapshot_hash"]))
+    existing_input_hash = _valid_sha(_first(raw, ("input_hash", "source_hash", "decision_packet.input_hash", "decision_packet.current_input_snapshot_hash")))
     input_hash = existing_input_hash or canonical_hash(input_snapshot)
     input_hash_origin = "source" if existing_input_hash else "adapter-canonical-input-snapshot"
 
-    existing_validation_hash = _valid_sha(_first(raw, ["validation_hash", "decision_packet.validation_hash", "decision_packet.current_actionable_plan.ticket_validation.hash", "ticket_validation.hash"]))
+    existing_validation_hash = _valid_sha(
+        _first(
+            raw,
+            (
+                "validation_hash",
+                "decision_packet.validation_hash",
+                "decision_packet.current_actionable_plan.ticket_validation.hash",
+                "ticket_validation.hash",
+            ),
+        )
+    )
     validation_hash = existing_validation_hash or canonical_hash(validation)
     validation_hash_origin = "source" if existing_validation_hash else "adapter-canonical-validation"
 
@@ -381,7 +399,6 @@ def adapt_watch_item(raw: Mapping[str, Any], *, now: datetime | None = None) -> 
     if not mechanics:
         gaps.append("mechanics unavailable")
 
-    source_ref = refs[1] if len(refs) > 1 else refs[0]
     artifact = WatchArtifact(
         artifact_key=f"watch:{symbol}:{source_hash[:16]}",
         symbol=symbol,
@@ -400,7 +417,7 @@ def adapt_watch_item(raw: Mapping[str, Any], *, now: datetime | None = None) -> 
         data_gaps=tuple(gaps),
         provenance=WatchProvenance(
             source_type="watchlist-item",
-            source_ref=source_ref,
+            source_ref=refs[1] if len(refs) > 1 else refs[0],
             source_hash=source_hash,
             observed_at=observed,
         ),
