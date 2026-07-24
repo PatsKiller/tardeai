@@ -137,9 +137,12 @@ jobs:
       - name: Verify committed source is clean
         run: |
           git diff --check
-          test -z "$(git status --short)" || {
-            git status --short
-            echo 'Validation must not mutate committed source.' >&2
+          git diff --exit-code
+          git diff --cached --exit-code
+          unexpected="$({ git status --porcelain --untracked-files=all || true; } | grep -Ev '^\?\? apps/command-center-v3/(render-artifacts|test-results)/' || true)"
+          test -z "$unexpected" || {
+            printf '%s\n' "$unexpected"
+            echo 'Validation mutated source or created an output outside the designated evidence directories.' >&2
             exit 1
           }
 
