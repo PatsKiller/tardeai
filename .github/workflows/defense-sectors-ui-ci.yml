@@ -7,8 +7,13 @@ on:
       - 'apps/command-center-v3/src/pages/SectorsHub.tsx'
       - 'apps/command-center-v3/src/components/FinvizSectorPanel.tsx'
       - 'apps/command-center-v3/src/components/rotation/**'
+      - 'apps/command-center-v3/e2e/defense-sectors-render.spec.ts'
       - 'apps/command-center-v3/package.json'
       - 'apps/command-center-v3/package-lock.json'
+      - 'scripts/apply_defense_data_hardening.py'
+      - 'scripts/defense_data_quality.py'
+      - 'config/industry_sector_map.json'
+      - 'tests/test_defense_data_quality.py'
       - 'scripts/check_design_tokens.sh'
       - 'scripts/test_chip_scope.mjs'
       - '.github/workflows/defense-sectors-ui-ci.yml'
@@ -17,20 +22,79 @@ permissions:
   contents: read
 
 jobs:
-  command-center-build:
+  apply-test-render:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: apps/command-center-v3
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: apps/command-center-v3/package-lock.json
+
+      - name: Apply deterministic source transformations
+        run: python scripts/apply_defense_data_hardening.py
+
+      - name: Compile and run focused backend tests
+        run: |
+          python -m pip install --disable-pip-version-check pytest
+          python -m compileall -q scripts/defense_data_quality.py scripts/sector_momentum_engine.py scripts/finviz_industry_groups.py scripts/defense_recommendations.py scripts/fund_lookthrough.py
+          python -m pytest -q tests/test_defense_data_quality.py tests/test_defense_data_hardening_wiring.py
+
       - name: Install locked frontend dependencies
+        working-directory: apps/command-center-v3
         run: npm ci
-      - name: Run design guard, chip-scope test, TypeScript and Vite build
+
+      - name: Build frontend
+        working-directory: apps/command-center-v3
         run: npm run build
+
+      - name: Install Chromium
+        working-directory: apps/command-center-v3
+        run: npx playwright install --with-deps chromium
+
+      - name: Render desktop and narrow gates
+        working-directory: apps/command-center-v3
+        run: |
+          rm -rf render-artifacts
+          npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/defense-vite.log 2>&1 &
+          for i in $(seq 1 45); do
+            curl -fsS http://127.0.0.1:4173/v3/ >/dev/null && break
+            sleep 1
+          done
+          PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 npx playwright test e2e/defense-sectors-render.spec.ts
+
+      - name: Verify generated diff
+        run: |
+          git diff --check
+          git status --short
+
+      - name: Upload render evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: defense-sectors-render-gate
+          path: apps/command-center-v3/render-artifacts/*.png
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload validated generated source
+        uses: actions/upload-artifact@v4
+        with:
+          name: defense-data-hardened-source
+          path: |
+            config/defense_recommendations.json
+            config/fund_lookthrough.json
+            scripts/fund_lookthrough.py
+            scripts/sector_momentum_engine.py
+            scripts/finviz_industry_groups.py
+            scripts/defense_recommendations.py
+            tests/test_defense_data_hardening_wiring.py
+            docs/architecture/DEFENSE_SECTORS_DATA_HARDENING_2026-07-24.md
+          if-no-files-found: error
+          retention-days: 30
