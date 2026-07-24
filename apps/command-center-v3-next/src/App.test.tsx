@@ -20,17 +20,24 @@ describe('/v3-next read-only workspace', () => {
     }
   });
 
-  it('presents GO / WAIT / NO-GO decisions (not charts/L2/tape)', () => {
+  it('surfaces near-entry GO/WAIT as rows with momentum signals (no RSI, no charts/L2/tape)', () => {
     render(<App />);
-    expect(screen.getByTestId('decision-TESTA').textContent).toContain('GO');
-    expect(screen.getByTestId('decision-TESTW').textContent).toContain('WAIT');
-    expect(screen.getByTestId('decision-TESTB').textContent).toContain('NO-GO');
-    // raw microstructure panels are intentionally gone from the live decision view
+    // rows for near-entry names only
+    expect(screen.getByTestId('decision-row-TESTA').textContent).toContain('GO');
+    expect(screen.getByTestId('decision-row-TESTW').textContent).toContain('WAIT');
+    // TESTB is NO-GO / not near entry -> not surfaced in the deck
+    expect(screen.queryByTestId('decision-row-TESTB')).not.toBeInTheDocument();
+    // momentum signals present; RSI intentionally absent
+    const deck = screen.getByTestId('decision-deck').textContent || '';
+    expect(deck).toMatch(/RVOL/);
+    expect(deck).toMatch(/VWAP/);
+    expect(deck).toMatch(/MACD/);
+    expect(deck).toMatch(/reversal-break/);
+    expect(deck).not.toMatch(/RSI/);
+    // raw microstructure panels are gone; L2/tape are inputs only
     expect(screen.queryByTestId('chart')).not.toBeInTheDocument();
     expect(screen.queryByTestId('level2')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('time-and-sales')).not.toBeInTheDocument();
-    // L2/tape are inputs, explicitly not displayed
-    expect(screen.getByTestId('decision-note').textContent).toMatch(/not displayed/i);
+    expect(screen.getByTestId('decision-note').textContent).toMatch(/not displayed|near-entry/i);
   });
 
   it('classic nav points at untouched /v3, next at /v3-next', () => {

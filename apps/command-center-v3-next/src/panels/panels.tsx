@@ -217,50 +217,48 @@ export function ParityPanel() {
 /* ---- Decision surface (LIVE presents GO/WAIT/NO-GO, not charts/L2/tape) ---- */
 
 type Decision = {
-  symbol: string; verdict: 'GO' | 'WAIT' | 'NO_GO'; price: number; entry_trigger: string;
+  symbol: string; verdict: 'GO' | 'WAIT' | 'NO_GO'; near_entry: boolean; price: number; entry: string;
+  rvol: string; vwap: string; macd: string; momentum: string; volume: string;
   prime_state: string; fire_state: string; runner_state: string;
   res: number | null; rrs: number | null; confidence: string; freshness: string; reason: string;
 };
 
 const verdictLabel = (v: string) => (v === 'NO_GO' ? 'NO-GO' : v);
 
-function DecisionCard({ d, solo }: { d: Decision; solo?: boolean }) {
-  return (
-    <div className={`decision-card v-${d.verdict}${solo ? ' solo' : ''}`}
-      data-testid={`${solo ? 'decision-detail' : 'decision'}-${d.symbol}`}>
-      <div className="dc-top">
-        <span className="dc-verdict">{verdictLabel(d.verdict)}</span>
-        <span className="dc-symbol">{d.symbol}</span>
-        <span className="dc-price">${d.price.toFixed(2)}</span>
-      </div>
-      <div className="dc-entry"><span className="dc-label">right entry</span> {d.entry_trigger}</div>
-      <div className="dc-scores">
-        <span className="dc-score res">RES {d.res ?? '—'}</span>
-        <span className="dc-score rrs">RRS {d.rrs ?? '—'}</span>
-        <span className="dc-conf">{d.confidence}</span>
-      </div>
-      <div className="dc-chips">
-        <span className="chip">{d.prime_state}</span>
-        <span className="chip">{d.fire_state}</span>
-        {d.runner_state !== 'NONE' && <span className="chip">RUN·{d.runner_state}</span>}
-        <span className="chip fresh">{d.freshness}</span>
-      </div>
-      <div className="dc-reason">{d.reason}</div>
-    </div>
-  );
-}
-
 export function DecisionDeck() {
   const { data, warnings } = fixtures.decisions();
+  const items = data.items as Decision[];
+  const near = items.filter((d) => d.near_entry);
+  const hidden = items.length - near.length;
   return (
-    <section data-testid="decision-deck" aria-label="trade decisions" className="span-all">
-      <h3>Decisions · GO / WAIT / NO-GO</h3>
+    <section data-testid="decision-deck" aria-label="near-entry decisions" className="span-all">
+      <h3>Near-Entry · GO / WAIT</h3>
       <Warnings items={warnings} />
-      <div className="decision-grid">
-        {(data.items as Decision[]).map((d) => <DecisionCard key={d.symbol} d={d} />)}
-      </div>
+      <table className="decision-rows">
+        <thead><tr>
+          <th>call</th><th>sym</th><th>price</th><th>entry — candle after reversal-break</th>
+          <th>RVOL</th><th>VWAP</th><th>MACD</th><th>mom</th><th>vol</th><th>conf</th>
+        </tr></thead>
+        <tbody>
+          {near.map((d) => (
+            <tr key={d.symbol} className={`v-${d.verdict}`} data-testid={`decision-row-${d.symbol}`}>
+              <td className="verdict">{verdictLabel(d.verdict)}</td>
+              <td className="sym">{d.symbol}</td>
+              <td className="mono">${d.price.toFixed(2)}</td>
+              <td className="entry">{d.entry}</td>
+              <td className="mono">{d.rvol}</td>
+              <td className="mono">{d.vwap}</td>
+              <td className="mono">{d.macd}</td>
+              <td className="mono">{d.momentum}</td>
+              <td className="mono">{d.volume}</td>
+              <td className="conf">{d.confidence}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {near.length === 0 && <div data-testid="no-near-entry"><Unavailable label="no symbols near entry" /></div>}
       <div className="dc-foot" data-testid="decision-note">
-        Level 2 / tape / OFI feed these calls — consumed by the engine, not displayed.
+        Surfacing near-entry names only{hidden > 0 ? ` · ${hidden} not near entry` : ''}. Level 2 / tape / OFI feed these calls — not displayed.
       </div>
     </section>
   );
@@ -272,7 +270,22 @@ export function SymbolDecision({ symbol }: { symbol: string }) {
   return (
     <section data-testid="symbol-decision" aria-label={`decision ${symbol}`}>
       <h3>{symbol} · Decision</h3>
-      {d ? <DecisionCard d={d} solo /> : <Unavailable label="no active decision for this symbol" />}
+      {d ? (
+        <div className={`decision-detail v-${d.verdict}`} data-testid={`decision-detail-${symbol}`}>
+          <div className="dd-head">
+            <span className="verdict">{verdictLabel(d.verdict)}</span>
+            <span className="dd-entry">{d.entry}</span>
+          </div>
+          <div className="dd-signals">
+            <span>RVOL <b>{d.rvol}</b></span><span>VWAP <b>{d.vwap}</b></span>
+            <span>MACD <b>{d.macd}</b></span><span>mom <b>{d.momentum}</b></span>
+            <span>vol <b>{d.volume}</b></span>
+            <span>RES <b>{d.res ?? '—'}</b> / RRS <b>{d.rrs ?? '—'}</b></span>
+            <span>{d.prime_state}·{d.fire_state}</span>
+          </div>
+          <div className="dc-reason">{d.reason}</div>
+        </div>
+      ) : <Unavailable label="no active decision for this symbol" />}
       <div data-testid="eligibility">eligibility: {fixtures.symbol(symbol).data.eligibility}</div>
     </section>
   );
