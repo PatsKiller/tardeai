@@ -249,6 +249,16 @@ tr.v-GO   td.verdict { color: var(--pos); border-left-color: var(--pos); }
 tr.v-WAIT td.verdict { color: var(--warn); border-left-color: var(--warn); }
 tr.v-NO_GO td.verdict { color: var(--neg); border-left-color: var(--neg); }
 tr.v-GO   td.sym { color: var(--pos); }
+table.decision-rows td.mono.pos { color: #7fd39a; }
+table.decision-rows td.mono.neg { color: #e0a6a0; }
+table.decision-rows td.grade { font-weight: 700; color: var(--text); text-align: center; }
+table.decision-rows td.cat { white-space: normal; color: var(--text-dim); font-size: 11px; max-width: 340px; }
+.decision-rows .tag {
+  margin-left: 6px; font-size: 8.5px; letter-spacing: .05em; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 4px; background: var(--blocked-bg); color: var(--blocked-fg);
+  border: 1px solid #4a3b2e; vertical-align: middle;
+}
+.dc-loading { color: var(--text-dim); font-family: var(--mono); font-size: 12px; padding: 6px 0; }
 
 /* compact symbol-decision detail */
 .decision-detail { border: 1px solid var(--border); border-left: 4px solid var(--text-dim); border-radius: 10px; padding: 12px 14px; background: var(--bg); }

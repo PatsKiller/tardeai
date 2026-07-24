@@ -167,3 +167,33 @@ export const fixtures = {
 };
 
 export type Verdict = 'GO' | 'WAIT' | 'NO_GO';
+
+// ---- LIVE integration with the real Command Center scanner (/api/v2/trade-ai/scanner) ----
+// The v3-next static page is served same-origin on :7777, so it can read the actual TradeAI
+// discovery output (screener -> enrichment -> scalp critic -> GO/WAIT/NO-GO). Read-only /
+// awareness: copying/surfacing a symbol never places, validates, or queues a trade.
+
+export interface ScannerTicker {
+  symbol: string; decision: string; grade?: string; score?: number;
+  rvol?: number; volume?: number; price?: number | string; change_pct?: number | string;
+  gap_pct?: number | string; float_m?: number | string; catalyst?: string; sector?: string;
+  setup_class?: string; operator_pill?: string; not_tradeable?: boolean;
+  manual_review_required?: boolean; route_actionability?: string; critic_reasoning?: string;
+  critic_verdict?: string;
+}
+export interface ScannerData {
+  tickers: ScannerTicker[]; vix?: number; market_regime?: string;
+  latest_run_go_count?: number; latest_run_wait_count?: number; latest_run_no_go_count?: number;
+  latest_run_label?: string; run_date?: string; stale?: boolean; cache_age_sec?: number;
+}
+
+export async function fetchScanner(): Promise<ScannerData | null> {
+  try {
+    const r = await fetch('/api/v2/trade-ai/scanner', { headers: { accept: 'application/json' } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && j.data ? (j.data as ScannerData) : null;
+  } catch {
+    return null;
+  }
+}
