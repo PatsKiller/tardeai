@@ -28,6 +28,8 @@ jobs:
           for path in paths:
               text = path.read_text()
               text = text.replace('fontSize: 9.5', 'fontSize: 10')
+              if path.name == 'DecisionPacketBand.tsx':
+                  text = text.replace('fontSize: 9,', 'fontSize: 10,')
               if path.name == 'ReEntryCurrentIntelligence.tsx':
                   text = text.replace('>{name}</span><br /><b style={{ fontSize: 20 }}>{String(value)}</b>', '>{String(name)}</span><br /><b style={{ fontSize: 20 }}>{String(value)}</b>')
               path.write_text(text)
