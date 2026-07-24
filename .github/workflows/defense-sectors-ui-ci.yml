@@ -1,0 +1,36 @@
+name: defense-sectors-ui-ci
+
+on:
+  pull_request:
+    paths:
+      - 'apps/command-center-v3/src/pages/DefenseHub.tsx'
+      - 'apps/command-center-v3/src/pages/SectorsHub.tsx'
+      - 'apps/command-center-v3/src/components/FinvizSectorPanel.tsx'
+      - 'apps/command-center-v3/src/components/rotation/**'
+      - 'apps/command-center-v3/package.json'
+      - 'apps/command-center-v3/package-lock.json'
+      - 'scripts/check_design_tokens.sh'
+      - 'scripts/test_chip_scope.mjs'
+      - '.github/workflows/defense-sectors-ui-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  command-center-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Run design guard, chip-scope test, TypeScript and Vite build
+        run: npm run build
