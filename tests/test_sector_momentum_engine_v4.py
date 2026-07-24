@@ -52,6 +52,7 @@ def test_breadth_is_withheld_when_coverage_ratio_is_too_low():
 
 def test_breadth_uses_exact_twenty_session_rows_only():
     source = Path("scripts/sector_momentum_engine_v4.py").read_text()
+    normalized = " ".join(source.split())
     assert "WHERE session_n = 20" in source
-    assert "covered screener-membership measure" in source
-    assert "official ETF constituent breadth" in source
+    assert "covered screener-membership measure" in normalized
+    assert "not official ETF constituent breadth" in normalized
