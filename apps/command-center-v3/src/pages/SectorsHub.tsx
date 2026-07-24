@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi'
 import FinvizSectorPanel from '../components/FinvizSectorPanel'
 import RotationBoards from '../components/defense/RotationBoards'
 import SectorEntryIdeas from '../components/SectorEntryIdeas'
+import IndustryAnalystLeaders from '../components/IndustryAnalystLeaders'
 import type { DrillContext } from '../components/DetailDrawer'
 import { BB, T, TYPE, RAIL, numStyle, terminalButton } from '../lib/watchTokens'
 import { Chip } from '../components/TerminalChip'
@@ -67,6 +68,7 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
         spyLong={(posture?.momentum?.market?.indices || []).find((i: any) => i.symbol === 'SPY')?.long ?? null}
       />
       <SectorEntryIdeas sectors={sectors} onDrill={onDrill} />
+      <IndustryAnalystLeaders onDrill={onDrill} />
       {!embedded && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: BB.text0 }}>Sector Monitor</div>

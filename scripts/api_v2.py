@@ -30717,6 +30717,108 @@ _SECTOR_ETF_MAP = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "H
                    "Communication Services": "XLC"}
 
 
+def _sector_industry_leaders(query=None):
+    """GET /api/v2/sectors/industry-leaders — per industry (sub-sector): momentum state
+    plus the individual stocks in it, ranked by Street analyst evidence.
+
+    Answers "which names inside this sub-sector do the analysts actually like", which
+    neither the sector board (ETF-level) nor the industry board (group-level) could show.
+
+    Advisory evidence only. Upside is arithmetic on the stored mean target versus the
+    stored price — it is not a forecast, a proposal or a size. Names without a real
+    consensus are excluded rather than shown with a zero, and every row carries its
+    analyst count and as-of date so thin coverage is visible instead of implied.
+    """
+    def _num(value):
+        try:
+            out = float(value)
+            return out if out == out else None
+        except (TypeError, ValueError):
+            return None
+
+    q = query or {}
+    try:
+        min_analysts = max(1, int(q.get("min_analysts") or 3))
+    except (TypeError, ValueError):
+        min_analysts = 3
+    try:
+        per = max(1, min(25, int(q.get("limit_per") or 6)))
+    except (TypeError, ValueError):
+        per = 6
+    states = [s.strip().upper() for s in str(q.get("state") or "").split(",") if s.strip()]
+
+    rows = _db_query(
+        """WITH a AS (
+               SELECT DISTINCT ON (symbol) symbol, target_mean_price AS tgt, current_price AS px,
+                      recommendation_key AS rec, number_of_analyst_opinions AS n, snapshot_date
+                 FROM yahoo_analyst_targets_history
+                WHERE target_mean_price IS NOT NULL AND current_price > 0
+                ORDER BY symbol, snapshot_date DESC),
+             m AS (
+               SELECT DISTINCT ON (industry) industry, sector, state, rel1w, rel1m, as_of
+                 FROM industry_momentum_state ORDER BY industry, as_of DESC)
+           SELECT m.industry, m.sector, m.state, m.rel1w, m.rel1m, m.as_of,
+                  a.symbol, a.n, a.rec, a.tgt, a.px, a.snapshot_date,
+                  ROUND(((a.tgt / a.px) - 1) * 100, 1) AS upside_pct
+             FROM symbol_profiles p
+             JOIN a ON a.symbol = p.symbol
+             JOIN m ON m.industry = p.industry
+            WHERE a.n >= %s
+            ORDER BY m.industry, upside_pct DESC""",
+        (min_analysts,), fetch="all") or []
+
+    held = set()
+    try:
+        import json as _j
+        hp = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+        for h in (_j.loads(hp.read_text()).get("holdings") or []):
+            sym = str(h.get("symbol") or "").upper().strip()
+            if sym:
+                held.add(sym)
+    except Exception:
+        pass
+
+    by_industry = {}
+    for r in rows:
+        ind = r.get("industry")
+        if not ind:
+            continue
+        state = str(r.get("state") or "").upper()
+        if states and state not in states:
+            continue
+        bucket = by_industry.setdefault(ind, {
+            "industry": ind, "sector": r.get("sector"), "state": state or None,
+            "rel1w": _num(r.get("rel1w")), "rel1m": _num(r.get("rel1m")),
+            "as_of": str(r.get("as_of")) if r.get("as_of") else None,
+            "covered_names": 0, "leaders": [],
+        })
+        bucket["covered_names"] += 1
+        if len(bucket["leaders"]) < per:
+            sym = str(r.get("symbol") or "").upper()
+            bucket["leaders"].append({
+                "symbol": sym,
+                "analysts": int(r.get("n") or 0),
+                "consensus": (str(r.get("rec")) if r.get("rec") else None),
+                "target_mean": _num(r.get("tgt")),
+                "price": _num(r.get("px")),
+                "upside_pct": _num(r.get("upside_pct")),
+                "as_of": str(r.get("snapshot_date")) if r.get("snapshot_date") else None,
+                "held": sym in held,
+            })
+
+    out = sorted(by_industry.values(), key=lambda b: (-(b.get("rel1m") or -999)))
+    return {
+        "ok": True,
+        "advisory_only": True,
+        "min_analysts": min_analysts,
+        "limit_per": per,
+        "industries": out,
+        "legend": ("upside = stored mean analyst target vs stored price, arithmetic only. "
+                   "Names with fewer than min_analysts covering analysts are excluded, never "
+                   "shown as zero. State is the industry's closed-session momentum quadrant."),
+    }
+
+
 def _sectors_monitor(query=None):
     """GET /api/v2/sectors/monitor — per-sector: ETF, momentum (leading/lagging/neutral vs SPY from
     market_quotes), constituent count, # flagging setups, sample watch candidates, is_watched.
@@ -33495,6 +33597,7 @@ ROUTES = {
     "/api/v2/watch/alerts/list": _watch_alerts_list,
     "/api/v2/ui/prefs/get": _ui_prefs_get,
     "/api/v2/sectors/monitor": _sectors_monitor,
+    "/api/v2/sectors/industry-leaders": lambda q=None: _sector_industry_leaders(q),
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
     "/api/v2/hermes/curate-top20": _hermes_curate_top20_status,
     "/api/v2/hermes/subject-intel": _hermes_subject_intel,
