@@ -1,7 +1,7 @@
 // All /v3-next panels. Read-only: every action control is disabled and issues no
 // write request. Unavailable values render explicitly (never fabricated).
 import React from 'react';
-import { fixtures, MOOMOO_STATUS, type WarningCategory } from '../fixtures/readApi';
+import { fixtures, MOOMOO_STATUS, type WarningCategory, type ScannerData, type ScannerTicker } from '../fixtures/readApi';
 
 export function Unavailable({ label }: { label?: string }) {
   return <span data-testid="unavailable" style={{ color: '#8a8a8a', fontStyle: 'italic' }}>{label ?? 'UNAVAILABLE'}</span>;
@@ -210,6 +210,103 @@ export function ParityPanel() {
       <h3>Parity / Status</h3>
       <div>state: {data.parity_state}</div><div>{data.note}</div>
       <Warnings items={warnings} />
+    </section>
+  );
+}
+
+/* ---- Decision surface (LIVE presents GO/WAIT/NO-GO, not charts/L2/tape) ---- */
+
+const verdictLabel = (v: string) => (v === 'NO_GO' ? 'NO-GO' : v);
+const _n = (v: unknown): number | null => {
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/[,%×xX+]/g, ''));
+  return isNaN(n) ? null : n;
+};
+const money = (v: unknown) => { const n = _n(v); return n == null ? '—' : `$${n.toFixed(2)}`; };
+const pct = (v: unknown) => { const n = _n(v); return n == null ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`; };
+const rvolx = (v: unknown) => { const n = _n(v); return n == null ? '—' : `${n.toFixed(1)}×`; };
+const volFmt = (v: unknown) => { const n = _n(v); if (n == null) return '—'; if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`; if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`; return String(n); };
+const floatM = (v: unknown) => { const n = _n(v); return n == null ? '—' : `${n.toFixed(1)}M`; };
+const isGo = (t: ScannerTicker) => String(t.decision).toUpperCase() === 'GO';
+const isWait = (t: ScannerTicker) => /^WAIT/i.test(String(t.decision));
+const vClass = (t: ScannerTicker) => (isGo(t) ? 'GO' : isWait(t) ? 'WAIT' : 'NO_GO');
+
+export function DecisionDeck({ scanner }: { scanner: ScannerData | null | undefined }) {
+  if (scanner === undefined)
+    return (
+      <section data-testid="decision-deck" className="span-all" aria-label="actionable decisions">
+        <h3>Actionable · GO / WAIT</h3>
+        <div className="dc-loading">loading live scan…</div>
+      </section>
+    );
+  if (!scanner || !scanner.tickers?.length)
+    return (
+      <section data-testid="decision-deck" className="span-all" aria-label="actionable decisions">
+        <h3>Actionable · GO / WAIT</h3>
+        <Unavailable label="live scan unavailable — /api/v2/trade-ai/scanner" />
+        <div className="dc-foot" data-testid="decision-note">Level 2 / tape feed the engine; not displayed.</div>
+      </section>
+    );
+  // GO grouped first, then by RVOL descending (WAIT rows lead with the hottest names)
+  const act = scanner.tickers
+    .filter((t) => isGo(t) || isWait(t))
+    .sort((a, b) => (isGo(a) ? 0 : 1) - (isGo(b) ? 0 : 1) || (_n(b.rvol) ?? 0) - (_n(a.rvol) ?? 0));
+  const go = act.filter(isGo).length;
+  return (
+    <section data-testid="decision-deck" className="span-all" aria-label="actionable decisions">
+      <h3>Actionable · GO {go} / WAIT {act.length - go} · VIX {scanner.vix ?? '—'} · {scanner.market_regime ?? '—'}</h3>
+      {act.length === 0 ? <Unavailable label="no GO / WAIT names this run" /> : (
+        <table className="decision-rows">
+          <thead><tr>
+            <th>call</th><th>sym</th><th>price</th><th>chg</th><th>gap</th><th>RVOL</th><th>vol</th><th>float</th><th>grd</th><th>dist→trig</th><th>catalyst</th>
+          </tr></thead>
+          <tbody>
+            {act.map((t) => (
+              <tr key={t.symbol} className={`v-${vClass(t)}`} data-testid={`decision-row-${t.symbol}`}>
+                <td className="verdict">{isGo(t) ? 'GO' : 'WAIT'}</td>
+                <td className="sym">{t.symbol}{t.not_tradeable ? <span className="tag">awareness</span> : null}</td>
+                <td className="mono">{money(t.price)}</td>
+                <td className={`mono ${(_n(t.change_pct) ?? 0) >= 0 ? 'pos' : 'neg'}`}>{pct(t.change_pct)}</td>
+                <td className="mono">{pct(t.gap_pct)}</td>
+                <td className="mono">{rvolx(t.rvol)}</td>
+                <td className="mono">{volFmt(t.volume)}</td>
+                <td className="mono">{floatM(t.float_m)}</td>
+                <td className="grade">{t.grade ?? '—'}</td>
+                <td className="trig">{isGo(t)
+                  ? <span className="trig-fired">fired</span>
+                  : <span className="trig-na" title="scalp trigger (VWAP reclaim / candle after reversal-break) is intraday — Entry Desk layer, not carried by the discovery scan">n/a · intraday</span>}</td>
+                <td className="cat" title={t.catalyst || t.critic_reasoning || ''}>{(t.catalyst || t.critic_reasoning || '—').slice(0, 72)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="dc-foot" data-testid="decision-note">
+        Live · /api/v2/trade-ai/scanner{scanner.stale ? ' (stale)' : ''} {scanner.latest_run_label ?? ''} — awareness/discovery only; surfacing/copying never places, validates, or queues a trade. Entry timing (VWAP/MACD, candle after reversal-break) is the Entry Desk / intraday layer; L2/tape feed it, not displayed.
+      </div>
+    </section>
+  );
+}
+
+export function SymbolDecision({ scanner, symbol }: { scanner: ScannerData | null | undefined; symbol: string }) {
+  const t = scanner?.tickers?.find((x) => x.symbol === symbol);
+  return (
+    <section data-testid="symbol-decision" aria-label={`decision ${symbol || ''}`}>
+      <h3>{symbol || 'Symbol'} · Decision</h3>
+      {t ? (
+        <div className={`decision-detail v-${vClass(t)}`} data-testid={`decision-detail-${symbol}`}>
+          <div className="dd-head">
+            <span className="verdict">{verdictLabel(vClass(t))}</span>
+            <span className="dd-entry">{t.setup_class || t.operator_pill || ''}</span>
+          </div>
+          <div className="dd-signals">
+            <span>price <b>{money(t.price)}</b></span><span>chg <b>{pct(t.change_pct)}</b></span>
+            <span>gap <b>{pct(t.gap_pct)}</b></span><span>RVOL <b>{rvolx(t.rvol)}</b></span>
+            <span>vol <b>{volFmt(t.volume)}</b></span><span>float <b>{floatM(t.float_m)}</b></span>
+            <span>grade <b>{t.grade ?? '—'}</b></span><span>critic <b>{t.critic_verdict ?? '—'}</b></span>
+          </div>
+          <div className="dc-reason">{t.catalyst || t.critic_reasoning || '—'}</div>
+        </div>
+      ) : <Unavailable label={scanner === undefined ? 'loading…' : 'no live decision for this symbol'} />}
     </section>
   );
 }

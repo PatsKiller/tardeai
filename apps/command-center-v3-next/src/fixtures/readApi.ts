@@ -134,4 +134,66 @@ export const fixtures = {
   parity: () =>
     env({ parity_state: 'BASELINE_ONLY', note: 'no UI parity claimed; comparison begins post-/v3-next' },
       [{ category: 'UNVERIFIED', detail: 'pre-parity baseline' }]),
+
+  // Decision surface — the LIVE /v3-next presents THIS (GO/WAIT/NO-GO that matches the right entry),
+  // not raw charts/L2/tape. Verdict derives from the shadow engine (PRIME x FIRE); RES/RRS = confidence;
+  // L2/tape/OFI are inputs consumed to produce the call and are deliberately NOT displayed.
+  decisions: () =>
+    env(
+      {
+        items: [
+          { symbol: 'TESTA', verdict: 'GO', near_entry: true, price: 4.2,
+            entry: 'buy next candle > 4.22 (bar after reversal-break)',
+            rvol: '4.1×', vwap: 'reclaim +0.3%', macd: 'bull cross', momentum: 'accelerating', volume: '2.1M',
+            prime_state: 'PRIMED', fire_state: 'FIRE', runner_state: 'ELIGIBLE',
+            res: 72, rrs: 38, confidence: 'HIGH', freshness: 'FRESH',
+            reason: 'reversal-break bar confirmed; enter next bar > 4.22' },
+          { symbol: 'TESTW', verdict: 'WAIT', near_entry: true, price: 8.05,
+            entry: 'arm: reversal bar forming ~8.20; enter next bar on break',
+            rvol: '3.2×', vwap: 'below -0.4%', macd: 'flattening', momentum: 'building', volume: '1.4M',
+            prime_state: 'PRIMED', fire_state: 'NO_FIRE', runner_state: 'NONE',
+            res: 64, rrs: 51, confidence: 'MEDIUM', freshness: 'FRESH',
+            reason: 'no reversal-break bar yet; sellers stacked at 8.20' },
+          { symbol: 'TESTB', verdict: 'NO_GO', near_entry: false, price: 2.1,
+            entry: '—', rvol: '—', vwap: '—', macd: '—', momentum: '—', volume: '—',
+            prime_state: 'BLOCKED', fire_state: 'NO_FIRE', runner_state: 'NONE',
+            res: null, rrs: null, confidence: 'LOW', freshness: 'AGING',
+            reason: 'blocked: halt/eligibility gate; not near entry' },
+        ],
+        next_cursor: null,
+      },
+      [{ category: 'UNVERIFIED', detail: 'shadow decisions from fixtures; live GO/WAIT requires the Stage 5 Moomoo data plane' }],
+    ),
 };
+
+export type Verdict = 'GO' | 'WAIT' | 'NO_GO';
+
+// ---- LIVE integration with the real Command Center scanner (/api/v2/trade-ai/scanner) ----
+// The v3-next static page is served same-origin on :7777, so it can read the actual TradeAI
+// discovery output (screener -> enrichment -> scalp critic -> GO/WAIT/NO-GO). Read-only /
+// awareness: copying/surfacing a symbol never places, validates, or queues a trade.
+
+export interface ScannerTicker {
+  symbol: string; decision: string; grade?: string; score?: number;
+  rvol?: number; volume?: number; price?: number | string; change_pct?: number | string;
+  gap_pct?: number | string; float_m?: number | string; catalyst?: string; sector?: string;
+  setup_class?: string; operator_pill?: string; not_tradeable?: boolean;
+  manual_review_required?: boolean; route_actionability?: string; critic_reasoning?: string;
+  critic_verdict?: string;
+}
+export interface ScannerData {
+  tickers: ScannerTicker[]; vix?: number; market_regime?: string;
+  latest_run_go_count?: number; latest_run_wait_count?: number; latest_run_no_go_count?: number;
+  latest_run_label?: string; run_date?: string; stale?: boolean; cache_age_sec?: number;
+}
+
+export async function fetchScanner(): Promise<ScannerData | null> {
+  try {
+    const r = await fetch('/api/v2/trade-ai/scanner', { headers: { accept: 'application/json' } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && j.data ? (j.data as ScannerData) : null;
+  } catch {
+    return null;
+  }
+}
