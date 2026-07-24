@@ -246,9 +246,10 @@ export function DecisionDeck({ scanner }: { scanner: ScannerData | null | undefi
         <div className="dc-foot" data-testid="decision-note">Level 2 / tape feed the engine; not displayed.</div>
       </section>
     );
+  // GO grouped first, then by RVOL descending (WAIT rows lead with the hottest names)
   const act = scanner.tickers
     .filter((t) => isGo(t) || isWait(t))
-    .sort((a, b) => (isGo(a) ? 0 : 1) - (isGo(b) ? 0 : 1) || (_n(b.score) ?? 0) - (_n(a.score) ?? 0) || (_n(b.rvol) ?? 0) - (_n(a.rvol) ?? 0));
+    .sort((a, b) => (isGo(a) ? 0 : 1) - (isGo(b) ? 0 : 1) || (_n(b.rvol) ?? 0) - (_n(a.rvol) ?? 0));
   const go = act.filter(isGo).length;
   return (
     <section data-testid="decision-deck" className="span-all" aria-label="actionable decisions">
