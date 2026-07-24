@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom'
 import ReEntryAnalystEvidence from '../components/reentry/ReEntryAnalystEvidence'
 import ReEntryAnalystLookthroughBoard from '../components/reentry/ReEntryAnalystLookthroughBoard'
+import ReEntryClassificationOverlay from '../components/reentry/ReEntryClassificationOverlay'
 import ReEntryCurrentIntelligence from '../components/reentry/ReEntryCurrentIntelligence'
 import ReEntryExitDetailLedger from '../components/reentry/ReEntryExitDetailLedger'
 import ReEntryExitWorkbench from '../components/reentry/ReEntryExitWorkbench'
@@ -13,6 +14,7 @@ export default function ReEntryPageV4() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <ReEntryHelpGuide compact />
+      <ReEntryClassificationOverlay />
       <ReEntryCurrentIntelligence />
       <ReEntryExitWorkbench />
       <ReEntryExitDetailLedger />

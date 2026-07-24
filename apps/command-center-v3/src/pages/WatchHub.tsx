@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { DrillContext } from '../components/DetailDrawer'
+import WatchTruthAuditPanel from '../components/WatchTruthAuditPanel'
 import WatchlistHub from './WatchlistHub'
 import WatchpoolHub from './WatchpoolHub'
 import SectorsHub from './SectorsHub'
@@ -51,7 +52,7 @@ export default function WatchHub({ onDrill }: Props) {
         </div>
       </div>
       <WatchRegimeStrip />
-      {tab === 'Watchlist' && <WatchlistHub onDrill={onDrill} embedded />}
+      {tab === 'Watchlist' && <><WatchTruthAuditPanel /><WatchlistHub onDrill={onDrill} embedded /></>}
       {tab === 'Screener Finds' && <ScreenerFindsHub onDrill={onDrill} embedded />}
       {tab === 'Watchpool' && <WatchpoolHub onDrill={onDrill} embedded />}
       {tab === 'Sectors' && <SectorsHub onDrill={onDrill} embedded />}
