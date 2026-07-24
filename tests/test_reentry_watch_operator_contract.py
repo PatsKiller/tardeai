@@ -4,7 +4,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "apps" / "command-center-v3" / "src" / "hooks" / "useReEntryExitEvidence.ts"
 WATCH = ROOT / "apps" / "command-center-v3" / "src" / "components" / "WatchTruthAuditPanel.tsx"
-REENTRY = ROOT / "apps" / "command-center-v3" / "src" / "components" / "reentry" / "ReEntryCurrentIntelligence.tsx"
+REENTRY_PANEL = ROOT / "apps" / "command-center-v3" / "src" / "components" / "reentry" / "ReEntryEvidenceContractPanel.tsx"
+REENTRY_CURRENT = ROOT / "apps" / "command-center-v3" / "src" / "components" / "reentry" / "ReEntryCurrentIntelligence.tsx"
+REENTRY_PAGE = ROOT / "apps" / "command-center-v3" / "src" / "pages" / "ReEntryPageV4.tsx"
 
 
 def test_reentry_evidence_contract_covers_real_broker_aliases() -> None:
@@ -38,13 +40,17 @@ def test_reentry_reconciler_normalizes_account_aliases_and_preserves_truth() -> 
     assert "proceeds = shares × price" in source
 
 
-def test_reentry_ui_exposes_contract_and_quantity_source_coverage() -> None:
-    source = REENTRY.read_text(encoding="utf-8")
-    assert "contract {evidence.contractVersion}" in source
-    assert "Quantity-bearing rows" in source
-    assert "sourceFieldCoverage" in source
-    assert "OPEN EVIDENCE" in source
-    assert "FIELD-BY-FIELD AUDIT" in source
+def test_reentry_ui_exposes_and_mounts_contract_source_coverage() -> None:
+    panel = REENTRY_PANEL.read_text(encoding="utf-8")
+    page = REENTRY_PAGE.read_text(encoding="utf-8")
+    current = REENTRY_CURRENT.read_text(encoding="utf-8")
+    assert "DATA CONTRACT {evidence.contractVersion}" in panel
+    assert "quantity-bearing source rows" in panel
+    assert "sourceFieldCoverage" in panel
+    assert "SHOW SOURCE MATRIX" in panel
+    assert "ReEntryEvidenceContractPanel" in page
+    assert "OPEN EVIDENCE" in current
+    assert "FIELD-BY-FIELD AUDIT" in current
 
 
 def test_watch_queue_is_explicit_keyboard_accessible_and_paginated() -> None:
