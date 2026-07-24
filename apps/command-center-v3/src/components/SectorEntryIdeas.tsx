@@ -15,7 +15,7 @@ import type { DrillContext } from './DetailDrawer'
  * Missing evidence stays visibly missing rather than being filled in.
  */
 
-type Props = { sectors: any[]; onDrill: (ctx: DrillContext) => void }
+type Props = { sectors: any[]; onDrill?: (ctx: DrillContext) => void }
 
 const momTone = (m?: string) => m === 'leading' ? BB.green : m === 'lagging' ? BB.red : BB.text3
 const momRail = (m?: string) => m === 'leading' ? RAIL.favorable : m === 'lagging' ? RAIL.breach : RAIL.neutral
@@ -95,8 +95,8 @@ export default function SectorEntryIdeas({ sectors, onDrill }: Props) {
               <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', border: `1px solid ${BB.border}`, borderRadius: 2 }}>
                 <span style={{ fontSize: TYPE.xs, fontWeight: 800, color: BB.text3, width: 34 }}>ETF</span>
                 <span
-                  onClick={() => onDrill({ title: s.etf, subtitle: `${s.sector} sector ETF`, endpoint: `/api/v2/watch/provenance/${s.etf}`, rows: [s] })}
-                  style={{ ...numStyle, fontSize: TYPE.sm, fontWeight: 800, color: T.link, cursor: 'pointer' }}
+                  onClick={() => onDrill?.({ title: s.etf, subtitle: `${s.sector} sector ETF`, endpoint: `/api/v2/watch/provenance/${s.etf}`, rows: [s] })}
+                  style={{ ...numStyle, fontSize: TYPE.sm, fontWeight: 800, color: T.link, cursor: onDrill ? 'pointer' : 'default' }}
                 >{s.etf}</span>
                 <span style={{ ...numStyle, fontSize: TYPE.xs, color: BB.text3 }}>day {pct(s.etf_change_pct, 2)}</span>
                 <span
@@ -122,9 +122,9 @@ export default function SectorEntryIdeas({ sectors, onDrill }: Props) {
                 </button>
                 {isOpen && cands.map((c: any) => (
                   <div key={`${c.symbol}-${c.origin_system}`}
-                    onClick={() => onDrill({ title: c.symbol, subtitle: `${s.sector} candidate`, endpoint: `/api/v2/watch/provenance/${c.symbol}`, rows: [c] })}
+                    onClick={() => onDrill?.({ title: c.symbol, subtitle: `${s.sector} candidate`, endpoint: `/api/v2/watch/provenance/${c.symbol}`, rows: [c] })}
                     title={`${c.symbol}: ${c.setup_advisory || 'no advisory'} · origin ${c.origin_system || 'unknown'}${c.cio_view ? ` · CIO ${c.cio_view}` : ''}`}
-                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 8px', marginTop: 4, borderRadius: 2, background: BB.bg, cursor: 'pointer' }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 8px', marginTop: 4, borderRadius: 2, background: BB.bg, cursor: onDrill ? 'pointer' : 'default' }}>
                     <span style={{ ...numStyle, fontSize: TYPE.sm, fontWeight: 800, color: BB.text0, width: 58 }}>{c.symbol}</span>
                     <span style={{ ...numStyle, fontSize: TYPE.xs, color: BB.text3 }}>RSI {c.rsi == null ? '—' : Number(c.rsi).toFixed(0)}</span>
                     <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>{String(c.trend || '—')}</span>

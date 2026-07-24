@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { BB, T, DASH, numStyle } from '../../lib/watchTokens'
 import LadderTrack from './LadderTrack'
 import { ProviderMark } from './LlmLogos'
+import { LevelLines, useLevels } from '../../lib/supportResistance'
 
 // Defense v3 R5 — the recommendations rail. Per-account tabs, four groups, every card
 // complete-or-absent (the engine's field guard enforces; this component renders what
@@ -280,6 +281,7 @@ function QueueTradeButton({ cs, validatedAt }: { cs: any; validatedAt: string | 
 }
 
 function Card({ c, tab, ladder, oversight }: { c: any; tab: string; ladder?: any; oversight?: any }) {
+  const levels = useLevels()
   const [open, setOpen] = useState(false)
   const [validatedAt, setValidatedAt] = useState<string | null>(null)
   const g = GROUPS.find(x => x.key === c.group)
@@ -316,7 +318,7 @@ function Card({ c, tab, ladder, oversight }: { c: any; tab: string; ladder?: any
         <div style={{ fontSize: DASH.data, color: BB.text2, marginBottom: 3 }}>
           {c.instruments.map((i: any) => (
             <span key={i.symbol + i.kind} style={{ marginRight: 10 }}>
-              <b style={{ ...numStyle, color: BB.text1 }}>{i.symbol}</b>
+              <b style={{ ...numStyle, color: BB.text1 }}>{i.symbol}</b><LevelLines symbol={i.symbol} row={levels[i.symbol]} fontSize={10} />
               {i.price != null && <span style={{ ...numStyle, color: BB.text2 }}> ${i.price}</span>}
               <span style={{ color: BB.text3 }}> {i.kind}</span>
             </span>

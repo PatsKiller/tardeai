@@ -5,6 +5,7 @@ import { schwabTicketsFromLadder, ticketsText } from '../lib/schwabTickets'
 import EntryDeskDiligenceStrip from './EntryDeskDiligenceStrip'
 import type { SetupRow, SourceKind } from '../pages/ManualTosDesk'
 import { desk } from '../lib/proposalDeskTheme'
+import { LevelLines, useLevels } from '../lib/supportResistance'
 
 export type TechGrade = {
   technical_grade?: string
@@ -97,6 +98,7 @@ type Props = {
 export default function EntryDeskRow({
   r, state, hit, account, streetTarget, tech, accounts, accountMap, onSetField, onCopyMsg, onPromote, promoteBusy, focused,
 }: Props) {
+  const levels = useLevels()
   const rating = deriveTradeAiRating(r)
   const sz = sizing(r, account)
   const ladder = ladderCalc(r.entryPrice, r.stop, r.targets?.[0]?.price ? Number(r.targets[0].price) : null, streetTarget)
@@ -171,7 +173,7 @@ export default function EntryDeskRow({
         <div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 9, color: badgeColor(r.source), fontWeight: 900 }}>{r.source}</span>
-            <span style={{ fontSize: 17, fontWeight: 900, ...mono }}>{r.symbol}</span>
+            <span style={{ fontSize: 17, fontWeight: 900, ...mono }}>{r.symbol}</span><LevelLines symbol={r.symbol} row={levels[r.symbol]} />
             {r.company && <span style={{ fontSize: 10, color: C.dim }}>{r.company}</span>}
             <span style={{ fontSize: 9, color: statusColor(state), background: `${statusColor(state)}22`, padding: '2px 7px', borderRadius: 4 }}>
               {state === 'BROKER_OBSERVED' ? 'AUTO-LINKED FROM SCHWAB READ-ONLY' : state}

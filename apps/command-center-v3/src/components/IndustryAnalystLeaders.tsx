@@ -44,7 +44,7 @@ function pct(v: number | null | undefined): string {
   return v == null || !Number.isFinite(Number(v)) ? '—' : `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`
 }
 
-export default function IndustryAnalystLeaders({ onDrill, sectorFilter }: { onDrill: (c: DrillContext) => void; sectorFilter?: string | null }) {
+export default function IndustryAnalystLeaders({ onDrill, sectorFilter }: { onDrill?: (c: DrillContext) => void; sectorFilter?: string | null }) {
   const [minAnalysts, setMinAnalysts] = useState(3)
   const [open, setOpen] = useState<string | null>(null)
   const { data } = useApi<any>(`/api/v2/sectors/industry-leaders?state=LEADING,IMPROVING&min_analysts=${minAnalysts}&limit_per=6`, 300_000)
@@ -100,9 +100,9 @@ export default function IndustryAnalystLeaders({ onDrill, sectorFilter }: { onDr
 
               {shown.map(L => (
                 <div key={L.symbol}
-                  onClick={() => onDrill({ title: L.symbol, subtitle: `${b.industry} · analyst leader`, endpoint: `/api/v2/watch/provenance/${L.symbol}`, rows: [L as any] })}
+                  onClick={() => onDrill?.({ title: L.symbol, subtitle: `${b.industry} · analyst leader`, endpoint: `/api/v2/watch/provenance/${L.symbol}`, rows: [L as any] })}
                   title={`${L.symbol}: ${L.analysts} covering analysts · consensus ${L.consensus || 'none'} · mean target ${L.target_mean == null ? 'n/a' : `$${L.target_mean.toFixed(2)}`} vs price ${L.price == null ? 'n/a' : `$${L.price.toFixed(2)}`}${L.as_of ? ` · as of ${L.as_of}` : ''}. Arithmetic upside, not a forecast.`}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', marginTop: 5, borderRadius: 2, background: BB.bg, cursor: 'pointer' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', marginTop: 5, borderRadius: 2, background: BB.bg, cursor: onDrill ? 'pointer' : 'default' }}>
                   <span style={{ ...numStyle, fontSize: TYPE.sm, fontWeight: 800, color: BB.text0, width: 56 }}>{L.symbol}</span>
                   <span style={{ ...numStyle, fontSize: TYPE.sm, fontWeight: 800, color: (L.upside_pct ?? 0) >= 0 ? BB.green : BB.red, width: 62 }}>{pct(L.upside_pct)}</span>
                   <span style={{ fontSize: TYPE.xs, fontWeight: 800, color: consensusTone(L.consensus) }}>{String(L.consensus || 'none').replace(/_/g, ' ')}</span>

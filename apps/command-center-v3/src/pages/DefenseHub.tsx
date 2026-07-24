@@ -5,6 +5,8 @@ import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
 import { useTerminalUi } from '../lib/terminalUi'
 import RecommendationsRail from '../components/defense/RecommendationsRail'
 import RotationBoards from '../components/defense/RotationBoards'
+import SectorEntryIdeas from '../components/SectorEntryIdeas'
+import IndustryAnalystLeaders from '../components/IndustryAnalystLeaders'
 import DefenseDetails from '../components/defense/DefenseDetails'
 import BookStanceStrip from '../components/defense/BookStanceStrip'
 import ExecutionPanel from '../components/defense/ExecutionPanel'
@@ -67,6 +69,8 @@ export default function DefenseHub() {
   const [terminalUi] = useTerminalUi()
   const { data: posture } = useApi<any>('/api/v2/defense/posture', 300_000)
   const { data: industries } = useApi<any>('/api/v2/defense/industries', 300_000)
+  // sector ETF/stock entry routes reuse the Sectors feed, so both desks quote one source
+  const { data: sectorMonitor } = useApi<any>('/api/v2/sectors/monitor', 300_000)
   const { data: recsData, refetch: refetchRecs } = useApi<any>('/api/v2/defense/recommendations', 60_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 300_000)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 300_000)
@@ -169,6 +173,10 @@ export default function DefenseHub() {
           industries. Moved above the book/execution rails so the rotation read is the
           first thing on the desk rather than four panels down. */}
       <RotationBoards sectors={rows} industries={ind} spyLong={spyLong} oversight={recsData?.oversight} />
+
+      {/* Row 2.1 — how to act on the rotation: ETF route, qualified stocks, sub-sector leaders */}
+      <SectorEntryIdeas sectors={sectorMonitor?.sectors || []} />
+      <IndustryAnalystLeaders />
 
       {/* Row 2a — your book: every ≥$10K position has a stance (L3), ladder progress inline */}
       <BookStanceStrip stances={recs?.stances || []} notDecomposed={recs?.not_decomposed}

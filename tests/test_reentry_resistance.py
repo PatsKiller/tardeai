@@ -93,7 +93,13 @@ def test_refresh_persists_symbol_map_with_auditable_method(monkeypatch):
     assert payload["symbol_count"] == 2
     assert set(payload["symbols"]) == {"SCHG", "SCHD"}
     assert ex.saved == payload
-    assert all("closed-session hold only" in row.get("method", "") for row in payload["symbols"].values())
+    # The method statement is auditable at the payload root rather than repeated on
+    # every row — identical text on ~490 symbols was ~110 kB on a payload five desks
+    # fetch. Rows must therefore NOT carry it, or the duplication silently returns.
+    assert "closed-session hold only" in payload["method"]
+    assert "closed-session break only" in payload["support_method"]
+    assert payload["tolerance_pct"] == 0.5
+    assert not any("method" in row for row in payload["symbols"].values())
 
 
 def test_holdings_join_the_resistance_universe(tmp_path):
@@ -111,3 +117,70 @@ def test_holdings_join_the_resistance_universe(tmp_path):
     assert reentry_resistance._holdings_symbols(holdings) == {"SCHD", "JEPI"}
     # A missing or unreadable snapshot degrades to empty, never raises into the cron.
     assert reentry_resistance._holdings_symbols(tmp_path / "absent.json") == set()
+
+
+def _walk(start: float, steps: list[float]) -> list[tuple[dt.date, float]]:
+    """Daily closes from a start price and a list of per-session returns."""
+    day = dt.date(2026, 1, 5)
+    out, price = [], start
+    for step in steps:
+        price *= 1 + step
+        out.append((day, round(price, 4)))
+        day += dt.timedelta(days=1)
+    return out
+
+
+def test_scrub_drops_corrupt_bars_not_real_moves():
+    """ticker_prices held NVDA closes of 0.66/0.18/0.05 between ~200 closes.
+
+    Support is the minimum of a trailing window, so those bars became a five-cent
+    "support level". The scrubber has to remove them while leaving an ordinary
+    session alone — otherwise it would quietly rewrite real price history.
+    """
+    series = _walk(200.0, [0.0] * 60)
+    corrupted = list(series)
+    corrupted[30] = (corrupted[30][0], 0.66)
+    corrupted[31] = (corrupted[31][0], 0.18)
+    corrupted[32] = (corrupted[32][0], 0.05)
+
+    cleaned, dropped = reentry_resistance.scrub_series(corrupted)
+
+    assert len(dropped) == 3
+    assert all(close > 100 for _, close in cleaned)
+    # A clean series must survive untouched — no silent rewriting of real history.
+    assert reentry_resistance.scrub_series(series) == (series, [])
+
+
+def test_scrub_keeps_a_sustained_decline():
+    """A real collapse is not a corrupt tick: the rolling median follows it down."""
+    series = _walk(100.0, [0.0] * 20 + [-0.08] * 25)
+
+    cleaned, dropped = reentry_resistance.scrub_series(series)
+
+    assert dropped == []
+    assert cleaned == series
+
+
+def test_rsi_matches_wilder_and_brackets_trend():
+    """Wilder RSI over the same closed-session series the levels already read."""
+    assert reentry_resistance.compute_rsi(_walk(50.0, [0.01] * 40))["rsi"] > 90
+    assert reentry_resistance.compute_rsi(_walk(50.0, [-0.01] * 40))["rsi"] < 10
+    # Too little history is UNAVAILABLE, never a fabricated midpoint.
+    assert reentry_resistance.compute_rsi(_walk(50.0, [0.01] * 5))["rsi"] is None
+
+
+def test_rsi_suppressed_on_unadjusted_split_but_not_on_a_coverage_hole():
+    """DJTU jumped +869% in a session; AMD simply has 28 days missing.
+
+    The first is an unadjusted corporate action that drives RSI to an extreme; the
+    second is absent data, where the bars either side are not a one-day move. Only
+    the former may suppress the number.
+    """
+    split = _walk(10.0, [0.0] * 30)
+    split = split[:20] + [(day, close * 9) for day, close in split[20:]]
+    assert reentry_resistance.compute_rsi(split)["rsi"] is None
+    assert "unadjusted price gap" in reentry_resistance.compute_rsi(split)["rsi_reason"]
+
+    hole = _walk(10.0, [0.0] * 20)
+    tail = [(day + dt.timedelta(days=28), close * 1.5) for day, close in _walk(10.0, [0.0] * 20)]
+    assert reentry_resistance.compute_rsi(hole + tail)["rsi"] is not None

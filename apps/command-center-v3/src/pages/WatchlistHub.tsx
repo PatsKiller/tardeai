@@ -15,6 +15,7 @@ import WatchlistCardV4 from '../components/WatchlistCardV4'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import { exitLadder } from '../lib/exitLadder'
 import { parseProposalAccounts, parseSizingPolicy, type RiskPct } from '../lib/watchlistProposeSizing'
+import { LevelLines, useLevels } from '../lib/supportResistance'
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean; lane?: 'screener_finds' }
 
@@ -50,6 +51,7 @@ const Pill = ({ text, color, tip, strong = false }: any) => (
 const ORIGIN_OPTS = [['all', 'All'], ['screener_finds', 'Screener Finds (buy-side)'], ['trade_ai_screener', 'Screener'], ['agent_discovery', 'AI-discovered'], ['operator', 'Operator-directive'], ['hermes', 'Hermes'], ['portfolio', 'Portfolio']]
 
 export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
+  const levels = useLevels()
   // CIO-view filter is pushed server-side (cio=) so it searches the FULL universe before the
   // 200-row window — client-side alone missed verdicts on names ranked below the load size
   const [fCio, setFCio] = useState('all')
@@ -780,6 +782,9 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
                          style={{ accentColor: BB.amber, cursor: 'pointer' }} />
                   {held && <Chip kind="state" tone="green"
                                  title="Currently held in live portfolio (holdings.json)">HELD</Chip>}
+                  {/* Levels ride in the wrapper strip, not inside Card v4 — that card family is
+                      LOCKED to the approved format and is bugfix-only. */}
+                  <LevelLines symbol={symKey} row={levels[symKey]} />
                 </div>
                 {/* Watch Desk v3 (WS-C): deterministic context strip — reuses server _hermes_setup; not a quality score */}
                 {it.setup_context && (
