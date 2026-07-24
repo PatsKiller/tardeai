@@ -140,7 +140,7 @@ export default function InstitutionalRotationBrief({
       {showMethod && (
         <div style={{ fontSize: DASH.data, color: BB.text2, background: BB.bgShift, borderLeft: `3px solid ${BB.amber}`, padding: '8px 10px', marginBottom: 10 }}>
           <div><b>Sector snapshot:</b> {shortTime(generatedAt)} · 5/20/60-session ETF returns relative to SPY with a two-close state confirmation.</div>
-          <div><b>Industry snapshot:</b> {shortTime(industryCapturedAt)} · Finviz week/month performance compared with local SPY 5/21-session returns.</div>
+          <div><b>Industry snapshot:</b> {shortTime(industryCapturedAt)} · Finviz week/month performance compared with local SPY 5/21-session returns. Midday refresh rows are display classifications; only close runs persist states and confirm transitions.</div>
           <div><b>Governed adds:</b> {addCards.length} complete card{addCards.length === 1 ? '' : 's'} in the current recommendation build.</div>
           <div style={{ color: BB.amber }}><b>Quality note:</b> industry ranks are directionally useful but the vendor windows are not perfectly synchronized. Treat close calls as watch candidates, not precise allocation signals.</div>
         </div>
@@ -180,10 +180,10 @@ export default function InstitutionalRotationBrief({
                   <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.text3, marginBottom: 3 }}>industries underneath</div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {industryList.length ? industryList.map((industry: any) => (
-                      <span key={industry.industry} style={metricChip()} title={`${industry.state} · relative 1m ${signed(industry.rel1m)} · relative 1w ${signed(industry.rel1w)}`}>
+                      <span key={industry.industry} style={metricChip()} title={`current snapshot classification: ${industry.state} · relative 1m ${signed(industry.rel1m)} · relative 1w ${signed(industry.rel1w)}`}>
                         {industry.industry}
                       </span>
-                    )) : <span style={{ fontSize: DASH.data, color: BB.text3 }}>no confirmed leading/improving industry</span>}
+                    )) : <span style={{ fontSize: DASH.data, color: BB.text3 }}>no leading/improving industry in the current snapshot</span>}
                   </div>
                 </div>
                 <div style={{ marginTop: 7 }}>
