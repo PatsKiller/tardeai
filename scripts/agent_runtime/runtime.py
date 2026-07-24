@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import asdict
+from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
 
 from .contracts import (
@@ -24,6 +25,7 @@ from .journal import ShadowRunJournal
 
 RetrievalProvider = Callable[[str, str], Sequence[Mapping[str, Any]]]
 ModelProvider = Callable[[str, Mapping[str, Any]], Mapping[str, Any]]
+Clock = Callable[[], datetime]
 
 
 class MvlRuntime:
@@ -39,6 +41,7 @@ class MvlRuntime:
         journal: ShadowRunJournal,
         retrieval_provider: RetrievalProvider,
         model_provider: ModelProvider,
+        clock: Clock | None = None,
     ) -> None:
         definition.validate()
         if not definition.enabled or definition.deployment_state.value not in {"SHADOW", "DESIGNED"}:
@@ -47,6 +50,7 @@ class MvlRuntime:
         self.journal = journal
         self.retrieval_provider = retrieval_provider
         self.model_provider = model_provider
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
 
     def start(
         self,
@@ -68,6 +72,7 @@ class MvlRuntime:
             objective=objective,
             input_hash=canonical_hash(input_payload),
             validation_hash=canonical_hash(validation_payload),
+            created_at=self._now().isoformat(),
         )
         envelope.validate(self.definition)
         self.journal.append(run_id, "RUN_CREATED", {
@@ -83,11 +88,12 @@ class MvlRuntime:
         return envelope
 
     def retrieve(self, run_id: str, query: str) -> list[Mapping[str, Any]]:
-        state = self._active_state(run_id)
+        self._active_state(run_id)
         if not query.strip():
             raise ValueError("retrieval query is required")
         self.journal.append(run_id, "RETRIEVAL_STARTED", {"status": RunStatus.RETRIEVING.value, "query_hash": canonical_hash(query)})
         rows = list(self.retrieval_provider(run_id, query))
+        self._active_state(run_id)
         refs: list[str] = []
         sanitized: list[Mapping[str, Any]] = []
         for index, row in enumerate(rows):
@@ -122,6 +128,7 @@ class MvlRuntime:
             raise PermissionError(evaluation.reason)
         assert_no_secret_material(arguments)
         result = dict(executor(arguments))
+        self._active_state(run_id)
         assert_no_secret_material(result)
         self.journal.append(run_id, "TOOL_COMPLETED", {
             "tool_name": tool_name,
@@ -163,6 +170,7 @@ class MvlRuntime:
             "cost_usd": next_cost,
         })
         output = dict(self.model_provider(run_id, request_payload))
+        self._active_state(run_id)
         assert_no_secret_material(output)
         self.journal.append(run_id, "MODEL_COMPLETED", {
             "status": RunStatus.REVIEW_REQUIRED.value,
@@ -245,21 +253,38 @@ class MvlRuntime:
             raise RuntimeError("cannot complete a run without an immutable artifact")
         if not state.get("review"):
             raise RuntimeError("cannot complete a run without independent review")
-        self.journal.append(run_id, "RUN_COMPLETED", {"status": RunStatus.COMPLETED.value, "completed_at": utc_now(), "checkpoint": "complete"})
+        self.journal.append(run_id, "RUN_COMPLETED", {"status": RunStatus.COMPLETED.value, "completed_at": self._now().isoformat(), "checkpoint": "complete"})
+
+    def fail(self, run_id: str, reason: str, failure_code: str = "RUNTIME_FAILURE") -> None:
+        state = self.journal.replay(run_id)
+        if state.get("sequence", 0) == 0:
+            raise KeyError(f"unknown run: {run_id}")
+        if state.get("status") in {RunStatus.COMPLETED.value, RunStatus.CANCELLED.value, RunStatus.FAILED.value}:
+            raise RuntimeError(f"run is terminal: {state.get('status')}")
+        self.journal.append(run_id, "RUN_FAILED", {
+            "status": RunStatus.FAILED.value,
+            "failure_code": failure_code,
+            "failure_reason": reason,
+            "completed_at": self._now().isoformat(),
+            "checkpoint": state.get("checkpoint"),
+        })
 
     def cancel(self, run_id: str, reason: str) -> None:
-        state = self.journal.replay(run_id)
-        if state.get("status") in {RunStatus.COMPLETED.value, RunStatus.CANCELLED.value}:
-            raise RuntimeError("terminal run cannot be cancelled")
-        self.journal.append(run_id, "RUN_CANCELLED", {"status": RunStatus.CANCELLED.value, "cancellation_reason": reason, "cancelled_at": utc_now()})
+        self._active_state(run_id)
+        self.journal.append(run_id, "RUN_CANCELLED", {"status": RunStatus.CANCELLED.value, "cancellation_reason": reason, "cancelled_at": self._now().isoformat()})
 
     def resume(self, run_id: str) -> Mapping[str, Any]:
         state = self.journal.replay(run_id)
+        if state.get("sequence", 0) == 0:
+            raise KeyError(f"unknown run: {run_id}")
         if state.get("status") == RunStatus.CANCELLED.value:
             raise RuntimeError("cancelled run requires a new run envelope")
+        if state.get("status") == RunStatus.FAILED.value:
+            raise RuntimeError("failed run requires a new run envelope")
         if state.get("status") == RunStatus.COMPLETED.value:
             return state
-        self.journal.append(run_id, "RUN_RESUMED", {"status": state.get("status", RunStatus.CREATED.value), "resumed_at": utc_now(), "resume_from": state.get("checkpoint")})
+        self._assert_within_deadline(run_id, state)
+        self.journal.append(run_id, "RUN_RESUMED", {"status": state.get("status", RunStatus.CREATED.value), "resumed_at": self._now().isoformat(), "resume_from": state.get("checkpoint")})
         return self.journal.replay(run_id)
 
     def status(self, run_id: str) -> Mapping[str, Any]:
@@ -271,4 +296,38 @@ class MvlRuntime:
             raise KeyError(f"unknown run: {run_id}")
         if state.get("status") in {RunStatus.COMPLETED.value, RunStatus.CANCELLED.value, RunStatus.FAILED.value}:
             raise RuntimeError(f"run is terminal: {state.get('status')}")
+        self._assert_within_deadline(run_id, state)
         return state
+
+    def _assert_within_deadline(self, run_id: str, state: Mapping[str, Any]) -> None:
+        envelope = state.get("envelope") or {}
+        created_at_raw = str(envelope.get("created_at") or "")
+        if not created_at_raw:
+            self.fail(run_id, "run envelope is missing created_at", "INVALID_RUN_ENVELOPE")
+            raise RuntimeError("run envelope is missing created_at")
+        try:
+            created_at = datetime.fromisoformat(created_at_raw)
+        except ValueError as exc:
+            self.fail(run_id, "run envelope created_at is invalid", "INVALID_RUN_ENVELOPE")
+            raise RuntimeError("run envelope created_at is invalid") from exc
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        elapsed_seconds = max(0.0, (self._now() - created_at.astimezone(timezone.utc)).total_seconds())
+        if elapsed_seconds <= self.definition.budget.deadline_seconds:
+            return
+        self.journal.append(run_id, "RUN_FAILED", {
+            "status": RunStatus.FAILED.value,
+            "failure_code": "DEADLINE_EXCEEDED",
+            "failure_reason": "agent runtime deadline exceeded",
+            "deadline_seconds": self.definition.budget.deadline_seconds,
+            "elapsed_seconds": elapsed_seconds,
+            "completed_at": self._now().isoformat(),
+            "checkpoint": state.get("checkpoint"),
+        })
+        raise TimeoutError("agent runtime deadline exceeded")
+
+    def _now(self) -> datetime:
+        value = self.clock()
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
