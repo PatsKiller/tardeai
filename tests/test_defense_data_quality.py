@@ -30,8 +30,8 @@ def test_versioned_industry_mapping_never_uses_database_mode():
     assert unknown["mapping_quality"] == "unmapped"
 
 
-def test_allocation_capacity_respects_book_and_risk():
-    cfg = {
+def allocation_cfg():
+    return {
         "neutral_sector_weight_pct": 9.1,
         "allocation_policy": {
             "default_benchmark": "equal_sector",
@@ -48,11 +48,16 @@ def test_allocation_capacity_respects_book_and_risk():
             "min_capacity_pct": 1,
         },
     }
+
+
+def test_allocation_capacity_respects_account_exposure_and_risk():
+    cfg = allocation_cfg()
     d = allocation_decision(cfg, sector="Energy", current_weight_pct=3.6,
                             risk_context={"quality": "ok", "annualized_vol_pct": 30,
                                           "correlation": 0.75, "sessions": 60},
                             account="ira")
     assert d["eligible"] is True
+    assert d["current_account_weight_pct"] == 3.6
     assert 0 < d["capacity_pct"] < 21.4
     full = allocation_decision(cfg, sector="Energy", current_weight_pct=24.5,
                                risk_context={"quality": "ok", "annualized_vol_pct": 30,
@@ -61,24 +66,64 @@ def test_allocation_capacity_respects_book_and_risk():
     assert full["eligible"] is False
 
 
-def test_stock_quality_requires_coverage_and_quality():
-    cfg = {"stock_quality": {"min_coverage": 0.6, "min_score": 60,
+def test_allocation_missing_account_exposure_fails_closed():
+    d = allocation_decision(
+        allocation_cfg(), sector="Energy", current_weight_pct=None,
+        risk_context={"quality": "ok", "annualized_vol_pct": 12,
+                      "correlation": 0.1, "sessions": 60}, account="ira",
+    )
+    assert d["eligible"] is False
+    assert d["quality"] == "missing_account_exposure"
+    assert d["capacity_pct"] == 0
+
+
+def test_max_active_tilt_is_a_ceiling_not_an_additive_bonus():
+    d = allocation_decision(
+        allocation_cfg(), sector="Energy", current_weight_pct=0,
+        risk_context={"quality": "ok", "annualized_vol_pct": 5,
+                      "correlation": 0.0, "sessions": 60}, account="ira",
+    )
+    # mandate target is 8.1%; max active tilt is 4%, so no risk scaling may exceed 12.1%.
+    assert d["policy_target_ceiling_pct"] == 12.1
+    assert d["risk_target_pct"] <= 12.1
+
+
+def stock_cfg():
+    return {"stock_quality": {"min_coverage": 0.6, "min_score": 60,
                               "min_roic_pct": 8, "max_debt_equity": 2,
                               "hard_fail_debt_equity": 4, "max_short_float_pct": 12,
                               "hard_fail_short_float_pct": 25, "max_beta": 1.7,
                               "max_above_sma50_pct": 12}}
-    good = {
+
+
+def good_stock():
+    return {
         "forward_pe": 18, "pfcf": 20, "eps_next_y": 12, "eps_qoq": 8,
         "sales_qoq": 6, "roic_pct": 16, "profit_margin_pct": 15,
         "total_debt_equity": 0.8, "short_float_pct": 3, "beta": 1.1,
         "sma50_pct": 4,
     }
-    result = stock_quality_assessment(good, {"forward_pe": 20, "pfcf": 22}, cfg)
+
+
+def test_stock_quality_requires_complete_evidence_and_quality():
+    result = stock_quality_assessment(good_stock(), {"forward_pe": 20, "pfcf": 22}, stock_cfg())
     assert result["passed"] is True
+    assert result["evidence_complete"] is True
     weak = {"forward_pe": 60, "total_debt_equity": 6, "short_float_pct": 30}
-    result = stock_quality_assessment(weak, {"forward_pe": 20, "pfcf": 22}, cfg)
+    result = stock_quality_assessment(weak, {"forward_pe": 20, "pfcf": 22}, stock_cfg())
     assert result["passed"] is False
+    assert result["evidence_complete"] is False
     assert "excess_leverage" in result["hard_fail"]
+
+
+def test_high_score_with_one_missing_required_field_still_fails_closed():
+    incomplete = good_stock()
+    incomplete.pop("pfcf")
+    result = stock_quality_assessment(incomplete, {"forward_pe": 20, "pfcf": 22}, stock_cfg())
+    assert result["score"] >= 60
+    assert result["evidence_complete"] is False
+    assert result["passed"] is False
+    assert result["missing"] == ["pfcf"]
 
 
 def test_defensive_lean_requires_dated_review_but_is_not_auto_revoked():
