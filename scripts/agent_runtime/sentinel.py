@@ -41,6 +41,14 @@ def _number(value: Any) -> float | None:
     return parsed if parsed == parsed and parsed not in (float("inf"), float("-inf")) else None
 
 
+def _first_number(mapping: Mapping[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = _number(mapping.get(key))
+        if value is not None:
+            return value
+    return None
+
+
 def _text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -123,11 +131,11 @@ def inspect_ticket(
     if state in terminal_states and mechanics:
         add("MECHANICS_EXPOSED_FOR_NONACTIONABLE_STATE", "BLOCK", "A blocked, rejected, no-trade, stale or refresh ticket must not expose current actionable mechanics.", {"state": state, "mechanic_keys": sorted(mechanics)})
 
-    entry_low = _number(mechanics.get("entry_low") or mechanics.get("entry"))
-    entry_high = _number(mechanics.get("entry_high") or mechanics.get("entry"))
-    stop = _number(mechanics.get("stop") or mechanics.get("stop_price"))
-    target = _number(mechanics.get("target") or mechanics.get("target_price"))
-    limit = _number(mechanics.get("limit") or mechanics.get("limit_price"))
+    entry_low = _first_number(mechanics, "entry_low", "entry")
+    entry_high = _first_number(mechanics, "entry_high", "entry")
+    stop = _first_number(mechanics, "stop", "stop_price")
+    target = _first_number(mechanics, "target", "target_price")
+    limit = _first_number(mechanics, "limit", "limit_price")
 
     if entry_low is not None and entry_high is not None and entry_low > entry_high:
         add("ENTRY_RANGE_REVERSED", "BLOCK", "Entry low exceeds entry high.", {"entry_low": entry_low, "entry_high": entry_high})
@@ -147,7 +155,7 @@ def inspect_ticket(
     if limit is not None and entry_low is not None and entry_high is not None and not entry_low <= limit <= entry_high:
         add("LIMIT_OUTSIDE_ENTRY_RANGE", "BLOCK", "Limit price falls outside the declared entry range.", {"entry_low": entry_low, "entry_high": entry_high, "limit": limit})
 
-    rr = _number(mechanics.get("rr") or mechanics.get("risk_reward") or mechanics.get("risk_reward_ratio"))
+    rr = _first_number(mechanics, "rr", "risk_reward", "risk_reward_ratio")
     if rr is not None and rr <= 0:
         add("NONPOSITIVE_RISK_REWARD", "BLOCK", "Risk/reward must be positive.", {"risk_reward": rr})
 
