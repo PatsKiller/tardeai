@@ -7,6 +7,7 @@ on:
       - 'apps/command-center-v3/src/pages/SectorsHub.tsx'
       - 'apps/command-center-v3/src/components/FinvizSectorPanel.tsx'
       - 'apps/command-center-v3/src/components/rotation/**'
+      - 'apps/command-center-v3/e2e/defense-render.spec.ts'
       - 'apps/command-center-v3/e2e/defense-sectors-render.spec.ts'
       - 'apps/command-center-v3/package.json'
       - 'apps/command-center-v3/package-lock.json'
@@ -69,7 +70,9 @@ jobs:
             curl -fsS http://127.0.0.1:4173/v3/ >/dev/null && break
             sleep 1
           done
-          PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 npx playwright test e2e/defense-sectors-render.spec.ts
+          export PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173
+          npx playwright test e2e/defense-render.spec.ts
+          npx playwright test e2e/defense-sectors-render.spec.ts --grep 'sectors desktop and narrow render gate'
 
       - name: Upload render failure evidence
         if: failure()
