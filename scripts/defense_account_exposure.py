@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pure account-specific effective sector exposure contract for Defense/Sectors.
+"""Pure account-specific exposure and sizing contracts for Defense/Sectors.
 
 No database, network, broker, order or configuration writes. The caller supplies already
 loaded holdings, a fund look-through map and a symbol→sector map. Unknown exposure remains
@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Iterable
 
-CONTRACT_VERSION = "defense-account-exposure-v1"
+CONTRACT_VERSION = "defense-account-exposure-v2"
 
 
 def _number(value: Any) -> float:
@@ -96,3 +96,45 @@ def sector_weight_for_account(exposure: dict[str, dict], account: str, sector: s
     if not row or row.get("pct") is None:
         return None
     return float(row["pct"])
+
+
+def build_account_sizing(
+    decisions: dict[str, dict],
+    account_equities: dict[str, float],
+    configured_pct_band: list[float] | tuple[float, float],
+    *,
+    minimum_action_pct: float = 1.0,
+) -> dict[str, dict]:
+    """Convert each eligible account's own capacity into its own action band.
+
+    No account inherits another account's capacity. Missing equity, missing risk evidence,
+    ineligibility, or capacity below ``minimum_action_pct`` withholds that account.
+    """
+    if len(configured_pct_band) != 2:
+        raise ValueError("configured_pct_band must contain [low, high]")
+    configured_low = max(0.0, float(configured_pct_band[0]))
+    configured_high = max(configured_low, float(configured_pct_band[1]))
+    out: dict[str, dict] = {}
+
+    for account in sorted(decisions):
+        decision = decisions.get(account) or {}
+        equity = _number(account_equities.get(account))
+        capacity = _number(decision.get("capacity_pct"))
+        if not decision.get("eligible") or decision.get("quality") != "ok":
+            continue
+        if equity <= 0 or capacity < minimum_action_pct:
+            continue
+        high = min(configured_high, capacity)
+        low = min(configured_low, high)
+        if high < minimum_action_pct:
+            continue
+        out[account] = {
+            "pct_band": [round(low, 2), round(high, 2)],
+            "dollar_band": [round(equity * low / 100), round(equity * high / 100)],
+            "account_equity_dollars": round(equity, 2),
+            "current_account_weight_pct": decision.get("current_account_weight_pct"),
+            "risk_target_pct": decision.get("risk_target_pct"),
+            "capacity_pct": decision.get("capacity_pct"),
+            "calculation_version": CONTRACT_VERSION,
+        }
+    return out
