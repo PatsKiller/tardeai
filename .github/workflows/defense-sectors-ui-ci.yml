@@ -62,13 +62,26 @@ jobs:
       - name: Render desktop and narrow gates
         working-directory: apps/command-center-v3
         run: |
-          rm -rf render-artifacts
+          rm -rf render-artifacts test-results
+          mkdir -p render-artifacts
           npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/defense-vite.log 2>&1 &
           for i in $(seq 1 45); do
             curl -fsS http://127.0.0.1:4173/v3/ >/dev/null && break
             sleep 1
           done
           PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 npx playwright test e2e/defense-sectors-render.spec.ts
+
+      - name: Upload render failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: defense-sectors-render-failure
+          path: |
+            apps/command-center-v3/test-results/**
+            apps/command-center-v3/render-artifacts/**
+            /tmp/defense-vite.log
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Verify generated diff
         run: |
