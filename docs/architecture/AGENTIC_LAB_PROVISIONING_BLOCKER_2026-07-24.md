@@ -1,48 +1,52 @@
 # Agentic LAB Provisioning Checkpoint — 2026-07-24
 
 **Scope:** PR #163 only  
-**Disposition:** `BLOCKED_LAB_PROVISIONING — NO DATABASE WRITE`
+**Disposition:** `LAB_CANDIDATE_IDENTIFIED — CLASSIFICATION PENDING — NO DATABASE WRITE`
 
 ## Evidence reviewed
 
-The sanitized host inventory in PR #169 is sufficient to close the host-inventory prerequisite. It verifies:
+The sanitized host inventory in PR #169 closes the broad host-inventory prerequisite. The operator subsequently supplied a read-only process and listener probe that verifies:
 
-- production PostgreSQL is bound to loopback on port 5432;
-- the production database is `trade_ai`;
-- a separate listener exists on port 5433 but its ownership and data classification were not established;
-- the production repository worktree is dirty and must not be used for migration work;
-- `hermes_readonly` and `hermes_staging_writer` have scoped grants but cannot log in;
-- pgvector is absent, but PR #163 migration `0001_mvl.up.sql` does not require the extension;
-- no disposable LAB database identity, LAB migration executor, LAB credentials, or safe denial-test target was verified.
+- production PostgreSQL is cluster `17/main`, owned by `postgres`, bound to loopback port 5432, with data directory `/var/lib/postgresql/17/main`;
+- a second PostgreSQL 17 server is bound to loopback port 5433;
+- the port-5433 process is owned by `johnclaw` and uses `/home/johnclaw/tradeai-lab/pg17`;
+- the two servers have separate postmaster processes, owners, ports and data directories;
+- `/usr/bin/createdb` and Docker are available;
+- the interactive shell defines a `psql` alias that points to production `trade_ai` on port 5432.
 
-## Missing prerequisites
+The alias is prohibited for LAB work. Every future command must use `/usr/bin/psql` with explicit host `127.0.0.1` and port `5433`.
 
-Provisioning stopped before any database connection or write because all of the following remain unverified:
+## What is now proven
 
-1. **Disposable target identity** — confirm whether port 5433 is disposable and contains no production or operator data, or create a separate empty user-owned PostgreSQL cluster/database on a distinct loopback-only port.
-2. **Role-creation authority** — an authorized LAB administrator capable of creating database-local identities without altering production roles.
-3. **Migration executor** — a LAB-only login restricted to the disposable database and not used by runtime code.
-4. **Reader identity** — `trade_ai_shadow_ro` with LOGIN and SELECT only on approved LAB canonical views.
-5. **Runtime writer identity** — `agentic_runtime_lab_rw` with LOGIN, USAGE on `agentic_runtime`, and DML only on approved `agentic_runtime` tables; no CREATE or writes elsewhere.
-6. **Safe denial target** — a dummy LAB-only guard schema/table used to prove denied writes, rather than any production table.
-7. **Credential delivery path** — non-repository secret provisioning for LAB credentials; no passwords, DSNs, tokens, or secret values in GitHub evidence.
-8. **Rollback location** — explicit disposable target cleanup path and confirmation that `0001_mvl.down.sql` can only affect the LAB target.
+Port 5433 is no longer an unidentified listener. It is a credible user-owned LAB-cluster candidate, physically separated at the PostgreSQL-cluster level from production `17/main`.
 
-## Required read-only terminal probe
+## What remains unproven before writes
 
-Before any write, collect sanitized output for:
+1. Database names, owners, sizes and connection status on port 5433.
+2. Whether any selected database contains production-derived, sensitive or operator data.
+3. Non-system schema names and relation counts, without reading row contents.
+4. Whether any existing `agentic_runtime` objects contain evidence requiring preservation.
+5. The exact LAB administrator and role-creation authority.
+6. An explicitly disposable database name and cleanup scope.
+7. A non-repository credential-delivery path for the three LAB identities.
+8. A synthetic canonical-view surface and synthetic protected schema for safe denial tests.
 
-```bash
-command -v psql createdb initdb pg_ctl docker podman
-pg_lsclusters 2>/dev/null || true
-ss -ltnp | grep -E ':(5432|5433|55432)\b' || true
-ps -ef | grep '[p]ostgres'
-```
+## Planned identities after classification PASS
 
-Then identify the owner, database list, and purpose of the port-5433 instance without exposing credentials or connecting with production-write authority.
+- `agentic_lab_migrator` — restricted to the disposable LAB and never used by runtime code;
+- `trade_ai_shadow_ro` — LOGIN and SELECT only on approved synthetic LAB canonical views;
+- `agentic_runtime_lab_rw` — LOGIN and required DML only inside `agentic_runtime`, with no CREATE or writes elsewhere.
+
+## Repository guardrail added
+
+`scripts/agent_runtime/lab_preflight.py` now validates the declared LAB target without connecting to PostgreSQL. It fails closed on port 5432, database `trade_ai`, production data directories, paths outside `/home/johnclaw/tradeai-lab`, incorrect role names or missing disposable/no-production-data acknowledgement. Focused tests cover these refusals.
+
+## Next decision
+
+Run the read-only classification packet against port 5433. Record `PASS_LAB_CANDIDATE` only if a database is explicitly disposable and contains no production or sensitive data. Otherwise record `BLOCKED_LAB_CLASSIFICATION` and stop before any database or role creation.
 
 ## Safety confirmation
 
-No database connection, database or role creation, grant, migration, package installation, service restart, OpenClaw/Hermes change, agent activation, provider call, broker/order/approval/2FA path, production configuration, secret value, or production data was accessed or changed.
+No database connection, database or role creation, grant, migration, package installation, service restart, OpenClaw/Hermes change, agent activation, provider call, broker/order/approval/2FA path, production configuration, secret value or production data was accessed or changed by this repository update.
 
-PR #163 must remain draft. The database-isolation proof and persistence slice are not authorized until the missing prerequisites above are evidenced.
+PR #163 remains draft. The migration proof and persistence slice remain gated on completed LAB classification and role provisioning.
