@@ -83,7 +83,9 @@ def test_ita_tactical_not_strategic_primary():
     ev = _fcntx_event()
     bundle = eng.build_institutional_plans(
         ev,
-        sleeve_gaps=[{"theme": "Defense / Aerospace", "gap_pct": 2.39}],
+        # Mirror deploy_intelligence_engine.sleeve_gaps(): Plan E sizes tactical legs
+        # from gap_usd, so a gap_pct-only fixture silently yields an empty Plan E.
+        sleeve_gaps=[{"theme": "Defense / Aerospace", "gap_pct": 2.39, "gap_usd": 29818.0}],
         sale_ctx={"tier": "major"},
     )
     plan_a_syms = {

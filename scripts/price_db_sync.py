@@ -58,6 +58,79 @@ def active_proposal_symbols(*, statuses: tuple[str, ...] | None = None) -> list[
     return syms
 
 
+REENTRY_EXIT_CACHE_KEY = "portfolio.reentry.exit-universe.v1"
+PRICE_STALE_AFTER_DAYS = 5
+
+
+def reentry_exit_symbols() -> list[str]:
+    """Distinct equity tickers from the Re-Entry exit universe.
+
+    The Re-Entry desk reasons entirely about *exited* positions, but the daily scope
+    is built from held, ranked, and actively-proposed symbols only. An exited ticker
+    therefore ages out of the price universe and its Re-Entry row goes blank — which
+    is exactly the coverage the page needs. Schwab reports a 9-char CUSIP in place of
+    a ticker only when the security is delisted, so the same `^[A-Z]{1,5}$` guard the
+    sibling scope queries use also drops those permanently un-fetchable rows.
+    """
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT value FROM ui_prefs WHERE key = %s", (REENTRY_EXIT_CACHE_KEY,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    payload = row[0] if row else None
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except ValueError:
+            payload = None
+    if not isinstance(payload, dict):
+        return []
+    out = []
+    for entry in payload.get("rows") or []:
+        sym = str((entry or {}).get("symbol") or "").upper().strip()
+        if sym and sym.isalpha() and 1 <= len(sym) <= 5:
+            out.append(sym)
+    return sorted(dict.fromkeys(out))
+
+
+def price_backfill_candidates(
+    symbols: list[str],
+    *,
+    min_rows: int = 60,
+    max_age_days: int = PRICE_STALE_AFTER_DAYS,
+) -> list[str]:
+    """Symbols needing a yfinance fill: too little history OR a stale newest close.
+
+    Row count alone cannot detect staleness. A symbol that stopped updating months ago
+    still carries ~180 rows — far above min_rows — so it never qualified for backfill
+    and silently froze. Batched into one query because the daily scope is now several
+    hundred symbols and the old path opened a connection per symbol.
+    """
+    syms = [str(s).upper().strip() for s in symbols if s and str(s).strip()]
+    syms = list(dict.fromkeys(syms))
+    if not syms:
+        return []
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT s.sym
+           FROM unnest(%s::text[]) AS s(sym)
+           LEFT JOIN (
+               SELECT UPPER(symbol) AS sym, COUNT(*) AS n, MAX(price_date) AS last_date
+               FROM ticker_prices GROUP BY 1
+           ) tp ON tp.sym = s.sym
+           WHERE tp.sym IS NULL
+              OR tp.n < %s
+              OR tp.last_date < CURRENT_DATE - %s""",
+        (syms, int(min_rows), int(max_age_days)),
+    )
+    out = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return out
+
+
 def _hermes_top_symbols(top: int = 250) -> list[str]:
     """Distinct watchlist tickers in the Hermes top-N window."""
     conn = _get_conn()
@@ -106,18 +179,21 @@ def ensure_price_history(
 sync_watchlist_prices = ensure_price_history
 
 
-def sync_daily_watchlist_prices(*, yfinance_cap: int = 40, min_rows: int = 60) -> dict:
-    """Keep watchlist + active proposal ticker_prices current (daily cron)."""
+def sync_daily_watchlist_prices(*, yfinance_cap: int = 80, min_rows: int = 60) -> dict:
+    """Keep watchlist, active proposal, and Re-Entry exit ticker_prices current (daily cron)."""
     n_quotes = sync_quotes_to_ticker_prices()
-    scope = list(dict.fromkeys(_hermes_top_symbols() + active_proposal_symbols()))
-    short = [s for s in scope if count_price_rows(s) < min_rows]
+    exits = reentry_exit_symbols()
+    scope = list(dict.fromkeys(_hermes_top_symbols() + active_proposal_symbols() + exits))
+    candidates = price_backfill_candidates(scope, min_rows=min_rows)
     yf_result = {"filled": 0}
-    if short and yfinance_cap > 0:
-        yf_result = backfill_yfinance_history(short[:yfinance_cap])
+    if candidates and yfinance_cap > 0:
+        yf_result = backfill_yfinance_history(candidates[:yfinance_cap])
     return {
         "quotes_synced": n_quotes,
         "scope_symbols": len(scope),
-        "short_candidates": len(short),
+        "reentry_exit_symbols": len(exits),
+        "short_candidates": len(candidates),
+        "skipped_over_cap": max(0, len(candidates) - yfinance_cap),
         "yfinance": yf_result,
     }
 

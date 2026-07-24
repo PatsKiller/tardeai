@@ -133,3 +133,60 @@ def test_auto_tagged_is_not_misrepresented_as_operator_classified():
     assert row["classification_status"] == "AUTO_TAGGED"
     assert row["classified"] is False
     assert row["auto_tagged"] is True
+
+
+def test_scope_is_the_reentry_universe_not_the_whole_watchlist():
+    """Every consumer looks up symbols[<exit symbol>] only. Unioning the full
+    watchlist made the cache ~9.5k symbols / ~425 kB that no surface reads, and the
+    Watch/Journal bridge is mounted globally so every page paid to download it."""
+    prefs = {
+        "portfolio.reentry.exit-universe.v1": {
+            "rows": [{"event_key": "exit:CSWC:1", "symbol": "CSWC", "trade_date": "2026-07-23"}],
+        },
+        "portfolio.reentry.mandates.v4": {"NEE": {"mandate": "core", "updatedAt": "2026-07-23"}},
+        "portfolio.reentry.event-classifications.v1": {},
+        "portfolio.reentry.dispositions.v1": {},
+        "portfolio.reentry.resistance.v1": {"symbols": {"RTX": {"state": "BELOW"}}},
+    }
+    asked_for = {}
+
+    def ex(sql, params=None, fetch=None):
+        if "SELECT value FROM ui_prefs" in sql:
+            return {"value": prefs.get(params[0], {})}
+        if "FROM watchlist_items" in sql:
+            # The scope must be pushed into the query, not filtered after a full scan.
+            assert "= ANY(" in sql, "watchlist_items must be filtered by the Re-Entry scope"
+            asked_for["symbols"] = list(params[0])
+            return [{"symbol": "CSWC", "rsi": 44.2}, {"symbol": "ZZZZ", "rsi": 10.0}]
+        if "INSERT INTO ui_prefs" in sql:
+            return None
+        raise AssertionError(sql)
+
+    payload = refresh_shared_symbol_context(ex)
+
+    assert sorted(payload["symbols"]) == ["CSWC", "NEE", "RTX"]
+    assert sorted(asked_for["symbols"]) == ["CSWC", "NEE", "RTX"]
+    # A watchlist-only symbol never enters the payload, even if the row comes back.
+    assert "ZZZZ" not in payload["symbols"]
+    assert payload["symbol_count"] == 3
+
+
+def test_pref_envelope_keys_are_not_treated_as_tickers():
+    """A stale client merged the pref API envelope into the mandate blob, so `ok`,
+    `key`, `value` and `updated_at` were carried into the resistance and shared-context
+    caches as pseudo-symbols. Discriminate on value shape, because KEY (KeyCorp) and
+    VALUE are legitimate ticker spellings that a name blacklist would wrongly drop."""
+    from lib.reentry_shared_context import mandate_symbols
+
+    polluted = {
+        "CSWC": {"mandate": "core", "flags": {"growth": True}},
+        "KEY": {"mandate": "satellite", "flags": {}},   # KeyCorp — a real ticker
+        "ok": True,
+        "key": "portfolio.reentry.mandates.v4",
+        "updated_at": None,
+        "value": None,
+    }
+
+    assert mandate_symbols(polluted) == {"CSWC", "KEY"}
+    assert mandate_symbols({}) == set()
+    assert mandate_symbols(None) == set()

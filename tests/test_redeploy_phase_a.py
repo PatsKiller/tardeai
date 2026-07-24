@@ -18,9 +18,21 @@ def _load(name: str, rel: str):
     return mod
 
 
+def _pin_holdings_as_of(mod, iso: str):
+    """reconcile_proceeds compares the sale date against the live holdings snapshot.
+    Pin it so these cases assert the branch logic instead of drifting to `unsettled`
+    the moment the real snapshot advances past the fixture's sale date."""
+    import datetime as _dt
+
+    mod.holdings_as_of_date = lambda: _dt.date.fromisoformat(iso)
+    return mod
+
+
 def test_fcntx_holdings_stale_not_broker_unsettled():
     """Sale 2026-07-14 with holdings as_of 2026-07-13 — sync lag, not broker unsettled."""
-    dt = _load("redeploy_data_truth", "scripts/lib/redeploy_data_truth.py")
+    dt = _pin_holdings_as_of(
+        _load("redeploy_data_truth", "scripts/lib/redeploy_data_truth.py"), "2026-07-13"
+    )
     recon = dt.reconcile_proceeds(
         account="schwab_rollover_ira",
         proceeds_usd=107023.01,
@@ -89,7 +101,9 @@ def test_plan_archetypes_seven_distinct():
 
 
 def test_enrich_event_phase_a_metadata():
-    dt = _load("redeploy_data_truth", "scripts/lib/redeploy_data_truth.py")
+    dt = _pin_holdings_as_of(
+        _load("redeploy_data_truth", "scripts/lib/redeploy_data_truth.py"), "2026-07-13"
+    )
     ev = {
         "event_key": "test:fcntx",
         "symbol": "FCNTX",
@@ -104,7 +118,12 @@ def test_enrich_event_phase_a_metadata():
     pa = out["metadata"]["phase_a"]
     assert pa["reconciliation"]["reconciliation_status"] == "holdings_stale"
     assert pa["reconciliation"]["deployable_cash_usd"] == 107023.01
-    assert pa["portfolio_context"]["portfolio_equity_usd"] > 900000
+    # Equity is positions-only and moves with the live book (large sells park cash),
+    # so assert the invariant rather than a fixed floor that decays into a failure.
+    equity = pa["portfolio_context"]["portfolio_equity_usd"]
+    totals = dt.portfolio_totals()
+    assert equity == totals["equity_usd"] > 0
+    assert totals["total_with_cash_usd"] >= equity
     assert pa["portfolio_context"]["default_deployment_account"] == "schwab_rollover_ira"
 
 

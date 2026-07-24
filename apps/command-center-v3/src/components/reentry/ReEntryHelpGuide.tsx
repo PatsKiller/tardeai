@@ -22,7 +22,7 @@ const steps = [
   },
   {
     title: '4 · Link and monitor a rotation',
-    body: 'The system may suggest a same-account destination, but the operator must confirm the source-to-destination capital lineage. Once a confirmed link has an armed six-gate monitor, the 20-minute RTH evaluator checks it automatically and sends an advisory alert when every gate passes. It never moves capital or places the rotation-back order.',
+    body: 'Tracking model: manual source/destination confirmation → automatic 20-minute advisory monitoring → manual rotation-back order. The system may suggest a same-account destination, but the operator must confirm the source-to-destination capital lineage. Once a confirmed link has an armed six-gate monitor, the 20-minute RTH evaluator checks it automatically and sends an advisory alert when every gate passes. It never moves capital or places the rotation-back order.',
   },
 ]
 

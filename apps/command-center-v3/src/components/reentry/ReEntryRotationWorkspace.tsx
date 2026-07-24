@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { BB } from '../../lib/holdingsTerminalTokens'
 import { fmt$ } from '../../lib/format'
+import { LevelLines, useLevels } from '../../lib/supportResistance'
 
+const EXIT_CACHE_KEY = 'portfolio.reentry.exit-universe.v1'
 const MANDATE_KEY = 'portfolio.reentry.mandates.v4'
 const EVENT_KEY = 'portfolio.reentry.event-classifications.v1'
 const ROTATION_KEY = 'portfolio.reentry.rotation-links.v1'
@@ -13,6 +15,19 @@ const field: CSSProperties = { width: '100%', boxSizing: 'border-box', fontSize:
 const btn = (active = false): CSSProperties => ({ fontSize: 10.5, fontWeight: 800, padding: '6px 10px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${active ? BB.blue : 'var(--border)'}`, background: active ? BB.blueDim : 'var(--bg2)', color: active ? BB.blue : 'var(--text2)' })
 
 const STRATEGY_FLAGS = ['growth', 'compounding', 'dividend', 'swing', 'short', 'defensive', 'hedge', 'rotation'] as const
+const ROTATION_COLS = '68px 100px 96px 96px 104px 132px 150px 172px 200px 190px'
+
+/** Re-entry read for one exited symbol, mirroring the Current Intelligence lanes. */
+function reentrySignal(price: number | null, rsi: number | null, low: number | null, high: number | null) {
+  if (price === null) return { label: 'NO COVERAGE', detail: 'Current price required.', tone: BB.text3 }
+  if (rsi !== null && rsi >= 70) return { label: 'OVERBOUGHT WAIT', detail: `RSI ${rsi.toFixed(1)} extended.`, tone: BB.red }
+  if (rsi !== null && rsi <= 30) return { label: 'OVERSOLD REVIEW', detail: `RSI ${rsi.toFixed(1)}; needs confirmation.`, tone: BB.amber }
+  if (low === null || high === null) return { label: 'NO ENTRY ZONE', detail: 'No validated entry range.', tone: BB.text3 }
+  if (price >= low && price <= high) return { label: 'READY TO REVIEW', detail: 'In the entry zone.', tone: BB.green }
+  const gap = price > high ? ((price - high) / high) * 100 : ((price - low) / low) * 100
+  if (Math.abs(gap) <= 3) return { label: 'NEAR ENTRY', detail: `${Math.abs(gap).toFixed(1)}% ${gap > 0 ? 'above' : 'below'} zone.`, tone: BB.amber }
+  return { label: 'WAIT FOR PULLBACK', detail: `${Math.abs(gap).toFixed(1)}% ${gap > 0 ? 'above' : 'below'} zone.`, tone: BB.text3 }
+}
 const EVENT_TYPES = ['stopped_out', 'discretionary_sale', 'partial_trim', 'rebalance', 'tax_sale', 'rotation', 'assignment_expiration', 'other'] as const
 const ROTATION_REASONS = ['volatility_reduction', 'income', 'defensive_posture', 'tax', 'other'] as const
 
@@ -372,6 +387,8 @@ function TechnicalCard({ value, analyst, lookthrough }: { value: Technical; anal
 }
 
 export default function ReEntryRotationWorkspace({ mode = 'full', eventId: eventIdProp, initialSymbol }: { mode?: 'full' | 'bridge'; eventId?: number | null; initialSymbol?: string }) {
+  const levels = useLevels()
+  const exitCache = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EXIT_CACHE_KEY)}`, 120_000)
   const book = useJson('/api/v2/redeploy/book?limit=1000&include_dismissed=1')
   const journal = useJson('/api/v2/journal')
   const positions = useJson('/api/v2/rec-intel/open-positions')
@@ -404,19 +421,51 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
 
   const bookRows = rows(book.data, ['rows'])
   const journalRows = rows(journal.data, ['trades'])
+  const cacheRows = rows(prefValue(exitCache.data), ['rows'])
+  // One row per real broker exit. The exit-universe cache is the spine because it is
+  // the only per-transaction source carrying date+time, shares, price and proceeds.
+  //
+  // It cannot be merged with the other two by a shared id, so both are joined onto it:
+  //   - redeploy book keys on deploy_events.event_id but exposes the same event_key,
+  //     and carries no shares/price at all — merging it as a *row source* listed every
+  //     exit a second time as "— shares · —" and doubled the event count.
+  //   - the journal is lot-level round-trip data on a different grain, and its
+  //     trade_key (SYMBOL:account:close_date) is not unique per lot, so sibling lots
+  //     silently overwrote each other and understated the exit (CSWC read 400 of 417).
+  //     It is enrichment only; it must never define the row set.
   const allEvents = useMemo(() => {
-    const byId = new Map<string, any>()
-    const add = (row: any, source: string, index: number) => {
-      const symbol = text(row.symbol, row.ticker).toUpperCase()
-      if (!symbol) return
-      const id = text(row.event_id, row.trade_key, row.id, `${source}:${symbol}:${day(row.sold_at ?? row.close_date)}:${index}`)
-      const prior = byId.get(id) ?? {}
-      byId.set(id, { ...prior, ...row, symbol, _eventKey: id, _source: source })
+    const bookByKey = new Map<string, any>()
+    for (const row of bookRows) {
+      const key = text(row.event_key)
+      if (key) bookByKey.set(key, row)
     }
-    bookRows.forEach((row, index) => add(row, 'redeploy-book', index))
-    journalRows.forEach((row, index) => add(row, 'real-journal', index))
-    return [...byId.values()].sort((a, b) => day(b.sold_at ?? b.close_date).localeCompare(day(a.sold_at ?? a.close_date)))
-  }, [bookRows, journalRows])
+    const journalByKey = new Map<string, any[]>()
+    for (const row of journalRows) {
+      const key = `${text(row.symbol).toUpperCase()}|${text(row.account)}|${day(row.close_date)}`
+      journalByKey.set(key, [...(journalByKey.get(key) ?? []), row])
+    }
+    return cacheRows
+      .map(row => {
+        const symbol = text(row.symbol).toUpperCase()
+        const eventKey = text(row.event_key)
+        const bookRow = bookByKey.get(eventKey) ?? {}
+        // Lots only describe this exit when they are the sole lot for the day/account.
+        const lots = journalByKey.get(`${symbol}|${text(row.account)}|${day(row.trade_date)}`) ?? []
+        const lot = lots.length === 1 ? lots[0] : {}
+        return {
+          ...lot, ...bookRow, ...row,
+          symbol,
+          sold_at: row.trade_date ?? bookRow.sold_at,
+          sell_price: finite(row.price, lot.sell_price),
+          shares_sold: finite(row.quantity, lot.shares),
+          proceeds_usd: finite(row.proceeds_usd, bookRow.proceeds_usd, lot.proceeds),
+          event_id: bookRow.event_id ?? row.matched_event_id ?? null,
+          _eventKey: eventKey || `exit:${symbol}:${day(row.trade_date)}:${row.transaction_id}`,
+          _source: 'exit-universe',
+        }
+      })
+      .sort((a, b) => `${day(b.sold_at)}T${text(b.trade_time)}`.localeCompare(`${day(a.sold_at)}T${text(a.trade_time)}`))
+  }, [cacheRows, bookRows, journalRows])
 
   const currentEvent = eventIdProp ? allEvents.find(row => Number(row.event_id) === Number(eventIdProp)) : null
   useEffect(() => { if (currentEvent && mode === 'bridge') setSearch(currentEvent.symbol) }, [currentEvent?._eventKey, mode])
@@ -481,13 +530,21 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
     {toast && <div style={{ fontSize: 10.5, color: BB.blue }}>{toast}</div>}
 
     <div style={{ ...panel, overflowX: 'auto' }}><div style={{ minWidth: 1180 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '72px 110px 110px 100px 220px 250px 220px', gap: 8, padding: '7px 10px', borderBottom: '1px solid var(--border)', fontSize: 10, color: BB.text3, textTransform: 'uppercase' }}><span>Symbol</span><span>Date / account</span><span>Exit</span><span>Proceeds</span><span>Mandate / strategy</span><span>Event classification</span><span>Actions</span></div>
+      <div style={{ display: 'grid', gridTemplateColumns: ROTATION_COLS, gap: 8, padding: '7px 10px', borderBottom: '1px solid var(--border)', fontSize: 10, color: BB.text3, textTransform: 'uppercase' }}><span>Symbol</span><span>Date / account</span><span>Exit</span><span>Proceeds</span><span>Since exit</span><span>Resistance</span><span>Re-entry</span><span>Mandate / strategy</span><span>Event classification</span><span>Actions</span></div>
       {filteredEvents.slice(0, mode === 'bridge' ? 10 : 500).map(event => {
         const mandate = { ...defaultMandate(), ...(mandates[event.symbol] ?? {}), flags: { ...defaultMandate().flags, ...(mandates[event.symbol]?.flags ?? {}) } }
         const classification = { ...defaultEvent(), ...(classifications[event._eventKey] ?? {}) }
         const related = Object.values(links).filter(link => link.sourceEventId === Number(event.event_id) || (!link.sourceEventId && link.sourceSymbol === event.symbol && link.sourceExitDate === day(event.sold_at ?? event.close_date)))
-        return <div key={event._eventKey} style={{ display: 'grid', gridTemplateColumns: '72px 110px 110px 100px 220px 250px 220px', gap: 8, padding: '8px 10px', borderBottom: '1px solid var(--border)', alignItems: 'center', fontSize: 10.5 }}>
-          <b style={{ fontSize: 13 }}>{event.symbol}</b><div>{day(event.sold_at ?? event.close_date) || 'date unavailable'}<br /><span style={{ color: BB.text3 }}>{text(event.account, event.account_key) || 'account unavailable'}</span></div><div>{dollars(finite(event.sell_price, event.exit_price, event.price))}<br /><span style={{ color: BB.text3 }}>{finite(event.shares_sold, event.shares) ?? '—'} shares</span></div><b>{dollars(finite(event.proceeds_usd, event.proceeds, event.net_proceeds))}</b>
+        const tech = technical(event.symbol, cardMap, watchMap)
+        const exitPrice = finite(event.sell_price, event.exit_price, event.price)
+        const sinceExit = tech.price !== null && exitPrice !== null && exitPrice > 0 ? ((tech.price - exitPrice) / exitPrice) * 100 : null
+        const signal = reentrySignal(tech.price, tech.rsi, tech.entryLow, tech.entryHigh)
+        const resistanceTone = tech.resistanceSide === 'ABOVE' ? BB.green : tech.resistanceSide === 'TESTING' ? BB.amber : tech.resistanceSide === 'BELOW' ? BB.red : BB.text3
+        return <div key={event._eventKey} style={{ display: 'grid', gridTemplateColumns: ROTATION_COLS, gap: 8, padding: '8px 10px', borderBottom: '1px solid var(--border)', alignItems: 'center', fontSize: 10.5 }}>
+          <b style={{ fontSize: 13 }}>{event.symbol}</b><div>{day(event.sold_at ?? event.close_date) || 'date unavailable'}<br /><span style={{ color: BB.text3 }}>{text(event.account, event.account_key) || 'account unavailable'}</span></div><div>{dollars(exitPrice)}<br /><span style={{ color: BB.text3 }}>{finite(event.shares_sold, event.shares) ?? '—'} shares</span></div><b>{dollars(finite(event.proceeds_usd, event.proceeds, event.net_proceeds))}</b>
+          <div title={`${event.symbol}: current ${dollars(tech.price)} versus the ${dollars(exitPrice)} exit on this transaction`}><b style={{ color: sinceExit === null ? BB.text3 : sinceExit >= 0 ? BB.green : BB.red }}>{sinceExit === null ? '—' : `${sinceExit >= 0 ? '+' : ''}${sinceExit.toFixed(1)}%`}</b><br /><span style={{ color: BB.text3 }}>now {dollars(tech.price)}</span></div>
+          <div title={`${event.symbol}: closed-session resistance ${dollars(tech.resistance)}; intraday crosses never count as a hold`}><b style={{ color: resistanceTone }}>{tech.resistanceSide}{tech.resistanceDistancePct === null ? '' : ` · ${tech.resistanceDistancePct >= 0 ? '+' : ''}${tech.resistanceDistancePct.toFixed(1)}%`}</b><br /><span style={{ color: BB.text3 }}>vs {dollars(tech.resistance)}</span><LevelLines symbol={event.symbol} row={levels[event.symbol]} /></div>
+          <div title={`${event.symbol}: ${signal.detail} Advisory only — it cannot place an order.`}><b style={{ color: signal.tone }}>{signal.label}</b><br /><span style={{ color: BB.text3 }}>{tech.rsi === null ? 'RSI —' : `RSI ${tech.rsi.toFixed(1)}`}{tech.entryLow === null || tech.entryHigh === null ? '' : ` · ${dollars(tech.entryLow)}–${dollars(tech.entryHigh)}`}</span></div>
           <div><b>{mandate.mandate.replace(/_/g, ' ').toUpperCase()}</b><br /><span style={{ color: BB.text3 }}>{STRATEGY_FLAGS.filter(flag => mandate.flags[flag]).map(flag => flag.toUpperCase()).join(' · ') || 'NO STRATEGY FLAGS'}</span></div>
           <div><b>{classification.eventType.replace(/_/g, ' ').toUpperCase()}</b><br /><span style={{ color: BB.text3 }}>{classification.reason || text(event.reason, event.exit_reason, event.completion_status) || 'reason not classified'}</span>{related.map(link => <div key={link.id} style={{ color: link.confirmed ? BB.green : BB.amber }}>{link.confirmed ? 'CONFIRMED' : 'SUGGESTED'} {link.sourceSymbol} → {link.destinationSymbol}</div>)}</div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}><button onClick={() => setSelectedEvent(event)} style={btn(false)}>MANDATE + EXIT</button><button onClick={() => setRotationEvent(event)} style={btn(Boolean(related.length))}>ROTATION LINK</button></div>

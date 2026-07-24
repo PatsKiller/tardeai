@@ -17,6 +17,7 @@ import HermesHub from './pages/HermesHub'
 import RetirementHub from './pages/RetirementHub'
 import JournalHub from './pages/JournalHub'
 import WatchHub from './pages/WatchHub'
+import SectorsHub from './pages/SectorsHub'
 import DefenseHub from './pages/DefenseHub'
 import ReportsHub from './pages/ReportsHub'
 import SystemHub from './pages/SystemHub'
@@ -162,7 +163,10 @@ function Shell() {
             <Route path="defense" element={<DefenseHub />} />
             <Route path="watchlist" element={<Navigate to="/watch?tab=watchlist" replace />} />
             <Route path="watchpool" element={<Navigate to="/watch?tab=watchpool" replace />} />
-            <Route path="sectors" element={<Navigate to="/watch?tab=sectors" replace />} />
+            {/* Standalone page restored: it was collapsed into a Watch tab and lost its
+                nav entry, which made the leading/lagging monitor undiscoverable. It still
+                renders inside Watch — `embedded` suppresses the standalone header. */}
+            <Route path="sectors" element={<SectorsHub onDrill={setDrill} />} />
             <Route path="pullback-macd" element={<Navigate to="/watch?tab=pullback-macd" replace />} />
             <Route path="reports" element={<ReportsHub onDrill={setDrill} />} />
             <Route path="rotation" element={<RotationIntelligence />} />

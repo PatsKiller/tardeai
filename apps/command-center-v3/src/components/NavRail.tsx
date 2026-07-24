@@ -15,6 +15,7 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/journal', label: 'TradeInView' },
       { to: '/watch', label: 'Watch' },
       { to: '/defense', label: 'Defense' },
+      { to: '/sectors', label: 'Sectors' },
     ],
   },
   {

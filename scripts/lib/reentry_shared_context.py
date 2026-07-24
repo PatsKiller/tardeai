@@ -54,6 +54,23 @@ def _float(*values: Any) -> float | None:
     return None
 
 
+def mandate_symbols(mandates: dict[str, Any]) -> set[str]:
+    """Ticker keys from a mandate pref map.
+
+    An older client merged the pref API envelope into this blob, so `ok: true`,
+    `key: "..."` and `updated_at: null` sit alongside the real tickers and were being
+    carried into the resistance and shared-context caches as pseudo-symbols. Blocking
+    those field *names* would also drop KEY (KeyCorp), so discriminate on the value
+    shape instead: a real entry is always a mandate object.
+    """
+    out: set[str] = set()
+    for raw, value in (mandates or {}).items():
+        symbol = _text(raw).upper()
+        if symbol and isinstance(value, dict):
+            out.add(symbol)
+    return out
+
+
 def _path(value: Any, dotted: str) -> Any:
     result = value
     for part in dotted.split("."):
@@ -74,7 +91,7 @@ def _first(row: dict[str, Any], paths: tuple[str, ...]) -> Any:
 def infer_event(row: dict[str, Any]) -> tuple[str, str]:
     evidence = " ".join(
         _text(row.get(key))
-        for key in ("action", "description", "event_status", "completion_status", "operator_status")
+        for key in ("action", "description", "event_status", "event_reconciliation_status", "operator_status")
     )
     if re.search(r"\b(stop(?:ped)?|stop[- ]loss|trailing stop|protective stop)\b", evidence, re.I):
         return "stopped_out", _text(row.get("description"), "Broker record indicates a stop execution.")
@@ -145,19 +162,6 @@ def refresh_shared_symbol_context(
     events = _pref(ex, EVENT_KEY)
     dispositions = _pref(ex, DISPOSITION_KEY)
 
-    watch_rows = ex(
-        """SELECT * FROM watchlist_items
-           WHERE symbol IS NOT NULL
-           ORDER BY first_seen_at DESC NULLS LAST
-           LIMIT 10000""",
-        fetch="all",
-    ) or []
-    watch_by_symbol: dict[str, dict[str, Any]] = {}
-    for row in watch_rows:
-        symbol = _text(row.get("symbol")).upper()
-        if symbol and symbol not in watch_by_symbol:
-            watch_by_symbol[symbol] = row
-
     exits_by_symbol: dict[str, list[dict[str, Any]]] = {}
     for row in exit_payload.get("rows") or []:
         symbol = _text(row.get("symbol")).upper()
@@ -165,7 +169,27 @@ def refresh_shared_symbol_context(
             exits_by_symbol.setdefault(symbol, []).append(row)
 
     resistance_map = resistance_payload.get("symbols") if isinstance(resistance_payload.get("symbols"), dict) else {}
-    symbols = sorted(set(exits_by_symbol) | set(mandates) | set(watch_by_symbol) | set(resistance_map))
+
+    # Scope is the Re-Entry universe: exited, operator-mandated, or resistance-tracked
+    # symbols. Previously this unioned every watchlist row, so the cache carried ~9.5k
+    # symbols (~425 kB) that no consumer reads — each one only ever looks up
+    # symbols[<exit symbol>] — and every page paid for it. Watch evidence is still
+    # attached below, just for the symbols the Re-Entry surfaces actually render.
+    symbols = sorted(set(exits_by_symbol) | mandate_symbols(mandates) | set(resistance_map))
+
+    watch_by_symbol: dict[str, dict[str, Any]] = {}
+    if symbols:
+        watch_rows = ex(
+            """SELECT * FROM watchlist_items
+               WHERE symbol IS NOT NULL AND upper(symbol) = ANY(%s)
+               ORDER BY first_seen_at DESC NULLS LAST
+               LIMIT 10000""",
+            (symbols,), fetch="all",
+        ) or []
+        for row in watch_rows:
+            symbol = _text(row.get("symbol")).upper()
+            if symbol and symbol not in watch_by_symbol:
+                watch_by_symbol[symbol] = row
     today = dt.date.today()
     output: dict[str, Any] = {}
 

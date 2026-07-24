@@ -12,6 +12,24 @@ if str(SCRIPTS) not in sys.path:
 
 from lib.reentry_exit_cache import CACHE_KEY, refresh_exit_cache
 
+# Real public.deploy_events columns. Selecting anything outside this set makes the
+# live events query fail, db_adapter swallows the error, and every exit silently
+# falls back to "pending / reason not classified" — so assert the contract here.
+DEPLOY_EVENT_COLUMNS = frozenset({
+    "id", "event_key", "symbol", "account", "sold_at", "proceeds_usd", "shares_sold",
+    "realized_pnl", "instrument_type", "proxy_symbol", "proxy_sleeve", "status",
+    "proceeds_settled", "cash_visible_usd", "lookthrough_delta", "redeploy_plan",
+    "source", "txn_ref", "txn_id", "dismiss_reason", "metadata", "created_at",
+    "updated_at", "net_proceeds_usd", "deployable_cash_usd", "reconciliation_status",
+    "policy_version", "generator_version", "holdings_snapshot_id", "plan_locked_at",
+    "locked_plan_id", "locked_plan_version", "operator_status",
+})
+
+
+def _selected_columns(normalized: str) -> set[str]:
+    body = normalized.split("select", 1)[1].split(" from ", 1)[0]
+    return {part.strip() for part in body.split(",") if part.strip()}
+
 
 class FakeExecute:
     def __init__(self):
@@ -68,7 +86,7 @@ class FakeExecute:
                 "id": 44,
                 "event_key": "txn:schwab:1",
                 "status": "open",
-                "completion_status": "pending",
+                "reconciliation_status": "unsettled",
                 "operator_status": "open",
                 "proceeds_settled": False,
                 "sold_at": dt.date(2026, 7, 23),
@@ -81,6 +99,8 @@ class FakeExecute:
         if "from trade_transactions" in normalized:
             return self.transactions
         if "from deploy_events" in normalized:
+            unknown = _selected_columns(normalized) - DEPLOY_EVENT_COLUMNS
+            assert not unknown, f"deploy_events has no column(s): {sorted(unknown)}"
             return self.events
         if "insert into ui_prefs" in normalized:
             assert params[0] == CACHE_KEY

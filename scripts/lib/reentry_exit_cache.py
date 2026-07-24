@@ -34,8 +34,11 @@ def refresh_exit_cache(ex: Callable[..., Any], days: int = 365) -> dict[str, Any
            LIMIT 10000""",
         (int(days),), fetch="all",
     ) or []
+    # deploy_events carries reconciliation_status; completion_status is a derived
+    # redeploy_capital_book field and does not exist as a column here. Selecting it
+    # made the whole events query fail, so every exit stayed unmatched.
     events = ex(
-        """SELECT id, event_key, status, completion_status, operator_status,
+        """SELECT id, event_key, status, reconciliation_status, operator_status,
                   proceeds_settled, sold_at, source
            FROM deploy_events
            WHERE sold_at >= CURRENT_DATE - %s""",
@@ -85,7 +88,7 @@ def refresh_exit_cache(ex: Callable[..., Any], days: int = 365) -> dict[str, Any
             "dedupe_key": transaction.get("dedupe_key"),
             "matched_event_id": event.get("id") if event else None,
             "event_status": event.get("status") if event else None,
-            "completion_status": event.get("completion_status") if event else None,
+            "event_reconciliation_status": event.get("reconciliation_status") if event else None,
             "operator_status": event.get("operator_status") if event else None,
             "proceeds_settled": bool(event.get("proceeds_settled")) if event else None,
             "event_source": event.get("source") if event else None,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -64,8 +64,16 @@ def test_quote_stale_after_snapshot_age():
     tech = adapter.load_technicals("JEPQ")
     as_of = tech.get("as_of")
     assert as_of
-    future = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
+    # Derive "later" from the live snapshot instead of a fixed date, which silently
+    # became earlier than as_of once technicals caught up and inverted the check.
+    age_now = adapter.quote_age_minutes(as_of, now=datetime.now(timezone.utc))
+    assert age_now is not None
+    future = datetime.now(timezone.utc) + timedelta(
+        minutes=adapter.EXPORT_QUOTE_MAX_AGE_MINUTES + 60
+    )
     assert adapter.is_quote_stale(as_of, now=future)
+    fresh = adapter.quote_age_minutes(as_of, now=None)
+    assert fresh is None or fresh >= 0
 
 
 def test_phase_c_enriches_metadata():

@@ -16,6 +16,7 @@ import {
 } from '../lib/holdingsTerminalTokens'
 import { holdingReportEligible } from '../lib/reportLinks'
 import { ShareDriftPill } from './ShareReconciliationModal'
+import { LevelLines, type LevelMap } from '../lib/supportResistance'
 
 const LLM_LANE: Record<string, { label: string; c: string }> = {
   local: { label: 'G', c: '#2dd4bf' },
@@ -89,6 +90,8 @@ export interface HoldingsTableRowContext {
 
 interface Props {
   rows: HoldingsTableRowContext[]
+  /** symbol → closed-session support/resistance from portfolio.reentry.resistance.v1 */
+  resistanceMap?: LevelMap
   acctColor: (a: string) => string
   focusKey?: string | null
   cvdMode?: HoldingsCvdMode
@@ -259,7 +262,7 @@ function rowTooltip(m: ReturnType<typeof buildHoldingsRowModel>, h: any): string
  * dual-line money cells, RSI/VOL badges, news + earnings, stop + action.
  */
 export default function HoldingsTableView({
-  rows, focusKey, cvdMode = 'default', onOpenDetail, onOpenStops, onPrimaryAction, onShareDrift,
+  rows, resistanceMap = {}, focusKey, cvdMode = 'default', onOpenDetail, onOpenStops, onPrimaryAction, onShareDrift,
 }: Props) {
   const [hoverKey, setHoverKey] = useState<string | null>(null)
   const openStops = onOpenStops || onPrimaryAction || onOpenDetail
@@ -380,6 +383,7 @@ export default function HoldingsTableView({
                       {nameLine}
                     </div>
                   )}
+                  <LevelLines symbol={m.symbol} row={resistanceMap[m.symbol]} />
                   {hasShareDrift && (
                     <div style={{ marginTop: 3 }} onClick={e => e.stopPropagation()}>
                       <ShareDriftPill compact onClick={() => onShareDrift?.(rowCtx)} />

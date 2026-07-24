@@ -21,7 +21,7 @@ type ExitRow = {
   import_source?: string | null
   matched_event_id?: number | null
   event_status?: string | null
-  completion_status?: string | null
+  event_reconciliation_status?: string | null
   operator_status?: string | null
   proceeds_settled?: boolean | null
   reconciliation?: 'matched' | 'pending'
@@ -63,7 +63,7 @@ export default function ReEntryExitDetailLedger() {
         {shown.map(row => {
           const matched = row.reconciliation === 'matched' || Boolean(row.matched_event_id)
           return <div key={row.event_key} style={{ display: 'grid', gridTemplateColumns: '115px 70px 130px 90px 85px 95px 90px 125px 150px 1fr 95px', gap: 7, padding: '7px 8px', borderBottom: '1px solid var(--border)', alignItems: 'center', fontSize: 10.5 }}>
-            <div>{row.trade_date ?? '—'}<br /><span style={{ color: BB.text3 }}>{row.trade_time ?? ''}</span></div><b style={{ fontSize: 12 }}>{row.symbol}</b><span>{row.account ?? '—'}</span><b>{row.action ?? '—'}</b><span>{row.quantity ?? '—'}</span><span>{money(row.price)}</span><span>{money(row.fees)}</span><b>{money(row.proceeds_usd)}</b><span>{row.import_source ?? '—'}</span><div><span>{row.description ?? 'No source description'}</span><br /><b style={{ color: matched ? BB.green : BB.amber }}>{matched ? `MATCHED${row.matched_event_id ? ` #${row.matched_event_id}` : ''}` : 'PENDING RECONCILIATION'}</b>{row.event_status && <span style={{ color: BB.text3 }}> · {row.event_status}</span>}{row.completion_status && <span style={{ color: BB.text3 }}> · {row.completion_status}</span>}{row.proceeds_settled != null && <span style={{ color: row.proceeds_settled ? BB.green : BB.amber }}> · settlement {row.proceeds_settled ? 'verified' : 'pending'}</span>}</div><Link to={`/portfolio/re-entry?symbol=${encodeURIComponent(row.symbol)}`} style={{ fontSize: 10, fontWeight: 800, color: BB.blue, textDecoration: 'none', border: `1px solid ${BB.blue}`, borderRadius: 4, padding: '4px 7px', textAlign: 'center' }}>INTELLIGENCE</Link>
+            <div>{row.trade_date ?? '—'}<br /><span style={{ color: BB.text3 }}>{row.trade_time ?? ''}</span></div><b style={{ fontSize: 12 }}>{row.symbol}</b><span>{row.account ?? '—'}</span><b>{row.action ?? '—'}</b><span>{row.quantity ?? '—'}</span><span>{money(row.price)}</span><span>{money(row.fees)}</span><b>{money(row.proceeds_usd)}</b><span>{row.import_source ?? '—'}</span><div><span>{row.description ?? 'No source description'}</span><br /><b style={{ color: matched ? BB.green : BB.amber }}>{matched ? `MATCHED${row.matched_event_id ? ` #${row.matched_event_id}` : ''}` : 'PENDING RECONCILIATION'}</b>{row.event_status && <span style={{ color: BB.text3 }}> · {row.event_status}</span>}{row.event_reconciliation_status && <span style={{ color: BB.text3 }}> · {row.event_reconciliation_status}</span>}{row.proceeds_settled != null && <span style={{ color: row.proceeds_settled ? BB.green : BB.amber }}> · settlement {row.proceeds_settled ? 'verified' : 'pending'}</span>}</div><Link to={`/portfolio/re-entry?symbol=${encodeURIComponent(row.symbol)}`} style={{ fontSize: 10, fontWeight: 800, color: BB.blue, textDecoration: 'none', border: `1px solid ${BB.blue}`, borderRadius: 4, padding: '4px 7px', textAlign: 'center' }}>INTELLIGENCE</Link>
           </div>
         })}
       </div></div>

@@ -10,7 +10,15 @@ SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
+import lib.reentry_resistance as reentry_resistance
 from lib.reentry_resistance import CACHE_KEY, compute_resistance, refresh_resistance_cache
+
+
+def _no_holdings(monkeypatch):
+    """The resistance universe now includes live holdings so the Portfolio table has a
+    level to show. That reads holdings.json, so pin it empty to keep these cases about
+    the exit/mandate scope rather than whatever is held today."""
+    monkeypatch.setattr(reentry_resistance, "_holdings_symbols", set)
 
 
 def series(values):
@@ -76,7 +84,8 @@ class FakeExecute:
         raise AssertionError(f"unexpected SQL: {normalized}")
 
 
-def test_refresh_persists_symbol_map_with_auditable_method():
+def test_refresh_persists_symbol_map_with_auditable_method(monkeypatch):
+    _no_holdings(monkeypatch)
     ex = FakeExecute()
 
     payload = refresh_resistance_cache(ex)
@@ -85,3 +94,20 @@ def test_refresh_persists_symbol_map_with_auditable_method():
     assert set(payload["symbols"]) == {"SCHG", "SCHD"}
     assert ex.saved == payload
     assert all("closed-session hold only" in row.get("method", "") for row in payload["symbols"].values())
+
+
+def test_holdings_join_the_resistance_universe(tmp_path):
+    """A held symbol needs a closed-session level for the Portfolio table. Cash sweeps
+    and delisted CUSIP placeholders have no tradable series, so they must not enter."""
+    holdings = tmp_path / "holdings.json"
+    holdings.write_text(json.dumps({"holdings": [
+        {"symbol": "SCHD"},
+        {"symbol": "jepi"},
+        {"symbol": "CASH", "is_cash": True},
+        {"symbol": "44984F807"},
+        {"symbol": ""},
+    ]}))
+
+    assert reentry_resistance._holdings_symbols(holdings) == {"SCHD", "JEPI"}
+    # A missing or unreadable snapshot degrades to empty, never raises into the cron.
+    assert reentry_resistance._holdings_symbols(tmp_path / "absent.json") == set()
