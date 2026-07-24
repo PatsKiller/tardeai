@@ -31,6 +31,10 @@ CFG = json.loads((ROOT / "config" / "defense_recommendations.json").read_text())
 CAPS = json.loads((ROOT / "config" / "account_capabilities.json").read_text())["accounts"]
 SNAP = ROOT / "data" / "runtime" / "defense_recommendations_latest.json"
 
+from defense_data_quality import (RECOMMENDATION_CALC_VERSION, allocation_decision,
+    directive_review_status, peer_medians, realized_vol_corr, snapshot_hash,
+    stock_quality_assessment, truth_ref)
+
 REQUIRED = ("id", "group", "title", "instruments", "accounts", "direction", "size_band",
             "entry_logic", "invalidation", "factors", "as_of", "mode")
 
@@ -170,20 +174,28 @@ def _earnings_soon(prof, days):
 
 
 def rotate_in(sectors, cur, enrich, as_of, equities=None) -> list:
+    """Risk-aware rotate-in cards.  Missing risk/industry/quality evidence fails closed."""
     c = CFG["rotate_in"]
     cards = []
-    ranked = sorted([r for r in sectors if r.get("state") in ("LEADING", "IMPROVING")],
-                    key=lambda r: -(r.get("rs20") or 0))
-    # v8.10 — the defensive lean governs rotate-in IDEAS too (operator extension
-    # 2026-07-18, after the Opus catch: pairs excluded cyclicals while Get-Into
-    # still advised Energy): cyclical rotate-ins are excluded while lean is on
+    ranked = sorted([r for r in sectors if r.get("state") in ("LEADING", "IMPROVING")
+                     and not r.get("quarantined")], key=lambda r: -(r.get("rs20") or 0))
     lean = (CFG.get("rotation_pairs") or {}).get("defensive_lean") or {}
     if lean.get("enabled"):
         ranked = [r for r in ranked if r["sector"] in lean.get("defensive_sectors", [])]
+    industry_snap = _load("industry_momentum_latest.json")
+    industry_close = industry_snap.get("capture_kind") == "close"
+    industry_rows = {g.get("industry"): g for g in industry_snap.get("industries", [])
+                     if not g.get("quarantined")}
+
     for r in ranked:
-        if (r.get("book_pct") or 0) >= CFG["underweight_floor_pct"]:
+        risk = realized_vol_corr(cur, r["etf"], CFG.get("benchmark", "SPY"))
+        decisions = {account: allocation_decision(
+            CFG, sector=r["sector"], current_weight_pct=float(r.get("book_pct") or 0),
+            risk_context=risk, account=account) for account in sorted(CAPS.keys())}
+        accounts = [a for a, d in decisions.items() if d.get("eligible")]
+        if not accounts:
             continue
-        # constituents: sector members by latest Hermes composite passing the rails
+
         cur.execute("""SELECT DISTINCT ON (h.symbol) h.symbol, h.composite_score
                        FROM hermes_score_history h JOIN trade_ai_scans t ON t.symbol = h.symbol
                        WHERE t.sector = ANY(%s) AND h.scored_at > now() - interval '3 days'
@@ -191,51 +203,75 @@ def rotate_in(sectors, cur, enrich, as_of, equities=None) -> list:
                     ([r["sector"]] + _sector_aliases(r["sector"]),))
         scored = sorted([(s, float(sc)) for s, sc in cur.fetchall() if sc is not None],
                         key=lambda x: -x[1])
+        aliases = set([r["sector"]] + _sector_aliases(r["sector"]))
+        peers = peer_medians([v for v in enrich.values() if (v or {}).get("sector") in aliases])
         picks = []
-        px = _prices(cur, [s for s, _ in scored[:40]])
-        for sym, sc in scored[:40]:
+        px = _prices(cur, [s for s, _ in scored[:60]])
+        for sym, legacy_rank in scored[:60]:
             e = enrich.get(sym) or {}
             price = px.get(sym) or 0
             dollar_vol_m = (e.get("avg_vol_m") or 0) * 1000 * price / 1e6 if price else 0
             prof_e = _profiles_one(cur, sym)
+            industry = e.get("industry")
+            industry_row = industry_rows.get(industry) or {}
+            quality = stock_quality_assessment(e, peers, CFG)
             if dollar_vol_m < c["constituent_min_dollar_vol_m"]:
                 continue
             if (e.get("sma50_pct") or 0) > c["constituent_max_ext_above_sma50_pct"]:
-                continue  # EXTENDED — same discipline as Gain Guardian's parabolic read
+                continue
             if _earnings_soon(prof_e, c["earnings_blackout_days"]):
                 continue
-            picks.append({"symbol": sym, "hermes": round(sc, 1)})
+            if CFG.get("stock_quality", {}).get("requires_close_confirmed_industry") and (
+                    not industry_close or industry_row.get("state") not in ("LEADING", "IMPROVING")):
+                continue
+            if not quality["passed"]:
+                continue
+            picks.append({"symbol": sym, "legacy_rank": round(legacy_rank, 1),
+                          "institutional_quality": quality, "industry": industry})
             if len(picks) >= c["top_constituents"]:
                 break
+
+        max_capacity = max(decisions[a]["capacity_pct"] for a in accounts)
+        low = min(float(c["size_band_pct"][0]), max_capacity)
+        high = min(float(c["size_band_pct"][1]), max_capacity)
+        if high < 1.0:
+            continue
+        low = min(low, high)
         etf_px = _prices(cur, [r["etf"]]).get(r["etf"])
         etf_e = enrich.get(r["etf"]) or {}
         sma20_lvl = round(etf_px / (1 + (etf_e.get("sma20_pct") or 0) / 100), 2) if etf_px else None
-        instruments = [{"symbol": r["etf"], "kind": "sector ETF", "note": "valid every account",
-                        "price": etf_px}]
+        instruments = [{"symbol": r["etf"], "kind": "sector ETF", "note": "policy and risk-capacity qualified", "price": etf_px}]
         instruments += [{"symbol": p["symbol"], "kind": "constituent",
-                         "note": f"Hermes composite {p['hermes']}",
-                         "price": px.get(p["symbol"])} for p in picks]
+                         "note": f"institutional quality {p['institutional_quality']['score']:.0f}; {p['industry']}",
+                         "price": px.get(p["symbol"]), "quality": p["institutional_quality"]}
+                        for p in picks]
         if not picks:
-            instruments[0]["note"] += " — no constituent passed the rails; ETF is the recommendation"
-        band = dollars_band(c["size_band_pct"], sorted(CAPS.keys()), equities or {})
+            instruments[0]["note"] += " — ETF only; no stock passed close-industry + quality rails"
+        pct_band = [round(low, 2), round(high, 2)]
+        band = dollars_band(pct_band, accounts, equities or {})
         cards.append({
             "id": f"rotatein-{r['etf']}-{as_of}", "group": "get_into",
             "title": f"ROTATE-IN · {r['sector']} ({r['state']}, RS20 {r['rs20']:+.1f})",
-            "instruments": instruments, "accounts": sorted(CAPS.keys()),
-            "direction": "long", "size_band": f"{c['size_band_pct'][0]}–{c['size_band_pct'][1]}% of account equity",
-            "entry_logic": "stagger in on pullbacks toward the 20DMA; do not chase extended prints",
-            "invalidation": f"{r['sector']} drops out of {r['state']} (2-close confirmed) — exit the thesis",
+            "instruments": instruments, "accounts": accounts, "direction": "long",
+            "size_band": f"{pct_band[0]}–{pct_band[1]}% of account equity",
+            "entry_logic": "stagger only on pullbacks toward the 20DMA; capacity is volatility/correlation adjusted",
+            "invalidation": f"{r['sector']} exits {r['state']} on a two-close confirmation or risk capacity falls below 1%",
             "factors": [
                 {"name": "sector state", "value": r["state"]},
                 {"name": "RS20 vs SPY", "value": f"{r['rs20']:+.2f}%"},
-                {"name": "book weight", "value": f"{r.get('book_pct') or 0}% (floor {CFG['underweight_floor_pct']}%)"},
-                {"name": "breadth", "value": f"{r.get('breadth_pct')}% above own 20DMA"},
+                {"name": "book weight", "value": f"{r.get('book_pct') or 0}%"},
+                {"name": "breadth", "value": f"{r.get('breadth_pct')}% exact-20-session measure"},
+                {"name": "realized volatility", "value": f"{risk.get('annualized_vol_pct')}%"},
+                {"name": "correlation to SPY", "value": str(risk.get("correlation"))},
+                {"name": "max policy capacity", "value": f"{max_capacity:.2f}%"},
             ],
             "as_of": as_of, "mode": "SHADOW",
             "levels": {"price": etf_px, "entry_zone": f"pullback toward 20DMA ≈ ${sma20_lvl}" if sma20_lvl else "stagger on pullbacks",
-                       "stop": f"thesis stop: {r['sector']} exits {r['state']} (2-close)"},
-            "dollars_by_account": band,
-            "impact_dollars": max((v[1] for v in band.values()), default=0),
+                       "stop": f"thesis stop: {r['sector']} exits {r['state']} (two-close)"},
+            "dollars_by_account": band, "impact_dollars": max((v[1] for v in band.values()), default=0),
+            "allocation_policy": decisions, "risk_context": risk,
+            "quality_gate": {"industry_capture_kind": industry_snap.get("capture_kind"),
+                             "stock_picks_passed": len(picks), "version": RECOMMENDATION_CALC_VERSION},
             "routes": {"proposal": "watch-directive path — operator approves; nothing self-executes"},
         })
         if len(cards) >= c["max_cards"]:
@@ -933,6 +969,7 @@ def main() -> int:
     sector_snap = _load("sector_momentum_latest.json")
     sectors = sector_snap.get("rows") or []
     market = sector_snap.get("market") or {}
+    lean_review = directive_review_status((CFG.get("rotation_pairs") or {}).get("defensive_lean") or {}, sectors)
     industries = _load("industry_momentum_latest.json")
     enrich = _enrich()
     holdings = _holdings()
@@ -1086,10 +1123,9 @@ def main() -> int:
                         key=lambda c: -(c.get("impact_dollars") or 0))
               for g in ("get_into", "protect", "short_side", "income")}
     empty_reasons = {
-        "get_into": ("DEFENSIVE LEAN active: cyclical rotate-ins excluded — no defensive sector "
-                     "(Utilities/Staples/Healthcare) is LEADING+underweight right now"
-                     if (CFG.get("rotation_pairs") or {}).get("defensive_lean", {}).get("enabled")
-                     else "no LEADING/IMPROVING sector is underweight vs your neutral map"),
+        "get_into": ("DEFENSIVE LEAN active and due for dated review; non-defensive leadership remains research-only"
+                     if lean_review.get("requires_review") else
+                     "no LEADING/IMPROVING sector has benchmark-, mandate-, volatility- and correlation-adjusted capacity"),
         "protect": "no held position fired ≥%d factors" % CFG["move_out"]["factor_threshold"],
         "short_side": "no trigger: no >10%-book sector WEAKENING/LAGGING and short pool produced no clean candidate",
         "income": "no ≥100-share holding sits in a WEAKENING/LAGGING sector",
@@ -1118,7 +1154,14 @@ def main() -> int:
             "industries": industries.get("captured_at"),
             "hedging_radar": (_load("hedging_radar_latest.json") or {}).get("captured_at"),
         },
+        "calculation_version": RECOMMENDATION_CALC_VERSION,
+        "directive_reviews": [lean_review],
+        "truth_ledger": truth_ref(source="sector + industry + holdings + account capabilities",
+            as_of=as_of, calculation_version=RECOMMENDATION_CALC_VERSION,
+            cadence="nightly", quality="shadow_advisory",
+            notes=["no broker, order, approval or configuration-promotion authority"]),
     }
+    snap["snapshot_hash"] = snapshot_hash(snap)
     if not args.dry_run:
         SNAP.write_text(json.dumps(snap, default=str))
     if not args.dry_run:

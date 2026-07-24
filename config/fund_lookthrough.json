@@ -29,7 +29,13 @@
         "Drug Manufacturers - General": 0.03,
         "Computer Hardware": 0.02
       },
-      "industries_note": "top-10 industry weights, factsheet-seeded 2026-07-18 (\u2265$50K funds only; quarterly refresh with sectors)"
+      "industries_note": "top-10 industry weights, factsheet-seeded 2026-07-18 (\u2265$50K funds only; quarterly refresh with sectors)",
+      "provider": "Schwab",
+      "factsheet_as_of": "2026-06-30",
+      "refresh_due": "2026-10-01",
+      "mapping_quality": "factsheet",
+      "coverage_pct": 99.0,
+      "unmapped_weight_pct": 1.0
     },
     "SCHD": {
       "name": "Schwab U.S. Dividend Equity",
@@ -58,7 +64,13 @@
         "Tobacco": 0.04,
         "Specialty Industrial Machinery": 0.04
       },
-      "industries_note": "top-10 industry weights, factsheet-seeded 2026-07-18 (\u2265$50K funds only; quarterly refresh with sectors)"
+      "industries_note": "top-10 industry weights, factsheet-seeded 2026-07-18 (\u2265$50K funds only; quarterly refresh with sectors)",
+      "provider": "Schwab",
+      "factsheet_as_of": "2026-06-30",
+      "refresh_due": "2026-10-01",
+      "mapping_quality": "factsheet",
+      "coverage_pct": 99.0,
+      "unmapped_weight_pct": 1.0
     },
     "JEPI": {
       "name": "JPMorgan Equity Premium Income",
@@ -88,7 +100,13 @@
         "Internet Content & Information": 0.03,
         "Oil & Gas Integrated": 0.03
       },
-      "industries_note": "top-10 industry weights, factsheet-seeded 2026-07-18 (\u2265$50K funds only; quarterly refresh with sectors)"
+      "industries_note": "top-10 industry weights, factsheet-seeded 2026-07-18 (\u2265$50K funds only; quarterly refresh with sectors)",
+      "provider": "JPMorgan",
+      "factsheet_as_of": "2026-06-30",
+      "refresh_due": "2026-10-01",
+      "mapping_quality": "factsheet",
+      "coverage_pct": 98.0,
+      "unmapped_weight_pct": 2.0
     },
     "JEPQ": {
       "name": "JPMorgan Nasdaq Equity Premium Income",
@@ -117,28 +135,52 @@
         "Computer Hardware": 0.02,
         "Diagnostics & Research": 0.02
       },
-      "industries_note": "top-10 industry weights, factsheet-seeded 2026-07-18 (\u2265$50K funds only; quarterly refresh with sectors)"
+      "industries_note": "top-10 industry weights, factsheet-seeded 2026-07-18 (\u2265$50K funds only; quarterly refresh with sectors)",
+      "provider": "JPMorgan",
+      "factsheet_as_of": "2026-06-30",
+      "refresh_due": "2026-10-01",
+      "mapping_quality": "factsheet",
+      "coverage_pct": 99.0,
+      "unmapped_weight_pct": 1.0
     },
     "XLI": {
       "name": "Industrial Select Sector SPDR",
       "source": "sector ETF \u2014 definitional",
       "weights": {
         "Industrials": 1.0
-      }
+      },
+      "provider": "State Street SPDR",
+      "factsheet_as_of": "definitional",
+      "refresh_due": null,
+      "mapping_quality": "factsheet",
+      "coverage_pct": 100.0,
+      "unmapped_weight_pct": 0.0
     },
     "XLB": {
       "name": "Materials Select Sector SPDR",
       "source": "sector ETF \u2014 definitional",
       "weights": {
         "Materials": 1.0
-      }
+      },
+      "provider": "State Street SPDR",
+      "factsheet_as_of": "definitional",
+      "refresh_due": null,
+      "mapping_quality": "factsheet",
+      "coverage_pct": 100.0,
+      "unmapped_weight_pct": 0.0
     },
     "XAR": {
       "name": "SPDR S&P Aerospace & Defense",
       "source": "industry ETF \u2014 definitional (aerospace & defense \u2282 Industrials)",
       "weights": {
         "Industrials": 1.0
-      }
+      },
+      "provider": "State Street SPDR",
+      "factsheet_as_of": "definitional",
+      "refresh_due": null,
+      "mapping_quality": "factsheet",
+      "coverage_pct": 100.0,
+      "unmapped_weight_pct": 0.0
     },
     "ARKX": {
       "name": "ARK Space Exploration & Innovation",
@@ -149,22 +191,42 @@
         "Communications": 0.1,
         "Healthcare": 0.03,
         "Materials": 0.03
-      }
+      },
+      "provider": "ARK Invest",
+      "factsheet_as_of": "2026-06-30",
+      "refresh_due": "2026-10-01",
+      "mapping_quality": "estimate",
+      "coverage_pct": 91.0,
+      "unmapped_weight_pct": 9.0
     },
     "SPCX": {
       "name": "SPAC and New Issue ETF",
       "lookthrough": "none",
-      "why": "no reliable current factsheet \u2014 never guess"
+      "why": "no reliable current factsheet \u2014 never guess",
+      "provider": "operator configuration",
+      "factsheet_as_of": null,
+      "refresh_due": "2026-10-01",
+      "mapping_quality": "not_decomposed"
     },
     "DIVI": {
       "name": "Franklin International Core Dividend Tilt",
       "lookthrough": "none",
-      "why": "international book \u2014 US 11-sector map does not apply"
+      "why": "international book \u2014 US 11-sector map does not apply",
+      "provider": "Franklin Templeton",
+      "factsheet_as_of": null,
+      "refresh_due": "2026-10-01",
+      "mapping_quality": "not_decomposed"
     },
     "BND": {
       "name": "Vanguard Total Bond Market",
       "lookthrough": "none",
-      "why": "fixed income \u2014 not equity sector exposure"
+      "why": "fixed income \u2014 not equity sector exposure",
+      "provider": "Vanguard",
+      "factsheet_as_of": null,
+      "refresh_due": "2026-10-01",
+      "mapping_quality": "not_decomposed"
     }
-  }
+  },
+  "_schema_version": "fund-lookthrough-provenance-v2",
+  "_default_refresh_sla_days": 100
 }
