@@ -1,0 +1,12 @@
+{
+  "version": "defense-covered-breadth-policy-v2",
+  "minimum_covered_members": 8,
+  "minimum_price_coverage_pct": 70.0,
+  "membership_scope": "covered_screener_membership_not_official_etf_constituents",
+  "notes": [
+    "Membership discovery is deterministic and uncapped.",
+    "Breadth uses the latest close versus the mean of exactly 20 distinct sessions for each covered member.",
+    "The result is withheld when fewer than the minimum member count or coverage percentage is available.",
+    "This measure is not represented as official ETF constituent breadth."
+  ]
+}
