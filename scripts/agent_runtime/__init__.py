@@ -16,15 +16,29 @@ from .contracts import (
     ToolPolicy,
     canonical_hash,
 )
+from .knowledge import (
+    EmbeddingProvenance,
+    KnowledgeIndex,
+    KnowledgeRecord,
+    RetrievalBundle,
+    RetrievalHit,
+    WatchRetrievalContext,
+)
 from .runtime import MvlRuntime
 from .sentinel import SentinelFinding, SentinelReport, finding_codes, inspect_population, inspect_ticket
+from .watch_artifact import WatchAdapterResult, WatchArtifact, WatchProvenance, adapt_watch_item
 
 __all__ = [
     "AgentDefinition",
     "Artifact",
     "DeploymentState",
+    "EmbeddingProvenance",
     "Environment",
+    "KnowledgeIndex",
+    "KnowledgeRecord",
     "MvlRuntime",
+    "RetrievalBundle",
+    "RetrievalHit",
     "Review",
     "ReviewVerdict",
     "RunStatus",
@@ -32,6 +46,11 @@ __all__ = [
     "SentinelReport",
     "ToolDecision",
     "ToolPolicy",
+    "WatchAdapterResult",
+    "WatchArtifact",
+    "WatchProvenance",
+    "WatchRetrievalContext",
+    "adapt_watch_item",
     "canonical_hash",
     "finding_codes",
     "inspect_population",
