@@ -10,6 +10,8 @@ interface Props {
   compact?: boolean
 }
 
+type DecisionStatus = 'ELIGIBLE NOW' | 'RESEARCH WATCH' | 'AVOID / REDUCE' | 'NO DECISION'
+
 const SECTOR_ALIASES: Record<string, string> = {
   'financial services': 'Financials',
   financial: 'Financials',
@@ -30,6 +32,11 @@ function signed(value: number | null | undefined, digits = 1): string {
   return `${n >= 0 ? '+' : ''}${n.toFixed(digits)}%`
 }
 
+function money(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
+  return `$${Math.round(Number(value)).toLocaleString()}`
+}
+
 function shortTime(value?: string | null): string {
   if (!value) return 'not reported'
   const d = new Date(value)
@@ -44,14 +51,6 @@ function ageDays(value?: string | null): number | null {
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86_400_000))
 }
 
-function stateTone(state?: string | null): 'green' | 'amber' | 'red' | 'slate' {
-  const s = String(state || '').toUpperCase()
-  if (s === 'LEADING') return 'green'
-  if (s === 'IMPROVING' || s === 'WEAKENING') return 'amber'
-  if (s === 'LAGGING') return 'red'
-  return 'slate'
-}
-
 function cardSector(card: any, sectorByEtf: Map<string, any>): string {
   const etf = (card?.instruments || []).find((i: any) => i.kind === 'sector ETF')?.symbol
   if (etf && sectorByEtf.has(etf)) return canonicalSector(sectorByEtf.get(etf)?.sector)
@@ -59,13 +58,55 @@ function cardSector(card: any, sectorByEtf: Map<string, any>): string {
   return canonicalSector(match?.[1] || '')
 }
 
+function statusTone(status: DecisionStatus): 'green' | 'amber' | 'red' | 'slate' {
+  if (status === 'ELIGIBLE NOW') return 'green'
+  if (status === 'RESEARCH WATCH') return 'amber'
+  if (status === 'AVOID / REDUCE') return 'red'
+  return 'slate'
+}
+
+function statusFor(sector: any, card: any): DecisionStatus {
+  const state = String(sector?.state || '').toUpperCase()
+  const stale = Boolean(sector?.quarantined || sector?.freshness?.stale || ((ageDays(sector?.as_of) ?? 0) > 4))
+  if (stale || !state) return 'NO DECISION'
+  if (card) return 'ELIGIBLE NOW'
+  if (state === 'WEAKENING' || state === 'LAGGING') return 'AVOID / REDUCE'
+  return 'RESEARCH WATCH'
+}
+
+function accountRows(card: any, accountLabels: Record<string, string>): any[] {
+  const sizing = card?.account_sizing || {}
+  const decisions = card?.allocation_policy || {}
+  const dollars = card?.dollars_by_account || {}
+  const accounts: string[] = card?.accounts || Object.keys(sizing)
+  return accounts.map(account => {
+    const row = sizing[account] || {}
+    const decision = decisions[account] || {}
+    const band = row.pct_band || (Array.isArray(dollars[account]) ? null : undefined)
+    return {
+      account,
+      label: accountLabels[account] || account,
+      low: band?.[0],
+      high: band?.[1],
+      dollars: row.dollar_band || dollars[account],
+      current: decision.current_account_weight_pct ?? decision.current_weight_pct,
+      capacity: decision.capacity_pct,
+      target: decision.risk_target_pct,
+      quality: decision.quality,
+    }
+  })
+}
+
 export default function InstitutionalRotationBrief({
   sectors = [], industries = [], recommendations, generatedAt, industryCapturedAt, compact = false,
 }: Props) {
   const [showMethod, setShowMethod] = useState(false)
+  const [showAll, setShowAll] = useState(false)
   const groups = recommendations?.groups || {}
   const addCards: any[] = groups.get_into || []
   const riskCards: any[] = [...(groups.protect || []), ...(groups.short_side || [])]
+  const accountLabels: Record<string, string> = recommendations?.accounts || {}
+  const leanReview = (recommendations?.directive_reviews || [])[0] || {}
 
   const sectorByEtf = useMemo(() => new Map(sectors.map((s: any) => [s.etf, s])), [sectors])
   const addBySector = useMemo(() => {
@@ -76,18 +117,6 @@ export default function InstitutionalRotationBrief({
     })
     return out
   }, [addCards, sectorByEtf])
-
-  const candidateSectors = useMemo(() => {
-    const preferred = sectors
-      .filter((s: any) => ['LEADING', 'IMPROVING'].includes(String(s.state || '').toUpperCase()) || addBySector.has(canonicalSector(s.sector)))
-      .sort((a: any, b: any) => {
-        const ac = addBySector.has(canonicalSector(a.sector)) ? 1 : 0
-        const bc = addBySector.has(canonicalSector(b.sector)) ? 1 : 0
-        if (ac !== bc) return bc - ac
-        return Number(b.rs20 ?? -999) - Number(a.rs20 ?? -999)
-      })
-    return preferred.slice(0, compact ? 3 : 4)
-  }, [sectors, addBySector, compact])
 
   const industriesBySector = useMemo(() => {
     const out = new Map<string, any[]>()
@@ -107,132 +136,195 @@ export default function InstitutionalRotationBrief({
     return out
   }, [industries])
 
-  const weakSectors = useMemo(() => sectors
-    .filter((s: any) => ['WEAKENING', 'LAGGING'].includes(String(s.state || '').toUpperCase()))
-    .sort((a: any, b: any) => Number(a.rs20 ?? 999) - Number(b.rs20 ?? 999))
-    .slice(0, 3), [sectors])
+  const decisions = useMemo(() => sectors.map((sector: any) => {
+    const name = canonicalSector(sector.sector)
+    const card = addBySector.get(name)
+    const status = statusFor(sector, card)
+    const supportiveIndustries = (industriesBySector.get(name) || [])
+      .filter((i: any) => !i.quarantined && ['LEADING', 'IMPROVING'].includes(String(i.state || '').toUpperCase()))
+      .slice(0, 3)
+    const blocking: string[] = []
+    const breadth = sector.breadth_pct == null ? null : Number(sector.breadth_pct)
+    const state = String(sector.state || '').toUpperCase()
+    const stale = status === 'NO DECISION'
+
+    if (stale) blocking.push(sector.quarantine_reason === 'stale_row' || sector.freshness?.stale
+      ? `sector row is stale (${sector.as_of || 'date unavailable'})`
+      : 'sector state or timestamp is unavailable')
+    if (breadth == null) blocking.push('covered-universe breadth is unavailable')
+    else if (breadth < 35) blocking.push(`participation is narrow: ${breadth}% above the exact 20-session measure`)
+    if (!supportiveIndustries.length && !stale) blocking.push('no mapped leading/improving industry is confirming the sector')
+    if (!card && leanReview.enabled && leanReview.requires_review &&
+        !['Utilities', 'Consumer Staples', 'Healthcare'].includes(name) &&
+        ['LEADING', 'IMPROVING'].includes(state)) {
+      blocking.push('dated defensive-lean policy currently blocks non-defensive adds pending operator review')
+    }
+    if (!card && status === 'RESEARCH WATCH' && recommendations?.empty_reasons?.get_into) {
+      blocking.push(recommendations.empty_reasons.get_into)
+    }
+    if (status === 'AVOID / REDUCE') {
+      blocking.push(`${state || 'weak'} relative state is not an entry condition`)
+    }
+
+    const why = card
+      ? `${state} vs SPY with RS20 ${signed(sector.rs20)}; governed portfolio and risk rails passed`
+      : `${state || 'unclassified'} vs SPY with RS20 ${signed(sector.rs20)} and slope ${signed(sector.slope)}`
+    return { sector, name, card, status, supportiveIndustries, blocking: [...new Set(blocking)], why }
+  }).sort((a: any, b: any) => {
+    const rank: Record<DecisionStatus, number> = { 'ELIGIBLE NOW': 0, 'RESEARCH WATCH': 1, 'AVOID / REDUCE': 2, 'NO DECISION': 3 }
+    const sr = rank[a.status] - rank[b.status]
+    if (sr) return sr
+    return Number(b.sector.rs20 ?? -999) - Number(a.sector.rs20 ?? -999)
+  }), [sectors, addBySector, industriesBySector, leanReview, recommendations])
+
+  const visible = (showAll ? decisions : decisions.slice(0, compact ? 5 : 8))
+  const counts = decisions.reduce((acc: Record<string, number>, d: any) => {
+    acc[d.status] = (acc[d.status] || 0) + 1
+    return acc
+  }, {})
 
   return (
     <section style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 2, padding: compact ? '10px 12px' : '12px 14px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: DASH.panel, fontWeight: 800, color: BB.text1 }}>Institutional rotation brief</div>
+          <div style={{ fontSize: DASH.panel, fontWeight: 800, color: BB.text1 }}>Sector decision board</div>
           <div style={{ fontSize: DASH.data, color: BB.text3, marginTop: 2 }}>
-            sector → industry → ETF → stock · deterministic market facts first · portfolio-aware, advisory only
+            what is eligible · what is only a watch · what to avoid · what evidence changes the answer
           </div>
         </div>
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={statePill('green')} title="Price-relative state, breadth and portfolio exposure are deterministic inputs">deterministic facts</span>
-          <span style={statePill('amber')} title="Recommendation cards incorporate portfolio exposure, account and risk rails">portfolio aware</span>
-          <span style={statePill('slate')} title="GPT, Grok, Claude and legacy Hermes outputs are critiques or rankings, not market truth">model critique only</span>
+          <span style={statePill('green')}>eligible {counts['ELIGIBLE NOW'] || 0}</span>
+          <span style={statePill('amber')}>watch {counts['RESEARCH WATCH'] || 0}</span>
+          <span style={statePill('red')}>avoid/reduce {counts['AVOID / REDUCE'] || 0}</span>
+          <span style={statePill('slate')}>no decision {counts['NO DECISION'] || 0}</span>
+          <span style={statePill('slate')} title="GPT, Grok and paid seats challenge the packet; they do not create prices, sizing or permission truth">model critique only</span>
           <button type="button" onClick={() => setShowMethod(v => !v)} style={{ ...metricChip(true), color: T.link, borderColor: T.link }}>
-            {showMethod ? 'hide method' : 'method & freshness'}
+            {showMethod ? 'hide math contract' : 'math & freshness'}
           </button>
         </div>
       </div>
 
       {addCards.length === 0 && (
         <div style={{ fontSize: DASH.data, color: BB.amber, background: BB.amberDim, borderLeft: `3px solid ${BB.amber}`, padding: '7px 9px', marginBottom: 10 }}>
-          <b>No governed add card is active.</b> Leading and improving sectors below are research watches only; portfolio capacity, policy, or recommendation rails did not authorize an add.
+          <b>No governed add card is active.</b> The watch rows below now state the blocking gate; they remain research, not allocation instructions.
         </div>
       )}
 
       {showMethod && (
-        <div style={{ fontSize: DASH.data, color: BB.text2, background: BB.bgShift, borderLeft: `3px solid ${BB.amber}`, padding: '8px 10px', marginBottom: 10 }}>
-          <div><b>Sector snapshot:</b> {shortTime(generatedAt)} · 5/20/60-session ETF returns relative to SPY with a two-close state confirmation.</div>
-          <div><b>Industry snapshot:</b> {shortTime(industryCapturedAt)} · Finviz week/month performance compared with local SPY 5/21-session returns. Midday refresh rows are display classifications; only close runs persist states and confirm transitions.</div>
-          <div><b>Governed adds:</b> {addCards.length} complete card{addCards.length === 1 ? '' : 's'} in the current recommendation build.</div>
-          <div style={{ color: BB.amber }}><b>Quality note:</b> industry ranks are directionally useful but the vendor windows are not perfectly synchronized. Treat close calls as watch candidates, not precise allocation signals.</div>
+        <div style={{ fontSize: DASH.data, color: BB.text2, background: BB.bgShift, borderLeft: `3px solid ${BB.amber}`, padding: '8px 10px', marginBottom: 10, display: 'grid', gap: 3 }}>
+          <div><b>Sector state:</b> {shortTime(generatedAt)} · ETF 5/20/60-session returns aligned to SPY; state uses RS20 level plus change in RS20 and requires two-close confirmation.</div>
+          <div><b>Breadth:</b> exact latest close versus each covered member’s latest 20 distinct sessions. Coverage and membership counts must remain visible; this is a covered-universe measure, not automatically the ETF’s official constituent breadth.</div>
+          <div><b>Industry state:</b> {shortTime(industryCapturedAt)} · same-vendor one-month relative level and one-week relative direction. It is a confirmation heuristic, not the same slope calculation used for sectors.</div>
+          <div><b>Sizing:</b> an actionable card must show each account’s own effective exposure, risk target, remaining capacity, percentage band and dollar band. A shared maximum across accounts is not acceptable.</div>
+          <div><b>AI oversight:</b> free or paid model lanes may concur, qualify or object. They do not validate source data, recompute deterministic math, approve an order or widen permissions.</div>
         </div>
       )}
 
-      {candidateSectors.length ? (
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${compact ? 230 : 250}px, 1fr))`, gap: 8 }}>
-          {candidateSectors.map((sector: any) => {
-            const name = canonicalSector(sector.sector)
-            const card = addBySector.get(name)
-            const rowAge = ageDays(sector.as_of)
-            const stale = rowAge != null && rowAge > 4
-            const narrow = Number(sector.breadth_pct) < 35
-            const industryList = (industriesBySector.get(name) || [])
-              .filter((i: any) => ['LEADING', 'IMPROVING'].includes(String(i.state || '').toUpperCase()))
-              .slice(0, 3)
-            const stocks = (card?.instruments || []).filter((i: any) => i.kind === 'constituent').slice(0, 3)
-            const posture = card ? 'ADD ON PULLBACK' : 'RESEARCH WATCH'
-            return (
-              <article key={sector.etf || name} style={{ border: `1px solid ${BB.borderHair}`, borderLeft: `3px solid ${card ? BB.green : stale ? BB.red : BB.amber}`, background: BB.bg, padding: '9px 10px', minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: DASH.section, fontWeight: 800, color: BB.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
-                    <div style={{ ...numStyle, fontSize: DASH.data, color: T.link }}>{sector.etf || 'ETF not mapped'}</div>
-                  </div>
-                  <span style={statePill(card ? 'green' : stale ? 'red' : stateTone(sector.state))}>{stale ? 'STALE RESEARCH' : posture}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${compact ? 270 : 310}px, 1fr))`, gap: 8 }}>
+        {visible.map((d: any) => {
+          const { sector, name, card, status, supportiveIndustries, blocking, why } = d
+          const stocks = (card?.instruments || []).filter((i: any) => i.kind === 'constituent').slice(0, 3)
+          const accounts = accountRows(card, accountLabels)
+          const tone = statusTone(status)
+          const toneColor = tone === 'green' ? BB.green : tone === 'red' ? BB.red : tone === 'amber' ? BB.amber : BB.text3
+          return (
+            <article key={sector.etf || name} style={{ border: `1px solid ${BB.borderHair}`, borderLeft: `4px solid ${toneColor}`, background: BB.bg, padding: '10px 11px', minWidth: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: DASH.section, fontWeight: 800, color: BB.text1 }}>{name}</div>
+                  <div style={{ ...numStyle, fontSize: DASH.data, color: T.link }}>{sector.etf || 'ETF not mapped'}</div>
                 </div>
-                <div style={{ fontSize: DASH.data, color: BB.text2, marginTop: 6 }}>
-                  <b>{sector.state || 'unclassified'}</b> · RS20 {signed(sector.rs20)} · slope {signed(sector.slope)}
-                </div>
-                <div style={{ fontSize: DASH.data, color: BB.text3, marginTop: 2 }}>
-                  breadth {sector.breadth_pct == null ? '—' : `${sector.breadth_pct}%`} · book {sector.book_pct == null ? '—' : `${sector.book_pct}%`} · as of {sector.as_of || '—'}
-                </div>
-                {narrow && <div style={{ fontSize: DASH.data, color: BB.amber, marginTop: 3 }}><b>Narrow participation:</b> only {sector.breadth_pct}% of sampled members are above the current breadth measure.</div>}
-                {!card && <div style={{ fontSize: DASH.data, color: BB.text3, marginTop: 3 }}>No governed add card; this is not an allocation instruction.</div>}
+                <span style={statePill(tone)}>{status}</span>
+              </div>
+
+              <div style={{ fontSize: DASH.data, color: BB.text2, marginTop: 7 }}><b>Why:</b> {why}</div>
+              <div style={{ fontSize: DASH.data, color: BB.text3, marginTop: 3 }}>
+                breadth {sector.breadth_pct == null ? '—' : `${sector.breadth_pct}%`} ({sector.breadth_coverage_n ?? sector.breadth_n ?? '—'}/{sector.breadth_membership_n ?? '—'} covered) · book {sector.book_pct == null ? '—' : `${sector.book_pct}%`} · as of {sector.as_of || '—'}
+              </div>
+
+              {supportiveIndustries.length > 0 && (
                 <div style={{ marginTop: 7 }}>
-                  <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.text3, marginBottom: 3 }}>industries underneath</div>
+                  <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.text3, marginBottom: 3 }}>confirming industries</div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {industryList.length ? industryList.map((industry: any) => (
-                      <span key={industry.industry} style={metricChip()} title={`current snapshot classification: ${industry.state} · relative 1m ${signed(industry.rel1m)} · relative 1w ${signed(industry.rel1w)}`}>
+                    {supportiveIndustries.map((industry: any) => (
+                      <span key={industry.industry} style={metricChip()} title={`${industry.state} · relative month ${signed(industry.rel1m)} · relative week ${signed(industry.rel1w)}`}>
                         {industry.industry}
                       </span>
-                    )) : <span style={{ fontSize: DASH.data, color: BB.text3 }}>no leading/improving industry in the current snapshot</span>}
+                    ))}
                   </div>
                 </div>
-                <div style={{ marginTop: 7 }}>
-                  <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.text3, marginBottom: 3 }}>governed stock candidates</div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {stocks.length ? stocks.map((stock: any) => (
-                      <span key={stock.symbol} style={{ ...metricChip(), color: BB.text1 }} title={stock.note || 'constituent passing current recommendation rails'}>
-                        {stock.symbol}{stock.price != null ? ` $${Number(stock.price).toFixed(2)}` : ''}
-                      </span>
-                    )) : <span style={{ fontSize: DASH.data, color: BB.text3 }}>{card ? 'ETF preferred; no constituent passed all rails' : 'none — screening names are not recommendations'}</span>}
+              )}
+
+              {status === 'ELIGIBLE NOW' ? (
+                <>
+                  <div style={{ marginTop: 8, padding: '7px 8px', background: BB.greenDim, borderLeft: `3px solid ${BB.green}` }}>
+                    <div style={{ fontSize: DASH.data, color: BB.text1 }}><b>Activation:</b> {card?.levels?.entry_zone || card?.entry_logic || 'governed entry condition unavailable'}</div>
+                    <div style={{ fontSize: DASH.data, color: BB.amber, marginTop: 2 }}><b>Invalidation:</b> {card?.invalidation || 'not reported'}</div>
                   </div>
+                  <div style={{ marginTop: 7 }}>
+                    <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.text3, marginBottom: 3 }}>account-specific capacity</div>
+                    {accounts.length ? accounts.map(row => (
+                      <div key={row.account} style={{ fontSize: DASH.data, color: BB.text2, padding: '2px 0', borderBottom: `1px solid ${BB.borderHair}` }}>
+                        <b>{row.label}</b> · current {row.current == null ? '—' : `${row.current}%`} · target {row.target == null ? '—' : `${row.target}%`} · capacity {row.capacity == null ? '—' : `${row.capacity}%`}
+                        {row.low != null && row.high != null ? ` · act ${row.low}–${row.high}%` : ''}
+                        {Array.isArray(row.dollars) ? ` · ${money(row.dollars[0])}–${money(row.dollars[1])}` : ''}
+                        {row.quality && row.quality !== 'ok' ? ` · ${row.quality}` : ''}
+                      </div>
+                    )) : <div style={{ fontSize: DASH.data, color: BB.red }}>WITHHELD — account-specific sizing evidence is missing.</div>}
+                  </div>
+                  <div style={{ marginTop: 7 }}>
+                    <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.text3, marginBottom: 3 }}>instrument choice</div>
+                    <div style={{ fontSize: DASH.data, color: BB.text2 }}>
+                      <b>{sector.etf}</b>{card?.levels?.price != null ? ` near $${Number(card.levels.price).toFixed(2)}` : ''}
+                      {stocks.length ? ` · stocks passing full evidence: ${stocks.map((s: any) => s.symbol).join(', ')}` : ' · ETF only; no stock cleared every required field and close-industry gate'}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ marginTop: 8, padding: '7px 8px', background: status === 'AVOID / REDUCE' ? BB.redDim : BB.bgShift, borderLeft: `3px solid ${toneColor}` }}>
+                  <div style={{ fontSize: DASH.chip, fontWeight: 800, color: toneColor, textTransform: 'uppercase', marginBottom: 3 }}>
+                    {status === 'NO DECISION' ? 'required before evaluation' : status === 'AVOID / REDUCE' ? 'why not an entry' : 'promote only when'}
+                  </div>
+                  {blocking.length ? blocking.slice(0, 4).map((item: string, i: number) => (
+                    <div key={i} style={{ fontSize: DASH.data, color: BB.text2, padding: '1px 0' }}>• {item}</div>
+                  )) : <div style={{ fontSize: DASH.data, color: BB.text3 }}>A governed recommendation card with complete account and entry evidence must appear.</div>}
                 </div>
-                {card?.entry_logic && <div style={{ fontSize: DASH.data, color: BB.text2, marginTop: 7 }}><b>Trigger:</b> {card.entry_logic}</div>}
-                {card?.invalidation && <div style={{ fontSize: DASH.data, color: BB.amber, marginTop: 3 }}><b>Invalidation:</b> {card.invalidation}</div>}
-              </article>
-            )
-          })}
-        </div>
-      ) : (
-        <div style={{ fontSize: DASH.data, color: BB.text3, padding: '10px 0' }}>No leading or improving sector is available even as a research watch.</div>
+              )}
+            </article>
+          )
+        })}
+      </div>
+
+      {decisions.length > visible.length && (
+        <button type="button" onClick={() => setShowAll(v => !v)} style={{ ...metricChip(true), marginTop: 8, color: T.link, borderColor: T.link }}>
+          {showAll ? 'show priority rows' : `show all ${decisions.length} sectors`}
+        </button>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8, marginTop: 8 }}>
-        <div style={{ border: `1px solid ${BB.borderHair}`, background: BB.bg, padding: '7px 9px' }}>
-          <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.red, marginBottom: 3 }}>funding / reduce watch</div>
-          {weakSectors.length ? weakSectors.map((sector: any) => {
-            const stale = (ageDays(sector.as_of) ?? 0) > 4
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 8, marginTop: 9 }}>
+        <div style={{ border: `1px solid ${BB.borderHair}`, background: BB.bg, padding: '8px 9px' }}>
+          <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.red, marginBottom: 3 }}>governed defense actions</div>
+          {riskCards.length ? riskCards.slice(0, 4).map((card: any) => {
+            const withheld = (String(card.id || '').startsWith('pput-') && !card.put_struct) || (String(card.id || '').startsWith('cc-') && !card.cc_struct)
             return (
-              <div key={sector.etf} style={{ fontSize: DASH.data, color: stale ? BB.red : BB.text2, padding: '1px 0' }}>
-                <b style={{ color: BB.text1 }}>{canonicalSector(sector.sector)}</b> · {sector.etf} · {sector.state} · RS20 {signed(sector.rs20)}{stale ? ` · STALE ${sector.as_of}` : ''}
-              </div>
-            )
-          }) : <div style={{ fontSize: DASH.data, color: BB.text3 }}>No weakening or lagging sector in the current snapshot.</div>}
-        </div>
-        <div style={{ border: `1px solid ${BB.borderHair}`, background: BB.bg, padding: '7px 9px' }}>
-          <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.amber, marginBottom: 3 }}>governed protect / trim review</div>
-          {riskCards.length ? riskCards.slice(0, 3).map((card: any) => {
-            const withheld = String(card.id || '').startsWith('pput-') && !card.put_struct
-            return (
-              <div key={card.id} style={{ fontSize: DASH.data, color: withheld ? BB.red : BB.text2, padding: '1px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={card.invalidation || card.entry_logic}>
-                <b style={{ color: BB.text1 }}>{card.title}</b> · {withheld ? 'WITHHELD — failed structure rails' : card.mode || 'advisory'}
+              <div key={card.id} style={{ fontSize: DASH.data, color: withheld ? BB.red : BB.text2, padding: '2px 0' }} title={card.invalidation || card.entry_logic}>
+                <b style={{ color: BB.text1 }}>{card.title}</b> · {withheld ? 'WITHHELD — structure failed evidence or liquidity rails' : card.mode || 'advisory'}
               </div>
             )
           }) : <div style={{ fontSize: DASH.data, color: BB.text3 }}>No complete protect, trim or hedge card passed the current field and risk gates.</div>}
         </div>
+        <div style={{ border: `1px solid ${BB.borderHair}`, background: BB.bg, padding: '8px 9px' }}>
+          <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.amber, marginBottom: 3 }}>operator policy requiring review</div>
+          {leanReview.requires_review ? (
+            <div style={{ fontSize: DASH.data, color: BB.text2 }}>
+              Defensive lean set {leanReview.set_at || 'date unavailable'} is due for adjudication. Conflicts: {(leanReview.conflicting_sectors || []).join(', ') || 'none listed'}. It remains active until the operator explicitly retains or revokes it.
+            </div>
+          ) : <div style={{ fontSize: DASH.data, color: BB.text3 }}>No dated rotation directive is currently due for review.</div>}
+        </div>
       </div>
 
       <div style={{ fontSize: DASH.data, color: BB.text3, marginTop: 8 }}>
-        This brief does not place, approve or authorize an order. Model seats should challenge stale evidence and missing risks; deterministic market, portfolio and permission systems remain authoritative.
+        This board does not place, stage, approve or authorize an order. Deterministic source, portfolio, account and permission systems remain authoritative; model seats provide independent critique only.
       </div>
     </section>
   )
