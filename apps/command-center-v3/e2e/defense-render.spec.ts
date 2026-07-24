@@ -91,7 +91,7 @@ async function assertNoContentOverflow(page: any) {
   expect(values.main).toBeLessThanOrEqual(2)
 }
 
-test('Defense renders from navigation at desktop and narrow widths', async ({ page }) => {
+test('Defense renders the decision board from navigation at desktop and narrow widths', async ({ page }) => {
   test.setTimeout(90_000)
   await installRoutes(page)
   await page.setViewportSize({ width: 1440, height: 1100 })
@@ -100,8 +100,10 @@ test('Defense renders from navigation at desktop and narrow widths', async ({ pa
   await expect(page).toHaveURL(/\/v3\/defense$/)
   const main = page.locator('main')
   await expect(main.getByText('Defense Desk', { exact: true })).toBeVisible({ timeout: 15_000 })
-  await expect(main.getByText('Institutional rotation brief', { exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect(main.getByText('Sector decision board', { exact: true })).toBeVisible({ timeout: 15_000 })
   await expect(main.locator('b').filter({ hasText: 'No governed add card is active.' }).first()).toBeVisible()
+  await expect(main.getByText('RESEARCH WATCH', { exact: true }).first()).toBeVisible()
+  await expect(main.getByText('AVOID / REDUCE', { exact: true }).first()).toBeVisible()
   await expect(main.getByText(/WITHHELD/).first()).toBeVisible()
   await assertNoContentOverflow(page)
   await page.screenshot({ path: 'render-artifacts/defense-desktop.png', fullPage: true })
@@ -109,7 +111,7 @@ test('Defense renders from navigation at desktop and narrow widths', async ({ pa
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()
   await expect(main.getByText('Defense Desk', { exact: true })).toBeVisible({ timeout: 15_000 })
-  await expect(main.getByText('Institutional rotation brief', { exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect(main.getByText('Sector decision board', { exact: true })).toBeVisible({ timeout: 15_000 })
   await assertNoContentOverflow(page)
   await main.evaluate((element: HTMLElement) => { element.scrollTop = 0 })
   await page.screenshot({ path: 'render-artifacts/defense-narrow.png', fullPage: true })
