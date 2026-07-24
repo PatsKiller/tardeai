@@ -1,4 +1,4 @@
-# Governance Status — warning
+# Governance Status — healthy
 
-**A1A:** warning
+**A1A:** healthy
 **Safety:** paper / true

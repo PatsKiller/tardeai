@@ -1,6 +1,6 @@
 {
-  "date": "2026-07-21",
-  "timestamp": "2026-07-21T06:45:26.464505+00:00",
+  "date": "2026-07-23",
+  "timestamp": "2026-07-23T06:45:52.345301+00:00",
   "checks": {
     "total_backlog": 30,
     "open_count": 0,
@@ -10,8 +10,8 @@
     "duplicate_risk_count": 20,
     "duplicate_risks": [
       {
-        "id": 27,
-        "duplicate_of": 25,
+        "id": 25,
+        "duplicate_of": 27,
         "key": "NULL:backtest_contradiction"
       },
       {
@@ -80,22 +80,22 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 9061,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 9057,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 9060,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
+        "id": 9061,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
         "id": 9058,
+        "duplicate_of": 32,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 9057,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -116,22 +116,22 @@
     "missing_symbol": 27,
     "source_surfaces": {
       "librarian_loop": 5,
-      "backtest": 3,
       "catalyst": 1,
+      "backtest": 3,
       "journal": 1,
       "backtest_results": 18,
       "catalyst_quality": 1,
       "screener_registry": 1
     },
     "oldest_item": {
-      "id": 23,
+      "id": 20,
       "created": "2026-05-31 21:36:31",
-      "age_days": 50
+      "age_days": 52
     },
     "newest_item": {
       "id": 9666,
       "created": "2026-07-14 12:03:57",
-      "age_days": 6
+      "age_days": 8
     },
     "ready_for_discovery": 0,
     "not_ready_for_discovery": 0,

@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-07-21T11:40:00.871857+00:00",
-  "status": "warning",
+  "generated_at": "2026-07-23T11:40:00.865799+00:00",
+  "status": "healthy",
   "safety": {
     "ALPACA_MODE": "paper",
     "LLM_DISABLE_LIVE_EXECUTION": "true"
@@ -12,11 +12,8 @@
     "strategies": null
   },
   "a1a_summary": {
-    "status": "warning",
-    "findings": 2,
-    "by_severity": {
-      "P1": 1,
-      "P2": 1
-    }
+    "status": "healthy",
+    "findings": 0,
+    "by_severity": {}
   }
 }
