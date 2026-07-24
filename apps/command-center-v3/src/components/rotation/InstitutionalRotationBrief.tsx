@@ -58,6 +58,10 @@ function cardSector(card: any, sectorByEtf: Map<string, any>): string {
   return canonicalSector(match?.[1] || '')
 }
 
+function hasAccountSizing(card: any): boolean {
+  return Boolean(card && Object.keys(card.account_sizing || {}).length)
+}
+
 function statusTone(status: DecisionStatus): 'green' | 'amber' | 'red' | 'slate' {
   if (status === 'ELIGIBLE NOW') return 'green'
   if (status === 'RESEARCH WATCH') return 'amber'
@@ -69,7 +73,7 @@ function statusFor(sector: any, card: any): DecisionStatus {
   const state = String(sector?.state || '').toUpperCase()
   const stale = Boolean(sector?.quarantined || sector?.freshness?.stale || ((ageDays(sector?.as_of) ?? 0) > 4))
   if (stale || !state) return 'NO DECISION'
-  if (card) return 'ELIGIBLE NOW'
+  if (card && hasAccountSizing(card)) return 'ELIGIBLE NOW'
   if (state === 'WEAKENING' || state === 'LAGGING') return 'AVOID / REDUCE'
   return 'RESEARCH WATCH'
 }
@@ -77,19 +81,17 @@ function statusFor(sector: any, card: any): DecisionStatus {
 function accountRows(card: any, accountLabels: Record<string, string>): any[] {
   const sizing = card?.account_sizing || {}
   const decisions = card?.allocation_policy || {}
-  const dollars = card?.dollars_by_account || {}
-  const accounts: string[] = card?.accounts || Object.keys(sizing)
+  const accounts: string[] = Object.keys(sizing)
   return accounts.map(account => {
     const row = sizing[account] || {}
     const decision = decisions[account] || {}
-    const band = row.pct_band || (Array.isArray(dollars[account]) ? null : undefined)
     return {
       account,
       label: accountLabels[account] || account,
-      low: band?.[0],
-      high: band?.[1],
-      dollars: row.dollar_band || dollars[account],
-      current: decision.current_account_weight_pct ?? decision.current_weight_pct,
+      low: row.pct_band?.[0],
+      high: row.pct_band?.[1],
+      dollars: row.dollar_band,
+      current: decision.current_account_weight_pct,
       capacity: decision.capacity_pct,
       target: decision.risk_target_pct,
       quality: decision.quality,
@@ -154,6 +156,9 @@ export default function InstitutionalRotationBrief({
     if (breadth == null) blocking.push('covered-universe breadth is unavailable')
     else if (breadth < 35) blocking.push(`participation is narrow: ${breadth}% above the exact 20-session measure`)
     if (!supportiveIndustries.length && !stale) blocking.push('no mapped leading/improving industry is confirming the sector')
+    if (card && !hasAccountSizing(card)) {
+      blocking.push('legacy shared-size card withheld: regenerate account-specific exposure, target, capacity, percentage band and dollar band')
+    }
     if (!card && leanReview.enabled && leanReview.requires_review &&
         !['Utilities', 'Consumer Staples', 'Healthcare'].includes(name) &&
         ['LEADING', 'IMPROVING'].includes(state)) {
@@ -166,9 +171,11 @@ export default function InstitutionalRotationBrief({
       blocking.push(`${state || 'weak'} relative state is not an entry condition`)
     }
 
-    const why = card
-      ? `${state} vs SPY with RS20 ${signed(sector.rs20)}; governed portfolio and risk rails passed`
-      : `${state || 'unclassified'} vs SPY with RS20 ${signed(sector.rs20)} and slope ${signed(sector.slope)}`
+    const why = card && hasAccountSizing(card)
+      ? `${state} vs SPY with RS20 ${signed(sector.rs20)}; governed account and risk rails passed`
+      : card
+        ? `${state} vs SPY with RS20 ${signed(sector.rs20)}; signal passed legacy rails but the sizing contract is incomplete`
+        : `${state || 'unclassified'} vs SPY with RS20 ${signed(sector.rs20)} and slope ${signed(sector.slope)}`
     return { sector, name, card, status, supportiveIndustries, blocking: [...new Set(blocking)], why }
   }).sort((a: any, b: any) => {
     const rank: Record<DecisionStatus, number> = { 'ELIGIBLE NOW': 0, 'RESEARCH WATCH': 1, 'AVOID / REDUCE': 2, 'NO DECISION': 3 }
@@ -182,6 +189,7 @@ export default function InstitutionalRotationBrief({
     acc[d.status] = (acc[d.status] || 0) + 1
     return acc
   }, {})
+  const legacyAddCount = addCards.filter(card => !hasAccountSizing(card)).length
 
   return (
     <section style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 2, padding: compact ? '10px 12px' : '12px 14px' }}>
@@ -207,6 +215,11 @@ export default function InstitutionalRotationBrief({
       {addCards.length === 0 && (
         <div style={{ fontSize: DASH.data, color: BB.amber, background: BB.amberDim, borderLeft: `3px solid ${BB.amber}`, padding: '7px 9px', marginBottom: 10 }}>
           <b>No governed add card is active.</b> The watch rows below now state the blocking gate; they remain research, not allocation instructions.
+        </div>
+      )}
+      {legacyAddCount > 0 && (
+        <div style={{ fontSize: DASH.data, color: BB.red, background: BB.redDim, borderLeft: `3px solid ${BB.red}`, padding: '7px 9px', marginBottom: 10 }}>
+          <b>{legacyAddCount} legacy add card{legacyAddCount === 1 ? ' is' : 's are'} withheld.</b> A shared percentage range is not actionable across accounts; regenerate the card with account-specific exposure, capacity and dollar bands.
         </div>
       )}
 
@@ -263,14 +276,14 @@ export default function InstitutionalRotationBrief({
                   </div>
                   <div style={{ marginTop: 7 }}>
                     <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.text3, marginBottom: 3 }}>account-specific capacity</div>
-                    {accounts.length ? accounts.map(row => (
+                    {accounts.map(row => (
                       <div key={row.account} style={{ fontSize: DASH.data, color: BB.text2, padding: '2px 0', borderBottom: `1px solid ${BB.borderHair}` }}>
                         <b>{row.label}</b> · current {row.current == null ? '—' : `${row.current}%`} · target {row.target == null ? '—' : `${row.target}%`} · capacity {row.capacity == null ? '—' : `${row.capacity}%`}
                         {row.low != null && row.high != null ? ` · act ${row.low}–${row.high}%` : ''}
                         {Array.isArray(row.dollars) ? ` · ${money(row.dollars[0])}–${money(row.dollars[1])}` : ''}
                         {row.quality && row.quality !== 'ok' ? ` · ${row.quality}` : ''}
                       </div>
-                    )) : <div style={{ fontSize: DASH.data, color: BB.red }}>WITHHELD — account-specific sizing evidence is missing.</div>}
+                    ))}
                   </div>
                   <div style={{ marginTop: 7 }}>
                     <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.text3, marginBottom: 3 }}>instrument choice</div>
