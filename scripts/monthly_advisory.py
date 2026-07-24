@@ -27,7 +27,11 @@ def _call_local(prompt, model, max_tokens=2500):
     try:
         r = post_retry("http://127.0.0.1:11434/api/chat", {
             "model": model, "stream": False, "messages": [{"role": "user", "content": prompt}],
-            "options": {"num_ctx": 16384, "num_predict": max_tokens, "temperature": 0.3}},
+            # 12b MUST stay at 4096: 16384 splits Vulkan→CPU on the B50 and emits pad
+            # garbage (the 07-04 root cause); mismatched ctx also reload-thrashes the
+            # shared Ollama queue (07-23 sweep). 27b is CPU-pinned with baked ctx 8192.
+            "options": {"num_ctx": 4096 if "12b" in model else 8192,
+                        "num_predict": max_tokens, "temperature": 0.3}},
             timeout=600, attempts=2, base=2.0)
         return r.json().get("message", {}).get("content", "").strip() or "(empty local response)"
     except Exception as e:
