@@ -20,6 +20,7 @@ const industries = {
   industries: [
     { industry: 'Aerospace & Defense', sector: 'Industrials', rel1w: 0.42, rel1m: -9.15, state: 'IMPROVING' },
     { industry: 'Building Products & Equipment', sector: 'Industrials', rel1w: 1.29, rel1m: 0.12, state: 'LEADING' },
+    { industry: 'Oil & Gas E&P', sector: 'Energy', rel1w: 2.2, rel1m: 4.7, state: 'LEADING' },
     { industry: 'Biotechnology', sector: 'Healthcare', rel1w: 2.7, rel1m: 5.44, state: 'LEADING' },
     { industry: 'Computer Hardware', sector: 'Technology', rel1w: 18.36, rel1m: -6.7, state: 'IMPROVING' },
   ],
@@ -30,15 +31,35 @@ const recommendations = {
   recommendations: {
     generated_at: '2026-07-24T14:10:01Z',
     as_of: '2026-07-24',
+    accounts: { schwab_rollover_ira: 'Rollover IRA' },
     groups: {
-      get_into: [],
+      get_into: [{
+        id: 'rotatein-XLE-2026-07-24', group: 'get_into',
+        title: 'ROTATE-IN · Energy (LEADING, RS20 +10.3)',
+        instruments: [{ symbol: 'XLE', kind: 'sector ETF', price: 89.4, note: 'policy and risk-capacity qualified' }],
+        accounts: ['schwab_rollover_ira'], direction: 'long',
+        size_band: 'account-specific; see sizing matrix',
+        entry_logic: 'stagger only on a pullback toward the 20DMA',
+        invalidation: 'Energy exits LEADING on a two-close confirmation or account capacity falls below 1%',
+        factors: [{ name: 'sector state', value: 'LEADING' }, { name: 'RS20 vs SPY', value: '+10.26%' }],
+        as_of: '2026-07-24', mode: 'SHADOW',
+        levels: { price: 89.4, entry_zone: 'pullback toward 20DMA ≈ $87.80', stop: 'thesis stop: exits LEADING' },
+        account_sizing: {
+          schwab_rollover_ira: { pct_band: [1, 2], dollar_band: [12000, 24000] },
+        },
+        allocation_policy: {
+          schwab_rollover_ira: {
+            current_account_weight_pct: 3.6, risk_target_pct: 8.1,
+            capacity_pct: 4.5, quality: 'ok',
+          },
+        },
+      }],
       protect: [
         { id: 'pput-XLI', title: 'WITHHELD · XLI protective put failed liquidity rails', mode: 'SHADOW', invalidation: 'Industrials recovers.' },
         { id: 'moveout-ARKX', title: 'CORE TRIM · ARKX', mode: 'SHADOW', invalidation: 'ARKX reclaims trend.' },
       ],
       short_side: [], income: [],
     },
-    empty_reasons: { get_into: 'Defensive lean remains active and requires dated review.' },
   },
 }
 
@@ -84,7 +105,7 @@ async function assertNoContentOverflow(page: any) {
   expect(values.main).toBeLessThanOrEqual(2)
 }
 
-test('Sectors renders the decision board and screening evidence at desktop and narrow widths', async ({ page }) => {
+test('Sectors renders actionable sizing and screening evidence at desktop and narrow widths', async ({ page }) => {
   test.setTimeout(90_000)
   await installRoutes(page)
   await page.setViewportSize({ width: 1440, height: 1100 })
@@ -92,6 +113,10 @@ test('Sectors renders the decision board and screening evidence at desktop and n
   const main = page.locator('main')
   await expect(main.getByText('Sectors & Industries', { exact: true })).toBeVisible()
   await expect(main.getByText('Sector decision board', { exact: true })).toBeVisible()
+  await expect(main.getByText('ELIGIBLE NOW', { exact: true }).first()).toBeVisible()
+  await expect(main.getByText(/pullback toward 20DMA ≈ \$87\.80/).first()).toBeVisible()
+  await expect(main.getByText(/Rollover IRA.*current 3\.6%.*capacity 4\.5%/).first()).toBeVisible()
+  await expect(main.getByText(/\$12,000–\$24,000/).first()).toBeVisible()
   await expect(main.getByText('RESEARCH WATCH', { exact: true }).first()).toBeVisible()
   await expect(main.getByText('AVOID / REDUCE', { exact: true }).first()).toBeVisible()
   await expect(main.getByText(/screen matches/i).first()).toBeVisible()
@@ -105,6 +130,7 @@ test('Sectors renders the decision board and screening evidence at desktop and n
   await page.reload()
   await expect(main.getByText('Sectors & Industries', { exact: true })).toBeVisible()
   await expect(main.getByText('Sector decision board', { exact: true })).toBeVisible()
+  await expect(main.getByText('ELIGIBLE NOW', { exact: true }).first()).toBeVisible()
   await page.getByRole('button', { name: /Screened names/ }).first().click()
   await expect(main.getByText('THIN COVERAGE', { exact: true }).first()).toBeVisible()
   await assertNoContentOverflow(page)
