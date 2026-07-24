@@ -30,17 +30,14 @@ on:
       - '.github/workflows/defense-sectors-ui-ci.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-test-render:
+  test-render:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: agent/defense-sectors-data-hardening
-          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -51,9 +48,6 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: apps/command-center-v3/package-lock.json
-
-      - name: Apply deterministic source transformations
-        run: python scripts/apply_defense_data_hardening.py
 
       - name: Compile and run focused backend tests
         run: |
@@ -98,10 +92,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Verify generated diff
+      - name: Verify committed source is clean
         run: |
           git diff --check
-          git status --short
+          test -z "$(git status --short)" || {
+            git status --short
+            echo 'Validation must not mutate committed source.' >&2
+            exit 1
+          }
 
       - name: Upload render evidence
         uses: actions/upload-artifact@v4
@@ -111,34 +109,20 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload validated generated source
+      - name: Upload validated source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: defense-data-hardened-source
+          name: defense-data-validated-source
           path: |
             config/defense_recommendations.json
             config/fund_lookthrough.json
+            scripts/defense_data_quality.py
             scripts/fund_lookthrough.py
             scripts/sector_momentum_engine.py
             scripts/finviz_industry_groups.py
             scripts/defense_recommendations.py
+            tests/test_defense_data_quality.py
             tests/test_defense_data_hardening_wiring.py
             docs/architecture/DEFENSE_SECTORS_DATA_HARDENING_2026-07-24.md
           if-no-files-found: error
           retention-days: 30
-
-      - name: Commit validated generated source
-        run: |
-          git config user.name 'trade-ai-ci'
-          git config user.email 'trade-ai-ci@users.noreply.github.com'
-          git add config/defense_recommendations.json config/fund_lookthrough.json \
-                  scripts/fund_lookthrough.py scripts/sector_momentum_engine.py \
-                  scripts/finviz_industry_groups.py scripts/defense_recommendations.py \
-                  tests/test_defense_data_hardening_wiring.py \
-                  docs/architecture/DEFENSE_SECTORS_DATA_HARDENING_2026-07-24.md
-          if git diff --cached --quiet; then
-            echo 'Validated generated source already committed.'
-          else
-            git commit -m 'defense: harden data quality and rotation contracts'
-            git push origin HEAD:agent/defense-sectors-data-hardening
-          fi
