@@ -259,6 +259,9 @@ table.decision-rows td.cat { white-space: normal; color: var(--text-dim); font-s
   border: 1px solid #4a3b2e; vertical-align: middle;
 }
 .dc-loading { color: var(--text-dim); font-family: var(--mono); font-size: 12px; padding: 6px 0; }
+table.decision-rows td.trig { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.trig-fired { color: var(--pos); }
+.trig-na { color: var(--text-dim); font-style: italic; }
 
 /* compact symbol-decision detail */
 .decision-detail { border: 1px solid var(--border); border-left: 4px solid var(--text-dim); border-radius: 10px; padding: 12px 14px; background: var(--bg); }

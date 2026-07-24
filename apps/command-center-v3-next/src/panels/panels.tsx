@@ -256,7 +256,7 @@ export function DecisionDeck({ scanner }: { scanner: ScannerData | null | undefi
       {act.length === 0 ? <Unavailable label="no GO / WAIT names this run" /> : (
         <table className="decision-rows">
           <thead><tr>
-            <th>call</th><th>sym</th><th>price</th><th>chg</th><th>gap</th><th>RVOL</th><th>vol</th><th>float</th><th>grd</th><th>catalyst</th>
+            <th>call</th><th>sym</th><th>price</th><th>chg</th><th>gap</th><th>RVOL</th><th>vol</th><th>float</th><th>grd</th><th>dist→trig</th><th>catalyst</th>
           </tr></thead>
           <tbody>
             {act.map((t) => (
@@ -270,6 +270,9 @@ export function DecisionDeck({ scanner }: { scanner: ScannerData | null | undefi
                 <td className="mono">{volFmt(t.volume)}</td>
                 <td className="mono">{floatM(t.float_m)}</td>
                 <td className="grade">{t.grade ?? '—'}</td>
+                <td className="trig">{isGo(t)
+                  ? <span className="trig-fired">fired</span>
+                  : <span className="trig-na" title="scalp trigger (VWAP reclaim / candle after reversal-break) is intraday — Entry Desk layer, not carried by the discovery scan">n/a · intraday</span>}</td>
                 <td className="cat" title={t.catalyst || t.critic_reasoning || ''}>{(t.catalyst || t.critic_reasoning || '—').slice(0, 72)}</td>
               </tr>
             ))}
