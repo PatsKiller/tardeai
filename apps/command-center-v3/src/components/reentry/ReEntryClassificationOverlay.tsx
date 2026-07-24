@@ -236,7 +236,7 @@ export default function ReEntryClassificationOverlay() {
         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 10, marginTop: 10 }}>
           <div style={{ ...panel, padding: 11 }}>
             <div style={{ fontSize: 11, fontWeight: 900 }}>SOURCE COVERAGE</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(100px,1fr))', gap: 6, marginTop: 7 }}>{coverageRows.map(([name, value, state]) => <div key={name} style={{ ...panel, padding: 7, background: 'var(--bg2)' }}><div style={{ fontSize: 9.5, color: BB.text3 }}>{name}</div><b style={{ color: state === 'missing' ? BB.amber : 'var(--text1)' }}>{value}</b></div>)}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(100px,1fr))', gap: 6, marginTop: 7 }}>{coverageRows.map(([name, value, state]) => <div key={name} style={{ ...panel, padding: 7, background: 'var(--bg2)' }}><div style={{ fontSize: 10, color: BB.text3 }}>{name}</div><b style={{ color: state === 'missing' ? BB.amber : 'var(--text1)' }}>{value}</b></div>)}</div>
             <div style={{ marginTop: 8, fontSize: 10, color: BB.text3 }}>{evidence.sources.map(source => `${source.label}: ${source.rows}`).join(' · ')}</div>
           </div>
           <div style={{ ...panel, padding: 11 }}>
@@ -255,15 +255,15 @@ export default function ReEntryClassificationOverlay() {
             ['REGIME / SECTOR', context.regime, context.sector || 'sector unavailable'],
             ['ANALYST', context.analystRec, `${context.analystCount ?? '—'} analysts · target ${money(context.analystTarget)}`],
             ['CATALYST / EARNINGS', context.catalyst || 'catalyst unavailable', context.earnings ? `earnings ${context.earnings}` : 'earnings unavailable'],
-          ].map(([name, value, detail]) => <div key={name} style={{ ...panel, padding: 8, background: 'var(--bg2)' }}><div style={{ fontSize: 9.5, color: BB.text3 }}>{name}</div><b>{value}</b><div style={{ marginTop: 2, fontSize: 9.5, color: BB.text3 }}>{detail}</div></div>)}</div>
+          ].map(([name, value, detail]) => <div key={name} style={{ ...panel, padding: 8, background: 'var(--bg2)' }}><div style={{ fontSize: 10, color: BB.text3 }}>{name}</div><b>{value}</b><div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{detail}</div></div>)}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(105px,1fr))', gap: 7, marginTop: 7 }}>{[
             ['TRAILING P/E', val.notApplicable ? 'N/A' : val.pe === null ? 'unavailable' : val.pe.toFixed(2)],
             ['FORWARD P/E', val.notApplicable ? 'N/A' : val.forwardPe === null ? 'unavailable' : val.forwardPe.toFixed(2)],
             ['PEG', val.notApplicable ? 'N/A' : val.peg === null ? 'unavailable' : val.peg.toFixed(2)],
             ['P/B', val.notApplicable ? 'N/A' : val.pb === null ? 'unavailable' : val.pb.toFixed(2)],
             ['P/S', val.notApplicable ? 'N/A' : val.ps === null ? 'unavailable' : val.ps.toFixed(2)],
-          ].map(([name, value]) => <div key={name} style={{ ...panel, padding: 7, background: 'var(--bg2)' }}><span style={{ fontSize: 9.5, color: BB.text3 }}>{name}</span><br /><b>{value}</b></div>)}</div>
-          <div style={{ marginTop: 6, fontSize: 9.5, color: BB.text3 }}>Valuation source: stored enrichment / blind facts · {age(val.asOf)}. Valuation is evidence, not an action or quality score.</div>
+          ].map(([name, value]) => <div key={name} style={{ ...panel, padding: 7, background: 'var(--bg2)' }}><span style={{ fontSize: 10, color: BB.text3 }}>{name}</span><br /><b>{value}</b></div>)}</div>
+          <div style={{ marginTop: 6, fontSize: 10, color: BB.text3 }}>Valuation source: stored enrichment / blind facts · {age(val.asOf)}. Valuation is evidence, not an action or quality score.</div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
