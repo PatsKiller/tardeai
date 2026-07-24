@@ -1,0 +1,59 @@
+/* Defense/Sectors responsive polish loaded after the global terminal shell.
+   Keep mobile navigation useful without consuming half the viewport. */
+@media (max-width: 820px) {
+  .cc-terminal-ui .nav-rail {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    min-height: 38px !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: thin;
+  }
+
+  /* Let all links participate in one horizontally scrolling row. */
+  .cc-terminal-ui .nav-rail > div {
+    display: contents !important;
+  }
+
+  .cc-terminal-ui .nav-rail > div > div {
+    display: none !important;
+  }
+
+  .cc-terminal-ui .nav-rail a {
+    display: inline-flex !important;
+    align-items: center !important;
+    min-height: 38px !important;
+    padding: 7px 10px !important;
+    border-left: none !important;
+    border-bottom: 2px solid transparent !important;
+    flex: 0 0 auto !important;
+  }
+
+  .cc-terminal-ui .app-main {
+    padding: 8px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .cc-terminal-ui .metric-strip {
+    padding: 6px 8px !important;
+    gap: 3px 8px !important;
+  }
+
+  .cc-terminal-ui .metric-strip-tile {
+    padding: 1px 8px !important;
+  }
+
+  /* Institutional verdict headlines retain hierarchy without overwhelming 390px. */
+  .cc-terminal-ui .app-main div[style*="font-size: 22"] {
+    font-size: 18px !important;
+    line-height: 1.28 !important;
+  }
+
+  .cc-terminal-ui .app-main button {
+    max-width: 100%;
+  }
+}
