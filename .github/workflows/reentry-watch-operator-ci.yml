@@ -38,5 +38,7 @@ jobs:
       - name: Production build
         working-directory: apps/command-center-v3
         run: npm run build
+      - name: Install focused test dependency
+        run: python -m pip install --disable-pip-version-check pytest
       - name: Focused source contracts
         run: python -m pytest -q tests/test_reentry_watch_operator_contract.py
