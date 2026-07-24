@@ -1135,10 +1135,23 @@ def run_health_check(dry_run=True, verbose=False):
                                 GROUP BY symbol ORDER BY latest DESC LIMIT 2""", [agent])
                             _syms = [r[0] for r in cur.fetchall()]
                             for _sym in _syms:
+                                # Re-queue only when nothing is pending for this
+                                # (symbol, agent). This remediation picks the same
+                                # top-2 stale symbols every run and used to insert
+                                # unconditionally at priority 1 — 434 jobs across 2
+                                # symbols in a week, all jumping the queue ahead of
+                                # real work (2026-07-23). Queuing it twice cannot
+                                # make the agent less stale.
                                 cur.execute("""INSERT INTO watchlist_agent_jobs
                                     (id, symbol, requested_agent, request_type, status, priority, submitted_from)
-                                    VALUES (%s, %s, %s, 'full_analysis', 'queued', 1, 'health_agent_remediation')""",
-                                    [str(uuid.uuid4()), _sym, agent])
+                                    SELECT %s, %s, %s, 'full_analysis', 'queued', 1, 'health_agent_remediation'
+                                    WHERE NOT EXISTS (
+                                        SELECT 1 FROM watchlist_agent_jobs w
+                                        WHERE UPPER(w.symbol) = UPPER(%s)
+                                          AND w.requested_agent = %s
+                                          AND w.request_type = 'full_analysis'
+                                          AND w.status IN ('queued', 'pending', 'processing'))""",
+                                    [str(uuid.uuid4()), _sym, agent, _sym, agent])
                             conn.commit()
                             if _syms:
                                 log.info(f"  🔧 Auto-queued {len(_syms)} jobs for stale {agent}")
