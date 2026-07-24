@@ -104,11 +104,24 @@ def test_nonactionable_source_mechanics_are_preserved_for_sentinel_to_block() ->
     assert "MECHANICS_EXPOSED_FOR_NONACTIONABLE_STATE" in finding_codes(report)
 
 
+def test_nested_input_snapshot_is_a_valid_market_fallback() -> None:
+    raw = valid_watch_item()
+    raw.pop("price")
+    raw.pop("rsi")
+    artifact = adapt_watch_item(raw, now=NOW).artifact
+    assert artifact.market_context["price"] == 33.40
+    assert artifact.market_context["rsi"] == 45.3
+    assert "price unavailable" not in artifact.data_gaps
+    assert "rsi unavailable" not in artifact.data_gaps
+
+
 def test_missing_market_fields_are_truthful_data_gaps() -> None:
     raw = valid_watch_item()
     raw.pop("price")
     raw.pop("rsi")
     raw.pop("profile_sector")
+    raw["decision_packet"]["current_input_snapshot"].pop("price")
+    raw["decision_packet"]["current_input_snapshot"].pop("rsi")
     artifact = adapt_watch_item(raw, now=NOW).artifact
     assert "price unavailable" in artifact.data_gaps
     assert "rsi unavailable" in artifact.data_gaps
