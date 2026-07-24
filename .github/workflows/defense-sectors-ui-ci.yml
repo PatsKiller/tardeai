@@ -10,7 +10,7 @@ on:
       - 'apps/command-center-v3/src/main.tsx'
       - 'apps/command-center-v3/src/defenseSectorsResponsive.css'
       - 'apps/command-center-v3/e2e/defense-render.spec.ts'
-      - 'apps/command-center-v3/e2e/defense-sectors-render.spec.ts'
+      - 'apps/command-center-v3/e2e/sectors-render.spec.ts'
       - 'apps/command-center-v3/package.json'
       - 'apps/command-center-v3/package-lock.json'
       - 'scripts/apply_defense_data_hardening.py'
@@ -84,8 +84,7 @@ jobs:
             sleep 1
           done
           export PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173
-          npx playwright test e2e/defense-render.spec.ts
-          npx playwright test e2e/defense-sectors-render.spec.ts --grep 'sectors desktop and narrow render gate'
+          npx playwright test e2e/defense-render.spec.ts e2e/sectors-render.spec.ts
 
       - name: Upload render failure evidence
         if: failure()
