@@ -18,10 +18,12 @@ on:
       - 'scripts/defense_data_quality.py'
       - 'scripts/fund_lookthrough.py'
       - 'scripts/sector_momentum_engine.py'
+      - 'scripts/sector_momentum_engine_v4.py'
       - 'scripts/finviz_industry_groups.py'
       - 'scripts/defense_recommendations.py'
       - 'scripts/defense_recommendations_v10.py'
       - 'config/defense_account_exposure.json'
+      - 'config/defense_breadth_policy.json'
       - 'config/industry_sector_map.json'
       - 'config/defense_recommendations.json'
       - 'config/fund_lookthrough.json'
@@ -29,6 +31,7 @@ on:
       - 'tests/test_defense_data_quality.py'
       - 'tests/test_defense_data_hardening_wiring.py'
       - 'tests/test_defense_recommendations_v10.py'
+      - 'tests/test_sector_momentum_engine_v4.py'
       - 'docs/architecture/DEFENSE_SECTORS_DATA_HARDENING_2026-07-24.md'
       - 'scripts/check_design_tokens.sh'
       - 'scripts/test_chip_scope.mjs'
@@ -57,8 +60,8 @@ jobs:
       - name: Compile and run focused backend tests
         run: |
           python -m pip install --disable-pip-version-check pytest
-          python -m compileall -q scripts/defense_account_exposure.py scripts/defense_data_quality.py scripts/sector_momentum_engine.py scripts/finviz_industry_groups.py scripts/defense_recommendations.py scripts/defense_recommendations_v10.py scripts/fund_lookthrough.py
-          python -m pytest -q tests/test_defense_account_exposure.py tests/test_defense_data_quality.py tests/test_defense_data_hardening_wiring.py tests/test_defense_recommendations_v10.py
+          python -m compileall -q scripts/defense_account_exposure.py scripts/defense_data_quality.py scripts/sector_momentum_engine.py scripts/sector_momentum_engine_v4.py scripts/finviz_industry_groups.py scripts/defense_recommendations.py scripts/defense_recommendations_v10.py scripts/fund_lookthrough.py
+          python -m pytest -q tests/test_defense_account_exposure.py tests/test_defense_data_quality.py tests/test_defense_data_hardening_wiring.py tests/test_defense_recommendations_v10.py tests/test_sector_momentum_engine_v4.py
 
       - name: Install locked frontend dependencies
         working-directory: apps/command-center-v3
@@ -163,12 +166,14 @@ jobs:
           name: defense-data-validated-source
           path: |
             config/defense_account_exposure.json
+            config/defense_breadth_policy.json
             config/defense_recommendations.json
             config/fund_lookthrough.json
             scripts/defense_account_exposure.py
             scripts/defense_data_quality.py
             scripts/fund_lookthrough.py
             scripts/sector_momentum_engine.py
+            scripts/sector_momentum_engine_v4.py
             scripts/finviz_industry_groups.py
             scripts/defense_recommendations.py
             scripts/defense_recommendations_v10.py
@@ -176,6 +181,7 @@ jobs:
             tests/test_defense_data_quality.py
             tests/test_defense_data_hardening_wiring.py
             tests/test_defense_recommendations_v10.py
+            tests/test_sector_momentum_engine_v4.py
             docs/architecture/DEFENSE_SECTORS_DATA_HARDENING_2026-07-24.md
           if-no-files-found: error
           retention-days: 30
