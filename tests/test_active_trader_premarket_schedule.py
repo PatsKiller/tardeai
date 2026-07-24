@@ -117,3 +117,46 @@ def test_no_scheduler_invocation_in_module():
     for banned in ("import subprocess", "import os\n", "os.system", "Popen", "subprocess.run",
                    "check_output", "check_call"):
         assert banned not in src
+
+
+def test_run_live_authorized_path_executes(tmp_path, monkeypatch):
+    """Regression: run_live's authorized path must execute end-to-end (mocked capture) without a
+    NameError. Guards the dt/_dt typo that crashed the live Session 1 capture on 2026-07-24 —
+    that line was never exercised by the module tests until the real timer fired."""
+    import importlib.util, argparse
+    import json as _json
+    root = Path(__file__).resolve().parents[1] / "scripts" / "run_active_trader_premarket_observation.py"
+    spec = importlib.util.spec_from_file_location("runroot_under_test", root)
+    rr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(rr)
+
+    # force authorization + stub the live capture so no OpenD/broker is touched
+    monkeypatch.setattr(rr.sched, "verify_live_authorization",
+                        lambda *a, **k: rr.sched.LiveAuthorizationCheck(True, "AUTHORIZED", []))
+    monkeypatch.setattr(rr, "worktree_clean", lambda: True)
+    monkeypatch.setattr(rr, "current_git_sha", lambda: "deadbeef")
+    import active_trader.premarket_observation_live as live
+
+    class _Cap:
+        result = "CAPTURE_OK"; counts = {"ORDER_BOOK": 3}; event_count = 3
+        parquet_verified = True; parquet_row_count = 3; safety = {"trade_context": False}
+        wal_path = str(tmp_path / "seg.wal")
+    monkeypatch.setattr(live, "capture", lambda **k: _Cap())
+    monkeypatch.setattr(live, "events_from_wal", lambda p: [])
+
+    marker = tmp_path / "m.json"
+    marker.write_text(_json.dumps({
+        "run_id": "20260722-01", "session_number": 1, "expected_git_sha": "deadbeef",
+        "target_market_date": "2026-07-27", "target_window": "07:00-10:05",
+        "symbols_policy": "AAPL baseline", "created_at": "2026-07-24T20:00:00-04:00",
+        "expires_at": "2026-07-28T00:00:00-04:00", "owner_authorization_version": "v"}))
+    args = argparse.Namespace(
+        mode="live", fixture=None, out=str(tmp_path), session_index=1,
+        authorization_marker=str(marker), execute_schedule=False, smoke_pass=True,
+        credential_green=True, trade_scan_pass=True, max_capture_seconds=1.0)
+
+    res = rr.run_live(args)
+    assert res["result"] == "CAPTURE_OK" and res["opend_started"] is True
+    # these fields exist only if end_et computed + evaluate() ran — i.e. the dt/_dt line is correct
+    for k in ("premarket_transport", "rth_continuous_capture", "session_counted"):
+        assert k in res

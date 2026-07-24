@@ -145,8 +145,9 @@ def run_live(args) -> dict:
     session_id = f"session_{args.session_index:02d}_{now.date().isoformat()}"
     out_dir = Path(args.out or STATE_DIR) / session_id
     symbols = {"US.AAPL": "BASELINE"}          # representative rank source not wired under current entitlement
-    end_et = dt.datetime.combine(now.date(), dt.time(10, 5, 0), _TZ)
-    cap = live.capture(session_id=session_id, symbols=symbols, end_et=end_et, out_dir=out_dir)
+    end_et = _dt.datetime.combine(now.date(), _dt.time(10, 5, 0), _TZ)
+    cap = live.capture(session_id=session_id, symbols=symbols, end_et=end_et, out_dir=out_dir,
+                       max_seconds=getattr(args, "max_capture_seconds", None))
     events = live.events_from_wal(cap.wal_path)
     v = po.evaluate(events, symbols=list(symbols), representative=None, rank_available=False,
                     wal_parquet_replay_ok=cap.parquet_verified, safety_ok=True)
@@ -185,6 +186,8 @@ def main(argv=None) -> int:
     ap.add_argument("--no-smoke-pass", dest="smoke_pass", action="store_false")
     ap.add_argument("--credential-green", dest="credential_green", action="store_true", default=True)
     ap.add_argument("--trade-scan-pass", dest="trade_scan_pass", action="store_true", default=True)
+    ap.add_argument("--max-capture-seconds", dest="max_capture_seconds", type=float, default=None,
+                    help="bound the live capture (validation only); omit for the full 07:00-10:05 window")
     args = ap.parse_args(argv)
 
     if args.execute_schedule:
