@@ -51,14 +51,32 @@
     overflow-x: hidden !important;
   }
 
+  .cc-terminal-ui .app-main > *,
+  .cc-terminal-ui .app-main * {
+    min-width: 0 !important;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
   .cc-terminal-ui .app-main > * {
     width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
   }
 
   .cc-terminal-ui .app-main [style*="white-space: nowrap"] {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .cc-terminal-ui .app-main table,
+  .cc-terminal-ui .app-main pre,
+  .cc-terminal-ui .app-main canvas,
+  .cc-terminal-ui .app-main svg {
     max-width: 100% !important;
+  }
+
+  .cc-terminal-ui .app-main table,
+  .cc-terminal-ui .app-main pre {
+    overflow-x: auto !important;
   }
 }
 
@@ -70,6 +88,11 @@
 
   .cc-terminal-ui .metric-strip-tile {
     padding: 1px 8px !important;
+  }
+
+  /* Inline desktop grid templates collapse to one readable mobile column. */
+  .cc-terminal-ui .app-main [style*="grid-template-columns"] {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 
   /* Institutional verdict headlines retain hierarchy without overwhelming 390px. */
