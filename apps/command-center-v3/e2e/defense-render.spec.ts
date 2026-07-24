@@ -73,9 +73,19 @@ async function installRoutes(page: any) {
   })
 }
 
-async function noHorizontalOverflow(page: any) {
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
-  expect(overflow).toBeLessThanOrEqual(2)
+async function assertNoOverflow(page: any) {
+  const values = await page.evaluate(() => {
+    const body = document.querySelector('.app-body') as HTMLElement | null
+    const main = document.querySelector('.app-main') as HTMLElement | null
+    return {
+      document: document.documentElement.scrollWidth - window.innerWidth,
+      body: body ? body.scrollWidth - body.clientWidth : 0,
+      main: main ? main.scrollWidth - main.clientWidth : 0,
+    }
+  })
+  expect(values.document).toBeLessThanOrEqual(2)
+  expect(values.body).toBeLessThanOrEqual(2)
+  expect(values.main).toBeLessThanOrEqual(2)
 }
 
 test('Defense renders from navigation at desktop and narrow widths', async ({ page }) => {
@@ -90,13 +100,14 @@ test('Defense renders from navigation at desktop and narrow widths', async ({ pa
   await expect(main.getByText('Institutional rotation brief', { exact: true })).toBeVisible({ timeout: 15_000 })
   await expect(main.locator('b').filter({ hasText: 'No governed add card is active.' }).first()).toBeVisible()
   await expect(main.getByText(/WITHHELD/).first()).toBeVisible()
-  await noHorizontalOverflow(page)
+  await assertNoOverflow(page)
   await page.screenshot({ path: 'render-artifacts/defense-desktop.png', fullPage: true })
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()
   await expect(main.getByText('Defense Desk', { exact: true })).toBeVisible({ timeout: 15_000 })
   await expect(main.getByText('Institutional rotation brief', { exact: true })).toBeVisible({ timeout: 15_000 })
-  await noHorizontalOverflow(page)
+  await assertNoOverflow(page)
+  await main.evaluate((element: HTMLElement) => { element.scrollTop = 0 })
   await page.screenshot({ path: 'render-artifacts/defense-narrow.png', fullPage: true })
 })
