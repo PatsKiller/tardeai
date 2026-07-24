@@ -228,3 +228,23 @@ PR #163 must remain draft and unactivated until the following are reviewed and e
 - explicit architecture-owner activation decision.
 
 No result in this note authorizes OpenClaw/Hermes installation, production deployment, scheduler activation, channel connection, database migration outside the isolated lab, or any broker/order/approval/2FA action.
+
+## 7. Isolated database proof — BLOCKED at preflight (13:15 ET)
+
+No database connection or write was attempted. The required prerequisites were not evidenced in the repository or connected sources at preflight.
+
+### Missing prerequisite evidence
+
+1. **Completed read-only host inventory** for `ms01-openclaw`, including deployed SHA/dirty state, OpenClaw and Hermes versions/provenance, homes, services, ports, channels, inherited environment, SDK/runtime versions, Ollama models, pgvector, cron/systemd entries, and existing database roles/views.
+2. **Documented shadow-upgrade decision** selecting either `NO UPGRADE REQUIRED` or `SIDE-BY-SIDE CANDIDATE REQUIRED`, with compatibility and rollback evidence.
+3. **Unambiguous disposable LAB target**, including a non-production database identity/name and explicit confirmation that it contains no production data or pre-existing `agentic_runtime` evidence objects.
+4. **Sanitized identity proof** for a dedicated canonical-view read-only shadow reader and a separate writer restricted to the `agentic_runtime` schema.
+5. **Production-denial test plan and target**, identifying the non-sensitive schemas/tables against which denied writes can be proven without touching production data.
+6. **Authorized migration executor** for the disposable LAB target, with a safe up/down/up window and confirmation that the destructive `DROP SCHEMA ... CASCADE` rollback is confined to that target.
+7. **Evidence-preservation path**, naming the sanitized output location for role grants, schema inventory, denied-write results, trigger tests, and producer/reviewer/scorer separation tests.
+
+### Disposition
+
+`BLOCKED_PRECONDITION — NO DATABASE ACTION`
+
+The migration, role creation, grants, denied-write tests, append-only trigger tests, and producer/reviewer/scorer separation tests remain unexecuted. PR #163 remains draft. No DSN, credential, secret, database connection, production schema, OpenClaw/Hermes service, broker, order, approval, or 2FA path was accessed or changed.
