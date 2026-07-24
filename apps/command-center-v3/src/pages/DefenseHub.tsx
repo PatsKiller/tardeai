@@ -165,6 +165,11 @@ export default function DefenseHub() {
         )}
       </div>
 
+      {/* Row 2 — the rotation picture: RRG quadrants + leaders/laggards, sectors and
+          industries. Moved above the book/execution rails so the rotation read is the
+          first thing on the desk rather than four panels down. */}
+      <RotationBoards sectors={rows} industries={ind} spyLong={spyLong} oversight={recsData?.oversight} />
+
       {/* Row 2a — your book: every ≥$10K position has a stance (L3), ladder progress inline */}
       <BookStanceStrip stances={recs?.stances || []} notDecomposed={recs?.not_decomposed}
         ladders={recs?.ladders || []} oversight={recsData?.oversight} />
@@ -184,9 +189,6 @@ export default function DefenseHub() {
 
       {/* Row 2c — the recommendations rail */}
       <RecommendationsRail recs={recs} oversight={recsData?.oversight} />
-
-      {/* Row 3 — the rotation picture */}
-      <RotationBoards sectors={rows} industries={ind} spyLong={spyLong} oversight={recsData?.oversight} />
 
       {/* Row 3.5 — v9 adjudication: promote console · governance · seat league */}
       <ReviewConsole />

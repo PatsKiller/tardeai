@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import FinvizSectorPanel from '../components/FinvizSectorPanel'
+import RotationBoards from '../components/defense/RotationBoards'
 import type { DrillContext } from '../components/DetailDrawer'
 import { BB, T, TYPE, RAIL, numStyle, terminalButton } from '../lib/watchTokens'
 import { Chip } from '../components/TerminalChip'
@@ -29,6 +30,11 @@ const trendTone = (t?: string): 'green' | 'red' | 'amber' | 'slate' =>
 
 export default function SectorsHub({ onDrill, embedded }: Props) {
   const { data, refetch } = useApi<any>('/api/v2/sectors/monitor', 120_000)
+  // Same RRG boards the Defense desk renders, fed from the same two endpoints, so the
+  // quadrant read here and there can never disagree. Sectors keeps the per-sector
+  // momentum/book detail below; this is the rotation picture on top.
+  const { data: posture } = useApi<any>('/api/v2/defense/posture', 300_000)
+  const { data: industriesData } = useApi<any>('/api/v2/defense/industries', 300_000)
   const { data: secExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=sector', 120_000)
   const secExtMap: Record<string, any[]> = secExt?.map ?? {}
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -54,6 +60,11 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
 
   return (
     <div>
+      <RotationBoards
+        sectors={posture?.momentum?.rows || []}
+        industries={industriesData?.industries || []}
+        spyLong={(posture?.momentum?.market?.indices || []).find((i: any) => i.symbol === 'SPY')?.long ?? null}
+      />
       {!embedded && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: BB.text0 }}>Sector Monitor</div>
