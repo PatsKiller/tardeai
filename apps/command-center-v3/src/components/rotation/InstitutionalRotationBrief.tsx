@@ -37,6 +37,13 @@ function shortTime(value?: string | null): string {
   return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
+function ageDays(value?: string | null): number | null {
+  if (!value) return null
+  const d = new Date(`${String(value).slice(0, 10)}T00:00:00Z`)
+  if (!Number.isFinite(d.getTime())) return null
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86_400_000))
+}
+
 function stateTone(state?: string | null): 'green' | 'amber' | 'red' | 'slate' {
   const s = String(state || '').toUpperCase()
   if (s === 'LEADING') return 'green'
@@ -124,10 +131,17 @@ export default function InstitutionalRotationBrief({
         </div>
       </div>
 
+      {addCards.length === 0 && (
+        <div style={{ fontSize: DASH.data, color: BB.amber, background: BB.amberDim, borderLeft: `3px solid ${BB.amber}`, padding: '7px 9px', marginBottom: 10 }}>
+          <b>No governed add card is active.</b> Leading and improving sectors below are research watches only; portfolio capacity, policy, or recommendation rails did not authorize an add.
+        </div>
+      )}
+
       {showMethod && (
         <div style={{ fontSize: DASH.data, color: BB.text2, background: BB.bgShift, borderLeft: `3px solid ${BB.amber}`, padding: '8px 10px', marginBottom: 10 }}>
           <div><b>Sector snapshot:</b> {shortTime(generatedAt)} · 5/20/60-session ETF returns relative to SPY with a two-close state confirmation.</div>
           <div><b>Industry snapshot:</b> {shortTime(industryCapturedAt)} · Finviz week/month performance compared with local SPY 5/21-session returns.</div>
+          <div><b>Governed adds:</b> {addCards.length} complete card{addCards.length === 1 ? '' : 's'} in the current recommendation build.</div>
           <div style={{ color: BB.amber }}><b>Quality note:</b> industry ranks are directionally useful but the vendor windows are not perfectly synchronized. Treat close calls as watch candidates, not precise allocation signals.</div>
         </div>
       )}
@@ -137,26 +151,31 @@ export default function InstitutionalRotationBrief({
           {candidateSectors.map((sector: any) => {
             const name = canonicalSector(sector.sector)
             const card = addBySector.get(name)
+            const rowAge = ageDays(sector.as_of)
+            const stale = rowAge != null && rowAge > 4
+            const narrow = Number(sector.breadth_pct) < 35
             const industryList = (industriesBySector.get(name) || [])
               .filter((i: any) => ['LEADING', 'IMPROVING'].includes(String(i.state || '').toUpperCase()))
               .slice(0, 3)
             const stocks = (card?.instruments || []).filter((i: any) => i.kind === 'constituent').slice(0, 3)
-            const posture = card ? 'ADD ON PULLBACK' : String(sector.state || '').toUpperCase() === 'LEADING' ? 'MONITOR FOR ENTRY' : 'EARLY IMPROVEMENT'
+            const posture = card ? 'ADD ON PULLBACK' : 'RESEARCH WATCH'
             return (
-              <article key={sector.etf || name} style={{ border: `1px solid ${BB.borderHair}`, borderLeft: `3px solid ${card ? BB.green : BB.amber}`, background: BB.bg, padding: '9px 10px', minWidth: 0 }}>
+              <article key={sector.etf || name} style={{ border: `1px solid ${BB.borderHair}`, borderLeft: `3px solid ${card ? BB.green : stale ? BB.red : BB.amber}`, background: BB.bg, padding: '9px 10px', minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: DASH.section, fontWeight: 800, color: BB.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
                     <div style={{ ...numStyle, fontSize: DASH.data, color: T.link }}>{sector.etf || 'ETF not mapped'}</div>
                   </div>
-                  <span style={statePill(card ? 'green' : stateTone(sector.state))}>{posture}</span>
+                  <span style={statePill(card ? 'green' : stale ? 'red' : stateTone(sector.state))}>{stale ? 'STALE RESEARCH' : posture}</span>
                 </div>
                 <div style={{ fontSize: DASH.data, color: BB.text2, marginTop: 6 }}>
                   <b>{sector.state || 'unclassified'}</b> · RS20 {signed(sector.rs20)} · slope {signed(sector.slope)}
                 </div>
                 <div style={{ fontSize: DASH.data, color: BB.text3, marginTop: 2 }}>
-                  breadth {sector.breadth_pct == null ? '—' : `${sector.breadth_pct}%`} · book {sector.book_pct == null ? '—' : `${sector.book_pct}%`}
+                  breadth {sector.breadth_pct == null ? '—' : `${sector.breadth_pct}%`} · book {sector.book_pct == null ? '—' : `${sector.book_pct}%`} · as of {sector.as_of || '—'}
                 </div>
+                {narrow && <div style={{ fontSize: DASH.data, color: BB.amber, marginTop: 3 }}><b>Narrow participation:</b> only {sector.breadth_pct}% of sampled members are above the current breadth measure.</div>}
+                {!card && <div style={{ fontSize: DASH.data, color: BB.text3, marginTop: 3 }}>No governed add card; this is not an allocation instruction.</div>}
                 <div style={{ marginTop: 7 }}>
                   <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.text3, marginBottom: 3 }}>industries underneath</div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -168,13 +187,13 @@ export default function InstitutionalRotationBrief({
                   </div>
                 </div>
                 <div style={{ marginTop: 7 }}>
-                  <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.text3, marginBottom: 3 }}>stock candidates</div>
+                  <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.text3, marginBottom: 3 }}>governed stock candidates</div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {stocks.length ? stocks.map((stock: any) => (
                       <span key={stock.symbol} style={{ ...metricChip(), color: BB.text1 }} title={stock.note || 'constituent passing current recommendation rails'}>
                         {stock.symbol}{stock.price != null ? ` $${Number(stock.price).toFixed(2)}` : ''}
                       </span>
-                    )) : <span style={{ fontSize: DASH.data, color: BB.text3 }}>ETF preferred; no constituent passed all rails</span>}
+                    )) : <span style={{ fontSize: DASH.data, color: BB.text3 }}>{card ? 'ETF preferred; no constituent passed all rails' : 'none — screening names are not recommendations'}</span>}
                   </div>
                 </div>
                 {card?.entry_logic && <div style={{ fontSize: DASH.data, color: BB.text2, marginTop: 7 }}><b>Trigger:</b> {card.entry_logic}</div>}
@@ -184,25 +203,31 @@ export default function InstitutionalRotationBrief({
           })}
         </div>
       ) : (
-        <div style={{ fontSize: DASH.data, color: BB.text3, padding: '10px 0' }}>No leading or improving sector currently has enough evidence for a rotation card.</div>
+        <div style={{ fontSize: DASH.data, color: BB.text3, padding: '10px 0' }}>No leading or improving sector is available even as a research watch.</div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8, marginTop: 8 }}>
         <div style={{ border: `1px solid ${BB.borderHair}`, background: BB.bg, padding: '7px 9px' }}>
           <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.red, marginBottom: 3 }}>funding / reduce watch</div>
-          {weakSectors.length ? weakSectors.map((sector: any) => (
-            <div key={sector.etf} style={{ fontSize: DASH.data, color: BB.text2, padding: '1px 0' }}>
-              <b style={{ color: BB.text1 }}>{canonicalSector(sector.sector)}</b> · {sector.etf} · {sector.state} · RS20 {signed(sector.rs20)}
-            </div>
-          )) : <div style={{ fontSize: DASH.data, color: BB.text3 }}>No weakening or lagging sector in the current snapshot.</div>}
+          {weakSectors.length ? weakSectors.map((sector: any) => {
+            const stale = (ageDays(sector.as_of) ?? 0) > 4
+            return (
+              <div key={sector.etf} style={{ fontSize: DASH.data, color: stale ? BB.red : BB.text2, padding: '1px 0' }}>
+                <b style={{ color: BB.text1 }}>{canonicalSector(sector.sector)}</b> · {sector.etf} · {sector.state} · RS20 {signed(sector.rs20)}{stale ? ` · STALE ${sector.as_of}` : ''}
+              </div>
+            )
+          }) : <div style={{ fontSize: DASH.data, color: BB.text3 }}>No weakening or lagging sector in the current snapshot.</div>}
         </div>
         <div style={{ border: `1px solid ${BB.borderHair}`, background: BB.bg, padding: '7px 9px' }}>
-          <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.amber, marginBottom: 3 }}>governed protect / hedge ideas</div>
-          {riskCards.length ? riskCards.slice(0, 3).map((card: any) => (
-            <div key={card.id} style={{ fontSize: DASH.data, color: BB.text2, padding: '1px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={card.invalidation || card.entry_logic}>
-              <b style={{ color: BB.text1 }}>{card.title}</b> · {card.mode || 'advisory'}
-            </div>
-          )) : <div style={{ fontSize: DASH.data, color: BB.text3 }}>No complete protect or hedge card passed the current field and risk gates.</div>}
+          <div style={{ fontSize: DASH.chip, fontWeight: 800, textTransform: 'uppercase', color: BB.amber, marginBottom: 3 }}>governed protect / trim review</div>
+          {riskCards.length ? riskCards.slice(0, 3).map((card: any) => {
+            const withheld = String(card.id || '').startsWith('pput-') && !card.put_struct
+            return (
+              <div key={card.id} style={{ fontSize: DASH.data, color: withheld ? BB.red : BB.text2, padding: '1px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={card.invalidation || card.entry_logic}>
+                <b style={{ color: BB.text1 }}>{card.title}</b> · {withheld ? 'WITHHELD — failed structure rails' : card.mode || 'advisory'}
+              </div>
+            )
+          }) : <div style={{ fontSize: DASH.data, color: BB.text3 }}>No complete protect, trim or hedge card passed the current field and risk gates.</div>}
         </div>
       </div>
 
