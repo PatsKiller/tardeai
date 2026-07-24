@@ -1,0 +1,42 @@
+name: reentry-watch-operator-ci
+on:
+  pull_request:
+    paths:
+      - 'apps/command-center-v3/src/hooks/useReEntryExitEvidence.ts'
+      - 'apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx'
+      - 'apps/command-center-v3/src/components/reentry/**'
+      - 'apps/command-center-v3/src/pages/ReEntryPageV4.tsx'
+      - 'tests/test_reentry_watch_operator_contract.py'
+      - '.github/workflows/reentry-watch-operator-ci.yml'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  ui-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install frontend
+        working-directory: apps/command-center-v3
+        run: npm ci --silent
+      - name: TypeScript
+        working-directory: apps/command-center-v3
+        run: npx tsc --pretty false
+      - name: Design and chip guards
+        working-directory: apps/command-center-v3
+        run: |
+          bash ../../scripts/check_design_tokens.sh
+          node ../../scripts/test_chip_scope.mjs
+      - name: Production build
+        working-directory: apps/command-center-v3
+        run: npm run build
+      - name: Focused source contracts
+        run: python -m pytest -q tests/test_reentry_watch_operator_contract.py
