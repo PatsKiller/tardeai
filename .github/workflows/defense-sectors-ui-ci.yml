@@ -57,11 +57,32 @@ jobs:
           cache: npm
           cache-dependency-path: apps/command-center-v3/package-lock.json
 
+      - name: Install focused Python dependency
+        run: python -m pip install --disable-pip-version-check pytest
+
       - name: Compile and run focused backend tests
+        id: backend
+        continue-on-error: true
+        shell: bash
         run: |
-          python -m pip install --disable-pip-version-check pytest
-          python -m compileall -q scripts/defense_account_exposure.py scripts/defense_data_quality.py scripts/sector_momentum_engine.py scripts/sector_momentum_engine_v4.py scripts/finviz_industry_groups.py scripts/defense_recommendations.py scripts/defense_recommendations_v10.py scripts/fund_lookthrough.py
-          python -m pytest -q tests/test_defense_account_exposure.py tests/test_defense_data_quality.py tests/test_defense_data_hardening_wiring.py tests/test_defense_recommendations_v10.py tests/test_sector_momentum_engine_v4.py
+          set -o pipefail
+          {
+            python -m compileall -q scripts/defense_account_exposure.py scripts/defense_data_quality.py scripts/sector_momentum_engine.py scripts/sector_momentum_engine_v4.py scripts/finviz_industry_groups.py scripts/defense_recommendations.py scripts/defense_recommendations_v10.py scripts/fund_lookthrough.py
+            python -m pytest -q tests/test_defense_account_exposure.py tests/test_defense_data_quality.py tests/test_defense_data_hardening_wiring.py tests/test_defense_recommendations_v10.py tests/test_sector_momentum_engine_v4.py
+          } 2>&1 | tee /tmp/defense-backend.log
+
+      - name: Upload backend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: defense-sectors-backend-diagnostics
+          path: /tmp/defense-backend.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce backend gate
+        if: steps.backend.outcome != 'success'
+        run: exit 1
 
       - name: Install locked frontend dependencies
         working-directory: apps/command-center-v3
@@ -99,7 +120,7 @@ jobs:
             /tmp/defense-chip.log
             /tmp/defense-tsc.log
             /tmp/defense-vite-build.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Enforce frontend gates
