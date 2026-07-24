@@ -8,13 +8,10 @@ import {
 } from '../lib/operatorDecisionCard'
 
 /*
- * DecisionPacketBand — Watch Decision Desk V6 presentation.
- *
- * The packet remains the audit record. This component is the operator surface:
- * action first, five strategies second, technical setup third, mechanics and
- * freshness always visible, audit/detail explicitly separated.
- *
- * Advisory only. No orders. No approvals. No 2FA.
+ * Calm operator presentation for the Watch Decision Desk.
+ * Color is intentionally scarce: one state rail, one state word, and genuine
+ * validation failures. Everything else is neutral hierarchy and whitespace.
+ * Advisory only. No orders, approvals, broker writes, or 2FA.
  */
 
 type Props = {
@@ -37,141 +34,87 @@ const FAMILY_ORDER = [
   ['no_trade', 'No trade'],
 ] as const
 
-function stateBg(state: OperatorState): string {
-  if (state === 'READY') return 'rgba(34,197,94,.10)'
-  if (state === 'BLOCKED' || state === 'NO TRADE') return 'rgba(239,68,68,.09)'
-  if (state === 'MANAGE POSITION') return 'rgba(96,165,250,.09)'
-  return 'rgba(245,158,11,.09)'
+function asDate(value?: string | null): Date | null {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) ? date : null
 }
-
-function asDate(v?: string | null): Date | null {
-  if (!v) return null
-  const d = new Date(v)
-  return Number.isFinite(d.getTime()) ? d : null
+function clock(value?: string | null): string {
+  const date = asDate(value)
+  if (!date) return '—'
+  return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York', timeZoneName: 'short' })
 }
-
-function clock(v?: string | null): string {
-  // THE shared datetime formatter (V6 item 4/5): every visible timestamp renders
-  // in the operator timezone (America/New_York); UTC lives only in tooltips.
-  const d = asDate(v)
-  if (!d) return '—'
-  return d.toLocaleString('en-US', {
-    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-    timeZone: 'America/New_York', timeZoneName: 'short',
-  })
+function age(value?: string | null): string {
+  const date = asDate(value)
+  if (!date) return '—'
+  const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000))
+  if (minutes < 1) return 'now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`
 }
-
-function age(v?: string | null): string {
-  const d = asDate(v)
-  if (!d) return '—'
-  const mins = Math.max(0, Math.round((Date.now() - d.getTime()) / 60_000))
-  if (mins < 1) return 'now'
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.round(mins / 60)
-  if (hours < 48) return `${hours}h ago`
-  return `${Math.round(hours / 24)}d ago`
+function money(value: any): string {
+  if (value === null || value === undefined || value === '') return '—'
+  const parsed = Number(String(value).replace(/[$,]/g, ''))
+  return Number.isFinite(parsed) ? `$${parsed.toFixed(2)}` : String(value)
 }
-
-function familyWord(k: string, f: any, overrides?: any): string {
-  const ov = overrides?.[k]
-  if (ov) return ov[0]
-  if (k === 'no_trade') return f?.preferred || f?.dominant ? 'PREFERRED' : f?.available ? 'ALTERNATIVE' : '—'
-  const act = String(f?.action_state || '').toUpperCase()
-  const dec = String(f?.decision_state || f?.state || '').toUpperCase()
-  if (act === 'READY') return 'READY'
-  if (act.startsWith('WAIT') || dec.startsWith('WAIT') || dec === 'CONDITIONAL') return 'WAIT'
-  if (dec.includes('REJECT') || act.includes('REJECT')) return 'REJECTED'
-  if (k === 'options' && (dec.includes('STALE') || act.includes('STALE'))) return 'CHAIN STALE'
-  if (dec.includes('UNAVAILABLE') || act.includes('UNAVAILABLE') || dec.includes('DATA_UNAVAILABLE')) return 'UNAVAILABLE'
-  if (dec.includes('ELIGIBLE') || dec.includes('VALID') || dec.includes('CONSTRUCT')) return 'AVAILABLE'
+function familyWord(key: string, family: any, overrides?: any): string {
+  const override = overrides?.[key]
+  if (override) return override[0]
+  if (key === 'no_trade') return family?.preferred || family?.dominant ? 'PREFERRED' : family?.available ? 'ALTERNATIVE' : '—'
+  const action = String(family?.action_state || '').toUpperCase()
+  const decision = String(family?.decision_state || family?.state || '').toUpperCase()
+  if (action === 'READY') return 'READY'
+  if (action.startsWith('WAIT') || decision.startsWith('WAIT') || decision === 'CONDITIONAL') return 'WAIT'
+  if (decision.includes('REJECT') || action.includes('REJECT')) return 'REJECTED'
+  if (key === 'options' && (decision.includes('STALE') || action.includes('STALE'))) return 'CHAIN STALE'
+  if (decision.includes('UNAVAILABLE') || action.includes('UNAVAILABLE') || decision.includes('DATA_UNAVAILABLE')) return 'UNAVAILABLE'
+  if (decision.includes('ELIGIBLE') || decision.includes('VALID') || decision.includes('CONSTRUCT')) return 'AVAILABLE'
   return '—'
 }
-
-function statusColor(word: string): string {
-  if (word === 'READY') return BB.green
-  if (word === 'WAIT' || word === 'CHAIN STALE' || word === 'PREFERRED') return BB.amber
-  if (word === 'REJECTED') return BB.red
-  return BB.text3
-}
-
-function optionsFamilySummary(f: any): string {
-  // V6 item 6: summarize the WHOLE family, not just held-share structures.
-  const structs: any[] = f?.structures || []
-  const allReasons = [...(f?.rejection_reasons || []),
-                      ...structs.flatMap((s: any) => s?.rejection_reasons || [])].join(' · ')
-  if (/chain|provider|schwab|quote/i.test(allReasons)
-      || String(f?.state || '').includes('UNAVAILABLE')) {
-    return 'Exact option chain unavailable'
+function familyReason(key: string, family: any): string {
+  if (key === 'options') {
+    const structures: any[] = family?.structures || []
+    const reasons = [...(family?.rejection_reasons || []), ...structures.flatMap((structure: any) => structure?.rejection_reasons || [])].join(' · ')
+    if (/chain|provider|schwab|quote/i.test(reasons) || String(family?.state || '').includes('UNAVAILABLE')) return 'Exact option chain unavailable'
+    if (reasons) return reasons.slice(0, 96)
+    if (structures.length) return `${structures.length} structures evaluated`
+    return 'No eligible structure'
   }
-  const directional = structs.filter((s: any) => !/COVERED_CALL|COLLAR/i.test(String(s?.structure)))
-  const rejected = directional.filter((s: any) => /REJECT/i.test(String(s?.state)))
-  const conditional = directional.filter((s: any) => /CONDITIONAL/i.test(String(s?.state)))
-  if (/event/i.test(allReasons)) return 'Event risk blocks every structure'
-  if (directional.length && rejected.length === directional.length) {
-    return `All ${directional.length} directional structures rejected — liquidity/spread/OI/event rules`
-  }
-  if (conditional.length) return `${conditional.length} structure(s) conditional — open details`
-  if (!directional.length && structs.length) {
-    return 'Only held-share structures evaluated (0 shares held) — no directional structure eligible'
-  }
-  return allReasons.slice(0, 90) || 'No eligible structure'
-}
-
-function familyReason(k: string, f: any): string {
-  if (k === 'options') return optionsFamilySummary(f)
-  if (k === 'no_trade') return String(f?.reason || (f?.preferred ? 'No constructive plan is currently preferred' : 'Stand-aside alternative — another family is selected'))
-  const reason = (f?.rejection_reasons || f?.blocks || [])[0]
+  if (key === 'no_trade') return String(family?.reason || (family?.preferred ? 'Stand aside is currently preferred' : 'Valid alternative; does not override another selected family'))
+  const reason = (family?.rejection_reasons || family?.blocks || [])[0]
   if (reason) return String(reason)
-  const structure = (f?.structures || [])[0]
+  const structure = (family?.structures || [])[0]
   if (structure?.structure) return String(structure.structure).replace(/_/g, ' ').toLowerCase()
-  const word = familyWord(k, f)
+  const word = familyWord(key, family)
   if (word === 'READY') return 'Mechanics resolved and current'
   if (word === 'WAIT') return 'Conditions are not yet confirmed'
-  if (word === 'UNAVAILABLE') return k === 'options' ? 'Exact option chain or eligible structure unavailable' : 'Required evidence unavailable'
+  if (word === 'UNAVAILABLE') return 'Required evidence unavailable'
   if (word === 'REJECTED') return 'Eligibility or risk constraints failed'
   return 'No active construction'
 }
-
-function technicalColor(p: any): string {
-  const fresh = String(p?.freshness || 'UNAVAILABLE').toUpperCase()
-  const lifecycle = String(p?.lifecycle || '').toUpperCase()
-  const direction = String(p?.direction || 'NEUTRAL').toUpperCase()
-  if (fresh !== 'CURRENT') return BB.text3
-  if (lifecycle === 'CONFIRMED' && direction === 'BULLISH') return BB.green
-  if (lifecycle === 'CONFIRMED' && direction === 'BEARISH') return BB.red
-  if (lifecycle === 'FORMING' || lifecycle === 'AWAITING_CONFIRMATION' || direction === 'MIXED') return BB.amber
-  return BB.text2
+function quietStateTone(word: string, preferred: boolean): string {
+  if (!preferred) return BB.text2
+  if (word === 'READY') return BB.green
+  if (word === 'REJECTED') return BB.red
+  if (word === 'WAIT' || word === 'PREFERRED' || word === 'CHAIN STALE') return BB.amber
+  return BB.text1
 }
 
-function technicalBg(p: any): string {
-  const c = technicalColor(p)
-  if (c === BB.green) return 'rgba(34,197,94,.08)'
-  if (c === BB.red) return 'rgba(239,68,68,.08)'
-  if (c === BB.amber) return 'rgba(245,158,11,.08)'
-  return 'rgba(148,163,184,.05)'
-}
-
-export default function DecisionPacketBand({
-  packet, generatedAt, actionPolicy, held, onRefresh, onRefreshStrategy,
-  refreshing, onPrimary, onAlert,
-}: Props) {
+export default function DecisionPacketBand({ packet, generatedAt, actionPolicy, held, onRefresh, onRefreshStrategy, refreshing, onPrimary, onAlert }: Props) {
   const [details, setDetails] = useState(false)
   const [whyOpen, setWhyOpen] = useState(false)
   const [prevOpen, setPrevOpen] = useState(false)
-
-  const pres = buildOperatorPresentation({ packet, actionPolicy, held })
-  if (!pres) return null
-
-  // V6 UNIVERSAL GATE: the server presentation object governs header, tiles,
-  // CTA and mechanics. No verified ticket → no current mechanics, anywhere.
+  const base = buildOperatorPresentation({ packet, actionPolicy, held })
+  if (!base) return null
+  const pres = { ...base } as OperatorPresentation
   const op = packet?.operator_presentation
   if (op?.header_state && op.header_state !== pres.state) {
     pres.state = op.header_state as OperatorState
     if (op.header_note) pres.headline = op.header_note
   }
-  const mechAllowed = op ? !!op.display_current_mechanics : !pres.stale
-  if (op && !mechAllowed) pres.mechanics = null
-
+  const mechanicsAllowed = op ? Boolean(op.display_current_mechanics) : !pres.stale
+  if (op && !mechanicsAllowed) pres.mechanics = null
   const accent = operatorStateColor(pres.state)
   const tech = packet?.technical_state || {}
   const builtAt = generatedAt || packet?.evaluated_at || packet?.generated_at
@@ -179,492 +122,108 @@ export default function DecisionPacketBand({
   const validUntil = packet?.freshness?.valid_until || actionPolicy?.valid_until
   const nextDue = packet?.freshness?.next_refresh_due_at || actionPolicy?.next_refresh_due_at
   const invalidatedAt = packet?.freshness?.invalidated_at || packet?.current_validity?.invalidated_at
-  // V6 fix: analysis_tier is authoritative — a deterministic run is LOCAL QUANT,
-  // never "UNAVAILABLE" (that word is reserved for analyses that actually failed).
-  const lanesDone = packet?.model_review?.lanes_completed
-  const lanesN = Array.isArray(lanesDone) ? lanesDone.length : (lanesDone ?? null)
-  const tier = String(packet?.analysis_tier
-    || (['BLIND', 'SINGLE_LANE'].includes(String(packet?.model_review?.mode)) ? 'STANDARD_BLIND' : 'LOCAL_QUANT'))
-  const analysisMode = tier === 'LOCAL_QUANT'
-    ? 'LOCAL QUANT · NO LLM'
-    : tier === 'STANDARD_BLIND'
-      ? (String(packet?.model_review?.mode) === 'SINGLE_LANE'
-        ? 'STANDARD BLIND · SINGLE LANE'
-        : `STANDARD BLIND${lanesN != null ? ` · ${lanesN}/2` : ''}`)
-      : tier.replace(/_/g, ' ')
-  const pills: any[] = tech?.pills || []
+  const tier = String(packet?.analysis_tier || (['BLIND', 'SINGLE_LANE'].includes(String(packet?.model_review?.mode)) ? 'STANDARD_BLIND' : 'LOCAL_QUANT'))
+  const analysisMode = tier === 'LOCAL_QUANT' ? 'LOCAL QUANT · NO LLM' : tier.replace(/_/g, ' ')
+  const families = pres.audit?.families || {}
+  const preferredKey = pres.primaryFamily?.key === 'refresh' ? '' : String(pres.primaryFamily?.key || '')
 
   return (
-    <section
-      aria-label="Decision strategy desk"
-      onClick={e => e.stopPropagation()}
-      style={{
-        borderLeft: `4px solid ${accent}`,
-        background: stateBg(pres.state),
-        borderBottom: `1px solid ${BB.border}`,
-      }}
-    >
-      {/* ACTION + FRESHNESS HEADER */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(280px, .8fr)',
-        gap: 12, padding: '12px 14px 10px', borderBottom: `1px solid ${BB.border}`,
-      }}>
+    <section aria-label="Decision strategy desk" onClick={event => event.stopPropagation()} style={{ borderLeft: `3px solid ${accent}`, borderBottom: `1px solid ${BB.border}`, background: BB.bg }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.55fr) minmax(300px,.75fr)', gap: 16, padding: '13px 16px 11px', borderBottom: `1px solid ${BB.border}` }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-            <span style={{
-              fontSize: 13, fontWeight: 950, letterSpacing: '.10em', color: accent,
-              textTransform: 'uppercase',
-            }}>{pres.state}</span>
-            <span style={{ fontSize: 17, fontWeight: 850, color: BB.text0 }}>{pres.headline}</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 950, letterSpacing: '.10em', color: accent }}>{pres.state}</span>
+            <span style={{ fontSize: 18, fontWeight: 850, color: BB.text0 }}>{pres.headline}</span>
           </div>
-          <div style={{ marginTop: 5, fontSize: 11.5, lineHeight: 1.45, color: BB.text2, fontWeight: 650 }}>
-            {pres.thesisLine}
-          </div>
-          {pres.whyLines.length > 0 && (
-            <div style={{ marginTop: 7, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-              {pres.whyLines.slice(0, 2).map((line, i) => (
-                <span key={i} style={{
-                  fontSize: 10.5, color: BB.text1, background: 'rgba(15,23,42,.34)',
-                  border: `1px solid ${BB.border}`, borderRadius: 4, padding: '3px 7px',
-                }}>{line}</span>
-              ))}
-            </div>
-          )}
+          <div style={{ marginTop: 5, fontSize: 11.5, lineHeight: 1.45, color: BB.text2, fontWeight: 650 }}>{pres.thesisLine}</div>
+          {pres.whyLines.length > 0 && <div style={{ marginTop: 7, display: 'flex', gap: 8, flexWrap: 'wrap' }}>{pres.whyLines.slice(0, 2).map((line, index) => <span key={index} style={{ fontSize: 10.5, color: BB.text1, borderBottom: `1px solid ${BB.border}`, paddingBottom: 2 }}>{line}</span>)}</div>}
         </div>
-
-        <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 10px', alignContent: 'start',
-          background: 'rgba(2,6,23,.28)', border: `1px solid ${BB.border}`,
-          borderRadius: 5, padding: '8px 10px',
-        }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 12px', alignContent: 'start', paddingLeft: 14, borderLeft: `1px solid ${BB.border}` }}>
           <Meta label="Strategy built" value={`${clock(builtAt)} · ${age(builtAt)}`} />
           <Meta label="Analysis" value={analysisMode} />
           <Meta label="Inputs refreshed" value={clock(inputsAt)} />
           <Meta label="Technical snapshot" value={tech?.computed_at ? `${clock(tech.computed_at)} · ${tech.overall_freshness || '—'}` : 'Unavailable'} />
           <Meta label={pres.stale ? 'Invalidated' : 'Valid until'} value={pres.stale ? clock(invalidatedAt) : clock(validUntil)} tone={pres.stale ? BB.amber : undefined} />
-          <Meta label="Next scheduled review" value={clock(nextDue)} />
+          <Meta label="Next review" value={clock(nextDue)} />
         </div>
       </div>
 
-      {/* FIVE STRATEGIES — visible, comparable, preferred obvious */}
-      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BB.border}` }}>
-        <SectionTitle title="Strategies evaluated" note="Every family is visible; only the selected family drives mechanics and the primary action." />
-        <StrategyGrid pres={pres} onOpen={() => setDetails(true)} tileOverrides={op?.tile_overrides} />
+      <div style={{ padding: '10px 16px', borderBottom: `1px solid ${BB.border}` }}>
+        <SectionTitle title="Strategies evaluated" note="Only the selected family drives mechanics and the primary action." />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(125px,1fr))', borderTop: `1px solid ${BB.border}`, borderLeft: `1px solid ${BB.border}` }}>
+          {FAMILY_ORDER.map(([key, label]) => {
+            const family = families[key] || {}
+            const word = familyWord(key, family, op?.tile_overrides)
+            const preferred = Boolean(preferredKey) && (preferredKey === key || preferredKey.startsWith(key.split('_')[0]))
+            return <button key={key} onClick={event => { event.stopPropagation(); setDetails(true) }} title={`${label}: ${word}. ${familyReason(key, family)}`} style={{ minHeight: 66, textAlign: 'left', cursor: 'pointer', border: 'none', borderRight: `1px solid ${BB.border}`, borderBottom: `1px solid ${BB.border}`, background: preferred ? 'rgba(148,163,184,.07)' : 'transparent', padding: '8px 9px', boxShadow: preferred ? `inset 0 2px 0 ${accent}` : undefined }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ fontSize: 10.5, fontWeight: 900, color: preferred ? BB.text0 : BB.text2 }}>{label}</span>{preferred && <span style={{ fontSize: 10, color: BB.text3 }}>PRIMARY</span>}</div><div style={{ marginTop: 4, fontSize: 10.5, fontWeight: 900, color: quietStateTone(word, preferred) }}>{word}</div><div style={{ marginTop: 2, fontSize: 10, lineHeight: 1.25, color: BB.text3 }}>{familyReason(key, family).slice(0, 76)}</div></button>
+          })}
+        </div>
       </div>
 
-      {/* TECHNICAL SETUP — real pills with hierarchy */}
-      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BB.border}` }}>
-        <SectionTitle
-          title="Technical setup"
-          note={tech?.source_hash ? `${tech.overall_direction || 'UNRESOLVED'} · source ${tech.source_hash}` : 'Canonical technical snapshot unavailable'}
-        />
-        <TechnicalGrid tech={tech} onOpen={() => setDetails(true)} />
+      <div style={{ padding: '10px 16px', borderBottom: `1px solid ${BB.border}` }}>
+        <SectionTitle title="Technical setup" note={tech?.source_hash ? `${tech.overall_direction || 'UNRESOLVED'} · source ${tech.source_hash}` : 'Canonical technical snapshot unavailable'} />
+        <TechnicalSummary tech={tech} onOpen={() => setDetails(true)} />
       </div>
 
-      {/* TICKET VERIFICATION — validation is shown, not implied (§8). VERIFIED
-          never appears on the compiler's own say-so. */}
       <TicketVerification packet={packet} symbol={packet?.symbol} />
 
-      {/* MECHANICS + WHAT CHANGES THE DECISION */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: pres.mechanics ? 'minmax(0, 1.25fr) minmax(260px, .75fr)' : '1fr',
-        gap: 12, padding: '10px 14px', borderBottom: `1px solid ${BB.border}`,
-      }}>
-        {pres.mechanics && (
-          <div style={{ opacity: pres.stale || pres.mechanics.previous ? .58 : 1 }}>
-            <SectionTitle title={pres.stale ? 'Previous mechanics — not current' : 'Current mechanics'} />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(76px, 1fr))', gap: 7 }}>
-              {([
-                ['Entry', pres.mechanics.entry], ['Limit', pres.mechanics.limit],
-                ['Stop', pres.mechanics.stop], ['Target', pres.mechanics.target],
-                ['R:R', pres.mechanics.rr],
-              ] as const).map(([label, value]) => (
-                <div key={label} style={{
-                  background: 'rgba(2,6,23,.28)', border: `1px solid ${BB.border}`,
-                  borderRadius: 4, padding: '6px 8px', minHeight: 42,
-                }}>
-                  <div style={{ fontSize: 10, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.07em' }}>{label}</div>
-                  <div style={{ ...numStyle, marginTop: 2, fontSize: 14, fontWeight: 850, color: BB.text0 }}>{value || '—'}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div>
-          <SectionTitle title="What changes the decision" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {(packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger) && (
-              <Condition label="Trigger" text={packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger} color={BB.green} />
-            )}
-            {(packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation) && (
-              <Condition label="Invalidation" text={packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation} color={BB.red} />
-            )}
-            {!packet?.horizons?.tactical?.trigger && !packet?.horizons?.swing?.trigger && (
-              <Condition label="Next" text={pres.primaryFamily?.why || pres.whyLines[0] || 'Review the full evidence'} color={BB.amber} />
-            )}
-          </div>
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: pres.mechanics ? 'minmax(0,1.2fr) minmax(280px,.8fr)' : '1fr', gap: 18, padding: '10px 16px', borderBottom: `1px solid ${BB.border}` }}>
+        {pres.mechanics && <div style={{ opacity: pres.stale || pres.mechanics.previous ? .6 : 1 }}><SectionTitle title={pres.stale ? 'Previous mechanics — not current' : 'Current mechanics'} /><div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(76px,1fr))', gap: 0, borderTop: `1px solid ${BB.border}`, borderLeft: `1px solid ${BB.border}` }}>{([
+          ['Entry', pres.mechanics.entry], ['Limit', pres.mechanics.limit], ['Stop', pres.mechanics.stop], ['Target', pres.mechanics.target], ['R:R', pres.mechanics.rr],
+        ] as const).map(([label, value]) => <div key={label} style={{ padding: '7px 9px', minHeight: 44, borderRight: `1px solid ${BB.border}`, borderBottom: `1px solid ${BB.border}` }}><div style={{ fontSize: 10, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div><div style={{ ...numStyle, marginTop: 2, fontSize: 14, fontWeight: 850, color: BB.text0 }}>{value || '—'}</div></div>)}</div></div>}
+        <div><SectionTitle title="What changes the decision" /><div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{(packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger) && <Condition label="Trigger" text={packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger} />}{(packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation) && <Condition label="Invalidation" text={packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation} warning />}{!packet?.horizons?.tactical?.trigger && !packet?.horizons?.swing?.trigger && <Condition label="Next" text={pres.primaryFamily?.why || pres.whyLines[0] || 'Review the full evidence'} />}</div></div>
       </div>
 
-      {/* ACTION BAR */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', padding: '9px 14px' }}>
-        <button
-          onClick={e => {
-            e.stopPropagation()
-            if (pres.state === 'REFRESH') {
-              if (onRefreshStrategy) onRefreshStrategy(e)
-              else if (onRefresh) onRefresh(e)
-            } else if (pres.state === 'WAIT' && onAlert) onAlert(pres, e)
-            else if (onPrimary) onPrimary(pres, e)
-          }}
-          disabled={refreshing && pres.state === 'REFRESH'}
-          style={{
-            ...terminalButton(pres.state === 'READY' || pres.state === 'REFRESH' ? 'primary' : 'secondary'),
-            fontSize: 11, padding: '5px 10px',
-            ...(refreshing && pres.state === 'REFRESH' ? { opacity: .6, cursor: 'wait' } : {}),
-          }}
-        >
-          {refreshing && pres.state === 'REFRESH' ? 'Refreshing strategy…' : pres.primaryCta}
-        </button>
-
-        {!pres.stale && onRefreshStrategy && (
-          <button onClick={e => { e.stopPropagation(); onRefreshStrategy(e) }} disabled={refreshing}
-            style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>
-            {refreshing ? 'Refreshing…' : 'Refresh Strategy'}
-          </button>
-        )}
-        {onRefresh && (
-          <button onClick={e => { e.stopPropagation(); onRefresh(e) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>
-            Refresh Inputs
-          </button>
-        )}
-        {pres.stale && pres.mechanics?.previous && (
-          <button onClick={e => { e.stopPropagation(); setPrevOpen(v => !v) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>
-            {prevOpen ? 'Hide Previous Strategy' : 'View Previous Strategy'}
-          </button>
-        )}
-        {pres.whyNot.length > 0 && (
-          <button onClick={e => { e.stopPropagation(); setWhyOpen(v => !v) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>
-            {whyOpen ? 'Hide alternatives' : 'Why not alternatives?'}
-          </button>
-        )}
-        <button onClick={e => { e.stopPropagation(); setDetails(v => !v) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>
-          {details ? 'Hide audit' : 'Details & audit'}
-        </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '9px 16px' }}>
+        <button onClick={event => { event.stopPropagation(); if (pres.state === 'REFRESH') { if (onRefreshStrategy) onRefreshStrategy(event); else if (onRefresh) onRefresh(event) } else if (pres.state === 'WAIT' && onAlert) onAlert(pres, event); else if (onPrimary) onPrimary(pres, event) }} disabled={refreshing && pres.state === 'REFRESH'} style={{ ...terminalButton(pres.state === 'READY' || pres.state === 'REFRESH' ? 'primary' : 'secondary'), fontSize: 11, padding: '5px 10px', ...(refreshing && pres.state === 'REFRESH' ? { opacity: .6, cursor: 'wait' } : {}) }}>{refreshing && pres.state === 'REFRESH' ? 'Refreshing strategy…' : pres.primaryCta}</button>
+        {!pres.stale && onRefreshStrategy && <button onClick={event => { event.stopPropagation(); onRefreshStrategy(event) }} disabled={refreshing} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>{refreshing ? 'Refreshing…' : 'Refresh Strategy'}</button>}
+        {onRefresh && <button onClick={event => { event.stopPropagation(); onRefresh(event) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>Refresh Inputs</button>}
+        {pres.stale && pres.mechanics?.previous && <button onClick={event => { event.stopPropagation(); setPrevOpen(value => !value) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>{prevOpen ? 'Hide Previous Strategy' : 'View Previous Strategy'}</button>}
+        {pres.whyNot.length > 0 && <button onClick={event => { event.stopPropagation(); setWhyOpen(value => !value) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>{whyOpen ? 'Hide alternatives' : 'Why not alternatives?'}</button>}
+        <button onClick={event => { event.stopPropagation(); setDetails(value => !value) }} style={{ ...terminalButton('ghost'), fontSize: 10.5 }}>{details ? 'Hide audit' : 'Details & audit'}</button>
         <span style={{ marginLeft: 'auto', fontSize: 10, color: BB.text3 }}>Advisory only · proposal review remains separate</span>
       </div>
 
-      {prevOpen && pres.mechanics?.previous && (
-        <div style={{ margin: '0 14px 9px', padding: '7px 9px', fontSize: 10.5, color: BB.text3, border: `1px solid ${BB.border}`, borderRadius: 4 }}>
-          Previous strategy: {pres.mechanics.summary}
-        </div>
-      )}
-
-      {whyOpen && (
-        <div style={{ margin: '0 14px 9px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 6 }}>
-          {pres.whyNot.map(w => (
-            <div key={w.title} style={{ padding: '6px 8px', border: `1px solid ${BB.border}`, borderRadius: 4, background: 'rgba(2,6,23,.22)' }}>
-              <div style={{ fontSize: 10, fontWeight: 850, color: BB.text2 }}>{w.title}</div>
-              <div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{w.reason}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
+      {prevOpen && pres.mechanics?.previous && <div style={{ margin: '0 16px 10px', padding: '7px 9px', fontSize: 10.5, color: BB.text3, borderTop: `1px solid ${BB.border}` }}>Previous strategy: {pres.mechanics.summary}</div>}
+      {whyOpen && <div style={{ margin: '0 16px 10px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 8 }}>{pres.whyNot.map(item => <div key={item.title} style={{ padding: '7px 9px', borderTop: `1px solid ${BB.border}` }}><div style={{ fontSize: 10, fontWeight: 850, color: BB.text2 }}>{item.title}</div><div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{item.reason}</div></div>)}</div>}
       {details && <AuditDrawer pres={pres} tech={tech} />}
     </section>
   )
 }
 
-function SectionTitle({ title, note }: { title: string; note?: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 10, fontWeight: 900, color: BB.text2, textTransform: 'uppercase', letterSpacing: '.08em' }}>{title}</span>
-      {note && <span style={{ fontSize: 10, color: BB.text3 }}>{note}</span>}
-    </div>
-  )
-}
+function SectionTitle({ title, note }: { title: string; note?: string }) { return <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}><span style={{ fontSize: 10, fontWeight: 900, color: BB.text2, textTransform: 'uppercase', letterSpacing: '.08em' }}>{title}</span>{note && <span style={{ fontSize: 10, color: BB.text3 }}>{note}</span>}</div> }
+function Meta({ label, value, tone }: { label: string; value: string; tone?: string }) { return <div style={{ minWidth: 0 }}><div style={{ fontSize: 10, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</div><div style={{ marginTop: 1, fontSize: 10, color: tone || BB.text1, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis' }} title={value}>{value}</div></div> }
+function Condition({ label, text, warning }: { label: string; text: string; warning?: boolean }) { return <div style={{ display: 'grid', gridTemplateColumns: '78px 1fr', gap: 8, alignItems: 'start' }}><span style={{ fontSize: 10, fontWeight: 900, color: warning ? BB.red : BB.text2, textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</span><span style={{ fontSize: 10.5, color: BB.text1, lineHeight: 1.35 }}>{text}</span></div> }
 
-function Meta({ label, value, tone }: { label: string; value: string; tone?: string }) {
-  return (
-    <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 10, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
-      <div style={{ marginTop: 1, fontSize: 10, color: tone || BB.text1, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis' }} title={value}>{value}</div>
-    </div>
-  )
-}
-
-function Condition({ label, text, color }: { label: string; text: string; color: string }) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', gap: 7, alignItems: 'start' }}>
-      <span style={{ fontSize: 10, fontWeight: 900, color, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</span>
-      <span style={{ fontSize: 10.5, color: BB.text1, lineHeight: 1.35 }}>{text}</span>
-    </div>
-  )
-}
-
-function StrategyGrid({ pres, onOpen, tileOverrides }: { pres: OperatorPresentation; onOpen: () => void; tileOverrides?: any }) {
-  const fams = pres.audit?.families || {}
-  const prefKey = pres.primaryFamily?.key === 'refresh' ? null : String(pres.primaryFamily?.key || '')
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(120px, 1fr))', gap: 6 }}>
-      {FAMILY_ORDER.map(([key, label]) => {
-        const fam = fams[key] || {}
-        const word = familyWord(key, fam, tileOverrides)
-        const color = statusColor(word)
-        const preferred = !!prefKey && (prefKey === key || prefKey.startsWith(key.split('_')[0]))
-        return (
-          <button key={key} onClick={e => { e.stopPropagation(); onOpen() }}
-            title={`${label}: ${word}. ${familyReason(key, fam)}`}
-            style={{
-              textAlign: 'left', cursor: 'pointer', minHeight: 58,
-              background: preferred ? `${color}12` : 'rgba(2,6,23,.22)',
-              border: `1px solid ${preferred ? color : BB.border}`,
-              borderRadius: 5, padding: '7px 8px',
-              boxShadow: preferred ? `inset 3px 0 0 ${color}` : undefined,
-            }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ fontSize: 10.5, fontWeight: 900, color: preferred ? BB.text0 : BB.text2 }}>{label}</span>
-              {preferred && <span style={{ fontSize: 10, fontWeight: 900, color, border: `1px solid ${color}66`, borderRadius: 3, padding: '0 4px' }}>PRIMARY</span>}
-            </div>
-            <div style={{ marginTop: 4, fontSize: 10, fontWeight: 900, color }}>{word}</div>
-            <div style={{ marginTop: 2, fontSize: 10, lineHeight: 1.25, color: BB.text3 }}>{familyReason(key, fam).slice(0, 72)}</div>
-          </button>
-        )
-      })}
-    </div>
-  )
+function TechnicalSummary({ tech, onOpen }: { tech: any; onOpen: () => void }) {
+  const pills: any[] = tech?.pills || []
+  const verdict = tech?.verdict
+  if (!pills.length) {
+    const fresh = String(tech?.overall_freshness || '').toUpperCase()
+    const message = !tech || !tech.schema_version || tech.schema_version === 'unavailable' && !tech.error ? 'Legacy packet — technical snapshot not built. Refresh Strategy.' : tech.error || fresh === 'FAILED' ? `Technical analysis failed — ${String(tech.error || 'unknown error')}` : fresh === 'STALE' ? `Technical data stale — computed ${String(tech.computed_at || '').slice(0, 16)}` : fresh === 'REFRESHING' ? 'Technical refresh currently running…' : tech.unavailable?.length ? `Unavailable timeframes: ${tech.unavailable.join(', ')}` : 'Technical snapshot unavailable.'
+    return <div style={{ padding: '7px 0', color: BB.text3, fontSize: 10.5 }}>{message}</div>
+  }
+  return <div>{verdict && <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 10, padding: '6px 0 8px', borderBottom: `1px solid ${BB.border}` }}><div style={{ fontSize: 10, fontWeight: 900, color: verdict.state === 'OPPOSED' ? BB.red : verdict.state === 'SUPPORTIVE' ? BB.green : BB.amber }}>{String(verdict.state || 'MIXED')}</div><div><div style={{ fontSize: 10.5, color: BB.text1, fontWeight: 750 }}>{verdict.line}</div><div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{[...(verdict.supporting || []).slice(0, 2), ...(verdict.conflicting || []).slice(0, 2)].join(' · ')}</div></div></div>}<div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(115px,1fr))', borderTop: verdict ? 'none' : `1px solid ${BB.border}`, borderLeft: `1px solid ${BB.border}` }}>{pills.slice(0, 6).map((pill, index) => <button key={`${pill.kind || 'tech'}-${index}`} onClick={event => { event.stopPropagation(); onOpen() }} title={`${pill.tooltip || ''} · ${pill.lifecycle || ''} · ${pill.freshness || ''}`} style={{ minHeight: 57, textAlign: 'left', cursor: 'pointer', background: 'transparent', border: 'none', borderRight: `1px solid ${BB.border}`, borderBottom: `1px solid ${BB.border}`, padding: '7px 8px' }}><div style={{ fontSize: 10, color: BB.text3, fontWeight: 850, textTransform: 'uppercase', letterSpacing: '.05em' }}>{String(pill.kind || 'technical').replace(/_/g, ' ')}</div><div style={{ marginTop: 3, fontSize: 10.5, color: BB.text1, fontWeight: 900 }}>{pill.label}</div><div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{pill.kind === 'freshness' && pill.as_of ? clock(pill.as_of) : pill.value || String(pill.lifecycle || '').replace(/_/g, ' ') || '—'}</div></button>)}</div></div>
 }
 
 function TicketVerification({ packet, symbol }: { packet: any; symbol?: string }) {
   const [busy, setBusy] = useState(false)
-  const tr = packet?.ticket_review
-  const cap = packet?.current_actionable_plan
-  const op = packet?.operator_presentation
-  // V6 universal rule: the panel ALWAYS renders a state — legacy packets must
-  // look visibly unverified, never silently normal.
-  if (!tr && !cap) {
-    return (
-      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BB.border}` }}>
-        <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>
-          TICKET VERIFICATION{' '}
-        </span>
-        <span style={{ fontSize: 10.5, fontWeight: 900, color: BB.amber }}>
-          {String(op?.verification_state || 'UNVERIFIED_LEGACY').replace(/_/g, ' ')} — REBUILD REQUIRED
-        </span>
-        <span style={{ marginLeft: 8, fontSize: 10, color: BB.text3 }}>
-          packet predates the oversight schema; current mechanics are suppressed
-        </span>
-      </div>
-    )
-  }
-  const validation = cap?.ticket_validation || {}
-  const rec = tr?.reconciled || {}
-  const reviews = tr?.reviews || {}
-  const rows: Array<[string, any]> = [
-    ['Deterministic validator', { verdict: validation.state || (tr?.tickets_validated?.[0]?.state ?? 'NOT RUN') }],
-    ['Local critic', reviews.local],
-    ['Grok OAuth critic', reviews.grok],
-    ['ChatGPT OAuth critic', reviews.chatgpt],
-    ['Premium expert', { verdict: 'NOT RUN' }],
-  ]
-  const vColor = (v?: string) =>
-    v === 'PASS' ? BB.green
-      : v === 'REJECT' || v === 'FAIL' ? BB.red
-        : v === 'CAUTION' || v === 'REVIEW_REQUIRED' ? BB.amber : BB.text3
-  const overall = rec.state || (validation.state === 'FAIL' ? 'DETERMINISTIC_FAIL' : 'UNVALIDATED')
+  const review = packet?.ticket_review
+  const plan = packet?.current_actionable_plan
+  const validation = plan?.ticket_validation || {}
+  const reconciled = review?.reconciled || {}
+  const reviews = review?.reviews || {}
+  const overall = reconciled.state || (validation.state === 'FAIL' ? 'DETERMINISTIC_FAIL' : !review && !plan ? 'UNVERIFIED_LEGACY' : 'UNVALIDATED')
+  const failure = /FAIL|REJECT|BLOCK/.test(String(overall))
   const runFree = async () => {
     if (!symbol || busy) return
     setBusy(true)
-    try {
-      await fetch('/api/v2/watch/ticket-review/run', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol }),
-      })
-    } finally {
-      window.setTimeout(() => setBusy(false), 60_000)
-    }
+    try { await fetch('/api/v2/watch/ticket-review/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol }) }) } finally { window.setTimeout(() => setBusy(false), 60_000) }
   }
-  return (
-    <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BB.border}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>
-          TICKET VERIFICATION
-        </span>
-        <span style={{ fontSize: 10.5, fontWeight: 900, color: vColor(rec.proposal_allowed ? 'PASS' : overall.includes('FAIL') || overall.includes('REJECT') ? 'FAIL' : 'CAUTION') }}>
-          {String(overall).replace(/_/g, ' ')}{rec.detail ? ` — ${String(rec.detail).slice(0, 90)}` : ''}
-        </span>
-        <button onClick={e => { e.stopPropagation(); void runFree() }} disabled={busy}
-          style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px',
-                   cursor: busy ? 'wait' : 'pointer', background: 'transparent',
-                   color: BB.text2, border: `1px solid ${BB.border}`, borderRadius: 3 }}>
-          {busy ? 'Reviewing…' : 'Run free review'}
-        </button>
-      </div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 5 }}>
-        {rows.map(([label, r]) => (
-          <span key={label} style={{ fontSize: 10, color: BB.text3 }}>
-            {label}: <b style={{ color: vColor(r?.verdict) }}>{r?.verdict || 'NOT RUN'}</b>
-            {r?.model ? <span style={{ color: BB.text3 }}> · {r.model}</span> : null}
-          </span>
-        ))}
-      </div>
-      {validation.hard_failures?.length > 0 && (
-        <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>
-          {validation.hard_failures.slice(0, 2).map((h: string, i: number) => <div key={i}>✕ {h}</div>)}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function TechnicalGrid({ tech, onOpen }: { tech: any; onOpen: () => void }) {
-  const pills: any[] = tech?.pills || []
-  if (!pills.length) {
-    // V6 item 7/8: the exact operator explanation, never a generic empty state.
-    const fresh = String(tech?.overall_freshness || '').toUpperCase()
-    const msg = !tech || !tech.schema_version || tech.schema_version === 'unavailable' && !tech.error
-      ? 'LEGACY PACKET — technical snapshot not built. Refresh Strategy to build it.'
-      : tech.error || fresh === 'FAILED'
-        ? `Technical analysis FAILED — ${String(tech.error || 'unknown error')}`
-        : fresh === 'STALE'
-          ? `Technical data STALE — computed ${String(tech.computed_at || '').slice(0, 16)}. Refresh Strategy.`
-          : fresh === 'REFRESHING'
-            ? 'Technical refresh currently running…'
-            : (tech.unavailable?.length
-              ? `Technical timeframes unavailable: ${tech.unavailable.join(', ')}`
-              : 'Technical snapshot missing — packet predates the technical schema. Refresh Strategy.')
-    return (
-      <div style={{ padding: '8px 10px', border: `1px dashed ${BB.border}`, borderRadius: 5, color: BB.text3, fontSize: 10.5 }}>
-        {msg}
-      </div>
-    )
-  }
-  const verdict = tech?.verdict
-  return (
-    <div>
-      {verdict && (
-        <div style={{ marginBottom: 7, padding: '7px 10px', border: `1px solid ${BB.border}`, borderRadius: 5,
-                      background: 'rgba(15,23,42,.30)' }}>
-          <div style={{ fontSize: 10, fontWeight: 850, letterSpacing: '.08em', color: BB.text3 }}>
-            TECHNICAL VERDICT
-          </div>
-          <div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 850,
-                        color: verdict.state === 'SUPPORTIVE' ? BB.green
-                          : verdict.state === 'OPPOSED' ? BB.red
-                            : verdict.state === 'STALE' ? BB.text3 : BB.amber }}>
-            {String(verdict.state)} — {verdict.line}
-          </div>
-          <div style={{ display: 'flex', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
-            {(verdict.supporting || []).length > 0 && (
-              <div style={{ fontSize: 10, color: BB.text2 }}>
-                <b style={{ color: BB.green }}>Supports:</b>
-                {(verdict.supporting || []).map((x: string, i: number) => <div key={i}>• {x}</div>)}
-              </div>
-            )}
-            {(verdict.conflicting || []).length > 0 && (
-              <div style={{ fontSize: 10, color: BB.text2 }}>
-                <b style={{ color: BB.amber }}>Conflicts:</b>
-                {(verdict.conflicting || []).map((x: string, i: number) => <div key={i}>• {x}</div>)}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(115px, 1fr))', gap: 6 }}>
-      {pills.slice(0, 6).map((p, i) => {
-        const color = technicalColor(p)
-        const lifecycle = String(p.lifecycle || '').replace(/_/g, ' ')
-        const fresh = String(p.freshness || 'UNAVAILABLE')
-        return (
-          <button key={`${p.kind || 'tech'}-${i}`} onClick={e => { e.stopPropagation(); onOpen() }}
-            title={`${p.tooltip || ''} · ${lifecycle} · ${fresh}`}
-            style={{
-              textAlign: 'left', cursor: 'pointer', minHeight: 60,
-              background: technicalBg(p), border: `1px solid ${color}55`,
-              borderRadius: 5, padding: '7px 8px',
-            }}>
-            <div style={{ fontSize: 10, color: BB.text3, fontWeight: 850, textTransform: 'uppercase', letterSpacing: '.07em' }}>
-              {String(p.kind || 'technical').replace(/_/g, ' ')}
-            </div>
-            <div style={{ marginTop: 3, fontSize: 10.5, color, fontWeight: 900, lineHeight: 1.2 }}>{p.label}</div>
-            <div style={{ marginTop: 3, fontSize: 10, color: BB.text2, fontWeight: 700 }}>
-              {p.kind === 'freshness' && p.as_of ? clock(p.as_of) : (p.value || lifecycle || '—')}
-            </div>
-            <div style={{ marginTop: 2, fontSize: 10, color: fresh === 'CURRENT' ? BB.text3 : BB.amber }}>{fresh}{lifecycle ? ` · ${lifecycle}` : ''}</div>
-          </button>
-        )
-      })}
-    </div>
-    </div>
-  )
+  return <div style={{ padding: '9px 16px', borderBottom: `1px solid ${BB.border}` }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>TICKET VERIFICATION</span><span style={{ fontSize: 10.5, fontWeight: 900, color: failure ? BB.red : reconciled.proposal_allowed ? BB.green : BB.text1 }}>{String(overall).replace(/_/g, ' ')}</span>{reconciled.detail && <span style={{ fontSize: 10, color: BB.text3 }}>{String(reconciled.detail).slice(0, 100)}</span>}<button onClick={event => { event.stopPropagation(); void runFree() }} disabled={busy} style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px', cursor: busy ? 'wait' : 'pointer', background: 'transparent', color: BB.text2, border: `1px solid ${BB.border}`, borderRadius: 3 }}>{busy ? 'Reviewing…' : 'Run free review'}</button></div><div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5, fontSize: 10, color: BB.text3 }}><span>Deterministic <b style={{ color: validation.state === 'FAIL' ? BB.red : validation.state === 'PASS' ? BB.green : BB.text2 }}>{validation.state || review?.tickets_validated?.[0]?.state || 'NOT RUN'}</b></span><span>Local <b style={{ color: BB.text2 }}>{reviews.local?.verdict || 'NOT RUN'}</b></span><span>Grok OAuth <b style={{ color: BB.text2 }}>{reviews.grok?.verdict || 'NOT RUN'}</b></span><span>ChatGPT OAuth <b style={{ color: BB.text2 }}>{reviews.chatgpt?.verdict || 'NOT RUN'}</b></span><span>Premium <b style={{ color: BB.text2 }}>NOT RUN</b></span></div>{validation.hard_failures?.length > 0 && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>{validation.hard_failures.slice(0, 2).join(' · ')}</div>}</div>
 }
 
 function AuditDrawer({ pres, tech }: { pres: OperatorPresentation; tech: any }) {
-  const a = pres.audit
-  const fams = a.families || {}
-  const order = ['long_term', 'swing', 'bearish', 'options', 'no_trade'] as const
-  return (
-    <div style={{
-      margin: '0 14px 12px', padding: 10, border: `1px solid ${BB.border}`,
-      borderRadius: 5, background: 'rgba(2,6,23,.30)', display: 'flex', flexDirection: 'column', gap: 7,
-    }}>
-      <div style={{ fontSize: 10, fontWeight: 900, color: BB.amber, letterSpacing: '.07em', textTransform: 'uppercase' }}>
-        Details & audit — not the primary decision
-      </div>
-      <div style={{ fontSize: 10, color: BB.text3 }}>
-        Packet {a.packet?.packet_version || '—'} · policy {a.actionPolicy?.policy_version || '—'}
-        {a.inputHashes.packet ? ` · packet ${a.inputHashes.packet}` : ''}
-        {a.inputHashes.current ? ` · current ${a.inputHashes.current}` : ''}
-        {tech?.source_hash ? ` · technical ${tech.source_hash}` : ''}
-      </div>
-      {a.currentValidity && (
-        <div style={{ fontSize: 10, color: BB.text2 }}>
-          Current validity: <b>{String(a.currentValidity.state || '—')}</b>
-          {(a.currentValidity.invalidation_reasons || []).length > 0 && <span> — {(a.currentValidity.invalidation_reasons as string[]).join('; ')}</span>}
-        </div>
-      )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(130px, 1fr))', gap: 6 }}>
-        {order.map(key => {
-          const f = fams[key] || {}
-          const kids = f.structures || []
-          return (
-            <div key={key} style={{ padding: '6px 7px', border: `1px solid ${BB.border}`, borderRadius: 4, fontSize: 10, color: BB.text3 }}>
-              <div style={{ fontWeight: 900, color: BB.text1, textTransform: 'uppercase' }}>{key.replace('_', ' ')}</div>
-              <div>construct={f.constructibility_state || '—'}</div>
-              <div>decision={f.decision_state || f.state || '—'}</div>
-              <div>action={f.action_state || '—'}</div>
-              {kids.slice(0, 4).map((s: any, i: number) => (
-                <div key={i} style={{ marginTop: 3 }}>{s.structure || '?'} · {s.state}{s.occ_symbol ? ` · ${s.occ_symbol}` : ''}</div>
-              ))}
-            </div>
-          )
-        })}
-      </div>
-      {tech?.timeframes && (
-        <div style={{ fontSize: 10, color: BB.text3 }}>
-          Technical timeframes: {Object.entries(tech.timeframes).map(([tf, r]: any) => `${tf} ${r?.meta?.freshness_state || '—'} @ ${r?.meta?.last_closed_bar || '—'}`).join(' · ')}
-        </div>
-      )}
-      {a.modelReview && (
-        <div style={{ fontSize: 10, color: BB.text3 }}>
-          Models: {a.modelReview.mode || '—'}{a.modelReview.agreement_by_dimension ? ` · agreement ${JSON.stringify(a.modelReview.agreement_by_dimension)}` : ''}
-        </div>
-      )}
-      {a.ownership && (
-        <div style={{ fontSize: 10, color: BB.text3 }}>
-          Ownership: {a.ownership.held ? `HELD ${a.ownership.shares}` : 'NOT HELD'}{a.ownership.source ? ` · ${a.ownership.source}` : ''}{a.ownership.as_of ? ` · ${a.ownership.as_of}` : ''}
-        </div>
-      )}
-      {a.legacy?.recommendation && (
-        <div style={{ fontSize: 10, color: BB.text3 }}>Legacy @ build: {String(a.legacy.recommendation)}{a.legacy.generated_at ? ` · ${a.legacy.generated_at}` : ''}</div>
-      )}
-      {a.actionPolicy && (
-        <div style={{ fontSize: 10, color: BB.text3 }}>
-          Action policy: {a.actionPolicy.action} · state={a.actionPolicy.state} · allowed={String(!!a.actionPolicy.allowed)}{a.actionPolicy.reason ? ` · ${a.actionPolicy.reason}` : ''}
-        </div>
-      )}
-    </div>
-  )
+  const audit = pres.audit
+  return <div style={{ margin: '0 16px 12px', padding: '9px 0 0', borderTop: `1px solid ${BB.border}`, display: 'flex', flexDirection: 'column', gap: 7 }}><div style={{ fontSize: 10, fontWeight: 900, color: BB.text2, letterSpacing: '.07em', textTransform: 'uppercase' }}>Details & audit — not the primary decision</div><div style={{ fontSize: 10, color: BB.text3 }}>Packet {audit.packet?.packet_version || '—'} · policy {audit.actionPolicy?.policy_version || '—'}{audit.inputHashes.packet ? ` · packet ${audit.inputHashes.packet}` : ''}{audit.inputHashes.current ? ` · current ${audit.inputHashes.current}` : ''}{tech?.source_hash ? ` · technical ${tech.source_hash}` : ''}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(150px,1fr))', gap: 8 }}>{FAMILY_ORDER.map(([key, label]) => <div key={key} style={{ padding: '7px 0', borderTop: `1px solid ${BB.border}` }}><div style={{ fontSize: 10, fontWeight: 850, color: BB.text2 }}>{label} · {familyWord(key, audit.families?.[key] || {})}</div><div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{familyReason(key, audit.families?.[key] || {})}</div></div>)}</div></div>
 }
