@@ -51,7 +51,9 @@ jobs:
 
       - name: Run interaction contract
         working-directory: apps/command-center-v3
+        shell: bash
         run: |
+          set -o pipefail
           rm -rf interaction-artifacts test-results
           npm run preview -- --host 127.0.0.1 --port 4175 >/tmp/defense-sectors-interaction-vite.log 2>&1 &
           for i in $(seq 1 45); do
@@ -59,7 +61,7 @@ jobs:
             sleep 1
           done
           export PLAYWRIGHT_BASE_URL=http://127.0.0.1:4175
-          npx playwright test e2e/defense-sectors-interactions.spec.ts
+          npx playwright test e2e/defense-sectors-interactions.spec.ts 2>&1 | tee /tmp/defense-sectors-interaction-test.log
 
       - name: Upload interaction failure evidence
         if: failure()
@@ -69,5 +71,6 @@ jobs:
           path: |
             apps/command-center-v3/test-results/**
             /tmp/defense-sectors-interaction-vite.log
+            /tmp/defense-sectors-interaction-test.log
           if-no-files-found: warn
           retention-days: 14
