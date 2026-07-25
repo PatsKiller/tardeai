@@ -7,8 +7,8 @@ SCRIPT = Path("scripts/agent_runtime/lab_evolve_from_ref.sh").read_text()
 def test_wrapper_requires_exact_reviewed_commit():
     assert "AGENTIC_SOURCE_REF" in SCRIPT
     assert "40-character commit SHA" in SCRIPT
-    assert "cat-file -e \"$SOURCE_REF^{commit}\"" in SCRIPT
-    assert "rev-parse \"$SOURCE_REF^{commit}\"" in SCRIPT
+    assert 'cat-file -e "$SOURCE_REF^{commit}"' in SCRIPT
+    assert 'rev-parse "$SOURCE_REF^{commit}"' in SCRIPT
 
 
 def test_wrapper_stages_all_authoritative_inputs_from_one_commit():
@@ -20,7 +20,13 @@ def test_wrapper_stages_all_authoritative_inputs_from_one_commit():
     ):
         assert path in SCRIPT
     assert 'archive "$RESOLVED_COMMIT"' in SCRIPT
-    assert 'REPO="$STAGE_ROOT" "$BASH" "$INNER"' in SCRIPT
+    assert 'env LAB_ACK="$LAB_ACK" REPO="$STAGE_ROOT" "$BASH" "$INNER"' in SCRIPT
+
+
+def test_wrapper_avoids_readonly_environment_collision():
+    assert 'readonly HOST_REPO="${REPO:-$REPO_DEFAULT}"' in SCRIPT
+    assert 'readonly REPO="${REPO:-$REPO_DEFAULT}"' not in SCRIPT
+    assert '-C "$HOST_REPO"' in SCRIPT
 
 
 def test_wrapper_never_changes_or_trusts_checked_out_source():
