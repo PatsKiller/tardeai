@@ -32,6 +32,7 @@ declare const __ANALYST_UI_VERSION__: string
 declare const __BUILD_DATE__: string
 const BUILD_MARKER_FALLBACK = `cc-v3 ${__ANALYST_UI_VERSION__} · built ${__BUILD_DATE__}`
 const GLOBAL_REVIEW_CONTRACT = 'command-center-global-review-v1'
+const STRUCTURED_EVIDENCE_CONTRACT = 'command-center-structured-provenance-v1'
 
 function BuildMarker() {
   const [label, setLabel] = useState(BUILD_MARKER_FALLBACK)
@@ -153,6 +154,17 @@ function cardSymbol(card: HTMLElement): string {
   return ''
 }
 
+function evidenceButtonSymbol(target: HTMLElement): string {
+  const button = target.closest<HTMLElement>('button[title^="Open provenance and evidence for"], button[aria-label$="— open evidence"]')
+  if (!button) return ''
+  const aria = button.getAttribute('aria-label') || ''
+  const title = button.getAttribute('title') || ''
+  const candidate = aria.match(/^([A-Z0-9.-]{1,10})\s+—\s+open evidence$/i)?.[1]
+    || title.match(/for\s+([A-Z0-9.-]{1,10})$/i)?.[1]
+    || button.textContent?.trim().split(/\s+/)[0]
+  return normalizeSymbol(candidate)
+}
+
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -187,6 +199,42 @@ function Shell() {
       subjectType: 'symbol',
       subjectKey: symbol,
     })
+  }, [openDrill])
+
+  const openEvidenceReview = useCallback(async (symbolValue: string) => {
+    const symbol = normalizeSymbol(symbolValue)
+    if (!symbol) return
+    const endpoint = `/api/v2/watch/provenance/${symbol}`
+    const context = (row: Record<string, any>, subtitle: string): DrillContext => ({
+      title: `Symbol evidence · ${symbol}`,
+      subtitle,
+      endpoint,
+      rows: [row],
+      links: [
+        { label: 'Watchlist', href: `/v3/watch?tab=watchlist&symbol=${encodeURIComponent(symbol)}`, note: 'Open the symbol in the Watch operator workspace' },
+        { label: 'Rotation review', href: `/v3/rotation?question=${encodeURIComponent(`Review ${symbol} provenance, freshness and portfolio relevance`)}`, note: 'Advisory review only' },
+      ],
+      subjectType: 'symbol-provenance',
+      subjectKey: symbol,
+    })
+
+    openDrill(context({ symbol, evidence_status: 'loading' }, 'Loading structured provenance and watch lineage…'))
+    try {
+      const response = await fetch(endpoint, { cache: 'no-store' })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`)
+      const row = payload?.data ?? payload
+      setDrill(context(
+        row && typeof row === 'object' ? row : { symbol, evidence_status: 'unavailable' },
+        'Structured provenance, freshness, directive lineage and watch memberships',
+      ))
+    } catch (error) {
+      setDrill(context({
+        symbol,
+        evidence_status: 'unavailable',
+        evidence_error: error instanceof Error ? error.message : String(error),
+      }, 'Structured provenance is unavailable; the failure is preserved below'))
+    }
   }, [openDrill])
 
   const closeDrill = useCallback(() => {
@@ -277,11 +325,19 @@ function Shell() {
 
   const handleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
+    const evidenceSymbol = evidenceButtonSymbol(target)
+    if (evidenceSymbol) {
+      event.preventDefault()
+      event.stopPropagation()
+      event.nativeEvent.stopImmediatePropagation?.()
+      void openEvidenceReview(evidenceSymbol)
+      return
+    }
     if (target.closest('button, a, input, select, textarea, [role="button"]:not([data-review-surface])')) return
     const card = target.closest<HTMLElement>('[data-review-surface="watchlist-card"]')
     if (!card) return
     openSymbolReview(cardSymbol(card))
-  }, [openSymbolReview])
+  }, [openEvidenceReview, openSymbolReview])
 
   const handleKeyCapture = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Enter' && event.key !== ' ') return
@@ -293,7 +349,7 @@ function Shell() {
   }, [openSymbolReview])
 
   return (
-    <div className="app-shell cc-terminal-ui" data-review-contract={GLOBAL_REVIEW_CONTRACT} onClickCapture={handleClickCapture} onKeyDownCapture={handleKeyCapture} style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
+    <div className="app-shell cc-terminal-ui" data-review-contract={GLOBAL_REVIEW_CONTRACT} data-evidence-contract={STRUCTURED_EVIDENCE_CONTRACT} onClickCapture={handleClickCapture} onKeyDownCapture={handleKeyCapture} style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
       <ReconnectingBar />
       <MetricStrip onDrill={openDrill} />
       <div className="app-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -339,7 +395,7 @@ function Shell() {
         </main>
       </div>
       {drill && (
-        <div role="dialog" aria-modal="true" aria-label={drill.title} data-command-center-modal="review">
+        <div role="dialog" aria-modal="true" aria-label={drill.title} data-command-center-modal="review" style={{ position: 'fixed', inset: 0, zIndex: 20000 }}>
           <DetailDrawer ctx={drill} onClose={closeDrill} />
         </div>
       )}
