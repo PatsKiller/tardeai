@@ -56,6 +56,29 @@ const sectorMonitor = {
   ],
 }
 
+function provenance(symbol?: string) {
+  return {
+    ok: true,
+    data: {
+      symbol,
+      origin_system: 'agent_discovery',
+      origin_detail: { thesis: 'interaction provenance fixture', directive_id: 593 },
+      source: 'interaction-fixture',
+      source_tier: 'core',
+      divergence: 'unavailable',
+      first_seen_at: '2026-05-19T12:23:55-04:00',
+      last_validated_at: '2026-07-24T14:54:07-04:00',
+      seen_count: 38,
+      reason: 'sector evidence drill fixture',
+      directive: { id: 593, label: 'trend Energy sector RS thrust', kind: 'trend' },
+      watchpool: [
+        { strategy_id: 'deep_itm_call', bucket: 'LONG_CYCLE', current_status: 'ACTIVE', origin_system: 'hermes' },
+        { strategy_id: 'atm_put', bucket: 'LONG_CYCLE', current_status: 'WATCH', origin_system: 'hermes' },
+      ],
+    },
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) }))
   await page.route(/\/api\/v2\/defense\/posture(?:\?.*)?$/, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(posture) }))
@@ -66,7 +89,7 @@ test.beforeEach(async ({ page }) => {
   await page.route(/\/api\/v2\/watch\/alerts\/list(?:\?.*)?$/, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ active_count: 2 }) }))
   await page.route(/\/api\/v2\/watch\/provenance\/[^?]+(?:\?.*)?$/, route => {
     const symbol = route.request().url().split('/').pop()?.split('?')[0]
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, symbol, source: 'interaction-fixture', evidence: ['price', 'technical', 'coverage'] }) })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(provenance(symbol)) })
   })
   await page.route(/\/api\/v2\/watch\/directives(?:\?.*)?$/, async route => {
     if (route.request().method() === 'POST') {
@@ -76,7 +99,7 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test('Watch sectors board supports filtering, evidence, governed watch creation and Watchlist return', async ({ page }) => {
+test('Watch sectors board supports filtering, structured evidence, governed watch creation and Watchlist return', async ({ page }) => {
   await page.goto('/v3/watch?tab=sectors')
 
   await expect(page.getByText(/Watch.*Sectors/).first()).toBeVisible()
@@ -99,8 +122,16 @@ test('Watch sectors board supports filtering, evidence, governed watch creation 
 
   await sectorDialog.getByRole('button', { name: 'XOM — open evidence' }).click()
   const evidenceDialog = page.getByRole('dialog', { name: 'Symbol evidence · XOM' })
-  await expect(evidenceDialog).toContainText('interaction-fixture')
-  await evidenceDialog.getByRole('button', { name: 'Close' }).last().click()
+  await expect(evidenceDialog).toBeVisible()
+  await expect(evidenceDialog).toContainText('Structured provenance, freshness, directive lineage and watch memberships')
+  await expect(evidenceDialog).toContainText('Interaction Fixture')
+  await expect(evidenceDialog).toContainText('Source Tier')
+  await expect(evidenceDialog).toContainText('Deep Itm Call')
+  await expect(page.locator('[data-evidence-contract="command-center-structured-provenance-v1"]')).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(evidenceDialog).toHaveCount(0)
+  await expect(sectorDialog).toBeVisible()
 
   page.once('dialog', dialog => dialog.accept())
   await sectorDialog.getByRole('button', { name: 'Watch sector' }).click()
