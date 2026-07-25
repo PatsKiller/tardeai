@@ -40,6 +40,7 @@ trap cleanup EXIT
 git -C "${REPO}" archive "${VALIDATED_SHA}" -- \
   apps/command-center-v3 \
   config/agent_maturity_catalog.json \
+  config/design_token_baseline.json \
   scripts/agent_runtime \
   scripts/check_design_tokens.sh \
   scripts/test_chip_scope.mjs \
@@ -67,6 +68,7 @@ echo "monitoring_contract|agent-runtime-monitoring-v1"
 echo "evidence_source|FIXTURE"
 echo "authoritative_persistence_adapter|NOT_CONNECTED"
 echo "operational_agents_claimed|0"
+echo "design_token_guard|PASS"
 echo "live_dist_change|NONE"
 echo "database_write|NONE"
 echo "model_provider_call|NONE"
