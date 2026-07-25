@@ -125,12 +125,14 @@ def main(symbol: str, lanes: str):
     quality = validation.get("quality_admission") or {}
     prior = packet.get("ticket_review") or {}
 
-    # Deterministic basics and quality come first. Do not spend model calls on a
-    # failed, missing or non-admitted ticket; persist the honest state instead.
-    may_review = deterministic in {"PASS", "REVIEW_REQUIRED"}
-    if quality and (quality.get("state") != "ADMITTED"
-                    or quality.get("new_entry_allowed") is False):
-        may_review = False
+    # Deterministic basics and quality come first. Missing quality is not a soft
+    # default: the worker requires an explicit ADMITTED decision before spending
+    # a local or OAuth call. RESEARCH_ONLY, QUARANTINED and UNASSESSED all stop.
+    may_review = (
+        deterministic in {"PASS", "REVIEW_REQUIRED"}
+        and quality.get("state") == "ADMITTED"
+        and quality.get("new_entry_allowed") is not False
+    )
 
     facts = _facts_from_packet(sym, packet, validation, conn, svc)
     selected_lanes = tuple(
