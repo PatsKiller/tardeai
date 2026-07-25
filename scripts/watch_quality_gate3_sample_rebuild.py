@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,6 +48,13 @@ def _stable_hash(payload: Any) -> str | None:
         return None
     body = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(body.encode()).hexdigest()
+
+
+def _source_commit() -> str:
+    value = str(os.getenv("WATCH_QUALITY_SOURCE_COMMIT") or "").lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", value):
+        raise RuntimeError("WATCH_QUALITY_SOURCE_COMMIT must be an exact 40-character commit SHA")
+    return value
 
 
 def _load_projection(path: Path) -> dict:
@@ -160,7 +168,7 @@ def _model_lane_count(packet: dict) -> int:
         return 0
 
 
-def _candidate_evidence(role: str, projected: dict, packet: dict) -> dict:
+def _candidate_evidence(role: str, projected: dict, packet: dict, source_commit: str) -> dict:
     packet_quality.apply_operator_presentation(packet)
     gate = packet_quality.packet_gate(packet)
     conflicts = packet_quality.presentation_conflicts(packet)
@@ -177,6 +185,8 @@ def _candidate_evidence(role: str, projected: dict, packet: dict) -> dict:
             errors.append("management-only sample unexpectedly authorizes a new entry")
     if role == "contradiction" and conflicts:
         errors.append("operator presentation still contains contradictory READY state")
+    if packet.get("governance_source_commit") != source_commit:
+        errors.append("packet does not carry the exact reviewed source commit")
 
     lane_calls = _model_lane_count(packet)
     if lane_calls:
@@ -194,6 +204,7 @@ def _candidate_evidence(role: str, projected: dict, packet: dict) -> dict:
         "rebuilt_held": gate.get("held"),
         "validation_source": gate.get("validation_source"),
         "ticket_hash": gate.get("ticket_hash"),
+        "governance_source_commit": packet.get("governance_source_commit"),
         "presentation_contract": (packet.get("operator_presentation") or {}).get("contract"),
         "presentation_conflicts": conflicts,
         "model_lane_calls": lane_calls,
@@ -205,6 +216,7 @@ def _candidate_evidence(role: str, projected: dict, packet: dict) -> dict:
 def execute(projection_path: Path, evidence_path: Path) -> dict:
     if os.getenv("WATCH_GATE3_ACK") != ACK_REQUIRED:
         raise RuntimeError(f"WATCH_GATE3_ACK must equal {ACK_REQUIRED}")
+    source_commit = _source_commit()
 
     projection = _load_projection(projection_path)
     sample = select_sample(projection)
@@ -223,9 +235,16 @@ def execute(projection_path: Path, evidence_path: Path) -> dict:
             requested_by="watch_quality_gate3_bounded_local",
             run_models=False,
         )
+        packet["governance_source_commit"] = source_commit
+        packet["governance_contracts"] = {
+            **(packet.get("governance_contracts") or {}),
+            "quality": "watch-quality-admission-v1",
+            "presentation": packet_quality.PRESENTATION_CONTRACT,
+            "gate3": CONTRACT,
+        }
         packet_quality.apply_operator_presentation(packet)
         candidates[role] = packet
-        checks[role] = _candidate_evidence(role, row, packet)
+        checks[role] = _candidate_evidence(role, row, packet, source_commit)
 
     prewrite_errors = [
         f"{role}:{error}"
@@ -234,6 +253,7 @@ def execute(projection_path: Path, evidence_path: Path) -> dict:
     ]
     report: dict[str, Any] = {
         "contract": CONTRACT,
+        "source_commit": source_commit,
         "generated_at": _now(),
         "projection_contract": projection.get("contract"),
         "projection_generated_at": projection.get("generated_at"),
@@ -260,7 +280,7 @@ def execute(projection_path: Path, evidence_path: Path) -> dict:
             "service_restart": False,
             "ui_deployment": False,
             "proposal_or_execution_action": False,
-            "database_scope": "decision_packets only through shadow_decision_service.persist",
+            "database_scope": "bounded decision-packet persistence for five symbols",
             "market_data_reads_may_occur": True,
         },
     }
@@ -290,6 +310,8 @@ def execute(projection_path: Path, evidence_path: Path) -> dict:
                 raise RuntimeError(f"{symbol} readback packet id mismatch")
             if after["packet_hash"] != checks[role]["candidate_packet_hash"]:
                 raise RuntimeError(f"{symbol} readback packet hash mismatch")
+            if (after.get("packet") or {}).get("governance_source_commit") != source_commit:
+                raise RuntimeError(f"{symbol} readback source commit mismatch")
             gate = packet_quality.packet_gate(after["packet"] or {})
             conflicts = packet_quality.presentation_conflicts(after["packet"] or {})
             report["sample"][role]["after_gate"] = gate
@@ -320,6 +342,7 @@ def main() -> None:
     )
     public = {
         "contract": report.get("contract"),
+        "source_commit": report.get("source_commit"),
         "generated_at": report.get("generated_at"),
         "status": report.get("status"),
         "sample": {
