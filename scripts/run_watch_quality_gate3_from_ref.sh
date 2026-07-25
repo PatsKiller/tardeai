@@ -28,12 +28,6 @@ git -C "$HOST_REPO" cat-file -e "$SOURCE_REF^{commit}"
 readonly RESOLVED_COMMIT="$(git -C "$HOST_REPO" rev-parse "$SOURCE_REF^{commit}")"
 [[ "$RESOLVED_COMMIT" == "$SOURCE_REF" ]] || { echo "BLOCKED_GATE3: resolved commit differs from exact source ref" >&2; exit 2; }
 
-PROJECTION_JSON="${WATCH_QUALITY_PROJECTION_JSON:-}"
-if [[ -z "$PROJECTION_JSON" ]]; then
-  PROJECTION_JSON="$(find "$EVIDENCE_ROOT" -maxdepth 1 -type f -name 'watch-quality-projection-v2-top200-*.json' -printf '%T@ %p\n' 2>/dev/null | sort -nr | awk 'NR==1 {sub(/^[^ ]+ /, ""); print; exit}')"
-fi
-[[ -n "$PROJECTION_JSON" && -f "$PROJECTION_JSON" ]] || { echo "BLOCKED_GATE3: preserved watch-quality-projection-v2 JSON not found" >&2; exit 2; }
-
 mkdir -p "$EVIDENCE_ROOT"
 chmod 700 "$EVIDENCE_ROOT"
 git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" scripts config | tar -x -C "$STAGE_ROOT"
@@ -48,15 +42,32 @@ PY="$HOST_REPO/.venv/bin/python"
 [[ -x "$PY" ]] || PY="$(command -v python3)"
 test -x "$PY"
 
+PROJECTION_JSON="${WATCH_QUALITY_PROJECTION_JSON:-}"
+PROJECTION_MODE=EXPLICIT_PRESERVED
+if [[ -z "$PROJECTION_JSON" ]]; then
+  PROJECTION_MODE=FRESH_EXACT_REF_READ_ONLY
+  PROJECTION_JSON="$EVIDENCE_ROOT/watch-quality-projection-v2-top200-$STAMP.json"
+  cd "$STAGE_ROOT"
+  PYTHONPATH="$STAGE_ROOT/scripts:$STAGE_ROOT/scripts/lib" \
+  "$PY" "$STAGE_ROOT/scripts/watch_quality_projection_v2.py" \
+    --limit 200 \
+    --sample-limit 15 \
+    --json-output "$PROJECTION_JSON"
+  chmod 600 "$PROJECTION_JSON"
+fi
+[[ -n "$PROJECTION_JSON" && -f "$PROJECTION_JSON" ]] || { echo "BLOCKED_GATE3: watch-quality-projection-v2 JSON not found" >&2; exit 2; }
+
 {
   printf 'reviewed_commit|%s\n' "$RESOLVED_COMMIT"
   printf 'source_mode|PINNED_GIT_OBJECT_ARCHIVE\n'
   printf 'host_worktree_checkout|UNCHANGED\n'
+  printf 'projection_mode|%s\n' "$PROJECTION_MODE"
   printf 'projection_json|%s\n' "$PROJECTION_JSON"
   printf 'governed_builder|watch-quality-governed-builder-v1\n'
   printf 'blind_model_system|DISABLED\n'
   printf 'inline_ticket_critic|DISABLED\n'
   sha256sum \
+    "$STAGE_ROOT/scripts/watch_quality_projection_v2.py" \
     "$STAGE_ROOT/scripts/watch_quality_gate3_sample_rebuild.py" \
     "$STAGE_ROOT/scripts/watch_quality_governed_builder.py" \
     "$STAGE_ROOT/scripts/watch_packet_quality.py" \
@@ -73,7 +84,10 @@ WATCH_QUALITY_SOURCE_COMMIT="$RESOLVED_COMMIT" \
 SHADOW_DISABLE_MODELS=1 \
 SHADOW_DISABLE_TICKET_CRITIC=1 \
 PYTHONPATH="$STAGE_ROOT/scripts:$STAGE_ROOT/scripts/lib" \
-"$PY" "$STAGE_ROOT/scripts/watch_quality_gate3_sample_rebuild.py" --projection-json "$PROJECTION_JSON" --evidence-json "$RESULT_JSON" | tee -a "$SUMMARY"
+"$PY" "$STAGE_ROOT/scripts/watch_quality_gate3_sample_rebuild.py" \
+  --projection-json "$PROJECTION_JSON" \
+  --evidence-json "$RESULT_JSON" \
+  | tee -a "$SUMMARY"
 
 chmod 600 "$SUMMARY" "$RESULT_JSON"
 printf 'sanitized_summary|%s\n' "$SUMMARY"
