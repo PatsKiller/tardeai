@@ -16,6 +16,7 @@ def watch_packet(*, quality="ADMITTED", validation="PASS", freshness="CURRENT"):
         "symbol": "AAPL",
         "evaluated_at": NOW,
         "facts_as_of": NOW,
+        "action_policy_version": "watch-action-policy-v1",
         "current_price": 200.0,
         "price_used": 200.0,
         "freshness": {"overall_state": freshness, "last_strategy_build_at": NOW},
