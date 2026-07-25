@@ -1,27 +1,21 @@
 #!/usr/bin/env python3
-"""watch_decision_scheduler.py — V5 server-owned refresh cadence (Section 4).
+"""Server-owned refresh cadence for the governed Watch decision desk.
 
-The browser NEVER schedules. This runs from cron (every 15 min, 07:40–16:30
-ET weekdays), reads config/watch_decision_refresh_policy.yaml, classifies the
-governed population into P0–P3, and enqueues LOCAL_QUANT rebuilds for symbols
-whose live packet is past its tier's full-packet ceiling OR input-invalidated.
-STANDARD_BLIND is enqueued only when the packet's last model pass is older than
-the tier's blind ceiling AND inputs materially changed. PREMIUM is never
-scheduled — operator-only by construction (the orchestrator refuses it without
-an enabled registry provider + explicit confirmation).
+The browser never schedules. Local deterministic rebuilds may repair incomplete
+research evidence, but OAuth blind lanes are eligible only after deterministic
+quality admission and ticket validation pass. Non-held quarantined names remain
+in audit and research history but do not consume the active refresh budget.
+Premium is operator-only and is never scheduled.
 
-    --dry-run   full plan + call/cost estimates, NO enqueue (required first run)
-    --run       sweep stale jobs, then enqueue due work (bounded per pass)
-
-Population: symbols with a live decision packet + starred symbols (the batch
-generator's top-50-by-rank population remains the nightly wide pass).
+    --dry-run   print the quality-aware plan; no enqueue or writes
+    --run       sweep stale jobs and enqueue bounded work
 """
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -30,114 +24,240 @@ sys.path.insert(1, str(PROJECT_ROOT / "scripts" / "lib"))
 
 import watch_decision_refresh as wdr  # noqa: E402
 
+TIER_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+QUALITY_ORDER = {"ADMITTED": 0, "UNASSESSED": 1, "RESEARCH_ONLY": 2, "QUARANTINED": 3}
+
 
 def _now():
     return datetime.now(timezone.utc)
 
 
+def _packet_gate(packet: dict | None) -> dict:
+    packet = packet or {}
+    plan = packet.get("current_actionable_plan") or {}
+    validation = plan.get("ticket_validation") or {}
+    quality = validation.get("quality_admission") or {}
+    ownership = packet.get("ownership") or {}
+    return {
+        "quality": str(quality.get("state") or "UNASSESSED").upper(),
+        "new_entry_allowed": quality.get("new_entry_allowed"),
+        "deterministic": str(validation.get("state") or "NOT_RUN").upper(),
+        "held": bool(ownership.get("held") or ownership.get("shares")),
+        "quality_reasons": quality.get("reasons") or [],
+    }
+
+
+def _priority_key(item: dict) -> tuple:
+    return (
+        TIER_ORDER.get(item.get("tier"), 9),
+        QUALITY_ORDER.get(item.get("quality"), 9),
+        str(item.get("symbol") or ""),
+    )
+
+
 def build_plan(conn) -> dict:
-    import packet_invalidation as pi
-    pol = wdr.load_policy()
-    tiers = pol.get("tiers") or {}
-    limits = pol.get("limits") or {}
+    import packet_invalidation as invalidation
+
+    policy = wdr.load_policy()
+    tiers = policy.get("tiers") or {}
+    limits = policy.get("limits") or {}
     cap = int(limits.get("max_symbols_per_scheduler_pass", 40))
     cur = conn.cursor()
-    cur.execute("""SELECT symbol, generated_at, model_review_mode FROM decision_packets
-                   WHERE superseded_by IS NULL""")
-    packets = {r[0].upper(): {"generated_at": r[1], "mode": r[2]} for r in cur.fetchall()}
+    cur.execute("""SELECT symbol, generated_at, model_review_mode, packet
+                   FROM decision_packets WHERE superseded_by IS NULL""")
+    packets = {
+        row[0].upper(): {
+            "generated_at": row[1],
+            "mode": row[2],
+            "packet": row[3] or {},
+            "gate": _packet_gate(row[3] or {}),
+        }
+        for row in cur.fetchall()
+    }
     cur.execute("SELECT upper(symbol) FROM operator_starred_symbols")
-    starred = {r[0] for r in cur.fetchall()}
+    starred = {row[0] for row in cur.fetchall()}
     population = sorted(set(packets) | starred)
 
     cur.execute("""SELECT DISTINCT symbol FROM watch_decision_refresh_jobs
                    WHERE state IN ('QUEUED','RUNNING')""")
-    in_flight = {r[0] for r in cur.fetchall()}
+    in_flight = {row[0].upper() for row in cur.fetchall()}
 
-    plan = {"local": [], "blind": [], "skipped_in_flight": [], "not_due": []}
+    plan = {
+        "local": [],
+        "blind": [],
+        "skipped_in_flight": [],
+        "quality_deferred": [],
+        "not_due": [],
+    }
+    quality_counts = {state: 0 for state in QUALITY_ORDER}
     now = _now()
-    for sym in population:
-        if sym in in_flight:
-            plan["skipped_in_flight"].append(sym)
-            continue
-        tier = wdr.classify_priority(sym, conn)
-        tcfg = tiers.get(tier) or {}
-        pk = packets.get(sym)
-        local_ceiling = tcfg.get("full_local_packet_max_minutes")
-        blind_ceiling = tcfg.get("standard_blind_max_minutes")
-        if not pk:
-            plan["local"].append({"symbol": sym, "tier": tier, "why": "PACKET_ABSENT"})
-            continue
-        age_min = (now - pk["generated_at"]).total_seconds() / 60
-        due_local = local_ceiling and age_min > float(local_ceiling)
-        if not due_local:
-            # invalidation-driven due-ness (cheap check only when inside the ceiling)
-            try:
-                snap = pi.build_current_input_snapshot(sym, conn)
-                cur.execute("""SELECT packet FROM decision_packets
-                               WHERE upper(symbol)=%s AND superseded_by IS NULL""", (sym,))
-                cmpr = pi.compare_packet_inputs(cur.fetchone()[0], snap)
-                if not cmpr.get("inputs_match"):
-                    due_local = True
-            except Exception:
-                conn.rollback()
-        if due_local:
-            plan["local"].append({"symbol": sym, "tier": tier,
-                                  "why": f"age {age_min:.0f}m > ceiling {local_ceiling}m"
-                                  if local_ceiling and age_min > float(local_ceiling) else "inputs changed"})
-            # blind rides along only when the model pass is ALSO past its ceiling
-            if blind_ceiling and float(blind_ceiling) > 0 and pk["mode"] in ("BLIND", "SINGLE_LANE"):
-                if age_min > float(blind_ceiling):
-                    plan["blind"].append({"symbol": sym, "tier": tier})
-        else:
-            plan["not_due"].append(sym)
 
+    for symbol in population:
+        packet_info = packets.get(symbol)
+        gate = packet_info["gate"] if packet_info else {
+            "quality": "UNASSESSED", "new_entry_allowed": None,
+            "deterministic": "NOT_RUN", "held": False, "quality_reasons": [],
+        }
+        quality_state = gate["quality"] if gate["quality"] in QUALITY_ORDER else "UNASSESSED"
+        quality_counts[quality_state] += 1
+        held_or_starred = gate["held"] or symbol in starred
+
+        if symbol in in_flight:
+            plan["skipped_in_flight"].append(symbol)
+            continue
+
+        tier = wdr.classify_priority(symbol, conn)
+        tier_config = tiers.get(tier) or {}
+        packet = packet_info
+
+        # A non-held quarantined research symbol remains queryable but is not an
+        # active scheduler candidate. Operator stars and holdings stay visible
+        # for evidence/management, never as an implicit new-entry exemption.
+        if quality_state == "QUARANTINED" and not held_or_starred:
+            plan["quality_deferred"].append({
+                "symbol": symbol,
+                "tier": tier,
+                "quality": quality_state,
+                "why": (gate["quality_reasons"] or ["quality gate refused active entry"])[0],
+            })
+            continue
+
+        local_ceiling = tier_config.get("full_local_packet_max_minutes")
+        blind_ceiling = tier_config.get("standard_blind_max_minutes")
+        due_local = False
+        due_reason = ""
+
+        if not packet:
+            due_local = True
+            due_reason = "PACKET_ABSENT — deterministic quality assessment required"
+        elif quality_state == "UNASSESSED":
+            due_local = True
+            due_reason = "QUALITY_UNASSESSED — rebuild locally before any model lane"
+        else:
+            age_min = (now - packet["generated_at"]).total_seconds() / 60
+            due_local = bool(local_ceiling and age_min > float(local_ceiling))
+            if due_local:
+                due_reason = f"age {age_min:.0f}m > ceiling {local_ceiling}m"
+            else:
+                try:
+                    snapshot = invalidation.build_current_input_snapshot(symbol, conn)
+                    comparison = invalidation.compare_packet_inputs(packet["packet"], snapshot)
+                    if not comparison.get("inputs_match"):
+                        due_local = True
+                        due_reason = "inputs changed"
+                except Exception:
+                    conn.rollback()
+
+        if not due_local:
+            plan["not_due"].append({
+                "symbol": symbol, "tier": tier, "quality": quality_state,
+            })
+            continue
+
+        local_item = {
+            "symbol": symbol,
+            "tier": tier,
+            "quality": quality_state,
+            "deterministic": gate["deterministic"],
+            "held_or_starred": held_or_starred,
+            "why": due_reason,
+        }
+        plan["local"].append(local_item)
+
+        # OAuth blind reasoning is an oversight layer, not a discovery filter.
+        # It is scheduled only for an admitted, deterministically valid ticket.
+        if (quality_state == "ADMITTED"
+                and gate["new_entry_allowed"] is not False
+                and gate["deterministic"] == "PASS"
+                and blind_ceiling and float(blind_ceiling) > 0
+                and packet):
+            age_min = (now - packet["generated_at"]).total_seconds() / 60
+            if age_min > float(blind_ceiling):
+                plan["blind"].append({
+                    "symbol": symbol,
+                    "tier": tier,
+                    "quality": quality_state,
+                    "why": f"admitted deterministic PASS; blind age {age_min:.0f}m > {blind_ceiling}m",
+                })
+
+    plan["local"].sort(key=_priority_key)
     plan["local"] = plan["local"][:cap]
-    blind_syms = {b["symbol"] for b in plan["blind"]}
-    plan["blind"] = [b for b in plan["blind"] if b["symbol"] in {x["symbol"] for x in plan["local"]} and b["symbol"] in blind_syms]
+    local_symbols = {item["symbol"] for item in plan["local"]}
+    plan["blind"] = [item for item in plan["blind"] if item["symbol"] in local_symbols]
+    plan["blind"].sort(key=_priority_key)
     lane_budget = int(limits.get("max_blind_lane_calls_per_hour", 60))
-    plan["blind"] = plan["blind"][: max(0, lane_budget // 2)]
+    plan["blind"] = plan["blind"][:max(0, lane_budget // 2)]
+    plan["quality_deferred"].sort(key=_priority_key)
+
     plan["estimates"] = {
         "local_symbols": len(plan["local"]),
         "blind_symbols": len(plan["blind"]),
         "lane_calls": 2 * len(plan["blind"]),
         "paid_cost_usd": 0,
-        "est_wall_minutes": round(len(plan["local"]) * 1.5 / max(1, int(limits.get("worker_concurrency", 2))), 1),
-        "population": len(population), "in_flight": len(plan["skipped_in_flight"]),
-        "not_due": len(plan["not_due"]), "policy_version": wdr.policy_version(),
+        "population": len(population),
+        "in_flight": len(plan["skipped_in_flight"]),
+        "not_due": len(plan["not_due"]),
+        "quality_deferred": len(plan["quality_deferred"]),
+        "quality_counts": quality_counts,
+        "policy_version": wdr.policy_version(),
+        "quality_policy_version": "watch-quality-admission-v1",
+        "authority": "local deterministic first; OAuth only after ADMITTED + PASS; premium never scheduled",
     }
     return plan
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--run", action="store_true")
-    ap.add_argument("--dry-run", action="store_true")
-    a = ap.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
     conn = wdr._conn()
-    if a.dry_run or not a.run:
+    if args.dry_run or not args.run:
         plan = build_plan(conn)
-        print(json.dumps({"dry_run": True, **plan["estimates"],
-                          "local": plan["local"], "blind": plan["blind"],
-                          "deferred_in_flight": plan["skipped_in_flight"]},
-                         indent=2, default=str))
+        print(json.dumps({
+            "dry_run": True,
+            **plan["estimates"],
+            "local": plan["local"],
+            "blind": plan["blind"],
+            "quality_deferred": plan["quality_deferred"],
+            "deferred_in_flight": plan["skipped_in_flight"],
+        }, indent=2, default=str))
         return
-    _pause = PROJECT_ROOT / "data" / "runtime" / "WATCH_SCHEDULER_PAUSED"
-    if _pause.exists():
-        print(json.dumps({"paused": True, "reason": _pause.read_text()[:200] or "operator pause"}))
+
+    pause = PROJECT_ROOT / "data" / "runtime" / "WATCH_SCHEDULER_PAUSED"
+    if pause.exists():
+        print(json.dumps({"paused": True, "reason": pause.read_text()[:200] or "operator pause"}))
         return
+
     swept = wdr.sweep_stale()
     plan = build_plan(conn)
     out = {"swept": len(swept.get("swept", [])), **plan["estimates"], "runs": []}
-    blind_syms = {b["symbol"] for b in plan["blind"]}
-    local_syms = [x["symbol"] for x in plan["local"] if x["symbol"] not in blind_syms]
-    if local_syms:
-        r = wdr.enqueue_run(local_syms, scope="AFFECTED_DIMENSIONS", analysis_tier="LOCAL_QUANT",
-                            requested_by="scheduler", reason="policy_cadence")
-        out["runs"].append({"tier": "LOCAL_QUANT", "run_id": r.get("run_id"), "queued": r.get("queued")})
-    if blind_syms:
-        r = wdr.enqueue_run(sorted(blind_syms), scope="AFFECTED_DIMENSIONS", analysis_tier="STANDARD_BLIND",
-                            requested_by="scheduler", reason="policy_blind_cadence")
-        out["runs"].append({"tier": "STANDARD_BLIND", "run_id": r.get("run_id"), "queued": r.get("queued")})
+    blind_symbols = {item["symbol"] for item in plan["blind"]}
+    local_symbols = [item["symbol"] for item in plan["local"] if item["symbol"] not in blind_symbols]
+    if local_symbols:
+        result = wdr.enqueue_run(
+            local_symbols,
+            scope="AFFECTED_DIMENSIONS",
+            analysis_tier="LOCAL_QUANT",
+            requested_by="scheduler",
+            reason="quality_aware_policy_cadence",
+        )
+        out["runs"].append({
+            "tier": "LOCAL_QUANT", "run_id": result.get("run_id"),
+            "queued": result.get("queued"),
+        })
+    if blind_symbols:
+        result = wdr.enqueue_run(
+            sorted(blind_symbols),
+            scope="AFFECTED_DIMENSIONS",
+            analysis_tier="STANDARD_BLIND",
+            requested_by="scheduler",
+            reason="admitted_quality_blind_cadence",
+        )
+        out["runs"].append({
+            "tier": "STANDARD_BLIND", "run_id": result.get("run_id"),
+            "queued": result.get("queued"),
+        })
     print(json.dumps(out, indent=2, default=str))
 
 
