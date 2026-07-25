@@ -45,7 +45,7 @@ def test_gate6_dry_run_precedes_activation_and_is_bounded():
         assert marker in SCHEDULER
 
 
-def test_gate6_exact_ref_runner_requires_gate4_and_live_gate5_build():
+def test_gate6_exact_ref_runner_requires_gate4_live_gate5_and_zero_models():
     for marker in (
         'WATCH_QUALITY_SOURCE_REF',
         'PASS_GATE4_READONLY_VERIFICATION',
@@ -53,6 +53,10 @@ def test_gate6_exact_ref_runner_requires_gate4_and_live_gate5_build():
         'live UI source commit differs from scheduler source',
         'watch-quality-governance-v1',
         'WATCH_QUALITY_SCHEDULER_MODE',
+        'SHADOW_DISABLE_MODELS=1',
+        'SHADOW_DISABLE_TICKET_CRITIC=1',
+        'blind_model_system|DISABLED',
+        'inline_ticket_critic|DISABLED',
         'oauth_lane|WITHHELD',
         'paid_lane|WITHHELD',
     ):
