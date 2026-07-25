@@ -9,7 +9,9 @@ This additive v11 postprocessor:
   non-passing cards from ``groups.get_into``;
 - attaches the shared evidence-maturity contract to every other recommendation
   group, pair and stance without changing its mechanics;
-- retains every non-passing object for audit.
+- retains every non-passing object for audit;
+- defers free critics until deterministic attachment is complete, then sends
+  only PASS or REVIEW_REQUIRED cards through the strict v2 oversight contract.
 
 No recommendation is activated, no proposal state is changed and no
 broker/order/approval/2FA path exists here.
@@ -177,7 +179,28 @@ def attach_due_diligence(
     return recommendations["due_diligence"]
 
 
+def _run_post_attachment_oversight() -> dict:
+    import defense_oversight_v2 as oversight
+    from db_adapter import _get_conn
+
+    oversight.activate_free()
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        result = oversight.run_free_critiques(cur)
+        conn.commit()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
+
+
 def main() -> int:
+    import defense_oversight_v2 as oversight
+
+    # The inherited v10 producer normally calls critics before returning. Defer
+    # that exact call so the shared deterministic packet exists first.
+    oversight.install(defer_free=True)
     result = v10.main()
     if (
         result == 0
@@ -191,6 +214,17 @@ def main() -> int:
             f"{summary['eligible_get_into']} · withheld "
             f"{summary['withheld_get_into']}"
         )
+        try:
+            review = _run_post_attachment_oversight()
+            print(
+                f"[defense] oversight after diligence: {review.get('seats', {})} · "
+                f"provider calls {review.get('provider_calls', 0)}"
+            )
+        except Exception as exc:
+            print(
+                "[defense] oversight after diligence skipped: "
+                + str(exc).splitlines()[0][:120]
+            )
     return result
 
 
