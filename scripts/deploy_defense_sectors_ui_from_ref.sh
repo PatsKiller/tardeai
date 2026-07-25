@@ -4,14 +4,12 @@ set -euo pipefail
 readonly ACK_REQUIRED="DEFENSE_SECTORS_SHADOW_UI_ONLY"
 readonly HOST_REPO="${REPO:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
 readonly SOURCE_REF="${UI_SOURCE_REF:-}"
-readonly LIVE_DIST="$HOST_REPO/apps/command-center-v3/dist"
+readonly LIVE_APP="$HOST_REPO/apps/command-center-v3"
+readonly LIVE_DIST="$LIVE_APP/dist"
 readonly BACKUP_ROOT="/home/johnclaw/tradeai-deploy-backups/command-center-v3"
 readonly STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-readonly RESOLVED_COMMIT="$(git -C "$HOST_REPO" rev-parse "$SOURCE_REF^{commit}")"
 readonly STAGE_ROOT="$(mktemp -d /tmp/defense-sectors-ui-stage.XXXXXX)"
 readonly CANDIDATE="${LIVE_DIST}.candidate-${STAMP}"
-readonly BACKUP_DIR="$BACKUP_ROOT/${STAMP}-${RESOLVED_COMMIT:0:12}"
-readonly BACKUP_DIST="$BACKUP_DIR/dist"
 readonly TAR="$(command -v tar)"
 readonly NPM="$(command -v npm)"
 readonly NPX="$(command -v npx)"
@@ -21,7 +19,7 @@ OLD_MOVED=0
 NEW_INSTALLED=0
 cleanup() {
   rm -rf "$STAGE_ROOT" "$CANDIDATE"
-  if [[ "$OLD_MOVED" -eq 1 && "$NEW_INSTALLED" -eq 0 && -d "$BACKUP_DIST" && ! -d "$LIVE_DIST" ]]; then
+  if [[ "$OLD_MOVED" -eq 1 && "$NEW_INSTALLED" -eq 0 && -d "${BACKUP_DIST:-}" && ! -d "$LIVE_DIST" ]]; then
     mv "$BACKUP_DIST" "$LIVE_DIST"
   fi
 }
@@ -35,14 +33,19 @@ if [[ -z "$SOURCE_REF" || ! "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
   echo "BLOCKED_UI_DEPLOYMENT: UI_SOURCE_REF must be an exact 40-character commit SHA" >&2
   exit 2
 fi
-if [[ "$RESOLVED_COMMIT" != "$SOURCE_REF" ]]; then
-  echo "BLOCKED_UI_DEPLOYMENT: resolved commit differs from exact source ref" >&2
-  exit 2
-fi
 if [[ ! -d "$HOST_REPO/.git" ]]; then
   echo "BLOCKED_UI_DEPLOYMENT: repository unavailable: $HOST_REPO" >&2
   exit 2
 fi
+git -C "$HOST_REPO" cat-file -e "$SOURCE_REF^{commit}"
+readonly RESOLVED_COMMIT="$(git -C "$HOST_REPO" rev-parse "$SOURCE_REF^{commit}")"
+if [[ "$RESOLVED_COMMIT" != "$SOURCE_REF" ]]; then
+  echo "BLOCKED_UI_DEPLOYMENT: resolved commit differs from exact source ref" >&2
+  exit 2
+fi
+readonly BACKUP_DIR="$BACKUP_ROOT/${STAMP}-${RESOLVED_COMMIT:0:12}"
+readonly BACKUP_DIST="$BACKUP_DIR/dist"
+
 for required in "$TAR" "$NPM" "$NPX" "$PYTHON"; do
   if [[ -z "$required" || ! -x "$required" ]]; then
     echo "BLOCKED_UI_DEPLOYMENT: required existing command unavailable" >&2
@@ -51,10 +54,7 @@ for required in "$TAR" "$NPM" "$NPX" "$PYTHON"; do
 done
 
 mkdir -p "$STAGE_ROOT"
-git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
-  apps/command-center-v3 \
-  scripts/check_design_tokens.sh \
-  scripts/test_chip_scope.mjs \
+git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" apps/command-center-v3 scripts/check_design_tokens.sh scripts/test_chip_scope.mjs \
   | "$TAR" -x -C "$STAGE_ROOT"
 
 readonly STAGED_APP="$STAGE_ROOT/apps/command-center-v3"
