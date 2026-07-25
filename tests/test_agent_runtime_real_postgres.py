@@ -13,9 +13,13 @@ import threading
 
 import pytest
 
-psycopg2 = pytest.importorskip("psycopg2")
+_REAL = os.getenv("AGENTIC_REAL_LAB") == "1"
+if _REAL:
+    import psycopg2  # host-proof mode: a missing driver is a HARD failure, never a skip
+else:
+    psycopg2 = pytest.importorskip("psycopg2")
 
-pytestmark = pytest.mark.skipif(os.getenv("AGENTIC_REAL_LAB") != "1", reason="real LAB proof runs only under the host-proof wrapper")
+pytestmark = pytest.mark.skipif(not _REAL, reason="real LAB proof runs only under the host-proof wrapper")
 
 from scripts.agent_runtime.contracts import (  # noqa: E402
     Artifact,
@@ -123,6 +127,40 @@ def test_real_export_replay_and_tamper():
     manifest = export_manifest(s, rid)
     assert replay_jsonl(lines, manifest=manifest)["run_id"] == rid
     assert not verify_jsonl(lines[:-1], manifest=manifest).ok  # truncated tail
+
+
+def test_real_tool_call_lifecycle_durably_reconstructed():
+    """A real tool call: started -> succeeded and failed, durably reconstructed on a
+    fresh connection, associated with the correct run, carrying no secret material."""
+    s = _store()
+    rid = _rid("tool")
+    s.create_run(_env(rid), BudgetPolicy())
+    args = canonical_hash({"query": "levels", "symbol": "V"})
+    result = canonical_hash({"levels": [351.0, 367.0]})
+    # started -> succeeded
+    ok = s.record_tool_lifecycle(rid, agent_id="alpha_agent", tool_name="kb.search", decision="ALLOW",
+                                 decision_reason="allowlisted", arguments_hash=args, result_hash=result,
+                                 started_at="2026-07-25T01:00:00+00:00", completed_at="2026-07-25T01:00:01+00:00",
+                                 terminal_state="completed")
+    # started -> failed
+    args2 = canonical_hash({"query": "levels", "symbol": "RTX"})
+    bad = s.record_tool_lifecycle(rid, agent_id="alpha_agent", tool_name="kb.search", decision="ALLOW",
+                                  decision_reason="allowlisted", arguments_hash=args2, result_hash=None,
+                                  started_at="2026-07-25T01:00:02+00:00", completed_at="2026-07-25T01:00:03+00:00",
+                                  terminal_state="failed")
+    # durable reconstruction on a FRESH store/connection
+    fresh = _store()
+    state = fresh.reconstruct(rid)
+    assert ok in state.tool_calls_ids and bad in state.tool_calls_ids     # associated with the correct run
+    assert state.tool_calls == 2
+    types = [e.event_type for e in fresh.journal(rid)]
+    for stage in ("TOOL_PROPOSED", "TOOL_DECISION", "TOOL_STARTED", "TOOL_COMPLETED", "TOOL_FAILED"):
+        assert stage in types
+    # no secret material: only sha256 hashes are persisted (never raw args/results),
+    # and the exported journal contains no secret-like tokens or raw content.
+    blob = "\n".join(export_run_jsonl(fresh, rid)).lower()
+    for token in ("password", "secret", "token", "levels", "351.0"):
+        assert token not in blob
 
 
 def test_real_two_connection_concurrency_no_fork():

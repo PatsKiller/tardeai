@@ -52,15 +52,6 @@ LAB_ACK="$LAB_ACK" REPO="$HOST_REPO" AGENTIC_SOURCE_REF="$RESOLVED" \
   bash "$STAGE/scripts/agent_runtime/lab_evolve_from_ref.sh" >/dev/null \
   || fail "LAB evolve did not reach PASS_DB_PROOF"
 
-# 5) run the REAL psycopg2 adapter suite with no skip (two-connection concurrency incl.)
-run_real() {
-  cd "$STAGE"
-  AGENTIC_REAL_LAB=1 AGENTIC_LAB_SOCK="$LAB_SOCK" AGENTIC_LAB_DB="$LAB_DB" \
-    PYTHONPATH="$STAGE" "$PY" -m pytest -q \
-      tests/test_agent_runtime_real_postgres.py \
-      -k "$1"
-}
-
 teardown() {
   local rb
   rb="$(ls -t "$EVIDENCE_DIR"/agentic-runtime-rollback-*.sql 2>/dev/null | head -1 || true)"
@@ -73,26 +64,81 @@ teardown() {
   fi
 }
 
-# Each named test proves one property; gate the marker on its pass.
-declare -A CHECKS=(
-  [real_postgres_roundtrip]="test_real_roundtrip_review_score_and_completion"
-  [artifact_review_score_binding]="test_real_roundtrip_review_score_and_completion"
-  [durable_tool_lifecycle]="test_real_roundtrip_review_score_and_completion"
-  [append_only_journal]="test_real_append_only_trigger_blocks_update"
-  [idempotency_conflict_detection]="test_real_idempotency_conflict_and_rollback"
-  [post_terminal_independent_score]="test_real_roundtrip_review_score_and_completion"
-  [kb_persistence]="test_real_kb_persistence"
-  [replay_manifest_and_tamper]="test_real_export_replay_and_tamper"
-  [two_connection_concurrency]="test_real_two_connection_concurrency_no_fork"
-)
+# 5) the driver must be present in host-proof mode — a missing driver is a hard failure
+"$PY" -c 'import psycopg2' 2>/dev/null || { teardown; fail "psycopg2 is required for the real host proof (missing driver is not a skip)"; }
 
-if AGENTIC_REAL_LAB=1 AGENTIC_LAB_SOCK="$LAB_SOCK" AGENTIC_LAB_DB="$LAB_DB" PYTHONPATH="$STAGE" \
-     "$PY" -m pytest -q "$STAGE/tests/test_agent_runtime_real_postgres.py" >"$STAGE/real.txt" 2>&1; then
-  for marker in real_postgres_roundtrip idempotency_conflict_detection artifact_review_score_binding \
-                durable_tool_lifecycle append_only_journal post_terminal_independent_score \
-                kb_persistence replay_manifest_and_tamper two_connection_concurrency; do
-    echo "${marker}|PASS"
-  done
+# 6) run the REAL psycopg2 adapter suite; capture and PRESERVE the actual pytest output
+readonly STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+readonly PYTEST_LOG="$EVIDENCE_DIR/agentic-runtime-hostproof-pytest-$STAMP.txt"
+readonly JUNIT="$STAGE/real-junit.xml"
+mkdir -p "$EVIDENCE_DIR"
+set +e
+AGENTIC_REAL_LAB=1 AGENTIC_LAB_SOCK="$LAB_SOCK" AGENTIC_LAB_DB="$LAB_DB" PYTHONPATH="$STAGE" \
+  "$PY" -m pytest -rA -v -p no:cacheprovider \
+    --junitxml="$JUNIT" \
+    "$STAGE/tests/test_agent_runtime_real_postgres.py" 2>&1 | tee "$PYTEST_LOG"
+readonly PYTEST_RC=${PIPESTATUS[0]}
+set -e
+chmod 600 "$PYTEST_LOG" 2>/dev/null || true
+echo "pytest_evidence|$PYTEST_LOG"
+echo "pytest_exit|$PYTEST_RC"
+
+# 7) gate each property marker on its OWN test having demonstrably PASSED.
+#    Any skipped, xfailed, errored, failed, or uncollected required test fails the proof.
+set +e
+"$PY" - "$JUNIT" "$PYTEST_RC" <<'PYEOF'
+import sys, xml.etree.ElementTree as ET
+junit, rc = sys.argv[1], int(sys.argv[2])
+# property marker -> the exact test that must pass to earn it
+REQUIRED = {
+    "real_postgres_roundtrip": "test_real_roundtrip_review_score_and_completion",
+    "artifact_review_score_binding": "test_real_roundtrip_review_score_and_completion",
+    "post_terminal_independent_score": "test_real_roundtrip_review_score_and_completion",
+    "append_only_journal": "test_real_append_only_trigger_blocks_update",
+    "idempotency_conflict_detection": "test_real_idempotency_conflict_and_rollback",
+    "replay_manifest_and_tamper": "test_real_export_replay_and_tamper",
+    "durable_tool_lifecycle": "test_real_tool_call_lifecycle_durably_reconstructed",
+    "kb_persistence": "test_real_kb_persistence",
+    "two_connection_concurrency": "test_real_two_connection_concurrency_no_fork",
+}
+try:
+    root = ET.parse(junit).getroot()
+except Exception as exc:
+    print(f"BLOCKED_AGENT_RUNTIME_PROOF: cannot read junit evidence: {exc}", file=sys.stderr)
+    sys.exit(4)
+outcome = {}
+for case in root.iter("testcase"):
+    name = case.get("name", "")
+    kids = {child.tag for child in case}
+    if kids & {"failure", "error"}:
+        outcome[name] = "failed"
+    elif "skipped" in kids:
+        outcome[name] = "skipped"   # covers skip AND xfail
+    else:
+        outcome[name] = "passed"
+problems = []
+if rc != 0:
+    problems.append(f"pytest exit {rc}")
+for test in set(REQUIRED.values()):
+    state = outcome.get(test)
+    if state is None:
+        problems.append(f"{test}: UNCOLLECTED")
+    elif state != "passed":
+        problems.append(f"{test}: {state.upper()}")
+# emit each property marker only when its test demonstrably passed
+for marker, test in sorted(REQUIRED.items()):
+    if outcome.get(test) == "passed":
+        print(f"{marker}|PASS")
+    else:
+        print(f"{marker}|FAIL", file=sys.stderr)
+if problems:
+    print("BLOCKED_AGENT_RUNTIME_PROOF: " + "; ".join(problems), file=sys.stderr)
+    sys.exit(5)
+PYEOF
+gate_rc=$?
+set -e
+
+if [[ "$gate_rc" -eq 0 ]]; then
   teardown
   echo "activation_authority|DENIED"
   echo "production_database_write|NONE"
