@@ -54,7 +54,7 @@ def test_gate3_has_no_model_scheduler_ui_or_execution_authority():
         assert evidence in RUNNER
 
 
-def test_gate3_wrapper_pins_source_and_preserves_dirty_checkout():
+def test_gate3_wrapper_pins_source_and_disables_every_model_path():
     for marker in (
         'WATCH_GATE3_EXECUTION_ACK',
         'EXECUTE_WATCH_QUALITY_GATE3',
@@ -62,6 +62,11 @@ def test_gate3_wrapper_pins_source_and_preserves_dirty_checkout():
         'git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" scripts config',
         'host_worktree_checkout|UNCHANGED',
         'WATCH_GATE3_ACK=BOUNDED_LOCAL_QUANT_SAMPLE',
+        'WATCH_QUALITY_SOURCE_COMMIT="$RESOLVED_COMMIT"',
+        'SHADOW_DISABLE_MODELS=1',
+        'SHADOW_DISABLE_TICKET_CRITIC=1',
+        'blind_model_system|DISABLED',
+        'inline_ticket_critic|DISABLED',
         'final_status|PASS_GATE3_OPERATOR_PACKET',
     ):
         assert marker in WRAPPER
