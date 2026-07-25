@@ -28,7 +28,7 @@ def test_deploy_packet_builds_from_git_objects_not_live_source():
         assert token not in SCRIPT.lower()
 
 
-def test_deploy_packet_validates_decision_board_and_global_review_markers():
+def test_deploy_packet_validates_decision_board_global_review_and_structured_evidence_markers():
     for marker in (
         "Sector decision board",
         "ELIGIBLE NOW",
@@ -44,6 +44,10 @@ def test_deploy_packet_validates_decision_board_and_global_review_markers():
         "URL-addressable decision, provenance and evidence review",
         "data-command-center-modal",
         "OPEN REVIEW",
+        "command-center-structured-provenance-v1",
+        "Structured provenance, freshness, directive lineage and watch memberships",
+        "symbol-provenance",
+        "structured_evidence_contract",
     ):
         assert marker in SCRIPT
 
