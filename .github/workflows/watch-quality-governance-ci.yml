@@ -10,6 +10,8 @@ on:
       - 'config/research_due_diligence_policy.json'
       - 'scripts/watch_quality_policy.py'
       - 'scripts/watch_packet_quality.py'
+      - 'scripts/watch_quality_projection.py'
+      - 'scripts/watch_quality_projection_v2.py'
       - 'scripts/strategy_ticket_validator.py'
       - 'scripts/strategy_ticket_review.py'
       - 'scripts/strategy_ticket_reconciler.py'
@@ -58,6 +60,8 @@ jobs:
           python -m py_compile \
             scripts/watch_quality_policy.py \
             scripts/watch_packet_quality.py \
+            scripts/watch_quality_projection.py \
+            scripts/watch_quality_projection_v2.py \
             scripts/strategy_ticket_validator.py \
             scripts/strategy_ticket_review.py \
             scripts/strategy_ticket_reconciler.py \
@@ -79,6 +83,8 @@ jobs:
             tests/test_watch_packet_quality.py \
             tests/test_watch_quality_scheduler_contract.py \
             tests/test_watch_quality_audit_contract.py \
+            tests/test_watch_quality_projection.py \
+            tests/test_watch_quality_projection_v2.py \
             tests/test_watch_quality_ui_contract.py \
             tests/test_ticket_review_worker_fail_closed.py \
             tests/test_validate_watch_quality_governance_from_ref.py \
@@ -101,6 +107,8 @@ jobs:
           ! grep -R -n -E 'broker_submit|place_order|approve_order|2fa_unlock' \
             scripts/watch_quality_policy.py \
             scripts/watch_packet_quality.py \
+            scripts/watch_quality_projection.py \
+            scripts/watch_quality_projection_v2.py \
             scripts/strategy_ticket_validator.py \
             scripts/strategy_ticket_review.py \
             scripts/strategy_ticket_reconciler.py \
