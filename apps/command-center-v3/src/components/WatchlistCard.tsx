@@ -129,6 +129,8 @@ export type WatchlistCardProps = {
   outcome?: any
   llms: any[]
   fv?: any
+  /** Closed-session support/resistance slice from portfolio.reentry.resistance.v1. */
+  lvl?: any
   reportEntry?: any
   paMap: Record<string, any>
   /** Proposal accounts for the Sizing & Account Risk module (from /api/v2/proposal-accounts). */
