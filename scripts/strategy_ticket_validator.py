@@ -21,7 +21,7 @@ import hashlib
 import json
 import math
 
-VALIDATOR_VERSION = "1.0.0"
+VALIDATOR_VERSION = "1.1.0"
 RR_TOLERANCE = 0.15               # recomputed vs displayed R:R
 PRICE_TOLERANCE = 0.01
 CHASE_MAX_PCT = 1.5               # entry farther than this from price → not current
@@ -51,12 +51,45 @@ def facts_hash(facts: dict) -> str:
                                      sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
+def _quality_admission(family: str, ticket: dict, facts: dict,
+                       technical_snapshot: dict | None, ownership) -> dict:
+    """Evaluate the model-free instrument/strategy admission policy.
+
+    Importing inside the function keeps this validator independently usable in
+    narrow test harnesses while still failing closed when the policy module
+    itself cannot be evaluated.
+    """
+    try:
+        import watch_quality_policy as quality
+        return quality.evaluate_admission(
+            facts,
+            technical_snapshot=technical_snapshot,
+            ticket=ticket,
+            family=family,
+            ownership=ownership,
+        )
+    except Exception as exc:
+        return {
+            "policy_version": "watch-quality-admission-v1",
+            "state": "RESEARCH_ONLY",
+            "new_entry_allowed": False,
+            "management_only": False,
+            "family": str(family or "").upper() or None,
+            "reasons": [f"quality admission unavailable: {type(exc).__name__}: {str(exc)[:120]}"],
+            "hard_failures": [],
+            "warnings": ["quality admission unavailable — fail closed to research only"],
+            "authority": "deterministic admission only; models cannot override",
+        }
+
+
 def validate_ticket(symbol: str, family: str, candidate_ticket: dict,
                     current_facts: dict, technical_snapshot: dict | None = None,
                     event_state=None, ownership=None, risk_policy=None) -> dict:
     t = candidate_ticket or {}
     hard: list[str] = []
     warnings: list[str] = []
+    admission = _quality_admission(family, t, current_facts,
+                                   technical_snapshot, ownership)
     price = _num(current_facts.get("live_price")) or _num(current_facts.get("enriched_price"))
     atr = _num(current_facts.get("atr"))
     entry = _num(t.get("limit_price"))
@@ -72,9 +105,23 @@ def validate_ticket(symbol: str, family: str, candidate_ticket: dict,
                   "distance_to_entry_pct": None, "distance_to_entry_atr": None}
 
     if not is_current or not any(v is not None for v in (entry, stop, target)):
-        # no current mechanics claimed — nothing to gate; PASS as a non-actionable ticket
+        # No current mechanics claimed: preserve the quality classification in
+        # audit, but do not turn a non-actionable record into a ticket failure.
         return _result("PASS", hard, warnings, recomputed, t, current_facts,
+                       quality_admission=admission,
                        note="no current mechanics claimed")
+
+    # ── deterministic quality admission ──────────────────────────────────────
+    # A research-only or quarantined instrument may remain visible, but it may
+    # not carry current new-entry mechanics.  Existing holdings are management
+    # surfaces only; the admission record explicitly denies a new add.
+    if admission.get("state") == "QUARANTINED":
+        reasons = admission.get("hard_failures") or admission.get("reasons") or []
+        hard.extend([f"quality admission: {reason}" for reason in reasons[:5]])
+    elif not admission.get("new_entry_allowed", False):
+        reasons = admission.get("warnings") or admission.get("reasons") or []
+        hard.append("quality admission: instrument is RESEARCH_ONLY; current entry mechanics are withheld")
+        hard.extend([f"quality admission: {reason}" for reason in reasons[:4]])
 
     # ── numeric sanity ───────────────────────────────────────────────────────
     for name, v in (("entry/limit", entry), ("stop", stop), ("target", target)):
@@ -85,7 +132,8 @@ def validate_ticket(symbol: str, family: str, candidate_ticket: dict,
     if price is None:
         hard.append("no current price in facts — a current ticket cannot be validated")
     if hard:
-        return _result("FAIL", hard, warnings, recomputed, t, current_facts)
+        return _result("FAIL", hard, warnings, recomputed, t, current_facts,
+                       quality_admission=admission)
 
     # ── ordering invariants ──────────────────────────────────────────────────
     if zlo is not None and zhi is not None and zlo > zhi + PRICE_TOLERANCE:
@@ -141,7 +189,7 @@ def validate_ticket(symbol: str, family: str, candidate_ticket: dict,
     if entry_state in ("MISSED_ENTRY", "INVALIDATED"):
         hard.append(f"entry_state={entry_state} ticket still claims current mechanics")
 
-    # ── technical/event context (soft unless clearly blocking) ───────────────
+    # ── technical/event context ──────────────────────────────────────────────
     if technical_snapshot:
         fresh = str(technical_snapshot.get("overall_freshness", ""))
         if fresh == "FAILED":
@@ -152,12 +200,15 @@ def validate_ticket(symbol: str, family: str, candidate_ticket: dict,
         hard.append(f"event state {ev} blocks a current-entry ticket")
 
     state = "FAIL" if hard else ("REVIEW_REQUIRED" if warnings else "PASS")
-    return _result(state, hard, warnings, recomputed, t, current_facts)
+    return _result(state, hard, warnings, recomputed, t, current_facts,
+                   quality_admission=admission)
 
 
-def _result(state, hard, warnings, recomputed, ticket, facts, note=None):
+def _result(state, hard, warnings, recomputed, ticket, facts,
+            quality_admission=None, note=None):
     out = {"state": state, "hard_failures": hard, "warnings": warnings,
            "recomputed": recomputed,
+           "quality_admission": quality_admission or {},
            "ticket_hash": ticket_hash(ticket or {}),
            "facts_hash": facts_hash(facts or {}),
            "validator_version": VALIDATOR_VERSION}
