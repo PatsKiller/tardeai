@@ -4,7 +4,7 @@
 
 - Branch: `agent/agent-maturity-command-center-v1`
 - Exact starting point: `28645f8b9fa8031c42771da19511a97fa464d915`
-- Current implementation head: `c2aac0ddc98d286fab9601dc7f10c295041247a1`
+- Current implementation head: see PR #175 exact head
 - Parent program: PR #163, governed agentic MVL foundation
 - Deployment state: `DESIGNED / SHADOW ONLY`
 - Production activation: not authorized
@@ -232,7 +232,7 @@ Iris or operator can ratify/reject lessons
 
 The first exact-ref host run at `5881901374f6a610f29423aa0e98e00837dde4b8` passed the six focused monitoring tests, then stopped at the existing design-token guard because the temporary archive omitted `config/design_token_baseline.json`.
 
-The corrected packet at `c2aac0ddc98d286fab9601dc7f10c295041247a1`:
+The corrected packet:
 
 - archives the existing design-token baseline;
 - removes raw hex literals from the new Runtime page by importing semantic tokens;
