@@ -230,11 +230,12 @@ def _install_runtime(monkeypatch, conn, *, fail_on_symbol=None, interrupt=False)
         ],
     }
     monkeypatch.setattr(ATOMIC, "build_local_plan", lambda limit: plan)
-    monkeypatch.setattr(ATOMIC.refresh, "_conn", lambda: conn)
+    monkeypatch.setattr(ATOMIC.refresh, "_conn", lambda: conn, raising=False)
     monkeypatch.setattr(
         ATOMIC.governed_builder,
         "build_packet",
         lambda symbol, *args, **kwargs: _packet(symbol),
+        raising=False,
     )
     next_id = iter((2001, 2002))
 
@@ -252,7 +253,7 @@ def _install_runtime(monkeypatch, conn, *, fail_on_symbol=None, interrupt=False)
         }
         return packet_id
 
-    monkeypatch.setattr(ATOMIC.decision_service, "persist", persist)
+    monkeypatch.setattr(ATOMIC.decision_service, "persist", persist, raising=False)
     monkeypatch.setenv("WATCH_QUALITY_LOCAL_SCHEDULER_ACK", ATOMIC.ACK_REQUIRED)
     monkeypatch.setattr(ATOMIC, "PROJECT_ROOT", ROOT)
 
