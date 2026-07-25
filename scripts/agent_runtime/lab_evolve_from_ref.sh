@@ -23,22 +23,22 @@ if [[ ! -x "$GIT" || ! -x "$TAR" || ! -x "$BASH" ]]; then
   exit 2
 fi
 
-readonly REPO="${REPO:-$REPO_DEFAULT}"
+readonly HOST_REPO="${REPO:-$REPO_DEFAULT}"
 readonly SOURCE_REF="${AGENTIC_SOURCE_REF:-}"
-if [[ ! -d "$REPO/.git" ]]; then
-  echo "BLOCKED_LAB_PROVISIONING: REPO is not a Git worktree: $REPO" >&2
+if [[ ! -d "$HOST_REPO/.git" ]]; then
+  echo "BLOCKED_LAB_PROVISIONING: REPO is not a Git worktree: $HOST_REPO" >&2
   exit 2
 fi
 if [[ ! "$SOURCE_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
   echo "BLOCKED_LAB_PROVISIONING: AGENTIC_SOURCE_REF must be one exact 40-character commit SHA" >&2
   exit 2
 fi
-if ! "$GIT" -C "$REPO" cat-file -e "$SOURCE_REF^{commit}" 2>/dev/null; then
+if ! "$GIT" -C "$HOST_REPO" cat-file -e "$SOURCE_REF^{commit}" 2>/dev/null; then
   echo "BLOCKED_LAB_PROVISIONING: reviewed source commit is unavailable locally" >&2
   exit 2
 fi
 
-readonly RESOLVED_COMMIT="$("$GIT" -C "$REPO" rev-parse "$SOURCE_REF^{commit}")"
+readonly RESOLVED_COMMIT="$("$GIT" -C "$HOST_REPO" rev-parse "$SOURCE_REF^{commit}")"
 if [[ "${RESOLVED_COMMIT,,}" != "${SOURCE_REF,,}" ]]; then
   echo "BLOCKED_LAB_PROVISIONING: source ref did not resolve to the exact supplied commit" >&2
   exit 2
@@ -51,7 +51,7 @@ required_paths=(
   config/agent_runtime_mvl.json
 )
 for path in "${required_paths[@]}"; do
-  if ! "$GIT" -C "$REPO" cat-file -e "$RESOLVED_COMMIT:$path" 2>/dev/null; then
+  if ! "$GIT" -C "$HOST_REPO" cat-file -e "$RESOLVED_COMMIT:$path" 2>/dev/null; then
     echo "BLOCKED_LAB_PROVISIONING: required reviewed path unavailable at source commit: $path" >&2
     exit 2
   fi
@@ -65,7 +65,7 @@ trap cleanup EXIT
 chmod 700 "$STAGE_ROOT"
 
 # Read only from Git's object database. The dirty/current checkout is not trusted or changed.
-"$GIT" -C "$REPO" archive "$RESOLVED_COMMIT" \
+"$GIT" -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
   migrations/agentic_runtime \
   scripts/agent_runtime \
   config/agent_runtime_mvl.json \
@@ -85,4 +85,4 @@ printf 'staged_inner_sha256|'; sha256sum "$INNER" | awk '{print $1}'
 printf 'staged_up_migration_sha256|'; sha256sum "$STAGE_ROOT/migrations/agentic_runtime/0001_mvl.up.sql" | awk '{print $1}'
 printf 'staged_down_migration_sha256|'; sha256sum "$STAGE_ROOT/migrations/agentic_runtime/0001_mvl.down.sql" | awk '{print $1}'
 
-LAB_ACK="$LAB_ACK" REPO="$STAGE_ROOT" "$BASH" "$INNER"
+env LAB_ACK="$LAB_ACK" REPO="$STAGE_ROOT" "$BASH" "$INNER"
