@@ -4,9 +4,11 @@
 
 - Branch: `agent/agent-maturity-command-center-v1`
 - Exact starting point: `28645f8b9fa8031c42771da19511a97fa464d915`
+- Current implementation head: `c2aac0ddc98d286fab9601dc7f10c295041247a1`
 - Parent program: PR #163, governed agentic MVL foundation
 - Deployment state: `DESIGNED / SHADOW ONLY`
 - Production activation: not authorized
+- Authoritative persistence adapter: not connected
 
 This plan makes agent documentation, maturity, observability, operator control, scoring, and retirement evidence first-class deliverables. An agent is not considered mature merely because a script, prompt, schedule, or personality name exists.
 
@@ -159,67 +161,23 @@ The API must:
 - expose deadlines, budgets, tool-call counts, provider/model identity, latency, cost, reviews, scores, and operator disposition when available;
 - provide deterministic status summaries rather than model-written health labels.
 
-The first UI tranche may use fixtures and an interface-compatible read adapter while the Codex persistence lane implements the authoritative Postgres adapter. No duplicate persistence layer may be created on this branch.
+The first UI tranche uses fixtures and an interface-compatible read adapter while the Codex persistence lane implements the authoritative PostgreSQL adapter. No duplicate persistence layer is created on this branch.
 
 ## Command Center v3 monitoring surface
 
-Add a first-class `/v3/agents` workspace and contextual agent panels on relevant pages.
+The first-class `/v3/agents` workspace now preserves the prior roster/calibration interface under `Legacy analytics` while making governed runtime monitoring the default `Runtime` view.
 
-### Global Agents workspace
+### Implemented global workspace
 
-The main page must provide:
-
-1. **Fleet summary**
-   - counts by lifecycle state;
-   - running, blocked, failed, stale, cancelled, and deadline-exceeded runs;
-   - unreviewed and unscored artifacts;
-   - current tool/provider availability;
-   - last successful reflection and scoring cycles.
-
-2. **Agent catalog**
-   - display/stable name;
-   - objective;
-   - owner;
-   - deployment state;
-   - current version;
-   - last run and next eligible trigger;
-   - success, abstention, failure, and false-positive metrics;
-   - current limitations;
-   - documentation link.
-
-3. **Run queue and timeline**
-   - run ID and trigger;
-   - subject/symbol/entity;
-   - current checkpoint;
-   - deadline and budget utilization;
-   - retrieval, tool-call, artifact, review, and score stages;
-   - explicit blocker or stop reason;
-   - operator status/explain/cancel/replay controls only where governed APIs exist.
-
-4. **Artifact review desk**
-   - immutable artifact hash;
-   - producer;
-   - independent reviewer and scorer;
-   - deterministic gate result;
-   - contradictions and abstentions;
-   - operator disposition;
-   - eventual outcome and Darwin score.
-
-5. **Knowledge and learning**
-   - cases and lessons;
-   - candidate, ratified, rejected, stale, and superseded lesson states;
-   - contradiction links;
-   - Nightly Reflection outputs;
-   - Iris/operator adjudication evidence;
-   - no automatic production promotion.
-
-6. **Authority and safety**
-   - visible denied capabilities;
-   - production reachability state;
-   - last authority scan;
-   - secret-rejection state;
-   - rollback/disable status;
-   - zero broker/order/approval/2FA authority indicator.
+- fleet summary and lifecycle counts;
+- canonical 16-agent catalog;
+- selected-agent contract inspection;
+- owner, trigger, artifact, review, scoring, budget, limitation, disable and rollback visibility;
+- explicit `FIXTURE`, `NOT RUN`, `READ ONLY`, and `SHADOW ONLY` provenance;
+- empty run, artifact/review, and knowledge surfaces rather than fabricated evidence;
+- minimum viable loop acceptance scorecard;
+- visible denial of broker/order/account/position/approval/2FA/production DB/config/secret/service authority;
+- no agent represented as `OPERATIONAL`.
 
 ### Contextual page integration
 
@@ -270,26 +228,39 @@ Iris or operator can ratify/reject lessons
 0 authority violations
 ```
 
+## Validation status
+
+The first exact-ref host run at `5881901374f6a610f29423aa0e98e00837dde4b8` passed the six focused monitoring tests, then stopped at the existing design-token guard because the temporary archive omitted `config/design_token_baseline.json`.
+
+The corrected packet at `c2aac0ddc98d286fab9601dc7f10c295041247a1`:
+
+- archives the existing design-token baseline;
+- removes raw hex literals from the new Runtime page by importing semantic tokens;
+- removes sub-10px font declarations by using the locked type scale;
+- remains temporary-build-only and undeployed.
+
+A fresh exact-ref host validation is required before any further UI tranche or deployment discussion.
+
 ## Implementation phases
 
 ### Phase A — registry and documentation
 
-- enrich the agent registry contract;
-- add validation tests;
-- publish handbook and permission matrix;
-- define maturity and health read models.
+- enriched maturity catalog and fail-closed monitoring contract: implemented;
+- validation tests: implemented, six focused tests passed on the first host run;
+- handbook and permission matrix: implemented.
 
 ### Phase B — fixture-backed monitoring UI
 
-- add `/v3/agents` route and navigation;
-- render catalog, runs, artifacts, reviews, scores, cases, lessons, safety, and limitations;
-- add contextual read-only panels to Watch first;
-- prove desktop/narrow layout, accessibility, honest empty/error/stale states, and no forbidden action.
+- `/v3/agents` Runtime view: implemented;
+- legacy analytics preservation: implemented;
+- catalog, empty evidence surfaces, safety and acceptance UI: implemented;
+- exact-ref TypeScript/Vite/design-guard proof: pending corrected host rerun;
+- bounded Watch contextual panel: next after validation.
 
 ### Phase C — authoritative persistence integration
 
-- rebase/integrate after the Codex persistence PR is reviewed;
-- replace fixtures with the approved Postgres read adapter;
+- rebase/integrate only after the Codex persistence PR is reviewed;
+- replace fixtures with the approved PostgreSQL read adapter;
 - preserve the same API/UI contracts;
 - verify pagination and realistic run volumes.
 
@@ -303,7 +274,7 @@ Iris or operator can ratify/reject lessons
 ### Phase E — controlled promotion
 
 - promote only individually proven agents;
-- retain Atlas, Pulse, Hermes activation, and other later roles behind their prerequisites;
+- retain Atlas, Pulse, Hermes activation, and other later roles behind prerequisites;
 - keep every disable/rollback control tested and operator-visible.
 
 ## Non-overlap with Codex lane
@@ -311,12 +282,12 @@ Iris or operator can ratify/reject lessons
 The Codex branch `codex/agent-runtime-persistence-v1` owns:
 
 - LAB DB proof;
-- Postgres persistence adapters;
+- PostgreSQL persistence adapters;
 - concurrency-safe journal semantics;
 - deterministic export/replay;
 - persistence-focused tests.
 
-This branch must not edit those files until the Codex draft PR is reviewed. Initial UI/read-model work must remain interface- or fixture-backed.
+This branch does not edit those files. Initial UI/read-model work remains interface- and fixture-backed.
 
 ## Hard exclusions
 
