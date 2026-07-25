@@ -58,7 +58,8 @@ chmod 700 "$PINNED_RUNNER"
 
 # Mandatory dry-run from the exact source before modifying the schedule.
 DRY_RUNNER="$(mktemp /tmp/watch-quality-local-dryrun.XXXXXX.sh)"
-cleanup() { rm -f "$DRY_RUNNER"; }
+CURRENT="$(mktemp /tmp/watch-quality-crontab.XXXXXX)"
+cleanup() { rm -f "$DRY_RUNNER" "$CURRENT"; }
 trap cleanup EXIT
 git -C "$HOST_REPO" show \
   "$RESOLVED_COMMIT:scripts/run_watch_quality_local_scheduler_from_ref.sh" \
@@ -72,16 +73,27 @@ bash "$DRY_RUNNER"
 
 crontab -l > "$BACKUP" 2>/dev/null || :
 chmod 600 "$BACKUP"
-CURRENT="$(mktemp /tmp/watch-quality-crontab.XXXXXX)"
-crontab -l > "$CURRENT" 2>/dev/null || :
+cp "$BACKUP" "$CURRENT"
+
+# Never layer this schedule on top of a different Watch decision scheduler.
+CONFLICTS="$(grep -E 'watch_decision_scheduler|watch_decision_refresh|watch-quality-local-|watch_quality_local_scheduler' "$CURRENT" \
+  | grep -Fv "$MARKER" || true)"
+if [[ -n "$CONFLICTS" ]]; then
+  printf 'BLOCKED_GATE6_CONFLICTING_WATCH_SCHEDULE\n%s\n' "$CONFLICTS" >&2
+  exit 6
+fi
+
 if ! grep -Fq "$MARKER" "$CURRENT"; then
   printf '%s\n' "$CRON_LINE" >> "$CURRENT"
   crontab "$CURRENT"
 fi
-rm -f "$CURRENT"
 
-# Enqueue one immediate bounded LOCAL_QUANT pass after installation.
-flock -n "$LOCK" "$PINNED_RUNNER"
+# Enqueue one immediate bounded LOCAL_QUANT pass after installation. A held lock
+# defers the immediate pass but does not invalidate the installed daily cadence.
+IMMEDIATE=ENQUEUED_OR_NOTHING_DUE
+if ! flock -n "$LOCK" "$PINNED_RUNNER"; then
+  IMMEDIATE=DEFERRED_LOCK_BUSY
+fi
 
 printf 'scheduler_source_commit|%s\n' "$RESOLVED_COMMIT"
 printf 'scheduler_contract|watch-quality-local-scheduler-v1\n'
@@ -91,5 +103,5 @@ printf 'oauth_lane|WITHHELD\n'
 printf 'paid_lane|WITHHELD\n'
 printf 'crontab_backup|%s\n' "$BACKUP"
 printf 'pinned_runner|%s\n' "$PINNED_RUNNER"
-printf 'immediate_local_pass|ENQUEUED_OR_NOTHING_DUE\n'
+printf 'immediate_local_pass|%s\n' "$IMMEDIATE"
 printf 'final_status|PASS_GATE6_LOCAL_SCHEDULER_ACTIVATION\n'
