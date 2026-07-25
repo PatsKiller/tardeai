@@ -28,6 +28,7 @@ import watch_quality_projection as projection_v1  # noqa: E402
 import watch_quality_projection_v2 as projection_v2  # noqa: E402
 
 CONTRACT = "watch-quality-local-scheduler-v1"
+BUILDER_CONTRACT = "watch-quality-governed-builder-v1"
 ACK_REQUIRED = "ACTIVATE_BOUNDED_LOCAL_QUANT"
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 40
@@ -91,6 +92,7 @@ def build_local_plan(limit: int = DEFAULT_LIMIT) -> dict:
     ]
     return {
         "contract": CONTRACT,
+        "governed_builder_contract": BUILDER_CONTRACT,
         "source_commit": source_commit,
         "dry_run": True,
         "limit": limit,
