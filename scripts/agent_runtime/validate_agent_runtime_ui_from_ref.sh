@@ -39,7 +39,7 @@ trap cleanup EXIT
 
 git -C "${REPO}" archive "${VALIDATED_SHA}" -- \
   apps/command-center-v3 \
-  config/agent_runtime_maturity_catalog.json \
+  config/agent_maturity_catalog.json \
   scripts/agent_runtime \
   scripts/check_design_tokens.sh \
   scripts/test_chip_scope.mjs \
