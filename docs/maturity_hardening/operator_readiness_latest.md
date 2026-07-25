@@ -1,4 +1,4 @@
-# Operator Readiness — 7.1/10
+# Operator Readiness — 6.8/10
 
 A-5: complete | Live trading: BLOCKED
 

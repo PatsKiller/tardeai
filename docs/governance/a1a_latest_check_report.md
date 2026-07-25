@@ -1,5 +1,5 @@
-# A1A Compliance — healthy
+# A1A Compliance — warning
 
-Findings: 0
+Findings: 1
 
-No findings. Documentation appears compliant.
+- **[P2]** deployment_log_stale: Code changed but deployment log not updated

@@ -1,26 +1,18 @@
 {
-  "date": "2026-07-23",
-  "timestamp": "2026-07-23T08:15:52.347786+00:00",
+  "date": "2026-07-24",
+  "timestamp": "2026-07-24T08:15:41.719816+00:00",
   "embedding_recommendations": [
-    {
-      "id": 12227,
-      "symbol": "CRNT",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 12225,
-      "symbol": "AIRJ",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
     {
       "id": 10975,
       "symbol": "BIYA",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 10974,
+      "symbol": "ATPC",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -35,8 +27,16 @@
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 10974,
-      "symbol": "ATPC",
+      "id": 11514,
+      "symbol": "BXBL",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 12226,
+      "symbol": "BEP",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,24 +45,16 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 12227,
-      "symbol": "CRNT",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 12225,
-      "symbol": "AIRJ",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
       "id": 10975,
       "symbol": "BIYA",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 10974,
+      "symbol": "ATPC",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -77,8 +69,16 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 10974,
-      "symbol": "ATPC",
+      "id": 11514,
+      "symbol": "BXBL",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 12226,
+      "symbol": "BEP",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -86,7 +86,7 @@
     }
   ],
   "rejected": [],
-  "total_staged_non_backlog": 259,
+  "total_staged_non_backlog": 200,
   "embeddings_created": 0,
   "promotions_created": 0
 }
