@@ -111,7 +111,9 @@ def test_absurd_margin_is_rejected_not_used_as_fundamental_truth():
 def test_market_cap_conflict_is_withheld_instead_of_driving_admission():
     facts, technical, provenance = assemble_projection_facts(
         "CONFLICT",
-        watch_row={"price": 10.0, "float_m": 90.0, "rvol": 1.0},
+        # Keep ATR at 6% so this test isolates the market-cap conflict instead of
+        # also triggering the independent 10% extreme-volatility quarantine.
+        watch_row={"price": 25.0, "float_m": 90.0, "rvol": 1.0},
         packet=_base_packet(shares_outstanding_m=100.0),
         finviz={"market_cap_b": 250000.0, "pe": 18.0},
         supplement={},
