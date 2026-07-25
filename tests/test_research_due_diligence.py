@@ -20,6 +20,16 @@ def good_source(source_id="prices"):
     )
 
 
+def test_policy_is_versioned_and_matches_contract():
+    policy = rdd.load_policy()
+    assert policy["version"] == "research-due-diligence-policy-v1"
+    assert policy["contract"] == rdd.CONTRACT_VERSION
+    assert set(policy["required_source_fields"]) >= {
+        "source_id", "provider", "as_of", "calculation_version",
+        "quality", "content_hash",
+    }
+
+
 def test_all_required_evidence_and_checks_pass():
     packet = rdd.evaluate(
         domain="sector",
@@ -35,6 +45,7 @@ def test_all_required_evidence_and_checks_pass():
     assert packet["downstream"]["proposal_or_recommendation_eligible"] is True
     assert packet["authority"]["broker_or_order_action"] is False
     assert packet["model_oversight"]["may_override_deterministic_state"] is False
+    assert packet["policy_requirements"]
 
 
 def test_warning_requires_specialist_review_but_does_not_grant_release():
@@ -71,6 +82,27 @@ def test_stale_required_source_blocks_even_when_domain_check_passes():
     assert packet["model_oversight"]["allowed"] is False
 
 
+def test_missing_provider_or_calculation_version_fails_closed():
+    incomplete = rdd.source_ref(
+        source_id="fundamentals",
+        provider=None,
+        as_of="2026-07-25",
+        calculation_version=None,
+        quality="ok",
+        payload={"pe": 20},
+    )
+    packet = rdd.evaluate(
+        domain="watch",
+        subject={"symbol": "AAPL"},
+        checks=[rdd.check("facts", rdd.CHECK_PASS, "facts present", evidence_refs=["fundamentals"])],
+        sources=[incomplete],
+    )
+    assert packet["deterministic_state"] == "BLOCKED"
+    failures = " ".join(packet["hard_failures"])
+    assert "provider" in failures
+    assert "calculation_version" in failures
+
+
 def test_unknown_evidence_reference_fails_closed():
     packet = rdd.evaluate(
         domain="defense",
@@ -101,12 +133,14 @@ def test_aggregate_blocks_when_a_specialized_child_blocks():
         subject={"sector": "Technology"},
         checks=[rdd.check("math", rdd.CHECK_PASS, "ok", evidence_refs=["s"])],
         sources=[good_source("s")],
+        calculation_version="sector-test-v1",
     )
     blocked = rdd.evaluate(
         domain="industry",
         subject={"industry": "Unknown"},
         checks=[rdd.check("mapping", rdd.CHECK_FAIL, "unmapped", evidence_refs=["i"])],
         sources=[good_source("i")],
+        calculation_version="industry-test-v1",
     )
     parent = rdd.aggregate(
         domain="defense",
