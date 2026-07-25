@@ -93,7 +93,7 @@ def test_valid_arithmetic_cannot_rescue_low_quality_instrument():
         ownership={"held": False},
     )
 
-    assert result["recomputed"]["risk_reward"] is None  # admission fails before ticket arithmetic is promoted
+    assert result["recomputed"]["risk_reward"] == 2.0
     assert result["state"] == "FAIL"
     assert result["quality_admission"]["state"] == "QUARANTINED"
     assert any("quality admission" in reason for reason in result["hard_failures"])
@@ -129,6 +129,7 @@ def test_research_only_quality_strips_current_entry_even_when_numbers_are_valid(
 
     assert result["state"] == "FAIL"
     assert result["quality_admission"]["state"] == "RESEARCH_ONLY"
+    assert result["recomputed"]["risk_reward"] == 2.0
     assert any("current entry mechanics are withheld" in reason
                for reason in result["hard_failures"])
 
