@@ -111,6 +111,24 @@ def test_missing_validation_is_unassessed_not_pass():
     assert selected["quality"] == "UNASSESSED"
 
 
+def test_packet_level_quality_survives_when_no_ticket_exists():
+    packet = {
+        "quality_admission": {
+            "state": "RESEARCH_ONLY",
+            "new_entry_allowed": False,
+            "reasons": ["current mechanics unavailable"],
+        },
+        "plan_families": {},
+    }
+    selected = quality.select_governing_validation(packet)
+    gate = quality.packet_gate(packet)
+    assert selected["source"] == "quality_admission"
+    assert selected["deterministic"] == "NOT_RUN"
+    assert selected["quality"] == "RESEARCH_ONLY"
+    assert gate["new_entry_allowed"] is False
+    assert gate["quality_reasons"] == ["current mechanics unavailable"]
+
+
 def test_legacy_wait_header_with_non_primary_ready_is_reported_as_conflict():
     packet = {
         "operator_presentation": {"header_state": "WAIT"},
