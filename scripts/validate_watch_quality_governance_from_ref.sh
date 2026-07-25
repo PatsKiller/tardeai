@@ -55,6 +55,7 @@ git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
   tests/test_watch_quality_audit_contract.py \
   tests/test_watch_quality_ui_contract.py \
   tests/test_ticket_review_worker_fail_closed.py \
+  tests/test_validate_watch_quality_governance_from_ref.py \
   | "$TAR" -x -C "$STAGE_ROOT"
 
 readonly PY="$([[ -x "$HOST_REPO/.venv/bin/python" ]] && printf '%s' "$HOST_REPO/.venv/bin/python" || printf '%s' "$PYTHON_DEFAULT")"
@@ -79,7 +80,8 @@ cd "$STAGE_ROOT"
   tests/test_watch_quality_scheduler_contract.py \
   tests/test_watch_quality_audit_contract.py \
   tests/test_watch_quality_ui_contract.py \
-  tests/test_ticket_review_worker_fail_closed.py
+  tests/test_ticket_review_worker_fail_closed.py \
+  tests/test_validate_watch_quality_governance_from_ref.py
 
 cd "$STAGE_ROOT/apps/command-center-v3"
 "$NPM" ci
