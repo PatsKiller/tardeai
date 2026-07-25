@@ -20,6 +20,7 @@ on:
       - 'scripts/deploy_watch_quality_ui_from_ref.sh'
       - 'scripts/run_watch_quality_local_scheduler_from_ref.sh'
       - 'scripts/install_watch_quality_local_scheduler_from_ref.sh'
+      - 'scripts/run_watch_quality_rollout_gates_3_to_6_from_ref.sh'
       - 'scripts/strategy_ticket_validator.py'
       - 'scripts/strategy_ticket_review.py'
       - 'scripts/strategy_ticket_reconciler.py'
@@ -100,6 +101,7 @@ jobs:
             tests/test_watch_quality_gate4_contract.py \
             tests/test_watch_quality_gate5_contract.py \
             tests/test_watch_quality_gate6_contract.py \
+            tests/test_watch_quality_rollout_orchestrator.py \
             tests/test_watch_quality_ui_contract.py \
             tests/test_ticket_review_worker_fail_closed.py \
             tests/test_validate_watch_quality_governance_from_ref.py \
