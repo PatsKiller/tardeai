@@ -55,6 +55,7 @@ git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
   tests/test_watch_quality_scheduler_contract.py \
   tests/test_watch_quality_audit_contract.py \
   tests/test_watch_quality_projection.py \
+  tests/test_watch_quality_projection_v2.py \
   tests/test_watch_quality_ui_contract.py \
   tests/test_ticket_review_worker_fail_closed.py \
   tests/test_validate_watch_quality_governance_from_ref.py \
@@ -68,6 +69,7 @@ cd "$STAGE_ROOT"
   scripts/watch_quality_policy.py \
   scripts/watch_packet_quality.py \
   scripts/watch_quality_projection.py \
+  scripts/watch_quality_projection_v2.py \
   scripts/strategy_ticket_validator.py \
   scripts/strategy_ticket_review.py \
   scripts/strategy_ticket_reconciler.py \
@@ -88,6 +90,7 @@ cd "$STAGE_ROOT"
   tests/test_watch_quality_scheduler_contract.py \
   tests/test_watch_quality_audit_contract.py \
   tests/test_watch_quality_projection.py \
+  tests/test_watch_quality_projection_v2.py \
   tests/test_watch_quality_ui_contract.py \
   tests/test_ticket_review_worker_fail_closed.py \
   tests/test_validate_watch_quality_governance_from_ref.py \
@@ -116,7 +119,8 @@ done
 printf 'validated_commit|%s\n' "$RESOLVED_COMMIT"
 printf 'validation_scope|TEMPORARY_BUILD_AND_TESTS_ONLY\n'
 printf 'quality_policy_contract|watch-quality-admission-v1\n'
-printf 'quality_projection_contract|watch-quality-projection-v1\n'
+printf 'quality_projection_contract|watch-quality-projection-v2\n'
+printf 'projection_v1_status|SUPERSEDED_SOURCE_UNIT_CONFLICT\n'
 printf 'research_due_diligence_contract|research-due-diligence-v1\n'
 printf 'specialized_domains|PROPOSAL,DEFENSE,SECTOR,INDUSTRY,WATCH\n'
 printf 'review_contract|watch-ticket-independent-review-v2\n'
