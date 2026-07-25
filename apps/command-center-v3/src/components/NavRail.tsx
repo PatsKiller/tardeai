@@ -13,7 +13,7 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/trading', label: 'Trading' },
       { to: '/strategy', label: 'Strategy' },
       { to: '/journal', label: 'TradeInView' },
-      { to: '/watch', label: 'Watch' },
+      { to: '/watch?tab=watchlist', label: 'Watch' },
       { to: '/defense', label: 'Defense' },
     ],
   },
@@ -49,30 +49,16 @@ export default function NavRail() {
   })
 
   return (
-    <nav className="nav-rail" style={{
-      width: 140, flexShrink: 0, minHeight: 0, alignSelf: 'stretch',
-      padding: '8px 0', display: 'flex', flexDirection: 'column',
-      borderRight: '1px solid var(--border)', background: 'var(--bg0)',
-      overflowY: 'auto', overflowX: 'hidden',
-    }}>
-      {SECTIONS.map(sec => (
-        <div key={sec.label} style={{ marginBottom: 4 }}>
-          <div style={{
-            padding: '6px 16px 4px', fontSize: 9, fontWeight: 800, letterSpacing: 0.6,
-            textTransform: 'uppercase', color: 'var(--text3)',
-          }}>{sec.label}</div>
-          {sec.hubs.map(h => {
-            if (h.hardNav) {
-              const active = typeof window !== 'undefined' && window.location.pathname.startsWith(`/v3${h.to}`)
-              return (
-                <a key={h.to} href={`/v3${h.to}?_cc=${Date.now()}`} style={linkStyle(active)}>{h.label}</a>
-              )
+    <nav className="nav-rail" style={{ width: 140, flexShrink: 0, minHeight: 0, alignSelf: 'stretch', padding: '8px 0', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--bg0)', overflowY: 'auto', overflowX: 'hidden' }}>
+      {SECTIONS.map(section => (
+        <div key={section.label} style={{ marginBottom: 4 }}>
+          <div style={{ padding: '6px 16px 4px', fontSize: 9, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--text3)' }}>{section.label}</div>
+          {section.hubs.map(hub => {
+            if (hub.hardNav) {
+              const active = typeof window !== 'undefined' && window.location.pathname.startsWith(`/v3${hub.to}`)
+              return <a key={hub.to} href={`/v3${hub.to}?_cc=${Date.now()}`} style={linkStyle(active)}>{hub.label}</a>
             }
-            return (
-              <NavLink key={h.to} to={h.to} end={h.exact} style={({ isActive }) => linkStyle(isActive)}>
-                {h.label}
-              </NavLink>
-            )
+            return <NavLink key={hub.to} to={hub.to} end={hub.exact} style={({ isActive }) => linkStyle(isActive)}>{hub.label}</NavLink>
           })}
         </div>
       ))}
