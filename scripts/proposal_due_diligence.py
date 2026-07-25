@@ -3,13 +3,13 @@
 
 Unlike the legacy proposal entry-planner lane, this producer never asks a model
 to author or amend entry, stop, target, size or account mechanics. It evaluates
-the proposal exactly as stored against the current governed Watch packet,
-account-specific capacity and normalized event state. Optional local/OAuth lanes
-may critique only after the deterministic packet passes.
+the proposal exactly as stored, requires a passing shared Watch research packet,
+then checks account-specific capacity and normalized event state.
 
 Default behavior is read-only and model-free. Without ``--dry-run`` the only
 write is the JSON research artifact under ``data/runtime``; proposal rows and
-states are never changed.
+states are never changed. Optional local/OAuth lanes use the cross-domain critic
+contract and remain critique-only.
 """
 from __future__ import annotations
 
@@ -24,8 +24,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(1, str(ROOT / "scripts" / "lib"))
 
-from research_due_diligence import content_hash
+import research_due_diligence as rdd
 from research_due_diligence_adapters import proposal_due_diligence
+from watch_research_due_diligence import watch_due_diligence
 
 ARTIFACT = ROOT / "data" / "runtime" / "proposal_due_diligence_latest.json"
 
@@ -58,13 +59,18 @@ def _account_context(proposal: dict) -> dict:
         )),
         "as_of": proposal.get("updated_at") or proposal.get("created_at"),
         "policy_version": proposal.get("risk_policy_version")
-        or proposal.get("sizing_policy_version") or "proposal-account-context-unversioned",
+        or proposal.get("sizing_policy_version")
+        or "proposal-account-context-unversioned",
     }
 
 
 def _event_context(packet: dict) -> dict:
     event_state = packet.get("event_state") or {}
-    event = event_state.get("earnings") if isinstance(event_state.get("earnings"), dict) else event_state
+    event = (
+        event_state.get("earnings")
+        if isinstance(event_state.get("earnings"), dict)
+        else event_state
+    )
     state = str(event.get("state") or event_state.get("impact") or "UNKNOWN").upper()
     return {
         **event,
@@ -72,7 +78,8 @@ def _event_context(packet: dict) -> dict:
         "blocks_action": bool(event.get("blocks_action"))
         or state in {"UNKNOWN", "BLOCKED", "EVENT_BLOCKED", "DATA_UNAVAILABLE"},
         "as_of": packet.get("evaluated_at") or packet.get("generated_at"),
-        "policy_version": packet.get("action_policy_version") or "normalized-event-contract",
+        "policy_version": packet.get("action_policy_version")
+        or "normalized-event-contract",
     }
 
 
@@ -81,10 +88,12 @@ def _ticket(proposal: dict) -> dict:
     stop = _first(proposal, ("proposed_stop", "stop", "stop_price"))
     target = _first(proposal, ("proposed_target1", "target", "target_price"))
     return {
-        "structure": proposal.get("strategy_id") or proposal.get("strategy") or "EXISTING_PROPOSAL",
+        "structure": proposal.get("strategy_id")
+        or proposal.get("strategy") or "EXISTING_PROPOSAL",
         "entry_mode": proposal.get("entry_mode") or "EXACT_STORED_PROPOSAL",
         "entry_state": proposal.get("status"),
-        "entry_zone": proposal.get("entry_zone") or ([entry, entry] if entry is not None else []),
+        "entry_zone": proposal.get("entry_zone")
+        or ([entry, entry] if entry is not None else []),
         "limit_price": entry,
         "stop_price": stop,
         "targets": [target] if target is not None else [],
@@ -92,56 +101,6 @@ def _ticket(proposal: dict) -> dict:
         "trigger": proposal.get("trigger"),
         "invalidation": proposal.get("invalidation"),
         "mechanics_current": True,
-    }
-
-
-def _review_validation(diligence: dict, ticket: dict, watch_packet: dict) -> dict:
-    import watch_packet_quality
-
-    selected = watch_packet_quality.select_governing_validation(watch_packet)
-    watch_validation = selected.get("validation") or {}
-    levels = (diligence.get("evidence") or {}).get("proposal_levels") or {}
-    return {
-        "validator_version": "proposal-due-diligence-v1",
-        "state": "PASS" if diligence.get("deterministic_state") == "PASS"
-        else "REVIEW_REQUIRED" if diligence.get("deterministic_state") == "REVIEW_REQUIRED"
-        else "FAIL",
-        "hard_failures": diligence.get("hard_failures") or [],
-        "warnings": diligence.get("warnings") or [],
-        "recomputed": {
-            "entry": levels.get("entry"),
-            "stop": levels.get("stop"),
-            "target": levels.get("target"),
-            "risk_reward": levels.get("rr_recomputed"),
-        },
-        "quality_admission": watch_validation.get("quality_admission") or {},
-        "ticket_hash": content_hash(ticket),
-        "facts_hash": diligence.get("packet_hash"),
-        "watch_validation_source": selected.get("source"),
-    }
-
-
-def _review_facts(packet: dict, diligence: dict) -> dict:
-    snapshot = packet.get("current_input_snapshot") or packet.get("input_snapshot") or {}
-    market = snapshot.get("market") or {}
-    validation = _review_validation(diligence, _ticket({}), packet)
-    quality_facts = (validation.get("quality_admission") or {}).get("facts_used") or {}
-    return {
-        "live_price": packet.get("current_price") or market.get("price"),
-        "enriched_price": packet.get("price_used"),
-        "live_price_as_of": packet.get("facts_as_of") or market.get("price_as_of"),
-        "enriched_at": market.get("technical_as_of"),
-        "atr": None,
-        "rvol": market.get("rvol"),
-        "float_m": quality_facts.get("float_m"),
-        "fundamentals": ((packet.get("input_snapshot") or {}).get("fundamentals") or {}),
-        "technical_state": packet.get("technical_state") or {},
-        "deterministic_thesis": packet.get("deterministic_thesis") or {},
-        "data_quality": packet.get("data_quality") or {},
-        "events": packet.get("event_state") or {},
-        "catalysts": [],
-        "support": packet.get("support") or [],
-        "resistance": packet.get("resistance") or [],
     }
 
 
@@ -172,8 +131,65 @@ def _watch_packet(cur, symbol: str) -> dict:
     return row[0] if row else {}
 
 
-def build_report(conn, *, limit: int = 100, symbols: list[str] | None = None,
-                 review_lanes: tuple[str, ...] = ()) -> dict:
+def _missing_watch_packet(proposal: dict, symbol: str) -> dict:
+    return rdd.evaluate(
+        domain="proposal",
+        subject={"proposal_id": proposal.get("id"), "symbol": symbol},
+        checks=[rdd.check(
+            "governed_watch_packet",
+            rdd.CHECK_FAIL,
+            "no current governed Watch packet exists for the proposal symbol",
+        )],
+        sources=[],
+        evidence={"exact_proposal_hash": rdd.content_hash(proposal)},
+        calculation_version="proposal-upstream-due-diligence-v1",
+    )
+
+
+def _compose_diligence(proposal: dict, packet: dict, symbol: str) -> tuple[dict, dict]:
+    if not packet:
+        missing = _missing_watch_packet(proposal, symbol)
+        return missing, {"exact_proposal": _ticket(proposal)}
+
+    watch_component = watch_due_diligence(packet)
+    proposal_component = proposal_due_diligence(
+        proposal,
+        packet,
+        account_context=_account_context(proposal),
+        event_context=_event_context(packet),
+    )
+    combined = rdd.aggregate(
+        domain="proposal",
+        subject={
+            "proposal_id": proposal.get("id"),
+            "symbol": symbol,
+            "strategy_id": proposal.get("strategy_id"),
+            "account": _account_context(proposal).get("account"),
+        },
+        children=[watch_component, proposal_component],
+        policy_version="research-due-diligence-policy-v1",
+        calculation_version="proposal-upstream-due-diligence-v1",
+    )
+    combined["downstream"].update({
+        "proposal_research_complete": combined["deterministic_state"] == rdd.PASS,
+        "proposal_state_write": False,
+        "model_may_amend_ticket": False,
+    })
+    review_evidence = {
+        "exact_proposal": _ticket(proposal),
+        "watch_component": watch_component,
+        "proposal_component": proposal_component,
+    }
+    return combined, review_evidence
+
+
+def build_report(
+    conn,
+    *,
+    limit: int = 100,
+    symbols: list[str] | None = None,
+    review_lanes: tuple[str, ...] = (),
+) -> dict:
     cur = conn.cursor()
     proposals = _proposals(cur, limit, symbols)
     rows = []
@@ -182,39 +198,17 @@ def build_report(conn, *, limit: int = 100, symbols: list[str] | None = None,
     for proposal in proposals:
         symbol = str(proposal.get("symbol") or "").upper()
         packet = _watch_packet(cur, symbol) if symbol else {}
-        diligence = proposal_due_diligence(
-            proposal,
-            packet,
-            account_context=_account_context(proposal),
-            event_context=_event_context(packet),
-        ) if packet else {
-            "domain": "proposal",
-            "subject": {"proposal_id": proposal.get("id"), "symbol": symbol},
-            "deterministic_state": "BLOCKED",
-            "hard_failures": ["no current governed Watch packet"],
-            "warnings": [],
-            "packet_hash": content_hash({"proposal": proposal, "watch_packet": None}),
-            "downstream": {"proposal_research_complete": False},
-            "model_oversight": {"allowed": False},
-        }
+        diligence, review_evidence = _compose_diligence(proposal, packet, symbol)
         reviews = {}
-        if review_lanes and diligence.get("deterministic_state") == "PASS":
-            import strategy_ticket_review as reviewer
-            ticket = _ticket(proposal)
-            validation = _review_validation(diligence, ticket, packet)
+        if review_lanes:
+            import specialized_research_review as reviewer
             reviews = reviewer.run_free_reviews(
-                symbol,
-                ticket,
-                _review_facts(packet, diligence),
-                validation,
+                diligence,
+                evidence=review_evidence,
                 lanes=review_lanes,
             )
-            model_calls += len([
-                value for key, value in reviews.items()
-                if not key.startswith("_") and isinstance(value, dict)
-                and value.get("verdict") != "UNAVAILABLE"
-            ])
-        state = diligence.get("deterministic_state") or "BLOCKED"
+            model_calls += int((reviews.get("_meta") or {}).get("completed") or 0)
+        state = diligence.get("deterministic_state") or rdd.BLOCKED
         counts[state] += 1
         rows.append({
             "proposal_id": proposal.get("id"),
@@ -235,6 +229,7 @@ def build_report(conn, *, limit: int = 100, symbols: list[str] | None = None,
         "authority": {
             "proposal_state_write": False,
             "database_write": False,
+            "artifact_file_write_when_not_dry_run": True,
             "broker_or_order_action": False,
             "approval_or_2fa_action": False,
             "models_critique_only": True,
@@ -246,8 +241,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--symbols")
-    parser.add_argument("--review-lanes", default="",
-                        help="optional comma list: local,grok,chatgpt; default is no model calls")
+    parser.add_argument(
+        "--review-lanes",
+        default="",
+        help="optional comma list: local,grok,chatgpt; default is no model calls",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     if args.limit < 1 or args.limit > 1000:
@@ -256,18 +254,29 @@ def main() -> int:
         lane for lane in (part.strip() for part in args.review_lanes.split(","))
         if lane in {"local", "grok", "chatgpt"}
     )
-    symbols = [part.strip().upper() for part in (args.symbols or "").split(",") if part.strip()]
+    symbols = [
+        part.strip().upper()
+        for part in (args.symbols or "").split(",")
+        if part.strip()
+    ]
 
     from env_bootstrap import load_env
     load_env()
     from db_adapter import _get_conn
     conn = _get_conn()
-    report = build_report(conn, limit=args.limit, symbols=symbols or None, review_lanes=lanes)
+    report = build_report(
+        conn,
+        limit=args.limit,
+        symbols=symbols or None,
+        review_lanes=lanes,
+    )
     public = {key: value for key, value in report.items() if key != "rows"}
     print(json.dumps(public, indent=2, sort_keys=True, default=str))
     if not args.dry_run:
         ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
-        ARTIFACT.write_text(json.dumps(report, indent=2, sort_keys=True, default=str) + "\n")
+        ARTIFACT.write_text(
+            json.dumps(report, indent=2, sort_keys=True, default=str) + "\n"
+        )
         print(f"proposal_due_diligence_artifact|{ARTIFACT}")
     return 0
 
