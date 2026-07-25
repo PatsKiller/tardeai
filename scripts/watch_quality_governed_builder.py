@@ -17,9 +17,9 @@ from __future__ import annotations
 import copy
 import os
 import re
-from typing import Any
 
 import shadow_decision_service as decision_service
+import strategy_ticket_reconciler as ticket_reconciler
 import watch_packet_quality as packet_quality
 import watch_quality_policy as quality_policy
 
@@ -143,6 +143,21 @@ def build_packet(symbol: str, conn, projection_row: dict, *, source_commit: str,
         "builder": CONTRACT,
         "presentation": packet_quality.PRESENTATION_CONTRACT,
     }
+
+    selected = packet_quality.select_governing_validation(packet)
+    if selected.get("deterministic") == "NOT_RUN":
+        validation = {
+            "state": "NOT_RUN",
+            "quality_admission": root_admission,
+            "hard_failures": [],
+            "warnings": [],
+            "ticket_hash": None,
+        }
+        ticket_review = packet.setdefault("ticket_review", {})
+        ticket_review["validation"] = validation
+        ticket_review["reviews"] = {}
+        ticket_review["reconciled"] = ticket_reconciler.reconcile(validation, {})
+
     packet_quality.apply_operator_presentation(packet)
 
     completed = (packet.get("model_review") or {}).get("lanes_completed") or []
