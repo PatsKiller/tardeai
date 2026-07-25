@@ -7,6 +7,7 @@ on:
   pull_request:
     paths:
       - 'config/watch_quality_policy.json'
+      - 'config/research_due_diligence_policy.json'
       - 'scripts/watch_quality_policy.py'
       - 'scripts/watch_packet_quality.py'
       - 'scripts/strategy_ticket_validator.py'
@@ -15,6 +16,10 @@ on:
       - 'scripts/run_ticket_review_job.py'
       - 'scripts/watch_decision_scheduler.py'
       - 'scripts/watch_quality_audit.py'
+      - 'scripts/research_due_diligence.py'
+      - 'scripts/specialized_research_due_diligence.py'
+      - 'scripts/specialized_research_pipeline.py'
+      - 'scripts/sector_momentum_engine_v5.py'
       - 'scripts/validate_watch_quality_governance_from_ref.sh'
       - 'apps/command-center-v3/src/lib/watchPacketQuality.ts'
       - 'apps/command-center-v3/src/components/DecisionPacketBand.tsx'
@@ -24,6 +29,7 @@ on:
       - 'tests/test_strategy_ticket_*.py'
       - 'tests/test_ticket_review_worker_fail_closed.py'
       - 'tests/test_validate_watch_quality_governance_from_ref.py'
+      - 'tests/test_research_due_diligence.py'
       - '.github/workflows/watch-quality-governance-ci.yml'
 
 permissions:
@@ -47,7 +53,7 @@ jobs:
       - name: Install focused Python test dependency
         run: python -m pip install --disable-pip-version-check pytest
 
-      - name: Compile deterministic critic scheduler and audit modules
+      - name: Compile deterministic review and specialized research modules
         run: |
           python -m py_compile \
             scripts/watch_quality_policy.py \
@@ -57,9 +63,13 @@ jobs:
             scripts/strategy_ticket_reconciler.py \
             scripts/run_ticket_review_job.py \
             scripts/watch_decision_scheduler.py \
-            scripts/watch_quality_audit.py
+            scripts/watch_quality_audit.py \
+            scripts/research_due_diligence.py \
+            scripts/specialized_research_due_diligence.py \
+            scripts/specialized_research_pipeline.py \
+            scripts/sector_momentum_engine_v5.py
 
-      - name: Run focused Watch governance tests
+      - name: Run focused Watch and specialized diligence tests
         run: |
           pytest -q \
             tests/test_watch_quality_policy.py \
@@ -71,7 +81,8 @@ jobs:
             tests/test_watch_quality_audit_contract.py \
             tests/test_watch_quality_ui_contract.py \
             tests/test_ticket_review_worker_fail_closed.py \
-            tests/test_validate_watch_quality_governance_from_ref.py
+            tests/test_validate_watch_quality_governance_from_ref.py \
+            tests/test_research_due_diligence.py
 
       - name: Install Command Center dependencies
         working-directory: apps/command-center-v3
@@ -95,4 +106,8 @@ jobs:
             scripts/strategy_ticket_reconciler.py \
             scripts/run_ticket_review_job.py \
             scripts/watch_decision_scheduler.py \
-            scripts/watch_quality_audit.py
+            scripts/watch_quality_audit.py \
+            scripts/research_due_diligence.py \
+            scripts/specialized_research_due_diligence.py \
+            scripts/specialized_research_pipeline.py \
+            scripts/sector_momentum_engine_v5.py
