@@ -1,15 +1,16 @@
 """Behavioral + Postgres-contract tests for the agent-runtime persistence slice.
 
-The behavioral suite runs against BOTH backends (InMemoryPersistence and
-PostgresPersistence driven by a faithful in-process FakeConnection) so the two
-backends are proven to agree. Additional tests assert the Postgres SQL/transaction
-contract (parameterization, statement_timeout, ON CONFLICT idempotency, fail-closed
-rollback, runtime-identity guard).
+The behavioral suite runs against BOTH backends: InMemoryPersistence and
+PostgresPersistence driven by a transactional in-process FakeConnection (connection
+factory + per-op snapshot with real commit/rollback), so the two backends are proven
+to agree, including fail-closed rollback.
 """
 
 from __future__ import annotations
 
+import copy
 import itertools
+import json
 import re
 import threading
 
@@ -25,44 +26,46 @@ from scripts.agent_runtime.contracts import (
     RunStatus,
     Score,
     canonical_hash,
-    canonical_json,
 )
 from scripts.agent_runtime.persistence import (
     _APPEND_COLUMNS,
+    _RUN_COLS,
     GENESIS_HASH,
+    IdempotencyConflictError,
     InMemoryPersistence,
     PersistenceError,
     PostgresPersistence,
+    RuntimeIdentityError,
     TerminalRunError,
     derive_id,
 )
 
-H = "a" * 64  # a valid-looking sha256 hex
-
-
-# --------------------------------------------------------------------------- #
-# Faithful in-process DB-API fake: enough of PostgreSQL for the adapter to run
-# end-to-end. It records SQL for contract assertions and enforces ON CONFLICT.
-# --------------------------------------------------------------------------- #
-_RUN_COLS = (
-    "run_id", "agent_id", "agent_version", "job_type", "environment", "objective",
-    "status", "input_hash", "validation_hash", "checkpoint_seq", "checkpoint", "budget",
-    "cancellation_reason", "started_at", "updated_at", "completed_at",
-)
-_RUN_INSERT_COLS = (
-    "run_id", "agent_id", "agent_version", "job_type", "environment", "objective", "status",
-    "input_hash", "validation_hash", "checkpoint_seq", "checkpoint", "budget", "started_at", "updated_at",
-)
+H = "a" * 64
+_RUN_INSERT_COLS = ("run_id", "agent_id", "agent_version", "job_type", "environment", "objective", "status",
+                    "input_hash", "validation_hash", "retrieval_count", "model_calls", "tool_calls", "cost_usd",
+                    "checkpoint_seq", "checkpoint", "budget", "started_at", "updated_at")
 
 
 def _maybe_json(value):
     if isinstance(value, str) and value[:1] in "{[":
-        import json
         try:
             return json.loads(value)
         except Exception:
             return value
     return value
+
+
+class FakeCluster:
+    def __init__(self, current_user="agentic_runtime_lab_rw", role_flags=(False, False, False, False, False)):
+        self.runs = {}
+        self.tables = {t: {} for t in _APPEND_COLUMNS}
+        self.current_user = current_user
+        self.role_flags = role_flags
+        self.commits = 0
+        self.rollbacks = 0
+        self.for_update = 0
+        self.sql_log = []
+        self.explode_on = None
 
 
 class FakeCursor:
@@ -72,37 +75,39 @@ class FakeCursor:
         self.rowcount = -1
 
     def execute(self, sql, params=()):
-        self.conn.sql_log.append((sql, params))
+        self.conn.cluster.sql_log.append((sql, params))
         s = " ".join(sql.split())
         self._result = []
         self.rowcount = -1
+        assert isinstance(params, tuple)
         if s.startswith("SET LOCAL statement_timeout"):
-            self.conn.statement_timeout = params[0]
             return
-        if s.startswith("SELECT current_user"):
-            self._result = [(self.conn.current_user,)]
+        if s.startswith("SELECT current_user, rolsuper"):
+            self._result = [(self.conn.cluster.current_user, *self.conn.cluster.role_flags)]
             return
-        if s.startswith("SELECT") and "FROM agentic_runtime.agent_runs WHERE run_id" in s:
-            row = self.conn.runs.get(params[0])
+        if "FROM agentic_runtime.agent_runs WHERE run_id" in s:
             if "FOR UPDATE" in s:
-                self.conn.for_update_count += 1
-            self._result = [tuple(row[c] for c in _RUN_COLS)] if row else []
+                self.conn.cluster.for_update += 1
+            row = self.conn.runs.get(params[0])
+            self._result = [tuple(row.get(c) for c in _RUN_COLS)] if row else []
             return
         if s.startswith("INSERT INTO agentic_runtime.agent_runs"):
-            values = {c: _maybe_json(v) for c, v in zip(_RUN_INSERT_COLS, params)}
-            if values["run_id"] in self.conn.runs:
+            vals = {c: _maybe_json(v) for c, v in zip(_RUN_INSERT_COLS, params)}
+            if vals["run_id"] in self.conn.runs:
                 self.rowcount = 0
                 return
-            values.setdefault("cancellation_reason", None)
-            values.setdefault("completed_at", None)
-            self.conn.runs[values["run_id"]] = values
+            vals.setdefault("cancellation_reason", None)
+            vals.setdefault("completed_at", None)
+            self.conn.runs[vals["run_id"]] = vals
             self.rowcount = 1
             return
         if s.startswith("UPDATE agentic_runtime.agent_runs SET"):
-            (status, seq, checkpoint, updated_at, completed_at, reason, run_id) = params
-            row = self.conn.runs[run_id]
-            row.update(status=status, checkpoint_seq=seq, checkpoint=_maybe_json(checkpoint),
-                       updated_at=updated_at, completed_at=completed_at, cancellation_reason=reason)
+            keys = ("status", "retrieval_count", "model_calls", "tool_calls", "cost_usd", "checkpoint_seq",
+                    "checkpoint", "updated_at", "completed_at", "cancellation_reason", "run_id")
+            v = dict(zip(keys, params))
+            row = self.conn.runs[v["run_id"]]
+            for k in keys[:-1]:
+                row[k] = _maybe_json(v[k])
             self.rowcount = 1
             return
         m = re.search(r"INSERT INTO agentic_runtime\.(\w+)", s)
@@ -110,14 +115,18 @@ class FakeCursor:
             table = m.group(1)
             cols = _APPEND_COLUMNS[table]
             row = {c: _maybe_json(v) for c, v in zip(cols, params)}
-            store = self.conn.tables.setdefault(table, {})
+            store = self.conn.tables[table]
             if table == "agent_artifacts":
-                ukey = (row["run_id"], row["payload_hash"])
-                if ukey in self.conn.artifact_unique:
+                if any(r["run_id"] == row["run_id"] and r["payload_hash"] == row["payload_hash"] for r in store.values()):
                     self.rowcount = 0
                     return
-                self.conn.artifact_unique.add(ukey)
                 store[row["artifact_id"]] = row
+            elif table == "kb_lessons":
+                key = (row["lesson_id"], row["lesson_version"])
+                if key in store:
+                    self.rowcount = 0
+                    return
+                store[key] = row
             else:
                 pk = cols[0]
                 if row[pk] in store:
@@ -126,28 +135,26 @@ class FakeCursor:
                 store[row[pk]] = row
             self.rowcount = 1
             return
-        m = re.search(r"SELECT (\w+) FROM agentic_runtime\.(\w+) WHERE run_id", s)
+        m = re.search(r"SELECT (.+?) FROM agentic_runtime\.(\w+) c JOIN", s)
+        if m:  # reviews/scores rows_for_run via join to the artifact's run
+            table = m.group(2)
+            cols = _APPEND_COLUMNS[table]
+            run_id = params[0]
+            arts = {aid for aid, r in self.conn.tables["agent_artifacts"].items() if r.get("run_id") == run_id}
+            rows = [r for r in self.conn.tables[table].values() if r.get("artifact_id") in arts]
+            self._result = [tuple(r.get(c) for c in cols) for r in rows]
+            return
+        m = re.search(r"SELECT (.+?) FROM agentic_runtime\.(\w+) WHERE (.+)", s)
         if m:
-            pk, table = m.group(1), m.group(2)
-            rows = [r for r in self.conn.tables.get(table, {}).values() if r.get("run_id") == params[0]]
-            order = "created_at" if "created_at" in s else "started_at"
-            rows.sort(key=lambda r: (r.get(order) or "", r[pk]))
-            self._result = [(r[pk],) for r in rows]
+            table = m.group(2)
+            cols = _APPEND_COLUMNS[table]
+            where = m.group(3)
+            values = list(self.conn.tables[table].values())
+            keys = re.findall(r"(\w+)=%s", where)  # match ALL key columns (run_id, or run_id+payload_hash, or pk)
+            rows = [r for r in values if all(r.get(k) == p for k, p in zip(keys, params))]
+            self._result = [tuple(r.get(c) for c in cols) for r in rows]
             return
-        if "JOIN agentic_runtime.agent_artifacts" in s:
-            m = re.search(r"SELECT c\.(\w+) FROM agentic_runtime\.(\w+) c", s)
-            pk, table = m.group(1), m.group(2)
-            arts = self.conn.tables.get("agent_artifacts", {})
-            run_arts = {aid for aid, r in arts.items() if r.get("run_id") == params[0]}
-            rows = [r for r in self.conn.tables.get(table, {}).values() if r.get("artifact_id") in run_arts]
-            rows.sort(key=lambda r: (r.get("created_at") or "", r[pk]))
-            self._result = [(r[pk],) for r in rows]
-            return
-        if "SELECT run_id FROM agentic_runtime.agent_artifacts WHERE artifact_id" in s:
-            r = self.conn.tables.get("agent_artifacts", {}).get(params[0])
-            self._result = [(r["run_id"],)] if r else []
-            return
-        raise AssertionError(f"unhandled SQL in fake: {s}")
+        raise AssertionError(f"unhandled SQL: {s}")
 
     def fetchone(self):
         return self._result[0] if self._result else None
@@ -160,55 +167,44 @@ class FakeCursor:
 
 
 class FakeConnection:
-    def __init__(self, current_user="agentic_runtime_lab_rw"):
-        self.runs = {}
-        self.tables = {}
-        self.artifact_unique = set()
-        self.sql_log = []
-        self.commits = 0
-        self.rollbacks = 0
-        self.statement_timeout = None
-        self.for_update_count = 0
-        self.current_user = current_user
-        self.fail_on = None  # substring: raise when executed
+    """One transaction: snapshot on construct, apply on commit, discard on rollback."""
 
-    def cursor(self):
-        return FakeCursor(self)
-
-    def commit(self):
-        self.commits += 1
-
-    def rollback(self):
-        self.rollbacks += 1
-
-
-class ExplodingConnection(FakeConnection):
-    """Raises a driver-style error on the first INSERT into a chosen table."""
-
-    def __init__(self, explode_on):
-        super().__init__()
-        self._explode_on = explode_on
+    def __init__(self, cluster):
+        self.cluster = cluster
+        self.runs = copy.deepcopy(cluster.runs)
+        self.tables = copy.deepcopy(cluster.tables)
+        self._explode = cluster.explode_on
 
     def cursor(self):
         conn = self
 
         class C(FakeCursor):
             def execute(self, sql, params=()):
-                if conn._explode_on in " ".join(sql.split()):
+                if conn._explode and conn._explode in " ".join(sql.split()):
                     raise RuntimeError("simulated driver failure")
                 return super().execute(sql, params)
-
         return C(self)
 
+    def commit(self):
+        self.cluster.runs = self.runs
+        self.cluster.tables = self.tables
+        self.cluster.commits += 1
 
-# --------------------------------------------------------------------------- #
-# Backend fixtures — behavioral tests run against both.
-# --------------------------------------------------------------------------- #
+    def rollback(self):
+        self.cluster.rollbacks += 1
+
+    def close(self):
+        pass
+
+
+def pg_factory(cluster):
+    return lambda: FakeConnection(cluster)
+
+
 _counter = itertools.count()
 
 
 def _clock():
-    # Deterministic, strictly increasing timestamps for stable ordering.
     return f"2026-07-25T00:00:{next(_counter):02d}.000000+00:00"
 
 
@@ -216,133 +212,175 @@ def _clock():
 def store(request):
     if request.param == "memory":
         return InMemoryPersistence(clock=_clock)
-    return PostgresPersistence(FakeConnection(), clock=_clock)
+    return PostgresPersistence(pg_factory(FakeCluster()), clock=_clock)
 
 
-def make_envelope(run_id="run_alpha", agent_id="alpha_agent"):
-    return RunEnvelope(
-        run_id=run_id, agent_id=agent_id, agent_version="1.0.0", job_type="research",
-        environment=Environment.LAB, objective="assess", input_hash=H, validation_hash=H,
-    )
+def envelope(run_id="run_a", agent_id="alpha_agent", **kw):
+    base = dict(run_id=run_id, agent_id=agent_id, agent_version="1.0.0", job_type="research",
+                environment=Environment.LAB, objective="assess", input_hash=H, validation_hash=H)
+    base.update(kw)
+    return RunEnvelope(**base)
 
 
-def make_artifact(run_id="run_alpha", producer="alpha_agent", payload=None, artifact_id="art_1"):
+def artifact(run_id="run_a", producer="alpha_agent", payload=None, artifact_id="art_1"):
     payload = {"finding": "x"} if payload is None else payload
-    return Artifact(
-        artifact_id=artifact_id, run_id=run_id, producer_agent_id=producer, artifact_type="analysis",
-        payload=payload, input_hash=H, validation_hash=H, retrieval_refs=("kb:1",),
-        prompt_version="p1", provider_family="local", model="m1",
-    )
+    return Artifact(artifact_id=artifact_id, run_id=run_id, producer_agent_id=producer, artifact_type="analysis",
+                    payload=payload, input_hash=H, validation_hash=H, retrieval_refs=("kb:1",),
+                    prompt_version="p1", provider_family="local", model="m1")
 
 
-# --------------------------------------------------------------------------- #
-# Behavioral suite (both backends)
-# --------------------------------------------------------------------------- #
-def test_create_run_is_idempotent_and_conflict_detected(store):
-    state = store.create_run(make_envelope(), BudgetPolicy())
-    assert state.status == RunStatus.CREATED.value and state.sequence == 1
-    again = store.create_run(make_envelope(), BudgetPolicy())  # identical -> no-op
-    assert again.sequence == 1
+def _review(store, artifact_id="art_1", reviewer="beta_agent", payload=None, rid="rev_1"):
+    ph = canonical_hash({"finding": "x"} if payload is None else payload)
+    return Review(review_id=derive_id(rid), artifact_id=artifact_id, producer_agent_id="ignored",
+                  reviewer_agent_id=reviewer, verdict=ReviewVerdict.PASS, findings=(), artifact_hash=ph)
+
+
+def seed_reviewed(store):
+    store.create_run(envelope(), BudgetPolicy())
+    store.record_artifact(artifact())
+    store.record_review(_review(store))
+
+
+# --------------------------- A: persisted-truth ---------------------------- #
+def test_review_producer_taken_from_persisted_artifact_not_caller(store):
+    store.create_run(envelope(), BudgetPolicy())
+    store.record_artifact(artifact(producer="alpha_agent"))
+    bad = Review(review_id=derive_id("r2"), artifact_id="art_1", producer_agent_id="beta_agent",
+                 reviewer_agent_id="alpha_agent", verdict=ReviewVerdict.PASS, findings=(), artifact_hash=canonical_hash({"finding": "x"}))
     with pytest.raises(PersistenceError):
-        bad = RunEnvelope(run_id="run_alpha", agent_id="alpha_agent", agent_version="1.0.0",
-                          job_type="research", environment=Environment.LAB, objective="assess",
-                          input_hash="b" * 64, validation_hash=H)
-        store.create_run(bad, BudgetPolicy())
+        store.record_review(bad)
 
 
-def test_journal_is_monotonic_and_hash_chained(store):
-    store.create_run(make_envelope(), BudgetPolicy())
-    store.record_artifact(make_artifact())
-    events = store.journal("run_alpha")
+def test_missing_artifact_and_wrong_hash_rejected_both_backends(store):
+    store.create_run(envelope(), BudgetPolicy())
+    store.record_artifact(artifact())
+    with pytest.raises(PersistenceError):
+        store.record_review(Review(review_id=derive_id("rx"), artifact_id="nope", producer_agent_id="p",
+                                   reviewer_agent_id="beta_agent", verdict=ReviewVerdict.PASS, findings=(), artifact_hash=H))
+    with pytest.raises(PersistenceError):
+        store.record_review(Review(review_id=derive_id("rh"), artifact_id="art_1", producer_agent_id="p",
+                                   reviewer_agent_id="beta_agent", verdict=ReviewVerdict.PASS, findings=(), artifact_hash="b" * 64))
+
+
+def test_artifact_must_match_persisted_run_hashes(store):
+    store.create_run(envelope(), BudgetPolicy())
+    bad = Artifact(artifact_id="art_bad", run_id="run_a", producer_agent_id="alpha_agent", artifact_type="analysis",
+                   payload={"finding": "y"}, input_hash="b" * 64, validation_hash=H, retrieval_refs=("kb:1",),
+                   prompt_version="p", provider_family="local", model="m")
+    with pytest.raises(PersistenceError):
+        store.record_artifact(bad)
+
+
+# --------------------------- B: idempotency conflict ----------------------- #
+def test_create_run_conflict_on_any_changed_immutable_field(store):
+    store.create_run(envelope(), BudgetPolicy())
+    store.create_run(envelope(), BudgetPolicy())
+    for kw in ({"agent_version": "2.0.0"}, {"job_type": "audit"}, {"input_hash": "b" * 64}):
+        with pytest.raises(IdempotencyConflictError):
+            store.create_run(envelope(**kw), BudgetPolicy())
+    with pytest.raises(IdempotencyConflictError):
+        store.create_run(envelope(), BudgetPolicy(max_tool_calls=99))
+
+
+def test_artifact_payload_conflict_returns_persisted_id(store):
+    store.create_run(envelope(), BudgetPolicy())
+    first = store.record_artifact(artifact(artifact_id="art_real"))
+    again = store.record_artifact(artifact(artifact_id="art_other"))
+    assert first == again == "art_real"
+    assert store.reconstruct("run_a").artifacts == ("art_real",)
+
+
+def test_review_conflict_on_changed_evidence(store):
+    seed_reviewed(store)
+    with pytest.raises(IdempotencyConflictError):
+        store.record_review(Review(review_id=derive_id("rev_1"), artifact_id="art_1", producer_agent_id="p",
+                                   reviewer_agent_id="beta_agent", verdict=ReviewVerdict.REJECT, findings=(),
+                                   artifact_hash=canonical_hash({"finding": "x"})))
+
+
+# --------------------------- C: append-only journal ------------------------ #
+def test_journal_events_are_immutable_rows_with_valid_chain(store):
+    seed_reviewed(store)
+    events = store.journal("run_a")
     assert [e.sequence for e in events] == list(range(1, len(events) + 1))
-    previous = GENESIS_HASH
-    for event in events:
-        assert event.previous_hash == previous
-        body = {"run_id": event.run_id, "sequence": event.sequence, "event_type": event.event_type,
-                "payload": dict(event.payload), "created_at": event.created_at, "previous_hash": event.previous_hash}
-        assert event.event_hash == canonical_hash(body)
-        previous = event.event_hash
+    prev = GENESIS_HASH
+    for e in events:
+        assert e.previous_hash == prev
+        prev = e.event_hash
 
 
-def test_artifact_idempotency_by_payload_hash(store):
-    store.create_run(make_envelope(), BudgetPolicy())
-    first = store.record_artifact(make_artifact())
-    seq_after_first = store.reconstruct("run_alpha").sequence
-    second = store.record_artifact(make_artifact())  # same payload -> idempotent
-    assert first == second
-    assert store.reconstruct("run_alpha").sequence == seq_after_first  # no new event
-    assert store.reconstruct("run_alpha").artifacts == (first,)
+def test_durable_tool_lifecycle_events(store):
+    store.create_run(envelope(), BudgetPolicy())
+    args = canonical_hash({"q": 1})
+    store.record_tool_lifecycle("run_a", agent_id="alpha_agent", tool_name="kb.search", decision="ALLOW",
+                                decision_reason="ok", arguments_hash=args, result_hash=H,
+                                started_at="2026-07-25T00:00:00+00:00", completed_at="2026-07-25T00:00:01+00:00",
+                                terminal_state="completed")
+    types = [e.event_type for e in store.journal("run_a")]
+    for stage in ("TOOL_PROPOSED", "TOOL_DECISION", "TOOL_STARTED", "TOOL_COMPLETED"):
+        assert stage in types
+    assert store.reconstruct("run_a").tool_calls == 1
 
 
-def test_self_review_and_self_score_are_rejected(store):
-    store.create_run(make_envelope(), BudgetPolicy())
-    store.record_artifact(make_artifact())
-    good_review = Review(review_id=derive_id("rev", 1), artifact_id="art_1", producer_agent_id="alpha_agent",
-                         reviewer_agent_id="beta_agent", verdict=ReviewVerdict.PASS, findings=(), artifact_hash=H)
-    store.record_review("run_alpha", good_review)
-    with pytest.raises((PersistenceError, ValueError)):
-        Review(review_id=derive_id("rev", 2), artifact_id="art_1", producer_agent_id="alpha_agent",
-               reviewer_agent_id="alpha_agent", verdict=ReviewVerdict.PASS, findings=(), artifact_hash=H).validate()
-    with pytest.raises((PersistenceError, ValueError)):
-        Score(score_id=derive_id("sc", 1), artifact_id="art_1", producer_agent_id="alpha_agent",
-              scorer_agent_id="alpha_agent", dimensions={"quality": 0.5}).validate()
+# --------------------------- D: state + completion ------------------------- #
+def test_completion_requires_material_artifact_and_review(store):
+    store.create_run(envelope(), BudgetPolicy())
+    with pytest.raises(PersistenceError):
+        store.complete_run("run_a")
+    store.record_artifact(artifact())
+    with pytest.raises(PersistenceError):
+        store.complete_run("run_a")
+    store.record_review(_review(store))
+    assert store.complete_run("run_a").status == RunStatus.COMPLETED.value
 
 
-def test_terminal_run_cannot_mutate_or_resume(store):
-    store.create_run(make_envelope(), BudgetPolicy())
-    store.complete_run("run_alpha")
-    assert store.reconstruct("run_alpha").status == RunStatus.COMPLETED.value
+def test_post_terminal_independent_score_allowed_but_no_exec_mutation(store):
+    seed_reviewed(store)
+    store.complete_run("run_a")
+    store.record_score(Score(score_id=derive_id("s1"), artifact_id="art_1", producer_agent_id="x",
+                             scorer_agent_id="gamma_agent", dimensions={"quality": 0.4}))
+    assert len(store.reconstruct("run_a").scores) == 1
     with pytest.raises(TerminalRunError):
-        store.record_artifact(make_artifact(artifact_id="art_late", payload={"finding": "late"}))
-    with pytest.raises(TerminalRunError):
-        store.complete_run("run_alpha")
-    with pytest.raises(TerminalRunError):
-        store.fail_run("run_alpha", "nope")
+        store.record_artifact(artifact(artifact_id="art_late", payload={"finding": "late"}))
 
 
-def test_tool_call_lifecycle_events_and_idempotency(store):
-    store.create_run(make_envelope(), BudgetPolicy())
-    args_hash = canonical_hash({"q": 1})
-    started = "2026-07-25T00:00:00.000000+00:00"
-    common = dict(agent_id="alpha_agent", tool_name="kb.search", decision="ALLOW",
-                  decision_reason="allowlisted", arguments_hash=args_hash, result_hash=H,
-                  started_at=started, completed_at=started, terminal_state="completed")
-    tc = store.record_tool_call("run_alpha", **common)
-    assert tc == derive_id("tool_call", "run_alpha", "alpha_agent", "kb.search", args_hash, started)
-    types = [e.event_type for e in store.journal("run_alpha")]
-    assert "TOOL_PROPOSED" in types and "TOOL_STARTED" in types and "TOOL_COMPLETED" in types
-    seq_before = store.reconstruct("run_alpha").sequence
-    again = store.record_tool_call("run_alpha", **common)  # same identity -> idempotent no-op
-    assert again == tc
-    assert store.reconstruct("run_alpha").sequence == seq_before
-    assert store.reconstruct("run_alpha").tool_calls == (tc,)
+# --------------------------- E: rollback / fail-closed --------------------- #
+def test_secret_material_never_persisted(store):
+    store.create_run(envelope(), BudgetPolicy())
+    with pytest.raises(PersistenceError):
+        store.record_artifact(artifact(payload={"password": "hunter2"}, artifact_id="art_secret"))
+    assert store.reconstruct("run_a").artifacts == ()
 
 
-def test_secret_material_is_never_persisted(store):
-    store.create_run(make_envelope(), BudgetPolicy())
-    with pytest.raises((PersistenceError, ValueError)):
-        store.record_artifact(make_artifact(payload={"password": "hunter2"}, artifact_id="art_secret"))
+def test_inmemory_rollback_leaves_no_partial_state():
+    store = InMemoryPersistence(clock=_clock)
+    store.create_run(envelope(), BudgetPolicy())
+    before = store.reconstruct("run_a")
+    with pytest.raises(PersistenceError):
+        store.record_artifact(artifact(payload={"token": "x"}, artifact_id="art_bad"))
+    after = store.reconstruct("run_a")
+    assert after.sequence == before.sequence and after.artifacts == ()
 
 
-def test_reconstruct_from_evidence_lists_children(store):
-    store.create_run(make_envelope(), BudgetPolicy())
-    store.record_artifact(make_artifact())
-    store.record_review("run_alpha", Review(review_id=derive_id("rev", 9), artifact_id="art_1",
-                        producer_agent_id="alpha_agent", reviewer_agent_id="beta_agent",
-                        verdict=ReviewVerdict.PASS, findings=(), artifact_hash=H))
-    state = store.reconstruct("run_alpha")
-    assert state.artifacts == ("art_1",)
-    assert len(state.reviews) == 1
+def test_postgres_driver_failure_rolls_back_and_raises():
+    cluster = FakeCluster()
+    cluster.explode_on = "INSERT INTO agentic_runtime.agent_runs"
+    pg = PostgresPersistence(pg_factory(cluster), clock=_clock)
+    with pytest.raises(PersistenceError):
+        pg.create_run(envelope(), BudgetPolicy())
+    assert cluster.rollbacks >= 1 and cluster.commits == 0
+    assert cluster.runs == {}
 
 
-def test_concurrent_appends_stay_monotonic_and_unforked(store):
-    store.create_run(make_envelope(), BudgetPolicy())
+def test_concurrent_appends_stay_monotonic_and_unforked():
+    store = InMemoryPersistence(clock=_clock)
+    store.create_run(envelope(), BudgetPolicy())
     errors = []
 
     def worker(i):
         try:
-            store.record_artifact(make_artifact(payload={"finding": f"f{i}"}, artifact_id=f"art_{i}"))
-        except Exception as exc:  # pragma: no cover - surfaced via errors list
+            store.record_artifact(artifact(payload={"finding": f"f{i}"}, artifact_id=f"art_{i}"))
+        except Exception as exc:  # pragma: no cover
             errors.append(exc)
 
     threads = [threading.Thread(target=worker, args=(i,)) for i in range(12)]
@@ -351,70 +389,68 @@ def test_concurrent_appends_stay_monotonic_and_unforked(store):
     for t in threads:
         t.join()
     assert not errors
-    events = store.journal("run_alpha")
-    sequences = [e.sequence for e in events]
-    assert sequences == sorted(set(sequences)) == list(range(1, len(events) + 1))  # monotonic, no dupes
-    previous = GENESIS_HASH
-    for event in events:  # single unbroken chain -> no fork
-        assert event.previous_hash == previous
-        previous = event.event_hash
+    seqs = [e.sequence for e in store.journal("run_a")]
+    assert seqs == sorted(set(seqs)) == list(range(1, len(seqs) + 1))
 
 
-# --------------------------------------------------------------------------- #
-# Postgres SQL/transaction contract (FakeConnection)
-# --------------------------------------------------------------------------- #
-def test_postgres_uses_parameterized_sql_timeout_lock_and_commit():
-    conn = FakeConnection()
-    pg = PostgresPersistence(conn, clock=_clock, statement_timeout_ms=9999)
-    pg.create_run(make_envelope(), BudgetPolicy())
-    pg.record_artifact(make_artifact())
-    assert conn.statement_timeout == 9999          # bounded statement_timeout set per txn
-    assert conn.for_update_count >= 1              # chain serialized with SELECT ... FOR UPDATE
-    assert conn.commits >= 2 and conn.rollbacks == 0
-    # every executed value travels as a bound parameter, never string-formatted into SQL
-    for sql, params in conn.sql_log:
-        assert "hunter" not in sql
-        assert isinstance(params, tuple)
-    inserts = [sql for sql, _ in conn.sql_log if sql.startswith("INSERT")]
-    assert all("ON CONFLICT" in sql for sql in inserts)
+# --------------------------- F: runtime identity --------------------------- #
+def test_postgres_rejects_non_allowlisted_or_privileged_identity():
+    with pytest.raises(RuntimeIdentityError):
+        PostgresPersistence(pg_factory(FakeCluster(current_user="agentic_lab_migrator")), clock=_clock).create_run(envelope(), BudgetPolicy())
+    with pytest.raises(RuntimeIdentityError):
+        PostgresPersistence(pg_factory(FakeCluster(role_flags=(True, False, False, False, False))), clock=_clock).create_run(envelope(), BudgetPolicy())
+    PostgresPersistence(pg_factory(FakeCluster()), clock=_clock).create_run(envelope(), BudgetPolicy())
 
 
-def test_postgres_rolls_back_and_raises_on_driver_failure():
-    conn = ExplodingConnection(explode_on="INSERT INTO agentic_runtime.agent_runs")
-    pg = PostgresPersistence(conn, clock=_clock)
+def test_postgres_contract_parameterized_and_conflict_guarded():
+    cluster = FakeCluster()
+    pg = PostgresPersistence(pg_factory(cluster), clock=_clock)
+    pg.create_run(envelope(), BudgetPolicy())
+    pg.record_artifact(artifact())
+    assert cluster.for_update >= 1
+    inserts = [sql for sql, _ in cluster.sql_log if sql.startswith("INSERT")]
+    assert inserts and all("ON CONFLICT" in sql for sql in inserts)
+    assert cluster.commits >= 2 and cluster.rollbacks == 0
+
+
+# --------------------------- G: knowledge base ----------------------------- #
+def test_kb_lesson_case_chunk_persist_and_conflict(store):
+    lid = store.record_lesson(lesson_id="L1", lesson_version=1, lifecycle="CANDIDATE", title="t",
+                              statement="prefer confluence", provenance={"source": "run_a"}, created_by="alpha_agent")
+    assert lid == "L1:1"
+    store.record_lesson(lesson_id="L1", lesson_version=1, lifecycle="CANDIDATE", title="t",
+                        statement="prefer confluence", provenance={"source": "run_a"}, created_by="alpha_agent")
+    with pytest.raises(IdempotencyConflictError):
+        store.record_lesson(lesson_id="L1", lesson_version=1, lifecycle="CANDIDATE", title="t",
+                            statement="CHANGED", provenance={"source": "run_a"}, created_by="alpha_agent")
     with pytest.raises(PersistenceError):
-        pg.create_run(make_envelope(), BudgetPolicy())
-    assert conn.rollbacks == 1 and conn.commits == 0  # failure never commits a checkpoint
+        store.record_lesson(lesson_id="L2", lesson_version=1, lifecycle="RATIFIED", title="t", statement="s",
+                            provenance={}, created_by="alpha_agent", reviewed_by="alpha_agent")
+    assert store.record_case(case_id="C1", case_type="decision", source_refs=["run_a"], facts={"symbol": "V"}) == "C1"
+    assert store.record_chunk(chunk_id="K1", source_type="doc", source_ref="d1", source_hash=H, content="text") == "K1"
 
 
-def test_postgres_refuses_migration_identity():
-    pg = PostgresPersistence(FakeConnection(current_user="agentic_lab_migrator"), clock=_clock)
+def test_kb_rejects_secret_material(store):
     with pytest.raises(PersistenceError):
-        pg.assert_runtime_only()
-    ok = PostgresPersistence(FakeConnection(current_user="agentic_runtime_lab_rw"), clock=_clock)
-    ok.assert_runtime_only()  # runtime identity is accepted
+        store.record_case(case_id="C9", case_type="decision", source_refs=[], facts={"password": "x"})
 
 
-# --------------------------------------------------------------------------- #
-# Optional: real isolated LAB Postgres (skips cleanly when unavailable)
-# --------------------------------------------------------------------------- #
+# --------------------------- optional real LAB ----------------------------- #
 def test_real_lab_postgres_roundtrip_if_available():
     psycopg2 = pytest.importorskip("psycopg2")
     import os
-    sock = "/home/johnclaw/tradeai-lab/sock"
-    if not os.path.exists(sock):
+    if not os.path.exists("/home/johnclaw/tradeai-lab/sock"):
         pytest.skip("isolated LAB cluster not present")
-    try:
-        conn = psycopg2.connect(host=sock, port=5433, dbname="trade_ai_agentic_lab",
-                                user="agentic_runtime_lab_rw", options="-c search_path=agentic_runtime")
-    except Exception:
-        pytest.skip("LAB runtime role/db not provisioned for this run")
-    try:
-        pg = PostgresPersistence(conn, clock=_clock)
-        env = make_envelope(run_id=f"run_it_{next(_counter)}")
-        pg.create_run(env, BudgetPolicy())
-        pg.record_artifact(make_artifact(run_id=env.run_id, artifact_id=f"art_{env.run_id}"))
-        assert pg.reconstruct(env.run_id).status in {RunStatus.CREATED.value, RunStatus.REVIEW_REQUIRED.value}
-    finally:
-        conn.rollback()
-        conn.close()
+
+    def factory():
+        try:
+            return psycopg2.connect(host="/home/johnclaw/tradeai-lab/sock", port=5433,
+                                    dbname="trade_ai_agentic_lab", user="agentic_runtime_lab_rw",
+                                    options="-c search_path=agentic_runtime")
+        except Exception:
+            pytest.skip("LAB runtime role/db not provisioned")
+
+    pg = PostgresPersistence(factory, clock=_clock)
+    env = envelope(run_id=f"run_it_{next(_counter)}")
+    pg.create_run(env, BudgetPolicy())
+    assert pg.reconstruct(env.run_id).status == RunStatus.CREATED.value

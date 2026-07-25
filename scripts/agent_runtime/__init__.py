@@ -26,15 +26,18 @@ from .knowledge import (
     WatchRetrievalContext,
 )
 from .persistence import (
+    IdempotencyConflictError,
     InMemoryPersistence,
     JournalEvent,
     PersistenceError,
     PostgresPersistence,
     RunPersistence,
     RunState,
+    RuntimeIdentityError,
     TerminalRunError,
 )
 from .export_replay import (
+    ReplayError,
     VerificationResult,
     export_manifest,
     export_run_jsonl,
@@ -61,9 +64,12 @@ __all__ = [
     "DeploymentState",
     "EmbeddingProvenance",
     "Environment",
+    "IdempotencyConflictError",
     "InMemoryPersistence",
     "JournalEvent",
     "PersistenceError",
+    "ReplayError",
+    "RuntimeIdentityError",
     "PostgresPersistence",
     "RunPersistence",
     "RunState",
