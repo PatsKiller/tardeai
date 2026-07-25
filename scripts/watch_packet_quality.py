@@ -56,15 +56,18 @@ def iter_ticket_validations(packet: dict | None) -> Iterator[dict]:
 
 
 def select_governing_validation(packet: dict | None) -> dict:
+    packet = packet or {}
     candidates = list(iter_ticket_validations(packet))
     if not candidates:
+        root_quality = packet.get("quality_admission") or {}
         return {
-            "source": None,
+            "source": "quality_admission" if isinstance(root_quality, dict) and root_quality else None,
             "family": None,
             "ticket": {},
             "validation": {},
+            "quality_admission": root_quality if isinstance(root_quality, dict) else {},
             "deterministic": "NOT_RUN",
-            "quality": "UNASSESSED",
+            "quality": str((root_quality or {}).get("state") or "UNASSESSED").upper(),
         }
 
     current = next((item for item in candidates
@@ -82,9 +85,10 @@ def select_governing_validation(packet: dict | None) -> dict:
         selected = max(candidates, key=severity)
 
     validation = selected["validation"] or {}
-    quality = validation.get("quality_admission") or {}
+    quality = validation.get("quality_admission") or packet.get("quality_admission") or {}
     return {
         **selected,
+        "quality_admission": quality,
         "deterministic": str(validation.get("state") or "NOT_RUN").upper(),
         "quality": str(quality.get("state") or "UNASSESSED").upper(),
     }
@@ -94,7 +98,7 @@ def packet_gate(packet: dict | None) -> dict:
     packet = packet or {}
     selected = select_governing_validation(packet)
     validation = selected["validation"] or {}
-    quality = validation.get("quality_admission") or {}
+    quality = selected.get("quality_admission") or validation.get("quality_admission") or {}
     ownership = packet.get("ownership") or {}
     return {
         "validation_source": selected.get("source"),
