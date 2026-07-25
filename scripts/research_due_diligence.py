@@ -16,8 +16,11 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterable
 
+ROOT = Path(__file__).resolve().parent.parent
+POLICY_PATH = ROOT / "config" / "research_due_diligence_policy.json"
 CONTRACT_VERSION = "research-due-diligence-v1"
 
 PASS = "PASS"
@@ -39,6 +42,7 @@ _WARN_QUALITY_TOKENS = (
     "partial", "thin", "capped", "sample", "intraday", "research_only",
     "refresh", "unconfirmed", "narrow",
 )
+_POLICY_CACHE: dict | None = None
 
 
 def canonical_json(value: Any) -> str:
@@ -51,6 +55,23 @@ def content_hash(value: Any) -> str:
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def load_policy(path: Path = POLICY_PATH) -> dict:
+    """Load the versioned cross-domain policy without network or side effects."""
+    global _POLICY_CACHE
+    if path == POLICY_PATH and _POLICY_CACHE is not None:
+        return _POLICY_CACHE
+    policy = json.loads(path.read_text())
+    if policy.get("contract") != CONTRACT_VERSION:
+        raise ValueError(
+            f"research due-diligence policy contract mismatch: {policy.get('contract')!r}"
+        )
+    if not policy.get("version"):
+        raise ValueError("research due-diligence policy version is required")
+    if path == POLICY_PATH:
+        _POLICY_CACHE = policy
+    return policy
 
 
 def source_ref(
@@ -71,19 +92,23 @@ def source_ref(
 ) -> dict:
     """Build a normalized source ledger entry.
 
-    ``payload`` is never retained.  It is used only to derive a stable content
+    ``payload`` is never retained. It is used only to derive a stable content
     hash so large or sensitive evidence does not leak into the ledger.
     """
     out = {
         "source_id": str(source_id or "").strip(),
-        "provider": provider,
+        "provider": str(provider).strip() if provider is not None else None,
         "as_of": str(as_of) if as_of is not None else None,
-        "calculation_version": calculation_version,
+        "calculation_version": (
+            str(calculation_version).strip() if calculation_version is not None else None
+        ),
         "quality": str(quality or "unknown"),
         "cadence": cadence,
         "required": bool(required),
         "stale": bool(stale),
-        "content_hash": payload_hash or (content_hash(payload) if payload is not None else None),
+        "content_hash": payload_hash or (
+            content_hash(payload) if payload is not None else None
+        ),
     }
     if coverage_n is not None:
         out["coverage_n"] = int(coverage_n)
@@ -109,34 +134,44 @@ def check(
     normalized = str(state or "").upper()
     if normalized not in CHECK_STATES:
         raise ValueError(f"invalid due-diligence check state: {state!r}")
+    normalized_id = str(check_id or "").strip()
+    if not normalized_id:
+        raise ValueError("due-diligence check_id is required")
+    normalized_reason = str(reason or "").strip()
+    if not normalized_reason:
+        raise ValueError("due-diligence check reason is required")
     return {
-        "check_id": str(check_id or "").strip(),
+        "check_id": normalized_id,
         "state": normalized,
-        "reason": str(reason or "").strip(),
-        "evidence_refs": sorted({str(ref) for ref in (evidence_refs or []) if ref}),
+        "reason": normalized_reason,
+        "evidence_refs": sorted({
+            str(ref) for ref in (evidence_refs or []) if ref
+        }),
         "details": details or {},
         "authority": "deterministic",
     }
 
 
-def _source_disposition(source: dict) -> tuple[str, str | None]:
+def _source_disposition(source: dict, required_fields: set[str]) -> tuple[str, str | None]:
     source_id = str(source.get("source_id") or "").strip()
     quality = str(source.get("quality") or "unknown").lower()
     required = bool(source.get("required", True))
-    missing_identity = not source_id
-    missing_as_of = required and not source.get("as_of")
-    missing_hash = required and not source.get("content_hash")
-    bad_quality = any(token in quality for token in _BAD_QUALITY_TOKENS)
-    warn_quality = any(token in quality for token in _WARN_QUALITY_TOKENS)
+    missing_fields = []
+    if required:
+        for field in sorted(required_fields):
+            value = source.get(field)
+            if value is None or (isinstance(value, str) and not value.strip()):
+                missing_fields.append(field)
+    elif not source_id:
+        return CHECK_WARN, "optional source identity missing"
 
-    if missing_identity:
-        return CHECK_FAIL if required else CHECK_WARN, "source identity missing"
+    if missing_fields:
+        label = source_id or "required source"
+        return CHECK_FAIL, f"{label} missing provenance fields: {', '.join(missing_fields)}"
     if bool(source.get("stale")):
         return CHECK_FAIL if required else CHECK_WARN, f"{source_id} is stale"
-    if missing_as_of:
-        return CHECK_FAIL, f"{source_id} has no as-of time"
-    if missing_hash:
-        return CHECK_FAIL, f"{source_id} has no content hash"
+    bad_quality = any(token in quality for token in _BAD_QUALITY_TOKENS)
+    warn_quality = any(token in quality for token in _WARN_QUALITY_TOKENS)
     if bad_quality:
         return CHECK_FAIL if required else CHECK_WARN, f"{source_id} quality={quality}"
     if warn_quality:
@@ -156,8 +191,9 @@ def evaluate(
     generated_at: str | None = None,
 ) -> dict:
     """Evaluate one domain-specific research packet deterministically."""
+    policy = load_policy()
     domain_name = str(domain or "").lower()
-    if domain_name not in DOMAINS:
+    if domain_name not in DOMAINS or domain_name not in (policy.get("domains") or {}):
         raise ValueError(f"unsupported due-diligence domain: {domain!r}")
     if not isinstance(subject, dict) or not subject:
         raise ValueError("due-diligence subject must be a non-empty dict")
@@ -169,20 +205,26 @@ def evaluate(
             raise ValueError("due-diligence checks must be dicts")
         check_id = str(item.get("check_id") or "").strip()
         state = str(item.get("state") or "").upper()
-        if not check_id or state not in CHECK_STATES:
-            raise ValueError("each due-diligence check requires check_id and PASS/WARN/FAIL")
+        reason = str(item.get("reason") or "").strip()
+        if not check_id or state not in CHECK_STATES or not reason:
+            raise ValueError(
+                "each due-diligence check requires check_id, reason and PASS/WARN/FAIL"
+            )
         if check_id in seen_checks:
             raise ValueError(f"duplicate due-diligence check_id: {check_id}")
         seen_checks.add(check_id)
         normalized_checks.append({
             "check_id": check_id,
             "state": state,
-            "reason": str(item.get("reason") or ""),
-            "evidence_refs": sorted({str(ref) for ref in item.get("evidence_refs") or [] if ref}),
+            "reason": reason,
+            "evidence_refs": sorted({
+                str(ref) for ref in item.get("evidence_refs") or [] if ref
+            }),
             "details": item.get("details") or {},
             "authority": "deterministic",
         })
 
+    required_fields = set(policy.get("required_source_fields") or [])
     normalized_sources = []
     source_ids = set()
     source_failures: list[str] = []
@@ -197,7 +239,7 @@ def evaluate(
             raise ValueError(f"duplicate due-diligence source_id: {source_id}")
         if source_id:
             source_ids.add(source_id)
-        disposition, note = _source_disposition(normalized)
+        disposition, note = _source_disposition(normalized, required_fields)
         normalized["disposition"] = disposition
         normalized_sources.append(normalized)
         if normalized.get("required", True):
@@ -216,10 +258,16 @@ def evaluate(
         if ref not in source_ids
     })
     if unknown_refs:
-        source_failures.append("checks reference unknown evidence sources: " + ", ".join(unknown_refs))
+        source_failures.append(
+            "checks reference unknown evidence sources: " + ", ".join(unknown_refs)
+        )
 
-    hard_failures = [item["reason"] for item in normalized_checks if item["state"] == CHECK_FAIL]
-    warnings = [item["reason"] for item in normalized_checks if item["state"] == CHECK_WARN]
+    hard_failures = [
+        item["reason"] for item in normalized_checks if item["state"] == CHECK_FAIL
+    ]
+    warnings = [
+        item["reason"] for item in normalized_checks if item["state"] == CHECK_WARN
+    ]
     hard_failures.extend(source_failures)
     warnings.extend(source_warnings)
 
@@ -230,12 +278,14 @@ def evaluate(
     else:
         deterministic_state = PASS
 
+    effective_policy_version = policy_version or policy["version"]
     material = {
         "contract_version": CONTRACT_VERSION,
         "domain": domain_name,
         "subject": subject,
-        "policy_version": policy_version,
+        "policy_version": effective_policy_version,
         "calculation_version": calculation_version,
+        "policy_requirements": (policy.get("domains") or {}).get(domain_name) or {},
         "checks": normalized_checks,
         "sources": normalized_sources,
         "evidence": evidence or {},
@@ -308,7 +358,8 @@ def aggregate(
             source_id=source_id,
             provider="internal deterministic due-diligence packet",
             as_of=child.get("generated_at"),
-            calculation_version=child.get("calculation_version"),
+            calculation_version=child.get("calculation_version")
+            or child.get("contract_version"),
             quality="ok" if child_state == PASS else child_state.lower(),
             required=True,
             payload_hash=child_hash,
@@ -321,8 +372,10 @@ def aggregate(
             details={"packet_hash": child_hash},
         ))
     if not child_list:
-        checks.append(check("children_present", CHECK_FAIL,
-                            "no specialized child due-diligence packets supplied"))
+        checks.append(check(
+            "children_present", CHECK_FAIL,
+            "no specialized child due-diligence packets supplied",
+        ))
     return evaluate(
         domain=domain,
         subject=subject,
@@ -335,5 +388,5 @@ def aggregate(
             "packet_hash": child.get("packet_hash"),
         } for child in child_list]},
         policy_version=policy_version,
-        calculation_version=calculation_version,
+        calculation_version=calculation_version or "aggregate-v1",
     )
