@@ -15,8 +15,8 @@ def test_app_consumes_url_addressable_review_contract():
         "set('symbol', symbol)",
         "set('review', '1')",
         "set('modal', 'review')",
-        "data-command-center-modal=\"review\"",
-        "aria-modal=\"true\"",
+        'data-command-center-modal="review"',
+        'aria-modal="true"',
         "URL-addressable decision, provenance and evidence review",
     ):
         assert token in APP
@@ -40,6 +40,9 @@ def test_modal_layer_is_loaded_and_visually_distinct():
     for token in (
         "[data-review-surface='watchlist-card']",
         "OPEN REVIEW",
+        "[data-command-center-modal='review']",
+        "position: fixed",
+        "inset: 0",
         "div:has(> .cc-drawer)",
         "backdrop-filter: blur(5px)",
         "height: min(92vh, 1040px)",
