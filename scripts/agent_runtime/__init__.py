@@ -25,6 +25,22 @@ from .knowledge import (
     RetrievalHit,
     WatchRetrievalContext,
 )
+from .persistence import (
+    InMemoryPersistence,
+    JournalEvent,
+    PersistenceError,
+    PostgresPersistence,
+    RunPersistence,
+    RunState,
+    TerminalRunError,
+)
+from .export_replay import (
+    VerificationResult,
+    export_manifest,
+    export_run_jsonl,
+    replay_jsonl,
+    verify_jsonl,
+)
 from .runtime import MvlRuntime
 from .sentinel import SentinelFinding, SentinelReport, finding_codes, inspect_population, inspect_ticket
 from .sentinel_pipeline import (
@@ -45,6 +61,18 @@ __all__ = [
     "DeploymentState",
     "EmbeddingProvenance",
     "Environment",
+    "InMemoryPersistence",
+    "JournalEvent",
+    "PersistenceError",
+    "PostgresPersistence",
+    "RunPersistence",
+    "RunState",
+    "TerminalRunError",
+    "VerificationResult",
+    "export_manifest",
+    "export_run_jsonl",
+    "replay_jsonl",
+    "verify_jsonl",
     "KnowledgeIndex",
     "KnowledgeRecord",
     "MvlRuntime",
