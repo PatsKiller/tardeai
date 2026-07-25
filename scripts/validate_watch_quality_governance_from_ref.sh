@@ -41,7 +41,8 @@ git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
   tests/test_watch_quality_audit_contract.py tests/test_watch_quality_projection.py \
   tests/test_watch_quality_projection_v2.py tests/test_watch_quality_gate3_contract.py \
   tests/test_watch_quality_gate4_contract.py tests/test_watch_quality_gate5_contract.py \
-  tests/test_watch_quality_gate6_contract.py tests/test_watch_quality_rollout_orchestrator.py \
+  tests/test_watch_quality_gate6_contract.py tests/test_watch_quality_gate6_bound_contract.py \
+  tests/test_watch_quality_rollout_orchestrator.py \
   tests/test_watch_quality_ui_contract.py tests/test_ticket_review_worker_fail_closed.py \
   tests/test_validate_watch_quality_governance_from_ref.py tests/test_research_due_diligence.py \
   tests/test_research_due_diligence_census.py tests/test_maya_intelligence_contract.py \
@@ -55,6 +56,7 @@ cd "$STAGE_ROOT"
   scripts/watch_quality_governed_builder.py \
   scripts/watch_quality_gate3_sample_rebuild.py scripts/watch_quality_gate3_sample_rebuild_v2.py \
   scripts/watch_quality_gate4_verify.py scripts/watch_quality_local_scheduler.py \
+  scripts/watch_quality_gate6_selection.py scripts/watch_quality_gate6_bound_scheduler.py \
   scripts/strategy_ticket_validator.py scripts/strategy_ticket_review.py \
   scripts/strategy_ticket_reconciler.py scripts/run_ticket_review_job.py \
   scripts/watch_decision_scheduler.py scripts/watch_quality_audit.py \
@@ -69,7 +71,8 @@ cd "$STAGE_ROOT"
   tests/test_watch_quality_audit_contract.py tests/test_watch_quality_projection.py \
   tests/test_watch_quality_projection_v2.py tests/test_watch_quality_gate3_contract.py \
   tests/test_watch_quality_gate4_contract.py tests/test_watch_quality_gate5_contract.py \
-  tests/test_watch_quality_gate6_contract.py tests/test_watch_quality_rollout_orchestrator.py \
+  tests/test_watch_quality_gate6_contract.py tests/test_watch_quality_gate6_bound_contract.py \
+  tests/test_watch_quality_rollout_orchestrator.py \
   tests/test_watch_quality_ui_contract.py tests/test_ticket_review_worker_fail_closed.py \
   tests/test_validate_watch_quality_governance_from_ref.py tests/test_research_due_diligence.py \
   tests/test_research_due_diligence_census.py tests/test_maya_intelligence_contract.py \
@@ -96,6 +99,9 @@ printf 'gate3_roundtrip_contract|watch-quality-gate3-jsonb-roundtrip-v1\n'
 printf 'gate4_contract|watch-quality-gate4-readonly-verification-v1\n'
 printf 'gate5_contract|WATCH_QUALITY_SHADOW_UI_ONLY\n'
 printf 'gate6_contract|watch-quality-local-scheduler-v1\n'
+printf 'gate6_population_contract|watch-quality-active-population-v1\n'
+printf 'gate6_selection_contract|watch-quality-gate6-reviewed-selection-v1\n'
+printf 'gate6_transaction_contract|watch-quality-local-atomic-batch-v1\n'
 printf 'rollout_contract|watch-quality-rollout-gates-3-to-6-v1\n'
 printf 'research_due_diligence_contract|research-due-diligence-v1\n'
 printf 'cross_domain_census_contract|research-due-diligence-census-v1\n'
