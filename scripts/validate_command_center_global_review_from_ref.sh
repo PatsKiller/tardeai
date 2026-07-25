@@ -70,6 +70,9 @@ markers=(
   "OPEN REVIEW"
   "Review decision"
   "Open policy review"
+  "command-center-structured-provenance-v1"
+  "Structured provenance, freshness, directive lineage and watch memberships"
+  "symbol-provenance"
 )
 for marker in "${markers[@]}"; do
   if ! grep -R --binary-files=text -Fq "$marker" "$APP/dist"; then
@@ -135,4 +138,5 @@ printf 'producer_activation|NONE\n'
 printf 'database_write|NONE\n'
 printf 'broker_or_order_action|NONE\n'
 printf 'global_review_contract|command-center-global-review-v1\n'
+printf 'structured_evidence_contract|command-center-structured-provenance-v1\n'
 printf 'final_status|PASS_COMMAND_CENTER_REVIEW_VALIDATION\n'
