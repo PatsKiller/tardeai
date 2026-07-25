@@ -1,0 +1,96 @@
+{
+  "version": "research-due-diligence-policy-v1",
+  "contract": "research-due-diligence-v1",
+  "purpose": "one deterministic evidence-maturity standard across specialized research without replacing domain methodology",
+  "states": {
+    "PASS": "all required sources and deterministic domain checks pass; downstream research use may proceed subject to its own authority gates",
+    "REVIEW_REQUIRED": "no hard failure, but partial, intraday, thin, capped or otherwise qualified evidence requires specialist adjudication",
+    "BLOCKED": "required evidence, freshness, provenance, arithmetic, mapping, quality, account context or domain methodology failed"
+  },
+  "required_source_fields": [
+    "source_id",
+    "provider",
+    "as_of",
+    "calculation_version",
+    "quality",
+    "content_hash"
+  ],
+  "domains": {
+    "watch": {
+      "required": [
+        "governing deterministic ticket validation",
+        "explicit quality admission",
+        "current market and technical evidence",
+        "fundamental and event evidence appropriate to the instrument"
+      ]
+    },
+    "proposal": {
+      "required": [
+        "exact stored proposal mechanics",
+        "independently reproducible arithmetic",
+        "passing or explicitly qualified governing Watch validation",
+        "explicit ADMITTED quality state",
+        "current evidence",
+        "account-specific sizing and remaining capacity",
+        "normalized event clearance"
+      ],
+      "models_may_amend_mechanics": false,
+      "proposal_state_write": false
+    },
+    "sector": {
+      "required": [
+        "date-aligned benchmark-relative returns",
+        "explicit RS level, slope and state",
+        "exact covered-universe breadth with coverage disclosure",
+        "current non-quarantined row",
+        "calculation version and source ledger"
+      ],
+      "breadth_universe_label": "covered screener membership; never official ETF constituents unless sourced as such"
+    },
+    "industry": {
+      "required": [
+        "canonical versioned industry-to-sector mapping",
+        "same-provider same-run benchmark comparison",
+        "explicit one-month relative level and one-week relative direction",
+        "source and calculation provenance"
+      ],
+      "midday_capture": "REVIEW_REQUIRED and research-only",
+      "proposal_or_rotation_requires": "close-confirmed PASS"
+    },
+    "defense": {
+      "required": [
+        "passing upstream specialized research",
+        "SHADOW/advisory mode",
+        "account-specific exposure, target and capacity",
+        "account-specific percentage and dollar sizing",
+        "aligned volatility and correlation context",
+        "explicit entry and invalidation",
+        "domain stock or instrument quality result"
+      ],
+      "nonpassing_cards": "retained for audit but withheld from recommendation-eligible groups"
+    }
+  },
+  "model_oversight": {
+    "allowed_only_after_deterministic_packet": true,
+    "blocked_packet_provider_calls": 0,
+    "independent_provider_families": [
+      "LOCAL_OLLAMA",
+      "XAI_OAUTH",
+      "OPENAI_OAUTH"
+    ],
+    "may_override_deterministic_state": false,
+    "may_create_or_repair_evidence": false,
+    "may_create_or_repair_mechanics": false,
+    "paid_lane_automatic": false
+  },
+  "authority": {
+    "advisory_research_only": true,
+    "producer_activation": false,
+    "proposal_state_write": false,
+    "recommendation_activation": false,
+    "database_migration_or_write": false,
+    "broker_or_order_action": false,
+    "approval_or_2fa_action": false,
+    "models_may_override": false
+  }
+}
