@@ -3,10 +3,15 @@ name: defense-sectors-interaction-ci
 on:
   pull_request:
     paths:
+      - 'apps/command-center-v3/src/App.tsx'
+      - 'apps/command-center-v3/src/main.tsx'
+      - 'apps/command-center-v3/src/interaction.css'
+      - 'apps/command-center-v3/src/components/DetailDrawer.tsx'
       - 'apps/command-center-v3/src/components/NavRail.tsx'
       - 'apps/command-center-v3/src/pages/WatchHub.tsx'
       - 'apps/command-center-v3/src/components/rotation/**'
       - 'apps/command-center-v3/e2e/defense-sectors-interactions.spec.ts'
+      - 'apps/command-center-v3/e2e/global-review-modal.spec.ts'
       - '.github/workflows/defense-sectors-interaction-ci.yml'
 
 permissions:
@@ -61,7 +66,7 @@ jobs:
             sleep 1
           done
           export PLAYWRIGHT_BASE_URL=http://127.0.0.1:4175
-          npx playwright test e2e/defense-sectors-interactions.spec.ts 2>&1 | tee /tmp/defense-sectors-interaction-test.log
+          npx playwright test e2e/defense-sectors-interactions.spec.ts e2e/global-review-modal.spec.ts 2>&1 | tee /tmp/defense-sectors-interaction-test.log
 
       - name: Upload interaction failure evidence
         if: failure()
