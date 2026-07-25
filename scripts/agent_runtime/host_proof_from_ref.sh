@@ -14,10 +14,12 @@ readonly REPO_DEFAULT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 readonly HOST_REPO="${REPO:-$REPO_DEFAULT}"
 readonly SOURCE_REF="${AGENTIC_SOURCE_REF:-}"
 readonly WORK_BRANCH="${AGENTIC_WORK_BRANCH:-codex/agent-runtime-persistence-v1}"
-readonly LAB_ACK=DISPOSABLE_LAB_NO_PRODUCTION_DATA
+# Constant value only — never assigned to a shell variable named LAB_ACK, so the
+# child can receive `LAB_ACK=...` as a command-prefix env without a readonly clash.
+readonly LAB_ACK_VALUE=DISPOSABLE_LAB_NO_PRODUCTION_DATA
 readonly LAB_SOCK=/home/johnclaw/tradeai-lab/sock
 readonly LAB_DB=trade_ai_agentic_lab
-readonly EVIDENCE_DIR=/home/johnclaw/tradeai-lab/evidence
+readonly EVIDENCE_DIR="${AGENTIC_EVIDENCE_DIR:-/home/johnclaw/tradeai-lab/evidence}"
 
 fail() { echo "BLOCKED_AGENT_RUNTIME_PROOF: $1" >&2; exit 2; }
 
@@ -48,7 +50,7 @@ echo "database_port|5433"
 echo "production_port_5432_contact|NONE"
 
 # 4) evolve a fresh disposable LAB on 5433 (fails closed; leaves schema + roles)
-LAB_ACK="$LAB_ACK" REPO="$HOST_REPO" AGENTIC_SOURCE_REF="$RESOLVED" \
+LAB_ACK="$LAB_ACK_VALUE" REPO="$HOST_REPO" AGENTIC_SOURCE_REF="$RESOLVED" \
   bash "$STAGE/scripts/agent_runtime/lab_evolve_from_ref.sh" >/dev/null \
   || fail "LAB evolve did not reach PASS_DB_PROOF"
 
