@@ -14,6 +14,7 @@ on:
       - 'scripts/watch_quality_projection_v2.py'
       - 'scripts/watch_quality_governed_builder.py'
       - 'scripts/watch_quality_gate3_sample_rebuild.py'
+      - 'scripts/watch_quality_gate3_sample_rebuild_v2.py'
       - 'scripts/watch_quality_gate4_verify.py'
       - 'scripts/watch_quality_local_scheduler.py'
       - 'scripts/run_watch_quality_gate3_from_ref.sh'
@@ -74,6 +75,7 @@ jobs:
             scripts/watch_quality_projection_v2.py \
             scripts/watch_quality_governed_builder.py \
             scripts/watch_quality_gate3_sample_rebuild.py \
+            scripts/watch_quality_gate3_sample_rebuild_v2.py \
             scripts/watch_quality_gate4_verify.py \
             scripts/watch_quality_local_scheduler.py \
             scripts/strategy_ticket_validator.py \
@@ -130,6 +132,7 @@ jobs:
             scripts/watch_quality_projection_v2.py \
             scripts/watch_quality_governed_builder.py \
             scripts/watch_quality_gate3_sample_rebuild.py \
+            scripts/watch_quality_gate3_sample_rebuild_v2.py \
             scripts/watch_quality_gate4_verify.py \
             scripts/watch_quality_local_scheduler.py \
             scripts/strategy_ticket_validator.py \
