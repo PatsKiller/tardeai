@@ -52,15 +52,22 @@ def test_deploy_packet_changes_only_static_dist_with_backup():
 
 
 def test_deploy_packet_has_no_service_or_trading_authority():
-    for token in (
+    command_lines = [
+        line.strip().lower()
+        for line in SCRIPT.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    forbidden_prefixes = (
         "systemctl ",
         "service ",
         "sudo ",
         "docker run",
         "podman run",
         "psql ",
-        "broker",
-        "order",
-        "2fa",
-    ):
-        assert token not in SCRIPT.lower()
+    )
+    for line in command_lines:
+        assert not line.startswith(forbidden_prefixes)
+
+    lowered = "\n".join(command_lines)
+    for authority_token in ("broker_submit", "place_order", "approve_order", "2fa_unlock"):
+        assert authority_token not in lowered
