@@ -56,6 +56,7 @@ printf 'scheduler_source_commit|%s\n' "$RESOLVED_COMMIT"
 printf 'scheduler_mode|%s\n' "$MODE"
 printf 'local_limit|%s\n' "$LIMIT"
 printf 'gate4_evidence|%s\n' "$GATE4_JSON"
+printf 'governed_builder|watch-quality-governed-builder-v1\n'
 printf 'blind_model_system|DISABLED\n'
 printf 'inline_ticket_critic|DISABLED\n'
 printf 'oauth_lane|WITHHELD\n'
@@ -63,11 +64,13 @@ printf 'paid_lane|WITHHELD\n'
 
 cd "$STAGE_ROOT"
 if [[ "$MODE" == "DRY_RUN" ]]; then
+  WATCH_QUALITY_SOURCE_COMMIT="$RESOLVED_COMMIT" \
   SHADOW_DISABLE_MODELS=1 SHADOW_DISABLE_TICKET_CRITIC=1 \
   PYTHONPATH="$STAGE_ROOT/scripts:$STAGE_ROOT/scripts/lib" \
   "$PY" "$STAGE_ROOT/scripts/watch_quality_local_scheduler.py" --dry-run --limit "$LIMIT"
 else
   WATCH_QUALITY_LOCAL_SCHEDULER_ACK=ACTIVATE_BOUNDED_LOCAL_QUANT \
+  WATCH_QUALITY_SOURCE_COMMIT="$RESOLVED_COMMIT" \
   SHADOW_DISABLE_MODELS=1 SHADOW_DISABLE_TICKET_CRITIC=1 \
   PYTHONPATH="$STAGE_ROOT/scripts:$STAGE_ROOT/scripts/lib" \
   "$PY" "$STAGE_ROOT/scripts/watch_quality_local_scheduler.py" --run --limit "$LIMIT"
