@@ -51,6 +51,7 @@ cd "$STAGE_ROOT"
 "$PY" -m py_compile \
   scripts/watch_quality_policy.py scripts/watch_packet_quality.py \
   scripts/watch_quality_projection.py scripts/watch_quality_projection_v2.py \
+  scripts/watch_quality_governed_builder.py \
   scripts/watch_quality_gate3_sample_rebuild.py scripts/watch_quality_gate4_verify.py \
   scripts/watch_quality_local_scheduler.py scripts/strategy_ticket_validator.py \
   scripts/strategy_ticket_review.py scripts/strategy_ticket_reconciler.py \
@@ -87,6 +88,7 @@ printf 'validated_commit|%s\n' "$RESOLVED_COMMIT"
 printf 'validation_scope|TEMPORARY_BUILD_AND_TESTS_ONLY\n'
 printf 'quality_policy_contract|watch-quality-admission-v1\n'
 printf 'quality_projection_contract|watch-quality-projection-v2\n'
+printf 'governed_builder_contract|watch-quality-governed-builder-v1\n'
 printf 'projection_v1_status|SUPERSEDED_SOURCE_UNIT_CONFLICT\n'
 printf 'gate3_contract|watch-quality-gate3-sample-rebuild-v1\n'
 printf 'gate4_contract|watch-quality-gate4-readonly-verification-v1\n'
