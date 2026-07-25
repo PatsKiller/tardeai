@@ -53,9 +53,18 @@ test -x "$PY"
   printf 'source_mode|PINNED_GIT_OBJECT_ARCHIVE\n'
   printf 'host_worktree_checkout|UNCHANGED\n'
   printf 'projection_json|%s\n' "$PROJECTION_JSON"
+  printf 'governed_builder|watch-quality-governed-builder-v1\n'
   printf 'blind_model_system|DISABLED\n'
   printf 'inline_ticket_critic|DISABLED\n'
-  sha256sum "$STAGE_ROOT/scripts/watch_quality_gate3_sample_rebuild.py" "$STAGE_ROOT/scripts/watch_packet_quality.py" "$STAGE_ROOT/scripts/watch_quality_policy.py" "$STAGE_ROOT/scripts/strategy_ticket_validator.py" "$STAGE_ROOT/scripts/shadow_decision_service.py" "$STAGE_ROOT/config/watch_quality_policy.json" | sed 's/^/source_sha256|/'
+  sha256sum \
+    "$STAGE_ROOT/scripts/watch_quality_gate3_sample_rebuild.py" \
+    "$STAGE_ROOT/scripts/watch_quality_governed_builder.py" \
+    "$STAGE_ROOT/scripts/watch_packet_quality.py" \
+    "$STAGE_ROOT/scripts/watch_quality_policy.py" \
+    "$STAGE_ROOT/scripts/strategy_ticket_validator.py" \
+    "$STAGE_ROOT/scripts/shadow_decision_service.py" \
+    "$STAGE_ROOT/config/watch_quality_policy.json" \
+    | sed 's/^/source_sha256|/'
 } | tee "$SUMMARY"
 
 cd "$STAGE_ROOT"
