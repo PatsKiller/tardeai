@@ -105,7 +105,7 @@ async function assertNoContentOverflow(page: any) {
   expect(values.main).toBeLessThanOrEqual(2)
 }
 
-test('Sectors renders actionable sizing and screening evidence at desktop and narrow widths', async ({ page }) => {
+test('Sectors renders and opens actionable sizing and screening evidence at desktop and narrow widths', async ({ page }) => {
   test.setTimeout(90_000)
   await installRoutes(page)
   await page.setViewportSize({ width: 1440, height: 1100 })
@@ -115,8 +115,18 @@ test('Sectors renders actionable sizing and screening evidence at desktop and na
   await expect(main.getByText('Sector decision board', { exact: true })).toBeVisible()
   await expect(main.getByText('ELIGIBLE NOW', { exact: true }).first()).toBeVisible()
   await expect(main.getByText(/pullback toward 20DMA ≈ \$87\.80/).first()).toBeVisible()
-  await expect(main.getByText(/Rollover IRA.*current 3\.6%.*capacity 4\.5%/).first()).toBeVisible()
-  await expect(main.getByText(/\$12,000–\$24,000/).first()).toBeVisible()
+  await expect(main.getByRole('button', { name: 'Review decision' }).first()).toBeVisible()
+  await expect(main.getByRole('button', { name: 'Watch sector' }).first()).toBeVisible()
+  await expect(main.getByRole('button', { name: 'Copy brief + Rotation' }).first()).toBeVisible()
+
+  const energyCard = main.locator('article').filter({ hasText: 'Energy' }).first()
+  await energyCard.getByRole('button', { name: 'Review decision' }).click()
+  const review = page.getByRole('dialog', { name: 'Energy decision review' })
+  await expect(review.getByText(/Rollover IRA.*current 3\.6%.*capacity 4\.5%/).first()).toBeVisible()
+  await expect(review.getByText(/\$12,000–\$24,000/).first()).toBeVisible()
+  await expect(review.getByText('Account-specific capacity', { exact: true })).toBeVisible()
+  await review.getByRole('button', { name: 'Close' }).last().click()
+
   await expect(main.getByText('RESEARCH WATCH', { exact: true }).first()).toBeVisible()
   await expect(main.getByText('AVOID / REDUCE', { exact: true }).first()).toBeVisible()
   await expect(main.getByText(/screen matches/i).first()).toBeVisible()
@@ -131,6 +141,7 @@ test('Sectors renders actionable sizing and screening evidence at desktop and na
   await expect(main.getByText('Sectors & Industries', { exact: true })).toBeVisible()
   await expect(main.getByText('Sector decision board', { exact: true })).toBeVisible()
   await expect(main.getByText('ELIGIBLE NOW', { exact: true }).first()).toBeVisible()
+  await expect(main.getByRole('button', { name: 'Review decision' }).first()).toBeVisible()
   await page.getByRole('button', { name: /Screened names/ }).first().click()
   await expect(main.getByText('THIN COVERAGE', { exact: true }).first()).toBeVisible()
   await assertNoContentOverflow(page)
