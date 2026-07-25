@@ -1,0 +1,33 @@
+{
+  "version": "watch-quality-admission-v1",
+  "mandate": "governed swing and position research; no scalping, social-momentum scalping or low-float speculation",
+  "thresholds": {
+    "min_price_usd": 5.0,
+    "min_float_millions": 20.0,
+    "min_market_cap_usd_millions": 500.0,
+    "preferred_market_cap_usd_millions": 1000.0,
+    "extreme_atr_pct": 10.0,
+    "preferred_max_atr_pct": 7.0,
+    "extreme_preprofit_ps": 40.0,
+    "preferred_max_preprofit_ps": 20.0,
+    "event_like_rvol": 2.5,
+    "event_like_atr_pct": 5.0
+  },
+  "excluded_structure_tokens": [
+    "SCALP",
+    "LOW_FLOAT",
+    "SOCIAL_MOMENTUM"
+  ],
+  "states": {
+    "ADMITTED": "clears the quality layer; all ordinary arithmetic, event, risk and independent-review gates still apply",
+    "RESEARCH_ONLY": "preserve evidence and monitor, but withhold current new-entry mechanics",
+    "QUARANTINED": "hard new-entry refusal; retained only for audit or existing-position management"
+  },
+  "authority": {
+    "deterministic": true,
+    "models_may_override": false,
+    "analyst_ratings_gate_admission": false,
+    "hermes_rank_gates_admission": false,
+    "paid_review_may_override": false
+  }
+}
