@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""strategy_ticket_reconciler.py — deterministic release gate over critics.
+"""Deterministic release gate over independent ticket critics.
 
 Hierarchy is non-negotiable:
 
-    deterministic FAIL / quality refusal → no mechanics, no proposal; no model,
-    local, OAuth or paid, unanimous or not, may override it.
+    deterministic FAIL / missing quality / quality refusal → no mechanics,
+    no proposal; no local, OAuth or paid model may override it.
 
 A paid review is never called here. The reconciler may only state that an
 operator-selected paid escalation is recommended to resolve a deterministic
@@ -12,7 +12,7 @@ warning, unavailable independent review, or critic disagreement.
 """
 from __future__ import annotations
 
-RECONCILER_VERSION = "1.1.0"
+RECONCILER_VERSION = "1.1.1"
 
 
 def _base(validation: dict, reviews: dict, premium: dict | None) -> dict:
@@ -61,8 +61,17 @@ def reconcile(validation: dict, reviews: dict | None = None,
         )
         return out
 
-    if quality and (quality.get("state") != "ADMITTED"
-                    or quality.get("new_entry_allowed") is False):
+    # An old packet path supplied {state: PASS} when no ticket had actually been
+    # validated. Reconciliation must require the new quality record as proof that
+    # deterministic admission ran; otherwise PASS is synthetic/incomplete.
+    if not quality or not quality.get("state"):
+        out.update(
+            state="QUALITY_NOT_ASSESSED",
+            detail="deterministic result lacks mandatory quality-admission evidence",
+        )
+        return out
+
+    if quality.get("state") != "ADMITTED" or quality.get("new_entry_allowed") is False:
         out.update(
             state="QUALITY_NOT_ADMITTED",
             detail="; ".join(quality.get("reasons", [])[:2])
@@ -96,8 +105,6 @@ def reconcile(validation: dict, reviews: dict | None = None,
                 detail="premium expert rejected after deterministic review warning",
                 premium_recommended=False,
             )
-        # A premium PASS does not override REVIEW_REQUIRED automatically. The
-        # operator still owns the final adjudication; proposal_allowed remains false.
         elif premium and premium.get("verdict") == "PASS":
             out.update(
                 state="PREMIUM_REVIEWED",
