@@ -26706,13 +26706,28 @@ def _finviz_strip_map_compute(query=None):
         pytd = d.get("perf_ytd_pct"); pytd = pytd if pytd is not None else _json_clean(pf.get("ytd_return_pct"))
         sma = d.get("sma50_pct"); sma = sma if sma is not None else _json_clean(pf.get("sma50_pct"))
         atr = d.get("atr")
-        if rsi is None and pw is None and pm is None and pytd is None and sma is None and atr is None:
+        # Valuation is already in the enrichment cache (pe/forward_pe/peg/pb/ps) but was
+        # never passed through, so the whole Watch queue rendered "valuation unavailable"
+        # for every symbol — even mega-caps. The Watch valuation panel reads fv.pe /
+        # fv.forward_pe / fv.peg / fv.pb / fv.ps off this strip row, so surface them here.
+        # yfinance-NAV fallback rows (mutual funds) legitimately have none; those stay null
+        # and the UI marks the instrument N/A rather than missing.
+        pe = _json_clean(d.get("pe"))
+        forward_pe = _json_clean(d.get("forward_pe"))
+        peg = _json_clean(d.get("peg"))
+        pb = _json_clean(d.get("pb"))
+        ps = _json_clean(d.get("ps"))
+        has_val = any(v is not None for v in (pe, forward_pe, peg, pb, ps))
+        if (rsi is None and pw is None and pm is None and pytd is None and sma is None
+                and atr is None and not has_val):
             continue   # nothing for this symbol from either source
         row = {"rsi": _json_clean(rsi),
                "rsi_status": d.get("rsi_status") if d.get("rsi") is not None else _rsi_status(rsi),
                "perf_week": _json_clean(pw), "perf_month": _json_clean(pm),
                "perf_ytd": _json_clean(pytd), "sma50": _json_clean(sma),
                "atr": _json_clean(atr),
+               "pe": pe, "forward_pe": forward_pe, "peg": peg, "pb": pb, "ps": ps,
+               "fundamentals_as_of": d.get("cached_at"),
                "source": ("finviz" if d.get("rsi") is not None else "yfinance_nav")}
         out[s] = row
     return {"ok": True, "count": len(out), "map": out,
