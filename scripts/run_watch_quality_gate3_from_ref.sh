@@ -64,11 +64,13 @@ fi
   printf 'projection_mode|%s\n' "$PROJECTION_MODE"
   printf 'projection_json|%s\n' "$PROJECTION_JSON"
   printf 'governed_builder|watch-quality-governed-builder-v1\n'
+  printf 'roundtrip_verifier|watch-quality-gate3-jsonb-roundtrip-v1\n'
   printf 'blind_model_system|DISABLED\n'
   printf 'inline_ticket_critic|DISABLED\n'
   sha256sum \
     "$STAGE_ROOT/scripts/watch_quality_projection_v2.py" \
     "$STAGE_ROOT/scripts/watch_quality_gate3_sample_rebuild.py" \
+    "$STAGE_ROOT/scripts/watch_quality_gate3_sample_rebuild_v2.py" \
     "$STAGE_ROOT/scripts/watch_quality_governed_builder.py" \
     "$STAGE_ROOT/scripts/watch_packet_quality.py" \
     "$STAGE_ROOT/scripts/watch_quality_policy.py" \
@@ -84,7 +86,7 @@ WATCH_QUALITY_SOURCE_COMMIT="$RESOLVED_COMMIT" \
 SHADOW_DISABLE_MODELS=1 \
 SHADOW_DISABLE_TICKET_CRITIC=1 \
 PYTHONPATH="$STAGE_ROOT/scripts:$STAGE_ROOT/scripts/lib" \
-"$PY" "$STAGE_ROOT/scripts/watch_quality_gate3_sample_rebuild.py" \
+"$PY" "$STAGE_ROOT/scripts/watch_quality_gate3_sample_rebuild_v2.py" \
   --projection-json "$PROJECTION_JSON" \
   --evidence-json "$RESULT_JSON" \
   | tee -a "$SUMMARY"
