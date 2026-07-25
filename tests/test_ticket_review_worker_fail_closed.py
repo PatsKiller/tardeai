@@ -6,14 +6,16 @@ SOURCE = (Path(__file__).resolve().parents[1] / "scripts/run_ticket_review_job.p
 
 def test_worker_never_fakes_missing_validation_as_pass():
     assert 'validation or {"state": "PASS"}' not in SOURCE
-    assert 'deterministic = str(validation.get("state") or "NOT_RUN")' in SOURCE
-    assert 'may_review = deterministic in {"PASS", "REVIEW_REQUIRED"}' in SOURCE
+    assert "selected = packet_quality.select_governing_validation(packet)" in SOURCE
+    assert 'validation = selected.get("validation") or {}' in SOURCE
+    assert 'deterministic = selected.get("deterministic") or "NOT_RUN"' in SOURCE
 
 
-def test_worker_refuses_models_for_non_admitted_quality():
-    assert 'quality.get("state") != "ADMITTED"' in SOURCE
-    assert 'quality.get("new_entry_allowed") is False' in SOURCE
+def test_worker_requires_explicit_admission_before_models():
+    assert 'quality.get("state") == "ADMITTED"' in SOURCE
+    assert 'quality.get("new_entry_allowed") is not False' in SOURCE
     assert 'if may_review and selected_lanes' in SOURCE
+    assert 'if quality and (quality.get("state") != "ADMITTED"' not in SOURCE
 
 
 def test_worker_has_no_paid_or_execution_authority():
