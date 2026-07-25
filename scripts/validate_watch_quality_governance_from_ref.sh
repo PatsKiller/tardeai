@@ -60,6 +60,7 @@ git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
   tests/test_ticket_review_worker_fail_closed.py \
   tests/test_validate_watch_quality_governance_from_ref.py \
   tests/test_research_due_diligence.py \
+  tests/test_research_due_diligence_census.py \
   | "$TAR" -x -C "$STAGE_ROOT"
 
 readonly PY="$([[ -x "$HOST_REPO/.venv/bin/python" ]] && printf '%s' "$HOST_REPO/.venv/bin/python" || printf '%s' "$PYTHON_DEFAULT")"
@@ -77,6 +78,7 @@ cd "$STAGE_ROOT"
   scripts/watch_decision_scheduler.py \
   scripts/watch_quality_audit.py \
   scripts/research_due_diligence.py \
+  scripts/research_due_diligence_census.py \
   scripts/specialized_research_due_diligence.py \
   scripts/specialized_research_pipeline.py \
   scripts/sector_momentum_engine_v5.py
@@ -94,7 +96,8 @@ cd "$STAGE_ROOT"
   tests/test_watch_quality_ui_contract.py \
   tests/test_ticket_review_worker_fail_closed.py \
   tests/test_validate_watch_quality_governance_from_ref.py \
-  tests/test_research_due_diligence.py
+  tests/test_research_due_diligence.py \
+  tests/test_research_due_diligence_census.py
 
 cd "$STAGE_ROOT/apps/command-center-v3"
 "$NPM" ci
@@ -122,6 +125,7 @@ printf 'quality_policy_contract|watch-quality-admission-v1\n'
 printf 'quality_projection_contract|watch-quality-projection-v2\n'
 printf 'projection_v1_status|SUPERSEDED_SOURCE_UNIT_CONFLICT\n'
 printf 'research_due_diligence_contract|research-due-diligence-v1\n'
+printf 'cross_domain_census_contract|research-due-diligence-census-v1\n'
 printf 'specialized_domains|PROPOSAL,DEFENSE,SECTOR,INDUSTRY,WATCH\n'
 printf 'review_contract|watch-ticket-independent-review-v2\n'
 printf 'ui_contract|watch-quality-governance-v1\n'
