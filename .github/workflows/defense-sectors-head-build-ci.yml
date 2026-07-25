@@ -1,0 +1,57 @@
+name: defense-sectors-head-build-ci
+
+on:
+  pull_request:
+    paths:
+      - 'apps/command-center-v3/**'
+      - 'scripts/deploy_defense_sectors_ui_from_ref.sh'
+      - '.github/workflows/defense-sectors-head-build-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  exact-head-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact deployable PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify exact head
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          printf 'validated_head|%s\n' "$(git rev-parse HEAD)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+
+      - name: Install locked dependencies
+        working-directory: apps/command-center-v3
+        run: npm ci
+
+      - name: Compile exact head
+        working-directory: apps/command-center-v3
+        run: npx tsc --pretty false
+
+      - name: Build exact head
+        working-directory: apps/command-center-v3
+        run: npx vite build
+
+      - name: Verify deployment markers
+        run: |
+          for marker in \
+            'Sector decision board' \
+            'ELIGIBLE NOW' \
+            'RESEARCH WATCH' \
+            'AVOID / REDUCE' \
+            'NO DECISION' \
+            'model critique only'
+          do
+            grep -R --binary-files=text -Fq "$marker" apps/command-center-v3/dist
+          done
