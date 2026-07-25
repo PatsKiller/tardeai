@@ -1,0 +1,73 @@
+name: defense-sectors-interaction-ci
+
+on:
+  pull_request:
+    paths:
+      - 'apps/command-center-v3/src/components/NavRail.tsx'
+      - 'apps/command-center-v3/src/pages/WatchHub.tsx'
+      - 'apps/command-center-v3/src/components/rotation/**'
+      - 'apps/command-center-v3/e2e/defense-sectors-interactions.spec.ts'
+      - '.github/workflows/defense-sectors-interaction-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  interaction-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact deployable PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify exact head
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          printf 'validated_head|%s\n' "$(git rev-parse HEAD)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+
+      - name: Install locked dependencies
+        working-directory: apps/command-center-v3
+        run: npm ci
+
+      - name: Compile exact head
+        working-directory: apps/command-center-v3
+        run: npx tsc --pretty false
+
+      - name: Build exact head
+        working-directory: apps/command-center-v3
+        run: npx vite build
+
+      - name: Install Chromium
+        working-directory: apps/command-center-v3
+        run: npx playwright install --with-deps chromium
+
+      - name: Run interaction contract
+        working-directory: apps/command-center-v3
+        run: |
+          rm -rf interaction-artifacts test-results
+          npm run preview -- --host 127.0.0.1 --port 4175 >/tmp/defense-sectors-interaction-vite.log 2>&1 &
+          for i in $(seq 1 45); do
+            curl -fsS http://127.0.0.1:4175/v3/ >/dev/null && break
+            sleep 1
+          done
+          export PLAYWRIGHT_BASE_URL=http://127.0.0.1:4175
+          npx playwright test e2e/defense-sectors-interactions.spec.ts
+
+      - name: Upload interaction failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: defense-sectors-interaction-failure
+          path: |
+            apps/command-center-v3/test-results/**
+            /tmp/defense-sectors-interaction-vite.log
+          if-no-files-found: warn
+          retention-days: 14
