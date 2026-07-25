@@ -23,6 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(1, str(PROJECT_ROOT / "scripts" / "lib"))
 
 import watch_decision_refresh as wdr  # noqa: E402
+import watch_packet_quality as packet_quality  # noqa: E402
 
 TIER_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 QUALITY_ORDER = {"ADMITTED": 0, "UNASSESSED": 1, "RESEARCH_ONLY": 2, "QUARANTINED": 3}
@@ -30,21 +31,6 @@ QUALITY_ORDER = {"ADMITTED": 0, "UNASSESSED": 1, "RESEARCH_ONLY": 2, "QUARANTINE
 
 def _now():
     return datetime.now(timezone.utc)
-
-
-def _packet_gate(packet: dict | None) -> dict:
-    packet = packet or {}
-    plan = packet.get("current_actionable_plan") or {}
-    validation = plan.get("ticket_validation") or {}
-    quality = validation.get("quality_admission") or {}
-    ownership = packet.get("ownership") or {}
-    return {
-        "quality": str(quality.get("state") or "UNASSESSED").upper(),
-        "new_entry_allowed": quality.get("new_entry_allowed"),
-        "deterministic": str(validation.get("state") or "NOT_RUN").upper(),
-        "held": bool(ownership.get("held") or ownership.get("shares")),
-        "quality_reasons": quality.get("reasons") or [],
-    }
 
 
 def _priority_key(item: dict) -> tuple:
@@ -70,7 +56,7 @@ def build_plan(conn) -> dict:
             "generated_at": row[1],
             "mode": row[2],
             "packet": row[3] or {},
-            "gate": _packet_gate(row[3] or {}),
+            "gate": packet_quality.packet_gate(row[3] or {}),
         }
         for row in cur.fetchall()
     }
@@ -96,7 +82,8 @@ def build_plan(conn) -> dict:
         packet_info = packets.get(symbol)
         gate = packet_info["gate"] if packet_info else {
             "quality": "UNASSESSED", "new_entry_allowed": None,
-            "deterministic": "NOT_RUN", "held": False, "quality_reasons": [],
+            "deterministic": "NOT_RUN", "held": False,
+            "quality_reasons": [], "validation_source": None,
         }
         quality_state = gate["quality"] if gate["quality"] in QUALITY_ORDER else "UNASSESSED"
         quality_counts[quality_state] += 1
@@ -118,7 +105,10 @@ def build_plan(conn) -> dict:
                 "symbol": symbol,
                 "tier": tier,
                 "quality": quality_state,
-                "why": (gate["quality_reasons"] or ["quality gate refused active entry"])[0],
+                "deterministic": gate["deterministic"],
+                "validation_source": gate.get("validation_source"),
+                "why": (gate["quality_reasons"] or gate.get("hard_failures")
+                        or ["quality gate refused active entry"])[0],
             })
             continue
 
@@ -150,7 +140,10 @@ def build_plan(conn) -> dict:
 
         if not due_local:
             plan["not_due"].append({
-                "symbol": symbol, "tier": tier, "quality": quality_state,
+                "symbol": symbol,
+                "tier": tier,
+                "quality": quality_state,
+                "deterministic": gate["deterministic"],
             })
             continue
 
@@ -159,6 +152,7 @@ def build_plan(conn) -> dict:
             "tier": tier,
             "quality": quality_state,
             "deterministic": gate["deterministic"],
+            "validation_source": gate.get("validation_source"),
             "held_or_starred": held_or_starred,
             "why": due_reason,
         }
@@ -177,6 +171,7 @@ def build_plan(conn) -> dict:
                     "symbol": symbol,
                     "tier": tier,
                     "quality": quality_state,
+                    "validation_source": gate.get("validation_source"),
                     "why": f"admitted deterministic PASS; blind age {age_min:.0f}m > {blind_ceiling}m",
                 })
 
