@@ -76,8 +76,12 @@ DROP ROLE IF EXISTS $MIGRATOR_ROLE;
 SQL
 chmod 600 "$ROLLBACK_FILE"
 
-exec > >(tee "$EVIDENCE_FILE") 2>&1
+# Create and lock the evidence file BEFORE redirecting, so the mode-0600 chmod cannot
+# race the asynchronous tee in the process substitution (which created the file lazily
+# and intermittently failed the chmod under set -e).
+: > "$EVIDENCE_FILE"
 chmod 600 "$EVIDENCE_FILE"
+exec > >(tee -a "$EVIDENCE_FILE") 2>&1
 
 on_error() {
   local rc=$?
