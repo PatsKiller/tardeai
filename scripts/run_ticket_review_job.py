@@ -3,8 +3,8 @@
 
 The worker never constructs mechanics and never calls a model before mandatory
 deterministic validation and quality admission complete. It persists critic
-artifacts and the deterministic reconciliation only; no proposal, broker,
-approval, paid-lane or 2FA action is available here.
+artifacts and deterministic reconciliation only; no proposal, broker, approval,
+paid-lane or 2FA action is available here.
 """
 import json
 import sys
@@ -15,35 +15,37 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(1, str(PROJECT_ROOT / "scripts" / "lib"))
 
 
-def _facts_from_packet(symbol: str, packet: dict, conn, svc) -> dict:
-    snapshot = packet.get("input_snapshot") or {}
+def _facts_from_packet(symbol: str, packet: dict, validation: dict, conn, svc) -> dict:
+    snapshot = packet.get("current_input_snapshot") or packet.get("input_snapshot") or {}
     market = snapshot.get("market") or {}
     fundamentals = svc._fundamentals_for(symbol) or {}
+    quality_facts = (validation.get("quality_admission") or {}).get("facts_used") or {}
+    price = packet.get("current_price") or market.get("price") or packet.get("price_used")
+    atr = None
+    atr_pct = quality_facts.get("atr_pct")
+    if atr_pct is not None and price:
+        try:
+            atr = float(price) * float(atr_pct) / 100.0
+        except (TypeError, ValueError):
+            atr = None
+
     facts = {
         "symbol": symbol,
         "live_price": packet.get("current_price") or market.get("price"),
         "enriched_price": packet.get("price_used"),
         "live_price_as_of": packet.get("facts_as_of") or market.get("price_as_of"),
         "enriched_at": market.get("technical_as_of"),
-        "atr": ((packet.get("current_actionable_plan") or {}).get("ticket_validation") or {})
-               .get("quality_admission", {}).get("facts_used", {}).get("atr_pct"),
+        "atr": atr,
         "rvol": market.get("rvol"),
+        "float_m": quality_facts.get("float_m"),
         "fundamentals": fundamentals,
         "technical_state": packet.get("technical_state") or {},
         "deterministic_thesis": packet.get("deterministic_thesis") or {},
         "data_quality": packet.get("data_quality") or {},
-        "events": packet.get("event_state") or {},
+        "events": packet.get("event_state") or snapshot.get("events") or {},
+        "support": packet.get("support") or [],
+        "resistance": packet.get("resistance") or [],
     }
-    # Prefer the absolute ATR preserved in validation/current packet when present.
-    validation = ((packet.get("current_actionable_plan") or {}).get("ticket_validation") or {})
-    quality_facts = (validation.get("quality_admission") or {}).get("facts_used") or {}
-    atr_pct = quality_facts.get("atr_pct")
-    price = facts.get("live_price") or facts.get("enriched_price")
-    if atr_pct is not None and price:
-        try:
-            facts["atr"] = float(price) * float(atr_pct) / 100.0
-        except (TypeError, ValueError):
-            facts["atr"] = None
 
     try:
         cur = conn.cursor()
@@ -76,10 +78,16 @@ def _facts_from_packet(symbol: str, packet: dict, conn, svc) -> dict:
     return facts
 
 
-def _persist(packet_id, prior: dict, reviews: dict, reconciled: dict):
+def _persist(packet_id, prior: dict, reviews: dict, reconciled: dict,
+             validation_source: str | None):
     import watch_decision_refresh as refresh
     merged = {**(prior.get("reviews") or {}), **reviews}
-    ticket_review = {**prior, "reviews": merged, "reconciled": reconciled}
+    ticket_review = {
+        **prior,
+        "reviews": merged,
+        "reconciled": reconciled,
+        "validation_source": validation_source,
+    }
     conn = refresh._conn()
     cur = conn.cursor()
     cur.execute("""UPDATE decision_packets
@@ -94,9 +102,10 @@ def main(symbol: str, lanes: str):
     from env_bootstrap import load_env
     load_env()
     from db_adapter import _get_conn
-    import strategy_ticket_review as reviewer
-    import strategy_ticket_reconciler as reconciler
     import shadow_decision_service as svc
+    import strategy_ticket_reconciler as reconciler
+    import strategy_ticket_review as reviewer
+    import watch_packet_quality as packet_quality
 
     sym = symbol.upper()
     conn = _get_conn()
@@ -107,14 +116,12 @@ def main(symbol: str, lanes: str):
     if not row:
         print(json.dumps({"ok": False, "error": "no live packet"}))
         return
+
     packet_id, packet = row
-    plan = packet.get("current_actionable_plan")
-    if not isinstance(plan, dict):
-        plan = None
-    target = plan or (((packet.get("plan_families") or {}).get("swing") or {})
-                      .get("structures") or [{}])[0]
-    validation = (plan or {}).get("ticket_validation") or target.get("ticket_validation") or {}
-    deterministic = str(validation.get("state") or "NOT_RUN").upper()
+    selected = packet_quality.select_governing_validation(packet)
+    target = selected.get("ticket") or {}
+    validation = selected.get("validation") or {}
+    deterministic = selected.get("deterministic") or "NOT_RUN"
     quality = validation.get("quality_admission") or {}
     prior = packet.get("ticket_review") or {}
 
@@ -125,7 +132,7 @@ def main(symbol: str, lanes: str):
                     or quality.get("new_entry_allowed") is False):
         may_review = False
 
-    facts = _facts_from_packet(sym, packet, conn, svc)
+    facts = _facts_from_packet(sym, packet, validation, conn, svc)
     selected_lanes = tuple(
         lane for lane in (part.strip() for part in lanes.split(","))
         if lane in {"local", "grok", "chatgpt"}
@@ -133,7 +140,7 @@ def main(symbol: str, lanes: str):
     reviews = {}
     if may_review and selected_lanes:
         reviews = reviewer.run_free_reviews(
-            sym, target or {}, facts, validation, lanes=selected_lanes,
+            sym, target, facts, validation, lanes=selected_lanes,
         )
 
     prior_reviews = {**(prior.get("reviews") or {}), **reviews}
@@ -142,10 +149,13 @@ def main(symbol: str, lanes: str):
         prior_reviews,
         current_ticket_hash=validation.get("ticket_hash"),
     )
-    merged_reviews = _persist(packet_id, prior, reviews, reconciled)
+    merged_reviews = _persist(
+        packet_id, prior, reviews, reconciled, selected.get("source"),
+    )
     print(json.dumps({
         "ok": True,
         "packet_id": packet_id,
+        "validation_source": selected.get("source"),
         "deterministic": deterministic,
         "quality_admission": quality.get("state"),
         "models_called": bool(reviews),
