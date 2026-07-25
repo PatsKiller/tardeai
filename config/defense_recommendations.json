@@ -1,5 +1,5 @@
 {
-  "_comment": "Defense Desk v3 WS-R. Every knob the recommendations engine uses — no hardcoded values in code. Neutral map = equal-weight 11 sectors unless operator overrides. Size bands are % of the target account's equity. Advisory/paper only; matrix in account_capabilities.json is ENFORCED at render.",
+  "_comment": "Defense Desk v3 WS-R. Every knob the recommendations engine uses \u2014 no hardcoded values in code. Neutral map = equal-weight 11 sectors unless operator overrides. Size bands are % of the target account's equity. Advisory/paper only; matrix in account_capabilities.json is ENFORCED at render.",
   "neutral_sector_weight_pct": 9.1,
   "underweight_floor_pct": 4.0,
   "overweight_alert_pct": 10.0,
@@ -23,7 +23,7 @@
     "factor_threshold": 3,
     "shadow_trading_days": 10,
     "shadow_started": "2026-07-18",
-    "tax_gate_lt_gain_note": "long-term gain — operator tax review before any real-money exit",
+    "tax_gate_lt_gain_note": "long-term gain \u2014 operator tax review before any real-money exit",
     "max_cards": 4
   },
   "inverse_etf": {
@@ -39,7 +39,7 @@
       2.0,
       5.0
     ],
-    "decay_warning": "1x inverse ETFs reset daily — holding through chop bleeds; this is a WEEKS hedge, not a position",
+    "decay_warning": "1x inverse ETFs reset daily \u2014 holding through chop bleeds; this is a WEEKS hedge, not a position",
     "exit_rule": "close when the trigger state exits (2-close confirmed)"
   },
   "taxable_short": {
@@ -100,7 +100,7 @@
     "tradeai_automated": "Paper"
   },
   "trim_composite": {
-    "_comment": "DT1 — every number renders on the card; absent inputs listed, never silently defaulted",
+    "_comment": "DT1 \u2014 every number renders on the card; absent inputs listed, never silently defaulted",
     "base_by_factor_count": {
       "2": 20,
       "3": 30,
@@ -121,7 +121,7 @@
     "round_to": 5
   },
   "ladder": {
-    "_comment": "EL — tranches armed at creation; triggers machine-evaluable ONLY (sector persistence, price level via 20-min watch_alerts evaluator, GG state, factor count)",
+    "_comment": "EL \u2014 tranches armed at creation; triggers machine-evaluable ONLY (sector persistence, price level via 20-min watch_alerts evaluator, GG state, factor count)",
     "t2_add_pp": 25,
     "t3_add_pp": 25,
     "t3_only_when_urgent": true,
@@ -130,13 +130,13 @@
     "max_open_ladders": 8
   },
   "core": {
-    "_comment": "v6 WS-CORE — operator-owned registry semantics (distinct from the core_holding strategy enum). Core positions: NEVER full-exit, trim-ladder only, mandatory re-entry watch, patient windows, cleanup exempt.",
+    "_comment": "v6 WS-CORE \u2014 operator-owned registry semantics (distinct from the core_holding strategy enum). Core positions: NEVER full-exit, trim-ladder only, mandatory re-entry watch, patient windows, cleanup exempt.",
     "max_trim_pct": 60,
     "reentry_window_days": 90,
     "noncore_reentry_window_days": 60
   },
   "rotation_pairs": {
-    "_comment": "v6 WS-PAIR — funded rotation pairs: trim proceeds routed to same-account destinations, one card. Style-aware via the market layer's existing spreads; never forced.",
+    "_comment": "v6 WS-PAIR \u2014 funded rotation pairs: trim proceeds routed to same-account destinations, one card. Style-aware via the market layer's existing spreads; never forced.",
     "max_destinations": 3,
     "min_leg_dollars": 2000,
     "underweight_gap_weight": 0.1,
@@ -150,7 +150,7 @@
     "stage_buy_legs": true,
     "defensive_lean": {
       "enabled": true,
-      "set_by": "operator, per the 5-seat oversight panel 2026-07-18 (opus/gpt-5.4: 'defensive rotation, not risk-on broadening — equal>cap may be a distribution tell')",
+      "set_by": "operator, per the 5-seat oversight panel 2026-07-18 (opus/gpt-5.4: 'defensive rotation, not risk-on broadening \u2014 equal>cap may be a distribution tell')",
       "defensive_sectors": [
         "Utilities",
         "Consumer Staples",
@@ -159,7 +159,17 @@
       "allow_income_destination": true,
       "cash_remainder": true,
       "_revoke": "set enabled=false when the tape confirms risk-on broadening (breadth + small caps + NH/NL)",
-      "max_single_destination_pct": 50
+      "max_single_destination_pct": 50,
+      "set_at": "2026-07-18",
+      "review_after_days": 5,
+      "review_policy": "retain until operator adjudication; never auto-revoke",
+      "evidence_required": [
+        "full-universe breadth",
+        "small-vs-large trend",
+        "equal-vs-cap trend",
+        "sector and industry close confirmation",
+        "portfolio capacity and risk budget"
+      ]
     }
   },
   "operator_items": [
@@ -169,7 +179,7 @@
       "since": "2026-07-17"
     },
     {
-      "item": "Schwab dated Cost Basis export ×4",
+      "item": "Schwab dated Cost Basis export \u00d74",
       "why": "feeds GG term math + wash-sale LOSS detection + ticket realized-gain estimates",
       "since": "2026-07-16"
     },
@@ -179,23 +189,23 @@
       "since": "2026-07-18"
     },
     {
-      "item": "Decide: ★CORE checkbox on the Portfolio holdings card?",
-      "why": "Card v4 family is LOCKED by your own directive — needs your call to amend",
+      "item": "Decide: \u2605CORE checkbox on the Portfolio holdings card?",
+      "why": "Card v4 family is LOCKED by your own directive \u2014 needs your call to amend",
       "since": "2026-07-18"
     },
     {
       "item": "KEY ROTATION",
-      "why": "repo now PUBLIC by design for external review — keys in git history are reachable by anyone; rotation is the fix",
+      "why": "repo now PUBLIC by design for external review \u2014 keys in git history are reachable by anyone; rotation is the fix",
       "since": "2026-07-06"
     },
     {
-      "item": "Jul 30–31: triple promote review",
-      "why": "GG shadow · move-out Telegram · ladder/rollback Telegram — all three decided together",
+      "item": "Jul 30\u201331: triple promote review",
+      "why": "GG shadow \u00b7 move-out Telegram \u00b7 ladder/rollback Telegram \u2014 all three decided together",
       "since": "calendar"
     }
   ],
   "cc_validation": {
-    "_comment": "operator ask 2026-07-18: validate greeks/liquidity before a CC strike renders — a pick failing these falls to the next candidate; none valid = honest fallback text",
+    "_comment": "operator ask 2026-07-18: validate greeks/liquidity before a CC strike renders \u2014 a pick failing these falls to the next candidate; none valid = honest fallback text",
     "min_open_interest": 50,
     "min_volume_or_oi": 25,
     "max_spread_pct_of_mid": 12.0,
@@ -205,14 +215,14 @@
     ]
   },
   "hedge_playbook": {
-    "_comment": "PSQ/SH entry-exit playbook levels — alerts maintained nightly on the 20-min evaluator (created_by=defense_hedge)",
+    "_comment": "PSQ/SH entry-exit playbook levels \u2014 alerts maintained nightly on the 20-min evaluator (created_by=defense_hedge)",
     "bounce_day_pct": 0.75,
     "take_profit_1_pct": 8,
     "take_profit_2_pct": 15,
     "tranches": 3
   },
   "oversight_paid": {
-    "_comment": "v8.2 panel — three paid seats, per-seat models+prices; monthly budget shared. Primary=claude per the CRITICAL_CLOUD standing rule; gpt/xai optional (panel mode diffs them). env LLM_CRITICAL_CLOUD overrides the claude model.",
+    "_comment": "v8.2 panel \u2014 three paid seats, per-seat models+prices; monthly budget shared. Primary=claude per the CRITICAL_CLOUD standing rule; gpt/xai optional (panel mode diffs them). env LLM_CRITICAL_CLOUD overrides the claude model.",
     "monthly_budget_usd": 25.0,
     "est_output_tokens": 4000,
     "weekly_paid_review": true,
@@ -238,28 +248,28 @@
     }
   },
   "oversight_free": {
-    "_comment": "Tier-1 free-seat limits — oversight's share of each OAuth lane's GLOBAL daily quota (the lanes serve Hermes etc. too). Operator-owned.",
+    "_comment": "Tier-1 free-seat limits \u2014 oversight's share of each OAuth lane's GLOBAL daily quota (the lanes serve Hermes etc. too). Operator-owned.",
     "daily_per_seat": 5
   },
   "operator_suppressions": [
     {
       "symbol": "BND",
       "scope": "move_out",
-      "reason": "operator affirmed HOLD 2026-07-18 (all-seat consensus resolved the ladder tension) — bond ballast stays; the engine's factor join disagrees and that is fine",
+      "reason": "operator affirmed HOLD 2026-07-18 (all-seat consensus resolved the ladder tension) \u2014 bond ballast stays; the engine's factor join disagrees and that is fine",
       "set": "2026-07-18",
       "until": null,
-      "_note": "engine still COMPUTES the factors (visible in the stance reason) — it just stops emitting the trim card/ladder/pair for this symbol until the operator removes this entry"
+      "_note": "engine still COMPUTES the factors (visible in the stance reason) \u2014 it just stops emitting the trim card/ladder/pair for this symbol until the operator removes this entry"
     },
     {
       "symbol": "SPCX",
       "scope": "move_out",
-      "reason": "operator 2026-07-18: HOLD affirmed + resolves the share-commitment conflict (156 committed > 125 held) — the covered call keeps sole claim on the shares; trim side muted",
+      "reason": "operator 2026-07-18: HOLD affirmed + resolves the share-commitment conflict (156 committed > 125 held) \u2014 the covered call keeps sole claim on the shares; trim side muted",
       "set": "2026-07-18",
       "until": null
     }
   ],
   "protective_put": {
-    "_comment": "R1 put-structure designer (2026-07-18): protective puts on HELD shares — legal at Schwab 'covered' tier (verified account_capabilities). Radar picks the best put per underlying on the same liquidity rails as CCs; the designer renders only for put-capable accounts, deteriorating sectors, and cost within the ANNUALIZED budget gate (cost% x 365/dte <= max_cost_annualized_pct - fair across tenors).",
+    "_comment": "R1 put-structure designer (2026-07-18): protective puts on HELD shares \u2014 legal at Schwab 'covered' tier (verified account_capabilities). Radar picks the best put per underlying on the same liquidity rails as CCs; the designer renders only for put-capable accounts, deteriorating sectors, and cost within the ANNUALIZED budget gate (cost% x 365/dte <= max_cost_annualized_pct - fair across tenors).",
     "tenor_dte": [
       45,
       120
@@ -297,10 +307,72 @@
       50
     ],
     "stale_calendar_days": 4,
-    "beta_book_source": "ASSUMED_1.0 — sizing is DISPLAY-ONLY until sleeve return history exists; no ticket path",
+    "beta_book_source": "ASSUMED_1.0 \u2014 sizing is DISPLAY-ONLY until sleeve return history exists; no ticket path",
     "shadow_twoday": {
       "min_daily_pct": 0.0,
       "min_cum_pct": 0.75
     }
+  },
+  "allocation_policy": {
+    "default_benchmark": "equal_sector",
+    "benchmarks": {
+      "equal_sector": {
+        "Technology": 9.1,
+        "Financials": 9.1,
+        "Healthcare": 9.1,
+        "Energy": 9.1,
+        "Industrials": 9.1,
+        "Consumer Discretionary": 9.1,
+        "Consumer Staples": 9.1,
+        "Utilities": 9.1,
+        "Materials": 9.1,
+        "Real Estate": 9.1,
+        "Communications": 9.1
+      }
+    },
+    "account_mandates": {
+      "schwab_taxable": "total_return",
+      "schwab_rollover_ira": "retirement_income",
+      "schwab_roth_ira": "retirement_income",
+      "tradeai_automated": "research"
+    },
+    "mandates": {
+      "total_return": {
+        "sector_tilts_pct": {}
+      },
+      "research": {
+        "sector_tilts_pct": {}
+      },
+      "retirement_income": {
+        "sector_tilts_pct": {
+          "Utilities": 1.0,
+          "Consumer Staples": 1.0,
+          "Healthcare": 1.0,
+          "Financials": 0.5,
+          "Technology": -1.0
+        }
+      }
+    },
+    "target_annualized_vol_pct": 22.0,
+    "vol_scalar_floor": 0.45,
+    "vol_scalar_cap": 1.2,
+    "correlation_soft_limit": 0.85,
+    "correlation_penalty": 0.75,
+    "max_active_tilt_pct": 4.0,
+    "sector_cap_pct": 25.0,
+    "min_capacity_pct": 1.0,
+    "benchmark_note": "equal-sector is an explicit selectable policy, not universal truth"
+  },
+  "stock_quality": {
+    "min_coverage": 0.6,
+    "min_score": 60.0,
+    "min_roic_pct": 8.0,
+    "max_debt_equity": 2.0,
+    "hard_fail_debt_equity": 4.0,
+    "max_short_float_pct": 12.0,
+    "hard_fail_short_float_pct": 25.0,
+    "max_beta": 1.7,
+    "max_above_sma50_pct": 12.0,
+    "requires_close_confirmed_industry": true
   }
 }

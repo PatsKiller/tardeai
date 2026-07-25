@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """finviz_industry_groups.py — Defense Desk v2 WS-B2: the industry rotation layer.
 
-One Finviz Elite groups export (grp_export.ashx?g=industry&v=141 — 144 industries ×
+Two Finviz Elite exports (groups + same-run SPY performance) (grp_export.ashx?g=industry&v=141 — 144 industries ×
 Perf W/M/Q/H/Y/YTD) per run, through the shared finviz_throttle. Quadrant mapping
 (documented): level = perf_month − SPY 21-session return, direction = perf_week −
 SPY 5-session return, fed into the SAME classify() as sectors:
@@ -16,7 +16,7 @@ transitions in industries intersecting the BOOK or WATCH universe, capped.
 Candidate feeds (advisory pools, source_type=industry_momentum — never auto-trade):
   confirmed LAGGING (worst rel1w) → defensive_short pool · confirmed IMPROVING → watch rail
 
-Budget: 1 export/run, 2 runs/day (12:30 refresh + 16:18 close) per the v2 cadence note.
+Budget: 2 exports/run, 2 runs/day (12:30 refresh + 16:18 close) per the v2 cadence note.
 
 Usage: finviz_industry_groups.py [--close] [--dry-run]
 """
@@ -34,7 +34,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from sector_momentum_engine import CFG, classify, _closes, _ret  # noqa: E402
+from sector_momentum_engine import CFG, classify  # noqa: E402
+from defense_data_quality import (INDUSTRY_CALC_VERSION, canonical_industry_sector,
+                                  load_industry_map, snapshot_hash, truth_ref)  # noqa: E402
+from finviz_enrichment import _fetch_view as _finviz_fetch_view  # noqa: E402
 
 try:
     from finviz_throttle import acquire as _fv_acquire, cooldown as _fv_cooldown
@@ -94,15 +97,9 @@ def fetch_groups() -> list[dict]:
     return rows
 
 
-def sector_map(cur) -> dict:
-    """industry → modal sector, from finviz-enriched scans (names match groups export)."""
-    cur.execute("""SELECT industry, sector FROM (
-                     SELECT industry, sector, count(*) n,
-                            row_number() OVER (PARTITION BY industry ORDER BY count(*) DESC) rk
-                     FROM trade_ai_scans
-                     WHERE industry IS NOT NULL AND sector IS NOT NULL AND sector <> ''
-                     GROUP BY industry, sector) x WHERE rk = 1""")
-    return dict(cur.fetchall())
+def sector_map() -> dict:
+    """Versioned deterministic mapping configuration; never a modal DB inference."""
+    return load_industry_map(ROOT)
 
 
 def book_watch_industries(cur) -> tuple[dict, dict]:
@@ -136,18 +133,17 @@ def book_watch_industries(cur) -> tuple[dict, dict]:
     return book, watch
 
 
-def spy_baseline(cur):
-    """SPY 5- and 21-session returns from ticker_prices (matches Finviz W/M windows)."""
-    series = _closes(cur, ["SPY"], days=60).get("SPY", [])
-    dates = sorted({d for d, _ in series})
-    dedup = []
-    seen = set()
-    for d, px in sorted(series):
-        if d not in seen:
-            seen.add(d)
-            dedup.append((d, px))
-    i = len(dedup) - 1
-    return _ret(dedup, i, 5), _ret(dedup, i, 21)
+def spy_baseline():
+    """SPY week/month performance from the same Finviz view and run as industries."""
+    rows = _finviz_fetch_view(["SPY"], 141, ROOT)
+    rec = rows.get("SPY") or {}
+    return {
+        "w1": rec.get("perf_week_pct"),
+        "m1": rec.get("perf_month_pct"),
+        "provider": "finviz_elite_view_141",
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "quality": "same_vendor_same_run" if rec.get("perf_week_pct") is not None and rec.get("perf_month_pct") is not None else "missing",
+    }
 
 
 def main() -> int:
@@ -172,21 +168,28 @@ def main() -> int:
         print(f"[industry] FAIL-CLOSED: only {len(groups)} groups parsed — aborting")
         return 1
 
-    spy1w, spy1m = spy_baseline(cur)
+    spy = spy_baseline()
+    spy1w, spy1m = spy.get("w1"), spy.get("m1")
     if spy1w is None or spy1m is None:
         print("[industry] FAIL-CLOSED: SPY baseline unavailable")
         return 1
 
-    smap = sector_map(cur)
+    mapping_cfg = sector_map()
     book, watch = book_watch_industries(cur)
 
     for g in groups:
-        g["sector"] = smap.get(g["industry"])
+        mapping = canonical_industry_sector(g["industry"], mapping_cfg)
+        g.update(mapping)
         g["rel1w"] = round(g["perf_week"] - spy1w, 2) if g["perf_week"] is not None else None
         g["rel1m"] = round(g["perf_month"] - spy1m, 2) if g["perf_month"] is not None else None
         g["state"] = classify(g["rel1m"], g["rel1w"])
         g["held"] = book.get(g["industry"], [])
         g["watched"] = watch.get(g["industry"], [])
+        g["quarantined"] = mapping["mapping_quality"] == "unmapped"
+        g["quality"] = "quarantined_unmapped" if g["quarantined"] else spy["quality"]
+        g["truth"] = truth_ref(source="finviz_elite_view_141", as_of=spy["captured_at"],
+                               calculation_version=INDUSTRY_CALC_VERSION,
+                               cadence="midday refresh + close capture", quality=g["quality"])
 
     alerts, confirmed = [], []
     if args.close:
@@ -228,23 +231,27 @@ def main() -> int:
 
     ranked = sorted((g for g in groups if g["rel1w"] is not None),
                     key=lambda g: g["rel1w"], reverse=True)
-    lagging = [g for g in groups if g["state"] == "LAGGING"]
-    improving = [g for g in groups if g["state"] == "IMPROVING"]
+    lagging = [g for g in groups if g["state"] == "LAGGING" and not g.get("quarantined")]
+    improving = [g for g in groups if g["state"] == "IMPROVING" and not g.get("quarantined")]
     by_sector = {}
     for g in groups:
         by_sector.setdefault(g["sector"] or "Other", []).append(g["industry"])
 
+    captured_at = datetime.now(timezone.utc).isoformat()
+    unmapped = [g["industry"] for g in groups if g.get("quarantined")]
     snap = {
-        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "captured_at": captured_at,
         "capture_kind": "close" if args.close else "refresh",
-        "spy_baseline": {"w1": round(spy1w, 2), "m1": round(spy1m, 2)},
-        "quadrant_mapping": "level=perf_month−SPY21d, direction=perf_week−SPY5d (same classify as sectors)",
+        "calculation_version": INDUSTRY_CALC_VERSION,
+        "spy_baseline": {**spy, "w1": round(spy1w, 2), "m1": round(spy1m, 2)},
+        "quadrant_mapping": "level=Finviz month−Finviz SPY month, direction=Finviz week−Finviz SPY week",
         "industries": groups,
         "by_sector": by_sector,
         "top10": [g["industry"] for g in ranked[:10]],
         "bottom10": [g["industry"] for g in ranked[-10:]][::-1],
         "candidates": {
             "source_type": "industry_momentum",
+            "mode": "close_observed" if args.close else "intraday_research_only",
             "defensive_short_pool": [
                 {"industry": g["industry"], "sector": g["sector"], "rel1w": g["rel1w"]}
                 for g in sorted(lagging, key=lambda x: x["rel1w"] or 0)[:POOL_N]],
@@ -252,11 +259,20 @@ def main() -> int:
                 {"industry": g["industry"], "sector": g["sector"], "rel1w": g["rel1w"]}
                 for g in sorted(improving, key=lambda x: x["rel1w"] or 0, reverse=True)[:POOL_N]],
         },
-        "transitions_confirmed": confirmed,
+        "transitions_confirmed": confirmed if args.close else [],
         "alerts": alerts,
-        "counts": {s: sum(1 for g in groups if g["state"] == s) for s in
+        "counts": {s: sum(1 for g in groups if g["state"] == s and not g.get("quarantined")) for s in
                    ("LEADING", "WEAKENING", "LAGGING", "IMPROVING")},
+        "data_quality": {"provider_alignment": spy["quality"],
+                         "mapping_version": mapping_cfg.get("version"),
+                         "unmapped_count": len(unmapped), "unmapped": unmapped},
+        "truth_ledger": truth_ref(source="finviz_elite_view_141", as_of=captured_at,
+                                  calculation_version=INDUSTRY_CALC_VERSION,
+                                  cadence="midday refresh + close capture",
+                                  quality="ok" if not unmapped else "partial_mapping",
+                                  coverage_n=len(groups) - len(unmapped), coverage_total=len(groups)),
     }
+    snap["snapshot_hash"] = snapshot_hash(snap)
     if not args.dry_run:
         SNAP.parent.mkdir(parents=True, exist_ok=True)
         SNAP.write_text(json.dumps(snap, default=str))

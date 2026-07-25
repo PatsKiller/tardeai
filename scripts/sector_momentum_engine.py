@@ -26,6 +26,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from defense_data_quality import (SECTOR_CALC_VERSION, snapshot_hash, staleness, truth_ref)
+
 CFG = json.loads((ROOT / "config" / "sector_momentum.json").read_text())
 STATES = ("LEADING", "WEAKENING", "LAGGING", "IMPROVING")
 
@@ -103,34 +105,49 @@ def _aliases(name):
 
 
 def _breadth(cur, etf_sector_name):
-    """% of sector members above their own 20DMA — fail-soft when membership thin."""
+    """Exact breadth: latest close vs mean of exactly 20 distinct trading sessions."""
     try:
         cur.execute(
             """SELECT DISTINCT m.symbol FROM screener_symbol_membership m
                JOIN trade_ai_scans t ON upper(t.symbol) = upper(m.symbol)
-               WHERE t.sector = ANY(%s) LIMIT 60""", (_aliases(etf_sector_name),))
+               WHERE t.sector = ANY(%s) LIMIT 500""", (_aliases(etf_sector_name),))
         members = [r[0] for r in cur.fetchall()]
-        if len(members) < CFG["breadth_min_members"]:
-            return None, len(members)
+        membership_n = len(members)
+        if membership_n < CFG["breadth_min_members"]:
+            return None, 0, membership_n, "insufficient_membership"
         cur.execute(
-            """SELECT symbol,
-                      (array_agg(close_price ORDER BY price_date DESC))[1] AS last,
-                      avg(close_price) FILTER (WHERE price_date > CURRENT_DATE - 30) AS dma
-               FROM ticker_prices WHERE symbol = ANY(%s)
-                 AND price_date > CURRENT_DATE - 45
-               GROUP BY symbol HAVING count(*) >= 15""", (members,))
-        above = total = 0
-        for _s, last, dma in cur.fetchall():
-            if last is None or dma is None:
-                continue
-            total += 1
-            if float(last) > float(dma):
-                above += 1
-        return (round(above / total * 100) if total >= CFG["breadth_min_members"] else None), total
+            """WITH daily AS (
+                   SELECT symbol, price_date, max(close_price) AS close_price
+                   FROM ticker_prices
+                   WHERE symbol = ANY(%s) AND price_date > CURRENT_DATE - 90
+                   GROUP BY symbol, price_date
+               ), ranked AS (
+                   SELECT symbol, price_date, close_price,
+                          row_number() OVER (PARTITION BY symbol ORDER BY price_date DESC) AS rn
+                   FROM daily
+               ), exact20 AS (
+                   SELECT symbol,
+                          max(close_price) FILTER (WHERE rn = 1) AS last,
+                          avg(close_price) FILTER (WHERE rn <= 20) AS dma20,
+                          count(*) FILTER (WHERE rn <= 20) AS session_n
+                   FROM ranked GROUP BY symbol
+               )
+               SELECT symbol, last, dma20, session_n FROM exact20 WHERE session_n = 20""",
+            (members,),
+        )
+        rows = cur.fetchall()
+        above = sum(1 for _sym, last, dma, _n in rows
+                    if last is not None and dma is not None and float(last) > float(dma))
+        coverage_n = len(rows)
+        quality = "ok" if coverage_n >= CFG["breadth_min_members"] else "insufficient_price_coverage"
+        pct = round(above / coverage_n * 100) if quality == "ok" else None
+        return pct, coverage_n, membership_n, quality
     except Exception:
-        try: cur.connection.rollback()
-        except Exception: pass
-        return None, 0
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+        return None, 0, 0, "query_error"
 
 
 def _hermes_pulse(cur, sector_name):
@@ -238,7 +255,7 @@ def compute_market(cur):
 
 
 def market_state_line(market, sectors):
-    """Template-driven one-liner. Deterministic; unit-tested."""
+    """Template-driven one-liner; capped mover counts are never called market breadth."""
     spy = next((i for i in market["indices"] if i["symbol"] == "SPY"), {})
     eq = next((s for s in market["styles"] if s["key"] == "equal_vs_cap"), {})
     sm = next((s for s in market["styles"] if s["key"] == "small_vs_large"), {})
@@ -254,15 +271,13 @@ def market_state_line(market, sectors):
     if sm.get("s20") is not None:
         parts.append("small caps " + ("leading" if sm["s20"] > 0 else "lagging"))
     if nh is not None and nl is not None:
-        tape = "narrow tape" if (nh + nl) and nl > nh * 2 else ("broad strength" if nh > nl * 2 else "mixed tape")
-        parts.append(f"NH/NL {nh}/{nl} — {tape}")
+        parts.append(f"top-movers NH/NL sample {nh}/{nl}")
     parts.append(f"{lag}/11 sectors lagging")
     return "Market: " + " · ".join(parts)
 
 
 def _book_weights():
-    """v4 L1: EFFECTIVE sector weights — direct + fund lookthrough (config-mapped
-    factsheet weights, never inferred). Rows carry the decomposition for the UI."""
+    """Effective sector weights with factsheet provenance and unmapped coverage."""
     try:
         import api_v2
         from fund_lookthrough import effective_sector_exposure
@@ -277,6 +292,7 @@ def _book_weights():
                            "lookthrough_dollars": b["lookthrough_dollars"],
                            "contributors": b["contributors"]}
         out["_not_decomposed"] = eff.get("_not_decomposed")
+        out["_provenance"] = eff.get("_provenance")
         return out
     except Exception:
         return {}
@@ -331,6 +347,14 @@ def main() -> int:
     weights = _book_weights()
     rows = compute_states(cur)
     market = compute_market(cur)
+    latest_as_of = max((r.get("as_of") for r in rows if r.get("as_of")), default=None)
+    for row in rows:
+        freshness = staleness(row.get("as_of"), latest_as_of, CFG.get("max_row_staleness_days", 4))
+        row.update({"freshness": freshness, "quarantined": freshness["stale"]})
+        if freshness["stale"] and row.get("state"):
+            row["state_raw"] = row["state"]
+            row["state"] = None
+            row["quarantine_reason"] = "stale_row"
     # style spreads join the SAME debounce/transition mechanism (etf = STYLE:<key>)
     alerts = []
     for st in market["styles"]:
@@ -354,15 +378,23 @@ def main() -> int:
         if not row.get("state"):
             continue
         name = row["sector"]
-        b_pct, b_n = _breadth(cur, name)
+        b_pct, b_n, b_members, b_quality = _breadth(cur, name)
         hp, hd = _hermes_pulse(cur, name)
         nn, top_neg = _news_pressure(cur, name)
         w = weights.get(name) or {}
-        row.update({"breadth_pct": b_pct, "breadth_n": b_n, "hermes_pulse": hp,
+        row.update({"breadth_pct": b_pct, "breadth_n": b_n,
+                    "breadth_coverage_n": b_n, "breadth_membership_n": b_members,
+                    "breadth_quality": b_quality, "hermes_pulse": hp,
                     "hermes_delta": hd, "news_negatives": nn, "top_negative": top_neg,
                     "book_pct": w.get("pct"), "book_dollars": w.get("dollars"),
                     "book_direct_pct": w.get("direct_pct"),
-                    "book_contributors": w.get("contributors")})
+                    "book_contributors": w.get("contributors"),
+                    "calculation_version": SECTOR_CALC_VERSION,
+                    "quality": "narrow_participation" if b_pct is not None and b_pct < 35 else b_quality,
+                    "truth": truth_ref(source="ticker_prices + exact screener membership",
+                                       as_of=row.get("as_of"), calculation_version=SECTOR_CALC_VERSION,
+                                       cadence="daily close", quality=b_quality,
+                                       coverage_n=b_n, coverage_total=b_members)})
         # debounce: prior 2 persisted states
         cur.execute("""SELECT state FROM sector_momentum_state WHERE etf=%s
                        ORDER BY as_of DESC LIMIT %s""", (row["etf"], CFG["debounce_days"]))
@@ -407,9 +439,21 @@ def main() -> int:
     alerts = alerts[:CFG["max_alert_lines_per_day"]]
     market["state_line"] = market_state_line(market, rows)
     snap = {"generated_at": datetime.now(timezone.utc).isoformat(),
+            "as_of": latest_as_of, "calculation_version": SECTOR_CALC_VERSION,
             "rows": rows, "market": market, "transitions_today": alerts,
             "not_decomposed": weights.get("_not_decomposed"),
-            "exposure_basis": "effective (direct + config fund lookthrough, factsheet weights)"}
+            "exposure_provenance": weights.get("_provenance"),
+            "exposure_basis": "effective (direct + config fund lookthrough, dated factsheet weights)",
+            "truth_ledger": {
+                "sector_returns": truth_ref(source="ticker_prices distinct closes", as_of=latest_as_of,
+                    calculation_version=SECTOR_CALC_VERSION, cadence="daily close"),
+                "breadth": truth_ref(source="ticker_prices exact 20 distinct sessions", as_of=latest_as_of,
+                    calculation_version="breadth-exact20-v1", cadence="daily close"),
+                "market_movers": truth_ref(source="market_movers capped top-15 per signal", as_of="latest capture",
+                    calculation_version="movers-sample-v1", cadence="intraday", quality="capped_sample",
+                    notes=["not comprehensive market breadth"]),
+            }}
+    snap["snapshot_hash"] = snapshot_hash(snap)
     out = ROOT / "data" / "runtime" / "sector_momentum_latest.json"
     out.write_text(json.dumps(snap, default=str))
     for a in alerts:

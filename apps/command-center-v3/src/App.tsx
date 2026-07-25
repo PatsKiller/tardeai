@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hooks/useApi'
 import MetricStrip from './components/MetricStrip'
@@ -31,6 +31,8 @@ import ConsumptionHub from './pages/ConsumptionHub'
 declare const __ANALYST_UI_VERSION__: string
 declare const __BUILD_DATE__: string
 const BUILD_MARKER_FALLBACK = `cc-v3 ${__ANALYST_UI_VERSION__} · built ${__BUILD_DATE__}`
+const GLOBAL_REVIEW_CONTRACT = 'command-center-global-review-v1'
+const STRUCTURED_EVIDENCE_CONTRACT = 'command-center-structured-provenance-v1'
 
 function BuildMarker() {
   const [label, setLabel] = useState(BUILD_MARKER_FALLBACK)
@@ -130,55 +132,273 @@ function GoProposalDeepLink() {
   return <Navigate to={q} replace />
 }
 
+function normalizeSymbol(value?: string | null): string {
+  const symbol = String(value || '').trim().toUpperCase()
+  return /^[A-Z0-9.-]{1,10}$/.test(symbol) ? symbol : ''
+}
+
+function drillSymbol(ctx: DrillContext | null): string {
+  if (!ctx) return ''
+  const row = ctx.rows?.[0] ?? {}
+  const candidate = row.symbol || ctx.subjectKey || String(ctx.title || '').match(/^[A-Z0-9.-]{1,10}\b/)?.[0]
+  return normalizeSymbol(candidate)
+}
+
+function cardSymbol(card: HTMLElement): string {
+  const preset = normalizeSymbol(card.dataset.reviewSymbol)
+  if (preset) return preset
+  for (const node of Array.from(card.querySelectorAll('span, b'))) {
+    const symbol = normalizeSymbol(node.textContent)
+    if (symbol) return symbol
+  }
+  return ''
+}
+
+function evidenceButtonSymbol(target: HTMLElement): string {
+  const button = target.closest<HTMLElement>('button[title^="Open provenance and evidence for"], button[aria-label$="— open evidence"]')
+  if (!button) return ''
+  const aria = button.getAttribute('aria-label') || ''
+  const title = button.getAttribute('title') || ''
+  const candidate = aria.match(/^([A-Z0-9.-]{1,10})\s+—\s+open evidence$/i)?.[1]
+    || title.match(/for\s+([A-Z0-9.-]{1,10})$/i)?.[1]
+    || button.textContent?.trim().split(/\s+/)[0]
+  return normalizeSymbol(candidate)
+}
+
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const reviewWasRequested = useRef(false)
+  const requestedSymbol = normalizeSymbol(searchParams.get('symbol'))
+  const reviewRequested = searchParams.get('review') === '1' || searchParams.get('modal') === 'review'
+  const activeDrillSymbol = drillSymbol(drill)
+
+  const openDrill = useCallback((ctx: DrillContext) => {
+    setDrill(ctx)
+    const symbol = drillSymbol(ctx)
+    if (!symbol) return
+    const next = new URLSearchParams(searchParams)
+    next.set('symbol', symbol)
+    next.set('review', '1')
+    next.set('modal', 'review')
+    setSearchParams(next)
+  }, [searchParams, setSearchParams])
+
+  const openSymbolReview = useCallback((symbolValue: string) => {
+    const symbol = normalizeSymbol(symbolValue)
+    if (!symbol) return
+    openDrill({
+      title: `${symbol} operator review`,
+      subtitle: 'Decision, provenance and evidence review',
+      endpoint: `/api/v2/watch/provenance/${symbol}`,
+      rows: [{ symbol }],
+      links: [
+        { label: 'Watchlist', href: `/v3/watch?tab=watchlist&symbol=${encodeURIComponent(symbol)}`, note: 'Return to the Watchlist workspace' },
+        { label: 'Rotation review', href: `/v3/rotation?question=${encodeURIComponent(`Review whether ${symbol} exposure should change`)}`, note: 'Advisory review only' },
+      ],
+      subjectType: 'symbol',
+      subjectKey: symbol,
+    })
+  }, [openDrill])
+
+  const openEvidenceReview = useCallback(async (symbolValue: string) => {
+    const symbol = normalizeSymbol(symbolValue)
+    if (!symbol) return
+    const endpoint = `/api/v2/watch/provenance/${symbol}`
+    const context = (row: Record<string, any>, subtitle: string): DrillContext => ({
+      title: `Symbol evidence · ${symbol}`,
+      subtitle,
+      endpoint,
+      rows: [row],
+      links: [
+        { label: 'Watchlist', href: `/v3/watch?tab=watchlist&symbol=${encodeURIComponent(symbol)}`, note: 'Open the symbol in the Watch operator workspace' },
+        { label: 'Rotation review', href: `/v3/rotation?question=${encodeURIComponent(`Review ${symbol} provenance, freshness and portfolio relevance`)}`, note: 'Advisory review only' },
+      ],
+      subjectType: 'symbol-provenance',
+      subjectKey: symbol,
+    })
+
+    openDrill(context({ symbol, evidence_status: 'loading' }, 'Loading structured provenance and watch lineage…'))
+    try {
+      const response = await fetch(endpoint, { cache: 'no-store' })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`)
+      const row = payload?.data ?? payload
+      setDrill(context(
+        row && typeof row === 'object' ? row : { symbol, evidence_status: 'unavailable' },
+        'Structured provenance, freshness, directive lineage and watch memberships',
+      ))
+    } catch (error) {
+      setDrill(context({
+        symbol,
+        evidence_status: 'unavailable',
+        evidence_error: error instanceof Error ? error.message : String(error),
+      }, 'Structured provenance is unavailable; the failure is preserved below'))
+    }
+  }, [openDrill])
+
+  const closeDrill = useCallback(() => {
+    setDrill(null)
+    if (!reviewRequested && !searchParams.has('modal')) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('review')
+    next.delete('modal')
+    next.delete('symbol')
+    setSearchParams(next, { replace: true })
+  }, [reviewRequested, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (reviewRequested) {
+      reviewWasRequested.current = true
+      return
+    }
+    if (reviewWasRequested.current) {
+      reviewWasRequested.current = false
+      setDrill(null)
+    }
+  }, [reviewRequested])
+
+  useEffect(() => {
+    if (!reviewRequested || !requestedSymbol || activeDrillSymbol === requestedSymbol) return
+    let cancelled = false
+    const load = async () => {
+      let row: Record<string, any> = { symbol: requestedSymbol }
+      try {
+        const response = await fetch(`/api/v2/watchlist/items?symbol=${encodeURIComponent(requestedSymbol)}`, { cache: 'no-store' })
+        const payload = await response.json().catch(() => ({}))
+        const inner = payload?.data ?? payload
+        row = inner?.items?.[0] ?? row
+      } catch { /* the modal still opens with symbol-level evidence */ }
+      if (cancelled) return
+      setDrill({
+        title: `${requestedSymbol} operator review`,
+        subtitle: 'URL-addressable decision, provenance and evidence review',
+        endpoint: `/api/v2/watch/provenance/${requestedSymbol}`,
+        rows: [row],
+        links: [
+          { label: 'Watchlist', href: `/v3/watch?tab=watchlist&symbol=${encodeURIComponent(requestedSymbol)}`, note: 'Return to the Watchlist workspace' },
+          { label: 'Rotation review', href: `/v3/rotation?question=${encodeURIComponent(`Review whether ${requestedSymbol} exposure should change`)}`, note: 'Advisory review only' },
+        ],
+        subjectType: 'symbol',
+        subjectKey: requestedSymbol,
+      })
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [activeDrillSymbol, requestedSymbol, reviewRequested])
+
+  useEffect(() => {
+    const main = document.querySelector('.app-main')
+    if (!main) return
+    const decorate = () => {
+      for (const grid of Array.from(main.querySelectorAll<HTMLElement>('.wlc-term-grid'))) {
+        const card = grid.parentElement
+        if (!card) continue
+        const symbol = cardSymbol(card)
+        if (!symbol) continue
+        card.dataset.reviewSymbol = symbol
+        card.dataset.reviewSurface = 'watchlist-card'
+        card.tabIndex = 0
+        card.setAttribute('role', 'button')
+        card.setAttribute('aria-label', `Open ${symbol} operator review`)
+      }
+    }
+    decorate()
+    const observer = new MutationObserver(decorate)
+    observer.observe(main, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!drill) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeDrill()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('keydown', handleKey)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [closeDrill, drill])
+
+  const handleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement
+    const evidenceSymbol = evidenceButtonSymbol(target)
+    if (evidenceSymbol) {
+      event.preventDefault()
+      event.stopPropagation()
+      event.nativeEvent.stopImmediatePropagation?.()
+      void openEvidenceReview(evidenceSymbol)
+      return
+    }
+    if (target.closest('button, a, input, select, textarea, [role="button"]:not([data-review-surface])')) return
+    const card = target.closest<HTMLElement>('[data-review-surface="watchlist-card"]')
+    if (!card) return
+    openSymbolReview(cardSymbol(card))
+  }, [openEvidenceReview, openSymbolReview])
+
+  const handleKeyCapture = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    const target = event.target as HTMLElement
+    const card = target.closest<HTMLElement>('[data-review-surface="watchlist-card"]')
+    if (!card || target !== card) return
+    event.preventDefault()
+    openSymbolReview(cardSymbol(card))
+  }, [openSymbolReview])
+
   return (
-    <div className="app-shell cc-terminal-ui" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
+    <div className="app-shell cc-terminal-ui" data-review-contract={GLOBAL_REVIEW_CONTRACT} data-evidence-contract={STRUCTURED_EVIDENCE_CONTRACT} onClickCapture={handleClickCapture} onKeyDownCapture={handleKeyCapture} style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
       <ReconnectingBar />
-      <MetricStrip onDrill={setDrill} />
+      <MetricStrip onDrill={openDrill} />
       <div className="app-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <NavRail />
         <main className="app-main" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', padding: '16px 24px' }}>
           <SharedIntelligenceBridge />
           <Routes>
-            <Route index element={<HomeHub onDrill={setDrill} />} />
-            <Route path="portfolio" element={<PortfolioHub onDrill={setDrill} />} />
+            <Route index element={<HomeHub onDrill={openDrill} />} />
+            <Route path="portfolio" element={<PortfolioHub onDrill={openDrill} />} />
             <Route path="portfolio/re-entry" element={<ReEntryPage />} />
-            <Route path="risk" element={<RiskHub onDrill={setDrill} />} />
-            <Route path="trading" element={<TradingHub onDrill={setDrill} />} />
+            <Route path="risk" element={<RiskHub onDrill={openDrill} />} />
+            <Route path="trading" element={<TradingHub onDrill={openDrill} />} />
             <Route path="go/order/:intentId" element={<GoOrderDeepLink />} />
             <Route path="go/proposal/:proposalId" element={<GoProposalDeepLink />} />
             <Route path="manual-execution" element={<Navigate to="/trading?tab=Entry+Desk" replace />} />
-            <Route path="strategy" element={<StrategyHub onDrill={setDrill} />} />
-            <Route path="agents" element={<AgentsHub onDrill={setDrill} />} />
-            <Route path="intelligence" element={<IntelligenceHub onDrill={setDrill} />} />
-            <Route path="research-intelligence" element={<ResearchIntelligenceHub onDrill={setDrill} />} />
+            <Route path="strategy" element={<StrategyHub onDrill={openDrill} />} />
+            <Route path="agents" element={<AgentsHub onDrill={openDrill} />} />
+            <Route path="intelligence" element={<IntelligenceHub onDrill={openDrill} />} />
+            <Route path="research-intelligence" element={<ResearchIntelligenceHub onDrill={openDrill} />} />
             <Route path="research" element={<Navigate to="/research-intelligence" replace />} />
-            <Route path="hermes" element={<HermesHub onDrill={setDrill} />} />
-            <Route path="retirement" element={<RetirementHub onDrill={setDrill} />} />
-            <Route path="journal" element={<JournalHub onDrill={setDrill} />} />
+            <Route path="hermes" element={<HermesHub onDrill={openDrill} />} />
+            <Route path="retirement" element={<RetirementHub onDrill={openDrill} />} />
+            <Route path="journal" element={<JournalHub onDrill={openDrill} />} />
             <Route path="trade-in-view" element={<Navigate to="/journal" replace />} />
-            <Route path="watch" element={<WatchHub onDrill={setDrill} />} />
+            <Route path="watch" element={<WatchHub onDrill={openDrill} />} />
             <Route path="defense" element={<DefenseHub />} />
             <Route path="watchlist" element={<Navigate to="/watch?tab=watchlist" replace />} />
             <Route path="watchpool" element={<Navigate to="/watch?tab=watchpool" replace />} />
             <Route path="sectors" element={<Navigate to="/watch?tab=sectors" replace />} />
             <Route path="pullback-macd" element={<Navigate to="/watch?tab=pullback-macd" replace />} />
-            <Route path="reports" element={<ReportsHub onDrill={setDrill} />} />
+            <Route path="reports" element={<ReportsHub onDrill={openDrill} />} />
             <Route path="rotation" element={<RotationIntelligence />} />
             <Route path="redeploy" element={<RedeployDeskIntegrated />} />
             <Route path="advisor-changes" element={<Navigate to="/rotation?tab=advisor-guide" replace />} />
             <Route path="rec-intel" element={<RecommendationIntelligence />} />
-            <Route path="health" element={<HealthHub onDrill={setDrill} />} />
+            <Route path="health" element={<HealthHub onDrill={openDrill} />} />
             <Route path="consumption" element={<ConsumptionHub />} />
-            <Route path="system" element={<SystemHub onDrill={setDrill} />} />
+            <Route path="system" element={<SystemHub onDrill={openDrill} />} />
           </Routes>
           <div style={{ marginTop: 18, paddingTop: 8, borderTop: '1px solid rgba(148,163,184,.16)', fontSize: 11, color: 'var(--text3)' }}>
             <BuildMarker />
           </div>
         </main>
       </div>
-      <DetailDrawer ctx={drill} onClose={() => setDrill(null)} />
+      {drill && (
+        <div role="dialog" aria-modal="true" aria-label={drill.title} data-command-center-modal="review" style={{ position: 'fixed', inset: 0, zIndex: 20000 }}>
+          <DetailDrawer ctx={drill} onClose={closeDrill} />
+        </div>
+      )}
     </div>
   )
 }

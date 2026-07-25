@@ -1,0 +1,78 @@
+from pathlib import Path
+
+
+SCRIPT = Path("scripts/validate_command_center_global_review_from_ref.sh").read_text()
+
+
+def test_validation_packet_is_exact_ref_and_temporary_only():
+    for token in (
+        "COMMAND_CENTER_REVIEW_VALIDATION_ONLY",
+        "40-character commit SHA",
+        'cat-file -e "$SOURCE_REF^{commit}"',
+        'archive "$RESOLVED_COMMIT"',
+        "mktemp -d /tmp/command-center-review-validation",
+        "TEMPORARY_BUILD_AND_BROWSER_TESTS_ONLY",
+        "live_dist_change|NONE",
+        "final_status|PASS_COMMAND_CENTER_REVIEW_VALIDATION",
+    ):
+        assert token in SCRIPT
+
+
+def test_validation_packet_runs_build_modal_and_structured_evidence_contracts():
+    for token in (
+        '"$NPM" ci',
+        '"$NPX" tsc --pretty false',
+        '"$NPX" vite build',
+        "playwright install chromium",
+        "e2e/defense-sectors-interactions.spec.ts",
+        "e2e/global-review-modal.spec.ts",
+        "command-center-global-review-v1",
+        "URL-addressable decision, provenance and evidence review",
+        "command-center-structured-provenance-v1",
+        "Structured provenance, freshness, directive lineage and watch memberships",
+        "symbol-provenance",
+        "structured_evidence_contract|command-center-structured-provenance-v1",
+    ):
+        assert token in SCRIPT
+
+
+def test_validation_packet_reserves_and_enforces_the_preview_port():
+    for token in (
+        'sock.bind(("127.0.0.1", 0))',
+        '--port "$PORT" --strictPort',
+        'kill -0 "$PREVIEW_PID"',
+        'preview_ready|%s',
+        'PLAYWRIGHT_BASE_URL="$PREVIEW_ORIGIN"',
+        "Vite preview exited before readiness",
+        "Vite preview did not answer on the reserved strict port",
+    ):
+        assert token in SCRIPT
+
+    # An HTTP response proves the selected listener is up; curl -f would reject
+    # a harmless preview-root 404 before Playwright reaches the real /v3 routes.
+    assert '"$CURL" -sS --connect-timeout 1 --max-time 2 -o /dev/null' in SCRIPT
+    assert '"$CURL" -fsS "http://127.0.0.1:${PORT}/v3/"' not in SCRIPT
+
+
+def test_validation_packet_has_no_live_or_trading_authority():
+    lowered = SCRIPT.lower()
+    for token in (
+        'mv "$candidate" "$live_dist"',
+        'mv "$live_dist"',
+        "systemctl ",
+        "service ",
+        "sudo ",
+        "psql ",
+        "broker_submit",
+        "place_order",
+        "approve_order",
+        "2fa_unlock",
+    ):
+        assert token not in lowered
+    for evidence in (
+        "service_restart|NONE",
+        "producer_activation|NONE",
+        "database_write|NONE",
+        "broker_or_order_action|NONE",
+    ):
+        assert evidence in SCRIPT

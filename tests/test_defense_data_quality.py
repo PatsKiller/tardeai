@@ -1,0 +1,140 @@
+from datetime import date
+
+from scripts.defense_data_quality import (
+    allocation_decision,
+    canonical_industry_sector,
+    directive_review_status,
+    snapshot_hash,
+    staleness,
+    stock_quality_assessment,
+)
+
+
+def test_snapshot_hash_is_order_independent():
+    assert snapshot_hash({"b": 2, "a": 1}) == snapshot_hash({"a": 1, "b": 2})
+
+
+def test_staleness_quarantines_old_rows():
+    assert staleness("2026-07-13", "2026-07-24", 4)["stale"] is True
+    assert staleness("2026-07-23", "2026-07-24", 4)["stale"] is False
+
+
+def test_versioned_industry_mapping_never_uses_database_mode():
+    exact = canonical_industry_sector("Aerospace & Defense")
+    assert exact["sector"] == "Industrials"
+    assert exact["mapping_quality"] == "exact"
+    rule = canonical_industry_sector("Copper Miners - Emerging")
+    assert rule["sector"] == "Materials"
+    unknown = canonical_industry_sector("Unclassified Experimental Group")
+    assert unknown["sector"] is None
+    assert unknown["mapping_quality"] == "unmapped"
+
+
+def allocation_cfg():
+    return {
+        "neutral_sector_weight_pct": 9.1,
+        "allocation_policy": {
+            "default_benchmark": "equal_sector",
+            "benchmarks": {"equal_sector": {"Energy": 9.1}},
+            "account_mandates": {"ira": "retirement_income"},
+            "mandates": {"retirement_income": {"sector_tilts_pct": {"Energy": -1.0}}},
+            "target_annualized_vol_pct": 22,
+            "vol_scalar_floor": 0.45,
+            "vol_scalar_cap": 1.2,
+            "correlation_soft_limit": 0.85,
+            "correlation_penalty": 0.75,
+            "max_active_tilt_pct": 4,
+            "sector_cap_pct": 25,
+            "min_capacity_pct": 1,
+        },
+    }
+
+
+def test_allocation_capacity_respects_account_exposure_and_risk():
+    cfg = allocation_cfg()
+    d = allocation_decision(cfg, sector="Energy", current_weight_pct=3.6,
+                            risk_context={"quality": "ok", "annualized_vol_pct": 30,
+                                          "correlation": 0.75, "sessions": 60},
+                            account="ira")
+    assert d["eligible"] is True
+    assert d["current_account_weight_pct"] == 3.6
+    assert 0 < d["capacity_pct"] < 21.4
+    full = allocation_decision(cfg, sector="Energy", current_weight_pct=24.5,
+                               risk_context={"quality": "ok", "annualized_vol_pct": 30,
+                                             "correlation": 0.75, "sessions": 60},
+                               account="ira")
+    assert full["eligible"] is False
+
+
+def test_allocation_missing_account_exposure_fails_closed():
+    d = allocation_decision(
+        allocation_cfg(), sector="Energy", current_weight_pct=None,
+        risk_context={"quality": "ok", "annualized_vol_pct": 12,
+                      "correlation": 0.1, "sessions": 60}, account="ira",
+    )
+    assert d["eligible"] is False
+    assert d["quality"] == "missing_account_exposure"
+    assert d["capacity_pct"] == 0
+
+
+def test_max_active_tilt_is_a_ceiling_not_an_additive_bonus():
+    d = allocation_decision(
+        allocation_cfg(), sector="Energy", current_weight_pct=0,
+        risk_context={"quality": "ok", "annualized_vol_pct": 5,
+                      "correlation": 0.0, "sessions": 60}, account="ira",
+    )
+    # mandate target is 8.1%; max active tilt is 4%, so no risk scaling may exceed 12.1%.
+    assert d["policy_target_ceiling_pct"] == 12.1
+    assert d["risk_target_pct"] <= 12.1
+
+
+def stock_cfg():
+    return {"stock_quality": {"min_coverage": 0.6, "min_score": 60,
+                              "min_roic_pct": 8, "max_debt_equity": 2,
+                              "hard_fail_debt_equity": 4, "max_short_float_pct": 12,
+                              "hard_fail_short_float_pct": 25, "max_beta": 1.7,
+                              "max_above_sma50_pct": 12}}
+
+
+def good_stock():
+    return {
+        "forward_pe": 18, "pfcf": 20, "eps_next_y": 12, "eps_qoq": 8,
+        "sales_qoq": 6, "roic_pct": 16, "profit_margin_pct": 15,
+        "total_debt_equity": 0.8, "short_float_pct": 3, "beta": 1.1,
+        "sma50_pct": 4,
+    }
+
+
+def test_stock_quality_requires_complete_evidence_and_quality():
+    result = stock_quality_assessment(good_stock(), {"forward_pe": 20, "pfcf": 22}, stock_cfg())
+    assert result["passed"] is True
+    assert result["evidence_complete"] is True
+    weak = {"forward_pe": 60, "total_debt_equity": 6, "short_float_pct": 30}
+    result = stock_quality_assessment(weak, {"forward_pe": 20, "pfcf": 22}, stock_cfg())
+    assert result["passed"] is False
+    assert result["evidence_complete"] is False
+    assert "excess_leverage" in result["hard_fail"]
+
+
+def test_high_score_with_one_missing_required_field_still_fails_closed():
+    incomplete = good_stock()
+    incomplete.pop("pfcf")
+    result = stock_quality_assessment(incomplete, {"forward_pe": 20, "pfcf": 22}, stock_cfg())
+    assert result["score"] >= 60
+    assert result["evidence_complete"] is False
+    assert result["passed"] is False
+    assert result["missing"] == ["pfcf"]
+
+
+def test_defensive_lean_requires_dated_review_but_is_not_auto_revoked():
+    lean = {"enabled": True, "set_at": "2026-07-18", "review_after_days": 5,
+            "defensive_sectors": ["Utilities", "Consumer Staples", "Healthcare"]}
+    status = directive_review_status(
+        lean,
+        [{"sector": "Energy", "state": "LEADING", "quarantined": False}],
+        now=date(2026, 7, 24),
+    )
+    assert status["enabled"] is True
+    assert status["requires_review"] is True
+    assert "Energy" in status["conflicting_sectors"]
+    assert "never auto-revoke" in status["instruction"]
