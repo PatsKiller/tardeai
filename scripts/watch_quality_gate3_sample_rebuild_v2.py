@@ -167,19 +167,24 @@ def _rewrite(report: dict[str, Any], evidence_path: Path) -> dict[str, Any]:
 def execute(projection_path: Path, evidence_path: Path) -> dict[str, Any]:
     snapshots: dict[str, Any] = {}
     original_build = gate3.governed_builder.build_packet
+    original_persist = gate3.decision_service.persist
     original_hash = gate3._stable_hash
 
-    def frozen_build(symbol: str, *args, **kwargs) -> dict:
-        packet = _json_snapshot(original_build(symbol, *args, **kwargs))
-        snapshots[str(symbol).upper()] = packet
-        return packet
+    def json_build(symbol: str, *args, **kwargs) -> dict:
+        return _json_snapshot(original_build(symbol, *args, **kwargs))
 
-    gate3.governed_builder.build_packet = frozen_build
+    def snapshot_persist(packet: dict, *args, **kwargs) -> int:
+        snapshots[str(packet.get("symbol") or "").upper()] = _json_snapshot(packet)
+        return original_persist(packet, *args, **kwargs)
+
+    gate3.governed_builder.build_packet = json_build
+    gate3.decision_service.persist = snapshot_persist
     gate3._stable_hash = _semantic_hash
     try:
         report = gate3.execute(projection_path, evidence_path)
     finally:
         gate3.governed_builder.build_packet = original_build
+        gate3.decision_service.persist = original_persist
         gate3._stable_hash = original_hash
 
     report["roundtrip_contract"] = ROUNDTRIP_CONTRACT
