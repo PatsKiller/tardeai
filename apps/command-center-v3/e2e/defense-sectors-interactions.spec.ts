@@ -112,9 +112,9 @@ test('Watch sectors board supports filtering, evidence, governed watch creation 
   await expect(page.getByText(/Watch.*Watchlist/).first()).toBeVisible()
 })
 
-test('Defense board opens risk and policy reviews and exposes refresh mechanics', async ({ page }) => {
+test('Shared board opens governed action and policy reviews and exposes the stale-data refresh control', async ({ page }) => {
   const recResponse = page.waitForResponse(response => /\/api\/v2\/defense\/recommendations(?:\?|$)/.test(response.url()))
-  await page.goto('/v3/defense')
+  await page.goto('/v3/watch?tab=sectors')
   const recPayload = await (await recResponse).json()
   expect(recPayload.recommendations.groups.protect).toHaveLength(1)
   await expect(page.getByText('Sector decision board')).toBeVisible()
