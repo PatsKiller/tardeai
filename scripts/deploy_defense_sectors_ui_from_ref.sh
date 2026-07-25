@@ -2,11 +2,12 @@
 set -euo pipefail
 
 readonly ACK_REQUIRED="DEFENSE_SECTORS_SHADOW_UI_ONLY"
-readonly HOST_REPO="${REPO:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
+readonly REPO_DEFAULT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+readonly HOST_REPO="${REPO:-$REPO_DEFAULT}"
 readonly SOURCE_REF="${UI_SOURCE_REF:-}"
 readonly LIVE_APP="$HOST_REPO/apps/command-center-v3"
 readonly LIVE_DIST="$LIVE_APP/dist"
-readonly BACKUP_ROOT="/home/johnclaw/tradeai-deploy-backups/command-center-v3"
+readonly BACKUP_ROOT=/home/johnclaw/tradeai-deploy-backups/command-center-v3
 readonly STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 readonly STAGE_ROOT="$(mktemp -d /tmp/defense-sectors-ui-stage.XXXXXX)"
 readonly CANDIDATE="${LIVE_DIST}.candidate-${STAMP}"
