@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BB, numStyle, terminalButton } from '../lib/watchlistTerminalTokens'
+import { selectPacketValidation } from '../lib/watchPacketQuality'
 import {
   buildOperatorPresentation,
   operatorStateColor,
@@ -52,11 +53,6 @@ function age(value?: string | null): string {
   if (minutes < 60) return `${minutes}m ago`
   const hours = Math.round(minutes / 60)
   return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`
-}
-function money(value: any): string {
-  if (value === null || value === undefined || value === '') return '—'
-  const parsed = Number(String(value).replace(/[$,]/g, ''))
-  return Number.isFinite(parsed) ? `$${parsed.toFixed(2)}` : String(value)
 }
 
 function scopedReady(key: string, raw: string, preferred: boolean, operatorState: OperatorState): string {
@@ -218,17 +214,18 @@ function TechnicalSummary({ tech, onOpen }: { tech: any; onOpen: () => void }) {
 
 function TicketVerification({ packet, symbol }: { packet: any; symbol?: string }) {
   const [busy, setBusy] = useState(false)
-  const review = packet?.ticket_review
-  const plan = packet?.current_actionable_plan
-  const validation = plan?.ticket_validation || review?.validation || {}
-  const validationState = String(validation.state || review?.tickets_validated?.[0]?.state || 'NOT RUN').toUpperCase()
+  const review = packet?.ticket_review || {}
+  const selected = selectPacketValidation(packet)
+  const validation = Object.keys(selected.validation).length ? selected.validation : (review.validation || {})
+  const validationState = String(validation.state || selected.deterministic || review?.tickets_validated?.[0]?.state || 'NOT RUN').toUpperCase()
   const quality = validation.quality_admission || {}
-  const qualityState = String(quality.state || 'NOT EVALUATED').replace(/_/g, ' ')
-  const reconciled = review?.reconciled || {}
-  const reviews = review?.reviews || {}
-  const overall = reconciled.state || (validationState === 'FAIL' ? 'DETERMINISTIC_FAIL' : validationState === 'REVIEW_REQUIRED' ? 'DETERMINISTIC_REVIEW_REQUIRED' : validationState === 'PASS' ? 'DETERMINISTIC_PASS_REVIEW_NOT_RUN' : 'DETERMINISTIC_NOT_RUN')
-  const failure = /FAIL|REJECT|BLOCK|QUARANTINED|NOT_ADMITTED|NOT_RUN/.test(String(overall))
-  const qualityAdmitted = !quality.state || (quality.state === 'ADMITTED' && quality.new_entry_allowed !== false)
+  const reconciled = review.reconciled || {}
+  const qualityRaw = quality.state || selected.quality || reconciled.quality_admission || 'NOT ASSESSED'
+  const qualityState = String(qualityRaw).replace(/_/g, ' ')
+  const reviews = review.reviews || {}
+  const overall = reconciled.state || (validationState === 'FAIL' ? 'DETERMINISTIC_FAIL' : validationState === 'REVIEW_REQUIRED' ? 'DETERMINISTIC_REVIEW_REQUIRED' : validationState === 'PASS' && qualityRaw === 'ADMITTED' ? 'DETERMINISTIC_PASS_REVIEW_NOT_RUN' : validationState === 'PASS' ? 'QUALITY_NOT_ASSESSED' : 'DETERMINISTIC_NOT_RUN')
+  const failure = /FAIL|REJECT|BLOCK|QUARANTINED|NOT_ADMITTED|NOT_ASSESSED|NOT_RUN/.test(String(overall))
+  const qualityAdmitted = qualityRaw === 'ADMITTED' && quality.new_entry_allowed !== false
   const mayRunReview = ['PASS', 'REVIEW_REQUIRED'].includes(validationState) && qualityAdmitted
   const premiumLabel = reconciled.premium || (reconciled.premium_recommended ? 'RECOMMENDED · NOT RUN' : 'NOT NEEDED')
   const runFree = async () => {
@@ -236,7 +233,7 @@ function TicketVerification({ packet, symbol }: { packet: any; symbol?: string }
     setBusy(true)
     try { await fetch('/api/v2/watch/ticket-review/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol }) }) } finally { window.setTimeout(() => setBusy(false), 60_000) }
   }
-  return <div style={{ padding: '9px 16px', borderBottom: `1px solid ${BB.border}` }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>TICKET VERIFICATION</span><span style={{ fontSize: 10.5, fontWeight: 900, color: failure ? BB.red : reconciled.proposal_allowed ? BB.green : BB.text1 }}>{String(overall).replace(/_/g, ' ')}</span>{reconciled.detail && <span style={{ fontSize: 10, color: BB.text3 }}>{String(reconciled.detail).slice(0, 130)}</span>}<button onClick={event => { event.stopPropagation(); void runFree() }} disabled={busy || !mayRunReview} title={!mayRunReview ? 'Complete deterministic validation and quality admission first' : 'Run bounded local and OAuth critics on the exact validated ticket'} style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px', cursor: busy ? 'wait' : !mayRunReview ? 'not-allowed' : 'pointer', opacity: mayRunReview ? 1 : .55, background: 'transparent', color: BB.text2, border: `1px solid ${BB.border}`, borderRadius: 3 }}>{busy ? 'Reviewing…' : mayRunReview ? 'Run free review' : 'Fix deterministic gate first'}</button></div><div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5, fontSize: 10, color: BB.text3 }}><span>Deterministic <b style={{ color: validationState === 'FAIL' ? BB.red : validationState === 'PASS' ? BB.green : validationState === 'REVIEW_REQUIRED' ? BB.amber : BB.text2 }}>{validationState}</b></span><span>Quality <b style={{ color: quality.state === 'ADMITTED' ? BB.green : quality.state === 'QUARANTINED' ? BB.red : BB.amber }}>{qualityState}</b></span><span>Local <b style={{ color: BB.text2 }}>{reviews.local?.verdict || 'NOT RUN'}</b></span><span>Grok OAuth <b style={{ color: BB.text2 }}>{reviews.grok?.verdict || 'NOT RUN'}</b></span><span>ChatGPT OAuth <b style={{ color: BB.text2 }}>{reviews.chatgpt?.verdict || 'NOT RUN'}</b></span><span>Premium <b style={{ color: reconciled.premium_recommended ? BB.amber : BB.text2 }}>{premiumLabel}</b></span></div>{validation.hard_failures?.length > 0 && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>{validation.hard_failures.slice(0, 2).join(' · ')}</div>}{quality.reasons?.length > 0 && quality.state !== 'ADMITTED' && <div style={{ marginTop: 4, fontSize: 10, color: quality.state === 'QUARANTINED' ? BB.red : BB.amber }}>Quality gate: {quality.reasons.slice(0, 2).join(' · ')}</div>}</div>
+  return <div style={{ padding: '9px 16px', borderBottom: `1px solid ${BB.border}` }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>TICKET VERIFICATION</span><span style={{ fontSize: 10.5, fontWeight: 900, color: failure ? BB.red : reconciled.proposal_allowed ? BB.green : BB.text1 }}>{String(overall).replace(/_/g, ' ')}</span>{selected.source && <span title="Canonical validation source" style={{ fontSize: 9.5, color: BB.text3 }}>{selected.source}</span>}{reconciled.detail && <span style={{ fontSize: 10, color: BB.text3 }}>{String(reconciled.detail).slice(0, 130)}</span>}<button onClick={event => { event.stopPropagation(); void runFree() }} disabled={busy || !mayRunReview} title={!mayRunReview ? 'Complete deterministic validation and quality admission first' : 'Run bounded local and OAuth critics on the exact validated ticket'} style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px', cursor: busy ? 'wait' : !mayRunReview ? 'not-allowed' : 'pointer', opacity: mayRunReview ? 1 : .55, background: 'transparent', color: BB.text2, border: `1px solid ${BB.border}`, borderRadius: 3 }}>{busy ? 'Reviewing…' : mayRunReview ? 'Run free review' : 'Fix deterministic gate first'}</button></div><div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5, fontSize: 10, color: BB.text3 }}><span>Deterministic <b style={{ color: validationState === 'FAIL' ? BB.red : validationState === 'PASS' ? BB.green : validationState === 'REVIEW_REQUIRED' ? BB.amber : BB.text2 }}>{validationState}</b></span><span>Quality <b style={{ color: qualityRaw === 'ADMITTED' ? BB.green : qualityRaw === 'QUARANTINED' ? BB.red : BB.amber }}>{qualityState}</b></span><span>Local <b style={{ color: BB.text2 }}>{reviews.local?.verdict || 'NOT RUN'}</b></span><span>Grok OAuth <b style={{ color: BB.text2 }}>{reviews.grok?.verdict || 'NOT RUN'}</b></span><span>ChatGPT OAuth <b style={{ color: BB.text2 }}>{reviews.chatgpt?.verdict || 'NOT RUN'}</b></span><span>Premium <b style={{ color: reconciled.premium_recommended ? BB.amber : BB.text2 }}>{premiumLabel}</b></span></div>{validation.hard_failures?.length > 0 && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>{validation.hard_failures.slice(0, 2).join(' · ')}</div>}{quality.reasons?.length > 0 && qualityRaw !== 'ADMITTED' && <div style={{ marginTop: 4, fontSize: 10, color: qualityRaw === 'QUARANTINED' ? BB.red : BB.amber }}>Quality gate: {quality.reasons.slice(0, 2).join(' · ')}</div>}</div>
 }
 
 function AuditDrawer({ pres, tech }: { pres: OperatorPresentation; tech: any }) {
