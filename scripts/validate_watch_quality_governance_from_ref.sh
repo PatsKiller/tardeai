@@ -32,6 +32,7 @@ readonly RESOLVED_COMMIT="$(git -C "$HOST_REPO" rev-parse "$SOURCE_REF^{commit}"
 [[ "$RESOLVED_COMMIT" == "$SOURCE_REF" ]] || { echo "BLOCKED_WATCH_QUALITY_VALIDATION: resolved commit differs from exact source ref" >&2; exit 2; }
 
 git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
+  .github/workflows/watch-quality-governance-ci.yml \
   apps/command-center-v3 config/watch_quality_policy.json config/research_due_diligence_policy.json \
   docs/operations/MAYA_INTELLIGENCE_AUTHORITY_MATRIX_2026-07-25.md scripts \
   tests/test_watch_quality_policy.py tests/test_strategy_ticket_quality_gate.py \
@@ -52,14 +53,14 @@ cd "$STAGE_ROOT"
   scripts/watch_quality_policy.py scripts/watch_packet_quality.py \
   scripts/watch_quality_projection.py scripts/watch_quality_projection_v2.py \
   scripts/watch_quality_governed_builder.py \
-  scripts/watch_quality_gate3_sample_rebuild.py scripts/watch_quality_gate4_verify.py \
-  scripts/watch_quality_local_scheduler.py scripts/strategy_ticket_validator.py \
-  scripts/strategy_ticket_review.py scripts/strategy_ticket_reconciler.py \
-  scripts/run_ticket_review_job.py scripts/watch_decision_scheduler.py \
-  scripts/watch_quality_audit.py scripts/research_due_diligence.py \
-  scripts/research_due_diligence_census.py scripts/specialized_research_due_diligence.py \
-  scripts/specialized_research_pipeline.py scripts/sector_momentum_engine_v5.py \
-  scripts/maya_intelligence_contract.py
+  scripts/watch_quality_gate3_sample_rebuild.py scripts/watch_quality_gate3_sample_rebuild_v2.py \
+  scripts/watch_quality_gate4_verify.py scripts/watch_quality_local_scheduler.py \
+  scripts/strategy_ticket_validator.py scripts/strategy_ticket_review.py \
+  scripts/strategy_ticket_reconciler.py scripts/run_ticket_review_job.py \
+  scripts/watch_decision_scheduler.py scripts/watch_quality_audit.py \
+  scripts/research_due_diligence.py scripts/research_due_diligence_census.py \
+  scripts/specialized_research_due_diligence.py scripts/specialized_research_pipeline.py \
+  scripts/sector_momentum_engine_v5.py scripts/maya_intelligence_contract.py
 
 "$PY" -m pytest -q \
   tests/test_watch_quality_policy.py tests/test_strategy_ticket_quality_gate.py \
@@ -91,6 +92,7 @@ printf 'quality_projection_contract|watch-quality-projection-v2\n'
 printf 'governed_builder_contract|watch-quality-governed-builder-v1\n'
 printf 'projection_v1_status|SUPERSEDED_SOURCE_UNIT_CONFLICT\n'
 printf 'gate3_contract|watch-quality-gate3-sample-rebuild-v1\n'
+printf 'gate3_roundtrip_contract|watch-quality-gate3-jsonb-roundtrip-v1\n'
 printf 'gate4_contract|watch-quality-gate4-readonly-verification-v1\n'
 printf 'gate5_contract|WATCH_QUALITY_SHADOW_UI_ONLY\n'
 printf 'gate6_contract|watch-quality-local-scheduler-v1\n'
