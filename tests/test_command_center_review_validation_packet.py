@@ -32,6 +32,24 @@ def test_validation_packet_runs_build_and_modal_browser_contract():
         assert token in SCRIPT
 
 
+def test_validation_packet_reserves_and_enforces_the_preview_port():
+    for token in (
+        'sock.bind(("127.0.0.1", 0))',
+        '--port "$PORT" --strictPort',
+        'kill -0 "$PREVIEW_PID"',
+        'preview_ready|%s',
+        'PLAYWRIGHT_BASE_URL="$PREVIEW_ORIGIN"',
+        "Vite preview exited before readiness",
+        "Vite preview did not answer on the reserved strict port",
+    ):
+        assert token in SCRIPT
+
+    # An HTTP response proves the selected listener is up; curl -f would reject
+    # a harmless preview-root 404 before Playwright reaches the real /v3 routes.
+    assert '"$CURL" -sS --connect-timeout 1 --max-time 2 -o /dev/null' in SCRIPT
+    assert '"$CURL" -fsS "http://127.0.0.1:${PORT}/v3/"' not in SCRIPT
+
+
 def test_validation_packet_has_no_live_or_trading_authority():
     lowered = SCRIPT.lower()
     for token in (
