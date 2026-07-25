@@ -46,6 +46,7 @@ git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
   apps/command-center-v3 \
   config/watch_quality_policy.json \
   config/research_due_diligence_policy.json \
+  docs/operations/MAYA_INTELLIGENCE_AUTHORITY_MATRIX_2026-07-25.md \
   scripts \
   tests/test_watch_quality_policy.py \
   tests/test_strategy_ticket_quality_gate.py \
@@ -62,6 +63,7 @@ git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
   tests/test_research_due_diligence.py \
   tests/test_research_due_diligence_census.py \
   tests/test_maya_intelligence_contract.py \
+  tests/test_maya_intelligence_audit_contract.py \
   | "$TAR" -x -C "$STAGE_ROOT"
 
 readonly PY="$([[ -x "$HOST_REPO/.venv/bin/python" ]] && printf '%s' "$HOST_REPO/.venv/bin/python" || printf '%s' "$PYTHON_DEFAULT")"
@@ -100,7 +102,8 @@ cd "$STAGE_ROOT"
   tests/test_validate_watch_quality_governance_from_ref.py \
   tests/test_research_due_diligence.py \
   tests/test_research_due_diligence_census.py \
-  tests/test_maya_intelligence_contract.py
+  tests/test_maya_intelligence_contract.py \
+  tests/test_maya_intelligence_audit_contract.py
 
 cd "$STAGE_ROOT/apps/command-center-v3"
 "$NPM" ci
