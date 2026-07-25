@@ -89,6 +89,7 @@ test -x "$PY"
 
 cd "$STAGE_ROOT"
 WATCH_GATE3_ACK=BOUNDED_LOCAL_QUANT_SAMPLE \
+WATCH_QUALITY_SOURCE_COMMIT="$RESOLVED_COMMIT" \
 PYTHONPATH="$STAGE_ROOT/scripts:$STAGE_ROOT/scripts/lib" \
 "$PY" "$STAGE_ROOT/scripts/watch_quality_gate3_sample_rebuild.py" \
   --projection-json "$PROJECTION_JSON" \
