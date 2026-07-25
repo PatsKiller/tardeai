@@ -145,3 +145,122 @@ def test_gate3_wrapper_pins_source_and_disables_every_model_path():
         assert marker in WRAPPER
     for forbidden in ('git checkout', 'git reset', 'git clean', 'npm ', 'systemctl ', 'crontab '):
         assert forbidden not in WRAPPER
+
+
+# ---------------------------------------------------------------------------
+# Behavioral coverage for the v2 JSONB numeric-equivalence logic.
+#
+# The tests above are static-text guards; they never execute the comparison
+# helpers, so a regression such as ``_numbers_equal`` always returning True (an
+# unsafe pass) would slip through. These tests import the *real* shipped module
+# and exercise its own code, staying hermetic: the verifier's only non-stdlib
+# import is ``watch_quality_gate3_sample_rebuild`` (which pulls in the DB driver
+# absent from the pytest-only CI image), so we stub that single name before
+# import. The equivalence helpers touch none of it.
+# ---------------------------------------------------------------------------
+def _load_roundtrip_verifier():
+    import importlib.util
+    import sys
+    import types
+
+    saved = sys.modules.get("watch_quality_gate3_sample_rebuild")
+    sys.modules["watch_quality_gate3_sample_rebuild"] = types.ModuleType(
+        "watch_quality_gate3_sample_rebuild")
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "watch_quality_gate3_sample_rebuild_v2_behavioral",
+            ROOT / "scripts/watch_quality_gate3_sample_rebuild_v2.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        if saved is None:
+            sys.modules.pop("watch_quality_gate3_sample_rebuild", None)
+        else:
+            sys.modules["watch_quality_gate3_sample_rebuild"] = saved
+
+
+V2 = _load_roundtrip_verifier()
+
+
+def _equivalent(a, b):
+    """True iff the verifier treats a and b as the same persisted JSON value."""
+    return (
+        V2._semantic_hash(a) == V2._semantic_hash(b)
+        and V2._semantic_differences(a, b) == []
+    )
+
+
+def test_v2_numeric_equivalence_tolerates_representation_only():
+    # Equal-valued JSON numbers differing only in spelling/type must round-trip
+    # clean — this is the PostgreSQL JSONB normalization the verifier exists to
+    # allow (e.g. 1 -> 1.0, -0.0 -> 0.0, 1.10 -> 1.1).
+    for a, b in (
+        (1, 1.0),
+        (-0.0, 0.0),
+        (100, 100.0),
+        (1.10, 1.1),
+        ({"q": 1}, {"q": 1.0}),
+        ([1, 2.0], [1.0, 2]),
+        ({"a": [1, 2.0], "b": True, "c": None}, {"a": [1.0, 2], "b": True, "c": None}),
+    ):
+        assert _equivalent(a, b), (a, b)
+    assert V2._semantic_hash({"q": 1}) == V2._semantic_hash({"q": 1.0})
+
+
+def test_v2_numeric_normalization_cannot_conceal_a_value_change():
+    # Every genuine value change must be caught by BOTH the structural diff and
+    # the semantic hash — neither may be fooled by numeric normalization.
+    for a, b in (
+        (1.5, 1.6),
+        (1, 2),
+        (0.0, 0.01),
+        (2.0, 2.0001),
+        (0.1 + 0.2, 0.3),
+        ({"x": [{"y": 1.0}]}, {"x": [{"y": 1.001}]}),
+    ):
+        assert V2._semantic_differences(a, b), (a, b)
+        assert V2._semantic_hash(a) != V2._semantic_hash(b), (a, b)
+        assert not _equivalent(a, b), (a, b)
+
+
+def test_v2_never_normalizes_across_json_types():
+    # bool is not a number; a number is not a string; null is not zero.
+    for a, b in ((True, 1), (False, 0), (1, "1"), (0, "0"), (None, 0), (1.0, "1.0")):
+        assert V2._semantic_differences(a, b), (a, b)
+        assert not _equivalent(a, b), (a, b)
+    assert V2._numbers_equal(True, 1) is False
+    assert V2._numbers_equal(1, True) is False
+    assert V2._numbers_equal(1, 1.0) is True
+
+
+def test_v2_structural_comparison_stays_strict():
+    assert V2._semantic_differences([1], [1, 1])            # list length
+    assert V2._semantic_differences([1, 2], [2, 1])         # list order
+    assert V2._semantic_differences({"a": 1}, {})           # missing key
+    assert V2._semantic_differences({}, {"a": 1})           # unexpected key
+    assert V2._semantic_differences("1", "2")               # strings compared exactly
+    assert V2._semantic_differences(True, False)            # booleans compared exactly
+    assert V2._semantic_differences(None, False)            # null vs bool
+    # identical structure with only numeric-representation drift is clean
+    assert V2._semantic_differences(
+        {"a": [1, 2.0], "b": "x"}, {"a": [1.0, 2], "b": "x"}) == []
+
+
+def test_v2_number_token_is_canonical_and_rejects_non_numbers():
+    import math
+
+    import pytest
+
+    tok = V2._number_token
+    assert tok(1) == tok(1.0) == "1"
+    assert tok(-0.0) == tok(0.0) == "0"
+    assert tok(1.10) == tok(1.1)
+    assert tok(100) == "100"                 # canonical decimal, never 1E+2
+    assert tok(2.0) != tok(2.0001)           # real change is not collapsed
+    with pytest.raises(TypeError):
+        tok(True)                            # bool is not a JSON number
+    for bad in (math.inf, -math.inf, math.nan):
+        with pytest.raises(ValueError):
+            tok(bad)                         # non-finite cannot persist to JSONB
