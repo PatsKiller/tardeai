@@ -22,6 +22,7 @@ cleanup() {
   rm -rf "$STAGE_ROOT" "$CANDIDATE"
   if [[ "$OLD_MOVED" -eq 1 && "$NEW_INSTALLED" -eq 0 && -d "${BACKUP_DIST:-}" && ! -d "$LIVE_DIST" ]]; then
     mv "$BACKUP_DIST" "$LIVE_DIST"
+    printf 'rollback_live_dist|RESTORED\n'
   fi
 }
 trap cleanup EXIT
