@@ -12,6 +12,14 @@ on:
       - 'scripts/watch_packet_quality.py'
       - 'scripts/watch_quality_projection.py'
       - 'scripts/watch_quality_projection_v2.py'
+      - 'scripts/watch_quality_gate3_sample_rebuild.py'
+      - 'scripts/watch_quality_gate4_verify.py'
+      - 'scripts/watch_quality_local_scheduler.py'
+      - 'scripts/run_watch_quality_gate3_from_ref.sh'
+      - 'scripts/run_watch_quality_gate4_from_ref.sh'
+      - 'scripts/deploy_watch_quality_ui_from_ref.sh'
+      - 'scripts/run_watch_quality_local_scheduler_from_ref.sh'
+      - 'scripts/install_watch_quality_local_scheduler_from_ref.sh'
       - 'scripts/strategy_ticket_validator.py'
       - 'scripts/strategy_ticket_review.py'
       - 'scripts/strategy_ticket_reconciler.py'
@@ -62,6 +70,9 @@ jobs:
             scripts/watch_packet_quality.py \
             scripts/watch_quality_projection.py \
             scripts/watch_quality_projection_v2.py \
+            scripts/watch_quality_gate3_sample_rebuild.py \
+            scripts/watch_quality_gate4_verify.py \
+            scripts/watch_quality_local_scheduler.py \
             scripts/strategy_ticket_validator.py \
             scripts/strategy_ticket_review.py \
             scripts/strategy_ticket_reconciler.py \
@@ -85,6 +96,10 @@ jobs:
             tests/test_watch_quality_audit_contract.py \
             tests/test_watch_quality_projection.py \
             tests/test_watch_quality_projection_v2.py \
+            tests/test_watch_quality_gate3_contract.py \
+            tests/test_watch_quality_gate4_contract.py \
+            tests/test_watch_quality_gate5_contract.py \
+            tests/test_watch_quality_gate6_contract.py \
             tests/test_watch_quality_ui_contract.py \
             tests/test_ticket_review_worker_fail_closed.py \
             tests/test_validate_watch_quality_governance_from_ref.py \
@@ -109,6 +124,9 @@ jobs:
             scripts/watch_packet_quality.py \
             scripts/watch_quality_projection.py \
             scripts/watch_quality_projection_v2.py \
+            scripts/watch_quality_gate3_sample_rebuild.py \
+            scripts/watch_quality_gate4_verify.py \
+            scripts/watch_quality_local_scheduler.py \
             scripts/strategy_ticket_validator.py \
             scripts/strategy_ticket_review.py \
             scripts/strategy_ticket_reconciler.py \
