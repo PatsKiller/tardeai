@@ -2,7 +2,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNNER = (ROOT / "scripts/watch_quality_gate3_sample_rebuild.py").read_text()
+LEGACY_RUNNER = (ROOT / "scripts/watch_quality_gate3_sample_rebuild.py").read_text()
+ROUNDTRIP_RUNNER = (ROOT / "scripts/watch_quality_gate3_sample_rebuild_v2.py").read_text()
+RUNNER = LEGACY_RUNNER + ROUNDTRIP_RUNNER
 BUILDER = (ROOT / "scripts/watch_quality_governed_builder.py").read_text()
 WRAPPER = (ROOT / "scripts/run_watch_quality_gate3_from_ref.sh").read_text()
 
@@ -12,9 +14,11 @@ def test_gate3_is_exactly_five_role_local_quant_sample():
         'ROLE_ORDER = ("admitted", "research_only", "quarantined", "management_only", "contradiction")',
         'PASS_GATE3_BOUNDED_LOCAL_REBUILD',
         'BLOCKED_GATE3_PREWRITE_MISMATCH',
-        'BLOCKED_GATE3_PARTIAL_WRITE',
+        'BLOCKED_GATE3_PERSISTENCE_FAILURE',
+        'BLOCKED_GATE3_POSTWRITE_VERIFICATION',
         'watch-quality-projection-v2',
         'watch-quality-governed-builder-v1',
+        'watch-quality-gate3-jsonb-roundtrip-v1',
         'MAX_PROJECTION_AGE_HOURS = 6.0',
         'governed_builder.build_packet(',
     ):
@@ -22,13 +26,48 @@ def test_gate3_is_exactly_five_role_local_quant_sample():
 
 
 def test_gate3_prevalidates_every_candidate_before_persisting():
-    evaluation = RUNNER.index('governed_builder.build_packet(')
-    prewrite = RUNNER.index('if prewrite_errors:')
-    persist = RUNNER.index('decision_service.persist(')
+    evaluation = LEGACY_RUNNER.index('governed_builder.build_packet(')
+    prewrite = LEGACY_RUNNER.index('if prewrite_errors:')
+    persist = LEGACY_RUNNER.index('decision_service.persist(')
     assert evaluation < prewrite < persist
     assert 'projected quality {expected_quality} != rebuilt quality {observed_quality}' in RUNNER
     assert 'rebuilt_quality_facts_used' in RUNNER
     assert 'inline_ticket_reviews' in RUNNER
+
+
+def test_gate3_freezes_candidates_at_json_boundary():
+    snapshot = ROUNDTRIP_RUNNER.index('snapshots[str(symbol).upper()] = packet')
+    build_patch = ROUNDTRIP_RUNNER.index('gate3.governed_builder.build_packet = frozen_build')
+    execute = ROUNDTRIP_RUNNER.index('report = gate3.execute(')
+    assert snapshot < build_patch < execute
+    assert 'candidate_semantic_hash' in ROUNDTRIP_RUNNER
+
+
+def test_gate3_verifies_exact_packet_ids_and_all_roles():
+    for marker in (
+        'WHERE packet_id=%s',
+        'for role in gate3.ROLE_ORDER:',
+        'errors: list[str] = []',
+        'representation_hash_mismatches',
+        'after_semantic_differences',
+        'JSONB semantic difference at',
+        'gate field {field} changed after persistence',
+    ):
+        assert marker in ROUNDTRIP_RUNNER
+    assert 'WHERE upper(symbol)=%s AND superseded_by IS NULL' not in ROUNDTRIP_RUNNER
+
+
+def test_gate3_jsonb_equivalence_only_normalizes_numbers():
+    for marker in (
+        'only equal-valued JSON numbers may differ in type/spelling',
+        'if payload is None or isinstance(payload, (bool, str)):',
+        'if isinstance(payload, (int, float)):',
+        'if type(left) is not type(right):',
+        'add("missing_key"',
+        'add("unexpected_key"',
+        'add("list_length"',
+    ):
+        assert marker in ROUNDTRIP_RUNNER
 
 
 def test_governed_builder_uses_projection_as_immutable_quality_input():
@@ -82,6 +121,8 @@ def test_gate3_wrapper_pins_source_and_disables_every_model_path():
         'WATCH_GATE3_ACK=BOUNDED_LOCAL_QUANT_SAMPLE',
         'WATCH_QUALITY_SOURCE_COMMIT="$RESOLVED_COMMIT"',
         'watch_quality_governed_builder.py',
+        'watch_quality_gate3_sample_rebuild_v2.py',
+        'roundtrip_verifier|watch-quality-gate3-jsonb-roundtrip-v1',
         'governed_builder|watch-quality-governed-builder-v1',
         'SHADOW_DISABLE_MODELS=1',
         'SHADOW_DISABLE_TICKET_CRITIC=1',
