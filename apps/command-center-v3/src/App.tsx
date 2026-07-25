@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hooks/useApi'
 import MetricStrip from './components/MetricStrip'
@@ -143,6 +143,16 @@ function drillSymbol(ctx: DrillContext | null): string {
   return normalizeSymbol(candidate)
 }
 
+function cardSymbol(card: HTMLElement): string {
+  const preset = normalizeSymbol(card.dataset.reviewSymbol)
+  if (preset) return preset
+  for (const node of Array.from(card.querySelectorAll('span, b'))) {
+    const symbol = normalizeSymbol(node.textContent)
+    if (symbol) return symbol
+  }
+  return ''
+}
+
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -161,6 +171,23 @@ function Shell() {
     next.set('modal', 'review')
     setSearchParams(next)
   }, [searchParams, setSearchParams])
+
+  const openSymbolReview = useCallback((symbolValue: string) => {
+    const symbol = normalizeSymbol(symbolValue)
+    if (!symbol) return
+    openDrill({
+      title: `${symbol} operator review`,
+      subtitle: 'Decision, provenance and evidence review',
+      endpoint: `/api/v2/watch/provenance/${symbol}`,
+      rows: [{ symbol }],
+      links: [
+        { label: 'Watchlist', href: `/v3/watch?tab=watchlist&symbol=${encodeURIComponent(symbol)}`, note: 'Return to the Watchlist workspace' },
+        { label: 'Rotation review', href: `/v3/rotation?question=${encodeURIComponent(`Review whether ${symbol} exposure should change`)}`, note: 'Advisory review only' },
+      ],
+      subjectType: 'symbol',
+      subjectKey: symbol,
+    })
+  }, [openDrill])
 
   const closeDrill = useCallback(() => {
     setDrill(null)
@@ -213,6 +240,28 @@ function Shell() {
   }, [activeDrillSymbol, requestedSymbol, reviewRequested])
 
   useEffect(() => {
+    const main = document.querySelector('.app-main')
+    if (!main) return
+    const decorate = () => {
+      for (const grid of Array.from(main.querySelectorAll<HTMLElement>('.wlc-term-grid'))) {
+        const card = grid.parentElement
+        if (!card) continue
+        const symbol = cardSymbol(card)
+        if (!symbol) continue
+        card.dataset.reviewSymbol = symbol
+        card.dataset.reviewSurface = 'watchlist-card'
+        card.tabIndex = 0
+        card.setAttribute('role', 'button')
+        card.setAttribute('aria-label', `Open ${symbol} operator review`)
+      }
+    }
+    decorate()
+    const observer = new MutationObserver(decorate)
+    observer.observe(main, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
     if (!drill) return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -226,8 +275,25 @@ function Shell() {
     }
   }, [closeDrill, drill])
 
+  const handleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement
+    if (target.closest('button, a, input, select, textarea, [role="button"]:not([data-review-surface])')) return
+    const card = target.closest<HTMLElement>('[data-review-surface="watchlist-card"]')
+    if (!card) return
+    openSymbolReview(cardSymbol(card))
+  }, [openSymbolReview])
+
+  const handleKeyCapture = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    const target = event.target as HTMLElement
+    const card = target.closest<HTMLElement>('[data-review-surface="watchlist-card"]')
+    if (!card || target !== card) return
+    event.preventDefault()
+    openSymbolReview(cardSymbol(card))
+  }, [openSymbolReview])
+
   return (
-    <div className="app-shell cc-terminal-ui" data-review-contract={GLOBAL_REVIEW_CONTRACT} style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
+    <div className="app-shell cc-terminal-ui" data-review-contract={GLOBAL_REVIEW_CONTRACT} onClickCapture={handleClickCapture} onKeyDownCapture={handleKeyCapture} style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
       <ReconnectingBar />
       <MetricStrip onDrill={openDrill} />
       <div className="app-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
