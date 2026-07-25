@@ -87,6 +87,9 @@ markers=(
   "URL-addressable decision, provenance and evidence review"
   "data-command-center-modal"
   "OPEN REVIEW"
+  "command-center-structured-provenance-v1"
+  "Structured provenance, freshness, directive lineage and watch memberships"
+  "symbol-provenance"
 )
 for marker in "${markers[@]}"; do
   if ! grep -R --binary-files=text -Fq "$marker" "$STAGED_APP/dist"; then
@@ -114,6 +117,7 @@ payload.update({
     "deployment_scope": "DEFENSE_SECTORS_SHADOW_UI_ONLY",
     "interaction_contract": "decision-board-actionable-v1",
     "global_review_contract": "command-center-global-review-v1",
+    "structured_evidence_contract": "command-center-structured-provenance-v1",
 })
 path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 PY
@@ -134,6 +138,7 @@ NEW_INSTALLED=1
 printf 'ui_source_commit|%s\n' "$RESOLVED_COMMIT"
 printf 'interaction_contract|decision-board-actionable-v1\n'
 printf 'global_review_contract|command-center-global-review-v1\n'
+printf 'structured_evidence_contract|command-center-structured-provenance-v1\n'
 printf 'deployment_scope|DEFENSE_SECTORS_SHADOW_UI_ONLY\n'
 printf 'host_source_checkout|UNCHANGED\n'
 printf 'live_dist|%s\n' "$LIVE_DIST"
@@ -152,5 +157,6 @@ printf 'expected_marker|Watch sector\n'
 printf 'expected_marker|Copy brief + Rotation\n'
 printf 'expected_marker|Open policy review\n'
 printf 'expected_marker|command-center-global-review-v1\n'
+printf 'expected_marker|command-center-structured-provenance-v1\n'
 printf 'expected_watch_default|/v3/watch?tab=watchlist\n'
 printf 'final_status|PASS_UI_STATIC_DEPLOY\n'
