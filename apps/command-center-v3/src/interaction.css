@@ -78,6 +78,17 @@
   box-shadow: inset 0 -2px 0 rgba(96, 165, 250, 0.58);
 }
 
+/* The semantic dialog wrapper must own a real viewport-sized box.
+   Its DetailDrawer child is fixed-positioned and therefore contributes no
+   layout size; without this rule accessibility tools correctly see the
+   role=dialog element as hidden even while the child overlay is painted. */
+[data-command-center-modal='review'] {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: block;
+}
+
 /* The existing DetailDrawer becomes the canonical large review modal. */
 div:has(> .cc-drawer) {
   justify-content: center !important;
