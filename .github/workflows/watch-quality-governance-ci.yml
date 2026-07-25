@@ -6,16 +6,23 @@ on:
       - agent/watch-quality-governance-v1
   pull_request:
     paths:
+      - 'config/watch_quality_policy.json'
       - 'scripts/watch_quality_policy.py'
+      - 'scripts/watch_packet_quality.py'
       - 'scripts/strategy_ticket_validator.py'
       - 'scripts/strategy_ticket_review.py'
       - 'scripts/strategy_ticket_reconciler.py'
       - 'scripts/run_ticket_review_job.py'
+      - 'scripts/watch_decision_scheduler.py'
+      - 'scripts/watch_quality_audit.py'
+      - 'scripts/validate_watch_quality_governance_from_ref.sh'
       - 'apps/command-center-v3/src/components/DecisionPacketBand.tsx'
       - 'apps/command-center-v3/src/components/ProAnalystPill.tsx'
       - 'tests/test_watch_quality_*.py'
+      - 'tests/test_watch_packet_quality.py'
       - 'tests/test_strategy_ticket_*.py'
       - 'tests/test_ticket_review_worker_fail_closed.py'
+      - 'tests/test_validate_watch_quality_governance_from_ref.py'
       - '.github/workflows/watch-quality-governance-ci.yml'
 
 permissions:
@@ -39,14 +46,17 @@ jobs:
       - name: Install focused Python test dependency
         run: python -m pip install --disable-pip-version-check pytest
 
-      - name: Compile deterministic and critic modules
+      - name: Compile deterministic critic scheduler and audit modules
         run: |
           python -m py_compile \
             scripts/watch_quality_policy.py \
+            scripts/watch_packet_quality.py \
             scripts/strategy_ticket_validator.py \
             scripts/strategy_ticket_review.py \
             scripts/strategy_ticket_reconciler.py \
-            scripts/run_ticket_review_job.py
+            scripts/run_ticket_review_job.py \
+            scripts/watch_decision_scheduler.py \
+            scripts/watch_quality_audit.py
 
       - name: Run focused Watch governance tests
         run: |
@@ -55,8 +65,12 @@ jobs:
             tests/test_strategy_ticket_quality_gate.py \
             tests/test_strategy_ticket_review_contract.py \
             tests/test_strategy_ticket_reconciler_v11.py \
+            tests/test_watch_packet_quality.py \
+            tests/test_watch_quality_scheduler_contract.py \
+            tests/test_watch_quality_audit_contract.py \
             tests/test_watch_quality_ui_contract.py \
-            tests/test_ticket_review_worker_fail_closed.py
+            tests/test_ticket_review_worker_fail_closed.py \
+            tests/test_validate_watch_quality_governance_from_ref.py
 
       - name: Install Command Center dependencies
         working-directory: apps/command-center-v3
@@ -74,7 +88,10 @@ jobs:
         run: |
           ! grep -R -n -E 'broker_submit|place_order|approve_order|2fa_unlock' \
             scripts/watch_quality_policy.py \
+            scripts/watch_packet_quality.py \
             scripts/strategy_ticket_validator.py \
             scripts/strategy_ticket_review.py \
             scripts/strategy_ticket_reconciler.py \
-            scripts/run_ticket_review_job.py
+            scripts/run_ticket_review_job.py \
+            scripts/watch_decision_scheduler.py \
+            scripts/watch_quality_audit.py
