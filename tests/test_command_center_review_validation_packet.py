@@ -18,7 +18,7 @@ def test_validation_packet_is_exact_ref_and_temporary_only():
         assert token in SCRIPT
 
 
-def test_validation_packet_runs_build_and_modal_browser_contract():
+def test_validation_packet_runs_build_modal_and_structured_evidence_contracts():
     for token in (
         '"$NPM" ci',
         '"$NPX" tsc --pretty false',
@@ -28,6 +28,10 @@ def test_validation_packet_runs_build_and_modal_browser_contract():
         "e2e/global-review-modal.spec.ts",
         "command-center-global-review-v1",
         "URL-addressable decision, provenance and evidence review",
+        "command-center-structured-provenance-v1",
+        "Structured provenance, freshness, directive lineage and watch memberships",
+        "symbol-provenance",
+        "structured_evidence_contract|command-center-structured-provenance-v1",
     ):
         assert token in SCRIPT
 
