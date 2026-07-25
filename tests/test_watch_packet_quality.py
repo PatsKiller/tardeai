@@ -111,7 +111,7 @@ def test_missing_validation_is_unassessed_not_pass():
     assert selected["quality"] == "UNASSESSED"
 
 
-def test_wait_header_with_non_primary_ready_is_reported_as_presentation_conflict():
+def test_legacy_wait_header_with_non_primary_ready_is_reported_as_conflict():
     packet = {
         "operator_presentation": {"header_state": "WAIT"},
         "plan_families": {
@@ -123,3 +123,39 @@ def test_wait_header_with_non_primary_ready_is_reported_as_presentation_conflict
     assert len(conflicts) == 1
     assert "header WAIT" in conflicts[0]
     assert "long_term" in conflicts[0]
+
+
+def test_apply_operator_presentation_scopes_secondary_ready_as_eligibility():
+    packet = {
+        "decision_state": "WAIT",
+        "current_actionable_plan": {"family": "SWING"},
+        "plan_families": {
+            "long_term": {"action_state": "READY"},
+            "swing": {"action_state": "WAIT"},
+        },
+    }
+    out = quality.apply_operator_presentation(packet)
+    presentation = out["operator_presentation"]
+    assert presentation["contract"] == "watch-quality-governance-v1"
+    assert presentation["header_state"] == "WAIT"
+    assert presentation["primary_family"] == "SWING"
+    assert presentation["family_display_states"]["LONG_TERM"] == "OWNERSHIP ELIGIBLE"
+    assert presentation["family_display_states"]["SWING"] == "WAIT"
+    assert quality.presentation_conflicts(out) == []
+    assert out["plan_families"]["long_term"]["action_state"] == "READY"
+
+
+def test_primary_ready_remains_ready_only_when_header_is_ready():
+    packet = {
+        "decision_state": "READY",
+        "current_actionable_plan": {"family": "SWING"},
+        "plan_families": {
+            "long_term": {"action_state": "READY"},
+            "swing": {"action_state": "READY"},
+        },
+    }
+    quality.apply_operator_presentation(packet)
+    states = packet["operator_presentation"]["family_display_states"]
+    assert states["SWING"] == "READY"
+    assert states["LONG_TERM"] == "OWNERSHIP ELIGIBLE"
+    assert quality.presentation_conflicts(packet) == []
