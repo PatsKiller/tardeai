@@ -32,6 +32,17 @@ def test_validator_builds_from_temporary_git_archive_only():
         assert forbidden not in SOURCE.lower()
 
 
+def test_validator_archives_every_contract_dependency():
+    archive = SOURCE[SOURCE.index('archive "$RESOLVED_COMMIT"'):SOURCE.index('| "$TAR" -x -C "$STAGE_ROOT"')]
+    for required in (
+        ".github/workflows/watch-quality-governance-ci.yml",
+        "scripts",
+        "tests/test_watch_quality_gate3_contract.py",
+        "tests/test_validate_watch_quality_governance_from_ref.py",
+    ):
+        assert required in archive
+
+
 def test_validator_runs_focused_python_and_ui_gates():
     for marker in (
         "scripts/watch_quality_policy.py",
@@ -40,6 +51,7 @@ def test_validator_runs_focused_python_and_ui_gates():
         "scripts/watch_quality_projection_v2.py",
         "scripts/watch_quality_governed_builder.py",
         "scripts/watch_quality_gate3_sample_rebuild.py",
+        "scripts/watch_quality_gate3_sample_rebuild_v2.py",
         "scripts/watch_quality_gate4_verify.py",
         "scripts/watch_quality_local_scheduler.py",
         "scripts/strategy_ticket_validator.py",
@@ -66,6 +78,7 @@ def test_validator_runs_focused_python_and_ui_gates():
         "watch-quality-projection-v2",
         "watch-quality-governed-builder-v1",
         "watch-quality-gate3-sample-rebuild-v1",
+        "watch-quality-gate3-jsonb-roundtrip-v1",
         "watch-quality-gate4-readonly-verification-v1",
         "WATCH_QUALITY_SHADOW_UI_ONLY",
         "watch-quality-local-scheduler-v1",
