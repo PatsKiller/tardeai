@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BB, numStyle, terminalButton } from '../lib/watchlistTerminalTokens'
+import { selectPacketValidation } from '../lib/watchPacketQuality'
 import {
   buildOperatorPresentation,
   operatorStateColor,
@@ -8,10 +9,10 @@ import {
 } from '../lib/operatorDecisionCard'
 
 /*
- * Calm operator presentation for the Watch Decision Desk.
- * Color is intentionally scarce: one state rail, one state word, and genuine
- * validation failures. Everything else is neutral hierarchy and whitespace.
- * Advisory only. No orders, approvals, broker writes, or 2FA.
+ * One sovereign operator state controls the rail and CTA. Family tiles are
+ * supporting horizon evidence; a non-primary family must never present READY
+ * beside a primary WAIT/NO TRADE/MANAGE state. Advisory only. No orders,
+ * approvals, broker writes, provider activation or 2FA.
  */
 
 type Props = {
@@ -53,26 +54,31 @@ function age(value?: string | null): string {
   const hours = Math.round(minutes / 60)
   return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`
 }
-function money(value: any): string {
-  if (value === null || value === undefined || value === '') return '—'
-  const parsed = Number(String(value).replace(/[$,]/g, ''))
-  return Number.isFinite(parsed) ? `$${parsed.toFixed(2)}` : String(value)
+
+function scopedReady(key: string, raw: string, preferred: boolean, operatorState: OperatorState): string {
+  if (raw !== 'READY') return raw
+  if (preferred && operatorState === 'READY') return 'READY'
+  return key === 'long_term' ? 'OWNERSHIP ELIGIBLE' : 'MECHANICS VALID'
 }
-function familyWord(key: string, family: any, overrides?: any): string {
+
+function familyWord(key: string, family: any, overrides: any, preferred: boolean, operatorState: OperatorState): string {
   const override = overrides?.[key]
-  if (override) return override[0]
+  if (override) return scopedReady(key, String(override[0] || '').toUpperCase(), preferred, operatorState)
   if (key === 'no_trade') return family?.preferred || family?.dominant ? 'PREFERRED' : family?.available ? 'ALTERNATIVE' : '—'
   const action = String(family?.action_state || '').toUpperCase()
   const decision = String(family?.decision_state || family?.state || '').toUpperCase()
-  if (action === 'READY') return 'READY'
+  if (action === 'READY') return scopedReady(key, 'READY', preferred, operatorState)
   if (action.startsWith('WAIT') || decision.startsWith('WAIT') || decision === 'CONDITIONAL') return 'WAIT'
   if (decision.includes('REJECT') || action.includes('REJECT')) return 'REJECTED'
   if (key === 'options' && (decision.includes('STALE') || action.includes('STALE'))) return 'CHAIN STALE'
   if (decision.includes('UNAVAILABLE') || action.includes('UNAVAILABLE') || decision.includes('DATA_UNAVAILABLE')) return 'UNAVAILABLE'
-  if (decision.includes('ELIGIBLE') || decision.includes('VALID') || decision.includes('CONSTRUCT')) return 'AVAILABLE'
+  if (decision.includes('ELIGIBLE') || decision.includes('VALID') || decision.includes('CONSTRUCT')) return key === 'long_term' ? 'OWNERSHIP ELIGIBLE' : 'AVAILABLE'
   return '—'
 }
-function familyReason(key: string, family: any): string {
+
+function familyReason(key: string, family: any, word: string): string {
+  if (word === 'OWNERSHIP ELIGIBLE') return 'Long-term ownership evidence passed; this is not a current tactical entry'
+  if (word === 'MECHANICS VALID') return 'Mechanics are constructible, but this is not the selected current action'
   if (key === 'options') {
     const structures: any[] = family?.structures || []
     const reasons = [...(family?.rejection_reasons || []), ...structures.flatMap((structure: any) => structure?.rejection_reasons || [])].join(' · ')
@@ -81,13 +87,12 @@ function familyReason(key: string, family: any): string {
     if (structures.length) return `${structures.length} structures evaluated`
     return 'No eligible structure'
   }
-  if (key === 'no_trade') return String(family?.reason || (family?.preferred ? 'Stand aside is currently preferred' : 'Valid alternative; does not override another selected family'))
+  if (key === 'no_trade') return String(family?.reason || (family?.preferred ? 'Stand aside is currently preferred' : 'Valid alternative; does not override the selected family'))
   const reason = (family?.rejection_reasons || family?.blocks || [])[0]
   if (reason) return String(reason)
   const structure = (family?.structures || [])[0]
   if (structure?.structure) return String(structure.structure).replace(/_/g, ' ').toLowerCase()
-  const word = familyWord(key, family)
-  if (word === 'READY') return 'Mechanics resolved and current'
+  if (word === 'READY') return 'Selected mechanics are resolved and current'
   if (word === 'WAIT') return 'Conditions are not yet confirmed'
   if (word === 'UNAVAILABLE') return 'Required evidence unavailable'
   if (word === 'REJECTED') return 'Eligibility or risk constraints failed'
@@ -128,7 +133,7 @@ export default function DecisionPacketBand({ packet, generatedAt, actionPolicy, 
   const preferredKey = pres.primaryFamily?.key === 'refresh' ? '' : String(pres.primaryFamily?.key || '')
 
   return (
-    <section aria-label="Decision strategy desk" onClick={event => event.stopPropagation()} style={{ borderLeft: `3px solid ${accent}`, borderBottom: `1px solid ${BB.border}`, background: BB.bg }}>
+    <section aria-label="Decision strategy desk" data-watch-decision-contract="watch-quality-governance-v1" onClick={event => event.stopPropagation()} style={{ borderLeft: `3px solid ${accent}`, borderBottom: `1px solid ${BB.border}`, background: BB.bg }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.55fr) minmax(300px,.75fr)', gap: 16, padding: '13px 16px 11px', borderBottom: `1px solid ${BB.border}` }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
@@ -149,13 +154,14 @@ export default function DecisionPacketBand({ packet, generatedAt, actionPolicy, 
       </div>
 
       <div style={{ padding: '10px 16px', borderBottom: `1px solid ${BB.border}` }}>
-        <SectionTitle title="Strategies evaluated" note="Only the selected family drives mechanics and the primary action." />
+        <SectionTitle title="Strategies evaluated" note="One operator state governs. Non-primary horizons are evidence, not simultaneous actions." />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(125px,1fr))', borderTop: `1px solid ${BB.border}`, borderLeft: `1px solid ${BB.border}` }}>
           {FAMILY_ORDER.map(([key, label]) => {
             const family = families[key] || {}
-            const word = familyWord(key, family, op?.tile_overrides)
             const preferred = Boolean(preferredKey) && (preferredKey === key || preferredKey.startsWith(key.split('_')[0]))
-            return <button key={key} onClick={event => { event.stopPropagation(); setDetails(true) }} title={`${label}: ${word}. ${familyReason(key, family)}`} style={{ minHeight: 66, textAlign: 'left', cursor: 'pointer', border: 'none', borderRight: `1px solid ${BB.border}`, borderBottom: `1px solid ${BB.border}`, background: preferred ? 'rgba(148,163,184,.07)' : 'transparent', padding: '8px 9px', boxShadow: preferred ? `inset 0 2px 0 ${accent}` : undefined }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ fontSize: 10.5, fontWeight: 900, color: preferred ? BB.text0 : BB.text2 }}>{label}</span>{preferred && <span style={{ fontSize: 10, color: BB.text3 }}>PRIMARY</span>}</div><div style={{ marginTop: 4, fontSize: 10.5, fontWeight: 900, color: quietStateTone(word, preferred) }}>{word}</div><div style={{ marginTop: 2, fontSize: 10, lineHeight: 1.25, color: BB.text3 }}>{familyReason(key, family).slice(0, 76)}</div></button>
+            const word = familyWord(key, family, op?.tile_overrides, preferred, pres.state)
+            const reason = familyReason(key, family, word)
+            return <button key={key} onClick={event => { event.stopPropagation(); setDetails(true) }} title={`${label}: ${word}. ${reason}`} style={{ minHeight: 66, textAlign: 'left', cursor: 'pointer', border: 'none', borderRight: `1px solid ${BB.border}`, borderBottom: `1px solid ${BB.border}`, background: preferred ? 'rgba(148,163,184,.07)' : 'transparent', padding: '8px 9px', boxShadow: preferred ? `inset 0 2px 0 ${accent}` : undefined }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ fontSize: 10.5, fontWeight: 900, color: preferred ? BB.text0 : BB.text2 }}>{label}</span>{preferred && <span style={{ fontSize: 10, color: BB.text3 }}>PRIMARY</span>}</div><div style={{ marginTop: 4, fontSize: 10.5, fontWeight: 900, color: quietStateTone(word, preferred) }}>{word}</div><div style={{ marginTop: 2, fontSize: 10, lineHeight: 1.25, color: BB.text3 }}>{reason.slice(0, 88)}</div></button>
           })}
         </div>
       </div>
@@ -208,22 +214,30 @@ function TechnicalSummary({ tech, onOpen }: { tech: any; onOpen: () => void }) {
 
 function TicketVerification({ packet, symbol }: { packet: any; symbol?: string }) {
   const [busy, setBusy] = useState(false)
-  const review = packet?.ticket_review
-  const plan = packet?.current_actionable_plan
-  const validation = plan?.ticket_validation || {}
-  const reconciled = review?.reconciled || {}
-  const reviews = review?.reviews || {}
-  const overall = reconciled.state || (validation.state === 'FAIL' ? 'DETERMINISTIC_FAIL' : !review && !plan ? 'UNVERIFIED_LEGACY' : 'UNVALIDATED')
-  const failure = /FAIL|REJECT|BLOCK/.test(String(overall))
+  const review = packet?.ticket_review || {}
+  const selected = selectPacketValidation(packet)
+  const validation = Object.keys(selected.validation).length ? selected.validation : (review.validation || {})
+  const validationState = String(validation.state || selected.deterministic || review?.tickets_validated?.[0]?.state || 'NOT RUN').toUpperCase()
+  const quality = validation.quality_admission || {}
+  const reconciled = review.reconciled || {}
+  const qualityRaw = quality.state || selected.quality || reconciled.quality_admission || 'NOT ASSESSED'
+  const qualityState = String(qualityRaw).replace(/_/g, ' ')
+  const reviews = review.reviews || {}
+  const overall = reconciled.state || (validationState === 'FAIL' ? 'DETERMINISTIC_FAIL' : validationState === 'REVIEW_REQUIRED' ? 'DETERMINISTIC_REVIEW_REQUIRED' : validationState === 'PASS' && qualityRaw === 'ADMITTED' ? 'DETERMINISTIC_PASS_REVIEW_NOT_RUN' : validationState === 'PASS' ? 'QUALITY_NOT_ASSESSED' : 'DETERMINISTIC_NOT_RUN')
+  const failure = /FAIL|REJECT|BLOCK|QUARANTINED|NOT_ADMITTED|NOT_ASSESSED|NOT_RUN/.test(String(overall))
+  const qualityAdmitted = qualityRaw === 'ADMITTED' && quality.new_entry_allowed !== false
+  const mayRunReview = ['PASS', 'REVIEW_REQUIRED'].includes(validationState) && qualityAdmitted
+  const premiumLabel = reconciled.premium || (reconciled.premium_recommended ? 'RECOMMENDED · NOT RUN' : 'NOT NEEDED')
   const runFree = async () => {
-    if (!symbol || busy) return
+    if (!symbol || busy || !mayRunReview) return
     setBusy(true)
     try { await fetch('/api/v2/watch/ticket-review/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol }) }) } finally { window.setTimeout(() => setBusy(false), 60_000) }
   }
-  return <div style={{ padding: '9px 16px', borderBottom: `1px solid ${BB.border}` }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>TICKET VERIFICATION</span><span style={{ fontSize: 10.5, fontWeight: 900, color: failure ? BB.red : reconciled.proposal_allowed ? BB.green : BB.text1 }}>{String(overall).replace(/_/g, ' ')}</span>{reconciled.detail && <span style={{ fontSize: 10, color: BB.text3 }}>{String(reconciled.detail).slice(0, 100)}</span>}<button onClick={event => { event.stopPropagation(); void runFree() }} disabled={busy} style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px', cursor: busy ? 'wait' : 'pointer', background: 'transparent', color: BB.text2, border: `1px solid ${BB.border}`, borderRadius: 3 }}>{busy ? 'Reviewing…' : 'Run free review'}</button></div><div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5, fontSize: 10, color: BB.text3 }}><span>Deterministic <b style={{ color: validation.state === 'FAIL' ? BB.red : validation.state === 'PASS' ? BB.green : BB.text2 }}>{validation.state || review?.tickets_validated?.[0]?.state || 'NOT RUN'}</b></span><span>Local <b style={{ color: BB.text2 }}>{reviews.local?.verdict || 'NOT RUN'}</b></span><span>Grok OAuth <b style={{ color: BB.text2 }}>{reviews.grok?.verdict || 'NOT RUN'}</b></span><span>ChatGPT OAuth <b style={{ color: BB.text2 }}>{reviews.chatgpt?.verdict || 'NOT RUN'}</b></span><span>Premium <b style={{ color: BB.text2 }}>NOT RUN</b></span></div>{validation.hard_failures?.length > 0 && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>{validation.hard_failures.slice(0, 2).join(' · ')}</div>}</div>
+  return <div style={{ padding: '9px 16px', borderBottom: `1px solid ${BB.border}` }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>TICKET VERIFICATION</span><span style={{ fontSize: 10.5, fontWeight: 900, color: failure ? BB.red : reconciled.proposal_allowed ? BB.green : BB.text1 }}>{String(overall).replace(/_/g, ' ')}</span>{selected.source && <span title="Canonical validation source" style={{ fontSize: 9.5, color: BB.text3 }}>{selected.source}</span>}{reconciled.detail && <span style={{ fontSize: 10, color: BB.text3 }}>{String(reconciled.detail).slice(0, 130)}</span>}<button onClick={event => { event.stopPropagation(); void runFree() }} disabled={busy || !mayRunReview} title={!mayRunReview ? 'Complete deterministic validation and quality admission first' : 'Run bounded local and OAuth critics on the exact validated ticket'} style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px', cursor: busy ? 'wait' : !mayRunReview ? 'not-allowed' : 'pointer', opacity: mayRunReview ? 1 : .55, background: 'transparent', color: BB.text2, border: `1px solid ${BB.border}`, borderRadius: 3 }}>{busy ? 'Reviewing…' : mayRunReview ? 'Run free review' : 'Fix deterministic gate first'}</button></div><div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5, fontSize: 10, color: BB.text3 }}><span>Deterministic <b style={{ color: validationState === 'FAIL' ? BB.red : validationState === 'PASS' ? BB.green : validationState === 'REVIEW_REQUIRED' ? BB.amber : BB.text2 }}>{validationState}</b></span><span>Quality <b style={{ color: qualityRaw === 'ADMITTED' ? BB.green : qualityRaw === 'QUARANTINED' ? BB.red : BB.amber }}>{qualityState}</b></span><span>Local <b style={{ color: BB.text2 }}>{reviews.local?.verdict || 'NOT RUN'}</b></span><span>Grok OAuth <b style={{ color: BB.text2 }}>{reviews.grok?.verdict || 'NOT RUN'}</b></span><span>ChatGPT OAuth <b style={{ color: BB.text2 }}>{reviews.chatgpt?.verdict || 'NOT RUN'}</b></span><span>Premium <b style={{ color: reconciled.premium_recommended ? BB.amber : BB.text2 }}>{premiumLabel}</b></span></div>{validation.hard_failures?.length > 0 && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>{validation.hard_failures.slice(0, 2).join(' · ')}</div>}{quality.reasons?.length > 0 && qualityRaw !== 'ADMITTED' && <div style={{ marginTop: 4, fontSize: 10, color: qualityRaw === 'QUARANTINED' ? BB.red : BB.amber }}>Quality gate: {quality.reasons.slice(0, 2).join(' · ')}</div>}</div>
 }
 
 function AuditDrawer({ pres, tech }: { pres: OperatorPresentation; tech: any }) {
   const audit = pres.audit
-  return <div style={{ margin: '0 16px 12px', padding: '9px 0 0', borderTop: `1px solid ${BB.border}`, display: 'flex', flexDirection: 'column', gap: 7 }}><div style={{ fontSize: 10, fontWeight: 900, color: BB.text2, letterSpacing: '.07em', textTransform: 'uppercase' }}>Details & audit — not the primary decision</div><div style={{ fontSize: 10, color: BB.text3 }}>Packet {audit.packet?.packet_version || '—'} · policy {audit.actionPolicy?.policy_version || '—'}{audit.inputHashes.packet ? ` · packet ${audit.inputHashes.packet}` : ''}{audit.inputHashes.current ? ` · current ${audit.inputHashes.current}` : ''}{tech?.source_hash ? ` · technical ${tech.source_hash}` : ''}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(150px,1fr))', gap: 8 }}>{FAMILY_ORDER.map(([key, label]) => <div key={key} style={{ padding: '7px 0', borderTop: `1px solid ${BB.border}` }}><div style={{ fontSize: 10, fontWeight: 850, color: BB.text2 }}>{label} · {familyWord(key, audit.families?.[key] || {})}</div><div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{familyReason(key, audit.families?.[key] || {})}</div></div>)}</div></div>
+  const preferredKey = String(pres.primaryFamily?.key || '')
+  return <div style={{ margin: '0 16px 12px', padding: '9px 0 0', borderTop: `1px solid ${BB.border}`, display: 'flex', flexDirection: 'column', gap: 7 }}><div style={{ fontSize: 10, fontWeight: 900, color: BB.text2, letterSpacing: '.07em', textTransform: 'uppercase' }}>Details & audit — not the primary decision</div><div style={{ fontSize: 10, color: BB.text3 }}>Packet {audit.packet?.packet_version || '—'} · policy {audit.actionPolicy?.policy_version || '—'}{audit.inputHashes.packet ? ` · packet ${audit.inputHashes.packet}` : ''}{audit.inputHashes.current ? ` · current ${audit.inputHashes.current}` : ''}{tech?.source_hash ? ` · technical ${tech.source_hash}` : ''}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(150px,1fr))', gap: 8 }}>{FAMILY_ORDER.map(([key, label]) => { const family = audit.families?.[key] || {}; const preferred = Boolean(preferredKey) && (preferredKey === key || preferredKey.startsWith(key.split('_')[0])); const word = familyWord(key, family, undefined, preferred, pres.state); return <div key={key} style={{ padding: '7px 0', borderTop: `1px solid ${BB.border}` }}><div style={{ fontSize: 10, fontWeight: 850, color: BB.text2 }}>{label} · {word}</div><div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{familyReason(key, family, word)}</div></div> })}</div></div>
 }

@@ -1,0 +1,38 @@
+{
+  "version": "research-due-diligence-v1",
+  "domains": ["PROPOSAL", "DEFENSE", "SECTOR", "INDUSTRY", "WATCH"],
+  "states": {
+    "VERIFIED": "all required deterministic checks, provenance and freshness requirements pass",
+    "REVIEW_REQUIRED": "deterministic evidence is complete but a bounded contradiction or warning requires operator adjudication",
+    "INSUFFICIENT_EVIDENCE": "required evidence, provenance, freshness or methodology detail is missing",
+    "REJECTED": "one or more deterministic hard checks failed"
+  },
+  "authority": {
+    "deterministic_first": true,
+    "models_may_create_missing_evidence": false,
+    "models_may_override_failure": false,
+    "paid_review_may_override_failure": false,
+    "proposal_release_requires_all_specialized_packets": true,
+    "release_means_review_eligible_not_execution": true
+  },
+  "required_fields": [
+    "domain",
+    "subject",
+    "methodology_version",
+    "as_of",
+    "sources",
+    "deterministic_checks"
+  ],
+  "source_requirements": {
+    "provider": true,
+    "as_of": true,
+    "quality": true,
+    "provenance_ref": true
+  },
+  "oversight": {
+    "local_and_oauth_after_deterministic": true,
+    "independent_packets": true,
+    "anchoring_inputs_excluded": true,
+    "paid_lane_operator_only": true
+  }
+}
