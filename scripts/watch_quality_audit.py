@@ -77,8 +77,19 @@ def _freshness(packet: dict) -> str:
 
 
 def build_report(conn, limit: int = 200, sample_limit: int = 25) -> dict:
+    # db_adapter connections can be reused. End any prior transaction before
+    # applying the PostgreSQL read-only session guard.
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+    conn.set_session(readonly=True, autocommit=False)
     cur = conn.cursor()
-    cur.execute("BEGIN READ ONLY")
+    cur.execute("SHOW transaction_read_only")
+    read_only = str(cur.fetchone()[0]).lower() == "on"
+    if not read_only:
+        raise RuntimeError("database session is not read-only")
+
     population = _ranked_population(cur, limit)
     symbols = [symbol for symbol, _ in population]
     packets = _latest_packets(cur, symbols)
@@ -113,7 +124,7 @@ def build_report(conn, limit: int = 200, sample_limit: int = 25) -> dict:
             conflict_counts[conflict.split(";")[0]] += 1
 
         reasons = gate.get("quality_reasons") or gate.get("hard_failures") or gate.get("warnings") or []
-        row = {
+        rows.append({
             "symbol": symbol,
             "rank": rank,
             "packet_generated_at": (packet_record or {}).get("generated_at"),
@@ -125,8 +136,7 @@ def build_report(conn, limit: int = 200, sample_limit: int = 25) -> dict:
             "validation_source": source,
             "primary_reason": str(reasons[0])[:180] if reasons else None,
             "presentation_conflicts": conflicts,
-        }
-        rows.append(row)
+        })
 
     conn.rollback()
     attention = [
@@ -139,7 +149,7 @@ def build_report(conn, limit: int = 200, sample_limit: int = 25) -> dict:
     return {
         "contract": "watch-quality-audit-v1",
         "generated_at": _now(),
-        "read_only": True,
+        "read_only": read_only,
         "limit": limit,
         "population": len(population),
         "packets_found": len(packets),
