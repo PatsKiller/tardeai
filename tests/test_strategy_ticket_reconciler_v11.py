@@ -37,6 +37,20 @@ def test_missing_validation_is_not_promoted_to_pass():
     assert result["paid_lane_called"] is False
 
 
+def test_synthetic_pass_without_quality_record_is_rejected():
+    result = reconciler.reconcile(
+        {"state": "PASS"},
+        {
+            "local": critic("PASS", "LOCAL_OLLAMA"),
+            "grok": critic("PASS", "XAI"),
+        },
+        premium={"verdict": "PASS"},
+    )
+    assert result["state"] == "QUALITY_NOT_ASSESSED"
+    assert result["proposal_allowed"] is False
+    assert result["paid_lane_called"] is False
+
+
 def test_deterministic_failure_cannot_be_overridden_by_unanimous_models_or_premium():
     result = reconciler.reconcile(
         {"state": "FAIL", "hard_failures": ["quality admission failed"]},
