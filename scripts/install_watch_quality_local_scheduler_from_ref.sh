@@ -12,24 +12,18 @@ readonly BACKUP="$HOME/.crontab_backup_watch_quality_$(date -u +%Y%m%d_%H%M%S)"
 readonly LOCK=/tmp/watch_quality_local_scheduler.lock
 
 if [[ "${WATCH_QUALITY_SCHEDULE_ACK:-}" != "$ACK_REQUIRED" ]]; then
-  echo "BLOCKED_GATE6: WATCH_QUALITY_SCHEDULE_ACK must equal $ACK_REQUIRED" >&2
-  exit 2
+  echo "BLOCKED_GATE6: WATCH_QUALITY_SCHEDULE_ACK must equal $ACK_REQUIRED" >&2; exit 2
 fi
 if [[ -z "$SOURCE_REF" || ! "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "BLOCKED_GATE6: WATCH_QUALITY_SOURCE_REF must be an exact 40-character commit SHA" >&2
-  exit 2
+  echo "BLOCKED_GATE6: WATCH_QUALITY_SOURCE_REF must be an exact 40-character commit SHA" >&2; exit 2
 fi
 if [[ ! "$LIMIT" =~ ^[0-9]+$ ]] || (( LIMIT < 1 || LIMIT > 40 )); then
-  echo "BLOCKED_GATE6: WATCH_QUALITY_LOCAL_LIMIT must be 1..40" >&2
-  exit 2
+  echo "BLOCKED_GATE6: WATCH_QUALITY_LOCAL_LIMIT must be 1..40" >&2; exit 2
 fi
 
 git -C "$HOST_REPO" cat-file -e "$SOURCE_REF^{commit}"
 readonly RESOLVED_COMMIT="$(git -C "$HOST_REPO" rev-parse "$SOURCE_REF^{commit}")"
-if [[ "$RESOLVED_COMMIT" != "$SOURCE_REF" ]]; then
-  echo "BLOCKED_GATE6: resolved commit differs from exact source ref" >&2
-  exit 2
-fi
+[[ "$RESOLVED_COMMIT" == "$SOURCE_REF" ]] || { echo "BLOCKED_GATE6: resolved commit differs from exact source ref" >&2; exit 2; }
 
 mkdir -p "$SCHEDULE_ROOT" "$LOG_DIR"
 chmod 700 "$SCHEDULE_ROOT"
@@ -48,51 +42,47 @@ trap cleanup EXIT
 git -C "\$REPO" cat-file -e "\$SHA^{commit}"
 git -C "\$REPO" show "\$SHA:scripts/run_watch_quality_local_scheduler_from_ref.sh" > "\$RUNNER"
 chmod 700 "\$RUNNER"
-REPO="\$REPO" \
-WATCH_QUALITY_SOURCE_REF="\$SHA" \
-WATCH_QUALITY_SCHEDULER_MODE=RUN \
-WATCH_QUALITY_LOCAL_LIMIT="$LIMIT" \
-bash "\$RUNNER"
+REPO="\$REPO" WATCH_QUALITY_SOURCE_REF="\$SHA" WATCH_QUALITY_SCHEDULER_MODE=RUN WATCH_QUALITY_LOCAL_LIMIT="$LIMIT" bash "\$RUNNER"
 EOF
 chmod 700 "$PINNED_RUNNER"
 
-# Mandatory dry-run from the exact source before modifying the schedule.
 DRY_RUNNER="$(mktemp /tmp/watch-quality-local-dryrun.XXXXXX.sh)"
 CURRENT="$(mktemp /tmp/watch-quality-crontab.XXXXXX)"
 cleanup() { rm -f "$DRY_RUNNER" "$CURRENT"; }
 trap cleanup EXIT
-git -C "$HOST_REPO" show \
-  "$RESOLVED_COMMIT:scripts/run_watch_quality_local_scheduler_from_ref.sh" \
-  > "$DRY_RUNNER"
+git -C "$HOST_REPO" show "$RESOLVED_COMMIT:scripts/run_watch_quality_local_scheduler_from_ref.sh" > "$DRY_RUNNER"
 chmod 700 "$DRY_RUNNER"
-REPO="$HOST_REPO" \
-WATCH_QUALITY_SOURCE_REF="$RESOLVED_COMMIT" \
-WATCH_QUALITY_SCHEDULER_MODE=DRY_RUN \
-WATCH_QUALITY_LOCAL_LIMIT="$LIMIT" \
-bash "$DRY_RUNNER"
+
+# Exact-SHA dry run must pass before any schedule inspection or modification.
+REPO="$HOST_REPO" WATCH_QUALITY_SOURCE_REF="$RESOLVED_COMMIT" WATCH_QUALITY_SCHEDULER_MODE=DRY_RUN WATCH_QUALITY_LOCAL_LIMIT="$LIMIT" bash "$DRY_RUNNER"
 
 crontab -l > "$BACKUP" 2>/dev/null || :
 chmod 600 "$BACKUP"
 cp "$BACKUP" "$CURRENT"
 
 # Never layer this schedule on top of a different Watch decision scheduler.
-CONFLICTS="$(grep -E 'watch_decision_scheduler|watch_decision_refresh|watch-quality-local-|watch_quality_local_scheduler' "$CURRENT" \
-  | grep -Fv "$MARKER" || true)"
+CONFLICTS="$(grep -E 'watch_decision_scheduler|watch_decision_refresh|watch-quality-local-|watch_quality_local_scheduler' "$CURRENT" | grep -Fv "$MARKER" || true)"
 if [[ -n "$CONFLICTS" ]]; then
   printf 'BLOCKED_GATE6_CONFLICTING_WATCH_SCHEDULE\n%s\n' "$CONFLICTS" >&2
   exit 6
 fi
 
+# The first real bounded pass must succeed before cron is modified.
+set +e
+flock -n "$LOCK" "$PINNED_RUNNER"
+IMMEDIATE_RC=$?
+set -e
+if [[ "$IMMEDIATE_RC" -eq 1 ]]; then
+  echo "BLOCKED_GATE6_IMMEDIATE_LOCK_BUSY: cron not installed" >&2
+  exit 6
+elif [[ "$IMMEDIATE_RC" -ne 0 ]]; then
+  echo "BLOCKED_GATE6_IMMEDIATE_RUN_FAILED: rc=$IMMEDIATE_RC; cron not installed" >&2
+  exit "$IMMEDIATE_RC"
+fi
+
 if ! grep -Fq "$MARKER" "$CURRENT"; then
   printf '%s\n' "$CRON_LINE" >> "$CURRENT"
   crontab "$CURRENT"
-fi
-
-# Enqueue one immediate bounded LOCAL_QUANT pass after installation. A held lock
-# defers the immediate pass but does not invalidate the installed daily cadence.
-IMMEDIATE=ENQUEUED_OR_NOTHING_DUE
-if ! flock -n "$LOCK" "$PINNED_RUNNER"; then
-  IMMEDIATE=DEFERRED_LOCK_BUSY
 fi
 
 printf 'scheduler_source_commit|%s\n' "$RESOLVED_COMMIT"
@@ -103,5 +93,5 @@ printf 'oauth_lane|WITHHELD\n'
 printf 'paid_lane|WITHHELD\n'
 printf 'crontab_backup|%s\n' "$BACKUP"
 printf 'pinned_runner|%s\n' "$PINNED_RUNNER"
-printf 'immediate_local_pass|%s\n' "$IMMEDIATE"
+printf 'immediate_local_pass|SUCCESS\n'
 printf 'final_status|PASS_GATE6_LOCAL_SCHEDULER_ACTIVATION\n'
