@@ -222,6 +222,9 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: liveStops } = useApi<any>('/api/v2/holdings/live-stops', 60_000)
   const { data: monitoredStops, refetch: refetchMonitored } = useApi<any>('/api/v2/holdings/monitored-stops', 60_000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
+  // Closed-session resistance, same cache the Re-Entry desk reads, so the level shown
+  // beside a holding is the level the rotation gates use — not a second opinion.
+  const { data: resistancePref } = useApi<any>('/api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1', 300_000)
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const paMap = useProAnalystMap()
   const aMap = useAnalystMap()
@@ -536,6 +539,7 @@ export default function PortfolioHub({ onDrill }: Props) {
 
           <HoldingsTableView
             rows={terminalRows}
+            resistanceMap={(resistancePref as any)?.value?.symbols ?? (resistancePref as any)?.data?.value?.symbols ?? {}}
             acctColor={acctColor}
             focusKey={focusKey}
             cvdMode={holdingsCvd}
