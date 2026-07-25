@@ -12,7 +12,6 @@ import argparse
 import hashlib
 import json
 import math
-import os
 import sys
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -37,6 +36,10 @@ def _raw_hash(payload: Any) -> str | None:
         return None
     body = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(body.encode()).hexdigest()
+
+
+def _is_json_number(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float))
 
 
 def _number_token(value: int | float) -> str:
@@ -79,9 +82,7 @@ def _semantic_hash(payload: Any) -> str | None:
 
 
 def _numbers_equal(left: Any, right: Any) -> bool:
-    if isinstance(left, bool) or isinstance(right, bool):
-        return False
-    if not isinstance(left, (int, float)) or not isinstance(right, (int, float)):
+    if not _is_json_number(left) or not _is_json_number(right):
         return False
     try:
         return _number_token(left) == _number_token(right)
@@ -106,6 +107,9 @@ def _semantic_differences(expected: Any, actual: Any, *, path: str = "$",
     def walk(left: Any, right: Any, location: str) -> None:
         if len(differences) >= limit or _numbers_equal(left, right):
             return
+        if _is_json_number(left) and _is_json_number(right):
+            add("value", left, right, location)
+            return
         if isinstance(left, dict) and isinstance(right, dict):
             left_keys, right_keys = set(left), set(right)
             for key in sorted(left_keys - right_keys):
@@ -122,7 +126,12 @@ def _semantic_differences(expected: Any, actual: Any, *, path: str = "$",
                 walk(left_item, right_item, f"{location}[{index}]")
             return
         if type(left) is not type(right):
-            add("type", type(left).__name__, type(right).__name__, location)
+            add(
+                "type",
+                {"type": type(left).__name__, "value": left},
+                {"type": type(right).__name__, "value": right},
+                location,
+            )
         elif left != right:
             add("value", left, right, location)
 
@@ -153,6 +162,18 @@ def _packet_by_id(conn, packet_id: int) -> dict[str, Any]:
     }
 
 
+def _live_packet_ids(conn, symbol: str) -> list[int]:
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT packet_id
+             FROM decision_packets
+            WHERE upper(symbol)=%s AND superseded_by IS NULL
+            ORDER BY packet_id""",
+        (symbol.upper(),),
+    )
+    return [int(row[0]) for row in cur.fetchall()]
+
+
 def _append(errors: list[str], role: str, message: str) -> None:
     errors.append(f"{role}:{message}")
 
@@ -165,7 +186,7 @@ def _rewrite(report: dict[str, Any], evidence_path: Path) -> dict[str, Any]:
 
 
 def execute(projection_path: Path, evidence_path: Path) -> dict[str, Any]:
-    snapshots: dict[str, Any] = {}
+    snapshots: dict[int, Any] = {}
     original_build = gate3.governed_builder.build_packet
     original_persist = gate3.decision_service.persist
     original_hash = gate3._stable_hash
@@ -174,8 +195,10 @@ def execute(projection_path: Path, evidence_path: Path) -> dict[str, Any]:
         return _json_snapshot(original_build(symbol, *args, **kwargs))
 
     def snapshot_persist(packet: dict, *args, **kwargs) -> int:
-        snapshots[str(packet.get("symbol") or "").upper()] = _json_snapshot(packet)
-        return original_persist(packet, *args, **kwargs)
+        frozen = _json_snapshot(packet)
+        packet_id = int(original_persist(packet, *args, **kwargs))
+        snapshots[packet_id] = frozen
+        return packet_id
 
     gate3.governed_builder.build_packet = json_build
     gate3.decision_service.persist = snapshot_persist
@@ -190,92 +213,113 @@ def execute(projection_path: Path, evidence_path: Path) -> dict[str, Any]:
     report["roundtrip_contract"] = ROUNDTRIP_CONTRACT
     legacy_status = report.get("status")
     report["legacy_status"] = legacy_status
+    report["snapshot_packet_ids"] = sorted(snapshots)
 
     if legacy_status == "BLOCKED_GATE3_PREWRITE_MISMATCH":
         return _rewrite(report, evidence_path)
 
     sample = report.get("sample") or {}
     packet_ids = {
-        role: item.get("after_packet_id")
+        role: int(item["after_packet_id"])
         for role, item in sample.items()
         if item.get("after_packet_id") is not None
     }
-    if len(packet_ids) != len(gate3.ROLE_ORDER):
+    if (
+        len(packet_ids) != len(gate3.ROLE_ORDER)
+        or set(packet_ids.values()) != set(snapshots)
+    ):
         report["status"] = "BLOCKED_GATE3_PERSISTENCE_FAILURE"
         report["persisted_roles_before_failure"] = [
             role for role in gate3.ROLE_ORDER if role in packet_ids
         ]
-        report["error"] = report.get("error") or "not all five packet ids were returned"
+        report["error"] = report.get("error") or (
+            "returned packet ids do not match persistence-boundary snapshots"
+        )
         return _rewrite(report, evidence_path)
 
     errors: list[str] = []
     representation_mismatches: list[str] = []
     readback_conn = gate3.refresh._conn()
 
-    for role in gate3.ROLE_ORDER:
-        item = sample[role]
-        symbol = str(item.get("symbol") or "").upper()
-        packet_id = int(item["after_packet_id"])
-        expected = snapshots.get(symbol)
-        if expected is None:
-            _append(errors, role, f"{symbol} candidate snapshot missing")
-            continue
-        try:
-            after = _packet_by_id(readback_conn, packet_id)
-            packet = after.get("packet") or {}
-            item["candidate_representation_hash"] = _raw_hash(expected)
-            item["candidate_semantic_hash"] = _semantic_hash(expected)
-            item["after_packet_hash"] = after.get("raw_hash")
-            item["after_semantic_hash"] = after.get("semantic_hash")
-            item["after_generated_at"] = after.get("generated_at")
-            item["after_superseded_by"] = after.get("superseded_by")
-
-            if after.get("packet_id") != packet_id:
-                _append(errors, role, f"{symbol} exact packet id {packet_id} not found")
+    try:
+        for role in gate3.ROLE_ORDER:
+            item = sample[role]
+            symbol = str(item.get("symbol") or "").upper()
+            packet_id = packet_ids[role]
+            expected = snapshots.get(packet_id)
+            if expected is None:
+                _append(errors, role, f"{symbol} candidate snapshot missing for packet {packet_id}")
                 continue
-            if after.get("symbol") != symbol:
-                _append(errors, role, f"packet {packet_id} symbol mismatch")
-            if after.get("superseded_by") is not None:
-                _append(errors, role, f"packet {packet_id} unexpectedly superseded")
+            try:
+                after = _packet_by_id(readback_conn, packet_id)
+                packet = after.get("packet") or {}
+                item["candidate_representation_hash"] = _raw_hash(expected)
+                item["candidate_semantic_hash"] = _semantic_hash(expected)
+                item["after_packet_hash"] = after.get("raw_hash")
+                item["after_semantic_hash"] = after.get("semantic_hash")
+                item["after_generated_at"] = after.get("generated_at")
+                item["after_superseded_by"] = after.get("superseded_by")
 
-            if _raw_hash(expected) != after.get("raw_hash"):
-                representation_mismatches.append(role)
-            differences = _semantic_differences(expected, packet)
-            item["after_semantic_differences"] = differences
-            if differences:
-                _append(errors, role, f"{symbol} JSONB semantic difference at {differences[0]['path']}")
-            if _semantic_hash(expected) != after.get("semantic_hash"):
-                _append(errors, role, f"{symbol} semantic hash mismatch")
-            if packet.get("governance_source_commit") != report.get("source_commit"):
-                _append(errors, role, f"{symbol} source commit mismatch")
+                if after.get("packet_id") != packet_id:
+                    _append(errors, role, f"{symbol} exact packet id {packet_id} not found")
+                    continue
+                if after.get("symbol") != symbol:
+                    _append(errors, role, f"packet {packet_id} symbol mismatch")
+                if after.get("superseded_by") is not None:
+                    _append(errors, role, f"packet {packet_id} unexpectedly superseded")
 
-            gate = gate3.packet_quality.packet_gate(packet)
-            conflicts = gate3.packet_quality.presentation_conflicts(packet)
-            item["after_gate"] = gate
-            item["after_presentation_conflicts"] = conflicts
-            if conflicts:
-                _append(errors, role, f"{symbol} presentation conflict: {conflicts[0]}")
+                live_packet_ids = _live_packet_ids(readback_conn, symbol)
+                item["after_live_packet_ids"] = live_packet_ids
+                if live_packet_ids != [packet_id]:
+                    _append(
+                        errors,
+                        role,
+                        f"{symbol} live packet ids {live_packet_ids} != [{packet_id}]",
+                    )
 
-            candidate = item.get("candidate") or {}
-            for field, candidate_field in (
-                ("quality", "rebuilt_quality"),
-                ("deterministic", "rebuilt_deterministic"),
-                ("new_entry_allowed", "rebuilt_new_entry_allowed"),
-                ("held", "rebuilt_held"),
-                ("validation_source", "validation_source"),
-                ("ticket_hash", "ticket_hash"),
-            ):
-                if gate.get(field) != candidate.get(candidate_field):
-                    _append(errors, role, f"{symbol} gate field {field} changed after persistence")
+                if _raw_hash(expected) != after.get("raw_hash"):
+                    representation_mismatches.append(role)
+                differences = _semantic_differences(expected, packet)
+                item["after_semantic_differences"] = differences
+                if differences:
+                    _append(errors, role, f"{symbol} JSONB semantic difference at {differences[0]['path']}")
+                if _semantic_hash(expected) != after.get("semantic_hash"):
+                    _append(errors, role, f"{symbol} semantic hash mismatch")
+                if packet.get("governance_source_commit") != report.get("source_commit"):
+                    _append(errors, role, f"{symbol} source commit mismatch")
 
-            lane_calls = gate3._model_lane_count(packet)
-            reviews = (packet.get("ticket_review") or {}).get("reviews") or {}
-            if lane_calls:
-                _append(errors, role, f"{symbol} readback recorded {lane_calls} model lane calls")
-            if reviews:
-                _append(errors, role, f"{symbol} readback recorded inline ticket reviews")
-        except BaseException as exc:
-            _append(errors, role, f"{symbol} verification raised {type(exc).__name__}: {str(exc)[:300]}")
+                gate = gate3.packet_quality.packet_gate(packet)
+                conflicts = gate3.packet_quality.presentation_conflicts(packet)
+                item["after_gate"] = gate
+                item["after_presentation_conflicts"] = conflicts
+                if conflicts:
+                    _append(errors, role, f"{symbol} presentation conflict: {conflicts[0]}")
+
+                candidate = item.get("candidate") or {}
+                for field, candidate_field in (
+                    ("quality", "rebuilt_quality"),
+                    ("deterministic", "rebuilt_deterministic"),
+                    ("new_entry_allowed", "rebuilt_new_entry_allowed"),
+                    ("held", "rebuilt_held"),
+                    ("validation_source", "validation_source"),
+                    ("ticket_hash", "ticket_hash"),
+                ):
+                    if gate.get(field) != candidate.get(candidate_field):
+                        _append(errors, role, f"{symbol} gate field {field} changed after persistence")
+
+                lane_calls = gate3._model_lane_count(packet)
+                reviews = (packet.get("ticket_review") or {}).get("reviews") or {}
+                if lane_calls:
+                    _append(errors, role, f"{symbol} readback recorded {lane_calls} model lane calls")
+                if reviews:
+                    _append(errors, role, f"{symbol} readback recorded inline ticket reviews")
+            except Exception as exc:
+                _append(errors, role, f"{symbol} verification raised {type(exc).__name__}: {str(exc)[:300]}")
+    finally:
+        try:
+            readback_conn.close()
+        except Exception:
+            pass
 
     report["persisted_roles"] = list(gate3.ROLE_ORDER)
     report["representation_hash_mismatches"] = representation_mismatches
@@ -304,6 +348,7 @@ def main() -> None:
         "generated_at": report.get("generated_at"),
         "status": report.get("status"),
         "legacy_status": report.get("legacy_status"),
+        "snapshot_packet_ids": report.get("snapshot_packet_ids"),
         "sample": {
             role: {
                 "symbol": item.get("symbol"),
@@ -315,6 +360,7 @@ def main() -> None:
                 "after_packet_hash": item.get("after_packet_hash"),
                 "after_semantic_hash": item.get("after_semantic_hash"),
                 "after_semantic_differences": item.get("after_semantic_differences"),
+                "after_live_packet_ids": item.get("after_live_packet_ids"),
                 "after_gate": item.get("after_gate"),
                 "after_presentation_conflicts": item.get("after_presentation_conflicts"),
             }
