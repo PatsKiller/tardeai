@@ -6,6 +6,7 @@ readonly HOST_REPO="${REPO:-$REPO_DEFAULT}"
 readonly SOURCE_REF="${WATCH_QUALITY_SOURCE_REF:-}"
 readonly MODE="${WATCH_QUALITY_SCHEDULER_MODE:-DRY_RUN}"
 readonly LIMIT="${WATCH_QUALITY_LOCAL_LIMIT:-20}"
+readonly EXPECTED_SELECTION_HASH="${WATCH_QUALITY_EXPECTED_SELECTION_HASH:-}"
 readonly EVIDENCE_ROOT="${WATCH_QUALITY_EVIDENCE_ROOT:-/home/johnclaw/tradeai-audit/watch-quality}"
 readonly STAGE_ROOT="$(mktemp -d /tmp/watch-quality-local-scheduler.XXXXXX)"
 
@@ -15,6 +16,12 @@ trap cleanup EXIT
 [[ -n "$SOURCE_REF" && "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "BLOCKED_GATE6: WATCH_QUALITY_SOURCE_REF must be an exact 40-character commit SHA" >&2; exit 2; }
 [[ "$MODE" == "DRY_RUN" || "$MODE" == "RUN" ]] || { echo "BLOCKED_GATE6: WATCH_QUALITY_SCHEDULER_MODE must be DRY_RUN or RUN" >&2; exit 2; }
 [[ "$LIMIT" =~ ^[0-9]+$ ]] && (( LIMIT >= 1 && LIMIT <= 40 )) || { echo "BLOCKED_GATE6: WATCH_QUALITY_LOCAL_LIMIT must be 1..40" >&2; exit 2; }
+if [[ "$MODE" == "RUN" ]]; then
+  [[ "$EXPECTED_SELECTION_HASH" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "BLOCKED_GATE6: RUN requires WATCH_QUALITY_EXPECTED_SELECTION_HASH from the reviewed dry-run" >&2
+    exit 2
+  }
+fi
 
 git -C "$HOST_REPO" cat-file -e "$SOURCE_REF^{commit}"
 readonly RESOLVED_COMMIT="$(git -C "$HOST_REPO" rev-parse "$SOURCE_REF^{commit}")"
@@ -57,21 +64,26 @@ printf 'scheduler_mode|%s\n' "$MODE"
 printf 'local_limit|%s\n' "$LIMIT"
 printf 'gate4_evidence|%s\n' "$GATE4_JSON"
 printf 'governed_builder|watch-quality-governed-builder-v1\n'
+printf 'population_contract|watch-quality-active-population-v1\n'
+printf 'selection_contract|watch-quality-gate6-reviewed-selection-v1\n'
+printf 'transaction_contract|watch-quality-local-atomic-batch-v1\n'
 printf 'blind_model_system|DISABLED\n'
 printf 'inline_ticket_critic|DISABLED\n'
 printf 'oauth_lane|WITHHELD\n'
 printf 'paid_lane|WITHHELD\n'
+printf 'cron_change|NONE\n'
 
 cd "$STAGE_ROOT"
 if [[ "$MODE" == "DRY_RUN" ]]; then
   WATCH_QUALITY_SOURCE_COMMIT="$RESOLVED_COMMIT" \
   SHADOW_DISABLE_MODELS=1 SHADOW_DISABLE_TICKET_CRITIC=1 \
   PYTHONPATH="$STAGE_ROOT/scripts:$STAGE_ROOT/scripts/lib" \
-  "$PY" "$STAGE_ROOT/scripts/watch_quality_local_scheduler.py" --dry-run --limit "$LIMIT"
+  "$PY" "$STAGE_ROOT/scripts/watch_quality_gate6_bound_scheduler.py" --dry-run --limit "$LIMIT"
 else
   WATCH_QUALITY_LOCAL_SCHEDULER_ACK=ACTIVATE_BOUNDED_LOCAL_QUANT \
+  WATCH_QUALITY_EXPECTED_SELECTION_HASH="$EXPECTED_SELECTION_HASH" \
   WATCH_QUALITY_SOURCE_COMMIT="$RESOLVED_COMMIT" \
   SHADOW_DISABLE_MODELS=1 SHADOW_DISABLE_TICKET_CRITIC=1 \
   PYTHONPATH="$STAGE_ROOT/scripts:$STAGE_ROOT/scripts/lib" \
-  "$PY" "$STAGE_ROOT/scripts/watch_quality_local_scheduler.py" --run --limit "$LIMIT"
+  "$PY" "$STAGE_ROOT/scripts/watch_quality_gate6_bound_scheduler.py" --run --limit "$LIMIT"
 fi
