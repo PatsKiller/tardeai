@@ -16,6 +16,7 @@ on:
       - 'scripts/watch_decision_scheduler.py'
       - 'scripts/watch_quality_audit.py'
       - 'scripts/validate_watch_quality_governance_from_ref.sh'
+      - 'apps/command-center-v3/src/lib/watchPacketQuality.ts'
       - 'apps/command-center-v3/src/components/DecisionPacketBand.tsx'
       - 'apps/command-center-v3/src/components/ProAnalystPill.tsx'
       - 'tests/test_watch_quality_*.py'
