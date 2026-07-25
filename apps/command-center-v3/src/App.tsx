@@ -11,7 +11,7 @@ import HomeHub from './pages/HomeHub'
 import PortfolioHub from './pages/PortfolioHub'
 import ReEntryPage from './pages/ReEntryPage'
 import TradingHub from './pages/TradingHub'
-import AgentsHub from './pages/AgentsHub'
+import AgentRuntimeHub from './pages/AgentRuntimeHub'
 import IntelligenceHub from './pages/IntelligenceHub'
 import HermesHub from './pages/HermesHub'
 import RetirementHub from './pages/RetirementHub'
@@ -150,7 +150,7 @@ function Shell() {
             <Route path="go/proposal/:proposalId" element={<GoProposalDeepLink />} />
             <Route path="manual-execution" element={<Navigate to="/trading?tab=Entry+Desk" replace />} />
             <Route path="strategy" element={<StrategyHub onDrill={setDrill} />} />
-            <Route path="agents" element={<AgentsHub onDrill={setDrill} />} />
+            <Route path="agents" element={<AgentRuntimeHub onDrill={setDrill} />} />
             <Route path="intelligence" element={<IntelligenceHub onDrill={setDrill} />} />
             <Route path="research-intelligence" element={<ResearchIntelligenceHub onDrill={setDrill} />} />
             <Route path="research" element={<Navigate to="/research-intelligence" replace />} />
