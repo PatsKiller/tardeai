@@ -35,11 +35,12 @@ def test_gate3_prevalidates_every_candidate_before_persisting():
     assert 'inline_ticket_reviews' in RUNNER
 
 
-def test_gate3_freezes_candidates_at_json_boundary():
-    snapshot = ROUNDTRIP_RUNNER.index('snapshots[str(symbol).upper()] = packet')
-    build_patch = ROUNDTRIP_RUNNER.index('gate3.governed_builder.build_packet = frozen_build')
+def test_gate3_freezes_candidates_at_persistence_boundary():
+    snapshot = ROUNDTRIP_RUNNER.index('snapshots[str(packet.get("symbol") or "").upper()] = _json_snapshot(packet)')
+    persist_patch = ROUNDTRIP_RUNNER.index('gate3.decision_service.persist = snapshot_persist')
     execute = ROUNDTRIP_RUNNER.index('report = gate3.execute(')
-    assert snapshot < build_patch < execute
+    restore = ROUNDTRIP_RUNNER.index('gate3.decision_service.persist = original_persist')
+    assert snapshot < persist_patch < execute < restore
     assert 'candidate_semantic_hash' in ROUNDTRIP_RUNNER
 
 
