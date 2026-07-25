@@ -83,6 +83,10 @@ markers=(
   "Open policy review"
   "Open Watchlist"
   "Refresh evidence"
+  "command-center-global-review-v1"
+  "URL-addressable decision, provenance and evidence review"
+  "data-command-center-modal"
+  "OPEN REVIEW"
 )
 for marker in "${markers[@]}"; do
   if ! grep -R --binary-files=text -Fq "$marker" "$STAGED_APP/dist"; then
@@ -109,6 +113,7 @@ payload.update({
     "deployed_at_utc": stamp,
     "deployment_scope": "DEFENSE_SECTORS_SHADOW_UI_ONLY",
     "interaction_contract": "decision-board-actionable-v1",
+    "global_review_contract": "command-center-global-review-v1",
 })
 path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 PY
@@ -128,6 +133,7 @@ NEW_INSTALLED=1
 
 printf 'ui_source_commit|%s\n' "$RESOLVED_COMMIT"
 printf 'interaction_contract|decision-board-actionable-v1\n'
+printf 'global_review_contract|command-center-global-review-v1\n'
 printf 'deployment_scope|DEFENSE_SECTORS_SHADOW_UI_ONLY\n'
 printf 'host_source_checkout|UNCHANGED\n'
 printf 'live_dist|%s\n' "$LIVE_DIST"
@@ -139,9 +145,12 @@ printf 'database_write|NONE\n'
 printf 'check_page|/v3/defense\n'
 printf 'check_page|/v3/watch?tab=sectors\n'
 printf 'check_page|/v3/watch?tab=watchlist\n'
+printf 'check_deep_link|/v3/watch?tab=watchlist&symbol=FATN&review=1\n'
+printf 'check_deep_link|/v3/watch?tab=sectors&symbol=SWBI&review=1\n'
 printf 'expected_marker|Review decision\n'
 printf 'expected_marker|Watch sector\n'
 printf 'expected_marker|Copy brief + Rotation\n'
 printf 'expected_marker|Open policy review\n'
+printf 'expected_marker|command-center-global-review-v1\n'
 printf 'expected_watch_default|/v3/watch?tab=watchlist\n'
 printf 'final_status|PASS_UI_STATIC_DEPLOY\n'
