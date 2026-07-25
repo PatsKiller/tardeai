@@ -57,9 +57,6 @@ const sectorMonitor = {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.route('**/api/**', async route => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
-  })
   await page.route('**/api/v2/defense/posture', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(posture) }))
   await page.route('**/api/v2/defense/industries', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(industries) }))
   await page.route('**/api/v2/defense/recommendations', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(recommendations) }))
@@ -76,6 +73,7 @@ test.beforeEach(async ({ page }) => {
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, directives: [] }) })
   })
+  await page.route('**/api/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) }))
 })
 
 test('Watch sectors board supports filtering, evidence, governed watch creation and Watchlist return', async ({ page }) => {
