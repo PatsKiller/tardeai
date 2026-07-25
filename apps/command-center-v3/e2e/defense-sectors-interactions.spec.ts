@@ -58,17 +58,17 @@ const sectorMonitor = {
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) }))
-  await page.route('**/api/v2/defense/posture**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(posture) }))
-  await page.route('**/api/v2/defense/industries**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(industries) }))
-  await page.route('**/api/v2/defense/recommendations**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(recommendations) }))
-  await page.route('**/api/v2/sectors/monitor**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(sectorMonitor) }))
-  await page.route('**/api/v2/risk-regime/latest**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ regime_label: 'risk_off' }) }))
-  await page.route('**/api/v2/watch/alerts/list**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ active_count: 2 }) }))
-  await page.route('**/api/v2/watch/provenance/*', route => {
+  await page.route(/\/api\/v2\/defense\/posture(?:\?.*)?$/, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(posture) }))
+  await page.route(/\/api\/v2\/defense\/industries(?:\?.*)?$/, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(industries) }))
+  await page.route(/\/api\/v2\/defense\/recommendations(?:\?.*)?$/, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(recommendations) }))
+  await page.route(/\/api\/v2\/sectors\/monitor(?:\?.*)?$/, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(sectorMonitor) }))
+  await page.route(/\/api\/v2\/risk-regime\/latest(?:\?.*)?$/, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ regime_label: 'risk_off' }) }))
+  await page.route(/\/api\/v2\/watch\/alerts\/list(?:\?.*)?$/, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ active_count: 2 }) }))
+  await page.route(/\/api\/v2\/watch\/provenance\/[^?]+(?:\?.*)?$/, route => {
     const symbol = route.request().url().split('/').pop()?.split('?')[0]
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, symbol, source: 'interaction-fixture', evidence: ['price', 'technical', 'coverage'] }) })
   })
-  await page.route('**/api/v2/watch/directives**', async route => {
+  await page.route(/\/api\/v2\/watch\/directives(?:\?.*)?$/, async route => {
     if (route.request().method() === 'POST') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, directive_id: 321 }) })
     }
@@ -100,12 +100,12 @@ test('Watch sectors board supports filtering, evidence, governed watch creation 
   await sectorDialog.getByRole('button', { name: 'XOM — open evidence' }).click()
   const evidenceDialog = page.getByRole('dialog', { name: 'Symbol evidence · XOM' })
   await expect(evidenceDialog).toContainText('interaction-fixture')
-  await evidenceDialog.getByRole('button', { name: 'Close' }).click()
+  await evidenceDialog.getByRole('button', { name: 'Close' }).last().click()
 
   page.once('dialog', dialog => dialog.accept())
   await sectorDialog.getByRole('button', { name: 'Watch sector' }).click()
   await expect(page.getByRole('status')).toContainText('Watching Energy')
-  await sectorDialog.getByRole('button', { name: 'Close' }).click()
+  await sectorDialog.getByRole('button', { name: 'Close' }).last().click()
 
   await page.getByRole('link', { name: 'Watch', exact: true }).click()
   await expect(page).toHaveURL(/\/v3\/watch\?tab=watchlist/)
@@ -113,12 +113,15 @@ test('Watch sectors board supports filtering, evidence, governed watch creation 
 })
 
 test('Defense board opens risk and policy reviews and exposes refresh mechanics', async ({ page }) => {
+  const recResponse = page.waitForResponse(response => /\/api\/v2\/defense\/recommendations(?:\?|$)/.test(response.url()))
   await page.goto('/v3/defense')
+  const recPayload = await (await recResponse).json()
+  expect(recPayload.recommendations.groups.protect).toHaveLength(1)
   await expect(page.getByText('Sector decision board')).toBeVisible()
 
   await page.getByRole('button', { name: /PROTECTIVE PUT · XLI/ }).click()
   await expect(page.getByRole('dialog', { name: 'Governed defense action review' })).toContainText('Review liquid put structure')
-  await page.getByRole('dialog', { name: 'Governed defense action review' }).getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('dialog', { name: 'Governed defense action review' }).getByRole('button', { name: 'Close' }).last().click()
 
   await page.getByRole('button', { name: 'Open policy review' }).click()
   await expect(page.getByRole('dialog', { name: 'Operator policy review' })).toContainText('DEFENSIVE LEAN enabled')
