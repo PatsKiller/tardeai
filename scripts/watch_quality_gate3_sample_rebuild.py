@@ -32,11 +32,13 @@ sys.path.insert(1, str(PROJECT_ROOT / "scripts" / "lib"))
 import shadow_decision_service as decision_service  # noqa: E402
 import watch_decision_refresh as refresh  # noqa: E402
 import watch_packet_quality as packet_quality  # noqa: E402
+import watch_quality_governed_builder as governed_builder  # noqa: E402
 
 CONTRACT = "watch-quality-gate3-sample-rebuild-v1"
 ACK_REQUIRED = "BOUNDED_LOCAL_QUANT_SAMPLE"
 ROLE_ORDER = ("admitted", "research_only", "quarantined", "management_only", "contradiction")
 CONTRADICTION_SYMBOLS = ("FATN", "CECO")
+MAX_PROJECTION_AGE_HOURS = 6.0
 
 
 def _now() -> str:
@@ -66,9 +68,25 @@ def _load_projection(path: Path) -> dict:
     authority = report.get("authority") or {}
     if any(bool(value) for value in authority.values()):
         raise RuntimeError("projection evidence contains non-read-only authority")
+    generated = str(report.get("generated_at") or "")
+    try:
+        parsed = datetime.fromisoformat(generated.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        age_hours = (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds() / 3600
+    except Exception as exc:
+        raise RuntimeError(f"projection generated_at is invalid: {type(exc).__name__}") from exc
+    if age_hours < -0.25 or age_hours > MAX_PROJECTION_AGE_HOURS:
+        raise RuntimeError(
+            f"projection evidence age {age_hours:.2f}h exceeds the {MAX_PROJECTION_AGE_HOURS:.0f}h Gate 3 limit"
+        )
     rows = report.get("all_rows") or []
     if len(rows) < 5:
         raise RuntimeError("projection evidence has fewer than five rows")
+    for row in rows:
+        if isinstance(row, dict):
+            row["projection_generated_at"] = generated
+    report["projection_age_hours"] = round(age_hours, 3)
     return report
 
 
@@ -174,14 +192,16 @@ def _candidate_evidence(role: str, projected: dict, packet: dict, source_commit:
     conflicts = packet_quality.presentation_conflicts(packet)
     expected_quality = str(projected.get("projected_quality") or "UNASSESSED").upper()
     observed_quality = str(gate.get("quality") or "UNASSESSED").upper()
+    root_quality = packet.get("quality_admission") or {}
+    reviews = (packet.get("ticket_review") or {}).get("reviews") or {}
     errors: list[str] = []
 
-    if role in {"admitted", "research_only", "quarantined"} and observed_quality != expected_quality:
+    if observed_quality != expected_quality:
         errors.append(f"projected quality {expected_quality} != rebuilt quality {observed_quality}")
     if role == "management_only":
         if not gate.get("held"):
             errors.append("management-only sample is not held in rebuilt packet")
-        if observed_quality == "ADMITTED" and gate.get("new_entry_allowed") is not False:
+        if gate.get("new_entry_allowed") is not False:
             errors.append("management-only sample unexpectedly authorizes a new entry")
     if role == "contradiction" and conflicts:
         errors.append("operator presentation still contains contradictory READY state")
@@ -191,6 +211,8 @@ def _candidate_evidence(role: str, projected: dict, packet: dict, source_commit:
     lane_calls = _model_lane_count(packet)
     if lane_calls:
         errors.append(f"LOCAL_QUANT candidate recorded {lane_calls} model lane calls")
+    if reviews:
+        errors.append("LOCAL_QUANT candidate recorded an inline ticket critic review")
 
     return {
         "role": role,
@@ -198,16 +220,21 @@ def _candidate_evidence(role: str, projected: dict, packet: dict, source_commit:
         "projected_quality": expected_quality,
         "projected_management_only": bool(projected.get("management_only")),
         "projected_primary_reason": projected.get("primary_reason"),
+        "projected_facts_used": projected.get("facts_used") or {},
         "rebuilt_quality": observed_quality,
+        "rebuilt_quality_reasons": root_quality.get("reasons") or [],
+        "rebuilt_quality_facts_used": root_quality.get("facts_used") or {},
         "rebuilt_deterministic": gate.get("deterministic"),
         "rebuilt_new_entry_allowed": gate.get("new_entry_allowed"),
         "rebuilt_held": gate.get("held"),
         "validation_source": gate.get("validation_source"),
         "ticket_hash": gate.get("ticket_hash"),
         "governance_source_commit": packet.get("governance_source_commit"),
+        "governed_builder_contract": (packet.get("governance_contracts") or {}).get("builder"),
         "presentation_contract": (packet.get("operator_presentation") or {}).get("contract"),
         "presentation_conflicts": conflicts,
         "model_lane_calls": lane_calls,
+        "inline_ticket_reviews": sorted(reviews),
         "candidate_packet_hash": _stable_hash(packet),
         "errors": errors,
     }
@@ -228,21 +255,14 @@ def execute(projection_path: Path, evidence_path: Path) -> dict:
     for role in ROLE_ORDER:
         row = sample[role]
         symbol = str(row.get("symbol") or "").upper()
-        packet = decision_service.evaluate(
+        packet = governed_builder.build_packet(
             symbol,
             conn,
+            row,
+            source_commit=source_commit,
             origin="watch_quality_gate3",
             requested_by="watch_quality_gate3_bounded_local",
-            run_models=False,
         )
-        packet["governance_source_commit"] = source_commit
-        packet["governance_contracts"] = {
-            **(packet.get("governance_contracts") or {}),
-            "quality": "watch-quality-admission-v1",
-            "presentation": packet_quality.PRESENTATION_CONTRACT,
-            "gate3": CONTRACT,
-        }
-        packet_quality.apply_operator_presentation(packet)
         candidates[role] = packet
         checks[role] = _candidate_evidence(role, row, packet, source_commit)
 
@@ -257,6 +277,7 @@ def execute(projection_path: Path, evidence_path: Path) -> dict:
         "generated_at": _now(),
         "projection_contract": projection.get("contract"),
         "projection_generated_at": projection.get("generated_at"),
+        "projection_age_hours": projection.get("projection_age_hours"),
         "projection_source": str(projection_path),
         "sample": {
             role: {
@@ -349,6 +370,7 @@ def main() -> None:
             role: {
                 "symbol": item.get("symbol"),
                 "projected_quality": item.get("projected_quality"),
+                "candidate": item.get("candidate"),
                 "after_packet_id": item.get("after_packet_id"),
                 "after_packet_hash": item.get("after_packet_hash"),
                 "after_gate": item.get("after_gate"),
