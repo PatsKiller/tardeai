@@ -41,7 +41,7 @@ from scripts.agent_runtime.persistence import (  # noqa: E402
 )
 
 H = "a" * 64
-_LAB_SOCK = os.getenv("AGENTIC_LAB_SOCK", "/home/johnclaw/tradeai-lab/sock")
+_LAB_HOST = os.getenv("AGENTIC_LAB_HOST", "127.0.0.1")
 _LAB_DB = os.getenv("AGENTIC_LAB_DB", "trade_ai_agentic_lab")
 _LAB_ROLE = os.getenv("AGENTIC_LAB_ROLE", "agentic_runtime_lab_rw")
 _counter = itertools.count()
@@ -52,7 +52,10 @@ def _clock():
 
 
 def _factory():
-    conn = psycopg2.connect(host=_LAB_SOCK, port=5433, dbname=_LAB_DB, user=_LAB_ROLE, options="-c search_path=agentic_runtime")
+    # Password-authenticated TCP at 127.0.0.1:5433. The password is supplied by
+    # PGPASSFILE, which the host-proof wrapper sets privately from the fresh LAB
+    # writer pgpass — no password, path, or DSN appears in code or test output.
+    conn = psycopg2.connect(host=_LAB_HOST, port=5433, dbname=_LAB_DB, user=_LAB_ROLE, options="-c search_path=agentic_runtime")
     conn.autocommit = False
     return conn
 

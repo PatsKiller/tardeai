@@ -35,10 +35,18 @@ def _init_stub_repo(repo: Path, marker: Path) -> str:
     (repo / "config").mkdir()
     (repo / "migrations" / ".keep").write_text("")
     (repo / "config" / ".keep").write_text("")
-    # Stub LAB evolve: record the LAB_ACK it was handed, then succeed. If the wrapper
-    # tried to assign a readonly LAB_ACK it would abort BEFORE reaching this child.
+    # Stub LAB evolve: record the LAB_ACK it was handed, optionally write STUB_HANDOFF_TARGET
+    # into the wrapper's private credential handoff, then succeed. If the wrapper tried to
+    # assign a readonly LAB_ACK it would abort BEFORE reaching this child.
     evolve = repo / "scripts" / "agent_runtime" / "lab_evolve_from_ref.sh"
-    evolve.write_text(f'#!/usr/bin/env bash\nprintf "%s" "${{LAB_ACK:-UNSET}}" > "{marker}"\nexit 0\n')
+    evolve.write_text(
+        '#!/usr/bin/env bash\n'
+        f'printf "%s" "${{LAB_ACK:-UNSET}}" > "{marker}"\n'
+        'if [[ -n "${AGENTIC_PGPASS_HANDOFF:-}" && -n "${STUB_HANDOFF_TARGET:-}" ]]; then\n'
+        '  printf "%s\\n" "$STUB_HANDOFF_TARGET" > "$AGENTIC_PGPASS_HANDOFF"\n'
+        'fi\n'
+        'exit 0\n'
+    )
     evolve.chmod(0o755)
     (repo / "tests" / "test_agent_runtime_real_postgres.py").write_text("def test_stub():\n    assert True\n")
     # a .venv/bin/python the wrapper will use as PY
@@ -81,3 +89,86 @@ def test_wrapper_passes_through_lab_evolve_without_readonly_failure(tmp_path):
     # 3) it got at least as far as the source markers printed just before evolve
     assert f"source_commit|{sha}" in combined
     assert "production_port_5432_contact|NONE" in combined
+
+
+# ---- credential handoff validation (hermetic; no real LAB / PostgreSQL) ---------------
+_FAKE = "127.0.0.1:5433:trade_ai_agentic_lab:agentic_runtime_lab_rw:FAKEPWDDONOTUSE\n"
+
+
+def _run(tmp_path, handoff_target):
+    repo = tmp_path / "repo"
+    marker = tmp_path / "ack.txt"
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    secrets = tmp_path / "secrets"
+    if not secrets.exists():
+        secrets.mkdir(mode=0o700)
+    sha = _init_stub_repo(repo, marker)
+    env = {
+        "PATH": "/usr/bin:/bin", "REPO": str(repo), "AGENTIC_SOURCE_REF": sha,
+        "AGENTIC_EVIDENCE_DIR": str(evidence), "AGENTIC_SECRETS_DIR": str(secrets),
+    }
+    if handoff_target is not None:
+        env["STUB_HANDOFF_TARGET"] = str(handoff_target)
+    proc = subprocess.run(["bash", str(WRAPPER)], env=env, capture_output=True, text=True, timeout=120)
+    return proc, proc.stdout + proc.stderr
+
+
+def _mk(path: Path, mode=0o600, content=_FAKE) -> Path:
+    path.write_text(content)
+    path.chmod(mode)
+    return path
+
+
+_REJECTIONS = ("outside the LAB secrets directory", "is a symlink", "not mode 0600",
+               "no writer credential handoff", "not a regular file", "malformed", "does not exist")
+
+
+def test_credential_handoff_accepted_and_files_cleaned_up(tmp_path):
+    secrets = tmp_path / "secrets"
+    secrets.mkdir(mode=0o700)
+    writer = _mk(secrets / "agentic-runtime-lab-rw-TS.pgpass")
+    reader = _mk(secrets / "trade-ai-shadow-ro-TS.pgpass")
+    proc, out = _run(tmp_path, writer)
+    for bad in _REJECTIONS:
+        assert bad not in out, out            # credential was ACCEPTED
+    assert "FAKEPWDDONOTUSE" not in out        # no secret disclosure
+    assert "readonly variable" not in out
+    assert not writer.exists() and not reader.exists()  # exact fresh files deleted at teardown
+
+
+def test_credential_handoff_rejects_out_of_directory(tmp_path):
+    (tmp_path / "secrets").mkdir(mode=0o700)
+    stray = _mk(tmp_path / "stray-agentic-runtime-lab-rw.pgpass")  # not under the secrets dir
+    proc, out = _run(tmp_path, stray)
+    assert proc.returncode != 0
+    assert "outside the LAB secrets directory" in out
+    assert "FAKEPWDDONOTUSE" not in out
+
+
+def test_credential_handoff_rejects_symlink(tmp_path):
+    secrets = tmp_path / "secrets"
+    secrets.mkdir(mode=0o700)
+    real = _mk(secrets / "agentic-runtime-lab-rw-real.pgpass")
+    link = secrets / "agentic-runtime-lab-rw-link.pgpass"
+    link.symlink_to(real)
+    proc, out = _run(tmp_path, link)
+    assert proc.returncode != 0
+    assert "is a symlink" in out
+    assert "FAKEPWDDONOTUSE" not in out
+
+
+def test_credential_handoff_rejects_non_0600(tmp_path):
+    secrets = tmp_path / "secrets"
+    secrets.mkdir(mode=0o700)
+    loose = _mk(secrets / "agentic-runtime-lab-rw-loose.pgpass", mode=0o644)
+    proc, out = _run(tmp_path, loose)
+    assert proc.returncode != 0
+    assert "not mode 0600" in out
+
+
+def test_credential_handoff_rejects_missing(tmp_path):
+    (tmp_path / "secrets").mkdir(mode=0o700)
+    proc, out = _run(tmp_path, None)  # stub writes nothing to the handoff
+    assert proc.returncode != 0
+    assert "no writer credential handoff" in out

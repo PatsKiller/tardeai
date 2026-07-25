@@ -20,6 +20,7 @@ readonly LAB_ACK_VALUE=DISPOSABLE_LAB_NO_PRODUCTION_DATA
 readonly LAB_SOCK=/home/johnclaw/tradeai-lab/sock
 readonly LAB_DB=trade_ai_agentic_lab
 readonly EVIDENCE_DIR="${AGENTIC_EVIDENCE_DIR:-/home/johnclaw/tradeai-lab/evidence}"
+readonly LAB_SECRETS_DIR="${AGENTIC_SECRETS_DIR:-/home/johnclaw/tradeai-lab/secrets/agentic-runtime}"
 
 fail() { echo "BLOCKED_AGENT_RUNTIME_PROOF: $1" >&2; exit 2; }
 
@@ -37,25 +38,19 @@ fi
 
 # 3) stage the reviewed source read-only from the object DB (never the dirty checkout)
 readonly STAGE="$(mktemp -d /tmp/agentic-host-proof.XXXXXX)"
-cleanup_stage() { rm -rf "$STAGE"; }
+readonly PGPASS_HANDOFF="$(mktemp /tmp/agentic-pgpass-handoff.XXXXXX)"
+chmod 600 "$PGPASS_HANDOFF"
+WRITER_PGPASS=""  # resolved from the private handoff after evolve; deleted at teardown
+cleanup_stage() { rm -rf "$STAGE"; rm -f "$PGPASS_HANDOFF"; }
 trap cleanup_stage EXIT
 "$GIT" -C "$HOST_REPO" archive "$RESOLVED" scripts tests migrations config | tar -x -C "$STAGE"
 
 readonly PY="$HOST_REPO/.venv/bin/python"
 [[ -x "$PY" ]] || fail "project venv python unavailable"
 
-echo "source_commit|$RESOLVED"
-echo "database_target|$LAB_DB"
-echo "database_port|5433"
-echo "production_port_5432_contact|NONE"
-
-# 4) evolve a fresh disposable LAB on 5433 (fails closed; leaves schema + roles)
-LAB_ACK="$LAB_ACK_VALUE" REPO="$HOST_REPO" AGENTIC_SOURCE_REF="$RESOLVED" \
-  bash "$STAGE/scripts/agent_runtime/lab_evolve_from_ref.sh" >/dev/null \
-  || fail "LAB evolve did not reach PASS_DB_PROOF"
-
+# teardown: roll back the LAB and delete the exact fresh reader/writer credential files.
 teardown() {
-  local rb
+  local rb reader
   rb="$(ls -t "$EVIDENCE_DIR"/agentic-runtime-rollback-*.sql 2>/dev/null | head -1 || true)"
   if [[ -n "$rb" ]]; then
     /usr/bin/psql -h "$LAB_SOCK" -p 5433 -U johnclaw -d postgres -q -v ON_ERROR_STOP=1 -f "$rb" >/dev/null 2>&1 \
@@ -64,7 +59,42 @@ teardown() {
   else
     echo "rollback_or_teardown|MANUAL_NO_ROLLBACK_FILE"
   fi
+  if [[ -n "${WRITER_PGPASS:-}" ]]; then
+    rm -f -- "$WRITER_PGPASS"
+    reader="${WRITER_PGPASS/agentic-runtime-lab-rw-/trade-ai-shadow-ro-}"  # exact sibling, not a glob
+    [[ "$reader" != "$WRITER_PGPASS" ]] && rm -f -- "$reader"
+  fi
 }
+
+echo "source_commit|$RESOLVED"
+echo "database_target|$LAB_DB"
+echo "database_port|5433"
+echo "production_port_5432_contact|NONE"
+
+# 4) evolve a fresh disposable LAB on 5433. The evolve writes ONLY the fresh writer
+#    pgpass pathname into our private handoff (no password ever leaves the LAB packet).
+AGENTIC_PGPASS_HANDOFF="$PGPASS_HANDOFF" LAB_ACK="$LAB_ACK_VALUE" REPO="$HOST_REPO" AGENTIC_SOURCE_REF="$RESOLVED" \
+  bash "$STAGE/scripts/agent_runtime/lab_evolve_from_ref.sh" >/dev/null \
+  || fail "LAB evolve did not reach PASS_DB_PROOF"
+
+# 4a) resolve + strictly validate the exact fresh writer credential from the handoff.
+#     Reject empty/multiline/symlink/out-of-directory/non-regular/non-0600 paths.
+resolve_writer_credential() {
+  local raw canon secrets_canon
+  raw="$(head -c 4096 "$PGPASS_HANDOFF" 2>/dev/null)"
+  raw="${raw%$'\n'}"
+  [[ -n "$raw" ]] || { teardown; fail "no writer credential handoff from LAB evolve"; }
+  [[ "$raw" != *$'\n'* ]] || { teardown; fail "credential handoff is malformed"; }
+  [[ ! -L "$raw" ]] || { teardown; fail "credential handoff is a symlink"; }
+  canon="$(realpath -e -- "$raw" 2>/dev/null || true)"
+  [[ -n "$canon" ]] || { teardown; fail "handoff credential does not exist"; }
+  secrets_canon="$(realpath -e -- "$LAB_SECRETS_DIR" 2>/dev/null || true)"
+  [[ -n "$secrets_canon" && "$canon" == "$secrets_canon"/*.pgpass ]] || { teardown; fail "handoff credential is outside the LAB secrets directory"; }
+  [[ -f "$canon" && ! -L "$canon" ]] || { teardown; fail "handoff credential is not a regular file"; }
+  [[ "$(stat -c '%a' "$canon" 2>/dev/null)" == "600" ]] || { teardown; fail "handoff credential is not mode 0600"; }
+  WRITER_PGPASS="$canon"
+}
+resolve_writer_credential
 
 # 5) the driver must be present in host-proof mode — a missing driver is a hard failure
 "$PY" -c 'import psycopg2' 2>/dev/null || { teardown; fail "psycopg2 is required for the real host proof (missing driver is not a skip)"; }
@@ -75,7 +105,10 @@ readonly PYTEST_LOG="$EVIDENCE_DIR/agentic-runtime-hostproof-pytest-$STAMP.txt"
 readonly JUNIT="$STAGE/real-junit.xml"
 mkdir -p "$EVIDENCE_DIR"
 set +e
-AGENTIC_REAL_LAB=1 AGENTIC_LAB_SOCK="$LAB_SOCK" AGENTIC_LAB_DB="$LAB_DB" PYTHONPATH="$STAGE" \
+# PGPASSFILE is passed privately (libpq reads the password from the 0600 file); it is
+# never printed. The tests connect over password-authenticated TCP at 127.0.0.1:5433.
+AGENTIC_REAL_LAB=1 AGENTIC_LAB_HOST=127.0.0.1 AGENTIC_LAB_DB="$LAB_DB" \
+  PGPASSFILE="$WRITER_PGPASS" PYTHONPATH="$STAGE" \
   "$PY" -m pytest -rA -v -p no:cacheprovider \
     --junitxml="$JUNIT" \
     "$STAGE/tests/test_agent_runtime_real_postgres.py" 2>&1 | tee "$PYTEST_LOG"
