@@ -41,11 +41,18 @@ def test_validator_runs_focused_python_and_ui_gates():
         "scripts/strategy_ticket_reconciler.py",
         "scripts/watch_decision_scheduler.py",
         "scripts/watch_quality_audit.py",
+        "scripts/research_due_diligence.py",
+        "scripts/specialized_research_due_diligence.py",
+        "scripts/specialized_research_pipeline.py",
+        "scripts/sector_momentum_engine_v5.py",
         "test_watch_quality_policy.py",
         "test_watch_packet_quality.py",
+        "test_research_due_diligence.py",
         '"$NPX" tsc --pretty false',
         '"$NPX" vite build',
         "watch-quality-governance-v1",
+        "research-due-diligence-v1",
+        "PROPOSAL,DEFENSE,SECTOR,INDUSTRY,WATCH",
         "STREET DATA >7D",
         "OWNERSHIP ELIGIBLE",
         "MECHANICS VALID",
@@ -53,7 +60,7 @@ def test_validator_runs_focused_python_and_ui_gates():
         assert marker in SOURCE
 
 
-def test_validator_has_no_live_database_provider_schedule_or_trading_authority():
+def test_validator_has_no_live_database_provider_schedule_or_external_authority():
     lowered = SOURCE.lower()
     for forbidden in (
         'mv "$candidate"',
@@ -78,7 +85,7 @@ def test_validator_has_no_live_database_provider_schedule_or_trading_authority()
         "paid_lane_call|NONE",
         "schedule_change|NONE",
         "service_restart|NONE",
-        "broker_or_order_action|NONE",
+        "external_action|NONE",
         "PASS_WATCH_QUALITY_GOVERNANCE_VALIDATION",
     ):
         assert evidence in SOURCE
