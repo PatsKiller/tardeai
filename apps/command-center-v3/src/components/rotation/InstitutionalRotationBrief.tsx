@@ -12,6 +12,16 @@ interface Props {
 
 type DecisionStatus = 'ELIGIBLE NOW' | 'RESEARCH WATCH' | 'AVOID / REDUCE' | 'NO DECISION'
 
+interface DecisionRow {
+  sector: any
+  name: string
+  card: any
+  status: DecisionStatus
+  supportiveIndustries: any[]
+  blocking: string[]
+  why: string
+}
+
 const SECTOR_ALIASES: Record<string, string> = {
   'financial services': 'Financials',
   financial: 'Financials',
@@ -138,7 +148,7 @@ export default function InstitutionalRotationBrief({
     return out
   }, [industries])
 
-  const decisions = useMemo(() => sectors.map((sector: any) => {
+  const decisions = useMemo<DecisionRow[]>(() => sectors.map((sector: any): DecisionRow => {
     const name = canonicalSector(sector.sector)
     const card = addBySector.get(name)
     const status = statusFor(sector, card)
@@ -177,7 +187,7 @@ export default function InstitutionalRotationBrief({
         ? `${state} vs SPY with RS20 ${signed(sector.rs20)}; signal passed legacy rails but the sizing contract is incomplete`
         : `${state || 'unclassified'} vs SPY with RS20 ${signed(sector.rs20)} and slope ${signed(sector.slope)}`
     return { sector, name, card, status, supportiveIndustries, blocking: [...new Set(blocking)], why }
-  }).sort((a: any, b: any) => {
+  }).sort((a, b) => {
     const rank: Record<DecisionStatus, number> = { 'ELIGIBLE NOW': 0, 'RESEARCH WATCH': 1, 'AVOID / REDUCE': 2, 'NO DECISION': 3 }
     const sr = rank[a.status] - rank[b.status]
     if (sr) return sr
@@ -185,10 +195,10 @@ export default function InstitutionalRotationBrief({
   }), [sectors, addBySector, industriesBySector, leanReview, recommendations])
 
   const visible = (showAll ? decisions : decisions.slice(0, compact ? 5 : 8))
-  const counts = decisions.reduce((acc: Record<string, number>, d: any) => {
+  const counts = decisions.reduce((acc: Record<DecisionStatus, number>, d) => {
     acc[d.status] = (acc[d.status] || 0) + 1
     return acc
-  }, {})
+  }, { 'ELIGIBLE NOW': 0, 'RESEARCH WATCH': 0, 'AVOID / REDUCE': 0, 'NO DECISION': 0 })
   const legacyAddCount = addCards.filter(card => !hasAccountSizing(card)).length
 
   return (
@@ -234,7 +244,7 @@ export default function InstitutionalRotationBrief({
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${compact ? 270 : 310}px, 1fr))`, gap: 8 }}>
-        {visible.map((d: any) => {
+        {visible.map((d) => {
           const { sector, name, card, status, supportiveIndustries, blocking, why } = d
           const stocks = (card?.instruments || []).filter((i: any) => i.kind === 'constituent').slice(0, 3)
           const accounts = accountRows(card, accountLabels)
