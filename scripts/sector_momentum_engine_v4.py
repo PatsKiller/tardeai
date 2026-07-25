@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
 """Sector momentum v4 launcher with deterministic uncapped covered breadth.
 
-This additive launcher replaces only the breadth producer in ``sector_momentum_engine``.
-It preserves the established date-aligned RS, state, debounce, alert and snapshot logic.
-The result is explicitly a covered screener-membership measure, not official ETF
-constituent breadth.
+This additive launcher replaces only the breadth producer in
+``sector_momentum_engine``. It preserves the established date-aligned RS,
+state, debounce, alert and snapshot logic, then attaches the shared specialized
+research due-diligence packet to every sector row.
 
-The launcher remains inactive until an operator explicitly changes the host invocation.
+The result is explicitly a covered screener-membership measure, not official
+ETF constituent breadth. The launcher remains inactive until an operator
+explicitly changes the host invocation.
 """
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import sector_momentum_engine as base
+from defense_data_quality import snapshot_hash
+from research_due_diligence_adapters import sector_due_diligence
 
 ROOT = Path(__file__).resolve().parent.parent
 POLICY = json.loads((ROOT / "config" / "defense_breadth_policy.json").read_text())
+SNAPSHOT = ROOT / "data" / "runtime" / "sector_momentum_latest.json"
 
 
 def breadth_v4(cur, sector_name: str):
@@ -88,6 +94,37 @@ def breadth_v4(cur, sector_name: str):
         return None, 0, 0, "query_error"
 
 
+def attach_due_diligence(snapshot_path: Path = SNAPSHOT) -> dict:
+    """Attach immutable sector research packets after the established producer.
+
+    This does not change RS, state, breadth or alerts. It only makes the evidence
+    maturity and downstream eligibility explicit for Defense/proposal consumers.
+    """
+    snapshot = json.loads(snapshot_path.read_text())
+    snapshot["policy_version"] = POLICY.get("version") or "defense-breadth-policy-v1"
+    states = {"PASS": 0, "REVIEW_REQUIRED": 0, "BLOCKED": 0}
+    for row in snapshot.get("rows") or []:
+        packet = sector_due_diligence(
+            row,
+            snapshot,
+            benchmark=(base.CFG or {}).get("benchmark", "SPY"),
+        )
+        row["due_diligence"] = packet
+        state = packet.get("deterministic_state") or "BLOCKED"
+        states[state] = states.get(state, 0) + 1
+    snapshot["due_diligence"] = {
+        "contract": "research-due-diligence-v1",
+        "adapter": "specialized-research-adapters-v1",
+        "domain": "sector",
+        "states": states,
+        "authority": "deterministic research only; models cannot alter row state or arithmetic",
+    }
+    snapshot.pop("snapshot_hash", None)
+    snapshot["snapshot_hash"] = snapshot_hash(snapshot)
+    snapshot_path.write_text(json.dumps(snapshot, default=str))
+    return snapshot["due_diligence"]
+
+
 def install() -> None:
     """Install only the v4 breadth implementation into the established engine."""
     base._breadth = breadth_v4
@@ -95,7 +132,11 @@ def install() -> None:
 
 def main() -> int:
     install()
-    return base.main()
+    result = base.main()
+    if result == 0 and "--backfill" not in sys.argv and SNAPSHOT.exists():
+        summary = attach_due_diligence()
+        print(f"[momentum] due diligence {summary['states']}")
+    return result
 
 
 if __name__ == "__main__":
