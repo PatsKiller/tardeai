@@ -51,7 +51,7 @@ def test_gate6_bound_scheduler_uses_complete_active_watch_population():
 
 def test_gate6_run_requires_reviewed_selection_and_atomic_write():
     for marker in (
-        "watch-quality-gate6-reviewed-selection-v1",
+        "SELECTION_CONTRACT = selection.CONTRACT",
         "WATCH_QUALITY_EXPECTED_SELECTION_HASH",
         "BLOCKED_GATE6_SELECTION_DRIFT",
         "expected_selection_hash",
@@ -64,6 +64,7 @@ def test_gate6_run_requires_reviewed_selection_and_atomic_write():
         "conn.rollback()",
     ):
         assert marker in BOUND
+    assert SELECTION.CONTRACT == "watch-quality-gate6-reviewed-selection-v1"
     assert BOUND.index('if plan["selection_hash"] != expected_hash:') < BOUND.index(
         "atomic._build_all_packets"
     )
