@@ -58,6 +58,9 @@ git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
   tests/test_watch_quality_projection.py \
   tests/test_watch_quality_projection_v2.py \
   tests/test_watch_quality_gate3_contract.py \
+  tests/test_watch_quality_gate4_contract.py \
+  tests/test_watch_quality_gate5_contract.py \
+  tests/test_watch_quality_gate6_contract.py \
   tests/test_watch_quality_ui_contract.py \
   tests/test_ticket_review_worker_fail_closed.py \
   tests/test_validate_watch_quality_governance_from_ref.py \
@@ -76,6 +79,8 @@ cd "$STAGE_ROOT"
   scripts/watch_quality_projection.py \
   scripts/watch_quality_projection_v2.py \
   scripts/watch_quality_gate3_sample_rebuild.py \
+  scripts/watch_quality_gate4_verify.py \
+  scripts/watch_quality_local_scheduler.py \
   scripts/strategy_ticket_validator.py \
   scripts/strategy_ticket_review.py \
   scripts/strategy_ticket_reconciler.py \
@@ -100,6 +105,9 @@ cd "$STAGE_ROOT"
   tests/test_watch_quality_projection.py \
   tests/test_watch_quality_projection_v2.py \
   tests/test_watch_quality_gate3_contract.py \
+  tests/test_watch_quality_gate4_contract.py \
+  tests/test_watch_quality_gate5_contract.py \
+  tests/test_watch_quality_gate6_contract.py \
   tests/test_watch_quality_ui_contract.py \
   tests/test_ticket_review_worker_fail_closed.py \
   tests/test_validate_watch_quality_governance_from_ref.py \
@@ -134,6 +142,9 @@ printf 'quality_policy_contract|watch-quality-admission-v1\n'
 printf 'quality_projection_contract|watch-quality-projection-v2\n'
 printf 'projection_v1_status|SUPERSEDED_SOURCE_UNIT_CONFLICT\n'
 printf 'gate3_contract|watch-quality-gate3-sample-rebuild-v1\n'
+printf 'gate4_contract|watch-quality-gate4-readonly-verification-v1\n'
+printf 'gate5_contract|WATCH_QUALITY_SHADOW_UI_ONLY\n'
+printf 'gate6_contract|watch-quality-local-scheduler-v1\n'
 printf 'research_due_diligence_contract|research-due-diligence-v1\n'
 printf 'cross_domain_census_contract|research-due-diligence-census-v1\n'
 printf 'maya_intelligence_contract|maya-intelligence-evidence-v1\n'
