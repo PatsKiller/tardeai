@@ -45,6 +45,7 @@ fi
 git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
   apps/command-center-v3 \
   config/watch_quality_policy.json \
+  config/research_due_diligence_policy.json \
   scripts \
   tests/test_watch_quality_policy.py \
   tests/test_strategy_ticket_quality_gate.py \
@@ -56,6 +57,7 @@ git -C "$HOST_REPO" archive "$RESOLVED_COMMIT" \
   tests/test_watch_quality_ui_contract.py \
   tests/test_ticket_review_worker_fail_closed.py \
   tests/test_validate_watch_quality_governance_from_ref.py \
+  tests/test_research_due_diligence.py \
   | "$TAR" -x -C "$STAGE_ROOT"
 
 readonly PY="$([[ -x "$HOST_REPO/.venv/bin/python" ]] && printf '%s' "$HOST_REPO/.venv/bin/python" || printf '%s' "$PYTHON_DEFAULT")"
@@ -69,7 +71,11 @@ cd "$STAGE_ROOT"
   scripts/strategy_ticket_reconciler.py \
   scripts/run_ticket_review_job.py \
   scripts/watch_decision_scheduler.py \
-  scripts/watch_quality_audit.py
+  scripts/watch_quality_audit.py \
+  scripts/research_due_diligence.py \
+  scripts/specialized_research_due_diligence.py \
+  scripts/specialized_research_pipeline.py \
+  scripts/sector_momentum_engine_v5.py
 
 "$PY" -m pytest -q \
   tests/test_watch_quality_policy.py \
@@ -81,7 +87,8 @@ cd "$STAGE_ROOT"
   tests/test_watch_quality_audit_contract.py \
   tests/test_watch_quality_ui_contract.py \
   tests/test_ticket_review_worker_fail_closed.py \
-  tests/test_validate_watch_quality_governance_from_ref.py
+  tests/test_validate_watch_quality_governance_from_ref.py \
+  tests/test_research_due_diligence.py
 
 cd "$STAGE_ROOT/apps/command-center-v3"
 "$NPM" ci
@@ -106,6 +113,8 @@ done
 printf 'validated_commit|%s\n' "$RESOLVED_COMMIT"
 printf 'validation_scope|TEMPORARY_BUILD_AND_TESTS_ONLY\n'
 printf 'quality_policy_contract|watch-quality-admission-v1\n'
+printf 'research_due_diligence_contract|research-due-diligence-v1\n'
+printf 'specialized_domains|PROPOSAL,DEFENSE,SECTOR,INDUSTRY,WATCH\n'
 printf 'review_contract|watch-ticket-independent-review-v2\n'
 printf 'ui_contract|watch-quality-governance-v1\n'
 printf 'live_dist_change|NONE\n'
@@ -115,5 +124,5 @@ printf 'model_provider_call|NONE\n'
 printf 'paid_lane_call|NONE\n'
 printf 'schedule_change|NONE\n'
 printf 'service_restart|NONE\n'
-printf 'broker_or_order_action|NONE\n'
+printf 'external_action|NONE\n'
 printf 'final_status|PASS_WATCH_QUALITY_GOVERNANCE_VALIDATION\n'
