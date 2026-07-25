@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Canonical extraction of deterministic quality/validation state from a packet.
+"""Canonical deterministic quality and operator-presentation helpers.
 
 A failed family is retained under plan_families after current mechanics are
 stripped. Consumers must inspect those audit structures instead of looking only
 at current_actionable_plan and incorrectly reporting UNASSESSED.
+
+The operator-presentation contract preserves every family's raw mechanics while
+ensuring the desk exposes one sovereign decision. A secondary family whose raw
+action_state is READY is displayed as eligibility/evidence unless it is the
+selected primary family and the sovereign header is also READY.
 """
 from __future__ import annotations
 
@@ -12,6 +17,7 @@ from typing import Iterator
 FAMILY_ORDER = ("swing", "long_term", "bearish", "options", "no_trade")
 VALIDATION_SEVERITY = {"FAIL": 3, "REVIEW_REQUIRED": 2, "PASS": 1, "NOT_RUN": 0}
 QUALITY_SEVERITY = {"QUARANTINED": 3, "RESEARCH_ONLY": 2, "ADMITTED": 1, "UNASSESSED": 0}
+PRESENTATION_CONTRACT = "watch-quality-governance-v1"
 
 
 def iter_ticket_validations(packet: dict | None) -> Iterator[dict]:
@@ -61,9 +67,6 @@ def select_governing_validation(packet: dict | None) -> dict:
             "quality": "UNASSESSED",
         }
 
-    # Current actionable plan is governing when present. If mechanics were
-    # stripped, select the most severe retained family result so a failure can
-    # never disappear into an UNASSESSED label.
     current = next((item for item in candidates
                     if item["source"] == "current_actionable_plan"), None)
     if current:
@@ -107,13 +110,89 @@ def packet_gate(packet: dict | None) -> dict:
     }
 
 
+def _primary_family(packet: dict) -> str | None:
+    current = packet.get("current_actionable_plan") or {}
+    operator = packet.get("operator_presentation") or {}
+    value = (
+        current.get("family")
+        or current.get("structure_family")
+        or operator.get("primary_family")
+        or packet.get("primary_family")
+    )
+    return str(value).upper() if value else None
+
+
+def _header_state(packet: dict) -> str:
+    operator = packet.get("operator_presentation") or {}
+    value = (
+        operator.get("header_state")
+        or packet.get("decision_state")
+        or packet.get("action_state")
+        or packet.get("operator_state")
+        or "WAIT"
+    )
+    return str(value).upper()
+
+
+def apply_operator_presentation(packet: dict | None) -> dict:
+    """Persist one sovereign decision without rewriting raw family mechanics."""
+    packet = packet if isinstance(packet, dict) else {}
+    primary = _primary_family(packet)
+    header = _header_state(packet)
+    labels: dict[str, str] = {}
+    raw_states: dict[str, str] = {}
+
+    for key, family in (packet.get("plan_families") or {}).items():
+        if not isinstance(family, dict):
+            continue
+        family_name = str(key).upper()
+        raw = str(family.get("action_state") or family.get("state") or "UNAVAILABLE").upper()
+        raw_states[family_name] = raw
+        if raw == "READY":
+            if family_name == primary and header == "READY":
+                display = "READY"
+            elif family_name == "LONG_TERM":
+                display = "OWNERSHIP ELIGIBLE"
+            else:
+                display = "MECHANICS VALID"
+        else:
+            display = raw.replace("_", " ")
+        labels[family_name] = display
+
+    existing = packet.get("operator_presentation") or {}
+    packet["operator_presentation"] = {
+        **existing,
+        "contract": PRESENTATION_CONTRACT,
+        "header_state": header,
+        "primary_family": primary,
+        "family_display_states": labels,
+        "family_raw_states": raw_states,
+        "one_sovereign_decision": True,
+    }
+    return packet
+
+
 def presentation_conflicts(packet: dict | None) -> list[str]:
-    """Return deterministic semantic conflicts in persisted presentation data."""
+    """Return semantic conflicts in the persisted operator presentation."""
     packet = packet or {}
     operator = packet.get("operator_presentation") or {}
-    header = str(operator.get("header_state") or packet.get("decision_state") or "").upper()
-    families = packet.get("plan_families") or {}
+    header = _header_state(packet)
+    primary = _primary_family(packet)
     conflicts: list[str] = []
+
+    display_states = operator.get("family_display_states")
+    if operator.get("contract") == PRESENTATION_CONTRACT and isinstance(display_states, dict):
+        if header != "READY":
+            for family, display in display_states.items():
+                if str(display).upper() == "READY":
+                    conflicts.append(
+                        f"header {header} with {family} display READY under {PRESENTATION_CONTRACT}"
+                    )
+        if header == "READY" and primary and str(display_states.get(primary) or "").upper() != "READY":
+            conflicts.append(f"header READY but primary {primary} is not displayed READY")
+        return conflicts
+
+    families = packet.get("plan_families") or {}
     if header and header != "READY":
         for key, family in families.items():
             if not isinstance(family, dict):
