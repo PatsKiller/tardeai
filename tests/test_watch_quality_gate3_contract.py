@@ -7,6 +7,7 @@ ROUNDTRIP_RUNNER = (ROOT / "scripts/watch_quality_gate3_sample_rebuild_v2.py").r
 RUNNER = LEGACY_RUNNER + ROUNDTRIP_RUNNER
 BUILDER = (ROOT / "scripts/watch_quality_governed_builder.py").read_text()
 WRAPPER = (ROOT / "scripts/run_watch_quality_gate3_from_ref.sh").read_text()
+WORKFLOW = (ROOT / ".github/workflows/watch-quality-governance-ci.yml").read_text()
 
 
 def test_gate3_is_exactly_five_role_local_quant_sample():
@@ -110,6 +111,16 @@ def test_gate3_has_no_model_scheduler_ui_or_execution_authority():
         '"proposal_or_execution_action": False',
     ):
         assert evidence in RUNNER
+
+
+def test_gate3_workflow_compiles_and_scans_roundtrip_verifier():
+    assert "'scripts/watch_quality_gate3_sample_rebuild_v2.py'" in WORKFLOW
+    assert WORKFLOW.count('scripts/watch_quality_gate3_sample_rebuild_v2.py') >= 3
+    compile_step = WORKFLOW.index('python -m py_compile')
+    verifier = WORKFLOW.index('scripts/watch_quality_gate3_sample_rebuild_v2.py', compile_step)
+    authority = WORKFLOW.index('Confirm bounded authority')
+    scanned = WORKFLOW.index('scripts/watch_quality_gate3_sample_rebuild_v2.py', authority)
+    assert compile_step < verifier < authority < scanned
 
 
 def test_gate3_wrapper_pins_source_and_disables_every_model_path():
