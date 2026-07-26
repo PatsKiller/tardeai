@@ -37,7 +37,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install focused test dependency
-        run: python -m pip install --disable-pip-version-check pytest
+        run: python -m pip install --disable-pip-version-check pytest psycopg2-binary
       - name: Compile runtime
         shell: bash
         run: |
