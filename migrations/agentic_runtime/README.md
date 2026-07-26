@@ -6,6 +6,29 @@ This migration is additive and must be applied only to an isolated LAB database 
 
 - `0001_mvl.up.sql` — creates the separate `agentic_runtime` schema and eight MVL tables.
 - `0001_mvl.down.sql` — one-step rollback that removes the isolated schema.
+- `0002_roles.up.sql` — creates three least-privilege roles scoped to the
+  `agentic_runtime` schema only: `agentic_runtime_lab_rw` and
+  `agentic_runtime_shadow_rw` (append evidence, mutate only the run-control row,
+  never DELETE) and `agentic_runtime_reader` (read-only Command Center). None has
+  any broker / order / account / position / approval / 2FA / production-config
+  access, and none holds superuser/createdb/createrole/replication/bypassrls
+  (matching the runtime identity check in `scripts/agent_runtime/persistence.py`).
+- `0002_roles.down.sql` — revokes grants and drops the three roles.
+- `apply.sh` — **prepare-only** applier. It refuses to run without an explicit
+  `--apply` flag (prints the plan and exits 3), and even with `--apply` refuses a
+  missing or production-looking DSN. Passwords are never stored in the repo; the
+  operator sets them out-of-band after apply.
+
+## Prepare-only apply
+
+```bash
+# Prints exactly what it would run; applies nothing.
+migrations/agentic_runtime/apply.sh
+
+# Operator-authorized apply against an isolated LAB/SHADOW DSN:
+TRADE_AI_LAB_DSN=... migrations/agentic_runtime/apply.sh --apply up
+TRADE_AI_LAB_DSN=... migrations/agentic_runtime/apply.sh --apply down
+```
 
 ## Required preflight
 
