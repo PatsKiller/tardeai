@@ -26,8 +26,8 @@ DAILY_MODEL_CAP = 15
 # Default gemma3:12b — gemma3:4b is fast but routinely fails the summary/evidence quality gate
 # (MISSING summary, evidence_json < 2 keys). Override: HERMES_LOOP_MODEL=gemma3:4b for speed tests.
 LOOP_MODEL = os.environ.get("HERMES_LOOP_MODEL", "gemma3:12b")
-# 12b needs more wall time than 4b; keep under MAX_RUNTIME for max-rows=2.
-OLLAMA_TIMEOUT = int(os.environ.get("HERMES_LOOP_OLLAMA_TIMEOUT", "180"))
+# Host 2026-07-26: gemma3:12b thesis-challenge ~198s warm; 180s was too tight. Allow 300s default.
+OLLAMA_TIMEOUT = int(os.environ.get("HERMES_LOOP_OLLAMA_TIMEOUT", "300"))
 
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
