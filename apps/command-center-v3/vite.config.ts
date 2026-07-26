@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
 
-const UI_VERSION = '3.12'
+// 3.13 = CC v3 Home trust hardening (synthesis fail-closed, movers taxonomy, Hermes gateway truth)
+const UI_VERSION = '3.13'
 // Single stamp per build — must match build-meta.json or AnalystReportsPanel false-positives "stale".
 const BUILD_STAMP = Date.now().toString(36)
 const FULL_UI_VERSION = `${UI_VERSION}+${BUILD_STAMP}`
@@ -21,6 +22,7 @@ export default defineConfig({
           ui_version: FULL_UI_VERSION,
           base_version: UI_VERSION,
           built_at: new Date().toISOString(),
+          release_notes: 'home-trust-harden: synthesis fail-closed, movers empty-state taxonomy, Hermes gateway by-design label',
         }
         fs.writeFileSync(
           path.resolve(__dirname, 'dist/build-meta.json'),
