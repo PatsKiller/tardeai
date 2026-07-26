@@ -1,0 +1,1305 @@
+{
+ "data": {
+  "account_capabilities": {
+   "_comment": "Defense Desk v1 D1 \u2014 instrument matrix, ENFORCED in every real-money render. can_short_stock verified 2026-07-17: Schwab Taxable account record type=MARGIN, buyingPower $10,000 = 2x availableFunds. options_level: OPERATOR-FILL from Schwab Profile > Margin & Options, SCHWAB-NATIVE tier names: covered (covered calls + PROTECTIVE puts on held shares) | long (+ calls/puts without owning) | spreads | short_uncovered. Rollover IRA read off the operator's Schwab page 2026-07-18 (advisor-managed: tier changes go through the IIA). Hedge menus degrade to inverse-ETF + covered-calls where null; protective puts on HELD symbols legal at covered tier; index/QQQ puts require long.",
+   "accounts": {
+    "ACCOUNT_A": {
+     "can_short_stock": true,
+     "covered_calls_ok": false,
+     "inverse_etf_ok": true,
+     "note": "REDACTED",
+     "options_level": null,
+     "verified": false
+    },
+    "ACCOUNT_B": {
+     "can_short_stock": false,
+     "covered_calls_ok": true,
+     "inverse_etf_ok": true,
+     "options_level": "covered",
+     "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (\u2026258): Current level = Covered"
+    },
+    "ACCOUNT_C": {
+     "can_short_stock": true,
+     "covered_calls_ok": false,
+     "inverse_etf_ok": true,
+     "note": "REDACTED",
+     "verified": true
+    },
+    "ACCOUNT_D": {
+     "can_short_stock": false,
+     "covered_calls_ok": false,
+     "inverse_etf_ok": true,
+     "options_level": "none",
+     "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (\u2026415): no Current level on any tier"
+    },
+    "ACCOUNT_E": {
+     "can_short_stock": false,
+     "covered_calls_ok": false,
+     "inverse_etf_ok": true,
+     "margin": false,
+     "note": "REDACTED",
+     "options_level": null,
+     "verified": false
+    },
+    "ACCOUNT_F": {
+     "can_short_stock": true,
+     "can_short_stock_verified": "2026-07-17 account record type=MARGIN",
+     "covered_calls_ok": false,
+     "inverse_etf_ok": true,
+     "options_level": "none",
+     "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (\u2026469): no Current level on any tier",
+     "short_size_cap_pct_of_book": 2.0
+    }
+   }
+  },
+  "hedge_state": {
+   "line": "HEDGE: stand-down signaled \u2014 Technology recovered to IMPROVING",
+   "state": "stand_down"
+  },
+  "inverse_stoplights": {
+   "line": "\ud83d\udea6 PSQ/QQQ: THESIS GREEN \u00b7 ENTRY AMBER \u2014 ARMED, WAITING FOR BOUNCE",
+   "tip": "no positive day \u00b7 last session -0.63% < bounce gate 0.75% \u2014 do not chase after a down day"
+  },
+  "momentum": {
+   "exposure_basis": "effective (direct + config fund lookthrough, factsheet weights)",
+   "generated_at": "2026-07-23T21:26:23.173882+00:00",
+   "market": {
+    "indices": [
+     {
+      "long": 4.29,
+      "mid": 0.85,
+      "short": -1.23,
+      "symbol": "SPY"
+     },
+     {
+      "long": 5.29,
+      "mid": -4.0,
+      "rs_long": 1.0,
+      "rs_mid": -4.86,
+      "rs_short": -0.73,
+      "short": -1.96,
+      "symbol": "QQQ"
+     },
+     {
+      "long": 6.46,
+      "mid": -1.82,
+      "rs_long": 2.17,
+      "rs_mid": -2.67,
+      "rs_short": -0.63,
+      "short": -1.86,
+      "symbol": "IWM"
+     },
+     {
+      "long": 6.73,
+      "mid": 0.57,
+      "rs_long": 2.44,
+      "rs_mid": -0.28,
+      "rs_short": 0.63,
+      "short": -0.61,
+      "symbol": "DIA"
+     }
+    ],
+    "internals": {
+     "earnings_after": 15,
+     "earnings_before": 15,
+     "insider_buying": 15,
+     "most_active": 15,
+     "most_volatile": 15,
+     "new_high": 15,
+     "new_low": 15,
+     "source": "market_movers latest capture (top-15 caps per signal)",
+     "top_gainers": 10000,
+     "top_losers": 10000,
+     "unusual_volume": 15
+    },
+    "state_line": "Market: SPY -1.2% wk \u00b7 equal-weight leading cap-weight (+0.3% 20d) \u00b7 small caps lagging \u00b7 NH/NL 15/15 \u2014 mixed tape \u00b7 7/11 sectors lagging",
+    "styles": [
+     {
+      "key": "growth_vs_value",
+      "pair": "VUG\u2212VTV",
+      "s20": -6.04,
+      "s5": -2.14,
+      "s60": -6.39,
+      "slope": -3.69,
+      "state": "LAGGING"
+     },
+     {
+      "key": "small_vs_large",
+      "pair": "IWM\u2212SPY",
+      "s20": -2.67,
+      "s5": -0.63,
+      "s60": 2.17,
+      "slope": -4.36,
+      "state": "LAGGING"
+     },
+     {
+      "key": "equal_vs_cap",
+      "pair": "RSP\u2212SPY",
+      "s20": 0.28,
+      "s5": 1.1,
+      "s60": 1.66,
+      "slope": -0.81,
+      "state": "WEAKENING"
+     }
+    ]
+   },
+   "not_decomposed": {
+    "dollars": 10000,
+    "positions": [
+     {
+      "dollars": 10000,
+      "symbol": "SPCX",
+      "why": "no reliable current factsheet \u2014 never guess"
+     },
+     {
+      "dollars": 10000,
+      "symbol": "BND",
+      "why": "fixed income \u2014 not equity sector exposure"
+     },
+     {
+      "dollars": 10000,
+      "symbol": "DIVI",
+      "why": "international book \u2014 US 11-sector map does not apply"
+     },
+     {
+      "dollars": 10000,
+      "symbol": "SPCX",
+      "why": "no reliable current factsheet \u2014 never guess"
+     }
+    ]
+   },
+   "rows": [
+    {
+     "as_of": "2026-07-23",
+     "book_contributors": [
+      {
+       "direct": true,
+       "dollars": 10000,
+       "fund": "ANET"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "JEPI"
+      },
+      {
+       "direct": true,
+       "dollars": 10000,
+       "fund": "CSCO"
+      },
+      {
+       "direct": true,
+       "dollars": 10000,
+       "fund": "QCOM"
+      }
+     ],
+     "book_direct_pct": 8.0,
+     "book_dollars": 10000,
+     "book_pct": 13.6,
+     "breadth_n": 58,
+     "breadth_pct": 19,
+     "etf": "XLK",
+     "hermes_delta": -1.3,
+     "hermes_pulse": 54.7,
+     "news_negatives": 0,
+     "rs20": -3.22,
+     "rs5": 2.41,
+     "rs60": 9.36,
+     "sector": "Technology",
+     "slope": 2.89,
+     "state": "IMPROVING",
+     "top_negative": null
+    },
+    {
+     "as_of": "2026-07-23",
+     "book_contributors": [
+      {
+       "direct": true,
+       "dollars": 10000,
+       "fund": "V"
+      },
+      {
+       "direct": true,
+       "dollars": 10000,
+       "fund": "V"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "JEPI"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      }
+     ],
+     "book_direct_pct": 16.4,
+     "book_dollars": 10000,
+     "book_pct": 23.4,
+     "breadth_n": 58,
+     "breadth_pct": 48,
+     "etf": "XLF",
+     "hermes_delta": 2.7,
+     "hermes_pulse": 48.5,
+     "news_negatives": 0,
+     "rs20": 3.3,
+     "rs5": -0.5,
+     "rs60": 3.11,
+     "sector": "Financials",
+     "slope": -0.0,
+     "state": "LEADING",
+     "top_negative": null
+    },
+    {
+     "as_of": "2026-07-23",
+     "book_contributors": [
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "direct": true,
+       "dollars": 10000,
+       "fund": "DXCM"
+      },
+      {
+       "dollars": 10000,
+       "fund": "JEPI"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "ARKX"
+      }
+     ],
+     "book_direct_pct": 2.2,
+     "book_dollars": 10000,
+     "book_pct": 8.6,
+     "breadth_n": 60,
+     "breadth_pct": 45,
+     "etf": "XLV",
+     "hermes_delta": -0.6,
+     "hermes_pulse": 47.3,
+     "news_negatives": 0,
+     "rs20": 3.52,
+     "rs5": 0.25,
+     "rs60": 7.01,
+     "sector": "Healthcare",
+     "slope": -2.21,
+     "state": "WEAKENING",
+     "top_negative": null
+    },
+    {
+     "as_of": "2026-07-23",
+     "book_contributors": [
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "JEPI"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHG"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHG"
+      }
+     ],
+     "book_direct_pct": 0.0,
+     "book_dollars": 10000,
+     "book_pct": 3.6,
+     "breadth_n": 56,
+     "breadth_pct": 79,
+     "etf": "XLE",
+     "hermes_delta": 2.3,
+     "hermes_pulse": 50.7,
+     "news_negatives": 0,
+     "rs20": 10.26,
+     "rs5": 7.85,
+     "rs60": -2.28,
+     "sector": "Energy",
+     "slope": 5.77,
+     "state": "LEADING",
+     "top_negative": null
+    },
+    {
+     "as_of": "2026-07-23",
+     "book_contributors": [
+      {
+       "dollars": 10000,
+       "fund": "XLI"
+      },
+      {
+       "dollars": 10000,
+       "fund": "XAR"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "ARKX"
+      },
+      {
+       "dollars": 10000,
+       "fund": "JEPI"
+      }
+     ],
+     "book_direct_pct": 0.1,
+     "book_dollars": 10000,
+     "book_pct": 16.3,
+     "breadth_n": 58,
+     "breadth_pct": 34,
+     "etf": "XLI",
+     "hermes_delta": -1.7,
+     "hermes_pulse": 55.0,
+     "news_negatives": 0,
+     "rs20": -2.22,
+     "rs5": 2.12,
+     "rs60": 1.94,
+     "sector": "Industrials",
+     "slope": -1.1,
+     "state": "LAGGING",
+     "top_negative": null
+    },
+    {
+     "as_of": "2026-07-23",
+     "book_contributors": [
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "JEPI"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHG"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHG"
+      }
+     ],
+     "book_direct_pct": 0.0,
+     "book_dollars": 10000,
+     "book_pct": 3.5,
+     "breadth_n": 55,
+     "breadth_pct": 44,
+     "etf": "XLY",
+     "hermes_delta": 0.5,
+     "hermes_pulse": 49.9,
+     "news_negatives": 0,
+     "rs20": -4.96,
+     "rs5": -6.19,
+     "rs60": -11.3,
+     "sector": "Consumer Discretionary",
+     "slope": -5.19,
+     "state": "LAGGING",
+     "top_negative": null
+    },
+    {
+     "as_of": "2026-07-23",
+     "book_contributors": [
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "JEPI"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHG"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHG"
+      }
+     ],
+     "book_direct_pct": 0.0,
+     "book_dollars": 10000,
+     "book_pct": 5.4,
+     "breadth_n": 49,
+     "breadth_pct": 49,
+     "etf": "XLP",
+     "hermes_delta": -0.5,
+     "hermes_pulse": 46.0,
+     "news_negatives": 0,
+     "rs20": -0.17,
+     "rs5": -0.06,
+     "rs60": -2.7,
+     "sector": "Consumer Staples",
+     "slope": -0.81,
+     "state": "LAGGING",
+     "top_negative": null
+    },
+    {
+     "as_of": "2026-07-23",
+     "book_contributors": [
+      {
+       "dollars": 10000,
+       "fund": "JEPI"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      }
+     ],
+     "book_direct_pct": 0.0,
+     "book_dollars": 10000,
+     "book_pct": 1.5,
+     "breadth_n": 47,
+     "breadth_pct": 51,
+     "etf": "XLU",
+     "hermes_delta": -0.8,
+     "hermes_pulse": 51.1,
+     "news_negatives": 0,
+     "rs20": -1.59,
+     "rs5": 2.05,
+     "rs60": -5.57,
+     "sector": "Utilities",
+     "slope": -1.91,
+     "state": "LAGGING",
+     "top_negative": null
+    },
+    {
+     "as_of": "2026-07-23",
+     "book_contributors": [
+      {
+       "dollars": 10000,
+       "fund": "XLB"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "JEPI"
+      },
+      {
+       "dollars": 10000,
+       "fund": "ARKX"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      }
+     ],
+     "book_direct_pct": 0.0,
+     "book_dollars": 10000,
+     "book_pct": 5.4,
+     "breadth_n": 49,
+     "breadth_pct": 61,
+     "etf": "XLB",
+     "hermes_delta": -5.7,
+     "hermes_pulse": 53.6,
+     "news_negatives": 0,
+     "rs20": -4.21,
+     "rs5": 0.36,
+     "rs60": -5.93,
+     "sector": "Materials",
+     "slope": -1.27,
+     "state": "LAGGING",
+     "top_negative": null
+    },
+    {
+     "as_of": "2026-07-13",
+     "book_contributors": [
+      {
+       "dollars": 10000,
+       "fund": "JEPI"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHG"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHG"
+      }
+     ],
+     "book_direct_pct": 0.0,
+     "book_dollars": 10000,
+     "book_pct": 0.6,
+     "breadth_n": 47,
+     "breadth_pct": 45,
+     "etf": "XLRE",
+     "hermes_delta": 2.1,
+     "hermes_pulse": 50.6,
+     "news_negatives": 0,
+     "rs20": -2.4,
+     "rs5": 1.28,
+     "rs60": -4.03,
+     "sector": "Real Estate",
+     "slope": -2.5,
+     "state": "LAGGING",
+     "top_negative": null
+    },
+    {
+     "as_of": "2026-07-23",
+     "book_contributors": [
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "JEPI"
+      },
+      {
+       "dollars": 10000,
+       "fund": "ARKX"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHD"
+      },
+      {
+       "dollars": 10000,
+       "fund": "SCHG"
+      }
+     ],
+     "book_direct_pct": 0.0,
+     "book_dollars": 10000,
+     "book_pct": 2.8,
+     "breadth_n": 42,
+     "breadth_pct": 29,
+     "etf": "XLC",
+     "hermes_delta": 0.6,
+     "hermes_pulse": 51.6,
+     "news_negatives": 0,
+     "rs20": -3.31,
+     "rs5": -2.54,
+     "rs60": -15.22,
+     "sector": "Communications",
+     "slope": -1.13,
+     "state": "LAGGING",
+     "top_negative": null
+    }
+   ],
+   "transitions_today": [
+    {
+     "etf": "XLK",
+     "from": "LAGGING",
+     "line": "\u26a0 Technology: LAGGING\u2192IMPROVING (day 2 confirm) \u00b7 RS +2.4% (5d) \u00b7 breadth 19% above 20DMA \u00b7 your exposure 13.6% ($10,000)",
+     "sector": "Technology",
+     "severity": "warning",
+     "to": "IMPROVING"
+    },
+    {
+     "etf": "XLV",
+     "from": "LEADING",
+     "line": "\u26a0 Healthcare: LEADING\u2192WEAKENING (day 2 confirm) \u00b7 RS +0.2% (5d) \u00b7 breadth 45% above 20DMA \u00b7 your exposure 8.6% ($10,000)",
+     "sector": "Healthcare",
+     "severity": "warning",
+     "to": "WEAKENING"
+    },
+    {
+     "etf": "XLY",
+     "from": "IMPROVING",
+     "line": "\u26a0 Consumer Discretionary: IMPROVING\u2192LAGGING (day 2 confirm) \u00b7 RS -6.2% (5d) \u00b7 breadth 44% above 20DMA \u00b7 your exposure 3.5% ($10,000)",
+     "sector": "Consumer Discretionary",
+     "severity": "warning",
+     "to": "LAGGING"
+    }
+   ]
+  },
+  "net_exposure": {
+   "cash_dollars": 10000,
+   "cash_pct": 10000.0,
+   "equity_dollars": 10000,
+   "equity_pct": 10000.0
+  },
+  "ok": true,
+  "rotation_plan_counts": {
+   "plans": 6,
+   "rollback_open": 0,
+   "tranches_armed": 1,
+   "tranches_fired": 10
+  },
+  "would_have_fired": {
+   "confirmed": [
+    {
+     "as_of": "2026-06-23",
+     "etf": "XLV",
+     "from": "LAGGING",
+     "rs20": 2.98,
+     "sector": "Healthcare",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-06-24",
+     "etf": "XLK",
+     "from": "LEADING",
+     "rs20": 0.03,
+     "sector": "Technology",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-06-24",
+     "etf": "XLF",
+     "from": "WEAKENING",
+     "rs20": 5.79,
+     "sector": "Financials",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-06-24",
+     "etf": "XLE",
+     "from": "LAGGING",
+     "rs20": -4.5,
+     "sector": "Energy",
+     "to": "IMPROVING"
+    },
+    {
+     "as_of": "2026-06-24",
+     "etf": "XLP",
+     "from": "LAGGING",
+     "rs20": 2.48,
+     "sector": "Consumer Staples",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-06-24",
+     "etf": "XLU",
+     "from": "IMPROVING",
+     "rs20": 1.88,
+     "sector": "Utilities",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-06-24",
+     "etf": "XLB",
+     "from": "LEADING",
+     "rs20": 1.6,
+     "sector": "Materials",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-06-17",
+     "etf": "XLC",
+     "from": "IMPROVING",
+     "rs20": -8.13,
+     "sector": "Communications",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-06-25",
+     "etf": "XLV",
+     "from": "WEAKENING",
+     "rs20": 6.81,
+     "sector": "Healthcare",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-06-18",
+     "etf": "XLRE",
+     "from": "LEADING",
+     "rs20": -3.15,
+     "sector": "Real Estate",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-06-29",
+     "etf": "XLK",
+     "from": "WEAKENING",
+     "rs20": -2.98,
+     "sector": "Technology",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-06-29",
+     "etf": "XLB",
+     "from": "WEAKENING",
+     "rs20": 3.41,
+     "sector": "Materials",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-01",
+     "etf": "XLE",
+     "from": "IMPROVING",
+     "rs20": -7.28,
+     "sector": "Energy",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-01",
+     "etf": "XLY",
+     "from": "IMPROVING",
+     "rs20": 2.52,
+     "sector": "Consumer Discretionary",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-01",
+     "etf": "XLB",
+     "from": "LEADING",
+     "rs20": 1.36,
+     "sector": "Materials",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-06-24",
+     "etf": "XLRE",
+     "from": "LAGGING",
+     "rs20": 1.39,
+     "sector": "Real Estate",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-06-26",
+     "etf": "XLC",
+     "from": "LAGGING",
+     "rs20": -6.3,
+     "sector": "Communications",
+     "to": "IMPROVING"
+    },
+    {
+     "as_of": "2026-07-03",
+     "etf": "XLI",
+     "from": "LEADING",
+     "rs20": 6.11,
+     "sector": "Industrials",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-06-26",
+     "etf": "XLRE",
+     "from": "WEAKENING",
+     "rs20": 4.24,
+     "sector": "Real Estate",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-07",
+     "etf": "XLV",
+     "from": "LEADING",
+     "rs20": 6.61,
+     "sector": "Healthcare",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-07",
+     "etf": "XLP",
+     "from": "LEADING",
+     "rs20": 2.02,
+     "sector": "Consumer Staples",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-07",
+     "etf": "XLU",
+     "from": "LEADING",
+     "rs20": 4.72,
+     "sector": "Utilities",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-08",
+     "etf": "XLB",
+     "from": "WEAKENING",
+     "rs20": -0.51,
+     "sector": "Materials",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-02",
+     "etf": "XLC",
+     "from": "LAGGING",
+     "rs20": -0.42,
+     "sector": "Communications",
+     "to": "IMPROVING"
+    },
+    {
+     "as_of": "2026-07-09",
+     "etf": "XLF",
+     "from": "LEADING",
+     "rs20": 3.74,
+     "sector": "Financials",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-10",
+     "etf": "XLP",
+     "from": "WEAKENING",
+     "rs20": -4.8,
+     "sector": "Consumer Staples",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-13",
+     "etf": "XLY",
+     "from": "WEAKENING",
+     "rs20": -1.85,
+     "sector": "Consumer Discretionary",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-07",
+     "etf": "XLRE",
+     "from": "LEADING",
+     "rs20": 1.52,
+     "sector": "Real Estate",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-14",
+     "etf": "XLK",
+     "from": "IMPROVING",
+     "rs20": -3.54,
+     "sector": "Technology",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-14",
+     "etf": "XLE",
+     "from": "IMPROVING",
+     "rs20": 2.68,
+     "sector": "Energy",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-14",
+     "etf": "XLU",
+     "from": "LAGGING",
+     "rs20": 2.66,
+     "sector": "Utilities",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-09",
+     "etf": "XLC",
+     "from": "LEADING",
+     "rs20": -1.79,
+     "sector": "Communications",
+     "to": "IMPROVING"
+    },
+    {
+     "as_of": "2026-07-16",
+     "etf": "XLI",
+     "from": "WEAKENING",
+     "rs20": -1.68,
+     "sector": "Industrials",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-10",
+     "etf": "XLRE",
+     "from": "WEAKENING",
+     "rs20": -4.23,
+     "sector": "Real Estate",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-13",
+     "etf": "XLC",
+     "from": "IMPROVING",
+     "rs20": -3.64,
+     "sector": "Communications",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-17",
+     "etf": "XLF",
+     "from": "WEAKENING",
+     "rs20": 6.46,
+     "sector": "Financials",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-17",
+     "etf": "XLV",
+     "from": "WEAKENING",
+     "rs20": 8.97,
+     "sector": "Healthcare",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-17",
+     "etf": "XLY",
+     "from": "LAGGING",
+     "rs20": 0.58,
+     "sector": "Consumer Discretionary",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-17",
+     "etf": "XLP",
+     "from": "LAGGING",
+     "rs20": 3.93,
+     "sector": "Consumer Staples",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-17",
+     "etf": "XLU",
+     "from": "WEAKENING",
+     "rs20": 3.09,
+     "sector": "Utilities",
+     "to": "LEADING"
+    }
+   ],
+   "generated_at": "2026-07-18T04:11:55.486356+00:00",
+   "hypothetical": true,
+   "sessions": 30,
+   "transitions": [
+    {
+     "as_of": "2026-07-02",
+     "etf": "XLI",
+     "from": "LEADING",
+     "rs20": 5.62,
+     "sector": "Industrials",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-02",
+     "etf": "XLB",
+     "from": "WEAKENING",
+     "rs20": -1.09,
+     "sector": "Materials",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-06-25",
+     "etf": "XLRE",
+     "from": "WEAKENING",
+     "rs20": 2.15,
+     "sector": "Real Estate",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-03",
+     "etf": "XLB",
+     "from": "LAGGING",
+     "rs20": 3.44,
+     "sector": "Materials",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-06",
+     "etf": "XLK",
+     "from": "LAGGING",
+     "rs20": 2.62,
+     "sector": "Technology",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-06",
+     "etf": "XLV",
+     "from": "LEADING",
+     "rs20": 6.04,
+     "sector": "Healthcare",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-06",
+     "etf": "XLP",
+     "from": "LEADING",
+     "rs20": 1.43,
+     "sector": "Consumer Staples",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-06",
+     "etf": "XLU",
+     "from": "LEADING",
+     "rs20": 2.75,
+     "sector": "Utilities",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-06",
+     "etf": "XLB",
+     "from": "LEADING",
+     "rs20": 1.59,
+     "sector": "Materials",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-06-30",
+     "etf": "XLC",
+     "from": "IMPROVING",
+     "rs20": -6.18,
+     "sector": "Communications",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-07",
+     "etf": "XLK",
+     "from": "LEADING",
+     "rs20": -3.49,
+     "sector": "Technology",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-07",
+     "etf": "XLB",
+     "from": "WEAKENING",
+     "rs20": -0.17,
+     "sector": "Materials",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-01",
+     "etf": "XLC",
+     "from": "LAGGING",
+     "rs20": -1.8,
+     "sector": "Communications",
+     "to": "IMPROVING"
+    },
+    {
+     "as_of": "2026-07-08",
+     "etf": "XLK",
+     "from": "LAGGING",
+     "rs20": -1.38,
+     "sector": "Technology",
+     "to": "IMPROVING"
+    },
+    {
+     "as_of": "2026-07-08",
+     "etf": "XLF",
+     "from": "LEADING",
+     "rs20": 4.64,
+     "sector": "Financials",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-08",
+     "etf": "XLE",
+     "from": "LAGGING",
+     "rs20": -6.29,
+     "sector": "Energy",
+     "to": "IMPROVING"
+    },
+    {
+     "as_of": "2026-07-08",
+     "etf": "XLY",
+     "from": "LEADING",
+     "rs20": -1.16,
+     "sector": "Consumer Discretionary",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-09",
+     "etf": "XLK",
+     "from": "IMPROVING",
+     "rs20": 3.74,
+     "sector": "Technology",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-09",
+     "etf": "XLE",
+     "from": "IMPROVING",
+     "rs20": -8.87,
+     "sector": "Energy",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-09",
+     "etf": "XLY",
+     "from": "LAGGING",
+     "rs20": 1.3,
+     "sector": "Consumer Discretionary",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-09",
+     "etf": "XLP",
+     "from": "WEAKENING",
+     "rs20": -4.0,
+     "sector": "Consumer Staples",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-10",
+     "etf": "XLK",
+     "from": "LEADING",
+     "rs20": -2.1,
+     "sector": "Technology",
+     "to": "IMPROVING"
+    },
+    {
+     "as_of": "2026-07-10",
+     "etf": "XLE",
+     "from": "LAGGING",
+     "rs20": -6.47,
+     "sector": "Energy",
+     "to": "IMPROVING"
+    },
+    {
+     "as_of": "2026-07-10",
+     "etf": "XLY",
+     "from": "WEAKENING",
+     "rs20": -2.32,
+     "sector": "Consumer Discretionary",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-10",
+     "etf": "XLU",
+     "from": "WEAKENING",
+     "rs20": -0.67,
+     "sector": "Utilities",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-06",
+     "etf": "XLRE",
+     "from": "LEADING",
+     "rs20": 0.01,
+     "sector": "Real Estate",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-07",
+     "etf": "XLC",
+     "from": "IMPROVING",
+     "rs20": 0.51,
+     "sector": "Communications",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-13",
+     "etf": "XLK",
+     "from": "IMPROVING",
+     "rs20": -3.42,
+     "sector": "Technology",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-13",
+     "etf": "XLE",
+     "from": "IMPROVING",
+     "rs20": 2.8,
+     "sector": "Energy",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-13",
+     "etf": "XLU",
+     "from": "LAGGING",
+     "rs20": 1.29,
+     "sector": "Utilities",
+     "to": "WEAKENING"
+    },
+    {
+     "as_of": "2026-07-08",
+     "etf": "XLC",
+     "from": "LEADING",
+     "rs20": -1.6,
+     "sector": "Communications",
+     "to": "IMPROVING"
+    },
+    {
+     "as_of": "2026-07-15",
+     "etf": "XLI",
+     "from": "WEAKENING",
+     "rs20": -1.27,
+     "sector": "Industrials",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-09",
+     "etf": "XLRE",
+     "from": "WEAKENING",
+     "rs20": -2.57,
+     "sector": "Real Estate",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-10",
+     "etf": "XLC",
+     "from": "IMPROVING",
+     "rs20": -2.46,
+     "sector": "Communications",
+     "to": "LAGGING"
+    },
+    {
+     "as_of": "2026-07-16",
+     "etf": "XLF",
+     "from": "WEAKENING",
+     "rs20": 4.72,
+     "sector": "Financials",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-16",
+     "etf": "XLV",
+     "from": "WEAKENING",
+     "rs20": 7.11,
+     "sector": "Healthcare",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-16",
+     "etf": "XLY",
+     "from": "LAGGING",
+     "rs20": 1.81,
+     "sector": "Consumer Discretionary",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-16",
+     "etf": "XLP",
+     "from": "LAGGING",
+     "rs20": 2.06,
+     "sector": "Consumer Staples",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-16",
+     "etf": "XLU",
+     "from": "WEAKENING",
+     "rs20": 1.69,
+     "sector": "Utilities",
+     "to": "LEADING"
+    },
+    {
+     "as_of": "2026-07-17",
+     "etf": "XLB",
+     "from": "LAGGING",
+     "rs20": -1.89,
+     "sector": "Materials",
+     "to": "IMPROVING"
+    }
+   ]
+  }
+ },
+ "ok": true
+}
