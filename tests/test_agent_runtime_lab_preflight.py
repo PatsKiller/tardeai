@@ -47,6 +47,8 @@ def test_valid_inventoried_lab_target_passes() -> None:
         ({"disposable_ack": ""}, "acknowledgement is required"),
         ({"reader_role": "hermes_readonly"}, "reader_role must be trade_ai_shadow_ro"),
         ({"writer_role": "trade_ai"}, "writer_role must be agentic_runtime_lab_rw"),
+        ({"migration_role": "postgres"}, "migration_role must be an explicit lowercase migrator identity"),
+        ({"migration_role": "AGENTIC_LAB_MIGRATOR"}, "migration_role must be an explicit lowercase migrator identity"),
     ],
 )
 def test_invalid_or_production_like_targets_fail(overrides: dict[str, object], message: str) -> None:

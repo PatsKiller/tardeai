@@ -3,6 +3,7 @@ import ReEntryAnalystEvidence from '../components/reentry/ReEntryAnalystEvidence
 import ReEntryAnalystLookthroughBoard from '../components/reentry/ReEntryAnalystLookthroughBoard'
 import ReEntryClassificationOverlay from '../components/reentry/ReEntryClassificationOverlay'
 import ReEntryCurrentIntelligence from '../components/reentry/ReEntryCurrentIntelligence'
+import ReEntryEvidenceContractPanel from '../components/reentry/ReEntryEvidenceContractPanel'
 import ReEntryExitDetailLedger from '../components/reentry/ReEntryExitDetailLedger'
 import ReEntryExitWorkbench from '../components/reentry/ReEntryExitWorkbench'
 import ReEntryHelpGuide from '../components/reentry/ReEntryHelpGuide'
@@ -15,6 +16,7 @@ export default function ReEntryPageV4() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <ReEntryHelpGuide compact />
       <ReEntryClassificationOverlay />
+      <ReEntryEvidenceContractPanel />
       <ReEntryCurrentIntelligence />
       <ReEntryExitWorkbench />
       <ReEntryExitDetailLedger />
