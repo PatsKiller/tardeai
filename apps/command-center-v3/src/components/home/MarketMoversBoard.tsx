@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { BB, T, TYPE, numStyle } from '../../lib/watchTokens'
+import { isUsEquitySessionOpen } from '../../lib/homeTrust'
 
 // Home v2 WS-A: the Finviz signal board. Data: /api/v2/market-movers (throttled Elite export
 // capture ~12min RTH — the capture cadence IS the design; this is a decision desk, not a feed).
-// Signal chips FILTER the board; held names carry ●, watchlisted ○. Row click routes: held/
-// watch → the symbol's watch page; unknown → Finviz quote (external, noopener).
+// 2026-07-26: empty-state taxonomy — market_closed vs capture_failed vs truly empty.
 
 const FQDN = typeof window !== 'undefined' ? window.location.origin : ''
 
@@ -15,6 +15,13 @@ function fmtVol(v?: number | null): string {
   if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M'
   if (v >= 1e3) return (v / 1e3).toFixed(0) + 'K'
   return String(v)
+}
+
+function captureAgeHours(capturedAt?: string): number | null {
+  if (!capturedAt) return null
+  const t = Date.parse(capturedAt)
+  if (!Number.isFinite(t)) return null
+  return (Date.now() - t) / 3.6e6
 }
 
 export default function MarketMoversBoard({ pullbackSymbols }: { pullbackSymbols?: Set<string> }) {
@@ -32,6 +39,26 @@ export default function MarketMoversBoard({ pullbackSymbols }: { pullbackSymbols
   const capAt = (data.captured_at || '').slice(11, 16)
   const rows: any[] = active.flatMap(k => (sigs[k].rows || []).map((r: any) => ({ ...r, _sig: k, _label: sigs[k].label })))
   const shown = filter ? rows : rows.filter((_, i) => true).slice(0, 60)
+  const totalRows = keys.reduce((n, k) => n + (sigs[k]?.rows?.length ?? 0), 0)
+  const errCount = Object.keys(errors).length
+  const ageH = captureAgeHours(data.captured_at)
+  const sessionOpen = isUsEquitySessionOpen()
+
+  let emptyKind: 'ok' | 'market_closed' | 'capture_failed' | 'empty_rth' | 'stale_capture' = 'ok'
+  if (totalRows === 0) {
+    if (errCount >= 3) emptyKind = 'capture_failed'
+    else if (!sessionOpen) emptyKind = 'market_closed'
+    else if (ageH != null && ageH > 6) emptyKind = 'stale_capture'
+    else emptyKind = 'empty_rth'
+  }
+
+  const emptyCopy: Record<string, string> = {
+    market_closed: 'Market closed — Finviz Elite captures run ~every 12 min during RTH only. Last capture shown above; chips stay at 0 until the next session.',
+    capture_failed: 'Capture failed for multiple signals (cookie / throttle / export). Check FINVIZ_COOKIE and finviz_market_movers cron — never synthesize rows.',
+    empty_rth: 'No rows in this capture during RTH — unusual; verify Elite export path.',
+    stale_capture: `Last capture is ${ageH != null ? `${Math.round(ageH)}h` : '?'} old with zero rows — ingestion may be stalled.`,
+    ok: '',
+  }
 
   const sigColor: Record<string, string> = {
     top_gainers: BB.green, top_losers: BB.red, new_high: BB.green, new_low: BB.red,
@@ -43,7 +70,9 @@ export default function MarketMoversBoard({ pullbackSymbols }: { pullbackSymbols
     <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderLeft: `3px solid ${T.link}`, borderRadius: 2, padding: '10px 12px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 6 }}>
         <span style={{ fontSize: TYPE.xs, fontWeight: 800, letterSpacing: '.06em', color: BB.text2 }}>MARKET MOVERS</span>
-        <span style={{ fontSize: 8.5, fontWeight: 700, color: BB.text3, textTransform: 'uppercase' }}>· finviz elite capture {capAt}Z · ~12min RTH</span>
+        <span style={{ fontSize: 8.5, fontWeight: 700, color: BB.text3, textTransform: 'uppercase' }}>
+          · finviz elite capture {capAt || '—'}Z · ~12min RTH{!sessionOpen ? ' · SESSION CLOSED' : ''}
+        </span>
         <span style={{ flex: 1 }} />
         {filter && <button onClick={() => setFilter('')} style={{ fontSize: TYPE.xs, color: BB.text3, background: 'transparent', border: 'none', cursor: 'pointer' }}>clear ✕</button>}
       </div>
@@ -88,7 +117,16 @@ export default function MarketMoversBoard({ pullbackSymbols }: { pullbackSymbols
             </a>
           )
         })}
-        {shown.length === 0 && <div style={{ fontSize: TYPE.sm, color: BB.text3, padding: 8 }}>no rows in this capture</div>}
+        {shown.length === 0 && (
+          <div style={{ fontSize: TYPE.sm, color: emptyKind === 'capture_failed' ? BB.red : BB.text3, padding: 8, lineHeight: 1.45 }}>
+            <div style={{ fontWeight: 800, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.04em', fontSize: 10 }}>
+              {emptyKind === 'market_closed' ? 'SESSION CLOSED' :
+               emptyKind === 'capture_failed' ? 'CAPTURE FAILED' :
+               emptyKind === 'stale_capture' ? 'STALE CAPTURE' : 'NO ROWS'}
+            </div>
+            {emptyCopy[emptyKind] || 'no rows in this capture'}
+          </div>
+        )}
       </div>
     </div>
   )

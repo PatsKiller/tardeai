@@ -81,6 +81,10 @@ const ALERT_RULES: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/kill_switch_db_unavailable/i, () => 'Trading halted — database was unreachable (auto-clears when healthy)'],
   [/cannot inspect live unlock state/i, () => 'Live-trading state unreadable — failing closed (no orders possible)'],
   [/(\d+) live-adjacent dirty files/i, m => `${m[1]} uncommitted change${m[1] === '1' ? '' : 's'} in live-trading code`],
+  [/Release manifest status FAIL/i, () => 'Release manifest FAIL — live-adjacent dirty or validator failed'],
+  [/uncommitted change in live-trading code/i, () => 'Uncommitted change in live-trading code — commit or revert before live path'],
+  [/executed trade\(s\) in 7d not linked to a proposal/i, () => 'Executed trade in last 7d not linked to a proposal — every ATM trade must appear in Proposals first'],
+  [/(\d+) executed trade/i, m => `${m[1]} executed trade(s) need proposal linkage`],
 ]
 
 export function plainAlert(raw?: string | null): string | null {
