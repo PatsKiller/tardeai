@@ -336,6 +336,10 @@ class _PersistenceBase:
                 for key, value in immutable.items():
                     if existing.get(key) != value:
                         raise IdempotencyConflictError(f"run_id {envelope.run_id} exists with different {key}")
+                # Envelope creation timestamp is part of the immutable identity: reusing a run_id
+                # with a changed created_at is a conflict, not an idempotent replay.
+                if envelope.created_at is not None and existing.get("created_at") != envelope.created_at:
+                    raise IdempotencyConflictError(f"run_id {envelope.run_id} exists with different created_at")
                 return self._state(uow, existing)
             now = self._clock()
             control: dict[str, Any] = {
@@ -804,10 +808,22 @@ class _PostgresUnit(_UnitOfWork):
             "head_hash": checkpoint.get("head_hash", GENESIS_HASH), "checkpoint_label": checkpoint.get("checkpoint_label"),
             "budget": dict(budget), "cancellation_reason": data["cancellation_reason"],
             "started_at": _iso(data["started_at"]), "updated_at": _iso(data["updated_at"]), "completed_at": _iso(data["completed_at"]),
+            # exact envelope timestamp (authoritative deadline origin), cumulative refs and failure code
+            # survive round-trips through the checkpoint JSON projection with deterministic safe defaults.
+            "created_at": checkpoint.get("created_at"),
+            "retrieval_refs": [str(ref) for ref in (checkpoint.get("retrieval_refs") or [])],
+            "failure_code": checkpoint.get("failure_code"),
         }
 
     def _checkpoint(self, control: Mapping[str, Any]) -> dict[str, Any]:
-        return {"head_hash": control.get("head_hash", GENESIS_HASH), "checkpoint_label": control.get("checkpoint_label"), "objective_hash": control.get("objective_hash")}
+        return {
+            "head_hash": control.get("head_hash", GENESIS_HASH),
+            "checkpoint_label": control.get("checkpoint_label"),
+            "objective_hash": control.get("objective_hash"),
+            "created_at": control.get("created_at"),
+            "retrieval_refs": [str(ref) for ref in (control.get("retrieval_refs") or [])],
+            "failure_code": control.get("failure_code"),
+        }
 
     def insert_control(self, row):
         cur = self._cursor(

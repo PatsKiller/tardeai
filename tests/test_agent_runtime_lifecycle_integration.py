@@ -328,3 +328,27 @@ def test_concurrent_preparation_cannot_exceed_budget(tmp_path):
         t.join()
     assert results.count("ALLOW") == 1 and results.count("DENY") == 5
     assert p.reconstruct("r_budget").tool_calls == 1
+
+
+# ------------------- run-control projection at runtime level --------------- #
+def test_fresh_runtime_creates_artifact_with_persisted_retrieval_refs(tmp_path):
+    p = InMemoryPersistence(clock=_pclock())
+    rt = _runtime(tmp_path / "a", persistence=p)
+    env = _start(rt)
+    rt.retrieve(env.run_id, "levels")
+    rt.reason(env.run_id, prompt_version="p", provider_family="local", model="m", request_payload={"q": 1}, cost_usd=0.2)
+    # a fresh runtime reconstructs the run from persistence and must carry its retrieval refs
+    rt2 = _runtime(tmp_path / "b", persistence=p)
+    art = rt2.create_artifact(env.run_id, artifact_type="analysis", payload={"finding": "x"},
+                              prompt_version="p", provider_family="local", model="m")
+    assert art.retrieval_refs == ("kb:1",)
+
+
+def test_status_and_reconstruction_agree_on_created_at(tmp_path):
+    p = InMemoryPersistence(clock=_pclock())
+    rt = _runtime(tmp_path / "a", persistence=p)
+    env = _start(rt)
+    rt.retrieve(env.run_id, "levels")
+    rt2 = _runtime(tmp_path / "b", persistence=p)  # fresh instance, reconstructs from persistence
+    assert rt2.status(env.run_id)["envelope"]["created_at"] == env.created_at
+    assert p.reconstruct(env.run_id).created_at == env.created_at

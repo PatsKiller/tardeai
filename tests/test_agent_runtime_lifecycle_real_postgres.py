@@ -64,6 +64,13 @@ def test_real_end_to_end_runtime_lifecycle(tmp_path):
     env = rt.start(job_type="research", objective="assess", input_payload={"a": next(_c)}, validation_payload={"b": 2})
     rt.retrieve(env.run_id, "levels")
 
+    # The run-control projection round-trips through PostgreSQL: the exact envelope creation
+    # timestamp and cumulative retrieval refs must reconstruct from the durable checkpoint.
+    st = rt.status(env.run_id)
+    assert st["envelope"]["created_at"] == env.created_at
+    assert "kb:1" in st["retrieval_refs"]
+    assert st["retrieval_count"] == 1
+
     # The executor reads the durable journal mid-execution: TOOL_PROPOSED -> TOOL_DECISION ->
     # TOOL_STARTED must already be committed to PostgreSQL before any external side effect runs,
     # and no terminal TOOL_COMPLETED may exist yet.
