@@ -183,32 +183,37 @@ class MvlRuntime:
         request = ToolRequest(run_id=run_id, tool_name=tool_name, arguments=arguments, environment=self.journal.environment)
         evaluation = ToolPolicy.evaluate(self.definition, request)
         next_count = int(state.get("tool_calls") or 0) + 1
-        if evaluation.decision is ToolDecision.ALLOW and next_count > self.definition.budget.max_tool_calls:
-            evaluation = type(evaluation)(ToolDecision.DENY, "tool-call budget exhausted")
         if self._persist:
+            # Durable prepare (PROPOSED/DECISION/STARTED + atomic budget reservation under
+            # the run lock) commits BEFORE the executor runs, so an external side effect can
+            # never occur without durable started evidence. prepare is authoritative for the
+            # budget decision (it may downgrade ALLOW->DENY when the budget is exhausted).
             started = self._now().isoformat()
-            if evaluation.decision is ToolDecision.DENY:
-                self.persistence.record_tool_lifecycle(
-                    run_id, agent_id=self.definition.agent_id, tool_name=tool_name,
-                    decision="DENY", decision_reason=evaluation.reason, arguments_hash=request.arguments_hash,
-                    result_hash=None, started_at=started, completed_at=self._now().isoformat(), terminal_state="cancelled")
-                raise PermissionError(evaluation.reason)
+            prep = self.persistence.prepare_tool_call(
+                run_id, agent_id=self.definition.agent_id, tool_name=tool_name,
+                decision=evaluation.decision.value, decision_reason=evaluation.reason,
+                arguments_hash=request.arguments_hash, started_at=started)
+            if prep.decision == "DENY":
+                raise PermissionError(prep.reason)
             assert_no_secret_material(arguments)
             try:
                 result = dict(executor(arguments))
                 assert_no_secret_material(result)
-                terminal, result_hash = "completed", canonical_hash(result)
             except Exception:
-                self.persistence.record_tool_lifecycle(
-                    run_id, agent_id=self.definition.agent_id, tool_name=tool_name,
-                    decision="ALLOW", decision_reason=evaluation.reason, arguments_hash=request.arguments_hash,
+                # Terminal FAILED is attempted; the executor exception propagates. If this
+                # durable write itself fails, the started/in-flight evidence remains.
+                self.persistence.finish_tool_call(
+                    run_id, tool_call_id=prep.tool_call_id, agent_id=self.definition.agent_id, tool_name=tool_name,
+                    decision_reason=prep.reason, arguments_hash=request.arguments_hash,
                     result_hash=None, started_at=started, completed_at=self._now().isoformat(), terminal_state="failed")
                 raise
-            self.persistence.record_tool_lifecycle(
-                run_id, agent_id=self.definition.agent_id, tool_name=tool_name,
-                decision="ALLOW", decision_reason=evaluation.reason, arguments_hash=request.arguments_hash,
-                result_hash=result_hash, started_at=started, completed_at=self._now().isoformat(), terminal_state="completed")
+            self.persistence.finish_tool_call(
+                run_id, tool_call_id=prep.tool_call_id, agent_id=self.definition.agent_id, tool_name=tool_name,
+                decision_reason=prep.reason, arguments_hash=request.arguments_hash,
+                result_hash=canonical_hash(result), started_at=started, completed_at=self._now().isoformat(), terminal_state="completed")
             return result
+        if evaluation.decision is ToolDecision.ALLOW and next_count > self.definition.budget.max_tool_calls:
+            evaluation = type(evaluation)(ToolDecision.DENY, "tool-call budget exhausted")
         self.journal.append(run_id, "TOOL_EVALUATED", {
             "tool_name": tool_name,
             "arguments_hash": request.arguments_hash,

@@ -127,6 +127,16 @@ class RunState:
     failure_code: str | None = None
 
 
+@dataclass(frozen=True)
+class ToolPreparation:
+    """Result of the pre-execution tool boundary: the durable identity + effective decision."""
+
+    tool_call_id: str
+    decision: str
+    reason: str
+    started_at: str
+
+
 def event_body(run_id: str, sequence: int, event_type: str, payload: Mapping[str, Any], created_at: str, previous_hash: str) -> dict[str, Any]:
     return {
         "run_id": run_id, "sequence": sequence, "event_type": event_type,
@@ -157,6 +167,8 @@ class RunPersistence(Protocol):
     def record_retrieval_completed(self, run_id: str, *, refs: Sequence[str], retrieval_hash: str) -> RunState: ...
     def record_model_started(self, run_id: str, *, prompt_version: str, provider_family: str, model: str, request_hash: str, cost_usd: float = 0.0) -> RunState: ...
     def record_model_completed(self, run_id: str, *, output_hash: str) -> RunState: ...
+    def prepare_tool_call(self, run_id: str, *, agent_id: str, tool_name: str, decision: str, decision_reason: str, arguments_hash: str, started_at: str) -> "ToolPreparation": ...
+    def finish_tool_call(self, run_id: str, *, tool_call_id: str, agent_id: str, tool_name: str, decision_reason: str, arguments_hash: str, result_hash: str | None, started_at: str, completed_at: str | None, terminal_state: str) -> str: ...
     def record_tool_lifecycle(self, run_id: str, *, agent_id: str, tool_name: str, decision: str, decision_reason: str, arguments_hash: str, result_hash: str | None, started_at: str, completed_at: str | None, terminal_state: str) -> str: ...
     def record_artifact(self, artifact: Artifact, *, retrieval_required: bool = True) -> str: ...
     def record_review(self, review: Review) -> str: ...
@@ -363,35 +375,80 @@ class _PersistenceBase:
             uow.save_control(artifact.run_id, control)
             return artifact.artifact_id
 
-    # ---- durable tool lifecycle ------------------------------------------
-    def record_tool_lifecycle(self, run_id: str, *, agent_id: str, tool_name: str, decision: str, decision_reason: str, arguments_hash: str, result_hash: str | None, started_at: str, completed_at: str | None, terminal_state: str) -> str:
+    # ---- durable tool lifecycle: prepare (before executor) + finish (after) ----
+    def _prepared_tool_decision(self, events: list[dict[str, Any]], tool_call_id: str) -> str | None:
+        for row in events:
+            body = row["payload"]
+            inner = body.get("payload") or {}
+            if inner.get("tool_call_id") == tool_call_id:
+                if body["event_type"] == "TOOL_STARTED":
+                    return "ALLOW"
+                if body["event_type"] == "TOOL_CANCELLED":
+                    return "DENY"
+        return None
+
+    def prepare_tool_call(self, run_id: str, *, agent_id: str, tool_name: str, decision: str, decision_reason: str, arguments_hash: str, started_at: str) -> ToolPreparation:
+        """Durably record TOOL_PROPOSED/DECISION (+ TOOL_STARTED for ALLOW, or the denied
+        terminal for DENY) and reserve the tool-call budget under the run lock — all BEFORE
+        the executor runs. Idempotent by the derived tool_call_id. Inserts no terminal row."""
         if decision not in {"ALLOW", "DENY"}:
             raise PersistenceError("tool decision must be ALLOW or DENY")
-        if terminal_state not in {"completed", "failed", "cancelled", "timeout"}:
-            raise PersistenceError("terminal_state must be completed/failed/cancelled/timeout")
-        if not _HEX64.match(arguments_hash) or (result_hash is not None and not _HEX64.match(result_hash)):
-            raise PersistenceError("tool-call hashes must be sha256")
+        if not _HEX64.match(arguments_hash):
+            raise PersistenceError("tool arguments_hash must be sha256")
         tool_call_id = derive_id("tool_call", run_id, agent_id, tool_name, arguments_hash, started_at)
         with self._work() as uow:
             control = self._require_open_exec(uow, run_id)
+            prepared = self._prepared_tool_decision(self._load_events(uow, run_id), tool_call_id)
+            if prepared is not None:  # idempotent: this exact call was already prepared
+                return ToolPreparation(tool_call_id=tool_call_id, decision=prepared, reason=decision_reason, started_at=started_at)
+            effective, reason = decision, decision_reason
+            if decision == "ALLOW":
+                max_tool = int((control.get("budget") or {}).get("max_tool_calls", 0))
+                if int(control.get("tool_calls", 0)) + 1 > max_tool:
+                    effective, reason = "DENY", "tool-call budget exhausted"
+            self._append_event(uow, control, "TOOL_PROPOSED", {"tool_call_id": tool_call_id, "tool_name": tool_name}, checkpoint=f"tool_proposed:{tool_name}")
+            self._append_event(uow, control, "TOOL_DECISION", {"tool_call_id": tool_call_id, "decision": effective, "reason": reason})
+            if effective == "ALLOW":
+                self._append_event(uow, control, "TOOL_STARTED", {"tool_call_id": tool_call_id, "started_at": started_at}, checkpoint=f"tool_started:{tool_name}")
+                self._bump(control, "tool_calls")  # reserve the budget under the run lock
+            else:
+                self._append_event(uow, control, "TOOL_CANCELLED", {"tool_call_id": tool_call_id, "reason": reason}, checkpoint=f"tool_denied:{tool_name}")
+            uow.save_control(run_id, control)
+            return ToolPreparation(tool_call_id=tool_call_id, decision=effective, reason=reason, started_at=started_at)
+
+    def finish_tool_call(self, run_id: str, *, tool_call_id: str, agent_id: str, tool_name: str, decision_reason: str, arguments_hash: str, result_hash: str | None, started_at: str, completed_at: str | None, terminal_state: str) -> str:
+        """Record only the ACTUAL terminal result of a PREPARED tool call: the append-only
+        agent_tool_calls row + terminal journal event, transactionally. Idempotent for
+        identical terminal evidence; rejects conflicting evidence; refuses to finish a call
+        that has no durable prepared (TOOL_STARTED) lifecycle."""
+        if terminal_state not in {"completed", "failed", "cancelled", "timeout"}:
+            raise PersistenceError("terminal_state must be completed/failed/cancelled/timeout")
+        if result_hash is not None and not _HEX64.match(result_hash):
+            raise PersistenceError("tool result_hash must be sha256")
+        with self._work() as uow:
+            control = self._require_run(uow, run_id, lock=True)
             existing = uow.get_row("agent_tool_calls", {"tool_call_id": tool_call_id})
-            if existing is not None:
-                if existing.get("decision") != decision or existing.get("result_hash") != result_hash or existing.get("completed_at") != completed_at:
+            if existing is not None:  # idempotent for identical evidence; conflict otherwise
+                if existing.get("result_hash") != result_hash or existing.get("completed_at") != completed_at:
                     raise IdempotencyConflictError(f"tool_call {tool_call_id} exists with different terminal evidence")
                 return tool_call_id
-            self._append_event(uow, control, "TOOL_PROPOSED", {"tool_call_id": tool_call_id, "tool_name": tool_name}, checkpoint=f"tool_proposed:{tool_name}")
-            self._append_event(uow, control, "TOOL_DECISION", {"tool_call_id": tool_call_id, "decision": decision, "reason": decision_reason})
-            if decision == "ALLOW":
-                self._append_event(uow, control, "TOOL_STARTED", {"tool_call_id": tool_call_id, "started_at": started_at})
+            if self._prepared_tool_decision(self._load_events(uow, run_id), tool_call_id) != "ALLOW":
+                raise PersistenceError(f"tool_call {tool_call_id} was not durably prepared (no TOOL_STARTED)")
             uow.insert_row(
                 "agent_tool_calls", {"tool_call_id": tool_call_id},
-                {"tool_call_id": tool_call_id, "run_id": run_id, "agent_id": agent_id, "tool_name": tool_name, "decision": decision, "decision_reason": decision_reason, "arguments_hash": arguments_hash, "result_hash": result_hash, "started_at": started_at, "completed_at": completed_at},
+                {"tool_call_id": tool_call_id, "run_id": run_id, "agent_id": agent_id, "tool_name": tool_name, "decision": "ALLOW", "decision_reason": decision_reason, "arguments_hash": arguments_hash, "result_hash": result_hash, "started_at": started_at, "completed_at": completed_at},
             )
             self._append_event(uow, control, f"TOOL_{terminal_state.upper()}", {"tool_call_id": tool_call_id, "completed_at": completed_at, "result_hash": result_hash}, checkpoint=f"tool_{terminal_state}:{tool_name}")
-            if decision == "ALLOW":
-                self._bump(control, "tool_calls")
             uow.save_control(run_id, control)
             return tool_call_id
+
+    def record_tool_lifecycle(self, run_id: str, *, agent_id: str, tool_name: str, decision: str, decision_reason: str, arguments_hash: str, result_hash: str | None, started_at: str, completed_at: str | None, terminal_state: str) -> str:
+        """Compatibility wrapper: prepare, then (for ALLOW) finish. Prefer the explicit
+        prepare_tool_call / finish_tool_call split so the executor runs between them."""
+        prep = self.prepare_tool_call(run_id, agent_id=agent_id, tool_name=tool_name, decision=decision, decision_reason=decision_reason, arguments_hash=arguments_hash, started_at=started_at)
+        if prep.decision == "DENY":
+            return prep.tool_call_id
+        return self.finish_tool_call(run_id, tool_call_id=prep.tool_call_id, agent_id=agent_id, tool_name=tool_name, decision_reason=decision_reason, arguments_hash=arguments_hash, result_hash=result_hash, started_at=started_at, completed_at=completed_at, terminal_state=terminal_state)
 
     # ---- review / score bound to the PERSISTED artifact -------------------
     def _persisted_artifact(self, uow: _UnitOfWork, artifact_id: str) -> dict[str, Any]:

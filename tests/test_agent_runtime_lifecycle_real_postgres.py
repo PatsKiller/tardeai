@@ -63,7 +63,18 @@ def test_real_end_to_end_runtime_lifecycle(tmp_path):
     rt = _runtime(tmp_path)
     env = rt.start(job_type="research", objective="assess", input_payload={"a": next(_c)}, validation_payload={"b": 2})
     rt.retrieve(env.run_id, "levels")
-    rt.invoke_tool(env.run_id, "kb.search", {"q": 1}, lambda a: {"r": 1})
+
+    # The executor reads the durable journal mid-execution: TOOL_PROPOSED -> TOOL_DECISION ->
+    # TOOL_STARTED must already be committed to PostgreSQL before any external side effect runs,
+    # and no terminal TOOL_COMPLETED may exist yet.
+    def executor(args):
+        live = [e.event_type for e in rt.persistence.journal(env.run_id)]
+        tail = live[live.index("TOOL_PROPOSED"):]
+        assert tail[:3] == ["TOOL_PROPOSED", "TOOL_DECISION", "TOOL_STARTED"]
+        assert "TOOL_COMPLETED" not in live
+        return {"r": 1}
+
+    rt.invoke_tool(env.run_id, "kb.search", {"q": 1}, executor)
     rt.reason(env.run_id, prompt_version="p", provider_family="local", model="m", request_payload={"q": 1}, cost_usd=0.2)
     art = rt.create_artifact(env.run_id, artifact_type="analysis", payload={"finding": "x"},
                              prompt_version="p", provider_family="local", model="m")
