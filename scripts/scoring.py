@@ -714,6 +714,18 @@ def score_all(
     disqualified_count = 0
     unverified_count = 0
 
+    # Bind at function scope BEFORE the loop: this name is also imported inside the loop body,
+    # which makes it a function-local everywhere. With an empty `tickers` (e.g. no scanner data
+    # when the finviz screener is down) the loop runs zero times, the in-loop import never fires,
+    # and the post-loop call raises UnboundLocalError. Import here (with the same lib path setup
+    # the loop uses) so the name is always defined.
+    import sys as _sys_ce
+    from pathlib import Path as _Path_ce
+    _ce_lib = _Path_ce(__file__).resolve().parent / "lib"
+    if str(_ce_lib) not in _sys_ce.path:
+        _sys_ce.path.insert(0, str(_ce_lib))
+    from catalyst_exception import attach_catalyst_exception_tags
+
     for row in tickers:
         sym = str(row.get("symbol", "")).upper()
         enrichment = enrichments.get(sym, {

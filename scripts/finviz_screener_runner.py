@@ -57,7 +57,13 @@ def _get_conn():
     pw = ""
     for line in (PROJECT_ROOT / ".env").read_text().splitlines():
         if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    # TCP keepalives keep the socket alive during the slow per-screener Finviz fetches; without
+    # them the server/NAT/firewall idle-drops the SSL connection and the final commit fails with
+    # "SSL connection has been closed unexpectedly".
+    return psycopg2.connect(
+        host="localhost", dbname="trade_ai", user="trade_ai", password=pw,
+        keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5,
+    )
 
 
 def _get_finviz_cookie():
@@ -143,6 +149,35 @@ def _ensure_txn_usable(conn) -> bool:
     return False
 
 
+def _reconnect(old_conn):
+    """Close a dead connection and open a fresh one, returning (conn, cur)."""
+    import psycopg2.extras
+    try:
+        old_conn.close()
+    except Exception:
+        pass
+    new_conn = _get_conn()
+    return new_conn, new_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+
+def _ensure_live(conn, cur):
+    """Reconnect if the server dropped the socket (idle SSL drop or server restart).
+
+    Cheap liveness probe between screeners; returns a usable (conn, cur). Safe because the
+    screener/known sets are already materialized in memory, so a mid-run reconnect loses nothing.
+    """
+    try:
+        if getattr(conn, "closed", 1) == 0:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            conn.rollback()  # end the probe txn so the next screener's writes start clean
+            return conn, cur
+    except Exception:
+        pass
+    print("  [screener] DB connection lost — reconnecting")
+    return _reconnect(conn)
+
+
 def _update_screener_membership(cur, screener_id, present, run_id):
     """Keep screener_symbol_membership fresh — the runner previously only wrote new classifications, so
     membership went stale. Pattern per run: reset present_this_run → mark present symbols (seen++/miss=0)
@@ -202,6 +237,14 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
     cur.execute("SELECT symbol FROM ticker_strategy_classifications WHERE active=TRUE")
     known = set(r["symbol"] for r in cur.fetchall())
 
+    # End the read transaction NOW. The per-screener fetches below take minutes (Finviz web calls +
+    # rate-limit cooldowns); holding this transaction open trips the server's
+    # idle_in_transaction_session_timeout (2min) and drops the SSL connection before we ever commit
+    # — which is exactly how the runner was failing. Each screener's writes below open their own
+    # short transaction and commit immediately, so the connection is never idle-in-transaction
+    # across a fetch, even when a screener returns no rows.
+    conn.commit()
+
     results = []
     total_new = 0
     membership_failures = 0
@@ -248,6 +291,7 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
         # Live DB writes: isolate each screener so lock timeout / partial failure cannot abort
         # the whole multi-screener transaction (root cause of pipeline_critical 2026-07-16).
         if not dry_run and (tickers or new_tickers):
+            conn, cur = _ensure_live(conn, cur)
             if _ensure_txn_usable(conn):
                 print(f"  [screener] recovered aborted transaction before {sid}")
             sp = _sp_name("sp_scr", sid)
@@ -319,6 +363,16 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
                 print(f"  [screener] DB write failed for {sid}: {str(_dbe)[:120]}")
                 screener_result["db_error"] = str(_dbe)[:160]
                 screener_result["db_ok"] = False
+
+            # Commit each screener's work immediately: never hold one transaction open across all
+            # the slow Finviz fetches (which is what let the connection idle-drop before the final
+            # commit), and never lose earlier screeners if a later one drops the socket.
+            try:
+                if not _ensure_txn_usable(conn):
+                    conn.commit()
+            except Exception as _pce:
+                print(f"  [screener] per-screener commit failed on {sid}: {str(_pce)[:120]}; reconnecting")
+                conn, cur = _reconnect(conn)
 
         time.sleep(1)  # Rate limit between screeners
 
