@@ -122,16 +122,51 @@ def _no_secret(out):
 
 
 # --------------------------------------------------------------------------- #
-def test_wrapper_passes_through_lab_evolve_and_manifest_success(tmp_path):
+def test_wrapper_reaches_auth_preflight_and_cleans_up(tmp_path):
+    # A valid manifest carries the wrapper through the LAB-evolve boundary and manifest
+    # validation to the fail-closed auth preflight. With no real LAB the preflight fails,
+    # and cleanup must still run. (Full PASS requires a real LAB and is exercised by the
+    # operator host proof, not hermetically.)
     evidence, secrets = _dirs(tmp_path)
     rb, wr, rd = _make_run_files(evidence, secrets)
     proc, out, marker = _run(tmp_path, evidence, secrets, f"{rb}\n{wr}\n{rd}\n")
     assert "readonly variable" not in out
     assert marker.read_text() == "DISPOSABLE_LAB_NO_PRODUCTION_DATA"
     assert "source_commit|" in out and "production_port_5432_contact|NONE" in out
-    assert "final_status|PASS_AGENT_RUNTIME_PERSISTENCE_PROOF" in out  # full hermetic success
-    assert not wr.exists() and not rd.exists()  # success still cleans credentials
+    assert "writer authentication preflight failed" in out
+    assert not wr.exists() and not rd.exists()  # preflight failure still cleans credentials
     _no_secret(out)
+
+
+def test_libpq_environment_is_sanitized_for_the_child(tmp_path):
+    # Poison the wrapper's environment with inherited libpq configuration and prove the
+    # clean launcher strips it from the child while preserving the validated PGPASSFILE.
+    evidence, secrets = _dirs(tmp_path)
+    rb, wr, rd = _make_run_files(evidence, secrets)
+    repo = tmp_path / "repo"
+    marker = tmp_path / "ack.txt"
+    sha = _init_stub_repo(repo, marker)
+    report = tmp_path / "env_report.txt"
+    env = {
+        "PATH": "/usr/bin:/bin", "REPO": str(repo), "AGENTIC_SOURCE_REF": sha,
+        "AGENTIC_EVIDENCE_DIR": str(evidence), "AGENTIC_SECRETS_DIR": str(secrets),
+        "AGENTIC_LAB_SOCK": str(tmp_path / "nosock"),
+        "STUB_MANIFEST": f"{rb}\n{wr}\n{rd}\n",
+        "AGENTIC_PREFLIGHT_ENV_REPORT": str(report),
+        # poisoned inherited libpq configuration that MUST NOT reach the child
+        "PGPASSWORD": "POISONPWDMUSTNOTLEAK",
+        "PGSERVICE": "poison_service",
+        "PGSERVICEFILE": "/tmp/poison.service",
+        "PGHOST": "poison.example.invalid",
+    }
+    proc = subprocess.run(["bash", str(WRAPPER)], env=env, capture_output=True, text=True, timeout=180)
+    out = proc.stdout + proc.stderr
+    seen = dict(line.split("=", 1) for line in report.read_text().splitlines())
+    for poisoned in ("PGPASSWORD", "PGSERVICE", "PGSERVICEFILE", "PGHOST"):
+        assert seen[poisoned] == "absent", seen        # stripped by the clean launcher
+    assert seen["PGPASSFILE"] == "present", seen         # validated credential preserved
+    assert "POISONPWDMUSTNOTLEAK" not in out             # no secret value disclosed
+    assert not wr.exists() and not rd.exists()           # preflight failure triggered cleanup
 
 
 def test_cleanup_on_evolve_failure_after_manifest(tmp_path):

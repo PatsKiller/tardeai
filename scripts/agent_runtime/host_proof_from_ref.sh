@@ -159,22 +159,74 @@ unset creds
 [[ "$evolve_rc" -eq 0 ]] || { run_cleanup; fail "LAB evolve did not reach PASS_DB_PROOF"; }
 [[ "$validate_rc" -eq 0 ]] || { run_cleanup; fail "LAB credential manifest failed validation"; }
 
-# 5) the driver must be present in host-proof mode — a missing driver is a hard failure
+# 5) one reusable clean-libpq launcher for BOTH the auth preflight and pytest. It strips
+#    every inherited libpq (PG*) variable — PGPASSWORD/PGSERVICE/PGSERVICEFILE/PGHOST/
+#    PGPORT/PGDATABASE/PGUSER/PGOPTIONS/PGSSL*/... — so an inherited PGPASSWORD can never
+#    override the reviewed credential, then sets ONLY the reviewed connection inputs plus
+#    the validated private PGPASSFILE.
+clean_libpq_run() {
+  (
+    for _v in $(compgen -v PG 2>/dev/null); do unset "$_v"; done
+    export PGPASSFILE="$CLEANUP_WRITER"
+    export AGENTIC_REAL_LAB=1 AGENTIC_LAB_HOST=127.0.0.1 AGENTIC_LAB_DB="$LAB_DB" PYTHONPATH="$STAGE"
+    exec "$@"
+  )
+}
+
+# the driver must be present in host-proof mode — a missing driver is a hard failure
 "$PY" -c 'import psycopg2' 2>/dev/null || { run_cleanup; fail "psycopg2 is required for the real host proof (missing driver is not a skip)"; }
 
-# 6) run the REAL psycopg2 adapter suite; capture and PRESERVE the actual pytest output
+# 6) fail-closed writer authentication preflight in the SAME sanitized environment as the
+#    tests. Asserts the connected identity/database/port over TCP and refuses to run the
+#    suite if authentication is wrong. Emits ONLY writer_auth_preflight|PASS; never a
+#    password, pgpass path, DSN, or connection metadata.
+if clean_libpq_run "$PY" - "$LAB_DB" <<'PYEOF'
+import os, sys
+LIBPQ = ("PGPASSWORD", "PGSERVICE", "PGSERVICEFILE", "PGHOST", "PGPORT", "PGDATABASE",
+         "PGUSER", "PGOPTIONS", "PGSSLMODE", "PGSSLCERT", "PGSSLKEY", "PGSSLROOTCERT",
+         "PGREQUIRESSL", "PGSSLCRL", "PGCHANNELBINDING", "PGGSSENCMODE",
+         "PGTARGETSESSIONATTRS", "PGCONNECT_TIMEOUT")
+report = os.environ.get("AGENTIC_PREFLIGHT_ENV_REPORT")
+if report:  # test-only: sanitized presence report (variable NAMES only, never values)
+    with open(report, "w", encoding="utf-8") as fh:
+        for name in (*LIBPQ, "PGPASSFILE"):
+            fh.write(f"{name}={'present' if name in os.environ else 'absent'}\n")
+if any(name in os.environ for name in LIBPQ):
+    sys.exit(5)  # fail closed: inherited libpq environment was not sanitized
+if "PGPASSFILE" not in os.environ:
+    sys.exit(6)
+db = sys.argv[1]
+try:
+    import psycopg2
+    conn = psycopg2.connect(host="127.0.0.1", port=5433, dbname=db,
+                            user="agentic_runtime_lab_rw", options="-c search_path=agentic_runtime")
+    cur = conn.cursor()
+    cur.execute("SELECT current_user, current_database(), inet_server_port()")
+    user, database, port = cur.fetchone()
+    cur.close()
+    conn.close()
+except Exception:
+    sys.exit(3)  # never print the exception (could carry connection metadata)
+if user != "agentic_runtime_lab_rw" or database != db or port != 5433:
+    sys.exit(4)
+sys.exit(0)
+PYEOF
+then
+  echo "writer_auth_preflight|PASS"
+else
+  run_cleanup
+  fail "writer authentication preflight failed"
+fi
+
+# 7) run the REAL psycopg2 adapter suite in the SAME sanitized environment; preserve output
 readonly STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 readonly PYTEST_LOG="$EVIDENCE_DIR/agentic-runtime-hostproof-pytest-$STAMP.txt"
 readonly JUNIT="$STAGE/real-junit.xml"
 mkdir -p "$EVIDENCE_DIR"
 set +e
-# PGPASSFILE is passed privately (libpq reads the password from the 0600 file); it is
-# never printed. The tests connect over password-authenticated TCP at 127.0.0.1:5433.
-AGENTIC_REAL_LAB=1 AGENTIC_LAB_HOST=127.0.0.1 AGENTIC_LAB_DB="$LAB_DB" \
-  PGPASSFILE="$CLEANUP_WRITER" PYTHONPATH="$STAGE" \
-  "$PY" -m pytest -rA -v -p no:cacheprovider \
-    --junitxml="$JUNIT" \
-    "$STAGE/tests/test_agent_runtime_real_postgres.py" 2>&1 | tee "$PYTEST_LOG"
+clean_libpq_run "$PY" -m pytest -rA -v -p no:cacheprovider \
+  --junitxml="$JUNIT" \
+  "$STAGE/tests/test_agent_runtime_real_postgres.py" 2>&1 | tee "$PYTEST_LOG"
 readonly PYTEST_RC=${PIPESTATUS[0]}
 set -e
 chmod 600 "$PYTEST_LOG" 2>/dev/null || true
