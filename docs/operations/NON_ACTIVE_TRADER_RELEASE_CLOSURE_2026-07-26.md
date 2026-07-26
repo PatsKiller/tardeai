@@ -1,8 +1,12 @@
 # Non–Active Trader Release-Closure Sprint — Closeout (2026-07-26)
 
 Converts the four prepared lanes into exact-ref, conflict-tested, operator-deployable release
-candidates. **Active Trader out of scope and untouched.** No PR merged to `main`, none marked ready,
-nothing deployed/migrated/scheduled/activated/backfilled. Base `main` = `20a24027`.
+candidates — **and, with explicit per-step operator authorization, MERGES them into `main`.**
+**Active Trader out of scope and untouched.** Nothing deployed/migrated/scheduled/activated/backfilled.
+
+**FINAL STATE (2026-07-26): all lanes merged.** Base `main` `20a24027` → **`fc86150f`** via six
+authorized merges (#184 → #163 → #182 → #181 → #180; RC #183 closed as integration proof). Post-merge
+combined validator green; `main` CI green. See "Merge execution" below.
 
 ## CI status — RESOLVED (updated 2026-07-26, post-billing)
 The earlier GitHub Actions **account billing block** (jobs died in ~4s: *"the job was not started
@@ -12,11 +16,9 @@ lane**. Three real CI-env gaps surfaced once jobs actually ran and were fixed (w
 weakened): `psycopg2-binary` (#163), advisory `systemd-analyze verify` (#182/RC), and `PYTHONPATH` for
 the Watch pytest step (#181/RC). Run IDs in "CI verification" below.
 
-**Current top blocker: PR #184 is not merged.** Until it lands, `main` retains the pre-existing
-repo-wide `release-readiness` false positive (metric-consistency scan flagging a *code comment*, red on
-`main` since 2026-07-21), so #163/#182/#181/#183 still show that one unrelated red check despite their
-focused tests passing. #184's own `release-readiness` run is green (run 1332). `main` is unchanged at
-`20a24027`; nothing merged, deployed, migrated, or activated.
+**RESOLVED — #184 merged first**, which cleared the pre-existing repo-wide `release-readiness` false
+positive (metric-consistency scan flagging a *code comment*) at the source; `release-readiness` is now
+green on `main` and on every subsequent lane as it inherited the fix.
 
 ---
 
@@ -88,14 +90,27 @@ at run time — prepared and guard-verified, **not runtime-exercised** (executio
 
 Evidence comment posted on each of #163, #182, #181, #180 and the RC #183. No PR marked ready.
 
-### Recommended MERGE order
-1. **#184** (metric-consistency comment-skip) — **merge first.** Unblocks the pre-existing repo-wide `release-readiness` failure on `main` (a false positive since 2026-07-21, unrelated to these lanes), so every subsequent lane lands with a green release gate. Verified green in CI (`release-readiness` success).
-2. **#163** (read plane) — foundation the others reference; inert by default.
-3. **re-resolve #182 against advanced `main`, then #182** — layered on runtime already in `main`; stays default-disabled.
-4. **#181** (Watch) — resolve nothing new; `api_v2.py` Watch hunks are function-local.
-5. **merge advanced `main` into #180, revalidate the composed `api_v2.py`, then #180** — the one file both #181 and #180 touch; re-run `test_api_v2_watch_defense_integration.py` after.
+### MERGE order — EXECUTED (2026-07-26, each with explicit operator authorization)
+| Step | PR | Merge commit (`main` after) | Reconciliation / revalidation |
+|---|---|---|---|
+| 1 | **#184** | `8e395ebe` | release-readiness fix first → green on `main` |
+| 2 | **#163** | `a9ec0d5d` | read plane; foundation, inert by default |
+| 3 | **#182** | `32b32c47` | `agentic-mvl-ci.yml` conflict resolved with the validated A∩D fold; suite 264/9; migration refusals 3/4 |
+| 4 | **#181** | `7a40eb35` | clean merge; Watch suite 244/1 |
+| 5 | **#180** | `fc86150f` | `api_v2.py` clean 3-way; **composition test ported into `main`** (7/7 Watch+Defense coexist, no route dropped); Defense 54 |
 
-*(The RC branch #183 is integration proof, not a merge path — merge the lanes individually in this order.)*
+Each lane was updated with advanced `main` in an isolated worktree, revalidated locally, and confirmed
+green in CI (governance-contract / focused-quality-gate / defense-sectors-ci / backend / frontend /
+release-readiness all pass) **before** merging. **RC #183 closed** — integration proof, never a merge path.
+
+### Post-merge combined validator @ `fc86150f` (green)
+agent_runtime **264/9** · api_v2 Watch+Defense composition **7/7** · Defense **54** · Watch sample
+**139/1** · compileall OK · authority scan (.py) clean · migration refusals 3/4 · `main` CI:
+`release-readiness` / `defense-sectors-ci` / `options-lifecycle-ci` **success**.
+
+### Still NOT done (require separate operator authorization — the post-merge validator gate is now met)
+Operator packets remain **prepare-only**; none run. No DB role/migration, DSN/secret, service/timer,
+Defense breadth-producer switch, valuation backfill, deploy, or agent activation performed.
 
 ### Recommended DEPLOYMENT order (each operator-gated, separate authorization)
 1. Isolated LAB/SHADOW schema + roles (Packet A1).
@@ -123,8 +138,8 @@ provider_activation|NONE
 valuation_backfill_execution|NONE
 broker_or_order_action|NONE
 approval_or_2fa_action|NONE
-main_merge_action|NONE
+main_merge_action|5 PRs merged with per-step operator authorization (#184,#163,#182,#181,#180; #183 closed)
 production_deployment_action|NONE
 agent_operational_promotion|NONE
-final_status|PASS_NON_ACTIVE_TRADER_RELEASE_CLOSURE
+final_status|PASS_NON_ACTIVE_TRADER_RELEASE_MERGED — main=fc86150f, post-merge validator green
 ```
