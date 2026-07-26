@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
 import { pricingStampLine } from '../lib/pricingStamp'
 import { isScanStale, runLabel } from '../lib/homeLabels'
-import { BB, TYPE } from '../lib/watchTokens'
+import { BB, T, TYPE } from '../lib/watchTokens'
 import type { DrillContext } from './DetailDrawer'
 
 
@@ -17,15 +17,12 @@ export default function MetricStrip({ onDrill }: Props) {
   const { data: overview } = useApi<any>('/api/v2/overview', 120_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
-  // v3.1: header needs 4 scalars, not the multi-MB scan payload (Tailscale timeouts = '—' tiles)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 120_000)
   const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
   const { data: health } = useApi<any>('/api/v2/health', 120_000)
   const healthWarn = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').length
 
   const portfolioVal = overview?.portfolio_value
-  // Headline win rate = the overall journal win rate (matches the Home card). The paper-readiness
-  // win rate (gate-specific, ~24 paper trades) is a different metric and stays in the readiness/Trading context.
   const winRate = overview?.journal?.win_rate ?? readiness?.win_rate
   const winTrades = overview?.journal?.trade_count
   const regimeLabel = regime?.regime_label ?? '—'
@@ -39,18 +36,13 @@ export default function MetricStrip({ onDrill }: Props) {
   const autoLive = gate?.status === 'AUTHORIZED'
   const liveBadge = operatorLive ? '2FA LIVE' : autoLive ? 'AUTO LIVE' : 'AUTO BLOCKED'
   const liveBadgeBlocked = !operatorLive && !autoLive
-  // v2-parity header fields
   const todayChange = overview?.today_change
   const todayPct = overview?.today_pct
-  const journalPnl = overview?.journal?.total_pnl            // TRADING P&L (day_trade + swing)
-  const realizedPnl = overview?.journal?.realized_pnl        // all closed incl. long-term trims
+  const journalPnl = overview?.journal?.total_pnl
+  const realizedPnl = overview?.journal?.realized_pnl
   const realizedCount = overview?.journal?.realized_count
   const longTermTrimPnl = overview?.journal?.long_term_trim_pnl
   const journalLastClose = overview?.journal?.last_close_date
-  // The header journal metrics read the LOCAL broker-verified journal (trade_closed, same source as the
-  // Journal page), refreshed by cron so last_close advances with real closes. The staleness guard stays
-  // as a safety net: if the journal ever stops advancing (cron down / no closes), it shows visibly stale
-  // rather than silently trusted. (Until 2026-07-21 this read a manual-CSV FIFO rebuild frozen at import.)
   const journalStaleDays = (() => {
     if (!journalLastClose) return null
     const ms = Date.now() - new Date(String(journalLastClose)).getTime()
@@ -121,7 +113,6 @@ export default function MetricStrip({ onDrill }: Props) {
         rows: tradeAi ? [{ vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_label: tradeAi.run_label }] : [] },
     },
     {
-      // Home parity 2026-07-26: when run_date is prior session day, show STALE (not bare 0/0/0).
       label: 'SETUPS · LATEST RUN',
       value: setupsValue,
       stale: scanStale ? ' · prior session' : null,
@@ -138,7 +129,7 @@ export default function MetricStrip({ onDrill }: Props) {
     <div className="metric-strip" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
       <div style={{ marginRight: 24, whiteSpace: 'nowrap' }}>
-        <div style={{ fontSize: TYPE.md, fontWeight: 700, color: BB.blue }}>Command Center v3</div>
+        <div style={{ fontSize: TYPE.md, fontWeight: 700, color: T.link }}>Command Center v3</div>
         {priceStamp && (
           <div
             title={`Holdings repriced via ${overview?.pricing?.reprice_source ?? overview?.reprice_source ?? 'finviz'} · /api/v2/overview`}
