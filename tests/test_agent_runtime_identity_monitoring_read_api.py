@@ -6,7 +6,7 @@ import pytest
 
 from scripts.agent_runtime.contracts import Environment
 from scripts.agent_runtime.identifiers import AgentIdentity, qualified_agent_id, stable_entity_id
-from scripts.agent_runtime.monitoring import MONITORING_CONTRACT, MonitoringEvent
+from scripts.agent_runtime.monitoring_events import MONITORING_EVENT_CONTRACT, MonitoringEvent
 from scripts.agent_runtime.read_api import READ_API_CONTRACT, READ_ROUTES, ReadOnlyAgentRuntimeAPI
 
 
@@ -37,7 +37,7 @@ def test_monitoring_event_is_immutable_namespaced_and_secret_safe():
         attributes={"checkpoint": "created"},
     )
     record = event.to_record()
-    assert record["contract"] == MONITORING_CONTRACT
+    assert record["contract"] == MONITORING_EVENT_CONTRACT
     assert record["qualified_agent_id"] == "tradeai.agent.sentinel"
     assert record["event_id"].startswith("ta:monitor_event:")
     assert len(record["event_hash"]) == 64

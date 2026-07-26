@@ -7,7 +7,7 @@ from typing import Any, Mapping
 from .contracts import Environment, assert_no_secret_material, canonical_hash
 from .identifiers import qualified_agent_id, stable_entity_id
 
-MONITORING_CONTRACT = "agent-runtime-monitoring-event-v1"
+MONITORING_EVENT_CONTRACT = "agent-runtime-monitoring-event-v1"
 _ALLOWED_EVENT_TYPES = {
     "RUN_STATE_CHANGED",
     "CHECKPOINT_RECORDED",
@@ -35,10 +35,10 @@ class MonitoringEvent:
     severity: str = "INFO"
     attributes: Mapping[str, Any] = field(default_factory=dict)
     occurred_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    contract: str = MONITORING_CONTRACT
+    contract: str = MONITORING_EVENT_CONTRACT
 
     def validate(self) -> None:
-        if self.contract != MONITORING_CONTRACT:
+        if self.contract != MONITORING_EVENT_CONTRACT:
             raise ValueError("monitoring contract mismatch")
         if self.event_type not in _ALLOWED_EVENT_TYPES:
             raise ValueError(f"unsupported monitoring event type: {self.event_type}")
