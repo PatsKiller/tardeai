@@ -4,32 +4,51 @@ Converts the four prepared lanes into exact-ref, conflict-tested, operator-deplo
 candidates. **Active Trader out of scope and untouched.** No PR merged to `main`, none marked ready,
 nothing deployed/migrated/scheduled/activated/backfilled. Base `main` = `20a24027`.
 
-## Top operator prerequisite (blocks ALL CI)
-**GitHub Actions account billing block on `PatsKiller`.** Every workflow (`agentic-mvl-ci`,
-`options-lifecycle-ci`, `reentry-watch-operator-ci`, `release-readiness`, and the new
-`defense-sectors-ci`) dies in ~4s with *"the job was not started because recent account payments have
-failed or your spending limit needs to be increased"* — on **every branch including `main`**. This is
-why the red gates had "no usable job logs." **All lane code validates green locally**; CI cannot turn
-green until Billing is resolved (operator action, outside program authority).
+## CI status — RESOLVED (updated 2026-07-26, post-billing)
+The earlier GitHub Actions **account billing block** (jobs died in ~4s: *"the job was not started
+because recent account payments have failed…"*, on every branch incl. `main`) was **resolved by
+upgrading the account to GitHub Pro**. Focused workflows now execute normally and are **green on every
+lane**. Three real CI-env gaps surfaced once jobs actually ran and were fixed (workflow-only, no test
+weakened): `psycopg2-binary` (#163), advisory `systemd-analyze verify` (#182/RC), and `PYTHONPATH` for
+the Watch pytest step (#181/RC). Run IDs in "CI verification" below.
+
+**Current top blocker: PR #184 is not merged.** Until it lands, `main` retains the pre-existing
+repo-wide `release-readiness` false positive (metric-consistency scan flagging a *code comment*, red on
+`main` since 2026-07-21), so #163/#182/#181/#183 still show that one unrelated red check despite their
+focused tests passing. #184's own `release-readiness` run is green (run 1332). `main` is unchanged at
+`20a24027`; nothing merged, deployed, migrated, or activated.
 
 ---
 
 ## Phase 1 — red CI gates closed (each fix workflow/test-only, no product change)
 
-| Lane | PR | Frozen → validated head | Red-state diagnosis | Fix | Local result |
+| Lane | PR | Frozen → CI-green head | Red-state diagnosis | Fix | Local result |
 |---|---|---|---|---|---|
-| **A** read plane | #163 | `a65fd529` → **`785b9f6b`** | (6) billing block | evidence-hardened `agentic-mvl-ci.yml` | 215/9; contract tests, authority, frontend 11, tsc/vite, guards all pass |
-| **D** SHADOW agents | #182 | `d4671a32` → **`b09424eb`** | (3) missing `psycopg2` dep | add `psycopg2-binary` + recursive scan | 49 Lane D + 224/9; migration refusals 3/4/5; systemd verify; independence enforced |
-| **B** Watch | #181 | `4472c9ca` → **`dbdd7438`** | (2) stale path/test-list + (3) dep | removed 6 unowned refs (documented); **fixed 2 red UI tests to the real sovereign/quality contract** | 173/1 (was 8 failed); 134 packet/API; guards pass |
-| **C** Defense/Sectors | #180 | `2190c6ca` → **`eaa653f8`** | no focused workflow existed | added `defense-sectors-ci.yml` (lane-scoped, evidence-preserving) | 54/54; build green; switch-packet dry-run inert |
+| **A** read plane | #163 | `a65fd529` → **`eb21fe69`** | (6) billing block, then (3) missing `psycopg2` | evidence-hardened + `psycopg2-binary` | 215/9; contract tests, authority, frontend 11, tsc/vite, guards all pass |
+| **D** SHADOW agents | #182 | `d4671a32` → **`81056b85`** | (3) missing `psycopg2`; runner systemd verify | `psycopg2-binary` + advisory `systemd-analyze` | 49 Lane D + 224/9; migration refusals 3/4/5; systemd verify; independence enforced |
+| **B** Watch | #181 | `4472c9ca` → **`d4c9cfb9`** | (2) stale refs + (3) dep + `PYTHONPATH` | removed 6 unowned refs; **fixed 2 UI tests to the real sovereign/quality contract**; add `PYTHONPATH` | 173/1 (was 8 failed); 134 packet/API; guards pass |
+| **C** Defense/Sectors | #180 | `2190c6ca` → **`eaa653f8`** | no focused workflow existed | added `defense-sectors-ci.yml` (lane-scoped) | 54/54; build green; switch-packet dry-run inert |
 
 Each lane's evidence comment is posted on its PR. No substantive test was weakened or deleted.
+
+### CI verification (post-billing, real runs 19s–2m4s — not the 4s billing failures)
+| PR | Head | Focused CI | Run |
+|---|---|---|---|
+| #184 | `c3e95c02` | `release-readiness` ✅ | run 1332 |
+| #163 | `eb21fe69` | `agentic-mvl-ci` ✅ + backend/frontend ✅ | run 85 |
+| #182 | `81056b85` | `agentic-mvl-ci` ✅ | run 86 |
+| #181 | `d4c9cfb9` | `watch-quality-governance-ci` ✅ + re-entry/options/ui-contract ✅ | (Watch focused green) |
+| #180 | `eaa653f8` | `defense-sectors-ci` ✅ | run 2 |
+| #183 RC | `46bad45c` | agentic ✅ + watch ✅ + defense ✅ + options/re-entry ✅ | 30213036351/366/371 |
+
+The `release-readiness` check is still red on #163/#182/#181/#183 — the pre-existing `main` false
+positive that **PR #184 fixes**. All five PRs are draft + mergeable; `main` unchanged at `20a24027`.
 
 ---
 
 ## Phase 2 — conflict-tested release candidate (draft PR #183)
 
-- **Branch** `codex/non-active-trader-release-candidate-v1`, from `main` `20a24027`, head **`cc3fd466`** (Phase 2) → **`8315a3a9`** (Phase 3).
+- **Branch** `codex/non-active-trader-release-candidate-v1`, from `main` `20a24027`, head **`cc3fd466`** (Phase 2) → **`8315a3a9`** (Phase 3) → **`46bad45c`** (current, after the post-billing CI-env workflow fixes).
 - **Merge commits (order A→D→B→C):** `341df201` · `42b76781` · `1728dce9` · `d986badf` (normal non-force merge commits).
 - **Conflict files — exactly two, both intentionally reconciled (no whole-file ours/theirs):**
   1. `.github/workflows/agentic-mvl-ci.yml` (A∩D) — real textual conflict, hand-folded: A provenance + teed compile/pytest/authority evidence **and** D `psycopg2-binary` + recursive (`rglob`) `agents/` scan + migration-refusal + systemd-verify + `if: always()` matrix.
@@ -88,9 +107,10 @@ Evidence comment posted on each of #163, #182, #181, #180 and the RC #183. No PR
 7. Agent timers only after measured maturity-gate acceptance.
 
 ### Actions requiring operator authorization (NONE performed)
-Resolve GitHub Billing · create/enable DB roles · apply migrations · provision the read/SHADOW DSNs +
-set the API gate · run any packet `--execute`/`--apply`/`--run-shadow` · switch the Defense breadth
-producer · run `watch_valuation_backfill.py` · enable agent systemd timers · mark any PR ready · merge.
+Merge any PR (start with #184) · create/enable DB roles · apply migrations · provision the read/SHADOW
+DSNs + set the API gate · run any packet `--execute`/`--apply`/`--run-shadow` · switch the Defense
+breadth producer · run `watch_valuation_backfill.py` · enable agent systemd timers · mark any PR ready.
+*(GitHub billing is already resolved — no longer a prerequisite.)*
 
 ---
 
