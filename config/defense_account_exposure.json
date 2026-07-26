@@ -1,0 +1,10 @@
+{
+  "version": "defense-account-exposure-policy-v1",
+  "max_unmapped_pct": 5.0,
+  "minimum_action_pct": 1.0,
+  "notes": [
+    "Actionable rotate-in sizing requires each account's own effective sector exposure.",
+    "An account with unmapped exposure above max_unmapped_pct is withheld rather than treated as zero exposure.",
+    "No account may inherit another account's capacity, percentage band, or dollar band."
+  ]
+}

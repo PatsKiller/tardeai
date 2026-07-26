@@ -12369,6 +12369,32 @@ def _market_movers(query=None):
                 r["held"] = True
             elif sym in watch:
                 r["watch"] = True
+    # Scope truth: the Finviz export is capped per signal, so new_high/new_low are a
+    # TOP-MOVERS SAMPLE and must never be presented or read as exchange-wide breadth.
+    # The cap is measured from the capture itself rather than hardcoded, so a change in
+    # the upstream export shows up here instead of silently widening the claim.
+    try:
+        from defense_data_quality import label_market_internals
+        signals = d.get("signals") or {}
+        observed_cap = max((len(s.get("rows") or []) for s in signals.values()), default=0)
+        for name in ("new_high", "new_low"):
+            block = signals.get(name)
+            if not isinstance(block, dict):
+                continue
+            labelled = label_market_internals({**block, "source": "market_movers"})
+            labelled["sample_cap_per_signal"] = observed_cap or None
+            labelled["source_as_of"] = d.get("captured_at")
+            labelled["n_returned"] = len(block.get("rows") or [])
+            signals[name] = labelled
+        d["internals_scope"] = {
+            "scope": "top_movers_sample",
+            "sample_cap_per_signal": observed_cap or None,
+            "source_as_of": d.get("captured_at"),
+            "note": "capped Finviz signal export — a sample of movers, not exchange-wide breadth",
+        }
+    except Exception:
+        # Scope labelling is additive; its absence must not take down the board.
+        pass
     d["ok"] = True
     d["__etag__"] = etag
     _MOVERS_MEMO.update(etag=etag, data=d)
@@ -30813,7 +30839,48 @@ def _sectors_monitor(query=None):
                                   else None)})
     out.sort(key=lambda s: (not s["is_watched"],
                             {"leading": 0, "neutral": 1, "lagging": 2}.get(s["momentum"], 3)))
-    return {"spy_change_pct": spy_chg, "sectors": out,
+    # Stale quarantine + field truth ledger. Additive: every pre-existing key is left
+    # exactly as the frontend already reads it. A stale sector keeps its row and its
+    # numbers — nothing is deleted — but loses recommendation eligibility, so a
+    # four-day-old observation can no longer originate a new add.
+    quality_block = {}
+    try:
+        from datetime import date as _date
+        from defense_data_quality import (
+            Quality, field_ledger, quarantine_stale_rows,
+        )
+        _today = _date.today()
+        _rows = [{"symbol": s.get("etf"), "sector": s.get("sector"), "as_of": s.get("as_of")}
+                 for s in out]
+        _q = quarantine_stale_rows(_rows, as_of=_today, max_age_days=4)
+        _stale = {r.get("sector") for r in _q["quarantined"]}
+        for s in out:
+            is_stale = s.get("sector") in _stale
+            s["stale"] = is_stale
+            s["source_age_days"] = next(
+                (r.get("age_days") for r in (_q["quarantined"] + _q["current"])
+                 if r.get("sector") == s.get("sector")), None)
+            s["stale_sla_days"] = 4
+            s["quarantine_reason"] = "source_older_than_sla" if is_stale else None
+            # Legacy recommendations remain authoritative; this flag is advisory input
+            # to the shadow lane and to the UI, and does not itself remove a live card.
+            s["recommendation_eligible"] = not is_stale
+        quality_block = {
+            "sectors_total": len(out),
+            "sectors_stale": len(_stale),
+            "stale_sla_days": 4,
+            "ledger": field_ledger(
+                source="sector_momentum_state", provider="sector_momentum_engine",
+                source_as_of=max((s.get("as_of") or "" for s in out), default=None) or None,
+                cadence="daily_close", value=[s.get("sector") for s in out],
+                coverage_n=len(out) - len(_stale), coverage_total=len(out),
+                quality=Quality("ok") if not _stale
+                else Quality("partial_stale", (f"stale_sectors={len(_stale)}",)),
+            ),
+        }
+    except Exception as _e:
+        quality_block = {"error": f"quality block unavailable: {str(_e)[:120]}"}
+    return {"spy_change_pct": spy_chg, "sectors": out, "data_quality": quality_block,
             # A4 legend: on-page semantics instead of implied meaning
             "legend": ("setups/N: setups = score-ranked candidates surviving the CIO-verdict + "
                        "coverage filters; N = tracked constituents in incubator_universe for the "
