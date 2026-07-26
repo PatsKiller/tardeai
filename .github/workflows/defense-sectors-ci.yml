@@ -1,0 +1,166 @@
+name: defense-sectors-ci
+# Focused CI for the Defense/Sectors production-reconciliation lane (Lane C).
+# Validates ONLY this lane's ported producers, configs, UI and tests — it does
+# not pull in unrelated repo suites. The exact-20 breadth producer is NOT
+# switched here; v4/v10 stay additive + disabled. Every log/summary step runs
+# with `if: always()` so pytest output, compile output, design/chip-guard output,
+# exit status and the exact commit SHA are always preserved as evidence.
+on:
+  push:
+    paths: &lane_paths
+      - 'scripts/sector_momentum_engine_v4.py'
+      - 'scripts/defense_recommendations_v10.py'
+      - 'scripts/defense_data_quality.py'
+      - 'scripts/defense_shadow_replay.py'
+      - 'scripts/defense_account_exposure.py'
+      - 'scripts/defense_breadth_switch_packet.sh'
+      - 'tests/test_defense_data_quality.py'
+      - 'tests/test_defense_quality_integration.py'
+      - 'tests/test_defense_account_exposure.py'
+      - 'tests/test_defense_recommendations_v10.py'
+      - 'tests/test_sector_momentum_engine_v4.py'
+      - 'config/defense_account_exposure.json'
+      - 'config/defense_breadth_policy.json'
+      - 'config/industry_sector_map.json'
+      - 'apps/command-center-v3/src/components/rotation/ActionableSectorDecisionBoard.tsx'
+      - 'apps/command-center-v3/src/components/rotation/InstitutionalRotationBrief.tsx'
+      - 'apps/command-center-v3/src/components/FinvizSectorPanel.tsx'
+      - 'apps/command-center-v3/src/pages/DefenseHub.tsx'
+      - 'apps/command-center-v3/src/pages/SectorsHub.tsx'
+      - 'apps/command-center-v3/e2e/fixtures/**'
+      - '.github/workflows/defense-sectors-ci.yml'
+  pull_request:
+    paths: *lane_paths
+  workflow_dispatch: {}
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    env:
+      TRADE_AI_CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: record SHA
+        if: always()
+        run: echo "commit_sha=${{ github.sha }}" | tee /tmp/defsec_sha.txt
+      - name: install deps (lane-focused)
+        run: pip install pytest psycopg2-binary
+      - name: py_compile lane producers + fixtures sanitizer
+        if: always()
+        run: |
+          python -m py_compile \
+            scripts/sector_momentum_engine_v4.py \
+            scripts/defense_recommendations_v10.py \
+            scripts/defense_data_quality.py \
+            scripts/defense_shadow_replay.py \
+            scripts/defense_account_exposure.py \
+            apps/command-center-v3/e2e/fixtures/sanitize_fixtures.py 2>&1 | tee /tmp/defsec_compile.out
+          echo "py_compile exit=${PIPESTATUS[0]}"
+      - name: import checks (producers import cleanly; v4/v10 delegate to disabled base)
+        if: always()
+        run: |
+          cd scripts
+          python -c "import defense_data_quality; print('import defense_data_quality OK')"
+          python -c "import defense_account_exposure; print('import defense_account_exposure OK')"
+          python -c "import defense_shadow_replay; print('import defense_shadow_replay OK')"
+          python -c "import sector_momentum_engine_v4; print('import sector_momentum_engine_v4 OK')"
+          python -c "import defense_recommendations_v10; print('import defense_recommendations_v10 OK')"
+      - name: validate lane JSON configs + board fixtures
+        if: always()
+        run: |
+          for f in config/defense_account_exposure.json config/defense_breadth_policy.json \
+                   config/industry_sector_map.json \
+                   apps/command-center-v3/e2e/fixtures/defense_posture.json \
+                   apps/command-center-v3/e2e/fixtures/defense_industries.json \
+                   apps/command-center-v3/e2e/fixtures/defense_recommendations.json \
+                   apps/command-center-v3/e2e/fixtures/sectors_monitor.json; do
+            python -m json.tool "$f" > /dev/null && echo "JSON OK: $f"
+          done
+      - name: Lane C focused pytest (exact-20 breadth, exposure/sizing, stale quarantine, evidence ledger, unmapped-weight, coverage-truth)
+        if: always()
+        run: |
+          pytest \
+            tests/test_defense_data_quality.py \
+            tests/test_defense_quality_integration.py \
+            tests/test_defense_account_exposure.py \
+            tests/test_defense_recommendations_v10.py \
+            tests/test_sector_momentum_engine_v4.py \
+            -v -rs --junitxml=/tmp/defsec_junit.xml 2>&1 | tee /tmp/defsec_pytest.out
+          echo "pytest exit=${PIPESTATUS[0]}"
+          if grep -qE "SKIPPED|skipped" /tmp/defsec_pytest.out; then
+            echo "::error::Lane C tests were skipped — CI must run them"; exit 1
+          fi
+      - name: switch-packet dry-run must change nothing (producer stays UNswitched)
+        if: always()
+        run: |
+          before="$(git status --porcelain)"
+          REPO="$GITHUB_WORKSPACE" bash scripts/defense_breadth_switch_packet.sh | tee /tmp/defsec_switch.out
+          after="$(git status --porcelain)"
+          if [ "$before" != "$after" ]; then
+            echo "::error::switch-packet dry-run mutated the tree"; exit 1
+          fi
+          echo "switch-packet dry-run: tree unchanged (producer NOT switched) OK"
+      - name: switch-packet apply gate fails closed on bad ack (no mutation)
+        if: always()
+        run: |
+          set +e
+          REPO="$GITHUB_WORKSPACE" bash scripts/defense_breadth_switch_packet.sh \
+            --apply --expect-sha "${{ github.sha }}" --ack WRONG_TOKEN
+          code=$?
+          set -e
+          [ "$code" -eq 2 ] && echo "apply gate blocked as expected (exit 2)" || { echo "::error::apply gate did not fail closed"; exit 1; }
+      - name: backend summary (SHA + pytest tail preserved)
+        if: always()
+        run: |
+          {
+            echo "## Defense/Sectors CI — backend"
+            echo "- commit: \`${{ github.sha }}\`"
+            echo "- lane producers: py_compile + import clean; v4/v10 additive + DISABLED (not scheduled)"
+            echo "- switch-packet: dry-run only (breadth producer NOT switched)"
+            tail -3 /tmp/defsec_pytest.out 2>/dev/null | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: defense-sectors-backend-evidence
+          path: |
+            /tmp/defsec_junit.xml
+            /tmp/defsec_pytest.out
+            /tmp/defsec_compile.out
+            /tmp/defsec_switch.out
+            /tmp/defsec_sha.txt
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: record SHA
+        if: always()
+        run: echo "commit_sha=${{ github.sha }}" | tee /tmp/defsec_fe_sha.txt
+      - name: install (command-center-v3)
+        working-directory: apps/command-center-v3
+        run: npm ci
+      - name: design-token guard + chip-scope + tsc + vite build
+        if: always()
+        working-directory: apps/command-center-v3
+        run: npm run build 2>&1 | tee /tmp/defsec_build.out
+      - name: frontend summary (SHA + build tail preserved)
+        if: always()
+        run: |
+          {
+            echo "## Defense/Sectors CI — frontend"
+            echo "- commit: \`${{ github.sha }}\`"
+            echo "- design-token guard + chip-scope + tsc + vite build (ActionableSectorDecisionBoard lane)"
+            tail -6 /tmp/defsec_build.out 2>/dev/null | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: defense-sectors-frontend-evidence
+          path: |
+            /tmp/defsec_build.out
+            /tmp/defsec_fe_sha.txt
