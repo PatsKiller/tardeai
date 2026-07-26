@@ -78,6 +78,9 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   const { data: curateStatus, refetch: refetchCurate } = useApi<any>('/api/v2/hermes/curate-top20', 20_000)
   const paMap = useProAnalystMap()
   const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
+  // Closed-session support/resistance — the same cache the operator queue and the
+  // Re-Entry/Portfolio desks read, so the card's R/S match those surfaces.
+  const { data: lvData } = useApi<any>('/api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1', 300_000)
   const { data: acctRaw } = useApi<any>('/api/v2/proposal-accounts', 120_000)
   const proposalAccounts = useMemo(() => parseProposalAccounts(acctRaw), [acctRaw])
   const sizingPolicy = useMemo(() => parseSizingPolicy(acctRaw), [acctRaw])
@@ -97,6 +100,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
 
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
   const fvMap: Record<string, any> = fvStrip?.map ?? {}
+  const levelMap: Record<string, any> = lvData?.data?.value?.symbols ?? lvData?.value?.symbols ?? {}
   const extMap: Record<string, any[]> = ext?.map ?? {}
   const curateRunning = !!curateStatus?.running
   const items: any[] = wl?.items ?? []
@@ -800,6 +804,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
                   outcome={outcome ? { ...outcome, sold: (outcome.closed_trades ?? 0) > 0 } : undefined}
                   llms={extMap[symKey] ?? extMap[it.symbol] ?? []}
                   fv={fvMap[symKey] ?? fvMap[it.symbol]}
+                  lvl={levelMap[symKey] ?? levelMap[it.symbol]}
                   reportEntry={reportMap[symKey]}
                   paMap={paMap}
                   accounts={proposalAccounts}

@@ -45,10 +45,33 @@ import {
   terminalButton,
   verdictWord,
 } from '../lib/watchlistTerminalTokens'
+import { heatRamp } from '../lib/watchTokens'
 
 // Security Card v4 — Bloomberg Terminal dense panel (2026-07).
 // Single-surface, hairline dividers, amber primary actions, numbers-first scannability.
 // All data + expanders preserved; secondary detail lives in compact drawers.
+
+// Closed-session support/resistance heat. distance% = (price − level)/level, so positive
+// means price sits above the level — the favorable side for both resistance (broken out)
+// and support (held). One ramp; ±8% saturates. Matches the Watch operator queue exactly.
+function levelHeat(distancePct: number | null): string {
+  if (distancePct === null || !Number.isFinite(distancePct)) return BB.text3
+  return heatRamp(Math.max(-3, Math.min(3, (distancePct / 8) * 3)))
+}
+function signedPctV4(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '—'
+  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
+}
+function fnum(...values: any[]): number | null {
+  for (const v of values) { if (v === null || v === undefined || v === '') continue; const n = Number(v); if (Number.isFinite(n)) return n }
+  return null
+}
+const V4_VAL_TIP = {
+  pe: 'Trailing P/E — price ÷ trailing-12-month EPS. Lower is cheaper; blank means no trailing profit. Evidence, not a signal.',
+  fwd: 'Forward P/E — price ÷ next-fiscal-year EPS estimate. Blank when no estimate is published.',
+  pb: 'Price-to-book — price ÷ book value per share. Below 1 trades under accounting net worth.',
+  ps: 'Price-to-sales — price ÷ trailing-12-month revenue per share. Useful where earnings are negative.',
+}
 
 function ago(v: any) {
   if (!v) return ''
@@ -100,7 +123,7 @@ const micro: CSSProperties = { fontSize: 8, fontWeight: 700, letterSpacing: '.07
 const hair = `1px solid ${BB.border}`
 
 export default function WatchlistCardV4({
-  it, adv, sc, pa, outcome, llms, fv, reportEntry, paMap, accounts, heldPositions, maxDeployPctOfCash,
+  it, adv, sc, pa, outcome, llms, fv, lvl, reportEntry, paMap, accounts, heldPositions, maxDeployPctOfCash,
   ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onRefreshStrategy,
   strategyRefreshing, onToggleEns, isStarred,
   onPropose, onAdjust, onBuildPlan, onOpenDesk, onCioDone,
@@ -371,6 +394,34 @@ export default function WatchlistCardV4({
           )}
         </div>
       </div>
+
+      {/* ①ᵇ Levels + valuation strip — closed-session resistance/support (heat-colored
+          by distance, same reentry cache and ramp as the Watch operator queue) and the
+          valuation ratios from the Finviz/yfinance strip. Each is evidence, not a signal.
+          Levels absent → the row simply omits them rather than inventing a number. */}
+      {(() => {
+        const R = fnum(lvl?.resistance), Rd = fnum(lvl?.distance_pct)
+        const S = fnum(lvl?.support), Sd = fnum(lvl?.support_distance_pct)
+        const pe = fnum(fv?.pe), fwd = fnum(fv?.forward_pe), pb = fnum(fv?.pb), ps = fnum(fv?.ps)
+        const hasLvl = R !== null || S !== null
+        const hasVal = pe !== null || fwd !== null || pb !== null || ps !== null
+        if (!hasLvl && !hasVal) return null
+        const metric = (label: string, value: number | null, tip: string) => (
+          <span title={tip} style={{ cursor: 'help' }}><span style={{ color: BB.text3, borderBottom: '1px dotted var(--border)' }}>{label}</span> <b style={{ color: BB.text1 }}>{value === null ? '—' : value.toFixed(1)}</b></span>
+        )
+        return (
+          <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px 10px', padding: '4px 10px', borderBottom: hair, fontSize: 10, ...numStyle }}>
+            {hasLvl ? <>
+              <span title={`Closed-session resistance $${R?.toFixed(2) ?? '—'} · ${signedPctV4(Rd)} from price${lvl?.state ? ` · ${lvl.state}` : ''}`} style={{ color: levelHeat(Rd), fontWeight: 700, cursor: 'help' }}>R {R === null ? '—' : `$${R.toFixed(2)}`} {signedPctV4(Rd)}</span>
+              <span title={`Closed-session support $${S?.toFixed(2) ?? '—'} · ${signedPctV4(Sd)} from price${lvl?.support_state ? ` · ${lvl.support_state}` : ''}`} style={{ color: levelHeat(Sd), fontWeight: 700, cursor: 'help' }}>S {S === null ? '—' : `$${S.toFixed(2)}`} {signedPctV4(Sd)}</span>
+            </> : <span style={{ color: BB.text3 }}>levels n/a</span>}
+            {hasVal && <span style={{ color: BB.text3 }}>│</span>}
+            {hasVal && <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+              {metric('P/E', pe, V4_VAL_TIP.pe)}{metric('Fwd', fwd, V4_VAL_TIP.fwd)}{metric('P/B', pb, V4_VAL_TIP.pb)}{metric('P/S', ps, V4_VAL_TIP.ps)}
+            </span>}
+          </div>
+        )
+      })()}
 
       {/* ①ª OPERATOR decision surface — one action, not a packet viewer.
           When a packet exists, this replaces the legacy verdict strip. */}

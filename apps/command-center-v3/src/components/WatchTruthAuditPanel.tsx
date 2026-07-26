@@ -1,8 +1,28 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useApi } from '../hooks/useApi'
-import { BB, T } from '../lib/watchTokens'
+import { BB, T, heatRamp } from '../lib/watchTokens'
 
 export const WATCH_OPERATOR_CONTRACT = 'watch-operator-v2'
+
+// Closed-session support/resistance heat. distance% is (price − level)/level, so a
+// positive number means price sits ABOVE the level. For both levels positive is the
+// favorable direction — above resistance is a breakout, above support is safe — so one
+// ramp serves both. ±8% saturates the ramp; a value at the level reads slate.
+function levelHeat(distancePct: number | null): string {
+  if (distancePct === null || !Number.isFinite(distancePct)) return BB.text3
+  return heatRamp(Math.max(-3, Math.min(3, (distancePct / 8) * 3)))
+}
+function signedPct(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '—'
+  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
+}
+// Tooltip copy for the valuation ratios — plain definitions, never a buy/sell read.
+const VAL_TIP = {
+  pe: 'Trailing P/E — price ÷ trailing-12-month EPS. Lower is cheaper; blank means no trailing profit. Evidence, not a signal.',
+  fwd: 'Forward P/E — price ÷ next-fiscal-year EPS estimate. Blank when no estimate is published.',
+  pb: 'Price-to-book — price ÷ book value per share. Below 1 trades under accounting net worth.',
+  ps: 'Price-to-sales — price ÷ trailing-12-month revenue per share. Useful where earnings are negative.',
+}
 
 const panel: CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 4 }
 const button = (active = false): CSSProperties => ({ fontSize: 10.5, fontWeight: 800, padding: '6px 9px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${active ? T.link : 'var(--border)'}`, background: active ? 'rgba(96,165,250,.10)' : 'transparent', color: active ? T.link : BB.text2 })
@@ -23,9 +43,11 @@ function valuation(item: any, fv: any, card: any) {
   const pe = first(['pe', 'trailing_pe', 'trailingPe', 'valuation.pe'])
   const forwardPe = first(['forward_pe', 'forwardPe', 'fwd_pe', 'valuation.forward_pe'])
   const peg = first(['peg', 'peg_ratio', 'valuation.peg'])
+  const pb = first(['pb', 'price_to_book', 'valuation.pb'])
+  const ps = first(['ps', 'price_to_sales', 'valuation.ps'])
   const asOf = text(item?.fundamentals_as_of, fv?.fundamentals_as_of, card?.fundamentals_as_of, item?.decision_packet?.fundamentals?.fundamentals_as_of, item?.last_enriched_at)
   const instrument = text(item?.instrument_type, item?.asset_type).toLowerCase()
-  return { pe, forwardPe, peg, asOf, notApplicable: /etf|fund|mutual/.test(instrument), available: pe !== null || forwardPe !== null || peg !== null }
+  return { pe, forwardPe, peg, pb, ps, asOf, notApplicable: /etf|fund|mutual/.test(instrument), available: pe !== null || forwardPe !== null || peg !== null || pb !== null || ps !== null }
 }
 function ticketState(item: any) {
   const packet = item?.decision_packet ?? {}
@@ -60,6 +82,10 @@ export default function WatchTruthAuditPanel() {
   const { data: wl, refetch: refetchWatch } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
   const { data: fv } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
   const { data: cards } = useApi<any>('/api/v2/symbol-cards', 300_000)
+  // Closed-session support/resistance for the price cell. Same cache the Re-Entry and
+  // Portfolio desks read, so the levels match across surfaces.
+  const { data: lv } = useApi<any>('/api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1', 300_000)
+  const levelMap: Record<string, any> = lv?.data?.value?.symbols ?? lv?.value?.symbols ?? {}
   const initialUrl = new URL(window.location.href)
   const [open, setOpen] = useState(() => initialUrl.searchParams.get('review') !== '0')
   const [lane, setLane] = useState<Lane>('favorites')
@@ -96,11 +122,17 @@ export default function WatchTruthAuditPanel() {
     const rsi = num(item.rsi, item.rsi_14, fvMap[symbol]?.rsi)
     const price = num(item.price, item.last_price, item.price_live)
     const priceAt = text(item.price_as_of, item.last_enriched_at)
+    const lvl = levelMap[symbol] ?? null
+    const level = lvl ? {
+      resistance: num(lvl.resistance), resistancePct: num(lvl.distance_pct),
+      support: num(lvl.support), supportPct: num(lvl.support_distance_pct),
+      resistanceState: text(lvl.state), supportState: text(lvl.support_state),
+    } : null
     const hasDataGap = price === null || rsi === null || (!value.notApplicable && !value.available)
     const needsReview = ticket.reconciled === 'UNVALIDATED' || /UNAVAILABLE|PENDING|REQUIRED/.test(ticket.reconciled)
     const actionable = !isFailure(ticket.deterministic) && !hasDataGap && !needsReview
-    return { item, symbol, value, ticket, rsi, price, priceAt, hasDataGap, needsReview, actionable, next: nextAction(item, ticket, value, rsi) }
-  }), [unique, fv, cards])
+    return { item, symbol, value, ticket, rsi, price, priceAt, level, hasDataGap, needsReview, actionable, next: nextAction(item, ticket, value, rsi) }
+  }), [unique, fv, cards, lv])
 
   const laneRows = classified.filter(row => lane === 'all' || (lane === 'favorites' ? row.item.starred : !row.item.starred))
   const filtered = laneRows.filter(row => {
@@ -192,15 +224,28 @@ export default function WatchTruthAuditPanel() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(650px,1.25fr) minmax(350px,.75fr)', gap: 10, marginTop: 9, alignItems: 'start' }}>
         <div style={{ ...panel, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '95px 145px 80px 85px 120px 1fr 118px', gap: 7, padding: '7px 8px', borderBottom: '1px solid var(--border)', fontSize: 10, color: BB.text3, textTransform: 'uppercase' }}><span>Symbol</span><span>Origin</span><span>Price</span><span>Valuation</span><span>Ticket</span><span>Next action / coverage</span><span>Open</span></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '92px 130px 150px 120px 110px 1fr 108px', gap: 7, padding: '7px 8px', borderBottom: '1px solid var(--border)', fontSize: 10, color: BB.text3, textTransform: 'uppercase' }}><span>Symbol</span><span>Origin</span><span>Levels · Price</span><span>Valuation</span><span>Ticket</span><span>Next action / coverage</span><span>Open</span></div>
           {shown.map(row => {
             const isSelected = selected === row.symbol
             const coverage = [row.price === null ? 'price unavailable' : `price ${age(row.priceAt)}`, row.rsi === null ? 'technical unavailable' : `RSI ${row.rsi.toFixed(1)}`, row.value.notApplicable ? 'valuation N/A' : row.value.available ? `valuation ${age(row.value.asOf)}` : 'valuation unavailable', row.item.catalyst_headline ? `catalyst ${age(row.item.catalyst_at)}` : 'catalyst unavailable'].join(' · ')
-            return <div key={row.symbol} role="button" tabIndex={0} aria-selected={isSelected} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectForReview(row.symbol) } }} onClick={() => selectForReview(row.symbol)} style={{ display: 'grid', gridTemplateColumns: '95px 145px 80px 85px 120px 1fr 118px', gap: 7, padding: '8px', borderBottom: '1px solid var(--border)', alignItems: 'center', fontSize: 10.5, cursor: 'pointer', background: isSelected ? 'var(--bg2)' : 'transparent', boxShadow: isSelected ? `inset 3px 0 0 ${T.link}` : undefined }}>
+            const lvl = row.level
+            return <div key={row.symbol} role="button" tabIndex={0} aria-selected={isSelected} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectForReview(row.symbol) } }} onClick={() => selectForReview(row.symbol)} style={{ display: 'grid', gridTemplateColumns: '92px 130px 150px 120px 110px 1fr 108px', gap: 7, padding: '8px', borderBottom: '1px solid var(--border)', alignItems: 'center', fontSize: 10.5, cursor: 'pointer', background: isSelected ? 'var(--bg2)' : 'transparent', boxShadow: isSelected ? `inset 3px 0 0 ${T.link}` : undefined }}>
               <div><b style={{ fontSize: 13 }}>{row.symbol}</b><br /><span style={{ color: BB.text3 }}>{row.item.starred ? '★ favorite' : 'system'}</span></div>
               <div>{originLabel(row.item)}<br /><span style={{ color: BB.text3 }}>{text(row.item.profile_sector, 'sector unavailable')}</span></div>
-              <div><b>{money(row.price)}</b><br /><span style={{ color: BB.text3 }}>{age(row.priceAt)}</span></div>
-              <div>{row.value.notApplicable ? 'N/A' : <><span>P/E {row.value.pe === null ? '—' : row.value.pe.toFixed(1)}</span><br /><span style={{ color: BB.text3 }}>Fwd {row.value.forwardPe === null ? '—' : row.value.forwardPe.toFixed(1)}</span></>}</div>
+              {/* Levels before the price: resistance overhead, support below, then the live
+                  price. Heat-colored by distance so overhead resistance reads warm and a
+                  held support reads green. Symbols outside the levels cache show price only. */}
+              <div style={{ lineHeight: 1.35 }}>
+                {lvl && (lvl.resistance !== null || lvl.support !== null) ? <>
+                  <div title={`Closed-session resistance $${lvl.resistance?.toFixed(2) ?? '—'} · ${signedPct(lvl.resistancePct)} from price${lvl.resistanceState ? ` · ${lvl.resistanceState}` : ''}`} style={{ color: levelHeat(lvl.resistancePct), fontWeight: 700 }}>R {lvl.resistance === null ? '—' : `$${lvl.resistance.toFixed(2)}`} <span style={{ fontSize: 10 }}>{signedPct(lvl.resistancePct)}</span></div>
+                  <div title={`Closed-session support $${lvl.support?.toFixed(2) ?? '—'} · ${signedPct(lvl.supportPct)} from price${lvl.supportState ? ` · ${lvl.supportState}` : ''}`} style={{ color: levelHeat(lvl.supportPct), fontWeight: 700 }}>S {lvl.support === null ? '—' : `$${lvl.support.toFixed(2)}`} <span style={{ fontSize: 10 }}>{signedPct(lvl.supportPct)}</span></div>
+                </> : <span style={{ color: BB.text3, fontSize: 10 }}>levels n/a</span>}
+                <div><b>{money(row.price)}</b> <span style={{ color: BB.text3, fontSize: 10 }}>{age(row.priceAt)}</span></div>
+              </div>
+              <div>{row.value.notApplicable ? 'N/A' : <>
+                <span><span title={VAL_TIP.pe} style={{ cursor: 'help', borderBottom: '1px dotted var(--border)' }}>P/E</span> {row.value.pe === null ? '—' : row.value.pe.toFixed(1)} · <span title={VAL_TIP.fwd} style={{ cursor: 'help', borderBottom: '1px dotted var(--border)' }}>Fwd</span> {row.value.forwardPe === null ? '—' : row.value.forwardPe.toFixed(1)}</span><br />
+                <span style={{ color: BB.text3 }}><span title={VAL_TIP.pb} style={{ cursor: 'help', borderBottom: '1px dotted var(--border)' }}>P/B</span> {row.value.pb === null ? '—' : row.value.pb.toFixed(1)} · <span title={VAL_TIP.ps} style={{ cursor: 'help', borderBottom: '1px dotted var(--border)' }}>P/S</span> {row.value.ps === null ? '—' : row.value.ps.toFixed(1)}</span>
+              </>}</div>
               <div><b style={{ color: isFailure(row.ticket.deterministic) ? BB.red : BB.text1 }}>{row.ticket.deterministic}</b><br /><span style={{ color: isFailure(row.ticket.reconciled) ? BB.red : BB.text3 }}>{row.ticket.reconciled}</span></div>
               <div><b style={{ color: isFailure(row.ticket.deterministic) ? BB.red : BB.text1 }}>{row.next}</b><br /><span style={{ color: BB.text3 }}>{coverage}</span></div>
               <div onClick={event => event.stopPropagation()}><button onClick={() => selectForReview(row.symbol)} aria-label={`Open review for ${row.symbol}`} style={isSelected ? primaryButton : button(false)}>{isSelected ? 'SELECTED' : 'OPEN REVIEW'}</button></div>
@@ -216,6 +261,13 @@ export default function WatchTruthAuditPanel() {
             <div style={{ marginTop: 5, fontSize: 10.5, color: BB.text3 }}>{text(selectedRow.item.profile_sector, 'sector unavailable')} · price {money(selectedRow.price)} ({age(selectedRow.priceAt)}) · RSI {selectedRow.rsi === null ? '—' : selectedRow.rsi.toFixed(1)}</div>
             <div style={{ ...panel, marginTop: 8, padding: 8, background: 'var(--bg2)' }}><div style={{ fontSize: 10, color: BB.text3 }}>NEXT OPERATOR ACTION</div><b style={{ color: isFailure(selectedRow.ticket.deterministic) ? BB.red : BB.text1 }}>{selectedRow.next}</b></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginTop: 9, borderTop: '1px solid var(--border)', borderLeft: '1px solid var(--border)' }}>{[['DETERMINISTIC', selectedRow.ticket.deterministic], ['RECONCILED', selectedRow.ticket.reconciled], ['LOCAL', selectedRow.ticket.local], ['GROK OAUTH', selectedRow.ticket.grok], ['CHATGPT OAUTH', selectedRow.ticket.chatgpt], ['VALUATION', selectedRow.value.notApplicable ? 'N/A' : selectedRow.value.available ? `P/E ${selectedRow.value.pe ?? '—'}` : 'UNAVAILABLE']].map(([label, value]) => <div key={label} style={{ padding: 7, borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}><div style={{ color: BB.text3, fontSize: 10 }}>{label}</div><b style={{ color: isFailure(String(value)) ? BB.red : BB.text1 }}>{value}</b></div>)}</div>
+            {!selectedRow.value.notApplicable && <div style={{ marginTop: 8, fontSize: 10.5, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {([['P/E', selectedRow.value.pe, VAL_TIP.pe], ['Fwd P/E', selectedRow.value.forwardPe, VAL_TIP.fwd], ['P/B', selectedRow.value.pb, VAL_TIP.pb], ['P/S', selectedRow.value.ps, VAL_TIP.ps]] as const).map(([label, value, tip]) => <span key={label} title={tip} style={{ cursor: 'help' }}><span style={{ color: BB.text3, borderBottom: '1px dotted var(--border)' }}>{label}</span> <b>{value === null ? '—' : Number(value).toFixed(2)}</b></span>)}
+            </div>}
+            {selectedRow.level && (selectedRow.level.resistance !== null || selectedRow.level.support !== null) && <div style={{ marginTop: 6, fontSize: 10.5, display: 'flex', gap: 12 }}>
+              <span title={`Closed-session resistance${selectedRow.level.resistanceState ? ` · ${selectedRow.level.resistanceState}` : ''}`} style={{ cursor: 'help', color: levelHeat(selectedRow.level.resistancePct) }}><span style={{ color: BB.text3 }}>R</span> {selectedRow.level.resistance === null ? '—' : `$${selectedRow.level.resistance.toFixed(2)}`} {signedPct(selectedRow.level.resistancePct)}</span>
+              <span title={`Closed-session support${selectedRow.level.supportState ? ` · ${selectedRow.level.supportState}` : ''}`} style={{ cursor: 'help', color: levelHeat(selectedRow.level.supportPct) }}><span style={{ color: BB.text3 }}>S</span> {selectedRow.level.support === null ? '—' : `$${selectedRow.level.support.toFixed(2)}`} {signedPct(selectedRow.level.supportPct)}</span>
+            </div>}
             <div style={{ marginTop: 8, fontSize: 10, color: BB.text3 }}>Reviews create independent critique artifacts. Deterministic arithmetic, freshness, validation and release remain authoritative.</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 9 }}><button disabled={Boolean(reviewBusy)} onClick={() => void runReview('local', 'Local critic')} style={button(false)}>{reviewBusy === 'Local critic' ? 'LOCAL…' : 'RUN LOCAL'}</button><button disabled={Boolean(reviewBusy)} onClick={() => void runReview('grok', 'Grok OAuth')} style={button(false)}>{reviewBusy === 'Grok OAuth' ? 'GROK…' : 'RUN GROK OAUTH'}</button><button disabled={Boolean(reviewBusy)} onClick={() => void runReview('chatgpt', 'ChatGPT OAuth')} style={button(false)}>{reviewBusy === 'ChatGPT OAuth' ? 'CHATGPT…' : 'RUN CHATGPT OAUTH'}</button><button disabled={Boolean(reviewBusy)} onClick={() => void runReview('local,grok,chatgpt', 'All free critics')} style={button(true)}>{reviewBusy === 'All free critics' ? 'ALL FREE…' : 'RUN ALL FREE'}</button></div>
             <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}><button onClick={() => { window.location.href = `/v3/portfolio/re-entry?classify=${encodeURIComponent(selectedRow.symbol)}` }} style={primaryButton}>CLASSIFY RE-ENTRY</button><button onClick={() => { window.location.href = `/v3/rotation?symbol=${encodeURIComponent(selectedRow.symbol)}` }} style={button(false)}>OPEN ROTATION</button><button disabled={Boolean(reviewBusy)} onClick={() => void estimatePremium()} style={button(false)}>{reviewBusy === 'premium estimate' ? 'ESTIMATING…' : 'PAID EXPERT…'}</button></div>
