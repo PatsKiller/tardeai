@@ -119,6 +119,22 @@ class RunState:
     cancellation_reason: str | None
     completed_at: str | None
     updated_at: str | None
+    retrieval_refs: tuple[str, ...] = ()
+    input_hash: str = ""
+    validation_hash: str = ""
+    environment: str = ""
+    created_at: str | None = None
+    failure_code: str | None = None
+
+
+@dataclass(frozen=True)
+class ToolPreparation:
+    """Result of the pre-execution tool boundary: the durable identity + effective decision."""
+
+    tool_call_id: str
+    decision: str
+    reason: str
+    started_at: str
 
 
 def event_body(run_id: str, sequence: int, event_type: str, payload: Mapping[str, Any], created_at: str, previous_hash: str) -> dict[str, Any]:
@@ -147,9 +163,18 @@ def _no_secret(payload: Any) -> None:
 @runtime_checkable
 class RunPersistence(Protocol):
     def create_run(self, envelope: RunEnvelope, budget: BudgetPolicy) -> RunState: ...
+    def record_retrieval_started(self, run_id: str, *, query_hash: str) -> RunState: ...
+    def record_retrieval_completed(self, run_id: str, *, refs: Sequence[str], retrieval_hash: str) -> RunState: ...
+    def record_model_started(self, run_id: str, *, prompt_version: str, provider_family: str, model: str, request_hash: str, cost_usd: float = 0.0) -> RunState: ...
+    def record_model_completed(self, run_id: str, *, output_hash: str) -> RunState: ...
+    def prepare_tool_call(self, run_id: str, *, agent_id: str, tool_name: str, decision: str, decision_reason: str, arguments_hash: str, started_at: str) -> "ToolPreparation": ...
+    def finish_tool_call(self, run_id: str, *, tool_call_id: str, agent_id: str, tool_name: str, decision_reason: str, arguments_hash: str, result_hash: str | None, started_at: str, completed_at: str | None, terminal_state: str) -> str: ...
+    def record_tool_lifecycle(self, run_id: str, *, agent_id: str, tool_name: str, decision: str, decision_reason: str, arguments_hash: str, result_hash: str | None, started_at: str, completed_at: str | None, terminal_state: str) -> str: ...
     def record_artifact(self, artifact: Artifact, *, retrieval_required: bool = True) -> str: ...
     def record_review(self, review: Review) -> str: ...
     def record_score(self, score: Score) -> str: ...
+    def record_deadline_exceeded(self, run_id: str, *, deadline_seconds: int, elapsed_seconds: float) -> RunState: ...
+    def resume_run(self, run_id: str) -> RunState: ...
     def complete_run(self, run_id: str) -> RunState: ...
     def cancel_run(self, run_id: str, reason: str) -> RunState: ...
     def fail_run(self, run_id: str, reason: str, failure_code: str = "RUNTIME_FAILURE") -> RunState: ...
@@ -273,6 +298,10 @@ class _PersistenceBase:
             cost_usd=float(control.get("cost_usd", 0.0)), artifacts=artifacts, tool_calls_ids=tool_ids,
             reviews=reviews, scores=scores, cancellation_reason=control.get("cancellation_reason"),
             completed_at=control.get("completed_at"), updated_at=control.get("updated_at"),
+            retrieval_refs=tuple(control.get("retrieval_refs") or ()),
+            input_hash=control.get("input_hash", ""), validation_hash=control.get("validation_hash", ""),
+            environment=control.get("environment", ""), created_at=control.get("created_at"),
+            failure_code=control.get("failure_code"),
         )
 
     def _require_run(self, uow: _UnitOfWork, run_id: str, *, lock: bool = False) -> dict[str, Any]:
@@ -307,6 +336,10 @@ class _PersistenceBase:
                 for key, value in immutable.items():
                     if existing.get(key) != value:
                         raise IdempotencyConflictError(f"run_id {envelope.run_id} exists with different {key}")
+                # Envelope creation timestamp is part of the immutable identity: reusing a run_id
+                # with a changed created_at is a conflict, not an idempotent replay.
+                if envelope.created_at is not None and existing.get("created_at") != envelope.created_at:
+                    raise IdempotencyConflictError(f"run_id {envelope.run_id} exists with different created_at")
                 return self._state(uow, existing)
             now = self._clock()
             control: dict[str, Any] = {
@@ -314,7 +347,8 @@ class _PersistenceBase:
                 "status": RunStatus.CREATED.value, "retrieval_count": 0, "model_calls": 0,
                 "tool_calls": 0, "cost_usd": 0.0, "checkpoint_seq": 0, "head_hash": GENESIS_HASH,
                 "checkpoint_label": None, "cancellation_reason": None, "completed_at": None,
-                "started_at": now, "updated_at": now,
+                "started_at": now, "updated_at": now, "retrieval_refs": [],
+                "created_at": envelope.created_at or now, "failure_code": None,
             }
             uow.insert_control(control)
             self._append_event(uow, control, "RUN_CREATED", {"status": RunStatus.CREATED.value, "objective_hash": immutable["objective_hash"]}, status=RunStatus.CREATED.value, checkpoint="created")
@@ -345,34 +379,80 @@ class _PersistenceBase:
             uow.save_control(artifact.run_id, control)
             return artifact.artifact_id
 
-    # ---- durable tool lifecycle ------------------------------------------
-    def record_tool_lifecycle(self, run_id: str, *, agent_id: str, tool_name: str, decision: str, decision_reason: str, arguments_hash: str, result_hash: str | None, started_at: str, completed_at: str | None, terminal_state: str) -> str:
+    # ---- durable tool lifecycle: prepare (before executor) + finish (after) ----
+    def _prepared_tool_decision(self, events: list[dict[str, Any]], tool_call_id: str) -> str | None:
+        for row in events:
+            body = row["payload"]
+            inner = body.get("payload") or {}
+            if inner.get("tool_call_id") == tool_call_id:
+                if body["event_type"] == "TOOL_STARTED":
+                    return "ALLOW"
+                if body["event_type"] == "TOOL_CANCELLED":
+                    return "DENY"
+        return None
+
+    def prepare_tool_call(self, run_id: str, *, agent_id: str, tool_name: str, decision: str, decision_reason: str, arguments_hash: str, started_at: str) -> ToolPreparation:
+        """Durably record TOOL_PROPOSED/DECISION (+ TOOL_STARTED for ALLOW, or the denied
+        terminal for DENY) and reserve the tool-call budget under the run lock — all BEFORE
+        the executor runs. Idempotent by the derived tool_call_id. Inserts no terminal row."""
         if decision not in {"ALLOW", "DENY"}:
             raise PersistenceError("tool decision must be ALLOW or DENY")
-        if terminal_state not in {"completed", "failed", "cancelled", "timeout"}:
-            raise PersistenceError("terminal_state must be completed/failed/cancelled/timeout")
-        if not _HEX64.match(arguments_hash) or (result_hash is not None and not _HEX64.match(result_hash)):
-            raise PersistenceError("tool-call hashes must be sha256")
+        if not _HEX64.match(arguments_hash):
+            raise PersistenceError("tool arguments_hash must be sha256")
         tool_call_id = derive_id("tool_call", run_id, agent_id, tool_name, arguments_hash, started_at)
         with self._work() as uow:
             control = self._require_open_exec(uow, run_id)
+            prepared = self._prepared_tool_decision(self._load_events(uow, run_id), tool_call_id)
+            if prepared is not None:  # idempotent: this exact call was already prepared
+                return ToolPreparation(tool_call_id=tool_call_id, decision=prepared, reason=decision_reason, started_at=started_at)
+            effective, reason = decision, decision_reason
+            if decision == "ALLOW":
+                max_tool = int((control.get("budget") or {}).get("max_tool_calls", 0))
+                if int(control.get("tool_calls", 0)) + 1 > max_tool:
+                    effective, reason = "DENY", "tool-call budget exhausted"
+            self._append_event(uow, control, "TOOL_PROPOSED", {"tool_call_id": tool_call_id, "tool_name": tool_name}, checkpoint=f"tool_proposed:{tool_name}")
+            self._append_event(uow, control, "TOOL_DECISION", {"tool_call_id": tool_call_id, "decision": effective, "reason": reason})
+            if effective == "ALLOW":
+                self._append_event(uow, control, "TOOL_STARTED", {"tool_call_id": tool_call_id, "started_at": started_at}, checkpoint=f"tool_started:{tool_name}")
+                self._bump(control, "tool_calls")  # reserve the budget under the run lock
+            else:
+                self._append_event(uow, control, "TOOL_CANCELLED", {"tool_call_id": tool_call_id, "reason": reason}, checkpoint=f"tool_denied:{tool_name}")
+            uow.save_control(run_id, control)
+            return ToolPreparation(tool_call_id=tool_call_id, decision=effective, reason=reason, started_at=started_at)
+
+    def finish_tool_call(self, run_id: str, *, tool_call_id: str, agent_id: str, tool_name: str, decision_reason: str, arguments_hash: str, result_hash: str | None, started_at: str, completed_at: str | None, terminal_state: str) -> str:
+        """Record only the ACTUAL terminal result of a PREPARED tool call: the append-only
+        agent_tool_calls row + terminal journal event, transactionally. Idempotent for
+        identical terminal evidence; rejects conflicting evidence; refuses to finish a call
+        that has no durable prepared (TOOL_STARTED) lifecycle."""
+        if terminal_state not in {"completed", "failed", "cancelled", "timeout"}:
+            raise PersistenceError("terminal_state must be completed/failed/cancelled/timeout")
+        if result_hash is not None and not _HEX64.match(result_hash):
+            raise PersistenceError("tool result_hash must be sha256")
+        with self._work() as uow:
+            control = self._require_run(uow, run_id, lock=True)
             existing = uow.get_row("agent_tool_calls", {"tool_call_id": tool_call_id})
-            if existing is not None:
-                if existing.get("decision") != decision or existing.get("result_hash") != result_hash or existing.get("completed_at") != completed_at:
+            if existing is not None:  # idempotent for identical evidence; conflict otherwise
+                if existing.get("result_hash") != result_hash or existing.get("completed_at") != completed_at:
                     raise IdempotencyConflictError(f"tool_call {tool_call_id} exists with different terminal evidence")
                 return tool_call_id
-            self._append_event(uow, control, "TOOL_PROPOSED", {"tool_call_id": tool_call_id, "tool_name": tool_name}, checkpoint=f"tool_proposed:{tool_name}")
-            self._append_event(uow, control, "TOOL_DECISION", {"tool_call_id": tool_call_id, "decision": decision, "reason": decision_reason})
-            self._append_event(uow, control, "TOOL_STARTED", {"tool_call_id": tool_call_id, "started_at": started_at})
+            if self._prepared_tool_decision(self._load_events(uow, run_id), tool_call_id) != "ALLOW":
+                raise PersistenceError(f"tool_call {tool_call_id} was not durably prepared (no TOOL_STARTED)")
             uow.insert_row(
                 "agent_tool_calls", {"tool_call_id": tool_call_id},
-                {"tool_call_id": tool_call_id, "run_id": run_id, "agent_id": agent_id, "tool_name": tool_name, "decision": decision, "decision_reason": decision_reason, "arguments_hash": arguments_hash, "result_hash": result_hash, "started_at": started_at, "completed_at": completed_at},
+                {"tool_call_id": tool_call_id, "run_id": run_id, "agent_id": agent_id, "tool_name": tool_name, "decision": "ALLOW", "decision_reason": decision_reason, "arguments_hash": arguments_hash, "result_hash": result_hash, "started_at": started_at, "completed_at": completed_at},
             )
             self._append_event(uow, control, f"TOOL_{terminal_state.upper()}", {"tool_call_id": tool_call_id, "completed_at": completed_at, "result_hash": result_hash}, checkpoint=f"tool_{terminal_state}:{tool_name}")
-            if decision == "ALLOW":
-                self._bump(control, "tool_calls")
             uow.save_control(run_id, control)
             return tool_call_id
+
+    def record_tool_lifecycle(self, run_id: str, *, agent_id: str, tool_name: str, decision: str, decision_reason: str, arguments_hash: str, result_hash: str | None, started_at: str, completed_at: str | None, terminal_state: str) -> str:
+        """Compatibility wrapper: prepare, then (for ALLOW) finish. Prefer the explicit
+        prepare_tool_call / finish_tool_call split so the executor runs between them."""
+        prep = self.prepare_tool_call(run_id, agent_id=agent_id, tool_name=tool_name, decision=decision, decision_reason=decision_reason, arguments_hash=arguments_hash, started_at=started_at)
+        if prep.decision == "DENY":
+            return prep.tool_call_id
+        return self.finish_tool_call(run_id, tool_call_id=prep.tool_call_id, agent_id=agent_id, tool_name=tool_name, decision_reason=decision_reason, arguments_hash=arguments_hash, result_hash=result_hash, started_at=started_at, completed_at=completed_at, terminal_state=terminal_state)
 
     # ---- review / score bound to the PERSISTED artifact -------------------
     def _persisted_artifact(self, uow: _UnitOfWork, artifact_id: str) -> dict[str, Any]:
@@ -443,6 +523,8 @@ class _PersistenceBase:
             control["completed_at"] = self._clock()
             if status == RunStatus.CANCELLED.value:
                 control["cancellation_reason"] = payload.get("reason")
+            if "failure_code" in payload:
+                control["failure_code"] = payload.get("failure_code")
             uow.save_control(run_id, control)
             return self._state(uow, control)
 
@@ -454,6 +536,58 @@ class _PersistenceBase:
 
     def cancel_run(self, run_id: str, reason: str) -> RunState:
         return self._terminate(run_id, RunStatus.CANCELLED.value, "RUN_CANCELLED", {"reason": reason})
+
+    # ---- retrieval / model / deadline / resume lifecycle ------------------
+    def record_retrieval_started(self, run_id: str, *, query_hash: str) -> RunState:
+        with self._work() as uow:
+            control = self._require_open_exec(uow, run_id)
+            self._append_event(uow, control, "RETRIEVAL_STARTED", {"query_hash": query_hash, "status": RunStatus.RETRIEVING.value}, status=RunStatus.RETRIEVING.value, checkpoint="retrieval_started")
+            uow.save_control(run_id, control)
+            return self._state(uow, control)
+
+    def record_retrieval_completed(self, run_id: str, *, refs: Sequence[str], retrieval_hash: str) -> RunState:
+        new_refs = [str(r) for r in refs]
+        with self._work() as uow:
+            control = self._require_open_exec(uow, run_id)
+            merged = list(dict.fromkeys(list(control.get("retrieval_refs") or []) + new_refs))
+            control["retrieval_refs"] = merged
+            control["retrieval_count"] = len(merged)
+            self._append_event(uow, control, "RETRIEVAL_COMPLETED", {"retrieval_count": len(merged), "retrieval_hash": retrieval_hash, "status": RunStatus.READY_TO_REASON.value}, status=RunStatus.READY_TO_REASON.value, checkpoint="retrieval_complete")
+            uow.save_control(run_id, control)
+            return self._state(uow, control)
+
+    def record_model_started(self, run_id: str, *, prompt_version: str, provider_family: str, model: str, request_hash: str, cost_usd: float = 0.0) -> RunState:
+        if cost_usd < 0:
+            raise PersistenceError("cost_usd must be non-negative")
+        with self._work() as uow:
+            control = self._require_open_exec(uow, run_id)
+            self._bump(control, "model_calls")
+            self._bump(control, "cost_usd", float(cost_usd))
+            self._append_event(uow, control, "MODEL_STARTED", {"prompt_version": prompt_version, "provider_family": provider_family, "model": model, "request_hash": request_hash, "model_calls": int(control["model_calls"]), "cost_usd": float(control["cost_usd"]), "status": RunStatus.REASONING.value}, status=RunStatus.REASONING.value, checkpoint="model_started")
+            uow.save_control(run_id, control)
+            return self._state(uow, control)
+
+    def record_model_completed(self, run_id: str, *, output_hash: str) -> RunState:
+        with self._work() as uow:
+            control = self._require_open_exec(uow, run_id)
+            self._append_event(uow, control, "MODEL_COMPLETED", {"output_hash": output_hash, "status": RunStatus.REVIEW_REQUIRED.value}, status=RunStatus.REVIEW_REQUIRED.value, checkpoint="model_complete")
+            uow.save_control(run_id, control)
+            return self._state(uow, control)
+
+    def record_deadline_exceeded(self, run_id: str, *, deadline_seconds: int, elapsed_seconds: float) -> RunState:
+        return self._terminate(run_id, RunStatus.FAILED.value, "RUN_FAILED", {"reason": "agent runtime deadline exceeded", "failure_code": "DEADLINE_EXCEEDED", "deadline_seconds": deadline_seconds, "elapsed_seconds": elapsed_seconds})
+
+    def resume_run(self, run_id: str) -> RunState:
+        with self._work() as uow:
+            control = self._require_run(uow, run_id, lock=True)
+            status = control.get("status")
+            if status in (RunStatus.CANCELLED.value, RunStatus.FAILED.value):
+                raise TerminalRunError(f"{status} run requires a new immutable envelope")
+            if status == RunStatus.COMPLETED.value:
+                return self._state(uow, control)  # completed runs never resume
+            self._append_event(uow, control, "RUN_RESUMED", {"resume_from": control.get("checkpoint_label"), "status": status})
+            uow.save_control(run_id, control)
+            return self._state(uow, control)
 
     # ---- knowledge base (append-only, governed) --------------------------
     def record_lesson(self, *, lesson_id: str, lesson_version: int, lifecycle: str, title: str, statement: str, provenance: Mapping[str, Any], created_by: str, reviewed_by: str | None = None, counterevidence_refs: Sequence[str] = (), valid_from: str | None = None, valid_to: str | None = None) -> str:
@@ -674,10 +808,22 @@ class _PostgresUnit(_UnitOfWork):
             "head_hash": checkpoint.get("head_hash", GENESIS_HASH), "checkpoint_label": checkpoint.get("checkpoint_label"),
             "budget": dict(budget), "cancellation_reason": data["cancellation_reason"],
             "started_at": _iso(data["started_at"]), "updated_at": _iso(data["updated_at"]), "completed_at": _iso(data["completed_at"]),
+            # exact envelope timestamp (authoritative deadline origin), cumulative refs and failure code
+            # survive round-trips through the checkpoint JSON projection with deterministic safe defaults.
+            "created_at": checkpoint.get("created_at"),
+            "retrieval_refs": [str(ref) for ref in (checkpoint.get("retrieval_refs") or [])],
+            "failure_code": checkpoint.get("failure_code"),
         }
 
     def _checkpoint(self, control: Mapping[str, Any]) -> dict[str, Any]:
-        return {"head_hash": control.get("head_hash", GENESIS_HASH), "checkpoint_label": control.get("checkpoint_label"), "objective_hash": control.get("objective_hash")}
+        return {
+            "head_hash": control.get("head_hash", GENESIS_HASH),
+            "checkpoint_label": control.get("checkpoint_label"),
+            "objective_hash": control.get("objective_hash"),
+            "created_at": control.get("created_at"),
+            "retrieval_refs": [str(ref) for ref in (control.get("retrieval_refs") or [])],
+            "failure_code": control.get("failure_code"),
+        }
 
     def insert_control(self, row):
         cur = self._cursor(

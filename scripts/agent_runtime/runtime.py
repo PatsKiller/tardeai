@@ -22,17 +22,25 @@ from .contracts import (
     utc_now,
 )
 from .journal import ShadowRunJournal
+from .persistence import PersistenceError, RunPersistence, TerminalRunError
 
 RetrievalProvider = Callable[[str, str], Sequence[Mapping[str, Any]]]
 ModelProvider = Callable[[str, Mapping[str, Any]], Mapping[str, Any]]
 Clock = Callable[[], datetime]
 
+_TERMINAL = {RunStatus.COMPLETED.value, RunStatus.CANCELLED.value, RunStatus.FAILED.value}
+
 
 class MvlRuntime:
     """Durable shadow implementation of the first agentic loop.
 
-    It intentionally does not expose arbitrary shell, production database,
-    broker, order, approval, 2FA, credential, or config-promotion methods.
+    When a ``RunPersistence`` adapter is injected, that adapter is the *single
+    authoritative* source of run lifecycle state: every transition, counter,
+    checkpoint, budget read, terminal/resume gate and reconstruction goes through the
+    persistence contract, and ``ShadowRunJournal`` is not used. Without persistence,
+    the runtime is journal-only (unchanged, backward-compatible). It never exposes
+    arbitrary shell, production database, broker, order, approval, 2FA, credential, or
+    config-promotion methods.
     """
 
     def __init__(
@@ -42,7 +50,7 @@ class MvlRuntime:
         retrieval_provider: RetrievalProvider,
         model_provider: ModelProvider,
         clock: Clock | None = None,
-        persistence: "RunPersistence | None" = None,
+        persistence: RunPersistence | None = None,
     ) -> None:
         definition.validate()
         if not definition.enabled or definition.deployment_state.value not in {"SHADOW", "DESIGNED"}:
@@ -52,11 +60,52 @@ class MvlRuntime:
         self.retrieval_provider = retrieval_provider
         self.model_provider = model_provider
         self.clock = clock or (lambda: datetime.now(timezone.utc))
-        # Optional durable authority. When injected, run identity is recorded through
-        # the persistence protocol; ShadowRunJournal remains the in-memory
-        # compatibility/replay backend, not a second authoritative state.
         self.persistence = persistence
 
+    @property
+    def _persist(self) -> bool:
+        return self.persistence is not None
+
+    # ---- authoritative state read ----------------------------------------
+    def _read_state(self, run_id: str) -> dict[str, Any]:
+        """Normalized run state from the single authority (persistence or journal)."""
+        if not self._persist:
+            return dict(self.journal.replay(run_id))
+        try:
+            rs = self.persistence.reconstruct(run_id)
+        except PersistenceError as exc:
+            if "unknown run" in str(exc):
+                raise KeyError(f"unknown run: {run_id}") from exc
+            raise
+        return {
+            "sequence": rs.sequence,
+            "status": rs.status,
+            "checkpoint": rs.checkpoint,
+            "retrieval_count": rs.retrieval_count,
+            "retrieval_refs": list(rs.retrieval_refs),
+            "model_calls": rs.model_calls,
+            "tool_calls": rs.tool_calls,
+            "cost_usd": rs.cost_usd,
+            "envelope": {
+                "input_hash": rs.input_hash,
+                "validation_hash": rs.validation_hash,
+                "created_at": rs.created_at,
+            },
+            "artifact": bool(rs.artifacts),
+            "review": bool(rs.reviews),
+            "score": bool(rs.scores),
+            "artifacts": list(rs.artifacts),
+            "reviews": list(rs.reviews),
+            "scores": list(rs.scores),
+            "completed_at": rs.completed_at,
+            "cancellation_reason": rs.cancellation_reason,
+            "failure_code": rs.failure_code,
+        }
+
+    def _known(self, state: Mapping[str, Any]) -> bool:
+        return int(state.get("sequence", 0)) > 0
+
+    # ---- lifecycle -------------------------------------------------------
     def start(
         self,
         *,
@@ -80,9 +129,11 @@ class MvlRuntime:
             created_at=self._now().isoformat(),
         )
         envelope.validate(self.definition)
-        if self.persistence is not None:
-            # Durable, idempotent run identity via the persistence protocol.
+        if self._persist:
+            # Persistence is authoritative: identity is created durably; the journal is
+            # not written. A persistence failure propagates (never silently falls back).
             self.persistence.create_run(envelope, self.definition.budget)
+            return envelope
         self.journal.append(run_id, "RUN_CREATED", {
             "status": RunStatus.CREATED.value,
             "envelope": asdict(envelope),
@@ -99,16 +150,16 @@ class MvlRuntime:
         self._active_state(run_id)
         if not query.strip():
             raise ValueError("retrieval query is required")
+        if self._persist:
+            self.persistence.record_retrieval_started(run_id, query_hash=canonical_hash(query))
+            rows = list(self.retrieval_provider(run_id, query))
+            refs, sanitized = self._sanitize_retrieval(rows)
+            self.persistence.record_retrieval_completed(run_id, refs=refs, retrieval_hash=canonical_hash(sanitized))
+            return sanitized
         self.journal.append(run_id, "RETRIEVAL_STARTED", {"status": RunStatus.RETRIEVING.value, "query_hash": canonical_hash(query)})
         rows = list(self.retrieval_provider(run_id, query))
         self._active_state(run_id)
-        refs: list[str] = []
-        sanitized: list[Mapping[str, Any]] = []
-        for index, row in enumerate(rows):
-            assert_no_secret_material(row)
-            ref = str(row.get("ref") or row.get("id") or f"retrieval_{index}")
-            refs.append(ref)
-            sanitized.append(dict(row))
+        refs, sanitized = self._sanitize_retrieval(rows)
         self.journal.append(run_id, "RETRIEVAL_COMPLETED", {
             "status": RunStatus.READY_TO_REASON.value,
             "retrieval_count": len(refs),
@@ -118,12 +169,50 @@ class MvlRuntime:
         })
         return sanitized
 
+    def _sanitize_retrieval(self, rows: Sequence[Mapping[str, Any]]) -> tuple[list[str], list[Mapping[str, Any]]]:
+        refs: list[str] = []
+        sanitized: list[Mapping[str, Any]] = []
+        for index, row in enumerate(rows):
+            assert_no_secret_material(row)
+            refs.append(str(row.get("ref") or row.get("id") or f"retrieval_{index}"))
+            sanitized.append(dict(row))
+        return refs, sanitized
+
     def invoke_tool(self, run_id: str, tool_name: str, arguments: Mapping[str, Any], executor: Callable[[Mapping[str, Any]], Mapping[str, Any]]) -> Mapping[str, Any]:
         state = self._active_state(run_id)
         request = ToolRequest(run_id=run_id, tool_name=tool_name, arguments=arguments, environment=self.journal.environment)
         evaluation = ToolPolicy.evaluate(self.definition, request)
         next_count = int(state.get("tool_calls") or 0) + 1
-        if next_count > self.definition.budget.max_tool_calls:
+        if self._persist:
+            # Durable prepare (PROPOSED/DECISION/STARTED + atomic budget reservation under
+            # the run lock) commits BEFORE the executor runs, so an external side effect can
+            # never occur without durable started evidence. prepare is authoritative for the
+            # budget decision (it may downgrade ALLOW->DENY when the budget is exhausted).
+            started = self._now().isoformat()
+            prep = self.persistence.prepare_tool_call(
+                run_id, agent_id=self.definition.agent_id, tool_name=tool_name,
+                decision=evaluation.decision.value, decision_reason=evaluation.reason,
+                arguments_hash=request.arguments_hash, started_at=started)
+            if prep.decision == "DENY":
+                raise PermissionError(prep.reason)
+            assert_no_secret_material(arguments)
+            try:
+                result = dict(executor(arguments))
+                assert_no_secret_material(result)
+            except Exception:
+                # Terminal FAILED is attempted; the executor exception propagates. If this
+                # durable write itself fails, the started/in-flight evidence remains.
+                self.persistence.finish_tool_call(
+                    run_id, tool_call_id=prep.tool_call_id, agent_id=self.definition.agent_id, tool_name=tool_name,
+                    decision_reason=prep.reason, arguments_hash=request.arguments_hash,
+                    result_hash=None, started_at=started, completed_at=self._now().isoformat(), terminal_state="failed")
+                raise
+            self.persistence.finish_tool_call(
+                run_id, tool_call_id=prep.tool_call_id, agent_id=self.definition.agent_id, tool_name=tool_name,
+                decision_reason=prep.reason, arguments_hash=request.arguments_hash,
+                result_hash=canonical_hash(result), started_at=started, completed_at=self._now().isoformat(), terminal_state="completed")
+            return result
+        if evaluation.decision is ToolDecision.ALLOW and next_count > self.definition.budget.max_tool_calls:
             evaluation = type(evaluation)(ToolDecision.DENY, "tool-call budget exhausted")
         self.journal.append(run_id, "TOOL_EVALUATED", {
             "tool_name": tool_name,
@@ -168,6 +257,15 @@ class MvlRuntime:
         if next_cost > self.definition.budget.max_cost_usd:
             raise RuntimeError("model-cost budget exhausted")
         assert_no_secret_material(request_payload)
+        if self._persist:
+            # Durable MODEL_STARTED (counter + cost) commits BEFORE the provider is called,
+            # so a persistence failure fails closed before the side effect.
+            self.persistence.record_model_started(run_id, prompt_version=prompt_version, provider_family=provider_family,
+                                                  model=model, request_hash=canonical_hash(request_payload), cost_usd=cost_usd)
+            output = dict(self.model_provider(run_id, request_payload))
+            assert_no_secret_material(output)
+            self.persistence.record_model_completed(run_id, output_hash=canonical_hash(output))
+            return output
         self.journal.append(run_id, "MODEL_STARTED", {
             "status": RunStatus.REASONING.value,
             "prompt_version": prompt_version,
@@ -214,6 +312,9 @@ class MvlRuntime:
         )
         assert_no_secret_material(payload)
         artifact.validate(self.definition.retrieval_required)
+        if self._persist:
+            self.persistence.record_artifact(artifact, retrieval_required=self.definition.retrieval_required)
+            return artifact
         self.journal.append(run_id, "ARTIFACT_CREATED", {
             "status": RunStatus.REVIEW_REQUIRED.value,
             "artifact": asdict(artifact),
@@ -234,6 +335,9 @@ class MvlRuntime:
             artifact_hash=artifact.payload_hash,
         )
         review.validate()
+        if self._persist:
+            self.persistence.record_review(review)
+            return review
         self.journal.append(run_id, "REVIEW_RECORDED", {
             "review": asdict(review),
             "review_verdict": verdict.value,
@@ -242,7 +346,11 @@ class MvlRuntime:
         return review
 
     def record_score(self, run_id: str, artifact: Artifact, scorer_agent_id: str, dimensions: Mapping[str, float], outcome_ref: str | None = None) -> Score:
-        self._active_state(run_id)
+        # Independent Darwin scoring is permitted even after a run terminates; it only
+        # requires that the run exists.
+        state = self._read_state(run_id)
+        if not self._known(state):
+            raise KeyError(f"unknown run: {run_id}")
         score = Score(
             score_id=f"score_{uuid.uuid4().hex}",
             artifact_id=artifact.artifact_id,
@@ -252,6 +360,9 @@ class MvlRuntime:
             outcome_ref=outcome_ref,
         )
         score.validate()
+        if self._persist:
+            self.persistence.record_score(score)
+            return score
         self.journal.append(run_id, "SCORE_RECORDED", {"score": asdict(score), "checkpoint": "score_recorded"})
         return score
 
@@ -261,14 +372,20 @@ class MvlRuntime:
             raise RuntimeError("cannot complete a run without an immutable artifact")
         if not state.get("review"):
             raise RuntimeError("cannot complete a run without independent review")
+        if self._persist:
+            self.persistence.complete_run(run_id)
+            return
         self.journal.append(run_id, "RUN_COMPLETED", {"status": RunStatus.COMPLETED.value, "completed_at": self._now().isoformat(), "checkpoint": "complete"})
 
     def fail(self, run_id: str, reason: str, failure_code: str = "RUNTIME_FAILURE") -> None:
-        state = self.journal.replay(run_id)
-        if state.get("sequence", 0) == 0:
+        state = self._read_state(run_id)
+        if not self._known(state):
             raise KeyError(f"unknown run: {run_id}")
-        if state.get("status") in {RunStatus.COMPLETED.value, RunStatus.CANCELLED.value, RunStatus.FAILED.value}:
+        if state.get("status") in _TERMINAL:
             raise RuntimeError(f"run is terminal: {state.get('status')}")
+        if self._persist:
+            self.persistence.fail_run(run_id, reason, failure_code)
+            return
         self.journal.append(run_id, "RUN_FAILED", {
             "status": RunStatus.FAILED.value,
             "failure_code": failure_code,
@@ -279,11 +396,14 @@ class MvlRuntime:
 
     def cancel(self, run_id: str, reason: str) -> None:
         self._active_state(run_id)
+        if self._persist:
+            self.persistence.cancel_run(run_id, reason)
+            return
         self.journal.append(run_id, "RUN_CANCELLED", {"status": RunStatus.CANCELLED.value, "cancellation_reason": reason, "cancelled_at": self._now().isoformat()})
 
     def resume(self, run_id: str) -> Mapping[str, Any]:
-        state = self.journal.replay(run_id)
-        if state.get("sequence", 0) == 0:
+        state = self._read_state(run_id)
+        if not self._known(state):
             raise KeyError(f"unknown run: {run_id}")
         if state.get("status") == RunStatus.CANCELLED.value:
             raise RuntimeError("cancelled run requires a new run envelope")
@@ -292,17 +412,20 @@ class MvlRuntime:
         if state.get("status") == RunStatus.COMPLETED.value:
             return state
         self._assert_within_deadline(run_id, state)
+        if self._persist:
+            self.persistence.resume_run(run_id)
+            return self._read_state(run_id)
         self.journal.append(run_id, "RUN_RESUMED", {"status": state.get("status", RunStatus.CREATED.value), "resumed_at": self._now().isoformat(), "resume_from": state.get("checkpoint")})
         return self.journal.replay(run_id)
 
     def status(self, run_id: str) -> Mapping[str, Any]:
-        return self.journal.replay(run_id)
+        return self._read_state(run_id)
 
     def _active_state(self, run_id: str) -> dict[str, Any]:
-        state = self.journal.replay(run_id)
-        if state.get("sequence", 0) == 0:
+        state = self._read_state(run_id)
+        if not self._known(state):
             raise KeyError(f"unknown run: {run_id}")
-        if state.get("status") in {RunStatus.COMPLETED.value, RunStatus.CANCELLED.value, RunStatus.FAILED.value}:
+        if state.get("status") in _TERMINAL:
             raise RuntimeError(f"run is terminal: {state.get('status')}")
         self._assert_within_deadline(run_id, state)
         return state
@@ -323,15 +446,18 @@ class MvlRuntime:
         elapsed_seconds = max(0.0, (self._now() - created_at.astimezone(timezone.utc)).total_seconds())
         if elapsed_seconds <= self.definition.budget.deadline_seconds:
             return
-        self.journal.append(run_id, "RUN_FAILED", {
-            "status": RunStatus.FAILED.value,
-            "failure_code": "DEADLINE_EXCEEDED",
-            "failure_reason": "agent runtime deadline exceeded",
-            "deadline_seconds": self.definition.budget.deadline_seconds,
-            "elapsed_seconds": elapsed_seconds,
-            "completed_at": self._now().isoformat(),
-            "checkpoint": state.get("checkpoint"),
-        })
+        if self._persist:
+            self.persistence.record_deadline_exceeded(run_id, deadline_seconds=self.definition.budget.deadline_seconds, elapsed_seconds=elapsed_seconds)
+        else:
+            self.journal.append(run_id, "RUN_FAILED", {
+                "status": RunStatus.FAILED.value,
+                "failure_code": "DEADLINE_EXCEEDED",
+                "failure_reason": "agent runtime deadline exceeded",
+                "deadline_seconds": self.definition.budget.deadline_seconds,
+                "elapsed_seconds": elapsed_seconds,
+                "completed_at": self._now().isoformat(),
+                "checkpoint": state.get("checkpoint"),
+            })
         raise TimeoutError("agent runtime deadline exceeded")
 
     def _now(self) -> datetime:

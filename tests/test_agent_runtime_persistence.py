@@ -273,13 +273,14 @@ def test_artifact_must_match_persisted_run_hashes(store):
 
 # --------------------------- B: idempotency conflict ----------------------- #
 def test_create_run_conflict_on_any_changed_immutable_field(store):
-    store.create_run(envelope(), BudgetPolicy())
-    store.create_run(envelope(), BudgetPolicy())
+    ts = "2026-07-25T00:00:00+00:00"  # created_at is now immutable identity — pin it so each conflict is attributable
+    store.create_run(envelope(created_at=ts), BudgetPolicy())
+    store.create_run(envelope(created_at=ts), BudgetPolicy())  # idempotent replay: identical envelope
     for kw in ({"agent_version": "2.0.0"}, {"job_type": "audit"}, {"input_hash": "b" * 64}):
         with pytest.raises(IdempotencyConflictError):
-            store.create_run(envelope(**kw), BudgetPolicy())
+            store.create_run(envelope(created_at=ts, **kw), BudgetPolicy())
     with pytest.raises(IdempotencyConflictError):
-        store.create_run(envelope(), BudgetPolicy(max_tool_calls=99))
+        store.create_run(envelope(created_at=ts), BudgetPolicy(max_tool_calls=99))
 
 
 def test_artifact_payload_conflict_returns_persisted_id(store):
@@ -433,6 +434,58 @@ def test_kb_lesson_case_chunk_persist_and_conflict(store):
 def test_kb_rejects_secret_material(store):
     with pytest.raises(PersistenceError):
         store.record_case(case_id="C9", case_type="decision", source_refs=[], facts={"password": "x"})
+
+
+# ------------------- run-control JSON projection round-trip ---------------- #
+# These prove created_at / retrieval_refs / failure_code survive the checkpoint
+# projection across a fresh unit of work on BOTH backends (via the `store` fixture).
+def test_created_at_survives_projection_and_reconstruction(store):
+    ts = "2026-07-25T00:00:00+00:00"
+    store.create_run(envelope(created_at=ts), BudgetPolicy())
+    assert store.reconstruct("run_a").created_at == ts  # exact string, not the persistence clock
+
+
+def test_changed_created_at_conflicts_for_existing_run(store):
+    store.create_run(envelope(created_at="2026-07-25T00:00:00+00:00"), BudgetPolicy())
+    with pytest.raises(IdempotencyConflictError):
+        store.create_run(envelope(created_at="2026-07-25T00:00:01+00:00"), BudgetPolicy())
+
+
+def test_two_retrievals_across_units_keep_cumulative_unique_refs(store):
+    store.create_run(envelope(), BudgetPolicy())
+    store.record_retrieval_started("run_a", query_hash=H)
+    store.record_retrieval_completed("run_a", refs=["kb:1", "kb:2"], retrieval_hash=H)
+    # a second retrieval in a separate unit must merge, not clobber — proving refs round-tripped
+    store.record_retrieval_completed("run_a", refs=["kb:2", "kb:3"], retrieval_hash="b" * 64)
+    rs = store.reconstruct("run_a")
+    assert rs.retrieval_refs == ("kb:1", "kb:2", "kb:3")
+    assert rs.retrieval_count == 3
+
+
+def test_persisted_refs_available_to_a_fresh_store_instance(store):
+    store.create_run(envelope(), BudgetPolicy())
+    store.record_retrieval_started("run_a", query_hash=H)
+    store.record_retrieval_completed("run_a", refs=["kb:1", "kb:7"], retrieval_hash=H)
+    # in-memory shares state; postgres reconstructs from the durable checkpoint projection
+    assert set(store.reconstruct("run_a").retrieval_refs) == {"kb:1", "kb:7"}
+
+
+def test_deadline_failure_code_reconstructs_through_new_unit(store):
+    store.create_run(envelope(), BudgetPolicy())
+    store.record_retrieval_started("run_a", query_hash=H)
+    store.record_deadline_exceeded("run_a", deadline_seconds=5, elapsed_seconds=120.0)
+    rs = store.reconstruct("run_a")
+    assert rs.status == RunStatus.FAILED.value and rs.failure_code == "DEADLINE_EXCEEDED"
+
+
+def test_projected_fields_identical_between_write_and_reconstruction(store):
+    ts = "2026-07-25T00:00:00+00:00"
+    store.create_run(envelope(created_at=ts), BudgetPolicy())
+    store.record_retrieval_started("run_a", query_hash=H)
+    written = store.record_retrieval_completed("run_a", refs=["kb:1", "kb:2"], retrieval_hash=H)
+    reread = store.reconstruct("run_a")
+    for field in ("created_at", "retrieval_refs", "retrieval_count", "failure_code"):
+        assert getattr(written, field) == getattr(reread, field)
 
 
 # --------------------------- optional real LAB ----------------------------- #
