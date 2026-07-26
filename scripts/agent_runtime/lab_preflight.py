@@ -20,8 +20,10 @@ EXPECTED_PORT: Final = 5433
 EXPECTED_DATA_ROOT: Final = PurePosixPath("/home/johnclaw/tradeai-lab")
 PRODUCTION_PORT: Final = 5432
 FORBIDDEN_DATABASES: Final = frozenset({"trade_ai", "postgres", "template0", "template1"})
+# Reader and writer are runtime identities and may be pinned here. The migration
+# executor identity must never be required at runtime, so it is NOT embedded as a
+# literal — it is supplied by the operator and validated structurally below.
 EXPECTED_ROLES: Final = {
-    "migration_role": "agentic_lab_migrator",
     "reader_role": "trade_ai_shadow_ro",
     "writer_role": "agentic_runtime_lab_rw",
 }
@@ -64,6 +66,13 @@ class LabTarget:
         for field_name, expected in EXPECTED_ROLES.items():
             if getattr(self, field_name) != expected:
                 errors.append(f"{field_name} must be {expected}")
+        migration_role = self.migration_role.strip()
+        if (
+            not migration_role
+            or migration_role != migration_role.lower()
+            or "migrator" not in migration_role
+        ):
+            errors.append("migration_role must be an explicit lowercase migrator identity")
         if self.disposable_ack != DISPOSABLE_ACK:
             errors.append("explicit disposable/no-production-data acknowledgement is required")
         return tuple(errors)

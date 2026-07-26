@@ -42,6 +42,7 @@ class MvlRuntime:
         retrieval_provider: RetrievalProvider,
         model_provider: ModelProvider,
         clock: Clock | None = None,
+        persistence: "RunPersistence | None" = None,
     ) -> None:
         definition.validate()
         if not definition.enabled or definition.deployment_state.value not in {"SHADOW", "DESIGNED"}:
@@ -51,6 +52,10 @@ class MvlRuntime:
         self.retrieval_provider = retrieval_provider
         self.model_provider = model_provider
         self.clock = clock or (lambda: datetime.now(timezone.utc))
+        # Optional durable authority. When injected, run identity is recorded through
+        # the persistence protocol; ShadowRunJournal remains the in-memory
+        # compatibility/replay backend, not a second authoritative state.
+        self.persistence = persistence
 
     def start(
         self,
@@ -75,6 +80,9 @@ class MvlRuntime:
             created_at=self._now().isoformat(),
         )
         envelope.validate(self.definition)
+        if self.persistence is not None:
+            # Durable, idempotent run identity via the persistence protocol.
+            self.persistence.create_run(envelope, self.definition.budget)
         self.journal.append(run_id, "RUN_CREATED", {
             "status": RunStatus.CREATED.value,
             "envelope": asdict(envelope),
