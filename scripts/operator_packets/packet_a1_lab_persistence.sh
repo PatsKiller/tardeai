@@ -10,14 +10,22 @@
 # (or roll them back).
 #
 # SAFETY CONTRACT (read before use):
-#   * PREPARE-ONLY BY DEFAULT. With no --execute it prints the plan and exits 3.
+#   * PREPARE-ONLY BY DEFAULT. With no --execute it prints a plan and exits 3.
 #   * With NO args it prints PREPARE-ONLY usage and exits 2.
 #   * Pins to an exact release SHA (arg 1) and refuses if repo HEAD != that SHA.
-#   * --execute additionally requires --ack <token> with the exact typed token.
+#   * --preflight validates the intended target WITH NO DATABASE/NETWORK CONNECTION
+#     (no psql, no pg_isready, no migration applier, no DB driver, no socket) and
+#     prints only a redacted, secret-free identity + plan. Exits 0 only if every
+#     LOCAL gate passes.
+#   * --execute additionally requires --ack <token> with the exact typed token and
+#     RE-RUNS the same target validation before ANY database contact — a prior
+#     successful --preflight NEVER bypasses execute-path revalidation.
 #   * The DSN is read from $LAB_DSN and is NEVER printed. Only a redacted identity
-#     (scheme/host/port/db, password stripped) is ever emitted.
+#     (host/port/db, credentials stripped) is ever emitted.
 #   * REJECTS any production DB identity: dbname `trade_ai`, any 'prod' substring,
-#     the prod port 5432, or a host not on the explicit LAB allowlist.
+#     the prod port 5432 (or unset port), a host not on the explicit LAB allowlist,
+#     malformed DSNs, connection-redirecting query params, service-file indirection,
+#     socket paths, multiple hosts, or env-var interpolation embedded in the DSN.
 #   * Delegates the actual migration to migrations/agentic_runtime/apply.sh --apply.
 #   * Evidence log is written mode 0600 and contains NO secret values.
 #
@@ -25,9 +33,11 @@
 #   packet_a1_lab_persistence.sh                              # PREPARE-ONLY, exit 2
 #   packet_a1_lab_persistence.sh <RELEASE_SHA>                     # plan, exit 3
 #   LAB_DSN=... LAB_DSN_ALLOWLIST=host:port/db \
+#     packet_a1_lab_persistence.sh <RELEASE_SHA> --preflight        # no-connect check
+#   LAB_DSN=... LAB_DSN_ALLOWLIST=host:port/db \
 #     packet_a1_lab_persistence.sh <RELEASE_SHA> --execute --ack <token> [--down]
 #
-# EXIT CODES: 0 ok · 2 usage/gate blocked · 3 prepare-only refusal · 4 DSN reject
+# EXIT CODES: 0 ok · 2 usage/gate blocked · 3 prepare-only refusal · 4 target reject
 # =============================================================================
 set -euo pipefail
 
@@ -38,6 +48,10 @@ readonly APPLIER="$REPO_ROOT/migrations/agentic_runtime/apply.sh"
 # Evidence log defaults OUTSIDE the repo so real runs never drop logs into git.
 readonly EVIDENCE="${A1_EVIDENCE_LOG:-/home/johnclaw/tradeai-deploy-backups/packet-a1/evidence_$(date -u +%Y%m%dT%H%M%SZ).log}"
 
+# The three least-privilege roles and eight MVL tables this packet would manage.
+readonly A1_ROLES="agentic_runtime_lab_rw agentic_runtime_shadow_rw agentic_runtime_reader"
+readonly A1_TABLES="agent_runs agent_artifacts agent_tool_calls agent_reviews agent_scores kb_lessons kb_cases kb_chunks"
+
 banner() { echo "=== PACKET $PACKET === PREPARE-ONLY (dry-run default) ==="; }
 die()    { echo "[A1][BLOCKED] $1" >&2; exit "${2:-2}"; }
 note()   { echo "[A1] $*"; }
@@ -47,11 +61,13 @@ ev()      { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$EVIDENCE
 
 # ------------------------------------------------------------------ arg parse
 EXPECTED_SHA=""
+PREFLIGHT=0
 EXECUTE=0
 ACK=""
 DIRECTION="up"          # 'up' applies; --down rolls back
 for arg in "$@"; do
   case "$arg" in
+    --preflight)       PREFLIGHT=1 ;;
     --execute|--apply) EXECUTE=1 ;;
     --down)            DIRECTION="down" ;;
     --ack)             ACK="__NEXT__" ;;
@@ -70,81 +86,162 @@ if [[ -z "$EXPECTED_SHA" ]]; then
 PREPARE-ONLY: no release SHA supplied. Nothing was inspected or applied.
 This packet is default-disabled and refuses to mutate.
   usage: LAB_DSN=... LAB_DSN_ALLOWLIST=host:port/db \\
+         $0 <RELEASE_SHA> --preflight
          $0 <RELEASE_SHA> --execute --ack $ACK_TOKEN [--down]
 USAGE
   exit 2
 fi
 
-# ------------------------------------------------------------------ SHA gate
-[[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || die "release SHA must be exactly 40 lowercase hex chars" 2
-HEAD_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
-[[ "$HEAD_SHA" == "$EXPECTED_SHA" ]] || die "repo HEAD $HEAD_SHA != expected release SHA $EXPECTED_SHA" 2
-note "exact-RC-SHA gate OK @ $HEAD_SHA"
+# ===================================================================
+# SHARED GATES (no database/network connection performed by any of these)
+# ===================================================================
 
-# ------------------------------------------------------------------ DSN validation (no values printed)
-# Redact a DSN to scheme://<user>:***@host:port/db — password NEVER emitted.
-redact_dsn() {
-  # shellcheck disable=SC2001
-  echo "$1" | sed -E 's#(://[^:/@]+):[^@]*@#\1:***@#; s#password=[^ ]*#password=***#g'
-}
-dsn_field() {  # $1=dsn $2=host|port|db  -> value only (used internally, not printed raw)
-  local dsn="$1" what="$2"
-  python3 - "$dsn" "$what" <<'PY'
-import sys, urllib.parse as u
-dsn, what = sys.argv[1], sys.argv[2]
-try:
-    p = u.urlparse(dsn)
-    host = (p.hostname or "")
-    port = str(p.port or "")
-    db = (p.path or "").lstrip("/")
-except Exception:
-    host = port = db = ""
-# also parse key=value libpq style if urlparse yielded nothing
-if not host and "=" in dsn:
-    kv = dict(t.split("=",1) for t in dsn.split() if "=" in t)
-    host = kv.get("host", host); port = kv.get("port", port); db = kv.get("dbname", db)
-print({"host":host,"port":port,"db":db}[what])
-PY
+# ---- gate 1 + 2: exact-40-lowercase-hex SHA, and repo HEAD must equal it -----
+require_sha_and_head() {
+  [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] \
+    || die "release SHA must be exactly 40 lowercase hex chars" 2
+  HEAD_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  [[ "$HEAD_SHA" == "$EXPECTED_SHA" ]] \
+    || die "repo HEAD $HEAD_SHA != expected release SHA $EXPECTED_SHA" 2
 }
 
-validate_dsn() {
+# ---- gate 3: reject a dirty / untracked working tree --------------------------
+# The evidence dir lives OUTSIDE the repo by design, so it never dirties the tree.
+require_clean_tree() {
+  local dirty
+  dirty="$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)"
+  [[ -z "$dirty" ]] \
+    || die "working tree is dirty/untracked — refusing (commit or stash first)" 2
+}
+
+# ---- gates 4-7: parse + validate the target LOCALLY (NO connection) -----------
+# Populates globals: T_HOST T_PORT T_DB. Emits NOTHING secret. This is the ONE
+# shared validator used by --preflight, --execute, and --down. It performs ZERO
+# database or network I/O: pure bash string parsing only (no psql / pg_isready /
+# apply.sh / DB driver / socket).
+T_HOST=""; T_PORT=""; T_DB=""
+validate_target() {
   local dsn="$1"
+  # gate 4
   [[ -n "$dsn" ]] || die "LAB_DSN is not set (isolated LAB/SHADOW DSN required)" 4
-  local host port db
-  host="$(dsn_field "$dsn" host)"; port="$(dsn_field "$dsn" port)"; db="$(dsn_field "$dsn" db)"
-  [[ -n "$host" ]] || die "could not parse host from LAB_DSN" 4
-  [[ -n "$db"   ]] || die "could not parse dbname from LAB_DSN" 4
-  # Reject production DB identity.
+  # gate 5
+  local allow="${LAB_DSN_ALLOWLIST:-}"
+  [[ -n "$allow" ]] \
+    || die "LAB_DSN_ALLOWLIST is not set (explicit LAB host:port/db allowlist required)" 4
+
+  # ---- gate 7 (pre-parse global rejections) ----
+  # Env-var interpolation embedded in the DSN (e.g. $PGHOST / ${VAR}).
+  case "$dsn" in
+    *'$'*) die "REJECT: DSN contains environment-variable interpolation ('\$') — refusing" 4 ;;
+  esac
+
+  # ---- gate 6: parse the target locally into host/port/db ----
+  local host="" port="" db="" query="" body kv key val
+  if [[ "$dsn" =~ ^postgres(ql)?:// ]]; then
+    # URL form: postgres[ql]://[user[:pass]@]host[:port][/db][?query]
+    body="${dsn#postgres://}"; body="${body#postgresql://}"
+    case "$body" in *\?*) query="${body#*\?}"; body="${body%%\?*}";; esac
+    case "$body" in */*) db="${body#*/}"; body="${body%%/*}";; esac
+    # strip userinfo (everything up to and including the last '@')
+    case "$body" in *@*) body="${body##*@}";; esac
+    # body is now host[:port] (or multi-host host,host — rejected below)
+    if [[ "$body" == *:* ]]; then host="${body%%:*}"; port="${body##*:}"; else host="$body"; fi
+    # Reject connection-redirecting query parameters.
+    if [[ -n "$query" ]]; then
+      local IFS='&;'
+      for kv in $query; do
+        key="${kv%%=*}"; key="${key,,}"
+        case "$key" in
+          host|hostaddr|port|dbname|service|servicefile|passfile|options|target_session_attrs)
+            die "REJECT: DSN query parameter '$key' can redirect connection behavior — refusing" 4 ;;
+        esac
+      done
+    fi
+  elif [[ "$dsn" == *=* ]]; then
+    # libpq key=value form: host=... port=... dbname=...
+    for kv in $dsn; do
+      [[ "$kv" == *=* ]] || die "REJECT: malformed libpq token '$kv'" 4
+      key="${kv%%=*}"; val="${kv#*=}"; key="${key,,}"
+      case "$key" in
+        host)    host="$val" ;;
+        port)    port="$val" ;;
+        dbname)  db="$val" ;;
+        hostaddr|service|servicefile|passfile|options|target_session_attrs)
+          die "REJECT: libpq parameter '$key' can redirect connection behavior — refusing" 4 ;;
+        user|password|sslmode|sslrootcert|application_name|connect_timeout) : ;;  # benign, ignored
+        *) die "REJECT: unexpected libpq parameter '$key' — refusing" 4 ;;
+      esac
+    done
+  else
+    die "REJECT: LAB_DSN is malformed (not a postgres URL or libpq key=value DSN)" 4
+  fi
+
+  # ---- gate 7 (post-parse rejections) ----
+  [[ -n "$host" ]] || die "REJECT: could not parse host from LAB_DSN (malformed)" 4
+  [[ -n "$db"   ]] || die "REJECT: could not parse dbname from LAB_DSN (malformed)" 4
+  # Multiple hosts (host,host) can silently redirect the connection.
+  case "$host" in *,*) die "REJECT: multiple hosts in target — refusing" 4 ;; esac
+  # Unix socket path / service-file indirection via a filesystem host.
+  case "$host" in /*|*/*) die "REJECT: socket/path host indirection — refusing" 4 ;; esac
+  # Production DB identity.
   case "$db" in
     trade_ai) die "REJECT: dbname is production 'trade_ai' — this schema is LAB/SHADOW only" 4 ;;
     *prod*|*production*) die "REJECT: dbname contains a 'prod' substring — refusing" 4 ;;
   esac
-  case "$dsn" in
-    *prod*|*production*) die "REJECT: DSN contains a 'prod' substring — refusing" 4 ;;
-  esac
-  case "$host" in
-    *prod*|*production*) die "REJECT: host contains a 'prod' substring — refusing" 4 ;;
-  esac
-  # Reject the production port (default 5432). LAB must be on a distinct isolated port.
-  if [[ -z "$port" || "$port" == "5432" ]]; then
-    die "REJECT: port '${port:-<unset>}' is the prod default 5432 (or unset) — LAB must use a distinct isolated port" 4
-  fi
+  case "$host" in *prod*|*production*) die "REJECT: host contains a 'prod' substring — refusing" 4 ;; esac
+  case "$dsn"  in *prod*|*production*) die "REJECT: DSN contains a 'prod' substring — refusing" 4 ;; esac
+  # Port must be present, numeric, and NOT the prod default 5432.
+  [[ -n "$port" ]] || die "REJECT: port is unset — LAB must use a distinct isolated port" 4
+  [[ "$port" =~ ^[0-9]+$ ]] || die "REJECT: port '$port' is not numeric (malformed)" 4
+  [[ "$port" != "5432" ]] || die "REJECT: port 5432 is the prod default — LAB must use a distinct isolated port" 4
   # Explicit allowlist: host:port/db must be enumerated by the operator.
-  local allow="${LAB_DSN_ALLOWLIST:-}"
-  [[ -n "$allow" ]] || die "LAB_DSN_ALLOWLIST is not set (explicit LAB host:port/db allowlist required)" 4
-  local key="${host}:${port}/${db}" ok=0 IFS=,
-  for entry in $allow; do [[ "$entry" == "$key" ]] && ok=1; done
+  local key2="${host}:${port}/${db}" ok=0 IFS=,
+  for entry in $allow; do [[ "$entry" == "$key2" ]] && ok=1; done
   [[ "$ok" == "1" ]] || die "REJECT: target LAB identity is not on LAB_DSN_ALLOWLIST" 4
-  # Emit ONLY the redacted identity (password stripped).
-  note "DSN identity accepted (redacted): host=$host port=$port db=$db"
-  ev "dsn_identity host=$host port=$port db=$db (allowlisted; password never logged)"
+
+  T_HOST="$host"; T_PORT="$port"; T_DB="$db"
 }
 
-# ------------------------------------------------------------------ prepare-only
+# ------------------------------------------------------------------ SHA gate (all modes)
+require_sha_and_head
+note "exact-release-SHA gate OK @ $HEAD_SHA"
+
+# ===================================================================
+# --preflight : NO-CONNECTION validation + redacted plan. Exit 0 iff all pass.
+# ===================================================================
+if [[ "$PREFLIGHT" == "1" ]]; then
+  require_clean_tree
+  validate_target "${LAB_DSN:-}"
+  # Gate 8 — print ONLY non-secret identity + plan. NEVER the DSN/user/password.
+  local_migs="0001_mvl.up.sql 0002_roles.up.sql"
+  [[ "$DIRECTION" == "down" ]] && local_migs="0002_roles.down.sql 0001_mvl.down.sql"
+  cat <<REPORT
+
+=== A1 PREFLIGHT (NO CONNECTION PERFORMED) direction=$DIRECTION ===
+git_sha=$HEAD_SHA
+clean_tree=true
+host=$T_HOST
+port=$T_PORT
+database=$T_DB
+not_trade_ai=true
+non_production_port=true
+allowlist_match=true
+migrations_would_run=$local_migs
+roles_would_create=$A1_ROLES
+expected_tables_8=$A1_TABLES
+rollback_command=LAB_DSN=<redacted> LAB_DSN_ALLOWLIST=<redacted> $0 $HEAD_SHA --execute --ack $ACK_TOKEN --down
+evidence_path=$EVIDENCE (mode 0600, no secret values)
+=== PREFLIGHT PASS — no psql/pg_isready/applier/DB-driver/socket was invoked ===
+REPORT
+  exit 0
+fi
+
+# ------------------------------------------------------------------ prepare-only (SHA, no flags)
 if [[ "$EXECUTE" != "1" ]]; then
   cat <<PLAN
 
 PREPARE-ONLY PLAN (direction=$DIRECTION) — nothing was applied:
+  Run '$0 $EXPECTED_SHA --preflight' for a no-connection target validation, then:
   1) validate \$LAB_DSN: reject prod identity (dbname trade_ai / 'prod' / port 5432 /
      host not on LAB_DSN_ALLOWLIST) — DSN value NEVER printed
   2) before-schema inventory of the agentic_runtime schema (psql, read-only)
@@ -161,6 +258,9 @@ PREPARE-ONLY PLAN (direction=$DIRECTION) — nothing was applied:
 This packet NEVER: touches production trade_ai, restarts services, changes
 schedules, provisions secrets, or holds broker/order/approval/2FA authority.
 
+To validate a target with NO connection:
+  LAB_DSN=... LAB_DSN_ALLOWLIST=host:port/db \\
+    $0 $EXPECTED_SHA --preflight
 To apply against an isolated LAB/SHADOW DB:
   LAB_DSN=... LAB_DSN_ALLOWLIST=host:port/db \\
     $0 $EXPECTED_SHA --execute --ack $ACK_TOKEN [--down]
@@ -170,11 +270,14 @@ fi
 
 # ------------------------------------------------------------------ execute path
 [[ "$ACK" == "$ACK_TOKEN" ]] || die "--execute requires --ack $ACK_TOKEN (typed acknowledgement)" 2
+# RE-RUN the full local validation before ANY database contact. A prior successful
+# --preflight NEVER bypasses this: clean-tree + target validation fire again here.
+require_clean_tree
+validate_target "${LAB_DSN:-}"
 ev_init
 ev "packet=$PACKET sha=$EXPECTED_SHA direction=$DIRECTION execute=1"
-# DSN identity is validated FIRST — the prod-DB/port/host rejection must fire before
-# any tool check or DB contact (proven dry with a fake prod DSN string; no connection).
-validate_dsn "${LAB_DSN:-}"
+note "target validated (redacted): host=$T_HOST port=$T_PORT db=$T_DB"
+ev "dsn_identity host=$T_HOST port=$T_PORT db=$T_DB (allowlisted; password never logged)"
 [[ -x "$APPLIER" ]] || die "migration applier not found/executable: $APPLIER" 2
 command -v psql >/dev/null 2>&1 || die "psql not available" 2
 export TRADE_AI_LAB_DSN="${LAB_DSN}"   # apply.sh reads this; value never echoed
