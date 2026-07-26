@@ -19,23 +19,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Record source provenance
+        shell: bash
+        run: |
+          mkdir -p ci-evidence
+          {
+            echo "workflow=agentic-mvl-ci"
+            echo "run_id=${{ github.run_id }}"
+            echo "run_attempt=${{ github.run_attempt }}"
+            echo "event=${{ github.event_name }}"
+            echo "ref=${{ github.ref }}"
+            echo "github_sha=${{ github.sha }}"
+            echo "pr_head_sha=${{ github.event.pull_request.head.sha }}"
+            echo "checked_out_sha=$(git rev-parse HEAD)"
+          } | tee ci-evidence/provenance.txt
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install focused test dependency
         run: python -m pip install --disable-pip-version-check pytest
       - name: Compile runtime
-        run: python -m compileall -q scripts/agent_runtime
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m compileall scripts/agent_runtime 2>&1 | tee ci-evidence/compile.txt
       - name: Run all agentic MVL tests
         id: tests
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          python -m pytest -q tests/test_agent_runtime_*.py | tee agentic-mvl-pytest.txt
+          python -m pytest -q tests/test_agent_runtime_*.py 2>&1 | tee ci-evidence/pytest.txt
       - name: Prove no forbidden import or authority string in runtime implementation
+        shell: bash
         run: |
-          python - <<'PY'
+          set -o pipefail
+          python - <<'PY' 2>&1 | tee ci-evidence/authority-scan.txt
           from pathlib import Path
           runtime = '\n'.join(path.read_text() for path in Path('scripts/agent_runtime').glob('*.py'))
           forbidden_imports = ['import subprocess', 'from subprocess', 'import requests', 'import psycopg2', 'import keyring', 'import bw']
@@ -48,12 +67,12 @@ jobs:
                   raise SystemExit(f'financial authority table prohibited: {word}')
           print('focused authority scan PASS')
           PY
-      - name: Preserve focused test evidence
+      - name: Preserve focused CI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: agentic-mvl-test-evidence
-          path: agentic-mvl-pytest.txt
+          path: ci-evidence/
           if-no-files-found: error
       - name: Enforce focused test result
         if: steps.tests.outcome != 'success'

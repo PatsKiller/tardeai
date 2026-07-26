@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { DrillContext } from '../components/DetailDrawer'
 import { BB, T, TYPE } from '../lib/watchTokens'
 import AgentsHub from './AgentsHub'
@@ -11,6 +11,7 @@ import {
   type AgentLifecycle,
   type AgentRuntimeDefinition,
 } from '../lib/agentRuntimeMonitoring'
+import { resolveAgentRuntimeView, readApiBaseFromEnv, type ResolvedRuntimeView } from '../lib/agentRuntimeReadAdapter'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 type View = 'Runtime' | 'Legacy analytics'
@@ -114,6 +115,19 @@ function EmptyEvidence({ title, description }: { title: string; description: str
 function RuntimeView() {
   const summary = useMemo(() => summarizeAgentRuntime(), [])
   const [selectedId, setSelectedId] = useState('sentinel')
+  // Replace the fixture snapshot only when the read API is available; otherwise keep the explicit
+  // fallback state (FIXTURE / NOT CONNECTED / UNAVAILABLE / STALE / SHADOW). Env unset => FIXTURE.
+  const [runtimeView, setRuntimeView] = useState<ResolvedRuntimeView>(() => ({
+    state: 'FIXTURE', snapshot: AGENT_RUNTIME_SNAPSHOT, detail: 'Resolving read API…', live: false,
+  }))
+  useEffect(() => {
+    let active = true
+    resolveAgentRuntimeView({ baseUrl: readApiBaseFromEnv() })
+      .then(view => { if (active) setRuntimeView(view) })
+      .catch(() => { if (active) setRuntimeView({ state: 'UNAVAILABLE', snapshot: AGENT_RUNTIME_SNAPSHOT, detail: 'Adapter error', live: false }) })
+    return () => { active = false }
+  }, [])
+  const snapshot = runtimeView.snapshot
   const selected = AGENT_RUNTIME_CATALOG.find(agent => agent.agentId === selectedId) || AGENT_RUNTIME_CATALOG[0]
   const acceptance: Array<[string, string, string]> = [
     ['Reviewed Watch artifacts', '0 / 100', 'NOT RUN'],
@@ -127,16 +141,18 @@ function RuntimeView() {
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
     <div style={{ ...panel, borderColor: 'rgba(96,165,250,.36)', background: 'rgba(96,165,250,.06)' }}>
       <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
-        <StatusBadge>FIXTURE</StatusBadge>
-        <StatusBadge tone="slate">NOT RUN</StatusBadge>
+        <StatusBadge tone={runtimeView.state === 'SHADOW' ? 'green' : runtimeView.state === 'STALE' ? 'amber' : runtimeView.state === 'UNAVAILABLE' ? 'red' : 'slate'}>{runtimeView.state.replace('_', ' ')}</StatusBadge>
         <StatusBadge tone="green">READ ONLY</StatusBadge>
         <StatusBadge tone="amber">SHADOW ONLY</StatusBadge>
+        {runtimeView.live && <StatusBadge tone="green">LIVE</StatusBadge>}
       </div>
       <div style={{ marginTop: 9, fontSize: TYPE.sm, color: 'var(--text1)', lineHeight: 1.5 }}>
-        This workspace renders the approved monitoring contract before the authoritative persistence read adapter is integrated. It does not claim live runs, artifacts, reviews, scores, cases, lessons, or operational agents.
+        {runtimeView.live
+          ? 'This workspace renders live, read-only data from the agent-runtime read API. It never issues writes, provider calls, approvals, or service control.'
+          : 'This workspace renders the approved monitoring contract before the authoritative persistence read adapter is integrated. It does not claim live runs, artifacts, reviews, scores, cases, lessons, or operational agents.'}
       </div>
       <div style={{ marginTop: 6, fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
-        {AGENT_RUNTIME_CONTRACT} · source={AGENT_RUNTIME_SNAPSHOT.source} · adapter={AGENT_RUNTIME_SNAPSHOT.adapterState} · as_of={AGENT_RUNTIME_SNAPSHOT.asOf}
+        {AGENT_RUNTIME_CONTRACT} · source={snapshot.source} · adapter={snapshot.adapterState} · as_of={snapshot.asOf} · state={runtimeView.state}
       </div>
       {summary.catalogIssues.length > 0 && <div style={{ marginTop: 8, color: BB.red, fontSize: TYPE.xs }}>BLOCKED CONTRACT: {summary.catalogIssues.join(' · ')}</div>}
     </div>
