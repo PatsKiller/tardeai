@@ -68,18 +68,70 @@ note "exact-RC-SHA gate OK @ $HEAD_SHA"
 [[ -x "$INNER" ]] || die "inner deploy script missing/not executable: $INNER" 2
 
 # ---- reader-only DSN guard (value NEVER printed) ----
+# Parses $SHADOW_READER_DSN LOCALLY (NO connection, NO psql/pg_isready/DB driver/
+# socket/network) into user/host/port/dbname, then checks ONLY those parsed
+# fields. It NEVER scans the URI scheme (so a legitimate postgresql:// reader URI
+# passes) and NEVER scans the password. Reuses the A1 gate-6 parsing approach
+# (URL form + libpq key=value form). The DSN and all parsed values stay unprinted.
 validate_reader_dsn() {
   local dsn="${SHADOW_READER_DSN:-}"
+  # (1) required
   [[ -n "$dsn" ]] || die "SHADOW_READER_DSN is not set (isolated SHADOW *reader* DSN required)" 4
-  # Must be the reader role; must not be a writer/admin identity.
-  case "$dsn" in
-    *agentic_runtime_reader*) : ;;
-    *) die "REJECT: SHADOW_READER_DSN must connect as agentic_runtime_reader (read-only)" 4 ;;
+
+  # (2) parse BOTH forms into user/host/port/dbname WITHOUT ever connecting.
+  local user="" host="" port="" db="" body kv key val
+  if [[ "$dsn" =~ ^postgres(ql)?:// ]]; then
+    # URL form: postgres[ql]://[user[:pass]@]host[:port][/db][?query]
+    body="${dsn#postgres://}"; body="${body#postgresql://}"
+    case "$body" in *\?*) body="${body%%\?*}";; esac          # drop ?query
+    case "$body" in */*)  db="${body#*/}"; body="${body%%/*}";; esac
+    # userinfo: everything before the last '@' is user[:pass]; keep user only.
+    if [[ "$body" == *@* ]]; then
+      local userinfo="${body%@*}"; body="${body##*@}"
+      user="${userinfo%%:*}"                                  # strip :password
+    fi
+    # body is now host[:port]
+    if [[ "$body" == *:* ]]; then host="${body%%:*}"; port="${body##*:}"; else host="$body"; fi
+  elif [[ "$dsn" == *=* ]]; then
+    # libpq key=value form: user=... host=... port=... dbname=... password=...
+    for kv in $dsn; do
+      [[ "$kv" == *=* ]] || die "REJECT: malformed libpq token in SHADOW_READER_DSN" 4
+      key="${kv%%=*}"; val="${kv#*=}"; key="${key,,}"
+      case "$key" in
+        user)   user="$val" ;;
+        host)   host="$val" ;;
+        port)   port="$val" ;;
+        dbname) db="$val" ;;
+        *) : ;;   # password/sslmode/etc: benign, ignored — never scanned
+      esac
+    done
+  else
+    die "REJECT: SHADOW_READER_DSN is malformed (not a postgres URL or libpq key=value DSN)" 4
+  fi
+
+  # (3) require the reader role EXACTLY (checked on the parsed user, not the URI).
+  [[ -n "$user" ]] || die "REJECT: could not parse a user from SHADOW_READER_DSN" 4
+  [[ "$user" == "agentic_runtime_reader" ]] \
+    || die "REJECT: SHADOW_READER_DSN must connect as agentic_runtime_reader (read-only)" 4
+
+  # (4) reject a writer/admin/prod IDENTITY — checked ONLY on parsed user/host/db,
+  #     NEVER the scheme and NEVER the password.
+  local luser="${user,,}" lhost="${host,,}" ldb="${db,,}"
+  case "$luser" in
+    postgres|*_rw|*superuser*|*admin*|*prod*|*production*)
+      die "REJECT: SHADOW_READER_DSN user is a writer/admin/prod identity" 4 ;;
   esac
-  case "$dsn" in
-    *_rw*|*postgres*|*superuser*|*admin*|*prod*|*production*)
-      die "REJECT: SHADOW_READER_DSN looks like a writer/admin/prod identity" 4 ;;
+  [[ -n "$host" ]] || die "REJECT: could not parse host from SHADOW_READER_DSN" 4
+  case "$lhost" in *prod*|*production*)
+    die "REJECT: SHADOW_READER_DSN host contains a 'prod' substring — refusing" 4 ;;
   esac
+  [[ -n "$db" ]] || die "REJECT: could not parse dbname from SHADOW_READER_DSN" 4
+  case "$ldb" in
+    trade_ai) die "REJECT: SHADOW_READER_DSN dbname is production 'trade_ai' — read plane is LAB/SHADOW only" 4 ;;
+    *prod*|*production*) die "REJECT: SHADOW_READER_DSN dbname contains a 'prod' substring — refusing" 4 ;;
+  esac
+
+  # (5) success: value never printed — only the existing note line.
   note "SHADOW reader DSN accepted (read-only identity; value never printed)"
 }
 
