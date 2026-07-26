@@ -4,32 +4,26 @@
 // and belongs in the findings log as visible debt.
 
 export const STATE_LABELS: Record<string, string> = {
-  // recovery / relist
   market_relist_monitor: 'monitoring for re-entry',
   reentry_candidate: 're-entry candidate',
   hold_for_reentry: 'holding for re-entry',
-  // review states
   HUMAN_REVIEW: 'needs your review',
   ROTATION_REVIEW: 'rotation review',
   ADD_REVIEW: 'add-more review',
   MANUAL_REVIEW: 'manual review',
   read_only: 'analysis only — no action armed',
   'synthesis→human_review': 'awaiting your review',
-  // origins / strategies
   unknown_sync: 'adopted from broker sync',
   pullback_macd_reversal: 'pullback reversal setup',
   dividend_growth_compounder: 'dividend growth',
   high_yield_income_bdc: 'high-yield income',
   core_index: 'core index',
   defense_thesis: 'defense thesis',
-  // regimes
   risk_off: 'defensive regime',
   risk_on: 'risk-on',
   'risk on trend': 'risk-on trend',
-  // run health
   RUN_UNDERFILLED: 'scan ran thin (few symbols)',
   kill_switch_db_unavailable: 'trading halted — database was unreachable',
-  // proposal statuses
   RISK_BLOCKED: 'blocked by risk gate',
   APPROVED_FOR_PAPER_TEST: 'approved for validation',
   EXPIRED: 'expired unreviewed',
@@ -37,13 +31,11 @@ export const STATE_LABELS: Record<string, string> = {
   REJECTED: 'rejected',
 }
 
-/** Translate a raw state; returns null when no confident translation exists (render rawChip). */
 export function plain(raw?: string | null): string | null {
   if (!raw) return null
   return STATE_LABELS[raw] ?? STATE_LABELS[String(raw).toUpperCase()] ?? null
 }
 
-/** Counts are integers: 4.0 → "4". */
 export function count(n: any): string {
   const v = Number(n)
   return Number.isFinite(v) ? String(Math.round(v)) : '—'
@@ -65,13 +57,22 @@ export function runLabel(label?: string | null, date?: string | null): string {
   return t
 }
 
-/** Threshold sentences: "Heat 8.9% — above your 5% ceiling" */
+/** True when the trade-ai scan date is older than the current US calendar session day. */
+export function isScanStale(runDate?: string | null, now = new Date()): boolean {
+  if (!runDate) return true
+  const m = String(runDate).match(/(\d{4}-\d{2}-\d{2})/)
+  if (!m) return true
+  const scan = new Date(`${m[1]}T00:00:00`)
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const scanDay = new Date(scan.getFullYear(), scan.getMonth(), scan.getDate())
+  return scanDay.getTime() < today.getTime()
+}
+
 export function thresholdSentence(label: string, value: number, threshold: number, unit = '%'): string {
   const dir = value > threshold ? 'above' : 'within'
   return `${label} ${value}${unit} — ${dir} your ${threshold}${unit} ceiling`
 }
 
-/** Dev-speak alerts → operator alerts. Returns null when no rule matches (render raw + log). */
 const ALERT_RULES: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/holdings\.json missing last_repriced/i, () => 'Price data incomplete — some holdings not repriced yet'],
   [/Schwab journal ingest log ([\d.]+)h old/i, m => `Trade journal sync is ${Math.round(parseFloat(m[1]))}h behind — closed trades may lag during market hours`],
@@ -81,6 +82,12 @@ const ALERT_RULES: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/kill_switch_db_unavailable/i, () => 'Trading halted — database was unreachable (auto-clears when healthy)'],
   [/cannot inspect live unlock state/i, () => 'Live-trading state unreadable — failing closed (no orders possible)'],
   [/(\d+) live-adjacent dirty files/i, m => `${m[1]} uncommitted change${m[1] === '1' ? '' : 's'} in live-trading code`],
+  [/(\d+) uncommitted change/i, m => `${m[1]} uncommitted change${m[1] === '1' ? '' : 's'} in live-trading code`],
+  [/Release manifest status FAIL/i, () => 'Release manifest FAIL — live-adjacent code is dirty or the validator failed'],
+  [/executed trade\(s\) in 7d not linked to a proposal/i, () => 'Executed trade in the last 7 days is not linked to a proposal — every ATM trade must appear in Proposals first'],
+  [/not linked to a proposal/i, () => 'Executed trade not linked to a proposal — route it through Proposals'],
+  [/hermes.?gateway.*(offline|inactive|failed)/i, () => 'Hermes gateway offline (by design — research fleet uses timers, not gateway)'],
+  [/gateway.*(offline|inactive)/i, () => 'Hermes gateway offline — research fleet may still be healthy via systemd timers'],
 ]
 
 export function plainAlert(raw?: string | null): string | null {
@@ -90,4 +97,36 @@ export function plainAlert(raw?: string | null): string | null {
     if (m) return fn(m)
   }
   return null
+}
+
+/** Fail-closed Home briefing body — reject known corrupt LLM cache shapes. */
+export function isValidBriefingProse(raw?: string | null): boolean {
+  if (!raw) return false
+  let s = String(raw).trim()
+  if (s.startsWith('{') && s.includes('content')) {
+    try {
+      const o = JSON.parse(s)
+      s = String(o?.content ?? o?.summary ?? o?.text ?? '').trim()
+    } catch { /* keep s */ }
+  }
+  if (s.length < 40) return false
+  if ((s.match(/\*\*##/g) || []).length >= 2) return false
+  if ((s.match(/#{2,}/g) || []).length >= 8 && s.length < 400) return false
+  const alpha = [...s].filter(c => /[A-Za-z]/.test(c)).length
+  return alpha >= s.length * 0.4
+}
+
+export function briefingProse(raw: any): string {
+  if (raw == null) return ''
+  if (typeof raw === 'object') {
+    return String(raw.content ?? raw.summary ?? raw.text ?? '').trim()
+  }
+  let s = String(raw).trim()
+  if (s.startsWith('{')) {
+    try {
+      const o = JSON.parse(s)
+      return String(o?.content ?? o?.summary ?? o?.text ?? s).trim()
+    } catch { return s }
+  }
+  return s
 }
