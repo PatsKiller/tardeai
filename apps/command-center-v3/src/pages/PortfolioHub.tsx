@@ -17,6 +17,7 @@ import StopManagement from '../components/StopManagement'
 import RedeployPanel from '../components/RedeployPanel'
 import AllocationPanel from '../components/AllocationPanel'
 import ReturnsPanel from '../components/ReturnsPanel'
+import DividendsPanel from '../components/DividendsPanel'
 import { EvidenceBlock } from '../components/EvidenceBlock'
 import HoldingsTableView, { type HoldingsTableRowContext } from '../components/HoldingsTableView'
 import HoldingsSideDrawer from '../components/HoldingsSideDrawer'
@@ -132,12 +133,28 @@ export default function PortfolioHub({ onDrill }: Props) {
   const [drawerTitle, setDrawerTitle] = useState('')
   const [drawerSubtitle, setDrawerSubtitle] = useState('')
   const holdingsCvd: HoldingsCvdMode = 'cvd'
-  const [acctFilter, setAcctFilter] = useState<string | null>(null)
+  // ── Account filter (URL-synced, same pattern as tab) ──
+  const resolveAcct = (a: string | null): string | null => {
+    if (!a || a === 'all' || a === 'null') return null
+    return a
+  }
+  const [acctFilter, setAcctFilter] = useState<string | null>(resolveAcct(searchParams.get('acct')))
+  useEffect(() => {
+    const a = resolveAcct(searchParams.get('acct'))
+    if (a !== acctFilter) setAcctFilter(a)
+  }, [searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
+  const selectAcct = (a: string | null) => {
+    setAcctFilter(a)
+    const next = new URLSearchParams(searchParams)
+    if (!a) next.delete('acct')
+    else next.set('acct', a)
+    setSearchParams(next, { replace: true })
+  }
   const [sigTab, setSigTab] = useState('All')
   const [focusKey, setFocusKey] = useState<string | null>(null)
   // From the Stop Management Adjust modal: jump to a holding's card (its inline gated 2FA / manual-ticket panel).
   const focusHolding = (symbol: string, account: string) => {
-    selectTab('Holdings'); setAcctFilter(account); setSigTab('All')
+    selectTab('Holdings'); selectAcct(account); setSigTab('All')
     const key = `${symbol}-${account}`; setFocusKey(key)
     const tryScroll = (n: number) => {
       const el = document.getElementById(`hold-${key}`)
@@ -245,7 +262,6 @@ export default function PortfolioHub({ onDrill }: Props) {
   const allHoldings = holdings?.holdings ?? []
   const holdingsPending = !holdings && holdingsLoading
   const holdingsUnavailable = !holdings && !!holdingsError
-  const payers = divs?.payers ?? []
 
   // ── Account filter: chips derived from holdings, with per-account counts + value ──
   const acctMap: Record<string, { n: number; value: number }> = {}
@@ -382,7 +398,13 @@ export default function PortfolioHub({ onDrill }: Props) {
 
       {tab === 'Redeploy' && <RedeployPanel />}
 
-      {tab === 'Stop Management' && <StopManagement onFocusHolding={focusHolding} />}
+      {tab === 'Stop Management' && (
+        <StopManagement
+          onFocusHolding={focusHolding}
+          accountFilter={acctFilter}
+          onAccountFilter={selectAcct}
+        />
+      )}
 
       {tab === 'Holdings' && (() => {
         const rs = rotation?.summary ?? {}
@@ -415,14 +437,14 @@ export default function PortfolioHub({ onDrill }: Props) {
 
       {tab === 'Holdings' && accounts.length > 1 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
-          <button onClick={() => setAcctFilter(null)} style={{
+          <button onClick={() => selectAcct(null)} style={{
             padding: '3px 10px', fontSize: 10, borderRadius: 12, cursor: 'pointer',
             border: `1px solid ${acctFilter === null ? '#60a5fa' : 'var(--border)'}`,
             background: acctFilter === null ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
             color: acctFilter === null ? '#60a5fa' : 'var(--text3)', fontWeight: acctFilter === null ? 700 : 400,
           }}>All ({allHoldings.length})</button>
           {accounts.map(([a, info]) => (
-            <button key={a} onClick={() => setAcctFilter(a === acctFilter ? null : a)} style={{
+            <button key={a} onClick={() => selectAcct(a === acctFilter ? null : a)} style={{
               padding: '3px 10px', fontSize: 10, borderRadius: 12, cursor: 'pointer',
               border: `1px solid ${acctFilter === a ? acctColor(a) : 'var(--border)'}`,
               background: acctFilter === a ? `${acctColor(a)}22` : 'var(--bg2)',
@@ -447,7 +469,7 @@ export default function PortfolioHub({ onDrill }: Props) {
           onGoHoldings={() => selectTab('Holdings')}
           onOpenHolding={(symbol, account) => {
             selectTab('Holdings')
-            setAcctFilter(account)
+            selectAcct(account)
             setSigTab('All')
             const key = `${symbol}-${account}`
             setFocusKey(key)
@@ -619,9 +641,9 @@ export default function PortfolioHub({ onDrill }: Props) {
             <AskAgents />
             {ltAccts.length > 1 && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 9 }}>
-                <button onClick={() => setAcctFilter(null)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === null ? '#60a5fa' : 'var(--border)'}`, background: acctFilter === null ? 'rgba(96,165,250,.15)' : 'var(--bg2)', color: acctFilter === null ? '#60a5fa' : 'var(--text3)', fontWeight: acctFilter === null ? 700 : 400 }}>All accounts</button>
+                <button onClick={() => selectAcct(null)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === null ? '#60a5fa' : 'var(--border)'}`, background: acctFilter === null ? 'rgba(96,165,250,.15)' : 'var(--bg2)', color: acctFilter === null ? '#60a5fa' : 'var(--text3)', fontWeight: acctFilter === null ? 700 : 400 }}>All accounts</button>
                 {ltAccts.map(a => (
-                  <button key={a} onClick={() => setAcctFilter(a === acctFilter ? null : a)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === a ? acctColor(a) : 'var(--border)'}`, background: acctFilter === a ? `${acctColor(a)}22` : 'var(--bg2)', color: acctFilter === a ? acctColor(a) : 'var(--text3)', fontWeight: acctFilter === a ? 700 : 400 }}>{a.replace(/_/g, ' ')}</button>
+                  <button key={a} onClick={() => selectAcct(a === acctFilter ? null : a)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === a ? acctColor(a) : 'var(--border)'}`, background: acctFilter === a ? `${acctColor(a)}22` : 'var(--bg2)', color: acctFilter === a ? acctColor(a) : 'var(--text3)', fontWeight: acctFilter === a ? 700 : 400 }}>{a.replace(/_/g, ' ')}</button>
                 ))}
               </div>
             )}
@@ -764,28 +786,16 @@ export default function PortfolioHub({ onDrill }: Props) {
       })()}
 
       {tab === 'Dividends' && (
-        <div className={terminalUi ? 'cc-panel' : undefined} style={tabPanel}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Dividend Income</div>
-          {divs ? (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-                <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#22c55e' }}>{fmt$(divs.total_annual ?? 0, 0)}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>Annual</div>
-                </div>
-                <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{fmt$(divs.monthly_average ?? 0, 0)}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>Monthly Avg</div>
-                </div>
-                <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{payers.length}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>Payers</div>
-                </div>
-              </div>
-              <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/dividends</div>
-            </>
-          ) : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading dividend data...</div>}
-        </div>
+        <DividendsPanel
+          divs={divs}
+          holdings={allHoldings}
+          accounts={accounts}
+          acctFilter={acctFilter}
+          selectAcct={selectAcct}
+          acctColor={acctColor}
+          panelStyle={tabPanel}
+          terminalUi={terminalUi}
+        />
       )}
 
       {tab === 'Returns' && perfData && (
@@ -797,7 +807,7 @@ export default function PortfolioHub({ onDrill }: Props) {
           initialAccount={acctFilter}
           onOpenHolding={(symbol, account) => {
             selectTab('Holdings')
-            setAcctFilter(account)
+            selectAcct(account)
             setSigTab('All')
             const key = `${symbol}-${account}`
             setFocusKey(key)

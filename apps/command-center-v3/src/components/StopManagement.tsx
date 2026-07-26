@@ -24,7 +24,12 @@ const fmt$ = (n: any) => n == null ? '—' : `$${Number(n).toLocaleString(undefi
 const fmtStop = (n: any) => n == null ? '—' : `$${Number(n).toFixed(2)}`
 const fmtTime = (s: any) => { if (!s) return '—'; const d = new Date(s); return isNaN(+d) ? String(s).slice(0, 16) : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }
 
-interface Props { onFocusHolding?: (symbol: string, account: string) => void }
+interface Props {
+  onFocusHolding?: (symbol: string, account: string) => void
+  /** URL-synced portfolio account filter (`?acct=`). null / omitted = All. */
+  accountFilter?: string | null
+  onAccountFilter?: (account: string | null) => void
+}
 
 type Row = {
   symbol: string; account: string; broker: string; route: string; stop_type: string; stop_source: string
@@ -809,7 +814,7 @@ function HoldingStopCard({
   )
 }
 
-export default function StopManagement({ onFocusHolding }: Props) {
+export default function StopManagement({ onFocusHolding, accountFilter = null, onAccountFilter }: Props) {
   const [terminalUi] = useTerminalUi()
   const [sub, setSub] = useState<'Monitor' | 'Audit' | 'Policy'>('Monitor')
   const [data, setData] = useState<any>(() => {
@@ -821,7 +826,20 @@ export default function StopManagement({ onFocusHolding }: Props) {
   const [loading, setLoading] = useState(!data)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [quick, setQuick] = useState<typeof QUICK[number]>('Needs Action')
-  const [acct, setAcct] = useState('All')
+  // Prefer URL-synced portfolio account filter when parent provides it.
+  const [acctLocal, setAcctLocal] = useState('All')
+  const acct = accountFilter ? accountFilter : acctLocal
+  const setAcct = (v: string) => {
+    if (onAccountFilter) {
+      onAccountFilter(v === 'All' ? null : v)
+    } else {
+      setAcctLocal(v)
+    }
+  }
+  useEffect(() => {
+    if (accountFilter) setAcctLocal(accountFilter)
+    else if (accountFilter === null && onAccountFilter) setAcctLocal('All')
+  }, [accountFilter, onAccountFilter])
   const [level, setLevel] = useState('All')
   const [adjust, setAdjust] = useState<Row | null>(null)
   const [autoStage, setAutoStage] = useState(false)
