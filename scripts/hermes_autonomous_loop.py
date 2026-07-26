@@ -25,6 +25,8 @@ DAILY_ROW_CAP = 10
 DAILY_MODEL_CAP = 15
 # Model is configurable for cadence: gemma3:4b (~3x faster) keeps continuous ticks under the 15-min cron interval.
 LOOP_MODEL = os.environ.get("HERMES_LOOP_MODEL", "gemma3:4b")
+# Ollama chat timeout — keep below MAX_RUNTIME budget for multi-ticker runs.
+OLLAMA_TIMEOUT = int(os.environ.get("HERMES_LOOP_OLLAMA_TIMEOUT", "120"))
 
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
@@ -46,6 +48,12 @@ def acquire_lock():
 
 
 def get_db_connection():
+    """Open a fresh Postgres connection with TCP keepalives.
+
+    Long Ollama calls (60–180s) previously left a single connection idle until
+    the server closed SSL; the next cursor.execute then raised OperationalError
+    and aborted the whole unit. Keepalives + ensure_live_conn mitigate that.
+    """
     env_path = PROJECT_ROOT / ".env"
     db_pass = None
     for line in env_path.read_text().splitlines():
@@ -55,7 +63,45 @@ def get_db_connection():
         print("ERROR: DB_PASSWORD not found", file=sys.stderr)
         sys.exit(1)
     import psycopg2
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=db_pass)
+    return psycopg2.connect(
+        host="localhost",
+        dbname="trade_ai",
+        user="trade_ai",
+        password=db_pass,
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=3,
+        connect_timeout=10,
+    )
+
+
+def _conn_is_alive(conn) -> bool:
+    if conn is None:
+        return False
+    try:
+        if getattr(conn, "closed", 1):
+            return False
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        cur.close()
+        return True
+    except Exception:
+        return False
+
+
+def ensure_live_conn(conn):
+    """Return conn if usable; otherwise close and open a new connection."""
+    if _conn_is_alive(conn):
+        return conn
+    try:
+        if conn is not None:
+            conn.close()
+    except Exception:
+        pass
+    print("    DB: reconnected (previous connection closed or SSL dead)")
+    return get_db_connection()
 
 
 def get_ticker_targets(conn, max_rows=3, drain_closed_trades=False):
@@ -156,7 +202,6 @@ def get_ticker_targets(conn, max_rows=3, drain_closed_trades=False):
 
 def get_ticker_context(conn, symbol):
     """Get context for a ticker from safe views."""
-    cur = conn.cursor()
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -187,14 +232,23 @@ def run_ticker_challenger(args):
     """Run ticker challenger loop."""
     from hermes_research_prompt import build_research_prompt
     from hermes_staging_ingest import validate_payload
+    import psycopg2
 
     conn = get_db_connection()
     drain = getattr(args, "drain_closed_trades", False)
-    targets = get_ticker_targets(conn, args.max_rows, drain_closed_trades=drain)
+    try:
+        targets = get_ticker_targets(conn, args.max_rows, drain_closed_trades=drain)
+    except psycopg2.OperationalError as e:
+        print(f"TARGET SELECT failed, reconnecting once: {e}")
+        conn = ensure_live_conn(None)
+        targets = get_ticker_targets(conn, args.max_rows, drain_closed_trades=drain)
 
     if not targets:
         print("No new ticker targets found (all already researched)")
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
         return []
 
     if drain:
@@ -207,6 +261,7 @@ def run_ticker_challenger(args):
     run_id = f"auto_ticker_challenger_{datetime.now().strftime('%Y%m%d_%H%M')}"
     print(f"Run ID: {run_id}")
     print(f"Targets: {[t['symbol'] for t in targets]}")
+    print(f"Ollama timeout: {OLLAMA_TIMEOUT}s · model: {LOOP_MODEL}")
 
     results = []
     outdir = PROJECT_ROOT / "docs" / "hermes" / "phase3b_dryrun"
@@ -216,123 +271,160 @@ def run_ticker_challenger(args):
         sym = target["symbol"]
         print(f"\n  [{i+1}/{len(targets)}] {sym} ({target.get('src','target')})")
 
-        ctx = get_ticker_context(conn, sym)
-
-        prompt = build_research_prompt(
-            task_id=f"{run_id}_{sym}",
-            agent_name="ticker_research_agent",
-            research_type="ticker_thesis_challenge",
-            topic=f"{sym} autonomous thesis challenge — {target['trade_count']} trades",
-            context=ctx, symbol=sym,
-            source_views=["hermes_v_ticker_context", "hermes_v_trade_reflection_context", "hermes_v_proposal_context"],
-            phase="3"
-        )
-
-        # Call Ollama
+        # Per-ticker isolation: one timeout/SSL death must not abort remaining targets.
         try:
-            payload = json.dumps({
-                "model": LOOP_MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "stream": False,
-                "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
-                "format": "json"
-            }).encode()
-            req = urllib.request.Request("http://localhost:11434/api/chat",
-                                         data=payload, headers={"Content-Type": "application/json"})
-            resp = urllib.request.urlopen(req, timeout=180)
-            result = json.loads(resp.read())
-            content = result.get("message", {}).get("content", "")
-            output = json.loads(content)
-        except Exception as e:
-            print(f"    FAILED: {e}")
-            results.append({"symbol": sym, "status": "failed", "error": str(e)[:200]})
-            continue
-
-        # Normalize. hermes_agent_name + research_type are DETERMINISTIC metadata (the same constants
-        # passed to build_research_prompt) — stamp them from code, never rely on the LLM to echo them
-        # (gemma3 intermittently omits them -> the sole cause of "MISSING required column" rejections).
-        output["hermes_agent_name"] = "ticker_research_agent"
-        output["research_type"] = "ticker_thesis_challenge"
-        # topic is deterministic too (built for the prompt) -> stamp from code. summary is LLM CONTENT and
-        # is intentionally NOT defaulted: an empty/sparse model output stays a legitimate reject (we never
-        # fabricate review content); the drain loop re-attempts such symbols on a later pass.
-        output.setdefault("topic", f"{sym} autonomous thesis challenge — {target.get('trade_count', 0)} trades")
-        output.setdefault("confidence_score", 0.5)
-        output.setdefault("freshness_date", date.today().isoformat())
-        output.setdefault("model_used", LOOP_MODEL)
-        # ── Lineage: link reflection to its canonical trade_instance (all-trades) + legacy paper id ──
-        output["symbol"] = sym
-        if target.get("trade_instance_id") is not None:
-            output["trade_instance_id"] = target["trade_instance_id"]
-        if target.get("related_trade_id") is not None:
-            output["related_trade_id"] = target["related_trade_id"]
-        if target.get("related_proposal_id") is not None:
-            output["related_proposal_id"] = target["related_proposal_id"]
-        ej = output.get("evidence_json", {})
-        if not isinstance(ej, dict):
-            ej = {}
-        for field in ["challenge_points", "source_views", "limitations", "facts", "inferences",
-                       "missing_data", "confidence_explanation"]:
-            if field in output and field not in ej:
-                ej[field] = output.pop(field, None)
-        ej["run_id"] = run_id
-        output["evidence_json"] = ej
-
-        # Validate
-        ok, errors = validate_payload(output, "hermes_research_intelligence")
-        # BOUNDED summary recovery: ONLY when the strict failure is missing summary, try to recover a
-        # specific, substantive summary from alternate output shapes (no fabrication; quality-gated).
-        if not ok and any("MISSING required column: summary" in e for e in errors) and not output.get("summary"):
+            conn = ensure_live_conn(conn)
             try:
-                from hermes_output_recovery import recover_summary_from_output
-                rec = recover_summary_from_output(output if isinstance(output, dict) else content,
-                                                  symbol=sym)
-            except Exception as _re:
-                rec = {"recovered": False, "rejection_reason": f"recover error: {_re}"}
-            if rec.get("recovered"):
-                output["summary"] = rec["summary"]
-                ej.setdefault("summary_recovery", {
-                    "summary_recovered": True, "summary_recovery_method": rec.get("recovery_method"),
-                    "summary_source_key": rec.get("source_key"), "summary_recovery_confidence": rec.get("confidence"),
-                    "validator_version": rec.get("validator_version"), "raw_validation_error": "MISSING summary"})
-                output["evidence_json"] = ej
-                ok, errors = validate_payload(output, "hermes_research_intelligence")
-                print(f"    SUMMARY RECOVERED ({rec.get('recovery_method')}/{rec.get('source_key')}, conf={rec.get('confidence')})")
-            else:
-                print(f"    summary recovery rejected: {rec.get('rejection_reason')}")
-        if not ok:
-            print(f"    VALIDATION FAILED: {errors[:2]}")
-            results.append({"symbol": sym, "status": "rejected", "errors": errors})
-            continue
+                ctx = get_ticker_context(conn, sym)
+            except psycopg2.OperationalError as e:
+                print(f"    CONTEXT failed ({e}); reconnecting…")
+                conn = ensure_live_conn(None)
+                ctx = get_ticker_context(conn, sym)
 
-        # Save payload
-        pay_path = outdir / f"hermes_{run_id}_{sym}_payload.json"
-        with open(pay_path, "w") as f:
-            json.dump(output, f, indent=2)
+            prompt = build_research_prompt(
+                task_id=f"{run_id}_{sym}",
+                agent_name="ticker_research_agent",
+                research_type="ticker_thesis_challenge",
+                topic=f"{sym} autonomous thesis challenge — {target['trade_count']} trades",
+                context=ctx, symbol=sym,
+                source_views=["hermes_v_ticker_context", "hermes_v_trade_reflection_context", "hermes_v_proposal_context"],
+                phase="3"
+            )
 
-        print(f"    VALIDATED: confidence={output['confidence_score']}")
-        results.append({"symbol": sym, "status": "validated", "payload_path": str(pay_path)})
-
-        if args.apply:
-            from hermes_staging_ingest import build_insert, get_db_connection as get_ingest_conn
-            iconn = get_ingest_conn()
+            # Call Ollama (long wait — DB may go idle; we reconnect before next ticker)
             try:
-                sql, vals = build_insert("hermes_research_intelligence", output)
-                icur = iconn.cursor()
-                icur.execute(sql, vals)
-                row = icur.fetchone()
-                iconn.commit()
-                print(f"    COMMITTED: id={row[0]}")
-                results[-1]["row_id"] = row[0]
-                results[-1]["status"] = "applied"
+                payload = json.dumps({
+                    "model": LOOP_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False,
+                    "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
+                    "format": "json"
+                }).encode()
+                req = urllib.request.Request("http://localhost:11434/api/chat",
+                                             data=payload, headers={"Content-Type": "application/json"})
+                resp = urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT)
+                result = json.loads(resp.read())
+                content = result.get("message", {}).get("content", "")
+                output = json.loads(content)
             except Exception as e:
-                iconn.rollback()
-                print(f"    APPLY ERROR: {e}")
-                results[-1]["status"] = "apply_failed"
-            finally:
-                iconn.close()
+                print(f"    FAILED: {e}")
+                results.append({"symbol": sym, "status": "failed", "error": str(e)[:200]})
+                # Proactively drop idle connection after a long/failed model wait
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = None
+                continue
 
-    conn.close()
+            # Normalize. hermes_agent_name + research_type are DETERMINISTIC metadata (the same constants
+            # passed to build_research_prompt) — stamp them from code, never rely on the LLM to echo them
+            # (gemma3 intermittently omits them -> the sole cause of "MISSING required column" rejections).
+            output["hermes_agent_name"] = "ticker_research_agent"
+            output["research_type"] = "ticker_thesis_challenge"
+            # topic is deterministic too (built for the prompt) -> stamp from code. summary is LLM CONTENT and
+            # is intentionally NOT defaulted: an empty/sparse model output stays a legitimate reject (we never
+            # fabricate review content); the drain loop re-attempts such symbols on a later pass.
+            output.setdefault("topic", f"{sym} autonomous thesis challenge — {target.get('trade_count', 0)} trades")
+            output.setdefault("confidence_score", 0.5)
+            output.setdefault("freshness_date", date.today().isoformat())
+            output.setdefault("model_used", LOOP_MODEL)
+            # ── Lineage: link reflection to its canonical trade_instance (all-trades) + legacy paper id ──
+            output["symbol"] = sym
+            if target.get("trade_instance_id") is not None:
+                output["trade_instance_id"] = target["trade_instance_id"]
+            if target.get("related_trade_id") is not None:
+                output["related_trade_id"] = target["related_trade_id"]
+            if target.get("related_proposal_id") is not None:
+                output["related_proposal_id"] = target["related_proposal_id"]
+            ej = output.get("evidence_json", {})
+            if not isinstance(ej, dict):
+                ej = {}
+            for field in ["challenge_points", "source_views", "limitations", "facts", "inferences",
+                           "missing_data", "confidence_explanation"]:
+                if field in output and field not in ej:
+                    ej[field] = output.pop(field, None)
+            ej["run_id"] = run_id
+            output["evidence_json"] = ej
+
+            # Validate
+            ok, errors = validate_payload(output, "hermes_research_intelligence")
+            # BOUNDED summary recovery: ONLY when the strict failure is missing summary, try to recover a
+            # specific, substantive summary from alternate output shapes (no fabrication; quality-gated).
+            if not ok and any("MISSING required column: summary" in e for e in errors) and not output.get("summary"):
+                try:
+                    from hermes_output_recovery import recover_summary_from_output
+                    rec = recover_summary_from_output(output if isinstance(output, dict) else content,
+                                                      symbol=sym)
+                except Exception as _re:
+                    rec = {"recovered": False, "rejection_reason": f"recover error: {_re}"}
+                if rec.get("recovered"):
+                    output["summary"] = rec["summary"]
+                    ej.setdefault("summary_recovery", {
+                        "summary_recovered": True, "summary_recovery_method": rec.get("recovery_method"),
+                        "summary_source_key": rec.get("source_key"), "summary_recovery_confidence": rec.get("confidence"),
+                        "validator_version": rec.get("validator_version"), "raw_validation_error": "MISSING summary"})
+                    output["evidence_json"] = ej
+                    ok, errors = validate_payload(output, "hermes_research_intelligence")
+                    print(f"    SUMMARY RECOVERED ({rec.get('recovery_method')}/{rec.get('source_key')}, conf={rec.get('confidence')})")
+                else:
+                    print(f"    summary recovery rejected: {rec.get('rejection_reason')}")
+            if not ok:
+                print(f"    VALIDATION FAILED: {errors[:2]}")
+                results.append({"symbol": sym, "status": "rejected", "errors": errors})
+                continue
+
+            # Save payload
+            pay_path = outdir / f"hermes_{run_id}_{sym}_payload.json"
+            with open(pay_path, "w") as f:
+                json.dump(output, f, indent=2)
+
+            print(f"    VALIDATED: confidence={output['confidence_score']}")
+            results.append({"symbol": sym, "status": "validated", "payload_path": str(pay_path)})
+
+            if args.apply:
+                from hermes_staging_ingest import build_insert, get_db_connection as get_ingest_conn
+                iconn = get_ingest_conn()
+                try:
+                    sql, vals = build_insert("hermes_research_intelligence", output)
+                    icur = iconn.cursor()
+                    icur.execute(sql, vals)
+                    row = icur.fetchone()
+                    iconn.commit()
+                    print(f"    COMMITTED: id={row[0]}")
+                    results[-1]["row_id"] = row[0]
+                    results[-1]["status"] = "applied"
+                except Exception as e:
+                    iconn.rollback()
+                    print(f"    APPLY ERROR: {e}")
+                    results[-1]["status"] = "apply_failed"
+                finally:
+                    iconn.close()
+
+            # After a successful long model call, prefer a fresh conn for the next ticker
+            try:
+                if conn is not None:
+                    conn.close()
+            except Exception:
+                pass
+            conn = None
+
+        except Exception as e:
+            print(f"    TICKER ERROR (isolated): {e}")
+            results.append({"symbol": sym, "status": "failed", "error": str(e)[:200]})
+            try:
+                if conn is not None:
+                    conn.close()
+            except Exception:
+                pass
+            conn = None
+            continue
+
+    try:
+        if conn is not None:
+            conn.close()
+    except Exception:
+        pass
     return results
 
 
@@ -363,13 +455,16 @@ def main():
         validated = sum(1 for r in results if r["status"] in ("validated", "applied"))
         failed = sum(1 for r in results if r["status"] not in ("validated", "applied"))
         print(f"\nDone in {elapsed:.1f}s: {validated} validated, {failed} failed/rejected")
+        # Non-zero only if every target failed with no validated/applied — timer stays green on partial success
+        if results and validated == 0 and failed == len(results):
+            sys.exit(1)
 
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         lock_fd.close()
         try:
             LOCKFILE.unlink()
-        except:
+        except Exception:
             pass
 
 
