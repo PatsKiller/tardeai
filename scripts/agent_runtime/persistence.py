@@ -119,6 +119,12 @@ class RunState:
     cancellation_reason: str | None
     completed_at: str | None
     updated_at: str | None
+    retrieval_refs: tuple[str, ...] = ()
+    input_hash: str = ""
+    validation_hash: str = ""
+    environment: str = ""
+    created_at: str | None = None
+    failure_code: str | None = None
 
 
 def event_body(run_id: str, sequence: int, event_type: str, payload: Mapping[str, Any], created_at: str, previous_hash: str) -> dict[str, Any]:
@@ -147,9 +153,16 @@ def _no_secret(payload: Any) -> None:
 @runtime_checkable
 class RunPersistence(Protocol):
     def create_run(self, envelope: RunEnvelope, budget: BudgetPolicy) -> RunState: ...
+    def record_retrieval_started(self, run_id: str, *, query_hash: str) -> RunState: ...
+    def record_retrieval_completed(self, run_id: str, *, refs: Sequence[str], retrieval_hash: str) -> RunState: ...
+    def record_model_started(self, run_id: str, *, prompt_version: str, provider_family: str, model: str, request_hash: str, cost_usd: float = 0.0) -> RunState: ...
+    def record_model_completed(self, run_id: str, *, output_hash: str) -> RunState: ...
+    def record_tool_lifecycle(self, run_id: str, *, agent_id: str, tool_name: str, decision: str, decision_reason: str, arguments_hash: str, result_hash: str | None, started_at: str, completed_at: str | None, terminal_state: str) -> str: ...
     def record_artifact(self, artifact: Artifact, *, retrieval_required: bool = True) -> str: ...
     def record_review(self, review: Review) -> str: ...
     def record_score(self, score: Score) -> str: ...
+    def record_deadline_exceeded(self, run_id: str, *, deadline_seconds: int, elapsed_seconds: float) -> RunState: ...
+    def resume_run(self, run_id: str) -> RunState: ...
     def complete_run(self, run_id: str) -> RunState: ...
     def cancel_run(self, run_id: str, reason: str) -> RunState: ...
     def fail_run(self, run_id: str, reason: str, failure_code: str = "RUNTIME_FAILURE") -> RunState: ...
@@ -273,6 +286,10 @@ class _PersistenceBase:
             cost_usd=float(control.get("cost_usd", 0.0)), artifacts=artifacts, tool_calls_ids=tool_ids,
             reviews=reviews, scores=scores, cancellation_reason=control.get("cancellation_reason"),
             completed_at=control.get("completed_at"), updated_at=control.get("updated_at"),
+            retrieval_refs=tuple(control.get("retrieval_refs") or ()),
+            input_hash=control.get("input_hash", ""), validation_hash=control.get("validation_hash", ""),
+            environment=control.get("environment", ""), created_at=control.get("created_at"),
+            failure_code=control.get("failure_code"),
         )
 
     def _require_run(self, uow: _UnitOfWork, run_id: str, *, lock: bool = False) -> dict[str, Any]:
@@ -314,7 +331,8 @@ class _PersistenceBase:
                 "status": RunStatus.CREATED.value, "retrieval_count": 0, "model_calls": 0,
                 "tool_calls": 0, "cost_usd": 0.0, "checkpoint_seq": 0, "head_hash": GENESIS_HASH,
                 "checkpoint_label": None, "cancellation_reason": None, "completed_at": None,
-                "started_at": now, "updated_at": now,
+                "started_at": now, "updated_at": now, "retrieval_refs": [],
+                "created_at": envelope.created_at or now, "failure_code": None,
             }
             uow.insert_control(control)
             self._append_event(uow, control, "RUN_CREATED", {"status": RunStatus.CREATED.value, "objective_hash": immutable["objective_hash"]}, status=RunStatus.CREATED.value, checkpoint="created")
@@ -363,7 +381,8 @@ class _PersistenceBase:
                 return tool_call_id
             self._append_event(uow, control, "TOOL_PROPOSED", {"tool_call_id": tool_call_id, "tool_name": tool_name}, checkpoint=f"tool_proposed:{tool_name}")
             self._append_event(uow, control, "TOOL_DECISION", {"tool_call_id": tool_call_id, "decision": decision, "reason": decision_reason})
-            self._append_event(uow, control, "TOOL_STARTED", {"tool_call_id": tool_call_id, "started_at": started_at})
+            if decision == "ALLOW":
+                self._append_event(uow, control, "TOOL_STARTED", {"tool_call_id": tool_call_id, "started_at": started_at})
             uow.insert_row(
                 "agent_tool_calls", {"tool_call_id": tool_call_id},
                 {"tool_call_id": tool_call_id, "run_id": run_id, "agent_id": agent_id, "tool_name": tool_name, "decision": decision, "decision_reason": decision_reason, "arguments_hash": arguments_hash, "result_hash": result_hash, "started_at": started_at, "completed_at": completed_at},
@@ -443,6 +462,8 @@ class _PersistenceBase:
             control["completed_at"] = self._clock()
             if status == RunStatus.CANCELLED.value:
                 control["cancellation_reason"] = payload.get("reason")
+            if "failure_code" in payload:
+                control["failure_code"] = payload.get("failure_code")
             uow.save_control(run_id, control)
             return self._state(uow, control)
 
@@ -454,6 +475,58 @@ class _PersistenceBase:
 
     def cancel_run(self, run_id: str, reason: str) -> RunState:
         return self._terminate(run_id, RunStatus.CANCELLED.value, "RUN_CANCELLED", {"reason": reason})
+
+    # ---- retrieval / model / deadline / resume lifecycle ------------------
+    def record_retrieval_started(self, run_id: str, *, query_hash: str) -> RunState:
+        with self._work() as uow:
+            control = self._require_open_exec(uow, run_id)
+            self._append_event(uow, control, "RETRIEVAL_STARTED", {"query_hash": query_hash, "status": RunStatus.RETRIEVING.value}, status=RunStatus.RETRIEVING.value, checkpoint="retrieval_started")
+            uow.save_control(run_id, control)
+            return self._state(uow, control)
+
+    def record_retrieval_completed(self, run_id: str, *, refs: Sequence[str], retrieval_hash: str) -> RunState:
+        new_refs = [str(r) for r in refs]
+        with self._work() as uow:
+            control = self._require_open_exec(uow, run_id)
+            merged = list(dict.fromkeys(list(control.get("retrieval_refs") or []) + new_refs))
+            control["retrieval_refs"] = merged
+            control["retrieval_count"] = len(merged)
+            self._append_event(uow, control, "RETRIEVAL_COMPLETED", {"retrieval_count": len(merged), "retrieval_hash": retrieval_hash, "status": RunStatus.READY_TO_REASON.value}, status=RunStatus.READY_TO_REASON.value, checkpoint="retrieval_complete")
+            uow.save_control(run_id, control)
+            return self._state(uow, control)
+
+    def record_model_started(self, run_id: str, *, prompt_version: str, provider_family: str, model: str, request_hash: str, cost_usd: float = 0.0) -> RunState:
+        if cost_usd < 0:
+            raise PersistenceError("cost_usd must be non-negative")
+        with self._work() as uow:
+            control = self._require_open_exec(uow, run_id)
+            self._bump(control, "model_calls")
+            self._bump(control, "cost_usd", float(cost_usd))
+            self._append_event(uow, control, "MODEL_STARTED", {"prompt_version": prompt_version, "provider_family": provider_family, "model": model, "request_hash": request_hash, "model_calls": int(control["model_calls"]), "cost_usd": float(control["cost_usd"]), "status": RunStatus.REASONING.value}, status=RunStatus.REASONING.value, checkpoint="model_started")
+            uow.save_control(run_id, control)
+            return self._state(uow, control)
+
+    def record_model_completed(self, run_id: str, *, output_hash: str) -> RunState:
+        with self._work() as uow:
+            control = self._require_open_exec(uow, run_id)
+            self._append_event(uow, control, "MODEL_COMPLETED", {"output_hash": output_hash, "status": RunStatus.REVIEW_REQUIRED.value}, status=RunStatus.REVIEW_REQUIRED.value, checkpoint="model_complete")
+            uow.save_control(run_id, control)
+            return self._state(uow, control)
+
+    def record_deadline_exceeded(self, run_id: str, *, deadline_seconds: int, elapsed_seconds: float) -> RunState:
+        return self._terminate(run_id, RunStatus.FAILED.value, "RUN_FAILED", {"reason": "agent runtime deadline exceeded", "failure_code": "DEADLINE_EXCEEDED", "deadline_seconds": deadline_seconds, "elapsed_seconds": elapsed_seconds})
+
+    def resume_run(self, run_id: str) -> RunState:
+        with self._work() as uow:
+            control = self._require_run(uow, run_id, lock=True)
+            status = control.get("status")
+            if status in (RunStatus.CANCELLED.value, RunStatus.FAILED.value):
+                raise TerminalRunError(f"{status} run requires a new immutable envelope")
+            if status == RunStatus.COMPLETED.value:
+                return self._state(uow, control)  # completed runs never resume
+            self._append_event(uow, control, "RUN_RESUMED", {"resume_from": control.get("checkpoint_label"), "status": status})
+            uow.save_control(run_id, control)
+            return self._state(uow, control)
 
     # ---- knowledge base (append-only, governed) --------------------------
     def record_lesson(self, *, lesson_id: str, lesson_version: int, lifecycle: str, title: str, statement: str, provenance: Mapping[str, Any], created_by: str, reviewed_by: str | None = None, counterevidence_refs: Sequence[str] = (), valid_from: str | None = None, valid_to: str | None = None) -> str:
