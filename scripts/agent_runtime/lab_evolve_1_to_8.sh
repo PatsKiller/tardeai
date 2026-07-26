@@ -76,8 +76,12 @@ DROP ROLE IF EXISTS $MIGRATOR_ROLE;
 SQL
 chmod 600 "$ROLLBACK_FILE"
 
-exec > >(tee "$EVIDENCE_FILE") 2>&1
+# Create and lock the evidence file BEFORE redirecting, so the mode-0600 chmod cannot
+# race the asynchronous tee in the process substitution (which created the file lazily
+# and intermittently failed the chmod under set -e).
+: > "$EVIDENCE_FILE"
 chmod 600 "$EVIDENCE_FILE"
+exec > >(tee -a "$EVIDENCE_FILE") 2>&1
 
 on_error() {
   local rc=$?
@@ -148,6 +152,20 @@ PY
 printf '%s:%s:%s:%s:%s\n' "$LAB_HOST" "$LAB_PORT" "$LAB_DATABASE" "$READER_ROLE" "$reader_password" >"$READER_PGPASS"
 printf '%s:%s:%s:%s:%s\n' "$LAB_HOST" "$LAB_PORT" "$LAB_DATABASE" "$WRITER_ROLE" "$writer_password" >"$WRITER_PGPASS"
 chmod 600 "$READER_PGPASS" "$WRITER_PGPASS"
+
+# Exact-run cleanup manifest for an operator host proof: write ONLY the three exact
+# fresh pathnames (one canonical line each: rollback SQL, writer pgpass, reader pgpass)
+# to the caller-provided private path — never a password or any other data. Written
+# here, right after the rollback and credential files exist and before the schema work,
+# so cleanup is armed even if a later provisioning step fails. No-op unless the caller
+# set AGENTIC_CLEANUP_MANIFEST, so default behavior is unchanged.
+if [[ -n "${AGENTIC_CLEANUP_MANIFEST:-}" ]]; then
+  {
+    printf '%s\n' "$ROLLBACK_FILE"
+    printf '%s\n' "$WRITER_PGPASS"
+    printf '%s\n' "$READER_PGPASS"
+  } >"$AGENTIC_CLEANUP_MANIFEST"
+fi
 
 printf '\n=== STAGE 1-3: EMPTY DATABASE AND SEPARATED IDENTITIES ===\n'
 $PSQL "${ADMIN_ARGS[@]}" -d postgres <<SQL
