@@ -103,7 +103,29 @@ def _aliases(name):
 
 
 def _breadth(cur, etf_sector_name):
-    """% of sector members above their own 20DMA — fail-soft when membership thin."""
+    """% of sector members above their own 20-session moving average.
+
+    Delegates the arithmetic to defense_data_quality.exact_session_breadth so the
+    definition lives in one audited place. The previous implementation averaged
+    ``close_price`` over ``CURRENT_DATE - 30`` — a 30-CALENDAR-day window, roughly 21
+    sessions but varying with holidays, and it counted duplicate same-day repricer
+    writes as separate observations. Both made the published number irreproducible.
+    Now: exactly the latest 20 DISTINCT trading dates per symbol, duplicates collapsed
+    last-observation-wins, and no result at all below the configured membership floor.
+
+    Returns the full quality block. There is deliberately NO fallback to the old
+    calculation: if coverage is insufficient the answer is an explicit
+    ``insufficient_coverage`` quality state with ``breadth_pct=None``, never a number
+    computed a different way that reads identically downstream.
+    """
+    from defense_data_quality import CALC_VERSION, exact_session_breadth
+
+    empty = {
+        "breadth_pct": None, "breadth_n": 0, "breadth_membership_n": 0,
+        "breadth_duplicate_dates_removed": 0,
+        "breadth_quality": {"state": "unavailable", "reasons": ["query_failed"]},
+        "breadth_source_as_of": None, "breadth_calculation_version": CALC_VERSION,
+    }
     try:
         cur.execute(
             """SELECT DISTINCT m.symbol FROM screener_symbol_membership m
@@ -111,26 +133,39 @@ def _breadth(cur, etf_sector_name):
                WHERE t.sector = ANY(%s) LIMIT 60""", (_aliases(etf_sector_name),))
         members = [r[0] for r in cur.fetchall()]
         if len(members) < CFG["breadth_min_members"]:
-            return None, len(members)
+            return {**empty, "breadth_membership_n": len(members),
+                    "breadth_quality": {"state": "insufficient_coverage",
+                                        "reasons": [f"membership_n={len(members)}"]}}
+        # Raw rows, not a pre-aggregated average: the session window has to be chosen
+        # by trading date rather than by calendar cutoff, which SQL here cannot do
+        # without assuming a session calendar. 60 calendar days comfortably covers 20
+        # sessions including holiday weeks.
         cur.execute(
-            """SELECT symbol,
-                      (array_agg(close_price ORDER BY price_date DESC))[1] AS last,
-                      avg(close_price) FILTER (WHERE price_date > CURRENT_DATE - 30) AS dma
-               FROM ticker_prices WHERE symbol = ANY(%s)
-                 AND price_date > CURRENT_DATE - 45
-               GROUP BY symbol HAVING count(*) >= 15""", (members,))
-        above = total = 0
-        for _s, last, dma in cur.fetchall():
-            if last is None or dma is None:
-                continue
-            total += 1
-            if float(last) > float(dma):
-                above += 1
-        return (round(above / total * 100) if total >= CFG["breadth_min_members"] else None), total
-    except Exception:
+            """SELECT symbol, price_date, close_price
+               FROM ticker_prices
+               WHERE symbol = ANY(%s) AND price_date > CURRENT_DATE - 60
+                 AND close_price IS NOT NULL
+               ORDER BY symbol, price_date""", (members,))
+        rows = cur.fetchall()
+        result = exact_session_breadth(
+            ((r[0], r[1], float(r[2])) for r in rows),
+            sessions=20, min_members=CFG["breadth_min_members"],
+        )
+        as_of = max((r[1] for r in rows), default=None)
+        return {
+            "breadth_pct": result["breadth_pct"],
+            "breadth_n": result["coverage_n"],
+            "breadth_membership_n": result["membership_n"],
+            "breadth_duplicate_dates_removed": result["duplicate_dates_removed"],
+            "breadth_quality": result["quality"],
+            "breadth_source_as_of": str(as_of) if as_of else None,
+            "breadth_calculation_version": CALC_VERSION,
+        }
+    except Exception as error:
         try: cur.connection.rollback()
         except Exception: pass
-        return None, 0
+        return {**empty, "breadth_quality": {"state": "unavailable",
+                                             "reasons": [f"query_failed: {str(error)[:80]}"]}}
 
 
 def _hermes_pulse(cur, sector_name):
@@ -354,10 +389,15 @@ def main() -> int:
         if not row.get("state"):
             continue
         name = row["sector"]
-        b_pct, b_n = _breadth(cur, name)
+        breadth = _breadth(cur, name)
+        b_pct, b_n = breadth["breadth_pct"], breadth["breadth_n"]
         hp, hd = _hermes_pulse(cur, name)
         nn, top_neg = _news_pressure(cur, name)
         w = weights.get(name) or {}
+        # The quality/provenance fields ride on the in-memory row and the API payload.
+        # sector_momentum_state has no column for them and adding one is a schema
+        # migration, which this workstream is not authorized to run.
+        row.update(breadth)
         row.update({"breadth_pct": b_pct, "breadth_n": b_n, "hermes_pulse": hp,
                     "hermes_delta": hd, "news_negatives": nn, "top_negative": top_neg,
                     "book_pct": w.get("pct"), "book_dollars": w.get("dollars"),
