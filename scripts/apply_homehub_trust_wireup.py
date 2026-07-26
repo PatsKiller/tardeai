@@ -36,11 +36,30 @@ REPLACEMENTS: list[tuple[str, str]] = [
         "{ label: 'Setup State', value: setupLbl.value, color: setupLbl.color, loading: tradeAiLoading },",
     ),
     (
-        "                    <Area type=\"monotone\" dataKey=\"value\" stroke=\"#60a5fa\" fill=\"url(#eqGrad)\" strokeWidth={2} />\n                  </AreaChart>\n                </ResponsiveContainer>\n              )}",
+        "              ) : (\n"
+        "                <ResponsiveContainer width=\"100%\" height={200}>\n"
+        "                  <AreaChart data={equityCurve}>\n"
+        "                    <defs><linearGradient id=\"eqGrad\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"5%\" stopColor=\"#60a5fa\" stopOpacity={0.3} /><stop offset=\"95%\" stopColor=\"#60a5fa\" stopOpacity={0} /></linearGradient></defs>\n"
+        "                    <XAxis dataKey=\"date\" tick={{ fontSize: 9, fill: 'var(--text3)' }} />\n"
+        "                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 9, fill: 'var(--text3)' }} tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}K`} />\n"
+        "                    <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }} formatter={(v: number) => [fmt$(v, 0), 'Value']} />\n"
         "                    <Area type=\"monotone\" dataKey=\"value\" stroke=\"#60a5fa\" fill=\"url(#eqGrad)\" strokeWidth={2} />\n"
         "                  </AreaChart>\n"
         "                </ResponsiveContainer>\n"
-        "                <EquityThinNote days={equityCurve.length} />\n"
+        "              )}",
+        "              ) : (\n"
+        "                <>\n"
+        "                  <ResponsiveContainer width=\"100%\" height={200}>\n"
+        "                    <AreaChart data={equityCurve}>\n"
+        "                      <defs><linearGradient id=\"eqGrad\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"5%\" stopColor=\"#60a5fa\" stopOpacity={0.3} /><stop offset=\"95%\" stopColor=\"#60a5fa\" stopOpacity={0} /></linearGradient></defs>\n"
+        "                      <XAxis dataKey=\"date\" tick={{ fontSize: 9, fill: 'var(--text3)' }} />\n"
+        "                      <YAxis domain={['auto', 'auto']} tick={{ fontSize: 9, fill: 'var(--text3)' }} tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}K`} />\n"
+        "                      <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }} formatter={(v: number) => [fmt$(v, 0), 'Value']} />\n"
+        "                      <Area type=\"monotone\" dataKey=\"value\" stroke=\"#60a5fa\" fill=\"url(#eqGrad)\" strokeWidth={2} />\n"
+        "                    </AreaChart>\n"
+        "                  </ResponsiveContainer>\n"
+        "                  <EquityThinNote days={equityCurve.length} />\n"
+        "                </>\n"
         "              )}",
     ),
     (

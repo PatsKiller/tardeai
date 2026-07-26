@@ -3,7 +3,8 @@ import { useApi } from '../hooks/useApi'
 import MarketMoversBoard from '../components/home/MarketMoversBoard'
 import BookTreemap from '../components/home/BookTreemap'
 import MajorNewsGrid from '../components/home/MajorNewsGrid'
-import { plain, plainAlert, runLabel, thresholdSentence } from '../lib/homeLabels'
+import { plain, plainAlert, runLabel, thresholdSentence, isScanStale } from '../lib/homeLabels'
+import { setupStateLabel, HermesGatewayLine, AiIntelligenceBriefing, EquityThinNote } from '../components/home/HomeTrustRender'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fmt$, fmtPct } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -76,6 +77,8 @@ export default function HomeHub({ onDrill }: Props) {
   const goCount = tradeAi?.go_count ?? 0
   const waitCount = tradeAi?.wait_count ?? 0
   const avoidCount = tradeAi?.avoid_count ?? 0
+  const scanStale = isScanStale(tradeAi?.run_date)
+  const setupLbl = setupStateLabel({ go: goCount, wait: waitCount, avoid: avoidCount, runLabel: tradeAi?.run_label, runDate: tradeAi?.run_date })
   const journalPnl = journal?.total_pnl
   const positions = risk?.positions ?? []
   const triggered = positions.filter((p: any) => p.triggered)
@@ -108,7 +111,7 @@ export default function HomeHub({ onDrill }: Props) {
       drill: { title: 'Paper validation win rate', subtitle: '/api/v2/paper-trade-readiness', endpoint: '/api/v2/paper-trade-readiness', rows: readiness ? [{ win_rate: readiness.win_rate, profit_factor: readiness.profit_factor, closed_usable: readiness.closed_usable }] : [] } },
     { label: 'REGIME', value: regimeLabel.replace(/_/g, ' '), sub: vix != null ? `VIX ${vix}` : '', color: regimeLabel === 'risk_off' ? '#ef4444' : regimeLabel === 'risk_on' ? '#22c55e' : '#f59e0b',
       drill: { title: 'Market Regime', subtitle: '/api/v2/risk-regime/latest', endpoint: '/api/v2/risk-regime/latest', rows: regime ? [regime] : [] } },
-    { label: 'SETUPS', value: `${goCount}/${waitCount}/${avoidCount}`, sub: 'GO/WAIT/NO · latest run', color: goCount > 0 ? '#22c55e' : 'var(--text3)',
+    { label: 'SETUPS', value: scanStale ? 'STALE' : `${goCount}/${waitCount}/${avoidCount}`, sub: scanStale ? setupLbl.value : 'GO/WAIT/NO · latest run', color: setupLbl.color,
       drill: { title: 'Trade Setups', subtitle: 'Latest scanner run only — Trading → Trade AI shows the full scan universe', endpoint: '/api/v2/trade-ai', rows: tradeAi ? [{ scope: 'latest run only', go_count: goCount, wait_count: waitCount, avoid_count: avoidCount, vix, run_label: tradeAi.run_label }] : [] } },
     { label: 'JOURNAL P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—', sub: 'cumulative', color: (journalPnl ?? 0) >= 0 ? '#22c55e' : '#ef4444',
       drill: { title: 'Journal P&L', subtitle: '/api/v2/overview → journal', endpoint: '/api/v2/overview', rows: journal ? [journal] : [] } },
@@ -202,7 +205,7 @@ export default function HomeHub({ onDrill }: Props) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16, marginTop: 12 }}>
               {[
                 { label: 'Last Run', value: tradeAi ? runLabel(tradeAi.run_label, tradeAi.run_date) : '—', color: 'var(--text2)', loading: tradeAiLoading },
-                { label: 'Setup State', value: `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NO GO`, color: goCount > 0 ? '#22c55e' : 'var(--text2)', loading: tradeAiLoading },
+                { label: 'Setup State', value: setupLbl.value, color: setupLbl.color, loading: tradeAiLoading },
                 { label: 'Journal P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—', color: (journalPnl ?? 0) >= 0 ? '#22c55e' : '#ef4444', loading: overviewLoading },
                 { label: `Win Rate (${journal?.trade_count ?? 0} trades)`, value: journal?.win_rate != null ? `${journal.win_rate}%` : '—', color: (journal?.win_rate ?? 0) >= 55 ? '#22c55e' : '#f59e0b', loading: overviewLoading },
               ].map(t => (
@@ -437,15 +440,18 @@ export default function HomeHub({ onDrill }: Props) {
               ) : equityCurve.length < 2 ? (
                 <div style={{ color: 'var(--text3)', fontSize: 11, padding: 30, textAlign: 'center' }}>Insufficient daily history ({equityCurve.length} days)</div>
               ) : (
-                <ResponsiveContainer width="100%" height={200}>
-                  <AreaChart data={equityCurve}>
-                    <defs><linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#60a5fa" stopOpacity={0.3} /><stop offset="95%" stopColor="#60a5fa" stopOpacity={0} /></linearGradient></defs>
-                    <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--text3)' }} />
-                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 9, fill: 'var(--text3)' }} tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}K`} />
-                    <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }} formatter={(v: number) => [fmt$(v, 0), 'Value']} />
-                    <Area type="monotone" dataKey="value" stroke="#60a5fa" fill="url(#eqGrad)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <AreaChart data={equityCurve}>
+                      <defs><linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#60a5fa" stopOpacity={0.3} /><stop offset="95%" stopColor="#60a5fa" stopOpacity={0} /></linearGradient></defs>
+                      <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--text3)' }} />
+                      <YAxis domain={['auto', 'auto']} tick={{ fontSize: 9, fill: 'var(--text3)' }} tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}K`} />
+                      <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }} formatter={(v: number) => [fmt$(v, 0), 'Value']} />
+                      <Area type="monotone" dataKey="value" stroke="#60a5fa" fill="url(#eqGrad)" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  <EquityThinNote days={equityCurve.length} />
+                </>
               )}
             </div>
 
@@ -713,30 +719,14 @@ export default function HomeHub({ onDrill }: Props) {
                   <Line><span>Research staged</span><span style={{ color: 'var(--text0)' }}>{sc.hermes_research_intelligence ?? 0}</span></Line>
                   <Line><span>Validation findings</span><span style={{ color: 'var(--text0)' }}>{sc.hermes_validation_findings ?? 0}</span></Line>
                   <Line><span>Autonomous loop</span><span style={{ color: h.autonomous_loop_active ? '#22c55e' : 'var(--text3)' }}>{h.autonomous_loop_active ? 'ON' : 'idle'}</span></Line>
-                  <Line><span>Gateway</span><span style={{ color: h.gateway_status === 'ok' ? '#22c55e' : '#ef4444' }}>{h.gateway_status ?? '—'}</span></Line>
+                  <HermesGatewayLine status={h.gateway_status} loopActive={h.autonomous_loop_active} />
                 </SCard>
               )
             })()}
           </div>
 
           {/* AI Intelligence Briefing (full width) */}
-          {cmd.llm_intelligence && (
-            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>AI Intelligence Briefing</div>
-              {[['Portfolio Risk', cmd.llm_intelligence.portfolio_risk], ['Morning Synthesis', cmd.llm_intelligence.morning_synthesis]].filter(([, v]) => v).map(([k, v]: any) => (
-                <div key={k} style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 9, color: '#60a5fa', textTransform: 'uppercase', marginBottom: 3 }}>{k}</div>
-                  {/* briefings are stored as JSON {"content": "..."} — render the prose, never raw JSON */}
-                  <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{(() => {
-                    let x: any = v
-                    if (typeof x === 'string') { try { x = JSON.parse(x) } catch { return x } }
-                    return x?.content ?? x?.summary ?? x?.text ?? String(v)
-                  })()}</div>
-                </div>
-              ))}
-              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/command → llm_intelligence (gemma3:12b daily)</div>
-            </div>
-          )}
+          {cmd.llm_intelligence && <AiIntelligenceBriefing llm={cmd.llm_intelligence} />}
       </>
     </div>
   )
