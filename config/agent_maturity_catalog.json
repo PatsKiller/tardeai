@@ -1,0 +1,1058 @@
+{
+  "agents": {
+    "aegis": {
+      "acceptance_evidence": [
+        "root-cause accuracy measured",
+        "recurrence tracked",
+        "runbook proposals reviewed"
+      ],
+      "allowed_job_types": [
+        "incident_investigation",
+        "reliability_review"
+      ],
+      "allowed_tools": [
+        "logs.read",
+        "case.read",
+        "run.read",
+        "incident_artifact.write"
+      ],
+      "artifact_schema": "aegis-incident-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 1800,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 2,
+        "max_tool_calls": 20
+      },
+      "current_limitations": [
+        "not implemented",
+        "cannot apply fixes or control services",
+        "case pipeline pending"
+      ],
+      "denied_tools": [
+        "shell.exec",
+        "service.restart",
+        "broker.submit"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "disable incident-agent jobs",
+      "display_name": "Aegis",
+      "maturity_target": "After case pipeline",
+      "objective": "Investigate incidents and produce evidence-backed remediation proposals.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "operator_review_required",
+      "rollback_control": "restore prior incident artifact contract",
+      "score_policy": "incident_recurrence_metrics_v1",
+      "stop_conditions": [
+        "evidence_incomplete",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-designed"
+    },
+    "alex": {
+      "acceptance_evidence": [
+        "citation precision",
+        "unresolved conflict coverage",
+        "operator usefulness measured"
+      ],
+      "allowed_job_types": [
+        "cio_synthesis",
+        "exception_synthesis"
+      ],
+      "allowed_tools": [
+        "artifact.read",
+        "review.read",
+        "score.read",
+        "synthesis.write"
+      ],
+      "artifact_schema": "alex-synthesis-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 600,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 2,
+        "max_tool_calls": 12
+      },
+      "current_limitations": [
+        "not implemented",
+        "cannot override deterministic or operator gates"
+      ],
+      "denied_tools": [
+        "risk.override",
+        "ticket.release",
+        "broker.submit"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "disable Alex synthesis jobs",
+      "display_name": "Alex",
+      "maturity_target": "After lower layers reliable",
+      "objective": "Synthesize unresolved trade-offs for the operator after lower-layer evidence is complete.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "operator_decision_required",
+      "rollback_control": "restore prior synthesis contract",
+      "score_policy": "synthesis_quality_v1",
+      "stop_conditions": [
+        "lower_layer_incomplete",
+        "deterministic_failure",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-designed"
+    },
+    "argus": {
+      "acceptance_evidence": [
+        "population coverage measured",
+        "false-positive exception rate measured"
+      ],
+      "allowed_job_types": [
+        "population_integrity_scan",
+        "presentation_consistency_scan"
+      ],
+      "allowed_tools": [
+        "artifact.read",
+        "population.read",
+        "exception.write"
+      ],
+      "artifact_schema": "argus-exception-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 900,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 0,
+        "max_tool_calls": 20
+      },
+      "current_limitations": [
+        "not implemented as a durable agent",
+        "cannot repair packets",
+        "requires population fixtures"
+      ],
+      "denied_tools": [
+        "artifact.write",
+        "ticket.write",
+        "config.promote"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "disable population scan definition",
+      "display_name": "Argus",
+      "maturity_target": "Phase 2 shadow",
+      "objective": "Scan populations for cross-artifact contradictions and drift.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": false,
+        "provenance_required": true,
+        "required": false
+      },
+      "review_policy": "operator_or_sentinel_review",
+      "rollback_control": "restore prior deterministic scan contract",
+      "score_policy": "defect_precision_metrics_v1",
+      "stop_conditions": [
+        "population_unavailable",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-designed"
+    },
+    "atlas": {
+      "acceptance_evidence": [
+        "MVL acceptance complete",
+        "measurable benefit over direct workflow",
+        "rollback proven"
+      ],
+      "allowed_job_types": [
+        "durable_workflow_orchestration"
+      ],
+      "allowed_tools": [
+        "run.create",
+        "run.status",
+        "handoff.write",
+        "checkpoint.write"
+      ],
+      "artifact_schema": "atlas-workflow-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 1800,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 0,
+        "max_tool_calls": 20
+      },
+      "current_limitations": [
+        "deferred by architecture",
+        "general orchestration is premature"
+      ],
+      "denied_tools": [
+        "broker.submit",
+        "config.promote",
+        "approval.write",
+        "2fa.request"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "keep Atlas disabled",
+      "display_name": "Atlas",
+      "maturity_target": "Deferred until MVL evidence",
+      "objective": "Coordinate durable multi-step agent workflows only after the MVL proves value.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "independent_review_required",
+      "rollback_control": "remove Atlas definition from enabled registry and retain MVL direct orchestration",
+      "score_policy": "workflow_completion_metrics_v1",
+      "stop_conditions": [
+        "mvl_not_proven",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-designed"
+    },
+    "concierge": {
+      "acceptance_evidence": [
+        "permission denials verified",
+        "status/explain/cancel/replay correctness measured"
+      ],
+      "allowed_job_types": [
+        "operator_status",
+        "operator_cancel",
+        "operator_resume",
+        "operator_explain"
+      ],
+      "allowed_tools": [
+        "run.status",
+        "run.cancel",
+        "run.resume",
+        "artifact.explain"
+      ],
+      "artifact_schema": "concierge-operator-response-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 60,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 0,
+        "max_tool_calls": 8
+      },
+      "current_limitations": [
+        "disabled",
+        "governed tool surface incomplete",
+        "cannot become execution authority"
+      ],
+      "denied_tools": [
+        "shell.exec",
+        "prod_db.write",
+        "broker.submit",
+        "config.promote"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "disable operator-agent definition; direct read-only UI remains",
+      "display_name": "Concierge",
+      "maturity_target": "After governed tools",
+      "objective": "Expose governed status, explain, cancel, and replay requests through the operator gateway.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": false,
+        "provenance_required": true,
+        "required": false
+      },
+      "review_policy": "operator_is_authority",
+      "rollback_control": "restore previous command mapping",
+      "score_policy": "command_correctness_v1",
+      "stop_conditions": [
+        "unknown_run",
+        "tool_denied",
+        "deadline_exceeded"
+      ],
+      "version": "1.0.0-designed"
+    },
+    "darwin": {
+      "acceptance_evidence": [
+        "scores complete for >=95% of MVL artifacts",
+        "score-policy version recorded",
+        "self-score attempts denied"
+      ],
+      "allowed_job_types": [
+        "artifact_scoring",
+        "outcome_join",
+        "calibration_evidence"
+      ],
+      "allowed_tools": [
+        "artifact.read",
+        "outcome.read",
+        "case.read",
+        "score.write"
+      ],
+      "artifact_schema": "darwin-score-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 600,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 0,
+        "max_tool_calls": 12
+      },
+      "current_limitations": [
+        "SHADOW only",
+        "cannot promote rules",
+        "real outcome population incomplete"
+      ],
+      "denied_tools": [
+        "artifact.write",
+        "config.promote",
+        "lesson.ratify"
+      ],
+      "deployment_state": "SHADOW",
+      "disable_control": "disable scoring job type or set enabled=false; retain prior scores",
+      "display_name": "Darwin",
+      "maturity_target": "MVL operational shadow",
+      "objective": "Join artifacts to outcomes and produce deterministic scoring and calibration evidence.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": false,
+        "provenance_required": true,
+        "required": false
+      },
+      "review_policy": "producer_must_differ_from_scorer",
+      "rollback_control": "restore prior score-policy version and recompute in LAB/SHADOW",
+      "score_policy": "deterministic_versioned_score_policy",
+      "stop_conditions": [
+        "missing_outcome_contract",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-shadow"
+    },
+    "hermes": {
+      "acceptance_evidence": [
+        "frozen preregistration",
+        "out-of-sample evaluation",
+        "human promotion decision"
+      ],
+      "allowed_job_types": [
+        "hypothesis_discovery",
+        "experiment_design"
+      ],
+      "allowed_tools": [
+        "kb.search",
+        "case.read",
+        "score.read",
+        "hypothesis.register",
+        "experiment_plan.write"
+      ],
+      "artifact_schema": "hermes-hypothesis-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 1200,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 3,
+        "max_tool_calls": 20
+      },
+      "current_limitations": [
+        "disabled",
+        "cannot promote hypotheses",
+        "preregistration/evaluation loop incomplete"
+      ],
+      "denied_tools": [
+        "hypothesis.promote",
+        "config.promote",
+        "config.activate"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "disable Hermes registration jobs",
+      "display_name": "Hermes",
+      "maturity_target": "After KB and Darwin",
+      "objective": "Discover anomalies and register preregistered hypotheses and experiment plans.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "darwin_and_human_adjudication",
+      "rollback_control": "restore prior hypothesis schema; candidate records remain non-authoritative",
+      "score_policy": "hypothesis_economic_value_v1",
+      "stop_conditions": [
+        "insufficient_evidence",
+        "duplicate_hypothesis",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-designed"
+    },
+    "iris": {
+      "acceptance_evidence": [
+        "candidate lessons retain provenance",
+        "counterevidence search recorded",
+        "operator can accept or reject"
+      ],
+      "allowed_job_types": [
+        "lesson_review",
+        "knowledge_quality",
+        "retrieval_audit"
+      ],
+      "allowed_tools": [
+        "kb.search",
+        "kb.get_lesson",
+        "kb.get_case",
+        "lesson_review.write",
+        "contradiction.write"
+      ],
+      "artifact_schema": "iris-lesson-review-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 900,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 2,
+        "max_tool_calls": 20
+      },
+      "current_limitations": [
+        "SHADOW only",
+        "cannot ratify lessons",
+        "authoritative KB adapter pending"
+      ],
+      "denied_tools": [
+        "lesson.ratify",
+        "config.promote",
+        "hypothesis.promote"
+      ],
+      "deployment_state": "SHADOW",
+      "disable_control": "disable Iris review jobs; keep candidate lessons unchanged",
+      "display_name": "Iris",
+      "maturity_target": "MVL support shadow",
+      "objective": "Curate knowledge quality and produce lesson-review or contradiction evidence without ratifying production behavior.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "human_or_operator_ratification_required",
+      "rollback_control": "restore prior curation policy and rebuild search index pointer only after validation",
+      "score_policy": "knowledge_quality_metrics_v1",
+      "stop_conditions": [
+        "missing_provenance",
+        "missing_counterevidence_search",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-shadow"
+    },
+    "maria": {
+      "acceptance_evidence": [
+        "source coverage measured",
+        "stale-source use measured",
+        "counter-thesis quality scored"
+      ],
+      "allowed_job_types": [
+        "fundamental_research",
+        "catalyst_review"
+      ],
+      "allowed_tools": [
+        "facts.read",
+        "events.read",
+        "kb.search",
+        "research_artifact.write"
+      ],
+      "artifact_schema": "maria-research-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 900,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 3,
+        "max_tool_calls": 16
+      },
+      "current_limitations": [
+        "existing capability is not yet a durable governed agent",
+        "cannot create entry mechanics"
+      ],
+      "denied_tools": [
+        "ticket.write",
+        "broker.submit",
+        "config.promote"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "disable durable Maria jobs; existing deterministic research remains",
+      "display_name": "Maria",
+      "maturity_target": "Durable integration later",
+      "objective": "Produce evidence-grounded fundamental and catalyst research artifacts.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "independent_review_required",
+      "rollback_control": "restore prior research artifact contract",
+      "score_policy": "research_calibration_v1",
+      "stop_conditions": [
+        "insufficient_evidence",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-designed"
+    },
+    "pulse": {
+      "acceptance_evidence": [
+        "sequence integrity proven",
+        "replay determinism proven",
+        "fill usefulness measured"
+      ],
+      "allowed_job_types": [
+        "microstructure_review",
+        "liquidity_regime_review"
+      ],
+      "allowed_tools": [
+        "microstructure.read",
+        "replay.read",
+        "kb.search",
+        "microstructure_review.write"
+      ],
+      "artifact_schema": "pulse-microstructure-review-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 300,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 2,
+        "max_tool_calls": 12
+      },
+      "current_limitations": [
+        "not implemented",
+        "no LLM in tick path",
+        "Moomoo feature plane not proven"
+      ],
+      "denied_tools": [
+        "raw_tick_reasoning",
+        "broker.submit",
+        "order.modify"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "disable Pulse reviews without affecting deterministic protection",
+      "display_name": "Pulse",
+      "maturity_target": "After Moomoo feature plane",
+      "objective": "Interpret deterministic Moomoo microstructure feature windows as bounded evidence.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "independent_review_required",
+      "rollback_control": "restore prior feature-contract version and replay captured windows",
+      "score_policy": "microstructure_calibration_v1",
+      "stop_conditions": [
+        "sequence_gap",
+        "stale_book",
+        "entitlement_unavailable",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-designed"
+    },
+    "reflection": {
+      "acceptance_evidence": [
+        "candidate lessons created from cases",
+        "no automatic promotion",
+        "review disposition recorded"
+      ],
+      "allowed_job_types": [
+        "nightly_reflection",
+        "exception_reflection"
+      ],
+      "allowed_tools": [
+        "kb.search",
+        "case.read",
+        "exception.read",
+        "lesson_candidate.write",
+        "hypothesis.register"
+      ],
+      "artifact_schema": "nightly-reflection-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 1200,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 3,
+        "max_tool_calls": 20
+      },
+      "current_limitations": [
+        "SHADOW only",
+        "no production mutation",
+        "scheduler activation not authorized"
+      ],
+      "denied_tools": [
+        "lesson.ratify",
+        "hypothesis.promote",
+        "config.promote"
+      ],
+      "deployment_state": "SHADOW",
+      "disable_control": "disable reflection trigger; preserve candidate outputs",
+      "display_name": "Nightly Reflection",
+      "maturity_target": "MVL operational shadow",
+      "objective": "Convert new cases and exceptions into bounded candidate lessons and hypotheses.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "independent_iris_or_operator_review",
+      "rollback_control": "restore previous reflection prompt/policy and replay the bounded case window",
+      "score_policy": "candidate_quality_metrics_v1",
+      "stop_conditions": [
+        "no_new_cases",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-shadow"
+    },
+    "risk_agent": {
+      "acceptance_evidence": [
+        "true/false objection rate measured",
+        "protective path independence proven"
+      ],
+      "allowed_job_types": [
+        "ticket_risk_review",
+        "portfolio_heat_review"
+      ],
+      "allowed_tools": [
+        "risk.read",
+        "portfolio.read",
+        "events.read",
+        "risk_review.write"
+      ],
+      "artifact_schema": "guardian-risk-review-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 300,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 1,
+        "max_tool_calls": 12
+      },
+      "current_limitations": [
+        "existing stable ID retained",
+        "cannot override central risk gate"
+      ],
+      "denied_tools": [
+        "risk.override",
+        "ticket.write",
+        "broker.submit"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "disable reflective risk critic; deterministic risk remains active",
+      "display_name": "Guardian Risk",
+      "maturity_target": "Durable integration later",
+      "objective": "Challenge portfolio and ticket risk without overriding the deterministic risk gate.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "independent_review_required",
+      "rollback_control": "restore prior risk-review contract",
+      "score_policy": "risk_objection_metrics_v1",
+      "stop_conditions": [
+        "risk_truth_unavailable",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-designed"
+    },
+    "sentinel": {
+      "acceptance_evidence": [
+        "20+ known-bad fixtures",
+        "100 reviewed Watch artifacts",
+        "0 deterministic failures released",
+        "false-positive rate measured"
+      ],
+      "allowed_job_types": [
+        "watch_ticket_review",
+        "decision_integrity_review",
+        "known_bad_regression"
+      ],
+      "allowed_tools": [
+        "kb.search",
+        "kb.get_lesson",
+        "kb.get_case",
+        "ticket.read",
+        "validator.read",
+        "artifact.write",
+        "quarantine.stage"
+      ],
+      "artifact_schema": "sentinel-review-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 360,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 3,
+        "max_tool_calls": 12
+      },
+      "current_limitations": [
+        "SHADOW only",
+        "cannot edit tickets",
+        "cannot grant proposal authority",
+        "population acceptance not complete"
+      ],
+      "denied_tools": [
+        "kb.ratify",
+        "score.write",
+        "hypothesis.promote"
+      ],
+      "deployment_state": "SHADOW",
+      "disable_control": "disable agent definition or set enabled=false; preserve artifacts",
+      "display_name": "Sentinel",
+      "maturity_target": "MVL operational shadow",
+      "objective": "Review Watch and decision artifacts for contradictions after deterministic validation.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "independent_review_required",
+      "rollback_control": "restore prior versioned Sentinel definition and replay fixtures",
+      "score_policy": "darwin_scores_outcome",
+      "stop_conditions": [
+        "deterministic_failure",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "missing_required_retrieval",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-shadow"
+    },
+    "steph": {
+      "acceptance_evidence": [
+        "account-fit precision measured",
+        "overlap and concentration evidence scored"
+      ],
+      "allowed_job_types": [
+        "allocation_review",
+        "account_fit_review"
+      ],
+      "allowed_tools": [
+        "portfolio.read",
+        "account.read",
+        "kb.search",
+        "allocation_review.write"
+      ],
+      "artifact_schema": "steph-allocation-review-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 600,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 2,
+        "max_tool_calls": 14
+      },
+      "current_limitations": [
+        "existing capability is not yet durable",
+        "cannot submit rebalances",
+        "canonical account read model pending"
+      ],
+      "denied_tools": [
+        "account.write",
+        "position.write",
+        "broker.submit"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "disable Steph durable jobs",
+      "display_name": "Steph",
+      "maturity_target": "Durable integration later",
+      "objective": "Produce portfolio and account-allocation critiques from canonical position and account facts.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "independent_review_required",
+      "rollback_control": "restore prior allocation-review contract",
+      "score_policy": "allocation_outcome_metrics_v1",
+      "stop_conditions": [
+        "account_truth_unavailable",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-designed"
+    },
+    "tax_agent": {
+      "acceptance_evidence": [
+        "wash-sale fixtures",
+        "basis provenance completeness",
+        "false constraint rate measured"
+      ],
+      "allowed_job_types": [
+        "tax_constraint_review",
+        "wash_sale_review"
+      ],
+      "allowed_tools": [
+        "tax_lots.read",
+        "account.read",
+        "case.read",
+        "tax_review.write"
+      ],
+      "artifact_schema": "ledger-tax-review-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 600,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 1,
+        "max_tool_calls": 12
+      },
+      "current_limitations": [
+        "existing stable ID retained",
+        "cannot execute tax trades",
+        "lot truth contract pending"
+      ],
+      "denied_tools": [
+        "trade.submit",
+        "lot.write",
+        "basis.write"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "disable tax review jobs",
+      "display_name": "Ledger Tax",
+      "maturity_target": "Durable integration later",
+      "objective": "Produce tax and account-constraint review evidence from canonical lot data.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "independent_review_required",
+      "rollback_control": "restore prior tax-review contract",
+      "score_policy": "tax_review_quality_v1",
+      "stop_conditions": [
+        "basis_unavailable",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-designed"
+    },
+    "vega": {
+      "acceptance_evidence": [
+        "no-lookahead fixtures",
+        "trigger accuracy measured",
+        "false confirmation rate measured"
+      ],
+      "allowed_job_types": [
+        "technical_structure_review",
+        "setup_lifecycle_review"
+      ],
+      "allowed_tools": [
+        "technicals.read",
+        "bars.read",
+        "kb.search",
+        "technical_review.write"
+      ],
+      "artifact_schema": "vega-technical-review-v1",
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "budget": {
+        "deadline_seconds": 600,
+        "max_cost_usd": 0.0,
+        "max_model_calls": 2,
+        "max_tool_calls": 14
+      },
+      "current_limitations": [
+        "not implemented",
+        "cannot invent OHLCV facts",
+        "requires stable technical source contract"
+      ],
+      "denied_tools": [
+        "price.write",
+        "ticket.write",
+        "broker.submit"
+      ],
+      "deployment_state": "DESIGNED",
+      "disable_control": "disable Vega review jobs",
+      "display_name": "Vega",
+      "maturity_target": "After technical artifacts stabilize",
+      "objective": "Review multi-timeframe technical structure and setup lifecycle from deterministic facts.",
+      "owner": "architecture-owner",
+      "retrieval_policy": {
+        "contradiction_search_required": true,
+        "provenance_required": true,
+        "required": true
+      },
+      "review_policy": "independent_review_required",
+      "rollback_control": "restore prior technical artifact contract and replay closed-bar fixtures",
+      "score_policy": "pattern_precision_v1",
+      "stop_conditions": [
+        "unclosed_bar",
+        "stale_technical_evidence",
+        "deadline_exceeded",
+        "operator_cancel"
+      ],
+      "version": "1.0.0-designed"
+    }
+  },
+  "contract": "agent-runtime-monitoring-v1",
+  "environment": "SHADOW",
+  "global_authority": {
+    "approval_authority": "DENIED",
+    "broker_authority": "DENIED",
+    "order_authority": "DENIED",
+    "production_config_promotion": "DENIED",
+    "production_database_write": "DENIED",
+    "production_secret_access": "DENIED",
+    "service_control": "DENIED",
+    "two_factor_authority": "DENIED"
+  },
+  "production_activation_authorized": false,
+  "schema_version": "trade-ai-agent-maturity-catalog-v1",
+  "source_registry": "config/agent_runtime_mvl.json"
+}

@@ -1,0 +1,5 @@
+BEGIN;
+
+DROP SCHEMA IF EXISTS agentic_runtime CASCADE;
+
+COMMIT;

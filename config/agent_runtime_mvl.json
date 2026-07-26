@@ -1,0 +1,112 @@
+{
+  "schema_version": "trade-ai-agent-runtime-mvl-v1",
+  "environment": "SHADOW",
+  "authority": {
+    "deterministic_core": "SOVEREIGN",
+    "reflective_agents": "CRITIQUE_AND_STAGE_ONLY",
+    "broker_authority": "DENIED",
+    "order_authority": "DENIED",
+    "approval_authority": "DENIED",
+    "two_factor_authority": "DENIED",
+    "production_config_promotion": "DENIED",
+    "production_secret_access": "DENIED"
+  },
+  "global_denied_tools": [
+    "broker.*",
+    "order.*",
+    "trade.*",
+    "execution.*",
+    "account.write",
+    "position.write",
+    "approval.*",
+    "2fa.*",
+    "secrets.*",
+    "credential.*",
+    "production.*",
+    "prod_db.write",
+    "config.promote",
+    "config.activate",
+    "shell.*",
+    "systemd.*"
+  ],
+  "agents": {
+    "sentinel": {
+      "display_name": "Sentinel",
+      "role": "Decision-integrity reflective critic",
+      "version": "1.0.0-shadow",
+      "owner": "architecture-owner",
+      "allowed_job_types": ["watch_ticket_review", "decision_integrity_review", "known_bad_regression"],
+      "allowed_tools": ["kb.search", "kb.get_lesson", "kb.get_case", "ticket.read", "validator.read", "artifact.write", "quarantine.stage"],
+      "denied_tools": ["kb.ratify", "score.write", "hypothesis.promote"],
+      "retrieval_required": true,
+      "deployment_state": "SHADOW",
+      "enabled": true,
+      "budget": {"max_model_calls": 3, "max_tool_calls": 12, "max_cost_usd": 0.0, "deadline_seconds": 360}
+    },
+    "darwin": {
+      "display_name": "Darwin",
+      "role": "Outcome join and artifact scorer",
+      "version": "1.0.0-shadow",
+      "owner": "architecture-owner",
+      "allowed_job_types": ["artifact_scoring", "outcome_join", "calibration_evidence"],
+      "allowed_tools": ["artifact.read", "outcome.read", "case.read", "score.write"],
+      "denied_tools": ["artifact.write", "config.promote", "lesson.ratify"],
+      "retrieval_required": false,
+      "deployment_state": "SHADOW",
+      "enabled": true,
+      "budget": {"max_model_calls": 0, "max_tool_calls": 12, "max_cost_usd": 0.0, "deadline_seconds": 600}
+    },
+    "reflection": {
+      "display_name": "Nightly Reflection",
+      "role": "Case-to-lesson and hypothesis candidate generation",
+      "version": "1.0.0-shadow",
+      "owner": "architecture-owner",
+      "allowed_job_types": ["nightly_reflection", "exception_reflection"],
+      "allowed_tools": ["kb.search", "case.read", "exception.read", "lesson_candidate.write", "hypothesis.register"],
+      "denied_tools": ["lesson.ratify", "hypothesis.promote", "config.promote"],
+      "retrieval_required": true,
+      "deployment_state": "SHADOW",
+      "enabled": true,
+      "budget": {"max_model_calls": 3, "max_tool_calls": 20, "max_cost_usd": 0.0, "deadline_seconds": 1200}
+    },
+    "iris": {
+      "display_name": "Iris",
+      "role": "Knowledge curation and lesson lifecycle reviewer",
+      "version": "1.0.0-shadow",
+      "owner": "architecture-owner",
+      "allowed_job_types": ["lesson_review", "knowledge_quality", "retrieval_audit"],
+      "allowed_tools": ["kb.search", "kb.get_lesson", "kb.get_case", "lesson_review.write", "contradiction.write"],
+      "denied_tools": ["lesson.ratify", "config.promote", "hypothesis.promote"],
+      "retrieval_required": true,
+      "deployment_state": "SHADOW",
+      "enabled": true,
+      "budget": {"max_model_calls": 2, "max_tool_calls": 20, "max_cost_usd": 0.0, "deadline_seconds": 900}
+    },
+    "hermes": {
+      "display_name": "Hermes",
+      "role": "Hypothesis discovery and experiment design",
+      "version": "1.0.0-designed",
+      "owner": "architecture-owner",
+      "allowed_job_types": ["hypothesis_discovery", "experiment_design"],
+      "allowed_tools": ["kb.search", "case.read", "score.read", "hypothesis.register", "experiment_plan.write"],
+      "denied_tools": ["hypothesis.promote", "config.promote", "config.activate"],
+      "retrieval_required": true,
+      "deployment_state": "DESIGNED",
+      "enabled": false,
+      "budget": {"max_model_calls": 3, "max_tool_calls": 20, "max_cost_usd": 0.0, "deadline_seconds": 1200}
+    },
+    "concierge": {
+      "display_name": "Concierge",
+      "role": "Governed OpenClaw operator interface",
+      "version": "1.0.0-designed",
+      "owner": "architecture-owner",
+      "allowed_job_types": ["operator_status", "operator_cancel", "operator_resume", "operator_explain"],
+      "allowed_tools": ["run.status", "run.cancel", "run.resume", "artifact.explain"],
+      "denied_tools": ["shell.exec", "prod_db.write", "broker.submit", "config.promote"],
+      "retrieval_required": false,
+      "deployment_state": "DESIGNED",
+      "enabled": false,
+      "budget": {"max_model_calls": 0, "max_tool_calls": 8, "max_cost_usd": 0.0, "deadline_seconds": 60}
+    }
+  }
+}
