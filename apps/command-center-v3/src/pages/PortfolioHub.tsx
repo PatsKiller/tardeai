@@ -128,16 +128,32 @@ export default function PortfolioHub({ onDrill }: Props) {
     else next.set('tab', t)
     setSearchParams(next, { replace: true })
   }
+  // ── Account filter (URL-synced, same pattern as tab) ──
+  const resolveAcct = (a: string | null): string | null => {
+    if (!a || a === 'all' || a === 'null') return null
+    return a
+  }
+  const [acctFilter, setAcctFilter] = useState<string | null>(resolveAcct(searchParams.get('acct')))
+  useEffect(() => {
+    const a = resolveAcct(searchParams.get('acct'))
+    if (a !== acctFilter) setAcctFilter(a)
+  }, [searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
+  const selectAcct = (a: string | null) => {
+    setAcctFilter(a)
+    const next = new URLSearchParams(searchParams)
+    if (!a) next.delete('acct')
+    else next.set('acct', a)
+    setSearchParams(next, { replace: true })
+  }
   const [holdingsDrawer, setHoldingsDrawer] = useState<HoldingsDetailContext | null>(null)
   const [drawerTitle, setDrawerTitle] = useState('')
   const [drawerSubtitle, setDrawerSubtitle] = useState('')
   const holdingsCvd: HoldingsCvdMode = 'cvd'
-  const [acctFilter, setAcctFilter] = useState<string | null>(null)
   const [sigTab, setSigTab] = useState('All')
   const [focusKey, setFocusKey] = useState<string | null>(null)
   // From the Stop Management Adjust modal: jump to a holding's card (its inline gated 2FA / manual-ticket panel).
   const focusHolding = (symbol: string, account: string) => {
-    selectTab('Holdings'); setAcctFilter(account); setSigTab('All')
+    selectTab('Holdings'); selectAcct(account); setSigTab('All')
     const key = `${symbol}-${account}`; setFocusKey(key)
     const tryScroll = (n: number) => {
       const el = document.getElementById(`hold-${key}`)
@@ -245,8 +261,6 @@ export default function PortfolioHub({ onDrill }: Props) {
   const allHoldings = holdings?.holdings ?? []
   const holdingsPending = !holdings && holdingsLoading
   const holdingsUnavailable = !holdings && !!holdingsError
-  const payers = divs?.payers ?? []
-
   // ── Account filter: chips derived from holdings, with per-account counts + value ──
   const acctMap: Record<string, { n: number; value: number }> = {}
   for (const h of allHoldings) {
@@ -415,14 +429,14 @@ export default function PortfolioHub({ onDrill }: Props) {
 
       {tab === 'Holdings' && accounts.length > 1 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
-          <button onClick={() => setAcctFilter(null)} style={{
+          <button onClick={() => selectAcct(null)} style={{
             padding: '3px 10px', fontSize: 10, borderRadius: 12, cursor: 'pointer',
             border: `1px solid ${acctFilter === null ? '#60a5fa' : 'var(--border)'}`,
             background: acctFilter === null ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
             color: acctFilter === null ? '#60a5fa' : 'var(--text3)', fontWeight: acctFilter === null ? 700 : 400,
           }}>All ({allHoldings.length})</button>
           {accounts.map(([a, info]) => (
-            <button key={a} onClick={() => setAcctFilter(a === acctFilter ? null : a)} style={{
+            <button key={a} onClick={() => selectAcct(a === acctFilter ? null : a)} style={{
               padding: '3px 10px', fontSize: 10, borderRadius: 12, cursor: 'pointer',
               border: `1px solid ${acctFilter === a ? acctColor(a) : 'var(--border)'}`,
               background: acctFilter === a ? `${acctColor(a)}22` : 'var(--bg2)',
@@ -447,7 +461,7 @@ export default function PortfolioHub({ onDrill }: Props) {
           onGoHoldings={() => selectTab('Holdings')}
           onOpenHolding={(symbol, account) => {
             selectTab('Holdings')
-            setAcctFilter(account)
+            selectAcct(account)
             setSigTab('All')
             const key = `${symbol}-${account}`
             setFocusKey(key)
@@ -619,9 +633,9 @@ export default function PortfolioHub({ onDrill }: Props) {
             <AskAgents />
             {ltAccts.length > 1 && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 9 }}>
-                <button onClick={() => setAcctFilter(null)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === null ? '#60a5fa' : 'var(--border)'}`, background: acctFilter === null ? 'rgba(96,165,250,.15)' : 'var(--bg2)', color: acctFilter === null ? '#60a5fa' : 'var(--text3)', fontWeight: acctFilter === null ? 700 : 400 }}>All accounts</button>
+                <button onClick={() => selectAcct(null)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === null ? '#60a5fa' : 'var(--border)'}`, background: acctFilter === null ? 'rgba(96,165,250,.15)' : 'var(--bg2)', color: acctFilter === null ? '#60a5fa' : 'var(--text3)', fontWeight: acctFilter === null ? 700 : 400 }}>All accounts</button>
                 {ltAccts.map(a => (
-                  <button key={a} onClick={() => setAcctFilter(a === acctFilter ? null : a)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === a ? acctColor(a) : 'var(--border)'}`, background: acctFilter === a ? `${acctColor(a)}22` : 'var(--bg2)', color: acctFilter === a ? acctColor(a) : 'var(--text3)', fontWeight: acctFilter === a ? 700 : 400 }}>{a.replace(/_/g, ' ')}</button>
+                  <button key={a} onClick={() => selectAcct(a === acctFilter ? null : a)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === a ? acctColor(a) : 'var(--border)'}`, background: acctFilter === a ? `${acctColor(a)}22` : 'var(--bg2)', color: acctFilter === a ? acctColor(a) : 'var(--text3)', fontWeight: acctFilter === a ? 700 : 400 }}>{a.replace(/_/g, ' ')}</button>
                 ))}
               </div>
             )}
@@ -765,26 +779,113 @@ export default function PortfolioHub({ onDrill }: Props) {
 
       {tab === 'Dividends' && (
         <div className={terminalUi ? 'cc-panel' : undefined} style={tabPanel}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Dividend Income</div>
-          {divs ? (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-                <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#22c55e' }}>{fmt$(divs.total_annual ?? 0, 0)}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>Annual</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>
+            Dividend Income
+            {acctFilter && <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 500 }}> · {acctFilter.replace(/_/g, ' ')}</span>}
+          </div>
+
+          {accounts.length > 1 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+              <button onClick={() => selectAcct(null)} style={{
+                padding: '3px 10px', fontSize: 10, borderRadius: 12, cursor: 'pointer',
+                border: `1px solid ${acctFilter === null ? COLORS[0] : 'var(--border)'}`,
+                background: acctFilter === null ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
+                color: acctFilter === null ? COLORS[0] : 'var(--text3)', fontWeight: acctFilter === null ? 700 : 400,
+              }}>All</button>
+              {accounts.map(([a]) => (
+                <button key={a} onClick={() => selectAcct(a === acctFilter ? null : a)} style={{
+                  padding: '3px 10px', fontSize: 10, borderRadius: 12, cursor: 'pointer',
+                  border: `1px solid ${acctFilter === a ? acctColor(a) : 'var(--border)'}`,
+                  background: acctFilter === a ? `${acctColor(a)}22` : 'var(--bg2)',
+                  color: acctFilter === a ? acctColor(a) : 'var(--text3)', fontWeight: acctFilter === a ? 700 : 400,
+                }}>
+                  <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(a), marginRight: 5 }} />
+                  {a.replace(/_/g, ' ')}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {divs ? (() => {
+            const allPayers = (divs.payers ?? []) as any[]
+            const filtered = acctFilter
+              ? allPayers.filter(p => (p.account ?? p.account_key ?? '') === acctFilter)
+              : allPayers
+            const sorted = [...filtered].sort((a, b) => (b.annual_income ?? 0) - (a.annual_income ?? 0))
+            const viewAnnual = sorted.reduce((s, p) => s + (Number(p.annual_income) || 0), 0)
+            const viewMonthly = sorted.reduce((s, p) => s + (Number(p.monthly_amort) || 0), 0) || (viewAnnual / 12)
+
+            return (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+                  <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: COLORS[1] }}>{fmt$(viewAnnual, 0)}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>Annual{acctFilter ? ' (filtered)' : ''}</div>
+                  </div>
+                  <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{fmt$(viewMonthly, 0)}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>Monthly Avg</div>
+                  </div>
+                  <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{sorted.length}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>Payers</div>
+                  </div>
                 </div>
-                <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{fmt$(divs.monthly_average ?? 0, 0)}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>Monthly Avg</div>
+
+                {sorted.length === 0 ? (
+                  <div style={{ color: 'var(--text3)', fontSize: 12, padding: 12 }}>No dividend payers match this account filter.</div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ color: 'var(--text3)' }}>
+                          <th style={{ textAlign: 'left', padding: '4px 8px' }}>Symbol</th>
+                          <th style={{ textAlign: 'right', padding: '4px 8px' }}>Yield</th>
+                          <th style={{ textAlign: 'right', padding: '4px 8px' }}>Annual</th>
+                          <th style={{ textAlign: 'right', padding: '4px 8px' }}>Monthly</th>
+                          <th style={{ textAlign: 'left', padding: '4px 8px' }}>Freq</th>
+                          <th style={{ textAlign: 'left', padding: '4px 8px' }}>Tax</th>
+                          <th style={{ textAlign: 'left', padding: '4px 8px' }}>Safety</th>
+                          {!acctFilter && <th style={{ textAlign: 'left', padding: '4px 8px' }}>Account</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sorted.map((p: any, i: number) => (
+                          <tr key={`${p.symbol}-${p.account ?? i}`} style={{ borderTop: '1px solid rgba(148,163,184,.12)', color: 'var(--text1)' }}>
+                            <td style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 700, fontFamily: 'monospace' }}>{p.symbol}</td>
+                            <td style={{ textAlign: 'right', padding: '4px 8px', color: COLORS[1] }}>{Number(p.yield_pct ?? 0).toFixed(2)}%</td>
+                            <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace', fontWeight: 700, color: COLORS[2] }}>{fmt$(p.annual_income ?? 0, 0)}</td>
+                            <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace' }}>{fmt$(p.monthly_amort ?? (p.annual_income ?? 0) / 12, 0)}</td>
+                            <td style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text2)', fontSize: 10 }}>{p.frequency || '—'}</td>
+                            <td style={{ textAlign: 'left', padding: '4px 8px', fontSize: 10, color: p.qualified ? COLORS[1] : COLORS[2] }}>{p.qualified ? 'Qual' : 'Ord'}</td>
+                            <td style={{ textAlign: 'left', padding: '4px 8px', fontSize: 10, color: p.safety === 'strong' ? COLORS[1] : COLORS[2] }}>{p.safety || '—'}</td>
+                            {!acctFilter && <td style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text3)', fontSize: 10 }}>{(p.account || p.account_key || '').replace(/_/g, ' ')}</td>}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {(divs.ex_div_alerts?.length ?? 0) > 0 && (
+                  <div style={{ marginTop: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Upcoming ex-div</div>
+                    {(divs.ex_div_alerts as any[]).slice(0, 8).map((a: any, i: number) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{a.symbol}</span>
+                        <span style={{ color: 'var(--text2)' }}>{a.ex_date}</span>
+                        <span style={{ color: COLORS[1] }}>{a.amount}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 10 }}>
+                  Source: /api/v2/dividends{acctFilter ? ' (filtered client-side by account)' : ''}. Full v2 charts / progress-to-target can be restored later if desired.
                 </div>
-                <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{payers.length}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>Payers</div>
-                </div>
-              </div>
-              <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/dividends</div>
-            </>
-          ) : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading dividend data...</div>}
+              </>
+            )
+          })() : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading dividend data…</div>}
         </div>
       )}
 
@@ -797,7 +898,7 @@ export default function PortfolioHub({ onDrill }: Props) {
           initialAccount={acctFilter}
           onOpenHolding={(symbol, account) => {
             selectTab('Holdings')
-            setAcctFilter(account)
+            selectAcct(account)
             setSigTab('All')
             const key = `${symbol}-${account}`
             setFocusKey(key)
