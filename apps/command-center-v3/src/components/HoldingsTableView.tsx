@@ -16,6 +16,7 @@ import {
 } from '../lib/holdingsTerminalTokens'
 import { holdingReportEligible } from '../lib/reportLinks'
 import { ShareDriftPill } from './ShareReconciliationModal'
+import { LevelLines, type LevelMap } from '../lib/supportResistance'
 
 const LLM_LANE: Record<string, { label: string; c: string }> = {
   local: { label: 'G', c: '#2dd4bf' },
@@ -89,6 +90,8 @@ export interface HoldingsTableRowContext {
 
 interface Props {
   rows: HoldingsTableRowContext[]
+  /** symbol → closed-session support/resistance from portfolio.reentry.resistance.v1 */
+  resistanceMap?: LevelMap
   acctColor: (a: string) => string
   focusKey?: string | null
   cvdMode?: HoldingsCvdMode
@@ -254,12 +257,51 @@ function rowTooltip(m: ReturnType<typeof buildHoldingsRowModel>, h: any): string
   ].filter(Boolean).join('\n')
 }
 
+/** Compact ratio: 2dp under 10, 1dp under 100, whole above. Null when not a finite number. */
+function fmtRatio(value: unknown): string | null {
+  if (value == null || value === '') return null
+  const n = Number(value)
+  if (!Number.isFinite(n)) return null
+  const a = Math.abs(n)
+  return a >= 100 ? n.toFixed(0) : a >= 10 ? n.toFixed(1) : n.toFixed(2)
+}
+
+/**
+ * `P/E x · P/B y` sub-line under the ticker. P/E (and fwd P/E, PEG, EPS) come from
+ * /api/v2/portfolio/holdings; P/B from the Finviz strip already fetched by the hub.
+ * Renders only the fields that exist — ETFs with no earnings show just P/B (or nothing),
+ * never a fabricated zero. Advisory fundamentals, mirroring the LevelLines pattern.
+ */
+function FundLine({ h, fv }: { h: any; fv?: any }) {
+  const pe = fmtRatio(h?.pe ?? fv?.pe)
+  const pb = fmtRatio(fv?.pb ?? h?.pb)
+  if (!pe && !pb) return null
+  const fwd = fmtRatio(h?.forward_pe ?? fv?.forward_pe)
+  const peg = fmtRatio(h?.peg ?? fv?.peg)
+  const eps = h?.eps_ttm ?? h?.eps
+  const epsStr = eps != null && eps !== '' && Number.isFinite(Number(eps)) ? Number(eps).toFixed(2) : null
+  const tip = [
+    pe ? `P/E (ttm) ${pe}` : null,
+    fwd ? `Fwd P/E ${fwd}` : null,
+    peg ? `PEG ${peg}` : null,
+    pb ? `P/B ${pb}` : null,
+    epsStr ? `EPS ttm ${epsStr}` : null,
+  ].filter(Boolean).join(' · ') + '. Source: /api/v2/portfolio/holdings + Finviz strip. Fundamentals, advisory.'
+  return (
+    <div title={tip} style={{ fontSize: 10, color: BB.text3, whiteSpace: 'nowrap', lineHeight: 1.35 }}>
+      {pe && <>P/E <span style={{ color: BB.text2, fontWeight: 700 }}>{pe}</span></>}
+      {pe && pb ? ' · ' : ''}
+      {pb && <>P/B <span style={{ color: BB.text2, fontWeight: 700 }}>{pb}</span></>}
+    </div>
+  )
+}
+
 /**
  * Bloomberg-style holdings table: tall rows, full account names + brand pills,
  * dual-line money cells, RSI/VOL badges, news + earnings, stop + action.
  */
 export default function HoldingsTableView({
-  rows, focusKey, cvdMode = 'default', onOpenDetail, onOpenStops, onPrimaryAction, onShareDrift,
+  rows, resistanceMap = {}, focusKey, cvdMode = 'default', onOpenDetail, onOpenStops, onPrimaryAction, onShareDrift,
 }: Props) {
   const [hoverKey, setHoverKey] = useState<string | null>(null)
   const openStops = onOpenStops || onPrimaryAction || onOpenDetail
@@ -380,6 +422,8 @@ export default function HoldingsTableView({
                       {nameLine}
                     </div>
                   )}
+                  <LevelLines symbol={m.symbol} row={resistanceMap[m.symbol]} />
+                  <FundLine h={h} fv={rowCtx.fv} />
                   {hasShareDrift && (
                     <div style={{ marginTop: 3 }} onClick={e => e.stopPropagation()}>
                       <ShareDriftPill compact onClick={() => onShareDrift?.(rowCtx)} />
