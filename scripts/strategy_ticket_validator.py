@@ -21,12 +21,12 @@ import hashlib
 import json
 import math
 
-VALIDATOR_VERSION = "1.0.0"
-RR_TOLERANCE = 0.15               # recomputed vs displayed R:R
+VALIDATOR_VERSION = "1.1.0"
+RR_TOLERANCE = 0.15
 PRICE_TOLERANCE = 0.01
-CHASE_MAX_PCT = 1.5               # entry farther than this from price → not current
+CHASE_MAX_PCT = 1.5
 CHASE_MAX_ATR = 0.5
-TRIGGER_MAX_PCT = 8.0             # min(8%, 2 ATR) — governed actionability ceiling
+TRIGGER_MAX_PCT = 8.0
 TRIGGER_MAX_ATR = 2.0
 
 
@@ -51,12 +51,39 @@ def facts_hash(facts: dict) -> str:
                                      sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
+def _quality_admission(family: str, ticket: dict, facts: dict,
+                       technical_snapshot: dict | None, ownership) -> dict:
+    try:
+        import watch_quality_policy as quality
+        return quality.evaluate_admission(
+            facts,
+            technical_snapshot=technical_snapshot,
+            ticket=ticket,
+            family=family,
+            ownership=ownership,
+        )
+    except Exception as exc:
+        return {
+            "policy_version": "watch-quality-admission-v1",
+            "state": "RESEARCH_ONLY",
+            "new_entry_allowed": False,
+            "management_only": False,
+            "family": str(family or "").upper() or None,
+            "reasons": [f"quality admission unavailable: {type(exc).__name__}: {str(exc)[:120]}"],
+            "hard_failures": [],
+            "warnings": ["quality admission unavailable — fail closed to research only"],
+            "authority": "deterministic admission only; models cannot override",
+        }
+
+
 def validate_ticket(symbol: str, family: str, candidate_ticket: dict,
                     current_facts: dict, technical_snapshot: dict | None = None,
                     event_state=None, ownership=None, risk_policy=None) -> dict:
     t = candidate_ticket or {}
     hard: list[str] = []
     warnings: list[str] = []
+    admission = _quality_admission(family, t, current_facts,
+                                   technical_snapshot, ownership)
     price = _num(current_facts.get("live_price")) or _num(current_facts.get("enriched_price"))
     atr = _num(current_facts.get("atr"))
     entry = _num(t.get("limit_price"))
@@ -72,34 +99,44 @@ def validate_ticket(symbol: str, family: str, candidate_ticket: dict,
                   "distance_to_entry_pct": None, "distance_to_entry_atr": None}
 
     if not is_current or not any(v is not None for v in (entry, stop, target)):
-        # no current mechanics claimed — nothing to gate; PASS as a non-actionable ticket
         return _result("PASS", hard, warnings, recomputed, t, current_facts,
+                       quality_admission=admission,
                        note="no current mechanics claimed")
 
-    # ── numeric sanity ───────────────────────────────────────────────────────
+    # Quality and arithmetic are both evaluated. A quality rejection does not
+    # short-circuit the recomputation proof; the audit must show every defect.
+    if admission.get("state") == "QUARANTINED":
+        reasons = admission.get("hard_failures") or admission.get("reasons") or []
+        hard.extend([f"quality admission: {reason}" for reason in reasons[:5]])
+    elif not admission.get("new_entry_allowed", False):
+        reasons = admission.get("warnings") or admission.get("reasons") or []
+        hard.append("quality admission: instrument is RESEARCH_ONLY; current entry mechanics are withheld")
+        hard.extend([f"quality admission: {reason}" for reason in reasons[:4]])
+
+    # Numeric failures are the only early-return class because later ordering
+    # and arithmetic cannot safely operate on missing/non-finite values.
+    fatal_numeric: list[str] = []
     for name, v in (("entry/limit", entry), ("stop", stop), ("target", target)):
         if v is None:
-            hard.append(f"{name} missing or non-finite on a current-mechanics ticket")
+            fatal_numeric.append(f"{name} missing or non-finite on a current-mechanics ticket")
         elif v <= 0:
-            hard.append(f"{name} is non-positive ({v})")
+            fatal_numeric.append(f"{name} is non-positive ({v})")
     if price is None:
-        hard.append("no current price in facts — a current ticket cannot be validated")
-    if hard:
-        return _result("FAIL", hard, warnings, recomputed, t, current_facts)
+        fatal_numeric.append("no current price in facts — a current ticket cannot be validated")
+    if fatal_numeric:
+        hard.extend(fatal_numeric)
+        return _result("FAIL", hard, warnings, recomputed, t, current_facts,
+                       quality_admission=admission)
 
-    # ── ordering invariants ──────────────────────────────────────────────────
     if zlo is not None and zhi is not None and zlo > zhi + PRICE_TOLERANCE:
         hard.append(f"entry zone inverted ({zlo} > {zhi})")
     if direction_short:
         if not (target < entry < stop):
-            hard.append(f"short ordering violated: need target<entry<stop, got "
-                        f"{target}/{entry}/{stop}")
+            hard.append(f"short ordering violated: need target<entry<stop, got {target}/{entry}/{stop}")
     else:
         if not (stop < entry <= target + PRICE_TOLERANCE):
-            hard.append(f"long ordering violated: need stop<entry<=target, got "
-                        f"{stop}/{entry}/{target}")
+            hard.append(f"long ordering violated: need stop<entry<=target, got {stop}/{entry}/{target}")
 
-    # ── R:R recomputation ────────────────────────────────────────────────────
     risk = (stop - entry) if direction_short else (entry - stop)
     reward = (entry - target) if direction_short else (target - entry)
     recomputed.update(risk_per_share=round(risk, 4), reward_per_share=round(reward, 4))
@@ -112,7 +149,6 @@ def validate_ticket(symbol: str, family: str, candidate_ticket: dict,
         if shown is not None and abs(shown - rr) > RR_TOLERANCE:
             hard.append(f"R:R mismatch: displayed {shown} vs recomputed {rr:.2f}")
 
-    # ── proximity / actionability ────────────────────────────────────────────
     dist_abs = abs(entry - price)
     dist_pct = 100.0 * dist_abs / price
     dist_atr = (dist_abs / atr) if atr else None
@@ -131,7 +167,7 @@ def validate_ticket(symbol: str, family: str, candidate_ticket: dict,
         if not t.get("independent_of_pullback_plan") and t.get("proposal_tag"):
             hard.append("breakout ticket inherits a pullback plan identity — "
                         "a missed plan must not mutate into a different strategy")
-    else:  # pullback / reversal / continuation entries must be NEAR price
+    else:
         in_zone = zlo is not None and zhi is not None and zlo - PRICE_TOLERANCE <= price <= zhi + PRICE_TOLERANCE
         within_chase = dist_pct <= CHASE_MAX_PCT or (dist_atr is not None and dist_atr <= CHASE_MAX_ATR)
         if not in_zone and not within_chase:
@@ -141,23 +177,25 @@ def validate_ticket(symbol: str, family: str, candidate_ticket: dict,
     if entry_state in ("MISSED_ENTRY", "INVALIDATED"):
         hard.append(f"entry_state={entry_state} ticket still claims current mechanics")
 
-    # ── technical/event context (soft unless clearly blocking) ───────────────
     if technical_snapshot:
         fresh = str(technical_snapshot.get("overall_freshness", ""))
         if fresh == "FAILED":
             warnings.append("technical snapshot FAILED — review required")
     ev = str(getattr(event_state, "state", None) or (event_state or {}).get("state", "")
-             if isinstance(event_state, (dict,)) or event_state is None else event_state)
+             if isinstance(event_state, dict) or event_state is None else event_state)
     if "BLOCK" in ev.upper():
         hard.append(f"event state {ev} blocks a current-entry ticket")
 
     state = "FAIL" if hard else ("REVIEW_REQUIRED" if warnings else "PASS")
-    return _result(state, hard, warnings, recomputed, t, current_facts)
+    return _result(state, hard, warnings, recomputed, t, current_facts,
+                   quality_admission=admission)
 
 
-def _result(state, hard, warnings, recomputed, ticket, facts, note=None):
+def _result(state, hard, warnings, recomputed, ticket, facts,
+            quality_admission=None, note=None):
     out = {"state": state, "hard_failures": hard, "warnings": warnings,
            "recomputed": recomputed,
+           "quality_admission": quality_admission or {},
            "ticket_hash": ticket_hash(ticket or {}),
            "facts_hash": facts_hash(facts or {}),
            "validator_version": VALIDATOR_VERSION}

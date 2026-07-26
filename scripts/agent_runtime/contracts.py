@@ -278,11 +278,16 @@ def assert_no_secret_material(value: Any, forbidden_keys: Iterable[str] = ()) ->
         "password", "token", "secret", "api_key", "private_key", "totp", "credential", "authorization"
     })
 
+    # Substring-match every sensitive word, not just a subset: a guard must only ever reject
+    # more. Exact-key-only matching for "token"/"api_key"/"credential"/"authorization" let
+    # compound keys like "api_token" or "access_token" slip through.
+    fragments = tuple(keys)
+
     def walk(item: Any, path: str = "root") -> None:
         if isinstance(item, Mapping):
             for key, child in item.items():
                 lowered = str(key).lower()
-                if lowered in keys or any(fragment in lowered for fragment in ("password", "secret", "private_key", "totp")):
+                if lowered in keys or any(fragment in lowered for fragment in fragments):
                     raise ValueError(f"secret-like field prohibited at {path}.{key}")
                 walk(child, f"{path}.{key}")
         elif isinstance(item, (list, tuple, set)):

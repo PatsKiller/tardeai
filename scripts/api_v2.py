@@ -26715,6 +26715,18 @@ def _finviz_strip_map_compute(query=None):
             _prof[r["s"]] = r
     except Exception:
         _prof = {}
+    # Supplemental valuation for names Finviz's screeners never enriched (watchlist
+    # favorites in no screener — CARR, LII, LI, …). Sourced from yfinance by
+    # scripts/watch_valuation_backfill.py into a runtime cache and merged per-field below,
+    # so a Finviz row still wins wherever it has data. Non-equities are negative-cached
+    # (no_valuation) so they stay N/A, never fabricated.
+    _val_supp = {}
+    try:
+        _vp = PROJECT_ROOT / "data" / "state" / "valuation_supplement_cache.json"
+        if _vp.exists():
+            _val_supp = json.loads(_vp.read_text())
+    except Exception:
+        _val_supp = {}
 
     def _rsi_status(v):
         if v is None:
@@ -26732,13 +26744,38 @@ def _finviz_strip_map_compute(query=None):
         pytd = d.get("perf_ytd_pct"); pytd = pytd if pytd is not None else _json_clean(pf.get("ytd_return_pct"))
         sma = d.get("sma50_pct"); sma = sma if sma is not None else _json_clean(pf.get("sma50_pct"))
         atr = d.get("atr")
-        if rsi is None and pw is None and pm is None and pytd is None and sma is None and atr is None:
+        # Valuation is already in the enrichment cache (pe/forward_pe/peg/pb/ps) but was
+        # never passed through, so the whole Watch queue rendered "valuation unavailable"
+        # for every symbol — even mega-caps. The Watch valuation panel reads fv.pe /
+        # fv.forward_pe / fv.peg / fv.pb / fv.ps off this strip row, so surface them here.
+        # yfinance-NAV fallback rows (mutual funds) legitimately have none; those stay null
+        # and the UI marks the instrument N/A rather than missing.
+        sd = _val_supp.get(s) or {}
+        supp_ok = not sd.get("no_valuation")  # non-equities are negative-cached
+        pe = _json_clean(d.get("pe"));           pe = pe if pe is not None else (_json_clean(sd.get("pe")) if supp_ok else None)
+        forward_pe = _json_clean(d.get("forward_pe")); forward_pe = forward_pe if forward_pe is not None else (_json_clean(sd.get("forward_pe")) if supp_ok else None)
+        peg = _json_clean(d.get("peg"));         peg = peg if peg is not None else (_json_clean(sd.get("peg")) if supp_ok else None)
+        pb = _json_clean(d.get("pb"));           pb = pb if pb is not None else (_json_clean(sd.get("pb")) if supp_ok else None)
+        ps = _json_clean(d.get("ps"));           ps = ps if ps is not None else (_json_clean(sd.get("ps")) if supp_ok else None)
+        has_val = any(v is not None for v in (pe, forward_pe, peg, pb, ps))
+        # Provenance: the supplement is the source only when the Finviz row contributed no
+        # valuation field at all (it carries pb/ps for some names that lack pe, so checking
+        # pe/forward_pe alone would mislabel those as yfinance).
+        finviz_has_val = any(_json_clean(d.get(k)) is not None
+                             for k in ("pe", "forward_pe", "peg", "pb", "ps"))
+        val_from_supp = supp_ok and not finviz_has_val and has_val
+        val_as_of = sd.get("cached_at") if val_from_supp else d.get("cached_at")
+        if (rsi is None and pw is None and pm is None and pytd is None and sma is None
+                and atr is None and not has_val):
             continue   # nothing for this symbol from either source
         row = {"rsi": _json_clean(rsi),
                "rsi_status": d.get("rsi_status") if d.get("rsi") is not None else _rsi_status(rsi),
                "perf_week": _json_clean(pw), "perf_month": _json_clean(pm),
                "perf_ytd": _json_clean(pytd), "sma50": _json_clean(sma),
                "atr": _json_clean(atr),
+               "pe": pe, "forward_pe": forward_pe, "peg": peg, "pb": pb, "ps": ps,
+               "fundamentals_as_of": val_as_of,
+               "valuation_source": ("yfinance" if val_from_supp else "finviz" if has_val else None),
                "source": ("finviz" if d.get("rsi") is not None else "yfinance_nav")}
         out[s] = row
     return {"ok": True, "count": len(out), "map": out,
