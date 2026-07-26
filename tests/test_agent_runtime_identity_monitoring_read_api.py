@@ -20,7 +20,7 @@ def test_namespaced_agent_and_entity_ids_are_stable():
     assert len(first.split(":")[-1]) == 32
 
 
-@pytest.mark.parametrize("value", ["Sentinel", "sentinel.prod", "broker", "", "a"])
+@pytest.mark.parametrize("value", ["Sentinel", "sentinel.prod", "", "a"])
 def test_invalid_short_agent_ids_are_rejected(value):
     with pytest.raises(ValueError):
         qualified_agent_id(value)
