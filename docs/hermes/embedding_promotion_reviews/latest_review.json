@@ -1,9 +1,17 @@
 {
-  "date": "2026-07-24",
-  "timestamp": "2026-07-24T08:15:41.719816+00:00",
+  "date": "2026-07-25",
+  "timestamp": "2026-07-25T08:15:32.713713+00:00",
   "embedding_recommendations": [
     {
-      "id": 10975,
+      "id": 11565,
+      "symbol": "GOAI",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 11555,
       "symbol": "BIYA",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -11,16 +19,16 @@
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 10974,
-      "symbol": "ATPC",
+      "id": 11547,
+      "symbol": "BXBL",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 12224,
-      "symbol": "ADVB",
+      "id": 12227,
+      "symbol": "CRNT",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -29,14 +37,6 @@
     {
       "id": 11514,
       "symbol": "BXBL",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 12226,
-      "symbol": "BEP",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,7 +45,15 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 10975,
+      "id": 11565,
+      "symbol": "GOAI",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 11555,
       "symbol": "BIYA",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -53,16 +61,16 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 10974,
-      "symbol": "ATPC",
+      "id": 11547,
+      "symbol": "BXBL",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 12224,
-      "symbol": "ADVB",
+      "id": 12227,
+      "symbol": "CRNT",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -75,18 +83,10 @@
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 12226,
-      "symbol": "BEP",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
     }
   ],
   "rejected": [],
-  "total_staged_non_backlog": 200,
+  "total_staged_non_backlog": 189,
   "embeddings_created": 0,
   "promotions_created": 0
 }
