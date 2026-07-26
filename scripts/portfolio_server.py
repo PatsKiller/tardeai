@@ -1237,7 +1237,7 @@ def handle_clear_pending(body: dict) -> tuple:
 API_AUTH_TOKEN = os.environ.get("API_AUTH_TOKEN", "").strip()
 API_AUTH_ENABLED = bool(API_AUTH_TOKEN)
 # Paths exempt from auth (frontend, static files, health check)
-AUTH_EXEMPT_PREFIXES = ("/v2/", "/v3/", "/data/", "/archive/", "/reports/", "/assets/", "/api/health")
+AUTH_EXEMPT_PREFIXES = ("/v2/", "/v3/", "/v3-next/", "/data/", "/archive/", "/reports/", "/assets/", "/api/health")
 
 
 # ── Engine Room v1 (WS-1, Path B): in-process topology relief ──────────────────
@@ -1484,6 +1484,41 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(_js)))
             self.end_headers()
             self.wfile.write(_js)
+            return
+
+        # Active Trader Next — read-only static bundle at /v3-next/ (additive
+        # sibling of /v3; run 20260722-01 read-only deployment, PR #150 head
+        # 70a681bb). Served from a dedicated static root OUTSIDE the repo so the
+        # published bundle is pinned to the deployed SHA, not a moving worktree.
+        # /v3 matching below is untouched: "/v3-next/...".startswith("/v3/") is
+        # False, so neither route can swallow the other.
+        if path == "/v3-next" or path.startswith("/v3-next/"):
+            _vn_dist = Path("/home/johnclaw/deploy/v3-next/current")
+            _vn_sub = path[len("/v3-next"):] or "/index.html"
+            if _vn_sub == "/" or ".." in _vn_sub:
+                _vn_sub = "/index.html"
+            _vn_file = _vn_dist / _vn_sub.lstrip("/")
+            if not _vn_file.is_file() and not any(_vn_sub.endswith(ext) for ext in (
+                    ".js", ".css", ".svg", ".png", ".ico", ".woff", ".woff2", ".json")):
+                _vn_file = _vn_dist / "index.html"  # SPA fallback
+            if _vn_file.is_file():
+                _ct = "text/html"
+                if _vn_sub.endswith(".js"): _ct = "application/javascript"
+                elif _vn_sub.endswith(".css"): _ct = "text/css"
+                elif _vn_sub.endswith(".svg"): _ct = "image/svg+xml"
+                elif _vn_sub.endswith(".png"): _ct = "image/png"
+                elif _vn_sub.endswith(".json"): _ct = "application/json"
+                elif _vn_sub.endswith(".ico"): _ct = "image/x-icon"
+                _vn_body = _vn_file.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", _ct)
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self.send_header("Content-Length", str(len(_vn_body)))
+                self.end_headers()
+                self.wfile.write(_vn_body)
+            else:
+                self.send_response(404)
+                self.end_headers()
             return
 
         # Command Center v3 — serve built app at /v3/

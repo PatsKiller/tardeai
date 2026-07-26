@@ -138,7 +138,8 @@ def _llm(title, summary, model="gemma3:4b", timeout=25):
     try:
         body = json.dumps({"model": model, "stream": False, "format": "json",
                            "messages": [{"role": "user", "content": _LLM_PROMPT.format(title=title, summary=(summary or "")[:400])}],
-                           "options": {"num_ctx": 4096, "num_predict": 160, "temperature": 0.1}}).encode()
+                           "options": {"num_ctx": 4096 if ("12b" in model or "27b" in model) else 8192,
+                                       "num_predict": 160, "temperature": 0.1}}).encode()
         req = urllib.request.Request(OLLAMA, data=body, headers={"Content-Type": "application/json"})
         content = json.loads(urlopen_retry(req, timeout=timeout, attempts=2, base=0.5)).get("message", {}).get("content", "")
         d = json.loads(content[content.find("{"):content.rfind("}") + 1])

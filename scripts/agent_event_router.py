@@ -116,11 +116,18 @@ def create_agent_jobs(conn, event: dict, dry_run: bool = False) -> list:
             continue
 
         try:
+            # ON CONFLICT (id) only guards a replayed job_id; repeat Level-3 events on
+            # the same symbol still stacked identical pending research (2026-07-23
+            # queue audit). Skip when this (symbol, agent) already has research pending.
             cur.execute("""
                 INSERT INTO watchlist_agent_jobs
                     (id, symbol, requested_agent, request_type, note, status, priority, submitted_from, payload)
-                VALUES (%s, %s, %s, %s, %s, 'queued', %s, %s, %s)
-                ON CONFLICT (id) DO NOTHING
+                SELECT %s, %s, %s, %s, %s, 'queued', %s, %s, %s
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM watchlist_agent_jobs w
+                    WHERE UPPER(w.symbol) = UPPER(%s) AND w.requested_agent = %s
+                      AND w.request_type = 'research'
+                      AND w.status IN ('queued', 'pending', 'processing'))
                 RETURNING id
             """, (
                 job_id, symbol, agent_db, "research",
@@ -129,6 +136,7 @@ def create_agent_jobs(conn, event: dict, dry_run: bool = False) -> list:
                 "event_router",
                 json.dumps({"event_id": event_id, "event_type": event_type,
                             "trigger_data": event.get("trigger_data")}, default=str),
+                symbol, agent_db,
             ))
             result = cur.fetchone()
             if result:

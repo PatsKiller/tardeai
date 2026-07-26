@@ -89,7 +89,10 @@ def run_one(conn, sym, model, apply):
     prompt = PROMPT.format(sym=sym, trades=json.dumps(ctx["recent_trades"]),
                            research=json.dumps(ctx["prior_research"]), schema=schema)
     payload = json.dumps({"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False,
-                          "options": {"num_ctx": 16384, "num_predict": 3000, "temperature": 0.3}, "format": "json"}).encode()
+                          # match each model's canonical ctx (12b on-GPU limit 4096; 27b baked 8192;
+                          # 16384 forced a distinct runner config → reload thrash, 07-23 sweep)
+                          "options": {"num_ctx": 4096 if "12b" in model else 8192,
+                                      "num_predict": 3000, "temperature": 0.3}, "format": "json"}).encode()
     try:
         req = urllib.request.Request(OLLAMA, data=payload, headers={"Content-Type": "application/json"})
         from llm_net import urlopen_retry

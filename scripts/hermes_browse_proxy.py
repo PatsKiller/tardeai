@@ -32,7 +32,10 @@ def _ollama_chat(messages, num_predict=200, temperature=0.3, format_json=False):
         "model": "gemma3:12b",
         "messages": messages,
         "stream": False,
-        "options": {"num_ctx": 8192, "num_predict": num_predict, "temperature": temperature},
+        # 12b canon is num_ctx 4096 (baked): larger ctx splits Vulkan→CPU and emits
+        # garbage on the B50, and a mismatched ctx forces a runner reload that
+        # queue-wedges every Ollama caller (07-23 num_ctx sweep).
+        "options": {"num_ctx": 4096, "num_predict": num_predict, "temperature": temperature},
         **({"format": "json"} if format_json else {}),
     }).encode()
     req = urllib.request.Request(OLLAMA_URL, data=payload,

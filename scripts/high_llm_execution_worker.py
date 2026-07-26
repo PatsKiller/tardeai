@@ -33,7 +33,9 @@ NUM_CTX = 4096
 def warm_model(model=MODEL):
     """Warm model with tiny prompt to force load into VRAM."""
     try:
-        payload = json.dumps({"model": model, "prompt": "hello", "stream": False, "options": {"num_ctx": 512}}).encode()
+        # probe must use the SAME num_ctx as the real calls below — a 512-ctx probe
+        # spun up a throwaway runner and forced TWO reloads per run (07-23 sweep)
+        payload = json.dumps({"model": model, "prompt": "hello", "stream": False, "options": {"num_ctx": NUM_CTX}}).encode()
         req = urllib.request.Request("http://localhost:11434/api/generate", data=payload,
                                      headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=120)

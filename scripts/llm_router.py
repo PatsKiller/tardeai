@@ -135,7 +135,11 @@ def _call_local(prompt: str, max_tokens: int = 800, timeout: int = None) -> dict
             "messages": [{"role": "user", "content": prompt}],
             "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m"),
             "options": {"temperature": 0.3, "num_predict": max(500, max_tokens),
-                        "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "8192"))}
+                        # 12b/27b canon is 4096 (12b on-GPU limit); others 8192.
+                        # A ctx mismatched to the resident runner forces a reload
+                        # that queue-wedges every caller (07-23 sweep).
+                        "num_ctx": (4096 if ("12b" in LOCAL_MODEL or "27b" in LOCAL_MODEL)
+                                    else int(os.getenv("OLLAMA_NUM_CTX", "8192")))}
         }).encode()
         req = urllib.request.Request(LOCAL_URL, data=payload,
                                      headers={"Content-Type": "application/json"}, method="POST")

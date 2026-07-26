@@ -45,6 +45,21 @@ logging.basicConfig(
 log = logging.getLogger("claude-escalation")
 
 
+def _resident_num_ctx(model: str):
+    """Context length of the already-loaded Ollama runner for `model`, or None.
+    Requests must reuse the resident num_ctx: any mismatch (or the server default
+    when omitted) forces a full runner reload, which on the 16GB/3-resident card
+    wedges the scheduler queue for every caller (2026-07-23 escalation timeouts)."""
+    try:
+        import requests as _rq
+        for _m in _rq.get("http://localhost:11434/api/ps", timeout=5).json().get("models", []):
+            if _m.get("name") == model or _m.get("model") == model:
+                return _m.get("context_length")
+    except Exception:
+        pass
+    return None
+
+
 # ── Allowlist ────────────────────────────────────────────────────────────
 
 def _load_allowlist():
@@ -353,15 +368,22 @@ def process_queue(dry_run=False):
                         break
 
                 import requests
+                # num_ctx MUST match the already-resident runner: a differing value
+                # (including the server default when omitted) forces a full runner
+                # reload, and on the 16GB card with 3 residents that reload queues
+                # every other caller behind it (07-23: "context canceled" load loop,
+                # 27m49s hung request, 180s escalation read-timeouts).
+                _model_1 = os.getenv("LOCAL_LLM_MODEL", "gemma3:4b")
                 _llm_resp = requests.post("http://localhost:11434/api/generate", json={
-                    "model": os.getenv("LOCAL_LLM_MODEL", "gemma3:4b"),
+                    "model": _model_1,
                     "prompt": (f"/no_think Diagnose this Trade AI error and suggest a fix:\n\n"
                                f"Alert: {_detail}\n"
                                + (f"Retry output: {_retry_output}\n" if _retry_output else "")
                                + f"Recent log:\n{_log_content}\n\n"
                                f"Respond with: DIAGNOSIS: (what broke) FIX: (what to do)"),
                     "stream": False,
-                    "options": {"num_predict": 300, "temperature": 0.2},
+                    "options": {"num_predict": 300, "temperature": 0.2,
+                                **({"num_ctx": _c} if (_c := _resident_num_ctx(_model_1)) else {})},
                 }, timeout=90)
                 if _llm_resp.ok:
                     _diagnosis = _llm_resp.json().get("response", "")[:500]
@@ -472,7 +494,10 @@ def process_queue(dry_run=False):
             _et = datetime.now(_ZI("America/New_York"))
         except Exception:
             _et = datetime.now()
-        _in_market = _et.weekday() < 5 and 6 <= _et.hour < 12
+        # Full trading-day guard: pre-market (from 6:00) through the RTH close (16:00).
+        # Was 6-12, which left the afternoon session (12:00-16:00) unguarded — the 31B
+        # unload-all-Ollama-models path could still thrash live-market hours (2026-07-23).
+        _in_market = _et.weekday() < 5 and 6 <= _et.hour < 16
         if os.getenv("DISABLE_GEMMA4_31B_ESCALATION") == "1" or _in_market or _load1 > _load_cap:
             _skip_31b = True
             log.info(f"  Tier 3a SKIPPED (gemma4:31b) — priority guard: market_window={_in_market} "
@@ -579,6 +604,9 @@ def process_queue(dry_run=False):
         import requests as _req
 
         def _ollama_analyze(model: str, *, timeout: int, num_predict: int) -> tuple[str, str]:
+            # Reuse the resident runner's context — a mismatched num_ctx forces a
+            # model reload and queue-wedges every other Ollama caller (07-23).
+            _ctx = _resident_num_ctx(model) or 4096
             _resp = _req.post("http://localhost:11434/api/chat", json={
                 "model": model,
                 "stream": False,
@@ -586,7 +614,7 @@ def process_queue(dry_run=False):
                     {"role": "system", "content": "You are a Trade AI system health analyst. Provide structured root cause analysis."},
                     {"role": "user", "content": analysis_prompt[:12000]},
                 ],
-                "options": {"temperature": 0.2, "num_predict": num_predict, "num_ctx": 4096},
+                "options": {"temperature": 0.2, "num_predict": num_predict, "num_ctx": _ctx},
             }, timeout=timeout)
             if not _resp.ok:
                 return "", f"HTTP {_resp.status_code}"

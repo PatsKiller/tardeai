@@ -53,7 +53,8 @@ def _rate(question, recommendation, dissent, outcome, model):
     try:
         body = json.dumps({"model": model, "stream": False, "format": "json",
                            "messages": [{"role": "user", "content": prompt}],
-                           "options": {"num_ctx": 8192, "num_predict": 200, "temperature": 0.2}}).encode()
+                           "options": {"num_ctx": 4096 if ("12b" in model or "27b" in model) else 8192,
+                                       "num_predict": 200, "temperature": 0.2}}).encode()
         req = urllib.request.Request(OLLAMA, data=body, headers={"Content-Type": "application/json"})
         content = json.loads(urllib.request.urlopen(req, timeout=120).read()).get("message", {}).get("content", "")
         d = json.loads(content[content.find("{"):content.rfind("}") + 1])

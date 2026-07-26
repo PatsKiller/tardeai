@@ -169,12 +169,20 @@ def _queue_stale_symbols_legacy():
         symbol = row["symbol"]
         for agent in agents:
             job_id = f"overnight_{symbol.lower()}_{agent}_{uuid.uuid4().hex[:6]}"
+            # ON CONFLICT can never fire here — job_id carries a fresh uuid, so the
+            # PK is unique every run. These symbols stay stale until analyzed, so the
+            # same 20 were re-queued nightly (2026-07-23 queue audit). Guard on
+            # pending work for the same (symbol, agent) instead.
             cur.execute("""
                 INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, request_type, priority, note, status)
-                VALUES (%s, %s, %s, 'full_analysis', 3, 'Overnight refresh — stale analysis', 'queued')
-                ON CONFLICT DO NOTHING
-            """, (job_id, symbol, agent))
-            queued += 1
+                SELECT %s, %s, %s, 'full_analysis', 3, 'Overnight refresh — stale analysis', 'queued'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM watchlist_agent_jobs w
+                    WHERE UPPER(w.symbol) = UPPER(%s) AND w.requested_agent = %s
+                      AND w.request_type = 'full_analysis'
+                      AND w.status IN ('queued', 'pending', 'processing'))
+            """, (job_id, symbol, agent, symbol, agent))
+            queued += cur.rowcount
 
     conn.commit()
     conn.close()
