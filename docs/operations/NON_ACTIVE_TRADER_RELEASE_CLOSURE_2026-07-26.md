@@ -70,10 +70,11 @@ at run time — prepared and guard-verified, **not runtime-exercised** (executio
 Evidence comment posted on each of #163, #182, #181, #180 and the RC #183. No PR marked ready.
 
 ### Recommended MERGE order
-1. **#163** (read plane) — foundation the others reference; inert by default.
-2. **re-resolve #182 against advanced `main`, then #182** — layered on runtime already in `main`; stays default-disabled.
-3. **#181** (Watch) — resolve nothing new; `api_v2.py` Watch hunks are function-local.
-4. **merge advanced `main` into #180, revalidate the composed `api_v2.py`, then #180** — the one file both #181 and #180 touch; re-run `test_api_v2_watch_defense_integration.py` after.
+1. **#184** (metric-consistency comment-skip) — **merge first.** Unblocks the pre-existing repo-wide `release-readiness` failure on `main` (a false positive since 2026-07-21, unrelated to these lanes), so every subsequent lane lands with a green release gate. Verified green in CI (`release-readiness` success).
+2. **#163** (read plane) — foundation the others reference; inert by default.
+3. **re-resolve #182 against advanced `main`, then #182** — layered on runtime already in `main`; stays default-disabled.
+4. **#181** (Watch) — resolve nothing new; `api_v2.py` Watch hunks are function-local.
+5. **merge advanced `main` into #180, revalidate the composed `api_v2.py`, then #180** — the one file both #181 and #180 touch; re-run `test_api_v2_watch_defense_integration.py` after.
 
 *(The RC branch #183 is integration proof, not a merge path — merge the lanes individually in this order.)*
 
