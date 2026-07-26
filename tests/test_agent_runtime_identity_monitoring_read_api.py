@@ -110,3 +110,25 @@ def test_read_api_bounds_queries_and_rejects_secret_material():
         api.list_runs(limit=201)
     with pytest.raises(ValueError):
         api.get_run("")
+
+
+def test_every_declared_route_maps_to_an_implemented_api_method():
+    # The route table and the API surface can never drift apart (also enforced at import time).
+    ReadOnlyAgentRuntimeAPI.assert_routes_are_implemented()
+    api = ReadOnlyAgentRuntimeAPI(Reader())
+    for route in READ_ROUTES:
+        method = getattr(api, route.operation, None)
+        assert callable(method), f"route {route.path} has no implemented method {route.operation}"
+        result = method(limit=5) if route.operation == "list_runs" else method("run_1")
+        assert result["read_only"] is True and all(v is False for v in result["authority"].values())
+
+
+def test_read_api_rejects_secret_material_in_reader_rows():
+    @dataclass
+    class LeakyReader(Reader):
+        def list_tool_calls(self, run_id):
+            return [{"tool_call_id": "t1", "api_token": "leaked-value"}]
+
+    api = ReadOnlyAgentRuntimeAPI(LeakyReader())
+    with pytest.raises(ValueError):
+        api.list_tool_calls("run_1")  # secret-like key must be rejected at the response boundary

@@ -52,6 +52,13 @@ class ReadOnlyAgentRuntimeAPI:
     def routes() -> tuple[ReadRoute, ...]:
         return READ_ROUTES
 
+    @classmethod
+    def assert_routes_are_implemented(cls) -> None:
+        """Fail closed if any declared route has no implemented, callable API method."""
+        missing = [route.operation for route in READ_ROUTES if not callable(getattr(cls, route.operation, None))]
+        if missing:
+            raise TypeError(f"read routes without an implemented API method: {sorted(set(missing))}")
+
     def list_runs(self, *, limit: int = 50, offset: int = 0, agent_id: str | None = None, status: str | None = None) -> dict[str, Any]:
         if limit < 1 or limit > 200:
             raise ValueError("limit must be between 1 and 200")
@@ -65,6 +72,28 @@ class ReadOnlyAgentRuntimeAPI:
         row = self._reader.get_run(run_id)
         return self._response("run", dict(row) if row is not None else None)
 
+    # ---- per-entity read routes ------------------------------------------
+    # Every ReadRoute.operation must resolve to one of these methods; the mapping is asserted
+    # by assert_routes_are_implemented() (and its test) so a declared route can never be a
+    # 404 in disguise.
+    def list_artifacts(self, run_id: str) -> dict[str, Any]:
+        return self._list_child("artifacts", self._reader.list_artifacts, run_id)
+
+    def list_retrieval_evidence(self, run_id: str) -> dict[str, Any]:
+        return self._list_child("retrieval", self._reader.list_retrieval_evidence, run_id)
+
+    def list_tool_calls(self, run_id: str) -> dict[str, Any]:
+        return self._list_child("tool_calls", self._reader.list_tool_calls, run_id)
+
+    def list_reviews(self, run_id: str) -> dict[str, Any]:
+        return self._list_child("reviews", self._reader.list_reviews, run_id)
+
+    def list_scores(self, run_id: str) -> dict[str, Any]:
+        return self._list_child("scores", self._reader.list_scores, run_id)
+
+    def list_monitoring_events(self, run_id: str) -> dict[str, Any]:
+        return self._list_child("events", self._reader.list_monitoring_events, run_id)
+
     def get_run_evidence(self, run_id: str) -> dict[str, Any]:
         self._require_run_id(run_id)
         payload = {
@@ -76,6 +105,11 @@ class ReadOnlyAgentRuntimeAPI:
             "events": [dict(row) for row in self._reader.list_monitoring_events(run_id)],
         }
         return self._response("run_evidence", payload)
+
+    def _list_child(self, kind: str, reader_method: Any, run_id: str) -> dict[str, Any]:
+        self._require_run_id(run_id)
+        rows = [dict(row) for row in reader_method(run_id)]
+        return self._response(kind, rows)
 
     @staticmethod
     def _require_run_id(run_id: str) -> None:
@@ -101,3 +135,7 @@ class ReadOnlyAgentRuntimeAPI:
         if page is not None:
             response["page"] = dict(page)
         return response
+
+
+# Enforced at import time: the route table and the API surface can never drift apart.
+ReadOnlyAgentRuntimeAPI.assert_routes_are_implemented()
