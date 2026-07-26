@@ -306,7 +306,13 @@ def test_validator_recomputes_rr_and_ordering():
     assert bad_order["state"] == "FAIL" and any("ordering" in h for h in bad_order["hard_failures"])
 
 
-def test_validator_passes_a_coherent_nearby_ticket():
+def test_coherent_arithmetic_is_never_promoted_past_a_quality_gate():
+    # Under watch-quality-governance the quality gate is sovereign over valid
+    # arithmetic: an arithmetically coherent, nearby ticket is still withheld
+    # when the instrument is not quality-admitted. The arithmetic layer must
+    # nonetheless recognise the ticket as coherent — every hard failure here is
+    # a quality-admission reason, none is an arithmetic/ordering failure — and
+    # the ticket/facts hashes must still be produced.
     import strategy_ticket_validator as stv
     r = stv.validate_ticket("X", "SWING",
                             {"mechanics_current": True, "entry_mode": "PULLBACK",
@@ -314,8 +320,8 @@ def test_validator_passes_a_coherent_nearby_ticket():
                              "entry_zone": [9.8, 10.2], "limit_price": 10.0,
                              "stop_price": 9.4, "targets": [11.2], "risk_reward": 2.0},
                             {"live_price": 10.0, "atr": 0.4})
-    assert r["state"] == "PASS", r["hard_failures"]
     assert r["ticket_hash"] and r["facts_hash"]
+    assert all(str(h).startswith("quality admission") for h in r["hard_failures"]), r["hard_failures"]
 
 
 def test_no_model_can_override_deterministic_fail():
@@ -328,14 +334,17 @@ def test_no_model_can_override_deterministic_fail():
     assert r["proposal_allowed"] is False and r["display_mechanics"] is False
 
 
+_ADMITTED = {"state": "ADMITTED", "new_entry_allowed": True, "reasons": []}
+
+
 def test_changed_ticket_hash_voids_reviews():
     import strategy_ticket_reconciler as rec
-    r = rec.reconcile({"state": "PASS", "ticket_hash": "NEW"},
+    r = rec.reconcile({"state": "PASS", "ticket_hash": "NEW", "quality_admission": _ADMITTED},
                       {"local": {"verdict": "PASS", "provider_family": "LOCAL_OLLAMA",
                                  "ticket_hash_reviewed": "OLD"}},
                       current_ticket_hash="CHANGED")
     assert r["state"] == "STALE_AFTER_REVIEW"
-    r2 = rec.reconcile({"state": "PASS", "ticket_hash": "h"},
+    r2 = rec.reconcile({"state": "PASS", "ticket_hash": "h", "quality_admission": _ADMITTED},
                        {"local": {"verdict": "REJECT", "provider_family": "LOCAL_OLLAMA",
                                   "ticket_hash_reviewed": "OTHER"}})
     assert r2["state"] == "REVIEW_UNAVAILABLE", "a stale review must not count"
@@ -343,7 +352,7 @@ def test_changed_ticket_hash_voids_reviews():
 
 def test_single_lane_is_never_consensus():
     import strategy_ticket_reconciler as rec
-    r = rec.reconcile({"state": "PASS", "ticket_hash": "h"},
+    r = rec.reconcile({"state": "PASS", "ticket_hash": "h", "quality_admission": _ADMITTED},
                       {"grok": {"verdict": "PASS", "provider_family": "XAI",
                                 "ticket_hash_reviewed": "h"}})
     assert r["state"] == "VERIFIED_LOCAL_ONLY" and r["proposal_allowed"] is False
