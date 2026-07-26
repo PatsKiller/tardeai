@@ -8,14 +8,24 @@
 # holds NO broker / order / approval / 2FA / migration / scheduler authority.
 #
 # It WRAPS scripts/agent_runtime/deploy_read_mount.sh, which implements the guarded
-# host mutation: clean-checkout gate, backend+static backup, atomic static swap,
-# ONE named service restart, and — the fail-closed acceptance contract —
+# host mutation for THIS host's real model: clean-checkout gate, backend+static-dir
+# backup, a CONNECT step (mode-0600 reader env-file + user-systemd drop-in) that wires
+# the read plane to the shadow reader, atomic static-dir swap into the live serving
+# root (apps/command-center-v3/dist), ONE USER-level service restart (systemctl
+# --user), and — the fail-closed acceptance contract —
 #   * a STRICT pre-connect baseline (HTTP 503 + read_only + zero authority +
-#     disconnected) enforced BEFORE any build/backup/symlink/restart, and
+#     disconnected) enforced BEFORE any build/backup/connect/swap/restart, and
 #   * a STRICT post-connect acceptance (HTTP 200 + read_only + zero authority +
 #     connected to the shadow reader identity + no execution agent) enforced AFTER
-#     the single restart, with automatic backend+static rollback on any failure
+#     the single restart, with automatic DISCONNECT (remove reader env-file + drop-in,
+#     daemon-reload, restart -> 503) + backend+static rollback on any failure,
 #     followed by a post-rollback health verification.
+#
+# HOST MODEL (this host): the server is a USER systemd unit (systemctl --user, NO
+# sudo); /v3 is served DIRECTLY from the repo apps/command-center-v3/dist (a real
+# dir, NOT a releases/current symlink); and the read plane stays DISCONNECTED (503)
+# until AGENT_RUNTIME_READ_API=1 + AGENT_RUNTIME_READ_DSN are present in the server's
+# environment — which the CONNECT step writes into a 0600 user env-file + drop-in.
 #
 # This wrapper adds: exact-RC-SHA gate, typed acknowledgement token, a genuine
 # no-mutation --preflight readiness mode, execution-time revalidation, and refusal
@@ -24,19 +34,23 @@
 # FAIL-CLOSED CONTRACT (the defect this packet repairs):
 #   The previous wrapper pre-connect smoke ACCEPTED connection-failure 000 and only
 #   WARNED on an unexpected status instead of requiring HTTP 503, so a disconnected
-#   read plane could be reported as a successful deploy. The requirement now lives at
-#   the true mutation gate (the inner script) where it is fail-closed: 503-before ->
-#   200-after, both carrying read_only:true and zero authority. The wrapper no longer
-#   warns-and-continues; --preflight enforces the strict 503 baseline read-only, and
-#   the inner re-runs it immediately before the first host mutation.
+#   read plane could be reported as a successful deploy. Additionally the old model
+#   restarted alone WITHOUT writing the reader DSN into the server env, so the read
+#   plane stayed 503 and the post-connect 200 could never pass. The requirement now
+#   lives at the true mutation gate (the inner script) where it is fail-closed:
+#   503-before -> CONNECT -> 200-after, both carrying read_only:true and zero
+#   authority. The wrapper no longer warns-and-continues; --preflight enforces the
+#   strict 503 baseline read-only, and the inner re-runs it immediately before the
+#   first host mutation.
 #
 # SAFETY CONTRACT:
 #   * PREPARE-ONLY BY DEFAULT. No --execute / --preflight => print plan, exit 3.
 #   * NO args => print PREPARE-ONLY usage, exit 2.
 #   * exact-RC-SHA gate; --execute also requires --ack <token>.
-#   * --preflight performs read-only FS / systemd-status / HTTP checks and reuses the
-#     inner DRY-RUN path. It NEVER builds-with-install, mkdir/copies/symlinks, restarts
-#     a service, connects to PostgreSQL, applies migrations, or enables agents.
+#   * --preflight performs read-only FS / user-systemd-status / HTTP checks and reuses
+#     the inner DRY-RUN path. It NEVER builds-with-install, mkdir/copies/swaps, writes
+#     the reader env-file / drop-in, daemon-reloads, restarts a user service, connects
+#     to PostgreSQL, applies migrations, or enables agents.
 #   * The reader DSN is read from $SHADOW_READER_DSN and is NEVER printed (only the
 #     parsed ROLE NAME may be printed); a writer/admin DSN is REJECTED.
 #
@@ -49,6 +63,15 @@ readonly ACK_TOKEN="APPLY-A2-READ-PLANE"
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly INNER="$REPO_ROOT/scripts/agent_runtime/deploy_read_mount.sh"
 readonly CC_DIR="$REPO_ROOT/apps/command-center-v3"
+
+# This-host defaults (all overridable via env). STATIC_DIR is the LIVE serving root
+# (portfolio_server.py serves /v3 directly from it); RESTART_SERVICE is a USER unit.
+readonly STATIC_DIR="${STATIC_DIR:-$CC_DIR/dist}"
+readonly RESTART_SERVICE="${RESTART_SERVICE:-portfolio-server.service}"
+readonly READ_API_ENV_FILE="${READ_API_ENV_FILE:-$HOME/.config/tradeai/agent-read-api.env}"
+readonly USER_SYSTEMD_DIR="${USER_SYSTEMD_DIR:-$HOME/.config/systemd/user}"
+readonly DROPIN_FILE="$USER_SYSTEMD_DIR/${RESTART_SERVICE}.d/10-agent-read-api.conf"
+readonly A2_BACKUP_ROOT="${A2_BACKUP_ROOT:-$HOME/.local/state/tradeai/a2-read-plane}"
 
 banner() { echo "=== PACKET $PACKET === PREPARE-ONLY (dry-run default) ==="; }
 die()    { echo "[A2][BLOCKED] $1" >&2; exit "${2:-2}"; }
@@ -76,13 +99,14 @@ if [[ -z "$EXPECTED_SHA" ]]; then
   cat >&2 <<USAGE
 PREPARE-ONLY: no release SHA supplied. Nothing was deployed. This packet refuses to mutate.
   preflight (no host mutation):
-    SHADOW_READER_DSN=... DEPLOY_ROOT=... BACKEND_FILE=... RESTART_SERVICE=... \\
+    SHADOW_READER_DSN=... BACKEND_FILE=... [STATIC_DIR=...] [RESTART_SERVICE=...] \\
       HEALTH_URL=... AGENTS_URL=... READ_API_URL=... \\
       $0 <RELEASE_SHA> --preflight
-  deploy:
-    SHADOW_READER_DSN=... DEPLOY_ROOT=... BACKEND_FILE=... RESTART_SERVICE=... \\
+  deploy (user-systemd restart + connect env-file/drop-in + static-dir swap):
+    SHADOW_READER_DSN=... BACKEND_FILE=... [STATIC_DIR=...] [RESTART_SERVICE=...] \\
       HEALTH_URL=... AGENTS_URL=... READ_API_URL=... \\
       $0 <RELEASE_SHA> --execute --ack $ACK_TOKEN
+  Defaults on this host: STATIC_DIR=$STATIC_DIR ; RESTART_SERVICE=$RESTART_SERVICE (systemctl --user)
 USAGE
   exit 2
 fi
@@ -166,11 +190,11 @@ validate_reader_dsn() {
 }
 
 # ---- required host inputs ---------------------------------------------------
+# STATIC_DIR and RESTART_SERVICE carry this-host defaults and are validated for
+# reachability/existence below; the DSN + backend file + smoke URLs are mandatory.
 require_host_inputs() {
   local missing=()
-  [[ -n "${DEPLOY_ROOT:-}" ]]     || missing+=(DEPLOY_ROOT)
   [[ -n "${BACKEND_FILE:-}" ]]    || missing+=(BACKEND_FILE)
-  [[ -n "${RESTART_SERVICE:-}" ]] || missing+=(RESTART_SERVICE)
   [[ -n "${HEALTH_URL:-}" ]]      || missing+=(HEALTH_URL)
   [[ -n "${AGENTS_URL:-}" ]]      || missing+=(AGENTS_URL)
   [[ -n "${READ_API_URL:-}" ]]    || missing+=(READ_API_URL)
@@ -212,7 +236,7 @@ strict_pre_connect_503() {
 # PREFLIGHT — genuine no-mutation readiness check.
 # =============================================================================
 if [[ "$PREFLIGHT" == "1" ]]; then
-  note "PREFLIGHT (no host mutation) — read-only FS / systemd-status / HTTP checks + inner dry-run"
+  note "PREFLIGHT (no host mutation) — read-only FS / user-systemd-status / HTTP checks + inner dry-run"
 
   # (2) HEAD == SHA already verified above. (3) reject dirty/untracked worktree.
   CLEAN_TREE="clean"
@@ -226,23 +250,20 @@ if [[ "$PREFLIGHT" == "1" ]]; then
   validate_reader_dsn
 
   # (6) read-only verification — NO mutation.
-  [[ -d "$DEPLOY_ROOT" ]] || die "DEPLOY_ROOT is not a directory: $DEPLOY_ROOT" 2
-  RELEASES_DIR="$DEPLOY_ROOT/releases"
-  BACKUPS_DIR="$DEPLOY_ROOT/backups"
-  CURRENT_LINK="$DEPLOY_ROOT/current"
-  CURRENT_TARGET="<none>"
-  if [[ -L "$CURRENT_LINK" ]]; then
-    CURRENT_TARGET="$(readlink -f "$CURRENT_LINK" 2>/dev/null || echo '<unresolved>')"
-  elif [[ -e "$CURRENT_LINK" ]]; then
-    CURRENT_TARGET="$(readlink -f "$CURRENT_LINK" 2>/dev/null || echo "$CURRENT_LINK")"
-  fi
+  # STATIC_DIR is the live serving root (a real dir). Its parent must exist so the
+  # atomic swap can land; STATIC_DIR itself normally exists (currently served).
+  STATIC_PARENT="$(dirname "$STATIC_DIR")"
+  [[ -d "$STATIC_PARENT" ]] || die "STATIC_DIR parent is not a directory: $STATIC_PARENT" 2
+  CURRENT_STATIC_TARGET="<none>"
+  [[ -e "$STATIC_DIR" ]] && CURRENT_STATIC_TARGET="$(readlink -f "$STATIC_DIR" 2>/dev/null || echo "$STATIC_DIR")"
   [[ -f "$BACKEND_FILE" ]] || die "BACKEND_FILE does not exist or is not a regular file: $BACKEND_FILE" 2
 
-  # restart service exists — read-only systemd status (NEVER restart/reload).
+  # restart service exists — read-only USER systemd status (NEVER restart/reload).
   command -v systemctl >/dev/null 2>&1 || die "systemctl unavailable for the read-only unit check" 2
-  systemctl cat "$RESTART_SERVICE" >/dev/null 2>&1 \
-    || systemctl status "$RESTART_SERVICE" >/dev/null 2>&1 \
-    || die "restart service unit not found (read-only check): $RESTART_SERVICE" 2
+  systemctl --user cat "$RESTART_SERVICE" >/dev/null 2>&1 \
+    || systemctl --user is-enabled "$RESTART_SERVICE" >/dev/null 2>&1 \
+    || systemctl --user status "$RESTART_SERVICE" >/dev/null 2>&1 \
+    || die "restart user unit not found (read-only --user check): $RESTART_SERVICE" 2
 
   # repo backend syntax passes (read-only compile; NO dependency install).
   PYBIN="${PYBIN:-$REPO_ROOT/.venv/bin/python}"; [[ -x "$PYBIN" ]] || PYBIN="python3"
@@ -265,15 +286,16 @@ if [[ "$PREFLIGHT" == "1" ]]; then
   cat <<PF
 [A2][PREFLIGHT] release_sha=$EXPECTED_SHA
 [A2][PREFLIGHT] clean_tree=$CLEAN_TREE
-[A2][PREFLIGHT] deploy_root=$DEPLOY_ROOT
+[A2][PREFLIGHT] static_dir=$STATIC_DIR
 [A2][PREFLIGHT] backend_file=$BACKEND_FILE
-[A2][PREFLIGHT] restart_service=$RESTART_SERVICE
+[A2][PREFLIGHT] restart_service=$RESTART_SERVICE (systemctl --user)
 [A2][PREFLIGHT] health_url=$HEALTH_URL
 [A2][PREFLIGHT] agents_url=$AGENTS_URL
 [A2][PREFLIGHT] read_api_url=$READ_API_URL
-[A2][PREFLIGHT] current_static_target=$CURRENT_TARGET
-[A2][PREFLIGHT] proposed_release=$RELEASES_DIR/${EXPECTED_SHA}-${TS}
-[A2][PREFLIGHT] proposed_backup=$BACKUPS_DIR/${EXPECTED_SHA}-${TS}
+[A2][PREFLIGHT] current_static_target=$CURRENT_STATIC_TARGET
+[A2][PREFLIGHT] reader_env_file=$READ_API_ENV_FILE
+[A2][PREFLIGHT] reader_dropin=$DROPIN_FILE
+[A2][PREFLIGHT] proposed_backup=$A2_BACKUP_ROOT/${EXPECTED_SHA}-${TS}
 [A2][PREFLIGHT] reader_role=$PARSED_READER_ROLE
 [A2][PREFLIGHT] pre_connect_status=$PRE_CONNECT_STATUS
 [A2][PREFLIGHT] host_mutations=0
@@ -291,25 +313,30 @@ if [[ "$EXECUTE" != "1" ]]; then
 PREPARE-ONLY PLAN — nothing was deployed:
   1) validate SHADOW_READER_DSN is the read-only agentic_runtime_reader (value never printed)
   2) --preflight (no host mutation): SHA + clean tree + inputs + parsed reader identity +
-       read-only FS/systemd-status checks + STRICT HTTP-503 pre-connect baseline + inner dry-run
-  3) --execute wraps $INNER <SHA> --execute, which fail-closed enforces:
+       read-only FS/user-systemd-status checks + STRICT HTTP-503 pre-connect baseline + inner dry-run
+  3) --execute wraps $INNER <SHA> --execute, which fail-closed enforces (this host's model):
        exact-ref + clean-tree gate; STRICT HTTP-503 pre-connect baseline BEFORE any
-       build/backup/symlink/restart; backend + static backup; build; atomic static swap;
-       ONE named service restart (\$RESTART_SERVICE); interactive operator ack;
-       STRICT HTTP-200 post-connect acceptance (read_only, zero authority, connected to the
-       shadow reader, no execution agent); automatic backend+static rollback + post-rollback
-       health verification on ANY failure (incl. a 503-after, a non-read-only body, or any
-       authority=true). Execution agents remain DISABLED throughout.
+       build/backup/connect/swap/restart; backend + static-dir backup; build to a staging dir;
+       CONNECT (write 0600 reader env-file + user-systemd drop-in, systemctl --user daemon-reload);
+       atomic static-dir swap into the live serving root (STATIC_DIR); ONE USER-service restart
+       (systemctl --user restart \$RESTART_SERVICE); interactive operator ack; STRICT HTTP-200
+       post-connect acceptance (read_only, zero authority, connected to the shadow reader, no
+       execution agent); on ANY failure (incl. a 503-after, a non-read-only body, or any
+       authority=true) automatic DISCONNECT (remove reader env-file + drop-in, daemon-reload,
+       restart -> 503) + backend+static rollback + post-rollback health verification. Execution
+       agents remain DISABLED throughout.
 
 To preflight (no host mutation):
-  SHADOW_READER_DSN=... DEPLOY_ROOT=... BACKEND_FILE=... RESTART_SERVICE=... \\
+  SHADOW_READER_DSN=... BACKEND_FILE=... [STATIC_DIR=...] [RESTART_SERVICE=...] \\
     HEALTH_URL=... AGENTS_URL=... READ_API_URL=... \\
     $0 $EXPECTED_SHA --preflight
 
 To deploy:
-  SHADOW_READER_DSN=... DEPLOY_ROOT=... BACKEND_FILE=... RESTART_SERVICE=... \\
+  SHADOW_READER_DSN=... BACKEND_FILE=... [STATIC_DIR=...] [RESTART_SERVICE=...] \\
     HEALTH_URL=... AGENTS_URL=... READ_API_URL=... \\
     $0 $EXPECTED_SHA --execute --ack $ACK_TOKEN
+
+Defaults on this host: STATIC_DIR=$STATIC_DIR ; RESTART_SERVICE=$RESTART_SERVICE (systemctl --user)
 PLAN
   exit 3
 fi
@@ -334,12 +361,14 @@ note "execution-time revalidation OK (exact SHA + clean tree + parsed reader ide
 
 # The inner script performs its own interactive 'DEPLOY <SHA>' acknowledgement,
 # clean-checkout gate, the STRICT pre-connect 503 baseline (before any mutation),
-# backup, atomic swap, ONE restart, the STRICT post-connect 200 acceptance, and
-# automatic backend+static rollback + post-rollback health verification on any
-# failure. We export the reader DSN for the connected read API (value never echoed).
-export AGENT_RUNTIME_READER_DSN="$SHADOW_READER_DSN"
+# backend + static-dir backup, the CONNECT step (write the 0600 reader env-file +
+# user-systemd drop-in from $SHADOW_READER_DSN, systemctl --user daemon-reload),
+# atomic static-dir swap, ONE user-service restart, the STRICT post-connect 200
+# acceptance, and automatic DISCONNECT + backend+static rollback + post-rollback
+# health verification on any failure. $SHADOW_READER_DSN is inherited by the inner
+# (which writes it into the 0600 env-file); its value is NEVER echoed here.
 note "delegating to $INNER $EXPECTED_SHA --execute (execution agents stay disabled)"
 "$INNER" "$EXPECTED_SHA" --execute
-note "read-plane deploy complete. STRICT pre-connect 503 + post-connect 200 + rollback handled by inner script."
-unset AGENT_RUNTIME_READER_DSN SHADOW_READER_DSN
+note "read-plane deploy complete. STRICT pre-connect 503 + connect + post-connect 200 + rollback handled by inner script."
+unset SHADOW_READER_DSN
 note "reader DSN env cleared."
