@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { inboxDetailPlain } from '../lib/homeLabels'
 
 const TYPE_CTA: Record<string, { label: string; to: string; reports?: string }> = {
   stop: { label: 'Risk', to: '/risk', reports: '/reports?super=ops&category=advisories' },
@@ -44,12 +45,15 @@ export default function OperatorInboxPanel({ compact, maxItems = 8 }: Props) {
           ? { label: it.cta.label, to: (it.cta.route || '/').replace(/^\/v3/, ''), reports: it.cta.reports?.replace(/^\/v3/, '') }
           : fallback
         const color = priColor(it.priority) || (it.type === 'escalation' ? '#ef4444' : it.type === 'cio_review' ? '#a855f7' : it.type === 'auto_research' ? '#22c55e' : 'var(--text2)')
+        const line = inboxDetailPlain(it.detail ?? it.summary ?? it.message, it)
+        const maxLen = compact ? 72 : 140
+        const display = line.length > maxLen ? `${line.slice(0, maxLen)}…` : line
         return (
           <div key={`${it.type}-${it.symbol}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 11, flexWrap: 'wrap' }}>
             {it.priority && <span style={{ fontSize: 8, fontWeight: 800, color: priColor(it.priority), minWidth: 18 }}>{it.priority}</span>}
             <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--text0)', minWidth: 48 }}>{it.symbol ?? '—'}</span>
-            <span style={{ flex: 1, minWidth: 120, color, lineHeight: 1.35 }} title={it.detail}>
-              {(it.detail ?? '').slice(0, compact ? 60 : 100)}{(it.detail?.length ?? 0) > (compact ? 60 : 100) ? '…' : ''}
+            <span style={{ flex: 1, minWidth: 120, color, lineHeight: 1.35 }} title={it.detail || line}>
+              {display}
             </span>
             <span style={{ fontSize: 8, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{it.source}</span>
             <Link to={cta.to} style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none', whiteSpace: 'nowrap' }}>{cta.label} →</Link>
@@ -57,7 +61,7 @@ export default function OperatorInboxPanel({ compact, maxItems = 8 }: Props) {
           </div>
         )
       })}
-      {!compact && <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/inbox · P0 = stops, proposals, SIEM</div>}
+      {!compact && <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/inbox · P0 = stops, proposals, SIEM · lines curated for operators (hover for raw)</div>}
     </div>
   )
 }

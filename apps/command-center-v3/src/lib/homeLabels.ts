@@ -16,7 +16,7 @@ export const STATE_LABELS: Record<string, string> = {
   unknown_sync: 'adopted from broker sync',
   pullback_macd_reversal: 'pullback reversal setup',
   dividend_growth_compounder: 'dividend growth',
-  high_yield_income_bdc: 'high-yield income',
+  high_yield_income_bdc: 'high-yield income BDC',
   core_index: 'core index',
   defense_thesis: 'defense thesis',
   risk_off: 'defensive regime',
@@ -29,6 +29,20 @@ export const STATE_LABELS: Record<string, string> = {
   EXPIRED: 'expired unreviewed',
   PENDING: 'awaiting review',
   REJECTED: 'rejected',
+  // CIO / inbox action verbs
+  ADD_ON_PULLBACK: 'add on a pullback',
+  ADD: 'add',
+  BUY: 'buy',
+  HOLD: 'hold',
+  TRIM: 'trim',
+  SELL: 'sell',
+  AVOID: 'avoid',
+  RESEARCH_MORE: 'research more',
+  NEUTRAL: 'neutral',
+  REBALANCE: 'rebalance',
+  // strategy tags commonly embedded in inbox detail
+  high_yield_income: 'high-yield income',
+  income_covered_call: 'income / covered call',
 }
 
 export function plain(raw?: string | null): string | null {
@@ -129,4 +143,104 @@ export function briefingProse(raw: any): string {
     } catch { return s }
   }
   return s
+}
+
+/** RiskHub-canonical protection counts (reconciled 2026-06-21). */
+export function protectionCounts(positions: any[] = []) {
+  const list = Array.isArray(positions) ? positions : []
+  const noStop = list.filter((p: any) => !p.has_stop).length
+  const verified = list.filter((p: any) => p.broker_protected).length
+  const plannedOnly = list.filter((p: any) => !p.broker_protected && p.has_stop).length
+  return { noStop, verified, plannedOnly, total: list.length }
+}
+
+/**
+ * Operator Inbox detail → curated natural language.
+ * Input examples:
+ *   "HUMAN_REVIEW · dividend_growth_compounder ADD_ON_PULLBACK. Signal=0.10 (low). Weight=0.0%. Inco"
+ *   "ROTATION_REVIEW · defense_thesis HOLD. Signal=0.62 (critical). Weight=0.0%. Income=0%. Synthesis=H"
+ */
+export function inboxDetailPlain(raw?: string | null, item?: any): string {
+  if (!raw || !String(raw).trim()) {
+    // structured fallback from item fields when detail empty
+    if (item) {
+      const bits: string[] = []
+      const decision = plain(item.decision) || plain(item.action) || item.decision || item.action
+      const strategy = plain(item.strategy_id) || plain(item.strategy) || item.strategy_id || item.strategy
+      if (decision) bits.push(String(decision))
+      if (strategy) bits.push(`strategy: ${strategy}`)
+      if (bits.length) return bits.join(' · ')
+    }
+    return 'Review required'
+  }
+  let s = String(raw).trim()
+
+  // Split decision · strategy ACTION. Signal=… Weight=…
+  const headMatch = s.match(/^([A-Z_]+)\s*[·•|]\s*(.+)$/)
+  let decisionRaw = ''
+  let rest = s
+  if (headMatch) {
+    decisionRaw = headMatch[1]
+    rest = headMatch[2]
+  }
+
+  // strategy + action at start of rest: "dividend_growth_compounder ADD_ON_PULLBACK. Signal=..."
+  let strategyRaw = ''
+  let actionRaw = ''
+  const stratAct = rest.match(/^([a-z][a-z0-9_]*)\s+([A-Z][A-Z0-9_]+)\b/)
+  if (stratAct) {
+    strategyRaw = stratAct[1]
+    actionRaw = stratAct[2]
+    rest = rest.slice(stratAct[0].length).replace(/^[.\s]+/, '')
+  } else {
+    const onlyAct = rest.match(/^([A-Z][A-Z0-9_]+)\b/)
+    if (onlyAct) {
+      actionRaw = onlyAct[1]
+      rest = rest.slice(onlyAct[0].length).replace(/^[.\s]+/, '')
+    }
+  }
+
+  const signalM = rest.match(/Signal\s*=\s*([0-9.]+)\s*(?:\(([^)]+)\))?/i)
+  const weightM = rest.match(/Weight\s*=\s*([0-9.]+)\s*%?/i)
+  const incomeM = rest.match(/Income\s*=\s*([0-9.]+)\s*%?/i)
+  const synthM = rest.match(/Synthesis\s*=\s*([A-Za-z0-9_]+)/i)
+
+  const parts: string[] = []
+  const decision = plain(decisionRaw) || (decisionRaw ? decisionRaw.replace(/_/g, ' ').toLowerCase() : '')
+  if (decision) parts.push(decision.charAt(0).toUpperCase() + decision.slice(1))
+
+  const strategy = plain(strategyRaw) || (strategyRaw ? strategyRaw.replace(/_/g, ' ') : '')
+  const action = plain(actionRaw) || (actionRaw ? actionRaw.replace(/_/g, ' ').toLowerCase() : '')
+  if (strategy && action) parts.push(`${strategy} — ${action}`)
+  else if (strategy) parts.push(strategy)
+  else if (action) parts.push(action)
+
+  if (signalM) {
+    const lvl = (signalM[2] || '').toLowerCase()
+    const n = Number(signalM[1])
+    if (lvl) parts.push(`signal ${lvl} (${n.toFixed(2)})`)
+    else parts.push(`signal ${n.toFixed(2)}`)
+  }
+  if (weightM) {
+    const w = Number(weightM[1])
+    parts.push(w === 0 ? 'not in book (0% weight)' : `book weight ${w.toFixed(1)}%`)
+  }
+  if (incomeM) {
+    const inc = Number(incomeM[1])
+    if (inc > 0) parts.push(`income ${inc.toFixed(0)}%`)
+  }
+  if (synthM) {
+    const syn = plain(synthM[1]) || synthM[1].replace(/_/g, ' ').toLowerCase()
+    if (syn && syn.length > 1) parts.push(`synthesis: ${syn}`)
+  }
+
+  if (parts.length === 0) {
+    // last resort: token-level plain() substitution on underscored tokens
+    return s
+      .replace(/\b([A-Z][A-Z0-9_]{2,})\b/g, (tok) => plain(tok) || tok.replace(/_/g, ' ').toLowerCase())
+      .replace(/\b([a-z]+_[a-z0-9_]+)\b/g, (tok) => plain(tok) || tok.replace(/_/g, ' '))
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+  }
+  return parts.join('. ') + '.'
 }

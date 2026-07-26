@@ -2,6 +2,7 @@ import { useApi } from '../hooks/useApi'
 import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
 import { pricingStampLine } from '../lib/pricingStamp'
+import { isScanStale, runLabel } from '../lib/homeLabels'
 import type { DrillContext } from './DetailDrawer'
 
 
@@ -33,6 +34,8 @@ export default function MetricStrip({ onDrill }: Props) {
   const goCount = tradeAi?.go_count ?? 0
   const waitCount = tradeAi?.wait_count ?? 0
   const avoidCount = tradeAi?.avoid_count ?? 0
+  const scanStale = isScanStale(tradeAi?.run_date)
+  const setupsRun = runLabel(tradeAi?.run_label ?? tradeAi?.latest_run_label, tradeAi?.run_date)
   const operatorLive = !!gate?.operator_live_via_2fa_allowed
   const autoLive = gate?.status === 'AUTHORIZED'
   const liveBadge = operatorLive ? '2FA LIVE' : autoLive ? 'AUTO LIVE' : 'AUTO BLOCKED'
@@ -59,6 +62,14 @@ export default function MetricStrip({ onDrill }: Props) {
   const vix = tradeAi?.vix
   const approvals = overview?.pending_approvals ?? overview?.approvals_count
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
+
+  const setupsValue = (() => {
+    if (scanStale) return `STALE · ${setupsRun}`
+    if (tradeAi?.latest_run_label || tradeAi?.run_label) {
+      return `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NOGO`
+    }
+    return '— before first run'
+  })()
 
   const tiles = [
     {
@@ -117,15 +128,16 @@ export default function MetricStrip({ onDrill }: Props) {
       // Scope (P0 2026-07-14): go_count/wait_count/avoid_count = LATEST RUN only — the Trading
       // scanner's chips count the full scan universe (today + yesterday, all runs) and will be
       // larger. Count unchanged; label the scope so the two surfaces can't silently disagree.
-      // Honest empty state: no run label = the scanner hasn't produced today —
-      // "0 GO · 0 NOGO" before the first run reads as data when it's absence
+      // Home parity 2026-07-26: when run_date is prior session day, show STALE (not bare 0/0/0).
       label: 'SETUPS · LATEST RUN',
-      value: tradeAi?.latest_run_label || tradeAi?.run_label
-        ? `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NOGO`
-        : '— before first run',
-      color: goCount > 0 ? '#22c55e' : 'var(--text3)',
-      drill: { title: 'Trade Setups', subtitle: 'Latest scanner run only — Trading → Trade AI shows the full scan universe (today + yesterday, all runs)', endpoint: '/api/v2/trade-ai',
-        rows: tradeAi ? [{ scope: 'latest run only', go_count: tradeAi.go_count, wait_count: tradeAi.wait_count, avoid_count: tradeAi.avoid_count, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
+      value: setupsValue,
+      stale: scanStale ? ' · prior session' : null,
+      color: scanStale ? STALE_AMBER : goCount > 0 ? '#22c55e' : 'var(--text3)',
+      tip: scanStale
+        ? `Latest scan is from a prior session (${setupsRun}). Counts may be zero because the scanner has not run today — not because the universe is empty. Trading → Trade AI shows the full scan history.`
+        : 'Latest scanner run only — Trading → Trade AI shows the full scan universe (today + yesterday, all runs)',
+      drill: { title: 'Trade Setups', subtitle: scanStale ? `STALE — last ${setupsRun}` : 'Latest scanner run only — Trading → Trade AI shows the full scan universe (today + yesterday, all runs)', endpoint: '/api/v2/trade-ai',
+        rows: tradeAi ? [{ scope: scanStale ? 'stale prior session' : 'latest run only', go_count: tradeAi.go_count, wait_count: tradeAi.wait_count, avoid_count: tradeAi.avoid_count, universe_go: tradeAi.universe_go, universe_wait: tradeAi.universe_wait, universe_nogo: tradeAi.universe_nogo, run_label: tradeAi.run_label, run_date: tradeAi.run_date, vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_health_status: tradeAi.run_health_status }] : [] },
     },
   ]
 
@@ -154,7 +166,7 @@ export default function MetricStrip({ onDrill }: Props) {
             {t.label}{(t as any).stale && <span style={{ color: STALE_AMBER, fontWeight: 800 }}>{' '}⚠ STALE</span>}
           </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: t.color, fontFamily: 'monospace' }}>
-            {t.value}{(t as any).stale && <span style={{ fontSize: 10, color: STALE_AMBER }}>{(t as any).stale}</span>}
+            {t.value}{(t as any).stale && !String(t.value).includes('STALE') && <span style={{ fontSize: 10, color: STALE_AMBER }}>{(t as any).stale}</span>}
           </div>
         </div>
       ))}
