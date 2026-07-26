@@ -109,23 +109,47 @@ def test_batch_start_is_idempotent():
 # ── the actionable decision band ──────────────────────────────────────────────
 
 def test_band_is_expanded_by_default():
+    """The sovereign decision band renders open — the one operator state, the
+    evaluated strategy families and the mechanics are visible without a click.
+    Re-pinned 2026-07-26 to the watch-quality-governance-v1 band: the old band
+    proxied "open" via useState(true); the sovereign band renders the families
+    unconditionally and gates only the deep audit drawer behind a toggle."""
     src = BAND.read_text()
-    assert "useState(true)" in src, "the band must default to open — no click to see families"
+    assert 'data-watch-decision-contract="watch-quality-governance-v1"' in src
+    # the evaluated strategy families render in the open body, not behind a toggle
+    assert "Strategies evaluated" in src and "FAMILY_ORDER.map" in src
+    # one sovereign operator state governs the band header
+    assert "{pres.state}" in src
+    # the ONLY collapsible surface is the audit drawer — families are never hidden
+    assert "details && <AuditDrawer" in src
 
 
 def test_band_shows_actionable_mechanics_not_just_states():
+    """Actionable mechanics, not bare states: entry/limit/stop/target/R:R plus the
+    trigger and invalidation that change the decision. Non-primary horizons resolve
+    to the sovereign OWNERSHIP ELIGIBLE / MECHANICS VALID contract, never a second
+    simultaneous READY. Re-pinned 2026-07-26 to the production band's real labels."""
     src = BAND.read_text()
-    # long-term & swing levels
-    assert "starter" in src and "stop" in src and "target" in src and "R:R" in src
-    assert "zone" in src and "limit" in src
-    # trigger / invalidation price context
-    assert "TRIGGER" in src and "INVALIDATE" in src
+    assert "'Entry'" in src and "'Limit'" in src and "'Stop'" in src and "'Target'" in src and "'R:R'" in src
+    # trigger / invalidation price context that changes the decision
+    assert "Trigger" in src and "Invalidation" in src
+    # non-primary horizons are evidence under one sovereign state, not competing actions
+    assert "OWNERSHIP ELIGIBLE" in src and "MECHANICS VALID" in src
 
 
 def test_band_shows_option_structures_with_strikes():
+    """Options are a governed decision family. The band presents the options family
+    honestly — its constructed/unavailable state and reason from the packet — and
+    never fabricates an option line when the exact chain is missing. Re-pinned
+    2026-07-26: the old band inlined optionLine/occ_symbol/strike; the sovereign
+    band surfaces options as an evidence family with honest availability."""
     src = BAND.read_text()
-    assert "optionLine" in src
-    assert "occ_symbol" in src and "strike" in src and "maximum_loss" in src
+    # options is one of the evaluated decision families
+    assert "['options', 'Options']" in src
+    # honest availability: a stale/unavailable chain is stated, not faked
+    assert "CHAIN STALE" in src and "Exact option chain unavailable" in src
+    # option family evidence is read from the packet's structures, never invented
+    assert "family?.structures" in src
 
 
 def test_batch_button_mounted_in_header():
