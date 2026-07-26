@@ -17,7 +17,7 @@ readonly WORK_BRANCH="${AGENTIC_WORK_BRANCH:-codex/agent-runtime-persistence-v1}
 # Constant value only — never assigned to a shell variable named LAB_ACK, so the
 # child can receive `LAB_ACK=...` as a command-prefix env without a readonly clash.
 readonly LAB_ACK_VALUE=DISPOSABLE_LAB_NO_PRODUCTION_DATA
-readonly LAB_SOCK=/home/johnclaw/tradeai-lab/sock
+readonly LAB_SOCK="${AGENTIC_LAB_SOCK:-/home/johnclaw/tradeai-lab/sock}"
 readonly LAB_DB=trade_ai_agentic_lab
 readonly EVIDENCE_DIR="${AGENTIC_EVIDENCE_DIR:-/home/johnclaw/tradeai-lab/evidence}"
 readonly LAB_SECRETS_DIR="${AGENTIC_SECRETS_DIR:-/home/johnclaw/tradeai-lab/secrets/agentic-runtime}"
@@ -38,66 +38,129 @@ fi
 
 # 3) stage the reviewed source read-only from the object DB (never the dirty checkout)
 readonly STAGE="$(mktemp -d /tmp/agentic-host-proof.XXXXXX)"
-readonly PGPASS_HANDOFF="$(mktemp /tmp/agentic-pgpass-handoff.XXXXXX)"
-chmod 600 "$PGPASS_HANDOFF"
-WRITER_PGPASS=""  # resolved from the private handoff after evolve; deleted at teardown
-cleanup_stage() { rm -rf "$STAGE"; rm -f "$PGPASS_HANDOFF"; }
-trap cleanup_stage EXIT
+readonly CLEANUP_MANIFEST="$(mktemp /tmp/agentic-cleanup-manifest.XXXXXX)"
+chmod 600 "$CLEANUP_MANIFEST"
+
+# Exact-run cleanup. Runs the EXACT fresh rollback file and removes ONLY the exact fresh
+# writer/reader pgpass files (never an unrelated file, never a glob). Idempotent and armed
+# via the EXIT trap so it fires on every path: evolve failure after partial provisioning,
+# manifest-validation rejection, missing driver, pytest/gate failure, success, and
+# shell exit/interrupt. Sanitized pytest/DB evidence is preserved.
+CLEANUP_DONE=0
+CLEANUP_ROLLBACK=""
+CLEANUP_WRITER=""
+CLEANUP_READER=""
+run_cleanup() {
+  [[ "$CLEANUP_DONE" == 1 ]] && return 0
+  CLEANUP_DONE=1
+  if [[ -n "$CLEANUP_ROLLBACK" && -f "$CLEANUP_ROLLBACK" ]]; then
+    /usr/bin/psql -h "$LAB_SOCK" -p 5433 -U johnclaw -d postgres -q -v ON_ERROR_STOP=1 -f "$CLEANUP_ROLLBACK" >/dev/null 2>&1 \
+      && echo "rollback_or_teardown|PASS" \
+      || echo "rollback_or_teardown|MANUAL"
+  else
+    echo "rollback_or_teardown|MANUAL_NO_ROLLBACK_FILE"
+  fi
+  [[ -n "$CLEANUP_WRITER" && -f "$CLEANUP_WRITER" ]] && rm -f -- "$CLEANUP_WRITER"
+  [[ -n "$CLEANUP_READER" && -f "$CLEANUP_READER" ]] && rm -f -- "$CLEANUP_READER"
+  return 0  # never let a false final test abort a set -e caller before its own fail/exit
+}
+cleanup_all() { run_cleanup; rm -rf "$STAGE"; rm -f "$CLEANUP_MANIFEST"; }
+trap cleanup_all EXIT
+trap 'exit 130' INT TERM
+
 "$GIT" -C "$HOST_REPO" archive "$RESOLVED" scripts tests migrations config | tar -x -C "$STAGE"
 
 readonly PY="$HOST_REPO/.venv/bin/python"
 [[ -x "$PY" ]] || fail "project venv python unavailable"
-
-# teardown: roll back the LAB and delete the exact fresh reader/writer credential files.
-teardown() {
-  local rb reader
-  rb="$(ls -t "$EVIDENCE_DIR"/agentic-runtime-rollback-*.sql 2>/dev/null | head -1 || true)"
-  if [[ -n "$rb" ]]; then
-    /usr/bin/psql -h "$LAB_SOCK" -p 5433 -U johnclaw -d postgres -q -v ON_ERROR_STOP=1 -f "$rb" >/dev/null 2>&1 \
-      && echo "rollback_or_teardown|PASS" \
-      || echo "rollback_or_teardown|MANUAL:$rb"
-  else
-    echo "rollback_or_teardown|MANUAL_NO_ROLLBACK_FILE"
-  fi
-  if [[ -n "${WRITER_PGPASS:-}" ]]; then
-    rm -f -- "$WRITER_PGPASS"
-    reader="${WRITER_PGPASS/agentic-runtime-lab-rw-/trade-ai-shadow-ro-}"  # exact sibling, not a glob
-    [[ "$reader" != "$WRITER_PGPASS" ]] && rm -f -- "$reader"
-  fi
-}
 
 echo "source_commit|$RESOLVED"
 echo "database_target|$LAB_DB"
 echo "database_port|5433"
 echo "production_port_5432_contact|NONE"
 
-# 4) evolve a fresh disposable LAB on 5433. The evolve writes ONLY the fresh writer
-#    pgpass pathname into our private handoff (no password ever leaves the LAB packet).
-AGENTIC_PGPASS_HANDOFF="$PGPASS_HANDOFF" LAB_ACK="$LAB_ACK_VALUE" REPO="$HOST_REPO" AGENTIC_SOURCE_REF="$RESOLVED" \
-  bash "$STAGE/scripts/agent_runtime/lab_evolve_from_ref.sh" >/dev/null \
-  || fail "LAB evolve did not reach PASS_DB_PROOF"
+# 4) evolve a fresh disposable LAB on 5433. The evolve writes a private cleanup manifest
+#    containing ONLY the exact rollback / writer / reader pathnames (never a password).
+evolve_rc=0
+AGENTIC_CLEANUP_MANIFEST="$CLEANUP_MANIFEST" LAB_ACK="$LAB_ACK_VALUE" REPO="$HOST_REPO" AGENTIC_SOURCE_REF="$RESOLVED" \
+  bash "$STAGE/scripts/agent_runtime/lab_evolve_from_ref.sh" >/dev/null || evolve_rc=$?
 
-# 4a) resolve + strictly validate the exact fresh writer credential from the handoff.
-#     Reject empty/multiline/symlink/out-of-directory/non-regular/non-0600 paths.
-resolve_writer_credential() {
-  local raw canon secrets_canon
-  raw="$(head -c 4096 "$PGPASS_HANDOFF" 2>/dev/null)"
-  raw="${raw%$'\n'}"
-  [[ -n "$raw" ]] || { teardown; fail "no writer credential handoff from LAB evolve"; }
-  [[ "$raw" != *$'\n'* ]] || { teardown; fail "credential handoff is malformed"; }
-  [[ ! -L "$raw" ]] || { teardown; fail "credential handoff is a symlink"; }
-  canon="$(realpath -e -- "$raw" 2>/dev/null || true)"
-  [[ -n "$canon" ]] || { teardown; fail "handoff credential does not exist"; }
-  secrets_canon="$(realpath -e -- "$LAB_SECRETS_DIR" 2>/dev/null || true)"
-  [[ -n "$secrets_canon" && "$canon" == "$secrets_canon"/*.pgpass ]] || { teardown; fail "handoff credential is outside the LAB secrets directory"; }
-  [[ -f "$canon" && ! -L "$canon" ]] || { teardown; fail "handoff credential is not a regular file"; }
-  [[ "$(stat -c '%a' "$canon" 2>/dev/null)" == "600" ]] || { teardown; fail "handoff credential is not mode 0600"; }
-  WRITER_PGPASS="$canon"
-}
-resolve_writer_credential
+# 4a) Register + validate the exact fresh cleanup paths BEFORE anything else, so cleanup
+#     is armed even when evolve failed after partial provisioning. The validator prints
+#     ROLLBACK=/WRITER=/READER= for each path that is a canonical, non-symlink, regular
+#     file directly inside its expected directory with the exact fresh-run name (shared
+#     stamp derived from the rollback file). It exits 0 only when all three are valid AND
+#     the writer is mode 0600. Symlink/out-of-directory paths are never emitted, so they
+#     are never used or removed. Paths are captured privately and never echoed.
+set +e
+creds="$("$PY" - "$CLEANUP_MANIFEST" "$EVIDENCE_DIR" "$LAB_SECRETS_DIR" <<'PYEOF'
+import os, stat, sys
+manifest, ev_dir, sec_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+
+def canon_regular(path):
+    if not path or "\n" in path or os.path.islink(path):
+        return None
+    try:
+        real = os.path.realpath(path)
+    except Exception:
+        return None
+    if os.path.islink(real) or not os.path.isfile(real):
+        return None
+    return real
+
+try:
+    fields = open(manifest, encoding="utf-8").read().splitlines()
+except Exception:
+    sys.exit(3)
+if len(fields) != 3:
+    sys.exit(3)
+rb, wr, rd = fields
+ev = os.path.realpath(ev_dir)
+sec = os.path.realpath(sec_dir)
+ok = True
+
+rbc = canon_regular(rb)
+stamp = None
+if rbc and os.path.dirname(rbc) == ev:
+    base = os.path.basename(rbc)
+    if base.startswith("agentic-runtime-rollback-") and base.endswith(".sql"):
+        stamp = base[len("agentic-runtime-rollback-"):-len(".sql")]
+        print("ROLLBACK=" + rbc)
+if not stamp:
+    ok = False
+
+wrc = canon_regular(wr)
+if stamp and wrc and os.path.dirname(wrc) == sec and os.path.basename(wrc) == f"agentic-runtime-lab-rw-{stamp}.pgpass":
+    print("WRITER=" + wrc)
+    if oct(stat.S_IMODE(os.stat(wrc).st_mode)) != "0o600":
+        ok = False
+else:
+    ok = False
+
+rdc = canon_regular(rd)
+if stamp and rdc and os.path.dirname(rdc) == sec and os.path.basename(rdc) == f"trade-ai-shadow-ro-{stamp}.pgpass":
+    print("READER=" + rdc)
+else:
+    ok = False
+
+sys.exit(0 if ok else 3)
+PYEOF
+)"
+validate_rc=$?
+set -e
+while IFS='=' read -r _k _v; do
+  case "$_k" in
+    ROLLBACK) CLEANUP_ROLLBACK="$_v" ;;
+    WRITER) CLEANUP_WRITER="$_v" ;;
+    READER) CLEANUP_READER="$_v" ;;
+  esac
+done <<< "$creds"
+unset creds
+
+[[ "$evolve_rc" -eq 0 ]] || { run_cleanup; fail "LAB evolve did not reach PASS_DB_PROOF"; }
+[[ "$validate_rc" -eq 0 ]] || { run_cleanup; fail "LAB credential manifest failed validation"; }
 
 # 5) the driver must be present in host-proof mode — a missing driver is a hard failure
-"$PY" -c 'import psycopg2' 2>/dev/null || { teardown; fail "psycopg2 is required for the real host proof (missing driver is not a skip)"; }
+"$PY" -c 'import psycopg2' 2>/dev/null || { run_cleanup; fail "psycopg2 is required for the real host proof (missing driver is not a skip)"; }
 
 # 6) run the REAL psycopg2 adapter suite; capture and PRESERVE the actual pytest output
 readonly STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -108,7 +171,7 @@ set +e
 # PGPASSFILE is passed privately (libpq reads the password from the 0600 file); it is
 # never printed. The tests connect over password-authenticated TCP at 127.0.0.1:5433.
 AGENTIC_REAL_LAB=1 AGENTIC_LAB_HOST=127.0.0.1 AGENTIC_LAB_DB="$LAB_DB" \
-  PGPASSFILE="$WRITER_PGPASS" PYTHONPATH="$STAGE" \
+  PGPASSFILE="$CLEANUP_WRITER" PYTHONPATH="$STAGE" \
   "$PY" -m pytest -rA -v -p no:cacheprovider \
     --junitxml="$JUNIT" \
     "$STAGE/tests/test_agent_runtime_real_postgres.py" 2>&1 | tee "$PYTEST_LOG"
@@ -174,12 +237,12 @@ gate_rc=$?
 set -e
 
 if [[ "$gate_rc" -eq 0 ]]; then
-  teardown
+  run_cleanup
   echo "activation_authority|DENIED"
   echo "production_database_write|NONE"
   echo "final_status|PASS_AGENT_RUNTIME_PERSISTENCE_PROOF"
 else
-  teardown
+  run_cleanup
   echo "final_status|FAIL_AGENT_RUNTIME_PERSISTENCE_PROOF" >&2
   exit 3
 fi

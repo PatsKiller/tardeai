@@ -153,12 +153,18 @@ printf '%s:%s:%s:%s:%s\n' "$LAB_HOST" "$LAB_PORT" "$LAB_DATABASE" "$READER_ROLE"
 printf '%s:%s:%s:%s:%s\n' "$LAB_HOST" "$LAB_PORT" "$LAB_DATABASE" "$WRITER_ROLE" "$writer_password" >"$WRITER_PGPASS"
 chmod 600 "$READER_PGPASS" "$WRITER_PGPASS"
 
-# Exact credential handoff for an operator host proof: write ONLY the fresh writer
-# pgpass pathname (never a password or any other data) to the caller-provided private
-# path. No-op unless the caller set AGENTIC_PGPASS_HANDOFF, so default behavior is
-# unchanged.
-if [[ -n "${AGENTIC_PGPASS_HANDOFF:-}" ]]; then
-  printf '%s\n' "$WRITER_PGPASS" >"$AGENTIC_PGPASS_HANDOFF"
+# Exact-run cleanup manifest for an operator host proof: write ONLY the three exact
+# fresh pathnames (one canonical line each: rollback SQL, writer pgpass, reader pgpass)
+# to the caller-provided private path — never a password or any other data. Written
+# here, right after the rollback and credential files exist and before the schema work,
+# so cleanup is armed even if a later provisioning step fails. No-op unless the caller
+# set AGENTIC_CLEANUP_MANIFEST, so default behavior is unchanged.
+if [[ -n "${AGENTIC_CLEANUP_MANIFEST:-}" ]]; then
+  {
+    printf '%s\n' "$ROLLBACK_FILE"
+    printf '%s\n' "$WRITER_PGPASS"
+    printf '%s\n' "$READER_PGPASS"
+  } >"$AGENTIC_CLEANUP_MANIFEST"
 fi
 
 printf '\n=== STAGE 1-3: EMPTY DATABASE AND SEPARATED IDENTITIES ===\n'
