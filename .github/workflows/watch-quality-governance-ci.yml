@@ -90,6 +90,8 @@ jobs:
             scripts/watch_quality_audit.py
 
       - name: Run focused Watch quality and ticket tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           pytest -q \
             tests/test_watch_quality_policy.py \
