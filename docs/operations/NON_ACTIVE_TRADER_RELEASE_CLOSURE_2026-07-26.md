@@ -4,8 +4,8 @@ Converts the four prepared lanes into exact-ref, conflict-tested, operator-deplo
 candidates — **and, with explicit per-step operator authorization, MERGES them into `main`.**
 **Active Trader out of scope and untouched.** Nothing deployed/migrated/scheduled/activated/backfilled.
 
-**FINAL STATE (2026-07-26): all lanes merged.** Base `main` `20a24027` → **`fc86150f`** via six
-authorized merges (#184 → #163 → #182 → #181 → #180; RC #183 closed as integration proof). Post-merge
+**FINAL STATE (2026-07-26): all lanes merged.** Base `main` `20a24027` → **`fc86150f`** via five
+authorized merges (#184 → #163 → #182 → #181 → #180; RC #183 closed as integration proof, not merged). Post-merge
 combined validator green; `main` CI green. See "Merge execution" below.
 
 ## CI status — RESOLVED (updated 2026-07-26, post-billing)
@@ -43,8 +43,8 @@ Each lane's evidence comment is posted on its PR. No substantive test was weaken
 | #180 | `eaa653f8` | `defense-sectors-ci` ✅ | run 2 |
 | #183 RC | `46bad45c` | agentic ✅ + watch ✅ + defense ✅ + options/re-entry ✅ | 30213036351/366/371 |
 
-The `release-readiness` check is still red on #163/#182/#181/#183 — the pre-existing `main` false
-positive that **PR #184 fixes**. All five PRs are draft + mergeable; `main` unchanged at `20a24027`.
+`release-readiness` is green across the board: #184 fixed the pre-existing `main` false positive, and
+each lane inherited it as `main` advanced. All five delivery PRs are **merged**; `main` = `fc86150f`.
 
 ---
 
@@ -121,10 +121,11 @@ Defense breadth-producer switch, valuation backfill, deploy, or agent activation
 6. SHADOW acceptance population (Packet D).
 7. Agent timers only after measured maturity-gate acceptance.
 
-### Actions requiring operator authorization (NONE performed)
-Merge any PR (start with #184) · create/enable DB roles · apply migrations · provision the read/SHADOW
-DSNs + set the API gate · run any packet `--execute`/`--apply`/`--run-shadow` · switch the Defense
-breadth producer · run `watch_valuation_backfill.py` · enable agent systemd timers · mark any PR ready.
+### Actions requiring operator authorization
+All five delivery PRs are merged; **no further merge is pending.** Remaining operator-gated actions (none
+performed): create/enable DB roles · apply migrations · provision the read/SHADOW DSNs + set the API
+gate · run any packet `--execute`/`--apply`/`--run-shadow` · switch the Defense breadth producer · run
+`watch_valuation_backfill.py` · enable agent systemd timers.
 *(GitHub billing is already resolved — no longer a prerequisite.)*
 
 ---
