@@ -4,13 +4,13 @@ import { BB, T, TYPE, numStyle, heatRamp } from '../../lib/watchTokens'
 
 // Home v2 WS-B: the operator's book as a Finviz-style treemap. Area = position value
 // (or |day $| impact), fill = day% on the shared heatRamp, grouped by sector (or account).
-// Overlays: red ring = stop TRIGGERED · amber ring = unprotected ≥$10k. Dependency-free
-// squarified layout (~40 lines) per the session flag-back — no new chart lib.
+// Overlays: red ring = stop TRIGGERED · amber ring = unprotected ≥$10k.
+// Freshness (2026-07-26): always show holdings.json as_of; if lagging overview prices,
+// the subtitle stays honest rather than implying live identity.
 
 interface Row { symbol: string; account?: string; value: number; day_change: number; day_change_pct?: number; weight_pct?: number; sector: string; stop?: string }
 interface Rect { x: number; y: number; w: number; h: number; row?: Row; group?: string }
 
-// classic squarify: rows sorted desc, lay strips along the shorter side
 function squarify(items: { size: number; payload: any }[], x: number, y: number, w: number, h: number): { x: number; y: number; w: number; h: number; payload: any }[] {
   const out: { x: number; y: number; w: number; h: number; payload: any }[] = []
   let rest = items.filter(i => i.size > 0).sort((a, b) => b.size - a.size)
@@ -48,6 +48,20 @@ function squarify(items: { size: number; payload: any }[], x: number, y: number,
   return out
 }
 
+function ageHint(asOf?: string): string {
+  if (!asOf) return ''
+  // holdings.json dates are often YYYY-MM-DD; compare calendar day in ET-ish local
+  const m = String(asOf).match(/(\d{4}-\d{2}-\d{2})/)
+  if (!m) return ''
+  const snap = new Date(`${m[1]}T12:00:00`)
+  const today = new Date()
+  const dayMs = 86400000
+  const lag = Math.floor((today.getTime() - snap.getTime()) / dayMs)
+  if (lag <= 0) return ''
+  if (lag === 1) return ' · snapshot 1d behind live prices'
+  return ` · snapshot ${lag}d behind live prices`
+}
+
 export default function BookTreemap({ onDrillSymbol }: { onDrillSymbol?: (symbol: string) => void }) {
   const { data } = useApi<any>('/api/v2/portfolio/book-map', 120_000)
   const [sizeBy, setSizeBy] = useState<'value' | 'impact'>('value')
@@ -58,8 +72,6 @@ export default function BookTreemap({ onDrillSymbol }: { onDrillSymbol?: (symbol
   const rects = useMemo<Rect[]>(() => {
     let rows: Row[] = data?.rows || []
     if (!rows.length) return []
-    // sector view: merge same-symbol positions across accounts (Finviz semantics — one V
-    // square, not one per account; operator bug 2026-07-17). Account view keeps them split.
     if (groupBy === 'sector') {
       const by = new Map<string, Row>()
       for (const r of rows) {
@@ -94,11 +106,19 @@ export default function BookTreemap({ onDrillSymbol }: { onDrillSymbol?: (symbol
 
   if (!data?.ok) return <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 2, padding: 14, fontSize: TYPE.sm, color: BB.text3 }}>Book map: {data?.error || 'loading…'}</div>
 
+  const lag = ageHint(data.as_of)
+
   return (
     <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderLeft: `3px solid ${BB.green}`, borderRadius: 2, padding: '10px 12px' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 6 }}>
         <span style={{ fontSize: TYPE.xs, fontWeight: 800, letterSpacing: '.06em', color: BB.text2 }}>YOUR BOOK</span>
-        <span style={{ fontSize: 8.5, fontWeight: 700, color: BB.text3, textTransform: 'uppercase' }}>· holdings.json {String(data.as_of || '')} · ${Math.round(data.total_value).toLocaleString()} · day <b style={{ color: data.total_day_change >= 0 ? BB.green : BB.red }}>{data.total_day_change >= 0 ? '+' : ''}${Math.round(data.total_day_change).toLocaleString()}</b></span>
+        <span style={{ fontSize: 8.5, fontWeight: 700, color: lag ? BB.amber : BB.text3, textTransform: 'uppercase' }}>
+          · holdings.json {String(data.as_of || '')} · ${Math.round(data.total_value).toLocaleString()} · day{' '}
+          <b style={{ color: data.total_day_change >= 0 ? BB.green : BB.red }}>
+            {data.total_day_change >= 0 ? '+' : ''}${Math.round(data.total_day_change).toLocaleString()}
+          </b>
+          {lag}
+        </span>
         <span style={{ flex: 1 }} />
         {(['value', 'impact'] as const).map(m => (
           <button key={m} onClick={() => setSizeBy(m)} style={{ fontSize: 9, fontWeight: sizeBy === m ? 800 : 600, padding: '1px 7px', borderRadius: 2, cursor: 'pointer', border: `1px solid ${sizeBy === m ? T.link : BB.borderHair}`, background: sizeBy === m ? `${T.link}18` : 'transparent', color: sizeBy === m ? T.link : BB.text3 }}>{m === 'value' ? 'Value' : 'Day $ impact'}</button>
