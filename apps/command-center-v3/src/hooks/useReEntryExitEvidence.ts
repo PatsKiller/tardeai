@@ -9,6 +9,8 @@ import {
   type ExitEvidenceRow,
 } from '../lib/reentrySharedContext'
 
+export const REENTRY_EVIDENCE_CONTRACT = 'reentry-evidence-v3'
+
 export type ExitEvidenceSource = {
   key: string
   label: string
@@ -17,18 +19,26 @@ export type ExitEvidenceSource = {
   error?: string | null
 }
 
+export type ExitFieldCoverage = Record<ExitEvidenceField, number>
+
 export type ReEntryExitEvidence = {
   rows: ExitEvidenceRow[]
   loading: boolean
   refreshing: boolean
   errors: string[]
   sources: ExitEvidenceSource[]
+  sourceFieldCoverage: Record<string, ExitFieldCoverage>
   fullFidelity: boolean
   generatedAt: string
+  contractVersion: string
   refetch: () => void
 }
 
 type Candidate = { row: ExitEvidenceRow; priority: number }
+
+const EVIDENCE_FIELDS: ExitEvidenceField[] = [
+  'account', 'trade_date', 'trade_time', 'quantity', 'price', 'proceeds_usd', 'action', 'description',
+]
 
 function unwrap(value: any): any {
   let result = value
@@ -70,12 +80,15 @@ function nestedObjects(raw: any): any[] {
     raw,
     raw?.metadata,
     raw?.transaction,
+    raw?.activity,
     raw?.trade,
     raw?.execution,
     raw?.fill,
     raw?.order,
     raw?.broker,
     raw?.details,
+    raw?.raw,
+    raw?.source_record,
   ].filter(value => value && typeof value === 'object')
 }
 
@@ -97,33 +110,63 @@ function pickText(objects: any[], keys: string[]): string {
   return ''
 }
 
+function accountIdentity(value: any): string {
+  let key = text(value).toLowerCase()
+  if (!key) return ''
+  key = key
+    .replace(/\*+/g, '')
+    .replace(/\b(charles\s+schwab|schwab|fidelity|alpaca|moomoo|brokerage)\b/g, '')
+    .replace(/\b(account|acct)\b/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+  const aliases: Record<string, string> = {
+    rolloverira: 'rolloverira',
+    traditionalira: 'rolloverira',
+    ira: 'rolloverira',
+    taxable: 'taxable',
+    individual: 'taxable',
+    brokerage: 'taxable',
+    rothira: 'rothira',
+    roth: 'rothira',
+  }
+  return aliases[key] ?? key
+}
+
 function withSource(target: Partial<Record<ExitEvidenceField, string>>, field: ExitEvidenceField, value: any, source: string) {
   if (value !== null && value !== undefined && value !== '') target[field] = source
 }
 
 function normalizeExit(raw: any, index: number, source: string): ExitEvidenceRow | null {
   const objects = nestedObjects(raw)
-  const symbol = pickText(objects, ['symbol', 'sold_symbol', 'ticker', 'security_symbol', 'instrument.symbol']).toUpperCase()
+  const symbol = pickText(objects, [
+    'symbol', 'sold_symbol', 'ticker', 'security_symbol', 'instrument.symbol', 'security.symbol', 'asset.symbol',
+  ]).toUpperCase()
   if (!symbol) return null
 
   const dateRaw = pickText(objects, [
     'sold_at', 'stopped_at', 'triggered_at', 'close_date', 'trade_date', 'closed_at', 'executed_at',
-    'transaction_date', 'date', 'filled_at', 'execution_time', 'timestamp', 'created_at',
+    'transaction_date', 'activity_date', 'settlement_date', 'date', 'filled_at', 'fill_time', 'execution_time',
+    'timestamp', 'created_at', 'occurred_at', 'posted_at',
   ])
-  const account = pickText(objects, ['account', 'account_key', 'account_name', 'account_label', 'broker_account', 'account_id_masked'])
+  const account = pickText(objects, [
+    'account', 'account_key', 'account_name', 'account_label', 'broker_account', 'account_id_masked',
+    'account_display_name', 'portfolio_account', 'source_account',
+  ])
   let quantity = pickNumber(objects, [
     'shares_sold', 'shares', 'quantity', 'qty', 'filled_quantity', 'filled_qty', 'executed_quantity',
-    'execution_quantity', 'units', 'closed_quantity', 'position_quantity', 'total_quantity',
+    'execution_quantity', 'fill_quantity', 'shares_closed', 'closed_shares', 'sell_quantity', 'quantity_sold',
+    'units', 'closed_quantity', 'position_quantity', 'total_quantity', 'net_quantity',
   ])
   quantity = quantity === null ? null : Math.abs(quantity)
   let proceeds = pickNumber(objects, [
     'proceeds_usd', 'net_proceeds_usd', 'gross_proceeds_usd', 'proceeds', 'net_proceeds', 'gross_proceeds',
-    'amount', 'net_amount', 'cash_amount', 'net_cash', 'settlement_amount', 'value',
+    'amount', 'amount_usd', 'net_amount', 'net_amount_usd', 'gross_amount', 'gross_amount_usd', 'cash_amount',
+    'net_cash', 'settlement_amount', 'principal', 'principal_amount', 'value',
   ])
   proceeds = proceeds === null ? null : Math.abs(proceeds)
   let price = pickNumber(objects, [
-    'sell_price', 'exit_price', 'stop_fill_price', 'price', 'avg_price', 'average_price', 'execution_price',
-    'fill_price', 'avg_fill_price', 'average_fill_price', 'close_price', 'filled_avg_price',
+    'sell_price', 'exit_price', 'stop_fill_price', 'price', 'unit_price', 'trade_price', 'avg_price',
+    'average_price', 'execution_price', 'executed_price', 'fill_price', 'avg_fill_price', 'average_fill_price',
+    'close_price', 'filled_avg_price', 'net_price',
   ])
   price = price === null ? null : Math.abs(price)
 
@@ -143,19 +186,22 @@ function normalizeExit(raw: any, index: number, source: string): ExitEvidenceRow
 
   const description = pickText(objects, [
     'description', 'exit_reason', 'sell_reason', 'reason', 'stop_reason', 'dismiss_reason', 'strategy',
-    'classification', 'memo', 'note', 'notes', 'order_description',
+    'classification', 'memo', 'note', 'notes', 'order_description', 'activity_description', 'transaction_description',
   ])
-  const action = pickText(objects, ['action', 'transaction_type', 'order_type', 'type', 'side', 'instruction', 'event_type'])
+  const action = pickText(objects, [
+    'action', 'transaction_type', 'activity_type', 'order_type', 'type', 'side', 'instruction', 'event_type',
+  ])
   const externalId = pickText(objects, [
-    'transaction_id', 'execution_id', 'fill_id', 'trade_id', 'order_id', 'broker_order_id', 'activity_id',
-    'event_id', 'matched_event_id', 'dedupe_key', 'trade_key',
+    'transaction_id', 'transactionId', 'execution_id', 'executionId', 'fill_id', 'fillId', 'trade_id', 'tradeId',
+    'order_id', 'orderId', 'broker_order_id', 'activity_id', 'activityId', 'event_id', 'matched_event_id',
+    'dedupe_key', 'trade_key', 'source_record_id',
   ])
   const tradeDate = isoDay(dateRaw)
-  const tradeTime = isoTime(dateRaw) || pickText(objects, ['trade_time', 'time', 'execution_time'])
+  const tradeTime = isoTime(dateRaw) || pickText(objects, ['trade_time', 'time', 'execution_time', 'fill_time'])
   const eventKey = text(
     raw?.event_key,
-    externalId ? `external:${externalId}` : '',
-    `${source}:${symbol}:${tradeDate}:${account}:${proceeds ?? quantity ?? price ?? index}`,
+    externalId ? `external:${source}:${externalId}` : '',
+    `${source}:${symbol}:${tradeDate}:${accountIdentity(account)}:${proceeds ?? quantity ?? price ?? index}`,
   )
   const fieldSources: Partial<Record<ExitEvidenceField, string>> = {}
   withSource(fieldSources, 'account', account, source)
@@ -198,10 +244,15 @@ function nearlyEqual(a: number | null, b: number | null, relativeTolerance = 0.0
   return Math.abs(a - b) / scale <= relativeTolerance
 }
 
+function accountsCompatible(a: ExitEvidenceRow, b: ExitEvidenceRow): boolean {
+  if (!a.account || !b.account) return true
+  return accountIdentity(a.account) === accountIdentity(b.account)
+}
+
 function compatible(a: ExitEvidenceRow, b: ExitEvidenceRow): boolean {
   if (a.symbol !== b.symbol) return false
   if (a.trade_date && b.trade_date && a.trade_date !== b.trade_date) return false
-  if (a.account && b.account && a.account !== b.account) return false
+  if (!accountsCompatible(a, b)) return false
   if (a.external_id && b.external_id) return a.external_id === b.external_id
   const quantityA = finite(a.quantity); const quantityB = finite(b.quantity)
   const priceA = finite(a.price); const priceB = finite(b.price)
@@ -220,8 +271,7 @@ function lineage(...values: Array<string | null | undefined>): string {
 
 function mergeFieldSources(preferred: ExitEvidenceRow, fallback: ExitEvidenceRow, merged: ExitEvidenceRow): Partial<Record<ExitEvidenceField, string>> {
   const result: Partial<Record<ExitEvidenceField, string>> = {}
-  const fields: ExitEvidenceField[] = ['account', 'trade_date', 'trade_time', 'quantity', 'price', 'proceeds_usd', 'action', 'description']
-  for (const field of fields) {
+  for (const field of EVIDENCE_FIELDS) {
     const preferredValue = preferred[field]
     const fallbackValue = fallback[field]
     if (preferredValue !== null && preferredValue !== undefined && preferredValue !== '') result[field] = preferred.field_sources?.[field] || preferred.import_source || 'preferred source'
@@ -233,12 +283,12 @@ function mergeFieldSources(preferred: ExitEvidenceRow, fallback: ExitEvidenceRow
 
 function evidenceGaps(row: ExitEvidenceRow): string[] {
   const gaps: string[] = []
-  if (!row.account) gaps.push('account unavailable')
-  if (!row.trade_date) gaps.push('exit date unavailable')
-  if (finite(row.quantity) === null) gaps.push('shares unavailable from broker/journal sources')
-  if (finite(row.price) === null) gaps.push('execution price unavailable')
-  if (finite(row.proceeds_usd) === null) gaps.push('proceeds unavailable')
-  if (!row.description) gaps.push('exit reason unavailable')
+  if (!row.account) gaps.push('account unavailable from all reporting exit sources')
+  if (!row.trade_date) gaps.push('exit date unavailable from all reporting exit sources')
+  if (finite(row.quantity) === null) gaps.push('shares unavailable: no event source or compatible ticker aggregate supplied quantity')
+  if (finite(row.price) === null) gaps.push('execution price unavailable: neither source price nor proceeds ÷ shares can be proved')
+  if (finite(row.proceeds_usd) === null) gaps.push('proceeds unavailable: neither source cash nor shares × price can be proved')
+  if (!row.description) gaps.push('exit reason unavailable from broker/journal descriptions')
   return gaps
 }
 
@@ -285,7 +335,7 @@ function mergeCandidates(candidates: Candidate[]): ExitEvidenceRow[] {
   const clusters: Candidate[] = []
   for (const candidate of candidates.sort((a, b) => b.priority - a.priority)) {
     const exactIndex = candidate.row.external_id
-      ? clusters.findIndex(cluster => cluster.row.external_id === candidate.row.external_id)
+      ? clusters.findIndex(cluster => cluster.row.external_id === candidate.row.external_id && cluster.row.symbol === candidate.row.symbol)
       : -1
     const compatibleIndexes = clusters
       .map((cluster, index) => ({ cluster, index }))
@@ -304,18 +354,30 @@ function mergeCandidates(candidates: Candidate[]): ExitEvidenceRow[] {
 }
 
 function aggregateRow(raw: any, index: number): ExitEvidenceRow | null {
-  const normalized = normalizeExit({
+  return normalizeExit({
     ...raw,
     symbol: raw?.symbol ?? raw?.ticker,
     trade_date: raw?.last_close_date ?? raw?.last_trade_at ?? raw?.last_close ?? raw?.trade_date,
-    quantity: raw?.last_shares ?? raw?.shares_sold ?? raw?.total_shares ?? raw?.quantity,
-    price: raw?.last_sell_price ?? raw?.last_exit_price ?? raw?.average_exit_price ?? raw?.avg_exit,
-    proceeds_usd: raw?.last_proceeds ?? raw?.proceeds_usd ?? raw?.total_proceeds,
+    quantity: raw?.last_shares ?? raw?.last_quantity ?? raw?.shares_sold ?? raw?.total_shares ?? raw?.quantity,
+    price: raw?.last_sell_price ?? raw?.last_exit_price ?? raw?.average_exit_price ?? raw?.avg_exit ?? raw?.last_price,
+    proceeds_usd: raw?.last_proceeds ?? raw?.proceeds_usd ?? raw?.total_proceeds ?? raw?.last_amount,
     account: raw?.last_account ?? raw?.account ?? raw?.account_key,
     description: raw?.last_description ?? raw?.description,
     event_key: raw?.last_event_key,
   }, index, 'journal-ticker-aggregate')
-  return normalized
+}
+
+function coverageFor(rows: any[], source: string): ExitFieldCoverage {
+  const coverage = Object.fromEntries(EVIDENCE_FIELDS.map(field => [field, 0])) as ExitFieldCoverage
+  rows.forEach((raw, index) => {
+    const row = normalizeExit(raw, index, source)
+    if (!row) return
+    for (const field of EVIDENCE_FIELDS) {
+      const value = row[field]
+      if (value !== null && value !== undefined && value !== '') coverage[field] += 1
+    }
+  })
+  return coverage
 }
 
 export function useReEntryExitEvidence(days = 365): ReEntryExitEvidence {
@@ -335,7 +397,8 @@ export function useReEntryExitEvidence(days = 365): ReEntryExitEvidence {
   const cachePayload = prefValue(cache.data)
   const cacheRows = recordsFrom(cachePayload, ['rows', 'items', 'events', 'transactions'])
   const journalRows = recordsFrom(journal.data, ['trades', 'rows', 'items', 'events', 'transactions', 'closed_trades']).filter(row => {
-    const day = isoDay(row?.close_date ?? row?.closed_at ?? row?.sold_at ?? row?.trade_date ?? row?.executed_at)
+    const objects = nestedObjects(row)
+    const day = isoDay(pickText(objects, ['close_date', 'closed_at', 'sold_at', 'trade_date', 'executed_at', 'activity_date', 'settlement_date']))
     return !day || day >= from
   })
   const historyRows = recordsFrom(history.data, ['rows', 'items', 'events', 'transactions'])
@@ -361,11 +424,15 @@ export function useReEntryExitEvidence(days = 365): ReEntryExitEvidence {
       const matches = output.map((row, index) => ({ row, index })).filter(item => compatible(item.row, aggregate))
       if (matches.length === 1) output[matches[0].index] = mergeRow(matches[0].row, aggregate)
       else if (matches.length === 0) {
-        const sameSymbolDay = output.filter(row => row.symbol === aggregate.symbol && (!aggregate.trade_date || row.trade_date === aggregate.trade_date))
-        if (sameSymbolDay.length === 1) {
-          const index = output.indexOf(sameSymbolDay[0])
-          output[index] = mergeRow(sameSymbolDay[0], aggregate)
-        } else output.push(aggregate)
+        const sameSymbolDayAccount = output.filter(row =>
+          row.symbol === aggregate.symbol
+          && (!aggregate.trade_date || row.trade_date === aggregate.trade_date)
+          && accountsCompatible(row, aggregate),
+        )
+        if (sameSymbolDayAccount.length === 1) {
+          const index = output.indexOf(sameSymbolDayAccount[0])
+          output[index] = mergeRow(sameSymbolDayAccount[0], aggregate)
+        } else if (!output.some(row => row.symbol === aggregate.symbol)) output.push(aggregate)
       }
     }
 
@@ -382,6 +449,14 @@ export function useReEntryExitEvidence(days = 365): ReEntryExitEvidence {
     { key: 'stops', label: 'Stopped/re-entry watch', rows: stoppedRows.length, available: stoppedRows.length > 0, error: stopped.error },
     { key: 'ticker', label: 'Ticker aggregates', rows: tickerRows.length, available: tickerRows.length > 0, error: byTicker.error },
   ]
+  const sourceFieldCoverage: Record<string, ExitFieldCoverage> = {
+    cache: coverageFor(cacheRows, 'full-fidelity-cache'),
+    journal: coverageFor(journalRows, 'real-closed-trade-journal'),
+    book: coverageFor(bookRows, 'redeploy-book'),
+    history: coverageFor(historyRows, 'redeploy-history'),
+    stops: coverageFor(stoppedRows, 'stops-reentry-watch'),
+    ticker: coverageFor(tickerRows, 'journal-ticker-aggregate'),
+  }
   const errors = sources.map(source => source.error).filter((value): value is string => Boolean(value))
   const loading = [cache, journal, byTicker, history, book, stopped].some(source => source.loading)
   const refreshing = [cache, journal, byTicker, history, book, stopped].some(source => source.refreshing)
@@ -393,8 +468,10 @@ export function useReEntryExitEvidence(days = 365): ReEntryExitEvidence {
     refreshing,
     errors,
     sources,
+    sourceFieldCoverage,
     fullFidelity: cacheRows.length > 0,
     generatedAt: text(cachePayload?.generated_at),
+    contractVersion: REENTRY_EVIDENCE_CONTRACT,
     refetch,
   }
 }
