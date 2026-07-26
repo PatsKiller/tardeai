@@ -204,7 +204,7 @@ validate_target() {
 
 # ------------------------------------------------------------------ SHA gate (all modes)
 require_sha_and_head
-note "exact-RC-SHA gate OK @ $HEAD_SHA"
+note "exact-release-SHA gate OK @ $HEAD_SHA"
 
 # ===================================================================
 # --preflight : NO-CONNECTION validation + redacted plan. Exit 0 iff all pass.
