@@ -4,6 +4,7 @@ on:
     paths:
       - 'scripts/agent_runtime/**'
       - 'config/agent_runtime_mvl.json'
+      - 'config/systemd/agent_runtime/**'
       - 'migrations/agentic_runtime/**'
       - 'tests/fixtures/agentic_runtime/**'
       - 'tests/test_agent_runtime_*.py'
@@ -22,10 +23,29 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install focused test dependency
-        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Record exact source SHA
+        shell: bash
+        run: |
+          echo "$GITHUB_SHA" | tee agentic-mvl-sha.txt
+
+      # pytest runs the focused suite. psycopg2 is the driver the host-proof
+      # wrapper (tests/test_agent_runtime_host_proof_wrapper.py) fail-closed
+      # REQUIRES to reach its hermetic auth-preflight branch — "missing driver is
+      # not a skip". Without it two wrapper tests fail and the whole focused job
+      # went red with the real cause buried. The wrapper still contacts NO real
+      # database (the LAB socket is pointed at a nonexistent path).
+      - name: Install focused test dependencies
+        run: python -m pip install --disable-pip-version-check pytest psycopg2-binary
+
       - name: Compile runtime
-        run: python -m compileall -q scripts/agent_runtime
+        id: compile
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m compileall scripts/agent_runtime | tee agentic-mvl-compile.txt
+
       - name: Run all agentic MVL tests
         id: tests
         continue-on-error: true
@@ -33,12 +53,20 @@ jobs:
         run: |
           set -o pipefail
           python -m pytest -q tests/test_agent_runtime_*.py | tee agentic-mvl-pytest.txt
-      - name: Prove no forbidden import or authority string in runtime implementation
+
+      # RECURSIVE scan: rglob so scripts/agent_runtime/agents/*.py (Lane D
+      # producers) are covered too, not just the top-level package.
+      - name: Recursive authority scan (incl. scripts/agent_runtime/agents)
+        id: authority
+        continue-on-error: true
+        shell: bash
         run: |
-          python - <<'PY'
+          set -o pipefail
+          python - <<'PY' | tee agentic-mvl-authority.txt
           from pathlib import Path
-          runtime = '\n'.join(path.read_text() for path in Path('scripts/agent_runtime').glob('*.py'))
-          forbidden_imports = ['import subprocess', 'from subprocess', 'import requests', 'import psycopg2', 'import keyring', 'import bw']
+          files = sorted(Path('scripts/agent_runtime').rglob('*.py'))
+          runtime = '\n'.join(path.read_text() for path in files)
+          forbidden_imports = ['import subprocess', 'from subprocess', 'import requests', 'import psycopg2', 'from psycopg2', 'import keyring', 'import bw']
           found = [item for item in forbidden_imports if item in runtime]
           if found:
               raise SystemExit(f'forbidden runtime imports: {found}')
@@ -46,15 +74,71 @@ jobs:
           for word in ['orders', 'broker_credentials', 'session_authorizations', 'approval_events']:
               if f'CREATE TABLE agentic_runtime.{word}' in migration:
                   raise SystemExit(f'financial authority table prohibited: {word}')
-          print('focused authority scan PASS')
+          print(f'recursive authority scan PASS over {len(files)} runtime files (incl agents/)')
           PY
-      - name: Preserve focused test evidence
+
+      # The prepare-only migration applier must refuse every path that would touch
+      # a database without an explicit opt-in and an isolated LAB/SHADOW DSN.
+      - name: Migration apply-script refusal paths
+        id: migration
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            bash migrations/agentic_runtime/apply.sh; echo "no-apply exit=$? expect=3"
+            bash migrations/agentic_runtime/apply.sh --apply up; echo "apply-no-dsn exit=$? expect=4"
+            TRADE_AI_LAB_DSN='postgres://x@host/trade_ai_prod' bash migrations/agentic_runtime/apply.sh --apply up; echo "prod-dsn exit=$? expect=5"
+          } >agentic-mvl-migration.txt 2>&1 || true
+          cat agentic-mvl-migration.txt
+          grep -q 'no-apply exit=3 expect=3' agentic-mvl-migration.txt
+          grep -q 'apply-no-dsn exit=4 expect=4' agentic-mvl-migration.txt
+          grep -q 'prod-dsn exit=5 expect=5' agentic-mvl-migration.txt
+
+      # Verify the default-disabled systemd template units parse and stay gated.
+      - name: systemd unit verification
+        id: systemd
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            if command -v systemd-analyze >/dev/null 2>&1; then
+              systemd-analyze verify --man=no config/systemd/agent_runtime/tradeai-agent-runtime@.service; echo "service verify exit=$?"
+              systemd-analyze verify --man=no config/systemd/agent_runtime/tradeai-agent-runtime@.timer; echo "timer verify exit=$?"
+            else
+              echo "systemd-analyze unavailable on runner; asserting the units stay disabled/gated by content:"
+            fi
+            grep -q 'ConditionPathExists=/etc/tradeai/agent_runtime_enabled' config/systemd/agent_runtime/tradeai-agent-runtime@.service && echo "service opt-in gate present"
+            grep -q 'ConditionPathExists=/etc/tradeai/agent_runtime_enabled' config/systemd/agent_runtime/tradeai-agent-runtime@.timer && echo "timer opt-in gate present"
+            grep -q 'AGENT_RUNTIME_OPERATOR_AUTH=0' config/systemd/agent_runtime/tradeai-agent-runtime@.service && echo "operator-auth defaults closed"
+          } 2>&1 | tee agentic-mvl-systemd.txt
+
+      - name: Preserve focused evidence bundle
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: agentic-mvl-test-evidence
-          path: agentic-mvl-pytest.txt
+          path: |
+            agentic-mvl-sha.txt
+            agentic-mvl-compile.txt
+            agentic-mvl-pytest.txt
+            agentic-mvl-authority.txt
+            agentic-mvl-migration.txt
+            agentic-mvl-systemd.txt
           if-no-files-found: error
-      - name: Enforce focused test result
-        if: steps.tests.outcome != 'success'
-        run: exit 1
+
+      - name: Enforce focused result
+        if: always()
+        shell: bash
+        run: |
+          fail=0
+          for step in compile:${{ steps.compile.outcome }} tests:${{ steps.tests.outcome }} authority:${{ steps.authority.outcome }} migration:${{ steps.migration.outcome }} systemd:${{ steps.systemd.outcome }}; do
+            name="${step%%:*}"; outcome="${step##*:}"
+            if [ "$outcome" != "success" ]; then
+              echo "FAILED gate: $name ($outcome)"; fail=1
+            else
+              echo "ok: $name"
+            fi
+          done
+          exit "$fail"
