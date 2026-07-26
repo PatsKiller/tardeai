@@ -23,10 +23,11 @@ KILL_FILE = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 MAX_RUNTIME = 600  # seconds
 DAILY_ROW_CAP = 10
 DAILY_MODEL_CAP = 15
-# Model is configurable for cadence: gemma3:4b (~3x faster) keeps continuous ticks under the 15-min cron interval.
-LOOP_MODEL = os.environ.get("HERMES_LOOP_MODEL", "gemma3:4b")
-# Ollama chat timeout — keep below MAX_RUNTIME budget for multi-ticker runs.
-OLLAMA_TIMEOUT = int(os.environ.get("HERMES_LOOP_OLLAMA_TIMEOUT", "120"))
+# Default gemma3:12b — gemma3:4b is fast but routinely fails the summary/evidence quality gate
+# (MISSING summary, evidence_json < 2 keys). Override: HERMES_LOOP_MODEL=gemma3:4b for speed tests.
+LOOP_MODEL = os.environ.get("HERMES_LOOP_MODEL", "gemma3:12b")
+# 12b needs more wall time than 4b; keep under MAX_RUNTIME for max-rows=2.
+OLLAMA_TIMEOUT = int(os.environ.get("HERMES_LOOP_OLLAMA_TIMEOUT", "180"))
 
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
@@ -118,7 +119,6 @@ def get_ticker_targets(conn, max_rows=3, drain_closed_trades=False):
     (drain mode is off by default). Canonical: targets carry trade_instance_id (not legacy paper ids).
     """
     cur = conn.cursor()
-    # Drain mode = closed-trade reflection only (held/proposals skipped this run). Normal = held-first.
     targets_block = (
         "SELECT symbol, 0 AS pri, 'closed_trade_needing_reflection:'||source_system AS src, ti_id "
         "FROM needs_reflection"
@@ -141,7 +141,6 @@ def get_ticker_targets(conn, max_rows=3, drain_closed_trades=False):
             SELECT DISTINCT symbol FROM hermes_research_intelligence WHERE symbol IS NOT NULL
         ),
         held AS (
-            -- only real equity/fund tickers (1-5 letters); excludes Schwab CUSIPs (bonds/securities)
             SELECT symbol FROM trades       WHERE lower(status)='open' AND symbol ~ '^[A-Z]{1,5}$'
             UNION
             SELECT symbol FROM paper_trades WHERE lower(status)='open' AND symbol ~ '^[A-Z]{1,5}$'
@@ -151,11 +150,6 @@ def get_ticker_targets(conn, max_rows=3, drain_closed_trades=False):
             WHERE symbol ~ '^[A-Z]{1,5}$'
               AND status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST','MODIFIED')
         ),
-        -- closed PAPER trades with NO Hermes reflection linked yet → per-trade reflection (Step 7).
-        -- CANONICAL closed-trade reflection (all-trades, broker/account-neutral): any closed
-        -- trade_instance (paper OR imported Schwab/Fidelity) with NO Hermes reflection linked yet.
-        -- Keyed on trade-linkage (not symbol freshness) so it bypasses researched_recent and carries
-        -- the exact trade_instance id (paper is just one source_system).
         needs_reflection AS (
             SELECT symbol, id AS ti_id, source_system FROM trade_instances ti
             WHERE lower(coalesce(status,''))='closed' AND symbol ~ '^[A-Z]{1,5}$'
@@ -171,13 +165,11 @@ def get_ticker_targets(conn, max_rows=3, drain_closed_trades=False):
         SELECT symbol, src, ti_id FROM deduped ORDER BY pri, symbol LIMIT %s
     """).replace("__TARGETS_BLOCK__", targets_block), (max_rows,))
     rows = cur.fetchall()
-    # Resolve canonical trade_instance_id + legacy related_trade_id (paper only). Imported Schwab/Fidelity
-    # trades link by trade_instance_id (related_trade_id stays NULL — never fabricated).
     targets = []
     for symbol, src, ti_id in rows:
         rtid = rpid = None
         tiid = ti_id
-        if ti_id is not None:                 # closed_trade_needing_reflection → canonical instance
+        if ti_id is not None:
             cur.execute("SELECT source_table, source_trade_id FROM trade_instances WHERE id=%s", (ti_id,))
             r = cur.fetchone()
             if r and r[0] == 'paper_trades':
@@ -271,7 +263,6 @@ def run_ticker_challenger(args):
         sym = target["symbol"]
         print(f"\n  [{i+1}/{len(targets)}] {sym} ({target.get('src','target')})")
 
-        # Per-ticker isolation: one timeout/SSL death must not abort remaining targets.
         try:
             conn = ensure_live_conn(conn)
             try:
@@ -291,7 +282,6 @@ def run_ticker_challenger(args):
                 phase="3"
             )
 
-            # Call Ollama (long wait — DB may go idle; we reconnect before next ticker)
             try:
                 payload = json.dumps({
                     "model": LOOP_MODEL,
@@ -309,7 +299,6 @@ def run_ticker_challenger(args):
             except Exception as e:
                 print(f"    FAILED: {e}")
                 results.append({"symbol": sym, "status": "failed", "error": str(e)[:200]})
-                # Proactively drop idle connection after a long/failed model wait
                 try:
                     conn.close()
                 except Exception:
@@ -317,19 +306,12 @@ def run_ticker_challenger(args):
                 conn = None
                 continue
 
-            # Normalize. hermes_agent_name + research_type are DETERMINISTIC metadata (the same constants
-            # passed to build_research_prompt) — stamp them from code, never rely on the LLM to echo them
-            # (gemma3 intermittently omits them -> the sole cause of "MISSING required column" rejections).
             output["hermes_agent_name"] = "ticker_research_agent"
             output["research_type"] = "ticker_thesis_challenge"
-            # topic is deterministic too (built for the prompt) -> stamp from code. summary is LLM CONTENT and
-            # is intentionally NOT defaulted: an empty/sparse model output stays a legitimate reject (we never
-            # fabricate review content); the drain loop re-attempts such symbols on a later pass.
             output.setdefault("topic", f"{sym} autonomous thesis challenge — {target.get('trade_count', 0)} trades")
             output.setdefault("confidence_score", 0.5)
             output.setdefault("freshness_date", date.today().isoformat())
             output.setdefault("model_used", LOOP_MODEL)
-            # ── Lineage: link reflection to its canonical trade_instance (all-trades) + legacy paper id ──
             output["symbol"] = sym
             if target.get("trade_instance_id") is not None:
                 output["trade_instance_id"] = target["trade_instance_id"]
@@ -347,10 +329,7 @@ def run_ticker_challenger(args):
             ej["run_id"] = run_id
             output["evidence_json"] = ej
 
-            # Validate
             ok, errors = validate_payload(output, "hermes_research_intelligence")
-            # BOUNDED summary recovery: ONLY when the strict failure is missing summary, try to recover a
-            # specific, substantive summary from alternate output shapes (no fabrication; quality-gated).
             if not ok and any("MISSING required column: summary" in e for e in errors) and not output.get("summary"):
                 try:
                     from hermes_output_recovery import recover_summary_from_output
@@ -374,7 +353,6 @@ def run_ticker_challenger(args):
                 results.append({"symbol": sym, "status": "rejected", "errors": errors})
                 continue
 
-            # Save payload
             pay_path = outdir / f"hermes_{run_id}_{sym}_payload.json"
             with open(pay_path, "w") as f:
                 json.dump(output, f, indent=2)
@@ -401,7 +379,6 @@ def run_ticker_challenger(args):
                 finally:
                     iconn.close()
 
-            # After a successful long model call, prefer a fresh conn for the next ticker
             try:
                 if conn is not None:
                     conn.close()
@@ -455,7 +432,6 @@ def main():
         validated = sum(1 for r in results if r["status"] in ("validated", "applied"))
         failed = sum(1 for r in results if r["status"] not in ("validated", "applied"))
         print(f"\nDone in {elapsed:.1f}s: {validated} validated, {failed} failed/rejected")
-        # Non-zero only if every target failed with no validated/applied — timer stays green on partial success
         if results and validated == 0 and failed == len(results):
             sys.exit(1)
 
