@@ -5,7 +5,8 @@ candidates — **and, with explicit per-step operator authorization, MERGES them
 **Active Trader out of scope and untouched.** Nothing deployed/migrated/scheduled/activated/backfilled.
 
 **FINAL STATE (2026-07-26): all lanes merged.** Base `main` `20a24027` → **`fc86150f`** via five
-authorized merges (#184 → #163 → #182 → #181 → #180; RC #183 closed as integration proof, not merged). Post-merge
+authorized merges (#184 → #163 → #182 → #181 → #180; RC #183 closed as integration proof, not merged).
+`main` has since advanced to **`4dd555e8`** (current) — see "Post-closeout operator boundary" below. Post-merge
 combined validator green; `main` CI green. See "Merge execution" below.
 
 ## CI status — RESOLVED (updated 2026-07-26, post-billing)
@@ -44,7 +45,8 @@ Each lane's evidence comment is posted on its PR. No substantive test was weaken
 | #183 RC | `46bad45c` | agentic ✅ + watch ✅ + defense ✅ + options/re-entry ✅ | 30213036351/366/371 |
 
 `release-readiness` is green across the board: #184 fixed the pre-existing `main` false positive, and
-each lane inherited it as `main` advanced. All five delivery PRs are **merged**; `main` = `fc86150f`.
+each lane inherited it as `main` advanced. All five delivery PRs are **merged** (delivery-complete at
+`fc86150f`; current `main` `4dd555e8`).
 
 ---
 
@@ -130,6 +132,23 @@ gate · run any packet `--execute`/`--apply`/`--run-shadow` · switch the Defens
 
 ---
 
+## Post-closeout — operator boundary (2026-07-26)
+After the five-lane delivery closeout (`fc86150f`), work continued at the operator/deployment boundary.
+`main` advanced `fc86150f` → **`4dd555e8`** (current) through:
+
+| PR | Merge | What | Owner |
+|---|---|---|---|
+| **#185** | `000a1bff` | Landed the five prepare-only operator packets into `main` (they were only on the closed RC #183) | this program |
+| #186 / #187 / #188 / #190 | `487b42d8` / `8dd85f86` / `8d90491f` / `73e0d1b4` | Home trust-hardening, Home inbox parity, Hermes loop DB-resilience + 12b model | **other sessions** (grok/hermes) — not this program |
+| **#189** | `4dd555e8` | Corrected Packet A1: true no-connection `--preflight` (dirty-tree reject; shared validator reused by `--preflight`/`--execute`/`--down`; no psql/driver/socket/migration on preflight; no DSN/credential output). 32/32 focused tests; independently verified zero secret-leak + zero connection | this program |
+
+**A1 readiness:** the packet is in `main` and preflight-correct. **Not run.** Next gates (operator): set
+`LAB_DSN` + `LAB_DSN_ALLOWLIST` in the host env (isolated LAB, non-`trade_ai`/non-5432/no-prod-marker) →
+run `--preflight` against the live `main` SHA (dynamic gate) → separate explicit A1-apply authorization.
+No packet executed; no DB/role/migration/DSN provisioned.
+
+---
+
 ## Final authority markers
 ```
 production_database_write|NONE
@@ -139,8 +158,8 @@ provider_activation|NONE
 valuation_backfill_execution|NONE
 broker_or_order_action|NONE
 approval_or_2fa_action|NONE
-main_merge_action|5 PRs merged with per-step operator authorization (#184,#163,#182,#181,#180; #183 closed)
+main_merge_action|7 PRs merged with per-step operator authorization (#184,#163,#182,#181,#180 delivery; #185,#189 operator-boundary infra; #183 closed)
 production_deployment_action|NONE
 agent_operational_promotion|NONE
-final_status|PASS_NON_ACTIVE_TRADER_RELEASE_MERGED — main=fc86150f, post-merge validator green
+final_status|PASS_NON_ACTIVE_TRADER_RELEASE_MERGED — delivery main=fc86150f (validator green); current main=4dd555e8; A1 preflight-ready, not run
 ```
