@@ -1,0 +1,48 @@
+# tradeai-agent-runtime@.service  — DEFAULT-DISABLED / PREPARE-ONLY
+#
+# Templated, one instance per agent queue (e.g. tradeai-agent-runtime@sentinel).
+# This unit is NOT installed, NOT enabled, and NOT started by this change. It is a
+# reviewed design artifact. A deterministic timer is the only thing permitted to
+# start it; the agent can never schedule itself.
+#
+# Hard safety gates layered here:
+#   * ConditionPathExists gates the whole unit behind an explicit operator opt-in
+#     file that this change does NOT create.
+#   * Environment requires AGENT_RUNTIME_OPERATOR_AUTH=1; the runner fails closed
+#     without it and without a wired queue backend.
+#   * The service is Type=oneshot and bounded (--once): it processes at most one
+#     batch and exits. It does not stay resident and cannot self-reschedule.
+#
+# Enabling requires a separate, explicit operator decision AND the maturity gates
+# for %i to be measured and accepted. See README.md in this directory.
+
+[Unit]
+Description=Trade AI reflective agent bounded runner (SHADOW, prepare-only) for %i
+Documentation=file:%h/config/systemd/agent_runtime/README.md
+ConditionPathExists=/etc/tradeai/agent_runtime_enabled
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# NON-agentic, deterministic invocation. Replace WorkingDirectory/paths at install time.
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=AGENT_RUNTIME_OPERATOR_AUTH=0
+# A real queue backend module must be supplied by the operator before dispatch runs.
+# Environment=AGENT_RUNTIME_QUEUE_MODULE=<operator-supplied>
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent %i --once --max-batch 8
+# Bounded resource envelope; the runner also enforces its own per-agent deadline/budget.
+TimeoutStartSec=900
+Nice=10
+# Least privilege / no ambient authority.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+# No [Install] auto-wiring beyond being started by its paired timer.
