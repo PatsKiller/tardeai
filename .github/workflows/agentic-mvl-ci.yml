@@ -20,21 +20,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Lane A: rich source provenance so every evidence bundle can be tied back
+      # to the exact checked-out commit (also satisfies the "echo SHA" contract).
+      - name: Record source provenance
+        shell: bash
+        run: |
+          mkdir -p ci-evidence
+          {
+            echo "workflow=agentic-mvl-ci"
+            echo "run_id=${{ github.run_id }}"
+            echo "run_attempt=${{ github.run_attempt }}"
+            echo "event=${{ github.event_name }}"
+            echo "ref=${{ github.ref }}"
+            echo "github_sha=${{ github.sha }}"
+            echo "pr_head_sha=${{ github.event.pull_request.head.sha }}"
+            echo "checked_out_sha=$(git rev-parse HEAD)"
+          } | tee ci-evidence/provenance.txt
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Record exact source SHA
-        shell: bash
-        run: |
-          echo "$GITHUB_SHA" | tee agentic-mvl-sha.txt
-
-      # pytest runs the focused suite. psycopg2 is the driver the host-proof
-      # wrapper (tests/test_agent_runtime_host_proof_wrapper.py) fail-closed
-      # REQUIRES to reach its hermetic auth-preflight branch — "missing driver is
-      # not a skip". Without it two wrapper tests fail and the whole focused job
-      # went red with the real cause buried. The wrapper still contacts NO real
-      # database (the LAB socket is pointed at a nonexistent path).
+      # Lane D: psycopg2-binary is the driver the host-proof wrapper
+      # (tests/test_agent_runtime_host_proof_wrapper.py) fail-closed REQUIRES to
+      # reach its hermetic auth-preflight branch — "missing driver is not a skip".
+      # The wrapper still contacts NO real database (LAB socket points nowhere).
       - name: Install focused test dependencies
         run: python -m pip install --disable-pip-version-check pytest psycopg2-binary
 
@@ -44,7 +55,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -m compileall scripts/agent_runtime | tee agentic-mvl-compile.txt
+          python -m compileall scripts/agent_runtime 2>&1 | tee ci-evidence/compile.txt
 
       - name: Run all agentic MVL tests
         id: tests
@@ -52,17 +63,17 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -m pytest -q tests/test_agent_runtime_*.py | tee agentic-mvl-pytest.txt
+          python -m pytest -q tests/test_agent_runtime_*.py 2>&1 | tee ci-evidence/pytest.txt
 
-      # RECURSIVE scan: rglob so scripts/agent_runtime/agents/*.py (Lane D
-      # producers) are covered too, not just the top-level package.
+      # Lane D: RECURSIVE scan via rglob so scripts/agent_runtime/agents/*.py
+      # (Lane D shadow producers) are covered too, not just the top-level package.
       - name: Recursive authority scan (incl. scripts/agent_runtime/agents)
         id: authority
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          python - <<'PY' | tee agentic-mvl-authority.txt
+          python - <<'PY' 2>&1 | tee ci-evidence/authority-scan.txt
           from pathlib import Path
           files = sorted(Path('scripts/agent_runtime').rglob('*.py'))
           runtime = '\n'.join(path.read_text() for path in files)
@@ -77,8 +88,9 @@ jobs:
           print(f'recursive authority scan PASS over {len(files)} runtime files (incl agents/)')
           PY
 
-      # The prepare-only migration applier must refuse every path that would touch
-      # a database without an explicit opt-in and an isolated LAB/SHADOW DSN.
+      # Lane D: the prepare-only migration applier must refuse every path that
+      # would touch a database without an explicit opt-in and an isolated
+      # LAB/SHADOW DSN.
       - name: Migration apply-script refusal paths
         id: migration
         continue-on-error: true
@@ -89,13 +101,13 @@ jobs:
             bash migrations/agentic_runtime/apply.sh; echo "no-apply exit=$? expect=3"
             bash migrations/agentic_runtime/apply.sh --apply up; echo "apply-no-dsn exit=$? expect=4"
             TRADE_AI_LAB_DSN='postgres://x@host/trade_ai_prod' bash migrations/agentic_runtime/apply.sh --apply up; echo "prod-dsn exit=$? expect=5"
-          } >agentic-mvl-migration.txt 2>&1 || true
-          cat agentic-mvl-migration.txt
-          grep -q 'no-apply exit=3 expect=3' agentic-mvl-migration.txt
-          grep -q 'apply-no-dsn exit=4 expect=4' agentic-mvl-migration.txt
-          grep -q 'prod-dsn exit=5 expect=5' agentic-mvl-migration.txt
+          } >ci-evidence/migration.txt 2>&1 || true
+          cat ci-evidence/migration.txt
+          grep -q 'no-apply exit=3 expect=3' ci-evidence/migration.txt
+          grep -q 'apply-no-dsn exit=4 expect=4' ci-evidence/migration.txt
+          grep -q 'prod-dsn exit=5 expect=5' ci-evidence/migration.txt
 
-      # Verify the default-disabled systemd template units parse and stay gated.
+      # Lane D: verify the default-disabled systemd template units parse and stay gated.
       - name: systemd unit verification
         id: systemd
         continue-on-error: true
@@ -112,20 +124,14 @@ jobs:
             grep -q 'ConditionPathExists=/etc/tradeai/agent_runtime_enabled' config/systemd/agent_runtime/tradeai-agent-runtime@.service && echo "service opt-in gate present"
             grep -q 'ConditionPathExists=/etc/tradeai/agent_runtime_enabled' config/systemd/agent_runtime/tradeai-agent-runtime@.timer && echo "timer opt-in gate present"
             grep -q 'AGENT_RUNTIME_OPERATOR_AUTH=0' config/systemd/agent_runtime/tradeai-agent-runtime@.service && echo "operator-auth defaults closed"
-          } 2>&1 | tee agentic-mvl-systemd.txt
+          } 2>&1 | tee ci-evidence/systemd.txt
 
       - name: Preserve focused evidence bundle
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: agentic-mvl-test-evidence
-          path: |
-            agentic-mvl-sha.txt
-            agentic-mvl-compile.txt
-            agentic-mvl-pytest.txt
-            agentic-mvl-authority.txt
-            agentic-mvl-migration.txt
-            agentic-mvl-systemd.txt
+          path: ci-evidence/
           if-no-files-found: error
 
       - name: Enforce focused result

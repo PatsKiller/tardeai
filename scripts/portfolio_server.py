@@ -711,6 +711,64 @@ def json_response(handler, status: int, data: dict) -> None:
         pass  # client gone — do not escalate to 500 handler
 
 
+_AGENT_RUNTIME_READ_PREFIX = "/api/v3/agent-runtime"
+
+
+def _is_agent_runtime_read_path(path: str) -> bool:
+    return path == _AGENT_RUNTIME_READ_PREFIX or path.startswith(_AGENT_RUNTIME_READ_PREFIX + "/")
+
+
+def _agent_runtime_read_handle(method: str, path: str, raw_query):
+    """Delegate to the read-only agent-runtime boot module.
+
+    Returns ``(status, body)`` for any agent-runtime read path, or None otherwise.
+    Fails closed to an honest zero-authority 503 so a misconfigured reader can
+    never crash the server or leak internals.
+    """
+    try:
+        _scripts_dir = str(PROJECT_ROOT / "scripts")
+        if _scripts_dir not in sys.path:
+            sys.path.insert(0, _scripts_dir)
+        import agent_runtime_read_boot as _ar_boot
+        query = {}
+        if raw_query:
+            query = {k: (v[0] if isinstance(v, list) and len(v) == 1 else v) for k, v in raw_query.items()}
+        return _ar_boot.handle(method, path, query)
+    except Exception:
+        # Honest zero-authority 503; never surface an exception to the client.
+        return 503, {
+            "contract": "agent-runtime-command-center-read-api-v1",
+            "read_only": True,
+            "kind": "not_connected",
+            "data": None,
+            "authority": {
+                "mutation": False, "provider_call": False, "service_control": False,
+                "schedule_change": False, "financial_action": False,
+            },
+            "detail": "agent-runtime read API is unavailable",
+        }
+
+
+def _send_agent_runtime_json(handler, status: int, data: dict) -> None:
+    """Dedicated emitter for the agent-runtime read surface.
+
+    Same-origin only: it deliberately does NOT send a permissive
+    Access-Control-Allow-Origin header (unlike json_response), and marks the
+    payload no-store so read snapshots are never cached.
+    """
+    body = json.dumps(data, default=str, allow_nan=False).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Connection", "close")
+    handler.end_headers()
+    try:
+        handler.wfile.write(body)
+    except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):
+        pass
+
+
 def _content_type_for_path(path: Path) -> str:
     """MIME type for static downloads — PDF/DOCX must not default to text/html."""
     import mimetypes
@@ -1348,6 +1406,32 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
+    def _reject_non_get_agent_runtime(self):
+        """Non-GET methods on the read-only agent-runtime surface -> 405 (never a mutation)."""
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        if _is_agent_runtime_read_path(path):
+            _ar = _agent_runtime_read_handle(self.command, path, None)
+            if _ar is not None:
+                _send_agent_runtime_json(self, _ar[0], _ar[1])
+                return True
+        return False
+
+    def do_PUT(self):
+        if self._reject_non_get_agent_runtime():
+            return
+        self.send_error(405, "Method Not Allowed")
+
+    def do_PATCH(self):
+        if self._reject_non_get_agent_runtime():
+            return
+        self.send_error(405, "Method Not Allowed")
+
+    def do_DELETE(self):
+        if self._reject_non_get_agent_runtime():
+            return
+        self.send_error(405, "Method Not Allowed")
+
     def do_GET(self):
         # WS-1 Path B: don't start compute for a client that already hung up
         # (poll storms abort + retry; the aborted request must cost ~0)
@@ -1370,6 +1454,15 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+
+        # Read-only agent-runtime Command Center surface (GET only).
+        # DEFAULT DISABLED behind AGENT_RUNTIME_READ_API; returns the honest
+        # zero-authority 503 envelope whenever the reader is not connected.
+        if _is_agent_runtime_read_path(path):
+            _ar = _agent_runtime_read_handle("GET", path, parse_qs(parsed.query))
+            if _ar is not None:
+                _send_agent_runtime_json(self, _ar[0], _ar[1])
+                return
 
         # v2 API dispatch
         if path.startswith("/api/v2/"):
@@ -1823,6 +1916,14 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
         parsed = urlparse(self.path)
         path = parsed.path
+
+        # Agent-runtime read surface is GET-only: any POST here is 405, never a write.
+        _ar_path = path.rstrip("/") or "/"
+        if _is_agent_runtime_read_path(_ar_path):
+            _ar = _agent_runtime_read_handle("POST", _ar_path, None)
+            if _ar is not None:
+                _send_agent_runtime_json(self, _ar[0], _ar[1])
+                return
 
         # Read body
         length = int(self.headers.get("Content-Length", 0))

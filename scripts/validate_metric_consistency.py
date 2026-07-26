@@ -111,6 +111,12 @@ def scan_ambiguous_labels(paths: list[Path]) -> list[dict]:
         except Exception:
             continue
         for i, line in enumerate(txt.splitlines(), start=1):
+            # Skip pure comment lines: this scan targets *visible* KPI labels, not code
+            # comments. A leading //, /*, *, or # is a comment (or block-comment
+            # continuation), never a rendered label — matching keywords there is a false
+            # positive (e.g. MetricStrip.tsx explaining TRADING vs REALIZED in a comment).
+            if line.lstrip().startswith(("//", "/*", "*", "#")):
+                continue
             for rx in AMBIGUOUS_LABELS:
                 if not rx.search(line):
                     continue
