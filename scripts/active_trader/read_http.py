@@ -70,6 +70,7 @@ def dispatch(
                 f"{ACTIVE_TRADER_PREFIX}/status",
                 f"{ACTIVE_TRADER_PREFIX}/sessions",
                 f"{ACTIVE_TRADER_PREFIX}/venue-eligibility?symbol=...",
+                f"{ACTIVE_TRADER_PREFIX}/near-ready",
             ],
         }
 
@@ -87,6 +88,9 @@ def dispatch(
             body = _envelope("bad_request", "symbol query parameter is required", status_hint=400)
             return 400, body
         return 200, api.venue_eligibility(symbol, venue or None)
+    if suffix in ("near-ready", "near_ready"):
+        include_watch = _q1(query, "include_watch").lower() in ("1", "true", "yes")
+        return 200, api.near_ready(include_watch=include_watch)
 
     return 404, _envelope("not_found", f"unknown endpoint: {suffix}")
 

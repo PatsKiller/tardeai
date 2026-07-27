@@ -64,6 +64,57 @@ def capability_snapshot(flags: Stage0Flags | None = None) -> dict[str, Any]:
     }
 
 
+def _load_near_ready_fixtures() -> list[dict[str, Any]]:
+    """Read-only near-ready candidate inputs (fixture at Stage 1b). Prefers a live config
+    file, falls back to the committed example, then to an empty list. Never raises — an
+    empty list yields an honest empty candidate set."""
+    candidates_paths = []
+    env = os.environ.get("ACTIVE_TRADER_NEAR_READY_FIXTURES", "").strip()
+    if env:
+        candidates_paths.append(Path(env).expanduser())
+    candidates_paths.append(_REPO_ROOT / "config" / "active_trader_near_ready_fixtures.json")
+    candidates_paths.append(_REPO_ROOT / "config" / "active_trader_near_ready_fixtures.example.json")
+    for p in candidates_paths:
+        try:
+            if p.is_file():
+                data = json.loads(p.read_text(encoding="utf-8"))
+                rows = data.get("candidates") if isinstance(data, Mapping) else data
+                if isinstance(rows, list):
+                    return [r for r in rows if isinstance(r, Mapping)]
+        except Exception:
+            continue
+    return []
+
+
+def near_ready_candidates(
+    flags: Stage0Flags | None = None,
+    *,
+    include_watch: bool = False,
+    join_venue: bool = True,
+) -> dict[str, Any]:
+    """Build the read-only near-ready candidate set from fixtures (or, later, live scanner/
+    watch payloads). Pure scoring via near_ready.select_near_ready. When join_venue is set,
+    annotates each row with the Stage 1a venue-eligibility *prompt_required* flag only — no
+    routing, no auto-switch, no order authority."""
+    from .near_ready import select_near_ready, CONTRACT as NEAR_READY_CONTRACT
+    raw = _load_near_ready_fixtures()
+    rows = select_near_ready(raw, include_watch=include_watch)
+    if join_venue and rows:
+        from .venue_eligibility import evaluate_eligibility
+        snap = capability_snapshot(flags)
+        for r in rows:
+            # empty venue string -> evaluator's Schwab-primary default (no venue hardcoded)
+            elig = evaluate_eligibility(r.get("symbol") or "", "", snap)
+            r["venue_status"] = elig.status
+            r["venue_prompt_required"] = bool(elig.prompt_required)
+            r["venue_auto_route"] = False
+    return {
+        "contract": NEAR_READY_CONTRACT,
+        "candidates": rows,
+        "source": "fixtures" if raw else "empty",
+    }
+
+
 def venue_inventory(flags: Stage0Flags | None = None) -> dict[str, dict[str, Any]]:
     """Read-only venue matrix. data/execution always false at Stage 0."""
     _ = flags
@@ -158,6 +209,35 @@ class ReadOnlyActiveTraderAPI:
             "capability_source": snap.get("source"),
             "eligibility": result.to_dict(),
             "operator_prompt": operator_prompt_required(result),
+            "authority": {
+                "mutation": False, "order": False, "session_authorize": False,
+                "canary": False, "financial_action": False,
+            },
+        }
+
+    def near_ready(self, *, include_watch: bool = False) -> dict[str, Any]:
+        """Stage 1b read model: candidates below the Trade AI GO bar that show building
+        volume/momentum / pullback-break characteristics. Read-only, list, empty OK.
+
+        The `near_ready_desk` feature flag gates OPERATIONAL promotion (UI/later stages),
+        NOT read visibility — it defaults OFF and is reported as `desk_enabled`. Nothing
+        here routes, fires, or authorizes. Not equivalent to a Trade AI scanner GO."""
+        desk_enabled = bool(self._flags.flags.get("near_ready_desk", False))
+        built = near_ready_candidates(self._flags, include_watch=include_watch)
+        return {
+            "contract": READ_API_CONTRACT,
+            "stage": 1,
+            "sub_stage": "1b",
+            "write": False,
+            "canary": False,
+            "read_only": True,
+            "auto_route": False,
+            "desk_enabled": desk_enabled,
+            "near_ready_contract": built["contract"],
+            "capability_source": built["source"],
+            "count": len(built["candidates"]),
+            "candidates": built["candidates"],
+            "not_a_go": "Near-ready is NOT a Trade AI scanner GO — weaker, building-characteristics read; operator opts in later.",
             "authority": {
                 "mutation": False, "order": False, "session_authorize": False,
                 "canary": False, "financial_action": False,

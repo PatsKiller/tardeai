@@ -1,0 +1,12 @@
+{
+  "schema": "active-trader-near-ready-fixtures-v1",
+  "note": "Stage 1b FIXTURE. Deterministic near-ready candidate inputs so the endpoint + tests exercise the read contract without a live scanner/watch pull. A later stage adapts live scanner/watch payloads (same field names). No credentials, no order authority.",
+  "candidates": [
+    {"symbol": "CRNT", "rvol": 2.8, "change_pct": 3.5, "rsi": 58, "entry_setup": "pullback", "float_m": 18.4, "price": 4.12},
+    {"symbol": "OSS", "rvol": 1.9, "change_pct": -2.1, "rsi": 51, "entry_setup": "pullback", "float_m": 12.1, "price": 6.30},
+    {"symbol": "AIRJ", "rvol": 3.4, "change_pct": 2.2, "rsi": 61, "entry_setup": "bull_flag", "float_m": 9.8, "price": 11.05},
+    {"symbol": "MNOP", "rvol": 3.0, "change_pct": 0.2, "rsi": 30, "entry_setup": "", "float_m": 40.0, "price": 22.4},
+    {"symbol": "WXYZ", "rvol": 1.2, "change_pct": 0.5, "rsi": 41, "entry_setup": "", "float_m": 200.0, "price": 88.0},
+    {"symbol": "DFNS", "rvol": 120.8, "change_pct": 135.0, "rsi": 79, "entry_setup": "breakout", "float_m": 0.7, "price": 10.22, "decision_actionable": true, "verdict": "GO"}
+  ]
+}
