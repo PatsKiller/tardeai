@@ -114,3 +114,39 @@ def test_kb_lesson_idempotent_on_rerun():
     for row in store._store.tables["kb_lessons"].values():
         assert row.get("lesson_version") == 1
         assert row.get("lifecycle") == "CANDIDATE"
+
+
+def test_second_run_preloaded_artifacts_known_bad_and_kb():
+    """Re-run against an InMemory store that already holds first-run artifacts.
+
+    Host failure mode after #216+#217: known_bad=0, kb_*=0, duplicate_run_rate fail.
+    Second run must still process ≥20 known-bad and report ≥20 kb_lessons (CANDIDATE),
+    and must not fail thresholds on intentional idempotent skips.
+    """
+    from agent_runtime.persistence import InMemoryPersistence
+
+    store = InMemoryPersistence()
+    dsn = "postgresql://agentic_runtime_shadow_rw:pw@127.0.0.1:5433/trade_ai_agentic_lab"
+    src = _stub(100, 20)
+
+    report1 = mod.run_shadow(dsn, source=src, store=store, persist=True)
+    assert report1.known_bad_fixtures_processed >= 20
+    assert report1.persisted.get("kb_lessons", 0) >= 20
+    assert len(store._store.tables["agent_artifacts"]) >= 20
+    n_lessons_after_first = len(store._store.tables["kb_lessons"])
+    assert n_lessons_after_first >= 20
+
+    # Second run: same store (preloaded artifacts/reviews/scores/kb), new run envelope
+    report2 = mod.run_shadow(dsn, source=src, store=store, persist=True)
+    assert report2.known_bad_fixtures_processed >= 20
+    assert report2.persisted.get("kb_lessons", 0) >= 20
+    assert len(store._store.tables["kb_lessons"]) >= 20
+    # Lessons remain CANDIDATE; no version explosion
+    for row in store._store.tables["kb_lessons"].values():
+        assert row.get("lifecycle") == "CANDIDATE"
+        assert row.get("lesson_version") == 1
+        assert row.get("created_by") == mod.IRIS_AGENT_ID
+    ok, fails = report2.evaluate()
+    assert ok, fails
+    # Intentional re-run may record skips; must not treat them as hard failures
+    assert report2.failures == 0 or report2.idempotent_skips > 0
