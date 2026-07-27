@@ -265,12 +265,20 @@ def run(args) -> int:
         spread_src = "max_cs_ar" if (cs is not None and ar is not None) else ("corwin_schultz" if cs else "abdi_ranaldo")
         evr = t0.effort_vs_result(bars)
         evr_last = next((x for x in reversed(evr) if x is not None), None)
+        # hypothetical trade reference (NOT an order) — entry = fire price, stop = entry − 1·ATR_1m
+        # (§6 noise-stop floor). Lets M3-S4 backfill measure MFE/MAE and hit_1r. No order is placed.
+        price = a.get("price"); atr1 = a.get("atr_1m")
+        entry_ref = price
+        stop_ref = (price - atr1) if (price is not None and atr1 and atr1 > 0) else None
+        r_dollars = (entry_ref - stop_ref) if (entry_ref is not None and stop_ref is not None) else None
+        stop_dist_bps = (r_dollars / entry_ref * 1e4) if (r_dollars and entry_ref) else None
         row = {
             "symbol": a["_symbol"], "minute": minute, "session_date": day, "as_of": as_of,
             "ign": out["ign"], "lane": out["lane"], "subscores": out["subscores"],
             "rvol_tod": rt, "profile_source": psrc,
             "spread_bps": (se * 1e4) if se is not None else None, "spread_source": spread_src,
             "pressure": t0.bar_pressure(bars), "evr": evr_last, "amihud": t0.amihud_illiq(bars),
+            "entry_ref": entry_ref, "stop_ref": stop_ref, "r_dollars": r_dollars, "stop_dist_bps": stop_dist_bps,
         }
         results.append(row)
 
@@ -284,12 +292,14 @@ def run(args) -> int:
                     """INSERT INTO scalp_ignition_events
                        (symbol, fired_at, session_date, minute_of_session, lane, ign_score,
                         subscores, rvol_tod, profile_source, data_tier, dcf, spread_bps,
-                        spread_source, pressure, evr, amihud_illiq, gate_result, engine_version)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,NULL,'m3-s3')""",
+                        spread_source, pressure, evr, amihud_illiq, entry_ref, stop_ref,
+                        r_dollars, stop_dist_bps, gate_result, engine_version)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,'m3-s3')""",
                     [r["symbol"], r["as_of"], r["session_date"], r["minute"], r["lane"], r["ign"],
                      _json.dumps(r["subscores"]), r["rvol_tod"], r["profile_source"],
                      cfg["data_tiers"]["dcf"]["T0"], r["spread_bps"], r["spread_source"],
-                     r["pressure"], r["evr"], r["amihud"]])
+                     r["pressure"], r["evr"], r["amihud"], r["entry_ref"], r["stop_ref"],
+                     r["r_dollars"], r["stop_dist_bps"]])
                 written += 1
         conn.commit()
 
