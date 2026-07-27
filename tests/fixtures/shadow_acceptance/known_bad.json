@@ -1,0 +1,282 @@
+[
+  {
+    "artifact_id": "shadow-bad-001",
+    "symbol": "BAD01",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 1,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-002",
+    "symbol": "BAD02",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 2,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-003",
+    "symbol": "BAD03",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 3,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-004",
+    "symbol": "BAD04",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 4,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-005",
+    "symbol": "BAD05",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": true,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 5,
+      "defect": "unsupported_or_stale"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-006",
+    "symbol": "BAD06",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 6,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-007",
+    "symbol": "BAD07",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 7,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-008",
+    "symbol": "BAD08",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 8,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-009",
+    "symbol": "BAD09",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 9,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-010",
+    "symbol": "BAD10",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": true,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 10,
+      "defect": "unsupported_or_stale"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-011",
+    "symbol": "BAD11",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 11,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-012",
+    "symbol": "BAD12",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 12,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-013",
+    "symbol": "BAD13",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 13,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-014",
+    "symbol": "BAD14",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 14,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-015",
+    "symbol": "BAD15",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": true,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 15,
+      "defect": "unsupported_or_stale"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-016",
+    "symbol": "BAD16",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 16,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-017",
+    "symbol": "BAD17",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 17,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-018",
+    "symbol": "BAD18",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 18,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-019",
+    "symbol": "BAD19",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 19,
+      "defect": "quarantine_case"
+    }
+  },
+  {
+    "artifact_id": "shadow-bad-020",
+    "symbol": "BAD20",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": true,
+    "known_bad_reason": "fixture_known_bad",
+    "stale_input": true,
+    "source": "tests/fixtures/shadow_acceptance/known_bad.json",
+    "payload": {
+      "kind": "known_bad",
+      "index": 20,
+      "defect": "unsupported_or_stale"
+    }
+  }
+]
