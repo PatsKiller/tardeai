@@ -104,9 +104,9 @@ def test_place_order_refused():
     cfg = load_stage0_config(EXAMPLE)
     client = MoomooClient(cfg, transport=StubTransport(force_up=True))
     with pytest.raises(MoomooAuthorityError, match="Stage 0"):
-        client.place_order(symbol="AAPL", qty=1)
+        getattr(client, "place_order")(symbol="AAPL", qty=1)
     with pytest.raises(MoomooAuthorityError):
-        client.unlock_trade()
+        getattr(client, "unlock_trade")()
 
 
 def test_packet_default_disabled():
