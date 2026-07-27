@@ -281,12 +281,25 @@ note "atomic static swap done: $STATIC_DIR <- freshly built bundle"
 note "restarting ONE user service: systemctl --user restart $RESTART_SERVICE"
 systemctl --user restart "$RESTART_SERVICE" || rollback "user service restart failed for $RESTART_SERVICE"
 
+# Wait for listen after restart (user unit can take a few seconds; immediate curl → 000).
+_wait_http_code() {
+  local url="$1" want="$2" tries="${3:-40}"
+  local i code="000"
+  for i in $(seq 1 "$tries"); do
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 2 "$url" 2>/dev/null || true)"
+    [[ "$code" == "$want" ]] && { echo "$code"; return 0; }
+    sleep 1
+  done
+  echo "$code"
+  return 1
+}
+
 # ---- 6. smokes: API health, /v3/agents browser, authority envelope --------
-code="$(curl -sS -o /dev/null -w '%{http_code}' "$HEALTH_URL" || true)"
+code="$(_wait_http_code "$HEALTH_URL" 200 45 || true)"
 [[ "$code" == "200" ]] || rollback "index health smoke failed (HTTP $code) at $HEALTH_URL"
 note "index health smoke OK ($HEALTH_URL -> 200)"
 
-acode="$(curl -sS -o /dev/null -w '%{http_code}' "$AGENTS_URL" || true)"
+acode="$(_wait_http_code "$AGENTS_URL" 200 20 || true)"
 [[ "$acode" == "200" ]] || rollback "/v3/agents browser smoke failed (HTTP $acode) at $AGENTS_URL"
 note "/v3/agents browser smoke OK ($AGENTS_URL -> 200)"
 
@@ -296,8 +309,14 @@ note "/v3/agents browser smoke OK ($AGENTS_URL -> 200)"
 # shadow reader identity (agentic_runtime_reader), and NO execution agent enabled
 # or promoted. An HTTP 503 after deploy is a FAILED deploy. Any of these → automatic
 # DISCONNECT + rollback of backend AND static, then the post-rollback health check.
-rresp="$(curl -sS -w '\n%{http_code}' "$READ_API_URL" 2>/dev/null || true)"
-rcode="${rresp##*$'\n'}"; rbody="${rresp%$'\n'*}"
+# Retry read-api: DSN connect + first request can lag health.
+rcode=""; rbody=""
+for _ in $(seq 1 30); do
+  rresp="$(curl -sS -w '\n%{http_code}' --max-time 5 "$READ_API_URL" 2>/dev/null || true)"
+  rcode="${rresp##*$'\n'}"; rbody="${rresp%$'\n'*}"
+  [[ "$rcode" == "200" ]] && break
+  sleep 1
+done
 [[ "$rcode" == "200" ]] || rollback "post-connect read API HTTP $rcode (a 503-after is a FAILED deploy) at $READ_API_URL"
 echo "$rbody" | grep -q '"read_only" *: *true' || rollback "post-connect read API is not read_only:true at $READ_API_URL"
 if echo "$rbody" | grep -qiE '"(mutation|provider_call|service_control|schedule_change|financial_action)" *: *true'; then
