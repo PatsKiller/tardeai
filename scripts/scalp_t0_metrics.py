@@ -13,9 +13,16 @@ Metrics (design doc §4.3):
   - spread_estimate       — max(CS, AR): the conservative T0 transaction-cost estimate.
   - amihud_illiq          — Amihud (2002) illiquidity = mean(|r| / dollar-volume).
   - effort_vs_result      — Wyckoff EvR = (|ΔP|/ATR) / (V/μ_V): low on high volume = absorption.
+                            **DIAGNOSTIC ONLY** — EvR is logged alongside ignition events for review;
+                            it is NOT one of the six §3.2 IGN sub-scores and is never assigned a
+                            weight (grep-verified: no EvR key in config/scalp_signal_engine.yaml).
 
 NOTE (design §4.3): the Roll (1984) estimator is deliberately NOT implemented — momentum ignition
-produces positively autocorrelated returns, the regime where Roll is undefined/nonsense.
+produces positively autocorrelated returns, the regime where Roll is undefined/nonsense; Abdi–Ranaldo
+(2017) is the substitute. See the CHANGE LOG in docs/strategies/MOMENTUM_SCALP_SIGNAL_ENGINE_v1.md.
+
+Spread aggregation is split BY CONSUMER (G6): spread_estimate_gate (max, risk-safe upward bias) vs
+spread_estimate_score (median, unbiased) — see their docstrings.
 
 A "bar" is a mapping with open/high/low/close/volume. Both short (o/h/l/c/v) and long
 (open/high/low/close/volume) key styles are accepted; Alpaca raw bars (t/o/h/l/c/v) work directly.
@@ -128,12 +135,33 @@ def abdi_ranaldo_spread(bars: Sequence[Bar]) -> float | None:
     return 2.0 * math.sqrt(max(0.0, statistics.mean(terms)))
 
 
-def spread_estimate(bars: Sequence[Bar]) -> float | None:
-    """Conservative T0 spread = max(Corwin–Schultz, Abdi–Ranaldo) (design §4.3)."""
-    cs = corwin_schultz_spread(bars)
-    ar = abdi_ranaldo_spread(bars)
-    vals = [x for x in (cs, ar) if x is not None]
+def _spread_estimators(bars: Sequence[Bar]) -> list[float]:
+    return [x for x in (corwin_schultz_spread(bars), abdi_ranaldo_spread(bars)) if x is not None]
+
+
+def spread_estimate_gate(bars: Sequence[Bar]) -> float | None:
+    """MAX of the available spread estimators — for the RISK / SIZING consumer (G6).
+    max() of two noisy estimators of the same quantity is upward-biased by construction. For a risk
+    gate that bias runs in the SAFE direction: wider assumed spread → tighter size → aligned with the
+    tier-ladder rule (descending a tier never relaxes a risk gate). Single estimator → that one."""
+    vals = _spread_estimators(bars)
     return max(vals) if vals else None
+
+
+def spread_estimate_score(bars: Sequence[Bar]) -> float | None:
+    """MEDIAN of the available spread estimators — for the SCORING consumer (e.g. a future v_liq, G6).
+    The same upward bias that is safe for a gate is HARMFUL for scoring: it systematically penalizes
+    names whose estimators happen to be noisy, which correlates with thin float — exactly the
+    population this strategy targets. Median is the unbiased central estimate. One estimator →
+    that estimator; two → their mean (median of two)."""
+    vals = _spread_estimators(bars)
+    return statistics.median(vals) if vals else None
+
+
+# Back-compat alias: existing callers (the shadow logger records the conservative/gate spread).
+def spread_estimate(bars: Sequence[Bar]) -> float | None:
+    """Deprecated alias → spread_estimate_gate (max, risk-safe). New code picks gate vs score explicitly."""
+    return spread_estimate_gate(bars)
 
 
 # ─────────────────────────── impact / illiquidity (T0) ───────────────────────────

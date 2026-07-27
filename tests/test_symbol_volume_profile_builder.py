@@ -99,6 +99,63 @@ def test_build_pipeline_u_shape_incremental():
     assert open_avg > mid_avg and close_avg > mid_avg
 
 
+# ── G2.2 freshness contract (staleness accessor refuses stale/thin denominators) ──
+
+import pytest  # noqa: E402
+import yaml as _yaml  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
+from scripts.symbol_volume_profile_builder import (  # noqa: E402
+    trading_sessions_between, get_profile_denominator, ProfileUnavailable,
+)
+
+_CFG = _yaml.safe_load((ROOT / "config" / "scalp_signal_engine.yaml").read_text())
+_NOW = datetime(2026, 7, 27, 21, 0, tzinfo=timezone.utc)   # Monday
+
+
+class _FakeCursor:
+    def __init__(self, row): self._row = row
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def execute(self, *a, **k): pass
+    def fetchone(self): return self._row
+
+
+class _FakeConn:
+    def __init__(self, row): self._row = row
+    def cursor(self): return _FakeCursor(self._row)
+
+
+def test_trading_sessions_between_counts_weekdays():
+    assert trading_sessions_between(datetime(2026, 7, 20, tzinfo=timezone.utc), _NOW) == 5
+
+def test_trading_sessions_between_same_day_zero():
+    assert trading_sessions_between(datetime(2026, 7, 27, tzinfo=timezone.utc), _NOW) == 0
+
+def test_denominator_fresh_and_populated_returns_value():
+    row = (500000.0, 20, datetime(2026, 7, 27, 14, tzinfo=timezone.utc))
+    val, meta = get_profile_denominator(_FakeConn(row), "AAPL", 60, _CFG, now=_NOW)
+    assert val == 500000.0 and meta["reason"] == "ok"
+
+def test_denominator_stale_by_age_refuses():
+    row = (500000.0, 20, datetime(2026, 7, 20, 14, tzinfo=timezone.utc))  # 5 sessions old > 3
+    val, meta = get_profile_denominator(_FakeConn(row), "AAPL", 60, _CFG, now=_NOW)
+    assert val is None and meta["reason"].startswith("stale")
+
+def test_denominator_under_populated_refuses():
+    row = (500000.0, 10, datetime(2026, 7, 27, 14, tzinfo=timezone.utc))  # 10 < 15
+    val, meta = get_profile_denominator(_FakeConn(row), "AAPL", 60, _CFG, now=_NOW)
+    assert val is None and meta["reason"].startswith("under_populated")
+
+def test_denominator_absent_symbol_refuses():
+    val, meta = get_profile_denominator(_FakeConn(None), "NOPE", 60, _CFG, now=_NOW)
+    assert val is None and meta["reason"] == "absent"
+
+def test_denominator_raise_mode_blocks_silent_consumption():
+    row = (500000.0, 10, datetime(2026, 7, 27, tzinfo=timezone.utc))
+    with pytest.raises(ProfileUnavailable):
+        get_profile_denominator(_FakeConn(row), "AAPL", 60, _CFG, now=_NOW, raise_on_refuse=True)
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))

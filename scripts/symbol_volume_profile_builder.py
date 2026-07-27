@@ -261,6 +261,76 @@ def resolve_universe(conn, cfg: dict) -> list[str]:
         return [r[0] for r in cur.fetchall()]
 
 
+# ─────────────────────────── G2.2 freshness contract ───────────────────────────
+
+def trading_sessions_between(built_at: "datetime", now: "datetime") -> int:
+    """Approximate trading sessions elapsed between two datetimes = weekday count in (built_at, now].
+    Ignores market holidays (acceptable for a small freshness window; errs toward MORE stale)."""
+    from datetime import timedelta as _td
+    if built_at is None or now is None:
+        return 10 ** 6
+    d0 = built_at.date()
+    d1 = now.date()
+    if d1 <= d0:
+        return 0
+    n = 0
+    d = d0
+    while d < d1:
+        d = d + _td(days=1)
+        if d.weekday() < 5:  # Mon-Fri
+            n += 1
+    return n
+
+
+class ProfileUnavailable(Exception):
+    """Raised/signalled when a profile denominator must NOT be consumed (stale or under-populated)."""
+
+
+def get_profile_denominator(conn, symbol: str, minute: int, cfg: dict, now=None,
+                            raise_on_refuse: bool = False):
+    """THE accessor S3 calls for an RVOL_tod denominator. Returns
+    (median_cum_volume, meta_dict) or (None, meta_dict) — and it REFUSES (returns None, or raises
+    ProfileUnavailable when raise_on_refuse) rather than hand back a poisoned number when:
+      * the symbol/minute has no profile row, OR
+      * n_sessions < volume_profile.min_sessions, OR
+      * the profile was built more than volume_profile.max_profile_age_sessions trading sessions ago.
+    Structurally impossible to consume a stale/thin denominator silently."""
+    from datetime import datetime as _dt, timezone as _tz
+    vp = cfg["volume_profile"]
+    feed = cfg["data"]["feed"]
+    min_sessions = int(vp.get("min_sessions", 15))
+    max_age = int(vp.get("max_profile_age_sessions", 3))
+    if now is None:
+        now = _dt.now(_tz.utc)
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT median_cum_volume, n_sessions, built_at FROM symbol_volume_profile
+               WHERE symbol=%s AND session_window='regular' AND feed=%s AND minute_of_session=%s""",
+            [symbol, feed, minute])
+        r = cur.fetchone()
+    meta = {"symbol": symbol, "minute": minute, "feed": feed}
+    if not r or r[0] is None:
+        meta["reason"] = "absent"
+        if raise_on_refuse:
+            raise ProfileUnavailable(f"{symbol}@{minute}: no profile row")
+        return None, meta
+    median_cum, n_sessions, built_at = float(r[0]), int(r[1]), r[2]
+    age = trading_sessions_between(built_at, now)
+    meta.update({"n_sessions": n_sessions, "age_sessions": age, "built_at": built_at})
+    if n_sessions < min_sessions:
+        meta["reason"] = f"under_populated({n_sessions}<{min_sessions})"
+        if raise_on_refuse:
+            raise ProfileUnavailable(meta["reason"])
+        return None, meta
+    if age > max_age:
+        meta["reason"] = f"stale({age}>{max_age} sessions)"
+        if raise_on_refuse:
+            raise ProfileUnavailable(meta["reason"])
+        return None, meta
+    meta["reason"] = "ok"
+    return median_cum, meta
+
+
 # ─────────────────────────── verification / CLI ───────────────────────────
 
 def print_curve(res: dict, step: int = 30) -> None:

@@ -37,6 +37,9 @@ volume_profile:
   require_close_minute: 375   # must have a print at/after minute 375 (15:45 ET) → covered the close
   min_session_prints: 30      # exclude near-dead sessions (fewer than this many traded minutes)
   session_window: regular     # premarket profile deferred (doc §14 Q5)
+  max_profile_age_sessions: 3 # G2.2 freshness contract: refuse a denominator built more than this
+                              # many TRADING sessions ago (a stale denominator poisons RVOL_tod
+                              # silently). Consumed by get_profile_denominator().
 
 universe:
   # M3-S1 default universe = existing scalp screener output, float-capped for the new key.
@@ -100,10 +103,20 @@ notifications:
   emit: false                 # HARD: shadow logging only — no Telegram, no proposals at M3-S3
 
 # ── Data Confidence Factor (design §4.4). M3-S3 runs at T0. ──
+# TIER NUMBERING = design-doc convention (operator ruling 2026-07-27): T2 = full book (moomoo, best
+# data), T1 = SIP/quotes, T0 = bars-only (weakest, what ships today). This is the OPPOSITE numbering
+# to some external "ascending capability" ladders — do not renumber; the invariant below is what
+# actually matters, not the label direction. `quality_order` lists tiers best→worst so the
+# monotonicity invariant (G4.3) is checked against data quality, not label sort order.
 data_tiers:
   active_tier: T0
-  dcf:
+  quality_order: [T2, T1, T0]   # best data (book) → worst data (bars)
+  dcf:                          # size multiplier — MUST be non-increasing along quality_order
     T2: 1.00
     T1: 0.70
     T0: 0.40
-  stale_max_sec: 120          # data older than this → NO TRADE (dcf 0)
+  assumed_slippage_bps:         # assumed slippage — MUST be non-decreasing along quality_order
+    T2: 8
+    T1: 20
+    T0: 40
+  stale_max_sec: 120            # data older than this → NO TRADE (dcf 0)
