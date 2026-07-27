@@ -122,8 +122,10 @@ interface Props {
   holdings: any[]
   riskPositions?: any[]
   acctColor: (a: string) => string
-  /** Optional external account filter (from Portfolio chips). */
+  /** Optional external account filter (from Portfolio chips / URL ?acct=). */
   initialAccount?: string | null
+  /** When set, chip/matrix account changes also update the hub URL via selectAcct. */
+  onAccountFilter?: (account: string | null) => void
   onOpenHolding?: (symbol: string, account: string) => void
 }
 
@@ -133,12 +135,16 @@ function signedColor(n: number | null | undefined) {
 }
 
 export default function ReturnsPanel({
-  perfData, holdings, riskPositions = [], acctColor, initialAccount = null, onOpenHolding,
+  perfData, holdings, riskPositions = [], acctColor, initialAccount = null, onAccountFilter, onOpenHolding,
 }: Props) {
   const [activeAcct, setActiveAcct] = useState<string | null>(initialAccount ?? null)
   useEffect(() => {
     if (initialAccount !== undefined) setActiveAcct(initialAccount)
   }, [initialAccount])
+  const selectAccount = (next: string | null) => {
+    setActiveAcct(next)
+    onAccountFilter?.(next)
+  }
 
   const accountKeys = useMemo(() => {
     const fromPerf = Object.keys(perfData.accounts || {})
@@ -212,7 +218,7 @@ export default function ReturnsPanel({
         <button
           type="button"
           data-testid="returns-acct-all"
-          onClick={() => setActiveAcct(null)}
+          onClick={() => selectAccount(null)}
           style={chipStyle(activeAcct == null, '#60a5fa')}
         >
           All accounts
@@ -222,7 +228,7 @@ export default function ReturnsPanel({
             key={a}
             type="button"
             data-testid={`returns-acct-${a}`}
-            onClick={() => setActiveAcct(activeAcct === a ? null : a)}
+            onClick={() => selectAccount(activeAcct === a ? null : a)}
             style={chipStyle(activeAcct === a, acctColor(a))}
           >
             <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(a), marginRight: 5 }} />
@@ -372,7 +378,7 @@ export default function ReturnsPanel({
               {/* Portfolio row */}
               <tr
                 data-testid="returns-matrix-all"
-                onClick={() => setActiveAcct(null)}
+                onClick={() => selectAccount(null)}
                 style={{
                   borderTop: '1px solid var(--border)', cursor: 'pointer',
                   background: activeAcct == null ? 'rgba(96,165,250,.08)' : 'transparent',
@@ -446,7 +452,7 @@ export default function ReturnsPanel({
                   <tr
                     key={a}
                     data-testid={`returns-matrix-${a}`}
-                    onClick={() => setActiveAcct(sel ? null : a)}
+                    onClick={() => selectAccount(sel ? null : a)}
                     style={{
                       borderTop: '1px solid var(--border)', cursor: 'pointer',
                       background: sel ? `${acctColor(a)}14` : 'transparent',
