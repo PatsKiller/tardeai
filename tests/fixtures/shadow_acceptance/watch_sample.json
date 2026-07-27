@@ -1,0 +1,132 @@
+[
+  {
+    "artifact_id": "shadow-watch-sample-001",
+    "symbol": "WAT01",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": false,
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/watch_sample.json",
+    "payload": {
+      "kind": "watch_decision_packet",
+      "index": 1,
+      "advisory_only": true
+    }
+  },
+  {
+    "artifact_id": "shadow-watch-sample-002",
+    "symbol": "WAT02",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": false,
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/watch_sample.json",
+    "payload": {
+      "kind": "watch_decision_packet",
+      "index": 2,
+      "advisory_only": true
+    }
+  },
+  {
+    "artifact_id": "shadow-watch-sample-003",
+    "symbol": "WAT03",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": false,
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/watch_sample.json",
+    "payload": {
+      "kind": "watch_decision_packet",
+      "index": 3,
+      "advisory_only": true
+    }
+  },
+  {
+    "artifact_id": "shadow-watch-sample-004",
+    "symbol": "WAT04",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": false,
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/watch_sample.json",
+    "payload": {
+      "kind": "watch_decision_packet",
+      "index": 4,
+      "advisory_only": true
+    }
+  },
+  {
+    "artifact_id": "shadow-watch-sample-005",
+    "symbol": "WAT05",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": false,
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/watch_sample.json",
+    "payload": {
+      "kind": "watch_decision_packet",
+      "index": 5,
+      "advisory_only": true
+    }
+  },
+  {
+    "artifact_id": "shadow-watch-sample-006",
+    "symbol": "WAT06",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": false,
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/watch_sample.json",
+    "payload": {
+      "kind": "watch_decision_packet",
+      "index": 6,
+      "advisory_only": true
+    }
+  },
+  {
+    "artifact_id": "shadow-watch-sample-007",
+    "symbol": "WAT07",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": false,
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/watch_sample.json",
+    "payload": {
+      "kind": "watch_decision_packet",
+      "index": 7,
+      "advisory_only": true
+    }
+  },
+  {
+    "artifact_id": "shadow-watch-sample-008",
+    "symbol": "WAT08",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": false,
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/watch_sample.json",
+    "payload": {
+      "kind": "watch_decision_packet",
+      "index": 8,
+      "advisory_only": true
+    }
+  },
+  {
+    "artifact_id": "shadow-watch-sample-009",
+    "symbol": "WAT09",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": false,
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/watch_sample.json",
+    "payload": {
+      "kind": "watch_decision_packet",
+      "index": 9,
+      "advisory_only": true
+    }
+  },
+  {
+    "artifact_id": "shadow-watch-sample-010",
+    "symbol": "WAT10",
+    "producer_agent_id": "watch_producer_shadow",
+    "is_known_bad": false,
+    "stale_input": false,
+    "source": "tests/fixtures/shadow_acceptance/watch_sample.json",
+    "payload": {
+      "kind": "watch_decision_packet",
+      "index": 10,
+      "advisory_only": true
+    }
+  }
+]
