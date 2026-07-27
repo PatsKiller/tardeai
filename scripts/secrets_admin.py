@@ -214,6 +214,22 @@ def set_secret(key, value, actor="operator"):
     # allow blank clear (stores SM sentinel); real secrets still min length when non-empty
     if value and len(value) < 4:
         raise ValueError("value too short")
+    # FINVIZ_COOKIE: reject truncated cookies before SM upsert (never log the value)
+    if key == "FINVIZ_COOKIE" and value:
+        try:
+            import sys as _sys
+            _sp = str(Path(__file__).resolve().parent / "secrets")
+            if _sp not in _sys.path:
+                _sys.path.insert(0, _sp)
+            from resolve_secret import validate_finviz_cookie_value
+            validate_finviz_cookie_value(value)
+        except ValueError:
+            raise
+        except Exception:
+            if len(value) < 50 or ".ASPXAUTH=" not in value:
+                raise ValueError(
+                    "FINVIZ_COOKIE rejected: need len>=50 and .ASPXAUTH= (truncated cookies fail Elite CSV export)."
+                )
     try:
         import sys
         from pathlib import Path as _P
@@ -238,6 +254,17 @@ def set_secret(key, value, actor="operator"):
         )
     except Exception:
         pass
+    # Dual-write: keep disk .env aligned for keys already present (legacy cron that only sources .env)
+    if value:
+        try:
+            import sys as _sys
+            _sp = str(Path(__file__).resolve().parent / "secrets")
+            if _sp not in _sys.path:
+                _sys.path.insert(0, _sp)
+            from resolve_secret import upsert_disk_env_key
+            upsert_disk_env_key(key, value, only_if_exists=True)
+        except Exception:
+            pass
     os.environ[key] = value
     _audit(key, actor)
     # Telegram confirm (no values)
@@ -254,7 +281,7 @@ def set_secret(key, value, actor="operator"):
         "rotated": action == "edited",
         "backend": "bitwarden_sm",
         "action": action,
-        "note": "Written to Bitwarden SM + tmpfs render. Long-running services pick up on next restart.",
+        "note": "Written to Bitwarden SM + tmpfs render (+ disk .env if key already existed). Long-running services pick up on next restart.",
     }
 
 

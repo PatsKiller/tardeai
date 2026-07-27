@@ -25,17 +25,27 @@ TIMEOUT = 12
 
 
 def _key(name: str) -> str | None:
-    import os
-    v = os.getenv(name, "").strip()
-    if v:
-        return v
+    """tmpfs SM render → os.environ → disk .env. Never returns into logs."""
     try:
-        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-            if line.startswith(f"{name}="):
-                return line.split("=", 1)[1].strip().strip('"').strip("'") or None
+        import sys as _sys
+        _sec = PROJECT_ROOT / "scripts" / "secrets"
+        if str(_sec) not in _sys.path:
+            _sys.path.insert(0, str(_sec))
+        from resolve_secret import resolve_secret
+        v = resolve_secret(name, "")
+        return v or None
     except Exception:
-        pass
-    return None
+        import os
+        v = os.getenv(name, "").strip()
+        if v:
+            return v
+        try:
+            for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+                if line.startswith(f"{name}="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'") or None
+        except Exception:
+            pass
+        return None
 
 
 def _get(url, headers=None):
@@ -192,7 +202,7 @@ def validate(name: str) -> dict:
         return {"name": name, "status": "unknown_key", "detail": "no validator registered for this name"}
     k = _key(name)
     if not k:
-        return {"name": name, "status": "not_set", "detail": "no value in env/.env"}
+        return {"name": name, "status": "not_set", "detail": "no value in SM tmpfs / env / disk .env"}
     try:
         ok, detail = fn(k)
         if ok is None:

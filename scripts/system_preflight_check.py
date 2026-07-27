@@ -33,11 +33,23 @@ def run():
     global PASS, FAIL
     print(f"=== System Preflight Check — {datetime.now().strftime('%Y-%m-%d %H:%M')} ===\n")
 
-    # 1. Finviz cookie
+    # 1. Finviz cookie (SM tmpfs → env → disk .env; never print value)
     print("FINVIZ:")
     cookie = ""
-    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("FINVIZ_COOKIE="): cookie = line.split("=", 1)[1].strip().strip("'\"")
+    try:
+        import sys as _sys
+        _sec = PROJECT_ROOT / "scripts" / "secrets"
+        if str(_sec) not in _sys.path:
+            _sys.path.insert(0, str(_sec))
+        from resolve_secret import resolve_secret
+        cookie = resolve_secret("FINVIZ_COOKIE", "")
+    except Exception:
+        try:
+            for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+                if line.startswith("FINVIZ_COOKIE="):
+                    cookie = line.split("=", 1)[1].strip().strip("'\"")
+        except Exception:
+            cookie = ""
 
     check("FINVIZ_COOKIE exists", len(cookie) > 50, f"Only {len(cookie)} chars")
     check("Has .ASPXAUTH", ".ASPXAUTH=" in cookie, "Missing authentication token")

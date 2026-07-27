@@ -20,10 +20,21 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 
 def _env(key: str) -> str:
-    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith(f"{key}="):
-            return line.split("=", 1)[1].strip().strip("'\"")
-    return ""
+    """tmpfs SM render → os.environ → disk .env (never logs values)."""
+    try:
+        _sec = PROJECT_ROOT / "scripts" / "secrets"
+        if str(_sec) not in sys.path:
+            sys.path.insert(0, str(_sec))
+        from resolve_secret import resolve_secret
+        return resolve_secret(key, "")
+    except Exception:
+        try:
+            for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+                if line.startswith(f"{key}="):
+                    return line.split("=", 1)[1].strip().strip("'\"")
+        except Exception:
+            pass
+        return os.getenv(key, "").strip()
 
 
 def _send_tg(msg: str):

@@ -13,12 +13,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 def _env(key, default=""):
-    env_path = PROJECT_ROOT / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            if line.strip().startswith(key + "="):
-                return line.split("=", 1)[1].strip().strip("'\"")
-    return os.getenv(key, default)
+    """tmpfs SM render → os.environ → disk .env (never logs values)."""
+    try:
+        _sec = PROJECT_ROOT / "scripts" / "secrets"
+        if str(_sec) not in sys.path:
+            sys.path.insert(0, str(_sec))
+        from resolve_secret import resolve_secret
+        return resolve_secret(key, default if default is not None else "")
+    except Exception:
+        env_path = PROJECT_ROOT / ".env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                if line.strip().startswith(key + "="):
+                    return line.split("=", 1)[1].strip().strip("'\"")
+        return os.getenv(key, default)
 
 def _get_conn():
     import psycopg2

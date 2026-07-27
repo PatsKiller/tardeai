@@ -36,16 +36,25 @@ def ensure_dir(path: Path) -> Path:
 
 
 def optional_env(name: str, default: str = "") -> str:
-    val = os.getenv(name, "").strip()
-    if val:
-        return val
-    # Fallback: read from .env file (cron may not source .env)
-    env_path = Path(__file__).resolve().parent.parent / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            if line.startswith(f"{name}="):
-                return line.split("=", 1)[1].strip().strip("'\"")
-    return default
+    """Resolve secrets: Bitwarden SM tmpfs → os.environ → disk .env (never logs values)."""
+    try:
+        import sys as _sys
+        _sec = Path(__file__).resolve().parent / "secrets"
+        if str(_sec) not in _sys.path:
+            _sys.path.insert(0, str(_sec))
+        from resolve_secret import resolve_secret
+        return resolve_secret(name, default)
+    except Exception:
+        # Last-resort fallback if resolver import fails (should be rare)
+        val = os.getenv(name, "").strip()
+        if val:
+            return val
+        env_path = Path(__file__).resolve().parent.parent / ".env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                if line.startswith(f"{name}="):
+                    return line.split("=", 1)[1].strip().strip("'\"")
+        return default
 
 
 def parse_num(value: Any) -> float:
