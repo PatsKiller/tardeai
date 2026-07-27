@@ -143,3 +143,23 @@ data_tiers:
     T1: 20
     T0: 40
   stale_max_sec: 120            # data older than this → NO TRADE (dcf 0)
+
+# ── M3-S5.5 multi-source observation fabric. DEFAULT OFF: with enabled=false the existing
+#    single-source T0 path (Alpaca IEX bars) is used unchanged and fully reproducible. ──
+multi_source:
+  enabled: false               # HARD default OFF — no behavior change until an operator flips it
+  concurrency:
+    global_max: 8              # global concurrent provider requests (never one-thread-per-symbol)
+    per_provider_max:          # per-provider caps (moomoo = single gateway owner)
+      alpaca: 4
+      yahoo: 2
+      schwab: 2
+      moomoo: 1
+    task_timeout_s: 10.0
+    max_retries: 2             # bounded; NEVER retried on auth/entitlement rejection
+    breaker_threshold: 3       # consecutive failures → open per-provider circuit breaker
+  # Source-authority policy is versioned in code (arbitration.AuthorityPolicy, source-authority-v1).
+  # Summary: T0 bars = Alpaca IEX (yahoo = degraded fallback only); T1 trades/NBBO = consolidated
+  # only (Alpaca IEX is venue-partial → T1_venue, NOT consolidated SIP; SIP realtime = 403); T2 book
+  # = moomoo gateway only when entitlement+freshness+sequence pass (currently SCAFFOLD_ONLY); broker
+  # facts = each broker authoritative only for its own resources. No averaging; conflict → SOURCE_CONFLICT.
