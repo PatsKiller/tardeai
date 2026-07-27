@@ -186,3 +186,12 @@ t2:
   max_armed: 8                 # hard OpenD L2 subscription budget (never exceeded / never silent-evict)
   ttl_seconds: 180             # auto-disarm if a name isn't re-armed within 3 min
   state_file: data/scalp/moomoo_armed_state.json   # cross-cron persistence (avoid re-subscribe churn)
+
+# ── M3-S8 weight refit (§12). Weights are refit ONCE, only after G1 (>=100 TRIGGER fires / >=15
+#    sessions), on a held-out split, then LOCKED with a hash and the sample RESTARTS. No continuous
+#    tuning. The refit tool REFUSES until G1 is met (currently 6 fires / 1 session → blocked). ──
+refit:
+  g1_min_fires: 100
+  g1_min_sessions: 15
+  held_out_frac: 0.30          # deterministic (hashed) train/test split
+  lock_file: config/scalp_ignition_weights_locked.json   # written on refit --apply (audit + hash)
