@@ -261,8 +261,17 @@ note "systemctl --user daemon-reload OK"
 
 # ---- swap backend + static, then restart ONE user service ------------------
 # Backend: copy the exact-ref server file into the service-controlled path.
-install -m 0644 "$REPO_ROOT/scripts/portfolio_server.py" "$BACKEND_FILE" || rollback "backend install failed"
-note "backend file updated -> $BACKEND_FILE"
+# This host runs portfolio_server.py from the live repo tree (BACKEND_FILE may be
+# the same path as REPO_ROOT/scripts/portfolio_server.py) — install-to-self fails
+# with "are the same file". Skip the no-op swap in that case.
+_src="$(readlink -f "$REPO_ROOT/scripts/portfolio_server.py" 2>/dev/null || echo "$REPO_ROOT/scripts/portfolio_server.py")"
+_dst="$(readlink -f "$BACKEND_FILE" 2>/dev/null || echo "$BACKEND_FILE")"
+if [[ "$_src" == "$_dst" ]]; then
+  note "backend already at live repo path (no install swap needed): $BACKEND_FILE"
+else
+  install -m 0644 "$REPO_ROOT/scripts/portfolio_server.py" "$BACKEND_FILE" || rollback "backend install failed"
+  note "backend file updated -> $BACKEND_FILE"
+fi
 # Static: atomic swap of the freshly built staging dir into the live serving root.
 if [[ -e "$STATIC_DIR" ]]; then mv "$STATIC_DIR" "${STATIC_DIR}.a2old.$$" || rollback "could not move old static dir aside"; fi
 mv "$BUILD_STAGE" "$STATIC_DIR" || rollback "could not install new static dir"
