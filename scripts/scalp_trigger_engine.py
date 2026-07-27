@@ -101,6 +101,7 @@ def compute_levels(trigger_high: float, trigger_low: float, pullback_low: float,
     raw_stop = min(trigger_low, pullback_low) - tc["stop_offset"]
     floor_stop = entry - tc["noise_stop_atr_mult"] * (atr or 0)
     stop = max(raw_stop, floor_stop)
+    floor_bound = floor_stop >= raw_stop   # the ATR noise-stop floor set the stop (R capped at ~ATR)
     R = entry - stop
     stop_pct = (R / entry) if entry else None
     leg_height = leg_high - origin_low
@@ -117,7 +118,7 @@ def compute_levels(trigger_high: float, trigger_low: float, pullback_low: float,
     return {"outcome": (TRIGGERED if not reason else "REJECT"), "reason": reason,
             "entry": round(entry, 4), "stop": round(stop, 4),
             "r_dollars": round(R, 4) if R else None,
-            "stop_pct": round(stop_pct, 4) if stop_pct else None,
+            "stop_pct": round(stop_pct, 4) if stop_pct else None, "floor_bound": floor_bound,
             "rr": round(rr, 3) if rr is not None else None, "leg_high": round(leg_high, 4)}
 
 

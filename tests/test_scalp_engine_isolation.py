@@ -28,6 +28,12 @@ ENGINE_MODULES = [
     "scalp_shadow_logger.py",
     "scalp_shadow_outcome_backfill.py",
     "scalp_shadow_rollup.py",
+    "scalp_trigger_r_diagnostics.py",
+    "market_observations/observation.py",
+    "market_observations/concurrency.py",
+    "market_observations/arbitration.py",
+    "market_observations/providers.py",
+    "market_observations/fabric.py",
 ]
 
 FORBIDDEN_IMPORT_SUBSTR = (

@@ -298,7 +298,8 @@ def run(args) -> int:
                 "pressure": row["pressure"], "evr": row["evr"], "amihud": row["amihud"],
                 "spread_bps": row["spread_bps"], "spread_source": row["spread_source"],
                 "gate_reasons": {"macd_hist_5m": tr["macd_hist_5m"], "rr": fe.get("rr"),
-                                 "stop_pct": fe.get("stop_pct"), "trigger": "TRIGGERED"},
+                                 "stop_pct": fe.get("stop_pct"), "floor_bound": fe.get("floor_bound"),
+                                 "trigger": "TRIGGERED"},
             })
 
     results.sort(key=lambda r: r["ign"], reverse=True)
@@ -362,6 +363,26 @@ def run(args) -> int:
     dist = Counter(r["lane"] for r in results)
     print(f"\n  lane distribution: {dict(dist)}")
     print(f"  scored={len(results)} rows_written={written} emit=false (SHADOW)")
+
+    # M3-S5.5: multi-source observation fabric — DEFAULT OFF. When off this block is a pure no-op and
+    # the T0 path above is byte-identical. When on (dry-run/experiment) it acquires + arbitrates a
+    # canonical bar snapshot and PRINTS provenance only — it does not change scoring, triggers, or any
+    # persisted row (no schema change; observability only).
+    try:
+        from market_observations.fabric import MultiSourceFabric, is_enabled as _ms_enabled
+    except Exception:
+        _ms_enabled = lambda _c: False  # noqa: E731
+        MultiSourceFabric = None
+    if MultiSourceFabric is not None and _ms_enabled(cfg):
+        try:
+            ms = MultiSourceFabric(cfg).acquire_bar_snapshot([a["_symbol"] for a in assembled])
+            srcs = sorted({v["provenance"]["selected_source"] for v in ms.values()
+                           if v["provenance"]["selected_source"]})
+            confs = sum(1 for v in ms.values() if v["provenance"]["conflict"])
+            print(f"  [multi_source] canonical snapshot: {len(ms)} symbols · sources={srcs} · conflicts={confs} "
+                  f"(provenance only — scoring/triggers unchanged)")
+        except Exception as e:
+            print(f"  [multi_source] skipped: {e}")
     return 0
 
 
