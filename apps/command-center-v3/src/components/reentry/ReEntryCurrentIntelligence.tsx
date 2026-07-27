@@ -44,32 +44,112 @@ function age(value: string): string { if (!value) return 'as-of unavailable'; co
 function classify(symbols: string[]) { window.dispatchEvent(new CustomEvent('reentry:classify-symbol', { detail: { symbols } })) }
 function openWatch(symbol: string) { window.location.href = `/v3/watch?symbol=${encodeURIComponent(symbol)}&review=1` }
 
-function deriveIntel(watch: any, card: any, held: boolean): Intel {
+function deriveIntel(watch: any, card: any, held: boolean, holding?: any): Intel {
   const packet = watch?.decision_packet ?? card?.decision_packet ?? {}
   const mechanics = packet?.selected_family?.mechanics ?? packet?.current_mechanics ?? packet?.mechanics ?? watch?.reentry_plan ?? card?.reentry_plan ?? {}
-  const objects = [watch ?? {}, card ?? {}, packet ?? {}, mechanics ?? {}, packet?.technical_state ?? {}, packet?.current_input_snapshot ?? {}]
-  const price = numberFrom(objects, ['price', 'last_price', 'price_live', 'current_price', 'quote.last'])
-  const asOf = textFrom(objects, ['price_as_of', 'last_enriched_at', 'computed_at', 'decision_packet_at', 'as_of'])
+  // Watch/card first; holdings last so watchlist enrichment wins when both exist, but Schwab quotes fill gaps.
+  const objects = [
+    watch ?? {},
+    card ?? {},
+    packet ?? {},
+    mechanics ?? {},
+    packet?.technical_state ?? {},
+    packet?.current_input_snapshot ?? {},
+    holding ?? {},
+  ]
+  const price = numberFrom(objects, [
+    'price', 'price_live', 'latest_price', 'price_enriched', 'last_price', 'current_price',
+    'quote.last', 'quote.price',
+  ])
+  const asOf = textFrom(objects, [
+    'price_as_of', 'last_enriched_at', 'last_validated_at', 'computed_at', 'as_of', 'decision_packet_at',
+  ])
   const rsi = numberFrom(objects, ['rsi', 'rsi_14', 'technical.rsi', 'technicals.rsi', 'current_rsi'])
   const trend = textFrom(objects, ['trend_state', 'trend_direction', 'overall_direction', 'technical_state.overall_direction', 'technicals.trend']).replace(/_/g, ' ').toUpperCase() || 'UNAVAILABLE'
+
+  // Formal entry zone first…
   let entryLow = numberFrom(objects, ['entry_zone_low', 'reentry_zone_low', 'entry_low', 'mechanics.entry_low', 'selected_family.mechanics.entry_low'])
   let entryHigh = numberFrom(objects, ['entry_zone_high', 'reentry_zone_high', 'entry_high', 'mechanics.entry_high', 'selected_family.mechanics.entry_high'])
   const entry = numberFrom(objects, ['entry_limit', 'reentry_price', 'entry_price', 'mechanics.entry', 'selected_family.mechanics.entry'])
   if (entryLow === null) entryLow = entry
   if (entryHigh === null) entryHigh = entry
+  // …then plan fallbacks from ideal_entry / support when formal zone is absent (decision_packet may be null).
+  if (entryLow === null || entryHigh === null) {
+    const ideal = numberFrom(objects, ['ideal_entry', 'reentry_ideal_entry'])
+    const support = numberFrom(objects, ['support', 'support_level', 'nearest_support'])
+    if (ideal !== null && support !== null) {
+      entryLow = Math.min(ideal, support)
+      entryHigh = Math.max(ideal, support)
+    } else if (ideal !== null) {
+      entryLow = ideal
+      entryHigh = ideal
+    } else if (support !== null) {
+      entryLow = support
+      entryHigh = support
+    }
+  }
   if (entryLow !== null && entryHigh !== null && entryLow > entryHigh) [entryLow, entryHigh] = [entryHigh, entryLow]
-  const stop = numberFrom(objects, ['entry_stop', 'reentry_stop', 'stop_price', 'mechanics.stop', 'selected_family.mechanics.stop'])
-  const target = numberFrom(objects, ['entry_target', 'reentry_target', 'target_price', 'mechanics.target', 'selected_family.mechanics.target'])
-  const stale = !asOf || !Number.isFinite(new Date(asOf).getTime()) || Date.now() - new Date(asOf).getTime() > 96 * 36e5
+
+  const stop = numberFrom(objects, [
+    'entry_stop', 'reentry_stop', 'stop_price', 'stop_loss', 'mechanics.stop', 'selected_family.mechanics.stop',
+  ])
+  // Resistance is informational target only — do not invent R-multiples.
+  const target = numberFrom(objects, [
+    'entry_target', 'reentry_target', 'target_price', 'mechanics.target', 'selected_family.mechanics.target',
+    'resistance', 'resistance_level',
+  ])
+
+  const asOfMs = asOf ? new Date(asOf).getTime() : NaN
+  const asOfValid = Number.isFinite(asOfMs)
+  const stale = asOfValid && Date.now() - asOfMs > 96 * 36e5
+
   let distancePct: number | null = null
-  if (price !== null && entryLow !== null && entryHigh !== null && entryLow > 0 && entryHigh > 0) distancePct = price > entryHigh ? ((price - entryHigh) / entryHigh) * 100 : price < entryLow ? -((entryLow - price) / entryLow) * 100 : 0
-  let state: IntelState = 'WAIT'; let action = 'Keep monitoring'; let reason = 'Current price has not reached the validated entry conditions.'
-  if (held) { state = 'CURRENTLY HELD'; action = 'Manage as an existing holding'; reason = 'This symbol is currently held and is not a clean re-entry-only candidate.' }
-  else if (price === null || rsi === null) { state = 'MISSING MARKET'; action = 'Refresh market evidence'; reason = 'Current price and RSI are required before a re-entry review.' }
-  else if (stale) { state = 'STALE'; action = 'Refresh inputs'; reason = `The market/technical evidence is ${age(asOf)}.` }
-  else if (entryLow === null || entryHigh === null) { state = 'MISSING PLAN'; action = 'Build a candidate entry zone'; reason = 'Market evidence exists, but no current validated entry range is available.' }
-  else if (distancePct === 0 && rsi <= 45) { state = 'READY TO REVIEW'; action = 'Review re-entry now'; reason = 'Price is inside the entry zone and momentum is not extended.' }
-  else if (distancePct !== null && distancePct >= 0 && distancePct <= 3) { state = 'NEAR ENTRY'; action = 'Prepare the review'; reason = `Price is ${distancePct.toFixed(1)}% above the entry zone.` }
+  if (price !== null && entryLow !== null && entryHigh !== null && entryLow > 0 && entryHigh > 0) {
+    distancePct = price > entryHigh
+      ? ((price - entryHigh) / entryHigh) * 100
+      : price < entryLow
+        ? -((entryLow - price) / entryLow) * 100
+        : 0
+  }
+
+  let state: IntelState = 'WAIT'
+  let action = 'Keep monitoring'
+  let reason = 'Current price has not reached the validated entry conditions.'
+
+  if (held) {
+    state = 'CURRENTLY HELD'
+    action = 'Manage as an existing holding'
+    reason = 'This symbol is currently held and is not a clean re-entry-only candidate.'
+  } else if (price === null && rsi === null) {
+    // Both absent → total MISSING MARKET
+    state = 'MISSING MARKET'
+    action = 'Refresh market evidence'
+    reason = 'Current price and RSI are both unavailable (watchlist item and holdings quote).'
+  } else if (price === null || rsi === null) {
+    // Partial market data: not READY; honest WAIT (not total MISSING MARKET)
+    state = 'WAIT'
+    action = 'Complete market evidence'
+    reason = price === null
+      ? 'RSI is present but current price is still missing — cannot score entry distance.'
+      : 'Price is present but RSI is still missing — cannot confirm non-extended momentum.'
+  } else if (stale) {
+    // STALE only when price+rsi exist and as-of is old
+    state = 'STALE'
+    action = 'Refresh inputs'
+    reason = `The market/technical evidence is ${age(asOf)}.`
+  } else if (entryLow === null || entryHigh === null) {
+    state = 'MISSING PLAN'
+    action = 'Build a candidate entry zone'
+    reason = 'Price and RSI are available, but no entry zone (or ideal_entry/support fallback) is available.'
+  } else if (distancePct === 0 && rsi <= 45) {
+    state = 'READY TO REVIEW'
+    action = 'Review re-entry now'
+    reason = 'Price is inside the entry zone and momentum is not extended.'
+  } else if (distancePct !== null && distancePct >= 0 && distancePct <= 3) {
+    state = 'NEAR ENTRY'
+    action = 'Prepare the review'
+    reason = `Price is ${distancePct.toFixed(1)}% above the entry zone.`
+  }
   return { price, asOf, rsi, trend, entryLow, entryHigh, stop, target, distancePct, state, action, reason }
 }
 
@@ -131,7 +211,22 @@ export default function ReEntryCurrentIntelligence() {
   }, [symbols.join('|'), watchReload])
 
   const cardMap: Record<string, any> = unwrap(cards.data)?.cards ?? {}
-  const heldSet = new Set<string>((unwrap(holdings.data)?.holdings ?? []).filter((row: any) => Number(row.shares ?? row.quantity ?? 0) > 0).map((row: any) => String(row.symbol || '').toUpperCase()))
+  const holdingsList: any[] = unwrap(holdings.data)?.holdings ?? []
+  const heldSet = new Set<string>(
+    holdingsList
+      .filter((row: any) => Number(row.shares ?? row.quantity ?? 0) > 0)
+      .map((row: any) => String(row.symbol || '').toUpperCase()),
+  )
+  // One holdings row per symbol (prefer largest market_value) for price/RSI fallback.
+  const holdingBySymbol: Record<string, any> = {}
+  for (const row of holdingsList) {
+    const symbol = String(row.symbol || '').toUpperCase()
+    if (!symbol) continue
+    const prev = holdingBySymbol[symbol]
+    const mv = Number(row.market_value ?? 0)
+    const prevMv = Number(prev?.market_value ?? 0)
+    if (!prev || mv >= prevMv) holdingBySymbol[symbol] = row
+  }
   const alertRows: any[] = unwrap(alerts.data)?.alerts ?? unwrap(alerts.data)?.items ?? []
   const resistanceMap: Record<string, any> = prefValue(resistancePref.data)?.symbols ?? {}
   const analystMap: Record<string, any> = unwrap(analyst.data)?.map ?? {}
@@ -140,13 +235,14 @@ export default function ReEntryCurrentIntelligence() {
     const mandate = normalizedMandate(mandates[summary.symbol])
     const watch = watchMap[summary.symbol]
     const card = cardMap[summary.symbol]
-    const intel = deriveIntel(watch, card, heldSet.has(summary.symbol))
+    const holding = holdingBySymbol[summary.symbol]
+    const intel = deriveIntel(watch, card, heldSet.has(summary.symbol), holding)
     const resistance = resistanceFor(resistanceMap[summary.symbol], watch, card, intel.price)
     const classified = classificationState(mandate, summary.rows, events, dispositions)
     const flags = REENTRY_FLAGS.filter(flag => mandate.flags[flag])
     const completeness = [summary.shares !== null, summary.avgExit !== null, Boolean(watch), intel.price !== null, intel.rsi !== null, intel.entryLow !== null, resistance.level !== null, Boolean(analystMap[summary.symbol])].filter(Boolean).length
     const alertCount = alertRows.filter(row => String(row.symbol || '').toUpperCase() === summary.symbol && !['disabled', 'expired', 'resolved'].includes(String(row.status || '').toLowerCase())).length
-    return { ...summary, mandate, watch, card, intel, resistance, classified, flags, completeness, alertCount, analyst: analystMap[summary.symbol] ?? null }
+    return { ...summary, mandate, watch, card, holding, intel, resistance, classified, flags, completeness, alertCount, analyst: analystMap[summary.symbol] ?? null }
   }), [summaries, mandatesPref.data, eventsPref.data, dispositionsPref.data, watchMap, cards.data, holdings.data, resistancePref.data, analyst.data, alerts.data])
 
   const shown = rows.filter(row => {
