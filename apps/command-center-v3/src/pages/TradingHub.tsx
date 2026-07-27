@@ -25,6 +25,8 @@ import BrokerProposals from '../components/BrokerProposals'
 import OptionsHub from './OptionsHub'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubFilterSelect, hubKpiChip, hubPanel } from '../lib/terminalHubChrome'
+import { runLabel } from '../lib/homeLabels'
+import { BB, TYPE } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Entry Desk', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
@@ -40,6 +42,49 @@ const TAB_ALIASES: Record<string, typeof TABS[number]> = {
 
 // GO / WAIT / MANUAL_REVIEW / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : d === 'MANUAL_REVIEW' ? 'var(--squeeze)' : '#ef4444'
+
+const NY_TZ = 'America/New_York'
+
+/** Calendar date YYYY-MM-DD in America/New_York (session day for US equities). */
+function nyCalendarDate(d: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: NY_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d)
+}
+
+/** Latest scanner run calendar day from timestamp (preferred) or run_date. */
+function latestRunNyDate(tradeAi: any): string | null {
+  const ts = tradeAi?.latest_run_timestamp
+  if (ts) {
+    const parsed = new Date(ts)
+    if (!Number.isNaN(parsed.getTime())) return nyCalendarDate(parsed)
+  }
+  const raw = tradeAi?.run_date
+  if (raw) {
+    const m = String(raw).match(/(\d{4}-\d{2}-\d{2})/)
+    if (m) return m[1]
+  }
+  return null
+}
+
+/**
+ * STALE SESSION: latest scan is not from today's America/New_York calendar day.
+ * Also when current_run_scanned is 0 and the latest run is not today (same session rule).
+ * Does not invent a scan or call the orchestrator — display-only honesty.
+ */
+function isTradeAiStaleSession(tradeAi: any): boolean {
+  if (!tradeAi) return false
+  const todayNy = nyCalendarDate()
+  const runNy = latestRunNyDate(tradeAi)
+  const notToday = !runNy || runNy < todayNy
+  if (notToday) return true
+  const scanned = Number(tradeAi.current_run_scanned ?? tradeAi.latest_run_symbols_scanned ?? 0)
+  if (scanned === 0 && runNy !== todayNy) return true
+  return false
+}
 
 export default function TradingHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
@@ -274,6 +319,19 @@ export default function TradingHub({ onDrill }: Props) {
         // Both scopes come from /api/v2/trade-ai; label them so identical-looking numbers
         // can't silently disagree.
         const universeScope = 'Full scan universe — latest scan per symbol, today + yesterday, all runs (wider than the header SETUPS strip, which counts the latest run only)'
+        const staleSession = isTradeAiStaleSession(tradeAi)
+        const setupsRunLabel = runLabel(tradeAi?.latest_run_label || tradeAi?.run_label, tradeAi?.run_date)
+        const runTsDisplay = tradeAi?.latest_run_timestamp
+          ? new Date(tradeAi.latest_run_timestamp).toLocaleString('en-US', {
+              timeZone: NY_TZ,
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              timeZoneName: 'short',
+            })
+          : (tradeAi?.run_date ? String(tradeAi.run_date) : 'timestamp unavailable')
         const kpis = [
           { label: 'GO', value: goN, color: '#22c55e', title: universeScope },
           { label: 'WAIT', value: waitN, color: '#f59e0b', title: universeScope },
@@ -291,8 +349,43 @@ export default function TradingHub({ onDrill }: Props) {
                 {tradeAi?.latest_run_timestamp && ` · ${new Date(tradeAi.latest_run_timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
                 {scannedN != null && ` · ${scannedN} scanned this run`}
                 {tradeAi?.run_health_status && <span style={{ marginLeft: 6, color: /healthy/i.test(tradeAi.run_health_status) ? '#22c55e' : '#ef4444' }}>· {tradeAi.run_health_status}</span>}
+                {staleSession && <span style={{ marginLeft: 6, color: BB.amber, fontWeight: 800 }}>· STALE SESSION</span>}
               </div>
             </div>
+            {staleSession && (
+              <div
+                role="status"
+                data-testid="trade-ai-stale-session-banner"
+                style={{
+                  marginTop: 8,
+                  marginBottom: 4,
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: `1px solid ${BB.amber}`,
+                  background: BB.amberDim,
+                  color: 'var(--text0)',
+                  fontSize: TYPE.sm,
+                  lineHeight: 1.45,
+                }}
+              >
+                <div style={{ fontWeight: 800, color: BB.amber, fontSize: TYPE.md, marginBottom: 4 }}>
+                  STALE SESSION — latest scan is not from today’s America/New_York session
+                </div>
+                <div style={{ color: 'var(--text1)', fontSize: TYPE.sm }}>
+                  Last run: <b>{setupsRunLabel}</b>
+                  {' · '}
+                  <b>{runTsDisplay}</b>
+                  {' · '}
+                  universe <b>{goN}</b> GO / <b>{waitN}</b> WAIT
+                  {universeN != null && <> · {universeN} symbols in panel</>}
+                  {scannedN != null && <> · current-run scanned {scannedN}</>}
+                </div>
+                <div style={{ marginTop: 4, color: 'var(--text2)', fontSize: TYPE.sm }}>
+                  Actionable may be empty (or show prior-day names) because this scan is old — not because the API failed.
+                  Header SETUPS also shows STALE for the same reason. No new scan is started from this page.
+                </div>
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 6px' }}>
               {kpis.map(k => (
                 <div key={k.label} title={k.title} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: k.title ? 'help' : 'default' }}>
