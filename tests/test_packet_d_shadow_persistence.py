@@ -56,6 +56,10 @@ def test_persist_with_inmemory_store():
     assert report.persisted.get("artifacts") == 120
     assert report.persisted.get("reviews") == 120
     assert report.persisted.get("scores") == 120
+    # known-bad (20) → lessons+cases+chunks; good PASS (100) → lessons+chunks
+    assert report.persisted.get("kb_lessons", 0) >= 20
+    assert report.persisted.get("kb_cases", 0) >= 20
+    assert report.persisted.get("kb_chunks", 0) >= 20
     assert report.run_id.startswith("shadow-d-")
     ok, fails = report.evaluate()
     assert ok, fails
@@ -64,6 +68,15 @@ def test_persist_with_inmemory_store():
     assert len(state.artifacts) == 120
     assert len(state.reviews) == 120
     assert len(state.scores) == 120
+    # InMemory table sizes for KB
+    assert len(store._store.tables["kb_lessons"]) >= 20
+    assert len(store._store.tables["kb_cases"]) >= 20
+    assert len(store._store.tables["kb_chunks"]) >= 20
+    # Lessons are CANDIDATE only (never auto-promoted)
+    for row in store._store.tables["kb_lessons"].values():
+        assert row.get("lifecycle") == "CANDIDATE"
+        assert row.get("created_by") == mod.IRIS_AGENT_ID
+        assert row.get("created_by") != mod.PRODUCER_AGENT_ID
 
 
 def test_persist_skipped_when_persist_false():
@@ -82,3 +95,22 @@ def test_prod_dsn_still_refused_before_persist():
             source=_stub(5, 2),
             store=InMemoryPersistence(),
         )
+
+
+def test_kb_lesson_idempotent_on_rerun():
+    from agent_runtime.persistence import InMemoryPersistence
+
+    store = InMemoryPersistence()
+    dsn = "postgresql://agentic_runtime_shadow_rw:pw@127.0.0.1:5433/trade_ai_agentic_lab"
+    # Fixed started_at via small stub path: call persist twice with same store/rows
+    report1 = mod.run_shadow(dsn, source=_stub(5, 3), store=store, persist=True)
+    n1 = report1.persisted.get("kb_lessons", 0)
+    assert n1 >= 3
+    # Second population with new started_at creates new run + new lesson ids (aid-stable lessons
+    # share lesson_id shadow-lesson-{aid} — re-insert same version is idempotent no-op)
+    report2 = mod.run_shadow(dsn, source=_stub(5, 3), store=store, persist=True)
+    assert report2.persisted.get("kb_lessons", 0) >= 3
+    # Table should not explode with conflicting versions
+    for row in store._store.tables["kb_lessons"].values():
+        assert row.get("lesson_version") == 1
+        assert row.get("lifecycle") == "CANDIDATE"

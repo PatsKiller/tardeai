@@ -128,7 +128,10 @@ class RunReport:
     agents_marked_operational: int = 0   # MUST stay 0
     # Durable agentic_runtime counts after persist (0 if not persisted / dry)
     persisted: dict[str, Any] = dataclasses.field(
-        default_factory=lambda: {"runs": 0, "artifacts": 0, "reviews": 0, "scores": 0}
+        default_factory=lambda: {
+            "runs": 0, "artifacts": 0, "reviews": 0, "scores": 0,
+            "kb_lessons": 0, "kb_cases": 0, "kb_chunks": 0,
+        }
     )
     run_id: str = ""
 
@@ -535,11 +538,13 @@ def persist_acceptance_evidence(
     store: Any,
     report: RunReport,
     rows: list[dict[str, Any]],
-) -> dict[str, int]:
-    """Write run + artifacts + reviews + scores via persistence APIs only.
+) -> dict[str, Any]:
+    """Write run + artifacts + reviews + scores + kb_* via persistence APIs only.
 
     Uses create_run → retrieval lifecycle → record_artifact → record_review →
-    record_score → complete_run. Idempotent on payload_hash / review_id / score_id.
+    record_score → record_lesson/case/chunk → complete_run.
+    Idempotent on payload_hash / review_id / score_id / lesson_id+version.
+    Lessons stay lifecycle=CANDIDATE (never auto-promoted to RATIFIED/policy).
     """
     sys.path.insert(0, str(_REPO_ROOT / "scripts"))
     from agent_runtime.contracts import (
@@ -553,8 +558,12 @@ def persist_acceptance_evidence(
     )
     from agent_runtime.persistence import derive_id
 
+    empty = {
+        "runs": 0, "artifacts": 0, "reviews": 0, "scores": 0,
+        "kb_lessons": 0, "kb_cases": 0, "kb_chunks": 0,
+    }
     if not rows:
-        return {"runs": 0, "artifacts": 0, "reviews": 0, "scores": 0}
+        return empty
 
     started = report.started_at or _dt.datetime.now(_dt.timezone.utc).isoformat()
     # Stable-ish run id for this acceptance batch (re-run with new started_at → new run)
@@ -603,6 +612,7 @@ def persist_acceptance_evidence(
     score_by_aid = {s.artifact_id: s for s in report.scores}
 
     n_art = n_rev = n_score = 0
+    n_lessons = n_cases = n_chunks = 0
     for idx, row in enumerate(rows, start=1):
         aid = _artifact_id(row, "shadow", idx)
         producer = str(row.get("producer_agent_id") or PRODUCER_AGENT_ID)
@@ -637,9 +647,10 @@ def persist_acceptance_evidence(
             continue
 
         rec = review_by_aid.get(aid) or _sentinel_review(row, aid)
+        review_id = derive_id("review", run_id, aid, REVIEWER_AGENT_ID)
         try:
             store.record_review(Review(
-                review_id=derive_id("review", run_id, aid, REVIEWER_AGENT_ID),
+                review_id=review_id,
                 artifact_id=aid,
                 producer_agent_id=producer,  # overwritten from persisted artifact
                 reviewer_agent_id=REVIEWER_AGENT_ID,
@@ -652,6 +663,7 @@ def persist_acceptance_evidence(
             n_rev += 1
         except Exception:
             report.failures += 1
+            review_id = ""
 
         try:
             store.record_score(Score(
@@ -666,23 +678,123 @@ def persist_acceptance_evidence(
         except Exception:
             report.failures += 1
 
+        # Governed KB evidence (SHADOW CANDIDATE only — never RATIFIED / never policy promote)
+        is_bad = bool(row.get("is_known_bad"))
+        write_kb = is_bad or rec.verdict == "PASS"
+        if write_kb:
+            lesson_id = f"shadow-lesson-{aid}"[:80]
+            statement = (
+                f"Known-bad fixture {aid} quarantined under SHADOW acceptance; "
+                f"do not promote to operational policy without human review."
+                if is_bad
+                else f"SHADOW hypothesis for {aid}: advisory Watch artifact scored under acceptance; "
+                f"candidate only — not operational."
+            )
+            try:
+                store.record_lesson(
+                    lesson_id=lesson_id,
+                    lesson_version=1,
+                    lifecycle="CANDIDATE",
+                    title=("known_bad_quarantine" if is_bad else "shadow_watch_hypothesis")[:120],
+                    statement=statement[:2000],
+                    provenance={
+                        "run_id": run_id,
+                        "artifact_id": aid,
+                        "review_id": review_id or None,
+                        "environment": ENVIRONMENT,
+                        "packet": "D",
+                        "lifecycle": "CANDIDATE",
+                        "auto_promote": False,
+                    },
+                    created_by=IRIS_AGENT_ID,  # reflection/iris ≠ producer
+                    reviewed_by=None,
+                    counterevidence_refs=(),
+                )
+                n_lessons += 1
+            except Exception:
+                report.failures += 1
+
+            if is_bad:
+                case_id = f"shadow-case-{aid}"[:80]
+                try:
+                    store.record_case(
+                        case_id=case_id,
+                        case_type="known_bad_fixture",
+                        source_refs=[f"artifact:{aid}", f"run:{run_id}"],
+                        facts={
+                            "artifact_id": aid,
+                            "symbol": row.get("symbol"),
+                            "known_bad_reason": row.get("known_bad_reason") or "fixture_known_bad",
+                            "source_kind": row.get("source_kind"),
+                        },
+                        decision_artifact_id=aid,
+                        outcome=None,
+                    )
+                    n_cases += 1
+                except Exception:
+                    report.failures += 1
+
+            # Minimal retrieval chunk (hash + lesson/case ref) — no embeddings required
+            content = f"{lesson_id}: {statement}"[:4000]
+            source_hash = canonical_hash({"content": content, "lesson_id": lesson_id, "aid": aid})
+            chunk_id = f"shadow-chunk-{aid}"[:80]
+            try:
+                store.record_chunk(
+                    chunk_id=chunk_id,
+                    source_type="shadow_acceptance_lesson",
+                    source_ref=f"lesson:{lesson_id}:1",
+                    source_hash=source_hash,
+                    content=content,
+                    metadata={
+                        "lesson_id": lesson_id,
+                        "lesson_version": 1,
+                        "artifact_id": aid,
+                        "case_id": (f"shadow-case-{aid}"[:80] if is_bad else None),
+                        "run_id": run_id,
+                        "environment": ENVIRONMENT,
+                    },
+                )
+                n_chunks += 1
+            except Exception:
+                report.failures += 1
+
     try:
         store.complete_run(run_id)
     except Exception:
         # Evidence rows still count if complete_run fails (e.g. re-run terminal)
         pass
 
-    # Re-read durable counts from reconstruct when available
+    # Re-read durable run-bound counts; KB counts from write tallies (+ memory store if present)
     try:
         state = store.reconstruct(run_id)
-        counts = {
+        counts: dict[str, Any] = {
             "runs": 1,
             "artifacts": len(state.artifacts),
             "reviews": len(state.reviews),
             "scores": len(state.scores),
+            "kb_lessons": n_lessons,
+            "kb_cases": n_cases,
+            "kb_chunks": n_chunks,
         }
     except Exception:
-        counts = {"runs": 1 if n_art else 0, "artifacts": n_art, "reviews": n_rev, "scores": n_score}
+        counts = {
+            "runs": 1 if n_art else 0,
+            "artifacts": n_art,
+            "reviews": n_rev,
+            "scores": n_score,
+            "kb_lessons": n_lessons,
+            "kb_cases": n_cases,
+            "kb_chunks": n_chunks,
+        }
+    # Prefer live table sizes from InMemory backend when available
+    try:
+        mem = getattr(store, "_store", None)
+        if mem is not None and hasattr(mem, "tables"):
+            counts["kb_lessons"] = len(mem.tables.get("kb_lessons") or {})
+            counts["kb_cases"] = len(mem.tables.get("kb_cases") or {})
+            counts["kb_chunks"] = len(mem.tables.get("kb_chunks") or {})
+    except Exception:
+        pass
     report.persisted = counts
     return counts
 
@@ -778,9 +890,12 @@ def run_shadow(
         except Exception as exc:
             # Surface persistence failure as failures count; still return metrics.
             report.failures += 1
-            report.persisted = report.persisted or {"runs": 0, "artifacts": 0, "reviews": 0, "scores": 0}
+            report.persisted = report.persisted or {
+                "runs": 0, "artifacts": 0, "reviews": 0, "scores": 0,
+                "kb_lessons": 0, "kb_cases": 0, "kb_chunks": 0,
+            }
             # Attach non-secret error class name only
-            report.persisted["error"] = type(exc).__name__  # type: ignore[index]
+            report.persisted["error"] = type(exc).__name__
 
     assert_shadow_only(report)
     return report
