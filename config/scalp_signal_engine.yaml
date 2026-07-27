@@ -163,3 +163,14 @@ multi_source:
   # only (Alpaca IEX is venue-partial → T1_venue, NOT consolidated SIP; SIP realtime = 403); T2 book
   # = moomoo gateway only when entitlement+freshness+sequence pass (currently SCAFFOLD_ONLY); broker
   # facts = each broker authoritative only for its own resources. No averaging; conflict → SOURCE_CONFLICT.
+
+# ── M3-S6 Tier-1 microstructure (Lee-Ready TFI, effective spread, Kyle λ, VPIN). GATED + DEFAULT OFF.
+#    HARD RULE: T1 metrics require real-time CONSOLIDATED (SIP) data. IEX-only/delayed/unentitled are
+#    FORBIDDEN (M3-S5.5: IEX = ~2-3% venue, weaker than the T0 BarPressure fallback). scalp_t1_gate
+#    refuses computation unless enabled AND entitlement == SIP_REALTIME. No feed procured yet → dormant. ──
+t1:
+  enabled: false               # HARD OFF — cannot run until a consolidated feed is procured + re-probed
+  required_entitlement: SIP_REALTIME
+  consolidated_provider: polygon   # candidate T1 source once upgraded (or alpaca SIP via Algo Trader Plus)
+  vpin_bucket_volume: 0        # shares per equal-volume VPIN bucket — set when a feed exists
+  vpin_buckets: 50
