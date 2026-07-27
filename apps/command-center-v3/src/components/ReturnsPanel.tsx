@@ -122,8 +122,10 @@ interface Props {
   holdings: any[]
   riskPositions?: any[]
   acctColor: (a: string) => string
-  /** Optional external account filter (from Portfolio chips). */
+  /** Optional external account filter (from Portfolio chips / URL ?acct=). */
   initialAccount?: string | null
+  /** When set, chip/matrix clicks also write the hub URL ?acct= (shareable). */
+  onAccountFilter?: (account: string | null) => void
   onOpenHolding?: (symbol: string, account: string) => void
 }
 
@@ -133,12 +135,17 @@ function signedColor(n: number | null | undefined) {
 }
 
 export default function ReturnsPanel({
-  perfData, holdings, riskPositions = [], acctColor, initialAccount = null, onOpenHolding,
+  perfData, holdings, riskPositions = [], acctColor, initialAccount = null, onAccountFilter, onOpenHolding,
 }: Props) {
   const [activeAcct, setActiveAcct] = useState<string | null>(initialAccount ?? null)
   useEffect(() => {
     if (initialAccount !== undefined) setActiveAcct(initialAccount)
   }, [initialAccount])
+
+  const chooseAcct = (next: string | null) => {
+    setActiveAcct(next)
+    onAccountFilter?.(next)
+  }
 
   const accountKeys = useMemo(() => {
     const fromPerf = Object.keys(perfData.accounts || {})
@@ -168,7 +175,6 @@ export default function ReturnsPanel({
     }
   }, [activeAcct, perfData])
 
-  // Aggregate comparison table: all accounts × periods
   const periodCols = useMemo(() => {
     const keys = new Set<string>(Object.keys(perfData.periods || {}))
     for (const a of Object.values(perfData.accounts || {})) {
@@ -177,7 +183,6 @@ export default function ReturnsPanel({
     return PERIOD_ORDER.filter(k => keys.has(k))
   }, [perfData])
 
-  // Winners / losers from holdings day_change (1D) — exclude dead $0 lots (false losers)
   const { winners, losers } = useMemo(() => {
     let rows = (holdings || []).filter((h: any) => !h?.is_cash && h?.symbol && !isDeadLot(h))
     if (activeAcct) rows = rows.filter((h: any) => String(h.account) === activeAcct)
@@ -206,13 +211,12 @@ export default function ReturnsPanel({
 
   return (
     <div data-testid="returns-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Account filter */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', marginRight: 4 }}>Account</span>
         <button
           type="button"
           data-testid="returns-acct-all"
-          onClick={() => setActiveAcct(null)}
+          onClick={() => chooseAcct(null)}
           style={chipStyle(activeAcct == null, '#60a5fa')}
         >
           All accounts
@@ -222,7 +226,7 @@ export default function ReturnsPanel({
             key={a}
             type="button"
             data-testid={`returns-acct-${a}`}
-            onClick={() => setActiveAcct(activeAcct === a ? null : a)}
+            onClick={() => chooseAcct(activeAcct === a ? null : a)}
             style={chipStyle(activeAcct === a, acctColor(a))}
           >
             <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(a), marginRight: 5 }} />
@@ -232,7 +236,6 @@ export default function ReturnsPanel({
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 340px) 1fr', gap: 14 }}>
-        {/* Period returns for selected scope */}
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>
             {view.scope === 'account' ? view.label : 'Portfolio Performance'}
@@ -348,7 +351,6 @@ export default function ReturnsPanel({
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/portfolio/performance{activeAcct ? ` → accounts.${activeAcct}` : ''}</div>
         </div>
 
-        {/* Per-account matrix (always show so aggregate filters are visible) */}
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, overflowX: 'auto' }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>By account · all periods</div>
           <div
@@ -356,7 +358,7 @@ export default function ReturnsPanel({
             title={perfData.benchmarks?.methodology || undefined}
           >
             Click a row to filter. Amber ≈ = transfer-adjusted book % (used for α).
-            Index rows (SPY · S&amp;P 500, QQQ · Nasdaq-100, IWM, DIA): ETF return + α = book − index — <b style={{ color: 'var(--text2)' }}>hover any cell</b> for full math.
+            Index rows (SPY · S&P 500, QQQ · Nasdaq-100, IWM, DIA): ETF return + α = book − index — <b style={{ color: 'var(--text2)' }}>hover any cell</b> for full math.
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 520 }}>
             <thead>
@@ -369,10 +371,9 @@ export default function ReturnsPanel({
               </tr>
             </thead>
             <tbody>
-              {/* Portfolio row */}
               <tr
                 data-testid="returns-matrix-all"
-                onClick={() => setActiveAcct(null)}
+                onClick={() => chooseAcct(null)}
                 style={{
                   borderTop: '1px solid var(--border)', cursor: 'pointer',
                   background: activeAcct == null ? 'rgba(96,165,250,.08)' : 'transparent',
@@ -394,7 +395,6 @@ export default function ReturnsPanel({
                   )
                 })}
               </tr>
-              {/* Index benchmarks */}
               {(perfData.benchmarks?.items || []).map((b) => (
                 <tr
                   key={b.symbol}
@@ -446,7 +446,7 @@ export default function ReturnsPanel({
                   <tr
                     key={a}
                     data-testid={`returns-matrix-${a}`}
-                    onClick={() => setActiveAcct(sel ? null : a)}
+                    onClick={() => chooseAcct(sel ? null : a)}
                     style={{
                       borderTop: '1px solid var(--border)', cursor: 'pointer',
                       background: sel ? `${acctColor(a)}14` : 'transparent',
@@ -493,7 +493,6 @@ export default function ReturnsPanel({
         </div>
       </div>
 
-      {/* Winners / Losers (1D day change) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <MoverList
           title="Largest winners (today)"
