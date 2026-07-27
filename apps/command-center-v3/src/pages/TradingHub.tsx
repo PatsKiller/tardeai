@@ -86,6 +86,43 @@ function isTradeAiStaleSession(tradeAi: any): boolean {
   return false
 }
 
+/** Screener run health tiers — not binary green/red (underfill ≠ failed ≠ stale). */
+type RunHealthTier = 'healthy' | 'underfilled' | 'partial' | 'failed' | 'unknown'
+
+function classifyRunHealth(status?: string | null): RunHealthTier {
+  const s = String(status || '').toUpperCase()
+  if (!s) return 'unknown'
+  if (s === 'RUN_HEALTHY' || s === 'HEALTHY') return 'healthy'
+  if (s === 'RUN_UNDERFILLED' || s.includes('UNDERFILL')) return 'underfilled'
+  if (s === 'RUN_PARTIAL' || s.includes('PARTIAL')) return 'partial'
+  if (s === 'RUN_FAILED' || s.includes('FAILED') || s.includes('CSV_EMPTY')) return 'failed'
+  return 'unknown'
+}
+
+function runHealthReasonCodes(tradeAi: any): string[] {
+  const raw = tradeAi?.run_health_reason_codes ?? tradeAi?.reason_codes ?? []
+  if (!Array.isArray(raw)) return []
+  return raw.map((x: any) => String(x ?? '').trim()).filter(Boolean)
+}
+
+function reasonCodeOneLiner(code: string): string {
+  const c = code.toUpperCase()
+  if (c === 'ROW_LIMIT_10_DETECTED') {
+    return 'Finviz export returned ≤10 raw rows for active screeners (thin premarket filters or row cap)'
+  }
+  if (c === 'CSV_EMPTY') return 'No CSV rows ingested'
+  if (c === 'FINVIZ_AUTH_FAILED' || c === 'FINVIZ_AUTH_MISSING') return 'Finviz auth problem'
+  if (c === 'ONLY_ONE_SCREENER_RETURNED') return 'Only one screener returned rows'
+  return code
+}
+
+function runHealthChipColor(tier: RunHealthTier): string {
+  if (tier === 'healthy') return BB.green
+  if (tier === 'underfilled' || tier === 'partial') return BB.amber
+  if (tier === 'failed') return BB.red
+  return 'var(--text3)'
+}
+
 /** Rank for scalp signal selection: GO > WAIT > others. */
 function scalpDecisionRank(decision?: string): number {
   const d = String(decision || '').toUpperCase().replace(/_/g, '-')
@@ -392,6 +429,10 @@ export default function TradingHub({ onDrill }: Props) {
         // can't silently disagree.
         const universeScope = 'Full scan universe — latest scan per symbol, today + yesterday, all runs (wider than the header SETUPS strip, which counts the latest run only)'
         const staleSession = isTradeAiStaleSession(tradeAi)
+        const healthTier = classifyRunHealth(tradeAi?.run_health_status)
+        const healthCodes = runHealthReasonCodes(tradeAi)
+        const healthFloor = Number(tradeAi?.expected_min_symbols)
+        const healthFloorLabel = Number.isFinite(healthFloor) && healthFloor > 0 ? String(healthFloor) : 'min 40'
         const setupsRunLabel = runLabel(tradeAi?.latest_run_label || tradeAi?.run_label, tradeAi?.run_date)
         const runTsDisplay = tradeAi?.latest_run_timestamp
           ? new Date(tradeAi.latest_run_timestamp).toLocaleString('en-US', {
@@ -404,6 +445,7 @@ export default function TradingHub({ onDrill }: Props) {
               timeZoneName: 'short',
             })
           : (tradeAi?.run_date ? String(tradeAi.run_date) : 'timestamp unavailable')
+        const healthStatusLabel = String(tradeAi?.run_health_status || 'UNKNOWN')
         const kpis = [
           { label: 'GO', value: goN, color: '#22c55e', title: universeScope },
           { label: 'WAIT', value: waitN, color: '#f59e0b', title: universeScope },
@@ -416,11 +458,19 @@ export default function TradingHub({ onDrill }: Props) {
           <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
               <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)' }}>Market Opportunities Scanner</div>
-              <div style={{ fontSize: 9, color: 'var(--text3)' }}>
+              <div style={{ fontSize: 10, color: 'var(--text3)' }}>
                 {tradeAi?.latest_run_label || tradeAi?.run_label || 'no run'}
                 {tradeAi?.latest_run_timestamp && ` · ${new Date(tradeAi.latest_run_timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
                 {scannedN != null && ` · ${scannedN} scanned this run`}
-                {tradeAi?.run_health_status && <span style={{ marginLeft: 6, color: /healthy/i.test(tradeAi.run_health_status) ? '#22c55e' : '#ef4444' }}>· {tradeAi.run_health_status}</span>}
+                {tradeAi?.run_health_status && (
+                  <span
+                    style={{ marginLeft: 6, color: runHealthChipColor(healthTier), fontWeight: 800 }}
+                    data-testid="trade-ai-run-health-chip"
+                    title={healthCodes.length ? healthCodes.join(', ') : healthStatusLabel}
+                  >
+                    · {healthStatusLabel}
+                  </span>
+                )}
                 {staleSession && <span style={{ marginLeft: 6, color: BB.amber, fontWeight: 800 }}>· STALE SESSION</span>}
               </div>
             </div>
@@ -458,6 +508,91 @@ export default function TradingHub({ onDrill }: Props) {
                 </div>
               </div>
             )}
+            {healthTier === 'underfilled' && (
+              <div
+                role="status"
+                data-testid="trade-ai-run-underfilled-banner"
+                style={{
+                  marginTop: 8,
+                  marginBottom: 4,
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: `1px solid ${BB.amber}`,
+                  background: BB.amberDim,
+                  color: 'var(--text0)',
+                  fontSize: TYPE.sm,
+                  lineHeight: 1.45,
+                }}
+              >
+                <div style={{ fontWeight: 800, color: BB.amber, fontSize: TYPE.md, marginBottom: 4 }}>
+                  RUN UNDERFILLED — latest run scanned fewer symbols than the health floor
+                </div>
+                <div style={{ color: 'var(--text1)', fontSize: TYPE.sm }}>
+                  Status <b>{healthStatusLabel}</b>
+                  {' · '}
+                  current-run scanned <b>{scannedN != null ? scannedN : '—'}</b>
+                  {' · '}
+                  health floor <b>{healthFloorLabel}</b>
+                  {universeN != null && <> · panel universe {universeN}</>}
+                </div>
+                {healthCodes.length > 0 && (
+                  <div style={{ marginTop: 4, color: 'var(--text1)', fontSize: TYPE.sm }}>
+                    Reasons:{' '}
+                    {healthCodes.map((code, i) => (
+                      <span key={code}>
+                        {i > 0 ? ' · ' : ''}
+                        <b>{code}</b> — {reasonCodeOneLiner(code)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ marginTop: 4, color: 'var(--text2)', fontSize: TYPE.sm }}>
+                  Panel universe may still include social/prior-day overlay; <b>current-run scanned</b> is the health numerator.
+                  Underfill is not the same as STALE SESSION or RUN FAILED. No scan is started from this page.
+                </div>
+              </div>
+            )}
+            {healthTier === 'failed' && (
+              <div
+                role="status"
+                data-testid="trade-ai-run-failed-banner"
+                style={{
+                  marginTop: 8,
+                  marginBottom: 4,
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: `1px solid ${BB.red}`,
+                  background: BB.redDim,
+                  color: 'var(--text0)',
+                  fontSize: TYPE.sm,
+                  lineHeight: 1.45,
+                }}
+              >
+                <div style={{ fontWeight: 800, color: BB.red, fontSize: TYPE.md, marginBottom: 4 }}>
+                  RUN FAILED — latest screener run did not complete a usable ingest
+                </div>
+                <div style={{ color: 'var(--text1)', fontSize: TYPE.sm }}>
+                  Status <b>{healthStatusLabel}</b>
+                  {' · '}
+                  current-run scanned <b>{scannedN != null ? scannedN : '—'}</b>
+                  {universeN != null && <> · panel universe {universeN}</>}
+                </div>
+                {healthCodes.length > 0 && (
+                  <div style={{ marginTop: 4, color: 'var(--text1)', fontSize: TYPE.sm }}>
+                    Reasons:{' '}
+                    {healthCodes.map((code, i) => (
+                      <span key={code}>
+                        {i > 0 ? ' · ' : ''}
+                        <b>{code}</b> — {reasonCodeOneLiner(code)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ marginTop: 4, color: 'var(--text2)', fontSize: TYPE.sm }}>
+                  This is ingest/auth failure — not underfill and not merely a prior session. No scan is started from this page.
+                </div>
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 6px' }}>
               {kpis.map(k => (
                 <div key={k.label} title={k.title} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: k.title ? 'help' : 'default' }}>
@@ -466,9 +601,15 @@ export default function TradingHub({ onDrill }: Props) {
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: 8, color: 'var(--text3)', margin: '0 0 12px' }}>
+            <div style={{ fontSize: 10, color: 'var(--text3)', margin: '0 0 12px' }}>
               Scope: full scan universe (latest scan per symbol · today + yesterday · all runs).
               Header SETUPS = latest run only: {tradeAi?.go_count ?? 0} GO · {tradeAi?.wait_count ?? 0} WAIT · {tradeAi?.avoid_count ?? 0} NOGO.
+              {healthTier === 'underfilled' && (
+                <> Current-run health: <b style={{ color: BB.amber }}>UNDERFILLED</b> ({scannedN != null ? scannedN : '—'} scanned).</>
+              )}
+              {healthTier === 'failed' && (
+                <> Current-run health: <b style={{ color: BB.red }}>FAILED</b>.</>
+              )}
             </div>
 
             {/* Copy lists (GO / WAIT / Universe) — paste into broker watchlist / ToS */}
