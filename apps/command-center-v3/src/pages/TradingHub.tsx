@@ -41,6 +41,52 @@ const TAB_ALIASES: Record<string, typeof TABS[number]> = {
 // GO / WAIT / MANUAL_REVIEW / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : d === 'MANUAL_REVIEW' ? 'var(--squeeze)' : '#ef4444'
 
+/** Rank for scalp signal selection: GO > WAIT > others. */
+function scalpDecisionRank(decision?: string): number {
+  const d = String(decision || '').toUpperCase().replace(/_/g, '-')
+  if (d === 'GO') return 3
+  if (d === 'WAIT') return 2
+  return 1
+}
+
+/** Grade rank: A > B > C > D > F > unknown. */
+function scalpGradeRank(grade?: string): number {
+  const g = String(grade || '').toUpperCase()
+  if (g === 'A') return 5
+  if (g === 'B') return 4
+  if (g === 'C') return 3
+  if (g === 'D') return 2
+  if (g === 'F') return 1
+  return 0
+}
+
+/** True when `a` is the better row for dedupe (decision → grade → score). */
+function isBetterScalpSignal(a: any, b: any): boolean {
+  const da = scalpDecisionRank(a?.decision)
+  const db = scalpDecisionRank(b?.decision)
+  if (da !== db) return da > db
+  const ga = scalpGradeRank(a?.grade)
+  const gb = scalpGradeRank(b?.grade)
+  if (ga !== gb) return ga > gb
+  return (Number(a?.score) || 0) > (Number(b?.score) || 0)
+}
+
+/**
+ * Client-side dedupe of /api/v2/scalp/live signals by uppercase symbol.
+ * Keeps the best-ranked row per symbol. Display-only — does not change backend contracts.
+ */
+function dedupeScalpSignalsBySymbol(sigs: any[]): { unique: any[]; rawCount: number } {
+  const best = new Map<string, any>()
+  for (const row of sigs) {
+    const sym = String(row?.symbol || '').toUpperCase()
+    if (!sym) continue
+    const normalized = { ...row, symbol: sym }
+    const prev = best.get(sym)
+    if (!prev || isBetterScalpSignal(normalized, prev)) best.set(sym, normalized)
+  }
+  return { unique: [...best.values()], rawCount: sigs.length }
+}
+
 export default function TradingHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   // Deep-link support (Stage 2a): /trading?tab=Broker+Orders&intent=<id> — the Telegram approval
@@ -774,7 +820,9 @@ export default function TradingHub({ onDrill }: Props) {
           )
         }
         const raw: any[] = scalpData.signals ?? []
-        const sigs = raw.map((s: any) => ({ ...(s.data || s), _ts: s.timestamp })).filter((d: any) => d.symbol)
+        const expanded = raw.map((s: any) => ({ ...(s.data || s), _ts: s.timestamp })).filter((d: any) => d.symbol)
+        // API can emit the same symbol twice; dedupe by symbol keeping best rank (GO>WAIT>others, grade, score).
+        const { unique: sigs, rawCount: rawSignalCount } = dedupeScalpSignalsBySymbol(expanded)
         const n = sigs.length
         const byG: Record<string, number> = {}; sigs.forEach((d: any) => { const g = (d.grade || '?').toUpperCase(); byG[g] = (byG[g] || 0) + 1 })
         const byD = { GO: 0, WAIT: 0, 'NO-GO': 0 } as Record<string, number>
@@ -784,13 +832,12 @@ export default function TradingHub({ onDrill }: Props) {
         const avgScore = n ? Math.round(sigs.reduce((a: number, d: any) => a + (d.score || 0), 0) / n) : 0
         // "prime" actionable scalp = GO + grade A + catalyst verified (the criteria that actually matter)
         const prime = sigs.filter((d: any) => (d.decision || '').toUpperCase() === 'GO' && (d.grade || '').toUpperCase() === 'A' && d.catalyst_verified)
-        const gradeRank: Record<string, number> = { A: 4, B: 3, C: 2, D: 1, F: 0 }
         const ordered = [...sigs].sort((a: any, b: any) => {
-          const da = (a.decision || '').toUpperCase() === 'GO' ? 1 : 0, db = (b.decision || '').toUpperCase() === 'GO' ? 1 : 0
+          const da = scalpDecisionRank(a.decision), db = scalpDecisionRank(b.decision)
           if (da !== db) return db - da
-          const ga = gradeRank[(a.grade || '').toUpperCase()] ?? -1, gb = gradeRank[(b.grade || '').toUpperCase()] ?? -1
+          const ga = scalpGradeRank(a.grade), gb = scalpGradeRank(b.grade)
           if (ga !== gb) return gb - ga
-          return (b.score || 0) - (a.score || 0)
+          return (Number(b.score) || 0) - (Number(a.score) || 0)
         })
         const Tip = ({ t, children }: { t: string; children: any }) => (
           <span title={t} style={{ cursor: 'help', borderBottom: '1px dotted var(--text3)' }}>{children}</span>
@@ -863,10 +910,10 @@ export default function TradingHub({ onDrill }: Props) {
             <span style={{ flex: '0 0 54px' }}><Tip t="Catalyst verified?">Catalyst</Tip></span>
             <span style={{ flex: '1 1 auto' }}>Source</span>
           </div>
-          {ordered.slice(0, 30).map((d: any, i: number) => {
+          {ordered.slice(0, 30).map((d: any) => {
             const isGo = (d.decision || '').toUpperCase() === 'GO'
             return (
-            <div key={i} onClick={() => onDrill({ title: `${d.symbol} — Scalp Signal`, subtitle: `${d.decision ?? '—'} · grade ${d.grade ?? '—'} · score ${d.score ?? '—'} · RVOL ${d.rvol ?? '—'}${d.critic_verdict ? ' · ' + d.critic_verdict : ''}`, endpoint: '/api/v2/scalp/live', rows: [d], subjectType: 'scalp', subjectKey: d.symbol })}
+            <div key={d.symbol} onClick={() => onDrill({ title: `${d.symbol} — Scalp Signal`, subtitle: `${d.decision ?? '—'} · grade ${d.grade ?? '—'} · score ${d.score ?? '—'} · RVOL ${d.rvol ?? '—'}${d.critic_verdict ? ' · ' + d.critic_verdict : ''}`, endpoint: '/api/v2/scalp/live', rows: [d], subjectType: 'scalp', subjectKey: d.symbol })}
               style={{ display: 'flex', alignItems: 'center', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, background: isGo ? 'rgba(34,197,94,.05)' : undefined }}>
               <span style={{ flex: '0 0 66px', fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{d.symbol}
                 {(scalpExtMap[d.symbol] || []).map((e: any, j: number) => <span key={j} title={`${e.lane === 'grok' ? 'Grok' : e.lane === 'chatgpt' ? 'ChatGPT' : e.lane}: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : '#10a37f', cursor: 'help' }}>✦</span>)}</span>
@@ -879,7 +926,10 @@ export default function TradingHub({ onDrill }: Props) {
               <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}><ScoutPill d={d} />{d.source ?? '—'}</span>
             </div>
           )})}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/scalp/live · click any row for the full signal. Hover ⓘ for definitions. Advisory only — scalp execution is gated.</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }} data-testid="scalp-dedupe-footer">
+            Deduped {rawSignalCount} → {n} unique symbols.
+            {' · '}Source: /api/v2/scalp/live · click any row for the full signal. Hover ⓘ for definitions. Advisory only — scalp execution is gated.
+          </div>
           </>)}
         </div>
         )
