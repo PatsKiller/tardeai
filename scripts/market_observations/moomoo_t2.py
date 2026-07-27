@@ -84,6 +84,17 @@ class ArmedSubscriptionManager:
         self.prune(now)
         return len(self._armed), self.max_armed
 
+    # ── cross-invocation persistence (real conserving: survive the per-cron process boundary) ──
+    def to_state(self, now: float) -> dict:
+        self.prune(now)
+        return {"armed": {s: {"armed_at": e.armed_at, "expires_at": e.expires_at, "reason": e.reason}
+                          for s, e in self._armed.items()}}
+
+    def load_state(self, state: dict) -> None:
+        for s, d in (state or {}).get("armed", {}).items():
+            self._armed[s.upper()] = ArmedEntry(s.upper(), float(d["armed_at"]),
+                                                float(d["expires_at"]), d.get("reason", "restored"))
+
 
 class MoomooT2Provider:
     """order-book (L2) provider through the Stage-0 client boundary. Read-only; conserving; fail-closed."""
@@ -144,6 +155,21 @@ class MoomooT2Provider:
             entitlement_state=EntitlementState.AVAILABLE_REALTIME, feed="moomoo_totalview",
             freshness_state=FreshnessState.FRESH, quality_state=QualityState.OK,
             data_tier=DataTier.T2, sequence_id=raw.get("seq"))
+
+
+def sync_arm_from_states(provider: "MoomooT2Provider", symbol_to_state: dict, now: float,
+                         arm_states: tuple = ("ARMED",)) -> dict:
+    """Wire the trigger FSM to the L2 budget: ARM every symbol currently in an arm-state (ARMED =
+    seconds/minutes from a fire) and DISARM everything else. Conserving — respects the hard budget
+    (arms in stable order until full; the rest are reported as skipped, never force-subscribed)."""
+    want = [s.upper() for s, st in symbol_to_state.items() if st in arm_states]
+    have = set(provider.manager.armed_symbols(now))
+    for s in sorted(have - set(want)):
+        provider.disarm(s)                       # no longer imminent → free the budget
+    armed, skipped = [], []
+    for s in sorted(set(want)):
+        (armed if provider.arm(s, now, reason="trigger_armed") else skipped).append(s)
+    return {"armed": armed, "skipped_budget": skipped, "disarmed": sorted(have - set(want))}
 
 
 def default_provider() -> MoomooT2Provider:

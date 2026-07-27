@@ -176,3 +176,13 @@ t1:
   consolidated_provider: polygon   # candidate T1 source once upgraded (or alpaca SIP via Algo Trader Plus)
   vpin_bucket_volume: 0        # shares per equal-volume VPIN bucket — set when a feed exists
   vpin_buckets: 50
+
+# ── Moomoo T2 (Level-2) arm-on-demand, wired to the trigger FSM ARMED state. CONSERVING + fail-closed.
+#    Arms a symbol's L2 subscription only while its trigger FSM is ARMED (seconds/minutes from a fire),
+#    disarms otherwise; hard max_armed budget + TTL. Live-only (replay never arms). Fail-closed →
+#    SCAFFOLD_ONLY until OpenD is configured (no real subscription/cost until then). ──
+t2:
+  arm_from_trigger: true       # wire ARMED → moomoo L2 arm (harmless until OpenD; observability now)
+  max_armed: 8                 # hard OpenD L2 subscription budget (never exceeded / never silent-evict)
+  ttl_seconds: 180             # auto-disarm if a name isn't re-armed within 3 min
+  state_file: data/scalp/moomoo_armed_state.json   # cross-cron persistence (avoid re-subscribe churn)

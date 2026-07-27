@@ -251,6 +251,7 @@ def run(args) -> int:
 
     results = []
     trigger_fires = []
+    trigger_states = {}      # symbol → current FSM state (trace[-1]); drives the moomoo L2 arm
     ef = ucurve[minute] if 0 <= minute < len(ucurve) else (minute + 1) / n_min
     for a in assembled:
         # RVOL_tod: per-symbol profile, else universe-proxy (§3.1)
@@ -287,6 +288,7 @@ def run(args) -> int:
         results.append(row)
         # M3-S5: run the entry-trigger state machine over the symbol's session bars; log TRIGGER fires
         tr = trig.run_trigger_engine(bars, cfg)
+        trigger_states[a["_symbol"]] = (tr["trace"][-1] if tr.get("trace") else "IDLE")  # current FSM state
         for fe in trig.triggered_fires(tr):
             fb = bars[fe["fire_idx"]]
             fm = fb.get("m")
@@ -403,6 +405,36 @@ def run(args) -> int:
                   f"(provenance only — scoring/triggers unchanged)")
         except Exception as e:
             print(f"  [multi_source] skipped: {e}")
+
+    # Moomoo T2 arm-on-demand: wire the trigger FSM ARMED state → L2 subscription budget. CONSERVING +
+    # fail-closed (SCAFFOLD_ONLY until OpenD configured → no real subscription/cost). LIVE only (replay
+    # is historical → never arms). Does NOT change scoring/triggers; state persists across cron runs.
+    t2cfg = cfg.get("t2", {})
+    if t2cfg.get("arm_from_trigger", False) and not args.replay:
+        try:
+            import json as _json, time as _time
+            from pathlib import Path as _P
+            from market_observations.moomoo_t2 import (default_provider, sync_arm_from_states,
+                                                       ArmedSubscriptionManager)
+            prov = default_provider()
+            prov.manager = ArmedSubscriptionManager(int(t2cfg.get("max_armed", 8)),
+                                                    float(t2cfg.get("ttl_seconds", 180)))
+            sf = _P(_REPO) / t2cfg.get("state_file", "data/scalp/moomoo_armed_state.json")
+            now_s = _time.time()
+            if sf.exists():
+                try:
+                    prov.manager.load_state(_json.loads(sf.read_text()))
+                except Exception:
+                    pass
+            res = sync_arm_from_states(prov, trigger_states, now_s)
+            books = sum(1 for s in res["armed"] if prov.fetch_book(s, now_s, as_of.isoformat()) is not None)
+            sf.parent.mkdir(parents=True, exist_ok=True)
+            sf.write_text(_json.dumps(prov.manager.to_state(now_s)))
+            used, cap = prov.manager.budget_used(now_s)
+            print(f"  [moomoo-arm] armed={res['armed']} disarmed={res['disarmed']} "
+                  f"budget={used}/{cap} books={books} opend_up={prov.opend_up()} (fail-closed until OpenD)")
+        except Exception as e:
+            print(f"  [moomoo-arm] skipped: {e}")
     return 0
 
 

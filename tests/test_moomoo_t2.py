@@ -120,5 +120,33 @@ def test_default_provider_is_scaffold_on_this_host():
     assert default_provider().entitlement() == ES.SCAFFOLD_ONLY
 
 
+# ── arm wired to trigger FSM ARMED state ────────────────────────────
+from moomoo_t2 import sync_arm_from_states  # noqa: E402
+
+def test_sync_arms_only_armed_symbols():
+    p = MoomooT2Provider(client=FakeClient(up=False))
+    res = sync_arm_from_states(p, {"A": "ARMED", "B": "IDLE", "C": "ARMED", "D": "PULLBACK"}, now=0)
+    assert res["armed"] == ["A", "C"] and p.manager.is_armed("A", 0) and not p.manager.is_armed("B", 0)
+
+def test_sync_disarms_when_leaving_armed():
+    p = MoomooT2Provider(client=FakeClient(up=False))
+    sync_arm_from_states(p, {"A": "ARMED"}, now=0)
+    res = sync_arm_from_states(p, {"A": "TRIGGERED", "B": "ARMED"}, now=1)   # A fired/left ARMED
+    assert "A" in res["disarmed"] and res["armed"] == ["B"] and not p.manager.is_armed("A", 1)
+
+def test_sync_respects_budget():
+    p = MoomooT2Provider(client=FakeClient(up=False), manager=ArmedSubscriptionManager(max_armed=2))
+    res = sync_arm_from_states(p, {"A": "ARMED", "B": "ARMED", "C": "ARMED"}, now=0)
+    assert len(res["armed"]) == 2 and len(res["skipped_budget"]) == 1
+
+def test_state_persistence_round_trip():
+    m = ArmedSubscriptionManager(max_armed=4, ttl_seconds=180)
+    m.arm("AAPL", now=100)
+    st = m.to_state(now=101)
+    m2 = ArmedSubscriptionManager(max_armed=4, ttl_seconds=180)
+    m2.load_state(st)
+    assert m2.is_armed("AAPL", now=150) is True and m2.is_armed("AAPL", now=9999) is False  # TTL honored
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
