@@ -374,7 +374,7 @@ def test_coordinated_deploy_script_defaults_dry_run_and_rolls_back_both():
     assert "--dry-run" in text and "EXECUTE=0" in text  # dry-run by default
     assert 'HEAD_SHA' in text and "!= expected" in text and "refuse to deploy" in text
     # backups of BOTH backend and static
-    assert "BACKEND_BACKUP" in text and "PREVIOUS_TARGET" in text
+    assert "BACKEND_BACKUP" in text and "STATIC_BACKUP" in text
     # explicit operator acknowledgement before any restart
     assert "operator acknowledgement" in text.lower() and "read -r ACK" in text
     # exactly ONE named service restart
