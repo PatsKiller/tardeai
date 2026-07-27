@@ -126,6 +126,11 @@ class RunReport:
     duplicate_runs: int = 0
     authority_violations: int = 0
     agents_marked_operational: int = 0   # MUST stay 0
+    # Durable agentic_runtime counts after persist (0 if not persisted / dry)
+    persisted: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {"runs": 0, "artifacts": 0, "reviews": 0, "scores": 0}
+    )
+    run_id: str = ""
 
     # ---- metric computations -------------------------------------------------
     def _rate(self, num: int, den: int) -> float:
@@ -168,6 +173,8 @@ class RunReport:
             "candidate_hypotheses": self.candidate_hypotheses,
             "abstentions": self.abstentions,
             "failures": self.failures,
+            "persisted": dict(self.persisted or {}),
+            "run_id": self.run_id,
         }
 
     def evaluate(self) -> tuple[bool, list[str]]:
@@ -501,61 +508,195 @@ def _darwin_score(row: dict[str, Any], artifact_id: str) -> ScoreRecord:
     )
 
 
-def _maybe_persist_evidence(dsn: str, report: RunReport, rows_processed: int) -> None:
-    """Best-effort append of a run summary row via shadow_rw. Failures do not invent authority."""
-    if rows_processed <= 0:
-        return
-    try:
-        import psycopg2
-        conn = psycopg2.connect(dsn, connect_timeout=10)
+def _make_pg_store(dsn: str):
+    """PostgresPersistence bound to SHADOW_DSN. Never logs DSN. Refuses prod dbname."""
+    _shadow_dsn_guard(dsn)
+    db, _user = _parse_dsn_identity(dsn)
+    if _is_production_dbname(db):
+        raise ShadowGuardError("refuse production database for persistence")
+    import psycopg2
+    sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+    from agent_runtime.persistence import PostgresPersistence
+
+    def _factory():
+        conn = psycopg2.connect(dsn, connect_timeout=15)
+        conn.autocommit = False
+        return conn
+
+    return PostgresPersistence(_factory, role_allowlist=("agentic_runtime_shadow_rw", "agentic_runtime_lab_rw"))
+
+
+def _verdict_enum(verdict: str):
+    from agent_runtime.contracts import ReviewVerdict
+    return ReviewVerdict(verdict)
+
+
+def persist_acceptance_evidence(
+    store: Any,
+    report: RunReport,
+    rows: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Write run + artifacts + reviews + scores via persistence APIs only.
+
+    Uses create_run → retrieval lifecycle → record_artifact → record_review →
+    record_score → complete_run. Idempotent on payload_hash / review_id / score_id.
+    """
+    sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+    from agent_runtime.contracts import (
+        Artifact,
+        BudgetPolicy,
+        Environment,
+        Review,
+        RunEnvelope,
+        Score,
+        canonical_hash,
+    )
+    from agent_runtime.persistence import derive_id
+
+    if not rows:
+        return {"runs": 0, "artifacts": 0, "reviews": 0, "scores": 0}
+
+    started = report.started_at or _dt.datetime.now(_dt.timezone.utc).isoformat()
+    # Stable-ish run id for this acceptance batch (re-run with new started_at → new run)
+    run_key = canonical_hash({
+        "packet": "D",
+        "started_at": started,
+        "n": len(rows),
+        "watch": report.watch_artifacts_processed,
+        "bad": report.known_bad_fixtures_processed,
+    })
+    run_id = f"shadow-d-{run_key[:24]}"
+    report.run_id = run_id
+    input_hash = run_key
+    validation_hash = canonical_hash({"validation": "packet_d_shadow", "run_id": run_id})
+
+    envelope = RunEnvelope(
+        run_id=run_id,
+        agent_id=PRODUCER_AGENT_ID,
+        agent_version="packet-d-1.0.0",
+        job_type="shadow_acceptance",
+        environment=Environment.SHADOW,
+        objective="Packet D SHADOW acceptance population (no promotion, advisory evidence only)",
+        input_hash=input_hash,
+        validation_hash=validation_hash,
+        created_at=started,
+    )
+    budget = BudgetPolicy(
+        max_model_calls=0,
+        max_tool_calls=0,
+        max_cost_usd=0.0,
+        deadline_seconds=3600,
+    )
+    store.create_run(envelope, budget)
+
+    query_hash = canonical_hash({"query": "shadow_acceptance_corpus", "run_id": run_id})
+    store.record_retrieval_started(run_id, query_hash=query_hash)
+    refs = [f"fixture:shadow_acceptance", f"run:{run_id}", "source:packet_d"]
+    store.record_retrieval_completed(
+        run_id,
+        refs=refs,
+        retrieval_hash=canonical_hash({"refs": refs, "run_id": run_id}),
+    )
+
+    # Align in-memory review records with persisted artifact ids
+    review_by_aid = {r.artifact_id: r for r in report.reviews}
+    score_by_aid = {s.artifact_id: s for s in report.scores}
+
+    n_art = n_rev = n_score = 0
+    for idx, row in enumerate(rows, start=1):
+        aid = _artifact_id(row, "shadow", idx)
+        producer = str(row.get("producer_agent_id") or PRODUCER_AGENT_ID)
+        payload = {
+            "kind": "shadow_acceptance_item",
+            "artifact_id": aid,
+            "symbol": row.get("symbol"),
+            "is_known_bad": bool(row.get("is_known_bad")),
+            "source_kind": row.get("source_kind") or row.get("source") or "unknown",
+            "payload": row.get("payload") if isinstance(row.get("payload"), dict) else {},
+            "advisory_only": True,
+            "financial_authority": "DENIED",
+        }
+        art = Artifact(
+            artifact_id=aid,
+            run_id=run_id,
+            producer_agent_id=producer,
+            artifact_type="watch_shadow_acceptance",
+            payload=payload,
+            input_hash=input_hash,
+            validation_hash=validation_hash,
+            retrieval_refs=tuple(refs),
+            prompt_version="packet-d-shadow-v1",
+            provider_family="deterministic",
+            model="packet-d-local",
+        )
         try:
-            cur = conn.cursor()
-            cur.execute("SELECT current_database()")
-            if str(cur.fetchone()[0]).lower() == "trade_ai":
-                return
-            # Prefer evidence tables; ignore if schema missing
-            cur.execute(
-                """
-                SELECT 1 FROM information_schema.tables
-                WHERE table_schema='agentic_runtime' AND table_name='agent_runs'
-                """
-            )
-            if not cur.fetchone():
-                return
-            run_id = f"shadow-acceptance-{report.started_at[:19].replace(':', '')}"
-            payload = {
-                "kind": "packet_d_shadow_acceptance",
-                "environment": ENVIRONMENT,
-                "watch_artifacts_processed": report.watch_artifacts_processed,
-                "known_bad_fixtures_processed": report.known_bad_fixtures_processed,
-                "agents_marked_operational": 0,
-            }
-            cur.execute(
-                """
-                INSERT INTO agentic_runtime.agent_runs
-                    (run_id, agent_id, environment, status, created_at)
-                VALUES (%s, %s, %s, %s, NOW())
-                ON CONFLICT DO NOTHING
-                """,
-                (run_id, REVIEWER_AGENT_ID, ENVIRONMENT, "SHADOW_ACCEPTANCE"),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+            store.record_artifact(art, retrieval_required=True)
+            n_art += 1
+        except Exception:
+            report.failures += 1
+            continue
+
+        rec = review_by_aid.get(aid) or _sentinel_review(row, aid)
+        try:
+            store.record_review(Review(
+                review_id=derive_id("review", run_id, aid, REVIEWER_AGENT_ID),
+                artifact_id=aid,
+                producer_agent_id=producer,  # overwritten from persisted artifact
+                reviewer_agent_id=REVIEWER_AGENT_ID,
+                verdict=_verdict_enum(rec.verdict),
+                findings=(
+                    ("known_bad",) if rec.is_known_bad else ()
+                ) + (("stale_input",) if rec.stale_input else ()),
+                artifact_hash=art.payload_hash,
+            ))
+            n_rev += 1
+        except Exception:
+            report.failures += 1
+
+        try:
+            store.record_score(Score(
+                score_id=derive_id("score", run_id, aid, SCORER_AGENT_ID),
+                artifact_id=aid,
+                producer_agent_id=producer,
+                scorer_agent_id=SCORER_AGENT_ID,
+                dimensions={"acceptance": 0.5 if not row.get("is_known_bad") else -0.5},
+                outcome_ref=None,
+            ))
+            n_score += 1
+        except Exception:
+            report.failures += 1
+
+    try:
+        store.complete_run(run_id)
     except Exception:
-        # Persistence is optional for metric acceptance; never raise trading authority.
-        return
+        # Evidence rows still count if complete_run fails (e.g. re-run terminal)
+        pass
+
+    # Re-read durable counts from reconstruct when available
+    try:
+        state = store.reconstruct(run_id)
+        counts = {
+            "runs": 1,
+            "artifacts": len(state.artifacts),
+            "reviews": len(state.reviews),
+            "scores": len(state.scores),
+        }
+    except Exception:
+        counts = {"runs": 1 if n_art else 0, "artifacts": n_art, "reviews": n_rev, "scores": n_score}
+    report.persisted = counts
+    return counts
 
 
 def process_artifacts(
     watch: Iterable[dict[str, Any]],
     known_bad: Iterable[dict[str, Any]],
     report: RunReport,
-) -> None:
-    """Fill report reviews/scores/lessons from watch + known-bad corpora."""
+) -> list[dict[str, Any]]:
+    """Fill report reviews/scores/lessons; return ordered rows for persistence."""
     seen: set[str] = set()
     watch_n = 0
     bad_n = 0
+    ordered: list[dict[str, Any]] = []
 
     def _one(row: dict[str, Any], *, known_bad_flag: bool) -> None:
         nonlocal watch_n, bad_n
@@ -570,6 +711,7 @@ def process_artifacts(
             return
         seen.add(aid)
         row = dict(row)
+        row["artifact_id"] = aid
         if known_bad_flag:
             row["is_known_bad"] = True
         try:
@@ -581,14 +723,14 @@ def process_artifacts(
             return
         report.reviews.append(review)
         report.scores.append(score)
+        ordered.append(row)
         if row.get("is_known_bad"):
             bad_n += 1
-            # Iris candidate lesson for known-bad
             report.candidate_lessons += 1
         else:
             watch_n += 1
             if review.verdict == "PASS":
-                report.candidate_hypotheses += 1  # nightly reflection hypothesis slot
+                report.candidate_hypotheses += 1
             elif review.verdict == "INSUFFICIENT_EVIDENCE":
                 report.abstentions += 1
 
@@ -599,14 +741,22 @@ def process_artifacts(
 
     report.watch_artifacts_processed = watch_n
     report.known_bad_fixtures_processed = bad_n
+    return ordered
 
 
-def run_shadow(dsn: str, source: Callable[[], list[dict]] | None = None) -> RunReport:
-    """Populate SHADOW acceptance evidence (≥100 Watch + ≥20 known-bad).
+def run_shadow(
+    dsn: str,
+    source: Callable[[], list[dict]] | None = None,
+    *,
+    store: Any | None = None,
+    persist: bool = True,
+) -> RunReport:
+    """Populate SHADOW acceptance evidence (≥100 Watch + ≥20 known-bad) and persist.
 
-    ``source`` injects a combined list of artifact dicts (for unit tests). When None,
-    loads fixtures + optional LAB/SHADOW DB rows and pads with labeled synthetic
-    SHADOW fixtures. NOTHING here promotes an agent or calls trading authority.
+    ``source`` injects a combined list of artifact dicts (for unit tests).
+    ``store`` injects a RunPersistence backend (InMemoryPersistence for CI).
+    When ``persist`` and no store, uses PostgresPersistence on SHADOW_DSN.
+    NOTHING here promotes an agent or calls trading authority. Never logs DSN.
     """
     _shadow_dsn_guard(dsn)
     report = RunReport(
@@ -616,20 +766,21 @@ def run_shadow(dsn: str, source: Callable[[], list[dict]] | None = None) -> RunR
         known_bad_fixtures_processed=0,
     )
 
-    # Optional runtime modules — population works without them (fixtures + deterministic review).
-    try:
-        sys.path.insert(0, str(_REPO_ROOT))
-        from scripts.agent_runtime import persistence as _persistence  # noqa: F401
-        from scripts.agent_runtime import sentinel as _sentinel  # noqa: F401
-    except Exception:
-        pass
-
     watch, bad = build_acceptance_corpus(dsn if source is None else None, source=source)
-    process_artifacts(watch, bad, report)
+    ordered = process_artifacts(watch, bad, report)
 
-    # Best-effort SHADOW evidence write (never production; never log DSN).
-    if source is None:
-        _maybe_persist_evidence(dsn, report, report.watch_artifacts_processed + report.known_bad_fixtures_processed)
+    if persist and ordered:
+        try:
+            backend = store
+            if backend is None:
+                backend = _make_pg_store(dsn)
+            persist_acceptance_evidence(backend, report, ordered)
+        except Exception as exc:
+            # Surface persistence failure as failures count; still return metrics.
+            report.failures += 1
+            report.persisted = report.persisted or {"runs": 0, "artifacts": 0, "reviews": 0, "scores": 0}
+            # Attach non-secret error class name only
+            report.persisted["error"] = type(exc).__name__  # type: ignore[index]
 
     assert_shadow_only(report)
     return report
@@ -692,8 +843,14 @@ def main(argv: list[str] | None = None) -> int:
 
     metrics = report.metrics()
     ok, fails = report.evaluate()
-    out = {"metrics": metrics, "accepted_thresholds": ok, "threshold_failures": fails,
-           "note": "SHADOW only; no agent promoted; explicit human acceptance still required"}
+    out = {
+        "metrics": metrics,
+        "accepted_thresholds": ok,
+        "threshold_failures": fails,
+        "persisted": report.persisted,
+        "run_id": report.run_id,
+        "note": "SHADOW only; no agent promoted; explicit human acceptance still required",
+    }
     text = json.dumps(out, indent=2, sort_keys=True)
     print(text)
     if args.report_json:
