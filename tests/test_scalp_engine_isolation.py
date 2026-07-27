@@ -29,6 +29,8 @@ ENGINE_MODULES = [
     "scalp_shadow_outcome_backfill.py",
     "scalp_shadow_rollup.py",
     "scalp_trigger_r_diagnostics.py",
+    "scalp_t1_metrics.py",
+    "scalp_t1_gate.py",
     "market_observations/observation.py",
     "market_observations/concurrency.py",
     "market_observations/arbitration.py",

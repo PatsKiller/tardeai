@@ -71,6 +71,18 @@ CAPABILITY_MATRIX: dict[str, dict[ObservationType, Capability]] = {
         OT.POSITION_FACT: Capability(ES.AVAILABLE_REALTIME, DT.T0, "authoritative for Schwab positions"),
         OT.ORDER_FACT: Capability(ES.AVAILABLE_REALTIME, DT.T0, "authoritative for Schwab orders; electronic-entry eligibility UNRESOLVED"),
     },
+    "polygon": {
+        # M3-S6 T1 candidate. Probed 2026-07-27: FREE plan → /v3/trades, /v3/quotes, last-trade,
+        # last-NBBO all 403 NOT_AUTHORIZED; only EOD aggregate bars (delayed ~days). A paid upgrade
+        # (Developer/Advanced) would make TRADE/QUOTE = SIP_REALTIME → unblocks T1.
+        OT.BAR: Capability(ES.AVAILABLE_HISTORICAL, DT.T0, "free-plan EOD aggregate bars (delayed)"),
+        OT.TRADE: Capability(ES.UNAVAILABLE, DT.T1, "403 NOT_AUTHORIZED — needs paid plan for consolidated tape"),
+        OT.QUOTE: Capability(ES.UNAVAILABLE, DT.T1, "403 NOT_AUTHORIZED — needs paid plan for consolidated NBBO"),
+        OT.ORDER_BOOK: Capability(ES.UNAVAILABLE, DT.T2, ""),
+        OT.ACCOUNT_FACT: Capability(ES.UNAVAILABLE, DT.T0, "not a broker"),
+        OT.POSITION_FACT: Capability(ES.UNAVAILABLE, DT.T0, "not a broker"),
+        OT.ORDER_FACT: Capability(ES.UNAVAILABLE, DT.T0, "not a broker"),
+    },
     "moomoo": {
         OT.BAR: Capability(ES.SCAFFOLD_ONLY, DT.T2, "OpenD not configured; Stage-0 scaffold only"),
         OT.TRADE: Capability(ES.SCAFFOLD_ONLY, DT.T2, "intended T2 tape — not proven"),

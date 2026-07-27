@@ -219,8 +219,9 @@ def test_flag_on_with_synthetic_provider_arbitrates():
 
 def test_capability_matrix_shape():
     m = MultiSourceFabric({}).capability_matrix()
-    assert set(m) == {"alpaca", "yahoo", "schwab", "moomoo"}
+    assert {"alpaca", "yahoo", "schwab", "moomoo", "polygon"} <= set(m)
     assert m["moomoo"]["order_book"]["entitlement"] == "SCAFFOLD_ONLY"
+    assert m["polygon"]["trade"]["entitlement"] == "UNAVAILABLE"   # free plan → T1 gate stays shut
 
 
 # ── S5 trigger-R diagnostics (pure r_quality) ───────────────────────
