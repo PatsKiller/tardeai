@@ -116,14 +116,16 @@ trigger:
   post_halt_rewarm_bars: 30    # §6.6 post-halt 30-bar re-warm before re-entering IMPULSE
   macd_5m: {fast: 12, slow: 26, signal: 9}   # §6.1 computed on 5m bars, LOGGED, never gating
 
-# ── Notification tiers (design §3.4). STORED for M3-S7; M3-S3 is SHADOW and emits NOTHING. ──
+# ── Notification tiers (design §3.4). M3-S7 ENABLED: alerts only, still NO proposals. ──
 notifications:
-  info_min: 45
-  alert_min: 60
-  accel_delta: 15
+  info_min: 45                # IGN>=45 → INFO (dashboard only, no Telegram)
+  alert_min: 60               # IGN>=60 → ALERT (Telegram, tagged UNGATED — NOT A PROPOSAL)
+  accel_delta: 15             # ΔIGN>=15 in window → IGN_ACCEL → ALERT
   accel_window_min: 10
-  proposal_min: 75
-  emit: false                 # HARD: shadow logging only — no Telegram, no proposals at M3-S3
+  proposal_min: 75            # IGN>=75 → still an ALERT in M3-S7 (proposals are M3-S9)
+  emit: true                  # M3-S7: Telegram tiers ON. alert_dispatcher dedupes once/day/symbol +
+                              # rate-limits 15/hr + fatigue-downgrades. Instantly reversible (set false).
+  session_cap: 8              # hard cap of ALERT-tier Telegram alerts per logger run (§3.4)
 
 # ── Data Confidence Factor (design §4.4). M3-S3 runs at T0. ──
 # TIER NUMBERING = design-doc convention (operator ruling 2026-07-27): T2 = full book (moomoo, best

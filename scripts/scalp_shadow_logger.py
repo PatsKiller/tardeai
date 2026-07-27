@@ -184,7 +184,9 @@ def run(args) -> int:
     if KILL_FILE.exists():
         print(f"HALT: kill file {KILL_FILE} present"); return 0
     cfg = load_config()
-    assert cfg["notifications"]["emit"] is False, "shadow logger must never emit (config emit!=false)"
+    # M3-S7: notifications.emit MAY be true now (Telegram alert tiers enabled). Proposals remain OFF
+    # by construction — this module has no proposal/order path (enforced by the AST isolation test).
+    assert "proposal_path" not in cfg.get("notifications", {}), "no proposal emission at M3-S7 (proposals = M3-S9)"
     feed = cfg["data"]["feed"]
     tz = ZoneInfo(cfg["session"]["tz"])
     n_min = int(cfg["session"]["regular_minutes"])
@@ -362,7 +364,25 @@ def run(args) -> int:
     from collections import Counter
     dist = Counter(r["lane"] for r in results)
     print(f"\n  lane distribution: {dict(dist)}")
-    print(f"  scored={len(results)} rows_written={written} emit=false (SHADOW)")
+    _emit = bool(cfg.get("notifications", {}).get("emit", False))
+    print(f"  scored={len(results)} rows_written={written} emit={_emit}")
+
+    # M3-S7: ignition alerts (§3.4) — ALERTS ONLY, never proposals. Gated by notifications.emit.
+    # LIVE runs send via alert_dispatcher (which dedupes once/day/symbol + rate-limits 15/hr);
+    # REPLAY is ALWAYS dry (historical → never alerts). --dry-run also never sends.
+    if _emit:
+        try:
+            import scalp_alert_emitter as _ae
+            alert_dry = bool(getattr(args, "dry_run", False)) or bool(args.replay)
+            budget = _ae.AlertBudget(int(cfg["notifications"].get("session_cap", 8)))
+            disp = None if alert_dry else _ae.load_dispatcher()
+            alerts = _ae.emit_alerts(results, cfg, budget, dispatch_fn=disp, dry_run=alert_dry)
+            tg = sum(1 for a in alerts if a.get("tier") == "ALERT" and a.get("action") == "dispatch")
+            info = sum(1 for a in alerts if a.get("tier") == "INFO")
+            print(f"  [alerts]{' DRY' if alert_dry else ''} telegram={tg} dashboard_info={info} "
+                  f"(NOT proposals){'  — no send' if alert_dry else ''}")
+        except Exception as e:
+            print(f"  [alerts] skipped: {e}")
 
     # M3-S5.5: multi-source observation fabric — DEFAULT OFF. When off this block is a pure no-op and
     # the T0 path above is byte-identical. When on (dry-run/experiment) it acquires + arbitrates a
