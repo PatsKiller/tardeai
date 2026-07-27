@@ -32,6 +32,8 @@ ENGINE_MODULES = [
     "scalp_t1_metrics.py",
     "scalp_t1_gate.py",
     "scalp_alert_emitter.py",
+    "scalp_t2_metrics.py",
+    "market_observations/moomoo_t2.py",
     "market_observations/observation.py",
     "market_observations/concurrency.py",
     "market_observations/arbitration.py",
