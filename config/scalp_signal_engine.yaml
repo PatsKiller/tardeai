@@ -46,3 +46,64 @@ universe:
   float_column: float_mm
   float_mm_max: 30            # operator decision 2026-07-27 for momentum_scalp_intraday
   lookback_days: 21           # distinct symbols seen in this window
+
+# ── M3-S3 IGN scorer (design §3.2/§3.3). Weights are v1 PRIORS, refit once on shadow data
+#    at M3-S8 (§12) — do NOT hand-tune mid-shadow. All sub-scores normalize to [0,1]. ──
+ignition:
+  weights:                    # must sum to 1.0
+    v_rvol: 0.28
+    v_burst: 0.22
+    v_cat: 0.18
+    v_disp: 0.14
+    v_liq: 0.10
+    v_rs: 0.08
+  subscores:
+    v_rvol:
+      ref_rvol: 2.0           # RVOL_tod=2× → 0 ; 20× → 1  (log10(rvol/ref))
+      log_base: 10
+    v_burst:
+      z_divisor: 6.0          # clamp(z_vol/6, 0, 1)
+      sigma_floor_frac: 0.10  # σ_eff = max(σ_20bar, sigma_floor_frac·μ_20bar, eps) — the σ floor guard
+      sigma_eps: 1.0          # absolute floor (shares) so a dead 20-bar window can't blow up z
+      mu_window: 20
+    v_cat:
+      decay_min: 90.0         # v_cat = tier_weight · exp(-age_min/decay_min)
+      # tier weights by catalyst_source [VERIFY: mirrors the existing source-quality table].
+      # Graceful default for unknown sources = default_weight. 0 when no catalyst.
+      tier_weights:
+        sec: 1.00
+        "8-k": 1.00
+        pr: 0.80
+        rag: 0.70
+        news: 0.65
+        finviz: 0.55
+        social: 0.30
+        unknown_social: 0.20
+      default_weight: 0.40
+    v_disp:
+      atr_mult: 2.0           # (P - VWAP) / (atr_mult · ATR_1m · sqrt(n_bars))
+    v_liq:
+      dollar_ref_low: 50000   # $·vol_5m = 50K → 0
+      log_divisor: 1.7        # /1.7 so $2.5M → ~1
+  rvol_tod:
+    # universe-proxy fallback (§3.1) for symbols with no per-symbol profile (new/thin listings).
+    min_profile_sessions: 15  # below this → use proxy
+    proxy_source: universe    # 'universe' U-curve × ADV_20d × ExpectedFraction(t)
+
+# ── Notification tiers (design §3.4). STORED for M3-S7; M3-S3 is SHADOW and emits NOTHING. ──
+notifications:
+  info_min: 45
+  alert_min: 60
+  accel_delta: 15
+  accel_window_min: 10
+  proposal_min: 75
+  emit: false                 # HARD: shadow logging only — no Telegram, no proposals at M3-S3
+
+# ── Data Confidence Factor (design §4.4). M3-S3 runs at T0. ──
+data_tiers:
+  active_tier: T0
+  dcf:
+    T2: 1.00
+    T1: 0.70
+    T0: 0.40
+  stale_max_sec: 120          # data older than this → NO TRADE (dcf 0)
