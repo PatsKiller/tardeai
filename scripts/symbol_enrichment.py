@@ -63,10 +63,23 @@ def fetch_finviz_deep(symbol: str) -> Optional[dict]:
     Returns merged dict with technicals, fundamentals, ownership.
     """
     try:
-        token = os.getenv('FINVIZ_API_TOKEN', '').strip()
-        cookie = os.getenv('FINVIZ_COOKIE', '').strip()
-        ua = os.getenv('FINVIZ_USER_AGENT',
-                       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        try:
+            import sys as _sys
+            from pathlib import Path as _P
+            _sec = _P(__file__).resolve().parent / "secrets"
+            if str(_sec) not in _sys.path:
+                _sys.path.insert(0, str(_sec))
+            from resolve_secret import resolve_secret
+            token = resolve_secret("FINVIZ_API_TOKEN", "")
+            cookie = resolve_secret("FINVIZ_COOKIE", "")
+            ua = resolve_secret("FINVIZ_USER_AGENT", "") or (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            )
+        except Exception:
+            token = os.getenv('FINVIZ_API_TOKEN', '').strip()
+            cookie = os.getenv('FINVIZ_COOKIE', '').strip()
+            ua = os.getenv('FINVIZ_USER_AGENT',
+                           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
         if not token and not cookie:
             log.error("[enrichment] No Finviz auth (need FINVIZ_API_TOKEN or FINVIZ_COOKIE)")
