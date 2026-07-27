@@ -11282,21 +11282,37 @@ def _compute_trade_ai():
     current_run_nogo = sum(1 for t in _current_run_tickers if t.get("decision") not in ("GO", "WAIT"))
     current_run_total = len(_current_run_tickers)
 
-    # Run health enrichment
+    # Run health enrichment (status + reason_codes already in screener_run_health)
     _latest_run_label = latest.get("run_label", "")
     _latest_run_timestamp = latest.get("generated_at", "")
     _run_health_status = None
+    _run_health_reason_codes = []
+    _expected_min_symbols = None
     _today_signal_count = 0
     try:
         _rh = _db_query("""
             SELECT status, symbols_scanned, go_count AS rh_go, wait_count AS rh_wait,
-                   no_go_count, reason_codes, finished_at
+                   no_go_count, reason_codes, finished_at, expected_min_symbols
             FROM screener_run_health
             WHERE run_date = CURRENT_DATE
             ORDER BY finished_at DESC NULLS LAST LIMIT 1
         """, fetch="one")
         if _rh:
             _run_health_status = _rh.get("status")
+            _rc = _rh.get("reason_codes") or []
+            if isinstance(_rc, str):
+                try:
+                    import json as _json
+                    _rc = _json.loads(_rc)
+                except Exception:
+                    _rc = [_rc] if _rc else []
+            if isinstance(_rc, (list, tuple)):
+                _run_health_reason_codes = [str(x) for x in _rc if x is not None and str(x).strip()]
+            if _rh.get("expected_min_symbols") is not None:
+                try:
+                    _expected_min_symbols = int(_rh.get("expected_min_symbols"))
+                except (TypeError, ValueError):
+                    _expected_min_symbols = None
     except Exception:
         pass
     try:
@@ -11324,6 +11340,9 @@ def _compute_trade_ai():
         "current_run_wait": current_run_wait,
         "current_run_nogo": current_run_nogo,
         "run_health_status": _run_health_status,
+        "run_health_reason_codes": _run_health_reason_codes,
+        "reason_codes": _run_health_reason_codes,  # alias for UI (same envelope)
+        "expected_min_symbols": _expected_min_symbols,
         "vix": _vix_effective(latest.get("vix")),
         "breadth": latest.get("breadth", ""),
         "market_regime": latest.get("breadth", latest.get("market_regime", "Neutral")),
