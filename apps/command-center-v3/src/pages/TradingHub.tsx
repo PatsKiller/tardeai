@@ -86,6 +86,53 @@ function isTradeAiStaleSession(tradeAi: any): boolean {
   return false
 }
 
+/** Rank for scalp signal selection: GO > WAIT > others. */
+function scalpDecisionRank(decision?: string): number {
+  const d = String(decision || '').toUpperCase().replace(/_/g, '-')
+  if (d === 'GO') return 3
+  if (d === 'WAIT') return 2
+  return 1
+}
+
+/** Grade rank: A > B > C > D > F > unknown. */
+function scalpGradeRank(grade?: string): number {
+  const g = String(grade || '').toUpperCase()
+  if (g === 'A') return 5
+  if (g === 'B') return 4
+  if (g === 'C') return 3
+  if (g === 'D') return 2
+  if (g === 'F') return 1
+  return 0
+}
+
+/** True when `a` is the better row for dedupe (decision → grade → score). */
+function isBetterScalpSignal(a: any, b: any): boolean {
+  const da = scalpDecisionRank(a?.decision)
+  const db = scalpDecisionRank(b?.decision)
+  if (da !== db) return da > db
+  const ga = scalpGradeRank(a?.grade)
+  const gb = scalpGradeRank(b?.grade)
+  if (ga !== gb) return ga > gb
+  return (Number(a?.score) || 0) > (Number(b?.score) || 0)
+}
+
+/**
+ * Client-side dedupe of /api/v2/scalp/live signals by uppercase symbol.
+ * Keeps the best-ranked row per symbol. Display-only — does not change backend contracts.
+ */
+function dedupeScalpSignalsBySymbol(sigs: any[]): { unique: any[]; rawCount: number } {
+  const best = new Map<string, any>()
+  for (const row of sigs) {
+    const sym = String(row?.symbol || '').toUpperCase()
+    if (!sym) continue
+    const normalized = { ...row, symbol: sym }
+    const prev = best.get(sym)
+    if (!prev || isBetterScalpSignal(normalized, prev)) best.set(sym, normalized)
+  }
+  return { unique: [...best.values()], rawCount: sigs.length }
+}
+
+
 export default function TradingHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   // Deep-link support (Stage 2a): /trading?tab=Broker+Orders&intent=<id> — the Telegram approval
@@ -124,13 +171,22 @@ export default function TradingHub({ onDrill }: Props) {
   const [tosCopied, setTosCopied] = useState(false)
   // Broker desk tab: skip heavy hub polls so single-threaded API can serve broker-proposals first.
   const brokerDesk = tab === 'Proposals' || tab === 'Broker Orders' || tab === 'Schwab Accounts'
+  // Pure Schwab program tabs — hub chrome is Schwab-specific (not paper vs Path B counts).
+  const pureSchwabTabs = tab === 'Broker Orders' || tab === 'Schwab Accounts'
   // Slim scanner projection (~10% of the full /trade-ai payload) — full universe rows are
   // trimmed server-side; the multi-MB full endpoint 500-looped under load (2026-07-17).
   const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai/scanner', 60_000, { enabled: tab === 'Trade AI' })
   const { data: warriorAudit } = useApi<any>('/api/v2/warrior-audit/latest', 300_000, { enabled: tab === 'Trade AI' })
   const paMap = useProAnalystMap()
   const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000, { enabled: tab === 'Open Trades' || !brokerDesk })
-  const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000, { enabled: tab === 'Proposals' || tab === 'Trade AI' })
+  // Paper PENDING+AFPT — validation/Alpaca pipeline only (NOT Path B broker queue).
+  const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000, { enabled: !pureSchwabTabs })
+  // Path B truth for operator queue size — queue_summary.total (active broker entries).
+  const { data: brokerQueueSummary } = useApi<any>('/api/v2/broker-proposals/summary', 120_000, { enabled: !pureSchwabTabs })
+  // Light list probe for pagination.total when summary is thin / unavailable (same active population).
+  const { data: brokerQueueList } = useApi<any>('/api/v2/broker-proposals?page=1&page_size=1', 120_000, {
+    enabled: !pureSchwabTabs && brokerQueueSummary == null,
+  })
   const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, { enabled: !brokerDesk })
   const { data: execState } = useApi<any>('/api/v2/execution/current-state', 120_000, { enabled: !brokerDesk })
@@ -155,10 +211,22 @@ export default function TradingHub({ onDrill }: Props) {
   const execList: any[] = Array.isArray(execQual) ? execQual : []
   const propList = proposals?.proposals ?? []
   const pending = propList.filter((p: any) => p.status === 'PENDING' || p.status === 'APPROVED_FOR_PAPER_TEST')
-  // Canonical pending count = API's whole-table PENDING+AFPT count. pending.length is the
-  // LIMIT-50 display list and silently capped the headline at 50 (P0 count-mismatch 2026-07-14).
-  const pendingCount = proposals?.pending_count ?? pending.length
+  // Paper pending = API whole-table PENDING+AFPT (not the LIMIT-50 list; not Path B broker queue).
+  const paperPendingCount = proposals
+    ? Number(proposals.pending_count ?? pending.length)
+    : null
+  // Path B broker queue size: prefer queue_summary.total, else pagination.total for active list.
+  const brokerQueueCount = (() => {
+    const fromSummary = brokerQueueSummary?.total
+    if (fromSummary != null && Number.isFinite(Number(fromSummary))) return Number(fromSummary)
+    const qs = brokerQueueList?.queue_summary
+    if (qs?.total != null && Number.isFinite(Number(qs.total))) return Number(qs.total)
+    const pag = brokerQueueList?.pagination?.total
+    if (pag != null && Number.isFinite(Number(pag))) return Number(pag)
+    return null
+  })()
   const alpaca = paperStatus?.alpaca ?? {}
+  const fmtCount = (n: number | null) => (n == null ? '—' : String(n))
 
   return (
     <div>
@@ -166,11 +234,15 @@ export default function TradingHub({ onDrill }: Props) {
         <div>
           <div style={hubTitle()}>Trading</div>
           <div style={hubSubtitle(terminalUi)}>
-            {/* hub-wide strip: "paper (Alpaca)" = the automated-trading PAPER pipeline's brokerage —
-                unrelated to Schwab. On the Schwab tabs, show the Schwab program state instead. */}
-            {(tab === 'Broker Orders' || tab === 'Schwab Accounts')
+            {/* hub-wide strip: paper pending = /paper-proposals PENDING+AFPT; broker queue = Path B
+                /broker-proposals (queue_summary.total). Never mix the two under one "pending" label. */}
+            {pureSchwabTabs
               ? <span>{trades.length} open (automated) · Schwab program: <b style={{ color: '#f59e0b' }}>READ-ONLY — execution disabled</b> · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>
-              : <span>{trades.length} open · {brokerDesk ? 'broker queue active' : `${pendingCount} pending proposals`} · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>}
+              : (
+                <span title="Paper pending = validation/Alpaca pipeline (PENDING+AFPT). Broker queue = Path B operator queue (active entries + protection).">
+                  {trades.length} open · paper pending {fmtCount(paperPendingCount)} · broker queue {fmtCount(brokerQueueCount)} · automated acct (Alpaca) {alpaca.account_status ?? '—'}
+                </span>
+              )}
             {readiness && <span> · Validation level: {readiness.level?.replace(/_/g, ' ')}</span>}
           </div>
         </div>
@@ -867,7 +939,9 @@ export default function TradingHub({ onDrill }: Props) {
           )
         }
         const raw: any[] = scalpData.signals ?? []
-        const sigs = raw.map((s: any) => ({ ...(s.data || s), _ts: s.timestamp })).filter((d: any) => d.symbol)
+        const expanded = raw.map((s: any) => ({ ...(s.data || s), _ts: s.timestamp })).filter((d: any) => d.symbol)
+        // API can emit the same symbol twice; dedupe by symbol keeping best rank (GO>WAIT>others, grade, score).
+        const { unique: sigs, rawCount: rawSignalCount } = dedupeScalpSignalsBySymbol(expanded)
         const n = sigs.length
         const byG: Record<string, number> = {}; sigs.forEach((d: any) => { const g = (d.grade || '?').toUpperCase(); byG[g] = (byG[g] || 0) + 1 })
         const byD = { GO: 0, WAIT: 0, 'NO-GO': 0 } as Record<string, number>
@@ -877,13 +951,12 @@ export default function TradingHub({ onDrill }: Props) {
         const avgScore = n ? Math.round(sigs.reduce((a: number, d: any) => a + (d.score || 0), 0) / n) : 0
         // "prime" actionable scalp = GO + grade A + catalyst verified (the criteria that actually matter)
         const prime = sigs.filter((d: any) => (d.decision || '').toUpperCase() === 'GO' && (d.grade || '').toUpperCase() === 'A' && d.catalyst_verified)
-        const gradeRank: Record<string, number> = { A: 4, B: 3, C: 2, D: 1, F: 0 }
         const ordered = [...sigs].sort((a: any, b: any) => {
-          const da = (a.decision || '').toUpperCase() === 'GO' ? 1 : 0, db = (b.decision || '').toUpperCase() === 'GO' ? 1 : 0
+          const da = scalpDecisionRank(a.decision), db = scalpDecisionRank(b.decision)
           if (da !== db) return db - da
-          const ga = gradeRank[(a.grade || '').toUpperCase()] ?? -1, gb = gradeRank[(b.grade || '').toUpperCase()] ?? -1
+          const ga = scalpGradeRank(a.grade), gb = scalpGradeRank(b.grade)
           if (ga !== gb) return gb - ga
-          return (b.score || 0) - (a.score || 0)
+          return (Number(b.score) || 0) - (Number(a.score) || 0)
         })
         const Tip = ({ t, children }: { t: string; children: any }) => (
           <span title={t} style={{ cursor: 'help', borderBottom: '1px dotted var(--text3)' }}>{children}</span>
@@ -956,10 +1029,10 @@ export default function TradingHub({ onDrill }: Props) {
             <span style={{ flex: '0 0 54px' }}><Tip t="Catalyst verified?">Catalyst</Tip></span>
             <span style={{ flex: '1 1 auto' }}>Source</span>
           </div>
-          {ordered.slice(0, 30).map((d: any, i: number) => {
+          {ordered.slice(0, 30).map((d: any) => {
             const isGo = (d.decision || '').toUpperCase() === 'GO'
             return (
-            <div key={i} onClick={() => onDrill({ title: `${d.symbol} — Scalp Signal`, subtitle: `${d.decision ?? '—'} · grade ${d.grade ?? '—'} · score ${d.score ?? '—'} · RVOL ${d.rvol ?? '—'}${d.critic_verdict ? ' · ' + d.critic_verdict : ''}`, endpoint: '/api/v2/scalp/live', rows: [d], subjectType: 'scalp', subjectKey: d.symbol })}
+            <div key={d.symbol} onClick={() => onDrill({ title: `${d.symbol} — Scalp Signal`, subtitle: `${d.decision ?? '—'} · grade ${d.grade ?? '—'} · score ${d.score ?? '—'} · RVOL ${d.rvol ?? '—'}${d.critic_verdict ? ' · ' + d.critic_verdict : ''}`, endpoint: '/api/v2/scalp/live', rows: [d], subjectType: 'scalp', subjectKey: d.symbol })}
               style={{ display: 'flex', alignItems: 'center', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, background: isGo ? 'rgba(34,197,94,.05)' : undefined }}>
               <span style={{ flex: '0 0 66px', fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{d.symbol}
                 {(scalpExtMap[d.symbol] || []).map((e: any, j: number) => <span key={j} title={`${e.lane === 'grok' ? 'Grok' : e.lane === 'chatgpt' ? 'ChatGPT' : e.lane}: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : '#10a37f', cursor: 'help' }}>✦</span>)}</span>
@@ -972,7 +1045,10 @@ export default function TradingHub({ onDrill }: Props) {
               <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}><ScoutPill d={d} />{d.source ?? '—'}</span>
             </div>
           )})}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/scalp/live · click any row for the full signal. Hover ⓘ for definitions. Advisory only — scalp execution is gated.</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }} data-testid="scalp-dedupe-footer">
+            Deduped {rawSignalCount} → {n} unique symbols.
+            {' · '}Source: /api/v2/scalp/live · click any row for the full signal. Hover ⓘ for definitions. Advisory only — scalp execution is gated.
+          </div>
           </>)}
         </div>
         )
