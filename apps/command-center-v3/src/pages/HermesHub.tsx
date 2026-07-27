@@ -8,6 +8,7 @@ import HermesSoulEditor, { PROFILE_LABELS } from '../components/HermesSoulEditor
 import { EvidenceBlock } from '../components/EvidenceBlock'
 import HermesClosedLoopPanel from '../components/HermesClosedLoopPanel'
 import HermesDiscoveryInbox from '../components/HermesDiscoveryInbox'
+import HermesQualitySpotCheck from '../components/HermesQualitySpotCheck'
 import PrivateProxyCard from '../components/PrivateProxyCard'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
@@ -160,6 +161,7 @@ export default function HermesHub({ onDrill }: Props) {
   const { data: backlog } = useApi<any>(`/api/v2/hermes/research-backlog?status=${backlogFilter}`, 120_000)
   const { data: dualOp } = useApi<any>('/api/v2/hermes/dual-opinion', 120_000)
   const { data: pipeQual } = useApi<any>('/api/v2/hermes/pipeline-quality', 120_000)
+  // HermesQualitySpotCheck loads pipeline-quality + health itself (Overview strip).
   const { data: maturity } = useApi<any>('/api/v2/hermes/maturity-dashboard', 120_000)
   const { data: promo } = useApi<any>('/api/v2/hermes/promotion-review', 120_000)
   const { data: footprint } = useApi<any>('/api/v2/hermes/agent-footprint', 120_000)
@@ -614,6 +616,8 @@ export default function HermesHub({ onDrill }: Props) {
       )}
 
       {!isScalp && tab === 'Overview' && (
+        <div>
+        <HermesQualitySpotCheck onDrill={onDrill} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           {/* Staging counts */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
@@ -711,6 +715,7 @@ export default function HermesHub({ onDrill }: Props) {
               </div>
             )
           })()}
+        </div>
         </div>
       )}
 

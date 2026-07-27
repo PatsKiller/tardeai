@@ -5789,14 +5789,100 @@ def tax_lots():
 
 
 def dividends():
+    """Dividend income desk payload.
+
+    Expands portfolio-level payers into per-account rows using current holdings
+    market-value share so Portfolio → Dividends can filter by ?acct= without
+    client-side guesswork. Portfolio totals remain the calendar source of truth.
+    """
     d = _load_json(STATE_DIR / "dividend_calendar.json") or {}
-    payers = d.get("payers") or []
+    payers = list(d.get("payers") or [])
     for p in payers:
         p.setdefault("qualified", False)
         p.setdefault("safety", "watch")
+
+    holdings_doc = _load_json(STATE_DIR / "holdings.json") or {}
+    holdings = holdings_doc.get("holdings") or []
+    # symbol -> [(account, market_value, shares), ...]
+    by_sym: dict = {}
+    for h in holdings:
+        sym = str(h.get("symbol") or "").upper().strip()
+        if not sym or sym in ("CASH", "SPAXX", "VMFXX", "USD"):
+            continue
+        try:
+            mv = float(h.get("market_value") or 0)
+        except (TypeError, ValueError):
+            mv = 0.0
+        if mv <= 0:
+            continue
+        acct = str(h.get("account") or h.get("account_key") or "unknown")
+        try:
+            sh = float(h.get("quantity") or h.get("shares") or 0)
+        except (TypeError, ValueError):
+            sh = 0.0
+        by_sym.setdefault(sym, []).append((acct, mv, sh))
+
+    expanded = []
+    already_accounted = any(p.get("account") or p.get("account_key") for p in payers)
+    if already_accounted:
+        expanded = payers
+        attribution = "source_calendar"
+    else:
+        attribution = "holdings_mv_share"
+        for p in payers:
+            sym = str(p.get("symbol") or "").upper().strip()
+            legs = by_sym.get(sym) or []
+            try:
+                annual = float(p.get("annual_income") or 0)
+            except (TypeError, ValueError):
+                annual = 0.0
+            try:
+                monthly = float(p.get("monthly_amort") or (annual / 12.0))
+            except (TypeError, ValueError):
+                monthly = annual / 12.0
+            if not legs:
+                row = dict(p)
+                row["account"] = None
+                expanded.append(row)
+                continue
+            total_mv = sum(mv for _, mv, _ in legs) or 1.0
+            for acct, mv, sh in legs:
+                share = mv / total_mv
+                row = dict(p)
+                row["account"] = acct
+                row["account_key"] = acct
+                row["market_value"] = round(mv, 2)
+                if sh > 0:
+                    row["shares"] = round(sh, 4)
+                elif p.get("shares") is not None:
+                    try:
+                        row["shares"] = round(float(p["shares"]) * share, 4)
+                    except (TypeError, ValueError):
+                        pass
+                row["annual_income"] = round(annual * share, 2)
+                row["monthly_amort"] = round(monthly * share, 2)
+                expanded.append(row)
+
+    by_account: dict = {}
+    for row in expanded:
+        acct = row.get("account") or row.get("account_key") or "_unassigned"
+        bucket = by_account.setdefault(acct, {"annual": 0.0, "monthly": 0.0, "payers": 0})
+        try:
+            bucket["annual"] += float(row.get("annual_income") or 0)
+            bucket["monthly"] += float(row.get("monthly_amort") or 0)
+        except (TypeError, ValueError):
+            pass
+        bucket["payers"] += 1
+    for acct, b in by_account.items():
+        b["annual"] = round(b["annual"], 2)
+        b["monthly"] = round(b["monthly"], 2)
+
     return {
         "has_data": d.get("has_data", bool(payers)),
-        "payers": payers,
+        "payers": expanded,
+        "payers_portfolio": payers,
+        "by_account": by_account,
+        "account_attribution": attribution,
         "total_annual": d.get("total_annual", 0),
         "qualified_annual": d.get("qualified_annual", 0),
         "ordinary_annual": d.get("ordinary_annual", 0),
