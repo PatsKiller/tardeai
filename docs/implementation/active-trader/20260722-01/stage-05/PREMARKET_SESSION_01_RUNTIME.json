@@ -1,0 +1,15 @@
+{
+  "accepted_premarket_minutes": 149.9953,
+  "accepted_rth_continuous_minutes": 35.0038,
+  "capture_counts": {
+    "K_1M": 11560,
+    "ORDER_BOOK": 19178,
+    "QUOTE": 14981,
+    "TICKER": 85678
+  },
+  "capture_git_sha": "70ee6a9c3a1b6edf2eb5843fb570d73b7be41a3f",
+  "event_count": 131397,
+  "session_id": "session_01_2026-07-27",
+  "target_market_date": "2026-07-27",
+  "windows": "P1 07:00-08:00 \u00b7 P2 08:00-09:20 \u00b7 P3 09:20-09:30 \u00b7 R1 09:30-09:45 \u00b7 R2 09:45-10:05"
+}
