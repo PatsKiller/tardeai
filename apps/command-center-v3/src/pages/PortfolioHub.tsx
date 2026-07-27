@@ -805,6 +805,7 @@ export default function PortfolioHub({ onDrill }: Props) {
           riskPositions={riskData?.positions ?? []}
           acctColor={acctColor}
           initialAccount={acctFilter}
+          onAccountFilter={selectAcct}
           onOpenHolding={(symbol, account) => {
             selectTab('Holdings')
             selectAcct(account)
@@ -864,26 +865,66 @@ export default function PortfolioHub({ onDrill }: Props) {
         )
       })()}
 
-      {tab === 'Tax' && (
+      {tab === 'Tax' && (() => {
+        const allLots = Array.isArray(taxLots?.lots) ? (taxLots.lots as any[]) : []
+        const lots = allLots.filter((l: any) =>
+          !acctFilter || String(l.account || l.account_key || '') === acctFilter
+        )
+        const filteredUnrealized = lots.reduce((s: number, l: any) => s + (Number(l.unrealized_gain) || 0), 0)
+        const showUnrealized = acctFilter
+          ? filteredUnrealized
+          : (taxLots?.total_unrealized_gain != null ? Number(taxLots.total_unrealized_gain) : filteredUnrealized)
+        const lotCount = acctFilter ? lots.length : (taxLots?.count ?? lots.length)
+        return (
         <div className={terminalUi ? 'cc-panel' : undefined} style={tabPanel}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-            <span>Tax Lots ({taxLots?.count ?? 0})</span>
-            {taxLots?.total_unrealized_gain != null && (
-              <span style={{ fontSize: 12, fontWeight: 800, color: taxLots.total_unrealized_gain >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                {taxLots.total_unrealized_gain >= 0 ? '+' : ''}{fmt$(taxLots.total_unrealized_gain, 0)} unrealized
+            <span>Tax Lots ({lotCount}{acctFilter ? ' filtered' : ''})</span>
+            {(acctFilter || taxLots?.total_unrealized_gain != null || lots.length > 0) && (
+              <span style={{ fontSize: 12, fontWeight: 800, color: showUnrealized >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                {showUnrealized >= 0 ? '+' : ''}{fmt$(showUnrealized, 0)} unrealized{acctFilter ? ' (filtered)' : ''}
               </span>
             )}
             {taxLots?.reconciled_to_holdings === false && (
               <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--amber)' }}>⚠ not reconciled</span>
             )}
           </div>
+
+          {accounts.length > 1 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+              <button type="button" onClick={() => selectAcct(null)} style={{
+                padding: '3px 10px', fontSize: 10, borderRadius: 12, cursor: 'pointer',
+                border: `1px solid ${acctFilter === null ? '#60a5fa' : 'var(--border)'}`,
+                background: acctFilter === null ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
+                color: acctFilter === null ? '#60a5fa' : 'var(--text3)', fontWeight: acctFilter === null ? 700 : 400,
+              }}>All</button>
+              {accounts.map(([a]) => (
+                <button type="button" key={a} onClick={() => selectAcct(a === acctFilter ? null : a)} style={{
+                  padding: '3px 10px', fontSize: 10, borderRadius: 12, cursor: 'pointer',
+                  border: `1px solid ${acctFilter === a ? acctColor(a) : 'var(--border)'}`,
+                  background: acctFilter === a ? `${acctColor(a)}22` : 'var(--bg2)',
+                  color: acctFilter === a ? acctColor(a) : 'var(--text3)', fontWeight: acctFilter === a ? 700 : 400,
+                }}>
+                  <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(a), marginRight: 5 }} />
+                  {a.replace(/_/g, ' ')}
+                </button>
+              ))}
+            </div>
+          )}
+
           {(taxLots?.harvest_candidates ?? 0) > 0 && (
             <div style={{ marginBottom: 10, padding: '6px 10px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 6, fontSize: 11, color: 'var(--amber)' }}>
               {taxLots.harvest_candidates} taxable-loss harvest candidate{taxLots.harvest_candidates === 1 ? '' : 's'}
               {taxLots?.worthless_security_loss ? ` · incl. ${fmt$(taxLots.worthless_security_loss, 0)} worthless-security losses` : ''}
+              <span style={{ color: 'var(--text3)' }}> · portfolio-level banner</span>
             </div>
           )}
-          {Array.isArray(taxLots?.lots) && taxLots.lots.length > 0 && (
+          {!taxLots ? (
+            <div style={{ color: 'var(--text3)', fontSize: 12, padding: 12 }}>Loading tax lots…</div>
+          ) : allLots.length === 0 ? (
+            <div style={{ color: 'var(--text3)', fontSize: 12, padding: 12 }}>No tax lots available.</div>
+          ) : lots.length === 0 ? (
+            <div style={{ color: 'var(--text3)', fontSize: 12, padding: 12 }}>No tax lots match this account filter.</div>
+          ) : (
             <div style={{ overflowX: 'auto', marginBottom: 10 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                 <thead>
@@ -899,10 +940,10 @@ export default function PortfolioHub({ onDrill }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {taxLots.lots.map((l: any, i: number) => (
-                    <tr key={i} style={{ borderTop: '1px solid rgba(148,163,184,.12)', color: 'var(--text1)' }}>
+                  {lots.map((l: any, i: number) => (
+                    <tr key={`${l.symbol}-${l.account || l.account_key || i}-${i}`} style={{ borderTop: '1px solid rgba(148,163,184,.12)', color: 'var(--text1)' }}>
                       <td style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 700, color: 'var(--text0)' }}>{l.symbol}{l.worthless ? ' ⚠' : ''}</td>
-                      <td style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text3)' }}>{String(l.account || '').replace('schwab_', '')}</td>
+                      <td style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text3)' }}>{String(l.account || l.account_key || '').replace('schwab_', '')}</td>
                       <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace' }}>{l.shares}</td>
                       <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace' }}>{fmt$(l.cost_basis, 0)}</td>
                       <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace' }}>{fmt$(l.current_value, 0)}</td>
@@ -915,9 +956,13 @@ export default function PortfolioHub({ onDrill }: Props) {
               </table>
             </div>
           )}
-          <div style={{ fontSize: 10, color: 'var(--text3)' }}>{taxLots?.data_note ?? 'Source: /api/v2/tax-lots'}</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+            {taxLots?.data_note ?? 'Source: /api/v2/tax-lots'}
+            {acctFilter ? ' · filtered client-side by account' : ''}
+          </div>
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
