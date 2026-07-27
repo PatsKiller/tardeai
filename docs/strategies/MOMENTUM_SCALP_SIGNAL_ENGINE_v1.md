@@ -1,7 +1,9 @@
 # Momentum Scalp Signal Engine — Design Document v1 (DRAFT FOR REVIEW)
 
-**Status:** v1 draft — for operator + architect review. Nothing here is built or approved.
-**Date:** 2026-07-27 · **Author:** Claude (chat), operator direction
+**Status:** v1 — **M3-S0 through M3-S5 BUILT, SHIPPED to main, and running in SHADOW** (2026-07-27).
+No execution: engine flag OFF, no alerts, no proposals, no order path. See the §13 phase-plan status
+column and the §16 Change Log for per-stage PRs/commits. M3-S6+ remain for operator authorization.
+**Date:** 2026-07-27 (implementation) · **Author:** Claude (chat + code), operator direction
 **Slot:** This is the **M3** document promised by `MOOMOO_INTEGRATION_DESIGN_v1_1.md` §8.
 **Strategy key:** `momentum_scalp_intraday` (new key, per moomoo v1.1 Q6 recommendation)
 
@@ -617,19 +619,23 @@ prerequisite, independent of everything in this document.
 
 ## 13. Phase plan
 
-| Phase | Scope | Exit criteria |
-|---|---|---|
-| **M3-S0** | **Diagnostic only, zero code.** Confirm every `[VERIFY]`: bar table schema and coverage, quote/trade data entitlement, source-quality table, `alert_dispatcher` interface, live `momentum_scalp.yaml` values, whether the volume profile can be built from existing history | Written findings doc; every assumption in this design confirmed or corrected |
-| **M3-S1** | Volume profile builder + `RVOL_tod`. Nightly job, 20-session profile per universe symbol | Profile exists for ≥ 90% of universe; spot-check against known ignition days |
-| **M3-S2** | T0 metric library — `EvR`, Corwin–Schultz, Abdi–Ranaldo, Amihud, `BarPressure`. Pure functions, unit-tested against hand-computed fixtures | Test suite green; values sane on 10 known symbols |
-| **M3-S3** | IGN scorer + `scalp_ignition_events` + shadow logging. **No alerts, no proposals** | 5 clean sessions of logging, zero impact on existing pipelines |
-| **M3-S4** | Outcome backfill job (MFE/MAE, `hit_1r_first`) + daily rollup + dashboard panel | Screenshot-gated: panel shows fires, deciles, `P@1R` |
-| **M3-S5** | Entry trigger state machine, logged as `TRIGGER` lane. Still shadow | ≥ 15 sessions, G1 satisfied |
-| **M3-S6** | T1 upgrade — Lee-Ready `TFI`, effective spread, Kyle's λ, VPIN | Tier parity measurable (G7) |
-| **M3-S7** | Enable Telegram tiers. Alerts only, still no proposals | G4 + G6 satisfied |
-| **M3-S8** | Weight refit, lock, restart sample | Locked weights committed with hash |
-| **M3-S9** | Proposal emission → AUTO_PAPER | G1–G7 all satisfied; operator sign-off |
-| **M3-S10** | T2 layer, contingent on moomoo M0/M1 delivering API depth | Bolts onto §5 without touching S1–S9 |
+| Phase | Scope | Exit criteria | Status (2026-07-27) |
+|---|---|---|---|
+| **M3-S0** | **Diagnostic only, zero code.** Confirm every `[VERIFY]`: bar table schema/coverage, data entitlement, source-quality table, `alert_dispatcher`, live `momentum_scalp.yaml`, whether the profile is buildable | Findings doc; every assumption confirmed/corrected | ✅ **SHIPPED** PR #225 `0aa7fc4e` (recon: `docs/_findings/scalp_engine_recon_20260727.md`) |
+| **M3-S1** | Volume profile builder + `RVOL_tod`. Nightly job, 20-session profile per universe symbol | Profile for ≥ 90% of universe; spot-check ignition days | ✅ **SHIPPED** PR #225 `0aa7fc4e`. Coverage 39/72 per-symbol; rest = §3.1 proxy cohort. Nightly cron 20:30 ET |
+| **M3-S2** | T0 metric library — Corwin–Schultz, Abdi–Ranaldo, Amihud, `BarPressure`, `EvR`. Pure, hand-computed fixtures | Suite green; values sane on 10 symbols | ✅ **SHIPPED** PR #226 `6a687f8c`. 26 tests; Amihud separates liquid/micro-float by ~4 orders |
+| **M3-S2.5** | Gate clearance — freshness accessor, tier-ladder invariant, spread gate/score split, provenance | Verdict GATES CLEAR | ✅ **SHIPPED** PR #228 `07c855d0` (`docs/_findings/M3_S2_5_GATE_CLEARANCE_2026-07-27.md`) |
+| **M3-S3** | IGN scorer + `scalp_ignition_events` + shadow logging. **No alerts, no proposals** | 5 clean sessions; zero pipeline impact | ✅ **SHIPPED** PR #227 `7043d5da`. Shadow logger cron 6am–noon ET |
+| **M3-S4** | Outcome backfill (MFE/MAE, `hit_1r_first`) + rollup + dashboard panel | Panel shows fires, deciles, `P@1R` | ✅ **SHIPPED** PR #229 `7021cbf0`. Dashboard `/v3-next/scalp-shadow.html`; P@1R per-cohort never pooled; AST isolation test |
+| **M3-S5** | Entry-trigger state machine, logged as `TRIGGER` lane. Still shadow | ≥ 15 sessions, G1 satisfied | ✅ **SHIPPED** PR #230 `fa0ec680`. Fires on real data; finding: thin-name triggers get tiny stops → whipsaw |
+| **M3-S6** | T1 upgrade — Lee-Ready `TFI`, effective spread, Kyle's λ, VPIN | Tier parity measurable (G7) | ⏳ pending auth (SIP-delayed entitled) |
+| **M3-S7** | Enable Telegram tiers. Alerts only, still no proposals | G4 + G6 satisfied | ⏳ pending |
+| **M3-S8** | Weight refit, lock, restart sample | Locked weights committed with hash | ⏳ pending (do NOT refit before the sample gate) |
+| **M3-S9** | Proposal emission → AUTO_PAPER | G1–G7 all satisfied; operator sign-off | ⏳ pending |
+| **M3-S10** | T2 layer, contingent on moomoo M0/M1 delivering API depth | Bolts onto §5 without touching S1–S9 | ⏳ pending |
+
+**Shadow accrual clock:** the 10/≥15-session shadow sample starts when S3/S5 go live (2026-07-27) and
+accrues via the 6am–noon logger cron. Do not promote or refit weights before the §12 sample gate.
 
 S1–S7 require **no moomoo, no L2, and no new vendor**. If moomoo M0 reports no API depth
 entitlement, this plan is unaffected through S9.
@@ -701,6 +707,29 @@ Recorded so the doc is an accurate record of what shipped, not a reconstruction.
   for sizing/risk; `spread_estimate_score` (median — unbiased) for the future scorer consumer. Neither
   is wired into a sub-score yet.
 
+### Implementation log (M3-S3 → S5, 2026-07-27)
+
+- **M3-S3 (PR #227 `7043d5da`):** IGN scorer `scripts/scalp_ignition_scorer.py` (pure §3.2 six
+  sub-scores incl. the σ-floor guard on `v_burst`), `scalp_ignition_events` table (no FK to
+  `paper_trade_proposals`), `scripts/scalp_shadow_logger.py` (assembles inputs from Alpaca bars +
+  the M3-S1 profile + catalyst rows + M3-S2 T0 metrics; cross-sectional `v_rs`). `notifications.emit`
+  hard-false. Verified on the 2026-07-13 QTTB ignition (AGEN RVOL_tod 140× → IGN 59 → IGN_45).
+- **M3-S4 (PR #229 `7021cbf0`):** `scripts/scalp_shadow_outcome_backfill.py` (isolated T+1 job —
+  MFE/MAE, `hit_1r_first`, `r_multiple_30m`), `scripts/scalp_shadow_rollup.py` (P@1R by IGN band
+  **per cohort, never pooled**) + static read-only HTML dashboard. AST Step-7 isolation test (import
+  nodes + string literals, docstrings structurally excluded). The logger now stores a hypothetical
+  `entry_ref`/`stop_ref` (entry = fire price, stop = entry − 1·ATR) so outcomes are computable.
+- **M3-S5 (PR #230 `fa0ec680`):** `scripts/scalp_trigger_engine.py` — pure state machine
+  IDLE→IMPULSE→PULLBACK→ARMED→TRIGGERED|VOID, all seven §6 conditions, noise-stop floor (R ≤ ATR),
+  reject guards, MACD(5m) logged-not-gating, post-halt 30-bar re-warm. Logged under the `TRIGGER`
+  lane. **Interpretation:** §6 "R:R to target_1" implemented as measured-move feasibility
+  `leg_height/R ≥ 2` (§7's exit target_1 = entry+2R is separate) — operator may revise.
+- **Open (owed to a later stage):** the §3.1 proxy path's ADV_20d is currently circular (needs a
+  real Alpaca daily-bar ADV source); `v_cat` catalyst age is approximate (uses `scanned_at`); a
+  minimum-R trigger filter is a candidate (thin-name triggers get sub-cent stops that whipsaw); the
+  outcome-backfill/rollup runner exists but is not yet scheduled.
+
 ---
 
 *Review process: architects annotate v1 → v2 final → M3-S0 authorized on v2 sign-off.*
+*Implementation status is tracked in the §13 phase-plan Status column and the log above.*
