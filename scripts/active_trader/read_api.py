@@ -8,6 +8,29 @@ from .flags import Stage0Flags, load_flags
 READ_API_CONTRACT = "active-trader-stage0-read-api-v1"
 STAGE = 0
 
+# Product intent venues (2026-07-27). Stage 0: inventory only — all live flags false.
+VENUE_IDS = ("schwab", "moomoo", "alpaca")
+
+
+def venue_inventory(flags: Stage0Flags | None = None) -> dict[str, dict[str, Any]]:
+    """Read-only venue matrix. data/execution always false at Stage 0."""
+    _ = flags
+    out: dict[str, dict[str, Any]] = {}
+    roles = {
+        "schwab": "primary_execution_when_eligible",
+        "moomoo": "augment_on_schwab_block_plus_l2_tape",
+        "alpaca": "augment_execution_alternate",
+    }
+    for vid in VENUE_IDS:
+        out[vid] = {
+            "data": False,
+            "execution": False,
+            "read_only_inventory": True,
+            "order_path": False,
+            "role_intent": roles[vid],
+        }
+    return out
+
 
 class ReadOnlyActiveTraderAPI:
     """Framework-neutral Stage 0 read surface. No create/update/delete/order methods."""
@@ -24,7 +47,14 @@ class ReadOnlyActiveTraderAPI:
             "read_only": True,
             "live_orders": False,
             "session_authorize": False,
+            "venues": venue_inventory(self._flags),
             "ok": True,
+            "product_intent": {
+                "multi_broker": True,
+                "schwab_primary": True,
+                "operator_opt_in_required": True,
+                "unattended_discover_and_fire": False,
+            },
         }
 
     def status(self) -> dict[str, Any]:
@@ -52,5 +82,6 @@ class ReadOnlyActiveTraderAPI:
             "write": False,
             "canary": False,
             "sessions": [],
+            "venues": venue_inventory(self._flags),
             "note": "Stage 0: no session schema yet; empty list is honest",
         }

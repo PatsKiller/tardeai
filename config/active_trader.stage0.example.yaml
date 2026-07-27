@@ -1,5 +1,9 @@
 # Active Trader Stage 0 — feature flags (ALL DEFAULT OFF).
 # No live secrets. Copy only if needed; Stage 0 health works without host config.
+#
+# Product intent (2026-07-27): Schwab/TOS primary; Moomoo + Alpaca augment when
+# Schwab compliance blocks; Moomoo also for L2/tape. Operator opt-in required.
+# Stage 0 does NOT enable any venue data or execution path.
 
 schema_version: active-trader-stage0-v1
 stage: 0
@@ -15,6 +19,21 @@ authority:
   agent_operational: false
   schedule_enable: false
 
+# Venue inventory (read-only flags for health API). All live capabilities false.
+venues:
+  schwab:
+    data: false
+    execution: false
+    role_intent: primary_execution_when_eligible
+  moomoo:
+    data: false
+    execution: false
+    role_intent: augment_on_schwab_block_plus_l2_tape
+  alpaca:
+    data: false
+    execution: false
+    role_intent: augment_execution_alternate
+
 # Feature flags — every flag false until a later stage explicitly flips them
 # via a dedicated operator packet (not Packet G).
 feature_flags:
@@ -26,6 +45,7 @@ feature_flags:
   moomoo_order_path: false
   multi_account_live: false
   runner: false
+  near_ready_desk: false      # below-RVOL / non-GO near-ready surface (later)
   night_run_controller: false
 
 read_api:

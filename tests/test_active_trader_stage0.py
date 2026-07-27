@@ -66,6 +66,15 @@ def test_health_write_false():
     assert body["write"] is False
     assert body["canary"] is False
     assert body["read_only"] is True
+    venues = body.get("venues") or {}
+    for name in ("schwab", "moomoo", "alpaca"):
+        assert name in venues
+        assert venues[name]["data"] is False
+        assert venues[name]["execution"] is False
+        assert venues[name]["read_only_inventory"] is True
+        assert venues[name]["order_path"] is False
+    assert body.get("product_intent", {}).get("unattended_discover_and_fire") is False
+    assert body.get("product_intent", {}).get("operator_opt_in_required") is True
 
 
 def test_status_and_sessions():

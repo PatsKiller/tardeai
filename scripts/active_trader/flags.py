@@ -72,7 +72,8 @@ def _fallback_defaults() -> dict[str, Any]:
         "feature_flags": {k: False for k in (
             "active_trader_ui", "session_builder", "session_authorize",
             "live_canary", "order_routes", "moomoo_order_path",
-            "multi_account_live", "runner", "night_run_controller",
+            "multi_account_live", "runner", "near_ready_desk",
+            "night_run_controller",
         )},
         "read_api": {"contract": "active-trader-stage0-read-api-v1"},
         "registry": {"path": "docs/implementation/active_trader_stage0_registry.json"},

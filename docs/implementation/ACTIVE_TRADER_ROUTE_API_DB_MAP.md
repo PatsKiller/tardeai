@@ -23,25 +23,37 @@ Stage 0 does not replace `/v3` TradingHub.
 
 | Method | Path | Behavior |
 |--------|------|----------|
-| GET | `/api/v3/active-trader/health` | `{ stage:0, write:false, canary:false, ... }` |
-| GET | `/api/v3/active-trader/status` | Same stage flags + feature flag snapshot (all off) |
+| GET | `/api/v3/active-trader/health` | `{ stage:0, write:false, canary:false, venues:{schwab,moomoo,alpaca} }` |
+| GET | `/api/v3/active-trader/status` | Same + feature flag snapshot (all off) |
 | GET | `/api/v3/active-trader/sessions` | `{ sessions: [] }` until Stage 1 schema |
 | * | other methods on prefix | **405** — never mutate |
+
+`venues.*.data` / `venues.*.execution` are **always false** at Stage 0 (read-only inventory).
 
 Contract: `active-trader-stage0-read-api-v1`  
 Code: `scripts/active_trader/read_http.py` · mount via `scripts/active_trader_read_boot.py` in `portfolio_server.py`
 
 ### Existing operator APIs (not AT Stage 0)
 
-| Prefix | Examples | DB / notes |
-|--------|----------|------------|
-| `/api/v2/broker-proposals/*` | list, detail, promote-from-paper, oversight | `paper_trade_proposals` |
-| `/api/v2/broker-orders/*` | preview, drafts, shadow-recon, pilot status | intents/events tables; live order I/O gated |
-| `/api/v2/broker-accounts/*` | list, readiness, automation-policy | account registry |
-| `/api/v2/journal/*` | closed trades, reviews, analytics | `trade_closed`, review tables |
-| `/api/v2/stops/*` | management, lifecycle, reentry-watch | protective stops |
-| `/api/v3/agent-runtime/*` | runs/artifacts/reviews (GET) | isolated `agentic_runtime` schema |
-| `/api/health` | process health | unrelated to AT stage flags |
+| Prefix | Examples | Venue | DB / notes |
+|--------|----------|-------|------------|
+| `/api/v2/broker-proposals/*` | list, detail, promote-from-paper | multi (paper → broker queue) | `paper_trade_proposals` |
+| `/api/v2/broker-orders/*` | preview, drafts, shadow-recon, pilot | Schwab-centric + multi | intents/events; live I/O gated |
+| `/api/v2/broker-accounts/*` | list, readiness, automation-policy | multi | account registry |
+| `/api/v2/journal/*` | closed trades, reviews, analytics | multi | `trade_closed`, review tables |
+| `/api/v2/stops/*` | management, lifecycle, reentry-watch | Schwab/Alpaca | protective stops |
+| Alpaca paper scripts | reconciler / paper paths | Alpaca | not AT session |
+| Moomoo Stage 0 (`scripts/moomoo/`) | preflight, stub client | Moomoo data | Packet F; no orders |
+| `/api/v3/agent-runtime/*` | runs/artifacts/reviews (GET) | n/a | `agentic_runtime` |
+| `/api/health` | process health | n/a | unrelated to AT stage flags |
+
+### Multi-broker data vs execution (intent map)
+
+| Venue | Data plane (intent) | Execution plane (intent) | Stage 0 |
+|-------|---------------------|--------------------------|---------|
+| Schwab/TOS | Quotes; L2 limited | **Primary** when electronic-eligible | inventory only |
+| Moomoo | **L2 + tape** + quotes (OpenD data) | Augment when Schwab blocks low-float/call-broker | Packet F scaffold; no orders |
+| Alpaca | Quotes (existing paper/live APIs) | Augment when Schwab blocked | no AT wiring |
 
 ## Database (relevant today)
 
