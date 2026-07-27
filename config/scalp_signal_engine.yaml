@@ -1,0 +1,48 @@
+# Momentum Scalp Signal Engine (momentum_scalp_intraday) — engine config.
+# NEW key. Does NOT modify momentum_scalp.yaml or any existing strategy/threshold.
+# M3-S1 uses only the [data] + [volume_profile] + [universe] sections.
+# See docs/strategies/MOMENTUM_SCALP_SIGNAL_ENGINE_v1.md.
+
+strategy_key: momentum_scalp_intraday
+
+# Feature flag — engine OFF by default (shadow build only; no runner wired yet at M3-S1).
+enabled: false
+
+data:
+  # Alpaca minute-bar feed. IEX is the M3-S1 default because RVOL_tod needs the SAME feed for BOTH
+  # the profile (historical) AND the live numerator (real-time): this subscription permits SIP only
+  # DELAYED (recent SIP → HTTP 403 "subscription does not permit querying recent SIP data"), so
+  # real-time SIP is unavailable and a SIP profile would be biased against an IEX live numerator.
+  # IEX is available both historical and real-time → self-consistent ratio (venue-share cancels).
+  # SIP (delayed) is reserved for later T1 delayed-microstructure work, not RVOL_tod.
+  feed: iex
+  bars_endpoint: "https://data.alpaca.markets/v2/stocks/{symbol}/bars"
+  timeframe: "1Min"
+  adjustment: raw
+
+session:
+  tz: "America/New_York"
+  regular_open: "09:30"
+  regular_close: "16:00"     # last regular minute index = 389 (09:30..15:59)
+  regular_minutes: 390
+
+volume_profile:
+  lookback_sessions: 20       # trailing sessions in the median
+  min_sessions: 15            # skip a symbol with fewer complete sessions than this
+  backfill_days: 40           # calendar days to pull to obtain >=20 complete sessions
+  # Session completeness is SPAN-based, not print-density based: micro-float scalp names trade
+  # sparsely (~50-180 prints/session on IEX, not 390) but still yield a valid cumulative profile
+  # (no-trade minutes add 0, cumulative carries forward). A session counts if it printed near the
+  # close (spans the day) and has at least a floor of prints (excludes near-dead sessions).
+  require_close_minute: 375   # must have a print at/after minute 375 (15:45 ET) → covered the close
+  min_session_prints: 30      # exclude near-dead sessions (fewer than this many traded minutes)
+  session_window: regular     # premarket profile deferred (doc §14 Q5)
+
+universe:
+  # M3-S1 default universe = existing scalp screener output, float-capped for the new key.
+  source_table: scalp_scan_results
+  symbol_column: symbol
+  time_column: scanned_at
+  float_column: float_mm
+  float_mm_max: 30            # operator decision 2026-07-27 for momentum_scalp_intraday
+  lookback_days: 21           # distinct symbols seen in this window
