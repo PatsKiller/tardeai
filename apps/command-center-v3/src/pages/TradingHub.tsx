@@ -43,7 +43,6 @@ const TAB_ALIASES: Record<string, typeof TABS[number]> = {
 // GO / WAIT / MANUAL_REVIEW / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : d === 'MANUAL_REVIEW' ? 'var(--squeeze)' : '#ef4444'
 
-<<<<<<< HEAD
 const NY_TZ = 'America/New_York'
 
 /** Calendar date YYYY-MM-DD in America/New_York (session day for US equities). */
@@ -85,7 +84,8 @@ function isTradeAiStaleSession(tradeAi: any): boolean {
   const scanned = Number(tradeAi.current_run_scanned ?? tradeAi.latest_run_symbols_scanned ?? 0)
   if (scanned === 0 && runNy !== todayNy) return true
   return false
-=======
+}
+
 /** Rank for scalp signal selection: GO > WAIT > others. */
 function scalpDecisionRank(decision?: string): number {
   const d = String(decision || '').toUpperCase().replace(/_/g, '-')
@@ -130,8 +130,8 @@ function dedupeScalpSignalsBySymbol(sigs: any[]): { unique: any[]; rawCount: num
     if (!prev || isBetterScalpSignal(normalized, prev)) best.set(sym, normalized)
   }
   return { unique: [...best.values()], rawCount: sigs.length }
->>>>>>> b1b4813b (fix(trading): dedupe scalp live signals by symbol)
 }
+
 
 export default function TradingHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
