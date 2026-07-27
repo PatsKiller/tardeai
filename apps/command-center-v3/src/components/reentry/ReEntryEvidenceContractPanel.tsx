@@ -19,6 +19,10 @@ export default function ReEntryEvidenceContractPanel() {
       <span style={{ fontSize: 10, color: quantityRows ? BB.green : BB.amber }}>{quantityRows ? 'QUANTITY EVIDENCE PRESENT' : 'NO SOURCE IS REPORTING SHARES'}</span>
       <button onClick={() => setOpen(value => !value)} style={button}>{open ? 'HIDE SOURCE MATRIX' : 'SHOW SOURCE MATRIX'}</button>
     </div>
+    <div style={{ marginTop: 6, fontSize: 10, color: BB.text3, lineHeight: 1.45 }}>
+      Redeploy book & history supply <b style={{ color: 'var(--text2)' }}>events / proceeds</b>; quantity comes from full-fidelity cache + closed-trade journal when present.
+      Zero share counts on book/history are expected — not a deployment failure.
+    </div>
     {open && <div style={{ overflowX: 'auto', marginTop: 8 }}><div style={{ minWidth: 780 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '180px repeat(6,1fr)', gap: 6, padding: '5px 6px', fontSize: 10, color: BB.text3, borderBottom: '1px solid var(--border)' }}><span>Source</span><span>Rows</span><span>Account</span><span>Shares</span><span>Price</span><span>Proceeds</span><span>Reason</span></div>
       {evidence.sources.map(source => {
