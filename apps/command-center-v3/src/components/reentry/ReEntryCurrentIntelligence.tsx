@@ -86,6 +86,27 @@ function resistanceFor(cached: any, watch: any, card: any, price: number | null)
 function stateTone(state: IntelState): string { if (state === 'READY TO REVIEW') return BB.green; if (state === 'NEAR ENTRY') return BB.amber; if (state === 'MISSING MARKET' || state === 'MISSING PLAN' || state === 'STALE') return BB.red; if (state === 'CURRENTLY HELD') return BB.amber; return BB.blue }
 function sourceFor(row: ExitEvidenceRow, fieldName: ExitEvidenceField): string { return row.field_sources?.[fieldName] || row.import_source || 'source unavailable' }
 
+/** Operator view mode — session only (not server prefs). Default Material keeps cold load operable. */
+type ViewMode = 'ALL' | 'MATERIAL' | 'CLASSIFIED' | 'READY_NEAR'
+const VIEW_STORAGE_KEY = 'cc-reentry-view-v1'
+/** Material = |proceeds| over the evidence window ≥ this USD threshold (footer documents it). */
+const MATERIAL_PROCEEDS_MIN = 5_000
+
+function loadViewMode(): ViewMode {
+  try {
+    const raw = sessionStorage.getItem(VIEW_STORAGE_KEY)
+    if (raw === 'ALL' || raw === 'MATERIAL' || raw === 'CLASSIFIED' || raw === 'READY_NEAR') return raw
+  } catch { /* private mode */ }
+  return 'MATERIAL'
+}
+
+function isMaterialSummary(row: { proceeds: number; shares: number | null }): boolean {
+  const abs = Math.abs(Number(row.proceeds) || 0)
+  // Proceeds ≥ $5k, or known shares with proceeds ≥ $5k (same cash bar; shares known keeps sizing-capable exits).
+  if (abs >= MATERIAL_PROCEEDS_MIN) return true
+  return false
+}
+
 export default function ReEntryCurrentIntelligence() {
   const evidence = useReEntryExitEvidence(365)
   const cards = useApi<any>('/api/v2/symbol-cards', 300_000)
@@ -99,6 +120,11 @@ export default function ReEntryCurrentIntelligence() {
   const analyst = useApi<any>('/api/v2/pro-analyst/pills?map=1', 300_000)
   const [watchMap, setWatchMap] = useState<Record<string, any>>({})
   const [search, setSearch] = useState('')
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => loadViewMode())
+  const setViewMode = (mode: ViewMode) => {
+    setViewModeState(mode)
+    try { sessionStorage.setItem(VIEW_STORAGE_KEY, mode) } catch { /* private mode */ }
+  }
   const [stateFilter, setStateFilter] = useState('ALL')
   const [classificationFilter, setClassificationFilter] = useState('ALL')
   const [gapOnly, setGapOnly] = useState(false)
@@ -150,6 +176,9 @@ export default function ReEntryCurrentIntelligence() {
   }), [summaries, mandatesPref.data, eventsPref.data, dispositionsPref.data, watchMap, cards.data, holdings.data, resistancePref.data, analyst.data, alerts.data])
 
   const shown = rows.filter(row => {
+    if (viewMode === 'MATERIAL' && !isMaterialSummary(row)) return false
+    if (viewMode === 'CLASSIFIED' && row.classified !== 'CLASSIFIED') return false
+    if (viewMode === 'READY_NEAR' && row.intel.state !== 'READY TO REVIEW' && row.intel.state !== 'NEAR ENTRY') return false
     if (search.trim() && !`${row.symbol} ${row.intel.state} ${row.intel.action} ${row.classified} ${row.mandate.mandate} ${row.flags.join(' ')} ${row.latest.import_source ?? ''} ${(row.latest.evidence_gaps ?? []).join(' ')}`.toUpperCase().includes(search.trim().toUpperCase())) return false
     if (stateFilter !== 'ALL' && row.intel.state !== stateFilter) return false
     if (classificationFilter !== 'ALL' && row.classified !== classificationFilter) return false
@@ -158,23 +187,65 @@ export default function ReEntryCurrentIntelligence() {
   }).sort((a, b) => (a.mandate.priority === 'HIGH' ? -1 : 0) - (b.mandate.priority === 'HIGH' ? -1 : 0) || b.completeness - a.completeness || String(b.latest.trade_date || '').localeCompare(String(a.latest.trade_date || '')))
 
   const selectedSymbols = shown.filter(row => selected[row.symbol]).map(row => row.symbol)
-  const counts = { symbols: rows.length, classified: rows.filter(row => row.classified === 'CLASSIFIED').length, ready: rows.filter(row => row.intel.state === 'READY TO REVIEW').length, near: rows.filter(row => row.intel.state === 'NEAR ENTRY').length, missing: rows.filter(row => row.completeness < 8 || row.eventGapCount > 0).length }
+  const materialCount = rows.filter(isMaterialSummary).length
+  const counts = {
+    symbols: rows.length,
+    material: materialCount,
+    classified: rows.filter(row => row.classified === 'CLASSIFIED').length,
+    ready: rows.filter(row => row.intel.state === 'READY TO REVIEW').length,
+    near: rows.filter(row => row.intel.state === 'NEAR ENTRY').length,
+    // Incomplete evidence = exit field gaps / incomplete current fields — not the same as MISSING MARKET state.
+    missing: rows.filter(row => row.completeness < 8 || row.eventGapCount > 0).length,
+  }
   const regimeLabel = text(unwrap(regime.data)?.regime_label, unwrap(regime.data)?.label, 'unknown').replace(/_/g, ' ').toUpperCase()
   const refresh = () => { evidence.refetch(); cards.refetch(); holdings.refetch(); alerts.refetch(); regime.refetch(); resistancePref.refetch(); analyst.refetch(); mandatesPref.refetch(); eventsPref.refetch(); dispositionsPref.refetch(); setWatchReload(value => value + 1) }
   const shareCoverage = evidence.sources.map(source => `${source.label} shares ${evidence.sourceFieldCoverage[source.key]?.quantity ?? 0}`).join(' · ')
 
+  const viewChips: { id: ViewMode; label: string; count: number }[] = [
+    { id: 'MATERIAL', label: 'Material', count: counts.material },
+    { id: 'CLASSIFIED', label: 'Classified', count: counts.classified },
+    { id: 'READY_NEAR', label: 'Ready+Near', count: counts.ready + counts.near },
+    { id: 'ALL', label: 'All', count: counts.symbols },
+  ]
+
   return <div style={{ ...panel, padding: 10 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><div><div style={{ fontSize: 18, fontWeight: 900 }}>CURRENT RE-ENTRY INTELLIGENCE <HelpTip text="Exit events are reconciled by broker ID and compatible symbol/date/account facts. Every displayed field retains its source; deterministic arithmetic is labeled as derived." /></div><div style={{ fontSize: 10.5, color: BB.text3 }}>Regime {regimeLabel} · {evidence.rows.length} reconciled exit events · {evidence.sources.filter(source => source.available).length}/{evidence.sources.length} sources reporting · contract {evidence.contractVersion} · advisory only</div></div><button onClick={refresh} style={{ ...button(false), marginLeft: 'auto' }}>{evidence.loading || evidence.refreshing ? 'REFRESHING…' : 'REFRESH ALL SOURCES'}</button></div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><div><div style={{ fontSize: 18, fontWeight: 900 }}>CURRENT RE-ENTRY INTELLIGENCE <HelpTip text="Exit events are reconciled by broker ID and compatible symbol/date/account facts. Every displayed field retains its source; deterministic arithmetic is labeled as derived." /></div><div style={{ fontSize: 10.5, color: BB.text3 }}>Regime {regimeLabel} · {evidence.rows.length} reconciled exit events · {evidence.sources.filter(source => source.available).length}/{evidence.sources.length} sources reporting · contract {evidence.contractVersion} · advisory only · showing {shown.length}/{rows.length}</div></div><button onClick={refresh} style={{ ...button(false), marginLeft: 'auto' }}>{evidence.loading || evidence.refreshing ? 'REFRESHING…' : 'REFRESH ALL SOURCES'}</button></div>
 
     <div style={{ ...panel, marginTop: 8, padding: 8, background: 'var(--bg2)', fontSize: 10.5 }}><b>Source audit:</b> {evidence.sources.map(source => `${source.label} ${source.rows}`).join(' · ')}.<br /><b>Quantity-bearing rows:</b> {shareCoverage}. A remaining blank means no compatible event or aggregate supplied the field; deterministic derivations and account-alias joins are labeled in the expanded audit.</div>
 
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 9, alignItems: 'center' }}>
+      <span style={{ fontSize: 10, fontWeight: 800, color: BB.text3, textTransform: 'uppercase', marginRight: 2 }}>View</span>
+      {viewChips.map(chip => (
+        <button
+          key={chip.id}
+          type="button"
+          data-testid={`reentry-view-${chip.id}`}
+          onClick={() => setViewMode(chip.id)}
+          style={button(viewMode === chip.id)}
+          title={chip.id === 'MATERIAL' ? `Material: |exit proceeds| ≥ $${MATERIAL_PROCEEDS_MIN.toLocaleString()} over the evidence window` : undefined}
+        >
+          {chip.label} · {chip.count}
+        </button>
+      ))}
+    </div>
+
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(120px,1fr))', gap: 7, marginTop: 9 }}>{[
-      ['EXITED SYMBOLS', counts.symbols, stateFilter === 'ALL' && classificationFilter === 'ALL' && !gapOnly, () => { setStateFilter('ALL'); setClassificationFilter('ALL'); setGapOnly(false) }],
-      ['CLASSIFIED', counts.classified, classificationFilter === 'CLASSIFIED', () => setClassificationFilter(value => value === 'CLASSIFIED' ? 'ALL' : 'CLASSIFIED')],
+      ['EXITED SYMBOLS', counts.symbols, viewMode === 'ALL' && stateFilter === 'ALL' && classificationFilter === 'ALL' && !gapOnly, () => { setViewMode('ALL'); setStateFilter('ALL'); setClassificationFilter('ALL'); setGapOnly(false) }],
+      ['CLASSIFIED', counts.classified, viewMode === 'CLASSIFIED' || classificationFilter === 'CLASSIFIED', () => { setViewMode('CLASSIFIED'); setClassificationFilter('CLASSIFIED') }],
       ['READY NOW', counts.ready, stateFilter === 'READY TO REVIEW', () => setStateFilter(value => value === 'READY TO REVIEW' ? 'ALL' : 'READY TO REVIEW')],
       ['NEAR ENTRY', counts.near, stateFilter === 'NEAR ENTRY', () => setStateFilter(value => value === 'NEAR ENTRY' ? 'ALL' : 'NEAR ENTRY')],
-      ['EVIDENCE GAPS', counts.missing, gapOnly, () => setGapOnly(value => !value)],
-    ].map(([name, value, active, action]) => <button key={String(name)} onClick={action as () => void} style={{ ...panel, padding: 9, textAlign: 'left', cursor: 'pointer', background: active ? BB.blueDim : 'var(--bg2)', color: 'var(--text0)' }}><span style={{ color: BB.text3, fontSize: 10 }}>{String(name)}</span><br /><b style={{ fontSize: 20 }}>{String(value)}</b></button>)}</div>
+      ['INCOMPLETE EVIDENCE', counts.missing, gapOnly, () => setGapOnly(value => !value)],
+    ].map(([name, value, active, action]) => (
+      <button
+        key={String(name)}
+        type="button"
+        title={String(name) === 'INCOMPLETE EVIDENCE' ? 'Exit-field / completeness gaps — not the same as MISSING MARKET (price+RSI).' : undefined}
+        onClick={action as () => void}
+        style={{ ...panel, padding: 9, textAlign: 'left', cursor: 'pointer', background: active ? BB.blueDim : 'var(--bg2)', color: 'var(--text0)' }}
+      >
+        <span style={{ color: BB.text3, fontSize: 10 }}>{String(name)}</span><br /><b style={{ fontSize: 20 }}>{String(value)}</b>
+      </button>
+    ))}</div>
 
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) 190px 170px auto auto auto', gap: 7, marginTop: 8 }}><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search symbol, state, source or missing field…" style={field} /><select value={stateFilter} onChange={event => setStateFilter(event.target.value)} style={field}><option value="ALL">ALL CURRENT STATES</option>{['READY TO REVIEW', 'NEAR ENTRY', 'WAIT', 'CURRENTLY HELD', 'STALE', 'MISSING PLAN', 'MISSING MARKET'].map(state => <option key={state}>{state}</option>)}</select><select value={classificationFilter} onChange={event => setClassificationFilter(event.target.value)} style={field}><option value="ALL">ALL CLASSIFICATIONS</option><option>CLASSIFIED</option><option>AUTO-TAGGED</option><option>UNCLASSIFIED</option></select><button onClick={() => setSelected(Object.fromEntries(shown.map(row => [row.symbol, true])))} style={button(false)}>SELECT VISIBLE</button><button onClick={() => setSelected({})} style={button(false)}>CLEAR</button><button disabled={!selectedSymbols.length} onClick={() => classify(selectedSymbols)} style={{ ...button(Boolean(selectedSymbols.length)), opacity: selectedSymbols.length ? 1 : .5 }}>EDIT SELECTED {selectedSymbols.length}</button></div>
 
@@ -190,5 +261,10 @@ export default function ReEntryCurrentIntelligence() {
     })}</div></div>
     {evidence.errors.length > 0 && <div style={{ marginTop: 7, color: BB.red, fontSize: 10 }}>Source warnings: {evidence.errors.join(' · ')}</div>}
     {!shown.length && <div style={{ padding: 14, color: BB.text3 }}>No symbols match the current filters.</div>}
+    <div style={{ marginTop: 8, fontSize: 10, color: BB.text3 }}>
+      View default is <b>Material</b> (|exit proceeds| ≥ ${MATERIAL_PROCEEDS_MIN.toLocaleString()} over the evidence window; stored in session only as {VIEW_STORAGE_KEY}).
+      {' '}Ready+Near / Classified chips AND with state/classification selects.
+      {' '}Incomplete evidence = exit-field or completeness gaps — separate from MISSING MARKET (price+RSI).
+    </div>
   </div>
 }
