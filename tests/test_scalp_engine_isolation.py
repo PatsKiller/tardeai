@@ -24,6 +24,7 @@ ENGINE_MODULES = [
     "symbol_volume_profile_builder.py",
     "scalp_t0_metrics.py",
     "scalp_ignition_scorer.py",
+    "scalp_trigger_engine.py",
     "scalp_shadow_logger.py",
     "scalp_shadow_outcome_backfill.py",
     "scalp_shadow_rollup.py",

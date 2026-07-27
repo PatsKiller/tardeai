@@ -31,6 +31,7 @@ sys.path.insert(0, str(_REPO / "scripts"))
 
 import scalp_ignition_scorer as scorer          # noqa: E402
 import scalp_t0_metrics as t0                    # noqa: E402
+import scalp_trigger_engine as trig              # noqa: E402
 from symbol_volume_profile_builder import (       # noqa: E402
     load_config, fetch_minute_bars, minute_of_session, get_profile_denominator,
 )
@@ -247,6 +248,7 @@ def run(args) -> int:
         ensure_schema(conn)
 
     results = []
+    trigger_fires = []
     ef = ucurve[minute] if 0 <= minute < len(ucurve) else (minute + 1) / n_min
     for a in assembled:
         # RVOL_tod: per-symbol profile, else universe-proxy (§3.1)
@@ -281,6 +283,23 @@ def run(args) -> int:
             "entry_ref": entry_ref, "stop_ref": stop_ref, "r_dollars": r_dollars, "stop_dist_bps": stop_dist_bps,
         }
         results.append(row)
+        # M3-S5: run the entry-trigger state machine over the symbol's session bars; log TRIGGER fires
+        tr = trig.run_trigger_engine(bars, cfg)
+        for fe in trig.triggered_fires(tr):
+            fb = bars[fe["fire_idx"]]
+            fm = fb.get("m")
+            if fm is None:
+                continue
+            trigger_fires.append({
+                "symbol": a["_symbol"], "fire_minute": fm, "fire_ts": fb.get("t"),
+                "entry": fe["entry"], "stop": fe["stop"], "r_dollars": fe["r_dollars"],
+                "stop_dist_bps": (fe["r_dollars"] / fe["entry"] * 1e4) if (fe.get("r_dollars") and fe.get("entry")) else None,
+                "ign": out["ign"], "subscores": out["subscores"], "rvol_tod": rt, "profile_source": psrc,
+                "pressure": row["pressure"], "evr": row["evr"], "amihud": row["amihud"],
+                "spread_bps": row["spread_bps"], "spread_source": row["spread_source"],
+                "gate_reasons": {"macd_hist_5m": tr["macd_hist_5m"], "rr": fe.get("rr"),
+                                 "stop_pct": fe.get("stop_pct"), "trigger": "TRIGGERED"},
+            })
 
     results.sort(key=lambda r: r["ign"], reverse=True)
     written = 0
@@ -302,6 +321,34 @@ def run(args) -> int:
                      r["r_dollars"], r["stop_dist_bps"]])
                 written += 1
         conn.commit()
+
+    twritten = 0
+    if args.apply and trigger_fires:
+        import json as _json
+        from datetime import datetime as _dt
+        with conn.cursor() as cur:
+            for tf in trigger_fires:
+                cur.execute("""SELECT 1 FROM scalp_ignition_events WHERE symbol=%s AND session_date=%s
+                               AND minute_of_session=%s AND lane='TRIGGER'""",
+                            [tf["symbol"], day, tf["fire_minute"]])
+                if cur.fetchone():
+                    continue   # dedup (intraday logger re-runs)
+                fired = _dt.fromisoformat(tf["fire_ts"].replace("Z", "+00:00")) if tf.get("fire_ts") else as_of
+                cur.execute(
+                    """INSERT INTO scalp_ignition_events
+                       (symbol, fired_at, session_date, minute_of_session, lane, ign_score, subscores,
+                        rvol_tod, profile_source, data_tier, dcf, spread_bps, spread_source, pressure,
+                        evr, amihud_illiq, entry_ref, stop_ref, r_dollars, stop_dist_bps, gate_result,
+                        gate_reasons, engine_version)
+                       VALUES (%s,%s,%s,%s,'TRIGGER',%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'PASS',%s,'m3-s5')""",
+                    [tf["symbol"], fired, day, tf["fire_minute"], tf["ign"], _json.dumps(tf["subscores"]),
+                     tf["rvol_tod"], tf["profile_source"], cfg["data_tiers"]["dcf"]["T0"], tf["spread_bps"],
+                     tf["spread_source"], tf["pressure"], tf["evr"], tf["amihud"], tf["entry"], tf["stop"],
+                     tf["r_dollars"], tf["stop_dist_bps"], _json.dumps(tf["gate_reasons"])])
+                twritten += 1
+        conn.commit()
+    if trigger_fires:
+        print(f"  TRIGGER fires this pass: {len(trigger_fires)} (written {twritten} after dedup)")
 
     top = int(args.top or 15)
     print(f"\n  {'sym':6} {'IGN':>6} {'lane':>9} {'RVOL_tod':>9} {'src':>13} {'v_rvol':>6} {'v_burst':>7} {'v_disp':>6} {'v_rs':>5}")

@@ -93,6 +93,29 @@ ignition:
     min_profile_sessions: 15  # below this → use proxy
     proxy_source: universe    # 'universe' U-curve × ADV_20d × ExpectedFraction(t)
 
+# ── M3-S5 entry-trigger state machine (design §4/§6). Pure over a bar series; still SHADOW. ──
+trigger:
+  atr_period: 14
+  impulse_atr_mult: 2.0        # §6.1 impulse leg = advance >= 2*ATR_1m from leg origin
+  min_lower_highs: 2           # §6.2 pullback structure
+  retrace_min: 0.236           # §6.3 valid retrace band (of the leg)
+  retrace_max: 0.618
+  retrace_void: 0.786          # retrace beyond this → leg VOID, reset state
+  vdu_ratio: 0.60              # §6.4 volume dry-up: mean(vol_pullback) <= 0.60*mean(vol_impulse)
+  trigger_vol_mult: 1.5        # §6.6 trigger bar vol >= 1.5*mean(vol_pullback)
+  trigger_close_top_frac: 0.667 # §6.6 close in top 1/3 of the trigger bar's range
+  evr_bottom_quartile: 0.25    # §6.7 absorption absent: EvR not in bottom quartile of last 3 impulse bars
+  entry_offset: 0.02           # §6 entry = trigger_bar_high + 0.02
+  stop_offset: 0.02            # stop = min(trigger_low, pullback_low) - 0.02 ...
+  noise_stop_atr_mult: 1.0     # ... floored at entry - 1.0*ATR_1m
+  max_stop_pct: 0.08           # reject: stop_distance > 8% of entry (LOGGED both, per operator 07-27)
+  max_stop_pct_alt: 0.15       # live momentum_scalp value — logged alongside for the "decide on data" pass
+  min_rr: 2.0                  # reject: leg_height/R < 2 (measured-move feasibility). §7 exit
+                               #   target_1 = entry+2R is separate. INTERPRETATION — see engine + report.
+  no_chase_mult: 1.02          # reject: entry > leg_high * 1.02
+  post_halt_rewarm_bars: 30    # §6.6 post-halt 30-bar re-warm before re-entering IMPULSE
+  macd_5m: {fast: 12, slow: 26, signal: 9}   # §6.1 computed on 5m bars, LOGGED, never gating
+
 # ── Notification tiers (design §3.4). STORED for M3-S7; M3-S3 is SHADOW and emits NOTHING. ──
 notifications:
   info_min: 45
