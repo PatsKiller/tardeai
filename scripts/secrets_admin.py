@@ -18,12 +18,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = PROJECT_ROOT / ".env"
 AUDIT_PATH = PROJECT_ROOT / "data" / "runtime" / "secrets_admin_audit.jsonl"
 KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,60}$")
-SECRET_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD", "_COOKIE")
+SECRET_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD", "_COOKIE", "_DSN")
 # Always offered (so the operator can add even if currently absent)
 KNOWN = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY", "FINNHUB_API_KEY",
          "POLYGON_API_KEY", "FMP_API_KEY", "ALPHA_VANTAGE_API_KEY", "NEWSAPI_KEY", "BRAVE_SEARCH_API_KEY",
          "FINVIZ_API_TOKEN", "FINVIZ_COOKIE", "TELEGRAM_BOT_TOKEN", "TWILIO_AUTH_TOKEN", "SMTP_PASSWORD",
          "SCHWAB_APP_KEY", "SCHWAB_APP_SECRET",
+         # Agentic runtime LAB/SHADOW DSNs (Bitwarden SM SoT; never log values)
+         "LAB_DSN", "SHADOW_DSN", "SHADOW_READER_DSN",
          # SnapTrade (read-only holdings aggregation): consumer key + the per-user userSecret are secrets
          # (masked). For PERSONAL (PERS-) keys, SnapTrade provisions one user at signup and shows its
          # userId + userSecret in the dashboard — you PASTE them here (registerUser is production-only).
