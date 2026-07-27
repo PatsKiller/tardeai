@@ -22,10 +22,21 @@ STATE_FILE = PR / "data" / "state" / "finviz_feed_health.json"
 
 def get_cookie():
     """Check cookie existence without returning value."""
-    for line in (PR / ".env").read_text().splitlines():
-        if line.startswith("FINVIZ_COOKIE=") and len(line) > 20:
-            return True
-    return False
+    try:
+        import sys
+        _sec = PR / "scripts" / "secrets"
+        if str(_sec) not in sys.path:
+            sys.path.insert(0, str(_sec))
+        from resolve_secret import resolve_secret
+        return len(resolve_secret("FINVIZ_COOKIE", "")) > 20
+    except Exception:
+        try:
+            for line in (PR / ".env").read_text().splitlines():
+                if line.startswith("FINVIZ_COOKIE=") and len(line) > 20:
+                    return True
+        except Exception:
+            pass
+        return False
 
 def probe_feed():
     """Check if Finviz returns CSV, not login page."""

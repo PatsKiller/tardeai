@@ -7,6 +7,14 @@
 - On Bitwarden failure: keep last-known-good cache; never delete it
 - Staleness >6h → Telegram both chat IDs (no secret values in message)
 - --now forces immediate render
+- After a successful SM render, keys that already exist in disk repo .env are
+  dual-written (quoted) so legacy cron that only sources .env stays aligned.
+  Bitwarden SM remains source of truth.
+
+Operator (after SM UI edit of FINVIZ_COOKIE etc.):
+  python scripts/secrets/render_env.py --now
+  python scripts/secret_validators.py FINVIZ_COOKIE
+  # validator uses resolve_secret (tmpfs → env → disk); never prints values
 """
 from __future__ import annotations
 
@@ -213,16 +221,30 @@ def render(*, force: bool = False) -> dict:
             + "\n",
             0o600,
         )
+        # Dual-write keys that already exist on disk .env (legacy cron alignment; no values logged)
+        disk_mirrored = 0
+        try:
+            from resolve_secret import mirror_rendered_keys_to_disk
+            disk_mirrored = mirror_rendered_keys_to_disk(secrets, disk_env_path=DISK_ENV, project_root=ROOT)
+        except Exception:
+            disk_mirrored = 0
         st.update(
             {
                 "last_ok_at": datetime.now(timezone.utc).isoformat(),
                 "last_error": None,
                 "n_keys": len(secrets),
                 "render_path": str(RENDER_PATH),
+                "disk_mirrored_keys": disk_mirrored,
             }
         )
         _save_state(st)
-        result.update(ok=True, source="bitwarden_sm", n_keys=len(secrets), stale_hours=0.0)
+        result.update(
+            ok=True,
+            source="bitwarden_sm",
+            n_keys=len(secrets),
+            stale_hours=0.0,
+            disk_mirrored_keys=disk_mirrored,
+        )
         print(json.dumps({k: result[k] for k in result}, indent=2))
         return result
     except Exception as e:

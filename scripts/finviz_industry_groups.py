@@ -50,10 +50,21 @@ POOL_N = 10
 
 def _cookie() -> str:
     import os
-    for line in (ROOT / ".env").read_text().splitlines():
-        if line.startswith("FINVIZ_COOKIE="):
-            return line.split("=", 1)[1].strip().strip('"\'')
-    return os.environ.get("FINVIZ_COOKIE", "").strip().strip('"\'')
+    import sys
+    try:
+        _sec = ROOT / "scripts" / "secrets"
+        if str(_sec) not in sys.path:
+            sys.path.insert(0, str(_sec))
+        from resolve_secret import resolve_secret
+        return resolve_secret("FINVIZ_COOKIE", "")
+    except Exception:
+        try:
+            for line in (ROOT / ".env").read_text().splitlines():
+                if line.startswith("FINVIZ_COOKIE="):
+                    return line.split("=", 1)[1].strip().strip('"\'')
+        except Exception:
+            pass
+        return os.environ.get("FINVIZ_COOKIE", "").strip().strip('"\'')
 
 
 def _pct(v):

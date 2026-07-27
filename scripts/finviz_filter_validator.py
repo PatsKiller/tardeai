@@ -41,10 +41,21 @@ _BASE_URL = "https://elite.finviz.com/export?v=152&c=0,1,65"
 
 
 def _cookie() -> str:
-    for line in (ROOT / ".env").read_text().splitlines():
-        if line.startswith("FINVIZ_COOKIE="):
-            return line.split("=", 1)[1].strip().strip('"\'')
-    return ""
+    import sys
+    try:
+        _sec = ROOT / "scripts" / "secrets"
+        if str(_sec) not in sys.path:
+            sys.path.insert(0, str(_sec))
+        from resolve_secret import resolve_secret
+        return resolve_secret("FINVIZ_COOKIE", "")
+    except Exception:
+        try:
+            for line in (ROOT / ".env").read_text().splitlines():
+                if line.startswith("FINVIZ_COOKIE="):
+                    return line.split("=", 1)[1].strip().strip('"\'')
+        except Exception:
+            pass
+        return ""
 
 
 def _rows(url: str, cookie: str) -> int:

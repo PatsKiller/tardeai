@@ -93,6 +93,17 @@ def _current_session(now=None) -> str:
 
 
 def _env(k: str) -> str:
+    if k in ("FINVIZ_COOKIE", "FINVIZ_API_TOKEN", "FINVIZ_USER_AGENT"):
+        try:
+            import sys as _sys
+            from pathlib import Path as _P
+            _sec = _P(__file__).resolve().parent / "secrets"
+            if str(_sec) not in _sys.path:
+                _sys.path.insert(0, str(_sec))
+            from resolve_secret import resolve_secret
+            return resolve_secret(k, "")
+        except Exception:
+            pass
     return os.getenv(k, "").strip()
 
 

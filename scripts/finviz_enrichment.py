@@ -129,10 +129,36 @@ SKIP_DUPLICATES = {"price", "change_pct", "volume", "market_cap_b2", "market_cap
 
 
 def _env(key: str, default: str = "") -> str:
+    """Prefer SM tmpfs for Finviz auth keys; never log values."""
+    if key in ("FINVIZ_COOKIE", "FINVIZ_API_TOKEN", "FINVIZ_USER_AGENT"):
+        try:
+            import sys as _sys
+            _sec = Path(__file__).resolve().parent / "secrets"
+            if str(_sec) not in _sys.path:
+                _sys.path.insert(0, str(_sec))
+            from resolve_secret import resolve_secret
+            return resolve_secret(key, default)
+        except Exception:
+            pass
     return os.getenv(key, default).strip()
 
 
 def _load_env(root: Path) -> None:
+    """Load tmpfs SM render first, then disk .env (setdefault — first wins)."""
+    try:
+        import sys as _sys
+        _sec = Path(__file__).resolve().parent / "secrets"
+        if str(_sec) not in _sys.path:
+            _sys.path.insert(0, str(_sec))
+        from resolve_secret import parse_env_file, render_env_path
+        for path in (render_env_path(), root / ".env"):
+            if path.is_file():
+                for k, v in parse_env_file(path).items():
+                    if k:
+                        os.environ.setdefault(k, v)
+        return
+    except Exception:
+        pass
     env_path = root / ".env"
     if env_path.exists():
         for line in env_path.read_text().splitlines():
