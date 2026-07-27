@@ -1,0 +1,29 @@
+{
+  "schema": "active-trader-compliance-fixtures-v1",
+  "note": "Stage 1a FIXTURE. Read-only capability snapshot for venue eligibility. Real per-symbol Schwab compliance/tradeability comes from the broker in a later stage; this file lets the endpoint + tests exercise the UX contract deterministically. No credentials, no order authority.",
+  "venues": {
+    "schwab": {
+      "available": true,
+      "role": "primary_execution_when_eligible",
+      "compliance_coverage": "blocklist"
+    },
+    "moomoo": {
+      "available": true,
+      "role": "augment_on_schwab_block_plus_l2_tape",
+      "operator_opt_in": false
+    },
+    "alpaca": {
+      "available": true,
+      "role": "augment_execution_alternate",
+      "operator_opt_in": false
+    }
+  },
+  "symbol_compliance": {
+    "GNS": {"schwab_blocked": true, "block_code": "low_float_restriction", "detail": "Schwab restricts this low-float / hard-to-borrow symbol; order desk approval required."},
+    "HKD": {"schwab_blocked": true, "block_code": "low_float_restriction", "detail": "Schwab low-float restriction — cannot place online."},
+    "AMTD": {"schwab_blocked": true, "block_code": "call_broker", "detail": "Schwab requires calling the trade desk to place this order."},
+    "AAPL": {"schwab_blocked": false},
+    "NVDA": {"schwab_blocked": false},
+    "SCHG": {"schwab_blocked": false}
+  }
+}

@@ -43,7 +43,7 @@ def dispatch(
     query: Mapping[str, Any] | None = None,
 ) -> Tuple[int, dict[str, Any]]:
     """Dispatch one request. Always returns (status, body). Never mutates."""
-    _ = query
+    query = query or {}
     path = (path or "").rstrip("/") or "/"
     method = (method or "GET").upper()
 
@@ -69,6 +69,7 @@ def dispatch(
                 f"{ACTIVE_TRADER_PREFIX}/health",
                 f"{ACTIVE_TRADER_PREFIX}/status",
                 f"{ACTIVE_TRADER_PREFIX}/sessions",
+                f"{ACTIVE_TRADER_PREFIX}/venue-eligibility?symbol=...",
             ],
         }
 
@@ -79,5 +80,22 @@ def dispatch(
         return 200, api.status()
     if suffix in ("sessions",):
         return 200, api.list_sessions()
+    if suffix in ("venue-eligibility", "venue_eligibility"):
+        symbol = _q1(query, "symbol")
+        venue = _q1(query, "venue")
+        if not symbol:
+            body = _envelope("bad_request", "symbol query parameter is required", status_hint=400)
+            return 400, body
+        return 200, api.venue_eligibility(symbol, venue or None)
 
-    return 404, _envelope("not_found", f"unknown Stage 0 endpoint: {suffix}")
+    return 404, _envelope("not_found", f"unknown endpoint: {suffix}")
+
+
+def _q1(query: Mapping[str, Any] | None, key: str) -> str:
+    """Extract a single string query value (list-safe). Empty string when absent."""
+    if not query:
+        return ""
+    v = query.get(key)
+    if isinstance(v, (list, tuple)):
+        v = v[0] if v else ""
+    return str(v or "").strip()
