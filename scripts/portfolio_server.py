@@ -712,10 +712,15 @@ def json_response(handler, status: int, data: dict) -> None:
 
 
 _AGENT_RUNTIME_READ_PREFIX = "/api/v3/agent-runtime"
+_ACTIVE_TRADER_READ_PREFIX = "/api/v3/active-trader"
 
 
 def _is_agent_runtime_read_path(path: str) -> bool:
     return path == _AGENT_RUNTIME_READ_PREFIX or path.startswith(_AGENT_RUNTIME_READ_PREFIX + "/")
+
+
+def _is_active_trader_read_path(path: str) -> bool:
+    return path == _ACTIVE_TRADER_READ_PREFIX or path.startswith(_ACTIVE_TRADER_READ_PREFIX + "/")
 
 
 def _agent_runtime_read_handle(method: str, path: str, raw_query):
@@ -746,6 +751,42 @@ def _agent_runtime_read_handle(method: str, path: str, raw_query):
                 "schedule_change": False, "financial_action": False,
             },
             "detail": "agent-runtime read API is unavailable",
+        }
+
+
+def _active_trader_read_handle(method: str, path: str, raw_query):
+    """Delegate to Active Trader Stage 0 read-only boot (no live orders / canary).
+
+    Always returns a Stage 0 envelope with write:false and canary:false.
+    """
+    try:
+        _scripts_dir = str(PROJECT_ROOT / "scripts")
+        if _scripts_dir not in sys.path:
+            sys.path.insert(0, _scripts_dir)
+        import active_trader_read_boot as _at_boot
+        query = {}
+        if raw_query:
+            query = {k: (v[0] if isinstance(v, list) and len(v) == 1 else v) for k, v in raw_query.items()}
+        result = _at_boot.handle(method, path, query)
+        if result is not None:
+            return result
+        return 404, {
+            "contract": "active-trader-stage0-read-api-v1",
+            "stage": 0,
+            "write": False,
+            "canary": False,
+            "read_only": True,
+            "detail": "not found",
+        }
+    except Exception:
+        return 503, {
+            "contract": "active-trader-stage0-read-api-v1",
+            "stage": 0,
+            "write": False,
+            "canary": False,
+            "read_only": True,
+            "kind": "unavailable",
+            "detail": "active-trader Stage 0 read API is unavailable",
         }
 
 
@@ -1417,18 +1458,35 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 return True
         return False
 
+    def _reject_non_get_active_trader(self):
+        """Non-GET methods on Active Trader Stage 0 surface -> 405 (write:false)."""
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        if _is_active_trader_read_path(path):
+            _at = _active_trader_read_handle(self.command, path, None)
+            if _at is not None:
+                _send_agent_runtime_json(self, _at[0], _at[1])
+                return True
+        return False
+
     def do_PUT(self):
         if self._reject_non_get_agent_runtime():
+            return
+        if self._reject_non_get_active_trader():
             return
         self.send_error(405, "Method Not Allowed")
 
     def do_PATCH(self):
         if self._reject_non_get_agent_runtime():
             return
+        if self._reject_non_get_active_trader():
+            return
         self.send_error(405, "Method Not Allowed")
 
     def do_DELETE(self):
         if self._reject_non_get_agent_runtime():
+            return
+        if self._reject_non_get_active_trader():
             return
         self.send_error(405, "Method Not Allowed")
 
@@ -1462,6 +1520,13 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             _ar = _agent_runtime_read_handle("GET", path, parse_qs(parsed.query))
             if _ar is not None:
                 _send_agent_runtime_json(self, _ar[0], _ar[1])
+                return
+
+        # Active Trader Stage 0 — GET health/status/sessions only (write:false, canary:false).
+        if _is_active_trader_read_path(path):
+            _at = _active_trader_read_handle("GET", path, parse_qs(parsed.query))
+            if _at is not None:
+                _send_agent_runtime_json(self, _at[0], _at[1])
                 return
 
         # v2 API dispatch
@@ -1923,6 +1988,13 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             _ar = _agent_runtime_read_handle("POST", _ar_path, None)
             if _ar is not None:
                 _send_agent_runtime_json(self, _ar[0], _ar[1])
+                return
+
+        # Active Trader Stage 0 is GET-only: POST is 405, never enables canary/orders.
+        if _is_active_trader_read_path(_ar_path):
+            _at = _active_trader_read_handle("POST", _ar_path, None)
+            if _at is not None:
+                _send_agent_runtime_json(self, _at[0], _at[1])
                 return
 
         # Read body
