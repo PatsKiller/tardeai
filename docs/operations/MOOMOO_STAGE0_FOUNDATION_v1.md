@@ -126,3 +126,5 @@ or whether corresponding env vars are **set** (presence), never print values.
 - Architecture §15 Moomoo market-intelligence plane (v3.3)
 - Historical reference: `MOOMOO_REFERENCE_ARCHITECTURE_v2_2.md` (superseded; evidence only)
 - Active Trader program (later): `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md`
+- **Active Trader Stage 0 (read-only baseline, no live):**  
+  `docs/implementation/ACTIVE_TRADER_STAGE0_BASELINE.md` · Packet G

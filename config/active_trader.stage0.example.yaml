@@ -1,0 +1,38 @@
+# Active Trader Stage 0 — feature flags (ALL DEFAULT OFF).
+# No live secrets. Copy only if needed; Stage 0 health works without host config.
+
+schema_version: active-trader-stage0-v1
+stage: 0
+mode: read_only_baseline
+
+# Hard authority posture for Stage 0
+authority:
+  write: false
+  canary: false
+  live_orders: false
+  session_authorize: false
+  moomoo_order_path: false
+  agent_operational: false
+  schedule_enable: false
+
+# Feature flags — every flag false until a later stage explicitly flips them
+# via a dedicated operator packet (not Packet G).
+feature_flags:
+  active_trader_ui: false
+  session_builder: false
+  session_authorize: false
+  live_canary: false          # MUST remain false in Stage 0
+  order_routes: false         # MUST remain false in Stage 0
+  moomoo_order_path: false
+  multi_account_live: false
+  runner: false
+  night_run_controller: false
+
+read_api:
+  contract: active-trader-stage0-read-api-v1
+  prefix: /api/v3/active-trader
+  methods: [GET]
+
+registry:
+  # Packet G --execute may write checksum registration here
+  path: docs/implementation/active_trader_stage0_registry.json
