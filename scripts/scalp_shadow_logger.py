@@ -32,7 +32,7 @@ sys.path.insert(0, str(_REPO / "scripts"))
 import scalp_ignition_scorer as scorer          # noqa: E402
 import scalp_t0_metrics as t0                    # noqa: E402
 from symbol_volume_profile_builder import (       # noqa: E402
-    load_config, fetch_minute_bars, minute_of_session,
+    load_config, fetch_minute_bars, minute_of_session, get_profile_denominator,
 )
 
 KILL_FILE = Path(os.path.expanduser("~/.tradeai/SCALP_ENGINE_DISABLED"))
@@ -229,10 +229,12 @@ def run(args) -> int:
             bars = [b for b in session_rth_bars(sym, cfg, day, fetch_days) if b["m"] <= minute]
             if not bars:
                 continue
-            pcum, nsess, psrc = profile_median_at(conn, sym, minute, feed)
+            # G2.2 freshness contract: the accessor REFUSES a stale/thin denominator (returns None)
+            pcum, pmeta = get_profile_denominator(conn, sym, minute, cfg, now=as_of)
             tw, age = catalyst_for(conn, sym, cfg, as_of)
             inp = assemble_inputs(bars, pcum, tw, age, spy_ret, cfg)
-            inp["_profile_source"] = psrc if nsess >= int(cfg["ignition"]["rvol_tod"]["min_profile_sessions"]) else "none"
+            inp["_profile_source"] = "per_symbol" if pcum is not None else "none"
+            inp["_profile_meta"] = pmeta
             inp["_bars"] = bars
             inp["_symbol"] = sym
             assembled.append(inp)

@@ -671,4 +671,36 @@ a separate design cycle because borrow availability and locate mechanics are a d
 
 ---
 
+## 16. Change Log & Provenance (M3-S2.5 gate clearance, 2026-07-27)
+
+Recorded so the doc is an accurate record of what shipped, not a reconstruction. See
+`docs/_findings/M3_S2_5_GATE_CLEARANCE_2026-07-27.md`.
+
+- **Roll (1984) → Abdi–Ranaldo (2017) spread substitution.** §4.3 uses Corwin–Schultz cross-checked
+  with Abdi–Ranaldo (conservative `max` for the gate consumer), and **excludes Roll**. Rationale:
+  Roll's `2√(−cov)` degenerates when the serial covariance of returns goes non-negative, which on
+  thin low-float momentum names (positively autocorrelated during ignition) is frequent — it fails
+  exactly where this engine needs it. **Provenance (G5.1): `CITATION_RETROFITTED`** — this doc
+  entered the repo at commit `0aa7fc4e` (PR #225) with Abdi–Ranaldo already present in §4.3; there
+  is no prior in-repo revision citing Roll to diff against. The substitution is endorsed on the
+  merits; this note exists so the record is honest.
+- **Tier numbering is fixed to the design-doc convention** (operator ruling 2026-07-27):
+  **T2 = full book (best data) → T1 = SIP/quotes → T0 = bars-only (weakest, ships today).** This is
+  the *opposite* label direction to some external "ascending-capability" ladders — deliberately
+  **not** renumbered. The load-bearing property is the invariant, not the label: ordered by
+  descending data quality (`data_tiers.quality_order = [T2,T1,T0]`), the size multiplier (`dcf`) is
+  non-increasing and `assumed_slippage_bps` is non-decreasing. This is enforced by
+  `tests/test_scalp_data_tier_invariant.py` (G4.3) and cannot be violated silently. In the live
+  config bar-only (T0) already carries the **lowest** multiplier (0.40), so the "weakest data inherits
+  the biggest size" failure mode does not exist.
+- **EvR (Wyckoff effort-vs-result) is a DIAGNOSTIC, not a sub-score.** The IGN score has exactly the
+  **six** §3.2 sub-scores (`v_rvol, v_burst, v_cat, v_disp, v_liq, v_rs`), whose priors are re-fit
+  once on shadow data (§12). `effort_vs_result` in `scalp_t0_metrics.py` is logged alongside events
+  for review and is **never weighted** (grep-verified: no EvR key in `config/scalp_signal_engine.yaml`).
+- **Spread aggregation split by consumer (G6):** `spread_estimate_gate` (max — risk-safe upward bias)
+  for sizing/risk; `spread_estimate_score` (median — unbiased) for the future scorer consumer. Neither
+  is wired into a sub-score yet.
+
+---
+
 *Review process: architects annotate v1 → v2 final → M3-S0 authorized on v2 sign-off.*

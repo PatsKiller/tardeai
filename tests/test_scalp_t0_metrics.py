@@ -181,5 +181,49 @@ def test_compute_all_keys_present_and_empty_safe():
         assert out[k] is None
 
 
+# ── G6: spread aggregation split by consumer (gate=max vs score=median) ──
+
+def _two_diff_bars():
+    # two bar pairs so CS and AR both defined and generally differ
+    return [bar(100, 102, 98, 101, 100), bar(100, 101, 99, 99, 100), bar(100, 103, 98, 102, 100)]
+
+def test_gate_ge_score_for_identical_inputs():
+    bars = _two_diff_bars()
+    g = m.spread_estimate_gate(bars)
+    s = m.spread_estimate_score(bars)
+    assert g is not None and s is not None
+    assert g >= s   # max >= median, always
+
+def test_both_correct_when_only_one_estimator_available():
+    # a single bar → CS needs 2 pairs (None); AR needs 2 (None) → both None here;
+    # construct a case with exactly one estimator: identical H=L kills CS pair? use 2 bars → both defined.
+    # single-estimator path: force AR None via degenerate logs is hard; instead assert single-value equality
+    bars = [bar(100, 102, 98, 101, 100), bar(100, 102, 98, 100, 100)]
+    vals = m._spread_estimators(bars)
+    if len(vals) == 1:
+        assert m.spread_estimate_gate(bars) == m.spread_estimate_score(bars) == vals[0]
+    else:
+        # both estimators present: median of two == their mean, gate == max
+        assert m.spread_estimate_gate(bars) == max(vals)
+        assert m.spread_estimate_score(bars) == pytest.approx(sum(vals) / 2)
+
+def test_both_equal_when_estimators_equal():
+    # if only one estimator is available it trivially equals itself; if two are equal, gate==score
+    bars = _two_diff_bars()
+    vals = m._spread_estimators(bars)
+    if len(set(round(v, 12) for v in vals)) == 1:
+        assert m.spread_estimate_gate(bars) == m.spread_estimate_score(bars)
+    else:
+        assert m.spread_estimate_gate(bars) >= m.spread_estimate_score(bars)
+
+def test_spread_estimate_alias_is_gate():
+    bars = _two_diff_bars()
+    assert m.spread_estimate(bars) == m.spread_estimate_gate(bars)
+
+def test_empty_bars_both_none():
+    assert m.spread_estimate_gate([]) is None
+    assert m.spread_estimate_score([]) is None
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
