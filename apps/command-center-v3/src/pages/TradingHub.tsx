@@ -79,13 +79,22 @@ export default function TradingHub({ onDrill }: Props) {
   const [tosCopied, setTosCopied] = useState(false)
   // Broker desk tab: skip heavy hub polls so single-threaded API can serve broker-proposals first.
   const brokerDesk = tab === 'Proposals' || tab === 'Broker Orders' || tab === 'Schwab Accounts'
+  // Pure Schwab program tabs — hub chrome is Schwab-specific (not paper vs Path B counts).
+  const pureSchwabTabs = tab === 'Broker Orders' || tab === 'Schwab Accounts'
   // Slim scanner projection (~10% of the full /trade-ai payload) — full universe rows are
   // trimmed server-side; the multi-MB full endpoint 500-looped under load (2026-07-17).
   const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai/scanner', 60_000, { enabled: tab === 'Trade AI' })
   const { data: warriorAudit } = useApi<any>('/api/v2/warrior-audit/latest', 300_000, { enabled: tab === 'Trade AI' })
   const paMap = useProAnalystMap()
   const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000, { enabled: tab === 'Open Trades' || !brokerDesk })
-  const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000, { enabled: tab === 'Proposals' || tab === 'Trade AI' })
+  // Paper PENDING+AFPT — validation/Alpaca pipeline only (NOT Path B broker queue).
+  const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000, { enabled: !pureSchwabTabs })
+  // Path B truth for operator queue size — queue_summary.total (active broker entries).
+  const { data: brokerQueueSummary } = useApi<any>('/api/v2/broker-proposals/summary', 120_000, { enabled: !pureSchwabTabs })
+  // Light list probe for pagination.total when summary is thin / unavailable (same active population).
+  const { data: brokerQueueList } = useApi<any>('/api/v2/broker-proposals?page=1&page_size=1', 120_000, {
+    enabled: !pureSchwabTabs && brokerQueueSummary == null,
+  })
   const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, { enabled: !brokerDesk })
   const { data: execState } = useApi<any>('/api/v2/execution/current-state', 120_000, { enabled: !brokerDesk })
@@ -110,10 +119,22 @@ export default function TradingHub({ onDrill }: Props) {
   const execList: any[] = Array.isArray(execQual) ? execQual : []
   const propList = proposals?.proposals ?? []
   const pending = propList.filter((p: any) => p.status === 'PENDING' || p.status === 'APPROVED_FOR_PAPER_TEST')
-  // Canonical pending count = API's whole-table PENDING+AFPT count. pending.length is the
-  // LIMIT-50 display list and silently capped the headline at 50 (P0 count-mismatch 2026-07-14).
-  const pendingCount = proposals?.pending_count ?? pending.length
+  // Paper pending = API whole-table PENDING+AFPT (not the LIMIT-50 list; not Path B broker queue).
+  const paperPendingCount = proposals
+    ? Number(proposals.pending_count ?? pending.length)
+    : null
+  // Path B broker queue size: prefer queue_summary.total, else pagination.total for active list.
+  const brokerQueueCount = (() => {
+    const fromSummary = brokerQueueSummary?.total
+    if (fromSummary != null && Number.isFinite(Number(fromSummary))) return Number(fromSummary)
+    const qs = brokerQueueList?.queue_summary
+    if (qs?.total != null && Number.isFinite(Number(qs.total))) return Number(qs.total)
+    const pag = brokerQueueList?.pagination?.total
+    if (pag != null && Number.isFinite(Number(pag))) return Number(pag)
+    return null
+  })()
   const alpaca = paperStatus?.alpaca ?? {}
+  const fmtCount = (n: number | null) => (n == null ? '—' : String(n))
 
   return (
     <div>
@@ -121,11 +142,15 @@ export default function TradingHub({ onDrill }: Props) {
         <div>
           <div style={hubTitle()}>Trading</div>
           <div style={hubSubtitle(terminalUi)}>
-            {/* hub-wide strip: "paper (Alpaca)" = the automated-trading PAPER pipeline's brokerage —
-                unrelated to Schwab. On the Schwab tabs, show the Schwab program state instead. */}
-            {(tab === 'Broker Orders' || tab === 'Schwab Accounts')
+            {/* hub-wide strip: paper pending = /paper-proposals PENDING+AFPT; broker queue = Path B
+                /broker-proposals (queue_summary.total). Never mix the two under one "pending" label. */}
+            {pureSchwabTabs
               ? <span>{trades.length} open (automated) · Schwab program: <b style={{ color: '#f59e0b' }}>READ-ONLY — execution disabled</b> · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>
-              : <span>{trades.length} open · {brokerDesk ? 'broker queue active' : `${pendingCount} pending proposals`} · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>}
+              : (
+                <span title="Paper pending = validation/Alpaca pipeline (PENDING+AFPT). Broker queue = Path B operator queue (active entries + protection).">
+                  {trades.length} open · paper pending {fmtCount(paperPendingCount)} · broker queue {fmtCount(brokerQueueCount)} · automated acct (Alpaca) {alpaca.account_status ?? '—'}
+                </span>
+              )}
             {readiness && <span> · Validation level: {readiness.level?.replace(/_/g, ' ')}</span>}
           </div>
         </div>
