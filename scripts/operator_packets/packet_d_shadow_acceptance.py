@@ -194,12 +194,82 @@ def assert_shadow_only(report: RunReport) -> None:
         raise AuthorityViolation("authority violation detected during SHADOW acceptance")
 
 
+def _parse_dsn_identity(dsn: str) -> tuple[str | None, str | None]:
+    """Extract (database_name, user) from a URI or libpq key=value DSN.
+
+    Never logs the DSN or its components (callers only use them for equality checks).
+    Returns (None, None) pieces when unparseable.
+    """
+    s = (dsn or "").strip()
+    if not s:
+        return None, None
+    low = s.lower()
+    if low.startswith("postgres://") or low.startswith("postgresql://"):
+        from urllib.parse import parse_qs, unquote, urlparse
+        u = urlparse(s)
+        user = unquote(u.username) if u.username else None
+        db = unquote(u.path.lstrip("/")) if u.path else None
+        if db:
+            db = db.split("?", 1)[0].split("/", 1)[0]
+            if not db:
+                db = None
+        if u.query:
+            qs = parse_qs(u.query)
+            if not db and qs.get("dbname"):
+                db = qs["dbname"][0]
+            if not user and qs.get("user"):
+                user = qs["user"][0]
+        return db, user
+    # libpq key=value (space- or semicolon-separated)
+    db = user = None
+    for part in s.replace(";", " ").split():
+        if "=" not in part:
+            continue
+        k, _, v = part.partition("=")
+        k = k.strip().lower()
+        v = v.strip().strip("'\"")
+        if k == "dbname":
+            db = v
+        elif k == "user":
+            user = v
+    return db, user
+
+
+def _is_production_dbname(dbname: str | None) -> bool:
+    """True only for exact production DB name or explicit prod markers — not *_lab / *_shadow*."""
+    if not dbname:
+        return False
+    name = dbname.strip().lower()
+    if name == "trade_ai":
+        return True
+    if "production" in name or name.endswith("_prod") or name.startswith("prod_"):
+        return True
+    if name == "prod" or name.startswith("prod-") or "-prod-" in name:
+        return True
+    # Do NOT treat trade_ai_agentic_lab as production (path substring /trade_ai is a false positive).
+    return False
+
+
 def _shadow_dsn_guard(dsn: str) -> None:
-    """The DSN must be the isolated SHADOW writer; refuse prod/writer-of-prod identities."""
-    low = dsn.lower()
-    if "prod" in low or "production" in low or "dbname=trade_ai" in low or "/trade_ai" in low:
-        raise ShadowGuardError("SHADOW_DSN looks like production; refusing")
-    if "agentic_runtime_shadow_rw" not in low:
+    """The DSN must be the isolated SHADOW writer; refuse prod/writer-of-prod identities.
+
+    Parses database name and user from URI or key=value form. Refuses only when the
+    database name is exactly ``trade_ai`` (or explicit production markers), not when
+    it is ``trade_ai_agentic_lab`` / ``*_lab`` / ``*_shadow*``. Requires the role
+    ``agentic_runtime_shadow_rw``. Never logs DSN values.
+
+    Operator: SHADOW_DSN=agentic_runtime_shadow_rw@trade_ai_agentic_lab (via SM secret SHADOW_DSN).
+    """
+    if not (dsn or "").strip():
+        raise ShadowGuardError("SHADOW_DSN empty; refusing")
+    db, user = _parse_dsn_identity(dsn)
+    if not db:
+        raise ShadowGuardError("SHADOW_DSN: could not parse database name; refusing")
+    if _is_production_dbname(db):
+        raise ShadowGuardError("SHADOW_DSN database is production identity; refusing")
+    user_l = (user or "").lower()
+    # Prefer parsed user; fall back to substring only for user (never for db path checks).
+    if "agentic_runtime_shadow_rw" not in user_l and "agentic_runtime_shadow_rw" not in dsn.lower():
         raise ShadowGuardError("SHADOW_DSN must connect as agentic_runtime_shadow_rw")
 
 
@@ -239,7 +309,9 @@ def _print_disabled(reason: str) -> None:
     print("=== PACKET D === PREPARE-ONLY / DEFAULT-DISABLED ===")
     print(f"[D] {reason}")
     print(f"[D] To run in SHADOW: {os.path.basename(sys.argv[0])} --run-shadow "
-          f"--ack {ACK_TOKEN}  (with SHADOW_DSN set to the agentic_runtime_shadow_rw DSN)")
+          f"--ack {ACK_TOKEN}")
+    print("[D] Requires SHADOW_DSN=agentic_runtime_shadow_rw@trade_ai_agentic_lab "
+          "(SM secret SHADOW_DSN; never print value). Ensure: scripts/secrets/ensure_shadow_rw_dsn.py")
     print("[D] No agent becomes OPERATIONAL from this runner; all remain SHADOW until "
           "results are reviewed and explicitly accepted out-of-band.")
 

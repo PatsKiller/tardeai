@@ -38,6 +38,16 @@ TRADE_AI_LAB_DSN=... migrations/agentic_runtime/apply.sh --apply down
 4. Confirm there are no existing `agentic_runtime` objects that contain evidence requiring preservation.
 5. Use a transaction and stop on the first error.
 
+## Packet D / SHADOW_DSN
+
+Packet D requires **`SHADOW_DSN=agentic_runtime_shadow_rw@trade_ai_agentic_lab`** (Bitwarden SM secret `SHADOW_DSN`; never print the value). After A1 roles apply, run:
+
+```bash
+.venv/bin/python scripts/secrets/ensure_shadow_rw_dsn.py          # create role + SM if needed
+.venv/bin/python scripts/secrets/ensure_shadow_rw_dsn.py --rotate # if role exists but secret missing
+.venv/bin/python scripts/secrets/render_env.py --now
+```
+
 ## Lab proof sequence
 
 ```bash
