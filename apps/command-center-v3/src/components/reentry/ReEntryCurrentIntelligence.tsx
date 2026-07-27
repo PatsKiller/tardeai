@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { useReEntryExitEvidence } from '../../hooks/useReEntryExitEvidence'
 import { BB } from '../../lib/holdingsTerminalTokens'
@@ -86,7 +87,51 @@ function resistanceFor(cached: any, watch: any, card: any, price: number | null)
 function stateTone(state: IntelState): string { if (state === 'READY TO REVIEW') return BB.green; if (state === 'NEAR ENTRY') return BB.amber; if (state === 'MISSING MARKET' || state === 'MISSING PLAN' || state === 'STALE') return BB.red; if (state === 'CURRENTLY HELD') return BB.amber; return BB.blue }
 function sourceFor(row: ExitEvidenceRow, fieldName: ExitEvidenceField): string { return row.field_sources?.[fieldName] || row.import_source || 'source unavailable' }
 
+type ViewMode = 'ALL' | 'MATERIAL' | 'CLASSIFIED' | 'READY_NEAR'
+const VIEW_STORAGE_KEY = 'cc-reentry-view-v1'
+const COMPACT_STORAGE_KEY = 'cc-reentry-compact-v1'
+const MATERIAL_PROCEEDS_MIN = 5_000
+const INTEL_STATES: IntelState[] = ['READY TO REVIEW', 'NEAR ENTRY', 'WAIT', 'CURRENTLY HELD', 'STALE', 'MISSING PLAN', 'MISSING MARKET']
+
+function parseViewParam(raw: string | null): ViewMode | null {
+  if (!raw) return null
+  const v = raw.toLowerCase().replace(/\+/g, ' ').trim()
+  if (v === 'material') return 'MATERIAL'
+  if (v === 'classified') return 'CLASSIFIED'
+  if (v === 'all') return 'ALL'
+  if (v === 'ready' || v === 'ready_near' || v === 'ready+near' || v === 'ready near') return 'READY_NEAR'
+  return null
+}
+function viewToParam(mode: ViewMode): string {
+  if (mode === 'MATERIAL') return 'material'
+  if (mode === 'CLASSIFIED') return 'classified'
+  if (mode === 'READY_NEAR') return 'ready'
+  return 'all'
+}
+function parseStateParam(raw: string | null): string {
+  if (!raw) return 'ALL'
+  let decoded = raw
+  try { decoded = decodeURIComponent(raw) } catch { /* already decoded */ }
+  const normalized = decoded.replace(/\+/g, ' ').trim().toUpperCase()
+  if (normalized === 'ALL') return 'ALL'
+  return (INTEL_STATES as string[]).includes(normalized) ? normalized : 'ALL'
+}
+function loadSessionView(): ViewMode {
+  try {
+    const raw = sessionStorage.getItem(VIEW_STORAGE_KEY)
+    if (raw === 'ALL' || raw === 'MATERIAL' || raw === 'CLASSIFIED' || raw === 'READY_NEAR') return raw
+  } catch { /* private mode */ }
+  return 'MATERIAL'
+}
+function loadCompact(): boolean {
+  try { return sessionStorage.getItem(COMPACT_STORAGE_KEY) === '1' } catch { return false }
+}
+function isMaterialSummary(row: { proceeds: number }): boolean {
+  return Math.abs(Number(row.proceeds) || 0) >= MATERIAL_PROCEEDS_MIN
+}
+
 export default function ReEntryCurrentIntelligence() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const evidence = useReEntryExitEvidence(365)
   const cards = useApi<any>('/api/v2/symbol-cards', 300_000)
   const holdings = useApi<any>('/api/v2/portfolio/holdings', 120_000)
@@ -98,13 +143,105 @@ export default function ReEntryCurrentIntelligence() {
   const resistancePref = useApi<any>(`/api/v2/ui/prefs/get?key=${encodeURIComponent(RESISTANCE_KEY)}`, 120_000)
   const analyst = useApi<any>('/api/v2/pro-analyst/pills?map=1', 300_000)
   const [watchMap, setWatchMap] = useState<Record<string, any>>({})
-  const [search, setSearch] = useState('')
-  const [stateFilter, setStateFilter] = useState('ALL')
+  const [search, setSearch] = useState(() => (searchParams.get('symbol') || '').toUpperCase())
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => parseViewParam(searchParams.get('view')) ?? loadSessionView())
+  const [stateFilter, setStateFilterState] = useState(() => parseStateParam(searchParams.get('state')))
   const [classificationFilter, setClassificationFilter] = useState('ALL')
   const [gapOnly, setGapOnly] = useState(false)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
+    const sym = (searchParams.get('symbol') || '').toUpperCase()
+    return sym ? { [sym]: true } : {}
+  })
   const [watchReload, setWatchReload] = useState(0)
+  const [compact, setCompactState] = useState(() => loadCompact())
+  const [focusSymbol, setFocusSymbol] = useState(() => (searchParams.get('symbol') || '').toUpperCase())
+  const scrolledFor = useRef<string>('')
+
+  /** Write shareable URL params without clobbering classification-overlay keys (e.g. classify). */
+  const patchUrl = (patch: { symbol?: string | null; state?: string | null; view?: string | null }) => {
+    const next = new URLSearchParams(searchParams)
+    if (patch.symbol !== undefined) {
+      if (!patch.symbol) next.delete('symbol')
+      else next.set('symbol', patch.symbol.toUpperCase())
+    }
+    if (patch.state !== undefined) {
+      if (!patch.state || patch.state === 'ALL') next.delete('state')
+      else next.set('state', patch.state)
+    }
+    if (patch.view !== undefined) {
+      if (!patch.view) next.delete('view')
+      else next.set('view', patch.view)
+    }
+    setSearchParams(next, { replace: true })
+  }
+
+  const setViewMode = (mode: ViewMode) => {
+    setViewModeState(mode)
+    try { sessionStorage.setItem(VIEW_STORAGE_KEY, mode) } catch { /* private mode */ }
+    patchUrl({ view: viewToParam(mode) })
+  }
+  const setStateFilter = (state: string | ((prev: string) => string)) => {
+    setStateFilterState(prev => {
+      const next = typeof state === 'function' ? state(prev) : state
+      // Defer URL write so we never side-effect inside the updater body.
+      queueMicrotask(() => patchUrl({ state: next === 'ALL' ? null : next }))
+      return next
+    })
+  }
+  const setCompact = (on: boolean) => {
+    setCompactState(on)
+    try { sessionStorage.setItem(COMPACT_STORAGE_KEY, on ? '1' : '0') } catch { /* private mode */ }
+  }
+
+  const onSearchChange = (value: string) => {
+    setSearch(value)
+    const sym = value.trim().toUpperCase()
+    // Only promote exact-looking single tokens into the shareable symbol param.
+    if (/^[A-Z][A-Z0-9./-]{0,11}$/.test(sym)) {
+      setFocusSymbol(sym)
+      setExpanded(prev => ({ ...prev, [sym]: true }))
+      patchUrl({ symbol: sym })
+    } else if (!value.trim()) {
+      setFocusSymbol('')
+      patchUrl({ symbol: null })
+    }
+  }
+
+  // Sync FROM URL when browser back/forward or external deep link (do not fight Classification overlay).
+  useEffect(() => {
+    const v = parseViewParam(searchParams.get('view'))
+    if (v && v !== viewMode) {
+      setViewModeState(v)
+      try { sessionStorage.setItem(VIEW_STORAGE_KEY, v) } catch { /* */ }
+    }
+    const s = parseStateParam(searchParams.get('state'))
+    if (s !== stateFilter) setStateFilterState(s)
+    const sym = (searchParams.get('symbol') || '').toUpperCase()
+    if (sym !== focusSymbol) {
+      setFocusSymbol(sym)
+      if (sym) {
+        setSearch(sym)
+        setExpanded(prev => ({ ...prev, [sym]: true }))
+      }
+    }
+  }, [searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll focused symbol into view once rows render.
+  useEffect(() => {
+    if (!focusSymbol || scrolledFor.current === focusSymbol) return
+    const tryScroll = (n: number) => {
+      const el = document.getElementById(`reentry-intel-${focusSymbol}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        scrolledFor.current = focusSymbol
+      } else if (n < 16) {
+        setTimeout(() => tryScroll(n + 1), 100)
+      }
+    }
+    const t = setTimeout(() => tryScroll(0), 80)
+    return () => clearTimeout(t)
+  }, [focusSymbol, watchMap, evidence.rows.length])
 
   const mandates: Record<string, ReEntryMandate> = prefMap(mandatesPref.data) as Record<string, ReEntryMandate>
   const events: Record<string, ReEntryEvent> = prefMap(eventsPref.data) as Record<string, ReEntryEvent>
@@ -150,6 +287,9 @@ export default function ReEntryCurrentIntelligence() {
   }), [summaries, mandatesPref.data, eventsPref.data, dispositionsPref.data, watchMap, cards.data, holdings.data, resistancePref.data, analyst.data, alerts.data])
 
   const shown = rows.filter(row => {
+    if (viewMode === 'MATERIAL' && !isMaterialSummary(row)) return false
+    if (viewMode === 'CLASSIFIED' && row.classified !== 'CLASSIFIED') return false
+    if (viewMode === 'READY_NEAR' && row.intel.state !== 'READY TO REVIEW' && row.intel.state !== 'NEAR ENTRY') return false
     if (search.trim() && !`${row.symbol} ${row.intel.state} ${row.intel.action} ${row.classified} ${row.mandate.mandate} ${row.flags.join(' ')} ${row.latest.import_source ?? ''} ${(row.latest.evidence_gaps ?? []).join(' ')}`.toUpperCase().includes(search.trim().toUpperCase())) return false
     if (stateFilter !== 'ALL' && row.intel.state !== stateFilter) return false
     if (classificationFilter !== 'ALL' && row.classified !== classificationFilter) return false
@@ -158,37 +298,210 @@ export default function ReEntryCurrentIntelligence() {
   }).sort((a, b) => (a.mandate.priority === 'HIGH' ? -1 : 0) - (b.mandate.priority === 'HIGH' ? -1 : 0) || b.completeness - a.completeness || String(b.latest.trade_date || '').localeCompare(String(a.latest.trade_date || '')))
 
   const selectedSymbols = shown.filter(row => selected[row.symbol]).map(row => row.symbol)
-  const counts = { symbols: rows.length, classified: rows.filter(row => row.classified === 'CLASSIFIED').length, ready: rows.filter(row => row.intel.state === 'READY TO REVIEW').length, near: rows.filter(row => row.intel.state === 'NEAR ENTRY').length, missing: rows.filter(row => row.completeness < 8 || row.eventGapCount > 0).length }
+  const materialCount = rows.filter(isMaterialSummary).length
+  const counts = {
+    symbols: rows.length,
+    material: materialCount,
+    classified: rows.filter(row => row.classified === 'CLASSIFIED').length,
+    ready: rows.filter(row => row.intel.state === 'READY TO REVIEW').length,
+    near: rows.filter(row => row.intel.state === 'NEAR ENTRY').length,
+    missing: rows.filter(row => row.completeness < 8 || row.eventGapCount > 0).length,
+  }
   const regimeLabel = text(unwrap(regime.data)?.regime_label, unwrap(regime.data)?.label, 'unknown').replace(/_/g, ' ').toUpperCase()
   const refresh = () => { evidence.refetch(); cards.refetch(); holdings.refetch(); alerts.refetch(); regime.refetch(); resistancePref.refetch(); analyst.refetch(); mandatesPref.refetch(); eventsPref.refetch(); dispositionsPref.refetch(); setWatchReload(value => value + 1) }
+  /** Market-only refresh for MISSING MARKET rows — bumps watch fetch + holdings/cards; no invented prices. */
+  const refreshMarket = () => { cards.refetch(); holdings.refetch(); setWatchReload(value => value + 1) }
   const shareCoverage = evidence.sources.map(source => `${source.label} shares ${evidence.sourceFieldCoverage[source.key]?.quantity ?? 0}`).join(' · ')
 
-  return <div style={{ ...panel, padding: 10 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><div><div style={{ fontSize: 18, fontWeight: 900 }}>CURRENT RE-ENTRY INTELLIGENCE <HelpTip text="Exit events are reconciled by broker ID and compatible symbol/date/account facts. Every displayed field retains its source; deterministic arithmetic is labeled as derived." /></div><div style={{ fontSize: 10.5, color: BB.text3 }}>Regime {regimeLabel} · {evidence.rows.length} reconciled exit events · {evidence.sources.filter(source => source.available).length}/{evidence.sources.length} sources reporting · contract {evidence.contractVersion} · advisory only</div></div><button onClick={refresh} style={{ ...button(false), marginLeft: 'auto' }}>{evidence.loading || evidence.refreshing ? 'REFRESHING…' : 'REFRESH ALL SOURCES'}</button></div>
+  const viewChips: { id: ViewMode; label: string; count: number }[] = [
+    { id: 'MATERIAL', label: 'Material', count: counts.material },
+    { id: 'CLASSIFIED', label: 'Classified', count: counts.classified },
+    { id: 'READY_NEAR', label: 'Ready+Near', count: counts.ready + counts.near },
+    { id: 'ALL', label: 'All', count: counts.symbols },
+  ]
 
-    <div style={{ ...panel, marginTop: 8, padding: 8, background: 'var(--bg2)', fontSize: 10.5 }}><b>Source audit:</b> {evidence.sources.map(source => `${source.label} ${source.rows}`).join(' · ')}.<br /><b>Quantity-bearing rows:</b> {shareCoverage}. A remaining blank means no compatible event or aggregate supplied the field; deterministic derivations and account-alias joins are labeled in the expanded audit.</div>
+  const tableMinWidth = compact ? 1200 : 1530
+  const colTemplate = compact
+    ? '24px 150px 190px 105px 145px 145px 135px 135px 130px'
+    : '28px 180px 220px 125px 170px 170px 160px 160px 145px'
+  const cellPad = compact ? '6px 7px' : '9px'
+  const cellGap = compact ? 6 : 8
+  const cellFont = compact ? 10 : 10.5
+
+  return <div style={{ ...panel, padding: 10 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><div><div style={{ fontSize: 18, fontWeight: 900 }}>CURRENT RE-ENTRY INTELLIGENCE <HelpTip text="Exit events are reconciled by broker ID and compatible symbol/date/account facts. Every displayed field retains its source; deterministic arithmetic is labeled as derived." /></div><div style={{ fontSize: 10.5, color: BB.text3 }}>Regime {regimeLabel} · {evidence.rows.length} reconciled exit events · {evidence.sources.filter(source => source.available).length}/{evidence.sources.length} sources reporting · contract {evidence.contractVersion} · advisory only · showing {shown.length}/{rows.length}</div></div><button type="button" onClick={refresh} style={{ ...button(false), marginLeft: 'auto' }}>{evidence.loading || evidence.refreshing ? 'REFRESHING…' : 'REFRESH ALL SOURCES'}</button></div>
+
+    <div style={{ ...panel, marginTop: 8, padding: 8, background: 'var(--bg2)', fontSize: 10.5 }}>
+      <b>Source audit:</b> {evidence.sources.map(source => `${source.label} ${source.rows}`).join(' · ')}.<br />
+      <b>Quantity-bearing rows:</b> {shareCoverage}. A remaining blank means no compatible event or aggregate supplied the field; deterministic derivations and account-alias joins are labeled in the expanded audit.<br />
+      <span style={{ color: BB.text2 }}>Redeploy book &amp; history supply events/proceeds; quantity comes from full-fidelity cache + closed-trade journal when present. Zero share counts on book/history are expected — not a bug.</span>
+    </div>
+
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 9, alignItems: 'center' }}>
+      <span style={{ fontSize: 10, fontWeight: 800, color: BB.text3, textTransform: 'uppercase', marginRight: 2 }}>View</span>
+      {viewChips.map(chip => (
+        <button
+          key={chip.id}
+          type="button"
+          data-testid={`reentry-view-${chip.id}`}
+          onClick={() => setViewMode(chip.id)}
+          style={button(viewMode === chip.id)}
+          title={chip.id === 'MATERIAL' ? `Material: |exit proceeds| ≥ $${MATERIAL_PROCEEDS_MIN.toLocaleString()} over the evidence window` : undefined}
+        >
+          {chip.label} · {chip.count}
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={() => setCompact(!compact)}
+        style={{ ...button(compact), marginLeft: 'auto' }}
+        title="Tighter table padding and lower min-width for wide monitors (session only)"
+        data-testid="reentry-compact-toggle"
+      >
+        {compact ? 'COMPACT ON' : 'COMPACT'}
+      </button>
+    </div>
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(120px,1fr))', gap: 7, marginTop: 9 }}>{[
-      ['EXITED SYMBOLS', counts.symbols, stateFilter === 'ALL' && classificationFilter === 'ALL' && !gapOnly, () => { setStateFilter('ALL'); setClassificationFilter('ALL'); setGapOnly(false) }],
-      ['CLASSIFIED', counts.classified, classificationFilter === 'CLASSIFIED', () => setClassificationFilter(value => value === 'CLASSIFIED' ? 'ALL' : 'CLASSIFIED')],
+      ['EXITED SYMBOLS', counts.symbols, viewMode === 'ALL' && stateFilter === 'ALL' && classificationFilter === 'ALL' && !gapOnly, () => { setViewMode('ALL'); setStateFilter('ALL'); setClassificationFilter('ALL'); setGapOnly(false) }],
+      ['CLASSIFIED', counts.classified, viewMode === 'CLASSIFIED' || classificationFilter === 'CLASSIFIED', () => { setViewMode('CLASSIFIED'); setClassificationFilter('CLASSIFIED') }],
       ['READY NOW', counts.ready, stateFilter === 'READY TO REVIEW', () => setStateFilter(value => value === 'READY TO REVIEW' ? 'ALL' : 'READY TO REVIEW')],
       ['NEAR ENTRY', counts.near, stateFilter === 'NEAR ENTRY', () => setStateFilter(value => value === 'NEAR ENTRY' ? 'ALL' : 'NEAR ENTRY')],
-      ['EVIDENCE GAPS', counts.missing, gapOnly, () => setGapOnly(value => !value)],
-    ].map(([name, value, active, action]) => <button key={String(name)} onClick={action as () => void} style={{ ...panel, padding: 9, textAlign: 'left', cursor: 'pointer', background: active ? BB.blueDim : 'var(--bg2)', color: 'var(--text0)' }}><span style={{ color: BB.text3, fontSize: 10 }}>{String(name)}</span><br /><b style={{ fontSize: 20 }}>{String(value)}</b></button>)}</div>
+      ['INCOMPLETE EVIDENCE', counts.missing, gapOnly, () => setGapOnly(value => !value)],
+    ].map(([name, value, active, action]) => (
+      <button
+        key={String(name)}
+        type="button"
+        title={String(name) === 'INCOMPLETE EVIDENCE' ? 'Exit-field / completeness gaps — not the same as MISSING MARKET (price+RSI).' : undefined}
+        onClick={action as () => void}
+        style={{ ...panel, padding: 9, textAlign: 'left', cursor: 'pointer', background: active ? BB.blueDim : 'var(--bg2)', color: 'var(--text0)' }}
+      >
+        <span style={{ color: BB.text3, fontSize: 10 }}>{String(name)}</span><br /><b style={{ fontSize: 20 }}>{String(value)}</b>
+      </button>
+    ))}</div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) 190px 170px auto auto auto', gap: 7, marginTop: 8 }}><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search symbol, state, source or missing field…" style={field} /><select value={stateFilter} onChange={event => setStateFilter(event.target.value)} style={field}><option value="ALL">ALL CURRENT STATES</option>{['READY TO REVIEW', 'NEAR ENTRY', 'WAIT', 'CURRENTLY HELD', 'STALE', 'MISSING PLAN', 'MISSING MARKET'].map(state => <option key={state}>{state}</option>)}</select><select value={classificationFilter} onChange={event => setClassificationFilter(event.target.value)} style={field}><option value="ALL">ALL CLASSIFICATIONS</option><option>CLASSIFIED</option><option>AUTO-TAGGED</option><option>UNCLASSIFIED</option></select><button onClick={() => setSelected(Object.fromEntries(shown.map(row => [row.symbol, true])))} style={button(false)}>SELECT VISIBLE</button><button onClick={() => setSelected({})} style={button(false)}>CLEAR</button><button disabled={!selectedSymbols.length} onClick={() => classify(selectedSymbols)} style={{ ...button(Boolean(selectedSymbols.length)), opacity: selectedSymbols.length ? 1 : .5 }}>EDIT SELECTED {selectedSymbols.length}</button></div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) 190px 170px auto auto auto', gap: 7, marginTop: 8 }}>
+      <input value={search} onChange={event => onSearchChange(event.target.value)} placeholder="Search symbol, state, source or missing field…" style={field} data-testid="reentry-symbol-search" />
+      <select value={stateFilter} onChange={event => setStateFilter(event.target.value)} style={field} data-testid="reentry-state-filter">
+        <option value="ALL">ALL CURRENT STATES</option>
+        {INTEL_STATES.map(state => <option key={state} value={state}>{state}</option>)}
+      </select>
+      <select value={classificationFilter} onChange={event => setClassificationFilter(event.target.value)} style={field}>
+        <option value="ALL">ALL CLASSIFICATIONS</option>
+        <option>CLASSIFIED</option>
+        <option>AUTO-TAGGED</option>
+        <option>UNCLASSIFIED</option>
+      </select>
+      <button type="button" onClick={() => setSelected(Object.fromEntries(shown.map(row => [row.symbol, true])))} style={button(false)}>SELECT VISIBLE</button>
+      <button type="button" onClick={() => setSelected({})} style={button(false)}>CLEAR</button>
+      <button type="button" disabled={!selectedSymbols.length} onClick={() => classify(selectedSymbols)} style={{ ...button(Boolean(selectedSymbols.length)), opacity: selectedSymbols.length ? 1 : .5 }}>EDIT SELECTED {selectedSymbols.length}</button>
+    </div>
 
-    <div style={{ overflowX: 'auto', marginTop: 8 }}><div style={{ minWidth: 1530 }}><div style={{ display: 'grid', gridTemplateColumns: '28px 180px 220px 125px 170px 170px 160px 160px 145px', gap: 8, padding: '7px 9px', borderBottom: '1px solid var(--border)', fontSize: 10, color: BB.text3, textTransform: 'uppercase' }}><span></span><span>Symbol / mandate</span><span>Current decision</span><span>Market</span><span>Exit evidence</span><span>Entry / resistance</span><span>Valuation / analyst</span><span>Evidence audit</span><span>Actions</span></div>{shown.map(row => {
+    <div style={{ overflowX: 'auto', marginTop: 8 }}><div style={{ minWidth: tableMinWidth }}>
+      <div style={{ display: 'grid', gridTemplateColumns: colTemplate, gap: cellGap, padding: cellPad, borderBottom: '1px solid var(--border)', fontSize: 10, color: BB.text3, textTransform: 'uppercase' }}><span></span><span>Symbol / mandate</span><span>Current decision</span><span>Market</span><span>Exit evidence</span><span>Entry / resistance</span><span>Valuation / analyst</span><span>Evidence audit</span><span>Actions</span></div>
+      {shown.map(row => {
       const open = Boolean(expanded[row.symbol]); const tone = stateTone(row.intel.state); const classTone = row.classified === 'CLASSIFIED' ? BB.green : row.classified === 'AUTO-TAGGED' ? BB.amber : BB.text3
       const mandateLabel = row.mandate.mandate === 'unclassified' && row.flags.length ? 'MANDATE NEEDED' : row.mandate.mandate.replace(/_/g, ' ').toUpperCase()
       const pe = numberFrom([row.watch, row.card, row.watch?.fundamentals, row.watch?.decision_packet?.blind_facts?.fundamentals], ['pe', 'trailing_pe'])
       const fpe = numberFrom([row.watch, row.card, row.watch?.fundamentals, row.watch?.decision_packet?.blind_facts?.fundamentals], ['forward_pe', 'forwardPe', 'fwd_pe'])
       const rec = text(row.analyst?.rec, row.analyst?.recommendation, 'unavailable').replace(/_/g, ' ').toUpperCase()
-      return <div key={row.symbol}><div role="button" tabIndex={0} aria-expanded={open} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setExpanded(value => ({ ...value, [row.symbol]: !open })) } }} onClick={() => setExpanded(value => ({ ...value, [row.symbol]: !open }))} style={{ display: 'grid', gridTemplateColumns: '28px 180px 220px 125px 170px 170px 160px 160px 145px', gap: 8, padding: '9px', borderBottom: '1px solid var(--border)', alignItems: 'center', fontSize: 10.5, cursor: 'pointer', background: open ? 'var(--bg2)' : 'transparent', boxShadow: open ? `inset 3px 0 0 ${BB.blue}` : undefined }}><input type="checkbox" checked={Boolean(selected[row.symbol])} onClick={event => event.stopPropagation()} onChange={event => setSelected(value => ({ ...value, [row.symbol]: event.target.checked }))} /><div><div><b style={{ fontSize: 14 }}>{row.symbol}</b> <span style={{ color: classTone, fontSize: 10 }}>{classificationLabel(row.classified)}</span> <span style={{ color: BB.text3 }}>{open ? '▾' : '▸'}</span></div><div style={{ marginTop: 3, color: mandateLabel === 'MANDATE NEEDED' ? BB.amber : BB.text2 }}>{mandateLabel}</div><div style={{ color: BB.text3 }}>{row.flags.join(' · ') || 'no strategy flags'}</div></div><div><span style={{ color: tone, fontWeight: 900 }}>{row.intel.state}</span><div style={{ marginTop: 3, fontWeight: 800 }}>{row.intel.action}</div><div style={{ color: BB.text3 }}>{row.intel.reason}</div></div><div><b>{money(row.intel.price)}</b><br /><span style={{ color: BB.text3 }}>RSI {row.intel.rsi === null ? '—' : row.intel.rsi.toFixed(1)} · {row.intel.trend}</span><br /><span style={{ color: BB.text3 }}>{age(row.intel.asOf)}</span></div><div><b>{row.rows.length} exits · {row.shares === null ? 'shares unavailable' : `${row.shares.toLocaleString(undefined, { maximumFractionDigits: 4 })} sh`}</b><br /><span>avg {money(row.avgExit)} · {money(row.proceeds)}</span><br /><span style={{ color: BB.text3 }}>{row.latest.trade_date ?? 'date unavailable'}</span></div><div><b>{row.intel.entryLow === null ? 'entry unavailable' : row.intel.entryLow === row.intel.entryHigh ? money(row.intel.entryLow) : `${money(row.intel.entryLow)}–${money(row.intel.entryHigh)}`}</b><br /><span style={{ color: BB.text3 }}>stop {money(row.intel.stop)} · target {money(row.intel.target)}</span><br /><span>{row.resistance.state} {money(row.resistance.level)} · {row.resistance.distancePct === null ? 'distance —' : `${row.resistance.distancePct >= 0 ? '+' : ''}${row.resistance.distancePct.toFixed(1)}%`}</span></div><div><b>P/E {pe === null ? '—' : pe.toFixed(2)} · Fwd {fpe === null ? '—' : fpe.toFixed(2)}</b><br /><span>{rec}</span><br /><span style={{ color: BB.text3 }}>{row.analyst?.n ?? '—'} analysts · target {row.analyst?.target == null ? '—' : money(Number(row.analyst.target))}</span></div><div><b>{row.completeness}/8 current fields</b><br /><span style={{ color: row.eventGapCount ? BB.amber : BB.text3 }}>{row.eventGapCount} event gaps · {row.derivedCount} derived</span><br /><span style={{ color: BB.text3 }}>{row.latest.import_source || 'source unavailable'}</span></div><div onClick={event => event.stopPropagation()}><button onClick={() => setExpanded(value => ({ ...value, [row.symbol]: true }))} style={button(true)}>OPEN EVIDENCE</button><button onClick={() => classify([row.symbol])} style={{ ...button(false), marginTop: 5 }}>CLASSIFY</button><button onClick={() => openWatch(row.symbol)} style={{ ...button(false), marginTop: 5 }}>OPEN WATCH</button></div></div>
-      {open && <div style={{ padding: '10px 14px 14px 42px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 18 }}><div><div style={{ fontSize: 10, fontWeight: 900, color: BB.text3, marginBottom: 6 }}>RECONCILED EXIT HISTORY — FIELD-BY-FIELD AUDIT</div>{row.rows.map(exit => { const event = normalizedEvent(exit, events[exit.event_key]); return <div key={exit.event_key} style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}><div style={{ display: 'grid', gridTemplateColumns: '85px 120px 90px 90px 100px 1fr', gap: 7, fontSize: 10 }}><span>{exit.trade_date ?? '—'}</span><span>{exit.account ?? '—'}</span><span>{rowShares(exit) === null ? '—' : `${rowShares(exit)?.toLocaleString(undefined, { maximumFractionDigits: 4 })} sh`}</span><span>{money(rowPrice(exit))}</span><span>{money(finite(exit.proceeds_usd))}</span><span><b>{event.eventType.replace(/_/g, ' ').toUpperCase()}</b><br /><span style={{ color: BB.text3 }}>{event.reason || 'reason unavailable'}</span></span></div><div style={{ marginTop: 5, fontSize: 10, color: BB.text3 }}>Sources — account: {sourceFor(exit, 'account')} · shares: {sourceFor(exit, 'quantity')} · price: {sourceFor(exit, 'price')} · proceeds: {sourceFor(exit, 'proceeds_usd')}</div>{Boolean(exit.derived_fields?.length) && <div style={{ marginTop: 3, fontSize: 10, color: BB.blue }}>Derived deterministically: {exit.derived_fields?.join(' · ')}</div>}{Boolean(exit.evidence_gaps?.length) && <div style={{ marginTop: 3, fontSize: 10, color: BB.amber }}>Still missing: {exit.evidence_gaps?.join(' · ')}</div>}</div>})}</div><div><div style={{ fontSize: 10, fontWeight: 900, color: BB.text3, marginBottom: 6 }}>CURRENT WATCH / PORTFOLIO CONTEXT</div><div style={{ fontSize: 10.5, lineHeight: 1.55 }}><b>Mandate:</b> {mandateLabel}<br /><b>Priority:</b> {row.mandate.priority}<br /><b>Thesis:</b> {row.mandate.thesis || 'No operator thesis saved.'}<br /><b>Watch recommendation:</b> {text(row.watch?.synthesis_recommendation, row.watch?.latest_recommendation, 'unavailable').replace(/_/g, ' ')}<br /><b>Sector:</b> {text(row.watch?.profile_sector, row.card?.sector, 'unavailable')}<br /><b>Catalyst:</b> {text(row.watch?.catalyst_headline, 'unavailable')}<br /><b>Earnings:</b> {text(row.watch?.earnings_date, row.watch?.next_earnings_date, 'unavailable')}<br /><b>Resistance source:</b> {row.resistance.source} — {row.resistance.reason}<br /><b>Disposition:</b> {normalizedEvent(row.latest, events[row.latest.event_key]).eventType.replace(/_/g, ' ')}</div><div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}><button onClick={() => classify([row.symbol])} style={button(true)}>EDIT CLASSIFICATION</button><button onClick={() => openWatch(row.symbol)} style={button(false)}>OPEN {row.symbol} IN WATCH</button><button onClick={() => { window.location.href = `/v3/rotation?symbol=${encodeURIComponent(row.symbol)}` }} style={button(false)}>OPEN ROTATION</button></div></div></div>}
+      const focused = focusSymbol === row.symbol
+      const missingMarket = row.intel.state === 'MISSING MARKET'
+      return <div key={row.symbol} id={`reentry-intel-${row.symbol}`} data-symbol={row.symbol}>
+        <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={open}
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setExpanded(value => ({ ...value, [row.symbol]: !open })) } }}
+          onClick={() => setExpanded(value => ({ ...value, [row.symbol]: !open }))}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: colTemplate,
+            gap: cellGap,
+            padding: cellPad,
+            borderBottom: '1px solid var(--border)',
+            alignItems: 'center',
+            fontSize: cellFont,
+            cursor: 'pointer',
+            background: open || focused ? 'var(--bg2)' : 'transparent',
+            boxShadow: open ? `inset 3px 0 0 ${BB.blue}` : focused ? `inset 3px 0 0 ${BB.amber}` : undefined,
+          }}
+        >
+          <input type="checkbox" checked={Boolean(selected[row.symbol])} onClick={event => event.stopPropagation()} onChange={event => setSelected(value => ({ ...value, [row.symbol]: event.target.checked }))} />
+          <div><div><b style={{ fontSize: compact ? 13 : 14 }}>{row.symbol}</b> <span style={{ color: classTone, fontSize: 10 }}>{classificationLabel(row.classified)}</span> <span style={{ color: BB.text3 }}>{open ? '▾' : '▸'}</span></div><div style={{ marginTop: 3, color: mandateLabel === 'MANDATE NEEDED' ? BB.amber : BB.text2 }}>{mandateLabel}</div><div style={{ color: BB.text3 }}>{row.flags.join(' · ') || 'no strategy flags'}</div></div>
+          <div><span style={{ color: tone, fontWeight: 900 }}>{row.intel.state}</span><div style={{ marginTop: 3, fontWeight: 800 }}>{row.intel.action}</div><div style={{ color: BB.text3 }}>{row.intel.reason}</div></div>
+          <div><b>{money(row.intel.price)}</b><br /><span style={{ color: BB.text3 }}>RSI {row.intel.rsi === null ? '—' : row.intel.rsi.toFixed(1)} · {row.intel.trend}</span><br /><span style={{ color: BB.text3 }}>{age(row.intel.asOf)}</span></div>
+          <div><b>{row.rows.length} exits · {row.shares === null ? 'shares unavailable' : `${row.shares.toLocaleString(undefined, { maximumFractionDigits: 4 })} sh`}</b><br /><span>avg {money(row.avgExit)} · {money(row.proceeds)}</span><br /><span style={{ color: BB.text3 }}>{row.latest.trade_date ?? 'date unavailable'}</span></div>
+          <div><b>{row.intel.entryLow === null ? 'entry unavailable' : row.intel.entryLow === row.intel.entryHigh ? money(row.intel.entryLow) : `${money(row.intel.entryLow)}–${money(row.intel.entryHigh)}`}</b><br /><span style={{ color: BB.text3 }}>stop {money(row.intel.stop)} · target {money(row.intel.target)}</span><br /><span>{row.resistance.state} {money(row.resistance.level)} · {row.resistance.distancePct === null ? 'distance —' : `${row.resistance.distancePct >= 0 ? '+' : ''}${row.resistance.distancePct.toFixed(1)}%`}</span></div>
+          <div><b>P/E {pe === null ? '—' : pe.toFixed(2)} · Fwd {fpe === null ? '—' : fpe.toFixed(2)}</b><br /><span>{rec}</span><br /><span style={{ color: BB.text3 }}>{row.analyst?.n ?? '—'} analysts · target {row.analyst?.target == null ? '—' : money(Number(row.analyst.target))}</span></div>
+          <div><b>{row.completeness}/8 current fields</b><br /><span style={{ color: row.eventGapCount ? BB.amber : BB.text3 }}>{row.eventGapCount} event gaps · {row.derivedCount} derived</span><br /><span style={{ color: BB.text3 }}>{row.latest.import_source || 'source unavailable'}</span></div>
+          <div onClick={event => event.stopPropagation()}>
+            <button type="button" onClick={() => setExpanded(value => ({ ...value, [row.symbol]: true }))} style={button(true)}>OPEN EVIDENCE</button>
+            <button type="button" onClick={() => classify([row.symbol])} style={{ ...button(false), marginTop: 5 }}>CLASSIFY</button>
+            <button type="button" onClick={() => openWatch(row.symbol)} style={{ ...button(false), marginTop: 5 }}>OPEN WATCH</button>
+            {missingMarket && (
+              <button
+                type="button"
+                onClick={() => refreshMarket()}
+                style={{ ...button(true), marginTop: 5, borderColor: BB.amber, color: BB.amber, background: BB.amberDim }}
+                title="Re-fetch watchlist item, symbol cards, and holdings quotes for market evidence. Does not invent prices."
+                data-testid={`reentry-refresh-market-${row.symbol}`}
+              >
+                REFRESH MARKET
+              </button>
+            )}
+          </div>
+        </div>
+        {open && <div style={{ padding: '10px 14px 14px 42px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 18 }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 900, color: BB.text3, marginBottom: 6 }}>RECONCILED EXIT HISTORY — FIELD-BY-FIELD AUDIT</div>
+            {row.rows.map(exit => {
+              const event = normalizedEvent(exit, events[exit.event_key])
+              return <div key={exit.event_key} style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '85px 120px 90px 90px 100px 1fr', gap: 7, fontSize: 10 }}>
+                  <span>{exit.trade_date ?? '—'}</span>
+                  <span>{exit.account ?? '—'}</span>
+                  <span>{rowShares(exit) === null ? '—' : `${rowShares(exit)?.toLocaleString(undefined, { maximumFractionDigits: 4 })} sh`}</span>
+                  <span>{money(rowPrice(exit))}</span>
+                  <span>{money(finite(exit.proceeds_usd))}</span>
+                  <span><b>{event.eventType.replace(/_/g, ' ').toUpperCase()}</b><br /><span style={{ color: BB.text3 }}>{event.reason || 'reason unavailable'}</span></span>
+                </div>
+                <div style={{ marginTop: 5, fontSize: 10, color: BB.text3 }}>Sources — account: {sourceFor(exit, 'account')} · shares: {sourceFor(exit, 'quantity')} · price: {sourceFor(exit, 'price')} · proceeds: {sourceFor(exit, 'proceeds_usd')}</div>
+                {Boolean(exit.derived_fields?.length) && <div style={{ marginTop: 3, fontSize: 10, color: BB.blue }}>Derived deterministically: {exit.derived_fields?.join(' · ')}</div>}
+                {Boolean(exit.evidence_gaps?.length) && <div style={{ marginTop: 3, fontSize: 10, color: BB.amber }}>Still missing: {exit.evidence_gaps?.join(' · ')}</div>}
+              </div>
+            })}
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 900, color: BB.text3, marginBottom: 6 }}>CURRENT WATCH / PORTFOLIO CONTEXT</div>
+            <div style={{ fontSize: 10.5, lineHeight: 1.55 }}>
+              <b>Mandate:</b> {mandateLabel}<br />
+              <b>Priority:</b> {row.mandate.priority}<br />
+              <b>Thesis:</b> {row.mandate.thesis || 'No operator thesis saved.'}<br />
+              <b>Watch recommendation:</b> {text(row.watch?.synthesis_recommendation, row.watch?.latest_recommendation, 'unavailable').replace(/_/g, ' ')}<br />
+              <b>Sector:</b> {text(row.watch?.profile_sector, row.card?.sector, 'unavailable')}<br />
+              <b>Catalyst:</b> {text(row.watch?.catalyst_headline, 'unavailable')}<br />
+              <b>Earnings:</b> {text(row.watch?.earnings_date, row.watch?.next_earnings_date, 'unavailable')}<br />
+              <b>Resistance source:</b> {row.resistance.source} — {row.resistance.reason}<br />
+              <b>Disposition:</b> {normalizedEvent(row.latest, events[row.latest.event_key]).eventType.replace(/_/g, ' ')}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => classify([row.symbol])} style={button(true)}>EDIT CLASSIFICATION</button>
+              <button type="button" onClick={() => openWatch(row.symbol)} style={button(false)}>OPEN {row.symbol} IN WATCH</button>
+              {missingMarket && <button type="button" onClick={() => refreshMarket()} style={button(true)}>REFRESH MARKET</button>}
+              <button type="button" onClick={() => { window.location.href = `/v3/rotation?symbol=${encodeURIComponent(row.symbol)}` }} style={button(false)}>OPEN ROTATION</button>
+            </div>
+          </div>
+        </div>}
       </div>
-    })}</div></div>
+    })}
+    </div></div>
     {evidence.errors.length > 0 && <div style={{ marginTop: 7, color: BB.red, fontSize: 10 }}>Source warnings: {evidence.errors.join(' · ')}</div>}
     {!shown.length && <div style={{ padding: 14, color: BB.text3 }}>No symbols match the current filters.</div>}
+    <div style={{ marginTop: 8, fontSize: 10, color: BB.text3 }}>
+      Shareable URL: <code>?symbol=</code> · <code>?state=</code> · <code>?view=material|classified|all|ready</code> (replace, preserves <code>classify</code>).
+      {' '}View default is <b>Material</b> (|exit proceeds| ≥ ${MATERIAL_PROCEEDS_MIN.toLocaleString()}; session key {VIEW_STORAGE_KEY}).
+      {' '}MISSING MARKET keeps OPEN WATCH and offers REFRESH MARKET (watch + holdings + cards only).
+    </div>
   </div>
 }
