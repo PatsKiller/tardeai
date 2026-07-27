@@ -19,13 +19,17 @@ export default function ReEntryEvidenceContractPanel() {
       <span style={{ fontSize: 10, color: quantityRows ? BB.green : BB.amber }}>{quantityRows ? 'QUANTITY EVIDENCE PRESENT' : 'NO SOURCE IS REPORTING SHARES'}</span>
       <button onClick={() => setOpen(value => !value)} style={button}>{open ? 'HIDE SOURCE MATRIX' : 'SHOW SOURCE MATRIX'}</button>
     </div>
+    <div style={{ marginTop: 6, fontSize: 10, color: BB.text2, lineHeight: 1.45 }}>
+      Redeploy book &amp; history supply events/proceeds; quantity comes from full-fidelity cache + closed-trade journal when present.
+      {' '}Zero share counts on book/history are expected — those sources are event/proceeds feeds, not share sources.
+    </div>
     {open && <div style={{ overflowX: 'auto', marginTop: 8 }}><div style={{ minWidth: 780 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '180px repeat(6,1fr)', gap: 6, padding: '5px 6px', fontSize: 10, color: BB.text3, borderBottom: '1px solid var(--border)' }}><span>Source</span><span>Rows</span><span>Account</span><span>Shares</span><span>Price</span><span>Proceeds</span><span>Reason</span></div>
       {evidence.sources.map(source => {
         const coverage = evidence.sourceFieldCoverage[source.key]
         return <div key={source.key} style={{ display: 'grid', gridTemplateColumns: '180px repeat(6,1fr)', gap: 6, padding: '6px', fontSize: 10, borderBottom: '1px solid var(--border)', background: source.available ? 'transparent' : 'var(--bg2)' }}><b>{source.label}</b><span>{source.rows}</span><span>{coverage?.account ?? 0}</span><span>{coverage?.quantity ?? 0}</span><span>{coverage?.price ?? 0}</span><span>{coverage?.proceeds_usd ?? 0}</span><span>{coverage?.description ?? 0}</span></div>
       })}
-      <div style={{ marginTop: 7, fontSize: 10, color: BB.text3 }}>A blank transaction field is recoverable only when a compatible event or aggregate supplies it, or when two other numeric facts prove it arithmetically. The source matrix distinguishes a deployment/cache problem from genuinely absent broker evidence.</div>
+      <div style={{ marginTop: 7, fontSize: 10, color: BB.text3 }}>A blank transaction field is recoverable only when a compatible event or aggregate supplies it, or when two other numeric facts prove it arithmetically. The source matrix distinguishes a deployment/cache problem from genuinely absent broker evidence. Redeploy book/history rows with 0 shares are not defects — use journal/full-fidelity cache for quantity.</div>
     </div></div>}
   </section>
 }
