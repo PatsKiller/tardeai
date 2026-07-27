@@ -31,6 +31,7 @@ READER_CONTRACT = "agent-runtime-postgres-reader-v1"
 # Read-only roles are preferred; the read/write runtime roles are also accepted because a
 # READ ONLY transaction makes them harmless. Superuser/createdb/etc. are always rejected.
 DEFAULT_READER_ROLE_ALLOWLIST = (
+    "agentic_runtime_reader",  # A2 packet SHADOW/LAB read-plane identity
     "agentic_runtime_lab_ro",
     "agentic_runtime_shadow_ro",
     "agentic_runtime_lab_rw",

@@ -119,6 +119,23 @@ class ReadOnlyAgentRuntimeAPI:
     @staticmethod
     def _response(kind: str, data: Any, page: Mapping[str, Any] | None = None) -> dict[str, Any]:
         assert_no_secret_material(data)
+        import os
+        # Prefer live role from env DSN user when present; packet identity is agentic_runtime_reader.
+        reader_role = "agentic_runtime_reader"
+        dsn = str(os.environ.get("AGENT_RUNTIME_READ_DSN", "") or "")
+        if dsn.startswith("postgres"):
+            try:
+                from urllib.parse import urlparse
+                u = urlparse(dsn)
+                if u.username:
+                    reader_role = u.username
+            except Exception:
+                pass
+        else:
+            for tok in dsn.split():
+                if tok.startswith("user="):
+                    reader_role = tok.split("=", 1)[1]
+                    break
         response = {
             "contract": READ_API_CONTRACT,
             "read_only": True,
@@ -131,6 +148,9 @@ class ReadOnlyAgentRuntimeAPI:
                 "schedule_change": False,
                 "financial_action": False,
             },
+            # A2 post-connect acceptance: honest connected signal + reader identity (never DSN).
+            "connected": True,
+            "reader_role": reader_role,
         }
         if page is not None:
             response["page"] = dict(page)

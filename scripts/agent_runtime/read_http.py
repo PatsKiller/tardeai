@@ -51,6 +51,9 @@ def zero_authority_envelope(kind: str, detail: str) -> dict:
         "data": None,
         "authority": dict(_ZERO_AUTHORITY),
         "detail": detail,
+        # A2 post-connect acceptance keys (always present; honest when disconnected).
+        "connected": False,
+        "reader_role": None,
     }
 
 
