@@ -1,0 +1,51 @@
+# Moomoo Stage 0 — READ-PLANE foundation example (NO live secrets).
+# Copy to a host-local path and point MOOMOO_STAGE0_CONFIG at it.
+# Secret *values* come from Bitwarden Secrets Manager / env injection — never commit them.
+#
+# Order path: OUT. Trade unlock: OUT. Active Trader stages: OUT.
+
+schema_version: moomoo-stage0-v1
+stage: 0
+mode: read_only_data_plane
+
+authority:
+  quotes: true
+  history: true
+  subscriptions: true          # design / scaffold only in Stage 0
+  order_routing: false         # hard off
+  trade_unlock: false          # hard off
+  agent_operational: false
+  schedule_enable: false
+
+opend:
+  # Non-secret endpoint defaults (override via env MOOMOO_OPEND_HOST / MOOMOO_OPEND_PORT)
+  host: "127.0.0.1"
+  port: 11111
+  # Trade/unlock port intentionally omitted — Stage 0 must not configure it
+  connect_timeout_seconds: 2
+  # When true, missing TCP reachability fails preflight if --probe-opend is used
+  require_reachable_for_live_probe: true
+
+# Secret *names* only — presence may be checked; values never logged by Stage 0 tools
+secrets:
+  required_names:
+    - MOOMOO_OPEND_LOGIN_ACCOUNT
+    - MOOMOO_OPEND_LOGIN_PWD
+  optional_names:
+    - MOOMOO_OPEND_SECURITY_FIRM
+
+# CI / unit tests: allow preflight without real secrets present
+preflight:
+  allow_missing_secrets: true   # set false on host when data-only secrets are provisioned
+  allow_missing_opend: true     # set false only when OpenD is expected up for live probe
+  network_probe_default: false  # CI must stay false
+
+health_registry:
+  # Relative to repo root unless absolute; Packet F --execute may write here
+  path: docs/operations/moomoo_health/stage0_health.json
+  read_path_only: true
+
+client:
+  # fail_closed: any quote/history call raises if OpenD not healthy
+  fail_closed: true
+  adapter: stub                # stub | (future) futu_opend
