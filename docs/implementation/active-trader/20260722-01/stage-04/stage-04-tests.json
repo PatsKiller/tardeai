@@ -1,0 +1,30 @@
+{
+  "run_id": "20260722-01",
+  "stage": 4,
+  "start_head": "4bb4b8aa7c74a607a7a058da67c2cf88b2c7753d",
+  "executed_at": "2026-07-22",
+  "suites": [
+    {
+      "name": "read API tests — tests/test_active_trader_stage4_api.py",
+      "status": "PASS",
+      "detail": "26 passed. 17.1 routing: all 15 GET routes 200; unknown route + wrong prefix 404; trailing slash tolerated; POST/PUT/PATCH/DELETE all 405 (no accidental write route exists). 17.2 startup: LIVE unrepresentable at factory; SIMULATION allowed; production DB + empty DSN refused (no env fallback); dev server default-disabled exits without listener; LIVE env rc=2; 0.0.0.0 bind rc=2. 17.3 auth/CORS: missing + forged identity 401; CORS off by default; single localhost origin honored; foreign origin ignored; wildcard refused. 17.4 envelopes: success/error keys, request-id echo, source metadata, forced-500 leaks nothing. 17.5 pagination/filtering: cursor pages disjoint + deterministic; invalid limit/cursor/sort/date/range 422; injection strings stay values (table intact); symbol validation incl. traversal 400. 17.6 integrity: masked-id walk (no raw id field ever served) + sensitive-marker sweep; stale SUPPORTED -> effective UNKNOWN + STALE warning; moomoo NOT_INSTALLED + exclusions; unknown market data not fabricated; parity claims no UI; journal replay references only; session short-hash <=12; features immutable + production OFF. 17.7 read-only identity: SELECT ok; INSERT/UPDATE/DELETE/DDL fail; statement_timeout 5s; read-only session on. 17.8: heavy 30/min + general 120/min limits; response-size ceiling"
+    },
+    {
+      "name": "all-stage regression",
+      "status": "PASS",
+      "detail": "full program suite (stages 1-4) = 128 tests, run 3 consecutive times: 128/128, 128/128, 128/128. One initially flaky over-broad digit-run regex was replaced with precise masked-field assertions (documented in-code)"
+    },
+    {
+      "name": "localhost smoke (authorized §18)",
+      "status": "PASS",
+      "detail": "bind 127.0.0.1:8134; health/version/accounts/brokers/brokers/capabilities/rejections/features/parity all 200 env=SHADOW; POST features 405; terminated; 0 listeners, 0 processes, 0 systemd units after shutdown"
+    },
+    {
+      "name": "regression and safety proofs",
+      "status": "PASS",
+      "detail": "working set purely additive (7 new paths); zero diff in apps/, portfolio_server.py, api_v2.py, scripts/brokers/, requirements, config/systemd/, .github/; 0 active-trader systemd units anywhere; production schema hash unchanged after everything; strict metric lint reproduces exit=1 at stage-3 and stage-4 heads; validators 16/17 same pre-existing failure; validator-churned docs restored; no live broker call, no production DB query, no credential read, no Moomoo, no notification sent, no 2FA"
+    }
+  ],
+  "totals": {"local_tests_passed": 128, "failed": 0, "pre_existing_failures": 1, "stability_runs": 3},
+  "gate_result": "GREEN"
+}

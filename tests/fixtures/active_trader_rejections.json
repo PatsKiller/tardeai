@@ -1,0 +1,33 @@
+{
+  "_provenance_note": "ALL fixtures are SYNTHETIC (or SYNTHETIC_FUTURE_ADAPTER for moomoo). No captured live broker rejection text exists in the repository at this SHA; none of these strings claim to be exact live broker messages. See FIXTURE_PROVENANCE.md.",
+  "schwab": [
+    {"name": "broker_assistance", "provenance": "SYNTHETIC", "raw_status": "REJECTED", "raw_code": "ORDER_VALIDATION_BROKER_ASSIST", "raw_message": "This order requires broker assistance. Please contact the trade desk.", "http_status": 400, "expect": "SECURITY_REQUIRES_BROKER_ASSISTANCE"},
+    {"name": "electronic_entry_not_permitted", "provenance": "SYNTHETIC", "raw_status": "REJECTED", "raw_code": "VAL-1002", "raw_message": "Opening transactions in this security are not permitted through electronic channels.", "http_status": 400, "expect": "ELECTRONIC_ENTRY_NOT_ALLOWED"},
+    {"name": "microcap_review", "provenance": "SYNTHETIC", "raw_status": "REJECTED", "raw_code": "VAL-1044", "raw_message": "Security subject to acceptance review; low-priced security restrictions apply.", "http_status": 400, "expect": "LOW_PRICE_OR_MICROCAP_RESTRICTION"},
+    {"name": "session_unsupported", "provenance": "SYNTHETIC", "raw_status": "REJECTED", "raw_code": "VAL-2100", "raw_message": "Order type not available during extended hours session.", "http_status": 400, "expect": "SESSION_NOT_SUPPORTED"},
+    {"name": "insufficient_bp", "provenance": "SYNTHETIC", "raw_status": "REJECTED", "raw_code": "VAL-3001", "raw_message": "Insufficient buying power for this order.", "http_status": 400, "expect": "INSUFFICIENT_BUYING_POWER"},
+    {"name": "auth_expired", "provenance": "SYNTHETIC", "raw_status": "ERROR", "raw_code": "", "raw_message": "Unauthorized", "http_status": 401, "expect": "AUTHENTICATION_EXPIRED"},
+    {"name": "unknown", "provenance": "SYNTHETIC", "raw_status": "REJECTED", "raw_code": "XX-9999", "raw_message": "An unexpected condition occurred processing the request.", "http_status": 400, "expect": "UNKNOWN_BROKER_REJECTION"},
+    {"name": "partial_fill_then_reject", "provenance": "SYNTHETIC", "raw_status": "REJECTED", "raw_code": "XX-9999", "raw_message": "Remainder rejected after partial execution.", "http_status": 400, "filled_quantity": 40, "remaining_quantity": 60, "expect": "UNKNOWN_BROKER_REJECTION"},
+    {"name": "pending_cancel_late_fill", "provenance": "SYNTHETIC", "raw_status": "PENDING_CANCEL", "raw_code": "", "raw_message": "Cancel requested; execution report pending.", "http_status": 200, "order_state": "PENDING_CANCEL", "expect": "UNKNOWN_BROKER_REJECTION"}
+  ],
+  "alpaca": [
+    {"name": "insufficient_bp", "provenance": "SYNTHETIC", "raw_status": "rejected", "raw_code": "40310000", "raw_message": "insufficient buying power", "http_status": 403, "expect": "INSUFFICIENT_BUYING_POWER"},
+    {"name": "asset_not_tradable", "provenance": "SYNTHETIC", "raw_status": "rejected", "raw_code": "ASSET_NOT_TRADABLE", "raw_message": "asset is not tradable", "http_status": 422, "expect": "SECURITY_NOT_DAY_TRADE_ELIGIBLE"},
+    {"name": "order_type_unsupported", "provenance": "SYNTHETIC", "raw_status": "rejected", "raw_code": "", "raw_message": "order type is not supported for this asset class", "http_status": 422, "expect": "ORDER_TYPE_NOT_SUPPORTED"},
+    {"name": "extended_hours_conflict", "provenance": "SYNTHETIC", "raw_status": "rejected", "raw_code": "", "raw_message": "extended hours orders must be limit day orders", "http_status": 422, "expect": "SESSION_NOT_SUPPORTED"},
+    {"name": "price_increment", "provenance": "SYNTHETIC", "raw_status": "rejected", "raw_code": "", "raw_message": "sub-penny increment not allowed above $1.00", "http_status": 422, "expect": "PRICE_INCREMENT_INVALID"},
+    {"name": "quantity_rejected", "provenance": "SYNTHETIC", "raw_status": "rejected", "raw_code": "", "raw_message": "qty must be greater than 0 and within limits", "http_status": 422, "expect": "QUANTITY_LIMIT_REJECTED"},
+    {"name": "rate_limited", "provenance": "SYNTHETIC", "raw_status": "error", "raw_code": "42910000", "raw_message": "rate limit exceeded", "http_status": 429, "expect": "RATE_LIMITED"},
+    {"name": "market_closed", "provenance": "SYNTHETIC", "raw_status": "rejected", "raw_code": "", "raw_message": "market is closed", "http_status": 422, "expect": "MARKET_CLOSED"},
+    {"name": "auth_failure", "provenance": "SYNTHETIC", "raw_status": "error", "raw_code": "", "raw_message": "access key verification failed", "http_status": 401, "expect": "AUTHENTICATION_EXPIRED"},
+    {"name": "unknown", "provenance": "SYNTHETIC", "raw_status": "rejected", "raw_code": "", "raw_message": "request could not be completed at this time", "http_status": 422, "expect": "UNKNOWN_BROKER_REJECTION"}
+  ],
+  "moomoo": [
+    {"name": "rate_limited", "provenance": "SYNTHETIC_FUTURE_ADAPTER", "raw_status": "error", "raw_code": "RET_RATE_LIMIT", "raw_message": "request frequency limit", "http_status": null, "expect": "RATE_LIMITED"},
+    {"name": "session_unsupported", "provenance": "SYNTHETIC_FUTURE_ADAPTER", "raw_status": "error", "raw_code": "", "raw_message": "session not supported for this market", "http_status": null, "expect": "SESSION_NOT_SUPPORTED"},
+    {"name": "price_increment", "provenance": "SYNTHETIC_FUTURE_ADAPTER", "raw_status": "error", "raw_code": "", "raw_message": "order price invalid tick", "http_status": null, "expect": "PRICE_INCREMENT_INVALID"},
+    {"name": "not_authorized", "provenance": "SYNTHETIC_FUTURE_ADAPTER", "raw_status": "error", "raw_code": "RET_UNLOCK_REQUIRED", "raw_message": "trade unlock required", "http_status": null, "expect": "ACCOUNT_NOT_AUTHORIZED"},
+    {"name": "unknown", "provenance": "SYNTHETIC_FUTURE_ADAPTER", "raw_status": "error", "raw_code": "RET_UNKNOWN", "raw_message": "unspecified error", "http_status": null, "expect": "UNKNOWN_BROKER_REJECTION"}
+  ]
+}

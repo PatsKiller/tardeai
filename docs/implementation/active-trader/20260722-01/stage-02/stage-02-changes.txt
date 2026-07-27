@@ -1,0 +1,36 @@
+# Stage 2 changed-file list — run 20260722-01
+# Start HEAD: 42f0c2cbccfed016ae3295a9abd7db995f6f688c
+# ALL changes ADDITIVE. Zero modifications to existing files, /v3, broker adapters,
+# write fences, approval service, per-order 2FA, requirements, workflows, production anything.
+
+## Code (additive)
+A scripts/active_trader/discovery.py
+A scripts/active_trader/discovery_alpaca.py
+A scripts/active_trader/discovery_schwab.py
+A scripts/active_trader/probe_brokers.py
+A tests/test_active_trader_stage2_discovery.py
+A tests/test_active_trader_stage2_persistence.py
+
+## Stage 2 evidence artifacts (docs/implementation/active-trader/20260722-01/stage-02/)
+A stage-02-plan.md                        sha256=c33c4343da63a16bdbe63ff4cd5b5e2cbf3a11d7c7d9aa8c6c9358843191991f
+A stage-02-closeout.md                    sha256=a4328e4e746ee2484f42f439701c8e2a26363ddfa3a5256ffd259e137f3f3ab6
+A stage-02-tests.json                     sha256=51c160416fd515d94f4aa3d1889486aa90831b10a7825e6e279644dc97c6435d
+A stage-02-changes.txt                    (this file)
+A stage-02-drive-manifest.json            (written after Drive sync)
+A BITWARDEN_LAB_ISOLATION.md              sha256=1dce0ec3f0fa785b75b3fc4d6165d909f099faaad64d7c5a61f80af32ba7571c
+A BROKER_DISCOVERY_CONTRACT.md            sha256=70d71cb44a14fd8cef92565c606d69dbf4679baab6afbf69bb1866f06fde7630
+A BROKER_ACCOUNT_DISCOVERY_REPORT.md      sha256=961a5edd2d08299f499166d68e234308bb33a340ff44821d753f9f976463cead
+A BROKER_CAPABILITY_MATRIX.md             sha256=6e2352403790061f180c95aed9e6a50fdf2e0750f6c468f739cc72da77f9660b
+A BROKER_CONFIGURATION_DISCREPANCIES.md   sha256=b0026903f519223d7258ad218aa954f242c456374821ed0624ee016db6b8977c
+A LIVE_READ_ONLY_PROBE_REPORT.md          sha256=b79131b103f370edb6bd7f84de4123a29d6bfca7dd9b41a549f450ede068b88c
+A OPERATOR_TODO.md                        sha256=81f22358ebe5299f7be2cbdb3ab4227fa57137535d3e903f40877ad061d1a991
+A live_probe_result.json                  sha256=0526fb97792e70fbe16fc253d303edfee0bcb15244f16c171d6515a6e432942f
+A live_probe_result.md                    sha256=48ee704e95141943cf96c40aba4b8294170581e9e8b3c5dd67f3ec7c40a250dc
+
+## Off-repo effects (documented, no secrets)
+- lab DB trade_ai_test: 94 probe capability rows upserted (adapter_version='stage2')
+- Bitwarden trade-ai-lab: temp sentinel STAGE2_ISOLATION_TEMP created and DELETED during the gate
+- production: untouched (schema hash re-verified; checkout re-verified)
+
+## Side-effect note
+Validator suite regenerated the same 3 tracked evidence docs; restored to HEAD before commit.

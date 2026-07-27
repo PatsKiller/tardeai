@@ -1,0 +1,29 @@
+{
+  "name": "command-center-v3-next",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Active Trader Next (/v3-next) — separate read-only workspace bundle. Consumes the Stage 4 /api/v3/active-trader read contract via dev/test fixtures. Does NOT replace /v3.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.1"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/jest-dom": "^6.4.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "jsdom": "^25.0.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2",
+    "vitest": "^2.1.0"
+  }
+}

@@ -1,0 +1,6 @@
+{"run_id":"20260722-01","stage":7,"start_head":"5fb20248","executed_at":"2026-07-23",
+"suites":[
+{"name":"session builder + dev write plane — tests/test_active_trader_stage7_session_builder.py","status":"PASS",
+"detail":"15 passed. Versioning (edit bumps version, prior immutable); clone→v1 new id; canonical authority-only hash (unchanged by name/notes, changed by authority field, account-order-independent, deterministic); capability gating (UNSUPPORTED/UNKNOWN cannot be PRIMARY/FALLBACK); moomoo cannot be LIVE; sizing modes + floor rounding + remainder + invalid inputs; quick-add presets/units/caps; bad quick-add config rejected; feature modes reject LIVE_CANARY + unknown flag; dev write plane env/prod guards (LIVE refused, production DSN refused), auth+audit required, save/load + optimistic 409 conflict, feature set rejects LIVE_CANARY via API + authorizes_trading=false"}],
+"totals":{"tests_passed":15,"failed":0},"safety":{"broker_call":false,"real_2fa":false,"order":false,"production_write":false},
+"gate_result":"GREEN_CLOSED"}

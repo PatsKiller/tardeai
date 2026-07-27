@@ -1,0 +1,18 @@
+# Stage 12 — changes (docs-only additive artifact set)
+# HEAD before: ea0d6110 (Section A)
+# Files created by Stage 12 (all under docs/, no code/config/migration/flag/unit change):
+
+  stage-12/ACTIVE_TRADER_FINAL_LITMUS_REVIEW.md
+  stage-12/CONDITIONAL_GATES.md
+  stage-12/PROCEDURAL_DEVIATIONS.md
+  stage-12/READ_ONLY_REVIEWER_ISOLATION.md
+  stage-12/REVIEW_INPUT_MANIFEST.json
+  stage-12/SECURITY_AND_BOUNDARY_EVIDENCE.md
+  stage-12/stage-12-changes.txt
+  stage-12/stage-12-plan.md
+  stage-12/stage-12-tests.json
+
+# Branch-vs-main summary (context, not Stage-12 authored):
+#   242 files changed, 18486 insertions vs origin/main
+#   apps/command-center-v3 changed files: 0 (preserved)
+# Stage 12 authored ZERO changes to code, tests, migrations, config, flags, or units.

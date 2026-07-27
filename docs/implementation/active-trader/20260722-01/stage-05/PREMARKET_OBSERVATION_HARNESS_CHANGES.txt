@@ -1,0 +1,21 @@
+# Premarket Observation Harness — changes (additive)
+# HEAD before: 2568eb7e
+
+New modules:
+  scripts/active_trader/market_calendar.py
+  scripts/active_trader/premarket_observation.py
+  scripts/active_trader/premarket_symbol_selector.py
+  scripts/active_trader/premarket_observation_schedule.py
+  scripts/run_active_trader_premarket_observation.py
+
+New tests:
+  tests/test_active_trader_market_calendar.py
+  tests/test_active_trader_premarket_observation.py
+  tests/test_active_trader_premarket_symbol_selector.py
+  tests/test_active_trader_premarket_schedule.py
+
+One boundary change in premarket_observation.py: R2/RTH upper bound is 10:05:00 inclusive
+(+1s epsilon) so a continuous 09:30->10:05 stream measures exactly 35:00.
+
+Docs: 14 files under docs/implementation/active-trader/20260722-01/stage-05/ (PREMARKET_*).
+No existing production broker adapter modified. No /v3, config, flag, unit, or migration change.

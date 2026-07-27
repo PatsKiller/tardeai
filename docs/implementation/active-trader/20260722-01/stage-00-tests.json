@@ -1,0 +1,45 @@
+{
+  "run_id": "20260722-01",
+  "stage": 0,
+  "base_sha": "87c2fa09fa95a8a69233959b04b1144e1297b923",
+  "executed_at": "2026-07-22",
+  "suites": [
+    {
+      "name": "controlling_documents_present_and_hashed",
+      "status": "PASS",
+      "detail": {
+        "architecture_v3_3_sha256": "e2649ec30f531d72635e9b255ff4c4a1e57725241a50b2dfb312ea19b9609da8",
+        "implementation_v1_1_sha256": "6293b5502ad3c6e421dcb75c2824583dc7113b3a2c9b8854696d32fcc57f8604",
+        "litmus_prompt_v1_0_sha256": "0c7b5d2d31a11dee3699843fd0515ff8acdec4660191540f367df45915d90eb5"
+      }
+    },
+    {
+      "name": "run_release_ci_equivalent --source-only (17 read-only validators)",
+      "status": "16 PASS / 1 FAIL (pre-existing)",
+      "detail": "release_readiness step fails via validate_metric_consistency.py --strict on one ambiguous-label WARN (apps/command-center-v3/src/components/MetricStrip.tsx:88). Verified identical exit=1 at the untouched production checkout AND GitHub Actions release-readiness has been failing on main including at the base SHA 87c2fa09. Pre-existing baseline condition; Stage 0 modified no app code (git diff on the file: empty). No broker writes performed by any validator.",
+      "duration_s": 24.96
+    },
+    {
+      "name": "worktree_isolation",
+      "status": "PASS",
+      "detail": "feat/active-trader-next created at exact base SHA in /home/johnclaw/worktrees/active-trader-next; initial git status clean; production checkout untouched (22 dirty entries incl. 2 UU preserved; verified before and after)"
+    },
+    {
+      "name": "litmus_reviewer_write_denial",
+      "status": "PASS",
+      "detail": "Reviewer ran as tool-restricted read-only agent (no Write/Edit/external-service tools); write attempts: 0; verdict CONDITIONAL_PASS"
+    },
+    {
+      "name": "external_prerequisites",
+      "status": "PASS_WITH_CONDITIONS",
+      "detail": "GitHub push/admin verified, main unprotected; Drive folder Trade_AI_Docs_v2 verified writable (hash-verified during sync); Gmail read verified, send=DRAFT-ONLY via connected integration (gog gmail send exists on host, not exercised); Bitwarden bws 2.1.0 present, prod project trade-ai-prod, lab project ABSENT (placeholders not created); test database ABSENT (operator TODO)"
+    },
+    {
+      "name": "no_production_mutation",
+      "status": "PASS",
+      "detail": "No service, package, flag, guardrail, schema, or /v3 change; no order, no 2FA request, no secret value read"
+    }
+  ],
+  "frontend_build_baseline": "Not rebuilt in Stage 0 (worktree has no node_modules); CI frontend job (npm ci && npm run build, Node 22) is the documented build proof; live server serves prod dist with ui_version stamping",
+  "gate_result": "GREEN with documented pre-existing baseline failure (release-readiness strict lint) and EMAIL send-capability condition"
+}

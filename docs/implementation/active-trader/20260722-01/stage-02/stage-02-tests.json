@@ -1,0 +1,40 @@
+{
+  "run_id": "20260722-01",
+  "stage": 2,
+  "start_head": "42f0c2cbccfed016ae3295a9abd7db995f6f688c",
+  "executed_at": "2026-07-22",
+  "suites": [
+    {
+      "name": "bitwarden lab isolation gate (live, lab token only)",
+      "status": "PASS",
+      "detail": "file mode 0600; LAB READ PASS; LAB WRITE PASS (temp sentinel create/edit/delete); PRODUCTION ENUMERATION DENIED; PRODUCTION READ DENIED; PRODUCTION WRITE DENIED (404); TEMP SENTINEL REMOVED YES; ORG-WIDE TOKEN USED NO. Closes the Stage 1 BLOCKED isolation test."
+    },
+    {
+      "name": "discovery tests (mocks/fixtures) — tests/test_active_trader_stage2_discovery.py",
+      "status": "PASS",
+      "detail": "19 passed. Capability logic: probe TTL 24h + stale->UNKNOWN; EXISTING_ADAPTER requires version stamp; DOCUMENTATION requires review date; OPERATOR_OVERRIDE requires expiry; write-capability-by-read-probe refused; unknown dimension/source rejected; masking never returns input and unmasked ids rejected. Alpaca: paper fixture full read set; missing taxable/IRA slots reported NOT_CONFIGURED; expired-auth 401 path; paper write grades never leak to live; module has no write method; hermetic env fixture (env_bootstrap autoload disabled). Schwab: multi-account, needs_mapping, expired auth + partial outage isolation, fence-derived write grading (RESTRICTED/UNKNOWN, zero SUPPORTED writes), fake read-only transport proves no write method requested. Moomoo: NOT_INSTALLED without failing fleet. Projection: configured-missing, broker-extra, expired-auth, paper/live mismatch, duplicate mapping, no-accounts, excluded-broker silence. Probe runner: dry-run method plan (no POST/DELETE), allowlist rejection exit 2."
+    },
+    {
+      "name": "lab DB persistence — tests/test_active_trader_stage2_persistence.py",
+      "status": "PASS",
+      "detail": "4 passed against trade_ai_test: production-DSN refusal; idempotent upsert (1 row after repeat) with 64-hex evidence hash; stale-evidence transition (expiry recorded, contract resolves past-expiry to UNKNOWN); no raw account ids or secret words in lab rows"
+    },
+    {
+      "name": "stage 1 regression",
+      "status": "PASS",
+      "detail": "34 contract + 12 DB tests re-run green alongside Stage 2 suites (69 total local passes)"
+    },
+    {
+      "name": "live read-only probe (separately identified real broker calls)",
+      "status": "PASS",
+      "detail": "alpaca GET account/positions/orders/clock/asset on paper + taxable-live slots (all 200); schwab reads on 3 accounts via managed-token transport (account/positions/orders OK; market-hours RuntimeError recorded as evidence); moomoo zero calls (NOT_INSTALLED recorded); 0 write methods proposed/invoked; 0 auth-failure retries; 94 capability rows persisted to lab only"
+    },
+    {
+      "name": "regression and safety proofs",
+      "status": "PASS",
+      "detail": "working set purely additive (7 new paths); zero diff in apps/, scripts/brokers/, schwab adapters/transport, api_v2, portfolio_server, requirements, .github; production schema hash da4405cf85... unchanged after probe; strict metric lint reproduces exit=1 at stage-1 head and stage-2 head (pre-existing, untouched); validators 16/17 same single pre-existing failure; no package/service/flag/guardrail change; Moomoo not installed; validator-churned evidence docs restored pre-commit"
+    }
+  ],
+  "totals": {"local_tests_passed": 69, "failed": 0, "blocked": 0, "pre_existing_failures": 1},
+  "gate_result": "GREEN"
+}

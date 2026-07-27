@@ -1,0 +1,37 @@
+# Stage 4 changed-file list — run 20260722-01
+# Start HEAD: 4bb4b8aa7c74a607a7a058da67c2cf88b2c7753d
+# ALL changes ADDITIVE. Zero modifications to existing files, /v3, portfolio_server,
+# api_v2, brokers, systemd config, workflows, requirements, or production anything.
+
+## Code (additive)
+A scripts/active_trader/read_api.py
+A scripts/active_trader/read_queries.py
+A scripts/active_trader/read_api_contract.json
+A scripts/active_trader/load_read_fixtures.py
+A scripts/active_trader/provision_read_api_role.sh
+A tests/fixtures/active_trader_read_api_candidates.json
+A tests/test_active_trader_stage4_api.py
+
+## Stage 4 evidence artifacts (docs/implementation/active-trader/20260722-01/stage-04/)
+A stage-04-plan.md                  sha256=ca017bec889d551376d7e4485bd4cd83a522703620bb81312207201b0af04acf
+A stage-04-closeout.md              sha256=3ec703ec9219f5de31cdd1e8712b888018e77e620ed827393fd45f43e8f4c5df
+A stage-04-tests.json               sha256=b88dea53b8dfa81656955ea8dc9aee2b0b99adcdeb2df5027fb385815f790015
+A stage-04-changes.txt              (this file)
+A stage-04-drive-manifest.json      (written after Drive sync)
+A READ_API_ARCHITECTURE.md          sha256=df443ced3a303129aa0b8c01ebb35ce49e2291c861fc0850f6ed06003cbfcf22
+A READ_API_ROUTE_MATRIX.md          sha256=b7199f2767331c0ddfe9615edc236fe9371e626087953a365326624db7f97c2a
+A READ_API_SCHEMA.md                sha256=9de122ded5c5bf658ad05377917433ebf1dcd711163d06e79fcae14d71ea0153
+A READ_ONLY_DATABASE_ROLE.md        sha256=76d456e30e4fdc1eba4b718fb2cb65f1cc2596720f27d6f91bac962183773a99
+A DEVELOPMENT_SERVER_RUNBOOK.md     sha256=bcb8de8808ef534bba69c9c8d6b8b8f4937596a956e65947b54d020940f2bc3f
+A SECURITY_AND_REDACTION_REPORT.md  sha256=293d483a0b42748b4cf9ec48aa96a5ef1856e1a5e49f103f01f885226e8602cf
+A OPERATOR_TODO.md                  sha256=097f5d1e9d76c888a22ce41243aaae71fbefe7fe55b65d6f8dff7400add91e5b
+
+## Off-repo effects (documented, no secrets)
+- lab cluster: role trade_ai_lab_ro created (SELECT-only, read-only session, 5s timeout)
+- Bitwarden trade-ai-lab: secret ACTIVE_TRADER_READ_API_DSN created (value never recorded)
+- lab DB: stage-4 fixtures loaded (sessions/order/position/journal/capability rows)
+- localhost smoke on 127.0.0.1:8134 executed and fully torn down (0 listeners/processes/units)
+- production: untouched (schema hash + checkout re-verified)
+
+## Side-effect note
+Validator suite regenerated the same 3 tracked evidence docs; restored to HEAD before commit.

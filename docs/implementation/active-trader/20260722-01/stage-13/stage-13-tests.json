@@ -1,0 +1,22 @@
+{
+  "run_id": "20260722-01",
+  "stage": 13,
+  "head": "4e4176ba9c966d2292943b670b9faa9b52473e4f",
+  "date": "2026-07-23",
+  "results": [
+    {"name": "v3 build (classic, preservation)", "status": "PASS", "detail": "vite build 1252 modules; 0 files changed vs origin/main"},
+    {"name": "v3-next build + vitest", "status": "PASS", "detail": "vite build 35 modules; 9 vitest passed; base /v3-next/"},
+    {"name": "dual-run concurrent serve (loopback)", "status": "PASS", "detail": "v3 /v3/ HTTP 200 and v3-next /v3-next/ HTTP 200 simultaneously on 7789/7790"},
+    {"name": "route isolation", "status": "PASS", "detail": "v3-next returns HTTP 404 for /v3/ (does not serve classic routes)"},
+    {"name": "asset separation", "status": "PASS", "detail": "/v3/assets/index-BSOUzVSa.js vs /v3-next/assets/index-C-1uufpS.js; distinct base + hash; separate dist dirs"},
+    {"name": "rollback to classic", "status": "PASS", "detail": "after killing v3-next, v3 /v3/ still HTTP 200"},
+    {"name": "teardown 0-leftover", "status": "PASS", "detail": "0 vite-preview processes, 0 listeners on 7789/7790 after teardown"},
+    {"name": "no port/service/asset collision", "status": "PASS", "detail": "distinct ports (7789/7790/11112), separate dist dirs, no production unit installed"},
+    {"name": "live flags OFF", "status": "PASS", "detail": "22/22 production flags OFF incl active_trader_live_canary_enabled"},
+    {"name": "units disabled", "status": "PASS", "detail": "5 trade-ai-lab-moomoo-*.service static + inactive"},
+    {"name": "no production change", "status": "PASS", "detail": "no route/proxy/firewall/DB/service/flag change; production checkout untouched"},
+    {"name": "PR draft state", "status": "PASS", "detail": "PR #150 draft=true"}
+  ],
+  "terminal_state": "GREEN_CLOSED_PROMOTION_BLOCKED",
+  "failures": 0
+}

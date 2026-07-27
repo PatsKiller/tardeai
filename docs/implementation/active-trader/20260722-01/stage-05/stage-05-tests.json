@@ -1,0 +1,27 @@
+{
+  "run_id": "20260722-01",
+  "stage": 5,
+  "start_head": "f070288ed77ff9c88f52e29523ff9d8fddcd5a1c",
+  "executed_at": "2026-07-23",
+  "classes": {
+    "IMPLEMENTATION_ACCEPTANCE": "GREEN (offline + integration)",
+    "DATA_FOUNDATION_OBSERVATION": "NOT STARTED (blocked: login + market closed)"
+  },
+  "suites": [
+    {"name": "stage 5 pure — tests/test_active_trader_stage5_moomoo.py", "status": "PASS",
+     "detail": "26 passed. AST trade-prohibition (0 constructors/methods reachable; injected trade call + TrdEnv.REAL detected); governors PLACE 15/12/3, MODIFY_CANCEL 20/16/4, SNAPSHOT 60/48/12 with token-bucket+sliding-window, ordinary-cannot-borrow-reserve, ceiling absolute, window aging, conservative restart, 100-thread concurrency==48, snapshot batching; features formulas/nulls/deterministic replay equality; queues coalesce/ring-gap/overflow/control-never-drops; subscription owner order+states, entitlement-missing preserves lower tiers, quote-right-conflict never auto-grabs, quota-deferred, first-push-not-fresh + reconnect epoch, provider_sequence null not invented; credential wrapper happy-path + rejects non-allowlisted/other-project/prod-exposure/sentinel/bad-mode/wrong-suffix; config render refuses non-loopback + no plaintext password in XML (md5 only) + auto_hold_quote_right=0 + console=0 + port 11112 + 0600; symbols capped at 2"},
+    {"name": "stage 5 replay+db — tests/test_active_trader_stage5_replay_db.py (isolated venv, pyarrow)", "status": "PASS",
+     "detail": "5 passed. WAL append/crc/crash-recovery (torn tail dropped, corrupt crc truncates); Parquet compaction verified by read-back + row count + wal sha256 + min/max ts, WAL retained until verified; disk-gate states; partition path shape; migration 0007 up/rollback(--to 6)/re-up + >=10 md_* tables in trade_ai_test"},
+    {"name": "install / isolation proofs", "status": "PASS",
+     "detail": "moomoo-api sdist sha256 == launcher pin; SDK 10.09.6908 + pyarrow 25.0.0 import in isolated venv on Python 3.14.4; system Python cannot import moomoo; repo .venv + requirements.txt unchanged (0 diff); archive safety 418 members / 0 traversal / 0 setuid; atomic versioned install + current symlink; GUI AppImage not installed"},
+    {"name": "all-stage regression (stages 1-5 core)", "status": "PASS",
+     "detail": "154 passed (stages 1-4 suites + stage-5 pure) with the read-only role re-granted SELECT on new md_* tables"},
+    {"name": "credential + live-login gate", "status": "BLOCKED_CREDENTIAL_GATE",
+     "detail": "credential bootstrap GREEN (token+project+3 non-sentinel secrets, prod not listed) but OpenD data login REJECTED by Moomoo: 'Password does not match' then 'account and password do not match, 9 chances remained'. Lockout counter active; automated retries STOPPED. Entitlement/quota/snapshot/subscribe/capture/5-session observation all UNAVAILABLE pending a working login"},
+    {"name": "regression + safety proofs", "status": "PASS",
+     "detail": "AST scan 0 trade constructors/methods; production schema hash unchanged; 0 user moomoo units enabled (all static/disabled); 0 system units; no production package/service/flag change; existing broker adapters/write fences/approval/2FA untouched; /v3 + portfolio server + /api/v2 unchanged; strict metric lint reproduces exit=1 at stage-4 and stage-5 heads; validator-churned docs restored; post-run 0 OpenD procs / 0 loopback listeners; tmpfs config shredded"}
+  ],
+  "safety": {"trade_context_created": false, "trade_call": false, "auto_grab": false,
+             "live_unlock": false, "simulation_order": false, "account_query": false},
+  "gate_result": "BLOCKED_CREDENTIAL_GATE (offline implementation GREEN)"
+}

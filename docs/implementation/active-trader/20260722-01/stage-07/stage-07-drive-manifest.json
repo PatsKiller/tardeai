@@ -1,0 +1,76 @@
+{
+  "run_id": "20260722-01",
+  "stage": 7,
+  "stage_commit": "1090127cec25f7395bfed9147a54de1881d84147",
+  "drive_folder_id": "1Zl6r70GuIH3t9bf6sOQVklWsBykjZPs5",
+  "path": "Trade_AI_Docs_v2/implementation/active-trader/20260722-01/stage-07/",
+  "verification": "11/11 SHA-256 verified",
+  "files": [
+    {
+      "name": "ACCOUNT_ROLE_AND_ALLOCATION_MATRIX.md",
+      "drive_id": "1rE5PGaOS0pvtVUonw226-BHTpV9yv5Fp",
+      "sha256": "54ba36efe66eeb246367c1e175620b1c904471029e276e36bbcc6d41fbf23e3e",
+      "verified": true
+    },
+    {
+      "name": "DRAFT_HASH_CANONICALIZATION.md",
+      "drive_id": "1VnwvaMZgrSkXV8dfx-eDX_fB94QM7r2r",
+      "sha256": "69f248ad19b4a86e2eef5eb3dc68718437319df1afe0c0997c55e0a824e78aa9",
+      "verified": true
+    },
+    {
+      "name": "FEATURE_CONTROL_WORKFLOW.md",
+      "drive_id": "15RsPR_wn2XJT71ji45-MerNVb1wuHBgy",
+      "sha256": "9630650d1badbbfc83f32b0ced87907522368286ed69616e131ada90994f241f",
+      "verified": true
+    },
+    {
+      "name": "OPERATOR_TODO.md",
+      "drive_id": "1irvNEBL7LKjJeeSkk1cz-lXfO4RbuiNY",
+      "sha256": "d8de78388f3e3969ab2d27193ef9c1c327c494199d169c0a39b822e1dcc62f8e",
+      "verified": true
+    },
+    {
+      "name": "QUICK_ADD_POLICY.md",
+      "drive_id": "1ix19BX3-hgI8MQKEKW_40BLlFzTtLTSz",
+      "sha256": "c9ae9bc22e342e2062572d8dfbb26ed451edc265c1288e6e3e3303e7e4dcaa28",
+      "verified": true
+    },
+    {
+      "name": "RISK_AND_SESSION_LIMIT_MATRIX.md",
+      "drive_id": "1_oDuvxYU71-oavh4jb1PImZ59H-0TicA",
+      "sha256": "f5fe0765280303dae51dcdedb4a057a0128af075b49c4e35905a891bb8bf5ec9",
+      "verified": true
+    },
+    {
+      "name": "SESSION_BUILDER_ARCHITECTURE.md",
+      "drive_id": "1L9bxVoTGEJII9N1oF7I-DLqcgNeWrfX7",
+      "sha256": "86fa4b38841f4b4d9dafea5e77036dbdf97fdddd8e2be40320980601292c5894",
+      "verified": true
+    },
+    {
+      "name": "SESSION_DRAFT_SCHEMA.md",
+      "drive_id": "1AeClovUIlSkxzrfjQD-2EOliz61KwQSE",
+      "sha256": "8f889010a0d13393ba86d64b91429a24d9b22fa507f06a0748f90938e3f527e4",
+      "verified": true
+    },
+    {
+      "name": "stage-07-plan.md",
+      "drive_id": "1QaY0RFTx_iqv3FXrd5954UkTC91enLKo",
+      "sha256": "01cd10494e0f21ac8d8cb54650022655626f026116c63a630cf90fe3ffde96b1",
+      "verified": true
+    },
+    {
+      "name": "stage-07-tests.json",
+      "drive_id": "1bpuXras2iuiwLYIXE-R9bsXd9LSd8TVV",
+      "sha256": "c5843d1551a408b0886962e16038adc0f2509f17d109e53da21e2f699892574d",
+      "verified": true
+    },
+    {
+      "name": "stage-07-changes.txt",
+      "drive_id": "1R_Z2dZIJ_NHpdEmtUGjfGpANsBxs7LlD",
+      "sha256": "self",
+      "verified": true
+    }
+  ]
+}

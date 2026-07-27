@@ -1,0 +1,6 @@
+{"run_id":"20260722-01","stage":9,"start_head":"4c633ffe","executed_at":"2026-07-23",
+"suites":[{"name":"shadow engine — tests/test_active_trader_stage9_shadow.py","status":"PASS",
+"detail":"9 passed: prime states (PRIMED/NOT_PRIMED/BLOCKED/STALE/INSUFFICIENT_DATA); fire states (FIRE_SHADOW/NO_FIRE/DATA_GAP/STALE/BLOCKED/no-microstructure); RES/RRS ranges 0-100 + confidence + INSUFFICIENT; missing-data per-component; runner transitions ELIGIBLE/ACTIVE/EXIT/INVALIDATED/DATA_BLOCKED; no-lookahead refused; deterministic replay equality (decisions+scores+journal); journal provenance SHADOW_FIXTURE_OR_REPLAY + event order + idempotent; no order/broker field"}],
+"totals":{"tests_passed":9,"failed":0},
+"gate":{"stage5_data_gate":"PENDING","stage9_promotion":"BLOCKED","data_foundation_validated":false},
+"gate_result":"GREEN_IMPLEMENTED_DATA_VALIDATION_PENDING"}

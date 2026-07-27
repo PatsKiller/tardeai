@@ -1,0 +1,26 @@
+# Stage 6 changed-file list — run 20260722-01
+# Start HEAD: 5c8bc5af  · ALL additive; /v3 untouched; no production change.
+
+A apps/command-center-v3-next/index.html
+A apps/command-center-v3-next/package-lock.json
+A apps/command-center-v3-next/package.json
+A apps/command-center-v3-next/src/App.test.tsx
+A apps/command-center-v3-next/src/App.tsx
+A apps/command-center-v3-next/src/fixtures/readApi.ts
+A apps/command-center-v3-next/src/main.tsx
+A apps/command-center-v3-next/src/panels/panels.tsx
+A apps/command-center-v3-next/src/test-setup.ts
+A apps/command-center-v3-next/tsconfig.json
+A apps/command-center-v3-next/vite.config.ts
+A docs/implementation/active-trader/20260722-01/stage-06/OPERATOR_TODO.md
+A docs/implementation/active-trader/20260722-01/stage-06/V3_NEXT_ACCESSIBILITY_REPORT.md
+A docs/implementation/active-trader/20260722-01/stage-06/V3_NEXT_ARCHITECTURE.md
+A docs/implementation/active-trader/20260722-01/stage-06/V3_NEXT_COMPONENT_MATRIX.md
+A docs/implementation/active-trader/20260722-01/stage-06/V3_NEXT_READ_API_CONTRACT.md
+A docs/implementation/active-trader/20260722-01/stage-06/V3_NEXT_ROUTE_AND_BUNDLE_REPORT.md
+A docs/implementation/active-trader/20260722-01/stage-06/V3_NEXT_SCREEN_STATE_MATRIX.md
+A docs/implementation/active-trader/20260722-01/stage-06/V3_PARITY_BASELINE.md
+A docs/implementation/active-trader/20260722-01/stage-06/stage-06-plan.md
+A docs/implementation/active-trader/20260722-01/stage-06/stage-06-tests.json
+
+# Off-repo: apps/command-center-v3-next/{node_modules,dist} gitignored (built, not tracked).

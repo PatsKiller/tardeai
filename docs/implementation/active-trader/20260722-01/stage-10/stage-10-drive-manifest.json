@@ -1,0 +1,82 @@
+{
+  "run_id": "20260722-01",
+  "stage": 10,
+  "stage_commit": "9adcb3fbb598a7828b0fb037bffc489729c37a86",
+  "drive_folder_id": "1LgtGMiPfLixnKtklzgqHtC1Rt9O6Aoae",
+  "path": "Trade_AI_Docs_v2/implementation/active-trader/20260722-01/stage-10/",
+  "verification": "12/12 SHA-256 verified",
+  "files": [
+    {
+      "name": "BROKER_TRANSLATION_MATRIX.md",
+      "drive_id": "1YbP8802xi-G11VAaSGVoN06P5VRtkN8t",
+      "sha256": "e869a18486789c57dfda8c004a6217d243ed704d262a1fa97e358c91be3c0929",
+      "verified": true
+    },
+    {
+      "name": "MULTI_ACCOUNT_SIMULATION.md",
+      "drive_id": "1XAhjb1Kfjb-FQTePDtMLdaYoOR-hyzdS",
+      "sha256": "1e57926a05a07c11167fc2bb2e0cb69128a44963b3f374a60d016d1d20c0b551",
+      "verified": true
+    },
+    {
+      "name": "OPERATOR_TODO.md",
+      "drive_id": "1D-boEIjdn_XZkEf6zblt3vHCxUrb0U5u",
+      "sha256": "f9b4b4bae5e6f44cb5a4682270718214454bebf65b76affb3d087edb1015ff22",
+      "verified": true
+    },
+    {
+      "name": "PROMOTION_GATE_STATUS.md",
+      "drive_id": "1Xtm_nNo6hDMC3hGH_AbRQE1K7WcfttTH",
+      "sha256": "a112496b22a975c02817b0f63fc21c0f6a139f72167d9836cfe1fe7115e9bb8f",
+      "verified": true
+    },
+    {
+      "name": "PROTECTION_SIMULATION.md",
+      "drive_id": "1_JJFixh9gLLjsDzh-Y1H-0GGreckxHJ6",
+      "sha256": "be459f5aeaab33b0f935070093a0d6f91a6bc43334e2b0bfeb76e1e908d022bb",
+      "verified": true
+    },
+    {
+      "name": "SIMULATION_ARCHITECTURE.md",
+      "drive_id": "1-QUsXuoVm6FHcEFH-qC3q8rHdfWbTJGO",
+      "sha256": "bd40bb772d3622c4f9589effb1ed5aaddd6febac611c9d45ade4ac629050b4d3",
+      "verified": true
+    },
+    {
+      "name": "SIMULATION_FILL_MODEL.md",
+      "drive_id": "1QgukKWYOpsBI-cOcnIyz_fPK0zGXv9L3",
+      "sha256": "aaeb76dae3bcf6ec31cc2cb0a79e754c2e441e30aba001c4968b81c1855f16f7",
+      "verified": true
+    },
+    {
+      "name": "SIMULATION_PNL_REPORT.md",
+      "drive_id": "1MA8ZW4XsNL2frVOwqLaAyYKxTZU4dmeY",
+      "sha256": "b3139e818ce29327dd753dab20b30b079b28966c90acfcb00a019340af5135ca",
+      "verified": true
+    },
+    {
+      "name": "SMART_LIMIT_SIMULATION.md",
+      "drive_id": "18a3gl6-baGaPeTWVfTWFhpXvD-cTyl0W",
+      "sha256": "08b79ff822476d9a3a7e1a55abf35aa818306d00b972a1f2991057e2bd8bb2ab",
+      "verified": true
+    },
+    {
+      "name": "stage-10-plan.md",
+      "drive_id": "1td-5l-dl4bVL0AZ-qTpwtPMGtmo2a7fh",
+      "sha256": "98dae94bfba1ba223740a477e926d1b259fd470d77d18a33407d3b7e222e1962",
+      "verified": true
+    },
+    {
+      "name": "stage-10-tests.json",
+      "drive_id": "1Tt9pD9C8DBe_l1o1jTqLOWuxzQGSGeP6",
+      "sha256": "1ae762c63a3702be67f95749223879fa6b0334c544b02714b79ce39bbd249da9",
+      "verified": true
+    },
+    {
+      "name": "stage-10-changes.txt",
+      "drive_id": "1VdaYi82UMCUc7SRfocDbsF908jWnfGiY",
+      "sha256": "self",
+      "verified": true
+    }
+  ]
+}

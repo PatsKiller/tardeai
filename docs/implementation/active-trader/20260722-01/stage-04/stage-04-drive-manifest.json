@@ -1,0 +1,32 @@
+{
+  "run_id": "20260722-01",
+  "stage": 4,
+  "synced_at": "2026-07-22",
+  "drive_root": {
+    "folder_name": "Trade_AI_Docs_v2",
+    "folder_id": "1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR",
+    "path": "Trade_AI_Docs_v2/implementation/active-trader/20260722-01/stage-04/",
+    "stage_folder_id": "1A_SLxRxpWcs7lNun2cMSxFHMnYlRzFyj"
+  },
+  "upload_method": "gog CLI (owner-approved lane); verification by full re-download + local sha256 comparison",
+  "verification": "11/11 files SHA-256 match between local worktree and Drive re-download (2026-07-22)",
+  "stage_commit": "5900e6b9d4a857d668cc46cf500e812756456190",
+  "files": [
+    {"name": "stage-04-plan.md", "drive_id": "1XyjpXZv2VfnNSBblVpzldkoRLXGx0UW1", "sha256": "ca017bec889d551376d7e4485bd4cd83a522703620bb81312207201b0af04acf", "verified": true},
+    {"name": "stage-04-closeout.md", "drive_id": "1SQsNDGnwEZ6j1zjhNzbuMbZ6-TbVosZW", "sha256": "3ec703ec9219f5de31cdd1e8712b888018e77e620ed827393fd45f43e8f4c5df", "verified": true},
+    {"name": "stage-04-tests.json", "drive_id": "1Hu2S2ZaybRFwCfwaIT3l0yqI54KeQVA6", "sha256": "b88dea53b8dfa81656955ea8dc9aee2b0b99adcdeb2df5027fb385815f790015", "verified": true},
+    {"name": "stage-04-changes.txt", "drive_id": "1K_EC_ydJaaqjtVU6_O9JVCMmH8uodOfU", "sha256": "verified-by-download (self-referencing file)", "verified": true},
+    {"name": "READ_API_ARCHITECTURE.md", "drive_id": "192_Tk7JhW6CXLHfrTbwp5-bhGrbUp9mS", "sha256": "df443ced3a303129aa0b8c01ebb35ce49e2291c861fc0850f6ed06003cbfcf22", "verified": true},
+    {"name": "READ_API_ROUTE_MATRIX.md", "drive_id": "16wGhgcUu5NcCjC3DRdOhWIqaQwUSaLBO", "sha256": "b7199f2767331c0ddfe9615edc236fe9371e626087953a365326624db7f97c2a", "verified": true},
+    {"name": "READ_API_SCHEMA.md", "drive_id": "1PX1MEUgu8oXMJkrxCad_P_jGQCCGvb8m", "sha256": "9de122ded5c5bf658ad05377917433ebf1dcd711163d06e79fcae14d71ea0153", "verified": true},
+    {"name": "READ_ONLY_DATABASE_ROLE.md", "drive_id": "1pyjkPmXzv1PehSJaonyxt1UGNoPlkvdl", "sha256": "76d456e30e4fdc1eba4b718fb2cb65f1cc2596720f27d6f91bac962183773a99", "verified": true},
+    {"name": "DEVELOPMENT_SERVER_RUNBOOK.md", "drive_id": "1MT2lYcdr-mxW1fDj1lsCOUuiil7CEx0b", "sha256": "bcb8de8808ef534bba69c9c8d6b8b8f4937596a956e65947b54d020940f2bc3f", "verified": true},
+    {"name": "SECURITY_AND_REDACTION_REPORT.md", "drive_id": "1PQoPPtJhoJBb1bEKVgAKPVNd3lmMvgCr", "sha256": "293d483a0b42748b4cf9ec48aa96a5ef1856e1a5e49f103f01f885226e8602cf", "verified": true},
+    {"name": "OPERATOR_TODO.md", "drive_id": "1f4goBpqMge_UQFgBqZA7-eNu9K6Jdliy", "sha256": "097f5d1e9d76c888a22ce41243aaae71fbefe7fe55b65d6f8dff7400add91e5b", "verified": true}
+  ],
+  "notes": [
+    "GitHub parity: remote branch SHA equals local commit 5900e6b9 (git content addressing)",
+    "this manifest is committed and uploaded after writing; cannot self-reference its own Drive id",
+    "no secret value, DSN, token, account number, or authorization header was uploaded"
+  ]
+}

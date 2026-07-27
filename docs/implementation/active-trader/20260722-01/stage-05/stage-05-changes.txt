@@ -1,0 +1,52 @@
+# Stage 5 changed-file list — run 20260722-01
+# Start HEAD: f070288ed77ff9c88f52e29523ff9d8fddcd5a1c
+# ALL repository changes ADDITIVE. Zero modifications to existing files, /v3, portfolio
+# server, api_v2, brokers, repo .venv, requirements.txt, config/systemd, or production.
+
+## Code (additive)
+A scripts/active_trader/moomoo/__init__.py
+A scripts/active_trader/moomoo/secret_render.py
+A scripts/active_trader/moomoo/gateway.py
+A scripts/active_trader/moomoo/envelope.py
+A scripts/active_trader/moomoo/features.py
+A scripts/active_trader/moomoo/replay.py
+A scripts/active_trader/moomoo/governor.py
+A scripts/active_trader/moomoo/ast_guard.py
+A scripts/active_trader/moomoo/smoke.py
+A scripts/active_trader/provision_read_api_role.sh   (re-run to grant SELECT on md_* — already committed Stage 4; unchanged file)
+A migrations/active_trader/0007_moomoo_market_data.up.sql
+A migrations/active_trader/0007_moomoo_market_data.down.sql
+A tests/test_active_trader_stage5_moomoo.py
+A tests/test_active_trader_stage5_replay_db.py
+
+## Stage 5 evidence artifacts (docs/implementation/active-trader/20260722-01/stage-05/)
+A stage-05-plan.md
+A stage-05-closeout.md
+A stage-05-tests.json
+A stage-05-changes.txt          (this file)
+A stage-05-drive-manifest.json  (written after Drive sync)
+A MOOMOO_INSTALLATION_MANIFEST.md
+A MOOMOO_CREDENTIAL_REQUIREMENTS.md
+A MOOMOO_OPEND_CONFIGURATION.md
+A MOOMOO_SUBSCRIPTION_ENTITLEMENT_REPORT.md
+A MOOMOO_DATA_QUALITY_REPORT.md
+A MOOMOO_RATE_GOVERNOR_REPORT.md
+A MOOMOO_REPLAY_RECOVERY_REPORT.md
+A MOOMOO_FEATURE_VALIDATION_REPORT.md
+A MOOMOO_SERVICE_RUNBOOK.md
+A MOOMOO_ROLLBACK.md
+A BF1_BROKER_RESIDENT_PROTECTION_EVIDENCE.md
+A RTH_OBSERVATION_CHECKPOINT.md
+A OPERATOR_TODO.md
+
+## Off-repo (isolated, lab-scoped; NO secrets committed)
+- ~/.local/opt/trade-ai-lab/moomoo/opend/10.9.6908 (+current)  — OpenD binary
+- ~/.local/venvs/trade-ai-lab/moomoo-api/10.9.6908 (+current)  — SDK venv
+- ~/.local/state/trade-ai-lab/moomoo/{INSTALL_MANIFEST.json,requirements-stage5.lock,pip-freeze-stage5.txt,credential-bootstrap.json}
+- ~/.config/systemd/user/trade-ai-lab-moomoo-*.service (5, disabled/static)
+- lab DB trade_ai_test: migration 0007 applied (md_* tables)
+- Bitwarden trade-ai-moomoo-data: 3 operator-entered secrets (values never seen); no new secret written by Codex
+
+## Side-effect note
+Validator suite regenerated 3 tracked evidence docs; restored to HEAD before commit.
+Post-run: 0 OpenD processes, 0 loopback listeners, tmpfs OpenD.xml shredded.

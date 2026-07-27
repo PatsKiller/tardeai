@@ -1,0 +1,30 @@
+{
+  "run_id": "20260722-01",
+  "stage": 3,
+  "start_head": "520e8d3b6c7afc8fa4d01f4beab3e419dca8adbd",
+  "executed_at": "2026-07-22",
+  "suites": [
+    {
+      "name": "classifier + notifications + fallback (pure) — tests/test_active_trader_stage3_rejections.py",
+      "status": "PASS",
+      "detail": "28 passed. 8.1 classification: all 24 fixtures classify as expected; 17 codes fixture/direct-reached + 3 registry-validated; exact-code beats message-pattern; broker pattern isolation; case/spacing normalization without overmatch; secret+digit redaction; deterministic replay; malformed/missing fields -> UNKNOWN; bad broker/provenance rejected. 8.2 retry safety: unknown/broker-assist/electronic never retryable; auth-expiry never retried in order path; RATE_LIMITED requires bounded backoff (30s) and UNKNOWN can never be retryable (constructor-enforced); repeated rejection dedupes instead of enqueueing action. 8.3 capability projection: symbol+account scoping, no cross-account/cross-symbol leakage, RESTRICTED-only (grant refused), no projection without affected capability, idempotent replay. 8.4 notifications: channels/content (incl. broker-call email policy), mock Telegram + mock Gmail payload capture, dedupe/no-flood, changed-fill single update, escalation->CRITICAL+EMAIL, ack, resolve, expiry, redaction, never claims alternate submitted. 8.5 fallback: happy-path auto-failover; all 8 non-final source states gate correctly (WAIT vs BLOCKED); unconfirmed fill BLOCKED (late-fill/ambiguous-cancel); confirmed partial fill reduces room; unapproved alternate -> REAUTHORIZE_SESSION + §16F.9 projection; 9 ineligibility paths -> NO_FALLBACK; share/notional/risk/session caps incl. envelope-exhausted; prompt-only mode; idempotent replay"
+    },
+    {
+      "name": "lab DB persistence — tests/test_active_trader_stage3_persistence.py",
+      "status": "PASS",
+      "detail": "5 passed against trade_ai_test: migration 0006 forward/rollback(--to 5)/re-up; rejection upsert = single row with occurrence_count increment, same event id, rule/version/confidence/evidence-hash + capability-evidence link recorded; LabDbSink dedupe row with ACTION_REQUIRED->BLOCKING severity mapping; no unmasked digit runs or secret markers in any lab row; production DSN refusal re-proven"
+    },
+    {
+      "name": "prior-stage regression",
+      "status": "PASS",
+      "detail": "stages 1-2 pure suites (53) + stage 1-2 DB suites (16) re-run green; total local passes this stage: 81 pure + 21 lab-DB = 102"
+    },
+    {
+      "name": "regression and safety proofs",
+      "status": "PASS",
+      "detail": "working set purely additive (8 new paths: migration pair, 3 modules, fixtures, 2 test files); zero diff in apps/, scripts/brokers/, schwab adapters/transport, api_v2, portfolio_server, telegram_alert, alert_dispatcher_unified, operator_alert_policy.yaml, requirements, .github; NO live broker call (no network module imported by stage-3 code paths; sinks are test-only); no order preview/place/replace/cancel; no 2FA; no Moomoo install; no production alert sent by tests (mock sinks assert-verified); production schema hash unchanged; strict metric lint reproduces exit=1 at stage-2 head and stage-3 head; validators 16/17 same pre-existing failure; validator-churned docs restored"
+    }
+  ],
+  "totals": {"local_tests_passed": 102, "failed": 0, "pre_existing_failures": 1},
+  "gate_result": "GREEN"
+}

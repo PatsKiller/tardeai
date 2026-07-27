@@ -1,0 +1,12 @@
+{
+  "run_id": "20260722-01", "stage": 6, "start_head": "5c8bc5af", "executed_at": "2026-07-23",
+  "suites": [
+    {"name": "vitest — apps/command-center-v3-next/src/App.test.tsx", "status": "PASS",
+     "detail": "9 passed: renders all 18 required panels; classic nav -> /v3/ + next link; 3 Moomoo blocked badges and NO green/live badge (moomoo broker NOT_INSTALLED); explicit UNAVAILABLE for L2/tape/marks + null rvol/float; every action control disabled (no write); feature modal read-only + prod modes OFF; parity claims no UI parity; symbol selector switches workspace; masked account ids only (no raw numbers)"},
+    {"name": "production build", "status": "PASS", "detail": "tsc + vite build OK — 35 modules, ~177 kB JS; dist/ + node_modules/ gitignored (only source tracked)"},
+    {"name": "bundle separation + /v3 regression", "status": "PASS",
+     "detail": "base '/v3-next/' distinct from /v3 '/v3/'; 0 changed files under apps/command-center-v3; not mounted into production server; no systemd/proxy change"},
+    {"name": "no secret leakage", "status": "PASS", "detail": "fixtures carry only masked ids/synthetic data; no DSN/token/account-number; secret scanner clean on commit"}
+  ],
+  "totals": {"tests_passed": 9, "failed": 0}, "gate_result": "GREEN_CLOSED"
+}

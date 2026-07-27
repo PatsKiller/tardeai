@@ -1,0 +1,17 @@
+# Stage 9 changed-file list — run 20260722-01
+# Start HEAD: 4c633ffe · additive; fixtures/replay only; no order/broker/production.
+
+A docs/implementation/active-trader/20260722-01/stage-09/FIRE_RULE_MATRIX.md
+A docs/implementation/active-trader/20260722-01/stage-09/NO_LOOKAHEAD_REPORT.md
+A docs/implementation/active-trader/20260722-01/stage-09/OPERATOR_TODO.md
+A docs/implementation/active-trader/20260722-01/stage-09/PRIME_RULE_MATRIX.md
+A docs/implementation/active-trader/20260722-01/stage-09/REPLAY_DETERMINISM_REPORT.md
+A docs/implementation/active-trader/20260722-01/stage-09/RES_SPECIFICATION.md
+A docs/implementation/active-trader/20260722-01/stage-09/RRS_SPECIFICATION.md
+A docs/implementation/active-trader/20260722-01/stage-09/RUNNER_METHODOLOGY.md
+A docs/implementation/active-trader/20260722-01/stage-09/SHADOW_DECISION_ENGINE.md
+A docs/implementation/active-trader/20260722-01/stage-09/STAGE5_DATA_GATE_STATUS.md
+A docs/implementation/active-trader/20260722-01/stage-09/stage-09-plan.md
+A docs/implementation/active-trader/20260722-01/stage-09/stage-09-tests.json
+A scripts/active_trader/shadow_engine.py
+A tests/test_active_trader_stage9_shadow.py

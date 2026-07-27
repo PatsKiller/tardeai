@@ -1,0 +1,76 @@
+{
+  "run_id": "20260722-01",
+  "stage": 6,
+  "stage_commit": "5fb20248513625b2733e05f0f81c0abfce978749",
+  "drive_folder_id": "1jizBWEwVaIzmHVMYVQZT9mm-M8YECIDP",
+  "path": "Trade_AI_Docs_v2/implementation/active-trader/20260722-01/stage-06/",
+  "verification": "11/11 SHA-256 verified",
+  "files": [
+    {
+      "name": "OPERATOR_TODO.md",
+      "drive_id": "1AjCiThy0Ebn6VI7GtwRUU0xBolYFUXGJ",
+      "sha256": "8e4e4fb1f06f39372e13046f6fd042d2a909cfe14af789bbef81b163f2fccbb6",
+      "verified": true
+    },
+    {
+      "name": "stage-06-plan.md",
+      "drive_id": "1jdCdwn51pci7gRaYmBsOAnqXWrCZRnCj",
+      "sha256": "cc8d15bbacdaea74973ab40c09602861d97527b515bcceb1c17d4056d159e7fd",
+      "verified": true
+    },
+    {
+      "name": "V3_NEXT_ACCESSIBILITY_REPORT.md",
+      "drive_id": "1eN1Iryb2-jEtF_QkwkKAF_xWSV4B6QXC",
+      "sha256": "80c4f9ccc551322da189b02a11131a3ce899c42f089e4b13b8d5efaf644a3fb1",
+      "verified": true
+    },
+    {
+      "name": "V3_NEXT_ARCHITECTURE.md",
+      "drive_id": "1Ae9nSCtpLvv7M92rk77u43q12Lgl03fP",
+      "sha256": "b96a77bcf87dd408a17766f1ccd2aca31d931030d1456090c917a55ac87b8692",
+      "verified": true
+    },
+    {
+      "name": "V3_NEXT_COMPONENT_MATRIX.md",
+      "drive_id": "1k32ZW0flUSYBN3-Wl8u0B0SIcgGg02uL",
+      "sha256": "64fbef3222547dfd1f2a2fd830a4a15c956908380c983b5f48b9e8ed9d28ace4",
+      "verified": true
+    },
+    {
+      "name": "V3_NEXT_READ_API_CONTRACT.md",
+      "drive_id": "12zK6UF4QYU-4GnxB2_CHxZLLxxtUXWk1",
+      "sha256": "021cac6838e2bd821d3aa29ba66277877d5ae692021a2b399e543acdb0e3668c",
+      "verified": true
+    },
+    {
+      "name": "V3_NEXT_ROUTE_AND_BUNDLE_REPORT.md",
+      "drive_id": "1Dtxtp51HzFOK0wFSceW-VdiIDQLK1_DV",
+      "sha256": "a3e28b1a69e933ca93a600ffdb494c17a894f7c2f68360fa5d9ae14c4439f3a7",
+      "verified": true
+    },
+    {
+      "name": "V3_NEXT_SCREEN_STATE_MATRIX.md",
+      "drive_id": "1Tv8QYphJwyoE8Kl6xoO-DFsYd2N9IwwC",
+      "sha256": "10119d86fa777c01dbe756f4c0441c7eb9a5cecf93b17071f44a7909707a7542",
+      "verified": true
+    },
+    {
+      "name": "V3_PARITY_BASELINE.md",
+      "drive_id": "1uRGjTLe_oKCYrK9qpj2fLy-iAH8tiq_E",
+      "sha256": "3200fe7e3f4c814ff3c46f4acffdd2d11a97fec122c2c6c67ac9430994b8924d",
+      "verified": true
+    },
+    {
+      "name": "stage-06-tests.json",
+      "drive_id": "1P0TSG_4udNCT58TNy12ffnxiJAVoaiKL",
+      "sha256": "4a83034337e1ff3b0a6368bb1ecab0d17c3b58de79172a0e01dcaa230e9944c2",
+      "verified": true
+    },
+    {
+      "name": "stage-06-changes.txt",
+      "drive_id": "1pgRRTwSxvSxOcai3SJlyAsEMRVfJGThO",
+      "sha256": "self",
+      "verified": true
+    }
+  ]
+}
