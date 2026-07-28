@@ -1,0 +1,214 @@
+# Momentum Scalp — canonical NAMED SETUP registry (v1).
+# Backend-owned single source of truth for scalp setup taxonomy. The UI consumes this THROUGH the
+# read-only API (scripts/scalp_setup_registry.py + active_trader read API) — it is NEVER duplicated as
+# hard-coded React text.
+#
+# LAYERING (see docs/strategies/SCALP_SETUP_TAXONOMY_v1.md):
+#   A. NAMED SETUP DETECTORS      — the pattern that actually fired (this file).
+#   B. CONFIRMATION OVERLAYS      — evidence supporting/weakening a setup (config/scalp_confirmations.yaml).
+#   C. UNIVERSAL EXECUTION GATES  — liquidity/spread/slippage/freshness/order-type (scalp_signal_engine.yaml).
+# A lane (IGN_60, IGN_ACCEL, TRIGGER) is NOT a setup. A setup is a named, versioned, deterministic pattern.
+#
+# rule_provenance vocabulary (every rule line is tagged in the taxonomy doc, not invented as sourced):
+#   SOURCE_DERIVED       — mechanic taken from the cited external article.
+#   ENGINE_ADAPTATION    — Trade AI operator-directed adaptation, NOT a rule the article supplied.
+#   EXISTING_ENGINE_RULE — already implemented deterministic rule (IGN scorer / trigger FSM).
+# Numeric thresholds are NOT stored here as sourced facts — they live in config (scalp_signal_engine.yaml
+# + scalp_confirmations.yaml) and are CONFIGURABLE. `threshold_config_keys` names where each lives.
+#
+# operating_state: SHADOW | MANUAL_PAPER_TEST_ONLY | DISABLED
+#   SHADOW                 — detect + log + display + alert; NO ticket, NO order.
+#   MANUAL_PAPER_TEST_ONLY — additionally may compile a manual paper ticket that the HUMAN initiates and
+#                            confirms; still NEVER auto-submitted. (No setup starts here; operator promotes.)
+#   DISABLED               — not detected.
+# All setups begin SHADOW (arch-owner decision 2026-07-27 §12: external articles are educational source
+# material, not proof of edge). No LLM/agent determines setup truth (§10). Detection is deterministic (§11).
+
+registry_version: "scalp-setup-registry-v1"
+schema_version: 1
+
+# ── canonical sessions & the global new-fire cutoff (mirrors scalp_signal_engine.yaml session block) ──
+sessions:
+  premarket: {label: "PREMARKET", default_start_et: "07:00", earliest_start_et: "06:00", end_et: "09:29"}
+  regular:   {label: "REGULAR SESSION", start_et: "09:30", end_et: "16:00"}
+  global_no_new_fire_after_et: "12:00"   # no NEW setup FIRED state after noon (management/journaling continue)
+
+setups:
+  - setup_id: SCALP_IGNITION_BREAKOUT_V1
+    display_label: "IGNITION BREAKOUT"
+    family: Momentum
+    version: "1"
+    enabled: true
+    operating_state: SHADOW
+    supported_sessions: [REGULAR]
+    active_window_et: "09:30-12:00"
+    required_data_tier: T0
+    best_conditions: "High RVOL_tod, catalyst present, volume burst, price displacement above VWAP with a valid trigger."
+    entry_rule: "IGN ignition score crosses a notification lane AND the impulse/pullback trigger FSM emits a TRIGGER (trigger-bar high break)."
+    invalidation_rule: "Retrace beyond retrace_void voids the leg; trigger not confirmed on a closed bar."
+    stop_rule: "min(trigger_low, pullback_low) - stop_offset, floored at entry - noise_stop_atr_mult*ATR_1m."
+    target_rule: "measured-move / +R multiples (target_1 = entry + 2R)."
+    exit_if_wrong: "Stop hit, or leg VOID on excessive retrace / no-chase breach."
+    required_inputs: [minute_bars, rvol_tod, vwap, atr_1m, ignition_subscores, trigger_fsm_state]
+    optional_confirmations: [CATALYST_CONFIRMED, VOLUME_CONFIRMED, VWAP_ALIGNED, MOMENTUM_ALIGNED, ONE_MIN_CONFLUENCE]
+    threshold_config_keys: [ignition.weights, notifications.*, trigger.*]
+    source_attribution: ["Trade AI Momentum Scalp Signal Engine v1 (design §3-§7)"]
+    rule_provenance: EXISTING_ENGINE_RULE
+    source_rule_notes: "The engine's native setup: IGN scorer (§3.2) + entry-trigger FSM (§4/§6). Not from the external articles."
+    engine_adaptations: "This registry names the already-shipped IGN+TRIGGER behavior as a canonical setup so events carry a setup identity, not just a lane."
+
+  - setup_id: SCALP_L2_MOMENTUM_V1
+    display_label: "L2 MOMENTUM"
+    family: Momentum
+    version: "1"
+    enabled: true
+    operating_state: SHADOW
+    supported_sessions: [REGULAR]
+    active_window_et: "09:30-11:00"
+    required_data_tier: T2   # order book REQUIRED — refuses when T2 unavailable (never inferred from OHLCV)
+    best_conditions: "Catalyst gap, exceptional early volume, directional order-book stacking, short consolidation, break with bids lifting. Primarily 09:30-11:00 ET."
+    entry_rule: "Break of a 2-3 minute consolidation with directional book stacking and bid lifting / offer hitting, on fresh entitled Level-2 evidence."
+    invalidation_rule: "Order-book FLIP (stacking reverses) is an immediate invalidation."
+    stop_rule: "Below the consolidation low (configurable), executed as a price-controlled order."
+    target_rule: "Measured move of the consolidation / next book resistance."
+    exit_if_wrong: "Book flip, failed break back into consolidation, or universal gate veto."
+    required_inputs: [level2_book, time_and_sales, catalyst_gap, early_volume, consolidation, minute_bars]
+    optional_confirmations: [L2_CONFIRMED, CATALYST_CONFIRMED, VOLUME_CONFIRMED, MARKET_ALIGNED]
+    threshold_config_keys: [t2.*, "gates.*", "confirmations.l2.*"]
+    source_attribution: ["TradeZella — Level 2 Momentum Breakout (https://www.tradezella.com/blog/scalping-strategies)"]
+    rule_provenance: SOURCE_DERIVED
+    source_rule_notes: "Article gives the mechanic (catalyst gap, early volume, stacking, consolidation, break, book-flip invalidation) but not numeric thresholds — those are configurable, not sourced."
+    engine_adaptations: "Requires ACTUAL entitled+fresh book/time-and-sales. When T2 unavailable → setup_state=DATA_UNAVAILABLE, fire=false, reason=L2_ENTITLEMENT_OR_BOOK_UNAVAILABLE. Stacking/bid-lifting/flip are NEVER inferred from bars."
+
+  - setup_id: SCALP_ORB_15_BREAKOUT_V1
+    display_label: "15M ORB"
+    family: Breakout
+    version: "1"
+    enabled: true
+    operating_state: SHADOW
+    supported_sessions: [REGULAR]
+    active_window_et: "09:45-10:30"
+    required_data_tier: T0
+    best_conditions: "Clean 09:30-09:44 opening range, decisive close outside with volume and broader-market alignment."
+    entry_rule: "After a CLOSED candle outside the 09:30:00-09:44:59 ET opening range, with breakout-volume confirmation and broader-market alignment. Earliest fire 09:45; default expiry 10:30."
+    invalidation_rule: "Close back inside the opening range; failure to hold the break."
+    stop_rule: "Opposite side of the opening range (configurable)."
+    target_rule: "Range height projected from the break (measured move)."
+    exit_if_wrong: "Re-entry into range, market misalignment, or gate veto."
+    required_inputs: [opening_range_0930_0944, minute_bars, breakout_volume, market_alignment, vwap]
+    optional_confirmations: [VOLUME_CONFIRMED, MARKET_ALIGNED, ONE_MIN_CONFLUENCE]
+    threshold_config_keys: ["orb.*", "gates.*"]
+    source_attribution: ["TradeZella — 15-Minute Opening Range Breakout (https://www.tradezella.com/blog/scalping-strategies)"]
+    rule_provenance: SOURCE_DERIVED
+    source_rule_notes: "Range window, close-outside + volume + market-alignment, and the ~09:45-10:30 fire window are source-derived. Exact volume multiple is configurable."
+    engine_adaptations: "Opening range is built ONLY from regular-session bars (09:30-09:44). Premarket bars are excluded. Refuses to construct the ORB before 09:30."
+
+  - setup_id: SCALP_VWAP_PULLBACK_V1
+    display_label: "VWAP PULLBACK"
+    family: Pullback
+    version: "1"
+    enabled: true
+    operating_state: SHADOW
+    supported_sessions: [REGULAR]
+    active_window_et: "09:45-11:30"
+    required_data_tier: T0
+    best_conditions: "Established intraday trend; price stays on the trend side of VWAP and pulls back to it on declining volume."
+    entry_rule: "CONTINUATION: price remains on the trend side of VWAP, pulls back toward VWAP on declining volume, then resumes the prior trend. Fires only after 09:45 (VWAP still establishing in the first 15 minutes)."
+    invalidation_rule: "Rising volume into the pullback, or a decisive close through VWAP to the other side (that would be a different setup)."
+    stop_rule: "Beyond VWAP / pullback extreme (configurable)."
+    target_rule: "Prior swing / trend extension (measured move)."
+    exit_if_wrong: "Trend fails, VWAP lost, or gate veto."
+    required_inputs: [vwap, minute_bars, trend_state, pullback_volume]
+    optional_confirmations: [VWAP_ALIGNED, VOLUME_CONFIRMED, MOMENTUM_ALIGNED, ONE_MIN_CONFLUENCE]
+    threshold_config_keys: ["vwap_pullback.*", "gates.*"]
+    source_attribution: ["TradeZella — VWAP Scalp / long-example pullback continuation (https://www.tradezella.com/blog/scalping-strategies)"]
+    rule_provenance: SOURCE_DERIVED
+    source_rule_notes: "The article's long example describes a pullback-to-VWAP CONTINUATION. This is mechanically DISTINCT from mean reversion and MUST NOT share the reversion label."
+    engine_adaptations: "Split from the article's ambiguous 'VWAP Deviation'. Continuation only. No fire before 09:45 (source: VWAP establishing in the opening 15 minutes)."
+
+  - setup_id: SCALP_VWAP_REVERSION_V1
+    display_label: "VWAP REVERSION"
+    family: Mean Reversion
+    version: "1"
+    enabled: true
+    operating_state: SHADOW
+    supported_sessions: [REGULAR]
+    active_window_et: "09:45-11:30"
+    required_data_tier: T0
+    best_conditions: "Price materially stretched away from VWAP with exhaustion/reversal evidence."
+    entry_rule: "MEAN REVERSION: price is materially stretched from VWAP, exhaustion/reversal evidence appears, target is movement back toward VWAP. Fires only after 09:45."
+    invalidation_rule: "Continued extension away from VWAP without reversal; trend acceleration."
+    stop_rule: "Beyond the stretch extreme (configurable)."
+    target_rule: "Return toward VWAP."
+    exit_if_wrong: "No reversal, extension continues, or gate veto."
+    required_inputs: [vwap, vwap_distance, minute_bars, reversal_evidence]
+    optional_confirmations: [SUPPORT_RESISTANCE_REACTION, ONE_MIN_CONFLUENCE]
+    threshold_config_keys: ["vwap_reversion.*", "gates.*"]
+    source_attribution: ["TradeZella — VWAP Scalp / mean-reversion framing (https://www.tradezella.com/blog/scalping-strategies)"]
+    rule_provenance: SOURCE_DERIVED
+    source_rule_notes: "The article INTRODUCES VWAP as mean reversion. Distinct from the continuation pullback; never mislabel one as the other."
+    engine_adaptations: "Split from ambiguous 'VWAP Deviation'. Mean reversion only. No fire before 09:45."
+
+  - setup_id: SCALP_MICRO_PULLBACK_V1
+    display_label: "MICRO PULLBACK"
+    family: Pullback
+    version: "1"
+    enabled: true
+    operating_state: SHADOW
+    supported_sessions: [REGULAR]
+    active_window_et: "09:30-11:30"
+    required_data_tier: T0
+    best_conditions: "Strong momentum leg, declining-volume retracement to VWAP or a 1-minute MA, reversal candle."
+    entry_rule: "Strong momentum leg → declining-volume retracement to VWAP/1m-MA → fire on the reversal candle's high."
+    invalidation_rule: "Excessive retracement (leg void); no-chase breach; pullback on rising volume."
+    stop_rule: "Reversal-candle / pullback low (configurable)."
+    target_rule: "Prior leg extension / measured move."
+    exit_if_wrong: "Stop hit, leg void, or gate veto."
+    required_inputs: [minute_bars, vwap, moving_average_1m, impulse_leg, pullback_volume, reversal_candle]
+    optional_confirmations: [VWAP_ALIGNED, VOLUME_CONFIRMED, MOMENTUM_ALIGNED, ONE_MIN_CONFLUENCE]
+    threshold_config_keys: [trigger.*]   # reuses the existing impulse/pullback FSM thresholds
+    source_attribution: ["TradeZella — Micro Pullback (https://www.tradezella.com/blog/scalping-strategies)"]
+    rule_provenance: SOURCE_DERIVED
+    source_rule_notes: "Strongly overlaps the engine's existing impulse/pullback trigger FSM."
+    engine_adaptations: "EXTENDS and reuses the existing trigger FSM (config trigger.*) — it does NOT create a second pullback state machine. Maps FSM evidence (impulse, retrace, VDU, trigger candle, no-chase) into this canonical setup."
+
+  - setup_id: SCALP_PREMARKET_MOMENTUM_V1
+    display_label: "PREMARKET MOMENTUM"
+    family: Momentum
+    version: "1"
+    enabled: true
+    operating_state: SHADOW
+    supported_sessions: [PREMARKET]
+    active_window_et: "07:00-09:29"   # default active start; configurable to 06:00 (see session.active_fire_start)
+    required_data_tier: T0
+    best_conditions: "Premarket catalyst with building volume and structure, measured on PREMARKET-specific denominators."
+    entry_rule: "Momentum break of premarket structure with building premarket volume, on the premarket VWAP / premarket time-of-day RVOL. Default active 07:00-09:29 ET (06:00-07:00 is context collection only unless active_fire_start is configured to 06:00)."
+    invalidation_rule: "Loss of premarket structure / premarket VWAP; volume fade."
+    stop_rule: "Premarket structure low (configurable)."
+    target_rule: "Next premarket resistance / measured move."
+    exit_if_wrong: "Structure lost, or gate veto."
+    required_inputs: [premarket_minute_bars, premarket_vwap, premarket_rvol_tod, premarket_structure, premarket_support_resistance, spread_liquidity]
+    optional_confirmations: [CATALYST_CONFIRMED, VOLUME_CONFIRMED, SUPPORT_RESISTANCE_REACTION]
+    threshold_config_keys: ["premarket.*", "gates.*", session.active_fire_start]
+    source_attribution: ["Trade AI operator-directed adaptation (arch-owner 2026-07-27)"]
+    rule_provenance: ENGINE_ADAPTATION
+    source_rule_notes: "NOT a rule supplied by the external articles. Operator-directed premarket adaptation."
+    engine_adaptations: "Uses a SEPARATE premarket VWAP + premarket time-of-day volume/RVOL denominator + premarket structure. Premarket and regular-session denominators are never mixed. Regular-session ORB rules do NOT apply before 09:30. Every event is tagged market_session=PREMARKET, source_rule_type=ENGINE_ADAPTATION."
+
+# ── deterministic PRIMARY selection when multiple setups match one event (all matches are retained) ──
+# Ordering keys, highest priority first (documented; no LLM, no randomness):
+#   1. required_data_tier specificity (T2 > T1 > T0 — a book-confirmed match is more specific)
+#   2. mandatory-criteria count satisfied (more mandatory rules met = more specific)
+#   3. setup family specificity rank (see below)
+#   4. setup version (higher wins)
+#   5. setup_id lexical (final deterministic tie-break)
+primary_selection:
+  tier_specificity: {T2: 3, T1: 2, T0: 1}
+  family_specificity_rank:   # higher = more specific / preferred as primary on ties
+    L2 MOMENTUM: 70
+    15M ORB: 60
+    VWAP REVERSION: 55
+    VWAP PULLBACK: 50
+    MICRO PULLBACK: 45
+    PREMARKET MOMENTUM: 40
+    IGNITION BREAKOUT: 30
