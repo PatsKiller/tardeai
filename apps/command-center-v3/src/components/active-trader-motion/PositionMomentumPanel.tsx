@@ -1,9 +1,9 @@
 // Open-position momentum panel. Renders the EVIDENCE STATE emitted by the momentum-exit policy.
 //
 // CRITICAL OPERATOR-SAFETY BOUNDARY: every state here — including EXIT_SIGNAL — is display-only
-// evidence. This panel contains NO order button, POST, broker call, session activation, or
-// auto-flatten control, and never triggers a hidden execution side effect. EXIT_ARMED is styled
-// distinctly from EXIT_SIGNAL, and both are described in accessible text (not color alone).
+// evidence. This panel contains NO order button, POST, broker call, account binding, session
+// activation, or auto-flatten control, and never triggers a hidden execution side effect.
+// EXIT_ARMED is styled distinctly from EXIT_SIGNAL, and both are described in accessible text.
 
 import type { MotionPosition } from '../../pages/activeTrader.types';
 import {
@@ -81,7 +81,7 @@ function PositionCard({ p }: { p: MotionPosition }) {
 
       <footer className="at-motion-pos__foot">
         <span className="at-motion-pos__reason mono">{humanizeReason(p.reasonCode)}</span>
-        <span className="at-motion-pos__displayonly">DISPLAY ONLY · NO ORDER PATH</span>
+        <span className="at-motion-pos__displayonly">ACCOUNT UNBOUND · NO ORDER PATH</span>
       </footer>
     </article>
   );
@@ -92,7 +92,7 @@ export default function PositionMomentumPanel({ positions, degraded }: Props) {
     <section className="at-panel at-motion-positions" aria-labelledby="motion-pos-title">
       <header className="at-panel__header">
         <div>
-          <h2 id="motion-pos-title">Open-position momentum <small>evidence only · no order path</small></h2>
+          <h2 id="motion-pos-title">Open-position momentum <small>account-unbound evidence · no order path</small></h2>
           <p>{degraded ? 'Showing last-good — not live' : 'live momentum-exit evidence states'}</p>
         </div>
         <span className={`at-chip at-chip--${degraded ? 'warning' : 'context'}`}>
@@ -101,7 +101,7 @@ export default function PositionMomentumPanel({ positions, degraded }: Props) {
       </header>
 
       {positions.length === 0 ? (
-        <div className="at-motion-positions__empty">No active paper/shadow positions.</div>
+        <div className="at-motion-positions__empty">No active monitored positions.</div>
       ) : (
         <div className="at-motion-positions__grid">
           {positions.map((p) => <PositionCard key={p.symbol} p={p} />)}
