@@ -655,7 +655,8 @@ def _arming_status(limit: int = 25) -> dict[str, Any]:
             lane = r.get("lane") or "BELOW"
             if lane in ladder:
                 ladder[lane] += 1
-            if lane in _ARMING_LANES:
+            # "close to firing" = climbing the IGN ladder (IGN_45+) OR a named setup that has ARMED
+            if lane in _ARMING_LANES or r.get("setup_state") == "ARMED":
                 near.append({
                     "symbol": r.get("symbol"), "lane": lane, "ign": round(_f(r.get("ign_score"))),
                     "gate": r.get("gate_result") or "—", "setupState": r.get("setup_state"),

@@ -265,15 +265,18 @@ function ArmingPanel({ a }: { a: ArmingStatus }) {
       {near.length > 0 ? (
         <div className="at-livescan__table" role="table" aria-label="Near-firing symbols">
           <div className="at-livescan__row at-livescan__row--head" role="row">
-            <span>sym</span><span>lane</span><span>IGN</span><span>gate</span><span>setup</span><span>RVOL</span><span>tier</span><span>L2</span>
+            <span>sym</span><span>lane</span><span>IGN</span><span>state</span><span>setup</span><span>RVOL</span><span>tier</span><span>L2</span>
           </div>
           {near.map(s => (
             <div key={s.symbol} className="at-livescan__row" role="row">
               <span className="mono at-livescan__sym">{s.symbol}</span>
               <span className={`at-chip at-chip--${s.lane === 'IGN_ACCEL' ? 'pass' : s.lane === 'IGN_75' ? 'warning' : 'context'}`}>{s.lane.replace('IGN_', '')}</span>
               <span className="mono">{s.ign}</span>
-              <span className="mono">{s.gate}</span>
-              <span>{s.primarySetupLabel ?? '—'}</span>
+              <span>{s.setupState === 'ARMED'
+                ? <span className="at-chip at-chip--warning">ARMED</span>
+                : s.setupState === 'FIRED' ? <span className="at-chip at-chip--pass">FIRED</span>
+                : <span className="mono">{s.gate}</span>}</span>
+              <span>{s.primarySetupLabel ?? (s.setupState ? s.setupState.replace(/_/g, ' ').toLowerCase() : '—')}</span>
               <span className="mono">{s.rvolTod != null ? `${s.rvolTod.toFixed(1)}x` : '—'}</span>
               <span className="mono">{s.dataTier}</span>
               <span>{s.l2Engaged ? '● L2' : '—'}</span>
