@@ -1,17 +1,13 @@
-"""Deterministic momentum-exit hysteresis for Active Trader shadow/paper use.
+"""Deterministic, account-agnostic momentum-exit hysteresis.
 
-The policy emits a typed signal only. It does not contain a market-data client, broker
-client, or order action. A downstream, separately-authorized paper execution component
-may consume an EXIT_SIGNAL after its own risk, freshness, capability, and idempotency
-checks.
+The policy emits market-state evidence only. It has no account, venue, environment,
+market-data client, broker client, credential, or order action. A separately authorized
+execution orchestrator may later combine an ``EXIT_SIGNAL`` with a runtime account
+capability after independent risk, freshness, authority, ownership, reconciliation, and
+idempotency checks.
 
-The design deliberately separates:
-
-* immediate hard-stop protection;
-* temporary deterioration that should be watched;
-* persistent multi-factor momentum failure that may justify an exit;
-* stale-data faults, which fall back to already-installed protection rather than
-  inventing a momentum exit from missing evidence.
+The state machine separates immediate hard-stop evidence, temporary deterioration,
+persistent multi-factor momentum failure, recovery hysteresis, and stale-data faults.
 """
 from __future__ import annotations
 
@@ -78,7 +74,7 @@ class MomentumExitConfig:
         ):
             if float(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
-        if self.min_confirmation_dimensions < 1 or self.min_confirmation_dimensions > 4:
+        if self.min_confirmation_dimensions not in {1, 2, 3, 4}:
             raise ValueError("min_confirmation_dimensions must be between 1 and 4")
         if self.refresh_after_s <= 0:
             raise ValueError("refresh_after_s must be positive")
@@ -173,7 +169,7 @@ def _clamp01(value: float) -> float:
 
 
 class MomentumExitPolicy:
-    """Stateful hysteresis evaluator for one open position."""
+    """Stateful hysteresis evaluator for one monitored open position."""
 
     def __init__(self, config: MomentumExitConfig | None = None) -> None:
         self.config = config or MomentumExitConfig()
@@ -242,15 +238,21 @@ class MomentumExitPolicy:
             score=score,
             confirmations=confirmations,
             drawdown_from_high_r=round(drawdown_r, 6),
-            armed_for_s=max(0.0, now - self._deterioration_started_at)
-            if self._deterioration_started_at is not None
-            else 0.0,
-            fire_for_s=max(0.0, now - self._fire_started_at)
-            if self._fire_started_at is not None
-            else 0.0,
-            recovery_for_s=max(0.0, now - self._recovery_started_at)
-            if self._recovery_started_at is not None
-            else 0.0,
+            armed_for_s=(
+                max(0.0, now - self._deterioration_started_at)
+                if self._deterioration_started_at is not None
+                else 0.0
+            ),
+            fire_for_s=(
+                max(0.0, now - self._fire_started_at)
+                if self._fire_started_at is not None
+                else 0.0
+            ),
+            recovery_for_s=(
+                max(0.0, now - self._recovery_started_at)
+                if self._recovery_started_at is not None
+                else 0.0
+            ),
             refresh_after_s=self.config.refresh_after_s,
         )
 
@@ -268,9 +270,13 @@ class MomentumExitPolicy:
         score = self._score(obs)
         confirmations = self._confirmations(obs)
 
-        supplied_high = obs.high_watermark if obs.high_watermark is not None else obs.price
+        supplied_high = (
+            obs.high_watermark if obs.high_watermark is not None else obs.price
+        )
         self._high_watermark = max(
-            value for value in (self._high_watermark, supplied_high, obs.price) if value is not None
+            value
+            for value in (self._high_watermark, supplied_high, obs.price)
+            if value is not None
         )
         risk = max(float(obs.initial_risk_per_share), 1e-9)
         drawdown_r = max(0.0, (float(self._high_watermark) - obs.price) / risk)
@@ -343,8 +349,7 @@ class MomentumExitPolicy:
             self._fire_started_at = None
             if self._recovery_started_at is None:
                 self._recovery_started_at = now
-            recovered_for = now - self._recovery_started_at
-            if recovered_for >= cfg.reset_persistence_s:
+            if (now - self._recovery_started_at) >= cfg.reset_persistence_s:
                 self._deterioration_started_at = None
                 self._recovery_started_at = None
                 self._armed = False
@@ -397,8 +402,9 @@ class MomentumExitPolicy:
 
         if self._deterioration_started_at is None:
             self._deterioration_started_at = now
-        armed_for = now - self._deterioration_started_at
-        if not self._armed and armed_for < cfg.arm_persistence_s:
+        if not self._armed and (
+            now - self._deterioration_started_at
+        ) < cfg.arm_persistence_s:
             self._fire_started_at = None
             return self._decision(
                 obs,
@@ -423,7 +429,9 @@ class MomentumExitPolicy:
                 obs,
                 state=STATE_ARMED,
                 action=ACTION_ARM,
-                reason=R_ARMED if price_confirmed else R_PRICE_CONFIRMATION_MISSING,
+                reason=(
+                    R_ARMED if price_confirmed else R_PRICE_CONFIRMATION_MISSING
+                ),
                 score=score,
                 confirmations=confirmations,
                 drawdown_r=drawdown_r,
