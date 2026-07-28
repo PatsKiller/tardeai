@@ -1,15 +1,7 @@
-"""ActiveTrader L2 runtime boundary.
+"""ActiveTrader boundary for the dedicated Moomoo L2 gateway IPC snapshot.
 
-Production requests must never create or own an OpenD quote context. The canonical
-architecture requires one long-lived gateway service to own subscriptions and publish
-normalized read snapshots. PR #247 did not implement that service boundary: its lazy
-request-path singleton could open one context in ``portfolio_server`` while the scalp
-cron opened another. Until an external gateway/IPC contract exists, production is
-therefore deliberately fail-closed.
-
-Tests may inject an in-memory ``L2Runtime`` with ``set_runtime_for_test``. A state file
-is desired intent only and never creates a connection, subscription, entitlement, or T2.
-Read plane only; no order or trade-unlock path.
+Production request handlers never own OpenD. They read the atomic snapshot published by the
+single service-level owner. Tests may continue to inject the deterministic in-memory runtime.
 """
 from __future__ import annotations
 
@@ -20,15 +12,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_ARM_STATE = _REPO_ROOT / "data" / "scalp" / "moomoo_armed_state.json"
-
 _LOCK = threading.Lock()
 _STATE: dict[str, Any] = {"built": False, "runtime": None}
 
 
 @lru_cache(maxsize=1)
 def backend_source_commit() -> str:
-    """Best-effort backend checkout provenance, cached for the process lifetime."""
     try:
         import subprocess
 
@@ -47,7 +36,6 @@ def backend_source_commit() -> str:
 
 @lru_cache(maxsize=1)
 def served_ui_source_commit() -> str:
-    """Best-effort served-bundle provenance, cached for the process lifetime."""
     meta = _REPO_ROOT / "apps" / "command-center-v3" / "dist" / "build-meta.json"
     try:
         data = json.loads(meta.read_text(encoding="utf-8"))
@@ -60,27 +48,13 @@ def served_ui_source_commit() -> str:
 
 
 def source_commit() -> str:
-    """Backward-compatible alias for the backend source commit."""
     return backend_source_commit()
 
 
-def runtime_posture() -> dict[str, Any]:
-    """Return the production owner posture without touching OpenD."""
-    return {
-        "mode": "DISABLED_PENDING_DEDICATED_GATEWAY",
-        "owner_ready": False,
-        "connected": False,
-        "detail": (
-            "No dedicated single-owner gateway/IPC ingestion loop is implemented. "
-            "Request handlers and scalp cron jobs are prohibited from opening OpenD contexts."
-        ),
-        "backend_source_commit": backend_source_commit(),
-        "served_ui_source_commit": served_ui_source_commit(),
-    }
-
-
 class L2Runtime:
-    """Injected read runtime used by deterministic tests and a future gateway client."""
+    """Injected deterministic runtime retained for unit tests."""
+
+    kind = "in_memory"
 
     def __init__(self, gateway, manager, features, fire_tracker, config):
         self.gateway = gateway
@@ -89,44 +63,74 @@ class L2Runtime:
         self.fire_tracker = fire_tracker
         self.config = config
 
-    def desired_from_state_file(self) -> list[str]:
-        """Read desired symbols from the arm-state file (intent only)."""
-        try:
-            if not _ARM_STATE.is_file():
-                return []
-            data = json.loads(_ARM_STATE.read_text(encoding="utf-8"))
-            armed = data.get("armed") if isinstance(data, dict) else data
-            if isinstance(armed, dict):
-                return [str(symbol).upper() for symbol in armed]
-            if isinstance(armed, list):
-                return [
-                    str(item.get("symbol") if isinstance(item, dict) else item).upper()
-                    for item in armed
-                ]
-        except Exception:
-            return []
-        return []
+
+class IPCSnapshotRuntime:
+    """Read-only client for the external owner; contains no transport or OpenD context."""
+
+    kind = "ipc_snapshot"
+
+    def __init__(self, client):
+        self.client = client
+        self.gateway = None
+        self.manager = None
+        self.features = None
+        self.fire_tracker = None
+        self.config = None
+
+    def snapshot_read(self):
+        return self.client.read()
 
 
-def _build() -> Optional[L2Runtime]:
-    """Production construction is intentionally disabled.
-
-    A process-local singleton is not a system-wide single owner and there is no worker
-    in PR #247 that drives subscriptions, quote/tape ingestion, freshness ticks, or
-    reconnect recovery. Returning ``None`` keeps every production status surface
-    explicitly disconnected until a dedicated gateway service and IPC snapshot contract
-    are implemented and independently integration-tested.
-    """
-    return None
+def _client():
+    try:
+        from moomoo.gateway_ipc import SnapshotClient
+    except ImportError:  # pragma: no cover
+        from scripts.moomoo.gateway_ipc import SnapshotClient  # type: ignore
+    return SnapshotClient()
 
 
-def get_runtime() -> Optional[L2Runtime]:
-    if _STATE["built"]:
+def runtime_posture() -> dict[str, Any]:
+    client = _client()
+    read = client.read()
+    payload = read.payload or {}
+    provider = payload.get("provider") or {}
+    owner = payload.get("owner") or {}
+    return {
+        "mode": "DEDICATED_GATEWAY_IPC" if payload else "DISABLED_PENDING_DEDICATED_GATEWAY",
+        "owner_ready": bool(read.fresh and owner.get("exclusive_lock_held")),
+        "connected": bool(read.fresh and provider.get("connected")),
+        "snapshot_fresh": read.fresh,
+        "snapshot_reason": read.reason,
+        "snapshot_age_seconds": read.age_seconds,
+        "snapshot_path": str(client.path),
+        "gateway_source_commit": payload.get("source_commit"),
+        "detail": (
+            "Fresh snapshot from dedicated single-owner gateway."
+            if read.fresh
+            else "No fresh dedicated-gateway snapshot; request handlers remain disconnected."
+        ),
+        "backend_source_commit": backend_source_commit(),
+        "served_ui_source_commit": served_ui_source_commit(),
+    }
+
+
+def _build() -> Optional[IPCSnapshotRuntime]:
+    client = _client()
+    # A stale snapshot is still represented so status can report its exact stale reason.
+    return IPCSnapshotRuntime(client) if client.path.is_file() else None
+
+
+def get_runtime() -> Optional[L2Runtime | IPCSnapshotRuntime]:
+    if _STATE["built"] and _STATE["runtime"] is not None:
         return _STATE["runtime"]
     with _LOCK:
         if not _STATE["built"]:
             _STATE["runtime"] = _build()
             _STATE["built"] = True
+        elif _STATE["runtime"] is None:
+            # portfolio-server may start before the independently managed gateway.
+            # Discover the snapshot later without a server restart.
+            _STATE["runtime"] = _build()
     return _STATE["runtime"]
 
 
@@ -136,8 +140,7 @@ def reset_for_test() -> None:
         _STATE["runtime"] = None
 
 
-def set_runtime_for_test(runtime: Optional[L2Runtime]) -> None:
-    """Inject a deterministic in-memory runtime; never use in production startup."""
+def set_runtime_for_test(runtime: Optional[L2Runtime | IPCSnapshotRuntime]) -> None:
     with _LOCK:
         _STATE["runtime"] = runtime
         _STATE["built"] = True
