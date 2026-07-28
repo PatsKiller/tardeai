@@ -273,6 +273,19 @@ def _map_ignition_row_to_signal(r: Mapping[str, Any]) -> dict[str, Any]:
     }
     if veto_reason:
         sig["vetoReason"] = veto_reason
+    # distinct state systems (never collapsed) + persisted setup identity
+    sig["gateDecision"] = "PASS" if gate == "PASS" else ("VETO" if gate == "VETO" else "DEFER")
+    if setup_state:
+        sig["setupState"] = setup_state
+    sig["fsmState"] = sig["fsmCurrent"]
+    if r.get("primary_setup_id"):
+        sig["primarySetupId"] = r["primary_setup_id"]
+    if r.get("matched_setup_ids"):
+        sig["matchedSetupIds"] = list(r["matched_setup_ids"])
+    if r.get("setup_version"):
+        sig["setupVersion"] = str(r["setup_version"])
+    if r.get("registry_hash"):
+        sig["registryHash"] = r["registry_hash"]
     return sig
 
 
@@ -303,7 +316,8 @@ def _permission_queue_signals(limit: int = 25) -> dict[str, Any]:
                 return {"available": True, "signals": [], "source_session": None,
                         "is_live_session": False, "last_event_at": None}
             cur.execute(
-                """SELECT id, symbol, lane, ign_score, setup_state, primary_setup_label, matched_setup_labels,
+                """SELECT id, symbol, lane, ign_score, setup_state, primary_setup_id, primary_setup_label,
+                          matched_setup_ids, matched_setup_labels, setup_version, registry_hash,
                           market_session, data_tier, dcf, rvol_tod, profile_source, entry_ref, stop_ref,
                           r_dollars, stop_dist_bps, gate_result, gate_reasons, subscores, confirmation_labels,
                           setup_fail_reasons, fired_at
