@@ -119,27 +119,32 @@ class L2FeatureService:
             return T2Decision(False, "NOT_REQUESTED", "UNKNOWN", "UNKNOWN")
 
         confirmed = tuple(life.confirmed_subtypes or ())
-        if SUB_ORDER_BOOK not in confirmed:
-            return T2Decision(False, "ORDER_BOOK_NOT_CONFIRMED", "UNKNOWN", "UNKNOWN", confirmed)
-        if want_tape and SUB_TICKER not in confirmed:
-            return T2Decision(False, "TICKER_NOT_CONFIRMED", "UNKNOWN", "UNKNOWN", confirmed)
+
+        # Report the dominant lifecycle/data-quality block before lower-level confirmation
+        # details.  This keeps the operator explanation truthful and useful.
         if life.state == L2State.SEQUENCE_GAP:
             return T2Decision(False, "SEQUENCE_GAP", "UNKNOWN", "GAP", confirmed)
         if life.state == L2State.CROSSED_BOOK:
             return T2Decision(False, "CROSSED_BOOK", "UNKNOWN", "OK", confirmed)
         if life.reconnect_epoch != self.manager.reconnect_epoch:
             return T2Decision(False, "RECONNECT_EPOCH_MISMATCH", "UNKNOWN", "EPOCH_MISMATCH", confirmed)
-        if life.state in (L2State.WAITING_FIRST_BOOK, L2State.WAITING_FIRST_TAPE):
+        if life.state == L2State.WAITING_FIRST_BOOK:
             return T2Decision(False, "WAITING_FIRST_DATA", "WAITING", "OK", confirmed)
+        if life.state == L2State.WAITING_FIRST_TAPE:
+            return T2Decision(False, "TAPE_REQUIRED_MISSING", "WAITING", "OK", confirmed)
         if life.state == L2State.STALE:
             feature = self.feature_snapshot(sym, now, feature_at_iso) or {}
             return T2Decision(False, "STALE_BOOK", "STALE", "OK", confirmed, feature)
+
+        if SUB_ORDER_BOOK not in confirmed:
+            return T2Decision(False, "ORDER_BOOK_NOT_CONFIRMED", "UNKNOWN", "UNKNOWN", confirmed)
+        if want_tape and SUB_TICKER not in confirmed:
+            return T2Decision(False, "TICKER_NOT_CONFIRMED", "UNKNOWN", "UNKNOWN", confirmed)
 
         book = self.gateway.latest_book(sym)
         if book is None:
             return T2Decision(False, "NO_BOOK", "WAITING", "OK", confirmed)
         if life.sequence_id is None or book.sequence_id is None or book.sequence_id != life.sequence_id:
-            # A timestamped book without sequence provenance is evidence, but not canonical T2.
             return T2Decision(False, "SEQUENCE_UNVERIFIED", "UNKNOWN", "UNVERIFIED", confirmed)
         if book.crossed:
             return T2Decision(False, "CROSSED_BOOK", "UNKNOWN", "OK", confirmed)
