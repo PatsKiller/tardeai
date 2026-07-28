@@ -2,5 +2,5 @@
 
 Findings: 2
 
-- **[P2]** stale_facts: System facts 58h old (>48h)
+- **[P1]** code_without_docs: 2 code files changed, 0 docs updated
 - **[P2]** deployment_log_stale: Code changed but deployment log not updated
