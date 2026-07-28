@@ -14,14 +14,16 @@ from active_trader.t2_jit_policy import T2PolicyConfig  # noqa: E402
 NOW = 1_753_700_000.0
 
 
-def _session(symbols="AAPL"):
-    return {
+def _session(symbols="AAPL", **over):
+    session = {
         "session_id": "SESS-1",
         "state": "ACTIVE",
-        "mode": "SHADOW",
+        "workflow_mode": "OBSERVE",
         "updated_at": NOW,
         "envelope": {"symbol_list_or_universe_rule": symbols},
     }
+    session.update(over)
+    return session
 
 
 def _candidate(**over):
@@ -53,7 +55,7 @@ def _engine(tmp_path, journal=None):
     )
 
 
-def test_fired_candidate_gets_t2_only_with_active_authorized_shadow_session(tmp_path):
+def test_fired_candidate_gets_t2_only_with_active_symbol_authorized_workflow(tmp_path):
     engine = _engine(tmp_path)
     inactive = engine.tick([_candidate()], session={}, now=NOW)
     assert inactive["t2"]["leases"] == []
@@ -64,6 +66,35 @@ def test_fired_candidate_gets_t2_only_with_active_authorized_shadow_session(tmp_
     assert active["t2"]["leases"][0]["symbol"] == "AAPL"
     assert active["ui_refresh_after_s"] == 5
     assert active["authority"]["order"] is False
+    assert active["session"]["motion_ready"] is True
+    assert active["session"]["account_bound"] is False
+
+
+def test_account_venue_and_environment_do_not_change_motion_admission(tmp_path):
+    engine = _engine(tmp_path)
+    first = engine.tick(
+        [_candidate()],
+        session=_session(
+            account_id="one",
+            venue="broker-a",
+            environment="sandbox",
+        ),
+        now=NOW,
+    )
+    second = engine.tick(
+        [_candidate(observed_at=NOW + 1)],
+        session=_session(
+            account_id="two",
+            venue="broker-b",
+            environment="production",
+        ),
+        now=NOW + 1,
+    )
+    assert first["t2"]["leases"][0]["symbol"] == "AAPL"
+    assert second["t2"]["leases"][0]["symbol"] == "AAPL"
+    assert "account_id" not in second["session"]
+    assert "venue" not in second["session"]
+    assert "environment" not in second["session"]
 
 
 def test_plain_universe_rule_fails_closed_but_explicit_csv_is_accepted(tmp_path):
@@ -91,7 +122,7 @@ def test_lease_identity_survives_engine_restart(tmp_path):
     assert second["t2"]["leases"][0]["lease_id"] == lease_id
 
 
-def test_position_replay_emits_display_only_exit_signal_and_retains_t2(tmp_path):
+def test_position_replay_emits_account_unbound_exit_signal_and_retains_t2(tmp_path):
     journal = MotionJournal(tmp_path / "journal.jsonl")
     observations = [
         {
@@ -153,13 +184,18 @@ def test_position_replay_emits_display_only_exit_signal_and_retains_t2(tmp_path)
         },
     ]
     for payload in observations:
-        journal.append("position_observation", payload, recorded_at=payload["observed_at"])
+        journal.append(
+            "position_observation",
+            payload,
+            recorded_at=payload["observed_at"],
+        )
 
     engine = _engine(tmp_path, journal)
     snapshot = engine.tick([], session=_session(), now=NOW + 47)
     assert snapshot["positions"][0]["state"] == "EXIT_SIGNAL"
     assert snapshot["exit_signals"][0]["signal_only"] is True
     assert snapshot["exit_signals"][0]["automatic_order_sent"] is False
+    assert snapshot["exit_signals"][0]["account_bound"] is False
     assert snapshot["exit_signals"][0]["authority"]["order"] is False
     assert snapshot["t2"]["leases"][0]["symbol"] == "AAPL"
     assert snapshot["ui_refresh_after_s"] == 5
