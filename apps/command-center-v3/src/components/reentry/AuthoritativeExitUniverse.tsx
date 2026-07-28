@@ -209,7 +209,10 @@ export default function AuthoritativeExitUniverse() {
     const hasActiveNonScalp = summary.rows.some(row => dispositionFor(row, dispositions).state !== 'suppressed' && !isScalp(row, { ...defaultEvent(), ...(events[row.event_key] ?? {}) }))
     if (scope === 'long_term') return hasActiveNonScalp
     if (scope === 'active') return !allSuppressed
-    if (scope === 'scalps') return summary.scalpCount > 0
+    // Working queues exclude fully-suppressed symbols; only SUPPRESSED ITEMS and the
+    // explicit ALL EXITS audit view show them. long_term and active already did —
+    // scalps did not, so a suppressed scalp kept reappearing in a working queue.
+    if (scope === 'scalps') return summary.scalpCount > 0 && !allSuppressed
     if (scope === 'suppressed') return summary.suppressedCount > 0
     return true
   }), [summaries, search, scope, dispositions, events])

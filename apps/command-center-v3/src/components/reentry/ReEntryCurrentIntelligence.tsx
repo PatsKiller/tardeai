@@ -11,6 +11,7 @@ import {
   classificationLabel,
   classificationState,
   finite,
+  normalizedDisposition,
   normalizedEvent,
   normalizedMandate,
   prefMap,
@@ -101,6 +102,9 @@ export default function ReEntryCurrentIntelligence() {
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState('ALL')
   const [classificationFilter, setClassificationFilter] = useState('ALL')
+  // Default ACTIVE: the queue shows work to do. SUPPRESSED is the review lane for
+  // decisions already made; ALL is the audit escape hatch.
+  const [queueFilter, setQueueFilter] = useState<'ACTIVE' | 'SUPPRESSED' | 'ALL'>('ACTIVE')
   const [gapOnly, setGapOnly] = useState(false)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -146,17 +150,29 @@ export default function ReEntryCurrentIntelligence() {
     const flags = REENTRY_FLAGS.filter(flag => mandate.flags[flag])
     const completeness = [summary.shares !== null, summary.avgExit !== null, Boolean(watch), intel.price !== null, intel.rsi !== null, intel.entryLow !== null, resistance.level !== null, Boolean(analystMap[summary.symbol])].filter(Boolean).length
     const alertCount = alertRows.filter(row => String(row.symbol || '').toUpperCase() === summary.symbol && !['disabled', 'expired', 'resolved'].includes(String(row.status || '').toLowerCase())).length
-    return { ...summary, mandate, watch, card, intel, resistance, classified, flags, completeness, alertCount, analyst: analystMap[summary.symbol] ?? null }
+    // Suppression is per exit EVENT, so a symbol only leaves the queue once every one
+    // of its exits is suppressed. A symbol with one suppressed exit and one live exit
+    // still has an open re-entry decision and must stay visible.
+    const suppressedCount = summary.rows.filter(row => normalizedDisposition(dispositions[row.event_key]).state === 'suppressed').length
+    const suppressed = summary.rows.length > 0 && suppressedCount === summary.rows.length
+    return { ...summary, mandate, watch, card, intel, resistance, classified, flags, completeness, alertCount, suppressedCount, suppressed, analyst: analystMap[summary.symbol] ?? null }
   }), [summaries, mandatesPref.data, eventsPref.data, dispositionsPref.data, watchMap, cards.data, holdings.data, resistancePref.data, analyst.data, alerts.data])
 
   const shown = rows.filter(row => {
     if (search.trim() && !`${row.symbol} ${row.intel.state} ${row.intel.action} ${row.classified} ${row.mandate.mandate} ${row.flags.join(' ')} ${row.latest.import_source ?? ''} ${(row.latest.evidence_gaps ?? []).join(' ')}`.toUpperCase().includes(search.trim().toUpperCase())) return false
+    // SUPPRESS FROM RE-ENTRY QUEUE means gone from the working queue — suppressed
+    // symbols surface only under the SUPPRESSED filter. Previously dispositions were
+    // loaded but only fed the CLASSIFIED label, so suppressing a symbol changed a
+    // caption and left it sitting in the queue.
+    if (queueFilter === 'ACTIVE' && row.suppressed) return false
+    if (queueFilter === 'SUPPRESSED' && !row.suppressed) return false
     if (stateFilter !== 'ALL' && row.intel.state !== stateFilter) return false
     if (classificationFilter !== 'ALL' && row.classified !== classificationFilter) return false
     if (gapOnly && row.completeness >= 8 && row.eventGapCount === 0) return false
     return true
   }).sort((a, b) => (a.mandate.priority === 'HIGH' ? -1 : 0) - (b.mandate.priority === 'HIGH' ? -1 : 0) || b.completeness - a.completeness || String(b.latest.trade_date || '').localeCompare(String(a.latest.trade_date || '')))
 
+  const suppressedTotal = rows.filter(row => row.suppressed).length
   const selectedSymbols = shown.filter(row => selected[row.symbol]).map(row => row.symbol)
   const counts = { symbols: rows.length, classified: rows.filter(row => row.classified === 'CLASSIFIED').length, ready: rows.filter(row => row.intel.state === 'READY TO REVIEW').length, near: rows.filter(row => row.intel.state === 'NEAR ENTRY').length, missing: rows.filter(row => row.completeness < 8 || row.eventGapCount > 0).length }
   const regimeLabel = text(unwrap(regime.data)?.regime_label, unwrap(regime.data)?.label, 'unknown').replace(/_/g, ' ').toUpperCase()
@@ -176,7 +192,7 @@ export default function ReEntryCurrentIntelligence() {
       ['EVIDENCE GAPS', counts.missing, gapOnly, () => setGapOnly(value => !value)],
     ].map(([name, value, active, action]) => <button key={String(name)} onClick={action as () => void} style={{ ...panel, padding: 9, textAlign: 'left', cursor: 'pointer', background: active ? BB.blueDim : 'var(--bg2)', color: 'var(--text0)' }}><span style={{ color: BB.text3, fontSize: 10 }}>{String(name)}</span><br /><b style={{ fontSize: 20 }}>{String(value)}</b></button>)}</div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) 190px 170px auto auto auto', gap: 7, marginTop: 8 }}><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search symbol, state, source or missing field…" style={field} /><select value={stateFilter} onChange={event => setStateFilter(event.target.value)} style={field}><option value="ALL">ALL CURRENT STATES</option>{['READY TO REVIEW', 'NEAR ENTRY', 'WAIT', 'CURRENTLY HELD', 'STALE', 'MISSING PLAN', 'MISSING MARKET'].map(state => <option key={state}>{state}</option>)}</select><select value={classificationFilter} onChange={event => setClassificationFilter(event.target.value)} style={field}><option value="ALL">ALL CLASSIFICATIONS</option><option>CLASSIFIED</option><option>AUTO-TAGGED</option><option>UNCLASSIFIED</option></select><button onClick={() => setSelected(Object.fromEntries(shown.map(row => [row.symbol, true])))} style={button(false)}>SELECT VISIBLE</button><button onClick={() => setSelected({})} style={button(false)}>CLEAR</button><button disabled={!selectedSymbols.length} onClick={() => classify(selectedSymbols)} style={{ ...button(Boolean(selectedSymbols.length)), opacity: selectedSymbols.length ? 1 : .5 }}>EDIT SELECTED {selectedSymbols.length}</button></div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) 190px 170px 150px auto auto auto', gap: 7, marginTop: 8 }}><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search symbol, state, source or missing field…" style={field} /><select value={queueFilter} onChange={event => setQueueFilter(event.target.value as 'ACTIVE' | 'SUPPRESSED' | 'ALL')} style={field} title="Suppressed symbols are hidden from the working queue"><option value="ACTIVE">ACTIVE QUEUE</option><option value="SUPPRESSED">SUPPRESSED{suppressedTotal ? ` (${suppressedTotal})` : ''}</option><option value="ALL">ACTIVE + SUPPRESSED</option></select><select value={stateFilter} onChange={event => setStateFilter(event.target.value)} style={field}><option value="ALL">ALL CURRENT STATES</option>{['READY TO REVIEW', 'NEAR ENTRY', 'WAIT', 'CURRENTLY HELD', 'STALE', 'MISSING PLAN', 'MISSING MARKET'].map(state => <option key={state}>{state}</option>)}</select><select value={classificationFilter} onChange={event => setClassificationFilter(event.target.value)} style={field}><option value="ALL">ALL CLASSIFICATIONS</option><option>CLASSIFIED</option><option>AUTO-TAGGED</option><option>UNCLASSIFIED</option></select><button onClick={() => setSelected(Object.fromEntries(shown.map(row => [row.symbol, true])))} style={button(false)}>SELECT VISIBLE</button><button onClick={() => setSelected({})} style={button(false)}>CLEAR</button><button disabled={!selectedSymbols.length} onClick={() => classify(selectedSymbols)} style={{ ...button(Boolean(selectedSymbols.length)), opacity: selectedSymbols.length ? 1 : .5 }}>EDIT SELECTED {selectedSymbols.length}</button></div>
 
     <div style={{ overflowX: 'auto', marginTop: 8 }}><div style={{ minWidth: 1530 }}><div style={{ display: 'grid', gridTemplateColumns: '28px 180px 220px 125px 170px 170px 160px 160px 145px', gap: 8, padding: '7px 9px', borderBottom: '1px solid var(--border)', fontSize: 10, color: BB.text3, textTransform: 'uppercase' }}><span></span><span>Symbol / mandate</span><span>Current decision</span><span>Market</span><span>Exit evidence</span><span>Entry / resistance</span><span>Valuation / analyst</span><span>Evidence audit</span><span>Actions</span></div>{shown.map(row => {
       const open = Boolean(expanded[row.symbol]); const tone = stateTone(row.intel.state); const classTone = row.classified === 'CLASSIFIED' ? BB.green : row.classified === 'AUTO-TAGGED' ? BB.amber : BB.text3
