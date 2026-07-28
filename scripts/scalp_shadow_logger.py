@@ -32,9 +32,30 @@ sys.path.insert(0, str(_REPO / "scripts"))
 import scalp_ignition_scorer as scorer          # noqa: E402
 import scalp_t0_metrics as t0                    # noqa: E402
 import scalp_trigger_engine as trig              # noqa: E402
+import scalp_setup_detectors as sdet             # noqa: E402  (Layer A named-setup taxonomy; SHADOW)
+import scalp_setup_registry as sreg              # noqa: E402
 from symbol_volume_profile_builder import (       # noqa: E402
     load_config, fetch_minute_bars, minute_of_session, get_profile_denominator,
 )
+
+_TAX_COLS = ("primary_setup_id", "primary_setup_label", "matched_setup_ids", "matched_setup_labels",
+             "setup_state", "setup_version", "setup_fired_at", "market_session",
+             "confirmation_labels", "setup_evidence", "setup_fail_reasons", "registry_hash")
+
+
+def _tax_values(tax: dict | None, fired_at) -> list:
+    """The 12 additive taxonomy column values (JSON-encoded for the JSONB columns), in _TAX_COLS order.
+    A None tax (detector error / no registry) yields safe defaults so existing logging never breaks."""
+    import json as _j
+    t = tax or {}
+    fired = fired_at if (t.get("setup_state") == "FIRED") else None
+    return [
+        t.get("primary_setup_id"), t.get("primary_setup_label"),
+        _j.dumps(t.get("matched_setup_ids", [])), _j.dumps(t.get("matched_setup_labels", [])),
+        t.get("setup_state"), t.get("setup_version"), fired, t.get("market_session"),
+        _j.dumps(t.get("confirmation_labels", [])), _j.dumps(t.get("setup_evidence", {})),
+        _j.dumps(t.get("setup_fail_reasons", {})), t.get("registry_hash"),
+    ]
 
 KILL_FILE = Path(os.path.expanduser("~/.tradeai/SCALP_ENGINE_DISABLED"))
 
@@ -174,9 +195,12 @@ def resolve_universe(conn, cfg: dict) -> list[str]:
 
 
 def ensure_schema(conn) -> None:
-    sql = (_REPO / "migrations" / "2026-07-27_scalp_ignition_events.sql").read_text()
     with conn.cursor() as cur:
-        cur.execute(sql)
+        cur.execute((_REPO / "migrations" / "2026-07-27_scalp_ignition_events.sql").read_text())
+        # additive multi-setup taxonomy columns (idempotent ADD COLUMN IF NOT EXISTS)
+        tax = _REPO / "migrations" / "2026-07-28_scalp_setup_taxonomy.sql"
+        if tax.exists():
+            cur.execute(tax.read_text())
     conn.commit()
 
 
@@ -249,6 +273,10 @@ def run(args) -> int:
     if args.apply:
         ensure_schema(conn)
 
+    try:
+        _registry = sreg.load_registry()   # load once per run for the setup taxonomy
+    except Exception:
+        _registry = None
     results = []
     trigger_fires = []
     trigger_states = {}      # symbol → current FSM state (trace[-1]); drives the moomoo L2 arm
@@ -285,6 +313,14 @@ def run(args) -> int:
             "pressure": t0.bar_pressure(bars), "evr": evr_last, "amihud": t0.amihud_illiq(bars),
             "entry_ref": entry_ref, "stop_ref": stop_ref, "r_dollars": r_dollars, "stop_dist_bps": stop_dist_bps,
         }
+        # Layer A: named-setup taxonomy for this symbol/minute (SHADOW; fail-safe — never breaks logging)
+        try:
+            row["_tax"] = sdet.taxonomy_for_symbol(bars=bars, now=as_of.time(), cfg=cfg,
+                registry=_registry, ign_lane=out["lane"], ign_score=out["ign"], atr_1m=a.get("atr_1m"),
+                spread_bps=row["spread_bps"], price=a.get("price"),
+                bar_volume=(t0._v(bars[-1]) if bars else None), data_tier="T0")
+        except Exception:
+            row["_tax"] = None
         results.append(row)
         # M3-S5: run the entry-trigger state machine over the symbol's session bars; log TRIGGER fires
         tr = trig.run_trigger_engine(bars, cfg)
@@ -294,8 +330,15 @@ def run(args) -> int:
             fm = fb.get("m")
             if fm is None:
                 continue
+            try:  # taxonomy at the fire bar (bars up to the fire) — primary reflects the fired pattern
+                ftax = sdet.taxonomy_for_symbol(bars=bars[:fe["fire_idx"] + 1], now=as_of.time(), cfg=cfg,
+                    registry=_registry, ign_lane=out["lane"], ign_score=out["ign"], atr_1m=a.get("atr_1m"),
+                    spread_bps=row["spread_bps"], price=fe.get("entry"),
+                    bar_volume=t0._v(bars[fe["fire_idx"]]), data_tier="T0")
+            except Exception:
+                ftax = None
             trigger_fires.append({
-                "symbol": a["_symbol"], "fire_minute": fm, "fire_ts": fb.get("t"),
+                "symbol": a["_symbol"], "fire_minute": fm, "fire_ts": fb.get("t"), "_tax": ftax,
                 "entry": fe["entry"], "stop": fe["stop"], "r_dollars": fe["r_dollars"],
                 "stop_dist_bps": (fe["r_dollars"] / fe["entry"] * 1e4) if (fe.get("r_dollars") and fe.get("entry")) else None,
                 "ign": out["ign"], "subscores": out["subscores"], "rvol_tod": rt, "profile_source": psrc,
@@ -317,13 +360,17 @@ def run(args) -> int:
                        (symbol, fired_at, session_date, minute_of_session, lane, ign_score,
                         subscores, rvol_tod, profile_source, data_tier, dcf, spread_bps,
                         spread_source, pressure, evr, amihud_illiq, entry_ref, stop_ref,
-                        r_dollars, stop_dist_bps, gate_result, engine_version)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,'m3-s3')""",
+                        r_dollars, stop_dist_bps, gate_result, engine_version,
+                        primary_setup_id, primary_setup_label, matched_setup_ids, matched_setup_labels,
+                        setup_state, setup_version, setup_fired_at, market_session,
+                        confirmation_labels, setup_evidence, setup_fail_reasons, registry_hash)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,'m3-s3',
+                               %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     [r["symbol"], r["as_of"], r["session_date"], r["minute"], r["lane"], r["ign"],
                      _json.dumps(r["subscores"]), r["rvol_tod"], r["profile_source"],
                      cfg["data_tiers"]["dcf"]["T0"], r["spread_bps"], r["spread_source"],
                      r["pressure"], r["evr"], r["amihud"], r["entry_ref"], r["stop_ref"],
-                     r["r_dollars"], r["stop_dist_bps"]])
+                     r["r_dollars"], r["stop_dist_bps"], *_tax_values(r.get("_tax"), r["as_of"])])
                 written += 1
         conn.commit()
 
@@ -344,12 +391,17 @@ def run(args) -> int:
                        (symbol, fired_at, session_date, minute_of_session, lane, ign_score, subscores,
                         rvol_tod, profile_source, data_tier, dcf, spread_bps, spread_source, pressure,
                         evr, amihud_illiq, entry_ref, stop_ref, r_dollars, stop_dist_bps, gate_result,
-                        gate_reasons, engine_version)
-                       VALUES (%s,%s,%s,%s,'TRIGGER',%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'PASS',%s,'m3-s5')""",
+                        gate_reasons, engine_version,
+                        primary_setup_id, primary_setup_label, matched_setup_ids, matched_setup_labels,
+                        setup_state, setup_version, setup_fired_at, market_session,
+                        confirmation_labels, setup_evidence, setup_fail_reasons, registry_hash)
+                       VALUES (%s,%s,%s,%s,'TRIGGER',%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'PASS',%s,'m3-s5',
+                               %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     [tf["symbol"], fired, day, tf["fire_minute"], tf["ign"], _json.dumps(tf["subscores"]),
                      tf["rvol_tod"], tf["profile_source"], cfg["data_tiers"]["dcf"]["T0"], tf["spread_bps"],
                      tf["spread_source"], tf["pressure"], tf["evr"], tf["amihud"], tf["entry"], tf["stop"],
-                     tf["r_dollars"], tf["stop_dist_bps"], _json.dumps(tf["gate_reasons"])])
+                     tf["r_dollars"], tf["stop_dist_bps"], _json.dumps(tf["gate_reasons"]),
+                     *_tax_values(tf.get("_tax"), fired)])
                 twritten += 1
         conn.commit()
     if trigger_fires:

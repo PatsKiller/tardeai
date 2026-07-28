@@ -25,6 +25,12 @@ session:
   regular_open: "09:30"
   regular_close: "16:00"     # last regular minute index = 389 (09:30..15:59)
   regular_minutes: 390
+  # ── Multi-setup taxonomy session model (additive; arch-owner 2026-07-27). Existing consumers read
+  #    only regular_open/regular_close/regular_minutes and are unaffected. See scripts/scalp_session.py. ──
+  context_collection_start: "06:00"   # collect + calculate context; NO alert/fire unless active_fire_start=06:00
+  active_fire_start: "07:00"          # default: active setup detection + alerts begin here
+  active_fire_start_min: "06:00"      # earliest the operator may configure active_fire_start (no code change)
+  no_new_fire_after: "12:00"          # no NEW setup FIRED state after noon (existing positions managed/journaled)
 
 volume_profile:
   lookback_sessions: 20       # trailing sessions in the median

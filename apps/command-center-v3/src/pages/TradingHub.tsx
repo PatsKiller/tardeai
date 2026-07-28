@@ -10,6 +10,7 @@ import {
   sortTickerList, type ScannerSortMode, type TosFormat,
 } from '../lib/scannerSelection'
 import SchwabAccountsMonitor from '../components/SchwabAccountsMonitor'
+import ScalpSetupsPanel from '../components/ScalpSetupsPanel'
 import { fmt$, fmtVol } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionPanel from '../components/ProtectionPanel'
@@ -1062,6 +1063,7 @@ export default function TradingHub({ onDrill }: Props) {
         )
       })()}
 
+      {tab === 'Scalp' && <ScalpSetupsPanel />}
       {tab === 'Scalp' && scalpData && (() => {
         // ── Live scalp signals: unwrap {timestamp,data:{...}} and present clearly + actionably ──
         const GC = (g?: string) => { const u = (g || '').toUpperCase(); return u === 'A' ? '#22c55e' : u === 'B' ? '#84cc16' : u === 'C' ? '#f59e0b' : u === 'D' || u === 'F' ? '#ef4444' : 'var(--text3)' }
