@@ -22,10 +22,10 @@ fail() {
 
 [ -n "$EXPECTED_SHA" ] || fail "expected SHA is required as argument 1 or EXPECTED_SHA"
 [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "expected SHA must be a full 40-character lowercase Git SHA"
-[ -d "$REPO/.git" ] || fail "repository not found at $REPO"
+git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1 || fail "repository not found at $REPO"
 
 cd "$REPO"
-git fetch origin "$BRANCH" --quiet
+git fetch origin "$BRANCH:refs/remotes/origin/$BRANCH" --quiet
 REMOTE_SHA="$(git rev-parse "origin/$BRANCH")"
 [ "$REMOTE_SHA" = "$EXPECTED_SHA" ] || fail "origin/$BRANCH is $REMOTE_SHA, expected $EXPECTED_SHA"
 git cat-file -e "${EXPECTED_SHA}^{commit}"
