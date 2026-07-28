@@ -6,6 +6,7 @@ on:
       - 'scripts/moomoo/gateway_*.py'
       - 'scripts/moomoo/futu_*.py'
       - 'scripts/moomoo/real_gateway_transport.py'
+      - 'scripts/moomoo/install_gateway_user_proof.sh'
       - 'scripts/moomoo_l2_gateway_probe.py'
       - 'scripts/active_trader/l2_runtime.py'
       - 'scripts/active_trader/l2_status_api.py'
@@ -18,6 +19,8 @@ on:
       - 'apps/command-center-v3/e2e/active-trader-l2-gateway.spec.ts'
       - 'config/moomoo_l2_gateway.example.yaml'
       - 'config/systemd/tradeai-moomoo-l2-gateway.service'
+      - 'config/systemd/user/tradeai-moomoo-l2-gateway-proof.service'
+      - 'docs/runbooks/MOOMOO_L2_GATEWAY_USER_PROOF.md'
       - 'tests/test_moomoo_gateway_*.py'
       - 'tests/test_moomoo_futu_normalizer.py'
       - 'tests/test_active_trader_gateway_ipc.py'
@@ -52,6 +55,7 @@ jobs:
         run: |
           git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
           python -m compileall -q scripts/moomoo scripts/active_trader scripts/moomoo_l2_gateway_probe.py
+          bash -n scripts/moomoo/install_gateway_user_proof.sh
       - name: Dedicated gateway and existing L2 regression suites
         run: |
           set -o pipefail
@@ -59,6 +63,7 @@ jobs:
             tests/test_moomoo_gateway_ipc.py \
             tests/test_moomoo_futu_normalizer.py \
             tests/test_moomoo_gateway_service.py \
+            tests/test_moomoo_gateway_user_proof_install.py \
             tests/test_active_trader_gateway_ipc.py \
             tests/test_active_trader_fire_replay.py \
             tests/test_moomoo_gateway_authority.py \
