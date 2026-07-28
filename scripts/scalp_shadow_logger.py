@@ -316,7 +316,9 @@ def run(args) -> int:
         # Layer A: named-setup taxonomy for this symbol/minute (SHADOW; fail-safe — never breaks logging)
         try:
             row["_tax"] = sdet.taxonomy_for_symbol(bars=bars, now=as_of.time(), cfg=cfg,
-                registry=_registry, ign_lane=out["lane"], ign_score=out["ign"], atr_1m=a.get("atr_1m"))
+                registry=_registry, ign_lane=out["lane"], ign_score=out["ign"], atr_1m=a.get("atr_1m"),
+                spread_bps=row["spread_bps"], price=a.get("price"),
+                bar_volume=(t0._v(bars[-1]) if bars else None), data_tier="T0")
         except Exception:
             row["_tax"] = None
         results.append(row)
@@ -330,7 +332,9 @@ def run(args) -> int:
                 continue
             try:  # taxonomy at the fire bar (bars up to the fire) — primary reflects the fired pattern
                 ftax = sdet.taxonomy_for_symbol(bars=bars[:fe["fire_idx"] + 1], now=as_of.time(), cfg=cfg,
-                    registry=_registry, ign_lane=out["lane"], ign_score=out["ign"], atr_1m=a.get("atr_1m"))
+                    registry=_registry, ign_lane=out["lane"], ign_score=out["ign"], atr_1m=a.get("atr_1m"),
+                    spread_bps=row["spread_bps"], price=fe.get("entry"),
+                    bar_volume=t0._v(bars[fe["fire_idx"]]), data_tier="T0")
             except Exception:
                 ftax = None
             trigger_fires.append({

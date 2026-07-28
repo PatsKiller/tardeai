@@ -28,6 +28,19 @@ import scalp_t0_metrics as t0            # noqa: E402
 import scalp_trigger_engine as tfsm      # noqa: E402
 import scalp_session as ssess            # noqa: E402
 import scalp_setup_registry as sreg      # noqa: E402
+import scalp_confirmations as sconf      # noqa: E402  (Layer B overlays)
+import scalp_execution_gate as sgate     # noqa: E402  (Layer C universal gate)
+
+_CONF_CFG = None
+
+
+def _conf_cfg() -> dict:
+    global _CONF_CFG
+    if _CONF_CFG is None:
+        import yaml
+        p = Path(__file__).resolve().parent.parent / "config" / "scalp_confirmations.yaml"
+        _CONF_CFG = yaml.safe_load(p.read_text(encoding="utf-8")) if p.exists() else {}
+    return _CONF_CFG
 
 SCANNING, ARMED, FIRED, INVALIDATED, EXPIRED, DATA_UNAVAILABLE, OUTSIDE_WINDOW = (
     "SCANNING", "ARMED", "FIRED", "INVALIDATED", "EXPIRED", "DATA_UNAVAILABLE", "OUTSIDE_WINDOW")
@@ -310,17 +323,26 @@ def detect_setups(ctx: Mapping, cfg: Mapping, now, registry: Mapping | None = No
     by_id = {s["setup_id"]: s for s in reg["setups"]}
     ms = ssess.market_session(now, cfg)
 
+    # Layer B (confirmations) + Layer C (universal execution gate) — computed once; independent of setup.
+    cc = _conf_cfg()
+    conf = sconf.compute_confirmations(ctx, cfg, cc.get("overlays", {}))
+    gate = sgate.evaluate_gate(ctx, cfg, cc.get("gate", {}))
+
     results = []
     for sid, fn in _DETECTORS.items():
         setup = by_id.get(sid)
         if not setup or not setup.get("enabled") or setup.get("operating_state") == "DISABLED":
             continue
         r = fn(ctx, cfg)
-        # window/session gate: a pattern can only reach FIRED inside its eligibility window
         if r["state"] == FIRED:
+            # (1) window/session gate: a pattern can only reach FIRED inside its eligibility window
             ok, reason = ssess.setup_eligible(setup, now, cfg)
             if not ok:
                 r = {**r, "state": OUTSIDE_WINDOW, "fail_reasons": [*r["fail_reasons"], reason]}
+            # (2) universal execution-quality gate can VETO any fire (FIRED requires the gate PASS)
+            elif not gate["passed"]:
+                r = {**r, "state": ARMED,
+                     "fail_reasons": [*r["fail_reasons"], "EXECUTION_GATE_VETO", *gate["reasons"]]}
         results.append(r)
 
     fired = [r for r in results if r["state"] == FIRED]
@@ -337,11 +359,21 @@ def detect_setups(ctx: Mapping, cfg: Mapping, now, registry: Mapping | None = No
         "matched_setup_labels": [by_id[i]["display_label"] for i in matched_ids],
         "setup_state": FIRED if fired else summary_state,
         "setup_version": (by_id[primary_id]["version"] if primary_id else None),
-        "confirmation_labels": [],   # Layer B
-        "setup_evidence": {r["setup_id"]: {"state": r["state"], "evidence": r["evidence"],
-                                           "mandatory": [r["mandatory_satisfied"], r["mandatory_total"]]}
-                           for r in results},
+        "confirmation_labels": [*conf["labels"], *gate["labels"]],   # Layer B overlays + Layer C gate labels
+        "setup_evidence": {
+            **{r["setup_id"]: {"state": r["state"], "evidence": r["evidence"],
+                               "mandatory": [r["mandatory_satisfied"], r["mandatory_total"]]}
+               for r in results},
+            "_confirmations": {"score": conf["confirmation_score"],
+                               "pass_count": conf["confirmation_pass_count"],
+                               "fail_count": conf["confirmation_fail_count"],
+                               "authorizes_fire": conf["authorizes_fire"]},
+            "_execution_gate": {"result": gate["result"], "passed": gate["passed"],
+                                "reasons": gate["reasons"], "price_control": gate["price_control"]},
+        },
         "setup_fail_reasons": {r["setup_id"]: r["fail_reasons"] for r in results if r["fail_reasons"]},
+        "execution_gate_result": gate["result"],
+        "confirmation_score": conf["confirmation_score"],
         "registry_hash": sreg.registry_hash(reg),
         "multi_setup": len(matched_ids) > 1,
     }
@@ -349,14 +381,19 @@ def detect_setups(ctx: Mapping, cfg: Mapping, now, registry: Mapping | None = No
 
 def taxonomy_for_symbol(*, bars, now, cfg, registry=None, ign_lane=None, ign_score=None, atr_1m=None,
                         book=None, market_aligned=None, trend=None, premarket_vwap=None,
-                        premarket_rvol_tod=None, premarket_structure=None,
-                        premarket_building_volume=None) -> dict:
-    """Thin wrapper the shadow logger calls per symbol: assemble the detector context from what the
-    logger already has, run detect_setups. Absent T2 book / premarket profile / market-alignment fail
-    closed inside their detectors (L2 & PREMARKET → DATA_UNAVAILABLE, ORB stays ARMED) — honest for the
-    current T0-only data plane."""
+                        premarket_rvol_tod=None, premarket_structure=None, premarket_building_volume=None,
+                        spread_bps=None, data_age_sec=None, bar_volume=None, price=None,
+                        catalyst_weight=None, halted=None, data_tier=None, hypothetical_shares=None,
+                        macd_hist_5m=None) -> dict:
+    """Thin wrapper the shadow logger calls per symbol: assemble the detector context (setup inputs +
+    Layer B confirmation inputs + Layer C gate inputs) from what the logger already has, run detect_setups.
+    Absent T2 book / premarket profile / market-alignment fail closed inside their detectors; the universal
+    gate vetoes on stale/wide-spread/insufficient-volume/etc. Honest for the current T0-only data plane."""
     ctx = {"bars": bars, "ign_lane": ign_lane, "ign_score": ign_score, "atr_1m": atr_1m,
-           "book": book, "market_aligned": market_aligned, "trend": trend,
+           "book": book, "market_aligned": market_aligned, "trend": trend, "macd_hist_5m": macd_hist_5m,
            "premarket_vwap": premarket_vwap, "premarket_rvol_tod": premarket_rvol_tod,
-           "premarket_structure": premarket_structure, "premarket_building_volume": premarket_building_volume}
+           "premarket_structure": premarket_structure, "premarket_building_volume": premarket_building_volume,
+           "spread_bps": spread_bps, "data_age_sec": data_age_sec, "bar_volume": bar_volume, "price": price,
+           "catalyst_weight": catalyst_weight, "halted": halted, "data_tier": data_tier or "T0",
+           "hypothetical_shares": hypothetical_shares}
     return detect_setups(ctx, cfg, now, registry)

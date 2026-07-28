@@ -1,0 +1,35 @@
+# Momentum-scalp CONFIRMATION OVERLAYS (Layer B) + UNIVERSAL EXECUTION-QUALITY GATE (Layer C).
+# Both are independent of setup identity. Layer B supports/weakens a named setup; Layer C can VETO any
+# setup. Neither is a setup. All thresholds are CONFIGURABLE and versioned — never presented as sourced.
+#
+# PROVENANCE: the Kotak "1-minute" material lists EMA/VWAP/RSI/MACD/volume but gives NO exact periods or
+# firing thresholds; Bullish Bears gives the liquidity/spread/slippage principle but no numbers. So every
+# numeric below is ENGINE_ADAPTATION (configurable), documented as such — see SCALP_SETUP_TAXONOMY_v1.md.
+
+confirmations_version: "scalp-confirmations-v1"
+
+overlays:
+  # indicator periods — ENGINE_ADAPTATION defaults (sources did not specify). macd reuses trigger.macd_5m.
+  ema_period_fast: 9
+  ema_period_slow: 20
+  rsi_period: 14
+  volume_confirm_mult: 1.5     # bar volume >= mult * recent-mean → VOLUME_CONFIRMED
+  volume_lookback: 10
+  momentum_lookback: 3         # bars for the short 1m momentum-slope MOMENTUM_ALIGNED check
+  catalyst_min_weight: 0.40    # catalyst tier weight >= this → CATALYST_CONFIRMED
+  sr_reaction_frac: 0.15       # reaction within this fraction of the recent range's extreme → S/R reaction
+  # ONE_MIN_CONFLUENCE: >= this many directional overlays aligned. It can NEVER authorize a FIRE by
+  # itself in v1 (Kotak is a confirmation profile, not an independent setup).
+  min_confluence_labels: 3
+
+gate:
+  # Universal execution-quality gate. Bullish Bears material is INPUT here, never a named setup.
+  max_spread_bps: 50               # SPREAD_TOO_WIDE above this
+  max_expected_slippage_bps: 60    # EXPECTED_SLIPPAGE_TOO_HIGH above this (uses data_tiers.assumed_slippage_bps)
+  min_bar_volume: 1000             # INSUFFICIENT_VOLUME below this many shares in the evaluated bar
+  min_dollar_vol_rate: 50000       # INSUFFICIENT_VOLUME if price*volume ($/min) below this
+  max_participation_pct: 0.10      # PARTICIPATION_TOO_HIGH if hypothetical size / bar volume exceeds this
+  # freshness threshold reuses scalp_signal_engine.yaml data_tiers.stale_max_sec.
+  # NEVER auto-use a market order — the manual-paper ticket must show the intended price control + est.
+  # spread/slippage. Missing price control → PRICE_CONTROL_UNAVAILABLE (a veto, fail-closed).
+  require_price_control: true

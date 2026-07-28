@@ -38,6 +38,8 @@ ENGINE_MODULES = [
     "scalp_setup_registry.py",
     "scalp_session.py",
     "scalp_setup_detectors.py",
+    "scalp_confirmations.py",
+    "scalp_execution_gate.py",
     "market_observations/observation.py",
     "market_observations/concurrency.py",
     "market_observations/arbitration.py",

@@ -170,18 +170,31 @@ def _force(monkeypatch, **states):
         sat = (5, 5) if st == det.FIRED else (0, 5)
         monkeypatch.setitem(det._DETECTORS, sid, make(sid, st, sat))
 
+# a context that PASSES the universal execution gate (price + liquidity present)
+GATE_OK = {"bars": [bar(10, 10.1, 9.9, 10.0, 5000)], "price": 10.0, "bar_volume": 5000,
+           "spread_bps": 20, "data_tier": "T0", "data_age_sec": 5}
+
 def test_detect_retains_all_matches_and_multi_flag(monkeypatch):
     _force(monkeypatch, SCALP_ORB_15_BREAKOUT_V1=det.FIRED, SCALP_MICRO_PULLBACK_V1=det.FIRED)
-    out = det.detect_setups({"bars": []}, CFG, time(10, 0), REG)
+    out = det.detect_setups(GATE_OK, CFG, time(10, 0), REG)
     assert set(out["matched_setup_ids"]) == {"SCALP_ORB_15_BREAKOUT_V1", "SCALP_MICRO_PULLBACK_V1"}
     assert out["multi_setup"] is True and out["setup_state"] == det.FIRED
 
 def test_primary_is_deterministic_by_registry_rules(monkeypatch):
     # ORB (family rank 60) beats MICRO (45) at equal tier/criteria
     _force(monkeypatch, SCALP_ORB_15_BREAKOUT_V1=det.FIRED, SCALP_MICRO_PULLBACK_V1=det.FIRED)
-    out = det.detect_setups({"bars": []}, CFG, time(10, 0), REG)
+    out = det.detect_setups(GATE_OK, CFG, time(10, 0), REG)
     assert out["primary_setup_id"] == "SCALP_ORB_15_BREAKOUT_V1"
     assert out["primary_setup_label"] == "15M ORB"
+
+def test_execution_gate_vetoes_every_fire_when_spread_too_wide(monkeypatch):
+    _force(monkeypatch, SCALP_ORB_15_BREAKOUT_V1=det.FIRED, SCALP_MICRO_PULLBACK_V1=det.FIRED)
+    ctx = {**GATE_OK, "spread_bps": 999}     # far above max_spread_bps
+    out = det.detect_setups(ctx, CFG, time(10, 0), REG)
+    assert out["matched_setup_ids"] == []            # gate veto → nothing FIRED
+    assert out["execution_gate_result"] == "FAIL"
+    assert "SPREAD_TOO_WIDE" in out["confirmation_labels"]
+    assert out["setup_evidence"]["SCALP_ORB_15_BREAKOUT_V1"]["state"] == det.ARMED
 
 def test_session_gate_downgrades_fire_outside_window(monkeypatch):
     # ORB "fires" but at 11:00, outside its 09:45-10:30 window → OUTSIDE_WINDOW, not matched
