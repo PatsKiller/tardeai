@@ -1,9 +1,8 @@
-"""Read-only ActiveTrader fire-performance payload.
+"""Read-only ActiveTrader fire performance with durable gateway-journal replay.
 
-Today's latest fire per symbol is selected first, then globally ordered by recency before
-LIMIT.  Current fallback marks are batch-read from ``ticker_prices`` once per request,
-not once per symbol.  Fire facts stay immutable; observed performance is explicitly
-partial until replay or finalized outcomes provide complete coverage.
+Fire facts are immutable. Current marks come from a fresh dedicated-gateway snapshot, then
+one approved batch fallback. MFE/MAE is replay-backed when the gateway journal is available;
+coverage is explicitly incomplete across any recorded gap.
 """
 from __future__ import annotations
 
@@ -13,6 +12,7 @@ from typing import Any, Callable, Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 FIRE_PERF_CONTRACT = "active-trader-fire-performance-v1"
+_TRACKERS: dict[str, Any] = {}
 
 
 def _now_iso() -> str:
@@ -59,8 +59,10 @@ def build_fire_performance(
         (active if performance["in_active_queue"] else history).append(performance)
     active.sort(key=lambda item: item.get("fired_at") or "", reverse=True)
     history.sort(key=lambda item: item.get("fired_at") or "", reverse=True)
+    replay_complete = sum(1 for item in active + history if item.get("coverage_complete_since_fire"))
     return {
         "contract": FIRE_PERF_CONTRACT,
+        "contract_revision": 2,
         "read_only": True,
         "write": False,
         "order_path": False,
@@ -69,12 +71,12 @@ def build_fire_performance(
         "fire_history": history,
         "active_count": len(active),
         "history_count": len(history),
+        "replay_complete_count": replay_complete,
         "authority": _zero_authority(),
-        "performance_coverage": "OBSERVED_MARKS_ONLY_UNTIL_FINALIZED_REPLAY",
+        "performance_coverage": "DURABLE_JOURNAL_REPLAY_WHEN_CONTINUOUS",
         "note": (
-            "Fire price/fired_at are immutable. Current marks and deltas are server-side. "
-            "Intraprocess MFE/MAE covers observed polls only; finalized replay outcomes remain "
-            "the record of record."
+            "Fire price/fired_at are immutable. Current marks are timestamped server facts. "
+            "MFE/MAE is complete only when the durable journal proves coverage before fire with no gap."
         ),
     }
 
@@ -96,7 +98,6 @@ def _todays_fires(limit: int = 100) -> list[dict[str, Any]]:
         from db_adapter import get_connection
     except Exception:
         return []
-
     bounded_limit = max(1, min(int(limit or 100), 200))
     try:
         connection = get_connection()
@@ -124,7 +125,6 @@ def _todays_fires(limit: int = 100) -> list[dict[str, Any]]:
             rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
     except Exception:
         return []
-
     fires: list[dict[str, Any]] = []
     for row in rows:
         fired_at = row.get("fired_at")
@@ -148,7 +148,6 @@ def _todays_fires(limit: int = 100) -> list[dict[str, Any]]:
 
 
 def _approved_provider_factory(symbols: list[str]):
-    """Batch-read the approved fallback marks once for the request."""
     wanted = sorted({str(symbol).upper() for symbol in symbols if symbol})
     if not wanted:
         return lambda _symbol: None
@@ -161,7 +160,6 @@ def _approved_provider_factory(symbols: list[str]):
         from db_adapter import get_connection
     except Exception:
         return None
-
     marks: dict[str, dict[str, Any]] = {}
     try:
         connection = get_connection()
@@ -180,54 +178,117 @@ def _approved_provider_factory(symbols: list[str]):
                     "ask": float(ask) if ask is not None else None,
                     "last": float(price) if price is not None else None,
                     "at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at,
-                    "source": "ticker_prices",
+                    "source": "approved_ticker_prices",
                 }
     except Exception:
         return None
-
     return lambda symbol: marks.get(str(symbol).upper())
+
+
+class _SnapshotFirstResolver:
+    def __init__(self, snapshot_marks: dict[str, Any], approved_provider):
+        try:
+            from .live_mark import Mark
+        except ImportError:  # pragma: no cover
+            from live_mark import Mark  # type: ignore
+        self.Mark = Mark
+        self.snapshot_marks = snapshot_marks
+        self.approved_provider = approved_provider
+
+    def resolve(self, symbol: str):
+        normalized = str(symbol).upper()
+        raw = self.snapshot_marks.get(normalized)
+        if isinstance(raw, dict) and raw.get("available") and not raw.get("stale"):
+            # received_at is UTC and is the freshness clock; provider_at is preserved elsewhere.
+            return self.Mark(
+                normalized,
+                raw.get("bid"),
+                raw.get("ask"),
+                raw.get("last"),
+                raw.get("source") or "moomoo_gateway",
+                raw.get("received_at"),
+                True,
+            )
+        fallback = self.approved_provider(normalized) if self.approved_provider else None
+        if fallback:
+            return self.Mark(
+                normalized,
+                fallback.get("bid"),
+                fallback.get("ask"),
+                fallback.get("last"),
+                fallback.get("source") or "approved_ticker_prices",
+                fallback.get("at"),
+                True,
+            )
+        return self.Mark(normalized, None, None, None, None, None, False)
+
+
+def _snapshot_payload(runtime) -> tuple[dict[str, Any], bool, str]:
+    if runtime is None or getattr(runtime, "kind", None) != "ipc_snapshot":
+        return {}, False, "NO_IPC_RUNTIME"
+    read = runtime.snapshot_read()
+    return (read.payload or {}, read.fresh, read.reason)
+
+
+def _tracker(snapshot: dict[str, Any], runtime, config):
+    journal = snapshot.get("journal") or {}
+    directory = str(journal.get("directory") or "")
+    if directory:
+        existing = _TRACKERS.get(directory)
+        if existing is not None:
+            return existing
+        try:
+            from .fire_replay import tracker_from_gateway_snapshot
+
+            replay = tracker_from_gateway_snapshot(snapshot, config)
+        except Exception:
+            replay = None
+        if replay is not None:
+            _TRACKERS[directory] = replay
+            return replay
+    if runtime is not None and getattr(runtime, "fire_tracker", None) is not None:
+        return runtime.fire_tracker
+    try:
+        from .fire_performance import FirePerfTracker
+    except ImportError:  # pragma: no cover
+        from fire_performance import FirePerfTracker  # type: ignore
+    fallback = _TRACKERS.get("in_memory_fallback")
+    if fallback is None:
+        fallback = FirePerfTracker(config)
+        _TRACKERS["in_memory_fallback"] = fallback
+    return fallback
 
 
 def fire_performance_payload(limit: int = 100) -> dict[str, Any]:
     try:
-        from .live_mark import LiveMarkResolver
+        from .fire_performance import FirePerfConfig
         from .l2_runtime import get_runtime
-        from .fire_performance import FirePerfTracker, FirePerfConfig
     except ImportError:  # pragma: no cover
-        from live_mark import LiveMarkResolver  # type: ignore
+        from fire_performance import FirePerfConfig  # type: ignore
         from l2_runtime import get_runtime  # type: ignore
-        from fire_performance import FirePerfTracker, FirePerfConfig  # type: ignore
-
     runtime = get_runtime()
+    snapshot, snapshot_fresh, snapshot_reason = _snapshot_payload(runtime)
     fires = _todays_fires(limit)
-    gateway = runtime.gateway if runtime else None
-    manager = runtime.manager if runtime else None
-
-    def is_moomoo_marked(symbol: str) -> bool:
-        if manager is None:
-            return False
-        try:
-            return symbol.upper() in manager.confirmed_subscriptions()
-        except Exception:
-            return False
+    snapshot_marks = (snapshot.get("current_marks") or {}) if snapshot_fresh else {}
+    approved_provider = _approved_provider_factory([fire.get("symbol") for fire in fires])
+    resolver = _SnapshotFirstResolver(snapshot_marks, approved_provider)
+    config = FirePerfConfig()
+    tracker = _tracker(snapshot if snapshot_fresh else {}, runtime, config)
+    symbols = (snapshot.get("symbols") or {}) if snapshot_fresh else {}
 
     def l2_now(symbol: str) -> str:
-        if manager is None:
-            return "L2_DISCONNECTED"
-        lifecycle = manager.symbols.get(symbol.upper())
-        return lifecycle.state.value if lifecycle else "NOT_REQUESTED"
+        detail = symbols.get(str(symbol).upper()) or {}
+        return str(detail.get("state") or "L2_DISCONNECTED")
 
-    approved_provider = _approved_provider_factory([fire.get("symbol") for fire in fires])
-    resolver = LiveMarkResolver(
-        gateway=gateway,
-        is_moomoo_marked=is_moomoo_marked,
-        approved_provider=approved_provider,
-    )
-    tracker = runtime.fire_tracker if runtime is not None else FirePerfTracker(FirePerfConfig())
-    return build_fire_performance(
+    result = build_fire_performance(
         fires,
         resolver=resolver,
         tracker=tracker,
         now_iso=_now_iso(),
         l2_state_lookup=l2_now,
     )
+    result["gateway_snapshot_fresh"] = snapshot_fresh
+    result["gateway_snapshot_reason"] = snapshot_reason
+    result["gateway_source_commit"] = snapshot.get("source_commit")
+    result["journal"] = snapshot.get("journal") if snapshot_fresh else None
+    return result
