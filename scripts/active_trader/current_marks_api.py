@@ -12,6 +12,7 @@ from typing import Any, Iterable, Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = "active-trader-current-marks-v1"
+_DEFAULT_FUTURE_SKEW_MS = 1_000.0
 
 
 def _now_iso() -> str:
@@ -25,6 +26,37 @@ def _symbols(values: Iterable[str]) -> list[str]:
         if symbol and symbol not in result and len(symbol) <= 20:
             result.append(symbol)
     return result[:100]
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _mark_age_ms(
+    value: Any,
+    now: datetime,
+    *,
+    max_future_skew_ms: Optional[float] = None,
+) -> Optional[float]:
+    """Return a non-negative age, failing closed on invalid/materially future timestamps."""
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        delta_ms = (now - parsed.astimezone(timezone.utc)).total_seconds() * 1000.0
+    except (TypeError, ValueError):
+        return None
+    allowed = (
+        _env_float("ACTIVE_TRADER_MAX_FUTURE_SKEW_MS", _DEFAULT_FUTURE_SKEW_MS)
+        if max_future_skew_ms is None
+        else max(0.0, float(max_future_skew_ms))
+    )
+    if delta_ms < -allowed:
+        return None
+    return max(0.0, delta_ms)
 
 
 def _approved_batch(symbols: list[str]) -> dict[str, dict[str, Any]]:
@@ -50,18 +82,11 @@ def _approved_batch(symbols: list[str]) -> dict[str, dict[str, Any]]:
                    ORDER BY symbol, updated_at DESC""",
                 (symbols,),
             )
-            stale_after_ms = float(os.environ.get("ACTIVE_TRADER_CURRENT_MARK_STALE_MS", "6000"))
+            stale_after_ms = _env_float("ACTIVE_TRADER_CURRENT_MARK_STALE_MS", 6000.0)
             now = datetime.now(timezone.utc)
             for symbol, bid, ask, price, updated_at in cursor.fetchall():
                 at = updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at
-                age_ms = None
-                try:
-                    parsed = datetime.fromisoformat(str(at).replace("Z", "+00:00"))
-                    if parsed.tzinfo is None:
-                        parsed = parsed.replace(tzinfo=timezone.utc)
-                    age_ms = max(0.0, (now - parsed.astimezone(timezone.utc)).total_seconds() * 1000.0)
-                except (TypeError, ValueError):
-                    pass
+                age_ms = _mark_age_ms(at, now)
                 stale = age_ms is None or age_ms > stale_after_ms
                 has_value = price is not None or bid is not None or ask is not None
                 output[str(symbol).upper()] = {
