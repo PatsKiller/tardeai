@@ -11,6 +11,8 @@ import {
 } from '../lib/scannerSelection'
 import SchwabAccountsMonitor from '../components/SchwabAccountsMonitor'
 import ScalpSetupsPanel from '../components/ScalpSetupsPanel'
+import ActiveTraderPage from './ActiveTraderPage'
+import ScalpStrategyModal, { type Setup } from '../components/ScalpStrategyModal'
 import { fmt$, fmtVol } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionPanel from '../components/ProtectionPanel'
@@ -30,7 +32,7 @@ import { runLabel } from '../lib/homeLabels'
 import { BB, TYPE } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Entry Desk', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
+const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Entry Desk', 'Execution', 'Broker Recon', 'Scalp', 'ActiveTrader', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
 const TAB_ALIASES: Record<string, typeof TABS[number]> = {
   'Manual ToS': 'Entry Desk',
   'Manual%20ToS': 'Entry Desk',
@@ -188,6 +190,7 @@ export default function TradingHub({ onDrill }: Props) {
   }, [urlTab])
   // C2 monitor → "edit as DRAFT" hands a seeded intent to the Broker Orders Active Trader panel
   const [draftSeed, setDraftSeed] = useState<any | null>(null)
+  const [activeTraderStrategiesOpen, setActiveTraderStrategiesOpen] = useState(false)
   const [tradeFilter, setTradeFilter] = useState<'ACTIONABLE' | 'GO' | 'WAIT' | 'MANUAL' | 'SCOUT' | 'AWARENESS'>('ACTIONABLE')
   const [tradeSort, setTradeSort] = useState<ScannerSortMode>('awareness')
   const [copied, setCopied] = useState<string | null>(null)
@@ -230,6 +233,8 @@ export default function TradingHub({ onDrill }: Props) {
   const { data: execState } = useApi<any>('/api/v2/execution/current-state', 120_000, { enabled: !brokerDesk })
   const { data: execQual, loading: execQualLoading, error: execQualError } = useApi<any>('/api/v2/execution-quality', 120_000, { enabled: tab === 'Execution' })
   const { data: scalpData } = useApi<any>('/api/v2/scalp/live', 120_000, { enabled: tab === 'Scalp' })
+  const { data: activeTrader } = useApi<any>('/api/v3/active-trader/permission-queue', 5_000, { enabled: tab === 'ActiveTrader' })
+  const { data: atSetups } = useApi<any>('/api/v3/active-trader/scalp/setups', 300_000, { enabled: tab === 'ActiveTrader' })
   const { data: scalpExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=scalp', 120_000, { enabled: tab === 'Scalp' })
   const scalpExtMap: Record<string, any[]> = scalpExt?.map ?? {}
   const { data: setupAdvisory } = useApi<any>('/api/v2/atm/setup-advisory', 120_000, { enabled: tab === 'Open Trades' || tab === 'ATM Controls' })
@@ -1063,6 +1068,21 @@ export default function TradingHub({ onDrill }: Props) {
         )
       })()}
 
+      {tab === 'ActiveTrader' && (
+        <>
+          <ActiveTraderPage
+            signals={activeTrader?.signals ?? []}
+            accounts={activeTrader?.accounts ?? []}
+            onOpenStrategies={() => setActiveTraderStrategiesOpen(true)}
+          />
+          <ScalpStrategyModal
+            open={activeTraderStrategiesOpen}
+            onClose={() => setActiveTraderStrategiesOpen(false)}
+            setups={(atSetups?.setup_registry?.setups ?? []) as Setup[]}
+            registryHash={atSetups?.setup_registry?.registry_hash}
+          />
+        </>
+      )}
       {tab === 'Scalp' && <ScalpSetupsPanel />}
       {tab === 'Scalp' && scalpData && (() => {
         // ── Live scalp signals: unwrap {timestamp,data:{...}} and present clearly + actionably ──

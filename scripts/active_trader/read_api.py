@@ -294,6 +294,32 @@ class ReadOnlyActiveTraderAPI:
                           "canary": False, "financial_action": False},
         }
 
+    def permission_queue(self) -> dict[str, Any]:
+        """ActiveTrader permission queue (read-only). MANUAL_PAPER_TEST_ONLY reference surface: returns
+        live signals + account rows when wired; until then returns empty + is_sample=true so the UI shows
+        clearly-labelled reference data (never fake live). No order path, no routing, no write authority."""
+        return {
+            "contract": READ_API_CONTRACT, "stage": 1, "sub_stage": "active-trader-permission-queue",
+            "write": False, "canary": False, "read_only": True, "auto_route": False,
+            "mode": "MANUAL_PAPER_TEST_ONLY",
+            "is_sample": True,          # no live signals/account balances wired yet
+            "signals": [],
+            "accounts": [],
+            "posture": {
+                "selectable_paper_venue": "alpaca_paper",
+                "read_only_visible": ["schwab", "alpaca_live"],
+                "data_plane_only": ["moomoo"],
+                "manual_handoff": ["thinkorswim_manual"],
+                "order_path": False,
+                "live_routing": False,
+                "final_submit_present": False,
+            },
+            "note": "Reference / manual-paper build. No live signals or account balances wired yet — the "
+                    "UI renders labelled sample data. No order path, no live routing, no submitOrder.",
+            "authority": {"mutation": False, "order": False, "session_authorize": False,
+                          "canary": False, "financial_action": False},
+        }
+
     def near_ready(self, *, include_watch: bool = False) -> dict[str, Any]:
         """Stage 1b read model: candidates below the Trade AI GO bar that show building
         volume/momentum / pullback-break characteristics. Read-only, list, empty OK.
