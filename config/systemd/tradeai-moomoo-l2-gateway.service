@@ -3,15 +3,19 @@ Description=TradeAI dedicated Moomoo L2 gateway (read-only, single OpenD owner)
 After=network-online.target
 Wants=network-online.target
 ConditionPathExists=/etc/tradeai/ENABLE_MOOMOO_L2_GATEWAY
+ConditionPathExists=/etc/tradeai/moomoo_l2_gateway.env
+ConditionPathExists=/opt/trade-ai/runtime/moomoo-l2-gateway/current/scripts/moomoo/gateway_service.py
 
 [Service]
 Type=simple
 User=johnclaw
 Group=johnclaw
-WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+WorkingDirectory=/opt/trade-ai/runtime/moomoo-l2-gateway/current
+EnvironmentFile=/etc/tradeai/moomoo_l2_gateway.env
 Environment=PYTHONUNBUFFERED=1
 Environment=MOOMOO_L2_GATEWAY_CONFIG=/etc/tradeai/moomoo_l2_gateway.yaml
-ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/moomoo/gateway_service.py --config /etc/tradeai/moomoo_l2_gateway.yaml
+Environment=TRADEAI_REPO_ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /opt/trade-ai/runtime/moomoo-l2-gateway/current/scripts/moomoo/gateway_service.py --config /etc/tradeai/moomoo_l2_gateway.yaml
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=20
