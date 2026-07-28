@@ -1,9 +1,8 @@
 // Defensive normalizers for the active-trader-motion-snapshot-v1 read contract.
 //
-// Every field is treated as untrusted. Unknown, absent, or malformed values normalize to `null`
-// (numbers), `''` (strings), `[]` (lists) or a widened `'UNKNOWN'` enum — NEVER to a fabricated
-// live value. The consuming UI renders those honest gaps as unavailable/stale, so a missing or
-// broken payload can never masquerade as live motion.
+// Every field is treated as untrusted. Unknown, absent, or malformed values normalize to `null`,
+// empty strings/lists, or widened UNKNOWN enums — never to a fabricated live value. Account binding
+// also fails closed: absent or malformed `account_bound` normalizes to false.
 
 import {
   MOTION_CONTRACT,
@@ -27,7 +26,6 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-// Finite number or null. Booleans are explicitly rejected (never coerced to 0/1).
 function num(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   return null;
@@ -57,7 +55,6 @@ function symbol(raw: Raw): string {
   return text(raw.symbol).trim().toUpperCase();
 }
 
-// Pull the first present numeric among candidate keys (backend snake_case may vary).
 function pick(raw: Raw, keys: string[]): number | null {
   for (const key of keys) {
     const value = num(raw[key]);
@@ -96,8 +93,8 @@ function normalizeT2(value: unknown): MotionT2 {
   return {
     operatingCap: pick(raw, ['operating_cap', 'operatingCap']),
     providerHardCap: pick(raw, ['provider_hard_cap', 'providerHardCap']),
-    leases: asArray(raw.leases).map(normalizeLease).filter((l) => l.symbol),
-    decisions: asArray(raw.decisions).map(normalizeDecision).filter((d) => d.symbol),
+    leases: asArray(raw.leases).map(normalizeLease).filter((lease) => lease.symbol),
+    decisions: asArray(raw.decisions).map(normalizeDecision).filter((decision) => decision.symbol),
   };
 }
 
@@ -130,14 +127,10 @@ function normalizeExitSignal(value: unknown): MotionExitSignal {
     state: exitState(raw.state),
     reasonCode: text(raw.reason_code) || text(raw.reasonCode),
     at: pick(raw, ['at', 'generated_at', 'generatedAt']),
+    accountBound: boolean(raw.account_bound ?? raw.accountBound, false),
   };
 }
 
-/**
- * Normalize an untrusted motion payload into a typed snapshot.
- * Throws only if `raw` is not an object at all — the caller treats a throw as a fetch failure and
- * fails closed to an honest unavailable/stale state (it never substitutes fabricated data).
- */
 export function normalizeMotionSnapshot(raw: unknown): MotionSnapshot {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('motion payload is not an object');
@@ -152,7 +145,7 @@ export function normalizeMotionSnapshot(raw: unknown): MotionSnapshot {
     pushPrimary: boolean(root.push_primary ?? root.pushPrimary),
     maxPullFallbacksPerMinute: pick(root, ['max_pull_fallbacks_per_minute', 'maxPullFallbacksPerMinute']),
     t2: normalizeT2(root.t2),
-    positions: asArray(root.positions).map(normalizePosition).filter((p) => p.symbol),
-    exitSignals: asArray(root.exit_signals ?? root.exitSignals).map(normalizeExitSignal).filter((s) => s.symbol),
+    positions: asArray(root.positions).map(normalizePosition).filter((position) => position.symbol),
+    exitSignals: asArray(root.exit_signals ?? root.exitSignals).map(normalizeExitSignal).filter((signal) => signal.symbol),
   };
 }
