@@ -1,45 +1,25 @@
 #!/usr/bin/env python3
-"""Defect 6 — persisted data_tier is honest/config-driven, defaults T0, promotion is explicit."""
-from __future__ import annotations
-
-import sys
+"""Scalp tier safety: config alone may not promote an event to T2."""
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
-
-pytest.importorskip("requests")   # scalp_shadow_logger's transitive import
-import scalp_shadow_logger as L    # noqa: E402
-
-LADDER = {"T0": 0.4, "T2": 1.0}
+LOGGER = ROOT / "scripts" / "scalp_shadow_logger.py"
 
 
-def test_defaults_to_t0():
-    assert L.effective_data_tier({"data_tiers": {"dcf": LADDER}}) == "T0"
-
-def test_empty_config_defaults_t0():
-    assert L.effective_data_tier({}) == "T0"
-
-def test_promotion_via_active_tier():
-    assert L.effective_data_tier({"data_tiers": {"active_tier": "T2", "dcf": LADDER}}) == "T2"
-
-def test_promotion_via_t2_feeds_scoring():
-    assert L.effective_data_tier({"data_tiers": {"t2": {"feeds_scoring": True}, "dcf": LADDER}}) == "T2"
-
-def test_promotion_via_top_level_t2_feeds_scoring():
-    assert L.effective_data_tier({"t2": {"feeds_scoring": True}, "data_tiers": {"dcf": LADDER}}) == "T2"
-
-def test_promotion_without_ladder_fails_closed_to_t0():
-    # promoted, but the dcf/slippage ladder has no T2 → fail closed to T0 (never emit an undefined tier)
-    assert L.effective_data_tier({"data_tiers": {"active_tier": "T2", "dcf": {"T0": 0.4}}}) == "T0"
-
-def test_entitlement_or_feed_up_does_not_promote():
-    # a live feed/entitlement flag is NOT promotion — only explicit config promotes
-    cfg = {"data_tiers": {"dcf": LADDER}, "moomoo": {"opend_up": True}, "entitlement": "AVAILABLE_REALTIME"}
-    assert L.effective_data_tier(cfg) == "T0"
+def test_no_config_only_effective_data_tier_switch():
+    source = LOGGER.read_text(encoding="utf-8")
+    assert "def effective_data_tier" not in source
+    assert "feeds_scoring" not in source
 
 
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-q"]))
+def test_persisted_ignition_rows_remain_t0_pending_per_symbol_proof():
+    source = LOGGER.read_text(encoding="utf-8")
+    # Both ordinary and FSM-trigger rows remain on the established T0 shadow contract.
+    assert source.count("'T0'") >= 2
+    assert "data_tier=\"T0\"" in source
+
+
+def test_legacy_logger_does_not_construct_opend_context_directly():
+    source = LOGGER.read_text(encoding="utf-8")
+    assert "OpenQuoteContext(" not in source
+    assert "FutuTransport(" not in source
