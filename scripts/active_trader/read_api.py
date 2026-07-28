@@ -335,6 +335,109 @@ def _permission_queue_signals(limit: int = 25) -> dict[str, Any]:
         return empty
 
 
+# Real momentum routes the live scanner assigns to an actionable scalp fire (vs watch_only/reject).
+_LIVE_SCAN_MOMENTUM_ROUTES = ("momentum_scalp", "meme_squeeze_momentum")
+_LIVE_SCAN_ACTIONABLE_DECISIONS = ("GO", "ENTER", "TAKE")
+
+
+def _live_scan_signals(limit: int = 40) -> dict[str, Any]:
+    """TODAY's LIVE momentum-scalp scanner activity from scalp_scan_results (the engine that actually
+    runs 6am-noon incl. premarket). Read-only projection of REAL scanner fields — score/grade/decision/
+    route/rvol/gap — with NO fabricated IGN or subscores (those live only in scalp_ignition_events).
+    available=False means the DB/table was unreachable (reported honestly, never disguised as idle)."""
+    from datetime import datetime as _dtm
+    from zoneinfo import ZoneInfo as _ZI
+    et = _ZI("America/New_York")
+    today = _dtm.now(et).date().isoformat()
+    empty = {"available": False, "session_date": today, "scan_count": 0, "fires": []}
+    try:
+        import sys as _sys
+        sp = str(_REPO_ROOT / "scripts")
+        if sp not in _sys.path:
+            _sys.path.insert(0, sp)
+        from db_adapter import get_connection
+    except Exception:
+        return empty
+    lim = max(1, min(int(limit or 40), 100))
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT count(*), count(DISTINCT symbol), max(scanned_at) FROM scalp_scan_results "
+                "WHERE scanned_at >= %s",
+                (f"{today} 00:00:00-04",))
+            total, distinct_syms, last_at = cur.fetchone()
+            cur.execute(
+                """SELECT symbol, scanned_at, score, grade, decision, route, route_strategy_id,
+                          route_actionability, rvol, volume, gap_pct, price, float_mm, change_pct,
+                          sector, industry, catalyst_verified, catalyst_confidence, alerted,
+                          disqualified, disqualification_reason, operator_pill, operator_subtitle,
+                          operator_color_token, scout_status, scout_pillar_count, not_tradeable
+                   FROM scalp_scan_results
+                   WHERE scanned_at >= %s
+                   ORDER BY scanned_at DESC, score DESC NULLS LAST
+                   LIMIT %s""",
+                (f"{today} 00:00:00-04", lim))
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            cur.execute(
+                "SELECT decision, count(*) FROM scalp_scan_results WHERE scanned_at >= %s GROUP BY 1",
+                (f"{today} 00:00:00-04",))
+            by_decision = {str(k): v for k, v in cur.fetchall()}
+            cur.execute(
+                "SELECT route, count(*) FROM scalp_scan_results WHERE scanned_at >= %s GROUP BY 1",
+                (f"{today} 00:00:00-04",))
+            by_route = {("none" if k is None else str(k)): v for k, v in cur.fetchall()}
+    except Exception:
+        return empty
+
+    def _fire(r: Mapping[str, Any]) -> dict[str, Any]:
+        sc = r.get("scanned_at")
+        route = r.get("route")
+        decision = r.get("decision")
+        actionable = (decision in _LIVE_SCAN_ACTIONABLE_DECISIONS) or (route in _LIVE_SCAN_MOMENTUM_ROUTES)
+        return {
+            "symbol": r.get("symbol"),
+            "scanned_at": sc.isoformat() if hasattr(sc, "isoformat") else sc,
+            "scanned_at_et": sc.astimezone(et).strftime("%H:%M") if hasattr(sc, "astimezone") else None,
+            "score": r.get("score"), "grade": r.get("grade"), "decision": decision,
+            "route": route, "route_strategy_id": r.get("route_strategy_id"),
+            "route_actionability": r.get("route_actionability"),
+            "rvol": float(r["rvol"]) if r.get("rvol") is not None else None,
+            "gap_pct": float(r["gap_pct"]) if r.get("gap_pct") is not None else None,
+            "change_pct": float(r["change_pct"]) if r.get("change_pct") is not None else None,
+            "price": float(r["price"]) if r.get("price") is not None else None,
+            "float_mm": float(r["float_mm"]) if r.get("float_mm") is not None else None,
+            "sector": r.get("sector"), "industry": r.get("industry"),
+            "catalyst_verified": r.get("catalyst_verified"),
+            "catalyst_confidence": r.get("catalyst_confidence"),
+            "alerted": r.get("alerted"), "disqualified": r.get("disqualified"),
+            "disqualification_reason": r.get("disqualification_reason"),
+            "operator_pill": r.get("operator_pill"), "operator_subtitle": r.get("operator_subtitle"),
+            "operator_color_token": r.get("operator_color_token"),
+            "scout_status": r.get("scout_status"), "scout_pillar_count": r.get("scout_pillar_count"),
+            "not_tradeable": r.get("not_tradeable"),
+            "actionable": actionable,
+        }
+
+    fires = [_fire(r) for r in rows]
+    # actionable = today's GO/route-momentum count (computed from full-day distributions, not just page)
+    go_ct = sum(v for k, v in by_decision.items() if k in _LIVE_SCAN_ACTIONABLE_DECISIONS)
+    route_ct = sum(v for k, v in by_route.items() if k in _LIVE_SCAN_MOMENTUM_ROUTES)
+    return {
+        "available": True, "session_date": today, "is_today": True,
+        "scan_count": int(total or 0), "distinct_symbols": int(distinct_syms or 0),
+        "actionable_count": int(go_ct), "momentum_route_count": int(route_ct),
+        "last_scan_at": last_at.isoformat() if hasattr(last_at, "isoformat") else last_at,
+        "window": "06:00-12:00 ET", "fires": fires,
+        "by_decision": by_decision, "by_route": by_route,
+        "source": "scalp_scan_results",
+        "note": "LIVE momentum-scalp scanner (runs 6am-noon ET incl. premarket). Real scanner fields; "
+                "IGN/subscores/setup taxonomy are NOT fabricated here (those come from scalp_ignition_events "
+                "during RTH). Read-only, no order path.",
+    }
+
+
 class ReadOnlyActiveTraderAPI:
     """Framework-neutral Stage 0 read surface. No create/update/delete/order methods."""
 
@@ -450,14 +553,19 @@ class ReadOnlyActiveTraderAPI:
         import datetime as _dt
         q = _permission_queue_signals()
         signals = q["signals"]
+        # IGN/taxonomy state (scalp_ignition_events — RTH shadow logger). Kept distinct and honest.
         if not q["available"]:
             data_state = "API_UNAVAILABLE"
         elif not signals:
             data_state = "EMPTY_LIVE_QUEUE"
         elif not q["is_live_session"]:
-            data_state = "DATA_STALE"          # newest alert-worthy session is not today's
+            data_state = "DATA_STALE"          # newest alert-worthy IGN session is not today's
         else:
             data_state = "LIVE_DATA"
+        # LIVE momentum-scalp scanner (scalp_scan_results — runs 6am-noon incl. premarket). This is what
+        # is actually firing right now; the tab leads with it instead of the RTH-gated IGN table.
+        live_scan = _live_scan_signals()
+        engine_live_today = bool(live_scan.get("available") and live_scan.get("scan_count", 0) > 0)
         actionable = sum(1 for s in signals if s.get("state") in ("ARMED", "TRIGGERED"))
         try:
             reg = _scalp_registry_view()
@@ -468,7 +576,7 @@ class ReadOnlyActiveTraderAPI:
             "contract": READ_API_CONTRACT, "stage": 1, "sub_stage": "active-trader-permission-queue",
             "write": False, "canary": False, "read_only": True, "auto_route": False,
             "mode": "MANUAL_PAPER_TEST_ONLY",
-            "data_state": data_state,          # API_UNAVAILABLE | EMPTY_LIVE_QUEUE | DATA_STALE | LIVE_DATA
+            "data_state": data_state,          # IGN table: API_UNAVAILABLE | EMPTY_LIVE_QUEUE | DATA_STALE | LIVE_DATA
             "is_sample": False,                # server never returns a reference sample; the UI owns preview mode
             "signals": signals,
             "actionable_count": actionable,
@@ -477,6 +585,10 @@ class ReadOnlyActiveTraderAPI:
             "source_session_date": q["source_session"],
             "is_live_session": q["is_live_session"],
             "last_event_at": q["last_event_at"],
+            # --- LIVE momentum-scalp scanner (the engine firing 6am-noon now) ---
+            "engine_live_today": engine_live_today,
+            "engine_window": "06:00-12:00 ET",
+            "live_scan": live_scan,
             "generated_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
             "registry_version": reg_ver, "registry_hash": reg_hash,
             "route_health": "ok",

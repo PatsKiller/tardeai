@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ActiveTraderDataState, BrokerAccount, RoutingDraft, ScalpSignal } from './activeTrader.types';
+import type { ActiveTraderDataState, BrokerAccount, LiveScan, LiveScanFire, RoutingDraft, ScalpSignal } from './activeTrader.types';
 import { MOCK_ACCOUNTS, MOCK_QUEUE, MOCK_SIGNAL } from './activeTrader.mock';
 import './activeTrader.css';
 
@@ -13,6 +13,10 @@ type Props = {
   lastEventAt?: string | null;
   registryHash?: string | null;
   registryVersion?: string | null;
+  // LIVE momentum-scalp scanner (scalp_scan_results) — the engine firing 6am-noon right now.
+  engineLiveToday?: boolean;
+  engineWindow?: string;
+  liveScan?: LiveScan;
 };
 
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -209,8 +213,60 @@ function AccountAllocationModal({ signal, accounts, reference, onClose }: {
   );
 }
 
+function decisionTone(d: string | null): 'pass' | 'warning' | 'fail' | 'context' {
+  return d === 'GO' || d === 'ENTER' || d === 'TAKE' ? 'pass' : d === 'WAIT' ? 'warning' : d === 'AVOID' ? 'fail' : 'context';
+}
+
+function LiveScanPanel({ scan, win }: { scan: LiveScan; win?: string }) {
+  const lastEt = scan.last_scan_at
+    ? new Date(scan.last_scan_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' })
+    : '—';
+  return (
+    <section className="at-panel at-livescan" aria-labelledby="livescan-title">
+      <header className="at-panel__header">
+        <div>
+          <h2 id="livescan-title">Live momentum-scalp scanner <small>{scan.source}</small></h2>
+          <p>window {win ?? scan.window} · {scan.scan_count} scans today · {scan.distinct_symbols} symbols · last {lastEt} ET</p>
+        </div>
+        <div className="at-inline at-wrap">
+          <Chip tone="pass">● LIVE · FIRING</Chip>
+          <Chip tone={scan.actionable_count > 0 ? 'pass' : 'context'}>{scan.actionable_count} GO</Chip>
+          <Chip tone={scan.momentum_route_count > 0 ? 'pass' : 'context'}>{scan.momentum_route_count} momentum route</Chip>
+        </div>
+      </header>
+      <div className="at-livescan__dist at-inline at-wrap">
+        {Object.entries(scan.by_decision).map(([k, v]) => <Chip key={k} tone={decisionTone(k)}>{k} {v}</Chip>)}
+        <span className="at-livescan__sep">routes</span>
+        {Object.entries(scan.by_route).map(([k, v]) => <Chip key={k} title="scanner route assignment">{k} {v}</Chip>)}
+      </div>
+      <div className="at-livescan__table" role="table" aria-label="Live scanner fires today">
+        <div className="at-livescan__row at-livescan__row--head" role="row">
+          <span>time</span><span>sym</span><span>score</span><span>gr</span><span>decision</span><span>route</span><span>RVOL</span><span>chg%</span><span>gap%</span><span>sector</span>
+        </div>
+        {scan.fires.length === 0 && <div className="at-livescan__empty">No scans returned for today yet.</div>}
+        {scan.fires.map((f, i) => (
+          <div key={`${f.symbol}-${f.scanned_at}-${i}`} className={`at-livescan__row${f.actionable ? ' is-actionable' : ''}`} role="row">
+            <span className="mono">{f.scanned_at_et ?? '—'}</span>
+            <span className="mono at-livescan__sym">{f.symbol ?? '—'}</span>
+            <span className="mono">{f.score ?? '—'}</span>
+            <span>{f.grade ?? '—'}</span>
+            <span className={`at-chip at-chip--${decisionTone(f.decision)}`}>{f.decision ?? '—'}</span>
+            <span className="at-livescan__route" title={f.route_strategy_id ?? undefined}>{f.route ?? '—'}</span>
+            <span className="mono">{f.rvol != null ? f.rvol.toFixed(1) : '—'}</span>
+            <span className="mono">{f.change_pct != null ? f.change_pct.toFixed(1) : '—'}</span>
+            <span className="mono">{f.gap_pct != null ? f.gap_pct.toFixed(1) : '—'}</span>
+            <span className="at-livescan__sector">{f.sector ?? '—'}</span>
+          </div>
+        ))}
+      </div>
+      <div className="at-livescan__note">{scan.note}</div>
+    </section>
+  );
+}
+
 export default function ActiveTraderPage(props: Props) {
-  const { signals, accounts, onOpenStrategies, dataState, actionableCount, sourceSessionDate, lastEventAt, registryHash, registryVersion } = props;
+  const { signals, accounts, onOpenStrategies, dataState, actionableCount, sourceSessionDate, lastEventAt, registryHash, registryVersion, engineLiveToday, engineWindow, liveScan } = props;
+  const showLiveScan = !!engineLiveToday && !!liveScan?.available;
   const [preview, setPreview] = useState(false);   // explicit reference-sample preview (never the default)
   const derived: ActiveTraderDataState = signals === undefined ? 'LOADING' : (signals.length ? 'LIVE_DATA' : 'EMPTY_LIVE_QUEUE');
   const state: ActiveTraderDataState = preview ? 'REFERENCE_SAMPLE' : (dataState ?? derived);
@@ -230,7 +286,8 @@ export default function ActiveTraderPage(props: Props) {
     <div className="active-trader-page__intro">
       <div><h1>ActiveTrader</h1><p>Evidence-first momentum-scalp review. Manual paper testing only; no automatic or live order path.</p></div>
       <div className="at-inline at-wrap">
-        <Chip tone={banner.tone}>{banner.text}</Chip>
+        {showLiveScan && !preview && <Chip tone="pass" title="Live momentum-scalp scanner is firing today (scalp_scan_results)">● ENGINE LIVE · {liveScan!.scan_count} SCANS · {engineWindow ?? liveScan!.window}</Chip>}
+        <Chip tone={banner.tone} title="IGN/setup taxonomy table (scalp_ignition_events) — RTH shadow logger">IGN TAXONOMY: {banner.text}</Chip>
         <button type="button" className="at-link-button" onClick={() => setPreview(p => !p)}>{preview ? 'Exit preview' : 'Preview example'}</button>
       </div>
     </div>
@@ -247,6 +304,13 @@ export default function ActiveTraderPage(props: Props) {
 
     {state === 'API_UNAVAILABLE' && <div className="at-fullstate at-fullstate--fail">Permission-queue API unavailable. This is not an empty queue — the backend did not respond.</div>}
     {state === 'LOADING' && <div className="at-fullstate">Loading permission queue…</div>}
+
+    {/* LIVE momentum-scalp scanner — what is actually firing 6am-noon, right now. Leads the page. */}
+    {showLiveScan && !preview && <LiveScanPanel scan={liveScan!} win={engineWindow} />}
+
+    {showLiveScan && !preview && (
+      <div className="at-section-label">IGN / setup-taxonomy detail <small>scalp_ignition_events · RTH shadow logger{sourceSessionDate ? ` · latest tagged session ${sourceSessionDate}` : ''}</small></div>
+    )}
 
     <div className="active-trader-page__layout">
       <aside><PermissionQueue signals={sorted} selectedId={selected?.id ?? null} onSelect={s => setSelectedId(s.id)} actionable={actionable} reference={reference} /></aside>

@@ -1079,6 +1079,9 @@ export default function TradingHub({ onDrill }: Props) {
             lastEventAt={activeTrader?.last_event_at}
             registryHash={activeTrader?.registry_hash}
             registryVersion={activeTrader?.registry_version}
+            engineLiveToday={activeTrader?.engine_live_today}
+            engineWindow={activeTrader?.engine_window}
+            liveScan={activeTrader?.live_scan}
             onOpenStrategies={() => setActiveTraderStrategiesOpen(true)}
           />
           <ScalpStrategyModal
