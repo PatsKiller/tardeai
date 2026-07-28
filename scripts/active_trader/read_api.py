@@ -459,14 +459,14 @@ def _ign_trigger_today(limit: int = 25) -> list[dict[str, Any]]:
         conn = get_connection()
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT id, symbol, lane, ign_score, setup_state, primary_setup_id, primary_setup_label,
-                          matched_setup_ids, matched_setup_labels, setup_version, registry_hash,
-                          market_session, data_tier, dcf, rvol_tod, profile_source, entry_ref, stop_ref,
-                          r_dollars, stop_dist_bps, gate_result, gate_reasons, subscores, confirmation_labels,
-                          setup_fail_reasons, fired_at
+                """SELECT DISTINCT ON (symbol) id, symbol, lane, ign_score, setup_state, primary_setup_id,
+                          primary_setup_label, matched_setup_ids, matched_setup_labels, setup_version,
+                          registry_hash, market_session, data_tier, dcf, rvol_tod, profile_source,
+                          entry_ref, stop_ref, r_dollars, stop_dist_bps, gate_result, gate_reasons,
+                          subscores, confirmation_labels, setup_fail_reasons, fired_at
                    FROM scalp_ignition_events
-                   WHERE session_date = %s AND lane = 'TRIGGER'
-                   ORDER BY ign_score DESC, fired_at DESC LIMIT %s""",
+                   WHERE session_date = %s AND (lane = 'TRIGGER' OR setup_state = 'FIRED')
+                   ORDER BY symbol, fired_at DESC LIMIT %s""",
                 (_et_today(), max(1, min(int(limit or 25), 100))))
             cols = [d[0] for d in cur.description]
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
@@ -604,7 +604,7 @@ def _engine_status() -> dict[str, Any]:
                 "last_scan_at": last_at.isoformat() if hasattr(last_at, "isoformat") else last_at,
                 "latest_run_label": rl[0] if rl else None, "distinct_symbols": int(distinct or 0),
             }
-            cur.execute("SELECT count(*), count(*) FILTER (WHERE lane='TRIGGER') "
+            cur.execute("SELECT count(*), count(*) FILTER (WHERE lane='TRIGGER' OR setup_state='FIRED') "
                         "FROM scalp_ignition_events WHERE session_date=%s", (today,))
             ign_today, ign_trigger = cur.fetchone()
     except Exception:
