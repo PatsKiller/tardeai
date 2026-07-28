@@ -251,6 +251,98 @@ class FutuTransport:
         }
 
 
+class MoomooTradeReader:
+    """READ-ONLY account facts from the moomoo trade context. No order path, no unlock.
+
+    Stage 0 keeps quotes and orders apart, and it must stay that way — but balances and
+    positions are only reachable through OpenSecTradeContext. This class opens that
+    context for `accinfo_query` / `position_list_query` ONLY. It never calls
+    `unlock_trade`, never places/modifies/cancels, and mirrors MoomooClient's hard
+    refusal so an order path cannot be reached through it either. Reads require no
+    unlock; only order placement does.
+
+    The REAL US account lives under SecurityFirm.FUTUINC. FUTUSECURITIES returns only
+    the SIMULATE account, which reads exactly like "no live account exists" — that
+    mistake is why moomoo looked unwired on 2026-07-28.
+    """
+
+    FORBIDDEN_METHODS = frozenset({
+        "place_order", "modify_order", "cancel_order", "unlock_trade", "lock_trade",
+        "submit_order", "execute_trade",
+    })
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 11111, *, firm: str = "FUTUINC"):
+        self.host, self.port, self.firm = host, int(port), firm
+
+    def _ctx(self):
+        from futu import OpenSecTradeContext, TrdMarket, SecurityFirm
+        firm = getattr(SecurityFirm, self.firm, None)
+        if firm is None:
+            raise MoomooUnavailable(f"unknown security firm {self.firm!r}")
+        return OpenSecTradeContext(filter_trdmarket=TrdMarket.US, host=self.host,
+                                   port=self.port, security_firm=firm)
+
+    def accounts(self) -> list[dict]:
+        """Every account this firm exposes, with trd_env so REAL vs SIMULATE is explicit."""
+        from futu import RET_OK
+        with quiet_futu_logging():
+            ctx = self._ctx()
+            try:
+                ret, df = ctx.get_acc_list()
+            finally:
+                ctx.close()
+        if ret != RET_OK:
+            raise MoomooUnavailable(f"get_acc_list failed: {str(df)[:120]}")
+        return [{"acc_id": r.get("acc_id"), "trd_env": str(r.get("trd_env")),
+                 "acc_type": str(r.get("acc_type")), "acc_status": str(r.get("acc_status"))}
+                for _, r in df.iterrows()]
+
+    def snapshot(self, acc_id: int) -> dict:
+        """{cash, total_assets, market_val, positions:[…]} for one REAL account."""
+        from futu import RET_OK, TrdEnv
+        with quiet_futu_logging():
+            ctx = self._ctx()
+            try:
+                r1, info = ctx.accinfo_query(trd_env=TrdEnv.REAL, acc_id=int(acc_id), currency="USD")
+                r2, pos = ctx.position_list_query(trd_env=TrdEnv.REAL, acc_id=int(acc_id))
+            finally:
+                ctx.close()
+        if r1 != RET_OK:
+            raise MoomooUnavailable(f"accinfo_query failed: {str(info)[:120]}")
+
+        def _f(v):
+            try:
+                f = float(v)
+                return f if f == f else None
+            except (TypeError, ValueError):
+                return None
+
+        row = info.iloc[0]
+        positions = []
+        if r2 == RET_OK and pos is not None and len(pos):
+            for _, p in pos.iterrows():
+                positions.append({
+                    "code": str(p.get("code") or ""),
+                    "qty": _f(p.get("qty")),
+                    "market_val": _f(p.get("market_val")),
+                    "cost_price": _f(p.get("cost_price")),
+                    "nominal_price": _f(p.get("nominal_price")),
+                })
+        return {
+            "acc_id": int(acc_id),
+            "cash": _f(row.get("cash")),
+            "total_assets": _f(row.get("total_assets")),
+            "market_val": _f(row.get("market_val")),
+            "currency": str(row.get("currency") or "USD"),
+            "positions": positions,
+        }
+
+    def __getattr__(self, name):
+        if name in self.FORBIDDEN_METHODS:
+            raise MoomooAuthorityError(f"{name} is OUT of the read plane (order path forbidden)")
+        raise AttributeError(name)
+
+
 class MoomooClient:
     """Stage 0 client: quotes/history interface with hard order-path refusal."""
 
