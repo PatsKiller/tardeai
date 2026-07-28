@@ -107,6 +107,7 @@ test "$(git rev-parse "origin/$BRANCH")" = "$EXPECTED_SHA"
 git cat-file -e "${EXPECTED_SHA}^{commit}"
 
 sudo install -d -m 0755 "$RUNTIME_ROOT"
+sudo install -d -m 0755 /etc/tradeai
 
 if [ ! -d "$RELEASE" ]; then
   sudo install -d -m 0755 "$RELEASE"
