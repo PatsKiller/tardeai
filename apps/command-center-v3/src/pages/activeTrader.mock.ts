@@ -32,6 +32,7 @@ export const MOCK_QUEUE: ScalpSignal[] = [
     primarySetupLabel: 'IGNITION BREAKOUT', matchedSetupLabels: ['IGNITION BREAKOUT'] },
   { ...MOCK_SIGNAL, id: 'sig-xrx-001', symbol: 'XRX', last: 4.05, ign: 61, ignDelta: 9,
     state: 'VETOED', cohort: 'proxy', vetoReason: 'LULD headroom 1.4% · ADV unverified',
+    session: 'PREMARKET',   // premarket setup must NOT inherit the REGULAR session/denominators
     primarySetupLabel: 'PREMARKET MOMENTUM', matchedSetupLabels: ['PREMARKET MOMENTUM'] },
 ];
 
