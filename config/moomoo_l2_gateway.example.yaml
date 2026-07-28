@@ -1,0 +1,38 @@
+# Dedicated Moomoo/OpenD L2 gateway — read plane only.
+#
+# Shipped DISABLED. Enabling this file does not install/start a service and does not enable
+# paper/live orders, trading sessions, trade unlock, 2FA, or credentials. One operator-owned
+# systemd action is required only after code review, CI, and the data-only host probe plan.
+schema_version: moomoo-l2-gateway-service-v1
+enabled: false
+
+runtime:
+  snapshot_path: ~/.tradeai/runtime/moomoo_l2_gateway_snapshot.json
+  state_path: ~/.tradeai/runtime/moomoo_l2_gateway_state.json
+  lock_path: ~/.tradeai/runtime/moomoo_l2_gateway.lock
+  snapshot_stale_after_seconds: 5
+  state_save_seconds: 5
+
+intent:
+  # Existing scalp logger output is DESIRED INTENT only. Its existence never means connected,
+  # subscribed, confirmed, fresh, or T2.
+  paths:
+    - data/scalp/moomoo_armed_state.json
+    - ~/.tradeai/runtime/moomoo_l2_operator_intent.json
+
+polling:
+  loop_interval_ms: 500
+  health_interval_seconds: 5
+  quota_refresh_seconds: 15
+  intent_refresh_seconds: 1
+  quote_poll_seconds: 1.5
+  book_poll_seconds: 1
+  ticker_poll_seconds: 2
+  heartbeat_seconds: 1
+  book_levels: 10
+  ticker_pull_count: 200
+
+journal:
+  directory: ~/.tradeai/runtime/moomoo_l2_journal
+  retention_days: 14
+  flush_seconds: 1
