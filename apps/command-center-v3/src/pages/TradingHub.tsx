@@ -1071,8 +1071,14 @@ export default function TradingHub({ onDrill }: Props) {
       {tab === 'ActiveTrader' && (
         <>
           <ActiveTraderPage
-            signals={activeTrader?.signals ?? []}
+            signals={activeTrader ? (activeTrader.signals ?? []) : undefined}
             accounts={activeTrader?.accounts ?? []}
+            dataState={activeTrader?.data_state}
+            actionableCount={activeTrader?.actionable_count}
+            sourceSessionDate={activeTrader?.source_session_date}
+            lastEventAt={activeTrader?.last_event_at}
+            registryHash={activeTrader?.registry_hash}
+            registryVersion={activeTrader?.registry_version}
             onOpenStrategies={() => setActiveTraderStrategiesOpen(true)}
           />
           <ScalpStrategyModal

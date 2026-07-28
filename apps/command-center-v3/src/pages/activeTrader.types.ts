@@ -42,6 +42,33 @@ export interface ScalpSignal {
   operatorQuantity: number;
   tierDerivedQuantity: number;
   vetoReason?: string;
+  // Distinct state systems (kept separate — a lane is not a setup, TRIGGERED is FSM, VETO is a gate):
+  gateDecision?: 'PASS' | 'VETO' | 'DEFER';
+  setupState?: 'SCANNING' | 'ARMED' | 'FIRED' | 'INVALIDATED' | 'EXPIRED' | 'DATA_UNAVAILABLE' | 'OUTSIDE_WINDOW';
+  fsmState?: 'IDLE' | 'IMPULSE' | 'PULLBACK' | 'ARMED' | 'TRIGGERED';
+  // Persisted setup identity (so a future label change never rewrites historical meaning):
+  primarySetupId?: string;
+  matchedSetupIds?: string[];
+  setupVersion?: string;
+  registryHash?: string;
+  dataFreshness?: string;   // e.g. 'FRESH' | 'STALE' | 'UNKNOWN'
+}
+
+export type ActiveTraderDataState =
+  | 'LIVE_DATA' | 'EMPTY_LIVE_QUEUE' | 'DATA_STALE' | 'API_UNAVAILABLE' | 'REFERENCE_SAMPLE' | 'LOADING';
+
+export interface PermissionQueuePayload {
+  data_state?: Exclude<ActiveTraderDataState, 'REFERENCE_SAMPLE' | 'LOADING'>;
+  is_sample?: boolean;
+  signals?: ScalpSignal[];
+  actionable_count?: number;
+  accounts?: BrokerAccount[];
+  source_session_date?: string | null;
+  is_live_session?: boolean;
+  last_event_at?: string | null;
+  generated_at?: string | null;
+  registry_version?: string | null;
+  registry_hash?: string | null;
 }
 
 export interface BrokerAccount {
