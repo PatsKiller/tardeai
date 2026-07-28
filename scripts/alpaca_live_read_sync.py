@@ -4,7 +4,8 @@
 Iterates broker_accounts where broker=alpaca AND environment=live AND api_read_enabled=true.
 With default R4 scaffolds (api_read=false) this makes ZERO API calls.
 
-Merges positions into holdings.json via protected_holdings_write only.
+Merges positions AND the account's uninvested cash into holdings.json via
+protected_holdings_write only. Totals are left to portfolio_loader/portfolio_repricer.
 Never sets is_enabled / api_write_enabled / live_arm_token.
 
   .venv/bin/python scripts/alpaca_live_read_sync.py
@@ -98,10 +99,71 @@ def _positions_to_holdings_rows(account_key: str, positions: list) -> list:
     return rows
 
 
-def _merge_account_into_holdings(account_key: str, new_rows: list, *, dry_run: bool) -> dict:
-    """Replace only this account's equity rows; keep all other accounts intact.
+def _account_to_cash_row(account_key: str, acct: dict | None) -> list:
+    """Map the Alpaca account's uninvested cash → a holdings.json CASH row.
+
+    Positions are emitted separately by _positions_to_holdings_rows, so this MUST use
+    `cash` (uninvested) and never `equity` (cash + position market value) or the
+    account double-counts.
+
+    Without this the account is invisible to the portfolio whenever it holds no
+    positions: the sync mapped positions only, used the account object as a mere
+    `bool` hint, and with 0 positions no-op'd entirely — so $5,000 of live cash in
+    alpaca_taxable_live never reached the $1.25M total (2026-07-28).
+    """
+    if not acct:
+        return []
+    raw = acct.get("cash")
+    if raw is None:
+        return []
+    try:
+        cash = float(raw)
+    except (TypeError, ValueError):
+        return []
+    if abs(cash) < 0.005:
+        return []
+    now = datetime.now(timezone.utc)
+    # Shape mirrors the Schwab cash rows so the repricer's cash anchor, the Cash
+    # bucket and the portfolio UI treat it identically.
+    return [{
+        "symbol": "CASH",
+        "name": "Cash & Cash Investments",
+        "account": account_key,
+        "account_id": account_key,
+        "asset_type": "cash",
+        "bucket": "Cash",
+        "is_cash": True,
+        "shares": cash,
+        "quantity": cash,
+        "price": 1.0,
+        "current_price": 1.0,
+        "market_value": cash,
+        "day_change": 0,
+        "day_change_pct": 0,
+        "source": "alpaca_live_read",
+        "as_of": now.date().isoformat(),
+        "updated_at": now.isoformat(),
+    }]
+
+
+def _merge_account_into_holdings(
+    account_key: str, new_rows: list, *, dry_run: bool, preserve_prior_cash: bool = False
+) -> dict:
+    """Replace only this account's rows; keep all other accounts intact.
 
     Empty new_rows with no prior alpaca rows → pure no-op (must not zero portfolio).
+
+    preserve_prior_cash carries forward the account's existing CASH row when the
+    account object could not be read this cycle, so a transient API miss cannot
+    silently delete a real cash balance.
+
+    Deliberately does NOT touch portfolio_totals. The naive sum this used to write
+    disagreed with portfolio_repricer by ~$450 (it ignored the is_loan/no-cost-basis
+    exclusion logic) and left total_cash/total_cost/total_gain stale beside a changed
+    total_value. portfolio_loader + portfolio_repricer own the totals and rebuild them
+    from the rows — and portfolio_loader auto-creates an account_summaries entry for
+    any new account key, so this account is picked up without further config. This
+    matches schwab_position_sync, which likewise replaces only its own rows.
     """
     if not HOLDINGS_PATH.exists():
         return {"ok": False, "error": "holdings.json missing"}
@@ -110,24 +172,21 @@ def _merge_account_into_holdings(account_key: str, new_rows: list, *, dry_run: b
     others = [h for h in holdings if (h.get("account") or "") != account_key]
     prior_acct = [h for h in holdings if (h.get("account") or "") == account_key]
 
+    if preserve_prior_cash and not any(r.get("is_cash") for r in new_rows):
+        carried = [h for h in prior_acct if h.get("is_cash")]
+        if carried:
+            new_rows = list(new_rows) + carried
+            log.warning("%s: account read unusable — carried forward prior CASH row", account_key)
+
     if not new_rows and not prior_acct:
         return {"ok": True, "wrote": False, "reason": "empty_noop_no_prior", "n": 0}
 
     merged = others + new_rows
-    # recompute totals from all holdings
-    total = 0.0
-    for h in merged:
-        try:
-            total += float(h.get("market_value") or 0)
-        except (TypeError, ValueError):
-            pass
     data["holdings"] = merged
-    data.setdefault("portfolio_totals", {})["total_value"] = total
-    data["portfolio_totals"]["as_of"] = datetime.now(timezone.utc).isoformat()
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     if dry_run:
-        return {"ok": True, "wrote": False, "dry_run": True, "n": len(new_rows), "total": total}
+        return {"ok": True, "wrote": False, "dry_run": True, "n": len(new_rows)}
 
     from holdings_guard import protected_holdings_write
     res = protected_holdings_write(
@@ -137,7 +196,7 @@ def _merge_account_into_holdings(account_key: str, new_rows: list, *, dry_run: b
         protect_basis=False,
         target_path=str(HOLDINGS_PATH),
     )
-    return {"ok": True, "wrote": True, "n": len(new_rows), "guard": res, "total": total}
+    return {"ok": True, "wrote": True, "n": len(new_rows), "guard": res}
 
 
 def _streak_path():
@@ -204,8 +263,14 @@ def sync_one(account_key: str, *, dry_run: bool = False, force: bool = False) ->
             _telegram(f"⚠️ Alpaca live read sync FAILED ×{n} for {account_key}: {str(e)[:120]}")
         return {"account": account_key, "ok": False, "error": str(e)[:200], "fail_streak": n}
 
-    rows = _positions_to_holdings_rows(account_key, positions)
-    merge = _merge_account_into_holdings(account_key, rows, dry_run=dry_run)
+    pos_rows = _positions_to_holdings_rows(account_key, positions)
+    cash_rows = _account_to_cash_row(account_key, acct)
+    rows = pos_rows + cash_rows
+    merge = _merge_account_into_holdings(
+        account_key, rows, dry_run=dry_run,
+        # acct unreadable → don't let a transient miss delete a real cash balance
+        preserve_prior_cash=not cash_rows,
+    )
 
     # Attribute fills into a lightweight runtime journal tag file (no P&L rewrite)
     try:
@@ -241,12 +306,13 @@ def sync_one(account_key: str, *, dry_run: bool = False, force: bool = False) ->
 
     _clear_fail(account_key)
     if first_ok and not dry_run:
-        _telegram(f"✅ Alpaca live read sync OK for {account_key} (n_pos={len(rows)})")
+        _telegram(f"✅ Alpaca live read sync OK for {account_key} (n_pos={len(pos_rows)})")
 
     return {
         "account": account_key,
         "ok": True,
-        "n_positions": len(rows),
+        "n_positions": len(pos_rows),
+        "cash": cash_rows[0]["market_value"] if cash_rows else None,
         "equity_hint": bool(acct),
         "merge": merge,
     }
