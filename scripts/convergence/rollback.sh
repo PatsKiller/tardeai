@@ -5,9 +5,44 @@
 # Never prints a DSN/secret. In this draft PR only the manifest-capture (read-only) path is exercised.
 set -u -o pipefail
 umask 077
-REPO="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="${REPO:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
 READER_ENV="$HOME/.config/tradeai/agent-read-api.env"
 DROPIN="$HOME/.config/systemd/user/portfolio-server.service.d/10-agent-read-api.conf"
+
+# ── restore mode: atomically put a previously-backed-up dist back onto the live host ──────────────
+# rollback.sh --restore <backup_dir> [--apply]   (DRY-RUN validates the backup + prints the plan)
+if [ "${1:-}" = "--restore" ]; then
+  BK="${2:-}"; RAPPLY="${3:-}"
+  DIST="${CC_DIST:-$REPO/apps/command-center-v3/dist}"
+  STAMP="$(date +%Y%m%d_%H%M%S)"
+  [ -n "$BK" ] && [ -d "$BK" ] || { echo "final_status|BLOCKED_NO_BACKUP"; exit 2; }
+  PYTHONPATH="$DIR" python3 - "$BK" <<'PY' || { echo "final_status|BLOCKED_BACKUP_INVALID"; exit 2; }
+import os, sys
+import convergence_lib as cl
+bk = sys.argv[1]
+files = [os.path.relpath(os.path.join(dp, fn), bk)
+         for dp, _, fns in os.walk(bk) for fn in fns]
+assert cl.dist_shape_ok(files), f"backup is not a valid dist (need index.html+build-meta.json+asset): {files}"
+print("restore_precheck|OK")
+PY
+  echo "restore_source|$BK"
+  echo "restore_target|$DIST"
+  if [ "$RAPPLY" != "--apply" ]; then
+    echo "final_status|RESTORE_DRY_RUN_OK (would atomic-swap the backup back into $DIST)"
+    exit 0
+  fi
+  PARENT="$(dirname "$DIST")"; NAME="$(basename "$DIST")"
+  TMP="$PARENT/$NAME.restore-$STAMP"; SUP="$PARENT/$NAME.superseded-$STAMP"
+  cp -a "$BK" "$TMP" || { echo "final_status|BLOCKED_RESTORE_COPY_FAILED"; exit 2; }
+  if [ -e "$DIST" ]; then mv "$DIST" "$SUP" || { echo "final_status|BLOCKED_RESTORE_MOVE_FAILED"; exit 2; }; fi
+  mv "$TMP" "$DIST" || { [ -d "$SUP" ] && mv "$SUP" "$DIST"; echo "final_status|BLOCKED_RESTORE_SWAP_FAILED"; exit 2; }
+  echo "restored|from=$BK|superseded=$SUP"
+  echo "final_status|RESTORE_APPLIED"
+  exit 0
+fi
+
+# ── default mode: capture a redacted rollback manifest of current host state (read-only) ──────────
 OUT="${1:-/tmp/convergence-rollback-manifest.json}"
 
 hash_or_absent(){ [ -f "$REPO/$1" ] && sha256sum "$REPO/$1" | awk '{print $1}' || echo ABSENT; }

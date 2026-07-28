@@ -56,4 +56,6 @@ m={"source_commit":sha,"source_mode":"PINNED_GIT_OBJECT_ARCHIVE","frontend_build
 open(p,"w").write(json.dumps(m,indent=2)); print("build_meta_written|"+sha)
 PY
 echo "candidate_bundle_hash|$(find "$STAGE/$CC/dist" -type f -exec sha256sum {} \; | sha256sum | awk '{print $1}')"
+echo "candidate_dist|$STAGE/$CC/dist"
+echo "next_step|scripts/convergence/static_install.sh $STAGE/$CC/dist --apply  (backup + gate + atomic swap + smoke + auto-rollback)"
 echo "final_status|STAGE_BUILT (candidate in $STAGE — NOT installed to host)"

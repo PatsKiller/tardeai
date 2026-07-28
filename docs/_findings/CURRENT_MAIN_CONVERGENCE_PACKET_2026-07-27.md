@@ -91,3 +91,50 @@ bash scripts/convergence/rollback.sh /tmp/convergence-rollback-manifest.json
 
 **The PR remains DRAFT and UNMERGED.** No repository-write beyond this branch, no host mutation, no
 service restart, no schema write, no schedule change, no provider/agent/broker/order action.
+
+---
+
+## Update 2026-07-27 — hardened, tested static INSTALL + real ROLLBACK RESTORE
+
+The original packet stopped the STAGE build in `/tmp` and `rollback.sh` only *captured* a manifest —
+so the static install + revert procedure was neither versioned nor tested. That gap is now closed.
+
+**New `scripts/convergence/static_install.sh <candidate_dist> [--apply]`** — atomically swaps a staged
+candidate onto the live host through four gates, in order, each of which can only refuse:
+1. **provenance** (`install_precheck`) — candidate `build-meta.json` must carry the full 40-char
+   `source_commit`, `frontend_build_source=STAGED_EXACT_REF`, and declare the agent-runtime contract;
+2. **markers** — the candidate *bundle* must actually contain the reconciled Watch/Defense/agent-runtime
+   surfaces (`REQUIRED_BUNDLE_MARKERS`);
+3. **parity** (`swap_parity`) — the candidate must serve every non-hashed file the live dist serves;
+   content-hashed `assets/index-<hash>.js|css` are *superseded*, never *dropped*;
+4. after a full **backup**, an **atomic rename-pair** swap, then an **HTTP smoke** — and **any** non-200
+   route triggers an automatic rollback to the pre-swap dist.
+   DRY-RUN by default. Sandbox-testable off-host via `CC_DIST` / `BACKUP_ROOT` / `SKIP_SMOKE` /
+   `SMOKE_BASE` / `SMOKE_ROUTES`.
+
+**`rollback.sh --restore <backup_dir> [--apply]`** — validates the backup is a real dist
+(`dist_shape_ok`) then atomically swaps it back into the live dist. DRY-RUN validates + prints the plan.
+
+**Tested** — `tests/test_convergence_packet.py` grew from 15 → 27. The new tests drive the *actual*
+shell scripts against throwaway dirs: a full apply→restore cycle, auto-rollback when smoke fails
+(unreachable `SMOKE_BASE`), a blocked swap that would drop a served file, a rejected bad-provenance
+candidate, and a rejected invalid backup — plus unit tests for every new `convergence_lib` decision.
+Both scripts were also dry-run against the **real** live dist: all gates `OK`, host untouched.
+
+### Exact commands (build → install → restore)
+
+```bash
+# 1) STAGE build the exact-ref candidate (no host install):
+bash scripts/convergence/build_exact_ref.sh --apply         # prints candidate_dist|/tmp/...stage.../dist
+
+# 2) INSTALL — dry-run gates first, then apply (backup + atomic swap + smoke + AUTO-ROLLBACK):
+bash scripts/convergence/static_install.sh <candidate_dist>            # dry-run: all gates, no change
+bash scripts/convergence/static_install.sh <candidate_dist> --apply    # backup → swap → smoke
+
+# 3) RESTORE — revert to any captured backup:
+bash scripts/convergence/rollback.sh --restore ~/deploy/backups/cc-dist-<stamp>           # dry-run
+bash scripts/convergence/rollback.sh --restore ~/deploy/backups/cc-dist-<stamp> --apply   # apply
+```
+
+The install/restore paths are now reproducible and tested, but **applying them to the host remains a
+separate, explicitly-authorized operator step. The PR stays DRAFT.**

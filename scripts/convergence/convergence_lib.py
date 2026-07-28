@@ -38,10 +38,15 @@ def validate_build_source(mode: str) -> None:
             "checkout is forbidden (a dirty/divergent tree can produce an unrelated bundle)")
 
 
+def _require_full_sha(source_commit: str) -> str:
+    if not re.fullmatch(r"[0-9a-f]{40}", (source_commit or "")):
+        raise BuildSourceError("requires the full 40-character source commit (no short SHA)")
+    return source_commit
+
+
 def build_meta(source_commit: str, contracts: Mapping[str, str]) -> dict:
     """Provenance stamp for the candidate bundle. Requires the FULL 40-char commit (no short SHA)."""
-    if not re.fullmatch(r"[0-9a-f]{40}", (source_commit or "")):
-        raise BuildSourceError("build-meta requires the full 40-character source commit")
+    _require_full_sha(source_commit)
     return {"source_commit": source_commit, "source_mode": PINNED_ARCHIVE,
             "frontend_build_source": SOURCE_MODE_EXACT, "live_checkout_build_input": "NONE",
             "contracts": dict(contracts)}
@@ -94,6 +99,52 @@ def verify_markers(bundle_text: str, required: Sequence[str]) -> dict:
     present = [m for m in required if m in bundle_text]
     missing = [m for m in required if m not in bundle_text]
     return {"ok": not missing, "present": present, "missing": missing}
+
+
+# ── static-bundle install / swap / restore decisions (Phase INSTALL + rollback restore) ──
+REQUIRED_DIST_FILES = ("index.html", "build-meta.json")
+# markers that must survive into the MINIFIED candidate bundle before it may touch the host
+REQUIRED_BUNDLE_MARKERS = ("ADMITTED", "QUARANTINED", "ELIGIBLE", "NO DECISION", "agent-runtime")
+_HASHED_ASSET = re.compile(r"assets/index-[A-Za-z0-9_-]+\.(?:js|css)$")
+
+
+def dist_shape_ok(files: Sequence[str]) -> bool:
+    """A dir is an installable/restorable dist only if it has index.html, build-meta.json and >=1 asset."""
+    fs = set(files)
+    return all(r in fs for r in REQUIRED_DIST_FILES) and any(f.startswith("assets/") for f in fs)
+
+
+def swap_parity(live_files: Sequence[str], candidate_files: Sequence[str]) -> dict:
+    """Which live-served files the candidate does NOT provide. Content-hashed bundle assets
+    (assets/index-<hash>.js|css) are EXPECTED to be replaced — the new index.html points at the new
+    hash — so they are 'superseded', not 'dropped'. Any OTHER missing file is a served-asset
+    regression and blocks the swap."""
+    missing = set(live_files) - set(candidate_files)
+    dropped = sorted(f for f in missing if not _HASHED_ASSET.search(f))
+    superseded = sorted(f for f in missing if _HASHED_ASSET.search(f))
+    return {"ok": not dropped, "dropped": dropped, "superseded_assets": superseded}
+
+
+def install_precheck(candidate_meta: Mapping) -> None:
+    """Refuse to install a candidate whose build-meta cannot prove exact-ref provenance and the
+    agent-runtime contract. Accepts contracts as a list or a {name: contract} mapping."""
+    validate_build_source(candidate_meta.get("frontend_build_source", ""))
+    _require_full_sha(candidate_meta.get("source_commit", ""))
+    contracts = candidate_meta.get("contracts") or {}
+    values = list(contracts.values()) if isinstance(contracts, Mapping) else list(contracts)
+    if AGENT_RUNTIME_CONTRACT not in values:
+        raise BuildSourceError(f"candidate build-meta must declare {AGENT_RUNTIME_CONTRACT}")
+
+
+def smoke_ok(results: Mapping[str, int], expected: Sequence[int] = (200,)) -> bool:
+    """Post-swap HTTP smoke passes only if every probed route returned an expected code."""
+    return bool(results) and all(code in expected for code in results.values())
+
+
+def backup_dir_name(stamp: str, prefix: str = "cc-dist") -> str:
+    if not re.fullmatch(r"[0-9]{8}_[0-9]{6}", stamp or ""):
+        raise ConvergenceError("backup stamp must be YYYYmmdd_HHMMSS")
+    return f"{prefix}-{stamp}"
 
 
 # ── secret redaction for all evidence/logs ──
