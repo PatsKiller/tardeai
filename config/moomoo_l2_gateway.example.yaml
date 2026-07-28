@@ -15,9 +15,10 @@ runtime:
 
 intent:
   # Existing scalp logger output is DESIRED INTENT only. Its existence never means connected,
-  # subscribed, confirmed, fresh, or T2.
+  # subscribed, confirmed, fresh, or T2. TRADEAI_REPO_ROOT is supplied by the guarded unit so
+  # the exact-ref candidate runtime reads intent from the canonical production data path.
   paths:
-    - data/scalp/moomoo_armed_state.json
+    - "${TRADEAI_REPO_ROOT}/data/scalp/moomoo_armed_state.json"
     - ~/.tradeai/runtime/moomoo_l2_operator_intent.json
 
 polling:
