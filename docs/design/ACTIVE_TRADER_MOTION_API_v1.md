@@ -2,7 +2,28 @@
 
 ## Status
 
-This tranche adds the backend read contract and local shadow persistence needed by the live-motion UI. It is stacked on the T2 JIT and momentum-exit policy branch. It does not deploy a polling service, activate a trading session, subscribe to a provider, or send an order.
+This tranche adds the backend read contract and local observation persistence needed by the live-motion UI. It is stacked on the T2 JIT and momentum-exit policy branch. It does not deploy a polling service, bind an account, activate execution authority, subscribe to a provider, or send an order.
+
+## Account-agnostic boundary
+
+The motion plane is deliberately independent of account type, broker, venue, and environment.
+
+It produces:
+
+- candidate motion-resource decisions;
+- T2 leases;
+- open-position market-state evidence;
+- `EXIT_SIGNAL` evidence.
+
+It does **not** produce:
+
+- an account selection;
+- an environment classification;
+- a route;
+- an order request;
+- an execution authorization.
+
+A future exit-intent execution orchestrator may consume a signal only after it receives a separate runtime account capability and authority envelope. That orchestrator is not part of this tranche.
 
 ## Components
 
@@ -21,13 +42,13 @@ local candidate observations
           +
 local position observations
           +
-active SHADOW/SIMULATION session snapshot
+active workflow + explicit symbol authorization
           ↓
 Active Trader motion tick
           ↓
 T2 lease reconciliation + exit-policy replay
           ↓
-hash-chained shadow journal
+hash-chained observation journal
           +
 atomic motion_snapshot.json
           ↓
@@ -38,17 +59,18 @@ one aggregate UI request per refresh cycle
 
 The browser never creates one request per ticker. It reads one snapshot and uses the server-provided refresh hint, clamped by the UI to 5–30 seconds.
 
-## Session and symbol admission
+## Workflow and symbol admission
 
 The engine fails closed unless all of these are present:
 
-- session state `ACTIVE`;
-- mode `SIMULATION`, `SHADOW`, or `PAPER`;
+- workflow session state `ACTIVE`;
 - an explicit authorized symbol list;
 - fresh candidate or position evidence;
 - deterministic setup/gate eligibility required by the T2 policy.
 
 A broad rule such as a wildcard, price filter, or RVOL expression is not converted into authorization. The first implementation accepts only explicit symbol lists or `symbols:` CSV notation.
+
+The engine does not inspect account ID, account category, venue, broker, environment, buying power, or route. The upstream workflow/session layer supplies only the symbol authorization needed for motion-resource admission.
 
 ## T2 persistence
 
@@ -56,9 +78,9 @@ The motion state file stores current leases and cooldown deadlines. A new proces
 
 The provider hard ceiling and normal operating cap remain distinct. The snapshot exposes both, and the provider ceiling is never represented as a utilization target.
 
-## Position replay and exits
+## Position replay and exit evidence
 
-Position observations are appended to the journal. At each tick, open-position history is replayed in order through `MomentumExitPolicy`. This reconstructs the hysteresis state without trusting browser memory.
+Position observations are appended to the journal. At each tick, open-position history is replayed in order through `MomentumExitPolicy`. This reconstructs hysteresis state without trusting browser memory.
 
 The snapshot may expose:
 
@@ -68,7 +90,14 @@ The snapshot may expose:
 - `EXIT_SIGNAL`
 - `PROTECT_ONLY`
 
-`EXIT_SIGNAL` is display-only evidence. The API explicitly returns `automatic_order_sent: false` and zero execution authority. A later paper execution consumer must independently validate session authorization, ticket identity, capability, freshness, risk, protection, idempotency, and reconciliation.
+`EXIT_SIGNAL` is account-unbound evidence. The API explicitly returns:
+
+- `signal_only: true`;
+- `automatic_order_sent: false`;
+- `account_bound: false`;
+- zero order authority.
+
+Before any future orchestrator acts, it must independently validate signal identity, strategy/ticket identity, runtime account ownership, position quantity, venue capability, environment, session authority, freshness, risk, protection, reconciliation, and idempotency.
 
 ## Journal integrity
 
@@ -94,7 +123,7 @@ The read endpoint always overrides authority fields to false, even if a malforme
 
 ## Operating commands
 
-Record a local shadow observation:
+Record a local observation:
 
 ```bash
 python scripts/active_trader_motion_tick.py record \
@@ -108,12 +137,12 @@ Produce one snapshot:
 python scripts/active_trader_motion_tick.py tick
 ```
 
-The utility intentionally does not contain a loop. A supervised user service or timer will be a separate deployment tranche after the host data proof and cadence measurements are complete.
+The utility intentionally does not contain a loop. A supervised user service or timer will be a separate deployment tranche after host data proof and cadence measurements are complete.
 
 ## Remaining gaps
 
 - No supervised 5/10/30-second tick service is installed in this tranche.
 - No direct Moomoo gateway IPC adapter is stacked into this branch yet.
 - Scanner/IGN projections do not all expose per-symbol source timestamps; missing timestamps fail stale rather than being treated as fresh.
-- No paper exit-signal consumer exists yet.
-- Threshold calibration still requires the shadow replay corpus described in the T2/exit design.
+- No exit-intent execution orchestrator exists.
+- Threshold calibration still requires the replay corpus described in the T2/exit design.
