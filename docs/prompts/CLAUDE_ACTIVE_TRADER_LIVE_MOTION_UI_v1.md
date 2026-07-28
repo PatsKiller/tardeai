@@ -5,7 +5,7 @@ You are implementing a bounded front-end tranche for Trade AI Active Trader.
 ## Immutable start point
 
 - Repository: `PatsKiller/tardeai`
-- Required base commit: `7d276206a9bc1e4d39527dc3735df07272298055`
+- Required base commit: `53362c8af28182295d017f5931f961601387e900`
 - Create branch: `agent/active-trader-live-motion-ui-v1`
 - Open a **draft** PR to `main`; do not merge.
 
