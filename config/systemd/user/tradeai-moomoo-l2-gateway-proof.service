@@ -1,0 +1,32 @@
+[Unit]
+Description=TradeAI Moomoo L2 gateway user proof (read-only, single OpenD owner)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=%h/.config/tradeai/ENABLE_MOOMOO_L2_GATEWAY_PROOF
+ConditionPathExists=%h/.config/tradeai/moomoo_l2_gateway_proof.env
+ConditionPathExists=%h/.local/share/tradeai/runtime/moomoo-l2-gateway/current/scripts/moomoo/gateway_service.py
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/tradeai/runtime/moomoo-l2-gateway/current
+EnvironmentFile=%h/.config/tradeai/moomoo_l2_gateway_proof.env
+Environment=PYTHONUNBUFFERED=1
+Environment=MOOMOO_L2_GATEWAY_CONFIG=%h/.config/tradeai/moomoo_l2_gateway_proof.yaml
+Environment=TRADEAI_REPO_ROOT=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/.local/share/tradeai/runtime/moomoo-l2-gateway/current/scripts/moomoo/gateway_service.py --config %h/.config/tradeai/moomoo_l2_gateway_proof.yaml
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.tradeai/runtime
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=default.target
