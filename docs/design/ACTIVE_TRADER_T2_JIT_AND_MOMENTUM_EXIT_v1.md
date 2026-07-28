@@ -1,7 +1,7 @@
 # Active Trader T2 JIT and Momentum Exit — Design v1
 
-**Status:** first backend tranche; deterministic SHADOW/SIMULATION policy only  
-**Contract modules:** `active-trader-t2-jit-policy-v1`, `active-trader-momentum-exit-policy-v1`  
+**Status:** first backend tranche; deterministic SHADOW/SIMULATION policy only
+**Contract modules:** `active-trader-t2-jit-policy-v1`, `active-trader-momentum-exit-policy-v1`
 **Live authority:** none
 
 ## 1. Design decision
