@@ -1,4 +1,5 @@
-import type { BrokerAccount, ScalpSignal } from './activeTrader.types';
+import type { BrokerAccount, MotionSnapshot, ScalpSignal } from './activeTrader.types';
+import { MOTION_CONTRACT } from './activeTrader.types';
 
 export const MOCK_SIGNAL: ScalpSignal = {
   id: 'sig-qttb-001', symbol: 'QTTB', last: 3.42, changePct: 18.3,
@@ -57,3 +58,41 @@ export const MOCK_ACCOUNTS: BrokerAccount[] = [
     permissionLabel: 'L2 + tape data · execution disabled', buyingPower: 0,
     eligible: false, eligibilityReason: 'Stage 0 data plane only', paper: false, readOnly: true, maxShares: 0 },
 ];
+
+// REFERENCE SAMPLE ONLY — an illustrative motion snapshot for the preview layout. It is rendered
+// exclusively behind an explicit "REFERENCE SAMPLE" label and is NEVER used as a live fallback:
+// the polling hook fails closed instead of ever substituting this data. Field names match the
+// active-trader-motion-snapshot-v1 contract so the defensive normalizer path is exercised too.
+export const MOCK_MOTION_SNAPSHOT: MotionSnapshot = {
+  contract: MOTION_CONTRACT,
+  contractOk: true,
+  generatedAt: 0,
+  uiRefreshAfterS: 5,
+  pushPrimary: true,
+  maxPullFallbacksPerMinute: 2,
+  t2: {
+    operatingCap: 2,
+    providerHardCap: 8,
+    leases: [
+      { leaseId: 't2_sample_qttb', symbol: 'QTTB', admittedAt: 0, renewedAt: 0, expiresAt: 20, priority: 100_620, positionOpen: false },
+    ],
+    decisions: [
+      { symbol: 'QTTB', tier: 'T2', admitted: true, reasonCode: 'admitted', refreshAfterS: 5, priority: 620 },
+      { symbol: 'LASE', tier: 'T1', admitted: false, reasonCode: 'not_near_fire', refreshAfterS: 10, priority: 210 },
+      { symbol: 'XRX', tier: 'T1', admitted: false, reasonCode: 't2_cooldown', refreshAfterS: 10, priority: 140 },
+    ],
+  },
+  positions: [
+    {
+      symbol: 'NVDA', state: 'WATCH', action: 'HOLD', reasonCode: 'momentum_deteriorating',
+      score: 0.61, confirmations: 2, drawdownFromHighR: 0.42, armedForS: 6, fireForS: 0, recoveryForS: 0,
+      refreshAfterS: 5, price: 118.40, entryPrice: 116.90, hardStopPrice: 115.20, highWatermark: 119.65, evidenceAgeS: 2,
+    },
+    {
+      symbol: 'AMD', state: 'HOLD', action: 'HOLD', reasonCode: 'momentum_healthy',
+      score: 0.18, confirmations: 0, drawdownFromHighR: 0.05, armedForS: 0, fireForS: 0, recoveryForS: 0,
+      refreshAfterS: 5, price: 96.10, entryPrice: 95.20, hardStopPrice: 93.80, highWatermark: 96.30, evidenceAgeS: 1,
+    },
+  ],
+  exitSignals: [],
+};

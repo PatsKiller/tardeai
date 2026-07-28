@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ActiveTraderDataState, ArmingStatus, BrokerAccount, EngineStatus, RoutingDraft, ScalpSignal, ScannerSignal } from './activeTrader.types';
 import { MOCK_ACCOUNTS, MOCK_QUEUE, MOCK_SIGNAL } from './activeTrader.mock';
+import MotionSection from '../components/active-trader-motion/MotionSection';
 import './activeTrader.css';
 
 type Props = {
@@ -407,6 +408,11 @@ export default function ActiveTraderPage(props: Props) {
         {lastIgnSessionDate ? ` · last IGN fire ${lastIgnSessionDate}` : ''}
         {registryVersion ? ` · ${registryVersion}` : ''}{registryHash ? ` ${registryHash.replace('sha256:', '').slice(0, 8)}` : ''}</span>
     </div>
+
+    {/* Live motion surface: one aggregate read (T2 JIT admission + momentum-exit evidence).
+        Display-only — no order, flatten, session, or broker control lives here. Fails closed to an
+        honest unavailable/stale state; reference/preview shows an explicitly-labelled sample. */}
+    <MotionSection reference={reference} />
 
     {state === 'API_UNAVAILABLE' && <div className="at-fullstate at-fullstate--fail">Permission-queue API unavailable — the backend did not respond (not an empty queue).</div>}
     {state === 'LOADING' && <div className="at-fullstate">Loading actionable queue…</div>}

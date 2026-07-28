@@ -180,3 +180,90 @@ export interface RoutingDraft {
   accountShares: Record<string, number>;
   selectedAccountIds: string[];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// Active Trader Live Motion (contract active-trader-motion-snapshot-v1).
+// ONE aggregate read snapshot shaped from the deterministic T2 JIT + momentum-exit policies.
+// The endpoint (GET /api/v3/active-trader/motion) is NOT implemented at this base — the UI must
+// fail-closed to an honest unavailable/stale state and NEVER fabricate live values.
+// EXIT_SIGNAL here is display-only EVIDENCE, never permission to send an order.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+export const MOTION_ENDPOINT = '/api/v3/active-trader/motion';
+export const MOTION_CONTRACT = 'active-trader-motion-snapshot-v1';
+
+// Refresh-hint clamp (seconds). Backend hints are honored but never outside these operator bounds.
+export const MOTION_REFRESH_MIN_S = 5;
+export const MOTION_REFRESH_MAX_S = 30;
+
+export type MotionTier = 'T0' | 'T1' | 'T2' | 'UNKNOWN';
+export type MotionExitState =
+  | 'HOLD' | 'WATCH' | 'EXIT_ARMED' | 'EXIT_SIGNAL' | 'PROTECT_ONLY' | 'UNKNOWN';
+
+// Honest fetch-layer status. `unavailable` = never got a good snapshot (e.g. endpoint absent);
+// `stale` = had a good snapshot but the latest refresh failed (last-good is preserved + labelled).
+export type MotionFetchStatus = 'idle' | 'loading' | 'live' | 'stale' | 'unavailable';
+
+export interface MotionLease {
+  leaseId: string;
+  symbol: string;
+  admittedAt: number | null;
+  renewedAt: number | null;
+  expiresAt: number | null;
+  priority: number | null;
+  positionOpen: boolean;
+}
+
+export interface MotionDecision {
+  symbol: string;
+  tier: MotionTier;
+  admitted: boolean;
+  reasonCode: string;
+  refreshAfterS: number | null;
+  priority: number | null;
+}
+
+export interface MotionT2 {
+  operatingCap: number | null;
+  providerHardCap: number | null;
+  leases: MotionLease[];
+  decisions: MotionDecision[];
+}
+
+export interface MotionPosition {
+  symbol: string;
+  state: MotionExitState;
+  action: string | null;
+  reasonCode: string;
+  score: number | null;            // normalized deterioration score, 0..1
+  confirmations: number | null;
+  drawdownFromHighR: number | null;
+  armedForS: number | null;
+  fireForS: number | null;
+  recoveryForS: number | null;
+  refreshAfterS: number | null;
+  price: number | null;
+  entryPrice: number | null;
+  hardStopPrice: number | null;
+  highWatermark: number | null;
+  evidenceAgeS: number | null;     // freshness of the evidence feeding the state
+}
+
+export interface MotionExitSignal {
+  symbol: string;
+  state: MotionExitState;
+  reasonCode: string;
+  at: number | null;
+}
+
+export interface MotionSnapshot {
+  contract: string;
+  contractOk: boolean;             // false when the payload did not declare the expected contract
+  generatedAt: number | null;
+  uiRefreshAfterS: number | null;
+  pushPrimary: boolean;
+  maxPullFallbacksPerMinute: number | null;
+  t2: MotionT2;
+  positions: MotionPosition[];
+  exitSignals: MotionExitSignal[];
+}
