@@ -303,6 +303,47 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
   .app-main canvas { max-width: 100% !important; }
   /* drill drawers full-screen on phones */
   div[style*="position: fixed"][style*="right: 0"] { width: 100vw !important; }
+
+  /* ── Overlay CONTENT, not just the shell ──────────────────────────────────
+     Every collapse rule above is scoped to .app-main, but modals and drawers
+     render position:fixed OUTSIDE it — so none of them applied to overlay
+     content. The two existing unscoped rules resize the shell and stop there.
+     Result on a 390px phone (re-entry classification, 2026-07-28): 847px of
+     content in a 382px box, all 7 grids still multi-column, and 11 of 21 inputs
+     under 44px with the smallest at 13px — the form could not be edited or
+     saved. These mirror the .app-main rules for fixed overlays.
+     Targets div[style*="position: fixed"] — inline-styled overlays only — so
+     class-based fixed elements like .nav-rail are untouched. */
+  div[style*="position: fixed"] div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+  div[style*="position: fixed"] div[style*="display: flex"] { flex-wrap: wrap !important; }
+  div[style*="position: fixed"] div[style*="min-width"] { min-width: 0 !important; }
+  div[style*="position: fixed"] div[style*="width: min("] { width: 100% !important; }
+  /* controls stay tappable instead of collapsing to a sliver in a squeezed cell */
+  div[style*="position: fixed"] input,
+  div[style*="position: fixed"] select,
+  div[style*="position: fixed"] textarea {
+    min-width: 0;
+    max-width: 100% !important;
+    min-height: 32px;
+  }
+  /* Checkboxes and radios ARE the selection controls in the classification form —
+     the strategy flags and the mandate choice. At the browser default 18px they are
+     the reason "nothing is selectable" on a phone. 24px is the WCAG 2.5.8 minimum. */
+  div[style*="position: fixed"] input[type="checkbox"],
+  div[style*="position: fixed"] input[type="radio"] {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    min-height: 24px;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+  }
+  /* labels wrapping a control get a comfortable row to tap anywhere along */
+  div[style*="position: fixed"] label { min-height: 32px; }
+  div[style*="position: fixed"] button { min-height: 32px; }
+  div[style*="position: fixed"] pre { white-space: pre-wrap !important; word-break: break-word; }
 }
 @media (max-width: 480px) {
   .app-main div[style*="font-size: 15"] { font-size: 13px !important; }

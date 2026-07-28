@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useApi } from '../../hooks/useApi'
 import { useReEntryExitEvidence } from '../../hooks/useReEntryExitEvidence'
@@ -162,8 +162,25 @@ export default function ReEntryClassificationOverlay() {
   const val = valuation(watch, card)
   const context = watchContext(watch, card, analystRow, unwrap(regime.data))
 
+  // Seed the form from saved values ONCE per opened symbol set — never on every data
+  // refresh. This effect depends on eight polling useApi results (evidence, mandate /
+  // event / disposition prefs, watch, cards, analyst, regime), and each poll hands back
+  // a NEW object reference even when the JSON is byte-identical. That re-fired the
+  // effect and called setMandate(savedMandate), throwing away whatever the operator had
+  // just typed or ticked: check a flag, and the next poll silently unchecked it. The
+  // form read as "nothing is selectable" and SAVE wrote back the unchanged saved values.
+  //
+  // Re-seed only when the symbol set changes, or when the first real data arrives after
+  // opening on empty responses. Once seeded with data, operator edits are never
+  // clobbered — the overlay is closed on save, so there is nothing to refresh into.
+  const seeded = useRef<{ key: string; withData: boolean }>({ key: '', withData: false })
+
   useEffect(() => {
-    if (!symbols.length) return
+    if (!symbols.length) { seeded.current = { key: '', withData: false }; return }
+    const key = symbols.join('|')
+    const hasData = Boolean(rowsBySymbol[first]?.length) || mandates[first] !== undefined
+    if (seeded.current.key === key && (seeded.current.withData || !hasData)) return
+    seeded.current = { key, withData: hasData }
     const firstRow = rowsBySymbol[first]?.[0]
     const savedMandate = normalizedMandate(mandates[first])
     const savedEvent = firstRow ? normalizedEvent(firstRow, events[firstRow.event_key]) : { eventType: 'other', reason: '', notes: '', updatedAt: '' } as ReEntryEvent
