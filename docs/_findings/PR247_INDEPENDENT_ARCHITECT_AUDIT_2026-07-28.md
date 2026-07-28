@@ -16,10 +16,10 @@ Corrective branch and verified head:
 
 ```text
 agent/pr247-l2-truth-audit-fixes-v1
-cf595a9351e1e19b48a8ad555733d463d33b4293
+6ed1bf75c89cb7d08cdc7d0a2111390c03b24cc9
 ```
 
-Focused audit CI: **93 passed**. Generic release-readiness: **success**.
+Focused audit CI: **94 passed**. Generic release-readiness: **success**.
 
 ## Controlling boundaries
 
@@ -141,12 +141,20 @@ scan-time observations and are not refreshed by the fire-performance endpoint. T
 remain explicitly labeled as a scan snapshot until a shared current-mark projection is
 added for scanner candidates. It is not a live-price feed.
 
+### 17. The gateway singleton retained an implicit real-transport escape hatch
+
+Even after disabling the HTTP runtime, `quote_gateway.get_gateway()` could construct the
+real transport when called without injection. The correction now requires an explicit
+transport for first ownership and rejects attempts to replace it with a different
+transport. A future dedicated service must opt into that ownership visibly.
+
 ## Corrective changes on stacked PR #248
 
 Implemented:
 
 - production `get_runtime()` returns disconnected pending a dedicated gateway/IPC owner;
 - the legacy scalp provider is scaffold-only and cannot construct `FutuTransport`;
+- implicit real-gateway construction is prohibited;
 - PR #247's config-only T2 logger changes are reverted to the PR #246 T0 baseline;
 - T2 admission requires observed subtype and sequence evidence;
 - unknown quota blocks every priority;
@@ -170,7 +178,7 @@ Before any live-L2 claim or deployment, a later reviewed PR must provide:
 2. one production subscription owner;
 3. IPC or normalized snapshot consumption by ActiveTrader and the scalp engine;
 4. confirmed subtype accounting reconciled against OpenD truth;
-5. quote, book, and ticker ingestion with timestamps and sequence/reconnect evidence;
+5. quote, book, and ticker ingestion with separate timestamps and sequence/reconnect evidence;
 6. reconnect and unsubscribe reconciliation across process restarts;
 7. replay or durable feature snapshots for complete fire-path performance;
 8. a current-mark projection for scanner candidates, clearly distinct from scan snapshots;
