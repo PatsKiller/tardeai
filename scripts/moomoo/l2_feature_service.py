@@ -1,6 +1,6 @@
 """L2 feature snapshots and deterministic T2 admission.
 
-T2 is never inferred from an arm intent or a successful subscribe call.  It requires a
+T2 is never inferred from an arm intent or a successful subscribe call. It requires a
 healthy provider, confirmed data subtypes, fresh book/tape observations, verified
 sequence evidence, a matching reconnect epoch, and a coherent non-crossed book.
 Read plane only; no order or trade-unlock path.
@@ -129,9 +129,6 @@ class L2FeatureService:
             return T2Decision(False, "CROSSED_BOOK", "UNKNOWN", "OK", confirmed)
         if life.reconnect_epoch != self.manager.reconnect_epoch:
             return T2Decision(False, "RECONNECT_EPOCH_MISMATCH", "UNKNOWN", "EPOCH_MISMATCH", confirmed)
-        if life.sequence_id is None:
-            # A timestamped book without sequence provenance is evidence, but not canonical T2.
-            return T2Decision(False, "SEQUENCE_UNVERIFIED", "UNKNOWN", "UNVERIFIED", confirmed)
         if life.state in (L2State.WAITING_FIRST_BOOK, L2State.WAITING_FIRST_TAPE):
             return T2Decision(False, "WAITING_FIRST_DATA", "WAITING", "OK", confirmed)
         if life.state == L2State.STALE:
@@ -141,10 +138,11 @@ class L2FeatureService:
         book = self.gateway.latest_book(sym)
         if book is None:
             return T2Decision(False, "NO_BOOK", "WAITING", "OK", confirmed)
+        if life.sequence_id is None or book.sequence_id is None or book.sequence_id != life.sequence_id:
+            # A timestamped book without sequence provenance is evidence, but not canonical T2.
+            return T2Decision(False, "SEQUENCE_UNVERIFIED", "UNKNOWN", "UNVERIFIED", confirmed)
         if book.crossed:
             return T2Decision(False, "CROSSED_BOOK", "UNKNOWN", "OK", confirmed)
-        if book.sequence_id is None or book.sequence_id != life.sequence_id:
-            return T2Decision(False, "SEQUENCE_UNVERIFIED", "UNKNOWN", "UNVERIFIED", confirmed)
         if life.state != L2State.FRESH:
             return T2Decision(False, f"NOT_FRESH_{life.state.value}", "UNKNOWN", "OK", confirmed)
         if want_tape and life.first_tape_at is None:
