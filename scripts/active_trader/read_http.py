@@ -49,8 +49,8 @@ def _account_agnostic_permission_queue(raw: Mapping[str, Any]) -> dict[str, Any]
         if not isinstance(item, Mapping):
             continue
         signal = dict(item)
-        # Preserve the compatibility key while removing environment semantics.
         signal["mode"] = "REVIEW_ONLY"
+        signal.pop("executionEligibility", None)
         signals.append(signal)
     body["signals"] = signals
     body["mode"] = "REVIEW_ONLY"
@@ -151,7 +151,7 @@ def dispatch(
             return 503, _envelope("unavailable", f"config overview unavailable: {exc}", status_hint=503)
     if suffix in ("scalp/setups", "scalp_setups"):
         return 200, api.scalp_setups()
-    if suffix in ("scalp/setup-events", "scalp_setup_events", "scalp_setup_events"):
+    if suffix in ("scalp/setup-events", "scalp/setup_events", "scalp_setup_events"):
         lim = _q1(query, "limit")
         return 200, api.scalp_setup_events(
             limit=int(lim) if lim.isdigit() else 50,
