@@ -21,6 +21,18 @@ def test_production_request_path_does_not_construct_opend_runtime():
     assert posture["owner_ready"] is False and posture["connected"] is False
 
 
+def test_gateway_requires_an_explicit_owner_transport():
+    from moomoo.quote_gateway import get_gateway, set_gateway_for_test
+
+    set_gateway_for_test(None)
+    try:
+        get_gateway()
+    except RuntimeError as exc:
+        assert "explicit gateway transport required" in str(exc)
+    else:
+        raise AssertionError("implicit real transport construction remained reachable")
+
+
 def test_legacy_scalp_provider_cannot_open_second_context():
     from moomoo_t2 import default_provider
 
@@ -31,7 +43,7 @@ def test_legacy_scalp_provider_cannot_open_second_context():
 
 
 def test_unsequenced_book_cannot_be_canonical_t2():
-    from moomoo.quote_gateway import QuoteGateway, MockTransport, BookSnapshot
+    from moomoo.quote_gateway import BookSnapshot, MockTransport, QuoteGateway
     from moomoo.subscription_manager import SubscriptionManager
     from moomoo.l2_feature_service import L2FeatureService
     from moomoo.l2_lifecycle_config import load_l2_lifecycle_config
@@ -60,7 +72,7 @@ def test_unsequenced_book_cannot_be_canonical_t2():
 
 
 def test_mark_without_timestamp_is_stale():
-    from active_trader.fire_performance import compute_fire_performance, FirePerfConfig, DATA_STALE
+    from active_trader.fire_performance import DATA_STALE, FirePerfConfig, compute_fire_performance
 
     fire = {
         "fire_id": "f1",
@@ -85,7 +97,7 @@ def test_mark_without_timestamp_is_stale():
 
 
 def test_material_future_clock_skew_is_stale():
-    from active_trader.fire_performance import compute_fire_performance, FirePerfConfig, DATA_STALE
+    from active_trader.fire_performance import DATA_STALE, FirePerfConfig, compute_fire_performance
 
     fire = {
         "fire_id": "f2",
@@ -118,7 +130,7 @@ def test_fire_query_dedupes_before_global_limit_and_marks_are_batched():
 
 
 def test_mfe_mae_are_not_claimed_as_complete_replay_coverage():
-    from active_trader.fire_performance import compute_fire_performance, FirePerfConfig
+    from active_trader.fire_performance import FirePerfConfig, compute_fire_performance
 
     result = compute_fire_performance(
         {
