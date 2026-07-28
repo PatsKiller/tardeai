@@ -1,16 +1,45 @@
 # Active Trader T2 JIT and Momentum Exit — Design v1
 
-**Status:** first backend tranche; deterministic SHADOW/SIMULATION policy only
+**Status:** deterministic market-state and motion-resource policy
 **Contract modules:** `active-trader-t2-jit-policy-v1`, `active-trader-momentum-exit-policy-v1`
-**Live authority:** none
+**Account/venue/environment binding:** none
+**Order authority:** none
 
-## 1. Design decision
+## 1. Separation of concerns
 
-T2 is an execution resource, not a discovery resource. The broad scanner remains T0. A candidate can become T1 when it is worth monitoring, but it can consume T2 only when the system is materially capable of acting: the session is ACTIVE, the account is execution-eligible for the paper/shadow path, the deterministic gate passes, baseline data is fresh, and the candidate is within the configured trigger distance or expected-fire window. An already-open position receives the highest T2 priority.
+The market-state layer must be account agnostic.
 
-The UI must not create one request per ticker. The backend should publish one aggregate Active Trader motion snapshot. Push callbacks are primary. The snapshot includes a refresh hint: 5 seconds for a T2 symbol or open position, 10 seconds for near-fire T1 candidates, and 30 seconds for idle T0 state. Pull fallbacks are bounded to initial hydration, reconnect recovery, and explicit stale-data repair.
+It may determine that a symbol is near firing, that scarce T2 evidence is justified, or that an open position has reached `EXIT_SIGNAL`. It must not know whether a separately supplied account is simulated, sandbox, or production; which broker or venue owns the account; or whether any order action is permitted.
 
-## 2. T2 lease lifecycle
+The boundaries are:
+
+```text
+market-state policy
+  -> motion-resource decision
+  -> entry/exit evidence or intent
+  -> execution orchestrator
+  -> runtime account + venue capability
+  -> separately granted authority
+  -> adapter
+```
+
+Only the execution orchestrator may combine an intent with a runtime account capability. No account category is encoded in the T2 or momentum policy.
+
+## 2. T2 design decision
+
+T2 is a scarce motion-data resource, not a discovery resource and not an account resource. The broad scanner remains T0. A candidate can become T1 when it is worth monitoring, but it consumes T2 only when:
+
+- the workflow session is `ACTIVE`;
+- motion resources are explicitly authorized for that symbol;
+- the deterministic setup and gate are valid;
+- baseline evidence is fresh;
+- the candidate is within the trigger-distance or expected-fire window, or a monitored position is already open.
+
+The upstream session/capability layer calculates the boolean `motion_eligible`. The T2 policy does not inspect account, venue, environment, route, buying power, or execution mode.
+
+The UI must not create one request per ticker. The backend publishes one aggregate Active Trader motion snapshot. Push callbacks are primary. The snapshot includes a refresh hint: 5 seconds for a T2 symbol or open position, 10 seconds for near-fire T1 candidates, and 30 seconds for idle T0 state. Pull fallbacks are bounded to initial hydration, reconnect recovery, and explicit stale-data repair.
+
+## 3. T2 lease lifecycle
 
 ```text
 T0 discovery
@@ -22,7 +51,7 @@ T0 discovery
   -> cooldown to prevent subscription thrash
 ```
 
-Default policy values are provisional SHADOW defaults, not trading conclusions:
+Default values are provisional observation defaults, not trading conclusions:
 
 - provider hard cap: 8
 - normal operating cap: 2
@@ -35,9 +64,7 @@ Default policy values are provisional SHADOW defaults, not trading conclusions:
 
 The provider hard cap is never treated as a utilization target. Open-position leases cannot be evicted by pre-fire candidates. A higher-priority pre-fire candidate may evict a lower-priority pre-fire lease only after minimum dwell.
 
-## 3. Aggregate motion contract
-
-A future read endpoint should expose one snapshot shaped from the policy result:
+## 4. Aggregate motion contract
 
 ```json
 {
@@ -56,11 +83,9 @@ A future read endpoint should expose one snapshot shaped from the policy result:
 }
 ```
 
-The front end should update rows in place and visibly show `last_update_age_s`, tier, lease reason, exit-policy state, persistence progress, high-water mark, stop, trailing threshold, and stale/fault state. It must not label a scanner process as streaming market data.
+The front end updates rows in place and visibly shows `last_update_age_s`, tier, lease reason, exit-policy state, persistence progress, high-water mark, stop, threshold, and stale/fault state. It must not label a scanner process as streaming market data.
 
-## 4. Momentum exit hysteresis
-
-The initial policy separates temporary deterioration from persistent failure:
+## 5. Momentum exit hysteresis
 
 ```text
 HOLD
@@ -77,30 +102,44 @@ The normalized deterioration score combines four deterministic inputs:
 - book weakness: 20%
 - price-structure failure: 20%
 
-Provisional SHADOW thresholds:
+Provisional observation thresholds:
 
 - arm threshold: 0.58 for 10 seconds
 - fire threshold: 0.72 for 10 additional seconds
 - reset threshold: 0.38 for 15 seconds
-- minimum hold before a soft exit: 20 seconds
+- minimum hold before a soft exit signal: 20 seconds
 - at least two confirming dimensions
 - price confirmation: at least 0.35R retracement from the high-water mark, price at/below entry, or a severe structure failure
 
-A known hard-stop breach emits an immediate typed exit signal. Stale book/tape/quote evidence does **not** invent a momentum exit; it emits `PROTECT_ONLY`, leaving the separately-installed protective stop as the operative defense.
+A known hard-stop breach emits an immediate typed exit signal. Stale book/tape/quote evidence does **not** invent an exit; it emits `PROTECT_ONLY`, indicating that the evidence layer cannot make a fresh momentum determination.
 
-## 5. Authority boundary
+## 6. Exit signal and future consumer
 
-These modules do not subscribe to data, open a socket, call a broker, read credentials, or send an order. `EXIT_SIGNAL` is an evidence artifact for a later, separately-authorized paper execution component. Before any paper automation consumes it, the downstream component must independently re-check session authorization, ticket hash, account capability, current freshness, risk, protection, idempotency, and reconciliation.
+`EXIT_SIGNAL` means: **the deterministic market-state policy recommends leaving or reducing the monitored position under the current strategy rules.** It does not mean that an order was sent or that any account is authorized.
 
-## 6. Calibration plan
+A future consumer is an account-agnostic **exit-intent execution orchestrator**. Before acting, it must receive and independently validate:
 
-Do not tune thresholds from intuition alone. Record the policy inputs and hypothetical decisions in SHADOW against completed scalp trades, then evaluate:
+- immutable signal/intent identity;
+- strategy and ticket identity;
+- active session and authority envelope;
+- runtime account identifier;
+- venue and adapter capability;
+- environment supplied by the account registry;
+- current position ownership and quantity;
+- current freshness, risk, protection, and reconciliation state;
+- idempotency and duplicate-action protection.
 
-- profit retained versus peak
-- false exits followed by continuation
-- loss avoided after genuine momentum failure
-- time from deterioration to signal
-- results by setup, price band, liquidity, session, and volatility regime
-- T2 subscription seconds and fallback round trips per trade
+The orchestrator must reject an intent when any required capability is absent. The intent producer never selects or assumes an account environment.
 
-Only after the shadow sample is sufficient should defaults move into a versioned setup-specific registry. No single threshold should silently govern all setups.
+## 7. Calibration plan
+
+Record policy inputs and hypothetical decisions against completed monitored trades, then evaluate:
+
+- profit retained versus peak;
+- false exits followed by continuation;
+- loss avoided after genuine momentum failure;
+- time from deterioration to signal;
+- results by setup, price band, liquidity, session, and volatility regime;
+- T2 subscription seconds and fallback round trips per trade.
+
+Only after the observation sample is sufficient should defaults move into a versioned setup-specific registry. No single threshold should silently govern all setups.
