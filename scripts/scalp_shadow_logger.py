@@ -144,26 +144,6 @@ def _gate_persist(tax: dict | None) -> tuple:
     return gate_result, _j.dumps(reasons)
 
 
-def effective_data_tier(cfg: dict) -> str:
-    """The tier that ACTUALLY feeds scoring — honest, config-driven, NEVER a hardcoded literal.
-
-    Defaults to 'T0'. Returns the promoted tier ('T2') ONLY when an operator has explicitly
-    enabled promotion via config (data_tiers.active_tier == 'T2' or data_tiers.t2.feeds_scoring
-    / t2.feeds_scoring). Promotion is an operator decision — a live book/feed being up NEVER
-    promotes on its own, and this function never mints T2 from mere entitlement. Persisting the
-    tier through this helper (instead of a magic 'T0' string) keeps scalp_ignition_events and the
-    detector's tier in lockstep with the promotion switch and defaults to the conserving T0 path.
-    """
-    dt = (cfg.get("data_tiers", {}) or {})
-    t2 = (dt.get("t2", cfg.get("t2", {})) or {})
-    promoted = bool(t2.get("feeds_scoring", False)) or str(dt.get("active_tier", "T0")).upper() == "T2"
-    tier = "T2" if promoted else "T0"
-    # never emit a tier the dcf/slippage ladder does not define (fail closed to T0)
-    if tier not in (dt.get("dcf", {}) or {}):
-        return "T0"
-    return tier
-
-
 KILL_FILE = Path(os.path.expanduser("~/.tradeai/SCALP_ENGINE_DISABLED"))
 
 
@@ -425,7 +405,7 @@ def run(args) -> int:
             row["_tax"] = sdet.taxonomy_for_symbol(bars=bars, now=as_of.time(), cfg=cfg,
                 registry=_registry, ign_lane=out["lane"], ign_score=out["ign"], atr_1m=a.get("atr_1m"),
                 spread_bps=row["spread_bps"], price=a.get("price"),
-                bar_volume=(t0._v(bars[-1]) if bars else None), data_tier=effective_data_tier(cfg),
+                bar_volume=(t0._v(bars[-1]) if bars else None), data_tier="T0",
                 entry_ref=entry_ref, stop_ref=stop_ref)
         except Exception:
             row["_tax"] = None
@@ -442,7 +422,7 @@ def run(args) -> int:
                 ftax = sdet.taxonomy_for_symbol(bars=bars[:fe["fire_idx"] + 1], now=as_of.time(), cfg=cfg,
                     registry=_registry, ign_lane=out["lane"], ign_score=out["ign"], atr_1m=a.get("atr_1m"),
                     spread_bps=row["spread_bps"], price=fe.get("entry"),
-                    bar_volume=t0._v(bars[fe["fire_idx"]]), data_tier=effective_data_tier(cfg),
+                    bar_volume=t0._v(bars[fe["fire_idx"]]), data_tier="T0",
                     entry_ref=fe.get("entry"), stop_ref=fe.get("stop"))
             except Exception:
                 ftax = None
@@ -459,8 +439,6 @@ def run(args) -> int:
             })
 
     results.sort(key=lambda r: r["ign"], reverse=True)
-    # honest, config-driven tier (defaults T0; promoted to T2 only by explicit operator config)
-    _eff_tier = effective_data_tier(cfg)
     written = 0
     if args.apply:
         with conn.cursor() as cur:
@@ -478,11 +456,11 @@ def run(args) -> int:
                         primary_setup_id, primary_setup_label, matched_setup_ids, matched_setup_labels,
                         setup_state, setup_version, setup_fired_at, market_session,
                         confirmation_labels, setup_evidence, setup_fail_reasons, registry_hash)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'m3-s3',
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'m3-s3',
                                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     [r["symbol"], r["as_of"], r["session_date"], r["minute"], r["lane"], r["ign"],
                      _json.dumps(r["subscores"]), r["rvol_tod"], r["profile_source"],
-                     _eff_tier, cfg["data_tiers"]["dcf"][_eff_tier], r["spread_bps"], r["spread_source"],
+                     cfg["data_tiers"]["dcf"]["T0"], r["spread_bps"], r["spread_source"],
                      r["pressure"], r["evr"], r["amihud"], r["entry_ref"], r["stop_ref"],
                      r["r_dollars"], r["stop_dist_bps"], gate_result, gate_reasons,
                      *_tax_values(r.get("_tax"), r["as_of"])])
@@ -521,11 +499,10 @@ def run(args) -> int:
                         primary_setup_id, primary_setup_label, matched_setup_ids, matched_setup_labels,
                         setup_state, setup_version, setup_fired_at, market_session,
                         confirmation_labels, setup_evidence, setup_fail_reasons, registry_hash)
-                       VALUES (%s,%s,%s,%s,'TRIGGER',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'m3-s5',
+                       VALUES (%s,%s,%s,%s,'TRIGGER',%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'m3-s5',
                                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     [tf["symbol"], fired, day, tf["fire_minute"], tf["ign"], _json.dumps(tf["subscores"]),
-                     tf["rvol_tod"], tf["profile_source"], _eff_tier, cfg["data_tiers"]["dcf"][_eff_tier],
-                     tf["spread_bps"],
+                     tf["rvol_tod"], tf["profile_source"], cfg["data_tiers"]["dcf"]["T0"], tf["spread_bps"],
                      tf["spread_source"], tf["pressure"], tf["evr"], tf["amihud"], tf["entry"], tf["stop"],
                      tf["r_dollars"], tf["stop_dist_bps"], gate_result, _json.dumps(merged_reasons),
                      *_tax_values(tf.get("_tax"), fired)])
