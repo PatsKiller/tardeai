@@ -66,8 +66,27 @@ def test_service_unit_and_example_are_inert_by_default():
     unit = (ROOT / "config/systemd/tradeai-moomoo-l2-gateway.service").read_text()
     assert "enabled: false" in config
     assert "ConditionPathExists=/etc/tradeai/ENABLE_MOOMOO_L2_GATEWAY" in unit
+    assert "ConditionPathExists=/etc/tradeai/moomoo_l2_gateway.env" in unit
     assert "Restart=on-failure" in unit
     assert "ReadWritePaths=/home/johnclaw/.tradeai/runtime" in unit
+
+
+def test_service_unit_runs_exact_ref_candidate_not_mutable_main_tree():
+    config = (ROOT / "config/moomoo_l2_gateway.example.yaml").read_text()
+    unit = (ROOT / "config/systemd/tradeai-moomoo-l2-gateway.service").read_text()
+    candidate_root = "/opt/trade-ai/runtime/moomoo-l2-gateway/current"
+    assert f"WorkingDirectory={candidate_root}" in unit
+    assert f"{candidate_root}/scripts/moomoo/gateway_service.py" in unit
+    assert "EnvironmentFile=/etc/tradeai/moomoo_l2_gateway.env" in unit
+    assert "Environment=TRADEAI_REPO_ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild" in unit
+    assert "WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild" not in unit
+    assert '"${TRADEAI_REPO_ROOT}/data/scalp/moomoo_armed_state.json"' in config
+
+
+def test_git_hygiene_guard_is_nounset_safe():
+    source = (ROOT / "scripts/git_hygiene_guard.sh").read_text()
+    assert '${ALLOW_MAINTREE_GIT:-}' in source
+    assert '[ -n "$ALLOW_MAINTREE_GIT" ]' not in source
 
 
 def test_operator_probe_is_snapshot_read_only():
