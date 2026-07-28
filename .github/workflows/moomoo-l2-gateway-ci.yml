@@ -1,0 +1,122 @@
+name: moomoo-l2-gateway-ci
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/moomoo/gateway_*.py'
+      - 'scripts/moomoo/futu_*.py'
+      - 'scripts/moomoo/real_gateway_transport.py'
+      - 'scripts/moomoo_l2_gateway_probe.py'
+      - 'scripts/active_trader/l2_runtime.py'
+      - 'scripts/active_trader/l2_status_api.py'
+      - 'scripts/active_trader/current_marks_api.py'
+      - 'scripts/active_trader/fire_replay.py'
+      - 'scripts/active_trader/fire_performance_api.py'
+      - 'scripts/active_trader/read_http.py'
+      - 'apps/command-center-v3/src/pages/ActiveTraderHub.tsx'
+      - 'apps/command-center-v3/src/pages/ActiveTraderCurrentMarks.tsx'
+      - 'apps/command-center-v3/e2e/active-trader-l2-gateway.spec.ts'
+      - 'config/moomoo_l2_gateway.example.yaml'
+      - 'config/systemd/tradeai-moomoo-l2-gateway.service'
+      - 'tests/test_moomoo_gateway_*.py'
+      - 'tests/test_moomoo_futu_normalizer.py'
+      - 'tests/test_active_trader_gateway_ipc.py'
+      - 'tests/test_active_trader_fire_replay.py'
+      - 'tests/test_moomoo_l2_gateway_probe.py'
+      - '.github/workflows/moomoo-l2-gateway-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-gateway:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TRADE_AI_CI: '1'
+      ALPACA_MODE: paper
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install focused dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pyyaml requests psycopg2-binary
+      - name: Diff and syntax checks
+        run: |
+          git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+          python -m compileall -q scripts/moomoo scripts/active_trader scripts/moomoo_l2_gateway_probe.py
+      - name: Dedicated gateway and existing L2 regression suites
+        run: |
+          set -o pipefail
+          pytest -q \
+            tests/test_moomoo_gateway_ipc.py \
+            tests/test_moomoo_futu_normalizer.py \
+            tests/test_moomoo_gateway_service.py \
+            tests/test_active_trader_gateway_ipc.py \
+            tests/test_active_trader_fire_replay.py \
+            tests/test_moomoo_gateway_authority.py \
+            tests/test_moomoo_l2_gateway_probe.py \
+            tests/test_pr247_audit_regressions.py \
+            tests/test_moomoo_t2.py \
+            tests/test_moomoo_l2_feature_service.py \
+            tests/test_moomoo_l2_subscription_manager.py \
+            tests/test_moomoo_l2_authority.py \
+            tests/test_active_trader_l2_status.py \
+            tests/test_active_trader_fire_performance.py \
+            tests/test_scalp_effective_tier.py | tee /tmp/moomoo-l2-gateway-pytest.log
+      - name: Upload backend proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: moomoo-l2-gateway-backend-proof
+          path: /tmp/moomoo-l2-gateway-pytest.log
+          if-no-files-found: error
+
+  browser-active-trader:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - name: Install and build Command Center
+        working-directory: apps/command-center-v3
+        run: |
+          npm ci
+          npm run build
+      - name: Install Chromium
+        working-directory: apps/command-center-v3
+        run: npx playwright install --with-deps chromium
+      - name: Browser-capable ActiveTrader gateway test
+        working-directory: apps/command-center-v3
+        run: |
+          set -euo pipefail
+          npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/cc-v3-preview.log 2>&1 &
+          PREVIEW_PID=$!
+          trap 'kill "$PREVIEW_PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4173/v3/trading >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4173/v3/trading >/dev/null
+          PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 npx playwright test e2e/active-trader-l2-gateway.spec.ts --reporter=line | tee /tmp/active-trader-gateway-playwright.log
+      - name: Upload browser proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: active-trader-gateway-browser-proof
+          path: |
+            /tmp/cc-v3-preview.log
+            /tmp/active-trader-gateway-playwright.log
+            apps/command-center-v3/test-results
+          if-no-files-found: warn
