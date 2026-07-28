@@ -43,10 +43,29 @@ python -m pytest -q \
 cd apps/command-center-v3
 npm ci
 npm run build
-npx playwright install --with-deps chromium
-npm run preview -- --host 127.0.0.1 --port 4173 &
-PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 npx playwright test e2e/active-trader-l2-gateway.spec.ts
+npx playwright install chromium
+
+npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/cc-v3-preview.log 2>&1 &
+PREVIEW_PID=$!
+trap 'kill "$PREVIEW_PID" 2>/dev/null || true' EXIT
+
+for attempt in $(seq 1 60); do
+  if curl -fsS http://127.0.0.1:4173/v3/trading >/dev/null; then
+    break
+  fi
+  sleep 1
+done
+
+curl -fsS http://127.0.0.1:4173/v3/trading >/dev/null
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 \
+  npx playwright test e2e/active-trader-l2-gateway.spec.ts --reporter=line \
+  | tee /tmp/active-trader-gateway-playwright.log
 ```
+
+Do not treat `net::ERR_CONNECTION_REFUSED` as an application assertion failure. It means the
+preview server was not started or did not become ready. The required local browser gate is the
+focused gateway spec above; running the entire repository Playwright suite is a separate broader
+regression exercise and may require additional backend fixtures.
 
 ## Configuration review
 
