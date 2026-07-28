@@ -33,3 +33,17 @@ gate:
   # NEVER auto-use a market order — the manual-paper ticket must show the intended price control + est.
   # spread/slippage. Missing price control → PRICE_CONTROL_UNAVAILABLE (a veto, fail-closed).
   require_price_control: true
+
+  # ── DETERMINISTIC MINIMUM-STOP FLOOR (universal gate stop-reference validator) ──
+  # These are CONFIGURABLE ENGINE ADAPTATION defaults — NOT a validated trading edge. They reject a
+  # stop reference that sits inside deterministic market noise (tick / spread / short-horizon volatility)
+  # so an implausibly tight stop cannot be treated as execution-eligible. The validator NEVER widens a
+  # stop; it returns PASS or a typed VETO. Versioned so a change is auditable.
+  stop_floor:
+    version: "scalp-stop-floor-v1"
+    min_stop_ticks: 2            # required distance >= this many price increments
+    min_stop_spread_multiple: 1.5   # required distance >= this * quoted spread (in dollars)
+    min_stop_atr_multiple: 0.25     # required distance >= this * ATR_1m
+    us_equity_fallback:         # price increment when no provider/broker increment is supplied
+      ge_1: 0.01                #   price >= $1.00 → penny increment
+      lt_1: 0.0001              #   price <  $1.00 → sub-penny increment

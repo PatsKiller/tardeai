@@ -45,6 +45,16 @@ from typing import Any, Mapping, Optional
 
 from active_trader import broker_capabilities as caps
 
+# ONE shared pure stop-reference validator (Defect 2) — no duplication across the three call sites.
+# Imported defensively so this inert module never hard-fails if the scripts path is not wired.
+try:
+    from scalp_execution_gate import validate_stop_reference as _validate_stop_reference
+except Exception:  # pragma: no cover - import-path fallback only
+    try:
+        from scripts.scalp_execution_gate import validate_stop_reference as _validate_stop_reference
+    except Exception:
+        _validate_stop_reference = None
+
 CONTRACT = "active-trader-sim-execution-v1"
 
 # ── setup states ───────────────────────────────────────────────────────────────
@@ -68,6 +78,7 @@ R_GATE_VETO = "universal_gate_veto"
 R_MISSING_T2 = "required_t2_evidence_missing"
 R_MARKET_FORBIDDEN = "market_entry_forbidden"
 R_RISK_BREACH = "risk_envelope_breach"
+R_STOP_INVALID = "stop_reference_below_noise_floor"
 R_DUPLICATE = "duplicate_event_idempotent"
 
 # stages (for observability / journal)
@@ -348,6 +359,21 @@ class SimExecutionEngine:
         if stop_price is None or stop_price <= 0:
             return _refuse(STAGE_RISK, R_RISK_BREACH,
                            "a protective stop price is required", session_id, event_id)
+
+        # Defect 2 — the SAME deterministic minimum-stop-floor validator used by the detector gate. A stop
+        # inside tick/spread/volatility noise is refused here too (never widened). Config-driven floor via
+        # context['stop_floor_cfg']; the validator carries CONFIGURABLE ENGINE ADAPTATION fallbacks.
+        if _validate_stop_reference is not None:
+            sv = _validate_stop_reference(
+                entry_ref=limit_price, stop_ref=stop_price,
+                atr_1m=_f(event.get("atr_1m")), spread_bps=_f(event.get("spread_bps")),
+                price_increment=_f(event.get("price_increment")), price=limit_price,
+                data_tier=_s(event.get("data_tier")) or None,
+                cfg=context.get("stop_floor_cfg") if isinstance(context.get("stop_floor_cfg"), Mapping) else None)
+            if sv.get("stop_validation") != "PASS":
+                return _refuse(STAGE_RISK, R_STOP_INVALID,
+                               "stop reference below deterministic noise floor: "
+                               + ",".join(sv.get("reason_codes", [])), session_id, event_id)
 
         risk = session.get("risk")
         risk = risk if isinstance(risk, Mapping) else {}
