@@ -1,0 +1,72 @@
+# Moomoo / OpenD L2 subscription-lifecycle config — versioned, read-plane only.
+#
+# Quota here is SIMULTANEOUS subscription quota (how many symbol×subtype allocations
+# may be subscribed AT ONCE), NOT a daily API-call budget. Each symbol/subtype pair
+# consumes one allocation unit. 8 L2 symbols × (ORDER_BOOK + TICKER) = 16 units.
+#
+# Nothing in this file enables an order path, a trade unlock, a schedule, or a live
+# session. It only governs the conserving read-only market-data lifecycle.
+schema_version: moomoo-l2-lifecycle-v1
+
+lifecycle:
+  min_subscription_dwell_seconds: 60        # Moomoo minimum dwell before an unsubscribe
+  default_post_fire_retention_seconds: 120  # keep a fired symbol subscribed for post-fire tracking
+  default_arm_ttl_seconds: 180              # pre-fire arm expiry when nothing refreshes it
+  max_concurrent_l2_symbols: 8              # hard cap on distinct L2 symbols (NOT quota units)
+  book_stale_after_ms: 2500                 # book older than this → STALE
+  tape_stale_after_ms: 3000                 # tape older than this → STALE (when tape required)
+
+# Per-symbol subtype allocation requested for an L2 arm. Each `true` costs one quota unit.
+subtypes:
+  order_book: true
+  ticker: true
+  quote: true
+  k_1m: false
+
+# Reserved capacity carved out of remaining quota BEFORE discretionary pre-fire arming.
+# Units are (symbol × subtype) allocation counts. Insufficient quota → QUOTA_DEFERRED,
+# never a silent eviction.
+quota_reservations:
+  held_positions: 4
+  operator_selected: 4
+  active_fires: 6
+  reconnect_recovery: 4
+  emergency: 2
+
+# Deterministic pre-fire arm policy. A symbol may be armed BEFORE the terminal FSM
+# ARMED state so L2 evidence exists at fire time (the FSM cadence is multi-minute).
+arm_policy:
+  eligible_setup_states: [ARMED]
+  eligible_fsm_states: [PULLBACK, ARMED]
+  eligible_lanes: [IGN_45, IGN_60, IGN_75, IGN_ACCEL]
+  # never subscribe these regardless of the above
+  never_when:
+    - stale_symbol
+    - invalidated_setup
+    - expired_setup
+    - outside_window
+    - halted_without_policy
+    - no_entitlement
+  priority:
+    P0: [open_position, active_fire, operator_selected]
+    P1: [fsm_armed, setup_armed, ign_accel, ign_75]
+    P2: [pullback, ign_60, ign_45]
+
+# L2_MOMENTUM requires fresh entitled ORDER_BOOK + TICKER to FIRE. Other setups may use
+# L2 as confirmation evidence, but its ABSENCE must stay visible and is never fabricated.
+setup_l2_requirements:
+  L2_MOMENTUM:
+    require_fresh_book: true
+    require_fresh_tape: true
+    fire_prohibited_without_l2: true
+
+fire_lifecycle:
+  fresh_fire_seconds: 60          # FIRED_FRESH window
+  active_observation_minutes: 30  # ACTIVE_OBSERVATION window; older → history
+
+live_mark:
+  # Explicit source priority — NO averaging across sources. A Moomoo-subscribed symbol
+  # uses Moomoo QUOTE/TICKER; everything else uses the approved current-quote provider.
+  source_priority: [moomoo_subscribed, approved_current_quote_provider]
+  poll_interval_ms: 1500          # visible/active symbol set only; not the queue poll
+  mark_stale_after_ms: 6000

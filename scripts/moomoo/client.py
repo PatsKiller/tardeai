@@ -250,6 +250,88 @@ class FutuTransport:
             "ts": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         }
 
+    # ── gateway surface (single-context subtype subscribe + quota truth) ─────
+    # Used by the single-owner QuoteGateway. Reuses the ONE OpenQuoteContext above so
+    # no second production context is ever created. Not exercised in CI (no live OpenD).
+    def entitlement_ok(self) -> bool:
+        """OpenD logged in and serving (proxy for data-plane entitlement)."""
+        return self.ping()
+
+    @staticmethod
+    def _subtype_objs(subtypes):
+        """Map canonical subtype NAMES to futu SubType members (unknown names skipped)."""
+        from futu import SubType
+        out = []
+        for name in subtypes or ():
+            member = getattr(SubType, str(name).upper(), None)
+            if member is not None:
+                out.append(member)
+        return out
+
+    def subscribe(self, symbol: str, subtypes: list[str]) -> tuple[bool, str]:
+        from futu import RET_OK
+        sym = to_futu_symbol(symbol)
+        objs = self._subtype_objs(subtypes)
+        if not objs:
+            return False, f"no known subtypes in {subtypes!r}"
+        with self._quiet():
+            ret, msg = self._context().subscribe([sym], objs)
+        if ret != RET_OK:
+            return False, str(msg)[:160]
+        self._subscribed.add(sym)
+        return True, "ok"
+
+    def unsubscribe(self, symbol: str, subtypes: list[str]) -> tuple[bool, str]:
+        sym = to_futu_symbol(symbol)
+        objs = self._subtype_objs(subtypes)
+        try:
+            with self._quiet():
+                self._context().unsubscribe([sym], objs)
+        except Exception as exc:
+            return False, f"{type(exc).__name__}: {exc}"
+        self._subscribed.discard(sym)
+        return True, "ok"
+
+    def query_subscription(self, is_all_conn: bool = True) -> dict:
+        """SIMULTANEOUS subscription quota via ctx.query_subscription(is_all_conn=…).
+
+        Returns {total_quota,total_used,remain,own_used,other_connection_usage,
+        subscriptions_by_type}. Never raises — {} on any failure (honest 'unknown')."""
+        from futu import RET_OK
+        try:
+            with self._quiet():
+                ret, data = self._context().query_subscription(is_all_conn=is_all_conn)
+        except Exception:
+            return {}
+        if ret != RET_OK or not isinstance(data, dict):
+            return {}
+        total = data.get("total_used")
+        remain = data.get("remain")
+        own = data.get("own_used")
+        by_type = {}
+        subs = data.get("sub_list") or {}
+        if isinstance(subs, dict):
+            for st, syms in subs.items():
+                try:
+                    by_type[str(st)] = len(syms)
+                except TypeError:
+                    continue
+        total_quota = None
+        try:
+            if remain is not None and total is not None:
+                total_quota = int(remain) + int(total)
+        except (TypeError, ValueError):
+            total_quota = None
+        return {
+            "total_quota": total_quota,
+            "total_used": None if total is None else int(total),
+            "remain": None if remain is None else int(remain),
+            "own_used": None if own is None else int(own),
+            "other_connection_usage": (None if (total is None or own is None)
+                                       else max(0, int(total) - int(own))),
+            "subscriptions_by_type": by_type,
+        }
+
 
 class MoomooTradeReader:
     """READ-ONLY account facts from the moomoo trade context. No order path, no unlock.
