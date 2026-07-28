@@ -101,9 +101,11 @@ class MoomooT2Provider:
     name = "moomoo"
 
     def __init__(self, client=None, book_fetcher: Optional[Callable[[str], dict]] = None,
-                 manager: Optional[ArmedSubscriptionManager] = None):
+                 manager: Optional[ArmedSubscriptionManager] = None,
+                 book_releaser: Optional[Callable[[str], None]] = None):
         self._client = client                       # a MoomooClient (opend_up/health/get_quote); order methods never called
         self._book_fetcher = book_fetcher           # callable(symbol)->{bids,asks,ts} when real L2 is wired; else None
+        self._book_releaser = book_releaser         # callable(symbol) -> drop the live L2 subscription
         self.manager = manager or ArmedSubscriptionManager()
 
     def opend_up(self) -> bool:
@@ -125,6 +127,14 @@ class MoomooT2Provider:
 
     def disarm(self, symbol: str) -> None:
         self.manager.disarm(symbol)
+        # Actually release the OpenD subscription. Dropping it from the manager alone
+        # would free the budget slot in our bookkeeping while the real subscription
+        # stayed open at OpenD — the opposite of conserving.
+        if self._book_releaser is not None:
+            try:
+                self._book_releaser(symbol)
+            except Exception:
+                pass
 
     def fetch_book(self, symbol: str, now: float, now_iso: str) -> Optional[Observation]:
         """Return a normalized T2 ORDER_BOOK Observation — ONLY if the symbol is armed AND OpenD is up
@@ -172,14 +182,46 @@ def sync_arm_from_states(provider: "MoomooT2Provider", symbol_to_state: dict, no
     return {"armed": armed, "skipped_budget": skipped, "disarmed": sorted(have - set(want))}
 
 
-def default_provider() -> MoomooT2Provider:
-    """Build the provider over the real Stage-0 MoomooClient (no L2 fetcher wired → SCAFFOLD_ONLY)."""
+def default_provider(*, live: bool = True) -> MoomooT2Provider:
+    """Build the provider over the real Stage-0 MoomooClient.
+
+    live=True wires a real futu transport + L2 book fetcher, so entitlement resolves
+    to AVAILABLE_REALTIME once OpenD is logged in. live=False keeps the stub (CI).
+
+    Previously this called `MoomooClient()` with no arguments — but `config` is
+    required, so it raised TypeError, the bare `except` swallowed it, and the
+    provider was built with client=None. opend_up() was therefore False no matter
+    what OpenD was doing, pinning entitlement to SCAFFOLD_ONLY permanently. The
+    exception is now narrowed and logged rather than silently discarded.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    client = None
+    fetcher = None
+    releaser = None
     try:
         try:
-            from moomoo.client import MoomooClient  # scripts on path
+            from moomoo.client import MoomooClient, FutuTransport
+            from moomoo.config import load_stage0_config
         except ModuleNotFoundError:
-            from scripts.moomoo.client import MoomooClient
-        client = MoomooClient()
-    except Exception:
-        client = None
-    return MoomooT2Provider(client=client, book_fetcher=None)   # no fetcher today → conserving + fail-closed
+            from scripts.moomoo.client import MoomooClient, FutuTransport
+            from scripts.moomoo.config import load_stage0_config
+
+        cfg = load_stage0_config()          # falls back to the shipped example config
+        if live:
+            transport = FutuTransport(cfg.host, cfg.port,
+                                      timeout=cfg.connect_timeout_seconds or 4.0)
+            client = MoomooClient(cfg, transport=transport)
+            # Bind the fetcher to the same transport so subscribe/unsubscribe and the
+            # book read share one OpenD context (and one subscription budget).
+            fetcher = transport.get_order_book
+            releaser = transport.unsubscribe_book
+        else:
+            client = MoomooClient(cfg)      # StubTransport → SCAFFOLD_ONLY
+    except Exception as e:                  # never let provider construction break a scan
+        log.warning("moomoo provider unavailable (%s: %s) — SCAFFOLD_ONLY",
+                    type(e).__name__, str(e)[:160])
+        client, fetcher, releaser = None, None, None
+
+    return MoomooT2Provider(client=client, book_fetcher=fetcher, book_releaser=releaser)

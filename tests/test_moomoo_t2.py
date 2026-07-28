@@ -115,9 +115,32 @@ def test_fetch_book_returns_t2_observation_when_armed_up_and_wired():
     assert obs.source_system == "moomoo" and obs.sequence_id == 42
     assert obs.payload_ref["book_imbalance"] == pytest.approx(0.5)
 
-def test_default_provider_is_scaffold_on_this_host():
-    # OpenD not configured on ms01 → real provider resolves to SCAFFOLD_ONLY (no manufactured T2)
-    assert default_provider().entitlement() == ES.SCAFFOLD_ONLY
+def test_default_provider_stub_mode_is_scaffold_only():
+    """live=False must never manufacture a T2 capability, regardless of host state.
+
+    This replaces an assertion that default_provider() is SCAFFOLD_ONLY "because OpenD
+    is not configured on ms01". That premise expired on 2026-07-28: OpenD is running
+    and L2 depth is entitled, so the old test asserted the host stayed broken. The
+    invariant worth pinning is the stub path, which is deterministic in CI.
+    """
+    assert default_provider(live=False).entitlement() == ES.SCAFFOLD_ONLY
+
+
+def test_default_provider_live_matches_opend_reality():
+    """live=True is AVAILABLE_REALTIME only when OpenD is genuinely reachable+logged in.
+
+    Both outcomes are legitimate — the point is that entitlement TRACKS reality rather
+    than being asserted. Fail-closed is the invariant: no OpenD ⇒ no T2, and
+    SCAFFOLD_ONLY must never yield a book.
+    """
+    p = default_provider(live=True)
+    ent = p.entitlement()
+    if p.opend_up():
+        assert ent == ES.AVAILABLE_REALTIME
+    else:
+        assert ent == ES.SCAFFOLD_ONLY
+        p.arm("AAPL", now=1.0, reason="t")
+        assert p.fetch_book("AAPL", now=1.0, now_iso="2026-07-28T00:00:00Z") is None
 
 
 # ── arm wired to trigger FSM ARMED state ────────────────────────────

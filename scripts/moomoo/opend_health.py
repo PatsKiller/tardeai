@@ -34,10 +34,22 @@ ALERT_AFTER = 3  # consecutive failures before shouting (probe runs every 5 min)
 
 
 def _unit_active() -> tuple[bool, str]:
+    """systemctl --user state. Informational — see main() for why it is not the gate.
+
+    cron runs with a bare environment, so `systemctl --user` cannot reach the user
+    bus ("$DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined") and returns
+    unknown. Supply XDG_RUNTIME_DIR/DBUS ourselves so the probe works under cron.
+    """
+    import os
+    env = dict(os.environ)
+    uid = os.getuid()
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
+    env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{uid}/bus")
     try:
         r = subprocess.run(["systemctl", "--user", "is-active", UNIT],
-                           capture_output=True, text=True, timeout=10)
-        return r.stdout.strip() == "active", r.stdout.strip() or "unknown"
+                           capture_output=True, text=True, timeout=10, env=env)
+        state = r.stdout.strip() or "unknown"
+        return state == "active", state
     except Exception as e:
         return False, f"error: {str(e)[:60]}"
 
@@ -59,18 +71,16 @@ def _quote_ok() -> tuple[bool, str]:
     ours is the only thing that should reach the caller.
     """
     import contextlib
-    import io
-    import logging as _logging
 
-    for name in ("futu", "FTLog", "futu.common"):
-        lg = _logging.getLogger(name)
-        lg.setLevel(_logging.CRITICAL)
-        lg.propagate = False
+    sys.path.insert(0, str(ROOT / "scripts"))
+    try:
+        from moomoo.client import quiet_futu_logging
+    except Exception:
+        return False, "moomoo client module unavailable"
 
-    sink = io.StringIO()
     ctx = None
     try:
-        with contextlib.redirect_stdout(sink):
+        with quiet_futu_logging():
             from futu import OpenQuoteContext, RET_OK
             ctx = OpenQuoteContext(host=HOST, port=PORT)
             ret, data = ctx.get_market_snapshot(["US.AAPL"])
@@ -83,7 +93,7 @@ def _quote_ok() -> tuple[bool, str]:
         return False, f"{type(e).__name__}: {str(e)[:100]}"
     finally:
         if ctx is not None:
-            with contextlib.suppress(Exception), contextlib.redirect_stdout(sink):
+            with contextlib.suppress(Exception), quiet_futu_logging():
                 ctx.close()
 
 
@@ -106,7 +116,12 @@ def main() -> int:
     active, unit_state = _unit_active()
     port = _port_open()
     quote, quote_detail = (_quote_ok() if port else (False, "port closed — not probed"))
-    ok = active and port and quote
+    # The QUOTE round-trip is the gate — it is the only check that proves OpenD is
+    # logged in and serving. Unit state is context, not truth: it was ANDed in here
+    # and cron (which cannot reach the user bus) reported "unknown", so the probe
+    # called a healthy data plane DOWN seven times and was three from paging.
+    # A working quote means the data plane is up however the process got started.
+    ok = port and quote
 
     streak = _bump(ok)
     out = {

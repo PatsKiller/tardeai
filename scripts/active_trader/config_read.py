@@ -61,6 +61,34 @@ _CREDENTIAL_SLOT_NAMES = (
 
 # --------------------------------------------------------------------------- helpers
 
+def _moomoo_l2_entitlement() -> tuple[str, str]:
+    """(feed_state, human_description) for the moomoo L2 data plane.
+
+    Reads the snapshot written by the opend_health cron rather than dialling OpenD:
+    this runs in an API request path, and a futu connect costs seconds. Same
+    Engine-Room pattern as market_movers. Stale/missing snapshot degrades to an
+    honest 'unknown', never an optimistic claim.
+    """
+    snap = _REPO_ROOT / "data" / "runtime" / "moomoo_opend_health.json"
+    try:
+        import json as _json
+        d = _json.loads(snap.read_text(encoding="utf-8"))
+    except Exception:
+        return ("unknown", "moomoo OpenD — no health snapshot yet (opend_health cron pending)")
+
+    age = _age_seconds(d.get("checked_at"))
+    if age is not None and age > 1800:
+        return ("unknown",
+                f"moomoo OpenD — health snapshot stale ({int(age // 60)}m old); state not asserted")
+    if not d.get("ok"):
+        why = (d.get("quote") or {}).get("detail") or (d.get("unit") or {}).get("state") or "down"
+        return ("unavailable", f"moomoo OpenD — DOWN ({why})")
+    # ok=True means the quote round-trip succeeded, i.e. OpenD is logged in. Depth
+    # entitlement itself was proven by probe on 2026-07-28 (ORDER_BOOK subscribe +
+    # get_order_book returned real depth, quota remain 99).
+    return ("real-time", "moomoo OpenD — AVAILABLE_REALTIME (L2 depth entitled; armed-symbol subscriptions only)")
+
+
 def _panel_frame(extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Every panel carries the read-only + zero-authority markers."""
     base = {"read_only": _READ_ONLY, "authority": dict(_AUTHORITY)}
@@ -749,15 +777,19 @@ def _panel_feed_tier_ladder() -> dict[str, Any]:
 
         violations = check_ladder_invariant(quality_order, dcf, slip)
 
+        # moomoo L2 status is PROBED, not asserted. It was hardcoded to
+        # "SCAFFOLD_ONLY (not configured)" and stayed that way after OpenD came up
+        # and depth was proven entitled (2026-07-28) — the panel contradicted reality.
+        t2_state, t2_desc = _moomoo_l2_entitlement()
         entitlement = {
             "consumers": {
                 "momentum_scalp_finviz_screen": "finviz Elite export (no live quote entitlement needed)",
                 "momentum_scalp_intraday": "IEX real-time (SIP delayed-only; recent SIP = HTTP 403)",
                 "t1_microstructure": "SIP_REALTIME required — NOT procured (t1.enabled:false)",
-                "t2_level2": "moomoo OpenD — SCAFFOLD_ONLY (not configured)",
+                "t2_level2": t2_desc,
             },
             "feed_availability": {"iex": "real-time", "sip": "delayed-only", "polygon": "not procured",
-                                  "moomoo_l2": "not configured"},
+                                  "moomoo_l2": t2_state},
         }
 
         return _panel_frame({

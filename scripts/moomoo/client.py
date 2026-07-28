@@ -67,6 +67,190 @@ def tcp_reachable(host: str, port: int, timeout: float) -> bool:
         return False
 
 
+def to_futu_symbol(symbol: str, market: str = "US") -> str:
+    """'AAPL' -> 'US.AAPL'. Already-qualified symbols pass through."""
+    s = str(symbol or "").strip().upper()
+    return s if "." in s else f"{market}.{s}"
+
+
+# The futu SDK's real logger names. Discovered by introspection, not documented:
+# FTConsoleLog owns a StreamHandler bound to stdout at INFO.
+_FUTU_LOGGERS = ("FTConsoleLog", "FTFileLog", "futu", "futu.common", "FTLog")
+
+
+def quiet_futu_logging():
+    """Raise the futu loggers to CRITICAL and return a redirect_stdout guard.
+
+    Both halves are needed: the level change stops FTConsoleLog (whose handler holds
+    the real stdout from import time, so redirection alone misses it) and the
+    redirect catches anything the SDK prints directly.
+    """
+    import contextlib
+    import io
+    import logging
+    for name in _FUTU_LOGGERS:
+        lg = logging.getLogger(name)
+        lg.setLevel(logging.CRITICAL)
+        lg.propagate = False
+        for h in list(lg.handlers):
+            h.setLevel(logging.CRITICAL)
+    return contextlib.redirect_stdout(io.StringIO())
+
+
+class FutuTransport:
+    """Real OpenD transport over the futu SDK. Read plane only — quotes and depth.
+
+    ping() deliberately issues a REAL query rather than a TCP connect: OpenD binds
+    127.0.0.1:11111 before it authenticates, so a reachable port says nothing about
+    login. On 2026-07-23 it listened and exited seconds later on a bad password.
+
+    The SDK logs verbosely to stdout on connect; that is silenced here so callers
+    (cron jobs emitting JSON) keep clean output.
+    """
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 11111, *, timeout: float = 4.0):
+        self.host, self.port, self.timeout = host, int(port), float(timeout)
+        self._ctx = None
+        self._subscribed: set[str] = set()
+
+    # ── context lifecycle ────────────────────────────────────────────────────
+    @staticmethod
+    def _quiet():
+        """Silence the futu SDK's own loggers and swallow its stdout.
+
+        The SDK installs 'FTConsoleLog' (StreamHandler → stdout, INFO) and
+        'FTFileLog' (TimedRotatingFileHandler) at import. Left alone, FTConsoleLog
+        interleaves with JSON output from cron jobs, and FTFileLog wrote a 25 MB
+        day-file the last time this ran. redirect_stdout alone does NOT fix the
+        console one — its handler binds the real stdout at import time — so the
+        logger levels must be raised as well.
+        """
+        return quiet_futu_logging()
+
+    def _context(self):
+        if self._ctx is not None:
+            return self._ctx
+        if not tcp_reachable(self.host, self.port, self.timeout):
+            raise MoomooUnavailable(f"OpenD not reachable at {self.host}:{self.port}")
+        try:
+            with self._quiet():
+                from futu import OpenQuoteContext, SysConfig
+                # The SDK's networking threads are NON-daemon by default, so an open
+                # context keeps the interpreter alive forever — a cron scan that
+                # builds a provider would never exit and jobs would pile up. Make
+                # them daemon so process exit is always possible, and register an
+                # atexit close so subscriptions are released on the way out.
+                SysConfig.set_all_thread_daemon(True)
+                self._ctx = OpenQuoteContext(host=self.host, port=self.port)
+            import atexit
+            atexit.register(self.close)
+        except ImportError as e:
+            raise MoomooUnavailable(f"futu SDK not installed: {e}") from e
+        except Exception as e:
+            raise MoomooUnavailable(f"OpenD connect failed: {e}") from e
+        return self._ctx
+
+    def close(self) -> None:
+        if self._ctx is not None:
+            try:
+                with self._quiet():
+                    for s in list(self._subscribed):
+                        self.unsubscribe_book(s)
+                    self._ctx.close()
+            except Exception:
+                pass
+            self._ctx = None
+            self._subscribed.clear()
+
+    # ── read plane ───────────────────────────────────────────────────────────
+    def ping(self) -> bool:
+        """True only when a real query round-trips — i.e. OpenD is LOGGED IN."""
+        try:
+            from futu import RET_OK
+            with self._quiet():
+                ret, _ = self._context().get_market_snapshot([to_futu_symbol("AAPL")])
+            return ret == RET_OK
+        except Exception:
+            return False
+
+    def get_quote(self, symbol: str) -> QuoteSnapshot:
+        from futu import RET_OK
+        sym = to_futu_symbol(symbol)
+        with self._quiet():
+            ret, data = self._context().get_market_snapshot([sym])
+        if ret != RET_OK or data is None or len(data) == 0:
+            raise MoomooUnavailable(f"snapshot failed for {sym}: {str(data)[:120]}")
+        row = data.iloc[0]
+
+        def _f(key):
+            try:
+                v = float(row.get(key))
+                return v if v == v else None       # NaN -> None
+            except (TypeError, ValueError):
+                return None
+
+        return QuoteSnapshot(
+            symbol=str(symbol).upper(),
+            bid=_f("bid_price"), ask=_f("ask_price"), last=_f("last_price"),
+            ts_utc=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            source="moomoo_opend",
+        )
+
+    # ── L2 depth (armed symbols only — the caller owns the budget) ───────────
+    def subscribe_book(self, symbol: str) -> bool:
+        from futu import RET_OK, SubType
+        sym = to_futu_symbol(symbol)
+        if sym in self._subscribed:
+            return True
+        with self._quiet():
+            ret, msg = self._context().subscribe([sym], [SubType.ORDER_BOOK])
+        if ret != RET_OK:
+            raise MoomooUnavailable(f"ORDER_BOOK subscribe refused for {sym}: {str(msg)[:120]}")
+        self._subscribed.add(sym)
+        return True
+
+    def unsubscribe_book(self, symbol: str) -> None:
+        from futu import SubType
+        sym = to_futu_symbol(symbol)
+        if sym not in self._subscribed:
+            return
+        try:
+            with self._quiet():
+                self._context().unsubscribe([sym], [SubType.ORDER_BOOK])
+        except Exception:
+            pass
+        self._subscribed.discard(sym)
+
+    def get_order_book(self, symbol: str, levels: int = 5) -> dict:
+        """{bids:[(price,size)…], asks:[…], ts} — subscribes on first use.
+
+        futu returns rows as (price, volume, order_count, extra); the provider only
+        consumes (price, size), so flatten to pairs here.
+        """
+        from futu import RET_OK
+        sym = to_futu_symbol(symbol)
+        self.subscribe_book(symbol)
+        with self._quiet():
+            ret, book = self._context().get_order_book(sym, num=int(levels))
+        if ret != RET_OK or not isinstance(book, dict):
+            raise MoomooUnavailable(f"order book failed for {sym}: {str(book)[:120]}")
+
+        def _pairs(rows):
+            out = []
+            for r in (rows or [])[:levels]:
+                try:
+                    out.append((float(r[0]), float(r[1])))
+                except (TypeError, ValueError, IndexError):
+                    continue
+            return out
+
+        return {
+            "bids": _pairs(book.get("Bid")),
+            "asks": _pairs(book.get("Ask")),
+            "ts": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        }
+
+
 class MoomooClient:
     """Stage 0 client: quotes/history interface with hard order-path refusal."""
 

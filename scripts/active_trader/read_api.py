@@ -619,6 +619,29 @@ def _engine_status() -> dict[str, Any]:
     }
 
 
+def _t2_feeds_scoring() -> bool:
+    """True only when T2 depth is actually allowed to move scoring.
+
+    Distinct from "L2 is connected". Books can stream into observations for a long
+    shadow period while every ignition row is still written T0/dcf 0.4. Promotion is
+    an explicit config act (data_tiers.active_tier or t2.feeds_scoring), never an
+    inference from the feed being up.
+    """
+    try:
+        import sys as _sys
+        sp = str(_REPO_ROOT / "scripts")
+        if sp not in _sys.path:
+            _sys.path.insert(0, sp)
+        import scalp_shadow_logger as _L
+        cfg = _L.load_config()
+        dt = cfg.get("data_tiers", {}) or {}
+        if bool((cfg.get("t2", {}) or {}).get("feeds_scoring", False)):
+            return True
+        return str(dt.get("active_tier", "T0")).upper() == "T2"
+    except Exception:
+        return False
+
+
 _ARMING_LANES = ("IGN_45", "IGN_60", "IGN_75", "IGN_ACCEL")
 _LANE_LADDER = ("BELOW", "IGN_45", "IGN_60", "IGN_75", "IGN_ACCEL", "TRIGGER")
 
@@ -673,7 +696,8 @@ def _arming_status(limit: int = 25) -> dict[str, Any]:
 
     # moomoo L2/T2 arm set — L2 is only "looked at" for symbols whose FSM reached ARMED
     l2 = {"enabled": False, "max_armed": None, "ttl_seconds": None, "armed": [], "connected": False,
-          "note": "L2 (moomoo T2) arms on-demand when a symbol's trigger FSM hits ARMED; observability-only until OpenD is connected."}
+          "entitlement": "unknown", "feeding_scoring": False,
+          "note": "L2 (moomoo T2) arms on-demand when a symbol's trigger FSM hits ARMED."}
     try:
         import sys as _sys
         sp = str(_REPO_ROOT / "scripts")
@@ -693,7 +717,22 @@ def _arming_status(limit: int = 25) -> dict[str, Any]:
                 l2["armed"] = list(armed.keys())
             elif isinstance(armed, list):
                 l2["armed"] = [x.get("symbol") if isinstance(x, dict) else x for x in armed]
-            l2["connected"] = True
+        # "connected" means OpenD is LOGGED IN, proven by the health probe's quote
+        # round-trip — not merely that an arm-state file exists on disk. The old test
+        # reported connected=True while OpenD was down for days, because the arm
+        # state is written by the scan regardless of any L2 link.
+        health_p = _REPO_ROOT / "data" / "runtime" / "moomoo_opend_health.json"
+        if health_p.is_file():
+            try:
+                _h = json.loads(health_p.read_text(encoding="utf-8"))
+                l2["connected"] = bool(_h.get("ok"))
+                l2["entitlement"] = "AVAILABLE_REALTIME" if _h.get("ok") else "unavailable"
+                l2["health_checked_at"] = _h.get("checked_at")
+            except Exception:
+                pass
+        # Books can be flowing while scoring still runs on T0 — the shadow logger owns
+        # that promotion. Never let a live feed imply it is influencing decisions.
+        l2["feeding_scoring"] = bool(l2["connected"]) and _t2_feeds_scoring()
     except Exception:
         pass
     return {"available": available, "market_open": bool(market_open),
