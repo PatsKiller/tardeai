@@ -38,15 +38,25 @@ The installer never creates that marker.
 
 ## 1. Install the exact reviewed SHA, disabled
 
-Run from the canonical production repository as `johnclaw`:
+Run from the canonical production repository as `johnclaw`. The production checkout may remain on
+`main` and may remain dirty: the installer is extracted directly from the exact reviewed remote SHA
+into a temporary file, then the candidate itself is staged with `git archive`.
 
 ```bash
-cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+set -euo pipefail
 
-git fetch origin agent/moomoo-l2-gateway-ipc-v1
-EXPECTED_SHA="$(git rev-parse origin/agent/moomoo-l2-gateway-ipc-v1)"
+REPO=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+BRANCH=agent/moomoo-l2-gateway-ipc-v1
+cd "$REPO"
 
-bash scripts/moomoo/install_gateway_user_proof.sh "$EXPECTED_SHA"
+git fetch origin "$BRANCH:refs/remotes/origin/$BRANCH"
+EXPECTED_SHA="$(git rev-parse "origin/$BRANCH")"
+INSTALLER="$(mktemp)"
+trap 'rm -f "$INSTALLER"' EXIT
+
+git show "$EXPECTED_SHA:scripts/moomoo/install_gateway_user_proof.sh" >"$INSTALLER"
+chmod 0700 "$INSTALLER"
+TRADEAI_REPO_ROOT="$REPO" bash "$INSTALLER" "$EXPECTED_SHA" "$BRANCH"
 ```
 
 Expected results:
@@ -57,7 +67,8 @@ Expected results:
 - the copied YAML remains `enabled: false`;
 - the activation marker is absent;
 - the user service is disabled and inactive;
-- no OpenD or gateway process is started.
+- no OpenD or gateway process is started;
+- the production checkout branch, index, and working tree are not changed.
 
 ## 2. Inspect before activation
 
