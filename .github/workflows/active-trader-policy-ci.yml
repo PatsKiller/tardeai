@@ -7,6 +7,7 @@ on:
       - 'scripts/active_trader/momentum_exit_policy.py'
       - 'tests/test_active_trader_t2_jit_policy.py'
       - 'tests/test_active_trader_momentum_exit_policy.py'
+      - 'tests/test_active_trader_policy_fail_closed.py'
       - 'docs/design/ACTIVE_TRADER_T2_JIT_AND_MOMENTUM_EXIT_v1.md'
       - 'docs/prompts/CLAUDE_ACTIVE_TRADER_LIVE_MOTION_UI_v1.md'
       - '.github/workflows/active-trader-policy-ci.yml'
@@ -31,14 +32,17 @@ jobs:
           python -m pip install pytest
       - name: Diff and syntax checks
         run: |
-          git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [[ -z "$BASE_SHA" ]]; then BASE_SHA="$(git rev-parse HEAD^)"; fi
+          git diff --check "$BASE_SHA...HEAD"
           python -m compileall -q scripts/active_trader
       - name: T2 and momentum-exit policy tests
         run: |
           set -o pipefail
           pytest -q \
             tests/test_active_trader_t2_jit_policy.py \
-            tests/test_active_trader_momentum_exit_policy.py | tee /tmp/active-trader-policy-pytest.log
+            tests/test_active_trader_momentum_exit_policy.py \
+            tests/test_active_trader_policy_fail_closed.py | tee /tmp/active-trader-policy-pytest.log
       - name: Upload policy proof
         if: always()
         uses: actions/upload-artifact@v4
