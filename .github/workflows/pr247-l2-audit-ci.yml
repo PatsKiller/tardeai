@@ -54,6 +54,7 @@ jobs:
 
       - name: Focused L2 and ActiveTrader regression suite
         run: |
+          set -o pipefail
           pytest -q \
             tests/test_pr247_audit_regressions.py \
             tests/test_moomoo_t2.py \
@@ -62,4 +63,13 @@ jobs:
             tests/test_moomoo_l2_authority.py \
             tests/test_active_trader_l2_status.py \
             tests/test_active_trader_fire_performance.py \
-            tests/test_scalp_effective_tier.py
+            tests/test_scalp_effective_tier.py \
+            2>&1 | tee pr247-l2-audit-pytest.log
+
+      - name: Upload focused test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr247-l2-audit-pytest
+          path: pr247-l2-audit-pytest.log
+          if-no-files-found: warn
