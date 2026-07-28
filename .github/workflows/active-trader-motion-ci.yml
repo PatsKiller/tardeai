@@ -7,6 +7,7 @@ on:
       - 'scripts/active_trader/read_http.py'
       - 'scripts/active_trader_motion_tick.py'
       - 'tests/test_active_trader_motion_*.py'
+      - 'tests/test_active_trader_permission_queue.py'
       - 'docs/design/ACTIVE_TRADER_MOTION_API_v1.md'
       - '.github/workflows/active-trader-motion-ci.yml'
   workflow_dispatch:
@@ -43,6 +44,7 @@ jobs:
             tests/test_active_trader_t2_jit_policy.py \
             tests/test_active_trader_momentum_exit_policy.py \
             tests/test_active_trader_policy_fail_closed.py \
+            tests/test_active_trader_permission_queue.py \
             tests/test_active_trader_motion_journal.py \
             tests/test_active_trader_motion_engine.py \
             tests/test_active_trader_motion_http.py \
