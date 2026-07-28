@@ -43,6 +43,75 @@ _TAX_COLS = ("primary_setup_id", "primary_setup_label", "matched_setup_ids", "ma
              "confirmation_labels", "setup_evidence", "setup_fail_reasons", "registry_hash")
 
 
+def _persist_t2_shadow(conn, cfg: dict, day, as_of, results: list, obs_by_symbol: dict,
+                       entitlement: str) -> int:
+    """Record the T2-vs-T0 counterfactual for armed symbols. SHADOW ONLY.
+
+    Writes to scalp_t2_shadow, never to scalp_ignition_events — that table keeps
+    data_tier='T0'/dcf 0.4, so gates, sizing and the permission queue are untouched
+    while this accumulates evidence. Promoting T2 into live scoring moves dcf
+    0.4 -> 1.0 and assumed slippage 40 -> 8 bps, which makes signals materially more
+    likely to fire and size larger; scalp_t2_metrics warns that displayed depth
+    understates true size, so depth should arguably only ever SIZE DOWN. That is the
+    question this table exists to answer, and it is an operator decision.
+
+    Fail-safe: any error here is swallowed by the caller's except — a shadow record
+    must never cost a scan.
+    """
+    tiers = cfg.get("data_tiers", {}) or {}
+    dcf = tiers.get("dcf", {}) or {}
+    slip = tiers.get("assumed_slippage_bps", {}) or {}
+    t0_dcf = dcf.get("T0")
+    by_symbol = {r["symbol"]: r for r in results}
+    rows = 0
+
+    with conn.cursor() as cur:
+        for sym, ob in obs_by_symbol.items():
+            live = by_symbol.get(sym) or {}
+            p = (ob.payload_ref if ob is not None else {}) or {}
+            avail = ob is not None
+            reason = None
+            if not avail:
+                reason = ("entitlement=%s" % entitlement) if entitlement != "AVAILABLE_REALTIME" \
+                    else "armed but no book returned (unsubscribed/stale/empty)"
+            cur.execute(
+                """INSERT INTO scalp_t2_shadow
+                     (session_date, symbol, minute_of_session, observed_at,
+                      live_data_tier, live_dcf, t0_spread_bps,
+                      t2_available, t2_spread_bps, t2_book_imbalance, t2_microprice,
+                      t2_bid_depth, t2_ask_depth, t2_levels, t2_entitlement, t2_feed,
+                      would_be_tier, would_be_dcf, would_be_slip_bps, unavailable_reason)
+                   VALUES (%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (session_date, symbol, minute_of_session) DO UPDATE SET
+                      observed_at=EXCLUDED.observed_at,
+                      t2_available=EXCLUDED.t2_available,
+                      t2_spread_bps=EXCLUDED.t2_spread_bps,
+                      t2_book_imbalance=EXCLUDED.t2_book_imbalance,
+                      t2_microprice=EXCLUDED.t2_microprice,
+                      t2_bid_depth=EXCLUDED.t2_bid_depth,
+                      t2_ask_depth=EXCLUDED.t2_ask_depth,
+                      t2_entitlement=EXCLUDED.t2_entitlement,
+                      would_be_tier=EXCLUDED.would_be_tier,
+                      would_be_dcf=EXCLUDED.would_be_dcf,
+                      would_be_slip_bps=EXCLUDED.would_be_slip_bps,
+                      unavailable_reason=EXCLUDED.unavailable_reason""",
+                [day, sym, live.get("minute"), as_of,
+                 t0_dcf, live.get("spread_bps"),
+                 # book_summary() emits top_bid_size/top_ask_size/levels — NOT
+                 # bid_depth/ask_depth. Reading the wrong keys would have written
+                 # silent NULLs into the very columns the comparison depends on.
+                 avail, p.get("quoted_spread_bps"), p.get("book_imbalance"), p.get("microprice"),
+                 p.get("top_bid_size"), p.get("top_ask_size"), p.get("levels"),
+                 entitlement, (ob.feed if ob is not None else None),
+                 ("T2" if avail else "T0"),
+                 (dcf.get("T2") if avail else t0_dcf),
+                 (slip.get("T2") if avail else slip.get("T0")),
+                 reason])
+            rows += 1
+    conn.commit()
+    return rows
+
+
 def _tax_values(tax: dict | None, fired_at) -> list:
     """The 12 additive taxonomy column values (JSON-encoded for the JSONB columns), in _TAX_COLS order.
     A None tax (detector error / no registry) yields safe defaults so existing logging never breaks."""
@@ -479,12 +548,25 @@ def run(args) -> int:
                 except Exception:
                     pass
             res = sync_arm_from_states(prov, trigger_states, now_s)
-            books = sum(1 for s in res["armed"] if prov.fetch_book(s, now_s, as_of.isoformat()) is not None)
+            # P3 SHADOW: keep the Observations instead of counting and discarding them,
+            # so the T2-vs-T0 comparison has something to be decided on later.
+            _obs = {}
+            for s in res["armed"]:
+                try:
+                    _obs[s] = prov.fetch_book(s, now_s, as_of.isoformat())
+                except Exception:
+                    _obs[s] = None
+            books = sum(1 for o in _obs.values() if o is not None)
             sf.parent.mkdir(parents=True, exist_ok=True)
             sf.write_text(_json.dumps(prov.manager.to_state(now_s)))
             used, cap = prov.manager.budget_used(now_s)
+            ent = prov.entitlement().value
             print(f"  [moomoo-arm] armed={res['armed']} disarmed={res['disarmed']} "
-                  f"budget={used}/{cap} books={books} opend_up={prov.opend_up()} (fail-closed until OpenD)")
+                  f"budget={used}/{cap} books={books} entitlement={ent}")
+            if args.apply:
+                n = _persist_t2_shadow(conn, cfg, day, as_of, results, _obs, ent)
+                print(f"  [moomoo-t2-shadow] {n} row(s) -> scalp_t2_shadow "
+                      f"(SHADOW — scoring still T0/dcf {cfg['data_tiers']['dcf']['T0']})")
         except Exception as e:
             print(f"  [moomoo-arm] skipped: {e}")
     return 0
