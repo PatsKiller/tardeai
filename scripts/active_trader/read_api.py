@@ -619,6 +619,87 @@ def _engine_status() -> dict[str, Any]:
     }
 
 
+_ARMING_LANES = ("IGN_45", "IGN_60", "IGN_75", "IGN_ACCEL")
+_LANE_LADDER = ("BELOW", "IGN_45", "IGN_60", "IGN_75", "IGN_ACCEL", "TRIGGER")
+
+
+def _arming_status(limit: int = 25) -> dict[str, Any]:
+    """Pre-fire visibility: what is CLIMBING the ignition ladder toward a trigger (IGN_45→ACCEL, below
+    TRIGGER), plus the moomoo L2/T2 arm set (L2 is subscribed only when a symbol's FSM hits ARMED).
+    Read-only. Empty ladder is honest — recent RTH sessions have been all-BELOW (nothing arming)."""
+    from datetime import datetime as _dtm
+    from zoneinfo import ZoneInfo as _ZI
+    et = _ZI("America/New_York")
+    now = _dtm.now(et)
+    market_open = (now.weekday() < 5) and ((now.hour, now.minute) >= (9, 30)) and (now.hour < 16)
+    ladder = {k: 0 for k in _LANE_LADDER}
+    near = []
+    available = False
+    try:
+        import sys as _sys
+        sp = str(_REPO_ROOT / "scripts")
+        if sp not in _sys.path:
+            _sys.path.insert(0, sp)
+        from db_adapter import get_connection
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT DISTINCT ON (symbol) symbol, lane, ign_score, gate_result, setup_state,
+                          data_tier, rvol_tod, minute_of_session, primary_setup_label, spread_bps
+                   FROM scalp_ignition_events WHERE session_date=%s
+                   ORDER BY symbol, minute_of_session DESC""", (_et_today(),))
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        available = True
+        for r in rows:
+            lane = r.get("lane") or "BELOW"
+            if lane in ladder:
+                ladder[lane] += 1
+            if lane in _ARMING_LANES:
+                near.append({
+                    "symbol": r.get("symbol"), "lane": lane, "ign": round(_f(r.get("ign_score"))),
+                    "gate": r.get("gate_result") or "—", "setupState": r.get("setup_state"),
+                    "dataTier": r.get("data_tier") or "T0",
+                    "l2Engaged": (r.get("data_tier") == "T2"),
+                    "rvolTod": round(_f(r.get("rvol_tod")), 1) if r.get("rvol_tod") is not None else None,
+                    "primarySetupLabel": r.get("primary_setup_label"),
+                    "spreadBps": round(_f(r.get("spread_bps"))) if r.get("spread_bps") is not None else None,
+                })
+        near.sort(key=lambda x: x["ign"], reverse=True)
+        near = near[: max(1, min(int(limit or 25), 100))]
+    except Exception:
+        available = False
+
+    # moomoo L2/T2 arm set — L2 is only "looked at" for symbols whose FSM reached ARMED
+    l2 = {"enabled": False, "max_armed": None, "ttl_seconds": None, "armed": [], "connected": False,
+          "note": "L2 (moomoo T2) arms on-demand when a symbol's trigger FSM hits ARMED; observability-only until OpenD is connected."}
+    try:
+        import sys as _sys
+        sp = str(_REPO_ROOT / "scripts")
+        if sp not in _sys.path:
+            _sys.path.insert(0, sp)
+        import scalp_shadow_logger as _L
+        cfg = _L.load_config()
+        t2 = cfg.get("data_tiers", {}).get("t2", cfg.get("t2", {})) or {}
+        l2["enabled"] = bool(t2.get("arm_from_trigger", False))
+        l2["max_armed"] = t2.get("max_armed")
+        l2["ttl_seconds"] = t2.get("ttl_seconds")
+        state_path = _REPO_ROOT / (t2.get("state_file") or "data/scalp/moomoo_armed_state.json")
+        if state_path.is_file():
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+            armed = data.get("armed") if isinstance(data, dict) else data
+            if isinstance(armed, dict):
+                l2["armed"] = list(armed.keys())
+            elif isinstance(armed, list):
+                l2["armed"] = [x.get("symbol") if isinstance(x, dict) else x for x in armed]
+            l2["connected"] = True
+    except Exception:
+        pass
+    return {"available": available, "market_open": bool(market_open),
+            "lane_ladder": ladder, "near_firing": near, "l2": l2,
+            "note": "IGN_45→IGN_ACCEL = climbing toward a trigger; TRIGGER = fired. L2 pulls only on FSM ARMED."}
+
+
 class ReadOnlyActiveTraderAPI:
     """Framework-neutral Stage 0 read surface. No create/update/delete/order methods."""
 
@@ -736,6 +817,7 @@ class ReadOnlyActiveTraderAPI:
         aq = _actionable_queue()
         signals = aq["items"]
         engine_status = _engine_status()
+        arming = _arming_status()
         db_ok = bool(engine_status["scanner"]["available"]) or engine_status["ign"]["today_row_count"] > 0
         if not db_ok and not signals:
             data_state = "API_UNAVAILABLE"
@@ -765,6 +847,7 @@ class ReadOnlyActiveTraderAPI:
             "accounts": _ACTIVE_TRADER_ACCOUNTS,
             "source": "scalp_ignition_events (IGN TRIGGER) + trade_ai_scans (GO/MANUAL_REVIEW)",
             "engine_status": engine_status,
+            "arming": arming,          # pre-fire ladder (IGN_45→ACCEL) + moomoo L2 arm set
             # reference-only: the last alert-worthy IGN session (context, NOT the queue)
             "last_ign_session_date": ref.get("source_session"),
             "last_ign_event_at": ref.get("last_event_at"),

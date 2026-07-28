@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ActiveTraderDataState, BrokerAccount, EngineStatus, RoutingDraft, ScalpSignal, ScannerSignal } from './activeTrader.types';
+import type { ActiveTraderDataState, ArmingStatus, BrokerAccount, EngineStatus, RoutingDraft, ScalpSignal, ScannerSignal } from './activeTrader.types';
 import { MOCK_ACCOUNTS, MOCK_QUEUE, MOCK_SIGNAL } from './activeTrader.mock';
 import './activeTrader.css';
 
@@ -13,6 +13,7 @@ type Props = {
   ignTriggerCount?: number;
   scannerGoCount?: number;
   engineStatus?: EngineStatus;
+  arming?: ArmingStatus;                 // pre-fire ladder + L2 arm set
   lastIgnSessionDate?: string | null;   // reference only — last alert-worthy IGN session (NOT the queue)
   registryHash?: string | null;
   registryVersion?: string | null;
@@ -236,6 +237,60 @@ function EngineStatusBar({ es }: { es?: EngineStatus }) {
   );
 }
 
+// Pre-fire visibility: the ignition ladder (what's climbing toward a trigger) + when L2 gets pulled.
+const LADDER = ['BELOW', 'IGN_45', 'IGN_60', 'IGN_75', 'IGN_ACCEL', 'TRIGGER'];
+function ArmingPanel({ a }: { a: ArmingStatus }) {
+  const ladder = a.lane_ladder || {};
+  const near = a.near_firing || [];
+  const l2 = a.l2;
+  return (
+    <section className="at-panel at-arming" aria-labelledby="arming-title">
+      <header className="at-panel__header">
+        <div>
+          <h2 id="arming-title">Arming ladder <small>pre-fire · IGN engine</small></h2>
+          <p>{a.market_open ? 'RTH live — climbing toward a trigger' : 'IGN engine idle (opens 09:30 ET) — ladder populates at RTH'}</p>
+        </div>
+        <Chip tone={l2.armed.length ? 'pass' : 'context'} title={l2.note}>
+          L2 {l2.enabled ? (l2.armed.length ? `ARMED ×${l2.armed.length}` : 'idle') : 'off'}{l2.max_armed ? ` / ${l2.max_armed}` : ''}
+        </Chip>
+      </header>
+      <div className="at-ladder">
+        {LADDER.map(lane => (
+          <div key={lane} className={`at-ladder__step${(ladder[lane] || 0) > 0 && lane !== 'BELOW' ? ' is-active' : ''}${lane === 'TRIGGER' ? ' is-trigger' : ''}`}>
+            <span className="at-ladder__lane">{lane === 'BELOW' ? 'below' : lane.replace('IGN_', '')}</span>
+            <span className="at-ladder__count">{ladder[lane] || 0}</span>
+          </div>
+        ))}
+      </div>
+      {near.length > 0 ? (
+        <div className="at-livescan__table" role="table" aria-label="Near-firing symbols">
+          <div className="at-livescan__row at-livescan__row--head" role="row">
+            <span>sym</span><span>lane</span><span>IGN</span><span>gate</span><span>setup</span><span>RVOL</span><span>tier</span><span>L2</span>
+          </div>
+          {near.map(s => (
+            <div key={s.symbol} className="at-livescan__row" role="row">
+              <span className="mono at-livescan__sym">{s.symbol}</span>
+              <span className={`at-chip at-chip--${s.lane === 'IGN_ACCEL' ? 'pass' : s.lane === 'IGN_75' ? 'warning' : 'context'}`}>{s.lane.replace('IGN_', '')}</span>
+              <span className="mono">{s.ign}</span>
+              <span className="mono">{s.gate}</span>
+              <span>{s.primarySetupLabel ?? '—'}</span>
+              <span className="mono">{s.rvolTod != null ? `${s.rvolTod.toFixed(1)}x` : '—'}</span>
+              <span className="mono">{s.dataTier}</span>
+              <span>{s.l2Engaged ? '● L2' : '—'}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="at-livescan__note">
+          {a.market_open
+            ? 'Nothing arming right now — no symbol is above the first ignition threshold (all BELOW). This is the honest live state, not a gap.'
+            : `Ladder is idle until RTH. When the IGN engine runs, symbols climb IGN_45 → IGN_60 → IGN_75 → IGN_ACCEL here; the trigger FSM (IMPULSE → PULLBACK → ARMED → TRIGGERED) fires the entry. ${l2.note}`}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // One actionable TradeAI orchestrator row (GO or MANUAL_REVIEW). Real scanner fields — no fabricated IGN.
 function ScannerRow({ s, selected, onSelect }: { s: ScannerSignal; selected: boolean; onSelect: () => void }) {
   const go = s.decision === 'GO';
@@ -292,7 +347,7 @@ function ScannerCard({ s }: { s: ScannerSignal }) {
 
 export default function ActiveTraderPage(props: Props) {
   const { signals, scannerSignals, accounts, onOpenStrategies, dataState, actionableCount,
-          ignTriggerCount, scannerGoCount, engineStatus, lastIgnSessionDate, registryHash, registryVersion } = props;
+          ignTriggerCount, scannerGoCount, engineStatus, arming, lastIgnSessionDate, registryHash, registryVersion } = props;
   const [preview, setPreview] = useState(false);   // explicit reference-sample preview (never the default)
   const ignItems = signals ?? [];
   const scanItems = scannerSignals ?? [];
@@ -324,6 +379,7 @@ export default function ActiveTraderPage(props: Props) {
     </div>
 
     {!preview && <EngineStatusBar es={engineStatus} />}
+    {!preview && arming && <ArmingPanel a={arming} />}
 
     {/* scoped authority status — never conflate a global service with this tab's authority */}
     <div className="at-authority-rail at-inline at-wrap">

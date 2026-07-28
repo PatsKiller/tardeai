@@ -88,6 +88,36 @@ export interface ScannerSignal {
   reviewState: string;               // GO / MANUAL_REVIEW
 }
 
+// Pre-fire visibility: the ignition ladder (climbing toward a trigger) + moomoo L2 arm set.
+export interface ArmingSignal {
+  symbol: string;
+  lane: string;                      // IGN_45 / IGN_60 / IGN_75 / IGN_ACCEL
+  ign: number;
+  gate: string;
+  setupState: string | null;
+  dataTier: string;                  // T0 / T1 / T2 (T2 = L2/book engaged)
+  l2Engaged: boolean;
+  rvolTod: number | null;
+  primarySetupLabel: string | null;
+  spreadBps: number | null;
+}
+
+export interface ArmingStatus {
+  available: boolean;
+  market_open: boolean;
+  lane_ladder: Record<string, number>;   // BELOW / IGN_45 / IGN_60 / IGN_75 / IGN_ACCEL / TRIGGER → count
+  near_firing: ArmingSignal[];
+  l2: {
+    enabled: boolean;
+    max_armed: number | null;
+    ttl_seconds: number | null;
+    armed: string[];
+    connected: boolean;
+    note: string;
+  };
+  note: string;
+}
+
 // Compact live status of the two engines feeding the queue (NOT a data dump).
 export interface EngineStatus {
   scanner: {

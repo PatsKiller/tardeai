@@ -59,6 +59,7 @@ export default function ActiveTraderHub() {
             ignTriggerCount={pq?.ign_trigger_count}
             scannerGoCount={pq?.scanner_go_count}
             engineStatus={pq?.engine_status}
+            arming={pq?.arming}
             lastIgnSessionDate={pq?.last_ign_session_date}
             registryHash={pq?.registry_hash}
             registryVersion={pq?.registry_version}
