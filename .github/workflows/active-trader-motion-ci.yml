@@ -1,0 +1,56 @@
+name: active-trader-motion-ci
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/active_trader/motion_*.py'
+      - 'scripts/active_trader/read_http.py'
+      - 'scripts/active_trader_motion_tick.py'
+      - 'tests/test_active_trader_motion_*.py'
+      - 'docs/design/ACTIVE_TRADER_MOTION_API_v1.md'
+      - '.github/workflows/active-trader-motion-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  motion-backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install focused dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pyyaml
+      - name: Diff and syntax checks
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [[ -z "$BASE_SHA" ]]; then BASE_SHA="$(git rev-parse HEAD^)"; fi
+          git diff --check "$BASE_SHA...HEAD"
+          python -m compileall -q scripts/active_trader scripts/active_trader_motion_tick.py
+      - name: Motion policy and API tests
+        run: |
+          set -o pipefail
+          pytest -q \
+            tests/test_active_trader_t2_jit_policy.py \
+            tests/test_active_trader_momentum_exit_policy.py \
+            tests/test_active_trader_policy_fail_closed.py \
+            tests/test_active_trader_motion_journal.py \
+            tests/test_active_trader_motion_engine.py \
+            tests/test_active_trader_motion_http.py \
+            tests/test_active_trader_motion_authority.py | tee /tmp/active-trader-motion-pytest.log
+      - name: Upload motion proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: active-trader-motion-backend-proof
+          path: /tmp/active-trader-motion-pytest.log
+          if-no-files-found: error
