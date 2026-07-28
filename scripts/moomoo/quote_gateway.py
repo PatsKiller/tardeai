@@ -1,8 +1,8 @@
 """Read-only Moomoo quote-gateway primitives.
 
-The in-memory gateway is transport-agnostic and bounded.  Production ownership is not
+The in-memory gateway is transport-agnostic and bounded. Production ownership is not
 created here: ActiveTrader currently keeps production runtime disabled until a dedicated
-long-lived gateway/IPC service exists.  Tests inject ``MockTransport`` to exercise quota,
+long-lived gateway/IPC service exists. Tests inject ``MockTransport`` to exercise quota,
 subscription, freshness, and feature behavior without OpenD.
 
 No order, trade-unlock, credential, database-write, or LLM path exists in this module.
@@ -62,7 +62,7 @@ class QuoteTick:
 
 
 class QuoteGateway:
-    """Bounded read gateway over one injected transport."""
+    """Bounded read gateway over one explicitly injected transport."""
 
     def __init__(self, transport: GatewayTransport, *, tape_maxlen: int = 256):
         self._t = transport
@@ -265,11 +265,17 @@ _GATEWAY: Optional[QuoteGateway] = None
 
 
 def get_gateway(transport: Optional[GatewayTransport] = None) -> QuoteGateway:
-    """Process singleton retained for tests/future service wiring, not HTTP ownership."""
+    """Return the injected process singleton; implicit real construction is forbidden."""
     global _GATEWAY
     with _LOCK:
         if _GATEWAY is None:
-            _GATEWAY = QuoteGateway(transport or _build_default_transport())
+            if transport is None:
+                raise RuntimeError(
+                    "explicit gateway transport required; production owner is a dedicated service"
+                )
+            _GATEWAY = QuoteGateway(transport)
+        elif transport is not None and _GATEWAY._t is not transport:
+            raise RuntimeError("gateway already initialized with a different transport")
         return _GATEWAY
 
 
@@ -277,12 +283,3 @@ def set_gateway_for_test(gateway: Optional[QuoteGateway]) -> None:
     global _GATEWAY
     with _LOCK:
         _GATEWAY = gateway
-
-
-def _build_default_transport() -> GatewayTransport:
-    """Build the read transport; production ActiveTrader does not call this today."""
-    try:
-        from .real_gateway_transport import RealGatewayTransport
-    except ImportError:  # pragma: no cover
-        from real_gateway_transport import RealGatewayTransport  # type: ignore
-    return RealGatewayTransport()
