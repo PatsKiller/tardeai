@@ -6,7 +6,7 @@
 set -u -o pipefail
 umask 077
 HERE="$(cd "$(dirname "$0")" && pwd)"
-COMMIT="03bbf00d2646a08f63bc9e94f2f35dc406311262"
+COMMIT="21366635ce6e2a8610e0ea1ea716036016df299b"
 
 echo "=== CONVERGENCE DRY-RUN (read-only, nothing applied) ==="
 

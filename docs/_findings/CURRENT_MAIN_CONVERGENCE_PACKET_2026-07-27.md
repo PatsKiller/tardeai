@@ -1,7 +1,11 @@
 # Current-Main Host Convergence Packet — dry-run-first, exact-ref (2026-07-27)
 
-**Status:** DRAFT PR, dry-run only. Nothing applied. No agents/schedules/models/providers/proposals/
-orders/execution. M3 source + config unchanged. **Base:** `03bbf00d2646a08f63bc9e94f2f35dc406311262`.
+**Status:** MERGED (#238 as `21366635`); packet applied to host and verified. No agents/schedules/
+models/providers/proposals/orders/execution. M3 source + config unchanged. **Original base:**
+`03bbf00d2646a08f63bc9e94f2f35dc406311262`. **Current build pin (Front 0 re-pin):**
+`21366635ce6e2a8610e0ea1ea716036016df299b` — the exact-ref build source now equals current `origin/main`
+so served Command Center provenance matches HEAD. Command-center source is byte-unchanged between the two
+SHAs (0 files differ), so the bundle content is identical; only the stamped `source_commit` advances.
 
 Fixes the two deployment-architecture defects the integrator flagged, scoped to the reality the
 read-only inventory proved (agent-runtime read plane is already `CONNECTED_READ_ONLY`, not 404):

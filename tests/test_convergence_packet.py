@@ -23,7 +23,7 @@ from convergence_lib import (validate_build_source, build_meta, can_run_connect,
                              contains_secret, BuildSourceError, PhaseGateError, SOURCE_MODE_EXACT,
                              SOURCE_MODE_LIVE, AGENT_RUNTIME_CONTRACT)
 
-SHA = "03bbf00d2646a08f63bc9e94f2f35dc406311262"
+SHA = "21366635ce6e2a8610e0ea1ea716036016df299b"  # current-main pin (Front 0); a valid 40-char fixture
 ZERO_AUTH = {"mutation": False, "provider_call": False, "service_control": False,
              "schedule_change": False, "financial_action": False}
 
