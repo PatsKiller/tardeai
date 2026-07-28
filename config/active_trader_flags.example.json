@@ -1,0 +1,12 @@
+{
+  "_comment": "Active Trader (P5) feature flags. SAFETY-CRITICAL. This file may only RELAX non-live flags. active_trader_live_session_enabled CANNOT be enabled here: any true value is coerced to False with an audit note. automation engine is SIMULATION ONLY while live session is off.",
+  "flags": {
+    "active_trader_live_data_enabled": true,
+    "active_trader_session_builder_enabled": true,
+    "active_trader_simulation_enabled": true,
+    "active_trader_automation_engine_enabled": true,
+    "active_trader_live_session_enabled": false,
+    "active_trader_multi_account_enabled": false,
+    "active_trader_fallback_enabled": false
+  }
+}
