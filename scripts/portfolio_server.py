@@ -790,6 +790,38 @@ def _active_trader_read_handle(method: str, path: str, raw_query):
         }
 
 
+def _is_active_trader_session_path(path: str) -> bool:
+    try:
+        _scripts_dir = str(PROJECT_ROOT / "scripts")
+        if _scripts_dir not in sys.path:
+            sys.path.insert(0, _scripts_dir)
+        import active_trader.session_http as _sh
+        return _sh.is_session_path(path)
+    except Exception:
+        p = (path or "").rstrip("/")
+        return p.startswith("/api/v3/active-trader/session-drafts") or p.startswith("/api/v3/active-trader/sessions")
+
+
+def _active_trader_session_handle(method, path, query, body):
+    """Delegate to the ActiveTrader SESSION CONTROL plane (POST-capable, simulation-only, live disabled).
+
+    Writes SESSION-authorization state only — no live adapter, no real 2FA/credential, no real order.
+    """
+    try:
+        _scripts_dir = str(PROJECT_ROOT / "scripts")
+        if _scripts_dir not in sys.path:
+            sys.path.insert(0, _scripts_dir)
+        import active_trader_session_boot as _sb
+        q = {}
+        if query:
+            q = {k: (v[0] if isinstance(v, list) and len(v) == 1 else v) for k, v in query.items()}
+        return _sb.handle(method, path, q, body)
+    except Exception:
+        return 503, {"contract": "active-trader-p3-session-control-v1", "kind": "unavailable",
+                     "read_only": False, "write": False, "live": False,
+                     "detail": "session control plane unavailable"}
+
+
 def _send_agent_runtime_json(handler, status: int, data: dict) -> None:
     """Dedicated emitter for the agent-runtime read surface.
 
@@ -1522,6 +1554,12 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 _send_agent_runtime_json(self, _ar[0], _ar[1])
                 return
 
+        # Active Trader SESSION CONTROL reads (GET session/journal) — checked before the read plane.
+        if _is_active_trader_session_path(path.rstrip("/") or "/"):
+            _st = _active_trader_session_handle("GET", path, parse_qs(parsed.query), None)
+            _send_agent_runtime_json(self, _st[0], _st[1])
+            return
+
         # Active Trader Stage 0 — GET health/status/sessions only (write:false, canary:false).
         if _is_active_trader_read_path(path):
             _at = _active_trader_read_handle("GET", path, parse_qs(parsed.query))
@@ -2024,7 +2062,21 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 _send_agent_runtime_json(self, _ar[0], _ar[1])
                 return
 
-        # Active Trader Stage 0 is GET-only: POST is 405, never enables canary/orders.
+        # Active Trader SESSION CONTROL plane — SEPARATE POST-capable service (simulation-only, live
+        # disabled). Checked BEFORE the GET-only read plane so its POSTs are not 405'd. Writes SESSION
+        # state only; no live adapter, no real 2FA/credential, no real order.
+        if _is_active_trader_session_path(_ar_path):
+            _slen = int(self.headers.get("Content-Length", 0))
+            _sraw = self.rfile.read(_slen) if _slen > 0 else b"{}"
+            try:
+                _sbody = json.loads(_sraw or b"{}")
+            except Exception:
+                _sbody = {}
+            _st = _active_trader_session_handle("POST", _ar_path, parse_qs(parsed.query), _sbody)
+            _send_agent_runtime_json(self, _st[0], _st[1])
+            return
+
+        # Active Trader Stage 0 READ surface is GET-only: POST is 405, never enables canary/orders.
         if _is_active_trader_read_path(_ar_path):
             _at = _active_trader_read_handle("POST", _ar_path, None)
             if _at is not None:
