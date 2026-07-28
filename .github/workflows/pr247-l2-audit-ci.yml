@@ -28,6 +28,8 @@ jobs:
       ALPACA_MODE: paper
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -41,7 +43,7 @@ jobs:
 
       - name: Diff and syntax checks
         run: |
-          git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
+          git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
           python -m compileall -q \
             scripts/active_trader/l2_runtime.py \
             scripts/active_trader/l2_status_api.py \
