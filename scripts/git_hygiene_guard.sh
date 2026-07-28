@@ -33,7 +33,7 @@ _gh_server_live() {
 
 # The guard fires only in the primary tree + live server + no override.
 _gh_guard_active() {
-  [ -n "$ALLOW_MAINTREE_GIT" ] && return 1
+  [ -n "${ALLOW_MAINTREE_GIT:-}" ] && return 1
   _gh_is_primary_tree || return 1
   _gh_server_live || return 1
   return 0
