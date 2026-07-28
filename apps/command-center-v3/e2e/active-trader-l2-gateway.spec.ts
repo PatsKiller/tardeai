@@ -2,6 +2,11 @@ import { test, expect } from '@playwright/test';
 
 const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
+async function openActiveTrader(page: import('@playwright/test').Page) {
+  await page.goto('/v3/active-trader');
+  await expect(page.getByRole('heading', { name: 'Current scanner marks' })).toBeVisible({ timeout: 20_000 });
+}
+
 test('scanner candidate shows a distinct timestamped current mark from the gateway', async ({ page }) => {
   await page.route('**/api/v3/active-trader/permission-queue*', route => route.fulfill(json({
     data_state: 'LIVE_DATA', actionable_count: 1, ign_trigger_count: 0, scanner_go_count: 1,
@@ -22,10 +27,7 @@ test('scanner candidate shows a distinct timestamped current mark from the gatew
   await page.route('**/api/v3/active-trader/l2-status*', route => route.fulfill(json({ connected: true, provider_state: 'CONNECTED', entitlement_state: 'AVAILABLE_REALTIME', quota: null, symbols: {} })));
   await page.route('**/api/v3/active-trader/scalp/setups*', route => route.fulfill(json({ setup_registry: { setups: [] } })));
 
-  await page.goto('/v3/trading');
-  await expect(page.getByRole('button', { name: 'ActiveTrader', exact: true })).toBeVisible({ timeout: 20_000 });
-  await page.getByRole('button', { name: 'ActiveTrader', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Current scanner marks' })).toBeVisible();
+  await openActiveTrader(page);
   const mark = page.getByTestId('current-mark-NUAI');
   await expect(mark).toContainText('4.32');
   await expect(mark).toContainText('moomoo_quote');
@@ -45,8 +47,8 @@ test('stale/unavailable current mark never appears as fresh', async ({ page }) =
   await page.route('**/api/v3/active-trader/fire-performance*', route => route.fulfill(json({ active_fires: [], fire_history: [] })));
   await page.route('**/api/v3/active-trader/l2-status*', route => route.fulfill(json({ connected: false, provider_state: 'SNAPSHOT_STALE', symbols: {} })));
   await page.route('**/api/v3/active-trader/scalp/setups*', route => route.fulfill(json({ setup_registry: { setups: [] } })));
-  await page.goto('/v3/trading');
-  await page.getByRole('button', { name: 'ActiveTrader', exact: true }).click();
+
+  await openActiveTrader(page);
   await expect(page.getByTestId('current-mark-ATAI')).toContainText('UNAVAILABLE');
   await expect(page.getByText('APPROVED FALLBACK / WAITING')).toBeVisible();
 });
