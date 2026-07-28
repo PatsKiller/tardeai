@@ -1,0 +1,48 @@
+name: active-trader-policy-ci
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/active_trader/t2_jit_policy.py'
+      - 'scripts/active_trader/momentum_exit_policy.py'
+      - 'tests/test_active_trader_t2_jit_policy.py'
+      - 'tests/test_active_trader_momentum_exit_policy.py'
+      - 'docs/design/ACTIVE_TRADER_T2_JIT_AND_MOMENTUM_EXIT_v1.md'
+      - 'docs/prompts/CLAUDE_ACTIVE_TRADER_LIVE_MOTION_UI_v1.md'
+      - '.github/workflows/active-trader-policy-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install focused dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+      - name: Diff and syntax checks
+        run: |
+          git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+          python -m compileall -q scripts/active_trader
+      - name: T2 and momentum-exit policy tests
+        run: |
+          set -o pipefail
+          pytest -q \
+            tests/test_active_trader_t2_jit_policy.py \
+            tests/test_active_trader_momentum_exit_policy.py | tee /tmp/active-trader-policy-pytest.log
+      - name: Upload policy proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: active-trader-policy-proof
+          path: /tmp/active-trader-policy-pytest.log
+          if-no-files-found: error
