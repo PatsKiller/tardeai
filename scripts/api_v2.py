@@ -26295,7 +26295,7 @@ def _ui_prefs_get(query=None):
 
 
 def _ui_prefs_set(body=None):
-    """POST /api/v2/ui/prefs {key, value} — upsert one pref blob (≤32KB)."""
+    """POST /api/v2/ui/prefs {key, value} — upsert one operator pref blob."""
     b = body or {}
     key = str(b.get("key") or "").strip()
     if not key or len(key) > 128:
@@ -26305,8 +26305,9 @@ def _ui_prefs_set(body=None):
         blob = _j.dumps(b.get("value"))
     except (TypeError, ValueError):
         return {"ok": False, "error": "value must be JSON-serializable"}
-    if len(blob) > 32768:
-        return {"ok": False, "error": "value too large (32KB cap)"}
+    max_bytes = 262144
+    if len(blob.encode("utf-8")) > max_bytes:
+        return {"ok": False, "error": f"value too large ({max_bytes // 1024}KB cap)"}
     _db_query("""INSERT INTO ui_prefs (key, value, updated_at) VALUES (%s, %s::jsonb, now())
                  ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()""",
               (key, blob), fetch=None)
