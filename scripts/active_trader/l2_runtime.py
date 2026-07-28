@@ -1,13 +1,13 @@
 """ActiveTrader L2 runtime boundary.
 
-Production requests must never create or own an OpenD quote context.  The canonical
+Production requests must never create or own an OpenD quote context. The canonical
 architecture requires one long-lived gateway service to own subscriptions and publish
-normalized read snapshots.  PR #247 did not implement that service boundary: its lazy
+normalized read snapshots. PR #247 did not implement that service boundary: its lazy
 request-path singleton could open one context in ``portfolio_server`` while the scalp
-cron opened another.  Until an external gateway/IPC contract exists, production is
+cron opened another. Until an external gateway/IPC contract exists, production is
 therefore deliberately fail-closed.
 
-Tests may inject an in-memory ``L2Runtime`` with ``set_runtime_for_test``.  A state file
+Tests may inject an in-memory ``L2Runtime`` with ``set_runtime_for_test``. A state file
 is desired intent only and never creates a connection, subscription, entitlement, or T2.
 Read plane only; no order or trade-unlock path.
 """
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import threading
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
@@ -25,15 +26,12 @@ _LOCK = threading.Lock()
 _STATE: dict[str, Any] = {"built": False, "runtime": None}
 
 
+@lru_cache(maxsize=1)
 def backend_source_commit() -> str:
-    """Best-effort backend checkout provenance.
-
-    Backend provenance must not be borrowed from the served frontend bundle.  An
-    in-place UI build can be older or newer than the Python checkout, so callers that
-    need both must report both fields separately.
-    """
+    """Best-effort backend checkout provenance, cached for the process lifetime."""
     try:
         import subprocess
+
         result = subprocess.run(
             ["git", "-C", str(_REPO_ROOT), "rev-parse", "HEAD"],
             capture_output=True,
@@ -47,8 +45,9 @@ def backend_source_commit() -> str:
     return "unknown"
 
 
+@lru_cache(maxsize=1)
 def served_ui_source_commit() -> str:
-    """Best-effort provenance from the currently served Command Center bundle."""
+    """Best-effort served-bundle provenance, cached for the process lifetime."""
     meta = _REPO_ROOT / "apps" / "command-center-v3" / "dist" / "build-meta.json"
     try:
         data = json.loads(meta.read_text(encoding="utf-8"))
@@ -114,7 +113,7 @@ def _build() -> Optional[L2Runtime]:
 
     A process-local singleton is not a system-wide single owner and there is no worker
     in PR #247 that drives subscriptions, quote/tape ingestion, freshness ticks, or
-    reconnect recovery.  Returning ``None`` keeps every production status surface
+    reconnect recovery. Returning ``None`` keeps every production status surface
     explicitly disconnected until a dedicated gateway service and IPC snapshot contract
     are implemented and independently integration-tested.
     """
