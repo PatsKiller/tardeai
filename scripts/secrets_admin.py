@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = PROJECT_ROOT / ".env"
 AUDIT_PATH = PROJECT_ROOT / "data" / "runtime" / "secrets_admin_audit.jsonl"
 KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,60}$")
-SECRET_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD", "_COOKIE", "_DSN")
+SECRET_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD", "_COOKIE", "_DSN", "_MD5")
 # Always offered (so the operator can add even if currently absent)
 KNOWN = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY", "FINNHUB_API_KEY",
          "POLYGON_API_KEY", "FMP_API_KEY", "ALPHA_VANTAGE_API_KEY", "NEWSAPI_KEY", "BRAVE_SEARCH_API_KEY",
@@ -36,12 +36,20 @@ KNOWN = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY",
          "ALPACA_TAXABLE_API_KEY", "ALPACA_TAXABLE_SECRET_KEY",
          "ALPACA_IRA_API_KEY", "ALPACA_IRA_SECRET_KEY",
          # Legacy paper pair (deprecated — prefer ALPACA_PAPER_*)
-         "ALPACA_API_KEY", "ALPACA_SECRET_KEY"]
+         "ALPACA_API_KEY", "ALPACA_SECRET_KEY",
+         # moomoo OpenD data plane. MD5 of the login password, never the plaintext —
+         # OpenD takes -login_pwd_md5 natively, so the reusable password never lands
+         # on this host. Replaces the cleartext <login_pwd> in OpenD.xml, which held
+         # the vendor placeholder "123456" and failed login (2026-07-23).
+         "MOOMOO_OPEND_LOGIN_PWD_MD5"]
 # NOTE: BWS_* machine tokens are NEVER stored in SM or managed here (Rule 1).
 # Editable CONFIG values (NOT secrets) managed in the same modal for completeness — shown in full, not
 # masked. SCHWAB_REFRESH_TOKEN and SCHWAB_TOKEN_ENC_KEY are DELIBERATELY excluded (the refresh token is
 # OAuth-flow-owned by schwab_token_manager; rotating the Fernet key orphans every stored token).
-KNOWN_CONFIG = ["SCHWAB_CALLBACK_URL", "SNAPTRADE_CLIENT_ID", "SNAPTRADE_USER_ID"]
+KNOWN_CONFIG = ["SCHWAB_CALLBACK_URL", "SNAPTRADE_CLIENT_ID", "SNAPTRADE_USER_ID",
+                # moomoo login id/email — an identifier, not a secret; the credential
+                # is MOOMOO_OPEND_LOGIN_PWD_MD5.
+                "MOOMOO_OPEND_LOGIN_ACCOUNT"]
 # READ-ONLY status rows: shown (present + masked) but NOT settable here.
 KNOWN_READONLY = []
 
