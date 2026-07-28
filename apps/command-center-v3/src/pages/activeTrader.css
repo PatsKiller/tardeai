@@ -4,6 +4,9 @@
 .at-enginebar__stat{color:var(--at-muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
 .at-empty-card{padding:24px}.at-empty-card strong{font-size:16px;color:var(--at-text)}.at-empty-card p{margin:8px 0;color:var(--at-muted)}.at-empty-card ul{margin:8px 0;padding-left:18px;color:var(--at-muted)}.at-empty-card li{margin:4px 0}
 .at-queue-row--scanner{border-left-color:var(--at-blue)}
+.at-queue-row--go{border-left-color:var(--at-green)}
+.at-queue-row--scanner .at-queue-row__body strong{color:var(--at-amber)}
+.at-queue-row--go .at-queue-row__body strong{color:var(--at-green)}
 .at-authority-rail{padding:8px 2px;gap:8px}.at-fullstate{padding:16px 20px;border-radius:12px;background:var(--at-panel);color:var(--at-muted);margin-bottom:8px}.at-fullstate--fail{color:var(--at-red)}
 .at-section-label{margin:20px 2px 8px;color:var(--at-muted);font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.at-section-label small{text-transform:none;letter-spacing:0;font-weight:500;margin-left:8px}
 .at-source{color:var(--at-muted);font-size:12px}

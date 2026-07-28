@@ -481,9 +481,16 @@ def _ign_trigger_today(limit: int = 25) -> list[dict[str, Any]]:
     return out
 
 
-def _scanner_go_signals(limit: int = 25) -> list[dict[str, Any]]:
-    """TODAY's actionable scanner signals: decision GO or a momentum route. Latest row per symbol.
-    Honest scanner fields only (score/grade/decision/route/rvol/gap) — NO fabricated IGN/subscores."""
+# What TradeAI actually "fires" — not just GO. The orchestrator (trade_ai_scans: screener → enrichment →
+# scalp critic) surfaces GO plus MANUAL_REVIEW momentum fires (squeeze / runner / top-gainer / micro-float).
+_TRADE_AI_ACTIONABLE_DECISIONS = ("GO", "MANUAL_REVIEW", "ENTER", "TAKE")
+
+
+def _trade_ai_actionable(limit: int = 40) -> list[dict[str, Any]]:
+    """TODAY's actionable signals from the SAME orchestrator TradeAI's scanner uses (trade_ai_scans),
+    latest scan per symbol: decision GO or MANUAL_REVIEW (the momentum fires the header counts). Honest
+    scanner fields (score/grade/decision/setup_class/operator_pill/rvol/gap) — NO fabricated IGN/subscores.
+    This is why the Active Trader queue must match TradeAI's GO count, not a separate momentum-scalp table."""
     from datetime import datetime as _dtm
     from zoneinfo import ZoneInfo as _ZI
     et = _ZI("America/New_York")
@@ -501,60 +508,72 @@ def _scanner_go_signals(limit: int = 25) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT DISTINCT ON (symbol) symbol, scanned_at, score, grade, decision, route,
-                          route_strategy_id, rvol, gap_pct, change_pct, price, float_mm, sector,
-                          catalyst_verified, operator_pill, operator_subtitle
-                   FROM scalp_scan_results
-                   WHERE scanned_at >= %s AND (decision IN ('GO','ENTER','TAKE') OR route = ANY(%s))
+                          route_strategy_id, route_actionability, setup_class, operator_pill,
+                          operator_subtitle, critic_verdict, catalyst_verified, rvol, gap_pct,
+                          change_pct, price, float_m, sector, manual_review_required, not_tradeable
+                   FROM trade_ai_scans
+                   WHERE run_date = %s AND decision = ANY(%s) AND NOT COALESCE(disqualified, false)
                    ORDER BY symbol, scanned_at DESC""",
-                (f"{today} 00:00:00-04", list(_LIVE_SCAN_MOMENTUM_ROUTES)))
+                (today, list(_TRADE_AI_ACTIONABLE_DECISIONS)))
             cols = [d[0] for d in cur.description]
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     except Exception:
         return []
-    rows.sort(key=lambda r: (r.get("score") or 0), reverse=True)
+    # GO first, then by score desc (matches how TradeAI surfaces actionable)
+    rows.sort(key=lambda r: (0 if r.get("decision") == "GO" else 1, -(r.get("score") or 0)))
     out = []
-    for r in rows[: max(1, min(int(limit or 25), 100))]:
+    for r in rows[: max(1, min(int(limit or 40), 100))]:
         sc = r.get("scanned_at")
         out.append({
-            "source": "scanner", "id": f"scan-{r.get('symbol')}-{sc.isoformat() if hasattr(sc,'isoformat') else sc}",
+            "source": "scanner", "id": f"tai-{r.get('symbol')}-{sc.isoformat() if hasattr(sc,'isoformat') else sc}",
             "symbol": r.get("symbol"),
             "scannedAt": sc.isoformat() if hasattr(sc, "isoformat") else sc,
             "scannedAtEt": sc.astimezone(et).strftime("%H:%M") if hasattr(sc, "astimezone") else None,
             "score": r.get("score"), "grade": r.get("grade"), "decision": r.get("decision"),
             "route": r.get("route"), "routeStrategyId": r.get("route_strategy_id"),
+            "routeActionability": r.get("route_actionability"),
+            "setupClass": r.get("setup_class"), "operatorPill": r.get("operator_pill"),
+            "operatorSubtitle": r.get("operator_subtitle"), "criticVerdict": r.get("critic_verdict"),
+            "catalystVerified": r.get("catalyst_verified"),
             "rvol": float(r["rvol"]) if r.get("rvol") is not None else None,
             "gapPct": float(r["gap_pct"]) if r.get("gap_pct") is not None else None,
             "changePct": float(r["change_pct"]) if r.get("change_pct") is not None else None,
             "price": float(r["price"]) if r.get("price") is not None else None,
-            "floatM": float(r["float_mm"]) if r.get("float_mm") is not None else None,
-            "sector": r.get("sector"), "catalystVerified": r.get("catalyst_verified"),
-            "operatorPill": r.get("operator_pill"), "operatorSubtitle": r.get("operator_subtitle"),
+            "floatM": float(r["float_m"]) if r.get("float_m") is not None else None,
+            "sector": r.get("sector"),
+            "manualReviewRequired": bool(r.get("manual_review_required")),
+            "notTradeable": bool(r.get("not_tradeable")),
             "reviewState": r.get("decision") or "GO",
         })
     return out
 
 
-def _actionable_queue(limit: int = 25) -> dict[str, Any]:
-    """The ActiveTrader review queue: TODAY's actionable momentum-scalp signals to paper-route —
-    IGN TRIGGER fires + scanner GO/momentum-route, deduped by symbol (IGN evidence wins). No scanner
-    dump, no stale-session fallback. Empty is the honest state when nothing is actionable right now."""
+def _actionable_queue(limit: int = 40) -> dict[str, Any]:
+    """The ActiveTrader review queue: TODAY's actionable signals to paper-route — IGN TRIGGER fires +
+    the TradeAI orchestrator's actionable set (GO + MANUAL_REVIEW momentum fires), deduped by symbol
+    (IGN evidence wins). No full scan dump, no stale-session fallback; empty only when genuinely nothing
+    is actionable. Draws from the SAME orchestrator TradeAI's header uses, so counts match."""
     ign = _ign_trigger_today(limit)
-    scan = _scanner_go_signals(limit)
+    scan = _trade_ai_actionable(limit)
     seen = {str(i.get("symbol")) for i in ign}
     items = ign + [s for s in scan if str(s.get("symbol")) not in seen]
-    return {"items": items, "ign_trigger_count": len(ign), "scanner_go_count": len(scan)}
+    go = sum(1 for s in scan if s.get("decision") == "GO")
+    return {"items": items, "ign_trigger_count": len(ign),
+            "scanner_actionable_count": len(scan), "scanner_go_count": go}
 
 
 def _engine_status() -> dict[str, Any]:
-    """Compact, non-duplicative live status of the two momentum-scalp engines (NOT a data dump)."""
+    """Compact live status of the two engines feeding the queue (NOT a data dump): the TradeAI
+    orchestrator scanner (trade_ai_scans — GO + MANUAL_REVIEW fires) and the RTH IGN/trigger engine."""
     from datetime import datetime as _dtm
     from zoneinfo import ZoneInfo as _ZI
     et = _ZI("America/New_York")
     now = _dtm.now(et)
     market_open = (now.weekday() < 5) and ((now.hour, now.minute) >= (9, 30)) and (now.hour < 16)
-    scan = _live_scan_signals(limit=1)   # counts only; we don't surface the fires here
-    ign_today = 0
-    ign_trigger = 0
+    scanner = {"available": False, "go_count_today": 0, "manual_review_count_today": 0,
+               "wait_count_today": 0, "actionable_count_today": 0, "last_scan_at": None,
+               "latest_run_label": None, "distinct_symbols": 0}
+    ign_today = ign_trigger = 0
     try:
         import sys as _sys
         sp = str(_REPO_ROOT / "scripts")
@@ -562,20 +581,36 @@ def _engine_status() -> dict[str, Any]:
             _sys.path.insert(0, sp)
         from db_adapter import get_connection
         conn = get_connection()
+        today = _et_today()
         with conn.cursor() as cur:
+            # latest scan per symbol today → decision distribution (matches TradeAI's actionable view)
+            cur.execute(
+                """WITH latest AS (
+                       SELECT DISTINCT ON (symbol) symbol, decision, scanned_at
+                       FROM trade_ai_scans WHERE run_date=%s AND NOT COALESCE(disqualified,false)
+                       ORDER BY symbol, scanned_at DESC)
+                   SELECT
+                     count(*) FILTER (WHERE decision='GO'),
+                     count(*) FILTER (WHERE decision='MANUAL_REVIEW'),
+                     count(*) FILTER (WHERE decision='WAIT'),
+                     count(*), max(scanned_at) FROM latest""", (today,))
+            go, mr, wait, distinct, last_at = cur.fetchone()
+            cur.execute("SELECT run_label FROM trade_ai_scans WHERE run_date=%s ORDER BY scanned_at DESC LIMIT 1", (today,))
+            rl = cur.fetchone()
+            scanner = {
+                "available": True, "go_count_today": int(go or 0),
+                "manual_review_count_today": int(mr or 0), "wait_count_today": int(wait or 0),
+                "actionable_count_today": int((go or 0) + (mr or 0)),
+                "last_scan_at": last_at.isoformat() if hasattr(last_at, "isoformat") else last_at,
+                "latest_run_label": rl[0] if rl else None, "distinct_symbols": int(distinct or 0),
+            }
             cur.execute("SELECT count(*), count(*) FILTER (WHERE lane='TRIGGER') "
-                        "FROM scalp_ignition_events WHERE session_date=%s", (_et_today(),))
+                        "FROM scalp_ignition_events WHERE session_date=%s", (today,))
             ign_today, ign_trigger = cur.fetchone()
     except Exception:
         pass
     return {
-        "scanner": {
-            "available": bool(scan.get("available")), "scan_count_today": scan.get("scan_count", 0),
-            "distinct_symbols": scan.get("distinct_symbols", 0), "last_scan_at": scan.get("last_scan_at"),
-            "go_count_today": scan.get("actionable_count", 0),
-            "momentum_route_count_today": scan.get("momentum_route_count", 0),
-            "window": "06:00-12:00 ET",
-        },
+        "scanner": scanner,
         "ign": {
             "rth_only": True, "opens_et": "09:30", "market_open": bool(market_open),
             "today_row_count": int(ign_today or 0), "today_trigger_count": int(ign_trigger or 0),
@@ -726,8 +761,9 @@ class ReadOnlyActiveTraderAPI:
             "actionable_count": actionable,
             "ign_trigger_count": aq["ign_trigger_count"],
             "scanner_go_count": aq["scanner_go_count"],
+            "scanner_actionable_count": aq["scanner_actionable_count"],
             "accounts": _ACTIVE_TRADER_ACCOUNTS,
-            "source": "scalp_ignition_events+scalp_scan_results (actionable only)",
+            "source": "scalp_ignition_events (IGN TRIGGER) + trade_ai_scans (GO/MANUAL_REVIEW)",
             "engine_status": engine_status,
             # reference-only: the last alert-worthy IGN session (context, NOT the queue)
             "last_ign_session_date": ref.get("source_session"),

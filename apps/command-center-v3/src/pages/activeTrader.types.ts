@@ -57,8 +57,9 @@ export interface ScalpSignal {
 export type ActiveTraderDataState =
   | 'LIVE_DATA' | 'EMPTY_LIVE_QUEUE' | 'DATA_STALE' | 'API_UNAVAILABLE' | 'REFERENCE_SAMPLE' | 'LOADING';
 
-// One actionable scanner signal (scalp_scan_results, decision GO or momentum route). REAL scanner
-// fields only — NO fabricated IGN/subscores (those exist only on an ign_trigger item).
+// One actionable signal from the TradeAI orchestrator (trade_ai_scans) — decision GO or MANUAL_REVIEW
+// (the momentum fires: squeeze / runner / top-gainer / micro-float). REAL scanner fields only — NO
+// fabricated IGN/subscores (those exist only on an ign_trigger item).
 export interface ScannerSignal {
   source: 'scanner';
   id: string;
@@ -67,31 +68,37 @@ export interface ScannerSignal {
   scannedAtEt: string | null;        // "HH:MM" ET
   score: number | null;
   grade: string | null;              // A/B/C/D
-  decision: string | null;           // GO / ENTER / TAKE
-  route: string | null;              // momentum_scalp / meme_squeeze_momentum
+  decision: string | null;           // GO / MANUAL_REVIEW
+  route: string | null;
   routeStrategyId: string | null;
+  routeActionability: string | null;
+  setupClass: string | null;         // squeeze / high_rvol_runner / low_price_runner / micro_float_runner
+  operatorPill: string | null;       // "SQUEEZE · R/S · 47.9x", "RUNNER · 8.6x"
+  operatorSubtitle: string | null;
+  criticVerdict: string | null;
+  catalystVerified: boolean | null;
   rvol: number | null;
   gapPct: number | null;
   changePct: number | null;
   price: number | null;
   floatM: number | null;
   sector: string | null;
-  catalystVerified: boolean | null;
-  operatorPill: string | null;
-  operatorSubtitle: string | null;
-  reviewState: string;               // GO / ENTER / TAKE
+  manualReviewRequired: boolean | null;
+  notTradeable: boolean | null;
+  reviewState: string;               // GO / MANUAL_REVIEW
 }
 
-// Compact live status of the two momentum-scalp engines (NOT a data dump).
+// Compact live status of the two engines feeding the queue (NOT a data dump).
 export interface EngineStatus {
   scanner: {
     available: boolean;
-    scan_count_today: number;
+    go_count_today: number;
+    manual_review_count_today: number;
+    wait_count_today: number;
+    actionable_count_today: number;
     distinct_symbols: number;
     last_scan_at: string | null;
-    go_count_today: number;
-    momentum_route_count_today: number;
-    window: string;                  // "06:00-12:00 ET"
+    latest_run_label: string | null;
   };
   ign: {
     rth_only: boolean;

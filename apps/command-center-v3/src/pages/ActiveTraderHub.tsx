@@ -23,7 +23,7 @@ export default function ActiveTraderHub() {
   const es = pq?.engine_status;
   const statusPill = useMemo(() => {
     if (!es) return null;
-    const scanner = es.scanner?.available ? `scanner live · ${es.scanner.scan_count_today} scans · ${es.scanner.go_count_today} GO` : 'scanner down';
+    const scanner = es.scanner?.available ? `TradeAI ${es.scanner.go_count_today} GO · ${es.scanner.manual_review_count_today} manual-review` : 'scanner down';
     const ign = es.ign?.market_open ? `IGN live · ${es.ign.today_trigger_count} triggers` : `IGN idle · opens ${es.ign?.opens_et ?? '09:30'} ET`;
     return `${scanner}  ·  ${ign}`;
   }, [es]);

@@ -224,10 +224,10 @@ function EngineStatusBar({ es }: { es?: EngineStatus }) {
     : '—';
   return (
     <div className="at-enginebar at-inline at-wrap">
-      <Chip tone={es.scanner.available ? 'pass' : 'fail'} title="Discovery scanner (scalp_scan_results), 6am-noon ET">
-        {es.scanner.available ? '● SCANNER LIVE' : 'SCANNER DOWN'}
+      <Chip tone={es.scanner.available ? 'pass' : 'fail'} title="TradeAI orchestrator scanner (trade_ai_scans)">
+        {es.scanner.available ? '● TRADEAI SCANNER LIVE' : 'SCANNER DOWN'}
       </Chip>
-      <span className="at-enginebar__stat">{es.scanner.scan_count_today} scans · {es.scanner.go_count_today} GO · {es.scanner.momentum_route_count_today} momentum-route · last {lastEt} ET</span>
+      <span className="at-enginebar__stat">{es.scanner.go_count_today} GO · {es.scanner.manual_review_count_today} manual-review · {es.scanner.actionable_count_today} actionable{es.scanner.latest_run_label ? ` · run ${es.scanner.latest_run_label}` : ''} · last {lastEt} ET</span>
       <Chip tone={es.ign.market_open ? 'pass' : 'context'} title="IGN/trigger engine (scalp_ignition_events), RTH only">
         {es.ign.market_open ? '● IGN LIVE' : `IGN IDLE · opens ${es.ign.opens_et} ET`}
       </Chip>
@@ -236,42 +236,55 @@ function EngineStatusBar({ es }: { es?: EngineStatus }) {
   );
 }
 
-// One actionable scanner GO row (real scanner fields — no fabricated IGN).
+// One actionable TradeAI orchestrator row (GO or MANUAL_REVIEW). Real scanner fields — no fabricated IGN.
 function ScannerRow({ s, selected, onSelect }: { s: ScannerSignal; selected: boolean; onSelect: () => void }) {
+  const go = s.decision === 'GO';
   return (
     <button type="button" onClick={onSelect} aria-pressed={selected}
-      className={`at-queue-row at-queue-row--scanner${selected ? ' is-selected' : ''}`}>
+      className={`at-queue-row at-queue-row--scanner${go ? ' at-queue-row--go' : ''}${selected ? ' is-selected' : ''}`}>
       <span className="at-queue-row__symbol">{s.symbol}<small>{s.price != null ? s.price.toFixed(2) : '—'}</small></span>
       <span className="at-queue-row__score">{s.score ?? '—'}<small>{s.grade ?? ''}</small></span>
       <span className="at-queue-row__body">
-        <strong>{s.decision} · scanner</strong>
-        <small>route {s.route ?? '—'} · RVOL {s.rvol != null ? s.rvol.toFixed(1) : '—'} · gap {s.gapPct != null ? `${s.gapPct.toFixed(1)}%` : '—'} · {s.scannedAtEt ?? ''}</small>
+        <strong>{go ? 'GO' : (s.operatorPill ?? 'MANUAL REVIEW')}</strong>
+        <small>{s.setupClass ? `${s.setupClass.replace(/_/g, ' ')} · ` : ''}RVOL {s.rvol != null ? `${s.rvol.toFixed(1)}x` : '—'} · chg {s.changePct != null ? `${s.changePct.toFixed(1)}%` : '—'} · {s.scannedAtEt ?? ''}</small>
       </span>
       <span className="at-queue-row__action">Review</span>
     </button>
   );
 }
 
-// Detail card for a scanner GO signal — honest scanner evidence, no IGN/subscores invented.
+// Detail card for a TradeAI actionable signal — honest orchestrator evidence, no IGN/subscores invented.
 function ScannerCard({ s }: { s: ScannerSignal }) {
+  const go = s.decision === 'GO';
   return (
     <section className="at-panel at-trade-card" aria-labelledby="scanner-card-title">
       <header className="at-panel__header at-trade-card__title-row">
         <div><h2 id="scanner-card-title">{s.symbol} <span>{s.price != null ? s.price.toFixed(2) : '—'}</span> <em>{s.changePct != null ? `${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(1)}%` : ''}</em></h2></div>
-        <div className="at-inline"><Chip tone="pass">{s.decision}</Chip><Chip>scanner signal</Chip></div>
+        <div className="at-inline at-wrap">
+          <Chip tone={go ? 'pass' : 'warning'}>{s.decision}</Chip>
+          {s.operatorPill && <Chip>{s.operatorPill}</Chip>}
+          {s.notTradeable && <Chip tone="fail" title="Momentum fire flagged non-auto-tradeable — manual review only">not auto-tradeable</Chip>}
+        </div>
       </header>
       <dl className="at-level-grid">
         <div><dt>score</dt><dd>{s.score ?? '—'} {s.grade ?? ''}</dd></div>
-        <div><dt>route</dt><dd>{s.route ?? '—'}</dd></div>
+        <div><dt>setup</dt><dd>{s.setupClass ? s.setupClass.replace(/_/g, ' ') : (go ? 'GO' : '—')}</dd></div>
         <div><dt>RVOL</dt><dd>{s.rvol != null ? `${s.rvol.toFixed(1)}x` : '—'}</dd></div>
         <div><dt>gap</dt><dd>{s.gapPct != null ? `${s.gapPct.toFixed(1)}%` : '—'}</dd></div>
         <div><dt>float</dt><dd>{s.floatM != null ? `${s.floatM.toFixed(1)}M` : '—'}</dd></div>
         <div><dt>sector</dt><dd>{s.sector ?? '—'}</dd></div>
       </dl>
-      {s.operatorSubtitle && <div className="at-chip-rail"><Chip>{s.operatorPill ?? 'scanner'}</Chip><span className="at-source">{s.operatorSubtitle}</span></div>}
+      {(s.criticVerdict || s.operatorSubtitle) && (
+        <div className="at-chip-rail">
+          {s.criticVerdict && <Chip tone={go ? 'pass' : 'context'}>critic {s.criticVerdict}</Chip>}
+          {s.catalystVerified && <Chip tone="pass">catalyst verified</Chip>}
+          {s.operatorSubtitle && <span className="at-source">{s.operatorSubtitle}</span>}
+        </div>
+      )}
       <div className="at-livescan__note">
-        Scanner discovery signal (scalp_scan_results). No IGN score or trigger evidence is fabricated here —
-        those come only from the IGN engine during RTH. Manual paper review only; no order path.
+        TradeAI orchestrator signal (trade_ai_scans — screener → enrichment → scalp critic). {go
+          ? 'GO decision.' : 'MANUAL_REVIEW momentum fire (squeeze / runner / gainer) — surfaced for review, not auto-tradeable.'}
+        {' '}No IGN score is fabricated here (that comes only from the RTH IGN engine). Manual paper review only; no order path.
       </div>
     </section>
   );
@@ -330,7 +343,7 @@ export default function ActiveTraderPage(props: Props) {
         <strong>No actionable momentum-scalp signals right now.</strong>
         <p>The queue shows only what a human could paper-route today — IGN TRIGGER fires and scanner GO/momentum-route signals. Nothing has crossed that bar yet.</p>
         <ul>
-          <li>Scanner: {engineStatus?.scanner.available ? `live, ${engineStatus.scanner.scan_count_today} scans today, ${engineStatus.scanner.go_count_today} GO` : 'down'}.</li>
+          <li>TradeAI scanner: {engineStatus?.scanner.available ? `live, ${engineStatus.scanner.go_count_today} GO + ${engineStatus.scanner.manual_review_count_today} manual-review today` : 'down'}.</li>
           <li>IGN engine: {engineStatus?.ign.market_open ? `live, ${engineStatus.ign.today_trigger_count} triggers today` : `RTH-only, opens ${engineStatus?.ign.opens_et ?? '09:30'} ET`}{lastIgnSessionDate ? ` — last alert-worthy fire ${lastIgnSessionDate}` : ''}.</li>
         </ul>
         <button type="button" className="at-link-button" onClick={() => setPreview(true)}>Preview the review layout with sample data</button>
@@ -352,7 +365,7 @@ export default function ActiveTraderPage(props: Props) {
       <div className="active-trader-page__layout">
         <aside>
           <section className="at-panel" aria-labelledby="scanner-go-title">
-            <header className="at-panel__header"><h2 id="scanner-go-title">Scanner GO <small>{scannerGoCount ?? scanItems.length} today</small></h2><Chip tone="pass">actionable</Chip></header>
+            <header className="at-panel__header"><h2 id="scanner-go-title">TradeAI actionable <small>{scannerGoCount ?? 0} GO · {scanItems.length} total</small></h2><Chip tone="pass">GO + manual-review</Chip></header>
             <div className="at-queue">
               {scanItems.map(s => <ScannerRow key={s.id} s={s} selected={s.id === selScan} onSelect={() => { setSelScan(s.id); setSelIgn(null); }} />)}
             </div>
