@@ -29,9 +29,12 @@ def test_permission_queue_read_only_zero_authority():
 
 def test_data_state_is_honest_and_distinct_never_sample():
     _, body = dispatch(API, "GET", f"{ACTIVE_TRADER_PREFIX}/permission-queue")
-    assert body["data_state"] in HONEST_STATES        # error/empty/stale/live never collapsed
+    assert body["data_state"] in HONEST_STATES        # error/empty/live never collapsed
     assert body["is_sample"] is False                 # server NEVER returns a reference sample
-    assert body["source"] == "scalp_ignition_events"
+    # actionable queue draws from BOTH engines (IGN TRIGGER + scanner GO); never a scanner dump
+    assert "scalp_ignition_events" in body["source"] and "trade_ai_scans" in body["source"]
+    assert "live_scan" not in body                     # no scanner dump in the queue payload
+    assert "engine_status" in body                     # compact engine status instead
     assert "registry_hash" in body and "generated_at" in body
 
 
