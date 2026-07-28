@@ -91,7 +91,9 @@ def test_persistent_multifactor_failure_arms_then_signals():
 
 def test_high_score_without_price_confirmation_stays_armed():
     policy = mx.MomentumExitPolicy()
-    policy.evaluate(_bad(NOW + 25, price=103.0, high_watermark=103.0, structure_failure=0.70))
+    policy.evaluate(
+        _bad(NOW + 25, price=103.0, high_watermark=103.0, structure_failure=0.70)
+    )
     out = policy.evaluate(
         _bad(NOW + 36, price=103.0, high_watermark=103.0, structure_failure=0.70)
     )
@@ -122,7 +124,18 @@ def test_two_confirmation_dimensions_are_required():
     assert out.state == mx.STATE_HOLD
 
 
-def test_source_emits_signal_only_without_network_or_order_actions():
+def test_account_fields_do_not_change_exit_decision():
+    first = mx.MomentumExitPolicy().evaluate(
+        _bad(NOW + 25, account_id="one", venue="a", environment="sandbox")
+    )
+    second = mx.MomentumExitPolicy().evaluate(
+        _bad(NOW + 25, account_id="two", venue="b", environment="production")
+    )
+    assert first == second
+    assert not hasattr(_bad(NOW + 25), "account_id")
+
+
+def test_source_emits_account_unbound_signal_only_without_external_actions():
     src = (ROOT / "scripts" / "active_trader" / "momentum_exit_policy.py").read_text(
         encoding="utf-8"
     ).lower()
@@ -139,5 +152,8 @@ def test_source_emits_signal_only_without_network_or_order_actions():
         "unlock_trade",
         "api_key",
         "secret_key",
+        "paper execution",
+        "paper exit",
+        "mode_paper",
     ]
     assert [token for token in forbidden if token in src] == []
