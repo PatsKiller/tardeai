@@ -70,7 +70,8 @@ function ActiveTradeCard({ signal, reference, canRoute, onRoute, onDismiss, onOp
   const matched = signal.matchedSetupLabels ?? [signal.primarySetupLabel];
   const multi = matched.filter(Boolean).length > 1;
   const t2NeedsBook = signal.dataTier === 'T2';
-  const gate = signal.gateDecision ?? (signal.state === 'VETOED' ? 'VETO' : 'PASS');
+  // Fail CLOSED: a missing gate is DEFER / NOT EVALUATED — NEVER an implicit PASS.
+  const gate = signal.gateDecision ?? 'DEFER';
   const orderControls = ['Buy Bid', 'Sell Ask', 'Buy Ask', 'Sell Bid', 'Buy MKT', 'Sell MKT', 'Cancel All', 'Cancel', 'Reverse', 'Flatten'];
   return (
     <section className="at-panel at-trade-card" aria-labelledby="active-trade-title">
@@ -89,7 +90,13 @@ function ActiveTradeCard({ signal, reference, canRoute, onRoute, onDismiss, onOp
         </Chip>
         <Chip title="Position-size multiplier (separate from data tier)">SIZE TIER: {signal.tierMultiplier.toFixed(2)}x</Chip>
         <Chip title="Market session">SESSION: {signal.session}</Chip>
-        <Chip tone={gate === 'PASS' ? 'pass' : gate === 'VETO' ? 'fail' : 'warning'} title="Deterministic execution-gate decision">GATE: {gate}</Chip>
+        <Chip tone={gate === 'PASS' ? 'pass' : gate === 'VETO' ? 'fail' : 'warning'} title="Deterministic execution-gate decision (missing gate fails closed to DEFER)">GATE: {gate === 'DEFER' ? 'DEFER / NOT EVALUATED' : gate}</Chip>
+        {signal.stopValidation && signal.stopValidation !== 'PASS' && (
+          <Chip tone="fail" title="Deterministic minimum-stop-floor validation">STOP: {signal.stopValidation}</Chip>
+        )}
+        {signal.setupIdentityState === 'UNRESOLVED' && (
+          <Chip tone="warning" title="Bare lane trigger — no canonical setup identity resolved">SETUP: UNCLASSIFIED</Chip>
+        )}
         <button type="button" className="at-link-button" onClick={onOpenStrategies}>Setups &amp; strategy rules</button>
       </div>
       {multi && <div className="at-multi">PRIMARY: <b>{signal.primarySetupLabel}</b> · ALSO MATCHED: {matched.filter(l => l !== signal.primarySetupLabel).join(', ')}</div>}
@@ -369,7 +376,14 @@ export default function ActiveTraderPage(props: Props) {
   const selectedIgn = sortedIgn.find(s => s.id === selIgn) ?? (selScan ? null : sortedIgn[0]) ?? null;
   const selectedScan = scanItems.find(s => s.id === selScan) ?? null;
   const [routing, setRouting] = useState(false);
-  const canRoute = !reference && !!selectedIgn && (selectedIgn.state === 'ARMED' || selectedIgn.state === 'TRIGGERED');
+  // A paper route can be PREPARED only for a fully-qualified FIRED setup: gate PASS, a resolved canonical
+  // setup identity, and a valid stop. ARMED never prepares a route; a missing gate (DEFER) never routes;
+  // a bare/unclassified lane trigger never routes. Reference/sample is preview-only.
+  const canRoute = !reference && !!selectedIgn
+    && selectedIgn.setupState === 'FIRED'
+    && selectedIgn.gateDecision === 'PASS'
+    && !!selectedIgn.primarySetupId
+    && selectedIgn.stopValidation === 'PASS';
   const hasAny = reference || ignItems.length > 0 || scanItems.length > 0;
 
   return <main className="active-trader-page">

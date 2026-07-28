@@ -43,9 +43,16 @@ export interface ScalpSignal {
   tierDerivedQuantity: number;
   vetoReason?: string;
   // Distinct state systems (kept separate — a lane is not a setup, TRIGGERED is FSM, VETO is a gate):
-  gateDecision?: 'PASS' | 'VETO' | 'DEFER';
+  gateDecision?: 'PASS' | 'VETO' | 'DEFER';   // DEFER = gate NULL/NOT_EVALUATED (fail closed, never PASS)
   setupState?: 'SCANNING' | 'ARMED' | 'FIRED' | 'INVALIDATED' | 'EXPIRED' | 'DATA_UNAVAILABLE' | 'OUTSIDE_WINDOW';
   fsmState?: 'IDLE' | 'IMPULSE' | 'PULLBACK' | 'ARMED' | 'TRIGGERED';
+  // Canonical setup identity (a bare lane=TRIGGER is UNRESOLVED — never a fabricated named setup):
+  setupIdentityState?: 'RESOLVED' | 'UNRESOLVED';
+  displayEventLabel?: string;                 // e.g. "IGN TRIGGER — SETUP UNCLASSIFIED" for a bare trigger
+  stopValidation?: 'PASS' | 'VETO' | 'NOT_EVALUATED' | string;
+  executionEligibility?:
+    | 'SIMULATION_ELIGIBLE' | 'SETUP_NOT_FIRED' | 'GATE_NOT_EVALUATED' | 'GATE_VETO'
+    | 'SETUP_IDENTITY_UNRESOLVED' | 'STOP_INVALID' | 'DATA_INCOMPLETE' | string;
   // Persisted setup identity (so a future label change never rewrites historical meaning):
   primarySetupId?: string;
   matchedSetupIds?: string[];
