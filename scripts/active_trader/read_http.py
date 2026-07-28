@@ -1,4 +1,4 @@
-"""HTTP dispatcher for Active Trader Stage 0 read surface (GET only)."""
+"""HTTP dispatcher for Active Trader read surfaces (GET only)."""
 from __future__ import annotations
 
 from typing import Any, Mapping, Optional, Tuple
@@ -36,6 +36,43 @@ def _envelope(kind: str, detail: str, *, status_hint: int = 404) -> dict[str, An
     }
 
 
+def _account_agnostic_permission_queue(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove legacy static account/environment assumptions from the review read model.
+
+    Market-state evidence may be reviewed without binding an account. Until a runtime
+    account registry supplies verified capabilities, the API returns an empty account
+    set and an explicit UNBOUND state. This adapter is read-only and cannot authorize.
+    """
+    body = dict(raw)
+    signals: list[dict[str, Any]] = []
+    for item in body.get("signals") if isinstance(body.get("signals"), list) else []:
+        if not isinstance(item, Mapping):
+            continue
+        signal = dict(item)
+        # Preserve the compatibility key while removing environment semantics.
+        signal["mode"] = "REVIEW_ONLY"
+        signals.append(signal)
+    body["signals"] = signals
+    body["mode"] = "REVIEW_ONLY"
+    body["accounts"] = []
+    body["account_binding_state"] = "UNBOUND"
+    body["account_capability_source"] = "NOT_CONFIGURED"
+    body["posture"] = {
+        "account_binding": "UNBOUND",
+        "account_capability_source": "NOT_CONFIGURED",
+        "execution_routes": False,
+        "order_path": False,
+        "final_submit_present": False,
+        "automation": "none_wired",
+    }
+    body["note"] = (
+        "Read-only review evidence. Account, venue, environment, and execution "
+        "authority are not bound by this endpoint."
+    )
+    body["authority"] = dict(_ZERO_AUTHORITY)
+    return body
+
+
 def dispatch(
     api: Optional[ReadOnlyActiveTraderAPI],
     method: str,
@@ -53,7 +90,7 @@ def dispatch(
     if method != "GET":
         return 405, _envelope(
             "method_not_allowed",
-            "Active Trader Stage 0 is GET-only (write:false)",
+            "Active Trader read surfaces are GET-only (write:false)",
             status_hint=405,
         )
 
@@ -105,7 +142,7 @@ def dispatch(
         include_watch = _q1(query, "include_watch").lower() in ("1", "true", "yes")
         return 200, api.near_ready(include_watch=include_watch)
     if suffix in ("permission-queue", "permission_queue"):
-        return 200, api.permission_queue()
+        return 200, _account_agnostic_permission_queue(api.permission_queue())
     if suffix in ("config", "config-overview", "config_overview"):
         try:
             from .config_read import config_overview
@@ -114,7 +151,7 @@ def dispatch(
             return 503, _envelope("unavailable", f"config overview unavailable: {exc}", status_hint=503)
     if suffix in ("scalp/setups", "scalp_setups"):
         return 200, api.scalp_setups()
-    if suffix in ("scalp/setup-events", "scalp/setup_events", "scalp_setup_events"):
+    if suffix in ("scalp/setup-events", "scalp_setup_events", "scalp_setup_events"):
         lim = _q1(query, "limit")
         return 200, api.scalp_setup_events(
             limit=int(lim) if lim.isdigit() else 50,
@@ -129,7 +166,7 @@ def _q1(query: Mapping[str, Any] | None, key: str) -> str:
     """Extract a single string query value (list-safe). Empty string when absent."""
     if not query:
         return ""
-    v = query.get(key)
-    if isinstance(v, (list, tuple)):
-        v = v[0] if v else ""
-    return str(v or "").strip()
+    value = query.get(key)
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ""
+    return str(value or "").strip()
