@@ -9,11 +9,13 @@ properties:
    symbol's book ONLY while it is "armed" — i.e. seconds/minutes from trading. `ArmedSubscriptionManager`
    caps the number of concurrent armed symbols to a hard budget and auto-disarms on TTL. Nothing is
    subscribed continuously; unarmed symbols cost nothing.
-2. **Fail-closed.** OpenD is not configured on this host, so `entitlement()` resolves to
+2. **Fail-closed.** Until OpenD is up AND a real L2 fetcher is wired, `entitlement()` resolves to
    `SCAFFOLD_ONLY` and `fetch_book()` returns None — no T2 capability is manufactured. It only ever
    returns a real book once OpenD is up AND a real L2 fetcher is wired AND the symbol is armed.
-
-NOT wired into the shadow logger (operator: capability + tests only; activate on-demand later).
+   (The authoritative single-owner lifecycle now lives in `scripts/moomoo/quote_gateway.py` +
+   `subscription_manager.py` + `l2_feature_service.py`; this module remains the conserving
+   arm-on-demand capability the shadow logger uses. The consumer path is NOT claimed live until an
+   integration probe against a logged-in OpenD proves book+tape+quota round-trip.)
 """
 from __future__ import annotations
 
