@@ -45,6 +45,19 @@ def _conf_cfg() -> dict:
 SCANNING, ARMED, FIRED, INVALIDATED, EXPIRED, DATA_UNAVAILABLE, OUTSIDE_WINDOW = (
     "SCANNING", "ARMED", "FIRED", "INVALIDATED", "EXPIRED", "DATA_UNAVAILABLE", "OUTSIDE_WINDOW")
 
+
+def normalize_gate_result(execution_gate_result) -> str | None:
+    """PURE persistence normalization for the universal execution gate (Defect 1). Maps the detector's
+    taxonomy gate result onto the persisted/projected gate_result: PASS->PASS, FAIL->VETO, anything
+    missing/unreadable->None (NOT_EVALUATED). NEVER returns PASS unless the detector produced a PASS —
+    a DB row must never claim PASS when no successful gate evaluation exists."""
+    r = str(execution_gate_result).strip().upper() if execution_gate_result is not None else ""
+    if r == "PASS":
+        return "PASS"
+    if r == "FAIL":
+        return "VETO"
+    return None
+
 # state precedence when no setup FIRED, for the row's summary setup_state
 _STATE_RANK = {FIRED: 6, INVALIDATED: 5, ARMED: 4, DATA_UNAVAILABLE: 3, EXPIRED: 2, OUTSIDE_WINDOW: 1, SCANNING: 0}
 
@@ -369,10 +382,12 @@ def detect_setups(ctx: Mapping, cfg: Mapping, now, registry: Mapping | None = No
                                "fail_count": conf["confirmation_fail_count"],
                                "authorizes_fire": conf["authorizes_fire"]},
             "_execution_gate": {"result": gate["result"], "passed": gate["passed"],
-                                "reasons": gate["reasons"], "price_control": gate["price_control"]},
+                                "reasons": gate["reasons"], "price_control": gate["price_control"],
+                                "stop_validation": gate.get("stop_validation")},
         },
         "setup_fail_reasons": {r["setup_id"]: r["fail_reasons"] for r in results if r["fail_reasons"]},
         "execution_gate_result": gate["result"],
+        "stop_validation": gate.get("stop_validation"),
         "confirmation_score": conf["confirmation_score"],
         "registry_hash": sreg.registry_hash(reg),
         "multi_setup": len(matched_ids) > 1,
@@ -384,7 +399,7 @@ def taxonomy_for_symbol(*, bars, now, cfg, registry=None, ign_lane=None, ign_sco
                         premarket_rvol_tod=None, premarket_structure=None, premarket_building_volume=None,
                         spread_bps=None, data_age_sec=None, bar_volume=None, price=None,
                         catalyst_weight=None, halted=None, data_tier=None, hypothetical_shares=None,
-                        macd_hist_5m=None) -> dict:
+                        macd_hist_5m=None, entry_ref=None, stop_ref=None, price_increment=None) -> dict:
     """Thin wrapper the shadow logger calls per symbol: assemble the detector context (setup inputs +
     Layer B confirmation inputs + Layer C gate inputs) from what the logger already has, run detect_setups.
     Absent T2 book / premarket profile / market-alignment fail closed inside their detectors; the universal
@@ -395,5 +410,6 @@ def taxonomy_for_symbol(*, bars, now, cfg, registry=None, ign_lane=None, ign_sco
            "premarket_structure": premarket_structure, "premarket_building_volume": premarket_building_volume,
            "spread_bps": spread_bps, "data_age_sec": data_age_sec, "bar_volume": bar_volume, "price": price,
            "catalyst_weight": catalyst_weight, "halted": halted, "data_tier": data_tier or "T0",
-           "hypothetical_shares": hypothetical_shares}
+           "hypothetical_shares": hypothetical_shares,
+           "entry_ref": entry_ref, "stop_ref": stop_ref, "price_increment": price_increment}
     return detect_setups(ctx, cfg, now, registry)

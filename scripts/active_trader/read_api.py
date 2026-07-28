@@ -237,8 +237,20 @@ def _map_ignition_row_to_signal(r: Mapping[str, Any]) -> dict[str, Any]:
         state = "ARMED"
     sub = r.get("subscores") or {}
     subscores = {k: max(0, min(100, round(_f(sub.get(k)) * 100))) for k in _SUBSCORE_KEYS}
-    label = r.get("primary_setup_label") or ("IGNITION BREAKOUT" if lane == "TRIGGER" else lane)
-    matched = list(r.get("matched_setup_labels") or ([label] if label else []))
+    # Defect 3 — canonical setup identity. A NAMED setup requires BOTH a primary_setup_id and a
+    # primary_setup_label; a bare lane=TRIGGER is NEVER fabricated as IGNITION BREAKOUT. When identity is
+    # unresolved the event stays a LANE event (matched arrays empty, no setup id, no named-fire label).
+    primary_setup_id = r.get("primary_setup_id")
+    primary_setup_label = r.get("primary_setup_label")
+    identity_resolved = bool(primary_setup_id and primary_setup_label)
+    if identity_resolved:
+        label = primary_setup_label
+        display_event_label = primary_setup_label
+        matched = list(r.get("matched_setup_labels") or [primary_setup_label])
+    else:
+        label = None
+        display_event_label = "IGN TRIGGER — SETUP UNCLASSIFIED" if lane == "TRIGGER" else (lane or "—")
+        matched = list(r.get("matched_setup_labels") or [])
     entry = _f(r.get("entry_ref"))
     stop = _f(r.get("stop_ref"))
     gate_reasons = r.get("gate_reasons") or {}
@@ -262,7 +274,7 @@ def _map_ignition_row_to_signal(r: Mapping[str, Any]) -> dict[str, Any]:
         "mode": "MANUAL_PAPER_TEST_ONLY", "state": state,
         "cohort": "profiled" if r.get("profile_source") == "per_symbol" else "proxy",
         "dataTier": r.get("data_tier") or "T0", "tierMultiplier": round(_f(r.get("dcf"), 0.4), 2),
-        "primarySetupLabel": label, "matchedSetupLabels": matched,
+        "primarySetupLabel": label or display_event_label, "matchedSetupLabels": matched,
         "session": r.get("market_session") or "REGULAR", "subscores": subscores,
         "fsm": ["IDLE", "IMPULSE", "PULLBACK", "ARMED", "TRIGGERED"],
         "fsmCurrent": "TRIGGERED" if state == "TRIGGERED" else ("ARMED" if state == "ARMED" else "IMPULSE"),
@@ -274,18 +286,47 @@ def _map_ignition_row_to_signal(r: Mapping[str, Any]) -> dict[str, Any]:
     if veto_reason:
         sig["vetoReason"] = veto_reason
     # distinct state systems (never collapsed) + persisted setup identity
-    sig["gateDecision"] = "PASS" if gate == "PASS" else ("VETO" if gate == "VETO" else "DEFER")
+    # Defect 1: fail CLOSED — a NULL/missing gate maps to DEFER, NEVER PASS.
+    gate_decision = "PASS" if gate == "PASS" else ("VETO" if gate == "VETO" else "DEFER")
+    sig["gateDecision"] = gate_decision
+    sig["displayEventLabel"] = display_event_label
+    sig["setupIdentityState"] = "RESOLVED" if identity_resolved else "UNRESOLVED"
     if setup_state:
         sig["setupState"] = setup_state
     sig["fsmState"] = sig["fsmCurrent"]
-    if r.get("primary_setup_id"):
-        sig["primarySetupId"] = r["primary_setup_id"]
-    if r.get("matched_setup_ids"):
+    if identity_resolved:
+        sig["primarySetupId"] = primary_setup_id
+    if identity_resolved and r.get("matched_setup_ids"):
         sig["matchedSetupIds"] = list(r["matched_setup_ids"])
     if r.get("setup_version"):
         sig["setupVersion"] = str(r["setup_version"])
     if r.get("registry_hash"):
         sig["registryHash"] = r["registry_hash"]
+
+    # Defect 2 — stop-reference validation read back from the persisted gate_reasons.stop_validation.
+    sv = (gate_reasons.get("stop_validation") if isinstance(gate_reasons, dict) else None) or {}
+    stop_validation = sv.get("stop_validation") if isinstance(sv, dict) else None
+    sig["stopValidation"] = stop_validation or "NOT_EVALUATED"
+
+    # Execution eligibility — SIMULATION_ELIGIBLE requires ALL of: FIRED setup, gate PASS, resolved
+    # canonical identity, registry hash, stop PASS, and the required current-data fields. Else a typed
+    # reason (fail closed). This mirrors the sim engine's own admission checks; it authorizes NOTHING.
+    data_ok = entry > 0 and stop > 0 and bool(r.get("registry_hash"))
+    if setup_state != "FIRED":
+        elig = "SETUP_NOT_FIRED"
+    elif gate_decision == "DEFER":
+        elig = "GATE_NOT_EVALUATED"
+    elif gate_decision == "VETO":
+        elig = "GATE_VETO"
+    elif not identity_resolved or not r.get("registry_hash"):
+        elig = "SETUP_IDENTITY_UNRESOLVED"
+    elif stop_validation != "PASS":
+        elig = "STOP_INVALID"
+    elif not data_ok:
+        elig = "DATA_INCOMPLETE"
+    else:
+        elig = "SIMULATION_ELIGIBLE"
+    sig["executionEligibility"] = elig
     return sig
 
 
@@ -307,7 +348,11 @@ def _permission_queue_signals(limit: int = 25) -> dict[str, Any]:
     try:
         conn = get_connection()
         with conn.cursor() as cur:
-            cur.execute("SELECT max(session_date), max(fired_at) FROM scalp_ignition_events WHERE lane = ANY(%s)",
+            # Defect 3 — the historical last-fire/reference query recognizes lane='TRIGGER' OR
+            # setup_state='FIRED' (a named-setup fire is a fire even below the TRIGGER lane), WITHOUT
+            # treating a bare lane trigger as a named setup (the projection enforces that separately).
+            cur.execute("SELECT max(session_date), max(fired_at) FROM scalp_ignition_events "
+                        "WHERE lane = ANY(%s) OR setup_state = 'FIRED'",
                         (list(_ALERT_LANES),))
             row = cur.fetchone()
             sess = row[0] if row else None
@@ -322,7 +367,7 @@ def _permission_queue_signals(limit: int = 25) -> dict[str, Any]:
                           r_dollars, stop_dist_bps, gate_result, gate_reasons, subscores, confirmation_labels,
                           setup_fail_reasons, fired_at
                    FROM scalp_ignition_events
-                   WHERE session_date = %s AND lane = ANY(%s)
+                   WHERE session_date = %s AND (lane = ANY(%s) OR setup_state = 'FIRED')
                    ORDER BY ign_score DESC, fired_at DESC LIMIT %s""",
                 (sess, list(_ALERT_LANES), lim))
             cols = [d[0] for d in cur.description]
@@ -458,15 +503,21 @@ def _ign_trigger_today(limit: int = 25) -> list[dict[str, Any]]:
     try:
         conn = get_connection()
         with conn.cursor() as cur:
+            # Defect 3 — dedup (DISTINCT ON) must ORDER BY symbol, so the LIMIT can only be applied AFTER
+            # dedup in an outer query ordered by recency/priority. Without the CTE the LIMIT cut rows
+            # alphabetically by symbol before recency ordering. One latest row per symbol, then most recent.
             cur.execute(
-                """SELECT DISTINCT ON (symbol) id, symbol, lane, ign_score, setup_state, primary_setup_id,
-                          primary_setup_label, matched_setup_ids, matched_setup_labels, setup_version,
-                          registry_hash, market_session, data_tier, dcf, rvol_tod, profile_source,
-                          entry_ref, stop_ref, r_dollars, stop_dist_bps, gate_result, gate_reasons,
-                          subscores, confirmation_labels, setup_fail_reasons, fired_at
-                   FROM scalp_ignition_events
-                   WHERE session_date = %s AND (lane = 'TRIGGER' OR setup_state = 'FIRED')
-                   ORDER BY symbol, fired_at DESC LIMIT %s""",
+                """WITH latest_per_symbol AS (
+                       SELECT DISTINCT ON (symbol) id, symbol, lane, ign_score, setup_state, primary_setup_id,
+                              primary_setup_label, matched_setup_ids, matched_setup_labels, setup_version,
+                              registry_hash, market_session, data_tier, dcf, rvol_tod, profile_source,
+                              entry_ref, stop_ref, r_dollars, stop_dist_bps, gate_result, gate_reasons,
+                              subscores, confirmation_labels, setup_fail_reasons, fired_at
+                       FROM scalp_ignition_events
+                       WHERE session_date = %s AND (lane = 'TRIGGER' OR setup_state = 'FIRED')
+                       ORDER BY symbol, fired_at DESC, id DESC)
+                   SELECT * FROM latest_per_symbol
+                   ORDER BY fired_at DESC, ign_score DESC, symbol LIMIT %s""",
                 (_et_today(), max(1, min(int(limit or 25), 100))))
             cols = [d[0] for d in cur.description]
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
@@ -558,8 +609,15 @@ def _actionable_queue(limit: int = 40) -> dict[str, Any]:
     seen = {str(i.get("symbol")) for i in ign}
     items = ign + [s for s in scan if str(s.get("symbol")) not in seen]
     go = sum(1 for s in scan if s.get("decision") == "GO")
+    # Defect 3 additive counts (bare lane triggers vs canonical named-setup fires; one row/symbol already):
+    lane_trigger = sum(1 for i in ign if i.get("lane") == "TRIGGER")
+    canonical = sum(1 for i in ign if i.get("setupIdentityState") == "RESOLVED")
+    unclassified = sum(1 for i in ign
+                       if i.get("lane") == "TRIGGER" and i.get("setupIdentityState") != "RESOLVED")
     return {"items": items, "ign_trigger_count": len(ign),
-            "scanner_actionable_count": len(scan), "scanner_go_count": go}
+            "scanner_actionable_count": len(scan), "scanner_go_count": go,
+            "lane_trigger_count": lane_trigger, "canonical_setup_fire_count": canonical,
+            "unclassified_lane_trigger_count": unclassified, "deduped_fire_count": len(ign)}
 
 
 def _engine_status() -> dict[str, Any]:
@@ -881,9 +939,14 @@ class ReadOnlyActiveTraderAPI:
             "is_sample": False,                # server never returns a reference sample; the UI owns preview mode
             "signals": signals,                # actionable queue items (source: ign_trigger | scanner)
             "actionable_count": actionable,
-            "ign_trigger_count": aq["ign_trigger_count"],
+            "ign_trigger_count": aq["ign_trigger_count"],           # compatibility alias (deduped fires)
             "scanner_go_count": aq["scanner_go_count"],
             "scanner_actionable_count": aq["scanner_actionable_count"],
+            # Defect 3 additive counts — lane events vs canonical named-setup fires (bare trigger ≠ setup)
+            "lane_trigger_count": aq["lane_trigger_count"],
+            "canonical_setup_fire_count": aq["canonical_setup_fire_count"],
+            "unclassified_lane_trigger_count": aq["unclassified_lane_trigger_count"],
+            "deduped_fire_count": aq["deduped_fire_count"],
             "accounts": _ACTIVE_TRADER_ACCOUNTS,
             "source": "scalp_ignition_events (IGN TRIGGER) + trade_ai_scans (GO/MANUAL_REVIEW)",
             "engine_status": engine_status,

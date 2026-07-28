@@ -54,9 +54,12 @@ def test_accounts_posture_matrix():
         assert accts[aid]["eligible"] is False
 
 
-def test_signal_projection_trigger_row():
+def test_signal_projection_bare_trigger_stays_a_lane_event_not_a_named_setup():
+    # Defect 3 — a bare lane=TRIGGER with NO primary_setup_id/label must NOT be fabricated as a named
+    # canonical setup. It stays a LANE event: unclassified identity, empty matched arrays, no setup id.
     row = {"id": 42, "symbol": "TBPH", "lane": "TRIGGER", "ign_score": 71, "setup_state": None,
-           "primary_setup_label": None, "matched_setup_labels": None, "market_session": "REGULAR",
+           "primary_setup_id": None, "primary_setup_label": None, "matched_setup_labels": None,
+           "matched_setup_ids": None, "market_session": "REGULAR",
            "data_tier": "T0", "dcf": 0.4, "rvol_tod": 8.4, "profile_source": "per_symbol",
            "entry_ref": 16.98, "stop_ref": 16.97, "r_dollars": 0.13, "stop_dist_bps": 380,
            "gate_result": "PASS", "gate_reasons": {"rr": 2.8}, "subscores": {"v_rvol": 0.88, "v_burst": 0.81},
@@ -64,10 +67,58 @@ def test_signal_projection_trigger_row():
     s = _map_ignition_row_to_signal(row)
     assert s["state"] == "TRIGGERED"                  # TRIGGER lane → FSM TRIGGERED state
     assert s["lane"] == "TRIGGER"                     # lane preserved…
-    assert s["primarySetupLabel"] == "IGNITION BREAKOUT"   # …and distinct from the setup label
+    assert s["primarySetupLabel"] != "IGNITION BREAKOUT"          # …NEVER fabricated as a named setup
+    assert s["displayEventLabel"] == "IGN TRIGGER — SETUP UNCLASSIFIED"
+    assert s["setupIdentityState"] == "UNRESOLVED"
+    assert "primarySetupId" not in s                  # no canonical id synthesized
+    assert s["matchedSetupLabels"] == [] and "matchedSetupIds" not in s   # matched arrays empty
+    assert s["executionEligibility"] == "SETUP_NOT_FIRED"   # not FIRED → not eligible
     assert s["subscores"]["v_rvol"] == 88             # scaled 0-1 → 0-100
     assert s["entryRef"] == 16.98 and s["stopBps"] == 380 and s["legToR"] == 2.8
     assert "submitOrder" not in s and "orderIntent" not in s   # no order fields
+
+
+def test_signal_projection_canonical_ignition_requires_its_setup_id():
+    # A canonical IGNITION BREAKOUT only when the setup ID resolves AND carries its registry label.
+    row = {"id": 43, "symbol": "TBPH", "lane": "TRIGGER", "ign_score": 71, "setup_state": "FIRED",
+           "primary_setup_id": "SCALP_IGNITION_BREAKOUT_V1", "primary_setup_label": "IGNITION BREAKOUT",
+           "matched_setup_ids": ["SCALP_IGNITION_BREAKOUT_V1"], "matched_setup_labels": ["IGNITION BREAKOUT"],
+           "registry_hash": "sha256:abc", "gate_result": "PASS", "entry_ref": 16.98, "stop_ref": 16.90,
+           "gate_reasons": {"stop_validation": {"stop_validation": "PASS"}}, "subscores": {}}
+    s = _map_ignition_row_to_signal(row)
+    assert s["primarySetupLabel"] == "IGNITION BREAKOUT"
+    assert s["setupIdentityState"] == "RESOLVED"
+    assert s["primarySetupId"] == "SCALP_IGNITION_BREAKOUT_V1"
+    assert s["executionEligibility"] == "SIMULATION_ELIGIBLE"   # FIRED + gate PASS + id + hash + stop PASS
+
+
+def test_signal_projection_canonical_vwap_pullback_stays_itself():
+    row = {"id": 44, "symbol": "AAA", "lane": "IGN_60", "ign_score": 60, "setup_state": "FIRED",
+           "primary_setup_id": "SCALP_VWAP_PULLBACK_V1", "primary_setup_label": "VWAP PULLBACK",
+           "matched_setup_labels": ["VWAP PULLBACK"], "gate_result": "PASS", "subscores": {}}
+    s = _map_ignition_row_to_signal(row)
+    assert s["primarySetupLabel"] == "VWAP PULLBACK" and s["setupIdentityState"] == "RESOLVED"
+
+
+def test_signal_projection_missing_gate_defers_never_passes():
+    # Defect 1 — a NULL/missing gate maps to DEFER, never PASS; a FIRED row with DEFER is not eligible.
+    row = {"id": 45, "symbol": "BBB", "lane": "IGN_60", "ign_score": 60, "setup_state": "FIRED",
+           "primary_setup_id": "SCALP_VWAP_PULLBACK_V1", "primary_setup_label": "VWAP PULLBACK",
+           "gate_result": None, "subscores": {}, "entry_ref": 5.0, "stop_ref": 4.9,
+           "registry_hash": "sha256:x"}
+    s = _map_ignition_row_to_signal(row)
+    assert s["gateDecision"] == "DEFER"
+    assert s["executionEligibility"] == "GATE_NOT_EVALUATED"
+
+
+def test_signal_projection_scanner_style_row_never_acquires_setup_identity():
+    # A scanner-ish row (no setup id/label, non-trigger lane) never gets a named setup-fire label or id.
+    row = {"id": 46, "symbol": "CCC", "lane": "IGN_45", "ign_score": 45, "setup_state": None,
+           "primary_setup_id": None, "primary_setup_label": None, "subscores": {}}
+    s = _map_ignition_row_to_signal(row)
+    assert s["setupIdentityState"] == "UNRESOLVED"
+    assert "primarySetupId" not in s and s["matchedSetupLabels"] == []
+    assert s["displayEventLabel"] == "IGN_45"
 
 
 def test_signal_projection_veto_row_carries_reason():
