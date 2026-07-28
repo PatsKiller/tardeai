@@ -18,10 +18,9 @@ def _t2_obs(**over):
         "symbol": "AAPL",
         "observed_at": NOW,
         "session_state": "ACTIVE",
-        "mode": "SHADOW",
         "setup_state": "FIRED",
         "gate_decision": "PASS",
-        "execution_eligible": True,
+        "motion_eligible": True,
         "baseline_quote_age_s": 1.0,
         "trigger_distance_bps": 2.0,
     }
@@ -57,6 +56,14 @@ def test_missing_baseline_age_fails_closed():
     snap = t2.T2LeaseManager().reconcile([raw], now=NOW)
     assert snap.leases == ()
     assert snap.decisions[0].reason_code == t2.R_BASELINE_STALE
+
+
+def test_missing_motion_authority_fails_closed():
+    raw = _t2_obs()
+    raw.pop("motion_eligible")
+    snap = t2.T2LeaseManager().reconcile([raw], now=NOW)
+    assert snap.leases == ()
+    assert snap.decisions[0].reason_code == t2.R_MOTION_INELIGIBLE
 
 
 def test_expired_lease_is_reacquired_with_a_new_identity():
