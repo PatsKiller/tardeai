@@ -48,15 +48,11 @@ function nvdaPosition(state: string, extra: Record<string, unknown> = {}) {
   }
 }
 
-// Keep the rest of the page quiet: everything else under /api returns an empty object. Registered
-// FIRST so the more-specific motion route (registered per-test, later) takes precedence.
 async function quietBackend(page: Page) {
   await page.route('**/api/**', (route: Route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
 }
 
-// Install the fake clock and a counting motion route, then open the Review page. `respond` receives
-// the 1-based request index so a test can drive a payload sequence deterministically.
 async function open(page: Page, respond: (index: number) => MotionBody | { status: number }) {
   const counter = { n: 0 }
   await quietBackend(page)
@@ -82,7 +78,6 @@ test.describe('Active Trader live motion', () => {
   test('one aggregate request updates multiple ticker rows', async ({ page }) => {
     await open(page, () => baseSnapshot())
     await expect(seam(page)).toHaveText('1')
-    // Three rows from a single request — proves aggregate, not per-ticker.
     for (const sym of ['QTTB', 'LASE', 'XRX']) {
       await expect(motion(page).locator(`[data-symbol="${sym}"]`)).toBeVisible()
     }
@@ -93,7 +88,7 @@ test.describe('Active Trader live motion', () => {
     await open(page, () => baseSnapshot({ ui_refresh_after_s: 5 }))
     await expect(seam(page)).toHaveText('1')
     await page.clock.runFor(5000)
-    await expect(seam(page)).toHaveText('2')   // +1 for 3 tickers, not +3
+    await expect(seam(page)).toHaveText('2')
     await page.clock.runFor(5000)
     await expect(seam(page)).toHaveText('3')
   })
@@ -162,6 +157,7 @@ test.describe('Active Trader live motion', () => {
       positions: [nvdaPosition('EXIT_SIGNAL', { reason_code: 'persistent_momentum_failure' })],
       exit_signals: [{ symbol: 'NVDA', state: 'EXIT_SIGNAL', reason_code: 'persistent_momentum_failure', at: 0, account_bound: false }],
     }))
+    await expect(page.getByText('ACCOUNT BINDING: NONE')).toBeVisible()
     await expect(motion(page).getByText('EXIT SIGNAL', { exact: true }).first()).toBeVisible()
     await expect(motion(page).getByText('ACCOUNT UNBOUND · NO ORDER PATH').first()).toBeVisible()
     await expect(motion(page).getByRole('button', { name: /flatten|sell|buy|submit|confirm|exit now|route|send order|place order/i })).toHaveCount(0)
