@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -133,6 +134,22 @@ def test_account_fields_do_not_change_exit_decision():
     )
     assert first == second
     assert not hasattr(_bad(NOW + 25), "account_id")
+
+
+def test_policy_schema_contains_no_account_or_environment_binding():
+    forbidden = {
+        "account_id",
+        "account_type",
+        "venue",
+        "broker",
+        "environment",
+        "execution_mode",
+        "route",
+    }
+    observation_fields = {field.name for field in dataclasses.fields(mx.MomentumObservation)}
+    decision_fields = {field.name for field in dataclasses.fields(mx.ExitDecision)}
+    assert observation_fields.isdisjoint(forbidden)
+    assert decision_fields.isdisjoint(forbidden)
 
 
 def test_source_emits_account_unbound_signal_only_without_external_actions():
