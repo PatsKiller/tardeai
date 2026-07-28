@@ -58,10 +58,8 @@ def dispatch(
         )
 
     if api is None:
-        # Still honest Stage 0 posture without config
         api = ReadOnlyActiveTraderAPI()
 
-    # Normalize prefix strip
     if path == ACTIVE_TRADER_PREFIX:
         return 200, {
             **api.health(),
@@ -72,6 +70,7 @@ def dispatch(
                 f"{ACTIVE_TRADER_PREFIX}/venue-eligibility?symbol=...",
                 f"{ACTIVE_TRADER_PREFIX}/near-ready",
                 f"{ACTIVE_TRADER_PREFIX}/permission-queue",
+                f"{ACTIVE_TRADER_PREFIX}/motion",
                 f"{ACTIVE_TRADER_PREFIX}/scalp/setups",
                 f"{ACTIVE_TRADER_PREFIX}/scalp/setup-events?limit=...",
                 f"{ACTIVE_TRADER_PREFIX}/config",
@@ -85,6 +84,16 @@ def dispatch(
         return 200, api.status()
     if suffix in ("sessions",):
         return 200, api.list_sessions()
+    if suffix in ("motion", "live-motion", "live_motion"):
+        try:
+            from .motion_snapshot_api import read_motion_snapshot
+            return 200, read_motion_snapshot()
+        except Exception:
+            return 503, _envelope(
+                "unavailable",
+                "motion snapshot unavailable",
+                status_hint=503,
+            )
     if suffix in ("venue-eligibility", "venue_eligibility"):
         symbol = _q1(query, "symbol")
         venue = _q1(query, "venue")
@@ -101,7 +110,7 @@ def dispatch(
         try:
             from .config_read import config_overview
             return 200, config_overview()
-        except Exception as exc:  # fail-closed, never leak internals
+        except Exception as exc:
             return 503, _envelope("unavailable", f"config overview unavailable: {exc}", status_hint=503)
     if suffix in ("scalp/setups", "scalp_setups"):
         return 200, api.scalp_setups()
