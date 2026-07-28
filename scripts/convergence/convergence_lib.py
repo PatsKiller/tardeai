@@ -8,6 +8,8 @@ is what the validation tests pin so the packet cannot regress into an unsafe dep
 """
 from __future__ import annotations
 
+import hashlib
+import os
 import re
 from typing import Mapping, Sequence
 
@@ -145,6 +147,51 @@ def backup_dir_name(stamp: str, prefix: str = "cc-dist") -> str:
     if not re.fullmatch(r"[0-9]{8}_[0-9]{6}", stamp or ""):
         raise ConvergenceError("backup stamp must be YYYYmmdd_HHMMSS")
     return f"{prefix}-{stamp}"
+
+
+def served_build_ok(served_meta: Mapping | None, expected_commit: str) -> bool:
+    """Post-install/restore proof: the bundle the SERVER actually returns carries the exact commit we
+    installed — catches a stale/cached build-meta or a swap that didn't take effect."""
+    return bool(served_meta) and served_meta.get("source_commit") == expected_commit
+
+
+def read_plane_ok(http_code: int, body: Mapping | None, expected_role: str) -> bool:
+    """Post-install/restore proof: the agent-runtime read plane is still 200, read-only, connected,
+    zero-authority with the exact reader role (a static swap must not perturb it)."""
+    return connect_contract_ok(http_code, body, expected_role)
+
+
+def restore_binding_ok(backup_meta: Mapping | None, *, expected_commit: str | None = None,
+                       expected_dir_hash: str | None = None, actual_dir_hash: str | None = None) -> None:
+    """Bind a restore to what was captured, not just 'looks like a dist'. A legacy/unprovenanced backup
+    is still restorable (rollback's whole purpose), but if the caller supplies an expected source_commit
+    or a recorded content hash, the backup MUST match it or the restore is refused."""
+    sc = (backup_meta or {}).get("source_commit")
+    if expected_commit is not None and sc != expected_commit:
+        raise ConvergenceError(f"backup source_commit {sc!r} != expected {expected_commit!r}")
+    if expected_dir_hash is not None and actual_dir_hash is not None and expected_dir_hash != actual_dir_hash:
+        raise ConvergenceError("backup content hash does not match the recorded install manifest")
+
+
+def dir_content_hash(root: str) -> str:
+    """Deterministic content hash of a directory tree — sha256 over sorted 'sha256  relpath' lines.
+    ONE canonical implementation so install-time and restore-time hashes are byte-comparable (a shell
+    vs python sort/format mismatch would spuriously fail the restore binding)."""
+    lines = []
+    for dp, _, fns in os.walk(root):
+        for fn in fns:
+            p = os.path.join(dp, fn)
+            with open(p, "rb") as fh:
+                lines.append(f"{hashlib.sha256(fh.read()).hexdigest()}  {os.path.relpath(p, root)}")
+    return hashlib.sha256(("\n".join(sorted(lines)) + "\n").encode()).hexdigest()
+
+
+def install_manifest(*, stamp: str, backup_dir: str, backup_source_commit: str | None,
+                     backup_dir_hash: str, candidate_source_commit: str) -> dict:
+    """Record written at install time so a later restore can be bound to this exact backup."""
+    return {"manifest_version": "convergence-install-v1", "stamp": stamp, "backup_dir": backup_dir,
+            "backup_source_commit": backup_source_commit, "backup_dir_hash": backup_dir_hash,
+            "candidate_source_commit": candidate_source_commit}
 
 
 # ── secret redaction for all evidence/logs ──

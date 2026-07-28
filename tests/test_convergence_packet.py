@@ -191,6 +191,20 @@ def _run(script: str, args: list[str], **env):
     e = {**os.environ, **{k: str(v) for k, v in env.items()}}
     return subprocess.run(["bash", str(CONV / script), *args], capture_output=True, text=True, env=e)
 
+class _Serve:
+    """Tiny in-process HTTP server over a directory so curl gets real 200s (file:// yields code 000)."""
+    def __init__(self, directory):
+        import http.server, functools
+        handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+    def __enter__(self):
+        import threading
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        return self
+    def __exit__(self, *a):
+        self.httpd.shutdown()
+
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash required")
 def test_static_install_then_restore_cycle(tmp_path):
     live, cand, backups = tmp_path / "dist", tmp_path / "cand", tmp_path / "backups"
@@ -200,18 +214,20 @@ def test_static_install_then_restore_cycle(tmp_path):
     r = _run("static_install.sh", [str(cand), "--apply"],
              CC_DIST=live, BACKUP_ROOT=backups, SKIP_SMOKE="1")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "INSTALL_APPLIED_AND_SMOKED" in r.stdout
+    assert "INSTALL_APPLIED_AND_VERIFIED" in r.stdout
     # live is now the candidate
     assert json.load(open(live / "build-meta.json"))["source_commit"] == "a" * 40
     # the original was archived to a backup
-    bks = list(backups.glob("cc-dist-*"))
+    bks = [p for p in backups.glob("cc-dist-*") if p.is_dir()]
     assert len(bks) == 1
     assert json.load(open(bks[0] / "build-meta.json"))["source_commit"] == "b" * 40
 
-    # restore the archived backup atomically
-    r2 = _run("rollback.sh", ["--restore", str(bks[0]), "--apply"], CC_DIST=live)
+    # restore the archived backup atomically, bound to its manifest
+    manifest = next(backups.glob("cc-dist-*.manifest.json"))
+    r2 = _run("rollback.sh", ["--restore", str(bks[0]), "--apply", "--manifest", str(manifest)],
+              CC_DIST=live, SKIP_SMOKE="1")
     assert r2.returncode == 0, r2.stdout + r2.stderr
-    assert "RESTORE_APPLIED" in r2.stdout
+    assert "RESTORE_APPLIED" in r2.stdout and "restore_precheck|OK" in r2.stdout
     assert json.load(open(live / "build-meta.json"))["source_commit"] == "b" * 40  # original back
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash required")
@@ -223,7 +239,7 @@ def test_static_install_auto_rolls_back_on_smoke_failure(tmp_path):
     r = _run("static_install.sh", [str(cand), "--apply"],
              CC_DIST=live, BACKUP_ROOT=backups, SMOKE_BASE="http://127.0.0.1:1", SMOKE_ROUTES="/v3")
     assert r.returncode != 0
-    assert "INSTALL_SMOKE_FAILED_ROLLED_BACK" in r.stdout
+    assert "INSTALL_VERIFY_FAILED_ROLLED_BACK" in r.stdout
     # live restored to the ORIGINAL despite the attempted swap
     assert json.load(open(live / "build-meta.json"))["source_commit"] == "b" * 40
 
@@ -258,6 +274,100 @@ def test_restore_rejects_an_invalid_backup(tmp_path):
     r = _run("rollback.sh", ["--restore", str(junk), "--apply"], CC_DIST=live)
     assert r.returncode != 0 and "BLOCKED_BACKUP_INVALID" in r.stdout
     assert json.load(open(live / "build-meta.json"))["source_commit"] == "b" * 40  # untouched
+
+
+# ── post-install/restore verification + restore binding — pure decisions ──
+def test_served_build_ok():
+    assert cl.served_build_ok({"source_commit": SHA}, SHA)
+    assert not cl.served_build_ok({"source_commit": "b" * 40}, SHA)   # stale/cached served bundle
+    assert not cl.served_build_ok(None, SHA) and not cl.served_build_ok({}, SHA)
+
+def test_read_plane_ok_reuses_connect_contract():
+    good = {"read_only": True, "connected": True, "authority": ZERO_AUTH, "reader_role": "agentic_runtime_reader"}
+    assert cl.read_plane_ok(200, good, "agentic_runtime_reader")
+    assert not cl.read_plane_ok(503, good, "agentic_runtime_reader")            # disconnected
+    assert not cl.read_plane_ok(200, {**good, "authority": {**ZERO_AUTH, "mutation": True}},
+                                "agentic_runtime_reader")                        # gained authority
+
+def test_restore_binding_ok_and_failures():
+    meta = {"source_commit": "b" * 40}
+    cl.restore_binding_ok(meta)                                                  # no constraints → ok
+    cl.restore_binding_ok(meta, expected_commit="b" * 40)                        # matches → ok
+    cl.restore_binding_ok(meta, expected_dir_hash="h1", actual_dir_hash="h1")    # hash matches → ok
+    with pytest.raises(cl.ConvergenceError):
+        cl.restore_binding_ok(meta, expected_commit="a" * 40)                    # wrong commit
+    with pytest.raises(cl.ConvergenceError):
+        cl.restore_binding_ok(meta, expected_dir_hash="h1", actual_dir_hash="h2")  # tampered backup
+    # a legacy/unprovenanced backup is still restorable when no expectation is bound
+    cl.restore_binding_ok({}, )
+
+def test_install_manifest_shape():
+    m = cl.install_manifest(stamp="20260727_205318", backup_dir="/b/cc-dist-x",
+                            backup_source_commit="b" * 40, backup_dir_hash="deadbeef",
+                            candidate_source_commit=SHA)
+    assert m["manifest_version"] == "convergence-install-v1"
+    assert m["backup_dir_hash"] == "deadbeef" and m["candidate_source_commit"] == SHA
+
+
+# ── true atomic directory exchange ──
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash required")
+def test_dirswap_atomic_exchange(tmp_path):
+    a, b = tmp_path / "A", tmp_path / "B"
+    a.mkdir(); b.mkdir()
+    (a / "mark").write_text("I-am-A")
+    (b / "mark").write_text("I-am-B")
+    r = subprocess.run([sys.executable, str(CONV / "_dirswap.py"), "exchange", str(a), str(b)],
+                       capture_output=True, text=True)
+    if r.returncode == 3:
+        pytest.skip("RENAME_EXCHANGE unsupported on this filesystem")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (a / "mark").read_text() == "I-am-B" and (b / "mark").read_text() == "I-am-A"  # exchanged
+
+
+# ── install verification auto-rollback + restore binding, via the real shell scripts ──
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash required")
+def test_install_auto_rolls_back_on_stale_served_build_meta(tmp_path):
+    live, cand, backups = tmp_path / "dist", tmp_path / "cand", tmp_path / "backups"
+    _write_dist(live, "b" * 40, "index-OLD6.js")
+    _write_dist(cand, "a" * 40, "index-NEW6.js")
+    # the "server" reports a DIFFERENT (stale) commit than the candidate → verify must roll back
+    stale = tmp_path / "served-meta.json"
+    stale.write_text(json.dumps({"source_commit": "c" * 40}))
+    r = _run("static_install.sh", [str(cand), "--apply"], CC_DIST=live, BACKUP_ROOT=backups,
+             SMOKE_ROUTES="", VERIFY_META_URL=f"file://{stale}", VERIFY_AGENT_URL="none")
+    assert r.returncode != 0
+    assert "verify_served_meta|MISMATCH" in r.stdout and "INSTALL_VERIFY_FAILED_ROLLED_BACK" in r.stdout
+    assert json.load(open(live / "build-meta.json"))["source_commit"] == "b" * 40  # rolled back
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash required")
+def test_install_verifies_served_meta_and_read_plane_ok(tmp_path):
+    live, cand, backups = tmp_path / "dist", tmp_path / "cand", tmp_path / "backups"
+    _write_dist(live, "b" * 40, "index-OLD7.js")
+    _write_dist(cand, "a" * 40, "index-NEW7.js")
+    srv = tmp_path / "srv"; srv.mkdir()
+    (srv / "served-meta.json").write_text(json.dumps({"source_commit": "a" * 40}))
+    (srv / "agent.json").write_text(json.dumps({"read_only": True, "connected": True,
+        "authority": {"mutation": False, "provider_call": False, "service_control": False,
+                      "schedule_change": False, "financial_action": False},
+        "reader_role": "agentic_runtime_reader"}))
+    with _Serve(srv) as s:
+        r = _run("static_install.sh", [str(cand), "--apply"], CC_DIST=live, BACKUP_ROOT=backups,
+                 SMOKE_ROUTES="", VERIFY_META_URL=f"{s.base}/served-meta.json",
+                 VERIFY_AGENT_URL=f"{s.base}/agent.json")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "verify_served_meta|OK" in r.stdout and "verify_read_plane|OK" in r.stdout
+    assert "INSTALL_APPLIED_AND_VERIFIED" in r.stdout
+    assert json.load(open(live / "build-meta.json"))["source_commit"] == "a" * 40
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash required")
+def test_restore_refuses_when_expected_commit_mismatches(tmp_path):
+    live, backup = tmp_path / "dist", tmp_path / "backup"
+    _write_dist(live, "a" * 40, "index-CUR.js")
+    _write_dist(backup, "b" * 40, "index-BK.js")     # backup is commit b...
+    r = _run("rollback.sh", ["--restore", str(backup), "--apply", "--expect-commit", "d" * 40],
+             CC_DIST=live, SKIP_SMOKE="1")            # ...but we demand commit d -> refuse
+    assert r.returncode != 0 and "BLOCKED_BACKUP_INVALID" in r.stdout
+    assert json.load(open(live / "build-meta.json"))["source_commit"] == "a" * 40  # live untouched
 
 
 if __name__ == "__main__":

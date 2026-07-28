@@ -137,4 +137,37 @@ bash scripts/convergence/rollback.sh --restore ~/deploy/backups/cc-dist-<stamp> 
 ```
 
 The install/restore paths are now reproducible and tested, but **applying them to the host remains a
-separate, explicitly-authorized operator step. The PR stays DRAFT.**
+separate, explicitly-authorized operator step.**
+
+---
+
+## Update 2026-07-27 — review-blocker hardening (PR now READY FOR REVIEW, unmerged)
+
+Addressed the six review findings on head `22bd6e6e`:
+
+1. **Doc/description parity** — this doc and the PR description now state *ready for review* (not DRAFT)
+   and the correct proof count (**35 tests**, up from 27).
+2. **True atomic swap** — new `scripts/convergence/_dirswap.py` performs `renameat2(RENAME_EXCHANGE)`
+   (zero interval where the live path is absent). If the filesystem doesn't support it, the scripts
+   fall back to two renames and **label the swap `two-rename-nonatomic-window`** rather than claiming
+   atomicity. The swap mode is printed every run.
+3. **Verified rollback** — on a failed post-install verify, the auto-rollback now confirms the live
+   dist is actually the pre-swap bundle (`meta_sc == pre_swap_source_commit`) before printing
+   `rolled_back`; if the restore didn't take, it emits `CRITICAL_ROLLBACK_FAILED_MANUAL_INTERVENTION`
+   instead of a false success.
+4. **Bound restore** — install writes a `cc-dist-<stamp>.manifest.json` recording the backup's
+   `source_commit` and a canonical `dir_content_hash`. `rollback.sh --restore` accepts `--manifest`
+   / `--expect-commit` and refuses (`BLOCKED_BACKUP_INVALID`) if the backup's commit or content hash
+   doesn't match what was captured. One `dir_content_hash` implementation is shared by both sides.
+5. **Real post-install proof** — verification no longer trusts HTTP 200 alone: it also confirms the
+   **served** `build-meta.json` carries the installed `source_commit` (catches a stale/cached bundle)
+   and that the agent-runtime read plane is still `200 / read_only / connected / zero-authority` with
+   the exact reader role. Same checks run after a restore.
+6. **Stale preview processes** — four orphaned `vite preview` trees from `/tmp/command-center-review-
+   validation.*` (~3 days old, `ppid=1`) were identified for a separate, confirmed process-cleanup.
+
+New tests drive the real scripts through: atomic `_dirswap` exchange, stale-served-build-meta
+auto-rollback, served-meta + read-plane success, and a restore refused on `--expect-commit` mismatch.
+Both scripts were dry-run against the **real** live dist: all gates `OK`, host untouched.
+
+**PR #238 is READY FOR REVIEW and still UNMERGED. Applying to the host remains a separate authorized step.**
