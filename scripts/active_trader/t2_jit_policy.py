@@ -123,7 +123,7 @@ class CandidateObservation:
             setup_state=str(raw.get("setup_state") or "").strip().upper(),
             gate_decision=str(raw.get("gate_decision") or "").strip().upper(),
             execution_eligible=bool(raw.get("execution_eligible")),
-            baseline_quote_age_s=float(raw.get("baseline_quote_age_s") or 0.0),
+            baseline_quote_age_s=_required_float(raw.get("baseline_quote_age_s"), missing=float("inf")),
             trigger_distance_bps=_optional_float(raw.get("trigger_distance_bps")),
             expected_fire_in_s=_optional_float(raw.get("expected_fire_in_s")),
             operator_selected=bool(raw.get("operator_selected")),
@@ -195,6 +195,15 @@ class T2Snapshot:
             "decisions": [decision.to_dict() for decision in self.decisions],
             "events": [event.to_dict() for event in self.events],
         }
+
+
+def _required_float(value: Any, *, missing: float) -> float:
+    if value is None or isinstance(value, bool):
+        return float(missing)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(missing)
 
 
 def _optional_float(value: Any) -> Optional[float]:
@@ -281,11 +290,20 @@ class T2LeaseManager:
     def leases(self) -> tuple[T2Lease, ...]:
         return tuple(sorted(self._leases.values(), key=lambda lease: lease.symbol))
 
-    def _release(self, symbol: str, now: float, reason: str, events: list[T2Event]) -> None:
+    def _release(
+        self,
+        symbol: str,
+        now: float,
+        reason: str,
+        events: list[T2Event],
+        *,
+        apply_cooldown: bool = True,
+    ) -> None:
         lease = self._leases.pop(symbol, None)
         if lease is None:
             return
-        self._cooldown_until[symbol] = now + self.config.cooldown_s
+        if apply_cooldown:
+            self._cooldown_until[symbol] = now + self.config.cooldown_s
         events.append(T2Event("released", symbol, reason, now, lease.lease_id))
 
     def _admit(self, obs: CandidateObservation, now: float, priority: float, events: list[T2Event]) -> None:
@@ -323,9 +341,10 @@ class T2LeaseManager:
 
         for symbol, lease in list(self._leases.items()):
             obs = observed.get(symbol)
+            if now >= lease.expires_at:
+                self._release(symbol, now, R_EXPIRED, events, apply_cooldown=False)
+                continue
             if obs is None:
-                if now >= lease.expires_at:
-                    self._release(symbol, now, R_NOT_OBSERVED, events)
                 continue
             eligible, reason = _eligibility(obs, cfg)
             if not eligible:
