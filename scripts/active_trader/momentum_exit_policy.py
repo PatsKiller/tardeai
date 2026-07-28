@@ -124,9 +124,9 @@ class MomentumObservation:
             tape_reversal=float(raw.get("tape_reversal") or 0.0),
             book_weakness=float(raw.get("book_weakness") or 0.0),
             structure_failure=float(raw.get("structure_failure") or 0.0),
-            quote_age_s=float(raw.get("quote_age_s") or 0.0),
-            book_age_s=float(raw.get("book_age_s") or 0.0),
-            tape_age_s=float(raw.get("tape_age_s") or 0.0),
+            quote_age_s=_required_float(raw.get("quote_age_s"), missing=float("inf")),
+            book_age_s=_required_float(raw.get("book_age_s"), missing=float("inf")),
+            tape_age_s=_required_float(raw.get("tape_age_s"), missing=float("inf")),
             high_watermark=_optional_float(raw.get("high_watermark")),
         )
 
@@ -148,6 +148,15 @@ class ExitDecision:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _required_float(value: Any, *, missing: float) -> float:
+    if value is None or isinstance(value, bool):
+        return float(missing)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(missing)
 
 
 def _optional_float(value: Any) -> Optional[float]:
@@ -172,14 +181,18 @@ class MomentumExitPolicy:
         self._fire_started_at: Optional[float] = None
         self._recovery_started_at: Optional[float] = None
         self._high_watermark: Optional[float] = None
+        self._armed = False
         self._signaled = False
+        self._signal_reason: Optional[str] = None
 
     def reset(self) -> None:
         self._deterioration_started_at = None
         self._fire_started_at = None
         self._recovery_started_at = None
         self._high_watermark = None
+        self._armed = False
         self._signaled = False
+        self._signal_reason = None
 
     def _score(self, obs: MomentumObservation) -> float:
         cfg = self.config
@@ -264,6 +277,7 @@ class MomentumExitPolicy:
 
         if obs.hard_stop_price > 0 and obs.price > 0 and obs.price <= obs.hard_stop_price:
             self._signaled = True
+            self._signal_reason = R_HARD_STOP
             return self._decision(
                 obs,
                 state=STATE_SIGNAL,
@@ -301,7 +315,7 @@ class MomentumExitPolicy:
                 obs,
                 state=STATE_SIGNAL,
                 action=ACTION_SIGNAL,
-                reason=R_PERSISTENT_FAILURE,
+                reason=self._signal_reason or R_PERSISTENT_FAILURE,
                 score=score,
                 confirmations=confirmations,
                 drawdown_r=drawdown_r,
@@ -313,6 +327,7 @@ class MomentumExitPolicy:
             self._deterioration_started_at = None
             self._fire_started_at = None
             self._recovery_started_at = None
+            self._armed = False
             return self._decision(
                 obs,
                 state=STATE_HOLD,
@@ -332,6 +347,7 @@ class MomentumExitPolicy:
             if recovered_for >= cfg.reset_persistence_s:
                 self._deterioration_started_at = None
                 self._recovery_started_at = None
+                self._armed = False
                 return self._decision(
                     obs,
                     state=STATE_HOLD,
@@ -344,8 +360,8 @@ class MomentumExitPolicy:
                 )
             return self._decision(
                 obs,
-                state=STATE_WATCH,
-                action=ACTION_HOLD,
+                state=STATE_ARMED if self._armed else STATE_WATCH,
+                action=ACTION_ARM if self._armed else ACTION_HOLD,
                 reason=R_RECOVERING,
                 score=score,
                 confirmations=confirmations,
@@ -356,11 +372,23 @@ class MomentumExitPolicy:
         self._recovery_started_at = None
         if score < cfg.arm_threshold or confirmations < cfg.min_confirmation_dimensions:
             self._fire_started_at = None
+            if self._armed:
+                return self._decision(
+                    obs,
+                    state=STATE_ARMED,
+                    action=ACTION_ARM,
+                    reason=R_ARMED,
+                    score=score,
+                    confirmations=confirmations,
+                    drawdown_r=drawdown_r,
+                    now=now,
+                )
+            self._deterioration_started_at = None
             return self._decision(
                 obs,
-                state=STATE_WATCH if self._deterioration_started_at is not None else STATE_HOLD,
+                state=STATE_HOLD,
                 action=ACTION_HOLD,
-                reason=R_DETERIORATING if self._deterioration_started_at is not None else R_HEALTHY,
+                reason=R_DETERIORATING if score > cfg.reset_threshold else R_HEALTHY,
                 score=score,
                 confirmations=confirmations,
                 drawdown_r=drawdown_r,
@@ -370,7 +398,7 @@ class MomentumExitPolicy:
         if self._deterioration_started_at is None:
             self._deterioration_started_at = now
         armed_for = now - self._deterioration_started_at
-        if armed_for < cfg.arm_persistence_s:
+        if not self._armed and armed_for < cfg.arm_persistence_s:
             self._fire_started_at = None
             return self._decision(
                 obs,
@@ -382,6 +410,7 @@ class MomentumExitPolicy:
                 drawdown_r=drawdown_r,
                 now=now,
             )
+        self._armed = True
 
         price_confirmed = (
             drawdown_r >= cfg.min_retracement_r
@@ -416,6 +445,7 @@ class MomentumExitPolicy:
             )
 
         self._signaled = True
+        self._signal_reason = R_PERSISTENT_FAILURE
         return self._decision(
             obs,
             state=STATE_SIGNAL,
