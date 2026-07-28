@@ -17,10 +17,9 @@ def _obs(symbol="AAPL", **over):
         "symbol": symbol,
         "observed_at": NOW,
         "session_state": "ACTIVE",
-        "mode": "SHADOW",
         "setup_state": "ARMED",
         "gate_decision": "PASS",
-        "execution_eligible": True,
+        "motion_eligible": True,
         "baseline_quote_age_s": 1.0,
         "trigger_distance_bps": 5.0,
         "expected_fire_in_s": 10.0,
@@ -41,16 +40,26 @@ def test_far_candidate_stays_t1_and_does_not_consume_t2():
     assert snap.decisions[0].refresh_after_s == 10
 
 
-def test_near_fire_requires_active_execution_eligible_session():
+def test_near_fire_requires_active_motion_authorized_workflow():
     for change, reason in (
         ({"session_state": "AUTHORIZED"}, t2.R_SESSION_INACTIVE),
-        ({"execution_eligible": False}, t2.R_EXECUTION_INELIGIBLE),
-        ({"mode": "LIVE"}, t2.R_MODE_INELIGIBLE),
+        ({"motion_eligible": False}, t2.R_MOTION_INELIGIBLE),
     ):
         manager = t2.T2LeaseManager()
         snap = manager.reconcile([_obs(**change)], now=NOW)
         assert snap.leases == ()
         assert snap.decisions[0].reason_code == reason
+
+
+def test_account_environment_fields_are_not_part_of_policy():
+    manager = t2.T2LeaseManager()
+    snap = manager.reconcile(
+        [_obs(account_id="acct-any", venue="any", environment="any")],
+        now=NOW,
+    )
+    assert len(snap.leases) == 1
+    assert not hasattr(_obs(), "mode")
+    assert not hasattr(_obs(), "account_id")
 
 
 def test_near_fire_candidate_is_admitted_with_push_primary_and_five_second_hint():
@@ -91,13 +100,19 @@ def test_higher_priority_candidate_can_evict_prefire_after_minimum_dwell():
     manager.reconcile([_obs("AAPL", priority_score=1)], now=NOW)
 
     before = manager.reconcile(
-        [_obs("AAPL", priority_score=1), _obs("TSLA", setup_state="FIRED", priority_score=500)],
+        [
+            _obs("AAPL", priority_score=1),
+            _obs("TSLA", setup_state="FIRED", priority_score=500),
+        ],
         now=NOW + 5,
     )
     assert [lease.symbol for lease in before.leases] == ["AAPL"]
 
     after = manager.reconcile(
-        [_obs("AAPL", priority_score=1), _obs("TSLA", setup_state="FIRED", priority_score=500)],
+        [
+            _obs("AAPL", priority_score=1),
+            _obs("TSLA", setup_state="FIRED", priority_score=500),
+        ],
         now=NOW + 11,
     )
     assert [lease.symbol for lease in after.leases] == ["TSLA"]
@@ -122,13 +137,15 @@ def test_invalidation_releases_lease_and_cooldown_prevents_immediate_readmit():
 def test_provider_hard_cap_is_never_exceeded():
     cfg = t2.T2PolicyConfig(provider_hard_cap=3, max_concurrent_leases=3)
     manager = t2.T2LeaseManager(cfg)
-    snap = manager.reconcile([_obs(f"S{i}", priority_score=i) for i in range(10)], now=NOW)
+    snap = manager.reconcile(
+        [_obs(f"S{i}", priority_score=i) for i in range(10)], now=NOW
+    )
     assert len(snap.leases) == 3
     assert snap.operating_cap == 3
     assert snap.provider_hard_cap == 3
 
 
-def test_source_is_policy_only_without_network_or_order_actions():
+def test_source_is_policy_only_and_contains_no_account_environment_taxonomy():
     src = (ROOT / "scripts" / "active_trader" / "t2_jit_policy.py").read_text(
         encoding="utf-8"
     ).lower()
@@ -145,5 +162,9 @@ def test_source_is_policy_only_without_network_or_order_actions():
         "unlock_trade",
         "api_key",
         "secret_key",
+        "mode_paper",
+        "paper/shadow",
+        "paper execution",
+        "account_not_execution_eligible",
     ]
     assert [token for token in forbidden if token in src] == []
