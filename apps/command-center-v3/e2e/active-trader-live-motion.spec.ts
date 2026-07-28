@@ -5,10 +5,10 @@ import { test, expect, type Page, type Route } from '@playwright/test'
  * fake clock. Proves the bandwidth contract (ONE aggregate request per cycle, honored refresh
  * hints), in-place row updates that preserve selection, the evidence-state rendering
  * (WATCH → EXIT_ARMED → EXIT_SIGNAL, PROTECT_ONLY), honest stale/last-good handling, bounded retry,
- * and — critically — that NO order/flatten control ever appears from an exit signal.
+ * and — critically — that the motion surface remains account-unbound and has no order/flatten path.
  *
- * The aggregate endpoint GET /api/v3/active-trader/motion does not exist at this base; these tests
- * supply it purely via interception. Nothing here asserts a live backend.
+ * The stacked backend supplies GET /api/v3/active-trader/motion. These tests intercept the route to
+ * drive deterministic payload sequences; they do not depend on a running host service.
  */
 
 const MOTION_GLOB = '**/api/v3/active-trader/motion*'
@@ -102,9 +102,9 @@ test.describe('Active Trader live motion', () => {
     await open(page, () => baseSnapshot({ ui_refresh_after_s: 10 }))
     await expect(seam(page)).toHaveText('1')
     await page.clock.runFor(9000)
-    await expect(seam(page)).toHaveText('1')   // not due yet
+    await expect(seam(page)).toHaveText('1')
     await page.clock.runFor(2000)
-    await expect(seam(page)).toHaveText('2')   // due at 10s
+    await expect(seam(page)).toHaveText('2')
   })
 
   test('selection stays on the same ticker after a refresh', async ({ page }) => {
@@ -140,7 +140,6 @@ test.describe('Active Trader live motion', () => {
     await open(page, () => baseSnapshot({ positions: [nvdaPosition('PROTECT_ONLY', { reason_code: 'market_data_stale' })] }))
     await expect(motion(page).getByText('PROTECT ONLY', { exact: true })).toBeVisible()
     await expect(motion(page).getByText(/protective stop is the operative defense/i)).toBeVisible()
-    // No language claiming an exit happened, and no enabled control to make one.
     await expect(motion(page).getByRole('button', { name: /flatten|sell|exit now|submit|route|send order/i })).toHaveCount(0)
   })
 
@@ -148,30 +147,24 @@ test.describe('Active Trader live motion', () => {
     await open(page, (i) => (i === 1 ? baseSnapshot({ ui_refresh_after_s: 5 }) : { status: 500 }))
     await expect(seam(page)).toHaveText('1')
     await expect(motion(page).getByText('MOTION LIVE')).toBeVisible()
-    // First refresh fails.
     await page.clock.runFor(5000)
     await expect(seam(page)).toHaveText('2')
     await expect(motion(page).getByText('MOTION DATA STALE')).toBeVisible()
-    // Last-good rows are still shown (never blanked, never fabricated fresh).
     await expect(motion(page).locator('[data-symbol="QTTB"]')).toBeVisible()
-    // Bounded backoff: no tight loop — nothing fires in the next 1s...
     await page.clock.runFor(1000)
     await expect(seam(page)).toHaveText('2')
-    // ...the next retry lands only after the >=5s backoff window.
     await page.clock.runFor(5000)
     await expect(seam(page)).toHaveText('3')
   })
 
-  test('no enabled order or flatten control appears from an exit signal', async ({ page }) => {
+  test('exit signal stays account-unbound and cannot create an order control', async ({ page }) => {
     await open(page, () => baseSnapshot({
       positions: [nvdaPosition('EXIT_SIGNAL', { reason_code: 'persistent_momentum_failure' })],
-      exit_signals: [{ symbol: 'NVDA', state: 'EXIT_SIGNAL', reason_code: 'persistent_momentum_failure', at: 0 }],
+      exit_signals: [{ symbol: 'NVDA', state: 'EXIT_SIGNAL', reason_code: 'persistent_momentum_failure', at: 0, account_bound: false }],
     }))
     await expect(motion(page).getByText('EXIT SIGNAL', { exact: true }).first()).toBeVisible()
-    await expect(motion(page).getByText('DISPLAY ONLY · NO ORDER PATH').first()).toBeVisible()
-    // No order-like control exists anywhere on the motion surface, enabled or not.
+    await expect(motion(page).getByText('ACCOUNT UNBOUND · NO ORDER PATH').first()).toBeVisible()
     await expect(motion(page).getByRole('button', { name: /flatten|sell|buy|submit|confirm|exit now|route|send order|place order/i })).toHaveCount(0)
-    // Every button that DOES exist (row selection) is enabled-but-harmless; none is an order path.
     const enabledOrderish = await motion(page).locator('button:not([disabled])').evaluateAll(
       (els) => els.filter((e) => /flatten|sell|buy|submit|confirm|route|order/i.test(e.textContent || '')).length,
     )
@@ -180,9 +173,8 @@ test.describe('Active Trader live motion', () => {
 
   test('endpoint returning malformed data fails closed, never fabricates values', async ({ page }) => {
     await open(page, () => ({ contract: 'wrong', garbage: true } as unknown as MotionBody))
-    // A bad payload still normalizes (empty), and the contract mismatch is surfaced honestly.
     await expect(motion(page).getByText('UNEXPECTED CONTRACT')).toBeVisible()
     await expect(motion(page).getByText('No near-fire candidates right now.')).toBeVisible()
-    await expect(motion(page).getByText('No active paper/shadow positions.')).toBeVisible()
+    await expect(motion(page).getByText('No active monitored positions.')).toBeVisible()
   })
 })
