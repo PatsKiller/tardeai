@@ -71,6 +71,8 @@ def dispatch(
                 f"{ACTIVE_TRADER_PREFIX}/sessions",
                 f"{ACTIVE_TRADER_PREFIX}/venue-eligibility?symbol=...",
                 f"{ACTIVE_TRADER_PREFIX}/near-ready",
+                f"{ACTIVE_TRADER_PREFIX}/scalp/setups",
+                f"{ACTIVE_TRADER_PREFIX}/scalp/setup-events?limit=...",
             ],
         }
 
@@ -91,6 +93,15 @@ def dispatch(
     if suffix in ("near-ready", "near_ready"):
         include_watch = _q1(query, "include_watch").lower() in ("1", "true", "yes")
         return 200, api.near_ready(include_watch=include_watch)
+    if suffix in ("scalp/setups", "scalp_setups"):
+        return 200, api.scalp_setups()
+    if suffix in ("scalp/setup-events", "scalp/setup_events", "scalp_setup_events"):
+        lim = _q1(query, "limit")
+        return 200, api.scalp_setup_events(
+            limit=int(lim) if lim.isdigit() else 50,
+            session_date=_q1(query, "session_date") or None,
+            setup=_q1(query, "setup") or None,
+        )
 
     return 404, _envelope("not_found", f"unknown endpoint: {suffix}")
 

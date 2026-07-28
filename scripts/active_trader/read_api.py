@@ -135,6 +135,58 @@ def venue_inventory(flags: Stage0Flags | None = None) -> dict[str, dict[str, Any
     return out
 
 
+def _scalp_registry_view() -> dict[str, Any]:
+    """Read-only projection of the scalp setup registry (config/scalp_setup_registry.yaml). Fail-closed
+    to an empty registry on any error — never raises, never writes."""
+    try:
+        import sys as _sys
+        sp = str(_REPO_ROOT / "scripts")
+        if sp not in _sys.path:
+            _sys.path.insert(0, sp)
+        import scalp_setup_registry as _reg
+        return _reg.public_view()
+    except Exception:
+        return {"registry_version": None, "setups": [], "read_only": True,
+                "write_authority": False, "error": "registry_unavailable"}
+
+
+def _scalp_setup_events(limit: int = 50, session_date: str | None = None,
+                        setup: str | None = None) -> tuple[list[dict[str, Any]], str]:
+    """Read-only recent setup-tagged events. Fail-closed to ([], 'unavailable') if the DB/table/columns
+    are absent (e.g. before the additive migration runs). Never writes."""
+    try:
+        import sys as _sys
+        sp = str(_REPO_ROOT / "scripts")
+        if sp not in _sys.path:
+            _sys.path.insert(0, sp)
+        from db_adapter import get_connection
+    except Exception:
+        return [], "unavailable"
+    lim = max(1, min(int(limit or 50), 500))
+    sql = ("SELECT symbol, fired_at, session_date, lane, primary_setup_id, primary_setup_label, "
+           "matched_setup_labels, setup_state, market_session, confirmation_labels, setup_version, "
+           "registry_hash FROM scalp_ignition_events WHERE primary_setup_id IS NOT NULL")
+    params: list[Any] = []
+    if session_date:
+        sql += " AND session_date = %s"; params.append(session_date)
+    if setup:
+        sql += " AND primary_setup_id = %s"; params.append(setup)
+    sql += " ORDER BY fired_at DESC LIMIT %s"; params.append(lim)
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        for r in rows:
+            for k, v in list(r.items()):
+                if hasattr(v, "isoformat"):
+                    r[k] = v.isoformat()
+        return rows, "db"
+    except Exception:
+        return [], "unavailable"
+
+
 class ReadOnlyActiveTraderAPI:
     """Framework-neutral Stage 0 read surface. No create/update/delete/order methods."""
 
@@ -213,6 +265,33 @@ class ReadOnlyActiveTraderAPI:
                 "mutation": False, "order": False, "session_authorize": False,
                 "canary": False, "financial_action": False,
             },
+        }
+
+    def scalp_setups(self) -> dict[str, Any]:
+        """Read-only scalp setup registry (the named-setup taxonomy the modal renders). SHADOW /
+        MANUAL PAPER ONLY. A lane is NOT a setup. No write/order authority is exposed here."""
+        return {
+            "contract": READ_API_CONTRACT, "stage": 1, "sub_stage": "scalp-taxonomy",
+            "write": False, "canary": False, "read_only": True, "auto_route": False,
+            "setup_registry": _scalp_registry_view(),
+            "operating_note": "SHADOW / MANUAL PAPER ONLY — setups are named, versioned, deterministic "
+                              "patterns; a lane (IGN_60/IGN_ACCEL/TRIGGER) is not a setup.",
+            "authority": {"mutation": False, "order": False, "session_authorize": False,
+                          "canary": False, "financial_action": False},
+        }
+
+    def scalp_setup_events(self, *, limit: int = 50, session_date: str | None = None,
+                           setup: str | None = None) -> dict[str, Any]:
+        """Read-only recent setup-tagged events (empty until the additive migration + shadow logger have
+        run). MANUAL PAPER ONLY — never an order; nothing here routes or fires."""
+        rows, source = _scalp_setup_events(limit, session_date, setup)
+        return {
+            "contract": READ_API_CONTRACT, "stage": 1, "sub_stage": "scalp-taxonomy",
+            "write": False, "canary": False, "read_only": True, "auto_route": False,
+            "events": rows, "count": len(rows), "source": source,
+            "note": "Read-only setup-tagged events. MANUAL PAPER ONLY — never an order.",
+            "authority": {"mutation": False, "order": False, "session_authorize": False,
+                          "canary": False, "financial_action": False},
         }
 
     def near_ready(self, *, include_watch: bool = False) -> dict[str, Any]:
