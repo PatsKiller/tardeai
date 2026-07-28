@@ -16,7 +16,11 @@ export default function ActiveTraderHub() {
   const tab: SubTab = SUBTABS.includes(raw) ? raw : 'Review';
   const setTab = (t: SubTab) => setParams(p => { p.set('tab', t); return p; }, { replace: true });
 
+  // Queue metadata stays on the slower 5s poll; the live ticker (current mark + L2 truth +
+  // fire-performance deltas) polls the visible/active set fast. 5s is NOT the live transport.
   const { data: pq } = useApi<any>('/api/v3/active-trader/permission-queue', 5_000, { enabled: tab === 'Review' });
+  const { data: firePerf } = useApi<any>('/api/v3/active-trader/fire-performance', 1_500, { enabled: tab === 'Review' });
+  const { data: l2Status } = useApi<any>('/api/v3/active-trader/l2-status', 2_000, { enabled: tab === 'Review' });
   const { data: atSetups } = useApi<any>('/api/v3/active-trader/scalp/setups', 60_000);
   const [strategiesOpen, setStrategiesOpen] = useState(false);
 
@@ -63,6 +67,8 @@ export default function ActiveTraderHub() {
             lastIgnSessionDate={pq?.last_ign_session_date}
             registryHash={pq?.registry_hash}
             registryVersion={pq?.registry_version}
+            firePerf={firePerf ?? undefined}
+            l2Status={l2Status ?? undefined}
             onOpenStrategies={() => setStrategiesOpen(true)}
           />
           <ScalpStrategyModal

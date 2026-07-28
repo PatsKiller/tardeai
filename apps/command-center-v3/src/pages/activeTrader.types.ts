@@ -161,6 +161,112 @@ export interface PermissionQueuePayload {
   registry_hash?: string | null;
 }
 
+// ── L2 lifecycle (Moomoo/OpenD data plane) — explicit states, never "ARMED == fresh" ──
+export type L2LifecycleState =
+  | 'NOT_REQUESTED' | 'ARM_INTENT' | 'QUOTA_DEFERRED' | 'SUBSCRIBE_REQUESTED' | 'SUBSCRIBED'
+  | 'WAITING_FIRST_BOOK' | 'WAITING_FIRST_TAPE' | 'FRESH' | 'STALE' | 'SEQUENCE_GAP'
+  | 'CROSSED_BOOK' | 'ENTITLEMENT_MISSING' | 'PROVIDER_DISCONNECTED' | 'FAILED'
+  | 'POST_FIRE_RETENTION' | 'UNSUBSCRIBE_PENDING' | 'UNSUBSCRIBED';
+
+export interface L2Quota {
+  total_quota: number | null;
+  total_used: number | null;
+  remain: number | null;
+  own_used: number | null;
+  other_connection_usage: number | null;
+  reserved_units: number;
+  available_for_discretionary: number | null;
+  last_queried_at: string | null;
+}
+
+export interface L2SymbolLifecycle {
+  symbol: string;
+  state: L2LifecycleState;
+  reason?: string;
+  confirmed_subtypes?: string[];
+  book_age_ms?: number | null;
+  tape_age_ms?: number | null;
+  sequence_id?: number | null;
+  reconnect_epoch?: number;
+  quota_units?: number;
+  t2?: { is_t2: boolean; reason: string; freshness_state?: string; sequence_state?: string };
+}
+
+export interface L2Status {
+  contract: string;
+  read_only: boolean;
+  write: boolean;
+  order_path: boolean;
+  source_commit?: string;
+  connected: boolean;
+  provider_state: string;
+  entitlement_state: string;
+  quota: L2Quota | null;
+  concurrent_symbols?: number;
+  max_concurrent_l2_symbols?: number;
+  min_dwell_seconds?: number;
+  reconnect_epoch?: number;
+  confirmed_subscriptions?: Record<string, string[]>;
+  symbols?: Record<string, L2SymbolLifecycle>;
+  subscribed_any?: boolean;
+  t2_any?: boolean;
+}
+
+// ── Fire performance (server-computed; immutable fire price, live current mark) ──
+export type FireLifecycleState =
+  | 'FIRED_FRESH' | 'ACTIVE_OBSERVATION' | 'STOP_TOUCHED' | 'TARGET_TOUCHED'
+  | 'EXPIRED' | 'OUTCOME_PENDING' | 'OUTCOME_RESOLVED' | 'DATA_STALE';
+
+export interface FirePerformance {
+  fire_id: string;
+  symbol: string;
+  primary_setup_id: string | null;
+  primary_setup_label: string | null;
+  lane: string | null;
+  setup_state: string | null;
+  gate_decision: string | null;
+  fired_at: string | null;
+  fire_price: number | null;          // IMMUTABLE
+  stop_ref: number | null;
+  target_ref: number | null;
+  current_bid: number | null;
+  current_ask: number | null;
+  current_last: number | null;
+  mark_source: string | null;
+  mark_at: string | null;
+  mark_age_ms: number | null;
+  change_from_fire: number | null;
+  change_from_fire_pct: number | null;
+  high_since_fire: number | null;
+  low_since_fire: number | null;
+  mfe_since_fire: number | null;
+  mae_since_fire: number | null;
+  current_r_multiple: number | null;
+  risk_per_share: number | null;
+  hit_stop: boolean;
+  hit_1r: boolean;
+  hit_target: boolean;
+  outcome_state: string;
+  lifecycle_state: FireLifecycleState;
+  in_active_queue: boolean;
+  age_seconds: number | null;
+  l2_state_at_fire: string | null;
+  l2_state_now: string | null;
+  mark_stale: boolean;
+}
+
+export interface FirePerformancePayload {
+  contract: string;
+  read_only: boolean;
+  write: boolean;
+  order_path: boolean;
+  generated_at: string;
+  active_fires: FirePerformance[];
+  fire_history: FirePerformance[];
+  active_count: number;
+  history_count: number;
+}
+
 export interface BrokerAccount {
   id: string;
   venue: BrokerVenue;

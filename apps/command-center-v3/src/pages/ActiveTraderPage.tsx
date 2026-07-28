@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ActiveTraderDataState, ArmingStatus, BrokerAccount, EngineStatus, RoutingDraft, ScalpSignal, ScannerSignal } from './activeTrader.types';
+import type { ActiveTraderDataState, ArmingStatus, BrokerAccount, EngineStatus, FirePerformance, FirePerformancePayload, L2LifecycleState, L2Status, RoutingDraft, ScalpSignal, ScannerSignal } from './activeTrader.types';
 import { MOCK_ACCOUNTS, MOCK_QUEUE, MOCK_SIGNAL } from './activeTrader.mock';
 import './activeTrader.css';
 
@@ -17,7 +17,36 @@ type Props = {
   lastIgnSessionDate?: string | null;   // reference only — last alert-worthy IGN session (NOT the queue)
   registryHash?: string | null;
   registryVersion?: string | null;
+  firePerf?: FirePerformancePayload;     // live server-computed fire performance
+  l2Status?: L2Status;                   // live L2 data-plane truth
 };
+
+// Explicit L2 lifecycle labels — "L2 ARMED" is NEVER a synonym for fresh data.
+const L2_LABEL: Record<L2LifecycleState, { text: string; cls: string }> = {
+  NOT_REQUESTED: { text: 'L2 NOT REQUESTED', cls: 'idle' },
+  ARM_INTENT: { text: 'L2 ARM INTENT', cls: 'wait' },
+  QUOTA_DEFERRED: { text: 'L2 QUOTA DEFERRED', cls: 'stale' },
+  SUBSCRIBE_REQUESTED: { text: 'L2 SUBSCRIBING', cls: 'wait' },
+  SUBSCRIBED: { text: 'L2 SUBSCRIBING', cls: 'wait' },
+  WAITING_FIRST_BOOK: { text: 'L2 WAITING FOR DATA', cls: 'wait' },
+  WAITING_FIRST_TAPE: { text: 'L2 WAITING FOR TAPE', cls: 'wait' },
+  FRESH: { text: 'L2 FRESH', cls: 'fresh' },
+  STALE: { text: 'L2 STALE', cls: 'stale' },
+  SEQUENCE_GAP: { text: 'L2 SEQUENCE GAP', cls: 'off' },
+  CROSSED_BOOK: { text: 'L2 CROSSED BOOK', cls: 'off' },
+  ENTITLEMENT_MISSING: { text: 'L2 NO ENTITLEMENT', cls: 'off' },
+  PROVIDER_DISCONNECTED: { text: 'L2 DISCONNECTED', cls: 'off' },
+  FAILED: { text: 'L2 FAILED', cls: 'off' },
+  POST_FIRE_RETENTION: { text: 'L2 POST-FIRE HOLD', cls: 'wait' },
+  UNSUBSCRIBE_PENDING: { text: 'L2 RELEASING', cls: 'idle' },
+  UNSUBSCRIBED: { text: 'L2 UNSUBSCRIBED', cls: 'idle' },
+};
+
+function L2Pill({ state, title }: { state?: string | null; title?: string }) {
+  const key = (state as L2LifecycleState) || 'NOT_REQUESTED';
+  const info = L2_LABEL[key] ?? { text: `L2 ${key}`, cls: 'idle' };
+  return <span className={`at-l2pill at-l2pill--${info.cls}`} title={title ?? info.text}>{info.text}</span>;
+}
 
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 const money2 = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
@@ -257,8 +286,8 @@ function ArmingPanel({ a }: { a: ArmingStatus }) {
           <h2 id="arming-title">Arming ladder <small>pre-fire · IGN engine</small></h2>
           <p>{a.market_open ? 'RTH live — climbing toward a trigger' : 'IGN engine idle (opens 09:30 ET) — ladder populates at RTH'}</p>
         </div>
-        <Chip tone={l2.armed.length ? 'pass' : 'context'} title={l2.note}>
-          L2 {l2.enabled ? (l2.armed.length ? `ARMED ×${l2.armed.length}` : 'idle') : 'off'}{l2.max_armed ? ` / ${l2.max_armed}` : ''}
+        <Chip tone={l2.connected ? (l2.armed.length ? 'pass' : 'context') : 'fail'} title={l2.note}>
+          {!l2.connected ? 'L2 DISCONNECTED' : l2.enabled ? (l2.armed.length ? `L2 CONFIRMED SUBS ×${l2.armed.length}` : 'L2 idle · no confirmed subs') : 'L2 off'}{l2.max_armed ? ` / ${l2.max_armed}` : ''}
         </Chip>
       </header>
       <div className="at-ladder">
@@ -355,9 +384,110 @@ function ScannerCard({ s }: { s: ScannerSignal }) {
   );
 }
 
+// SIMULTANEOUS-subscription quota (used/total, remaining, reserved) — NOT "calls remaining".
+function QuotaBar({ l2 }: { l2: L2Status }) {
+  const q = l2.quota;
+  const etTime = (iso?: string | null) => iso
+    ? new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'America/New_York' })
+    : '—';
+  return (
+    <div className="at-quota" aria-label="Moomoo L2 subscription quota">
+      <Chip tone={l2.connected ? 'pass' : 'fail'} title={`provider ${l2.provider_state}`}>
+        {l2.connected ? '● OPEND CONNECTED' : 'OPEND DISCONNECTED'}
+      </Chip>
+      <Chip tone={l2.entitlement_state === 'AVAILABLE_REALTIME' ? 'pass' : 'context'}>ENTITLEMENT: {l2.entitlement_state}</Chip>
+      <div className="at-quota__item"><small>Subscriptions</small><strong>{q?.own_used ?? '—'} / {q?.total_quota ?? '—'}</strong></div>
+      <div className="at-quota__item"><small>Remaining</small><strong>{q?.remain ?? '—'}</strong></div>
+      <div className="at-quota__item"><small>Reserved</small><strong>{q?.reserved_units ?? '—'}</strong></div>
+      <div className="at-quota__item"><small>L2 symbols</small><strong>{l2.concurrent_symbols ?? 0} / {l2.max_concurrent_l2_symbols ?? '—'}</strong></div>
+      <div className="at-quota__item"><small>Other conns</small><strong>{q?.other_connection_usage ?? '—'}</strong></div>
+      <div className="at-quota__item"><small>Quota queried</small><strong>{etTime(q?.last_queried_at)} ET</strong></div>
+    </div>
+  );
+}
+
+const etClock = (iso?: string | null) => iso
+  ? new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'America/New_York' })
+  : '—';
+const signed = (v: number | null | undefined, dp = 2) => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(dp)}`;
+
+// One fired setup with live server-computed performance. Movement colour comes ONLY from
+// current server facts; when the mark is stale the last value is frozen and marked STALE.
+function FireRow({ p }: { p: FirePerformance }) {
+  const stale = p.mark_stale || p.lifecycle_state === 'DATA_STALE';
+  const up = !stale && p.change_from_fire != null && p.change_from_fire > 0;
+  const down = !stale && p.change_from_fire != null && p.change_from_fire < 0;
+  const rowCls = stale ? 'at-fire-row--stale' : up ? 'at-fire-row--up' : down ? 'at-fire-row--down' : '';
+  const moveCls = stale ? 'is-muted' : up ? 'is-up' : down ? 'is-down' : 'is-muted';
+  const age = p.age_seconds == null ? '—' : p.age_seconds < 90 ? `${Math.round(p.age_seconds)}s` : `${Math.round(p.age_seconds / 60)}m`;
+  return (
+    <div className={`at-fire-row ${rowCls}`}>
+      <div className="at-fire-row__top">
+        <div className="at-fire-row__sym">{p.symbol}
+          <small>{p.primary_setup_label ?? p.lane ?? '—'} · fired {etClock(p.fired_at)} ET @ {p.fire_price != null ? p.fire_price.toFixed(2) : '—'}</small>
+        </div>
+        <div className="at-inline at-wrap">
+          <Chip tone={p.lifecycle_state === 'STOP_TOUCHED' ? 'fail' : p.lifecycle_state === 'TARGET_TOUCHED' ? 'pass' : stale ? 'warning' : 'context'}>
+            {p.lifecycle_state.replace(/_/g, ' ')}
+          </Chip>
+          {stale && <Chip tone="warning" title={`mark age ${p.mark_age_ms != null ? Math.round(p.mark_age_ms) + 'ms' : 'unknown'}`}>STALE — value frozen</Chip>}
+        </div>
+      </div>
+      <dl className="at-fire-grid">
+        <div className="at-fire-metric"><dt>Fired at</dt><dd>{p.fire_price != null ? p.fire_price.toFixed(2) : '—'}</dd></div>
+        <div className="at-fire-metric"><dt>Now (last)</dt><dd className={moveCls}>{p.current_last != null ? p.current_last.toFixed(2) : '—'}</dd></div>
+        <div className="at-fire-metric"><dt>Bid / Ask</dt><dd>{p.current_bid != null ? p.current_bid.toFixed(2) : '—'} / {p.current_ask != null ? p.current_ask.toFixed(2) : '—'}</dd></div>
+        <div className="at-fire-metric"><dt>Move</dt><dd className={moveCls}>{signed(p.change_from_fire)} / {signed(p.change_from_fire_pct, 1)}%</dd></div>
+        <div className="at-fire-metric"><dt>Current R</dt><dd className={moveCls}>{p.current_r_multiple != null ? `${signed(p.current_r_multiple, 2)}R` : '—'}</dd></div>
+        <div className="at-fire-metric"><dt>Age</dt><dd>{age}</dd></div>
+        <div className="at-fire-metric"><dt>MFE</dt><dd className="is-up">{signed(p.mfe_since_fire)}</dd></div>
+        <div className="at-fire-metric"><dt>MAE</dt><dd className="is-down">{signed(p.mae_since_fire)}</dd></div>
+        <div className="at-fire-metric"><dt>Stop ref</dt><dd>{p.stop_ref != null ? p.stop_ref.toFixed(2) : '—'}</dd></div>
+        <div className="at-fire-metric"><dt>Target</dt><dd>{p.target_ref != null ? p.target_ref.toFixed(2) : '—'}</dd></div>
+        <div className="at-fire-metric"><dt>Hit stop / 1R</dt><dd>{p.hit_stop ? 'STOP' : '—'} / {p.hit_1r ? '1R' : '—'}</dd></div>
+        <div className="at-fire-metric"><dt>Mark source</dt><dd className="is-muted">{p.mark_source ?? 'none'}</dd></div>
+      </dl>
+      <div className="at-fire-meta">
+        <L2Pill state={p.l2_state_at_fire === 'T2' ? 'FRESH' : p.l2_state_at_fire} title={`L2 at fire: ${p.l2_state_at_fire ?? 'n/a'}`} />
+        <L2Pill state={p.l2_state_now} title={`L2 now: ${p.l2_state_now ?? 'n/a'}`} />
+        <time>mark {etClock(p.mark_at)} ET{p.mark_age_ms != null ? ` · ${Math.round(p.mark_age_ms)}ms old` : ''}</time>
+      </div>
+    </div>
+  );
+}
+
+function FirePerformancePanel({ fp, l2 }: { fp?: FirePerformancePayload; l2?: L2Status }) {
+  if (!fp && !l2) return null;
+  const active = fp?.active_fires ?? [];
+  const history = fp?.fire_history ?? [];
+  return (
+    <section className="at-fireperf" aria-labelledby="fireperf-title">
+      <div className="at-fireperf__head">
+        <h2 id="fireperf-title">Live fire performance</h2>
+        <span className="at-fireperf__sub">
+          {fp ? `${fp.active_count} active · ${fp.history_count} in history · updated ${etClock(fp.generated_at)} ET` : 'loading…'}
+        </span>
+      </div>
+      {l2 && <QuotaBar l2={l2} />}
+      {active.length > 0 ? (
+        <div className="at-fire-list">{active.map(p => <FireRow key={p.fire_id} p={p} />)}</div>
+      ) : (
+        <div className="at-fire-empty">No fresh or actively-observed fires right now. Fire price and time are immutable; current marks update independently. A fire older than the active-observation window moves to history below.</div>
+      )}
+      {history.length > 0 && (
+        <details className="at-fire-history">
+          <summary>Today's fire history — {history.length}</summary>
+          <div className="at-fire-list">{history.map(p => <FireRow key={p.fire_id} p={p} />)}</div>
+        </details>
+      )}
+    </section>
+  );
+}
+
 export default function ActiveTraderPage(props: Props) {
   const { signals, scannerSignals, accounts, onOpenStrategies, dataState, actionableCount,
-          ignTriggerCount, scannerGoCount, engineStatus, arming, lastIgnSessionDate, registryHash, registryVersion } = props;
+          ignTriggerCount, scannerGoCount, engineStatus, arming, lastIgnSessionDate, registryHash, registryVersion,
+          firePerf, l2Status } = props;
   const [preview, setPreview] = useState(false);   // explicit reference-sample preview (never the default)
   const ignItems = signals ?? [];
   const scanItems = scannerSignals ?? [];
@@ -396,6 +526,7 @@ export default function ActiveTraderPage(props: Props) {
     </div>
 
     {!preview && <EngineStatusBar es={engineStatus} />}
+    {!preview && (firePerf || l2Status) && <FirePerformancePanel fp={firePerf} l2={l2Status} />}
     {!preview && arming && <ArmingPanel a={arming} />}
 
     {/* scoped authority status — never conflate a global service with this tab's authority */}
