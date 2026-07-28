@@ -1,7 +1,13 @@
-"""P2 universe coverage — always score Finviz prime-setup top gainers (Ross alignment).
+"""P2 universe coverage — always score Finviz top gainers (Ross alignment).
 
 Ensures breaking-news / top-gainer movers enter the scoring pipeline even when
 they miss secondary screeners (e.g. VRX-style names).
+
+Sources both the prime_setups screener AND the market_movers snapshot that feeds
+the Home board. prime_setups alone is hard-filtered (RVOL>5x, gap>10%, $2-20,
+float<50M) and routinely yields 0-1 rows on a day with 15 double-digit gainers —
+on 2026-07-28 it returned only INLF while ENTX/NCTY/NIPG/PN/EUDA/TVGN sat in the
+$2-20 band on the Home board and were scored by nothing.
 """
 from __future__ import annotations
 
@@ -23,9 +29,9 @@ def inject_prime_setup_universe(
     lib = root / "scripts" / "lib"
     if str(lib) not in sys.path:
         sys.path.insert(0, str(lib))
-    from top_gainer_awareness import load_finviz_top_gainers
+    from top_gainer_awareness import load_top_gainers
 
-    gainers = load_finviz_top_gainers(root, limit=limit, min_change_pct=min_change_pct)
+    gainers = load_top_gainers(root, limit=limit, min_change_pct=min_change_pct)
     if not gainers:
         return 0
 
@@ -34,9 +40,13 @@ def inject_prime_setup_universe(
 
     for g in gainers:
         sym = g["symbol"]
+        src = g.get("source") or "prime_setups"
+        # market_movers is the unfiltered raw screen; label the lane so downstream
+        # scoring and the run log can tell a filtered leader from a raw-board one.
+        inject_tag = "prime_top_gainer" if src == "prime_setups" else "movers_top_gainer"
         if sym in by_sym:
             row = by_sym[sym]
-            row["_universe_inject"] = row.get("_universe_inject") or "prime_top_gainer"
+            row["_universe_inject"] = row.get("_universe_inject") or inject_tag
             if not row.get("_pre_score") or row["_pre_score"] < min_pre_score:
                 row["_pre_score"] = min_pre_score
             continue
@@ -57,14 +67,14 @@ def inject_prime_setup_universe(
             "sector": g.get("sector") or "",
             "industry": g.get("industry") or "",
             "company": g.get("company") or "",
-            "volume": 0,
+            "volume": float(g.get("volume") or 0),
             "avg_volume": 0,
             "source_count": 1,
-            "source_lists": "prime_setups",
-            "screener_name": "prime_setups",
-            "primary_source_list": "prime_setups",
+            "source_lists": src,
+            "screener_name": src,
+            "primary_source_list": src,
             "_source": "screener",
-            "_universe_inject": "prime_top_gainer",
+            "_universe_inject": inject_tag,
             "_pre_score": min_pre_score,
         }
         tickers.append(row)

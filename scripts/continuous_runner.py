@@ -66,6 +66,50 @@ SCORE_JUMP_THRESHOLD  = 10
 RVOL_5X_THRESHOLD     = 5.0
 RVOL_8X_THRESHOLD     = 8.0
 
+# Lanes scoring.py routes a row into for human review; each also sets
+# manual_review_required + not_tradeable. See apply_*_manual_fields in scripts/lib.
+MANUAL_LANE_STATUSES = ("SQUEEZE", "HIGH_RVOL", "MICRO_FLOAT", "MOMENTUM_RUNNER", "LOW_PRICE")
+
+
+def is_manual_lane_row(row: dict) -> bool:
+    """True when the live pass deliberately routed this row to human review."""
+    return bool(
+        row.get("awareness_status") in MANUAL_LANE_STATUSES
+        or row.get("manual_review_required")
+        or row.get("not_tradeable")
+    )
+
+
+def restore_full_run_decisions(scored: list[dict], full_map: dict) -> tuple[int, int]:
+    """Restore full-run decisions onto live-scored rows. Returns (restored, skipped).
+
+    Manual-review rows are skipped. Restoring their decision used to persist
+    self-contradictory rows to trade_ai_scans — decision=GO alongside
+    awareness_status=HIGH_RVOL / manual_review_required / not_tradeable (LVWR and
+    POLA, 2026-07-28) — because only t["decision"] was overwritten while the lane
+    fields scoring.py set survived.
+
+    The loop is self-reinforcing, which is why it reproduced every cycle: lane
+    tagging demotes rows out of GO, the resulting GO=0 triggers this fallback, and
+    the fallback promoted exactly the rows that had just been demoted.
+
+    Restoring the lane alongside the decision is not possible — live_run_state.json
+    carries only {symbol, decision, score}. So the conservative direction is the
+    only consistent one: a row flagged for manual review keeps that verdict, and
+    an actionable decision is never written onto a not_tradeable row.
+    """
+    restored = skipped = 0
+    for t in scored:
+        sym = t.get("symbol", "")
+        if sym not in full_map:
+            continue
+        if is_manual_lane_row(t):
+            skipped += 1
+            continue
+        t["decision"] = full_map[sym]
+        restored += 1
+    return restored, skipped
+
 
 def classify_social_injection(row: dict) -> dict:
     """P0-4: route-aware decision for injecting a scalp_scan_results row into live scoring.
@@ -526,12 +570,11 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                     if _rs.get("date") == date_str and _rs.get("run_label") == run_label:
                         _full = {t["symbol"]: t.get("decision","NO GO") for t in _rs.get("tickers",[])}
                         if _full:
-                            for t in scored:
-                                sym = t.get("symbol","")
-                                if sym in _full:
-                                    t["decision"] = _full[sym]
+                            _rest, _skip = restore_full_run_decisions(scored, _full)
                             go_c = sum(1 for t in scored if t.get("decision")=="GO")
-                            print(f"  [live] restored full-run decisions: GO={go_c}")
+                            _note = f" ({_skip} manual-review row(s) held)" if _skip else ""
+                            print(f"  [live] restored full-run decisions: GO={go_c} "
+                                  f"restored={_rest}{_note}")
                 except Exception as _e:
                     print(f"  [live] restore warning: {_e}")
     except Exception as e:

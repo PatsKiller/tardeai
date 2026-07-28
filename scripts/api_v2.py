@@ -11238,14 +11238,16 @@ def _compute_trade_ai():
         from high_rvol_manual_review import attach_high_rvol_manual_tags
         from low_price_manual_review import attach_low_price_manual_tags
         from catalyst_exception import attach_catalyst_exception_tags
-        from top_gainer_awareness import attach_top_gainer_awareness, load_finviz_top_gainers
+        from top_gainer_awareness import attach_top_gainer_awareness, load_top_gainers
         attach_squeeze_manual_tags(tickers)
         attach_micro_float_manual_tags(tickers)
         attach_high_rvol_manual_tags(tickers)
         attach_low_price_manual_tags(tickers)
         attach_catalyst_exception_tags(tickers)
+        # Runs LAST on purpose — the lane taggers above own awareness_status. The
+        # gainer marker is orthogonal (row["top_gainer"]) so it survives a squeeze.
         attach_top_gainer_awareness(tickers, PROJECT_ROOT, limit=30)
-        _top_gainer_rows = load_finviz_top_gainers(PROJECT_ROOT, limit=30)
+        _top_gainer_rows = load_top_gainers(PROJECT_ROOT, limit=30)
     except Exception:
         _top_gainer_rows = []
 
@@ -11367,6 +11369,10 @@ def _compute_trade_ai():
                 "rvol": g.get("rvol"),
                 "price": g.get("price"),
                 "float_m": g.get("float_m"),
+                "rank": g.get("rank"),
+                "source": g.get("source"),
+                "captured_at": g.get("captured_at"),
+                "stale": bool(g.get("stale")),
             }
             for g in _top_gainer_rows
         ],

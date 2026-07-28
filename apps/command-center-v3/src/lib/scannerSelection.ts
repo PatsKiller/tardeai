@@ -26,6 +26,14 @@ export interface ScannerRow {
   manual_review_required?: boolean
   awareness_status?: string
   setup_class?: string
+  /** Lane-independent TOP GAINER marker — set even when awareness_status is SQUEEZE etc. */
+  top_gainer?: boolean
+  top_gainer_pct?: number
+  top_gainer_rank?: number
+  top_gainer_source?: string
+  top_gainer_pill?: string
+  top_gainer_stale?: boolean
+  top_gainer_captured_at?: string
   squeeze_sort_score?: number
   runner_sort_score?: number
   micro_float_sort_score?: number
@@ -313,18 +321,39 @@ export function getSocialScoutPill(row: ScannerRow | null | undefined): ScoutPil
   }
 }
 
-/** Top Finviz gainer — awareness only (blocked from momentum-scalp GO, e.g. reverse split). */
+/** Top Finviz gainer — awareness only (blocked from momentum-scalp GO, e.g. reverse split).
+ *
+ * Orthogonal to the manual lanes: a row can be BOTH a squeeze and a top gainer, and
+ * used to lose the gainer fact because the squeeze tagger owns awareness_status and
+ * runs first. `top_gainer` is the lane-independent marker; awareness_status is kept
+ * as the legacy fallback for rows tagged before the API carried the marker. */
 export function getTopGainerPill(row: ScannerRow | null | undefined): TopGainerPill {
-  if (!row || row.awareness_status === 'SQUEEZE' || row.setup_class === 'squeeze') return { isTopGainer: false }
-  if (row.awareness_status !== 'TOP_GAINER') return { isTopGainer: false }
-  const chg = row.change_pct != null && row.change_pct !== '' ? String(row.change_pct).replace(/%$/, '') : ''
-  const text = row.operator_pill || (chg ? `TOP GAINER · +${chg}%` : 'TOP GAINER')
+  if (!row) return { isTopGainer: false }
+  if (!row.top_gainer && row.awareness_status !== 'TOP_GAINER') return { isTopGainer: false }
+  const inLane = row.awareness_status != null
+    && row.awareness_status !== 'TOP_GAINER'
+    && row.awareness_status !== 'SOCIAL_AWARENESS'
+  const chg = row.top_gainer_pct != null
+    ? String(row.top_gainer_pct)
+    : row.change_pct != null && row.change_pct !== '' ? String(row.change_pct).replace(/%$/, '') : ''
+  // In a lane the row's operator_pill belongs to that lane (e.g. "SQUEEZE · R/S · 85.7x"),
+  // so never reuse it here — fall back to the dedicated gainer pill.
+  const text = row.top_gainer_pill
+    || (inLane ? '' : row.operator_pill)
+    || (chg ? `TOP GAINER · +${chg}%` : 'TOP GAINER')
   const hints = (row.operator_tooltip_hints && row.operator_tooltip_hints.length)
     ? row.operator_tooltip_hints
     : row.disqualification_reason
       ? [String(row.disqualification_reason)]
       : ['Awareness only — not momentum-scalp GO']
   const subtitle = row.operator_subtitle || 'Leading Finviz gainer — awareness only'
+  const srcLabel = row.top_gainer_source === 'market_movers'
+    ? 'Home movers board (raw Finviz screen — no rvol/gap/float)'
+    : row.top_gainer_source === 'prime_setups+market_movers'
+      ? 'prime_setups + Home movers board'
+      : 'Finviz prime-setup leader'
+  const rank = row.top_gainer_rank != null ? ` #${row.top_gainer_rank}` : ''
+  const stale = row.top_gainer_stale ? ' Capture is from a prior session.' : ''
   return {
     isTopGainer: true,
     text,
@@ -333,7 +362,7 @@ export function getTopGainerPill(row: ScannerRow | null | undefined): TopGainerP
     tooltip: buildPillTooltip(row, 'topGainer', {
       subtitle,
       hints,
-      footer: 'Top Gainer — Finviz prime-setup leader. Not momentum-scalp auto GO.',
+      footer: `Top Gainer${rank} — ${srcLabel}.${stale} Not momentum-scalp auto GO.`,
     }),
   }
 }
@@ -534,8 +563,12 @@ export function scannerSortKey(row: ScannerRow): number {
     const gap = parseFloat(String(row.gap_pct ?? '').replace('%', ''))
     return 1050 + (Number.isFinite(rvol) ? rvol * Math.max(Math.abs(gap), 1) : 0)
   }
-  if (row.awareness_status === 'TOP_GAINER') {
-    const chg = parseFloat(String(row.change_pct ?? '').replace('%', ''))
+  // Reached only when no manual lane claimed the row above — a squeeze that is also a
+  // top gainer intentionally sorts in the squeeze lane; the pill still renders.
+  if (row.awareness_status === 'TOP_GAINER' || row.top_gainer) {
+    const chg = row.top_gainer_pct != null
+      ? Number(row.top_gainer_pct)
+      : parseFloat(String(row.change_pct ?? '').replace('%', ''))
     return 1000 + (Number.isFinite(chg) ? chg : 0)
   }
   if (isSocialAwarenessRow(row)) {

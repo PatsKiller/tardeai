@@ -107,6 +107,37 @@ check('isSqueezeRow', isSqueezeRow({ symbol: 'GMM', awareness_status: 'SQUEEZE' 
 check('squeeze sorts above top gainer', scannerSortKey({ symbol: 'GMM', awareness_status: 'SQUEEZE', rvol: 100, gap_pct: 50 })
   > scannerSortKey({ symbol: 'X', awareness_status: 'TOP_GAINER', change_pct: 99 }))
 
+// ---- TOP GAINER marker is orthogonal to the lane (2026-07-28) ----
+// INLF was the only prime_setups gainer that day and the squeeze tagger claimed
+// awareness_status first, so the gainer fact vanished from the UI entirely.
+const inlf = getTopGainerPill({
+  symbol: 'INLF', awareness_status: 'SQUEEZE', decision: 'MANUAL_REVIEW',
+  operator_pill: 'SQUEEZE · R/S · 85.7x', operator_color_token: 'squeeze',
+  top_gainer: true, top_gainer_pct: 33.8, top_gainer_rank: 10, top_gainer_source: 'prime_setups',
+  top_gainer_pill: 'TOP GAINER · +33.8%',
+})
+check('squeeze row still yields a top-gainer pill', inlf.isTopGainer)
+check('top-gainer pill does not reuse the squeeze operator_pill', inlf.text === 'TOP GAINER · +33.8%')
+check('squeeze row keeps its own squeeze pill', getSqueezePill({
+  symbol: 'INLF', awareness_status: 'SQUEEZE', operator_pill: 'SQUEEZE · R/S · 85.7x',
+}).text === 'SQUEEZE · R/S · 85.7x')
+check('top-gainer tooltip names its rank', inlf.tooltip!.includes('#10'))
+
+// market_movers-sourced rows carry no rvol/gap/float — the tooltip must say so.
+const dfns = getTopGainerPill({
+  symbol: 'DFNS', awareness_status: 'TOP_GAINER', decision: 'AWARE', price: 13.1,
+  top_gainer: true, top_gainer_pct: 201.15, top_gainer_rank: 1,
+  top_gainer_source: 'market_movers', top_gainer_pill: 'TOP GAINER · +201.2%', top_gainer_stale: true,
+})
+check('market_movers gainer pill', dfns.isTopGainer && dfns.text === 'TOP GAINER · +201.2%')
+check('market_movers tooltip flags the thin source', dfns.tooltip!.includes('no rvol/gap/float'))
+check('stale capture surfaced in tooltip', dfns.tooltip!.includes('prior session'))
+check('marker alone drives sort key', scannerSortKey({ symbol: 'DFNS', top_gainer: true, top_gainer_pct: 201.15 })
+  > scannerSortKey({ symbol: 'X', score: 0 }))
+check('squeeze+gainer still sorts in the squeeze lane', scannerSortKey({
+  symbol: 'INLF', awareness_status: 'SQUEEZE', rvol: 85.7, gap_pct: 30, top_gainer: true, top_gainer_pct: 33.8,
+}) > scannerSortKey({ symbol: 'DFNS', top_gainer: true, top_gainer_pct: 201.15 }))
+
 const gmmTip = buildPillTooltip({
   symbol: 'GMM', price: 4.06, change_pct: '119.5', gap_pct: '207.5', rvol: 225.2, float_m: 1.68,
   score: 35, grade: 'SQUEEZE', decision: 'MANUAL_REVIEW', sector: 'Technology',
