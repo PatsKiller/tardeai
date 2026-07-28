@@ -57,54 +57,50 @@ export interface ScalpSignal {
 export type ActiveTraderDataState =
   | 'LIVE_DATA' | 'EMPTY_LIVE_QUEUE' | 'DATA_STALE' | 'API_UNAVAILABLE' | 'REFERENCE_SAMPLE' | 'LOADING';
 
-// LIVE momentum-scalp scanner (scalp_scan_results) — the engine that actually runs 6am-noon incl.
-// premarket. These are REAL scanner fields; IGN/subscores/setup taxonomy are NOT fabricated here.
-export interface LiveScanFire {
-  symbol: string | null;
-  scanned_at: string | null;
-  scanned_at_et: string | null;      // "HH:MM" ET
+// One actionable scanner signal (scalp_scan_results, decision GO or momentum route). REAL scanner
+// fields only — NO fabricated IGN/subscores (those exist only on an ign_trigger item).
+export interface ScannerSignal {
+  source: 'scanner';
+  id: string;
+  symbol: string;
+  scannedAt: string | null;
+  scannedAtEt: string | null;        // "HH:MM" ET
   score: number | null;
   grade: string | null;              // A/B/C/D
-  decision: string | null;           // GO / WAIT / AVOID
-  route: string | null;              // momentum_scalp / meme_squeeze_momentum / watch_only / ...
-  route_strategy_id: string | null;
-  route_actionability: string | null;
+  decision: string | null;           // GO / ENTER / TAKE
+  route: string | null;              // momentum_scalp / meme_squeeze_momentum
+  routeStrategyId: string | null;
   rvol: number | null;
-  gap_pct: number | null;
-  change_pct: number | null;
+  gapPct: number | null;
+  changePct: number | null;
   price: number | null;
-  float_mm: number | null;
+  floatM: number | null;
   sector: string | null;
-  industry: string | null;
-  catalyst_verified: boolean | null;
-  catalyst_confidence: number | null;
-  alerted: boolean | null;
-  disqualified: boolean | null;
-  disqualification_reason: string | null;
-  operator_pill: string | null;
-  operator_subtitle: string | null;
-  operator_color_token: string | null;
-  scout_status: string | null;
-  scout_pillar_count: number | null;
-  not_tradeable: boolean | null;
-  actionable: boolean;
+  catalystVerified: boolean | null;
+  operatorPill: string | null;
+  operatorSubtitle: string | null;
+  reviewState: string;               // GO / ENTER / TAKE
 }
 
-export interface LiveScan {
-  available: boolean;
-  session_date: string;
-  is_today: boolean;
-  scan_count: number;
-  distinct_symbols: number;
-  actionable_count: number;          // today's GO/ENTER/TAKE count
-  momentum_route_count: number;      // today's momentum_scalp/meme_squeeze route count
-  last_scan_at: string | null;
-  window: string;                    // "06:00-12:00 ET"
-  fires: LiveScanFire[];
-  by_decision: Record<string, number>;
-  by_route: Record<string, number>;
-  source: string;
-  note: string;
+// Compact live status of the two momentum-scalp engines (NOT a data dump).
+export interface EngineStatus {
+  scanner: {
+    available: boolean;
+    scan_count_today: number;
+    distinct_symbols: number;
+    last_scan_at: string | null;
+    go_count_today: number;
+    momentum_route_count_today: number;
+    window: string;                  // "06:00-12:00 ET"
+  };
+  ign: {
+    rth_only: boolean;
+    opens_et: string;                // "09:30"
+    market_open: boolean;
+    today_row_count: number;
+    today_trigger_count: number;
+    note: string;
+  };
 }
 
 export interface PermissionQueuePayload {

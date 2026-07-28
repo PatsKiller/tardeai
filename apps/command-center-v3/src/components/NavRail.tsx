@@ -11,6 +11,7 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/portfolio/re-entry', label: '↳ Re-Entry' },
       { to: '/risk', label: 'Risk' },
       { to: '/trading', label: 'Trading' },
+      { to: '/active-trader', label: 'Active Trader' },
       { to: '/strategy', label: 'Strategy' },
       { to: '/journal', label: 'TradeInView' },
       { to: '/watch', label: 'Watch' },

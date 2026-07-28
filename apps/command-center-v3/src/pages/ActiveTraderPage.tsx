@@ -1,22 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ActiveTraderDataState, BrokerAccount, LiveScan, LiveScanFire, RoutingDraft, ScalpSignal } from './activeTrader.types';
+import type { ActiveTraderDataState, BrokerAccount, EngineStatus, RoutingDraft, ScalpSignal, ScannerSignal } from './activeTrader.types';
 import { MOCK_ACCOUNTS, MOCK_QUEUE, MOCK_SIGNAL } from './activeTrader.mock';
 import './activeTrader.css';
 
 type Props = {
-  signals?: ScalpSignal[];              // undefined = loading; [] = empty live queue
+  signals?: ScalpSignal[];              // IGN TRIGGER actionable items; undefined = loading; [] = none
+  scannerSignals?: ScannerSignal[];     // scanner GO/momentum-route actionable items
   accounts?: BrokerAccount[];
   onOpenStrategies?: () => void;
-  dataState?: ActiveTraderDataState;    // honest state from the API (LIVE_DATA/EMPTY_LIVE_QUEUE/DATA_STALE/API_UNAVAILABLE)
+  dataState?: ActiveTraderDataState;    // honest state from the API (LIVE_DATA/EMPTY_LIVE_QUEUE/API_UNAVAILABLE)
   actionableCount?: number;
-  sourceSessionDate?: string | null;
-  lastEventAt?: string | null;
+  ignTriggerCount?: number;
+  scannerGoCount?: number;
+  engineStatus?: EngineStatus;
+  lastIgnSessionDate?: string | null;   // reference only — last alert-worthy IGN session (NOT the queue)
   registryHash?: string | null;
   registryVersion?: string | null;
-  // LIVE momentum-scalp scanner (scalp_scan_results) — the engine firing 6am-noon right now.
-  engineLiveToday?: boolean;
-  engineWindow?: string;
-  liveScan?: LiveScan;
 };
 
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -217,109 +216,152 @@ function decisionTone(d: string | null): 'pass' | 'warning' | 'fail' | 'context'
   return d === 'GO' || d === 'ENTER' || d === 'TAKE' ? 'pass' : d === 'WAIT' ? 'warning' : d === 'AVOID' ? 'fail' : 'context';
 }
 
-function LiveScanPanel({ scan, win }: { scan: LiveScan; win?: string }) {
-  const lastEt = scan.last_scan_at
-    ? new Date(scan.last_scan_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' })
+// Compact engine status — NOT a data dump. Says whether each engine is live and how much it's seen today.
+function EngineStatusBar({ es }: { es?: EngineStatus }) {
+  if (!es) return null;
+  const lastEt = es.scanner.last_scan_at
+    ? new Date(es.scanner.last_scan_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' })
     : '—';
   return (
-    <section className="at-panel at-livescan" aria-labelledby="livescan-title">
-      <header className="at-panel__header">
-        <div>
-          <h2 id="livescan-title">Live momentum-scalp scanner <small>{scan.source}</small></h2>
-          <p>window {win ?? scan.window} · {scan.scan_count} scans today · {scan.distinct_symbols} symbols · last {lastEt} ET</p>
-        </div>
-        <div className="at-inline at-wrap">
-          <Chip tone="pass">● LIVE · FIRING</Chip>
-          <Chip tone={scan.actionable_count > 0 ? 'pass' : 'context'}>{scan.actionable_count} GO</Chip>
-          <Chip tone={scan.momentum_route_count > 0 ? 'pass' : 'context'}>{scan.momentum_route_count} momentum route</Chip>
-        </div>
+    <div className="at-enginebar at-inline at-wrap">
+      <Chip tone={es.scanner.available ? 'pass' : 'fail'} title="Discovery scanner (scalp_scan_results), 6am-noon ET">
+        {es.scanner.available ? '● SCANNER LIVE' : 'SCANNER DOWN'}
+      </Chip>
+      <span className="at-enginebar__stat">{es.scanner.scan_count_today} scans · {es.scanner.go_count_today} GO · {es.scanner.momentum_route_count_today} momentum-route · last {lastEt} ET</span>
+      <Chip tone={es.ign.market_open ? 'pass' : 'context'} title="IGN/trigger engine (scalp_ignition_events), RTH only">
+        {es.ign.market_open ? '● IGN LIVE' : `IGN IDLE · opens ${es.ign.opens_et} ET`}
+      </Chip>
+      <span className="at-enginebar__stat">{es.ign.today_trigger_count} triggers · {es.ign.today_row_count} rows today</span>
+    </div>
+  );
+}
+
+// One actionable scanner GO row (real scanner fields — no fabricated IGN).
+function ScannerRow({ s, selected, onSelect }: { s: ScannerSignal; selected: boolean; onSelect: () => void }) {
+  return (
+    <button type="button" onClick={onSelect} aria-pressed={selected}
+      className={`at-queue-row at-queue-row--scanner${selected ? ' is-selected' : ''}`}>
+      <span className="at-queue-row__symbol">{s.symbol}<small>{s.price != null ? s.price.toFixed(2) : '—'}</small></span>
+      <span className="at-queue-row__score">{s.score ?? '—'}<small>{s.grade ?? ''}</small></span>
+      <span className="at-queue-row__body">
+        <strong>{s.decision} · scanner</strong>
+        <small>route {s.route ?? '—'} · RVOL {s.rvol != null ? s.rvol.toFixed(1) : '—'} · gap {s.gapPct != null ? `${s.gapPct.toFixed(1)}%` : '—'} · {s.scannedAtEt ?? ''}</small>
+      </span>
+      <span className="at-queue-row__action">Review</span>
+    </button>
+  );
+}
+
+// Detail card for a scanner GO signal — honest scanner evidence, no IGN/subscores invented.
+function ScannerCard({ s }: { s: ScannerSignal }) {
+  return (
+    <section className="at-panel at-trade-card" aria-labelledby="scanner-card-title">
+      <header className="at-panel__header at-trade-card__title-row">
+        <div><h2 id="scanner-card-title">{s.symbol} <span>{s.price != null ? s.price.toFixed(2) : '—'}</span> <em>{s.changePct != null ? `${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(1)}%` : ''}</em></h2></div>
+        <div className="at-inline"><Chip tone="pass">{s.decision}</Chip><Chip>scanner signal</Chip></div>
       </header>
-      <div className="at-livescan__dist at-inline at-wrap">
-        {Object.entries(scan.by_decision).map(([k, v]) => <Chip key={k} tone={decisionTone(k)}>{k} {v}</Chip>)}
-        <span className="at-livescan__sep">routes</span>
-        {Object.entries(scan.by_route).map(([k, v]) => <Chip key={k} title="scanner route assignment">{k} {v}</Chip>)}
+      <dl className="at-level-grid">
+        <div><dt>score</dt><dd>{s.score ?? '—'} {s.grade ?? ''}</dd></div>
+        <div><dt>route</dt><dd>{s.route ?? '—'}</dd></div>
+        <div><dt>RVOL</dt><dd>{s.rvol != null ? `${s.rvol.toFixed(1)}x` : '—'}</dd></div>
+        <div><dt>gap</dt><dd>{s.gapPct != null ? `${s.gapPct.toFixed(1)}%` : '—'}</dd></div>
+        <div><dt>float</dt><dd>{s.floatM != null ? `${s.floatM.toFixed(1)}M` : '—'}</dd></div>
+        <div><dt>sector</dt><dd>{s.sector ?? '—'}</dd></div>
+      </dl>
+      {s.operatorSubtitle && <div className="at-chip-rail"><Chip>{s.operatorPill ?? 'scanner'}</Chip><span className="at-source">{s.operatorSubtitle}</span></div>}
+      <div className="at-livescan__note">
+        Scanner discovery signal (scalp_scan_results). No IGN score or trigger evidence is fabricated here —
+        those come only from the IGN engine during RTH. Manual paper review only; no order path.
       </div>
-      <div className="at-livescan__table" role="table" aria-label="Live scanner fires today">
-        <div className="at-livescan__row at-livescan__row--head" role="row">
-          <span>time</span><span>sym</span><span>score</span><span>gr</span><span>decision</span><span>route</span><span>RVOL</span><span>chg%</span><span>gap%</span><span>sector</span>
-        </div>
-        {scan.fires.length === 0 && <div className="at-livescan__empty">No scans returned for today yet.</div>}
-        {scan.fires.map((f, i) => (
-          <div key={`${f.symbol}-${f.scanned_at}-${i}`} className={`at-livescan__row${f.actionable ? ' is-actionable' : ''}`} role="row">
-            <span className="mono">{f.scanned_at_et ?? '—'}</span>
-            <span className="mono at-livescan__sym">{f.symbol ?? '—'}</span>
-            <span className="mono">{f.score ?? '—'}</span>
-            <span>{f.grade ?? '—'}</span>
-            <span className={`at-chip at-chip--${decisionTone(f.decision)}`}>{f.decision ?? '—'}</span>
-            <span className="at-livescan__route" title={f.route_strategy_id ?? undefined}>{f.route ?? '—'}</span>
-            <span className="mono">{f.rvol != null ? f.rvol.toFixed(1) : '—'}</span>
-            <span className="mono">{f.change_pct != null ? f.change_pct.toFixed(1) : '—'}</span>
-            <span className="mono">{f.gap_pct != null ? f.gap_pct.toFixed(1) : '—'}</span>
-            <span className="at-livescan__sector">{f.sector ?? '—'}</span>
-          </div>
-        ))}
-      </div>
-      <div className="at-livescan__note">{scan.note}</div>
     </section>
   );
 }
 
 export default function ActiveTraderPage(props: Props) {
-  const { signals, accounts, onOpenStrategies, dataState, actionableCount, sourceSessionDate, lastEventAt, registryHash, registryVersion, engineLiveToday, engineWindow, liveScan } = props;
-  const showLiveScan = !!engineLiveToday && !!liveScan?.available;
+  const { signals, scannerSignals, accounts, onOpenStrategies, dataState, actionableCount,
+          ignTriggerCount, scannerGoCount, engineStatus, lastIgnSessionDate, registryHash, registryVersion } = props;
   const [preview, setPreview] = useState(false);   // explicit reference-sample preview (never the default)
-  const derived: ActiveTraderDataState = signals === undefined ? 'LOADING' : (signals.length ? 'LIVE_DATA' : 'EMPTY_LIVE_QUEUE');
-  const state: ActiveTraderDataState = preview ? 'REFERENCE_SAMPLE' : (dataState ?? derived);
+  const ignItems = signals ?? [];
+  const scanItems = scannerSignals ?? [];
+  const loading = signals === undefined && scannerSignals === undefined && !engineStatus;
+  const totalActionable = actionableCount ?? (ignItems.length + scanItems.length);
+  const state: ActiveTraderDataState = preview ? 'REFERENCE_SAMPLE'
+    : (dataState ?? (loading ? 'LOADING' : (totalActionable ? 'LIVE_DATA' : 'EMPTY_LIVE_QUEUE')));
   const reference = state === 'REFERENCE_SAMPLE';
 
-  const queue = reference ? MOCK_QUEUE : (signals ?? []);
+  // reference/preview shows the mock IGN layout; live shows the real actionable queue
+  const ignQueue = reference ? MOCK_QUEUE : ignItems;
   const acct = reference ? MOCK_ACCOUNTS : (accounts ?? []);
-  const actionable = reference ? 0 : (actionableCount ?? queue.filter(s => s.state === 'ARMED' || s.state === 'TRIGGERED').length);
-  const sorted = useMemo(() => [...queue].sort((a, b) => b.ign - a.ign), [queue]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = sorted.find(s => s.id === selectedId) ?? sorted[0] ?? null;
+  const sortedIgn = useMemo(() => [...ignQueue].sort((a, b) => b.ign - a.ign), [ignQueue]);
+  const [selIgn, setSelIgn] = useState<string | null>(null);
+  const [selScan, setSelScan] = useState<string | null>(null);
+  const selectedIgn = sortedIgn.find(s => s.id === selIgn) ?? (selScan ? null : sortedIgn[0]) ?? null;
+  const selectedScan = scanItems.find(s => s.id === selScan) ?? null;
   const [routing, setRouting] = useState(false);
-  const banner = BANNER[state];
-  const canRoute = !reference && !!selected && (selected.state === 'ARMED' || selected.state === 'TRIGGERED');
+  const canRoute = !reference && !!selectedIgn && (selectedIgn.state === 'ARMED' || selectedIgn.state === 'TRIGGERED');
+  const hasAny = reference || ignItems.length > 0 || scanItems.length > 0;
 
   return <main className="active-trader-page">
     <div className="active-trader-page__intro">
-      <div><h1>ActiveTrader</h1><p>Evidence-first momentum-scalp review. Manual paper testing only; no automatic or live order path.</p></div>
+      <div><h1>Active Trader — Review</h1><p>Actionable momentum-scalp signals to review for a manual paper trade. Manual paper only; no automatic or live order path.</p></div>
       <div className="at-inline at-wrap">
-        {showLiveScan && !preview && <Chip tone="pass" title="Live momentum-scalp scanner is firing today (scalp_scan_results)">● ENGINE LIVE · {liveScan!.scan_count} SCANS · {engineWindow ?? liveScan!.window}</Chip>}
-        <Chip tone={banner.tone} title="IGN/setup taxonomy table (scalp_ignition_events) — RTH shadow logger">IGN TAXONOMY: {banner.text}</Chip>
+        <Chip tone={totalActionable ? 'pass' : 'context'}>{totalActionable} actionable</Chip>
         <button type="button" className="at-link-button" onClick={() => setPreview(p => !p)}>{preview ? 'Exit preview' : 'Preview example'}</button>
       </div>
     </div>
+
+    {!preview && <EngineStatusBar es={engineStatus} />}
 
     {/* scoped authority status — never conflate a global service with this tab's authority */}
     <div className="at-authority-rail at-inline at-wrap">
       <Chip title="This tab">ACTIVE TRADER SESSION: NOT AUTHORIZED</Chip>
       <Chip tone="fail" title="No order routes wired in ActiveTrader">ACTIVE TRADER ROUTES: OFF</Chip>
       <Chip title="Any global 2FA/automation service is scoped OUTSIDE ActiveTrader">GLOBAL SERVICES: OUT OF SCOPE HERE</Chip>
-      <span className="at-source">source: {reference ? 'reference sample' : 'scalp_ignition_events'}
-        {sourceSessionDate ? ` · session ${sourceSessionDate}` : ''}{lastEventAt ? ` · last ${String(lastEventAt).slice(11, 19)}Z` : ''}
+      <span className="at-source">queue: actionable only (IGN TRIGGER + scanner GO)
+        {lastIgnSessionDate ? ` · last IGN fire ${lastIgnSessionDate}` : ''}
         {registryVersion ? ` · ${registryVersion}` : ''}{registryHash ? ` ${registryHash.replace('sha256:', '').slice(0, 8)}` : ''}</span>
     </div>
 
-    {state === 'API_UNAVAILABLE' && <div className="at-fullstate at-fullstate--fail">Permission-queue API unavailable. This is not an empty queue — the backend did not respond.</div>}
-    {state === 'LOADING' && <div className="at-fullstate">Loading permission queue…</div>}
+    {state === 'API_UNAVAILABLE' && <div className="at-fullstate at-fullstate--fail">Permission-queue API unavailable — the backend did not respond (not an empty queue).</div>}
+    {state === 'LOADING' && <div className="at-fullstate">Loading actionable queue…</div>}
 
-    {/* LIVE momentum-scalp scanner — what is actually firing 6am-noon, right now. Leads the page. */}
-    {showLiveScan && !preview && <LiveScanPanel scan={liveScan!} win={engineWindow} />}
-
-    {showLiveScan && !preview && (
-      <div className="at-section-label">IGN / setup-taxonomy detail <small>scalp_ignition_events · RTH shadow logger{sourceSessionDate ? ` · latest tagged session ${sourceSessionDate}` : ''}</small></div>
+    {!reference && !hasAny && state !== 'LOADING' && state !== 'API_UNAVAILABLE' && (
+      <section className="at-panel at-empty-card">
+        <strong>No actionable momentum-scalp signals right now.</strong>
+        <p>The queue shows only what a human could paper-route today — IGN TRIGGER fires and scanner GO/momentum-route signals. Nothing has crossed that bar yet.</p>
+        <ul>
+          <li>Scanner: {engineStatus?.scanner.available ? `live, ${engineStatus.scanner.scan_count_today} scans today, ${engineStatus.scanner.go_count_today} GO` : 'down'}.</li>
+          <li>IGN engine: {engineStatus?.ign.market_open ? `live, ${engineStatus.ign.today_trigger_count} triggers today` : `RTH-only, opens ${engineStatus?.ign.opens_et ?? '09:30'} ET`}{lastIgnSessionDate ? ` — last alert-worthy fire ${lastIgnSessionDate}` : ''}.</li>
+        </ul>
+        <button type="button" className="at-link-button" onClick={() => setPreview(true)}>Preview the review layout with sample data</button>
+      </section>
     )}
 
-    <div className="active-trader-page__layout">
-      <aside><PermissionQueue signals={sorted} selectedId={selected?.id ?? null} onSelect={s => setSelectedId(s.id)} actionable={actionable} reference={reference} /></aside>
-      <div>{selected
-        ? <ActiveTradeCard signal={selected} reference={reference} canRoute={canRoute || reference}
-            onRoute={() => setRouting(true)} onDismiss={() => setSelectedId(null)} onOpenStrategies={onOpenStrategies} />
-        : <section className="at-panel at-empty-card">{state === 'EMPTY_LIVE_QUEUE' ? 'No live signals to review. Use “Preview example” to see the reference layout.' : 'Select a signal from the queue.'}</section>}
+    {(reference || ignItems.length > 0) && (
+      <div className="active-trader-page__layout">
+        <aside><PermissionQueue signals={sortedIgn} selectedId={selectedIgn?.id ?? null} onSelect={s => { setSelIgn(s.id); setSelScan(null); }} actionable={reference ? 0 : ignItems.length} reference={reference} /></aside>
+        <div>{selectedIgn
+          ? <ActiveTradeCard signal={selectedIgn} reference={reference} canRoute={canRoute || reference}
+              onRoute={() => setRouting(true)} onDismiss={() => setSelIgn(null)} onOpenStrategies={onOpenStrategies} />
+          : <section className="at-panel at-empty-card">Select an IGN fire from the queue.</section>}
+        </div>
       </div>
-    </div>
-    {routing && selected && <AccountAllocationModal signal={selected} accounts={acct} reference={reference} onClose={() => setRouting(false)} />}
+    )}
+
+    {!reference && scanItems.length > 0 && (
+      <div className="active-trader-page__layout">
+        <aside>
+          <section className="at-panel" aria-labelledby="scanner-go-title">
+            <header className="at-panel__header"><h2 id="scanner-go-title">Scanner GO <small>{scannerGoCount ?? scanItems.length} today</small></h2><Chip tone="pass">actionable</Chip></header>
+            <div className="at-queue">
+              {scanItems.map(s => <ScannerRow key={s.id} s={s} selected={s.id === selScan} onSelect={() => { setSelScan(s.id); setSelIgn(null); }} />)}
+            </div>
+          </section>
+        </aside>
+        <div>{selectedScan ? <ScannerCard s={selectedScan} /> : <section className="at-panel at-empty-card">Select a scanner GO signal.</section>}</div>
+      </div>
+    )}
+
+    {routing && selectedIgn && <AccountAllocationModal signal={selectedIgn} accounts={acct} reference={reference} onClose={() => setRouting(false)} />}
   </main>;
 }

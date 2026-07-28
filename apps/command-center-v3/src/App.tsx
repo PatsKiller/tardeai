@@ -11,6 +11,7 @@ import HomeHub from './pages/HomeHub'
 import PortfolioHub from './pages/PortfolioHub'
 import ReEntryPage from './pages/ReEntryPage'
 import TradingHub from './pages/TradingHub'
+import ActiveTraderHub from './pages/ActiveTraderHub'
 import AgentRuntimeHub from './pages/AgentRuntimeHub'
 import IntelligenceHub from './pages/IntelligenceHub'
 import HermesHub from './pages/HermesHub'
@@ -146,6 +147,8 @@ function Shell() {
             <Route path="portfolio/re-entry" element={<ReEntryPage />} />
             <Route path="risk" element={<RiskHub onDrill={setDrill} />} />
             <Route path="trading" element={<TradingHub onDrill={setDrill} />} />
+            <Route path="active-trader" element={<ActiveTraderHub />} />
+            <Route path="trading/active-trader" element={<Navigate to="/active-trader" replace />} />
             <Route path="go/order/:intentId" element={<GoOrderDeepLink />} />
             <Route path="go/proposal/:proposalId" element={<GoProposalDeepLink />} />
             <Route path="manual-execution" element={<Navigate to="/trading?tab=Entry+Desk" replace />} />

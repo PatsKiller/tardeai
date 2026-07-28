@@ -74,6 +74,7 @@ def dispatch(
                 f"{ACTIVE_TRADER_PREFIX}/permission-queue",
                 f"{ACTIVE_TRADER_PREFIX}/scalp/setups",
                 f"{ACTIVE_TRADER_PREFIX}/scalp/setup-events?limit=...",
+                f"{ACTIVE_TRADER_PREFIX}/config",
             ],
         }
 
@@ -96,6 +97,12 @@ def dispatch(
         return 200, api.near_ready(include_watch=include_watch)
     if suffix in ("permission-queue", "permission_queue"):
         return 200, api.permission_queue()
+    if suffix in ("config", "config-overview", "config_overview"):
+        try:
+            from .config_read import config_overview
+            return 200, config_overview()
+        except Exception as exc:  # fail-closed, never leak internals
+            return 503, _envelope("unavailable", f"config overview unavailable: {exc}", status_hint=503)
     if suffix in ("scalp/setups", "scalp_setups"):
         return 200, api.scalp_setups()
     if suffix in ("scalp/setup-events", "scalp/setup_events", "scalp_setup_events"):
