@@ -45,6 +45,29 @@ from urllib.parse import urlparse, parse_qs
 PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
+# CC v3 stale-bundle check. The injected inline script and /v3/cc-boot.js BOTH compare
+# this against sessionStorage['cc_v3_build'] and reload when it differs. They must
+# therefore resolve to the SAME string — one shared fallback, never two literals.
+#
+# They used to hardcode different defaults ('1.5' inline, '1.6' in cc-boot). That is
+# inert while build-meta.json carries a ui_version, but the 2026-07-28 rebuild emitted
+# a build-meta.json WITHOUT that key, so each path fell back to its own literal and the
+# two scripts disagreed permanently: inline set the key to 1.5 and reloaded, cc-boot saw
+# 1.5 != 1.6, set 1.6 and reloaded, forever. /v3 became an infinite reload loop — a
+# blank page with a _cc_reload timestamp spinning in the URL. sessionStorage only
+# prevents a loop when both readers agree on the expected value.
+CC_V3_UI_VERSION_FALLBACK = "1.6"
+
+
+def _cc_v3_ui_version() -> str:
+    """Single source of truth for the SPA bundle version both boot paths compare."""
+    meta = PROJECT_ROOT / "apps" / "command-center-v3" / "dist" / "build-meta.json"
+    try:
+        import json as _json
+        return str(_json.loads(meta.read_text()).get("ui_version") or CC_V3_UI_VERSION_FALLBACK)
+    except Exception:
+        return CC_V3_UI_VERSION_FALLBACK
+
 # v3.1 (WS-F): load env BEFORE class definitions so operational knobs like
 # DASHBOARD_MAX_CONCURRENCY / DASHBOARD_SEM_TIMEOUT_SEC are actually reachable
 # (the semaphore is sized at class-creation time; api_v2's load_dotenv runs too
@@ -1653,14 +1676,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
         # Command Center v3 — live boot script (always fresh; busts stale SPA bundles)
         if path == "/v3/cc-boot.js":
-            _build_ver = "1.6"
-            _meta_path = PROJECT_ROOT / "apps" / "command-center-v3" / "dist" / "build-meta.json"
-            if _meta_path.exists():
-                try:
-                    import json as _json
-                    _build_ver = str(_json.loads(_meta_path.read_text()).get("ui_version") or _build_ver)
-                except Exception:
-                    pass
+            _build_ver = _cc_v3_ui_version()   # shared with the inline injection below
             _js = (
                 "(function(){fetch('/v3/build-meta.json',{cache:'no-store'})"
                 ".then(function(r){return r.json();})"
@@ -1740,14 +1756,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 _body = _v3_file.read_bytes()
                 # SPA routes (/v3/journal, etc.) fall back to index.html — still inject boot + cache bust.
                 if _v3_file.name == "index.html":
-                    _build_ver = "1.5"
-                    _meta_path = _v3_dist / "build-meta.json"
-                    if _meta_path.exists():
-                        try:
-                            import json as _json
-                            _build_ver = str(_json.loads(_meta_path.read_text()).get("ui_version") or _build_ver)
-                        except Exception:
-                            pass
+                    _build_ver = _cc_v3_ui_version()   # MUST match /v3/cc-boot.js exactly
                     _inject = (
                         "<script>(function(){var v='%s',k='cc_v3_build';"
                         "try{if(sessionStorage.getItem(k)!==v){sessionStorage.setItem(k,v);"

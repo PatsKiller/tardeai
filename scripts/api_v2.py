@@ -33528,7 +33528,16 @@ ROUTES = {
     "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-proposals": lambda: _broker_proposals(_current_query),
     "/api/v2/proposals/cloud-consensus": lambda: _proposal_cloud_consensus(_current_query),
-    "/api/v2/broker-proposals/summary": lambda: _broker_queue_summary(),
+    # Cached/non-blocking variant. The synchronous _broker_queue_summary() pushes every
+    # active proposal through the sizing/gate evaluators with network quote lookups —
+    # its own sibling's docstring calls it "too slow for the request path", and the
+    # proposals LIST already uses the fast one. This route did not, so a dashboard poll
+    # took 25-28s under a normal concurrent page load and wedged /v3/trading with
+    # spinning values (browser then aborted → BrokenPipeError server-side).
+    # Cold cache returns a warming marker rather than null so the client renders.
+    "/api/v2/broker-proposals/summary": lambda: (
+        _broker_queue_summary_fast() or {"ok": True, "status": "warming", "queue_summary": None,
+                                         "note": "summary recomputing in background — next poll has it"}),
     "/api/v2/broker-proposals/audit": lambda: _broker_proposals_audit(),
     "/api/v2/executions/tracking-metrics": lambda: _manual_execution_metrics(_current_query),
     "/api/v2/executions/manual-log": lambda: _manual_execution_log(_current_query),
