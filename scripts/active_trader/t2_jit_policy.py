@@ -1,15 +1,16 @@
 """Deterministic just-in-time T2 admission for Active Trader.
 
-This module is intentionally pure policy. It owns no market-data client, performs no
-network I/O, and cannot submit, modify, or cancel an order. It decides which symbols
-may consume scarce T2 capacity and publishes UI refresh hints.
+This module is pure market-data policy. It owns no account taxonomy, market-data
+client, network transport, broker client, credential, or order action. Account,
+venue, environment, and execution authority belong to an upstream capability/session
+layer. This policy receives only a boolean stating whether motion resources are
+authorized for the symbol in the active workflow.
 
-T2 is an execution resource, not a scanner resource:
+T2 is a scarce motion-data resource, not a scanner or account resource:
 
 * broad discovery remains T0;
-* near-fire candidates remain T1 until an ACTIVE, execution-eligible paper/shadow
-  session can act on them;
-* T2 is leased only for near-fire candidates or an already-open position;
+* monitored candidates remain T1 until an ACTIVE workflow authorizes motion resources;
+* T2 is leased only for near-fire candidates or an already-open monitored position;
 * push delivery is primary; pull is a bounded hydration/recovery fallback;
 * leases are released on invalidation, staleness, kill switch, expiry, or completion.
 """
@@ -25,11 +26,6 @@ TIER_T0 = "T0"
 TIER_T1 = "T1"
 TIER_T2 = "T2"
 
-MODE_SIMULATION = "SIMULATION"
-MODE_SHADOW = "SHADOW"
-MODE_PAPER = "PAPER"
-ALLOWED_MODES = frozenset({MODE_SIMULATION, MODE_SHADOW, MODE_PAPER})
-
 SETUP_ARMED = "ARMED"
 SETUP_FIRED = "FIRED"
 SESSION_ACTIVE = "ACTIVE"
@@ -39,8 +35,7 @@ R_ADMITTED = "admitted"
 R_CONTINUED = "continued"
 R_POSITION_PRIORITY = "open_position_priority"
 R_SESSION_INACTIVE = "session_not_active"
-R_MODE_INELIGIBLE = "mode_not_paper_or_shadow"
-R_EXECUTION_INELIGIBLE = "account_not_execution_eligible"
+R_MOTION_INELIGIBLE = "motion_not_authorized"
 R_SETUP_INELIGIBLE = "setup_not_armed_or_fired"
 R_GATE_VETO = "gate_not_pass"
 R_BASELINE_STALE = "baseline_quote_stale"
@@ -56,7 +51,7 @@ R_NOT_OBSERVED = "candidate_not_observed"
 
 @dataclass(frozen=True)
 class T2PolicyConfig:
-    """Configurable, conservative defaults for shadow/paper evaluation.
+    """Conservative defaults for deterministic motion-resource evaluation.
 
     ``provider_hard_cap`` is an absolute safety ceiling. ``max_concurrent_leases``
     is the normal operating cap and should remain materially lower.
@@ -101,10 +96,9 @@ class CandidateObservation:
     symbol: str
     observed_at: float
     session_state: str
-    mode: str
     setup_state: str
     gate_decision: str
-    execution_eligible: bool
+    motion_eligible: bool
     baseline_quote_age_s: float
     trigger_distance_bps: Optional[float] = None
     expected_fire_in_s: Optional[float] = None
@@ -119,11 +113,12 @@ class CandidateObservation:
             symbol=str(raw.get("symbol") or "").strip().upper(),
             observed_at=float(raw.get("observed_at") or 0.0),
             session_state=str(raw.get("session_state") or "").strip().upper(),
-            mode=str(raw.get("mode") or "").strip().upper(),
             setup_state=str(raw.get("setup_state") or "").strip().upper(),
             gate_decision=str(raw.get("gate_decision") or "").strip().upper(),
-            execution_eligible=bool(raw.get("execution_eligible")),
-            baseline_quote_age_s=_required_float(raw.get("baseline_quote_age_s"), missing=float("inf")),
+            motion_eligible=bool(raw.get("motion_eligible")),
+            baseline_quote_age_s=_required_float(
+                raw.get("baseline_quote_age_s"), missing=float("inf")
+            ),
             trigger_distance_bps=_optional_float(raw.get("trigger_distance_bps")),
             expected_fire_in_s=_optional_float(raw.get("expected_fire_in_s")),
             operator_selected=bool(raw.get("operator_selected")),
@@ -243,9 +238,15 @@ def _priority(obs: CandidateObservation, cfg: T2PolicyConfig) -> float:
     if obs.operator_selected:
         value += 2_000.0
     if obs.trigger_distance_bps is not None:
-        value += max(0.0, cfg.prefire_distance_bps - max(0.0, obs.trigger_distance_bps)) * 10.0
+        value += max(
+            0.0,
+            cfg.prefire_distance_bps - max(0.0, obs.trigger_distance_bps),
+        ) * 10.0
     if obs.expected_fire_in_s is not None:
-        value += max(0.0, cfg.prefire_window_s - max(0.0, obs.expected_fire_in_s))
+        value += max(
+            0.0,
+            cfg.prefire_window_s - max(0.0, obs.expected_fire_in_s),
+        )
     return round(value, 6)
 
 
@@ -256,10 +257,8 @@ def _eligibility(obs: CandidateObservation, cfg: T2PolicyConfig) -> tuple[bool, 
         return False, R_KILL_SWITCH
     if obs.session_state != SESSION_ACTIVE:
         return False, R_SESSION_INACTIVE
-    if obs.mode not in ALLOWED_MODES:
-        return False, R_MODE_INELIGIBLE
-    if not obs.execution_eligible:
-        return False, R_EXECUTION_INELIGIBLE
+    if not obs.motion_eligible:
+        return False, R_MOTION_INELIGIBLE
     if obs.baseline_quote_age_s < 0 or obs.baseline_quote_age_s > cfg.baseline_max_age_s:
         return False, R_BASELINE_STALE
     if obs.position_open:
@@ -274,11 +273,11 @@ def _eligibility(obs: CandidateObservation, cfg: T2PolicyConfig) -> tuple[bool, 
 
 
 class T2LeaseManager:
-    """Stateful lease reconciler with deterministic admission and eviction.
+    """Deterministic stateful lease reconciler.
 
     Existing open-position leases are never evicted by a pre-fire candidate. Normal
-    leases cannot be evicted before ``min_dwell_s``. Every reconcile call is pure with
-    respect to external systems: only this in-memory state changes.
+    leases cannot be evicted before ``min_dwell_s``. Only in-memory lease state changes;
+    the manager has no external-system side effect.
     """
 
     def __init__(self, config: T2PolicyConfig | None = None) -> None:
@@ -306,7 +305,13 @@ class T2LeaseManager:
             self._cooldown_until[symbol] = now + self.config.cooldown_s
         events.append(T2Event("released", symbol, reason, now, lease.lease_id))
 
-    def _admit(self, obs: CandidateObservation, now: float, priority: float, events: list[T2Event]) -> None:
+    def _admit(
+        self,
+        obs: CandidateObservation,
+        now: float,
+        priority: float,
+        events: list[T2Event],
+    ) -> None:
         lease = T2Lease(
             lease_id=_lease_id(obs.symbol, now),
             symbol=obs.symbol,
@@ -328,15 +333,20 @@ class T2LeaseManager:
         cfg = self.config
         observed: dict[str, CandidateObservation] = {}
         for item in observations:
-            obs = item if isinstance(item, CandidateObservation) else CandidateObservation.from_mapping(item)
+            obs = (
+                item
+                if isinstance(item, CandidateObservation)
+                else CandidateObservation.from_mapping(item)
+            )
             if obs.symbol:
                 observed[obs.symbol] = obs
 
         events: list[T2Event] = []
         decisions_by_symbol: dict[str, CandidateDecision] = {}
-
         self._cooldown_until = {
-            symbol: until for symbol, until in self._cooldown_until.items() if until > now
+            symbol: until
+            for symbol, until in self._cooldown_until.items()
+            if until > now
         }
 
         for symbol, lease in list(self._leases.items()):
@@ -348,9 +358,19 @@ class T2LeaseManager:
                 continue
             eligible, reason = _eligibility(obs, cfg)
             if not eligible:
-                self._release(symbol, now, R_INVALIDATED if reason != R_KILL_SWITCH else reason, events)
+                self._release(
+                    symbol,
+                    now,
+                    R_INVALIDATED if reason != R_KILL_SWITCH else reason,
+                    events,
+                )
                 decisions_by_symbol[symbol] = CandidateDecision(
-                    symbol, TIER_T0, False, reason, cfg.idle_refresh_s, _priority(obs, cfg)
+                    symbol,
+                    TIER_T0,
+                    False,
+                    reason,
+                    cfg.idle_refresh_s,
+                    _priority(obs, cfg),
                 )
                 continue
             renewed = T2Lease(
@@ -381,14 +401,28 @@ class T2LeaseManager:
             priority = _priority(obs, cfg)
             if not eligible:
                 tier = TIER_T1 if reason == R_NOT_NEAR_FIRE else TIER_T0
-                refresh = cfg.near_fire_refresh_s if tier == TIER_T1 else cfg.idle_refresh_s
+                refresh = (
+                    cfg.near_fire_refresh_s
+                    if tier == TIER_T1
+                    else cfg.idle_refresh_s
+                )
                 decisions_by_symbol[symbol] = CandidateDecision(
-                    symbol, tier, False, reason, refresh, priority
+                    symbol,
+                    tier,
+                    False,
+                    reason,
+                    refresh,
+                    priority,
                 )
                 continue
             if self._cooldown_until.get(symbol, 0.0) > now and not obs.position_open:
                 decisions_by_symbol[symbol] = CandidateDecision(
-                    symbol, TIER_T1, False, R_COOLDOWN, cfg.near_fire_refresh_s, priority
+                    symbol,
+                    TIER_T1,
+                    False,
+                    R_COOLDOWN,
+                    cfg.near_fire_refresh_s,
+                    priority,
                 )
                 continue
             eligible_candidates.append((priority, symbol, obs))
@@ -400,7 +434,12 @@ class T2LeaseManager:
             if len(self._leases) < operating_cap:
                 self._admit(obs, now, priority, events)
                 decisions_by_symbol[symbol] = CandidateDecision(
-                    symbol, TIER_T2, True, R_ADMITTED, cfg.active_refresh_s, priority
+                    symbol,
+                    TIER_T2,
+                    True,
+                    R_ADMITTED,
+                    cfg.active_refresh_s,
+                    priority,
                 )
                 continue
 
@@ -411,7 +450,9 @@ class T2LeaseManager:
                 and (now - lease.admitted_at) >= cfg.min_dwell_s
                 and priority > lease.priority
             ]
-            evictable.sort(key=lambda lease: (lease.priority, lease.admitted_at, lease.symbol))
+            evictable.sort(
+                key=lambda lease: (lease.priority, lease.admitted_at, lease.symbol)
+            )
             if evictable:
                 victim = evictable[0]
                 self._release(victim.symbol, now, R_EVICTED, events)
@@ -427,15 +468,30 @@ class T2LeaseManager:
                     )
                 self._admit(obs, now, priority, events)
                 decisions_by_symbol[symbol] = CandidateDecision(
-                    symbol, TIER_T2, True, R_ADMITTED, cfg.active_refresh_s, priority
+                    symbol,
+                    TIER_T2,
+                    True,
+                    R_ADMITTED,
+                    cfg.active_refresh_s,
+                    priority,
                 )
             else:
                 decisions_by_symbol[symbol] = CandidateDecision(
-                    symbol, TIER_T1, False, R_CAPACITY, cfg.near_fire_refresh_s, priority
+                    symbol,
+                    TIER_T1,
+                    False,
+                    R_CAPACITY,
+                    cfg.near_fire_refresh_s,
+                    priority,
                 )
 
-        decisions = tuple(sorted(decisions_by_symbol.values(), key=lambda row: row.symbol))
-        refresh = min((decision.refresh_after_s for decision in decisions), default=cfg.idle_refresh_s)
+        decisions = tuple(
+            sorted(decisions_by_symbol.values(), key=lambda row: row.symbol)
+        )
+        refresh = min(
+            (decision.refresh_after_s for decision in decisions),
+            default=cfg.idle_refresh_s,
+        )
         return T2Snapshot(
             generated_at=float(now),
             leases=self.leases,
