@@ -182,6 +182,15 @@ def test_market_entry_never_creates_intent():
     assert eng.intent_count() == 0
 
 
+def test_stop_inside_noise_floor_never_creates_intent():
+    # Defect 2 — a FIRED event whose stop sits inside the deterministic tick/spread/volatility floor is
+    # refused by the SAME shared validator (limit 100, stop 99.999 → 0.001 < 2-tick floor of 0.02).
+    eng, out = _run(_event(entry={"order_type": "limit", "limit_price": 100.0, "stop_price": 99.999}))
+    assert out.is_intent is False
+    assert out.reason_code == se.R_STOP_INVALID
+    assert eng.intent_count() == 0
+
+
 def test_hash_mismatch_never_creates_intent():
     eng, out = _run(_event(registry_hash="WRONG"))
     assert out.is_intent is False
