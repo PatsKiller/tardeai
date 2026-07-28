@@ -57,6 +57,24 @@ def _tax_values(tax: dict | None, fired_at) -> list:
         _j.dumps(t.get("setup_fail_reasons", {})), t.get("registry_hash"),
     ]
 
+def _gate_persist(tax: dict | None) -> tuple:
+    """(gate_result, gate_reasons_json) for a taxonomy dict (Defect 1). gate_result is the NORMALIZED
+    universal-execution-gate decision (PASS/VETO/None) — NEVER hard-coded, NEVER PASS unless the detector
+    produced a PASS. gate_reasons is structured JSON: the raw taxonomy gate result, its reason labels, and
+    the stop-reference validation (Defect 2). A None taxonomy fails closed to gate_result NULL."""
+    import json as _j
+    t = tax or {}
+    gate_result = sdet.normalize_gate_result(t.get("execution_gate_result"))
+    ev = (t.get("setup_evidence") or {}).get("_execution_gate") or {}
+    reasons = {
+        "execution_gate_result": t.get("execution_gate_result"),
+        "reasons": ev.get("reasons", []),
+        "stop_validation": t.get("stop_validation") or ev.get("stop_validation"),
+        "source": "taxonomy_execution_gate",
+    }
+    return gate_result, _j.dumps(reasons)
+
+
 KILL_FILE = Path(os.path.expanduser("~/.tradeai/SCALP_ENGINE_DISABLED"))
 
 
@@ -318,7 +336,8 @@ def run(args) -> int:
             row["_tax"] = sdet.taxonomy_for_symbol(bars=bars, now=as_of.time(), cfg=cfg,
                 registry=_registry, ign_lane=out["lane"], ign_score=out["ign"], atr_1m=a.get("atr_1m"),
                 spread_bps=row["spread_bps"], price=a.get("price"),
-                bar_volume=(t0._v(bars[-1]) if bars else None), data_tier="T0")
+                bar_volume=(t0._v(bars[-1]) if bars else None), data_tier="T0",
+                entry_ref=entry_ref, stop_ref=stop_ref)
         except Exception:
             row["_tax"] = None
         results.append(row)
@@ -334,7 +353,8 @@ def run(args) -> int:
                 ftax = sdet.taxonomy_for_symbol(bars=bars[:fe["fire_idx"] + 1], now=as_of.time(), cfg=cfg,
                     registry=_registry, ign_lane=out["lane"], ign_score=out["ign"], atr_1m=a.get("atr_1m"),
                     spread_bps=row["spread_bps"], price=fe.get("entry"),
-                    bar_volume=t0._v(bars[fe["fire_idx"]]), data_tier="T0")
+                    bar_volume=t0._v(bars[fe["fire_idx"]]), data_tier="T0",
+                    entry_ref=fe.get("entry"), stop_ref=fe.get("stop"))
             except Exception:
                 ftax = None
             trigger_fires.append({
@@ -355,22 +375,26 @@ def run(args) -> int:
         with conn.cursor() as cur:
             for r in results:
                 import json as _json
+                # Defect 1: persist the TAXONOMY execution-gate result (+ structured reasons/stop-validation),
+                # never a hard-coded NULL. Missing taxonomy fails closed to gate_result NULL (NOT_EVALUATED).
+                gate_result, gate_reasons = _gate_persist(r.get("_tax"))
                 cur.execute(
                     """INSERT INTO scalp_ignition_events
                        (symbol, fired_at, session_date, minute_of_session, lane, ign_score,
                         subscores, rvol_tod, profile_source, data_tier, dcf, spread_bps,
                         spread_source, pressure, evr, amihud_illiq, entry_ref, stop_ref,
-                        r_dollars, stop_dist_bps, gate_result, engine_version,
+                        r_dollars, stop_dist_bps, gate_result, gate_reasons, engine_version,
                         primary_setup_id, primary_setup_label, matched_setup_ids, matched_setup_labels,
                         setup_state, setup_version, setup_fired_at, market_session,
                         confirmation_labels, setup_evidence, setup_fail_reasons, registry_hash)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,'m3-s3',
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'m3-s3',
                                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     [r["symbol"], r["as_of"], r["session_date"], r["minute"], r["lane"], r["ign"],
                      _json.dumps(r["subscores"]), r["rvol_tod"], r["profile_source"],
                      cfg["data_tiers"]["dcf"]["T0"], r["spread_bps"], r["spread_source"],
                      r["pressure"], r["evr"], r["amihud"], r["entry_ref"], r["stop_ref"],
-                     r["r_dollars"], r["stop_dist_bps"], *_tax_values(r.get("_tax"), r["as_of"])])
+                     r["r_dollars"], r["stop_dist_bps"], gate_result, gate_reasons,
+                     *_tax_values(r.get("_tax"), r["as_of"])])
                 written += 1
         conn.commit()
 
@@ -386,6 +410,17 @@ def run(args) -> int:
                 if cur.fetchone():
                     continue   # dedup (intraday logger re-runs)
                 fired = _dt.fromisoformat(tf["fire_ts"].replace("Z", "+00:00")) if tf.get("fire_ts") else as_of
+                # Defect 1: REMOVE the hard-coded gate_result='PASS'. Persist the gate result computed for
+                # the fire-bar taxonomy; when the taxonomy/gate is unavailable, persist NO PASS (NULL →
+                # NOT_EVALUATED in projections). Merge the taxonomy execution-gate + stop-validation into the
+                # FSM gate_reasons so the projection can read them back.
+                _ftax = tf.get("_tax") or {}
+                gate_result, _tax_reasons = _gate_persist(_ftax)
+                merged_reasons = dict(tf["gate_reasons"])
+                merged_reasons["execution_gate_result"] = _ftax.get("execution_gate_result")
+                merged_reasons["stop_validation"] = (
+                    _ftax.get("stop_validation")
+                    or ((_ftax.get("setup_evidence") or {}).get("_execution_gate") or {}).get("stop_validation"))
                 cur.execute(
                     """INSERT INTO scalp_ignition_events
                        (symbol, fired_at, session_date, minute_of_session, lane, ign_score, subscores,
@@ -395,12 +430,12 @@ def run(args) -> int:
                         primary_setup_id, primary_setup_label, matched_setup_ids, matched_setup_labels,
                         setup_state, setup_version, setup_fired_at, market_session,
                         confirmation_labels, setup_evidence, setup_fail_reasons, registry_hash)
-                       VALUES (%s,%s,%s,%s,'TRIGGER',%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'PASS',%s,'m3-s5',
+                       VALUES (%s,%s,%s,%s,'TRIGGER',%s,%s,%s,%s,'T0',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'m3-s5',
                                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     [tf["symbol"], fired, day, tf["fire_minute"], tf["ign"], _json.dumps(tf["subscores"]),
                      tf["rvol_tod"], tf["profile_source"], cfg["data_tiers"]["dcf"]["T0"], tf["spread_bps"],
                      tf["spread_source"], tf["pressure"], tf["evr"], tf["amihud"], tf["entry"], tf["stop"],
-                     tf["r_dollars"], tf["stop_dist_bps"], _json.dumps(tf["gate_reasons"]),
+                     tf["r_dollars"], tf["stop_dist_bps"], gate_result, _json.dumps(merged_reasons),
                      *_tax_values(tf.get("_tax"), fired)])
                 twritten += 1
         conn.commit()
