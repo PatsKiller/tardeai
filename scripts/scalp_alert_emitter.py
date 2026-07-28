@@ -46,8 +46,20 @@ def build_alert(row: Mapping) -> tuple[str, str]:
     ss = row.get("subscores") or {}
     sig = " ".join(f"{k.replace('v_', '')}={v:.2f}" for k, v in ss.items() if v)
     rt = row.get("rvol_tod")
-    title = f"SCALP IGN {row.get('ign', 0):.0f} · {row.get('symbol')} · {row.get('lane')}"
-    body = (f"{NOT_A_PROPOSAL}\n{row.get('symbol')} IGN={row.get('ign', 0):.1f} lane={row.get('lane')} "
+    # named-setup taxonomy (Layer A) — the alert names the setup that fired, not just the IGN lane.
+    tax = row.get("_tax") or {}
+    setup = tax.get("primary_setup_label")
+    matched = tax.get("matched_setup_labels") or ([setup] if setup else [])
+    sess = tax.get("market_session")
+    setup_title = f" · {setup}" + (" (MULTI-SETUP)" if len(matched) > 1 else "") if setup else ""
+    title = f"SCALP IGN {row.get('ign', 0):.0f} · {row.get('symbol')}{setup_title} · {row.get('lane')}"
+    setup_line = ""
+    if setup:
+        setup_line = (f"setup={setup}"
+                      + (f" [{', '.join(matched)}]" if len(matched) > 1 else "")
+                      + (f" session={sess}" if sess else "") + " ")
+    body = (f"{NOT_A_PROPOSAL} · MANUAL PAPER ONLY — NOT AN ORDER\n{row.get('symbol')} {setup_line}"
+            f"IGN={row.get('ign', 0):.1f} lane={row.get('lane')} "
             f"RVOL_tod={('%.1fx' % rt) if rt is not None else 'n/a'} [{sig}] · shadow, not tradeable")
     return title, body
 
