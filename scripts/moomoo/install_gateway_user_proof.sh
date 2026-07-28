@@ -55,7 +55,7 @@ install -m 0600 \
   "$RELEASE/config/moomoo_l2_gateway.example.yaml" \
   "$CONFIG_ROOT/moomoo_l2_gateway_proof.yaml"
 
-grep -Fx 'enabled: false' "$CONFIG_ROOT/moomoo_l2_gateway_proof.yaml" >/dev/null 
+grep -Fx 'enabled: false' "$CONFIG_ROOT/moomoo_l2_gateway_proof.yaml" >/dev/null
 
 printf 'TRADEAI_SOURCE_COMMIT=%s\n' "$EXPECTED_SHA" \
   >"$CONFIG_ROOT/moomoo_l2_gateway_proof.env"
