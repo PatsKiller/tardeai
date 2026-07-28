@@ -51,26 +51,40 @@ def _port_open() -> bool:
 
 
 def _quote_ok() -> tuple[bool, str]:
-    """Round-trip a real query. This is the only check that proves login worked."""
-    try:
-        from futu import OpenQuoteContext, RET_OK
-    except ImportError:
-        return False, "futu SDK not installed"
+    """Round-trip a real query. This is the only check that proves login worked.
+
+    The futu SDK logs verbosely to stdout on every connect; left alone it interleaves
+    with our JSON and makes this script's output unparseable for anything downstream
+    (and floods the 5-minute cron log). Silence its logger and swallow its stdout —
+    ours is the only thing that should reach the caller.
+    """
+    import contextlib
+    import io
+    import logging as _logging
+
+    for name in ("futu", "FTLog", "futu.common"):
+        lg = _logging.getLogger(name)
+        lg.setLevel(_logging.CRITICAL)
+        lg.propagate = False
+
+    sink = io.StringIO()
     ctx = None
     try:
-        ctx = OpenQuoteContext(host=HOST, port=PORT)
-        ret, data = ctx.get_market_snapshot(["US.AAPL"])
+        with contextlib.redirect_stdout(sink):
+            from futu import OpenQuoteContext, RET_OK
+            ctx = OpenQuoteContext(host=HOST, port=PORT)
+            ret, data = ctx.get_market_snapshot(["US.AAPL"])
         if ret != RET_OK:
             return False, f"query rejected: {str(data)[:100]}"
         return True, f"snapshot ok ({len(data)} row)"
+    except ImportError:
+        return False, "futu SDK not installed"
     except Exception as e:
         return False, f"{type(e).__name__}: {str(e)[:100]}"
     finally:
         if ctx is not None:
-            try:
+            with contextlib.suppress(Exception), contextlib.redirect_stdout(sink):
                 ctx.close()
-            except Exception:
-                pass
 
 
 def _bump(ok: bool) -> int:

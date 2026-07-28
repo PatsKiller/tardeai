@@ -46,8 +46,12 @@ def _status() -> int:
     if xml.exists():
         body = re.sub(r"<!--.*?-->", "", xml.read_text(errors="replace"), flags=re.S)
         for tag in ("login_pwd", "login_pwd_md5", "login_account"):
-            if re.search(rf"<{tag}>\s*\S", body):
+            # Match the element's own text only. An earlier `<tag>\s*\S` also matched the
+            # "<" of the CLOSING tag, so a correctly-scrubbed <tag></tag> reported dirty.
+            m = re.search(rf"<{tag}>([^<]*)</{tag}>", body)
+            if m and m.group(1).strip():
                 print(f"  ⚠ OpenD.xml still carries <{tag}> — credentials belong in Bitwarden")
+        print("  OpenD.xml: credentials scrubbed (supplied via opend_launch.sh from Bitwarden)")
     return 0 if ok else 1
 
 
