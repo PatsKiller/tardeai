@@ -11711,6 +11711,43 @@ def _defense_recommendations(query=None):
             "execution_caps": _pj_loads((PROJECT_ROOT / "config" / "defense_execution_caps.json").read_text())}
 
 
+def _sector_leaders():
+    """sector_leaders_service with reload — api_v2 hot-reload does NOT reload
+    imported modules (same reason _dex() exists)."""
+    import importlib
+    import sector_leaders_service
+    return importlib.reload(sector_leaders_service)
+
+
+def _defense_sector_leaders(query=None):
+    """GET /api/v2/defense/sector-leaders — SL-S1: sector → confirming industry →
+    named constituents → account routing.
+
+    READ-ONLY. No POST/PUT/PATCH/DELETE sibling; writes nothing anywhere.
+
+    ?sector={key|etf}  one sector's full descent (omit for the rank/weight strip)
+    ?horizon={W|M|Q}   Finviz window for both the name and industry composite
+                       returns (default M)
+
+    Namespace note: the design doc specified /api/v3/. Operator override
+    2026-07-29 — /api/v3 in the spec matched the FRONTEND route /v3/defense, but
+    those version independently and one lonely v3 defense route would split the
+    namespace. Defense migrates as a cohort or not at all.
+    """
+    query = query or {}
+    svc = _sector_leaders()
+    horizon = (query.get("horizon") or "M").upper()
+    sector = query.get("sector")
+
+    from db_adapter import _get_conn
+    with _get_conn() as conn, conn.cursor() as cur:
+        sectors = svc.list_sectors(cur=cur)
+        if not sector:
+            return {"ok": True, "sectors": sectors, "horizon": horizon}
+        return {"ok": True, "sectors": sectors, "horizon": horizon,
+                "sector": svc.build_sector_leaders(sector, horizon, cur=cur)}
+
+
 def _defense_core_registry(query=None):
     """GET /api/v2/defense/core — the OPERATOR-OWNED core registry (v6 C1).
     Distinct from the core_holding strategy enum — this is ★CORE designation.
@@ -33630,6 +33667,7 @@ ROUTES = {
     "/api/v2/defense/posture": _defense_posture,
     "/api/v2/defense/industries": _defense_industries,
     "/api/v2/defense/recommendations": _defense_recommendations,
+    "/api/v2/defense/sector-leaders": _defense_sector_leaders,
     "/api/v2/shadow/strategy/status": _shadow_strategy_status,
     "/api/v2/shadow/strategy/packet": _shadow_strategy_packet,
     "/api/v2/watch/decision/refresh/status": _watch_decision_refresh_status,

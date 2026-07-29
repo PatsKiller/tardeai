@@ -47,6 +47,14 @@
       "margin": false,
       "verified": false,
       "note": "R4 scaffold \u2014 IRA constraints conservative; verified=false until activation research"
+    },
+    "moomoo_taxable_live": {
+      "can_short_stock": false,
+      "options_level": null,
+      "inverse_etf_ok": false,
+      "covered_calls_ok": false,
+      "verified": false,
+      "note": "SL-S2 2026-07-29, ADDITIVE. A live broker account that was absent from this file entirely; the missing-key fallback already blocked it, but a live account should be explicit rather than relying on a fallback. Agrees with broker_accounts: environment=live, is_enabled=false, api_read_enabled=true, api_write_enabled=false, supports_options=false, no broker_adapter \u2014 i.e. read-only data, never routable. broker_accounts.api_write_enabled remains the CANONICAL routability source (same source live_trading_interlock uses); this entry records shorting/instrument permissions only and must never be read as granting routability."
     }
   }
 }

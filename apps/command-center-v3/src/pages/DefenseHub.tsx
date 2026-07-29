@@ -13,6 +13,7 @@ import RotationPlanPanel from '../components/defense/RotationPlanPanel'
 import OptionsLifecycleStrip from '../components/defense/OptionsLifecycleStrip'
 import InverseStoplightRail from '../components/defense/InverseStoplightRail'
 import InstitutionalRotationBrief from '../components/rotation/InstitutionalRotationBrief'
+import SectorLeadersPanel from '../components/defense/SectorLeadersPanel'
 
 function ago(ts?: string | null): string {
   if (!ts) return 'never'
@@ -170,6 +171,11 @@ export default function DefenseHub() {
         generatedAt={posture?.momentum?.generated_at}
         industryCapturedAt={industries?.captured_at}
       />
+
+      {/* SL-S1: renders only when SECTOR_LEADERS_V1 === 'on' (default off).
+          The RESEARCH WATCH tile above is deliberately untouched — the two run
+          side by side until the operator has compared them on live data. */}
+      <SectorLeadersPanel />
 
       <BookStanceStrip stances={recs?.stances || []} notDecomposed={recs?.not_decomposed}
         ladders={recs?.ladders || []} oversight={recsData?.oversight} />
