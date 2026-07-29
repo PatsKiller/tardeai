@@ -72,6 +72,9 @@ def dispatch(
                 f"{ACTIVE_TRADER_PREFIX}/venue-eligibility?symbol=...",
                 f"{ACTIVE_TRADER_PREFIX}/near-ready",
                 f"{ACTIVE_TRADER_PREFIX}/permission-queue",
+                f"{ACTIVE_TRADER_PREFIX}/l2-status",
+                f"{ACTIVE_TRADER_PREFIX}/l2-status/{{symbol}}",
+                f"{ACTIVE_TRADER_PREFIX}/fire-performance",
                 f"{ACTIVE_TRADER_PREFIX}/scalp/setups",
                 f"{ACTIVE_TRADER_PREFIX}/scalp/setup-events?limit=...",
                 f"{ACTIVE_TRADER_PREFIX}/config",
@@ -97,6 +100,15 @@ def dispatch(
         return 200, api.near_ready(include_watch=include_watch)
     if suffix in ("permission-queue", "permission_queue"):
         return 200, api.permission_queue()
+    if suffix in ("l2-status", "l2_status"):
+        return 200, api.l2_status()
+    if suffix.startswith("l2-status/") or suffix.startswith("l2_status/"):
+        sym = suffix.split("/", 1)[1].strip()
+        if not sym:
+            return 400, _envelope("bad_request", "symbol path segment required", status_hint=400)
+        return 200, api.l2_status_symbol(sym)
+    if suffix in ("fire-performance", "fire_performance"):
+        return 200, api.fire_performance()
     if suffix in ("config", "config-overview", "config_overview"):
         try:
             from .config_read import config_overview

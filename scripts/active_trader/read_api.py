@@ -752,10 +752,16 @@ def _arming_status(limit: int = 25) -> dict[str, Any]:
     except Exception:
         available = False
 
-    # moomoo L2/T2 arm set — L2 is only "looked at" for symbols whose FSM reached ARMED
+    # moomoo L2/T2 status — derived from the LIVE gateway/subscription-manager, NEVER from a
+    # state file's existence. Distinct states are surfaced separately (defect 5 + section F):
+    #   arm_intent (desired) ≠ subscription (confirmed at OpenD) ≠ data (fresh book/tape) ≠
+    #   confirmation (T2 gate pass). connected = gateway.ping() truth only.
     l2 = {"enabled": False, "max_armed": None, "ttl_seconds": None, "armed": [], "connected": False,
           "entitlement": "unknown", "feeding_scoring": False,
-          "note": "L2 (moomoo T2) arms on-demand when a symbol's trigger FSM hits ARMED."}
+          "l2_arm_intent": [], "l2_subscription_state": {}, "l2_data_state": {},
+          "l2_confirmation_state": {}, "quota": None,
+          "note": "L2 status is live gateway truth; a state file / arm intent NEVER implies "
+                  "connected/subscribed/fresh/T2."}
     try:
         import sys as _sys
         sp = str(_REPO_ROOT / "scripts")
@@ -767,30 +773,33 @@ def _arming_status(limit: int = 25) -> dict[str, Any]:
         l2["enabled"] = bool(t2.get("arm_from_trigger", False))
         l2["max_armed"] = t2.get("max_armed")
         l2["ttl_seconds"] = t2.get("ttl_seconds")
-        state_path = _REPO_ROOT / (t2.get("state_file") or "data/scalp/moomoo_armed_state.json")
-        if state_path.is_file():
-            data = json.loads(state_path.read_text(encoding="utf-8"))
-            armed = data.get("armed") if isinstance(data, dict) else data
-            if isinstance(armed, dict):
-                l2["armed"] = list(armed.keys())
-            elif isinstance(armed, list):
-                l2["armed"] = [x.get("symbol") if isinstance(x, dict) else x for x in armed]
-        # "connected" means OpenD is LOGGED IN, proven by the health probe's quote
-        # round-trip — not merely that an arm-state file exists on disk. The old test
-        # reported connected=True while OpenD was down for days, because the arm
-        # state is written by the scan regardless of any L2 link.
-        health_p = _REPO_ROOT / "data" / "runtime" / "moomoo_opend_health.json"
-        if health_p.is_file():
-            try:
-                _h = json.loads(health_p.read_text(encoding="utf-8"))
-                l2["connected"] = bool(_h.get("ok"))
-                l2["entitlement"] = "AVAILABLE_REALTIME" if _h.get("ok") else "unavailable"
-                l2["health_checked_at"] = _h.get("checked_at")
-            except Exception:
-                pass
-        # Books can be flowing while scoring still runs on T0 — the shadow logger owns
-        # that promotion. Never let a live feed imply it is influencing decisions.
-        l2["feeding_scoring"] = bool(l2["connected"]) and _t2_feeds_scoring()
+    except Exception:
+        pass
+    try:
+        from active_trader.l2_runtime import get_runtime
+        from active_trader.l2_status_api import build_l2_status
+        rt = get_runtime()
+        status = build_l2_status(rt)
+        l2["connected"] = bool(status.get("connected"))
+        l2["entitlement"] = status.get("entitlement_state", "unknown")
+        l2["quota"] = status.get("quota")
+        l2["max_concurrent_l2_symbols"] = status.get("max_concurrent_l2_symbols")
+        conf = status.get("confirmed_subscriptions") or {}
+        # confirmed subscriptions = the ONLY thing that means a live OpenD subscription exists
+        l2["armed"] = sorted(conf.keys())          # backward-compat key = CONFIRMED subs only
+        for sym, life in (status.get("symbols") or {}).items():
+            st = life.get("state")
+            if st in ("ARM_INTENT", "QUOTA_DEFERRED"):
+                l2["l2_arm_intent"].append(sym)
+            l2["l2_subscription_state"][sym] = st
+            l2["l2_data_state"][sym] = (
+                "FRESH" if st == "FRESH" else "STALE" if st == "STALE"
+                else "WAITING" if st in ("WAITING_FIRST_BOOK", "WAITING_FIRST_TAPE")
+                else "NONE")
+            l2["l2_confirmation_state"][sym] = ("T2" if life.get("t2", {}).get("is_t2")
+                                                else "NOT_CONFIRMED")
+        l2["l2_arm_intent"] = sorted(set(l2["l2_arm_intent"]))
+        l2["feeding_scoring"] = bool(l2["connected"]) and _t2_feeds_scoring() and bool(status.get("t2_any"))
     except Exception:
         pass
     return {"available": available, "market_open": bool(market_open),
@@ -969,6 +978,45 @@ class ReadOnlyActiveTraderAPI:
             "authority": {"mutation": False, "order": False, "session_authorize": False,
                           "canary": False, "financial_action": False},
         }
+
+    def l2_status(self) -> dict[str, Any]:
+        """Read-only Moomoo L2 data-plane status (provider/entitlement/quota/lifecycle/T2).
+        Derived from the live gateway — file existence never implies connected. No order path."""
+        try:
+            from .l2_runtime import get_runtime
+            from .l2_status_api import build_l2_status
+            return build_l2_status(get_runtime())
+        except Exception as exc:
+            from .l2_status_api import _disconnected_payload
+            return _disconnected_payload(None, f"l2 status unavailable: {type(exc).__name__}")
+
+    def l2_status_symbol(self, symbol: str) -> dict[str, Any]:
+        """Read-only per-symbol L2 lifecycle detail + feature snapshot. No order path."""
+        try:
+            from .l2_runtime import get_runtime
+            from .l2_status_api import build_l2_status_symbol
+            return build_l2_status_symbol(get_runtime(), symbol)
+        except Exception as exc:
+            from .l2_status_api import _disconnected_payload
+            body = _disconnected_payload(None, f"l2 status unavailable: {type(exc).__name__}")
+            body["symbol"] = (symbol or "").upper()
+            return body
+
+    def fire_performance(self) -> dict[str, Any]:
+        """Read-only live fire-performance: today's fires + current marks + MFE/MAE/current-R,
+        split into the active queue vs today's fire history. Server-side; no order path."""
+        try:
+            from .fire_performance_api import fire_performance_payload
+            return fire_performance_payload()
+        except Exception as exc:
+            return {
+                "contract": "active-trader-fire-performance-v1",
+                "read_only": True, "write": False, "order_path": False,
+                "active_fires": [], "fire_history": [], "active_count": 0, "history_count": 0,
+                "detail": f"fire-performance unavailable: {type(exc).__name__}",
+                "authority": {"mutation": False, "order": False, "session_authorize": False,
+                              "canary": False, "financial_action": False},
+            }
 
     def near_ready(self, *, include_watch: bool = False) -> dict[str, Any]:
         """Stage 1b read model: candidates below the Trade AI GO bar that show building

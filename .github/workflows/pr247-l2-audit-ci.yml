@@ -1,0 +1,75 @@
+name: pr247-l2-audit-ci
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/moomoo/**'
+      - 'scripts/market_observations/moomoo_t2.py'
+      - 'scripts/scalp_shadow_logger.py'
+      - 'scripts/active_trader/**'
+      - 'tests/test_moomoo_t2.py'
+      - 'tests/test_moomoo_l2_*.py'
+      - 'tests/test_active_trader_l2_status.py'
+      - 'tests/test_active_trader_fire_performance.py'
+      - 'tests/test_scalp_effective_tier.py'
+      - 'tests/test_pr247_audit_regressions.py'
+      - '.github/workflows/pr247-l2-audit-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  l2-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TRADE_AI_CI: '1'
+      ALPACA_MODE: paper
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install focused test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pyyaml requests psycopg2-binary
+
+      - name: Diff and syntax checks
+        run: |
+          git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+          python -m compileall -q \
+            scripts/active_trader/l2_runtime.py \
+            scripts/active_trader/l2_status_api.py \
+            scripts/active_trader/fire_performance.py \
+            scripts/active_trader/fire_performance_api.py \
+            scripts/moomoo/l2_feature_service.py \
+            scripts/market_observations/moomoo_t2.py
+
+      - name: Focused L2 and ActiveTrader regression suite
+        run: |
+          set -o pipefail
+          pytest -q \
+            tests/test_pr247_audit_regressions.py \
+            tests/test_moomoo_t2.py \
+            tests/test_moomoo_l2_feature_service.py \
+            tests/test_moomoo_l2_subscription_manager.py \
+            tests/test_moomoo_l2_authority.py \
+            tests/test_active_trader_l2_status.py \
+            tests/test_active_trader_fire_performance.py \
+            tests/test_scalp_effective_tier.py \
+            2>&1 | tee pr247-l2-audit-pytest.log
+
+      - name: Upload focused test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr247-l2-audit-pytest
+          path: pr247-l2-audit-pytest.log
+          if-no-files-found: warn
