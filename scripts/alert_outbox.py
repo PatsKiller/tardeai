@@ -254,25 +254,84 @@ def _publish_memory(event, decision, alert_id, incident_id, fingerprint, expires
 
 
 def _record_delivery(cur, alert_id, route_mode, logical_destination, status, reason, rendered_message):
+    """Record one delivery attempt against the occurrence it belongs to.
+
+    Rewritten 2026-07-29. The previous version wrote the attempt row without an
+    occurrence_id and then ran:
+
+        UPDATE alert_notification_events SET last_delivery_status=..., delivery_count=delivery_count+1
+        UPDATE alert_notification_events SET suppression_reason=..., last_suppression_at=now()
+
+    Three defects, all from the module being written against the FIRST draft schema
+    where alert_notification_events was a TABLE:
+
+      1. It is now a derived VIEW joining occurrences to incidents. A join view is
+         not auto-updatable in PostgreSQL, so both statements raise. Nothing caught
+         it because the migration was unapplied and this path never ran.
+      2. last_suppression_at does not exist on any table in the model.
+      3. occurrence_id was left NULL on the attempt row, so the delivery could not
+         be tied back to its occurrence — which is what BOTH unique indexes key on
+         (occurrence_id, attempt_seq) and the partial one-sent-per-occurrence guard.
+
+    The occurrence model already holds every fact those UPDATEs were reaching for:
+    delivery state lives on alert_notification_deliveries (surfaced as
+    last_delivery_status / last_delivery_at by the view), and the counters live on
+    alert_incidents. Suppression reason is derived by the view from the
+    occurrence's own notify/decision_reason and needs no retro-write.
+
+    Counters are incremented ONLY when the insert actually took a row, so a retry
+    that hits ON CONFLICT DO NOTHING cannot double-count.
+    """
     msg_fp = _delivery_fingerprint(rendered_message or f"{alert_id}:{status}:{reason}")
+
+    # The occurrence this delivery belongs to — latest for the alert_id.
+    cur.execute(
+        """SELECT occurrence_id, incident_id FROM alert_occurrences
+            WHERE alert_id = %s ORDER BY occurrence_seq DESC LIMIT 1""",
+        (alert_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        # No occurrence: the caller is delivering something that was never
+        # published through the outbox. Record nothing rather than orphan a row.
+        return
+    occurrence_id, incident_id = row
+
     cur.execute(
         """
         INSERT INTO alert_notification_deliveries
-        (alert_id, logical_destination, route_mode, delivery_status, delivery_reason, message_fingerprint, rendered_message)
-        VALUES (%s,%s,%s,%s,%s,%s,%s)
+            (occurrence_id, alert_id, incident_id, attempt_seq, logical_destination,
+             route_mode, delivery_status, delivery_reason, message_fingerprint,
+             rendered_message, completed_at)
+        VALUES (
+            %s, %s, %s,
+            COALESCE((SELECT max(attempt_seq) + 1 FROM alert_notification_deliveries
+                       WHERE occurrence_id = %s), 1),
+            %s, %s, %s, %s, %s, %s,
+            CASE WHEN %s IN ('sent', 'suppressed') THEN now() ELSE NULL END
+        )
         ON CONFLICT DO NOTHING
         """,
-        (alert_id, logical_destination, route_mode, status, reason, msg_fp, rendered_message),
+        (occurrence_id, alert_id, incident_id, occurrence_id,
+         logical_destination, route_mode, status, reason, msg_fp,
+         rendered_message, status),
     )
+    if cur.rowcount != 1:
+        # Conflict — one_sent_per_occurrence or (occurrence_id, attempt_seq).
+        # The attempt is already recorded; do not move the counters again.
+        return
+
     if status == "sent":
         cur.execute(
-            "UPDATE alert_notification_events SET last_delivery_status=%s,last_delivery_at=now(),delivery_count=delivery_count+1 WHERE alert_id=%s",
-            (status, alert_id),
+            """UPDATE alert_incidents
+                  SET notified_count = notified_count + 1, last_notified_at = now()
+                WHERE incident_id = %s""",
+            (incident_id,),
         )
     elif status == "suppressed":
         cur.execute(
-            "UPDATE alert_notification_events SET suppression_reason=%s,last_suppression_at=now() WHERE alert_id=%s",
-            (reason, alert_id),
+            "UPDATE alert_incidents SET suppressed_count = suppressed_count + 1 WHERE incident_id = %s",
+            (incident_id,),
         )
 
 
