@@ -5,11 +5,18 @@ on:
     paths:
       - 'scripts/active_trader/t2_jit_policy.py'
       - 'scripts/active_trader/momentum_exit_policy.py'
+      - 'scripts/active_trader/motion_runtime.py'
+      - 'scripts/active_trader/motion_host_proof.py'
       - 'tests/test_active_trader_t2_jit_policy.py'
       - 'tests/test_active_trader_momentum_exit_policy.py'
       - 'tests/test_active_trader_policy_fail_closed.py'
+      - 'tests/test_active_trader_motion_runtime.py'
+      - 'tests/test_active_trader_motion_host_proof.py'
+      - 'config/systemd/tradeai-active-trader-motion.service'
+      - 'config/systemd/active-trader-motion.env.example'
       - 'docs/design/ACTIVE_TRADER_T2_JIT_AND_MOMENTUM_EXIT_v1.md'
       - 'docs/prompts/CLAUDE_ACTIVE_TRADER_LIVE_MOTION_UI_v1.md'
+      - 'docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md'
       - '.github/workflows/active-trader-policy-ci.yml'
   workflow_dispatch:
 
@@ -38,13 +45,15 @@ jobs:
           if [[ -z "$BASE_SHA" ]]; then BASE_SHA="$(git rev-parse HEAD^)"; fi
           git diff --check "$BASE_SHA...HEAD"
           python -m compileall -q scripts/active_trader
-      - name: T2 and momentum-exit policy tests
+      - name: Policy and runtime tests
         run: |
           set -o pipefail
           pytest -q \
             tests/test_active_trader_t2_jit_policy.py \
             tests/test_active_trader_momentum_exit_policy.py \
-            tests/test_active_trader_policy_fail_closed.py | tee /tmp/active-trader-policy-pytest.log
+            tests/test_active_trader_policy_fail_closed.py \
+            tests/test_active_trader_motion_runtime.py \
+            tests/test_active_trader_motion_host_proof.py | tee /tmp/active-trader-policy-pytest.log
       - name: Upload policy proof
         if: always()
         uses: actions/upload-artifact@v4
