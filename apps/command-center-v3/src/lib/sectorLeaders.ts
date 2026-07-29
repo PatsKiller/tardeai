@@ -47,6 +47,7 @@ export interface SLIndustry {
   name: string
   state: string | null
   rank: number | null
+  rank_total: number | null
   rank_change: number | null
   composite_return_pct: number | null
   constituent_count: number | null

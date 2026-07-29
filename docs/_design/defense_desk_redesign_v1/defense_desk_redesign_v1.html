@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Defense Desk — redesign mockup v1</title>
+<style>
+:root{
+  --bg0:#0a0e1a; --bg1:#111827; --bg2:#161d2e; --sunk:#0d121f;
+  --line:#1e293b; --line2:#2a3750;
+  --t0:#f8fafc; --t1:#e2e8f0; --t2:#94a3b8; --t3:#64748b;
+  --green:#22c55e; --red:#ef4444; --amber:#ffb000; --blue:#60a5fa; --purple:#a855f7;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --sans:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg0);color:var(--t1);font-family:var(--sans);font-size:13px;line-height:1.5}
+.wrap{max-width:1720px;margin:0 auto;padding:16px 20px 60px}
+h1,h2,h3{margin:0;color:var(--t0);font-weight:600}
+h1{font-size:20px} h2{font-size:15px} h3{font-size:14px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.panel{background:var(--bg1);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.ph{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;background:rgba(148,163,184,.1);color:var(--t2)}
+.chip.g{background:rgba(34,197,94,.13);color:var(--green)}
+.chip.r{background:rgba(239,68,68,.13);color:var(--red)}
+.chip.a{background:rgba(255,176,0,.14);color:var(--amber)}
+.chip.b{background:rgba(96,165,250,.13);color:var(--blue)}
+.muted{color:var(--t2)} .dim{color:var(--t3)}
+.unk{color:var(--t3);font-style:italic;font-size:12px}
+.grid{display:grid;gap:14px}
+.sec{margin-top:14px}
+table{width:100%;border-collapse:collapse}
+th{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--t3);text-align:right;padding:7px 10px}
+th:first-child{text-align:left} td{padding:8px 10px;text-align:right;border-top:1px solid var(--line)}
+td:first-child{text-align:left}
+.btn{border:1px solid var(--line2);background:transparent;color:var(--t1);border-radius:6px;padding:5px 11px;font:inherit;font-size:12px;cursor:pointer}
+.btn.p{background:rgba(96,165,250,.12);border-color:rgba(96,165,250,.4);color:var(--blue)}
+.bar{height:5px;border-radius:3px;background:var(--sunk);overflow:hidden}
+.bar>span{display:block;height:100%}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ============ 1. COMMAND STRIP ============ -->
+<div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:6px">
+  <div>
+    <h1>Defense Desk</h1>
+    <div class="muted" style="font-size:12px;margin-top:2px">institutional rotation · portfolio defense · nothing here places orders</div>
+  </div>
+  <div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <span class="chip">sectors 17h</span>
+    <span class="chip">industries 19h</span>
+    <span class="chip a">2 sectors stale &gt;5d</span>
+    <span class="chip">recs 44m</span>
+    <button class="btn">refresh all</button>
+  </div>
+</div>
+
+<!-- ============ 2. WHERE TO ACT — the new headline ============ -->
+<section class="panel sec" style="border-color:rgba(255,176,0,.28)">
+  <div class="ph" style="background:rgba(255,176,0,.06)">
+    <h2>Where to act</h2>
+    <span class="muted" style="font-size:12px">rank against your weight · the four largest mismatches</span>
+    <span style="margin-left:auto" class="chip a">shadow · nothing routes</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line)">
+
+    <div style="background:var(--bg1);padding:13px 16px">
+      <div style="display:flex;align-items:baseline;gap:7px">
+        <span class="chip g">#1</span><strong style="font-size:15px;color:var(--t0)">Energy</strong>
+        <span class="mono muted" style="font-size:12px">XLE</span>
+      </div>
+      <div class="mono" style="font-size:26px;color:var(--t0);margin:7px 0 2px">3.9%</div>
+      <div class="bar" style="margin-bottom:7px"><span style="width:18%;background:var(--green)"></span></div>
+      <div style="font-size:12px;color:var(--green)">Top-ranked sector, near-smallest position</div>
+      <div class="muted" style="font-size:12px;margin-top:5px">14 names pass filters in Oil &amp; Gas Integrated</div>
+    </div>
+
+    <div style="background:var(--bg1);padding:13px 16px">
+      <div style="display:flex;align-items:baseline;gap:7px">
+        <span class="chip r">#11</span><strong style="font-size:15px;color:var(--t0)">Technology</strong>
+        <span class="mono muted" style="font-size:12px">XLK</span>
+      </div>
+      <div class="mono" style="font-size:26px;color:var(--t0);margin:7px 0 2px">7.4%</div>
+      <div class="bar" style="margin-bottom:7px"><span style="width:34%;background:var(--red)"></span></div>
+      <div style="font-size:12px;color:var(--red)">Worst-ranked sector, twice Energy's weight</div>
+      <div class="muted" style="font-size:12px;margin-top:5px">QCOM ladder fired · CSCO rollback window open</div>
+    </div>
+
+    <div style="background:var(--bg1);padding:13px 16px">
+      <div style="display:flex;align-items:baseline;gap:7px">
+        <span class="chip g">#2</span><strong style="font-size:15px;color:var(--t0)">Financials</strong>
+        <span class="mono muted" style="font-size:12px">XLF</span>
+      </div>
+      <div class="mono" style="font-size:26px;color:var(--t0);margin:7px 0 2px">25.2%</div>
+      <div class="bar" style="margin-bottom:7px"><span style="width:100%;background:var(--amber)"></span></div>
+      <div style="font-size:12px;color:var(--amber)">Leading, but your largest single exposure</div>
+      <div class="muted" style="font-size:12px;margin-top:5px">breadth 59% above 20DMA · day 2 confirm</div>
+    </div>
+
+    <div style="background:var(--bg1);padding:13px 16px">
+      <div style="display:flex;align-items:baseline;gap:7px">
+        <span class="chip">#10</span><strong style="font-size:15px;color:var(--t0)">Real Estate</strong>
+        <span class="mono muted" style="font-size:12px">XLRE</span>
+      </div>
+      <div class="mono" style="font-size:26px;color:var(--t3);margin:7px 0 2px">0.6%</div>
+      <div class="bar" style="margin-bottom:7px"><span style="width:3%;background:var(--t3)"></span></div>
+      <div style="font-size:12px;color:var(--amber)">Reading is 16 days old — not current</div>
+      <div class="muted" style="font-size:12px;margin-top:5px">last refresh 2026-07-13 · engine gap filed</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ 3. MARKET STATE ============ -->
+<section class="panel sec">
+  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--line)">
+    <div style="background:var(--bg1);padding:11px 16px"><div class="muted" style="font-size:11px">Net equity</div><div class="mono" style="font-size:19px;color:var(--t0)">53.8%</div></div>
+    <div style="background:var(--bg1);padding:11px 16px"><div class="muted" style="font-size:11px">Cash</div><div class="mono" style="font-size:19px;color:var(--t0)">46.2%</div><div class="dim" style="font-size:11px">≈ $582K · already a hedge</div></div>
+    <div style="background:var(--bg1);padding:11px 16px"><div class="muted" style="font-size:11px">Effective tech</div><div class="mono" style="font-size:19px;color:var(--red)">7.4%</div><div class="dim" style="font-size:11px">1.3% direct + look-through</div></div>
+    <div style="background:var(--bg1);padding:11px 16px"><div class="muted" style="font-size:11px">Hedges live / advised</div><div class="mono" style="font-size:19px;color:var(--t0)">0 / 4</div></div>
+    <div style="background:var(--bg1);padding:11px 16px"><div class="muted" style="font-size:11px">Transitions today</div><div class="mono" style="font-size:19px;color:var(--amber)">4</div></div>
+    <div style="background:var(--bg1);padding:11px 16px"><div class="muted" style="font-size:11px">VIX · regime</div><div class="mono" style="font-size:19px;color:var(--t0)">18.21</div><div class="dim" style="font-size:11px">risk on trend 33%</div></div>
+  </div>
+  <div style="padding:10px 16px;border-top:1px solid var(--line);font-size:12px" class="muted">
+    SPY −1.2% wk · equal-weight leading cap-weight +2.9% 20d · small caps lagging · NH/NL 15/15 — mixed tape · 4 of 11 sectors lagging
+  </div>
+</section>
+
+<!-- ============ 4. TRANSITIONS ============ -->
+<section class="panel sec">
+  <div class="ph"><h2>Transitions</h2><span class="muted" style="font-size:12px">day-2 confirmed state changes</span></div>
+  <table>
+    <thead><tr><th>Sector</th><th>Change</th><th>RS 5d</th><th>Breadth</th><th>Your exposure</th><th style="text-align:left;padding-left:18px">Read</th></tr></thead>
+    <tbody class="mono">
+      <tr><td style="color:var(--t0)">Financials</td><td class="muted">weakening → leading</td><td style="color:var(--green)">+2.4%</td><td>59%</td><td>25.2% · $170,390</td><td style="text-align:left;padding-left:18px;font-family:var(--sans)" class="muted">Already your largest — confirmation, not an entry</td></tr>
+      <tr><td style="color:var(--t0)">Industrials</td><td class="muted">lagging → leading</td><td style="color:var(--green)">+3.4%</td><td style="color:var(--amber)">33%</td><td>17.3% · $116,780</td><td style="text-align:left;padding-left:18px;font-family:var(--sans)" class="muted">Narrow participation — one third above 20DMA</td></tr>
+      <tr><td style="color:var(--t0)">Materials</td><td class="muted">improving → leading</td><td style="color:var(--green)">+5.2%</td><td>42%</td><td>5.9% · $39,585</td><td style="text-align:left;padding-left:18px;font-family:var(--sans)" class="muted">Strongest slope on the board (+6.1)</td></tr>
+      <tr><td style="color:var(--t0)">Style IWM−SPY</td><td class="muted">lagging → improving</td><td style="color:var(--green)">+0.9%</td><td class="dim">—</td><td class="dim">n/a</td><td style="text-align:left;padding-left:18px;font-family:var(--sans)" class="muted">Broadening away from megacap growth</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 5. SECTOR LEADERS ============ -->
+<section class="sec">
+  <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+    <h2>Sector leaders</h2>
+    <span class="muted" style="font-size:12px">sector → confirming industry → names</span>
+    <div style="margin-left:auto;display:flex;gap:5px">
+      <button class="btn">1 week</button><button class="btn p">1 month</button><button class="btn">1 quarter</button>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+    <button class="btn p"><span class="dim">#1</span> XLE <span class="mono">3.9%</span></button>
+    <button class="btn"><span class="dim">#2</span> XLF <span class="mono">25.2%</span></button>
+    <button class="btn"><span class="dim">#3</span> XLP <span class="mono">5.9%</span></button>
+    <button class="btn"><span class="dim">#4</span> XLB <span class="mono">5.9%</span></button>
+    <button class="btn"><span class="dim">#5</span> XLU <span class="mono">1.7%</span></button>
+    <button class="btn"><span class="dim">#6</span> XLV <span class="mono">9.4%</span></button>
+    <button class="btn"><span class="dim">#7</span> XLI <span class="mono">17.3%</span></button>
+    <button class="btn"><span class="dim">#8</span> XLC <span class="mono">3.0%</span></button>
+    <button class="btn"><span class="dim">#9</span> XLY <span class="mono">3.8%</span></button>
+    <button class="btn"><span class="dim">#10</span> XLRE <span class="mono">0.6%</span></button>
+    <button class="btn"><span class="dim">#11</span> XLK <span class="mono">7.4%</span></button>
+  </div>
+
+  <div class="panel">
+    <div class="ph">
+      <h3>Energy</h3><span class="mono muted">XLE</span>
+      <span class="chip g">rank 1 of 11</span><span class="chip">leading · RS20 +10.5%</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line)">
+      <div style="background:var(--bg1);padding:11px 16px"><div class="muted" style="font-size:11px">Rank</div><div class="mono" style="font-size:21px;color:var(--t0)">1 <span class="dim" style="font-size:13px">of 11</span></div><div class="dim" style="font-size:11px">up 6 on the month</div></div>
+      <div style="background:var(--bg1);padding:11px 16px"><div class="muted" style="font-size:11px">Your weight</div><div class="mono" style="font-size:21px;color:var(--t0)">3.9%</div><div class="dim" style="font-size:11px">effective, of mapped equity book</div></div>
+      <div style="background:var(--sunk);padding:11px 16px"><div class="muted" style="font-size:11px">Exposure gap</div><div class="unk" style="font-size:16px;margin-top:5px">unknown</div><div class="dim" style="font-size:11px">no sizing policy configured</div></div>
+    </div>
+
+    <div style="padding:9px 16px;border-bottom:1px solid var(--line);background:rgba(255,176,0,.07);color:var(--amber);font-size:12px">
+      Defensive-lean directive active (Utilities, Consumer Staples, Healthcare). Energy sits outside it — adding here points away from the standing directive.
+    </div>
+
+    <!-- industry: expanded -->
+    <div style="padding:11px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <strong style="color:var(--t0)">Oil &amp; Gas Integrated</strong>
+      <span class="muted mono" style="font-size:12px">rank 8 · composite +11.8% · 14 pass filters</span>
+      <span class="chip a" title="spread 38.1pp within industry · top quartile −9.14pp vs XLE">wide spread, leaders still trail XLE</span>
+      <span style="margin-left:auto" class="muted" style="font-size:12px">hide</span>
+    </div>
+
+    <table>
+      <thead><tr><th>Name</th><th>Price</th><th>RS vs ind</th><th>52w high</th><th>ADV20</th><th style="text-align:left;padding-left:18px">Position &amp; flags</th></tr></thead>
+      <tbody class="mono">
+        <tr><td style="color:var(--t0);font-weight:600">EQNR</td><td>40.81</td><td style="color:var(--green)">+16.3%</td><td>−8.1%</td><td>162M</td><td style="text-align:left;padding-left:18px"></td></tr>
+        <tr><td style="color:var(--t0);font-weight:600">XOM</td><td>157.10</td><td style="color:var(--green)">+4.8%</td><td>−10.1%</td><td>2.6B</td><td style="text-align:left;padding-left:18px"><span class="chip a">earnings 2d</span></td></tr>
+        <tr><td style="color:var(--t0);font-weight:600">E</td><td>50.36</td><td style="color:var(--green)">+3.8%</td><td>−7.2%</td><td>21M</td><td style="text-align:left;padding-left:18px"></td></tr>
+        <tr><td style="color:var(--t0);font-weight:600">CVE</td><td>27.66</td><td style="color:var(--green)">+3.8%</td><td>−10.0%</td><td>229M</td><td style="text-align:left;padding-left:18px"></td></tr>
+        <tr><td style="color:var(--t0);font-weight:600">BP</td><td>43.35</td><td style="color:var(--green)">+3.5%</td><td>−10.8%</td><td>392M</td><td style="text-align:left;padding-left:18px"></td></tr>
+        <tr><td style="color:var(--t0);font-weight:600">CVX</td><td>187.69</td><td style="color:var(--green)">+2.2%</td><td>−10.6%</td><td>1.7B</td><td style="text-align:left;padding-left:18px"><span class="chip b">held 0.4% · Rollover IRA</span></td></tr>
+        <tr><td style="color:var(--t0);font-weight:600">YPF</td><td>50.80</td><td style="color:var(--green)">+0.9%</td><td>−10.6%</td><td>94M</td><td style="text-align:left;padding-left:18px"></td></tr>
+        <tr style="opacity:.5"><td>IMO</td><td>125.75</td><td style="color:var(--red)">−0.1%</td><td>−9.3%</td><td>71M</td><td style="text-align:left;padding-left:18px"><span class="chip r">lags its group</span></td></tr>
+        <tr style="opacity:.5"><td>PBR</td><td>18.57</td><td style="color:var(--red)">−1.5%</td><td>−18.1%</td><td>296M</td><td style="text-align:left;padding-left:18px"><span class="chip r">lags its group</span></td></tr>
+        <tr style="opacity:.5"><td>NFG</td><td>81.72</td><td style="color:var(--red)">−8.0%</td><td>−16.1%</td><td>65M</td><td style="text-align:left;padding-left:18px"><span class="chip r">lags its group</span> <span class="chip a">earnings 0d</span></td></tr>
+        <tr style="opacity:.5"><td>SHEL</td><td>87.15</td><td><span class="unk">unknown</span></td><td><span class="unk">unknown</span></td><td><span class="unk">unknown</span></td><td style="text-align:left;padding-left:18px"><span class="chip">no perf data</span></td></tr>
+      </tbody>
+    </table>
+    <div class="dim" style="padding:9px 16px;font-size:11px;border-top:1px solid var(--line)">
+      covered screener membership (trade_ai_scans), not official ETF constituents · industry composite from Finviz group export perf_month as of 2026-07-28
+    </div>
+
+    <!-- collapsed industries -->
+    <div style="padding:10px 16px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px">
+      <strong style="color:var(--t1)">Oil &amp; Gas Equipment &amp; Services</strong>
+      <span class="muted mono" style="font-size:12px">rank 3 · composite −0.2% · 15 pass filters</span>
+      <span class="chip">mixed</span>
+      <span style="margin-left:auto" class="muted">show names</span>
+    </div>
+    <div style="padding:10px 16px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px">
+      <strong style="color:var(--t1)">Thermal Coal</strong>
+      <span class="muted mono" style="font-size:12px">rank 2 · composite +0.0% · 3 pass filters</span>
+      <span class="unk">no verdict — only 3 priced names</span>
+      <span style="margin-left:auto" class="muted">show names</span>
+    </div>
+
+    <div style="padding:11px 16px;border-top:1px solid var(--line);background:var(--sunk)">
+      <div class="muted" style="font-size:11px;margin-bottom:4px">What this card could not source (3)</div>
+      <ul style="margin:0;padding-left:16px;font-size:12px" class="dim">
+        <li>no rank-implied sizing policy configured — compare rank against weight directly</li>
+        <li>EFXT and SHEL have no perf_month_pct — excluded from dispersion</li>
+        <li>Thermal Coal: needs ≥8 priced names, had 3 — verdict omitted</li>
+      </ul>
+    </div>
+
+    <div style="padding:11px 16px;border-top:1px solid var(--line);display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+      <span class="muted" style="font-size:12px">Routable (long):</span>
+      <span class="chip g">Schwab Taxable</span><span class="chip g">Rollover IRA</span><span class="chip g">Roth IRA</span><span class="chip g">Alpaca Paper</span>
+      <span class="muted" style="font-size:12px;margin-left:10px">Blocked:</span>
+      <span class="chip r">Alpaca live ×2</span><span class="chip r">Moomoo ×2</span><span class="chip r">Fidelity</span>
+      <div style="margin-left:auto;display:flex;gap:7px"><button class="btn">Evidence</button><button class="btn">Create watch</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6. KEEP: QUADRANT + RANKED LISTS ============ -->
+<div class="grid sec" style="grid-template-columns:minmax(0,1.05fr) minmax(0,1fr)">
+
+  <section class="panel">
+    <div class="ph"><h2>Rotation</h2><span class="muted" style="font-size:12px">RS 20d → · slope ↑ · bubble = your weight</span>
+      <span style="margin-left:auto;display:flex;gap:5px"><button class="btn">W</button><button class="btn p">M</button><button class="btn">Q</button></span></div>
+    <div style="padding:12px">
+      <svg viewBox="0 0 620 430" style="width:100%;height:auto">
+        <rect x="55" y="14" width="270" height="190" fill="rgba(96,165,250,.05)"/>
+        <rect x="325" y="14" width="270" height="190" fill="rgba(34,197,94,.06)"/>
+        <rect x="55" y="204" width="270" height="196" fill="rgba(239,68,68,.06)"/>
+        <rect x="325" y="204" width="270" height="196" fill="rgba(255,176,0,.06)"/>
+        <text x="63" y="30" fill="#60a5fa" font-size="10" font-weight="700" letter-spacing="1">IMPROVING</text>
+        <text x="587" y="30" fill="#22c55e" font-size="10" font-weight="700" letter-spacing="1" text-anchor="end">LEADING</text>
+        <text x="63" y="392" fill="#ef4444" font-size="10" font-weight="700" letter-spacing="1">LAGGING</text>
+        <text x="587" y="392" fill="#ffb000" font-size="10" font-weight="700" letter-spacing="1" text-anchor="end">WEAKENING</text>
+        <line x1="325" y1="14" x2="325" y2="400" stroke="#2a3750"/>
+        <line x1="55" y1="204" x2="595" y2="204" stroke="#2a3750"/>
+        <text x="325" y="422" fill="#64748b" font-size="10" text-anchor="middle">RS 20d vs SPY</text>
+
+        <g font-family="Inter,sans-serif" font-size="10">
+          <circle cx="516" cy="115" r="9" fill="rgba(34,197,94,.3)" stroke="#22c55e"/><text x="530" y="118" fill="#e2e8f0">Energy 3.9%</text>
+          <circle cx="479" cy="135" r="24" fill="rgba(34,197,94,.3)" stroke="#22c55e"/><text x="509" y="138" fill="#e2e8f0">Financials 25.2%</text>
+          <circle cx="428" cy="135" r="12" fill="rgba(34,197,94,.3)" stroke="#22c55e"/><text x="446" y="138" fill="#e2e8f0">Staples 5.9%</text>
+          <circle cx="424" cy="88" r="12" fill="rgba(34,197,94,.3)" stroke="#22c55e"/><text x="442" y="91" fill="#e2e8f0">Materials 5.9%</text>
+          <circle cx="406" cy="128" r="7" fill="rgba(34,197,94,.3)" stroke="#22c55e"/><text x="418" y="131" fill="#e2e8f0">Utilities 1.7%</text>
+          <circle cx="345" cy="145" r="20" fill="rgba(34,197,94,.3)" stroke="#22c55e"/><text x="371" y="148" fill="#e2e8f0">Industrials 17.3%</text>
+          <circle cx="393" cy="253" r="15" fill="rgba(255,176,0,.3)" stroke="#ffb000"/><text x="414" y="256" fill="#e2e8f0">Healthcare 9.4%</text>
+          <circle cx="248" cy="242" r="10" fill="rgba(239,68,68,.3)" stroke="#ef4444"/><text x="263" y="245" fill="#e2e8f0">Comms 3.0%</text>
+          <circle cx="230" cy="308" r="11" fill="rgba(239,68,68,.3)" stroke="#ef4444"/><text x="247" y="311" fill="#e2e8f0">Cons Disc 3.8%</text>
+          <circle cx="215" cy="322" r="5" fill="rgba(239,68,68,.3)" stroke="#ef4444"/><text x="226" y="336" fill="#94a3b8">Real Estate 0.6%</text>
+          <circle cx="106" cy="330" r="14" fill="rgba(239,68,68,.34)" stroke="#ef4444" stroke-width="1.5"/><text x="126" y="333" fill="#e2e8f0">Technology 7.4%</text>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <div class="grid" style="align-content:start">
+    <section class="panel">
+      <div class="ph"><h2>Sectors · 1 month</h2><span class="muted" style="font-size:12px">rel-SPY · ▲▼ vs quarter view</span></div>
+      <table>
+        <tbody class="mono">
+          <tr><td><span class="dim">1</span> <span style="color:var(--t0)">Energy</span></td><td style="color:var(--green)">+10.5%</td><td style="width:70px;color:var(--green)">▲6</td></tr>
+          <tr><td><span class="dim">2</span> <span style="color:var(--t0)">Financials</span></td><td style="color:var(--green)">+7.1%</td><td class="dim">=</td></tr>
+          <tr><td><span class="dim">3</span> Consumer Staples</td><td style="color:var(--green)">+4.2%</td><td style="color:var(--green)">▲2</td></tr>
+          <tr><td><span class="dim">4</span> Materials</td><td style="color:var(--green)">+3.8%</td><td style="color:var(--green)">▲2</td></tr>
+          <tr><td><span class="dim">5</span> Utilities</td><td style="color:var(--green)">+3.1%</td><td style="color:var(--green)">▲3</td></tr>
+          <tr><td><span class="dim">6</span> Healthcare</td><td style="color:var(--green)">+2.6%</td><td style="color:var(--red)">▼5</td></tr>
+          <tr><td><span class="dim">7</span> Industrials</td><td style="color:var(--green)">+0.8%</td><td style="color:var(--red)">▼4</td></tr>
+          <tr><td><span class="dim">8</span> Communications</td><td style="color:var(--red)">−3.1%</td><td style="color:var(--green)">▲3</td></tr>
+          <tr><td><span class="dim">9</span> Consumer Disc</td><td style="color:var(--red)">−3.8%</td><td style="color:var(--green)">▲1</td></tr>
+          <tr><td><span class="dim">10</span> Real Estate</td><td style="color:var(--red)">−4.4%</td><td style="color:var(--red)">▼1</td></tr>
+          <tr><td><span class="dim">11</span> <span style="color:var(--t0)">Technology</span></td><td style="color:var(--red)">−10.5%</td><td style="color:var(--red)">▼7</td></tr>
+        </tbody>
+      </table>
+      <div class="dim" style="padding:9px 16px;font-size:11px;border-top:1px solid var(--line)">
+        Energy #1, was #7 on the quarter — strongest rotation. Technology −10.5%, was #4 — sharpest breakdown.
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><h2>Industries · 1 month</h2><span class="muted" style="font-size:12px">top and bottom 8 of 144</span></div>
+      <table>
+        <tbody class="mono">
+          <tr><td><span class="dim">1</span> Staffing &amp; Employment</td><td style="color:var(--green)">+24.2%</td><td style="width:60px" class="dim">=</td></tr>
+          <tr><td><span class="dim">2</span> Consumer Electronics</td><td style="color:var(--green)">+18.8%</td><td style="color:var(--green)">▲1</td></tr>
+          <tr><td><span class="dim">3</span> Oil &amp; Gas Refining</td><td style="color:var(--green)">+18.5%</td><td style="color:var(--red)">▼1</td></tr>
+          <tr><td><span class="dim">4</span> Consulting Services</td><td style="color:var(--green)">+15.9%</td><td style="color:var(--green)">▲2</td></tr>
+          <tr><td><span class="dim">5</span> Insurance Brokers</td><td style="color:var(--green)">+13.8%</td><td style="color:var(--red)">▼1</td></tr>
+          <tr><td><span class="dim">6</span> Financial Data &amp; Exch</td><td style="color:var(--green)">+13.7%</td><td style="color:var(--green)">▲3</td></tr>
+          <tr><td><span class="dim">7</span> Specialty Business Svcs</td><td style="color:var(--green)">+12.7%</td><td class="dim">=</td></tr>
+          <tr><td><span class="dim">8</span> Oil &amp; Gas Integrated</td><td style="color:var(--green)">+10.8%</td><td style="color:var(--green)">▲2</td></tr>
+          <tr style="border-top:2px solid var(--line2)"><td><span class="dim">137</span> Engineering &amp; Constr</td><td style="color:var(--red)">−14.2%</td><td style="color:var(--green)">▲3</td></tr>
+          <tr><td><span class="dim">138</span> Aluminum</td><td style="color:var(--red)">−14.6%</td><td style="color:var(--green)">▲5</td></tr>
+          <tr><td><span class="dim">139</span> Uranium</td><td style="color:var(--red)">−15.5%</td><td style="color:var(--green)">▲5</td></tr>
+          <tr><td><span class="dim">140</span> Solar</td><td style="color:var(--red)">−16.8%</td><td style="color:var(--green)">▲1</td></tr>
+          <tr><td><span class="dim">141</span> Computer Hardware</td><td style="color:var(--red)">−19.4%</td><td style="color:var(--red)">▼8</td></tr>
+          <tr><td><span class="dim">142</span> Electrical Equip &amp; Parts</td><td style="color:var(--red)">−20.0%</td><td class="dim">=</td></tr>
+          <tr><td><span class="dim">143</span> Electronic Components</td><td style="color:var(--red)">−22.0%</td><td style="color:var(--red)">▼4</td></tr>
+          <tr><td><span class="dim">144</span> Semi Equip &amp; Materials</td><td style="color:var(--red)">−22.4%</td><td style="color:var(--red)">▼8</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+</div>
+
+<!-- ============ 7. YOUR BOOK ============ -->
+<section class="panel sec">
+  <div class="ph"><h2>Your book</h2><span class="muted" style="font-size:12px">every position ≥$10K has a stance · ★ = core registry</span>
+    <span style="margin-left:auto;display:flex;gap:6px"><span class="chip a">3 trim-watch</span><span class="chip r">2 trim</span><span class="chip">8 hold</span></span></div>
+  <table>
+    <thead><tr><th>Position</th><th>Value</th><th>Sector rank</th><th>Stance</th><th>Account</th><th style="text-align:left;padding-left:18px">Ladder</th></tr></thead>
+    <tbody class="mono">
+      <tr><td><span class="chip a" style="margin-right:6px">★</span><span style="color:var(--t0)">SCHD</span></td><td>$210K</td><td class="dim">broad</td><td style="color:var(--amber)">TRIM-WATCH</td><td class="muted">Rollover IRA</td><td style="text-align:left;padding-left:18px" class="dim">—</td></tr>
+      <tr><td><span class="chip a" style="margin-right:6px">★</span><span style="color:var(--t0)">JEPI</span></td><td>$84K</td><td class="dim">broad</td><td style="color:var(--amber)">TRIM-WATCH</td><td class="muted">Rollover IRA</td><td style="text-align:left;padding-left:18px" class="dim">—</td></tr>
+      <tr><td><span class="chip a" style="margin-right:6px">★</span><span style="color:var(--t0)">V</span></td><td>$74K</td><td style="color:var(--green)">#2 Financials</td><td>HOLD</td><td class="muted">Rollover IRA</td><td style="text-align:left;padding-left:18px" class="dim">—</td></tr>
+      <tr><td><span class="chip a" style="margin-right:6px">★</span><span style="color:var(--t0)">XLI</span></td><td>$36K</td><td style="color:var(--green)">#7 Industrials</td><td>HOLD</td><td class="muted">Rollover IRA</td><td style="text-align:left;padding-left:18px" class="dim">—</td></tr>
+      <tr><td><span class="chip a" style="margin-right:6px">★</span><span style="color:var(--t0)">ARKX</span></td><td>$30K</td><td class="dim">thematic</td><td style="color:var(--red)">TRIM</td><td class="muted">Rollover IRA</td><td style="text-align:left;padding-left:18px;font-family:var(--sans)"><span class="chip r">T1 50% advised · 1 fired</span> <span class="chip a">core floor — check aggregate</span></td></tr>
+      <tr><td><span class="chip a" style="margin-right:6px">★</span><span style="color:var(--t0)">XAR</span></td><td>$27K</td><td style="color:var(--green)">#7 Industrials</td><td style="color:var(--red)">TRIM</td><td class="muted">Rollover IRA</td><td style="text-align:left;padding-left:18px;font-family:var(--sans)"><span class="chip r">T1 45% advised · 1 fired</span> <span class="chip a">trimming into strength</span></td></tr>
+      <tr><td><span class="chip a" style="margin-right:6px">★</span><span style="color:var(--t0)">DXCM</span></td><td>$17K</td><td style="color:var(--amber)">#6 Healthcare</td><td>HOLD</td><td class="muted">Rollover IRA</td><td style="text-align:left;padding-left:18px;font-family:var(--sans)"><span class="chip a">put + call carded — unlabeled collar</span></td></tr>
+    </tbody>
+  </table>
+  <div class="dim" style="padding:9px 16px;font-size:11px;border-top:1px solid var(--line)">6 further positions ≥$10K · $89K not decomposed</div>
+</section>
+
+<!-- ============ 8. SHORT SIDE + HEDGES ============ -->
+<div class="grid sec" style="grid-template-columns:1fr 1fr">
+  <section class="panel">
+    <div class="ph"><h2>Short side</h2><span class="muted" style="font-size:12px">lagging industry → name · taxable only</span><span style="margin-left:auto" class="chip a">shadow</span></div>
+    <table>
+      <thead><tr><th>Name</th><th>Entry</th><th>Buy-stop</th><th>vs 200DMA</th><th style="text-align:left;padding-left:18px">Industry</th></tr></thead>
+      <tbody class="mono">
+        <tr><td style="color:var(--t0)">XPEV</td><td>12.71</td><td>13.15</td><td style="color:var(--red)">−27.2%</td><td style="text-align:left;padding-left:18px" class="muted">Auto Manufacturers</td></tr>
+        <tr><td style="color:var(--t0)">ACM</td><td>74.50</td><td>77.01</td><td style="color:var(--red)">−27.1%</td><td style="text-align:left;padding-left:18px" class="muted">Engineering &amp; Construction</td></tr>
+        <tr><td style="color:var(--t0)">PLAB</td><td>29.16</td><td>30.03</td><td style="color:var(--red)">−10.8%</td><td style="text-align:left;padding-left:18px" class="muted">Semi Equip &amp; Materials</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <div class="ph"><h2>Inverse-ETF hedges</h2><span class="muted" style="font-size:12px">−1× lane · daily-reset, governed max hold</span></div>
+    <table>
+      <thead><tr><th>Pair</th><th>Thesis</th><th>Entry</th><th style="text-align:left;padding-left:18px">State</th></tr></thead>
+      <tbody class="mono">
+        <tr><td style="color:var(--t0)">PSQ / QQQ</td><td><span class="chip g">green</span></td><td><span class="chip a">amber</span></td><td style="text-align:left;padding-left:18px;font-family:var(--sans)" class="muted">Armed, waiting for a bounce ≥ +0.75% — do not chase after a down day</td></tr>
+        <tr><td class="muted">SH / SPY</td><td><span class="chip r">red</span></td><td><span class="chip r">red</span></td><td style="text-align:left;padding-left:18px;font-family:var(--sans)" class="dim">Do not enter — thesis red</td></tr>
+        <tr><td class="muted">DOG / DIA</td><td><span class="chip r">red</span></td><td><span class="chip r">red</span></td><td style="text-align:left;padding-left:18px;font-family:var(--sans)" class="dim">Do not enter — thesis red</td></tr>
+        <tr><td class="muted">RWM / IWM</td><td><span class="chip r">red</span></td><td><span class="chip r">red</span></td><td style="text-align:left;padding-left:18px;font-family:var(--sans)" class="dim">Do not enter — thesis red</td></tr>
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<!-- ============ 9. OVERSIGHT ============ -->
+<section class="panel sec">
+  <div class="ph"><h2>Oversight</h2><span class="muted" style="font-size:12px">five seats · informs, never blocks</span><span style="margin-left:auto" class="chip">build 159f6af5</span></div>
+  <div style="padding:13px 16px;border-bottom:1px solid var(--line)">
+    <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:5px"><span class="chip r">strongest objection</span><span class="muted mono" style="font-size:11px">paid · 2026-07-29 10:51</span></div>
+    <div style="color:var(--t1)">ARKX is a core, never-full-exit position being exited via repeated fired T2 ladders with no cumulative-percentage guardrail — while XAR is trimmed inside a leading sector. Add a hard aggregate-trim ledger per core symbol before any further fire.</div>
+  </div>
+  <div style="padding:13px 16px">
+    <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:5px"><span class="chip a">counterpoint</span><span class="muted mono" style="font-size:11px">paid_xai · 2026-07-18</span></div>
+    <div class="muted">Defensive lean may be premature — equal-weight leadership and balanced NH/NL suggest breadth expansion rather than risk-off; the book could end up under-exposed if the tape stabilizes.</div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

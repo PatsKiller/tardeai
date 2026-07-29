@@ -214,3 +214,45 @@ def test_both_sides_of_rs_use_the_same_finviz_window():
     for h, spec in HORIZONS.items():
         assert spec["industry_col"].replace("perf_", "") == \
                spec["name_key"].replace("perf_", "").replace("_pct", ""), h
+
+
+# ---------------------------------------------- dispersion 4th state (DD-S1)
+# Operator 2026-07-29, superseding visual contract §6. A PRESENTATION split of
+# what "mixed" already covered — no threshold moved.
+
+def test_wide_spread_with_negative_excess_names_the_situation():
+    # Oil & Gas Equipment & Services, live 2026-07-29: spread 38.1, excess -9.14.
+    # Previously returned the generic "mixed", which hid that the leaders trail.
+    assert dispersion_verdict(
+        {"spread_pp": 38.1, "top_quartile_excess_pp": -9.14, "n": 14}
+    ) == "leaders trail the ETF"
+
+
+def test_wide_spread_with_strong_excess_still_buys_names():
+    # Oil & Gas Integrated, live 2026-07-29: spread 13.14, excess +8.67.
+    assert dispersion_verdict(
+        {"spread_pp": 13.14, "top_quartile_excess_pp": 8.67, "n": 14}
+    ) == "buy names"
+
+
+def test_wide_spread_with_small_positive_excess_is_still_mixed():
+    # Between the bounds: not good enough to buy names, not negative either.
+    assert dispersion_verdict(
+        {"spread_pp": 40.0, "top_quartile_excess_pp": 1.0, "n": 20}
+    ) == "mixed"
+
+
+def test_negative_excess_can_never_buy_names_at_any_spread():
+    # The property contract §6 asked for. It already held; this pins it.
+    for spread in (12.0, 25.0, 60.0, 120.0):
+        assert dispersion_verdict(
+            {"spread_pp": spread, "top_quartile_excess_pp": -0.01, "n": 30}
+        ) != "buy names"
+
+
+def test_tight_group_buys_the_etf_even_with_negative_excess():
+    # Spread dominates at the low end: an undispersed group is an ETF call
+    # regardless of excess, which is unchanged behaviour.
+    assert dispersion_verdict(
+        {"spread_pp": 3.0, "top_quartile_excess_pp": -5.0, "n": 20}
+    ) == "buy the ETF"

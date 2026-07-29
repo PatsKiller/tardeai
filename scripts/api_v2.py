@@ -11742,10 +11742,14 @@ def _defense_sector_leaders(query=None):
     from db_adapter import _get_conn
     with _get_conn() as conn, conn.cursor() as cur:
         sectors = svc.list_sectors(cur=cur)
-        if not sector:
-            return {"ok": True, "sectors": sectors, "horizon": horizon}
-        return {"ok": True, "sectors": sectors, "horizon": horizon,
-                "sector": svc.build_sector_leaders(sector, horizon, cur=cur)}
+        # symbol -> sector rank, for the Your-book column of the redesigned desk.
+        # Multi-sector funds resolve to a reason, not a label.
+        book_ranks = svc.book_sector_ranks(cur=cur)
+        out = {"ok": True, "sectors": sectors, "horizon": horizon,
+               "book_sector_ranks": book_ranks}
+        if sector:
+            out["sector"] = svc.build_sector_leaders(sector, horizon, cur=cur)
+        return out
 
 
 def _defense_core_registry(query=None):

@@ -24,8 +24,41 @@
 import { useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { BB, DASH, numStyle } from '../../lib/watchTokens'
+import { S } from '../../lib/defenseRedesign'
 import { Chip } from '../TerminalChip'
 import type { SLConstituent, SLIndustry, SLSector } from '../../lib/sectorLeaders'
+
+/** DD-S1: the card is shared by two surfaces and must look right on both.
+ *
+ *   'v1'       — SectorLeadersPanel, live behind SECTOR_LEADERS_V1 (default ON)
+ *   'redesign' — DefenseRedesign, behind DEFENSE_REDESIGN_V1 (default OFF)
+ *
+ * A blind restyle would have changed the LIVE surface while the redesign is
+ * meant to stay dark until accepted, so the divergent values are parameterised
+ * rather than replaced. Everything the two share (columns, chips, dimming, the
+ * <Val> null contract) stays single-sourced.
+ */
+export type CardVariant = 'v1' | 'redesign'
+
+interface CardTheme {
+  cell: string; sunk: string; dim: string; muted: string
+  thSize: number; thWeight: number; thTransform: 'none' | 'uppercase'; thSpacing: string
+  h3: number
+}
+const THEMES: Record<CardVariant, CardTheme> = {
+  v1: {
+    cell: BB.bgPanel, sunk: BB.bgPanel, dim: BB.text3, muted: BB.text3,
+    thSize: DASH.data, thWeight: 500, thTransform: 'none', thSpacing: 'normal',
+    h3: DASH.panel,
+  },
+  redesign: {
+    // Mockup: cells sit on the panel surface, sunken cells and footers on --sunk,
+    // table headers are 10px uppercase on --t3.
+    cell: S.bg1, sunk: S.sunk, dim: S.t3, muted: S.t2,
+    thSize: 10, thWeight: 800, thTransform: 'uppercase', thSpacing: '.05em',
+    h3: 14,
+  },
+}
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const pct = (v: number, d = 1) => `${v > 0 ? '+' : ''}${v.toFixed(d)}%`
@@ -65,15 +98,15 @@ export function Val(props: {
  * render the whole strip as unknown, show rank and weight adjacently and let the
  * juxtaposition carry it — #1 at 3.9% against #9 at 7.4% is legible without a
  * policy. The third cell turns on by itself when a policy lands. */
-function GapStrip({ sector }: { sector: SLSector }) {
+function GapStrip({ sector, t }: { sector: SLSector; t: CardTheme }) {
   const gap = sector.exposure_gap
   const warn = !!gap && gap.state !== 'in band'
 
   const cell = (label: string, node: ReactNode, sub?: ReactNode, flex = 1, tone?: CSSProperties) => (
-    <div style={{ flex, background: BB.bgPanel, padding: '10px 16px', ...tone }}>
-      <div style={{ fontSize: DASH.data, color: BB.text3 }}>{label}</div>
+    <div style={{ flex, background: t.cell, padding: '10px 16px', ...tone }}>
+      <div style={{ fontSize: DASH.data, color: t.muted }}>{label}</div>
       <div style={{ fontSize: DASH.verdict, ...numStyle, marginTop: 4, color: BB.text0 }}>{node}</div>
-      {sub ? <div style={{ fontSize: DASH.data, color: BB.text3, marginTop: 2 }}>{sub}</div> : null}
+      {sub ? <div style={{ fontSize: DASH.data, color: t.dim, marginTop: 2 }}>{sub}</div> : null}
     </div>
   )
 
@@ -109,7 +142,7 @@ function GapStrip({ sector }: { sector: SLSector }) {
   )
 }
 
-function ConstituentTable({ industry, defaultBlocked }: { industry: SLIndustry; defaultBlocked: string[] }) {
+function ConstituentTable({ industry, defaultBlocked, t }: { industry: SLIndustry; defaultBlocked: string[]; t: CardTheme }) {
   const rows = industry.constituents || []
   const sameAsDefault = (b: string[]) =>
     b.length === defaultBlocked.length && b.every(x => defaultBlocked.includes(x))
@@ -123,7 +156,8 @@ function ConstituentTable({ industry, defaultBlocked }: { industry: SLIndustry; 
   }
 
   const th: CSSProperties = {
-    color: BB.text3, fontSize: DASH.data, fontWeight: 500, padding: '6px 0', textAlign: 'right',
+    color: t.dim, fontSize: t.thSize, fontWeight: t.thWeight, padding: '6px 0',
+    textAlign: 'right', textTransform: t.thTransform, letterSpacing: t.thSpacing,
   }
   const td: CSSProperties = { padding: '9px 0', textAlign: 'right', ...numStyle, fontSize: DASH.row }
 
@@ -205,7 +239,8 @@ function ConstituentTable({ industry, defaultBlocked }: { industry: SLIndustry; 
   )
 }
 
-export default function SectorLeadersCard({ sector }: { sector: SLSector }) {
+export default function SectorLeadersCard({ sector, variant = 'v1' }: { sector: SLSector; variant?: CardVariant }) {
+  const t = THEMES[variant]
   const [openIndustry, setOpenIndustry] = useState<string | null>(sector.industries?.[0]?.key ?? null)
 
   const decided = useMemo(
@@ -227,7 +262,7 @@ export default function SectorLeadersCard({ sector }: { sector: SLSector }) {
     >
       <header style={{ padding: '14px 18px', borderBottom: `1px solid ${BB.border}` }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-          <h3 id={`sector-leaders-${sector.key}`} style={{ margin: 0, fontSize: DASH.panel, color: BB.text0 }}>
+          <h3 id={`sector-leaders-${sector.key}`} style={{ margin: 0, fontSize: t.h3, color: BB.text0 }}>
             {sector.name}
           </h3>
           <span style={{ ...numStyle, fontSize: DASH.section, color: BB.text3 }}>{sector.etf}</span>
@@ -252,7 +287,7 @@ export default function SectorLeadersCard({ sector }: { sector: SLSector }) {
         </div>
       </header>
 
-      <GapStrip sector={sector} />
+      <GapStrip sector={sector} t={t} />
 
       {sector.defensive_lean?.enabled && (
         <div
@@ -310,6 +345,12 @@ export default function SectorLeadersCard({ sector }: { sector: SLSector }) {
             >
               <span style={{ fontSize: DASH.section, color: BB.text1 }}>{ind.name}</span>
               <span style={{ fontSize: DASH.data, color: BB.text3, ...numStyle }}>
+                {/* GLOBAL rank among all industries, labelled with its basis so it
+                    cannot be misread as a within-sector position — it agrees with
+                    the Industries list at the foot of the page. */}
+                {isNum(ind.rank)
+                  ? <>rank {ind.rank}{isNum(ind.rank_total) ? ` of ${ind.rank_total}` : ''}{' · '}</>
+                  : null}
                 {(ind.state || '').toLowerCase()}
                 {' · comp '}
                 <Val value={ind.composite_return_pct} fmt={v => pct(v)} reason="no industry composite for this window" />
@@ -341,7 +382,7 @@ export default function SectorLeadersCard({ sector }: { sector: SLSector }) {
             </button>
             {open && (
               <div style={{ padding: '0 18px 14px' }}>
-                <ConstituentTable industry={ind} defaultBlocked={sector.accounts?.blocked_long || []} />
+                <ConstituentTable industry={ind} defaultBlocked={sector.accounts?.blocked_long || []} t={t} />
                 {ind.source_note && (
                   <div style={{ marginTop: 10, fontSize: DASH.data, color: BB.text3 }}>{ind.source_note}</div>
                 )}

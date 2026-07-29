@@ -14,6 +14,8 @@ import OptionsLifecycleStrip from '../components/defense/OptionsLifecycleStrip'
 import InverseStoplightRail from '../components/defense/InverseStoplightRail'
 import InstitutionalRotationBrief from '../components/rotation/InstitutionalRotationBrief'
 import SectorLeadersPanel from '../components/defense/SectorLeadersPanel'
+import DefenseRedesign from '../components/defense/redesign/DefenseRedesign'
+import { defenseRedesignEnabled } from '../lib/defenseRedesign'
 
 function ago(ts?: string | null): string {
   if (!ts) return 'never'
@@ -109,6 +111,34 @@ export default function DefenseHub() {
       await fetch('/api/v2/defense/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       refetchRecs()
     } finally { setQueueing(false) }
+  }
+
+  // DD-S1: the redesigned desk, behind DEFENSE_REDESIGN_V1 (default OFF).
+  // Section 6 (quadrant + ranked lists) is PRESERVED and passed through, and every
+  // live component absent from the mockup is preserved unmodified below section 9
+  // per contract §2b. Nothing is deleted; the flag only changes arrangement.
+  if (defenseRedesignEnabled()) {
+    return (
+      <div style={{ maxWidth: 1720, margin: '0 auto' }}>
+        <DefenseRedesign
+          posture={posture} recsData={recsData} tradeAi={tradeAi} regime={regime}
+          industriesCapturedAt={industries?.captured_at}
+          onRefresh={startRefresh} refreshing={queueing}
+          quadrant={<RotationBoards sectors={rows} industries={ind} spyLong={spyLong} oversight={recsData?.oversight} />}
+          preserved={
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <ExecutionPanel intents={recsData?.intents || []} execLog={recsData?.execution_log || []}
+                capsCfg={recsData?.execution_caps} onChange={refetchRecs} />
+              <OptionsLifecycleStrip />
+              <RotationPlanPanel plan={recs?.rotation_plan || []} onConfirmed={refetchRecs} oversight={recsData?.oversight} />
+              <ReviewConsole />
+              <DefenseDetails posture={posture} industries={industries} radar={radar}
+                operatorItems={recs?.operator_items} />
+            </div>
+          }
+        />
+      </div>
+    )
   }
 
   return (

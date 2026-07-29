@@ -167,6 +167,24 @@ def dispersion_verdict(dispersion: Optional[dict]) -> Optional[str]:
     The 2026-07-29 correction moved the LEVEL the computation runs at, not the
     cut points — changing both at once would leave neither testable against
     outcome data later.
+
+    FOUR states as of 2026-07-29 (operator, superseding visual contract §6):
+
+        spread >= 12 and excess >= 4   -> "buy names"
+        spread >= 12 and excess <  0   -> "leaders trail the ETF"
+        spread <= 6                    -> "buy the ETF"
+        otherwise                      -> "mixed"
+
+    The third state is a PRESENTATION split, not a threshold change: it was
+    already inside "mixed" and behaved identically. A group that is widely
+    dispersed but whose top quartile still trails the ETF is a materially
+    different situation from an undispersed one, and collapsing both into
+    "mixed" hid it.
+
+    Note for anyone re-reading contract §6: it asserted that a negative excess
+    could produce "buy names" at a wide spread. It could not, and never could —
+    "buy names" requires BOTH bounds, so excess < 0 fails `>= 4` at any spread.
+    The numbers §6 cited belonged to a different industry.
     """
     if not dispersion:
         return None
@@ -174,8 +192,11 @@ def dispersion_verdict(dispersion: Optional[dict]) -> Optional[str]:
     excess = dispersion.get("top_quartile_excess_pp")
     if spread is None:
         return None
-    if spread >= DISPERSION_NAMES_SPREAD_PP and excess is not None and excess >= DISPERSION_NAMES_EXCESS_PP:
-        return "buy names"
+    if spread >= DISPERSION_NAMES_SPREAD_PP:
+        if excess is not None and excess >= DISPERSION_NAMES_EXCESS_PP:
+            return "buy names"
+        if excess is not None and excess < 0:
+            return "leaders trail the ETF"
     if spread <= DISPERSION_ETF_SPREAD_PP:
         return "buy the ETF"
     return "mixed"
@@ -255,6 +276,7 @@ class IndustryBlock:
     name: str
     state: Optional[str] = None
     rank: Optional[int] = None
+    rank_total: Optional[int] = None
     rank_change: Optional[int] = None
     composite_return_pct: Optional[float] = None
     constituent_count: Optional[int] = None
@@ -513,18 +535,33 @@ def _sector_aliases(sector_name: str) -> list[str]:
 
 
 def _industry_rows(cur, sector_name: str, horizon: str) -> list[dict[str, Any]]:
+    """Industries in one sector, carrying their GLOBAL rank among all 144.
+
+    Rank is global, not within-sector, so the number agrees with the Industries
+    list at the foot of the page (operator decision 2026-07-29). Rendered as
+    "rank N of 144" so the basis is unambiguous.
+    """
     col = HORIZONS[horizon]["industry_col"]
     cur.execute(
-        f"""SELECT industry, state, rel1w, rel1m, {col}, stocks, as_of, created_at
-              FROM industry_momentum_state
-             WHERE as_of = (SELECT max(as_of) FROM industry_momentum_state)
-               AND sector = ANY(%s)
-             ORDER BY {col} DESC NULLS LAST""",
+        f"""WITH ranked AS (
+              SELECT industry, sector, state, rel1w, rel1m, {col} AS composite,
+                     stocks, as_of, created_at,
+                     RANK() OVER (ORDER BY {col} DESC NULLS LAST) AS global_rank,
+                     count(*) OVER () AS global_total
+                FROM industry_momentum_state
+               WHERE as_of = (SELECT max(as_of) FROM industry_momentum_state)
+            )
+            SELECT industry, state, rel1w, rel1m, composite, stocks, as_of,
+                   created_at, global_rank, global_total
+              FROM ranked
+             WHERE sector = ANY(%s)
+             ORDER BY composite DESC NULLS LAST""",
         (_sector_aliases(sector_name),),
     )
     return [{
         "industry": r[0], "state": r[1], "rel1w": _f(r[2]), "rel1m": _f(r[3]),
         "composite": _f(r[4]), "stocks": r[5], "as_of": r[6], "created_at": r[7],
+        "global_rank": r[8], "global_total": r[9],
     } for r in cur.fetchall()]
 
 
@@ -779,12 +816,15 @@ def build_sector_leaders(sector_key: str, horizon: str = "M", cur=None) -> dict[
     prices = _prices(cur, all_syms)
     today = date.today()
 
-    for pos, ind in enumerate(confirming, start=1):
+    for _pos, ind in enumerate(confirming, start=1):
         blk = IndustryBlock(
             key=_sector_key(ind["industry"]),
             name=ind["industry"],
             state=ind["state"],
-            rank=pos,
+            # GLOBAL rank among all industries, so it agrees with the Industries
+            # list at the foot of the page. rank_total makes the basis explicit.
+            rank=ind.get("global_rank"),
+            rank_total=ind.get("global_total"),
             composite_return_pct=ind["composite"],
             filter_summary=(
                 f"price >= ${MIN_PRICE:.0f}, ADV20 >= ${MIN_ADV_20D_USD/1e6:.0f}M, "
@@ -913,6 +953,90 @@ def build_sector_leaders(sector_key: str, horizon: str = "M", cur=None) -> dict[
         )
 
     return asdict(out)
+
+
+def book_sector_ranks(cur=None) -> dict[str, dict[str, Any]]:
+    """symbol -> {sector, rank, rank_total} or {reason} for the Your-book column.
+
+    Two distinct cases, and only one of them is a data gap:
+
+      1. Single-sector holding. symbol_profiles.sector carries a FINVIZ name
+         ('Financial Services') while the ranked board carries ETF labels
+         ('Financials'), so the lookup goes through the SAME alias map in
+         reverse. Without it V — the book's largest single name — resolves to
+         nothing. Same root cause as the SL-S1 join bug.
+
+      2. Multi-sector holding (SCHD, JEPI, BND, ARKX, DIVI…). A fund spanning
+         ten sectors has no single sector rank. That is not a missing value, it
+         is a category error, and it renders `unk` with a reason rather than an
+         invented 'broad'/'thematic' label — no such classification exists in
+         config anywhere (operator decision 2026-07-29).
+    """
+    if cur is None:
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from db_adapter import _get_conn
+        with _get_conn() as conn, conn.cursor() as c:
+            return book_sector_ranks(cur=c)
+
+    ranked = {r["sector"]: r for r in _sector_rows(cur)}
+    total = len(ranked)
+    # ETF-label -> itself, plus every Finviz alias -> the ETF label.
+    reverse: dict[str, str] = {}
+    for label in ranked:
+        for alias in _sector_aliases(label):
+            reverse[alias] = label
+
+    try:
+        funds = json.loads((ROOT / "config" / "fund_lookthrough.json").read_text())["funds"]
+    except Exception:
+        funds = {}
+
+    try:
+        holdings = json.loads(
+            (ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text()
+        ).get("holdings") or []
+    except Exception:
+        return {}
+
+    symbols = sorted({h["symbol"] for h in holdings if h.get("symbol") and not h.get("is_cash")})
+    if not symbols:
+        return {}
+    cur.execute(
+        "SELECT symbol, sector FROM symbol_profiles WHERE symbol = ANY(%s)", (symbols,)
+    )
+    profile = dict(cur.fetchall())
+
+    out: dict[str, dict[str, Any]] = {}
+    for sym in symbols:
+        fund = funds.get(sym) or {}
+        weights = fund.get("weights") or {}
+        if len(weights) > 1:
+            out[sym] = {"sector": None, "rank": None, "rank_total": total,
+                        "reason": f"multi-sector holding ({len(weights)} sectors) — no single sector rank"}
+            continue
+        if fund.get("lookthrough") == "none":
+            why = (fund.get("why") or "no sector look-through available").strip()
+            out[sym] = {"sector": None, "rank": None, "rank_total": total, "reason": why}
+            continue
+        raw = profile.get(sym)
+        label = reverse.get(raw) if raw else None
+        if label and label in ranked:
+            out[sym] = {"sector": label, "rank": ranked[label]["rank"],
+                        "rank_total": total, "reason": None}
+        elif len(weights) == 1:
+            only = reverse.get(next(iter(weights)))
+            if only and only in ranked:
+                out[sym] = {"sector": only, "rank": ranked[only]["rank"],
+                            "rank_total": total, "reason": None}
+            else:
+                out[sym] = {"sector": None, "rank": None, "rank_total": total,
+                            "reason": "fund's single sector is not on the ranked board"}
+        else:
+            out[sym] = {"sector": None, "rank": None, "rank_total": total,
+                        "reason": (f"no sector on symbol_profiles" if not raw
+                                   else f"sector '{raw}' is not a ranked board sector")}
+    return out
 
 
 def list_sectors(cur=None) -> list[dict[str, Any]]:

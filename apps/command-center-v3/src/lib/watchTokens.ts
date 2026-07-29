@@ -71,6 +71,33 @@ export const TYPE = { xs: 10, sm: 11, base: 12, md: 14, lg: 18, xl: 24 } as cons
  * 7/8/9px are BANNED (check_design_tokens.sh enforces); 10 is legal only inside chips. */
 export const DASH = { data: 12, row: 12.5, section: 14, panel: 16, verdict: 22, chip: 10 } as const
 
+/** Defense Desk redesign v1 (2026-07-29). THREE tokens the mockup needs that the
+ * existing palette has no value for. Everything else in that spec maps to an
+ * existing BB/T token BY VALUE — never by name:
+ *
+ *   --bg0  #0a0e1a -> BB.bgPanel     --t0  #f8fafc -> BB.text0
+ *   --bg1  #111827 -> BB.bgShift     --t1  #e2e8f0 -> BB.text1
+ *   --line #1e293b -> BB.border      --t2  #94a3b8 -> BB.text3   <- NOT BB.text2
+ *   --green/red/amber -> BB.*        --blue #60a5fa -> T.link
+ *
+ * The --t2 line is the trap: BB.text2 is #cbd5e1 and appears nowhere in the
+ * mockup. A name-based mapping is wrong by one shade on every muted label,
+ * which is the same class of error that derailed the previous attempt.
+ *
+ * NOT defined here, deliberately: the mockup's --bg2 (#161d2e) and --purple
+ * (#a855f7) are declared in its :root but referenced ZERO times in its markup
+ * or CSS. --purple is additionally a hex the design system already deprecates
+ * in favour of T.extIntel.hermes (#a78bfa). Adding either would be dead weight.
+ */
+export const DD = {
+  /** inset / sunken surface — footers, gap cells, progress-bar troughs */
+  sunk: '#0d121f',
+  /** emphasized border — buttons, table section rules */
+  line2: '#2a3750',
+  /** dim metadata — table headers, .dim, the unknown-value class */
+  t3: '#64748b',
+} as const
+
 /** v8.5c — LLM provider brand colors for the oversight pills (ONLY place hexes live). */
 export const BRAND = { anthropic: '#D97757', openai: '#10A37F', xai: '#B8C2CC' } as const
 
