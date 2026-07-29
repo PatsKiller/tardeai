@@ -31,7 +31,7 @@ import type { SLConstituent, SLIndustry, SLSector } from '../../lib/sectorLeader
 /** DD-S1: the card is shared by two surfaces and must look right on both.
  *
  *   'v1'       — SectorLeadersPanel, live behind SECTOR_LEADERS_V1 (default ON)
- *   'redesign' — DefenseRedesign, behind DEFENSE_REDESIGN_V1 (default OFF)
+ *   'redesign' — DefenseRedesign, the Defense Desk page itself (no flag)
  *
  * A blind restyle would have changed the LIVE surface while the redesign is
  * meant to stay dark until accepted, so the divergent values are parameterised

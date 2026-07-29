@@ -1,23 +1,14 @@
-/** Defense Desk redesign v1 — feature flag + shared primitives.
+/** Defense Desk redesign v1 — shared primitives.
  *
- * DEFAULT OFF. A SECOND flag, deliberately: SECTOR_LEADERS_V1 stays ON (commit
- * 61f202b6, operator request) and keeps working while this is built. When the
- * redesign is accepted it supersedes and SECTOR_LEADERS_V1 retires. Nothing is
- * taken away mid-build.
+ * No feature flag. The redesign IS the Defense Desk as of 2026-07-29; it shipped
+ * gated for one deploy and the operator removed the gate. Rollback is `git revert`
+ * of the commit, not a runtime toggle.
  *
- * Enable:  localStorage.setItem('DEFENSE_REDESIGN_V1', 'on')   then reload
- * Disable: localStorage.removeItem('DEFENSE_REDESIGN_V1')
+ * SECTOR_LEADERS_V1 is untouched — the Sector Leaders card is a section of this
+ * page and keeps its own flag for the card itself.
  */
 import type { CSSProperties } from 'react'
 import { BB, DD, T } from './watchTokens'
-
-export function defenseRedesignEnabled(): boolean {
-  try {
-    return localStorage.getItem('DEFENSE_REDESIGN_V1') === 'on'
-  } catch {
-    return false
-  }
-}
 
 /** The mockup's token set, mapped BY VALUE to the page's own palette.
  *
