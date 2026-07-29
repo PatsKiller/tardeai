@@ -443,6 +443,39 @@ def _lead_evidence(evidence_json):
     return ""
 
 
+#: Where the "blocked on a data defect" reminder cadence is tracked. A JSON file rather
+#: than a schema change: this is scheduler bookkeeping, not research history.
+GAP_STATE = ROOT / "data" / "state" / "research_gap_alerts.json"
+
+#: How often to re-surface an unresolved research blocker.
+GAP_REMINDER_HOURS = 24
+
+
+def _gap_state():
+    try:
+        return json.loads(GAP_STATE.read_text())
+    except Exception:
+        return {}
+
+
+def _gap_due(sym, verdict_key, now_ts):
+    """True when a blocked verdict has never been surfaced, or the reminder has aged out."""
+    st = _gap_state().get(sym) or {}
+    if st.get("verdict") != verdict_key:
+        return True
+    return (now_ts - float(st.get("last_alert_ts") or 0)) >= GAP_REMINDER_HOURS * 3600
+
+
+def _gap_mark(sym, verdict_key, now_ts):
+    st = _gap_state()
+    st[sym] = {"verdict": verdict_key, "last_alert_ts": now_ts}
+    try:
+        GAP_STATE.parent.mkdir(parents=True, exist_ok=True)
+        GAP_STATE.write_text(json.dumps(st, indent=1, sort_keys=True))
+    except Exception:
+        pass
+
+
 def surface_holding_event(sym):
     """Diff latest two chatgpt opinions for a holding; alert on material change.
 
@@ -450,8 +483,16 @@ def surface_holding_event(sym):
     counter-view. Sending the bare `recommendation` field stopped being informative once
     the lane began returning terse verdicts — a Telegram message reading only "HOLD" tells
     the operator nothing about why (2026-07-29 prompt-curation audit).
+
+    INSUFFICIENT_EVIDENCE is exempt from materiality suppression. A stable HOLD repeating
+    every cycle is genuinely not news; a stable "I am blocked on a data defect" is the
+    opposite — nothing will change until a human acts, so an unchanged verdict means the
+    problem is still there. Left to the ordinary gate it alerts once and then goes silent
+    forever while the lane re-diagnoses and re-pays for the same finding every cycle.
+    Re-surfaced on a bounded cadence instead, carrying the operator_action verbatim.
     """
-    rows = _q("""SELECT recommendation, confidence, created_at, dissent, evidence_json
+    rows = _q("""SELECT recommendation, confidence, created_at, dissent, evidence_json,
+                        operator_action, risk_flags
                  FROM hermes_external_research
                  WHERE symbol=%s AND lane='chatgpt' AND recommendation NOT LIKE '[%%'
                  ORDER BY created_at DESC LIMIT 2""", (sym,))
@@ -459,17 +500,41 @@ def surface_holding_event(sym):
         return
     new = dict(rows[0])
     prev = dict(rows[1]) if len(rows) > 1 else {}
+    vkey = _verdict_key(new.get("recommendation"))
     conf_delta = abs(float(new.get("confidence") or 0) - float(prev.get("confidence") or 0))
-    material = (not prev) or (_verdict_key(new.get("recommendation")) !=
-                              _verdict_key(prev.get("recommendation"))) or conf_delta >= 0.2
-    if not material:
+    material = (not prev) or (vkey != _verdict_key(prev.get("recommendation"))) or conf_delta >= 0.2
+
+    blocked = vkey == "insufficient"
+    if blocked:
+        # _gap_due alone is the whole rule: it already returns True when this symbol has
+        # never been surfaced or its verdict changed, and False only for the same blocker
+        # inside the reminder window. Or-ing `material` in here defeated it — a blocker is
+        # material on the cycle it appears and then stays material against the unchanged
+        # prior row, so every cycle alerted.
+        now_ts = time.time()
+        if not _gap_due(sym, vkey, now_ts):
+            return
+        _gap_mark(sym, vkey, now_ts)
+    elif not material:
         return
     verdict = str(new.get("recommendation") or "").replace("_", " ").strip().title()
-    msg = f"\U0001f4ca {sym} (holding) — ChatGPT research update\n{verdict} · conf {new.get('confidence')}"
+    head = "⚠️" if blocked else "\U0001f4ca"
+    msg = f"{head} {sym} (holding) — ChatGPT research update\n{verdict} · conf {new.get('confidence')}"
     lead = _lead_evidence(new.get("evidence_json"))
     if lead:
         msg += f"\n{_clip(lead, 230)}"
-    if new.get("dissent"):
+    if blocked:
+        # For a blocked verdict the actionable field is what would unblock it — that matters
+        # more than the counter-view, and it is the only part a human can act on.
+        if new.get("operator_action"):
+            msg += f"\n\U0001f527 To unblock: {_clip(new['operator_action'], 220)}"
+        flags = new.get("risk_flags")
+        if flags:
+            if isinstance(flags, str):
+                flags = [flags]
+            msg += f"\n\U0001f6a9 {_clip(', '.join(str(f) for f in flags), 140)}"
+        msg += f"\n(repeats every {GAP_REMINDER_HOURS}h until resolved)"
+    elif new.get("dissent"):
         msg += f"\n⚖️ Counter-view: {_clip(new['dissent'], 200)}"
     try:
         from telegram_alert import _raw_send_telegram

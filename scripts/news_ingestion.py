@@ -384,6 +384,26 @@ def _company_description(cur, sym: str) -> str | None:
         return None
 
 
+def _fifty_two_week_reference(cur, sym: str):
+    """(low, high) over the trailing year, for the symbol-guard price-conflict veto.
+
+    close_price > 0.5 drops the known corrupt bars — a stray $0.05 print would define the low
+    and make every legitimate 52-week-low headline look contradictory.
+    """
+    try:
+        cur.execute(
+            """SELECT min(close_price), max(close_price) FROM price_cache
+                WHERE symbol=%s AND price_date > current_date - 365 AND close_price > 0.5""",
+            (sym.upper(),),
+        )
+        row = cur.fetchone()
+        if row and row[0] is not None and row[1] is not None:
+            return (float(row[0]), float(row[1]))
+    except Exception:
+        pass
+    return None
+
+
 def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, benzinga_key: str) -> dict:
     total_new = 0
     total_scanned = 0
@@ -392,6 +412,7 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
 
     for sym, strategy_type in symbols:
         company_desc = _company_description(cur, sym)
+        ref_52w = _fifty_two_week_reference(cur, sym)
         articles = _fetch_yahoo_rss(sym)
         if finnhub_key:
             articles.extend(_fetch_finnhub(sym, finnhub_key))
@@ -406,6 +427,7 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
                 ok_match, _why = headline_matches_symbol(
                     sym, a.get("title", ""), a.get("summary", ""),
                     company_description=company_desc,
+                    reference_52w=ref_52w,
                 )
                 if not ok_match:
                     skipped_mismatch += 1
