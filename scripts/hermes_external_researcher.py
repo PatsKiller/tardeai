@@ -62,6 +62,76 @@ def redact(text):
     return s
 
 
+import datetime as _dt
+
+
+def _market_snapshot(cur, symbol):
+    """Public market facts: price, day move, 52-week position, valuation, next earnings.
+
+    None of this is account data — it is the same quote any public site shows — but until the
+    2026-07-29 audit the packet carried NO price at all. Models were asked to judge a holding
+    while being shown only a composite score and stale stop pings, so every name produced the
+    same evidence-free hedge. Price context is what makes one symbol distinguishable from
+    another.
+    """
+    snap = {}
+    try:
+        cur.execute("""SELECT price, day_change_pct, market_cap, pe_ratio, forward_pe,
+                              dividend_yield, fifty_two_week_high, fifty_two_week_low,
+                              earnings_date, fetched_at
+                         FROM market_quotes WHERE symbol=%s
+                        ORDER BY fetched_at DESC LIMIT 1""", (symbol,))
+        r = cur.fetchone()
+        if r:
+            px = float(r[0]) if r[0] is not None else None
+            snap = {"price": px, "day_change_pct": float(r[1]) if r[1] is not None else None,
+                    "market_cap": float(r[2]) if r[2] is not None else None,
+                    "pe_ratio": float(r[3]) if r[3] is not None else None,
+                    "forward_pe": float(r[4]) if r[4] is not None else None,
+                    "dividend_yield": float(r[5]) if r[5] is not None else None,
+                    "next_earnings": str(r[8])[:10] if r[8] else None,
+                    "quote_as_of": str(r[9])[:19] if r[9] else None}
+        # 52w band from daily closes. close_price > 0.5 filters the known corrupt-bar rows
+        # (a $0.05 NVDA print would otherwise define the low and wreck the percentile).
+        cur.execute("""SELECT min(close_price), max(close_price) FROM price_cache
+                        WHERE symbol=%s AND price_date > current_date - 365
+                          AND close_price > 0.5""", (symbol,))
+        lo_hi = cur.fetchone()
+        if lo_hi and lo_hi[0] is not None:
+            lo, hi = float(lo_hi[0]), float(lo_hi[1])
+            snap["fifty_two_week_low"], snap["fifty_two_week_high"] = round(lo, 2), round(hi, 2)
+            px = snap.get("price")
+            if px and hi > lo:
+                snap["pct_of_52w_range"] = round(100.0 * (px - lo) / (hi - lo), 1)
+                snap["vs_52w_high_pct"] = round(100.0 * (px - hi) / hi, 1)
+    except Exception as e:
+        snap["error"] = str(e)[:60]
+    return snap
+
+
+def _recent_headlines(cur, symbol, days=14, limit=6):
+    """Deduplicated recent headlines — the fresh catalyst evidence the packet never carried."""
+    out = []
+    try:
+        cur.execute("""SELECT DISTINCT ON (title) title, source, published_at::date, sentiment
+                         FROM news_articles
+                        WHERE symbol=%s AND published_at > now() - make_interval(days => %s)
+                          AND title IS NOT NULL
+                        ORDER BY title, published_at DESC""", (symbol, days))
+        rows = sorted(cur.fetchall(), key=lambda r: r[2], reverse=True)[:limit]
+        out = [{"title": redact(t)[:160], "source": redact(s), "date": str(d),
+                "sentiment": sent} for t, s, d, sent in rows]
+    except Exception as e:
+        out = [{"error": str(e)[:60]}]
+    return out
+
+
+#: Lane currently being asked. Set by run(); used to exclude that lane's own prior opinions
+#: from its next packet. Module-level because safe_context() is called from several places
+#: that do not thread a lane argument.
+_active_lane = None
+
+
 def safe_context(symbol):
     """Whitelisted, high-level context only — NO dollar amounts, account ids, positions, or secrets.
     Reads safe summary fields and redacts the result as defense-in-depth."""
@@ -78,9 +148,22 @@ def safe_context(symbol):
         cur.execute("""SELECT strategy_id, status, count(*) FROM trade_instances WHERE symbol=%s
                        GROUP BY 1,2 ORDER BY 3 DESC LIMIT 5""", (symbol,))
         ctx["trade_strategy_status_counts"] = [list(map(str, r)) for r in cur.fetchall()]  # counts only, no $
-        cur.execute("""SELECT topic FROM hermes_research_intelligence WHERE symbol=%s
-                       ORDER BY created_at DESC LIMIT 5""", (symbol,))
-        ctx["recent_research_topics"] = [redact(r[0]) for r in cur.fetchall()]
+        # DISTINCT + age + occurrence count. The old query selected `topic` with no dedup, so
+        # a symbol with five identical "Stop health: NEAR_TRIGGER" rows presented the SAME
+        # string five times; models correctly but uselessly reported "repeated near-trigger
+        # stress". Collapsing to one line with a count and a date range says the same thing
+        # honestly and frees the context for real evidence (2026-07-29 audit).
+        cur.execute("""SELECT topic, count(*), min(created_at)::date, max(created_at)::date
+                         FROM hermes_research_intelligence
+                        WHERE symbol=%s AND created_at > now() - interval '45 days'
+                        GROUP BY topic ORDER BY max(created_at) DESC LIMIT 5""", (symbol,))
+        ctx["recent_research_topics"] = [
+            {"topic": redact(t), "occurrences": int(n),
+             "first_seen": str(lo), "last_seen": str(hi),
+             "age_days": (_dt.date.today() - hi).days}
+            for t, n, lo, hi in cur.fetchall()]
+        ctx["market_snapshot"] = _market_snapshot(cur, symbol)
+        ctx["recent_headlines"] = _recent_headlines(cur, symbol)
         c.close()
     except Exception as e:
         ctx["context_error"] = str(e)[:80]
@@ -88,7 +171,8 @@ def safe_context(symbol):
     # Contains NO dollar amounts / account ids / positions / secrets; still redacted as defense-in-depth.
     try:
         from hermes_data_access import hermes_prompt_block
-        blk = hermes_prompt_block(symbol)
+        # exclude_lane: never show a lane its own previous answer (see hermes_prompt_block).
+        blk = hermes_prompt_block(symbol, exclude_lane=_active_lane)
         if blk:
             ctx["hermes_intelligence"] = redact(blk)
     except Exception:
@@ -96,12 +180,31 @@ def safe_context(symbol):
     return ctx
 
 
-PROMPT = """You are an external high-stakes research analyst (Anthropic/Claude lane) advising a PAPER-trading
-research system. This is ADVISORY ONLY — you do not execute or recommend executing any live trade. You are
-given a REDACTED packet (no dollar amounts, account ids, or secrets). Provide a careful external challenge.
+PROMPT = """You are an external research analyst advising a PAPER-trading research system.
+ADVISORY ONLY — you neither execute nor recommend executing any live trade.
+
+The packet below omits position sizes, dollar amounts and account identifiers by design. That
+is a privacy measure, NOT a gap in the evidence: judge the SECURITY on the market facts,
+headlines and research provided. Do not treat the absence of position data as a reason for
+caution, and do not pad your answer with generic hedging about what you were not shown.
+
+How to answer:
+- Reach a view SPECIFIC to this security. Name the actual drivers — the business, the sector,
+  the price level, the catalysts in the headlines. If your answer would read the same for an
+  unrelated ticker, it is not yet an answer.
+- Weigh evidence by age. Every research line carries a date and an age_days field. A stop-health
+  ping from two weeks ago says nothing about today if the price has since moved; check it
+  against market_snapshot.price and the 52-week position before repeating it.
+- `PRIOR ROUND` lines are earlier opinions from OTHER lanes. Treat them as claims to test, not
+  as findings to restate. Agreeing is fine — say WHY, with evidence they did not cite.
+- If the packet genuinely lacks what you need, return recommendation "INSUFFICIENT_EVIDENCE"
+  and name the single specific input that would change your mind. That is a better answer than
+  a confident-sounding hedge, and it is scored as a valid outcome rather than a failure.
+- Confidence must track evidence quality, not tone. Do not emit a mid-range score as a way of
+  avoiding commitment.
 
 Question: {question}
-Redacted context (JSON): {context}
+Context (JSON): {context}
 
 """ + build_external_research_json_schema()
 
@@ -324,6 +427,8 @@ def main():
         print(f"[budget-guard] advisory check skipped: {_be}")
 
     question = redact(args.question)
+    global _active_lane
+    _active_lane = args.lane          # so this lane never sees its own prior answer
     ctx = safe_context(args.symbol)
     ctx = json.loads(redact(json.dumps(ctx)))  # defense-in-depth redaction pass over whole context
     # .format() breaks on the appended JSON schema's literal {braces} — every call
