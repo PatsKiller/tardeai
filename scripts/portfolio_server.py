@@ -1590,8 +1590,14 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 _send_agent_runtime_json(self, _at[0], _at[1])
                 return
 
-        # v2 API dispatch
-        if path.startswith("/api/v2/"):
+        # v2/v3 API dispatch
+        # /api/v3/ added 2026-07-29: the Telegram-normalization work registered
+        # /api/v3/alerts/{active,settings,settings/preview} in api_v2.ROUTES, but this
+        # dispatcher only ever matched /api/v2/, so all three 404'd over HTTP while
+        # working fine when handle() was called in-process. They had never been
+        # exercised — the migration behind them was unapplied until today.
+        # api_v2.handle() routes on the FULL path, so one prefix match serves both.
+        if path.startswith(("/api/v2/", "/api/v3/")):
             try:
                 import time as _time
                 _v2_t0 = _time.perf_counter()
@@ -2101,8 +2107,10 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             json_response(self, 400, {"error": "Invalid JSON body"})
             return
 
-        # v2 API POST dispatch
-        if path.startswith("/api/v2/"):
+        # v2/v3 API POST dispatch — see the GET dispatch note above.
+        # POST /api/v3/alerts/settings and /api/v3/alerts/test-send live in
+        # api_v2.handle()'s POST branch and were unreachable for the same reason.
+        if path.startswith(("/api/v2/", "/api/v3/")):
             try:
                 import time as _time
                 _v2_t0 = _time.perf_counter()
