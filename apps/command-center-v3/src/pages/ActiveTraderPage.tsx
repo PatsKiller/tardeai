@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ActiveTraderDataState, ArmingStatus, BrokerAccount, EngineStatus, RoutingDraft, ScalpSignal, ScannerSignal } from './activeTrader.types';
 import { MOCK_ACCOUNTS, MOCK_QUEUE, MOCK_SIGNAL } from './activeTrader.mock';
+import MotionSection from '../components/active-trader-motion/MotionSection';
 import './activeTrader.css';
 
 type Props = {
@@ -42,7 +43,7 @@ function PermissionQueue({ signals, selectedId, onSelect, actionable, reference 
     <section className="at-panel" aria-labelledby="permission-queue-title">
       <header className="at-panel__header">
         <h2 id="permission-queue-title">Permission queue</h2>
-        <Chip tone="warning">{reference ? 'REFERENCE SAMPLE · 0 ACTIONABLE' : `manual paper · ${actionable} actionable`}</Chip>
+        <Chip tone="warning">{reference ? 'REFERENCE SAMPLE · 0 ACTIONABLE' : `review workflow · ${actionable} actionable`}</Chip>
       </header>
       <div className="at-queue">
         {signals.length === 0 && <div className="at-queue-empty">No signals in the live queue.</div>}
@@ -64,8 +65,8 @@ function PermissionQueue({ signals, selectedId, onSelect, actionable, reference 
   );
 }
 
-function ActiveTradeCard({ signal, reference, canRoute, onRoute, onDismiss, onOpenStrategies }: {
-  signal: ScalpSignal; reference: boolean; canRoute: boolean; onRoute: () => void; onDismiss: () => void; onOpenStrategies?: () => void;
+function ActiveTradeCard({ signal, reference, canPrepare, onPrepare, onDismiss, onOpenStrategies }: {
+  signal: ScalpSignal; reference: boolean; canPrepare: boolean; onPrepare: () => void; onDismiss: () => void; onOpenStrategies?: () => void;
 }) {
   const matched = signal.matchedSetupLabels ?? [signal.primarySetupLabel];
   const multi = matched.filter(Boolean).length > 1;
@@ -77,7 +78,7 @@ function ActiveTradeCard({ signal, reference, canRoute, onRoute, onDismiss, onOp
     <section className="at-panel at-trade-card" aria-labelledby="active-trade-title">
       <header className="at-panel__header at-trade-card__title-row">
         <div><h2 id="active-trade-title">{signal.symbol} <span>{signal.last.toFixed(2)}</span> <em>+{signal.changePct.toFixed(1)}%</em></h2></div>
-        <div className="at-inline"><Chip tone="warning">{signal.mode.replace(/_/g, ' ').toLowerCase()}</Chip></div>
+        <div className="at-inline"><Chip tone="warning" title="Market-state evidence is not bound to an account or environment">ACCOUNT UNBOUND</Chip></div>
       </header>
 
       {/* separated identity/evidence chips — lane ≠ setup ≠ data-tier ≠ size ≠ gate */}
@@ -90,7 +91,7 @@ function ActiveTradeCard({ signal, reference, canRoute, onRoute, onDismiss, onOp
         </Chip>
         <Chip title="Position-size multiplier (separate from data tier)">SIZE TIER: {signal.tierMultiplier.toFixed(2)}x</Chip>
         <Chip title="Market session">SESSION: {signal.session}</Chip>
-        <Chip tone={gate === 'PASS' ? 'pass' : gate === 'VETO' ? 'fail' : 'warning'} title="Deterministic execution-gate decision (missing gate fails closed to DEFER)">GATE: {gate === 'DEFER' ? 'DEFER / NOT EVALUATED' : gate}</Chip>
+        <Chip tone={gate === 'PASS' ? 'pass' : gate === 'VETO' ? 'fail' : 'warning'} title="Deterministic evidence-gate decision (missing gate fails closed to DEFER)">GATE: {gate === 'DEFER' ? 'DEFER / NOT EVALUATED' : gate}</Chip>
         {signal.stopValidation && signal.stopValidation !== 'PASS' && (
           <Chip tone="fail" title="Deterministic minimum-stop-floor validation">STOP: {signal.stopValidation}</Chip>
         )}
@@ -132,7 +133,7 @@ function ActiveTradeCard({ signal, reference, canRoute, onRoute, onDismiss, onOp
       <div className="at-order-grid" aria-label="Order controls (disabled)">
         {orderControls.map(label => (
           <button key={label} type="button" disabled className="at-order-btn"
-            title={label.includes('MKT') ? 'Market entry unavailable — price-controlled entry only' : 'Order routing off in ActiveTrader (manual paper only)'}>
+            title={label.includes('MKT') ? 'Market entry unavailable — price-controlled entry only' : 'Order authority is not bound in ActiveTrader'}>
             <span aria-hidden="true">🔒</span> {label}
           </button>
         ))}
@@ -142,11 +143,11 @@ function ActiveTradeCard({ signal, reference, canRoute, onRoute, onDismiss, onOp
       <div className="at-drill"><small>setup {signal.primarySetupId ?? '—'} · v{signal.setupVersion ?? '—'} · registry {(signal.registryHash ?? '—').replace('sha256:', '').slice(0, 12)} · fsm {signal.fsmState ?? signal.fsmCurrent} · setup_state {signal.setupState ?? '—'}</small></div>
 
       <footer className="at-trade-card__footer">
-        <div><strong>Manual paper testing only</strong><small>No automatic order path. Schwab, Moomoo, and Alpaca Live remain non-routable. ActiveTrader session not authorized.</small></div>
+        <div><strong>Review-only workflow</strong><small>No account, venue, environment, or execution authority is bound. No automatic order path.</small></div>
         <div className="at-inline">
-          <button type="button" onClick={onRoute} disabled={!canRoute}
-            title={reference ? 'Reference sample — preview only' : !canRoute ? 'Only an actionable live signal can be routed' : undefined}>
-            {reference ? 'Preview allocation example' : 'Prepare paper route'}
+          <button type="button" onClick={onPrepare} disabled={!canPrepare}
+            title={reference ? 'Reference sample — preview only' : !canPrepare ? 'Only a fully-qualified signal can prepare an allocation draft' : undefined}>
+            {reference ? 'Preview allocation example' : 'Prepare allocation draft'}
           </button>
           <button type="button" className="at-secondary" onClick={onDismiss}>Dismiss</button>
         </div>
@@ -160,7 +161,7 @@ function AccountAllocationModal({ signal, accounts, reference, onClose }: {
 }) {
   const dialogRef = useRef<HTMLElement>(null);
   const openerRef = useRef<Element | null>(null);
-  // NO account is preselected — the operator must choose (server verification is required for real routing).
+  // NO account is preselected. Account capability is a later runtime binding, never a market-state property.
   const [draft, setDraft] = useState<RoutingDraft>({ signalId: signal.id, selectedAccountIds: [], accountShares: {} });
   const selected = accounts.filter(a => draft.selectedAccountIds.includes(a.id));
   const totalShares = selected.reduce((n, a) => n + (draft.accountShares[a.id] || 0), 0);
@@ -192,9 +193,9 @@ function AccountAllocationModal({ signal, accounts, reference, onClose }: {
     <div className="at-modal-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <section className="at-modal" role="dialog" aria-modal="true" aria-labelledby="route-title" tabIndex={-1} ref={dialogRef}>
         <header className="at-panel__header">
-          <div><h2 id="route-title">{reference ? 'Allocation example (reference)' : 'Prepare manual paper order'} <small>{signal.symbol} long</small></h2>
+          <div><h2 id="route-title">{reference ? 'Allocation example (reference)' : 'Prepare allocation draft'} <small>{signal.symbol} long</small></h2>
             <p>entry {signal.entryRef} · stop {signal.stopRef} · R {signal.riskPerShare} · IGN {signal.ign}</p></div>
-          <Chip tone="warning">environment: server-verify pending</Chip>
+          <Chip tone="warning">CAPABILITY: SERVER VERIFY PENDING</Chip>
         </header>
         <div className="at-account-table">
           <div className="at-account-table__head"><span>Account</span><span>Permissions</span><span>Buying power</span><span>Shares</span><span>Notional</span><span>Risk</span></div>
@@ -211,10 +212,10 @@ function AccountAllocationModal({ signal, accounts, reference, onClose }: {
             </div>;
           })}
         </div>
-        <div className="at-modal-note">No account is preselected. Quantities and risk shown are a client-side preview — a real workflow recomputes them server-side after environment verification. Moomoo is L2/tape data-plane only; Thinkorswim is a manual export/entry workflow, not an API-routable account.</div>
+        <div className="at-modal-note">No account is preselected. Quantities and risk are a client-side preview. A later server workflow must resolve the selected account's capabilities, venue, environment, position ownership, and authority before any executable request can exist.</div>
         <dl className="at-summary-grid"><div><dt>Accounts</dt><dd>{selected.length} selected</dd></div><div><dt>Total shares</dt><dd>{totalShares.toLocaleString()}</dd></div><div><dt>Notional (preview)</dt><dd>{usd.format(totalNotional)}</dd></div><div><dt>Risk at stop (preview)</dt><dd>{money2.format(risk)}</dd></div></dl>
-        <footer className="at-modal__footer"><p>Final submission is intentionally absent. Order routing is OFF in ActiveTrader; a separate operator-signed, server-verified confirmation ceremony is required.</p>
-          <div className="at-inline"><button type="button" className="at-secondary" onClick={onClose}>Cancel</button><button type="button" disabled title="Order routing off — no submit path in this build">Confirm paper order</button></div></footer>
+        <footer className="at-modal__footer"><p>Final submission is intentionally absent. This is an allocation draft; an operator-signed, server-verified authority ceremony is required separately.</p>
+          <div className="at-inline"><button type="button" className="at-secondary" onClick={onClose}>Cancel</button><button type="button" disabled title="No executable authority or submit path in this build">Confirm allocation draft</button></div></footer>
       </section>
     </div>
   );
@@ -349,7 +350,7 @@ function ScannerCard({ s }: { s: ScannerSignal }) {
       <div className="at-livescan__note">
         TradeAI orchestrator signal (trade_ai_scans — screener → enrichment → scalp critic). {go
           ? 'GO decision.' : 'MANUAL_REVIEW momentum fire (squeeze / runner / gainer) — surfaced for review, not auto-tradeable.'}
-        {' '}No IGN score is fabricated here (that comes only from the RTH IGN engine). Manual paper review only; no order path.
+        {' '}No IGN score is fabricated here (that comes only from the RTH IGN engine). Review workflow only; no account or order path is bound.
       </div>
     </section>
   );
@@ -376,10 +377,10 @@ export default function ActiveTraderPage(props: Props) {
   const selectedIgn = sortedIgn.find(s => s.id === selIgn) ?? (selScan ? null : sortedIgn[0]) ?? null;
   const selectedScan = scanItems.find(s => s.id === selScan) ?? null;
   const [routing, setRouting] = useState(false);
-  // A paper route can be PREPARED only for a fully-qualified FIRED setup: gate PASS, a resolved canonical
-  // setup identity, and a valid stop. ARMED never prepares a route; a missing gate (DEFER) never routes;
-  // a bare/unclassified lane trigger never routes. Reference/sample is preview-only.
-  const canRoute = !reference && !!selectedIgn
+  // An allocation draft can be PREPARED only for a fully-qualified FIRED setup: gate PASS, a resolved
+  // canonical setup identity, and a valid stop. ARMED and DEFER never prepare a draft. Account,
+  // environment, venue, and execution authority remain separate runtime bindings.
+  const canPrepare = !reference && !!selectedIgn
     && selectedIgn.setupState === 'FIRED'
     && selectedIgn.gateDecision === 'PASS'
     && !!selectedIgn.primarySetupId
@@ -388,7 +389,7 @@ export default function ActiveTraderPage(props: Props) {
 
   return <main className="active-trader-page">
     <div className="active-trader-page__intro">
-      <div><h1>Active Trader — Review</h1><p>Actionable momentum-scalp signals to review for a manual paper trade. Manual paper only; no automatic or live order path.</p></div>
+      <div><h1>Active Trader — Review</h1><p>Actionable momentum-scalp signals for operator review. Account, venue, environment, and execution authority are bound later; no automatic order path.</p></div>
       <div className="at-inline at-wrap">
         <Chip tone={totalActionable ? 'pass' : 'context'}>{totalActionable} actionable</Chip>
         <button type="button" className="at-link-button" onClick={() => setPreview(p => !p)}>{preview ? 'Exit preview' : 'Preview example'}</button>
@@ -400,13 +401,17 @@ export default function ActiveTraderPage(props: Props) {
 
     {/* scoped authority status — never conflate a global service with this tab's authority */}
     <div className="at-authority-rail at-inline at-wrap">
-      <Chip title="This tab">ACTIVE TRADER SESSION: NOT AUTHORIZED</Chip>
-      <Chip tone="fail" title="No order routes wired in ActiveTrader">ACTIVE TRADER ROUTES: OFF</Chip>
-      <Chip title="Any global 2FA/automation service is scoped OUTSIDE ActiveTrader">GLOBAL SERVICES: OUT OF SCOPE HERE</Chip>
+      <Chip title="This workflow">WORKFLOW AUTHORITY: NOT GRANTED</Chip>
+      <Chip tone="fail" title="No order routes wired in ActiveTrader">EXECUTION ROUTES: OFF</Chip>
+      <Chip title="Market-state evidence is account agnostic">ACCOUNT BINDING: NONE</Chip>
       <span className="at-source">queue: actionable only (IGN TRIGGER + scanner GO)
         {lastIgnSessionDate ? ` · last IGN fire ${lastIgnSessionDate}` : ''}
         {registryVersion ? ` · ${registryVersion}` : ''}{registryHash ? ` ${registryHash.replace('sha256:', '').slice(0, 8)}` : ''}</span>
     </div>
+
+    {/* Live motion surface: one aggregate read (T2 JIT admission + momentum-exit evidence).
+        Display-only and account-unbound — no order, flatten, session, or broker control lives here. */}
+    <MotionSection reference={reference} />
 
     {state === 'API_UNAVAILABLE' && <div className="at-fullstate at-fullstate--fail">Permission-queue API unavailable — the backend did not respond (not an empty queue).</div>}
     {state === 'LOADING' && <div className="at-fullstate">Loading actionable queue…</div>}
@@ -414,7 +419,7 @@ export default function ActiveTraderPage(props: Props) {
     {!reference && !hasAny && state !== 'LOADING' && state !== 'API_UNAVAILABLE' && (
       <section className="at-panel at-empty-card">
         <strong>No actionable momentum-scalp signals right now.</strong>
-        <p>The queue shows only what a human could paper-route today — IGN TRIGGER fires and scanner GO/momentum-route signals. Nothing has crossed that bar yet.</p>
+        <p>The queue shows only signals eligible for operator review today — IGN TRIGGER fires and scanner GO/momentum-route signals. Nothing has crossed that bar yet.</p>
         <ul>
           <li>TradeAI scanner: {engineStatus?.scanner.available ? `live, ${engineStatus.scanner.go_count_today} GO + ${engineStatus.scanner.manual_review_count_today} manual-review today` : 'down'}.</li>
           <li>IGN engine: {engineStatus?.ign.market_open ? `live, ${engineStatus.ign.today_trigger_count} triggers today` : `RTH-only, opens ${engineStatus?.ign.opens_et ?? '09:30'} ET`}{lastIgnSessionDate ? ` — last alert-worthy fire ${lastIgnSessionDate}` : ''}.</li>
@@ -427,8 +432,8 @@ export default function ActiveTraderPage(props: Props) {
       <div className="active-trader-page__layout">
         <aside><PermissionQueue signals={sortedIgn} selectedId={selectedIgn?.id ?? null} onSelect={s => { setSelIgn(s.id); setSelScan(null); }} actionable={reference ? 0 : ignItems.length} reference={reference} /></aside>
         <div>{selectedIgn
-          ? <ActiveTradeCard signal={selectedIgn} reference={reference} canRoute={canRoute || reference}
-              onRoute={() => setRouting(true)} onDismiss={() => setSelIgn(null)} onOpenStrategies={onOpenStrategies} />
+          ? <ActiveTradeCard signal={selectedIgn} reference={reference} canPrepare={canPrepare || reference}
+              onPrepare={() => setRouting(true)} onDismiss={() => setSelIgn(null)} onOpenStrategies={onOpenStrategies} />
           : <section className="at-panel at-empty-card">Select an IGN fire from the queue.</section>}
         </div>
       </div>

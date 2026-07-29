@@ -9,7 +9,7 @@ import type { Setup } from '../components/ScalpStrategyModal';
 type SubTab = 'Review' | 'Configuration' | 'Setups';
 const SUBTABS: SubTab[] = ['Review', 'Configuration', 'Setups'];
 
-// Own top-level section (/v3/active-trader) with its own subtabs. Read-only; SHADOW / MANUAL PAPER ONLY.
+// Own top-level section (/v3/active-trader). Read-only market-state review; account binding is separate.
 export default function ActiveTraderHub() {
   const [params, setParams] = useSearchParams();
   const raw = (params.get('tab') || 'Review') as SubTab;
@@ -53,7 +53,8 @@ export default function ActiveTraderHub() {
           <ActiveTraderPage
             signals={pq ? (pq.signals ?? []).filter((s: any) => s?.source !== 'scanner') : undefined}
             scannerSignals={pq ? (pq.signals ?? []).filter((s: any) => s?.source === 'scanner') : undefined}
-            accounts={pq?.accounts ?? []}
+            // Do not forward legacy static account matrices. Account capabilities must come from a
+            // dedicated runtime registry and authority workflow, which is not connected in this tranche.
             dataState={pq?.data_state}
             actionableCount={pq?.actionable_count}
             ignTriggerCount={pq?.ign_trigger_count}
@@ -83,14 +84,13 @@ export default function ActiveTraderHub() {
   );
 }
 
-// Lightweight inline setups view (the modal content as a tab). Read-only registry render.
 function ScalpSetupsInline({ setups, registryHash }: { setups: Setup[]; registryHash?: string }) {
   return (
     <section style={{ border: '1px solid var(--border)', borderRadius: 14, padding: 20, background: 'var(--bg1)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0, fontSize: 18, color: 'var(--text0)' }}>Setups &amp; strategy rules</h2>
         <span style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'ui-monospace, Menlo, monospace' }}>
-          registry {registryHash ? registryHash.replace('sha256:', '').slice(0, 8) : '—'} · {setups.length} setups · SHADOW / manual paper only
+          registry {registryHash ? registryHash.replace('sha256:', '').slice(0, 8) : '—'} · {setups.length} setups · OBSERVATION / REVIEW ONLY
         </span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
