@@ -74,6 +74,7 @@ def dispatch(
                 f"{ACTIVE_TRADER_PREFIX}/permission-queue",
                 f"{ACTIVE_TRADER_PREFIX}/scalp/setups",
                 f"{ACTIVE_TRADER_PREFIX}/scalp/setup-events?limit=...",
+                f"{ACTIVE_TRADER_PREFIX}/motion",
                 f"{ACTIVE_TRADER_PREFIX}/config",
             ],
         }
@@ -103,6 +104,14 @@ def dispatch(
             return 200, config_overview()
         except Exception as exc:  # fail-closed, never leak internals
             return 503, _envelope("unavailable", f"config overview unavailable: {exc}", status_hint=503)
+    if suffix in ("motion",):
+        try:
+            from .motion_api import motion_snapshot
+            # PURE READ: reads the latest journal line; never writes the journal,
+            # never touches broker/session/order/LLM. EXIT_SIGNAL is evidence only.
+            return 200, motion_snapshot()
+        except Exception as exc:  # fail-closed, never leak internals
+            return 503, _envelope("unavailable", f"motion snapshot unavailable: {exc}", status_hint=503)
     if suffix in ("scalp/setups", "scalp_setups"):
         return 200, api.scalp_setups()
     if suffix in ("scalp/setup-events", "scalp/setup_events", "scalp_setup_events"):
