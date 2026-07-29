@@ -8,6 +8,8 @@ import json
 import os
 from typing import Any
 
+from alert_occurrence_store import record_occurrence
+from alert_runtime_mode import get_mode
 from operator_alert_policy_v2 import (
     APPROVALS_ONLY,
     APPROVAL_ALLOWLIST,
@@ -124,11 +126,64 @@ def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_
     return publish_event(event)
 
 
-def publish_event(event: AlertEvent) -> dict[str, Any]:
+def occurrence_alert_id(fingerprint: str, observed_at: datetime) -> str:
+    """A DISTINCT alert_id per observation.
+
+    alert_occurrences.alert_id is UNIQUE, and the same condition legitimately
+    recurs — so an id derived from the fingerprint alone collides on the second
+    occurrence. Keying on the observation instant keeps it unique while staying
+    deterministic for a given observation, which is what makes the DB tests
+    reproducible. Microseconds, because two sends of the same condition inside
+    one second are two observations, not one.
+    """
+    ts = int((_aware_utc(observed_at)).timestamp() * 1_000_000)
+    return f"al_{fingerprint[:20]}_{ts}"
+
+
+def _aware_utc(dt: datetime | None) -> datetime:
+    if dt is None:
+        return datetime.now(timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def publish_event(event: AlertEvent, *, resolving: bool = False) -> dict[str, Any]:
+    """Publish one observation through the occurrence model.
+
+    Rewritten 2026-07-29. The previous version wrote a single row per fingerprint:
+
+        INSERT INTO alert_notification_events (...) ON CONFLICT (fingerprint)
+        DO UPDATE SET ..., duplicate_count = duplicate_count + 1
+
+    Three defects, all from the module still targeting the FIRST-DRAFT schema:
+
+      1. alert_notification_events is now a derived VIEW over incidents joined to
+         occurrences. It is not insertable, so this raised UndefinedColumn on
+         `entity_id` the moment the migration was applied. It had never run
+         before that because the object did not exist and the code fell through
+         to the in-memory path — which is why the tests were green against a
+         fallback rather than against the schema.
+      2. Keying on the fingerprint made it both the IDENTITY of a condition and
+         its LIFETIME dedupe key: the first occurrence suppressed every later one
+         forever, and each repeat OVERWROTE the stored payload, destroying the
+         occurrence history the model exists to keep.
+      3. The notify decision was inferred from whether the row was newly
+         inserted, rather than from should_notify() against persisted prior
+         state — so severity escalation, action-now-required, state-version
+         change, escalation deadline and post-resolution recurrence were all
+         invisible.
+
+    The persistence layer for the occurrence model already existed —
+    alert_occurrence_store.record_occurrence() — and this function simply never
+    adopted it. It claims the open incident FOR UPDATE, runs should_notify()
+    against real prior state, appends an immutable occurrence carrying the
+    decision AND its inputs, updates the incident counters, and enqueues delivery
+    or digest, all in one transaction. This is now a thin adapter over it.
+    """
     decision = route_event(event)
     fingerprint = alert_fingerprint(event)
-    alert_id = alert_id_for(fingerprint)
     incident_id = incident_id_for(event)
+    observed_at = _aware_utc(event.created_at)
+    alert_id = occurrence_alert_id(fingerprint, observed_at)
     expires_at = expires_at_for(event, decision)
 
     payload = event_to_jsonable(event)
@@ -143,57 +198,24 @@ def publish_event(event: AlertEvent) -> dict[str, Any]:
         return _publish_memory(event, decision, alert_id, incident_id, fingerprint, expires_at, payload)
 
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO alert_notification_events
-                (alert_id, alert_type, source_system, source_producer, entity_id, account_id, symbol,
-                 severity, operator_action_required, operator_action_type, logical_destination, route_mode,
-                 digest_bucket, incident_id, fingerprint, state_version, authorization_or_order_id,
-                 session_ref, order_ref, payload, policy_version, expires_at, suppression_reason)
-                VALUES
-                (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)
-                ON CONFLICT (fingerprint) DO UPDATE SET
-                    updated_at = now(),
-                    severity = EXCLUDED.severity,
-                    operator_action_required = EXCLUDED.operator_action_required,
-                    operator_action_type = EXCLUDED.operator_action_type,
-                    logical_destination = EXCLUDED.logical_destination,
-                    route_mode = EXCLUDED.route_mode,
-                    digest_bucket = EXCLUDED.digest_bucket,
-                    payload = EXCLUDED.payload,
-                    expires_at = EXCLUDED.expires_at,
-                    suppression_reason = EXCLUDED.suppression_reason,
-                    duplicate_count = alert_notification_events.duplicate_count + 1
-                RETURNING alert_id, (xmax = 0) AS inserted, duplicate_count
-                """,
-                (
-                    alert_id, event.alert_type, event.source_system, event.source_producer, event.entity_id,
-                    event.account_id, event.symbol, event.severity, event.operator_action_required,
-                    event.operator_action_type, decision.logical_destination, decision.route_mode,
-                    decision.digest_bucket, incident_id, fingerprint, event.state_version,
-                    event.authorization_or_order_id, event.session_ref, event.order_ref, _json(payload),
-                    decision.policy_version, expires_at, decision.suppression_reason,
-                ),
-            )
-            row = cur.fetchone()
-            inserted = bool(row[1]) if row else True
-            if decision.route_mode == ROUTE_DIGEST and decision.digest_bucket:
-                cur.execute(
-                    """
-                    INSERT INTO alert_digest_queue(alert_id, digest_bucket, summary_group)
-                    VALUES (%s,%s,%s)
-                    ON CONFLICT(alert_id, digest_bucket) DO NOTHING
-                    """,
-                    (alert_id, decision.digest_bucket, f"{event.source_producer}:{event.alert_type}"),
-                )
-            status = "queued" if decision.route_mode in (ROUTE_IMMEDIATE, ROUTE_DIGEST) else "suppressed"
-            reason = "new_incident" if inserted else "dedupe_update"
-            if not inserted and decision.route_mode == ROUTE_IMMEDIATE:
-                status = "suppressed"
-                reason = "duplicate_within_fingerprint"
-            _record_delivery(cur, alert_id, decision.route_mode, decision.logical_destination, status, reason, None)
-        conn.commit()
+        result = record_occurrence(
+            conn,
+            incident_id=incident_id,
+            alert_id=alert_id,
+            dedupe_key=fingerprint,
+            event=event,
+            route=decision,
+            observed_at=observed_at,
+            # No correlation key: the schema supports batching sibling
+            # observations from one account/detection cycle into a single
+            # incident, but nothing in the tree derives such a key today.
+            # Passing None keeps each condition its own incident, which is the
+            # honest behaviour until a producer supplies one. Inventing a key
+            # here would silently merge unrelated conditions.
+            correlation_key=None,
+            resolving=resolving,
+            runtime_mode=get_mode(),
+        )
     except Exception:
         try:
             conn.rollback()
@@ -201,17 +223,21 @@ def publish_event(event: AlertEvent) -> dict[str, Any]:
             pass
         raise
 
+    # Preserve this function's published contract for existing callers.
     return {
         "ok": True,
-        "alert_id": alert_id,
-        "incident_id": incident_id,
+        "alert_id": result["alert_id"],
+        "incident_id": result["incident_id"],
+        "occurrence_id": result.get("occurrence_id"),
         "fingerprint": fingerprint,
         "route_mode": decision.route_mode,
         "logical_destination": decision.logical_destination,
         "digest_bucket": decision.digest_bucket,
-        "send_immediate": decision.route_mode == ROUTE_IMMEDIATE and inserted,
-        "suppression_reason": None if inserted else "duplicate_within_fingerprint",
+        "send_immediate": bool(result.get("queued")) and decision.route_mode == ROUTE_IMMEDIATE,
+        "suppression_reason": result.get("suppression_reason"),
         "policy_version": decision.policy_version,
+        "decision": result.get("decision"),
+        "material_transition": result.get("material_transition"),
     }
 
 

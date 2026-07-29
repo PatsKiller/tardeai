@@ -157,3 +157,107 @@ def test_unknown_alert_id_is_a_noop_not_an_orphan_row(cur):
     ao._record_delivery(cur, "does-not-exist", "IMMEDIATE", "GENERAL", "sent", None, "m")
     cur.execute("SELECT count(*) FROM alert_notification_deliveries")
     assert cur.fetchone()[0] == 0
+
+
+# ============================================================================
+# publish_event() over the occurrence model — DD/alerts 2026-07-29
+#
+# The previous implementation wrote INSERT ... ON CONFLICT (fingerprint) DO UPDATE
+# into what the migration makes a derived VIEW, keyed the dedupe on the identity of
+# the condition, and inferred the notify decision from "was the row new" instead of
+# from should_notify() against persisted prior state. Every case below fails against
+# it: the first three raise, and the rest assert behaviour it could not express.
+# ============================================================================
+
+from datetime import datetime, timedelta, timezone            # noqa: E402
+
+
+def _event(sev="warning", action=False, sv="1", at=None):
+    from operator_alert_policy_v2 import AlertEvent
+    return AlertEvent(
+        alert_type="debug_or_success", source_system="t", source_producer="t",
+        entity_id="E1", symbol="ZZZZ", severity=sev,
+        operator_action_required=action, state_version=sv,
+        created_at=at or datetime(2026, 7, 29, 18, 0, tzinfo=timezone.utc),
+        payload={"n": 1},
+    )
+
+
+@pytest.fixture()
+def outbox(cur, monkeypatch):
+    """Point alert_outbox at the isolated test connection."""
+    import alert_outbox as ao
+    monkeypatch.setattr(ao, "_db", lambda: cur.connection)
+    monkeypatch.setattr(ao, "get_mode", lambda: "ACTIVE")
+    return ao
+
+
+T0 = datetime(2026, 7, 29, 18, 0, tzinfo=timezone.utc)
+
+
+def test_alert_id_is_distinct_per_occurrence(outbox):
+    """alert_occurrences.alert_id is UNIQUE and conditions recur — an id derived
+    from the fingerprint alone collides on the second observation."""
+    a = outbox.publish_event(_event(at=T0))
+    b = outbox.publish_event(_event(at=T0 + timedelta(seconds=30)))
+    assert a["alert_id"] != b["alert_id"]
+
+
+def test_first_observation_notifies(outbox):
+    r = outbox.publish_event(_event(at=T0))
+    assert r["decision"]["notify"] is True
+    assert r["decision"]["reason"] == "first_occurrence"
+
+
+def test_repeat_inside_the_window_is_suppressed_but_still_recorded(outbox):
+    """The old model overwrote the row and lost the occurrence. History is kept."""
+    outbox.publish_event(_event(at=T0))
+    r = outbox.publish_event(_event(at=T0 + timedelta(seconds=30)))
+    assert r["decision"]["notify"] is False
+    assert r["suppression_reason"] == "duplicate_within_dedupe_window"
+    cur = outbox._db().cursor()
+    cur.execute("SELECT count(*) FROM alert_occurrences")
+    assert cur.fetchone()[0] == 2, "the suppressed observation must still be recorded"
+
+
+def test_severity_escalation_breaks_through_the_window(outbox):
+    """Invisible to the old model, which only knew 'was the row new'."""
+    outbox.publish_event(_event(sev="warning", at=T0))
+    r = outbox.publish_event(_event(sev="critical", at=T0 + timedelta(seconds=30)))
+    assert r["decision"]["notify"] is True
+    assert r["decision"]["reason"] == "severity_increased"
+    assert r["material_transition"] is True
+
+
+def test_window_elapsed_notifies_again(outbox):
+    outbox.publish_event(_event(at=T0))
+    r = outbox.publish_event(_event(at=T0 + timedelta(hours=2)))
+    assert r["decision"]["notify"] is True
+    assert r["decision"]["reason"] == "dedupe_window_elapsed"
+
+
+def test_one_open_incident_per_condition(outbox):
+    for i in range(4):
+        outbox.publish_event(_event(at=T0 + timedelta(seconds=30 * i)))
+    cur = outbox._db().cursor()
+    cur.execute("SELECT count(*) FROM alert_incidents WHERE status='open'")
+    assert cur.fetchone()[0] == 1
+
+
+def test_incident_counters_track_notified_and_suppressed(outbox):
+    outbox.publish_event(_event(at=T0))                                  # notify
+    outbox.publish_event(_event(at=T0 + timedelta(seconds=30)))          # suppress
+    outbox.publish_event(_event(sev="critical", at=T0 + timedelta(seconds=60)))  # notify
+    cur = outbox._db().cursor()
+    cur.execute("SELECT occurrence_count, notified_count, suppressed_count FROM alert_incidents")
+    assert cur.fetchone() == (3, 2, 1)
+
+
+def test_payload_history_is_never_overwritten(outbox):
+    """The first draft's ON CONFLICT DO UPDATE SET payload = EXCLUDED.payload
+    destroyed the record of what was actually observed."""
+    outbox.publish_event(_event(at=T0))
+    outbox.publish_event(_event(at=T0 + timedelta(seconds=30)))
+    cur = outbox._db().cursor()
+    cur.execute("SELECT count(DISTINCT occurrence_id) FROM alert_occurrences")
+    assert cur.fetchone()[0] == 2
