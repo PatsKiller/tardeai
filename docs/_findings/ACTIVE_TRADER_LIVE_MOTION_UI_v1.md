@@ -9,13 +9,14 @@ Bounded front-end tranche for the Active Trader aggregate motion surface. The UI
 - Branch: `agent/active-trader-live-motion-ui-v1`
 - Draft PR: #252
 
-The current PR diff contains 13 allowlisted UI/test/findings files only. No backend Python, route, broker, session, feature-flag, package, lockfile, or deployment file is modified by this tranche.
+The revised PR contains 14 UI/test/findings files. The original 13-file allowlist was deliberately widened by one file, `ActiveTraderHub.tsx`, after the account-agnostic architecture correction. No backend Python, broker, session, feature-flag, package, lockfile, or deployment file is modified by this UI tranche.
 
-## Read contract
+## Read contracts
 
-`GET /api/v3/active-trader/motion`, contract `active-trader-motion-snapshot-v1`.
+- `GET /api/v3/active-trader/motion`, contract `active-trader-motion-snapshot-v1`.
+- `GET /api/v3/active-trader/permission-queue`, sanitized by the stacked backend to return `account_binding_state: UNBOUND`, `accounts: []`, and `mode: REVIEW_ONLY`.
 
-The stacked backend supplies the endpoint. The UI still fails closed to `MOTION API UNAVAILABLE` or `MOTION DATA STALE` when the endpoint is missing, unreadable, malformed, or stale. Unknown values never become fabricated live data.
+The UI fails closed to `MOTION API UNAVAILABLE` or `MOTION DATA STALE` when the motion endpoint is missing, unreadable, malformed, or stale. Unknown values never become fabricated live data.
 
 ## Account-agnostic taxonomy
 
@@ -23,13 +24,15 @@ The motion surface treats `EXIT_SIGNAL` as account-unbound market-state evidence
 
 - No account category is inferred from workflow or motion state.
 - Venue identifiers are opaque strings.
-- The UI account model has no `paper` boolean.
+- The UI account model has no environment-category boolean.
 - Account environment is not encoded in account IDs or venue types.
 - Account selection, capability verification, environment resolution, ownership, quantity, and authority are later runtime bindings.
 - An allocation draft is not an order request.
 - Every exit signal fails closed to `accountBound: false` when the field is absent or malformed.
+- The live hub does not forward the legacy static account matrix.
+- Live allocation capability remains empty until a dedicated runtime registry is connected.
 
-Visible legacy phrases such as “manual paper,” “prepare paper route,” and “paper/shadow positions” were removed from the changed Active Trader UI files. The authority rail now separates workflow authority, execution routes, and account binding.
+Visible environment-specific review labels were removed from the revised Active Trader UI path. The authority rail now separates workflow authority, execution routes, and account binding.
 
 ## Polling and bandwidth
 
@@ -67,10 +70,10 @@ Visible legacy phrases such as “manual paper,” “prepare paper route,” an
 6. `WATCH` → `EXIT_ARMED` → `EXIT_SIGNAL`;
 7. stale evidence producing `PROTECT_ONLY` without implied execution;
 8. last-good preservation and bounded retry;
-9. account-unbound exit evidence creating no order/flatten control;
+9. account-unbound exit evidence creating no order/flatten control and leaving `ACCOUNT BINDING: NONE` visible;
 10. malformed payloads failing closed.
 
-The original Claude run reported 10/10 passing and a successful application build. Because the stack and taxonomy changed after that run, current GitHub CI is the authoritative validation for the revised head.
+The original Claude run reported 10/10 passing and a successful application build. The stack and taxonomy changed after that run, so the revised head requires fresh executable validation.
 
 ## Existing unrelated test
 
