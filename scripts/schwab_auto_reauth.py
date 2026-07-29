@@ -91,20 +91,45 @@ def _last_true_login():
 
 
 def _token_state() -> dict:
+    """Classify what the reauth lane should do, if anything.
+
+    Three states, not two. The browser login is reserved for a REAL outage:
+
+      due_now      — the token is actually broken (degraded / missing / refresh dead).
+                     A browser login is the only recovery, so attempt it.
+      advisory_due — we are past the day-6 mark measured from the last true login, but
+                     HTTP refresh rotation is still healthy and the token demonstrably
+                     works. Tell the operator once; do not run a login.
+      neither      — nothing to do.
+
+    Why the split (2026-07-29): due_now used to be `dead or past-day-6`, anchored purely on
+    the last `event='reauth'` audit row. Once Schwab started answering the headless login
+    with "we can't log you in right now — call for a security code", that login could never
+    succeed, and only a successful login writes the row that clears the anchor. The lane
+    therefore fired a doomed browser login and a FAILED alert 4x/day for a week while
+    rotation kept the token perfectly healthy. Health is now authoritative for urgency; the
+    true-login date only decides when to *advise*.
+    """
     import schwab_token_manager as tm
     h = tm.health(ACCOUNT_KEY, "schwab", "live") or {}
     last_login = _last_true_login()
     expires = (last_login + dt.timedelta(days=7)) if last_login else None
     due_at = (last_login + dt.timedelta(days=REAUTH_AT_DAYS)) if last_login else None
-    dead = bool(h.get("degraded")) or not h.get("has_token")
+    # A missing refresh_valid key (older health payloads) must not read as "dead".
+    refresh_ok = h.get("refresh_valid", True)
+    dead = bool(h.get("degraded")) or not h.get("has_token") or not refresh_ok
+    past_proactive = due_at is not None and _now() >= due_at
     return {"last_true_login": last_login.isoformat() if last_login else None,
             "true_expiry": expires.isoformat() if expires else None,
             "proactive_due_at": due_at.isoformat() if due_at else None,
             "degraded": bool(h.get("degraded")), "has_token": bool(h.get("has_token")),
-            "due_now": dead or (due_at is not None and _now() >= due_at),
-            "reason": ("token degraded/missing" if dead
-                       else f"day-{REAUTH_AT_DAYS:g} proactive window" if due_at and _now() >= due_at
-                       else "not due")}
+            "refresh_valid": bool(refresh_ok),
+            "days_to_reauth": h.get("days_to_reauth"),
+            "due_now": dead,
+            "advisory_due": bool(past_proactive and not dead),
+            "reason": ("token degraded/missing — rotation is broken" if dead
+                       else f"day-{REAUTH_AT_DAYS:g} passed but rotation healthy — advisory only"
+                       if past_proactive else "not due")}
 
 
 def _load_state() -> dict:
@@ -134,6 +159,41 @@ def _rate_limited() -> str | None:
     if s.get("attempts_day") == today and int(s.get("attempts_count", 0)) >= MAX_PER_DAY:
         return f"{MAX_PER_DAY} attempts already today"
     return None
+
+
+def _advisory_notice(st: dict) -> int:
+    """Tell the operator a manual reauth is worth doing — at most once per day.
+
+    This is deliberately NOT the FAILED alarm. Nothing is broken: rotation is healthy and
+    the token works. It is a nudge to reset the 7-day true-login clock by hand, because the
+    headless login can no longer clear it on its own.
+    """
+    s = _load_state()
+    today = _now().date().isoformat()
+    if s.get("advisory_notified_day") == today:
+        _log("advisory already sent today — quiet")
+        return 0
+    try:
+        import schwab_token_manager as tm
+        url_info = tm.reauth_url(ACCOUNT_KEY) or {}
+    except Exception as e:
+        url_info = {"reason": str(e)[:120]}
+    _save_state({"advisory_notified_day": today})
+    body = (f"No action is urgent — the token is HEALTHY and refreshing normally "
+            f"(refresh_valid={st.get('refresh_valid')}, degraded={st.get('degraded')}).\n\n"
+            f"But the last true browser login was {st.get('last_true_login')}, and the headless "
+            f"login can no longer clear that clock on its own (Schwab now demands a phoned-in "
+            f"security code). Resetting it by hand takes about two minutes:\n\n")
+    if url_info.get("ok"):
+        body += (f"1) open on any device:\n{url_info['authorize_url']}\n"
+                 f"2) copy the full 127.0.0.1 redirect URL and run:\n{url_info['step2_command']}\n")
+    else:
+        body += (f"1) .venv/bin/python scripts/schwab_token_manager.py reauth-url {ACCOUNT_KEY}\n"
+                 f"2) open the link, then exchange-code with the redirect URL\n"
+                 f"   (reauth_url unavailable right now: {url_info.get('reason')})\n")
+    body += "\nYou will get this reminder once a day until the clock is reset."
+    _notify("Schwab manual reauth suggested (not urgent)", body)
+    return 0
 
 
 def _mark_attempt() -> None:
@@ -444,6 +504,9 @@ def main() -> int:
     if a.check:
         st = _token_state()
         if not st["due_now"]:
+            # Healthy but past the day-6 mark: nudge once a day, never a browser login.
+            if st.get("advisory_due"):
+                return _advisory_notice(st)
             return 0
         hour = dt.datetime.now().hour
         if not (ALLOWED_HOURS[0] <= hour < ALLOWED_HOURS[1]):

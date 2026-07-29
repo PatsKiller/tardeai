@@ -4,7 +4,7 @@
 Uses gog (Google CLI) to send emails. No SMTP config needed.
 Paper mode only. No trades, no orders.
 """
-import logging, os, subprocess, sys
+import logging, os, shutil, subprocess, sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -12,6 +12,27 @@ log = logging.getLogger(__name__)
 
 OPERATOR_EMAIL = "john@jwwhiting.com"
 GOG_ACCOUNT = "john@jwwhiting.com"
+
+# gog lives in ~/.local/bin, which is on an interactive PATH but NOT on the minimal PATH
+# cron hands a job (the crontab sets SHELL but no PATH). Every cron-launched email therefore
+# died with "[Errno 2] No such file or directory: 'gog'" while Telegram still worked, so the
+# operator silently lost the second channel. Resolve the binary explicitly (2026-07-29).
+_GOG_FALLBACKS = (
+    Path.home() / ".local" / "bin" / "gog",
+    Path("/usr/local/bin/gog"),
+    Path("/usr/bin/gog"),
+)
+
+
+def _gog_bin():
+    """Absolute path to the gog CLI, or None when it genuinely is not installed."""
+    found = shutil.which("gog")
+    if found:
+        return found
+    for cand in _GOG_FALLBACKS:
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+    return None
 
 
 def _get_keyring_password():
@@ -34,10 +55,17 @@ def send_email(subject, body, to=None):
         log.warning("No GOG_KEYRING_PASSWORD — skipping email")
         return False
 
-    env = {**os.environ, "GOG_KEYRING_PASSWORD": pw}
+    gog = _gog_bin()
+    if not gog:
+        log.error("gog CLI not found (checked PATH, ~/.local/bin, /usr/local/bin) — skipping email")
+        return False
+
+    # Put gog's own directory on PATH too, so anything it shells out to resolves under cron.
+    env = {**os.environ, "GOG_KEYRING_PASSWORD": pw,
+           "PATH": os.pathsep.join([str(Path(gog).parent), os.environ.get("PATH", "/usr/bin:/bin")])}
     try:
         r = subprocess.run(
-            ["gog", "gmail", "send",
+            [gog, "gmail", "send",
              "--to", to,
              "-a", GOG_ACCOUNT,
              "--subject", subject,
