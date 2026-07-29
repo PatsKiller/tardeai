@@ -1,6 +1,7 @@
 /** Sector Leaders panel (SL-S1) — flag-gated host for SectorLeadersCard.
  *
- * Renders NOTHING unless localStorage SECTOR_LEADERS_V1 === 'on'. The existing
+ * Renders unless localStorage SECTOR_LEADERS_V1 === 'off' (default ON since
+ * 2026-07-29, operator request — it shipped dark earlier the same day). The existing
  * RESEARCH WATCH tile (components/rotation/ActionableSectorDecisionBoard.tsx)
  * is untouched and continues to render either way, so the operator can compare
  * the two on live data before anything is retired.
@@ -65,7 +66,7 @@ export default function SectorLeadersPanel() {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
         <h2 style={{ margin: 0, fontSize: DASH.panel, color: BB.text0 }}>Sector Leaders</h2>
         <span style={{ fontSize: DASH.data, color: BB.text3 }}>
-          sector → confirming industry → names · behind SECTOR_LEADERS_V1, default off
+          sector → confirming industry → names · behind SECTOR_LEADERS_V1, default on — set it to 'off' to hide
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           {HORIZONS.map(h => (

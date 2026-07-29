@@ -1,20 +1,24 @@
 /** Sector Leaders card (SL-S1) — feature flag + payload types.
  *
- * DEFAULT OFF. The existing RESEARCH WATCH tile stays rendered and unmodified;
- * this card renders alongside it so the operator can compare them on live data.
- * Retiring the old tile is a separate change after that comparison.
+ * DEFAULT ON as of 2026-07-29 (operator request). It shipped default-off for the
+ * dark deploy; the operator then asked for it visible without a per-browser
+ * localStorage step, which is unreachable from the server side.
  *
- * Enable:  localStorage.setItem('SECTOR_LEADERS_V1', 'on')   then reload
- * Disable: localStorage.removeItem('SECTOR_LEADERS_V1')
+ * The existing RESEARCH WATCH tile stays rendered and unmodified, so this is
+ * still the side-by-side comparison state — just opt-out instead of opt-in.
+ * Retiring the old tile remains a separate change.
  *
- * Mirrors the watchV5Enabled() flag shape, inverted to default-off.
+ * Disable: localStorage.setItem('SECTOR_LEADERS_V1', 'off')   then reload
+ * Enable:  localStorage.removeItem('SECTOR_LEADERS_V1')
+ *
+ * Same shape as watchV5Enabled(): default on, explicit 'off' opts out.
  */
 
 export function sectorLeadersEnabled(): boolean {
   try {
-    return localStorage.getItem('SECTOR_LEADERS_V1') === 'on'
+    return localStorage.getItem('SECTOR_LEADERS_V1') !== 'off'
   } catch {
-    return false
+    return true
   }
 }
 
