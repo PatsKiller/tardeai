@@ -24,16 +24,14 @@ echo "$TS [watchdog] DAEMON DOWN — restarting" >> "$LOG"
 # Clear stale locks
 rm -f /tmp/tradeai_telegram_poller.lock "$PIDFILE"
 
-# Send alert via direct API call (don't depend on daemon being up)
-TOKEN="${TELEGRAM_BOT_TOKEN}"
-CHAT="${TELEGRAM_CHAT_ID%%,*}"  # First chat ID only
-if [ -n "$TOKEN" ] && [ -n "$CHAT" ]; then
-    curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
-        -d "chat_id=${CHAT}" \
-        -d "text=⚠️ WATCHDOG: Telegram poller daemon was DOWN. Restarting now. Approval buttons may have been missed — check /v2/paper-proposals for any stuck PENDING proposals." \
-        > /dev/null 2>&1
-    echo "$TS [watchdog] alert sent to $CHAT" >> "$LOG"
-fi
+# Send alert through the central normalized outbox.
+"$PROJ/.venv/bin/python" - <<'PY' >/dev/null 2>&1 || true
+import sys
+sys.path.insert(0, "scripts")
+from telegram_alert import send_telegram
+send_telegram("WATCHDOG: Telegram poller daemon was DOWN. Restarting now. Check Command Center Reports.")
+PY
+echo "$TS [watchdog] alert queued through central outbox" >> "$LOG"
 
 # Restart daemon
 nohup bash "$PROJ/scripts/run_telegram_poller_daemon.sh" >> "$LOG" 2>&1 &

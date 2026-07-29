@@ -50,15 +50,13 @@ rules:
   suppress_wait: true
   suppress_avoid: true
   suppress_rvol_only: true
-  # Momentum-scalp setups bypass suppress_wait and fire in REAL TIME above a score floor (2026-07-08).
-  # Restores live GO/WAIT scalp alerts (silent since ~07-01 when all setups downgraded to suppressed WAIT).
-  # Set scalp_realtime_enabled=false to revert; raise scalp_realtime_min_score to reduce volume (score is /55).
-  # 2026-07-16: Critic DOWNGRADE/BLOCK no longer silences NEW GO — critic line stays in message.
-  scalp_realtime_enabled: true
-  scalp_realtime_min_score: 18
-  scalp_send_on_critic_downgrade: true
-  scalp_send_on_critic_block: true
-  scalp_score_jump_telegram: true
+  # Telegram normalization containment defaults (2026-07-28): real-time scalp
+  # candidates are Command Center/digest material until reviewed policy is deployed.
+  scalp_realtime_enabled: false
+  scalp_realtime_min_score: 45
+  scalp_send_on_critic_downgrade: false
+  scalp_send_on_critic_block: false
+  scalp_score_jump_telegram: false
   suppress_raw_catalyst_dump: true
   suppress_generic_critique_summary: true
   suppress_iris_content_gap_telegram: true
@@ -85,6 +83,8 @@ rules:
   hermes_telegram_max_rank: 100
 
 destinations:
+  critical_operations: "CRITICAL_OPERATIONS"
+  approvals_only: "APPROVALS_ONLY"
   proposals: "/v3/trading"
   trade_ai_scanner: "/v3/trading"
   risk: "/v3/risk"
@@ -97,3 +97,32 @@ destinations:
   hermes: "/v3/watch"
   reports: "/v3/reports"
   options_positions: "/v3/trading?tab=Options"
+
+telegram_normalization:
+  policy_version: operator-alert-policy-v2-2026-07-28
+  # OFF | SHADOW | ACTIVE  (default OFF; see scripts/alert_runtime_mode.py)
+  #   OFF    pre-normalization behaviour; requires no new table
+  #   SHADOW legacy delivery unchanged, normalized decisions persisted alongside
+  #   ACTIVE normalized outbox owns routing and delivery
+  # Override for one process with TELEGRAM_NORMALIZATION_MODE.
+  # ACTIVE additionally requires the outbox migration to be applied.
+  # Quoted deliberately: YAML 1.1 parses bare OFF/ON/YES/NO as booleans, so an
+  # unquoted OFF arrives as False and never matches a mode name.
+  runtime_mode: "OFF"
+  # Deprecated boolean, still honoured: true escalates only as far as SHADOW.
+  runtime_enabled: false
+  canonical_reports_url: "https://ms01-openclaw.tail163d14.ts.net/v3/reports"
+  logical_channels:
+    CRITICAL_OPERATIONS:
+      secret_ref: TRADEAI_GENERAL_ALERT_CHAT_ID
+    APPROVALS_ONLY:
+      secret_ref: TRADEAI_PROPOSAL_ALERT_CHAT_ID
+      allowlist:
+        - live_order_2fa_required
+        - live_session_2fa_required
+        - protective_order_approval_required
+        - material_live_authorization_amendment_required
+  digest:
+    risk_time_et: "08:45"
+    ops_trading_time_et: "17:55"
+    send_only_if_nonempty: true

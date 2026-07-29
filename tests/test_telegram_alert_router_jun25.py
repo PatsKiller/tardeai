@@ -10,20 +10,20 @@ os.chdir(str(PROJECT_ROOT))
 
 # (message_snippet, expected_send, expected_level_prefix)
 JUN25_CASES = [
-    ("⚡ Trade AI LIVE [09:50]\n🎯 NEW GO — EHGO score=41", True, "P0"),
+    ("⚡ Trade AI LIVE [09:50]\n🎯 NEW GO — EHGO score=41", False, "P2"),
     ("🎯 NEW GO — ANY score=40\n🚫 Critic: BLOCK", False, "P2"),
     ("🎯 NEW GO — LOW score=12 RVOL 5x", False, "P2"),
-    ("❓ Paper Proposal: GDHG\nStrategy: Sector Rotation", True, "P0"),
-    ("🚨 STOP_TRIGGERED — CACI\nTrigger: stop_price", True, "P0"),
+    ("❓ Paper Proposal: GDHG\nStrategy: Sector Rotation", False, "P2"),
+    ("🚨 STOP_TRIGGERED — CACI\nTrigger: stop_price", False, "P1"),
     ("🔭 Hermes watchlist alerts:\n⤴ AMD jumped", False, "P2"),
     ("⚠️ Health Agent: DEGRADED — 84/100\ndata:100", False, "P2"),
-    ("🚨 Health Agent: UNHEALTHY — 60/100", True, "P1"),
+    ("🚨 Health Agent: UNHEALTHY — 60/100", False, "P1"),
     ("🔍 Investigating 5 escalation(s) via local LLM:", False, "P2"),
     ("Topic Curator: 276 entity links", False, "P2"),
     ("Incubator Promoter\nPromoted: 1 | Skipped: 14", False, "P2"),
-    ("💼 PORTFOLIO INTELLIGENCE — Jun 25, 2026\nTotal: $1,243,591", True, "P1"),
-    ("🚨 SIEM P1: stop_health — STOP_TRIGGERED", True, "P0"),
-    ("☀️ MORNING COMMAND — Jun 25, 2026\n--- Portfolio ---", True, "P1"),
+    ("💼 PORTFOLIO INTELLIGENCE — Jun 25, 2026\nTotal: $1,243,591", False, "P1"),
+    ("🚨 SIEM P1: stop_health — STOP_TRIGGERED", False, "P1"),
+    ("☀️ MORNING COMMAND — Jun 25, 2026\n--- Portfolio ---", False, "P1"),
     ("Trade AI Critique: 12/15 reviewed\nConfirmed: 10", False, "P2"),
 ]
 
@@ -44,7 +44,7 @@ def test_health_repeat_suppressed():
     _dedupe_cache.clear()
     _last_health.update({"score": None, "status": None, "ts": 0.0})
     msg = "🚨 Health Agent: UNHEALTHY — 64/100\ndata:85 · execution:0"
-    assert should_send_telegram(msg) is True
+    assert should_send_telegram(msg) is False
     mark_sent(msg)
     assert should_send_telegram(msg) is False
 
@@ -55,6 +55,6 @@ def test_portfolio_intelligence_dedupe():
     _dedupe_cache.clear()
     m1 = "💼 PORTFOLIO INTELLIGENCE — Jun 25, 2026\nTotal: $1,243,591"
     m2 = "💼 PORTFOLIO INTELLIGENCE — Jun 25, 2026\nTotal: $1,243,198"
-    assert should_send_telegram(m1) is True
+    assert should_send_telegram(m1) is False
     mark_sent(m1)
     assert should_send_telegram(m2) is False

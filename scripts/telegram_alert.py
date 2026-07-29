@@ -16,10 +16,7 @@ No cost. No Twilio account needed.
 from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
-import requests
-
-TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
-MAX_MSG_LEN  = 4000    # leave headroom below 4096 hard limit
+from telegram_transport import MAX_MSG_LEN, send_message, smart_split
 
 
 def _env(k: str, default: str = "") -> str:
@@ -50,27 +47,7 @@ def _chat_ids() -> list:
 
 def _smart_split(text: str, limit: int) -> list[str]:
     """Split text at newline boundaries, falling back to sentence then hard cut."""
-    if len(text) <= limit:
-        return [text]
-    chunks = []
-    while text:
-        if len(text) <= limit:
-            chunks.append(text)
-            break
-        # Try to split at last newline within limit
-        cut = text.rfind("\n", 0, limit)
-        if cut < limit // 2:
-            # Try sentence boundary (. or !) within limit
-            for sep in (". ", "! ", "? "):
-                pos = text.rfind(sep, 0, limit)
-                if pos > limit // 2:
-                    cut = pos + len(sep)
-                    break
-        if cut < limit // 2:
-            cut = limit  # hard cut as last resort
-        chunks.append(text[:cut])
-        text = text[cut:].lstrip("\n")
-    return chunks
+    return smart_split(text, limit)
 
 
 def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
@@ -91,20 +68,10 @@ def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
         chunks = _smart_split(message, MAX_MSG_LEN)
         for cid in targets:
             for chunk in chunks:
-                resp = requests.post(
-                    TELEGRAM_API.format(token=token),
-                    json={"chat_id": cid, "text": chunk, "parse_mode": "Markdown"},
-                    timeout=10,
-                )
-                if not resp.ok:
-                    resp2 = requests.post(
-                        TELEGRAM_API.format(token=token),
-                        json={"chat_id": cid, "text": chunk},
-                        timeout=10,
-                    )
-                    if not resp2.ok:
-                        print(f"[telegram] Error to {cid}: {resp2.status_code}")
-                        ok = False
+                result = send_message(token=token, chat_id=cid, text=chunk)
+                if not result.get("ok"):
+                    print(f"[telegram] Error to {cid}: {result.get('status_code')}")
+                    ok = False
     except Exception as e:
         print(f"[telegram] Error: {e}")
         ok = False
@@ -117,20 +84,11 @@ def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
     return ok
 
 
-def send_telegram(message: str, bypass_router: bool = False) -> bool:
-    """Send a message via Telegram bot. Routes through operator alert policy.
-
-    Args:
-        message: The message to send.
-        bypass_router: If True, skip the alert router (for P0 system alerts).
-    """
-    if not _enabled():
-        return False
+def _legacy_send(message: str, bypass_router: bool) -> bool:
+    """Pre-normalization behaviour, unchanged. Requires no new table."""
     if not _token() or not _chat_ids():
         print("[telegram] Skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
         return False
-
-    # Route through central alert router unless bypassed
     if not bypass_router:
         try:
             from telegram_alert_router import should_send_telegram, mark_sent, classify_alert
@@ -146,8 +104,84 @@ def send_telegram(message: str, bypass_router: bool = False) -> bool:
             mark_sent(message)
         except ImportError:
             pass  # Router not available — send normally
-
     return _raw_send_telegram(message)
+
+
+def publish_operator_message(message: str, *, bypass_router: bool = False,
+                             source_producer: str = "legacy_send_telegram") -> dict:
+    """Mode-aware publish. Returns the structured PublishResult mapping.
+
+    OFF     legacy router + legacy sender; the normalized tables are never touched.
+    SHADOW  legacy delivery happens exactly as in OFF; the normalized decision is
+            additionally persisted when the migration is present. Shadow persistence
+            is best-effort and can never suppress or fail a legacy send.
+    ACTIVE  the normalized outbox owns routing and delivery.
+    """
+    from alert_runtime_mode import MODE_ACTIVE, MODE_OFF, MODE_SHADOW, get_mode
+
+    mode = get_mode()
+
+    if mode == MODE_OFF:
+        delivered = _legacy_send(message, bypass_router)
+        return {
+            "accepted": True, "route_mode": "LEGACY", "runtime_mode": MODE_OFF,
+            "queued": False, "delivered": bool(delivered), "suppressed": not delivered,
+            "reason": "legacy_delivery" if delivered else "legacy_router_suppressed_or_unconfigured",
+            "alert_id": None, "incident_id": None,
+        }
+
+    if mode == MODE_SHADOW:
+        delivered = _legacy_send(message, bypass_router)
+        shadow: dict = {"persisted": False}
+        try:
+            from alert_runtime_mode import can_persist_shadow
+            if can_persist_shadow():
+                from alert_outbox import publish_legacy_message
+                shadow = publish_legacy_message(
+                    message, source_producer=source_producer, bypass_router=bypass_router)
+                shadow["persisted"] = True
+        except Exception as e:
+            # Never let shadow bookkeeping affect the operator's alert.
+            print(f"[telegram] shadow persist skipped: {type(e).__name__}: {str(e)[:120]}")
+        return {
+            "accepted": True, "route_mode": "LEGACY_SHADOWED", "runtime_mode": MODE_SHADOW,
+            "queued": False, "delivered": bool(delivered), "suppressed": not delivered,
+            "reason": "legacy_delivery_with_shadow_evaluation",
+            "alert_id": shadow.get("alert_id"), "incident_id": shadow.get("incident_id"),
+            "shadow": shadow,
+        }
+
+    # ACTIVE — missing tables raise rather than silently dropping the alert.
+    from alert_runtime_mode import require_active_capability
+    require_active_capability()
+    from alert_outbox import publish_legacy_message
+    return publish_legacy_message(message, source_producer=source_producer,
+                                  bypass_router=bypass_router)
+
+
+def send_telegram(message: str, bypass_router: bool = False) -> bool:
+    """Send/publish an operator alert. Returns True when the event was ACCEPTED.
+
+    Accepted means the platform has taken responsibility for the event — delivered
+    now, queued for a digest, or recorded for Command Center. It deliberately does
+    NOT mean "a Telegram message was sent": returning False for a correctly digested
+    event made callers treat normal routing as failure and retry, which is exactly
+    the storm this normalization exists to stop. Callers needing delivery detail
+    should use publish_operator_message() and read `delivered`.
+    """
+    if not _enabled():
+        return False
+    try:
+        result = publish_operator_message(message, bypass_router=bypass_router)
+    except Exception as e:
+        # ACTIVE with a missing migration lands here. Loud, and NOT silently dropped:
+        # fall back to legacy delivery so the operator still gets the alert.
+        print(f"[telegram] normalized publish failed ({type(e).__name__}: {str(e)[:160]}) "
+              f"— falling back to legacy delivery")
+        return _legacy_send(message, bypass_router)
+    if not result.get("delivered") and result.get("route_mode") not in (None, "LEGACY"):
+        print(f"[telegram] {result.get('route_mode')} ({result.get('reason')}): {message[:60]}...")
+    return bool(result.get("accepted"))
 
 
 def build_telegram_message(

@@ -1404,6 +1404,34 @@ def _reports_categories(query=None):
     return _rp.categories()
 
 
+def _v3_alerts_active(query=None):
+    """GET /api/v3/alerts/active?days=7 — active Command Center alerts."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import alert_outbox as _ao
+    q = query or {}
+    return {"ok": True, "alerts": [_json_clean(r) for r in _ao.active_alerts(
+        days=int(q.get("days") or 7), limit=int(q.get("limit") or 200))]}
+
+
+def _v3_alert_settings(query=None):
+    """GET /api/v3/alerts/settings — server-authoritative alert settings."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import alert_outbox as _ao
+    q = query or {}
+    return _json_clean(_ao.list_alert_settings(days=int(q.get("days") or 7)))
+
+
+def _v3_alert_settings_preview(query=None):
+    """GET /api/v3/alerts/settings/preview — seven-day volume projection."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import alert_outbox as _ao
+    q = query or {}
+    return _json_clean(_ao.settings_projection(days=int(q.get("days") or 7)))
+
+
 def _reports_list(query=None):
     """GET /api/v2/reports/list?category=&q=&page=&per_page=&days= — paginated, searchable items."""
     import sys as _s
@@ -33759,6 +33787,9 @@ ROUTES = {
     "/api/v2/reports/analyst/links": _reports_analyst_links,
     "/api/v2/reports/analyst/eligible": _reports_analyst_eligible,
     "/api/v2/reports/analyst/validate": _reports_analyst_validate,
+    "/api/v3/alerts/active": _v3_alerts_active,
+    "/api/v3/alerts/settings": _v3_alert_settings,
+    "/api/v3/alerts/settings/preview": _v3_alert_settings_preview,
     "/api/v2/broker-orders/suggest-levels": _broker_orders_suggest_levels,
     "/api/v2/proposal-accounts": _proposal_accounts,
     "/api/v2/schwab/accounts-live": _schwab_accounts_live,
@@ -34939,6 +34970,31 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, _rp.purge(category=b.get("category"),
                                       older_than_days=int(b.get("older_than_days", 90) or 90),
                                       apply=bool(b.get("apply")))
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v3/alerts/settings":
+            try:
+                import sys as _s
+                _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                import alert_outbox as _ao
+                b = body or {}
+                alert_type = str(b.get("alert_type") or "").strip()
+                if not alert_type:
+                    return 400, {"ok": False, "errors": ["alert_type_required"]}
+                result = _ao.update_alert_setting(alert_type, b, actor=str(b.get("updated_by") or "operator"))
+                return (200 if result.get("ok") else 409 if "row_version_conflict" in result.get("errors", []) else 400), result
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:200]}
+
+        if base_path == "/api/v3/alerts/test-send":
+            try:
+                import sys as _s
+                _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                import alert_outbox as _ao
+                alert_type = str((body or {}).get("alert_type") or "").strip()
+                result = _ao.synthetic_test_send(alert_type)
+                return (200 if result.get("ok") else 400), result
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
 

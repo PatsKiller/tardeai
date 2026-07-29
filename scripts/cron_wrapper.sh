@@ -54,15 +54,13 @@ Reply to retry:
   status — system health
 EOF
 )
-        # Send to all chat IDs (comma-separated)
-        IFS=',' read -ra CHAT_IDS <<< "$TELEGRAM_CHAT_ID"
-        for CID in "${CHAT_IDS[@]}"; do
-            CID=$(echo "$CID" | xargs)  # trim whitespace
-            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                -d "chat_id=${CID}" \
-                -d "text=${MSG}" \
-                --max-time 10 > /dev/null 2>&1
-        done
+        # Body goes over stdin, never interpolated into Python source. ERROR_TAIL is
+        # program output and can contain triple quotes, backslashes, backticks or
+        # ${...} — inside a heredoc those escaped the string literal and executed.
+        # Absolute paths + the project venv so the cron working directory is irrelevant.
+        printf '%s' "$MSG" | "$PROJ/.venv/bin/python" \
+            "$PROJ/scripts/send_operator_alert.py" \
+            --source-producer cron_wrapper --quiet >/dev/null 2>&1 || true
     fi
 
     exit $EXIT_CODE

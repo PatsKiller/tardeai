@@ -144,6 +144,13 @@ def build_broker_order_url(intent_id: str) -> str:
     return f"{base}/v3/go/order/{iid}"
 
 
+def build_alert_url(alert_id: str) -> str:
+    """Deep-link to a Command Center alert/incident."""
+    base = get_public_base_url()
+    aid = quote(str(alert_id).strip(), safe="")
+    return f"{base}/v3/go/alert/{aid}"
+
+
 def build_broker_order_url_legacy_query(intent_id: str) -> str:
     """Legacy query form (kept for tests / local SPA). Prefer build_broker_order_url."""
     return build_dashboard_url("/v3/trading", {"tab": "Broker Orders", "intent": str(intent_id)})
@@ -176,6 +183,42 @@ def publicize_message(text: str) -> str:
     for pattern, replacement in _replacements():
         result = pattern.sub(replacement, result)
     return _to_v3(result)
+
+
+_FORBIDDEN_OPERATOR_TEXT = [
+    (re.compile(r"\b192\.168\.\d{1,3}\.\d{1,3}\b"), "internal_ipv4"),
+    (re.compile(r"\b127\.0\.0\.1\b"), "loopback_ipv4"),
+    (re.compile(r"\blocalhost\b", re.IGNORECASE), "localhost"),
+    (re.compile(r":7777\b"), "local_port_7777"),
+    (re.compile(r"/v2/"), "legacy_v2_route"),
+    (re.compile(r"https?://[^\s]*oauth[^\s]*", re.IGNORECASE), "raw_oauth_url"),
+    (re.compile(r"\bstate=[A-Za-z0-9_.%~+-]+"), "oauth_state_parameter"),
+    (re.compile(r"(?:^|\s)/(?:home|tmp|var|run|etc|opt)/[^\s]+"), "filesystem_path"),
+    (re.compile(r"(?:^|\n)\s*(?:cd|sudo|bash|python3?|curl|psql|systemctl|export)\s+[^\n]+"), "shell_command"),
+]
+
+
+def operator_text_policy_violations(text: str) -> list[str]:
+    """Return user-facing text safety violations after canonical URL publicizing."""
+    if not text:
+        return []
+    normalized = publicize_message(text)
+    return [name for pattern, name in _FORBIDDEN_OPERATOR_TEXT if pattern.search(normalized)]
+
+
+def sanitize_operator_message(text: str, replacement: str | None = None) -> tuple[str, list[str]]:
+    """Canonicalize links and remove operator-message data that must not reach Telegram."""
+    if not text:
+        return "", []
+    replacement = replacement or f"[redacted: open {build_dashboard_url('/v3/reports')}]"
+    normalized = publicize_message(text)
+    violations = []
+    sanitized = normalized
+    for pattern, name in _FORBIDDEN_OPERATOR_TEXT:
+        if pattern.search(sanitized):
+            violations.append(name)
+            sanitized = pattern.sub(replacement, sanitized)
+    return sanitized, violations
 
 
 def telegram_url_button(text: str, url: str) -> dict:

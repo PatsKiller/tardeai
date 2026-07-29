@@ -1,0 +1,107 @@
+# Proposed target-state policy; advisory only, not a repository patch.
+version: 2
+default_surface: command_center
+
+logical_channels:
+  critical_operations:
+    secret_ref: TRADEAI_GENERAL_ALERT_CHAT_ID
+  approvals_only:
+    secret_ref: TRADEAI_PROPOSAL_ALERT_CHAT_ID
+
+routing:
+  live_order_2fa_required:
+    telegram: approvals_only
+    mode: immediate
+    ttl: intent_expiry
+  live_session_2fa_required:
+    telegram: approvals_only
+    mode: immediate
+    ttl: intent_expiry
+  protective_order_approval_required:
+    telegram: approvals_only
+    mode: immediate
+    ttl: intent_expiry
+
+  orphaned_stop:
+    telegram: critical_operations
+    mode: immediate_batched
+    ttl: until_resolved_max_24h
+  position_unprotected:
+    telegram: critical_operations
+    mode: immediate
+    ttl: until_resolved_max_24h
+  broker_auth_blocking:
+    telegram: critical_operations
+    mode: incident_once
+    ttl: until_resolved_max_24h
+  partial_fill_protection_uncertain:
+    telegram: critical_operations
+    mode: immediate
+    ttl: until_resolved_max_24h
+
+  stop_near_trigger:
+    mode: digest
+    bucket: risk
+    ttl: 24h
+  stop_trigger_non_rth:
+    mode: digest
+    bucket: risk
+    ttl: 24h
+  siem_without_trading_impact:
+    mode: digest
+    bucket: ops
+    ttl: 24h
+  proposal_revalidated_or_cancelled:
+    mode: digest
+    bucket: trading
+    ttl: 24h
+
+  paper_proposal:
+    mode: command_center
+    ttl: 7d
+  proposal_blocked_or_rebuild:
+    mode: command_center
+    ttl: 7d
+  research_update:
+    mode: command_center
+    ttl: 7d
+  scanner_candidate:
+    mode: command_center
+    ttl: session_cutoff
+  job_telemetry:
+    mode: command_center
+    ttl: 7d
+  debug_or_success:
+    mode: log
+    ttl: 7d
+
+digest:
+  premarket:
+    time_et: "08:45"
+    send_only_if_nonempty: true
+  close:
+    time_et: "17:55"
+    send_only_if_nonempty: true
+  link: "https://ms01-openclaw.tail163d14.ts.net/v3/reports"
+
+dedupe:
+  backend: postgres
+  incident_updates_replace_repeats: true
+  cross_channel_duplicates_forbidden: true
+  fingerprint_fields:
+    - alert_type
+    - source_system
+    - entity_id
+    - account_id
+    - symbol
+    - state_version
+    - action_required
+    - authorization_or_order_id
+
+url_policy:
+  canonical_base: "https://ms01-openclaw.tail163d14.ts.net"
+  reject_internal_hosts: true
+  reject_port_7777: true
+  reject_legacy_v2: true
+  reject_oauth_urls_in_body: true
+  reject_filesystem_paths_in_body: true

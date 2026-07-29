@@ -28,29 +28,29 @@ def test_dry_run_suppressed():
     from telegram_alert_router import should_send_telegram
     assert not should_send_telegram("dry_run_approved: CMCSA")
 
-def test_trade_opened_passes():
+def test_trade_opened_queues_digest_or_dashboard():
     from telegram_alert_router import should_send_telegram
-    assert should_send_telegram("TRADE OPENED: CMCSA 120 shares @ $24.97")
+    assert not should_send_telegram("TRADE OPENED: CMCSA 120 shares @ $24.97")
 
-def test_trade_closed_passes():
+def test_trade_closed_queues_digest_or_dashboard():
     from telegram_alert_router import should_send_telegram
-    assert should_send_telegram("TRADE CLOSED: INFU — target hit")
+    assert not should_send_telegram("TRADE CLOSED: INFU — target hit")
 
-def test_stop_hit_passes():
+def test_stop_hit_queues_digest_unless_unresolved_protection():
     from telegram_alert_router import should_send_telegram
-    assert should_send_telegram("STOP HIT: GCTS — stopped @ $1.37")
+    assert not should_send_telegram("STOP HIT: GCTS — stopped @ $1.37")
 
-def test_trailing_stop_passes():
+def test_trailing_stop_trigger_queues_digest_unless_approval_required():
     from telegram_alert_router import should_send_telegram
-    assert should_send_telegram("TRAILING STOP TRIGGERED: FLYW")
+    assert not should_send_telegram("TRAILING STOP TRIGGERED: FLYW")
 
-def test_entry_filled_passes():
+def test_entry_filled_not_immediate_without_operator_action():
     from telegram_alert_router import should_send_telegram
-    assert should_send_telegram("ENTRY_FILLED: NWG 189 shares")
+    assert not should_send_telegram("ENTRY_FILLED: NWG 189 shares")
 
-def test_exit_filled_passes():
+def test_exit_filled_not_immediate_without_operator_action():
     from telegram_alert_router import should_send_telegram
-    assert should_send_telegram("EXIT_FILLED: ASPN 553 shares")
+    assert not should_send_telegram("EXIT_FILLED: ASPN 553 shares")
 
 def test_no_trading_in_router():
     src = open(f"{PROJECT_ROOT}/scripts/telegram_alert_router.py").read()

@@ -1,0 +1,48 @@
+{
+  "measured_by": "scripts/check_telegram_chokepoint.py (behavioural, not URL-literal)",
+  "measured_at": "2026-07-28 (remediation pass 2)",
+  "producers_bypassing_chokepoint": {
+    "before_this_pass": 45,
+    "after_this_pass": 45,
+    "total_violations": 139,
+    "note": "The prior manifest claimed 1 remaining. That counted only the literal sendMessage URL. 39 producers had been changed to __import__('telegram_transport').TELEGRAM_SEND_MESSAGE_API while still calling requests/urllib themselves, reading the bot token and selecting the chat id \u2014 a bypass that looked centralized. 6 further files were never touched at all."
+  },
+  "prior_39_producer_edits": {
+    "action_taken": "RESTORED to exact pre-normalization state (git checkout per file, explicit list)",
+    "rationale": "Every one of the 39 diffs contained ONLY the transport swap \u2014 verified, so nothing of value was discarded. The swap added no centralization while masking the bypass from static checks. OFF mode requires pre-normalization behaviour anyway. Typed publish_event() migration remains OPEN.",
+    "files_restored": 39
+  },
+  "violation_categories": {
+    "raw_endpoint": 45
+  },
+  "approved_boundaries": [
+    "scripts/alert_outbox.py",
+    "scripts/audit_direct_telegram_senders.py",
+    "scripts/check_telegram_chokepoint.py",
+    "scripts/discover_telegram_chat_id.py",
+    "scripts/run_telegram_callback_poller.py",
+    "scripts/secret_validators.py",
+    "scripts/secrets/rotation_probes.py",
+    "scripts/telegram_alert.py",
+    "scripts/telegram_callback_handler.py",
+    "scripts/telegram_command_handler.py",
+    "scripts/telegram_reply_processor.py",
+    "scripts/telegram_transport.py",
+    "tests/test_alert_normalization_blockers.py",
+    "tests/test_telegram_notification_normalization.py"
+  ],
+  "zero_bypass_claim": false,
+  "enforcement": {
+    "script": "scripts/check_telegram_chokepoint.py",
+    "mode": "ratchet against config/telegram_chokepoint_baseline.json",
+    "proven": "new bypass -> exit 1 with named file; removal -> exit 0",
+    "detects": [
+      "transport_import",
+      "endpoint_constant",
+      "raw_endpoint",
+      "http_to_telegram",
+      "chat_id_selection",
+      "token_for_delivery"
+    ]
+  }
+}

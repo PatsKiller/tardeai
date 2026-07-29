@@ -148,6 +148,21 @@ def classify_alert(message: str) -> str:
     if not message:
         return "P3_LOG_ONLY"
 
+    try:
+        from operator_alert_policy_v2 import classify_legacy_message, route_event
+        _ev = classify_legacy_message(message, source_producer="telegram_alert_router")
+        _decision = route_event(_ev)
+        if _decision.route_mode == "IMMEDIATE":
+            return "P0_INTERRUPT"
+        if _decision.route_mode == "DIGEST":
+            return "P1_DIGEST"
+        if _decision.route_mode == "COMMAND_CENTER":
+            return "P2_DASHBOARD_ONLY"
+        if _decision.route_mode == "LOG":
+            return "P3_LOG_ONLY"
+    except Exception:
+        pass
+
     # Check P0 first (highest priority)
     for pattern, _ in _P0_PATTERNS:
         if re.search(pattern, message, re.IGNORECASE):
@@ -413,9 +428,8 @@ def should_send_telegram(message: str) -> bool:
         return False
 
     if level == "P1_DIGEST":
-        if is_deduplicated(message):
-            record_suppressed(message, "deduplicated")
-            return False
+        record_suppressed(message, "digest_queue")
+        return False
 
     rl = apply_rate_limit(message)
     if not rl["allowed"]:

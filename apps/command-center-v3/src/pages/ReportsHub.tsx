@@ -14,6 +14,7 @@ import StructuredBrief from '../components/reports/StructuredBrief'
 import AlertAnalyticsBand from '../components/reports/AlertAnalyticsBand'
 import AnalystReportsPanel from '../components/reports/AnalystReportsPanel'
 import SystemRollupTab from '../components/reports/SystemRollupTab'
+import AlertSettingsModal from '../components/reports/AlertSettingsModal'
 import { parseBriefSections, executiveSummaryText, rankedActionLines, SUPER_TABS } from '../components/reports/briefUtils'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, BB, T } from '../lib/watchTokens'
@@ -164,6 +165,7 @@ export default function ReportsHub({ onDrill }: Props) {
   const [days, setDays] = useState<number | ''>(7)
   const [qv, setQv] = useState<QV>('')
   const [purge, setPurge] = useState(false)
+  const [alertSettings, setAlertSettings] = useState(false)
   const [selId, setSelId] = useState<string | null>(null)
   const [briefExpanded, setBriefExpanded] = useState(false)
   const [searchInput, setSearchInput] = useState('')
@@ -317,6 +319,7 @@ export default function ReportsHub({ onDrill }: Props) {
         </span>
         <span style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setAlertSettings(true)} style={hubTab(false, terminalUi)}>Alert Settings</button>
           {modeBtn('library', 'Library')}
           {modeBtn('brief', "Today's Brief")}
           {modeBtn('analyst', 'Analyst Reports')}
@@ -458,6 +461,7 @@ export default function ReportsHub({ onDrill }: Props) {
       )}
 
       {purge && <PurgeModal category={active} categoryLabel={activeCat?.label || ''} onClose={() => setPurge(false)} />}
+      {alertSettings && <AlertSettingsModal onClose={() => setAlertSettings(false)} />}
     </div>
   )
 }
