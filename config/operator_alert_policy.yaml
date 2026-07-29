@@ -50,13 +50,23 @@ rules:
   suppress_wait: true
   suppress_avoid: true
   suppress_rvol_only: true
-  # Telegram normalization containment defaults (2026-07-28): real-time scalp
-  # candidates are Command Center/digest material until reviewed policy is deployed.
-  scalp_realtime_enabled: false
-  scalp_realtime_min_score: 45
-  scalp_send_on_critic_downgrade: false
-  scalp_send_on_critic_block: false
-  scalp_score_jump_telegram: false
+  # Momentum-scalp setups bypass suppress_wait and fire in REAL TIME above a score floor (2026-07-08).
+  # Restores live GO/WAIT scalp alerts (silent since ~07-01 when all setups downgraded to suppressed WAIT).
+  # Set scalp_realtime_enabled=false to revert; raise scalp_realtime_min_score to reduce volume (score is /55).
+  # 2026-07-16: Critic DOWNGRADE/BLOCK no longer silences NEW GO — critic line stays in message.
+  #
+  # 2026-07-29: RESTORED to the 07-08/07-16 operator decision. The Telegram-normalization
+  # containment defaults (2026-07-28) set these five to false/45. Those defaults were written to be
+  # INERT until operator rollout — the implementation brief said "Do not enable these changes in
+  # production during this Codex run … keep all live runtime activation explicitly off until
+  # operator deployment." They went live anyway because ~130 cron lines execute from the working
+  # tree, so writing the file WAS the deploy. See docs/_findings/P0_WORKING_TREE_IS_PRODUCTION_2026-07-29.md.
+  # If containment is wanted during rollout, re-apply it deliberately WITH a dated expiry.
+  scalp_realtime_enabled: true
+  scalp_realtime_min_score: 18
+  scalp_send_on_critic_downgrade: true
+  scalp_send_on_critic_block: true
+  scalp_score_jump_telegram: true
   suppress_raw_catalyst_dump: true
   suppress_generic_critique_summary: true
   suppress_iris_content_gap_telegram: true
