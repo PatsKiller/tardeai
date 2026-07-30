@@ -54,6 +54,10 @@ _TOOL_CALL_COLS = (
 )
 _REVIEW_COLS = ("review_id", "artifact_id", "reviewer_agent_id", "verdict", "artifact_hash", "created_at")
 _SCORE_COLS = ("score_id", "artifact_id", "scorer_agent_id", "dimensions", "outcome_ref", "created_at")
+# Knowledge summaries: metadata only — no statement/facts/source bodies (kept out of
+# the read surface so the desk shows lifecycle/provenance without content payloads).
+_LESSON_COLS = ("lesson_id", "lesson_version", "lifecycle", "title", "created_by", "reviewed_by", "created_at")
+_CASE_COLS = ("case_id", "case_type", "outcome", "outcome_observed_at", "created_at")
 
 _RETRIEVAL_EVENT_TYPES = ("RETRIEVAL_STARTED", "RETRIEVAL_COMPLETED")
 
@@ -260,6 +264,20 @@ class PostgresAgentRuntimeReader:
                 "occurred_at": body.get("created_at") or event["created_at"],
             })
         return projected
+
+    def list_lessons(self, *, limit: int, offset: int = 0) -> Sequence[Mapping[str, Any]]:
+        cols = ", ".join(_LESSON_COLS)
+        sql = (f"SELECT {cols} FROM {self._q('kb_lessons')} "
+               "ORDER BY created_at DESC, lesson_id LIMIT %s OFFSET %s")
+        with self._reading() as conn:
+            return self._rows(conn, sql, (limit, offset), _LESSON_COLS)
+
+    def list_cases(self, *, limit: int, offset: int = 0) -> Sequence[Mapping[str, Any]]:
+        cols = ", ".join(_CASE_COLS)
+        sql = (f"SELECT {cols} FROM {self._q('kb_cases')} "
+               "ORDER BY created_at DESC, case_id LIMIT %s OFFSET %s")
+        with self._reading() as conn:
+            return self._rows(conn, sql, (limit, offset), _CASE_COLS)
 
 
 def _safe_rollback(conn: Any) -> None:

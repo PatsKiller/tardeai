@@ -87,6 +87,9 @@ class FakeCursor:
             rows = [r for r in c.agent_scores if r["artifact_id"] in art_ids]
             self._result = _project(rows, [col.split(".")[-1] for col in cols])
             return
+        if "FROM agentic_runtime.kb_lessons" in s or "FROM agentic_runtime.kb_cases" in s:
+            self._result = _project(list(getattr(c, "kb_lessons", []) if "kb_lessons" in s else getattr(c, "kb_cases", [])), cols)
+            return
         raise AssertionError(f"unhandled SQL: {s}")
 
     def fetchall(self):
@@ -237,7 +240,7 @@ def test_read_api_over_postgres_reader_end_to_end_and_zero_authority():
     # every declared route resolves to a working method
     for route in READ_ROUTES:
         method = getattr(api, route.operation)
-        result = method(limit=5) if route.operation == "list_runs" else method(RUN)
+        result = method(limit=5) if route.operation in ("list_runs", "list_lessons", "list_cases") else method(RUN)
         assert result["read_only"] is True
         assert all(v is False for v in result["authority"].values())
 

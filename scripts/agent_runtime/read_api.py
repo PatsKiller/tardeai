@@ -17,6 +17,8 @@ class AgentRuntimeReader(Protocol):
     def list_reviews(self, run_id: str) -> Sequence[Mapping[str, Any]]: ...
     def list_scores(self, run_id: str) -> Sequence[Mapping[str, Any]]: ...
     def list_monitoring_events(self, run_id: str) -> Sequence[Mapping[str, Any]]: ...
+    def list_lessons(self, *, limit: int, offset: int) -> Sequence[Mapping[str, Any]]: ...
+    def list_cases(self, *, limit: int, offset: int) -> Sequence[Mapping[str, Any]]: ...
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,8 @@ READ_ROUTES = (
     ReadRoute("GET", "/api/v3/agent-runtime/runs/{run_id}/reviews", "list_reviews"),
     ReadRoute("GET", "/api/v3/agent-runtime/runs/{run_id}/scores", "list_scores"),
     ReadRoute("GET", "/api/v3/agent-runtime/runs/{run_id}/events", "list_monitoring_events"),
+    ReadRoute("GET", "/api/v3/agent-runtime/knowledge/lessons", "list_lessons"),
+    ReadRoute("GET", "/api/v3/agent-runtime/knowledge/cases", "list_cases"),
 )
 
 
@@ -99,6 +103,23 @@ class ReadOnlyAgentRuntimeAPI:
 
     def list_monitoring_events(self, run_id: str) -> dict[str, Any]:
         return self._list_child("events", self._reader.list_monitoring_events, run_id)
+
+    # ---- knowledge (fleet-wide, not per-run) -----------------------------
+    def list_lessons(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        if limit < 1 or limit > 200:
+            raise ValueError("limit must be between 1 and 200")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+        rows = [dict(row) for row in self._reader.list_lessons(limit=limit, offset=offset)]
+        return self._response("lessons", rows, {"limit": limit, "offset": offset})
+
+    def list_cases(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        if limit < 1 or limit > 200:
+            raise ValueError("limit must be between 1 and 200")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+        rows = [dict(row) for row in self._reader.list_cases(limit=limit, offset=offset)]
+        return self._response("cases", rows, {"limit": limit, "offset": offset})
 
     def get_run_evidence(self, run_id: str) -> dict[str, Any]:
         self._require_run_id(run_id)

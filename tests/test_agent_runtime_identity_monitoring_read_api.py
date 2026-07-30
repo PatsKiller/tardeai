@@ -86,6 +86,12 @@ class Reader:
     def list_monitoring_events(self, run_id):
         return [{"event_id": "event_1", "status": "CREATED"}]
 
+    def list_lessons(self, *, limit, offset=0):
+        return [{"lesson_id": "lesson_1", "lifecycle": "CANDIDATE"}]
+
+    def list_cases(self, *, limit, offset=0):
+        return [{"case_id": "case_1", "case_type": "known_bad_fixture"}]
+
 
 def test_read_api_exposes_only_get_routes_and_zero_mutation_authority():
     assert READ_ROUTES
@@ -119,7 +125,7 @@ def test_every_declared_route_maps_to_an_implemented_api_method():
     for route in READ_ROUTES:
         method = getattr(api, route.operation, None)
         assert callable(method), f"route {route.path} has no implemented method {route.operation}"
-        result = method(limit=5) if route.operation == "list_runs" else method("run_1")
+        result = method(limit=5) if route.operation in ("list_runs", "list_lessons", "list_cases") else method("run_1")
         assert result["read_only"] is True and all(v is False for v in result["authority"].values())
 
 
