@@ -21,7 +21,7 @@
   "cloud_lane_daily_cap": 5,
   "entity_spike_min_sources": 2,
   "tag_lift_min_outcomes": 5,
-  "analyst_signal_enabled": false,
+  "analyst_signal_enabled": true,
   "analyst_new_coverage_enabled": true,
   "analyst_rating_delta_min": 0.5,
   "analyst_target_move_pct_min": 10.0,
