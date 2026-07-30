@@ -1,19 +1,13 @@
 {
-  "generated_at": "2026-07-28T11:40:00.296046+00:00",
-  "git_head": "83612391",
-  "files_checked": 17,
-  "findings_count": 2,
+  "generated_at": "2026-07-29T11:40:00.539244+00:00",
+  "git_head": "002229d3",
+  "files_checked": 8,
+  "findings_count": 1,
   "by_severity": {
-    "P1": 1,
     "P2": 1
   },
   "status": "warning",
   "findings": [
-    {
-      "severity": "P1",
-      "check": "code_without_docs",
-      "message": "15 code files changed, 0 docs updated"
-    },
     {
       "severity": "P2",
       "check": "deployment_log_stale",
