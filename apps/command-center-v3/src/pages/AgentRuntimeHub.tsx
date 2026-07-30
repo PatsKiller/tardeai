@@ -277,6 +277,55 @@ function MaturityScoreboard({ view }: { view: ResolvedAgentMaturityView }) {
       </tbody>
     </table></div>
     {!payload && <div style={{ padding: 14, fontSize: TYPE.xs, color: BB.amber }}>RUNTIME STATUS UNVERIFIED · no maturity payload is available.</div>}
+    {payload && <MaturityLegend />}
+  </div>
+}
+
+// Canonical operator-facing truth-labels for the maturity vocabulary. The board
+// and legend render these verbatim so meaning is never lost to a generic
+// underscore-replace. (These exact strings are the maturity contract's truth
+// vocabulary and are asserted by the observability guard test.)
+const ELIGIBILITY_LABELS: Record<string, string> = {
+  ELIGIBLE_FOR_HUMAN_REVIEW: 'ELIGIBLE FOR HUMAN REVIEW',
+  HUMAN_REVIEW_REQUIRED: 'HUMAN REVIEW REQUIRED',
+  NOT_ELIGIBLE: 'NOT ELIGIBLE',
+  RESTRICTED: 'RESTRICTED',
+  UNKNOWN: 'UNKNOWN',
+}
+const HEALTH_LABELS: Record<string, string> = {
+  HEALTHY: 'HEALTHY',
+  DEGRADED_FALLBACK: 'DEGRADED — DETERMINISTIC FALLBACK',
+  STALE_CACHE: 'STALE CACHED REVIEW',
+  NOT_RUN: 'NOT RUN',
+  TIMEOUT: 'TIMEOUT',
+  INVALID_OUTPUT: 'INVALID OUTPUT',
+  MISSING_REVIEWER: 'MISSING REVIEWER',
+  INCOMPLETE_CONSENSUS: 'INCOMPLETE CONSENSUS',
+  PROVIDER_UNAVAILABLE: 'PROVIDER UNAVAILABLE',
+  UNKNOWN: 'UNKNOWN',
+}
+const GATE_LABELS: Record<string, string> = {
+  CAPPED_BY_SAMPLE_SIZE: 'CAPPED BY SAMPLE SIZE',
+}
+
+function eligibilityLabel(state: string): string {
+  return ELIGIBILITY_LABELS[state] ?? GATE_LABELS[state] ?? state.replace(/_/g, ' ')
+}
+function healthLabelText(state: string): string {
+  return HEALTH_LABELS[state] ?? maturityHealthLabel(state)
+}
+
+// Compact legend of the truth vocabulary — advisory only, carries NO authority
+// controls (no Promote/Activate/Deploy). Reinforces what each state means.
+function MaturityLegend() {
+  const groupStyle: CSSProperties = { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }
+  const cap: CSSProperties = { fontWeight: 750, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--text2)' }
+  return <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'center', fontSize: TYPE.xs, color: 'var(--text3)', lineHeight: 1.5 }}>
+    <span style={cap}>Legend</span>
+    <span style={groupStyle}><b style={cap}>Eligibility:</b> {ELIGIBILITY_LABELS.ELIGIBLE_FOR_HUMAN_REVIEW} · {ELIGIBILITY_LABELS.HUMAN_REVIEW_REQUIRED} · {GATE_LABELS.CAPPED_BY_SAMPLE_SIZE}</span>
+    <span style={groupStyle}><b style={cap}>Review health:</b> {HEALTH_LABELS.DEGRADED_FALLBACK} · {HEALTH_LABELS.STALE_CACHE} · {HEALTH_LABELS.NOT_RUN}</span>
+    <span style={groupStyle}><b style={cap}>Provenance:</b> RUNTIME STATUS UNVERIFIED until measured</span>
+    <span style={{ color: BB.amber, fontWeight: 750 }}>NO FINANCIAL AUTHORITY</span>
   </div>
 }
 
@@ -291,13 +340,13 @@ function FragmentRow({ row, open, onToggle }: { row: AgentMaturityObservation; o
       <td style={{ padding: '9px 10px' }}><Chip kind="state" tone={maturityLifecycleTone(row.declared_lifecycle_state)}>{row.declared_lifecycle_state}</Chip></td>
       <td style={{ padding: '9px 10px' }}><SampleBar row={row} /></td>
       <td style={{ padding: '9px 10px' }}>
-        <Chip kind="state" tone={maturityHealthTone(row.review_health)}>{maturityHealthLabel(row.review_health)}</Chip>
+        <Chip kind="state" tone={maturityHealthTone(row.review_health)}>{healthLabelText(row.review_health)}</Chip>
         <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)' }}>{row.review_provenance.replace(/_/g, ' ')}</div>
       </td>
       <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: 'var(--text2)', maxWidth: 220 }} title={row.next_gate_description ?? undefined}>
         <span style={{ color: BB.amber }}>&rarr;</span> {nextGate}
       </td>
-      <td style={{ padding: '9px 10px' }}><Chip kind="state" tone={eligibilityTone(row.promotion_eligibility)}>{row.promotion_eligibility.replace(/_/g, ' ')}</Chip></td>
+      <td style={{ padding: '9px 10px' }}><Chip kind="state" tone={eligibilityTone(row.promotion_eligibility)}>{eligibilityLabel(row.promotion_eligibility)}</Chip></td>
       <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text3)', fontSize: TYPE.sm }}>{open ? '\u25be' : '\u25b8'}</td>
     </tr>
     {open && <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}><td colSpan={7} style={{ padding: 0 }}><MaturityDetail row={row} /></td></tr>}
