@@ -192,6 +192,62 @@ def _promotion_metrics() -> dict:
     }
 
 
+def _by_lane_metrics() -> dict:
+    """Per-lane intake / decision breakdown (meta_json->>'lane'), 7-day window.
+
+    Surfaces the discovery lanes that carry a lane tag — analyst_signal,
+    industry_novelty, white_space, … — so each new source can be watched (and,
+    once the outcome bus grades it, judged) on its OWN merits rather than hidden
+    in the aggregate. Lanes historically ran negative alpha, so per-lane
+    visibility is a promotion-gate prerequisite, not a nicety."""
+    from db_adapter import _execute
+    rows = _execute(
+        """SELECT meta_json->>'lane' AS lane,
+                  count(*) AS n_7d,
+                  count(*) FILTER (WHERE status IN %s) AS approved_7d,
+                  count(*) FILTER (WHERE status IN ('REJECTED','BLOCKED')) AS rejected_7d
+           FROM hermes_discovery_candidates
+           WHERE created_at > now() - interval '7 days'
+             AND meta_json ? 'lane'
+           GROUP BY 1 ORDER BY n_7d DESC""", (APPROVED,), fetch="all") or []
+    return {r["lane"]: {"new_7d": int(r["n_7d"] or 0),
+                        "approved_7d": int(r["approved_7d"] or 0),
+                        "rejected_7d": int(r["rejected_7d"] or 0)}
+            for r in rows if r.get("lane")}
+
+
+def _crontab_drift() -> dict:
+    """Guard against the exact rot that produced a false discovery audit: the
+    live `crontab -l` diverging from the committed crontab_backup.txt. Compares
+    the two schedule-line sets and flags any divergence."""
+    import subprocess
+
+    def _sched_lines(text: str) -> set[str]:
+        return {ln.strip() for ln in text.splitlines()
+                if ln.strip() and not ln.strip().startswith("#")}
+
+    try:
+        live = subprocess.run(["crontab", "-l"], capture_output=True,
+                              text=True, timeout=10).stdout
+    except Exception as e:
+        return {"checked": False, "error": str(e)[:200]}
+    backup_path = PROJECT_ROOT / "crontab_backup.txt"
+    if not backup_path.exists():
+        return {"checked": False, "error": "crontab_backup.txt missing"}
+    live_set = _sched_lines(live)
+    backup_set = _sched_lines(backup_path.read_text(encoding="utf-8", errors="replace"))
+    missing = sorted(live_set - backup_set)      # live has it, backup doesn't
+    extra = sorted(backup_set - live_set)         # backup has it, live doesn't
+    return {
+        "checked": True,
+        "in_sync": not missing and not extra,
+        "live_line_count": len(live_set),
+        "backup_line_count": len(backup_set),
+        "missing_from_backup": missing[:25],
+        "extra_in_backup": extra[:25],
+    }
+
+
 def build_scorecard() -> dict:
     from db_adapter import _execute
     from lib.hermes_discovery.inbox import inbox_stats
@@ -257,6 +313,8 @@ def build_scorecard() -> dict:
         "feedback": {r["feedback_type"]: int(r["n"]) for r in fb},
         "audit_rows": stats["audit_rows"],
         "promotions": _promotion_metrics(),
+        "by_lane": _by_lane_metrics(),
+        "crontab_drift": _crontab_drift(),
         "windows": {"last_7d": last_7d, "prior_7d": prior_7d},
         "do_no_harm": compute_do_no_harm(last_7d, prior_7d),
     }

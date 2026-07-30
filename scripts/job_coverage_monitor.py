@@ -90,6 +90,17 @@ REGISTRY = [
      "signal": ("log", "journal_annotation_reminder.log")},
     {"name": "journal_tilt_morning_hook", "schedule_match": "journal_tilt_morning_hook.py", "cadence_h": 30,
      "signal": ("log", "journal_tilt_hook.log")},
+    # Hermes analyst-coverage LLM research — weekday-daily; 80h cadence tolerates
+    # the weekend gap. Was silently deferred every day pre-2026-07-30 (guard
+    # window bug), so this monitor exists specifically to catch a recurrence.
+    {"name": "hermes_analyst_coverage", "schedule_match": "hermes_analyst_coverage.py", "cadence_h": 80,
+     "signal": ("log", "hermes_analyst_coverage.log")},
+    # Analyst-signal discovery feeder — every ~3h.
+    {"name": "hermes_analyst_signal_discovery", "schedule_match": "hermes_analyst_signal_discovery.py",
+     "cadence_h": 5, "signal": ("log", "hermes_analyst_signal.log")},
+    # Industry/sector novelty discovery — daily.
+    {"name": "hermes_industry_novelty_discovery", "schedule_match": "hermes_industry_novelty_discovery.py",
+     "cadence_h": 30, "signal": ("log", "hermes_industry_novelty.log")},
 ]
 
 
