@@ -64,14 +64,28 @@ def main(argv: list[str] | None = None) -> int:
         )
         return EX_CONFIG
 
-    # A queue backend was named but is intentionally NOT imported/dispatched in this
-    # change. Enabling real dispatch is a separate, operator-authorized step.
-    print(
-        f"queue backend '{queue_backend}' is named but dispatch is not enabled in this build; "
-        "no work performed.",
-        file=sys.stderr,
-    )
-    return EX_CONFIG
+    # Dispatch to the operator-configured governed backend by NAME. This module
+    # stays driver-free — the backend (out-of-package) owns the DB driver and the
+    # governed MvlRuntime call. The backend is fail-closed: it refuses unless a LAB
+    # writer DSN and a real provider module are configured (never fabricates work).
+    import importlib
+
+    try:
+        backend = importlib.import_module(queue_backend)
+    except Exception as exc:  # noqa: BLE001
+        print(f"refusing to run: queue backend '{queue_backend}' failed to import: {exc}", file=sys.stderr)
+        return EX_CONFIG
+    entry = getattr(backend, "run_bounded_batch", None)
+    if not callable(entry):
+        print(f"refusing to run: queue backend '{queue_backend}' has no run_bounded_batch(agent_id, max_batch)", file=sys.stderr)
+        return EX_CONFIG
+    try:
+        summary = entry(spec.agent_id, args.max_batch)
+    except Exception as exc:  # noqa: BLE001 — a backend refusal/error is non-zero, never a crash-loop
+        print(f"dispatch refused/failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return EX_CONFIG
+    print(f"dispatch summary: {summary}")
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI shim
