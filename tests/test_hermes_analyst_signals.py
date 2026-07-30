@@ -101,7 +101,7 @@ def test_ticker_payload_stable_label_and_observe_only():
     assert len(payloads) == 1
     p = payloads[0]
     assert p["candidate_type"] == "TICKER_CANDIDATE"
-    assert p["label"] == "AAA analyst rating/target move"      # stable per symbol
+    assert p["label"] == "AAA"      # BARE symbol so inbox validate_ticker(label) passes
     assert p["safe_action_level"] == "OPERATOR_REVIEW_REQUIRED"
     assert p["meta"]["lane"] == "analyst_signal"
     assert p["meta"]["sector"] == "Technology"
@@ -136,7 +136,11 @@ def test_sector_rollup_skips_covered():
 
 # ── run_discovery: shadow-first (writes nothing while disabled) ──────────────
 
-def test_run_discovery_shadow_first_writes_nothing(monkeypatch):
+def test_run_discovery_shadow_first_writes_nothing(monkeypatch, tmp_path):
+    # Pin an explicitly-disabled config so the test is isolated from whatever the
+    # live schedule flag happens to be set to.
+    cfg = tmp_path / "sched.json"
+    cfg.write_text('{"analyst_signal_enabled": false, "analyst_min_opinions": 3}')
     monkeypatch.setattr(A, "collect_analyst_snapshots",
                         lambda *a, **k: [_row("AAA", cur_rec=2.0, prev_rec=3.0)])
     monkeypatch.setattr(A, "sector_map", lambda *a, **k: {"AAA": "Technology"})
@@ -146,8 +150,7 @@ def test_run_discovery_shadow_first_writes_nothing(monkeypatch):
         raise AssertionError("inbox.upsert_candidate must not run while disabled")
     monkeypatch.setattr(A.inbox, "upsert_candidate", _boom)
 
-    # config default has analyst_signal_enabled=false → effective dry-run
-    rep = A.run_discovery(dry_run=False)
+    rep = A.run_discovery(dry_run=False, config_path=cfg)
     assert rep["effective_dry_run"] is True
     assert rep["upserted"] == 0
     assert rep["would_upsert"] >= 1

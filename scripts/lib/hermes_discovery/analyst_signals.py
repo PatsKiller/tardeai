@@ -300,9 +300,11 @@ def build_ticker_payloads(signals: list[dict[str, Any]], *,
                           sectors: dict[str, str],
                           limit: int,
                           skipped: dict[str, int] | None = None) -> list[dict[str, Any]]:
-    """One TICKER_CANDIDATE per qualifying symbol. Label is stable per symbol
-    ('SYM analyst rating/target move') so re-sightings bump seen_count instead
-    of spawning duplicates; the changing detail lives in evidence + meta."""
+    """One TICKER_CANDIDATE per qualifying symbol. Label is the BARE symbol —
+    the inbox validates TICKER_CANDIDATE labels via validate_ticker(label), so a
+    descriptive label fails the ticker-shape check and lands every candidate in
+    NEEDS_VALIDATION. Bare symbol is also naturally stable per name (re-sightings
+    bump seen_count); the changing detail lives in summary + evidence + meta."""
     def _skip(reason: str) -> None:
         if skipped is not None:
             skipped[reason] = skipped.get(reason, 0) + 1
@@ -314,7 +316,7 @@ def build_ticker_payloads(signals: list[dict[str, Any]], *,
             continue
         sym = sig["symbol"]
         sector = sectors.get(sym)
-        label = f"{sym} analyst rating/target move"
+        label = sym
         summary = (f"{sym}: {_event_phrase(sig)} "
                    f"({sig['direction']}, {sig['analysts']} analysts)"
                    f"{f' — {sector}' if sector else ''}")[:300]
