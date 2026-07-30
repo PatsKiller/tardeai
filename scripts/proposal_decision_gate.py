@@ -15,9 +15,24 @@ Decision states:
 """
 import json
 import logging
+import os
 from datetime import datetime, timezone
 
 log = logging.getLogger("decision_gate")
+
+
+def _first_sample_override(proposal) -> bool:
+    """Explicit opt-in for approving a BACKTEST_INSUFFICIENT proposal as a
+    deliberate first-sample learning test. OFF by default (no hardcoded bypass):
+    a truthy per-proposal ``allow_first_sample_override`` field, or the
+    ``PROPOSAL_ALLOW_FIRST_SAMPLE_OVERRIDE`` env switch."""
+    val = (proposal or {}).get("allow_first_sample_override")
+    if isinstance(val, str):
+        val = val.strip().lower() in ("1", "true", "yes", "on")
+    if val:
+        return True
+    return os.getenv("PROPOSAL_ALLOW_FIRST_SAMPLE_OVERRIDE", "").strip().lower() \
+        in ("1", "true", "yes", "on")
 
 
 def compute_decision_state(proposal, technical, backtest, agent_reviews,
@@ -140,12 +155,20 @@ def compute_decision_state(proposal, technical, backtest, agent_reviews,
             reasons.append("Technical snapshot missing")
         return {"decision_state": decision_state, "reasons": reasons, "approval_allowed": False}
 
-    # 6. BACKTEST_INSUFFICIENT
+    # 6. BACKTEST_INSUFFICIENT — thin evidence must NOT silently reach approval.
+    # The deliberate "first-sample learning test" path is preserved, but it is
+    # now opt-in (see _first_sample_override); default is approval BLOCKED.
     if bt_quality in ('NO_DATA', 'INSUFFICIENT') and bt_samples < 10:
         decision_state = "BACKTEST_INSUFFICIENT"
         reasons.append(f"Backtest: {bt_quality} ({bt_samples} samples)")
-        reasons.append("May approve as intentional first-sample learning test only")
-        return {"decision_state": decision_state, "reasons": reasons, "approval_allowed": True}
+        override = _first_sample_override(proposal)
+        if override:
+            reasons.append("First-sample learning-test override active — approval allowed")
+        else:
+            reasons.append("Thin backtest evidence — approval blocked "
+                           "(set allow_first_sample_override to run as a first-sample test)")
+        return {"decision_state": decision_state, "reasons": reasons,
+                "approval_allowed": bool(override)}
 
     # 7. APPROVE_READY_PAPER_TEST vs CAUTIOUS_PAPER_TEST
     cautious_reasons = []

@@ -20,5 +20,17 @@
   "llm_review_daily_cap": 20,
   "cloud_lane_daily_cap": 5,
   "entity_spike_min_sources": 2,
-  "tag_lift_min_outcomes": 5
+  "tag_lift_min_outcomes": 5,
+  "analyst_signal_enabled": false,
+  "analyst_new_coverage_enabled": true,
+  "analyst_rating_delta_min": 0.5,
+  "analyst_target_move_pct_min": 10.0,
+  "analyst_min_opinions": 3,
+  "analyst_signal_min_symbols_per_sector": 3,
+  "analyst_lookback_days": 21,
+  "industry_novelty_enabled": false,
+  "industry_novelty_window_hours": 168,
+  "industry_novelty_min_sources": 2,
+  "industry_novelty_min_mentions": 3,
+  "industry_novelty_max_per_day": 5
 }

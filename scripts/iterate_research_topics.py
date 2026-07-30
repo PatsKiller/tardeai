@@ -50,9 +50,32 @@ def iterate_topics(send_telegram: bool = False) -> list:
         prev = t.get("latest_findings", "")
         count = t.get("research_count", 0)
 
+        # Engine Room v1 provenance parity (WS-2): ground each iteration in
+        # current web sources and persist them to sources_json — sourceless
+        # briefs render as "wire". Mirrors auto_research._persist_research_topic.
+        # Degrades gracefully (empty → sources_json untouched) when the search
+        # budget is exhausted.
+        web_block, web_sources = "", None
+        try:
+            from web_research import search_web
+            _hits = search_web(topic, count=5, freshness="pm")
+            if _hits:
+                _lines = [f"CURRENT WEB CONTEXT ({len(_hits)} results):"]
+                for _h in _hits[:6]:
+                    _lines.append(f"  [{_h.get('age') or ''}] {(_h.get('title') or '')[:80]}")
+                    if _h.get("description"):
+                        _lines.append(f"    {_h['description'][:120]}")
+                web_block = "\n".join(_lines)
+                web_sources = [{"title": (_h.get("title") or "")[:120],
+                                "url": _h.get("url"), "as_of": _h.get("age") or None}
+                               for _h in _hits[:8]]
+        except Exception as _e:
+            print(f"[iterate] {topic}: web grounding unavailable: {_e}")
+
         prompt = f"""/no_think You are a certified retirement planner providing an updated advisory.
 
 ONGOING RESEARCH TOPIC: {topic}
+{web_block}
 
 PORTFOLIO CONTEXT:
 - $1.2M across 4 accounts (Fidelity 401k, Schwab Rollover IRA, Schwab Roth IRA, Schwab Taxable)
@@ -92,9 +115,12 @@ Keep it concise (3-4 paragraphs) and actionable."""
                     UPDATE user_research_topics
                     SET latest_findings = %s, latest_finding_at = now(),
                         research_count = research_count + 1, last_researched_at = now(),
+                        sources_json = COALESCE(%s::jsonb, sources_json),
                         updated_at = now()
                     WHERE id = %s
-                """, (response[:2000], t["id"]))
+                """, (response[:2000],
+                      json.dumps(web_sources) if web_sources else None,
+                      t["id"]))
 
                 # Intelligence event
                 cur.execute("""
