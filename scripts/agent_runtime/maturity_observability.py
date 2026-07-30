@@ -61,7 +61,7 @@ PROMOTION_ELIGIBILITY = {
 NO_FINANCIAL_AUTHORITY = "NO FINANCIAL AUTHORITY"
 RUNTIME_STATUS_UNVERIFIED = "RUNTIME STATUS UNVERIFIED"
 
-REQUIRED_SAMPLE_SIZE = 100
+AGENT_RUNTIME_DEFAULT_SAMPLE_SIZE = 100
 CATALOG_PATH = Path("config/agent_maturity_catalog.json")
 MVL_PATH = Path("config/agent_runtime_mvl.json")
 HERMES_MATURITY_PATH = Path("config/hermes_maturity.yaml")
@@ -104,7 +104,9 @@ class MaturityObservation:
     effective_authority_state: str
     allowed_authorities: list[str]
     denied_authorities: list[str]
-    production_activation_authorized: bool
+    production_activation_authorized: bool | None
+    declared_production_activation_authorized: bool | None
+    effective_production_activation_verified: bool
     activation_evidence_state: str
     maturity_framework: str
     maturity_framework_version: str | None
@@ -237,14 +239,43 @@ def _review_evidence_from_record(record: Mapping[str, Any] | None) -> ReviewEvid
     )
 
 
-def _gate_state(sample_size: int | None, required: int | None, review: ReviewEvidence) -> tuple[str, str, str]:
+def _sample_progress_state(sample_size: int | None, required: int | None) -> str:
     if sample_size is None or required is None:
+        return "UNKNOWN"
+    if sample_size < required:
+        return "CAPPED_BY_SAMPLE_SIZE"
+    return "MEASURED"
+
+
+def _gate_state(
+    sample_size: int | None,
+    required: int | None,
+    review: ReviewEvidence,
+    *,
+    framework_gates_complete: bool = False,
+) -> tuple[str, str | None, str]:
+    if required is None:
+        return "UNKNOWN", "exact framework gate is not available from the current source", "UNKNOWN"
+    if sample_size is None:
         return "INSUFFICIENT_EVIDENCE", "sample size is not available", "HUMAN_REVIEW_REQUIRED"
+    health = review.review_health
+    if health == "NOT_RUN":
+        return "NOT_RUN", "review has not run", "NOT_ELIGIBLE"
+    if health == "UNKNOWN":
+        return "UNKNOWN", "review health is unknown", "UNKNOWN"
+    if health == "STALE_CACHE":
+        return "STALE", "review evidence is a stale cached result", "HUMAN_REVIEW_REQUIRED"
+    if health in {"DEGRADED_FALLBACK", "MISSING_REVIEWER", "INCOMPLETE_CONSENSUS", "PROVIDER_UNAVAILABLE"}:
+        return "INSUFFICIENT_EVIDENCE", f"review health is {health}", "HUMAN_REVIEW_REQUIRED"
+    if health in {"TIMEOUT", "INVALID_OUTPUT"}:
+        return "FAILED", f"review health is {health}", "NOT_ELIGIBLE"
+    if health != "HEALTHY":
+        return "UNKNOWN", f"review health is {health}", "UNKNOWN"
     if sample_size < required:
         return "CAPPED_BY_SAMPLE_SIZE", f"{sample_size}/{required} reviewed samples", "NOT_ELIGIBLE"
-    if review.review_health in {"HEALTHY", "DEGRADED_FALLBACK", "UNKNOWN", "NOT_RUN"}:
-        return "PASSED", None, "ELIGIBLE_FOR_HUMAN_REVIEW"
-    return "FAILED", f"review health is {review.review_health}", "NOT_ELIGIBLE"
+    if not framework_gates_complete:
+        return "INSUFFICIENT_EVIDENCE", "remaining framework gates are not measured as passed", "HUMAN_REVIEW_REQUIRED"
+    return "PASSED", None, "ELIGIBLE_FOR_HUMAN_REVIEW"
 
 
 def _observation(
@@ -261,11 +292,16 @@ def _observation(
     framework: str,
     framework_version: str | None,
     sample_size: int | None,
-    required_sample_size: int | None = REQUIRED_SAMPLE_SIZE,
+    required_sample_size: int | None = None,
     maturity_score: float | None = None,
     maturity_tier: str | None = None,
     component_scores: Mapping[str, Any] | None = None,
     review: ReviewEvidence | None = None,
+    declared_production_activation_authorized: bool | None = None,
+    effective_production_activation_verified: bool = False,
+    framework_gates_complete: bool = False,
+    next_gate_id: str | None = None,
+    next_gate_description: str | None = None,
     source_class: str = "REPOSITORY_EVIDENCE",
     evidence_refs: Iterable[str] = (),
     warnings: Iterable[str] = (),
@@ -273,7 +309,10 @@ def _observation(
 ) -> MaturityObservation:
     review = review or ReviewEvidence()
     allowed_authorities, denied_authorities, authority_warnings = _authority_summary(allowed, denied)
-    gate_state, cap_reason, eligibility = _gate_state(sample_size, required_sample_size, review)
+    gate_state, cap_reason, eligibility = _gate_state(
+        sample_size, required_sample_size, review, framework_gates_complete=framework_gates_complete
+    )
+    sample_progress = _sample_progress_state(sample_size, required_sample_size)
     if lifecycle == "RESTRICTED":
         eligibility = "RESTRICTED"
     if source_class == "UNVERIFIED":
@@ -295,8 +334,10 @@ def _observation(
         effective_authority_state=effective_authority,
         allowed_authorities=allowed_authorities,
         denied_authorities=denied_authorities,
-        production_activation_authorized=False,
-        activation_evidence_state=source_class,
+        production_activation_authorized=declared_production_activation_authorized,
+        declared_production_activation_authorized=declared_production_activation_authorized,
+        effective_production_activation_verified=effective_production_activation_verified,
+        activation_evidence_state=source_class if declared_production_activation_authorized is not None else "UNVERIFIED",
         maturity_framework=framework,
         maturity_framework_version=framework_version,
         maturity_score=maturity_score,
@@ -304,10 +345,10 @@ def _observation(
         component_scores=dict(component_scores or {}),
         sample_size=sample_size,
         required_sample_size=required_sample_size,
-        sample_progress_state=gate_state if gate_state == "CAPPED_BY_SAMPLE_SIZE" else ("MEASURED" if sample_size is not None else "UNKNOWN"),
+        sample_progress_state=sample_progress,
         sample_cap_reason=cap_reason,
-        next_gate_id="mvl_minimum_reviewed_artifacts" if framework.startswith("agent-runtime") else "framework_specific_human_review",
-        next_gate_description="Accumulate reviewed evidence, independent review, scoring, regressions, and rollback proof before human promotion review.",
+        next_gate_id=next_gate_id,
+        next_gate_description=next_gate_description,
         next_gate_state=gate_state,
         promotion_eligibility=eligibility,
         promotion_authority=PROMOTION_AUTHORITY,
@@ -332,12 +373,15 @@ def _observation(
     )
 
 
-def _catalog_records(root: Path) -> dict[str, Any]:
+def _catalog_payload(root: Path) -> dict[str, Any]:
     path = root / CATALOG_PATH
     if not path.exists():
         return {}
-    payload = _read_json(path)
-    return payload.get("agents") or {}
+    return _read_json(path)
+
+
+def _catalog_records(root: Path) -> dict[str, Any]:
+    return (_catalog_payload(root).get("agents") or {})
 
 
 def _mvl_records(root: Path) -> dict[str, Any]:
@@ -377,7 +421,13 @@ def build_observations(
     """Return canonical maturity observations from safe repository evidence."""
     observed_at = observed_at or utc_now()
     root = Path(root)
-    catalog = _catalog_records(root)
+    catalog_payload = _catalog_payload(root)
+    catalog = catalog_payload.get("agents") or {}
+    declared_catalog_activation = (
+        bool(catalog_payload["production_activation_authorized"])
+        if "production_activation_authorized" in catalog_payload
+        else None
+    )
     mvl = _mvl_records(root)
     definitions = _definition_records()
     review_records = review_records or {}
@@ -403,7 +453,24 @@ def build_observations(
         component_scores: dict[str, Any] = {}
         warnings: list[str] = []
         operator_checks: list[str] = []
+        required_sample_size: int | None = None
+        next_gate_id: str | None = None
+        next_gate_description: str | None = None
+        declared_activation = declared_catalog_activation if agent_id in catalog else None
         evidence_refs = [str(CATALOG_PATH), str(MVL_PATH), "scripts/agent_runtime/agents/definitions.py"]
+
+        if framework == "agent-runtime-mvl":
+            try:
+                from .agents.maturity_gates import GATE_SPECS
+                sample_gate = next(g for g in GATE_SPECS if g.gate_id == "min_artifact_population")
+                required_sample_size = int(sample_gate.threshold)
+                next_gate_id = sample_gate.gate_id
+                next_gate_description = sample_gate.description
+            except Exception:
+                required_sample_size = AGENT_RUNTIME_DEFAULT_SAMPLE_SIZE
+                next_gate_id = "min_artifact_population"
+                next_gate_description = "Minimum reviewed artifact population"
+            operator_checks.append("Remaining Agent Runtime MVL gates must be measured and passed before human review eligibility.")
 
         if agent_id == "hermes":
             cfg = _read_yaml(root / HERMES_MATURITY_PATH)
@@ -412,21 +479,35 @@ def build_observations(
             component_scores = {"weights": cfg.get("weights") or {}, "tiers": cfg.get("tiers") or {}}
             evidence_refs = [str(HERMES_MATURITY_PATH), str(HERMES_REACTIONS_PATH), str(HERMES_THRESHOLDS_PATH), "scripts/hermes_maturity_gates.py", "scripts/lib/hermes_outcome_bus/maturity.py"]
             warnings.append("Hermes maturity v2 is framework-specific and is not averaged with Agent Runtime MVL gates.")
+            required_sample_size = None
+            next_gate_id = None
+            next_gate_description = None
             operator_checks.append("Live Hermes DB-computed gate board is OPERATOR_CHECK_REQUIRED in this clone-safe read model.")
+            operator_checks.append("Exact Hermes next-rung sample gate is not available from repository config alone.")
         if agent_id == "broker_cloud_oversight":
             framework = "broker-oversight-provenance"
             framework_version = "read-visible-v1"
             lifecycle = "DESIGNED"
             environment = "LAB"
             evidence_refs = ["scripts/broker_promote_oversight.py"]
+            required_sample_size = None
+            next_gate_id = None
+            next_gate_description = None
+            declared_activation = None
             warnings.append("Cloud oversight review provenance is visible, but cloud requirement policy is unchanged.")
+            operator_checks.append("Exact broker oversight maturity sample gate is not available from the current source.")
         if agent_id == "defense_adjudication":
             framework = "defense-deterministic-adjudication"
             framework_version = "v9"
             lifecycle = "DESIGNED"
             environment = "LAB"
             evidence_refs = ["scripts/defense_adjudication.py", "config/promote_criteria.json"]
+            required_sample_size = None
+            next_gate_id = None
+            next_gate_description = None
+            declared_activation = None
             warnings.append("Defense adjudication includes write-capable functions outside this read model; this adapter is repository evidence only.")
+            operator_checks.append("Exact defense adjudication maturity sample gate is not available from the current source.")
         if agent_id == "concierge":
             operator_checks.append("OpenClaw runtime status requires sanitized operator inventory; raw OpenClaw config is intentionally not read.")
 
@@ -446,7 +527,13 @@ def build_observations(
             maturity_tier=maturity_tier,
             component_scores=component_scores,
             sample_size=sample_size,
+            required_sample_size=required_sample_size,
             review=_review_evidence_from_record(review_records.get(agent_id)),
+            declared_production_activation_authorized=declared_activation,
+            effective_production_activation_verified=False,
+            framework_gates_complete=False,
+            next_gate_id=next_gate_id,
+            next_gate_description=next_gate_description,
             source_class="REPOSITORY_EVIDENCE",
             evidence_refs=evidence_refs,
             warnings=warnings,
@@ -471,7 +558,7 @@ def summarize_observations(observations: Iterable[Mapping[str, Any]]) -> dict[st
         "by_authority_state": counts("effective_authority_state"),
         "by_gate_state": counts("next_gate_state"),
         "by_review_health": counts("review_health"),
-        "sample_size_capped_agents": sum(1 for r in rows if r.get("next_gate_state") == "CAPPED_BY_SAMPLE_SIZE"),
+        "sample_size_capped_agents": sum(1 for r in rows if r.get("sample_progress_state") == "CAPPED_BY_SAMPLE_SIZE"),
         "eligible_for_human_review": sum(1 for r in rows if r.get("promotion_eligibility") == "ELIGIBLE_FOR_HUMAN_REVIEW"),
         "unverified_runtime_status": sum(1 for r in rows if RUNTIME_STATUS_UNVERIFIED in str(r.get("freshness_state") or "")),
         "frameworks": sorted({str(r.get("maturity_framework")) for r in rows}),

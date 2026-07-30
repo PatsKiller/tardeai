@@ -36,7 +36,29 @@ Promotion authority is always `HUMAN_ONLY`.
 
 `automatic_promotion_permitted` is always `false`.
 
-Repository configuration is never displayed as proof of live production runtime activation.
+Repository configuration is never displayed as proof of live production runtime activation. The read model separates declared activation (`declared_production_activation_authorized`) from live verification (`effective_production_activation_verified`). Unknown activation declarations remain null/UNVERIFIED rather than fabricated false.
+
+## Gate Truth Table
+
+Only `HEALTHY` review evidence can contribute to maturity eligibility, and only when framework-specific gates are also measured and passed.
+
+| Review health | Sufficient samples result | Eligibility |
+|---|---|---|
+| `HEALTHY` | may pass only when remaining framework gates are complete | may become `ELIGIBLE_FOR_HUMAN_REVIEW` |
+| `DEGRADED_FALLBACK` | `INSUFFICIENT_EVIDENCE` | `HUMAN_REVIEW_REQUIRED` |
+| `UNKNOWN` | `UNKNOWN` | `UNKNOWN` |
+| `NOT_RUN` | `NOT_RUN` | `NOT_ELIGIBLE` |
+| `STALE_CACHE` | `STALE` | `HUMAN_REVIEW_REQUIRED` |
+| `TIMEOUT` / `INVALID_OUTPUT` | `FAILED` | `NOT_ELIGIBLE` |
+| `MISSING_REVIEWER` / `INCOMPLETE_CONSENSUS` / `PROVIDER_UNAVAILABLE` | `INSUFFICIENT_EVIDENCE` | `HUMAN_REVIEW_REQUIRED` |
+
+Deterministic fallback remains visible as operational degradation where existing policy allows it, but it does not count as successful maturity evidence.
+
+## Framework Thresholds
+
+Supported exact threshold: Agent Runtime MVL `min_artifact_population` requires 100 reviewed artifacts, read from `scripts/agent_runtime/agents/maturity_gates.py`.
+
+Unsupported exact thresholds: Hermes maturity-v2, broker oversight provenance, defense adjudication, and runtime-only OpenClaw metadata do not expose a complete next-rung sample gate from repository evidence alone. Those rows return `required_sample_size: null` and `next_gate_state: UNKNOWN` with operator checks.
 
 ## Review Provenance
 

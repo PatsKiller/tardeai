@@ -10,6 +10,8 @@ from agent_runtime.maturity_observability import (
     API_CONTRACT,
     REVIEW_HEALTH,
     REVIEW_PROVENANCE,
+    ReviewEvidence,
+    _gate_state,
     analyze_outcome_completeness,
     build_observations,
     maturity_payload,
@@ -51,7 +53,9 @@ def test_all_observations_map_to_canonical_schema_and_human_only_authority():
         assert required_fields.issubset(row)
         assert row["promotion_authority"] == "HUMAN_ONLY"
         assert row["automatic_promotion_permitted"] is False
-        assert row["production_activation_authorized"] is False
+        assert row["production_activation_authorized"] in {False, None}
+        assert row["declared_production_activation_authorized"] in {False, None}
+        assert row["effective_production_activation_verified"] is False
         assert "NO FINANCIAL AUTHORITY" in row["denied_authorities"]
 
 
@@ -59,8 +63,9 @@ def test_unknown_and_not_run_data_remain_visible_not_passed():
     rows = _rows()
     not_run = [row for row in rows if row["review_health"] == "NOT_RUN"]
     assert not_run
-    assert all(row["next_gate_state"] != "PASSED" for row in not_run if (row["sample_size"] or 0) < (row["required_sample_size"] or 999))
-    assert any(row["next_gate_state"] == "CAPPED_BY_SAMPLE_SIZE" for row in rows)
+    assert all(row["next_gate_state"] != "PASSED" for row in not_run)
+    assert all(row["promotion_eligibility"] != "ELIGIBLE_FOR_HUMAN_REVIEW" for row in not_run)
+    assert any(row["sample_progress_state"] == "CAPPED_BY_SAMPLE_SIZE" for row in rows)
 
 
 def test_unrelated_maturity_frameworks_are_not_averaged():
@@ -72,6 +77,18 @@ def test_unrelated_maturity_frameworks_are_not_averaged():
     hermes = next(row for row in payload["data"] if row["agent_id"] == "hermes")
     assert hermes["maturity_framework_version"] == "maturity-v2"
     assert hermes["maturity_score"] is None
+    assert hermes["required_sample_size"] is None
+    assert hermes["next_gate_state"] == "UNKNOWN"
+    assert any("Exact Hermes" in item for item in hermes["operator_checks_required"])
+
+
+def test_activation_authorization_is_declared_separate_from_live_verification():
+    rows = {row["agent_id"]: row for row in _rows()}
+    assert rows["sentinel"]["declared_production_activation_authorized"] is False
+    assert rows["sentinel"]["effective_production_activation_verified"] is False
+    assert rows["sentinel"]["activation_evidence_state"] == "REPOSITORY_EVIDENCE"
+    assert rows["broker_cloud_oversight"]["declared_production_activation_authorized"] is None
+    assert rows["broker_cloud_oversight"]["activation_evidence_state"] == "UNVERIFIED"
 
 
 @pytest.mark.parametrize("state", sorted(REVIEW_PROVENANCE))
@@ -105,6 +122,47 @@ def test_review_provenance_distinguishes_fallback_cache_timeout_missing_invalid_
     assert by_id["maria"]["review_health"] == "MISSING_REVIEWER"
     assert by_id["risk_agent"]["review_health"] == "INCOMPLETE_CONSENSUS"
     assert by_id["steph"]["review_health"] == "INVALID_OUTPUT"
+
+
+@pytest.mark.parametrize(
+    ("health", "expected_state", "expected_eligibility"),
+    [
+        ("NOT_RUN", "NOT_RUN", "NOT_ELIGIBLE"),
+        ("UNKNOWN", "UNKNOWN", "UNKNOWN"),
+        ("DEGRADED_FALLBACK", "INSUFFICIENT_EVIDENCE", "HUMAN_REVIEW_REQUIRED"),
+        ("STALE_CACHE", "STALE", "HUMAN_REVIEW_REQUIRED"),
+        ("TIMEOUT", "FAILED", "NOT_ELIGIBLE"),
+        ("MISSING_REVIEWER", "INSUFFICIENT_EVIDENCE", "HUMAN_REVIEW_REQUIRED"),
+        ("INCOMPLETE_CONSENSUS", "INSUFFICIENT_EVIDENCE", "HUMAN_REVIEW_REQUIRED"),
+        ("PROVIDER_UNAVAILABLE", "INSUFFICIENT_EVIDENCE", "HUMAN_REVIEW_REQUIRED"),
+        ("INVALID_OUTPUT", "FAILED", "NOT_ELIGIBLE"),
+    ],
+)
+def test_degraded_review_states_with_sufficient_samples_cannot_pass(health, expected_state, expected_eligibility):
+    state, reason, eligibility = _gate_state(
+        100, 100, ReviewEvidence(review_health=health), framework_gates_complete=True
+    )
+    assert state == expected_state
+    assert state != "PASSED"
+    assert eligibility == expected_eligibility
+    assert eligibility != "ELIGIBLE_FOR_HUMAN_REVIEW"
+    assert reason
+
+
+def test_healthy_review_with_sufficient_samples_requires_remaining_framework_gates():
+    incomplete_state, incomplete_reason, incomplete_eligibility = _gate_state(
+        100, 100, ReviewEvidence(review_health="HEALTHY"), framework_gates_complete=False
+    )
+    assert incomplete_state == "INSUFFICIENT_EVIDENCE"
+    assert incomplete_eligibility == "HUMAN_REVIEW_REQUIRED"
+    assert "remaining framework gates" in incomplete_reason
+
+    state, reason, eligibility = _gate_state(
+        100, 100, ReviewEvidence(review_health="HEALTHY"), framework_gates_complete=True
+    )
+    assert state == "PASSED"
+    assert reason is None
+    assert eligibility == "ELIGIBLE_FOR_HUMAN_REVIEW"
 
 
 def test_agent_maturity_api_is_get_only_and_zero_authority_without_runtime_reader():

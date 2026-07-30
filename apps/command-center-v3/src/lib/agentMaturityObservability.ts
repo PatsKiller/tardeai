@@ -22,7 +22,9 @@ export interface AgentMaturityObservation {
   effective_authority_state: string
   allowed_authorities: string[]
   denied_authorities: string[]
-  production_activation_authorized: boolean
+  production_activation_authorized: boolean | null
+  declared_production_activation_authorized: boolean | null
+  effective_production_activation_verified: boolean
   activation_evidence_state: string
   maturity_framework: string
   maturity_framework_version: string | null
