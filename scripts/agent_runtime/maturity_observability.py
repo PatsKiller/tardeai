@@ -61,6 +61,14 @@ PROMOTION_ELIGIBILITY = {
 NO_FINANCIAL_AUTHORITY = "NO FINANCIAL AUTHORITY"
 RUNTIME_STATUS_UNVERIFIED = "RUNTIME STATUS UNVERIFIED"
 
+# Evidence provenance classes. REPOSITORY_EVIDENCE = derived from repo config only
+# (the fail-closed default). RUNTIME_EVIDENCE = backed by live rows from the
+# read-only agent-runtime DB via the injected reader. A row is only ever labelled
+# RUNTIME_EVIDENCE when the reader actually returned runs/reviews for that agent.
+SOURCE_CLASS_REPOSITORY = "REPOSITORY_EVIDENCE"
+SOURCE_CLASS_RUNTIME = "RUNTIME_EVIDENCE"
+FRESHNESS_LIVE_RUNTIME = "LIVE_RUNTIME_EVIDENCE"
+
 CATALOG_PATH = Path("config/agent_maturity_catalog.json")
 MVL_PATH = Path("config/agent_runtime_mvl.json")
 HERMES_MATURITY_PATH = Path("config/hermes_maturity.yaml")
@@ -364,7 +372,11 @@ def _observation(
         last_degraded_review_at=review.last_degraded_review_at,
         last_human_authority_change_at=None,
         last_restriction_or_demotion_at=None,
-        freshness_state="CURRENT_REPOSITORY_EVIDENCE" if source_class != "UNVERIFIED" else RUNTIME_STATUS_UNVERIFIED,
+        freshness_state=(
+            RUNTIME_STATUS_UNVERIFIED if source_class == "UNVERIFIED"
+            else FRESHNESS_LIVE_RUNTIME if source_class == SOURCE_CLASS_RUNTIME
+            else "CURRENT_REPOSITORY_EVIDENCE"
+        ),
         source_class=source_class,
         evidence_refs=_dedupe(evidence_refs),
         warnings=_dedupe([*warnings, *authority_warnings]),
@@ -439,13 +451,165 @@ def _definition_records() -> dict[str, Any]:
     return out
 
 
+# ── read-only runtime-evidence bridge ────────────────────────────────────────
+#
+# When the maturity endpoint is served with a live agent-runtime reader injected,
+# these helpers turn the reader's rows into the per-agent evidence that
+# build_observations already knows how to consume (review_records) plus a
+# runtime_evidence overlay (live source_class + sample_size). Everything here is
+# READ ONLY: it only calls the reader's list_* methods (no driver import, no
+# writes) and fails closed to REPOSITORY_EVIDENCE on ANY error or empty result.
+
+_RUNTIME_MAX_RUNS = 2000          # bound the snapshot cost; sample_size is a
+_RUNTIME_PAGE = 200               # lower bound if an agent exceeds this.
+
+_HEALTHY_VERDICTS = {"pass", "passed", "healthy", "ok", "approved", "accept",
+                     "accepted", "clean", "supported"}
+_DEGRADED_VERDICTS = {"degraded", "fallback", "deterministic_fallback", "partial",
+                      "incomplete"}
+_TIMEOUT_VERDICTS = {"timeout", "timed_out"}
+_INVALID_VERDICTS = {"invalid", "parse_error", "error", "malformed"}
+
+
+def _freshness_days() -> int:
+    import os
+    try:
+        return max(1, int(os.environ.get("AGENT_FRESHNESS_DAYS", "7")))
+    except (TypeError, ValueError):
+        return 7
+
+
+def _parse_ts(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def _runtime_review_record(reviews: list[Mapping[str, Any]]) -> dict[str, Any]:
+    """Map the agent's independent-review rows to the record shape
+    _review_evidence_from_record consumes. Fail-closed: an unrecognized verdict
+    yields UNKNOWN health (never HEALTHY), so it can never confer eligibility."""
+    if not reviews:
+        return {"status": "not_run", "review_health": "NOT_RUN",
+                "review_provenance": "NOT_RUN"}
+    latest = max(reviews, key=lambda r: str(r.get("created_at") or ""))
+    verdict = str(latest.get("verdict") or "").strip().lower()
+    reviewer = latest.get("reviewer_agent_id")
+    reviewed_at = latest.get("created_at")
+
+    if verdict in _HEALTHY_VERDICTS:
+        health = "HEALTHY"
+        ts = _parse_ts(reviewed_at)
+        if ts is not None:
+            age_days = (datetime.now(timezone.utc) - ts).total_seconds() / 86400.0
+            if age_days > _freshness_days():
+                health = "STALE_CACHE"
+    elif verdict in _DEGRADED_VERDICTS:
+        health = "DEGRADED_FALLBACK"
+    elif verdict in _TIMEOUT_VERDICTS:
+        health = "TIMEOUT"
+    elif verdict in _INVALID_VERDICTS:
+        health = "INVALID_OUTPUT"
+    else:
+        health = "UNKNOWN"
+
+    return {
+        "status": "ok" if health in {"HEALTHY", "STALE_CACHE"} else verdict or "unknown",
+        "review_health": health,
+        # Keep provenance UNKNOWN when health is UNKNOWN — otherwise
+        # _review_evidence_from_record would re-derive UNKNOWN+MODEL_REVIEW into
+        # HEALTHY (a fail-open). An unknown verdict must never confer eligibility.
+        "review_provenance": "MODEL_REVIEW" if (reviewer and health != "UNKNOWN") else "UNKNOWN",
+        "cached": health == "STALE_CACHE",
+        "stale": health == "STALE_CACHE",
+        "reviewed_at": str(reviewed_at) if reviewed_at else None,
+        "provider": None,
+        "model": None,
+    }
+
+
+def collect_runtime_evidence(
+    reader: Any,
+    *,
+    max_runs: int = _RUNTIME_MAX_RUNS,
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Aggregate the read-only reader's rows into (runtime_evidence, review_records)
+    keyed by agent_id, for agents that actually have runtime rows.
+
+    runtime_evidence[agent_id] = {source_class, sample_size, framework_gates_complete,
+    effective_production_activation_verified}. sample_size is the count of DISTINCT
+    reviewed artifacts (the min_artifact_population gate's population). framework
+    gate completion is NOT measurable from the read plane alone, so it stays False
+    here (honest) — a future measured-gates component can supply True. Any reader
+    error or empty result → ({}, {}), i.e. the board stays REPOSITORY_EVIDENCE.
+    """
+    if reader is None:
+        return {}, {}
+    try:
+        # page through runs, grouping by agent
+        runs_by_agent: dict[str, list[Mapping[str, Any]]] = {}
+        offset = 0
+        seen = 0
+        while seen < max_runs:
+            page = list(reader.list_runs(limit=_RUNTIME_PAGE, offset=offset))
+            if not page:
+                break
+            for run in page:
+                agent_id = str(run.get("agent_id") or "").strip()
+                if agent_id:
+                    runs_by_agent.setdefault(agent_id, []).append(run)
+            seen += len(page)
+            offset += len(page)
+            if len(page) < _RUNTIME_PAGE:
+                break
+
+        runtime_evidence: dict[str, dict[str, Any]] = {}
+        review_records: dict[str, dict[str, Any]] = {}
+        for agent_id, runs in runs_by_agent.items():
+            reviewed_artifacts: set[str] = set()
+            reviews: list[Mapping[str, Any]] = []
+            for run in runs:
+                run_id = run.get("run_id")
+                if not run_id:
+                    continue
+                for rv in reader.list_reviews(run_id):
+                    reviews.append(rv)
+                    art = rv.get("artifact_id")
+                    if art is not None:
+                        reviewed_artifacts.add(str(art))
+            runtime_evidence[agent_id] = {
+                "source_class": SOURCE_CLASS_RUNTIME,
+                "sample_size": len(reviewed_artifacts),
+                "framework_gates_complete": False,
+                "effective_production_activation_verified": False,
+            }
+            review_records[agent_id] = _runtime_review_record(reviews)
+        return runtime_evidence, review_records
+    except Exception:
+        # Never let a reader hiccup degrade the board into a crash or a lie.
+        return {}, {}
+
+
 def build_observations(
     root: Path,
     *,
     observed_at: str | None = None,
     review_records: Mapping[str, Mapping[str, Any]] | None = None,
+    runtime_evidence: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Return canonical maturity observations from safe repository evidence."""
+    """Return canonical maturity observations.
+
+    Default is safe repository evidence. When `runtime_evidence` carries a live
+    entry for an agent, that agent's source_class / sample_size / framework-gate
+    completion / activation-verified come from the live overlay instead of the
+    fail-closed defaults. Agents without a live entry stay REPOSITORY_EVIDENCE.
+    """
     observed_at = observed_at or utc_now()
     root = Path(root)
     catalog_payload = _catalog_payload(root)
@@ -458,6 +622,7 @@ def build_observations(
     mvl = _mvl_records(root)
     definitions = _definition_records()
     review_records = review_records or {}
+    runtime_evidence = runtime_evidence or {}
     agent_ids = sorted({*catalog.keys(), *mvl.keys(), *definitions.keys(), "hermes", "concierge", "broker_cloud_oversight", "defense_adjudication"})
 
     observations: list[MaturityObservation] = []
@@ -545,6 +710,15 @@ def build_observations(
             operator_checks.append("OpenClaw runtime status requires sanitized operator inventory; raw OpenClaw config is intentionally not read.")
             operator_checks.append("Exact OpenClaw runtime sample gate is not available from repository evidence alone.")
 
+        # Live runtime overlay (fail-closed to repository evidence when absent).
+        rt = runtime_evidence.get(agent_id) or {}
+        source_class = str(rt.get("source_class") or SOURCE_CLASS_REPOSITORY)
+        effective_activation_verified = bool(rt.get("effective_production_activation_verified", False))
+        framework_gates_complete = bool(rt.get("framework_gates_complete", False))
+        if source_class == SOURCE_CLASS_RUNTIME and rt.get("sample_size") is not None:
+            sample_size = int(rt["sample_size"])
+            evidence_refs = [*evidence_refs, "agent_runtime_db:agentic_runtime (read-only)"]
+
         observations.append(_observation(
             observed_at=observed_at,
             agent_id=agent_id,
@@ -564,11 +738,11 @@ def build_observations(
             required_sample_size=required_sample_size,
             review=_review_evidence_from_record(review_records.get(agent_id)),
             declared_production_activation_authorized=declared_activation,
-            effective_production_activation_verified=False,
-            framework_gates_complete=False,
+            effective_production_activation_verified=effective_activation_verified,
+            framework_gates_complete=framework_gates_complete,
             next_gate_id=next_gate_id,
             next_gate_description=next_gate_description,
-            source_class="REPOSITORY_EVIDENCE",
+            source_class=source_class,
             evidence_refs=evidence_refs,
             warnings=warnings,
             operator_checks_required=operator_checks,
@@ -599,17 +773,35 @@ def summarize_observations(observations: Iterable[Mapping[str, Any]]) -> dict[st
     }
 
 
-def maturity_payload(root: Path, *, observed_at: str | None = None) -> dict[str, Any]:
-    observations = build_observations(root, observed_at=observed_at)
+def maturity_payload(root: Path, *, observed_at: str | None = None, reader: Any = None) -> dict[str, Any]:
+    runtime_evidence: dict[str, dict[str, Any]] = {}
+    review_records: dict[str, dict[str, Any]] = {}
+    if reader is not None:
+        runtime_evidence, review_records = collect_runtime_evidence(reader)
+    observations = build_observations(
+        root, observed_at=observed_at,
+        review_records=review_records or None,
+        runtime_evidence=runtime_evidence or None,
+    )
     generated_at = observed_at or utc_now()
+    if reader is None:
+        agent_runtime_db = "UNVERIFIED"
+    elif runtime_evidence:
+        agent_runtime_db = "AVAILABLE"
+    else:
+        agent_runtime_db = "CONNECTED_NO_RUNTIME_EVIDENCE"
     return {
         "contract": API_CONTRACT,
         "schema_version": SCHEMA_VERSION,
         "generated_at": generated_at,
-        "freshness": "repository evidence current at request time; live runtime status unverified unless an adapter says otherwise",
+        "freshness": (
+            "live runtime evidence from the read-only agent-runtime DB where present; "
+            "repository evidence otherwise" if runtime_evidence
+            else "repository evidence current at request time; live runtime status unverified unless an adapter says otherwise"
+        ),
         "source_availability": {
             "repository_config": "available",
-            "agent_runtime_db": "UNVERIFIED",
+            "agent_runtime_db": agent_runtime_db,
             "openclaw_runtime": "OPERATOR_CHECK_REQUIRED",
             "production_runtime": "UNVERIFIED",
         },
@@ -629,16 +821,16 @@ def maturity_payload(root: Path, *, observed_at: str | None = None) -> dict[str,
     }
 
 
-def maturity_summary_payload(root: Path, *, observed_at: str | None = None) -> dict[str, Any]:
-    payload = maturity_payload(root, observed_at=observed_at)
+def maturity_summary_payload(root: Path, *, observed_at: str | None = None, reader: Any = None) -> dict[str, Any]:
+    payload = maturity_payload(root, observed_at=observed_at, reader=reader)
     return {k: payload[k] for k in ("contract", "schema_version", "generated_at", "freshness", "source_availability", "unverified_source_warnings", "read_only", "authority", "summary", "evidence_refs")}
 
 
-def maturity_agent_payload(root: Path, agent_id: str, *, observed_at: str | None = None) -> dict[str, Any] | None:
+def maturity_agent_payload(root: Path, agent_id: str, *, observed_at: str | None = None, reader: Any = None) -> dict[str, Any] | None:
     safe_id = str(agent_id or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,96}", safe_id):
         return None
-    payload = maturity_payload(root, observed_at=observed_at)
+    payload = maturity_payload(root, observed_at=observed_at, reader=reader)
     for row in payload["data"]:
         if row.get("agent_id") == safe_id:
             return {**payload, "data": row, "summary": None}
