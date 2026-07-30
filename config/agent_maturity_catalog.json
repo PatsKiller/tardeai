@@ -169,7 +169,7 @@
         "ticket.write",
         "config.promote"
       ],
-      "deployment_state": "DESIGNED",
+      "deployment_state": "SHADOW",
       "disable_control": "disable population scan definition",
       "display_name": "Argus",
       "maturity_target": "Phase 2 shadow",
@@ -188,7 +188,7 @@
         "deadline_exceeded",
         "operator_cancel"
       ],
-      "version": "1.0.0-designed"
+      "version": "1.0.0-shadow"
     },
     "atlas": {
       "acceptance_evidence": [

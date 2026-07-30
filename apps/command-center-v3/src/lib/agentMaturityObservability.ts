@@ -38,6 +38,7 @@ export interface AgentMaturityObservation {
   next_gate_id: string | null
   next_gate_description: string | null
   next_gate_state: string
+  next_step_hint?: string
   promotion_eligibility: string
   promotion_authority: 'HUMAN_ONLY'
   automatic_promotion_permitted: false

@@ -25,9 +25,12 @@ from scripts.agent_runtime.agents.definitions import (
 )
 
 
-def test_fleet_roster_is_exactly_eight_expected_agents() -> None:
+def test_fleet_roster_matches_wave_partitions() -> None:
+    # The fleet is exactly the union of the enabled-SHADOW set and the disabled
+    # second wave. argus was authored + enabled after the original four, so it
+    # joins the enabled INITIAL set.
     assert set(FLEET) == set(INITIAL_SHADOW_AGENT_IDS) | set(SECOND_WAVE_AGENT_IDS)
-    assert set(INITIAL_SHADOW_AGENT_IDS) == {"sentinel", "darwin", "iris", "reflection"}
+    assert set(INITIAL_SHADOW_AGENT_IDS) == {"sentinel", "darwin", "iris", "reflection", "argus"}
     assert set(SECOND_WAVE_AGENT_IDS) == {"maria", "vega", "risk_agent", "aegis"}
 
 
