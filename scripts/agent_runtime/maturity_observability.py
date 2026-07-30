@@ -463,6 +463,21 @@ def _definition_records() -> dict[str, Any]:
 _RUNTIME_MAX_RUNS = 2000          # bound the snapshot cost; sample_size is a
 _RUNTIME_PAGE = 200               # lower bound if an agent exceeds this.
 
+# Runtime rows use deployment-suffixed agent ids (e.g. "sentinel_shadow",
+# "darwin_shadow"); the maturity board keys agents by their canonical id
+# ("sentinel"). Normalize the suffix so real shadow evidence maps to the board.
+_RUNTIME_ID_SUFFIXES = ("_shadow", "_lab")
+
+
+def _normalize_agent_id(raw: Any) -> str:
+    a = str(raw or "").strip()
+    low = a.lower()
+    for suf in _RUNTIME_ID_SUFFIXES:
+        if low.endswith(suf) and len(a) > len(suf):
+            return a[: -len(suf)]
+    return a
+
+
 _HEALTHY_VERDICTS = {"pass", "passed", "healthy", "ok", "approved", "accept",
                      "accepted", "clean", "supported"}
 _DEGRADED_VERDICTS = {"degraded", "fallback", "deterministic_fallback", "partial",
@@ -543,53 +558,76 @@ def collect_runtime_evidence(
     keyed by agent_id, for agents that actually have runtime rows.
 
     runtime_evidence[agent_id] = {source_class, sample_size, framework_gates_complete,
-    effective_production_activation_verified}. sample_size is the count of DISTINCT
-    reviewed artifacts (the min_artifact_population gate's population). framework
-    gate completion is NOT measurable from the read plane alone, so it stays False
-    here (honest) — a future measured-gates component can supply True. Any reader
-    error or empty result → ({}, {}), i.e. the board stays REPOSITORY_EVIDENCE.
+    effective_production_activation_verified}, keyed by the agent's CANONICAL id
+    (deployment `_shadow`/`_lab` suffixes normalized).
+
+    Evidence is attributed by governed ROLE, because the reflective fleet agents
+    are critics, not producers: an agent is credited for the distinct artifacts it
+    produced, independently reviewed, or scored (its `sample_size` — the
+    min_artifact_population population). `review_health` is drawn ONLY from reviews
+    OF that agent's OWN produced artifacts, so a critic whose own output has not
+    been independently reviewed stays NOT_RUN → never eligible. Framework-gate
+    completion is not measurable from the read plane, so it stays False (honest).
+    Any reader error or empty result → ({}, {}) (board stays REPOSITORY_EVIDENCE).
     """
     if reader is None:
         return {}, {}
     try:
-        # page through runs, grouping by agent
-        runs_by_agent: dict[str, list[Mapping[str, Any]]] = {}
+        runs: list[Mapping[str, Any]] = []
         offset = 0
-        seen = 0
-        while seen < max_runs:
+        while len(runs) < max_runs:
             page = list(reader.list_runs(limit=_RUNTIME_PAGE, offset=offset))
             if not page:
                 break
-            for run in page:
-                agent_id = str(run.get("agent_id") or "").strip()
-                if agent_id:
-                    runs_by_agent.setdefault(agent_id, []).append(run)
-            seen += len(page)
+            runs.extend(page)
             offset += len(page)
             if len(page) < _RUNTIME_PAGE:
                 break
 
+        engaged: dict[str, set[str]] = {}                 # canonical agent → artifact_ids it touched
+        artifact_producer: dict[str, str] = {}            # artifact_id → canonical producer
+        reviews_by_artifact: dict[str, list[Mapping[str, Any]]] = {}
+
+        def _engage(agent: str, artifact_id: str) -> None:
+            if agent and artifact_id:
+                engaged.setdefault(agent, set()).add(artifact_id)
+
+        for run in runs:
+            run_id = run.get("run_id")
+            if not run_id:
+                continue
+            for art in reader.list_artifacts(run_id):
+                aid = str(art.get("artifact_id") or "")
+                prod = _normalize_agent_id(art.get("producer_agent_id"))
+                if aid and prod:
+                    artifact_producer[aid] = prod
+                    _engage(prod, aid)
+            for rv in reader.list_reviews(run_id):
+                aid = str(rv.get("artifact_id") or "")
+                _engage(_normalize_agent_id(rv.get("reviewer_agent_id")), aid)
+                if aid:
+                    reviews_by_artifact.setdefault(aid, []).append(rv)
+            for sc in reader.list_scores(run_id):
+                _engage(_normalize_agent_id(sc.get("scorer_agent_id")),
+                        str(sc.get("artifact_id") or ""))
+
+        # reviews OF each agent's OWN produced artifacts → that agent's review_health
+        reviews_of_own: dict[str, list[Mapping[str, Any]]] = {}
+        for aid, rvs in reviews_by_artifact.items():
+            prod = artifact_producer.get(aid)
+            if prod:
+                reviews_of_own.setdefault(prod, []).extend(rvs)
+
         runtime_evidence: dict[str, dict[str, Any]] = {}
         review_records: dict[str, dict[str, Any]] = {}
-        for agent_id, runs in runs_by_agent.items():
-            reviewed_artifacts: set[str] = set()
-            reviews: list[Mapping[str, Any]] = []
-            for run in runs:
-                run_id = run.get("run_id")
-                if not run_id:
-                    continue
-                for rv in reader.list_reviews(run_id):
-                    reviews.append(rv)
-                    art = rv.get("artifact_id")
-                    if art is not None:
-                        reviewed_artifacts.add(str(art))
-            runtime_evidence[agent_id] = {
+        for agent, artifacts in engaged.items():
+            runtime_evidence[agent] = {
                 "source_class": SOURCE_CLASS_RUNTIME,
-                "sample_size": len(reviewed_artifacts),
+                "sample_size": len(artifacts),
                 "framework_gates_complete": False,
                 "effective_production_activation_verified": False,
             }
-            review_records[agent_id] = _runtime_review_record(reviews)
+            review_records[agent] = _runtime_review_record(reviews_of_own.get(agent, []))
         return runtime_evidence, review_records
     except Exception:
         # Never let a reader hiccup degrade the board into a crash or a lie.

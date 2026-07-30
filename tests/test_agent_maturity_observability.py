@@ -286,14 +286,14 @@ OBS = "2026-07-30T13:00:00+00:00"
 
 
 class _FakeReader:
-    """Minimal read-only reader stub: list_runs + per-run list_reviews only.
+    """Read-only reader stub: list_runs + per-run list_artifacts/list_reviews/
+    list_scores. Confers no mutation power. `raise_on` simulates a reader hiccup."""
 
-    Mirrors the AgentRuntimeReader surface the bridge actually calls; confers no
-    mutation power. `raise_on` simulates a reader hiccup."""
-
-    def __init__(self, runs, reviews_by_run=None, raise_on=None):
+    def __init__(self, runs, artifacts=None, reviews=None, scores=None, raise_on=None):
         self._runs = list(runs)
-        self._reviews = dict(reviews_by_run or {})
+        self._artifacts = dict(artifacts or {})
+        self._reviews = dict(reviews or {})
+        self._scores = dict(scores or {})
         self._raise_on = raise_on
 
     def list_runs(self, *, limit, offset=0, agent_id=None, status=None):
@@ -301,19 +301,45 @@ class _FakeReader:
             raise RuntimeError("reader boom")
         return self._runs[offset:offset + limit]
 
+    def list_artifacts(self, run_id):
+        return self._artifacts.get(run_id, [])
+
     def list_reviews(self, run_id):
         if self._raise_on == "list_reviews":
             raise RuntimeError("reader boom")
         return self._reviews.get(run_id, [])
+
+    def list_scores(self, run_id):
+        return self._scores.get(run_id, [])
 
 
 def _find(rows, agent_id):
     return next(r for r in rows if r["agent_id"] == agent_id)
 
 
-def _reviews(verdict, created_at, n=120, reviewer="iris"):
-    return [{"artifact_id": f"a{i}", "reviewer_agent_id": reviewer,
-             "verdict": verdict, "created_at": created_at} for i in range(n)]
+def _producer_reader(producer, *, verdict=None, created_at=OBS, n=120, reviewer="iris"):
+    """A run where `producer` makes n artifacts, optionally each reviewed by
+    `reviewer` with `verdict`. The board agent under test is the PRODUCER, whose
+    own output IS the reviewed set → review_health reflects `verdict`."""
+    arts = [{"artifact_id": f"a{i}", "producer_agent_id": producer} for i in range(n)]
+    revs = ([{"artifact_id": f"a{i}", "reviewer_agent_id": reviewer,
+              "verdict": verdict, "created_at": created_at} for i in range(n)]
+            if verdict is not None else [])
+    return _FakeReader([{"run_id": "r1", "agent_id": producer}],
+                       artifacts={"r1": arts}, reviews={"r1": revs})
+
+
+def _reviewer_reader(reviewer, *, producer="watch_producer_shadow", n=120):
+    """A run where `producer` makes n artifacts and `reviewer` reviews them. The
+    board agent under test is the REVIEWER — its OWN output is never reviewed, so
+    review_health is NOT_RUN (fail-closed) even though it has real throughput.
+    Mirrors the real LAB shape (watch_producer_shadow produced, sentinel_shadow
+    reviewed)."""
+    arts = [{"artifact_id": f"a{i}", "producer_agent_id": producer} for i in range(n)]
+    revs = [{"artifact_id": f"a{i}", "reviewer_agent_id": reviewer,
+             "verdict": "pass", "created_at": OBS} for i in range(n)]
+    return _FakeReader([{"run_id": "r1", "agent_id": producer}],
+                       artifacts={"r1": arts}, reviews={"r1": revs})
 
 
 # MANDATED case 1: reader unavailable / empty → REPOSITORY_EVIDENCE, invents nothing
@@ -353,32 +379,44 @@ def test_bridge_reader_error_fails_closed_to_repository_evidence():
     ("some_unmapped_verdict", "UNKNOWN"),
 ])
 def test_bridge_nonhealthy_runtime_reviews_are_runtime_evidence_but_never_eligible(verdict, expect_health):
-    runs = [{"run_id": "r1", "agent_id": "sentinel"}]
-    reader = _FakeReader(runs, {"r1": _reviews(verdict, OBS)})
+    reader = _producer_reader("sentinel", verdict=verdict)
     row = _find(maturity_payload(ROOT, observed_at=OBS, reader=reader)["data"], "sentinel")
     assert row["source_class"] == "RUNTIME_EVIDENCE"     # honest: live evidence exists
-    assert row["sample_size"] == 120                      # real reviewed-artifact count
+    assert row["sample_size"] == 120                      # real governed throughput
     assert row["review_health"] == expect_health
     assert row["promotion_eligibility"] != "ELIGIBLE_FOR_HUMAN_REVIEW"
 
 
 def test_bridge_stale_healthy_review_is_stale_and_not_eligible(monkeypatch):
     monkeypatch.setenv("AGENT_FRESHNESS_DAYS", "1")
-    runs = [{"run_id": "r1", "agent_id": "sentinel"}]
-    reader = _FakeReader(runs, {"r1": _reviews("pass", "2020-01-01T00:00:00+00:00")})
+    reader = _producer_reader("sentinel", verdict="pass", created_at="2020-01-01T00:00:00+00:00")
     row = _find(maturity_payload(ROOT, observed_at=OBS, reader=reader)["data"], "sentinel")
     assert row["review_health"] == "STALE_CACHE"
     assert row["promotion_eligibility"] != "ELIGIBLE_FOR_HUMAN_REVIEW"
 
 
-def test_bridge_notrun_when_no_reviews_is_not_eligible():
-    runs = [{"run_id": "r1", "agent_id": "sentinel"}]
-    reader = _FakeReader(runs, {"r1": []})
+def test_bridge_reviewer_activity_is_runtime_evidence_but_notrun_and_not_eligible():
+    # The real LAB shape: sentinel reviews another producer's artifacts; sentinel's
+    # OWN output is never reviewed → NOT_RUN, never eligible, despite real throughput.
+    reader = _reviewer_reader("sentinel", producer="watch_producer")
     row = _find(maturity_payload(ROOT, observed_at=OBS, reader=reader)["data"], "sentinel")
     assert row["source_class"] == "RUNTIME_EVIDENCE"
-    assert row["sample_size"] == 0
+    assert row["sample_size"] == 120
     assert row["review_health"] == "NOT_RUN"
     assert row["promotion_eligibility"] == "NOT_ELIGIBLE"
+
+
+def test_bridge_normalizes_shadow_suffix_to_board_id():
+    # sentinel_shadow reviews watch_producer_shadow's artifacts → the board's
+    # canonical `sentinel` row lights up; no `_shadow` / producer rows are invented.
+    reader = _reviewer_reader("sentinel_shadow", producer="watch_producer_shadow")
+    payload = maturity_payload(ROOT, observed_at=OBS, reader=reader)
+    ids = {r["agent_id"] for r in payload["data"]}
+    assert "sentinel_shadow" not in ids and "watch_producer_shadow" not in ids
+    row = _find(payload["data"], "sentinel")
+    assert row["source_class"] == "RUNTIME_EVIDENCE"
+    assert row["sample_size"] == 120
+    assert payload["source_availability"]["agent_runtime_db"] == "AVAILABLE"
 
 
 # Healthy live evidence is labelled RUNTIME_EVIDENCE but still gated on framework gates
@@ -386,8 +424,7 @@ def test_bridge_notrun_when_no_reviews_is_not_eligible():
 
 def test_bridge_healthy_runtime_reviews_are_runtime_evidence_but_gated(monkeypatch):
     monkeypatch.setenv("AGENT_FRESHNESS_DAYS", "100000")  # any date is fresh
-    runs = [{"run_id": "r1", "agent_id": "sentinel"}]
-    reader = _FakeReader(runs, {"r1": _reviews("pass", "2026-07-01T00:00:00+00:00")})
+    reader = _producer_reader("sentinel", verdict="pass", created_at="2026-07-01T00:00:00+00:00")
     row = _find(maturity_payload(ROOT, observed_at=OBS, reader=reader)["data"], "sentinel")
     assert row["source_class"] == "RUNTIME_EVIDENCE"
     assert row["freshness_state"] == "LIVE_RUNTIME_EVIDENCE"
