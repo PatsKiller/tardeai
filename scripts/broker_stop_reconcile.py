@@ -49,8 +49,16 @@ STOP_ORDER_TYPES = {"STOP", "STOP_LIMIT", "TRAILING_STOP", "TRAILING_STOP_LIMIT"
 SUFFIX_TO_ACCOUNT = {"258": "schwab_rollover_ira", "415": "schwab_roth", "469": "schwab_taxable"}
 
 
+def _stop_key(symbol: str, account: str) -> str:
+    return f"{str(symbol or '').upper()}:{account}"
+
+
+def _legacy_symbol_for_key(key: str) -> str:
+    return str(key or "").split(":", 1)[0]
+
+
 def fetch_broker_stops() -> tuple[dict, list]:
-    """Return ({SYMBOL: entry}, [problems]). Never raises on a single account."""
+    """Return ({SYMBOL:ACCOUNT: entry}, [problems]). Never raises on a single account."""
     from schwab_transport import build_client
     problems: list[str] = []
     client, err = build_client("rollover")
@@ -111,10 +119,11 @@ def fetch_broker_stops() -> tuple[dict, list]:
                     entry["notes"] = (f"{otype} — broker has not published an absolute "
                                       f"stop price yet (status {entry['order_status']})")
                     entry["stop_price_unavailable"] = True
-                # Keep the tightest (highest) known stop if a symbol has several.
-                prev = found.get(sym)
+                # Keep identity account-aware: V in Roth must not collapse V in Rollover.
+                key = _stop_key(sym, acct_key)
+                prev = found.get(key)
                 if not prev or entry["stop"] > prev.get("stop", 0):
-                    found[sym] = entry
+                    found[key] = entry
     return found, problems
 
 
@@ -132,21 +141,27 @@ def reconcile(apply: bool = False) -> dict:
         return {"ok": False, "error": "broker unreachable — refusing to reconcile",
                 "problems": problems}
 
-    added, updated, removed, kept_manual = [], [], [], []
+    added, updated, removed, kept_manual, migrated_legacy = [], [], [], [], []
     merged = dict(local)
 
-    def _is_symbol_entry(k, v) -> bool:
-        """stops.json carries metadata keys (_freshness_note, generated_at,
-        agent_checked_at) alongside symbol dicts — never treat those as stops."""
-        return isinstance(v, dict) and not k.startswith("_") and k.isupper()
+    def _is_stop_entry(k, v) -> bool:
+        """stops.json carries metadata keys alongside stop dicts — never treat those as stops."""
+        return isinstance(v, dict) and not str(k).startswith("_")
 
-    for sym, entry in broker.items():
-        cur = local.get(sym)
+    for key, entry in broker.items():
+        sym = _legacy_symbol_for_key(key)
+        cur = local.get(key)
+        legacy = local.get(sym)
         if cur is not None and not isinstance(cur, dict):
             cur = None      # metadata collision; treat as absent
         if cur and cur.get("source") not in (None, "broker"):
-            kept_manual.append(sym)          # manual entry wins; never clobbered
+            kept_manual.append(key)          # exact account-aware manual entry wins; never clobbered
             continue
+        if cur is None and isinstance(legacy, dict) and legacy.get("source") == "broker" and legacy.get("account") == entry.get("account"):
+            cur = legacy
+            migrated_legacy.append(sym)
+        elif cur is None and isinstance(legacy, dict) and legacy.get("source") not in (None, "broker"):
+            kept_manual.append(sym)          # legacy manual symbol entry remains untouched
         # Broker truth wins on the NUMBER, but local analyst context is kept:
         # a note like "Below 200d MA" explains why the level was chosen and is
         # not recoverable from the broker payload.
@@ -156,20 +171,36 @@ def reconcile(apply: bool = False) -> dict:
                 if cur.get(keep) is not None and keep not in new:
                     new[f"local_{keep}" if keep == "notes" else keep] = cur[keep]
         if not cur:
-            added.append(sym)
-            merged[sym] = new
+            added.append(key)
+            merged[key] = new
         elif (cur.get("stop") != new["stop"]
-              or cur.get("broker_order_id") != new["broker_order_id"]):
-            updated.append(sym)
-            merged[sym] = new
+              or cur.get("broker_order_id") != new["broker_order_id"]
+              or cur.get("account") != new.get("account")):
+            updated.append(key)
+            merged[key] = new
+        elif key not in merged:
+            # Account-aware compatibility: preserve the broker mirror under the non-colliding key.
+            merged[key] = new
 
     # Drop broker-sourced mirrors whose order is gone (canceled/filled/expired).
-    for sym, cur in list(local.items()):
-        if not _is_symbol_entry(sym, cur):
+    for key, cur in list(local.items()):
+        if not _is_stop_entry(key, cur):
             continue
-        if cur.get("source") == "broker" and sym not in broker:
-            removed.append(sym)
-            merged.pop(sym, None)
+        if cur.get("source") != "broker":
+            continue
+        if ":" not in key:
+            # Legacy symbol-only broker mirrors are ambiguous when duplicate symbols exist.
+            # Keep them unless an account-aware broker mirror for the same account replaces them.
+            acct_key = cur.get("account")
+            sym = _legacy_symbol_for_key(key)
+            replacement_key = _stop_key(sym, acct_key) if acct_key else None
+            if replacement_key and replacement_key in broker:
+                removed.append(key)
+                merged.pop(key, None)
+            continue
+        if key not in broker:
+            removed.append(key)
+            merged.pop(key, None)
 
     if apply and (added or updated or removed):
         STOPS_JSON.parent.mkdir(parents=True, exist_ok=True)
@@ -177,7 +208,9 @@ def reconcile(apply: bool = False) -> dict:
 
     return {"ok": True, "applied": bool(apply), "broker_stops_found": len(broker),
             "added": sorted(added), "updated": sorted(updated),
-            "removed": sorted(removed), "kept_manual": sorted(kept_manual),
+            "removed": sorted(removed), "kept_manual": sorted(set(kept_manual)),
+            "migrated_legacy": sorted(set(migrated_legacy)),
+            "account_aware_keys": sorted(broker),
             "problems": problems, "local_total_after": len(merged)}
 
 
@@ -203,6 +236,7 @@ def main() -> int:
         print(f"  updated                 : {rep['updated'] or 'none'}")
         print(f"  removed (order gone)    : {rep['removed'] or 'none'}")
         print(f"  manual entries untouched: {rep['kept_manual'] or 'none'}")
+        print(f"  account-aware broker keys: {rep.get('account_aware_keys') or 'none'}")
         for p in rep.get("problems", []):
             print(f"  PROBLEM: {p}")
     return 0 if rep.get("ok") else 1

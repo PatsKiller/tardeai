@@ -288,7 +288,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   const liveStopsByKey: Record<string, any> = (liveStops as any)?.by_key ?? {}
   const brokerStopsFetchedAt = (liveStops as any)?.fetched_at ?? (llmCov as any)?.broker_stops_fetched_at ?? null
   // accounts whose live broker-stop read succeeded — anything else is UNVERIFIABLE, not 'none'
-  const brokerStopReadOk: string[] = (llmCov as any)?.broker_stop_read_ok_accounts ?? []
+  const brokerStopReadOk: string[] = (liveStops as any)?.broker_stop_read_ok_accounts ?? (llmCov as any)?.broker_stop_read_ok_accounts ?? []
   // Header total + day P/L follow the active filter (account + signal). Unfiltered → equals the global
   // portfolio figures; filtered → that account's own value + day change (fixes "10 holdings · $1.25M").
   const viewTotal = holdingsList.reduce((s: number, h: any) => s + (h.market_value ?? 0), 0)
@@ -306,6 +306,7 @@ export default function PortfolioHub({ onDrill }: Props) {
       pr: mergeProtection(symU, protection[symU]),
       monitored: monitoredByKey[stopKey],
       confirmedStop: mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey]),
+      brokerStopReadOk,
       reportEntry: reportMap[symU],
       coverage: coverage[symU],
       // Existing enrichment only — Finviz strip + symbol cards (news / earnings)

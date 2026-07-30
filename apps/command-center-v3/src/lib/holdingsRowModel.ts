@@ -7,6 +7,7 @@ export interface HoldingsRowInput {
   pr?: any
   confirmedStop?: any
   monitored?: any
+  brokerStopReadOk?: string[]
   llmHealth?: string | null
   /** Finviz strip map row for this symbol (rsi / perf fallback). */
   fv?: any
@@ -62,6 +63,7 @@ export interface HoldingsRowModel {
   stopLiveDistPct: number | null
   stopOrderType: string | null
   stopLabel: string
+  protectionState: 'PROTECTED' | 'NO_STOP' | 'UNVERIFIABLE'
   /** Imperative: what to do, e.g. "Tighten stop → $32.43" */
   stopInstruction: string
   /** Context line: e.g. "Live $35.00 now" */
@@ -415,7 +417,7 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   })
 
   const liveStopPrice = logic.liveStop
-  const hasLiveBroker = Boolean(logic.liveStop != null && input.confirmedStop?.order_id)
+  const hasLiveBroker = Boolean((logic.liveStop != null || logic.liveStopIsTrailing) && input.confirmedStop?.order_id)
   const stopQtyRaw = input.confirmedStop?.qty
   const stopCoverage = (hasLiveBroker || stopQtyRaw != null)
     ? computeStopCoverage(stopQtyRaw, sh)
@@ -448,14 +450,36 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     : null
   const sizeMismatch = stopCoverage?.kind === 'partial' || stopCoverage?.kind === 'oversized'
 
+  const acctNorm = acct.replace(/_ira$/, '')
+  const brokerReadOk = !isSchwab
+    || (Array.isArray(input.brokerStopReadOk)
+      && input.brokerStopReadOk.some(a => String(a).replace(/_ira$/, '') === acctNorm))
+  const protectionState: 'PROTECTED' | 'NO_STOP' | 'UNVERIFIABLE' = hasLiveBroker
+    ? 'PROTECTED'
+    : brokerReadOk ? 'NO_STOP' : 'UNVERIFIABLE'
+
   let copy = stopCopyFromLogic(logic, { isFidelity, isSchwab, health, signal, needsSellAll, shares: sh })
   let stopStatus = stopStatusFromLogic(logic, health, signal, stopDist)
   let primary = primaryFromLogic(logic, sym, acct, {
     isFidelity, isSchwab, hasLiveBroker, health, signal, needsSellAll, shares: sh,
     instruction: copy.instruction,
   })
+  if (protectionState === 'UNVERIFIABLE') {
+    stopStatus = 'concern'
+    primary = {
+      label: 'Verify Stops',
+      tone: 'amber',
+      tooltip: `Broker stop read did not verify ${accountFullName(acct)}. Refresh broker stops before placing or replacing any stop.`,
+    }
+    copy = {
+      instruction: 'Broker verification required',
+      context: 'Do not place duplicate stop',
+      tooltip: primary.tooltip,
+    }
+  }
+
   // Size mismatch beats KEEP_EXISTING — GTC stop did not resize after buy/trim.
-  if (sizeMismatch && stopCoverage) {
+  if (protectionState !== 'UNVERIFIABLE' && sizeMismatch && stopCoverage) {
     stopStatus = 'action'
     const tgt = stopCoverage.targetQty
     primary = {
@@ -473,9 +497,11 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   }
 
   const needsAction = primary.tone === 'amber' || primary.tone === 'red'
-  const stopLabel = sizeMismatch
-    ? (stopCoverage!.kind === 'partial' ? 'PARTIAL' : 'OVERSIZE')
-    : stopStatus === 'stable' ? 'Stable' : stopStatus === 'concern' ? 'Concern' : 'Action'
+  const stopLabel = protectionState === 'UNVERIFIABLE'
+    ? 'UNVERIFIABLE'
+    : sizeMismatch
+      ? (stopCoverage!.kind === 'partial' ? 'PARTIAL' : 'OVERSIZE')
+      : stopStatus === 'stable' ? 'Stable' : stopStatus === 'concern' ? 'Concern' : 'Action'
 
   const nameRaw = String(h.name || h.security_name || h.company_name || '').trim()
   const name = nameRaw
@@ -518,6 +544,7 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     stopLiveDistPct,
     stopOrderType: liveOrderType,
     stopLabel,
+    protectionState,
     stopInstruction: copy.instruction,
     stopContext: copy.context,
     stopAdvisory: copy.context ? `${copy.instruction} · ${copy.context}` : copy.instruction,
