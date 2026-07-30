@@ -82,6 +82,7 @@ export interface HoldingsTableRowContext {
   pr?: any
   monitored?: any
   confirmedStop?: any
+  brokerStopReadOk?: string[]
   reportEntry?: any
   coverage?: any[]
   fv?: any
@@ -308,7 +309,7 @@ export default function HoldingsTableView({
   const models = rows.map(r => ({
     ctx: r,
     m: buildHoldingsRowModel({
-      h: r.h, pr: r.pr, confirmedStop: r.confirmedStop, monitored: r.monitored, fv: r.fv, card: r.card,
+      h: r.h, pr: r.pr, confirmedStop: r.confirmedStop, monitored: r.monitored, brokerStopReadOk: r.brokerStopReadOk, fv: r.fv, card: r.card,
     }),
   }))
   const actionableCount = models.filter(x => x.m.needsAction).length

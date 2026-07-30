@@ -34,6 +34,28 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 SECRETS_FILE = PROJECT_ROOT / "config" / "broker_credentials.env"
 ENC_KEY_NAME = "SCHWAB_TOKEN_ENC_KEY"
+
+
+def _load_broker_secrets_env() -> None:
+    """Load local broker credential env names without overriding systemd/tmpfs values.
+
+    The Schwab token encryption key is intentionally kept out of the general .env file.
+    Release copies therefore need this module to read its own 0600 broker_credentials.env
+    before decrypting OAuth rows. Values are never logged.
+    """
+    try:
+        for line in SECRETS_FILE.read_text(errors="replace").splitlines():
+            if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            if key and key not in os.environ:
+                os.environ[key] = value.strip().strip(chr(39) + chr(34))
+    except OSError:
+        pass
+
+
+_load_broker_secrets_env()
 REFRESH_TTL_DAYS = 7          # GATE A worst case: assume 7d, no roll-forward, until the portal proves otherwise
 REAUTH_LEAD_DAYS = 1         # re-auth should happen at least 1 day before expiry
 ACCESS_REFRESH_MARGIN_S = 300  # refresh the ~29-min access token when <5 min remain

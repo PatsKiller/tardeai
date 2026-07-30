@@ -23,10 +23,14 @@ def test_01_route_registered_and_read_only():
 
 def test_02_ui_tab_present():
     src = UI.read_text(encoding="utf-8")
-    assert "Stop Management" in src or "Total Open Risk" in src
+    assert "Stop Management" in src or "Total open risk" in src
     assert "/api/v2/stops/management" in src
-    for card in ("Total Open Risk", "Portfolio Heat", "Trailing Not Active"):
+    # Current semantic summary cards: aggregate risk, protection coverage, trailing coverage.
+    for card in ("Needs action", "Active stops", "Total open risk", "Trailing live"):
         assert card in src
+    # Degraded broker-read state must be surfaced, not hidden behind an empty table.
+    assert "broker_stops_degraded" in src
+    assert "Schwab live stop read failed" in src
     hub = (ROOT / "apps/command-center-v3/src/pages/PortfolioHub.tsx").read_text(encoding="utf-8")
     assert "Stop Management" in hub and "StopManagement" in hub
 
@@ -35,9 +39,12 @@ def test_04_reasons_subrow_not_table_column():
     src = UI.read_text(encoding="utf-8")
     assert "ReasonsSubRow" in src
     assert "rowHasReasons" in src
+    assert "Expanded-row panel" in src
+    assert "rowHasReasons() gating is unchanged" in src
     # Reasons live in a full-width sub-row under each position, not a table header column.
-    assert "'Reasons'" not in src.split("thead")[1].split("</thead>")[0] if "thead" in src else True
-    assert "Reasons moved to sub-row" in src
+    first_head = src.split("thead", 1)[1].split("</thead>", 1)[0] if "thead" in src else ""
+    assert "'Reasons'" not in first_head
+    assert "<ReasonsSubRow r={r}" in src
 
 
 def test_03_alert_levels_from_synthetic_holdings(monkeypatch):
