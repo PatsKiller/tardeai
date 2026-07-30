@@ -1,6 +1,6 @@
 {
   "schema_version": "agent-maturity-observability-test-evidence-v1",
-  "generated_at": "2026-07-30T14:00:00Z",
+  "generated_at": "2026-07-30T14:18:00Z",
   "task": "AGENT_MATURITY_OBSERVABILITY_V1",
   "source_sha": "306f817993707a99129633a8555352277bc6d05f",
   "commands": [
@@ -8,13 +8,13 @@
       "name": "focused_python",
       "command": ".venv/bin/python -m pytest tests/test_agent_maturity_observability.py tests/test_agent_runtime_read_mount.py tests/test_agent_runtime_monitoring.py",
       "status": "PASS",
-      "tests": 65
+      "tests": 68
     },
     {
       "name": "agent_maturity_focused",
       "command": ".venv/bin/python -m pytest tests/test_agent_maturity_observability.py",
       "status": "PASS",
-      "tests": 36
+      "tests": 39
     },
     {
       "name": "python_compile",
@@ -71,12 +71,15 @@
     "activation_declaration_separated_from_live_verification": true,
     "universal_sample_threshold_removed": true,
     "exact_framework_thresholds_supported": [
-      "agent-runtime-mvl:min_artifact_population=100"
+      "agent-runtime-mvl:min_artifact_population loaded from GATE_SPECS"
     ],
     "framework_thresholds_left_unknown": [
       "hermes",
       "broker-oversight-provenance",
       "defense-deterministic-adjudication"
-    ]
+    ],
+    "hardcoded_agent_runtime_sample_fallback_removed": true,
+    "unknown_sample_counts_preserved": true,
+    "explicit_zero_sample_count_preserved": true
   }
 }

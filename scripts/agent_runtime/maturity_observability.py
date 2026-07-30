@@ -61,7 +61,6 @@ PROMOTION_ELIGIBILITY = {
 NO_FINANCIAL_AUTHORITY = "NO FINANCIAL AUTHORITY"
 RUNTIME_STATUS_UNVERIFIED = "RUNTIME STATUS UNVERIFIED"
 
-AGENT_RUNTIME_DEFAULT_SAMPLE_SIZE = 100
 CATALOG_PATH = Path("config/agent_maturity_catalog.json")
 MVL_PATH = Path("config/agent_runtime_mvl.json")
 HERMES_MATURITY_PATH = Path("config/hermes_maturity.yaml")
@@ -392,6 +391,35 @@ def _mvl_records(root: Path) -> dict[str, Any]:
     return payload.get("agents") or {}
 
 
+def _declared_sample_size(*sources: Mapping[str, Any]) -> int | None:
+    for source in sources:
+        if not isinstance(source, Mapping):
+            continue
+        evidence = source.get("evidence")
+        if isinstance(evidence, Mapping):
+            for key in ("reviewed_artifacts", "sample_size", "sample_count"):
+                if key in evidence and evidence[key] is not None:
+                    return int(evidence[key])
+        for key in ("sample_size", "sample_count"):
+            if key in source and source[key] is not None:
+                return int(source[key])
+    return None
+
+
+def _load_agent_runtime_min_artifact_gate() -> dict[str, Any] | None:
+    try:
+        from .agents.maturity_gates import GATE_SPECS
+
+        gate = next(g for g in GATE_SPECS if g.gate_id == "min_artifact_population")
+        return {
+            "required_sample_size": int(gate.threshold),
+            "next_gate_id": gate.gate_id,
+            "next_gate_description": gate.description,
+        }
+    except Exception:
+        return None
+
+
 def _definition_records() -> dict[str, Any]:
     from .agents.definitions import fleet
 
@@ -407,7 +435,6 @@ def _definition_records() -> dict[str, Any]:
             "allowed": [*definition.allowed_job_types, *definition.allowed_tools],
             "denied": list(definition.denied_tools),
             "version": definition.version,
-            "sample_size": 0,
         }
     return out
 
@@ -445,7 +472,7 @@ def build_observations(
         environment = str(cat.get("environment") or mvl_agent.get("environment") or ("SHADOW" if enabled else "LAB")).upper()
         allowed = cat.get("allowed_tools") or defined.get("allowed") or []
         denied = [*(cat.get("denied_tools") or []), *(defined.get("denied") or [])]
-        sample_size = int(cat.get("evidence", {}).get("reviewed_artifacts", defined.get("sample_size", 0)) or 0)
+        sample_size = _declared_sample_size(cat, mvl_agent)
         framework = "agent-runtime-mvl"
         framework_version = "mvl-v1"
         maturity_score = None
@@ -460,17 +487,17 @@ def build_observations(
         evidence_refs = [str(CATALOG_PATH), str(MVL_PATH), "scripts/agent_runtime/agents/definitions.py"]
 
         if framework == "agent-runtime-mvl":
-            try:
-                from .agents.maturity_gates import GATE_SPECS
-                sample_gate = next(g for g in GATE_SPECS if g.gate_id == "min_artifact_population")
-                required_sample_size = int(sample_gate.threshold)
-                next_gate_id = sample_gate.gate_id
-                next_gate_description = sample_gate.description
-            except Exception:
-                required_sample_size = AGENT_RUNTIME_DEFAULT_SAMPLE_SIZE
-                next_gate_id = "min_artifact_population"
-                next_gate_description = "Minimum reviewed artifact population"
-            operator_checks.append("Remaining Agent Runtime MVL gates must be measured and passed before human review eligibility.")
+            gate = _load_agent_runtime_min_artifact_gate()
+            if gate:
+                required_sample_size = gate["required_sample_size"]
+                next_gate_id = gate["next_gate_id"]
+                next_gate_description = gate["next_gate_description"]
+                operator_checks.append("Remaining Agent Runtime MVL gates must be measured and passed before human review eligibility.")
+            else:
+                required_sample_size = None
+                next_gate_id = None
+                next_gate_description = None
+                operator_checks.append("Agent Runtime minimum artifact gate could not be verified from the authoritative source.")
 
         if agent_id == "hermes":
             cfg = _read_yaml(root / HERMES_MATURITY_PATH)
@@ -509,7 +536,14 @@ def build_observations(
             warnings.append("Defense adjudication includes write-capable functions outside this read model; this adapter is repository evidence only.")
             operator_checks.append("Exact defense adjudication maturity sample gate is not available from the current source.")
         if agent_id == "concierge":
+            framework = "openclaw-runtime-inventory"
+            framework_version = "openclaw-runtime-inventory-v1"
+            sample_size = None
+            required_sample_size = None
+            next_gate_id = None
+            next_gate_description = None
             operator_checks.append("OpenClaw runtime status requires sanitized operator inventory; raw OpenClaw config is intentionally not read.")
+            operator_checks.append("Exact OpenClaw runtime sample gate is not available from repository evidence alone.")
 
         observations.append(_observation(
             observed_at=observed_at,

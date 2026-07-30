@@ -6,11 +6,13 @@ import pathlib
 import pytest
 
 from agent_runtime import read_http
+import agent_runtime.maturity_observability as maturity_observability
 from agent_runtime.maturity_observability import (
     API_CONTRACT,
     REVIEW_HEALTH,
     REVIEW_PROVENANCE,
     ReviewEvidence,
+    _declared_sample_size,
     _gate_state,
     analyze_outcome_completeness,
     build_observations,
@@ -65,7 +67,7 @@ def test_unknown_and_not_run_data_remain_visible_not_passed():
     assert not_run
     assert all(row["next_gate_state"] != "PASSED" for row in not_run)
     assert all(row["promotion_eligibility"] != "ELIGIBLE_FOR_HUMAN_REVIEW" for row in not_run)
-    assert any(row["sample_progress_state"] == "CAPPED_BY_SAMPLE_SIZE" for row in rows)
+    assert all(row["next_gate_state"] != "PASSED" for row in rows if row["review_health"] != "HEALTHY")
 
 
 def test_unrelated_maturity_frameworks_are_not_averaged():
@@ -80,6 +82,34 @@ def test_unrelated_maturity_frameworks_are_not_averaged():
     assert hermes["required_sample_size"] is None
     assert hermes["next_gate_state"] == "UNKNOWN"
     assert any("Exact Hermes" in item for item in hermes["operator_checks_required"])
+
+
+def test_frameworks_without_live_artifacts_preserve_unknown_sample_counts():
+    rows = {row["agent_id"]: row for row in _rows()}
+    for agent_id in ["hermes", "broker_cloud_oversight", "defense_adjudication", "concierge"]:
+        row = rows[agent_id]
+        assert row["sample_size"] is None
+        assert row["required_sample_size"] is None
+        assert row["sample_progress_state"] == "UNKNOWN"
+        assert row["next_gate_state"] == "UNKNOWN"
+
+
+def test_missing_agent_runtime_gate_source_does_not_fallback_to_100(monkeypatch):
+    monkeypatch.setattr(maturity_observability, "_load_agent_runtime_min_artifact_gate", lambda: None)
+    rows = {row["agent_id"]: row for row in build_observations(ROOT, observed_at="2026-07-30T13:00:00+00:00")}
+    sentinel = rows["sentinel"]
+    assert sentinel["required_sample_size"] is None
+    assert sentinel["next_gate_state"] == "UNKNOWN"
+    assert sentinel["sample_progress_state"] == "UNKNOWN"
+    assert any("minimum artifact gate could not be verified" in item for item in sentinel["operator_checks_required"])
+
+
+def test_explicit_source_sample_counts_preserve_zero_and_n():
+    assert _declared_sample_size({"evidence": {"reviewed_artifacts": 0}}) == 0
+    assert _declared_sample_size({"evidence": {"reviewed_artifacts": 7}}) == 7
+    assert _declared_sample_size({"sample_size": 0}) == 0
+    assert _declared_sample_size({"sample_size": 12}) == 12
+    assert _declared_sample_size({}) is None
 
 
 def test_activation_authorization_is_declared_separate_from_live_verification():

@@ -56,9 +56,9 @@ Deterministic fallback remains visible as operational degradation where existing
 
 ## Framework Thresholds
 
-Supported exact threshold: Agent Runtime MVL `min_artifact_population` requires 100 reviewed artifacts, read from `scripts/agent_runtime/agents/maturity_gates.py`.
+Supported exact threshold: Agent Runtime MVL `min_artifact_population` requires the threshold loaded from `scripts/agent_runtime/agents/maturity_gates.py`. In the current source that value is 100 reviewed artifacts. If the authoritative source cannot be imported or the gate cannot be found, the read model reports `required_sample_size: null`, `next_gate_state: UNKNOWN`, and an operator check instead of substituting a remembered default.
 
-Unsupported exact thresholds: Hermes maturity-v2, broker oversight provenance, defense adjudication, and runtime-only OpenClaw metadata do not expose a complete next-rung sample gate from repository evidence alone. Those rows return `required_sample_size: null` and `next_gate_state: UNKNOWN` with operator checks.
+Unsupported exact thresholds: Hermes maturity-v2, broker oversight provenance, defense adjudication, and runtime-only OpenClaw metadata do not expose a complete next-rung sample gate or measured sample count from repository evidence alone. Those rows return `sample_size: null`, `required_sample_size: null`, `sample_progress_state: UNKNOWN`, and `next_gate_state: UNKNOWN` with operator checks unless a source explicitly supplies a measured count.
 
 ## Review Provenance
 
