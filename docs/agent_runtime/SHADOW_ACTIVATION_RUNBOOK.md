@@ -73,42 +73,46 @@ tables; `agentic_runtime_reader` has SELECT only.
 
 ---
 
-## STEP 2 — Write the governed queue + dispatch backend (HUMAN-AUTHORED, reviewed)
+## STEP 2 — Configure a provider module for the governed dispatch backend
 
-This component **does not exist in the repo** and is the substantive engineering
-step. It must be authored and reviewed as its own PR before any timer is enabled.
+**The governed dispatch backend now SHIPS** (`scripts/agent_runtime_dispatch_boot.py`,
+wired into `run_once.py`) — the bounded/circuit-broken/kill-switchable pipeline
+described below is built and unit-tested. What remains is operator-supplied
+configuration, NOT engineering of the mechanism:
 
-**What to build** — a module referenced by `AGENT_RUNTIME_QUEUE_MODULE` that:
+The backend is **fail-closed and never fabricates work**. It refuses to run unless:
+1. `AGENT_RUNTIME_DISPATCH_DSN` = the LAB `agentic_runtime_shadow_rw` writer DSN.
+2. `AGENT_RUNTIME_PROVIDER_MODULE` = an operator-authored, reviewed module exposing:
+   - `build_providers(agent_id)` → an object with real `.retrieval` / `.model`
+     providers (e.g. the local LLM) and `.make_processor(persistence)` returning a
+     `processor(JobRequest)` that drives the `MvlRuntime` advisory lifecycle
+     (start → retrieve → reason → create_artifact → independent review → score);
+   - `job_source(agent_id, limit)` → a bounded `Sequence[JobRequest]` drawn from
+     real inputs (e.g. Watch artifacts to critique).
 
-1. Provides a **bounded work queue** source (governed intake; no unbounded fan-out).
-2. Provides a **`processor: Callable[[JobRequest], Mapping]`** that owns the single
-   governed runtime call (the `MvlRuntime` advisory path) and returns a result
-   mapping. The processor is what actually runs an agent's advisory job.
-3. Is driven through the existing **`BoundedDispatcher`**
-   (`scripts/agent_runtime/agents/dispatcher.py`, contract
-   `agent-runtime-bounded-dispatcher-v1`) — single-agent scoping, circuit breaker,
-   dedup, stale-input refusal, concurrency cap, cooperative cancellation.
-4. **Persists** every run/artifact/review/score through the append-only
-   `agentic_runtime` schema using the **`_shadow_rw`** role (never `_reader`,
-   never a prod DSN).
+**Why the backend ships no default provider:** hollow/canned providers would
+inflate the maturity board's `sample_size` with non-substantive artifacts. The
+board must only ever show evidence produced by real model calls over real inputs,
+so the provider module is deliberately operator-owned and reviewed.
 
-**Then** extend `run_once.py` to import and dispatch this backend when
-`AGENT_RUNTIME_QUEUE_MODULE` is set and `AGENT_RUNTIME_OPERATOR_AUTH=1` — replacing
-the current "dispatch is not enabled in this build" early-return.
+The shipped backend already guarantees the safety contract (verified by
+`tests/test_agent_runtime_dispatch_backend.py`):
+- Bounded, single-agent, circuit-broken, dedup, stale-refusing, and
+  **kill-switchable** — `should_cancel` observes `/etc/tradeai/agent_runtime_enabled`;
+  remove it and every remaining job in the batch is CANCELLED.
+- **Driver-isolated** — `psycopg2` is imported only inside
+  `agent_runtime_dispatch_boot.py` (out-of-package); `scripts/agent_runtime/**`
+  stays driver-free.
+- **Advisory-only / zero-authority** — `MvlRuntime` + `governed_output` reject any
+  broker/order/2FA/execution/service-control verb; no such import exists in the path.
+- Independent reviewer ≠ producer and scorer ≠ producer (the processor records
+  reviews/scores under a DIFFERENT agent id than the producer).
+- Non-agentic — the backend cannot schedule itself, extend a budget (budgets come
+  from the frozen `AgentDefinition`), or change any permission/config.
 
-**Safety contract the backend MUST preserve (fail the review if any is violated):**
-
-- Advisory-only: results flow through `emit_governed_output` (stamps
-  `ADVISORY_ONLY` / `DRAFT_ONLY`, rejects forbidden verbs/secrets). No broker,
-  order, 2FA, execution, or service-control calls.
-- No `psycopg2` / `subprocess` / `requests` import inside `scripts/agent_runtime/**`
-  — the DB driver stays isolated (persistence writer lives outside the package,
-  mirroring how `agent_runtime_read_boot.py` isolates the read driver).
-- Independent reviewer ≠ producer and independent scorer ≠ producer (enforced in
-  `agents/base.py`). Sentinel/Darwin/Iris/Reflection review/score each other's
-  artifacts, never their own.
-- Deterministic core stays SOVEREIGN — a model result can never override a
-  deterministic failure.
+**Provider-module authoring is the remaining reviewed step** (its own PR): wire the
+real model/retrieval providers and the real bounded job source, preserving the
+contract above.
 
 **Verify:** with the backend wired,
 `python -m scripts.agent_runtime.agents.run_once --agent sentinel --once` performs
