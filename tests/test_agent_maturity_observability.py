@@ -278,3 +278,140 @@ def test_frontend_scoreboard_contains_truth_labels_and_no_authority_controls():
     assert "type=\"button\">Promote" not in page
     assert "type=\"button\">Activate" not in page
     assert "type=\"button\">Deploy" not in page
+
+
+# ── WS-2: live runtime-evidence bridge (fail-closed by construction) ──────────
+
+OBS = "2026-07-30T13:00:00+00:00"
+
+
+class _FakeReader:
+    """Minimal read-only reader stub: list_runs + per-run list_reviews only.
+
+    Mirrors the AgentRuntimeReader surface the bridge actually calls; confers no
+    mutation power. `raise_on` simulates a reader hiccup."""
+
+    def __init__(self, runs, reviews_by_run=None, raise_on=None):
+        self._runs = list(runs)
+        self._reviews = dict(reviews_by_run or {})
+        self._raise_on = raise_on
+
+    def list_runs(self, *, limit, offset=0, agent_id=None, status=None):
+        if self._raise_on == "list_runs":
+            raise RuntimeError("reader boom")
+        return self._runs[offset:offset + limit]
+
+    def list_reviews(self, run_id):
+        if self._raise_on == "list_reviews":
+            raise RuntimeError("reader boom")
+        return self._reviews.get(run_id, [])
+
+
+def _find(rows, agent_id):
+    return next(r for r in rows if r["agent_id"] == agent_id)
+
+
+def _reviews(verdict, created_at, n=120, reviewer="iris"):
+    return [{"artifact_id": f"a{i}", "reviewer_agent_id": reviewer,
+             "verdict": verdict, "created_at": created_at} for i in range(n)]
+
+
+# MANDATED case 1: reader unavailable / empty → REPOSITORY_EVIDENCE, invents nothing
+
+def test_bridge_reader_none_is_repository_evidence_zero_eligible():
+    payload = maturity_payload(ROOT, observed_at=OBS, reader=None)
+    rows = payload["data"]
+    assert rows
+    assert all(r["source_class"] == "REPOSITORY_EVIDENCE" for r in rows)
+    assert payload["summary"]["eligible_for_human_review"] == 0
+    assert payload["source_availability"]["agent_runtime_db"] == "UNVERIFIED"
+
+
+def test_bridge_empty_reader_invents_no_rows_and_stays_repository_evidence():
+    baseline = {r["agent_id"] for r in maturity_payload(ROOT, observed_at=OBS, reader=None)["data"]}
+    payload = maturity_payload(ROOT, observed_at=OBS, reader=_FakeReader([]))
+    assert {r["agent_id"] for r in payload["data"]} == baseline  # no fabricated agents
+    assert all(r["source_class"] == "REPOSITORY_EVIDENCE" for r in payload["data"])
+    assert payload["summary"]["eligible_for_human_review"] == 0
+    assert payload["source_availability"]["agent_runtime_db"] == "CONNECTED_NO_RUNTIME_EVIDENCE"
+
+
+def test_bridge_reader_error_fails_closed_to_repository_evidence():
+    reader = _FakeReader([{"run_id": "r1", "agent_id": "sentinel"}], raise_on="list_runs")
+    assert maturity_observability.collect_runtime_evidence(reader) == ({}, {})
+    payload = maturity_payload(ROOT, observed_at=OBS, reader=reader)
+    assert all(r["source_class"] == "REPOSITORY_EVIDENCE" for r in payload["data"])
+    assert payload["summary"]["eligible_for_human_review"] == 0
+
+
+# MANDATED case 2: degraded / stale / not-run / unknown live evidence never ELIGIBLE
+
+@pytest.mark.parametrize("verdict, expect_health", [
+    ("degraded", "DEGRADED_FALLBACK"),
+    ("timeout", "TIMEOUT"),
+    ("invalid", "INVALID_OUTPUT"),
+    ("some_unmapped_verdict", "UNKNOWN"),
+])
+def test_bridge_nonhealthy_runtime_reviews_are_runtime_evidence_but_never_eligible(verdict, expect_health):
+    runs = [{"run_id": "r1", "agent_id": "sentinel"}]
+    reader = _FakeReader(runs, {"r1": _reviews(verdict, OBS)})
+    row = _find(maturity_payload(ROOT, observed_at=OBS, reader=reader)["data"], "sentinel")
+    assert row["source_class"] == "RUNTIME_EVIDENCE"     # honest: live evidence exists
+    assert row["sample_size"] == 120                      # real reviewed-artifact count
+    assert row["review_health"] == expect_health
+    assert row["promotion_eligibility"] != "ELIGIBLE_FOR_HUMAN_REVIEW"
+
+
+def test_bridge_stale_healthy_review_is_stale_and_not_eligible(monkeypatch):
+    monkeypatch.setenv("AGENT_FRESHNESS_DAYS", "1")
+    runs = [{"run_id": "r1", "agent_id": "sentinel"}]
+    reader = _FakeReader(runs, {"r1": _reviews("pass", "2020-01-01T00:00:00+00:00")})
+    row = _find(maturity_payload(ROOT, observed_at=OBS, reader=reader)["data"], "sentinel")
+    assert row["review_health"] == "STALE_CACHE"
+    assert row["promotion_eligibility"] != "ELIGIBLE_FOR_HUMAN_REVIEW"
+
+
+def test_bridge_notrun_when_no_reviews_is_not_eligible():
+    runs = [{"run_id": "r1", "agent_id": "sentinel"}]
+    reader = _FakeReader(runs, {"r1": []})
+    row = _find(maturity_payload(ROOT, observed_at=OBS, reader=reader)["data"], "sentinel")
+    assert row["source_class"] == "RUNTIME_EVIDENCE"
+    assert row["sample_size"] == 0
+    assert row["review_health"] == "NOT_RUN"
+    assert row["promotion_eligibility"] == "NOT_ELIGIBLE"
+
+
+# Healthy live evidence is labelled RUNTIME_EVIDENCE but still gated on framework gates
+# (reader path never asserts gate completion — the honest current ceiling).
+
+def test_bridge_healthy_runtime_reviews_are_runtime_evidence_but_gated(monkeypatch):
+    monkeypatch.setenv("AGENT_FRESHNESS_DAYS", "100000")  # any date is fresh
+    runs = [{"run_id": "r1", "agent_id": "sentinel"}]
+    reader = _FakeReader(runs, {"r1": _reviews("pass", "2026-07-01T00:00:00+00:00")})
+    row = _find(maturity_payload(ROOT, observed_at=OBS, reader=reader)["data"], "sentinel")
+    assert row["source_class"] == "RUNTIME_EVIDENCE"
+    assert row["freshness_state"] == "LIVE_RUNTIME_EVIDENCE"
+    assert row["review_health"] == "HEALTHY"
+    assert row["sample_size"] == 120
+    assert row["promotion_eligibility"] == "HUMAN_REVIEW_REQUIRED"  # framework gates unmeasured
+    assert maturity_payload(ROOT, observed_at=OBS, reader=reader)["summary"]["eligible_for_human_review"] == 0
+
+
+# Proves the wiring WOULD populate ELIGIBLE once a measured-gates component (WS-3)
+# supplies framework_gates_complete=True via the runtime overlay.
+
+def test_bridge_would_populate_eligible_only_when_gates_measured():
+    overlay = {"sentinel": {"source_class": "RUNTIME_EVIDENCE", "sample_size": 100,
+                            "framework_gates_complete": True,
+                            "effective_production_activation_verified": False}}
+    reviews = {"sentinel": {"review_health": "HEALTHY", "status": "ok",
+                            "review_provenance": "MODEL_REVIEW"}}
+    row = _find(build_observations(ROOT, observed_at=OBS, review_records=reviews,
+                                   runtime_evidence=overlay), "sentinel")
+    assert row["source_class"] == "RUNTIME_EVIDENCE"
+    assert row["promotion_eligibility"] == "ELIGIBLE_FOR_HUMAN_REVIEW"
+
+    overlay["sentinel"]["framework_gates_complete"] = False  # partial gates → not eligible
+    row2 = _find(build_observations(ROOT, observed_at=OBS, review_records=reviews,
+                                    runtime_evidence=overlay), "sentinel")
+    assert row2["promotion_eligibility"] != "ELIGIBLE_FOR_HUMAN_REVIEW"

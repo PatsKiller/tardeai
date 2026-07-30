@@ -48,6 +48,12 @@ class ReadOnlyAgentRuntimeAPI:
     def __init__(self, reader: AgentRuntimeReader) -> None:
         self._reader = reader
 
+    @property
+    def reader(self) -> AgentRuntimeReader:
+        """The underlying read-only reader (list_* only). Exposed so the maturity
+        bridge can aggregate live runtime evidence; it confers no mutation power."""
+        return self._reader
+
     @staticmethod
     def routes() -> tuple[ReadRoute, ...]:
         return READ_ROUTES

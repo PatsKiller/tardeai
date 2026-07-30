@@ -89,7 +89,7 @@ def _is_agent_maturity_path(path: str) -> bool:
     return path == AGENT_MATURITY_READ_PREFIX or path.startswith(AGENT_MATURITY_READ_PREFIX + "/")
 
 
-def _dispatch_maturity(method: str, path: str) -> Tuple[int, dict]:
+def _dispatch_maturity(method: str, path: str, api: Optional[ReadOnlyAgentRuntimeAPI] = None) -> Tuple[int, dict]:
     from .maturity_observability import maturity_agent_payload, maturity_payload, maturity_summary_payload
 
     if method != "GET":
@@ -97,16 +97,19 @@ def _dispatch_maturity(method: str, path: str) -> Tuple[int, dict]:
             "method_not_allowed", f"{method} is not allowed; the agent-maturity surface is read-only (GET only)"
         )
     root = Path(__file__).resolve().parents[2]
+    # When a live read-only reader is wired, the maturity board reflects real
+    # runtime evidence; without it, it stays honest repository evidence.
+    reader = getattr(api, "reader", None) if api is not None else None
     if path == AGENT_MATURITY_READ_PREFIX:
-        return 200, maturity_payload(root)
+        return 200, maturity_payload(root, reader=reader)
     if path == f"{AGENT_MATURITY_READ_PREFIX}/summary":
-        return 200, maturity_summary_payload(root)
+        return 200, maturity_summary_payload(root, reader=reader)
     prefix = AGENT_MATURITY_READ_PREFIX + "/"
     if path.startswith(prefix):
         agent_id = path[len(prefix):].strip("/")
         if not agent_id or "/" in agent_id:
             return 404, zero_authority_envelope("not_found", "no such agent-maturity read route")
-        payload = maturity_agent_payload(root, agent_id)
+        payload = maturity_agent_payload(root, agent_id, reader=reader)
         if payload is None:
             return 404, zero_authority_envelope("not_found", "no such agent-maturity observation")
         return 200, payload
@@ -158,7 +161,7 @@ def dispatch(
 
     if _is_agent_maturity_path(path):
         try:
-            return _dispatch_maturity(method, path)
+            return _dispatch_maturity(method, path, api)
         except Exception:
             return 503, zero_authority_envelope("not_connected", "agent-maturity read API is unavailable")
 
