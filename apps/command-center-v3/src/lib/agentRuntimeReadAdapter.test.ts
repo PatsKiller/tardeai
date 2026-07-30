@@ -25,10 +25,21 @@ function listing(rows: Array<Record<string, unknown>>, extra: Record<string, unk
 }
 
 async function run() {
-  // FIXTURE — no API configured
+  // FIXTURE — only on an explicit null baseUrl
   {
     const view = await resolveAgentRuntimeView({ baseUrl: null, now })
-    check('FIXTURE when no baseUrl', view.state === 'FIXTURE' && !view.live && view.snapshot.source === 'FIXTURE')
+    check('FIXTURE when baseUrl is explicitly null', view.state === 'FIXTURE' && !view.live && view.snapshot.source === 'FIXTURE')
+  }
+
+  // SAME-ORIGIN default — unset env yields '' and the adapter fetches the same-origin path
+  {
+    check('readApiBaseFromEnv unset => same-origin ""', readApiBaseFromEnv({}) === '')
+    let fetchedUrl = ''
+    const rows = [{ status: 'COMPLETED', environment: 'SHADOW', updated_at: '2026-07-26T11:59:00Z' }]
+    const fetchImpl = (async (url: string) => { fetchedUrl = url; return jsonResponse(200, listing(rows)) }) as unknown as typeof fetch
+    const view = await resolveAgentRuntimeView({ baseUrl: readApiBaseFromEnv({}), now, fetchImpl })
+    check('same-origin fetch path', fetchedUrl === '/api/v3/agent-runtime/runs?limit=200')
+    check('SHADOW live on same-origin', view.state === 'SHADOW' && view.live)
   }
 
   // NOT_CONNECTED — API reachable but reader adapter not wired (503)
@@ -84,7 +95,7 @@ async function run() {
 
   // env helper
   {
-    check('readApiBaseFromEnv unset => null', readApiBaseFromEnv({}) === null)
+    check('readApiBaseFromEnv unset => same-origin ""', readApiBaseFromEnv({}) === '')
     check('readApiBaseFromEnv trims trailing slash', readApiBaseFromEnv({ VITE_AGENT_RUNTIME_API_BASE: 'http://h/ ' }) === 'http://h')
   }
 
