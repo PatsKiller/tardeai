@@ -13,6 +13,7 @@ import {
   type AgentRuntimeDefinition,
 } from '../lib/agentRuntimeMonitoring'
 import { resolveAgentRuntimeView, readApiBaseFromEnv, type ResolvedRuntimeView } from '../lib/agentRuntimeReadAdapter'
+import { resolveAgentRuntimeDetail, type AgentDetailView } from '../lib/agentRuntimeDetailAdapter'
 import {
   maturityHealthLabel,
   resolveAgentMaturityView,
@@ -128,6 +129,57 @@ function EmptyEvidence({ title, description }: { title: string; description: str
   </div>
 }
 
+
+function LiveDesk({ title, badge, children }: { title: string; badge: string; children: ReactNode }) {
+  return <div style={{ ...panel, minHeight: 150 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+      <div style={{ fontSize: TYPE.base, fontWeight: 800 }}>{title}</div>
+      <StatusBadge tone="green">{badge}</StatusBadge>
+    </div>
+    <div style={{ marginTop: 10 }}>{children}</div>
+    <div style={{ marginTop: 10, fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>Live read-only · agent-runtime read API · NO FINANCIAL AUTHORITY</div>
+  </div>
+}
+
+function RunTimelineDesk({ d }: { d: AgentDetailView }) {
+  return <LiveDesk title="Run queue and timeline" badge={`${d.runs.length} RUN${d.runs.length === 1 ? '' : 'S'}`}>
+    <div style={{ fontSize: TYPE.xs, color: 'var(--text2)' }}>Role <b>{d.role.toUpperCase()}</b> · produced {d.counts.produced} · reviewed {d.counts.reviewed} · scored {d.counts.scored}</div>
+    <div style={{ marginTop: 8, display: 'grid', gap: 5 }}>
+      {d.runs.slice(0, 6).map(r => <div key={r.runId} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '5px 8px', borderRadius: 6, background: 'var(--bg2)', fontSize: TYPE.xs }}>
+        <span style={{ fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{r.runId.slice(0, 14)}</span>
+        <span><StatusBadge tone={r.status === 'COMPLETED' ? 'green' : r.status === 'FAILED' ? 'red' : 'slate'}>{r.status || 'UNKNOWN'}</StatusBadge></span>
+      </div>)}
+      {d.runs.length === 0 && <div style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>No runs attributed to this agent yet (it has not produced/reviewed/scored).</div>}
+    </div>
+  </LiveDesk>
+}
+
+function ArtifactReviewDesk({ d }: { d: AgentDetailView }) {
+  const verdicts = Object.entries(d.counts.byVerdict)
+  return <LiveDesk title="Artifact review desk" badge={`${d.artifacts.length} SHOWN`}>
+    {verdicts.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>{verdicts.map(([v, n]) => <StatusBadge key={v} tone={v === 'PASS' ? 'green' : v === 'QUARANTINE' ? 'amber' : 'slate'}>{v} {n}</StatusBadge>)}</div>}
+    <div style={{ display: 'grid', gap: 4, maxHeight: 190, overflowY: 'auto' }}>
+      {d.artifacts.slice(0, 12).map(a => <div key={a.artifactId} style={{ padding: '5px 8px', borderRadius: 6, background: 'var(--bg2)', fontSize: TYPE.xs }}>
+        <span style={{ fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{a.payloadHash.slice(0, 10) || a.artifactId.slice(0, 10)}</span>
+        <span style={{ color: 'var(--text2)' }}> · {a.producer || '—'}</span>
+        {a.reviewer && <span> · rev <b>{a.reviewer}</b>{a.verdict ? ` (${a.verdict})` : ''}</span>}
+        {a.scorer && <span> · scr {a.scorer}</span>}
+      </div>)}
+      {d.artifacts.length === 0 && <div style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>No artifacts attributed to this agent yet.</div>}
+    </div>
+  </LiveDesk>
+}
+
+function KnowledgeDesk({ d }: { d: AgentDetailView }) {
+  return <LiveDesk title="Knowledge and learning" badge={`${d.lessons.total} LESSONS · ${d.cases.total} CASES`}>
+    <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 6 }}>Fleet knowledge base (read-only). Automatic production promotion remains impossible.</div>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {Object.entries(d.lessons.byLifecycle).map(([k, n]) => <StatusBadge key={k} tone="slate">lesson {k} {n}</StatusBadge>)}
+      {Object.entries(d.cases.byType).map(([k, n]) => <StatusBadge key={k} tone="slate">case {k.replace(/_/g, ' ')} {n}</StatusBadge>)}
+      {d.lessons.total === 0 && d.cases.total === 0 && <div style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>No cases or lessons persisted yet.</div>}
+    </div>
+  </LiveDesk>
+}
 
 function SampleBar({ row }: { row: AgentMaturityObservation }) {
   const pct = samplePct(row)
@@ -384,6 +436,7 @@ function RuntimeView() {
   const [maturityView, setMaturityView] = useState<ResolvedAgentMaturityView>(() => ({
     state: 'UNAVAILABLE', payload: null, detail: 'Resolving maturity read API…',
   }))
+  const [detail, setDetail] = useState<AgentDetailView | null>(null)
   useEffect(() => {
     let active = true
     resolveAgentRuntimeView({ baseUrl: readApiBaseFromEnv() })
@@ -394,16 +447,35 @@ function RuntimeView() {
       .catch(() => { if (active) setMaturityView({ state: 'UNAVAILABLE', payload: null, detail: 'Maturity adapter error' }) })
     return () => { active = false }
   }, [])
+  // Per-agent live detail for the desks (Run timeline / Artifact desk / Knowledge),
+  // refetched when the selected agent changes. Fail-closed: null => honest empty desks.
+  useEffect(() => {
+    let active = true
+    setDetail(null)
+    resolveAgentRuntimeDetail(selectedId, { baseUrl: readApiBaseFromEnv() })
+      .then(d => { if (active) setDetail(d) })
+      .catch(() => { if (active) setDetail(null) })
+    return () => { active = false }
+  }, [selectedId])
   const snapshot = runtimeView.snapshot
   const selected = AGENT_RUNTIME_CATALOG.find(agent => agent.agentId === selectedId) || AGENT_RUNTIME_CATALOG[0]
-  const acceptance: Array<[string, string, string]> = [
-    ['Reviewed Watch artifacts', '0 / 100', 'NOT RUN'],
-    ['Known-bad fixtures', '0 / 20 connected', 'NOT RUN'],
-    ['Retrieval coverage', 'Not measured', 'NOT RUN'],
-    ['Deterministic failures released', 'Not measured', 'NOT RUN'],
-    ['Darwin scoring coverage', 'Not measured', 'NOT RUN'],
-    ['Candidate lesson adjudication', 'Not connected', 'NOT RUN'],
-  ]
+  const acceptance: Array<[string, string, string]> = detail?.live
+    ? [
+      ['Reviewed Watch artifacts', `${detail.counts.reviewed} / 100`, detail.counts.reviewed >= 100 ? 'MET' : detail.counts.reviewed > 0 ? 'IN PROGRESS' : 'NOT RUN'],
+      ['Known-bad fixtures', `${detail.cases.byType['known_bad_fixture'] ?? 0} connected`, (detail.cases.byType['known_bad_fixture'] ?? 0) > 0 ? 'CONNECTED' : 'NOT RUN'],
+      ['Darwin scoring coverage', `${detail.counts.scored} scored`, detail.counts.scored > 0 ? 'IN PROGRESS' : 'NOT RUN'],
+      ['Produced artifacts', `${detail.counts.produced}`, detail.counts.produced > 0 ? 'IN PROGRESS' : 'NOT RUN'],
+      ['Candidate lessons (fleet)', `${detail.lessons.byLifecycle['CANDIDATE'] ?? 0} candidate · ${detail.lessons.total} total`, detail.lessons.total > 0 ? 'CONNECTED' : 'NOT RUN'],
+      ['Independent review of own output', detail.counts.produced > 0 ? 'required' : 'n/a (critic role)', 'HUMAN REVIEW REQUIRED'],
+    ]
+    : [
+      ['Reviewed Watch artifacts', '0 / 100', 'NOT RUN'],
+      ['Known-bad fixtures', '0 / 20 connected', 'NOT RUN'],
+      ['Retrieval coverage', 'Not measured', 'NOT RUN'],
+      ['Deterministic failures released', 'Not measured', 'NOT RUN'],
+      ['Darwin scoring coverage', 'Not measured', 'NOT RUN'],
+      ['Candidate lesson adjudication', 'Not connected', 'NOT RUN'],
+    ]
 
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
     <div style={{ ...panel, borderColor: 'rgba(96,165,250,.36)', background: 'rgba(96,165,250,.06)' }}>
@@ -457,9 +529,13 @@ function RuntimeView() {
     </div>
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12 }}>
-      <EmptyEvidence title="Run queue and timeline" description="No persisted run timeline is connected. Running, blocked, failed, stale, cancelled, deadline-exceeded, checkpoint, budget, tool-call, and stop-reason states will come from the approved read adapter." />
-      <EmptyEvidence title="Artifact review desk" description="No authoritative artifacts are loaded. Immutable hash, producer, independent reviewer, scorer, deterministic gate, contradictions, operator disposition, outcome, and Darwin score remain zero rather than inferred." />
-      <EmptyEvidence title="Knowledge and learning" description="Cases, candidate lessons, ratified lessons, contradictions, Nightly Reflection outputs, and Iris/operator dispositions are not connected. Automatic production promotion remains impossible." />
+      {detail?.live
+        ? <><RunTimelineDesk d={detail} /><ArtifactReviewDesk d={detail} /><KnowledgeDesk d={detail} /></>
+        : <>
+          <EmptyEvidence title="Run queue and timeline" description="No persisted run timeline is connected. Running, blocked, failed, stale, cancelled, deadline-exceeded, checkpoint, budget, tool-call, and stop-reason states will come from the approved read adapter." />
+          <EmptyEvidence title="Artifact review desk" description="No authoritative artifacts are loaded. Immutable hash, producer, independent reviewer, scorer, deterministic gate, contradictions, operator disposition, outcome, and Darwin score remain zero rather than inferred." />
+          <EmptyEvidence title="Knowledge and learning" description="Cases, candidate lessons, ratified lessons, contradictions, Nightly Reflection outputs, and Iris/operator dispositions are not connected. Automatic production promotion remains impossible." />
+        </>}
     </div>
 
     <div style={{ ...panel }}>

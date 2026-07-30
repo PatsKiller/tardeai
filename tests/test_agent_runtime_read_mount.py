@@ -73,6 +73,12 @@ class FakeReader:
     def list_monitoring_events(self, run_id):
         return [{"sequence": 1, "event_type": "RUN_CREATED"}]
 
+    def list_lessons(self, *, limit, offset=0):
+        return [{"lesson_id": "lesson_1", "lifecycle": "CANDIDATE"}]
+
+    def list_cases(self, *, limit, offset=0):
+        return [{"case_id": "case_1", "case_type": "known_bad_fixture"}]
+
 
 class EmptyReader(FakeReader):
     def list_runs(self, *, limit, offset, agent_id=None, status=None):

@@ -193,6 +193,12 @@ def dispatch(
                 agent_id=_as_str(query.get("agent_id")),
                 status=_as_str(query.get("status")),
             )
+        elif route.operation in ("list_lessons", "list_cases"):
+            limit = _as_int(query.get("limit"), DEFAULT_LIMIT)
+            offset = _as_int(query.get("offset"), 0)
+            if limit > MAX_LIMIT:
+                limit = MAX_LIMIT
+            result = getattr(api, route.operation)(limit=limit, offset=offset)
         else:
             result = getattr(api, route.operation)(params["run_id"])
         return 200, result
