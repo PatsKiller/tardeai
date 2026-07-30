@@ -4,7 +4,8 @@
 // returns valid read-only data. Otherwise it preserves an explicit, visible fallback state so the
 // Command Center never silently presents fixture data as if it were live:
 //
-//   FIXTURE       – no read API configured (VITE_AGENT_RUNTIME_API_BASE unset); fixture shown.
+//   FIXTURE       – only when an explicit baseUrl:null is passed; fixture shown. By default the
+//                   adapter reads same-origin /api/v3/agent-runtime (like the maturity adapter).
 //   NOT_CONNECTED – API host reachable but the reader adapter is not wired (HTTP 503); fixture shown.
 //   UNAVAILABLE   – API errored, unreachable, or returned a malformed/non-read-only body; fixture shown.
 //   STALE         – live data returned but older than the freshness budget; live data shown, flagged.
@@ -46,17 +47,22 @@ function fixtureView(state: AdapterState, detail: string): ResolvedRuntimeView {
   return { state, snapshot: { ...AGENT_RUNTIME_SNAPSHOT, source: 'FIXTURE', adapterState: 'FIXTURE_ONLY' }, detail, live: false }
 }
 
-// Read the API base URL from the Vite environment. Unset => null => FIXTURE (unchanged default).
-export function readApiBaseFromEnv(env?: Record<string, string | undefined>): string | null {
+// Read the API base URL from the Vite environment. Unset => '' => SAME-ORIGIN
+// (the read API is served by the same host as the UI, exactly like the maturity
+// adapter's '/api/v3/agent-maturity'). An explicit VITE_AGENT_RUNTIME_API_BASE
+// still overrides for cross-origin dev. Only an explicit `baseUrl: null` (never
+// produced here) forces the FIXTURE fallback.
+export function readApiBaseFromEnv(env?: Record<string, string | undefined>): string {
   const source = env ?? (typeof import.meta !== 'undefined' ? (import.meta as { env?: Record<string, string | undefined> }).env : undefined)
   const raw = source?.VITE_AGENT_RUNTIME_API_BASE
   const trimmed = (raw ?? '').trim()
-  return trimmed ? trimmed.replace(/\/$/, '') : null
+  return trimmed ? trimmed.replace(/\/$/, '') : ''
 }
 
 export async function resolveAgentRuntimeView(config: ReadApiConfig): Promise<ResolvedRuntimeView> {
   const { baseUrl } = config
-  if (!baseUrl) return fixtureView('FIXTURE', 'No read API configured — showing fixture snapshot.')
+  // Only an explicit null forces FIXTURE. '' means same-origin (the default).
+  if (baseUrl == null) return fixtureView('FIXTURE', 'No read API configured — showing fixture snapshot.')
 
   const now = config.now ?? Date.now
   const staleAfterMs = config.staleAfterMs ?? DEFAULT_STALE_AFTER_MS
