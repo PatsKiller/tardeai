@@ -1,0 +1,13 @@
+{
+  "schema_version": "openclaw-runtime-inventory-v1",
+  "source_hash": "sha256:example-sanitized-source-hash",
+  "installed_version": "0.0.0-example",
+  "service_unit_name": "openclaw-example.service",
+  "config_schema_version": "example-v1",
+  "declared_agent_ids": ["concierge"],
+  "declared_soul_ids": ["operator_interface"],
+  "declared_skill_ids": ["run.status", "artifact.explain"],
+  "enabled": false,
+  "last_verified_at": "2026-07-30T00:00:00Z",
+  "verification_status": "UNVERIFIED"
+}

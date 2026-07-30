@@ -735,11 +735,17 @@ def json_response(handler, status: int, data: dict) -> None:
 
 
 _AGENT_RUNTIME_READ_PREFIX = "/api/v3/agent-runtime"
+_AGENT_MATURITY_READ_PREFIX = "/api/v3/agent-maturity"
 _ACTIVE_TRADER_READ_PREFIX = "/api/v3/active-trader"
 
 
 def _is_agent_runtime_read_path(path: str) -> bool:
-    return path == _AGENT_RUNTIME_READ_PREFIX or path.startswith(_AGENT_RUNTIME_READ_PREFIX + "/")
+    return (
+        path == _AGENT_RUNTIME_READ_PREFIX
+        or path.startswith(_AGENT_RUNTIME_READ_PREFIX + "/")
+        or path == _AGENT_MATURITY_READ_PREFIX
+        or path.startswith(_AGENT_MATURITY_READ_PREFIX + "/")
+    )
 
 
 def _is_active_trader_read_path(path: str) -> bool:

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trade-ai-openclaw-runtime-inventory-v1",
+  "title": "Sanitized OpenClaw Runtime Inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "verification_status"],
+  "properties": {
+    "schema_version": { "const": "openclaw-runtime-inventory-v1" },
+    "source_hash": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9:_./-]{0,160}$" },
+    "installed_version": { "type": ["string", "null"], "maxLength": 120 },
+    "service_unit_name": { "type": ["string", "null"], "maxLength": 120 },
+    "config_schema_version": { "type": ["string", "null"], "maxLength": 80 },
+    "declared_agent_ids": { "type": "array", "items": { "type": "string", "maxLength": 80 } },
+    "declared_soul_ids": { "type": "array", "items": { "type": "string", "maxLength": 80 } },
+    "declared_skill_ids": { "type": "array", "items": { "type": "string", "maxLength": 120 } },
+    "enabled": { "type": ["boolean", "null"] },
+    "last_verified_at": { "type": ["string", "null"], "maxLength": 40 },
+    "verification_status": {
+      "enum": ["VALID", "UNVERIFIED", "NOT_AVAILABLE", "OPERATOR_CHECK_REQUIRED", "MALFORMED"]
+    }
+  }
+}
