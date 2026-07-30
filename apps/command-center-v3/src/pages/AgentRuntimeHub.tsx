@@ -12,6 +12,7 @@ import {
   type AgentRuntimeDefinition,
 } from '../lib/agentRuntimeMonitoring'
 import { resolveAgentRuntimeView, readApiBaseFromEnv, type ResolvedRuntimeView } from '../lib/agentRuntimeReadAdapter'
+import { maturityHealthLabel, resolveAgentMaturityView, type ResolvedAgentMaturityView } from '../lib/agentMaturityObservability'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 type View = 'Runtime' | 'Legacy analytics'
@@ -112,6 +113,64 @@ function EmptyEvidence({ title, description }: { title: string; description: str
   </div>
 }
 
+
+function MaturityScoreboard({ view }: { view: ResolvedAgentMaturityView }) {
+  const payload = view.payload
+  const rows = payload?.data ?? []
+  const requiredLabels = [
+    'HUMAN REVIEW REQUIRED', 'ELIGIBLE FOR HUMAN REVIEW', 'NOT RUN', 'CAPPED BY SAMPLE SIZE',
+    'DEGRADED — DETERMINISTIC FALLBACK', 'STALE CACHED REVIEW', 'RUNTIME STATUS UNVERIFIED', 'NO FINANCIAL AUTHORITY',
+  ]
+  const gateTone = (state: string): BadgeTone => state === 'PASSED' ? 'green' : state === 'FAILED' ? 'red' : state === 'CAPPED_BY_SAMPLE_SIZE' ? 'amber' : 'slate'
+  const healthTone = (state: string): BadgeTone => state === 'HEALTHY' ? 'green' : state === 'DEGRADED_FALLBACK' || state === 'STALE_CACHE' ? 'amber' : state === 'TIMEOUT' || state === 'INVALID_OUTPUT' ? 'red' : 'slate'
+  return <div style={{ ...panel, padding: 0, overflow: 'hidden' }}>
+    <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+      <div>
+        <div style={{ fontSize: TYPE.md, fontWeight: 800 }}>Maturity scoreboard</div>
+        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)', lineHeight: 1.45 }}>{view.detail}</div>
+        {payload && <div style={{ marginTop: 5, fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{payload.contract} · {payload.schema_version} · {payload.generated_at}</div>}
+      </div>
+      <StatusBadge tone={view.state === 'CONNECTED' ? 'green' : view.state === 'NOT_CONNECTED' ? 'amber' : 'red'}>{view.state}</StatusBadge>
+    </div>
+    <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+      {requiredLabels.map(item => <StatusBadge key={item} tone={item.includes('DEGRADED') || item.includes('CAPPED') || item.includes('UNVERIFIED') ? 'amber' : item.includes('ELIGIBLE') ? 'green' : 'slate'}>{item}</StatusBadge>)}
+    </div>
+    {payload && <div style={{ padding: '10px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 8, borderBottom: '1px solid var(--border)' }}>
+      {[
+        ['Observed records', payload.summary.total_agents, 'Canonical repository read model'],
+        ['Sample capped', payload.summary.sample_size_capped_agents, 'Cannot pass gate yet'],
+        ['Human-review eligible', payload.summary.eligible_for_human_review, 'Metrics only; no authority grant'],
+        ['Runtime unverified', payload.summary.unverified_runtime_status, 'Requires safe operator evidence'],
+      ].map(([title, value, detail]) => <div key={String(title)} style={{ minHeight: 62, padding: '8px 0' }}>
+        <div style={{ fontSize: TYPE.lg, fontWeight: 800 }}>{value}</div>
+        <div style={{ marginTop: 4, fontSize: TYPE.xs, fontWeight: 750, color: 'var(--text1)' }}>{title}</div>
+        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)' }}>{detail}</div>
+      </div>)}
+    </div>}
+    <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
+      <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{['Agent', 'Subsystem', 'Lifecycle', 'Authority', 'Activation', 'Environment', 'Framework', 'Sample', 'Next gate', 'Review health', 'Last healthy', 'Last degraded', 'Eligibility', 'Evidence', 'Warnings'].map(header => <th key={header} style={{ ...label, textAlign: header === 'Agent' || header === 'Subsystem' || header === 'Warnings' ? 'left' : 'right', padding: '8px 10px' }}>{header}</th>)}</tr></thead>
+      <tbody>{rows.map(row => <tr key={row.agent_id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+        <td style={{ padding: '9px 10px' }}><div style={{ fontSize: TYPE.sm, fontWeight: 750 }}>{row.display_name}</div><div style={{ fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{row.agent_id}</div></td>
+        <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: 'var(--text2)' }}>{row.subsystem}</td>
+        <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone={lifecycleTone[(row.declared_lifecycle_state as AgentLifecycle) || 'DESIGNED'] ?? 'slate'}>{row.declared_lifecycle_state}</StatusBadge></td>
+        <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone="amber">{row.effective_authority_state === 'NO_FINANCIAL_AUTHORITY' ? 'NO FINANCIAL AUTHORITY' : row.effective_authority_state.replace(/_/g, ' ')}</StatusBadge></td>
+        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs }}>declared {row.declared_production_activation_authorized === null ? 'UNKNOWN' : row.declared_production_activation_authorized ? 'YES' : 'NO'}<div style={{ color: row.effective_production_activation_verified ? BB.green : BB.amber }}>live verified {row.effective_production_activation_verified ? 'YES' : 'NO'}</div></td>
+        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs }}>{row.environment}</td>
+        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs }}>{row.maturity_framework}<div style={{ color: 'var(--text3)' }}>{row.maturity_framework_version ?? 'UNKNOWN'}</div></td>
+        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs }}>{row.sample_size ?? 'UNKNOWN'} / {row.required_sample_size ?? 'UNKNOWN'}<div style={{ color: BB.amber }}>{row.sample_progress_state.replace(/_/g, ' ')}</div></td>
+        <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone={gateTone(row.next_gate_state)}>{row.next_gate_state.replace(/_/g, ' ')}</StatusBadge></td>
+        <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone={healthTone(row.review_health)}>{maturityHealthLabel(row.review_health)}</StatusBadge><div style={{ marginTop: 3, color: 'var(--text3)', fontSize: TYPE.xs }}>{row.review_provenance.replace(/_/g, ' ')}</div></td>
+        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs, color: 'var(--text2)' }}>{row.last_successful_review_at ?? 'NOT RUN'}</td>
+        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs, color: 'var(--text2)' }}>{row.last_degraded_review_at ?? 'NOT RUN'}</td>
+        <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone={row.promotion_eligibility === 'ELIGIBLE_FOR_HUMAN_REVIEW' ? 'green' : row.promotion_eligibility === 'RESTRICTED' ? 'red' : 'slate'}>{row.promotion_eligibility.replace(/_/g, ' ')}</StatusBadge></td>
+        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs, color: row.freshness_state.includes('UNVERIFIED') ? BB.amber : 'var(--text2)' }}>{row.freshness_state.replace(/_/g, ' ')}</td>
+        <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: row.warnings.length || row.operator_checks_required.length ? BB.amber : 'var(--text3)', maxWidth: 260 }}>{[...row.warnings, ...row.operator_checks_required].slice(0, 2).join(' · ') || '—'}</td>
+      </tr>)}</tbody>
+    </table></div>
+    {!payload && <div style={{ padding: 14, fontSize: TYPE.xs, color: BB.amber }}>RUNTIME STATUS UNVERIFIED · no maturity payload is available.</div>}
+  </div>
+}
+
 function RuntimeView() {
   const summary = useMemo(() => summarizeAgentRuntime(), [])
   const [selectedId, setSelectedId] = useState('sentinel')
@@ -120,11 +179,17 @@ function RuntimeView() {
   const [runtimeView, setRuntimeView] = useState<ResolvedRuntimeView>(() => ({
     state: 'FIXTURE', snapshot: AGENT_RUNTIME_SNAPSHOT, detail: 'Resolving read API…', live: false,
   }))
+  const [maturityView, setMaturityView] = useState<ResolvedAgentMaturityView>(() => ({
+    state: 'UNAVAILABLE', payload: null, detail: 'Resolving maturity read API…',
+  }))
   useEffect(() => {
     let active = true
     resolveAgentRuntimeView({ baseUrl: readApiBaseFromEnv() })
       .then(view => { if (active) setRuntimeView(view) })
       .catch(() => { if (active) setRuntimeView({ state: 'UNAVAILABLE', snapshot: AGENT_RUNTIME_SNAPSHOT, detail: 'Adapter error', live: false }) })
+    resolveAgentMaturityView()
+      .then(view => { if (active) setMaturityView(view) })
+      .catch(() => { if (active) setMaturityView({ state: 'UNAVAILABLE', payload: null, detail: 'Maturity adapter error' }) })
     return () => { active = false }
   }, [])
   const snapshot = runtimeView.snapshot
@@ -156,6 +221,8 @@ function RuntimeView() {
       </div>
       {summary.catalogIssues.length > 0 && <div style={{ marginTop: 8, color: BB.red, fontSize: TYPE.xs }}>BLOCKED CONTRACT: {summary.catalogIssues.join(' · ')}</div>}
     </div>
+
+    <MaturityScoreboard view={maturityView} />
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
       <MetricCard value={summary.total} title="Canonical agents" detail="Stable IDs in the maturity catalog" />

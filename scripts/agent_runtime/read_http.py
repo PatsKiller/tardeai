@@ -19,11 +19,13 @@ reader (and therefore the driver import) is injected from outside the
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, Mapping, Optional, Pattern, Tuple
 
 from .read_api import READ_API_CONTRACT, READ_ROUTES, ReadOnlyAgentRuntimeAPI
 
 AGENT_RUNTIME_READ_PREFIX = "/api/v3/agent-runtime"
+AGENT_MATURITY_READ_PREFIX = "/api/v3/agent-maturity"
 
 # Hard bounds applied to pagination regardless of what the client sends.
 DEFAULT_LIMIT = 50
@@ -75,7 +77,40 @@ ROUTE_MATCHERS: Tuple[Tuple[Any, Pattern[str]], ...] = tuple(
 
 
 def is_agent_runtime_path(path: str) -> bool:
-    return path == AGENT_RUNTIME_READ_PREFIX or path.startswith(AGENT_RUNTIME_READ_PREFIX + "/")
+    return (
+        path == AGENT_RUNTIME_READ_PREFIX
+        or path.startswith(AGENT_RUNTIME_READ_PREFIX + "/")
+        or path == AGENT_MATURITY_READ_PREFIX
+        or path.startswith(AGENT_MATURITY_READ_PREFIX + "/")
+    )
+
+
+def _is_agent_maturity_path(path: str) -> bool:
+    return path == AGENT_MATURITY_READ_PREFIX or path.startswith(AGENT_MATURITY_READ_PREFIX + "/")
+
+
+def _dispatch_maturity(method: str, path: str) -> Tuple[int, dict]:
+    from .maturity_observability import maturity_agent_payload, maturity_payload, maturity_summary_payload
+
+    if method != "GET":
+        return 405, zero_authority_envelope(
+            "method_not_allowed", f"{method} is not allowed; the agent-maturity surface is read-only (GET only)"
+        )
+    root = Path(__file__).resolve().parents[2]
+    if path == AGENT_MATURITY_READ_PREFIX:
+        return 200, maturity_payload(root)
+    if path == f"{AGENT_MATURITY_READ_PREFIX}/summary":
+        return 200, maturity_summary_payload(root)
+    prefix = AGENT_MATURITY_READ_PREFIX + "/"
+    if path.startswith(prefix):
+        agent_id = path[len(prefix):].strip("/")
+        if not agent_id or "/" in agent_id:
+            return 404, zero_authority_envelope("not_found", "no such agent-maturity read route")
+        payload = maturity_agent_payload(root, agent_id)
+        if payload is None:
+            return 404, zero_authority_envelope("not_found", "no such agent-maturity observation")
+        return 200, payload
+    return 404, zero_authority_envelope("not_found", "no such agent-maturity read route")
 
 
 def _match(path: str):
@@ -120,6 +155,12 @@ def dispatch(
     """
     if not is_agent_runtime_path(path):
         return None
+
+    if _is_agent_maturity_path(path):
+        try:
+            return _dispatch_maturity(method, path)
+        except Exception:
+            return 503, zero_authority_envelope("not_connected", "agent-maturity read API is unavailable")
 
     if method != "GET":
         return 405, zero_authority_envelope(

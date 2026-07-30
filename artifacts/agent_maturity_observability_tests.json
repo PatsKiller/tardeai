@@ -1,0 +1,85 @@
+{
+  "schema_version": "agent-maturity-observability-test-evidence-v1",
+  "generated_at": "2026-07-30T14:18:00Z",
+  "task": "AGENT_MATURITY_OBSERVABILITY_V1",
+  "source_sha": "306f817993707a99129633a8555352277bc6d05f",
+  "commands": [
+    {
+      "name": "focused_python",
+      "command": ".venv/bin/python -m pytest tests/test_agent_maturity_observability.py tests/test_agent_runtime_read_mount.py tests/test_agent_runtime_monitoring.py",
+      "status": "PASS",
+      "tests": 68
+    },
+    {
+      "name": "agent_maturity_focused",
+      "command": ".venv/bin/python -m pytest tests/test_agent_maturity_observability.py",
+      "status": "PASS",
+      "tests": 39
+    },
+    {
+      "name": "python_compile",
+      "command": ".venv/bin/python -m py_compile scripts/agent_runtime/maturity_observability.py scripts/agent_runtime/sanitize_openclaw_runtime_inventory.py scripts/agent_runtime/outcome_completeness_dry_run.py scripts/agent_runtime/read_http.py scripts/portfolio_server.py",
+      "status": "PASS"
+    },
+    {
+      "name": "typescript",
+      "command": "node node_modules/typescript/bin/tsc --noEmit",
+      "status": "PASS"
+    },
+    {
+      "name": "design_guard",
+      "command": "bash ../../scripts/check_design_tokens.sh",
+      "status": "PASS",
+      "detail": "272 files checked against baseline"
+    },
+    {
+      "name": "chip_scope",
+      "command": "node ../../scripts/test_chip_scope.mjs",
+      "status": "PASS"
+    },
+    {
+      "name": "frontend_build",
+      "command": "node node_modules/vite/bin/vite.js build",
+      "status": "PASS"
+    },
+    {
+      "name": "source_only_release",
+      "command": "TRADE_AI_CI=1 .venv/bin/python scripts/run_release_ci_equivalent.py --source-only",
+      "status": "PASS",
+      "steps": "17/17"
+    },
+    {
+      "name": "diff_check",
+      "command": "git diff --check",
+      "status": "PASS"
+    }
+  ],
+  "safety": {
+    "read_only_observability": true,
+    "broker_write": false,
+    "production_database_write": false,
+    "production_config_write": false,
+    "production_runtime_state_write": false,
+    "agent_promoted": false,
+    "agent_activated": false,
+    "deployed": false,
+    "merged_to_main": false
+  },
+  "corrections": {
+    "degraded_sufficient_samples_cannot_pass": true,
+    "healthy_requires_remaining_framework_gates": true,
+    "activation_declaration_separated_from_live_verification": true,
+    "universal_sample_threshold_removed": true,
+    "exact_framework_thresholds_supported": [
+      "agent-runtime-mvl:min_artifact_population loaded from GATE_SPECS"
+    ],
+    "framework_thresholds_left_unknown": [
+      "hermes",
+      "broker-oversight-provenance",
+      "defense-deterministic-adjudication"
+    ],
+    "hardcoded_agent_runtime_sample_fallback_removed": true,
+    "unknown_sample_counts_preserved": true,
+    "explicit_zero_sample_count_preserved": true
+  }
+}
