@@ -108,11 +108,11 @@ export const AGENT_RUNTIME_CATALOG: AgentRuntimeDefinition[] = [
     limitations: ['No schedule activated', 'No authoritative case adapter connected'], disableControl: 'Keep the reflection trigger disabled.', rollbackControl: 'Remove staged candidates and restore prior prompt version.', docsPath: 'docs/agent_runtime/AGENT_HANDBOOK.md#nightly-reflection',
   },
   {
-    agentId: 'argus', displayName: 'Argus', lifecycle: 'DESIGNED', enabled: false, version: '1.0.0-designed', owner: 'architecture-owner',
-    role: 'Population-wide integrity scan', objective: 'Detect cross-card contradictions and drift without silently repairing packets.', retrievalRequired: true,
-    trigger: 'Post-publication population scan', artifact: 'argus_population_exception_v1', reviewer: 'operator or aegis', scorer: 'darwin',
-    allowedTools: ['watch.read', 'artifact.read', 'exception.write'], deniedTools: ['packet.write', 'broker.*', 'config.promote'], budget: zeroCost(900, 30, 1),
-    limitations: ['Phase 2 only', 'No scheduled population scan'], disableControl: 'Remain disabled in the registry.', rollbackControl: 'Remove staged exceptions from the fixture adapter.', docsPath: 'docs/agent_runtime/AGENT_HANDBOOK.md#argus',
+    agentId: 'argus', displayName: 'Argus', lifecycle: 'SHADOW', enabled: true, version: '1.0.0-shadow', owner: 'architecture-owner',
+    role: 'Population-wide integrity scan', objective: 'Detect cross-card contradictions and drift without silently repairing packets.', retrievalRequired: false,
+    trigger: 'Population-integrity sweep or quality exception', artifact: 'argus_population_exception_v1', reviewer: 'sentinel', scorer: 'darwin',
+    allowedTools: ['artifact.read', 'population.read', 'exception.write'], deniedTools: ['artifact.write', 'ticket.write', 'config.promote'], budget: zeroCost(900, 20, 0),
+    limitations: ['No scheduled population scan yet', 'MVL population acceptance not complete'], disableControl: 'Disable argus in the versioned agent registry.', rollbackControl: 'Restore the prior registry and prompt contract.', docsPath: 'docs/agent_runtime/AGENT_HANDBOOK.md#argus',
   },
   {
     agentId: 'maria', displayName: 'Maria', lifecycle: 'DESIGNED', enabled: false, version: '1.0.0-designed', owner: 'research-owner',
