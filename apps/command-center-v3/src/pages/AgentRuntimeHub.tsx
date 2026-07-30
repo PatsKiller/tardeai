@@ -384,7 +384,7 @@ function MaturityLegend() {
 function FragmentRow({ row, open, onToggle }: { row: AgentMaturityObservation; open: boolean; onToggle: () => void }) {
   const nextGate = row.next_gate_state === 'PASSED' ? 'gate passed' : (row.next_gate_id ?? row.next_gate_state.replace(/_/g, ' ').toLowerCase())
   return <>
-    <tr onClick={onToggle} style={{ borderBottom: open ? 'none' : '1px solid var(--border-subtle)', cursor: 'pointer', background: open ? 'var(--bg2)' : undefined }}>
+    <tr onClick={onToggle} title={row.next_step_hint ? `Next step: ${row.next_step_hint}` : undefined} style={{ borderBottom: open ? 'none' : '1px solid var(--border-subtle)', cursor: 'pointer', background: open ? 'var(--bg2)' : undefined }}>
       <td style={{ padding: '9px 10px', ...rowRail(maturityRail(row)), paddingLeft: 12 }}>
         <div style={{ fontSize: TYPE.sm, fontWeight: 750 }}>{row.display_name}</div>
         <div style={{ ...numStyle, fontSize: TYPE.xs, color: 'var(--text3)' }}>{row.agent_id}</div>
@@ -395,8 +395,9 @@ function FragmentRow({ row, open, onToggle }: { row: AgentMaturityObservation; o
         <Chip kind="state" tone={maturityHealthTone(row.review_health)}>{healthLabelText(row.review_health)}</Chip>
         <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)' }}>{row.review_provenance.replace(/_/g, ' ')}</div>
       </td>
-      <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: 'var(--text2)', maxWidth: 220 }} title={row.next_gate_description ?? undefined}>
+      <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: 'var(--text2)', maxWidth: 220 }} title={row.next_step_hint || row.next_gate_description || undefined}>
         <span style={{ color: BB.amber }}>&rarr;</span> {nextGate}
+        {row.next_step_hint && <div style={{ marginTop: 2, fontSize: TYPE.xs, color: 'var(--text3)', lineHeight: 1.35 }}>{row.next_step_hint}</div>}
       </td>
       <td style={{ padding: '9px 10px' }}><Chip kind="state" tone={eligibilityTone(row.promotion_eligibility)}>{eligibilityLabel(row.promotion_eligibility)}</Chip></td>
       <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text3)', fontSize: TYPE.sm }}>{open ? '\u25be' : '\u25b8'}</td>

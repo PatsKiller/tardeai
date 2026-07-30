@@ -147,6 +147,7 @@ class MaturityObservation:
     evidence_refs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     operator_checks_required: list[str] = field(default_factory=list)
+    next_step_hint: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -285,6 +286,37 @@ def _gate_state(
     return "PASSED", None, "ELIGIBLE_FOR_HUMAN_REVIEW"
 
 
+_DEGRADED_REVIEW = {"DEGRADED_FALLBACK", "STALE_CACHE", "TIMEOUT", "INVALID_OUTPUT",
+                    "MISSING_REVIEWER", "INCOMPLETE_CONSENSUS", "PROVIDER_UNAVAILABLE"}
+
+
+def _next_step_hint(*, lifecycle: str, environment: str, has_runtime_spec: bool,
+                    source_class: str, sample_size: int | None, required: int | None,
+                    review_health: str, eligibility: str,
+                    framework_gates_complete: bool) -> str:
+    """One line: what this agent needs to reach its NEXT lifecycle step."""
+    if eligibility == "ELIGIBLE_FOR_HUMAN_REVIEW":
+        return "Ready — awaiting a human promotion decision."
+    if eligibility == "UNKNOWN":
+        return "Read-visible observability row (non-MVL framework); no MVL promotion step applies."
+    if not (lifecycle == "SHADOW" or environment == "SHADOW"):  # DESIGNED
+        if not has_runtime_spec:
+            return "Author a governed runtime spec (definitions.py), then enable it in SHADOW."
+        return "Enable it in SHADOW (runtime registry), then run it in LAB to produce reviewed artifacts."
+    if source_class != SOURCE_CLASS_RUNTIME or not sample_size:
+        need = f"≥{required}" if required else "independently-reviewed"
+        return f"Run it in LAB to produce {need} reviewed artifacts."
+    if required is not None and sample_size < required:
+        return f"Keep running: {sample_size}/{required} reviewed artifacts so far."
+    if review_health == "NOT_RUN":
+        return "Have an independent peer review + score its OWN output (moves it off NOT_RUN)."
+    if review_health in _DEGRADED_REVIEW:
+        return "Restore healthy independent review of its output."
+    if not framework_gates_complete:
+        return "Measure the remaining framework gates."
+    return "All gates measured — awaiting human review."
+
+
 def _observation(
     *,
     observed_at: str,
@@ -313,6 +345,7 @@ def _observation(
     evidence_refs: Iterable[str] = (),
     warnings: Iterable[str] = (),
     operator_checks_required: Iterable[str] = (),
+    has_runtime_spec: bool = False,
 ) -> MaturityObservation:
     review = review or ReviewEvidence()
     allowed_authorities, denied_authorities, authority_warnings = _authority_summary(allowed, denied)
@@ -324,6 +357,12 @@ def _observation(
         eligibility = "RESTRICTED"
     if source_class == "UNVERIFIED":
         eligibility = "UNKNOWN"
+    next_step_hint = _next_step_hint(
+        lifecycle=lifecycle, environment=environment, has_runtime_spec=has_runtime_spec,
+        source_class=source_class, sample_size=sample_size, required=required_sample_size,
+        review_health=review.review_health, eligibility=eligibility,
+        framework_gates_complete=framework_gates_complete,
+    )
     effective_authority = "NO_FINANCIAL_AUTHORITY"
     if lifecycle == "RESTRICTED":
         effective_authority = "RESTRICTED"
@@ -381,6 +420,7 @@ def _observation(
         evidence_refs=_dedupe(evidence_refs),
         warnings=_dedupe([*warnings, *authority_warnings]),
         operator_checks_required=_dedupe(operator_checks_required),
+        next_step_hint=next_step_hint,
     )
 
 
@@ -784,6 +824,7 @@ def build_observations(
             evidence_refs=evidence_refs,
             warnings=warnings,
             operator_checks_required=operator_checks,
+            has_runtime_spec=(agent_id in definitions),
         ))
     return [item.to_dict() for item in observations]
 

@@ -290,6 +290,42 @@ _AEGIS = ShadowAgentSpec(
 )
 
 
+# ---------------------------------------------------------------------------
+# Population-integrity scanner — enabled SHADOW. Deterministic (0 model calls,
+# retrieval not required); files structured exception findings, advisory only.
+# Mirrors the argus contract in config/agent_maturity_catalog.json.
+# ---------------------------------------------------------------------------
+_ARGUS = ShadowAgentSpec(
+    definition=_def(
+        "argus",
+        "Argus",
+        "Population-integrity reflective scanner",
+        allowed_job_types=("population_integrity_scan", "presentation_consistency_scan"),
+        allowed_tools=("artifact.read", "population.read", "exception.write"),
+        denied_tools=("artifact.write", "ticket.write", "config.promote"),
+        retrieval_required=False,
+        enabled=True,
+        state=DeploymentState.SHADOW,
+        budget=BudgetPolicy(max_model_calls=0, max_tool_calls=20, max_cost_usd=0.0, deadline_seconds=900),
+    ),
+    summary=(
+        "Deterministically scans the artifact / holdings / watchlist population for "
+        "cross-artifact contradictions, drift and presentation inconsistencies, and "
+        "files structured exception findings. Advisory only: it cannot write a ticket, "
+        "promote config, or alter any sovereign decision."
+    ),
+    triggers=(
+        Trigger(TriggerKind.SCHEDULED_SWEEP, "A bounded population-integrity sweep runs"),
+        Trigger(TriggerKind.QUALITY_EXCEPTION, "A population-level quality exception is raised"),
+    ),
+    allowed_output_kinds=(OutputKind.INTEGRITY_REVIEW, OutputKind.IMPROVEMENT_PROPOSAL),
+    reviewer_agent_id="sentinel",
+    scorer_agent_id="darwin",
+    maturity_target="Phase 2 shadow",
+    wave="INITIAL",
+)
+
+
 FLEET: dict[str, ShadowAgentSpec] = {
     spec.agent_id: spec
     for spec in (
@@ -297,6 +333,7 @@ FLEET: dict[str, ShadowAgentSpec] = {
         _DARWIN,
         _IRIS,
         _REFLECTION,
+        _ARGUS,
         _MARIA,
         _VEGA,
         _RISK_AGENT,
@@ -304,7 +341,9 @@ FLEET: dict[str, ShadowAgentSpec] = {
     )
 }
 
-INITIAL_SHADOW_AGENT_IDS: tuple[str, ...] = ("sentinel", "darwin", "iris", "reflection")
+# INITIAL_SHADOW_AGENT_IDS = the enabled SHADOW fleet. argus was authored + enabled
+# after the original four; being enabled, it belongs here (not the disabled 2nd wave).
+INITIAL_SHADOW_AGENT_IDS: tuple[str, ...] = ("sentinel", "darwin", "iris", "reflection", "argus")
 SECOND_WAVE_AGENT_IDS: tuple[str, ...] = ("maria", "vega", "risk_agent", "aegis")
 
 # Fail-closed at import time: the entire fleet must satisfy the separation and
