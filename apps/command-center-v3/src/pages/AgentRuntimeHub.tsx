@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { DrillContext } from '../components/DetailDrawer'
-import { BB, T, TYPE } from '../lib/watchTokens'
+import { BB, T, TYPE, rowRail, numStyle } from '../lib/watchTokens'
+import { Chip, ChipLegend } from '../components/TerminalChip'
 import AgentsHub from './AgentsHub'
 import {
   AGENT_RUNTIME_CATALOG,
@@ -12,7 +13,21 @@ import {
   type AgentRuntimeDefinition,
 } from '../lib/agentRuntimeMonitoring'
 import { resolveAgentRuntimeView, readApiBaseFromEnv, type ResolvedRuntimeView } from '../lib/agentRuntimeReadAdapter'
-import { maturityHealthLabel, resolveAgentMaturityView, type ResolvedAgentMaturityView } from '../lib/agentMaturityObservability'
+import {
+  maturityHealthLabel,
+  resolveAgentMaturityView,
+  eligibilityRank,
+  eligibilityTone,
+  healthTone as maturityHealthTone,
+  lifecycleTone as maturityLifecycleTone,
+  maturityRail,
+  needsAttention,
+  samplePct,
+  fleetGateCoveragePct,
+  previewMaturityView,
+  type ResolvedAgentMaturityView,
+  type AgentMaturityObservation,
+} from '../lib/agentMaturityObservability'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 type View = 'Runtime' | 'Legacy analytics'
@@ -114,61 +129,199 @@ function EmptyEvidence({ title, description }: { title: string; description: str
 }
 
 
+function SampleBar({ row }: { row: AgentMaturityObservation }) {
+  const pct = samplePct(row)
+  const text = `${row.sample_size ?? '—'} / ${row.required_sample_size ?? '—'}`
+  return <div style={{ minWidth: 92, display: 'inline-block' }}>
+    <div style={{ ...numStyle, fontSize: TYPE.xs, textAlign: 'right', color: pct === null ? 'var(--text3)' : 'var(--text1)' }}>{text}</div>
+    <div style={{ marginTop: 3, height: 4, borderRadius: 2, background: 'rgba(148,163,184,0.18)', overflow: 'hidden' }}>
+      <div style={{ width: `${pct ?? 0}%`, height: '100%', background: pct === null ? 'transparent' : BB.amber, transition: 'width .2s ease' }} />
+    </div>
+  </div>
+}
+
+function DetailField({ name, value, tone }: { name: string; value: ReactNode; tone?: string }) {
+  return <div>
+    <div style={label}>{name}</div>
+    <div style={{ marginTop: 3, fontSize: TYPE.xs, color: tone ?? 'var(--text2)', lineHeight: 1.45, fontFamily: 'var(--mono)' }}>{value}</div>
+  </div>
+}
+
+function MaturityDetail({ row }: { row: AgentMaturityObservation }) {
+  const alerts = [...row.warnings, ...row.operator_checks_required]
+  return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, padding: '10px 14px 14px 26px', background: 'var(--bg2)' }}>
+    <DetailField name="Subsystem" value={row.subsystem} />
+    <DetailField name="Environment" value={row.environment} />
+    <DetailField name="Authority" value={row.effective_authority_state.replace(/_/g, ' ')} />
+    <DetailField name="Denied authorities" value={row.denied_authorities.join(', ') || 'none listed'} />
+    <DetailField name="Activation" value={`declared ${row.declared_production_activation_authorized === null ? 'UNKNOWN' : row.declared_production_activation_authorized ? 'YES' : 'NO'} · live verified ${row.effective_production_activation_verified ? 'YES' : 'NO'}`} tone={row.effective_production_activation_verified ? BB.green : BB.amber} />
+    <DetailField name="Framework" value={`${row.maturity_framework} · ${row.maturity_framework_version ?? 'UNKNOWN'}`} />
+    <DetailField name="Next gate" value={row.next_gate_id ?? row.next_gate_state} />
+    <DetailField name="Gate detail" value={row.next_gate_description ?? '—'} />
+    <DetailField name="Last healthy review" value={row.last_successful_review_at ?? 'NOT RUN'} />
+    <DetailField name="Last degraded review" value={row.last_degraded_review_at ?? 'NOT RUN'} tone={row.last_degraded_review_at ? BB.amber : undefined} />
+    <DetailField name="Last restriction" value={row.last_restriction_or_demotion_at ?? '—'} />
+    <DetailField name="Freshness" value={row.freshness_state.replace(/_/g, ' ')} tone={row.freshness_state.includes('UNVERIFIED') ? BB.amber : undefined} />
+    <DetailField name="Evidence" value={row.evidence_refs.join(', ') || '—'} />
+    {alerts.length > 0 && <div style={{ gridColumn: '1 / -1' }}>
+      <div style={label}>Warnings and operator checks</div>
+      {alerts.map(a => <div key={a} style={{ marginTop: 4, fontSize: TYPE.xs, color: BB.amber, lineHeight: 1.45 }}>• {a}</div>)}
+    </div>}
+  </div>
+}
+
 function MaturityScoreboard({ view }: { view: ResolvedAgentMaturityView }) {
-  const payload = view.payload
-  const rows = payload?.data ?? []
-  const requiredLabels = [
-    'HUMAN REVIEW REQUIRED', 'ELIGIBLE FOR HUMAN REVIEW', 'NOT RUN', 'CAPPED BY SAMPLE SIZE',
-    'DEGRADED — DETERMINISTIC FALLBACK', 'STALE CACHED REVIEW', 'RUNTIME STATUS UNVERIFIED', 'NO FINANCIAL AUTHORITY',
+  const [preview, setPreview] = useState(false)
+  const [filter, setFilter] = useState<'all' | 'shadow' | 'designed' | 'attention'>('all')
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
+  const effView = preview ? previewMaturityView() : view
+  const payload = effView.payload
+  const summary = payload?.summary
+  const allRows = payload?.data ?? []
+
+  const rows = useMemo(() => {
+    const f = allRows.filter(r =>
+      filter === 'all' ? true
+        : filter === 'shadow' ? r.declared_lifecycle_state === 'SHADOW'
+          : filter === 'designed' ? r.declared_lifecycle_state === 'DESIGNED'
+            : needsAttention(r))
+    return [...f].sort((a, b) => eligibilityRank(a) - eligibilityRank(b) || a.display_name.localeCompare(b.display_name))
+  }, [allRows, filter])
+
+  const total = summary?.total_agents ?? 0
+  const eligible = summary?.eligible_for_human_review ?? 0
+  const capped = summary?.sample_size_capped_agents ?? 0
+  const unverified = summary?.unverified_runtime_status ?? 0
+  const coverage = fleetGateCoveragePct(allRows)
+  const attentionCount = allRows.filter(needsAttention).length
+  const showUnverifiedBanner = !!summary && !preview && total > 0 && eligible === 0 && capped === 0 && unverified >= total
+
+  const headers = ['Agent', 'Lifecycle', 'Sample gate', 'Review health', 'Next gate', 'Eligibility', '']
+  const filters: Array<{ key: typeof filter; label: string; count: number }> = [
+    { key: 'all', label: 'All', count: allRows.length },
+    { key: 'shadow', label: 'Shadow', count: allRows.filter(r => r.declared_lifecycle_state === 'SHADOW').length },
+    { key: 'designed', label: 'Designed', count: allRows.filter(r => r.declared_lifecycle_state === 'DESIGNED').length },
+    { key: 'attention', label: 'Needs attention', count: attentionCount },
   ]
-  const gateTone = (state: string): BadgeTone => state === 'PASSED' ? 'green' : state === 'FAILED' ? 'red' : state === 'CAPPED_BY_SAMPLE_SIZE' ? 'amber' : 'slate'
-  const healthTone = (state: string): BadgeTone => state === 'HEALTHY' ? 'green' : state === 'DEGRADED_FALLBACK' || state === 'STALE_CACHE' ? 'amber' : state === 'TIMEOUT' || state === 'INVALID_OUTPUT' ? 'red' : 'slate'
+
   return <div style={{ ...panel, padding: 0, overflow: 'hidden' }}>
+    {/* Header: title, provenance, connection state, chip legend, preview toggle */}
     <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
       <div>
         <div style={{ fontSize: TYPE.md, fontWeight: 800 }}>Maturity scoreboard</div>
-        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)', lineHeight: 1.45 }}>{view.detail}</div>
-        {payload && <div style={{ marginTop: 5, fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{payload.contract} · {payload.schema_version} · {payload.generated_at}</div>}
+        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)', lineHeight: 1.45 }}>{effView.detail}</div>
+        {payload && <div style={{ marginTop: 5, ...numStyle, fontSize: TYPE.xs, color: 'var(--text3)' }}>{payload.contract} · {payload.schema_version} · {payload.generated_at}</div>}
       </div>
-      <StatusBadge tone={view.state === 'CONNECTED' ? 'green' : view.state === 'NOT_CONNECTED' ? 'amber' : 'red'}>{view.state}</StatusBadge>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+        <ChipLegend />
+        <button
+          type="button"
+          onClick={() => setPreview(p => !p)}
+          title="Front-end-only illustrative sample rows; never live data."
+          style={{ ...actionToggleStyle(preview) }}>
+          {preview ? 'PREVIEW ON' : 'PREVIEW'}
+        </button>
+        <Chip kind="state" tone={effView.state === 'CONNECTED' ? (preview ? 'amber' : 'green') : effView.state === 'NOT_CONNECTED' ? 'amber' : 'red'}>
+          {preview ? 'SAMPLE - NOT LIVE' : effView.state}
+        </Chip>
+      </div>
     </div>
-    <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-      {requiredLabels.map(item => <StatusBadge key={item} tone={item.includes('DEGRADED') || item.includes('CAPPED') || item.includes('UNVERIFIED') ? 'amber' : item.includes('ELIGIBLE') ? 'green' : 'slate'}>{item}</StatusBadge>)}
-    </div>
-    {payload && <div style={{ padding: '10px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 8, borderBottom: '1px solid var(--border)' }}>
-      {[
-        ['Observed records', payload.summary.total_agents, 'Canonical repository read model'],
-        ['Sample capped', payload.summary.sample_size_capped_agents, 'Cannot pass gate yet'],
-        ['Human-review eligible', payload.summary.eligible_for_human_review, 'Metrics only; no authority grant'],
-        ['Runtime unverified', payload.summary.unverified_runtime_status, 'Requires safe operator evidence'],
-      ].map(([title, value, detail]) => <div key={String(title)} style={{ minHeight: 62, padding: '8px 0' }}>
-        <div style={{ fontSize: TYPE.lg, fontWeight: 800 }}>{value}</div>
-        <div style={{ marginTop: 4, fontSize: TYPE.xs, fontWeight: 750, color: 'var(--text1)' }}>{title}</div>
-        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)' }}>{detail}</div>
-      </div>)}
+
+    {/* Honest single empty-state banner when nothing is verifiable yet */}
+    {showUnverifiedBanner && <div style={{ margin: '12px 14px', padding: '10px 12px', borderRadius: 6, border: `1px solid ${BB.amber}`, background: BB.amberDim, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <span style={{ color: BB.amber, fontWeight: 900, fontSize: TYPE.md, lineHeight: 1 }}>!</span>
+      <div style={{ fontSize: TYPE.xs, color: 'var(--text1)', lineHeight: 1.5 }}>
+        <b>Runtime evidence not connected</b> — showing declared repository posture for {total} agents. Live gates, sample counts, and review health populate once the runtime read adapter (DSN) is wired. No agent can be eligible without verified evidence. Use <b>Preview</b> to see the populated layout.
+      </div>
     </div>}
-    <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
-      <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{['Agent', 'Subsystem', 'Lifecycle', 'Authority', 'Activation', 'Environment', 'Framework', 'Sample', 'Next gate', 'Review health', 'Last healthy', 'Last degraded', 'Eligibility', 'Evidence', 'Warnings'].map(header => <th key={header} style={{ ...label, textAlign: header === 'Agent' || header === 'Subsystem' || header === 'Warnings' ? 'left' : 'right', padding: '8px 10px' }}>{header}</th>)}</tr></thead>
-      <tbody>{rows.map(row => <tr key={row.agent_id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-        <td style={{ padding: '9px 10px' }}><div style={{ fontSize: TYPE.sm, fontWeight: 750 }}>{row.display_name}</div><div style={{ fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{row.agent_id}</div></td>
-        <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: 'var(--text2)' }}>{row.subsystem}</td>
-        <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone={lifecycleTone[(row.declared_lifecycle_state as AgentLifecycle) || 'DESIGNED'] ?? 'slate'}>{row.declared_lifecycle_state}</StatusBadge></td>
-        <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone="amber">{row.effective_authority_state === 'NO_FINANCIAL_AUTHORITY' ? 'NO FINANCIAL AUTHORITY' : row.effective_authority_state.replace(/_/g, ' ')}</StatusBadge></td>
-        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs }}>declared {row.declared_production_activation_authorized === null ? 'UNKNOWN' : row.declared_production_activation_authorized ? 'YES' : 'NO'}<div style={{ color: row.effective_production_activation_verified ? BB.green : BB.amber }}>live verified {row.effective_production_activation_verified ? 'YES' : 'NO'}</div></td>
-        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs }}>{row.environment}</td>
-        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs }}>{row.maturity_framework}<div style={{ color: 'var(--text3)' }}>{row.maturity_framework_version ?? 'UNKNOWN'}</div></td>
-        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs }}>{row.sample_size ?? 'UNKNOWN'} / {row.required_sample_size ?? 'UNKNOWN'}<div style={{ color: BB.amber }}>{row.sample_progress_state.replace(/_/g, ' ')}</div></td>
-        <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone={gateTone(row.next_gate_state)}>{row.next_gate_state.replace(/_/g, ' ')}</StatusBadge></td>
-        <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone={healthTone(row.review_health)}>{maturityHealthLabel(row.review_health)}</StatusBadge><div style={{ marginTop: 3, color: 'var(--text3)', fontSize: TYPE.xs }}>{row.review_provenance.replace(/_/g, ' ')}</div></td>
-        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs, color: 'var(--text2)' }}>{row.last_successful_review_at ?? 'NOT RUN'}</td>
-        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs, color: 'var(--text2)' }}>{row.last_degraded_review_at ?? 'NOT RUN'}</td>
-        <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone={row.promotion_eligibility === 'ELIGIBLE_FOR_HUMAN_REVIEW' ? 'green' : row.promotion_eligibility === 'RESTRICTED' ? 'red' : 'slate'}>{row.promotion_eligibility.replace(/_/g, ' ')}</StatusBadge></td>
-        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs, color: row.freshness_state.includes('UNVERIFIED') ? BB.amber : 'var(--text2)' }}>{row.freshness_state.replace(/_/g, ' ')}</td>
-        <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: row.warnings.length || row.operator_checks_required.length ? BB.amber : 'var(--text3)', maxWidth: 260 }}>{[...row.warnings, ...row.operator_checks_required].slice(0, 2).join(' · ') || '—'}</td>
-      </tr>)}</tbody>
+
+    {/* FLEET summary strip */}
+    {payload && <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: .5, fontWeight: 750 }}>Fleet</div>
+        <div style={{ ...numStyle, fontSize: TYPE.lg, fontWeight: 800, color: 'var(--text0)' }}>{eligible} <span style={{ fontSize: TYPE.sm, color: 'var(--text3)', fontWeight: 700 }}>of {total} eligible</span></div>
+      </div>
+      <div style={{ flex: 1, minWidth: 200 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 4 }}>
+          <span>Sample gate coverage</span><span style={{ ...numStyle, color: 'var(--text2)' }}>{coverage}%</span>
+        </div>
+        <div style={{ height: 6, borderRadius: 3, background: 'rgba(148,163,184,0.16)', overflow: 'hidden' }}>
+          <div style={{ width: `${coverage}%`, height: '100%', background: coverage > 0 ? BB.green : 'transparent', transition: 'width .2s ease' }} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+        <Chip kind="count" warn={capped > 0}>{capped}</Chip><span style={{ fontSize: TYPE.xs, color: 'var(--text3)', alignSelf: 'center' }}>capped</span>
+        <Chip kind="count" warn={attentionCount > 0}>{attentionCount}</Chip><span style={{ fontSize: TYPE.xs, color: 'var(--text3)', alignSelf: 'center' }}>attention</span>
+        <Chip kind="count" warn={unverified > 0}>{unverified}</Chip><span style={{ fontSize: TYPE.xs, color: 'var(--text3)', alignSelf: 'center' }}>unverified</span>
+      </div>
+    </div>}
+
+    {/* Filter segment */}
+    {payload && <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {filters.map(f => <button key={f.key} type="button" onClick={() => setFilter(f.key)} style={filterTabStyle(filter === f.key)}>
+        {f.label} <span style={{ ...numStyle, color: filter === f.key ? BB.amber : 'var(--text3)' }}>{f.count}</span>
+      </button>)}
+    </div>}
+
+    {/* Ranked board */}
+    <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+      <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{headers.map((header, i) => <th key={header || `h${i}`} style={{ ...label, textAlign: header === 'Agent' || header === 'Next gate' ? 'left' : header === '' ? 'center' : 'left', padding: '8px 10px' }}>{header}</th>)}</tr></thead>
+      <tbody>{rows.map(row => {
+        const open = !!expanded[row.agent_id]
+        return <FragmentRow key={row.agent_id}
+          row={row} open={open}
+          onToggle={() => setExpanded(e => ({ ...e, [row.agent_id]: !e[row.agent_id] }))} />
+      })}
+      {payload && rows.length === 0 && <tr><td colSpan={headers.length} style={{ padding: 16, textAlign: 'center', fontSize: TYPE.xs, color: 'var(--text3)' }}>No agents match this filter.</td></tr>}
+      </tbody>
     </table></div>
     {!payload && <div style={{ padding: 14, fontSize: TYPE.xs, color: BB.amber }}>RUNTIME STATUS UNVERIFIED · no maturity payload is available.</div>}
   </div>
+}
+
+function FragmentRow({ row, open, onToggle }: { row: AgentMaturityObservation; open: boolean; onToggle: () => void }) {
+  const nextGate = row.next_gate_state === 'PASSED' ? 'gate passed' : (row.next_gate_id ?? row.next_gate_state.replace(/_/g, ' ').toLowerCase())
+  return <>
+    <tr onClick={onToggle} style={{ borderBottom: open ? 'none' : '1px solid var(--border-subtle)', cursor: 'pointer', background: open ? 'var(--bg2)' : undefined }}>
+      <td style={{ padding: '9px 10px', ...rowRail(maturityRail(row)), paddingLeft: 12 }}>
+        <div style={{ fontSize: TYPE.sm, fontWeight: 750 }}>{row.display_name}</div>
+        <div style={{ ...numStyle, fontSize: TYPE.xs, color: 'var(--text3)' }}>{row.agent_id}</div>
+      </td>
+      <td style={{ padding: '9px 10px' }}><Chip kind="state" tone={maturityLifecycleTone(row.declared_lifecycle_state)}>{row.declared_lifecycle_state}</Chip></td>
+      <td style={{ padding: '9px 10px' }}><SampleBar row={row} /></td>
+      <td style={{ padding: '9px 10px' }}>
+        <Chip kind="state" tone={maturityHealthTone(row.review_health)}>{maturityHealthLabel(row.review_health)}</Chip>
+        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)' }}>{row.review_provenance.replace(/_/g, ' ')}</div>
+      </td>
+      <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: 'var(--text2)', maxWidth: 220 }} title={row.next_gate_description ?? undefined}>
+        <span style={{ color: BB.amber }}>&rarr;</span> {nextGate}
+      </td>
+      <td style={{ padding: '9px 10px' }}><Chip kind="state" tone={eligibilityTone(row.promotion_eligibility)}>{row.promotion_eligibility.replace(/_/g, ' ')}</Chip></td>
+      <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text3)', fontSize: TYPE.sm }}>{open ? '\u25be' : '\u25b8'}</td>
+    </tr>
+    {open && <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}><td colSpan={7} style={{ padding: 0 }}><MaturityDetail row={row} /></td></tr>}
+  </>
+}
+
+function actionToggleStyle(active: boolean): CSSProperties {
+  return {
+    fontSize: TYPE.xs, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase',
+    border: `1px solid ${active ? BB.amber : 'var(--border)'}`,
+    background: active ? BB.amberDim : 'transparent',
+    color: active ? BB.amber : 'var(--text3)',
+    padding: '2px 9px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap',
+  }
+}
+
+function filterTabStyle(active: boolean): CSSProperties {
+  return {
+    fontSize: TYPE.xs, fontWeight: 750,
+    border: `1px solid ${active ? 'rgba(255,176,0,.34)' : 'var(--border)'}`,
+    background: active ? BB.amberDim : 'var(--bg1)',
+    color: active ? BB.amber : 'var(--text2)',
+    padding: '4px 10px', borderRadius: 7, cursor: 'pointer', whiteSpace: 'nowrap',
+  }
 }
 
 function RuntimeView() {
