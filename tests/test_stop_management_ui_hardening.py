@@ -47,8 +47,10 @@ def test_04_advisory_stop_is_not_rendered_as_live_and_live_stop_distinct():
     src = read(UI) + read(LOGIC)
     assert "ADVISORY ONLY — NOT PLACED" in src
     assert "LIVE BROKER STOP" in src
-    assert "Broker live stop" in src
-    assert "Advisor fixed stop" in src
+    assert "CURRENT LIVE BROKER STOP" in src
+    assert "Current:" in src
+    assert "Advisor:" in src
+    assert "logic.liveStopIsTrailing" in src
     assert "liveStopDistancePct" in src
 
 
@@ -145,8 +147,10 @@ def test_13_internal_guard_copy_not_schwab_rejected_and_no_sample_code():
 def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
     src = read(UI) + read(LEGACY_UI) + read(LOGIC)
     assert "Request Schwab stop via 2FA" in src
-    assert "Request Schwab fixed stop via 2FA" in src
-    assert "Request Schwab trailing stop via 2FA" in src
+    assert "Apply Fixed Stop (2FA)" in src
+    assert "Apply Advisory Trailing Stop (2FA)" in src
+    assert "Apply Trailing-Limit Stop (2FA)" in src
+    assert "preflightAndRequest('TRAILING')" in src
     assert "Create Fidelity manual ticket" in src
     assert "Execute @ Schwab" not in src
     assert "Execute @ Fidelity" not in src
@@ -155,7 +159,11 @@ def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
 def test_15_build_marker_visible_for_deployment_verification():
     src = read(APP)
     assert "BUILD_MARKER" in src
-    assert "cc-v3 hermes-efficiency-stop-quality 2026-07-03" in src
+    assert "BUILD_MARKER_FALLBACK" in src
+    assert "__ANALYST_UI_VERSION__" in src
+    assert "__BUILD_DATE__" in src
+    assert "/v3/build-meta.json" in src
+    assert "cache: 'no-store'" in src
 
 
 def test_17_click_preflight_validates_before_2fa_and_manual():
