@@ -44,11 +44,21 @@ check('proposal without tab → Proposals', resolveTradingTab(null, true) === 'P
 }
 
 {
-  const prev = new URLSearchParams('tab=Proposals&proposal=1&symbol=TSLA')
+  const prev = new URLSearchParams('tab=Proposals&proposal=1&symbol=TSLA&pq_source=pullback_macd&pq_held=1')
   const next = tradingTabSearchParams(prev, 'Open Trades')
   check('tab synced', next.get('tab') === 'Open Trades')
   check('proposal cleared off Proposals', next.get('proposal') === null)
   check('symbol kept for Open Trades', next.get('symbol') === 'TSLA')
+  check('pq_* cleared leaving Proposals', next.get('pq_source') === null && next.get('pq_held') === null)
+}
+
+{
+  const p = parseTradingDeepLink(new URLSearchParams('tab=Proposals&pq_kind=protection&pq_rr=live_2&pq_view=expired&pq_held=1&pq_page=2'))
+  check('pq kind', p.pq.kind === 'protection')
+  check('pq rr', p.pq.rr === 'live_2')
+  check('pq view expired', p.pq.view === 'expired')
+  check('pq held', p.pq.held === true)
+  check('pq page', p.pq.page === 2)
 }
 
 {

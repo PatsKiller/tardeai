@@ -12,6 +12,14 @@ Enterprise maturity packaging for `/v3/trading`. All in-app and Telegram links i
 | `intent` | `uuid-or-id` | Focus Broker Orders intent (Telegram `/go/order/…`) |
 | `otab` | `Lifecycle`, `Proposals` | Options nested subtab when `tab=Options` |
 | `account` | `schwab_taxable` | Optional account disambiguation |
+| `pq_sort` | `priority`, `rr_live` | Proposals queue sort (WP-T5) |
+| `pq_kind` | `broker`, `protection`, `all` | Proposals type filter |
+| `pq_source` | `pullback_macd`, `watchlist` | Source filter |
+| `pq_zone` | `comfortable`, `at_risk`, … | Thesis zone |
+| `pq_rr` | `live_2`, `best`, … | R:R quality preset |
+| `pq_view` | `active` \| `expired` | Active vs expired queue |
+| `pq_held` | `1` | Held-symbol only |
+| `pq_page` | `2` | Pagination (omitted when 1) |
 
 ## Aliases (legacy / Telegram)
 
@@ -56,3 +64,7 @@ Deep-links never auto-submit live orders. Live capital requires per-order 2FA on
   - CSV: `exportOpenTradesCsv.ts` (filtered **shown** rows)
   - Journal: `/v3/journal?symbol=SYM` (seeds Trade Log search)
   - Stop truth: `/v3/portfolio?tab=Stop%20Management&symbol=SYM`
+- Proposals queue (WP-T5):
+  - CSV: `exportBrokerProposalsCsv.ts` (currently **shown** page/filter set)
+  - Filters URL-synced via `pq_*` + `symbol`/`account`
+  - Leaving Proposals tab clears `pq_*` keys
